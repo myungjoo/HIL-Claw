@@ -17,6 +17,16 @@
 - 외부 LLM 실행 최적화 논문을 참고하여 최적과 기법 적용 후보군을 지속적으로 추가/삭제할 수 있어야 한다.
 
 
+
+## References
+
+- CUDA Agent (ByteDance)
+- Gimlet Labs
+- YASP
+- Modular.AI
+- ...
+- 
+
 # License
 License to be determined later
 
