@@ -53,9 +53,9 @@
 - **액터**: 배포 엔지니어
 - **선행조건**: instance가 checkpoint 모드, gate 집합이 정의됨.
 - **주 흐름**
-  1. 한 라운드를 실행: 기법 선택 → 코드 생성(외부 위임) → compile → sim.
+  1. 한 라운드를 실행: 기법 선택 → 코드 생성(외부 위임) → compile → sim **+ correctness**. correctness 실패 시 실패 리포트와 함께 코드 생성 단계로 복귀한다(repair).
   2. 정의된 **gate**(예: real-board 첫 투입 전 / 기법군 전환 / budget 50% 소진)에 도달하면 정지하고 사용자 승인을 기다린다.
-  3. 사용자가 승인/거부/방향 수정을 입력하면 진행한다(승격 시 board 측정 → profile → evaluate).
+  3. 사용자가 승인/거부/방향 수정을 입력하면 진행한다(승격 시 board 측정 **+ correctness 재검증** → profile → evaluate). **sim 통과·board 실패**는 후보 결함이 아니라 **시뮬레이터 결함**으로 escalate한다(sim 버그 리포트, → UC-7).
   4. 결과·로그를 저장(commit)하고 다음 라운드 여부를 결정한다.
 - **대안 흐름**: 사용자가 거부하면 해당 기법군을 건너뛰거나 instance를 중단한다.
 - **종료조건**: budget 소진 / 사용자 종료 / target 달성.
