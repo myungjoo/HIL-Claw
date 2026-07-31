@@ -6,9 +6,9 @@
 
 # 0. 범위 (Scope)
 
-- **In-scope**: 방법 B — Claude Code가 Long-Horizon Orchestrator가 되고, **상태는 Git repo(Phase 1) → Local DB(Phase 2)** 로 외부화한다. 코드 생성은 headless Claude Code CLI(`claude -p`)에 위임한다.
+- **In-scope**: 방법 B — Claude Code가 Long-Horizon Orchestrator가 되고, **상태는 데이터 plane(Phase 1: git 트리 → Phase 2: Local DB)** 으로 외부화한다. 코드 생성은 headless Claude Code CLI(`claude -p`)에 위임한다.
 - **MVP 단계 분할**
-  - **Phase 1**: 별도 DB 없이 **Git repo 내 디렉토리 트리가 DB를 대신**한다. 디렉토리 레이아웃은 미래 DB 스키마를 미러링한다. 단일 run 전제.
+  - **Phase 1**: 별도 DB 없이 **데이터 plane의 디렉토리 트리가 DB를 대신**한다(소스 repo와 분리 — #5 A-1). 디렉토리 레이아웃은 미래 DB 스키마를 미러링한다. 단일 run 전제.
   - **Phase 2**: 실제 Local DB 도입. Phase 1 레이아웃을 그대로 마이그레이션.
 - **Out-of-scope (Non-goal)**: 방법 A(DeepAgents/LangGraph 기반 별도 Agent System)는 **"HIL-Claw 2"** 로 이연한다. 방법 B가 완료되고 모든 동작이 원활히 검증된 이후에 착수한다. 본 문서에서 방법 A는 다루지 않으며, 다만 방법 B의 인터페이스(STATE/spec/도구/카탈로그)는 미래 HIL-Claw 2 승격이 쉽도록 외부화한다(→ [Requirements](Requirements.md) NFR-확장성).
 
@@ -21,6 +21,7 @@
 - **Gate**: 루프 진행 중 사용자 승인/지시를 기다리는 정지 지점. autonomous = gate 0개, checkpoint = gate N개. gate 구성은 instance 파라미터다.
 - **hw_profile**: 성능 특성을 결정하는 HW/실행 환경 키(가속기 + 호스트 환경 튜플). 구체 필드 스키마는 미결(→ Requirements Open Decisions).
 - **op_signature**: 최적화 대상 연산의 식별 키. 구체 필드 스키마는 미결.
+- **데이터 plane**: run 산출물과 크로스런 지식(`runs/`, `db/`, `blobs/`)이 사는 저장 공간. **소스(도구) repo와 분리**하며(#5 A-1), 소스 쪽에서는 `hilclaw.config.json`으로 참조한다. 물리적 형태(별도 repo / fork / template 파생)는 미결 — #4 「repo 구조 단순화」 안건.
 - **기법 카탈로그(technique catalog)**: 최적화 기법 후보군과 "언제 쓰면 좋은지(선택 기준)" 및 적용 지침·과거 통계를 담는 자료. Phase 1에서는 repo 내 문서로 시작.
 
 ---
@@ -43,7 +44,7 @@
 - **선행조건**: 대상 HW(hw_profile)와 모델, 사용 가능한 sim/board 도구가 등록되어 있음.
 - **주 흐름**
   1. 사용자가 *(HW + 모델 + 최적화 target type + (선택) budget + (선택) gate 구성 + autonomy 모드)* 를 지정해 instance를 시작한다.
-  2. 시스템이 instance용 작업공간(`/runs/<run_id>/` 또는 Phase 2 DB 레코드)을 만들고 STATE를 초기화한다.
+  2. 시스템이 instance용 작업공간(데이터 plane의 `runs/<run_id>/` 또는 Phase 2 DB 레코드)을 만들고 STATE를 초기화한다.
   3. 라운드 루프(UC-2 또는 UC-3)로 진입한다.
 - **종료조건**: budget 소진 또는 (선택) target-metric 조기 달성. 기본 종료 의미론은 **best 결과 유지**.
 - **비고**: 목표 type은 메뉴(vocabulary)에서 선택한다. 예: latency 최소화 / throughput 최대화 / 동시 서빙 capacity 최대화 / 메모리 상한 내 latency 최소화(제약형) / 가중 조합. *(메뉴 최종 확정 = 미결)*
@@ -98,7 +99,7 @@
   2. 라운드별 산출물·프로파일·정확도·점수와 best를 비교한다.
   3. 결정 로그(어떤 기법을 왜 골랐는지)를 확인한다.
 - **종료조건**: 조회 완료.
-- **비고**: Phase 1에서는 git history/diff가 곧 감사 로그(숨은 이점). 중간·최종·**실패** 결과가 모두 보존되어야 한다.
+- **비고**: Phase 1에서는 git history/diff가 곧 감사 로그(숨은 이점). 단 데이터 plane과 소스가 분리되어 있으므로 **두 history를 `instance.json`의 소스 commit 기록으로 이어야** 감사가 성립한다(→ Requirements NFR-2). 중간·최종·**실패** 결과가 모두 보존되어야 한다.
 
 ## UC-7. 비수렴 에스컬레이션 / 기법군 전환
 - **액터**: 시스템 → 배포 엔지니어(또는 자동)
