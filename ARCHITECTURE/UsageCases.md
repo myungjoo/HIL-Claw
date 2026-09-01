@@ -118,3 +118,4 @@
 - UC-7은 UC-2/UC-3 내부의 분기 흐름이다.
 
 > 본 유스케이스로부터 도출된 요구사항은 [Requirements.md](Requirements.md)에 정리한다.
+> 유스케이스를 구체적 단계로 풀어 쓰고 설계 커버리지를 검사하는 표준 시나리오는 [StandardScenarios.md](StandardScenarios.md)에 있다.
