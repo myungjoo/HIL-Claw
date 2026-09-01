@@ -1,6 +1,6 @@
 주어진 [UsageCases](UsageCases.md)로부터 본 과제에서 적용할 요구사항을 기술하는 문서이다.
 
-근거 표기: **README** = [../README.md](../README.md) 목표, **UC-n** = UsageCases, **Issue#2** = 아키텍처 토론 확정 결정(D1/D3/D4/codegen 위임/Phase 분할 등). Phase 표기: **P1** = Git tree 단계, **P2** = Local DB 단계, **공통** = 둘 다.
+근거 표기: **README** = [../README.md](../README.md) 목표, **UC-n** = UsageCases, **Issue#2** = 아키텍처 토론 확정 결정(D1/D3/D4/codegen 위임/Phase 분할 등), **S0-n** = [StandardScenarios.md](StandardScenarios.md) 기본 전제 시나리오의 단계, **(Gn)** = StandardScenarios 커버리지 검사에서 발견되어 백필된 갭. Phase 표기: **P1** = Git tree 단계, **P2** = Local DB 단계, **공통** = 둘 다.
 
 ---
 
@@ -15,7 +15,7 @@
 
 | ID | 요구사항 | 근거 | Phase |
 |---|---|---|---|
-| **FR-1** | **HIL 라운드 루프**를 제공한다: `기법 선택 → 코드 생성(위임) → compile → sim(조기검증) → (승격) board(최종측정) → profile → evaluate → 저장 → 다음 라운드 결정`. | UC-1·2·3, README | 공통 |
+| **FR-1** | **HIL 라운드 루프**를 제공한다: `기법 선택 → 코드 생성(위임) → compile → sim(조기검증) → (승격) board(최종측정) → profile → evaluate → 저장 → 다음 라운드 결정`. instance 시작 시 **라운드 0 = bring-up**(해당 HW에서 동작하는 코드 생성) + **baseline 성능 측정**을 수행하며, 이것이 이후 라운드 evaluate의 기준이 된다. | UC-1·2·3, README, S0-4 (G1) | 공통 |
 | **FR-2** | 최적화 목표를 시스템이 고정하지 않고, **선택 가능한 target type 메뉴(vocabulary)** 로 제공하여 **Loop instance별로 사용자가 지정**한다. | UC-1, Issue#2 D1 | 공통 |
 | **FR-3** | **Budget 어휘**를 제공한다: ① loop-iteration 수 ② 토큰 수(비용) ③ wall-clock 시간 ④ target-performance-metric(달성 시 조기 종료). 값은 run 시점 사용자 지정. 복수 지정 시 **any 소진 → 종료**. 시스템 기본 종료 의미론은 **budget 소진 + best 유지**. | UC-1·3, Issue#2 D3 | 공통 |
 | **FR-4** | **자율성 gate 모델**: autonomous(gate 0) ↔ checkpoint(gate N). gate 집합은 **Loop instance 파라미터**로 사용자가 구성한다. autonomous도 budget/종료 조건까지 무정지 실행, checkpoint는 gate에서 정지·승인 대기. | UC-2·3, Issue#2 D4 | 공통 |
@@ -28,6 +28,9 @@
 | **FR-11** | 최적화 과정 전반에 **로그**를 남기고, 어떤 기법을 왜 선택했는지 **결정 로그를 강제 기록**한다(재현·감사용). | README, UC-6 | 공통 |
 | **FR-12** | **외부 연구 논문·코드를 이해**하여 기법 후보군을 추가/갱신/삭제할 수 있어야 한다("AI for Science"-like). | README, UC-5 | 공통 |
 | **FR-13** | **상태/지식을 세션 밖으로 외부화**한다. P1에서는 **Git repo 내 디렉토리 트리가 DB를 대신**하며, 레이아웃은 **미래 DB 스키마를 미러링**한다(`db/<hw_profile_key>/<op_signature>/...`). P2에서 Local DB로 마이그레이션한다. | UC-1·4·6, Issue#2 Phase 분할, README | P1→P2 |
+| **FR-14** | **HW 온보딩**을 제공한다: 새 hw_profile(가속기 + 호스트 환경)과 그 **Documentation**, sim/board 도구 접근 정보를 시스템(P1: db 트리)에 **등록**하고, instance 시작 시 **선택**할 수 있어야 한다. 절차·스키마 세부 = OD-11. | S0-1, UC-1 선행조건 (G2) | 공통 |
+| **FR-15** | instance 시작 시 **(선택) 참고 사례·자료 입력**을 받을 수 있다: 내부 Storage의 기존 유사/동일 최적화 사례 참조, 외부 연구 논문 링크 등. **원칙**: 이 입력과 저장된 과거 사례는 **"참고사항"(탐색 우선순위 힌트)으로만** 사용한다 — **Ground Truth로 간주하지 않으며, 특히 기존 사례의 성능이 "최종 목표"가 되어서는 안 된다**. 목표는 오직 FR-2의 사용자 지정 target을 따른다(FR-7 랭킹에도 동일 원칙 적용). | S0-3 사용자 확정(2026-09-02) (G5·G6) | 공통 |
+| **FR-16** | **알림**을 발행한다: run 종료(best 유지 종료·비수렴 종료), 강제 gate 정지 등 사용자 개입/인지가 필요한 이벤트 대상. 채널·메커니즘 세부 = OD-12. | UC-3·7 (G3) | 공통 |
 
 ---
 
@@ -73,3 +76,6 @@
 | OD-8 | **P1 디렉토리 레이아웃** 확정(OD-3·OD-4·C-3 결과 반영) | FR-13 |
 | OD-9 | **frontend IR 출처·포맷**: `model_ref`(format-agnostic frontend 결과 IR)를 어떤 frontend/포맷(예: ONNX/StableHLO/TOSA)에서 받는지, 시스템 경계 안/밖 여부 | FR-1, Issue#2 |
 | OD-10 | **board 실패·회복 모델**: board 행/크래시/예약 경합 시 재시도·타임아웃·회복 정책(측정 노이즈와 별개) | FR-10, NFR-3 |
+| OD-11 | **HW 온보딩 절차 세부**: hw_profile 등록 스키마(OD-4와 연동), Documentation 포맷·저장 위치, sim/board 도구 endpoint 기술 방법 | FR-14, OD-4 |
+| OD-12 | **알림 채널·메커니즘**: 채널(콘솔/파일/외부 메신저 등), checkpoint gate 대기 알림과의 통합 여부 | FR-16 |
+| OD-13 | **correctness 검증 수행 지점**: FR-1 라운드 시퀀스 내 위치(sim 후 / board 후 / 양쪽) 및 실패 시 라운드 처리 | FR-1·9 (G4) |

@@ -40,13 +40,13 @@
 
 ## UC-1. Loop instance 정의·실행
 - **액터**: 배포 엔지니어 / CI
-- **선행조건**: 대상 HW(hw_profile)와 모델, 사용 가능한 sim/board 도구가 등록되어 있음.
+- **선행조건**: 대상 HW(hw_profile)와 모델, 사용 가능한 sim/board 도구가 등록되어 있음(등록·온보딩 절차 = Requirements FR-14).
 - **주 흐름**
-  1. 사용자가 *(HW + 모델 + 최적화 target type + (선택) budget + (선택) gate 구성 + autonomy 모드)* 를 지정해 instance를 시작한다.
+  1. 사용자가 *(HW + 모델 + 최적화 target type + (선택) budget + (선택) gate 구성 + autonomy 모드 + (선택) 참고 사례·자료)* 를 지정해 instance를 시작한다.
   2. 시스템이 instance용 작업공간(`/runs/<run_id>/` 또는 Phase 2 DB 레코드)을 만들고 STATE를 초기화한다.
-  3. 라운드 루프(UC-2 또는 UC-3)로 진입한다.
+  3. **라운드 0**(bring-up: 해당 HW에서 동작하는 코드 생성 + baseline 성능 측정)을 수행한 뒤 라운드 루프(UC-2 또는 UC-3)로 진입한다.
 - **종료조건**: budget 소진 또는 (선택) target-metric 조기 달성. 기본 종료 의미론은 **best 결과 유지**.
-- **비고**: 목표 type은 메뉴(vocabulary)에서 선택한다. 예: latency 최소화 / throughput 최대화 / 동시 서빙 capacity 최대화 / 메모리 상한 내 latency 최소화(제약형) / 가중 조합. *(메뉴 최종 확정 = 미결)*
+- **비고**: 목표 type은 메뉴(vocabulary)에서 선택한다. 예: latency 최소화 / throughput 최대화 / 동시 서빙 capacity 최대화 / 메모리 상한 내 latency 최소화(제약형) / 가중 조합. *(메뉴 최종 확정 = 미결)* 참고 사례·자료(내부 Storage의 기존 사례 참조, 외부 논문 링크)는 **참고사항으로만** 쓰이며 Ground Truth나 최종 목표가 아니다(Requirements FR-15).
 
 ## UC-2. 인터랙티브 최적화 (checkpoint 모드)
 - **액터**: 배포 엔지니어
