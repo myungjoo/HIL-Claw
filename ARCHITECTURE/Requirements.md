@@ -28,7 +28,7 @@
 | **FR-11** | 최적화 과정 전반에 **로그**를 남기고, 어떤 기법을 왜 선택했는지 **결정 로그를 강제 기록**한다(재현·감사용). | README, UC-6 | 공통 |
 | **FR-12** | **외부 연구 논문·코드를 이해**하여 기법 후보군을 추가/갱신/삭제할 수 있어야 한다("AI for Science"-like). | README, UC-5 | 공통 |
 | **FR-13** | **상태/지식을 세션 밖으로 외부화**한다. P1에서는 **Git repo 내 디렉토리 트리가 DB를 대신**하며, 레이아웃은 **미래 DB 스키마를 미러링**한다(`db/<hw_profile_key>/<op_signature>/...`). P2에서 Local DB로 마이그레이션한다. | UC-1·4·6, Issue#2 Phase 분할, README | P1→P2 |
-| **FR-14** | **HW 온보딩**을 제공한다: 새 hw_profile(가속기 + 호스트 환경 + **HW 출처: 외부 타사 / 자사 개발 중**)과 그 **Documentation**, sim/board 도구 접근 정보를 시스템(P1: db 트리)에 **등록**하고, instance 시작 시 **선택**할 수 있어야 한다. 자사 개발 중 HW는 실리콘 없이 sim/emulator만으로 온보딩할 수 있어야 하며, 문서·도구·revision 변동에 따른 **갱신**을 지원한다. 절차·스키마 세부 = OD-11. | S0-1, UC-0, UC-1 선행조건 (G2), 2026-09-03 사용자 확정 | 공통 |
+| **FR-14** | **HW 온보딩**을 제공한다: 새 hw_profile(가속기 + 호스트 환경 + **HW 출처: 외부 타사 / 자사 개발 중**)과 그 **Documentation**, sim/board 도구 접근 정보를 시스템(P1: db 트리)에 **등록**하고, instance 시작 시 **선택**할 수 있어야 한다. HW 출처별 처리(자사 개발 중 HW의 sim-only 온보딩, 문서·도구·revision 변동에 따른 갱신 등)와 절차·스키마 세부 = OD-11. | S0-1, UC-0, UC-1 선행조건 (G2); HW 출처 차원 = 2026-09-03 사용자 확정 | 공통 |
 | **FR-15** | instance 시작 시 **(선택) 참고 사례·자료 입력**을 받을 수 있다: 내부 Storage의 기존 유사/동일 최적화 사례 참조, 외부 연구 논문 링크 등. **원칙**: 이 입력과 저장된 과거 사례는 **"참고사항"(탐색 우선순위 힌트)으로만** 사용한다 — **Ground Truth로 간주하지 않으며, 특히 기존 사례의 성능이 "최종 목표"가 되어서는 안 된다**. 목표는 오직 FR-2의 사용자 지정 target을 따른다(FR-7 랭킹에도 동일 원칙 적용). | S0-3 사용자 확정(2026-09-02) (G5·G6) | 공통 |
 | **FR-16** | **알림**을 발행한다: run 종료(best 유지 종료·비수렴 종료), 강제 gate 정지 등 사용자 개입/인지가 필요한 이벤트 대상. 채널·메커니즘 세부 = OD-12. | UC-3·7 (G3) | 공통 |
 
@@ -56,7 +56,7 @@
 | **C-3** | 대용량 산출물 정책: 바이너리·중간 산출물을 전부 git에 넣으면 repo가 비대화된다. P1 레이아웃 결정 시 **Git LFS vs (메타·프로파일=git) + (바이너리=로컬 캐시 + 해시 참조)** 중 택1을 포함하고, 실패/중간 산출물의 retention/GC 정책을 둔다. |
 | **C-4** | HW 자원: board는 공유·제한 자원이고 sim은 저비용 조기검증 수단이다. |
 | **C-5** | **방법 A(DeepAgents/LangGraph)는 HIL-Claw 2로 이연** — 본 MVP의 non-goal. |
-| **C-6** | MVP 범위는 **단일 compute-kernel 최적화**. 커널→whole-model 바이너리 합성(그래프 레벨 연산자 merge 등)은 후속 범위. |
+| **C-6** | MVP 범위는 **단일 compute-kernel 최적화**. 커널→whole-model 바이너리 합성(그래프 레벨 연산자 merge 등)은 후속 범위. 정식 산출물은 단일 최적화 커널과 whole-model 바이너리 **둘 다**이며 사용자가 선택한다(2026-05-22 사용자 확정; README 목표 1에 반영). |
 
 ---
 
@@ -69,14 +69,14 @@
 | OD-1 | **Objective type 메뉴**의 최종 목록 및 각 type별 **best/improving 순서관계**(다목적: scalarization vs Pareto frontier, 제약형 feasibility 처리). *확장 고려(B2)*: HW 이론 한계(speed-of-light/roofline) 대비 달성률을 target·정지 어휘에 포함할지 | FR-2, D1 |
 | OD-2 | **Budget 어휘에 HW quota**(sim 시간/board 시간) 포함 여부 | FR-3, D3 |
 | OD-3 | **Gate 후보 목록** + 모드별 기본 구성(autonomous에서도 강제되는 안전 gate 존재 여부) | FR-4, D4 |
-| OD-4 | **hw_profile / op_signature 키 필드 스키마** + 유사도 매칭(정확 일치 vs 최근접) 규칙. P1 디렉토리 명명에 즉시 필요. | FR-7·13, D10/D11 |
+| OD-4 | **hw_profile / op_signature 키 필드 스키마** + 유사도 매칭(정확 일치 vs 최근접) 규칙. P1 디렉토리 명명에 즉시 필요. *확장 고려(S10/UC-E4)*: 환경 변화(드라이버/펌웨어/호스트) 감지를 위한 revision 필드 포함 여부(OD-11과 연동) | FR-7·13, D10/D11 |
 | OD-5 | **정확도-성능 trade-off 정책**: 정확도를 제약(floor)으로 둘지 목적의 한 축으로 둘지 | FR-9 |
-| OD-6 | **codegen spec 페이로드** 정의(커널 명세, hw_profile, 직전 라운드 프로파일/에러, 적용 기법 지침) + repair 코더 **resume vs 재기동**. *확장 고려*: (B4) 프로파일 요약의 구조(병목 유형·점유율·memory/compute bound 판정), (B5) HW Documentation 발췌·같은 카테고리 예시 커널의 검색증강 전달, (S7) 금지 패턴 목록, (S8) 라운드당 후보 다중성을 spec이 배제하지 않을 것 | FR-5, D7/쟁점4 |
+| OD-6 | **codegen spec 페이로드** 정의(커널 명세, hw_profile, 직전 라운드 프로파일/에러, 적용 기법 지침) + repair 코더 **resume vs 재기동**. *확장 고려*: (B4) 프로파일 요약의 구조(병목 유형·점유율·memory/compute bound 판정), (B5) HW Documentation 발췌·같은 카테고리 예시 커널의 검색증강 전달, (S7) 금지 패턴 목록, (S8) 라운드당 후보 다중성을 spec이 배제하지 않을 것, (UC-0) 가용 HW 문서 범위·문서 부재 정보의 spec 반영 여부 | FR-5, D7/쟁점4 |
 | OD-7 | **기법 통계 환류 경로**: 정적 Skill 트리거에 동적 크로스런 통계를 피드백하는 구체 메커니즘(P1 랭킹 신호 정의 포함). *확장 고려(B6)*: 저장 단위를 통계에 더해 "변환 전/후 코드 쌍 + 개선 이유 요약"으로 확장 | FR-7·8, D5/D6/쟁점1·2 |
 | OD-8 | **P1 디렉토리 레이아웃** 확정(OD-3·OD-4·C-3 결과 반영). *확장 고려(S8)*: 라운드 아래 후보(candidate) 다중성을 레이아웃이 배제하지 않을 것 | FR-13 |
 | OD-9 | **frontend IR 출처·포맷**: `model_ref`(format-agnostic frontend 결과 IR)를 어떤 frontend/포맷(예: ONNX/StableHLO/TOSA)에서 받는지, 시스템 경계 안/밖 여부 | FR-1, Issue#2 |
 | OD-10 | **board 실패·회복 모델**: board 행/크래시/예약 경합 시 재시도·타임아웃·회복 정책(측정 노이즈와 별개) | FR-10, NFR-3 |
-| OD-11 | **HW 온보딩 절차 세부**: hw_profile 등록 스키마(OD-4와 연동), Documentation 포맷·저장 위치, sim/board 도구 endpoint 기술 방법. **HW 출처별 처리**: 자사 개발 중 HW의 revision 변경을 새 hw_profile 키로 볼지 revision 필드로 볼지, 문서·도구 갱신 시 기존 이력 귀속 규칙, 자사 개발 중 HW 정보의 기밀 취급 여부; 외부 타사 HW의 문서 부재 표시 방법 | FR-14, OD-4, UC-0 |
+| OD-11 | **HW 온보딩 절차 세부**: hw_profile 등록 스키마(OD-4와 연동), Documentation 포맷·저장 위치, sim/board 도구 endpoint 기술 방법. 온보딩 시 접근성 검증(smoke test) 포함 여부. **HW 출처별 처리**: 자사 개발 중 HW를 실리콘 없이 sim/emulator만으로 온보딩할 수 있게 할지, 온보딩 갱신 흐름(문서·도구·revision 변동 반영)의 필요 여부, revision 변경을 새 hw_profile 키로 볼지 revision 필드로 볼지, 갱신 시 기존 이력 귀속 규칙, 자사 개발 중 HW 정보의 기밀 취급 여부; 외부 타사 HW의 문서 부재 표시 방법 | FR-14, OD-4, UC-0 |
 | OD-12 | **알림 채널·메커니즘**: 채널(콘솔/파일/외부 메신저 등), checkpoint gate 대기 알림과의 통합 여부 | FR-16 |
 | OD-13 | **correctness 검증 수행 지점**: FR-1 라운드 시퀀스 내 위치(sim 후 / board 후 / 양쪽) 및 실패 시 라운드 처리. *확장 고려(B1/S7)*: 전면 하드닝(정밀도 하향 검사, warm-up·stream sync·클록 고정 타이밍, 정적 검사·금지 패턴, LLM 검증자) | FR-1·9 (G4) |
-| OD-14 | **baseline 선택**: 라운드 0의 baseline을 bring-up 코드 / 벤더 라이브러리 커널 / 기존 best 중 instance 파라미터로 택할지. baseline에 따라 개선율의 의미가 달라짐 | FR-1 (B7) |
+| OD-14 | **baseline 선택**: 라운드 0의 baseline을 bring-up 코드 / 벤더 라이브러리 커널 / 기존 best 중 instance 파라미터로 택할지, 벤더 라이브러리·참조 구현을 온보딩 시(UC-0) 후보로 등록할지. baseline에 따라 개선율의 의미가 달라짐 | FR-1, UC-0 (B7) |
