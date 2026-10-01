@@ -51,8 +51,8 @@
 
 - resume 여부는 #4 §3b에서 "phase=coded 체크포인트 resume"으로 정리됨.
 - 제안: spec을 coder-driver **입출력 계약의 부분집합**으로 흡수(OD-23 연동). 직전 라운드만이 아니라 **top-k/bottom-k 시도와 프로파일을 대조적으로** 실을 것(CUDA-L1 근거).
-- MVP 수용 항목: **후보 식별**(S8 — 라운드·후보 id, N개 후보가 같은 기법의 변형인지 다른 기법인지), **HW Documentation 발췌·같은 카테고리 예시 커널**의 검색증강 전달(B5; 코더는 직접 검색하지 않으므로 Orchestrator가 FR-14 어댑터로 가져와 동봉).
-- *확장 고려*: (B4) 프로파일 요약의 구조(병목 유형·점유율·memory/compute bound 판정), (S7) 금지 패턴 목록.
+- MVP 수용 항목: **후보 식별**(S8 — 라운드·후보 id, N개 후보가 같은 기법의 변형인지 다른 기법인지).
+- *확장 고려*: (B4) 프로파일 요약의 구조(병목 유형·점유율·memory/compute bound 판정), (S7) 금지 패턴 목록, (B5) **HW Documentation 발췌·같은 카테고리 예시 커널의 검색증강 전달** — 코더의 직접 검색을 금지할지가 OD-12 미결이므로 "Orchestrator가 동봉"을 MVP 요구로 승격하지 않는다.
 
 ## OD-7
 
@@ -94,15 +94,15 @@
 **버전·마이그레이션 정책** — #4 코멘트 · #7 §6.
 
 - **NFR-7①(라운드 경계 핫스왑)과 점수 비교가능성이 충돌**함이 확인됨. 제안: **측정 계약**(harness 버전·tolerance·warmup/repeat 정책·roofline 모델)을 Loop instance마다 pin하고 모든 eval 레코드에 해시 기록, 변경 시 incumbent **재측정** 강제.
-- NFR-7② 경계(2026-10-01 통합 시 명시): **P1 = `schema_version` 스탬프 기록까지**, 구버전 읽기 보장·마이그레이션 도구는 P2. P1에서 버전이 달라진 run의 재개(FR-6)는 스탬프 불일치를 **감지·보고**하는 수준까지만 요구.
+- **제안(미확정)** — NFR-7② 보장 수단의 P1/P2 경계: **P1 = `schema_version` 스탬프 기록까지**, 구버전 읽기 보장·마이그레이션 도구는 P2. P1에서 버전이 달라진 run의 재개(FR-6)는 스탬프 불일치를 **감지·보고**하는 수준까지만 요구. ※ NFR-7②의 오너 문구는 "읽기 **또는** 마이그레이션 보장"이며 미결은 *어느 수단인가*였다. 본 제안은 *언제까지 보장하는가*로 범위를 좁히므로 **오너 확정 없이 NFR-7② 본문에 반영하지 않는다**(2026-10-01 통합 시 반영되었던 것을 리뷰 B2로 환원).
 
 ## OD-12
 
 **외부 참조 어댑터 설계** — #5 B-1 · #4 코멘트 · #7 §8.
 
 - 어댑터 종류(메커니즘 중립, FR-14 ①): MCP 서버(벤더 문서 포털·release repo), **로컬 파일/디렉토리 포인터**(NDA PDF 등 외부 서비스가 없는 자료), 사내 문서 시스템.
-- 추가 제약: 검색은 **해킹 벡터이기도 하므로** 권한을 orchestrator/curator에 한정하고 **코더 서브프로세스에는 금지**(ByteDance 선례). 코더에 필요한 발췌는 spec에 동봉(OD-6).
-- FR-14 ②의 식별자+해시 기록과 **참조 발췌 스냅샷은 best effort가 아니라 hard precondition**(S10 재현).
+- 추가 제약 **제안(미확정)**: 검색은 **해킹 벡터이기도 하므로** 권한을 orchestrator/curator에 한정하고 **코더 서브프로세스에는 금지**(ByteDance 선례). 코더에 필요한 발췌는 spec에 동봉(OD-6 확장 고려). ※ 오너 결정이 없으므로 FR-14 본문에 요구로 쓰지 않는다. main NFR-4 B8 메모도 "코더의 웹 검색 차단 **여부**"로 열어 두었다.
+- FR-14 ②의 식별자+해시 기록은 **hard precondition**. **참조 발췌 스냅샷의 필수화는 제안(미확정)** — 근거 S10은 **확장 시나리오**이므로 MVP 요구로 승격할지는 미결이며, 승격 시 NDA·벤더 발췌가 데이터 plane에 복제되는 문제(#5 A-3 push 경계), C-3 retention class, #5 A-9의 A-10 후보("참조 자료 분류별 전송 허용 여부")와 함께 판단해야 한다.
 - 미결: 소스 목록, 어댑터 계약(검색·조회·버전 질의), 증빙 포맷, 스냅샷 retention(C-3 retention class와 정합).
 
 ## OD-13
@@ -146,7 +146,7 @@
 
 **실행 내구성 정책** — #4 코멘트 · #7 §5 G4.
 
-- 제안: 지출 전 `intent` + 후 `result` 이벤트를 **idempotency key**로 묶기 · **`budget_spent`를 저장값이 아니라 `events.ndjson` fold로 유도**(STATE.json은 재생성 가능한 materialized view; #4 §1 "전 디렉토리 스캔 금지"와의 긴장은 라운드 N마다 fold 스냅샷 + tail 재생 규약으로 해소 — #8 M7) · `lock{owner,heartbeat}`는 fencing 없는 lease라 불안전하므로 **읽은 STATE commit SHA를 expected parent로 CAS push**하여 git을 fencing 수단으로 사용 · 도구별 **선언적 재시도 정책**(모델 판단 금지).
+- 제안: 지출 전 `intent` + 후 `result` 이벤트를 **idempotency key**로 묶기 · **`budget_spent`를 저장값이 아니라 `events.ndjson` fold로 유도**(STATE.json은 재생성 가능한 materialized view; #4 §1 "전 디렉토리 스캔 금지"와의 긴장은 라운드 N마다 fold 스냅샷 + tail 재생 규약으로 **해소 제안(미확정)** — #8 M7은 A급 모순으로 열려 있으며 규약 확정 후 OD-17 본문·#4 §1을 함께 갱신해야 한다) · `lock{owner,heartbeat}`는 fencing 없는 lease라 불안전하므로 **읽은 STATE commit SHA를 expected parent로 CAS push**하여 git을 fencing 수단으로 사용 · 도구별 **선언적 재시도 정책**(모델 판단 금지).
 
 ## OD-18
 
@@ -189,6 +189,15 @@
 - 현재 5종(technique-selector / coder-driver / experiment-runner / evaluator / promoter)이 #4 개정 코멘트로 제시됨. 미결: experiment-runner를 sim/board로 분리할지 · `technique-selector`·`promoter`를 **인라인**할지(subagent는 fresh context라 라운드마다 STATE·카탈로그 재로드 비용을 곱으로 지불) · **`evaluator`는 반대로 강화**(실험 수행 주체가 아닐 것, Write 권한 없음, 아티팩트 경로+해시만 수신).
 - 입출력 계약은 **방법 A 노드 스펙으로 기계 번역 가능**해야 함(NFR-6). **OD-6(codegen spec)은 coder-driver 계약의 부분집합으로 흡수.** 계약 *작성*은 결정이 아닌 작업이므로 #4 §6 작업 항목으로 추적.
 - #4 본문 §3a("HW 실험 = 에이전트 아님, Task-SubAgent는 read-only 헬퍼 한정")와 2026-07-31 개정 코멘트의 불일치(#8 M9)는 로스터 확정 시 #4 본문을 함께 갱신.
+
+## OD-24
+
+**agent-memory → db 승격 트리거** (FR-7, NFR-2, #4 데이터 계층 정책 / 미착수)
+
+- **승격 사다리**(#4 데이터 계층 코멘트): `agent-memory`(개인 요령, 휘발 허용) → 정량화되면 → 개인 db(`runs/`·`db/`, 실패 포함 전량) → 합의되면 → 공유 db main(PR 게이트) → 증류되면 → upstream 카탈로그/Skill. **이 사다리의 첫 단계 조건이 미정이다** — 서술적 요령이 언제·어떤 형식으로 정량 신호가 되는지.
+- 판별 기준은 이미 있음(#4): 랭킹·재개·감사의 입력인가 / 다른 주체가 읽어야 하는가 / 정량·구조화 데이터인가 / 유실 시 재실험 없이 복구 불가인가 — 하나라도 Yes면 db. 미결은 **이 판정을 누가 언제 수행하는가**와 승격 시 포맷이다.
+- 불변식(확정): "agent-memory 전체를 삭제해도 FR-6·FR-7·NFR-2가 성립한다"(→ OD-18 CLAUDE.md 불변식 목록).
+- 인접: OD-7(기법 통계 환류 — 승격된 신호의 소비처), OD-20(아카이브 스키마 — 정량 신호의 저장 형식). 세 항목을 함께 볼 것.
 
 ## OD-25
 
