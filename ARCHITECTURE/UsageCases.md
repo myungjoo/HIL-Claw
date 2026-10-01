@@ -16,12 +16,13 @@
 
 # 1. 용어 (Glossary)
 
-- **Loop instance**: 사용자가 *(특정 HW + 특정 모델 + 최적화 target + (선택) budget + (선택) gate 구성)* 을 주고 실행한 개별 최적화 건. 시스템이 목표를 일괄 고정하지 않는다.
-- **Round**: 한 번의 최적화 시도 1회. `기법 선택 → 코드 생성(위임) → compile → sim → (승격) board → profile → evaluate → 저장 → 다음 결정`.
+- **Loop instance**: 사용자가 *(특정 HW + 특정 모델 + 최적화 target + (선택) budget + (선택) gate 구성 + 라운드당 후보 수 N)* 을 주고 실행한 개별 최적화 건. 시스템이 목표를 일괄 고정하지 않는다.
+- **Round**: 한 번의 최적화 시도 1회. `기법 선택 → 후보 N개 코드 생성(위임) → compile → sim + correctness → (승격: 상위 k개) board + correctness → profile → evaluate → 저장 → 다음 결정`. N은 instance 파라미터(초기 UI 범위 1~5), k와 실행 방식은 미결(→ Requirements OD-29).
+- **후보(candidate)**: 한 라운드에서 생성된 커널 코드 1건. 라운드는 N개의 후보를 가지며, board에는 sim 상위 k개만 승격된다.
 - **Gate**: 루프 진행 중 사용자 승인/지시를 기다리는 정지 지점. autonomous = gate 0개, checkpoint = gate N개. gate 구성은 instance 파라미터다.
 - **hw_profile**: 성능 특성을 결정하는 HW/실행 환경 키(가속기 + 호스트 환경 튜플). 구체 필드 스키마는 미결(→ Requirements Open Decisions).
 - **op_signature**: 최적화 대상 연산의 식별 키. 구체 필드 스키마는 미결.
-- **데이터 plane**: run 산출물과 크로스런 지식(`runs/`, `db/`, `blobs/`)이 사는 저장 공간. **소스(도구) repo와 분리**하며(#5 A-1), 소스 쪽에서는 `hilclaw.config.json`으로 참조한다. 물리적 형태(별도 repo / fork / template 파생)는 미결 — #4 「repo 구조 단순화」 안건.
+- **데이터 plane**: run 산출물과 크로스런 지식(`runs/`, `db/`, `blobs/`)이 사는 저장 공간. **소스(도구) repo와 분리**된 별도 repo `HIL-Claw-data`(#5 A-1 확정)이며, 소스 쪽에서는 `hilclaw.config.json`으로 참조한다. 운영 모델 변경안(template 파생 등)은 미결 — Requirements OD-25.
 - **기법 카탈로그(technique catalog)**: 최적화 기법 후보군과 "언제 쓰면 좋은지(선택 기준)" 및 적용 지침·과거 통계를 담는 자료. Phase 1에서는 repo 내 문서로 시작.
 
 ---
@@ -41,31 +42,31 @@
 
 ## UC-1. Loop instance 정의·실행
 - **액터**: 배포 엔지니어 / CI
-- **선행조건**: 대상 HW(hw_profile)와 모델, 사용 가능한 sim/board 도구가 등록되어 있음.
+- **선행조건**: 대상 HW(hw_profile)와 모델, 사용 가능한 sim/board 도구가 등록되어 있음(등록·온보딩 절차 = Requirements FR-14 ④).
 - **주 흐름**
-  1. 사용자가 *(HW + 모델 + 최적화 target type + (선택) budget + (선택) gate 구성 + autonomy 모드)* 를 지정해 instance를 시작한다.
+  1. 사용자가 *(HW + 모델 + 최적화 target type + (선택) budget + (선택) gate 구성 + autonomy 모드 + 라운드당 후보 수 N + (선택) 참고 사례·자료)* 를 지정해 instance를 시작한다.
   2. 시스템이 instance용 작업공간(데이터 plane의 `runs/<run_id>/` 또는 Phase 2 DB 레코드)을 만들고 STATE를 초기화한다.
-  3. 라운드 루프(UC-2 또는 UC-3)로 진입한다.
+  3. **라운드 0**(bring-up: 해당 HW에서 동작하는 코드 생성 + baseline 성능 측정)을 수행한 뒤 라운드 루프(UC-2 또는 UC-3)로 진입한다.
 - **종료조건**: budget 소진 또는 (선택) target-metric 조기 달성. 기본 종료 의미론은 **best 결과 유지**.
-- **비고**: 목표 type은 메뉴(vocabulary)에서 선택한다. 예: latency 최소화 / throughput 최대화 / 동시 서빙 capacity 최대화 / 메모리 상한 내 latency 최소화(제약형) / 가중 조합. *(메뉴 최종 확정 = 미결)*
+- **비고**: 목표 type은 메뉴(vocabulary)에서 선택한다. 예: latency 최소화 / throughput 최대화 / 동시 서빙 capacity 최대화 / 메모리 상한 내 latency 최소화(제약형) / 가중 조합. *(메뉴 최종 확정 = 미결)* 참고 사례·자료(내부 Storage의 기존 사례 참조, 외부 논문 링크)는 **참고사항으로만** 쓰이며 Ground Truth나 최종 목표가 아니다(Requirements FR-15). correctness tolerance도 instance 파라미터로 사용자가 지정한다(FR-9).
 
 ## UC-2. 인터랙티브 최적화 (checkpoint 모드)
 - **액터**: 배포 엔지니어
 - **선행조건**: instance가 checkpoint 모드, gate 집합이 정의됨.
 - **주 흐름**
-  1. 한 라운드를 실행: 기법 선택 → 코드 생성(외부 위임) → compile → sim **+ correctness**. correctness 실패 시 실패 리포트와 함께 코드 생성 단계로 복귀한다(repair).
+  1. 한 라운드를 실행: 기법 선택 → 후보 N개 코드 생성(외부 위임) → compile → sim **+ correctness**. correctness 실패 후보는 실패 리포트와 함께 코드 생성 단계로 복귀한다(repair).
   2. 정의된 **gate**(예: real-board 첫 투입 전 / 기법군 전환 / budget 50% 소진)에 도달하면 정지하고 사용자 승인을 기다린다.
-  3. 사용자가 승인/거부/방향 수정을 입력하면 진행한다(승격 시 board 측정 **+ correctness 재검증** → profile → evaluate). **sim 통과·board 실패**는 후보 결함이 아니라 **시뮬레이터 결함**으로 escalate한다(sim 버그 리포트, → UC-7).
-  4. 결과·로그를 저장(commit)하고 다음 라운드 여부를 결정한다.
+  3. 사용자가 승인/거부/방향 수정을 입력하면 진행한다(승격 시 sim 상위 k개를 board 측정 **+ correctness 재검증** → profile → evaluate). **sim 통과·board 실패**는 해당 측정을 격리하고 원인을 후보/board/시뮬레이터 결함으로 분류(triage)한 뒤 처리한다 — 시뮬레이터 결함으로 분류되면 escalate한다(sim 버그 리포트, → UC-7).
+  4. 결과·로그(전 후보 포함)를 저장(commit)하고 다음 라운드 여부를 결정한다.
 - **대안 흐름**: 사용자가 거부하면 해당 기법군을 건너뛰거나 instance를 중단한다.
 - **종료조건**: budget 소진 / 사용자 종료 / target 달성.
-- **비고**: 도구 권한 승인 UI가 곧 HIL gate로 동작한다. *(gate 후보 목록·기본 구성 = 미결)*
+- **비고**: 도구 권한 승인 UI가 곧 HIL gate로 동작한다. *(gate 후보 목록·기본 구성 = 미결; gate 강제 층(권한 UI vs hook)과의 관계 = Requirements OD-18)*
 
 ## UC-3. 무인 최적화 (autonomous 모드)
 - **액터**: CI / 헤드리스 배치
 - **선행조건**: instance가 autonomous 모드, 권한 자동 승인.
 - **주 흐름**
-  1. budget 소진/종료 조건까지 무정지로 라운드를 반복한다(`/loop` 또는 cron 재기동).
+  1. budget 소진/종료 조건까지 무정지로 라운드를 반복한다(`/loop` 또는 cron 재기동; 라운드 = 프로세스 경계 채택 여부 = Requirements OD-18).
   2. 매 라운드 STATE/결과를 외부화(commit)하여 프로세스 사망에도 재개 가능하게 한다.
   3. 비수렴 시 기법군을 자동 전환(N회)하고, 실패하면 best 유지 종료 + 알림(UC-7).
 - **대안 흐름**: 안전상 autonomous에서도 넘을 수 없는 gate(예: board 안전)가 있으면 거기서 정지·알림. *(그런 강제 gate 존재 여부 = 미결)*
@@ -96,17 +97,18 @@
 - **선행조건**: 1개 이상의 run 이력 존재.
 - **주 흐름**
   1. 사용자가 특정 run 또는 (hw_profile, op_signature)에 대한 이력을 조회한다.
-  2. 라운드별 산출물·프로파일·정확도·점수와 best를 비교한다.
+  2. 라운드별·후보별 산출물·프로파일·정확도·점수와 best를 비교한다.
   3. 결정 로그(어떤 기법을 왜 골랐는지)를 확인한다.
 - **종료조건**: 조회 완료.
 - **비고**: Phase 1에서는 git history/diff가 곧 감사 로그(숨은 이점). 단 데이터 plane과 소스가 분리되어 있으므로 **두 history를 `instance.json`의 소스 commit 기록으로 이어야** 감사가 성립한다(→ Requirements NFR-2). 중간·최종·**실패** 결과가 모두 보존되어야 한다.
 
 ## UC-7. 비수렴 에스컬레이션 / 기법군 전환
 - **액터**: 시스템 → 배포 엔지니어(또는 자동)
-- **선행조건**: 라운드가 목표 개선에 실패(비수렴) 판정.
+- **선행조건**: 라운드가 목표 개선에 실패(비수렴) 판정, 또는 sim/board 불일치가 시뮬레이터 결함으로 분류됨(UC-2 주 흐름 3).
 - **주 흐름**
   - **autonomous**: 다른 기법군으로 자동 전환을 N회 시도 → 실패 시 best 유지 종료 + 알림.
   - **checkpoint**: 비수렴 자체가 gate → 사용자에게 에스컬레이션(승인/방향 수정).
+  - **시뮬레이터 결함**: 격리된 board 측정과 재현 정보를 묶어 sim 버그 리포트로 사용자에게 알린다(FR-16).
 - **종료조건**: 수렴 재개 / best 유지 종료.
 
 ---
@@ -119,3 +121,4 @@
 - UC-7은 UC-2/UC-3 내부의 분기 흐름이다.
 
 > 본 유스케이스로부터 도출된 요구사항은 [Requirements.md](Requirements.md)에 정리한다.
+> 유스케이스를 구체적 단계로 풀어 쓰고 설계 커버리지를 검사하는 표준 시나리오는 [StandardScenarios.md](StandardScenarios.md)에 있다.
