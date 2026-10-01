@@ -3,6 +3,8 @@
 [StandardScenarios.md](../StandardScenarios.md)의 S0~S6을 2025~2026년 LLM 기반 커널 생성/최적화 문헌과 대조하여, 기존 시나리오의 **보강 제안(B1~B8)** 과 **추가 시나리오 제안(S7~S10)** 을 정리한다. 본 문서는 **제안**이며, 사용자 승인 전에는 StandardScenarios/Requirements를 변경하지 않는다(미결 불발명 원칙).
 
 > **처리 결과 (2026-09-03 사용자 확정)**: S0~S6을 **기본(MVP)**, S7~S10을 **추가 사항(확장)** 계층으로 StandardScenarios에 반영. 확장 시나리오는 "설계가 막지 않는가"([확장 호환]) 규칙으로 검사. B1은 최소 조항만 MVP FR-9에 반영하고 전면 하드닝은 OD-13 확장 고려로. B2→OD-1, B4·B5→OD-6, B6→OD-7, B7→OD-14 신설, B8→NFR-4에 "확장 고려" 메모로 등재.
+>
+> **통합 후 참조 정정 (2026-10-01, #5 A-9)**: 본 문서가 쓰인 시점의 OD 번호는 통합 전 main 기준이다. 현재 번호: 전면 하드닝 = **OD-16**, B7 baseline = **OD-28**, B8 = NFR-4 → OD-16·OD-12. **S8(Best-of-N)은 오너 결정으로 MVP 기본 계층에 승격**(OD-21 확정, 세부 OD-29). 본 문서의 시사점 다수는 Issue #7 S-1(2026-07-31)과 중복되며(#8 M22), 정본은 [Requirements.md](../Requirements.md) OD 등록부와 [OpenDecisionProposals.md](../OpenDecisionProposals.md)다. 본 문서는 2026-09-03 시점 기록으로 보존한다.
 
 ---
 

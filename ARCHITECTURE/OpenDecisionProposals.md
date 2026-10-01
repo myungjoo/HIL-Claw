@@ -1,0 +1,228 @@
+# Open Decision 제안 상세 (Proposals)
+
+[Requirements.md](Requirements.md)의 Open Decisions 등록부에 등재된 각 항목의 **구체 제안·근거 본문**을 같은 번호 절에 둔다. 등록부에는 한 줄 요약만 남겨 표가 읽히도록 유지한다.
+
+- **정본 분담**: 항목의 **상태·논의 위치**는 등록부(Requirements.md)가 정본, **제안 본문**은 본 문서가 정본이다. 제안이 바뀌면 본 문서를, 상태가 바뀌면 등록부를 같은 커밋에서 갱신한다.
+- 제안은 결정이 아니다. 확정은 오너가 #4/#5에서 내리고, 등록부 상태가 `확정`으로 바뀐 뒤 본문(FR/NFR)에 반영된다.
+- 출처 표기: **#4** = 아키텍처 결정 스레드, **#5** = 사용자 입력 대기 목록, **#7** = 외부 조사(상설; `§n` = S-1 조사 본문 절, `보충 §2(n)` = S-1 보충 코멘트), **#8** = 모순 트래커, **(Bn)** = [reviews/2026-09-03](reviews/2026-09-03-StandardScenarios-LiteratureReview.md) 보강 제안.
+
+---
+
+## OD-1
+
+**Objective type 메뉴** — #5 A-4 대기.
+
+- 제안: MVP는 "단일 목적 + 선택적 제약(메모리 상한)"만, 가중조합/Pareto는 후속. 후보 메뉴: latency 최소화 / throughput 최대화 / 동시 서빙 capacity 최대화 / 메모리 상한 내 latency 최소화(제약형).
+- *확장 고려(B2)*: HW 이론 한계(speed-of-light/roofline) 대비 달성률을 target·정지 어휘에 포함할지. "이전 대비"가 아닌 "HW 한계 대비" 평가는 2025~26 커널 생성 시스템의 공통 요소(#7 S-2 사실 요약).
+- README의 다목적 목표("속도 향상 및 동시 서빙 용량 증대")와의 관계는 A-4 확정 시 Scope 또는 README에 명시(#8 M15).
+
+## OD-2
+
+**Budget 어휘에 HW quota 포함 여부** — #7 §6.
+
+- 제안: board-second를 1급 예산 축으로 포함. trial 수는 비용이 균일하지 않아 분모로 부적합.
+
+## OD-3
+
+**Gate 후보 목록 + 강제 안전 gate** — #5 A-5 · #7 §6.
+
+- 제안: **비-설정형 최소 gate 4종** — 승격 게이트 / 신규 바이너리 첫 실물 실행 / board health 실패 / roofline 위반. "autonomous"는 탐색에 gate 없음이지 실물 승격에 없음이 아님.
+- 연동: FR-4 문구("gate 집합은 사용자가 구성")·UC-2 비고("권한 UI = gate")·UC-3 대안 흐름과의 3중 불일치(#8 M3)는 A-5 확정과 함께 단일화. gate 강제 층(권한 UI vs hook)은 OD-18.
+
+## OD-4
+
+**hw_profile / op_signature 키 스키마** — #4 코멘트 · #7 §6.
+
+- 제안: **2층 구조**. 정확 식별층(op: 정규화 IR 구조해시 + 전체 인자튜플 + dtype/layout; hw: 칩 + 리비전 + **펌웨어·드라이버·툴체인 버전**) + 유사도 벡터층(FLOPs, 이동 바이트, arithmetic intensity, working set ÷ SRAM …). 정확 일치 = 캐시 히트, 최근접 = **prior로만**. TVM/TenSet 선례.
+- hw 식별층 필드 후보: **HW 출처(hw_source: 외부 타사 / 자사 개발 중)** 와 revision — 자사 개발 중 HW는 revision마다 성능 특성이 바뀌므로 이력 귀속 키가 필요(FR-14 ④, OD-26).
+- *확장 고려(S10)*: 재현 시 노이즈 범위를 넘는 차이가 나면 환경 변화(드라이버/펌웨어/호스트)를 새 hw_profile 키 후보로 표시.
+
+## OD-5
+
+**정확도-성능 trade-off 정책** — **확정(2026-10-01, #5 A-6)**: hard floor.
+
+- 결정 내용: 정확도는 게이트. tolerance는 사용자 instance 파라미터(어휘는 B-7 후 확정). 실패 = repair/탈락, best·통계 미반영. sim·board 양쪽 동일 floor. FR-3 ④ 조기 종료는 승격 게이트 수준 재검증 후 인정. 정확도의 목적 축 승격은 A-4 다목적과 함께 후속.
+- 근거(#7 §5 G1): 목적 축으로 두면 옵티마이저에 정확도를 팔 권한을 명시 부여하는 것. Sakana 정정 후 집계 speedup 3.13× → 1.49×; METR: KernelBench 최적화의 73.8%가 프록시 지표만 개선, 예산이 클수록 악화(10스텝 26.4% → 100스텝 57.8%).
+- 귀결: 더 느슨한 tolerance에서 더 빠른 후보가 있으면 시스템은 보고만 하고 채택하지 않는다 — 채택은 사용자가 tolerance를 바꾼 새 instance로(FR-9에 반영).
+- 잔여: tolerance 어휘(per-dtype rtol/atol, downstream 지표 임계 — MLPerf식 99%/99.9% 등, user-defined 검사)는 #5 B-7 답변 후 확정. per-kernel 검사와 downstream 지표 floor의 병행 여부도 그때 어휘와 함께 정한다.
+
+## OD-6
+
+**codegen spec 페이로드 + repair resume** — #4 §4 첫 항목 · #7.
+
+- resume 여부는 #4 §3b에서 "phase=coded 체크포인트 resume"으로 정리됨.
+- 제안: spec을 coder-driver **입출력 계약의 부분집합**으로 흡수(OD-23 연동). 직전 라운드만이 아니라 **top-k/bottom-k 시도와 프로파일을 대조적으로** 실을 것(CUDA-L1 근거).
+- MVP 수용 항목: **후보 식별**(S8 — 라운드·후보 id, N개 후보가 같은 기법의 변형인지 다른 기법인지).
+- *확장 고려*: (B4) 프로파일 요약의 구조(병목 유형·점유율·memory/compute bound 판정), (S7) 금지 패턴 목록, (B5) **HW Documentation 발췌·같은 카테고리 예시 커널의 검색증강 전달** — 코더의 직접 검색을 금지할지가 OD-12 미결이므로 "Orchestrator가 동봉"을 MVP 요구로 승격하지 않는다.
+
+## OD-7
+
+**기법 통계 환류 경로** — #4 코멘트 · #7 §6.
+
+- 제안: 빈도 카운트가 아니라 **contextual bandit**(OpenTuner AUC-Bandit: 최근 개선 빈도 곡선의 AUC + UCB). latency 모델 없이 1라운드부터 동작.
+- **흡수: 카탈로그 진입 기준**(#7 보충 §2(4)) — 등재 자격 = (held-out correctness 통과) ∧ (실 board 측정) ∧ (격리 평가자 PASS). selector·coder의 주장만으로는 불가. **검증 없이 쌓으면 카탈로그가 부패한다**(Voyager ablation: 자가검증 제거 시 버그 코드가 스킬 라이브러리에 축적). ExpeL식 `cases/`(불변 사례) + `insights/`(가변 규칙, ADD/EDIT/UPVOTE/DOWNVOTE + `supported_by` 출처) 분리 검토.
+- *확장 고려(B6)*: 저장 단위를 통계에 더해 "변환 전/후 코드 쌍 + 개선 이유 요약"으로 확장.
+- N후보(S8, MVP)에서는 board 미승격 후보의 sim 결과도 통계 입력이 되므로 "sim만 평가됨 vs board 평가됨"을 구분해 집계(OD-20 단계별 분리 평가 필드).
+
+## OD-8
+
+**P1 디렉토리 레이아웃** — #4 §2 초안 · #5 A-1/A-2 확정 · B-4 대기.
+
+- 전제: A-1(별도 repo `HIL-Claw-data`), A-2(CAS + `artifacts.json`) 확정분 반영. **B-4(첫 대상 커널 + spec 예시)가 첫 커밋을 막고 있음.**
+- MVP 요구: 라운드 아래 **후보 차원**(`rounds/<N>/candidates/<c>/` 또는 동등)을 1급으로 둔다(S8, OD-21 확정).
+- **후보 ①「레이아웃 = 권한 모델」**: 에이전트마다 **쓰기 루트 1개**를 지정하고 **그 외 전부 read-only**(읽기는 무제한 — 읽기 제한은 채택하지 않음). *(OD-16과의 관계: OD-16이 은닉이 아닌 **위조 불가능성** 기반으로 개정되어 충돌 없음. 단 **런타임 시드·입력 값은 파일로 존재하지 않아야** 한다 — 이것이 읽기 개방의 유일한 전제. 또한 **코더/평가 프로세스 분리**가 OD-16 위협 A(조작 계열)를 담당한다.)*
+  1. `rounds/<N>/`을 **소유자별로 분할** — `decision/`(technique-selector) · `coder/`(반입 게이트가 채움, 코더는 직접 못 씀) · `measure/`(experiment-runner) · `eval/`(evaluator). 현행 §2 평면 구조는 evaluator가 `board.json`을 덮어쓸 수 있어 single-writer 위반.
+  2. 폴더 모델 **밖의 특수 케이스 3**: `.git/`(에이전트 전원 쓰기 금지 — 이력 재작성 = 감사 로그 파괴, NFR-2), `events.ndjson`(도구 계층이 append하므로 에이전트 쓰기 권한 불필요), `TMPDIR`·빌드 캐시(쓰기 루트 안에 둘 것 — 누락 시 빌드 실패).
+  3. 쓰기 루트는 **라운드로 파라미터화하되 에이전트가 선택 불가**, supervisor가 주입.
+  4. 강제 백엔드 2개(정책은 하나): 코더 = **OS 경계**(저장소 read-only 마운트 + scratch, 셸 허용), in-process subagent = **`PreToolUse` 경로 검사**(→ Bash 금지, 특권 동작은 타입 있는 도구로: `sim.run`/`board.run`/`coder.run`). *실행 환경(#5 B-6)이 Windows인 경우 OS 경계 구현 수단을 별도 확인해야 한다.*
+  5. **흡수: per-agent tools allowlist**(#4 §6) — frontmatter 도구 허용목록은 경로 정책의 도구 단위 표현이므로 본 후보와 함께 확정.
+- **이점**: 권한이 문서가 아니라 디렉토리 구조에 새겨져 git diff 검증이 자명해지고, `.claude/` 재귀 문제(강제 장치가 강제 대상 안에 있음)가 부수적으로 해소되며, **OD-14와 사실상 같은 결정으로 수렴**.
+- **전제조건**: 대상 toolchain의 **out-of-tree 빌드 지원 여부**(#5 B-1) — 인플레이스 빌드 강제 시 저장소를 scratch로 복사 후 diff 반입하는 우회 필요(라운드마다 복사 비용).
+
+## OD-9
+
+**frontend IR 출처·포맷** — #5 B-5 대기.
+
+## OD-10
+
+**board 실패·회복 모델** — #5 B-2 입력 필요 · #7 §6.
+
+- 제안: **브로커/트래커**(키별 큐, TVM RPC Tracker형) + **health check**(LAVA형, 실패 시 보드 격리) + **candidate-fault vs board-fault 구분**(후자를 "이 기법이 나쁘다"로 기록하면 지식베이스 오염) + quarantine·백오프.
+- FR-1 ⑶(2026-10-01 완화)의 triage(후보/board/sim 결함 분류)는 본 항목의 fault 분류와 같은 메커니즘을 쓴다. sim 결함 분류 시 escalate(UC-7).
+
+## OD-11
+
+**버전·마이그레이션 정책** — #4 코멘트 · #7 §6.
+
+- **NFR-7①(라운드 경계 핫스왑)과 점수 비교가능성이 충돌**함이 확인됨. 제안: **측정 계약**(harness 버전·tolerance·warmup/repeat 정책·roofline 모델)을 Loop instance마다 pin하고 모든 eval 레코드에 해시 기록, 변경 시 incumbent **재측정** 강제.
+- **제안(미확정)** — NFR-7② 보장 수단의 P1/P2 경계: **P1 = `schema_version` 스탬프 기록까지**, 구버전 읽기 보장·마이그레이션 도구는 P2. P1에서 버전이 달라진 run의 재개(FR-6)는 스탬프 불일치를 **감지·보고**하는 수준까지만 요구. ※ NFR-7②의 오너 문구는 "읽기 **또는** 마이그레이션 보장"이며 미결은 *어느 수단인가*였다. 본 제안은 *언제까지 보장하는가*로 범위를 좁히므로 **오너 확정 없이 NFR-7② 본문에 반영하지 않는다**(2026-10-01 통합 시 반영되었던 것을 리뷰 B2로 환원).
+
+## OD-12
+
+**외부 참조 MCP 어댑터 설계** — #5 B-1 · #4 코멘트 · #7 §8.
+
+- 오너 결정(2026-07-31)의 범위: 복제 저장 금지 + **MCP로 접근** + repo에는 소스 등록부만. 아래는 그 위의 제안.
+- 어댑터 종류 **제안(미확정, 통합 시 일반화)**: MCP 서버(벤더 문서 포털·release repo) 외에 **로컬 파일/디렉토리 포인터**(NDA PDF 등 외부 서비스가 없는 자료)·사내 문서 시스템을 어댑터로 취급할지 — 즉 FR-14 ①의 "MCP"를 메커니즘 중립으로 읽을지. 대안: 로컬 파일을 노출하는 MCP 서버를 두어 FR-14 문구를 그대로 유지.
+- 추가 제약 **제안(미확정)**: 검색은 **해킹 벡터이기도 하므로** 권한을 orchestrator/curator에 한정하고 **코더 서브프로세스에는 금지**(ByteDance 선례). 코더에 필요한 발췌는 spec에 동봉(OD-6 확장 고려). ※ 오너 결정이 없으므로 FR-14 본문에 요구로 쓰지 않는다. main NFR-4 B8 메모도 "코더의 웹 검색 차단 **여부**"로 열어 두었다.
+- FR-14 ②의 식별자+해시 기록은 **hard precondition**. **참조 발췌 스냅샷의 필수화는 제안(미확정)** — 근거 S10은 **확장 시나리오**이므로 MVP 요구로 승격할지는 미결이며, 승격 시 NDA·벤더 발췌가 데이터 plane에 복제되는 문제(#5 A-3 push 경계), C-3 retention class, #5 A-9의 A-10 후보("참조 자료 분류별 전송 허용 여부")와 함께 판단해야 한다.
+- 미결: 소스 목록, 어댑터 계약(검색·조회·버전 질의), 증빙 포맷, 스냅샷 retention(C-3 retention class와 정합).
+
+## OD-13
+
+**측정·노이즈 정책** — #7 §5 G2.
+
+- 제안: **적응적 반복**(throughput 변동계수 <5%에서 중단, n∈[5,30]) · **trimmed mean**(min 금지) · **paired interleaved 측정 + 비율의 부트스트랩 95% CI 전체가 1+δ 초과 시에만 개선 인정, δ=2%** · **per-repeat 원시 벡터 저장** · 고정 warmup 폐기하고 **steady-state 검출·라벨링** · 클럭/온도/펌웨어 기록, 후보 순서 무작위화.
+- 첫 board run 전에 닫아야 한다(#7 G2).
+
+## OD-14
+
+**샌드박스·격리·보드 안전 정책** — #7 §5 G1.
+
+- 제안: **1 후보 = 1 프로세스**(치명적 오류를 겪은 디바이스 컨텍스트는 오염되어 이후 측정 전부 무효) · **계층 타임아웃**(커널 워치독 < 호출 < 서브프로세스 SIGKILL < 라운드 < run) · 디바이스 메모리/그리드 상한 선언 · 후보 간 health check와 reset 에스컬레이션 · 보드를 멈춘 후보는 **content hash로 영구 blacklist**(FR-6 재개도 준수 — FR-6 본문에 단서 필요, #8 M6).
+- **쓰기 범위 정책은 OD-8 후보 ①과 동일 결정으로 수렴** — 거기서 함께 확정.
+
+## OD-15
+
+**sim→board 승격 기준** — #7 §6.
+
+- 제안: **고정 임계값 금지**. (hw_profile, op_class)별 **rank correlation·recall@k를 측정해서** 승격 폭 k 결정. compute-bound와 memory-bound는 다른 k 필요. **sim이 거부한 후보용 ε-greedy 슬롯 상시 확보**(없으면 sim 편향을 영구히 감지 불가) · 매 라운드 sim/board 상관 추적, 열화 시 gate 발동 · **board 측정만이 기록(record)을 세울 수 있음**.
+- **correctness 관점의 sim 검증**(FR-1 ⑶ 연동): sim 통과·board 실패는 triage 후 sim 결함으로 분류되면 escalate되어 sim 개선 입력이 된다. 그러나 **반대 방향(sim 실패·board 정상 = false negative)은 구조적으로 관측되지 않는다** — sim이 거부한 후보는 board에 올라가지 않으므로. 정상 커널을 계속 repair하는 낭비가 보이지 않게 발생할 수 있으므로, **ε-greedy 슬롯이 성능뿐 아니라 correctness false negative 탐지도 겸하도록** 설계.
+- N후보(OD-21 확정)에서 k의 결정 방식은 OD-29에서 본 항목의 상관 기반 방식과 고정 파라미터 방식 중 택한다.
+
+## OD-16
+
+**측정·검증의 위조 불가능성(anti-reward-hacking)** — #7 §5 G1. **본 조사 최대 리스크.**
+
+- **원칙(2026-07-31 개정): 은닉이 아니라 위조 불가능성.** 전부 읽혀도 성립하는 방어만 채택한다(Kerckhoffs). 유일한 예외는 **런타임 시드·입력 값이 파일로 존재하지 않을 것** — 알고리즘은 읽혀도 되고 값만 없으면 된다. → **읽기 제한은 채택하지 않으며 OD-8 후보 ①과 충돌하지 않는다.** 근거: 성능 최적화 시스템에서 정답을 알아도 **베끼면 speedup 1.0이라 이길 수 없고**, harness 은닉은 security-by-obscurity이며(루프홀은 소스를 읽어야만 발견되지 않는다 — 없애는 것이 진짜 방어), 문서·기존 커널 읽기는 저밀도 언어 대응(FR-14)과 콜드스타트(OD-22)에 오히려 필요하다.
+- **MVP 최소분(FR-9에 반영됨)**: 코더에 노출되지 않은 입력(shape/seed)으로 코더가 수정할 수 없는 격리 하네스에서 재검증; 실패 결과는 best·통계 미반영; 조기 종료 전 재검증.
+- **위협 A — 조작 계열**(출력 버퍼 절도 · harness/타이머 패치 · 점수 레코드 조작 · 감사 로그 조작): **코더와 평가를 별도 프로세스로 분리 + 쓰기 격리**로 소멸한다(OD-8 후보 ① / OD-14). Sakana 사건의 버퍼 절도는 reference와 후보가 같은 프로세스에서 버퍼를 공유했기 때문에 성립했다.
+- **위협 B — 산출물 퇴화 계열**(생성 커널이 일을 하지 않음): 치팅이 코더의 정당한 산출물인 소스 안에 있으므로 **격리로는 잡히지 않고 측정 설계로 잡는다**. ⑴ 하드코딩 출력 → **매 trial 런타임 무작위 입력**(값 비파일화) ⑵ 계산 누락 → 오라클 강화(FP32/FP64 CPU 레퍼런스 · opschema 기반 퍼징 · per-(op,dtype) tolerance · 코너케이스 subnormal/zero/inf/NaN/catastrophic cancellation) ⑶ 벤더 라이브러리 디스패치 → **정적 검사**(규칙이 읽혀도 무방 — 우회하려면 위반해야 하고 위반은 탐지된다) + **프로파일러로 해당 커널의 실제 실행 확인** ⑷ 다른 큐/스레드로 회피 → 전체 디바이스 배리어 + 호스트 wall-clock 교차검증 + **roofline(speed-of-light) 상한** ⑸ **타이밍 반복 구간 캐싱**(정확도는 입력을 바꾸지만 성능 측정은 같은 입력을 N회 반복하는 것이 정상이라 열리는 틈) → 매 trial 새 버퍼 할당 · 캐시 플러시 · **1회차 이후 시간 급감 탐지** ⑹ **순서 의존성 테스트**(reference→candidate와 candidate→reference 결과가 다르면 실격).
+- **`private_metrics` 재정의**: 은닉 지표가 아니라 **일반화 측정 지표** — 평가에는 쓰되 최적화 대상에는 넣지 않는다. 실배포에서는 대상 shape 분포를 코더에게 알리는 편이 맞다(벤치마크와 위협 모델이 다름).
+- **방어가 여전히 필요한 이유**: 코더가 악의를 갖기 때문이 아니라 **탐색 루프가 가장 싼 경로를 고르기 때문**이다. 루프홀이 있으면 결국 선택되고, 그 결과는 board 시간 낭비 · **크로스런 통계 오염(FR-7)** · 잘못된 바이너리 승격이다.
+- **흡수: 조기 종료 재검증**(#7 보충 §2(2), #8 M18) — FR-3 ④의 target 조기 달성은 해킹된 결과의 전형적 징후이므로 조기 종료 인정 전 승격 게이트 수준의 재검증을 강제(FR-9에 반영됨).
+- **확장(S7, B1/B8)**: 정밀도 하향 검사, warm-up·stream sync·클록 고정 타이밍, 정적 검사·금지 패턴, LLM 검증자, 검증·프로파일 스크립트 보호, 금지 fallback 패턴, 코더 웹 검색 차단(OD-12). 실패 유형 태깅과 다음 라운드 spec의 금지 패턴 주입(OD-6 확장 고려).
+- **하네스 자체의 수용 기준**(#7 S-2 N8): Kernel Contracts의 3-상태 캘리브레이션(위반 구현이 실제로 잡히는지 증명)을 하네스 완료 조건으로 채택 검토 — hacker-fixer 루프와 상보.
+- **잔여 미결**: 정적 검사 규칙의 범위 · roofline 모델 산출 방법(op_signature별 FLOPs/바이트) · 승격 전 적대적 재검증의 강도 · hacker-fixer 루프로 자기 harness를 사전 강화할지.
+
+## OD-17
+
+**실행 내구성 정책** — #4 코멘트 · #7 §5 G4.
+
+- 제안: 지출 전 `intent` + 후 `result` 이벤트를 **idempotency key**로 묶기 · **`budget_spent`를 저장값이 아니라 `events.ndjson` fold로 유도**(STATE.json은 재생성 가능한 materialized view; #4 §1 "전 디렉토리 스캔 금지"와의 긴장은 라운드 N마다 fold 스냅샷 + tail 재생 규약으로 **해소 제안(미확정)** — #8 M7은 A급 모순으로 열려 있으며 규약 확정 후 OD-17 본문·#4 §1을 함께 갱신해야 한다) · `lock{owner,heartbeat}`는 fencing 없는 lease라 불안전하므로 **읽은 STATE commit SHA를 expected parent로 CAS push**하여 git을 fencing 수단으로 사용 · 도구별 **선언적 재시도 정책**(모델 판단 금지).
+
+## OD-18
+
+**강제 계층(hooks) 및 라운드 경계 정의** — #4 코멘트 · #7 §5 G5.
+
+- 제안: `SessionStart`(STATE·예산·gate 주입) · `PreToolUse`(board.run 예산·중복·gate 검사, harness 경로 deny) · `PostToolUse`(**결과 저널링은 모델 행동이면 안 됨**) · `Stop`(commit 강제) · `PreCompact` 차단 · `AGENT_STOP` kill switch · **default-FAIL 계약**과 **Write 권한 없는 fresh-context 평가자**.
+- **`.claude/agents/`가 세션 중 재탐지되지 않으므로 NFR-7①은 "1 round = 1 OS process = 1 turn = 1 commit"일 때만 성립**. UC-3의 `/loop`(동일 프로세스 반복)과의 관계 정리 필요(#8 M4).
+- **흡수: CLAUDE.md 불변식 목록**(#4 §6) — 세션 기동 시 강제할 규범 목록 확정. 현재까지 나온 것: "agent-memory 전체를 삭제해도 FR-6·FR-7·NFR-2가 성립한다" · "전 디렉토리 스캔 금지, STATE.json이 유일 진입점"(#4 §1).
+
+## OD-19
+
+**예산 집행(enforcement) 정책** — #7 보충 §2(1), #8 M5.
+
+- NFR-5는 "집계할 수 있어야 한다"까지만 요구하여 **다음 지출을 막는 경로가 요구사항 어디에도 없다**. 제안: 검사를 **다음 지출의 경로 위에** 둘 것 · run 예산과 별도로 **라운드당 상한 + 코더 호출 횟수 상한**(FR-1 ⑴ repair 복귀 상한 포함; N후보 시 후보별 상한) · 오케스트레이터와 모든 중첩 `claude -p`를 **단일 원장**에 합산하고 spawn 전 확인(중첩이 비용 증폭 경로) · 원장을 세션 밖에 영속(재개된 run이 자기 예산을 0으로 리셋 불가) · **무진전 서킷브레이커**(N라운드 연속 미개선 시 중단).
+
+## OD-20
+
+**후보 아카이브 스키마** — #7 보충 §2(3).
+
+- README의 "중간 지점 재개·완료 후 다른 방법으로 추가 최적화" 요구는 **사실상 아카이브 요구**인데 현재 best 하나 + 통계로 축소되어 있고, 단일 포인터는 greedy hill-climb이다. 제안 필드: 계보(`parent_id`·`generation`·`children_count`) · **단계별 분리 평가**(`compile_ok`/`correct`/`sim_metrics`/`board_metrics`+`board_evaluated` — N후보의 board 미승격 후보 표현에 필요) · **`public_metrics` vs `private_metrics`**(후자는 일반화 측정용, OD-16 재정의 참조) · **생성 프롬프트 보존**(재현·감사·프롬프트 크레딧) · 아티팩트 타입 필드(임계 이하 인라인) · 행동 기술자(score-signature = 워크로드별 결과 튜플, 임베딩 불요) · **실패 보존 필수**.
+
+## OD-21
+
+**탐색 폭(라운드당 후보 수)** — **확정(2026-10-01, 오너 결정)**: Best-of-N은 MVP 범위.
+
+- 결정 내용: N은 사용자가 instance 시작 시 지정하는 파라미터. 초기 UI 선택 범위 1~5(정책은 추후 변경 가능). 레이아웃·spec·eval·FR-7 통계가 1일차부터 후보 차원을 가진다. S8은 기본(MVP) 계층으로 승격. 실행·승격 세부(병렬/순차, k)는 OD-29.
+- 근거(#7 §5 G3·§7, #8 M16): board 직렬성은 **평가 처리량만** 제약하고 생성·컴파일·sim은 제약하지 않으므로 **board 비용 증가 0으로 best-of-N** 확보 가능. Meta KernelEvolve는 생성(CPU)과 평가(가속기)를 분리하고 보드 풀 앞에 큐를 둠; AlphaEvolve는 직렬 평가가 변이 깊이를 상한 짓는다고 명시; "Random Baselines are Competitive"는 단순 병렬 샘플링만으로 진화 기법을 따라잡음(①단계만으로도 효과). #4 §3d의 "MVP Round 직렬" 합의는 본 결정으로 개정됨.
+- 후속 단계(post-MVP): ② 아카이브 가중 parent 샘플링(ShinkaEvolve 실험에서 `hill_climbing` = 현 정책이 최하위) → ③ islands/MAP-Elites.
+
+## OD-22
+
+**기법 카탈로그 콜드스타트** — #7 보충 §2(5).
+
+- FR-8의 "P1에서는 기법 후보 = repo 내 문서로 시작"(손으로 쓴 문서)보다 나은 검증된 방법 2가지: **optimization rewind**(대상 HW의 known-good 전문가 커널을 체계적으로 **역최적화**해 bad→good 궤적에서 전이 가능한 모티프를 채굴, retrievable experience bank로) · **git 이력 채굴**(기존 커널 라이브러리의 개발 이력에서 최적화 아이디어를 형식화). 둘 다 UC-5 큐레이터 흐름에 그대로 들어감.
+
+## OD-23
+
+**subagent 로스터 및 입출력 계약** — #4 §6 첫 두 항목 · #7 §2(8).
+
+- 현재 5종(technique-selector / coder-driver / experiment-runner / evaluator / promoter)이 #4 개정 코멘트로 제시됨. 미결: experiment-runner를 sim/board로 분리할지 · `technique-selector`·`promoter`를 **인라인**할지(subagent는 fresh context라 라운드마다 STATE·카탈로그 재로드 비용을 곱으로 지불) · **`evaluator`는 반대로 강화**(실험 수행 주체가 아닐 것, Write 권한 없음, 아티팩트 경로+해시만 수신).
+- 입출력 계약(에이전트별 입력·출력 파일 스키마)은 **방법 A 노드 스펙으로 기계 번역 가능**해야 함(NFR-6). **OD-6(codegen spec)은 coder-driver 계약의 부분집합으로 흡수.** 계약의 *내용*은 본 OD의 결정 대상이고, 계약 파일 *작성*은 #4 §6 작업 항목.
+- #4 본문 §3a("HW 실험 = 에이전트 아님, Task-SubAgent는 read-only 헬퍼 한정")와 2026-07-31 개정 코멘트의 불일치(#8 M9)는 로스터 확정 시 #4 본문을 함께 갱신.
+
+## OD-24
+
+**agent-memory → db 승격 트리거** — #4 §6 · #4 데이터 계층 코멘트.
+
+- **승격 사다리**(#4 데이터 계층 코멘트): `agent-memory`(개인 요령, 휘발 허용) → 정량화되면 → 개인 db(`runs/`·`db/`, 실패 포함 전량) → 합의되면 → 공유 db main(PR 게이트) → 증류되면 → upstream 카탈로그/Skill. **이 사다리의 첫 단계 조건이 미정이다** — 서술적 요령이 언제·어떤 형식으로 정량 신호가 되는지.
+- 판별 기준은 이미 있음(#4): 랭킹·재개·감사의 입력인가 / 다른 주체가 읽어야 하는가 / 정량·구조화 데이터인가 / 유실 시 재실험 없이 복구 불가인가 — 하나라도 Yes면 db. 미결은 **이 판정을 누가 언제 수행하는가**와 승격 시 포맷이다.
+- 불변식(확정): "agent-memory 전체를 삭제해도 FR-6·FR-7·NFR-2가 성립한다"(→ OD-18 CLAUDE.md 불변식 목록).
+- 인접: OD-7(기법 통계 환류 — 승격된 신호의 소비처), OD-20(아카이브 스키마 — 정량 신호의 저장 형식). 세 항목을 함께 볼 것.
+
+## OD-25
+
+**데이터 거버넌스** — #4 코멘트 2건.
+
+- ⑴ **「repo 구조 단순화(1-repo + upstream-fork)」 안건**: 분석 결과 **기각 권고**(같은 계정 self-fork 불가로 P1 부트스트랩 모순 · private repo fork는 권한 상실 시 삭제되어 자산 수명이 소스 접근권에 종속 · public 전환 시 fork를 private로 둘 수 없어 HW 특성·실패 이력이 강제 공개).
+- ⑵ **대안 = template 모델**(HIL-Claw-data를 template repository로 지정, fork 대신 파생 생성 — private 가능·수명 독립·레이아웃 표준 자동 획득) + 후속 3건(template 지정 시점 · 경량 승격 경로 · 개인 repo의 template 버전 메타 규약).
+- ⑶ **공유 main 승격 PR 정책**(자동 머지 범위 vs 사람 리뷰 범위).
+- **#5 A-1 확정(2-repo)이 현행 기준**이며 본 안건 채택 시 A-1 재개봉 필요. FR-13 문구도 이 결정에 연동.
+
+## OD-26
+
+**HW 온보딩 절차 세부**(FR-14 ④) — 통합 전 main OD-11. PR #10(UC-0) 대안 흐름이 참조.
+
+- 등록 스키마(OD-4 연동), 문서 소스 포인터와 sim/board endpoint의 기술 방법.
+- HW 출처(외부 타사 / 자사 개발 중)별 처리: sim-only 온보딩 허용 여부, sim 결과를 최종 측정으로 인정할지(자사 개발 중 HW가 실물 전일 때), revision 갱신 흐름과 이력 귀속 키(OD-4), 문서 부재 표시, 온보딩 smoke test.
+- PR #10 UC-0 유래 추가 질문: 자사 개발 중 HW 정보의 기밀 취급 여부(OD-25·#5 A-10 후보와 연동), 온보딩 시 문서 필수 여부.
+
+## OD-29
+
+**N후보 실행·승격 정책** — OD-21 확정(2026-10-01)에서 분리된 세부.
+
+- 미결 ①: N개 코더 호출을 **병렬**(N개 `claude -p` 동시 — 실행 환경 #5 B-6, 토큰 집계 NFR-5·OD-19 연동)로 할지 **순차**로 할지, 또는 instance 파라미터로 둘지.
+- 미결 ②: board 승격 수 k — 고정 instance 파라미터(S8 초안: 사용자 지정) vs OD-15의 sim/board rank correlation 기반 적응적 결정. #7 §7 ①단계 제안은 "상위 1~2개".
+- 미결 ③: 후보별 토큰·HW 비용 집계와 후보별 상한(OD-19).
+- 설계 제약: 후보 수 N과 k가 레이아웃(OD-8)·spec(OD-6)·아카이브(OD-20)·통계(OD-7)에서 하드코딩되지 않을 것. N=1은 특수 경우로 동작해야 한다.
