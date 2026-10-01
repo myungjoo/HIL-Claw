@@ -17,13 +17,13 @@
 |---|---|---|---|
 | **FR-1** | **HIL 라운드 루프**를 제공한다: `기법 선택 → 후보 N개 코드 생성(위임) → compile → sim(조기검증) + correctness → (승격: sim 상위 k개) board(최종측정) + correctness → profile → evaluate → 저장 → 다음 라운드 결정`. **라운드당 후보 수 N은 instance 파라미터**로 사용자가 시작 시 지정한다(초기 UI 선택 범위 1~5, 정책은 추후 변경 가능 — 오너 결정 2026-10-01; S8). 후보가 N개여도 board 승격은 상위 k개로 제한한다(C-4; k 결정·N개 코더 호출의 병렬/순차 = OD-29, sim→board 승격 기준 = OD-15). instance 시작 시 **라운드 0 = bring-up**(해당 HW에서 동작하는 코드 생성) + **baseline 성능 측정**을 수행하며, 이것이 이후 라운드 evaluate의 기준이 된다(baseline 선택 = OD-28). **correctness는 sim·board 두 지점에서 모두 수행**하며(FR-9), 결과에 따라: ⑴ **sim 실패 → 실패 리포트를 첨부해 코드 생성 단계로 복귀**(repair; 복귀 횟수 상한 = OD-19) ⑵ **board 실패 → 해당 후보 탈락**(board가 최종 판정) ⑶ **sim 통과·board 실패 → 원인 미확정으로 취급**: 해당 board 측정은 격리하고(기록은 남기되 record로 인정하지 않음) 원인을 **후보 결함 / board 결함 / 시뮬레이터 결함**으로 분류(triage)한 뒤 분류 결과에 따라 처리한다 — 후보 결함 = 탈락, board 결함 = OD-10 회복 정책, 시뮬레이터 결함 = 사용자 escalate → sim 버그 리포트(UC-7). | UC-1·2·3, README, S0-4 (G1), 오너 결정(2026-07-31 correctness 2지점; 2026-10-01 ⑶ 완화·N후보) | 공통 |
 | **FR-2** | 최적화 목표를 시스템이 고정하지 않고, **선택 가능한 target type 메뉴(vocabulary)** 로 제공하여 **Loop instance별로 사용자가 지정**한다. | UC-1, Issue#2 D1 | 공통 |
-| **FR-3** | **Budget 어휘**를 제공한다: ① loop-iteration 수 ② 토큰 수(비용) ③ wall-clock 시간 ④ target-performance-metric(달성 시 조기 종료). 값은 run 시점 사용자 지정. 복수 지정 시 **any 소진 → 종료**. 시스템 기본 종료 의미론은 **budget 소진 + best 유지**. | UC-1·3, Issue#2 D3 | 공통 |
+| **FR-3** | **Budget 어휘**를 제공한다: ① loop-iteration 수 ② 토큰 수(비용) ③ wall-clock 시간 ④ target-performance-metric(달성 시 조기 종료 — 재검증 조건 = FR-9). 값은 run 시점 사용자 지정. 복수 지정 시 **any 소진 → 종료**. 시스템 기본 종료 의미론은 **budget 소진 + best 유지**. | UC-1·3, Issue#2 D3 | 공통 |
 | **FR-4** | **자율성 gate 모델**: autonomous(gate 0) ↔ checkpoint(gate N). gate 집합은 **Loop instance 파라미터**로 사용자가 구성한다. autonomous도 budget/종료 조건까지 무정지 실행, checkpoint는 gate에서 정지·승인 대기. | UC-2·3, Issue#2 D4 | 공통 |
 | **FR-5** | **코드 생성은 자체 수행하지 않고 headless Claude Code CLI(`claude -p`)에 위임**한다. compile 실패 repair도 위임 호출이다. Orchestrator→코더 전달 **spec을 1급 인터페이스**로 정의한다. | UC-1, Issue#2 codegen 위임 결정 | 공통 |
 | **FR-6** | 최적화 산출물을 **중간·최종·실패 전부** 영구 저장하고, **임의 중간/완료 지점에서 재개**할 수 있어야 한다(추가 최적화·다른 기법 분기 포함). | UC-4·6, README | 공통 |
 | **FR-7** | 기법 카탈로그에 **적용 가능성 메타데이터**(언제 쓰면 좋은지 = 선택 기준)를 함께 저장하고, 과거 (hw_profile, op_signature) 사례 통계로 후보를 **랭킹하여 Exhaustive Search를 회피**한다. | README, UC-2·5 | 공통 |
 | **FR-8** | 기법 표현은 **Skill(선택 기준) + 카탈로그(적용 지침·크로스런 통계)** 하이브리드로 한다. 선택 기준은 Orchestrator 세션에서 트리거에, 적용 지침은 코더 spec에 실린다. P1에서는 기법 후보 = repo 내 문서로 시작. | Issue#2 쟁점2, README | 공통 |
-| **FR-9** | **correctness 검증**을 제공한다(비트정확 아님; reference numeric / downstream metric / user-defined + tolerance). **정확도는 hard floor(게이트)이며 점수의 한 축이 아니다** — 실패는 감점이 아니라 복귀·탈락이다(오너 결정 2026-10-01, #5 A-6 → OD-5 확정). **tolerance는 사용자가 instance 파라미터로 지정·변경**한다(어휘는 #5 B-7 답변 후 확정); 손실 허용 기법(양자화·근사 연산 등)은 사용자가 정한 tolerance 안에서만 허용되며, 얼마나 잃을지를 시스템이 고르지 않는다. **실행 지점은 sim·board 두 곳이며 동일 검증을 반복한다** — sim은 조기 필터, **board가 최종 판정**(수치 결과가 HW마다 달라질 수 있으므로 sim 통과가 board를 보장하지 않는다). 실패 시 처리와 sim/board 불일치 처리는 FR-1 참조. **최소 강건성 조항(MVP)**: 최적화 과정에서 코더에 노출되지 않은 입력(shape/seed)으로, 코더가 수정할 수 없는 격리된 검증 하네스에서 재검증한다. 검증을 통과하지 못한 결과는 best·통계에 반영하지 않는다. FR-3 ④ target 조기 달성은 승격 게이트 수준의 재검증을 통과한 뒤에만 종료로 인정한다. 전면 하드닝(정밀도 검사·타이밍 동기화·정적 검사·LLM 검증자)은 확장(S7) → OD-16. | UC-2, Issue#2 §C.2, S7 (B1), #5 A-6 *(검증 방식 어휘는 §B.3 도구 계약에서 유래하나 §B.3은 방법 A 절이므로 C-5에 따라 근거에서 제외)* | 공통 |
+| **FR-9** | **correctness 검증**을 제공한다(비트정확 아님; reference numeric / downstream metric / user-defined + tolerance). **정확도는 hard floor(게이트)이며 점수의 한 축이 아니다** — 실패는 감점이 아니라 복귀·탈락이다(오너 결정 2026-10-01, #5 A-6 → OD-5 확정). **tolerance는 사용자가 instance 파라미터로 지정·변경**한다(어휘는 #5 B-7 답변 후 확정); 손실 허용 기법(양자화·근사 연산 등)은 사용자가 정한 tolerance 안에서만 허용되며, 얼마나 잃을지를 시스템이 고르지 않는다 — 더 느슨한 tolerance에서 더 빠른 후보가 있으면 시스템은 **보고만** 하고 채택하지 않으며, 채택은 사용자가 tolerance를 바꾼 새 instance로 한다. **실행 지점은 sim·board 두 곳이며 동일 검증을 반복한다** — sim은 조기 필터, **board가 최종 판정**(수치 결과가 HW마다 달라질 수 있으므로 sim 통과가 board를 보장하지 않는다). 실패 시 처리와 sim/board 불일치 처리는 FR-1 참조. **최소 강건성 조항(MVP)**: 최적화 과정에서 코더에 노출되지 않은 입력(shape/seed)으로, 코더가 수정할 수 없는 격리된 검증 하네스에서 재검증한다. 검증을 통과하지 못한 결과는 best·통계에 반영하지 않는다. FR-3 ④ target 조기 달성은 승격 게이트 수준의 재검증을 통과한 뒤에만 종료로 인정한다. 전면 하드닝(정밀도 검사·타이밍 동기화·정적 검사·LLM 검증자)은 확장(S7) → OD-16. | UC-2, Issue#2 §C.2, S7 (B1), #5 A-6 *(검증 방식 어휘는 §B.3 도구 계약에서 유래하나 §B.3은 방법 A 절이므로 C-5에 따라 근거에서 제외)* | 공통 |
 | **FR-10** | **HW 실험 도구**를 MCP/Bash로 노출한다: `sim.run`(저비용 조기검증), `board.run`(고비용·공유·quota), `profiler.collect`, `correctness.check`. | UC-2·3, Issue#2 §C.2 | 공통 |
 | **FR-11** | 최적화 과정 전반에 **로그**를 남기고, 어떤 기법을 왜 선택했는지 **결정 로그를 강제 기록**한다(재현·감사용). | README, UC-6 | 공통 |
 | **FR-12** | **외부 연구 논문·코드를 이해**하여 기법 후보군을 추가/갱신/삭제할 수 있어야 한다("AI for Science"-like). | README, UC-5 | 공통 |
@@ -69,7 +69,7 @@
 
 **이슈 역할 분담**: **#4** = 아키텍처·실행모델 결정 스레드 · **#5** = 사용자만 답할 수 있는 입력 대기(A/B 항목) · **#7** = 외부 시스템 조사·분석(상설) · **#8** = 문서·이슈 간 모순 트래커 · **#1** = 참고문헌 메모.
 
-**상태 어휘**: `미착수` 논의 없음 · `논의중` 논의 진행, 제안 미수렴 · `제안됨` 구체 제안 존재, 오너 확정 대기 · `차단됨` #5의 사용자 입력 대기 · `확정` 결정 완료(본문 반영 위치 필수).
+**상태 어휘**: `미착수` 논의 없음 · `논의중` 논의 진행, 제안 미수렴 · `제안됨` 구체 제안 존재, 오너 확정 대기 · `차단됨` #5의 사용자 입력 대기 · `확정` 결정 완료(본문 반영 커밋 링크 필수).
 
 **갱신 규칙**: 상태가 바뀌면 **본 표를 같은 커밋에서 갱신**한다. 확정 시 행을 지우지 말고 상태를 `확정`으로 바꾸고 반영 위치를 남긴다(감사성 NFR-2).
 
@@ -77,7 +77,7 @@
 
 **제안 상세**: 각 항목의 구체 제안·근거 본문은 [OpenDecisionProposals.md](OpenDecisionProposals.md)의 같은 번호 절에 둔다. 본 표에는 **한 줄 요약**만 적어 표가 읽히도록 유지한다. 제안 본문의 정본은 Proposals 문서, 상태·논의 위치의 정본은 본 표다.
 
-**등록 범위**: 본 표는 **미결 "결정"** 만 담는다. 결정이 아닌 **작업**(예: 부트스트랩 골격 작성, 스키마 명세 작성)은 여기 넣지 않고 이슈에서 작업 항목으로 추적한다 — 섞으면 표가 진척 관리용으로 변질된다.
+**등록 범위**: 본 표는 **미결 "결정"** 만 담는다. 결정이 아닌 **작업**(예: 부트스트랩 골격 작성)은 여기 넣지 않고 이슈에서 작업 항목으로 추적한다 — 섞으면 표가 진척 관리용으로 변질된다.
 
 **첫 커밋(P0 골격)을 막는 항목**: OD-4 · OD-6 · OD-8 (#5 우선순위 절 — A-1·A-2 확정, B-4 대기).
 
@@ -87,14 +87,14 @@
 | OD-2 | **Budget 어휘에 HW quota**(sim 시간/board 시간) 포함 여부 | FR-3, D3 | 제안됨 | #7 §6 — board-second를 1급 예산 축으로 포함 권고. [상세](OpenDecisionProposals.md#od-2) |
 | OD-3 | **Gate 후보 목록** + 모드별 기본 구성(autonomous에서도 강제되는 안전 gate 존재 여부) | FR-4, D4 | 차단됨 | #5 A-5 · #7 §6 — 제안: 비-설정형 최소 gate 4종. [상세](OpenDecisionProposals.md#od-3) |
 | OD-4 | **hw_profile / op_signature 키 필드 스키마** + 유사도 매칭(정확 일치 vs 최근접) 규칙. P1 디렉토리 명명에 즉시 필요. HW 출처(hw_source)·revision은 hw 식별층의 필드 후보. | FR-7·13·14, D10/D11 | 제안됨 | #4 코멘트 · #7 §6 — 제안: 2층 구조(정확 식별층 + 유사도 벡터층). [상세](OpenDecisionProposals.md#od-4) |
-| OD-5 | **정확도-성능 trade-off 정책**: 정확도를 제약(floor)으로 둘지 목적의 한 축으로 둘지 | FR-9 | **확정** (2026-10-01, #5 A-6) | **hard floor**; tolerance = 사용자 instance 파라미터. 반영: FR-9. 잔여(downstream 지표 floor 병행)는 whole-model 단계(C-6 후속)에서 재론. [상세](OpenDecisionProposals.md#od-5) |
-| OD-6 | **codegen spec 페이로드** 정의(커널 명세, hw_profile, 직전 라운드 프로파일/에러, 적용 기법 지침) + repair 코더 **resume vs 재기동** | FR-5, D7/쟁점4 | 논의중 | #4 §4 첫 항목 · #7 — spec = coder-driver 계약의 부분집합, 대조적(top-k/bottom-k) 프로파일 동봉. spec은 **후보 식별(S8, MVP)** 과 HW 문서 발췌(B5, FR-14)를 수용하고, 금지 패턴(S7)·프로파일 요약 구조(B4)는 확장 고려. [상세](OpenDecisionProposals.md#od-6) |
+| OD-5 | **정확도-성능 trade-off 정책**: 정확도를 제약(floor)으로 둘지 목적의 한 축으로 둘지 | FR-9 | **확정** (2026-10-01, #5 A-6) | **hard floor**; tolerance = 사용자 instance 파라미터. 반영: FR-9 (PR #6). 잔여: tolerance 어휘(per-dtype rtol/atol, downstream 지표 임계 등)는 #5 B-7 답변 후 확정. [상세](OpenDecisionProposals.md#od-5) |
+| OD-6 | **codegen spec 페이로드** 정의(커널 명세, hw_profile, 직전 라운드 프로파일/에러, 적용 기법 지침) + repair 코더 **resume vs 재기동** | FR-5, D7/쟁점4 | 논의중 | #4 §4 첫 항목 · #7 — spec = coder-driver 계약의 부분집합, 대조적(top-k/bottom-k) 프로파일 동봉. spec은 **후보 식별(S8, MVP)** 을 수용. *확장 고려*: (B4) 프로파일 요약 구조, (B5) HW 문서 발췌·예시 커널 동봉(코더 직접 검색 금지 여부 = OD-12에 연동), (S7) 금지 패턴. [상세](OpenDecisionProposals.md#od-6) |
 | OD-7 | **기법 통계 환류 경로**: 정적 Skill 트리거에 동적 크로스런 통계를 피드백하는 구체 메커니즘(P1 랭킹 신호 정의 포함) | FR-7·8, D5/D6/쟁점1·2 | 제안됨 | #4 코멘트 · #7 §6 — 제안: contextual bandit; 카탈로그 진입 기준 흡수. *확장 고려(B6)*: 변환 전/후 코드 쌍 저장. [상세](OpenDecisionProposals.md#od-7) |
 | OD-8 | **P1 디렉토리 레이아웃** 확정(OD-3·OD-4·C-3 결과 반영). 라운드 아래 **후보 다중성을 1급 차원**으로 둔다(S8, MVP). | FR-13 | 차단됨 (후보 1건) | #4 §2 초안 · #5 A-1/A-2 확정 반영 · **B-4가 첫 커밋을 막고 있음**. 후보 ①「레이아웃 = 권한 모델」(에이전트별 쓰기 루트 1개, 읽기 무제한). [상세](OpenDecisionProposals.md#od-8) |
 | OD-9 | **frontend IR 출처·포맷**: `model_ref`(format-agnostic frontend 결과 IR)를 어떤 frontend/포맷(예: ONNX/StableHLO/TOSA)에서 받는지, 시스템 경계 안/밖 여부 | FR-1, Issue#2 | 차단됨 | #5 B-5 · [상세](OpenDecisionProposals.md#od-9) |
 | OD-10 | **board 실패·회복 모델**: board 행/크래시/예약 경합 시 재시도·타임아웃·회복 정책(측정 노이즈와 별개) | FR-10, NFR-3 | 제안됨 | #5 B-2 입력 필요 · #7 §6 — 브로커/트래커 + health check + candidate-fault vs board-fault 구분(FR-1 ⑶ triage와 연동). [상세](OpenDecisionProposals.md#od-10) |
-| OD-11 | **버전·마이그레이션 정책**: `schema_version` 부여 범위, P1 스탬프 / P2 마이그레이션 도구의 경계(NFR-7②), 시스템 버전이 바뀐 뒤 구버전 run 재개(FR-6)의 검증 방법 | NFR-7 | 제안됨 | #4 코멘트 · #7 §6 — 측정 계약 pin + 변경 시 incumbent 재측정. [상세](OpenDecisionProposals.md#od-11) |
-| OD-12 | **외부 참조 어댑터 설계**: 대상 소스 목록(벤더 문서 포털/release repo/내부 문서 시스템/로컬 파일), 어댑터 계약(검색·조회·버전 질의), 참조 증빙·스냅샷 기록 포맷, 불가용 시 폴백·retention 정책 | FR-14, #5 B-1 | 차단됨 | #5 B-1 · #4 코멘트 · #7 §8 — 검색 권한은 orchestrator/curator 한정, 코더 금지; 식별자+해시 기록은 hard precondition. [상세](OpenDecisionProposals.md#od-12) |
+| OD-11 | **버전·마이그레이션 정책**: `schema_version` 부여 범위(어떤 아티팩트까지), 하위호환 읽기 보장 vs 마이그레이션 도구 제공의 경계, 시스템 버전이 바뀐 뒤 구버전 run 재개(FR-6)의 검증 방법 | NFR-7 | 제안됨 | #4 코멘트 · #7 §6 — 측정 계약 pin + 변경 시 incumbent 재측정; P1 스탬프 / P2 도구 분할(통합 시 제안, 미확정). [상세](OpenDecisionProposals.md#od-11) |
+| OD-12 | **외부 참조 MCP 어댑터 설계**: 대상 소스 목록(벤더 문서 포털/release repo/내부 문서 시스템), 비-MCP 소스(로컬 파일)의 어댑터 취급, 어댑터 계약(검색·조회·버전 질의), 참조 증빙 기록 포맷, 발췌 스냅샷의 필수화 여부, 코더의 직접 검색 허용 여부, 캐시 폴백·retention 정책 | FR-14, #5 B-1 | 차단됨 | #5 B-1 · #4 코멘트 · #7 §8 — 검색 권한은 orchestrator/curator 한정·코더 금지(제안); 식별자+해시 기록은 hard precondition. [상세](OpenDecisionProposals.md#od-12) |
 | OD-13 | **측정·노이즈 정책 구체화**(NFR-3): 반복 횟수 결정 방식, 판정 통계량, 개선 인정 기준, 원시 샘플 보존, warmup/steady-state 처리 | NFR-3, FR-10 | 제안됨 | #7 §5 G2 — 적응적 반복, trimmed mean, paired 측정 + 부트스트랩 CI, per-repeat 원시 벡터 저장. [상세](OpenDecisionProposals.md#od-13) |
 | OD-14 | **샌드박스·격리·보드 안전 정책 구체화**(NFR-4): 생성 코드 실행 격리, 타임아웃 계층, 자원 상한, 보드 health·복구·격리 | NFR-4, FR-10 | 제안됨 | #7 §5 G1 — 1 후보 = 1 프로세스, 계층 타임아웃, blacklist(FR-6 재개도 준수). 쓰기 범위는 OD-8 후보 ①과 동일 결정. [상세](OpenDecisionProposals.md#od-14) |
 | OD-15 | **sim→board 승격 기준**: 어떤 조건에서 시뮬레이터 결과를 실물 측정으로 승격시킬지 | FR-1, C-4, OD-29 | 제안됨 | #7 §6 — 고정 임계값 금지, rank correlation 기반 k, ε-greedy 슬롯(correctness false negative 탐지 겸함). [상세](OpenDecisionProposals.md#od-15) |
@@ -105,12 +105,12 @@
 | OD-20 | **후보 아카이브 스키마**: `best_ref` 단일 포인터를 유지할지 **후보 집단(아카이브)** 을 저장할지 + 저장 필드 확정 | FR-6·7·13 | 제안됨 | #7 보충 §2(3) — 계보·단계별 분리 평가·public/private metrics·생성 프롬프트 보존·실패 보존. [상세](OpenDecisionProposals.md#od-20) |
 | OD-21 | **탐색 폭(라운드당 후보 수)**: 라운드당 1후보 직렬을 유지할지, N후보 생성 후 상위만 board로 승격할지 | FR-1, C-4, #4 §3d | **확정** (2026-10-01, 오너 결정) | **Best-of-N은 MVP 범위.** N = 사용자 instance 파라미터(초기 UI 1~5, 정책 추후 변경 가능). 반영: FR-1·FR-13, S8 기본 계층 승격, #8 M16. 실행·승격 세부는 OD-29. [상세](OpenDecisionProposals.md#od-21) |
 | OD-22 | **기법 카탈로그 콜드스타트**: 실행 이력이 0인 상태에서 카탈로그를 채우는 방법 | FR-8, UC-5 | 제안됨 | #7 보충 §2(5) — optimization rewind, git 이력 채굴. [상세](OpenDecisionProposals.md#od-22) |
-| OD-23 | **subagent 로스터**: 에이전트 종류 확정(inline vs subagent 경계 포함). 입출력 계약 *작성*은 작업 항목(#4 §6) | #4 §3a·§6, NFR-6 | 논의중 | #4 §6 · #7 §2(8) — 5종 로스터 제시, selector/promoter inline 후보, evaluator 강화. [상세](OpenDecisionProposals.md#od-23) |
-| OD-24 | **agent-memory → db 승격 트리거**: 에이전트별 서술적 요령이 언제·어떤 형식으로 정량 신호가 되어 크로스런 지식으로 승격되는지 | FR-7, NFR-2, #4 데이터 계층 정책 | 미착수 | [상세](OpenDecisionProposals.md#od-24) |
+| OD-23 | **subagent 로스터 및 입출력 계약**: 에이전트 종류 확정(inline vs subagent 경계 포함) + 각 에이전트의 입력·출력 파일 스키마 | #4 §3a·§6, NFR-6 | 논의중 | #4 §6 · #7 §2(8) — 5종 로스터 제시, selector/promoter inline 후보, evaluator 강화. [상세](OpenDecisionProposals.md#od-23) |
+| OD-24 | **agent-memory → db 승격 트리거**: 에이전트별 서술적 요령이 언제·어떤 형식으로 정량 신호가 되어 크로스런 지식으로 승격되는지 | FR-7, NFR-2, #4 데이터 계층 정책 | 미착수 | #4 §6 · #4 데이터 계층 코멘트 — 승격 사다리의 첫 단계 조건 미정; OD-7·OD-20과 인접. [상세](OpenDecisionProposals.md#od-24) |
 | OD-25 | **데이터 거버넌스**: 데이터 plane의 물리 형태(별도 repo / 1-repo+fork / template 파생) + 공유 계층 승격 PR 정책 | FR-13, NFR-2, #5 A-1 | 차단됨 (오너 확정 대기) | #4 코멘트 2건 — fork 안 기각 권고, template 모델 대안. **#5 A-1 확정(2-repo)이 현행**. [상세](OpenDecisionProposals.md#od-25) |
-| OD-26 | **HW 온보딩 절차 세부**(FR-14 ④): 등록 스키마(OD-4 연동), 문서 소스 포인터·sim/board endpoint 기술 방법, HW 출처별 처리(sim-only 온보딩, sim 최종측정 인정 여부, revision 갱신·이력 귀속, 문서 부재 표시, smoke test) | FR-14, OD-4 | 미착수 | PR #10 UC-0 대안 흐름이 참조. *(2026-10-01 통합 전 main OD-11)* |
+| OD-26 | **HW 온보딩 절차 세부**(FR-14 ④): 등록 스키마(OD-4 연동), 문서 소스 포인터·sim/board endpoint 기술 방법, HW 출처별 처리 | FR-14, OD-4 | 미착수 | PR #10 UC-0 대안 흐름이 참조. *(통합 전 main OD-11)* [상세](OpenDecisionProposals.md#od-26) |
 | OD-27 | **알림 채널·메커니즘**: 채널(콘솔/파일/외부 메신저 등), checkpoint gate 대기 알림과의 통합 여부 | FR-16 | 미착수 | — *(통합 전 main OD-12)* |
 | OD-28 | **baseline 선택**: 라운드 0의 baseline을 bring-up 코드 / 벤더 라이브러리 커널 / 기존 best 중 instance 파라미터로 택할지. baseline에 따라 개선율의 의미가 달라짐 | FR-1 (B7) | 미착수 | reviews/2026-09-03 B7. *(통합 전 main OD-14)* |
 | OD-29 | **N후보 실행·승격 정책**: N개 코더 호출의 병렬/순차, board 승격 수 k의 결정 방식(고정 파라미터 vs OD-15 상관 기반), 후보별 토큰·HW 비용 집계(NFR-5) | FR-1, OD-15, OD-21, C-4, S8 | 미착수 | #7 §7 1단계 제안(상위 1~2개 승격). #4 §3d "MVP Round 직렬" 합의는 OD-21 확정으로 개정됨. [상세](OpenDecisionProposals.md#od-29) |
 
-**번호 이력(2026-10-01 통합, #5 A-9)**: 2026-09 main 작업의 OD-11 → OD-26, OD-12 → OD-27, OD-14 → OD-28. main OD-13(correctness 수행 지점)은 2026-07-31 오너 결정(FR-1 두 지점)으로 이미 해소된 질문이라 폐기하고, 그 "확장 고려" 메모(B1/S7 전면 하드닝)는 OD-16으로 이관했다.
+**번호 이력(2026-10-01 통합, #5 A-9)**: 2026-09 main 작업의 OD-11 → OD-26, OD-12 → OD-27, OD-14 → OD-28. main OD-13(correctness 수행 지점)은 2026-07-31 오너 결정(FR-1 두 지점)으로 이미 해소된 질문이라 폐기하고, 그 "확장 고려" 메모(B1/S7 전면 하드닝)는 OD-16으로 이관했다. OD-16의 하위 질문 "FR-9 확장 vs 별도 FR 승격"은 통합으로 해소됨 — 최소 조항은 FR-9, 나머지는 OD-16.

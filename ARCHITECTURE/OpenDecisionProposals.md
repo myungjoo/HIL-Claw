@@ -43,7 +43,8 @@
 
 - 결정 내용: 정확도는 게이트. tolerance는 사용자 instance 파라미터(어휘는 B-7 후 확정). 실패 = repair/탈락, best·통계 미반영. sim·board 양쪽 동일 floor. FR-3 ④ 조기 종료는 승격 게이트 수준 재검증 후 인정. 정확도의 목적 축 승격은 A-4 다목적과 함께 후속.
 - 근거(#7 §5 G1): 목적 축으로 두면 옵티마이저에 정확도를 팔 권한을 명시 부여하는 것. Sakana 정정 후 집계 speedup 3.13× → 1.49×; METR: KernelBench 최적화의 73.8%가 프록시 지표만 개선, 예산이 클수록 악화(10스텝 26.4% → 100스텝 57.8%).
-- 잔여: downstream 지표 floor(MLPerf식 99%/99.9%)를 per-kernel 검사와 병행할지 — whole-model 단계(C-6 후속)에서 재론.
+- 귀결: 더 느슨한 tolerance에서 더 빠른 후보가 있으면 시스템은 보고만 하고 채택하지 않는다 — 채택은 사용자가 tolerance를 바꾼 새 instance로(FR-9에 반영).
+- 잔여: tolerance 어휘(per-dtype rtol/atol, downstream 지표 임계 — MLPerf식 99%/99.9% 등, user-defined 검사)는 #5 B-7 답변 후 확정. per-kernel 검사와 downstream 지표 floor의 병행 여부도 그때 어휘와 함께 정한다.
 
 ## OD-6
 
@@ -100,7 +101,8 @@
 
 **외부 참조 어댑터 설계** — #5 B-1 · #4 코멘트 · #7 §8.
 
-- 어댑터 종류(메커니즘 중립, FR-14 ①): MCP 서버(벤더 문서 포털·release repo), **로컬 파일/디렉토리 포인터**(NDA PDF 등 외부 서비스가 없는 자료), 사내 문서 시스템.
+- 오너 결정(2026-07-31)의 범위: 복제 저장 금지 + **MCP로 접근** + repo에는 소스 등록부만. 아래는 그 위의 제안.
+- 어댑터 종류 **제안(미확정, 통합 시 일반화)**: MCP 서버(벤더 문서 포털·release repo) 외에 **로컬 파일/디렉토리 포인터**(NDA PDF 등 외부 서비스가 없는 자료)·사내 문서 시스템을 어댑터로 취급할지 — 즉 FR-14 ①의 "MCP"를 메커니즘 중립으로 읽을지. 대안: 로컬 파일을 노출하는 MCP 서버를 두어 FR-14 문구를 그대로 유지.
 - 추가 제약 **제안(미확정)**: 검색은 **해킹 벡터이기도 하므로** 권한을 orchestrator/curator에 한정하고 **코더 서브프로세스에는 금지**(ByteDance 선례). 코더에 필요한 발췌는 spec에 동봉(OD-6 확장 고려). ※ 오너 결정이 없으므로 FR-14 본문에 요구로 쓰지 않는다. main NFR-4 B8 메모도 "코더의 웹 검색 차단 **여부**"로 열어 두었다.
 - FR-14 ②의 식별자+해시 기록은 **hard precondition**. **참조 발췌 스냅샷의 필수화는 제안(미확정)** — 근거 S10은 **확장 시나리오**이므로 MVP 요구로 승격할지는 미결이며, 승격 시 NDA·벤더 발췌가 데이터 plane에 복제되는 문제(#5 A-3 push 경계), C-3 retention class, #5 A-9의 A-10 후보("참조 자료 분류별 전송 허용 여부")와 함께 판단해야 한다.
 - 미결: 소스 목록, 어댑터 계약(검색·조회·버전 질의), 증빙 포맷, 스냅샷 retention(C-3 retention class와 정합).
@@ -184,10 +186,10 @@
 
 ## OD-23
 
-**subagent 로스터** — #4 §6 첫 두 항목 · #7 §2(8).
+**subagent 로스터 및 입출력 계약** — #4 §6 첫 두 항목 · #7 §2(8).
 
 - 현재 5종(technique-selector / coder-driver / experiment-runner / evaluator / promoter)이 #4 개정 코멘트로 제시됨. 미결: experiment-runner를 sim/board로 분리할지 · `technique-selector`·`promoter`를 **인라인**할지(subagent는 fresh context라 라운드마다 STATE·카탈로그 재로드 비용을 곱으로 지불) · **`evaluator`는 반대로 강화**(실험 수행 주체가 아닐 것, Write 권한 없음, 아티팩트 경로+해시만 수신).
-- 입출력 계약은 **방법 A 노드 스펙으로 기계 번역 가능**해야 함(NFR-6). **OD-6(codegen spec)은 coder-driver 계약의 부분집합으로 흡수.** 계약 *작성*은 결정이 아닌 작업이므로 #4 §6 작업 항목으로 추적.
+- 입출력 계약(에이전트별 입력·출력 파일 스키마)은 **방법 A 노드 스펙으로 기계 번역 가능**해야 함(NFR-6). **OD-6(codegen spec)은 coder-driver 계약의 부분집합으로 흡수.** 계약의 *내용*은 본 OD의 결정 대상이고, 계약 파일 *작성*은 #4 §6 작업 항목.
 - #4 본문 §3a("HW 실험 = 에이전트 아님, Task-SubAgent는 read-only 헬퍼 한정")와 2026-07-31 개정 코멘트의 불일치(#8 M9)는 로스터 확정 시 #4 본문을 함께 갱신.
 
 ## OD-24
@@ -207,6 +209,14 @@
 - ⑵ **대안 = template 모델**(HIL-Claw-data를 template repository로 지정, fork 대신 파생 생성 — private 가능·수명 독립·레이아웃 표준 자동 획득) + 후속 3건(template 지정 시점 · 경량 승격 경로 · 개인 repo의 template 버전 메타 규약).
 - ⑶ **공유 main 승격 PR 정책**(자동 머지 범위 vs 사람 리뷰 범위).
 - **#5 A-1 확정(2-repo)이 현행 기준**이며 본 안건 채택 시 A-1 재개봉 필요. FR-13 문구도 이 결정에 연동.
+
+## OD-26
+
+**HW 온보딩 절차 세부**(FR-14 ④) — 통합 전 main OD-11. PR #10(UC-0) 대안 흐름이 참조.
+
+- 등록 스키마(OD-4 연동), 문서 소스 포인터와 sim/board endpoint의 기술 방법.
+- HW 출처(외부 타사 / 자사 개발 중)별 처리: sim-only 온보딩 허용 여부, sim 결과를 최종 측정으로 인정할지(자사 개발 중 HW가 실물 전일 때), revision 갱신 흐름과 이력 귀속 키(OD-4), 문서 부재 표시, 온보딩 smoke test.
+- PR #10 UC-0 유래 추가 질문: 자사 개발 중 HW 정보의 기밀 취급 여부(OD-25·#5 A-10 후보와 연동), 온보딩 시 문서 필수 여부.
 
 ## OD-29
 
