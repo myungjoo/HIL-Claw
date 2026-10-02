@@ -148,7 +148,8 @@
 - **확장(S7, B1/B8)**: 정밀도 하향 검사, warm-up·stream sync·클록 고정 타이밍, 정적 검사·금지 패턴, LLM 검증자, 검증·프로파일 스크립트 보호, 금지 fallback 패턴, 코더 웹 검색 차단(OD-12). 실패 유형 태깅과 다음 라운드 spec의 금지 패턴 주입(OD-6 확장 고려).
 - **하네스 자체의 수용 기준**(#7 S-2 N8): Kernel Contracts의 3-상태 캘리브레이션(위반 구현이 실제로 잡히는지 증명)을 하네스 완료 조건으로 채택 검토 — hacker-fixer 루프와 상보.
 - **잔여 미결**: 정적 검사 규칙의 범위 · roofline 모델 산출 방법(op_signature별 FLOPs/바이트) · 승격 전 적대적 재검증의 강도 · hacker-fixer 루프로 자기 harness를 사전 강화할지.
-- **확정분(2026-10-02, #5 A-12) — 하네스 단일 단위**: 채점 장치(입력 생성·f64 reference·tolerance 비교·타이밍·프로파일·eval/event 기록)는 도구 패키지 안의 **한 하위 모듈**(`harness/`)에 모여 있고, 코더 scratch에 포함되지 않으며(OD-8 후보 ①/② 어느 쪽에서도 성립), P1 버전 = 소스 commit 해시(OD-11). 위협 A(조작 계열) 방어의 **전제 조건**이 이것이다 — 보호는 위치가 정해진 것에만 걸 수 있다. 3-상태 캘리브레이션(#7 S-2 N8)도 이 단위를 대상으로 한다.
+- **확정분(2026-10-02, #5 A-12) — 하네스 단일 단위**: 채점 장치(입력 생성·f64 reference·tolerance 비교·타이밍·프로파일·eval/event 기록)는 도구 패키지 안의 **한 하위 모듈**(`harness/`)에 모여 있고, 코더 scratch에 포함되지 않으며, P1 버전 = 소스 commit 해시(OD-11).
+- (통합자 해석) 위 확정은 OD-8 후보 ①/② 어느 쪽에서도 성립하며, 위협 A(조작 계열) 방어의 **전제 조건**이다 — 보호는 위치가 정해진 것에만 걸 수 있다. 3-상태 캘리브레이션(#7 S-2 N8)도 이 단위를 대상으로 하게 된다.
 
 ## OD-17
 
@@ -163,7 +164,8 @@
 - 제안: `SessionStart`(STATE·예산·gate 주입) · `PreToolUse`(board.run 예산·중복·gate 검사, harness 경로 deny) · `PostToolUse`(**결과 저널링은 모델 행동이면 안 됨**) · `Stop`(commit 강제) · `PreCompact` 차단 · `AGENT_STOP` kill switch · **default-FAIL 계약**과 **Write 권한 없는 fresh-context 평가자**.
 - **`.claude/agents/`가 세션 중 재탐지되지 않으므로 NFR-7①은 "1 round = 1 OS process = 1 turn = 1 commit"일 때만 성립**. UC-3의 `/loop`(동일 프로세스 반복)과의 관계 정리 필요(#8 M4).
 - **흡수: CLAUDE.md 불변식 목록**(#4 §6) — 세션 기동 시 강제할 규범 목록 확정. 현재까지 나온 것: "agent-memory 전체를 삭제해도 FR-6·FR-7·NFR-2가 성립한다" · "전 디렉토리 스캔 금지, STATE.json이 유일 진입점"(#4 §1).
-- **흡수: FR-10 도구의 노출 형태**(#5 A-12에서 이관, 2026-10-02) — MCP 서버 vs Bash CLI. MCP는 타입 있는 tool-use라 `PreToolUse`가 도구 이름·인자로 예산·gate 검사를 가로채기 쉽고(hook과 자연 결합), CLI는 단순하지만 hook이 명령 문자열을 파싱해야 한다. 같은 패키지의 두 진입점으로 둘 다 제공(MCP = 에이전트용, CLI = 사람·디버깅용)하는 안도 후보. hooks 진입점 자체는 Claude Code 구조상 셸 명령이므로 sh 한 줄 → 패키지 호출 형태가 된다.
+- **흡수: FR-10 도구의 노출 형태 — 질문 이관**(#5 A-12, 2026-10-02): MCP 서버 vs Bash CLI 중 무엇으로 1층에 노출할지는 OD-18에서 결정한다(A-12는 "미결, OD-18과 함께"로만 기록).
+- (통합자 메모 — 비교·후보) MCP는 타입 있는 tool-use라 `PreToolUse`가 도구 이름·인자로 예산·gate 검사를 가로채기 쉽고(hook과 자연 결합), CLI는 단순하지만 hook이 명령 문자열을 파싱해야 한다. 같은 패키지의 두 진입점으로 둘 다 제공(MCP = 에이전트용, CLI = 사람·디버깅용)하는 안도 후보. hooks 진입점 자체는 Claude Code 구조상 셸 명령이므로 sh 한 줄 → 패키지 호출 형태가 된다.
 
 ## OD-19
 
@@ -200,7 +202,7 @@
 - 현재 5종(technique-selector / coder-driver / experiment-runner / evaluator / promoter)이 #4 개정 코멘트로 제시됨. 미결: experiment-runner를 sim/board로 분리할지 · `technique-selector`·`promoter`를 **인라인**할지(subagent는 fresh context라 라운드마다 STATE·카탈로그 재로드 비용을 곱으로 지불) · **`evaluator`는 반대로 강화**(실험 수행 주체가 아닐 것, Write 권한 없음, 아티팩트 경로+해시만 수신).
 - 입출력 계약(에이전트별 입력·출력 파일 스키마)은 **방법 A 노드 스펙으로 기계 번역 가능**해야 함(NFR-6). **OD-6(codegen spec)은 coder-driver 계약의 부분집합으로 흡수.** 계약의 *내용*은 본 OD의 결정 대상이고, 계약 파일 *작성*은 #4 §6 작업 항목.
 - #4 본문 §3a("HW 실험 = 에이전트 아님, Task-SubAgent는 read-only 헬퍼 한정")와 2026-07-31 개정 코멘트의 불일치(#8 M9)는 로스터 확정 시 #4 본문을 함께 갱신.
-- **MVP 전제(2026-10-02, #5 A-12)**: 런타임 도구 생성 없음 → 각 에이전트의 도구 집합과 per-agent tools allowlist(OD-8 ⑸)는 run 시작 시 고정된 **정적 목록**이다. 로스터 결정은 "누가 어느 고정 도구를 쓰는가"로 단순해지고, 동적 등록은 NFR-6 확장 호환으로만 남긴다.
+- **MVP 전제(2026-10-02, #5 A-12)**: 런타임 도구 생성 없음 → 각 에이전트의 도구 집합과 per-agent tools allowlist(OD-8 후보 ① 5.)는 run 시작 시 고정된 **정적 목록**이다. 로스터 결정은 "누가 어느 고정 도구를 쓰는가"로 단순해지고, 동적 등록은 NFR-6 확장 호환으로만 남긴다.
 
 ## OD-24
 
