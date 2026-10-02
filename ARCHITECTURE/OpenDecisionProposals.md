@@ -71,7 +71,7 @@
 **P1 디렉토리 레이아웃** — #4 §2 초안 · #5 A-1/A-2/B-4 확정.
 
 - 전제: A-1(별도 repo `HIL-Claw-data`), A-2(CAS + `artifacts.json`) 확정분 반영. B-4(첫 대상 커널 + spec 예시)는 2026-10-02 확정(Llama 3.2 1B GEMM/SDPA, `cpu_standin`) — 사용자 입력은 모두 확보됨.
-- MVP 요구: 라운드 아래 **후보 차원**(`rounds/<N>/candidates/<c>/` 또는 동등)을 1급으로 둔다(S8, OD-21 확정).- MVP 요구: 라운드 아래 **후보 차원**(`rounds/<N>/candidates/<c>/` 또는 동등)을 1급으로 둔다(S8, OD-21 확정).
+- MVP 요구: 라운드 아래 **후보 차원**(`rounds/<N>/candidates/<c>/` 또는 동등)을 1급으로 둔다(S8, OD-21 확정).
 - **후보 ①「레이아웃 = 권한 모델」**: 에이전트마다 **쓰기 루트 1개**를 지정하고 **그 외 전부 read-only**(읽기는 무제한 — 읽기 제한은 채택하지 않음). *(OD-16과의 관계: OD-16이 은닉이 아닌 **위조 불가능성** 기반으로 개정되어 충돌 없음. 단 **런타임 시드·입력 값은 파일로 존재하지 않아야** 한다 — 이것이 읽기 개방의 유일한 전제. 또한 **코더/평가 프로세스 분리**가 OD-16 위협 A(조작 계열)를 담당한다.)*
   1. `rounds/<N>/`을 **소유자별로 분할** — `decision/`(technique-selector) · `coder/`(반입 게이트가 채움, 코더는 직접 못 씀) · `measure/`(experiment-runner) · `eval/`(evaluator). 현행 §2 평면 구조는 evaluator가 `board.json`을 덮어쓸 수 있어 single-writer 위반.
   2. 폴더 모델 **밖의 특수 케이스 3**: `.git/`(에이전트 전원 쓰기 금지 — 이력 재작성 = 감사 로그 파괴, NFR-2), `events.ndjson`(도구 계층이 append하므로 에이전트 쓰기 권한 불필요), `TMPDIR`·빌드 캐시(쓰기 루트 안에 둘 것 — 누락 시 빌드 실패).
