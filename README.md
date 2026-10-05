@@ -2,7 +2,8 @@
 
 ## Objectives
 
-- 특정 AI 가속기에 대해 주어진 AI 모델을 최적화 하여 실행하는 (속도 향상 및 동시 서빙 용량 증대) 모델 Binary를 만들어내는 자동화된 Agent System.
+- 특정 AI 가속기에 대해 주어진 AI 모델을 최적화 하여 실행하는 (속도 향상 및 동시 서빙 용량 증대) 산출물 — 개별 최적화 compute kernel 및/또는 모델 Binary — 을 만들어내는 자동화된 Agent System. (MVP는 단일 compute kernel 최적화부터 시작한다.)
+- 대상 가속기는 외부 타사 HW를 가져와 시험하는 경우와 자사의 개발 중 HW인 경우가 모두 있다.
 - Hardware 혹은 Simulator/Emulator In The Loop 방식으로 실험과 실증을 하면서 점진적으로 최적화를 해 나간다.
 - 기존의 성공/실패 사례를 저장하여, 점점 더 최적화를 잘 하고 빠르게 최적화 할 수 있도록 한다. 이 정보 저장은 주요 자산이므로 Local Database에 영구 저장해야 한다.
 - AI 가속기 마다 특성이 매우 다르고, 같은 가속기라도 (e.g., CPU type, DRAM Size) 주어진 HW환경이나 실행 환경에 따라 성능 특성이 달라질 수 있음이 반영될 수 있어야 한다.

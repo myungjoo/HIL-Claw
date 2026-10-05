@@ -237,6 +237,7 @@
 - 질문: 라운드 0의 baseline을 bring-up 코드 / 벤더 라이브러리 커널 / 기존 best 중 instance 파라미터로 택할지. baseline에 따라 "개선율"의 의미가 달라진다(bring-up 대비는 쉽게 커 보이고, 벤더 라이브러리 대비는 KernelBench L1처럼 이기기 어렵다 — #8 M14).
 - `cpu_standin`(#5 A-7)에서의 후보(2026-10-02): ⒜ 라운드 0 bring-up 코드(코더가 처음 만든 동작하는 C 커널) ⒝ OpenBLAS `cblas_sgemm`(벤더 라이브러리 역할). **nntrainer 커널은 오너 결정으로 baseline에서 제외**(코드 참조만, #5 B-4 ④). (통합자 메모) SDPA에는 벤더 라이브러리 상당이 없어 ⒜ 또는 naive C 레퍼런스 구현이 후보.
 - 제안: baseline은 instance 파라미터로 두되 **두 값(bring-up 대비, 라이브러리 대비)을 모두 기록**해 개선율의 기준을 보고서에서 명시한다. 확정은 OD-1(objective)·A-4와 함께.
+- 하위 질문(UC-0 4단계, PR #10): 벤더 라이브러리 커널·참조 구현을 **온보딩 시(UC-0)** baseline 후보로 등록할지, instance 시작 시 지정할지.
 
 ## OD-29
 
