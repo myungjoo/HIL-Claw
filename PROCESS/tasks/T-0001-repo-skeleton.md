@@ -2,7 +2,7 @@
 id: T-0001
 title: Add repository-wide conventions and the empty tool package
 phase: P0
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-7, FR-10, "#9"]
 dependsOn: []
@@ -33,4 +33,12 @@ C-7 ① (WSL premise → POSIX across Linux/macOS/WSL) implies, as a derived and
 - (planner) P0-2 depends on this task's package directory.
 
 ## Result
-_(executor fills in: commit/PR, review rounds, follow-ups)_
+- PR #13 (code mode), squash-merged to main as e501cff ("T-0001: Add repository-wide conventions and the empty tool package (#13)"); branch commit 73b600e. Authored change: 3 files, +22 lines (.gitattributes, .editorconfig, hilclaw/__init__.py).
+- Review: 1 round by a reviewer agent, verdict Approve (0 Critical/High/Medium, 1 Low, 4 Nit); no code change was needed, so no re-review.
+- Renormalization: `git add --renormalize .` ran once and changed 0 files; all tracked text files were already stored with LF (`git ls-files --eol` shows no i/crlf).
+- Language: no language choice was needed (configuration files only). No dependency added. No tests (package root exposes no public function).
+- Local checks (CI not built): `git ls-files --eol` check and `python -c "import hilclaw; print(hilclaw.__version__)"` -> 0.0.0, passed before commit and again before merge.
+- Follow-ups:
+  - (P0-2 / P0.5-2) Test rule 4 has no exemption for `hilclaw/__init__.py`: either add an import/version test in P0-2 or have the P0.5-2 test-existence check exclude `__init__.py` explicitly (reviewer L1).
+  - (P0-2) Keep `__version__` single-sourced with `pyproject.toml` to avoid drift (reviewer N3).
+  - (later) `.editorconfig`: consider a `[*.md]` override for `trim_trailing_whitespace` if Markdown hard line breaks are ever used, and add indent rules for `*.sh` / `*.c` / `Makefile` when the first such file lands (reviewer N1, N2).
