@@ -4,7 +4,7 @@ HIL-Claw를 **만드는** 자동 개발 프로세스의 설계 문서이자, 매
 
 - 절차는 Assessment-Agent(이하 A-A)의 **개발 절차**를 참조했다. 프로세스 파일 배치(드라이버 문서·PLAN·상태 파일·task 파일·journal)도 절차의 일부로서 따랐으나, A-A의 SW 구조·스택·레이아웃은 가져오지 않는다(CLAUDE.md, #5 A-12).
 - 오너 결정: 실행 모델 = **로컬 Claude Code 세션의 `/loop`**(2026-10-03). cron/스케줄 호출과의 호환은 §1의 조건으로 보장한다.
-- **전제 커밋**: 본 문서는 CLAUDE.md의 "브랜치·merge 절차"(#5 A-13) 규칙 텍스트와, dev-item-address 4·9~13·15단계(문서 모드 분기·자율 merge)·dev-code-review(문서 모드 반환 경로)의 반영 커밋, 그리고 CLAUDE.md 테스트 규칙(§5, D12)을 전제한다. 전제 커밋은 2026-10-06에 main에 반영되었다. 권한 allowlist `.claude/settings.json`은 2026-10-05에 커밋되었다(D11).
+- **전제 커밋**: 본 문서는 CLAUDE.md의 "브랜치·merge 절차"(#5 A-13) 규칙 텍스트와, dev-item-address 9·10·15단계(문서 모드 분기·자율 merge)·dev-code-review(문서 모드 반환 경로)의 반영 커밋, 그리고 CLAUDE.md 테스트 규칙(§5, D12)을 전제한다. 그 커밋이 main에 들어가기 전에는 드라이버를 가동하지 않는다. 권한 allowlist `.claude/settings.json`은 2026-10-05에 커밋되었다(D11).
 - 표기: **⚑ 결정 요청**은 §11에 모아 두었고, 2026-10-03~05에 D1~D12가 **모두 답변**되어 본 문서는 확정값으로 기술한다(§11 결정 이력). 새 결정 요청이 생기면 같은 방식으로 ⚑와 §11 행을 추가하고, 답변 전에는 그 항목에 걸린 task를 실행하지 않는다.
 
 ---
@@ -72,7 +72,7 @@ PROCESS/
 6. **마무리** *(기계적)*: task `status`(`DONE`/`BLOCKED`), `PLAN.md` 체크박스, `STATE.counters`·`lastIteration`, `nextTask`(planner가 §6에서 후보 id를 함께 제시했으면), `currentTask: null`, journal 1~5줄, **lock 해제**를 한 커밋으로 push한다. **push 전(`git fetch` 후)과 rebase 후에 `origin/main`의 `STATE.lock.owner`를 확인한다 — 자신이 아니면(ttl 만료로 회수됨) push하지 않고 저장소 밖 로그에 `lock lost`를 남기고 종료한다.** push가 거부되면(main이 움직임) `fetch` + rebase 후 재시도(≤3회 — 기계적 상수, A-A 값); `PROCESS/STATE.json`에 충돌이 나면 수동 병합하지 않고 **파일 단위로 origin 쪽을 취한 뒤**, owner가 여전히 자신이면(예: D3 ④의 lock 연장 커밋, 오너의 직접 편집) **자기 wrap-up 변경(lock=null, currentTask=null, task status, counters — origin 값 기준으로 증분을 다시 계산 —, lastIteration, nextTask)을 다시 적용**하고 push한다 — 그렇지 않으면 lock이 걸린 채 push되어 ttl까지 교착한다. 그래도 실패하면 lock을 **유지한 채** 종료한다(ttl 회수에 맡김). executor가 BLOCKED로 반환해 새 HQ가 생기면 §3-4와 같은 순서다 — 이 상태 커밋의 push가 성공한 뒤 미러를 게시하고 URL은 다음 상태 커밋에서 채운다.
 7. **종료**: 1 task로 끝낸다. 운영자가 호출 프롬프트에 세션당 상한을 넣었다면(D1 — 드라이버 고유값이 아님) 그 도달 시 journal에 기록하고 오너에게 `/loop` 중단을 요청한다(고정 간격 `/loop`를 모델이 스스로 멈출 수 있는지는 미확인); 넣지 않았으면 생략.
 
-**BLOCKED 사유**: CLAUDE.md A-13의 6가지(새 외부 의존성 · 데이터 plane 스키마 변경(STATE/spec/eval/artifacts) · 리뷰 7라운드 초과 · CI 3연속 실패 · 요구 불명확/미결 발명 의심 · 보안 의심) + 드라이버 추가 4가지(D8 확정): 열린 PR과의 파일 충돌 위험 · Requirements OD 확정이 필요한 설계 선택(§9 — 오너 전용 OD이거나, task 범위에 그 OD의 ADR이 없는데 실행 중 드러난 설계 OD) · `task-timeout` · `branch-contention`(§3-5). BLOCKED는 §8에 따라 HQ로 기록하고 #5에 미러한다.
+**BLOCKED 사유**: CLAUDE.md A-13의 6가지(새 외부 의존성 · 데이터 plane 스키마 변경 · 리뷰 7라운드 초과 · CI 3연속 실패 · 요구 불명확/미결 발명 의심 · 보안 의심) + 드라이버 추가 4가지(D8 확정): 열린 PR과의 파일 충돌 위험 · Requirements OD 확정이 필요한 설계 선택(§9 — 오너 전용 OD이거나, task 범위에 그 OD의 ADR이 없는데 실행 중 드러난 설계 OD) · `task-timeout` · `branch-contention`(§3-5). BLOCKED는 §8에 따라 HQ로 기록하고 #5에 미러한다.
 
 ## 4. Lock (단일 실행 보장)
 
@@ -109,7 +109,7 @@ hq: []                            # 이 task를 막고 있는 HQ id 또는 §11�
 - **명명 규약**(task ↔ 산출물 연결 키): 브랜치 `claude/T-NNNN-<slug>`; PR 제목에 `T-NNNN` 포함; **executor 커밋**은 메시지 끝에 trailer `Task: T-NNNN`을 넣는다; **드라이버 상태 커밋**(§3-4·§3-6·lock 연장)은 subject를 `driver: <요약>`으로 시작하고 `Task:` trailer를 넣지 않는다. §3-3의 충돌 점검 제외와 §3-5의 landed 확인·재개가 이 키로 동작한다(상태 커밋이 landed로 오탐되지 않도록 trailer를 기준으로 한다). 코드 모드의 squash-merge는 브랜치 커밋의 trailer를 잃을 수 있으므로 **PR 본문 마지막 줄에도 `Task: T-NNNN`을 두고** `gh pr merge --squash --body`로 그 본문을 squash 메시지에 쓴다.
 - **크기 상한**(D4, 2026-10-03): 1 task ≤ 300 LOC 변경·≤ 5 파일 — **테스트 코드는 상한에서 제외**(테스트는 길어도 된다). 초과가 예상되면 planner가 쪼갠다; 실행 중 초과가 드러나면 executor는 **task 분할을 제안**하여 `Follow-ups`에 적고 현재 범위만 끝낸다.
 - 2층 코드 task는 `Result`에 선택한 언어와 이유 한 줄(CLAUDE.md 언어 정책).
-- **코드 task의 테스트 규칙**(D12, 2026-10-05; CLAUDE.md 상시 규칙·dev-item-address 4단계·dev-code-review에 미러됨): ① 2층 패키지(`hilclaw/`)의 **line coverage ≥ 80%, function coverage ≥ 80%** 유지(CI 게이트, PLAN P0.5-3) ② 테스트는 happy/error/branch에 더해 **negative case**(잘못된 입력·실패 경로)를 반드시 포함 ③ 건드린 모듈의 모든 public 함수에 테스트 ④ 새 모듈에는 대응 테스트 파일 필수(CI 테스트 존재 검사, P0.5-2) ⑤ **테스트 코드·테스트 스위트·테스트 스크립트 자체를 대상으로 하는 테스트는 추가하지 않는다** — CI 워크플로·hook 스크립트·드라이버 보조 스크립트도 같은 규칙(오너 전역 규칙). 명시 예외 두 개만 테스트 대상: 드라이버 `STATE.json` 스키마 검증기(P0-4)와 `gh pr merge` 가드 hook(P0.5-4).
+- **코드 task의 테스트 규칙**(D12, 2026-10-05; CLAUDE.md 상시 규칙·dev-item-address 4단계·dev-code-review에 미러 예정): ① 2층 패키지(`hilclaw/`)의 **line coverage ≥ 80%, function coverage ≥ 80%** 유지(CI 게이트, PLAN P0.5-3) ② 테스트는 happy/error/branch에 더해 **negative case**(잘못된 입력·실패 경로)를 반드시 포함 ③ 건드린 모듈의 모든 public 함수에 테스트 ④ 새 모듈에는 대응 테스트 파일 필수(CI 테스트 존재 검사, P0.5-2) ⑤ **테스트 코드·테스트 스위트·테스트 스크립트 자체를 대상으로 하는 테스트는 추가하지 않는다** — CI 워크플로·hook 스크립트·드라이버 보조 스크립트도 같은 규칙(오너 전역 규칙). 명시 예외 두 개만 테스트 대상: 드라이버 `STATE.json` 스키마 검증기(P0-4)와 `gh pr merge` 가드 hook(P0.5-4).
 - task 파일 본문은 **영어**로 쓴다(커밋·PR 본문으로 흘러가므로 CLAUDE.md의 GitHub 영어 규칙에 맞춤). 본 문서·PLAN은 다른 설계 문서와 같이 한국어.
 
 ## 6. Planner
