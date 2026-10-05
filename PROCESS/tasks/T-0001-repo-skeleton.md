@@ -2,7 +2,7 @@
 id: T-0001
 title: Add repository-wide conventions and the empty tool package
 phase: P0
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-7, FR-10, "#9"]
 dependsOn: []
