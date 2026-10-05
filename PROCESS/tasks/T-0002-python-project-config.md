@@ -2,7 +2,7 @@
 id: T-0002
 title: Add the Python project configuration and the first smoke test
 phase: P0
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: ["CLAUDE.md language policy", "#9", "#5 D12"]
 dependsOn: [T-0001]
@@ -70,3 +70,26 @@ Process:
 - (later, first need) Packaging: build backend / installability / entry points, likely together with OD-18 (MCP server vs CLI exposure).
 
 ## Result
+- PR #14 (code mode), squash-merged to main as 5860a7d ("T-0002: Add the Python project configuration and the first smoke test (#14)"); branch commit 3317d80. Change: 3 files, +39 lines (`pyproject.toml`, `.gitignore`, `tests/test_version.py`); 2 non-test files. `hilclaw/__init__.py` unchanged.
+- Review: 1 round by a reviewer agent, verdict Approve (0 Critical/High/Medium, 2 Low, 4 Nit; https://github.com/myungjoo/HIL-Claw/pull/14#issuecomment-5999553366). No finding asked for a change in this PR, nothing was changed, so no re-review.
+- Language: Python, because the gate being configured is the Python gate. No dependency beyond pytest and ruff.
+- Provisional choices (conventions of this task, not requirements):
+  - `requires-python = ">=3.11"`: lowest CPython that is upstream security-supported, obtainable on Linux/macOS/WSL and GitHub-hosted Linux runners, and ships `tomllib` (used by the drift guard). No upper cap.
+  - Dev tools as `[dependency-groups] dev` (PEP 735): installable without building the package. Lower bounds are the verified versions, `pytest>=9.0.3` and `ruff>=0.15.14` (verified on CPython 3.14.4); no pin, no lock file.
+  - No `[build-system]` / build backend / `src/` move: no P0 item needs an installable package; `pythonpath = ["."]` lets pytest import `hilclaw` from the root. `__version__` stays hard-coded; the test enforces consistency.
+  - `tests/test_version.py` at the repository root: provisional until P0.5-2.
+  - ruff: only `target-version = "py311"`; rules, line length and formatter at ruff defaults.
+- `.gitignore`: the preferred root `.gitignore` (4 cache patterns + `.venv/`) was written with the Write tool without a denial, so the `hilclaw/.gitignore` / `tests/.gitignore` fallback was not used.
+- Local verification (CI not built), run before the commit and again before the merge, same output both times:
+  - `python -m pytest` -> `2 passed in 0.01s` (also passes when started from `tests/`, and through the `pytest.exe` entry point, which is not on PATH on this PC)
+  - `python -m ruff check .` -> `All checks passed!`
+  - `python -m ruff format --check .` -> `2 files already formatted`
+  - `git ls-files --eol` -> `i/lf w/lf` for `.gitignore`, `pyproject.toml`, `tests/test_version.py`
+  - `git status --porcelain` after the runs -> no cache artifact
+- Drift-guard negative check (temporary, uncommitted edit, reverted): with `version = "0.0.1"` in `pyproject.toml`, `python -m pytest` -> `1 failed, 1 passed` (`FAILED tests/test_version.py::test_version_matches_pyproject - AssertionError`).
+- Follow-ups:
+  - (P0-3) Run CI on the lowest supported version (3.11) as well; the `>=3.11` floor was only verified on 3.14.4 (reviewer L1).
+  - (P0-3) `[dependency-groups]` needs pip >= 25.1 (`pip install --group dev`) or uv; the pip bundled with 3.11 is too old, so the CI step must upgrade pip or use uv (reviewer L2).
+  - (P0-3) When deciding pin/lock policy, consider relaxing the dev-tool lower bounds, which equal the newest verified versions (reviewer N1).
+  - (P0.5-2) `tests/` has no `__init__.py`, so test file basenames must be unique across directories; settle together with the mapping rule (reviewer N2).
+  - (owner, optional) `.gitignore` is not in the Edit allowlist of `.claude/settings.json`; the write succeeded in this session, but a stricter non-interactive session may be denied.

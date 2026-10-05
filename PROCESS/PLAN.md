@@ -7,7 +7,7 @@
 ## P0 — 저장소 골격 (bootstrap) — D9 확정(2026-10-05): 골격 task에는 "첫 커밋 전 OD-4/6/8 확정" 규칙을 적용하지 않음
 
 - [x] P0-1 저장소 공통 규칙: `.gitattributes`(LF 강제 — C-7 ①의 파생·#9), `.editorconfig`, 2층 패키지 디렉토리 생성(가칭 `hilclaw/`, 빈 패키지 + 버전) — code 모드 · coversReq: C-7, FR-10, #9
-- [ ] P0-2 Python 프로젝트 설정: `pyproject.toml`(최소 버전·pytest·ruff), 첫 smoke 테스트 1개 · coversReq: CLAUDE.md 언어 정책, #9
+- [x] P0-2 Python 프로젝트 설정: `pyproject.toml`(최소 버전·pytest·ruff), 첫 smoke 테스트 1개 · coversReq: CLAUDE.md 언어 정책, #9
 - [ ] P0-3 CI 스켈레톤(#9): PR과 main push에 Python 게이트(pytest+ruff) 1개, Linux 러너. required check는 두지 않음(D10 확정: 절차 게이트 + merge 가드 hook P0.5-4; #8 M24 해소) · coversReq: #9, #5 D10
 - [ ] P0-4 `PROCESS/STATE.json` JSON Schema(DRIVER §2 표를 기계화) + 검증기. 검증기 테스트는 **명시 요구됨**(D12 예외 ①) · coversReq: DRIVER §2·§4·§8, #5 D12
 - [ ] P0-5 README 갱신: 세 층 모델·개발 절차 포인터(PROCESS/, CLAUDE.md) — doc 모드 · coversReq: #5 A-12
