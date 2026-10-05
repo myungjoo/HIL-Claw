@@ -8,7 +8,7 @@ coversReq: [C-7, FR-10, "#9"]
 dependsOn: []
 touchesFiles: [.gitattributes, .editorconfig, hilclaw/__init__.py]
 estimatedSize: {loc: 30, files: 3}
-hq: [D9]   # DRIVER.md §11 D9 — skeleton tasks exempt from the "confirm OD-4/6/8 before the first commit" rule; must be answered first
+hq: []   # D9 confirmed 2026-10-05: skeleton tasks are exempt from the "confirm OD-4/6/8 before the first commit" rule
 ---
 ## Why
 C-7 ① (WSL premise → POSIX across Linux/macOS/WSL) implies, as a derived and still provisional reading recorded in C-7, that line endings must be LF everywhere; Issue #9 lists LF enforcement in the CI scope. Git on the owner's Windows checkout already emits "LF will be replaced by CRLF" warnings for the ARCHITECTURE files, so the rule must land before any code does. FR-10 / #5 A-12 define the tool layer as one package — this task creates its empty root so that later tasks (P0-2 pyproject, P1-1 tool contract) have a fixed location.
@@ -24,6 +24,7 @@ C-7 ① (WSL premise → POSIX across Linux/macOS/WSL) implies, as a derived and
 - `.editorconfig`: UTF-8, LF, final newline, trim trailing whitespace; 4-space indent for `*.py`, 2-space for `*.yml`/`*.yaml`/`*.json` (convention chosen by this task; ruff defaults are compatible).
 - `hilclaw/__init__.py` exists with `__version__ = "0.0.0"` and nothing else; no other Python code and no dependency added.
 - Commit body states that no language choice was needed (configuration files only).
+- No tests are required for this task: the package root exposes no public function (DRIVER §5 test rule ③ is vacuous here) and the coverage gate starts with P0-2.
 
 ## Out of Scope
 - `pyproject.toml`, pytest, ruff (P0-2). CI (P0-3). README update (P0-5). Any tool code (P1).
