@@ -1,25 +1,30 @@
 {
   "schema_version": 1,
   "phase": "P0",
-  "currentTask": "T-0003",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:f2cf66cc",
-    "acquiredAt": "2026-10-05T18:21:00Z",
-    "ttlMinutes": 180
-  },
-  "humanQuestions": [],
+  "lock": null,
+  "humanQuestions": [
+    {
+      "id": "HQ-0001",
+      "taskId": "T-0003",
+      "reason": "permission-denied",
+      "question": "The session's auto-mode permission classifier denied spawning the executor sub-agent for T-0003 with reason [Self-Approval] (the executor would implement, have its own reviewer sub-agent approve, and squash-merge the PR without a human). CLAUDE.md A-13 and the scheduled routine require this autonomous merge. Should the owner (a) allow it for the driver session (permission rule / permission mode for the scheduled task), or (b) change the procedure so the driver stops at an approved Draft PR and the owner merges?",
+      "askedAt": "2026-10-05T18:22:00Z",
+      "issueComment": null
+    }
+  ],
   "counters": {
-    "iterations": 2,
+    "iterations": 3,
     "tasksDone": 2,
-    "tasksBlocked": 0,
+    "tasksBlocked": 1,
     "reviewRoundsTotal": 2
   },
   "lastIteration": {
-    "at": "2026-10-05T17:24:42Z",
-    "owner": "AKIHA:a2dbc7af",
-    "taskId": "T-0002",
-    "outcome": "DONE"
+    "at": "2026-10-05T18:22:00Z",
+    "owner": "AKIHA:f2cf66cc",
+    "taskId": "T-0003",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
