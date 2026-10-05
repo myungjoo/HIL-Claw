@@ -1,0 +1,51 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "Bash(git checkout *)",
+      "Bash(git reset *)",
+      "Bash(git clean *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git rebase *)",
+      "Bash(git log *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git ls-files *)",
+      "Bash(git merge-base *)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh api *)",
+      "Bash(gh repo view *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(shellcheck *)",
+      "Bash(clang *)",
+      "Bash(uv *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Edit(PROCESS/**)",
+      "Edit(ARCHITECTURE/**)",
+      "Edit(hilclaw/**)",
+      "Edit(tests/**)",
+      "Edit(.github/**)",
+      "Edit(.claude/**)",
+      "Edit(CLAUDE.md)",
+      "Edit(README.md)",
+      "Edit(.gitattributes)",
+      "Edit(.editorconfig)",
+      "Edit(pyproject.toml)"
+    ],
+    "deny": [
+      "Edit(.claude/settings.json)",
+      "Edit(.claude/settings.local.json)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(rm -rf *)",
+      "Bash(gh repo delete *)"
+    ]
+  }
+}
