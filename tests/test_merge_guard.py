@@ -143,6 +143,13 @@ MERGES = [
     ("gh pr `\n  merge 17 `\n  --squash", [["17"]]),
     ("gh pr merge `\r\n17", [["17"]]),
     ("git log 17>log.txt; git status", []),
+    ("# check with `gh pr checks`\ngh pr merge 17 --squash", [["17"]]),
+    ("git status # see `x`\ngh pr merge 17", [["17"]]),
+    ("# use `gh`\r\ngh pr merge 17", [["17"]]),
+    ("# note \\\ngh pr merge 17 --squash", [["17"]]),
+    ("git status # C:\\tmp\\\ngh pr merge 17", [["17"]]),
+    ("gh pr mer\\\nge 17", [["17"]]),
+    ("echo `date`\ngh pr merge 17", [["17"]]),
 ]
 
 

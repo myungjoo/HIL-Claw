@@ -58,7 +58,7 @@ def merge_invocations(command):
 
 
 def _simple_commands(command):
-    text = command.replace("\r\n", "\n").replace("\\\n", "").replace("`\n", " ")
+    text = command.replace("\r\n", "\n")
     commands, word, quote, redirected, i = [[]], None, None, False, 0
 
     def end_word():
@@ -84,13 +84,17 @@ def _simple_commands(command):
         elif c in "'\"":
             quote, word = c, word or ""
         elif c == "\\":
-            word = (word or "") + text[i : i + 1]
+            if text[i : i + 1] != "\n":
+                word = (word or "") + text[i : i + 1]
             i += 1
         elif c == "#" and word is None:
             end = text.find("\n", i)
             i = len(text) if end < 0 else end
         elif c in " \t\r":
             end_word()
+        elif c == "`" and text[i : i + 1] == "\n":
+            end_word()
+            i += 1
         elif c in "<>" or (c == "&" and text[i : i + 1] == ">"):
             if c != "&" and word and text[: i - 1].split()[-1].isdigit():
                 if len(word) > 1:
