@@ -724,3 +724,41 @@ def test_error_message_stays_short_for_large_and_deep_values():
     with pytest.raises(InvalidRecordError, match="unknown field") as error:
         op_signature_key(changed(synthetic_op(), ["f" * 1_000_000], 1))
     assert len(str(error.value)) < 200
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ["toolchain", "synthetic_rt"],
+        ["host", "synthetic_memory"],
+        ["ext", "b"],
+        ["ext"],
+    ],
+)
+def test_removing_a_hw_key_field_member_gives_another_name(path):
+    record = synthetic_hw()
+    record["toolchain"]["synthetic_rt"] = "1"
+    record["host"]["synthetic_memory"] = 16
+    record["ext"] = {"a": 1, "b": 2}
+    assert (
+        hw_profile_key(changed(record, path, REMOVE)).name
+        != hw_profile_key(record).name
+    )
+
+
+@pytest.mark.parametrize("path", [["ext", "b"], ["ext"]])
+def test_removing_an_op_key_field_member_gives_another_name(path):
+    record = changed(synthetic_op(), ["ext"], {"a": 1, "b": 2})
+    other = op_signature_key(changed(record, path, REMOVE))
+    assert other.name != op_signature_key(record).name
+
+
+def test_str_subclass_as_field_name_is_rejected():
+    for function, record in (
+        (hw_profile_key, synthetic_hw()),
+        (op_signature_key, synthetic_op()),
+    ):
+        value = record.pop("schema_version")
+        record[Shouting("schema_version")] = value
+        with pytest.raises(InvalidRecordError, match="unknown field"):
+            function(record)

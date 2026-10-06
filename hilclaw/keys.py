@@ -219,7 +219,7 @@ def _fields(record, required):
     if not isinstance(record, Mapping):
         _fail("", "a map", record)
     for name in record:
-        if name not in required and name not in _OPTIONAL:
+        if type(name) is not str or name not in required + _OPTIONAL:
             raise InvalidRecordError(f"{reprlib.repr(name)}: unknown field")
     for name in required:
         if name not in record:
