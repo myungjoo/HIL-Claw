@@ -31,13 +31,13 @@ Conventions of this module, which ADR-0005 does not fix:
   Only what was committed is recovered, from the history of the data
   repository (ADR-0005 decision 10).
 - A stored file that is not a regular file (a symbolic link is not followed) or
-  not a valid file of version :data:`SCHEMA_VERSION` makes every function raise
-  :class:`CorruptArtifactsError`; nothing is written and nothing is repaired.
+  not a valid file of version :data:`SCHEMA_VERSION` makes every function that
+  reads it raise :class:`CorruptArtifactsError`; nothing is written or repaired.
   Reading another version is not attempted (OD-11).
 - :func:`add_record` creates ``runs/<run_id>/`` when it is missing (ADR-0004
   decision 1) and does not know whether the run exists. It asks only whether
-  the blob is in the store: comparing the size with the stored file and
-  re-hashing it are left to :func:`hilclaw.cas.verify_blob`.
+  the blob is in the store: the given size is recorded as it is, compared with
+  nothing, and the blob is not re-hashed (:func:`hilclaw.cas.verify_blob` does).
 
 What this module does not do: it stores and deletes no blob; it never removes
 or moves a record, never changes ``sha256``, ``size``, ``type`` or ``round`` of
