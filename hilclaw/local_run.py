@@ -75,8 +75,9 @@ def run(command, *, timeout_s, cwd=None, env=None):
     :class:`OSError` from starting the process (a file the system cannot
     execute, a ``cwd`` that does not exist), a :class:`ValueError` or
     :class:`TypeError` for an argument or ``env`` it cannot hand over, and an
-    :class:`OverflowError` for a finite ``timeout_s`` beyond what the platform
-    clock can count, which arrives after the process was started and killed.
+    :class:`OverflowError` for a finite ``timeout_s`` longer than the platform
+    can wait for (a bound that depends on the platform and can be a matter of
+    weeks), which arrives after the process was started and killed.
     """
     _check_timeout(timeout_s)
     resolved = _resolve(command)
