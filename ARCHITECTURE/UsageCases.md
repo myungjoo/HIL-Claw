@@ -22,11 +22,11 @@
 - **Round**: 한 번의 최적화 시도 1회. `기법 선택 → 후보 N개 코드 생성(위임) → compile → sim + correctness → (승격: 상위 k개) board + correctness → profile → evaluate → 저장 → 다음 결정`. N은 instance 파라미터(초기 UI 범위 1~5), k와 실행 방식은 미결(→ Requirements OD-29).
 - **후보(candidate)**: 한 라운드에서 생성된 커널 코드 1건. 라운드는 N개의 후보를 가지며, board에는 sim 상위 k개만 승격된다.
 - **Gate**: 루프 진행 중 사용자 승인/지시를 기다리는 정지 지점. autonomous = gate 0개, checkpoint = gate N개. gate 구성은 instance 파라미터다.
-- **hw_profile**: 성능 특성을 결정하는 HW/실행 환경 키(가속기 + 호스트 환경 튜플). 구체 필드 스키마는 미결(→ Requirements Open Decisions).
-- **op_signature**: 최적화 대상 연산의 식별 키. 구체 필드 스키마는 미결.
+- **hw_profile**: 성능 특성을 결정하는 HW/실행 환경 키(가속기 + 호스트 환경 튜플). 필드 스키마의 P1 최소분(정확 식별 필드·키 유도)은 [ADR-0001](decisions/ADR-0001-od4-key-schema.md), 유사도 매칭 등 나머지는 미결(→ Requirements OD-4).
+- **op_signature**: 최적화 대상 연산의 식별 키. 필드 스키마의 P1 최소분은 [ADR-0001](decisions/ADR-0001-od4-key-schema.md), 나머지는 미결(→ Requirements OD-4).
 - **데이터 plane**: run 산출물과 크로스런 지식(`runs/`, `db/`, `blobs/`)이 사는 저장 공간. **소스(도구) repo와 분리**된 별도 repo `HIL-Claw-data`(#5 A-1 확정)이며, 소스 쪽에서는 `hilclaw.config.json`으로 참조한다. 운영 모델 변경안(template 파생 등)은 미결 — Requirements OD-25.
 - **기법 카탈로그(technique catalog)**: 최적화 기법 후보군과 "언제 쓰면 좋은지(선택 기준)" 및 적용 지침·과거 통계를 담는 자료. Phase 1에서는 repo 내 문서로 시작.
-- **HW 출처(hw_source)**: hw_profile의 속성. **외부 타사 HW** 또는 **자사 개발 중 HW**(2026-09-03 확정). 출처별 특성은 예상치다(예: 외부 타사 = 문서·툴체인이 벤더 고정, 자사 개발 중 = 실리콘 부재 가능·문서/도구/revision 변동). 키 필드 = Requirements OD-4, 출처별 처리 = OD-26.
+- **HW 출처(hw_source)**: hw_profile의 속성. **외부 타사 HW** 또는 **자사 개발 중 HW**(2026-09-03 확정). 출처별 특성은 예상치다(예: 외부 타사 = 문서·툴체인이 벤더 고정, 자사 개발 중 = 실리콘 부재 가능·문서/도구/revision 변동). 키에 넣지 않는 필수 속성([ADR-0001](decisions/ADR-0001-od4-key-schema.md), Requirements OD-4), 출처별 처리 = OD-26.
 - **CAS(content-addressable storage)**: 바이너리 산출물을 해시로 식별해 git 밖에 두는 저장소(확정 결정 A-2: `HIL-Claw-data/blobs/sha256/`, git에는 `artifacts.json`의 해시 참조만).
 - **라운드 0 / bring-up**: instance 시작 시 해당 HW에서 *동작하는* 코드를 먼저 만들고 그 성능을 재는 라운드. 이 측정값이 **baseline**이다. baseline 선택지(bring-up 코드 / 벤더 라이브러리 / 기존 best) = Requirements OD-28.
 - **참고 입력(reference input)**: instance 시작 시 사용자가 선택적으로 주는 기존 사례·논문 링크. 참고사항일 뿐 Ground Truth·최종 목표가 아니다(FR-15).
@@ -58,8 +58,8 @@
   3. sim/board 도구 접근 정보(endpoint, quota, 예약 방식)를 등록한다(FR-10; 도구는 LAN 원격일 수 있음 — C-7). (실리콘 없는 자사 개발 중 HW의 sim-only 온보딩 허용 여부 = OD-26)
   4. (선택) 벤더 라이브러리 커널·참조 구현을 baseline 후보로 연결한다. (온보딩 시 등록 여부 = OD-28)
   5. (선택) 등록된 도구로 smoke test(간단한 커널 compile·실행)를 수행해 접근성을 확인한다. (포함 여부 = OD-26)
-- **대안 흐름** *(모두 미결 — 처리 규칙은 OD-26에서 확정)*
-  - **자사 개발 중 HW의 revision 변경**(실리콘/펌웨어/툴체인 갱신): 새 hw_profile 키로 등록할지 revision 필드로 구분할지(OD-4·OD-26), 기존 이력의 귀속 규칙(OD-26).
+- **대안 흐름** *(키 여부(ADR-0001) 외에는 모두 미결 — 처리 규칙은 OD-26에서 확정)*
+  - **자사 개발 중 HW의 revision 변경**(실리콘/펌웨어/툴체인 갱신): revision·toolchain 버전은 키 필드라 새 hw_profile 키가 된다(OD-4 확정분, [ADR-0001](decisions/ADR-0001-od4-key-schema.md)); 갱신 등록 절차와 기존 이력의 귀속 규칙은 미결(OD-26).
   - **외부 타사 HW의 문서 제한**: 접근 가능한 문서 소스만 등록. 문서 부재의 표시 방법(OD-26)과 코더 spec 반영 여부(OD-6).
 - **종료조건**: UC-1 선행조건 충족. hw_profile이 instance 시작 시 선택 가능.
 - **비고**: FR-14 ④. HW 출처 차원은 2026-09-03 사용자 확정. 출처별 특성(예: 자사 개발 중 HW는 문서·도구가 변동되어 온보딩이 갱신 흐름이 될 수 있음)은 예상이며 처리 방식은 OD-26. MVP의 첫 hw_profile은 `cpu_standin`(#5 A-7)이다.

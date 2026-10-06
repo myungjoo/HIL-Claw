@@ -3,7 +3,7 @@
 [Requirements.md](Requirements.md)의 Open Decisions 등록부에 등재된 각 항목의 **구체 제안·근거 본문**을 같은 번호 절에 둔다. 등록부에는 한 줄 요약만 남겨 표가 읽히도록 유지한다.
 
 - **정본 분담**: 항목의 **상태·논의 위치**는 등록부(Requirements.md)가 정본, **제안 본문**은 본 문서가 정본이다. 제안이 바뀌면 본 문서를, 상태가 바뀌면 등록부를 같은 커밋에서 갱신한다.
-- 제안은 결정이 아니다. 확정은 오너가 #4/#5에서 내리고, 등록부 상태가 `확정`으로 바뀐 뒤 본문(FR/NFR)에 반영된다.
+- 제안은 결정이 아니다. 확정은 오너가 #4/#5에서 내리거나 설계 수준 OD에 한해 [PROCESS/DRIVER.md](../PROCESS/DRIVER.md) §9의 경로(ADR + 리뷰어 Approve + 오너 통지)로 내리고, 등록부 상태가 `확정`으로 바뀐 뒤 본문(FR/NFR)에 반영된다.
 - 출처 표기: **#4** = 아키텍처 결정 스레드, **#5** = 사용자 입력 대기 목록, **#7** = 외부 조사(상설; `§n` = S-1 조사 본문 절, `보충 §2(n)` = S-1 보충 코멘트), **#8** = 모순 트래커, **(Bn)** = [reviews/2026-09-03](reviews/2026-09-03-StandardScenarios-LiteratureReview.md) 보강 제안.
 
 ---
@@ -31,8 +31,10 @@
 
 ## OD-4
 
-**hw_profile / op_signature 키 스키마** — #4 코멘트 · #7 §6.
+**hw_profile / op_signature 키 스키마** — #4 코멘트 · #7 §6. **P1 최소분 확정(2026-10-06, PROCESS/DRIVER.md §9)**: [ADR-0001](decisions/ADR-0001-od4-key-schema.md).
 
+- **채택분(ADR-0001)**: 아래 제안의 정확 식별층(hw: 칩 + 리비전 + 펌웨어·드라이버·툴체인 버전, op: 전체 인자튜플 + dtype/layout)에 용어집의 호스트 환경을 더한 것 — hw 키는 accelerator + revision + toolchain(구성요소별 버전) + host, op 키는 kind + 전체 shape(M 포함) + dtype + layout — 과 "정확 일치 = 히트"(P1은 정확 일치만 조회). hw_source는 키가 아닌 필수 속성으로, revision은 키 필드로 정했다. 키의 정규형·디렉토리 이름 유도·`schema_version`은 ADR이 새로 정했다.
+- **제안으로 남는 부분(미확정)**: 유사도 벡터층과 "최근접 = prior로만", 아래 *확장 고려(S10)*, op의 "정규화 IR 구조해시"(IR 부재 — OD-9), 첫 인스턴스의 layout 값(row-major는 통합자 가정 그대로).
 - 제안: **2층 구조**. 정확 식별층(op: 정규화 IR 구조해시 + 전체 인자튜플 + dtype/layout; hw: 칩 + 리비전 + **펌웨어·드라이버·툴체인 버전**) + 유사도 벡터층(FLOPs, 이동 바이트, arithmetic intensity, working set ÷ SRAM …). 정확 일치 = 캐시 히트, 최근접 = **prior로만**. TVM/TenSet 선례.
 - hw 식별층 필드 후보: **HW 출처(hw_source: 외부 타사 / 자사 개발 중)** 와 revision — 자사 개발 중 HW는 revision마다 성능 특성이 바뀌므로 이력 귀속 키가 필요(FR-14 ④, OD-26).
 - *확장 고려(S10)*: 재현 시 노이즈 범위를 넘는 차이가 나면 환경 변화(드라이버/펌웨어/호스트)를 새 hw_profile 키 후보로 표시.

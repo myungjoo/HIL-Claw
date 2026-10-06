@@ -81,14 +81,14 @@
 
 **등록 범위**: 본 표는 **미결 "결정"** 만 담는다. 결정이 아닌 **작업**(예: 부트스트랩 골격 작성)은 여기 넣지 않고 이슈에서 작업 항목으로 추적한다 — 섞으면 표가 진척 관리용으로 변질된다.
 
-**첫 커밋(P0 골격) 전에 확정해야 하는 항목**: OD-4 · OD-6 · OD-8. 이들의 사용자 입력(#5 A-1·A-2·B-4)은 2026-10-02 기준 모두 확보되었으므로 남은 것은 설계 확정(#4)이다.
+**첫 커밋(P0 골격) 전에 확정해야 하는 항목**: OD-4 · OD-6 · OD-8. 이들의 사용자 입력(#5 A-1·A-2·B-4)은 2026-10-02 기준 모두 확보되었으므로 남은 것은 설계 확정(#4)이다. OD-4의 P1 최소분은 2026-10-06에 [ADR-0001](decisions/ADR-0001-od4-key-schema.md)로 확정되었다(PROCESS/DRIVER.md §9 경로).
 
 | # | 미결 항목 | 관련 | 상태 | 논의 위치 · 제안 요약 |
 |---|---|---|---|---|
 | OD-1 | **Objective type 메뉴**의 최종 목록 및 각 type별 **best/improving 순서관계**(다목적: scalarization vs Pareto frontier, 제약형 feasibility 처리) | FR-2, D1 | 차단됨 | #5 A-4 — 제안: MVP는 "단일 목적 + 선택적 제약(메모리 상한)"만, 가중조합/Pareto는 후속. *확장 고려(B2)*: HW 이론 한계(roofline) 대비 달성률을 target·정지 어휘에 포함할지. [상세](OpenDecisionProposals.md#od-1) |
 | OD-2 | **Budget 어휘에 HW quota**(sim 시간/board 시간) 포함 여부 | FR-3, D3 | 제안됨 | #7 §6 — board-second를 1급 예산 축으로 포함 권고. [상세](OpenDecisionProposals.md#od-2) |
 | OD-3 | **Gate 후보 목록** + 모드별 기본 구성(autonomous에서도 강제되는 안전 gate 존재 여부) | FR-4, D4 | 차단됨 | #5 A-5 · #7 §6 — 제안: 비-설정형 최소 gate 4종. [상세](OpenDecisionProposals.md#od-3) |
-| OD-4 | **hw_profile / op_signature 키 필드 스키마** + 유사도 매칭(정확 일치 vs 최근접) 규칙. P1 디렉토리 명명에 즉시 필요. HW 출처(hw_source)·revision은 hw 식별층의 필드 후보. | FR-7·13·14, D10/D11 | 제안됨 | #4 코멘트 · #7 §6 — 제안: 2층 구조(정확 식별층 + 유사도 벡터층). 첫 구체 인스턴스 = `cpu_standin` × Llama 3.2 1B GEMM/SDPA(#5 B-4). [상세](OpenDecisionProposals.md#od-4) |
+| OD-4 | **hw_profile / op_signature 키 필드 스키마** + 유사도 매칭(정확 일치 vs 최근접) 규칙. P1 디렉토리 명명에 즉시 필요. HW 출처(hw_source)·revision의 키 취급 포함. | FR-7·13·14, D10/D11 | **확정** (P1 최소분, 2026-10-06, PROCESS/DRIVER.md §9 — ADR + 리뷰어 Approve, 오너 통지 후 7일 이의 기간) | **정확 식별층**: 두 키의 필드, 정규형, 디렉토리 이름 유도, P1 매칭 = 정확 일치만(M은 키에 포함, hw_source는 키가 아닌 속성). 반영: [ADR-0001](decisions/ADR-0001-od4-key-schema.md). 잔여(제안 유지): 유사도 벡터층·최근접 매칭(prior로만), S10 확장 고려. 첫 인스턴스 = `cpu_standin` × Llama 3.2 1B GEMM/SDPA(#5 B-4) — layout 등 출처 없는 값은 미정. #4 코멘트 · #7 §6 · [상세](OpenDecisionProposals.md#od-4) |
 | OD-5 | **정확도-성능 trade-off 정책**: 정확도를 제약(floor)으로 둘지 목적의 한 축으로 둘지 | FR-9 | **확정** (2026-10-01, #5 A-6) | **hard floor**; tolerance = 사용자 instance 파라미터. 반영: FR-9 (`cc5bf4d`, PR #6). 잔여: tolerance 어휘(per-dtype rtol/atol, downstream 지표 임계 등)는 #5 B-7 답변 후 확정. [상세](OpenDecisionProposals.md#od-5) |
 | OD-6 | **codegen spec 페이로드** 정의(커널 명세, hw_profile, 직전 라운드 프로파일/에러, 적용 기법 지침) + repair 코더 **resume vs 재기동** | FR-5, D7/쟁점4 | 논의중 | #4 §4 첫 항목 · #7 — spec = coder-driver 계약의 부분집합, 대조적(top-k/bottom-k) 프로파일 동봉. spec은 **후보 식별(S8, MVP)** 을 수용. *확장 고려*: (B4) 프로파일 요약 구조, (B5) HW 문서 발췌·예시 커널 동봉(코더 직접 검색 금지 여부 = OD-12에 연동), (S7) 금지 패턴. 첫 페이로드 예시 = #5 B-4의 GEMM spec. [상세](OpenDecisionProposals.md#od-6) |
 | OD-7 | **기법 통계 환류 경로**: 정적 Skill 트리거에 동적 크로스런 통계를 피드백하는 구체 메커니즘(P1 랭킹 신호 정의 포함) | FR-7·8, D5/D6/쟁점1·2 | 제안됨 | #4 코멘트 · #7 §6 — 제안: contextual bandit; 카탈로그 진입 기준 흡수. *확장 고려(B6)*: 변환 전/후 코드 쌍 저장. [상세](OpenDecisionProposals.md#od-7) |
