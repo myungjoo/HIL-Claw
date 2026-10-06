@@ -1,0 +1,145 @@
+---
+id: T-0021
+title: Write ADR-0004 closing the P1 minimum of OD-8 (directory tree of the data plane with the candidate dimension) and reflect it in the ARCHITECTURE documents
+phase: P1
+status: IN_PROGRESS
+commitMode: doc
+coversReq: [OD-8, FR-13, FR-6, NFR-1, NFR-2, C-3, "#5 A-1", "#5 A-2", "#5 D6"]
+dependsOn: [T-0015, T-0017]
+touchesFiles: [ARCHITECTURE/decisions/ADR-0004-od8-data-plane-layout.md, ARCHITECTURE/Requirements.md, ARCHITECTURE/OpenDecisionProposals.md, ARCHITECTURE/StandardScenarios.md, ARCHITECTURE/UsageCases.md]
+estimatedSize: {loc: 210, files: 5}   # one new record of about 130-170 lines, the rest are in-place edits of a few lines each
+hq: []   # OD-8 is a design-level OD (DRIVER §9: not among #5 A/B items, C-6, OD-25, OD-3; PLAN P1-8 marks it "OD-8 종결 필요(§9 ADR 경로)")
+---
+## Why
+FR-13 says that in P1 the directory tree of the data plane (the separate repository `HIL-Claw-data`, #5 A-1) stands in for the database, mirrors the future DB schema and has the candidate multiplicity of a round (FR-1's N, S8) as a first-class dimension. Which directories and files that tree has is **OD-8**. Requirements names OD-4, OD-6 and OD-8 as the three decisions to close before the layer-2 code that depends on them; OD-4 and OD-6 have their P1 minimum closed (ADR-0001, ADR-0002), OD-8 is the last one. The register row and the proposal text both state that the owner inputs of OD-8 are all given (#5 A-1, A-2, B-4; #5 body: "the first commit is blocked by A-1, A-2, B-4" — all answered).
+
+Several things already wait for it:
+- ADR-0001: where the full record of a key (`hw_profile`, `op_signature`) is stored and under which file name.
+- ADR-0002: where a spec file lives. The draft of #4 has one `rounds/<N>/spec.json` per round, which cannot hold one kept spec per (round, candidate, attempt); the place of the coder's output; `instance.json`.
+- PLAN P1-8 (runtime STATE / instance / events schemas) and the rest of P1-6 (`artifacts.json`: its place and its "producing round" field). `hilclaw/keys.py` (T-0016) derives directory names but stores nothing; `hilclaw/cas.py` (T-0008) writes blobs but no record.
+
+Owner decision D6 (2026-10-05, DRIVER §9) lets the driver close **design-level** ODs by a decision record (ADR) + a context-isolated reviewer's Approve + an owner notice with a 7-day objection window. This task writes that record for the **P1 minimum of OD-8 — the directory tree only** — and keeps the ARCHITECTURE documents consistent with it. It is a prerequisite slice of PLAN P1-8 and ticks **no PLAN checkbox**. The schema files and validators are later code tasks.
+
+Why this item now (planner's judgement, DRIVER §6, 2026-10-07): phase P0.5 has no actionable item (P0.5-3 is BLOCKED on HQ-0003, unanswered; the rest of P0.5-1 waits for P1-2 / P1-3; the rest of P0.5-4 is the owner's hook registration). In P1: P1-3 is marked "오너 확정 필요" and is skipped, and with it P1-4, the rest of P1-2, and P1-5 slice 3; P1-1 needs request / result shapes hanging on OD-10 / 13 / 18 / 23; the rest of P1-6 needs OD-8. P1-8 is marked for a §9 closure of OD-8, so the ADR is the first slice of it.
+
+Planner's judgement that this slice is design-level and hangs on no owner item — the reviewer is asked to re-check it:
+- DRIVER §9 lists the owner-only items exhaustively (#5 A/B items, C-6, OD-25, OD-3). OD-8 is none of them; its status is `제안됨 (후보 2건)`, not `차단됨`.
+- Earlier planner notes skipped P1-8 because the register row says "OD-3·OD-4·C-3 결과 반영". The same row says "OD-3 결과는 별도 입력": the gate list is not an input of the **tree**. Gates appear in the draft only as fields (`gates` in `instance.json`, `gate_status` in `STATE.json`), and fields are outside this task. If the executor finds that a directory or file of the tree cannot be placed without knowing the gate list, that is BLOCKED, not a gap to fill.
+- The **isolation means** (candidate ① "layout = permission model" by OS boundary, versus candidate ② "scratch copy + diff import") rests on facts only the owner has: container availability is unconfirmed (OD-14 text) and the out-of-tree build support of the target toolchain is #5 B-1 (unanswered). That choice is therefore **not** in this task (see "must not decide").
+- Things next to it that must stay untouched: OD-25 (physical form and governance of the data plane; the fork / PR promotion model), OD-3, #5 B-8 (datasets), #5 A-3 (durability boundary = local commit; `blob.push` is never called automatically — a fixed input).
+
+A-13 check (planner's reading): a directory tree is not one of the four data-plane schemas (STATE / spec / eval / artifacts) and no schema file, code or dependency is added; the record is the first definition along the D6 route, as ADR-0002 was. Ask the reviewer; if the reviewer reads it differently, return BLOCKED with the question.
+
+Known risk, accepted: ADR-0001 and ADR-0002 are inside their objection windows (until 2026-10-13) and ADR-0003 inside its own (until 2026-10-14). This record uses the directory-name derivation of ADR-0001 and the identification tuple of ADR-0002; its Status must say that it is revisited if either is reverted (T-0020 review finding).
+
+## Required Reading
+- PROCESS/DRIVER.md §3-5 (executor procedure, naming `T-NNNN`, resume rule, 2h30m limit) and §5 (task format, size cap D4, commit trailers) — mandatory for every task (§6)
+- PROCESS/DRIVER.md §0 last bullet, §1-5 (Bypass permissions run mode; forbidden actions held by discipline; "a denied or failed tool call is BLOCKED, never worked around"), §2 (the last bullet: the driver's `PROCESS/STATE.json` is not the runtime `STATE.json`), §3 "BLOCKED 사유" paragraph, §8 (the driver tail on #5 comments), **§9 (the whole section)**, §11 rows D6, D7, D9
+- CLAUDE.md — 상시 규칙: "문서 커버리지 재검사", "미결은 발명하지 않는다", **"세션 진입 점검"** (before the first edit: `gh pr list`, issues #4, #5, #7, #8), "세 층 모델", "브랜치·merge 절차" (document mode and the BLOCKED reasons), "코멘트 최소화"; "현재 프로젝트 상태 주의사항" (바이너리 금지, MVP 범위)
+- .claude/skills/dev-item-address/SKILL.md — the procedure (document mode: steps 2, 7, 9-12, 15); .claude/skills/dev-code-review/SKILL.md — what the reviewer checks (in particular "no invented decisions")
+- ARCHITECTURE/decisions/ADR-0001-od4-key-schema.md — the closing **"Record format"** section (this record must follow it), the Status section as a model, the directory-name derivation, "Reading a key back", and the Boundaries bullet "OD-8"
+- ARCHITECTURE/decisions/ADR-0002-od6-codegen-spec.md — Status, the `id` rows (`run_id`, `round`, `candidate`, `attempt`), the repair rule (a new spec per attempt; every spec is kept), `feedback` refs to earlier sources, `task.build` ("the settings actually used are recorded outside the spec"), Consequences (the two bullets naming OD-8) and the Boundaries bullets "OD-8" and "Values of the first GEMM that no source gives"
+- ARCHITECTURE/decisions/ADR-0003-od16-harness-calibration.md — decision 5 (calibration kernels never enter the data plane) and the Boundaries bullet naming OD-8
+- PROCESS/tasks/T-0020-adr-od16-harness-calibration.md, T-0017-adr-od6-codegen-spec.md and T-0015-adr-od4-key-schema.md — `## Result` of each (how the three ADRs landed: register precedents, review findings, notice text)
+- PROCESS/PLAN.md — items P1-1, P1-5, P1-6, P1-7, P1-8, P2-1..P2-5
+- ARCHITECTURE/Requirements.md — the glossary entries for run / Loop instance, round, candidate, 데이터 plane; rows FR-1, FR-5, FR-6, FR-7, FR-9, FR-10, FR-11, **FR-13**, NFR-1, NFR-2, NFR-4, NFR-6, NFR-7, C-2, **C-3**, C-7; the whole "Open Decisions" preamble (status vocabulary, update rule) and the sentence "첫 커밋(P0 골격) 전에 확정해야 하는 항목"; register rows **OD-8**, OD-3, OD-4, OD-6, OD-11, OD-14, OD-16, OD-17, OD-18, OD-20, OD-21, OD-23, OD-25, OD-29; the "번호 이력" paragraph under the table
+- ARCHITECTURE/OpenDecisionProposals.md — the header (lines 1-9) and sections **OD-8** (all bullets), OD-4, OD-6 (the "하위 질문" bullet), OD-14, OD-16 (principle, threat A, "확정분 — 하네스 단일 단위"), OD-17, OD-20, OD-25
+- ARCHITECTURE/UsageCases.md and ARCHITECTURE/StandardScenarios.md — every place that names `runs/`, `db/`, `rounds/`, `STATE.json`, `instance.json`, `events.ndjson`, `artifacts.json` or cites OD-8 (search for them); in StandardScenarios also "계층", "검사 규칙", S8 (all steps) and "검사 결과" (row S8; the heading and the history paragraph)
+- Issue #4 (`gh issue view 4 --repo myungjoo/HIL-Claw --json body,comments`) — body §1, §2a-§2e, §3b, §3c, the section "합의 레이아웃 (현재안)" and §4; comments 5138366881 (§1 agent table with what each agent writes, §2 the five data layers, §3), 5138931194 (the two confirmations), 5139876430 (candidate ① registered; the owner premises on reads)
+- Issue #5 comments (owner inputs; fixed): A-1 `gh api repos/myungjoo/HIL-Claw/issues/comments/5046307826 --jq .body` (details 1-3: `runs/` + `db/` + `blobs/` not mixed at the top level; the source commit hash in `instance.json`; promotion as one atomic commit); A-2 `.../comments/5495860612`; A-3 `.../comments/5537233759`; B-4 `.../comments/5944412285`; B-6 `.../comments/5944087839`; A-12 `.../comments/5946779596`; D6 `.../comments/5986348506`; D7 `.../comments/5996366069` (what the data repository contains today). Also the issue body items A-5, B-1, B-8 (unanswered)
+- The data repository as it is: `gh api "repos/myungjoo/HIL-Claw-data/git/trees/HEAD?recursive=1" --jq '.tree[].path'` and its README (`gh api repos/myungjoo/HIL-Claw-data/readme --jq .content | base64 -d`). **Read only**: this task changes nothing in that repository
+- `hilclaw/keys.py` (module docstring and the public functions that derive directory names), `hilclaw/cas.py` (`blob_path`), `hilclaw/config.py` and `hilclaw.config.json` — existing code the tree must not contradict. Not edited
+- Issue #8 — for the session-entry check, and the entries M4, M7 and any other that concerns the layout or `STATE.json`
+
+## Acceptance Criteria
+What is **fixed** and must be taken as input, not re-decided:
+- #5 A-1: one separate repository `HIL-Claw-data` holding `runs/`, `db/` and `blobs/` (metadata), never mixed at the top level, so that a directory can later be promoted to a repository; `instance.json` records the source commit hash; the per-round `runs/` → `db/` promotion is one commit. The repository exists with these three directories (D7).
+- #4 §2a-§2c: two trees that are never merged (`runs/<run_id>/` = execution journal; `db/<hw_profile_key>/<op_signature>/` = cross-run knowledge); owner and project are metadata fields, not path levels; `run_id` is the instance id; round directories are zero-padded; no full copy of artefacts per turn. #4 §1: one small `STATE.json` is the only entry point; no whole-directory scan. #4 §3b: an intra-round `phase` marker and an append-only `events.ndjson`.
+- C-3 / #5 A-2: binaries at `blobs/sha256/<hh>/<hash>` outside git; git holds `artifacts.json` records with hash, size, type, producing round, retention class.
+- #5 A-3: the durability boundary is the local commit.
+- FR-13 / OD-21 / OD-8 "MVP 요구": a candidate dimension below the round (`rounds/<N>/candidates/<c>/` "or equivalent").
+- ADR-0001: the two key directory names and their derivation; the full key record must be stored with the data. ADR-0002: a spec is identified by (`run_id`, `round`, `candidate`, `attempt`), every spec is kept, earlier sources are named by ref.
+- OD-16 confirmed parts: the harness lives in the tool package, not in the data plane; runtime seeds and input values do not exist as files; reads are not restricted.
+- The "합의 레이아웃 (현재안)" of #4 is a **draft** that predates the candidate dimension (OD-21), the attempt dimension (ADR-0002) and the CAS decision. Its file names are proposals; this record may keep, move or rename them, with a reason.
+
+What the ADR **decides** (the P1 minimum of OD-8: the tree). The content of each decision is the executor's to work out and justify from the fixed inputs and the registered proposals; the reviewer's Approve is what confirms it. For every point give the choice, the alternatives considered and one or two lines of reason:
+1. **Top level and scope**: the top-level directories of the data repository and what may live outside them; that the record fixes paths and file names and, for each file, one line on what it is for and who is meant to write it — not its fields.
+2. **The run tree** `runs/<run_id>/`: the files directly under a run (the entry point, the immutable instance record, the event log) and the round directories (zero-pad width, the number of the first round — FR-1 has a round 0 for bring-up and baseline).
+3. **The candidate and attempt dimensions**: the path of a candidate below a round and of an attempt below a candidate (or the equivalent), the form of both numbers on disk, and how the tuple of ADR-0002 maps to a path so that a spec is found from its tuple without a scan. Say which artefacts are per round, per candidate and per attempt, at least for: the decision log (FR-11), the spec, the coder's output, the build record (incl. the settings actually used — the OD-6 sub-question ② names OD-8 for its place), the sim, board, profile and eval results, and `artifacts.json`. Where the per-artefact granularity depends on an open OD (OD-23, OD-29, OD-20), fix only the directory and leave the file to that OD.
+4. **Single writer**: whether the round / candidate directories are divided by owner as candidate ① item 1 proposes (`decision/`, `coder/`, `measure/`, `eval/` or other names), as a property of the **paths** only. Both isolation candidates need one write root per actor, so this can be decided without choosing between them; if you find it cannot, leave it open and say why.
+5. **The knowledge tree** `db/<hw_profile_key>/<op_signature>/`: where the full key records of ADR-0001 are stored and under which file names, and the place of the per-key files of the #4 draft (`best.json`, `technique_stats.json`) — names only; their content is OD-7 / OD-20.
+6. **Blob records**: where `artifacts.json` lives (per run, per round, per candidate or other) given that C-3 wants the producing round in each record, and that `blobs/` holds nothing in git but the store's placeholder.
+7. **What never is a file in the data plane**: seeds and verification input values (OD-16), the harness and calibration kernels (ADR-0003), secrets; and the status of scratch / temporary / build-cache directories (inside the tree and ignored, or outside the repository) — only as far as it can be said without choosing the isolation means.
+8. **`run_id`**: either its form (character set, how uniqueness and ordering are obtained) or an explicit statement that only its constraints as a directory name are fixed here (portable on POSIX and WSL — C-7; no path separator) and the form stays open. ADR-0002 lists the form as given by no source: do not present a chosen form as a requirement, and prefer the constraint-only answer unless the tree cannot be written without a form.
+9. **Stability and versioning**: how a later change of the tree is recognised (a layout version recorded where; relation to `schema_version` stamps is OD-11 — refer, do not decide), and that the tree mirrors a future DB schema (FR-13, NFR-6): one line per level on what it would become.
+10. **Limits**: what the tree does not guarantee by itself (no enforcement of single-writer, no isolation, no concurrency control).
+
+What the ADR must **not** decide — name each as a boundary in the record, with the place where it is decided:
+- **The isolation means**: candidate ① versus candidate ② of OD-8, read-only mounts, containers, scratch copy and diff import, per-agent tool allowlists, `PreToolUse` path checks (rest of OD-8, OD-14, OD-18, OD-23; facts from the owner: container availability, #5 B-1). The register row keeps both candidates.
+- Owner items: OD-3 / #5 A-5 (gates and any gate record), OD-25 (physical form, fork / branch model, promotion PR policy, what is shared), #5 B-8 (datasets and where they would live), #5 B-1 / B-2 / B-3, C-6, #5 A-8.
+- **Fields and schemas** of `STATE.json`, `instance.json`, `events.ndjson`, `artifacts.json`, the result files and the `db/` files (PLAN P1-8, P1-6 and their code tasks; OD-17, OD-20, OD-7, OD-11); whether one instance covers several values of M (the `instance.json` schema); the lock.
+- Retention, GC, `gc_at` and the meaning of a local `blob.push` / `blob.fetch` (C-3; #5 B-2).
+- The agent roster and each agent's files beyond the directory it writes to (OD-23); parallel or sequential candidates and promotion (OD-29, OD-15); measurement files' content (OD-13); the commit and push cadence beyond #5 A-3.
+- The values of the first GEMM, the harness design (P1-3), the FR-10 contract (P1-1).
+- Any code, test, schema file, CI change, or any change to the `HIL-Claw-data` repository (its README and `.gitkeep` files are a follow-up).
+
+If a point of 1-10 cannot be written without one of the excluded items, do not fill the gap: narrow the point and say so, or return BLOCKED ("design choice needing an owner-only decision" or "requirement unclear") with the exact question (DRIVER §3, §9).
+
+The record (`ARCHITECTURE/decisions/ADR-0004-od8-data-plane-layout.md`, new):
+- Follow the "Record format" section of ADR-0001: sections Status, Context, Decision, Alternatives considered, Consequences, Boundaries (not decided here), References, in this order; one closure per record; written in English. Refer to ADR-0001 for the format in one line.
+- **Status** says: accepted under DRIVER §9 (D6) by reviewer approval, the acceptance date, that it closes the P1 minimum of OD-8 (the directory tree) and what stays open (the isolation means first of all), which earlier records it depends on, and that the owner may object on #5 within 7 days of the notice, in which case a reverting task is created. Do not write that the owner confirmed it.
+- One annotated tree diagram in a code block (placeholders in `<...>`), and one table "path — purpose — written by — decided by / open in". Length about 130-170 lines; enough for the authors of the P1-8 and P1-6 code tasks to place every file without reading the issues again.
+- **Consequences** list what follows for existing code and documents without changing them: `hilclaw/keys.py` and `hilclaw/cas.py` (consistent, or what a follow-up must add), the `HIL-Claw-data` README, the #4 draft layout (superseded where the record differs — the issue body is not edited).
+- **References** cite sources by stable handle: Requirements IDs, issue comment URLs, the proposal section, PLAN items, ADR-0001 / 0002 / 0003.
+
+Edits of existing documents (same commit as the record — register update rule):
+- `ARCHITECTURE/Requirements.md`: the **OD-8** row and, if needed, the sentence "첫 커밋(P0 골격) 전에 확정해야 하는 항목" (extend it as it was extended for ADR-0001 and ADR-0002). Keep the row to one line. Two precedents exist: status `확정` with the open rest as "잔여" (OD-4, OD-6), or the status kept and a "**확정분**" note added (OD-11, OD-16). The row's title is the layout, but its discussion column carries the two isolation candidates, which this record leaves open: choose the precedent you can defend and say in the commit body which and why; either way the two candidates must stay visibly open in the row. Do not renumber, add or remove any OD row. Do not edit the body of FR-13 or any other FR / NFR / C row: if the record makes a sentence of FR-13 more precise, name the proposed wording as a follow-up (the last bullet of #4 §4 asks for it, and it is the integrator's or a later task's edit).
+- `ARCHITECTURE/OpenDecisionProposals.md`, section **OD-8**: a heading note and an "채택분(ADR-0004)" / "제안으로 남는 부분" pair in the style of the OD-4 and OD-6 sections; add any sub-question the record raises; delete no proposal text. In sections OD-4 and OD-6, only if a sentence saying "… is OD-8" is now answered: add the pointer, change nothing else.
+- `ARCHITECTURE/StandardScenarios.md`: re-run the coverage check (CLAUDE.md "문서 커버리지 재검사") with the document's own rules for every step that cites OD-8 or names a data-plane path (S8 step 4 and whatever the search finds), and update "검사 결과": heading date / note, one new dated passage in the history paragraph, and the affected rows. State the outcome in the commit body even if no verdict changes.
+- `ARCHITECTURE/UsageCases.md`: only if a sentence that names a data-plane path or cites OD-8 has become false or now has a more precise pointer. If nothing needs to change, do not touch the file and say so in `## Result`.
+- In-place edits of these documents keep the language of the text around them (Korean), as in T-0015 / T-0017 / T-0020.
+- No edit to ADR-0001, ADR-0002, ADR-0003, `CLAUDE.md`, `README.md`, `PROCESS/DRIVER.md`, `PROCESS/PLAN.md`, the skills, the agents, `hilclaw.config.json`, or any file under `hilclaw/`, `tests/`, `.github/`.
+
+Tests:
+- None. Document mode: no code changes, so CLAUDE.md test rules ①-④ do not apply. The document checks below replace steps 4, 6 and 8 of dev-item-address.
+
+Document checks (record the outcome of each in `## Result`):
+- Session-entry check done before the first edit: `gh pr list --repo myungjoo/HIL-Claw --state open` (the planner saw none on 2026-10-07) and issues #4, #5, #7, #8 read for anything newer than this task file about OD-8, the layout, isolation or the data repository (the planner found nothing: the latest #5 comment is the ADR-0003 notice 6020366439; the latest #4 comment is 5139876430 of 2026-07-31; HQ-0003 is unanswered and unrelated). If an open PR edits the OD register or the OD-8 sections, stop and return BLOCKED ("open PR conflict"). If the owner has meanwhile answered A-5, B-1 or B-8 or objected to ADR-0001 / ADR-0002, take that as a fixed input and say so in `## Result`.
+- Every relative link in the new record and in the edited lines resolves to an existing file or anchor (`ARCHITECTURE/decisions/` is one level below `ARCHITECTURE/`).
+- OD numbers: `git diff origin/main -- ARCHITECTURE/Requirements.md` touches the OD-8 row and at most the "첫 커밋" sentence; the count (29) and numbering of register rows are unchanged.
+- Nothing in the record states an excluded item as decided: no isolation means is chosen, no field of any JSON file is defined, no gate, dataset or governance rule appears as fixed, and a `run_id` form (if any) is marked as the record's own provisional convention.
+- The tree is consistent with #5 A-1 (three top-level directories, not mixed), C-3 (blob path verbatim), ADR-0001 (directory names as `hilclaw/keys.py` derives them), ADR-0002 (one kept spec per tuple), #4 §1 (single entry point, no scan needed to find a named artefact) and the data repository as it exists today.
+- `git ls-files --eol` shows `i/lf` for the changed files; `git diff origin/main --stat` lists only files in `touchesFiles` (four or five).
+- CI is not a gate for document mode, but the push to `main` triggers the workflow: check the `push` run with `gh api "repos/myungjoo/HIL-Claw/actions/runs?branch=main&event=push&per_page=1"` and record its conclusion; if it is not `success`, do not fix forward — record it and say so in the returned summary.
+
+Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
+- Before anything else, the §3-5 landed check: `git log origin/main --grep='^Task: T-0021'` and `gh pr list --repo myungjoo/HIL-Claw --search T-0021 --state all`.
+- Branch `claude/T-0021-adr-od8-data-plane-layout` from `origin/main`. Commit and push the branch; **no PR**.
+- Reviewer cycle: spawn a fresh-context `dev-reviewer` sub-agent, give it the branch name (review target = diff against `origin/main`) and this task file's path, and receive the verdict and findings as its return value. Ask it explicitly to check (a) the planner's judgement in `## Why` that the tree is design-level and hangs on neither OD-3 nor another owner item, and the A-13 reading; (b) that no excluded item is decided — in particular that neither isolation candidate is chosen or made impossible by the tree, and that no JSON field is defined; (c) that each decision follows from a cited source or is argued as a design choice with alternatives; (d) the register and coverage-check updates. Address findings and re-request review until Approve with nothing trivially fixable left; more than 7 rounds is BLOCKED. A result starting with `SECURITY` is BLOCKED. If you cannot spawn a reviewer, return BLOCKED — do not self-review.
+- Landing: `git fetch origin`, rebase the branch onto `origin/main`, then squash to **one** commit (`git reset --soft origin/main` + commit — only after the rebase). `git show --stat HEAD` must list only files in `touchesFiles`. If the rebase needed conflict resolution that changed content, go back to review.
+- Commit message: English; subject starts with `T-0021:`; the body gives the decisions 1-10 in one line each, the boundaries, which register precedent was followed and the coverage re-check outcome; it ends with the trailers, in this order: `Reviewed-by: reviewer agent (N rounds, Approve)`, `Task: T-0021`, then any attribution trailer your session requires.
+- Push with `git push origin HEAD:main` (fast-forward). If rejected because `main` moved, fetch, rebase and retry (at most 3 times); never `git push --force*`, and never push the rewritten branch back to its remote branch. Delete the remote branch and the local branch in **separate** commands and only after the push to `main` is confirmed (T-0012 incident), then check out `main` at `origin/main`.
+- **Owner notice (DRIVER §9)**: do not post it yourself — the driver is the notifier (DRIVER §7, §8). Put the ready-to-post English text in `## Result`: what was decided in six lines or fewer with the tree in a short code block, the record's path and commit, the boundaries left open (first: the isolation means with its two candidates and the two owner facts it waits for; fields and schemas; gates; governance), the A-13 reading, the dependence on ADR-0001 / ADR-0002, and the date on which the 7-day window ends. The driver posts it on #5 with its tail.
+- `## Result`: fill it in **after** the push, on `main`, and leave that edit to this task file **uncommitted** — the driver commits it in its wrap-up (DRIVER §3-6). The landed commit must not contain the task file. Record: commit hash, review rounds and findings with how each was handled, the decisions with their reasons, the boundaries, the document-check outcomes, the notice text, follow-ups.
+- `PROCESS/STATE.json`, `PROCESS/journal/` and `PROCESS/PLAN.md` belong to the driver. This task ticks **no** PLAN checkbox.
+- Size: one new file of about 130-170 lines and three or four small edits; within 300 LOC / 5 files. If consistency turns out to need a sixth file, do not exceed the cap: finish the five and list the sixth as a proposed follow-up (DRIVER §5).
+- If a needed tool call is denied or fails, return BLOCKED rather than working around it (DRIVER §1-5). Never edit `.claude/settings.json` or `.claude/settings.local.json`; never use `git push --force*`, `rm -rf` or `gh repo delete`.
+- Return a summary of at most 200 characters (result, commit, BLOCKED or not).
+
+## Out of Scope
+- Choosing or implementing the isolation means; anything of OD-14, OD-18 or OD-23 beyond naming the directory an actor writes to.
+- Closing or changing any OD other than OD-8, and any part of OD-8 beyond the directory tree.
+- JSON Schemas, field lists and validators for `STATE.json`, `instance.json`, `events.ndjson`, `artifacts.json` and the result files (PLAN P1-8 and P1-6 code tasks); a path-building module in `hilclaw/`.
+- Any change to the `HIL-Claw-data` repository, to `hilclaw.config.json`, or to code and tests.
+- Editing the body of FR-13, issue bodies, ADR-0001..0003, or posting on GitHub issues (the driver posts the owner notice).
+- Answering #5 A-5, B-1, B-8 or OD-25 on the owner's behalf.
+
+## Follow-ups
+- (driver, after the wrap-up push) Post the §9 owner notice on #5 from the text in `## Result`, with the driver tail.
+- (planner, next — code mode) P1-8 slice 2: a pure path module for the tree of ADR-0004 (tuple → path, key → `db/` path, using `hilclaw/keys.py`), stdlib only, with tests. It defines no data-plane schema.
+- (planner, after that) P1-8 schemas (runtime `STATE.json` / `instance.json` / `events.ndjson`; touches OD-17 and OD-11 and has to judge A-13 "data-plane schema change" again) and P1-6 slice 3 (`artifacts.json` record and validator, using `cas.BlobRef`).
+- (planner) PLAN P1-3 is still marked "오너 확정 필요" and holds back P1-4, the rest of P1-2, the C gate of P0.5-1 and P1-5 slice 3. Owner question to raise as an HQ with a BLOCKED P1-3 task: the reference oracle of `cpu_standin` (NumPy float64 — a new external dependency — or a stdlib / C double-precision reference); memory layout, operand order and C prototype of the first GEMM; `hw_source` of `cpu_standin`.
+- (owner or integrator) Update the `HIL-Claw-data` README (it lists the OD-8 layout as open) and, if the record proposes it, the wording of FR-13.
+- (driver or integrator, document mode) Add the landed commit hash to the OD-8 register row.
+
+## Result
