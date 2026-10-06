@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HIL-Claw driver state (PROCESS/STATE.json)",
+  "description": "Mechanised form of the PROCESS/DRIVER.md section 2 field table.",
+  "type": "object",
+  "required": ["schema_version", "phase", "currentTask", "nextTask", "lock", "humanQuestions", "counters", "lastIteration", "notes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "phase": { "enum": ["P0", "P0.5", "P1", "P2", "P3"] },
+    "currentTask": { "type": ["string", "null"], "pattern": "^T-\\d{4}$" },
+    "nextTask": { "type": ["string", "null"], "pattern": "^T-\\d{4}$" },
+    "lock": {
+      "type": ["object", "null"],
+      "required": ["owner", "acquiredAt", "ttlMinutes"],
+      "additionalProperties": false,
+      "properties": {
+        "owner": { "type": "string", "pattern": "^[^:]+:.+$" },
+        "acquiredAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "ttlMinutes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "humanQuestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "taskId", "reason", "question", "askedAt", "issueComment"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^HQ-\\d{4}$" },
+          "taskId": { "type": "string", "pattern": "^T-\\d{4}$" },
+          "reason": { "type": "string" },
+          "question": { "type": "string" },
+          "askedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+          "issueComment": { "type": ["string", "null"] },
+          "resolvedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+          "decision": { "type": "string" }
+        }
+      }
+    },
+    "counters": {
+      "type": "object",
+      "required": ["iterations", "tasksDone", "tasksBlocked", "reviewRoundsTotal"],
+      "additionalProperties": false,
+      "properties": {
+        "iterations": { "type": "integer", "minimum": 0 },
+        "tasksDone": { "type": "integer", "minimum": 0 },
+        "tasksBlocked": { "type": "integer", "minimum": 0 },
+        "reviewRoundsTotal": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "lastIteration": {
+      "type": ["object", "null"],
+      "required": ["at", "owner", "taskId", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "at": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "owner": { "type": "string", "pattern": "^[^:]+:.+$" },
+        "taskId": { "type": "string", "pattern": "^T-\\d{4}$" },
+        "outcome": { "type": "string" }
+      }
+    },
+    "notes": { "type": "string" }
+  }
+}
