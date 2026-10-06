@@ -241,13 +241,23 @@ def test_verify_blob_of_an_absent_blob(root, tmp_path):
         verify_blob(root, DIGEST)
     assert isinstance(info.value, LookupError)
     assert not isinstance(info.value, OSError)
-    assert info.value.__suppress_context__
 
     put_bytes(root, DATA)
     with pytest.raises(BlobNotFoundError, match=EMPTY):
         verify_blob(root, EMPTY)
     with pytest.raises(BlobNotFoundError):
         verify_blob(tmp_path / "absent", DIGEST)
+
+
+def test_verify_blob_agrees_with_has_blob_when_the_path_is_not_a_file(root, tmp_path):
+    blob_path(root, DIGEST).mkdir(parents=True)
+    root_file = tmp_path / "file"
+    root_file.write_bytes(b"not a directory")
+
+    for data_root in (root, root_file):
+        assert has_blob(data_root, DIGEST) is False
+        with pytest.raises(BlobNotFoundError, match=DIGEST):
+            verify_blob(data_root, DIGEST)
 
 
 def test_put_file_with_a_missing_source(root, tmp_path):

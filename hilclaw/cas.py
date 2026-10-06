@@ -76,17 +76,16 @@ def has_blob(data_root, digest):
 def verify_blob(data_root, digest):
     """Re-hash the stored blob ``digest`` and return whether the content matches its name.
 
-    Raises :class:`BlobNotFoundError` when the blob is not in the store and
+    Raises :class:`BlobNotFoundError` when :func:`has_blob` is false for it and
     :class:`ValueError` when ``digest`` is malformed.
     """
     path = blob_path(data_root, digest)
+    if not path.is_file():
+        raise BlobNotFoundError(f"blob {digest} is not in the store")
     sha = hashlib.sha256()
-    try:
-        with open(path, "rb") as f:
-            for chunk in _chunks(f):
-                sha.update(chunk)
-    except FileNotFoundError:
-        raise BlobNotFoundError(f"blob {digest} is not in the store") from None
+    with open(path, "rb") as f:
+        for chunk in _chunks(f):
+            sha.update(chunk)
     return sha.hexdigest() == digest
 
 
