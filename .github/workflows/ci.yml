@@ -68,16 +68,19 @@ jobs:
           list=$(mktemp)
           git ls-files -z -- 'hilclaw/*.py' > "$list"
           mapfile -d '' -t modules < "$list"
+          rm "$list"
+          checked=0
           missing=0
           for module in "${modules[@]}"; do
             name=${module##*/}
-            [[ $name == *.py && $name != __init__.py ]] || continue
+            [[ $name != __init__.py ]] || continue
+            checked=$((checked + 1))
             dir=${module%/*}
             expected="tests${dir#hilclaw}/test_${name}"
-            if ! git ls-files --error-unmatch -- ":(literal)${expected}" > /dev/null 2>&1; then
+            if ! git ls-files --error-unmatch -- ":(literal)${expected}" > /dev/null; then
               echo "::error file=${module}::${module} has no test file ${expected}"
-              missing=1
+              missing=$((missing + 1))
             fi
           done
-          echo "examined ${#modules[@]} tracked *.py file(s) under hilclaw/"
-          exit "$missing"
+          echo "checked ${checked} module(s) under hilclaw/, ${missing} without a test file"
+          [[ $missing -eq 0 ]]
