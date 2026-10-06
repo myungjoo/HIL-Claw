@@ -2,7 +2,7 @@
 id: T-0024
 title: Write ADR-0005 fixing the blob record of artifacts.json (a part of the rest of OD-8, for PLAN P1-6) and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, C-3, FR-6, FR-13, NFR-2, NFR-7, "#5 A-2", "#5 D6"]
 dependsOn: [T-0008, T-0021]
@@ -138,3 +138,49 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (if the owner objects to ADR-0002 or ADR-0004 within its window) Revisit this record together with the reverting task.
 
 ## Result
+**DONE** — landed on `main` as `ae50f2d` (document mode, one squashed commit, four of the five files of `touchesFiles`, +170 / −8; `Reviewed-by: reviewer agent (3 rounds, Approve)`, `Task: T-0024`). The tree of the landed commit is identical to the head the round-3 reviewer approved (`edd866b`); the rebase was a no-op (`origin/main` was still `2fa0051`). Task branch deleted, remote and local. No tool call was denied; no force push. The §3-5 landed check before starting found nothing. No BLOCKED condition arose. This task ticks **no** PLAN checkbox.
+
+### Decisions of ADR-0005 (`ARCHITECTURE/decisions/ADR-0005-od8-artifacts-record.md`, 160 lines)
+1. **Scope**: the content of `runs/<run_id>/artifacts.json` only.
+2. **Shape**: one object with exactly `schema_version` (1) and `artifacts`, an array in order of addition; a record never moves. Written as UTF-8, LF, one record per line, members in table order, so an addition or an edit is a one-line diff (NFR-2). A missing file and an empty array both mean "no record". Rejected: a map by hash, NDJSON, a version per record.
+3. **Members**: `sha256` (64 lowercase hex, `BlobRef.digest` unchanged), `size` (bytes, 0 valid), `type`, `round`, `retention_class` (the four values of C-3) are required; `gc_at` is a *string* present only after a GC, its time form left open. No other member, no `null`.
+4. **Producing round**: the `id.round` of ADR-0002, given by the caller. No candidate, attempt, role or tool.
+5. **`type`**: a *name* of ADR-0001, form only, no list; an unknown value is an unknown kind, not an error.
+6. **Identity**: `sha256`, once per file. Producing the same content again adds no record and changes nothing (first `round` and `type` kept, the given class not applied); a differing `size` is an error. Two runs may record the same hash.
+7. **Allowed changes**: replace `retention_class`, add `gc_at`. Nothing else changes; a record is never removed or moved. The caller always gives the class, with no default; who assigns it and when is OD-20 / OD-29 / OD-23.
+8. **Record and store**: blob first, then record. A record asserts the blob was in the local store when written; it does not say the blob is present now.
+9. **Versioning**: one top-level integer; raised on a change of members, shape, identity or allowed changes; not raised by a new `type` value or by fixing the `gc_at` time form; independent of the layout version; older versions are OD-11.
+10. **Limits**: no presence guarantee, no atomicity between store and file or between two writers, no pointer to the attempt, one `type` and `round` per hash per run, no vocabulary check.
+
+### Boundaries left open (named in the record)
+GC (tool, timing, grace period, "run end", time form of `gc_at`, re-storing after a GC, one hash classed differently by several runs); `blob.push` / `blob.fetch` and any "pushed" or "location" member (#5 B-2, A-3); which artefacts are blobs, the `type` vocabulary, producing tools (OD-23), C-6, #5 B-8; class policy (OD-20, OD-29, OD-23), `best.json` (OD-20, OD-7); fields of every other file (PLAN P1-8); locking and atomic writes (OD-17), the isolation means, OD-11; owner-only OD-25, OD-3. Two sub-questions registered under OD-8 (Proposals ⑥ ⑦): the vocabulary of `type`; whether a record names candidate and attempt.
+
+### Review (3 rounds, a fresh-context `dev-reviewer` each; no `SECURITY` finding)
+- **Round 1 — Approve** on `ac16e5e` with 5 fixable nits, all addressed in `44cb8d2`: own choices not marked individually; the class of a repeated add not stated as unapplied; the S10 passage assumed a best is classed `best`; no alternative row for `gc_at` as a string; order of the two "채택분" bullets.
+- **Round 2 — Approve** on `44cb8d2` with 2 fixable nits, addressed in `edd866b`: References lacked OD-3, OD-7, OD-13, OD-14, OD-18 and #5 B-2, B-8; the "record's own" sentence read as a complete list.
+- **Round 3 — Approve** on `edd866b`: no Major, Minor or Nit.
+- All three reviewers agreed the record is design-level under DRIVER §9 and hangs on no open owner item, and read A-13 "data-plane schema change" as **not applying** to a first definition (precedent: ADR-0002). This is a reviewer reading, not an owner confirmation; the #5 notice says so.
+- No contradiction with C-3 / #5 A-2; no GC, push / fetch or class policy decided; no `type` list.
+
+### Document checks
+- Session entry (before the first edit): no open PR; no comment on #4, #7, #8 since 2026-10-05; the latest #5 comment was the ADR-0004 notice (6021138854); no objection to ADR-0001..0004.
+- Relative links and the `#od-8` anchor resolve. OD numbering unchanged (29 rows); the Requirements diff is the OD-8 row and the sentence above the table.
+- Consistent with ADR-0004 decisions 1, 2, 6, 9, 10, `hilclaw/cas.py`, `hilclaw/layout.py`, `hilclaw/keys.py` and the `id.round` of ADR-0002.
+- Coverage re-check: S10-2 and the steps that store or restore artefacts (S0-6·7, S1-6, S2-2·3, S3-2, S5-2, S6-3, S8-4). **No verdict changes, no gap.** Recorded in "검사 결과" and in the commit body.
+- CI `push` run on `main` for `ae50f2d`: https://github.com/myungjoo/HIL-Claw/actions/runs/37512438325 — `completed` / `success`.
+
+### Edits of the existing documents
+- Requirements: the OD-8 row (status cell and summary) and the sentence above the table.
+- OpenDecisionProposals OD-8: heading note; new bullet "채택분(ADR-0005)"; `artifacts.json` taken out of the open list; new bullet with sub-questions ⑥ ⑦. No proposal text deleted.
+- StandardScenarios: step tag S10-2 and the result section.
+- **UsageCases: not touched** (the glossary entries "CAS" and "데이터 plane" and UC-E4 stay true).
+
+### Owner notice (DRIVER §9)
+Posted on #5 with the driver tail after the push to `main`: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6022937550 . Objection window until 2026-10-14. It states the A-13 reading and the dependence on ADR-0004 (until 2026-10-14), ADR-0002 and ADR-0001 (until 2026-10-13).
+
+### Follow-ups
+- (planner, next — code mode, P1-6 slice 3) `hilclaw/artifacts.py` with `tests/test_artifacts.py`: validate a file (decisions 2, 3), add a record after `cas.put_*` (decisions 6, 8), apply the two allowed edits (decision 7); standard library only. From then on a change of what it accepts is an `artifacts` schema change under A-13.
+- (proposal, no register row added) The GC design has no OD: the tool, the grace period, the time form of `gc_at`, re-storing after a GC, and one hash classed differently by several runs. Suggest registering one OD for it when the GC tool is planned. Note: the schema does not stop `gc_at` on a `best` or `final` record.
+- (integrator) A more precise C-3 wording naming the members and ADR-0005; the commit hash `ae50f2d` is not in the OD-8 row; the UsageCases glossary "CAS" could point to ADR-0005.
+- (planner) The rest of PLAN P1-6 after the code slice: `blob.push` / `blob.fetch` on one machine may be an owner question (#5 B-2).
+- (if the owner objects to ADR-0001, ADR-0002 or ADR-0004 within its window) Revisit ADR-0005 with the reverting task.
