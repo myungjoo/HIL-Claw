@@ -167,7 +167,7 @@ def _one_of(argument, value, allowed):
 
 def _number(argument, value, minimum, width):
     if type(value) is not int or not minimum <= value <= keys.MAX_INTEGER:
-        _fail(argument, f"an int from {minimum} to 2**53 - 1", value)
+        _fail(argument, f"an int from {minimum} to {keys.MAX_INTEGER}", value)
     return f"{value:0{width}d}"
 
 
