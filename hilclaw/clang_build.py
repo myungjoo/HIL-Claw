@@ -91,8 +91,9 @@ def build(
     prefix, or a flag that sets the output (any flag that starts with ``-o`` or
     ``--output``, which includes unrelated options with that prefix such as
     ``-objcmt-*``); :class:`TypeError` for arguments of the wrong type,
-    including a bare ``str`` as flags; and :class:`CompilerNotFoundError`. An :class:`OSError` from starting the
-    process or from moving the artefact into place is passed on.
+    including a bare ``str`` as flags; and :class:`CompilerNotFoundError`. An
+    :class:`OSError` from starting the process or from moving the artefact into
+    place is passed on.
     """
     _check_timeout(timeout_s)
     flags = _checked_flags(flags, "flags")
