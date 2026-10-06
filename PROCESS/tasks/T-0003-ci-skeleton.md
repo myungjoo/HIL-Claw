@@ -2,13 +2,13 @@
 id: T-0003
 title: Add the CI skeleton with the Python gate (pytest + ruff)
 phase: P0
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: code
 coversReq: ["#9", "#5 D10", "CLAUDE.md language policy"]
 dependsOn: [T-0001, T-0002]
 touchesFiles: [.github/workflows/ci.yml]
 estimatedSize: {loc: 45, files: 1}
-hq: [HQ-0001]   # GitHub Actions on a Linux runner with pytest + ruff is named by #9, PLAN P0-3 and D10, so it is not a "new external dependency"; only first-party `actions/*` actions are allowed (see Acceptance Criteria)
+hq: []   # HQ-0001 resolved 2026-10-06 (option a, D13). GitHub Actions on a Linux runner with pytest + ruff is named by #9, PLAN P0-3 and D10, so it is not a "new external dependency"; only first-party `actions/*` actions are allowed (see Acceptance Criteria)
 ---
 ## Why
 The standard development process (dev-item-address steps 13-15, CLAUDE.md A-13) assumes CI: a code-mode PR is merged only when the reviewer approved **and** CI is green. Until now that step has been replaced by a local test rerun ("CI 미구축"). Issue #9 asks for one CI gate per tool-layer language, built up front, on a Linux runner; PLAN P0-3 takes the first slice: the Python gate (pytest + ruff) on pull requests and on pushes to `main`. T-0002 made both tools runnable with one command each, so this task only has to call them from a workflow. It also closes the T-0002 follow-ups addressed to P0-3: run on the lowest supported Python (3.11), and install the `[dependency-groups]` dev tools with a pip that understands PEP 735.

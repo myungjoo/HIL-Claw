@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P0",
-  "currentTask": null,
+  "currentTask": "T-0003",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:15cc61e7",
+    "acquiredAt": "2026-10-06T04:19:00Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -11,7 +15,9 @@
       "reason": "permission-denied",
       "question": "The session's auto-mode permission classifier denied spawning the executor sub-agent for T-0003 with reason [Self-Approval] (the executor would implement, have its own reviewer sub-agent approve, and squash-merge the PR without a human). CLAUDE.md A-13 and the scheduled routine require this autonomous merge. Should the owner (a) allow it for the driver session (permission rule / permission mode for the scheduled task), or (b) change the procedure so the driver stops at an approved Draft PR and the owner merges?",
       "askedAt": "2026-10-05T18:22:00Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6000504089"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6000504089",
+      "resolvedAt": "2026-10-06T04:16:15Z",
+      "decision": "(a) — owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6009218647: the routine runs with Bypass permissions, the dedicated driver clone as working folder and a pinned model (D13, main 6dcdce4). A-13 unchanged. Resume T-0003."
     }
   ],
   "counters": {
