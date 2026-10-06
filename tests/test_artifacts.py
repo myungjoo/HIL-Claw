@@ -1,3 +1,4 @@
+import contextlib
 import copy
 import json
 
@@ -783,6 +784,40 @@ def test_a_file_that_cannot_be_opened(root, monkeypatch):
 
     assert excinfo.value is error
     assert not (root / FILE).exists()
+
+
+class TornFile:
+    def __init__(self, file):
+        self.file = file
+
+    def write(self, data):
+        self.file.write(data[:10])
+        raise OSError("synthetic failure")
+
+
+@contextlib.contextmanager
+def torn_open(path, mode):
+    with open(path, mode) as f:
+        yield TornFile(f)
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_a_write_that_fails_midway(root, monkeypatch, existing):
+    first, second = put(root, 1), put(root, 2)
+    if existing:
+        add(root, first)
+    monkeypatch.setattr(artifacts, "open", torn_open, raising=False)
+
+    with pytest.raises(OSError, match="synthetic failure"):
+        add(root, second)
+
+    monkeypatch.undo()
+    if existing:
+        with pytest.raises(CorruptArtifactsError):
+            load(root, RUN)
+    else:
+        assert not (root / FILE).exists()
+        assert add(root, second).created
 
 
 @pytest.mark.parametrize("edit", ["add_record", "set_retention_class"])

@@ -27,9 +27,9 @@ Conventions of this module, which ADR-0005 does not fix:
   is a scratch location (ADR-0004 decision 7). When a write fails, the error
   passes through; a file this call was creating is removed where possible (the
   directories it created stay), and a file that existed stays as the failed
-  write left it. A process killed while it writes can likewise leave a partial
-  file, which is recovered from the history of the data repository (ADR-0005
-  decision 10).
+  write left it, possibly partial; so can a process killed while it writes.
+  Only what was committed is recovered, from the history of the data
+  repository (ADR-0005 decision 10).
 - A stored file that is not a regular file (a symbolic link is not followed) or
   not a valid file of version :data:`SCHEMA_VERSION` makes every function raise
   :class:`CorruptArtifactsError`; nothing is written and nothing is repaired.
@@ -143,9 +143,9 @@ def add_record(data_root, run_id, ref, *, type, round, retention_class):
     ``retention_class`` differ from it (decision 6).
 
     Raises :class:`InvalidArtifactsError` for an argument that breaks a rule of
-    decision 3, :class:`ArtifactNotFoundError` when the blob is not in the store
-    and :class:`SizeConflictError` when the hash is recorded with another size;
-    nothing is written in these cases.
+    decision 3, :class:`ArtifactNotFoundError` when the blob is not in the store,
+    :class:`SizeConflictError` when the hash is recorded with another size and
+    :class:`CorruptArtifactsError` for an invalid stored file; nothing is written.
     """
     path = layout.run_file(data_root, run_id, _FILE)
     if not isinstance(ref, tuple) or len(ref) != 2:
@@ -184,8 +184,8 @@ def set_retention_class(data_root, run_id, sha256, retention_class):
     class, nothing is written.
 
     Raises :class:`InvalidArtifactsError` for a malformed ``sha256`` or a class
-    outside the four, and :class:`ArtifactNotFoundError` when the file of the
-    run has no record with this hash; nothing is written in these cases.
+    outside the four, :class:`ArtifactNotFoundError` when the file has no record
+    with this hash, :class:`CorruptArtifactsError` as :func:`load`; nothing is written.
     """
     path = layout.run_file(data_root, run_id, _FILE)
     _member("sha256", sha256)
