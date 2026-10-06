@@ -1,4 +1,5 @@
 import copy
+import enum
 import hashlib
 import re
 from types import MappingProxyType
@@ -618,3 +619,71 @@ def test_canonical_form_rejects_values_outside_the_value_set(value):
         InvalidRecordError, match="^a.v: must be a string, an integer or a map"
     ):
         canonical_form({"a": {"v": value}})
+
+
+class Shouting(str):
+    def __str__(self):
+        return "../SHOUT"
+
+    def __format__(self, spec):
+        return "../SHOUT"
+
+
+class StrKind(str, enum.Enum):
+    GEMM = "gemm"
+
+
+class IntSize(enum.IntEnum):
+    ONE = 1
+
+
+@pytest.mark.parametrize("value", [Shouting("gemm"), StrKind.GEMM])
+def test_str_subclasses_are_rejected(value):
+    with pytest.raises(InvalidRecordError, match="^prefix: must be a name"):
+        directory_name(value, b"{}")
+    with pytest.raises(InvalidRecordError, match="^accelerator: must be a name"):
+        hw_profile_key(changed(synthetic_hw(), ["accelerator"], value))
+    with pytest.raises(InvalidRecordError, match="^revision: must be a string"):
+        hw_profile_key(changed(synthetic_hw(), ["revision"], value))
+    with pytest.raises(InvalidRecordError, match="^host.cpu: must be a string or"):
+        hw_profile_key(changed(synthetic_hw(), ["host", "cpu"], value))
+    with pytest.raises(InvalidRecordError, match="^host: member name: must be a name"):
+        hw_profile_key(changed(synthetic_hw(), ["host", value], "synthetic"))
+    for field in ("kind", "dtype", "layout"):
+        with pytest.raises(InvalidRecordError, match=f"^{field}: must be a name"):
+            op_signature_key(changed(synthetic_op(), [field], value))
+    with pytest.raises(InvalidRecordError, match="^v: must be a string, an integer"):
+        canonical_form({"v": value})
+    with pytest.raises(InvalidRecordError, match="^record: member name: must be"):
+        canonical_form({value: 1})
+
+
+def test_str_subclass_as_hw_source_is_rejected():
+    class Source(str):
+        pass
+
+    with pytest.raises(InvalidRecordError, match="^hw_source: must be external or"):
+        hw_profile_key(changed(synthetic_hw(), ["hw_source"], Source("external")))
+
+
+def test_int_subclasses_are_rejected():
+    with pytest.raises(InvalidRecordError, match="^shape.m: must be an integer"):
+        op_signature_key(changed(synthetic_op(), ["shape", "m"], IntSize.ONE))
+    with pytest.raises(InvalidRecordError, match="^host.v: must be a string or"):
+        hw_profile_key(changed(synthetic_hw(), ["host", "v"], IntSize.ONE))
+    with pytest.raises(InvalidRecordError, match="^schema_version: must be the int"):
+        op_signature_key(changed(synthetic_op(), ["schema_version"], IntSize.ONE))
+    with pytest.raises(InvalidRecordError, match="^v: must be a string, an integer"):
+        canonical_form({"v": IntSize.ONE})
+
+
+def test_maps_nested_too_deeply_are_rejected():
+    itself = {}
+    itself["a"] = itself
+    with pytest.raises(InvalidRecordError, match="^record: maps are nested too deep"):
+        canonical_form(itself)
+    deep = {"v": 1}
+    for _ in range(100_000):
+        deep = {"a": deep}
+    with pytest.raises(InvalidRecordError, match="^record: maps are nested too deep"):
+        canonical_form(deep)

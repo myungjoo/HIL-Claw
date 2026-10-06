@@ -9,7 +9,9 @@ its key fields and returns the name of its directory under
 
 The value types of the record are: a *name* matches ``[a-z][a-z0-9_]{0,31}``, a
 *string* is 1 to 255 printable ASCII characters, an *integer* is in the range 0
-to :data:`MAX_INTEGER`, and the member names of a map are names.
+to :data:`MAX_INTEGER`, and the member names of a map are names. Strings and
+integers are exactly ``str`` and ``int``: a subclass (``bool``, an ``enum``
+member) is rejected, because it may print differently from the value it holds.
 
 This module reads and writes no file and builds no path: it returns names and
 the caller joins them. Where a record is stored, the collision check against a
@@ -64,12 +66,18 @@ def canonical_form(key_fields):
     ``"`` and ``\\``.
 
     Only the value set is checked, not which fields exist: every member name is
-    a name and every value is a string, an integer (``bool`` excluded) or a
-    mapping of the same kind. Raises :class:`InvalidRecordError` otherwise, for
-    example for a float, ``None``, a list or a member name that is not a ``str``.
+    a name and every value is a string, an integer or a mapping of the same
+    kind, which may be empty (the record functions reject an empty ``ext``).
+    Raises :class:`InvalidRecordError` otherwise, for example for a float,
+    ``None``, a list, a member name that is not a ``str``, or maps nested too
+    deeply for the interpreter (which includes a map that contains itself).
     """
-    plain = _map("", key_fields, _value)
-    return json.dumps(plain, sort_keys=True, separators=(",", ":")).encode("ascii")
+    try:
+        plain = _map("", key_fields, _value)
+        text = json.dumps(plain, sort_keys=True, separators=(",", ":"))
+    except RecursionError:
+        raise InvalidRecordError("record: maps are nested too deeply") from None
+    return text.encode("ascii")
 
 
 def directory_name(prefix, canonical):
@@ -115,7 +123,7 @@ def hw_profile_key(record):
             raise InvalidRecordError(f"host.{member}: required member is missing")
     _optional(record, key)
     source = record["hw_source"]
-    if not isinstance(source, str) or source not in HW_SOURCES:
+    if type(source) is not str or source not in HW_SOURCES:
         _fail("hw_source", " or ".join(HW_SOURCES), source)
     return directory_name(key["accelerator"], canonical_form(key))
 
@@ -158,29 +166,27 @@ def _fail(path, rule, value):
 
 
 def _name(path, value):
-    if not isinstance(value, str) or not _NAME.fullmatch(value):
+    if type(value) is not str or not _NAME.fullmatch(value):
         _fail(path, f"a name matching {_NAME.pattern}", value)
     return value
 
 
 def _string(path, value):
-    if not isinstance(value, str) or not _STRING.fullmatch(value):
+    if type(value) is not str or not _STRING.fullmatch(value):
         _fail(path, "a string of 1 to 255 printable ASCII characters", value)
     return value
 
 
 def _integer(path, value):
-    if isinstance(value, bool) or not isinstance(value, int):
-        _fail(path, "an integer", value)
-    if not 0 <= value <= MAX_INTEGER:
+    if type(value) is not int or not 0 <= value <= MAX_INTEGER:
         _fail(path, "an integer from 0 to 2**53 - 1", value)
     return value
 
 
 def _scalar(path, value):
-    if isinstance(value, str):
+    if type(value) is str:
         return _string(path, value)
-    if isinstance(value, int) and not isinstance(value, bool):
+    if type(value) is int:
         return _integer(path, value)
     _fail(path, "a string or an integer", value)
 
@@ -188,9 +194,9 @@ def _scalar(path, value):
 def _value(path, value):
     if isinstance(value, Mapping):
         return _map(path, value, _value)
-    if isinstance(value, str):
+    if type(value) is str:
         return _string(path, value)
-    if isinstance(value, int) and not isinstance(value, bool):
+    if type(value) is int:
         return _integer(path, value)
     _fail(path, "a string, an integer or a map", value)
 
