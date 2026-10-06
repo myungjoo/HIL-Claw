@@ -2,7 +2,7 @@
 id: T-0010
 title: Add the sh gate (shellcheck) to the CI workflow
 phase: P0.5
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: ["#9", "CLAUDE.md language policy", "C-7"]
 dependsOn: [T-0003]
@@ -80,3 +80,25 @@ Process:
 - (integrator, document mode — unchanged from T-0003) Update the "CI 미구축" notes in CLAUDE.md, dev-item-address step 13, dev-code-review and README.md line 60.
 
 ## Result
+- 2026-10-06T09:21Z AKIHA:746ba34c — fresh start (landed check: nothing with `Task: T-0010` on `main`, no PR, no branch). **DONE** at 09:27Z: PR #20 https://github.com/myungjoo/HIL-Claw/pull/20 squash-merged as `8c2e932` (`T-0010: Add the sh gate (shellcheck) to the CI workflow (#20)`, last body line `Task: T-0010`); remote and local branch `claude/T-0010-ci-sh-gate-shellcheck` deleted. One file on `main`: `.github/workflows/ci.yml` (+14 lines, 55 total); the `python` job, triggers, `permissions` and `concurrency` are untouched.
+- Branch commits (all squashed, no force push): `9baa8a1` workflow, `6742e2b` temporary script with a finding, `43d29b6` script fixed, `4816c98` script deleted.
+- Local verification (ruff 0.16.10, pytest 9.1.1, Python 3.14), before the commit and again before the merge: `python -m ruff check .` -> `All checks passed!`; `python -m ruff format --check .` -> `35 files already formatted`; `python -m pytest` -> `468 passed`; `git ls-files --eol .github/workflows/ci.yml` -> `i/lf w/lf attr/text=auto eol=lf`. shellcheck was not installed on the driver machine.
+- CI runs on the PR (`pull_request`); evidence table in https://github.com/myungjoo/HIL-Claw/pull/20#issuecomment-6013294647:
+  - `9baa8a1` (final workflow, no `*.sh` file): https://github.com/myungjoo/HIL-Claw/actions/runs/37442429536 — success, three checks (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`). Job log: `ShellCheck - shell script analysis tool` / `version: 0.9.0`; the step runs under `/usr/bin/bash --noprofile --norc -e -o pipefail {0}`. shellcheck was on the runner's `PATH`; no `apt-get install` was needed.
+  - `6742e2b` (temporary `tmp_t0010_check.sh`: `#!/bin/sh` + `echo $1`): https://github.com/myungjoo/HIL-Claw/actions/runs/37442500725 — `sh gate (shellcheck)` = failure at the `shellcheck` step (`SC2086 (info)`, `Process completed with exit code 123`); both Python entries = success. Deliberate; not counted toward the 3-consecutive-failures limit. An info-level finding fails the gate, so the default severity is in effect.
+  - `43d29b6` (script fixed to `echo "$1"`, file kept): https://github.com/myungjoo/HIL-Claw/actions/runs/37442574248 — success, three checks. Tracked scripts are found and a clean one passes.
+  - `4816c98` (script deleted, final head; `git diff origin/main --stat` lists only `.github/workflows/ci.yml`): https://github.com/myungjoo/HIL-Claw/actions/runs/37442642277 — success, three checks.
+- Review rounds: 1, by a context-isolated `dev-reviewer` agent: `Approve` on `4816c98` (https://github.com/myungjoo/HIL-Claw/pull/20#issuecomment-6013313386). No Blocking / Major / Minor / Nit finding; three Info notes, none asking for a change: (1) `shell: bash` is an addition beyond the Acceptance Criteria and is sound — record it here (done below); (2) the three temporary commits need the squash-merge to stay off `main` (done); (3) limits already accepted in Follow-ups, plus the remark that a future `# shellcheck disable=...` directive in a script silences a finding without any workflow change, so reviews of sh files should look for such directives. The head did not change after the Approve.
+- Merge: `DONOTMERGE` removed, PR marked ready, all three checks of `4816c98` successful, then `gh pr merge 20 --squash --body-file`.
+- `push` run on `main` after the merge (`8c2e932`): https://github.com/myungjoo/HIL-Claw/actions/runs/37442917738 — `completed` / `success` (all three jobs).
+- Provisional choices (conventions of this task, not requirements):
+  - Job id `sh`, name `sh gate (shellcheck)`, `ubuntu-latest`, no matrix: a separate job, so the gate is its own check next to the Python entries.
+  - shellcheck = the binary preinstalled on the GitHub-hosted Ubuntu runner (0.9.0 on image `ubuntu-24.04` at the time of the runs): no third-party action, no wrapper package, no download step. The version is not pinned by the repository.
+  - File selection `git ls-files -z -- '*.sh' | xargs -0 -r ...`: tracked files only, anywhere in the tree, NUL-separated so odd file names are safe.
+  - `--shell=sh`: the language policy admits POSIX sh, not bash, so a bash-only construct is flagged whatever the shebang says.
+  - Default severity, no `--exclude`, no `.shellcheckrc`, no `continue-on-error`: every finding fails.
+  - Empty file set: `xargs -r` runs nothing and the step exits 0 (no message printed).
+  - `shell: bash` on the step (not listed in the Acceptance Criteria, added by the executor): an explicit shell makes the runner use `-eo pipefail`; with the default `bash -e` a failing `git ls-files` would be hidden by the pipe and pass as an empty file set.
+  - Checkout: the same `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) and `persist-credentials: false` as the `python` job; not bumped.
+- The C gate is deferred (stand-in kernels P1-2 and harness P1-3 do not exist); PLAN P0.5-1 stays unchecked. No tool-layer language choice was needed (workflow YAML only). No test added (test rule 5). No BLOCKED reason arose; no force push was used.
+- Follow-ups: unchanged from `## Follow-ups`. Additions: when the first sh file lands, its review should check for `# shellcheck disable=` directives (reviewer Info 3). From this merge on, every PR and every push to `main` (driver state commits included) runs three jobs instead of two; the sh job takes about 5 s.
