@@ -99,8 +99,8 @@ def decision_log(data_root, run_id, round):
 def attempt_dir(data_root, run_id, round, role, candidate, attempt):
     """Return ``<round_dir>/<role>/candidates/<CC>/attempts/<AA>``.
 
-    ``role`` is one of :data:`ATTEMPT_ROLES`: ``decision`` has no candidate
-    level. ``candidate`` and ``attempt`` are integers from 1 to
+    ``role`` is one of :data:`ATTEMPT_ROLES`: ADR-0004 fixes no candidate level
+    for ``decision``. ``candidate`` and ``attempt`` are integers from 1 to
     :data:`hilclaw.keys.MAX_INTEGER`, written in decimal and zero-padded to at
     least two digits (decision 3).
     """

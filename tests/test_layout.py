@@ -34,8 +34,7 @@ ADR_HW_NAME = "cpu_standin-b0d8610d8f470856"
 ADR_OP_NAME = "gemm-c43e96fb16cc3f35"
 HEX = "0123456789abcdef"
 
-# Expected paths copied from the tree diagram and the path table of ADR-0004
-# decision 1 and from decision 3, for run RUN, round 7, candidate 3, attempt 2.
+# Expected paths copied from ADR-0004 decisions 1 and 3 (round 7, candidate 3, attempt 2).
 ATTEMPT = "runs/synthetic-run_01/rounds/0007/{}/candidates/03/attempts/02/{}"
 ADR_RUN_FILES = {
     "STATE.json": "runs/synthetic-run_01/STATE.json",
@@ -488,28 +487,23 @@ def test_error_names_the_type_of_a_rejected_subclass():
         round_dir(ROOT, RUN, True)
 
 
-def test_module_exposes_no_reader_writer_or_entry_point():
-    public = {name for name in vars(layout) if not name.startswith("_")}
-    assert public == {
-        "ATTEMPT_ARTEFACTS",
-        "ATTEMPT_ROLES",
+def test_module_defines_no_reader_writer_or_entry_point():
+    defined = {
+        name
+        for name, value in vars(layout).items()
+        if getattr(value, "__module__", None) == layout.__name__
+        and not name.startswith("_")
+    }
+    assert defined == {
         "InvalidPathValueError",
-        "LAYOUT_VERSION",
-        "OP_SIGNATURE_FILES",
-        "Path",
-        "ROLES",
-        "RUN_FILES",
         "attempt_artefact",
         "attempt_dir",
         "check_run_id",
         "decision_log",
         "hw_profile_dir",
         "hw_profile_record",
-        "keys",
         "op_signature_dir",
         "op_signature_file",
-        "re",
-        "reprlib",
         "role_dir",
         "round_dir",
         "run_dir",
