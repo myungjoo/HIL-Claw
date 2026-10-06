@@ -1,0 +1,802 @@
+import copy
+import json
+
+import pytest
+
+from hilclaw import artifacts, cas, keys, layout
+from hilclaw.artifacts import (
+    Added,
+    ArtifactNotFoundError,
+    CorruptArtifactsError,
+    InvalidArtifactsError,
+    SizeConflictError,
+    add_record,
+    load,
+    set_retention_class,
+    validate,
+)
+
+# Synthetic values only: no hash, kind or time of a real run or artefact.
+RUN = "run-a"
+FILE = f"runs/{RUN}/artifacts.json"
+KIND = "example_kind"
+ONES = "1" * 64
+MEMBERS = ["sha256", "size", "type", "round", "retention_class"]
+
+# The Example of ADR-0005, as written in the record.
+EXAMPLE = (
+    b"{\n"
+    b'"schema_version": 1,\n'
+    b'"artifacts": [\n'
+    b'{"sha256": "1111111111111111111111111111111111111111111111111111111111111111",'
+    b' "size": 18432, "type": "example_kind", "round": 0,'
+    b' "retention_class": "intermediate"},\n'
+    b'{"sha256": "2222222222222222222222222222222222222222222222222222222222222222",'
+    b' "size": 20480, "type": "example_kind", "round": 3, "retention_class": "best"},\n'
+    b'{"sha256": "3333333333333333333333333333333333333333333333333333333333333333",'
+    b' "size": 0, "type": "example_kind", "round": 3, "retention_class": "failed",'
+    b' "gc_at": "TIME-FORM-NOT-DECIDED-HERE"}\n'
+    b"]\n"
+    b"}\n"
+)
+
+
+def rec(sha256=ONES, **changes):
+    record = {
+        "sha256": sha256,
+        "size": 7,
+        "type": KIND,
+        "round": 0,
+        "retention_class": "intermediate",
+    }
+    record.update(changes)
+    return record
+
+
+def without(member):
+    record = rec()
+    del record[member]
+    return record
+
+
+def doc(*records, **changes):
+    document = {"schema_version": 1, "artifacts": list(records)}
+    document.update(changes)
+    return document
+
+
+def line(record):
+    parts = [
+        f'"sha256": "{record["sha256"]}"',
+        f'"size": {record["size"]}',
+        f'"type": "{record["type"]}"',
+        f'"round": {record["round"]}',
+        f'"retention_class": "{record["retention_class"]}"',
+    ]
+    if "gc_at" in record:
+        parts.append(f'"gc_at": "{record["gc_at"]}"')
+    return "{" + ", ".join(parts) + "}"
+
+
+def text(*records):
+    lines = ",\n".join(line(record) for record in records)
+    return f'{{\n"schema_version": 1,\n"artifacts": [\n{lines}\n]\n}}\n'.encode()
+
+
+@pytest.fixture
+def root(tmp_path):
+    path = tmp_path / "data"
+    path.mkdir()
+    return path
+
+
+def snapshot(tmp_path):
+    return {
+        path.relative_to(tmp_path).as_posix(): (
+            (path.read_bytes(), path.stat().st_mtime_ns) if path.is_file() else None
+        )
+        for path in tmp_path.rglob("*")
+    }
+
+
+def put(root, number=1):
+    return cas.put_bytes(root, b"synthetic content %d" % number)
+
+
+def add(root, ref, run=RUN, **changes):
+    members = {"type": KIND, "round": 0, "retention_class": "intermediate"}
+    members.update(changes)
+    return add_record(root, run, ref, **members)
+
+
+def place(root, relative, content):
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return path
+
+
+def stored(ref, **changes):
+    return rec(ref.digest, size=ref.size, **changes)
+
+
+# --- happy ---
+
+
+def test_add_record_creates_the_file_next_to_the_blob(root, tmp_path):
+    ref = put(root)
+
+    result = add(root, ref)
+
+    files = sorted(name for name, content in snapshot(tmp_path).items() if content)
+    blob = f"data/blobs/sha256/{ref.digest[:2]}/{ref.digest}"
+    assert files == sorted([blob, f"data/{FILE}"])
+    assert result == Added(stored(ref), True)
+    assert result.created is True
+    assert list(result.record) == MEMBERS
+    assert load(root, RUN) == [stored(ref)]
+    assert validate(json.loads((root / FILE).read_bytes())) is None
+    assert layout.run_file(root, RUN, "artifacts.json") == root / FILE
+
+
+def test_records_are_kept_in_the_order_of_addition(root):
+    refs = [put(root, 1), put(root, 2), cas.put_bytes(root, b"")]
+    for ref, round in zip(refs, [0, 3, 3], strict=True):
+        assert add(root, ref, round=round).created
+
+    records = load(root, RUN)
+
+    assert [record["sha256"] for record in records] == [ref.digest for ref in refs]
+    assert [record["round"] for record in records] == [0, 3, 3]
+    assert records[2]["size"] == 0
+    assert refs[2].size == 0
+
+
+def test_the_written_form(root):
+    first, second, third = put(root, 1), put(root, 2), put(root, 3)
+    add(root, first, retention_class="failed")
+    add(root, second, round=3)
+    two = (root / FILE).read_bytes()
+
+    assert two == text(stored(first, retention_class="failed"), stored(second, round=3))
+    assert not two.startswith(b"\xef\xbb\xbf")
+    assert b"\r" not in two
+    assert two.endswith(b"}\n") and not two.endswith(b"\n\n")
+    assert two.decode("utf-8").isascii()
+    lines = two.split(b"\n")
+    assert len(lines) == 8
+    for written in lines[3:5]:
+        assert list(json.loads(written.rstrip(b","))) == MEMBERS
+
+    add(root, third)
+    three = (root / FILE).read_bytes().split(b"\n")
+
+    assert three[:3] == lines[:3]
+    assert three[3] == lines[3]
+    assert three[4] == lines[4] + b","
+    assert three[5] == line(stored(third)).encode()
+    assert three[6:] == lines[5:]
+
+
+def test_the_same_content_gives_the_same_bytes(root, tmp_path):
+    other = tmp_path / "other"
+    other.mkdir()
+    for data_root in (root, other):
+        add(data_root, put(data_root, 1))
+        add(data_root, put(data_root, 2), round=3)
+    before = (root / FILE).read_bytes()
+    assert (other / FILE).read_bytes() == before
+
+    digest = put(root, 2).digest
+    set_retention_class(root, RUN, digest, "best")
+    assert (root / FILE).read_bytes() != before
+    set_retention_class(root, RUN, digest, "intermediate")
+
+    assert (root / FILE).read_bytes() == before
+
+
+def test_the_writer_keeps_the_layout_of_the_adr_example(root):
+    place(root, FILE, EXAMPLE)
+    ref = put(root)
+
+    assert add(root, ref, round=4, retention_class="final").created
+
+    added = line(stored(ref, round=4, retention_class="final")).encode()
+    assert (root / FILE).read_bytes() == EXAMPLE[:-5] + b",\n" + added + b"\n]\n}\n"
+
+
+@pytest.mark.parametrize("target", ["best", "final", "intermediate", "failed"])
+def test_set_retention_class_changes_one_member_of_one_record(root, target):
+    refs = [put(root, number) for number in (1, 2, 3)]
+    for ref in refs:
+        add(root, ref, retention_class="best" if target != "best" else "failed")
+    before = (root / FILE).read_bytes().split(b"\n")
+
+    result = set_retention_class(root, RUN, refs[1].digest, target)
+
+    assert result == stored(refs[1], retention_class=target)
+    after = (root / FILE).read_bytes().split(b"\n")
+    assert after[:4] == before[:4]
+    assert after[5:] == before[5:]
+    assert after[4] == line(result).encode() + b","
+    assert load(root, RUN)[1] == result
+
+
+def test_validate_accepts_the_example_of_adr_0005():
+    document = json.loads(EXAMPLE)
+    assert len(document["artifacts"]) == 3
+    assert "gc_at" in document["artifacts"][2]
+
+    assert validate(document) is None
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        doc(),
+        doc(rec(type="a_kind_nobody_listed")),
+        doc(rec(size=0, round=keys.MAX_INTEGER)),
+        doc(rec(gc_at="x"), rec("2" * 64, gc_at='"' + "~" * 254)),
+        {"artifacts": [dict(reversed(rec().items()))], "schema_version": 1},
+        doc(rec(round=3), rec("0123456789abcdef" * 4, round=0)),
+    ],
+)
+def test_validate_accepts(document):
+    before = copy.deepcopy(document)
+
+    assert validate(document) is None
+    assert document == before
+
+
+# --- branch ---
+
+
+@pytest.mark.parametrize("prepare", ["nothing", "runs", "run", "empty array"])
+def test_load_without_a_record_returns_an_empty_list(root, tmp_path, prepare):
+    if prepare == "runs":
+        (root / "runs").mkdir()
+    elif prepare == "run":
+        (root / "runs" / RUN).mkdir(parents=True)
+    elif prepare == "empty array":
+        place(root, FILE, b'{"schema_version": 1, "artifacts": []}')
+    before = snapshot(tmp_path)
+
+    assert load(root, RUN) == []
+    assert snapshot(tmp_path) == before
+
+
+def test_a_repeated_add_keeps_the_first_record(root, tmp_path):
+    ref = put(root)
+    add(root, ref)
+    before = snapshot(tmp_path)
+
+    result = add(root, ref, type="another_kind", round=5, retention_class="best")
+
+    assert result == Added(stored(ref), False)
+    assert result.created is False
+    assert snapshot(tmp_path) == before
+
+
+def test_the_same_hash_in_the_files_of_two_runs(root):
+    ref = put(root)
+
+    assert add(root, ref, round=1, retention_class="best").created
+    assert add(root, ref, run="run-b", round=2, retention_class="failed").created
+
+    assert load(root, RUN) == [stored(ref, round=1, retention_class="best")]
+    assert load(root, "run-b") == [stored(ref, round=2, retention_class="failed")]
+
+
+def test_a_file_in_another_valid_form_is_read_and_normalised_by_the_next_write(root):
+    ref = put(root)
+    records = [rec(gc_at="SYNTHETIC-TIME"), rec("2" * 64, round=9)]
+    shuffled = [dict(reversed(record.items())) for record in records]
+    by_hand = json.dumps({"artifacts": shuffled, "schema_version": 1}, indent=4)
+    place(root, FILE, by_hand.replace("\n", "\r\n").encode())
+
+    loaded = load(root, RUN)
+
+    assert loaded == records
+    assert list(loaded[0]) == [*MEMBERS, "gc_at"]
+    assert list(loaded[1]) == MEMBERS
+
+    assert add(root, ref).created
+
+    assert (root / FILE).read_bytes() == text(*records, stored(ref))
+
+
+def test_set_retention_class_to_the_current_class_writes_nothing(root, tmp_path):
+    by_hand = json.dumps(doc(rec(retention_class="final")), indent=2).encode()
+    place(root, FILE, by_hand)
+    before = snapshot(tmp_path)
+
+    assert set_retention_class(root, RUN, ONES, "final") == rec(retention_class="final")
+    assert snapshot(tmp_path) == before
+
+
+def test_set_retention_class_on_a_record_with_gc_at(root):
+    records = [rec(gc_at="SYNTHETIC-TIME", retention_class="failed"), rec("2" * 64)]
+    place(root, FILE, text(*records))
+
+    result = set_retention_class(root, RUN, ONES, "best")
+
+    assert result == rec(gc_at="SYNTHETIC-TIME", retention_class="best")
+    assert (root / FILE).read_bytes() == text(result, records[1])
+
+
+def test_data_root_as_str_and_ref_as_plain_tuple(root):
+    ref = put(root)
+
+    result = add(str(root), (ref.digest, ref.size))
+
+    assert result == Added(stored(ref), True)
+    assert load(str(root), RUN) == load(root, RUN) == [stored(ref)]
+    changed = set_retention_class(str(root), RUN, ref.digest, "final")
+    assert changed == stored(ref, retention_class="final")
+
+
+def test_a_loaded_record_is_independent_of_the_file(root):
+    ref = put(root)
+    add(root, ref)
+
+    load(root, RUN)[0]["retention_class"] = "best"
+
+    assert load(root, RUN) == [stored(ref)]
+
+
+def test_error_types():
+    assert issubclass(InvalidArtifactsError, ValueError)
+    assert issubclass(ArtifactNotFoundError, LookupError)
+    for error in (CorruptArtifactsError, SizeConflictError):
+        assert not issubclass(error, (ValueError, LookupError, OSError))
+    assert artifacts.SCHEMA_VERSION == 1
+    assert artifacts.RETENTION_CLASSES == ("best", "final", "intermediate", "failed")
+
+
+# --- negative: validate ---
+
+BAD_SHA256 = {
+    "upper case": "A" * 64,
+    "63 characters": "1" * 63,
+    "65 characters": "1" * 65,
+    "not hexadecimal": "g" * 64,
+    "prefixed": "sha256:" + ONES,
+    "trailing newline": ONES + "\n",
+    "bytes": ONES.encode(),
+    "integer": 1,
+    "none": None,
+}
+BAD_INTEGER = {
+    "negative": -1,
+    "2^53": 2**53,
+    "float": 1.0,
+    "true": True,
+    "string": "1",
+    "none": None,
+}
+BAD_TYPE = {
+    "empty": "",
+    "upper case": "Example_kind",
+    "33 characters": "a" * 33,
+    "hyphen": "example-kind",
+    "leading digit": "1kind",
+    "integer": 1,
+    "none": None,
+}
+BAD_CLASS = {
+    "outside the four": "permanent",
+    "another case": "Best",
+    "empty": "",
+    "list": ["best"],
+    "none": None,
+}
+BAD_GC_AT = {
+    "number": 0,
+    "none": None,
+    "empty": "",
+    "not ascii": "té",
+    "control character": "a\tb",
+    "256 characters": "x" * 256,
+}
+BAD_MEMBERS = {
+    "sha256": BAD_SHA256,
+    "size": BAD_INTEGER,
+    "type": BAD_TYPE,
+    "round": BAD_INTEGER,
+    "retention_class": BAD_CLASS,
+    "gc_at": BAD_GC_AT,
+}
+INVALID_DOCUMENTS = {
+    "a list": ([], "document"),
+    "a string": ("synthetic", "document"),
+    "none": (None, "document"),
+    "no schema_version": ({"artifacts": []}, "document: lacks the member schema_ver"),
+    "no artifacts": ({"schema_version": 1}, "document: lacks the member artifacts"),
+    "extra top-level member": (doc(synthetic=1), "document: has the unknown member"),
+    "member name not a str": ({1: 1}, "document: has the unknown member 1"),
+    "schema_version 2": (doc(schema_version=2), "schema_version"),
+    "schema_version 0": (doc(schema_version=0), "schema_version"),
+    "schema_version 1.0": (doc(schema_version=1.0), "schema_version"),
+    "schema_version true": (doc(schema_version=True), "schema_version"),
+    "schema_version string": (doc(schema_version="1"), "schema_version"),
+    "schema_version none": (doc(schema_version=None), "schema_version"),
+    "artifacts an object": (doc(artifacts={}), "artifacts: must be an array"),
+    "artifacts a tuple": (doc(artifacts=()), "artifacts: must be an array"),
+    "artifacts none": (doc(artifacts=None), "artifacts: must be an array"),
+    "record a list": (doc(rec(), []), "artifacts[1]: must be an object"),
+    "record a string": (doc("synthetic"), "artifacts[0]: must be an object"),
+    "record none": (doc(None), "artifacts[0]: must be an object"),
+    "same sha256 twice": (
+        doc(rec(), rec("2" * 64), rec(round=4, retention_class="best")),
+        "artifacts[2].sha256: repeats the sha256 of artifacts[0]",
+    ),
+}
+for _member in MEMBERS:
+    INVALID_DOCUMENTS[f"record without {_member}"] = (
+        doc(rec("2" * 64), without(_member)),
+        f"artifacts[1]: lacks the member {_member}",
+    )
+for _member in ("pushed", "location", "ext", "candidate", "attempt", "hash"):
+    INVALID_DOCUMENTS[f"unknown member {_member}"] = (
+        doc(rec(**{_member: "synthetic"})),
+        f"artifacts[0]: has the unknown member '{_member}'",
+    )
+for _member, _values in BAD_MEMBERS.items():
+    for _case, _value in _values.items():
+        INVALID_DOCUMENTS[f"{_member} {_case}"] = (
+            doc(rec("2" * 64), rec("3" * 64), rec(**{_member: _value})),
+            f"artifacts[2].{_member}: must be ",
+        )
+
+
+@pytest.mark.parametrize("case", INVALID_DOCUMENTS)
+def test_validate_rejects(case):
+    document, message = INVALID_DOCUMENTS[case]
+    before = copy.deepcopy(document)
+
+    with pytest.raises(InvalidArtifactsError) as excinfo:
+        validate(document)
+
+    assert str(excinfo.value).startswith(message)
+    assert document == before
+
+
+def test_an_error_message_shows_a_bounded_value():
+    with pytest.raises(InvalidArtifactsError) as excinfo:
+        validate(doc(rec(type="x" * 100_000)))
+
+    assert len(str(excinfo.value)) < 200
+    assert "got str 'xxx" in str(excinfo.value)
+
+
+# --- negative: arguments ---
+
+INVALID_ADDS = {
+    "ref a list": ({"ref": [ONES, 7]}, "ref: must be a tuple"),
+    "ref a string": ({"ref": ONES}, "ref: must be a tuple"),
+    "ref none": ({"ref": None}, "ref: must be a tuple"),
+    "ref of three": ({"ref": (ONES, 7, 7)}, "ref: must be a tuple"),
+    "ref of one": ({"ref": (ONES,)}, "ref: must be a tuple"),
+}
+for _case, _value in BAD_SHA256.items():
+    INVALID_ADDS[f"digest {_case}"] = ({"ref": (_value, 7)}, "ref.digest: must be ")
+for _case, _value in BAD_INTEGER.items():
+    INVALID_ADDS[f"size {_case}"] = ({"ref": (ONES, _value)}, "ref.size: must be ")
+    INVALID_ADDS[f"round {_case}"] = ({"round": _value}, "round: must be ")
+for _case, _value in BAD_TYPE.items():
+    INVALID_ADDS[f"type {_case}"] = ({"type": _value}, "type: must be ")
+for _case, _value in BAD_CLASS.items():
+    INVALID_ADDS[f"class {_case}"] = (
+        {"retention_class": _value},
+        "retention_class: must be one of best, final, intermediate, failed",
+    )
+
+
+@pytest.mark.parametrize("case", INVALID_ADDS)
+def test_add_record_rejects_an_invalid_argument(root, tmp_path, case):
+    changes, message = INVALID_ADDS[case]
+    ref = put(root)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(InvalidArtifactsError) as excinfo:
+        add(
+            root,
+            changes.get("ref", ref),
+            **{k: v for k, v in changes.items() if k != "ref"},
+        )
+
+    assert str(excinfo.value).startswith(message)
+    assert snapshot(tmp_path) == before
+
+
+def test_add_record_has_no_default_for_the_members(root, tmp_path):
+    ref = put(root)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(TypeError):
+        add_record(root, RUN, ref)
+    with pytest.raises(TypeError):
+        add_record(root, RUN, ref, type=KIND, round=0)
+    with pytest.raises(TypeError):
+        add_record(root, RUN, ref, KIND, 0, "best")
+    assert snapshot(tmp_path) == before
+
+
+def test_add_record_requires_the_blob(root, tmp_path):
+    put(root)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(ArtifactNotFoundError, match=f"blob {ONES} is not in the store"):
+        add(root, (ONES, 7))
+
+    assert snapshot(tmp_path) == before
+
+
+def test_add_record_requires_the_blob_also_for_a_recorded_hash(root, tmp_path):
+    place(root, FILE, text(rec(gc_at="SYNTHETIC-TIME")))
+    before = snapshot(tmp_path)
+
+    with pytest.raises(ArtifactNotFoundError, match="decision 8"):
+        add(root, (ONES, 7))
+
+    assert snapshot(tmp_path) == before
+
+
+def test_add_record_reports_a_differing_size(root, tmp_path):
+    ref = put(root)
+    add(root, ref)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(SizeConflictError) as excinfo:
+        add(root, (ref.digest, ref.size + 1))
+
+    message = str(excinfo.value)
+    assert message.startswith(f"{FILE}: sha256 {ref.digest}")
+    assert f"size {ref.size}," in message and f"given size {ref.size + 1}" in message
+    assert snapshot(tmp_path) == before
+
+
+CALLS = {
+    "load": lambda data_root, run, digest: load(data_root, run),
+    "add_record": lambda data_root, run, digest: add(data_root, (digest, 19), run=run),
+    "set_retention_class": lambda data_root, run, digest: set_retention_class(
+        data_root, run, digest, "best"
+    ),
+}
+BAD_RUN_IDS = ["..", "run/a", "runs\\a", "Run-a", "", "-run", "a" * 65, None, 1]
+
+
+@pytest.mark.parametrize("call", CALLS)
+@pytest.mark.parametrize("run_id", BAD_RUN_IDS)
+def test_an_invalid_run_id(root, tmp_path, call, run_id):
+    ref = put(root)
+    add(root, ref)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(layout.InvalidPathValueError, match="run_id"):
+        CALLS[call](root, run_id, ref.digest)
+
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("call", CALLS)
+def test_a_data_root_that_is_not_an_existing_directory(tmp_path, call):
+    place(tmp_path, "a-file", b"synthetic")
+    before = snapshot(tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="data root"):
+        CALLS[call](tmp_path / "missing", RUN, ONES)
+    with pytest.raises(NotADirectoryError, match="data root"):
+        CALLS[call](tmp_path / "a-file", RUN, ONES)
+    with pytest.raises(NotADirectoryError, match="data root"):
+        CALLS[call](str(tmp_path / "a-file"), RUN, ONES)
+
+    assert snapshot(tmp_path) == before
+
+
+def test_arguments_are_checked_before_the_file_system(tmp_path):
+    missing = tmp_path / "missing"
+
+    with pytest.raises(InvalidArtifactsError, match="^round"):
+        add(missing, (ONES, 7), round=-1)
+    with pytest.raises(InvalidArtifactsError, match="^retention_class"):
+        set_retention_class(missing, RUN, ONES, "permanent")
+    with pytest.raises(layout.InvalidPathValueError):
+        load(missing, "..")
+    with pytest.raises(layout.InvalidPathValueError):
+        add(missing, (ONES, -1), run="..")
+    assert snapshot(tmp_path) == {}
+
+
+@pytest.mark.parametrize("present", [True, False])
+def test_set_retention_class_of_an_unknown_hash(root, tmp_path, present):
+    if present:
+        add(root, put(root))
+    before = snapshot(tmp_path)
+
+    with pytest.raises(ArtifactNotFoundError) as excinfo:
+        set_retention_class(root, RUN, ONES, "best")
+
+    assert str(excinfo.value) == f"{FILE}: no record with sha256 {ONES}"
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("case", BAD_CLASS)
+def test_set_retention_class_rejects_a_class(root, tmp_path, case):
+    ref = put(root)
+    add(root, ref)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(InvalidArtifactsError, match="^retention_class: must be one of"):
+        set_retention_class(root, RUN, ref.digest, BAD_CLASS[case])
+
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("case", BAD_SHA256)
+def test_set_retention_class_rejects_a_malformed_hash(root, tmp_path, case):
+    add(root, put(root))
+    before = snapshot(tmp_path)
+
+    with pytest.raises(InvalidArtifactsError, match="^sha256: must be a str of 64"):
+        set_retention_class(root, RUN, BAD_SHA256[case], "best")
+
+    assert snapshot(tmp_path) == before
+
+
+# --- negative: the stored file ---
+
+
+def corrupt_contents():
+    valid = text(rec(size=19))
+    return {
+        "empty": b"",
+        "not utf-8": b"\xff\xfe" + valid,
+        "byte order mark": b"\xef\xbb\xbf" + valid,
+        "not json": valid[:-3],
+        "array": b"[]",
+        "string": b'"synthetic"',
+        "repeated top-level member": b'{"schema_version": 1,' + valid[1:],
+        "repeated member in a record": valid.replace(
+            b'"size": 19,', b'"size": 19,' * 2
+        ),
+        "nan": valid.replace(b'"size": 19', b'"size": NaN'),
+        "float size": valid.replace(b'"size": 19', b'"size": 19.0'),
+        "exponent size": valid.replace(b'"size": 19', b'"size": 1e1'),
+        "null gc_at": valid.replace(b'"}', b'", "gc_at": null}'),
+        "unknown member": valid.replace(b'"}', b'", "pushed": "yes"}'),
+        "unknown top-level member": valid.replace(b"\n}", b',\n"synthetic": 1\n}'),
+        "schema_version 2": valid.replace(
+            b'"schema_version": 1', b'"schema_version": 2'
+        ),
+        "no schema_version": valid.replace(b'"schema_version": 1,', b""),
+        "duplicated sha256": text(rec(size=19), rec(size=19)),
+        "nested too deeply": b"[" * 100_000,
+    }
+
+
+CORRUPT = corrupt_contents()
+
+
+@pytest.mark.parametrize("call", CALLS)
+@pytest.mark.parametrize("case", CORRUPT)
+def test_a_stored_file_that_is_not_valid(root, tmp_path, call, case):
+    digest = cas.put_bytes(root, b"synthetic content").digest
+    place(root, FILE, CORRUPT[case].replace(ONES.encode(), digest.encode()))
+    before = snapshot(tmp_path)
+
+    with pytest.raises(CorruptArtifactsError) as excinfo:
+        CALLS[call](root, RUN, digest)
+
+    message = str(excinfo.value)
+    assert message.startswith(f"{FILE}: must be UTF-8 JSON of a valid file")
+    assert len(message) < 400
+    assert snapshot(tmp_path) == before
+
+
+def test_the_reason_of_a_corrupt_file_names_the_place(root):
+    place(root, FILE, CORRUPT["float size"])
+
+    with pytest.raises(
+        CorruptArtifactsError, match=r"artifacts\[0\]\.size: must be"
+    ) as e:
+        load(root, RUN)
+
+    assert isinstance(e.value.__cause__, InvalidArtifactsError)
+
+
+@pytest.mark.parametrize("call", CALLS)
+def test_the_file_path_is_a_directory(root, tmp_path, call):
+    ref = put(root)
+    (root / FILE).mkdir(parents=True)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(CorruptArtifactsError) as excinfo:
+        CALLS[call](root, RUN, ref.digest)
+
+    assert str(excinfo.value) == f"{FILE}: is not a regular file"
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("call", CALLS)
+def test_a_symbolic_link_in_the_place_of_the_file_is_not_followed(root, tmp_path, call):
+    ref = put(root)
+    target = place(tmp_path, "outside.json", text(stored(ref)))
+    (root / "runs" / RUN).mkdir(parents=True)
+    try:
+        (root / FILE).symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links cannot be created here")
+
+    with pytest.raises(CorruptArtifactsError, match="is not a regular file"):
+        CALLS[call](root, RUN, ref.digest)
+
+    assert target.read_bytes() == text(stored(ref))
+
+
+@pytest.mark.parametrize("occupied", ["runs", f"runs/{RUN}"])
+def test_a_file_in_the_place_of_a_directory(root, tmp_path, occupied):
+    ref = put(root)
+    place(root, occupied, b"not a directory")
+    before = snapshot(tmp_path)
+
+    assert load(root, RUN) == []
+    with pytest.raises(OSError):
+        add(root, ref)
+    with pytest.raises(ArtifactNotFoundError):
+        set_retention_class(root, RUN, ref.digest, "best")
+    assert snapshot(tmp_path) == before
+
+
+# --- negative: a failing write ---
+
+
+def failing(error):
+    def fail(*args, **kwargs):
+        raise error
+
+    return fail
+
+
+@pytest.mark.parametrize("error", [OSError("synthetic failure"), KeyboardInterrupt()])
+def test_a_failing_first_write_leaves_no_file(root, monkeypatch, error):
+    ref = put(root)
+    monkeypatch.setattr(artifacts.os, "fsync", failing(error))
+
+    with pytest.raises(type(error)) as excinfo:
+        add(root, ref)
+
+    assert excinfo.value is error
+    assert not (root / FILE).exists()
+    monkeypatch.undo()
+    assert load(root, RUN) == []
+    assert add(root, ref) == Added(stored(ref), True)
+
+
+def test_a_file_that_cannot_be_opened(root, monkeypatch):
+    ref = put(root)
+    error = OSError("synthetic failure")
+    monkeypatch.setattr(artifacts, "open", failing(error), raising=False)
+
+    with pytest.raises(OSError) as excinfo:
+        add(root, ref)
+
+    assert excinfo.value is error
+    assert not (root / FILE).exists()
+
+
+@pytest.mark.parametrize("edit", ["add_record", "set_retention_class"])
+def test_a_failing_rewrite_keeps_the_file_in_its_place(root, monkeypatch, edit):
+    first, second = put(root, 1), put(root, 2)
+    add(root, first)
+    error = OSError("synthetic failure")
+    monkeypatch.setattr(artifacts.os, "fsync", failing(error))
+
+    with pytest.raises(OSError) as excinfo:
+        if edit == "add_record":
+            add(root, second)
+        else:
+            set_retention_class(root, RUN, first.digest, "best")
+
+    assert excinfo.value is error
+    assert (root / FILE).is_file()
