@@ -2,7 +2,7 @@
 id: T-0007
 title: Add the gh pr merge guard hook script (denies a merge unless the PR checks are green) with its tests
 phase: P0.5
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: ["#5 D10", "#5 D12", OD-18]
 dependsOn: [T-0002]
@@ -118,3 +118,42 @@ Process:
 - (P0.5-3 / CI) First coverage measurement and the CPython 3.11 run happen once CI exists.
 
 ## Result
+- 2026-10-06T06:47Z AKIHA:7c9f2563 — DONE.
+- PR #17 (code mode, https://github.com/myungjoo/HIL-Claw/pull/17), squash-merged to main as 438fa36 ("T-0007: Add the gh pr merge guard hook script with its tests (#17)"); branch commits d74f8c8, f2817dc, cb84ff1, 4d11384. Change: 2 files, +745 lines (`hilclaw/merge_guard.py` 262, `tests/test_merge_guard.py` 483); non-test 262 lines in 1 file (cap 300/5; the estimate was 160). `.claude/settings.json`, `pyproject.toml`, `hilclaw/__init__.py`, `hilclaw/driver_state.py` and `.github/` unchanged. Standard library only (`argparse`, `json`, `re`, `subprocess`, `sys`).
+- **The hook is not registered** (no settings file was edited, no other activation route used); the module is inert. **PLAN P0.5-4 is not complete** after this task: registration is an owner action (Follow-ups).
+- This `## Result` was not committed on the task branch, because a third file would have broken the task's own diff check; the executor handed the text to the driver, which wrote it in the wrap-up commit.
+- Review: 4 rounds by fresh-context `dev-reviewer` agents, final verdict Approve; no `SECURITY` finding.
+  - Round 1 Request changes (https://github.com/myungjoo/HIL-Claw/pull/17#issuecomment-6010742004; F6 withdrawn by the reviewer in issuecomment-6010743832): Medium, Windows paths of `gh` not recognised -> a gh word is any word ending in `gh`/`gh.exe`/`gh.cmd`/`gh.bat`; Low/Medium, a quoted separator cut off the selector (wrong PR checked) -> `shlex` replaced by a quote-aware tokeniser; Low/Medium, `2>&1` read as a selector -> redirections dropped; Low, repository mismatch (`GH_REPO`, `cd`) and variable-built words -> known limits.
+  - Round 2 Approve (issuecomment-6010816726): Low, quoted number before a redirection, `17>log` differing between shells, PowerShell backtick continuation -> fixed (quoted number kept, bare multi-digit refused as ambiguous, backtick-newline read as continuation); Low/Nit, here-document quoting, `#` inside `${...}`, variable selectors -> known limits. Re-review requested after the fix.
+  - Round 3 Request changes (issuecomment-6010862997): Medium, a regression of the round-2 fix: a comment line ending in a backtick or backslash swallowed the next line and hid a merge -> continuations moved into the tokeniser loop, 7 table rows added; Nit, escaped command word in an untokenisable command -> known limit; Nit, wrong test count in the PR body -> corrected.
+  - Round 4 Approve (issuecomment-6010923386): the reviewer ran 200,000 random multi-line commands with an embedded `gh pr merge 17 --squash`, all recognised or refused. Non-blocking: hook timeout versus the 60 s `gh` timeout -> Follow-ups; three more unhandled forms -> known limits; the squash message was taken from the PR body, not from the first commit body, which still described `shlex`.
+- Language: Python, because the guard parses JSON and a shell command line with the stdlib and the rest of the tool package is Python.
+- Hook protocol: **verified** against https://code.claude.com/docs/en/hooks (reachable, 2026-10-06). The PreToolUse payload on stdin has `cwd`, `tool_name` and `tool_input.command`; exit 2 blocks the tool call with stderr as the reason and is the only exit code that blocks by itself; exit 0 with empty stdout proceeds. Not verified in a live session (the hook is not registered).
+- Provisional choices (conventions of this task, not requirements; no OD closed, OD-18 untouched, no ADR):
+  - Location `hilclaw/merge_guard.py`, next to `hilclaw/driver_state.py`: covered by pytest, ruff and the future coverage gate.
+  - API `merge_invocations(command) -> list[list[str]]` (raises `ValueError` for an unparsable command that looks like a merge, an ambiguous redirection, or a selector starting with `-`), `checks_problem(checks) -> str | None`, `evaluate(payload, run=None) -> str | None` (`run` defaults to `subprocess.run`, looked up at call time so that `main` can be tested by monkeypatching), `main(argv=None) -> int`; constants `EXIT_PROCEED = 0`, `EXIT_REFUSE = 2`, `TIMEOUT_SECONDS = 60`.
+  - Exit 0 with empty stdout to proceed, exit 2 with `merge guard: <reason>` on stderr to refuse; never a permission decision. No filter on `tool_name`, so one registration covers Bash and PowerShell.
+  - **Deviation from the task text**: the tokeniser is hand-written, not `shlex`, because `shlex` cannot tell a quoted `;` from a separator, which made the guard check the wrong PR. It handles single and double quotes, backslash escapes, backslash and PowerShell backtick line continuation, `#` comments at the start of a word, and drops redirections; separators are `;` `&` `|` `(` `)`, backtick and newline.
+  - **Deviation from the task text**: a merge is a word ending in `gh`/`gh.exe`/`gh.cmd`/`gh.bat` (any case) *anywhere* in a simple command whose first two non-flag words are `pr merge`, not only the command word. This catches `then gh ...`, `{ gh ...; }`, `env X=1 gh ...`, `$(gh ...)` and Windows paths; the price is a false positive for an unquoted `echo gh pr merge`. Quoted text never matches.
+  - Selector: first positional after `merge`, skipping flags and the values of `-b/--body`, `-F/--body-file`, `-t/--subject`, `-A/--author-email`, `--match-head-commit`, `-R/--repo` (separate, `=` and attached short forms, `--` ends flags); none = current branch. A selector starting with `-` is refused so that it cannot reach `gh pr checks` as a flag (`--web`, `--watch`).
+  - "All successful" = at least one `pass` and every other check `pass` or `skipping`: GitHub treats a skipped job as passing, and "no checks" must not count as green. Not chosen: the stricter "only `pass`", and a `--required`-only variant.
+  - Fail closed (exit 2): stdin is not a JSON object, `gh` or the working directory is not found, `gh` times out, stdout is not a JSON array of objects (gh's own message is quoted, cut at 300 characters), an untokenisable command that looks like a merge, any other exception. The exit status of `gh` is ignored; only stdout is read.
+  - 60 s timeout per `gh pr checks` call. stdin is read as bytes and `gh` output decoded as UTF-8 so that a non-UTF-8 Windows locale cannot break a payload with non-ASCII text.
+- Known limits (also in the PR body):
+  - False positive (refusal or an extra check): a here-document line that reads like a merge; a selector built from a variable (`gh pr merge $PR`), so merges must use a literal selector; a bare multi-digit number glued to a redirection (`17>log`); a PowerShell brace glued to the selector (`{gh pr merge 17}`).
+  - False negative (merge not seen, or another PR checked): `bash -c "..."`, `eval`, `gh` aliases, `gh api .../merge`, command substitution inside double quotes, words built from variables, `$'...'`, PowerShell block comments and PowerShell-only quoting other than the backtick continuation, a single bare digit before a redirection in PowerShell (`gh pr merge 7>log`), `#` after a space inside `${...}`, a selector arriving through `xargs`, an escaped command word (`g\h`) in an untokenisable command.
+  - Quoting is not nested: quotes inside `"$(...)"` or a here-document body follow the plain quote rules, so they can end in a refusal or hide a later merge.
+  - The check runs in the payload's `cwd` and does not follow `cd`, `GH_REPO` or other environment assignments in the command, so it can look at another repository than the merge does.
+- Local verification (CI is not on `main`; CPython 3.14.4 only, **not run on 3.11**; ruff 0.15.14; gh 2.88.1):
+  - Before the first commit: `python -m pytest` -> `305 passed`; `python -m ruff check .` -> `All checks passed!`; `python -m ruff format --check .` -> `6 files already formatted`.
+  - Before the merge (head 4d11384, `origin/main` still at 080a7a2): `385 passed` (288 in `tests/test_merge_guard.py`, 97 existing); `All checks passed!`; `6 files already formatted`; `git ls-files --eol` -> `i/lf w/lf` for both files; `git diff origin/main --stat` -> only the two `touchesFiles`; `gh pr checks 17` -> `no checks reported` (expected, T-0003 blocked). After the merge, on main 438fa36: `385 passed` (rerun by the driver before the wrap-up: `385 passed`, ruff check clean).
+  - No `SIM905` pattern (`str.split()` literal) in the new files.
+- Reachability check: `python -m trace --count --missing --module pytest` (stdlib) marks every line of `hilclaw/merge_guard.py` as executed except `raise SystemExit(main())`, which the two `python -m hilclaw.merge_guard` subprocess tests cover; hence every recognition branch, every fail-closed path and both exit codes are reached.
+- Manual read-only smoke with the real `gh` (run twice, before the first commit and before the merge; nothing merged):
+  - `gh pr merge 15 --squash` -> exit 2, `merge guard: gh pr checks did not report a list of checks: no checks reported on the 'claude/T-0004-driver-state-schema' branch [gh pr checks 15]`.
+  - `gh pr merge 16 --squash` -> exit 2, `merge guard: checks are not successful: Python gate (3.11) (fail), Python gate (3.14) (fail) [gh pr checks 16]`.
+- Follow-ups (in addition to the list above):
+  - (owner action, registration) Set the hook `timeout` above the guard's worst case (60 s per merge invocation in the command) and confirm in a real session what Claude Code does when a hook times out: if it proceeds, a slow `gh` would let a merge through.
+  - (owner action, registration) After registration, merges must use a literal PR selector and should avoid redirections glued to a number; `dev-item-address` step 15 and DRIVER §5 (`gh pr merge --squash --body`) should say so. A long `--body "..."` with nested quotes can be refused; `--body-file` avoids that (this task's own merge used `--body-file`).
+  - (decision to revisit) Checking the repository the merge really targets (`GH_REPO`, `cd`), instead of the payload's `cwd`.
+  - (P0.5-3 / CI) First coverage measurement and the CPython 3.11 run happen once CI exists.
