@@ -2,7 +2,7 @@
 id: T-0028
 title: Write ADR-0007 closing the P1 minimum of OD-13 (measurement and noise policy - samples, repeats, summary statistic, initial values) and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-13, NFR-3, FR-10, FR-9, NFR-2, C-4, "#5 B-4", "#5 D6"]
 dependsOn: [T-0015, T-0020, T-0021]
@@ -140,3 +140,63 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (planner) The rest of P1-8 (`STATE.json`, `instance.json`) needs OD-17 / #8 M7 closed by an ADR and holds owner-only members (OD-3, OD-1, #5 B-7).
 
 ## Result
+**DONE** — landed on `main` as `b3febc2` (document mode, one squashed commit, four of the five files of `touchesFiles`, +179 / −9; trailers `Reviewed-by: reviewer agent (6 rounds, Approve)`, `Task: T-0028`). The tree of the landed commit is identical to the head the round-6 reviewer approved (`d92afa1`, tree `ef09871`); the rebase was a no-op (`origin/main` was still `56c5b26`). Task branch deleted, remote and local, in separate commands after the push was confirmed. No force push. No `git` or `gh` call was denied; one local shell call that appended this section failed on quoting and the section was written with the edit tool instead (nothing else was affected). The §3-5 landed check before starting found nothing (`git log origin/main --grep='^Task: T-0028'` and `gh pr list --search T-0028 --state all` both empty). No BLOCKED condition arose: every point 1-10 could be written without OD-1, the oracle, the tolerance or any board or simulator fact. This task ticks **no PLAN checkbox**.
+
+### Decisions of ADR-0007 (`ARCHITECTURE/decisions/ADR-0007-od13-measurement-policy.md`, 167 lines — above the "about 110-150" of the task, inside the 300 LOC / 5 files cap)
+1. **Scope and terms**: a measurement = one uninterrupted sequence of repeats of one built attempt at one execution point; a repeat = one timed execution; a sample = the one scalar a repeat yields. Neither the quantity nor its direction is chosen (OD-1); the rules assume positive finite samples on a ratio scale. Applies to `cpu_standin`; for sim and board the values are initial values only.
+2. **What a sample covers**: the execution of the kernel on prepared operands; outside are process start-up, build, input allocation and generation, reference, comparison, recording. Calls per repeat, clock and calling convention are the harness design (P1-3).
+3. **Raw samples kept**: every sample, in the order taken; a sample left out of a computation stays in the record, and a later rule that sets samples aside labels them. Requirement on the result files of ADR-0004; no field named.
+4. **Repeats**: CV (n − 1 standard deviation / mean) over all samples so far; stop at the first n ≥ 5 with CV < 5 %, or at n = 10. Reaching the bound without meeting the rule → usable, marked "not converged" (reason: C-4 and no retry policy; the interval of point 7 already keeps a noisy measurement from being called different). Fewer than 5 samples is not a measurement (OD-10 / OD-14). No pooling.
+5. **Summary**: trimmed mean with one sample left out at each end (mean of the middle three at n = 5; as a function defined for n ≥ 3). Either extreme is ruled out as the summary — both ends, because the direction is not chosen.
+6. **Warm-up**: nothing discarded, nothing labelled in P1 (no basis for a changepoint detection over at most 10 samples); the kept order lets a later rule label stored samples. An execution before the first timed repeat is the harness design and yields no sample.
+7. **Difference**: 2000 bootstrap replicates, independent resampling of both sets, ratio of the trimmed means, percentile 95 % interval [r(51), r(1950)]; "different" iff the whole interval is above 1 + δ or below 1 / (1 + δ), δ = 2 %; otherwise "not different" (= the noise range of S9 step 3). "Better" is not defined. **Pairing is left open** (needs OD-20 / OD-28 / the OD-11 proposal and hardware time); the rule takes two sample sets as given.
+8. **Parameters**: table in the record. Cited from #7 §5 G2: lower bound 5, CV 5 %, trim 1, δ 2 %, 95 %. Cited from the owner (#5 B-4): upper bound 10 — the only per-instance value. The record's own: n − 1 divisor and "all samples", 2000 replicates, percentile form and ranks, two-sided bounds, fixed seed. Constants live in the harness source and are traced by the source commit hash (confirmed part of OD-11).
+9. **Reproducibility**: the verdict is a function of the ordered pair of sample sequences and the parameters; fixed seed (no clock, no entropy, no caller seed); generator and seed value are the code task's. Unrelated to the run-time seeds of verification inputs (OD-16).
+10. **Limits**: no protection against forged timing, no board health or fault handling, no comparability across sessions / machines / harness versions; the bootstrap is approximate at 5-10 samples and one slow repeat keeps the CV high; all values are initial values.
+
+Worked example with four synthetic measurements (A, B, D converge at n = 5; C runs to n = 10, not converged) and three pairs; recomputed by the reviewers of rounds 2-6.
+
+### Boundaries left open (named in the record)
+OD-1 / #5 A-4 (quantity, unit, direction, "better", multi-objective, whether δ becomes an instance parameter); #5 B-7 (oracle, tolerance); #5 B-2 / B-3; OD-3. Rest of OD-13: paired interleaved re-measurement and a paired form of the rule, steady-state detection and labelling, session hygiene, values for sim and board, what is done with a "not converged" measurement. Harness design (P1-3): timer, clock, calls per repeat, reuse of inputs, an execution before the first repeat, calling convention, order of verification and timing. OD-14, OD-16 (timing defences, timing calibration), OD-11 (per-instance pin, forced re-measurement), OD-28, OD-20, OD-2, OD-10, OD-15, OD-29; every field, schema, event kind and payload; code, tests, CI, the data repository.
+
+### Register precedent
+OD-4 / OD-6 / OD-8 precedent: status `확정` (P1 minimum, 2026-10-07, DRIVER §9) with the open rest as "잔여". Reason (also in the commit body): each of the five questions of the row gets a P1 answer and DRIVER §9 sets the status to `확정` on approval, unlike OD-16, whose row question stayed open as a whole. All six reviewers found the choice defensible. The commit hash `b3febc2` is not in the row (the row links the record by path, as OD-4 / 6 / 8 do).
+
+### Review (6 rounds, a fresh-context `dev-reviewer` each, spawned with `model: opus`; no `SECURITY` finding)
+- **Round 1 — Request changes** on `ed90ddd` (4 Minor, 2 Nit), addressed in `8186f70`: example row C had CV 9.6 % (is 9.5 %) and a wrong expression `(96 + … + 104) / 8` (is `97 + …`); the symmetry claim of decision 7 does not hold exactly with a fixed seed → reworded: symmetric in form on the same replicates, the verdict belongs to the ordered pair; the Consequences sentence on ADR-0006 was wider than ADR-0006 → limited to a measurement that counts as an expensive result; the two-sided bound was not marked as the record's own → added to the table; length (no action).
+- **Round 2 — Approve** on `8186f70` with 5 Nits, addressed in `2326ff7`: "sub-question ③ of ADR-0003" → "registered as ③ under OD-16"; S0-8 added to the coverage passage (its `profile` content stays open); domain of the trimmed mean (n ≥ 3) versus "summary only for a measurement"; the cost sentence now conditional on one call per repeat; "no later rule removes a sample" bound later records and met the proposal's "samples discarded while throttling" → reworded, and a clause added in OpenDecisionProposals.
+- **Round 3 — Approve** on `2326ff7` with 3 Nits, addressed in `f2e605c`: wording of the n ≥ 3 domain; where input outside the policy is rejected → left to the code task, stated; D / A ratio shown with four digits (0.9802 against the bound 0.9804).
+- **Round 4 — Approve** on `f2e605c` with 3 Nits, addressed in `d39b1f2`: adopting pairing would also revise the "uninterrupted sequence" of decision 1 → said in Boundaries; "not converged" handling added to the open rest in Status and in the OD-13 heading note; the proposal states the CV for throughput → noted in the table.
+- **Round 5 — Approve** on `d39b1f2` with 2 Nits, addressed in `d92afa1`: the Korean summaries said "reaching the bound = not converged" (wider than decision 4) → "does not meet the criterion up to the bound"; "3차 구절" was ambiguous → "2026-10-06 3차 구절".
+- **Round 6 — Approve** on `d92afa1`: nothing left to fix. One Nit marked "no change needed, for the record": sub-question ⑥ of OpenDecisionProposals OD-13 (change the spread measure if runs to the bound are common) is in decision 10 of the record but not in its Boundaries list. Left as is.
+- Review points (a)-(d): all six reviewers agreed that the slice is design-level and hangs on no owner item, and that the A-13 reason "데이터 plane 스키마 변경" does not apply (no schema file, code or dependency; no field named; the record states a requirement on later schemas). No excluded item was found decided in the final text.
+
+### Document checks
+- Session entry (before the first edit): `gh pr list --state open` empty; #4 last comment 2026-07-31, #7 2026-09-07, #8 2026-10-03 — nothing newer about OD-13, NFR-3 or measurement; the latest #5 comment was the ADR-0006 notice (6024069787); A-4, B-2, B-3, B-7 unanswered; no objection to ADR-0001..0006.
+- Relative links and anchors: all resolve (checked by script and by every reviewer).
+- OD numbers: the Requirements diff is the OD-13 row only (+1 / −1); 29 register rows before and after.
+- Nothing excluded is stated as decided; every value is marked cited or the record's own. The works named by #7 G2 (AdaTune, AutoTVM, MLPerf, MetaSchedule) were **not** read; the record says so.
+- Consistent with #5 B-4, NFR-3, S9 step 3, ADR-0003, ADR-0004, ADR-0006 and `hilclaw/local_run.py` (`duration_s` is not a sample).
+- `git ls-files --eol`: `i/lf` for the four files; `git show --stat b3febc2` lists exactly the four files; `git diff --check` clean.
+- Coverage re-check: steps citing NFR-3 / OD-13 (S9-3, S10-3) and steps resting on a measurement or a comparison of measurements (S0-4..8, S1-3, S1-6, S1-b-2, S1-b-4, S2-4, S8-3, S8-4, S10-4): **no verdict changes, no gap**. Recorded in StandardScenarios "검사 결과" (heading, a 2026-10-07 "5차" passage, rows S9 and S10) and in the commit body; the tag of S9-3 now points at the record.
+- CI `push` run on `main` for `b3febc2`: run id `37531000386`, https://github.com/myungjoo/HIL-Claw/actions/runs/37531000386 — `completed` / `success`.
+
+### Edits of the existing documents
+- Requirements: OD-13 row only.
+- OpenDecisionProposals: OD-13 heading note, "채택분(ADR-0007)", "제안으로 남는 부분", "하위 질문" ①-⑥ (pairing; handling of "not converged"; sim / board values; constants as instance parameters; calls per repeat, reuse of inputs, execution before the first repeat; the spread measure); one pointer in OD-11 and one in OD-16 ③. No proposal text deleted.
+- StandardScenarios: S9-3 tag and the result section.
+- **UsageCases: not touched** — its only OD-13 citation (UC-E3) stays true (confirmed by every reviewer).
+
+### Owner notice (DRIVER §9)
+**Already posted** on #5 by the executor, on the driver's instruction for this run (the Process section above had asked for the text only): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6025416809 — heading `### OD-13 (measurement and noise policy) — P1 minimum closed by ADR-0007 under DRIVER §9 (T-0028)`, last line `— posted by driver`. It gives the decisions, the parameter table with the source of each value (owner / #7 proposal / the record's own), the boundaries, four readings to check, the A-13 reading, and the objection window (until 2026-10-14). The driver must **not** post it again; the first Follow-up above is done.
+
+### Known limits
+- With an upper bound of 10 and a CV over all samples, one slow repeat (for example a first-repeat effect) makes a measurement run to the bound and be marked; if that is the normal case on `cpu_standin`, the spread measure is the first value to revisit (OD-13 sub-question ⑥).
+- The verdict of the difference rule is not guaranteed equal for (A, B) and (B, A) near a bound, and it says nothing about the comparability of the two measurements.
+
+### Follow-ups (in addition to the list above)
+- (owner or integrator) Proposed wording for NFR-3: "board 성능 측정의 분산(노이즈)을 고려하여 반복 측정/신뢰구간 등으로 점수 안정성을 확보한다. *(P1 정책 = OD-13 확정분, ADR-0007 — 적응적 반복·trimmed mean·부트스트랩 구간; paired 재측정·세션 위생·sim/board 값은 OD-13 잔여)*".
+- (planner, code task) Inputs from the record: three pure functions (stopping test, trimmed mean, difference verdict); choose the generator and the seed value and document them; decide whether a function or its caller rejects input outside the policy; do not test for exact (A, B) / (B, A) symmetry; the example table is not a test vector for interval digits.
+- (planner, P1-3 task) Decide calls per repeat, whether repeats reuse inputs, whether the kernel is executed before the first timed repeat, and the order of verification and timing; the harness needs its own timer (`duration_s` of `local_run` is not a sample).
+- (planner, P1-8 task) The result-file schemas must hold the ordered samples and the "not converged" mark, and the per-instance upper bound of repeats must be recorded with the instance.
+- (optional) Add sub-question ⑥ to the Boundaries list of ADR-0007 when the record is next touched (round-6 remark).
