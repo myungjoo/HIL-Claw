@@ -2,7 +2,7 @@
 id: T-0017
 title: Write ADR-0002 closing the P1 minimum of OD-6 (codegen spec payload and repair re-invocation) and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-6, FR-5, FR-1, FR-8, NFR-7, "#5 D6", "#5 B-4"]
 dependsOn: [T-0015]
@@ -125,3 +125,66 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (owner, informational) Two records (ADR-0001, ADR-0002) will be inside their objection windows at the same time; later tasks built on them would be revisited on an objection.
 
 ## Result
+**DONE** — landed on `main` as `52c974c` (document mode, one squashed commit, exactly the five files of `touchesFiles`, +196 / −12; `Reviewed-by: reviewer agent (3 rounds, Approve)`, `Task: T-0017`). The tree of the landed commit is identical to the head the round-3 reviewer approved (`d3e7953`); the rebase was a no-op (`origin/main` was still `d4809fe`). Task branch deleted, remote and local, in separate commands after the push was confirmed. No tool call was denied; no force push. The §3-5 landed check before starting found nothing (`git log origin/main --grep='^Task: T-0017'` and `gh pr list --search T-0017 --state all` both empty).
+
+### Decisions of ADR-0002 (`ARCHITECTURE/decisions/ADR-0002-od6-codegen-spec.md`, 181 lines)
+1. **Unit and lifecycle**: one spec = the input of one coder invocation; written before the call and never changed; identified by (`run_id`, `round`, `candidate`, `attempt`); every spec is kept. Reason: the coder call is the unit FR-5 names and #4 §3b checkpoints; a per-round spec would put N into one file, a per-candidate spec extended on repair could not be found again unchanged (NFR-2).
+2. **Sections and fields** (tables in the record): `schema_version`, `id`, `hw_profile` (`key`, `record`), `task` (`op_signature` {`key`, `record`}, `contract`, `objective`, optional `build`), `guidance` (`techniques[]` of `{id, text}`), `feedback` (optional `base`, `attempts[]`), `repair` (exactly when `attempt` > 1), optional `ext`. The two ADR-0001 records are embedded **in full and by key** (the coder needs the field values; the key joins the spec to `db/` and gives a consistency check). No field carries seeds, verification inputs or expected values, and no shape value other than those of the op_signature. Guidance text is copied into the spec (the catalog may change at a round boundary).
+3. **Identification**: `id.round` (0 = bring-up), `id.candidate` (1..N), `id.attempt` (1 + repairs), `id.candidates` (N, no bound in the schema), `id.relation` = `single` | `same_technique` | `different_techniques`, and `id.variant` (text, exactly for `same_technique`).
+4. **Feedback**: `feedback.attempts` is an array of any number of earlier attempts (ref, techniques, optional `failure` {`stage`: `compile` | `sim` | `board`, `report`}, optional `profile` object with members not defined in version 1); `feedback.base` names the attempt whose source the call starts from. **Left open**: which and how many attempts are selected (top-k / bottom-k, k, mandatory or not, order), and the profile summary content.
+5. **Repair**: adopts #4 §3b — a new coder invocation, the round re-enters at the `coded` checkpoint. The repair call gets a **new spec** (`attempt` + 1, other sections copied from attempt 1, plus `repair.failures[]` of `{attempt, stage, report}` with `stage` `compile` or `sim`); the earlier coder session is not continued (a round resumed after a process death must be able to issue the call from files alone, NFR-1). No retry limit (OD-19).
+6. **ADR-0001's two questions**: (a) the operational contract is carried in `task.contract` = `language` (`c` for `cpu_standin`, A-7 ②), `prototype` (text), `operands[]` (`name`, `role`, `dtype`, `shape`); the spec carries it and does not define it — the values come from the harness side (P1-3). (b) Build settings the orchestrator prescribes are in `task.build` (map, no member named in version 1); the settings actually used are recorded with the build and measurement results, outside the spec.
+7. **Versioning**: integer `schema_version` from 1, independent of the key records' version; raised for any field change outside `ext` and the embedded records, and when `profile` or `task.objective` get defined members. Room for the extensions: B4 in `profile`; S7 forbidden patterns, B5 documentation excerpts / documentation-limit statement and FR-15 reference pointers in `ext` (no member named).
+8. **Example**: first call of round 1 for `cpu_standin` × gate/up GEMM at M = 1. Sourced: the two records and keys (ADR-0001 example, A-7, B-4), `candidates` 1 (B-4), `language` `c` (A-7). `NOT-DECIDED-HERE`: `run_id`, `prototype`, `operands`, `objective`, the technique, and the placeholders ADR-0001 already has. The record says the example is not a valid spec.
+
+### Boundaries left open (named in the record)
+Owner-only: #5 B-1, B-5 / OD-9 (the input side — stated in Context as distinct from this spec), B-7 (no tolerance field in version 1), A-4 / OD-1 (`task.objective` reserves the place only), A-8, OD-25, OD-3, C-6. First GEMM values no source gives: memory layout and `layout` vocabulary, C prototype, operand roles and storage order, `hw_source` / `revision` / host / clang strings of `cpu_standin`, `run_id` form, a stand-in technique. OD-8 (spec file location and name, `coder/`, `instance.json`, several values of M per instance), OD-23 (roster, who writes the spec, how it is handed to `claude -p`, the output half), OD-12, OD-14 / NFR-4, NFR-5, OD-19, OD-13, OD-16 beyond FR-9, OD-20, OD-28, OD-29, OD-7, OD-11, the harness-side contract (P1-3), the rest of OD-6, any code or schema file.
+
+### Register precedent
+OD-4 / OD-5 precedent (status `확정` + "잔여"), because the record decides both things the OD-6 row names: the P1 payload definition (decision 2) and the repair resume question (decision 5). All three reviewers confirmed the condition holds. The row points to the record by path; the commit hash `52c974c` is not in the row (Follow-ups).
+
+### Review (3 rounds, a fresh-context `dev-reviewer` each; no `SECURITY` finding)
+- **Round 1 — Request changes** on `644de2d` (4 Minor, 4 Nit), all addressed in `aaf7deb`: (M1) StandardScenarios called S0-8 "지원" although the attempt selection rule and profile structure stay open → 지원(미결), S0 row note likewise; (M2) UsageCases UC-2 line read as if delivering failure causes were decided → "the place is decided, which attempts are carried is the rest of OD-6"; (M3) `feedback.base` had no rationale or alternative → one bullet in decision 4 and one alternative row; (M4) the Proposals "채택분" bullet attributed "new spec, no session continuation" to #4 §3b → moved to the list of what the ADR newly decided; (N1) "no shape other than the one in op_signature" conflicted with `operands[].shape` → reworded, cross-field rule added; (N2) UC-0 line pointed to B5 instead of the UC-0 sub-question → fixed; (N3) unused A-12 URL removed, missing Requirements IDs added to References; (N4) length 180 lines → kept from growing.
+- **Round 2 — Approve** on `aaf7deb` (4 Nit), all addressed in `d3e7953`: `profile` read literally as `{}` only → "members are not listed and not validated in version 1"; `feedback.base` vs the source to repair on a repair call → clarified; cross-field rule list lacked the order and stage restriction of `repair.failures` → added; References lacked the #5 body items and PLAN items → added.
+- **Round 3 — Approve** on `d3e7953`, nothing that has to be fixed before landing. Two optional nits **left as is** (a change would have needed another round): the "earlier" condition of a ref is not in the cross-field rule list, and whether `feedback.base` must also appear in `feedback.attempts` is not stated (Follow-ups, for the schema task); "one spec = one op_signature" has no alternative row (the reviewer reads it as a consequence of ADR-0001 decision 2, no action).
+- A-13 "data-plane schema change": all three reviewers agreed with the planner's reading that it does not apply (no existing schema, schema file or code is changed; D6 names "OD-6 spec payload" for the ADR route). Round 2 suggested saying so in the owner notice (done below); round 1 noted that a later task that changes the `spec.json` schema has to judge A-13 again.
+
+### Document checks
+- Session entry (2026-10-06, before the first edit): no open PR; #4 (last update 2026-10-01), #7 (2026-09-07), #8 (2026-10-05) have nothing newer than this task file about OD-6, OD-23, OD-8 or spec; the latest #5 comment is the ADR-0001 notice (6016440966), no objection to ADR-0001.
+- Relative links: all resolve (`../../PROCESS/DRIVER.md`, `../Requirements.md`, `../OpenDecisionProposals.md#od-6`, `../UsageCases.md`, `../StandardScenarios.md`, `ADR-0001-od4-key-schema.md`, and `decisions/ADR-0002-od6-codegen-spec.md` from the four documents); verified by all reviewers.
+- OD numbers: 29 register rows before and after, numbering unchanged; the Requirements diff is the OD-6 row and the "first commit" sentence only.
+- Example vs tables and ADR-0001: every required field present, no undefined field, no `repair` (attempt 1), no `variant` (`single`); the JSON parses; a throw-away call of `hilclaw.keys.canonical_form` + `directory_name` (not committed) gives `cpu_standin-b0d8610d8f470856` and `gemm-c43e96fb16cc3f35`, the names of the ADR-0001 example. Recomputed by all three reviewers.
+- Nothing excluded is stated as decided; every example value has a source or is a marked placeholder; no seed or verification input (checked by the reviewers against B-4, A-7, D6, #4 §3b and the roster comment, #7 S-1 supplement (6)).
+- `git ls-files --eol`: `i/lf` for all five files; `git show --stat 52c974c` lists exactly the five files.
+- Coverage re-check: steps citing OD-6 (S0-8, S8-2, S7-4) and steps that use a coder spec (S0-4, S0-9, S1-4, S4-2): **no verdict changes** (S0 and S8 stay 지원(미결), S7 stays 확장 호환); recorded in StandardScenarios "검사 결과" (heading note, a third 2026-10-06 paragraph, rows S0, S8, S7) and in the commit body.
+- CI `push` run on `main` for `52c974c`: https://github.com/myungjoo/HIL-Claw/actions/runs/37480901299 — `completed` / `success`.
+
+### Edits of the existing documents
+- Requirements: OD-6 row (status and summary) and the "first commit" sentence.
+- OpenDecisionProposals OD-6: heading line; bullets "채택분", "제안으로 남는 부분", and "하위 질문(ADR-0001이 넘긴 것)" ① operational contract ② build settings ③ several values of M per instance (open, OD-8) — so the third hand-over question **is registered here** in one line. No proposal text deleted.
+- UsageCases: two lines — UC-0 alternative flow (documentation limits: "OD-6 잔여 — 하위 질문(UC-0); ADR-0002는 `ext` 자리만 둠") and the UC-2 "검증 실패" flow (failure causes go into the `feedback` section; which attempts are carried is the rest of OD-6).
+- StandardScenarios: step tags S0-8 and S8-2, and the result section as above.
+
+### Owner notice (DRIVER §9) — ready to post on #5 by the driver, with its tail
+> ### OD-6 (codegen spec payload) — P1 minimum closed by ADR-0002 under DRIVER §9 (T-0017)
+>
+> Decided (record: `ARCHITECTURE/decisions/ADR-0002-od6-codegen-spec.md`, commit `52c974c`, accepted by a context-isolated reviewer after 3 rounds):
+> - One spec = the input of one coder call; it is never changed, is identified by (run, round, candidate, attempt) and is always kept.
+> - Sections `id`, `hw_profile`, `task` (op_signature, kernel contract, objective place, optional build settings), `guidance`, `feedback`, `repair`, `ext`; the two ADR-0001 records are embedded in full and by key; no seeds or verification inputs.
+> - Candidate identification without fixing N: candidate index, N of the round, and whether the candidates are variants of one technique or different techniques.
+> - Repair follows #4 §3b: a new coder call with a new spec (attempt + 1) that carries the failure reports; the earlier coder session is not continued. No retry limit is set.
+> - Feedback can carry any number of earlier attempts side by side; `schema_version` 1.
+>
+> Left open: which earlier attempts are selected (top-k / bottom-k), the profile summary structure (B4), forbidden patterns (S7), documentation excerpts (B5), the spec file's location and name (OD-8), the coder's output contract (OD-23), and everything that needs B-1 / B-5 / B-7 / A-4 / A-8. Values no source gives are placeholders in the record — in particular the **memory layout of the first GEMM**, the **C prototype of the kernel and its operand order**, and the `hw_source` / host strings of `cpu_standin`; the example in the record is therefore not a valid spec.
+>
+> Note on CLAUDE.md A-13 ("data-plane schema change" is a BLOCKED reason): this record is the first definition of the spec payload, made along the route D6 opened for OD-6; it changes no existing schema, schema file or code. The reviewers read A-13 as not applying.
+>
+> Objection window: 7 days from this notice (until 2026-10-13 if posted on 2026-10-06). An objection creates a reverting task. ADR-0002 builds on ADR-0001, whose own window also runs until 2026-10-13.
+
+### Follow-ups (in addition to the list above)
+- (planner, P1-5 slice 2 — schema task) Two points the record leaves to the schema author (round-3 nit): whether the validator checks that a ref in `feedback.base` / `feedback.attempts` names an *earlier* call, and whether `feedback.base` must also be an entry of `feedback.attempts`. Neither is stated as a cross-field rule in ADR-0002. That task also has to judge CLAUDE.md A-13 again, since it adds the `spec.json` schema file.
+- (integrator, document mode) Add to the OD-8 notes that the #4 draft `rounds/<N>/spec.json` cannot hold one kept spec per (round, candidate, attempt) (ADR-0002 Consequences; outside this task's `touchesFiles`).
+- (integrator) The third ADR-0001 hand-over question (several values of M per instance) is now registered under OD-6 as open with a pointer to OD-8; the remaining one to register is under OD-26 (how hw key field values are obtained).
+- (owner question candidates, with P1-5 slice 3 or P1-3) besides layout and prototype: the `run_id` form (OD-8) and a first technique of the stand-in catalog are also placeholders in the example.
+- (driver or integrator) Add `52c974c` to the OD-6 register row.
+- The record is 181 lines against "about 130-170"; all three reviewers accepted it (tables and the example).
