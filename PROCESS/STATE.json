@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "phase": "P0",
+  "phase": "P0.5",
   "currentTask": "T-0003",
-  "nextTask": null,
+  "nextTask": "T-0003",
   "lock": {
-    "owner": "AKIHA:15cc61e7",
-    "acquiredAt": "2026-10-06T04:19:00Z",
+    "owner": "AKIHA:0fdf7e3c-2",
+    "acquiredAt": "2026-10-06T08:22:45Z",
     "ttlMinutes": 180
   },
   "humanQuestions": [
@@ -18,18 +18,28 @@
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6000504089",
       "resolvedAt": "2026-10-06T04:16:15Z",
       "decision": "(a) — owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6009218647: the routine runs with Bypass permissions, the dedicated driver clone as working folder and a pinned model (D13, main 6dcdce4). A-13 unchanged. Resume T-0003."
+    },
+    {
+      "id": "HQ-0002",
+      "taskId": "T-0003",
+      "reason": "requirement-unclear",
+      "question": "PR #16 (T-0003, CI skeleton) is red on its first run: `pip install --group dev` resolves `ruff>=0.15.14` to ruff 0.16.10, which reports SIM905 at hilclaw/driver_state.py:26 (already on main since T-0004; ruff 0.15.14 used locally does not). Every fix lies outside T-0003's single allowed file (.github/workflows/ci.yml). How should it go green? (a) fix hilclaw/driver_state.py:26 (list literal instead of str.split) in T-0003 or a small preceding code task, keeping the unpinned `ruff>=` bound; (b) bound or pin the dev tools in pyproject.toml so local and CI versions agree (the pin/lock policy deferred at T-0002 review N1); (c) both.",
+      "askedAt": "2026-10-06T04:21:00Z",
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6009266810",
+      "resolvedAt": "2026-10-06T07:39:42Z",
+      "decision": "(c) — owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6011684226: fix hilclaw/driver_state.py:26 and pin the dev tools exactly (ruff==0.16.10, pytest==9.1.1) in pyproject.toml as a small code task (T-0009) that lands before T-0003 resumes; T-0003 keeps to the workflow file; local tools upgraded to the same versions; pin bumps are deliberate tasks from now on. T-0003 set to TODO with dependsOn T-0009; nextTask = T-0009 (owner edit, no lock)."
     }
   ],
   "counters": {
-    "iterations": 5,
-    "tasksDone": 4,
-    "tasksBlocked": 1,
-    "reviewRoundsTotal": 6
+    "iterations": 10,
+    "tasksDone": 8,
+    "tasksBlocked": 2,
+    "reviewRoundsTotal": 14
   },
   "lastIteration": {
-    "at": "2026-10-06T03:24:55Z",
-    "owner": "AKIHA:d0ccbf3e",
-    "taskId": "T-0005",
+    "at": "2026-10-06T08:22:28Z",
+    "owner": "AKIHA:0fdf7e3c",
+    "taskId": "T-0009",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

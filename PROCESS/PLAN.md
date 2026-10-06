@@ -1,6 +1,6 @@
 # 개발 PLAN
 
-[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D13은 모두 답변되어(2026-10-06) 본 PLAN에 ⚑ 항목은 없다.
+[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D15는 모두 답변되어(2026-10-06) 본 PLAN에 ⚑ 항목은 없다. D15(드라이버 병렬 실행)의 전환은 PLAN 항목이 아니며 planner는 그것을 task로 만들지 않는다 — 루틴을 멈춘 통합자 세션이 P0-3 완료와 P0.5-4의 hook 등록 뒤에 수행한다(D15-3·D15-4, [proposals/D15-parallel-drivers.md](proposals/D15-parallel-drivers.md) §8).
 
 현재 phase: `PROCESS/STATE.json`의 `phase`가 정본.
 
@@ -11,7 +11,7 @@
 - [ ] P0-3 CI 스켈레톤(#9): PR과 main push에 Python 게이트(pytest+ruff) 1개, Linux 러너. required check는 두지 않음(D10 확정: 절차 게이트 + merge 가드 hook P0.5-4; #8 M24 해소) · coversReq: #9, #5 D10
 - [x] P0-4 `PROCESS/STATE.json` JSON Schema(DRIVER §2 표를 기계화) + 검증기. 검증기 테스트는 **명시 요구됨**(D12 예외 ①) · coversReq: DRIVER §2·§4·§8, #5 D12
 - [x] P0-5 README 갱신: 세 층 모델·개발 절차 포인터(PROCESS/, CLAUDE.md) — doc 모드 · coversReq: #5 A-12
-- [ ] P0-6 개발 프로세스 agent 정의: `.claude/agents/dev-planner.md`·`dev-executor.md`·`dev-reviewer.md` — 컨텍스트 격리 subagent, 허용 도구 frontmatter(모델은 CLAUDE.md 배정 원칙 — 모델명 하드코딩 금지), 기존 스킬 2개를 감쌈(DRIVER §7; 이름·도구 제한은 이 task에서 리뷰로 확정) — doc 모드 · coversReq: #5 D5, A-13
+- [x] P0-6 개발 프로세스 agent 정의: `.claude/agents/dev-planner.md`·`dev-executor.md`·`dev-reviewer.md` — 컨텍스트 격리 subagent, 허용 도구 frontmatter(모델은 CLAUDE.md 배정 원칙 — 모델명 하드코딩 금지), 기존 스킬 2개를 감쌈(DRIVER §7; 이름·도구 제한은 이 task에서 리뷰로 확정) — doc 모드 · coversReq: #5 D5, A-13
 
 ## P0.5 — 게이트 보강
 

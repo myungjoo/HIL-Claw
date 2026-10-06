@@ -22,8 +22,19 @@ DEFAULT_SCHEMA_PATH = REPO_ROOT / "PROCESS" / "STATE.schema.json"
 DEFAULT_STATE_PATH = REPO_ROOT / "PROCESS" / "STATE.json"
 
 _ANNOTATIONS = frozenset({"$schema", "$id", "title", "description"})
-_KEYWORDS = _ANNOTATIONS | set(
-    "type properties required additionalProperties items enum const pattern format minimum".split()
+_KEYWORDS = _ANNOTATIONS | frozenset(
+    {
+        "type",
+        "properties",
+        "required",
+        "additionalProperties",
+        "items",
+        "enum",
+        "const",
+        "pattern",
+        "format",
+        "minimum",
+    }
 )
 _TYPE_NAMES = frozenset({"object", "array", "string", "integer", "null"})
 _FORMATS = frozenset({"date-time"})
