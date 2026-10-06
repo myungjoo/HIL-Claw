@@ -68,7 +68,11 @@ NOT_A_MERGE = [
     'gh pr comment 17 --body "gh pr merge 17"',
     "echo 'gh pr merge'",
     'gh pr comment 17 --body "line one\ngh pr merge 17"',
+    r'gh pr comment 17 --body "say \"gh pr merge 17\" now"',
+    "# gh pr merge 17",
+    "git status # gh pr merge 17",
     'echo "unterminated',
+    "echo 'unterminated",
 ]
 
 MERGES = [
@@ -113,6 +117,26 @@ MERGES = [
     ("/usr/bin/gh pr merge 17", [["17"]]),
     ("echo a#b; gh pr merge 17", [["17"]]),
     ('gh pr merge 17 --body "one\ntwo; gh pr merge 99"', [["17"]]),
+    ('gh pr merge --body ";" 17', [["17"]]),
+    ('gh pr merge -t "|" 17 --squash', [["17"]]),
+    ("gh pr merge --body '&& (x) `y`' 17", [["17"]]),
+    (r'gh pr merge --body "a \" b; c" 17', [["17"]]),
+    ("gh pr merge --squash --delete-branch 2>&1", [[]]),
+    ("gh pr merge 17 --squash >merge.log 2>&1", [["17"]]),
+    ("gh pr merge > merge.log 17", [["17"]]),
+    ("gh pr merge>/dev/null 17", [["17"]]),
+    ("gh pr merge 17 &>merge.log", [["17"]]),
+    ("gh pr merge 2>$null 17", [["17"]]),
+    ("gh pr merge 17 2>&1 | tee merge.log", [["17"]]),
+    ("gh pr merge 17 &", [["17"]]),
+    ("cat <(gh pr merge 17)", [["17"]]),
+    (r'"C:\Program Files\GitHub CLI\gh.exe" pr merge 17 --squash', [["17"]]),
+    (r'& "C:\Program Files\GitHub CLI\gh.exe" pr merge 17', [["17"]]),
+    (r"C:\tools\gh.exe pr merge 17", [["17"]]),
+    ("gh.cmd pr merge 17", [["17"]]),
+    ("GH.EXE pr merge 17", [["17"]]),
+    ("# don't merge before the review\ngh pr merge 17", [["17"]]),
+    ("echo start # gh pr merge 1\ngh pr merge 2", [["2"]]),
 ]
 
 

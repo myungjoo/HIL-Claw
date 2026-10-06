@@ -14,7 +14,6 @@ permission, and it fails closed: every failure of the guard itself exits 2.
 import argparse
 import json
 import re
-import shlex
 import subprocess
 import sys
 
@@ -34,10 +33,8 @@ _LONG_VALUE_FLAGS = frozenset(
     }
 )
 _SHORT_VALUE_FLAGS = frozenset("bFtAR")
-_GH = re.compile(r"(?:.*/)?gh(?:\.exe)?", re.IGNORECASE)
-_LOOKS_LIKE_MERGE = re.compile(
-    r"\bgh(?:\.exe)?\b.*?\bpr\b.*?\bmerge\b", re.DOTALL | re.IGNORECASE
-)
+_GH = re.compile(r".*gh(?:\.(?:exe|cmd|bat))?", re.DOTALL | re.IGNORECASE)
+_LOOKS_LIKE_MERGE = re.compile(r"gh\b.*?\bpr\b.*?\bmerge\b", re.DOTALL | re.IGNORECASE)
 
 
 def merge_invocations(command):
@@ -49,30 +46,68 @@ def merge_invocations(command):
     the command cannot be tokenised but looks like a merge, or when the selector
     starts with ``-``.
     """
-    lex = shlex.shlex(
-        command.replace("\r\n", "\n").replace("\\\n", ""),
-        posix=True,
-        punctuation_chars=_SEPARATORS,
-    )
-    lex.whitespace = " \t\r"
-    lex.whitespace_split = True
-    lex.commenters = ""
     try:
-        tokens = list(lex)
+        commands = _simple_commands(command)
     except ValueError as e:
         if _LOOKS_LIKE_MERGE.search(command):
             raise ValueError(
                 f"cannot parse a command that looks like gh pr merge ({e})"
             ) from e
         return []
-    found, words = [], []
-    for token in [*tokens, ";"]:
-        if token and not token.strip(_SEPARATORS):
-            found += _merges_in(words)
-            words = []
+    return [args for words in commands for args in _merges_in(words)]
+
+
+def _simple_commands(command):
+    text = command.replace("\r\n", "\n").replace("\\\n", "")
+    commands, word, quote, redirected, i = [[]], None, None, False, 0
+
+    def end_word():
+        nonlocal word, redirected
+        if word is not None:
+            if not redirected:
+                commands[-1].append(word)
+            word, redirected = None, False
+
+    while i < len(text):
+        c = text[i]
+        i += 1
+        if quote:
+            if c == quote:
+                quote = None
+            elif (
+                c == "\\" and quote == '"' and text[i : i + 1] in ('"', "\\", "$", "`")
+            ):
+                word += text[i]
+                i += 1
+            else:
+                word += c
+        elif c in "'\"":
+            quote, word = c, word or ""
+        elif c == "\\":
+            word = (word or "") + text[i : i + 1]
+            i += 1
+        elif c == "#" and word is None:
+            end = text.find("\n", i)
+            i = len(text) if end < 0 else end
+        elif c in " \t\r":
+            end_word()
+        elif c in "<>" or (c == "&" and text[i : i + 1] == ">"):
+            if word is not None and word.isdigit():
+                word = None
+            end_word()
+            while text[i : i + 1] in ("<", ">", "&", "|"):
+                i += 1
+            redirected = True
+        elif c in _SEPARATORS:
+            end_word()
+            redirected = False
+            commands.append([])
         else:
-            words.append(token)
-    return found
+            word = (word or "") + c
+    if quote:
+        raise ValueError("no closing quotation")
+    end_word()
+    return commands
 
 
 def _merges_in(words):
