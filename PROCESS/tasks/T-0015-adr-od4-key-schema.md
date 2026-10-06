@@ -2,7 +2,7 @@
 id: T-0015
 title: Write ADR-0001 closing the P1 minimum of OD-4 (hw_profile / op_signature key schema) and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-4, FR-13, FR-7, FR-14, "#5 D6", "#5 B-4"]
 dependsOn: []
@@ -120,3 +120,63 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (owner, informational) The 7-day objection window of DRIVER §9 starts with the notice; later tasks that build on the record before it ends would have to be revisited if the owner objects.
 
 ## Result
+**DONE** — landed on `main` as `cb09aa6` (document mode, one squashed commit, exactly the five files of `touchesFiles`; `Reviewed-by: reviewer agent (3 rounds, Approve)`). Task branch deleted (remote and local). The §3-5 landed check before starting found nothing (`git log origin/main --grep='^Task: T-0015'` and `gh pr list --search T-0015 --state all` both empty).
+
+### Decisions of ADR-0001 (`ARCHITECTURE/decisions/ADR-0001-od4-key-schema.md`)
+1. **hw_profile**: key fields `schema_version`, `accelerator` (name), `revision` (string), `toolchain` (map component → version, at least one), `host` (map with at least `cpu` and `os`), optional `ext` (map). Attributes outside the key: `hw_source` (`external` | `in_house`, required), `label`. Reason: every property that changes measured performance is a key field; `hw_source` classifies provenance and selects handling (OD-26), so it adds no distinction and a reclassification must not cut history. An open `toolchain` map instead of fixed firmware / driver fields, because B-1 has not named the hardware.
+2. **op_signature**: key fields `schema_version`, `kind`, `shape` (member names fixed per kind; `gemm` = `m`, `k`, `n`), `dtype`, `layout`, optional `ext`; attribute `label`. **M is part of the key**: the agreed layout (#4) keeps one best reference and one statistics set per (hw, op) directory, and that stays well defined across decode / small batch / prefill only with M in the key, without a level below the key (which would be OD-8). Consequence: one `db/` directory per (projection shape, M) — 12 for the B-4 set, gate and up sharing one — and FR-7 statistics per M.
+3. **Canonical form / derivation**: JSON of the key fields only, members sorted, no whitespace (RFC 8785 for the restricted value set: names, printable-ASCII strings, integers below 2^53, maps); SHA-256; directory name = `<accelerator or kind>-<first 16 hex>`; charset `[a-z0-9_-]`, lowercase, ≤ 49 characters. The digest is one-way, so the full record must be stored with the data (where = OD-8). A differing stored canonical form under an existing name is an error.
+4. **P1 matching**: exact match (byte-equal canonical forms) only; a hit is a hint (FR-15), a miss is a cold start; P1 tools do not look under other keys.
+5. **New key**: any key field change (revision, any toolchain component or version, any host member, `ext`, `kind`, any shape member incl. `m`, `dtype`, `layout`, `schema_version`). Same key: attributes, things stored outside the records, instance parameters, per-candidate build settings (compiler flags, thread count).
+6. **Versioning**: integer `schema_version` from 1, part of the canonical form, raised only when the required key fields or the rules change; new kinds, values, map members and attributes do not raise it. Unknown hardware uses the open maps `toolchain`, `host`, `ext`; no vendor field is named.
+7. **Example**: `cpu_standin` × gate/up GEMM (m=1, k=2048, n=8192, fp32) → `db/cpu_standin-b0d8610d8f470856/gemm-c43e96fb16cc3f35/`. Sourced values: `cpu_standin`, `clang` (A-7), shape, M, dtype (B-4). Everything else (`revision`, `host.cpu`, `host.os`, clang version, `hw_source`, `layout`) is the literal placeholder `NOT-DECIDED-HERE`, hashed literally, so these are **not** the names of the real first instance and the example is not a valid record.
+
+### Boundaries left open (named in the record)
+#5 B-1, B-5 / OD-9, OD-25, OD-3, C-6 (owner-only); the layout value and vocabulary of the first GEMM (question for P1-5, possibly the owner); how hw key field values are obtained — toolchain member set, version string form, `host.cpu` / `host.os` normalisation, `revision` for hardware without one, `hw_source` of a stand-in, who fills the record (OD-26 / the task registering `cpu_standin`); OD-8 (where the record is stored); OD-26; OD-6; OD-7, OD-11, OD-13; the similarity layer, nearest-neighbour ranking and the S10 note of OD-4; SDPA shape members; any code or JSON Schema.
+
+### Register precedent
+OD-5 precedent (status `확정` + "잔여"), because the record decides both things the OD-4 row names (key field schema and P1 matching rule). The row points to the record by path; the commit hash `cb09aa6` is not in the row (Follow-ups).
+
+### Review (3 rounds, fresh-context `dev-reviewer` each)
+- **Round 1 — Request changes** (1 Major, 5 Minor, 4 Nit), all addressed: (Major) the placeholder violates the `name` type while Consequences called the example a test vector → the record now says the placeholder is deliberately invalid and the example checks canonical form and derivation only; "another machine = new key" contradicted the rule → reworded (equal `host` members share a key); value vocabulary / member-set gaps were not named → added as a boundary; three questions sent to OD-6 are not registered there → named as unregistered, follow-up below; "not key fields in version 1" moved from Boundaries into decision 5; commit body too short → full body written; UC-0 alternative-flow heading had become false → amended; nits (record-format wording, B-4 vs design argument, `m`/`k`/`n` are dimension names only, wording of decision 6) fixed.
+- **Round 2 — Approve** with 2 Minor, 5 Nit, all addressed except the follow-up item: added the alternative row for build settings as key fields; lookup wording aligned with the collision rule; re-check step list completed; OD-4 row item column no longer says "field candidates"; proposal wording about `host`; landing subject restored.
+- **Round 3 — Approve**, nothing trivially fixable left. Two optional nits: the commit-body wrap (fixed in the landing message, no content change) and the example table's "read from the host when the profile is registered" for the clang version, which could be read as touching the OD-26 question of who fills the record — **left as is** (changing it would have needed another round; listed in Follow-ups).
+
+### Document checks
+- Session entry (2026-10-06T12:23Z, before the first edit): no open PR; #4, #5, #7, #8 have nothing newer than this task file about OD-4, OD-8 or key schemas (latest #5 comment is the HQ-0003 mirror).
+- Relative links: all resolve (`../Requirements.md`, `../UsageCases.md`, `../OpenDecisionProposals.md#od-4`, `../../PROCESS/DRIVER.md`, `decisions/ADR-0001-od4-key-schema.md`, `../PROCESS/DRIVER.md`); also verified by the reviewers.
+- OD numbers: 29 register rows before and after, numbering unchanged; the diff touches the OD-4 row and the "first commit" sentence only.
+- Example reproducible: a throw-away Python snippet (sorted-keys compact JSON → SHA-256, not committed) gives exactly the two canonical forms, digests and names printed in the record; recomputed independently by all three reviewers.
+- No excluded item is stated as decided; every example value has a source or is a marked placeholder (checked by the reviewers against the A-7 / B-4 comments).
+- `git ls-files --eol`: `i/lf` for all five files; `git show --stat cb09aa6` lists exactly the five files (170 insertions, 15 deletions; the record is 153 lines).
+- Coverage re-check: no verdict changes (S1-b and S6 stay 지원(미결), S10 stays 확장 호환); recorded in StandardScenarios "검사 결과". Note recorded there: with exact match only, S6's shorter convergence on a "similar" HW depends on the open rest of OD-4.
+- CI `push` run on `main` for `cb09aa6`: run 37464517162, conclusion `success`.
+
+### Edits beyond the minimum the task named (all inside `touchesFiles`, accepted by the reviewers as "a sentence has become false")
+- UsageCases: besides the two glossary lines, the `hw_source` glossary line ("키 필드 = OD-4" → attribute outside the key) and the UC-0 alternative flow (heading and the revision bullet: a revision / toolchain change is a new key; registration procedure and history attribution stay OD-26).
+- StandardScenarios: step tags of S1-b-3 and S6-1, besides the result heading, note and rows S1-b / S6.
+- Requirements OD-4 row, item column: "필드 후보" → "키 취급 포함".
+
+### Provisional conventions set by this task (owner may change)
+- ADR location `ARCHITECTURE/decisions/ADR-NNNN-<slug>.md`, the seven sections, "one closure per record", superseded records kept.
+- Language split: new records in English; in-place edits of the existing Korean ARCHITECTURE documents stay Korean.
+
+### Owner notice (DRIVER §9) — ready to post on #5 by the driver, with its tail
+> ### OD-4 (key schema) — P1 minimum closed by ADR-0001 under DRIVER §9 (T-0015)
+>
+> Decided (record: `ARCHITECTURE/decisions/ADR-0001-od4-key-schema.md`, commit `cb09aa6`, accepted by a context-isolated reviewer after 3 rounds):
+> - `hw_profile` key = accelerator + revision + toolchain (component → version) + host (cpu, os, …); `hw_source` is a required attribute outside the key.
+> - `op_signature` key = kind + full shape + dtype + layout; **M is part of the key** (one `db/` directory per projection shape and M; FR-7 statistics per M).
+> - Directory name = `<accelerator or kind>-<first 16 hex of SHA-256 of the canonical JSON of the key fields>`; the full record is stored with the data.
+> - P1 lookup is exact match only; a hit is a hint (FR-15). Any key field change (e.g. a clang upgrade, another host CPU) starts a new key.
+> - `schema_version` 1; unknown hardware is covered by open maps, no vendor field is named.
+>
+> Left open: the similarity layer and nearest-neighbour matching (rest of OD-4), where the record is stored (OD-8), onboarding and history attribution (OD-26), and everything that needs B-1 / B-5. Values no source gives are placeholders in the record — in particular the **memory layout of the first GEMM** (not in B-4), the **`hw_source` of `cpu_standin`**, and its `revision` / host / clang version strings.
+>
+> Objection window: 7 days from this notice (until 2026-10-13 if posted on 2026-10-06). An objection creates a reverting task.
+
+### Follow-ups (in addition to the list above)
+- (integrator, document mode) Register the sub-questions the record raises, which this task was not allowed to add to other OD rows: under **OD-6** — the operational contract of an operation kind (operands, calling convention) and where per-candidate build settings (compiler flags, thread count) are recorded; under **OD-6 or OD-8** (`instance.json`) — whether one instance may cover several values of M; under **OD-26** — how hw key field values are obtained (toolchain member set incl. an OpenMP runtime, version string form, `host.cpu` / `host.os` source and normalisation, `revision` for hardware without one, who fills the record).
+- (owner question candidates, before P1-5 / the `cpu_standin` registration) the memory layout of the first GEMM; which `hw_source` value a CPU stand-in has (the owner fixed two values; neither is stated for a stand-in).
+- (integrator, optional wording) ADR-0001 example table, `toolchain` source cell: replace "read from the host when the profile is registered" by a wording that does not suggest who obtains it (round-3 nit).
+- (driver or integrator) Add `cb09aa6` to the OD-4 register row.
