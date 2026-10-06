@@ -37,7 +37,11 @@ Conventions of this module, which the two ADRs do not fix:
   form: the functions here accept any JSON text of a valid record.
 - A file is created exclusively, without a temporary file (no path of ``db/``
   is a scratch location, ADR-0004 decision 7). When writing fails, the partial
-  file and the directories the call created are removed where possible.
+  file and the directories the call created are removed where possible. A
+  process that is killed while it writes can leave a partial file, which is
+  then reported as :class:`CorruptKeyRecordError` until it is removed by hand.
+- Only the record file itself must be a regular file; a symbolic link in its
+  place is not followed. The directories above it are used as they are.
 
 What this module does not do: it reads no configuration, runs no ``git`` and
 commits nothing; it neither reads nor writes ``best.json``,

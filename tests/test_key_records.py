@@ -654,6 +654,35 @@ def test_a_record_file_path_that_is_a_directory(root, tmp_path):
     assert snapshot(tmp_path) == before
 
 
+def test_an_op_signature_record_path_that_is_a_directory(root, tmp_path):
+    store_hw_profile(root, hw())
+    (root / OP_FILE).mkdir(parents=True)
+    before = snapshot(tmp_path)
+    calls = [
+        lambda: load_op_signature(root, HW_NAME, OP_NAME),
+        lambda: store_op_signature(root, HW_NAME, op()),
+        lambda: lookup(root, hw(), op()),
+    ]
+
+    for call in calls:
+        with pytest.raises(CorruptKeyRecordError, match=OP_FILE):
+            call()
+    assert snapshot(tmp_path) == before
+
+
+def test_an_interrupt_during_a_write_leaves_nothing_behind(root, tmp_path, monkeypatch):
+    def interrupt(descriptor):
+        raise KeyboardInterrupt
+
+    store_hw_profile(root, hw())
+    before = snapshot(tmp_path)
+    monkeypatch.setattr(key_records.os, "fsync", interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        store_op_signature(root, HW_NAME, op())
+    assert snapshot(tmp_path) == before
+
+
 def test_a_record_file_that_is_a_symbolic_link_is_not_followed(root, tmp_path):
     target = tmp_path / "outside.json"
     target.write_bytes(compact(hw()))
