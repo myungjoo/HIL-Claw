@@ -53,3 +53,31 @@ jobs:
         run: |
           shellcheck --version
           git ls-files -z -- '*.sh' | xargs -0 -r shellcheck --shell=sh
+
+  test-presence:
+    name: Test presence (hilclaw)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test file for every hilclaw module
+        shell: bash
+        run: |
+          list=$(mktemp)
+          git ls-files -z -- 'hilclaw/*.py' > "$list"
+          mapfile -d '' -t modules < "$list"
+          missing=0
+          for module in "${modules[@]}"; do
+            name=${module##*/}
+            [[ $name == *.py && $name != __init__.py ]] || continue
+            dir=${module%/*}
+            expected="tests${dir#hilclaw}/test_${name}"
+            if ! git ls-files --error-unmatch -- ":(literal)${expected}" > /dev/null 2>&1; then
+              echo "::error file=${module}::${module} has no test file ${expected}"
+              missing=1
+            fi
+          done
+          echo "examined ${#modules[@]} tracked *.py file(s) under hilclaw/"
+          exit "$missing"
