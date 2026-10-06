@@ -2,7 +2,7 @@
 id: T-0009
 title: Pin the dev tools exactly (ruff 0.16.10, pytest 9.1.1) and make main lint-clean under them
 phase: P0
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: ["#5 HQ-0002 answer", "#9", "#5 D12"]
 dependsOn: [T-0002, T-0004, T-0007]
