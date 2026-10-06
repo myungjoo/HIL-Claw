@@ -2,7 +2,7 @@
 id: T-0021
 title: Write ADR-0004 closing the P1 minimum of OD-8 (directory tree of the data plane with the candidate dimension) and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, FR-13, FR-6, NFR-1, NFR-2, C-3, "#5 A-1", "#5 A-2", "#5 D6"]
 dependsOn: [T-0015, T-0017]
@@ -143,3 +143,87 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (driver or integrator, document mode) Add the landed commit hash to the OD-8 register row.
 
 ## Result
+**DONE** — landed on `main` as `417b6d4` (document mode, one squashed commit, four of the five files of `touchesFiles`, +211 / −12; `Reviewed-by: reviewer agent (4 rounds, Approve)`, `Task: T-0021`). The tree of the landed commit is identical to the head the round-4 reviewer approved (`b965009`); the rebase was a no-op (`origin/main` was still `99e9753`). Task branch deleted, remote and local, in separate commands after the push was confirmed. No tool call was denied; no force push. The §3-5 landed check before starting found nothing (`git log origin/main --grep='^Task: T-0021'` and `gh pr list --search T-0021 --state all` both empty). No BLOCKED condition arose: every point 1-10 could be written without the gate list, the isolation means or another excluded item.
+
+### Decisions of ADR-0004 (`ARCHITECTURE/decisions/ADR-0004-od8-data-plane-layout.md`, 196 lines)
+1. **Top level and scope**: exactly `runs/`, `db/`, `blobs/`; beside them only housekeeping files (`README.md`, `.gitignore`). The record fixes paths, file names and, per file, its purpose and writer role — no field. A missing directory means "nothing yet". Reason: #5 A-1 (three directories, each able to become a repository).
+2. **Run tree**: `runs/<run_id>/` holds `STATE.json`, `instance.json`, `events.ndjson`, `artifacts.json` and `rounds/<RRRR>/` (decimal, at least four digits — #4 §2c; first round `0000` = bring-up, the `id.round` of ADR-0002 unchanged). Everything that changes after a round ends is at run level. The tree has **no branch level** (the tuple of ADR-0002 has no branch member); whether a branch or a continuation is a new run or later rounds of the same run is left open.
+3. **Candidate and attempt**: `<role>/candidates/<CC>/attempts/<AA>/` (at least two digits, from `01`; larger numbers written in full, so no bound on N or repairs). The tuple maps to a path by formatting alone; the spec is `runs/<run_id>/rounds/<RRRR>/coder/candidates/<CC>/attempts/<AA>/spec.json`. **Per attempt**: `spec.json`, `output/` (coder output; files are OD-23), `build.json` (replaces the draft's `build.log`; holds the settings actually used — the place asked for by OD-6 sub-question ②), `sim.json`, `board.json`, `profile.json`, `eval.json`. **Per round**: `decision/decision.md`. **Per candidate**: no file fixed. Reason: everything that comes from one source belongs to the attempt that has that source. `build.json` and `profile.json` are under `measure/` with the note that a later record moves them if OD-23 assigns building or profiling elsewhere.
+4. **One writer role per directory**: a round is divided by role first (`decision/`, `coder/`, `measure/`, `eval/` — the names of candidate ① item 1), then by candidate and attempt, as a property of the paths only. Reason for role-first over candidate-first: the files of one role in one round share one prefix, so a single write root holds whether an actor is invoked per round or per attempt (no constraint on OD-23 / OD-29). A role is not an agent; the coder process holds no role.
+5. **Knowledge tree**: `db/<hw_profile_key>/hw_profile.json` and `db/<hw_profile_key>/<op_signature>/op_signature.json` hold the full ADR-0001 records (a file name has a dot, a key directory name never does); `best.json` and `technique_stats.json` keep the draft's names and place, content OD-20 / OD-7.
+6. **Blob records**: one `artifacts.json` per run, written by the tool layer with the blob store. Reasons: C-3 makes the producing round a member of each record, and a GC adds `gc_at` after the round, which a per-round file would turn into writes into earlier round directories. `blobs/` holds nothing in git but its placeholder. The record states its reading of #5 A-1 detail 1 ("`blobs/`(메타)") as its own reading, not the owner's statement.
+7. **Never a file**: seeds and input values of a verification run; the harness, its reference and the calibration kernels; binaries in git; copies of external reference originals; secrets. Scratch, temporary and build-cache content is never committed; where such directories are is decided with the isolation means.
+8. **`run_id`**: constraints only — `[a-z0-9][a-z0-9_-]{0,63}`, unique within `runs/`; the form stays open. The limit of 64 is marked as the record's own choice.
+9. **Versioning and DB mirror**: layout version 1; raised when a fixed path, file name or number form changes; recorded per run in `instance.json`, whose path is the same in every version (the stamp's name is the instance schema and OD-11). `db/` needs no stamp of its own in version 1. One table row per level on what it would become in a database (illustration, not a P2 schema).
+10. **Limits**: a naming convention; it enforces no single writer, isolates nothing, gives no concurrency control, no atomicity beyond a git commit, no content check.
+
+### Boundaries left open (named in the record)
+**The isolation means** first: candidate ① versus ② of OD-8, mounts, containers, scratch copy and diff import, scratch / build-cache location, tool allowlists, `PreToolUse` path checks, the diff check of a round (rest of OD-8, OD-14, OD-18, OD-23; waits for container availability and #5 B-1). Owner-only: OD-3 / #5 A-5, OD-25, #5 B-8, B-1, B-2, B-3, C-6, A-8. Fields and schemas of every file (PLAN P1-8, P1-6, P1-5; OD-17, OD-20, OD-7, OD-11), several M per instance, the lock. Retention, GC, `blob.push` / `blob.fetch`; commit and push cadence beyond A-3. Roster (OD-23), OD-29, OD-15, OD-13, OD-19, OD-26. First GEMM values, harness design, FR-10 contract. Any code, schema file, CI or change to `HIL-Claw-data`.
+**Five sub-questions registered under OD-8** (Proposals): ① how a branch or continuation of a run is represented and names its starting point (with OD-20); ② whether a key directory indexes the runs that used the key (S5-1; with OD-20); ③ where a baseline that is not a candidate is recorded (OD-28); ④ where excerpt snapshots would live (OD-12); ⑤ names of further records of one step for one attempt (OD-13, OD-10, OD-11).
+
+### Register precedent
+OD-4 / OD-6 precedent: status `확정` (P1 minimum = directory tree) with the rest as "잔여", because the row's title question is the layout and DRIVER §9 sets the status to `확정` on approval. The status cell additionally keeps "격리 수단은 미확정 — 제안됨 (후보 2건)", and both candidates stay in the row verbatim as open, so the cross-reference of the OD-14 row still holds. All four reviewers found it defensible. The "첫 커밋" sentence is extended. **The OD register row of OD-8 changed; no other row.** The commit hash `417b6d4` is not in the row (Follow-ups).
+
+### Review (4 rounds, a fresh-context `dev-reviewer` each, spawned with `model: opus`; no `SECURITY` finding)
+- **Round 1 — Request changes** on `89cbf7f` (4 Minor, 6 Nit), all addressed in `396658e`: (M) "one linear sequence of rounds" had no reason or alternative and the S3 row was wider than the record → reason and an alternative row added; (M) `build.json` under `measure/` had no alternative → row and a "moved if OD-23 decides otherwise" note; (M) no reading of A-1's "`blobs/`(메타)" → stated as the record's reading; (M) "a `best` is superseded" used undecided retention behaviour as a fact → removed, `gc_at` alone carries the argument; (N) "`db/` is written by the promotion step" versus key records by onboarding; (N) no alternative for the `run_id` character set and limit; (N) "expected values out of every file" wider than OD-16 → narrowed; (N) "expensive ones first" misread as ordering; (N) `.gitkeep` placeholders; (N) length, no action.
+- **Round 2 — Request changes** on `396658e` (1 Major, 2 Minor, 4 Nit), addressed in `c946f0b`: (**Major**, introduced by the round-1 fix) "a branch from an earlier point is a new run" was stated as a consequence of the tree, which does not follow (later round numbers of the same run are possible) and conflicts with `feedback.base` of ADR-0002 → reduced to "the tree has no branch level; new run or later rounds is not decided", in all three documents; (M) "with the correctness verdict" on `eval.json` decided content → removed, left to OD-20 / OD-13 / OD-23; (M) no reason for `profile.json` under `measure/` → added; (N) inexact quotation of ADR-0002; (N) order of alternative rows; (N) sub-questions not visible in the register row → mentioned; (N) S0-8 and S1-6 missing from the re-check list.
+- **Round 3 — Request changes** on `c946f0b` (2 Minor, 4 Nit), addressed in `b965009`: (M) "the roster gives the evaluator no execution" is not what the roster says → "assigns `profiler.collect` and `profile.json` to no agent"; (M) the layout version was read from a path that the version itself could change → "the path of `instance.json` is the same in every layout version"; (N) NFR-2 attribution of "history is never rewritten" → NFR-2 plus the A-2 rationale; (N) blank line in the Proposals list; (N) "every file system of C-7" softened to the POSIX environments; (N) length, no action.
+- **Round 4 — Approve** on `b965009`: no Major or Minor, nothing trivially fixable. One optional nit left as is (the word "promotion" means `runs/` → `db/` in decision 5 and sim → board in Boundaries; context disambiguates), and two notes outside the branch (Follow-ups: `README.md:36`, `hilclaw/spec.py` `run_id` check).
+- Review point (a): all four reviewers agreed that the tree is design-level under DRIVER §9, hangs on neither OD-3 nor another owner item, and that A-13 "data-plane schema change" does not apply (no field, schema file, code or dependency; a first definition along the D6 route). Two asked that the A-13 reading, the run-level `artifacts.json` and the reading of A-1 "(메타)" be visible in the owner notice (done below).
+
+### Document checks
+- Session entry (before the first edit): `gh pr list --state open` empty; #4 last comment 5139876430 (2026-07-31), #7 2026-09-07, #8 2026-10-03; the latest #5 comment is the ADR-0003 notice (6020366439). A-5, B-1 and B-8 are unanswered and there is no objection to ADR-0001 / 0002 / 0003, so nothing new was taken as input.
+- Relative links and the `#od-8` anchor: all resolve (checked by script and by every reviewer).
+- OD numbers: the Requirements diff is the OD-8 row and the "첫 커밋" sentence; 29 register rows before and after, numbering unchanged.
+- Nothing excluded is stated as decided: no isolation means chosen or made impossible, no JSON field defined, no gate, dataset or governance rule fixed, `run_id` form open (confirmed in rounds 3 and 4).
+- Consistency: #5 A-1 (three top-level directories), C-3 (blob path verbatim), ADR-0001 (names as `hilclaw/keys.py` derives them, `[a-z0-9_-]`), ADR-0002 (one kept spec per tuple), #4 §1 (path from the tuple, no walk), `hilclaw/cas.py` (`blob_path`, temporary files under the ignored `blobs/sha256/`), and the data repository as it is (`.gitkeep` ×3, README, `.gitignore`).
+- `git ls-files --eol`: `i/lf` for the four files; `git show --stat 417b6d4` lists exactly the four files; `git diff --check` clean.
+- Coverage re-check: step citing OD-8 (S8-4) and steps resting on data-plane paths (S0-6·7·8, S1-3·6, S2-2·3, S3-1~3, S5-1~3, S6-3, S8-5, S9-4, S10-2). **No gap. Two verdicts change from 지원 to 지원(미결): S3 and S5** — not because a requirement changed, but because the first concrete tree registers a detail of each as an OD-8 sub-question (S3-3: representation of a branch or continuation; S5-1: key → runs index). All others unchanged (S8 stays 지원(미결), S9 and S10 stay 확장 호환). Recorded in "검사 결과" (heading, a second 2026-10-07 passage, rows S3, S5, S8; step tags S3-3, S5-1, S8-4) and in the commit body.
+- CI `push` run on `main` for `417b6d4`: https://github.com/myungjoo/HIL-Claw/actions/runs/37498558352 — `completed` / `success`.
+
+### Edits of the existing documents
+- Requirements: OD-8 row and the "첫 커밋" sentence.
+- OpenDecisionProposals OD-8: heading note; bullets "채택분(ADR-0004)", "제안으로 남는 부분(미확정)", "하위 질문(ADR-0004가 넘긴 것)" (five). No proposal text deleted. OD-6 sub-question ②: a pointer that the place of the used build settings is now fixed (fields open). OD-4 section: no sentence to update.
+- StandardScenarios: step tags S3-3, S5-1, S8-4 and the result section.
+- **UsageCases: not touched.** Lines 27, 30, 72 and 131 stay true and need no more precise pointer (confirmed by every reviewer).
+
+### Owner notice (DRIVER §9) — ready to post on #5 by the driver, with its tail
+> ### OD-8 (data-plane layout) — P1 minimum (the directory tree) closed by ADR-0004 under DRIVER §9 (T-0021)
+>
+> Decided (record: `ARCHITECTURE/decisions/ADR-0004-od8-data-plane-layout.md`, commit `417b6d4`, accepted by a context-isolated reviewer after 4 rounds):
+> - Top level stays `runs/`, `db/`, `blobs/` (A-1). A run has four files and its rounds; round `0000` is the bring-up round.
+> - A round is divided by writer role first, then by candidate and attempt; spec, coder output, build record, measurements and evaluation are per attempt, the decision log per round. The (run, round, candidate, attempt) tuple of ADR-0002 maps to a path by formatting alone.
+> - `artifacts.json` is one file per run (the #4 draft had one per round), written by the tool layer.
+> - Each `db/` key directory stores the full ADR-0001 key record; `best.json` and `technique_stats.json` keep their draft names.
+> - `run_id`: only its constraints as a directory name are fixed (`[a-z0-9][a-z0-9_-]{0,63}`); its form stays open.
+> - Layout version 1, recorded per run in `instance.json`. The record defines **no field** of any file.
+>
+> ```
+> runs/<run_id>/
+>   STATE.json  instance.json  events.ndjson  artifacts.json
+>   rounds/<RRRR>/
+>     decision/decision.md
+>     coder/candidates/<CC>/attempts/<AA>/{spec.json, output/}
+>     measure/candidates/<CC>/attempts/<AA>/{build.json, sim.json, board.json, profile.json}
+>     eval/candidates/<CC>/attempts/<AA>/eval.json
+> db/<hw_profile_key>/{hw_profile.json, <op_signature>/{op_signature.json, best.json, technique_stats.json}}
+> blobs/sha256/<hh>/<hash>        (not in git)
+> ```
+>
+> Left open: **the isolation means** — candidate ① "layout = permission model" (OS boundary) and candidate ② "scratch copy + diff import" both stay registered and neither is chosen; the tree only gives each writer role one path prefix, which both can use. That choice waits for two facts from you: whether containers (Docker / Podman) are available, and whether the target toolchain builds out of tree (#5 B-1). Also open: fields and schemas of every file (later code tasks), gates and any gate record (OD-3 / A-5), governance (OD-25), datasets (B-8), retention and GC, the agent roster (OD-23). Five sub-questions are registered under OD-8; the first two changed the coverage notes of S3 and S5 from 지원 to 지원(미결): how a branch or continuation of a run is represented (the tree has no branch level), and whether a key directory indexes the runs that used it.
+>
+> Two readings you may want to check: (1) A-1 detail 1 says "`runs/` + `db/` + `blobs/`(메타)"; since A-2 later made the blob metadata a committed `artifacts.json`, the record places it under `runs/<run_id>/` and keeps `blobs/` free of tracked files. (2) `build.json` and `profile.json` sit under `measure/`; no source names who builds or profiles, so the record says a later record moves them if the roster decides otherwise.
+>
+> Note on CLAUDE.md A-13 ("data-plane schema change" is a BLOCKED reason): the record fixes paths and file names only — no field, schema file, code or dependency — and is a first definition along the route D6 opened for OD-8. The four reviewers read A-13 as not applying.
+>
+> Objection window: 7 days from this notice (until 2026-10-14 if posted on 2026-10-07). An objection creates a reverting task. ADR-0004 uses the directory names and key records of ADR-0001 and the identification tuple of ADR-0002 (windows until 2026-10-13) and decision 5 of ADR-0003 (until 2026-10-14); if one of them is reverted, ADR-0004 is revisited.
+
+### Follow-ups (in addition to the list above)
+- (integrator, document mode) `README.md` line 36 of the source repository still says "데이터 plane 레이아웃은 미결이다(Requirements OD-8)"; it is partly outdated now (the tree is fixed, the isolation means is open). Outside this task's `touchesFiles`.
+- (owner or integrator) Proposed wording for FR-13, not applied (the task forbids editing FR rows): after "레이아웃은 라운드 아래 **후보 다중성**(FR-1의 N)을 1급 차원으로 가진다(S8)." add "트리는 [ADR-0004](decisions/ADR-0004-od8-data-plane-layout.md)가 정한다(P1 최소분; 격리 수단은 OD-8 잔여)."
+- (planner, P1-8 slice 2 — path module) Inputs from this record: enforce the `run_id` constraint of decision 8 (`hilclaw/spec.py` validates `id.run_id` only as an ADR-0001 *string*, a superset); number forms "at least 4 / at least 2 digits, never truncated"; the `instance.json` path is version-invariant; the writer of the two key record files does the ADR-0001 collision check.
+- (planner, P1-8 schema tasks) The layout-version stamp of `instance.json` (name; own field or implied by a `schema_version`) is to be settled with OD-11; that task has to judge A-13 again.
+- (planner / OD-23 closure) `build.json` and `profile.json` are under `measure/` with an explicit "moved by a later record if OD-23 assigns building or profiling elsewhere"; the split of a role between two agents would subdivide its directory.
+- (owner or integrator) The `HIL-Claw-data` README lists the layouts as open; update it (nothing else in that repository needs to change — the tree creates directories only when something is written).
+- (driver or integrator) Add `417b6d4` to the OD-8 register row.
+- The record is 196 lines against "about 130-170"; every reviewer accepted it (tree diagram and three tables). The task estimated five files; four were changed (UsageCases needed no edit).
