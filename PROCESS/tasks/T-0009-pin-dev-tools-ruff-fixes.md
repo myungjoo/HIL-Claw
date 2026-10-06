@@ -2,7 +2,7 @@
 id: T-0009
 title: Pin the dev tools exactly (ruff 0.16.10, pytest 9.1.1) and make main lint-clean under them
 phase: P0
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: ["#5 HQ-0002 answer", "#9", "#5 D12"]
 dependsOn: [T-0002, T-0004, T-0007]
@@ -81,4 +81,26 @@ Process:
 - (P0.5-2 / P0.5-3) Unchanged: the test-existence check and the coverage gate still start once T-0003 is on `main`.
 
 ## Result
-_(executor fills in: commit/PR, review rounds, follow-ups)_
+- **Outcome**: landed. PR #19 (https://github.com/myungjoo/HIL-Claw/pull/19), squash commit `22115c6` on `main`; branch commit `15c79e5`. The task branch is deleted locally and on the remote.
+- **Review**: 1 round, Approve (context-isolated `dev-reviewer`; comment https://github.com/myungjoo/HIL-Claw/pull/19#issuecomment-6012304368). No finding required a change. The reviewer reproduced the four findings on `origin/main` with ruff 0.16.10, reran the three gates on the PR head, and confirmed with `RUF100` that both `noqa` markers are in use.
+- **Changes** (4 files, +18/-6):
+  - `pyproject.toml`: `pytest==9.1.1`, `ruff==0.16.10`; nothing else.
+  - `hilclaw/driver_state.py`: `SIM905` — `_KEYWORDS` is `_ANNOTATIONS | frozenset({...})` with the same ten names. It compares equal to the previous expression (14 members) and is a `frozenset` as before.
+  - `hilclaw/merge_guard.py`: `BLE001` twice — `# noqa: BLE001` on the two `except Exception` lines; exception class and messages unchanged.
+  - `tests/test_merge_guard.py`: `PLW1510` — `check=False` in `run_module`.
+- **Findings beyond the owner's answer**: the HQ-0002 answer named only `SIM905`. The two `BLE001` and the `PLW1510` came from T-0007, which landed afterwards; they are fixed here because the pin alone would leave `main` and PR #16 red. ruff 0.16.10 reported nothing beyond these four on the final diff.
+- **Provisional choice** (this task's, not an owner decision and not an OD): the two intentional fail-closed catch-alls are suppressed per line with `# noqa: BLE001` rather than by a global ignore, because a global ignore would also silence the rule in future modules where a blind `except` is a bug. Reversible by deleting the two markers.
+- **Size against the estimate**: the estimate was about 12 lines; the diff is +18/-6 because `ruff format` puts the ten-name literal one name per line. Far below the 300 LOC / 5 files cap.
+- **Local tools** (installed after the pin edit, with the workflow's two commands): `python -m pip install --upgrade "pip>=25.1"` moved pip 26.0.1 → 26.2.1; `python -m pip install --group dev` replaced pytest 9.0.3 and ruff 0.15.14. `python -m ruff --version` → `ruff 0.16.10`; `python -m pytest --version` → `pytest 9.1.1`. This is the user-level Python 3.14 environment of the driver machine, as the owner asked.
+- **Verification** (before the commit, before the merge on a local test merge with `origin/main` at `1676652`, and on `main` at `22115c6` after the merge — same results each time):
+  - `python -m ruff check .` → `All checks passed!`
+  - `python -m ruff format --check .` → `34 files already formatted`
+  - `python -m pytest` → `468 passed`
+  - `git ls-files --eol` → `i/lf` for the four files
+  - `git diff origin/main --stat` (before the merge) → only the four `touchesFiles`
+  - CI: none on `main` yet, so PR #19 had no checks; step 13 was the local rerun.
+- **Reachability**: nothing new to reach; no public function or module was added or changed.
+- **Language**: Python (existing modules); `pyproject.toml` involves no language choice.
+- **Tests**: none added (rules ①-④ vacuous, rule ⑤ for the test-file edit).
+- **Note for the driver**: `main` moved during the task by one document commit that is not the driver's (`1676652`, "DRIVER: record the owner's confirmation of D15"); it touches `PROCESS/DRIVER.md`, `PROCESS/PLAN.md` and the D15 proposal only, and did not overlap this PR.
+- **Follow-ups**: none new. The list under `## Follow-ups` stands unchanged; in particular the driver should set `nextTask` to `T-0003`, and T-0003's first green run on PR #16 is the end-to-end evidence for this task.
