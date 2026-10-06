@@ -2,7 +2,7 @@
 id: T-0006
 title: Add the development-process subagent definitions dev-planner, dev-executor and dev-reviewer
 phase: P0
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: ["#5 D5", "#5 A-13", "DRIVER §7"]
 dependsOn: []
@@ -113,3 +113,38 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (owner, non-blocking) Language of `.claude/` prose: the agent files are English per the owner's global rule while the two skills are Korean. A policy line in CLAUDE.md would settle it for skills and agents together.
 
 ## Result
+- Document mode, no PR. Landed on main as 21f2878 ("T-0006: Add the dev-planner, dev-executor and dev-reviewer agent definitions"), fast-forward from 94206bf on the first push; branch commit 2742531. Change: the three files in `touchesFiles`, +120/-0 (38 / 39 / 43 lines). Remote and local branch `claude/T-0006-dev-process-agent-definitions` deleted; `main` == `origin/main`.
+- Review: 1 round by a fresh-context reviewer sub-agent (dev-code-review, document mode; given only the branch name, this file's path and the skill path), verdict Approve, no security concern, no High/Medium/Low/Nit finding, nothing trivially fixable left. Nothing was changed after the review. The reviewer checked the names and tool lists against DRIVER §7 and the frontmatter against the documentation it fetched itself. Two observations, no action in this task:
+  - `dev-executor.md` "pass them to every sub-agent you spawn" is not verbatim in a source document; the reviewer judged it a direct consequence of DRIVER §1-5, not a new rule. Kept.
+  - DRIVER §6 "phase 전환" does not say who raises `STATE.phase` and writes the journal; the planner file limits the planner to one task file, consistent with §7 (the driver alone handles state and journal). The ambiguity is in DRIVER §6 — added to Follow-ups.
+- Format verification (source: https://code.claude.com/docs/en/sub-agents, fetched 2026-10-06 through WebFetch, which returns a model-made digest of the page, not the raw text):
+  - (a) Project agents live in `.claude/agents/<name>.md`. `name` and `description` are required; `tools` and `model` are optional. Other fields exist (`disallowedTools`, `permissionMode`, `maxTurns`, `skills`, `mcpServers`, `hooks`, `memory`, `background`, `effort`, `isolation`, `color`, and more); none is used here.
+  - (b) `tools` is a comma-separated string or a YAML list; omitted, it inherits every tool. The spawn tool is named `Agent` (the older name `Task` is still accepted as an alias); `Agent(type, ...)` restricts which agent types may be spawned.
+  - (c) With `model` omitted the order is: per-invocation model parameter, then the frontmatter, then the `CLAUDE_CODE_SUBAGENT_MODEL` environment variable, then the main conversation's model. `inherit` is an accepted value and selects the main conversation's model.
+  - (d) A subagent can spawn subagents, by default up to three layers below the main conversation (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`; at the limit the `Agent` tool is withheld). This differs from the planner's recollection (no nesting).
+  - (e) `tools` grants Bash as a whole; it cannot narrow Bash to specific commands. The documented ways to narrow it are a `PreToolUse` hook or `permissions.deny` in settings.
+  - (f) A `skills` frontmatter field preloads the full skill content at startup; without it a subagent can still invoke project skills during execution.
+  - Loading: agents are registered at session start; a new file in an existing `agents` directory is picked up by a file watcher, but the first file in a new `agents` directory needs a restart.
+- Nesting finding: the documentation now allows nesting, and it worked in this session — the executor of this task was itself a sub-agent, had the `Agent` tool, and its reviewer spawn succeeded. driver → executor → reviewer is two layers, inside the default limit. No conflict with DRIVER §7; the conditional nesting follow-up above is not needed.
+- Choices (conventions of this task, not requirements):
+  - Model: `model: inherit` in all three files, no model name or tier alias anywhere. Reason: per (c) `inherit` selects the caller's model explicitly, while an omitted field can be redirected by an environment variable.
+  - Tools: `dev-planner` = `Read, Grep, Glob, Bash, Write`; `dev-executor` = `Read, Grep, Glob, Bash, Write, Edit, Agent`; `dev-reviewer` = `Read, Grep, Glob, Bash`. Reason: the lists in the Acceptance Criteria with the current tool names. `Agent` is left unrestricted in the executor (not `Agent(dev-reviewer)`) because dev-item-address also lets mechanical steps go to a lighter sub-agent. No web or MCP tool was added. The reviewer's Bash limit is stated in its body as discipline, per (e).
+  - Skill attachment: relative link to the `SKILL.md`, not the `skills` preload. Reason: no dependency on a field beyond the four verified in use, and whether the preload needs further tools in `tools` was not verified.
+  - Language: English description and body; no language policy written.
+  - `description` values are double-quoted YAML strings (they contain parentheses and `§`).
+- No discrepancy was found between the required items and CLAUDE.md / DRIVER.md / the skills.
+- Verification:
+  - `git diff --cached --stat origin/main` before the commit and `git show --stat HEAD` on the squashed commit: exactly the three files, 120 insertions.
+  - Each file starts with `---`, closes the frontmatter at line 6, and has `name`, `description`, `tools`, `model`; `name` equals the file name (one-liner check).
+  - `grep -nE 'Write|Edit' .claude/agents/dev-reviewer.md`: one hit, line 32, the body sentence saying the reviewer has no such tool; none in the frontmatter.
+  - Search for model names and tier aliases (`opus|sonnet|haiku|fable|claude-[0-9a-z]|gpt`, case-insensitive): no hit.
+  - Relative links: every target exists (`test -e` from `.claude/agents/`); DRIVER section references checked by eye, and again by the reviewer.
+  - `git ls-files --eol .claude/agents/`: `i/lf w/lf attr/text=auto eol=lf` for all three; `git diff --cached --check` clean; no trailing whitespace.
+  - `claude plugin validate .claude/agents` (Claude Code 2.1.280): "Validation passed" — frontmatter parse check only.
+  - Loading check: **not performed**. No fresh session was started, and `.claude/agents/` was a new directory in this session, so the agents could not be listed or invoked here. Follow-up below stands.
+  - `ARCHITECTURE/` not touched: the StandardScenarios coverage re-check does not apply.
+- Follow-ups (in addition to the list above):
+  - The conditional follow-up "decide who spawns the reviewer" is moot per finding (d); it can be dropped.
+  - (with the DRIVER §3/§7 follow-up) Say in DRIVER §6 who performs the phase transition (reviewer observation 2).
+  - (doc mode, optional) The task-file template could record that documentation access (WebFetch) is not in `dev-executor`'s tool list; a task that needs it, as this one did, must be run by a session that has it or name it in Required Reading.
+  - (optional) Windows sessions also expose a PowerShell tool; the agent tool lists grant only Bash. Not needed so far (Git Bash covers git/gh).
