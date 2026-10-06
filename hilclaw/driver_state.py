@@ -75,6 +75,8 @@ def _compile(schema, where):
             not isinstance(schema[key], kind) or isinstance(schema[key], bool)
         ):
             raise SchemaError(f"{where}/{key}: must be {name}")
+    if not all(isinstance(k, str) for k in schema.get("required", [])):
+        raise SchemaError(f"{where}/required: must contain only strings")
     out = dict(schema)
     if "type" in schema:
         names = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]

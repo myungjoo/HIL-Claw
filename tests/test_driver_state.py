@@ -388,6 +388,7 @@ def test_keyword_semantics(schema, instance, expected):
         {"pattern": 1},
         {"properties": []},
         {"required": "a"},
+        {"required": [1]},
         {"enum": "a"},
         {"minimum": True},
         {"items": [{"type": "string"}]},
