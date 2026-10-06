@@ -2,7 +2,7 @@
 id: T-0012
 title: Add hilclaw.config.json (data repository binding) and its loader with environment overrides
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-13, "#5 A-1", "#5 D7"]
 dependsOn: [T-0002, T-0003]
@@ -128,3 +128,41 @@ Process:
 - (P0.5-3) First coverage measurement of `hilclaw/config.py` once the coverage gate exists.
 
 ## Result
+- 2026-10-06 — fresh start (landed check: nothing with `Task: T-0012` on `main`, no PR, no branch). **DONE**: PR #22 https://github.com/myungjoo/HIL-Claw/pull/22 (code mode) squash-merged to main as `6448177` ("T-0012: Add hilclaw.config.json and its loader with environment overrides (#22)", last body line `Task: T-0012`); remote and local branch `claude/T-0012-data-repo-config` deleted. Branch commits: `d53a72b` (implementation), `e3e1964` (review round 1), `79b1489` (review round 2).
+- Change: 3 files, +416 lines — `hilclaw.config.json` 6, `hilclaw/config.py` 89, `tests/test_config.py` 321; non-test 95 lines in 2 files (cap 300/5; the estimate was 100). `pyproject.toml`, `hilclaw/__init__.py`, `hilclaw/cas.py`, the other modules, `.gitignore`, `.claude/`, `.github/`, `README.md` and `ARCHITECTURE/` are unchanged. Standard library only (`json`, `os`, `pathlib`, `typing`). No OD closed, no ADR, no data-plane schema touched, no new dependency. PLAN P1-7 ticked.
+- This `## Result` was not committed on the task branch (the task's own diff check); the executor handed the text to the driver.
+- **Process incident (executor error, recovered, no force push)**: before the merge, a chained shell command stopped at a failing `git rev-parse --short` with three arguments, and the trailing `git push origin --delete claude/T-0012-data-repo-config` in the same command line still ran. The remote branch was deleted before the merge and GitHub closed PR #22 unmerged. Recovery: the unchanged local branch was pushed again as a new branch at the same commit `79b1489` (plain push), `gh pr reopen 22`, CI re-ran on that head (run 37450404380, four checks green), then the normal merge sequence followed. The reviewed head and the merged head are the same commit. No tool call was denied.
+- Language: Python, because the package is Python and JSON and path handling are in the standard library.
+- Review: 3 rounds by fresh-context `dev-reviewer` agents, all Approve, no `SECURITY` finding, no Blocking / Major / Minor in any round. The reviewers did not rerun tests (read-only role); CI and the executor's local runs are the gate.
+  - Round 1, Approve on `d53a72b` (https://github.com/myungjoo/HIL-Claw/pull/22#issuecomment-6014287829): Nit, a `ValueError` from opening the path (NUL character) was reported as "not valid UTF-8 JSON" -> fixed in `e3e1964` (read and parse are separate steps with the messages "cannot read", "not valid UTF-8", "not valid JSON"; one test added); Info, a UTF-8 BOM is rejected -> kept, pinned by one test, listed as provisional; Nit, one test built an environment-relative expectation from `tmp_path` -> fixed (`os.getcwd()`); Info, `REPO_ROOT` duplicates `driver_state.REPO_ROOT` -> no change (sharing it would touch a module outside the task). Response: https://github.com/myungjoo/HIL-Claw/pull/22#issuecomment-6014307646
+  - Round 2, Approve on `e3e1964` (https://github.com/myungjoo/HIL-Claw/pull/22#issuecomment-6014327020): Nit, PR body out of date (test count, BOM choice) -> body updated; Nit, `test_relative_config_path_gives_absolute_result` had the same `tmp_path` pattern -> fixed in `79b1489`; Info, `~` without a known home directory silently stays a relative segment -> no code change, recorded as provisional. Response: https://github.com/myungjoo/HIL-Claw/pull/22#issuecomment-6014337977
+  - Round 3, Approve on `79b1489` (https://github.com/myungjoo/HIL-Claw/pull/22#issuecomment-6014367262): no Nit. Info, a pathologically deep JSON document raises `RecursionError`, which is not turned into `ConfigError`; Info, no test pins the "unexpandable `~`" behaviour. Neither asked for a change; the head did not change after this Approve.
+- Provisional choices (conventions of this task, not requirements; A-1 fixes only the file name, its place, the two keys and "environment variables can override"):
+  - Committed `url` = `https://github.com/myungjoo/HIL-Claw-data`: the repository created under D7.
+  - Committed `local_path` = `../HIL-Claw-data`: a checkout next to the source checkout; it cannot be absolute because every checkout shares the file.
+  - No `schema_version` key: A-1 names two keys and NFR-7 ② lists the persisted run artefacts, not this binding file.
+  - Module name `hilclaw/config.py`: next to the other layer-2 modules, covered by pytest, ruff and the test-presence check.
+  - API: `load_data_repo(config_path=None, environ=None) -> DataRepo`; `DataRepo` = `NamedTuple(url: str, local_path: Path)`, as `cas.BlobRef`; `config_path` accepts `str` and `os.PathLike`, `environ` any mapping so that tests pass a `dict`; `REPO_ROOT` and `DEFAULT_CONFIG_PATH` are public constants, as in `driver_state`.
+  - Environment variables `HILCLAW_DATA_REPO_URL` and `HILCLAW_DATA_REPO_LOCAL_PATH`: the key path in upper case with the package prefix. **Naming differs from the task's wording**: the Python constants holding these names are `ENV_URL` and `ENV_LOCAL_PATH` (the task allows renaming).
+  - An empty variable counts as not set: the shell convention, `VAR= cmd` must not blank a value.
+  - Relative `local_path` from the file resolves against the config file's directory (independent of the working directory); from the environment against the working directory (what a shell user expects).
+  - `~` is expanded with `os.path.expanduser` for both sources; a `~` that cannot be expanded is left as it is and treated as a relative path (what `expanduser` does; not pinned by a test).
+  - The result is made absolute and normalised with `os.path.abspath`: no symbolic link resolved, the path need not exist; no existence check (the caller decides what a missing checkout means).
+  - `url` is returned as given, checked only for "non-empty string": https, ssh and a local path are all valid remotes.
+  - Unknown keys at both levels are ignored: later sections must not break an older loader (NFR-7 ①).
+  - `ConfigError(ValueError)` for every problem, chained to the underlying error where there is one; the message starts with the file path and names the key (`data_repo.url`, `data_repo.local_path`); file-level problems are told apart as "cannot read", "not valid UTF-8", "not valid JSON".
+  - Strict UTF-8: a file starting with a byte order mark is rejected ("not valid JSON: Unexpected UTF-8 BOM"), pinned by one test.
+  - A value in the file that is not a non-empty string is an error **even when the environment overrides it**: the file is shared and wrong either way, and an override on one machine must not hide it. An absent key is acceptable when its variable supplies the value. Pinned by `test_malformed_file_value_is_an_error_even_when_overridden`.
+- Known limits: `RecursionError` from a pathologically nested JSON document is not converted to `ConfigError`; a non-string value in a caller-supplied `environ` mapping is not checked.
+- Local verification (CPython 3.14.4 on Windows, ruff 0.16.10, pytest 9.1.1):
+  - Before the first commit: `python -m pytest` -> `539 passed`; `python -m ruff check .` -> `All checks passed!`; `python -m ruff format --check .` -> clean.
+  - Before the merge (head `79b1489`, `origin/main` at `32605aa`): `541 passed` (73 in `tests/test_config.py`, 468 existing); `All checks passed!`; `39 files already formatted`; `git ls-files --eol` -> `i/lf w/lf` for all three files; the `json.load` one-liner succeeds; `git status --short` empty after the test run; `git diff origin/main --stat` -> only the three `touchesFiles`.
+  - After the merge, on main `6448177`: `541 passed`; clean tree; `main` == `origin/main`.
+- Reachability check: `python -m trace --count --missing --coverdir <dir outside the repository> --module pytest tests/test_config.py` marks **no** line of `hilclaw/config.py` as missing. Run on `d53a72b` and on the `e3e1964` code; `79b1489` changed only a test expectation.
+- CI on the PR (`pull_request`), four checks each (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `Test presence (hilclaw)`), all success:
+  - `d53a72b`: green on the reviewed head per the round 1 reviewer (run URL not recorded).
+  - `e3e1964`: https://github.com/myungjoo/HIL-Claw/actions/runs/37449938641
+  - `79b1489` (final head): https://github.com/myungjoo/HIL-Claw/actions/runs/37450151248, and again after the reopen: https://github.com/myungjoo/HIL-Claw/actions/runs/37450404380
+- Merge: `DONOTMERGE` removed, PR marked ready, the four checks of `79b1489` confirmed successful, then `gh pr merge 22 --squash --body-file` with the PR body.
+- `push` run on `main` after the merge (`6448177`): https://github.com/myungjoo/HIL-Claw/actions/runs/37450494664 — `completed` / `success` (the driver re-checked the conclusion before the wrap-up).
+- Follow-ups: unchanged from `## Follow-ups`. Additions: (a) decision to revisit — accept a UTF-8 BOM (`utf-8-sig`) if Windows editors make the strict rule a nuisance; (b) decision to revisit — whether an unexpandable `~` should be an error instead of a relative segment; (c) minor — convert `RecursionError` to `ConfigError` if the file ever comes from an untrusted source; (d) `REPO_ROOT` is now defined in both `driver_state.py` and `config.py`; share it when a third module needs it; (e) executor procedure — keep branch deletion out of any command line that also contains the merge, so that a failed step cannot reach it.
