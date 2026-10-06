@@ -1,0 +1,142 @@
+---
+id: T-0029
+title: Add the measurement policy module (hilclaw/harness/measurement.py) with the three pure functions of ADR-0007 - stopping test, trimmed mean, difference verdict - and its tests
+phase: P1
+status: IN_PROGRESS
+commitMode: code
+coversReq: [OD-13, NFR-3, NFR-2, FR-9, C-4, "#5 B-4", "#5 A-12"]
+dependsOn: [T-0002, T-0003, T-0011, T-0028]
+touchesFiles: [hilclaw/harness/__init__.py, hilclaw/harness/measurement.py, tests/harness/test_measurement.py]
+estimatedSize: {loc: 200, files: 2}   # non-test: the module and a docstring-only package file; the test file is excluded from the cap (D4)
+hq: []   # implements a closed decision (ADR-0007); closes no OD, writes no ADR, standard library only, names no field, runs no kernel
+---
+## Why
+**ADR-0007** (`ARCHITECTURE/decisions/ADR-0007-od13-measurement-policy.md`, landed as `b3febc2`, T-0028) closed the P1 minimum of OD-13: how many repeats a timing measurement takes (decision 4), which number stands for it (5), and the rule by which two measurements are called different (7), with initial values (8) and a reproducibility rule (9). Its Consequences say: "The following code task can write three pure functions from this record: the stopping test on the samples so far, the trimmed mean, and the difference verdict of two sample sequences. They run no kernel, read no clock and write no file."
+
+This task writes those three functions. They are the "OD-13 초기값" part of PLAN P1-3 ("반복 타이밍") and what S9 step 3 ("a difference inside the noise is not an improvement") will call. The same two-step route (record, then module) was used for ADR-0005 → T-0025 and ADR-0006 → T-0027.
+
+**It ticks no PLAN checkbox**: P1-3 (the harness: inputs, reference, tolerance compare, the timer) is marked "오너 확정 필요" and stays open.
+
+Why this item now (planner's judgement, DRIVER §6, 2026-10-07 UTC):
+- Phase P0.5 has no executable item: P0.5-3 is BLOCKED on HQ-0003 (T-0014, unanswered on #5); the C gate of P0.5-1 waits for P1-2 / P1-3; the rest of P0.5-4 is the owner's hook registration.
+- In P1: P1-3 as a whole is "오너 확정 필요" (oracle — #5 B-7 / A-7) and is skipped, with P1-4, the rest of P1-2 and P1-5 slice 3. P1-1 hangs on OD-10 / OD-18 / OD-23 and #5 B-2. The rest of P1-8 hangs on OD-17 / #8 M7 and holds owner-only members.
+- This slice needs nothing that is not written down. It touches none of the owner items: it handles a sequence of positive numbers and knows neither the quantity, its direction, the oracle, the tolerance nor a kernel.
+- No open PR at planning time. The latest comment on #5 is the ADR-0007 notice (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6025416809); no objection to ADR-0001..0007.
+
+Where the module lives (planner's judgement — the reviewer is asked to re-check it): `hilclaw/harness/measurement.py`, in a new sub-package `hilclaw/harness/`. Sources: #5 A-12 point 4 (owner, confirmed) — "the scoring apparatus (input generation, f64 reference, tolerance compare, timing, profiling, eval/event recording) lives in one sub-module of the package", and point 1 — the package `hilclaw/` contains "the harness (`harness/` sub-module)"; FR-10 lists the harness inside the single package; ADR-0007 decision 8 — "The constants live in the harness source". So the directory is given; only the file name `measurement.py` is a convention of this task. Creating the sub-package decides nothing else of the harness design (PLAN P1-3).
+
+A-13 check (planner's reading): no data-plane file is read or written, no field is named, no schema exists, so "데이터 plane 스키마 변경" does not apply; standard library only, `pyproject.toml` unchanged, so no new dependency. The module must add **no rule and no value** beyond ADR-0007. Where the record leaves a case unsaid, the criteria below name a provisional convention; if the executor or the reviewer reads one as a design choice that needs an ADR or the owner, that is BLOCKED with the exact question, not something to decide silently.
+
+Known risk, accepted: ADR-0007 is inside its 7-day objection window (until 2026-10-14). An objection creates a reverting task and this module is revisited with it.
+
+## Required Reading
+- PROCESS/DRIVER.md §3-5 (executor procedure, naming `T-NNNN`, resume rule, 2h30m limit) and §5 (task format, size cap D4, code-task test rules D12, language line in `Result`) — mandatory for every task (§6)
+- PROCESS/DRIVER.md §1-5 (Bypass permissions run mode; forbidden actions held by discipline; "a denied or failed tool call is BLOCKED, never worked around"), §3 "BLOCKED 사유" paragraph, §9
+- **ARCHITECTURE/decisions/ADR-0007-od13-measurement-policy.md — the whole record**: Status, decisions 1-10, the worked example, Alternatives, Consequences, Boundaries
+- CLAUDE.md — 상시 규칙: "세 층 모델", "도구 계층 언어 정책", "브랜치·merge 절차" (code mode; the BLOCKED reasons), "테스트 규칙" ①-⑤, "코멘트 최소화", "미결은 발명하지 않는다"
+- ARCHITECTURE/Requirements.md — rows FR-9, FR-10, NFR-2, NFR-3, C-4; register rows OD-13, OD-1, OD-11
+- Issue #5 A-12: `gh api repos/myungjoo/HIL-Claw/issues/comments/5946779596 --jq .body` (points 1 and 4: where the harness lives). Then every comment after https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6025416809 (`gh issue view 5 --repo myungjoo/HIL-Claw --comments`). If the owner has objected to ADR-0007 in a way that changes a rule or a value this task uses, do not start: return BLOCKED ("requirement unclear") quoting the comment
+- .claude/skills/dev-item-address/SKILL.md — the procedure to follow; .claude/skills/dev-code-review/SKILL.md — what the reviewer checks
+- PROCESS/tasks/T-0028-adr-od13-measurement-policy.md — `## Result` ("Decisions of ADR-0007", "Known limits", the Follow-up "(planner, code task)"); PROCESS/tasks/T-0027-events-log-module.md — `## Result` (the closest code sibling: how conventions and unsaid cases were listed, the reachability check, the four CI checks, the merge and branch deletion steps, the environment note on heredocs)
+- Existing files: `hilclaw/layout.py` (the model of a pure module: docstring with conventions and "does not do", exact-type checks, error message form), `hilclaw/__init__.py`, `tests/test_layout.py` (test style), `pyproject.toml`, `.github/workflows/ci.yml` (job `Test presence (hilclaw)`: it maps `hilclaw/harness/measurement.py` to `tests/harness/test_measurement.py` and skips `__init__.py`)
+
+## Acceptance Criteria
+ADR-0007 fixes the rules and the values. The module name, the public API, the return shapes, the error type, the generator, the seed value and the handling of the cases the record does not mention are **conventions chosen by this task, provisional**. State each choice with one line of reason in the commit body, the PR body and `## Result`, and do not present them as requirements. Where a criterion below and ADR-0007 disagree, **the ADR wins**: follow it and say so in `## Result`.
+
+Constraints:
+- **Standard library only.** Adding any package (NumPy included) is the BLOCKED reason "new external dependency". `pyproject.toml` stays unchanged.
+- Runs on CPython 3.11 and 3.14 (both CI matrix entries), same results on POSIX and Windows hosts.
+- **Pure**: no file access, no clock, no environment variable, no configuration, no global state changed (in particular the module-level functions of `random` are never called and the global generator is never seeded), no kernel run, no import of another `hilclaw` module unless it is needed. The arguments are not modified.
+- **No quantity and no direction**: no name, docstring or message says "time", "seconds", "faster", "slower", "better", "improvement" or "regression" as a meaning of a sample or a verdict (ADR-0007 decisions 1 and 7; OD-1 is owner-only). The verdict has two values only: different, not different.
+- **No field and no file form**: nothing here names a member of `sim.json`, `board.json`, `instance.json` or an event (ADR-0007 decision 3 and Boundaries).
+- The constants `n_min` = 5, `cv_max` = 0.05, `trim` = 1, `delta` = 0.02, `confidence` = 0.95, `resamples` = 2000 and the default `n_max` = 10 are module constants with exactly these values. **Only `n_max` is a parameter of a call** (decision 8); no function takes a seed, a generator, `delta`, `cv_max` or another constant as an argument (decision 9: "no seed supplied by a caller").
+- No command line entry point, no `main` (OD-18 is open).
+
+Files (new):
+- `hilclaw/harness/__init__.py` — a short module docstring only (what the sub-package is: the verification harness of FR-9 / #5 A-12, of which this task adds the measurement policy and nothing else). No code, no re-export.
+- `hilclaw/harness/measurement.py` — module docstring that names ADR-0007 as the rule it implements, lists the conventions of this module and says what it does not do (no timer, no pairing, no steady-state label, no defence against forged timing, no handling of "not converged"); docstrings on the public names (external API, CLAUDE.md "코멘트 최소화" exception); no other comments unless the code cannot say it. Python because the package is Python and the arithmetic and the generator are in the standard library — one line in the commit body and `## Result`.
+
+Public API (provisional names and shapes; the executor may rename or regroup them, but every public function must be tested and each capability must exist):
+- **Stopping test** (decision 4): for example `stopping_state(samples, *, n_max=N_MAX_DEFAULT)` → one of three states: *continue* (take another repeat), *converged*, *not converged* (an `enum.Enum` or equivalent; not a bare `bool`, because the mark "not converged" must be told apart from "converged").
+  - n < `n_min`: continue, whatever the spread.
+  - `n_min` ≤ n < `n_max`: converged if CV < `cv_max` (strictly below), otherwise continue.
+  - n = `n_max`: converged if CV < `cv_max`, otherwise not converged.
+  - CV = s / m over **all samples given**, m the arithmetic mean, s the sample standard deviation with divisor n − 1.
+  - The function looks at the sequence it is given; it does not know whether an earlier prefix had already met the rule. Say so in the docstring: the caller stops at the first state that is not *continue*.
+  - `n_max` must be an integer (exactly `int`, not `bool`) with `n_max` ≥ `n_min`; otherwise the error below (decision 8: "never below `n_min`").
+- **Trimmed mean** (decision 5): for example `trimmed_mean(values)` → `float`: sort, leave out the one lowest and the one highest, arithmetic mean of the rest. Defined for n ≥ 3 (the domain of the function, decision 5); fewer values is the error below. It is the function the verdict applies to its replicates.
+- **Difference verdict** (decisions 7 and 9): for example `is_different(a, b)` → `bool` (or a two-valued enum), for the ordered pair (A, B):
+  - `resamples` replicates; for each, n_A values drawn from `a` and n_B values drawn from `b`, independently and with replacement; r = T(b*) / T(a*) with T the trimmed mean.
+  - Sort the ratios; the interval is [r(⌊0.025·R⌋ + 1), r(⌈0.975·R⌉)] in 1-based ranks, that is the elements with 0-based indices 50 and 1949 for R = 2000. Derive the two ranks from the constants with integer arithmetic or state them as constants; a float product such as `0.975 * 2000` must not be able to move a rank.
+  - Different if the lower end > 1 + `delta`, or the upper end < 1 / (1 + `delta`); otherwise not different. Both comparisons are strict ("wholly above", "wholly below").
+  - **Generator** (this task's choice, decision 9): a private `random.Random(<fixed seed constant>)` created inside each call. To give the same replicates on every supported interpreter, draw every index from `Random.random()` only (for example `int(rng.random() * n)`): the Python documentation guarantees the sequence of `random()` for a given seed across versions, and does not guarantee `choices`, `randrange` or `sample`. State the generator, the seed value and this reason in the module docstring and in `## Result`. The seed value is any fixed integer; it is not tuned to any example.
+  - Each sequence must be a measurement: at least `n_min` values (decisions 4 and 7: fewer is "not a measurement ... enters no judgement"). No upper limit on the length is checked (the per-instance `n_max` is not known to this function) — provisional, list it.
+  - The verdict belongs to the ordered pair: do not promise symmetry in the docstring (decision 7).
+- Optionally, if it fits the cap and you find it useful for the callers: a function that returns the interval itself next to the verdict. Not required.
+- **Input outside the policy** (ADR-0007 Consequences leaves "whether a function rejects it or its caller must" to this task): the functions reject it. One `ValueError` subclass (provisional), raised before any computation, with a message that names the argument, the position and the rule, values shown through `reprlib.repr`:
+  - the argument is not a `list` or `tuple` (a `str`, a `dict`, a generator, `None`) — provisional: exact sequence types only, so that the order taken is unambiguous;
+  - an element that is not exactly `int` or `float` (`bool`, `str`, `None`, `Decimal`, a nested list), or is not a positive finite number (0, a negative number, `nan`, `inf`, `-inf`) — decision 1: "every sample is a positive finite number";
+  - too few values for the function (above).
+- Rules for the cases the record leaves unsaid (provisional; one line of reason each in `## Result`):
+  - A sequence longer than `n_max` given to the stopping test: choose (an error, or the same answer as at `n_max`) and say which. The record defines no measurement with more than `n_max` samples.
+  - All samples equal: CV is 0, so the measurement is converged at `n_min`; a replicate ratio is then exact. No special case should be needed — test it.
+  - Arithmetic that leaves the finite range (a sum of very large floats that overflows, an `int` too large for a float): must not return `nan` or `inf` and must not raise a bare `OverflowError`; raise the module's error or compute in a way that cannot overflow, and list it.
+  - Summation: whether `math.fsum` / `statistics` or plain sums are used is this task's choice; the results must be the same on both interpreters (if `statistics` is used, check that the functions used behave the same on 3.11 and 3.14).
+  - Anything else you meet: list it.
+
+Tests (new, `tests/harness/test_measurement.py`; excluded from the size cap). No file, no clock, no `tmp_path` needed. Whether `tests/harness/` gets an `__init__.py` is the executor's choice (pytest must collect the file with the configuration as it is; `tests/` has none today).
+- happy:
+  - The worked example of ADR-0007, measurements A, B, C, D: the stopping state after each prefix (A, B, D: continue for n < 5, converged at n = 5; C: continue for n = 5..9, not converged at n = 10); the CV values of the table to the precision given (A 1.9 %, B 1.7 %, D 1.6 %, C 13.2 % at n = 5 and 9.5 % at n = 10) if the module exposes the CV, otherwise through the states; the trimmed means 101.0, 91.0, 100.5, 99.0.
+  - The verdicts of the three pairs as ordered in the table (first argument A): B different, D not different, C not different. The planner checked with five seeds that the interval ends stay far from the bounds (about [0.876, 0.923], [0.955, 1.003], [0.966, 1.08]), so these verdicts do not depend on the seed. **Do not assert interval digits from the table** (the record says it is not a test vector); if the module exposes the interval, assert only loose ranges such as these.
+  - A pair clearly different in the other direction (the whole interval above 1 + `delta`), for example the pair (B, A).
+  - The same call twice gives the same result; a call does not change the state of the global `random` generator (seed it, call, compare `random.getstate()`); the arguments are unchanged after the call; `list` and `tuple` inputs, `int` and `float` elements give the same results.
+- branch:
+  - Stopping test: n = 0..4 → continue, also for identical samples; CV just below and just above `cv_max` at n = `n_min`, at an n between the bounds and at n = `n_max`; a sequence that is noisy at n = 5 and converged at a later n ≤ `n_max` (one slow first repeat does not do this within 10 samples — construct the values); `n_max` = `n_min` (the first decision is already converged / not converged); a larger `n_max` (for example 30) where n = 10 without convergence is still *continue*; the rule chosen for n > `n_max`.
+  - Trimmed mean: n = 3 (the middle value), n = 4, n = 5 (mean of the middle three), unsorted input, repeated extremes (only one lowest and one highest are left out), an outlier at either end does not move the result.
+  - Verdict: identical sequences → not different; all samples equal within each sequence with a ratio of the two levels above 1 + `delta`, below 1 / (1 + `delta`), and inside the band → different, different, not different (the interval is then a single point: this pins both strict comparisons); sequences of different lengths (5 and 10); two noisy sequences whose summaries are 3 % apart → not different (the Alternative "compare the two summaries with the margin only" must not be what the code does).
+  - Do **not** test for exact symmetry between (A, B) and (B, A) on pairs near a bound (decision 7; T-0028 Follow-ups).
+- negative (assert the error type and that the message names the argument and the rule):
+  - each function: a non-sequence argument (`None`, a `str`, a `dict`, a generator, a number); an element that is `True`, a `str`, `None`, a nested list, `0`, `0.0`, a negative number, `float("nan")`, `float("inf")`, `float("-inf")`, at the first, a middle and the last position;
+  - trimmed mean: 0, 1 and 2 values;
+  - verdict: 0 and 4 values in the first, and in the second argument; an invalid element in either argument (the message says which argument);
+  - stopping test: `n_max` = 4, 0, −1, `True`, `10.0`, `"10"`, `None`; an empty sequence is *continue*, not an error (no sample has been taken yet) — or an error if you argue it, say which;
+  - the overflow cases above.
+- Test rules of CLAUDE.md / DRIVER §5 (D12) apply in full: ① `hilclaw/` keeps line coverage ≥ 80 % and function coverage ≥ 80 %; ② happy, error, branch **and negative** cases; ③ every public function of the touched module is tested; ④ the new module has its test file (CI job `Test presence (hilclaw)` enforces `hilclaw/harness/measurement.py` → `tests/harness/test_measurement.py`; `__init__.py` is exempt); ⑤ no tests for test code, `pyproject.toml`, CI workflows, hook scripts or driver helper scripts. Coverage is not measured by CI yet (P0.5-3 is BLOCKED on HQ-0003), so the tests must reach every line and branch of the new module: say in `## Result` how you checked (for example `python -m trace --count --missing --coverdir <dir outside the repository> --module pytest tests/harness/test_measurement.py`), with throw-away scripts kept outside the repository.
+
+Verification (record summary lines and run URLs in `## Result`):
+- Local, before the commit and again before the merge, from the repository root: `python -m pytest` exits 0 (all tests; record the pass and skip counts — `2832 passed, 18 skipped` on the driver's Windows machine after T-0027), `python -m ruff check .` exits 0, `python -m ruff format --check .` exits 0 (pinned tools: ruff 0.16.10, pytest 9.1.1). The new test file must be collected (its tests appear in the count) and the test suite should stay fast: 2000 replicates per verdict call is cheap, but keep the number of verdict calls in parametrised tests moderate.
+- `git ls-files --eol` shows `i/lf` for the new files; `git status --short` after the test run shows no stray file.
+- `git diff origin/main --stat` lists only the files in `touchesFiles` (plus `tests/harness/__init__.py` if you chose to add it — say so); `pyproject.toml`, `hilclaw/__init__.py`, every existing module, `.claude/`, `.github/`, `README.md`, `ARCHITECTURE/` and `PROCESS/` are unchanged.
+- CI on the PR: `gh pr checks <PR> --watch` ends with **four** successful checks on the final head — `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `Test presence (hilclaw)`. Merge only then. The two Python gates passing with the same asserted verdicts is the evidence that the replicates do not depend on the interpreter version.
+- After the squash-merge, the `push` run on `main`: check it with `gh api "repos/myungjoo/HIL-Claw/actions/runs?branch=main&event=push&per_page=1"` and record its conclusion. If it is not `success`, do not fix forward on `main`: record the failure in `## Result` and say so in the returned summary.
+
+Process:
+- Before anything else, the §3-5 landed check: `git log origin/main --grep='^Task: T-0029'` and `gh pr list --repo myungjoo/HIL-Claw --search T-0029 --state all`; then `gh pr list --repo myungjoo/HIL-Claw --state open` (none at planning time).
+- Code mode: branch `claude/T-0029-measurement-policy-module` from `origin/main`; Draft PR with the `DONOTMERGE` label (not in title or body); PR title contains `T-0029`; executor commits end with the trailer `Task: T-0029`.
+- Reviewer cycle via a fresh-context `dev-reviewer` sub-agent running dev-code-review (at most 7 rounds). Ask it explicitly to (a) compare the three functions with ADR-0007 decisions 4, 5, 7, 8 and 9 rule by rule and value by value — the divisor n − 1, "all samples", the strict comparisons, the two ranks, independent resampling, the ratio B over A, the two bounds, and that no caller can supply a seed or change a constant other than `n_max`; (b) **re-check the planner's judgements in `## Why`**: the location `hilclaw/harness/` (from #5 A-12 and FR-10), the A-13 reading, and each provisional rule for the unsaid cases (rejecting input inside the functions, exact sequence and number types, the minimum length of a verdict argument, n > `n_max`, overflow, the generator and the use of `random()` only); (c) report anything the module decides that ADR-0007 lists under Boundaries (a quantity or direction, "better", pairing, steady-state labels, what a consumer does with "not converged", a timer or any harness design, a field of any file). If the reviewer reads (b) as a design choice needing an ADR or the owner, return BLOCKED with the question instead of arguing it out. A result starting with `SECURITY` is BLOCKED. If you cannot spawn a reviewer, return BLOCKED — do not self-review.
+- Squash-merge per CLAUDE.md A-13 once the reviewer approved and CI is green: remove `DONOTMERGE`, mark the PR ready, confirm the four checks on the final head, then `gh pr merge <PR> --squash --body-file <file>` with the PR body, whose **last line is `Task: T-0029`**. The merge guard hook is not registered, so checking the four checks before the merge is the executor's own step. Delete the remote branch and the local branch in **separate** commands and only after `gh pr view <PR> --json state` reports `MERGED` (T-0012 incident).
+- Commit body: the provisional choices (location and module name, API grouping and return values, the error type, the generator and the seed, where input is rejected, the unsaid cases) with one line of reason each, and the language line.
+- `## Result`: fill it in **after** the merge, on `main`, and leave that edit to this task file **uncommitted** — the driver commits it in its wrap-up (DRIVER §3-6). The task branch and the PR must not contain the task file. `PROCESS/STATE.json`, `PROCESS/journal/` and `PROCESS/PLAN.md` belong to the driver. This task ticks no PLAN checkbox; say so in `## Result`.
+- Size: 2 non-test files, about 200 lines; the cap is 300 LOC / 5 files (tests excluded). If the module would exceed the cap, first shorten the docstrings; if that is not enough, drop the optional interval function and list it in `Follow-ups` (DRIVER §5).
+- If ADR-0007 turns out to be ambiguous or self-contradictory on a point the code must decide and that is not one of the provisional rules above, do not guess and do not edit the ADR: return BLOCKED ("requirement unclear") with the exact question.
+- If a needed tool call is denied or fails, return BLOCKED rather than working around it (DRIVER §1-5). Never edit `.claude/settings.json` or `.claude/settings.local.json`; never use `git push --force*`, `rm -rf` or `gh repo delete`.
+- Return a summary of at most 200 characters (result, PR / commit, BLOCKED or not).
+
+## Out of Scope
+- Running or timing anything: the timer, the clock, the loop that takes repeats, calls per repeat, reuse of inputs, an execution before the first repeat, the kernel calling convention, input generation, the reference, the tolerance compare (PLAN P1-3 — "오너 확정 필요"; #5 A-7 / B-7).
+- The quantity, its unit and direction, "better", an improvement or regression verdict, multi-objective handling, `delta` as an instance parameter (OD-1 / #5 A-4 — owner-only).
+- The rest of OD-13: paired or interleaved measurement, steady-state detection or labels, session hygiene, values for a simulator or a board, what a consumer does with a "not converged" measurement, another spread measure.
+- Storing samples or the mark: fields and schemas of `sim.json`, `board.json`, `instance.json`, any event kind or payload (PLAN P1-8; ADR-0006 Boundaries); recording a per-instance `n_max`.
+- Defences of the timing (OD-16), pins and re-measurement (OD-11), baselines (OD-28), failure and retry (OD-10), sandbox limits (OD-14).
+- A command line, MCP exposure or hook integration (OD-18); any caller of the module.
+- Editing ADR-0001..0007, the OD register, the body of NFR-3, README.md, CLAUDE.md, DRIVER.md, PLAN.md, the skills or the agents; `pyproject.toml`; any CI file; any existing module under `hilclaw/` (`local_run.py` included).
+
+## Follow-ups
+- (planner, next) After this task no design-level slice is left in P1 that does not need a prior decision. Raise the owner questions of PLAN P1-3 as an HQ with a BLOCKED P1-3 task, as T-0014 did for P0.5-3: the reference oracle of `cpu_standin` (#5 B-7; A-7 "still open" — NumPy float64 would also be a new external dependency), the memory layout, operand order and C prototype of the first GEMM, and the `hw_source` of `cpu_standin` (T-0021 `## Follow-ups`). They hold back P1-4, the rest of P1-2, the C gate of P0.5-1 and P1-5 slice 3.
+- (planner) The rest of P1-8 (`STATE.json`, `instance.json`) needs OD-17 / #8 M7 closed by an ADR and holds owner-only members (OD-3, OD-1, #5 B-7).
+- (P1-3 task) The harness loop calls the stopping test after each repeat and stops at the first state that is not *continue*; it needs its own timer (`duration_s` of `hilclaw/local_run.py` is not a sample — ADR-0007 decision 2).
+- (P1-8 task) The result-file schemas must hold the ordered samples and the "not converged" mark; the per-instance `n_max` is recorded with the instance.
+- (P0.5-3) First coverage measurement of `hilclaw/harness/measurement.py` once the coverage gate exists; check that the gate and the test-presence job handle the sub-package.
+- (if the owner objects to ADR-0007 within its window) Revisit this module together with the reverting task.
+
+## Result
