@@ -1,0 +1,528 @@
+import json
+import os
+import shutil
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+from hilclaw import clang_build
+from hilclaw.clang_build import (
+    DEFAULT_COMPILER,
+    BuildResult,
+    CompilerNotFoundError,
+    build,
+    compiler_version,
+)
+
+GOOD_C = "double scale(double x) { return 2.0 * x; }\n"
+MATH_C = "#include <math.h>\ndouble root(double x) { return sqrt(x); }\n"
+BAD_C = "int broken( {\n"
+
+PRELUDE = """\
+import json, os, sys, time
+from pathlib import Path
+here = Path(__file__).parent
+argv = sys.argv[1:]
+call = {"argv": argv, "cwd": os.getcwd(), "mark": os.environ.get("HILCLAW_TEST_MARK")}
+(here / "started.json").write_text(json.dumps(call), encoding="utf-8")
+out = Path(argv[argv.index("-o") + 1]) if "-o" in argv else None
+"""
+WRITE = "out.write_bytes(b'artefact')"
+FAIL = "out.write_bytes(b'partial'); print('kernel.c:1:1: error: stub says no'); sys.exit(1)"
+SLEEP = "out.write_bytes(b'partial'); print('before sleep', flush=True); time.sleep(30)"
+NOTHING = "pass"
+BAD_UTF8 = "sys.stdout.buffer.write(b'caf\\xe9 \\xff\\n'); sys.exit(1)"
+BOTH = "print('to stdout'); print('to stderr', file=sys.stderr); out.write_bytes(b'a')"
+VERSION = "print('stub clang version 1.2.3 (test)  '); print('Target: nowhere')"
+
+BAD_TIMEOUT_VALUES = [0, -1, -0.5, 0.0, float("nan"), float("inf")]
+BAD_TIMEOUT_TYPES = [None, True, False, "10", [1], 1 + 0j]
+OUTPUT_FLAGS = [("-o", "x.o"), ("-ox.o",), ("--output", "x.o"), ("--output=x.o",)]
+MISSING_COMPILERS = [
+    "hilclaw-no-such-compiler",
+    Path("no-such-directory") / "clang",
+    ("hilclaw-no-such-compiler", "clang"),
+    "",
+]
+TIMEOUT = 60
+
+
+class Stub:
+    def __init__(self, directory):
+        self.directory = directory
+        self.record = directory / "started.json"
+
+    def __call__(self, body):
+        script = self.directory / "cc.py"
+        script.write_text(PRELUDE + body + "\n", encoding="utf-8")
+        return (sys.executable, str(script))
+
+    @property
+    def started(self):
+        return self.record.exists()
+
+    def call(self):
+        return json.loads(self.record.read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def stub(tmp_path):
+    directory = tmp_path / "stub"
+    directory.mkdir()
+    return Stub(directory)
+
+
+@pytest.fixture
+def src(tmp_path):
+    path = tmp_path / "src" / "kernel.c"
+    path.parent.mkdir()
+    path.write_text(GOOD_C, encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def out_dir(tmp_path):
+    path = tmp_path / "out"
+    path.mkdir()
+    return path
+
+
+@pytest.fixture
+def clang():
+    if shutil.which("clang") is None:
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            pytest.fail("clang is not on PATH of the CI runner")
+        pytest.skip("clang is not on PATH")
+
+
+def names(directory):
+    return sorted(p.name for p in directory.iterdir())
+
+
+def test_stub_build_succeeds_and_reports_the_call(stub, src, out_dir):
+    out = out_dir / "kernel.o"
+    result = build(src, out, timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert isinstance(result, BuildResult)
+    assert result.ok is True
+    assert result.returncode == 0
+    assert result.timed_out is False
+    assert result.output == out
+    assert result.log == ""
+    assert result.duration_s >= 0
+    assert out.read_bytes() == b"artefact"
+    assert names(out_dir) == ["kernel.o"]
+
+
+def test_command_order_and_temporary_name(stub, src, out_dir, tmp_path):
+    other = tmp_path / "src" / "other.c"
+    other.write_text(GOOD_C, encoding="utf-8")
+    compiler = stub(WRITE)
+    result = build(
+        [src, other],
+        out_dir / "kernel.o",
+        timeout_s=TIMEOUT,
+        flags=["-DA=1", "-c"],
+        trailing_flags=("-lm",),
+        compiler=compiler,
+    )
+    command = result.command
+    assert isinstance(command, tuple)
+    assert os.path.samefile(command[0], sys.executable)
+    assert os.path.isabs(command[0])
+    assert command[1:-1] == (
+        compiler[1],
+        "-DA=1",
+        "-c",
+        str(src),
+        str(other),
+        "-lm",
+        "-o",
+    )
+    temporary = Path(command[-1])
+    assert temporary.parent == out_dir
+    assert temporary.name.startswith("kernel.tmp-")
+    assert temporary.suffix == ".o"
+    assert stub.call()["argv"] == list(command[2:])
+    assert result.ok
+
+
+def test_temporary_name_without_suffix(stub, src, out_dir):
+    result = build(src, out_dir / "kernel", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    temporary = Path(result.command[-1])
+    assert temporary.name.startswith("kernel.tmp-")
+    assert names(out_dir) == ["kernel"]
+
+
+def test_cwd_and_env_reach_the_process(stub, src, out_dir, tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    env = {**os.environ, "HILCLAW_TEST_MARK": "marked"}
+    result = build(
+        src,
+        out_dir / "kernel.o",
+        timeout_s=TIMEOUT,
+        compiler=stub(WRITE),
+        cwd=work,
+        env=env,
+    )
+    assert result.ok
+    call = stub.call()
+    assert os.path.samefile(call["cwd"], work)
+    assert call["mark"] == "marked"
+
+
+def test_environment_is_inherited_by_default(stub, src, out_dir, monkeypatch):
+    monkeypatch.setenv("HILCLAW_TEST_MARK", "inherited")
+    build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    call = stub.call()
+    assert call["mark"] == "inherited"
+    assert os.path.samefile(call["cwd"], os.getcwd())
+
+
+def test_relative_paths_do_not_depend_on_cwd(stub, src, out_dir, tmp_path, monkeypatch):
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(tmp_path)
+    relative = os.path.join("out", "kernel.o")
+    result = build(
+        os.path.join("src", "kernel.c"),
+        relative,
+        timeout_s=TIMEOUT,
+        compiler=stub(WRITE),
+        cwd=work,
+    )
+    assert result.ok
+    assert result.output == Path(relative)
+    assert (out_dir / "kernel.o").is_file()
+    assert names(work) == []
+    assert str(src) in result.command
+
+
+def test_single_source_and_one_element_list_agree(stub, src, out_dir):
+    compiler = stub(WRITE)
+    single = build(src, out_dir / "a.o", timeout_s=TIMEOUT, compiler=compiler)
+    listed = build([src], out_dir / "a.o", timeout_s=TIMEOUT, compiler=compiler)
+    assert single.command[:-1] == listed.command[:-1]
+
+
+def test_str_and_path_arguments_agree(stub, src, out_dir):
+    compiler = stub(WRITE)
+    out = out_dir / "a.o"
+    as_path = build(src, out, timeout_s=TIMEOUT, compiler=compiler)
+    as_str = build(str(src), str(out), timeout_s=TIMEOUT, compiler=compiler)
+    assert as_str.command[:-1] == as_path.command[:-1]
+    assert as_str[:4] == as_path[:4]
+    assert isinstance(as_str.output, Path)
+
+
+def test_timeout_accepts_int_and_float(stub, src, out_dir):
+    compiler = stub(WRITE)
+    assert build(src, out_dir / "a.o", timeout_s=60, compiler=compiler).ok
+    assert build(src, out_dir / "a.o", timeout_s=60.5, compiler=compiler).ok
+
+
+@pytest.mark.parametrize("how", ["default", "str", "path"])
+def test_single_executable_forms_of_compiler(how, stub, out_dir, monkeypatch):
+    script = stub(WRITE)[1]
+    if how == "default":
+        monkeypatch.setattr(
+            clang_build.shutil,
+            "which",
+            lambda name: sys.executable if name == DEFAULT_COMPILER else None,
+        )
+        compiler = None
+    else:
+        compiler = sys.executable if how == "str" else Path(sys.executable)
+    result = build(script, out_dir / "a.o", timeout_s=TIMEOUT, compiler=compiler)
+    assert result.ok
+    assert os.path.samefile(result.command[0], sys.executable)
+    assert result.command[1:3] == (script, "-o")
+
+
+def test_default_compiler_is_clang():
+    assert DEFAULT_COMPILER == "clang"
+
+
+def test_compile_error_is_a_result(stub, src, out_dir):
+    out = out_dir / "kernel.o"
+    result = build(src, out, timeout_s=TIMEOUT, compiler=stub(FAIL))
+    assert result.ok is False
+    assert result.returncode == 1
+    assert result.timed_out is False
+    assert "error: stub says no" in result.log
+    assert result.output == out
+    assert names(out_dir) == []
+
+
+def test_existing_artefact_survives_failure_and_is_replaced_on_success(
+    stub, src, out_dir
+):
+    out = out_dir / "kernel.o"
+    out.write_bytes(b"previous")
+    assert not build(src, out, timeout_s=TIMEOUT, compiler=stub(FAIL)).ok
+    assert out.read_bytes() == b"previous"
+    assert not build(src, out, timeout_s=TIMEOUT, compiler=stub(NOTHING)).ok
+    assert out.read_bytes() == b"previous"
+    assert build(src, out, timeout_s=TIMEOUT, compiler=stub(WRITE)).ok
+    assert out.read_bytes() == b"artefact"
+    assert names(out_dir) == ["kernel.o"]
+
+
+def test_exit_zero_without_artefact_is_not_ok(stub, src, out_dir):
+    result = build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(NOTHING))
+    assert result.ok is False
+    assert result.returncode == 0
+    assert result.timed_out is False
+    assert names(out_dir) == []
+
+
+def test_timeout_kills_the_compiler(stub, src, out_dir):
+    out = out_dir / "kernel.o"
+    out.write_bytes(b"previous")
+    before = time.monotonic()
+    result = build(src, out, timeout_s=5, compiler=stub(SLEEP))
+    assert time.monotonic() - before < 20
+    assert result.ok is False
+    assert result.timed_out is True
+    assert result.returncode is None
+    assert "before sleep" in result.log
+    assert 5 <= result.duration_s < 20
+    assert stub.started
+    assert out.read_bytes() == b"previous"
+    assert names(out_dir) == ["kernel.o"]
+
+
+def test_invalid_utf8_in_compiler_output(stub, src, out_dir):
+    result = build(
+        src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(BAD_UTF8)
+    )
+    assert isinstance(result.log, str)
+    assert result.log.startswith("caf� �")
+    assert result.ok is False
+
+
+def test_stdout_and_stderr_are_both_in_the_log(stub, src, out_dir):
+    result = build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(BOTH))
+    assert result.ok
+    assert "to stdout" in result.log
+    assert "to stderr" in result.log
+
+
+def test_stub_compiler_version_is_the_first_line(stub):
+    assert compiler_version(stub(VERSION), timeout_s=TIMEOUT) == (
+        "stub clang version 1.2.3 (test)"
+    )
+    assert stub.call()["argv"] == ["--version"]
+
+
+@pytest.mark.parametrize(
+    "sources, error",
+    [
+        ("missing.c", FileNotFoundError),
+        (["kernel.c", "missing.c"], FileNotFoundError),
+        (".", IsADirectoryError),
+        ([], ValueError),
+        ((), ValueError),
+        ([3], TypeError),
+        ([None], TypeError),
+        (b"kernel.c", TypeError),
+    ],
+)
+def test_unusable_sources(sources, error, stub, src, out_dir, monkeypatch):
+    monkeypatch.chdir(src.parent)
+    with pytest.raises(error):
+        build(sources, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+def test_missing_output_directory(stub, src, tmp_path):
+    with pytest.raises(FileNotFoundError):
+        build(
+            src,
+            tmp_path / "absent" / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+        )
+    assert not stub.started
+    assert not (tmp_path / "absent").exists()
+
+
+def test_output_parent_is_a_regular_file(stub, src, out_dir):
+    blocker = out_dir / "file"
+    blocker.write_bytes(b"x")
+    with pytest.raises(NotADirectoryError):
+        build(src, blocker / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert not stub.started
+
+
+def test_output_is_a_directory(stub, src, out_dir):
+    with pytest.raises(IsADirectoryError):
+        build(src, out_dir, timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("keyword", ["flags", "trailing_flags"])
+@pytest.mark.parametrize("value", ["-O2", b"-O2", ("-c", 1), ("-c", None), 5])
+def test_flags_of_the_wrong_type(keyword, value, stub, src, out_dir):
+    with pytest.raises(TypeError):
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            **{keyword: value},
+        )
+    assert not stub.started
+
+
+@pytest.mark.parametrize("keyword", ["flags", "trailing_flags"])
+@pytest.mark.parametrize("value", OUTPUT_FLAGS)
+def test_flags_must_not_set_the_output(keyword, value, stub, src, out_dir):
+    with pytest.raises(ValueError, match="must not set the output"):
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            **{keyword: ("-c", *value)},
+        )
+    assert not stub.started
+
+
+@pytest.mark.parametrize("value", BAD_TIMEOUT_VALUES)
+def test_timeout_must_be_positive_and_finite(value, stub, src, out_dir):
+    with pytest.raises(ValueError):
+        build(src, out_dir / "kernel.o", timeout_s=value, compiler=stub(WRITE))
+    with pytest.raises(ValueError):
+        compiler_version(stub(VERSION), timeout_s=value)
+    assert not stub.started
+
+
+@pytest.mark.parametrize("value", BAD_TIMEOUT_TYPES)
+def test_timeout_must_be_a_number(value, stub, src, out_dir):
+    with pytest.raises(TypeError):
+        build(src, out_dir / "kernel.o", timeout_s=value, compiler=stub(WRITE))
+    with pytest.raises(TypeError):
+        compiler_version(stub(VERSION), timeout_s=value)
+    assert not stub.started
+
+
+def test_timeout_has_no_default(stub, src, out_dir):
+    with pytest.raises(TypeError):
+        build(src, out_dir / "kernel.o", compiler=stub(WRITE))
+    with pytest.raises(TypeError):
+        compiler_version(stub(VERSION))
+    assert not stub.started
+
+
+@pytest.mark.parametrize("compiler", MISSING_COMPILERS)
+def test_compiler_that_does_not_exist(compiler, src, out_dir):
+    with pytest.raises(CompilerNotFoundError):
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=compiler)
+    with pytest.raises(CompilerNotFoundError):
+        compiler_version(compiler, timeout_s=TIMEOUT)
+    assert names(out_dir) == []
+
+
+def test_default_compiler_not_on_path(src, out_dir, monkeypatch):
+    monkeypatch.setattr(clang_build.shutil, "which", lambda name: None)
+    with pytest.raises(CompilerNotFoundError, match="clang"):
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT)
+    with pytest.raises(CompilerNotFoundError, match="clang"):
+        compiler_version(timeout_s=TIMEOUT)
+    assert issubclass(CompilerNotFoundError, LookupError)
+
+
+@pytest.mark.parametrize(
+    "compiler, error",
+    [
+        ((), ValueError),
+        ([], ValueError),
+        ((sys.executable, 3), TypeError),
+        (3, TypeError),
+        (b"clang", TypeError),
+    ],
+)
+def test_malformed_compiler_argument(compiler, error, src, out_dir):
+    with pytest.raises(error):
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=compiler)
+    with pytest.raises(error):
+        compiler_version(compiler, timeout_s=TIMEOUT)
+
+
+def test_compiler_version_of_a_failing_compiler(stub):
+    compiler = stub("print('broken install', file=sys.stderr); sys.exit(3)")
+    with pytest.raises(RuntimeError, match="exited with 3: broken install"):
+        compiler_version(compiler, timeout_s=TIMEOUT)
+
+
+@pytest.mark.parametrize("body", ["pass", "print()", "print('   ')"])
+def test_compiler_version_without_a_version_line(body, stub):
+    with pytest.raises(RuntimeError, match="no version line"):
+        compiler_version(stub(body), timeout_s=TIMEOUT)
+
+
+def test_compiler_version_times_out(stub):
+    before = time.monotonic()
+    with pytest.raises(RuntimeError, match="did not finish"):
+        compiler_version(stub("time.sleep(30)"), timeout_s=1)
+    assert time.monotonic() - before < 15
+
+
+def test_clang_builds_an_object_file(clang, src, out_dir):
+    out = out_dir / "kernel.o"
+    result = build(src, out, timeout_s=TIMEOUT, flags=("-c",))
+    assert result.ok, result.log
+    assert result.returncode == 0
+    assert result.timed_out is False
+    assert out.stat().st_size > 0
+    assert os.path.samefile(result.command[0], shutil.which("clang"))
+    assert str(src) in result.command
+    assert "-o" in result.command
+    assert names(out_dir) == ["kernel.o"]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="shared library flags are POSIX ones")
+def test_clang_builds_a_shared_library(clang, src, out_dir):
+    src.write_text(MATH_C, encoding="utf-8")
+    out = out_dir / "libkernel.so"
+    result = build(
+        src,
+        out,
+        timeout_s=TIMEOUT,
+        flags=("-shared", "-fPIC"),
+        trailing_flags=("-lm",),
+    )
+    assert result.ok, result.log
+    assert out.stat().st_size > 0
+    assert names(out_dir) == ["libkernel.so"]
+
+
+def test_clang_compile_error(clang, src, out_dir):
+    src.write_text(BAD_C, encoding="utf-8")
+    result = build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, flags=("-c",))
+    assert result.ok is False
+    assert result.returncode not in (0, None)
+    assert "error" in result.log
+    assert "kernel.c" in result.log
+    assert names(out_dir) == []
+
+
+def test_clang_exit_zero_without_artefact(clang, src, out_dir):
+    result = build(
+        src, out_dir / "kernel.o", timeout_s=TIMEOUT, flags=("-fsyntax-only",)
+    )
+    assert result.returncode == 0
+    assert result.ok is False
+    assert names(out_dir) == []
+
+
+def test_clang_version(clang):
+    line = compiler_version(timeout_s=TIMEOUT)
+    assert "clang" in line
+    assert "\n" not in line
+    assert line == line.strip()
