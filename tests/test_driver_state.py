@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import driver_state
 from hilclaw.driver_state import SchemaError, load_schema, main, validate
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -198,6 +197,12 @@ NEGATIVE = [
         "format",
     ),
     (
+        "hour-24",
+        _set("lock", "acquiredAt", "2026-10-06T24:00:00Z"),
+        "$.lock.acquiredAt",
+        "format",
+    ),
+    (
         "no-timezone",
         _set("lock", "acquiredAt", "2026-10-06T02:26:06"),
         "$.lock.acquiredAt",
@@ -270,11 +275,20 @@ def test_negative_cases_name_path_and_keyword(change, path, keyword):
     assert len(problems) == len(keyword.split()), problems
 
 
-@pytest.mark.parametrize("instance", [[], "state", None, 1])
-def test_top_level_not_an_object(instance):
-    assert validate(instance) == [
-        f"$: type: expected object, got {driver_state._json_type(instance)}"
-    ]
+@pytest.mark.parametrize(
+    ("instance", "name"),
+    [
+        ([], "array"),
+        ("state", "string"),
+        (None, "null"),
+        (1, "integer"),
+        (1.5, "number"),
+        (True, "boolean"),
+        ((), "tuple"),
+    ],
+)
+def test_top_level_not_an_object(instance, name):
+    assert validate(instance) == [f"$: type: expected object, got {name}"]
 
 
 def test_type_failure_reports_only_the_type():
