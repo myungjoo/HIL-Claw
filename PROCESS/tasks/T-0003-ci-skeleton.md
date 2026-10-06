@@ -2,13 +2,13 @@
 id: T-0003
 title: Add the CI skeleton with the Python gate (pytest + ruff)
 phase: P0
-status: BLOCKED
+status: TODO
 commitMode: code
 coversReq: ["#9", "#5 D10", "CLAUDE.md language policy"]
-dependsOn: [T-0001, T-0002]
+dependsOn: [T-0001, T-0002, T-0009]
 touchesFiles: [.github/workflows/ci.yml]
 estimatedSize: {loc: 45, files: 1}
-hq: [HQ-0002]   # HQ-0001 resolved 2026-10-06 (option a, D13). GitHub Actions on a Linux runner with pytest + ruff is named by #9, PLAN P0-3 and D10, so it is not a "new external dependency"; only first-party `actions/*` actions are allowed (see Acceptance Criteria)
+hq: []   # HQ-0001 resolved 2026-10-06 (option a, D13); HQ-0002 resolved 2026-10-06 (option c): the fix lands first as T-0009, hence `dependsOn`. GitHub Actions on a Linux runner with pytest + ruff is named by #9, PLAN P0-3 and D10, so it is not a "new external dependency"; only first-party `actions/*` actions are allowed (see Acceptance Criteria)
 ---
 ## Why
 The standard development process (dev-item-address steps 13-15, CLAUDE.md A-13) assumes CI: a code-mode PR is merged only when the reviewer approved **and** CI is green. Until now that step has been replaced by a local test rerun ("CI 미구축"). Issue #9 asks for one CI gate per tool-layer language, built up front, on a Linux runner; PLAN P0-3 takes the first slice: the Python gate (pytest + ruff) on pull requests and on pushes to `main`. T-0002 made both tools runnable with one command each, so this task only has to call them from a workflow. It also closes the T-0002 follow-ups addressed to P0-3: run on the lowest supported Python (3.11), and install the `[dependency-groups]` dev tools with a pip that understands PEP 735.
@@ -101,3 +101,4 @@ Process:
   - `permissions: contents: read`; no secrets, cache or artifacts. `concurrency`: cancel-in-progress for `pull_request` only; `push` runs are never cancelled.
 - No tool-layer language choice was needed (workflow YAML only). No test added (test rule 5).
 - Follow-ups: the local dev tools (ruff 0.15.14, pytest 9.0.3) are older than what CI resolves and should be upgraded so that "local green" predicts "CI green". On resume: continue PR #16 (resume rule), then the green-run log checks, the one-time negative check, the reviewer cycle, the merge and the first `main` push run check — none of these has been done.
+- 2026-10-06T07:39Z — HQ-0002 answered by the owner, option (c) (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6011684226): the `driver_state.py:26` fix and exact dev-tool pins (`ruff==0.16.10`, `pytest==9.1.1`) land first as **T-0009** (a small code task), this task stays limited to the workflow file, local tools are upgraded to the same versions, and pin bumps are deliberate tasks from now on. Status set back to `TODO` with `dependsOn: [.., T-0009]` by the owner (no lock held); `nextTask` is T-0009. **On resume — executor precondition (DRIVER §3-3 does not consult `dependsOn`)**: before touching PR #16, confirm that T-0009 is on `main` (`git log origin/main --grep='^Task: T-0009'` is non-empty and `origin/main:pyproject.toml` pins `ruff==0.16.10`); if not, return BLOCKED (reason `dependency-unmet`, reference HQ-0002 and T-0009) without pushing anything. **Then**: bring `claude/T-0003-ci-skeleton` up to date with `git merge origin/main` (never force), push, then continue with the green-run log checks, the one-time negative check, the reviewer cycle, the merge and the first `main` push run check.
