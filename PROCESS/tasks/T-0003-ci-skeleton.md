@@ -2,13 +2,13 @@
 id: T-0003
 title: Add the CI skeleton with the Python gate (pytest + ruff)
 phase: P0
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: code
 coversReq: ["#9", "#5 D10", "CLAUDE.md language policy"]
 dependsOn: [T-0001, T-0002]
 touchesFiles: [.github/workflows/ci.yml]
 estimatedSize: {loc: 45, files: 1}
-hq: []   # HQ-0001 resolved 2026-10-06 (option a, D13). GitHub Actions on a Linux runner with pytest + ruff is named by #9, PLAN P0-3 and D10, so it is not a "new external dependency"; only first-party `actions/*` actions are allowed (see Acceptance Criteria)
+hq: [HQ-0002]   # HQ-0001 resolved 2026-10-06 (option a, D13). GitHub Actions on a Linux runner with pytest + ruff is named by #9, PLAN P0-3 and D10, so it is not a "new external dependency"; only first-party `actions/*` actions are allowed (see Acceptance Criteria)
 ---
 ## Why
 The standard development process (dev-item-address steps 13-15, CLAUDE.md A-13) assumes CI: a code-mode PR is merged only when the reviewer approved **and** CI is green. Until now that step has been replaced by a local test rerun ("CI 미구축"). Issue #9 asks for one CI gate per tool-layer language, built up front, on a Linux runner; PLAN P0-3 takes the first slice: the Python gate (pytest + ruff) on pull requests and on pushes to `main`. T-0002 made both tools runnable with one command each, so this task only has to call them from a workflow. It also closes the T-0002 follow-ups addressed to P0-3: run on the lowest supported Python (3.11), and install the `[dependency-groups]` dev tools with a pip that understands PEP 735.
@@ -83,3 +83,21 @@ Process:
 - 2026-10-05T18:22Z AKIHA:f2cf66cc — BLOCKED (`permission-denied`, HQ-0001). No implementation was started: no branch, no PR, no workflow file.
 - The driver session (scheduled routine, auto permission mode) was denied when spawning the executor sub-agent; the classifier's reason was `[Self-Approval]` — the executor's brief covers implementing, getting its own reviewer sub-agent's Approve and squash-merging without a human. Per DRIVER §1-5 a denied call is treated as BLOCKED and is not worked around.
 - The task specification above is unchanged and still valid; once HQ-0001 is answered the task returns to TODO.
+- 2026-10-06T04:21Z AKIHA:15cc61e7 — resumed after HQ-0001 was answered (option a, D13); the executor spawn was not denied. BLOCKED again (HQ-0002: the first CI run is red because of code already on `main`, and every fix lies outside this task's single allowed file). Not merged.
+- PR: #16 https://github.com/myungjoo/HIL-Claw/pull/16 — open, Draft, label `DONOTMERGE`, one file (`.github/workflows/ci.yml`, 39 lines), branch `claude/T-0003-ci-skeleton` at `bab9305` (remote branch kept for resume). No squash commit.
+- Review rounds: 0 (the reviewer cycle was not started; the PR never reached a green CI). Negative check: not performed.
+- Local verification before the commit (ruff 0.15.14, pytest 9.0.3, Python 3.14.4): `python -m pytest` -> `97 passed in 0.17s`; `python -m ruff check .` -> `All checks passed!`; `python -m ruff format --check .` -> `4 files already formatted`; `git ls-files --eol .github/workflows/ci.yml` -> `i/lf w/lf attr/text=auto eol=lf`.
+- First workflow run (pull_request, `bab9305`): https://github.com/myungjoo/HIL-Claw/actions/runs/37413101512 — conclusion `failure`, both matrix entries (`Python gate (3.11)`, `Python gate (3.14)`).
+  - Steps: Check out / Set up Python / Install dev tools = success; `ruff check` = failure; `ruff format --check` and `pytest` = skipped.
+  - Cause: `pip install --group dev` resolved `ruff>=0.15.14` to ruff 0.16.10 (and pytest 9.1.1). ruff 0.16.10 reports `SIM905 Consider using a list literal instead of str.split` at `hilclaw/driver_state.py:26:5` (landed on `main` with T-0004); ruff 0.15.14 does not. `Found 1 error.`
+  - Reproduced by the executor with ruff 0.16.10 in a throwaway venv outside the repository: `ruff check` -> the same 1 error; `ruff format --check` -> passes. pytest on the runner has not run yet, so its result there is unknown; the check that the 3.11 entry really ran on 3.11 and collected the tests is still open.
+  - The workflow itself behaved as specified. This is 1 CI failure, not 3 consecutive ones; it is BLOCKED because `pyproject.toml` and `hilclaw/` are Out of Scope here, and pinning ruff inside the workflow would duplicate the dev-tool list, which the Acceptance Criteria forbid.
+- Provisional choices made in the workflow (unchanged if the task resumes):
+  - File name `.github/workflows/ci.yml`, workflow name `CI`: one workflow that P0.5-1..3 can extend with further steps or jobs.
+  - Runner `ubuntu-latest`: #9 only asks for a Linux runner; nothing in the gate depends on a specific Ubuntu release.
+  - Python `"3.11"` and `"3.14"`, `fail-fast: false`: 3.11 is the `requires-python` floor; 3.14 is the newest stable CPython available to `actions/setup-python` and the version T-0002 was verified on.
+  - Install: `python -m pip install --upgrade "pip>=25.1"` then `python -m pip install --group dev`: tools come from `[dependency-groups]`, no duplicated list; the project itself is not installed.
+  - `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) and `actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97` (v7.0.0): first-party only, pinned by full commit SHA.
+  - `permissions: contents: read`; no secrets, cache or artifacts. `concurrency`: cancel-in-progress for `pull_request` only; `push` runs are never cancelled.
+- No tool-layer language choice was needed (workflow YAML only). No test added (test rule 5).
+- Follow-ups: the local dev tools (ruff 0.15.14, pytest 9.0.3) are older than what CI resolves and should be upgraded so that "local green" predicts "CI green". On resume: continue PR #16 (resume rule), then the green-run log checks, the one-time negative check, the reviewer cycle, the merge and the first `main` push run check — none of these has been done.
