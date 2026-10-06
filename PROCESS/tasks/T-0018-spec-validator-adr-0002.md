@@ -1,0 +1,129 @@
+---
+id: T-0018
+title: Add the spec module (hilclaw/spec.py) that validates a codegen spec payload per ADR-0002, with its tests
+phase: P1
+status: IN_PROGRESS
+commitMode: code
+coversReq: [OD-6, FR-5, FR-1, FR-8, FR-9, NFR-7, "#5 D6"]
+dependsOn: [T-0017, T-0016, T-0003, T-0011]
+touchesFiles: [hilclaw/spec.py, tests/test_spec.py]
+estimatedSize: {loc: 270, files: 1}   # non-test: the module; the test file is excluded from the cap (D4)
+hq: []   # implements a closed decision (ADR-0002); closes no OD, writes no ADR, standard library only. A-13 reading: see Why
+---
+## Why
+ADR-0002 (`ARCHITECTURE/decisions/ADR-0002-od6-codegen-spec.md`, landed as `52c974c` by T-0017) closed the P1 minimum of OD-6: the sections, fields, types and cross-field rules of the **codegen spec**, the input of one coder invocation (FR-5). Its Consequences section says: "A later code task can write the JSON Schema and a validator from the tables", and lists the rules across fields. This is that task, the **second slice of PLAN P1-5**: a pure validator over an already-parsed spec, built on the key module of T-0016 (`hilclaw/keys.py`). Later tasks need it: the committed GEMM example (P1-5 slice 3) must pass it, and the coder-driver (P2-2) must not hand an invalid spec to `claude -p`.
+
+It ticks **no PLAN checkbox**: P1-5 also needs the committed example, which waits for values no source gives (ADR-0002 Boundaries).
+
+Why this item now (planner's judgement, DRIVER §6, 2026-10-06T14:50Z): phase P0.5 has no actionable item (P0.5-3 is BLOCKED on HQ-0003; the rest of P0.5-1 waits for P1-2 / P1-3; the rest of P0.5-4 is the owner's hook registration). In P1: P1-3 is marked "owner confirmation needed" and P1-4 depends on it; the rest of P1-2 (run + timing) needs the kernel prototype, which no source gives; P1-1 needs request / result shapes (OD-10 / 13 / 18 / 23); P1-8 (OD-8) depends on OD-3 (owner-only); the rest of P1-6 needs OD-8; P1-5 slice 3 (the real example) needs owner values. This task needs nothing undecided: every rule it implements is written in ADR-0002.
+
+**Scope choice by the planner — a validator module, not a JSON Schema file.** PLAN P1-5 says "`spec.json` 스키마" and ADR-0002 says "the JSON Schema and a validator". This slice delivers the validator only, as a hand-written standard-library module in the style of `hilclaw/keys.py`, because: (a) the repository has no JSON Schema library (`pyproject.toml` has `pytest` and `ruff` only) and adding one is the BLOCKED reason "new external dependency"; (b) the stdlib interpreter in `hilclaw/driver_state.py` supports only the keyword subset of `PROCESS/STATE.schema.json` and rejects every other keyword, while the spec needs conditional and cross-field rules no such subset expresses; (c) where a spec schema file would live and what it is called is decided nowhere. Whether a declarative schema file is also wanted is a follow-up, not part of this task.
+
+**A-13 check, stated explicitly (planner's reading; the reviewer may read it otherwise).** CLAUDE.md lists "데이터 plane 스키마 변경(STATE/spec/eval/artifacts)" as a BLOCKED reason, and this module is the first machine-checkable form of the spec schema, so the question is real. The planner reads it as **not applying**, for these reasons:
+- Nothing existing is changed: there is no spec schema, schema file, validator or stored spec today.
+- The decision the module implements is closed. DRIVER §9 (owner decision D6) names "OD-6(spec)" as an OD the driver closes by ADR so that the layer-2 code depending on it is not blocked, and PLAN P1-5 puts the `spec.json` schema under that route ("OD-6 종결 필요(§9 ADR 경로)"), not under "오너 확정 필요". The owner notice for ADR-0002 (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6018744123) states this reading; no objection has been posted.
+- Precedent: T-0016 implemented ADR-0001 as code under the same reasoning (PR #24).
+- The module adds no rule of its own: it enforces exactly what ADR-0002 writes and nothing else (see "Rules that are not enforced" below).
+
+What **is** BLOCKED under this reading: any point where the code would have to decide something about the spec that ADR-0002 does not say (a field, a type, a bound, a rule, a file name or location); any edit that changes what an already landed validator accepts (from the next task on); any decision about `STATE.json`, `eval` or `artifacts.json`. If the executor or the reviewer reads A-13 as covering this task itself, return BLOCKED ("data-plane schema change") with the question instead of arguing it; the task then waits for the owner.
+
+Known risk, accepted: ADR-0001 and ADR-0002 are inside their 7-day objection windows (both until 2026-10-13). An objection creates a reverting task and this module is revisited with it.
+
+## Required Reading
+- PROCESS/DRIVER.md §3-5 (executor procedure, naming `T-NNNN`, resume rule, 2h30m limit) and §5 (task format, size cap D4, code-task test rules D12, language line in `Result`) — mandatory for every task (§6)
+- PROCESS/DRIVER.md §1-5 (Bypass permissions run mode; forbidden actions held by discipline; "a denied or failed tool call is BLOCKED, never worked around"), §3 "BLOCKED 사유" paragraph, §9
+- **ARCHITECTURE/decisions/ADR-0002-od6-codegen-spec.md — the whole record.** It is the requirement of this task: Decision 2 (the paragraph above the tables that defines *name*, *string*, *integer*, *text*, *ref* and "an object holds exactly the members listed for it"; both tables; the paragraph on `feedback.attempts` entries; the two bullets below it), 3, 4, 5, 6, 7, 8 (the example and why it is not a valid spec), Consequences (first bullet: the cross-field rules), Boundaries
+- **ARCHITECTURE/decisions/ADR-0001-od4-key-schema.md** — Decision 1 (the value types below the table), 2, 3, 7
+- `hilclaw/keys.py` (the public API this module calls: `hw_profile_key`, `op_signature_key`, `Key`, `InvalidRecordError`, `MAX_INTEGER`; and the style to follow: module docstring, exact `str` / `int` types, error message with field path and rule, `reprlib.repr`) and `tests/test_keys.py` (test style)
+- CLAUDE.md — 상시 규칙: "세 층 모델", "도구 계층 언어 정책", "브랜치·merge 절차" (code mode; BLOCKED reasons incl. "새 외부 의존성" and "데이터 plane 스키마 변경"), "테스트 규칙" ①-⑤, "코멘트 최소화", "미결은 발명하지 않는다"
+- ARCHITECTURE/Requirements.md — rows FR-5, FR-9, NFR-7; register rows OD-6, OD-8, OD-11, OD-23 (read to know what is **not** decided here)
+- Issue #5: read the comments after https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6018744123 (`gh issue view 5 --repo myungjoo/HIL-Claw --comments`). If the owner has objected to ADR-0001 or ADR-0002, or to the A-13 reading in that notice, do not start: return BLOCKED quoting the comment
+- .claude/skills/dev-item-address/SKILL.md — the procedure to follow; .claude/skills/dev-code-review/SKILL.md — what the reviewer checks
+- PROCESS/tasks/T-0016-key-module-adr-0001.md — `## Acceptance Criteria` (sections "Verification" and "Process") and `## Result`: the conventions of the landed sibling task (provisional choices listed with one line of reason, exact types added by review, reachability check, the four CI checks, branch deletion in a separate command)
+- PROCESS/tasks/T-0017-adr-od6-codegen-spec.md — `## Result` (decisions in short, review findings, the first Follow-ups bullet at the end)
+- Existing files: `pyproject.toml`, `.github/workflows/ci.yml`, `.editorconfig`, `.gitattributes`
+
+## Acceptance Criteria
+ADR-0002 fixes the fields, their types, which are required, and the cross-field rules. The module name, the public API and the error type are **not** fixed anywhere; they are **conventions chosen by this task, provisional**. State each choice with one line of reason in the commit body, the PR body and `## Result`, and do not present them as requirements. Where a criterion below and ADR-0002 disagree, ADR-0002 wins: say so in `## Result`.
+
+Constraints:
+- **Standard library only.** Adding any package is the BLOCKED reason "new external dependency". `pyproject.toml` stays unchanged.
+- Runs on CPython 3.11 and 3.14 (both are CI matrix entries).
+- **Pure function**: no file, directory, environment variable, clock, `git` or network access; no use of `hilclaw.cas`, `hilclaw.config` or `hilclaw.driver_state`. The module accepts an already-parsed value. It defines no file name, no location and no JSON Schema file (OD-8), builds no spec and writes none.
+- No command line entry point, no `main` (OD-18 is open).
+- `hilclaw/keys.py` is not edited and none of its private names (leading underscore) is imported. The value-type checks the spec needs (*name*, *string*, *integer*) are restated in the new module with the same rules as ADR-0001, exact `str` / `int` as in T-0016 (`bool` and subclasses rejected); `keys.MAX_INTEGER` may be used.
+- No value of the first real instance is written into the module or its tests as a fact (no prototype, operand list, layout, `hw_source`, `run_id` form, objective or technique presented as real). Tests use clearly synthetic values.
+
+Module (new, `hilclaw/spec.py`; provisional name, flat next to the sibling modules. Python because the package is Python and it calls `hilclaw.keys` — one line in the commit body and `## Result`):
+- Module docstring that names ADR-0002 as the rule it implements and says what it does not check; short docstrings on the public names; no other comments unless the code cannot say it. Keep docstrings short: the tables are in the ADR, do not copy them.
+- Public API (provisional; the executor may rename or regroup it, but every public function must be tested):
+  - `SCHEMA_VERSION = 1` (the spec's own version, independent of `keys.SCHEMA_VERSION`, decision 7).
+  - `InvalidSpecError(ValueError)`; its message names the field path (for example `task.contract.operands[1].role`) and the rule broken. Provisional: the first problem found is reported.
+  - `validate(spec) -> None` — returns when `spec` is a valid version-1 spec, raises `InvalidSpecError` otherwise. `spec` is not modified. A problem inside an embedded key record surfaces as `InvalidSpecError` whose message keeps the path below `hw_profile.record` or `task.op_signature.record` (wrap `keys.InvalidRecordError`; do not let it escape as a different type).
+- Rules enforced (all from ADR-0002; a violation raises `InvalidSpecError`):
+  - Every object holds exactly the members listed for it: an unknown member is rejected at every level, a missing required member is rejected. Exceptions are the places the ADR declares open: `ext` and `task.build` (maps with free member names), `profile` (an object whose members are not validated) and `task.objective` (any value, but the member must be present).
+  - Top level: `schema_version` is the integer `1` (any other version is rejected: reading other versions is OD-11); `id`, `hw_profile`, `task`, `guidance`, `feedback` are required objects; `repair` is present **exactly when** `id.attempt` > 1; `ext` is optional.
+  - `id`: `run_id` string; `round` integer; `candidate`, `attempt`, `candidates` integers ≥ 1; `relation` is one of `single`, `same_technique`, `different_techniques`; `relation` is `single` **exactly when** `candidates` is 1; `variant` is a text and is present **exactly when** `relation` is `same_technique`; `candidate` ≤ `candidates`.
+  - `hw_profile`: `key` string, `record` validated by `keys.hw_profile_key`; `key` must equal the derived name. `task.op_signature`: the same with `keys.op_signature_key`.
+  - `task.contract`: `language` name; `prototype` text; `operands` an array of at least one object with exactly `name` (string), `role` (`input`, `output` or `inout`), `dtype` (name), `shape` (array of integers); every integer of every operand `shape` is one of the values of `task.op_signature.record.shape`.
+  - `task.objective`: required, content not inspected. `task.build`, when present: a map whose member names are names and whose values are a string, an integer or an array of strings.
+  - `guidance.techniques`: required array, may be empty, of objects with exactly `id` (string) and `text` (text).
+  - `feedback`: `attempts` required array, may be empty; `base` optional ref. A ref has exactly `round` (integer), `candidate` and `attempt` (integers ≥ 1). An entry of `attempts` has `round`, `candidate`, `attempt` (required, as in a ref), `techniques` (required array of string, may be empty), `failure` (optional object with exactly `stage` — `compile`, `sim` or `board` — and `report`, a text) and `profile` (optional; must be an object, members not inspected).
+  - `repair`: `failures` is an array of at least one object with exactly `attempt` (integer ≥ 1), `stage` (`compile` or `sim`; `board` is rejected here) and `report` (text); the `attempt` values are strictly ascending (one entry per attempt) and the last one equals `id.attempt` − 1.
+  - `ext`, when present: a map whose member names are names; values are not inspected.
+  - *text* is exactly `str` with at least one character, no upper length limit and no character restriction (unlike *string*).
+- **Readings of ADR-0002 made by the planner** — each is a reading, not a new rule; list them in `## Result`, and if the reviewer finds that one of them decides something the ADR leaves open, that is BLOCKED ("requirement unclear"), not a silent choice:
+  - "Absent when there are none" (`ext`, `task.build`) is read literally: an **empty** map is rejected, as ADR-0001 does for its `ext`. "Absent when there is none" (`feedback.base`): `null` is not a ref and is rejected.
+  - An operand `shape` and an array value of `task.build` may be empty: the ADR gives no minimum.
+  - `failure` and `profile` may both be present in one `feedback.attempts` entry: the ADR does not exclude it.
+  - An array is a Python `list` (what `json.loads` returns); whether a `tuple` is also accepted is the executor's choice, stated.
+- **Rules that are not enforced, on purpose** (say so in the module docstring and in `## Result`):
+  - That a ref names an *earlier* call, and that `feedback.base` is also an entry of `feedback.attempts` (T-0017 `## Result`, Follow-ups): ADR-0002 states neither as a rule, and an order between calls of one round is not defined (OD-29). The validator accepts such specs; it does not invent the rule.
+  - "No field carries verification inputs" (decision 2), "`failure` present exactly when the attempt failed", that `repair` copies the sections of attempt 1 (decision 5), and anything that needs a second spec or stored data: not checkable from one spec.
+  - The content of `task.objective`, `profile` and the values of `ext` (decisions 4 and 7), and that `ext` / `task.objective` values are JSON-serialisable: the caller passes parsed JSON.
+  - Vocabularies the ADR leaves open: values of `language`, `dtype`, the members of `task.build` and `ext`.
+
+Tests (new, `tests/test_spec.py`; excluded from the size cap). Build the valid specs with a small helper in the test file that derives the two `key` values with `hilclaw.keys` from synthetic records (label every invented value `synthetic`):
+- happy: a minimal first-call spec (`attempt` 1, `single`, empty `techniques`, empty `feedback.attempts`, no optional member); a full spec with every optional member (`ext`, `task.build` with a string, an integer and an array of strings, `feedback.base`, several `feedback.attempts` with `failure`, with `profile`, with both, with neither); `same_technique` with `variant` and N > 1; `different_techniques`; `round` 0; a repair spec (`attempt` 3 with failures of attempts 1 and 2, stages `compile` and `sim`); `task.objective` as `null`, a string, a number, an object; a `text` with non-ASCII characters, a newline and more than 255 characters; the input spec is not modified.
+- **The ADR example** (decision 8): copied from ADR-0002, it must be **rejected** (the record says it is not a valid spec); assert that, without asserting which placeholder is reported first unless the order is part of your stated API.
+- branch: each "exactly when" rule in both directions (`repair` with `attempt` 1 / missing with `attempt` 2; `single` with N = 2 / another relation with N = 1; `variant` without `same_technique` / missing with it); `candidate` equal to and greater than `candidates`; an operand shape value that is and is not a value of the op_signature shape; `repair.failures` whose last entry is and is not `attempt` − 1.
+- negative (each raises `InvalidSpecError`): a spec that is not a mapping; each required member missing, at every level; an unknown member at every level (top, `id`, `hw_profile`, `task`, `task.op_signature`, `task.contract`, an operand, `guidance`, a technique, `feedback`, a ref, an attempt entry, `failure`, `repair`, a failure entry); `schema_version` of `2`, `0`, `True`, `"1"`, `1.0`; wrong types for every field (a `bool` or `float` where an integer is required, `0` for `candidate` / `attempt` / `candidates`, a negative `round`, `2**53`); an empty or non-`str` text; a `string` that is empty, 256 characters long or non-ASCII (`run_id`, a technique `id`, an operand `name`); a `language` or `dtype` that is not a name; an unknown `relation`, `role` or `stage`; `key` that differs from the derived name, for both records; an invalid embedded record of each kind (the error is `InvalidSpecError` and names the path); empty `operands`; `operands` or `techniques` or `attempts` or `failures` that is not an array; a `task.build` value that is a float, a nested map or an array with a non-string; a `task.build` or `ext` member name that is not a name; an empty `task.build`; an empty `ext`; `feedback.base` of `null`; a `profile` that is not an object; `repair.failures` empty, with stage `board`, not ascending, with a repeated attempt.
+- Test rules of CLAUDE.md / DRIVER §5 (D12) apply in full: ① `hilclaw/` keeps line coverage ≥ 80 % and function coverage ≥ 80 %; ② happy, error, branch **and negative** cases; ③ every public function of the touched module is tested; ④ the new module has its test file (CI job `Test presence (hilclaw)` enforces `hilclaw/spec.py` → `tests/test_spec.py`); ⑤ no tests for test code, CI workflows, hook scripts or driver helper scripts. Coverage is not measured by CI yet (P0.5-3 is BLOCKED on HQ-0003), so the tests must reach every line and branch of the new module: say in `## Result` how you checked (for example `python -m trace --count --missing --coverdir <dir outside the repository> --module pytest tests/test_spec.py`, or `sys.monitoring` as in T-0016), with throw-away scripts kept outside the repository.
+
+Verification (record summary lines and run URLs in `## Result`):
+- Local, before the commit and again before the merge, from the repository root: `python -m pytest` exits 0 (the 5 real-clang tests of `tests/test_clang_build.py` skip on the driver's Windows machine — record the skip count), `python -m ruff check .` exits 0, `python -m ruff format --check .` exits 0 (pinned tools: ruff 0.16.10, pytest 9.1.1).
+- `git ls-files --eol hilclaw/spec.py tests/test_spec.py` shows `i/lf` for both; `git status --short` after the test run shows no stray file.
+- `git diff origin/main --stat` lists only the two files in `touchesFiles`; `pyproject.toml`, `hilclaw/__init__.py`, `hilclaw/keys.py`, the other modules, `.claude/`, `.github/`, `README.md`, `ARCHITECTURE/` and `PROCESS/` are unchanged.
+- CI on the PR: `gh pr checks <PR> --watch` ends with **four** successful checks on the final head — `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `Test presence (hilclaw)`. Merge only then.
+- After the squash-merge, the `push` run on `main`: check it with `gh api "repos/myungjoo/HIL-Claw/actions/runs?branch=main&event=push&per_page=1"` and record its conclusion. If it is not `success`, do not fix forward on `main`: record the failure in `## Result` and say so in the returned summary.
+
+Process:
+- Before anything else, the §3-5 landed check: `git log origin/main --grep='^Task: T-0018'` and `gh pr list --repo myungjoo/HIL-Claw --search T-0018 --state all`; then `gh pr list --repo myungjoo/HIL-Claw --state open` (the planner saw none on 2026-10-06T14:50Z).
+- Code mode: branch `claude/T-0018-spec-validator-adr-0002` from `origin/main`; Draft PR with the `DONOTMERGE` label (not in title or body); PR title contains `T-0018`; executor commits end with the trailer `Task: T-0018`.
+- Reviewer cycle via a fresh-context `dev-reviewer` sub-agent running dev-code-review (at most 7 rounds). Ask it explicitly to (a) compare every enforced rule with ADR-0002 and report any rule the code adds or omits, (b) judge the planner's readings listed above, (c) state its own reading of A-13 "data-plane schema change" for this task. A result starting with `SECURITY` is BLOCKED. If you cannot spawn a reviewer, return BLOCKED — do not self-review.
+- Squash-merge per CLAUDE.md A-13 once the reviewer approved and CI is green: remove `DONOTMERGE`, mark the PR ready, confirm the four checks on the final head, then `gh pr merge <PR> --squash --body-file <file>` (or `--body`) with the PR body, whose **last lines carry `Task: T-0018`**. The merge guard hook is not registered, so checking the four checks before the merge is the executor's own step. Delete the remote branch and the local branch in **separate** commands and only after `gh pr view <PR> --json state` reports `MERGED` (T-0012 incident).
+- Commit body: the provisional choices (module name and placement, API, error type and "first problem only", how `keys.InvalidRecordError` is wrapped, restated value-type checks, list / tuple), the readings, the rules not enforced, and the language line.
+- `## Result`: fill it in **after** the merge, on `main`, and leave that edit to this task file **uncommitted** — the driver commits it in its wrap-up (DRIVER §3-6). The task branch and the PR must not contain the task file. Record: PR and squash commit, review rounds and findings with how each was handled, the choices and readings, the reviewer's A-13 reading, verification outcomes, follow-ups. `PROCESS/STATE.json`, `PROCESS/journal/` and `PROCESS/PLAN.md` belong to the driver. This task ticks **no** PLAN checkbox; say so in `## Result`.
+- Size: 1 non-test file, about 270 lines; the cap is 300 LOC / 5 files (tests excluded). Work in this order: top level, `id`, `hw_profile`, `task`, `guidance`, `ext`, then `feedback`, then `repair`. If the module cannot stay within 300 lines after shortening docstrings, do not exceed the cap and do not land a validator that accepts an unchecked section: make it **reject** (with a clear "not supported yet" message, tested) any spec that has a non-empty `feedback.attempts`, a `feedback.base` or a `repair`, finish that scope, and propose the remaining part as a split in `Follow-ups` (DRIVER §5).
+- If ADR-0002 turns out to be ambiguous or self-contradictory on a point the code must decide (not a naming or API convention), do not guess and do not edit the ADR: return BLOCKED ("requirement unclear") with the exact question.
+- If a needed tool call is denied or fails, return BLOCKED rather than working around it (DRIVER §1-5). Never edit `.claude/settings.json` or `.claude/settings.local.json`; never use `git push --force*`, `rm -rf` or `gh repo delete`.
+- Return a summary of at most 200 characters (result, PR / commit, BLOCKED or not).
+
+## Out of Scope
+- A JSON Schema file for the spec, any change of `hilclaw/driver_state.py` or `PROCESS/STATE.schema.json`, a JSON Schema library.
+- Building or writing a spec, reading one from a file, its file name and location, the `rounds/` tree, `instance.json`, `STATE.json`, `eval`, `artifacts.json` (OD-8, P1-8).
+- The committed GEMM example and every value of the first real instance: memory layout, C prototype, operand roles and order, `hw_source` / `revision` / host / clang strings, `run_id` form, objective, a technique (P1-5 slice 3; owner questions).
+- The rules listed under "Rules that are not enforced"; the selection of feedback attempts, the profile summary structure, forbidden patterns, documentation excerpts (rest of OD-6); limits on repair calls (OD-19).
+- The coder-driver, how a spec is handed to `claude -p`, the coder's output (OD-23, P2-2); reading other schema versions (OD-11).
+- A command line, MCP exposure or hook integration (OD-18).
+- Editing `hilclaw/keys.py`, ADR-0001, ADR-0002, the OD register, README.md, CLAUDE.md, DRIVER.md, PLAN.md, the skills or the agents; `pyproject.toml`; any CI file.
+
+## Follow-ups
+- (planner; owner question expected) P1-5 slice 3: the committed GEMM example that passes this validator. It needs the values no source gives (memory layout and the `layout` vocabulary, C prototype and operand order, `hw_source` of `cpu_standin`, `run_id` form, objective, a first technique): raise them as an HQ with that task.
+- (planner or integrator) Whether a declarative JSON Schema file for the spec is wanted besides this module, and if so where it lives and how it is interpreted (a library is a new external dependency; the stdlib interpreter of `hilclaw/driver_state.py` lacks the keywords). PLAN P1-5 words the item as "`spec.json` 스키마".
+- (integrator, document mode; ADR-0002 follow-up) Decide and write into the record whether a ref must name an earlier call and whether `feedback.base` must be an entry of `feedback.attempts`; the validator then follows. Any such later change of what the validator accepts is a spec schema change under A-13.
+- (when a third module needs them) Share the *name* / *string* / *integer* checks through a public API of `hilclaw/keys.py` instead of restating them.
+- (P0.5-3) First coverage measurement of `hilclaw/spec.py` once the coverage gate exists.
+- (if the owner objects to ADR-0001 or ADR-0002 before 2026-10-13) Revisit this module together with the reverting task.
+
+## Result
