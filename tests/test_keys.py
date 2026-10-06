@@ -687,3 +687,40 @@ def test_maps_nested_too_deeply_are_rejected():
         deep = {"a": deep}
     with pytest.raises(InvalidRecordError, match="^record: maps are nested too deep"):
         canonical_form(deep)
+
+
+def test_directory_name_rejects_a_bytes_subclass():
+    class Other(bytes):
+        pass
+
+    with pytest.raises(TypeError, match="canonical must be bytes, not Other"):
+        directory_name("gemm", Other(b"{}"))
+
+
+def test_error_message_stays_short_for_large_and_deep_values():
+    with pytest.raises(InvalidRecordError) as error:
+        hw_profile_key(changed(synthetic_hw(), ["revision"], "s" * 1_000_000))
+    assert str(error.value).startswith("revision: must be a string of 1 to 255")
+    assert len(str(error.value)) < 200
+    deep = []
+    for _ in range(100_000):
+        deep = [deep]
+    for function, record, path in (
+        (hw_profile_key, changed(synthetic_hw(), ["revision"], deep), "revision"),
+        (hw_profile_key, changed(synthetic_hw(), ["host"], deep), "host"),
+        (hw_profile_key, changed(synthetic_hw(), ["hw_source"], deep), "hw_source"),
+        (op_signature_key, changed(synthetic_op(), ["shape"], deep), "shape"),
+        (op_signature_key, changed(synthetic_op(), ["layout"], deep), "layout"),
+        (canonical_form, {"v": deep}, "v"),
+        (canonical_form, deep, "record"),
+    ):
+        with pytest.raises(InvalidRecordError) as error:
+            function(record)
+        assert str(error.value).startswith(f"{path}: must be ")
+        assert len(str(error.value)) < 200
+    with pytest.raises(InvalidRecordError, match="^prefix: must be a name") as error:
+        directory_name(deep, b"{}")
+    assert len(str(error.value)) < 200
+    with pytest.raises(InvalidRecordError, match="unknown field") as error:
+        op_signature_key(changed(synthetic_op(), ["f" * 1_000_000], 1))
+    assert len(str(error.value)) < 200

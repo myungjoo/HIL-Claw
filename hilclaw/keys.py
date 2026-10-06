@@ -22,6 +22,7 @@ reading a record of another schema version (OD-11).
 import hashlib
 import json
 import re
+import reprlib
 from collections.abc import Mapping
 from typing import NamedTuple
 
@@ -89,7 +90,7 @@ def directory_name(prefix, canonical):
     :class:`TypeError` when ``canonical`` is not ``bytes``.
     """
     _name("prefix", prefix)
-    if not isinstance(canonical, bytes):
+    if type(canonical) is not bytes:
         raise TypeError(f"canonical must be bytes, not {type(canonical).__name__}")
     digest = hashlib.sha256(canonical).hexdigest()
     return Key(f"{prefix}-{digest[:NAME_DIGEST_LENGTH]}", digest, canonical)
@@ -162,7 +163,8 @@ def op_signature_key(record):
 
 
 def _fail(path, rule, value):
-    raise InvalidRecordError(f"{path or 'record'}: must be {rule}, got {value!r}")
+    got = reprlib.repr(value)
+    raise InvalidRecordError(f"{path or 'record'}: must be {rule}, got {got}")
 
 
 def _name(path, value):
@@ -218,7 +220,7 @@ def _fields(record, required):
         _fail("", "a map", record)
     for name in record:
         if name not in required and name not in _OPTIONAL:
-            raise InvalidRecordError(f"{name!r}: unknown field")
+            raise InvalidRecordError(f"{reprlib.repr(name)}: unknown field")
     for name in required:
         if name not in record:
             raise InvalidRecordError(f"{name}: required field is missing")
