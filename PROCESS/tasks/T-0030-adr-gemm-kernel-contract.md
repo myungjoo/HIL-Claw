@@ -2,7 +2,7 @@
 id: T-0030
 title: Write ADR-0008 fixing the operational contract of the gemm kind for C kernels (first layout value, entry-point prototype, operands) and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-6, OD-4, FR-5, FR-9, FR-10, FR-13, "#5 B-4", "#5 A-7", "#5 D6"]
 dependsOn: [T-0015, T-0016, T-0017, T-0018, T-0020]
@@ -141,3 +141,71 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (integrator, document mode) Notes in ADR-0001 decision 7 and ADR-0002 decision 8 that the op-side placeholders are resolved by ADR-0008.
 
 ## Result
+**DONE** — landed on `main` as `d4582c1` (document mode, one squashed commit, four of the five files of `touchesFiles`, +192 / −12; trailers `Reviewed-by: reviewer agent (3 rounds, Approve)`, `Task: T-0030`). The tree of the landed commit (`a49e17f`) is identical to the head the round-3 reviewer approved (`f6e68b5`); the rebase was a no-op (`origin/main` was still `f9699dd`). Task branch deleted, remote and local, in separate commands after the push was confirmed. No force push. No `git` or `gh` call was denied; one local shell call that appended this section failed on quoting and the section was written with the edit tool instead (nothing else was affected). The §3-5 landed check before starting found nothing (`git log origin/main --grep='^Task: T-0030'` and `gh pr list --search T-0030 --state all` both empty). No BLOCKED condition arose: the weight-operand point could be settled as a design choice (no owner-only fact is needed, the alternative stays available as another layout value), and the layout value says everything about storage, so no spec member was added. This task ticks **no PLAN checkbox**.
+
+### Decisions of ADR-0008 (`ARCHITECTURE/decisions/ADR-0008-od6-gemm-kernel-contract.md`, 180 lines — above the "about 110-150" of the task, inside the 300 LOC / 5 files cap; the excess is the guarantee table and the twelve-key table, and the reviewers of rounds 2 and 3 saw nothing to cut)
+1. **Scope**: a contract = the meaning of one `layout` value + the values of `task.contract` + the guarantees and obligations of a call. This one is bound to (`gemm`, `fp32`, `row_major`, `c`) and binds caller and kernel, coder output and hand-written fixtures alike. (dtype is part of the binding because the element type of the prototype follows from it.)
+2. **First layout value `row_major`**: every operand is one contiguous array of r·c elements, element (i, j) at i·c + j; no padding, stride, offset, header, transposition or packing; r and c are the operand entry's `shape` in that order. No operand entry needs a member beyond the four of ADR-0002. The vocabulary stays open: any other storage is another value = another key.
+3. **Operation**: plain product C = A·B (A m×k, B k×n, C m×n). No α/β, no accumulation, no transposition flag, no bias (no key field or source asks for them). Summation order, FMA and intermediate precision are the kernel's; closeness is the tolerance (not decided). **Weight operand = the k×n matrix B, `[in, out]` order** — the reading ADR-0001 states; `[out, in]` (A·Bᵀ) is not excluded, it would be another layout value. Marked as the record's own choice and the first reading to check.
+4. **Prototype** (the text of `task.contract.prototype`, one line, the same for every shape): `void hilclaw_gemm(size_t m, size_t k, size_t n, const float *restrict a, const float *restrict b, float *restrict c);` — symbol = `hilclaw_` + kind; `void` return (the output operand is the only result); dimensions as parameters (one text for all twelve instances and for the calibration kernels; keeps OD-16 sub-question ① open); `fp32` = C `float`; needs `<stddef.h>`, valid from C99.
+5. **Operand entries**: `a` input `[m, k]`, `b` input `[k, n]`, `c` output `[m, n]`, all `fp32`, in parameter order; the dimension parameters have no entry. The complete `task.contract` for gate/up at M = 1 is in the record.
+6. **Guarantees / obligations**: caller — m, k, n ≥ 1, exact array sizes, no overlap, inputs initialised and not changed by others, `c` unspecified on entry, alignment of `float` only, caller owns the memory, repeated non-reentrant calls in one process; kernel — correct for the values passed, inputs unmodified, every element of `c` written, nothing accessed outside the arrays, no pointer kept, result depends on the arguments of this call only, all work (threads included) finished on return, only `c` is the result. State that does not change results is allowed. Whether other dimension values are ever passed: OD-16 sub-question ①, open.
+7. **Kernel source**: exactly one external definition of `hilclaw_gemm`, no `main`, no other external `hilclaw_` identifier; standard headers, `<omp.h>` and intrinsics headers allowed; linking another library not decided. Two kernels of the contract define the same symbol (stated as a consequence; how the harness copes is its mechanism).
+8. **Change of the contract**: a kept spec records language, prototype text and operand entries, so for two kernels of the same `op_signature` different `task.contract` objects show different contracts — the converse does not hold (a changed guarantee with the same prototype text is invisible in a spec). A storage change is a new layout value = new key. The rest is **registered as OD-6 sub-question ④** (how a non-storage change is keyed, what happens to best / statistics, hints across hw_profiles with other kernel languages). No field added.
+9. **Keys**: the rule for the twelve records, and for gate/up at M = 1 the canonical form, digest and name; all twelve names in a table.
+
+### Boundaries left open (named in the record)
+Oracle of `cpu_standin` and tolerance (#5 A-7, B-7); `task.objective` (OD-1, #5 A-4); #5 B-1; OD-3; OD-25; C-6. Verification inputs (distribution, seed, draws, other shapes — OD-16 ①, corner cases, non-finite values). Harness mechanism (link / load / separate process, driver program, keeping two kernels apart, timer, calls per repeat, input reuse, allocation) and OD-14. Build settings (flags, language standard, `-march`, OpenMP runtime and threads, `task.build`, coder-chosen settings, linking another library). The hw side (OD-26), a technique, `run_id`. The coder's output form (OD-23, OD-8 isolation). The baseline (OD-28; the `cblas_sgemm` equivalence is a remark only). Every other kind, dtype, layout, language. Rest of OD-6 (including ④) and of OD-4. Schemas, code, tests, C files, CI, the data repository.
+
+### Review (3 rounds, a fresh-context `dev-reviewer` each, spawned with `model: opus`; no `SECURITY` finding)
+- **Round 1 — Request changes** on `40a62fd` (1 Major, 2 Minor, 2 Nit, 1 note), addressed in `c9fde74`. **Major**: decision 8 said two kernels have the same contract "exactly when" their `task.contract` objects are equal — false both ways (guarantees are not in `task.contract`; operand shapes differ per M) → narrowed to the one-way statement within one `op_signature`, the invisible case moved into sub-question ④, and the Korean summaries in OpenDecisionProposals and StandardScenarios corrected. **Minor**: Consequences read as "one repeat = one call" → reworded; calls per repeat stays the harness design. **Minor**: "stored under the same key" mixed up the `op_signature` key and the (hw, op) pair → reworded in the record, the history passage and the S6 row. **Nit**: "(OD-7·OD-20과 함께)" had no basis in the record → removed; "SDPA shape members have no source" → "undecided (ADR-0001 Boundaries)". Length: no action. Note on the landing commit message: followed at landing.
+- **Round 2 — Approve** on `c9fde74` (3 Nits, "nothing trivially fixable left"): the S10-3 sentence said more about re-calling than decision 8 does → softened in `f6e68b5` (hence round 3); length → reported here; generality of a kernel → added to the readings of the owner notice.
+- **Round 3 — Approve** on `f6e68b5` (2 Nits marked "no change needed"; nothing trivially fixable left). Left as is and recorded: (i) decision 4 says `restrict` "states" the no-overlap guarantee, but for the two `const` inputs `restrict` alone does not express non-overlap in C — the guarantee itself is in decision 6, so the contract is unaffected; (ii) the 6차 history passage does not list S3-4 and S9-3 among the re-checked steps (neither can change its verdict).
+- Review points (a)-(e): all three reviewers agreed that the slice is design-level and hangs on no owner item (the weight-operand point included), that the A-13 reason "데이터 plane 스키마 변경" does not apply, and that no excluded item is decided in the final text. Each recomputed the twelve keys and ran the contract through `hilclaw.spec.validate`.
+
+### Document checks
+- **Session entry** (before the first edit): `gh pr list --state open` empty; #4 last comment 2026-07-31, #7 2026-09-07, #8 2026-10-03 — nothing about layout or the prototype; the latest #5 comment was the ADR-0007 notice (6025416809); A-4, B-1, B-7 and the A-7 oracle question unanswered; no objection to ADR-0001..0007.
+- **Keys**: `PYTHONPATH=. py -3 <throw-away script>` calling `hilclaw.keys.op_signature_key` on `{"schema_version": 1, "kind": "gemm", "shape": {"m": M, "k": in, "n": out}, "dtype": "fp32", "layout": "row_major"}` printed:
+  ```
+  gate/up 1 gemm-485b9bc494d477eb 485b9bc494d477ebc8c9f02f861c3795beadacfb4cf690680cfaecba09f2d431
+  {"dtype":"fp32","kind":"gemm","layout":"row_major","schema_version":1,"shape":{"k":2048,"m":1,"n":8192}}
+  gate/up 32 gemm-a463eb52b19cfa97
+  gate/up 512 gemm-19d14734352e3486
+  down 1 gemm-d79390d121a2056a
+  down 32 gemm-f5de54ee1d6995e0
+  down 512 gemm-4b417959d34765af
+  QKV 1 gemm-446c3b3c15273a6a
+  QKV 32 gemm-e71a433ce31c1a8f
+  QKV 512 gemm-41e8dce9901bff41
+  O 1 gemm-a11d79d7b957a0af
+  O 32 gemm-dc8beaf05ddb998c
+  O 512 gemm-66f7a94f78826a41
+  spec.validate: accepted
+  ```
+  (full digests of the other eleven omitted here). The names in the record equal this output.
+- **`task.contract`**: the object of decision 5 was accepted by `hilclaw.spec.validate` inside an otherwise valid spec built in the same throw-away script with synthetic hw values (`revision`, `host`, `toolchain`, `run_id`, `objective` = "synthetic"); the synthetic values are not in the record.
+- **Prototype as C**: **not compiled** — neither `clang` nor any other C compiler is on PATH in this clone's environment, and nothing was installed. Checked by reading only (by the executor and by all three reviewers): a valid function declaration in C99 and later once `<stddef.h>` is included. The first code task that has clang should run the `-fsyntax-only` check.
+- **Links**: 39 relative links in the added lines; all files and anchors resolve (script, and each reviewer).
+- **OD numbers**: the Requirements diff is the OD-4 and OD-6 rows only (+2 / −2); 29 register rows before and after.
+- Nothing excluded is stated as decided; consistent with #5 B-4, #5 A-7 ②, ADR-0001, ADR-0002, ADR-0003 and ADR-0007 decision 2 (review points (b), (c), (d)).
+- `git ls-files --eol`: `i/lf` for the four files; `git diff --check` clean; `git show --stat d4582c1` lists exactly the four files.
+- **Coverage re-check**: steps citing OD-4 (S1-b-3, S6-1, S10-4), OD-6 / FR-5 (S0-4·8·9, S1-4, S7-4, S8-2) and steps resting on a spec or on calling a kernel (S0-5·6, S1-6, S1-b-2, S2-2, S4-2, S7-1·2, S8-3, S10-3): **no verdict changes, no gap**. Recorded in StandardScenarios "검사 결과" (heading, a 2026-10-07 "6차" passage, rows S0, S6, S7) and in the commit body.
+- **CI** `push` run on `main` for `d4582c1`: run id `37538099483`, https://github.com/myungjoo/HIL-Claw/actions/runs/37538099483 — `completed` / `success`.
+
+### Edits of the existing documents
+- Requirements: OD-4 and OD-6 rows only (status kept; the closing "출처 없는 값은 미정" clauses replaced by what ADR-0008 fixed and what is still open).
+- OpenDecisionProposals: OD-4 heading note, the "제안으로 남는 부분" clause and the "첫 구체 인스턴스" bullet; OD-6 heading note, sub-question ① (the old "미결" sentence kept with strike-through, the fixed values and the open rest added), new sub-question ④. No proposal text deleted.
+- StandardScenarios: the result section only (heading, history passage, three rows).
+- **UsageCases: not touched** — the glossary entry of op_signature ("P1 최소분은 ADR-0001, 나머지는 미결") is still true and the file does not mention layout or the prototype (confirmed by the reviewers).
+- The paragraph "첫 커밋(P0 골격) 전에 확정해야 하는 항목" of the Requirements preamble was not edited (see Follow-ups).
+
+### Owner notice (DRIVER §9)
+**Already posted** on #5 by the executor, on the driver's instruction for this run: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6026285563 — heading `### OD-6 / OD-4 — the contract of the gemm kind for C kernels fixed by ADR-0008 under DRIVER §9 (T-0030)`, last line `— posted by driver`. It gives the six decided points with the prototype, the record's path and commit, the owner inputs (#5 B-4, A-7 ②) versus the record's own choices, five readings to check (weight operand order first; generality of a kernel; alignment; no bias / α / β; the open sub-question ④), the boundaries, the A-13 reading (including that the prototype was not compiled), and the objection window (**until 2026-10-14**). The driver must **not** post it again; the first Follow-up above is done.
+
+### Follow-ups (in addition to the list above)
+- (first code task with clang available) Run the declaration plus a trivial definition through `clang -std=c11 -Wall -Wextra -Werror -fsyntax-only`; it could not be done here.
+- (integrator, document mode) Preamble paragraph "첫 커밋(P0 골격) 전에 확정해야 하는 항목" of Requirements — proposed addition: "OD-6 잔여 중 `gemm` 종류의 동작 계약 값(C 커널)과 OD-4의 첫 `layout` 값(`row_major`)은 2026-10-07에 같은 경로로 [ADR-0008](decisions/ADR-0008-od6-gemm-kernel-contract.md)로 확정되었다."
+- (optional, when ADR-0008 is next touched) Decision 4: "`restrict` states the no-overlap guarantee" → "documents" (round-3 Nit); add S3-4 and S9-3 to the step list of the 6차 history passage of StandardScenarios.
+- (planner, P1-2 / P1-3 code tasks) Inputs from the record: the call site is `hilclaw_gemm(m, k, n, a, b, c)` on three separate caller-owned arrays; two kernels of the contract define the same symbol, so the harness mechanism must keep them apart (separate programs or processes, or renaming); the harness must not rely on a kernel reading or preserving `c`, and should not promise more than `float` alignment unless a new layout value is defined.
+- (planner / owner) If the owner answers reading 1 with `[out, in]`, a document task adds a second layout value and its contract (no schema change); the twelve names above then stay valid for `row_major` only.
+- (planner) OD-6 sub-question ④ (contract change and keys) should be closed before the first change of this contract, or before a second kernel language stores kernels for a `gemm` key.
