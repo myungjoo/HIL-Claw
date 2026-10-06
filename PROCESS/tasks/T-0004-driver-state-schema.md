@@ -2,7 +2,7 @@
 id: T-0004
 title: Add the JSON Schema for PROCESS/STATE.json and a standard-library validator
 phase: P0
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: ["DRIVER §2·§4·§8", "#5 D12"]
 dependsOn: [T-0002]
@@ -110,6 +110,27 @@ Process:
 - (P0.5-2) The module-to-test mapping: this task uses `hilclaw/driver_state.py` → `tests/test_driver_state.py`.
 - (P0.5-3) The coverage gate will measure this module for the first time; the tests here should already reach ≥ 80% line/function.
 - (later) Duplicate-key rejection via `object_pairs_hook`; packaging the schema inside `hilclaw/` once the package becomes installable.
+- (from review) `main` prints a traceback (exit 1) instead of a one-line message when the schema file itself is missing, not JSON, or raises `SchemaError`; the spec only covers the instance file. Handle it when the validator is wired into the driver procedure (PR #15 round 3, Nit).
+- (DRIVER §2 decision, extends the list above) RFC 3339 leap second `:60` and lowercase `t`/`z` are rejected by the `date-time` check; accept them only if the canonical-`Z` convention is relaxed (PR #15 rounds 1-2, Nits).
+- (P0-3 / CI) The validator was verified with the full test suite on CPython 3.14.4 only; the reviewer additionally ran the CLI on 3.11 (OK). Run the tests on 3.11 once CI exists.
 
 ## Result
-- (to be filled by the executor)
+- PR #15 (code mode), squash-merged to main as 70fc47b ("T-0004: Add the JSON Schema for PROCESS/STATE.json and a stdlib validator (#15)"); branch commits 21ada2c, 7d1a43e, 82614e8. Change: 3 files, +778 lines (`PROCESS/STATE.schema.json` 65, `hilclaw/driver_state.py` 225, `tests/test_driver_state.py` 488); non-test 290 lines in 2 files (cap 300/5). `PROCESS/STATE.json`, `pyproject.toml`, `hilclaw/__init__.py` unchanged. Standard library only.
+- Review: 3 rounds by fresh-context reviewer agents, final verdict Approve.
+  - Round 1 Request changes (https://github.com/myungjoo/HIL-Claw/pull/15#issuecomment-6008145018): Medium `T24:00:00Z` accepted on 3.14 but not 3.11 -> hour regex restricted to 00-23 + `hour-24` test; Low reachability check not documented -> added to PR body; Nit test derived expectation from private `_json_type` -> hard-coded names; Nits leap second / ECMA pattern semantics -> documented.
+  - Round 2 Approve (https://github.com/myungjoo/HIL-Claw/pull/15#issuecomment-6008171055): Nit `{"required": [1]}` raised TypeError -> now SchemaError + test; Nit lowercase `t`/`z` -> Follow-ups. Re-review requested after the fix.
+  - Round 3 Approve (https://github.com/myungjoo/HIL-Claw/pull/15#issuecomment-6008190054): one Nit (schema-file errors in `main` give a traceback), not requested by the reviewer and outside the spec -> Follow-ups.
+- Language: Python, because the validator uses only the stdlib `json`/`re`/`datetime` and the rest of the tool package is Python.
+- Provisional choices (conventions of this task, not requirements):
+  - Schema at `PROCESS/STATE.schema.json`: next to the instance it describes.
+  - Approach (a), subset interpreter: the schema file is the single source of truth and can be fed unchanged to `jsonschema` later.
+  - Keyword subset exactly as specified; any other keyword, `format`, type name or malformed keyword value raises `SchemaError`.
+  - `pattern` follows ECMA-262 where Python differs: compiled with `re.ASCII` (`\d` is ASCII-only) and an unescaped `$` outside a class becomes `\Z` (no match before a trailing newline).
+  - `date-time`: RFC 3339 shape regex with hours 00-23, then `datetime.fromisoformat`; `Z`-only via schema `pattern: "Z$"` (`+00:00` rejected) - one canonical form for comparison and grep.
+  - No `"$schema"` key allowed inside `STATE.json`: not in the §2 table; the validator always gets the schema explicitly.
+  - Module `hilclaw.driver_state`: `SchemaError(ValueError)`, `load_schema(path=None)`, `validate(instance, schema=None) -> list[str]` (`<json path>: <keyword>: <detail>`, all problems, no mutation; a type failure suppresses the other keywords at that location), `main(argv=None)`; CLI exit 0 valid (OK on stdout), 1 invalid/missing/not JSON/not UTF-8 (one line per problem on stderr), 2 argparse usage error.
+  - Default schema/state paths resolve from the repository root (`Path(__file__).resolve().parent.parent`), not the cwd, because the package is not installable.
+- Local verification (CI not built; CPython 3.14.4 only - not run on 3.11 locally):
+  - Before the first commit: `python -m pytest` -> `92 passed`; `python -m ruff check .` -> `All checks passed!`; `python -m ruff format --check .` -> `4 files already formatted`; `python -m hilclaw.driver_state` -> `PROCESS/STATE.json: OK` (exit 0); `git ls-files --eol` -> `i/lf w/lf` for all three files.
+  - Before the merge (head 82614e8, up to date with origin/main): `97 passed`; `All checks passed!`; `4 files already formatted`; `PROCESS/STATE.json: OK` (exit 0); `i/lf w/lf` for all three; `git diff origin/main --stat` -> only the three `touchesFiles`. `gh pr checks` -> no checks reported (expected, T-0003 blocked).
+- Reachability check: `python -m trace --count --missing --module pytest` (stdlib) marked every line of `hilclaw/driver_state.py` as executed except `raise SystemExit(main())`, which the `python -m hilclaw.driver_state` subprocess test covers; hence every keyword handler, every `SchemaError` branch and every `main` exit path (0, invalid 1, missing 1, not-JSON 1, not-UTF-8 1) is reached.
