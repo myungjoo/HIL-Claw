@@ -20,9 +20,9 @@ Conventions of this module, which ADR-0006 does not fix:
   outside ASCII escaped. A reader accepts any JSON text of the shape.
 - An append ends with ``flush`` and ``os.fsync``; nothing beyond the death of
   the process is claimed (decision 10). When an append fails, the error passes
-  through and nothing is removed: the earlier complete lines are as they were,
-  and the new line is absent, a torn tail, or complete when the failure came
-  after its line feed was written.
+  through and no file or directory is removed: the earlier complete lines are
+  as they were, and the new line is absent, a torn tail, or complete when the
+  failure came after its line feed was written.
 - A path that is not a regular file (a symbolic link in its place is not
   followed) raises :class:`CorruptEventsError`, as a damaged line does in
   :func:`read`; nothing is repaired. A line this interpreter cannot parse

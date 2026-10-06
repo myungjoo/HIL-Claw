@@ -417,6 +417,23 @@ def test_the_writer_reads_the_end_of_the_file_only(root, monkeypatch):
     assert (root / FILE).read_bytes() == line() * 5001
 
 
+def test_a_line_is_written_by_one_write_that_ends_with_the_line_feed(root, monkeypatch):
+    place(root, line() + b"torn")
+    written = []
+
+    class Watched(Proxy):
+        def write(self, content):
+            written.append(content)
+            return self.f.write(content)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(events, "open", opening(Watched), raising=False)
+        append(root, RUN, KIND, {}, round=1)
+
+    assert written == [line(round=1)]
+    assert (root / FILE).read_bytes() == line() + line(round=1)
+
+
 def test_the_writer_does_not_look_for_damage(root):
     damaged = b"not json\n" + line(schema_version=2) + b"\xff\n"
     place(root, damaged)
