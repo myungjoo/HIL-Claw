@@ -282,13 +282,13 @@ def test_timeout_kills_the_compiler(stub, src, out_dir):
     out = out_dir / "kernel.o"
     out.write_bytes(b"previous")
     before = time.monotonic()
-    result = build(src, out, timeout_s=1, compiler=stub(SLEEP))
-    assert time.monotonic() - before < 15
+    result = build(src, out, timeout_s=5, compiler=stub(SLEEP))
+    assert time.monotonic() - before < 20
     assert result.ok is False
     assert result.timed_out is True
     assert result.returncode is None
     assert "before sleep" in result.log
-    assert 1 <= result.duration_s < 15
+    assert 5 <= result.duration_s < 20
     assert stub.started
     assert out.read_bytes() == b"previous"
     assert names(out_dir) == ["kernel.o"]

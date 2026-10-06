@@ -17,8 +17,10 @@ call; a failed build leaves a file that was already there untouched.
 
 This module builds and never runs the artefact. It reads no configuration and
 no environment variable of its own, and writes nothing but the artefact and its
-temporary file. On a timeout only the compiler process itself is killed, not
-processes it started.
+temporary file. On a timeout only the process it started is killed, not that
+process's children (the compiler behind a ``ccache`` prefix, a linker): a
+survivor can still write the temporary file after the call has returned, and
+where it keeps the output pipe open the call can last longer than the limit.
 """
 
 import math
@@ -87,9 +89,9 @@ def build(
     output path that cannot be used; :class:`ValueError` for no source, a
     ``timeout_s`` that is not a positive finite number, an empty compiler
     prefix, or a flag that sets the output (any flag that starts with ``-o`` or
-    ``--output``); :class:`TypeError` for arguments of
-    the wrong type, including a bare ``str`` as flags; and
-    :class:`CompilerNotFoundError`. An :class:`OSError` from starting the
+    ``--output``, which includes unrelated options with that prefix such as
+    ``-objcmt-*``); :class:`TypeError` for arguments of the wrong type,
+    including a bare ``str`` as flags; and :class:`CompilerNotFoundError`. An :class:`OSError` from starting the
     process or from moving the artefact into place is passed on.
     """
     _check_timeout(timeout_s)
