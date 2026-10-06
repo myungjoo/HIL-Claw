@@ -142,6 +142,13 @@ def test_cv_just_below_and_just_above_cv_max(n, below, above, state_above):
     assert stopping_state(spread(n, above)) is state_above
 
 
+def test_cv_equal_to_cv_max_is_not_converged():
+    samples = [105, 95, 105, 95, 100]
+    assert coefficient_of_variation(samples) == CV_MAX
+    assert stopping_state(samples) is State.CONTINUE
+    assert stopping_state(samples, n_max=N_MIN) is State.NOT_CONVERGED
+
+
 def test_noisy_at_n_min_and_converged_later():
     samples = [92.9, 107.1, 100, 100, 100, 100]
     assert stopping_state(samples[:5]) is State.CONTINUE
@@ -285,16 +292,23 @@ def test_noisy_sequences_three_percent_apart_are_not_different():
     assert is_different(NOISY_HIGH, NOISY_LOW) is False
 
 
-def test_interval_is_the_documented_ranks_of_the_documented_replicates():
+def replicate_ratios(a, b):
     rng = random.Random(SEED)
     ratios = []
     for _ in range(RESAMPLES):
-        drawn_a = [A[int(rng.random() * len(A))] for _ in A]
-        drawn_c = [C[int(rng.random() * len(C))] for _ in C]
-        ratios.append(trimmed_mean(drawn_c) / trimmed_mean(drawn_a))
-    ratios.sort()
+        drawn_a = [a[int(rng.random() * len(a))] for _ in a]
+        drawn_b = [b[int(rng.random() * len(b))] for _ in b]
+        ratios.append(trimmed_mean(drawn_b) / trimmed_mean(drawn_a))
+    return sorted(ratios)
+
+
+def test_interval_is_the_documented_ranks_of_the_documented_replicates():
+    ratios = replicate_ratios(A, C)
     assert ratio_interval(A, C) == (ratios[50], ratios[1949])
-    assert ratios[49] < ratios[50] and ratios[1949] < ratios[1950]
+    ratios = replicate_ratios(C, C)
+    assert ratios[49] < ratios[50] < ratios[51]
+    assert ratios[1948] < ratios[1949] < ratios[1950]
+    assert ratio_interval(C, C) == (ratios[50], ratios[1949])
 
 
 def test_same_call_twice_gives_the_same_result():

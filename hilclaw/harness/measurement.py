@@ -14,8 +14,9 @@ Conventions of this module (not rules of the record):
   taken, and each sample is exactly an ``int`` or a ``float`` that is positive
   and finite. ``len(values) * max(values)`` must not exceed the largest float,
   so that no sum of samples or of resampled samples can leave the float range.
-  Anything else raises :class:`InvalidSamplesError` before anything is computed;
-  nothing is skipped, clipped or corrected, and no argument is modified.
+  Each function states the fewest values it takes. Anything else raises
+  :class:`InvalidSamplesError` before anything is computed; nothing is skipped,
+  clipped or corrected, and no argument is modified.
 - Samples are converted to ``float``. Sums are taken with :func:`math.fsum`,
   which is correctly rounded on every interpreter (the built-in ``sum`` of
   floats changed in CPython 3.12).
