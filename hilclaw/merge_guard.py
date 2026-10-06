@@ -196,7 +196,7 @@ def _checks_of(args, cwd, run):
         return f"cannot run gh: gh or the working directory was not found ({e})"
     except subprocess.TimeoutExpired:
         return f"gh pr checks timed out after {TIMEOUT_SECONDS} s"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return f"cannot run gh pr checks: {type(e).__name__}: {e}"
     try:
         checks = json.loads(done.stdout)
@@ -250,7 +250,7 @@ def main(argv=None):
                 reason = evaluate(payload)
             else:
                 reason = "the hook payload on stdin is not a JSON object"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         reason = f"the guard itself failed: {type(e).__name__}: {e}"
     if reason is None:
         return EXIT_PROCEED
