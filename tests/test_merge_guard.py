@@ -468,6 +468,7 @@ def run_module(stdin_text):
         capture_output=True,
         cwd=REPO_ROOT,
         timeout=60,
+        check=False,
     )
 
 
