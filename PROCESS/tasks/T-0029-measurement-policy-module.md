@@ -2,7 +2,7 @@
 id: T-0029
 title: Add the measurement policy module (hilclaw/harness/measurement.py) with the three pure functions of ADR-0007 - stopping test, trimmed mean, difference verdict - and its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-13, NFR-3, NFR-2, FR-9, C-4, "#5 B-4", "#5 A-12"]
 dependsOn: [T-0002, T-0003, T-0011, T-0028]
@@ -140,3 +140,48 @@ Process:
 - (if the owner objects to ADR-0007 within its window) Revisit this module together with the reverting task.
 
 ## Result
+- 2026-10-06 (UTC) — fresh start: the §3-5 landed check found nothing (`git log origin/main --grep='^Task: T-0029'` and `gh pr list --search T-0029 --state all` both empty), no open PR, and no comment on #5 after the ADR-0007 notice (6025416809), so no objection to ADR-0007. **DONE**: PR #31 https://github.com/myungjoo/HIL-Claw/pull/31 (code mode) squash-merged to main as `e0c8098` ("T-0029: Add the measurement policy module of ADR-0007 (#31)", last body line `Task: T-0029`); remote and local branch `claude/T-0029-measurement-policy-module` deleted (separate commands, after `gh pr view` reported `MERGED`). Branch commits: `9127aa9` (implementation), `2837697` (review round 1).
+- Change: 3 files, all new — `hilclaw/harness/__init__.py` (5 lines, docstring only), `hilclaw/harness/measurement.py` (210 lines), `tests/harness/test_measurement.py`; non-test 215 lines in 2 files (cap 300 / 5). `tests/harness/` has no `__init__.py` (pytest collects the file as it is). No other file is changed by the PR; `pyproject.toml` is unchanged. Standard library only (`enum`, `math`, `random`, `reprlib`, `sys`, `fractions`); no other `hilclaw` module is imported. No OD closed, no ADR written or edited, no rule and no value added to ADR-0007, no field named, no command line.
+- **This task ticks no PLAN checkbox** (P1-3 stays open: "오너 확정 필요").
+- The task branch and the PR never contained this task file; this `## Result` was written on `main` after the merge and left uncommitted for the driver.
+- Language: Python, because the package is Python and the arithmetic and the generator are in the standard library.
+- **ADR-0007 against the criteria**: no disagreement found, and the record was not ambiguous on any point the code had to decide.
+- **A-13 reading and the planner's judgements**: the executor and both reviewers agree — the location `hilclaw/harness/` follows #5 A-12 points 1 and 4 and decision 8; no data-plane schema change and no new dependency. Neither reviewer read any provisional rule below as a design choice needing an ADR or the owner, and neither found anything decided that ADR-0007 lists under Boundaries.
+- Public API as landed:
+  - `stopping_state(samples, *, n_max=N_MAX_DEFAULT) -> State` (`State.CONTINUE` / `CONVERGED` / `NOT_CONVERGED`).
+  - `trimmed_mean(values) -> float` (at least 3 values).
+  - `ratio_interval(a, b) -> (low, high)` and `is_different(a, b) -> bool` for the ordered pair; the ratio is B over A.
+  - `coefficient_of_variation(samples) -> float` (at least 2 values).
+  - Constants `N_MIN` 5, `N_MAX_DEFAULT` 10, `CV_MAX` 0.05, `TRIM` 1, `DELTA` 0.02, `CONFIDENCE` 0.95, `RESAMPLES` 2000, `SEED` 20261007; `InvalidSamplesError(ValueError)`; `State` (`enum.Enum`).
+- Provisional choices (conventions of this task, not requirements):
+  - Module name `measurement.py` in the new sub-package `hilclaw/harness/`: the directory is given by #5 A-12, only the file name is this task's.
+  - A three-valued enum for the stopping test, because "not converged" must be told apart from "converged"; its values are `enum.auto()`, so that no stored form of the mark is implied. A `bool` for the verdict: it has two values.
+  - The CV and the interval (the optional function of the criteria) are public, so that a caller and a test can see the numbers a state or a verdict rests on.
+  - Only `n_max` is a parameter of a call; no function takes a seed, a generator or another constant (decisions 8 and 9).
+  - One error type, `InvalidSamplesError(ValueError)`; the message is `<argument or argument[position]>: must be <rule>, got <type and value through reprlib.repr>`.
+  - Input outside the policy is rejected inside the functions, before anything is computed, so that no caller can get a result from it.
+  - Exact types: a sequence is a `list` or a `tuple` (the order taken is then unambiguous); a sample is an `int` or a `float` (not `bool`, `str`, `Decimal`), positive and finite (decision 1). Samples are converted to `float`.
+  - **Generator**: `random.Random(SEED)` created inside each call, `SEED = 20261007` (the date of the record; not tuned to any example). Every index is drawn as `int(rng.random() * n)`: the Python documentation keeps the sequence of `random()` for a seed across versions and promises nothing for `choices`, `randrange` or `sample`. Per replicate the values of the first sequence are drawn before those of the second. The global generator is never used or seeded.
+  - Ranks: derived from `CONFIDENCE` and `RESAMPLES` with `fractions.Fraction` (0-based indices 50 and 1949), so no float product can move a rank.
+  - Summation: `math.fsum`, which is correctly rounded on every interpreter; the built-in `sum` of floats changed in CPython 3.12 and `statistics` is not used.
+  - The CV is computed from the deviations relative to the mean, so that very small samples do not underflow to a CV of 0 and very large ones do not overflow.
+- Cases the record leaves unsaid:
+  - More samples than `n_max` in the stopping test: an **error**. The record defines no such measurement, and the same answer as at `n_max` would hide a caller that did not stop.
+  - An empty sequence in the stopping test: `CONTINUE` (no sample taken yet), not an error.
+  - A verdict argument needs at least `n_min` samples (fewer is not a measurement); no upper limit is checked, because the `n_max` of the instance is not known to the function.
+  - All samples equal: no special case; the CV is 0 (or a rounding error far below `cv_max`) and the interval is a single point.
+  - Float range: `len * max` of a sequence must not exceed the largest float, so that no sum of samples or of resampled samples can overflow (this also rejects an `int` too large for a float); for a verdict the ratio of any sample of one sequence to any sample of the other must not exceed half the largest float, so that no replicate ratio is 0 or infinite. Both are rejected up front with the module's error. The guards are conservative: some input whose result would be representable is rejected too (for example `[float max / 3] * 3`).
+  - A value too long to show: on CPython 3.11 `reprlib.repr` raises for an `int` of more than 4300 digits; the message then says `too long to show` (the error type, argument and rule are the same on both interpreters).
+- Review: 2 rounds by fresh-context `dev-reviewer` agents spawned with `model: opus`; no `SECURITY` finding, no BLOCKED question.
+  - Round 1, **Request changes** on `9127aa9` (https://github.com/myungjoo/HIL-Claw/pull/31#issuecomment-6025849789): two Minor findings on the tests, none on the module — the strict comparison of the stopping test was not pinned (`<=` survived), and the lower rank was pinned on one side only. Addressed in `2837697`: a sequence with a CV of exactly 0.05 (`[105, 95, 105, 95, 100]`), and the pair (C, C), whose replicate ratios differ strictly on both sides of both ranks; one docstring line added (the fewest values each function takes). Response: https://github.com/myungjoo/HIL-Claw/pull/31#issuecomment-6025871236
+  - Round 2, **Approve** on `2837697` (https://github.com/myungjoo/HIL-Claw/pull/31#issuecomment-6025926363): both findings resolved, nothing to change. Two remarks for the record (the 3.11-only branch and the conservative guards, both listed here). The head did not change after this Approve.
+- Local verification (CPython 3.14.4 on Windows, ruff 0.16.10, pytest 9.1.1): before the first commit `3270 passed, 18 skipped`; before the merge (head `2837697`) and after the merge on main `e0c8098` `3271 passed, 18 skipped` (439 of them in the new file, which runs in under a second); `ruff check` and `ruff format --check` clean each time. `git ls-files --eol` shows `i/lf` for the three files; `git status --short` after the test runs showed no stray file; `git diff origin/main --stat` listed only the three files of `touchesFiles`. (The count on `main` before this task was `2832 passed, 18 skipped`.)
+- Reachability check: `python -m trace --count --missing --coverdir <scratch directory outside the repository> --module pytest tests/harness/test_measurement.py`: every line of `hilclaw/harness/measurement.py` is reached **except the two lines of the `except ValueError` in `_shown`**, which only CPython 3.11 reaches; the tests that reach them (`..._too_long_to_show`, the `long-int` cases) run on the 3.11 gate, and the branch was run by hand on the local 3.11 (which has no pytest) by the executor and both reviewers. The reviewers also ran mutation checks (round 2: 33 of 34 mutants caught, the survivor is equivalent) and a fuzz of the float-range guards on 3.11 and 3.14 (no exception other than `InvalidSamplesError`, no `nan` / `inf`). Coverage is not measured by CI yet (P0.5-3), so the ≥ 80 % figures of D12 are not numbers from a tool.
+- Interpreter independence: the values of the worked example (CVs, trimmed means, the five intervals and verdicts) are bit-identical on local CPython 3.11 and 3.14, and both Python gates pass with the same asserted verdicts and with the test that rebuilds the replicates from `random.Random(SEED)`. Intervals with the landed seed: B / A about [0.877, 0.921] different, D / A [0.955, 1.003] not different, C / A [0.966, 1.081] not different, A / B [1.086, 1.141] different.
+- CI on the PR, four checks each (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `Test presence (hilclaw)`), all success on both heads; final head `2837697`: https://github.com/myungjoo/HIL-Claw/actions/runs/37534794873 .
+- Merge: `DONOTMERGE` removed, PR marked ready, the four checks confirmed again on `2837697`, `gh pr merge 31 --squash --body-file` with the PR body. No tool call was denied; no force push. `push` run on `main` for `e0c8098`: https://github.com/myungjoo/HIL-Claw/actions/runs/37535329423 — `completed` / `success`.
+- Note on the PR body and the squash message: the last line is `Task: T-0029`; the lines before it are the session's attribution lines (`Generated with Claude Code`, `Co-Authored-By`).
+- Follow-ups: unchanged from `## Follow-ups`. Additions:
+  - (a) (reviewer 2) The `except ValueError` in `_shown` is reachable on CPython 3.11 only; remove it when 3.11 leaves the CI matrix.
+  - (b) (executor, reviewers) The float-range guards are conservative by a factor of up to n (sums) and 2 (ratios); irrelevant at any realistic magnitude, to be revisited only if a quantity with such values is ever chosen (OD-1).
+  - (c) (executor) `SEED`, the generator and the draw order identify the replicates: changing any of them is a change of the policy source in the sense of decision 8 / 9 and may change a verdict near a bound.
