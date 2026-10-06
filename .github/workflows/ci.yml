@@ -39,3 +39,17 @@ jobs:
         run: python -m ruff format --check .
       - name: pytest
         run: python -m pytest
+
+  sh:
+    name: sh gate (shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        shell: bash
+        run: |
+          shellcheck --version
+          git ls-files -z -- '*.sh' | xargs -0 -r shellcheck --shell=sh
