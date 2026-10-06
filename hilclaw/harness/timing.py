@@ -184,7 +184,9 @@ def run_timing(
 
     Raised before anything is started: :class:`TimingArgumentError` as in
     :func:`driver_arguments`, :class:`ValueError` for an empty ``executable``
-    sequence, and what :func:`hilclaw.local_run.run` raises.
+    sequence, and what :func:`hilclaw.local_run.run` raises for the command
+    and the time limit. Its other errors, such as an :class:`OSError` from
+    starting the process, are passed on as well.
     """
     arguments = driver_arguments(
         m=m, k=k, n=n, n_max=n_max, sample_form=sample_form, seed=seed

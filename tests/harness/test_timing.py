@@ -54,7 +54,16 @@ SPLIT = (100, 100, 100, 100, 112)
 TIMEOUT = 60
 PARAMETERS = {"m": 2, "k": 3, "n": 4, "sample_form": "interval", "seed": 7}
 
-NOT_AN_INT = [True, False, 1.0, "1", None, [1], 1 + 0j]
+
+class Count(int):
+    pass
+
+
+class Word(str):
+    pass
+
+
+NOT_AN_INT = [True, False, 1.0, "1", None, [1], 1 + 0j, Count(7)]
 BAD_ARGUMENTS = (
     [(name, value) for name in "mkn" for value in [0, -1, 10**5000, *NOT_AN_INT]]
     + [("n_max", value) for value in [N_MIN - 1, 0, -10, 10**5000, *NOT_AN_INT]]
@@ -62,7 +71,7 @@ BAD_ARGUMENTS = (
     + [
         ("sample_form", value)
         for value in ["Interval", "interval ", "", "time", "rate", None, 0, True]
-        + [b"interval", ("interval",), ["reciprocal"], SAMPLE_FORMS]
+        + [b"interval", ("interval",), ["reciprocal"], SAMPLE_FORMS, Word("interval")]
     ]
 )
 
