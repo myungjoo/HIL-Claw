@@ -60,7 +60,7 @@ def test_str_and_path_config_path_agree(conf):
 def test_relative_config_path_gives_absolute_result(conf, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     relative = os.path.join("src", "hilclaw.config.json")
-    assert load_data_repo(relative, {}).local_path == tmp_path / "data"
+    assert load_data_repo(relative, {}).local_path == Path(os.getcwd()) / "data"
 
 
 def test_file_relative_path_ignores_working_directory(conf, tmp_path, monkeypatch):
