@@ -1,6 +1,6 @@
 # 개발 PLAN
 
-[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D12는 모두 답변되어(2026-10-05) 본 PLAN에 ⚑ 항목은 없다.
+[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D13은 모두 답변되어(2026-10-06) 본 PLAN에 ⚑ 항목은 없다.
 
 현재 phase: `PROCESS/STATE.json`의 `phase`가 정본.
 
@@ -18,7 +18,7 @@
 - [ ] P0.5-1 sh 게이트(shellcheck) · C 게이트(clang 빌드 + 하네스 통과) CI 추가 · coversReq: #9
 - [ ] P0.5-2 테스트 존재 검사(D12 확정): `hilclaw/`의 새 모듈에 대응 테스트 파일이 없으면 CI 실패 · coversReq: #5 D12, dev-code-review "테스트 완비"
 - [ ] P0.5-3 커버리지 게이트(D12 확정): `hilclaw/` **line ≥ 80%·function ≥ 80%**; branch 임계는 데이터가 쌓인 뒤 · coversReq: #5 D12, #9
-- [ ] P0.5-4 merge 가드 hook(D10 확정): `PreToolUse`가 `gh pr merge`를 가로채 PR checks가 전부 success가 아니면 거부. hook 테스트는 **명시 요구됨**(D12 예외 ②). 배치(P0.5)는 통합자 선택 — 오너 선택지는 "P2-4와 함께 또는 저렴하면 P0-3과 함께" · coversReq: #5 D10·D12, OD-18
+- [ ] P0.5-4 merge 가드 hook(D10 확정): `PreToolUse`가 `gh pr merge`를 가로채 PR checks가 전부 success가 아니면 거부. hook 테스트는 **명시 요구됨**(D12 예외 ②). 배치(P0.5)는 통합자 선택 — 오너 선택지는 "P2-4와 함께 또는 저렴하면 P0-3과 함께" · D13(2026-10-06) 이후 금지 명령(`git push --force*`·`rm -rf *`·`gh repo delete *`)의 PreToolUse 가드도 같은 hook에서 검토(follow-up — 범위 포함 여부는 P0.5-4 task 작성 시 planner/executor가 §9 기준으로 정함; 오너 전용 결정 아님) · coversReq: #5 D10·D12, OD-18
 
 ## P1 — 2층 도구 패키지 (MVP 핵심 부품)
 
