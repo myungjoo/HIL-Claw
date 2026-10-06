@@ -2,7 +2,7 @@
 id: T-0005
 title: Update README with the three-layer model, a repository map and development-process pointers
 phase: P0
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: ["#5 A-12", "#5 A-13"]
 dependsOn: []
@@ -101,3 +101,23 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (later) Revisit the "tentative" marker on `hilclaw/` if the package name is confirmed, and the layer-3 line once OD-8 fixes the data-plane layout.
 
 ## Result
+- Document mode, no PR. Landed on main as 1ddc2d3 ("T-0005: Add the three-layer model, a repository map and process pointers to README"), fast-forward from 3625105 on the first push; branch commit fed7e05. Change: `README.md` only, +49/-0. Remote and local branch `claude/T-0005-readme-three-layer-pointers` deleted; `main` == `origin/main`.
+- Review: 1 round by a fresh-context reviewer agent (dev-code-review, document mode), verdict Approve, no security concern, 3 non-blocking findings. Nothing in the diff was changed after the review, so no re-review.
+  - Nit 1 (three blank lines before `## References`, attributed to an added blank line): not applicable. `origin/main` already had three blank lines there (README lines 19-21 before the change); the landed file has the same three, and the task forbids editing existing blank lines except adjacent surplus removal. Left as is.
+  - Nit 2 (`PROCESS/STATE.schema.json` not in the repository map): not changed. Acceptance Criteria item 3 lists the `PROCESS/` entries and forbids an inventory beyond them; the reviewer also judged the omission compliant. Recorded as a follow-up.
+  - Low 3 (the branch commit had only a subject and the `Task:` trailer): addressed in the landing step. The squashed commit has the full body, the provisional choices, the coverage-re-check note and the trailers in the required order.
+- Provisional choices (conventions of this task, not requirements):
+  - Language: Korean, to match the existing README body and the design documents; no language policy is written into the README.
+  - Placement: new `##` sections between "Agent 실행 시 참고 사항" and References, so the owner's objectives stay first; a one-line status note (blockquote) under the title links down to them.
+  - Section names: Korean headings 현재 상태와 MVP 범위 / 세 층 모델 / 저장소 구성 / 개발 절차 / 로컬 검사, consistent within the new sections and using CLAUDE.md terms.
+  - Form: tables for the layer model (definition + what exists today) and the repository map, one row per layer / path.
+- No discrepancy was found between the required items and CLAUDE.md / `ARCHITECTURE/`. The code-mode sentence says "테스트 통과" instead of copying "CI green (before CI: local tests)"; details are linked to CLAUDE.md.
+- Verification:
+  - Relative-link check (the command in Acceptance Criteria): prints nothing. The in-page anchor `#현재-상태와-mvp-범위` matches the heading "현재 상태와 MVP 범위" (checked by eye; GitHub rendering not opened).
+  - `git diff origin/main --stat` before the push: `README.md | 49 +`, 1 file, 49 insertions, 0 deletions; existing sections unchanged. `git show --stat HEAD` on the squashed commit: exactly `README.md`.
+  - `git ls-files --eol README.md`: `i/lf w/crlf attr/text=auto eol=lf` (blob LF; the Windows working copy is CRLF). `git diff --cached --check`: clean.
+  - `python -m pytest` -> `97 passed in 0.17s`; `python -m ruff check .` -> `All checks passed!`; `python -m ruff format --check .` -> `4 files already formatted` (Python 3.14.4, pip 26.0.1; the install command was not run because the tools were present).
+  - `ARCHITECTURE/` not touched: the StandardScenarios coverage re-check does not apply.
+- Follow-ups (in addition to the list above):
+  - (later, optional) Mention `PROCESS/STATE.schema.json` in the `PROCESS/` row of the repository map at the next README touch (reviewer Nit 2).
+  - (when the phase leaves P0) The status note under the title and the "골격(bootstrap) 단계" sentence become stale; update them with the README touch that follows P0-3 / P0-6.
