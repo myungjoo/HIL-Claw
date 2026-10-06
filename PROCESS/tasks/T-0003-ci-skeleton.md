@@ -2,7 +2,7 @@
 id: T-0003
 title: Add the CI skeleton with the Python gate (pytest + ruff)
 phase: P0
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: ["#9", "#5 D10", "CLAUDE.md language policy"]
 dependsOn: [T-0001, T-0002, T-0009]
