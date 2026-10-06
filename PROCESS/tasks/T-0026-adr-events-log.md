@@ -2,7 +2,7 @@
 id: T-0026
 title: Write ADR-0006 fixing the line format and the envelope of events.ndjson (a part of the rest of OD-8, first slice of the PLAN P1-8 schemas) and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, OD-17, FR-13, NFR-1, NFR-2, NFR-7, C-2, "#5 D6"]
 dependsOn: [T-0021]
@@ -139,3 +139,54 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (if the owner objects to ADR-0001, ADR-0002 or ADR-0004 within its window) Revisit this record together with the reverting task.
 
 ## Result
+**DONE** — landed on `main` as `0a6a60a` (document mode, one squashed commit, four of the five files of `touchesFiles`, +170 / −8; `Reviewed-by: reviewer agent (4 rounds, Approve)`, `Task: T-0026`). The tree of the landed commit is identical to the head the round-4 reviewer approved (`a3afcd5`); the rebase was a no-op (`origin/main` was still `23a9d3d`). Task branch deleted, remote and local. No tool call was denied; no force push. The §3-5 landed check before starting found nothing (no commit with the trailer, no PR). No BLOCKED condition arose: the envelope was written without adopting or rejecting any part of OD-17 and without touching OD-3. No new HQ. This task ticks **no** PLAN checkbox.
+
+### Decisions of ADR-0006 (`ARCHITECTURE/decisions/ADR-0006-od8-events-log.md`, 159 lines)
+1. **Scope**: one line of `runs/<run_id>/events.ndjson` and its envelope; no event kind, no payload, nothing of another file.
+2. **Line format**: one JSON object per line, ended by one LF; UTF-8 without BOM; no blank line, no header line (the first line is an event). A missing and an empty file both mean "no event". The writer writes only the JSON text; a reader accepts any member order and JSON white space (a CR before the LF included), but no white-space-only line.
+3. **Envelope** (closed set): `schema_version` (1), `time` (`YYYY-MM-DDThh:mm:ssZ`, the writer's UTC clock, fixed for this file only), `kind` (a *name* of ADR-0001, form only, no list; an unknown value is not an error) and `data` (an object, possibly empty) are required; `round`, `candidate`, `attempt` (the integers of ADR-0002) are optional and nested (`candidate` only with `round`, `attempt` only with `candidate`); none of the three = the run as a whole. No `run_id` member, no `null`. Reason for `time`: the log is never rewritten, so a time not written at the append is lost, and commits are per round.
+4. **Order**: the order of appending; no sequence and no identifier member; a reader may not conclude grouping by round, monotonic `time` or completeness.
+5. **Append only**: a complete line is never edited, removed or reordered; a later fact is a new line; the one exception is the removal of a torn tail, which removes no line.
+6. **Torn tail**: the writer writes the LF last, so a death in mid-append leaves bytes after the last LF. A reader skips them (even if they parse); the writer removes exactly those bytes before it appends; a file is committed only when it is empty or ends with LF, so nothing committed is ever removed. Damage (invalid UTF-8, not one JSON object, a duplicated member name anywhere in the line, a broken envelope) is an error, the last line included. Check order: duplicates, version, rest. An *integer* `schema_version` other than 1 is "unsupported version", not damage; a missing or non-integer one is damage.
+7. **Log and result files**: the line of an expensive result **carries the result itself** (binary content by hash), because the result file is written later by the measurement role and may not exist when the tool layer appends; the log does not replace the result files.
+8. **Versioning**: `schema_version` in every line, covering the line format and the envelope only (not a new `kind`, not a payload change); independent of the layout version; other versions are OD-11. Per line because the file outlives a tool replacement at a round boundary (NFR-7 ①) and is never rewritten.
+9. **Room for OD-17**: `intent` / `result` can be kinds or payloads, a key fits in `data` or a later envelope version, self-contained lines allow a reader to start at any line start. Nothing adopted or rejected; #8 M7 open.
+10. **Durability and limits**: a returned append survives process death, not machine loss before the commit (#5 A-3); no concurrency control, no atomicity with any other file, no completeness check.
+
+### Boundaries left open (named in the record)
+Every event kind and payload, which kinds require which of the three numbers, how a line refers to another, which results are "expensive" (PLAN P1-1, P1-3, P1-8; OD-13, OD-10, OD-23); the whole OD-17 proposal and #8 M7; budget enforcement (OD-19); gates (OD-3 / #5 A-5); which tool or hook appends (OD-18), which agent may cause it (OD-23); the isolation means; the fields of `STATE.json`, `instance.json` and the result files, including how a resumed turn uses the log; reading other versions (OD-11); promotion to `db/`, rotation, size limits, which step commits, notifications (OD-27); owner-only items. Two sub-questions registered under OD-8 (Proposals ⑧ ⑨): the vocabulary of `kind` and how a payload change of a kind is told apart; whether the other times of the data plane take the time form of this file.
+
+### Review (4 rounds, a fresh-context `dev-reviewer` each, spawned with the higher model; no `SECURITY` finding)
+- **Round 1 — Request changes** on `ab79a5e` (no Major; 2 Minor, 3 Nit), all addressed in `925a587`: the "검사 결과" passage said no step names `events.ndjson` while the same change added it to the tag of S2-3 (the step tag was reverted; the S2 row keeps the pointer); a missing or non-integer `schema_version` was not classed and the check order not given; the valid ranges of `time` were missing; the LF line end cited the provisional LF derivation of C-7 as a confirmed source.
+- **Round 2 — Request changes** on `925a587` (1 Minor, 1 Nit), addressed in `4927059`: the reader's treatment of a complete line that breaks decision 2 (duplicate names, also inside `data`; white space and CR; duplicated `schema_version`) was undefined; the "missing / empty file" sentence cited ADR-0004 decision 1 (which speaks of a directory) for the whole sentence.
+- **Round 3 — Approve** on `4927059` with 1 Nit, addressed in `a3afcd5`: "the log first" was cited to #4 §3b while the words are in the draft layout of #4.
+- **Round 4 — Approve** on `a3afcd5`: no Major, Minor or Nit; nothing trivially fixable left.
+- All four reviewers agreed that the record is design-level under DRIVER §9 and hangs on no open owner-only item, and read A-13 "data-plane schema change" as **not applying** to this first definition. The round-3 reviewer added that a later change of this envelope should be treated as such a change. This is a reviewer reading, not an owner confirmation; the #5 notice says so.
+- All four confirmed: no event kind or list, no payload, no part of OD-17, nothing about gates, no field of another file; #8 M7 left open; OD-17 status unchanged.
+
+### Document checks
+- Session entry (before the first edit): no open PR; no comment on #4, #7, #8 newer than the task file; the latest #5 comment was the ADR-0005 notice (6022937550); no objection to ADR-0001..0005; #8 M7 unchecked.
+- Relative links and the anchors `#od-8`, `#od-11`, `#od-17`, `#od-18` resolve.
+- OD numbers: the Requirements diff touches the sentence above the table, the OD-8 row and the OD-17 row (one pointer sentence); 29 rows, numbering unchanged; OD-17 is still `제안됨`.
+- No excluded item is stated as decided (checked by all four reviewers).
+- Consistent with ADR-0004 (path, writer, decisions 1, 2, 9, 10), the `id` integers of ADR-0002, the forms of ADR-0001, and `hilclaw/layout.py` (`RUN_FILES`, `run_file`) and `hilclaw/keys.py`.
+- `git ls-files --eol`: `i/lf` for the four changed files; `git diff --check` clean; the stat lists only files of `touchesFiles`.
+- Coverage re-check: rules re-applied to the steps that rely on resuming after a process death (S0-7, S2-2·3, S3-2·4), on expensive measurements (S0-5·6, S1-6, S1-b-2, S8-3·5, S9-1·2) and on reading history (S5-2·3). **No verdict changes, no gap.** S2 stays 지원(미결): the resume protocol is OD-17 / PLAN P1-8. Recorded in "검사 결과" (heading, a "4차" passage, the S2 row) and in the commit body.
+- CI `push` run on `main` for `0a6a60a`: https://github.com/myungjoo/HIL-Claw/actions/runs/37520596393 — `completed` / `success`.
+
+### Edits of the existing documents
+- Requirements: the sentence above the table, the OD-8 row (status cell, summary, open rest), one pointer in the OD-17 row. No FR / NFR / C body edited; none needs a more precise wording.
+- OpenDecisionProposals OD-8: heading note; new bullet "채택분(ADR-0006)"; the open list now names event kinds, payloads and the other files; new bullet with sub-questions ⑧ ⑨. OD-17: one dated pointer line. No proposal text deleted.
+- StandardScenarios: the result section only (no step tag changed).
+- **UsageCases: not touched** — no sentence names the event log; UC-3, UC-4 and the glossary entry "데이터 plane" stay true.
+
+### Owner notice (DRIVER §9)
+Posted on #5 with the driver tail after the push to `main`, as the driver's launch instruction asked (the same way as T-0024): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6024069787 . Objection window until 2026-10-14. It states the six decisions with two example lines, the boundaries (kinds and payloads, the whole OD-17 proposal and #8 M7, gates, the other files), three readings the owner may want to check (the `time` member, the commit condition, the per-line version), the A-13 reading as the reviewers', and the dependence on ADR-0004 (until 2026-10-14), ADR-0002 and ADR-0001 (until 2026-10-13). The driver does not need to post it again.
+
+### Follow-ups
+- (planner, next — code mode, P1-8 slice) `hilclaw/events.py` with `tests/test_events.py`: check a line against decision 3, append a line (tail check and removal, LF written last, `time` from the clock), read a file (complete lines, torn tail skipped and reported, damage and unsupported version reported with the line number); `layout.run_file` for the path; standard library only. Note for that task: `json.loads` accepts duplicate member names silently, so the duplicate check needs `object_pairs_hook`. From then on a change of what the module accepts should be treated as a data-plane schema change under A-13 (round-3 reviewer).
+- (planner / whoever defines the commit step — OD-18, PLAN P2) The step that commits the data repository has to remove a torn tail of `events.ndjson` first (ADR-0006 decision 6).
+- (planner) Tasks that define an event kind state its name, which of `round` / `candidate` / `attempt` it carries and its `data`; the kind of an expensive result has to carry the result (decision 7). The vocabulary of `kind` and payload versioning are OD-8 sub-question ⑧.
+- (integrator) The commit hash `0a6a60a` is not in the OD-8 row; the `events.ndjson` row of the path table of ADR-0004 still says "Fields: PLAN P1-8, OD-17" (not edited — the envelope part is ADR-0006).
+- (planner) Unchanged from the task file: PLAN P1-3 "오너 확정 필요" has not been raised as an HQ; the rest of P1-8 (`STATE.json`, `instance.json`) needs OD-17 / #8 M7 and owner-only members.
+- (if the owner objects to ADR-0001, ADR-0002 or ADR-0004 within its window) Revisit ADR-0006 with the reverting task.
