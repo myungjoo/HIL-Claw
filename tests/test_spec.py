@@ -38,7 +38,6 @@ ADR_EXAMPLE = json.loads(
 
 BAD_NAMES = ["", "Upper", "1digit", "with-hyphen", "a" * 33, "name\n", 7, None]
 BAD_STRINGS = ["", "s" * 256, "line\nbreak", "café", 7, None, True, ["s"]]
-BAD_TEXTS = ["", 7, None, True, ["text"], {"text": "t"}, b"text"]
 BAD_INTEGERS = [-1, 2**53, True, False, 1.0, "1", None, [1]]
 BAD_POSITIVE_INTEGERS = [0, *BAD_INTEGERS]
 NOT_OBJECTS = [None, "text", 1, 1.5, True, ["a"], [("a", 1)]]
@@ -52,6 +51,13 @@ class StrEnum(str, enum.Enum):
 
 class IntEnum(int, enum.Enum):
     ONE = 1
+
+
+class StrSubclass(str):
+    pass
+
+
+BAD_TEXTS = ["", 7, None, True, ["text"], {"text": "t"}, b"text", StrSubclass("t")]
 
 
 def synthetic_hw():
@@ -439,7 +445,11 @@ def test_unknown_member_is_rejected(where, member):
 
 def test_member_name_that_is_a_str_subclass_is_rejected():
     document = minimal()
-    document["id"][StrEnum.SINGLE] = "synthetic"
+    document[StrSubclass("ext")] = {"synthetic_ext": 1}
+    rejects(document, "^spec: unknown member")
+    document = changed(minimal(), ["id", "candidates"], 2)
+    document["id"].update(relation="same_technique")
+    document["id"][StrSubclass("variant")] = "synthetic"
     rejects(document, "^id: unknown member")
 
 
@@ -634,7 +644,8 @@ def test_invalid_embedded_record_is_reported_with_its_path(where, path, value, b
 @pytest.mark.parametrize("value", [None, "text", ["a"], 1])
 def test_embedded_record_that_is_not_a_map_is_rejected(where, value):
     document = changed(minimal(), [*where, "record"], value)
-    rejects(document, "^" + dotted(where).replace(".", r"\.") + r"\.record: ")
+    message = rejects(document, "must be a map, got")
+    assert message.startswith(dotted(where) + ".record: must be a map")
 
 
 def test_empty_operands_is_rejected():

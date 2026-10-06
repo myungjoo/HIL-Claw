@@ -172,7 +172,8 @@ def _keyed(path, value, derive):
     try:
         name = derive(value["record"]).name
     except keys.InvalidRecordError as error:
-        raise InvalidSpecError(f"{path}.record: {error}") from error
+        reason = str(error).removeprefix("record: ")
+        raise InvalidSpecError(f"{path}.record: {reason}") from error
     if value["key"] != name:
         _fail(
             f"{path}.key", f"{name}, the name derived from {path}.record", value["key"]
