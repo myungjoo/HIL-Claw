@@ -2,7 +2,7 @@
 id: T-0008
 title: Add the local content-addressed blob store (blobs/sha256/<hh>/<hash>) with its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-3, "#5 A-2", FR-10]
 dependsOn: [T-0002]
@@ -112,3 +112,42 @@ Process:
 - (decision to revisit) Whether stored blobs should be made read-only on disk, and whether `put_*` should verify an existing blob before trusting it.
 
 ## Result
+- 2026-10-06T07:29Z AKIHA:5898c241 — DONE.
+- PR #18 (code mode, https://github.com/myungjoo/HIL-Claw/pull/18), squash-merged to main as bcbc325 ("T-0008: Add the local content-addressed blob store with its tests (#18)"); branch commits 697d52b, 359b712. Change: 2 files, +474 lines (`hilclaw/cas.py` 120, `tests/test_cas.py` 354); non-test 120 lines in 1 file (cap 300/5; the estimate was 130). `pyproject.toml`, `hilclaw/__init__.py`, the other modules, `.gitignore`, `.claude/` and `.github/` unchanged. Standard library only (`hashlib`, `os`, `re`, `secrets`, `pathlib`, `typing`). No binary file committed; no test touches a real `HIL-Claw-data` checkout.
+- **PLAN P1-6 is not complete** after this task: this is the local store only. `artifacts.json` and `blob.push` / `blob.fetch` remain (Follow-ups).
+- This `## Result` was not committed on the task branch, because a third file would have broken the task's own diff check; the executor handed the text to the driver.
+- Review: 2 rounds by fresh-context `dev-reviewer` agents, final verdict Approve on the final head 359b712; no `SECURITY` finding. Neither reviewer reran pytest or ruff (read-only role); the executor's local reruns are the gate.
+  - Round 1 Approve on 697d52b (https://github.com/myungjoo/HIL-Claw/pull/18#issuecomment-6011491182): Low, `verify_blob` raised the raw `IsADirectoryError` / `PermissionError` / `NotADirectoryError` where `has_blob` returned `False` (blob path is a directory, data root is a regular file) -> fixed in 359b712: `verify_blob` raises `BlobNotFoundError` exactly when `has_blob` is false, one test added; Low, "a stored blob is never rewritten" holds only without concurrent writers, and on Windows the second move can fail while a reader holds the blob open -> known limit (PR body, below); Nit, one test monkeypatches the private `cas._chunks` -> accepted by the reviewer, no public route reaches that cleanup path cheaply; Nit, a failing cleanup replaces the original error -> known limit. Re-review requested after the fix.
+  - Round 2 Approve on 359b712 (https://github.com/myungjoo/HIL-Claw/pull/18#issuecomment-6011518801): round-1 fix confirmed. Nit, `verify_blob` checks `is_file()` and then opens, so a blob removed in between by an outside actor (a future GC tool) surfaces as a raw `OSError` -> no change asked, known limit; Nit, carry the known limits into this `## Result` -> done below.
+- Language: Python, because the package is Python and hashing plus atomic file replacement are in the standard library.
+- Provisional choices (conventions of this task, not requirements; C-3 fixes only the path; no OD closed, OD-4/6/8/18 not needed, no ADR):
+  - Module name `hilclaw/cas.py`: next to the other layer-2 modules, covered by pytest and ruff.
+  - API: `blob_path(data_root, digest) -> Path` (pure), `put_bytes(data_root, data) -> BlobRef`, `put_file(data_root, source) -> BlobRef`, `has_blob(data_root, digest) -> bool`, `verify_blob(data_root, digest) -> bool`, the constant `CHUNK_SIZE` (1 MiB, public so that the tests need no private name), `BlobRef` = `NamedTuple(digest, size)` because `artifacts.json` will need both, and `BlobNotFoundError`. `data_root` and `source` accept `str` and `os.PathLike`.
+  - `<hh>` = the first two hex characters of the digest: the usual fan-out, as in git's object store.
+  - Digests are 64 lowercase hex characters; uppercase is rejected, not normalised (one spelling per blob on case-sensitive and case-insensitive file systems). The same check keeps a caller-supplied digest inside the store.
+  - A malformed digest raises `ValueError`, also for a non-`str` (`None`, `bytes`, `int`, `Path`): one error type for "this is not a digest". `TypeError` was not chosen.
+  - Write procedure: the content goes to `blobs/sha256/tmp-<pid>-<random>`, is flushed and fsynced, and is moved into place with `os.replace`; same file system as the target and inside the path the data repository already ignores; the temporary file is removed on any failure. **Beyond the task text**: the file is fsynced before the move, because `put_*` trusts an existing blob and a truncated one after a power loss would be trusted forever. **Deviation in the means, not in the behaviour**: the temporary file is created with `open(..., "xb")` and a `secrets` name instead of `tempfile.mkstemp`, because `mkstemp` forces mode `0600` and the task says no permission bit is to be decided here; a blob gets the bits of any other new file.
+  - A repeated put keeps the stored file and does not re-verify it; checking is `verify_blob`.
+  - Data root: missing raises `FileNotFoundError`, not a directory raises `NotADirectoryError`; it is never created.
+  - `BlobNotFoundError` is a `LookupError`, not an `OSError`, so that it cannot be confused with an I/O failure; `verify_blob` raises it exactly when `has_blob` is false.
+  - `put_bytes` accepts `bytes` and `bytearray` only (`TypeError` for `str`, `None`, `memoryview` and others): for other buffers `len()` is not the size in bytes.
+  - `put_file` opens `source` before it touches the store, so a missing or directory source creates nothing at all, not even `blobs/`.
+- Known limits (also in the PR body):
+  - "A stored blob is never rewritten" holds without concurrent writers: two writers that store the same new content at the same time both move their file into place (identical content). On Windows that second move can fail with `PermissionError` while a reader holds the blob open; the error propagates and the temporary file is removed. Nothing is locked across processes (Out of Scope).
+  - The directory entry is not fsynced.
+  - If removing the temporary file fails, that error replaces the original one (which stays in `__context__`).
+  - A temporary file survives only if the process is killed during a put; it is named `tmp-*` directly under `blobs/sha256/`, never under a blob name.
+  - `verify_blob` checks `is_file()` and then opens the blob; if an outside actor removes it in between, a raw `OSError` is raised instead of `BlobNotFoundError`. The module itself never deletes.
+  - An empty `data_root` string means the current directory, as for `pathlib.Path("")`.
+- Local verification (CI is not on `main`; CPython 3.14.4 on Windows only, **not run on 3.11**; ruff 0.15.14):
+  - Before the first commit: `python -m pytest` -> `467 passed`; `python -m ruff check .` -> `All checks passed!`; `python -m ruff format --check .` -> `8 files already formatted`.
+  - Before the merge (head 359b712, `origin/main` still at 243fdf2): `468 passed` (83 in `tests/test_cas.py`, 385 existing); `All checks passed!`; `8 files already formatted`; `git ls-files --eol` -> `i/lf w/lf` for both files; `git status --short` -> empty after the test run; `git diff origin/main --stat` -> only the two `touchesFiles`; `gh pr checks 18` -> `no checks reported` (expected, T-0003 blocked).
+  - After the merge, on main bcbc325: `468 passed`; `All checks passed!`; `8 files already formatted`; clean tree, `main` == `origin/main`, remote and local task branch deleted.
+  - No `SIM905` pattern (`str.split()` literal) in the new files.
+- Reachability check: `python -m trace --count --missing --module pytest tests/test_cas.py` (stdlib, cover files written outside the repository) marks **no** line of `hilclaw/cas.py` as missing, on both heads; hence every branch of the acceptance list is reached (malformed digest, both root errors, keep-existing, failed move, failed read, non-file blob path).
+- POSIX smoke (WSL, CPython 3.10.12, a hand-written script, **not the test suite**): a stored blob has mode `0644` under umask `022`; `verify_blob` and `has_blob` are true; a directory as `put_file` source raises `IsADirectoryError` and leaves only the blob's `<hh>` directory under `blobs/sha256/`. The pytest suite itself has not run on a POSIX system.
+- Follow-ups (in addition to the list above):
+  - (P1-6 slice 2 / 3) unchanged: `blob.push` / `blob.fetch` with the meaning of "local", and the `artifacts.json` record using `BlobRef`.
+  - (decision to revisit, with a GC tool or a second writer) concurrent writers: a no-overwrite move (`os.link` plus unlink, or a lock) instead of check-then-`os.replace`, and the Windows open-reader failure; `verify_blob` against a blob deleted during the check.
+  - (decision to revisit) whether to fsync the directory, whether stored blobs should be read-only, and whether `put_*` should verify an existing blob before trusting it.
+  - (P0.5-3 / CI) First coverage measurement, the CPython 3.11 run and the first POSIX run of `tests/test_cas.py` happen once CI exists.
