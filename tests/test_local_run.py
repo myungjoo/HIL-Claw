@@ -210,6 +210,23 @@ def test_timeout_kills_the_process_and_keeps_the_output(child):
     assert child.started
 
 
+@pytest.mark.parametrize(
+    "body, stdout, stderr",
+    [
+        ("time.sleep(30)", b"", b""),
+        ("out.write(b'only out'); out.flush(); time.sleep(30)", b"only out", b""),
+        ("err.write(b'only err'); err.flush(); time.sleep(30)", b"", b"only err"),
+    ],
+)
+def test_timeout_with_a_silent_stream_gives_empty_bytes(body, stdout, stderr, child):
+    result = run(child(body), timeout_s=5)
+    assert result.timed_out is True
+    assert result.returncode is None
+    assert (result.stdout, result.stderr) == (stdout, stderr)
+    assert isinstance(result.stdout, bytes)
+    assert isinstance(result.stderr, bytes)
+
+
 @posix_only
 def test_death_by_signal_is_a_negative_returncode(child):
     result = run(child(SIGNAL), timeout_s=TIMEOUT)

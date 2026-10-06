@@ -71,8 +71,12 @@ def run(command, *, timeout_s, cwd=None, env=None):
     that is not a number; :class:`ValueError` for an empty ``command`` or a
     ``timeout_s`` that is not positive and finite; and
     :class:`ProgramNotFoundError`, which includes a file that exists but is not
-    executable. An :class:`OSError` from starting the process (a file the
-    system cannot execute, a ``cwd`` that does not exist) is passed on.
+    executable. What :mod:`subprocess` raises is passed on: an
+    :class:`OSError` from starting the process (a file the system cannot
+    execute, a ``cwd`` that does not exist), a :class:`ValueError` or
+    :class:`TypeError` for an argument or ``env`` it cannot hand over, and an
+    :class:`OverflowError` for a finite ``timeout_s`` beyond what the platform
+    clock can count, which arrives after the process was started and killed.
     """
     _check_timeout(timeout_s)
     resolved = _resolve(command)
