@@ -15,7 +15,3 @@ def test_version_matches_pyproject():
     with PYPROJECT.open("rb") as f:
         project = tomllib.load(f)["project"]
     assert hilclaw.__version__ == project["version"]
-
-
-def test_ci_negative_check():
-    assert False
