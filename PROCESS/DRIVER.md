@@ -3,9 +3,9 @@
 HIL-Claw를 **만드는** 자동 개발 프로세스의 설계 문서이자, 매 반복(iteration)에 Claude Code 세션이 그대로 따르는 **드라이버 프롬프트**다. HIL-Claw가 **도는** 런타임 오케스트레이터(Requirements FR-1 라운드 루프, #4)와는 별개이며, 둘을 혼동하지 않는다.
 
 - 절차는 Assessment-Agent(이하 A-A)의 **개발 절차**를 참조했다. 프로세스 파일 배치(드라이버 문서·PLAN·상태 파일·task 파일·journal)도 절차의 일부로서 따랐으나, A-A의 SW 구조·스택·레이아웃은 가져오지 않는다(CLAUDE.md, #5 A-12).
-- 오너 결정: 실행 모델 = **로컬 Claude Code 세션의 `/loop`**(2026-10-03). 2026-10-05부터는 Claude Desktop의 스케줄 루틴(1 호출 = 1 iteration; 간격은 운영자 값, 현재 매시)이 주력 진입점이며, 그 실행 설정은 §1-5(D13, 2026-10-06)에 있다. cron/스케줄 호출과의 호환은 §1의 조건으로 보장한다.
+- 오너 결정: 실행 모델 = **로컬 Claude Code 세션의 `/loop`**(2026-10-03). 2026-10-05부터는 Claude Desktop의 스케줄 루틴(1 호출 = 1 iteration, §3-7의 연속 실행 조건을 만족하는 동안 연속 실행 상한까지(운영자 값, 현재 2); 간격은 운영자 값, 현재 매시)이 주력 진입점이며, 그 실행 설정은 §1-5(D13, 2026-10-06)에 있다. cron/스케줄 호출과의 호환은 §1의 조건으로 보장한다.
 - **전제 커밋**: 본 문서는 CLAUDE.md의 "브랜치·merge 절차"(#5 A-13) 규칙 텍스트와, dev-item-address 4·9~13·15단계(문서 모드 분기·자율 merge)·dev-code-review(문서 모드 반환 경로)의 반영 커밋, 그리고 CLAUDE.md 테스트 규칙(§5, D12)을 전제한다. 전제 커밋은 2026-10-06에 main에 반영되었다. 권한 allowlist `.claude/settings.json`은 2026-10-05에 커밋되었다(D11); 루틴의 실행 모드는 2026-10-06에 D13으로 개정되었다(§1-5).
-- 표기: **⚑ 결정 요청**은 §11에 모아 두었고, 2026-10-03~06에 D1~D13이 **모두 답변**되어 본 문서는 확정값으로 기술한다(§11 결정 이력). 새 결정 요청이 생기면 같은 방식으로 ⚑와 §11 행을 추가하고, 답변 전에는 그 항목에 걸린 task를 실행하지 않는다.
+- 표기: **⚑ 결정 요청**은 §11에 모아 두었고, 2026-10-03~06에 D1~D14가 **모두 답변**되어 본 문서는 확정값으로 기술한다(§11 결정 이력). 새 결정 요청이 생기면 같은 방식으로 ⚑와 §11 행을 추가하고, 답변 전에는 그 항목에 걸린 task를 실행하지 않는다.
 
 ---
 
@@ -19,11 +19,11 @@ HIL-Claw를 **만드는** 자동 개발 프로세스의 설계 문서이자, 매
 
 ## 1. 실행 모델
 
-- 주력(2026-10-05~, D13): Claude Desktop의 스케줄 루틴 `hil-claw-dev-driver`가 새 세션으로 1 iteration을 실행한다(간격은 운영자 값 — D1, 현재 매시; 실행 설정은 §1-5). 보조: 오너 로컬 PC(C-7: Windows/WSL·macOS·Linux)의 Claude Code 세션에서 `/loop <간격> <드라이버 호출>`. 드라이버 호출 = "`PROCESS/DRIVER.md` §3을 1 iteration 수행". 간격과 세션당 iteration 상한은 **설계값이 아니라 운영자가 호출 시 정하는 값**이다(D1, 2026-10-03) — 드라이버는 이 값에 의존하지 않는다. 참고: 같은 대화에 wakeup이 누적되면 컨텍스트 한계에 닿으므로 세션당 상한을 두는 것이 좋다(A-A는 10회).
-- **cron/스케줄 호환 조건**(오너 요구): 다음을 만족하므로 OS cron, `/schedule` 루틴, `claude -p`에서 같은 호출로 1 iteration을 실행할 수 있다.
+- 주력(2026-10-05~, D13): Claude Desktop의 스케줄 루틴 `hil-claw-dev-driver`가 새 세션으로 1 iteration을 실행하고, §3-7의 연속 실행 조건을 만족하는 동안 연속 실행 상한까지 이어서 실행한다(간격은 운영자 값 — D1, 현재 매시; 실행 설정은 §1-5). 보조: 오너 로컬 PC(C-7: Windows/WSL·macOS·Linux)의 Claude Code 세션에서 `/loop <간격> <드라이버 호출>`. 드라이버 호출 = "`PROCESS/DRIVER.md` §3을 1 iteration 수행". 간격과 세션당 iteration 상한은 **설계값이 아니라 운영자가 호출 시 정하는 값**이다(D1, 2026-10-03) — 드라이버는 이 값에 의존하지 않는다(§3-7의 연속 실행 판정만 호출 프롬프트가 준 임계·연속 실행 상한을 그대로 쓴다). 참고: 같은 대화에 wakeup이 누적되면 컨텍스트 한계에 닿으므로 세션당 상한을 두는 것이 좋다(A-A는 10회).
+- **cron/스케줄 호환 조건**(오너 요구): 다음을 만족하므로 OS cron, `/schedule` 루틴, `claude -p`에서 같은 호출로 1 iteration을 실행할 수 있다(연속 실행은 3번 참조).
   1. **멱등·자기완결**: 매 iteration이 `git fetch` + `PROCESS/STATE.json` 읽기로 시작하고 대화 이력을 쓰지 않는다.
   2. **단일 실행 보장**: §4의 lock. lock이 유효하면 아무 것도 하지 않고 종료한다(중복 호출은 무해). lock은 main push의 fast-forward 규칙으로 성립하므로 **머신 간에도 유효**하다(`/schedule`의 클라우드 체크아웃 포함) — 단 ttl 판정은 벽시계에 의존하므로 시계 편차가 큰 머신을 섞지 않는다.
-  3. **1 호출 = 최대 1 task**: 호출 주체가 무엇이든 한 iteration은 하나의 task를 끝내거나 BLOCKED를 기록하고 멈춘다.
+  3. **1 iteration = 최대 1 task**: 호출 주체가 무엇이든 한 iteration은 하나의 task를 끝내거나 BLOCKED를 기록하고 멈춘다. 1 호출은 1 iteration이 기본이며, 호출 프롬프트가 지정한 경우에만 §3-7의 연속 실행으로 iteration을 더 수행한다(D14).
   4. **네트워크 의존 최소**: GitHub(push·PR·이슈)와 Anthropic만 필요(C-7). `gh`가 없으면 **저장소 밖 로그**(`~/.hilclaw-driver.log` 또는 stderr; 추적 파일인 `PROCESS/journal/`에는 쓰지 않음 — clean tree 유지)에 "gh 불가"를 적고 종료하며 **오너에게 알린다**(세션 출력; cron 래퍼는 로그를 노출). GitHub MCP 폴백은 두지 않는다(D2, 2026-10-03).
   5. **비대화 실행 권한**(D11 → D13 개정, 2026-10-06): Claude Desktop의 스케줄 루틴은 `dontAsk` 모드를 제공하지 않고, 기본값인 auto 모드는 분류기가 sub-agent 스폰 시점에 위임 내용을 판정하여 A-13의 자율 merge를 `[Self-Approval]`로 거부할 수 있다(HQ-0001, 2026-10-05; 같은 설정에서 통과와 거부가 섞여 비결정적). 따라서 루틴은 A-A와 같은 운영 설정으로 돈다 — **권한 모드 = Bypass permissions**(permission prompt와 분류기를 거치지 않음), **작업 폴더 = 드라이버 전용 clone**(§1-6), **모델 = 루틴 설정에서 고정**(운영자 값; 모델명은 본 문서에 적지 않는다). 이 모드에서는 harness가 금지 동작을 막아 준다고 가정하지 않는다: `git push --force*`·`rm -rf *`·`gh repo delete *` 금지와 `.claude/settings.json`·`settings.local.json` 편집 금지(세션이 자기 권한을 바꾸지 않음)는 드라이버·executor 규율로 지키고(금지 명령의 PreToolUse 가드 hook은 P0.5-4와 함께 검토 — follow-up, 범위는 그 task 작성 시 §9 기준으로 정함), 도구 호출이 거부되거나 실패하면 우회하지 않고 BLOCKED로 다룬다. HQ-0001 자체의 종결은 §3-2 경로(오너의 #5 답변 코멘트)로 한다. 프로젝트 **`.claude/settings.json`**(allow/deny 목록, D11 2026-10-05 커밋)은 CLI 경로(OS cron, `claude -p --permission-mode dontAsk`)의 안전망으로 유지한다: 그 경로에서는 드라이버가 쓰는 동작(`git fetch/push`, `gh pr/issue`, 테스트 실행)만 허용되고 목록 밖 호출은 묻지 않고 거부되며, `.claude/**`의 agent·스킬 `.md` 쓰기는 허용, settings 2종은 거부다.
   6. **작업 트리 전제**: 드라이버 전용 clone(또는 worktree), `main` 추적, clean tree. 오너의 개발 작업 트리와 공유하지 않는다. 스케줄 루틴의 작업 폴더(세션 cwd)도 이 clone으로 둔다 — 프롬프트로 명령만 clone에 보내면 프로젝트 설정과 권한 범위는 오너 트리 기준이 된다(2026-10-06 확인).
@@ -63,14 +63,14 @@ PROCESS/
 
 호출되면 다음을 **순서대로** 수행한다. 모델 배정은 CLAUDE.md 원칙(판단 = 상위, 기계적 = 경량 위임 가능)을 따른다.
 
-0. **동기화** *(기계적)*: `git fetch origin`; `main`을 checkout하고 **무조건** `git reset --hard origin/main` + `git clean -fd`로 맞춘다 — 직전 iteration의 거부된 상태 커밋, 사망 직전의 미커밋·untracked 잔재를 모두 버린다(전용 clone 전제 §1-6; 상태 커밋은 재생성 가능하다). CLAUDE.md "세션 진입 점검"의 열린 PR 목록을 확보한다(판정은 3단계에서).
+0. **동기화** *(기계적)*: 호출의 첫 iteration이면 시작 시각(`date -u`)을 확보해 둔다(§3-7의 경과 판정용). `git fetch origin`; `main`을 checkout하고 **무조건** `git reset --hard origin/main` + `git clean -fd`로 맞춘다 — 직전 iteration의 거부된 상태 커밋, 사망 직전의 미커밋·untracked 잔재를 모두 버린다(전용 clone 전제 §1-6; 상태 커밋은 재생성 가능하다). CLAUDE.md "세션 진입 점검"의 열린 PR 목록을 확보한다(판정은 3단계에서).
 1. **STATE 읽기** *(기계적)*: `PROCESS/STATE.json`을 읽는다. `lock`이 유효하면(§4) 아무 것도 쓰지 않고 종료한다. 만료된 lock이면 §4의 회수 절차로 간다(기록은 4단계 커밋에 포함).
 2. **BLOCKED 동기화(읽기)** *(판단)*: `humanQuestions`의 미해결 항목마다 #5를 확인한다. **답변 판정**: 그 HQ의 `issueComment`보다 **뒤에** 달린 코멘트 중 본문에 `HQ-NNNN`이 들어 있고 **드라이버 표식(§8)이 없는** 것 — 드라이버 자신의 미러 코멘트는 같은 계정으로 올라가므로 작성자로는 구분할 수 없다. 답변이 여러 개면 가장 최근 것을 `decision`으로 삼는다. 답변이 있으면 `resolvedAt`·`decision`을 STATE에 옮기고, **그 HQ를 참조하는 task의 `status`를 `BLOCKED`/`INTERRUPTED` → `TODO`로 되돌려 `nextTask`로 둔다**(실제 쓰기는 4단계 커밋에 포함). "열린 PR과 충돌 위험"으로 막힌 task는 그 PR이 닫히거나 merge되면 자동 해소다. 동기화 방향은 #5 → STATE. **`issueComment`가 null인 미해결 HQ**(미러 게시 직후 사망)는 #5에서 `### HQ-NNNN` 머리말로 검색해 URL을 복구하고(있으면 재게시 금지, 없을 때만 4단계 뒤에 게시), 답변 판정의 시간 앵커는 `askedAt`으로 대체한다.
 3. **task 선택(로컬)** *(판단)*: 선택 규칙 — ⓐ `hq`에 미해결 항목이 있는 task는 선택하지 않는다 ⓑ `currentTask`(직전 iteration이 중단된 것) → `nextTask` → `tasks/`의 기존 `TODO`·`INTERRUPTED` 파일 → 그래도 없으면 **planner**(§6)로 `PLAN.md`에서 다음 task 1개를 만든다 ⓒ 선택한 task의 `touchesFiles`가 0단계의 열린 PR과 겹치면(**그 task 자신의 브랜치 `claude/T-NNNN-*`의 PR은 제외**) BLOCKED(사유: 열린 PR과 충돌 위험)로 두고 다음 후보를 본다. 선택 가능한 task가 없으면(전부 BLOCKED/완료) **아무 것도 커밋하지 않고** 저장소 밖 로그에 한 줄 남기고 종료하며, 오너에게 `/loop` 중단을 권고한다 — 이때 이 iteration에서 내린 BLOCKED 판정은 저장되지 않는다(다음 iteration이 같은 판정을 반복; 멱등이라 무해).
 4. **lock + currentTask 커밋** *(기계적)*: `lock`, `currentTask`, task `status: IN_PROGRESS`, 2단계의 HQ 동기화, (planner가 만들었다면) 새 task 파일을 **한 커밋**(subject `driver: …`, §5)으로 main에 push한다. push가 거부되면(다른 드라이버가 먼저 push) **rebase·재시도하지 않고** 종료한다 — 이 거부가 곧 lock 경합의 패배다. 새 HQ의 #5 미러 코멘트는 이 push가 **성공한 뒤** 게시하고(거부 시 고아 코멘트 방지), 그 URL은 다음 상태 커밋(§3-6)에서 `issueComment`에 채운다.
 5. **실행** *(판단 + 기계적)*: task 파일(과 그 Required Reading — 모든 task는 본 문서 §3-5·§5를 포함한다, §6)만 입력으로 받는 **executor** sub-agent를 띄워 [dev-item-address](../.claude/skills/dev-item-address/SKILL.md) 절차를 수행시킨다 — 구현 → 테스트 → 커밋(모드 결정) → 리뷰어 사이클(dev-code-review) → A-13에 따라 merge/push(문서 모드는 `Reviewed-by` trailer 필수). 브랜치·커밋·PR은 §5의 `T-NNNN` 명명 규약을 따른다. executor는 요약(≤200자: 결과·커밋/PR·BLOCKED 여부)만 반환하고 긴 산출은 task 파일 `## Result`에 쓴다. **재개 규칙**(`currentTask`/`INTERRUPTED`로 재개한 경우): executor는 먼저 `git log origin/main --grep='^Task: T-NNNN'`(executor 커밋의 trailer — 드라이버 상태 커밋은 이 trailer가 없어 오탐되지 않음, §5)과 `gh pr list --search T-NNNN --state all`로 결과가 **이미 landed/merged**인지 확인한다 — 그렇다면 구현 없이 `DONE`으로 마감; PR이 open이면 이어서; closed-unmerged면 브랜치 `claude/T-NNNN-*`가 남아 있으면 이어서, 없으면 처음부터 한다. **브랜치 경합**: task 브랜치 push가 거부되면 rebase 1회 재시도, 재거부면 BLOCKED(`branch-contention`). `git push --force*`는 어떤 경우에도 쓰지 않는다(A-A 규칙). **시간 상한**: executor는 wall-clock 상한을 넘기면 현재 상태를 `Result`에 적고 BLOCKED(`task-timeout`)로 반환한다(D3: 상한 2시간 30분).
 6. **마무리** *(기계적)*: task `status`(`DONE`/`BLOCKED`), `PLAN.md` 체크박스, `STATE.counters`·`lastIteration`, `nextTask`(planner가 §6에서 후보 id를 함께 제시했으면), `currentTask: null`, journal 1~5줄, **lock 해제**를 한 커밋으로 push한다. **push 전(`git fetch` 후)과 rebase 후에 `origin/main`의 `STATE.lock.owner`를 확인한다 — 자신이 아니면(ttl 만료로 회수됨) push하지 않고 저장소 밖 로그에 `lock lost`를 남기고 종료한다.** push가 거부되면(main이 움직임) `fetch` + rebase 후 재시도(≤3회 — 기계적 상수, A-A 값); `PROCESS/STATE.json`에 충돌이 나면 수동 병합하지 않고 **파일 단위로 origin 쪽을 취한 뒤**, owner가 여전히 자신이면(예: D3 ④의 lock 연장 커밋, 오너의 직접 편집) **자기 wrap-up 변경(lock=null, currentTask=null, task status, counters — origin 값 기준으로 증분을 다시 계산 —, lastIteration, nextTask)을 다시 적용**하고 push한다 — 그렇지 않으면 lock이 걸린 채 push되어 ttl까지 교착한다. 그래도 실패하면 lock을 **유지한 채** 종료한다(ttl 회수에 맡김). executor가 BLOCKED로 반환해 새 HQ가 생기면 §3-4와 같은 순서다 — 이 상태 커밋의 push가 성공한 뒤 미러를 게시하고 URL은 다음 상태 커밋에서 채운다.
-7. **종료**: 1 task로 끝낸다. 운영자가 호출 프롬프트에 세션당 상한을 넣었다면(D1 — 드라이버 고유값이 아님) 그 도달 시 journal에 기록하고 오너에게 `/loop` 중단을 요청한다(고정 간격 `/loop`를 모델이 스스로 멈출 수 있는지는 미확인); 넣지 않았으면 생략.
+7. **종료 또는 연속 실행**: 한 iteration은 1 task로 끝낸다. **연속 실행**(D14, 2026-10-06): 호출 프롬프트가 연속 실행을 지정했고 다음을 모두 만족하면, 같은 세션에서 0단계부터 iteration을 한 번 더 수행한다 — ⓐ 방금 끝낸 iteration의 결과가 `DONE`이고 새 HQ가 없다 ⓑ 6단계의 마무리 push가 성공해 lock이 해제되었다 ⓒ 이 호출의 시작(0단계에서 확보한 시각)부터 그 마무리 push까지의 경과가 임계 미만이다 ⓓ 이 호출에서 수행한 iteration 수가 **연속 실행 상한**(호출당 iteration 수 — D1의 `/loop` 세션당 상한과 다른 값) 미만이다. 임계와 연속 실행 상한은 호출 프롬프트가 주는 운영자 값이다(D14; 현재 루틴은 25분·2회). 이 판정만은 이 호출의 대화에 남은 값(시작 시각, 수행한 iteration 수, 직전 결과)을 쓴다 — 프롬프트가 임계 또는 연속 실행 상한을 주지 않았거나 이 값들 중 하나라도 확인할 수 없으면 연속 실행하지 않는다. 그 밖의 경우 — BLOCKED, task를 실행하지 않고 끝난 iteration(예: 유효한 lock, lock 연장 후 종료, lock 경합 패배, 선택 가능한 task 없음, `gh` 불가), `lock lost`, 마무리 push 실패 — 에는 연속 실행하지 않고 종료한다. 추가 iteration은 첫 iteration과 같은 절차다: task 선택과 실행은 대화에 남은 직전 iteration의 내용이 아니라 다시 읽은 파일 상태만을 근거로 하고(§0), lock을 새로 잡으며, executor 시간 상한(D3)도 새로 적용된다. 추가 iteration이 다음 스케줄 발화와 겹치면 그 발화는 1단계에서 종료한다(§1-2). 고정 간격 `/loop` 호출에서 운영자가 세션당 상한(wakeup 누적 상한)을 넣었다면(D1 — 드라이버 고유값이 아님) 그 도달 시 journal에 기록하고 오너에게 `/loop` 중단을 요청한다(고정 간격 `/loop`를 모델이 스스로 멈출 수 있는지는 미확인); 넣지 않았으면 생략.
 
 **BLOCKED 사유**: CLAUDE.md A-13의 6가지(새 외부 의존성 · 데이터 plane 스키마 변경(STATE/spec/eval/artifacts) · 리뷰 7라운드 초과 · CI 3연속 실패 · 요구 불명확/미결 발명 의심 · 보안 의심) + 드라이버 추가 4가지(D8 확정): 열린 PR과의 파일 충돌 위험 · Requirements OD 확정이 필요한 설계 선택(§9 — 오너 전용 OD이거나, task 범위에 그 OD의 ADR이 없는데 실행 중 드러난 설계 OD) · `task-timeout` · `branch-contention`(§3-5). BLOCKED는 §8에 따라 HQ로 기록하고 #5에 미러한다.
 
@@ -135,7 +135,7 @@ hq: []                            # 이 task를 막고 있는 HQ id 또는 §11�
 
 - `STATE.humanQuestions[] = { id: HQ-NNNN, taskId, reason, question, askedAt, issueComment, resolvedAt?, decision? }`.
 - 드라이버는 HQ를 만들 때 **#5에 코멘트**(영문, CLAUDE.md 언어 규칙)로 미러하고 그 URL을 `issueComment`에 적는다. **미러 코멘트의 고정 형식**: 첫 줄 `### HQ-NNNN — <task id>: <한 줄 요약>`, 마지막 줄 `— posted by driver`. **드라이버가 #5에 올리는 모든 코멘트**(HQ 미러, §9의 OD 종결 통지, phase 전환 알림 등)는 이 꼬리말을 단다 — §3-2 답변 판정에서 드라이버 코멘트를 제외하는 근거다(모든 코멘트가 같은 계정으로 올라가므로). 통합자 세션이 #5에 남기는 반영 노트도 HQ id를 언급할 때는 같은 꼬리말을 쓴다. 오너는 #5에서 **`HQ-NNNN`을 본문에 포함한 코멘트**(표식 없음; `✅`/`confirmed` 관례 권장)로 답하거나(§3-2가 감지), lock이 없을 때 STATE를 직접 고친다.
-- 한 iteration에 새 HQ가 생기면 그 task는 `BLOCKED`로 두고, 같은 iteration에서 다른 task를 시작하지는 않는다(1 호출 = 1 task). 다음 iteration이 다른 task를 고른다.
+- 한 iteration에 새 HQ가 생기면 그 task는 `BLOCKED`로 두고, 같은 iteration에서 다른 task를 시작하지는 않는다(1 iteration = 1 task). 그 호출은 연속 실행(§3-7)도 하지 않으며, 다음 호출의 iteration이 다른 task를 고른다.
 
 ## 9. OD 종결 권한 (D6 확정, 2026-10-05)
 
@@ -152,7 +152,7 @@ CLAUDE.md "미결은 발명하지 않는다"를 그대로 두면 OD-4(키 스키
 
 A-A의 교훈대로 첫 task는 **작게**.
 
-## 11. 결정 이력 (D1~D13 — 모두 답변됨, 2026-10-03~06, #5 코멘트·채팅)
+## 11. 결정 이력 (D1~D14 — 모두 답변됨, 2026-10-03~06, #5 코멘트·채팅)
 
 확정값은 각 절 본문에 있다. 본 표는 이력이며, "잠정값/제안" 열에서 제안과 달라진 행은 **→** 뒤에 확정 내용을 적었다(표시 없는 행은 제안 그대로 확정).
 
@@ -171,5 +171,6 @@ A-A의 교훈대로 첫 task는 **작게**.
 | D11 | 비대화 실행 권한(allowlist) 범위·위치 | 프로젝트 `settings.json`; `git fetch/push`, `gh pr/issue`, 테스트 실행 → **확정: `dontAsk`(비대화), `.claude/settings.json` 커밋(2026-10-05), `.claude/**` 쓰기 허용·settings 2종 거부, `--force*`/`rm -rf`/`gh repo delete` 거부** → **2026-10-06 D13으로 개정**: `dontAsk`+allowlist는 CLI 경로에만 적용(Desktop 루틴에는 `dontAsk`가 없음) | §1-5 |
 | D12 | P0.5 신규 게이트(테스트 존재 검사·커버리지)와 P0-4 드라이버 도구 테스트 | **채택**: 존재 검사 + line/function ≥ 80%; 도구 코드 테스트 금지의 명시 예외 2개(STATE 검증기, merge 가드 hook); 테스트 규칙 신설(§5) | PLAN P0.5-2/3/4, P0-4, §5 |
 | D13 | **드라이버 루틴 실행 모드**(HQ-0001, 2026-10-05: auto 모드 분류기가 executor 스폰을 `[Self-Approval]`로 거부; 같은 설정에서 통과·거부가 섞임) | (a) 권한 설정 / (b) 절차 변경(승인된 Draft PR에서 정지, 오너 merge) → **(a) 확정(오너 2026-10-06, 채팅): A-A와 같은 운영 설정 — Bypass permissions + 전용 clone 폴더 + 모델 고정; A-13 자율 merge 유지; 금지 동작은 드라이버 규율로; Desktop 루틴이 주력 진입점, `/loop`·`claude -p`는 보조; HQ-0001 종결은 오너의 #5 답변으로(§3-2)** | §1-5, §1-6 |
+| D14 | **한 호출의 연속 실행**(루틴이 매시 1 iteration만 돌아, 일찍 끝난 호출의 남은 시간이 비는 문제) | 1 호출 = 1 task 유지 / 조건부 추가 iteration → **조건부 추가 확정(오너 2026-10-06, 채팅): 직전 iteration이 `DONE`·새 HQ 없음·마무리 push 성공이고 호출 시작부터의 경과가 임계 미만이면 연속 실행 상한까지 이어서 실행; 임계·연속 실행 상한(호출당 iteration 수)은 운영자 값(현재 루틴 25분·2회); 1 iteration = 1 task는 유지** | §1-3, §3-7 |
 
 답변 경로(새 D-n이 생길 때): 오너가 #5 코멘트 또는 채팅으로 답하면 통합자(사람과 함께 일하는 세션)가 본 문서를 **문서 모드**로 갱신한다 — 본문에 확정값을 쓰고 ⚑를 제거하고 날짜를 남긴다. task 파일의 `hq: [D-n]`은 그때 비운다.
