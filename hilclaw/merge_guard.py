@@ -58,7 +58,7 @@ def merge_invocations(command):
 
 
 def _simple_commands(command):
-    text = command.replace("\r\n", "\n").replace("\\\n", "")
+    text = command.replace("\r\n", "\n").replace("\\\n", "").replace("`\n", " ")
     commands, word, quote, redirected, i = [[]], None, None, False, 0
 
     def end_word():
@@ -92,7 +92,9 @@ def _simple_commands(command):
         elif c in " \t\r":
             end_word()
         elif c in "<>" or (c == "&" and text[i : i + 1] == ">"):
-            if word is not None and word.isdigit():
+            if c != "&" and word and text[: i - 1].split()[-1].isdigit():
+                if len(word) > 1:
+                    raise ValueError(f"ambiguous redirection after {word}")
                 word = None
             end_word()
             while text[i : i + 1] in ("<", ">", "&", "|"):

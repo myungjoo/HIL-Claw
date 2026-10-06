@@ -137,6 +137,12 @@ MERGES = [
     ("GH.EXE pr merge 17", [["17"]]),
     ("# don't merge before the review\ngh pr merge 17", [["17"]]),
     ("echo start # gh pr merge 1\ngh pr merge 2", [["2"]]),
+    ('gh pr merge "17">merge.log', [["17"]]),
+    ("gh pr merge '17'>merge.log --squash", [["17"]]),
+    ("gh pr merge 17&>merge.log", [["17"]]),
+    ("gh pr `\n  merge 17 `\n  --squash", [["17"]]),
+    ("gh pr merge `\r\n17", [["17"]]),
+    ("git log 17>log.txt; git status", []),
 ]
 
 
@@ -157,6 +163,8 @@ def test_merge_invocations_returns_the_checks_arguments(command, expected):
         ("gh pr merge 17 --body 'unterminated", "cannot parse"),
         ("gh pr merge -- --web", "unsupported gh pr merge selector '--web'"),
         ("gh pr merge - 17", "unsupported gh pr merge selector '-'"),
+        ("gh pr merge 17>merge.log", "ambiguous redirection after 17"),
+        ("git log 17>log.txt; gh pr merge 5", "ambiguous redirection after 17"),
     ],
 )
 def test_merge_invocations_rejects_what_it_cannot_resolve(command, cause):
