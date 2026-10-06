@@ -51,7 +51,6 @@ from typing import NamedTuple
 from hilclaw import keys, layout
 
 SCHEMA_VERSION = 1
-
 _CHUNK = 65536
 _MAX = keys.MAX_INTEGER
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
@@ -91,7 +90,7 @@ class Log(NamedTuple):
 
 
 class InvalidEventError(ValueError):
-    """An event or an argument breaks ADR-0006 decision 3; the message names the member."""
+    """An event or an argument breaks ADR-0006 decision 3 or is not strict JSON (``data``)."""
 
 
 class CorruptEventsError(Exception):
@@ -214,21 +213,22 @@ def remove_torn_tail(data_root, run_id):
     This is the removal :func:`append` performs, for the step that commits the
     data repository (decision 6): exactly the bytes after the last line feed,
     the whole content when there is none; no earlier line is read. Returns 0,
-    and writes nothing, when the file is missing, empty or ends with a line
-    feed. Raises :class:`CorruptEventsError` for a path that is not a regular file.
+    and writes nothing, when the file is missing, empty or ends with a line feed
+    (an existing file is still opened for writing). Raises
+    :class:`CorruptEventsError` for a path that is not a regular file.
     """
     path = layout.run_file(data_root, run_id, "events.ndjson")
     if _lstat(_root(data_root), path) is None:
         return 0
     with open(path, "rb+") as f:
-        removed = _drop_tail(f)
-        if removed:
-            os.fsync(f.fileno())
-    return removed
+        return _drop_tail(f)
 
 
 def _fail(place, rule, value):
-    got = f"{type(value).__name__} {reprlib.repr(value)}"
+    try:
+        got = f"{type(value).__name__} {reprlib.repr(value)}"
+    except ValueError:
+        got = f"{type(value).__name__} too long to show"
     raise InvalidEventError(f"{place[:200]}: must be {rule}, got {got}")
 
 
@@ -244,7 +244,7 @@ def _plain(place, value):
     if kind is dict:
         for name in value:
             if type(name) is not str:
-                _fail(f"{place}: member name", "a str", name)
+                _fail(f"{place[:180]}: member name", "a str", name)
         return {name: _plain(f"{place}.{name}", item) for name, item in value.items()}
     if kind is list:
         return [_plain(f"{place}[{index}]", item) for index, item in enumerate(value)]
@@ -294,5 +294,6 @@ def _drop_tail(f):
     keep = start + found + 1
     if keep < end:
         f.truncate(keep)
+        os.fsync(f.fileno())
     f.seek(keep)
     return end - keep

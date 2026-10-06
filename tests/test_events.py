@@ -606,6 +606,12 @@ INVALID_EVENTS = {
         ev() | {1: 1},
         "event: must be without the unknown member, got int 1",
     ),
+    "round an integer too long": (ev(round=10**5000), "round: must be an int"),
+    "kind holding an integer too long": (ev(kind=[10**5000]), "kind: must be a str"),
+    "member name an integer too long": (
+        ev() | {10**5000: 1},
+        "event: must be without the unknown member, got ",
+    ),
     "candidate without round": (
         ev(candidate=1),
         "candidate: is given only together with round",
@@ -686,6 +692,16 @@ def test_an_error_message_shows_a_bounded_value():
     assert len(str(excinfo.value)) < 200
 
 
+def test_a_value_that_cannot_be_shown(monkeypatch):
+    with monkeypatch.context() as patch:
+        patch.setattr(events.reprlib, "repr", failing(ValueError("synthetic")))
+        with pytest.raises(InvalidEventError) as excinfo:
+            validate(ev(round="1"))
+
+    rule = f"round: must be an int from 0 to {keys.MAX_INTEGER}"
+    assert str(excinfo.value) == f"{rule}, got str too long to show"
+
+
 # --- negative: append ---
 
 LOOP = {}
@@ -708,6 +724,7 @@ NOT_JSON = {
     "contains itself": (LOOP, "data: is not strict JSON: RecursionError"),
     "nested too deeply": ({"example_member": DEEP}, "data: is not strict JSON: Recur"),
     "integer too long": ({"example_member": 10**5000}, "data: is not strict JSON: Val"),
+    "integer member name too long": ({10**5000: 1}, "data: member name: must be a "),
     "below a long member name": ({"y" * 100_000: {1}}, "data.yyyyyyyy"),
     "a long member name below a long one": (
         {"y" * 100_000: {"z" * 100_000: 1, 2: 1}},
@@ -732,6 +749,7 @@ for _member, _values in (
                 ALL | {_member: _value},
                 f"{_member}: must be ",
             )
+INVALID_APPENDS["round an integer too long"] = ({"round": 10**5000}, "round: must be ")
 INVALID_APPENDS["candidate without round"] = (
     {"candidate": 1},
     "candidate: is given only together with round",
@@ -756,6 +774,19 @@ def test_append_rejects_an_invalid_argument(root, tmp_path, case, existing):
 
     assert str(excinfo.value).startswith(message)
     assert len(str(excinfo.value)) < 400
+    assert snapshot(tmp_path) == before
+
+
+def test_a_long_place_keeps_what_the_message_is_about(root, tmp_path):
+    before = snapshot(tmp_path)
+
+    with pytest.raises(InvalidEventError) as excinfo:
+        append(root, RUN, KIND, {"y" * 100_000: {"z": 1, 2: 1}})
+
+    message = str(excinfo.value)
+    assert message.startswith("data.yyyy")
+    assert message.endswith("yyyy: member name: must be a str, got int 2")
+    assert len(message) < 300
     assert snapshot(tmp_path) == before
 
 
