@@ -24,19 +24,27 @@
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6009266810",
       "resolvedAt": "2026-10-06T07:39:42Z",
       "decision": "(c) — owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6011684226: fix hilclaw/driver_state.py:26 and pin the dev tools exactly (ruff==0.16.10, pytest==9.1.1) in pyproject.toml as a small code task (T-0009) that lands before T-0003 resumes; T-0003 keeps to the workflow file; local tools upgraded to the same versions; pin bumps are deliberate tasks from now on. T-0003 set to TODO with dependsOn T-0009; nextTask = T-0009 (owner edit, no lock)."
+    },
+    {
+      "id": "HQ-0003",
+      "taskId": "T-0014",
+      "reason": "new-external-dependency",
+      "question": "PLAN P0.5-3 (coverage gate, D12: `hilclaw/` line >= 80% and function >= 80%) needs three choices D12 leaves open. (1) Tool: (a) add `coverage` (exact pin) to the `dev` dependency group, a new external dependency (A-13); or (b) a stdlib-only tracer (`sys.settrace` around pytest), a 100-150 line gate script that test rule 5 leaves untested? (2) Is \"function coverage\" = `def`s entered at least once / all `def`s in `hilclaw/` (methods and nested functions counted; lambdas, comprehensions and class bodies not)? (3) Are the thresholds on the package total, and may a CI check script live outside `hilclaw/` (a new top-level directory), or must it stay inline in the workflow as in T-0011?",
+      "askedAt": "2026-10-06T11:23:05Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 15,
+    "iterations": 16,
     "tasksDone": 13,
-    "tasksBlocked": 2,
+    "tasksBlocked": 3,
     "reviewRoundsTotal": 25
   },
   "lastIteration": {
-    "at": "2026-10-06T10:55:34Z",
-    "owner": "AKIHA:9221e240-2",
-    "taskId": "T-0013",
-    "outcome": "DONE"
+    "at": "2026-10-06T11:23:05Z",
+    "owner": "AKIHA:29734de0-1",
+    "taskId": "T-0014",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
