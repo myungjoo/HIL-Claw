@@ -280,6 +280,18 @@ def test_read_accepts_another_valid_form(root, tmp_path):
     assert snapshot(tmp_path) == before
 
 
+def test_a_number_beyond_the_float_range_is_read_as_an_infinity(root, tmp_path):
+    place(root, line(data={"example_member": 0}).replace(b"0}", b"1e999}"))
+
+    (event,) = read(root, RUN).events
+
+    assert event["data"] == {"example_member": float("inf")}
+    before = snapshot(tmp_path)
+    with pytest.raises(InvalidEventError, match="data.example_member: must be "):
+        append(root, RUN, KIND, event["data"])
+    assert snapshot(tmp_path) == before
+
+
 def test_the_file_is_split_at_the_line_feed_only(root):
     data = {"example_member": "a\rb\x0bc\x0cd\x1ce\x1df\x1eg\x85h\u2028i\u2029j"}
     raw = json.dumps(ev(data=data), ensure_ascii=False).encode()
@@ -696,6 +708,11 @@ NOT_JSON = {
     "contains itself": (LOOP, "data: is not strict JSON: RecursionError"),
     "nested too deeply": ({"example_member": DEEP}, "data: is not strict JSON: Recur"),
     "integer too long": ({"example_member": 10**5000}, "data: is not strict JSON: Val"),
+    "below a long member name": ({"y" * 100_000: {1}}, "data.yyyyyyyy"),
+    "a long member name below a long one": (
+        {"y" * 100_000: {"z" * 100_000: 1, 2: 1}},
+        "data.yyyyyyyy",
+    ),
 }
 INVALID_APPENDS = {
     case: ({"data": data}, message) for case, (data, message) in NOT_JSON.items()
@@ -878,6 +895,9 @@ DAMAGED = {
     "an integer too long": line(data={"example_member": 0})
     .strip(b"\n")
     .replace(b"0}", b"1" * 5000 + b"}"),
+    "an integer too long in a line of another version": (
+        b'{"schema_version": 2, "data": ' + b"1" * 5000 + b"}"
+    ),
     "no schema_version": json.dumps(without("schema_version")).encode(),
     "schema_version a string": line(schema_version="1")[:-1],
     "schema_version a float": line()[:-1].replace(b'_version": 1', b'_version": 1.0'),

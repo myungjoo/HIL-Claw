@@ -23,10 +23,11 @@ Conventions of this module, which ADR-0006 does not fix:
   through and nothing is removed: the earlier complete lines are as they were,
   and the new line is absent, a torn tail, or complete when the failure came
   after its line feed was written.
-- A path that is not a regular file (a symbolic link is not followed) raises
-  :class:`CorruptEventsError`, as a damaged complete line does in :func:`read`,
-  which also reports a line this interpreter cannot parse (nested too deeply,
-  an integer too long) as damaged. Nothing is written or repaired.
+- A path that is not a regular file (a symbolic link in its place is not
+  followed) raises :class:`CorruptEventsError`, as a damaged line does in
+  :func:`read`; nothing is repaired. A line this interpreter cannot parse
+  (nested too deeply, an integer too long) is reported as damaged, whatever
+  its version; a number beyond the float range is read as an infinity.
 - A complete line of another version makes :func:`read` raise
   :class:`UnsupportedVersionError`: it is neither skipped nor interpreted.
   Whether one file may hold lines of two versions is OD-11, not decided here.
@@ -36,6 +37,7 @@ reorders a complete line, reads no configuration, runs no ``git``, commits
 nothing and gives no locking and no atomicity (OD-17, decision 10).
 """
 
+import functools
 import json
 import math
 import os
@@ -55,6 +57,7 @@ _MAX = keys.MAX_INTEGER
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _TIME = re.compile("([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z")
 _SCALARS = (str, int, bool, type(None))
+_utc_now = functools.partial(datetime.now, UTC)
 
 
 def _is_time(value):
@@ -226,7 +229,7 @@ def remove_torn_tail(data_root, run_id):
 
 def _fail(place, rule, value):
     got = f"{type(value).__name__} {reprlib.repr(value)}"
-    raise InvalidEventError(f"{place}: must be {rule}, got {got}")
+    raise InvalidEventError(f"{place[:200]}: must be {rule}, got {got}")
 
 
 def _member(name, value):
@@ -248,10 +251,6 @@ def _plain(place, value):
     if kind not in _SCALARS and not (kind is float and math.isfinite(value)):
         _fail(place, "a dict, list, str, int, bool, None or finite float", value)
     return value
-
-
-def _utc_now():
-    return datetime.now(UTC)
 
 
 def _root(data_root):
