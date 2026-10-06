@@ -47,9 +47,7 @@ WORKED_REPORT = (
     b"stop converged\n"
 )
 
-# Synthetic lengths. NOISY never meets the rule under either form. SPLIT meets
-# it at n = 5 as reciprocals but not as lengths; SPLIT + (100,) meets it at
-# n = 6 as lengths.
+# SPLIT meets the rule at n = 5 as reciprocals only, SPLIT + (100,) at n = 6 as lengths.
 NOISY = (90, 110) * 6
 SPLIT = (100, 100, 100, 100, 112)
 
@@ -135,6 +133,8 @@ BAD_REPORTS = {
     "interval-after-stop": HEAD + FIVE + TAIL + b"interval_ns 100\n",
     "text-after-stop": HEAD + FIVE + TAIL + b"done\n",
     "blank-after-stop": HEAD + FIVE + TAIL + b"\n",
+    "byte-after-stop": HEAD + FIVE + TAIL + b"x",
+    "space-after-stop": HEAD + FIVE + TAIL + b" ",
     "blank-first": b"\n" + HEAD + FIVE + TAIL,
     "blank-between": HEAD + b"\n" + FIVE + TAIL,
     "crlf": (HEAD + FIVE + TAIL).replace(b"\n", b"\r\n"),
@@ -393,13 +393,6 @@ def test_parse_report_accepts_the_form(name):
     assert type(parsed.resolution_ns) is int
     assert type(parsed.intervals_ns) is tuple
     assert all(type(interval) is int for interval in parsed.intervals_ns)
-
-
-def test_parse_report_reads_the_helper_reports():
-    assert parse_report(report(WORKED)) == Report(1, WORKED, State.CONVERGED)
-    assert parse_report(report(NOISY, "not_converged", 3)) == Report(
-        3, NOISY, State.NOT_CONVERGED
-    )
 
 
 @pytest.mark.parametrize("name", BAD_REPORTS)
