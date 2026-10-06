@@ -145,7 +145,7 @@ def test_absent_key_supplied_by_environment(
 ):
     monkeypatch.chdir(tmp_path)
     conf = write(tmp_path, data_repo(**present))
-    assert load_data_repo(conf, {variable: value}) == (URL, tmp_path / "d")
+    assert load_data_repo(conf, {variable: value}) == (URL, Path(os.getcwd()) / "d")
 
 
 def test_absent_section_supplied_by_environment(tmp_path):
@@ -210,6 +210,14 @@ def test_directory_as_config_path(tmp_path):
     assert isinstance(caught.value.__cause__, OSError)
 
 
+def test_config_path_with_a_nul_character(tmp_path):
+    path = tmp_path / "a\0b.json"
+    with pytest.raises(ConfigError) as caught:
+        load_data_repo(path, {ENV_URL: URL, ENV_LOCAL_PATH: "d"})
+    assert "cannot read" in str(caught.value)
+    assert isinstance(caught.value.__cause__, ValueError)
+
+
 @pytest.mark.parametrize(
     "raw",
     [
@@ -217,17 +225,34 @@ def test_directory_as_config_path(tmp_path):
         b"{",
         b'{"data_repo": {"url": "u", "local_path": "d",}}',
         b"not json",
-        b'{"data_repo": {"url": "\xff", "local_path": "d"}}',
-        b"\xff\xfe{\x00}\x00",
+        b'\xef\xbb\xbf{"data_repo": {"url": "u", "local_path": "d"}}',
     ],
 )
-def test_not_utf8_json(tmp_path, raw):
+def test_not_json(tmp_path, raw):
     path = tmp_path / "hilclaw.config.json"
     path.write_bytes(raw)
     with pytest.raises(ConfigError) as caught:
         load_data_repo(path, {ENV_URL: URL, ENV_LOCAL_PATH: "d"})
     assert str(path) in str(caught.value)
-    assert isinstance(caught.value.__cause__, ValueError)
+    assert "not valid JSON" in str(caught.value)
+    assert isinstance(caught.value.__cause__, json.JSONDecodeError)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"data_repo": {"url": "\xff", "local_path": "d"}}',
+        b"\xff\xfe{\x00}\x00",
+    ],
+)
+def test_not_utf8(tmp_path, raw):
+    path = tmp_path / "hilclaw.config.json"
+    path.write_bytes(raw)
+    with pytest.raises(ConfigError) as caught:
+        load_data_repo(path, {ENV_URL: URL, ENV_LOCAL_PATH: "d"})
+    assert str(path) in str(caught.value)
+    assert "not valid UTF-8" in str(caught.value)
+    assert isinstance(caught.value.__cause__, UnicodeDecodeError)
 
 
 @pytest.mark.parametrize("document", NOT_AN_OBJECT)

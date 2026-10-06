@@ -46,7 +46,7 @@ def load_data_repo(config_path=None, environ=None):
     config file, one from the environment from the current working directory.
 
     Raises :class:`ConfigError`, naming the file and the key, when the file is
-    missing, unreadable, not UTF-8 JSON or not an object, when ``data_repo`` is
+    missing, unreadable, not UTF-8, not JSON or not an object, when ``data_repo`` is
     not an object, when a value in the file is not a non-empty string (even if
     the environment overrides it), or when a key is in neither place.
     """
@@ -54,12 +54,17 @@ def load_data_repo(config_path=None, environ=None):
     if environ is None:
         environ = os.environ
     try:
-        with path.open(encoding="utf-8") as f:
-            document = json.load(f)
-    except OSError as e:
-        raise ConfigError(f"{path}: cannot read: {e.strerror or e}") from e
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as e:
+        raise ConfigError(f"{path}: not valid UTF-8: {e}") from e
+    except (OSError, ValueError) as e:
+        raise ConfigError(
+            f"{path}: cannot read: {getattr(e, 'strerror', None) or e}"
+        ) from e
+    try:
+        document = json.loads(text)
     except ValueError as e:
-        raise ConfigError(f"{path}: not valid UTF-8 JSON: {e}") from e
+        raise ConfigError(f"{path}: not valid JSON: {e}") from e
     if not isinstance(document, dict):
         raise ConfigError(f"{path}: the top level must be an object")
     section = document.get("data_repo", {})
