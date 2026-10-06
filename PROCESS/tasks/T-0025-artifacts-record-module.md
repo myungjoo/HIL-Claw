@@ -2,7 +2,7 @@
 id: T-0025
 title: Add the blob record module (hilclaw/artifacts.py) that validates, reads and writes runs/<run_id>/artifacts.json per ADR-0005, with its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-3, OD-8, FR-10, FR-13, NFR-2, NFR-7, C-7, "#5 A-2"]
 dependsOn: [T-0008, T-0016, T-0021, T-0022, T-0024, T-0002, T-0003, T-0011]
@@ -133,3 +133,47 @@ Process:
 - (if the owner objects to ADR-0005 or to ADR-0001 / 0002 / 0004 within its window) Revisit this module together with the reverting task.
 
 ## Result
+- 2026-10-06 (UTC) — fresh start: the §3-5 landed check found nothing (`git log origin/main --grep='^Task: T-0025'` and `gh pr list --search T-0025 --state all` both empty), no open PR, and no comment on #5 after the ADR-0005 notice (6022937550), so no objection to ADR-0001 / 0002 / 0004 / 0005. **DONE**: PR #29 https://github.com/myungjoo/HIL-Claw/pull/29 (code mode) squash-merged to main as `0768812` ("T-0025: Add the blob record module for artifacts.json (ADR-0005) (#29)", last body line `Task: T-0025`); remote and local branch `claude/T-0025-artifacts-record-module` deleted. Branch commits: `22c768f` (implementation), `9149fb0` (review round 1), `6111426` (review round 2).
+- Change: 2 files, +1135 lines — `hilclaw/artifacts.py` 298, `tests/test_artifacts.py` 837; non-test 298 lines in 1 file (cap 300 / 5; the estimate was 230, the difference is the docstrings). No other file is changed by the PR. Standard library only (`contextlib`, `json`, `os`, `re`, `reprlib`, `stat`, `pathlib`, `typing`) plus `hilclaw.cas`, `hilclaw.layout` and `keys.MAX_INTEGER`. No OD closed, no ADR written or edited, no member added to the record, no schema file, no new dependency, no command line.
+- Executor's view on PLAN P1-6 ("CAS blob 저장(`blobs/sha256/..`, `artifacts.json`, retention class 기록)"): all three named parts now exist — the store (`hilclaw/cas.py`), the record file (`hilclaw/artifacts.py`: validate, read, add) and the recording of the retention class (a required argument of `add_record`, replaceable with `set_retention_class`). Not part of P1-6 as worded and still absent: `blob.push` / `blob.fetch` (P1-1), a combined "store and record" call and any caller (P1-1), a writer of `gc_at` (GC, not MVP). **Driver decision at wrap-up: the P1-6 checkbox is ticked.**
+- This `## Result` text was returned to the driver, which wrote it here; the task branch and the PR never contained the task file.
+- Language: Python, because the package is Python and JSON and file handling are in the standard library.
+- No criterion of this task file disagreed with ADR-0005, and the ADR was not ambiguous on a point the code had to decide outside the provisional rules. No value of a real run or artefact is in the module or the tests; the tests present no list of `type` values as valid.
+- **A-13 reading**: the executor and all three reviewers agree with the planner — the module is the first implementation of the schema ADR-0005 defined and adds, renames and removes no member and no rule; the BLOCKED reason "data-plane schema change" does not apply. No reviewer read any convention below as needing an ADR or the owner. From this commit on, a change of what the module accepts is an `artifacts` schema change under A-13.
+- Public API as landed:
+  - `validate(document) -> None` (raises `InvalidArtifactsError` naming the place, for example `artifacts[2].size`).
+  - `load(data_root, run_id) -> list[dict]` (file order; `[]` for a missing file or an empty array).
+  - `add_record(data_root, run_id, ref, *, type, round, retention_class) -> Added(record, created)` (`ref` is a `cas.BlobRef` or an equal tuple).
+  - `set_retention_class(data_root, run_id, sha256, retention_class) -> dict` (the record after the call).
+  - `SCHEMA_VERSION`, `RETENTION_CLASSES`; `Added` (`NamedTuple`: `record`, `created`); `InvalidArtifactsError(ValueError)`, `CorruptArtifactsError(Exception)`, `ArtifactNotFoundError(LookupError)`, `SizeConflictError(Exception)`.
+- Provisional choices (conventions of this task, not requirements; ADR-0005 fixes the shape, the members, the identity rule, the allowed changes and the order of writing):
+  - Module `hilclaw/artifacts.py`, flat next to the sibling modules.
+  - `add_record` returns the record and whether this call added it, because decision 6 asks the writer to tell its caller that the record existed.
+  - Error types: a caller can tell a broken rule in its own input (`ValueError`) from a stored file that cannot be used, from a missing record or blob (`LookupError`), from the size conflict of decision 6 (its own type). Messages start with the place or the path relative to `data_root`; values are shown through `reprlib.repr`.
+  - Exact types as `json.loads` returns them; `bool` and `float` are rejected for an integer, as in `hilclaw.keys`. The two patterns of ADR-0001 decision 1 and the digest pattern are restated in the module; `keys.py` and `cas.py` are not edited.
+  - Argument checks come before any file access: `run_id`, then the module's own arguments, then `data_root`.
+  - Written whitespace: the layout of the Example of ADR-0005 byte for byte, so an addition is a one-line diff plus the separator. Every write rewrites the whole file: a hand-written file in another valid form is normalised by the next write, with every value kept, a `gc_at` included.
+  - In-place write (`open(..., "wb")`, flush, `fsync`) without a temporary file: no path of `runs/` is a scratch location (ADR-0004 decision 7). A failed write passes its error through; a file the call was creating is removed where possible; a file that existed stays as the failed write left it.
+  - An existing invalid file makes every function that reads it raise `CorruptArtifactsError` and nothing is written; the module repairs nothing. A byte order mark, a repeated member name, `NaN`, JSON nested too deeply, and a directory or a symbolic link in the place of the file are reported the same way. Another `schema_version` is not read (OD-11).
+  - `add_record` creates `runs/<run_id>/` (and `runs/`) when missing (ADR-0004 decision 1).
+  - Blob presence: `add_record` requires `cas.has_blob` before it reads the file, also for a hash that is already recorded.
+  - **Size not compared**: the given size is recorded as it is and the blob is not re-hashed (not required by the ADR; the module was at the line cap). See known limit (b).
+  - `set_retention_class` with the class the record already has writes nothing. It judges no transition (OD-20, OD-29, OD-23) and works on a record that has `gc_at`.
+  - No function writes `gc_at` (no GC tool in the MVP, time form open); a `gc_at` found in a file is checked to be a string and written back unchanged.
+  - A file in the place of `runs/` or `runs/<run_id>`: `load` returns no record, `set_retention_class` reports not-found, `add_record` passes the `OSError` of `mkdir` through.
+- Known limits: (a) a failed rewrite, or a process killed while it writes, can leave the **whole** file partial (truncated on open); it is then reported as corrupt, and only what was committed is recovered from the history of the data repository (ADR-0004 decisions 7 and 10, ADR-0005 decision 10; stated in the module docstring). (b) A caller that passes a wrong size with a stored hash gets that size recorded; `size` cannot be changed afterwards and later adds with the right size raise `SizeConflictError`. A `BlobRef` returned by `cas.put_*` is always right. (c) Unlike `hilclaw/key_records.py`, the empty directories a failed first write created are not removed. (d) A file of `schema_version` 2 is named "corrupt" (OD-11). (e) No concurrency control (OD-17). (f) The first branch commit's body (`22c768f`) still says the size comparison "is cas.verify_blob"; the squash commit carries the corrected PR body.
+- Review: 3 rounds by fresh-context `dev-reviewer` agents; no `SECURITY` finding, no BLOCKED question.
+  - Round 1, **Approve** on `22c768f` (https://github.com/myungjoo/HIL-Claw/pull/29#issuecomment-6023270506). Non-blocking: (Minor) empty directories left by a failed first write -> deferred (line cap); (Minor) a failed rewrite loses every record of the file -> docstring and PR body corrected; (Nit) rewrite failure injected through `os.fsync` only -> `test_a_write_that_fails_midway` added; (Nit) `CorruptArtifactsError` missing from two docstrings -> added. Response: https://github.com/myungjoo/HIL-Claw/pull/29#issuecomment-6023322764
+  - Round 2, **Request changes** on `9149fb0` (https://github.com/myungjoo/HIL-Claw/pull/29#issuecomment-6023424812): the docstring and the PR body said the size comparison is left to `cas.verify_blob`, which takes no size -> both corrected (`6111426`, no code change). Response: https://github.com/myungjoo/HIL-Claw/pull/29#issuecomment-6023451562
+  - Round 3, **Approve** on `6111426` (https://github.com/myungjoo/HIL-Claw/pull/29#issuecomment-6023509259): nothing left to fix before the merge; six non-blocking notes with no change requested. The head did not change after this Approve.
+- Local verification (CPython 3.14.4 on Windows, ruff 0.16.10, pytest 9.1.1; 12 tests skip locally: the 9 that skip on `main` plus the three symbolic-link cases of this task, which run on CI): before the merge (head `6111426`) `2130 passed, 12 skipped`; `ruff check` and `ruff format --check` clean; after the merge on main `0768812` the same.
+- Reachability check: `python -m trace --count --missing` over `tests/test_artifacts.py`: **no missing line** in `hilclaw/artifacts.py`, all 14 functions called; repeated by all three reviewers. Coverage is not measured by CI yet (P0.5-3), so the ≥ 80 % figures of D12 are not numbers from a tool.
+- CI on the PR, four checks each (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `Test presence (hilclaw)`), all success: `22c768f` https://github.com/myungjoo/HIL-Claw/actions/runs/37514353978 ; `6111426` (final head) https://github.com/myungjoo/HIL-Claw/actions/runs/37516224429 .
+- Merge: `DONOTMERGE` removed, PR marked ready, checks confirmed again, `gh pr merge 29 --squash --body-file` with the PR body. No tool call was denied; no force push. `push` run on `main` for `0768812`: https://github.com/myungjoo/HIL-Claw/actions/runs/37516757636 — `completed` / `success`.
+- Follow-ups: unchanged from `## Follow-ups`. Additions:
+  - (a) (reviewers 2 and 3) On the first add, compare `ref.size` with the size of the blob file (one `stat`) and refuse a mismatch, so that a wrong size is never recorded permanently.
+  - (b) (reviewers 1-3) Remove the directories a failed first write created, as `hilclaw/key_records.py` does.
+  - (c) Both (a) and (b) were deferred because the module is at 298 of 300 lines: the next task that touches `hilclaw/artifacts.py` must shorten the docstrings or split the module first.
+  - (d) (with the GC design) A repeated add of a hash whose record has `gc_at` returns `created=False` and keeps `gc_at` — decision 6 applied literally; ADR-0005 decision 7 leaves this path to the GC design.
+  - (e) (with OD-11) Rename or split `CorruptArtifactsError` for a file of another `schema_version`.
+  - (f) (with the rest of OD-8 / OD-17) Whether a partial file left by a failed or killed rewrite needs a recovery rule beyond "restore from history".
