@@ -2,7 +2,7 @@
 id: T-0003
 title: Add the CI skeleton with the Python gate (pytest + ruff)
 phase: P0
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: ["#9", "#5 D10", "CLAUDE.md language policy"]
 dependsOn: [T-0001, T-0002, T-0009]
@@ -102,3 +102,17 @@ Process:
 - No tool-layer language choice was needed (workflow YAML only). No test added (test rule 5).
 - Follow-ups: the local dev tools (ruff 0.15.14, pytest 9.0.3) are older than what CI resolves and should be upgraded so that "local green" predicts "CI green". On resume: continue PR #16 (resume rule), then the green-run log checks, the one-time negative check, the reviewer cycle, the merge and the first `main` push run check — none of these has been done.
 - 2026-10-06T07:39Z — HQ-0002 answered by the owner, option (c) (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6011684226): the `driver_state.py:26` fix and exact dev-tool pins (`ruff==0.16.10`, `pytest==9.1.1`) land first as **T-0009** (a small code task), this task stays limited to the workflow file, local tools are upgraded to the same versions, and pin bumps are deliberate tasks from now on. Status set back to `TODO` with `dependsOn: [.., T-0009]` by the owner (no lock held); `nextTask` is T-0009. **On resume — executor precondition (DRIVER §3-3 does not consult `dependsOn`)**: before touching PR #16, confirm that T-0009 is on `main` (`git log origin/main --grep='^Task: T-0009'` is non-empty and `origin/main:pyproject.toml` pins `ruff==0.16.10`); if not, return BLOCKED (reason `dependency-unmet`, reference HQ-0002 and T-0009) without pushing anything. **Then**: bring `claude/T-0003-ci-skeleton` up to date with `git merge origin/main` (never force), push, then continue with the green-run log checks, the one-time negative check, the reviewer cycle, the merge and the first `main` push run check.
+- 2026-10-06T08:30Z — resumed after T-0009 landed (`22115c6`; `origin/main:pyproject.toml` pins `ruff==0.16.10`, `pytest==9.1.1`). **DONE**: PR #16 squash-merged as `17d3dee` (`T-0003: Add the CI skeleton with the Python gate (pytest + ruff) (#16)`, last body line `Task: T-0003`); remote and local branch `claude/T-0003-ci-skeleton` deleted. One file on `main`: `.github/workflows/ci.yml` (41 lines).
+- Resume rule: nothing with `Task: T-0003` was on `main`, PR #16 was open (Draft, `DONOTMERGE`), so it was continued. Branch commits (all squashed): `bab9305` workflow, `99faf14` plain `git merge origin/main` (no force), `3f83d48` temporary failing test, `a29474e` byte-exact restore, `72a3359` review fix.
+- Local verification (ruff 0.16.10, pytest 9.1.1, Python 3.14), before the push and again before the merge: `python -m pytest` -> `468 passed`; `python -m ruff check .` -> `All checks passed!`; `python -m ruff format --check .` -> `34 files already formatted`; `git ls-files --eol .github/workflows/ci.yml` -> `i/lf w/lf attr/text=auto eol=lf`.
+- CI runs on the PR (`pull_request`):
+  - `99faf14`: https://github.com/myungjoo/HIL-Claw/actions/runs/37435775882 — success, both entries. Job logs: `Successfully set up CPython (3.11.16)` / `(3.14.7)`; `Successfully installed ... pytest-9.1.1 ruff-0.16.10` from `--group dev`; `platform linux -- Python 3.11.16` / `3.14.7`; `collected 468 items`, `468 passed` on both. The 3.11 entry really ran on 3.11.
+  - `3f83d48` (negative check, a temporary `assert False` test appended to `tests/test_version.py`): https://github.com/myungjoo/HIL-Claw/actions/runs/37435861121 — failure, both entries, at the `pytest` step (`1 failed, 468 passed`); `ruff check` and `ruff format --check` = success. Deliberate; not counted toward the 3-consecutive-failures limit.
+  - `a29474e` (restore, blob `536fab0` identical to `main`; `git diff origin/main -- tests/` empty): https://github.com/myungjoo/HIL-Claw/actions/runs/37435943799 — success, both entries.
+  - `72a3359` (final head): https://github.com/myungjoo/HIL-Claw/actions/runs/37436153237 — success, both entries.
+- Review rounds (this resume): 2, both by a context-isolated `dev-reviewer` agent, both `Approve`.
+  - Round 1 (https://github.com/myungjoo/HIL-Claw/pull/16#issuecomment-6012383096): no blocking finding; Info 1 — `actions/checkout` leaves the job token in the local git config; Info 2 — the "CI not built" notes in CLAUDE.md and the two skills (already in Follow-ups, document mode, not this PR). Info 1 was resolved in the PR (`72a3359`: `persist-credentials: false` on the checkout step, a provisional choice: no later step needs git credentials), hence round 2.
+  - Round 2 (https://github.com/myungjoo/HIL-Claw/pull/16#issuecomment-6012411877): Approve on `72a3359`, nothing open except Info 2.
+- First `push` run on `main` after the merge (`17d3dee`): https://github.com/myungjoo/HIL-Claw/actions/runs/37436369253 — `completed` / `success`.
+- Provisional choices: as listed above (unchanged), plus `persist-credentials: false`. No tool-layer language choice (workflow YAML only). No test added (test rule 5). No BLOCKED reason arose; no force push was used.
+- Follow-ups (unchanged from `## Follow-ups`; the first is now due): update the "CI 미구축" notes in CLAUDE.md, dev-item-address step 13 and dev-code-review line 15 in document mode now that the workflow is on `main`. From this merge on, every driver state commit pushed to `main` triggers a 2-entry run (about 15-20 s each).
