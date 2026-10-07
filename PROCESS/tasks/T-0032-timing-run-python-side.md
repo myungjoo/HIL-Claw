@@ -2,7 +2,7 @@
 id: T-0032
 title: Add the Python side of a timing run (hilclaw/harness/timing.py) - start a timing executable, read its report, replay the stopping rule per ADR-0009 - and its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-13, NFR-3, FR-9, FR-10, C-7, "#5 A-7", "#5 A-12"]
 dependsOn: [T-0003, T-0011, T-0019, T-0029, T-0031]
@@ -109,3 +109,65 @@ Process:
 - (planner) Still owner-only and not yet raised: the reference oracle of `cpu_standin` (#5 A-7 "still open"; NumPy float64 would also be a new external dependency) and the tolerance vocabulary (#5 B-7). Raise them as HQ-0004 with a BLOCKED P1-3 task once the timing slices are done, or earlier to give the owner lead time.
 
 ## Result
+- 2026-10-07 (UTC) — fresh start: the §3-5 landed check found nothing (`git log origin/main --grep='^Task: T-0032'` and `gh pr list --search T-0032 --state all` both empty), no open PR, and no comment on #5 after the anchor comment (6026950959), so no objection to ADR-0007 / 0008 / 0009. **DONE**: PR #32 https://github.com/myungjoo/HIL-Claw/pull/32 (code mode) squash-merged to main as `c65cc1d` ("T-0032: Add the Python side of a timing run of ADR-0009 (#32)", last body line `Task: T-0032`); remote and local branch `claude/T-0032-timing-run-python-side` deleted (separate commands, after `gh pr view` reported `MERGED`). Branch commits: `a99490c` (implementation), `976f6ed`, `0d1bd66`, `f9773c4`, `2a1b9e6`, `b64db8f`, `22ae840` (review rounds 1-6).
+- Change: 3 files — `hilclaw/harness/timing.py` (new, 262 lines), `hilclaw/harness/__init__.py` (+1 docstring line), `tests/harness/test_timing.py` (new, 652 lines). Non-test 263 lines in 2 files (estimate 230; cap 300 / 5): the excess is docstring text (the command line, the conventions, the errors). `pyproject.toml` and `.github/` unchanged; standard library only (`enum`, `os`, `re`, `reprlib`, `typing`); the module imports `hilclaw.local_run` and `hilclaw.harness.measurement` and no other `hilclaw` module. No OD closed, no ADR written or edited, no rule and no value added to ADR-0007 / ADR-0009, no data-plane field or file named, no `main`.
+- **This task ticks no PLAN checkbox** (P1-2 "타이밍 수집" and the timing half of P1-3 stay open until slice 2).
+- The task branch and the PR never contained this task file; this `## Result` was written on `main` after the merge and left uncommitted for the driver.
+- Language: Python, because the package is Python and `local_run` / `stopping_state` are Python.
+- **ADR-0009 against the criteria**: no disagreement found, and the record was not ambiguous on any point the code had to decide.
+- **A-13 reading and the planner's judgements**: the executor and all seven reviewers agree with the split into two slices, with "no new dependency, no data-plane schema change", and with every provisional convention below. No reviewer read any of them as a design choice needing an ADR or the owner, and none found anything decided that ADR-0009 lists under Boundaries. (Remark of the reviewers: `Broken` names the first failed condition, one step beyond "that it is broken"; it is only returned, never stored, and its values are `enum.auto()`.)
+- **Command line of the driver program as landed, verbatim from the module docstring (slice 2 writes the C side against this):**
+
+  ```
+  <executable> <m> <k> <n> <n_min> <n_max> <cv_max> <sample_form> <seed>
+  ```
+
+  Exactly eight arguments, in this order.
+  - `m`, `k`, `n`, `n_min`, `n_max`, `seed`: decimal digits only, `0` or digits that do not start with `0`, no sign, no space. `m`, `k` and `n` are at least 1, `n_min` is `measurement.N_MIN` (`5`), `n_max` is at least `n_min`, and `seed` is from 0 to 2**64 - 1. The others have no upper bound beyond what the interpreter writes in decimal digits: the driver program refuses what it cannot hold or allocate.
+  - `cv_max`: `repr(measurement.CV_MAX)`, which is `0.05`; a decimal number that `strtod` reads.
+  - `sample_form`: the word `interval` or `reciprocal`.
+- **Report as the parser accepts it** (decision 8; the oracle of slice 2): every line ASCII and ended by one LF, nothing before, between or after — one `resolution_ns <i>` line, zero or more `interval_ns <i>` lines, one last line `stop converged` or `stop not_converged`; exactly one space after the keyword; `<i>` is `0` or digits that do not start with `0`.
+- Public API as landed:
+  - `driver_arguments(*, m, k, n, n_max, sample_form, seed) -> tuple[str, ...]` (the eight strings above).
+  - `parse_report(stdout: bytes) -> Report | None`; `Report(resolution_ns: int, intervals_ns: tuple[int, ...], state: State)`; `None` for anything not of the form; raises on no `bytes` value.
+  - `run_timing(executable, *, m, k, n, sample_form, seed, timeout_s, n_max=N_MAX_DEFAULT, cwd=None, env=None) -> TimingResult`.
+  - `TimingResult(broken: Broken | None, state: State | None, intervals_ns: tuple[int, ...] | None, resolution_ns: int | None, run: RunResult)`: completed when `broken is None`; for a broken run the three middle fields are `None`.
+  - `Broken` (`enum.Enum`, `enum.auto()`): `TIMEOUT`, `EXIT_STATUS`, `REPORT_FORM`, `ZERO_INTERVAL`, `REPLAY`. `TimingArgumentError(ValueError)`. `SAMPLE_FORMS = ("interval", "reciprocal")`, `SEED_LIMIT = 2**64`.
+- Provisional choices (conventions of this task, not requirements):
+  - Module name `timing.py`; one pure function per interface (arguments, report), so that each is tested without a process.
+  - Eight positional arguments in a fixed order: the simplest thing a C `main` reads, with nothing optional to default.
+  - `executable` is a path (`str` / `os.PathLike`) or an iterable used as a command prefix, as `compiler` in `clang_build.build`: it is what lets a stand-in run as `(sys.executable, script)` on Windows and POSIX alike. A prefix decides nothing about pinning or isolation. **With a prefix, the process `local_run.run` starts and kills on a timeout is the first element of the prefix**, so the "one process" of decision 1 and the bound of the time limit hold as written only when `executable` is the timing executable itself (the known limit of `local_run` about children) — reviewer 3.
+  - Seed range `0 <= seed < 2**64`, so that the C side can hold it in `uint64_t`; it fixes the width of the generator seed of slice 2 and stays provisional (seed policy: OD-13 sub-question ⑦).
+  - Caller errors: one type, `TimingArgumentError(ValueError)`, for the parameters of the driver program, raised before anything is started; exact types (`bool`, an `int` subclass and a `str` subclass are refused). An empty `executable` sequence is a plain `ValueError` and one that is neither a path nor iterable a `TypeError` (as an empty command in `local_run`); what `local_run.run` raises is passed on.
+  - A completed run has `broken is None`; no separate flag.
+- Cases the record leaves unsaid:
+  - `resolution_ns 0` is of the form: decision 4 decides no threshold on the resolution.
+  - Integers of the report have one spelling (`0`, or digits not starting with `0`: what `printf` writes); a leading zero is a line of another form.
+  - A digit string the interpreter refuses to convert is a line of another form; an integer that converts but leaves the float range is a replay disagreement. **This boundary depends on the int/str digit limit of the interpreter** (4300 by default on CPython 3.11+, `PYTHONINTMAXSTRDIGITS` / `sys.set_int_max_str_digits`): either way the run is broken, only the named condition differs, and likewise `m = 10**5000` is refused as a caller error only under a limit. The test cases `5000-digits` and `10**5000` assume the default limit (reviewer 1).
+  - No upper bound on `m`, `k`, `n`, `n_max` beyond that: the driver program refuses what it cannot hold or allocate, and that is a broken run.
+  - A signal is not told apart from a non-zero exit status (`EXIT_STATUS`); `run.returncode` shows it.
+  - Order of the conditions when several fail: timeout, exit status, form, zero interval, replay.
+  - An `interval_ns 0` line is of the form for `parse_report`; `run_timing` reports `ZERO_INTERVAL`, so that the reason is not lost in "form".
+  - More intervals than `n_max` is a replay disagreement (the prefix of length `n_max` is already not `CONTINUE`); zero intervals parse and are a replay disagreement.
+  - Under `interval`, intervals with `len * max` beyond the largest float are a replay disagreement while the same report replays under `reciprocal`: a boundary inherited from the conventions of `measurement.py`, far from any real interval (reviewer 3).
+  - The replay is quadratic in the number of intervals (one `stopping_state` call per prefix, the literal reading of decision 7, bounded by `n_max`); about 1.3 s at `n_max` = 4000 by the measurement of reviewer 1, nothing at the default.
+- Review: 7 rounds by fresh-context `dev-reviewer` agents spawned with `model: opus`; every round **Approve**; no `SECURITY` finding, no BLOCKED question. The Low / Nit findings of each round were addressed and re-reviewed (skill steps 11-12); the head did not change after the round-7 Approve.
+  - Round 1 on `a99490c` (https://github.com/myungjoo/HIL-Claw/pull/32#issuecomment-6027394518): bytes after the last LF not pinned by a test; a three-line comment; a test that mostly checked the helper → `976f6ed`.
+  - Round 2 on `976f6ed` (https://github.com/myungjoo/HIL-Claw/pull/32#issuecomment-6027531702): PR body numbers; the `run_timing` docstring over-claimed "before anything is started"; exact type of `sample_form` not pinned → `0d1bd66`.
+  - Round 3 on `0d1bd66` (https://github.com/myungjoo/HIL-Claw/pull/32#issuecomment-6027656434): `TypeError` for a non-iterable `executable` missing in the docstring → `f9773c4`.
+  - Round 4 on `f9773c4` (https://github.com/myungjoo/HIL-Claw/pull/32#issuecomment-6027768919): death by a signal not pinned; "no leading zero" against a seed of 0; "no upper bound" wording → `2a1b9e6`.
+  - Round 5 on `2a1b9e6` (https://github.com/myungjoo/HIL-Claw/pull/32#issuecomment-6027873823): "never read" → "captured and never parsed" → `b64db8f`.
+  - Round 6 on `b64db8f` (https://github.com/myungjoo/HIL-Claw/pull/32#issuecomment-6027973286): module docstring on the errors for `executable`; a test keyword shadowing `signal`; a test relying on the working directory of the caller → `22ae840`.
+  - Round 7 on `22ae840` (https://github.com/myungjoo/HIL-Claw/pull/32#issuecomment-6028086803): Approve, informational remarks only, no change asked (`executable` accepts any iterable, as `compiler` does; the `returncode > 0` mutant dies on CI only).
+  - By their own reports, the reviewers compared the parser with an independent regular expression and `run_timing` with an independent model of the rule (200 000 to 400 000 cases per round, no difference, no escaped exception) and ran mutation checks (the survivors are equivalent mutants, plus `returncode > 0` on Windows).
+- Local verification (CPython 3.14.4 on Windows, ruff 0.16.10, pytest 9.1.1): before the first commit `3512 passed, 18 skipped`; before the merge (head `22ae840`) and after the merge on main `c65cc1d` `3519 passed, 19 skipped` (248 passed and 1 skipped in the new file, about 6 s; one timeout test with a 2 s limit); `ruff check` and `ruff format --check` clean before each commit and before the merge. `git ls-files --eol` shows `i/lf` for the three files; `git status --short` after the test runs showed no stray file; `git diff origin/main --stat` listed only the three files of `touchesFiles`.
+- The one skipped test of the new file, `test_death_by_signal_after_a_valid_report_is_broken`, is POSIX-only: it never ran locally; the reviewers report that both CI gates ran it (`3538 passed`, no skip).
+- Reachability check: `python -m trace --count --missing --coverdir <scratch directory outside the repository> --module pytest tests/harness/test_timing.py` (run by the executor on the first head, and again by the reviewers on later heads) reaches every line of `hilclaw/harness/timing.py` **except the two lines of the `except ValueError` around `reprlib.repr` in `_fail`**, which only CPython 3.11 reaches (the `10**5000` cases run them on the 3.11 gate). Coverage is not measured by CI yet (P0.5-3), so the ≥ 80 % figures of D12 are not numbers from a tool.
+- The form-dependent sequence asked for by the criteria (found by a throw-away search, not committed): the intervals `(100, 100, 100, 100, 112)` meet the rule at n = 5 as reciprocals (CV about 0.0490) and not as lengths (CV about 0.0524); with a sixth interval of 100 they meet it at n = 6 as lengths.
+- CI on the PR, four checks (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `Test presence (hilclaw)`): all success on the final head `22ae840`, https://github.com/myungjoo/HIL-Claw/actions/runs/37551338586 (also seen green by the executor on `2a1b9e6`, and by the reviewers on the heads they reviewed).
+- Merge: `DONOTMERGE` removed, PR marked ready, the four checks confirmed again on `22ae840`, `gh pr merge 32 --squash --body-file` with the PR body. No tool call was denied; no force push. `push` run on `main` for `c65cc1d`: https://github.com/myungjoo/HIL-Claw/actions/runs/37552113398 — `completed` / `success`.
+- Follow-ups: unchanged from `## Follow-ups`. Additions for slice 2:
+  - (a) The C side reads the eight arguments above; `seed` may be `0`; `cv_max` arrives as `0.05`. Its report must be byte-exact to the form above (one space, LF only, no leading zero), or the run is `REPORT_FORM`.
+  - (b) Slice 2 should pass the timing executable itself as `executable` (no prefix), so that the time limit bounds the process of the kernel.
+  - (c) The `except ValueError` in `_fail` is reachable on CPython 3.11 only; remove it when 3.11 leaves the CI matrix (same as T-0029 follow-up (a)).
+  - (d) (process note) Seven review rounds were used although every round approved: each fresh reviewer found one or two new Low / Nit items, and the skill sends every addressed item back to review. The cap of 7 was reached exactly; a task of this size is at risk of BLOCKED "more than 7 rounds" by nits alone.
