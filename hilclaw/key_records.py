@@ -35,24 +35,37 @@ Conventions of this module, which the two ADRs do not fix:
   indentation of two spaces, ``\\n`` line ends and one final newline, and holds
   exactly the members of the given record. No reader may depend on this text
   form: the functions here accept any JSON text of a valid record.
-- A file is created exclusively, without a temporary file (no path of ``db/``
-  is a scratch location, ADR-0004 decision 7). When writing fails, the partial
-  file and the directories the call created are removed where possible. A
-  process that is killed while it writes can leave a partial file, which is
-  then reported as :class:`CorruptKeyRecordError` until it is removed by hand.
+- A file comes to be by the steps of ADR-0014 decision 3: the content is
+  written into a new file ``<final name>.<token>.tmp`` in the key directory
+  (``<token>`` is the process id, a hyphen and 16 random hexadecimal
+  characters), flushed, and given the final name by a hard link, a step that
+  fails when the name exists and replaces nothing; the temporary name is then
+  removed. There is no fallback to a replacing rename: where the link is not
+  possible the store fails. A record that took the name in between is treated
+  as one found before the write.
+- When writing fails, the temporary file and the directories the call created
+  are removed where possible. A file of that name form which another write
+  left is never read, listed, removed or given the final name, and makes no
+  key stored. The death of the writing process leaves no record file or the
+  whole one on the POSIX systems of C-7 whose file system gives hard links;
+  nothing is stated for a network file system or for native Windows (ADR-0014
+  decision 6).
 - Only the record file itself must be a regular file; a symbolic link in its
   place is not followed. The directories above it are used as they are.
 
 What this module does not do: it reads no configuration, runs no ``git`` and
 commits nothing; it neither reads nor writes ``best.json``,
-``technique_stats.json`` or any other file; it lists no directory, registers no
+``technique_stats.json`` or any other file of the tree; it lists no directory, registers no
 key on its own and matches nothing but equal canonical forms (the rest of
-OD-4); and it gives no locking and no atomicity (ADR-0004 decision 10).
+OD-4); it takes no lock: of two writers of one key the first record stays and
+the other writes nothing (OD-17, ADR-0014 decision 6); and it gives no
+atomicity between the two record files or with a commit (ADR-0004 decision 10).
 """
 
 import contextlib
 import json
 import os
+import secrets
 import stat
 from collections.abc import Mapping
 from pathlib import Path
@@ -236,27 +249,40 @@ def _store(root, path, derive, key, record):
     if _read(root, path, derive, key) is not None:
         return Stored(key, False)
     text = json.dumps(_plain(record), sort_keys=True, indent=2) + "\n"
+    content = text.encode("utf-8")
     missing = []
     directory = path.parent
     while not directory.is_dir():
         missing.append(directory)
         directory = directory.parent
+    token = f"{os.getpid()}-{secrets.token_hex(8)}"
+    temporary = path.with_name(f"{path.name}.{token}.tmp")
     made = []
+    created = False
+    linked = True
     try:
         for directory in reversed(missing):
             directory.mkdir()
             made.append(directory)
-        with open(path, "xb") as f:
-            made.append(path)
-            f.write(text.encode("utf-8"))
+        with open(temporary, "xb") as f:
+            created = True
+            f.write(content)
             f.flush()
             os.fsync(f.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            if _read(root, path, derive, key) is None:
+                raise
+            linked = False
     except BaseException:
-        for created in reversed(made):
+        if created:
             with contextlib.suppress(OSError):
-                if created == path:
-                    created.unlink()
-                else:
-                    created.rmdir()
+                os.unlink(temporary)
+        for directory in reversed(made):
+            with contextlib.suppress(OSError):
+                directory.rmdir()
         raise
-    return Stored(key, True)
+    with contextlib.suppress(OSError):
+        os.unlink(temporary)
+    return Stored(key, linked)
