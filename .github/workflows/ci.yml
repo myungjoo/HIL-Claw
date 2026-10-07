@@ -54,6 +54,20 @@ jobs:
           shellcheck --version
           git ls-files -z -- '*.sh' | xargs -0 -r shellcheck --shell=sh
 
+  c:
+    name: C gate (clang)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: clang build
+        shell: bash
+        run: |
+          clang --version
+          git ls-files -z -- '*.c' | xargs -0 -r -t -n 1 clang -std=c99 -Wall -Wextra -Wpedantic -Werror -O2 -c -o /dev/null
+
   test-presence:
     name: Test presence (hilclaw)
     runs-on: ubuntu-latest
