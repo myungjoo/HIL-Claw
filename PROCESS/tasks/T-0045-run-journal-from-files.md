@@ -2,7 +2,7 @@
 id: T-0045
 title: Add hilclaw/run_journal.py, the functions over the files of a run that read its STATE.json and give the current spend view and the state of an identity (stored view folded over the tail of the log), and add its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-17, OD-8, FR-13, NFR-1, NFR-2, "#8 M7", "#4 §1"]
 dependsOn: [T-0041, T-0043, T-0044]
@@ -141,3 +141,49 @@ Helpers live in the test file and get no tests of their own (test rule ⑤). Syn
 - (unchanged) The T-0041 question for a revision of ADR-0011; the integrator items after 2026-10-14 (T-0040 and T-0042 Follow-ups); OD-18 sub-questions ① and ③ (T-0039 Follow-ups).
 
 ## Result
+**DONE** — PR [#41](https://github.com/myungjoo/HIL-Claw/pull/41), squash commit `40a1942` on `main` (branch commits `f527c47`, `3bcf1e4`, `9da2b9c`; branch deleted remote and local after the PR state was `MERGED`). This task ticks **no** PLAN checkbox (a slice of P1-8 and a prerequisite of the first journaled tool of P1-1). No new HQ.
+
+**Start checks.** Landed check: no commit with `Task: T-0045` on `origin/main` and no PR for T-0045; no open PR. Issue #5: no comment after the ADR-0012 notice (issuecomment-6034226175), so no objection to ADR-0006, ADR-0011 or ADR-0012.
+
+**Review** (fresh-context `dev-reviewer`, 3 rounds, final Approve; no blocking finding in any round, no security suspicion):
+- Round 1 — Approve, with two notes handled in `3bcf1e4`: the shared helper unpacked `events.Log` by field order (now `_state_and_log` returns the `Log` and the callers use `log.events` and `log.torn_tail`); the docstring of `read_state` now says that a file that disappears between the check and the read is an `OSError`.
+- Round 2 — Approve, with one wording note handled in `9da2b9c`: the docstring of `Current` called the fourth member "the tail" (now the length of the torn tail).
+- Round 3 — Approve, "no nit remains that should be resolved in this PR".
+- The reviewer re-checked the points the task asked for and agreed with all: (a) the behaviour matches ADR-0011 decisions 3, 4 and 6 and ADR-0012 decisions 2 and 6; (b) A-13 "data-plane schema change" does not apply and a library function that is not registered decides nothing of OD-23; (c) every convention under "unsaid" accepted, in particular `MissingStateError` (sub-question ⑩ is not answered) and `InvalidStateError` for a path that is not a regular file; (d) nothing decided that the records list under Boundaries. No point that needs a record or the owner.
+- Observations kept (no change asked): "a symbolic link is not followed" holds for the last path component only, as in `hilclaw.events` (ADR-0004 decision 10: no isolation); a file in the place of `runs/` or of the run directory is reported as a missing `STATE.json`, as `hilclaw.events` treats the log; the "nothing read" test patches `Path.read_bytes` only, and the order is proved by the assertion with a missing data root; the symbolic-link cases are skipped on Windows and run in the Linux CI jobs.
+
+**As landed** (`hilclaw/run_journal.py`, 130 lines, 1 non-test file; imports `os`, `stat`, `pathlib`, `typing` and the public names of `hilclaw.events`, `hilclaw.journal`, `hilclaw.layout`, `hilclaw.run_state`):
+- `read_state(data_root, run_id)` → `run_state.RunState`: the bytes of `layout.run_file(data_root, run_id, "STATE.json")` given to `run_state.parse`.
+- `current(data_root, run_id)` → `Current(state, view, reports, torn_tail)` (a `NamedTuple`): the state as stored; `journal.fold(tail, state.budget_spent)` with `tail = events.read(data_root, run_id, state.budget_spent.position).events`; the reports of that fold (line numbers of the file); the number of bytes of a torn tail.
+- `step_state(data_root, run_id, identity)` → `journal.StepState`: `journal.step_state(identity, tail, stored view)`; the limit is in the docstring (right for a step whose lines lie after the stored position; a step that ended before it answers `NO_LINE`; no read from the first line).
+- `class MissingStateError(Exception)`; message `runs/<run_id>/STATE.json: is missing`.
+- Messages about the content: `runs/<run_id>/STATE.json: <message of parse>`, the error type kept (`run_state.InvalidStateError` or `run_state.UnsupportedVersionError`); a path that is not a regular file: `run_state.InvalidStateError`, `runs/<run_id>/STATE.json: is not a regular file`.
+- Nothing is written, created or removed; not registered in `hilclaw/tools.py`; no command line entry; no other file of the repository changed.
+
+**Provisional conventions chosen by this task** (the records do not fix them; also in the commit and PR body):
+- Module name `run_journal` — it joins `run_state` and `journal` over the files of a run. Function names `read_state`, `current`, `step_state` — the last is the name of the `journal` function it answers with. Result type `Current`, a `NamedTuple`, as `events.Log` and `run_state.RunState` are.
+- `STATE.json` is read before the log — lines are only appended and the stored view moves only at a round end, so a state read first names a position the log read afterwards has reached whenever the two files were consistent. The two reads are not atomic and no lock is taken (ADR-0004 decision 10): a limit stated, not solved.
+- A missing `STATE.json` (no file, no run directory, no `runs/`, a file in the place of a directory above it; also with a log or another file present): `MissingStateError`, a plain `Exception` — not a subclass of `InvalidStateError` (a missing file is not an invalid one, ADR-0012 decision 2) and not an `OSError` (a state of the run, not a failure of the system). The start values of decision 4 are not answered in its place (sub-question ⑩ stays open).
+- A path that is not a regular file (a directory; a symbolic link, not followed, also a dangling one): `run_state.InvalidStateError` — no state can be read and nothing is repaired, exactly as for an invalid content, and `hilclaw.events` reports the same case with its damage error. An empty file is invalid, not missing.
+- `PositionBeyondLogError` passes through unchanged — its message already names the log, the position and the number of complete lines, and the position can only be the stored one.
+- `data_root`: an existing directory, `FileNotFoundError` or `NotADirectoryError` otherwise; `str` and `Path`; not resolved (a relative root works) — as `hilclaw.events`. A few lines of the module's own, no private helper of another module.
+- Order of the checks: `run_id` (`layout.InvalidPathValueError`), then for `step_state` the `identity` (`journal.JournalError` / `events.InvalidEventError`, raised before any file is read, also with a missing data root; done with `journal.step_state(identity, ())`, a public name), then the file system.
+- An `OSError` while a file is read passes through, a file removed between the `lstat` and the read included.
+- A missing or empty log with a stored position 0: the stored view is the current view, no report; with a position ≥ 1: beyond the end. A torn tail is never counted.
+- An identity open in the stored view whose end line is in the tail: the view no longer lists it and counts its amounts, and `step_state` answers `ENDED` — the behaviour of `journal`, asserted and not re-implemented.
+- A damaged line, a line of another version (`events.UnsupportedVersionError`, not that of `run_state`) and a malformed step line (`journal.JournalError`, `line <n>:` with the number in the file) in the tail raise what `events.read` and `journal.fold` raise; damage before the position is not seen.
+- No criterion disagreed with a record.
+
+**Tests** (`tests/test_run_journal.py`, new, 861 lines; 191 passed and 6 skipped on Windows — the symbolic-link cases): the signatures and types; the Examples of ADR-0012 and ADR-0011 through all three functions; lines appended with `events.append`; the replay property for every prefix of a log of ten lines; `NO_LINE`, `OPEN` (in the tail; in the stored view), `ENDED` with a result and with a failure, the first end line, the stated limit; reports with the line numbers of the file; a torn tail with the tree compared before and after; `others`, member order and white space, a total above `keys.MAX_INTEGER`, lines of other kinds, `data_root` as `str` and relative, two runs, nothing created, no state shared between calls; a missing `STATE.json` in six forms; twelve invalid contents with the exact message; versions 0 and 2; a directory and a symbolic link; an `OSError`; a position beyond the log in five forms; damage and another version in the tail and before the position; malformed step lines; a directory in the place of the log; invalid `run_id`, `data_root` and `identity`, and the order of the checks.
+
+**Verification**
+- Local (CPython 3.14.4, Windows; pytest 9.1.1, ruff 0.16.10), before the first commit and again on the final head: `python -m pytest` → 4678 passed, 143 skipped (before this task: 4487 passed, 137 skipped); `python -m ruff check .` → "All checks passed!"; `python -m ruff format --check .` → "121 files already formatted".
+- `git ls-files --eol`: `i/lf` for both files. `git status --short` after the tests: only the two files. `git diff origin/main --stat`: `hilclaw/run_journal.py` and `tests/test_run_journal.py` only.
+- Lines reached (test rule ①; coverage is not measured by CI yet): `python -m trace --count --missing --coverdir <scratch directory outside the repository> --module pytest tests/test_run_journal.py`, run on the first commit — every executable line of the module has a count, the raising lines included, and no line is marked missing. The two later commits changed what a helper returns and two docstrings, and added no branch; the trace was not run again on them.
+- CI on the final head `9da2b9c`: five successful checks — `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)` — https://github.com/myungjoo/HIL-Claw/actions/runs/37608342979 . No failed CI run on the PR.
+- Push run on `main` for `40a1942`: `success` — https://github.com/myungjoo/HIL-Claw/actions/runs/37608557914 .
+- Wall clock: about 17 minutes (10:22 to 10:38 UTC).
+
+**Language**: Python, because the three modules it joins are Python.
+
+**Follow-ups left** (none new beyond the planner's list above): the replacement of the runtime `STATE.json` on disk with sub-questions ⑩ and ⑫ (P1-8); the first journaled tool on top of this module (P1-1). A note for that tool: `step_state` answers `NO_LINE` for a step that ended before the stored position, so a tool whose steps can be about an earlier round needs sub-question ① of OD-17 answered first.
