@@ -2,7 +2,7 @@
 id: T-0034
 title: Add the build step of a timing run (hilclaw/harness/timing_build.py) - one clang_build.build call over timing_driver.c and the sources of one kernel per ADR-0009 decision 2 - and its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-13, FR-9, FR-10, C-7, "#5 A-7", "#5 A-12"]
 dependsOn: [T-0013, T-0031, T-0032, T-0033]
@@ -105,3 +105,37 @@ The stub compiler is a Python script the test writes into `tmp_path` and passes 
 - (later, small) Use the new name of the driver source in `tests/harness/test_timing_driver.py`.
 
 ## Result
+- **DONE.** PR #34 (https://github.com/myungjoo/HIL-Claw/pull/34), squash-merged as `8b45b98` ("T-0034: Add the build step of a timing run of ADR-0009 (#34)"); the last line of the squash message is `Task: T-0034`. Branch commits: `948adf8` (implementation), `c68d93c` (review round 1). Remote and local branch deleted, in separate commands, after the PR reported `MERGED`. No force push; no tool call was denied.
+- Landed check before starting: `git log origin/main --grep='^Task: T-0034'` empty, no PR for T-0034, no open PR; no comment on #5 after the ADR-0009 notice (issuecomment-6026950959).
+- Process note: the executor run was ended once by its harness while review round 1 ran in the background (an interim hand-back, nothing merged); the coordinator resumed it from the open PR and the round-1 comment already on the PR was used, no duplicate round. Round 2 ran in the foreground.
+- The task branch and the PR never contained this task file; this `## Result` was written on `main` after the merge and left uncommitted for the driver.
+- Language: Python, because `clang_build` and the consumer `timing.run_timing` are Python.
+- **ADR against the criteria**: no disagreement found; ADR-0009 was not ambiguous on any point the code had to decide.
+- Files as landed: `hilclaw/harness/timing_build.py` (new, 82 lines), `hilclaw/harness/__init__.py` (the docstring sentence only, +3/-2), `tests/harness/test_timing_build.py` (new, 54 cases). Non-test size: 87 changed lines in 2 files (cap 300 / 5). `clang_build.py`, `timing.py`, `timing_driver.c`, `pyproject.toml` and `.github/` untouched.
+- **Public API as landed**:
+  - `DRIVER_SOURCE = Path(__file__).with_name("timing_driver.c")` — the one place in `hilclaw/` that spells the file name.
+  - `build_timing_executable(kernel_sources, output, *, timeout_s, flags=(), trailing_flags=(), compiler=None, cwd=None, env=None)` — exactly one call `clang_build.build((DRIVER_SOURCE, *kernel_sources), output, ...)`, every other argument handed over as the caller's own object, the `BuildResult` returned as it is. No flag is added, inspected or corrected; the artefact is not looked at; nothing is run, retried or stored.
+- A-13 reading, confirmed by both reviewers: standard library plus `hilclaw.clang_build` only, no new dependency, no data-plane file or field read, written or named; nothing of ADR-0009's Boundaries is decided by the module.
+- **Provisional conventions** (ADR-0009 leaves them to the code):
+  - Module `timing_build.py`, separate from `timing.py`: that module states that it builds nothing and imports no `clang_build`.
+  - Names `DRIVER_SOURCE`, `build_timing_executable`: the record's terms "driver program" and "timing executable".
+  - The driver source is first among the sources: the order the tests of T-0033 build with.
+  - `flags`, `trailing_flags`, `compiler`, `cwd`, `env` keep the defaults of `clang_build.build`: decision 9 writes "no default" on the sample form, the seed and the time limit of the run and not on the build row, and an empty flag list is not a flag. `timeout_s` and `output` have no default.
+  - No kernel source raises `ValueError` (as `clang_build` for no source), before every other argument is looked at.
+- **Cases the record leaves unsaid, as chosen:**
+  - A kernel source that is the driver source, or one path twice: not checked; the linker reports the duplicate and that is a failed build.
+  - `kernel_sources` is one `str` / `os.PathLike` or any iterable of them (a generator is read once), as `sources` in `clang_build.build`.
+  - A `bytes` path, bare or in a list: the `TypeError` of `clang_build.build`. An empty `bytes` is an empty iterable, hence "no kernel source" (`ValueError`) — an asymmetry both reviewers noted and accepted as documented.
+  - `kernel_sources` that is neither a path nor iterable (`None`, a number): the `TypeError` of `tuple()`.
+  - A driver source missing from the installation: the `FileNotFoundError` of `clang_build.build`, unchanged.
+  - Flags that produce an object or a shared library: a successful build, not tested by the module (decision 2).
+- Tests, 54 cases: 52 with a stub compiler (a Python script recording argv, working directory and one environment variable) run on every platform; 2 need clang on POSIX (skip elsewhere, `pytest.fail` on CI without clang). Happy, branch, error and negative cases as listed in the PR body; the real-clang pair builds a plain `hilclaw_gemm` kernel with the tests' own flags `-std=c99 -Wall -Wextra -Wpedantic -Werror -O2`, runs it through `timing.run_timing(<the executable itself>)` at 64x64x64 (completed run, no assertion on convergence), and checks that a source without `hilclaw_gemm` gives `ok` false with a log naming the symbol. Test rules: ① `python -m trace --count --missing --coverdir <outside the repository> --module pytest tests/harness/test_timing_build.py` on Windows (stub tests only) marks no line of `timing_build.py` as missing; ② ③ ④ ⑤ met.
+- **Review: 2 rounds** by fresh-context `dev-reviewer` agents; both **Approve**; no `SECURITY` finding; neither read any convention as a design choice needing an ADR or the owner.
+  - Round 1 on `948adf8` (https://github.com/myungjoo/HIL-Claw/pull/34#issuecomment-6028775349): Nit — the real-clang test called the kernel fixture a second time after the build → path bound once (`c68d93c`); Nit — the empty / non-empty `bytes` asymmetry → left, documented and tested; Info — a wheel would not carry `timing_driver.c` (no build system declared; packaging is out of scope) → Follow-up (b). The PR body's size line was corrected from 83 to 87.
+  - Round 2 on `c68d93c` (https://github.com/myungjoo/HIL-Claw/pull/34#issuecomment-6028830963): Approve; Info only — the PR body writes `-> clang_build.BuildResult` while the code carries no annotation (the docstring names the type; no change asked). The reviewer reported that it could post only a shortened comment (a long heredoc failed to parse in its shell); its full result is summarised here. The head did not change after the round-2 Approve.
+- **CI: 2 runs on the PR, 0 failures.** `948adf8`: https://github.com/myungjoo/HIL-Claw/actions/runs/37555856578 (success). Final head `c68d93c`: https://github.com/myungjoo/HIL-Claw/actions/runs/37556371347 — four checks successful (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `Test presence (hilclaw)`), confirmed after `DONOTMERGE` was removed and the PR marked ready. `Python gate (3.11)` log of the final head opened: `tests/harness/test_timing_build.py` ran, `3705 passed`, no skip, so the two real-clang tests ran and passed. `push` run on `main` for `8b45b98`: https://github.com/myungjoo/HIL-Claw/actions/runs/37556805406 — `completed` / `success`.
+- Local verification (CPython 3.14.4 on Windows, pytest 9.1.1, ruff 0.16.10), before each commit: `python -m pytest` 3572 passed, 133 skipped (2 of the skips are the real-clang cases of the new file); `python -m ruff check .` and `python -m ruff format --check .` clean. `git ls-files --eol`: `i/lf` for the three files; `git status --short` showed no stray file after the tests; `git diff origin/main --stat` listed only the three files of `touchesFiles`.
+- **PLAN P1-2 checkbox — executor and both reviewers agree: complete with this task; nothing of P1-2 remains.** "clang 빌드 래퍼" = `hilclaw/clang_build.py` (T-0013); "로컬 실행" = `hilclaw/local_run.py` (T-0019); "타이밍 수집" = `hilclaw/harness/timing.py` (T-0032) + `timing_driver.c` (T-0033) + `timing_build.py` (this task); "OpenMP/SIMD 허용" holds because no flag is filtered. Three things the reviewers ask the driver to know when ticking, none a remaining part of P1-2: (1) nothing binds these modules to the FR-10 tool contract and there is no build-and-run entry — that is P1-1 / OD-18 (ADR-0009 decision 1: a timing run is not an FR-10 tool contract); (2) the real-clang path is exercised on `ubuntu-latest` only, not on macOS or WSL (C-7); (3) no test builds with a real `-fopenmp` — allowed, not exercised.
+- Follow-ups: unchanged from `## Follow-ups`. Additions:
+  - (a) Planner's call whether (2) and (3) above deserve tasks (a macOS runner in the Python gate; one real-clang test with `-fopenmp`, which needs an OpenMP runtime on the runner).
+  - (b) Packaging: `pyproject.toml` declares no build system or package data, so `DRIVER_SOURCE` is valid in a source checkout only; ADR-0009 decision 2 leaves "how it ships with the package" to the code, and it is still open for the first task that builds a wheel.
