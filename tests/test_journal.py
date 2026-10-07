@@ -191,7 +191,6 @@ def test_three_death_points(cut, state, totals, open_steps):
     log = [other(), *EXAMPLE][:cut]
     assert step_state(EXAMPLE_ID, log).state is state
     assert fold(log) == (SpendView(totals, cut, open_steps), ())
-    assert fold(log + log[cut:]) == fold(log)
 
 
 def test_an_end_line_appended_later_ends_an_open_step():
@@ -252,7 +251,13 @@ def test_start_line_of_an_identity_that_ended():
     assert fold(lines[2:], view_of(lines[:2])) == (view, ())
     assert step_state(identity, lines[2:], view_of(lines[:2])).state is State.OPEN
     again = [*lines, end(spend={AXIS: 1})]
-    assert fold(again) == (SpendView({AXIS: 3}, 4, frozenset()), reports)
+    second_end = Report(4, identity, Problem.END_NOT_OPEN)
+    assert fold(again) == (SpendView({AXIS: 3}, 4, frozenset()), (*reports, second_end))
+    assert fold(again[2:], view_of(again[:2])) == (
+        SpendView({AXIS: 3}, 4, frozenset()),
+        (),
+    )
+    assert step_state(identity, again) == step_state(identity, lines)
 
 
 MIXED = [

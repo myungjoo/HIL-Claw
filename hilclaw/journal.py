@@ -142,12 +142,13 @@ def fold(lines, view=EMPTY):
 
     ``reports`` is a tuple of :class:`Report` in the order of the lines;
     nothing is raised for such a line. ``END_NOT_OPEN``: an end line whose
-    identity is not open at that line (a second end line, one without a start
-    line, or one whose start line the view does not show); its amounts are
-    counted. ``START_REPEATED``: a start line whose identity is open, or ended
-    on one of ``lines``; the identity is open afterwards. A view holds no
-    ended identity, so a start line after an end line that lies before
-    ``lines`` opens its identity unreported.
+    identity is not open at that line (one without a start line, or with one
+    the view does not show) or ended on one of ``lines`` (a second end line);
+    its amounts are counted. ``START_REPEATED``: a start line whose identity
+    is open, or ended on one of ``lines``. A view holds no ended identity, so
+    a start line always opens its identity, also when :func:`step_state`
+    answers ``ENDED``, and a line about an identity that ended before
+    ``lines`` is reported only as far as ``view`` shows.
 
     Raises :class:`JournalError` for a malformed ``view``, before any line is
     read, and the error of the line check for a line that fails it.
@@ -164,7 +165,7 @@ def fold(lines, view=EMPTY):
                 reports.append(Report(position, identity, Problem.START_REPEATED))
             open_steps.add(identity)
             continue
-        if identity not in open_steps:
+        if identity not in open_steps or identity in ended:
             reports.append(Report(position, identity, Problem.END_NOT_OPEN))
         open_steps.discard(identity)
         ended.add(identity)
