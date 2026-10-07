@@ -2,7 +2,7 @@
 id: T-0051
 title: Make _store of hilclaw/key_records.py give a key record file its final name by the steps of ADR-0014 decision 3 (a new temporary file in the key directory, flush, a last step that cannot replace, no replacing fallback), and update its docstring and tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-8, OD-4, FR-13, NFR-1, C-7, "#5 A-3"]
 dependsOn: [T-0023, T-0049, T-0050]
@@ -131,3 +131,50 @@ New cases, each for `store_hw_profile` and `store_op_signature` where it applies
 - (unchanged) The mock backend with fault injection and the first tool on top of `hilclaw/journaled_step.py` once a tool has a fully decided contract (P1-1); the rest of P1-8; the integrator items after 2026-10-14 (T-0040, T-0042, T-0046 and T-0049 Follow-ups); the T-0047 and T-0048 follow-ups.
 
 ## Result
+**DONE.** PR #45 (https://github.com/myungjoo/HIL-Claw/pull/45), squash-merged to `main` as `cc55d01` ("T-0051: Give a key record file its final name by the steps of ADR-0014 decision 3 (#45)"); branch commits `698b2d7`, `7330ee2`, `014036a`. Remote and local branch deleted after the PR state was `MERGED`. This task ticks **no** PLAN checkbox (P1-8 stays open).
+
+### What landed (`hilclaw/key_records.py`, 290 lines after the change, 262 before; +47 / −19 non-test lines in 1 file, inside the cap of 300 LOC / 5 files)
+- `_store`, after the unchanged check through `_read` with the caller's key: the whole content as bytes first; the directories that are missing; a new file `<final name>.<token>.tmp` in the key directory (`open(temporary, "xb")`); `flush` and `os.fsync`; the file closed; `os.link(temporary, path)`; removal of the temporary name. The final name is never opened for writing; `os.replace` / `os.rename` are not called anywhere in the module; there is no fallback.
+- Module docstring: the bullet about the exclusive creation of the final name is replaced by two bullets (the steps, the taken name, what a failed write and the death of the process leave, the environments of ADR-0014 decision 6 after the leftover clause); "any other file" became "any other file of the tree" (the temporary file is written); the last sentence says "it takes no lock: of two writers of one key the first record stays and the other writes nothing (OD-17, ADR-0014 decision 6); and it gives no atomicity between the two record files or with a commit (ADR-0004 decision 10)".
+- Docstrings of `store_hw_profile` and `store_op_signature`: "nothing is written" became "no record file is written" (review round 1, Nit 3: a temporary file is written and removed when the link finds the name taken). No other public docstring changed.
+- Unchanged: the bytes of a record file, the signatures, results, error types and order of checks of the five public functions, `_read`, every member and validity rule of a record; `hilclaw/keys.py`, `layout.py`, `artifacts.py`, `run_state_file.py`, `pyproject.toml` untouched; `secrets` is standard library.
+
+### Provisional choices of this task (ADR-0014 does not fix them; also in the commit and PR body)
+- **The non-replacing step** is `os.link` followed by the removal of the temporary name: the operation the record cites, standard library, fails when the final name exists.
+- **`<token>`** = the process id, a hyphen, `secrets.token_hex(8)`: the form of `hilclaw/run_state_file.py`, inside `[a-z0-9-]{1,64}`.
+- **The name found taken** (`FileExistsError` of the link): the file now there is read once more through `_read(root, path, derive, key)`. Equal canonical form → `Stored(key, False)`, the stored attributes stay; another canonical form → `KeyCollisionError`; no valid record → `CorruptKeyRecordError` (ADR-0001 decision 3 applied to a record that could have been found before the write). The temporary file is removed in each case. The collision or corruption error keeps the `FileExistsError` as its implicit context (round 1, Nit 2: kept, it shows how the stored record was met).
+- **The name absent again at that reading**: the `FileExistsError` of the link is raised unchanged, no retry loop (the call cannot spin against another process). Said in the module docstring (round 2, Nit 1).
+- **A failed step** (creation of a directory or of the temporary file, write, flush, link): its `OSError` passes through unchanged. A link that fails for another reason than a taken name (no hard links) stores nothing.
+- **The directories a failed write created** are still removed where possible: only those this call created, innermost first, `rmdir` only, a failing removal not reported. Keeps today's behaviour and the three existing tests that assert it.
+- **Which file is removed on a failure**: only the temporary file this call created (`created` flag); a temporary name found in use is another writer's and stays (tested with a fixed token); a removal that fails is not reported in the place of the failure it follows.
+- **`BaseException`** (`KeyboardInterrupt`): the temporary file and the created directories are removed then as well.
+- **After the link succeeded** the record is stored: a failing removal of the temporary name is not an error, the result is `Stored(key, True)`, the name stays as a second name of the record (decision 5); nothing the call created is removed.
+- **Leftovers of other writes** are not listed, read, removed or given the final name (decision 5 allows a removal and requires none; decision 6: a removal can hit a live writer).
+- **Mode and link count**: no test asserts either.
+- No shared helper with the two other writers (the planner's cut).
+- No criterion disagreed with a record, and no case was read as a rule about what may exist in `db/` that no record states (`store_op_signature` still requires the stored hw_profile through the unchanged `_load` call).
+
+### Tests (`tests/test_key_records.py`, +403 / −1)
+- **No existing test changed its expectation; no assertion was weakened.**
+- New section "the write of a record file (ADR-0014 decision 3)", each case for `store_hw_profile` and `store_op_signature` where it applies: happy (exactly the record files, expected bytes, no temporary file); the steps through wrappers on `os.fsync` and `os.link` and a spy on the module's `open` (final name absent at the flush and at the link; the source of the link in the key directory, of the name form, a regular file, whole; the flushed descriptor is the temporary file's and is closed before the link; three stores use three names; only the temporary file is opened, mode `xb`; `os.replace` / `os.rename` fail the test when called); branch (a store of a stored key takes no step; a leftover, partial or whole, alone in a key directory is no record, the store succeeds beside it and it stays; a leftover beside a stored record changes no result; an existing key directory stays after a failed link); the name found taken (same record, another `label`, another canonical form, no record; the placed bytes unchanged, no temporary file left; a name absent again raises the `FileExistsError` of the link); error / negative (an `OSError` and a `KeyboardInterrupt` in each of the creation, the write, the flush and the link — the tree is as before, nothing is stored, no replacing call follows, the repeated call succeeds; a temporary name in use; a failing removal after a failure; a failing removal after the link).
+- Helpers (`case`, `watch`, `spy_on_open`, `break_step`, `torn`, `never_replace`, ...) live in the test file and have no tests of their own.
+
+### Review (3 rounds; a fresh-context `dev-reviewer` each, spawned with `model: opus`; no `SECURITY` finding; no point read as a design choice needing a record or the owner)
+- **Round 1 — Approve** (`698b2d7`; https://github.com/myungjoo/HIL-Claw/pull/45#issuecomment-6039033544): no Blocker / Major / Minor, 4 Nits. (1) a 91-character docstring line — rewrapped; (2) the implicit `FileExistsError` context on the collision / corruption error — kept, reason in the commit body; (3) "nothing is written" in the two store docstrings — now "no record file is written"; (4) the temporary-name-in-use test lacked the repeated call — added (`7330ee2`).
+- **Round 2 — Approve** (`7330ee2`; https://github.com/myungjoo/HIL-Claw/pull/45#issuecomment-6039136705): 2 Nits. (1) the module docstring did not say what happens when the name is absent again — sentence added; (2) no `KeyboardInterrupt` in the write step — the failed-step test now covers the four steps with both kinds of exception and checks the raised object for the write as well (`014036a`).
+- **Round 3 — Approve** (`014036a`; https://github.com/myungjoo/HIL-Claw/pull/45#issuecomment-6039253808): no finding of any severity. The reviewer confirmed (a) to (e) of the task in each round: the code matches ADR-0014 decisions 3 to 6, no path reaches a replacing rename, no public behaviour changed besides what the record requires, A-13 "data-plane schema change" does not apply, nothing under Boundaries is decided.
+
+### Verification
+- **Landed check and entry**: `git log origin/main --grep='^Task: T-0051'` empty; `gh pr list --search T-0051 --state all` empty; no open PR. Issue #5 has no comment after https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6038200543 (the ADR-0014 notice): no objection to ADR-0014, ADR-0013, ADR-0004 or ADR-0001.
+- **Local** (CPython 3.14.4, native Windows), before each of the three commits: `python -m pytest` → 5094 / 5094 / **5096 passed, 146 skipped** (before the task: 5046 / 146); `python -m ruff check .` → "All checks passed!"; `python -m ruff format --check .` → "133 files already formatted".
+- **Coverage of `_store`** (CI does not measure it yet): `python -m trace --count --missing --coverdir <scratch directory outside the repository> --module pytest tests/test_key_records.py` marks **no** line of `hilclaw/key_records.py` as missed (first commit; reviewers of rounds 2 and 3 measured the same on their heads).
+- `git ls-files --eol`: `i/lf` for both files. `git status --short` after the tests: only the two files, no `*.tmp` in the repository. `git diff origin/main --numstat`: `hilclaw/key_records.py` (+47 / −19) and `tests/test_key_records.py` (+403 / −1), nothing else. The PR does not contain this task file.
+- **CI on the final head `014036a`**: run https://github.com/myungjoo/HIL-Claw/actions/runs/37630185125 — five checks passed: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`. No failed CI run on the PR.
+- **`push` run on `main`** for `cc55d01`: https://github.com/myungjoo/HIL-Claw/actions/runs/37630864924 — `completed` / `success`.
+
+### Language
+Python, because the module is Python (CLAUDE.md tool-layer language policy; also in the commit body).
+
+### Follow-ups (in addition to the planner's list above)
+- (with the shared-helper question) The window between the creation inside `open` and `created = True` exists in `key_records._store` as in the two other writers (T-0050 round-1 Nit 3): an interrupt there leaves the temporary file, a leftover by decision 5.
+- (integrator, after 2026-10-14) The docstring sentences of `hilclaw/key_records.py` that ADR-0014 Consequences lists as "now less exact" are replaced by this task; the ADR-side sentences (ADR-0004 decision 5, ADR-0013 Consequences and Boundaries) remain the integrator's.
