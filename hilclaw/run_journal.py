@@ -71,7 +71,8 @@ def read_state(data_root, run_id):
     :class:`hilclaw.run_state.InvalidStateError` for a path that is not a
     regular file and for an invalid content, an empty file included, and
     :class:`hilclaw.run_state.UnsupportedVersionError` for another version
-    (ADR-0012 decision 6): nothing is returned and nothing is repaired.
+    (ADR-0012 decision 6): nothing is returned and nothing is repaired. A file
+    that disappears between the check and the read is an :class:`OSError`.
     """
     path = layout.run_file(data_root, run_id, "STATE.json")
     root = Path(data_root)
@@ -103,9 +104,9 @@ def current(data_root, run_id):
     complete lines than the stored position: nothing is returned then and the
     stored view is not used. Lines before the position are not interpreted.
     """
-    state, tail, torn_tail = _state_and_tail(data_root, run_id)
-    view, reports = journal.fold(tail, state.budget_spent)
-    return Current(state, view, reports, torn_tail)
+    state, log = _state_and_log(data_root, run_id)
+    view, reports = journal.fold(log.events, state.budget_spent)
+    return Current(state, view, reports, log.torn_tail)
 
 
 def step_state(data_root, run_id, identity):
@@ -120,11 +121,10 @@ def step_state(data_root, run_id, identity):
     """
     layout.check_run_id(run_id)
     journal.step_state(identity, ())
-    state, tail, _ = _state_and_tail(data_root, run_id)
-    return journal.step_state(identity, tail, state.budget_spent)
+    state, log = _state_and_log(data_root, run_id)
+    return journal.step_state(identity, log.events, state.budget_spent)
 
 
-def _state_and_tail(data_root, run_id):
+def _state_and_log(data_root, run_id):
     state = read_state(data_root, run_id)
-    tail = events.read(data_root, run_id, state.budget_spent.position)
-    return state, *tail
+    return state, events.read(data_root, run_id, state.budget_spent.position)
