@@ -295,9 +295,7 @@ def test_decode_request_refuses_what_is_not_one_json_object(data):
 
 
 def test_decode_request_names_the_duplicate_member():
-    with pytest.raises(
-        InvalidRequestError, match=r"duplicate member name\(s\) \['a'\]"
-    ):
+    with pytest.raises(InvalidRequestError, match=r"given twice among \['a', 'b'\]"):
         decode_request(b'{"a": 1, "b": 2, "a": 3}')
 
 

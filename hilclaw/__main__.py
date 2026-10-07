@@ -9,13 +9,15 @@ one LF. Any other status means a tool failure: standard output holds
 ``{"error": {"kind": ..., "message": ...}}`` and one LF. Status 3 is a failure
 of the call (the tool function raised one, crashed or returned no result);
 status 4 is what the front answers by itself, with the kinds ``bad_usage``
-(not exactly one argument), ``unknown_tool`` and ``bad_request`` (standard
-input cannot be read or is not a request). When standard output cannot be
-written, the status is 4 too, or 120 if the interpreter's own flush at exit
-fails as well. The values 1 and 2, which the interpreter uses for an uncaught
-exception and for its own usage errors, are never returned.
+(not exactly one argument), ``unknown_tool``, ``bad_request`` (standard input
+is not a request) and ``no_input`` (standard input is closed or cannot be
+read). When standard output is closed or cannot be written, the status is 4
+too, or 120 if the interpreter's own flush at exit fails as well. The values 1
+and 2, which the interpreter uses for an uncaught exception and for its own
+usage errors, are never returned.
 
-Standard error gets one line of free text on a failure and is never parsed.
+Standard error gets one line of free text on a failure and is never parsed; a
+closed standard error changes nothing else.
 """
 
 import contextlib
@@ -30,6 +32,7 @@ EXIT_FRONT_FAILURE = 4
 KIND_BAD_USAGE = "bad_usage"
 KIND_UNKNOWN_TOOL = "unknown_tool"
 KIND_BAD_REQUEST = "bad_request"
+KIND_NO_INPUT = "no_input"
 
 
 def _refused(kind, message):
@@ -38,10 +41,11 @@ def _refused(kind, message):
 
 def _outcome(args, registry, stdin):
     if len(args) != 1:
-        usage = f"expected one argument, the tool name, got {len(args)}"
-        return _refused(KIND_BAD_USAGE, usage)
+        return _refused(KIND_BAD_USAGE, f"expected one tool name, got {len(args)}")
     try:
         registry.get(args[0])
+        if stdin is None:
+            raise OSError("it is closed")
         request = tools.decode_request(stdin.read())
         return EXIT_RESULT, tools.call(registry, args[0], request)
     except tools.UnknownToolError as e:
@@ -49,15 +53,20 @@ def _outcome(args, registry, stdin):
     except tools.InvalidRequestError as e:
         return _refused(KIND_BAD_REQUEST, str(e))
     except OSError as e:
-        return _refused(KIND_BAD_REQUEST, f"cannot read standard input: {e}")
+        return _refused(KIND_NO_INPUT, f"cannot read standard input: {e}")
     except tools.ToolFailure as e:
         return EXIT_TOOL_FAILURE, e.error_object()
 
 
+def _standard(name):
+    return getattr(getattr(sys, name), "buffer", None)
+
+
 def _say(stderr, text):
     with contextlib.suppress(OSError):
-        stderr.write(f"hilclaw: {text}\n".encode("utf-8", "backslashreplace"))
-        stderr.flush()
+        if stderr is not None:
+            stderr.write(f"hilclaw: {text}\n".encode("utf-8", "backslashreplace"))
+            stderr.flush()
 
 
 def main(argv=None, *, registry=None, stdin=None, stdout=None, stderr=None):
@@ -65,18 +74,21 @@ def main(argv=None, *, registry=None, stdin=None, stdout=None, stderr=None):
 
     ``argv`` defaults to ``sys.argv[1:]`` and ``registry`` to
     :func:`hilclaw.tools.default_registry`. ``stdin``, ``stdout`` and
-    ``stderr`` are binary streams and default to the standard ones.
+    ``stderr`` are binary streams and default to the standard ones; a
+    standard stream that is closed or has no binary layer counts as closed.
     """
     args = sys.argv[1:] if argv is None else list(argv)
     registry = tools.default_registry() if registry is None else registry
-    stdin = sys.stdin.buffer if stdin is None else stdin
-    stdout = sys.stdout.buffer if stdout is None else stdout
-    stderr = sys.stderr.buffer if stderr is None else stderr
+    stdin = _standard("stdin") if stdin is None else stdin
+    stdout = _standard("stdout") if stdout is None else stdout
+    stderr = _standard("stderr") if stderr is None else stderr
     status, answer = _outcome(args, registry, stdin)
     if status != EXIT_RESULT:
         error = answer["error"]
         _say(stderr, f"{error['kind']}: {error['message']}")
     try:
+        if stdout is None:
+            raise OSError("it is closed")
         stdout.write(tools.encode(answer))
         stdout.flush()
     except OSError as e:

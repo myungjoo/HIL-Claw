@@ -101,8 +101,7 @@ def default_registry():
 def check_json_object(value):
     """Raise :class:`ValueError` unless ``value`` is one JSON object in the strict sense.
 
-    A value nested too deeply for this interpreter to walk and encode, a cyclic
-    one included, is refused in the same way.
+    A value nested too deeply for this interpreter, or cyclic, is refused too.
     """
     try:
         _check_object(value, "$")
@@ -137,9 +136,7 @@ def _check_value(value, path):
 def _unique_members(pairs):
     members = dict(pairs)
     if len(members) != len(pairs):
-        names = [name for name, _ in pairs]
-        twice = sorted({name for name in names if names.count(name) > 1})
-        raise ValueError(f"duplicate member name(s) {twice}")
+        raise ValueError(f"a member name is given twice among {list(members)}")
     return members
 
 
@@ -147,10 +144,10 @@ def decode_request(data):
     """Return the request that ``data`` (``bytes``) holds as UTF-8 JSON text.
 
     Raises :class:`InvalidRequestError` unless the text is exactly one JSON
-    object, with whitespace around it at most (:class:`TypeError` when ``data``
-    is not ``bytes``): not UTF-8, a byte order mark,
-    not JSON, another JSON value, ``NaN`` or ``Infinity``, a number too large
-    for a ``float``, a member name given twice, or nesting too deep.
+    object with at most whitespace around it. Refused are: not UTF-8, a byte
+    order mark, not JSON, another JSON value, ``NaN`` or ``Infinity``, a number
+    too large for a ``float``, a member name given twice, nesting too deep.
+    Raises :class:`TypeError` when ``data`` is not ``bytes``.
     """
     if not isinstance(data, (bytes, bytearray)):
         raise TypeError("the encoded request must be bytes")
@@ -168,8 +165,7 @@ def encode(value):
     """Return ``value`` as one line of JSON text in ASCII bytes, ended by one LF.
 
     ``value`` is a result that :func:`call` returned or an error object. The
-    line is compact, keeps the member order of ``value`` and escapes every
-    non-ASCII character.
+    line is compact, in the member order of ``value``, non-ASCII escaped.
     """
     text = json.dumps(value, ensure_ascii=True, allow_nan=False, separators=(",", ":"))
     return text.encode("ascii") + b"\n"

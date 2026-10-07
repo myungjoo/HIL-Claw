@@ -228,7 +228,7 @@ def test_a_wrong_number_of_arguments(args):
     status, out, err = run(args, b"{}", registry_with(test_echo=calls.echo))
     assert status == front.EXIT_FRONT_FAILURE
     message = error_of(out, front.KIND_BAD_USAGE)
-    assert message == f"expected one argument, the tool name, got {len(args)}"
+    assert message == f"expected one tool name, got {len(args)}"
     assert err
     assert calls.requests == []
 
@@ -267,7 +267,7 @@ def test_an_input_that_cannot_be_read():
     registry = registry_with(test_echo=calls.echo)
     status, out, err = run(["test.echo"], registry=registry, stdin=UnreadableStream())
     assert status == front.EXIT_FRONT_FAILURE
-    assert "cannot read standard input" in error_of(out, "bad_request")
+    assert "cannot read standard input" in error_of(out, front.KIND_NO_INPUT)
     assert err
     assert calls.requests == []
 
@@ -317,6 +317,59 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
     assert (
         stderr.buffer.getvalue() == b"hilclaw: unknown_tool: unknown tool 'sim.run'\n"
     )
+
+
+@pytest.mark.parametrize("stream", [None, io.StringIO("{}")])
+def test_a_closed_standard_input_is_answered(monkeypatch, stream):
+    monkeypatch.setattr(sys, "stdin", stream)
+    registry = registry_with(test_echo=Calls().echo)
+    stdout = io.BytesIO()
+    status = main(["test.echo"], registry=registry, stdout=stdout, stderr=io.BytesIO())
+    assert status == front.EXIT_FRONT_FAILURE
+    message = error_of(stdout.getvalue(), "no_input")
+    assert message == "cannot read standard input: it is closed"
+    stdout = io.BytesIO()
+    assert main(["test.other"], stdout=stdout, stderr=io.BytesIO()) == 4
+    error_of(stdout.getvalue(), "unknown_tool")
+    stdout = io.BytesIO()
+    assert main([], stdout=stdout, stderr=io.BytesIO()) == 4
+    error_of(stdout.getvalue(), "bad_usage")
+
+
+@pytest.mark.parametrize("stream", [None, io.StringIO()])
+def test_a_closed_standard_error_loses_no_answer(monkeypatch, stream):
+    monkeypatch.setattr(sys, "stderr", stream)
+    registry = registry_with(test_echo=Calls().echo)
+    stdin, stdout = io.BytesIO(b"{}"), io.BytesIO()
+    assert main(["test.echo"], registry=registry, stdin=stdin, stdout=stdout) == 0
+    assert stdout.getvalue() == b'{"echo":{}}\n'
+    stdin, stdout = io.BytesIO(b"{}"), io.BytesIO()
+    assert main(["test.other"], stdin=stdin, stdout=stdout) == 4
+    error_of(stdout.getvalue(), "unknown_tool")
+
+
+@pytest.mark.parametrize("stream", [None, io.StringIO()])
+def test_a_closed_standard_output_is_status_4(monkeypatch, stream):
+    monkeypatch.setattr(sys, "stdout", stream)
+    registry = registry_with(test_echo=Calls().echo)
+    stdin, stderr = io.BytesIO(b"{}"), io.BytesIO()
+    assert main(["test.echo"], registry=registry, stdin=stdin, stderr=stderr) == 4
+    assert stderr.getvalue() == b"hilclaw: cannot write standard output: it is closed\n"
+
+
+def test_a_process_started_without_standard_error_still_answers():
+    code = "import os, runpy, sys; os.close(2); sys.stderr = None; "
+    code += "sys.argv = ['hilclaw', 'sim.run']; runpy.run_module('hilclaw', run_name='__main__')"
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        input=b"{}",
+        capture_output=True,
+        cwd=REPO_ROOT,
+        timeout=60,
+        check=False,
+    )
+    assert done.returncode == 4
+    error_of(done.stdout, "unknown_tool")
 
 
 # Through a real process
