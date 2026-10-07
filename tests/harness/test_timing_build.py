@@ -439,9 +439,10 @@ def test_output_that_is_a_directory(stub, kernel, out):
 def test_real_clang_builds_an_executable_that_completes_a_timing_run(
     clang, kernel, out
 ):
-    result = build_timing_executable(kernel(), out, timeout_s=120, flags=STRICT)
+    source = kernel()
+    result = build_timing_executable(source, out, timeout_s=120, flags=STRICT)
     assert result.ok, result.log
-    assert result.command[1:-2] == (*STRICT, str(DRIVER_SOURCE), str(kernel()))
+    assert result.command[1:-2] == (*STRICT, str(DRIVER_SOURCE), str(source))
     run = timing.run_timing(
         out, m=64, k=64, n=64, sample_form="interval", seed=7, timeout_s=TIMEOUT
     )
