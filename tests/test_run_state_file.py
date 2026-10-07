@@ -114,7 +114,11 @@ def watch(monkeypatch, root):
     def fsync(descriptor):
         found = {name: content for name, content in snapshot(root).items() if content}
         seen.append({"step": "flush", "held": found.pop(STATE, None), "files": found})
-        seen[-1]["descriptor"] = descriptor
+        status = os.fstat(descriptor)
+        same = [
+            name for name in found if os.path.samestat(status, os.stat(root / name))
+        ]
+        seen[-1].update(descriptor=descriptor, flushed=same)
         return flush(descriptor)
 
     def replacing(source, target):
@@ -273,6 +277,7 @@ def test_the_temporary_file_is_whole_and_beside_the_final_one(root, watch):
     assert source.name.startswith(f"STATE.json.{os.getpid()}-")
     assert move["content"] == NEW
     assert flush["files"] == {source.relative_to(root).as_posix(): NEW}
+    assert flush["flushed"] == list(flush["files"])
     assert temporaries(root) == []
 
 

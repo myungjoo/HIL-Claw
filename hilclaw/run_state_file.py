@@ -26,6 +26,8 @@ Conventions of this module, which the records do not fix:
 - Only the file this call created is removed: a file of the name form that
   another replacement left is not listed, read, moved or removed (decision 4).
 - The new file has the mode a newly created file gets from the process.
+- The directories above the final name are used as the operating system
+  resolves them, as :func:`hilclaw.run_journal.read_state` reads through them.
 
 Limits (decision 5): the death of the writing process leaves the previous
 content or the new one, and nothing is promised for the loss of the machine;
