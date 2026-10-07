@@ -224,13 +224,13 @@ class StandIn:
         self.directory = directory
         self.record = directory / "started.json"
 
-    def __call__(self, stdout=b"", *, status=0, stderr="", sleep=0, signal=0):
+    def __call__(self, stdout=b"", *, status=0, stderr="", sleep=0, kill=0):
         plan = {
             "stdout": stdout.hex(),
             "status": status,
             "stderr": stderr,
             "sleep": sleep,
-            "signal": signal,
+            "signal": kill,
         }
         (self.directory / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
         script = self.directory / "timing.py"
@@ -364,9 +364,9 @@ def test_standard_error_is_not_parsed(stand_in):
     assert b"stop not_converged" in result.run.stderr
 
 
-def test_executable_as_one_path_is_the_whole_prefix():
+def test_executable_as_one_path_is_the_whole_prefix(tmp_path):
     for executable in (sys.executable, Path(sys.executable)):
-        result = timed(executable)
+        result = timed(executable, cwd=tmp_path)
         assert_broken(result, Broken.EXIT_STATUS)
         assert result.run.command[1:] == driver_arguments(
             **PARAMETERS, n_max=N_MAX_DEFAULT
@@ -485,7 +485,7 @@ def test_non_zero_exit_after_a_valid_report_is_broken(stand_in):
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX signals")
 def test_death_by_signal_after_a_valid_report_is_broken(stand_in):
-    result = timed(stand_in(WORKED_REPORT, signal=signal.SIGKILL))
+    result = timed(stand_in(WORKED_REPORT, kill=signal.SIGKILL))
     assert_broken(result, Broken.EXIT_STATUS)
     assert result.run.returncode == -signal.SIGKILL
     assert result.run.stdout == WORKED_REPORT

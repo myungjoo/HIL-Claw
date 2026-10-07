@@ -41,9 +41,11 @@ Conventions of this module (not rules of the record):
   not told apart from a non-zero exit status; ``run.returncode`` shows it.
 - ``executable`` is a path or a sequence used as a command prefix, as
   ``compiler`` in :func:`hilclaw.clang_build.build`.
-- A caller's mistake raises :class:`TimingArgumentError` before anything is
-  started; what :func:`hilclaw.local_run.run` raises for the executable, the
-  time limit, ``cwd`` or ``env`` is passed on.
+- A parameter of the driver program outside the above raises
+  :class:`TimingArgumentError` before anything is started. An ``executable``
+  that is an empty sequence or neither a path nor iterable raises a plain
+  ``ValueError`` or ``TypeError``, and what :func:`hilclaw.local_run.run`
+  raises for the command, the time limit, ``cwd`` or ``env`` is passed on.
 
 What this module does not do: it builds nothing and reads no clock; it does not
 defend against forged timing (decision 10); it does not retry, repair, store or
