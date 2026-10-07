@@ -32,19 +32,27 @@
       "question": "PLAN P0.5-3 (coverage gate, D12: `hilclaw/` line >= 80% and function >= 80%) needs three choices D12 leaves open. (1) Tool: (a) add `coverage` (exact pin) to the `dev` dependency group, a new external dependency (A-13); or (b) a stdlib-only tracer (`sys.settrace` around pytest), a 100-150 line gate script that test rule 5 leaves untested? (2) Is \"function coverage\" = `def`s entered at least once / all `def`s in `hilclaw/` (methods and nested functions counted; lambdas, comprehensions and class bodies not)? (3) Are the thresholds on the package total, and may a CI check script live outside `hilclaw/` (a new top-level directory), or must it stay inline in the workflow as in T-0011?",
       "askedAt": "2026-10-06T11:23:05Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6015206161"
+    },
+    {
+      "id": "HQ-0004",
+      "taskId": "T-0036",
+      "reason": "owner-only-decision",
+      "question": "PLAN P1-3 (verification half of the harness) needs the two owner items it is marked with, for the first case only: `cpu_standin`, kind `gemm`, fp32, C kernel. (1) Reference oracle (open part of #5 A-7): (a) NumPy float64 as recommended there — `numpy` becomes the first runtime dependency of `hilclaw` (a new external dependency, A-13), exact pin; (b) a float64 reference written in C inside the harness and built with clang like the timing driver, no new dependency; (c) something else (name it)? (2) Tolerance vocabulary of the instance parameter for this case (#5 B-7): (a) per-element `rtol` and `atol`, pass iff |out - ref| <= atol + rtol * |ref| for every element, any non-finite output fails; (b) another form (name it)? (3) Defaults: (a) none — an instance must state its tolerance; (b) default values (name them)? Not asked here: vendor golden outputs, downstream-metric thresholds, datasets (B-8), other kinds, dtypes and backends.",
+      "askedAt": "2026-10-07T02:44:20Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 37,
+    "iterations": 38,
     "tasksDone": 34,
-    "tasksBlocked": 3,
+    "tasksBlocked": 4,
     "reviewRoundsTotal": 100
   },
   "lastIteration": {
-    "at": "2026-10-07T02:39:59Z",
-    "owner": "AKIHA:e6e75ad4-1",
-    "taskId": "T-0035",
-    "outcome": "DONE"
+    "at": "2026-10-07T02:44:20Z",
+    "owner": "AKIHA:e6e75ad4-2",
+    "taskId": "T-0036",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
