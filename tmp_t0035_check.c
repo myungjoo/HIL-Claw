@@ -1,4 +1,4 @@
-int tmp_t0035_check(int unused)
+int tmp_t0035_check(int value)
 {
-    return 0;
+    return value;
 }
