@@ -42,7 +42,8 @@ Conventions of this module, which the two ADRs do not fix:
   fails when the name exists and replaces nothing; the temporary name is then
   removed. There is no fallback to a replacing rename: where the link is not
   possible the store fails. A record that took the name in between is treated
-  as one found before the write.
+  as one found before the write; when the name is free again at that reading,
+  the :class:`FileExistsError` of the link is raised and nothing is retried.
 - When writing fails, the temporary file and the directories the call created
   are removed where possible. A file of that name form which another write
   left is never read, listed, removed or given the final name, and makes no

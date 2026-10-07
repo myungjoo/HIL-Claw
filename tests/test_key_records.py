@@ -873,25 +873,29 @@ def never_replace(monkeypatch):
 
 
 class TornFile:
-    def __init__(self, file):
+    def __init__(self, file, error):
         self.file = file
+        self.error = error
 
     def write(self, data):
         self.file.write(data[:10])
-        raise OSError("synthetic failure")
+        raise self.error
 
 
-@contextlib.contextmanager
-def torn_open(path, mode):
-    with open(path, mode) as f:
-        yield TornFile(f)
+def torn(error):
+    @contextlib.contextmanager
+    def torn_open(path, mode):
+        with open(path, mode) as f:
+            yield TornFile(f, error)
+
+    return torn_open
 
 
 def break_step(monkeypatch, step, error):
     if step == "creation":
         monkeypatch.setattr(key_records, "open", failing(error), raising=False)
     elif step == "write":
-        monkeypatch.setattr(key_records, "open", torn_open, raising=False)
+        monkeypatch.setattr(key_records, "open", torn(error), raising=False)
     else:
         name = {"flush": "fsync", "link": "link", "removal": "unlink"}[step]
         monkeypatch.setattr(key_records.os, name, failing(error))
@@ -1066,8 +1070,7 @@ def test_a_taken_name_that_is_absent_again_is_the_error_of_the_link(
 @pytest.mark.parametrize("kind", KINDS)
 @pytest.mark.parametrize(
     ("step", "raised"),
-    [(step, OSError) for step in STEPS]
-    + [(step, KeyboardInterrupt) for step in ("creation", "flush", "link")],
+    [(step, raised) for raised in (OSError, KeyboardInterrupt) for step in STEPS],
 )
 def test_a_failed_step_stores_nothing_and_leaves_nothing(
     root, tmp_path, monkeypatch, kind, step, raised
@@ -1082,7 +1085,7 @@ def test_a_failed_step_stores_nothing_and_leaves_nothing(
         subject.store(subject.make())
     monkeypatch.undo()
 
-    assert step == "write" or excinfo.value is error
+    assert excinfo.value is error
     assert snapshot(tmp_path) == before
     assert temporaries(root) == []
     assert_not_stored(root, subject)
