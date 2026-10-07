@@ -91,9 +91,7 @@ class Log(NamedTuple):
 
 
 class InvalidEventError(ValueError):
-    """An event or an argument breaks ADR-0006 decision 3, is not strict JSON (``data``)
-    or is not a line position (``position`` of :func:`read`).
-    """
+    """An event or an argument is invalid (ADR-0006 decision 3; ``data`` as strict JSON)."""
 
 
 class CorruptEventsError(Exception):
@@ -205,8 +203,9 @@ def read(data_root, run_id, position=0):
     :class:`UnsupportedVersionError` with the same place.
     """
     path = layout.run_file(data_root, run_id, "events.ndjson")
-    if type(position) is not int or position not in range(_MAX + 1):
-        _fail("position", _INTEGER[2], position)
+    kind, accepts, rule = _INTEGER
+    if type(position) is not kind or not accepts(position):
+        _fail("position", rule, position)
     root = _root(data_root)
     content = b"" if _lstat(root, path) is None else path.read_bytes()
     *lines, tail = content.split(b"\n")
