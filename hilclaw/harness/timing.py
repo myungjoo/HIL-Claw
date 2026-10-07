@@ -174,7 +174,7 @@ def run_timing(
     :func:`driver_arguments`; ``timeout_s``, ``cwd`` and ``env`` are handed
     over unchanged. ``executable`` is a ``str`` or :class:`os.PathLike`, or a
     non-empty sequence that is used as the start of the command. Standard
-    error is never read.
+    error is captured and never parsed.
 
     The run is completed only if it did not time out, its exit status is 0,
     its standard output is of the form of :func:`parse_report` with no interval
