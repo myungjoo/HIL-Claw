@@ -2,7 +2,7 @@
 id: T-0037
 title: Write ADR-0010 closing one part of OD-18 (the form in which the FR-10 tools of the layer-2 package are exposed to layer 1 - MCP server, command line, or both - and the invocation convention the tool contract needs) and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-18, FR-10, NFR-6, NFR-7, C-7, "#5 A-12", "#5 D6"]
 dependsOn: [T-0007, T-0026]
@@ -117,3 +117,87 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (integrator, document mode) FR-10's closing sentence "MCP 서버 vs CLI 노출 형태 = OD-18" and #5 A-12 point 1, once the objection window has passed.
 
 ## Result
+**DONE** — landed on `main` as commit `acb0345` ("T-0037: Add ADR-0010, the exposure form of the FR-10 tools (one part of OD-18)"), document mode, pushed as a fast-forward of `c4458d7`; no PR. The task branch was deleted remotely and locally (separate commands, after the push was confirmed). This task ticks **no PLAN checkbox** (prerequisite slice of P1-1). This `## Result` edit is **not** in the landed commit; it is left uncommitted on `main` for the driver's wrap-up commit.
+
+### Decisions of ADR-0010 (`ARCHITECTURE/decisions/ADR-0010-od18-tool-exposure-form.md`, 172 lines — 12 above the "about 110-160" of the task, inside the 300 LOC / 5 files cap: 185 insertions, 10 deletions, 4 files; three reviewers marked the length "no change needed")
+1. **Scope and terms**: how a layer-1 agent invokes an FR-10 tool of the package; terms *tool function*, *registry*, *front*, *request*, *result*, *tool failure*. Not a tool's arguments, not a backend transport, not a hook.
+2. **Where the contract lives**: a tool is defined once as a tool function that knows no front; request and result are one strict-JSON object each; binaries are named by hash (cited: C-3, ADR-0004 d6). A front only decodes, looks up, calls and encodes. NFR-6: Method A can call the functions or the same server; the registry is a table built at process start, so later dynamic registration changes the registry, not the fronts.
+3. **Forms of the MVP**: **both, as two fronts of the one package over the one registry** — a stdio **MCP server that agents use** (layer-1 text names tools by MCP name) and a **command line** for people, scripts and tests. Reasons: only a typed tool gives a hook the request as data and gives a per-agent allowlist a single tool to name; command line alone would in effect reject OD-8 candidate ① item 4, which the record may not do; MCP alone would rest P1-1 on a not-verified fact and leave tests / CI / people without a direct path. Identical behaviour: for a call that reaches a tool function a front holds no logic, default, check or side effect; conformance tests run the same requests through both. **Reopened** if a standard-library MCP server cannot be made to work with Claude Code (then: MCP SDK = owner decision, or the command line as the agents' front with decision 6 rewritten; neither chosen in advance).
+4. **Invocation convention** (the record's own): MCP server name `hilclaw`; MCP tool name = FR-10 / C-3 name with `.` → `_` (`mcp__hilclaw__sim_run`, `…board_run`, `…profiler_collect`, `…correctness_check`, `…blob_push`, `…blob_fetch`; a later tool name containing `_` reopens the mapping). Command line: one command with the FR-10 name as its only argument (example `python -m hilclaw sim.run`; the spelling before the name is the code task's), request = one JSON object on stdin, exit 0 = one result object + LF on stdout, any other status = tool failure with `{"error": {"kind": …, "message": …}}` (also for an unknown name or a non-JSON input; empty stdout only when the front could not report), stderr = unparsed diagnostics. MCP: request = `arguments` of `tools/call`; result = `isError` false + one text block with the result as JSON text; tool failure = `isError` true + the same error object; an unknown tool or malformed message = JSON-RPC error; a tool function never writes to stdout. **Result vs tool failure**: a result says what the experiment established, its failure included; a tool failure says no outcome was established. `kind` is a *name*; no list of kinds.
+5. **Configuration and data root**: nothing new — the front calls the existing `hilclaw.config.load_data_repo()` (config file found from the package's checkout, the two existing environment overrides) and passes `data_root` down.
+6. **Consequences for enforcement and isolation** (not decisions): possible under candidate ① (an agent without Bash can be given single MCP tools) and under candidate ② (indifferent to the form); a `claude -p` child has its own session's hooks and servers; a later hook can match the typed tools, read the request and the calling `agent_type`, but sees a command-line call only as a Bash string — so a check that must hold on every path, and the append of ADR-0006 d7, can sit in a hook (with no shell for those agents) or below the fronts; **the placement is not decided**. Explicit sentence present: no isolation means, hook, gate or allowlist is adopted or rejected.
+7. **Versioning and change**: no version member; the source commit is the pin (cited for the harness: OD-11 confirmed part; extended to the whole package as the record's reading). A command-line call loads the current source; an MCP server process lives as long as the session or the sub-agent it was given to and is not restarted by Claude Code, so a replaced tool layer applies when that process is replaced. Requirement: the outcome of a call must not depend on state the server kept from an earlier call (connections, caches, board reservations and locks are not restricted — #5 B-2, OD-10, OD-17). Round = process (#8 M4) stays open.
+8. **Limits**: no access control; an agent with a shell can use the command-line front unseen by a hook on the typed tools; no budget, gate, duplicate or concurrency check; no time or size limit decided (documented Claude Code limits listed as fact F9); the MCP front is not proven in a live session; registration is neither done nor chosen.
+
+### Facts about Claude Code / MCP (Context table of the record)
+F1-F9 **verified** against the documentation on 2026-10-07 (code.claude.com `/docs/en/mcp`, `/hooks`, `/sub-agents`, `/headless`, `/env-vars`; modelcontextprotocol.io specification 2025-06-18 transports and tools), each re-fetched and re-checked by the reviewers of rounds 1-4; none tried in a live session. **F10 not verified**: that a standard-library stdio server is accepted by the Claude Code version in use (protocol revision included), whether a `.` is allowed in an MCP tool name, how `structuredContent` is shown. Only the choice of the agents' front hangs on F10, with the reopening condition above; the mapping `.` → `_` avoids the second point; the third is left to the code task.
+
+### Boundaries left open (named in the record)
+Rest of OD-18 (which hooks and what they check, round = process / #8 M4, the invariant list, default-FAIL, kill switch); gates (OD-3 / #5 A-5, owner-only); isolation means (OD-8 ①/②, OD-14); roster, who calls which tool, any `tools` list, `coder.run` (OD-23, P2-2 / P2-3); each tool's arguments, results, failure kinds, retry, the mock's fault injection, event kinds and which tool or hook appends (P1-1, P1-8; OD-10, OD-13, OD-17, OD-19); backends (#5 B-2, A-7 ③); OD-12 adapters; oracle, tolerance, objective, hw values; registration (`.mcp.json` / `--mcp-config` / `mcpServers`), packaging, settings, all code. **New sub-questions registered under OD-18** (no new OD number): ① live interoperability of a standard-library MCP server; ② whether an agent holding a shell may call the command-line front; ③ time limit and result size of a call per front (progress notifications, idle window, automatic backgrounding).
+
+### Review (4 rounds; a fresh-context `dev-reviewer` each, spawned with `model: opus`; no `SECURITY` finding)
+Verdict sequence: **Request changes, Approve, Approve, Approve.**
+- **Round 1 — Request changes** (`8087b67`): (Minor) fact F9 wrong — an MCP call has documented limits (about 28 h wall clock, 30 min idle for stdio, backgrounding after 2 min) → F9, the comparison row, Limits and sub-question ③ rewritten; (Minor) "docstrings put a command line out of scope" was a misquote → "the tasks that landed them"; (Minor) "no state between calls" could forbid backend connections / board locks → narrowed to "the outcome of a call does not depend on kept state", connections and locks excluded by name; (Nit) ADR-0006's objection window is 2026-10-14, not 10-13 (the task file's `## Why` has the typo); (Nit) reversibility of the name mapping stated for the six names only; (Nit) command-line handling of an unknown name / non-JSON input stated; (Nit, no change) length.
+- **Round 2 — Approve** (`0ea6c56`), 4 Nits, three fixed: `--bare` announced as the future default of `-p` (F6, comparison row, S2-1 sentence); backgrounding does not apply to sub-agents and `-p` (F9, Limits, sub-question ③); session permission rules can narrow Bash by pattern but not per agent; length (no change).
+- **Round 3 — Approve** (`ebf32a4`), 1 Minor + 4 Nits: (Minor) sub-agent `mcpServers` missing — server lifetime may be a sub-agent's, and `.mcp.json` was written as the only registration → F3 extended, decision 4 / 7, Limits, Consequences and the two Korean passages reworded, registration way explicitly not chosen; (Nit) "a front holds no check" versus the front-level answers → qualified "for a call that reaches a tool function"; (Nit) "by default" for `-p` backgrounding; (Nit) OD-11 citation scope marked as cited for the harness / the record's reading for the package; length (no change).
+- **Round 4 — Approve** (`1ef5341`), 3 Nits all "no change needed", **nothing trivially fixable left**. The landed tree is identical to `1ef5341` (`git diff --quiet`).
+- Review points (a)-(e): all four reviewers agreed that the slice is design-level (D6 names "OD-17/18"; A-12 point 1 hands the form to OD-18; no owner-only fact used), that both entanglements are handled (candidate ① neither adopted nor rejected; MCP SDK excluded as an owner decision), that the A-13 reading holds (document mode, no dependency, no data-plane schema — the request / result convention is a layer-1 / layer-2 interface), that no excluded item is decided, and that the register and coverage edits are as required.
+
+### Document checks
+- **Landed check** before work: `git log origin/main --grep='^Task: T-0037'` empty; `gh pr list --search T-0037 --state all` empty.
+- **Session entry** (before the first edit): `gh pr list --state open` empty; #4 last comment 2026-07-31, #7 2026-09-07, #8 2026-10-03 — nothing newer about OD-18, FR-10 or tool exposure; the latest #5 comment was the HQ-0004 mirror (6029803639), nothing after it. Positive case: proceed.
+- **Pairs checked**: d2 ↔ FR-10 ("transport 무관", single package), A-12 points 1 and 3, NFR-6; d3 ↔ FR-10 ("MCP/Bash로"), A-12 points 1-2 (languages; standard library only), C-7 ③, NFR-6; d4 ↔ FR-10 tool names and C-3 `blob.push` / `blob.fetch`, FR-1 (a failed candidate is routed by its result), ADR-0001 *name*; d5 ↔ `hilclaw.config` docstring and the "`data_root` is given by the caller / reads no configuration" docstrings of `events`, `artifacts`, `cas`; d6 ↔ ADR-0006 d7 and its boundary "who appends" (placement left open), OD-8 ① item 4 and ②, A-12 point 3 (static allowlists stay OD-23); d7 ↔ NFR-7 ①, OD-11 confirmed part / A-12 point 4, #8 M4. Docstrings of `events`, `artifacts`, `cas`, `config`, `local_run`, `harness/timing`, `merge_guard`, `driver_state`: no contradiction (no library module writes to stdout; the two existing `python -m` entries stay separate and are not tools). `pyproject.toml` unchanged and as the record describes.
+- Nothing excluded is stated as decided (review point (b), four rounds).
+- **Links**: 33 relative links in the new record and the added lines of the first branch commit; all files and `#od-…` anchors resolve (throw-away script, not committed; later rounds added no new link target, and the reviewers re-checked each round).
+- **OD numbers**: `git diff origin/main -- ARCHITECTURE/Requirements.md` is the OD-18 row only (+1 / −1); 29 register rows before and after, numbering unchanged; status word kept (`제안됨` with a "확정분" clause, as OD-16).
+- `git ls-files --eol`: `i/lf` for the four files; `git diff --check` clean; `git show --stat acb0345` lists exactly the four files of `touchesFiles`.
+- **Coverage re-check** (four fixed bundles): ⑴ steps citing FR-10 (S0-5, S1-6, S1-b-2·4, S8-3, S9-2, S10-3; no step cites OD-18); ⑵ other steps where an agent runs an experiment or uses storage through the package (S0-4·6·7, S1-3·4, S2-2·3, S3-2·4, S7-1·2·3, S8-4, S9-1·3, S10-2); ⑶ steps touching later enforcement (S1-5·7, S2-1·5, S7-5, S8-5); ⑷ registration steps (S0-1, S1-1, S1-b-1): **no verdict changes, no gap**. Recorded in StandardScenarios "검사 결과" (heading, a 2026-10-07 "8차" passage, rows S0 and S2) and in the commit body.
+- **CI** `push` run on `main` for `acb0345`: run id `37568287721`, https://github.com/myungjoo/HIL-Claw/actions/runs/37568287721 — `completed` / `success`.
+
+### Edits of the existing documents
+- Requirements: the OD-18 row only ("관련" gains FR-10 and NFR-6; the confirmed part naming ADR-0010; the open rest).
+- OpenDecisionProposals: OD-18 heading note; the "흡수: FR-10 도구의 노출 형태" bullet (old sentence kept, struck through, with the outcome); new "채택분(ADR-0010)", "채택하지 않은 것(ADR-0010)" and "하위 질문" bullets; the integrator memo annotated with what was adopted and what was not; one pointer sentence in OD-8 candidate ① item 4 and one in OD-23 ("neither adopted nor rejected"). No proposal text deleted.
+- StandardScenarios: the result section only.
+- **UsageCases: not touched**; no sentence there became false (lines 58, 89, 95 still hold).
+
+### Owner notice (DRIVER §9) — ready to post, **not posted** by the executor
+
+```
+### OD-18 — exposure form of the FR-10 tools fixed by ADR-0010 under DRIVER §9 (T-0037)
+
+Decided (one part of OD-18 — the question A-12 point 1 handed to it; the register row keeps its status):
+- A tool is defined once inside `hilclaw/` as a tool function (one JSON object in, one JSON object out) that knows no entry point.
+- Two entry points over one registry: a stdio **MCP server that agents use**, and a **command line** for people, scripts and tests.
+- Names: server `hilclaw`; MCP tool name = FR-10 name with `.` replaced by `_` (agents see `mcp__hilclaw__sim_run`, `…board_run`, `…profiler_collect`, `…correctness_check`, `…blob_push`, `…blob_fetch`).
+- Command line: tool name as the only argument, request on stdin, result on stdout with exit status 0; any other status is a tool failure with an error object (`kind`, `message`).
+- A result that reports a failed experiment is a result, not a tool failure; which is which per tool is left to each tool's contract.
+- Standard library only, no new dependency; no version member, the source commit is the pin.
+
+Record: `ARCHITECTURE/decisions/ADR-0010-od18-tool-exposure-form.md`, commit acb0345 (4 review rounds, Approve).
+
+Owner inputs used as fixed: #5 A-12 (one package, language set, no runtime tool creation, source commit as the pin), FR-10 tool names, C-3 `blob.push` / `blob.fetch`, C-7. The record's own choices: both entry points with MCP for agents, the server name, the name mapping, stdin / stdout / exit status, the error object, the result-versus-failure rule, the rule that a call's outcome must not depend on state the server kept.
+
+Readings to check:
+1. **Next to the OD-8 candidate ① argument that exposure is a security decision** (#4 comment 5139876430): the record adopts and rejects no isolation means, hook, gate or allowlist. It chose the typed (MCP) form for agents so that candidate ① item 4 (no Bash for in-process agents) stays possible, and states that candidate ② is indifferent to the form. It also states the gap: an agent that holds a shell can call the command-line entry, which a hook on the typed tools does not see — whether a check lives in a hook or below both entry points is left open.
+2. **No new dependency**: the MCP server is to be written with the Python standard library, without an MCP SDK. This is **not verified in a live session**; the Claude Code facts used were read in the documentation on 2026-10-07. If the first code task finds it does not work, the choice is reopened — an SDK would then be your decision.
+3. **What stays open of OD-18**: which hooks exist and what they check, round boundary = process boundary (#8 M4), the CLAUDE.md invariant list, default-FAIL, the kill switch; plus three new sub-questions (live interoperability of the server; shell-holding agents and the command line; time and size limits of a call — a stdio MCP call is aborted after 30 minutes without a response or progress notification by default).
+4. How the server is registered (`.mcp.json`, `--mcp-config`, or an agent's `mcpServers`) is not chosen; registration is a later task and partly an owner action.
+
+A-13 reading: document mode; no code, dependency, settings file or data-plane schema changed — the request / result convention is an interface between layer 1 and layer 2.
+
+Objection window: 7 days from this notice, until 2026-10-14. An objection creates a task that reverts ADR-0010 and the edits made with it.
+
+— posted by driver
+```
+
+### Provisional readings (the record's own, to be confirmed by use or by the owner)
+- The source commit pins the fronts and the registry as it pins the harness (one package, one commit).
+- "A result includes the failure of the experiment" is a rule of the convention; where a backend fault (a hung board) falls is left to each tool's contract and OD-10.
+- The task file's `## Why` gives ADR-0006's objection window as 2026-10-13; the record uses 2026-10-14 (T-0026 `## Result`), as the reviewers confirmed.
+
+### Follow-ups (in addition to the list above)
+- (planner, next — code mode, P1-1 slice ①) The registry, the tool-failure type and the command-line front with one tool that needs no undecided contract; inputs from the record: request on stdin, one JSON object + LF on stdout, exit 0 / non-zero with the error object, an unknown name and non-JSON input reported the same way, stderr unparsed, `load_data_repo()` for the data root, tool functions never print.
+- (planner — code mode, P1-1 slice ②) The stdio MCP front over the same registry with the standard library only (LF line ends, bytes on the standard streams); it settles sub-question ① as far as a test can, and a live check needs the server registered — partly an owner action (approval of a project-scoped server; `.mcp.json` would be a new file at the repository root, `.claude/settings.json` is not involved).
+- (planner) Sub-question ③ before the first long-running tool (`board.run`): progress notifications or a raised idle window; a foreground Bash call is capped at 10 minutes by default.
+- (planner / P2-4) Sub-question ② and the placement of checks and of the ADR-0006 d7 append (hook versus tool layer) belong to the OD-18 rest record that P2-4 needs.
+- (integrator, document mode, after the objection window) FR-10's closing sentence "MCP 서버 vs CLI 노출 형태 = OD-18" and #5 A-12 point 1.
