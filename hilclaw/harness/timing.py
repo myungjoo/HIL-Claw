@@ -15,11 +15,12 @@ this order::
 
     <executable> <m> <k> <n> <n_min> <n_max> <cv_max> <sample_form> <seed>
 
-- ``m``, ``k``, ``n``, ``n_min``, ``n_max``, ``seed``: decimal digits only, no
-  sign, no leading zero, no space. ``m``, ``k`` and ``n`` are at least 1,
-  ``n_min`` is :data:`measurement.N_MIN` (``5``), ``n_max`` is at least
-  ``n_min``, and ``seed`` is below 2**64. No upper bound is put on the others:
-  the driver program refuses what it cannot hold or allocate.
+- ``m``, ``k``, ``n``, ``n_min``, ``n_max``, ``seed``: decimal digits only,
+  ``0`` or digits that do not start with ``0``, no sign, no space. ``m``, ``k``
+  and ``n`` are at least 1, ``n_min`` is :data:`measurement.N_MIN` (``5``),
+  ``n_max`` is at least ``n_min``, and ``seed`` is from 0 to 2**64 - 1. The
+  others have no upper bound beyond what the interpreter writes in decimal
+  digits: the driver program refuses what it cannot hold or allocate.
 - ``cv_max``: ``repr(measurement.CV_MAX)``, which is ``0.05``; a decimal
   number that ``strtod`` reads.
 - ``sample_form``: the word ``interval`` or ``reciprocal``.

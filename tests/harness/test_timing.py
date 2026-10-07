@@ -1,5 +1,6 @@
 import json
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -32,6 +33,8 @@ sys.stderr.flush()
 sys.stdout.buffer.write(bytes.fromhex(plan["stdout"]))
 sys.stdout.buffer.flush()
 time.sleep(plan["sleep"])
+if plan["signal"]:
+    os.kill(os.getpid(), plan["signal"])
 sys.exit(plan["status"])
 """
 
@@ -221,12 +224,13 @@ class StandIn:
         self.directory = directory
         self.record = directory / "started.json"
 
-    def __call__(self, stdout=b"", *, status=0, stderr="", sleep=0):
+    def __call__(self, stdout=b"", *, status=0, stderr="", sleep=0, signal=0):
         plan = {
             "stdout": stdout.hex(),
             "status": status,
             "stderr": stderr,
             "sleep": sleep,
+            "signal": signal,
         }
         (self.directory / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
         script = self.directory / "timing.py"
@@ -476,6 +480,14 @@ def test_non_zero_exit_after_a_valid_report_is_broken(stand_in):
     result = timed(stand_in(WORKED_REPORT, status=3))
     assert_broken(result, Broken.EXIT_STATUS)
     assert result.run.returncode == 3
+    assert result.run.stdout == WORKED_REPORT
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signals")
+def test_death_by_signal_after_a_valid_report_is_broken(stand_in):
+    result = timed(stand_in(WORKED_REPORT, signal=signal.SIGKILL))
+    assert_broken(result, Broken.EXIT_STATUS)
+    assert result.run.returncode == -signal.SIGKILL
     assert result.run.stdout == WORKED_REPORT
 
 
