@@ -32,8 +32,10 @@ Conventions of this module, which ADR-0005 does not fix:
   is removed, after an interrupt too (the directories it created stay; a
   removal that fails is not reported). The death of the process leaves the
   previous records or the new ones, and possibly a temporary file; one that
-  another write left is not listed, read, moved or removed. After the loss of
-  the machine only what was committed is recovered (ADR-0005 decision 10).
+  another write left is not listed, read, moved or removed. This holds on the
+  POSIX systems of C-7; nothing is stated for a network file system or native
+  Windows (ADR-0014 decision 6). After the loss of the machine only what was
+  committed is recovered (ADR-0005 decision 10).
 - A stored file that is not a regular file (a symbolic link is not followed) or
   not a valid file of version :data:`SCHEMA_VERSION` makes every function that
   reads it raise :class:`CorruptArtifactsError`; nothing is written or repaired.
