@@ -27,7 +27,6 @@ from hilclaw import tools
 EXIT_RESULT = 0
 EXIT_TOOL_FAILURE = 3
 EXIT_FRONT_FAILURE = 4
-
 KIND_BAD_USAGE = "bad_usage"
 KIND_UNKNOWN_TOOL = "unknown_tool"
 KIND_BAD_REQUEST = "bad_request"
@@ -43,16 +42,17 @@ def _outcome(args, registry, stdin):
         return _refused(KIND_BAD_USAGE, f"expected one tool name, got {len(args)}")
     try:
         registry.get(args[0])
-        if stdin is None:
-            raise OSError("it is closed")
-        request = tools.decode_request(stdin.read())
-        return EXIT_RESULT, tools.call(registry, args[0], request)
+        try:
+            if stdin is None:
+                raise OSError("it is closed")
+            data = stdin.read()
+        except (OSError, ValueError) as e:
+            return _refused(KIND_NO_INPUT, f"cannot read standard input: {e}")
+        return EXIT_RESULT, tools.call(registry, args[0], tools.decode_request(data))
     except tools.UnknownToolError as e:
         return _refused(KIND_UNKNOWN_TOOL, str(e))
     except tools.InvalidRequestError as e:
         return _refused(KIND_BAD_REQUEST, str(e))
-    except (OSError, ValueError) as e:
-        return _refused(KIND_NO_INPUT, f"cannot read standard input: {e}")
     except tools.ToolFailure as e:
         return EXIT_TOOL_FAILURE, e.error_object()
 
@@ -83,12 +83,12 @@ def main(argv=None, *, registry=None, stdin=None, stdout=None, stderr=None):
     stderr = _standard("stderr") if stderr is None else stderr
     status, answer = _outcome(args, registry, stdin)
     if status != EXIT_RESULT:
-        error = answer["error"]
-        _say(stderr, f"{error['kind']}: {error['message']}")
+        _say(stderr, "{kind}: {message}".format(**answer["error"]))
+    line = tools.encode(answer)
     try:
         if stdout is None:
             raise OSError("it is closed")
-        stdout.write(tools.encode(answer))
+        stdout.write(line)
         stdout.flush()
     except (OSError, ValueError) as e:
         _say(stderr, f"cannot write standard output: {e}")

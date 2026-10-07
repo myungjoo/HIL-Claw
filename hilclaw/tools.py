@@ -101,11 +101,11 @@ def default_registry():
 def check_json_object(value):
     """Raise :class:`ValueError` unless ``value`` is one JSON object in the strict sense.
 
-    A value nested too deeply for this interpreter, or cyclic, is refused too.
+    A value nested too deeply for this interpreter to walk or to encode, or
+    cyclic, is refused too.
     """
     try:
         _check_object(value, "$")
-        # A depth the walk passes can still be too deep for the encoder.
         json.dumps(value, allow_nan=False)
     except RecursionError:
         raise ValueError("nested too deeply") from None
