@@ -2,7 +2,7 @@
 id: T-0044
 title: Let hilclaw.events.read start at a line position (the reader of ADR-0011 decision 6 and ADR-0012 Consequences) with the "position beyond the end of the log" error, and add its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-17, OD-8, FR-13, NFR-1, NFR-2, "#8 M7", "#4 §1"]
 dependsOn: [T-0027, T-0041, T-0042]
@@ -131,3 +131,45 @@ Helpers live in the test file and get no tests of their own (test rule ⑤). Syn
 - (unchanged) The first journaled tool of P1-1; the T-0041 question for a revision of ADR-0011; the integrator items after 2026-10-14 (T-0040 and T-0042 Follow-ups).
 
 ## Result
+**DONE** — PR [#40](https://github.com/myungjoo/HIL-Claw/pull/40), squash commit `7da2e06` on `main` (branch commits `6ef7cbc`, `3db7929`, `d8926b0`; branch deleted remote and local after the PR state was `MERGED`). This task ticks **no** PLAN checkbox (a slice of P1-8).
+
+**Start checks.** Landed check: no commit with `Task: T-0044` on `origin/main` and no PR for T-0044; no open PR. Issue #5: no comment after the ADR-0012 notice (issuecomment-6034226175), so no objection to ADR-0006, ADR-0011 or ADR-0012.
+
+**Review** (fresh-context `dev-reviewer`, 3 rounds, final Approve; no blocking finding in any round, no security suspicion):
+- Round 1 — Approve, with two notes handled in `3db7929`: the message read "1 complete lines" for one line (now it ends with `complete lines: N`); the docstring of `InvalidEventError` did not cover an invalid position.
+- Round 2 — Approve, with two cosmetic notes handled in `d8926b0`: the docstring of `InvalidEventError` back to one line; the position is checked with the type, predicate and rule text of `_INTEGER` instead of a second `range`.
+- Round 3 — Approve, "no nit remains that should be resolved in this PR".
+- The reviewer re-checked the planner's readings and agreed with both: D4 bounds the change of a task and no written rule bounds the length of a module; A-13 "data-plane schema change" does not apply. It found nothing decided that the records list under Boundaries, and no point that needs a record or the owner.
+- Information kept from the reviews (no change asked): the whole file is read and split, so memory and bytes read grow with the run; the records accept that cost (ADR-0011 *Bound*, ADR-0012 decision 5), and a chunked scan belongs with sub-question ⑬ once a measured log shows the need.
+
+**As landed** (`hilclaw/events.py`, now 320 lines; non-test change +33 / −12 in 1 file):
+- `read(data_root, run_id, position=0)` → `Log(events, torn_tail)`; `Log` unchanged.
+- `class PositionBeyondLogError(CorruptEventsError)`; message `<path relative to the data root>: position <p> is beyond the end of the log, complete lines: <n>`.
+- An invalid position: `InvalidEventError`, message `position: must be an int from 0 to 9007199254740991, got <type> <value>`.
+- `validate`, `append`, `remove_torn_tail` unchanged. Module docstring: one sentence extended ("reads the file of a run, from a line position when asked (ADR-0011 decision 6, ADR-0012 decision 5)"); the one-line docstring of `InvalidEventError` reworded so that it covers an invalid argument.
+- The module imports neither `hilclaw.journal` nor `hilclaw.run_state`; only the test imports `hilclaw.journal.fold`.
+
+**Provisional conventions chosen by this task** (the records do not fix them; also in the commit and PR body):
+- The argument is `position`, positional or keyword, default 0 — ADR-0012 calls the line count the reader's only argument, and `read` has no other optional argument it could be mistaken for.
+- An argument on `read` and not a second public function — the reader needs the path, the regular-file check, the split and the line check of `read`; the default keeps every existing call as it is.
+- Error type: a subclass of `CorruptEventsError` — "an error of the kind of a damaged line" (ADR-0011 decision 6): a caller that handles damage handles it, and one that must tell the two apart can. It is not a `ValueError`.
+- An invalid position (not exactly `int`, so also `True`, `False`, `1.0`, `"1"`, `None`; negative; above `keys.MAX_INTEGER`) raises `InvalidEventError` — the position is an *integer* of ADR-0001 (ADR-0012 decision 4), and the module reports its other arguments this way. Order: `run_id` (the path is built first, as in every function of the module), then the position, then the file system; an invalid position is reported even when the data root is missing, and an invalid `run_id` wins over an invalid position.
+- A missing file, a missing run directory, or a file in the place of `runs/` or of the run directory: no event with position 0 (as before); "beyond the end" with 0 complete lines for a position ≥ 1 — a missing file is a log without events (ADR-0006 decision 2).
+- Blank lines, bytes that are not UTF-8, damaged lines and lines of another version before the position are passed over and counted; only line feeds are counted, so a carriage return before a line feed changes nothing.
+- Exactly *p* complete lines and a torn tail: no event, the length of the tail reported, no error. A torn tail is never counted, also when its bytes parse.
+- A path that is not a regular file (a directory, a symbolic link) raises the plain `CorruptEventsError` of before, whatever the position, and not the subclass.
+- Bytes before the position: one `read_bytes` and one split at the line feed, as before; only the lines after the position are decoded, parsed and validated. Chosen because the records bound the lines interpreted and not the bytes read, and because the default path stays the same code.
+- No criterion disagreed with a record.
+
+**Tests** (`tests/test_events.py`, +319 lines, additions only — `git diff origin/main --numstat` gave `319 0`; one added import line `from hilclaw.journal import fold` and one added name in the import list): the signature and the error type; positions 0 to 3 of the Example of ADR-0006 against the slice of `read` without a position, `data_root` as `str`, position 0 explicit; lines appended and read back from a position; the replay property for positions 0 to 3 with the two lines of the Example of ADR-0011 and one more start line; damaged, blank, white-space, not-UTF-8 and other-version lines before the position with LF and CR LF ends; CR LF line ends; a torn tail at positions 0, 1 and 2 with `snapshot` before and after; two runs; beyond the end for files of 0, 1 and 3 lines, a torn tail only, torn tails after complete lines, damaged lines only, with excess 1, 2 and up to `keys.MAX_INTEGER`; a missing file, missing directories and a file in the place of a directory; damage and another version after the position with "line 3" for positions 0, 1 and 2; eight invalid positions with an existing and a missing data root; the order of the argument checks; a directory and a symbolic link in the place of the file with positions 1 and 5.
+
+**Verification**
+- Local (CPython 3.14.4, Windows; pytest 9.1.1, ruff 0.16.10), before the first commit and again on the final head: `python -m pytest` → 4487 passed, 137 skipped (before this task: 4378 passed, 133 skipped); `python -m ruff check .` → "All checks passed!"; `python -m ruff format --check .` → "118 files already formatted".
+- `git ls-files --eol`: `i/lf` for both files. `git status --short` after the tests: only the two files. `git diff origin/main --stat`: `hilclaw/events.py` and `tests/test_events.py` only.
+- Lines reached (test rule ①; coverage is not measured by CI yet): `python -m trace --count --missing --coverdir <scratch directory outside the repository> --module pytest tests/test_events.py`. Every changed line of `read` has a count except the two `raise` statements and the `_fail` call; `trace` reports every raising line of the module as missing under pytest, the ones that existing tests have always reached included (the damaged-line and not-a-regular-file raises), so this is a limit of the tool here and not a gap: the tests assert the exact messages those three lines produce.
+- CI on the final head `d8926b0`: five successful checks — `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)` — https://github.com/myungjoo/HIL-Claw/actions/runs/37601964770 . No failed CI run on the PR.
+- Push run on `main` for `7da2e06`: `success` — https://github.com/myungjoo/HIL-Claw/actions/runs/37602396029 .
+
+**Language**: Python, because the module is Python.
+
+**Follow-ups** (nothing new beyond the list above): the module over files that gives the current spend view (`run_state.parse`, `events.read(root, run, view.position)`, `journal.fold`) can now be written; it is the place where `PositionBeyondLogError` is turned into the report of ADR-0011 decision 6. A chunked scan for line feeds stays with sub-question ⑬.
