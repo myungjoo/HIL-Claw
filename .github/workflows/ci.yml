@@ -66,7 +66,7 @@ jobs:
         shell: bash
         run: |
           clang --version
-          git ls-files -z -- '*.c' | xargs -0 -r -t -n 1 clang -std=c99 -Wall -Wextra -Wpedantic -Werror -O2 -c -o /dev/null
+          git ls-files -z -- '*.c' | xargs -0 -r -t -n 1 clang -std=c99 -Wall -Wextra -Wpedantic -Werror -O2 -c -o /dev/null --
 
   test-presence:
     name: Test presence (hilclaw)
