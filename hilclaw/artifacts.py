@@ -23,13 +23,19 @@ Conventions of this module, which ADR-0005 does not fix:
   Every write rewrites the whole file, so a file last written in another form
   is normalised by the next write; the values of every record, a ``gc_at``
   included, are written back unchanged.
-- The file is written in place, without a temporary file: no path of ``runs/``
-  is a scratch location (ADR-0004 decision 7). When a write fails, the error
-  passes through; a file this call was creating is removed where possible (the
-  directories it created stay), and a file that existed stays as the failed
-  write left it, possibly partial; so can a process killed while it writes.
-  Only what was committed is recovered, from the history of the data
-  repository (ADR-0005 decision 10).
+- Every write, the first included, is a replacement by the steps of ADR-0014
+  decision 2: the content goes into a new file ``artifacts.json.<token>.tmp``
+  in the run directory (``<token>`` is the process id, a hyphen and 16 random
+  hexadecimal characters), is flushed and is moved over the final name, which
+  is never opened for writing. When a step fails, its error passes through,
+  the final name holds what it held and the temporary file this call created
+  is removed, after an interrupt too (the directories it created stay; a
+  removal that fails is not reported). A temporary file that another write
+  left is not listed, read, moved or removed. The death of the process leaves
+  the previous records or the new ones, and possibly a temporary file, on the
+  POSIX systems of C-7; nothing is stated for a network file system or native
+  Windows (ADR-0014 decision 6). After the loss of the machine only what was
+  committed is recovered (ADR-0005 decision 10).
 - A stored file that is not a regular file (a symbolic link is not followed) or
   not a valid file of version :data:`SCHEMA_VERSION` makes every function that
   reads it raise :class:`CorruptArtifactsError`; nothing is written or repaired.
@@ -43,8 +49,10 @@ What this module does not do: it stores and deletes no blob; it never removes
 or moves a record, never changes ``sha256``, ``size``, ``type`` or ``round`` of
 one and never writes ``gc_at`` (the MVP has no GC tool); it knows no list of
 ``type`` values and judges no change of class (OD-20, OD-29, OD-23); it reads
-no configuration, runs no ``git`` and commits nothing; and it gives no locking
-and no atomicity (OD-17, ADR-0004 decision 10).
+no configuration, runs no ``git`` and commits nothing; it takes no lock, so
+two writers at once are not prevented and the later move wins (OD-17, ADR-0014
+decision 6); and it gives no atomicity between the store and the file or with
+a commit (ADR-0004 decision 10).
 """
 
 import contextlib
@@ -52,6 +60,7 @@ import json
 import os
 import re
 import reprlib
+import secrets
 import stat
 from pathlib import Path
 from typing import NamedTuple
@@ -284,15 +293,20 @@ def _read(root, path):
 def _write(path, records):
     lines = ",\n".join(json.dumps(record) for record in records)
     text = f'{{\n"schema_version": {SCHEMA_VERSION},\n"artifacts": [\n{lines}\n]\n}}\n'
+    content = text.encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
-    creating = not path.exists()
+    token = f"{os.getpid()}-{secrets.token_hex(8)}"
+    temporary = path.with_name(f"{path.name}.{token}.tmp")
+    created = False
     try:
-        with open(path, "wb") as f:
-            f.write(text.encode("utf-8"))
+        with open(temporary, "xb") as f:
+            created = True
+            f.write(content)
             f.flush()
             os.fsync(f.fileno())
+        os.replace(temporary, path)
     except BaseException:
-        if creating:
+        if created:
             with contextlib.suppress(OSError):
-                path.unlink()
+                os.unlink(temporary)
         raise

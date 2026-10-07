@@ -1,6 +1,8 @@
 import contextlib
 import copy
 import json
+import os
+import re
 
 import pytest
 
@@ -23,6 +25,8 @@ FILE = f"runs/{RUN}/artifacts.json"
 KIND = "example_kind"
 ONES = "1" * 64
 MEMBERS = ["sha256", "size", "type", "round", "retention_class"]
+TEMPORARY = re.compile(r"artifacts\.json\.[a-z0-9-]{1,64}\.tmp")
+LEFTOVER = f"runs/{RUN}/artifacts.json.4242-0123456789abcdef.tmp"
 
 # The Example of ADR-0005, as written in the record.
 EXAMPLE = (
@@ -119,6 +123,22 @@ def place(root, relative, content):
 
 def stored(ref, **changes):
     return rec(ref.digest, size=ref.size, **changes)
+
+
+def held(root):
+    path = root / FILE
+    return path.read_bytes() if path.is_file() else None
+
+
+def run_files(root):
+    directory = root / "runs" / RUN
+    if not directory.is_dir():
+        return {}
+    return {path.name: path.read_bytes() for path in directory.iterdir()}
+
+
+def temporaries(root):
+    return [name for name in run_files(root) if TEMPORARY.fullmatch(name)]
 
 
 # --- happy ---
@@ -769,6 +789,7 @@ def test_a_failing_first_write_leaves_no_file(root, monkeypatch, error):
 
     assert excinfo.value is error
     assert not (root / FILE).exists()
+    assert temporaries(root) == []
     monkeypatch.undo()
     assert load(root, RUN) == []
     assert add(root, ref) == Added(stored(ref), True)
@@ -784,6 +805,7 @@ def test_a_file_that_cannot_be_opened(root, monkeypatch):
 
     assert excinfo.value is error
     assert not (root / FILE).exists()
+    assert temporaries(root) == []
 
 
 class TornFile:
@@ -806,24 +828,24 @@ def test_a_write_that_fails_midway(root, monkeypatch, existing):
     first, second = put(root, 1), put(root, 2)
     if existing:
         add(root, first)
+    previous = held(root)
     monkeypatch.setattr(artifacts, "open", torn_open, raising=False)
 
     with pytest.raises(OSError, match="synthetic failure"):
         add(root, second)
 
     monkeypatch.undo()
-    if existing:
-        with pytest.raises(CorruptArtifactsError):
-            load(root, RUN)
-    else:
-        assert not (root / FILE).exists()
-        assert add(root, second).created
+    assert held(root) == previous
+    assert temporaries(root) == []
+    assert load(root, RUN) == ([stored(first)] if existing else [])
+    assert add(root, second).created
 
 
 @pytest.mark.parametrize("edit", ["add_record", "set_retention_class"])
 def test_a_failing_rewrite_keeps_the_file_in_its_place(root, monkeypatch, edit):
     first, second = put(root, 1), put(root, 2)
     add(root, first)
+    previous = held(root)
     error = OSError("synthetic failure")
     monkeypatch.setattr(artifacts.os, "fsync", failing(error))
 
@@ -834,4 +856,259 @@ def test_a_failing_rewrite_keeps_the_file_in_its_place(root, monkeypatch, edit):
             set_retention_class(root, RUN, first.digest, "best")
 
     assert excinfo.value is error
-    assert (root / FILE).is_file()
+    assert held(root) == previous == text(stored(first))
+    assert temporaries(root) == []
+
+
+# --- the write as a replacement (ADR-0014 decision 2) ---
+
+WRITES = ("first file", "add_record", "set_retention_class")
+STEPS = ("creation", "write", "flush", "move")
+
+
+def prepare(root, write):
+    first, second = put(root, 1), put(root, 2)
+    if write == "first file":
+        return None, text(stored(second)), lambda: add(root, second)
+    add(root, first)
+    if write == "add_record":
+        new = text(stored(first), stored(second))
+        return held(root), new, lambda: add(root, second)
+    new = text(stored(first, retention_class="best"))
+    return held(root), new, lambda: set_retention_class(root, RUN, first.digest, "best")
+
+
+def watch(monkeypatch, root):
+    seen = []
+    flush, move = os.fsync, os.replace
+
+    def fsync(descriptor):
+        files = run_files(root)
+        seen.append({"step": "flush", "held": files.pop("artifacts.json", None)})
+        status = os.fstat(descriptor)
+        same = [
+            name
+            for name in files
+            if os.path.samestat(status, os.stat(root / "runs" / RUN / name))
+        ]
+        seen[-1].update(descriptor=descriptor, files=files, flushed=same)
+        return flush(descriptor)
+
+    def replacing(source, target):
+        with pytest.raises(OSError):
+            os.fstat(seen[-1]["descriptor"])
+        content = source.read_bytes()
+        seen.append({"step": "move", "held": held(root), "content": content})
+        seen[-1].update(source=source, target=target)
+        return move(source, target)
+
+    monkeypatch.setattr(artifacts.os, "fsync", fsync)
+    monkeypatch.setattr(artifacts.os, "replace", replacing)
+    return seen
+
+
+def spy_on_open(monkeypatch):
+    opened = []
+
+    def spy(file, mode="r", *arguments, **named):
+        opened.append((file, mode))
+        return open(file, mode, *arguments, **named)
+
+    monkeypatch.setattr(artifacts, "open", spy, raising=False)
+    return opened
+
+
+def break_step(monkeypatch, step, error):
+    if step == "creation":
+        monkeypatch.setattr(artifacts, "open", failing(error), raising=False)
+    elif step == "write":
+        monkeypatch.setattr(artifacts, "open", torn_open, raising=False)
+    else:
+        name = {"flush": "fsync", "move": "replace", "removal": "unlink"}[step]
+        monkeypatch.setattr(artifacts.os, name, failing(error))
+
+
+@pytest.mark.parametrize("write", WRITES)
+def test_a_write_leaves_the_file_and_no_temporary_file(root, write):
+    _, new, call = prepare(root, write)
+
+    call()
+
+    assert run_files(root) == {"artifacts.json": new}
+
+
+def test_a_first_write_creates_the_file_and_its_directories_only(root, tmp_path):
+    ref = put(root)
+    before = set(snapshot(tmp_path))
+
+    add(root, ref)
+
+    created = {"data/runs", f"data/runs/{RUN}", f"data/{FILE}"}
+    assert set(snapshot(tmp_path)) - before == created
+
+
+@pytest.mark.parametrize("write", WRITES)
+def test_the_final_name_holds_the_previous_content_until_the_move(
+    root, monkeypatch, write
+):
+    previous, new, call = prepare(root, write)
+    seen = watch(monkeypatch, root)
+
+    call()
+
+    flush, move = seen
+    assert (flush["step"], move["step"]) == ("flush", "move")
+    assert flush["held"] == move["held"] == previous
+    assert held(root) == new
+
+
+@pytest.mark.parametrize("write", WRITES)
+def test_the_temporary_file_is_whole_and_beside_the_final_one(root, monkeypatch, write):
+    _, new, call = prepare(root, write)
+    seen = watch(monkeypatch, root)
+
+    call()
+
+    flush, move = seen
+    source = move["source"]
+    assert source.parent == root / "runs" / RUN
+    assert move["target"] == layout.run_file(root, RUN, "artifacts.json")
+    assert TEMPORARY.fullmatch(source.name)
+    assert source.name not in layout.RUN_FILES
+    assert move["content"] == new
+    assert flush["files"] == {source.name: new}
+    assert flush["flushed"] == [source.name]
+    assert temporaries(root) == []
+
+
+def test_two_writes_use_two_temporary_names(root, monkeypatch):
+    refs = [put(root, number) for number in (1, 2, 3)]
+    seen = watch(monkeypatch, root)
+
+    for ref in refs:
+        add(root, ref)
+    set_retention_class(root, RUN, refs[0].digest, "final")
+
+    sources = [entry["source"].name for entry in seen if entry["step"] == "move"]
+    assert len(set(sources)) == 4
+    assert all(TEMPORARY.fullmatch(name) for name in sources)
+
+
+@pytest.mark.parametrize("write", WRITES)
+def test_only_a_new_file_of_the_temporary_name_is_opened(root, monkeypatch, write):
+    _, new, call = prepare(root, write)
+    opened = spy_on_open(monkeypatch)
+
+    call()
+
+    ((path, mode),) = opened
+    assert mode == "xb"
+    assert path.parent == root / "runs" / RUN
+    assert TEMPORARY.fullmatch(path.name)
+    assert held(root) == new
+
+
+def test_a_call_that_writes_nothing_takes_no_step(root, monkeypatch):
+    ref = put(root)
+    add(root, ref)
+    seen = watch(monkeypatch, root)
+    opened = spy_on_open(monkeypatch)
+
+    assert not add(root, ref, round=5).created
+    assert set_retention_class(root, RUN, ref.digest, "intermediate") == stored(ref)
+
+    assert seen == [] and opened == []
+    assert run_files(root) == {"artifacts.json": text(stored(ref))}
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("whole", [False, True])
+def test_a_leftover_is_neither_read_nor_moved_nor_removed(root, existing, whole):
+    first, second = put(root, 1), put(root, 2)
+    leftover = text(rec("2" * 64, retention_class="best"))
+    place(root, LEFTOVER, leftover if whole else leftover[:9])
+    if existing:
+        add(root, first)
+    records = [stored(first)] if existing else []
+
+    assert load(root, RUN) == records
+    assert add(root, second).created
+    changed = set_retention_class(root, RUN, second.digest, "final")
+
+    assert load(root, RUN) == [*records, changed]
+    assert temporaries(root) == [LEFTOVER.rpartition("/")[2]]
+    assert (root / LEFTOVER).read_bytes() == (leftover if whole else leftover[:9])
+
+
+@pytest.mark.parametrize("write", WRITES)
+@pytest.mark.parametrize(
+    ("step", "kind"),
+    [(step, OSError) for step in STEPS]
+    + [(step, KeyboardInterrupt) for step in ("creation", "flush", "move")],
+)
+def test_a_failed_step_leaves_the_final_name_and_no_temporary_file(
+    root, monkeypatch, write, step, kind
+):
+    previous, new, call = prepare(root, write)
+    records = load(root, RUN)
+    error = kind("synthetic failure")
+    break_step(monkeypatch, step, error)
+
+    with pytest.raises(kind, match="synthetic failure") as excinfo:
+        call()
+    monkeypatch.undo()
+
+    assert step == "write" or excinfo.value is error
+    assert held(root) == previous
+    assert temporaries(root) == []
+    assert load(root, RUN) == records
+    call()
+    assert run_files(root) == {"artifacts.json": new}
+
+
+@pytest.mark.parametrize("write", WRITES)
+def test_a_temporary_name_in_use_is_an_error_and_that_file_stays(
+    root, monkeypatch, write
+):
+    previous, _, call = prepare(root, write)
+    monkeypatch.setattr(artifacts.secrets, "token_hex", lambda size: "0" * 2 * size)
+    name = f"artifacts.json.{os.getpid()}-{'0' * 16}.tmp"
+    place(root, f"runs/{RUN}/{name}", b"of another writer")
+    before = run_files(root)
+
+    with pytest.raises(OSError):
+        call()
+
+    assert run_files(root) == before
+    assert before[name] == b"of another writer"
+    assert held(root) == previous
+
+
+def test_a_removal_that_fails_does_not_hide_the_failure_of_the_step(root, monkeypatch):
+    previous, new, call = prepare(root, "add_record")
+    error = OSError("synthetic failure")
+    break_step(monkeypatch, "move", error)
+    break_step(monkeypatch, "removal", OSError("removal refused"))
+
+    with pytest.raises(OSError) as excinfo:
+        call()
+    monkeypatch.undo()
+
+    assert excinfo.value is error
+    assert held(root) == previous
+    (leftover,) = temporaries(root)
+    assert run_files(root)[leftover] == new
+
+
+@pytest.mark.parametrize("edit", ["add_record", "set_retention_class"])
+def test_an_invalid_previous_file_takes_no_step(root, monkeypatch, edit):
+    ref = put(root)
+    place(root, FILE, CORRUPT["not json"])
+    seen = watch(monkeypatch, root)
+    opened = spy_on_open(monkeypatch)
+
+    with pytest.raises(CorruptArtifactsError):
+        CALLS[edit](root, RUN, ref.digest)
+
+    assert seen == [] and opened == []
+    assert run_files(root) == {"artifacts.json": CORRUPT["not json"]}
