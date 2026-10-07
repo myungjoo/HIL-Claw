@@ -536,13 +536,17 @@ BROKEN_TEXTS = {
         + "9" * 5000
         + '}, "position": 0, "open_steps": []}'
     ),
-    "nested_too_deeply": raw(rest=', "example_member": ' + "[" * 100000 + "]" * 100000),
 }
 
 
 @pytest.mark.parametrize("text", BROKEN_TEXTS.values(), ids=BROKEN_TEXTS)
 def test_content_that_breaks_a_rule_of_the_text(text):
     invalid("content: ", parse, text)
+
+
+def test_nesting_too_deep_for_the_interpreter_is_reported():
+    text = raw(rest=', "example_member": ' + "[" * 2_000_000 + "]" * 2_000_000)
+    invalid("content: is nested too deeply to parse", parse, text)
 
 
 @pytest.mark.parametrize(

@@ -15,10 +15,12 @@ Conventions of this module, which ADR-0012 does not fix:
   :class:`InvalidStateError` naming the place. Another version raises
   :class:`UnsupportedVersionError` of this module, not that of the log.
 - The rules for the whole text come first, whatever the version. A content this
-  interpreter cannot parse (an integer too long for it anywhere in the text,
-  nesting too deep) is invalid: nothing is rounded, and the limits stay as the
-  interpreter has them. A number beyond the float range in a member not defined
-  here is read as an infinity.
+  interpreter cannot read (an integer too long for it anywhere in the text,
+  nesting too deep) raises the same error, though it is a limit of this reader
+  and not damage: nothing is rounded, and the limits stay as the interpreter
+  has them, so they differ between interpreters and platforms. A number beyond
+  the float range in a member not defined here is read as an infinity, which
+  :func:`dump` does not write.
 - ``-0`` is read as the integer 0, as :mod:`hilclaw.events` reads it, except as
   a total: decision 4 writes a total without a sign, so :func:`parse`, which
   sees the text, refuses it there.
