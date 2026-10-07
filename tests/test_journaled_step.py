@@ -256,6 +256,16 @@ def test_the_result_returned_is_a_copy_and_a_nested_value_is_kept(root):
     assert lines(root)[1]["data"]["spend"] == spend
 
 
+def test_a_nested_result_is_answered_equal_by_a_repeated_call(root):
+    nested = []
+    for _ in range(50):
+        nested = [{"example_member": nested}]
+    assert run(root, RUN, ID, Step((SPEND, {"example_member": nested}))) == {
+        "example_member": nested
+    }
+    assert run(root, RUN, ID, Step()) == {"example_member": nested}
+
+
 # --- the three states (decision 4) ---
 
 
@@ -605,15 +615,28 @@ def test_lines_before_the_position_are_interpreted_on_the_first_line_path_only(r
     assert step.calls == 1
 
 
-def test_a_position_beyond_the_log_is_seen_on_the_tail_path_only(root):
-    store(root, at(1))
+@pytest.mark.parametrize("identity", [ID, EARLIER, NO_ROUND, LATER])
+@pytest.mark.parametrize("content", [None, b"", raw(other()), raw(other())[:-1]])
+def test_a_position_beyond_the_log_is_reported_on_both_paths(root, identity, content):
+    if content is not None:
+        place(root, content)
+    store(root, at(2))
+    with pytest.raises(events.PositionBeyondLogError) as expected:
+        run_journal.current(root, RUN)
+    before = snapshot(root)
     step = Step()
-    with pytest.raises(events.PositionBeyondLogError):
-        run(root, RUN, ID, step)
+    with pytest.raises(events.PositionBeyondLogError) as caught:
+        run(root, RUN, identity, step)
+    assert str(caught.value) == str(expected.value)
     assert step.calls == 0
-    assert not (root / LOG).exists()
-    assert run(root, RUN, EARLIER, step) == RESULT
-    assert step.calls == 1
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+def test_a_position_at_the_end_of_the_log_is_not_beyond_it(root, identity):
+    place(root, raw(other(), other(1)))
+    store(root, at(2))
+    assert run(root, RUN, identity, Step()) == RESULT
 
 
 # --- error / negative ---
@@ -770,6 +793,9 @@ class Spend(dict):
     pass
 
 
+DEEP = []
+for _ in range(600):
+    DEEP = [DEEP]
 CYCLE = {}
 CYCLE["example_member"] = CYCLE
 UNHOLDABLE = {
@@ -796,6 +822,7 @@ UNHOLDABLE = {
     "a result with a tuple": (SPEND, {"example_member": (1, 2)}),
     "a result with a member name that is no str": (SPEND, {1: 2}),
     "a result that holds itself": (SPEND, CYCLE),
+    "a result nested too deeply to copy": (SPEND, {"example_member": DEEP}),
     "a failure kind that is no name": StepFailed(SPEND, "Bad Kind", "no outcome"),
     "a failure kind that is no str": StepFailed(SPEND, None, "no outcome"),
     "a failure message that is no str": StepFailed(SPEND, "example_failure", 5),

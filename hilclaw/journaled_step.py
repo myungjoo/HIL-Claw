@@ -23,15 +23,18 @@ Conventions of this module, which the records do not fix:
 - An outcome the end line cannot hold raises :class:`InvalidOutcomeError` and
   no end line is appended, so the step stays open: a line the fold refuses is
   never written. It is checked as :func:`hilclaw.journal.check_step` checks an
-  end line and as :func:`hilclaw.tools.check_json_object` checks a result.
+  end line and as :func:`hilclaw.tools.check_json_object` checks a result, and
+  it is copied once as a lookup copies what an end line holds.
 - The checks come in this order: ``run_id``, ``identity``, that ``step`` is
   callable (:class:`TypeError`), then ``data_root`` and the files.
 - Where the state is read (decision 6, last bullet): for an identity whose
   ``round`` is the ``round`` stored in ``STATE.json`` the stored view and the
   tail decide, and the lines before the stored position are not interpreted.
   For every other identity (another round, or none) the log is read from its
-  first line and the stored position is not compared with the log. Whether
-  such steps exist or need an index is open (sub-question 1 of OD-17).
+  first line. Whether such steps exist or need an index is open (sub-question
+  1 of OD-17). A stored position beyond the log raises
+  :class:`hilclaw.events.PositionBeyondLogError` on both paths, before
+  anything is appended: an append would hide it.
 - ``STATE.json`` is required as :func:`hilclaw.run_journal.read_state`
   requires it. An error of that read, of the read of the log or of the lookup
   passes through: nothing is appended and the step is not called.
@@ -58,7 +61,9 @@ and its outcome lost. An amount is what the step stated: nothing verifies it.
 A step about a round above the stored ``round`` (ADR-0012 decision 3: no such
 round has begun) is found only until that round is the stored one: its lines
 then lie before the stored position, the tail shows no line and the step runs
-again, counted twice and not reported.
+again, counted twice and not reported. How deeply a ``result`` may be nested
+depends on the interpreter and on the depth of the call: a lookup made from a
+deeper call than the one that wrote the line can fail to copy it.
 
 It is not a tool and not a hook: nothing registers or calls it, and where the
 append is placed stays open (the rest of OD-18). It names no step, no axis and
@@ -67,6 +72,8 @@ open or ended step again, compares no total with a limit, writes no
 ``STATE.json`` and reads no configuration (OD-10, OD-19, OD-23, the rest of
 OD-17).
 """
+
+import copy
 
 from hilclaw import events, journal, layout, run_journal, tools
 
@@ -148,6 +155,13 @@ def _state(data_root, run_id, identity):
     state = run_journal.read_state(data_root, run_id)
     view = state.budget_spent if identity.round == state.round else journal.EMPTY
     log = events.read(data_root, run_id, view.position)
+    stored, lines = state.budget_spent.position, view.position + len(log.events)
+    if lines < stored:
+        file = f"runs/{run_id}/events.ndjson"
+        end = f"the end of the log, complete lines: {lines}"
+        raise events.PositionBeyondLogError(
+            f"{file}: position {stored} is beyond {end}"
+        )
     return journal.step_state(identity, log.events, view)
 
 
@@ -178,6 +192,9 @@ def _checked_end(numbers, data):
     try:
         journal.check_step(probe | {"kind": journal.STEP_ENDED, "data": data})
         tools.check_json_object(data)
+        copy.deepcopy(data)
+    except RecursionError:
+        raise InvalidOutcomeError("data: is nested too deeply to copy") from None
     except ValueError as error:
         raise InvalidOutcomeError(str(error)) from None
     return data
