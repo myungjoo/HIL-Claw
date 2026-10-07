@@ -97,7 +97,7 @@ class StepFailed(Exception):
 
 
 class InvalidOutcomeError(ValueError):
-    """What a step returned or raised cannot stand on an end line; the message names the member."""
+    """What a step returned or raised cannot stand on an end line; the message says why."""
 
 
 def run(data_root, run_id, identity, step):
@@ -194,7 +194,9 @@ def _checked_end(numbers, data):
         tools.check_json_object(data)
         journal.step_state(identity, [probe])
     except RecursionError:
-        raise InvalidOutcomeError("data: is nested too deeply to copy") from None
+        raise InvalidOutcomeError(
+            "data: is nested too deeply to copy at this call depth"
+        ) from None
     except ValueError as error:
         raise InvalidOutcomeError(str(error)) from None
     return data
