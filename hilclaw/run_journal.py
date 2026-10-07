@@ -54,7 +54,7 @@ class MissingStateError(Exception):
 
 
 class Current(NamedTuple):
-    """Result of :func:`current`: the stored state, the view now, the fold's reports, the tail."""
+    """Result of :func:`current`: the state, the view now, the reports, the torn tail's length."""
 
     state: run_state.RunState
     view: journal.SpendView
