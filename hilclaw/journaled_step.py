@@ -24,7 +24,8 @@ Conventions of this module, which the records do not fix:
   no end line is appended, so the step stays open: a line the fold refuses is
   never written. It is checked as :func:`hilclaw.journal.check_step` checks an
   end line and as :func:`hilclaw.tools.check_json_object` checks a result, and
-  it is copied once as a lookup copies what an end line holds.
+  it is looked up once as :func:`hilclaw.journal.step_state` copies what an
+  end line holds, at the call depth of the lookup of a repeated call.
 - The checks come in this order: ``run_id``, ``identity``, that ``step`` is
   callable (:class:`TypeError`), then ``data_root`` and the files.
 - Where the state is read (decision 6, last bullet): for an identity whose
@@ -72,8 +73,6 @@ open or ended step again, compares no total with a limit, writes no
 ``STATE.json`` and reads no configuration (OD-10, OD-19, OD-23, the rest of
 OD-17).
 """
-
-import copy
 
 from hilclaw import events, journal, layout, run_journal, tools
 
@@ -189,10 +188,11 @@ def _outcome(returned):
 def _checked_end(numbers, data):
     probe = {"schema_version": events.SCHEMA_VERSION, "time": "2026-01-01T00:00:00Z"}
     probe.update({name: value for name, value in numbers.items() if value is not None})
+    probe.update({"kind": journal.STEP_ENDED, "data": data})
     try:
-        journal.check_step(probe | {"kind": journal.STEP_ENDED, "data": data})
+        identity = journal.identity_of(probe)
         tools.check_json_object(data)
-        copy.deepcopy(data)
+        journal.step_state(identity, [probe])
     except RecursionError:
         raise InvalidOutcomeError("data: is nested too deeply to copy") from None
     except ValueError as error:

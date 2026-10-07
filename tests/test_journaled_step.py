@@ -528,6 +528,7 @@ def test_the_state_is_established_before_anything_is_appended_or_run(root, monke
         "step_state",
         ("append", "step_started"),
         "step",
+        "step_state",
         ("append", "step_ended"),
     ]
     del order[:]
@@ -849,6 +850,21 @@ def test_an_outcome_the_end_line_cannot_hold_appends_no_line_and_leaves_the_step
     assert_open_and_not_run(root)
 
 
+@pytest.mark.parametrize("depth", range(440, 520))
+def test_a_result_is_refused_or_answered_equal_whatever_its_depth(root, depth):
+    nested = []
+    for _ in range(depth):
+        nested = [nested]
+    try:
+        first = run(root, RUN, ID, Step((SPEND, {"example_member": nested})))
+    except InvalidOutcomeError:
+        assert_open_and_not_run(root)
+        return
+    step = Step()
+    assert run(root, RUN, ID, step) == first
+    assert step.calls == 0
+
+
 def test_the_message_of_an_invalid_outcome_names_the_member(root):
     with pytest.raises(InvalidOutcomeError, match=r"data\.spend\.example_axis"):
         run(root, RUN, ID, Step(({AXIS: -1}, RESULT)))
@@ -858,7 +874,7 @@ def test_the_message_of_an_invalid_outcome_names_the_member(root):
         InvalidOutcomeError, match=r"pair \(spend, result\), got NoneType"
     ):
         run(root, RUN, NO_ROUND, Step(None))
-    with pytest.raises(InvalidOutcomeError, match="nested too deeply"):
+    with pytest.raises(InvalidOutcomeError, match="nested too deeply to copy"):
         run(root, RUN, LATER, Step((SPEND, {"example_member": DEEP})))
 
 
