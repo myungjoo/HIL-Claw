@@ -2,7 +2,7 @@
 id: T-0048
 title: Add hilclaw/journaled_step.py, the library function that carries out one journaled step by the repeated-call rule of ADR-0011 decision 3 (state of the identity, start line, the step, end line), and add its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-17, NFR-1, FR-3, C-4, "#8 M7"]
 dependsOn: [T-0027, T-0038, T-0040, T-0041, T-0044, T-0045]
@@ -135,5 +135,61 @@ Helpers live in the test file and get no tests of their own (test rule ⑤). Syn
 - (planner, P1-1) The mock backend with fault injection for the three death points, and the first tool on top of this module, once a tool has a fully decided contract (how the data root and the identity reach a tool function, where a tool states its description and input schema — T-0038 and T-0039 `## Result`).
 - (planner, document mode, §9) Sub-question ⑮ of OD-8: whether `artifacts.json` and the key record files are written by the technique of ADR-0013 (`hilclaw/artifacts.py` writes in place; T-0025 follow-up (f), T-0023 follow-up (a)) — a design-level ADR slice that needs no owner item, then a code slice.
 - (unchanged) The rest of P1-8; the integrator items after 2026-10-14 (T-0040, T-0042 and T-0046 Follow-ups); OD-18 sub-questions ① and ③ (T-0039 Follow-ups); the T-0047 follow-ups.
+- (executor, T-0048, review F1 — a question for the record that answers sub-question ① of OD-17) Are journaled steps about a round **above** the stored `round` allowed, and if so, how does the lookup stay right once that round begins? As landed, such an identity is read from the first line until its round is the stored one; then its lines lie before the stored position, the tail shows no line, and `journaled_step.run` runs it again (counted twice, not reported). ADR-0012 decision 3 says no such round has begun, so the first tool should not present such an identity until this is answered.
+- (executor, T-0048, review F2/F4, code) `journal.step_state` copies an end line with `copy.deepcopy`, which depends on the recursion limit and on the depth of the calling stack (already a known limit of T-0041). `journaled_step` refuses an outcome it cannot look up at its own call depth, but a lookup made from a deeper call can still fail on a line written from a shallower one. Making the copy independent of the recursion limit is a change of `hilclaw/journal.py`.
+- (executor, T-0048, review O1 — with sub-question ② of OD-17) When `step` returns valid amounts together with a `result` the end line cannot hold, the step stays open and the stated amounts are recorded nowhere. Whether such amounts should be kept (for example by an end line with a failure) is not decided.
 
 ## Result
+**DONE** — PR [#43](https://github.com/myungjoo/HIL-Claw/pull/43), squash commit `4f29d1c` on `main` (branch commits `4fa0a5d`, `d9ce2a9`, `e946c6f`, `8a1a29d`, `f9e37a1`, `839c4fb`; the squash message is the PR body and its last line is `Task: T-0048`). The remote and the local branch were deleted in separate commands after `gh pr view 43 --json state` reported `MERGED`. This task ticks **no** PLAN checkbox (P1-1 stays open). No new HQ. This `## Result` edit and the three Follow-ups above marked "executor, T-0048" are not in the PR; they are left uncommitted on `main` for the driver.
+
+**Start checks.** No commit with `Task: T-0048` on `origin/main`, no PR for T-0048, no open PR. Issue #5: no comment after the ADR-0013 notice (issuecomment-6036469993), so no objection to ADR-0006, 0010, 0011 or 0012.
+
+**Language**: Python, because `journal`, `events` and `run_journal`, which the module joins, are Python. Standard library only; `pyproject.toml` unchanged.
+
+### Files
+`hilclaw/journaled_step.py` (new, 202 lines, of which about 100 are docstrings; above the "about 160" of the task, inside the cap of 300 LOC / 5 files) and `tests/test_journaled_step.py` (new, 901 lines, 226 test cases). Nothing else changed; both are `i/lf`.
+
+### Public API as landed (names and shapes are conventions of this task, provisional)
+- `run(data_root, run_id, identity, step)` → the `result` (`dict`). The state of the identity is established first; **no line**: start line appended and complete, `step()` called once, end line appended, `result` returned or the failure raised; **ended**: `step` not called, nothing appended, the answer of the first end line; **open**: `step` not called, nothing appended, `tools.ToolFailure(KIND_STEP_OPEN, ...)`.
+- `StepFailed(spend, kind, message)` (an `Exception`, attributes `spend`, `kind`, `message`, unchecked at construction) — raised by a step that ended without an outcome.
+- `InvalidOutcomeError(ValueError)` — what a step returned or raised cannot stand on an end line.
+- `KIND_STEP_OPEN = "step_open"`.
+- Imports `hilclaw.events`, `hilclaw.journal`, `hilclaw.layout`, `hilclaw.run_journal`, `hilclaw.tools`, public names only. Not registered in `hilclaw/tools.py`, no command line entry, no hook, no use of `hilclaw.config`.
+
+### Provisional conventions (each with its reason; also in the commit / PR body and the module docstring)
+- Module `journaled_step`, function `run` — the module is the journaled step, the function carries one out. The identity is the caller's `journal.Identity`; none is derived and `execution` is never raised.
+- Shape of `step`: returns exactly a `tuple` `(spend, result)`, or raises `StepFailed` — an end line is then written only with amounts the step stated itself, for a result and a failure alike (decision 7; sub-question ② stays open).
+- Any other exception out of `step` (a plain `tools.ToolFailure`, `KeyboardInterrupt`) passes through unchanged, no end line: the step stays open (second death point) — an empty `spend` would state that nothing was consumed.
+- An outcome the end line cannot hold: `InvalidOutcomeError`, no end line, the step open. Checked with a probe end line by `journal.identity_of` (the check of `journal.check_step`), `tools.check_json_object`, and one `journal.step_state` over the probe at the call depth of a repeated call's lookup (review F2/F4). An own type and not `journal.JournalError`, so a caller tells a bad outcome of its step from a malformed line met by the lookup.
+- Order of the checks: `run_id` (`layout.InvalidPathValueError`), `identity` (`journal.JournalError` / `events.InvalidEventError`), `step` callable (`TypeError`), then `data_root` (`FileNotFoundError` / `NotADirectoryError`) and the files — arguments before the file system, as `run_journal.step_state`.
+- Where the state is read: identity `round` == stored `round` → stored view and tail (`run_journal.read_state`, `events.read` at the stored position, `journal.step_state` with the stored view; `STATE.json` is read once); every other identity (earlier or later round, no round) → from the first line with `journal.EMPTY`. Answering from the tail alone would run an ended step of an earlier round again; refusing would decide sub-question ①.
+- **Changed in review (F3), a point where the record wins over the criterion's wording**: a stored position beyond the complete lines of the log raises `events.PositionBeyondLogError` (the reader's message) on **both** paths, before anything is appended. The criterion only described the read at position 0; ADR-0011 decision 6 (*Disagreement*) says such a position is reported and not repaired, and an append on the first-line path would have hidden it.
+- `STATE.json` required as `run_journal.read_state` requires it; `MissingStateError`, `InvalidStateError`, `UnsupportedVersionError` pass through, nothing appended, `step` not called (sub-question ⑩ of OD-8 not answered).
+- Errors of the lookup (`PositionBeyondLogError`, `CorruptEventsError`, `events.UnsupportedVersionError`, `JournalError` for a malformed step line) pass through; nothing appended; `step` not called.
+- A failed start-line append passes through and `step` is not called: no line, or open though nothing ran when the failure came after the line feed (the opposite failure of decision 2). A failed end-line append passes through and the outcome is not returned in its place: open, or ended when the failure came after the line feed.
+- A first call returns the `result` as the end line holds it (the copy `events.append` returns); a failure is a `tools.ToolFailure` of the `kind` and `message` on the line, first and repeated call alike, with no cause attached.
+- Open step: kind `step_open`, message `the step <step> execution <n>[ round <n>][ candidate <n>][ attempt <n>] is open`. The kind is not reserved: a step that fails with it is answered like any other ended step.
+- A torn tail is skipped by `events.read` and removed by `events.append`; nothing is added to that.
+
+### Known limits (in the module docstring)
+- Decision 9: two turns at once can both find no line; a death between the outcome and the completed end line leaves the step open and its outcome lost; an amount is what the step stated.
+- A step about a round above the stored `round` is run again once that round is the stored one (review F1; Follow-up above).
+- How deeply a `result` may be nested depends on the interpreter and the depth of the call; a lookup from a deeper call than the writer's can fail to copy the line (Follow-up above).
+
+### Review (5 rounds; a fresh-context `dev-reviewer` each, spawned with `model: opus`; no `SECURITY` finding)
+Verdict sequence: **Request changes, Request changes, Request changes, Approve, Approve.**
+- **Round 1 — Request changes** (`4fa0a5d`), https://github.com/myungjoo/HIL-Claw/pull/43#issuecomment-6037326172 : F1 (Medium) the later-round limit → stated under Limits and in the PR body, behaviour unchanged, question in Follow-ups; N1 the start line failing after its line feed → docstring and a test; N2 `step_open` not reserved → a sentence and a test; N3 an assertion on `tools.default_registry()` → removed. Response: issuecomment-6037356304 (`d9ce2a9`).
+- **Round 2 — Request changes** (`d9ce2a9`), https://github.com/myungjoo/HIL-Claw/pull/43#issuecomment-6037411373 : F2 (Medium) a `result` nested about 500 to 990 lists deep was written and every repeated call raised `RecursionError` → the outcome is copied before the end line and refused; F3 (Low) a stored position beyond the log unnoticed on the first-line path and hidden by the append → `PositionBeyondLogError` on both paths. Response: issuecomment-6037457994 (`e946c6f`, `8a1a29d`).
+- **Round 3 — Request changes** (`8a1a29d`), https://github.com/myungjoo/HIL-Claw/pull/43#issuecomment-6037519504 : F4 (Low) the check copied one frame above the lookup, leaving one depth where the first call wrote and the repeated call failed → the check uses `journal.step_state` over the probe at the lookup's depth; a test scans depths 440 to 519; N4 (optional) the message of `PositionBeyondLogError` is written twice → kept, a test pins the two equal. Response: issuecomment-6037564915 (`f9e37a1`).
+- **Round 4 — Approve** (`f9e37a1`), https://github.com/myungjoo/HIL-Claw/pull/43#issuecomment-6037714634 : optional N5 (docstring of `InvalidOutcomeError`) and N6 (the message for a result that cannot be copied) → both resolved in `839c4fb`, response issuecomment-6037741865, hence one more round.
+- **Round 5 — Approve** (`839c4fb`), https://github.com/myungjoo/HIL-Claw/pull/43#issuecomment-6037809257 : "no nit remains that should be resolved in this PR". Observations: O1 → Follow-up above; O2 a test name still says "names the member" (the assertions are right; not changed, to avoid a further round for a name).
+- The points the task asked for, all five rounds: (a) the code matches ADR-0011 decisions 2, 3, 4, 6 and 7 within the stated limits; (b) every planner reading confirmed — nothing of the rest of OD-18 or of OD-23, sub-questions ① and ② stay open, A-13 "data-plane schema change" and "new external dependency" do not apply; (c) each convention accepted as provisional (F3 changed one); (d) nothing of Boundaries or decision 9 is decided. No reviewer read a point as a design choice needing a record or the owner.
+- Note: two reviewers created experiment directories under the system temporary directory, outside the repository; one reported leaving about 2,500 small directories in `C:\Users\myung\AppData\Local\Temp\t48-ayp42vjp` (not removed: `rm -rf` is forbidden). Nothing was left in the repository.
+
+### Verification
+- Local (CPython 3.14.4, Windows), before the first commit and on the final head: `python -m pytest` → **5000 passed, 146 skipped** (before this task: 4774 passed, 146 skipped); `python -m ruff check .` → "All checks passed!"; `python -m ruff format --check .` → "129 files already formatted".
+- `git ls-files --eol`: `i/lf` for both files. `git status --short` after the tests: clean. `git diff origin/main --stat` before the merge: `hilclaw/journaled_step.py` (202) and `tests/test_journaled_step.py` (901) only.
+- Lines reached (test rule ①; coverage is not measured by CI yet): `python -m trace --count --missing --coverdir <scratch directory outside the repository> --module pytest tests/test_journaled_step.py`. On the first commit no line was marked missing. On the head with the F4 fix one line is marked: the `raise` for a result nested too deeply to copy, because under the tracer its own frames make an earlier check refuse the value first. Without the tracer that line is reached: a test asserts its exact message, and a script outside the repository confirmed the message on CPython 3.11.9 and 3.14.4.
+- CI on the final head `839c4fb`: five successful checks — `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)` — https://github.com/myungjoo/HIL-Claw/actions/runs/37620071725 . No failed CI run on the PR (the run for `e946c6f` was cancelled when the next commit was pushed; the others succeeded).
+- Push run on `main` for `4f29d1c`: `success` — https://github.com/myungjoo/HIL-Claw/actions/runs/37620652393 .
+- Wall clock: about 43 minutes (11:42 to 12:25 UTC).
