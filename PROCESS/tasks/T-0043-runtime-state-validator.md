@@ -2,7 +2,7 @@
 id: T-0043
 title: Add the runtime STATE.json module (hilclaw/run_state.py) with the pure functions of ADR-0012 - validity of a file content, conversion between the stored budget_spent and journal.SpendView, the written form - and its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-8, OD-17, FR-13, NFR-1, NFR-2, NFR-7, "#4 §1"]
 dependsOn: [T-0027, T-0041, T-0042]
@@ -136,3 +136,61 @@ Helpers that build contents live in the test file and get no tests of their own 
 - (unchanged) The first journaled tool of P1-1; the T-0041 question for a revision of ADR-0011; the integrator items after 2026-10-14 (T-0040 and T-0042 Follow-ups).
 
 ## Result
+**DONE** — PR #39 (https://github.com/myungjoo/HIL-Claw/pull/39), squash-merged to `main` as commit `dcbd0f1` ("T-0043: Add hilclaw/run_state.py, the pure functions of ADR-0012 for the runtime STATE.json (#39)"); its message ends with `Task: T-0043`. The task branch was deleted remotely and locally (separate commands, after `gh pr view` reported `MERGED`). This task ticks **no PLAN checkbox** (a slice of P1-8: the other members, `instance.json`, the result files and the file side remain). This `## Result` edit is not in the PR; it is left uncommitted on `main` for the driver's wrap-up commit.
+
+**Language**: Python, because the journal module whose `SpendView` it converts is Python; standard library only, `pyproject.toml` unchanged.
+
+**Size**: `hilclaw/run_state.py` 285 lines (cap 300 LOC / 5 files, tests excluded); `tests/test_run_state.py` 205 cases. `git diff edbee5d dcbd0f1 --stat` lists exactly the two files of `touchesFiles`.
+
+### Public API as landed (names and shapes are conventions of this task, provisional)
+- `SCHEMA_VERSION = 1`.
+- `InvalidStateError(ValueError)` — a content, a document or an argument breaks a rule; the message starts with the place (`budget_spent.open_steps[2].candidate: …`, `content: …`, `view.position: …`, `others: …`).
+- `UnsupportedVersionError(Exception)` — `schema_version` is an *integer* other than 1 (0 included); not a `ValueError`, and not `events.UnsupportedVersionError`.
+- `RunState(round, budget_spent, others)` — named tuple: `round` an `int`, `budget_spent` a `journal.SpendView` (`totals` a read-only mapping, `open_steps` a `frozenset` of `journal.Identity`, an absent number `None`), `others` a `dict` of the top-level members the record does not define, as parsed and not interpreted.
+- `parse(content)` → `RunState` — capabilities 1 and 2 for the `bytes` of a file. Nothing is returned for an invalid content.
+- `validate(document)` → `None` — the same check for a parsed `dict`. The rules of the text (encoding, a repeated member name, the sign of a total) cannot be checked there; members other than the three are not looked at.
+- `from_stored(budget_spent)` → `SpendView`, `to_stored(view)` → `dict` — the conversion both ways, usable without a whole file.
+- `dump(round, view, others=None)` → `bytes` — the written form.
+
+### Provisional choices and the cases ADR-0012 leaves unsaid (each implemented and tested)
+- **Module name `run_state`**: the state of a run; not to be read as `driver_state`.
+- **One error type** for invalidity and for argument errors of `to_stored` / `dump`: a caller tells the cases by the place named, as in `artifacts` and `journal`.
+- **The module's own `UnsupportedVersionError`**: a caller that reads both files can tell this file from a line of the log.
+- **Content is exactly `bytes`**; a `str`, `bytearray`, `memoryview` or anything else is a `TypeError` — the encoding is part of validity, and a wrong type is a caller's bug, not a damaged file.
+- **Written white space**: `json.dumps(indent=1)` — one value per line, so a line-wise diff shows the axis or the number that changed (decision 2, NFR-2); every character outside ASCII escaped. The other members follow **sorted by name, also inside nested objects**, so the bytes are a function of the values. `dump` writes exactly what its caller gives and so decides nothing of sub-question ⑫ (stated in its docstring).
+- **An integer too long for the interpreter** (CPython: more than 4300 digits by default), anywhere in the text and whatever the version: `InvalidStateError`, never rounded, the limit left as the interpreter has it. On the way out a total too long to print is an `InvalidStateError` too (`view.totals: is too long to write`).
+- **`-0`**: read as the integer 0 for `schema_version`, `round`, `position` and the numbers of an identity, as `hilclaw.events` reads it (the *integer* of ADR-0001 is a rule about the value); **refused as a total**, which decision 4 writes "without sign" (and decision 6 makes the forms of decision 4 part of validity). Only `parse` sees the text: it parses a valid content a second time with the integer tokens kept as text. Both reviewers read this as following from the record, not as a new rule.
+- **`1.0`, `1e0`**: floats, no integer, anywhere an integer or a total is required (as `hilclaw.events`).
+- **A number beyond the float range in an undefined member** is read as an infinity; **nesting the interpreter cannot parse** is reported with `InvalidStateError` (both as `hilclaw.events`).
+- **White space and line ends** around and inside the JSON text are accepted as JSON allows (CR LF, no final line feed); a content of white space only is invalid.
+- **Order of checks**: byte order mark, UTF-8, one JSON text without a repeated name / `NaN` / infinity token; then `schema_version` (missing or no *integer*: invalid; another *integer*: unsupported, before any other member is looked at, also when the other members are broken); then `round`, then `budget_spent`.
+- **A broken identity object**: the `JournalError` / `events.InvalidEventError` of `journal.step_identity` is turned into `InvalidStateError` with the place in front (`budget_spent.open_steps[0].candidate: is given only together with round`). A member holding `null` is refused before that call (the function reads `None` as absent).
+- **A view** is checked with `journal.fold((), view)`; a `position` above `keys.MAX_INTEGER` is refused in the stored form, not capped. A view whose `open_steps` is a `set` is accepted.
+- **An axis with total 0, an empty `totals` and an empty `open_steps`** are kept and always written.
+- **`others` of `dump`**: a strict JSON object by `tools.check_json_object` that holds none of the three names; `None` means none.
+- Nothing relates `round` to the open steps (one positive test); no other top-level member is named, reserved or checked; no criterion of this task had to yield to the ADR.
+
+### Known limits
+- The limits of the reader (the longest integer, the deepest nesting) are the interpreter's: they differ between interpreters and platforms and follow `PYTHONINTMAXSTRDIGITS` / `sys.set_int_max_str_digits`. A content beyond them raises `InvalidStateError` although it may be valid by ADR-0012 (the docstring says "a limit of this reader and not damage"). CPython 3.14 on Linux parses 100000 nested arrays that CPython 3.11 and CPython 3.14 on Windows refuse.
+- `dump(*parse(content))` does not always succeed or give the same text: an infinity read from an undefined member is refused by `dump` (not strict JSON); `1e2` is written back as `100.0` and `-0` as `0`.
+- On CPython 3.12 and later the message for an integer too long to show holds a memory address (`reprlib`), so that one message text is not a function of the input; the error type and the place in front are stable (the same as in `hilclaw.journal`).
+- A too long integer inside `others` is reported by `dump` as "others: is not strict JSON: Exceeds the limit …": the refusal is right, the wording loose.
+
+### Review (2 rounds; a fresh-context `dev-reviewer` each, spawned with `model: opus`; no `SECURITY` finding)
+Verdict sequence: **Request changes, Approve.**
+- **Round 1 — Request changes** (`b14a622`), https://github.com/myungjoo/HIL-Claw/pull/39#issuecomment-6034584474 : (High) CI failure — `test_content_that_breaks_a_rule_of_the_text[nested_too_deeply]` did not raise on CPython 3.14 on Linux, where 100000 nested arrays are parsed → the case became `test_nesting_too_deep_for_the_interpreter_is_reported` with a depth no interpreter reads (2,000,000) and asserts the message of the `RecursionError` branch; the module fixes no depth (a fixed limit would be a rule ADR-0012 does not have); (Low) a content the reader cannot represent was called "invalid" → the docstring now says it is a limit of this reader and not damage; (Low) `dump` refuses an infinity `parse` returned → a docstring sentence and the Follow-up below; (Nit) the PR body lacked the CI result → added before the merge. Fixed in `48b92e2`; response: https://github.com/myungjoo/HIL-Claw/pull/39#issuecomment-6034623015
+- **Round 2 — Approve** (`48b92e2`), https://github.com/myungjoo/HIL-Claw/pull/39#issuecomment-6034714323 : 1 Low and 3 Nits, none asking for a code change — two notes for this `## Result` (the known limits above, the Follow-up below), the PR body (line count, wording, CI result; edited before the merge), and two message wordings recorded under Known limits. No code changed after the approved head: the tree of the squash commit equals that of `48b92e2`.
+- Review points: (a) both reviewers found the module in agreement with decisions 2, 3, 4 and 6 sentence by sentence, and the written form with the orders of decisions 2 and 4; (b) both agree with the planner's A-13 reading — a first implementation, no member and no rule added, renamed or removed; the BLOCKED reason does not apply to this landing and does apply to later changes of what the module accepts; (c) every convention under "unsaid" accepted, `-0` and the too long integer in particular; (d) nothing of Boundaries or Limits is decided; (e) the module is pure and imports only public names (`journal`, `keys`, `tools`). Neither reviewer read a point as a design choice needing a record or the owner.
+
+### Verification
+- **Landed check** before work: `git log origin/main --grep='^Task: T-0043'` empty; `gh pr list --search T-0043 --state all` empty; no open PR. Issue #5: no comment after the ADR-0012 notice (6034226175), so no objection.
+- **Local** (CPython 3.14.4 on Windows, ruff 0.16.10, pytest 9.1.1), before the first commit and again on the final head: `python -m pytest` — `4378 passed, 133 skipped`; `python -m ruff check .` — `All checks passed!`; `python -m ruff format --check .` — `117 files already formatted`. CPython 3.11 has no pytest on this machine and nothing was installed: the module was run under 3.11.9 with a throw-away script outside the repository, and CI ran the tests on 3.11.
+- **Coverage of the new module** (test rule ①; not measured by CI yet): `python -m trace --count --missing --coverdir <scratch directory outside the repository> --module pytest tests/test_run_state.py`. Every line of `hilclaw/run_state.py` is reached except the two lines of the "too long to show" text, which only CPython 3.11 reaches (a test for them exists and ran in the 3.11 job). Note for later users of `trace`: a test that ends in a `RecursionError` switches the tracing off for the rest of the run, so the count was taken once with and once without the three deep-nesting cases.
+- `git ls-files --eol`: `i/lf` for both files; `git status --short` after the tests: no stray file.
+- **CI on the PR**: first head `b14a622` — `Python gate (3.14)` failed (1 failed, 4510 passed; https://github.com/myungjoo/HIL-Claw/actions/runs/37597059742 ; the only CI failure of this task). Final head `48b92e2` — five checks passed (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`): https://github.com/myungjoo/HIL-Claw/actions/runs/37597833341
+- **CI `push` run on `main`** for `dcbd0f1`: run `37598567085`, https://github.com/myungjoo/HIL-Claw/actions/runs/37598567085 — `completed` / `success`.
+
+### Follow-ups (in addition to the planner's list above)
+- (file-side slice, with sub-question ⑫) A writer that carries over the undefined members it read meets the round-trip limits above: `dump` refuses an infinity `parse` returned, and rewrites `1e2` as `100.0` and `-0` as `0`. To judge there: whether the reader should refuse a number beyond the float range in an undefined member (a change of what this module accepts — an A-13 schema change that needs a record) or the writer states the loss.
+- (a later record, only if a run shows the need) Whether a version 1 reader refuses a content nested deeper than a fixed number of levels, so that what can be read is the same on every interpreter and platform. Today the rule is "what this interpreter can read"; nothing was decided here.
+- (unchanged) The split of `hilclaw/events.py` and the reader of `events.ndjson` from a line position; the file side of the runtime `STATE.json`.
