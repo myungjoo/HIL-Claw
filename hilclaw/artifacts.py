@@ -30,9 +30,9 @@ Conventions of this module, which ADR-0005 does not fix:
   is never opened for writing. When a step fails, its error passes through,
   the final name holds what it held and the temporary file this call created
   is removed, after an interrupt too (the directories it created stay; a
-  removal that fails is not reported). The death of the process leaves the
-  previous records or the new ones, and possibly a temporary file; one that
-  another write left is not listed, read, moved or removed. This holds on the
+  removal that fails is not reported). A temporary file that another write
+  left is not listed, read, moved or removed. The death of the process leaves
+  the previous records or the new ones, and possibly a temporary file, on the
   POSIX systems of C-7; nothing is stated for a network file system or native
   Windows (ADR-0014 decision 6). After the loss of the machine only what was
   committed is recovered (ADR-0005 decision 10).
