@@ -1,7 +1,10 @@
+import contextlib
 import copy
 import json
 import os
-from types import MappingProxyType
+import re
+import stat
+from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
@@ -758,6 +761,405 @@ def test_a_failing_write_keeps_a_key_directory_that_already_existed(root, monkey
 
     assert [path.name for path in (root / "db").iterdir()] == [HW_NAME]
     assert list((root / "db" / HW_NAME).iterdir()) == []
+
+
+# --- the write of a record file (ADR-0014 decision 3) ---
+
+KINDS = ("hw_profile", "op_signature")
+STEPS = ("creation", "write", "flush", "link")
+TEMPORARY = re.compile(r"(hw_profile|op_signature)\.json\.[a-z0-9-]{1,64}\.tmp")
+TOKEN = "4242-0123456789abcdef"
+OTHER = {hw: hw(revision="synthetic-r2"), op: op(shape={"m": 32, "k": 3, "n": 5})}
+
+
+def written(record):
+    return (json.dumps(record, sort_keys=True, indent=2) + "\n").encode()
+
+
+TAKEN = {
+    "the same record": (lambda make: written(make(label="mine")), False),
+    "another label": (lambda make: compact(make(label="of the other")), False),
+    "another canonical form": (lambda make: compact(OTHER[make]), KeyCollisionError),
+    "no record": (lambda make: b'{"schema_version":', CorruptKeyRecordError),
+}
+
+
+def case(root, kind):
+    if kind == "hw_profile":
+        return SimpleNamespace(
+            file=HW_FILE,
+            make=hw,
+            key=keys.hw_profile_key(hw()),
+            store=lambda record: store_hw_profile(root, record),
+            load=lambda: load_hw_profile(root, HW_NAME),
+            kept=[],
+        )
+    store_hw_profile(root, hw())
+    return SimpleNamespace(
+        file=OP_FILE,
+        make=op,
+        key=keys.op_signature_key(op()),
+        store=lambda record: store_op_signature(root, HW_NAME, record),
+        load=lambda: load_op_signature(root, HW_NAME, OP_NAME),
+        kept=[HW_FILE],
+    )
+
+
+def temporaries(root):
+    return [
+        name for name in files(root) if TEMPORARY.fullmatch(name.rpartition("/")[2])
+    ]
+
+
+def assert_not_stored(root, subject):
+    assert not os.path.lexists(root / subject.file)
+    with pytest.raises(KeyRecordNotFoundError):
+        subject.load()
+    assert lookup(root, hw(), op()) is None
+
+
+def watch(monkeypatch, root, final):
+    seen = []
+    flush, link = os.fsync, os.link
+
+    def fsync(descriptor):
+        status = os.fstat(descriptor)
+        same = [
+            name
+            for name in files(root)
+            if os.path.samestat(status, os.stat(root / name))
+        ]
+        content = {name: (root / name).read_bytes() for name in same}
+        seen.append({"step": "flush", "final": os.path.lexists(final)})
+        seen[-1].update(descriptor=descriptor, flushed=content)
+        return flush(descriptor)
+
+    def linking(source, target):
+        with pytest.raises(OSError):
+            os.fstat(seen[-1]["descriptor"])
+        regular = stat.S_ISREG(os.lstat(source).st_mode)
+        seen.append({"step": "link", "final": os.path.lexists(final)})
+        seen[-1].update(source=source, target=target, regular=regular)
+        seen[-1].update(content=source.read_bytes())
+        return link(source, target)
+
+    monkeypatch.setattr(key_records.os, "fsync", fsync)
+    monkeypatch.setattr(key_records.os, "link", linking)
+    return seen
+
+
+def spy_on_open(monkeypatch):
+    opened = []
+
+    def spy(file, mode="r", *arguments, **named):
+        opened.append((file, mode))
+        return open(file, mode, *arguments, **named)
+
+    monkeypatch.setattr(key_records, "open", spy, raising=False)
+    return opened
+
+
+def failing(error):
+    def fail(*args, **kwargs):
+        raise error
+
+    return fail
+
+
+def never_replace(monkeypatch):
+    for name in ("replace", "rename"):
+        refuse = failing(AssertionError(f"os.{name} was called"))
+        monkeypatch.setattr(key_records.os, name, refuse)
+
+
+class TornFile:
+    def __init__(self, file, error):
+        self.file = file
+        self.error = error
+
+    def write(self, data):
+        self.file.write(data[:10])
+        raise self.error
+
+
+def torn(error):
+    @contextlib.contextmanager
+    def torn_open(path, mode):
+        with open(path, mode) as f:
+            yield TornFile(f, error)
+
+    return torn_open
+
+
+def break_step(monkeypatch, step, error):
+    if step == "creation":
+        monkeypatch.setattr(key_records, "open", failing(error), raising=False)
+    elif step == "write":
+        monkeypatch.setattr(key_records, "open", torn(error), raising=False)
+    else:
+        name = {"flush": "fsync", "link": "link", "removal": "unlink"}[step]
+        monkeypatch.setattr(key_records.os, name, failing(error))
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_store_leaves_the_record_file_and_no_temporary_file(root, monkeypatch, kind):
+    subject = case(root, kind)
+    never_replace(monkeypatch)
+    record = subject.make(label="synthetic label")
+
+    assert subject.store(record) == Stored(subject.key, True)
+
+    assert files(root) == sorted([*subject.kept, subject.file])
+    assert (root / subject.file).read_bytes() == written(record)
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_the_final_name_does_not_exist_until_the_link(root, monkeypatch, kind):
+    subject = case(root, kind)
+    seen = watch(monkeypatch, root, root / subject.file)
+
+    subject.store(subject.make())
+
+    flush, link = seen
+    assert (flush["step"], link["step"]) == ("flush", "link")
+    assert (flush["final"], link["final"]) == (False, False)
+    assert (root / subject.file).read_bytes() == written(subject.make())
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_the_temporary_file_is_whole_and_in_the_key_directory(root, monkeypatch, kind):
+    subject = case(root, kind)
+    final = root / subject.file
+    seen = watch(monkeypatch, root, final)
+
+    subject.store(subject.make())
+
+    flush, link = seen
+    source = link["source"]
+    assert source.parent == final.parent
+    assert link["target"] == final
+    assert TEMPORARY.fullmatch(source.name)
+    assert source.name.startswith(final.name + ".")
+    assert link["regular"] is True
+    assert link["content"] == written(subject.make())
+    assert flush["flushed"] == {
+        source.relative_to(root).as_posix(): written(subject.make())
+    }
+    assert temporaries(root) == []
+
+
+def test_two_stores_use_two_temporary_names(root, monkeypatch):
+    seen = watch(monkeypatch, root, root / HW_FILE)
+
+    store_hw_profile(root, hw())
+    store_op_signature(root, HW_NAME, op())
+    store_op_signature(root, HW_NAME, OTHER[op])
+
+    sources = [entry["source"] for entry in seen if entry["step"] == "link"]
+    tokens = {source.name.split(".")[2] for source in sources}
+    assert len(sources) == len(tokens) == 3
+    assert all(TEMPORARY.fullmatch(source.name) for source in sources)
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_only_a_new_file_of_the_temporary_name_is_opened(root, monkeypatch, kind):
+    subject = case(root, kind)
+    opened = spy_on_open(monkeypatch)
+
+    subject.store(subject.make())
+
+    ((path, mode),) = opened
+    assert mode == "xb"
+    assert path.parent == (root / subject.file).parent
+    assert TEMPORARY.fullmatch(path.name)
+    assert subject.load() == subject.make()
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_store_of_a_stored_key_takes_no_step(root, monkeypatch, kind):
+    subject = case(root, kind)
+    subject.store(subject.make(label="first"))
+    before = snapshot(root)
+    seen = watch(monkeypatch, root, root / subject.file)
+    opened = spy_on_open(monkeypatch)
+    break_step(monkeypatch, "removal", AssertionError("os.unlink was called"))
+
+    assert subject.store(subject.make(label="first")) == Stored(subject.key, False)
+    assert subject.store(subject.make(label="second")) == Stored(subject.key, False)
+
+    assert seen == [] and opened == []
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("whole", [False, True])
+def test_a_leftover_is_no_record_and_stays(root, kind, whole):
+    subject = case(root, kind)
+    name = f"{subject.file}.{TOKEN}.tmp"
+    leftover = written(subject.make(label="of a dead writer"))[: None if whole else 9]
+    place(root, name, leftover)
+
+    assert_not_stored(root, subject)
+    assert subject.store(subject.make()) == Stored(subject.key, True)
+
+    assert files(root) == sorted([*subject.kept, subject.file, name])
+    assert (root / name).read_bytes() == leftover
+    assert (root / subject.file).read_bytes() == written(subject.make())
+
+
+@pytest.mark.parametrize("whole", [False, True])
+def test_a_leftover_beside_a_stored_record_changes_no_result(root, whole):
+    store_hw_profile(root, hw(label="first"))
+    store_op_signature(root, HW_NAME, op(label="first"))
+    for relative, make in ((HW_FILE, hw), (OP_FILE, op)):
+        leftover = written(make(label="of a dead writer"))[: None if whole else 9]
+        place(root, f"{relative}.{TOKEN}.tmp", leftover)
+    before = snapshot(root)
+
+    assert load_hw_profile(root, HW_NAME) == hw(label="first")
+    assert load_op_signature(root, HW_NAME, OP_NAME) == op(label="first")
+    assert lookup(root, hw(), op()) is not None
+    assert store_hw_profile(root, hw(label="second")).created is False
+    assert store_op_signature(root, HW_NAME, op(label="second")).created is False
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("taken", TAKEN)
+def test_the_last_step_finds_the_name_taken(root, monkeypatch, kind, taken):
+    subject = case(root, kind)
+    content, outcome = TAKEN[taken]
+    placed = content(subject.make)
+    link = os.link
+
+    def linking(source, target):
+        place(root, subject.file, placed)
+        return link(source, target)
+
+    monkeypatch.setattr(key_records.os, "link", linking)
+    never_replace(monkeypatch)
+
+    if outcome is False:
+        assert subject.store(subject.make(label="mine")) == Stored(subject.key, False)
+    else:
+        with pytest.raises(outcome, match=subject.file):
+            subject.store(subject.make(label="mine"))
+
+    assert (root / subject.file).read_bytes() == placed
+    assert files(root) == sorted([*subject.kept, subject.file])
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_taken_name_that_is_absent_again_is_the_error_of_the_link(
+    root, tmp_path, monkeypatch, kind
+):
+    subject = case(root, kind)
+    before = snapshot(tmp_path)
+    error = FileExistsError("synthetic: taken, then gone")
+    break_step(monkeypatch, "link", error)
+
+    with pytest.raises(FileExistsError) as excinfo:
+        subject.store(subject.make())
+    monkeypatch.undo()
+
+    assert excinfo.value is error
+    assert snapshot(tmp_path) == before
+    assert_not_stored(root, subject)
+
+
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize(
+    ("step", "raised"),
+    [(step, raised) for raised in (OSError, KeyboardInterrupt) for step in STEPS],
+)
+def test_a_failed_step_stores_nothing_and_leaves_nothing(
+    root, tmp_path, monkeypatch, kind, step, raised
+):
+    subject = case(root, kind)
+    before = snapshot(tmp_path)
+    error = raised("synthetic failure")
+    break_step(monkeypatch, step, error)
+    never_replace(monkeypatch)
+
+    with pytest.raises(raised, match="synthetic failure") as excinfo:
+        subject.store(subject.make())
+    monkeypatch.undo()
+
+    assert excinfo.value is error
+    assert snapshot(tmp_path) == before
+    assert temporaries(root) == []
+    assert_not_stored(root, subject)
+    assert subject.store(subject.make()) == Stored(subject.key, True)
+    assert files(root) == sorted([*subject.kept, subject.file])
+
+
+def test_a_failed_link_keeps_a_key_directory_that_already_existed(root, monkeypatch):
+    place(root, f"db/{HW_NAME}/synthetic.txt", b"keep")
+    break_step(monkeypatch, "link", OSError("synthetic: no hard links"))
+
+    with pytest.raises(OSError, match="no hard links"):
+        store_hw_profile(root, hw())
+
+    assert files(root) == [f"db/{HW_NAME}/synthetic.txt"]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_temporary_name_in_use_is_an_error_and_that_file_stays(
+    root, tmp_path, monkeypatch, kind
+):
+    subject = case(root, kind)
+    monkeypatch.setattr(key_records.secrets, "token_hex", lambda size: "0" * 2 * size)
+    name = f"{subject.file}.{os.getpid()}-{'0' * 16}.tmp"
+    place(root, name, b"of another writer")
+    before = snapshot(tmp_path)
+
+    with pytest.raises(OSError):
+        subject.store(subject.make())
+    monkeypatch.undo()
+
+    assert snapshot(tmp_path) == before
+    assert (root / name).read_bytes() == b"of another writer"
+    assert_not_stored(root, subject)
+    assert subject.store(subject.make()) == Stored(subject.key, True)
+    assert files(root) == sorted([*subject.kept, subject.file, name])
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_removal_that_fails_does_not_hide_the_failure_of_the_step(
+    root, monkeypatch, kind
+):
+    subject = case(root, kind)
+    error = OSError("synthetic failure")
+    break_step(monkeypatch, "link", error)
+    break_step(monkeypatch, "removal", OSError("removal refused"))
+
+    with pytest.raises(OSError) as excinfo:
+        subject.store(subject.make())
+    monkeypatch.undo()
+
+    assert excinfo.value is error
+    (leftover,) = temporaries(root)
+    assert (root / leftover).read_bytes() == written(subject.make())
+    assert_not_stored(root, subject)
+    assert subject.store(subject.make()) == Stored(subject.key, True)
+    assert files(root) == sorted([*subject.kept, subject.file, leftover])
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_removal_that_fails_after_the_link_leaves_the_record_stored(
+    root, monkeypatch, kind
+):
+    subject = case(root, kind)
+    break_step(monkeypatch, "removal", OSError("removal refused"))
+
+    assert subject.store(subject.make()) == Stored(subject.key, True)
+    monkeypatch.undo()
+
+    (leftover,) = temporaries(root)
+    assert files(root) == sorted([*subject.kept, subject.file, leftover])
+    assert (root / subject.file).read_bytes() == written(subject.make())
+    assert subject.load() == subject.make()
+    assert subject.store(subject.make()) == Stored(subject.key, False)
 
 
 def test_module_defines_no_other_public_name_and_no_entry_point():
