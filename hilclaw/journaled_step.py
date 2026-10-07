@@ -49,9 +49,9 @@ Conventions of this module, which the records do not fix:
   :func:`hilclaw.events.append` returns; a failure is raised as a
   ``ToolFailure`` of the ``kind`` and ``message`` on the line, with no cause
   attached. A repeated call gives equal values from the first end line.
-- An open step is reported with a ``ToolFailure`` of kind :data:`KIND_STEP_OPEN`.
-  The kind is not reserved: a step that fails with it is answered like any
-  other ended step, and the kind then does not tell the two apart.
+- An open step is reported with a ``ToolFailure`` of kind :data:`KIND_STEP_OPEN`,
+  which is reserved for the open step (ADR-0015 decision 2). A step that
+  states it anyway is not detected and is answered like any other ended step.
 - A torn tail is skipped by the read and removed by the append, as
   :mod:`hilclaw.events` does it; nothing is added to that.
 
@@ -66,8 +66,9 @@ again, counted twice and not reported. How deeply a ``result`` may be nested
 depends on the interpreter and on the depth of the call: a lookup made from a
 deeper call than the one that wrote the line can fail to copy it.
 
-It is not a tool and not a hook: nothing registers or calls it, and where the
-append is placed stays open (the rest of OD-18). It names no step, no axis and
+It is not a tool and not a hook: nothing registers or calls it, and the append
+is placed inside the tool function of a journaled tool (ADR-0015 decision 5).
+It names no step, no axis and
 no result member, derives no identity and raises no ``execution``, runs no
 open or ended step again, compares no total with a limit, writes no
 ``STATE.json`` and reads no configuration (OD-10, OD-19, OD-23, the rest of
@@ -76,7 +77,7 @@ OD-17).
 
 from hilclaw import events, journal, layout, run_journal, tools
 
-KIND_STEP_OPEN = "step_open"
+KIND_STEP_OPEN = tools.KIND_STEP_OPEN
 
 _NUMBERS = ("round", "candidate", "attempt")
 

@@ -151,7 +151,7 @@ def test_signature_and_types():
         "identity",
         "step",
     ]
-    assert KIND_STEP_OPEN == "step_open"
+    assert KIND_STEP_OPEN is tools.KIND_STEP_OPEN == "step_open"
     assert issubclass(InvalidOutcomeError, ValueError)
     assert not issubclass(InvalidOutcomeError, journal.JournalError)
     assert not issubclass(StepFailed, tools.ToolFailure)

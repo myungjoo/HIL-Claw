@@ -1,23 +1,44 @@
 """Tool registry, tool failure and the request / result checks shared by the fronts.
 
-The level below the fronts of ADR-0010 (decisions 2 to 4 and 7). A *tool
-function* takes one request and returns one result or raises
-:class:`ToolFailure`. A request and a result are each one JSON object in the
-strict sense: a ``dict`` whose member names are ``str`` and whose values are,
-recursively, ``dict``, ``list``, ``str``, ``int``, finite ``float``, ``bool``
-or ``None``, each of exactly that type, as :func:`json.loads` returns them.
+The level below the fronts of ADR-0010 (decisions 2 to 4 and 7) and the tool
+definition of ADR-0015 (decision 2). A *tool function* takes one request and
+returns one result or raises :class:`ToolFailure`. A request and a result are
+each one JSON object in the strict sense: a ``dict`` whose member names are
+``str`` and whose values are, recursively, ``dict``, ``list``, ``str``,
+``int``, finite ``float``, ``bool`` or ``None``, each of exactly that type, as
+:func:`json.loads` returns them.
+
+A *tool definition* is what the registry holds for one tool: its name, its
+tool function, a description and an input schema, both written for the caller.
+No request is checked against the schema here or in a front: the tool function
+checks its own request.
 
 A front decodes a request, calls :func:`call` and encodes the outcome; it holds
 no tool logic. Nothing here keeps state between calls, reads configuration or
 the data plane, or writes to a standard stream.
 """
 
+import copy
 import json
 import math
 import re
+import typing
 
-KIND_TOOL_CRASHED = "tool_crashed"
-KIND_BAD_RESULT = "bad_result"
+#: The reserved kinds (ADR-0015 decision 2): one meaning in every tool, not enforced.
+KIND_INVALID_REQUEST = "invalid_request"  #: the tool function refused the request
+KIND_NO_DATA_ROOT = "no_data_root"  #: the data root could not be obtained
+KIND_STEP_OPEN = "step_open"  #: the journaled step of this identity is open
+KIND_TOOL_CRASHED = "tool_crashed"  #: the tool function raised no tool failure
+KIND_BAD_RESULT = "bad_result"  #: the tool function returned no result object
+RESERVED_KINDS = frozenset(
+    {
+        KIND_INVALID_REQUEST,
+        KIND_NO_DATA_ROOT,
+        KIND_STEP_OPEN,
+        KIND_TOOL_CRASHED,
+        KIND_BAD_RESULT,
+    }
+)
 
 _KIND = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _TOOL_NAME = re.compile(r"[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*")
@@ -51,22 +72,42 @@ class UnknownToolError(LookupError):
 
 
 class InvalidRequestError(ValueError):
-    """The input is not a request; no tool function was called."""
+    """The input is not a request; no tool function was called.
+
+    It is not the reserved kind ``invalid_request``, the tool failure with
+    which a tool function refuses a request it was called with.
+    """
+
+
+class ToolDefinition(typing.NamedTuple):
+    """What the registry holds for one tool (ADR-0015 decision 2)."""
+
+    name: str
+    function: typing.Callable
+    description: str
+    input_schema: dict
 
 
 class Registry:
-    """The table from tool name to tool function."""
+    """The table from tool name to tool definition."""
 
     def __init__(self):
         self._tools = {}
 
-    def register(self, name, function):
-        """Add a tool function under ``name``.
+    def register(self, name, function, description, input_schema):
+        """Add the tool definition of ``name``; all four parts are required.
 
         ``name`` is lowercase words (a letter, then letters and digits) joined
-        by single ``.``. Raises :class:`TypeError` when ``name`` is not a
-        ``str`` or ``function`` is not callable, and :class:`ValueError` when
-        ``name`` breaks the rule or is registered already.
+        by single ``.``. ``description`` is a ``str`` with a character that is
+        not whitespace. ``input_schema`` is one JSON object in the strict sense
+        whose member ``type`` is ``"object"``; nothing else of it is checked.
+        The registry keeps a copy of the schema.
+
+        Raises :class:`TypeError` when ``name`` or ``description`` is not a
+        ``str``, ``function`` is not callable or ``input_schema`` is not a
+        ``dict``, and :class:`ValueError` when ``name`` breaks the rule or is
+        registered already, ``description`` is blank or ``input_schema`` is
+        not such an object. A refused registration adds nothing.
         """
         if type(name) is not str:
             raise TypeError("a tool name must be a str")
@@ -76,13 +117,37 @@ class Registry:
             raise TypeError(f"the tool function of {name} is not callable")
         if name in self._tools:
             raise ValueError(f"the tool {name} is registered already")
-        self._tools[name] = function
+        if type(description) is not str:
+            raise TypeError(f"the description of {name} must be a str")
+        if not description.strip():
+            raise ValueError(f"the description of {name} is empty")
+        if type(input_schema) is not dict:
+            raise TypeError(f"the input schema of {name} must be a dict")
+        try:
+            check_json_object(input_schema)
+            schema = copy.deepcopy(input_schema)
+        except (ValueError, RecursionError) as e:
+            raise ValueError(f"the input schema of {name} is not JSON: {e}") from e
+        if schema.get("type") != "object":
+            raise ValueError(f'the input schema of {name} must have the type "object"')
+        self._tools[name] = ToolDefinition(name, function, description, schema)
 
-    def get(self, name):
-        """Return the tool function of ``name``; raise :class:`UnknownToolError` if there is none."""
+    def _held(self, name):
         if type(name) is not str or name not in self._tools:
             raise UnknownToolError(f"unknown tool {name!r}")
         return self._tools[name]
+
+    def get(self, name):
+        """Return the tool function of ``name``; raise :class:`UnknownToolError` if there is none."""
+        return self._held(name).function
+
+    def definition(self, name):
+        """Return the :class:`ToolDefinition` of ``name``, its schema as a new copy.
+
+        Raises :class:`UnknownToolError` if there is none, as :meth:`get` does.
+        """
+        held = self._held(name)
+        return held._replace(input_schema=copy.deepcopy(held.input_schema))
 
     def names(self):
         """Return the registered tool names as a sorted tuple."""

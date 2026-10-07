@@ -43,9 +43,27 @@ from hilclaw.mcp_front import main
 from hilclaw.tools import Registry
 
 registry = Registry()
-registry.register("test.echo", lambda request: {{"echo": request}})
+registry.register(
+    "test.echo", lambda request: {{"echo": request}}, {description!a}, {schema!r}
+)
 raise SystemExit(main(registry=registry))
 """
+
+DESCRIPTION = "A tool of the tests."
+SCHEMA = {"type": "object"}
+NON_ASCII_DESCRIPTION = "Echoes the request. héllo 한글 \U0001f600"
+NESTED_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "example_list": {"type": "array", "items": {"type": ["string", "null"]}},
+        "example_object": {
+            "type": "object",
+            "properties": {"example_number": {"type": "number", "minimum": 0.5}},
+            "additionalProperties": False,
+        },
+    },
+    "required": ["example_list"],
+}
 
 
 class Calls:
@@ -77,7 +95,7 @@ def raising(error):
 def registry_with(**functions):
     registry = Registry()
     for name, function in functions.items():
-        registry.register(name.replace("_", "."), function)
+        registry.register(name.replace("_", "."), function, DESCRIPTION, SCHEMA)
     return registry
 
 
@@ -181,8 +199,17 @@ def test_handshake_list_and_call():
     assert listed == {
         "jsonrpc": "2.0",
         "id": 2,
-        "result": {"tools": [{"name": "test_echo", "inputSchema": {"type": "object"}}]},
+        "result": {
+            "tools": [
+                {
+                    "name": "test_echo",
+                    "description": DESCRIPTION,
+                    "inputSchema": SCHEMA,
+                }
+            ]
+        },
     }
+    assert list(listed["result"]["tools"][0]) == ["name", "description", "inputSchema"]
     assert called["id"] == 3
     assert outcome_of(called) == {"echo": {"n": 1}}
     assert calls.requests == [{"n": 1}]
@@ -233,6 +260,71 @@ def test_list_is_sorted_by_name_on_one_page():
         "c",
     ]
     assert list(listed["result"]) == ["tools"]
+
+
+def test_list_shows_the_description_and_the_schema_of_each_tool():
+    registry = Registry()
+    registry.register("b.two", lambda r: {}, NON_ASCII_DESCRIPTION, NESTED_SCHEMA)
+    registry.register("a.one", lambda r: {}, "The first.", SCHEMA)
+    registry.register(
+        "c", lambda r: {}, "  kept as it is\n", {"type": "object", "x": 1}
+    )
+    (listed,) = served(message("tools/list", 1), registry)
+    assert listed["result"] == {
+        "tools": [
+            {"name": "a_one", "description": "The first.", "inputSchema": SCHEMA},
+            {
+                "name": "b_two",
+                "description": NON_ASCII_DESCRIPTION,
+                "inputSchema": NESTED_SCHEMA,
+            },
+            {
+                "name": "c",
+                "description": "  kept as it is\n",
+                "inputSchema": {"type": "object", "x": 1},
+            },
+        ]
+    }
+    for tool in listed["result"]["tools"]:
+        assert list(tool) == ["name", "description", "inputSchema"]
+    assert list(listed["result"]["tools"][1]["inputSchema"]) == list(NESTED_SCHEMA)
+
+
+def test_list_of_an_empty_registry_has_no_tool():
+    (listed,) = served(message("tools/list", 1), Registry())
+    assert listed == {"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}
+
+
+def test_two_lists_of_one_session_are_equal():
+    registry = Registry()
+    registry.register("test.echo", Calls().echo, NON_ASCII_DESCRIPTION, NESTED_SCHEMA)
+    data = (
+        message("tools/list", 1)
+        + call(2, "test_echo", {"n": 1})
+        + message("tools/list", 1)
+    )
+    status, out, err = serve(data, registry)
+    assert (status, err) == (0, b"")
+    first, _, second = out.split(b"\n")[:-1]
+    assert first == second
+    assert registry.definition("test.echo").input_schema == NESTED_SCHEMA
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        pytest.param({}, id="required member absent"),
+        pytest.param({"example_list": 3}, id="wrong type"),
+        pytest.param({"example_object": {"example_other": None}}, id="further member"),
+    ],
+)
+def test_a_call_is_not_compared_with_the_schema(arguments):
+    calls = Calls()
+    registry = Registry()
+    registry.register("test.echo", calls.echo, DESCRIPTION, NESTED_SCHEMA)
+    (called,) = served(call(1, "test_echo", arguments), registry)
+    assert outcome_of(called) == {"echo": arguments}
+    assert calls.requests == [arguments]
 
 
 @pytest.mark.parametrize("cursor", ["x", "", 0, 3, {}, []])
@@ -860,7 +952,10 @@ def run_module(data, args=()):
 
 def helper(tmp_path):
     script = tmp_path / "mcp_front_with_test_tools.py"
-    script.write_text(HELPER_SCRIPT.format(root=str(REPO_ROOT)), encoding="utf-8")
+    text = HELPER_SCRIPT.format(
+        root=str(REPO_ROOT), description=NON_ASCII_DESCRIPTION, schema=NESTED_SCHEMA
+    )
+    script.write_text(text, encoding="utf-8")
     return [sys.executable, str(script)]
 
 
@@ -916,11 +1011,20 @@ def test_process_call_is_exact_bytes_with_lf(tmp_path):
         "id": 2,
         "result": {"content": [{"type": "text", "text": text}], "isError": False},
     }
-    assert done.stdout == (
-        b'{"jsonrpc":"2.0","id":1,"result":{"tools":'
-        b'[{"name":"test_echo","inputSchema":{"type":"object"}}]}}\n'
-        + json.dumps(called, ensure_ascii=True, separators=(",", ":")).encode("ascii")
+    tool = {
+        "name": "test_echo",
+        "description": NON_ASCII_DESCRIPTION,
+        "inputSchema": NESTED_SCHEMA,
+    }
+    listed = {"jsonrpc": "2.0", "id": 1, "result": {"tools": [tool]}}
+    assert done.stdout == b"".join(
+        json.dumps(answer, ensure_ascii=True, separators=(",", ":")).encode("ascii")
         + b"\n"
+        for answer in (listed, called)
+    )
+    assert b'"description":"Echoes the request. h\\u00e9llo ' in done.stdout
+    assert (
+        b'"inputSchema":{"type":"object","properties":{"example_list":' in done.stdout
     )
     assert b"\r" not in done.stdout
     assert done.stderr == b""
