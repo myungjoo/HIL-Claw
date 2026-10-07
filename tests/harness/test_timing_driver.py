@@ -27,7 +27,7 @@ RUN_TIMEOUT = 60
 # Documented exit statuses of the driver program.
 COMMAND_LINE, MEMORY, SYSTEM, ZERO_INTERVAL = 2, 3, 4, 5
 
-SHAPE = {"m": 24, "k": 40, "n": 16}
+SHAPE = {"m": 48, "k": 80, "n": 32}
 
 KERNEL = """\
 #define _POSIX_C_SOURCE 200809L
@@ -118,7 +118,7 @@ KERNELS = {
     "backward-clock": (BACKWARD_CLOCK, ""),
 }
 
-GOOD = ("4", "4", "4", "5", "10", "0.05", "interval", "7")
+GOOD = ("64", "64", "64", "5", "10", "0.05", "interval", "7")
 ARGUMENT = {
     name: position
     for position, name in enumerate(
@@ -160,7 +160,8 @@ TOO_LARGE = {
     "samples-not-allocatable": {"m": 1, "k": 1, "n": 1, "n_max": 2**59},
 }
 
-# (n_min, n_max, cv_max): a bound no spread reaches, and one every spread is below.
+# (n_min, n_max, cv_max): 1e9 is a bound no spread reaches; the square of 1e-300 is 0.0,
+# which no spread is below.
 FORCED = [
     ("2", "7", "1e9", State.CONVERGED, 2),
     ("4", "6", "1e9", State.CONVERGED, 4),
@@ -215,7 +216,7 @@ def executable(tmp_path_factory):
 
 
 def timed(path, **parameters):
-    settings = {"m": 16, "k": 16, "n": 16, "sample_form": "interval", "seed": 7}
+    settings = {"m": 64, "k": 64, "n": 64, "sample_form": "interval", "seed": 7}
     settings["timeout_s"] = RUN_TIMEOUT
     return timing.run_timing(path, **(settings | parameters))
 
@@ -251,7 +252,7 @@ def test_plain_kernel_builds_strictly_and_completes(
     executable, optimisation, sample_form
 ):
     path = executable("plain", optimisation)
-    result = timed(path, m=64, k=64, n=64, sample_form=sample_form)
+    result = timed(path, sample_form=sample_form)
     assert_completed(result)
     assert re.fullmatch(REPORT, result.run.stdout)
     assert result.run.command[0] == str(path)
@@ -277,7 +278,7 @@ def test_non_square_arguments_and_operands_are_as_the_contract_says(executable, 
 
 def test_operands_depend_on_the_seed_only(executable):
     def checksum(seed):
-        result = timed(executable("checksum"), m=3, k=50, n=7, seed=seed)
+        result = timed(executable("checksum"), m=30, k=50, n=70, seed=seed)
         assert_completed(result)
         (value,) = re.findall(rb"checksum ([0-9]+)\n", result.run.stderr)
         return value
@@ -308,7 +309,7 @@ def test_unsteady_kernel_stops_at_n_max(executable, n_max):
 def test_driver_takes_the_policy_from_its_arguments(
     executable, n_min, n_max, cv_max, state, count, sample_form
 ):
-    arguments = ("8", "8", "8", n_min, n_max, cv_max, sample_form, "7")
+    arguments = ("64", "64", "64", n_min, n_max, cv_max, sample_form, "7")
     run = local_run.run((executable("plain"), *arguments), timeout_s=RUN_TIMEOUT)
     assert run.returncode == 0, run
     report = timing.parse_report(run.stdout)

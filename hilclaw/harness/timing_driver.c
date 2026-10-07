@@ -123,7 +123,7 @@ static void emit(const char *text)
 
         if (written < 0 && errno == EINTR)
             continue;
-        if (written < 0)
+        if (written <= 0)
             exit(fail(STATUS_SYSTEM, "report", "cannot write to the standard output"));
         text += written;
         left -= (size_t)written;
