@@ -1112,10 +1112,13 @@ def test_a_temporary_name_in_use_is_an_error_and_that_file_stays(
 
     with pytest.raises(OSError):
         subject.store(subject.make())
+    monkeypatch.undo()
 
     assert snapshot(tmp_path) == before
     assert (root / name).read_bytes() == b"of another writer"
     assert_not_stored(root, subject)
+    assert subject.store(subject.make()) == Stored(subject.key, True)
+    assert files(root) == sorted([*subject.kept, subject.file, name])
 
 
 @pytest.mark.parametrize("kind", KINDS)

@@ -55,11 +55,12 @@ Conventions of this module, which the two ADRs do not fix:
 
 What this module does not do: it reads no configuration, runs no ``git`` and
 commits nothing; it neither reads nor writes ``best.json``,
-``technique_stats.json`` or any other file of the tree; it lists no directory, registers no
-key on its own and matches nothing but equal canonical forms (the rest of
-OD-4); it takes no lock: of two writers of one key the first record stays and
-the other writes nothing (OD-17, ADR-0014 decision 6); and it gives no
-atomicity between the two record files or with a commit (ADR-0004 decision 10).
+``technique_stats.json`` or any other file of the tree; it lists no directory,
+registers no key on its own and matches nothing but equal canonical forms (the
+rest of OD-4); it takes no lock: of two writers of one key the first record
+stays and the other writes nothing (OD-17, ADR-0014 decision 6); and it gives
+no atomicity between the two record files or with a commit (ADR-0004 decision
+10).
 """
 
 import contextlib
@@ -106,7 +107,7 @@ def store_hw_profile(data_root, record):
 
     Raises :class:`KeyCollisionError` when the stored canonical form differs
     and :class:`CorruptKeyRecordError` when the stored file is not a valid
-    record; nothing is written in either case.
+    record; no record file is written in either case.
     """
     key = keys.hw_profile_key(record)
     path = layout.hw_profile_record(data_root, key.name)
@@ -125,7 +126,7 @@ def store_op_signature(data_root, hw_profile_key, record):
 
     Raises :class:`KeyRecordNotFoundError` when the hw_profile is not stored,
     and :class:`KeyCollisionError` or :class:`CorruptKeyRecordError` for the
-    stored record of either key; nothing is written in these cases.
+    stored record of either key; no record file is written in these cases.
     """
     key = keys.op_signature_key(record)
     hw_path = layout.hw_profile_record(data_root, hw_profile_key)
