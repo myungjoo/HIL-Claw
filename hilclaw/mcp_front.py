@@ -16,15 +16,20 @@ false, or ``{"error": {"kind": ..., "message": ...}}`` with ``isError`` true
 for a tool failure, in the characters the command-line front writes.
 
 What reaches no tool function is a JSON-RPC error: -32700 for a line that is
-not JSON or is nested too deeply to read, -32600 for JSON that is not a
-message (also a member name given twice anywhere in it, an ``id`` that is not
-a string or an integer), -32601 for an unknown method, -32602 for ``params``
-that is not an object, an unknown tool and ``arguments`` that is not an
-object. The ``id`` of an error is ``null`` when the message gave no usable
-one. A notification, a response and a blank line get no answer.
+not JSON; -32600 for JSON that is not a message (also a member name given
+twice anywhere in it, an ``id`` that is not a string or an integer, nesting
+too deep for the interpreter to read); -32601 for an unknown method; -32602
+for ``params`` that is not an object, an unknown tool, ``arguments`` that is
+not an object and a ``cursor``, since the tool list has one page. An error
+carries the ``id`` of the message, or ``null`` when the line gave no usable
+one or was too deep to read. A notification, a response and a blank line get
+no answer.
 
-The server keeps no state: every request is served alike before and after
-``initialize``. Messages are handled one at a time in the order read, so
+Only the protocol revision 2025-06-18 is implemented, and ``initialize``
+answers it whatever revision was asked for. The server keeps no state: every
+request is served alike before and after ``initialize``, and a tool is listed
+without a description, with the input schema ``{"type": "object"}``.
+Messages are handled one at a time in the order read, so
 standard input must be a blocking stream. Exit status 0 is the end of
 standard input; 4 means an argument was given or a standard stream is closed
 or failed when it was needed.
@@ -37,7 +42,7 @@ import sys
 from hilclaw import __version__, tools
 
 SERVER_NAME = "hilclaw"
-PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
+PROTOCOL_VERSIONS = ("2025-06-18",)
 EXIT_END_OF_INPUT = 0
 EXIT_FRONT_FAILURE = 4
 PARSE_ERROR = -32700
@@ -78,6 +83,8 @@ def _ping(registry, params):
 
 
 def _list(registry, params):
+    if params.get("cursor") is not None:
+        raise _Refused(INVALID_PARAMS, "unknown cursor")
     names = mcp_names(registry)
     return {"tools": [{"name": n, "inputSchema": {"type": "object"}} for n in names]}
 
@@ -126,15 +133,22 @@ def _result(registry, message, usable_id):
     return _METHODS[method](registry, params)
 
 
-def _is_json(line):
-    def refuse(constant):
+def _usable_id(value):
+    request_id = value.get("id") if type(value) is dict else None
+    return request_id if type(request_id) in (str, int) else None
+
+
+def _refused_line(line, reason):
+    def not_json(constant):
         raise ValueError(constant)
 
     try:
-        json.loads(line.decode("utf-8"), parse_constant=refuse)
-    except (ValueError, RecursionError):
-        return False
-    return True
+        value = json.loads(line.decode("utf-8"), parse_constant=not_json)
+    except RecursionError:
+        value = None
+    except ValueError:
+        return _error(None, PARSE_ERROR, f"not JSON: {reason}")
+    return _error(_usable_id(value), INVALID_REQUEST, f"not a message: {reason}")
 
 
 def _answer(registry, line):
@@ -143,12 +157,8 @@ def _answer(registry, line):
     try:
         message = tools.decode_request(line)
     except tools.InvalidRequestError as e:
-        code = INVALID_REQUEST if _is_json(line) else PARSE_ERROR
-        reason = e.__cause__ or "nested too deeply"
-        return _error(None, code, f"not a message: {reason}")
-    request_id = message.get("id")
-    if type(request_id) not in (str, int):
-        request_id = None
+        return _refused_line(line, e.__cause__ or "nested too deeply")
+    request_id = _usable_id(message)
     try:
         result = _result(registry, message, request_id is not None)
     except _Refused as e:

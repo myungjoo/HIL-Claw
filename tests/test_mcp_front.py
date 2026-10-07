@@ -224,15 +224,24 @@ def test_several_calls_are_answered_in_order():
     assert [outcome_of(d) for d in documents] == [{"echo": {"i": i}} for i in range(20)]
 
 
-def test_list_is_sorted_by_name_and_ignores_a_cursor():
+def test_list_is_sorted_by_name_on_one_page():
     registry = registry_with(b_two=lambda r: {}, a_one=lambda r: {}, c=lambda r: {})
-    (listed,) = served(message("tools/list", 1, {"cursor": "x"}), registry)
+    (listed,) = served(message("tools/list", 1, {"_meta": {}}), registry)
     assert [tool["name"] for tool in listed["result"]["tools"]] == [
         "a_one",
         "b_two",
         "c",
     ]
     assert list(listed["result"]) == ["tools"]
+
+
+@pytest.mark.parametrize("cursor", ["x", "", 0, 3, {}, []])
+def test_a_cursor_is_refused_because_no_page_follows(cursor):
+    registry = registry_with(test_echo=Calls().echo)
+    data = message("tools/list", 1, {"cursor": cursor}) + message("tools/list", 2)
+    refused, listed = served(data, registry)
+    assert error_of(refused, -32602, 1) == "unknown cursor"
+    assert [tool["name"] for tool in listed["result"]["tools"]] == ["test_echo"]
 
 
 def test_arguments_may_be_absent():
@@ -366,25 +375,24 @@ def test_the_fixed_tool_set_is_empty_today():
 # Protocol revisions and the connection state
 
 
-@pytest.mark.parametrize("revision", ["2025-06-18", "2025-03-26", "2024-11-05"])
-def test_an_accepted_revision_is_answered_as_requested(revision):
-    assert revision in mcp_front.PROTOCOL_VERSIONS
-    (document,) = served(
-        message("initialize", 1, INITIALIZE | {"protocolVersion": revision})
-    )
-    assert document["result"] == SERVER | {"protocolVersion": revision}
+def test_the_implemented_revision_is_answered_as_requested():
+    assert mcp_front.PROTOCOL_VERSIONS == ("2025-06-18",)
+    (document,) = served(message("initialize", 1, INITIALIZE))
+    assert document["result"] == SERVER
 
 
-@pytest.mark.parametrize("revision", ["1999-01-01", "2099-01-01", "", 3, None, ["x"]])
-def test_another_revision_is_answered_with_the_latest_accepted(revision):
-    assert mcp_front.PROTOCOL_VERSIONS[0] == "2025-06-18"
+@pytest.mark.parametrize(
+    "revision",
+    ["2025-03-26", "2024-11-05", "1999-01-01", "2099-01-01", "", 3, None, ["x"]],
+)
+def test_another_revision_is_answered_with_the_implemented_one(revision):
     (document,) = served(
         message("initialize", 1, INITIALIZE | {"protocolVersion": revision})
     )
     assert document["result"] == SERVER
 
 
-def test_initialize_without_params_is_answered_with_the_latest_accepted():
+def test_initialize_without_params_is_answered_with_the_implemented_revision():
     (document,) = served(message("initialize", 1))
     assert document["result"] == SERVER
 
@@ -519,14 +527,6 @@ def test_params_that_are_no_object(method, params):
             id="-Infinity",
         ),
         pytest.param(b'{"jsonrpc":"2.0","id":1,"method":"ping"} {}', id="two objects"),
-        pytest.param(b"[" * 100_000, id="too deep"),
-        pytest.param(
-            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":'
-            + b'{"a":' * 100_000
-            + b"1"
-            + b"}" * 100_001,
-            id="too deep and closed",
-        ),
     ],
 )
 def test_a_line_that_is_not_json_is_a_parse_error(line):
@@ -534,7 +534,7 @@ def test_a_line_that_is_not_json_is_a_parse_error(line):
     refused, pinged = served(
         line + b"\n" + message("ping", 2), registry_with(test_echo=calls.echo)
     )
-    assert "not a message" in error_of(refused, mcp_front.PARSE_ERROR, None)
+    assert "not JSON" in error_of(refused, mcp_front.PARSE_ERROR, None)
     assert mcp_front.PARSE_ERROR == -32700
     assert pinged == {"jsonrpc": "2.0", "id": 2, "result": {}}
     assert calls.requests == []
@@ -549,29 +549,83 @@ def test_a_line_that_is_not_json_is_a_parse_error(line):
         pytest.param(b"3", id="number"),
         pytest.param(b"null", id="null"),
         pytest.param(b"true", id="boolean"),
-        pytest.param(
-            b'{"jsonrpc":"2.0","id":1,"method":"ping","id":2}', id="duplicate member"
-        ),
-        pytest.param(
-            b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":'
-            b'{"name":"test_echo","arguments":{"a":1,"a":2}}}',
-            id="duplicate member in arguments",
-        ),
-        pytest.param(
-            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"a":1e999}}',
-            id="number beyond a float",
-        ),
     ],
 )
 def test_json_that_is_no_object_is_an_invalid_request(line):
+    refused, pinged = served(line + b"\n" + message("ping", 2))
+    assert "not a message" in error_of(refused, mcp_front.INVALID_REQUEST, None)
+    assert mcp_front.INVALID_REQUEST == -32600
+    assert pinged["result"] == {}
+
+
+@pytest.mark.parametrize(
+    ("line", "request_id"),
+    [
+        pytest.param(
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","method":"ping"}',
+            1,
+            id="duplicate member",
+        ),
+        pytest.param(
+            b'{"jsonrpc":"2.0","id":"a","method":"tools/call","params":'
+            b'{"name":"test_echo","arguments":{"a":1,"a":2}}}',
+            "a",
+            id="duplicate member in arguments",
+        ),
+        pytest.param(
+            b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":'
+            b'{"name":"test_echo","arguments":{"a":1e999}}}',
+            1,
+            id="number beyond a float",
+        ),
+        pytest.param(
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","id":2}', 2, id="the last id"
+        ),
+        pytest.param(
+            b'{"jsonrpc":"2.0","method":"ping","params":{},"params":{}}',
+            None,
+            id="no id",
+        ),
+        pytest.param(
+            b'{"jsonrpc":"2.0","id":null,"method":"ping","a":1,"a":2}',
+            None,
+            id="no usable id",
+        ),
+    ],
+)
+def test_a_message_the_strict_reading_refuses_is_answered_with_its_id(line, request_id):
     calls = Calls()
     refused, pinged = served(
         line + b"\n" + message("ping", 2), registry_with(test_echo=calls.echo)
     )
-    assert "not a message" in error_of(refused, mcp_front.INVALID_REQUEST, None)
-    assert mcp_front.INVALID_REQUEST == -32600
+    assert "not a message" in error_of(refused, -32600, request_id)
     assert pinged["result"] == {}
     assert calls.requests == []
+
+
+@pytest.mark.parametrize("depth", [600, 2_000, 20_000, 100_000])
+def test_a_message_nested_too_deeply_is_an_invalid_request(depth):
+    """The id is given back only where the interpreter can read that deep."""
+    calls = Calls()
+    line = b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":'
+    line += b'{"name":"test_echo","arguments":' + b'{"a":' * depth + b"1"
+    line += b"}" * (depth + 2)
+    refused, pinged = served(
+        line + b"\n" + message("ping", 2), registry_with(test_echo=calls.echo)
+    )
+    assert refused["error"]["code"] == -32600
+    assert "not a message" in refused["error"]["message"]
+    assert refused["id"] in (None, 1)
+    assert pinged == {"jsonrpc": "2.0", "id": 2, "result": {}}
+    assert calls.requests == []
+
+
+def test_a_line_that_only_opens_arrays_is_refused():
+    """Not JSON where the interpreter reads it to its end, too deep where it cannot."""
+    refused, pinged = served(b"[" * 100_000 + b"\n" + message("ping", 2))
+    assert refused["id"] is None
+    assert refused["error"]["code"] in (-32700, -32600)
+    assert pinged["result"] == {}
 
 
 @pytest.mark.parametrize(
