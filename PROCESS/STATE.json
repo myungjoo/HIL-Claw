@@ -39,7 +39,7 @@
       "reason": "owner-only-decision",
       "question": "PLAN P1-3 (verification half of the harness) needs the two owner items it is marked with, for the first case only: `cpu_standin`, kind `gemm`, fp32, C kernel. (1) Reference oracle (open part of #5 A-7): (a) NumPy float64 as recommended there — `numpy` becomes the first runtime dependency of `hilclaw` (a new external dependency, A-13), exact pin; (b) a float64 reference written in C inside the harness and built with clang like the timing driver, no new dependency; (c) something else (name it)? (2) Tolerance vocabulary of the instance parameter for this case (#5 B-7): (a) per-element `rtol` and `atol`, pass iff |out - ref| <= atol + rtol * |ref| for every element, any non-finite output fails; (b) another form (name it)? (3) Defaults: (a) none — an instance must state its tolerance; (b) default values (name them)? Not asked here: vendor golden outputs, downstream-metric thresholds, datasets (B-8), other kinds, dtypes and backends.",
       "askedAt": "2026-10-07T02:44:20Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6029803639"
     }
   ],
   "counters": {
