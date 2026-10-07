@@ -527,6 +527,12 @@ def test_params_that_are_no_object(method, params):
             id="-Infinity",
         ),
         pytest.param(b'{"jsonrpc":"2.0","id":1,"method":"ping"} {}', id="two objects"),
+        pytest.param(
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"a":'
+            + b"1" * 5_000
+            + b"}}",
+            id="an integer longer than the interpreter converts",
+        ),
     ],
 )
 def test_a_line_that_is_not_json_is_a_parse_error(line):

@@ -16,7 +16,8 @@ false, or ``{"error": {"kind": ..., "message": ...}}`` with ``isError`` true
 for a tool failure, in the characters the command-line front writes.
 
 What reaches no tool function is a JSON-RPC error: -32700 for a line that is
-not JSON; -32600 for JSON that is not a message (also a member name given
+not JSON or holds an integer longer than the interpreter converts; -32600 for
+JSON that is not a message (also a member name given
 twice anywhere in it, an ``id`` that is not a string or an integer, nesting
 too deep for the interpreter to read); -32601 for an unknown method; -32602
 for ``params`` that is not an object, an unknown tool, ``arguments`` that is
@@ -32,7 +33,8 @@ without a description, with the input schema ``{"type": "object"}``.
 Messages are handled one at a time in the order read, so
 standard input must be a blocking stream. Exit status 0 is the end of
 standard input; 4 means an argument was given or a standard stream is closed
-or failed when it was needed.
+or failed when it was needed (120 instead if standard output cannot be
+written and the interpreter's own flush at exit fails as well).
 """
 
 import contextlib
