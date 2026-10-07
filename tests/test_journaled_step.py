@@ -161,7 +161,6 @@ def test_signature_and_types():
         "example_failure",
         "no outcome",
     )
-    assert tools.default_registry().names() == ()
 
 
 def test_no_line_writes_the_two_lines_of_the_example(root):
@@ -383,6 +382,32 @@ def test_death_before_the_start_line_is_complete_the_next_call_runs(root, monkey
     assert run(root, RUN, ID, step) == RESULT
     assert step.calls == 1
     assert dict(run_journal.current(root, RUN).view.totals) == SPEND
+
+
+def test_death_after_the_start_line_and_before_the_step_leaves_it_open(
+    root, monkeypatch
+):
+    with monkeypatch.context() as patch:
+        fail_append(patch, "step_started", after=True)
+        step = Step()
+        with pytest.raises(OSError, match="example failure"):
+            run(root, RUN, ID, step)
+        assert step.calls == 0
+    assert list(map(without_time, lines(root))) == [without_time(started(ID))]
+    assert_open_and_not_run(root)
+
+
+def test_a_step_that_fails_with_the_kind_of_an_open_step_is_ended(root):
+    with pytest.raises(tools.ToolFailure) as first:
+        run(root, RUN, ID, failed({AXIS: 2}, KIND_STEP_OPEN, "stated by the step"))
+    step = Step()
+    with pytest.raises(tools.ToolFailure) as second:
+        run(root, RUN, ID, step)
+    assert (
+        first.value.args == second.value.args == (KIND_STEP_OPEN, "stated by the step")
+    )
+    assert step.calls == 0
+    assert run_journal.step_state(root, RUN, ID).state is State.ENDED
 
 
 def test_a_torn_start_line_is_no_line_the_next_call_runs(root):

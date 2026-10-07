@@ -36,14 +36,18 @@ Conventions of this module, which the records do not fix:
   requires it. An error of that read, of the read of the log or of the lookup
   passes through: nothing is appended and the step is not called.
 - A failed append passes through. After a failed start line the step is not
-  called. After a failed end line the outcome is not returned in the place of
-  the error: the step is open, or ended when the failure came after the line
-  feed (:mod:`hilclaw.events`).
+  called: the identity has no line, or is open, though nothing ran, when the
+  failure came after the line feed (:mod:`hilclaw.events`; the opposite
+  failure decision 2 accepts). After a failed end line the outcome is not
+  returned in the place of the error: the step is open, or ended when the
+  failure came after the line feed.
 - A first call returns the ``result`` as the end line holds it, the copy
   :func:`hilclaw.events.append` returns; a failure is raised as a
   ``ToolFailure`` of the ``kind`` and ``message`` on the line, with no cause
   attached. A repeated call gives equal values from the first end line.
 - An open step is reported with a ``ToolFailure`` of kind :data:`KIND_STEP_OPEN`.
+  The kind is not reserved: a step that fails with it is answered like any
+  other ended step, and the kind then does not tell the two apart.
 - A torn tail is skipped by the read and removed by the append, as
   :mod:`hilclaw.events` does it; nothing is added to that.
 
@@ -51,6 +55,10 @@ Limits (decision 9): two turns at once can both find no line and both start
 the step, since no lock is taken and the lookup and the append are not atomic.
 A death between the outcome and the completed end line leaves the step open
 and its outcome lost. An amount is what the step stated: nothing verifies it.
+A step about a round above the stored ``round`` (ADR-0012 decision 3: no such
+round has begun) is found only until that round is the stored one: its lines
+then lie before the stored position, the tail shows no line and the step runs
+again, counted twice and not reported.
 
 It is not a tool and not a hook: nothing registers or calls it, and where the
 append is placed stays open (the rest of OD-18). It names no step, no axis and
