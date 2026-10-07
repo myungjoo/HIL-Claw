@@ -299,6 +299,32 @@ def test_a_standard_error_that_cannot_be_written_changes_nothing():
     error_of(out, "unknown_tool")
 
 
+def closed():
+    stream = io.BytesIO(b"{}")
+    stream.close()
+    return stream
+
+
+def test_a_closed_stream_object_is_answered_like_a_failing_one():
+    registry = registry_with(test_echo=Calls().echo)
+    stdout = io.BytesIO()
+    status = main(
+        ["test.echo"], registry=registry, stdin=closed(), stdout=stdout, stderr=closed()
+    )
+    assert status == front.EXIT_FRONT_FAILURE
+    error_of(stdout.getvalue(), "no_input")
+    stderr = io.BytesIO()
+    status = main(
+        ["test.echo"],
+        registry=registry,
+        stdin=io.BytesIO(b"{}"),
+        stdout=closed(),
+        stderr=stderr,
+    )
+    assert status == front.EXIT_FRONT_FAILURE
+    assert stderr.getvalue().startswith(b"hilclaw: cannot write standard output: ")
+
+
 # Defaults
 
 

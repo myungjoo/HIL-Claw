@@ -16,8 +16,7 @@ too, or 120 if the interpreter's own flush at exit fails as well. The values 1
 and 2, which the interpreter uses for an uncaught exception and for its own
 usage errors, are never returned.
 
-Standard error gets one line of free text on a failure and is never parsed; a
-closed standard error changes nothing else.
+Standard error gets one line of free text on a failure and is never parsed.
 """
 
 import contextlib
@@ -52,7 +51,7 @@ def _outcome(args, registry, stdin):
         return _refused(KIND_UNKNOWN_TOOL, str(e))
     except tools.InvalidRequestError as e:
         return _refused(KIND_BAD_REQUEST, str(e))
-    except OSError as e:
+    except (OSError, ValueError) as e:
         return _refused(KIND_NO_INPUT, f"cannot read standard input: {e}")
     except tools.ToolFailure as e:
         return EXIT_TOOL_FAILURE, e.error_object()
@@ -63,7 +62,7 @@ def _standard(name):
 
 
 def _say(stderr, text):
-    with contextlib.suppress(OSError):
+    with contextlib.suppress(OSError, ValueError):
         if stderr is not None:
             stderr.write(f"hilclaw: {text}\n".encode("utf-8", "backslashreplace"))
             stderr.flush()
@@ -91,7 +90,7 @@ def main(argv=None, *, registry=None, stdin=None, stdout=None, stderr=None):
             raise OSError("it is closed")
         stdout.write(tools.encode(answer))
         stdout.flush()
-    except OSError as e:
+    except (OSError, ValueError) as e:
         _say(stderr, f"cannot write standard output: {e}")
         return EXIT_FRONT_FAILURE
     return status

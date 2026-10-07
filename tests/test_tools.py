@@ -294,7 +294,7 @@ def test_decode_request_refuses_what_is_not_one_json_object(data):
     assert not isinstance(caught.value, ToolFailure)
 
 
-def test_decode_request_names_the_duplicate_member():
+def test_decode_request_lists_the_members_of_the_object_with_a_duplicate():
     with pytest.raises(InvalidRequestError, match=r"given twice among \['a', 'b'\]"):
         decode_request(b'{"a": 1, "b": 2, "a": 3}')
 
