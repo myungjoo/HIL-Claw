@@ -2,7 +2,7 @@
 id: T-0038
 title: Add the tool registry, the tool-failure type and the command-line front of ADR-0010 (hilclaw/tools.py, hilclaw/__main__.py) with an empty fixed tool set, and their tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, NFR-6, C-3, C-7, "#5 A-12"]
 dependsOn: [T-0037]
@@ -133,3 +133,56 @@ Tool functions used by the tests are defined in the test files and registered in
 - (integrator, document mode, after 2026-10-14) FR-10's closing sentence and #5 A-12 point 1 (T-0037 Follow-ups).
 
 ## Result
+**DONE.** PR #36 (https://github.com/myungjoo/HIL-Claw/pull/36), squash commit `d145e3b` on `main`; branch deleted on the remote and locally. This task ticks **no** PLAN checkbox (P1-1 stays open). No ADR-0010 rule had to be overridden; no criterion disagreed with the ADR.
+
+**Language:** Python, because the package and its two existing command-line entries are Python. Standard library only.
+
+**Review:** 4 rounds by a context-isolated `dev-reviewer`; round 1 Request changes, rounds 2 to 4 Approve. No security finding; no point read as needing an ADR or the owner.
+- Round 1: F1 (fixed) `main` assumed the standard streams exist — a process started without one lost an answer it could still give. F2 (not changed) a `ToolFailure` is checked only when constructed. F3-F5 notes (below). F6 nits (fixed).
+- Round 2: N1 (fixed) a closed stream object raises `ValueError`, not `OSError`. N2, N3 nits (fixed).
+- Round 3: M1 (fixed) the stream `except` clauses enclosed more than the stream calls. M2 note (below). M3 PR body (fixed).
+- Round 4: P1 (recorded, not changed) non-blocking standard input (below).
+- The reviewer agreed with the planner on all three readings: no tool can be registered yet; the A-13 reading; nothing outside the source can add a tool.
+
+**Public API as landed**
+- `hilclaw/tools.py` (200 lines): `ToolFailure(kind, message)` with `.kind`, `.message`, `.error_object()`; `UnknownToolError(LookupError)`; `InvalidRequestError(ValueError)`; `Registry` with `register(name, function)`, `get(name)`, `names()`; `default_registry()`; `check_json_object(value)`; `decode_request(data: bytes) -> dict`; `encode(value) -> bytes`; `call(registry, name, request) -> dict`; constants `KIND_TOOL_CRASHED = "tool_crashed"`, `KIND_BAD_RESULT = "bad_result"`.
+- `hilclaw/__main__.py` (100 lines): `main(argv=None, *, registry=None, stdin=None, stdout=None, stderr=None) -> int`; `EXIT_RESULT = 0`, `EXIT_TOOL_FAILURE = 3`, `EXIT_FRONT_FAILURE = 4`; `KIND_BAD_USAGE`, `KIND_UNKNOWN_TOOL`, `KIND_BAD_REQUEST`, `KIND_NO_INPUT`.
+- Command: `python -m hilclaw <tool name>`, request on standard input.
+- Size: 300 raw lines in the two modules (239 non-blank at round 1), read against the D4 cap as raw lines including blank lines and docstrings — exactly at the cap. Slice ② should not add to these two files without trimming.
+
+**Provisional conventions and unsaid cases (each chosen here, none a rule of ADR-0010)**
+- Exit status: 3 = failure of the call (a `ToolFailure` from the tool function, `tool_crashed`, `bad_result`); 4 = answered by the front itself. 1 and 2 are avoided because the interpreter uses them for an uncaught exception and for its own usage errors, where standard output is empty — so 1 or 2 means "the front did not report".
+- Kinds of the shared level: `tool_crashed` (the tool function raised an `Exception` other than `ToolFailure`; message `<type name>: <text>`, the original chained; `KeyboardInterrupt` and `SystemExit` not caught) and `bad_result` (the return value is not a JSON object). Both are tool failures because the call established no outcome.
+- Kinds of the front: `bad_usage` (not exactly one argument), `unknown_tool`, `bad_request` (standard input is not a request), `no_input` (standard input is closed or cannot be read).
+- `ToolFailure`: `TypeError` when `kind` or `message` is not exactly `str`; `ValueError` when `kind` is not an ADR-0001 name.
+- Tool name rule at registration: lowercase words (a letter, then letters and digits) joined by single `.`, no `_` and no length limit — the six FR-10 / C-3 names fit, and a `_` would make the MCP mapping `.` → `_` irreversible. `TypeError` for a non-`str` name or a non-callable function; `ValueError` for a name that breaks the rule or is registered twice.
+- No option and no `argparse`: one argument is always looked up as a tool name, so `--help` / `-h` are unknown tools and status 0 only ever comes with a result. The name is looked up before standard input is read, so an unknown name does not wait for input.
+- Refused as not a request: empty input; a UTF-8 byte order mark; not UTF-8; a member name given twice (two values for one name have no single meaning); anything but whitespace after the object; `NaN` / `Infinity` / `-Infinity`; a number that overflows a `float`; nesting too deep for the interpreter (`RecursionError`, also a cyclic result).
+- Exact types as `json.loads` returns them: a `bool` / `int` / `str` / `dict` subclass, a tuple or a non-`str` member name is not strict JSON.
+- Output line: compact, member order as the object holds it, ASCII with escapes (`ensure_ascii`) — the same bytes on every console code page, and encoding cannot fail, a lone surrogate included.
+- `call` does not copy the request; a tool function may return the request object itself (a front builds a fresh object per call).
+- `default_registry()` returns a new empty registry on each call; additions to one are not seen by the next.
+- Streams: written as bytes, LF only. A standard stream that is `None`, has no binary layer, is closed or fails counts as closed — no input is `no_input`; no standard output is status 4 with a line on standard error (the interpreter may end with its own 120 if its flush at exit fails too; seen once by hand on Windows with `python -m hilclaw sim.run < /dev/null | true`); no standard error loses only the free text.
+- `check_json_object` also encodes the value once, so a depth the walk accepts cannot fail later in a front's encoder.
+
+**Reading on "no tool yet":** confirmed by the executor and by the reviewer in every round — no FR-10 / C-3 tool has its whole contract fixed by a landed record, so none is registered and the fixed set is empty. `test_the_fixed_tool_set_is_empty_today` states this and must change when the first tool lands.
+
+**Verification**
+- Local (Windows, CPython 3.14.4, pytest 9.1.1, ruff 0.16.10) on the final head: `python -m pytest` → 3826 passed, 133 skipped; `python -m ruff check .` and `python -m ruff format --check .` exit 0. CPython 3.11 has no pytest on this machine (nothing installed, as the task requires); the recursion-limit behaviour of the two modules was checked by hand on 3.11 and the full suite ran on 3.11 in CI.
+- By hand: `echo {} | python -m hilclaw sim.run` → standard output `{"error":{"kind":"unknown_tool","message":"unknown tool 'sim.run'"}}`, standard error `hilclaw: unknown_tool: unknown tool 'sim.run'`, status 4.
+- Coverage (rule ①): `python -m trace --count --missing --coverdir <scratch> --module pytest tests/test_tools.py tests/test___main__.py -k "not deep and not cyclic"` reaches every line of both modules except three: the two `RecursionError` handlers in `tools.py` and the `raise SystemExit(main())` line. The two handlers are reached by the deselected deep / cyclic tests in a normal run — they are left out of the trace run because a `RecursionError` inside the trace hook switches tracing off for the rest of the process; the last line is reached by the real-process tests.
+- `git ls-files --eol`: `i/lf` for the four files; `git diff origin/main --stat` listed only the four files of `touchesFiles`; no stray file after the tests.
+- CI on the final head `602852a`: five checks passed (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`) — https://github.com/myungjoo/HIL-Claw/actions/runs/37573165966. No CI run failed during the task.
+- `push` run on `main` after the merge: success — https://github.com/myungjoo/HIL-Claw/actions/runs/37573593844.
+- #5: no comment after the ADR-0010 notice when the task started; no open PR.
+
+**Follow-ups (inputs for later slices; nothing here needs the owner)**
+- (slice that registers the first tool needing one) how the data root reaches a tool function — not chosen here (ADR-0010 decision 5).
+- (P1-1 contract, reviewer F3) `tool_crashed` and `bad_result` share the namespace of tool kinds and reach both fronts through `tools.call`; decide whether they are reserved or shared.
+- (P1-1 contract / slice ④, reviewer F4 and M2) two limits are inherited from the interpreter and not chosen: the nesting depth (depends on the Python version and on the stack depth at the call, so the same request can be judged differently by two fronts) and the length of an integer (`PYTHONINTMAXSTRDIGITS`, 4300 digits by default); both end as `bad_request` / `bad_result`, never as a crash.
+- (slice ④, reviewer F2) a `ToolFailure` is checked when constructed only; a tool function that changes its attributes afterwards or overrides `error_object` can break the error object. Only source code of the package can do this.
+- (first tool that starts a child process, reviewer F5) nothing stops a tool function or its child from writing to standard output; the tool must redirect it.
+- (slice ②, reviewer P1) standard input must be a blocking stream: on a non-blocking one `read()` can return `None` (an uncaught `TypeError`, status 1) or part of the input. The MCP front reads the same stream line by line and meets the same question.
+- (slice ②) `tools.py` and `__main__.py` are at the size cap together; the MCP front belongs in its own module.
+
+**Process note:** the exit status 120 on a broken pipe is the interpreter's, observed, and documented in the module docstring rather than worked around.
