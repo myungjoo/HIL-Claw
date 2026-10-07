@@ -2,7 +2,7 @@
 id: T-0035
 title: Add the C gate (clang build of every tracked C source) to the CI workflow
 phase: P0.5
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: ["#9", "CLAUDE.md language policy", "C-7", "#5 A-12"]
 dependsOn: [T-0003, T-0010, T-0033]
@@ -101,3 +101,38 @@ The choices below are **conventions chosen by this task, provisional**. State ea
 - (later, small) Use `timing_build.DRIVER_SOURCE` in `tests/harness/test_timing_driver.py` (T-0034 Follow-ups).
 
 ## Result
+- 2026-10-07T02:21Z — fresh start (landed check: nothing with `Task: T-0035` on `origin/main`, no PR, no branch; no open PR). **DONE** at 02:38Z: PR #35 https://github.com/myungjoo/HIL-Claw/pull/35 squash-merged as `f694500` (`T-0035: Add the C gate (clang build of tracked C sources) to the CI workflow (#35)`, last body line `Task: T-0035`); remote and local branch `claude/T-0035-ci-c-gate-clang-build` deleted after `state: MERGED`. One file on `main`: `.github/workflows/ci.yml` (+14 lines, 100 total); the jobs `python`, `sh`, `test-presence`, the triggers, `permissions` and `concurrency` are untouched.
+- The step as landed (job `c`, name `C gate (clang)`, step `clang build`, `shell: bash`):
+  `clang --version` then `git ls-files -z -- '*.c' | xargs -0 -r -t -n 1 clang -std=c99 -Wall -Wextra -Wpedantic -Werror -O2 -c -o /dev/null --`
+- Branch commits (all squashed, no force push): `631bb48` workflow, `f180557` temporary C file with a diagnostic, `9a1dc29` file made clean, `5ef5430` file deleted, `3046084` `--` after the options (review round 1, nit).
+- Local verification (Windows, ruff 0.16.10, pytest 9.1.1), before the first commit and again before the merge: `python -m ruff check .` -> `All checks passed!`; `python -m ruff format --check .` -> `96 files already formatted`; `python -m pytest` -> `3572 passed, 133 skipped`; `git ls-files --eol .github/workflows/ci.yml` -> `i/lf w/lf attr/text=auto eol=lf`. No C compiler was used or installed on the driver machine.
+- CI runs on the PR (`pull_request`); evidence in https://github.com/myungjoo/HIL-Claw/pull/35#issuecomment-6029638136:
+  - `631bb48` (workflow without the later `--`, `timing_driver.c` the only tracked C source): https://github.com/myungjoo/HIL-Claw/actions/runs/37561759319 — success, five checks (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `Test presence (hilclaw)`, `C gate (clang)`). Step log: `shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}` / `Ubuntu clang version 18.1.3 (1ubuntu1)` / `Target: x86_64-pc-linux-gnu` / `clang '-std=c99' -Wall -Wextra -Wpedantic -Werror -O2 -c -o /dev/null hilclaw/harness/timing_driver.c`. `timing_driver.c` drew no diagnostic.
+  - `f180557` (temporary `tmp_t0035_check.c`: `int tmp_t0035_check(int unused) { return 0; }`): https://github.com/myungjoo/HIL-Claw/actions/runs/37561892327 — `C gate (clang)` = failure at `clang build` (`tmp_t0035_check.c:1:25: error: unused parameter 'unused' [-Werror,-Wunused-parameter]`, `Process completed with exit code 123`); the other four = success. Deliberate; not counted toward the 3-consecutive-failures limit.
+  - `9a1dc29` (file made clean, kept): https://github.com/myungjoo/HIL-Claw/actions/runs/37562021331 — success, five checks; the log shows two `clang ...` lines (`timing_driver.c` and `tmp_t0035_check.c`).
+  - `5ef5430` (file deleted; `git diff origin/main --stat` lists only `.github/workflows/ci.yml`): https://github.com/myungjoo/HIL-Claw/actions/runs/37562147122 — success, five checks.
+  - `3046084` (final head, `--` added): https://github.com/myungjoo/HIL-Claw/actions/runs/37562487276 — success, five checks; log `clang '-std=c99' -Wall -Wextra -Wpedantic -Werror -O2 -c -o /dev/null -- hilclaw/harness/timing_driver.c`.
+  - No CI failure other than the deliberate one.
+- **Not exercised on a runner** (checked by reading only, by the executor and by both reviewers): a missing `clang` (the step stops at `clang --version` under `bash -e`), a failing `git ls-files` (`pipefail`), the empty file set (`xargs -r`; the same construct ran on an empty set for the sh gate in #20), and a tracked path starting with `-`. The failing direction was run on `f180557`, before the `--` token was added, and not again after it.
+- clang version of the runs: `Ubuntu clang version 18.1.3 (1ubuntu1)` on runner image `ubuntu-24.04` 20260927.320.1. Not pinned by the repository.
+- Review rounds: 2, each by a fresh-context `dev-reviewer` agent.
+  - Round 1 on `5ef5430`: `Approve` (https://github.com/myungjoo/HIL-Claw/pull/35#issuecomment-6029658999). No Blocking / Major / Minor. One Nit: a tracked path starting with `-` and ending in `.c` would be read by clang as an option (the sh gate has the same property; no change requested). Addressed in `3046084` by ending the options with `--`; response in https://github.com/myungjoo/HIL-Claw/pull/35#issuecomment-6029684480. Because the head changed, a second round was requested.
+  - Round 2 on `3046084`: `Approve` (https://github.com/myungjoo/HIL-Claw/pull/35#issuecomment-6029702636). No Blocking / Major / Minor / Nit. The head did not change after it.
+  - Both reviewers on the task's explicit questions: (a) the job fails on a diagnostic (shown on the runner), on a missing compiler and on a failing `git ls-files`, and passes on an empty set (the last three by reading); (b) agreement with all three planner judgements — the build slice may come before the harness half, the flags are a convention of this task (identical to `STRICT` in `tests/harness/test_timing_build.py`) and no owner-only or OD matter, and nothing decides how a coder's kernel is built; no question for an ADR or the owner; (c) the other jobs, triggers, `permissions` and `concurrency` are unchanged. Info notes, no change asked: the selection "every tracked `*.c`" is wider than #9's "stand-in kernels", to be settled when the first kernel or a deliberately non-conforming C fixture is tracked (already in Follow-ups); `-Werror` with an unpinned compiler can turn `main` red after a runner image update without a source change (already in Follow-ups). No security concern.
+- Merge: `DONOTMERGE` removed, PR marked ready, five checks of `3046084` successful, `gh pr merge 35 --squash --body-file` with the PR body.
+- `push` run on `main` after the merge (`f694500`): https://github.com/myungjoo/HIL-Claw/actions/runs/37562844086 — `completed` / `success`.
+- Provisional choices (conventions of this task, not requirements):
+  - Job id `c`, name `C gate (clang)`, `ubuntu-latest`, no matrix: a separate job, so a C diagnostic is a check of its own.
+  - clang = the binary on the GitHub-hosted Ubuntu runner image, the one the Python gate's real-clang tests use: no action, no install step, no new dependency; version not pinned.
+  - File selection `git ls-files -z -- '*.c'`: tracked files only, anywhere in the tree, NUL-separated.
+  - One clang call per file (`xargs -n 1`), `-c`, no link: a tool-layer C source need not be a whole program (`timing_driver.c` leaves `hilclaw_gemm` undefined). Compile rather than `-fsyntax-only`: #9 words the gate as a build.
+  - Object to `/dev/null`: nothing is written into the workspace.
+  - Flags `-std=c99 -Wall -Wextra -Wpedantic -Werror -O2`: the flags the tests of T-0033 already use on the runner; C99 for `restrict` (ADR-0008); `-O2` for diagnostics that need the optimiser. No `-D`, `-I`, `-fopenmp`, `-march`.
+  - Added by the executor, not listed in the Acceptance Criteria: `xargs -t` (each clang command line is echoed, so the log names every compiled file — the criteria ask to quote that line) and `--` after the options (review nit).
+  - Empty file set: `xargs -r` runs nothing, exit 0, no message.
+  - `shell: bash`: `-eo pipefail`, so a failing `git ls-files` fails the step.
+  - Checkout: the same `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) with `persist-credentials: false`; not bumped.
+- The "harness pass" half of the C gate is deferred (no verification half of the harness; PLAN P1-3 waits for the owner, #5 A-7 / B-7; no stand-in kernel is tracked). No tool-layer language choice was needed (workflow YAML only). No test added (test rule 5). No BLOCKED reason arose; no force push was used.
+- **PLAN checkbox**: the executor and both reviewers agree with the planner — P0.5-1 **stays unchecked**; its wording is "C 게이트(clang 빌드 + 하네스 통과)" and the harness-pass half is not built.
+- The squash commit body carries the line `🤖 Generated with [Claude Code](https://claude.com/claude-code)` just above `Task: T-0035` (the PR body was used as the squash body); the `^Task: T-0035` landed check still matches.
+- Follow-ups: unchanged from `## Follow-ups`. Additions: (small) the `sh` job passes file names to shellcheck without a `--` terminator, the property round 1 noted for the C job; one token in a later workflow task. From this merge on every PR and every push to `main` runs five jobs; the C job takes about 10-15 s.
