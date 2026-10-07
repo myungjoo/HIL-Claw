@@ -91,7 +91,9 @@ class Log(NamedTuple):
 
 
 class InvalidEventError(ValueError):
-    """An event or an argument breaks ADR-0006 decision 3 or is not strict JSON (``data``)."""
+    """An event or an argument breaks ADR-0006 decision 3, is not strict JSON (``data``)
+    or is not a line position (``position`` of :func:`read`).
+    """
 
 
 class CorruptEventsError(Exception):
@@ -210,7 +212,7 @@ def read(data_root, run_id, position=0):
     *lines, tail = content.split(b"\n")
     file = path.relative_to(root).as_posix()
     if position > len(lines):
-        end = f"the end of the log, which holds {len(lines)} complete lines"
+        end = f"the end of the log, complete lines: {len(lines)}"
         raise PositionBeyondLogError(f"{file}: position {position} is beyond {end}")
     events = []
     for number, line in enumerate(lines[position:], position + 1):

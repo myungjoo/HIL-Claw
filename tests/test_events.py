@@ -1139,10 +1139,8 @@ STEPS = (
 
 
 def beyond(position, count, file=FILE):
-    return (
-        f"{file}: position {position} is beyond the end of the log,"
-        f" which holds {count} complete lines"
-    )
+    end = f"the end of the log, complete lines: {count}"
+    return f"{file}: position {position} is beyond {end}"
 
 
 def test_the_position_is_the_third_parameter_and_defaults_to_0():
