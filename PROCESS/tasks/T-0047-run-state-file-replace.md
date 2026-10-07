@@ -2,7 +2,7 @@
 id: T-0047
 title: Add hilclaw/run_state_file.py, the function that replaces the runtime STATE.json of a run on disk by the five steps of ADR-0013 (on top of layout.run_file and run_state.dump), and add its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-8, FR-13, NFR-1, NFR-2, C-7, "#5 A-3"]
 dependsOn: [T-0021, T-0043, T-0045, T-0046]
@@ -132,3 +132,50 @@ Helpers live in the test file and get no tests of their own (test rule ⑤). Syn
 - (unchanged) The integrator items after 2026-10-14 (T-0040, T-0042 and T-0046 Follow-ups); sub-questions ⑭ and ⑮ of OD-8; the T-0043 follow-up on a number beyond the float range in an undefined member.
 
 ## Result
+**DONE** — PR #42 (https://github.com/myungjoo/HIL-Claw/pull/42), squash-merged into `main` as commit `ba663ed` ("T-0047: Add hilclaw/run_state_file.py, the replacement of the runtime STATE.json by the steps of ADR-0013 (#42)"; the last line of its message is `Task: T-0047`). Code mode. The remote and the local branch were deleted in separate commands after `gh pr view 42 --json state` reported `MERGED`. This task ticks **no PLAN checkbox** (P1-8 stays open: the other members of the file, `instance.json` and the result files remain). This `## Result` edit is not in the merged commit; it is left uncommitted on `main` for the driver. No new HQ.
+
+### Public API as landed (`hilclaw/run_state_file.py`, 92 lines; 1 non-test file, inside the cap of 300 LOC / 5 files)
+- `replace(data_root, run_id, round, view, others=None)` → `None`. It puts `run_state.dump(round, view, others)` under `layout.run_file(data_root, run_id, "STATE.json")`: `run_id` checked and the content built first; `runs/<run_id>/` created when missing; a temporary file `STATE.json.<pid>-<16 hex>.tmp` created there with `open(..., "xb")`; write, `flush`, `os.fsync`, close; `os.replace(temporary, final)`; after any exception the temporary file of this call is removed and the exception raised again.
+- No error type of its own. Raises `layout.InvalidPathValueError` (`run_id`), `run_state.InvalidStateError` (values `dump` refuses), `FileNotFoundError` / `NotADirectoryError` (`data_root`), and the `OSError` of the step that failed.
+- Imports: `contextlib`, `os`, `secrets`, `pathlib.Path`, `hilclaw.layout`, `hilclaw.run_state` (public names only). Not registered in `hilclaw/tools.py`; no command line entry; no use of `hilclaw.config`.
+
+### Provisional conventions chosen by this task (the records do not fix them; also in the commit and PR body)
+- Module `run_state_file`, a module of its own (the planner's recommendation): `run_journal` promises that it writes nothing, and a reader stays importable without the write.
+- Function name `replace`: the word ADR-0013 uses for the operation.
+- Return value `None`: the path is `layout.run_file`, a pure function the caller has, and nothing is read back.
+- `<token>` = the process id, a hyphen, `secrets.token_hex(8)`: the parts `hilclaw/cas.py` uses; at most 27 characters of `[a-z0-9-]`.
+- Order of the checks: `run_id`, the values (`dump`), `data_root`, the file system; nothing is created before the last. Asserted by `test_the_order_of_the_checks`.
+- `data_root`: an existing directory, `FileNotFoundError` or `NotADirectoryError` otherwise; `str` or a path; not resolved (a relative root works). A few lines of the module's own.
+- A failed step (creation, write, flush, move): its `OSError` passes through unchanged, as in the package's other writers.
+- A directory under the final name: found by the failed move, with no check of its own (no second path to keep right); the directory and its content are unchanged and no temporary file remains. A symbolic link there is replaced, not followed, and its target is unchanged.
+- A file in the place of `runs/` or of the run directory: the `OSError` of the directory creation passes through; nothing is changed.
+- Directories created before a step failed stay: ADR-0013 decision 6 describes that state, and removing them could remove what another writer just created.
+- The temporary file is removed after a `BaseException` too (`KeyboardInterrupt`), as `cas.py` removes in `finally`.
+- **Met during the work**: only the file this call created is removed. When the exclusive creation fails because the name is in use, that file belongs to another writer and stays (`cas.py` would remove it; step 5 says "its temporary file").
+- **Met during the work**: a removal that fails is not reported in the place of the failure it follows (step 5 reports the failure of the step); the file is then a leftover in the sense of decision 4.
+- Leftovers of other writes are not removed, listed, read or moved: allowed, not required, and a removal needs a listing and can remove the file of a live writer (decision 5).
+- The mode of the new file is what a newly created file gets from the process (umask), not a private mode: no rule rests on it (decision 5). No test asserts a mode.
+- The directories above the final name are used as the operating system resolves them (a symbolic link in the place of the run directory is followed), as `run_journal.read_state` reads through them.
+- No criterion disagreed with a record, and no case was read as a rule about what may exist in the data plane that no record states.
+
+### Review (2 rounds; a fresh-context `dev-reviewer` each, spawned with `model: opus`; no `SECURITY` finding)
+- **Round 1 — Approve** (`b9419ce`; https://github.com/myungjoo/HIL-Claw/pull/42#issuecomment-6036976083): no Blocker / Major / Minor, 3 Nits. (1) Between the `is_dir()` check and `mkdir(parents=True)` a data root that disappears would be created again — the same window `hilclaw/events.py` and `hilclaw/cas.py` have; left as it is, reason in the commit body. (2) The tests did not assert that the descriptor given to `os.fsync` is that of the temporary file — fixed (`os.fstat` + `os.path.samestat`). (3) The convention about the directories above the final name was in the PR body and not in the module docstring — one bullet added. Fixed in `1c3c9aa`.
+- **Round 2 — Approve** (`1c3c9aa`; https://github.com/myungjoo/HIL-Claw/pull/42#issuecomment-6037041607): no Blocker / Major / Minor; 2 Nits, both without a request, **nothing trivially fixable left**. (1) An interrupt arriving right after `os.replace` returned reaches the caller although the final name already holds the new content — unavoidable with these steps and consistent with the table of decision 2. (2) A `data_root` that is neither a `str` nor a path (for example `None`) raises the `TypeError` of `Path(...)` inside `layout.run_file`, after `run_id` and the values were checked and with nothing created — the behaviour of the package's other writers; neither documented nor tested.
+- Points the task asked for, both rounds: (a) the code matches ADR-0013 decisions 2 to 7 sentence by sentence; (b) the planner's readings hold — no data-plane schema change in the sense of A-13 (the bytes are those of `run_state.dump`), nothing of OD-23 decided (two files in the diff, no registration), a module of its own is tenable; (c) each convention above is implemented and tested, and none goes beyond ADR-0013; (d) nothing under Boundaries is decided (no lock, commit, restore, kept member, other file). Neither reviewer read a point as needing a record or the owner. The reviewers did not run the tests locally (their role is read-only) and relied on the CI runs of each head.
+
+### Verification
+- **Landed check and entry** (2026-10-07 11:21 UTC): `git log origin/main --grep='^Task: T-0047'` empty; `gh pr list --search T-0047 --state all` empty; no open PR. The latest comment on #5 was the ADR-0013 notice (6036469993); no objection to ADR-0004, ADR-0012 or ADR-0013.
+- **Local** (CPython 3.14.4, native Windows), before the first commit and again with the content of the final head `1c3c9aa`: `python -m pytest` → **4774 passed, 146 skipped** (before the task: 4678 / 143; the new file adds 96 passed, 3 skipped — the two symbolic-link cases and the read-only final file, which do not run here); `python -m ruff check .` → "All checks passed!"; `python -m ruff format --check .` → "126 files already formatted".
+- **Coverage** (D12 ①; not measured by CI yet): `python -m trace --count --missing --coverdir <scratch directory outside the repository> --module pytest tests/test_run_state_file.py`, run on the first head → the `.cover` file of `hilclaw.run_state_file` has **no line marked `>>>>>>`**: every line of the module is reached (the round-1 fix added docstring lines only to the module). ② happy, error, branch and negative cases are present; ③ the one public function is tested (the module has no error type of its own); ④ `tests/test_run_state_file.py` exists; ⑤ helpers have no tests.
+- **Final name never opened for writing**: checked on every platform by a spy on `builtins.open` (the only file the function opens is the new temporary one, mode `xb`), and on POSIX by replacing a final file of mode `0o444`.
+- `git ls-files --eol`: `i/lf` for both files. `git status --short` after the tests: only the two files; no `*.tmp` in the repository. `git diff origin/main --stat`: `hilclaw/run_state_file.py` (92) and `tests/test_run_state_file.py` (555), nothing else.
+- **CI on the PR**, final head `1c3c9aa`: run https://github.com/myungjoo/HIL-Claw/actions/runs/37614628360 — five checks successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`. Both Python jobs: **4920 passed**, no skip — the symbolic-link cases, the read-only final file and the directory under the final name ran on Linux. The run of the first head `b9419ce` was green as well (reported by the round-1 reviewer); no failed CI run.
+- **`push` run on `main`** for `ba663ed`: https://github.com/myungjoo/HIL-Claw/actions/runs/37615024387 — `completed` / `success`.
+
+### Language
+Python, because `run_state.dump` and `layout.run_file` are Python (CLAUDE.md tool-layer language policy; also in the commit body).
+
+### Follow-ups (in addition to the planner's list above)
+- (optional, with the next edit of the module) Round-2 Nit 2: say in the docstring, or assert in a test, what a `data_root` of another type raises.
+- (with sub-question ⑮, if the technique is taken for other files) `hilclaw/cas.py` `_store` removes the temporary name in `finally` even when the exclusive creation failed because the name was in use; this module does not. Not changed here (out of scope).
+- (unchanged) The first journaled tool on top of `run_journal` and this module (P1-1); the rest of P1-8; the integrator items after 2026-10-14.
