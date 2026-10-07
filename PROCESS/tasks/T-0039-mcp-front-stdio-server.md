@@ -2,7 +2,7 @@
 id: T-0039
 title: Add the stdio MCP front of ADR-0010 over the tool registry (hilclaw/mcp_front.py, standard library only) with the empty fixed tool set, and its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, NFR-6, NFR-7, C-7, "#5 A-12"]
 dependsOn: [T-0037, T-0038]
@@ -134,3 +134,67 @@ Tool functions and the small client used by the tests are defined in the test fi
 - (integrator, document mode, after 2026-10-14) FR-10's closing sentence and #5 A-12 point 1 (T-0037 Follow-ups).
 
 ## Result
+**DONE.** PR #37 (https://github.com/myungjoo/HIL-Claw/pull/37), squash commit `9633da1` on `main`; branch deleted on the remote and locally (separate commands, after `MERGED`). This task ticks **no** PLAN checkbox (P1-1 stays open). No ADR-0010 rule had to be overridden. This `## Result` edit is not in the landed commit; it is left uncommitted on `main` for the driver.
+
+**Language:** Python, because the registry and the other front are Python. Standard library only (`contextlib`, `json`, `sys`).
+
+**Review:** 3 rounds by a context-isolated `dev-reviewer` (spawned with `model: opus`, a fresh one each round); Request changes, Approve, Approve. No security finding; no point read as needing an ADR or the owner.
+- Round 1 (`ada99d3`): F1 High (fixed) — CI `Python gate (3.14)` failed: the code for a deeply nested line depended on which interpreter limit was hit (JSON parser → -32700, the walk of `tools.check_json_object` → -32600), and the test fixed a platform-dependent value. Now one code, -32600, and tests for the depths in between. F2 Medium (fixed) — revision 2025-03-26 was accepted although it requires receiving batches; only 2025-06-18 is accepted now. F3 Low (fixed) — an error got `id` null although the message's id was readable. F4 Low (fixed) — a `cursor` of `tools/list` was ignored; now -32602. F5, F6 Info (recorded below).
+- Round 2 (`2496156`): N1 Low (fixed, docstring + test) — an integer longer than the interpreter converts is answered -32700. N2 Low (fixed, docstring) — exit status 120. N3 Info — a line of only `\x0b` / `\x0c` counts as blank (no change).
+- Round 3 (`a7fdd70`): R1 Low (recorded in the PR body and below, no code change) — `"id": null`. R2 Info (below). Nothing blocking left; the uneven wrapping of one docstring sentence was left as it is.
+- Points (a)-(e) of the task, all three rounds: the module agrees with ADR-0010 decisions 2, 3, 4 and 7 sentence by sentence; the code decides nothing that the ADR lists under Boundaries or Limits; nothing outside the source can add a tool and the front names no tool by itself; the planner's F10 reading, the description / input-schema reading and the A-13 reading (no new dependency, no data-plane schema) were confirmed.
+
+**Public API as landed** — `hilclaw/mcp_front.py` (234 lines; one non-test file, inside the cap of 300 LOC / 5 files)
+- Start command: `python -m hilclaw.mcp_front`, without arguments.
+- `main(argv=None, *, registry=None, stdin=None, stdout=None, stderr=None) -> int`; `mcp_name(name) -> str` (`sim.run` → `sim_run`); `mcp_names(registry) -> dict` (MCP name → registry name, built from `registry.names()`).
+- Constants: `SERVER_NAME = "hilclaw"`, `PROTOCOL_VERSIONS = ("2025-06-18",)`, `EXIT_END_OF_INPUT = 0`, `EXIT_FRONT_FAILURE = 4`, `PARSE_ERROR = -32700`, `INVALID_REQUEST = -32600`, `METHOD_NOT_FOUND = -32601`, `INVALID_PARAMS = -32602`.
+- Methods served: `initialize`, `ping`, `tools/list`, `tools/call`. `hilclaw/tools.py`, `hilclaw/__main__.py` and every existing file are unchanged (the "Shared level" paragraph was not used).
+
+**Specification:** fetched and read (revision 2025-06-18: `/basic`, `/basic/transports`, `/basic/lifecycle`, `/basic/utilities/ping`, `/server/tools`, with `curl` on the `.md` pages); the reviewers also read `/server/utilities/pagination`, `/basic/utilities/cancellation`, `/basic/utilities/progress` and `schema.ts`. The planner's protocol facts agree with it. Two points where the specification decided: revision 2025-03-26 is not accepted (F2), and a `cursor` is refused (F4, a SHOULD of the pagination page). Not checked by anyone: older revisions, the security list of the tools page, Claude Code's behaviour as a client.
+
+**JSON-RPC codes per case**
+- -32700: a line that is not JSON — not UTF-8, a byte order mark, cut off, `NaN` / `Infinity`, text after the object — and a line holding an integer longer than the interpreter converts (4300 digits by default, `PYTHONINTMAXSTRDIGITS`; the reading fails before the line is known to be JSON). `id` null.
+- -32600: JSON that is not a message — an array (batch), a string, a number, `null`, a boolean; a member name given twice anywhere (also inside `arguments`); a number beyond a float; a missing or wrong `jsonrpc`; a missing or non-string `method` (unless the message is a response); an `id` that is `null`, a boolean, a float or a container; nesting too deep for the interpreter to read, whichever of its limits is hit.
+- -32601: an unknown method (`resources/list`, `prompts/list`, …).
+- -32602: `params` that is not an object; `tools/call` with an unknown tool name — the dotted registry name `test.echo` included, since only MCP names are looked up — or without a `name`, or with a `name` that is not a string; `arguments` that is not an object (also `null`); a `cursor` in `tools/list`.
+- -32603 is never sent: the front has no fault of its own to report (a catch-all was written and removed; a bug of the module would end the server with a traceback on standard error and status 1).
+- The `id` of an error is the message's id when it is a string or an integer, also when the strict reading (`tools.decode_request`) refused the message — the line is then read once more only to find the id, and the last one counts if `id` is given twice. It is `null` when there is no usable id, when the line is not JSON, and when it is too deep to read at all (that depth depends on interpreter and platform: on Windows 3.14 the JSON parser gives up first, on Linux 3.14 it does not).
+- No answer: a notification (any method, also `notifications/cancelled`, an unknown one, one with odd `params`, a `tools/call` without an id — no tool function is called), a response from the client (`result` or `error` without `method`), an empty or blank line.
+
+**Provisional choices and unsaid cases (each chosen here, none a rule of ADR-0010)**
+- Module name `mcp_front`: it says which front it is, next to `__main__` (the command-line front); the Test presence job passes without an edit of `.github/`.
+- Description and input schema: a tool is listed with `inputSchema` `{"type": "object"}` and no `description` (optional in the schema); the registry is not extended and `arguments` are not validated in the front. Reviewer F5: acceptable only while the fixed set is empty — **the first tool slice must not ship with this placeholder**.
+- Text block: `tools.encode` of the result or the error object without its LF, so both fronts write the same characters (one test compares the two fronts for a result, a `ToolFailure`, a crash and a bad result). No `structuredContent`: no tool declares an output schema.
+- Protocol revision: only 2025-06-18; `initialize` answers it whatever was asked for, also for a missing or non-string `protocolVersion` and for `initialize` without `params` (lenient: the client disconnects if it cannot use the revision).
+- `serverInfo` is `{"name": "hilclaw", "version": hilclaw.__version__}` (not a pin); no `instructions`; `capabilities` `{"tools": {}}` without `listChanged`.
+- Connection state: none kept. Requests are served alike before and after `initialize`, a second `initialize` is answered like the first — so no outcome can depend on what the server remembers (decision 7). The table of MCP names is rebuilt from the registry on every request.
+- `arguments` absent is the empty request `{}`. Reviewer F5: read as decoding of the protocol, not a tool default; the command-line front has no corresponding case (empty standard input is `bad_request` there) — an input for the conformance tests of slice ④.
+- A `_meta.progressToken` is ignored; no progress is sent.
+- A last line without LF is handled like any other line; CR LF from the client is accepted (CR is JSON whitespace) and never written.
+- Output: one line of compact ASCII JSON per response, bytes, LF only, flushed per message. Nothing else on standard output. Standard error gets one line (`hilclaw.mcp_front: …`) only when the server gives up; JSON-RPC errors are not echoed there.
+- Exit status: 0 at the end of standard input; 4 (the value of `hilclaw.__main__.EXIT_FRONT_FAILURE`, a constant of this module) when an argument is given (refused before anything is read; no option exists), or standard input or output is `None`, has no binary layer, is closed or fails when it is needed. A closed standard output matters only when an answer is due. The process may end with the interpreter's own 120 when its flush at exit fails too (reviewer N2 saw it on Windows).
+- A `KeyboardInterrupt` or `SystemExit` of a tool function is not caught (as in `tools.call`): the server ends without answering that call.
+- Standard input is assumed to be a blocking stream; nothing non-blocking was built. No time limit, no size limit (a line of 2 MB is served).
+- Reviewer F6: `_standard` and the standard-error writer are written a second time (private helpers of `hilclaw/__main__.py`); they are stream handling, not a check or a conversion, so `tools.py` was not extended.
+- **Known deviation (reviewer R1):** an error with `"id": null` follows JSON-RPC 2.0 and the task's protocol facts, but is not a message of the MCP 2025-06-18 schema (`JSONRPCError.id` is a string or a number). It is sent only for a line with which the client broke the protocol first. The alternative — no answer and a line on standard error — is left to a later task; whether a client minds belongs to the live check.
+
+**What was shown about F10, and what remains**
+- Shown: a standard-library server that follows the stdio transport and the tools specification of revision 2025-06-18 as read is **feasible** — handshake, `tools/list`, `tools/call`, tested in process and through a real child process on the default binary streams, with LF and a flush per response on Windows and on Linux (CI).
+- **Not shown:** that the Claude Code version in use accepts it. The server is not registered, no session was started against it, and **OD-18 sub-question ① is not settled**. ADR-0010's "② … which also settles F10" is not fulfilled by this task.
+- For the live check (needs a registration, which ADR-0010 leaves unchosen and partly to the owner): the first things to look at are (1) the revision Claude Code asks for — if it is not 2025-06-18 the server answers 2025-06-18 and the client must accept that; (2) whether it sends anything in `tools/list` `params` that the server refuses (`cursor`); (3) the `"id": null` errors; (4) how the tool list with no description is shown; (5) the `.` → `_` names as `mcp__hilclaw__…`.
+
+**Verification**
+- Local (Windows, CPython 3.14.4, pytest 9.1.1, ruff 0.16.10), before each commit and again on `main` after the merge: `python -m pytest` → 4013 passed, 133 skipped (187 of them in `tests/test_mcp_front.py`); `python -m ruff check .` and `python -m ruff format --check .` exit 0. CPython 3.11 has no pytest on this machine; the suite ran on 3.11 in CI.
+- By hand, from the repository root: an `initialize` and a `tools/list` request piped into `python -m hilclaw.mcp_front` → `{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"hilclaw","version":"0.0.0"}}}` and `{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}`, status 0.
+- Coverage (rule ①): `python -m trace --count --missing --coverdir <scratch> --module pytest tests/test_mcp_front.py -k "not deep and not only_opens"` reaches every line of the module except two: `raise SystemExit(main())` (run by the real-process tests) and the `RecursionError` branch of the second reading (run by the deep-nesting tests where the JSON parser gives up, as on Windows; they are left out of the trace run because a `RecursionError` switches tracing off). Every public name is used by a test.
+- Reviewer R2: the test "an integer longer than the interpreter converts" assumes the default `PYTHONINTMAXSTRDIGITS`; it would fail under `0` or a limit above 5000. CI does not set it.
+- `git ls-files --eol`: `i/lf` for both files; `git diff origin/main --stat` listed only the two files of `touchesFiles`; no stray file after the tests.
+- CI: the first run on the PR failed (`Python gate (3.14)`, reviewer F1 — https://github.com/myungjoo/HIL-Claw/actions/runs/37576487675); the next two passed. Final head `a7fdd70`: five checks passed — https://github.com/myungjoo/HIL-Claw/actions/runs/37577979119.
+- `push` run on `main` for `9633da1`: success — https://github.com/myungjoo/HIL-Claw/actions/runs/37578450332.
+- Start checks: `git log origin/main --grep='^Task: T-0039'` empty; no PR for T-0039; no open PR; no comment on #5 after the ADR-0010 notice.
+
+**Follow-ups (in addition to the list above; nothing here needs the owner except the registration)**
+- (planner / owner) The live check of F10 with the five points listed above; it also decides what to do about the `"id": null` errors (keep, or no answer plus a line on standard error).
+- (first tool slice) Where a tool states its description and input schema — the placeholder must be replaced then; and how the data root reaches a tool function.
+- (slice ④, conformance tests) `arguments` absent versus empty standard input under the command-line front; the nesting depth and the integer length are interpreter limits and can be judged differently by the two fronts and by two platforms (T-0038 follow-up, seen here in CI).
+- (later, if a second front-level helper appears) `_standard` and the standard-error writer exist twice; a shared private module would remove the copy.
