@@ -11,12 +11,14 @@ from hilclaw.events import (
     CorruptEventsError,
     InvalidEventError,
     Log,
+    PositionBeyondLogError,
     UnsupportedVersionError,
     append,
     read,
     remove_torn_tail,
     validate,
 )
+from hilclaw.journal import fold
 
 # Synthetic values only: no kind, payload member or time of a real run.
 RUN = "run-a"
@@ -1117,3 +1119,320 @@ def test_a_failing_fsync_of_the_tail_removal_passes_through(root, monkeypatch):
     assert (root / FILE).read_bytes().startswith(COMPLETE)
     remove_torn_tail(root, RUN)
     assert (root / FILE).read_bytes() == COMPLETE
+
+
+# --- read from a position (ADR-0011 decision 6, ADR-0012 decision 5) ---
+
+# The two lines of the Example of ADR-0011 and one more start line (Example of ADR-0012).
+STEPS = (
+    b'{"schema_version": 1, "time": "2026-01-01T00:00:00Z", "kind": "step_started",'
+    b' "round": 3, "candidate": 2, "attempt": 1,'
+    b' "data": {"step": "example_step", "execution": 1}}\n'
+    b'{"schema_version": 1, "time": "2026-01-01T00:04:10Z", "kind": "step_ended",'
+    b' "round": 3, "candidate": 2, "attempt": 1,'
+    b' "data": {"step": "example_step", "execution": 1, "spend": {"example_axis": 7},'
+    b' "result": {"example_member": 1}}}\n'
+    b'{"schema_version": 1, "time": "2026-01-01T00:05:00Z", "kind": "step_started",'
+    b' "round": 3, "candidate": 1, "attempt": 1,'
+    b' "data": {"step": "example_step", "execution": 1}}\n'
+)
+
+
+def beyond(position, count, file=FILE):
+    end = f"the end of the log, complete lines: {count}"
+    return f"{file}: position {position} is beyond {end}"
+
+
+def test_the_position_is_the_third_parameter_and_defaults_to_0():
+    parameters = inspect.signature(read).parameters
+
+    assert list(parameters) == ["data_root", "run_id", "position"]
+    assert parameters["position"].default == 0
+    assert issubclass(PositionBeyondLogError, CorruptEventsError)
+    assert not issubclass(PositionBeyondLogError, ValueError)
+
+
+@pytest.mark.parametrize("position", [0, 1, 2, 3])
+def test_read_returns_the_lines_after_the_position(root, tmp_path, position):
+    place(root, EXAMPLE)
+    before = snapshot(tmp_path)
+    whole = read(root, RUN)
+    assert len(whole.events) == 3
+
+    assert read(root, RUN, position) == Log(whole.events[position:], 0)
+    assert read(root, RUN, position=position) == read(root, RUN, position)
+    assert read(str(root), RUN, position) == read(root, RUN, position)
+    assert len(read(root, RUN, position).events) == 3 - position
+    assert snapshot(tmp_path) == before
+
+
+def test_position_0_is_the_default(root):
+    place(root, EXAMPLE + b'{"torn')
+
+    assert read(root, RUN, 0) == read(root, RUN) == read(root, RUN, position=0)
+    assert read(root, RUN, 0).torn_tail == 6
+
+
+def test_appended_lines_are_read_back_from_a_position(root):
+    written = [append(root, RUN, KIND, {"example_member": n}) for n in range(4)]
+
+    for position in range(5):
+        assert read(root, RUN, position) == Log(written[position:], 0)
+
+    position = len(read(root, RUN).events)
+    later = append(root, RUN, KIND, {}, round=1)
+
+    assert read(root, RUN, position) == Log([later], 0)
+
+
+@pytest.mark.parametrize("position", [0, 1, 2, 3])
+def test_a_fold_of_the_tail_from_the_view_of_the_prefix_is_the_fold_of_the_log(
+    root, position
+):
+    place(root, STEPS)
+    whole = read(root, RUN).events
+    stored = fold(whole[:position])[0]
+
+    replayed = fold(read(root, RUN, position).events, stored)[0]
+
+    assert stored.position == position
+    assert replayed == fold(whole)[0]
+    assert replayed.position == 3 and replayed.totals == {"example_axis": 7}
+    assert len(replayed.open_steps) == 1
+
+
+PASSED_OVER = {
+    "a damaged line": b"not json",
+    "a blank line": b"",
+    "white space only": b" \t ",
+    "not UTF-8": b'{"schema_version": 1, "kind": "\xff"}',
+    "another version": line(schema_version=2)[:-1],
+    "a line that parses": line(round=8)[:-1],
+}
+
+
+@pytest.mark.parametrize("end", [b"\n", b"\r\n"])
+@pytest.mark.parametrize("case", PASSED_OVER)
+def test_lines_before_the_position_are_not_interpreted(root, tmp_path, case, end):
+    passed = PASSED_OVER[case] + end
+    place(root, passed + line(round=1) + passed + line(round=2))
+    before = snapshot(tmp_path)
+    unusable = (CorruptEventsError, UnsupportedVersionError)
+
+    assert read(root, RUN, 3) == Log([ev(round=2)], 0)
+    assert read(root, RUN, 4) == Log([], 0)
+    if case != "a line that parses":
+        with pytest.raises(unusable, match="line 1: "):
+            read(root, RUN)
+        with pytest.raises(unusable, match="line 3: "):
+            read(root, RUN, 1)
+    assert snapshot(tmp_path) == before
+
+
+def test_a_carriage_return_before_a_line_feed_changes_no_count(root):
+    place(root, EXAMPLE.replace(b"\n", b"\r\n"))
+    whole = read(root, RUN).events
+    assert len(whole) == 3
+
+    for position in range(4):
+        assert read(root, RUN, position) == Log(whole[position:], 0)
+    with pytest.raises(PositionBeyondLogError):
+        read(root, RUN, 4)
+
+
+@pytest.mark.parametrize("tail", [b'{"torn', line(round=5)[:-1], b" ", b"\r"])
+@pytest.mark.parametrize("position", [0, 1, 2])
+def test_a_torn_tail_is_reported_from_every_position(root, tmp_path, position, tail):
+    place(root, COMPLETE + tail)
+    before = snapshot(tmp_path)
+    whole = read(root, RUN).events
+    assert len(whole) == 2
+
+    assert read(root, RUN, position) == Log(whole[position:], len(tail))
+    assert snapshot(tmp_path) == before
+
+
+def test_two_runs_have_two_files_from_a_position(root):
+    place(root, EXAMPLE)
+    place(root, line(round=6), "runs/run-b/events.ndjson")
+
+    assert read(root, "run-b", 0) == Log([ev(round=6)], 0)
+    assert read(root, "run-b", 1) == Log([], 0)
+    assert len(read(root, RUN, 1).events) == 2
+    with pytest.raises(PositionBeyondLogError) as excinfo:
+        read(root, "run-b", 2)
+    assert str(excinfo.value) == beyond(2, 1, "runs/run-b/events.ndjson")
+
+
+BEYOND = {
+    "no line": (b"", 0),
+    "one line": (line(), 1),
+    "three lines": (EXAMPLE, 3),
+    "three lines with a carriage return": (EXAMPLE.replace(b"\n", b"\r\n"), 3),
+    "a torn tail only": (line(round=5)[:-1], 0),
+    "a torn tail that parses": (COMPLETE + line(round=5)[:-1], 2),
+    "a torn tail of white space": (COMPLETE + b" ", 2),
+    "damaged lines only": (b"not json\n\n\xff\n", 3),
+}
+
+
+@pytest.mark.parametrize("excess", [1, 2, keys.MAX_INTEGER])
+@pytest.mark.parametrize("case", BEYOND)
+def test_a_position_beyond_the_end_of_the_log(root, tmp_path, case, excess):
+    content, count = BEYOND[case]
+    position = min(count + excess, keys.MAX_INTEGER)
+    place(root, content)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(PositionBeyondLogError) as excinfo:
+        read(root, RUN, position)
+
+    assert str(excinfo.value) == beyond(position, count)
+    assert isinstance(excinfo.value, CorruptEventsError)
+    assert not isinstance(excinfo.value, (ValueError, UnsupportedVersionError))
+    assert read(root, RUN, count).events == []
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize(
+    "prepare", ["nothing", "runs", "run", "file as runs", "file as run"]
+)
+def test_a_position_beyond_a_missing_file(root, tmp_path, prepare):
+    if prepare == "runs":
+        (root / "runs").mkdir()
+    elif prepare == "run":
+        (root / "runs" / RUN).mkdir(parents=True)
+    elif prepare == "file as runs":
+        place(root, b"synthetic", "runs")
+    elif prepare == "file as run":
+        place(root, b"synthetic", f"runs/{RUN}")
+    before = snapshot(tmp_path)
+
+    assert read(root, RUN, 0) == Log([], 0)
+    with pytest.raises(PositionBeyondLogError) as excinfo:
+        read(root, RUN, 1)
+
+    assert str(excinfo.value) == beyond(1, 0)
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("position", [0, 1, 2])
+@pytest.mark.parametrize(
+    "case", ["invalid JSON", "a blank line", "invalid UTF-8", "no time"]
+)
+def test_damage_after_the_position_keeps_the_line_number_of_the_file(
+    root, tmp_path, case, position
+):
+    place(root, line(round=1) + line(round=2) + DAMAGED[case] + b"\n" + line(round=4))
+    before = snapshot(tmp_path)
+
+    with pytest.raises(CorruptEventsError) as excinfo:
+        read(root, RUN, position)
+
+    assert str(excinfo.value).startswith(f"{FILE}: line 3: is damaged: ")
+    assert not isinstance(excinfo.value, PositionBeyondLogError)
+    assert read(root, RUN, 3) == Log([ev(round=4)], 0)
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("position", [0, 1, 2])
+@pytest.mark.parametrize("case", OTHER_VERSIONS)
+def test_another_version_after_the_position_keeps_the_line_number_of_the_file(
+    root, tmp_path, case, position
+):
+    place(root, line(round=1) + line(round=2) + OTHER_VERSIONS[case] + b"\n")
+    before = snapshot(tmp_path)
+
+    with pytest.raises(UnsupportedVersionError) as excinfo:
+        read(root, RUN, position)
+
+    version = json.loads(OTHER_VERSIONS[case])["schema_version"]
+    expected = f"{FILE}: line 3: schema_version: {version} is not supported"
+    assert str(excinfo.value) == expected
+    assert read(root, RUN, 3) == Log([], 0)
+    assert snapshot(tmp_path) == before
+
+
+INVALID_POSITIONS = {
+    "True": True,
+    "False": False,
+    "a float": 1.0,
+    "a str": "1",
+    "None": None,
+    "a list": [1],
+    "negative": -1,
+    "2^53": keys.MAX_INTEGER + 1,
+}
+
+
+@pytest.mark.parametrize("case", INVALID_POSITIONS)
+def test_an_invalid_position(root, tmp_path, case):
+    position = INVALID_POSITIONS[case]
+    place(root, EXAMPLE)
+    before = snapshot(tmp_path)
+    rule = f"position: must be an int from 0 to {keys.MAX_INTEGER}, got "
+
+    with pytest.raises(InvalidEventError) as excinfo:
+        read(root, RUN, position)
+    assert str(excinfo.value) == rule + f"{type(position).__name__} {position!r}"
+    with pytest.raises(InvalidEventError, match="position: must be "):
+        read(tmp_path / "missing", RUN, position)
+    with pytest.raises(layout.InvalidPathValueError, match="run_id"):
+        read(tmp_path / "missing", "Run-a", position)
+
+    assert snapshot(tmp_path) == before
+
+
+def test_the_largest_position_is_an_argument(root):
+    place(root, EXAMPLE)
+
+    with pytest.raises(PositionBeyondLogError) as excinfo:
+        read(root, RUN, keys.MAX_INTEGER)
+
+    assert str(excinfo.value) == beyond(keys.MAX_INTEGER, 3)
+
+
+@pytest.mark.parametrize("position", [1, 5])
+def test_a_position_does_not_change_the_other_argument_checks(root, tmp_path, position):
+    before = snapshot(tmp_path)
+
+    with pytest.raises(layout.InvalidPathValueError, match="run_id"):
+        read(root, "Run-a", position)
+    with pytest.raises(FileNotFoundError, match="data root is not an existing"):
+        read(tmp_path / "missing", RUN, position)
+
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("position", [1, 5])
+def test_a_directory_in_the_place_of_the_file_with_a_position(root, tmp_path, position):
+    (root / FILE).mkdir(parents=True)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(CorruptEventsError) as excinfo:
+        read(root, RUN, position)
+
+    assert str(excinfo.value) == f"{FILE}: is not a regular file"
+    assert not isinstance(excinfo.value, PositionBeyondLogError)
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("position", [1, 5])
+@pytest.mark.parametrize("target", ["a file", "nothing"])
+def test_a_symbolic_link_is_not_followed_with_a_position(
+    root, tmp_path, position, target
+):
+    elsewhere = tmp_path / "elsewhere.ndjson"
+    if target == "a file":
+        elsewhere.write_bytes(COMPLETE)
+    (root / FILE).parent.mkdir(parents=True)
+    try:
+        (root / FILE).symlink_to(elsewhere)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links cannot be created here")
+
+    with pytest.raises(CorruptEventsError, match="is not a regular file") as excinfo:
+        read(root, RUN, position)
+
+    assert not isinstance(excinfo.value, PositionBeyondLogError)
+    assert elsewhere.exists() == (target == "a file")

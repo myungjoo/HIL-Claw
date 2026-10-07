@@ -3,7 +3,8 @@
 ``ARCHITECTURE/decisions/ADR-0006-od8-events-log.md`` fixes what a line is
 (decision 2), the members of every line (3), the order (4), append only (5),
 the torn tail and what counts as damage (6) and the version in every line (8).
-This module checks a parsed line, appends a line, reads the file of a run and
+This module checks a parsed line, appends a line, reads the file of a run, from
+a line position when asked (ADR-0011 decision 6, ADR-0012 decision 5), and
 removes a torn tail. The path comes from :func:`hilclaw.layout.run_file`.
 
 ``data_root`` is given by the caller and must be an existing directory
@@ -90,11 +91,15 @@ class Log(NamedTuple):
 
 
 class InvalidEventError(ValueError):
-    """An event or an argument breaks ADR-0006 decision 3 or is not strict JSON (``data``)."""
+    """An event or an argument is invalid (ADR-0006 decision 3; ``data`` as strict JSON)."""
 
 
 class CorruptEventsError(Exception):
     """A stored ``events.ndjson`` is damaged or not usable; the message names the path."""
+
+
+class PositionBeyondLogError(CorruptEventsError):
+    """The file holds fewer complete lines than the position asked for (ADR-0011 decision 6)."""
 
 
 class UnsupportedVersionError(Exception):
@@ -173,7 +178,7 @@ def append(data_root, run_id, kind, data, *, round=None, candidate=None, attempt
     return event
 
 
-def read(data_root, run_id):
+def read(data_root, run_id, position=0):
     """Return the :class:`Log` of the run ``run_id``: its events in the order of the file.
 
     Every complete line gives one event, a ``dict`` as parsed; the file is split
@@ -181,20 +186,36 @@ def read(data_root, run_id):
     2). A torn tail is never an event, also when its bytes parse; its length is
     reported and the file is not changed.
 
+    ``position`` is a number of complete lines, an ``int`` from 0 to
+    :data:`hilclaw.keys.MAX_INTEGER` (:class:`InvalidEventError` otherwise).
+    The first ``position`` complete lines give no event and are not interpreted:
+    they are counted by their line feeds, and damage or another version among
+    them is not reported (ADR-0011 decision 6, ADR-0012 decision 5). A file
+    with fewer complete lines, a missing file included, raises
+    :class:`PositionBeyondLogError`, naming the path, the position and the
+    number of complete lines; a file with exactly that many gives no event.
+
     Raises :class:`CorruptEventsError`, naming the path and the line number
-    (from 1), for a damaged complete line (decision 6): not UTF-8, not exactly
-    one JSON text that is an object, a member name twice in an object, ``NaN``
-    or an infinity, or an envelope :func:`validate` rejects. A line of another
-    version raises :class:`UnsupportedVersionError` with the same place.
+    (from 1, in the file), for a damaged complete line after the position
+    (decision 6): not UTF-8, not exactly one JSON text that is an object, a
+    member name twice in an object, ``NaN`` or an infinity, or an envelope
+    :func:`validate` rejects. A line of another version raises
+    :class:`UnsupportedVersionError` with the same place.
     """
     path = layout.run_file(data_root, run_id, "events.ndjson")
+    kind, accepts, rule = _INTEGER
+    if type(position) is not kind or not accepts(position):
+        _fail("position", rule, position)
     root = _root(data_root)
-    if _lstat(root, path) is None:
-        return Log([], 0)
-    *lines, tail = path.read_bytes().split(b"\n")
+    content = b"" if _lstat(root, path) is None else path.read_bytes()
+    *lines, tail = content.split(b"\n")
+    file = path.relative_to(root).as_posix()
+    if position > len(lines):
+        end = f"the end of the log, complete lines: {len(lines)}"
+        raise PositionBeyondLogError(f"{file}: position {position} is beyond {end}")
     events = []
-    for number, line in enumerate(lines, 1):
-        where = f"{path.relative_to(root).as_posix()}: line {number}"
+    for number, line in enumerate(lines[position:], position + 1):
+        where = f"{file}: line {number}"
         try:
             text = line.decode("utf-8")
             event = json.loads(text, object_pairs_hook=_object, parse_constant=_nan)
