@@ -858,6 +858,8 @@ def test_the_message_of_an_invalid_outcome_names_the_member(root):
         InvalidOutcomeError, match=r"pair \(spend, result\), got NoneType"
     ):
         run(root, RUN, NO_ROUND, Step(None))
+    with pytest.raises(InvalidOutcomeError, match="nested too deeply"):
+        run(root, RUN, LATER, Step((SPEND, {"example_member": DEEP})))
 
 
 def test_the_checks_come_in_the_order_run_id_identity_step_data_root(tmp_path):
