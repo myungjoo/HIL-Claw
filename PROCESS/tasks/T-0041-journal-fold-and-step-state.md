@@ -2,7 +2,7 @@
 id: T-0041
 title: Add the journal module (hilclaw/journal.py) with the pure functions of ADR-0011 over parsed event lines - check of the two step lines, identity, fold into a spend view, state of an identity - and its tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-17, NFR-1, NFR-2, FR-3, FR-13, C-4, "#8 M7"]
 dependsOn: [T-0026, T-0027, T-0040]
@@ -133,5 +133,63 @@ Helpers that build event lines live in the test file and get no tests of their o
 - (planner, document mode, P1-8) The record of the runtime `STATE.json` members that hang on no owner item (`schema_version`, the round pointer, `phase`, `next_action`, the stored spend view with its position and, if chosen, the byte offset), with gate status, target and tolerance left out; then its validator as a code task.
 - (planner, P1-1) The first journaled tool on top of this module and the mock's fault injection for the three death points; until a recovery rule exists an open step is a point the run does not pass by itself (T-0040 Follow-ups).
 - (unchanged) OD-18 sub-question ① live check and sub-question ③ (T-0039 Follow-ups); the integrator items after 2026-10-14 (T-0040 Follow-ups).
+- (executor, T-0041; for a later revision of ADR-0011 — raised by both reviewers, not decided in the code) "After a start line of an identity that already has an end line, is the identity among the open steps of the spend view? Decisions 1 and 6 define open as a start line and no end line (answer: no), but the replay rule of decision 6 (the stored view folded over the tail equals the fold from the first line) cannot give that answer, because the stored view holds no ended identity." The module follows the replay rule (the identity is listed as open again) and `step_state` answers `ENDED`; the case arises only after "an identity is never started twice" was broken.
+- (executor, T-0041) `hilclaw/journal.py` is at 297 of 300 lines: a later change of it starts by shortening docstrings or by moving the checks of a step line into a module of their own. The next slice (the reader from a position) should not be added to this file.
+- (executor, T-0041) No task was split: the four capabilities landed together inside the cap.
 
 ## Result
+**DONE** — PR #38 (https://github.com/myungjoo/HIL-Claw/pull/38), squash-merged to `main` as `39dfb30` ("T-0041: Add the journal module of ADR-0011 (step lines, identity, fold, state of an identity) (#38)"); the squash message is the PR body and its last line is `Task: T-0041`. Branch commits: `cab9a43` (implementation), `ab24521` (review round 1). The remote and the local branch were deleted in separate commands after `gh pr view 38 --json state` reported `MERGED`. This task ticks **no PLAN checkbox**. This `## Result` edit (and the three Follow-ups above marked "executor, T-0041") is **not** in the PR; it is left uncommitted on `main` for the driver's wrap-up commit.
+
+**Language**: Python, because the event log module it builds on is Python; standard library only (`pyproject.toml` unchanged).
+
+### Files
+- `hilclaw/journal.py` (new, 297 lines — above the "about 180-240" of the task, inside the 300 LOC / 5 files cap; the reviewers accepted it) and `tests/test_journal.py` (new, 631 lines, 160 test cases). Nothing else changed: `git diff 8e9017d 39dfb30 --stat` lists these two files only; both are `i/lf`.
+
+### Public API as landed (all names and shapes are conventions of this task, provisional)
+- `STEP_STARTED = "step_started"`, `STEP_ENDED = "step_ended"` — the two kinds of ADR-0011 decision 3.
+- `JournalError(ValueError)` — a step line, an identity or a view breaks a rule; the message names the member (`data.spend.<axis>: must be …`, `view.position: …`). One type, because a caller tells the cases apart by the member named.
+- `Identity(step, execution, round=None, candidate=None, attempt=None)` — named tuple; `None` is an absent envelope number, so absent differs from every number; hashable.
+- `SpendView(totals, position, open_steps)` — named tuple. Returned with `totals` as a read-only mapping (`types.MappingProxyType` over a new `dict`) and `open_steps` as a `frozenset`; a view given by a caller may hold any mapping and a `set`. `EMPTY` is the view of no line and the default starting view.
+- `Problem` (`END_NOT_OPEN`, `START_REPEATED`) and `State` (`NO_LINE`, `OPEN`, `ENDED`) — enumerations.
+- `Report(line, identity, problem)` — a line the fold counted and reports. `StepState(state, result=None, failure=None, spend=None)` — for `ENDED`, copies of what the end line holds.
+- `check_step(event)` → `None`. Runs `events.validate` on the envelope first (its errors pass through), then the table of decision 3 on `data`. An event of **another kind is refused** (`JournalError`, "kind: must be step_started or step_ended"): the function is asked about a step line.
+- `identity_of(event)` → `Identity`, checked as by `check_step`.
+- `step_identity(step, execution, round=None, candidate=None, attempt=None)` → `Identity`. It builds a start line from the values and checks that line, so the rules and the errors are exactly those of a line: `events.InvalidEventError` for an envelope number (`candidate` only with `round`, `attempt` only with `candidate`), `JournalError` for `step` or `execution`.
+- `fold(lines, view=EMPTY)` → `(SpendView, reports)`, `reports` a tuple of `Report` in the order of the lines.
+- `step_state(identity, lines, view=EMPTY)` → `StepState`. The docstring states the limit of decision 6 (an identity that ended before the position of `view` is not visible; sub-question ① is not solved).
+
+### Provisional readings and the cases ADR-0011 leaves unsaid (each as implemented and tested)
+- `failure` is read as an object with **exactly** `kind` (a *name*, as `tools.ToolFailure` requires) and `message` (a `str`) — the exactness is this module's reading of "holds the `kind` and `message` of the tool failure".
+- `result` must be a `dict`; its members are not looked at. `tools.check_json_object` is not used: strictness of the JSON is the event module's concern (it reads and appends the lines), so `hilclaw.tools` is not imported.
+- **Malformed step line** met by the fold or the lookup: an error with `line <number>:` in front, nothing returned — never skipped, never counted in part. The module's convention, not a new damage rule (ADR-0006 decision 6 defines damage for the envelope only). An envelope `events.validate` refuses is reported the same way with its own type (`InvalidEventError`, `UnsupportedVersionError`). The envelope is re-validated for every line, also of other kinds.
+- **Line numbers** count from 1 and continue the position of the view given, so a report or an error of a tail names the same line as one of the whole log.
+- **Second start line of an open identity**: reported (`START_REPEATED`); the identity stays open; state `OPEN`.
+- **Start line of an identity that ended**: the fold lists the identity as open again (a view holds no ended identity, and the fold of a tail must give the view of the whole), and reports it when the end line is among the lines folded; from a tail it is not reported. `step_state` answers `ENDED` with the first end line. See the Follow-up for ADR-0011 above.
+- **Two end lines**: both `spend` values are counted; the second is reported (`END_NOT_OPEN`), also when a start line stands between them and the first is among the lines folded (review round 1). The lookup returns the **first in file order**, so an answer given to a repeated call does not change when the log grows.
+- **One category** for an end line whose identity is not open: from a tail, "ended before the position" and "never started" cannot be told apart.
+- **A total above `keys.MAX_INTEGER`**: the exact sum is kept, nothing raised; a view given with such a total is accepted. Whether a stored form can hold it is PLAN P1-8.
+- **An axis whose amounts are all 0** appears in the totals with 0 (the line named it; holds for every split).
+- **`lines`** is any iterable, read once (a generator works); something that cannot be iterated raises `TypeError`. Every line is read and checked, also by the lookup after it found the end line.
+- **A malformed view** (not a `SpendView`, a negative or non-`int` position, a total that is not an `int` ≥ 0, an axis that is not a *name*, an open step that is not a valid `Identity`) is refused before any line is read.
+- **Lines of other kinds**, with any `data`, count in the position only.
+- Integers are exactly `int` (`bool` and `float` refused), `execution` from 1 and an amount from 0, both at most `keys.MAX_INTEGER`. The *name* pattern of ADR-0001 is restated in the module (no private import).
+- Nothing was read as a rule about what is done with an open step, about a budget, or as the form of `budget_spent`.
+
+### Known limits
+- `step_state` copies the `data` of the end line with `copy.deepcopy`: a `result` nested hundreds of levels deep can raise `RecursionError`, which is not a `JournalError` and is not in the docstring (review round 1, F3 — accepted as a limit).
+- One malformed step line makes every fold and lookup that reads it fail, and the repository has no means to repair a line (lines are never edited). What a run does then is not decided anywhere.
+- On CPython 3.11 an integer too long to print is shown as "a value too long to show"; on 3.12 and later `reprlib` prints a placeholder that holds a memory address, so that one error message is not the same from run to run.
+- The fold keeps the identities that ended among the lines it reads (for the reports only): memory grows with the number of step lines of one call, not across calls.
+
+### Review (2 rounds; a fresh-context `dev-reviewer` each, spawned with `model: opus`; no `SECURITY` finding)
+Verdict sequence: **Request changes, Approve.**
+- **Round 1 — Request changes** (`cab9a43`), https://github.com/myungjoo/HIL-Claw/pull/38#issuecomment-6033243323 : F1 (Medium) for `start, end, start, end` of one identity the fourth line was counted but not reported, against "a second end line … is counted and reported" (decision 6) → fixed (`identity not in open_steps or identity in ended`), docstring and test adjusted; F2 (Low) `fold` lists the identity as open while `step_state` answers `ENDED` → judged a module convention forced by the replay rule, a sentence added to the docstring of `fold`, the question recorded in Follow-ups; F3 (Low, optional) the `RecursionError` of `deepcopy` → recorded as a known limit; F4 (Nit) a vacuous assertion in the death point test → removed. Response: https://github.com/myungjoo/HIL-Claw/pull/38#issuecomment-6033281257
+- **Round 2 — Approve** (`ab24521`), https://github.com/myungjoo/HIL-Claw/pull/38#issuecomment-6033338869 : no finding and no remaining nit.
+- Review points: (a) the check, the identity, the fold and the lookup agree with decisions 3, 4, 6 and 7 (both rounds, after F1); (b) both reviewers agree with the planner's A-13 reading — no kind, member or rule added, the view is a value in memory and not presented as the form of `budget_spent`, the BLOCKED reason does not apply; (c) every convention under "unsaid" accepted; (d) nothing of Boundaries or Limits is decided; (e) the module is pure. Neither reviewer read a point as a design choice needing a record or the owner.
+
+### Verification
+- **Landed check** before work: `git log origin/main --grep='^Task: T-0041'` empty; `gh pr list --search T-0041 --state all` empty; no open PR. Issue #5: the latest comment was the ADR-0011 notice (6032614222), nothing after it; no objection.
+- **Local** (Windows, CPython 3.14.4, pytest 9.1.1, ruff 0.16.10), before the commit, before the merge and on `main` after it: `python -m pytest` **4173 passed, 133 skipped**; `python -m ruff check .` "All checks passed!"; `python -m ruff format --check .` "112 files already formatted". `git status --short` after the tests showed no stray file.
+- **Coverage** (test rule ①; not measured by CI yet): `python -m trace --count --missing --coverdir <scratch directory outside the repository> --module pytest tests/test_journal.py` reaches every line of `hilclaw/journal.py` except the two lines of the `except ValueError` branch in `_fail`, which only CPython 3.11 reaches (run by hand there: `step_identity("example_step", 10**5000)` gives the `JournalError`; the 3.11 gate runs the test case). All fifteen public names are tested.
+- **CI on the PR**, final head `ab24521`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37588458147 : five successful checks — `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`. No failed CI run on the PR.
+- **`push` run on `main`** for `39dfb30`: https://github.com/myungjoo/HIL-Claw/actions/runs/37588912738 — `completed` / `success`.
