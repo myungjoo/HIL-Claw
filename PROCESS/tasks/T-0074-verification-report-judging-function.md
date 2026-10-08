@@ -2,7 +2,7 @@
 id: T-0074
 title: Make the judging half of `run_verification` a public function of `hilclaw/harness/verification.py` (ADR-0021 Consequences, the first code slice possible after that record alone) - it takes the report of a verification process and judges it (form, check values, reference, tolerance, completed / broken, pass / fail) without starting anything - and keep `run_verification` unchanged in behaviour on top of it
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, OD-18, OD-16, "#5 A-12"]
 dependsOn: [T-0060, T-0061, T-0073]
@@ -135,3 +135,40 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (a small code task) Whether `PROCESS/` Markdown leaves the set of `ruff format --check .`; public names for `journaled_tool._built` and `backends._hw_tool`.
 
 ## Result
+**DONE.** PR #63 (https://github.com/myungjoo/HIL-Claw/pull/63), squash-merged as `7f5feea727c04076a013a1457dc413af234bc46f` on `main`; the squash message ends with `Task: T-0074`. Remote and local branch deleted; the clone is on `main` == `origin/main`. This task ticks **no** PLAN checkbox (P1-1 stays open).
+
+**Review**: 2 rounds, both Approve (fresh-context `dev-reviewer`). Round 1 (https://github.com/myungjoo/HIL-Claw/pull/63#issuecomment-6064415893): two Low findings, both fixed in commit `2a417f6` - two edited bullets of the module docstring were left unwrapped, and the sentence "A report is exactly `bytes`" read wider than meant and was narrowed to "The `report` argument of `judge_report` is exactly `bytes`" (ADR-0021 decision 2 leaves the representation of a report from another machine open, #5 B-2). Round 2 (https://github.com/myungjoo/HIL-Claw/pull/63#issuecomment-6064465892): no finding in code or docstrings; one Low on the PR body (the non-test line count was that of the first head), fixed by editing the PR body before the merge. The reviewer agreed with the planner's four judgements (no record needed, bound nowhere, no type for class (B), no `run` in the result) and with the A-13 reading, and found nothing that decides a Boundaries item of ADR-0021. No point was read as needing a record or the owner.
+
+**Public API as landed** (`hilclaw/harness/verification.py`; the tool function of `correctness.check` is written against it):
+- `judge_report(report, *, m, k, n, draws, seed, rtol, atol)` returns a `Judgement`. All parameters besides `report` are keyword-only; none has a default.
+- `Judgement` is a `NamedTuple` with exactly the fields `broken` (`Broken | None`), `verdict` (`Verdict | None`), `counts` (`tuple[Counts, ...] | None`) - the first three fields of `VerificationResult`, same meaning, no `run`.
+- A report is accepted only as exactly `bytes` (`type(report) is bytes`): the bytes a verification process wrote on its report channel, `draws * (4 + 4*m*n) + 4` bytes in the host's byte order, ending with `END_MARK`.
+- What it raises, in this order, all before any byte of the report is looked at: `VerificationArgumentError` for `m`, `k`, `n`, `draws`, `seed` by the rule of `program_arguments` (message starts with the parameter name); `VerificationArgumentError` for a tolerance `check_tolerance` refuses (`rtol` before `atol`); `TypeError` with the message `report: must be bytes, got <type name>` for any other type (`bytearray`, `memoryview`, a subclass of `bytes`, `str`, `None`, `int`, a list, a NumPy array). What NumPy raises for arrays it cannot allocate is passed on.
+- What it returns: `Judgement(Broken.REPORT_FORM, None, None)` when the length or the end mark is wrong (tested first, from `m`, `n`, `draws` alone); `Judgement(Broken.CHECK_VALUE, None, None)` at the first draw whose check value disagrees (counts taken so far dropped); otherwise `Judgement(None, Verdict.PASS or Verdict.FAIL, counts)` with one `Counts` per draw in order. It never returns `Broken.TIMEOUT` or `Broken.EXIT_STATUS`.
+- It starts no process, reads and writes no file, reads no environment variable, clock or random source and keeps nothing between calls.
+- `run_verification`, `VerificationResult`, `program_arguments`, `END_MARK`, `Broken` and `Verdict` are unchanged in signature, members and behaviour. `run_verification` returns `VerificationResult(*judgement, run)` from the private core `_judgement`, which `judge_report` uses too: one implementation of the form check and of the loop over the draws.
+
+**Provisional choices** (the records leave them to the code task):
+- Names `judge_report` / `Judgement`: the task's recommended spelling; the verb says that nothing is run.
+- `Judgement` is a new `NamedTuple` without `run`: a judging function has no process, and ADR-0021 decisions 3 and 5 keep the runner's capture out of what is returned.
+- `VerificationResult` is built from a `Judgement` plus `run`, so the two cannot drift apart.
+- A report is exactly `bytes`, anything else is a `TypeError`: a mutable or foreign buffer could change under the judging or redefine `len` and `endswith`, and a wrong type is not a statement about a process, so it is never `REPORT_FORM`.
+- Order of refusal: arguments, tolerance, type of the report - the order the module already has, with the report last because it is the only thing that is not a parameter of the run.
+- `run_verification` calls the private core, not `judge_report`: its arguments are checked before the process starts and the order of what it raises stays exactly as it was.
+- No type for class (B) of ADR-0021 decision 2 was needed or defined.
+- Not decided, noted by the reviewer for the tool-function task: `judge_report` reads the report in the byte order of the machine that judges (`=I`, native `float32`), the "one machine" form of ADR-0017 decision 7; the docstring says nothing about a report from another machine (#5 B-2).
+
+**No assertion of an existing test was changed** (test diff: 243 insertions, 0 deletions). `hilclaw/harness/__init__.py` was not edited: its sentence about this module is less exact, not false.
+
+**Deviation from the launching prompt, on purpose**: the prompt asked for this `## Result` edit to be put into the PR; this task file ("The branch and the PR must not contain this task file") and DRIVER §3-6 say the driver commits it. The canonical documents were followed: this edit is left **uncommitted** on `main` for the driver.
+
+**Verification**:
+- Local (Windows, Python 3.14), before the commit and before the merge: `python -m pytest` 7283 passed, 272 skipped (before the change: 7044 passed, 272 skipped); `python -m ruff check .` and `python -m ruff format --check .` exit 0. `coverage` is not installed in the driver's clone and nothing was installed, so the coverage figures are those of CI.
+- `git diff origin/main --stat` listed only `hilclaw/harness/verification.py` and `tests/harness/test_verification.py`; the diff of `test_calibration.py` and `test_verification_build.py` was empty; the `git grep` of the task matched two docstring lines only ("environment" twice, "random source" once); `git ls-files --eol` showed `i/lf` for both files.
+- Line counts: non-test diff 127 insertions and 38 deletions in 1 file (about 20 statement lines, the rest docstrings), inside the cap; tests 243 insertions.
+- CI on the final head `2a417f6`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37809365325 - all six successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. Coverage lines: `lines: 2793/2809 executed = 99.43% (minimum 80%)`, `functions: 288/288 entered = 100.00% (minimum 80%)`; `hilclaw/harness/verification.py` 80 statements, 0 missed. No failed CI run on the PR.
+- `push` run on `main` for `7f5feea`: https://github.com/myungjoo/HIL-Claw/actions/runs/37809890369 - `success`.
+
+**Language**: Python, because the module and the array side it calls are Python.
+
+**Follow-ups**: none new; those under `## Follow-ups` stand (next: the source of seeds of ADR-0021 decision 3).
