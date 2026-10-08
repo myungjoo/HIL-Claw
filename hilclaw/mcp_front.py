@@ -30,12 +30,12 @@ Only the protocol revision 2025-06-18 is implemented, and ``initialize``
 answers it whatever revision was asked for. The server keeps no state: every
 request is served alike before and after ``initialize``, and a tool is listed
 with the description and, as ``inputSchema``, the input schema that the
-registry holds for it (ADR-0015 decision 2).
-Messages are handled one at a time in the order read, so
-standard input must be a blocking stream. Exit status 0 is the end of
-standard input; 4 means an argument was given or a standard stream is closed
-or failed when it was needed (120 instead if standard output cannot be
-written and the interpreter's own flush at exit fails as well).
+registry holds for it (ADR-0015 decision 2). Messages are handled one at a
+time in the order read, so standard input must be a blocking stream. Exit
+status 0 is the end of standard input; 4 means an argument was given or a
+standard stream is closed or failed when it was needed (120 instead if
+standard output cannot be written and the interpreter's own flush at exit
+fails as well).
 """
 
 import contextlib

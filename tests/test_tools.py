@@ -378,6 +378,21 @@ def test_register_refuses_a_schema_that_is_no_json_object(member):
     assert_refused(ValueError, said, Recorder(), DESCRIPTION, schema)
 
 
+def test_register_refuses_a_schema_that_is_too_deep_to_copy(monkeypatch):
+    def too_deep(value):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    registry = registry_of(board_run=Recorder())
+    with monkeypatch.context() as patched:
+        patched.setattr(tools.copy, "deepcopy", too_deep)
+        with pytest.raises(ValueError, match="of sim.run is nested too deeply") as e:
+            registry.register("sim.run", Recorder(), DESCRIPTION, RICH_SCHEMA)
+    assert e.value.__cause__ is None
+    assert registry.names() == ("board.run",)
+    registry.register("sim.run", Recorder(), DESCRIPTION, RICH_SCHEMA)
+    assert registry.names() == ("board.run", "sim.run")
+
+
 def test_register_refuses_a_schema_that_holds_itself():
     schema = {"type": "object"}
     schema["properties"] = {"example_member": schema}

@@ -46,6 +46,7 @@ registry = Registry()
 registry.register(
     "test.echo", lambda request: {{"echo": request}}, {description!a}, {schema!r}
 )
+registry.register("test.also", lambda request: {{}}, "Another tool.", {{"type": "object"}})
 raise SystemExit(main(registry=registry))
 """
 
@@ -1016,7 +1017,8 @@ def test_process_call_is_exact_bytes_with_lf(tmp_path):
         "description": NON_ASCII_DESCRIPTION,
         "inputSchema": NESTED_SCHEMA,
     }
-    listed = {"jsonrpc": "2.0", "id": 1, "result": {"tools": [tool]}}
+    also = {"name": "test_also", "description": "Another tool.", "inputSchema": SCHEMA}
+    listed = {"jsonrpc": "2.0", "id": 1, "result": {"tools": [also, tool]}}
     assert done.stdout == b"".join(
         json.dumps(answer, ensure_ascii=True, separators=(",", ":")).encode("ascii")
         + b"\n"

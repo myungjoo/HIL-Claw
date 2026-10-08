@@ -28,7 +28,7 @@ import typing
 KIND_INVALID_REQUEST = "invalid_request"  #: the tool function refused the request
 KIND_NO_DATA_ROOT = "no_data_root"  #: the data root could not be obtained
 KIND_STEP_OPEN = "step_open"  #: the journaled step of this identity is open
-KIND_TOOL_CRASHED = "tool_crashed"  #: the tool function raised no tool failure
+KIND_TOOL_CRASHED = "tool_crashed"  #: the tool function raised what is no tool failure
 KIND_BAD_RESULT = "bad_result"  #: the tool function returned no result object
 RESERVED_KINDS = frozenset(
     {
@@ -126,7 +126,11 @@ class Registry:
         try:
             check_json_object(input_schema)
             schema = copy.deepcopy(input_schema)
-        except (ValueError, RecursionError) as e:
+        except RecursionError:
+            raise ValueError(
+                f"the input schema of {name} is nested too deeply"
+            ) from None
+        except ValueError as e:
             raise ValueError(f"the input schema of {name} is not JSON: {e}") from e
         if schema.get("type") != "object":
             raise ValueError(f'the input schema of {name} must have the type "object"')
@@ -145,6 +149,10 @@ class Registry:
         """Return the :class:`ToolDefinition` of ``name``, its schema as a new copy.
 
         Raises :class:`UnknownToolError` if there is none, as :meth:`get` does.
+        How deeply a schema may be nested depends on the interpreter and on the
+        depth of the call: a reading from a deeper call than the registration
+        can fail to copy it with a ``RecursionError``, which the MCP front does
+        not catch when it lists the tools.
         """
         held = self._held(name)
         return held._replace(input_schema=copy.deepcopy(held.input_schema))
