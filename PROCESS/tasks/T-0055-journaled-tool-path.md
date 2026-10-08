@@ -2,7 +2,7 @@
 id: T-0055
 title: Add the path of a journaled tool of ADR-0015 decisions 4 and 5 (hilclaw/journaled_tool.py - one builder that returns the tool function of a journaled tool: the request checked for run_id, execution and the numbers of its step, the data root asked through data_root_source.obtain, the identity formed with the step of the tool's contract, the step carried out by hilclaw.journaled_step.run), checked through both fronts by a test-only tool
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, OD-17, NFR-1, NFR-6, C-4, "#5 A-12"]
 dependsOn: [T-0038, T-0039, T-0041, T-0045, T-0048, T-0052, T-0053, T-0054]
@@ -154,3 +154,75 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): ① `hilclaw/` keeps line and functi
 - (unchanged) The rest of P1-8; the integrator items after 2026-10-14 (T-0040, T-0042, T-0046, T-0049 and T-0052 Follow-ups); OD-18 sub-questions ①, ③, ④ and ⑤; the T-0047, T-0048, T-0050 and T-0051 follow-ups.
 
 ## Result
+**DONE.** PR https://github.com/myungjoo/HIL-Claw/pull/48, squash commit `c745e08` on `main` (branch `claude/T-0055-journaled-tool-path`, final head `92f4a65`, deleted remotely and locally after `MERGED`). This task ticks **no** PLAN checkbox; `default_registry` still returns an empty registry and no tool is registered.
+
+§3-5 check before starting: no commit with `Task: T-0055` on `origin/main`, no PR for T-0055, no open PR. No comment on #5 after the ADR-0015 notice (issuecomment-6040392389).
+
+### Public API as landed
+- `hilclaw/journaled_tool.py` (new, 128 lines). One public name:
+  - `tool_function(*, step, numbers, source, check, perform)` -> the tool function of a journaled tool (`function(request)` -> `dict`), ready for `Registry.register`. All five are keyword-only and required.
+    - `step`: the `step` name of the tool's contract.
+    - `numbers`: a `tuple`, a prefix of `("round", "candidate", "attempt")`; `()` for none.
+    - `source`: the data-root source (a callable without arguments), asked through `hilclaw.data_root_source.obtain` only.
+    - `check`: called as `check(request)` after the five members are checked and before the data root is asked.
+    - `perform`: called as `perform(data_root, request)` with a `pathlib.Path` and the request object the caller gave, only for an identity with no line; returns `(spend, result)` or raises `hilclaw.journaled_step.StepFailed`.
+    - Building raises `ValueError` for a `step` that is no name (the `JournalError` of `journal.step_identity`) or `numbers` that is no prefix, and `TypeError` for `numbers` that is no `tuple` or a part that is not callable. Building calls none of the three.
+  - A call of the returned function: (1) the request is checked — a `dict`; `run_id`, `execution` and the required numbers present; no number the contract does not require; no required number `null`; then `layout.check_run_id` and `journal.step_identity`; then `check(request)`; (2) `data_root_source.obtain(source)`, once; (3) `journaled_step.run(data_root, run_id, identity, lambda: perform(data_root, request))`. The `run_id` and the identity are the values checked in (1); the request is not read again for them after `check`.
+  - Refusals are `ToolFailure(KIND_INVALID_REQUEST, message)`. Messages: `<member>: is required`, `<member>: is no member of a request of this tool`, `<member>: must be an integer, got null`, `the request must be an object, got <type>`, and the message of the reused check (`run_id: must be a str matching …`, `execution: must be an int from 1 to …`, `round: must be an int from 0 to …`), chained to its error.
+- `hilclaw/journaled_step.py` (202 lines, unchanged count): one docstring sentence — "It is not a tool and not a hook: the tool function of a journaled tool, built by :mod:`hilclaw.journaled_tool`, calls it (ADR-0015 decision 5)." No code changed.
+- `hilclaw/tools.py`, the two fronts and every other module are untouched.
+
+### Provisional choices (the records leave them to the code task)
+- One builder rather than a text in each tool function: the five members and the order are the same for every journaled tool, and only what the builder returns is registered.
+- The name `tool_function` and five keyword-only parameters without a default: three are callables and easy to swap by position.
+- The parameter is `source`, not `data_root_source`: the module of that name is imported there.
+- `check` is required and may not be `None`: a tool function checks its own request (decision 2), so a tool with no member of its own says so with a check.
+- `numbers` is a tuple that is a prefix of `("round", "candidate", "attempt")`: the envelope rule makes every valid set a prefix. Every number in it is required.
+- A number the contract does not require is refused with `invalid_request`, also as `null`: the identity must not drop what the caller stated.
+- A required number given as `null` is refused in this module: `step_identity` reads `None` as an absent number and a request never states `null`.
+- No other member is looked at, `step` included: it is the own check's. A request carrying `step` does not change the identity.
+- What `check` raises passes through unchanged: another kind is the tool's contract, another exception a defect that `tools.call` reports as `tool_crashed`.
+- `perform` gets the request object the caller gave, not a copy: `tools.call` hands it over uncopied too.
+- A request that is no `dict` is `invalid_request`: a direct caller gets the same answer as one behind `tools.call`.
+- The message of a refusal is that of the reused check without the prefix `data.` of a line, so it starts with the member of the request.
+- The identity is formed while the request is checked (it is the check), before the data root is asked: a pure computation, so the order a caller can observe is that of decision 5.
+- A `perform` that raises a plain `ToolFailure` or another exception, returns no pair, or states a reserved kind with `StepFailed`: as `journaled_step.run` treats it; nothing was added.
+- No criterion disagreed with a record.
+
+### Exceptions seen to pass through for a run that cannot be used (input for OD-18 sub-question ④)
+The module catches none, maps none and adds no kind. Called directly, the tool function raised:
+- no run directory, and a run directory without `STATE.json`: `hilclaw.run_journal.MissingStateError`
+- a `STATE.json` that is not valid: `hilclaw.run_state.InvalidStateError`
+- a damaged log line: `hilclaw.events.CorruptEventsError`
+- a stored position beyond the log: `hilclaw.events.PositionBeyondLogError`
+
+Through `tools.call` and both fronts each arrives today as `tool_crashed` (the existing behaviour of `tools.call` for an exception that is no `ToolFailure`), whose reserved meaning is "the tool is defective" — a caller cannot tell it from a missing or damaged run. The tests do not pin that kind: they assert a tool failure, equal through `tools.call` and both fronts, whose kind is none of `invalid_request`, `no_data_root`, `step_open`, with the step not run and the tree unchanged.
+
+### Review (context-isolated `dev-reviewer`, 2 rounds)
+- Round 1, head `2318eb4`: **Approve** — https://github.com/myungjoo/HIL-Claw/pull/48#issuecomment-6051374081
+  - Low: `run_id` was read from the request again after `check`, so a `check` that changed the request could move the lines to a run that was not checked. Fixed in `92f4a65` (the checked `run_id` is bound once with the identity) with a new case.
+  - Note: for an unusable run a caller gets `tool_crashed` today; not a choice of this PR, no record needed before the merge.
+  - Note: the identity is formed during the check, before the source is asked; no observable difference.
+  - Response: https://github.com/myungjoo/HIL-Claw/pull/48#issuecomment-6051394375
+- Round 2, head `92f4a65`: **Approve** — https://github.com/myungjoo/HIL-Claw/pull/48#issuecomment-6051405652
+  - Nit: two counts in the PR body were off by one after the new case. Fixed in the PR body before the merge (no code change).
+- In both rounds the reviewer agreed with the planner's two judgements (one builder; sub-question ④ left open, no kind decided, reserved, used or pinned), with each provisional choice (the refused number in particular), with the A-13 readings, and found nothing of Boundaries decided and no security concern.
+
+### Tests
+- New `tests/test_journaled_tool.py` (940 lines, 142 cases): a test-only tool built with the builder, through the function itself, `tools.call`, both fronts in memory and both fronts as child processes (`HILCLAW_DATA_REPO_LOCAL_PATH` naming a temporary directory). It covers the happy cases, the three states and the three death points with the first call through one front and the repeated call through the other in both directions, the order of a call, the refused requests, the unusable runs and the builder. No existing test changed.
+- Coverage: `python -m trace --count --missing --coverdir <outside the repository> --module pytest tests/test_journaled_tool.py` shows no missing line in `hilclaw/journaled_tool.py` (measured on `2318eb4`; `92f4a65` adds no branch). Nothing was installed.
+
+### Verification
+- Local on the final head: `python -m pytest` 5393 passed, 147 skipped (before, on `6d4e873`: 5251 passed, 147 skipped). `python -m ruff check .` and `python -m ruff format --check .` clean.
+- `git grep -n "journaled_step.run\|journaled_step import" -- hilclaw/`: `hilclaw/journaled_tool.py` only (one call, four docstring mentions). `git grep -n -E "load_data_repo|import config" -- hilclaw/journaled_tool.py`: no match.
+- `git diff origin/main -- hilclaw/journaled_step.py`: two docstring lines. `git ls-files --eol`: `i/lf` for the three files. `git status --short` after the tests: no stray file. The diff against `origin/main` listed only the three files of `touchesFiles`.
+- Line counts after the change: `hilclaw/journaled_tool.py` 128, `hilclaw/journaled_step.py` 202. Non-test change: 130 lines in 2 files, inside the cap.
+- CI on the PR: five successful checks on the final head `92f4a65` — `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)` — https://github.com/myungjoo/HIL-Claw/actions/runs/37721577842. The run on `2318eb4` succeeded too (https://github.com/myungjoo/HIL-Claw/actions/runs/37721139996); no failed CI run on the PR.
+- `push` run on `main` for `c745e08`: `success` — https://github.com/myungjoo/HIL-Claw/actions/runs/37721741349.
+
+Language: Python, because the modules it joins are Python.
+
+### Follow-ups left
+- (for the record that closes OD-18 sub-question ④, with the first tool) Today an unusable run reaches a caller as `tool_crashed`; the four exception classes above are what a kind, reserved or not, would be mapped from.
+- (first tool) It is written against `tool_function(step=…, numbers=…, source=…, check=…, perform=…)`; its `check` must refuse the members its schema excludes, since the builder looks at the five only.
+- No new HQ.
