@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P0.5",
-  "currentTask": null,
+  "currentTask": "T-0036",
   "nextTask": "T-0014",
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:f9c889c2-1",
+    "acquiredAt": "2026-10-08T04:56:57Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -41,7 +45,9 @@
       "reason": "owner-only-decision",
       "question": "PLAN P1-3 (verification half of the harness) needs the two owner items it is marked with, for the first case only: `cpu_standin`, kind `gemm`, fp32, C kernel. (1) Reference oracle (open part of #5 A-7): (a) NumPy float64 as recommended there — `numpy` becomes the first runtime dependency of `hilclaw` (a new external dependency, A-13), exact pin; (b) a float64 reference written in C inside the harness and built with clang like the timing driver, no new dependency; (c) something else (name it)? (2) Tolerance vocabulary of the instance parameter for this case (#5 B-7): (a) per-element `rtol` and `atol`, pass iff |out - ref| <= atol + rtol * |ref| for every element, any non-finite output fails; (b) another form (name it)? (3) Defaults: (a) none — an instance must state its tolerance; (b) default values (name them)? Not asked here: vendor golden outputs, downstream-metric thresholds, datasets (B-8), other kinds, dtypes and backends.",
       "askedAt": "2026-10-07T02:44:20Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6029803639"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6029803639",
+      "resolvedAt": "2026-10-08T04:39:35Z",
+      "decision": "(1)(a), (2)(a), (3)(a) — owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6052377983: the reference is NumPy float64 (the float64 product of the drawn fp32 inputs widened to float64), computed on the Python side of the harness; the process that runs the kernel holds neither the reference nor the comparison; `numpy` becomes the first runtime dependency of `hilclaw`, approved by this answer, pinned exactly by the code task that adds it (newest release with wheels for CPython 3.11 and 3.14); how inputs and the kernel's output reach the Python side is the record's design and is not decided; this closes the \"Still open\" line of A-7 for `cpu_standin` only, not B-7 in general. Tolerance: per-element `rtol` and `atol`, both instance parameters (FR-9); pass iff |out - ref| <= atol + rtol*|ref| for every element; any NaN or infinity in the output fails; premise: the verification inputs of this case are drawn finite. Defaults: none, an instance must state both; StandardScenarios S0 step 2 is reworded in the coverage re-check of T-0036. Note: read ADR-0010 to ADR-0016 as well, ADR-0016 in particular, and re-read the scope sentence \"not an FR-10 tool contract\" against it; the answer does not decide the harness/backend split. Resume T-0036. T-0036 set to TODO and started in the same iteration."
     }
   ],
   "counters": {

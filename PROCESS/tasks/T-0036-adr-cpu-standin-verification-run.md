@@ -2,7 +2,7 @@
 id: T-0036
 title: Write the ADR fixing the verification run of a C gemm kernel on cpu_standin (program and process, drawn inputs, the reference and the comparison as the owner answered HQ-0004, verdict) and reflect it in the ARCHITECTURE documents
 phase: P1
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [FR-9, OD-16, OD-5, OD-13, FR-10, C-7, "#5 A-7", "#5 B-7", "#5 A-6", "#5 A-12", "#5 D6"]
 dependsOn: [T-0020, T-0028, T-0030, T-0031]
