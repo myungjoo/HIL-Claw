@@ -96,17 +96,17 @@ Conventions of this module, which the four records do not fix:
 
 It writes, creates and removes no file and composes no content. It defines no
 member besides the five (``schema_version``, ``hw_profile``, ``tolerance``,
-``source_commit`` and ``n_max``) and interprets no other: a file it accepts is not
-thereby a complete instance record, and not enough to start a run (ADR-0018
-decisions 1 and 2). Of the tolerance it gives what the file states and nothing
-else: it holds no default and substitutes no value (ADR-0020 decision 3), does
-not check that a run is of the first case, and gives the member no meaning for
-a run of another case (#5 B-7). A file it accepts need not state a tolerance,
-and where it is checked that an instance states one is open (OD-8
-sub-question 19). Which tool or component reads the member, at which moment
-of a call, and what a call answers when no tolerance is stated is not said
-here; "not stated" is no error of the content, and this module gives it no
-tool-failure kind.
+``source_commit`` and ``n_max``) and interprets no other: a file it accepts is
+not thereby a complete instance record, and not enough to start a run
+(ADR-0018 decisions 1 and 2).
+Of the tolerance it gives what the file states and nothing else: it holds no
+default and substitutes no value (ADR-0020 decision 3), does not check that a
+run is of the first case, and gives the member no meaning for a run of another
+case (#5 B-7). A file it accepts need not state a tolerance, and where it is
+checked that an instance states one is open (OD-8 sub-question 19). Which tool
+or component reads the member, at which moment of a call, and what a call
+answers when no tolerance is stated is not said here; "not stated" is no error
+of the content, and this module gives it no tool-failure kind.
 Of the source commit it gives what the file states for the start of the
 instance and nothing else (ADR-0022 decisions 5 and 7): it obtains no commit
 and runs no ``git``, and it substitutes no value for a member that is absent,
