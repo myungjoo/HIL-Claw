@@ -41,10 +41,12 @@ def obtain(source):
     try:
         named = source()
     except Exception as e:
-        raise tools.ToolFailure(
-            tools.KIND_NO_DATA_ROOT,
-            f"the data-root source failed: {type(e).__name__}: {e}",
-        ) from e
+        reason = type(e).__name__
+        try:
+            reason = f"{reason}: {e}"
+        except Exception as wordless:
+            raise _failed(reason) from wordless
+        raise _failed(reason) from e
     try:
         text = os.fspath(named) if isinstance(named, (str, os.PathLike)) else None
     except Exception as e:
@@ -57,6 +59,12 @@ def obtain(source):
             f"the data root is not an existing directory: {text}",
         )
     return Path(text)
+
+
+def _failed(reason):
+    return tools.ToolFailure(
+        tools.KIND_NO_DATA_ROOT, f"the data-root source failed: {reason}"
+    )
 
 
 def _no_path(named):

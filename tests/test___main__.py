@@ -218,7 +218,8 @@ def test_the_default_registry_is_bound_to_the_configured_source(monkeypatch):
     )
     main(["sim.run"], stdin=io.BytesIO(b""), stdout=io.BytesIO(), stderr=io.BytesIO())
     assert bound == [data_root_source.configured]
-    main(["sim.run"], registry=Registry(), stdin=io.BytesIO(b""), stdout=io.BytesIO())
+    streams = {"stdin": io.BytesIO(b""), "stdout": io.BytesIO(), "stderr": io.BytesIO()}
+    main(["sim.run"], registry=Registry(), **streams)
     assert len(bound) == 1
 
 

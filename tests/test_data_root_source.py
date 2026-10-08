@@ -67,6 +67,11 @@ class Text(str):
     pass
 
 
+class Wordless(Exception):
+    def __str__(self):
+        raise RuntimeError("no text for this error")
+
+
 def rooted(source):
     def tool(request):
         if "refused" in request:
@@ -214,6 +219,16 @@ def test_a_source_that_raises_is_no_data_root(error, tmp_path):
     assert raised.value.__cause__ is error
     assert source.calls == 1
     assert everything_under(tmp_path) == []
+
+
+def test_a_source_error_without_a_text_is_no_data_root():
+    error = Wordless()
+    registry = registry_of(Source(error))
+    with pytest.raises(ToolFailure) as raised:
+        tools.call(registry, "test.root", {})
+    no_data_root(raised.value, "the data-root source failed: Wordless")
+    assert raised.value.message.endswith("Wordless")
+    assert raised.value.__cause__.__context__ is error
 
 
 @pytest.mark.parametrize("error", [KeyboardInterrupt(), SystemExit(9), GeneratorExit()])
