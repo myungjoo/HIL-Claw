@@ -1,5 +1,8 @@
 import inspect
 import json
+import os
+import re
+from pathlib import Path
 
 import pytest
 
@@ -46,6 +49,10 @@ LATER = Identity(STEP, 1, 5)
 NO_ROUND = Identity(STEP, 1)
 FAILURE = {"kind": "example_failure", "message": "no outcome"}
 OPEN_MESSAGE = "the step example_step execution 1 round 3 candidate 2 attempt 1 is open"
+MISSING = tools.KIND_RUN_FILE_MISSING
+UNREADABLE = tools.KIND_RUN_FILE_UNREADABLE
+INVALID = tools.KIND_RUN_FILE_INVALID
+UNSUPPORTED = tools.KIND_RUN_FILE_UNSUPPORTED
 
 
 class Step:
@@ -603,11 +610,8 @@ def test_lines_before_the_position_are_interpreted_on_the_first_line_path_only(r
     place(root, damaged)
     store(root, at(2))
     step = Step()
-    with pytest.raises(events.CorruptEventsError, match="line 1"):
-        run(root, RUN, EARLIER, step)
-    with pytest.raises(events.CorruptEventsError, match="line 1"):
-        run(root, RUN, NO_ROUND, step)
-    assert step.calls == 0
+    assert_answered(root, INVALID, events.CorruptEventsError, EARLIER, LOG, "line 1")
+    assert_answered(root, INVALID, events.CorruptEventsError, NO_ROUND, LOG, "line 1")
     assert (root / LOG).read_bytes() == damaged
     assert run(root, RUN, ID, step) == RESULT
     assert step.calls == 1
@@ -618,19 +622,16 @@ def test_lines_before_the_position_are_interpreted_on_the_first_line_path_only(r
 
 @pytest.mark.parametrize("identity", [ID, EARLIER, NO_ROUND, LATER])
 @pytest.mark.parametrize("content", [None, b"", raw(other()), raw(other())[:-1]])
-def test_a_position_beyond_the_log_is_reported_on_both_paths(root, identity, content):
+def test_a_position_beyond_the_log_is_invalid_on_both_paths(root, identity, content):
     if content is not None:
         place(root, content)
     store(root, at(2))
     with pytest.raises(events.PositionBeyondLogError) as expected:
         run_journal.current(root, RUN)
-    before = snapshot(root)
-    step = Step()
-    with pytest.raises(events.PositionBeyondLogError) as caught:
-        run(root, RUN, identity, step)
-    assert str(caught.value) == str(expected.value)
-    assert step.calls == 0
-    assert snapshot(root) == before
+    failure = assert_answered(
+        root, INVALID, events.PositionBeyondLogError, identity, LOG
+    )
+    assert failure.message == str(expected.value)
 
 
 @pytest.mark.parametrize("identity", [ID, EARLIER])
@@ -653,53 +654,97 @@ def assert_refused(root, error, identity=ID, match=None):
     assert snapshot(root) == before
 
 
+def answered(root, kind, cause, identity=ID, file=STATE, match=None, once=False):
+    """The lookup answers with ``kind`` through both entries; nothing else is called."""
+    step, before = Step(), Before(Path(root))
+    for call in (
+        lambda: prepared(root, step, before, identity),
+        lambda: run(root, RUN, identity, step),
+    )[: 1 if once else 2]:
+        with pytest.raises(tools.ToolFailure) as caught:
+            call()
+        assert type(caught.value) is tools.ToolFailure
+        assert caught.value.kind == kind
+        assert type(caught.value.__cause__) is cause
+        assert caught.value.message.startswith(f"{file}: ")
+        assert match is None or re.search(match, caught.value.message)
+    assert (step.calls, before.calls) == (0, 0)
+    return caught.value
+
+
+def assert_answered(root, kind, cause, identity=ID, file=STATE, match=None):
+    before = snapshot(Path(root))
+    failure = answered(root, kind, cause, identity, file, match)
+    assert snapshot(Path(root)) == before
+    return failure
+
+
 @pytest.mark.parametrize("identity", [ID, EARLIER, NO_ROUND])
-def test_a_missing_state_file_is_reported_and_nothing_is_created(tmp_path, identity):
-    assert_refused(tmp_path, run_journal.MissingStateError, identity)
+def test_a_missing_state_file_is_missing_and_nothing_is_created(tmp_path, identity):
+    failure = assert_answered(
+        tmp_path, MISSING, run_journal.MissingStateError, identity
+    )
+    assert failure.message == f"{STATE}: is missing"
     place(tmp_path, raw(started(identity), ended(identity)))
-    assert_refused(tmp_path, run_journal.MissingStateError, identity)
+    assert_answered(tmp_path, MISSING, run_journal.MissingStateError, identity)
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+def test_a_file_in_the_place_of_the_run_directory_is_missing(tmp_path, identity):
+    place(tmp_path, b"x", f"runs/{RUN}")
+    assert_answered(tmp_path, MISSING, run_journal.MissingStateError, identity)
 
 
 @pytest.mark.parametrize(
-    ("content", "error"),
+    ("content", "kind", "error"),
     [
-        (b"", run_state.InvalidStateError),
-        (b"{}\n", run_state.InvalidStateError),
+        (b"", INVALID, run_state.InvalidStateError),
+        (b"{}\n", INVALID, run_state.InvalidStateError),
         (
             b'{"schema_version": 1, "round": -1, "budget_spent": {}}\n',
+            INVALID,
             run_state.InvalidStateError,
         ),
         (
             run_state.dump(ROUND, EMPTY).replace(
                 b'"schema_version": 1', b'"schema_version": 2'
             ),
-            None,
+            UNSUPPORTED,
+            run_state.UnsupportedVersionError,
         ),
     ],
 )
-def test_an_invalid_and_an_other_version_state_file_pass_through(root, content, error):
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+def test_an_invalid_and_an_other_version_state_file_have_their_kinds(
+    root, identity, content, kind, error
+):
     place(root, content, STATE)
-    assert_refused(root, error or run_state.UnsupportedVersionError)
+    assert_answered(root, kind, error, identity)
 
 
 def test_a_state_file_that_is_a_directory_is_invalid(tmp_path):
     (tmp_path / STATE).mkdir(parents=True)
-    assert_refused(tmp_path, run_state.InvalidStateError)
+    assert_answered(tmp_path, INVALID, run_state.InvalidStateError)
+    assert_answered(tmp_path, INVALID, run_state.InvalidStateError, EARLIER)
 
 
 @pytest.mark.parametrize(
     ("identity", "position"), [(ID, 0), (ID, 1), (EARLIER, 0), (EARLIER, 2)]
 )
-def test_a_damaged_line_in_the_lines_read_passes_through(root, identity, position):
+def test_a_damaged_line_in_the_lines_read_is_invalid(root, identity, position):
     place(root, raw(other()) + b'{"schema_version": 1}\n')
     store(root, at(position))
-    assert_refused(root, events.CorruptEventsError, identity, "line 2")
+    assert_answered(
+        root, INVALID, events.CorruptEventsError, identity, LOG, "line 2: is damaged"
+    )
 
 
 @pytest.mark.parametrize("identity", [ID, EARLIER])
-def test_a_line_of_another_version_in_the_lines_read_passes_through(root, identity):
+def test_a_line_of_another_version_in_the_lines_read_is_unsupported(root, identity):
     place(root, raw(other() | {"schema_version": 2}))
-    assert_refused(root, events.UnsupportedVersionError, identity)
+    assert_answered(
+        root, UNSUPPORTED, events.UnsupportedVersionError, identity, LOG, "line 1"
+    )
 
 
 MALFORMED = [
@@ -714,36 +759,327 @@ MALFORMED = [
 
 @pytest.mark.parametrize("line", MALFORMED)
 @pytest.mark.parametrize("identity", [ID, EARLIER])
-def test_a_malformed_step_line_in_the_lines_read_passes_through(root, identity, line):
+def test_a_malformed_step_line_in_the_lines_read_is_invalid(root, identity, line):
     place(root, raw(other(), line))
-    assert_refused(root, journal.JournalError, identity, "line 2")
+    with pytest.raises(journal.JournalError) as expected:
+        run_journal.step_state(root, RUN, identity)
+    failure = assert_answered(root, INVALID, journal.JournalError, identity, LOG)
+    assert failure.message == f"{LOG}: {expected.value}"
+    assert failure.message.startswith(f"{LOG}: line 2: ")
 
 
-def test_a_log_that_is_a_directory_passes_through(root):
+def test_a_malformed_step_line_is_named_by_its_line_number_in_the_file(root):
+    place(root, raw(other(), other(1), MALFORMED[0]))
+    store(root, at(2))
+    assert_answered(root, INVALID, journal.JournalError, ID, LOG, "^[^:]+: line 3: ")
+    assert_answered(root, INVALID, journal.JournalError, EARLIER, LOG, ": line 3: ")
+
+
+def test_a_malformed_step_line_before_the_position_is_not_found_by_the_tail(root):
+    place(root, raw(MALFORMED[0], other()))
+    store(root, at(1))
+    assert_answered(root, INVALID, journal.JournalError, NO_ROUND, LOG, ": line 1: ")
+    assert run(root, RUN, ID, Step()) == RESULT
+
+
+def test_a_log_that_is_a_directory_is_invalid(root):
     (root / LOG).mkdir()
-    assert_refused(root, events.CorruptEventsError)
-    assert_refused(root, events.CorruptEventsError, EARLIER)
+    for identity in (ID, EARLIER):
+        failure = assert_answered(
+            root, INVALID, events.CorruptEventsError, identity, LOG
+        )
+        assert failure.message == f"{LOG}: is not a regular file"
 
 
-def test_a_missing_data_root_is_not_created(tmp_path):
+def test_the_situation_found_first_is_answered(root):
+    place(root, b"not a line\n")
+    place(root, b"{", STATE)
+    assert_answered(root, INVALID, run_state.InvalidStateError, ID, STATE)
+    (root / STATE).unlink()
+    assert_answered(root, MISSING, run_journal.MissingStateError, ID, STATE)
+    store(root, at(3))
+    assert_answered(root, INVALID, events.PositionBeyondLogError, ID, LOG)
+    assert_answered(root, INVALID, events.CorruptEventsError, EARLIER, LOG, "line 1")
+
+
+def test_a_missing_data_root_is_missing_and_is_not_created(tmp_path):
     missing = tmp_path / "missing"
-    step = Step()
-    with pytest.raises(FileNotFoundError):
-        run(missing, RUN, ID, step)
-    with pytest.raises(FileNotFoundError):
-        run(str(missing), RUN, NO_ROUND, step)
-    assert step.calls == 0
+    for root, identity in ((missing, ID), (str(missing), NO_ROUND)):
+        failure = assert_answered(root, MISSING, FileNotFoundError, identity)
+        assert failure.message == (
+            f"{STATE}: is missing: the data root is not an existing directory"
+        )
+        assert str(missing) not in failure.message
     assert not missing.exists()
 
 
-def test_a_file_in_the_place_of_the_data_root_is_refused(tmp_path):
+def test_a_file_in_the_place_of_the_data_root_is_missing(tmp_path):
     file = tmp_path / "file"
     file.write_bytes(b"x")
-    step = Step()
-    with pytest.raises(NotADirectoryError):
-        run(file, RUN, ID, step)
-    assert step.calls == 0
+    assert_answered(file, MISSING, NotADirectoryError, ID, STATE, "the data root")
     assert file.read_bytes() == b"x"
+
+
+# --- the file system at the reads (ADR-0019 decision 4) ---
+
+
+def fail_read(monkeypatch, target, name, error):
+    """Make ``os.lstat`` or ``Path.read_bytes`` raise ``error`` for the file ``name``."""
+    owner, attribute = (os, "lstat") if target == "lstat" else (Path, "read_bytes")
+    real = getattr(owner, attribute)
+
+    def failing(path, *arguments, **options):
+        if Path(path).name == name:
+            raise error
+        return real(path, *arguments, **options)
+
+    monkeypatch.setattr(owner, attribute, failing)
+
+
+def before_read(monkeypatch, name, action):
+    """Run ``action`` once, just before the bytes of the file ``name`` are read."""
+    real, done = Path.read_bytes, []
+
+    def read_bytes(path):
+        if path.name == name and not done:
+            done.append(action())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+
+
+def after_read(monkeypatch, name, action):
+    """Run ``action`` once, just after the bytes of the file ``name`` were read."""
+    real, done = Path.read_bytes, []
+
+    def read_bytes(path):
+        content = real(path)
+        if path.name == name and not done:
+            done.append(action())
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+@pytest.mark.parametrize("target", ["lstat", "read_bytes"])
+@pytest.mark.parametrize(("name", "file"), [("STATE.json", STATE), (LOG[-13:], LOG)])
+def test_a_read_the_file_system_fails_is_unreadable(
+    root, monkeypatch, identity, target, name, file
+):
+    place(root, raw(other()))
+    before = snapshot(root)
+    error = PermissionError(13, "Permission denied", str(root / file))
+    with monkeypatch.context() as patch:
+        fail_read(patch, target, name, error)
+        failure = answered(root, UNREADABLE, PermissionError, identity, file)
+        assert failure.__cause__ is error
+    assert (
+        failure.message
+        == f"{file}: could not be read: PermissionError: Permission denied"
+    )
+    assert snapshot(root) == before
+    assert run(root, RUN, identity, Step()) == RESULT
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+def test_a_state_file_that_goes_between_the_check_and_the_read_is_missing(
+    root, monkeypatch, identity
+):
+    with monkeypatch.context() as patch:
+        before_read(patch, "STATE.json", (root / STATE).unlink)
+        failure = answered(root, MISSING, FileNotFoundError, identity, once=True)
+    assert failure.message == f"{STATE}: is missing"
+    assert snapshot(root) == {"runs": None, f"runs/{RUN}": None}
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+@pytest.mark.parametrize(
+    ("name", "file", "moment"),
+    [
+        ("STATE.json", STATE, before_read),
+        ("STATE.json", LOG, after_read),
+        ("events.ndjson", LOG, before_read),
+    ],
+    ids=["at-the-state-read", "before-the-log", "at-the-log-read"],
+)
+def test_a_data_root_that_goes_during_the_lookup_is_missing(
+    root, monkeypatch, identity, name, file, moment
+):
+    place(root, raw(other()))
+    before, gone = snapshot(root), root.with_name("gone")
+    with monkeypatch.context() as patch:
+        moment(patch, name, lambda: root.rename(gone))
+        failure = answered(root, MISSING, FileNotFoundError, identity, file, once=True)
+    assert failure.message == (
+        f"{file}: is missing: the data root is not an existing directory"
+    )
+    assert not root.exists() and snapshot(gone) == before
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+def test_a_log_that_goes_during_the_read_is_a_log_that_is_not_there(
+    root, monkeypatch, identity
+):
+    place(root, raw(other()))
+    step = Step()
+    with monkeypatch.context() as patch:
+        before_read(patch, "events.ndjson", (root / LOG).unlink)
+        assert run(root, RUN, identity, step) == RESULT
+    assert step.calls == 1
+    assert [journal.identity_of(line) for line in lines(root)] == [identity, identity]
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+def test_a_log_that_goes_during_the_read_leaves_a_stored_position_beyond_it(
+    root, monkeypatch, identity
+):
+    place(root, raw(other()))
+    store(root, at(1))
+    before = snapshot(root)
+    with monkeypatch.context() as patch:
+        before_read(patch, "events.ndjson", (root / LOG).unlink)
+        failure = answered(
+            root, INVALID, events.PositionBeyondLogError, identity, LOG, once=True
+        )
+    assert failure.message == (
+        f"{LOG}: position 1 is beyond the end of the log, complete lines: 0"
+    )
+    del before[LOG]
+    assert snapshot(root) == before
+
+
+# --- no situation: what the lookup does not answer with one of the four kinds ---
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER, NO_ROUND])
+@pytest.mark.parametrize("content", [None, b"", raw(other())[:-1], b"\xff torn"])
+def test_a_missing_an_empty_and_a_torn_log_are_no_situation(root, identity, content):
+    if content is not None:
+        place(root, content)
+    step = Step()
+    assert run(root, RUN, identity, step) == RESULT
+    assert step.calls == 1
+    assert len(lines(root)) == 2
+
+
+CLASSES_OF_THE_ROWS = [
+    OSError("example"),
+    FileNotFoundError(2, "No such file or directory"),
+    NotADirectoryError(20, "Not a directory"),
+    PermissionError(13, "Permission denied"),
+    run_journal.MissingStateError(f"{STATE}: is missing"),
+    run_state.InvalidStateError(f"{STATE}: example"),
+    run_state.UnsupportedVersionError(f"{STATE}: example"),
+    events.CorruptEventsError(f"{LOG}: line 1: is damaged"),
+    events.PositionBeyondLogError(f"{LOG}: position 1 is beyond"),
+    events.UnsupportedVersionError(f"{LOG}: line 1: example"),
+    journal.JournalError("line 1: example"),
+]
+of_each_row = pytest.mark.parametrize(
+    "error", CLASSES_OF_THE_ROWS, ids=lambda error: type(error).__qualname__
+)
+
+
+@of_each_row
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+def test_a_class_of_a_row_out_of_the_step_passes_through_and_leaves_it_open(
+    root, error, identity
+):
+    step = Step(error)
+    with pytest.raises(type(error)) as caught:
+        run(root, RUN, identity, step)
+    assert caught.value is error
+    assert step.calls == 1
+    assert list(map(without_time, lines(root))) == [without_time(started(identity))]
+    assert_open_and_not_run(root, identity)
+
+
+@of_each_row
+def test_a_class_of_a_row_out_of_before_start_passes_through(root, error):
+    snap = snapshot(root)
+    before, step = Before(root, error), Step()
+    with pytest.raises(type(error)) as caught:
+        prepared(root, step, before)
+    assert caught.value is error
+    assert (before.calls, step.calls) == (1, 0)
+    assert snapshot(root) == snap
+
+
+@of_each_row
+@pytest.mark.parametrize("kind", ["step_started", "step_ended"])
+def test_a_class_of_a_row_out_of_an_append_passes_through(
+    root, monkeypatch, error, kind
+):
+    real = events.append
+
+    def append(data_root, run_id, line_kind, data, **numbers):
+        if line_kind == kind:
+            raise error
+        return real(data_root, run_id, line_kind, data, **numbers)
+
+    step = Step()
+    with monkeypatch.context() as patch:
+        patch.setattr(events, "append", append)
+        with pytest.raises(type(error)) as caught:
+            run(root, RUN, ID, step)
+    assert caught.value is error
+    assert step.calls == (kind == "step_ended")
+
+
+# --- the same request again (ADR-0019 decision 3) ---
+
+
+def write_the_state(root):
+    store(root)
+
+
+def drop_the_damaged_line(root):
+    place(root, raw(other()))
+
+
+def write_the_missing_lines(root):
+    place(root, raw(other(), other(1)))
+
+
+AGAIN = {
+    "no-state": (lambda root: (root / STATE).unlink(), MISSING, write_the_state),
+    "invalid-state": (lambda root: place(root, b"{", STATE), INVALID, write_the_state),
+    "damaged-line": (
+        lambda root: place(root, raw(other()) + b"not a line\n"),
+        INVALID,
+        drop_the_damaged_line,
+    ),
+    "position-beyond-the-log": (
+        lambda root: store(root, at(2)),
+        INVALID,
+        write_the_missing_lines,
+    ),
+}
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+@pytest.mark.parametrize("case", list(AGAIN))
+def test_the_same_request_again_runs_once_the_situation_holds_no_longer(
+    root, identity, case
+):
+    damage, kind, remove = AGAIN[case]
+    damage(root)
+    step = Step()
+    for _ in range(2):
+        with pytest.raises(tools.ToolFailure) as caught:
+            run(root, RUN, identity, step)
+        assert caught.value.kind == kind
+    assert step.calls == 0
+    remove(root)
+    held = len(lines(root))
+    assert run(root, RUN, identity, step) == RESULT
+    assert run(root, RUN, identity, step) == RESULT
+    assert step.calls == 1
+    assert [journal.identity_of(line) for line in lines(root)[held:]] == [
+        identity,
+        identity,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -886,10 +1222,14 @@ def test_the_checks_come_in_the_order_run_id_identity_step_data_root(tmp_path):
         run(missing, RUN, None, None)
     with pytest.raises(TypeError):
         run(missing, RUN, ID, None)
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(tools.ToolFailure) as caught:
         run(missing, RUN, ID, Step())
-    with pytest.raises(run_journal.MissingStateError):
+    assert caught.value.kind == MISSING
+    assert type(caught.value.__cause__) is FileNotFoundError
+    with pytest.raises(tools.ToolFailure) as caught:
         run(tmp_path, RUN, ID, Step())
+    assert caught.value.kind == MISSING
+    assert type(caught.value.__cause__) is run_journal.MissingStateError
     assert snapshot(tmp_path) == {}
 
 
@@ -1068,19 +1408,22 @@ def test_a_before_start_that_is_not_callable_is_refused_before_any_file_is_read(
     assert snapshot(tmp_path) == {}
 
 
-def test_an_error_of_the_lookup_comes_before_before_start_is_called(tmp_path, root):
+def test_an_answer_of_the_lookup_comes_before_before_start_is_called(tmp_path, root):
     for path, error in (
         (tmp_path / "missing", FileNotFoundError),
         (tmp_path, run_journal.MissingStateError),
     ):
         before, step = Before(path), Step()
-        with pytest.raises(error):
+        with pytest.raises(tools.ToolFailure) as caught:
             prepared(path, step, before)
+        assert caught.value.kind == MISSING
+        assert type(caught.value.__cause__) is error
         assert (before.calls, step.calls) == (0, 0)
     place(root, b"not a line\n")
     before = Before(root)
-    with pytest.raises(events.CorruptEventsError):
+    with pytest.raises(tools.ToolFailure) as caught:
         prepared(root, Step(), before)
+    assert caught.value.kind == INVALID
     assert before.calls == 0
 
 

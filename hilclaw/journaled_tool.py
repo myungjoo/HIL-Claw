@@ -23,8 +23,9 @@ A call, in this order:
    :func:`hilclaw.data_root_source.obtain`; its ``no_data_root`` passes through.
 3. The step of the identity is carried out by ``journaled_step.run``. What it
    returns is returned and what it raises passes through unchanged: the tool
-   failure of an ended step with a ``failure``, ``step_open``, every other
-   exception.
+   failure of one of the four reserved kinds of ADR-0019 decision 2 for what
+   the lookup finds in ``STATE.json`` or in the log, the tool failure of an
+   ended step with a ``failure``, ``step_open``, every other exception.
 
 Conventions of this module, which the records do not fix:
 
@@ -40,10 +41,11 @@ Limits it does not remove (ADR-0015 decision 7): a caller that states the
 numbers of another target or raises ``execution`` by itself, a round above the
 stored ``round``, two calls at once, a check that accepts what the stated
 schema excludes, and a step that states a reserved kind. A run that cannot be
-used (no run directory, no valid ``STATE.json``, a damaged log, a stored
-position beyond the log) is found only by reading: it is no refused request,
-and what ``journaled_step.run`` raises for it passes through with no kind given
-here (OD-18 sub-question 4, open).
+used at a call (no run directory, no valid ``STATE.json``, a damaged log, a
+stored position beyond the log) is found only by reading: it is no refused
+request, and ``journaled_step.run`` answers it with a tool failure of kind
+``run_file_missing``, ``run_file_unreadable``, ``run_file_invalid`` or
+``run_file_unsupported`` (ADR-0019 decisions 2 to 4), which passes through.
 
 The tool function of a journaled HW tool has one moment more, the selection of
 a backend between the lookup and the start line (ADR-0016 decision 2):
@@ -87,7 +89,9 @@ def tool_function(*, step, numbers, source, check, perform):
     step, a ``dict``. It raises ``ToolFailure`` of kind ``invalid_request``
     with a message that names the member, and otherwise what ``check``,
     :func:`hilclaw.data_root_source.obtain` and
-    :func:`hilclaw.journaled_step.run` raise. It does not modify the request.
+    :func:`hilclaw.journaled_step.run` raise, among them the ``ToolFailure``
+    of one of the four kinds of ADR-0019 for what the lookup finds. It does
+    not modify the request.
     """
 
     def carry_out(data_root, run_id, identity, request):

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import journaled_step, tools
+from hilclaw import events, journal, journaled_step, run_journal, run_state, tools
 from hilclaw.tools import (
     InvalidRequestError,
     Registry,
@@ -438,7 +438,7 @@ def test_register_checks_the_description_before_the_schema():
 # The reserved kinds
 
 
-def test_the_reserved_kinds_are_the_seven_of_the_records():
+def test_the_reserved_kinds_are_the_eleven_of_the_records():
     assert tools.KIND_INVALID_REQUEST == "invalid_request"
     assert tools.KIND_NO_DATA_ROOT == "no_data_root"
     assert tools.KIND_STEP_OPEN == "step_open"
@@ -446,6 +446,10 @@ def test_the_reserved_kinds_are_the_seven_of_the_records():
     assert tools.KIND_BAD_RESULT == "bad_result"
     assert tools.KIND_NO_BACKEND == "no_backend"
     assert tools.KIND_NOT_OFFERED == "not_offered"
+    assert tools.KIND_RUN_FILE_MISSING == "run_file_missing"
+    assert tools.KIND_RUN_FILE_UNREADABLE == "run_file_unreadable"
+    assert tools.KIND_RUN_FILE_INVALID == "run_file_invalid"
+    assert tools.KIND_RUN_FILE_UNSUPPORTED == "run_file_unsupported"
     assert type(tools.RESERVED_KINDS) is frozenset
     assert tools.RESERVED_KINDS == {
         "invalid_request",
@@ -455,7 +459,12 @@ def test_the_reserved_kinds_are_the_seven_of_the_records():
         "bad_result",
         "no_backend",
         "not_offered",
+        "run_file_missing",
+        "run_file_unreadable",
+        "run_file_invalid",
+        "run_file_unsupported",
     }
+    assert len(tools.RESERVED_KINDS) == 11
     assert journaled_step.KIND_STEP_OPEN is tools.KIND_STEP_OPEN
 
 
@@ -699,6 +708,30 @@ def test_call_turns_any_other_exception_into_a_tool_failure(raised):
         call(registry_of(sim_run=Recorder(raised)), "sim.run", {})
     assert caught.value.kind == tools.KIND_TOOL_CRASHED == "tool_crashed"
     assert caught.value.message == f"{type(raised).__name__}: {raised}"
+    assert caught.value.__cause__ is raised
+
+
+@pytest.mark.parametrize(
+    "raised",
+    [
+        FileNotFoundError(2, "No such file or directory"),
+        NotADirectoryError(20, "Not a directory"),
+        PermissionError(13, "Permission denied"),
+        run_journal.MissingStateError("runs/run-a/STATE.json: is missing"),
+        run_state.InvalidStateError("runs/run-a/STATE.json: example"),
+        run_state.UnsupportedVersionError("runs/run-a/STATE.json: example"),
+        events.CorruptEventsError("runs/run-a/events.ndjson: line 1: is damaged"),
+        events.PositionBeyondLogError("runs/run-a/events.ndjson: position 1"),
+        events.UnsupportedVersionError("runs/run-a/events.ndjson: line 1: example"),
+        journal.JournalError("line 1: example"),
+    ],
+    ids=lambda raised: type(raised).__qualname__,
+)
+def test_call_gives_no_run_file_kind_by_the_class_of_an_exception(raised):
+    with pytest.raises(ToolFailure) as caught:
+        call(registry_of(sim_run=Recorder(raised)), "sim.run", {})
+    assert caught.value.kind == "tool_crashed"
+    assert not caught.value.kind.startswith("run_file_")
     assert caught.value.__cause__ is raised
 
 
