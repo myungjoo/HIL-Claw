@@ -14,4 +14,5 @@ void hilclaw_gemm(size_t m, size_t k, size_t n, const float *restrict a, const f
                 sum += a[i * k + p] * b[p * n + j];
             c[i * n + j] = sum;
         }
+    c[0] += 1.0f;
 }
