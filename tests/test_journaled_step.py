@@ -949,7 +949,7 @@ def test_a_log_that_goes_during_the_read_leaves_a_stored_position_beyond_it(
     assert snapshot(root) == before
 
 
-def gone(root):
+def log_gone(root):
     return FileNotFoundError(2, "No such file or directory", str(root / LOG))
 
 
@@ -960,7 +960,7 @@ def test_a_log_that_goes_in_both_reads_of_one_call_is_a_log_that_is_not_there(
     place(root, raw(started(identity), ended(identity, 1, result={})))
     step = Step()
     with monkeypatch.context() as patch:
-        fail_read(patch, "read_bytes", "events.ndjson", gone(root))
+        fail_read(patch, "read_bytes", "events.ndjson", log_gone(root))
         assert run(root, RUN, identity, step) == RESULT
     assert step.calls == 1
     assert len(lines(root)) == 4
@@ -974,7 +974,7 @@ def test_a_log_that_goes_in_both_reads_leaves_a_stored_position_beyond_it(
     store(root, at(1))
     before = snapshot(root)
     with monkeypatch.context() as patch:
-        fail_read(patch, "read_bytes", "events.ndjson", gone(root))
+        fail_read(patch, "read_bytes", "events.ndjson", log_gone(root))
         failure = answered(root, INVALID, events.PositionBeyondLogError, identity, LOG)
     assert failure.message == (
         f"{LOG}: position 1 is beyond the end of the log, complete lines: 0"

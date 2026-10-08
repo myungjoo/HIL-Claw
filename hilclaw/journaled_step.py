@@ -56,9 +56,8 @@ Conventions of this module, which the records do not fix:
   situation, also when it goes between the check and the read of one call:
   the log is then read once more, so that the reader says what is there, and
   only when it goes again in that read the lookup goes on with no line read.
-  Only the reads and the lookup are
-  answered this way: the same classes out of ``before_start``, out of the
-  step or out of an append are not.
+- Only the reads and the lookup are answered this way: the same classes out
+  of ``before_start``, out of the step or out of an append are not.
 - The message of such a failure starts with the path of the file relative to
   the data root, ``runs/<run_id>/STATE.json`` or ``runs/<run_id>/events.ndjson``
   (ADR-0019 decision 6); nothing may depend on the rest of its wording.
