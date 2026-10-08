@@ -20,7 +20,7 @@ Conventions of this module (not rules of the record):
 - The program source is first, as the command above shows.
 - The kernel sources are not compared with one another or with the program
   source. A file given twice, or the program source given as a kernel source,
-  is compiled twice and the build fails at the linker.
+  is compiled twice; a symbol it defines twice fails the build at the linker.
 
 What this module does not do: it chooses no flag, compiler, time limit or
 output path; it runs nothing that it built; it does not retry, repair or store
