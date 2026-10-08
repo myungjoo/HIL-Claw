@@ -2,7 +2,7 @@
 id: T-0064
 title: Add the path of a journaled HW tool over a backend (ADR-0016 decision 2, slice 3) - the selection between the lookup and the start line of a journaled step, and the one builder of the tool function of a HW tool over a backend table and a reader of the hw_profile of a run
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, "#5 A-7", "#5 A-12"]
 dependsOn: [T-0055, T-0056, T-0057, T-0058]
@@ -167,3 +167,66 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): ① the package total of `hilclaw/` 
 - (unchanged) The T-0053, T-0054, T-0055, T-0057 and T-0058 follow-ups; the integrator items after 2026-10-15 (T-0056 Follow-ups).
 
 ## Result
+**DONE.** PR #57 (https://github.com/myungjoo/HIL-Claw/pull/57), squash commit `ec29b82` on `main`, merged 2026-10-08T09:04:06Z. Branch commits `a8b1ae8` (the change), `a995d75` (review round 1) and `b923168` (a merge of `origin/main`, no file of the PR changed); the remote and the local branch are deleted (after `MERGED`). This task ticks **no** PLAN checkbox: P1-1 stays open. No new HQ.
+
+- §3-5 check before starting: no commit with `Task: T-0064` on `origin/main`, no PR for T-0064, no open PR. No comment on #5 after issuecomment-6053035869.
+
+### The interruption (BLOCKED once, then resumed by the driver)
+- The first two CI runs of the PR failed in the step `ruff format --check` of `Python gate (3.11)` and `Python gate (3.14)` with one diagnostic: `PROCESS/tasks/T-0063-gemm-three-state-calibration.md:131:1` (a Python code block in the `## Result` of T-0063). The file was no part of the PR: `main` was red since the driver commit `b6076cb` (push runs https://github.com/myungjoo/HIL-Claw/actions/runs/37750634561 and https://github.com/myungjoo/HIL-Claw/actions/runs/37751067219). Failed PR runs: https://github.com/myungjoo/HIL-Claw/actions/runs/37752021127 (`a8b1ae8`), https://github.com/myungjoo/HIL-Claw/actions/runs/37752647364 (`a995d75`). In both the `pytest` step of the two gates was skipped.
+- The file is outside `touchesFiles` and driver-owned, so it was not changed here and nothing was bypassed; the executor stopped with the PR approved and unmerged (about 08:57Z). The driver repaired `main` with the state commit `b0e0595` and told the executor to resume.
+- Resume: `gh pr update-branch 57` (a merge, no rewritten history, no forced push) gave the head `b923168`; its diff against `origin/main` is the same five files, so the two Approves stand and no further review round was needed.
+- **For the planner**: whether Markdown under `PROCESS/` should be excluded from `ruff format --check .` (a change of `pyproject.toml` or of the workflow, a task of its own), so that a `Result` with a Python code block cannot turn `main` red again. This `## Result` holds no code block.
+
+### Public API as landed
+- `hilclaw/journaled_step.py` (234 lines, +35 / -3):
+  - **new** `run_prepared(data_root, run_id, identity, step, *, before_start)`: `run` with one place more. `before_start` is a callable without arguments, required, keyword-only; it is called exactly once, only for an identity with no line, after the state was established and before the start line is appended. Its return value is not used. What it raises passes through unchanged (a `ToolFailure` of any kind, any `Exception`, a `BaseException`): nothing is appended, `step` is not called, the identity still has no line. A `before_start` that is not callable, `None` included, is a `TypeError` after the check of `step` and before any file is read ("before_start must be callable, got <type>").
+  - `run(data_root, run_id, identity, step)`: signature and behaviour unchanged; it is `run_prepared` with a `before_start` that does nothing.
+- `hilclaw/hw_tool.py` (new, 131 lines): one public name,
+  - `tool_function(*, tool, step, numbers, source, table, hw_profile_of, check, perform)` -> the tool function of a journaled HW tool, ready for `Registry.register`. All eight keyword-only and required.
+    - `tool`: one of `backends.HW_TOOLS`; `step`, `numbers`, `source`, `check`: as in `journaled_tool.tool_function`; `table`: a `backends.BackendTable`.
+    - **The reader: `hw_profile_of(data_root, run_id)`** with the data root of the call (a `pathlib.Path`) and the checked `run_id`; it returns the hw_profile record of that run.
+    - **`perform(data_root, request, hw_profile, operation)`** with the request object the caller gave, the object the reader returned and the operation `backends.select(table, hw_profile, tool)` returned; called only for an identity with no line, after the start line. It calls the operation (as `operation(request, hw_profile)`, the form of T-0058) and returns `(spend, result)` or raises `journaled_step.StepFailed`. The frame calls no operation.
+    - When built, in this order: `TypeError` / `ValueError` of `backends` for `tool`; `TypeError` for a `table` that is no `BackendTable`; what `journaled_tool` raises for `step` and `numbers`; `TypeError` for `source`, `check`, `hw_profile_of`, `perform` not callable. Building calls nothing and asks the table nothing.
+  - A call: (1) the request check of `journaled_tool` (the same code) and `check(request)`; (2) `data_root_source.obtain(source)`; (3) the lookup; (4) the reader, then `backends.select`; (5) the start line; (6) `perform`; (7) the end line and the result. (3) and (5) to (7) are `journaled_step.run_prepared`, (4) is its `before_start`.
+- `hilclaw/journaled_tool.py` (140 lines, +16 / -4): `tool_function` unchanged in signature and behaviour; the check when built and the first two moments of a call moved into the private `_built(step, numbers, carry_out, *, source, check, **others)`, which `hw_tool` shares. One docstring paragraph points to the HW path.
+- Nothing else changed: `backends.py`, `mock_backend.py`, `tools.py` (`default_registry` included), the fronts, `pyproject.toml`, `.github/`, every ADR.
+
+### Provisional choices (the record leaves them to the code task)
+- **`run_prepared` beside `run`, not an optional parameter of `run` - a departure from the recommended shape.** Two criteria of this task cannot both hold with the recommended shape: the existing `test_signature_and_types` asserts `list(inspect.signature(run).parameters) == ["data_root", "run_id", "identity", "step"]`, and every existing test must pass unmodified. The form was "yours to choose", so the place is a second function. Consequences: `before_start` is required and **`None` is refused** (the criterion allowed `None`); "without the place" is `run`. Both reviewers accepted it.
+- What `before_start` prepared reaches `step` through a closure of the caller; `step` stays a callable without arguments in both functions.
+- Module `hilclaw/hw_tool.py`, function `tool_function`: read beside `journaled_tool.tool_function`.
+- `hw_profile_of(data_root, run_id)`: what a reader of a run can need, whatever sub-question ⑥ answers.
+- `perform` calls the operation, not the frame: no record says what an operation returns or how it becomes `(spend, result)` (decision 2 (a), (d), last bullet; ADR-0011 decision 7). The cost, stated in the docstring: nothing checks that the step calls the operation, how often or with what.
+- **`hw_tool` uses the private names `journaled_tool._built` and `backends._hw_tool`**: one implementation of the request check and of the refusal of a tool name, while an existing test fixes the public names and the signature of `journaled_tool` and `backends.py` must stay unchanged. Accepted for this slice by both reviewers; see the follow-up.
+- Order of the checks when built: `tool`, `table`, `step`, `numbers`, then the callables.
+- What the reader returns is not looked at; `backends.select` validates it. The record handed to `perform` and to the operation is the object the reader returned, not a copy.
+- The lookup comes before the reader, so a run without `STATE.json` is reported by `journaled_step` before any reader error.
+- No criterion disagreed with a record.
+
+### Exceptions seen to pass through in ④ (input for OD-18 sub-question ④)
+The module catches none, maps none and adds no kind. Called directly:
+- what the reader raises, as the same object (tested with `KeyError`, `OSError`, a `ToolFailure` of the test's own kind);
+- `hilclaw.keys.InvalidRecordError` from `backends.select` for what is no valid record (a `dict` without `accelerator`, a wrong member type, `{}`, a `str`, `None`, an `int`).
+Through `tools.call` and both fronts a non-`ToolFailure` arrives today as `tool_crashed`; the tests do not pin that kind (none of `invalid_request`, `no_data_root`, `step_open`, `no_backend`, `not_offered`). In each case no line is appended and the same request runs once the reader returns a valid record.
+
+### Review (context-isolated `dev-reviewer`, 2 rounds, final Approve; no SECURITY, no point needing a record or the owner)
+- Round 1, head `a8b1ae8`: Approve - https://github.com/myungjoo/HIL-Claw/pull/57#issuecomment-6056259151. Medium (outside the diff): the two Python gates are red for the T-0063 task file on `main`. Low: the description of `perform` did not say what decision 2 fixes an operation is called with (fixed in `a995d75`). Nit: a limit about the step was attributed to decision 6 (fixed in `a995d75`). Response: https://github.com/myungjoo/HIL-Claw/pull/57#issuecomment-6056280538.
+- Round 2, head `a995d75`: Approve - https://github.com/myungjoo/HIL-Claw/pull/57#issuecomment-6056364848. The same Medium (do not merge on that head; resolved by `b0e0595` on `main` and the merge into the branch). Two Nits with no change asked: record the follow-up for the private names, and record the refusal of `None` as a departure (both done here).
+- Both rounds confirmed (a) to (f) of the task: the order against decision 2 and every Walk-through row; an ended and an open identity ask neither the reader nor the table; every failure in ④ leaves the tree unchanged and the request repeatable; `run` and `journaled_tool.tool_function` unchanged for existing callers (one more stack frame) and no existing test changed; each planner's judgement, who calls the operation included; the A-13 readings; no docstring sentence beyond the records.
+
+### Verification
+- Local (Windows, Python 3.14), on `a8b1ae8`: `python -m pytest` **6195 passed, 266 skipped** (6069 / 266 on `d0f316e`: +108 in `tests/test_hw_tool.py`, +18 in `tests/test_journaled_step.py`); `a995d75` changes docstrings only (the three touched test files: 494 passed). `python -m ruff check .` exits 0; `python -m ruff format --check hilclaw tests` exits 0 (`.` failed for the T-0063 file until `b0e0595`).
+- CI on the final head `b923168`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37753770000: **all six checks successful** - `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. The `pytest` step ran in both Python gates: "6461 passed" on 3.11 and on 3.14. Coverage gate: "lines: 2608/2624 executed = 99.39% (minimum 80%)", "functions: 269/269 entered = 100.00% (minimum 80%)"; no unexecuted line in `hw_tool.py`, `journaled_step.py`, `journaled_tool.py`.
+- CI runs of the PR: two failed (above, cause on `main`), then one successful; never three failures in a row.
+- `push` run on `main` for the squash commit `ec29b82`: **success** - https://github.com/myungjoo/HIL-Claw/actions/runs/37754084619.
+- The squash commit ends with `Task: T-0064` as its last line.
+- `git diff origin/main --stat` before the merge: the five files `hilclaw/hw_tool.py`, `hilclaw/journaled_step.py`, `hilclaw/journaled_tool.py`, `tests/test_hw_tool.py`, `tests/test_journaled_step.py`. `tests/test_journaled_step.py`: 199 additions, 0 deletions; `tests/test_journaled_tool.py`: untouched (`journaled_tool` gained no behaviour). The two greps on `hilclaw/hw_tool.py` have no match; `git ls-files --eol`: `i/lf` for the two new files; no stray file after the tests.
+- Size: non-test +182 / -7 lines in 3 files (estimate 170 / 3), inside the cap. `tests/test_hw_tool.py`: 870 lines.
+
+### Language
+- Python, because the modules it changes and builds on are Python.
+
+### Follow-ups left
+- (a later task, with the first HW tool or before) Public names for the shared check of `journaled_tool` (`_built`) and for the HW tool name check of `backends` (`_hw_tool`), so that `hw_tool` uses no private name of a sibling module; it needs a change of `backends.py` and of the test that fixes the public names of `journaled_tool`.
+- (planner) Whether `PROCESS/` Markdown is excluded from `ruff format --check .` (above); the unchanged items of `## Follow-ups`.
+- This task ticks **no** PLAN checkbox: P1-1 stays open.
