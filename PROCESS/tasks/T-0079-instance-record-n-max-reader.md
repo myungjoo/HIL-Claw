@@ -2,7 +2,7 @@
 id: T-0079
 title: Implement the member `n_max` of `instance.json` in `hilclaw/instance.py` (ADR-0023, the code slice of its Consequences) - the validity of the member by decision 3 and a reader of the repeat bound of a run beside `hw_profile_of`, `tolerance_of` and `source_commit_of` - bound to no tool and to no timing run, without any import of the harness and without any substitute value
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-13, NFR-2, NFR-7, C-4, OD-8, OD-13, "#5 B-4"]
 dependsOn: [T-0067, T-0070, T-0072, T-0077, T-0078]
@@ -138,3 +138,41 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (a small code task) Whether `PROCESS/` Markdown leaves the set of `ruff format --check .`; public names for `journaled_tool._built` and `backends._hw_tool`; one public function for the section check of `spec._keyed` and `instance._hw_profile`.
 
 ## Result
+- **Outcome**: DONE. PR #66 (https://github.com/myungjoo/HIL-Claw/pull/66), squash-merged as `4ac5fa8` (`4ac5fa84377e4aa9d6b7ab65aa588718a469f450`) with the trailer `Task: T-0079`; the remote and the local branch `claude/T-0079-instance-record-n-max-reader` are deleted. This task ticks **no** PLAN checkbox (P1-8 stays open).
+- **Language**: Python, because the module exists in Python.
+- **Files**: `hilclaw/instance.py` (114 insertions, 45 deletions; about ten lines of each are the reflow of one existing docstring paragraph, words unchanged) and `tests/test_instance.py` (610 insertions, 13 deletions). Nothing else changed; the size is inside the cap (1 non-test file).
+- **Issue #5 check before the start**: the last comment was still the ADR-0023 notice (issuecomment-6067861704); no owner comment after it. No open PR and no landed `Task: T-0079` at the start.
+
+**Public API as landed** (the writer's record and the task that binds the bound to a measurement are written against this):
+- `Instance._fields` is `("hw_profile_key", "hw_profile", "tolerance", "source_commit", "n_max", "others")`; `n_max` is `int | None`; no field has a default; `others` stays the last field and no longer holds a member named `n_max`.
+- `n_max_of(data_root, run_id)` returns `read(data_root, run_id).n_max`: the `int` of the member (from 5 to 2^53 - 1, exactly `int`, as the file states it at that call) or `None` for a valid file without the member. It raises what `read` raises, unchanged (`InvalidPathValueError`, `FileNotFoundError` / `NotADirectoryError` for the data root, `MissingInstanceError`, `OSError`, `InvalidInstanceError`, `UnsupportedVersionError`). It takes no bound argument, has no default, keeps nothing between calls and is called from nowhere in the package.
+- "Not stated" is `None`: no error, no tool-failure kind, no substitute. A misspelt name (`nmax`, `N_max`, `n-max`, `nMax`, `n_min`, `repeats`) stays in `others` and the content states no bound.
+- `parse` / `validate`: a present `n_max` must satisfy `type(value) is int and 5 <= value <= keys.MAX_INTEGER`; otherwise `InvalidInstanceError` with the message `n_max: must be an int from 5 to 9007199254740991, got <type name>` (for a `str` the value is shown as the module shows every `str`; a refused `int` is not shown). Through `read` the message is prefixed with `runs/<run_id>/instance.json: `. Another `schema_version` is still `UnsupportedVersionError` before the member is looked at; an integer too long for the interpreter and the member name twice stay text rules (`content: cannot be read as one JSON text`).
+- `read`, `hw_profile_of`, `tolerance_of` and `source_commit_of` keep their signatures and raise `InvalidInstanceError` for a file whose `n_max` is invalid. Without any edit of `hilclaw/hw_tool.py`, the selection of a journaled HW tool answers such a file with `run_file_invalid` and starts no step (pinned by `test_a_file_invalid_by_its_n_max_alone_is_run_file_invalid`).
+- `SCHEMA_VERSION` is unchanged (1). The module imports nothing of the harness and no NumPy; `test_the_module_imports_neither_numpy_nor_the_harness` is unedited and passes.
+
+**Provisional choices of this task** (ADR-0023 leaves them to the code task):
+- Names `n_max_of` and the field `n_max`: the member name, as `source_commit_of` / `source_commit` have it.
+- The field stands after `source_commit` and before `others`: the order of the records, and `others` stays last.
+- "Not stated" is `None`, as for `tolerance` and `source_commit`.
+- `n_max` is checked last (after `source_commit`): the order in which the records defined the members; stated in the module docstring and pinned by `test_the_first_broken_rule_is_reported_with_a_bound`.
+- The lower bound is the literal 5 inside `_n_max`, no module-level name (so `test_nothing_of_the_module_holds_a_tolerance_value` is unedited) and no reference to the harness; no test pins it against `measurement.N_MIN`.
+- The message does not show a refused `int`, as for `schema_version`.
+- `validate` takes exactly an `int` for a value built in memory: a `bool`, a `float` such as `10.0` and a subclass of `int` are none.
+- No criterion of the task file disagreed with the record.
+
+**Review**: 4 rounds with a context-isolated `dev-reviewer`, each on the head of that round, each **Approve** with no blocking finding, no security concern, no A-13 BLOCKED reason and no design choice read as needing a record or the owner.
+- Round 1 (head `a02c778`): Nit - the `n_max` bullet under "Conventions of this module" stated the range as if it were a convention (fixed in `f11d642`); Info - see below.
+- Round 2 (head `f11d642`): Nit - the same bullet still read "`true`, `10.0`, `1e1`, `-0` are none" as a consequence of a convention (fixed in `c81da77`: the rule is named as ADR-0023 decision 3, the conventions of the module are listed apart).
+- Round 3 (head `c81da77`): Info - the PR body gave the non-test line count of the first commit (PR body corrected); Nit - one long docstring line (reflowed in `7fef6ea`, white space only).
+- Round 4 (head `7fef6ea`): Nit, **not acted on** - the summary line of the docstring of `validate` says "against the four records" and names them in the last sentence of its first paragraph; the reviewer asked for no change before the merge and the short summary line is deliberate.
+- **Info carried through all rounds, kept as the task file asks**: `test_nothing_of_the_module_holds_a_bound` compares `measurement.N_MAX_DEFAULT` with every integer the module holds or writes (today 0, 1, 5, 40, 64 and 2^53 - 1). If a later task changes that constant to one of those numbers, the test fails although no bound entered the module; that task then has to narrow the test.
+- `hilclaw/hw_tool.py`: no docstring sentence was found false after the change (the reviewers re-checked lines 36 to 85).
+
+**Verification**:
+- Local, on `origin/main` before the change: `python -m pytest` 7598 passed, 274 skipped. On the final head: 7937 passed, 276 skipped (the two more skips are the symbolic-link cases of the new reader on Windows); `python -m ruff check .` and `python -m ruff format --check .` exit 0. Nothing was installed (the local interpreter has no `coverage`; the coverage figures are those of CI).
+- `git diff origin/main --stat` listed only the two files; the first `git grep` of the task matched docstring lines only, the second matched nothing; `git ls-files --eol` shows `i/lf` for both files.
+- CI on the PR, final head `7fef6ea`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37841914168 : all six checks successful - `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. No CI run failed on the PR. Coverage lines of the log, in percent: `lines: 2830/2846 executed = 99.43 (minimum 80)` and `functions: 294/294 entered = 100.00 (minimum 80)`; no line of `hilclaw/instance.py` is among the lines not executed.
+- After the merge, the `push` run on `main` for `4ac5fa8`: https://github.com/myungjoo/HIL-Claw/actions/runs/37842576320 , conclusion `success`.
+
+**Follow-ups left** (none new beyond the list above, except the last): binding the bound to the timing run waits for the record that answers OD-8 sub-question 21; the writer of `instance.json`; the integrator's list of sentences ADR-0023 calls "now less exact". A possible small docstring tidy, noted by the reviewers and not done here: the `source_commit` bullet under "Conventions of this module" mixes the rule of the record with the conventions of the module, as the `n_max` bullet did before round 2.
