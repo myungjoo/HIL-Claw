@@ -2,7 +2,7 @@
 id: T-0070
 title: Answer the selection of a journaled HW tool with the four run-file kinds of ADR-0019 - the rows of moment 4 of the table of its decision 3, around the call of the reader in `hilclaw/hw_tool.py` - so that no situation of `instance.json` reaches a caller as `tool_crashed`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, FR-13, NFR-1, NFR-6, OD-18, "#5 A-12"]
 dependsOn: [T-0064, T-0067, T-0068, T-0069]
@@ -115,3 +115,30 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (integrator, after 2026-10-15) The sentences of ADR-0015, ADR-0016 and ADR-0018 that ADR-0019 Consequences lists as less exact.
 
 ## Result
+
+- **Outcome**: DONE. PR #61 (https://github.com/myungjoo/HIL-Claw/pull/61), squash commit `24be1b0bca7694c03e93f5d784556e3d0439a059` on `main`; branch commits `72c826f` and `fe77e66`. The remote and the local task branch are deleted. This task ticks **no** PLAN checkbox (P1-1 stays open).
+- **Review**: 2 rounds by a fresh-context `dev-reviewer`, final verdict Approve.
+  - Round 1, Request changes (https://github.com/myungjoo/HIL-Claw/pull/61#issuecomment-6060965549): (1) should-fix - the module docstring of `hilclaw/hw_tool.py` said `tools.call` answers everything else the reader raises as `tool_crashed`, which is false for a `ToolFailure` of the reader (it keeps its kind) and for a `BaseException` that is no `Exception` (not answered); fixed in `fe77e66`. (2) nit - no direct test of a mapped class out of an append; `test_the_same_class_out_of_an_append_is_not_answered_with_a_kind` added in `fe77e66`.
+  - Round 2, Approve (https://github.com/myungjoo/HIL-Claw/pull/61#issuecomment-6061028528): both findings resolved. One nit left as it is, as the reviewer allowed: the convention on the message opens with "starts with `runs/<run_id>/instance.json`" and ends with the limit for another reader, which is the limit the task asked to state.
+  - The reviewer's answers to (a) to (f): the mapping matches the rows of moment 4, the row "③, ④" and every border of decision 4; only the call of the reader is mapped; **the reader as a parameter is no design choice that needs a record or the owner** (decision 5 leaves the mapping to the code, the "Class today" column names the classes); the docstrings agree with decisions 2, 6, 7 and the Boundaries; `instance.py` and `backends.py` changed in docstring lines only and the files of T-0069 are untouched; the A-13 reading holds.
+- **Mapping as landed** (`hilclaw/hw_tool.py`, the private table `_KINDS` and one `with run_files.reading(data_root, run_id, "instance.json", _KINDS):` whose block holds the call of the reader and nothing else): `instance.MissingInstanceError` -> `run_file_missing`; `instance.InvalidInstanceError` -> `run_file_invalid`; `instance.UnsupportedVersionError` -> `run_file_unsupported`; `FileNotFoundError` and `NotADirectoryError` -> `run_file_missing`; any other `OSError` -> `run_file_unreadable`; anything else passes through as the same object. Each `ToolFailure` has the error as `__cause__`. `backends.select` is outside the block.
+- **Composed messages**: for the three classes the reader's message unchanged; for "not there" `runs/<run_id>/instance.json: is missing`, with `: the data root is not an existing directory` appended when the data root is gone; for another `OSError` `runs/<run_id>/instance.json: could not be read: <class>: <strerror>` (all three composed by `run_files.read_failure`, which is unchanged).
+- **Provisional choices** (ADR-0019 decision 5 leaves the mapping to the code task):
+  - The three classes of `hilclaw.instance` and every `OSError` count for whatever reader was handed over, because the module cannot tell why a reader raised one of them. Consequence, stated in the docstring: an `OSError` of another reader that is not about `instance.json` is `run_file_unreadable` too; to be looked at again when a second reader is bound.
+  - `hilclaw/hw_tool.py` imports `hilclaw.instance` for the class names only; it binds no reader and reads no file.
+  - No second read: for `instance.json` "not there" is `run_file_missing` at whatever read it is found (decision 4).
+  - The message of another reader that raises one of the three classes is used unchanged and not checked (a stated limit).
+  - The existing sentence "the same request can be repeated" of the module docstring is kept as it was (it is the property of ADR-0019 decision 3 "The same request again", not an instruction to a caller).
+  - Tests: `NOT_FOR_AN_UNUSABLE_RUN` is removed from both test files; the crash inside the step now pins `tool_crashed`.
+- **No disagreement** between the acceptance criteria and ADR-0019 was found. `hilclaw/run_files.py` lacked nothing.
+- **Verification**:
+  - Local (Windows, Python 3.14), final head: `python -m pytest` 6826 passed, 270 skipped (before: 6745 passed, 270 skipped); `python -m ruff check .` and `python -m ruff format --check .` exit 0. The `coverage` module is not installed in the driver's clone and nothing was installed, so the coverage figures are those of CI.
+  - `git diff origin/main --numstat` at the final head: `hilclaw/backends.py` 2/2, `hilclaw/hw_tool.py` 53/7, `hilclaw/instance.py` 3/2, `tests/test_hw_tool.py` 230/20, `tests/test_instance.py` 110/25 - only files of `touchesFiles`. Non-test: 58 added and 11 removed lines in 3 files, of which 6 new statement lines and 1 changed import line in `hw_tool.py`; the rest is docstring. `instance.py` and `backends.py`: docstring lines only. The files of T-0069 and the other listed modules: no diff. `git grep -n "sub-question 4" -- hilclaw/` matches nothing. No stray file after the tests. No other test file needed a changed expectation.
+  - CI on the PR, final head `fe77e66`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37785155924 - all six successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. Coverage lines: `lines: 2761/2777 executed = 99.42% (minimum 80%)`, `functions: 283/283 entered = 100.00% (minimum 80%)`; `hilclaw/hw_tool.py` 15 statements, 0 missed. The first head `72c826f` was green as well (run 37784621981); no failed CI run.
+  - `push` run on `main` for `24be1b0`: `success`, https://github.com/myungjoo/HIL-Claw/actions/runs/37785515780.
+- **Language**: Python, because every module touched is Python.
+- **Size**: within the cap (69 changed non-test lines, 3 non-test files).
+- **Follow-ups** (none created by this task beyond those already listed above):
+  - When a second reader of the hw_profile is bound (or `instance.hw_profile_of` becomes a default), re-check that every `OSError` of that reader is about `instance.json`; otherwise the mapping by class needs a narrower rule.
+  - ADR-0019 Consequences lists the docstring sentence of `hilclaw/journaled_tool.py` ("passes through with no kind given here (OD-18 sub-question 4, open)"); `git grep "sub-question 4" -- hilclaw/` is empty on `main`, so T-0069 already reworded it and nothing is left of that list in `hilclaw/`.
+  - Suggested next: OD-18 sub-question 7 (which HW tools `cpu_standin` offers) as the planner's first follow-up above, since both halves of the code slice of ADR-0019 have landed.
