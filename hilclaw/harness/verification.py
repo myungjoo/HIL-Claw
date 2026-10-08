@@ -47,24 +47,24 @@ Conventions of this module (not rules of the record):
   dropped. No array of a draw is kept for the next.
 - The module holds one implementation of the form check and of the loop over
   the draws; :func:`judge_report` and :func:`run_verification` both use it.
-- A report is exactly ``bytes``. :func:`judge_report` raises a ``TypeError``
-  for anything else, a ``bytearray``, a ``memoryview`` and an instance of a
-  subclass included, and never reports it as a wrong form: that condition is
-  a statement about what a process wrote.
+- The ``report`` argument of :func:`judge_report` is exactly ``bytes``. For
+  anything else, a ``bytearray``, a ``memoryview`` and an instance of a
+  subclass included, it raises a ``TypeError`` and never reports a wrong
+  form: that condition is a statement about what a process wrote.
 - ``run`` of a :class:`VerificationResult` is what the runner captured apart
-  from the report: its ``stdout`` is replaced by ``b""`` and every other member is passed on
-  unfiltered. The record says so of a broken run; this module carries the same
-  member for a completed run. Standard error and the command line are not
-  free of the inputs (decision 7); what a caller may keep of them is not
-  decided here.
+  from the report: its ``stdout`` is replaced by ``b""`` and every other
+  member is passed on unfiltered. The record says so of a broken run; this
+  module carries the same member for a completed run. Standard error and the
+  command line are not free of the inputs (decision 7); what a caller may
+  keep of them is not decided here.
 - ``executable`` is a path or a sequence used as a command prefix, as in
   :func:`hilclaw.harness.timing.run_timing`.
 - A parameter of the program or a tolerance outside what is stated raises
   :class:`hilclaw.harness.verification_arrays.VerificationArgumentError`
   before anything is started and before a report is looked at, so one class
-  covers the whole verification. An ``executable`` that is an empty sequence or neither a path nor iterable
-  raises a plain ``ValueError`` or ``TypeError``, and what
-  :func:`hilclaw.local_run.run` raises is passed on.
+  covers the whole verification. An ``executable`` that is an empty sequence
+  or neither a path nor iterable raises a plain ``ValueError`` or
+  ``TypeError``, and what :func:`hilclaw.local_run.run` raises is passed on.
 - What NumPy raises for arrays it cannot allocate (``MemoryError``, or a plain
   ``ValueError`` for a size it cannot hold) is passed on. In
   :func:`run_verification` it arrives after the process has ended, and the
