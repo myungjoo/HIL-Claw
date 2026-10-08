@@ -40,7 +40,9 @@ _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 
 
 def _hw_tool(tool):
-    if type(tool) is not str or tool not in HW_TOOLS:
+    if type(tool) is not str:
+        raise TypeError(f"a HW tool name must be a str, got {type(tool).__name__}")
+    if tool not in HW_TOOLS:
         raise ValueError(f"{tool!r} is no HW tool; the HW tools are {HW_TOOLS}")
     return tool
 
@@ -54,10 +56,10 @@ class Backend:
       to the operation of that tool, a callable. It may be empty. The backend
       keeps a copy of it.
 
-    Raises :class:`TypeError` when ``name`` is no ``str``, ``operations`` no
-    mapping or an operation not callable, and :class:`ValueError` when ``name``
-    is no name or a member of ``operations`` is under no HW tool name. Building
-    calls no operation.
+    Raises :class:`TypeError` when ``name`` or the name of a member of
+    ``operations`` is no ``str``, ``operations`` no mapping or an operation not
+    callable, and :class:`ValueError` when ``name`` is no name or a member of
+    ``operations`` is under no HW tool name. Building calls no operation.
 
     A backend does not change after it is built. Two backends are equal only
     when they are the same object.
@@ -114,9 +116,9 @@ class BackendTable:
                 raise TypeError(
                     f"an entry of a backend table must be a Backend, got {type(backend).__name__}"
                 )
-            if backend.name in held:
-                raise ValueError(f"the backend {backend.name} is given twice")
-            held[backend.name] = backend
+            if backend._name in held:
+                raise ValueError(f"the backend {backend._name} is given twice")
+            held[backend._name] = backend
         self._backends = held
 
     def names(self):
@@ -140,7 +142,8 @@ def select(table, hw_profile, tool):
     called here.
 
     Raises, in this order: :class:`TypeError` when ``table`` is no
-    ``BackendTable`` and :class:`ValueError` when ``tool`` is no HW tool;
+    ``BackendTable`` or ``tool`` no ``str`` and :class:`ValueError` when
+    ``tool`` is no HW tool;
     :class:`hilclaw.keys.InvalidRecordError`, unchanged, when ``hw_profile`` is
     no valid record; :class:`hilclaw.tools.ToolFailure` of kind ``no_backend``
     when the table has no entry under the ``accelerator`` of the record, and of
@@ -161,6 +164,6 @@ def select(table, hw_profile, tool):
     if operation is None:
         raise tools.ToolFailure(
             tools.KIND_NOT_OFFERED,
-            f"the backend {backend.name} offers no operation for {tool}",
+            f"the backend {accelerator} offers no operation for {tool}",
         )
     return operation

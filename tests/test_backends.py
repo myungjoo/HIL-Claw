@@ -159,14 +159,19 @@ def test_an_operation_that_is_not_callable_is_refused(operation):
         "SIM.RUN",
         "sim.run ",
         "",
-        7,
-        None,
-        Text("sim.run"),
     ],
 )
 def test_an_operation_under_no_hw_tool_name_is_refused(tool):
     operations = {"board.run": Operation(), tool: Operation()}
     with pytest.raises(ValueError, match="no HW tool"):
+        Backend("acc_a", operations)
+    assert calls_of(operations) == 0
+
+
+@pytest.mark.parametrize("tool", [7, None, ("sim.run",), Text("sim.run")])
+def test_an_operation_under_what_is_no_str_is_refused(tool):
+    operations = {"board.run": Operation(), tool: Operation()}
+    with pytest.raises(TypeError, match="must be a str"):
         Backend("acc_a", operations)
     assert calls_of(operations) == 0
 
@@ -254,6 +259,21 @@ def test_a_table_of_what_is_not_iterable_is_refused(entries):
 def test_a_mapping_of_names_is_no_list_of_backends():
     with pytest.raises(TypeError, match="must be a Backend"):
         BackendTable({"acc_a": Backend("acc_a", {})})
+
+
+def test_a_table_files_a_backend_under_the_name_it_was_built_with():
+    class Renamed(Backend):
+        @property
+        def name(self):
+            return "Not A Name"
+
+    operation = Operation()
+    table = BackendTable([Renamed("acc_a", {"sim.run": operation})])
+    assert table.names() == ("acc_a",)
+    assert select(table, record(), "sim.run") is operation
+    assert "the backend acc_a" in failure_of(table, record(), "board.run").message
+    with pytest.raises(ValueError, match="acc_a is given twice"):
+        BackendTable([Renamed("acc_a", {}), Backend("acc_a", {})])
 
 
 def test_a_table_keeps_its_own_copy_of_the_entries():
@@ -463,7 +483,7 @@ def test_an_invalid_record_is_not_not_offered_when_the_backend_lacks_the_tool():
 
 @pytest.mark.parametrize(
     "tool",
-    ["blob.push", "blob.fetch", "test.tool", "sim_run", "", 7, None, Text("sim.run")],
+    ["blob.push", "blob.fetch", "test.tool", "sim_run", "SIM.RUN", "sim.run ", ""],
 )
 def test_select_refuses_a_tool_that_is_no_hw_tool(tool):
     operations = all_four()
@@ -471,6 +491,15 @@ def test_select_refuses_a_tool_that_is_no_hw_tool(tool):
     with pytest.raises(ValueError, match="no HW tool") as raised:
         select(table, record(), tool)
     assert not isinstance(raised.value, InvalidRecordError)
+    assert calls_of(operations) == 0
+
+
+@pytest.mark.parametrize("tool", [7, None, ["sim.run"], Text("sim.run")])
+def test_select_refuses_a_tool_name_that_is_no_str(tool):
+    operations = all_four()
+    table = BackendTable([Backend("acc_a", operations)])
+    with pytest.raises(TypeError, match="must be a str"):
+        select(table, record(), tool)
     assert calls_of(operations) == 0
 
 
