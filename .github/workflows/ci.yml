@@ -162,7 +162,7 @@ jobs:
               print(f"{kind}: {covered}/{total} {verb} = {percent:.2f}% (minimum {floor}%)")
               if total == 0 or covered * 100 < floor * total:
                   failed = True
-                  print(f"::error::{kind} coverage of hilclaw/ is below {floor}%")
+                  print(f"::error::hilclaw/ is below the minimum of {floor}% for {kind}")
           for path, entry in sorted(files.items()):
               if entry["missing_lines"]:
                   print(f"lines not executed: {path}: {entry['missing_lines']}")
