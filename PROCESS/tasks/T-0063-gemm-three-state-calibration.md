@@ -128,6 +128,7 @@ All of them use real clang (fixture as in `tests/harness/test_verification_build
 ```python
 import numpy as np
 from hilclaw.harness import verification_arrays as va
+
 a, b = va.draw_inputs(3, 4, 5, seed=2026, draw=0)
 for row in va.reference(a, b).astype(np.float32):
     cells = []
