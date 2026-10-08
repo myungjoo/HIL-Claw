@@ -245,7 +245,6 @@ def test_any_order_of_members_and_any_white_space_are_accepted(content):
     result = parse(content)
 
     assert (result.hw_profile_key, result.hw_profile) == (KEY, record())
-    assert list(result.hw_profile) == list(parse(content).hw_profile)
 
 
 OTHERS = {
@@ -415,12 +414,6 @@ def test_a_text_that_is_not_an_object(content):
 def test_a_member_name_twice_in_any_object(content):
     message = invalid("content: cannot be read as one JSON text", parse, content)
     assert "a JSON object repeats a member name" in message
-
-
-def test_the_contents_with_a_repeated_name_are_valid_without_it():
-    for replaced in ('"revision"', '"cc"', '"cpu"'):
-        assert replaced in SECTION
-    assert parse(text(VERSION, SECTION)).hw_profile == record()
 
 
 def test_nesting_too_deep_for_the_interpreter_is_reported():

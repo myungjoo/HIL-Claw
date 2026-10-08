@@ -21,7 +21,9 @@ Conventions of this module, which ADR-0018 does not fix:
   ``schema_version``, then ``hw_profile``. A content this interpreter cannot
   read (an integer too long for it anywhere in the text, nesting too deep)
   raises :class:`InvalidInstanceError` too, though it is a limit of this reader
-  and not damage; the limits stay as the interpreter has them.
+  and not damage; the limits stay as the interpreter has them. A number beyond
+  the float range in a member not defined here is read as an infinity and is
+  no error, as :mod:`hilclaw.run_state` has it.
 - ``schema_version`` is an integer of ADR-0001, from 0 to
   :data:`hilclaw.keys.MAX_INTEGER`: a value outside that range is no integer of
   the records and makes the content invalid, it is not another version. ``-0``
@@ -46,13 +48,13 @@ It writes, creates and removes no file and composes no content. It defines no
 member besides the two and interprets none: a file it accepts is not thereby a
 complete instance record, and not enough to start a run (decisions 1 and 2).
 It reads no other file, so the stored record of the key below ``db/`` is not
-read or compared and need not exist (decision 4). None of its errors is a
+read or compared (decision 4) and this reader does not need it to exist; how
+the two records relate is open (OD-8 sub-question 18). None of its errors is a
 :class:`hilclaw.tools.ToolFailure`, and it gives no kind to a run whose
 hw_profile cannot be had (OD-18 sub-question 4). It reads no other version
 (OD-11) and says nothing of what writes the file, of when, or of a run
-directory without it (OD-8 sub-questions 10, 17 and 18). Nothing is kept
-between calls, so a file changed between two calls is read as changed
-(decision 6).
+directory without it (OD-8 sub-questions 10 and 17). Nothing is kept between
+calls, so a file changed between two calls is read as changed (decision 6).
 """
 
 import codecs
@@ -102,11 +104,11 @@ def parse(content):
     white space of JSON are accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
-    a byte order mark, is not exactly one JSON text (``NaN`` and the infinities
-    are none; an empty content is none), holds a member name twice in any
-    object or is a document :func:`validate` refuses, and
-    :class:`UnsupportedVersionError` as that function does. Nothing is
-    returned then, and nothing is repaired.
+    a byte order mark, is not exactly one JSON text (the tokens ``NaN``,
+    ``Infinity`` and ``-Infinity`` are no JSON; an empty content is none),
+    holds a member name twice in any object or is a document :func:`validate`
+    refuses, and :class:`UnsupportedVersionError` as that function does.
+    Nothing is returned then, and nothing is repaired.
     """
     if type(content) is not bytes:
         raise TypeError(f"content must be bytes, got {type(content).__name__}")
@@ -155,9 +157,10 @@ def read(data_root, run_id):
     then one error for each situation of ADR-0018 decision 4:
     :class:`MissingInstanceError` when there is no file, an :class:`OSError`
     of the file system, unchanged, when it cannot be read,
-    :class:`InvalidInstanceError` for a path that is not a regular file and
-    for an invalid content, an empty file included, and
-    :class:`UnsupportedVersionError` for another version.
+    :class:`InvalidInstanceError` for an invalid content, an empty file
+    included, and :class:`UnsupportedVersionError` for another version. A path
+    that is not a regular file is none of the four: by the convention of this
+    module it raises :class:`InvalidInstanceError`.
     """
     path = layout.run_file(data_root, run_id, "instance.json")
     root = Path(data_root)
