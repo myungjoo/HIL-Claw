@@ -139,7 +139,11 @@ _COMMIT_CHARACTERS = frozenset("0123456789abcdef")
 
 
 class InvalidInstanceError(ValueError):
-    """A content, a document or a path breaks a rule of ADR-0018, ADR-0020 or ADR-0022; the message names it."""
+    """A content, a document or a path breaks a rule; the message names it.
+
+    The rules are those of ADR-0018, ADR-0020 and ADR-0022 and the conventions
+    of this module.
+    """
 
 
 class UnsupportedVersionError(Exception):
