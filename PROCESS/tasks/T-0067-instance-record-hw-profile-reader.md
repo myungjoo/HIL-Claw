@@ -2,7 +2,7 @@
 id: T-0067
 title: Add the module for `instance.json` of a run (ADR-0018, the code slice of its Consequences) - the validity of a content by decisions 2 and 3, and the reader of the hw_profile of a run in the form `hw_profile_of(data_root, run_id)` that `hilclaw.hw_tool.tool_function` takes
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, FR-13, FR-14, NFR-2, NFR-7, OD-8, OD-18, "#5 A-12"]
 dependsOn: [T-0043, T-0045, T-0057, T-0064, T-0066]
@@ -156,3 +156,60 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): ① the package total of `hilclaw/` 
 - (driver / integrator) P0.5 holds only the owner's hook registration of P0.5-4; the "CI 미구축" notes of CLAUDE.md and the skills; the integrator items after 2026-10-15 (T-0056 and T-0066 Follow-ups).
 
 ## Result
+**DONE.** PR #59 (https://github.com/myungjoo/HIL-Claw/pull/59), squash commit `e9eb148` on `main`, merged 2026-10-08T10:54:45Z. Branch commits `fcd17c4` (the change), `bed9b3e` (review round 1), `db69be5` (round 2), `cb7128e` (round 3); the remote and the local branch are deleted (after `MERGED`). This task ticks **no** PLAN checkbox: P1-8 and P1-1 stay open. No new HQ.
+
+- §3-5 check before starting: no commit with `Task: T-0067` on `origin/main`, no PR for T-0067, no open PR. The last comment on #5 was still the ADR-0018 notice (issuecomment-6057754907); no objection.
+- Language: **Python**, because the modules it is modelled on and built on (`run_state`, `run_journal`, `keys`, `layout`) are Python. Standard library only; `pyproject.toml` unchanged.
+- Files: `hilclaw/instance.py` (new, 250 lines with docstrings), `hilclaw/hw_tool.py` (docstring lines only, +4 / -3), `tests/test_instance.py` (new, 1130 lines). Non-test: 254 lines in 2 files (cap 300 / 5).
+
+### Public API as landed (`hilclaw.instance`)
+- `SCHEMA_VERSION = 1`.
+- `Instance` - `NamedTuple(hw_profile_key: str, hw_profile: dict, others: dict)`: `hw_profile.key`, `hw_profile.record`, and every top-level member ADR-0018 does not define, as parsed and not interpreted.
+- `parse(content)` - `content` exactly `bytes` (`TypeError` otherwise); returns `Instance`.
+- `validate(document)` - a parsed document; returns `None`; the same checks without the text rules.
+- `read(data_root, run_id)` - returns `Instance` for `runs/<run_id>/instance.json`; one `os.lstat` and one read per call, nothing kept, new objects at each call.
+- `hw_profile_of(data_root, run_id)` - returns `read(...).hw_profile`, a `dict` valid by ADR-0001; the call form of the parameter `hw_profile_of` of `hilclaw.hw_tool.tool_function`. It is bound nowhere.
+- Error classes, none a `hilclaw.tools.ToolFailure`, no kind given:
+  - `InvalidInstanceError(ValueError)` - an invalid content (the text rules, `schema_version` absent or no integer of ADR-0001, `hw_profile` absent or breaking decision 3), and by convention a path that is not a regular file. From `read`, the message starts with the path relative to the data root, for example `runs/run-a/instance.json: hw_profile.record.hw_source: must be ...`.
+  - `UnsupportedVersionError(Exception)` - `schema_version` is an integer other than 1, raised before any other member is looked at; of this module, not that of `run_state`.
+  - `MissingInstanceError(Exception)` - no file, no run directory, or a file in the place of a directory above it. Message: `<file>: is missing: no instance record was written for this run_id`.
+  - "cannot be read" - the `OSError` of the file system, unchanged.
+  - Arguments: `layout.InvalidPathValueError` for a `run_id` (before the file system); `FileNotFoundError` / `NotADirectoryError` for a data root that is no existing directory.
+- **Input for the record of OD-18 sub-question 4** (noted by the reviewer in rounds 1, 2 and 4): a missing data root and a file that disappears between the check and the read are also `FileNotFoundError`, so "cannot be read" cannot be mapped by the class `OSError` alone.
+
+### Provisional choices (ADR-0018 does not fix them)
+- Module name `instance`, after the file; one module for the pure and the file half, since the file has one member.
+- `validate` exists beside `parse`, as in `run_state`, for a document in memory.
+- Order: the whole text, then `schema_version`, then `hw_profile`; inside it the closed object, `key` a `str`, `record` an object and valid, `key` equal to the derived name. The first broken rule is reported, so a broken record is named before a key that cannot match it.
+- `schema_version` is an integer of ADR-0001 (0 to 2**53 - 1); a value outside is invalid, not another version. `-0` is read as 0 and is then the unsupported version 0.
+- A content the interpreter cannot read (an integer too long, nesting too deep) is `InvalidInstanceError`, stated as a limit of the reader.
+- A number beyond the float range in a member not defined (`1e999`) is read as an infinity and is no error, as `run_state` has it; the tokens `NaN`, `Infinity`, `-Infinity` are refused.
+- An empty `key` and a `key` of another form are reported as not the derived name: one rule, one message.
+- A message shows the type of the refused value, and the value only when it is a `str`, shortened by `reprlib` - so a long key is shown shortened, while the expected name is shown in full.
+- The file side follows `run_journal.read_state`: only the last path component is refused as a symbolic link; a link at `runs/` or `runs/<run_id>` is followed.
+- A record error is reported as `hw_profile.record.<message of keys>`, for example `hw_profile.record.'example': unknown field`.
+- No criterion disagreed with the record.
+
+### `hilclaw/hw_tool.py`
+The convention at the former lines 41-43 now reads: the reader is a parameter; a run states its hw_profile in `runs/<run_id>/instance.json` (ADR-0018 decision 3), which `hilclaw.instance.hw_profile_of` reads; this module reads no file for it and binds no reader. Lines 34-37 and the last paragraph ("no reader") are unchanged and still true. `tests/test_hw_tool.py` is unmodified and passes.
+
+### Review (4 rounds, fresh-context `dev-reviewer` each; final verdict Approve with no finding)
+- Round 1, Request changes (https://github.com/myungjoo/HIL-Claw/pull/59#issuecomment-6058085128): one should-fix - the float-range convention was implemented and tested but not listed; nits - "need not exist (decision 4)" over-cited and sub-question 18 attached to the wrong sentence, the `read` docstring counted a non-regular path among the four situations, two test assertions checked test values only. All addressed in `bed9b3e`.
+- Round 2, Approve (https://github.com/myungjoo/HIL-Claw/pull/59#issuecomment-6058149764): nits - the line count in the PR body, one more assertion on a test value. Addressed in `db69be5`.
+- Round 3, Approve (https://github.com/myungjoo/HIL-Claw/pull/59#issuecomment-6058231002): one optional nit, a two-step replacement in a test. Addressed in `cb7128e`.
+- Round 4, Approve (https://github.com/myungjoo/HIL-Claw/pull/59#issuecomment-6058279675): no finding.
+- The reviewer agreed with every planner judgement (a) to (f) and the A-13 reading (a first implementation; no member and no rule added, renamed or removed). No point was read as needing a record or the owner; no security concern.
+
+### Verification
+- Local (Windows, Python 3.14), final head: `python -m pytest` **6556 passed, 270 skipped** (6195 / 266 on `b842c36`; +361 passed, +4 skipped - the symbolic-link cases); `ruff check .` and `ruff format --check .` clean. `tests/test_instance.py` alone: 361 passed, 4 skipped.
+- `coverage` is not installed in the driver's clone and nothing was installed; the stdlib `trace` module showed no unexecuted line in `hilclaw/instance.py` on the first head, and CI confirmed it on the final one.
+- `git diff origin/main --numstat` before the merge: `hilclaw/hw_tool.py` 4 / 3, `hilclaw/instance.py` 250 / 0, `tests/test_instance.py` 1130 / 0 - only `touchesFiles`.
+- CI on the final head `cb7128e` (https://github.com/myungjoo/HIL-Claw/actions/runs/37766304205): all six successful - `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. Coverage: `lines: 2708/2724 executed = 99.41%`, `functions: 278/278 entered = 100.00%`. No CI run failed.
+- `push` run on `main` for `e9eb148`: **success** (https://github.com/myungjoo/HIL-Claw/actions/runs/37766595321).
+
+### Follow-ups
+- (planner, doc mode) OD-18 sub-question 4, with the note above about `FileNotFoundError`.
+- (first HW tool) Bind `hilclaw.instance.hw_profile_of` as `hw_profile_of=`; then decide whether the last paragraph of the `hw_tool.py` docstring still holds.
+- (small code task, already listed) Whether the section check of `spec._keyed` and of `instance._hw_profile` becomes one public function. The two report a record error differently: `spec` as `hw_profile.record: accelerator: ...`, this module as `hw_profile.record.accelerator: ...`.
+- (later records of P1-8) Each further member of `instance.json` changes this validator; from this landing on that is a schema change in the sense of A-13.
+- No split was needed.
