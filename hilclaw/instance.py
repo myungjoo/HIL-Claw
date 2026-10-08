@@ -1,4 +1,4 @@
-"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020).
+"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022).
 
 ``ARCHITECTURE/decisions/ADR-0018-od8-instance-record-hw-profile.md`` fixes the
 file as a whole (decision 2), the member ``hw_profile`` in which a run states
@@ -7,15 +7,20 @@ tool reads it (decision 4).
 ``ARCHITECTURE/decisions/ADR-0020-od8-instance-record-tolerance.md`` adds the
 member ``tolerance``, in which a run states the ``rtol`` and the ``atol`` of
 its correctness check in the vocabulary of the first case (decisions 2 to 4),
-and says where the tolerance of a run is read from (decision 5). This module
-is those rules: :func:`parse` and :func:`validate` are pure functions of the
-bytes of a content and of a parsed document, and :func:`read`,
-:func:`hw_profile_of` and :func:`tolerance_of` read the file of a run.
+and says where the tolerance of a run is read from (decision 5).
+``ARCHITECTURE/decisions/ADR-0022-od8-instance-record-source-commit.md`` adds
+the member ``source_commit``, in which a run states the commit of the source
+repository it was started with (decision 3), says that a valid file may lack
+it and that a present one must be valid (decision 5), and says where the
+source commit a run states is read from (decision 7). This module is those
+rules: :func:`parse` and :func:`validate` are pure functions of the bytes of a
+content and of a parsed document, and :func:`read`, :func:`hw_profile_of`,
+:func:`tolerance_of` and :func:`source_commit_of` read the file of a run.
 :func:`hw_profile_of` has the call form of the parameter ``hw_profile_of`` of
-:func:`hilclaw.hw_tool.tool_function`; nothing here binds it or
-:func:`tolerance_of` to a tool.
+:func:`hilclaw.hw_tool.tool_function`; nothing here binds it,
+:func:`tolerance_of` or :func:`source_commit_of` to a tool.
 
-Conventions of this module, which the two records do not fix:
+Conventions of this module, which the three records do not fix:
 
 - A content is exactly ``bytes`` (:class:`TypeError` otherwise: the encoding is
   part of validity). Values are as :func:`json.loads` returns them, an integer
@@ -25,13 +30,14 @@ Conventions of this module, which the two records do not fix:
   :class:`UnsupportedVersionError` of this module.
 - The rules for the whole text come first, whatever the version, then
   ``schema_version``, then ``hw_profile``, then ``tolerance`` when the document
-  holds it. A content this interpreter cannot read (an integer too long for it
-  anywhere in the text, nesting too deep) raises :class:`InvalidInstanceError`
-  too, though it is a limit of this reader and not damage; the limits stay as
-  the interpreter has them. A number beyond the float range in a member not
-  defined here is read as an infinity and is no error, as
-  :mod:`hilclaw.run_state` has it; in ``tolerance`` it makes the content
-  invalid (ADR-0020 decision 4).
+  holds it, then ``source_commit`` when the document holds it: the order in
+  which the records defined them. A content this interpreter cannot read (an
+  integer too long for it anywhere in the text, nesting too deep) raises
+  :class:`InvalidInstanceError` too, though it is a limit of this reader and
+  not damage; the limits stay as the interpreter has them. A number beyond
+  the float range in a member not defined here is read as an infinity and is
+  no error, as :mod:`hilclaw.run_state` has it; in ``tolerance`` it makes the
+  content invalid (ADR-0020 decision 4).
 - ``schema_version`` is an integer of ADR-0001, from 0 to
   :data:`hilclaw.keys.MAX_INTEGER`: a value outside that range is no integer of
   the records and makes the content invalid, it is not another version. ``-0``
@@ -52,6 +58,15 @@ Conventions of this module, which the two records do not fix:
   for an integer literal, and a zero as ``0.0`` whatever its sign in the file.
   A content without the member has ``None`` in that place: it states no
   tolerance, and that is no error of the content.
+- ``source_commit`` is exactly a ``str`` of 40 or of 64 characters, each one
+  of the sixteen ASCII characters ``0``-``9`` and ``a``-``f``; the characters
+  themselves are compared, so a digit of another script is none. The one rule
+  is reported as a whole, and a ``str`` that breaks it is shown as every
+  ``str`` is, a long one shortened. Either length is a value: the module does
+  not know or check which of the two the source repository uses. The source
+  commit is handed out as the ``str`` of the file, unchanged. A content
+  without the member has ``None`` in that place: it states no source commit,
+  and that is no error of the content.
 - The file is read as :mod:`hilclaw.run_journal` reads ``STATE.json``:
   ``run_id`` is checked first, then ``data_root``, which is used as given and
   must be an existing directory (:class:`FileNotFoundError` or
@@ -64,7 +79,8 @@ Conventions of this module, which the two records do not fix:
   the read is an :class:`OSError`, as every other failure of the file system.
 
 It writes, creates and removes no file and composes no content. It defines no
-member besides the three and interprets no other: a file it accepts is not
+member besides the four (``schema_version``, ``hw_profile``, ``tolerance``
+and ``source_commit``) and interprets no other: a file it accepts is not
 thereby a complete instance record, and not enough to start a run (ADR-0018
 decisions 1 and 2). Of the tolerance it gives what the file states and nothing
 else: it holds no default and substitutes no value (ADR-0020 decision 3), does
@@ -75,6 +91,20 @@ sub-question 19). Which tool or component reads the member, at which moment
 of a call, and what a call answers when no tolerance is stated is not said
 here; "not stated" is no error of the content, and this module gives it no
 tool-failure kind.
+Of the source commit it gives what the file states for the start of the
+instance and nothing else (ADR-0022 decisions 5 and 7): it obtains no commit
+and runs no ``git``, and it substitutes no value for a member that is absent,
+so no constant, default or fallback of this module is a commit. It checks the
+form of the member only: not that a stated commit exists anywhere, and not
+that the statement is true (ADR-0022 decisions 4 and 8). It does not identify
+or locate the source repository, compares the member with nothing, and says
+nothing about the source of a later result of the run (OD-11) or about a
+source that is not exactly a commit. A file it accepts need not state a
+source commit, and where it is checked that an instance states one is open
+(OD-8 sub-question 20). Which tool or component reads the member, at which
+moment, and what a call answers when no source commit is stated is not said
+here; "not stated" is no error of the content here either, and this module
+gives it no tool-failure kind.
 It reads no other file, so the stored record of the key below ``db/`` is not
 read or compared (ADR-0018 decision 4) and no reader here needs it to exist; how
 the two records relate is open (OD-8 sub-question 18). None of its errors is a
@@ -101,13 +131,19 @@ from hilclaw import keys, layout
 SCHEMA_VERSION = 1
 
 _MAX = keys.MAX_INTEGER
-_DEFINED = ("schema_version", "hw_profile", "tolerance")
+_DEFINED = ("schema_version", "hw_profile", "tolerance", "source_commit")
 _SECTION = ("key", "record")
 _TOLERANCE = ("rtol", "atol")
+_COMMIT_LENGTHS = (40, 64)
+_COMMIT_CHARACTERS = frozenset("0123456789abcdef")
 
 
 class InvalidInstanceError(ValueError):
-    """A content, a document or a path breaks a rule of ADR-0018 or ADR-0020; the message names it."""
+    """A content, a document or a path breaks a rule; the message names it.
+
+    The rules are those of ADR-0018, ADR-0020 and ADR-0022 and the conventions
+    of this module.
+    """
 
 
 class UnsupportedVersionError(Exception):
@@ -134,12 +170,15 @@ class Instance(NamedTuple):
     """Result of :func:`parse`: what a content states and the members not defined.
 
     ``tolerance`` is a :class:`Tolerance`, or ``None`` for a content without
-    the member ``tolerance``. ``others`` is the last field.
+    the member ``tolerance``. ``source_commit`` is the ``str`` of the member
+    ``source_commit``, or ``None`` for a content without that member.
+    ``others`` is the last field.
     """
 
     hw_profile_key: str
     hw_profile: dict
     tolerance: Tolerance | None
+    source_commit: str | None
     others: dict
 
 
@@ -151,11 +190,15 @@ def parse(content):
     ``tolerance`` is the :class:`Tolerance` of the member ``tolerance``, each
     value the ``float`` of its literal (``2`` gives ``2.0``; ``-0``, ``-0.0``,
     ``-1e-999`` and ``1e-999`` give ``0.0``), or ``None`` when the content has
-    no such member, and no value is substituted then; ``others`` holds every
-    top-level member that is none of ``schema_version``, ``hw_profile`` and
-    ``tolerance``, as parsed and not interpreted, whatever its name and value
-    (``tolerence`` or a top-level ``rtol`` among them). Any order of members
-    and any white space of JSON are accepted.
+    no such member, and no value is substituted then; ``source_commit`` is
+    the string of the member ``source_commit`` as the content states it
+    (ADR-0022 decision 3), not normalised, shortened or resolved, or ``None``
+    when the content has no such member, and no value is substituted then
+    either; ``others`` holds every top-level member that is none of
+    ``schema_version``, ``hw_profile``, ``tolerance`` and ``source_commit``,
+    as parsed and not interpreted, whatever its name and value (``tolerence``,
+    a top-level ``rtol`` or ``source-commit`` among them). Any order of
+    members and any white space of JSON are accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
     a byte order mark, is not exactly one JSON text (the tokens ``NaN``,
@@ -180,7 +223,7 @@ def parse(content):
 
 
 def validate(document):
-    """Check ``document``, a parsed ``instance.json``, against ADR-0018 and ADR-0020.
+    """Check ``document``, a parsed ``instance.json``, against ADR-0018, ADR-0020 and ADR-0022.
 
     ``document`` must be a ``dict`` with ``schema_version`` (an ``int`` from 0
     to :data:`hilclaw.keys.MAX_INTEGER`) and, at version 1, ``hw_profile``: a
@@ -191,14 +234,18 @@ def validate(document):
     or a ``float`` whose ``float`` is finite and not negative (ADR-0020
     decisions 2 to 4): for a value built in memory, an infinity, a NaN and an
     ``int`` that no ``float`` holds are invalid, and a ``bool`` is no number.
-    Its other members are not looked at. The rules for the text (the
+    It may hold ``source_commit``, which is then exactly a ``str`` of 40 or of
+    64 characters, each one of ``0``-``9`` and ``a``-``f`` (ADR-0022 decisions
+    3 and 5): for a value built in memory, a subclass of ``str`` and a
+    ``bytes`` are none. Only that form is checked, not that such a commit
+    exists. Its other members are not looked at. The rules for the text (the
     encoding, a member name twice) cannot be checked on a parsed value.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
-    naming the place (for example ``hw_profile.record.accelerator`` or
-    ``tolerance.rtol``). The version comes first: an integer other than
-    :data:`SCHEMA_VERSION` raises :class:`UnsupportedVersionError` before any
-    other member is looked at.
+    naming the place (for example ``hw_profile.record.accelerator``,
+    ``tolerance.rtol`` or ``source_commit``). The version comes first: an
+    integer other than :data:`SCHEMA_VERSION` raises
+    :class:`UnsupportedVersionError` before any other member is looked at.
     """
     _checked(document)
 
@@ -248,8 +295,9 @@ def hw_profile_of(data_root, run_id):
     ``hw_profile.record`` of ``runs/<run_id>/instance.json``, a ``dict`` valid
     by ADR-0001 and new at each call, which the caller may hand to
     :func:`hilclaw.backends.select`. Raises what :func:`read` raises, so
-    :class:`InvalidInstanceError` also for a file whose ``tolerance`` is
-    invalid: no member of an invalid file is used (ADR-0020 decision 3).
+    :class:`InvalidInstanceError` also for a file whose ``tolerance`` or
+    ``source_commit`` is invalid: no member of an invalid file is used
+    (ADR-0020 decision 3, ADR-0022 decision 5).
     """
     return read(data_root, run_id).hw_profile
 
@@ -266,6 +314,24 @@ def tolerance_of(data_root, run_id):
     for a missing, unreadable or invalid file or one of another version.
     """
     return read(data_root, run_id).tolerance
+
+
+def source_commit_of(data_root, run_id):
+    """Return the source commit the run ``run_id`` states, or ``None`` when it states none.
+
+    It is the ``source_commit`` of what :func:`read` returns (ADR-0022
+    decision 7): the string of the member ``source_commit`` of
+    ``runs/<run_id>/instance.json``, 40 or 64 characters of ``0``-``9`` and
+    ``a``-``f``, as the file states it at this call, or ``None`` for a valid
+    file without that member. ``None`` says that no source commit is stated;
+    no value stands in for it (ADR-0022 decision 5): not the commit of the
+    source this function runs from, which it does not look for. The string is
+    what the file states for the start of the instance; that the commit
+    exists or that the statement is true is not checked. Raises what
+    :func:`read` raises, so no source commit is returned for a missing,
+    unreadable or invalid file or one of another version.
+    """
+    return read(data_root, run_id).source_commit
 
 
 def _fail(place, rule, value):
@@ -289,8 +355,11 @@ def _checked(document):
         raise InvalidInstanceError("document: lacks the member hw_profile")
     key, record = _hw_profile(document["hw_profile"])
     tolerance = _tolerance(document["tolerance"]) if "tolerance" in document else None
+    commit = None
+    if "source_commit" in document:
+        commit = _source_commit(document["source_commit"])
     others = {name: value for name, value in document.items() if name not in _DEFINED}
-    return Instance(key, record, tolerance, others)
+    return Instance(key, record, tolerance, commit, others)
 
 
 def _hw_profile(section):
@@ -336,6 +405,17 @@ def _number(name, value):
     if not 0 <= number < math.inf:
         _fail(f"tolerance.{name}", "a finite number that is not negative", value)
     return abs(number)
+
+
+def _source_commit(value):
+    if (
+        type(value) is not str
+        or len(value) not in _COMMIT_LENGTHS
+        or not _COMMIT_CHARACTERS.issuperset(value)
+    ):
+        rule = "a str of 40 or of 64 characters, each one of 0-9 and a-f"
+        _fail("source_commit", rule, value)
+    return value
 
 
 def _object(pairs):
