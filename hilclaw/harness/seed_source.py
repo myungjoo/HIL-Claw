@@ -34,9 +34,11 @@ Conventions of this module (not rules of the record):
 What this module does not do: it draws at no moment of its own and decides
 neither who asks nor when; it keeps nothing between two calls and holds no
 generator, no state and no default source; it reads no environment variable,
-option, configuration, file or clock; it writes no file, no stream and no log;
-it names no tool and no kind of tool failure; and it does not say whether a
-seed may be kept or shown after it was used.
+option, configuration or clock and no file of the data plane or of the
+source, how the platform reaches its generator being the platform's; it
+writes no file, no stream and no log; it names no tool and no kind of tool
+failure; and it does not say whether a seed may be kept or shown after it was
+used.
 """
 
 import secrets
@@ -56,7 +58,8 @@ def system():
     0 <= seed < 2**64 by ``secrets.randbits``. The function takes no argument;
     it is not seeded and cannot be re-seeded, uses neither the default
     generator of the module ``random`` nor NumPy's, and derives nothing from
-    an environment variable, a file, a clock, a counter or an earlier call.
+    an environment variable, a file of the data plane or of the source, a
+    clock, a counter or an earlier call.
     How hard its output is to predict is what the generator of the platform
     gives and nothing stronger. What the platform raises when it has no random
     source is passed on.
