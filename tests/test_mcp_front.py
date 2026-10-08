@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from hilclaw import __main__ as command_line
-from hilclaw import __version__, mcp_front
+from hilclaw import __version__, config, data_root_source, mcp_front, tools
 from hilclaw.mcp_front import main, mcp_name, mcp_names
 from hilclaw.tools import Registry, ToolFailure, default_registry
 
@@ -451,7 +451,7 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 
 def test_the_fixed_tool_set_is_empty_today():
     """No FR-10 / C-3 tool has a contract yet; this changes when the first tool lands."""
-    assert mcp_names(default_registry()) == {}
+    assert mcp_names(default_registry(lambda: REPO_ROOT)) == {}
     data = message("tools/list", 0) + b"".join(
         call(i, name) for i, name in enumerate(FIXED_NAMES.values(), 1)
     )
@@ -463,6 +463,32 @@ def test_the_fixed_tool_set_is_empty_today():
     assert len(refused) == 6
     for i, (name, document) in enumerate(zip(FIXED_NAMES.values(), refused), 1):
         assert error_of(document, -32602, i) == f"unknown tool {name!r}"
+
+
+def test_the_default_registry_is_bound_to_the_configured_source(monkeypatch):
+    bound = []
+    monkeypatch.setattr(
+        tools, "default_registry", lambda source: bound.append(source) or Registry()
+    )
+    main([], stdin=io.BytesIO(b""), stdout=io.BytesIO(), stderr=io.BytesIO())
+    assert bound == [data_root_source.configured]
+    main([], registry=Registry(), stdin=io.BytesIO(b""), stdout=io.BytesIO())
+    assert len(bound) == 1
+
+
+def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(config, "DEFAULT_CONFIG_PATH", tmp_path / "missing.json")
+    with pytest.raises(config.ConfigError):
+        config.load_data_repo()
+    data = message("tools/list", 1) + call(2, "sim_run", {})
+    stdout, stderr = io.BytesIO(), io.BytesIO()
+    assert main([], stdin=io.BytesIO(data), stdout=stdout, stderr=stderr) == 0
+    listed, refused = responses(stdout.getvalue())
+    assert listed == {"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}
+    assert error_of(refused, -32602, 2) == "unknown tool 'sim_run'"
+    assert stderr.getvalue() == b""
 
 
 # Protocol revisions and the connection state

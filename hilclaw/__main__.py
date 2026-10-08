@@ -22,7 +22,7 @@ Standard error gets one line of free text on a failure and is never parsed.
 import contextlib
 import sys
 
-from hilclaw import tools
+from hilclaw import data_root_source, tools
 
 EXIT_RESULT = 0
 EXIT_TOOL_FAILURE = 3
@@ -72,12 +72,14 @@ def main(argv=None, *, registry=None, stdin=None, stdout=None, stderr=None):
     """Answer one tool call and return the exit status (0 result, 3 or 4 tool failure).
 
     ``argv`` defaults to ``sys.argv[1:]`` and ``registry`` to
-    :func:`hilclaw.tools.default_registry`. ``stdin``, ``stdout`` and
+    :func:`hilclaw.tools.default_registry` bound to the configured data root
+    (:func:`hilclaw.data_root_source.configured`). ``stdin``, ``stdout`` and
     ``stderr`` are binary streams and default to the standard ones; a
     standard stream that is closed or has no binary layer counts as closed.
     """
     args = sys.argv[1:] if argv is None else list(argv)
-    registry = tools.default_registry() if registry is None else registry
+    if registry is None:
+        registry = tools.default_registry(data_root_source.configured)
     stdin = _standard("stdin") if stdin is None else stdin
     stdout = _standard("stdout") if stdout is None else stdout
     stderr = _standard("stderr") if stderr is None else stderr
