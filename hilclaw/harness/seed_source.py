@@ -27,7 +27,9 @@ Conventions of this module (not rules of the record):
   seeds.
 - :class:`SeedSourceError` is the one class for a source that fails and for a
   source that names no seed. Its message names a type and the rule and never
-  shows what a source returned or the message of what a source raised.
+  shows what a source returned or the message of what a source raised. The
+  type names in it are the source's own, and neither the chained exception
+  nor the frames of a traceback, which hold a refused value, are filtered.
 
 What this module does not do: it draws at no moment of its own and decides
 neither who asks nor when; it keeps nothing between two calls and holds no
