@@ -50,8 +50,9 @@ complete instance record, and not enough to start a run (decisions 1 and 2).
 It reads no other file, so the stored record of the key below ``db/`` is not
 read or compared (decision 4) and this reader does not need it to exist; how
 the two records relate is open (OD-8 sub-question 18). None of its errors is a
-:class:`hilclaw.tools.ToolFailure`, and it gives no kind to a run whose
-hw_profile cannot be had (OD-18 sub-question 4). It reads no other version
+:class:`hilclaw.tools.ToolFailure`: the kind a call of a tool answers for them
+is given by the tool function that calls this reader (:mod:`hilclaw.hw_tool`,
+ADR-0019), not here. It reads no other version
 (OD-11) and says nothing of what writes the file, of when, or of a run
 directory without it (OD-8 sub-questions 10 and 17). Nothing is kept between
 calls, so a file changed between two calls is read as changed (decision 6).

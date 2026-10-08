@@ -45,13 +45,6 @@ TOOL = "sim.run"
 STEP = "example_step"
 SPEND = {"example_axis": 7}
 REQUEST = {"run_id": RUN, "round": 3, "candidate": 2, "attempt": 1, "execution": 1}
-NOT_FOR_AN_UNUSABLE_RUN = {
-    tools.KIND_INVALID_REQUEST,
-    tools.KIND_NO_DATA_ROOT,
-    tools.KIND_STEP_OPEN,
-    tools.KIND_NO_BACKEND,
-    tools.KIND_NOT_OFFERED,
-}
 
 # The Example of ADR-0018, as written in the record: the shape of the member, not a valid file.
 EXAMPLE = b"""{
@@ -966,7 +959,7 @@ def test_a_file_in_the_place_of_the_data_root(tmp_path, call):
 class Tool:
     """A test-only journaled HW tool whose reader is the one of the module."""
 
-    def __init__(self, root, offered=(TOOL,)):
+    def __init__(self, root, offered=(TOOL,), reader=hw_profile_of):
         self.asked, self.performed = [], 0
         self.table = BackendTable([mock_backend.backend(self.script, offered)])
         self.function = hw_tool.tool_function(
@@ -975,7 +968,7 @@ class Tool:
             numbers=("round", "candidate", "attempt"),
             source=lambda: root,
             table=self.table,
-            hw_profile_of=hw_profile_of,
+            hw_profile_of=reader,
             check=lambda request: None,
             perform=self.perform,
         )
@@ -1043,15 +1036,34 @@ def kinds(root, run=RUN):
 
 
 UNUSABLE = {
-    "missing": (None, MissingInstanceError),
-    "empty": (b"", InvalidInstanceError),
-    "partial": (raw(doc())[:40], InvalidInstanceError),
+    "missing": (None, MissingInstanceError, "run_file_missing"),
+    "empty": (b"", InvalidInstanceError, "run_file_invalid"),
+    "partial": (raw(doc())[:40], InvalidInstanceError, "run_file_invalid"),
     "a hw_profile that breaks decision 3": (
         raw(doc(hw_profile=section(key=OTHER_KEY))),
         InvalidInstanceError,
+        "run_file_invalid",
     ),
-    "another version": (raw(doc(schema_version=2)), UnsupportedVersionError),
+    "another version": (
+        raw(doc(schema_version=2)),
+        UnsupportedVersionError,
+        "run_file_unsupported",
+    ),
 }
+
+
+def assert_no_step_started(tool, root, kind, cause, message):
+    before = snapshot(root)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(dict(REQUEST))
+    assert caught.value.kind == kind
+    assert type(caught.value.__cause__) is cause
+    assert caught.value.message.startswith(f"{FILE}: {message}")
+    assert str(root) not in caught.value.message
+    for way in THROUGH_CALL.values():
+        assert way(tool, REQUEST) == (True, caught.value.error_object())
+    assert (tool.asked, tool.performed) == ([], 0)
+    assert snapshot(root) == before
 
 
 @pytest.mark.parametrize("way", THROUGH_CALL)
@@ -1079,34 +1091,107 @@ def test_an_ended_identity_is_answered_after_the_file_was_removed(root):
         assert way(tool, REQUEST) == (False, {"example_member": 1})
     assert tool.function(dict(REQUEST)) == {"example_member": 1}
     assert (len(tool.asked), tool.performed) == (1, 1)
-    with pytest.raises(MissingInstanceError):
+    with pytest.raises(ToolFailure) as caught:
         tool.function({**REQUEST, "execution": 2})
+    assert caught.value.kind == tools.KIND_RUN_FILE_MISSING == "run_file_missing"
     assert kinds(root) == ["step_started", "step_ended"]
 
 
 @pytest.mark.parametrize("case", UNUSABLE)
 def test_a_run_whose_hw_profile_cannot_be_had_starts_no_step(root, case):
-    content, error = UNUSABLE[case]
+    content, error, kind = UNUSABLE[case]
     started(root)
     if content is not None:
         place(root, content)
-    before = snapshot(root)
     tool = Tool(root)
 
-    with pytest.raises(error) as caught:
-        tool.function(dict(REQUEST))
-    assert not isinstance(caught.value, ToolFailure)
-    for way in THROUGH_CALL.values():
-        failed, answer = way(tool, REQUEST)
-        assert failed is True
-        assert answer["error"]["kind"] not in NOT_FOR_AN_UNUSABLE_RUN
-    assert (tool.asked, tool.performed) == ([], 0)
-    assert snapshot(root) == before
+    assert_no_step_started(tool, root, kind, error, "")
 
     place(root, raw(doc()))
     assert tool.function(dict(REQUEST)) == {"example_member": 1}
     assert kinds(root) == ["step_started", "step_ended"]
     assert (len(tool.asked), tool.performed) == (1, 1)
+
+
+def test_a_directory_in_the_place_of_the_file_is_run_file_invalid(root):
+    (started(root) / FILE).mkdir()
+
+    assert_no_step_started(
+        Tool(root),
+        root,
+        "run_file_invalid",
+        InvalidInstanceError,
+        "is not a regular file",
+    )
+
+
+def failing_at_the_bytes(monkeypatch, read_bytes):
+    """The reader of the module, with ``Path.read_bytes`` replaced during its call only."""
+
+    def reader(data_root, run_id):
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, "read_bytes", read_bytes)
+            return hw_profile_of(data_root, run_id)
+
+    return reader
+
+
+def test_a_file_that_cannot_be_read_is_run_file_unreadable(root, monkeypatch):
+    place(started(root), raw(doc()))
+
+    def read_bytes(path):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    assert_no_step_started(
+        Tool(root, reader=failing_at_the_bytes(monkeypatch, read_bytes)),
+        root,
+        "run_file_unreadable",
+        PermissionError,
+        "could not be read: PermissionError: Permission denied",
+    )
+
+    assert Tool(root).function(dict(REQUEST)) == {"example_member": 1}
+    assert kinds(root) == ["step_started", "step_ended"]
+
+
+def test_a_file_gone_between_the_check_and_the_read_is_run_file_missing(
+    root, monkeypatch
+):
+    place(started(root), raw(doc()))
+
+    def read_bytes(path):
+        raise FileNotFoundError(2, "No such file or directory", str(path))
+
+    assert_no_step_started(
+        Tool(root, reader=failing_at_the_bytes(monkeypatch, read_bytes)),
+        root,
+        "run_file_missing",
+        FileNotFoundError,
+        "is missing",
+    )
+
+
+def test_a_data_root_gone_at_the_call_of_the_reader_is_run_file_missing(root):
+    state = started(root) / f"runs/{RUN}/STATE.json"
+
+    def reader(data_root, run_id):
+        state.unlink()
+        for directory in (state.parent, state.parent.parent, root):
+            directory.rmdir()
+        return hw_profile_of(data_root, run_id)
+
+    tool = Tool(root, reader=reader)
+
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(dict(REQUEST))
+    gone = f"{FILE}: is missing: the data root is not an existing directory"
+    assert (caught.value.kind, caught.value.message) == ("run_file_missing", gone)
+    assert type(caught.value.__cause__) is FileNotFoundError
+    assert (tool.asked, tool.performed) == ([], 0)
+    assert not root.exists()
+    for way in THROUGH_CALL.values():
+        failed, answer = way(tool, REQUEST)
+        assert (failed, answer["error"]["kind"]) == (True, tools.KIND_NO_DATA_ROOT)
 
 
 def test_each_run_selects_by_its_own_file(root):
