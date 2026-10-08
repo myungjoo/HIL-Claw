@@ -438,12 +438,14 @@ def test_register_checks_the_description_before_the_schema():
 # The reserved kinds
 
 
-def test_the_reserved_kinds_are_the_five_of_the_record():
+def test_the_reserved_kinds_are_the_seven_of_the_records():
     assert tools.KIND_INVALID_REQUEST == "invalid_request"
     assert tools.KIND_NO_DATA_ROOT == "no_data_root"
     assert tools.KIND_STEP_OPEN == "step_open"
     assert tools.KIND_TOOL_CRASHED == "tool_crashed"
     assert tools.KIND_BAD_RESULT == "bad_result"
+    assert tools.KIND_NO_BACKEND == "no_backend"
+    assert tools.KIND_NOT_OFFERED == "not_offered"
     assert type(tools.RESERVED_KINDS) is frozenset
     assert tools.RESERVED_KINDS == {
         "invalid_request",
@@ -451,6 +453,8 @@ def test_the_reserved_kinds_are_the_five_of_the_record():
         "step_open",
         "tool_crashed",
         "bad_result",
+        "no_backend",
+        "not_offered",
     }
     assert journaled_step.KIND_STEP_OPEN is tools.KIND_STEP_OPEN
 
