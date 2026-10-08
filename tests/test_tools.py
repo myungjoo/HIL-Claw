@@ -1,4 +1,6 @@
+import inspect
 import json
+from pathlib import Path
 
 import pytest
 
@@ -458,12 +460,47 @@ def test_a_tool_failure_takes_a_reserved_kind_from_anyone(kind):
     assert ToolFailure(kind, "stated by a tool").kind == kind
 
 
+class CountingSource:
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self):
+        self.calls += 1
+        raise RuntimeError("no data root in this test")
+
+
 def test_default_registry_is_empty_and_not_shared():
-    first = default_registry()
+    source = CountingSource()
+    first = default_registry(source)
     assert isinstance(first, Registry)
     assert first.names() == ()
     first.register("sim.run", Recorder(), DESCRIPTION, SCHEMA)
-    assert default_registry().names() == ()
+    assert default_registry(source).names() == ()
+    assert default_registry(data_root_source=source).names() == ()
+
+
+def test_default_registry_does_not_call_the_source():
+    source = CountingSource()
+    registry = default_registry(source)
+    assert registry.names() == ()
+    for read in (registry.get, registry.definition):
+        with pytest.raises(UnknownToolError):
+            read("sim.run")
+    with pytest.raises(UnknownToolError):
+        call(registry, "sim.run", {})
+    assert source.calls == 0
+
+
+@pytest.mark.parametrize("source", [None, "data", b"data", 3, {}, Path(".")])
+def test_default_registry_refuses_a_source_that_is_not_callable(source):
+    with pytest.raises(TypeError, match="must be callable"):
+        default_registry(source)
+
+
+def test_default_registry_has_no_default_source():
+    (parameter,) = inspect.signature(default_registry).parameters.values()
+    assert parameter.name == "data_root_source"
+    assert parameter.default is inspect.Parameter.empty
 
 
 # check_json_object

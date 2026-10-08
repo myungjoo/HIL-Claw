@@ -162,12 +162,19 @@ class Registry:
         return tuple(sorted(self._tools))
 
 
-def default_registry():
+def default_registry(data_root_source):
     """Return a new registry holding the fixed tool set of the package.
+
+    ``data_root_source`` is the callable without arguments (ADR-0015
+    decision 3) to which every tool of the set that needs the data plane is
+    bound; building the registry does not call it. Raises :class:`TypeError`
+    when it is not callable.
 
     The set is empty. A tool is added here, in the source, and in no other way:
     no option, environment variable, entry point or plugin registers one.
     """
+    if not callable(data_root_source):
+        raise TypeError("the data-root source must be callable")
     return Registry()
 
 

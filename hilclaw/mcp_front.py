@@ -42,7 +42,7 @@ import contextlib
 import json
 import sys
 
-from hilclaw import __version__, tools
+from hilclaw import __version__, data_root_source, tools
 
 SERVER_NAME = "hilclaw"
 PROTOCOL_VERSIONS = ("2025-06-18",)
@@ -206,13 +206,15 @@ def main(argv=None, *, registry=None, stdin=None, stdout=None, stderr=None):
     """Serve the registry over standard input and output and return the exit status (0 or 4).
 
     ``argv`` defaults to ``sys.argv[1:]`` and must be empty; ``registry``
-    defaults to :func:`hilclaw.tools.default_registry`. ``stdin``, ``stdout``
+    defaults to :func:`hilclaw.tools.default_registry` bound to the configured
+    data root (:func:`hilclaw.data_root_source.configured`). ``stdin``, ``stdout``
     and ``stderr`` are binary streams and default to the standard ones; a
     standard stream that is closed or has no binary layer counts as closed.
     A ``KeyboardInterrupt`` or ``SystemExit`` of a tool function is not caught.
     """
     args = sys.argv[1:] if argv is None else list(argv)
-    registry = tools.default_registry() if registry is None else registry
+    if registry is None:
+        registry = tools.default_registry(data_root_source.configured)
     stdin = _standard("stdin") if stdin is None else stdin
     stdout = _standard("stdout") if stdout is None else stdout
     stderr = _standard("stderr") if stderr is None else stderr
