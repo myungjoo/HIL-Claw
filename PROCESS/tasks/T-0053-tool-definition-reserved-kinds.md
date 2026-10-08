@@ -2,7 +2,7 @@
 id: T-0053
 title: Make the tool registry hold a tool definition (name, tool function, description, input schema), name the reserved kinds of ADR-0015 in hilclaw/tools.py, and list each tool in the MCP front with the description and the schema the registry holds instead of the placeholder
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, NFR-6, C-3, "#5 A-12"]
 dependsOn: [T-0038, T-0039, T-0048, T-0052]
@@ -146,3 +146,42 @@ New cases:
 - (unchanged) The rest of P1-8; the integrator items after 2026-10-14 (T-0040, T-0042, T-0046, T-0049 and T-0052 Follow-ups); OD-18 sub-questions ①, ③ and ⑤; the T-0047, T-0048, T-0050 and T-0051 follow-ups.
 
 ## Result
+- **Outcome**: DONE. PR #46 (https://github.com/myungjoo/HIL-Claw/pull/46) squash-merged to `main` as `f3e22f1`; remote and local branch `claude/T-0053-tool-definition-reserved-kinds` deleted. Branch commits: `bb81373` (implementation, written by the session that died) and `0b9b22f` (review round 1 response). Resumed under DRIVER §3-5: nothing with `Task: T-0053` was on `origin/main` and PR #46 was an open Draft, so the work continued from that PR; the existing commit was checked against the Acceptance Criteria and not re-implemented.
+- **Review**: 2 rounds by a context-isolated `dev-reviewer`.
+  - Round 1, Request changes (https://github.com/myungjoo/HIL-Claw/pull/46#issuecomment-6050823854): two Minor, three Nit, all addressed in `0b9b22f`.
+    1. Minor: a schema nested about 250 levels can be registered and then make `tools/list` end in an uncaught `RecursionError`. The limit is now stated in the docstring of `Registry.definition`; it is not removed.
+    2. Minor: the `RecursionError` branch of `register` had no test. It now has its own message and a test.
+    3. Nit: wording of the `KIND_TOOL_CRASHED` comment.
+    4. Nit: wrapping of two docstring paragraphs.
+    5. Nit: the child process of `tests/test_mcp_front.py` listed one tool; it now lists two.
+  - Round 2, Approve (https://github.com/myungjoo/HIL-Claw/pull/46#issuecomment-6050888079): one Nit with no change requested (a schema too deep to check says "is not JSON: nested too deeply", one too deep to copy says "is nested too deeply"). The reviewer confirmed points (a) to (e) of the task: no security suspicion, no design choice needing a record or the owner, nothing of slice 2 or 3 or of the Boundaries of ADR-0015.
+- **Public API as landed (`hilclaw.tools`)** — the next slices are written against it:
+  - `Registry.register(name, function, description, input_schema)`: four positional-or-keyword parameters, no default.
+  - `Registry.definition(name) -> ToolDefinition`; `ToolDefinition` is a `typing.NamedTuple` with `name`, `function`, `description`, `input_schema`. It raises `UnknownToolError` as `get` does.
+  - `Registry.get(name)` still returns the tool function; `Registry.names()` and `default_registry()` (empty) are unchanged.
+  - `KIND_INVALID_REQUEST`, `KIND_NO_DATA_ROOT`, `KIND_STEP_OPEN`, `KIND_TOOL_CRASHED`, `KIND_BAD_RESULT`, and `RESERVED_KINDS` (a `frozenset` of the five).
+  - `hilclaw.journaled_step.KIND_STEP_OPEN` is `tools.KIND_STEP_OPEN`.
+  - `tools/list` of `hilclaw/mcp_front.py` answers `name`, `description`, `inputSchema` for each tool, the last two as the registry holds them.
+  - Nothing enforces a reserved kind, no request is compared with a schema, and nothing raises `invalid_request` or `no_data_root` yet.
+- **Provisional choices** (the records do not fix them):
+  - `ToolDefinition` as a `NamedTuple` with `definition()` as the reader: immutable, no new dependency.
+  - No default for the description or the schema: a default would be a text or a schema not stated with the tool.
+  - The registry keeps a `copy.deepcopy` of the schema at registration and `definition()` returns a new deep copy at each reading, so neither the registrant nor a reader changes the next list.
+  - A description of whitespace only is refused like an empty one; there is no upper bound on its length and the text is not stripped.
+  - A schema whose `type` is a list (`["object"]`) is refused: the record says "whose `type` is `"object"`".
+  - The two new checks come after the four existing ones (description, then schema), so earlier refusals keep their errors.
+  - A schema that passes the strict check but is too deep to copy is refused with `ValueError` ("nested too deeply").
+  - `definition()` of a name that is not a `str` raises `UnknownToolError`.
+  - The MCP list has the member order `name`, `description`, `inputSchema`.
+- **Known limit**, stated in the docstring of `Registry.definition`: a schema nested close to the interpreter's recursion limit can be registered and then fail to be read from a deeper call with a `RecursionError`, which the MCP front does not catch when it lists the tools.
+- **Existing tests whose expectation changed**: the two list assertions of `tests/test_mcp_front.py` (`test_handshake_list_and_call`, `test_process_call_is_exact_bytes_with_lf`) now show the registered description and schema, the latter for two tools; `test_signature_and_types` of `tests/test_journaled_step.py` also asserts the identity with `tools.KIND_STEP_OPEN`. Every helper that registers a tool passes a description and a schema. No assertion was weakened; `test_a_step_that_fails_with_the_kind_of_an_open_step_is_ended` is unchanged.
+- **Verification**:
+  - Local `python -m pytest`: 5175 passed, 146 skipped on the final head (5096 passed, 146 skipped before the task; 5174 after the first commit). `python -m ruff check .` and `python -m ruff format --check .` are clean.
+  - Coverage (rule ①): on `bb81373`, every executable line of `hilclaw/tools.py`, `hilclaw/mcp_front.py` and `hilclaw/journaled_step.py` was executed by `tests/test_tools.py`, `tests/test_mcp_front.py` and `tests/test_journaled_step.py`, except the `__main__` guard of `mcp_front.py` (line 244), which only the child process runs. It was measured with a `sys.monitoring` line script kept outside the repository; nothing was installed. The measurement was not repeated after `0b9b22f`, whose one new branch is reached by the new test.
+  - `git grep -n '"type": "object"' -- hilclaw/` has no match; the changed files are `i/lf`; `git status --short` is empty after the tests; the diff lists only the seven files of `touchesFiles`.
+  - CI on the final head `0b9b22f`: five checks succeeded (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`) — https://github.com/myungjoo/HIL-Claw/actions/runs/37717397672
+  - `push` run on `main` for `f3e22f1`: success — https://github.com/myungjoo/HIL-Claw/actions/runs/37717740884
+- **Line counts after the change**: `hilclaw/tools.py` 273, `hilclaw/mcp_front.py` 244, `hilclaw/journaled_step.py` 202. Non-test change is +121/-38 lines in 3 files (cap 300 LOC / 5 files).
+- **Language**: Python, because the three modules are Python.
+- **PLAN**: this task ticks no PLAN checkbox (P1-1 stays open).
+- **Follow-ups left**: those of the task file's `## Follow-ups`, unchanged (slice 2 the data-root source, slice 3 the journaled path, whether the command-line front shows a description and a schema, the backend record). New and small: whether the MCP front should answer a `tools/list` that fails on a deeply nested schema instead of letting the `RecursionError` leave `main` — today it is a documented limit.
