@@ -949,6 +949,61 @@ def test_a_log_that_goes_during_the_read_leaves_a_stored_position_beyond_it(
     assert snapshot(root) == before
 
 
+def gone(root):
+    return FileNotFoundError(2, "No such file or directory", str(root / LOG))
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+def test_a_log_that_goes_in_both_reads_of_one_call_is_a_log_that_is_not_there(
+    root, monkeypatch, identity
+):
+    place(root, raw(started(identity), ended(identity, 1, result={})))
+    step = Step()
+    with monkeypatch.context() as patch:
+        fail_read(patch, "read_bytes", "events.ndjson", gone(root))
+        assert run(root, RUN, identity, step) == RESULT
+    assert step.calls == 1
+    assert len(lines(root)) == 4
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+def test_a_log_that_goes_in_both_reads_leaves_a_stored_position_beyond_it(
+    root, monkeypatch, identity
+):
+    place(root, raw(other()))
+    store(root, at(1))
+    before = snapshot(root)
+    with monkeypatch.context() as patch:
+        fail_read(patch, "read_bytes", "events.ndjson", gone(root))
+        failure = answered(root, INVALID, events.PositionBeyondLogError, identity, LOG)
+    assert failure.message == (
+        f"{LOG}: position 1 is beyond the end of the log, complete lines: 0"
+    )
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+def test_a_data_root_that_was_gone_at_the_first_read_only_is_read_again(
+    root, monkeypatch, identity
+):
+    place(
+        root, raw(started(identity), ended(identity, 1, result={"example_member": 2}))
+    )
+    real, calls = events.read, []
+
+    def read(data_root, run_id, position=0):
+        calls.append(position)
+        if len(calls) == 1:
+            raise FileNotFoundError(f"data root is not an existing directory: {root}")
+        return real(data_root, run_id, position)
+
+    step = Step()
+    with monkeypatch.context() as patch:
+        patch.setattr(events, "read", read)
+        assert run(root, RUN, identity, step) == {"example_member": 2}
+    assert (step.calls, calls) == (0, [0, 0])
+
+
 # --- no situation: what the lookup does not answer with one of the four kinds ---
 
 

@@ -54,7 +54,9 @@ Conventions of this module, which the records do not fix:
   ``run_file_unreadable``: any other :class:`OSError` of either read.
 - A log that is not there below a data root that is there is no such
   situation, also when it goes between the check and the read of one call:
-  the lookup goes on with no line read. Only the reads and the lookup are
+  the log is then read once more, so that the reader says what is there, and
+  only when it goes again in that read the lookup goes on with no line read.
+  Only the reads and the lookup are
   answered this way: the same classes out of ``before_start``, out of the
   step or out of an append are not.
 - The message of such a failure starts with the path of the file relative to
@@ -241,13 +243,16 @@ def _state(data_root, run_id, identity):
 
 
 def _lines(data_root, run_id, position):
-    try:
-        read = events.read(data_root, run_id, position).events
-    except run_files.NOT_THERE:
-        if not run_files.data_root_is_there(data_root):
-            raise
-        return 0, []
-    return position + len(read), read
+    for last in (False, True):
+        try:
+            read = events.read(data_root, run_id, position).events
+        except run_files.NOT_THERE:
+            if not run_files.data_root_is_there(data_root):
+                raise
+            if last:
+                return 0, []
+        else:
+            return position + len(read), read
 
 
 def _answer(result, failure):
