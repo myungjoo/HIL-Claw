@@ -2,7 +2,7 @@
 id: T-0063
 title: Add the three-state calibration of the verification harness for gemm (conforming, failing and violating C kernels as test fixtures, and the tests that show the three verdicts) per ADR-0003 and ADR-0017 decision 8
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, OD-16, "#5 A-7", "#5 D12"]
 dependsOn: [T-0020, T-0036, T-0059, T-0060, T-0061, T-0062]
@@ -110,3 +110,46 @@ All of them use real clang (fixture as in `tests/harness/test_verification_build
 - (integrator or planner, document mode, small) Once the calibration is on `main`: whether the OD-16 register row or OpenDecisionProposals should say that the `gemm` harness now meets its acceptance criterion (ADR-0003 Consequences); the still open notes from T-0059 / T-0060 (README "로컬 검사", annotations of ADR-0010 / ADR-0015) and T-0062 follow-up (a) (two docstring sentences of `timing_build.py`).
 
 ## Result
+**DONE.** PR #56 https://github.com/myungjoo/HIL-Claw/pull/56, squash commit `d0f316e` on `main`, merged 2026-10-08T08:30:13Z. Branch deleted (remote and local).
+
+**Review**: 1 round, Approve (context-isolated `dev-reviewer`, comment https://github.com/myungjoo/HIL-Claw/pull/56#issuecomment-6055918805). No change requested. Findings: one nit (the functional half is repeated for each `draws` parameter, 12 runs instead of the recommended six to nine - left as it is, with the reviewer's agreement: the cost is negligible and it keeps both halves of every state in one test) and two notes (the violating kernel is wrong elsewhere with overwhelming probability, not by construction, which ADR-0003 decision 4 admits as a negligible exception; excluding the known seed alone is enough, because a seed whose draw 1 or 2 reproduces the known inputs still fails on draw 0). The reviewer regenerated the 15 constants bit for bit and tried the known seed's draws 1..1999 and 30000 random seeds: violating at least 14 of 15 elements out, conforming largest deviation 3.5e-7. No security finding.
+
+**CI**: 1 run on the PR, 0 failures: https://github.com/myungjoo/HIL-Claw/actions/runs/37749684992 - six checks successful on head `72198e2`. Both Python gates show `tests/harness/test_calibration.py ......` (6 tests ran, none skipped) and `6335 passed`. The C gate (clang 18.1.3) compiled the three kernel files. Coverage gate: lines 2585/2601 = 99.38%, functions 262/262 = 100.00%. `push` run on `main` after the merge: success, https://github.com/myungjoo/HIL-Claw/actions/runs/37750263110 (same counts and percentages).
+
+**Local** (Windows, no clang; venv of T-0060 left in place, unchanged): `python -m pytest` 6069 passed, 266 skipped (the 6 new tests skip); `ruff check .` and `ruff format --check .` clean; `git ls-files --eol` `i/lf` for the four files; the diff against `origin/main` listed only the four files. Optional check with the clang 14 of the machine's WSL, outputs outside the repository: the three kernels build under the C gate's line and give 0 / 15 / 0 failing elements on the known draw and 0 / 15 / 15 on three draws of another seed.
+
+**Files as landed** (4 new, nothing else; 57 lines of C, 84 of Python, all test code):
+- `tests/harness/calibration/gemm_conforming.c` - plain triple loop.
+- `tests/harness/calibration/gemm_failing.c` - every element is `(float)k + 1.0f`; wrong by more than 1 on every draw (ADR-0017 decision 3 bounds every exact element by `k`).
+- `tests/harness/calibration/gemm_violating.c` - class V1, the literal hard-coded output: ignores `a` and `b` and writes a table of 15 C99 hexadecimal constants, repeated for another `m*n`. Chosen over a kernel that recognises its inputs because it is the plainest form of threat B (1).
+- `tests/harness/test_calibration.py` - a session fixture builds the three executables with `build_verification_executable`; one test parametrized by state (3) and by the draws of the contract run (1, 3) asserts `broken is None` and then the verdict only, for the functional test and the contract run: conforming PASS/PASS, failing FAIL/FAIL, violating PASS/FAIL.
+
+**Table constants** of the violating kernel, regenerated with (pinned numpy 2.4.6):
+```python
+import numpy as np
+from hilclaw.harness import verification_arrays as va
+a, b = va.draw_inputs(3, 4, 5, seed=2026, draw=0)
+for row in va.reference(a, b).astype(np.float32):
+    cells = []
+    for v in row:
+        mantissa, exponent = float(v).hex().split("p")
+        assert mantissa.endswith("0000000")
+        cells.append(f"{mantissa[:-7]}p{exponent}f")
+    print("    " + ", ".join(cells) + ",")
+```
+
+**Test choices** (provisional; none is a rule of the harness or of a record):
+- Real `.c` files, not strings in the test: the C gate compiles them and a reader finds them as kernels.
+- Shape m=3, k=4, n=5: small and non-square.
+- Known seed 2026, `draws=1` for the functional test: the violating kernel holds one draw.
+- Contract seed `secrets.randbits(64)`, redrawn only if equal to the known seed, shown in the assertion message; draws 1 and 3 (no partial verdict).
+- `rtol=1e-5`, `atol=1e-3` for both runs: the values of the real-kernel tests of T-0061 / T-0062; `atol` > 0 per ADR-0017 decision 5.
+- Flags `-std=c99 -Wall -Wextra -Wpedantic -Werror -O2`: those of the C gate. Build time limit 120 s, run time limit 60 s.
+
+**Language**: C for the kernels because the kernel language of `cpu_standin` is C (#5 A-7 (2), ADR-0003 decision 5); Python for the tests, as the rest of the suite. No layer-2 code was added.
+
+**Records**: no criterion disagreed with ADR-0003 or ADR-0017. Issue #5 had no comment after the ADR-0017 notice at start. The reviewer confirmed the planner's judgements: the two records suffice, the A-13 reading holds (no `hilclaw/` change, no dependency, no data-plane name), and nothing left open by the records was decided.
+
+**PLAN P1-4**: the executor's and the reviewer's reading agree with the planner's - **P1-4 is complete with this task and can be ticked**. What remains is outside it: the "harness pass" half of the C gate (P0.5-1) and the open sub-questions (other shapes; repetition per dtype, layout, backend or language).
+
+**Follow-ups**: none new; the three under `## Follow-ups` stand. No HQ.
