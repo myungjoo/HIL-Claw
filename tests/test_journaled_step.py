@@ -1004,6 +1004,29 @@ def test_a_data_root_that_was_gone_at_the_first_read_only_is_read_again(
     assert (step.calls, calls) == (0, [0, 0])
 
 
+@pytest.mark.parametrize("identity", [ID, EARLIER])
+def test_a_data_root_that_goes_before_the_second_read_of_the_log_is_missing(
+    root, monkeypatch, identity
+):
+    place(root, raw(other()))
+    before, moved, calls = snapshot(root), root.with_name("moved"), []
+
+    def read(data_root, run_id, position=0):
+        calls.append(position)
+        if len(calls) == 2:
+            root.rename(moved)
+        raise FileNotFoundError(2, "No such file or directory", str(root / LOG))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(events, "read", read)
+        failure = answered(root, MISSING, FileNotFoundError, identity, LOG, once=True)
+    assert failure.message == (
+        f"{LOG}: is missing: the data root is not an existing directory"
+    )
+    assert calls == [0, 0]
+    assert not root.exists() and snapshot(moved) == before
+
+
 # --- no situation: what the lookup does not answer with one of the four kinds ---
 
 
