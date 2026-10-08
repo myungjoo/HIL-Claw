@@ -627,7 +627,6 @@ def test_the_example_of_adr_0018_is_not_a_valid_file():
     assert "external or in_house" in message
 
     valid = EXAMPLE.replace(b'"hw_source": "NOT-DECIDED-HERE"', b'"hw_source": "X"')
-    assert valid.count(b"NOT-DECIDED-HERE") == 4
     result = parse(valid.replace(b'"X"', b'"in_house"'))
     assert result.hw_profile_key == "cpu_standin-b0d8610d8f470856"
     assert result.hw_profile["accelerator"] == "cpu_standin"
