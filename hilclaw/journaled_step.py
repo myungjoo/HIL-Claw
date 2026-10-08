@@ -66,8 +66,8 @@ again, counted twice and not reported. How deeply a ``result`` may be nested
 depends on the interpreter and on the depth of the call: a lookup made from a
 deeper call than the one that wrote the line can fail to copy it.
 
-It is not a tool and not a hook: nothing registers or calls it, and the append
-is placed inside the tool function of a journaled tool (ADR-0015 decision 5).
+It is not a tool and not a hook: the tool function of a journaled tool, built
+by :mod:`hilclaw.journaled_tool`, calls it (ADR-0015 decision 5).
 It names no step, no axis and no result member, derives no identity and raises
 no ``execution``, runs no open or ended step again, compares no total with a
 limit, writes no ``STATE.json`` and reads no configuration (OD-10, OD-19,
