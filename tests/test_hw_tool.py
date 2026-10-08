@@ -10,6 +10,7 @@ from hilclaw import (
     backends,
     events,
     hw_tool,
+    instance,
     journal,
     mcp_front,
     mock_backend,
@@ -31,6 +32,7 @@ SCHEMA = {"type": "object"}
 RUN = "run-a"
 OTHER_RUN = "run-b"
 LOG = f"runs/{RUN}/events.ndjson"
+FILE = f"runs/{RUN}/instance.json"
 STEP = "example_step"
 SPEND = {"example_axis": 7}
 ROUND = 3
@@ -39,13 +41,6 @@ REQUEST = {"run_id": RUN, "round": ROUND, "candidate": 2, "attempt": 1, "executi
 ID = Identity(STEP, 1, ROUND, 2, 1)
 OTHER = "acc_b"
 FAILURE = {"error": {"kind": "example_failure", "message": "no outcome"}}
-NOT_FOR_AN_UNUSABLE_RUN = {
-    tools.KIND_INVALID_REQUEST,
-    tools.KIND_NO_DATA_ROOT,
-    tools.KIND_STEP_OPEN,
-    tools.KIND_NO_BACKEND,
-    tools.KIND_NOT_OFFERED,
-}
 REMOVE = object()
 
 
@@ -601,11 +596,62 @@ def test_a_run_that_cannot_be_read_is_found_before_the_reader_is_asked(tmp_path)
 
 # --- the reader ---
 
-RAISED = [
-    KeyError("example_run"),
-    OSError("example failure of the read"),
-    ToolFailure("example_unreadable", "of the tests"),
+MAPPED = [
+    pytest.param(
+        instance.MissingInstanceError(f"{FILE}: is missing: of the tests"),
+        "run_file_missing",
+        id="MissingInstanceError",
+    ),
+    pytest.param(
+        instance.InvalidInstanceError(f"{FILE}: content: of the tests"),
+        "run_file_invalid",
+        id="InvalidInstanceError",
+    ),
+    pytest.param(
+        instance.UnsupportedVersionError(f"{FILE}: schema_version: of the tests"),
+        "run_file_unsupported",
+        id="UnsupportedVersionError",
+    ),
+    pytest.param(
+        instance.InvalidInstanceError("the text of another reader"),
+        "run_file_invalid",
+        id="another-message",
+    ),
+    pytest.param(
+        FileNotFoundError(2, "No such file", "/elsewhere/instance.json"),
+        "run_file_missing",
+        id="FileNotFoundError",
+    ),
+    pytest.param(
+        NotADirectoryError(20, "Not a directory", "/elsewhere/instance.json"),
+        "run_file_missing",
+        id="NotADirectoryError",
+    ),
+    pytest.param(
+        OSError(5, "Input/output error", "/elsewhere/instance.json"),
+        "run_file_unreadable",
+        id="OSError",
+    ),
+    pytest.param(
+        PermissionError(13, "Permission denied", "/elsewhere/instance.json"),
+        "run_file_unreadable",
+        id="PermissionError",
+    ),
+    pytest.param(OSError("no errno"), "run_file_unreadable", id="OSError-bare"),
 ]
+by_class = pytest.mark.parametrize(
+    "error", [case.values[0] for case in MAPPED], ids=[case.id for case in MAPPED]
+)
+PASSED = {
+    "KeyError": (KeyError("example_run"), "tool_crashed"),
+    "RuntimeError": (RuntimeError("of the tests"), "tool_crashed"),
+    "a kind of the tests": (
+        ToolFailure("example_unreadable", "of the tests"),
+        "example_unreadable",
+    ),
+    "tool_crashed": (ToolFailure("tool_crashed", "of the tests"), "tool_crashed"),
+}
+ENDS_THE_PROCESS = {"exit": SystemExit(9), "interrupt": KeyboardInterrupt()}
 NO_RECORD = [record(accelerator=REMOVE), record(revision=7), {}, "text", None, 7]
 
 
@@ -614,14 +660,97 @@ def assert_nothing_followed(tool, root, before):
     assert snapshot(root) == before
 
 
-@pytest.mark.parametrize("error", RAISED, ids=lambda error: type(error).__name__)
-def test_what_the_reader_raises_passes_through_unchanged(root, error):
+def expected_message(error):
+    if not isinstance(error, OSError):
+        return str(error)
+    if isinstance(error, (FileNotFoundError, NotADirectoryError)):
+        return f"{FILE}: is missing"
+    reported = ": ".join(filter(None, (type(error).__name__, error.strerror)))
+    return f"{FILE}: could not be read: {reported}"
+
+
+@pytest.mark.parametrize("error,kind", MAPPED)
+def test_what_the_reader_raises_for_the_file_is_answered_with_its_kind(
+    root, monkeypatch, error, kind
+):
     before = snapshot(root)
+    made = selections(monkeypatch)
+    tool = Tool(root, profile=error)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(request())
+    assert caught.value.kind == kind
+    assert caught.value.__cause__ is error
+    assert caught.value.message == expected_message(error)
+    assert "elsewhere" not in caught.value.message
+    assert tool.read == [(root, RUN)] and made == []
+    assert_nothing_followed(tool, root, before)
+
+
+@pytest.mark.parametrize("error,kind", MAPPED)
+def test_such_a_run_is_answered_alike_in_every_way_and_can_be_repeated(
+    root, monkeypatch, error, kind
+):
+    before = snapshot(root)
+    made = selections(monkeypatch)
+    tool = Tool(root, profile=error)
+    outcomes = [through(tool, request()) for through in WAYS.values()]
+    answer = {"error": {"kind": kind, "message": expected_message(error)}}
+    assert outcomes == [(True, answer)] * 4
+    assert len(tool.read) == 4 and made == []
+    assert_nothing_followed(tool, root, before)
+    tool.profile = record()
+    for through in WAYS.values():
+        assert through(tool, request()) == (False, {"example_member": 1})
+    assert (len(tool.read), tool.performed, made) == (5, 1, ["select"])
+    assert lines(root) == [started(), ended(result={"example_member": 1})]
+
+
+def test_a_data_root_gone_at_the_read_is_said_in_the_message(root):
+    tool = Tool(root)
+
+    def reader(data_root, run_id):
+        (root / f"runs/{RUN}/STATE.json").unlink()
+        (root / f"runs/{RUN}").rmdir()
+        (root / "runs").rmdir()
+        root.rmdir()
+        raise FileNotFoundError(f"data root is not an existing directory: {root}")
+
+    function = tool_function(
+        tool=TOOL,
+        step=STEP,
+        numbers=NUMBERS,
+        source=lambda: root,
+        table=tool.table,
+        hw_profile_of=reader,
+        check=tool.check,
+        perform=tool.perform,
+    )
+    with pytest.raises(ToolFailure) as caught:
+        function(request())
+    gone = f"{FILE}: is missing: the data root is not an existing directory"
+    assert (caught.value.kind, caught.value.message) == ("run_file_missing", gone)
+    assert tool.untouched() and not root.exists()
+    with pytest.raises(ToolFailure) as caught:
+        function(request())
+    assert caught.value.kind == "no_data_root"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [*(error for error, _ in PASSED.values()), *ENDS_THE_PROCESS.values()],
+    ids=[*PASSED, *ENDS_THE_PROCESS],
+)
+def test_what_else_the_reader_raises_passes_through_as_the_same_object(
+    root, monkeypatch, error
+):
+    before = snapshot(root)
+    made = selections(monkeypatch)
     tool = Tool(root, profile=error)
     with pytest.raises(type(error)) as caught:
         tool.function(request())
     assert caught.value is error
-    assert tool.read == [(root, RUN)]
+    assert error.__cause__ is None
+    assert tool.read == [(root, RUN)] and made == []
     assert_nothing_followed(tool, root, before)
 
 
@@ -636,9 +765,34 @@ def test_what_is_no_valid_record_is_refused_by_the_selection(root, profile):
     assert_nothing_followed(tool, root, before)
 
 
-@pytest.mark.parametrize("profile", RAISED + NO_RECORD, ids=repr)
-def test_an_unusable_hw_profile_has_no_kind_of_its_own_and_can_be_repeated(
-    root, profile
+@by_class
+def test_the_same_class_out_of_the_selection_is_not_answered_with_a_kind(
+    root, monkeypatch, error
+):
+    before = snapshot(root)
+
+    def select(table, hw_profile, tool):
+        raise error
+
+    monkeypatch.setattr(backends, "select", select)
+    tool = Tool(root)
+    with pytest.raises(type(error)) as caught:
+        tool.function(request())
+    assert caught.value is error
+    for through in THROUGH_CALL.values():
+        failed, answer = through(tool, request())
+        assert (failed, answer["error"]["kind"]) == (True, "tool_crashed")
+    assert len(tool.read) == 4
+    assert_nothing_followed(tool, root, before)
+
+
+@pytest.mark.parametrize(
+    "profile,kind",
+    [*((profile, "tool_crashed") for profile in NO_RECORD), *PASSED.values()],
+    ids=[*map(repr, NO_RECORD), *PASSED],
+)
+def test_what_is_no_situation_of_the_file_keeps_its_answer_and_can_be_repeated(
+    root, profile, kind
 ):
     before = snapshot(root)
     tool = Tool(root)
@@ -646,13 +800,69 @@ def test_an_unusable_hw_profile_has_no_kind_of_its_own_and_can_be_repeated(
     outcomes = [through(tool, request()) for through in THROUGH_CALL.values()]
     assert outcomes[0] == outcomes[1] == outcomes[2]
     failed, answer = outcomes[0]
-    assert failed is True
-    assert answer["error"]["kind"] not in NOT_FOR_AN_UNUSABLE_RUN
+    assert (failed, answer["error"]["kind"]) == (True, kind)
     assert len(tool.read) == 3
     assert_nothing_followed(tool, root, before)
     tool.profile = record()
     assert tool.function(request()) == {"example_member": 1}
     assert tool.performed == 1
+
+
+@by_class
+def test_an_ended_and_an_open_identity_are_answered_without_the_reader(root, error):
+    assert Tool(root).function(request()) == {"example_member": 1}
+    store(root, OTHER_RUN)
+    place(root, raw(started()), f"runs/{OTHER_RUN}/events.ndjson")
+    before = snapshot(root)
+    tool = Tool(root, table=[], profile=error)
+    for through in WAYS.values():
+        assert through(tool, request()) == (False, {"example_member": 1})
+        failed, answer = through(tool, request(run_id=OTHER_RUN))
+        assert (failed, answer["error"]["kind"]) == (True, "step_open")
+    assert tool.untouched()
+    assert snapshot(root) == before
+
+
+@by_class
+@pytest.mark.parametrize("line", ["step_started", "step_ended"])
+def test_the_same_class_out_of_an_append_is_not_answered_with_a_kind(
+    root, monkeypatch, line, error
+):
+    real = events.append
+
+    def append(data_root, run_id, kind, data, **numbers):
+        if kind == line:
+            raise error
+        return real(data_root, run_id, kind, data, **numbers)
+
+    monkeypatch.setattr(events, "append", append)
+    tool = Tool(root)
+    with pytest.raises(type(error)) as caught:
+        tool.function(request())
+    assert caught.value is error
+    assert (len(tool.read), tool.performed) == (1, line == "step_ended")
+    failed, answer = by_call(tool, request(execution=2))
+    assert (failed, answer["error"]["kind"]) == (True, "tool_crashed")
+
+
+@by_class
+@pytest.mark.parametrize("where", ["script", "outcome"])
+def test_the_same_class_out_of_the_step_is_not_answered_and_leaves_it_open(
+    root, where, error
+):
+    tool = Tool(root, **{where: error})
+    with pytest.raises(type(error)) as caught:
+        tool.function(request())
+    assert caught.value is error
+    assert tool.performed == 1
+    assert lines(root) == [started()]
+    for execution, through in enumerate(THROUGH_CALL.values(), start=2):
+        failed, answer = through(tool, request(execution=execution))
+        assert (failed, answer["error"]["kind"]) == (True, "tool_crashed")
+        failed, answer = through(dead(root), request(execution=execution))
+        assert (failed, answer["error"]["kind"]) == (True, "step_open")
+    assert tool.performed == 4
+    assert [line["kind"] for line in lines(root)] == ["step_started"] * 4
 
 
 # --- the death point a backend can cause ---
@@ -692,7 +902,7 @@ def test_a_crash_inside_the_step_leaves_it_open(root, first, second, where):
     else:
         failed, answer = WAYS[first](tool, request())
         assert failed is True
-        assert answer["error"]["kind"] not in NOT_FOR_AN_UNUSABLE_RUN
+        assert answer["error"]["kind"] == "tool_crashed"
     assert tool.performed == 1
     assert len(tool.asked) == (1 if where == "script" else 0)
     assert lines(root) == [started()]

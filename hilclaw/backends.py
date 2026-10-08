@@ -16,8 +16,8 @@ situations are a :class:`hilclaw.tools.ToolFailure` of a reserved kind:
 selection calls no operation, so a failed selection has called nothing.
 
 A record that is no valid hw_profile record is neither of the two: what
-:func:`hilclaw.keys.hw_profile_key` raises for it passes through unchanged,
-with no kind given here (OD-18 sub-question 4, open).
+:func:`hilclaw.keys.hw_profile_key` raises for it passes through unchanged and
+is none of the four kinds of a frame file of a run (ADR-0019 decision 4).
 
 Limits it does not remove (ADR-0016 decision 6): the target a backend reaches
 is not checked against the other key fields of the record, a backend that does
