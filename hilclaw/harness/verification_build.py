@@ -59,12 +59,12 @@ def build_verification_executable(
     failure, a link failure or a timeout is a result with ``ok`` false.
 
     Raised before anything is started: :class:`ValueError` for no kernel
-    source, tested before every other argument; :class:`TypeError` for
-    ``kernel_sources`` that is neither a path nor iterable; and whatever
-    :func:`hilclaw.clang_build.build` raises, unchanged. That includes
-    :class:`FileNotFoundError` for a program source that is missing from the
-    installation and :class:`TypeError` for a ``bytes`` path (an empty one is
-    no kernel source).
+    source, tested before every other argument, and :class:`TypeError` for
+    ``kernel_sources`` that is neither a path nor iterable. Whatever
+    :func:`hilclaw.clang_build.build` raises is passed on unchanged. That
+    includes :class:`FileNotFoundError` for a program source that is missing
+    from the installation and :class:`TypeError` for a ``bytes`` path (an empty
+    one is no kernel source).
     """
     if isinstance(kernel_sources, (str, os.PathLike)):
         kernel_sources = (kernel_sources,)
