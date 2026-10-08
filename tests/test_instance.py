@@ -34,6 +34,7 @@ from hilclaw.instance import (
     Tolerance,
     UnsupportedVersionError,
     hw_profile_of,
+    layout_version_of,
     n_max_of,
     parse,
     read,
@@ -208,6 +209,7 @@ def test_the_public_names():
         "Tolerance",
         "UnsupportedVersionError",
         "hw_profile_of",
+        "layout_version_of",
         "n_max_of",
         "parse",
         "read",
@@ -232,7 +234,14 @@ def test_the_public_names():
     for error in (InvalidInstanceError, UnsupportedVersionError, MissingInstanceError):
         assert not issubclass(error, ToolFailure)
     assert UnsupportedVersionError is not run_state.UnsupportedVersionError
-    for function in (read, hw_profile_of, tolerance_of, source_commit_of, n_max_of):
+    for function in (
+        read,
+        hw_profile_of,
+        tolerance_of,
+        source_commit_of,
+        n_max_of,
+        layout_version_of,
+    ):
         parameters = inspect.signature(function).parameters
         assert list(parameters) == ["data_root", "run_id"]
         for parameter in parameters.values():
@@ -2409,9 +2418,154 @@ def test_the_reader_of_the_bound_opens_only_the_instance_file(root, monkeypatch)
     assert opened == [FILE, FILE]
 
 
+# --- the reader of the layout version (ADR-0024) ---
+
+ALL_MEMBERS = {"tolerance": TOLERANCE, "source_commit": COMMIT, "n_max": BOUND}
+OTHER_FILE = f"runs/{OTHER_RUN}/instance.json"
+
+
+@pytest.mark.parametrize("members", [{}, ALL_MEMBERS, {"example": [1]}], ids=repr)
+def test_the_reader_returns_the_layout_version_the_file_states(tmp_path, root, members):
+    place(root, raw(doc(**members)))
+    before = snapshot(tmp_path)
+
+    found = layout_version_of(root, RUN)
+
+    assert found == 1 and type(found) is int
+    assert layout_version_of(str(root), RUN) == 1
+    assert read(root, RUN) == parse(raw(doc(**members)))
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("stamp", [2, 99, 0, "2", None, [1]], ids=repr)
+def test_a_member_that_looks_like_a_stamp_is_passed_over(root, stamp):
+    others = {"layout_version": stamp, "layoutVersion": stamp}
+    place(root, raw(doc(**others)))
+
+    assert layout_version_of(root, RUN) == 1
+    assert read(root, RUN).others == others
+    assert parse(raw(doc(**others))).others == others
+    assert validate(doc(**others)) is None
+
+
+def test_the_layout_version_is_read_from_the_file_at_each_call(root):
+    place(root, raw(doc()))
+    assert layout_version_of(root, RUN) == 1
+
+    place(root, raw(doc(schema_version=2)))
+    with pytest.raises(UnsupportedVersionError):
+        layout_version_of(root, RUN)
+
+    place(root, raw(doc(**ALL_MEMBERS)))
+    assert layout_version_of(root, RUN) == 1
+
+    place(root, raw(doc(n_max=4)))
+    invalid(f"{FILE}: {NO_BOUND}int", layout_version_of, root, RUN)
+
+    (root / FILE).unlink()
+    with pytest.raises(MissingInstanceError):
+        layout_version_of(root, RUN)
+
+    place(root, raw(doc()))
+    assert layout_version_of(root, RUN) == 1
+
+
+def test_each_run_states_its_own_layout_version(root):
+    place(root, raw(doc()))
+    place(root, raw(doc(schema_version=2)), OTHER_FILE)
+
+    assert layout_version_of(root, RUN) == 1
+    with pytest.raises(UnsupportedVersionError) as caught:
+        layout_version_of(root, OTHER_RUN)
+    assert str(caught.value) == f"{OTHER_FILE}: schema_version: 2 is not supported"
+    assert layout_version_of(root, RUN) == 1
+
+
+BROKEN_AT_VERSION_1 = {
+    "no hw_profile": {"hw_profile": REMOVE},
+    "another key": {"hw_profile": section(key=OTHER_KEY)},
+    "a tolerance with one value": {"tolerance": {"rtol": TEST_RTOL}},
+    "an abbreviated source_commit": {"source_commit": COMMIT[:7]},
+    "an n_max below 5": {"n_max": 4},
+}
+
+
+@pytest.mark.parametrize("case", BROKEN_AT_VERSION_1)
+def test_an_invalid_file_that_holds_version_1_states_no_layout_version(root, case):
+    document = doc(**BROKEN_AT_VERSION_1[case])
+    assert document["schema_version"] == 1
+    place(root, raw(document))
+
+    invalid(f"{FILE}: ", layout_version_of, root, RUN)
+
+
+@pytest.mark.parametrize("version", [REMOVE, 1.0, True, "1", None, -1, MAX + 1])
+def test_a_version_that_is_no_integer_states_no_layout_version(root, version):
+    place(root, raw(doc(schema_version=version)))
+
+    invalid(f"{FILE}: ", layout_version_of, root, RUN)
+
+
+@pytest.mark.parametrize("built", [0, 2, 99])
+def test_the_layout_the_source_builds_does_not_stand_in(root, monkeypatch, built):
+    place(root, raw(doc(layout_version=built)))
+    place(root, raw(doc(schema_version=2)), OTHER_FILE)
+    place(root, raw(doc(n_max=4)), "runs/run-c/instance.json")
+    place(root, b"", "runs/run-d/instance.json")
+    monkeypatch.setattr(layout, "LAYOUT_VERSION", built)
+
+    assert layout_version_of(root, RUN) == 1
+    with pytest.raises(UnsupportedVersionError):
+        layout_version_of(root, OTHER_RUN)
+    invalid("runs/run-c/instance.json: n_max: ", layout_version_of, root, "run-c")
+    invalid("runs/run-d/instance.json: content: ", layout_version_of, root, "run-d")
+    with pytest.raises(MissingInstanceError):
+        layout_version_of(root, "run-e")
+
+
+def test_the_module_does_not_name_the_layout_the_source_builds():
+    tree = ast.parse(inspect.getsource(instance))
+    named = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+    named |= {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+
+    assert "run_file" in named and "LAYOUT_VERSION" not in named
+    assert layout_version_of.__defaults__ is None
+    assert layout_version_of.__kwdefaults__ is None
+
+
+def test_the_reader_of_the_layout_version_opens_only_the_instance_file(
+    root, monkeypatch
+):
+    place(root, raw(doc()))
+    place(root, b"{}", f"runs/{RUN}/STATE.json")
+    place(root, b"", f"runs/{RUN}/events.ndjson")
+    place(root, raw(doc(schema_version=2)), OTHER_FILE)
+    opened, real = [], Path.read_bytes
+
+    def read_bytes(path):
+        opened.append(path.relative_to(root).as_posix())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setenv("HILCLAW_DATA_ROOT", "elsewhere")
+
+    assert layout_version_of(root, RUN) == 1
+    assert opened == [FILE]
+
+    assert layout_version_of(root, RUN) == 1
+    assert opened == [FILE, FILE]
+
+
 # --- error / negative: the four situations of decision 4 ---
 
-READERS = [read, hw_profile_of, tolerance_of, source_commit_of, n_max_of]
+READERS = [
+    read,
+    hw_profile_of,
+    tolerance_of,
+    source_commit_of,
+    n_max_of,
+    layout_version_of,
+]
 
 
 def absent(root):
