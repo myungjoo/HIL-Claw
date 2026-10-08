@@ -2,7 +2,7 @@
 id: T-0069
 title: Add the four reserved kinds of ADR-0019 to `hilclaw/tools.py` and answer with them at the lookup of a journaled step - the rows of moment 3 of the table of ADR-0019 decision 3 - so that no such situation reaches a caller as `tool_crashed`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, FR-13, NFR-1, NFR-6, OD-18, "#5 A-12"]
 dependsOn: [T-0053, T-0055, T-0064, T-0068]
@@ -138,3 +138,62 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (integrator, after 2026-10-15) The sentences of ADR-0015, ADR-0016 and ADR-0018 that ADR-0019 Consequences lists as less exact.
 
 ## Result
+**DONE.** PR [#60](https://github.com/myungjoo/HIL-Claw/pull/60), squash commit `21ce62f607a378735dd9f7d512c5be31545f60cd` on `main` (branch commits `8532916`, `9697eb1`, `ef12742`, `bedd09d`; final head `bedd09d`). Remote and local branch deleted. This task ticks **no** PLAN checkbox (P1-1 stays open).
+
+Language: Python, because every module touched is Python.
+
+### Review (5 rounds, each a fresh-context `dev-reviewer`; every round Approve)
+- Round 1 - Approve. Minor 1: `_lines` went on with no line read whenever "not there" came out of `events.read` and the data root was a directory at a second question, also when the reader's own check of the data root had raised it (a data root gone and back): a step whose end line is in a log that is there could then run again. Addressed in `9697eb1` (the second read, below). Nit 2: `run_files.relative` composes the text the readers derive from `layout.run_file`; left, no change requested (the tests that compare with the readers' messages hold the two together).
+- Round 2 - Approve. Minor 1: the PR body (the squash message) did not state the second read as a provisional choice and one table row was stale; fixed in the PR body. Nits 2 and 3: a docstring bullet split in two, a test helper renamed `log_gone` (`ef12742`).
+- Round 3 - Approve. Nit 1: no case of its own for the second pass of `_lines` with the data root gone; test added (`bedd09d`, test only). Info 2: the PR body sentence "runs no step twice" narrowed to the case it describes. Info 3: an `OSError` without `strerror` gives a message without text; as documented and tested.
+- Round 4 - Approve. Nit 1: a PR body sentence about the docstring of `hilclaw/hw_tool.py` was inexact (that docstring is about the reader and the selection and stays true until the next task); corrected in the PR body, no file change. Info 2: line 54 of `journaled_step.py` reads right only with the next bullet; left.
+- Round 5 - Approve, no change requested. Nit 1 (not changed, so it stands in the squash message): the PR body says "one case per row ... through both entries (`run`, `run_prepared`)", which is slightly wide - the cases where a file or the data root goes during the lookup use one entry only. Nothing is unverified by it: `run` is `run_prepared` with a `before_start` that does nothing. Info 3: a data root that cannot be asked is `run_file_missing`, not `run_file_unreadable` (declared provisional, below).
+- No reviewer read any point as a design choice that needs an ADR or the owner; no security finding. The reviewers agreed with the planner's judgements (the split by moment, the mapping in `_state`, the readers unchanged) and with the A-13 reading.
+
+### The public API as landed
+- `hilclaw/tools.py`: `KIND_RUN_FILE_MISSING = "run_file_missing"`, `KIND_RUN_FILE_UNREADABLE = "run_file_unreadable"`, `KIND_RUN_FILE_INVALID = "run_file_invalid"`, `KIND_RUN_FILE_UNSUPPORTED = "run_file_unsupported"`; `RESERVED_KINDS` has eleven members. `call` is not edited.
+- `hilclaw/run_files.py` (new; imports `contextlib`, `os`, `hilclaw.tools` only; knows no reader and no layout; reads no frame file):
+  - `NOT_THERE = (FileNotFoundError, NotADirectoryError)` - the classes of an `OSError` that mean the path is not there.
+  - `relative(run_id, name)` returns the text `runs/<run_id>/<name>`; checks nothing.
+  - `data_root_is_there(data_root)` returns `os.path.isdir(data_root)`; raises no `OSError`.
+  - `read_failure(data_root, run_id, name, error)` **returns** (does not raise, attaches no cause) a `ToolFailure`: kind `run_file_missing` when `error` is one of `NOT_THERE`, kind `run_file_unreadable` for every other `OSError`; raises `TypeError` when `error` is no `OSError`.
+  - `reading(data_root, run_id, name, kinds)` - a context manager around **one read**. `kinds` maps exception classes of the reader to kinds; an exception that is an instance of one of them is raised again as a `ToolFailure` of the kind of the first matching class (in the order of `kinds`) with `str(error)` as the message (so the reader's message must already start with the relative path); any other `OSError` is raised again as `read_failure` answers it; each `from` the exception it answers for. Everything else passes through unchanged, a `ToolFailure` and a `BaseException` included.
+- The selection half can use it as `with run_files.reading(data_root, run_id, "instance.json", {instance.MissingInstanceError: ..., instance.InvalidInstanceError: ..., instance.UnsupportedVersionError: ...}):` around the call of the reader only.
+
+### Which class is mapped to which kind, at which call (all in `hilclaw.journaled_step._state`)
+- Around `run_journal.read_state` (file `STATE.json`): `run_journal.MissingStateError` -> missing; `run_state.InvalidStateError` -> invalid; `run_state.UnsupportedVersionError` -> unsupported; `FileNotFoundError` / `NotADirectoryError` -> missing; any other `OSError` -> unreadable.
+- Around the read of the log (`_lines`, which calls `events.read`) and the position check of the lookup (file `events.ndjson`): `events.CorruptEventsError`, `events.PositionBeyondLogError` included -> invalid; `events.UnsupportedVersionError` -> unsupported; `FileNotFoundError` / `NotADirectoryError` with the data root no existing directory -> missing; with the data root there -> no situation (the second read, below); any other `OSError` -> unreadable.
+- Around `journal.step_state(identity, read, view)`: `journal.JournalError` -> invalid. Nothing else is caught there.
+- Not mapped: the argument refusals before any file is read, what `before_start` raises, what the step raises, `InvalidOutcomeError`, both `events.append` calls, a `RecursionError` of the copy of a stored `result`, `tools.call`.
+
+### Composed messages (the readers' messages are used as they are)
+- `runs/<run_id>/<name>: is missing` (a file gone between the check and the read, the data root there).
+- `runs/<run_id>/<name>: is missing: the data root is not an existing directory`.
+- `runs/<run_id>/<name>: could not be read: <class>` followed by `: <strerror>` when the error has one; the absolute path the system gives is left out.
+- `runs/<run_id>/events.ndjson: line N: ...` for a step line that breaks ADR-0011 (the text of the `JournalError` behind the path).
+- `runs/<run_id>/events.ndjson: position P is beyond the end of the log, complete lines: N` from the check of the lookup, in the reader's words.
+
+### Provisional choices (ADR-0019 fixes kinds, rows and borders; these are this task's)
+- A new module rather than a private mapping in `journaled_step.py`: the selection half needs the same "not there" test and messages.
+- `reading` is a context manager around one read, so the mapping is applied at the moment and cannot be reached from `tools.call` (decision 5).
+- `os.path.isdir` asks whether the data root is still a directory; a data root that cannot be asked counts as not there (so `run_file_missing`, not `run_file_unreadable`).
+- The position check of the lookup raises `PositionBeyondLogError` inside the mapped block, so both sources of that row share one path.
+- **The second read of the log** (review round 1): the reader raises "not there" both from its own check of the data root and from the read of the bytes, and the lookup cannot tell them apart. When "not there" comes out of `events.read` and the data root is a directory, the lookup calls `events.read` once more and lets the reader say what is there; only when "not there" comes again in that second read, the data root still there, it goes on with no line read. A data root gone at the reader's check and back a moment later is thus answered by the second read and not as `run_file_missing`; this is inside decision 7 (the reads of one call are not atomic). Not closed, and not closable without a change of the readers: a data root gone at the reader's check and back at the question in both reads still ends with no line read. It is a read inside one lookup, not a retry policy. **The selection half should judge this for `instance.json` on its own and not copy it unexamined** (for `instance.json` "not there" is `run_file_missing` at whatever read, so no second read is needed there).
+- Where a criterion and the record disagreed: nowhere; the record was followed as the criteria state it.
+
+### Verification
+- Local (Windows, Python 3.14), final head: `python -m pytest` 6745 passed, 270 skipped (6556 passed, 270 skipped on `main` before, measured in this session); `python -m ruff check .` and `python -m ruff format --check .` exit 0. `coverage` is not installed locally (nothing was installed); CI measures it.
+- `git diff origin/main --stat`: nine files, all of `touchesFiles` - `hilclaw/journaled_step.py`, `hilclaw/journaled_tool.py`, `hilclaw/run_files.py`, `hilclaw/tools.py`, `tests/test_hw_tool.py`, `tests/test_journaled_step.py`, `tests/test_journaled_tool.py`, `tests/test_run_files.py`, `tests/test_tools.py`. No other test file needed a changed expectation.
+- `hilclaw/journaled_tool.py`: three docstring hunks, no statement. The diff of `hw_tool.py`, `instance.py`, `run_journal.py`, `run_state.py`, `events.py`, `journal.py`, `mcp_front.py`, `__main__.py` is empty. New files are `i/lf`. `git status --short` after the tests: no stray file.
+- `git grep "run_file_" -- hilclaw/` matches `tools.py`, `run_files.py`, `journaled_step.py` (its docstrings; the code uses the constants) and `journaled_tool.py` (two docstring lines that name the four kinds, as the criterion on its docstrings asks). The verification line expected "only `tools.py` and the mapping"; the two docstring lines of `journaled_tool.py` are the difference.
+- Non-test lines: 202 added, 29 removed, in 4 files (`journaled_step.py` +79 -21, `journaled_tool.py` +11 -7, `run_files.py` +103, `tools.py` +9 -1); inside the cap of 300 LOC / 5 files. Tests: 5 files, one of them new.
+- CI on the PR, final head `bedd09d`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37780052509 - all six successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. Coverage: `lines: 2759/2775 executed = 99.42% (minimum 80%)`, `functions: 283/283 entered = 100.00% (minimum 80%)`; the reviewer of round 3 read the report as showing no unexecuted line in `run_files.py` or `journaled_step.py`. No failed CI run on the PR.
+- `push` run on `main` for the squash commit `21ce62f`: `success`, https://github.com/myungjoo/HIL-Claw/actions/runs/37781455376.
+
+### Notes for the driver
+- The launching message asked for this `## Result` edit to be part of the PR. The task file ("The branch and the PR must not contain this task file"; "leave that edit uncommitted"), DRIVER §3-6 and the executor definition say the opposite, and they rank above a message; so the edit is **uncommitted on `main`**, for the driver's wrap-up commit. It holds no fenced code block.
+- Issue #5 held no comment after the ADR-0019 notice at the start of the task; no objection to ADR-0015, ADR-0016 or ADR-0019.
+
+### Follow-ups
+- (next, code mode, P1-1) The second half: the rows of moment 4 in `hilclaw/hw_tool.py` with `run_files.reading` around the call of the reader only; the docstring of `hw_tool.py` lines 31-37 and of `instance.py`; the kinds pinned in `tests/test_hw_tool.py` and `tests/test_instance.py`. To judge there: which classes of an arbitrary reader count, and that no second read is copied from the log.
+- (open, unchanged) OD-18 sub-question 9 (a failed append); sub-question 7; the items the planner listed under `## Follow-ups` above.
