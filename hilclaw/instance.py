@@ -25,13 +25,13 @@ Conventions of this module, which the two records do not fix:
   :class:`UnsupportedVersionError` of this module.
 - The rules for the whole text come first, whatever the version, then
   ``schema_version``, then ``hw_profile``, then ``tolerance`` when the document
-  holds it. A content this interpreter cannot
-  read (an integer too long for it anywhere in the text, nesting too deep)
-  raises :class:`InvalidInstanceError` too, though it is a limit of this reader
-  and not damage; the limits stay as the interpreter has them. A number beyond
-  the float range in a member not defined here is read as an infinity and is
-  no error, as :mod:`hilclaw.run_state` has it; in ``tolerance`` it makes the
-  content invalid (ADR-0020 decision 4).
+  holds it. A content this interpreter cannot read (an integer too long for it
+  anywhere in the text, nesting too deep) raises :class:`InvalidInstanceError`
+  too, though it is a limit of this reader and not damage; the limits stay as
+  the interpreter has them. A number beyond the float range in a member not
+  defined here is read as an infinity and is no error, as
+  :mod:`hilclaw.run_state` has it; in ``tolerance`` it makes the content
+  invalid (ADR-0020 decision 4).
 - ``schema_version`` is an integer of ADR-0001, from 0 to
   :data:`hilclaw.keys.MAX_INTEGER`: a value outside that range is no integer of
   the records and makes the content invalid, it is not another version. ``-0``
@@ -196,9 +196,9 @@ def validate(document):
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator`` or
-    ``tolerance.rtol``). The
-    version comes first: an integer other than :data:`SCHEMA_VERSION` raises
-    :class:`UnsupportedVersionError` before any other member is looked at.
+    ``tolerance.rtol``). The version comes first: an integer other than
+    :data:`SCHEMA_VERSION` raises :class:`UnsupportedVersionError` before any
+    other member is looked at.
     """
     _checked(document)
 
