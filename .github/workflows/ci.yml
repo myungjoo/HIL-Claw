@@ -157,10 +157,14 @@ jobs:
           for path in unmeasured:
               print(f"::error file={path}::{path} is tracked but not measured")
           for kind, (covered, total, verb) in counts.items():
+              if total == 0:
+                  failed = True
+                  print(f"::error::the coverage report has no {kind} of hilclaw/")
+                  continue
               floor = minimum[kind]
-              percent = covered * 10000 // total / 100 if total else 0.0
+              percent = covered * 10000 // total / 100
               print(f"{kind}: {covered}/{total} {verb} = {percent:.2f}% (minimum {floor}%)")
-              if total == 0 or covered * 100 < floor * total:
+              if covered * 100 < floor * total:
                   failed = True
                   print(f"::error::hilclaw/ is below the minimum of {floor}% for {kind}")
           for path, entry in sorted(files.items()):
