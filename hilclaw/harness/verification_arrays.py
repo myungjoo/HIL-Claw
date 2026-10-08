@@ -32,14 +32,16 @@ Conventions of this module (not rules of the record):
 - One rule for every argument: a number is exactly a built-in ``int`` (or, for
   a tolerance, ``int`` or ``float``) and an array is exactly a
   ``numpy.ndarray``. A ``bool``, a NumPy scalar, a zero-dimensional array and
-  an instance of a subclass are refused.
+  an instance of a subclass are refused, and so is an ``int`` tolerance that
+  a ``float`` cannot hold.
 - An array argument has two dimensions, none of them 0, and the dtype named by
   the function in the byte order of the host.
 - Everything else outside what a function states raises
   :class:`VerificationArgumentError`, whose message names the argument and
-  shows no element of an array. What NumPy raises for arrays it cannot
-  allocate (``MemoryError``, or its own error for a size it cannot hold) is
-  passed on.
+  shows the value only of an ``int``, ``float``, ``bool``, ``str`` or
+  ``None``: of an array it shows the dtype and the shape, of anything else the
+  type. What NumPy raises for arrays it cannot allocate (``MemoryError``, or
+  a plain ``ValueError`` for a size it cannot hold) is passed on.
 - :func:`draw_inputs` works on whole arrays without chunks: its peak is about
   16 bytes for each of the ``m*k + k*n`` elements, of which 4 are returned.
   ``a`` and ``b`` are views of one buffer and do not overlap.
@@ -95,6 +97,7 @@ def draw_inputs(m, k, n, *, seed, draw):
     sign <<= 31
     words >>= 41
     words |= sign
+    del sign
     words |= 126 << 23
     values = words.astype(np.uint32).view(np.float32)
     return values[: m * k].reshape(m, k), values[m * k :].reshape(k, n)
@@ -201,6 +204,8 @@ def _matrix(name, value, dtype):
 def _shown(value):
     if isinstance(value, np.ndarray):
         return f"a {value.dtype} array of shape {value.shape}"
+    if type(value) not in (int, float, bool, str, type(None)):
+        return type(value).__name__
     try:
         return f"{type(value).__name__} {reprlib.repr(value)}"
     except ValueError:

@@ -178,6 +178,12 @@ def test_an_argument_error_is_a_value_error_that_shows_no_array_element():
     assert str(caught.value) == (
         "m: must be an int of at least 1, got a float32 array of shape (1, 2)"
     )
+    for value, shown in ((array[0, 0], "float32"), ([[0.625, 0.75]], "list")):
+        with pytest.raises(VerificationArgumentError) as caught:
+            check_value(value, array)
+        assert str(caught.value).endswith(f"none of them 0, got {shown}")
+    with pytest.raises(VerificationArgumentError, match="got float -0.5$"):
+        check_tolerance(-0.5, 0)
 
 
 @pytest.mark.parametrize("seed", SEEDS)
