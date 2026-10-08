@@ -73,7 +73,8 @@ a run of another case (#5 B-7). A file it accepts need not state a tolerance,
 and where it is checked that an instance states one is open (OD-8
 sub-question 19). Which tool or component reads the member, at which moment
 of a call, and what a call answers when no tolerance is stated is not said
-here; "not stated" is no error and has no tool-failure kind.
+here; "not stated" is no error of the content, and this module gives it no
+tool-failure kind.
 It reads no other file, so the stored record of the key below ``db/`` is not
 read or compared (ADR-0018 decision 4) and no reader here needs it to exist; how
 the two records relate is open (OD-8 sub-question 18). None of its errors is a

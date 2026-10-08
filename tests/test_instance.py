@@ -1024,7 +1024,12 @@ def test_the_module_imports_neither_numpy_nor_the_harness():
     )
 
     done = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
     )
 
     assert done.stdout.strip() == "[]"
