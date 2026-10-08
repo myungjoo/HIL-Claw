@@ -2,7 +2,7 @@
 id: T-0072
 title: Implement the member `tolerance` of `instance.json` in `hilclaw/instance.py` (ADR-0020, the code slice of its Consequences) - the validity of the member by decisions 2 to 4 and a reader of the tolerance of a run beside `hw_profile_of` - bound to no tool and without any default
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-13, NFR-2, NFR-7, OD-8, OD-16, "#5 A-12"]
 dependsOn: [T-0060, T-0067, T-0070, T-0071]
@@ -134,3 +134,46 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (a small code task) Whether `PROCESS/` Markdown leaves the set of `ruff format --check .`; public names for `journaled_tool._built` and `backends._hw_tool`; one public function for the section check of `spec._keyed` and `instance._hw_profile`.
 
 ## Result
+**DONE.** PR #62 (https://github.com/myungjoo/HIL-Claw/pull/62), squash-merged to `main` as `3067828096685c3fae85d8bc5f46458961c4b554`; the branch `claude/T-0072-instance-record-tolerance-reader` is deleted remotely and locally. Branch commits: `788264f` (the change), `0e68948` (round 1), `2b6dd4a` (round 2). This task ticks **no** PLAN checkbox (P1-8 and P1-1 stay open). No HQ is needed.
+
+### Review
+3 rounds, each by a fresh-context `dev-reviewer`; every round Approve, no blocking finding, no `SECURITY`, no point read as needing a record or the owner.
+- Round 1 (https://github.com/myungjoo/HIL-Claw/pull/62#issuecomment-6062331006): three Low. (1) the module docstring's '"not stated" ... has no tool-failure kind' could be read as a statement about a call's answer - reworded to "no error of the content, and this module gives it no tool-failure kind"; (2) the child-process test had no `cwd` and no `timeout` - both added, as `tests/test___main__.py` does; (3) the message of an out-of-range number shows its type only - left, it is the module's `_fail` convention and a listed provisional choice.
+- Round 2 (https://github.com/myungjoo/HIL-Claw/pull/62#issuecomment-6062473074): two Low. The same wording in the PR body - fixed; two docstring passages not re-wrapped - re-wrapped, no sentence changed.
+- Round 3 (https://github.com/myungjoo/HIL-Claw/pull/62#issuecomment-6062584267): Approve, nothing left, nits included.
+- The reviewers re-checked the planner's judgements and agreed with each: the reader is bound nowhere (no reference to `tolerance_of`, `Tolerance` or `.tolerance` in `hilclaw/` outside `instance.py`), "not stated" is no error and no kind, no import of `numpy` or the harness, `hilclaw/hw_tool.py` untouched and its docstring sentences (lines 36-48, 61-64, 78-81) still true, and the A-13 reading (a first implementation of a member an accepted record defines; the BLOCKED reason does not apply).
+
+### Public API as landed (`hilclaw/instance.py`)
+- `Tolerance`: `NamedTuple(rtol: float, atol: float)`. As `parse` returns it, both are `float`, finite and not negative; a zero is always `0.0`.
+- `Instance`: `NamedTuple(hw_profile_key: str, hw_profile: dict, tolerance: Tolerance | None, others: dict)`. `tolerance` is the new third field; `others` stays last and no longer holds a `tolerance` member.
+- `tolerance_of(data_root, run_id)` returns `read(data_root, run_id).tolerance`: a `Tolerance`, or **`None` when the valid file has no member `tolerance`** ("not stated"; no value is substituted). It raises what `read` raises, unchanged: `hilclaw.layout.InvalidPathValueError` (a `run_id` that is none), `FileNotFoundError` / `NotADirectoryError` (the data root), `MissingInstanceError`, an `OSError` of the file system, `InvalidInstanceError` (the message starts with the path relative to the data root), `UnsupportedVersionError`. None is a `hilclaw.tools.ToolFailure`.
+- `parse(content)`, `validate(document)`, `read(data_root, run_id)`, `hw_profile_of(data_root, run_id)`: signatures unchanged. `hw_profile_of` and `read` now raise `InvalidInstanceError` for a file whose `tolerance` is invalid.
+- Which rule raises what (all `InvalidInstanceError`, after the rules for the whole text, `schema_version` and `hw_profile`): `tolerance: must be an object, got <type>`; `tolerance: must be an object without the member, got str '<name>'`; `tolerance: lacks the member rtol` / `atol`; `tolerance.rtol: must be a finite number that is not negative, got <type>` and the same for `tolerance.atol` (a `bool`, `null`, a string, an array, an object, a negative number, an infinity, a NaN built in memory, an `int` no `float` holds, a subclass of `int` or `float`). The tokens `NaN` / `Infinity` and a member name twice are the existing text rule (`content: cannot be read as one JSON text`). Another `schema_version` is `UnsupportedVersionError` before the member is looked at.
+- `SCHEMA_VERSION` is unchanged (1). No module-level constant, parameter default or field default holds a tolerance value (a test pins it).
+
+### Provisional choices (each left to this task by ADR-0020 Consequences)
+- `Tolerance` is a `NamedTuple (rtol, atol)`: the form the module already uses for a result.
+- `Instance.tolerance` is the third field and `others` stays last: the defined members first, in the order their records defined them.
+- "Not stated" is `None`, in `Instance.tolerance` and from `tolerance_of`: a valid file may lack the member, so it is no error.
+- The name and call form `tolerance_of(data_root, run_id)`: those of `hw_profile_of`.
+- Order of the checks: `hw_profile` before `tolerance` (the order of the records); inside `tolerance`: an object, no further member, both present, `rtol`, then `atol`. Messages follow the module's `_fail`, so a number is shown by its type only.
+- A zero is handed out as `0.0` whatever its sign in the file (`-0`, `-0.0`, `-1e-999`): the record says it is zero, and equal tolerances then compare and print alike.
+- An `int` that no `float` holds is reported with the same message as an infinity; a subclass of `int` or `float` built in memory is no number, as in `check_tolerance`.
+- The rule for a value is written in the module and not shared with `check_tolerance`: `hilclaw.instance` stays standard library only; a test pins the agreement over the cross product of 29 values, and a child-process test pins that importing the module loads neither `numpy` nor `hilclaw.harness`.
+- No criterion of this task file disagreed with the record.
+
+### Verification
+- Local (Windows, Python 3.14.4), before the first commit and again on each later head: `python -m pytest` 7044 passed, 272 skipped (6826 passed, 270 skipped before, re-measured on `560c3e7`); `python -m ruff check .` and `python -m ruff format --check .` exit 0.
+- `git diff origin/main --stat` listed `hilclaw/instance.py` and `tests/test_instance.py` only. `git grep -n -E "numpy|harness|ToolFailure|environ" -- hilclaw/instance.py`: two matches, both inside the module docstring. The grep for writes: no match. `git ls-files --eol`: `i/lf` for both files.
+- CI on the PR, final head `2b6dd4a`: run https://github.com/myungjoo/HIL-Claw/actions/runs/37795758317 - all six checks successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. The runs of the two earlier heads (37794077536, 37794747161) were also green: no failed CI run.
+- Coverage (final head): `lines: 2785/2801 executed = 99.42% (minimum 80%)`, `functions: 286/286 entered = 100.00% (minimum 80%)`; `hilclaw/instance.py` 124 statements, 0 missed, 100 %.
+- `push` run on `main` after the merge (`3067828`): https://github.com/myungjoo/HIL-Claw/actions/runs/37796411976 - `success`.
+
+### Size and language
+- Non-test diff: 130 added, 32 removed lines in 1 file (`hilclaw/instance.py`; about 25 statement lines, the rest docstrings); tests: 525 added, 19 removed in `tests/test_instance.py`. Inside the cap (300 LOC / 5 files).
+- Language: Python, because the module exists in Python.
+- Nothing else was edited: no ADR, no register, `hilclaw/hw_tool.py`, the harness, `pyproject.toml` and `.github/` are as they were; no new dependency, no JSON Schema file, no file written by the module.
+
+### Follow-ups found while doing the task
+- None beyond the list above. No docstring sentence of `hilclaw/hw_tool.py` was found false.
+- (note for the contract of `correctness.check`) `Tolerance` unpacks into the two arguments of `run_verification(..., rtol, atol)`; the module itself binds nothing.
