@@ -12,8 +12,8 @@ step fails before the name is given. This module is those steps over
 ``instance.json.<token>.tmp`` in the run directory (decision 6). The last step
 is a hard link from the temporary name to the final name, followed by the
 removal of the temporary name. There is no fallback to a replacing rename:
-where the link is not possible the write fails and nothing is under the final
-name.
+where the link is not possible the write fails and has put nothing under the
+final name.
 
 Conventions of this module, which the record does not fix:
 
@@ -50,9 +50,10 @@ Conventions of this module, which the record does not fix:
 - The directories above the final name are used as the operating system
   resolves them, as :func:`hilclaw.instance.read` reads through them.
 
-Limits (decision 7): the death of the writing process leaves no file under the
-final name or the whole one, and nothing is promised for the loss of the
-machine; the directory entry is not flushed. This holds on the POSIX systems
+Limits (decision 7): when the final name was not taken before the write, the
+death of the writing process leaves no file under it or the whole one; a name
+that was taken holds what it held. Nothing is promised for the loss of the
+machine, and the directory entry is not flushed. This holds on the POSIX systems
 of C-7 whose file system gives the hard link: nothing is stated for a network
 file system, for a Windows drive seen from WSL or for native Windows. Two
 writers at once are not prevented: one is given the name, the other finds it
@@ -96,10 +97,10 @@ class NameTakenError(Exception):
 def write(data_root, run_id, content):
     """Put ``content`` under ``runs/<run_id>/instance.json`` if that name is free; return ``None``.
 
-    ``content`` is the whole file as ``bytes``. After a return the final name
-    holds exactly these bytes: nothing is added, removed, defaulted or
-    normalised. The final name is never opened, and this call puts nothing
-    under it before the last step.
+    ``content`` is the whole file as ``bytes``. A call that returns has given
+    the final name to a file of exactly these bytes: nothing is added,
+    removed, defaulted or normalised. The final name is never opened, and
+    this call puts nothing under it before the last step.
 
     Raises, before the file system is touched and in this order:
     :class:`hilclaw.layout.InvalidPathValueError` for an invalid ``run_id``;
