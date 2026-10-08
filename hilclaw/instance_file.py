@@ -98,8 +98,8 @@ def write(data_root, run_id, content):
 
     ``content`` is the whole file as ``bytes``. After a return the final name
     holds exactly these bytes: nothing is added, removed, defaulted or
-    normalised. The final name is never opened, and a name that was free
-    does not exist until the last step.
+    normalised. The final name is never opened, and this call puts nothing
+    under it before the last step.
 
     Raises, before the file system is touched and in this order:
     :class:`hilclaw.layout.InvalidPathValueError` for an invalid ``run_id``;
@@ -112,13 +112,14 @@ def write(data_root, run_id, content):
     Raises :class:`FileNotFoundError` or :class:`NotADirectoryError` for a
     ``data_root`` that is no existing directory, and the :class:`OSError` of
     the step that failed (the creation of a directory or of the temporary
-    file, the write, the flush, the link). The final name is then as it was
-    and the temporary file of this call is removed.
+    file, the write, the flush, the link). This call has then put nothing
+    under the final name, and its temporary file is removed where that is
+    possible.
 
     Raises :class:`NameTakenError` when the link finds the final name taken,
     whatever is there and whatever its content: equal bytes are reported as
-    any other. The entry under the name is unchanged and the temporary file of
-    this call is removed. Nothing is retried.
+    any other. This call leaves the entry under the name as it found it and
+    removes its temporary file where that is possible. Nothing is retried.
     """
     layout.check_run_id(run_id)
     instance.parse(content)
