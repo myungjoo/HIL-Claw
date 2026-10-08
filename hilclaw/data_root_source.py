@@ -47,16 +47,20 @@ def obtain(source):
         ) from e
     try:
         text = os.fspath(named) if isinstance(named, (str, os.PathLike)) else None
-    except TypeError:
-        text = None
+    except Exception as e:
+        raise _no_path(named) from e
     if not isinstance(text, str) or not text:
-        raise tools.ToolFailure(
-            tools.KIND_NO_DATA_ROOT,
-            f"the data-root source named no path: {type(named).__name__} {named!r}",
-        )
+        raise _no_path(named)
     if not os.path.isdir(text):
         raise tools.ToolFailure(
             tools.KIND_NO_DATA_ROOT,
             f"the data root is not an existing directory: {text}",
         )
     return Path(text)
+
+
+def _no_path(named):
+    return tools.ToolFailure(
+        tools.KIND_NO_DATA_ROOT,
+        f"the data-root source named no path: got {type(named).__name__}",
+    )

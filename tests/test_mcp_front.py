@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from hilclaw import __main__ as command_line
-from hilclaw import __version__, config, mcp_front
+from hilclaw import __version__, config, data_root_source, mcp_front, tools
 from hilclaw.mcp_front import main, mcp_name, mcp_names
 from hilclaw.tools import Registry, ToolFailure, default_registry
 
@@ -463,6 +463,17 @@ def test_the_fixed_tool_set_is_empty_today():
     assert len(refused) == 6
     for i, (name, document) in enumerate(zip(FIXED_NAMES.values(), refused), 1):
         assert error_of(document, -32602, i) == f"unknown tool {name!r}"
+
+
+def test_the_default_registry_is_bound_to_the_configured_source(monkeypatch):
+    bound = []
+    monkeypatch.setattr(
+        tools, "default_registry", lambda source: bound.append(source) or Registry()
+    )
+    main([], stdin=io.BytesIO(b""), stdout=io.BytesIO(), stderr=io.BytesIO())
+    assert bound == [data_root_source.configured]
+    main([], registry=Registry(), stdin=io.BytesIO(b""), stdout=io.BytesIO())
+    assert len(bound) == 1
 
 
 def test_the_default_registry_asks_no_source_to_list_or_to_refuse(

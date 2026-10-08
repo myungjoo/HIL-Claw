@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from hilclaw import __main__ as front
-from hilclaw import config
+from hilclaw import config, data_root_source, tools
 from hilclaw.__main__ import main
 from hilclaw.tools import Registry, ToolFailure
 
@@ -209,6 +209,17 @@ def test_the_fixed_tool_set_is_empty_today(name):
     assert status == front.EXIT_FRONT_FAILURE == 4
     assert error_of(stdout.getvalue(), "unknown_tool") == f"unknown tool {name!r}"
     assert stderr.getvalue()
+
+
+def test_the_default_registry_is_bound_to_the_configured_source(monkeypatch):
+    bound = []
+    monkeypatch.setattr(
+        tools, "default_registry", lambda source: bound.append(source) or Registry()
+    )
+    main(["sim.run"], stdin=io.BytesIO(b""), stdout=io.BytesIO(), stderr=io.BytesIO())
+    assert bound == [data_root_source.configured]
+    main(["sim.run"], registry=Registry(), stdin=io.BytesIO(b""), stdout=io.BytesIO())
+    assert len(bound) == 1
 
 
 def test_the_default_registry_asks_no_source_to_refuse(monkeypatch, tmp_path):

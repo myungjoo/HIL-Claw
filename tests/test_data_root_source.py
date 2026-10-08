@@ -55,7 +55,12 @@ class Named:
         self.value = value
 
     def __fspath__(self):
+        if isinstance(self.value, Exception):
+            raise self.value
         return self.value
+
+    def __repr__(self):
+        raise RuntimeError("no text for this value")
 
 
 class Text(str):
@@ -258,6 +263,8 @@ def test_a_path_the_platform_cannot_ask_about_is_no_data_root(tmp_path):
         Named(b"."),
         Named(None),
         Named(""),
+        Named(RuntimeError("no path today")),
+        Named(OSError(5, "Input/output error")),
     ],
 )
 def test_what_is_no_path_is_no_data_root(answer, tmp_path, monkeypatch):
