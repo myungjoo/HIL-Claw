@@ -1,7 +1,10 @@
 import inspect
 import io
 import json
+import math
 import reprlib
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,15 +22,18 @@ from hilclaw import (
     tools,
 )
 from hilclaw.backends import BackendTable
+from hilclaw.harness import verification_arrays
 from hilclaw.instance import (
     SCHEMA_VERSION,
     Instance,
     InvalidInstanceError,
     MissingInstanceError,
+    Tolerance,
     UnsupportedVersionError,
     hw_profile_of,
     parse,
     read,
+    tolerance_of,
     validate,
 )
 from hilclaw.journal import EMPTY
@@ -45,6 +51,11 @@ TOOL = "sim.run"
 STEP = "example_step"
 SPEND = {"example_axis": 7}
 REQUEST = {"run_id": RUN, "round": 3, "candidate": 2, "attempt": 1, "execution": 1}
+# Test values of a tolerance: no default, recommended or typical value.
+TEST_RTOL, TEST_ATOL = 0.25, 3.0
+OTHER_TEST_RTOL, OTHER_TEST_ATOL = 0.5, 7.0
+TOLERANCE = {"rtol": TEST_RTOL, "atol": TEST_ATOL}
+OTHER_TOLERANCE = {"rtol": OTHER_TEST_RTOL, "atol": OTHER_TEST_ATOL}
 
 # The Example of ADR-0018, as written in the record: the shape of the member, not a valid file.
 EXAMPLE = b"""{
@@ -124,6 +135,13 @@ def text(*members):
     return ("{" + ", ".join(members) + "}").encode()
 
 
+def shown(value):
+    try:
+        return repr(value)[:20]
+    except ValueError:
+        return "an int too long to show"
+
+
 def invalid(place, function, *arguments):
     with pytest.raises(InvalidInstanceError) as caught:
         function(*arguments)
@@ -178,22 +196,29 @@ def test_the_public_names():
         "InvalidInstanceError",
         "MissingInstanceError",
         "SCHEMA_VERSION",
+        "Tolerance",
         "UnsupportedVersionError",
         "hw_profile_of",
         "parse",
         "read",
+        "tolerance_of",
         "validate",
     ]
     assert SCHEMA_VERSION == 1
-    assert Instance._fields == ("hw_profile_key", "hw_profile", "others")
+    assert Instance._fields == ("hw_profile_key", "hw_profile", "tolerance", "others")
+    assert Tolerance._fields == ("rtol", "atol")
+    assert Tolerance._field_defaults == Instance._field_defaults == {}
     assert issubclass(InvalidInstanceError, ValueError)
     for error in (UnsupportedVersionError, MissingInstanceError):
         assert not issubclass(error, (ValueError, OSError))
     for error in (InvalidInstanceError, UnsupportedVersionError, MissingInstanceError):
         assert not issubclass(error, ToolFailure)
     assert UnsupportedVersionError is not run_state.UnsupportedVersionError
-    for function in (read, hw_profile_of):
-        assert list(inspect.signature(function).parameters) == ["data_root", "run_id"]
+    for function in (read, hw_profile_of, tolerance_of):
+        parameters = inspect.signature(function).parameters
+        assert list(parameters) == ["data_root", "run_id"]
+        for parameter in parameters.values():
+            assert parameter.default is inspect.Parameter.empty
     assert list(inspect.signature(parse).parameters) == ["content"]
     assert list(inspect.signature(validate).parameters) == ["document"]
 
@@ -202,7 +227,7 @@ def test_a_minimal_content_gives_the_key_and_the_record():
     result = parse(raw(doc()))
 
     assert type(result) is Instance
-    assert result == Instance(KEY, record(), {})
+    assert result == Instance(KEY, record(), None, {})
     assert type(result.hw_profile) is dict
     assert key_of(result.hw_profile) == result.hw_profile_key
     assert validate(doc()) is None
@@ -213,7 +238,7 @@ def test_a_record_with_its_optional_fields():
 
     result = parse(raw(doc(profile)))
 
-    assert result == Instance(key_of(profile), profile, {})
+    assert result == Instance(key_of(profile), profile, None, {})
     assert result.hw_profile_key == key_of(record(ext={"example_field": 3}))
     assert result.hw_profile_key != KEY
 
@@ -257,7 +282,7 @@ OTHERS = {
 def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     result = parse(raw(doc(**OTHERS)))
 
-    assert result == Instance(KEY, record(), OTHERS)
+    assert result == Instance(KEY, record(), None, OTHERS)
     assert list(result.others) == list(OTHERS)
     assert validate(doc(**OTHERS)) is None
 
@@ -267,8 +292,8 @@ def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     [
         {"hw_profiles": [record("acc_b")]},
         {"hw_profiles": {"key": OTHER_KEY, "record": OTHER_RECORD}},
-        {"objective": None, "tolerance": {"rel": "broken"}, "budget": -1},
-        {"budget": [], "objective": "", "tolerance": 0.1, "hw_profile_key": OTHER_KEY},
+        {"objective": None, "budget": -1},
+        {"budget": [], "objective": "", "hw_profile_key": OTHER_KEY},
         {"layout_version": 99, "source_commit": False, "run_id": "another"},
     ],
 )
@@ -656,6 +681,370 @@ def test_nothing_is_modified_by_a_check():
     assert json.dumps(document) == before
 
 
+# --- happy: the member tolerance (ADR-0020) ---
+
+
+def stated(rtol, atol, *more):
+    member = f'"tolerance": {{"rtol": {rtol}, "atol": {atol}}}'
+    return text(VERSION, SECTION, member, *more)
+
+
+def test_a_content_with_the_member_states_the_two_values():
+    result = parse(raw(doc(tolerance=TOLERANCE, example=[1])))
+
+    assert result == Instance(
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), {"example": [1]}
+    )
+    assert type(result.tolerance) is Tolerance
+    assert (result.tolerance.rtol, result.tolerance.atol) == (TEST_RTOL, TEST_ATOL)
+    assert "tolerance" not in result.others
+    assert validate(doc(tolerance=TOLERANCE, example=[1])) is None
+
+
+def test_a_content_without_the_member_states_no_tolerance():
+    result = parse(raw(doc()))
+
+    assert result.tolerance is None
+    assert (result.hw_profile_key, result.hw_profile) == (KEY, record())
+    assert result[:2] == parse(raw(doc(tolerance=TOLERANCE)))[:2]
+
+
+ZERO_LITERALS = ["0", "0.0", "-0", "-0.0", "-1e-999", "1e-999", "0e5"]
+LITERALS = [
+    "0.001",
+    "1e-5",
+    "1E-5",
+    "2",
+    "1.7976931348623158e308",
+    "5e-324",
+    str(2**1023),
+    *ZERO_LITERALS,
+]
+
+
+@pytest.mark.parametrize("literal", LITERALS)
+def test_a_number_literal_is_handed_out_as_its_float(literal):
+    expected = 0.0 if literal in ZERO_LITERALS else float(literal)
+    assert math.isfinite(expected) and (expected > 0) == (literal not in ZERO_LITERALS)
+
+    for content, found in (
+        (stated(literal, TEST_ATOL), Tolerance(expected, TEST_ATOL)),
+        (stated(TEST_RTOL, literal), Tolerance(TEST_RTOL, expected)),
+        (stated(literal, literal), Tolerance(expected, expected)),
+    ):
+        result = parse(content).tolerance
+        assert result == found
+        assert [type(value) for value in result] == [float, float]
+        assert [math.copysign(1.0, value) for value in result] == [1.0, 1.0]
+        assert validate(json.loads(content)) is None
+
+
+def test_both_values_may_be_zero_and_neither_bounds_the_other():
+    assert parse(stated(0, 0)).tolerance == Tolerance(0.0, 0.0)
+    assert parse(stated(0, 1e300)).tolerance == Tolerance(0.0, 1e300)
+    assert parse(stated(1e300, 0)).tolerance == Tolerance(1e300, 0.0)
+
+
+def test_a_minus_zero_built_in_memory_is_handed_out_as_zero():
+    document = doc(tolerance={"rtol": -0.0, "atol": 0})
+
+    assert validate(document) is None
+    result = parse(raw(document)).tolerance
+    assert [math.copysign(1.0, value) for value in result] == [1.0, 1.0]
+    assert [type(value) for value in result] == [float, float]
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        text(VERSION, SECTION, '"tolerance": {"atol": 3.0, "rtol": 0.25}'),
+        text('"tolerance": {"atol": 3.0, "rtol": 0.25}', SECTION, VERSION),
+        text(VERSION, '"tolerance":{"rtol":0.25,"atol":3.0}', SECTION),
+        text(VERSION, SECTION, '"tolerance" : {\n "rtol" : 25e-2,\r\n\t"atol" : 3 }'),
+    ],
+)
+def test_any_order_of_the_members_of_a_tolerance(content):
+    result = parse(content)
+
+    assert result == Instance(KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), {})
+
+
+def test_the_member_of_the_example_of_adr_0020():
+    result = parse(stated("1e-4", "0.01"))
+
+    assert result.tolerance == Tolerance(0.0001, 0.01)
+
+
+# --- branch: the member tolerance ---
+
+BROKEN_TOLERANCES = [None, 0.1, [], {}, {"rtol": TEST_RTOL}, {"rel": "broken"}]
+
+
+@pytest.mark.parametrize("version", [0, 2, MAX])
+@pytest.mark.parametrize("tolerance", [*BROKEN_TOLERANCES, TOLERANCE], ids=repr)
+def test_another_version_is_reported_before_a_tolerance_is_looked_at(
+    version, tolerance
+):
+    document = doc(schema_version=version, tolerance=tolerance)
+
+    for function, argument in ((parse, raw(document)), (validate, document)):
+        with pytest.raises(UnsupportedVersionError) as caught:
+            function(argument)
+        assert str(caught.value) == f"schema_version: {version} is not supported"
+
+
+@pytest.mark.parametrize(
+    "others",
+    [
+        {"tolerence": TOLERANCE},
+        {"tolerances": TOLERANCE},
+        {"Tolerance": TOLERANCE},
+        {"tolerance ": {"rel": "broken"}},
+        {"rtol": TEST_RTOL, "atol": TEST_ATOL},
+        {"rtol": -1, "atol": "broken", "tolerence": 0.1},
+    ],
+    ids=repr,
+)
+def test_a_top_level_member_of_another_name_states_no_tolerance(others):
+    result = parse(raw(doc(**others)))
+
+    assert result == Instance(KEY, record(), None, others)
+    assert validate(doc(**others)) is None
+
+    result = parse(raw(doc(tolerance=TOLERANCE, **others)))
+    assert result.tolerance == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert result.others == others
+
+
+NO_MEMBER = "tolerance: must be an object without the member, got str "
+NO_NUMBER = ": must be a finite number that is not negative, got "
+
+
+@pytest.mark.parametrize(
+    "place, changes",
+    [
+        ("hw_profile: must be", {"hw_profile": None, "tolerance": None}),
+        (
+            "document: lacks the member hw_profile",
+            {"hw_profile": REMOVE, "tolerance": 1},
+        ),
+        ("hw_profile.key: ", {"hw_profile": section(key=OTHER_KEY), "tolerance": {}}),
+        (NO_MEMBER + "'x'", {"tolerance": {"x": 1}}),
+        (NO_MEMBER + "'x'", {"tolerance": {"rtol": -1, "x": 1}}),
+        (NO_MEMBER + "'x'", {"tolerance": {"rtol": -1, "atol": -1, "x": 1}}),
+        ("tolerance: lacks the member rtol", {"tolerance": {}}),
+        ("tolerance: lacks the member rtol", {"tolerance": {"atol": -1}}),
+        ("tolerance: lacks the member atol", {"tolerance": {"rtol": "broken"}}),
+        ("tolerance.rtol" + NO_NUMBER, {"tolerance": {"rtol": -1, "atol": -1}}),
+        ("tolerance.rtol" + NO_NUMBER, {"tolerance": {"atol": None, "rtol": None}}),
+    ],
+)
+def test_the_first_broken_rule_is_reported_with_a_tolerance(place, changes):
+    document = doc(**changes)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+# --- error / negative: the member tolerance ---
+
+
+@pytest.mark.parametrize(
+    "value", [None, 0.1, 1, 0, "0.1", "", [TEST_RTOL, TEST_ATOL], [], True, False]
+)
+def test_a_tolerance_that_is_no_object(value):
+    document = doc(tolerance=value)
+    expected = f"tolerance: must be an object, got {type(value).__name__}"
+
+    invalid(expected, parse, raw(document))
+    invalid(expected, validate, document)
+
+
+@pytest.mark.parametrize(
+    "place, tolerance",
+    [
+        ("tolerance: lacks the member rtol", {}),
+        ("tolerance: lacks the member atol", {"rtol": TEST_RTOL}),
+        ("tolerance: lacks the member rtol", {"atol": TEST_ATOL}),
+        (NO_MEMBER + "'kind'", {**TOLERANCE, "kind": "example"}),
+        (NO_MEMBER + "''", {**TOLERANCE, "": 1}),
+        (NO_MEMBER + "'atoll'", {"rtol": TEST_RTOL, "atoll": TEST_ATOL}),
+        (NO_MEMBER + "'Rtol'", {"Rtol": TEST_RTOL, "atol": TEST_ATOL}),
+        (NO_MEMBER + "'rel'", {"rel": "broken"}),
+        (NO_MEMBER + "'rtol '", {"rtol ": TEST_RTOL, "atol": TEST_ATOL}),
+    ],
+)
+def test_a_tolerance_that_is_not_the_closed_object(place, tolerance):
+    document = doc(tolerance=tolerance)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+NO_NUMBERS = [
+    True,
+    False,
+    None,
+    "1e-4",
+    "",
+    [1e-4],
+    {"value": 1e-4},
+    -1,
+    -1e-9,
+    -0.5,
+    -5e-324,
+    10**400,
+    -(10**400),
+    2**1024,
+]
+
+
+@pytest.mark.parametrize("name", ["rtol", "atol"])
+@pytest.mark.parametrize("value", NO_NUMBERS, ids=shown)
+def test_a_value_that_is_no_finite_number_that_is_not_negative(name, value):
+    document = doc(tolerance={**TOLERANCE, name: value})
+    expected = f"tolerance.{name}{NO_NUMBER}{type(value).__name__}"
+
+    invalid(expected, parse, raw(document))
+    invalid(expected, validate, document)
+
+
+@pytest.mark.parametrize("literal", ["1e999", "-1e999", "1" + "0" * 400, "1.8e308"])
+def test_a_literal_no_float_holds_is_never_read_as_an_infinity(literal):
+    invalid("tolerance.rtol" + NO_NUMBER, parse, stated(literal, 0))
+    invalid("tolerance.atol" + NO_NUMBER, parse, stated(0, literal))
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        stated("NaN", 0),
+        stated(0, "Infinity"),
+        stated("-Infinity", 0),
+        stated(0, TOO_LONG_TEXT),
+    ],
+)
+def test_a_tolerance_that_is_no_json(content):
+    invalid("content: cannot be read as one JSON text", parse, content)
+
+
+@pytest.mark.parametrize(
+    "member",
+    [
+        '"tolerance": {"rtol": 0.25, "atol": 3.0, "rtol": 0.25}',
+        '"tolerance": {"rtol": 0.25, "atol": 3.0, "atol": 3.0}',
+        '"tolerance": {"rtol": 0.25, "atol": 3.0}, "tolerance": {"rtol": 0.25, "atol": 3.0}',
+    ],
+)
+def test_a_member_name_twice_with_a_tolerance(member):
+    message = invalid(
+        "content: cannot be read as one JSON text",
+        parse,
+        text(VERSION, SECTION, member),
+    )
+    assert "a JSON object repeats a member name" in message
+
+
+class Number(float):
+    """A test-only subclass: not exactly a ``float``."""
+
+
+@pytest.mark.parametrize("name", ["rtol", "atol"])
+@pytest.mark.parametrize(
+    "value",
+    [float("inf"), float("-inf"), float("nan"), True, False, TOO_LONG, Number(0.5)],
+    ids=shown,
+)
+def test_validate_refuses_a_value_built_in_memory(name, value):
+    document = doc(tolerance={**TOLERANCE, name: value})
+
+    message = invalid(f"tolerance.{name}{NO_NUMBER}", validate, document)
+    assert message.endswith(f"got {type(value).__name__}")
+
+
+@pytest.mark.parametrize(
+    "tolerance",
+    [
+        '{"rtol": 1e-4}',
+        '{"rtol": -1, "atol": 0}',
+        '{"rtol": "1e-4", "atol": 0}',
+        '{"rtol": 1e999, "atol": 0}',
+        '{"rtol": 1e-4, "atol": 0.01, "example": 1}',
+    ],
+)
+def test_the_invalid_files_of_the_walk_through_of_adr_0020(tolerance):
+    invalid("tolerance", parse, text(VERSION, SECTION, f'"tolerance": {tolerance}'))
+
+
+# --- with the harness: the same rule for a value ---
+
+VALUES = [
+    0,
+    0.0,
+    -0.0,
+    1,
+    2.5,
+    1e-5,
+    5e-324,
+    sys.float_info.max,
+    2**1023,
+    *NO_NUMBERS,
+    float("inf"),
+    float("-inf"),
+    float("nan"),
+    TOO_LONG,
+    Number(0.5),
+]
+
+
+def accepted(function, *arguments):
+    try:
+        function(*arguments)
+    except (InvalidInstanceError, verification_arrays.VerificationArgumentError):
+        return False
+    return True
+
+
+@pytest.mark.parametrize("rtol", VALUES, ids=shown)
+def test_a_pair_is_valid_here_exactly_when_check_tolerance_accepts_it(rtol):
+    for atol in VALUES:
+        here = accepted(validate, doc(tolerance={"rtol": rtol, "atol": atol}))
+        there = accepted(verification_arrays.check_tolerance, rtol, atol)
+        assert here == there, (rtol, atol)
+        assert here == all(
+            any(value is valid for valid in VALUES[:9]) for value in (rtol, atol)
+        )
+
+
+def test_the_module_imports_neither_numpy_nor_the_harness():
+    code = (
+        "import sys, hilclaw.instance; "
+        "print(sorted(name for name in sys.modules "
+        "if name.split('.')[0] == 'numpy' or name.startswith('hilclaw.harness')))"
+    )
+
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+
+    assert done.stdout.strip() == "[]"
+
+
+def test_nothing_of_the_module_holds_a_tolerance_value():
+    numbers = {
+        name: value
+        for name, value in vars(instance).items()
+        if type(value) in (int, float, Tolerance)
+    }
+
+    assert numbers == {"SCHEMA_VERSION": 1, "_MAX": MAX}
+
+
 # --- happy: the reader ---
 
 
@@ -671,7 +1060,7 @@ def test_the_reader_returns_the_record_the_file_embeds(tmp_path, root):
     assert (
         read(root, RUN)
         == parse(content)
-        == Instance(KEY, record(), {"example": [1, 2]})
+        == Instance(KEY, record(), None, {"example": [1, 2]})
     )
     assert type(read(root, RUN)) is Instance
     assert snapshot(tmp_path) == before
@@ -778,6 +1167,91 @@ def test_only_the_instance_file_is_opened(root, monkeypatch):
     assert opened == [FILE]
 
 
+# --- the reader of the tolerance ---
+
+
+def test_the_reader_returns_the_tolerance_the_file_states(tmp_path, root):
+    place(root, raw(doc(tolerance=TOLERANCE, example=[1])))
+    before = snapshot(tmp_path)
+
+    found = tolerance_of(root, RUN)
+
+    assert found == Tolerance(TEST_RTOL, TEST_ATOL) and type(found) is Tolerance
+    assert found == read(root, RUN).tolerance
+    assert tolerance_of(str(root), RUN) == found
+    assert hw_profile_of(root, RUN) == record()
+    assert snapshot(tmp_path) == before
+
+
+def test_a_run_without_the_member_states_no_tolerance(tmp_path, root):
+    place(root, raw(doc(tolerence=TOLERANCE, rtol=TEST_RTOL, atol=TEST_ATOL)))
+    before = snapshot(tmp_path)
+
+    assert tolerance_of(root, RUN) is None
+    assert read(root, RUN).tolerance is None
+    assert hw_profile_of(root, RUN) == record()
+    assert snapshot(tmp_path) == before
+
+
+def test_a_tolerance_replaced_between_two_calls_is_seen_at_the_second(root):
+    place(root, raw(doc(tolerance=TOLERANCE)))
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+
+    place(root, raw(doc(tolerance=OTHER_TOLERANCE)))
+    assert tolerance_of(root, RUN) == Tolerance(OTHER_TEST_RTOL, OTHER_TEST_ATOL)
+
+    place(root, raw(doc()))
+    assert tolerance_of(root, RUN) is None
+
+    place(root, raw(doc(tolerance={"rtol": TEST_RTOL})))
+    invalid(f"{FILE}: tolerance: lacks the member atol", tolerance_of, root, RUN)
+    invalid(f"{FILE}: tolerance: lacks the member atol", hw_profile_of, root, RUN)
+    invalid(f"{FILE}: tolerance: lacks the member atol", read, root, RUN)
+
+    place(root, raw(doc(schema_version=2, tolerance=TOLERANCE)))
+    with pytest.raises(UnsupportedVersionError):
+        tolerance_of(root, RUN)
+
+    place(root, raw(doc(tolerance=TOLERANCE)))
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+
+
+def test_two_runs_state_their_own_tolerances(root):
+    place(root, raw(doc(tolerance=TOLERANCE)))
+    place(root, raw(doc(tolerance=OTHER_TOLERANCE)), f"runs/{OTHER_RUN}/instance.json")
+    place(root, raw(doc()), "runs/run-c/instance.json")
+
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert tolerance_of(root, OTHER_RUN) == Tolerance(OTHER_TEST_RTOL, OTHER_TEST_ATOL)
+    assert tolerance_of(root, "run-c") is None
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+
+
+def test_each_call_returns_a_new_tolerance(root):
+    place(root, raw(doc(tolerance=TOLERANCE)))
+
+    first, second = tolerance_of(root, RUN), tolerance_of(root, RUN)
+
+    assert first == second and first is not second
+    assert read(root, RUN).tolerance is not read(root, RUN).tolerance
+
+
+def test_the_reader_of_the_tolerance_opens_only_the_instance_file(root, monkeypatch):
+    place(root, raw(doc(tolerance=TOLERANCE)))
+    place(root, b"{}", f"runs/{RUN}/STATE.json")
+    opened, real = [], Path.read_bytes
+
+    def read_bytes(path):
+        opened.append(path.relative_to(root).as_posix())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setenv("HILCLAW_DATA_ROOT", "elsewhere")
+
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert opened == [FILE]
+
+
 # --- error / negative: the four situations of decision 4 ---
 
 
@@ -812,7 +1286,7 @@ MISSING = [
 ]
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of])
+@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
 @pytest.mark.parametrize("build", MISSING)
 def test_a_missing_file(tmp_path, root, call, build):
     build(root)
@@ -838,10 +1312,19 @@ INVALID_FILES = {
     "a third member": (raw(doc(hw_profile=section(x=1))), "hw_profile: must be"),
     "another key": (raw(doc(hw_profile=section(key=OTHER_KEY))), "hw_profile.key: "),
     "the example of the record": (EXAMPLE, "hw_profile.record.hw_source: must be"),
+    "a tolerance that is no object": (raw(doc(tolerance=0.1)), "tolerance: must be"),
+    "a tolerance with one value": (
+        raw(doc(tolerance={"rtol": TEST_RTOL})),
+        "tolerance: lacks the member atol",
+    ),
+    "a negative tolerance": (
+        raw(doc(tolerance={"rtol": TEST_RTOL, "atol": -1})),
+        "tolerance.atol: must be",
+    ),
 }
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of])
+@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
 @pytest.mark.parametrize("case", INVALID_FILES)
 def test_an_invalid_file_is_named_by_its_relative_path(tmp_path, root, call, case):
     content, reason = INVALID_FILES[case]
@@ -854,7 +1337,7 @@ def test_an_invalid_file_is_named_by_its_relative_path(tmp_path, root, call, cas
     assert snapshot(tmp_path) == before
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of])
+@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
 @pytest.mark.parametrize("version", [0, 2, MAX])
 def test_a_file_of_another_version(root, call, version):
     place(root, raw(doc(schema_version=version, hw_profile=REMOVE)))
@@ -866,7 +1349,7 @@ def test_a_file_of_another_version(root, call, version):
     assert not isinstance(caught.value, (ToolFailure, ValueError, OSError))
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of])
+@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
 @pytest.mark.parametrize(
     "error", [PermissionError("denied"), OSError("example"), FileNotFoundError("gone")]
 )
@@ -886,7 +1369,7 @@ def test_an_os_error_while_the_file_is_read_passes_through(
     assert not isinstance(caught.value, ToolFailure)
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of])
+@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
 def test_a_file_that_cannot_be_examined_passes_the_os_error_through(
     root, call, monkeypatch
 ):
@@ -903,7 +1386,7 @@ def test_a_file_that_cannot_be_examined_passes_the_os_error_through(
     assert caught.value is error
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of])
+@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
 def test_a_directory_in_the_place_of_the_file(tmp_path, root, call):
     (root / FILE).mkdir(parents=True)
     before = snapshot(tmp_path)
@@ -912,7 +1395,7 @@ def test_a_directory_in_the_place_of_the_file(tmp_path, root, call):
     assert snapshot(tmp_path) == before
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of])
+@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
 @pytest.mark.parametrize("target", ["a file", "nothing"])
 def test_a_symbolic_link_in_the_place_of_the_file(tmp_path, root, call, target):
     elsewhere = tmp_path / "elsewhere.json"
@@ -927,7 +1410,7 @@ def test_a_symbolic_link_in_the_place_of_the_file(tmp_path, root, call, target):
 # --- error / negative: arguments ---
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of])
+@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
 @pytest.mark.parametrize(
     "run_id", ["", "Run-A", "../run-a", "a/b", ".", "a" * 65, None, 1, b"run-a"]
 )
@@ -938,14 +1421,14 @@ def test_an_invalid_run_id_is_refused_before_the_file_system(tmp_path, call, run
     assert snapshot(tmp_path) == {}
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of])
+@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
 def test_a_data_root_that_does_not_exist(tmp_path, call):
     with pytest.raises(FileNotFoundError, match="data root is not an existing"):
         call(tmp_path / "absent", RUN)
     assert snapshot(tmp_path) == {}
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of])
+@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
 def test_a_file_in_the_place_of_the_data_root(tmp_path, call):
     (tmp_path / "data").write_bytes(raw(doc()))
 
@@ -1214,3 +1697,26 @@ def test_each_run_selects_by_its_own_file(root):
         {"example_member": 1},
     )
     assert [seen for _, _, seen in tool.asked] == [record(), record()]
+
+
+@pytest.mark.parametrize(
+    "repaired", [doc(), doc(tolerance=TOLERANCE)], ids=["removed", "valid"]
+)
+def test_a_file_invalid_by_its_tolerance_alone_is_run_file_invalid(root, repaired):
+    place(started(root), raw(doc(tolerance={"rtol": TEST_RTOL})))
+    tool = Tool(root)
+
+    assert_no_step_started(
+        tool,
+        root,
+        "run_file_invalid",
+        InvalidInstanceError,
+        "tolerance: lacks the member atol",
+    )
+    assert kinds(root) == []
+
+    place(root, raw(repaired))
+    assert tool.function(dict(REQUEST)) == {"example_member": 1}
+    assert kinds(root) == ["step_started", "step_ended"]
+    assert (len(tool.asked), tool.performed) == (1, 1)
+    assert [seen for _, _, seen in tool.asked] == [record()]
