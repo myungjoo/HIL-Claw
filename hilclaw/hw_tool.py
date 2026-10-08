@@ -43,7 +43,8 @@ Conventions of this module, which the records do not fix:
   it and names none.
 - The step of the contract calls the operation, not this module: what an
   operation returns and how that becomes the amounts and the result of the
-  step are each tool's contract.
+  step are each tool's contract. Nothing here checks that the step calls it,
+  how often or with what.
 - What the reader returns is not looked at here; the selection validates it.
 - Nothing is kept between calls (ADR-0010 decision 7): the reader is asked at
   each call that reaches 4.
@@ -51,8 +52,8 @@ Conventions of this module, which the records do not fix:
 Limits it does not remove (ADR-0016 decision 6, with those of
 :mod:`hilclaw.journaled_tool`): no access control, so a caller can name another
 run; the target a backend reaches is not checked against the other key fields
-of the record; a backend or a step that does not answer the contract of the
-tool is not detected; two calls at once; and two processes hold two tables.
+of the record; a backend that does not answer the contract of the tool is not
+detected; two calls at once; and two processes hold two tables.
 
 It defines no tool, no backend, no table, no reader, no script and no default,
 registers nothing and reads no configuration and no variable of the process.
@@ -78,8 +79,10 @@ def tool_function(*, tool, step, numbers, source, table, hw_profile_of, check, p
       hw_profile, operation)`` with the request as the caller gave it, the
       object the reader returned and the operation
       :func:`hilclaw.backends.select` returned for it, only for an identity
-      with no line and only after the start line. It returns ``(spend,
-      result)`` or raises :class:`hilclaw.journaled_step.StepFailed`.
+      with no line and only after the start line. An operation is called
+      with the request and the hw_profile of the call (ADR-0016 decision 2);
+      what else it is handed is the tool's contract. The step returns
+      ``(spend, result)`` or raises :class:`hilclaw.journaled_step.StepFailed`.
 
     Raises, in this order: :class:`TypeError` when ``tool`` is no ``str`` and
     :class:`ValueError` when it is no HW tool; :class:`TypeError` when
