@@ -1,7 +1,9 @@
 import inspect
 import io
+import itertools
 import json
 import math
+import re
 import reprlib
 import subprocess
 import sys
@@ -33,6 +35,7 @@ from hilclaw.instance import (
     hw_profile_of,
     parse,
     read,
+    source_commit_of,
     tolerance_of,
     validate,
 )
@@ -56,6 +59,10 @@ TEST_RTOL, TEST_ATOL = 0.25, 3.0
 OTHER_TEST_RTOL, OTHER_TEST_ATOL = 0.5, 7.0
 TOLERANCE = {"rtol": TEST_RTOL, "atol": TEST_ATOL}
 OTHER_TOLERANCE = {"rtol": OTHER_TEST_RTOL, "atol": OTHER_TEST_ATOL}
+# Made-up object names: the placeholder of the Example of ADR-0022 and two more, no commit of any repository.
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
+OTHER_COMMIT = "abcdef0123" * 4
+LONG_COMMIT = "fedcba9876543210" * 4
 
 # The Example of ADR-0018, as written in the record: the shape of the member, not a valid file.
 EXAMPLE = b"""{
@@ -201,11 +208,18 @@ def test_the_public_names():
         "hw_profile_of",
         "parse",
         "read",
+        "source_commit_of",
         "tolerance_of",
         "validate",
     ]
     assert SCHEMA_VERSION == 1
-    assert Instance._fields == ("hw_profile_key", "hw_profile", "tolerance", "others")
+    assert Instance._fields == (
+        "hw_profile_key",
+        "hw_profile",
+        "tolerance",
+        "source_commit",
+        "others",
+    )
     assert Tolerance._fields == ("rtol", "atol")
     assert Tolerance._field_defaults == Instance._field_defaults == {}
     assert issubclass(InvalidInstanceError, ValueError)
@@ -214,7 +228,7 @@ def test_the_public_names():
     for error in (InvalidInstanceError, UnsupportedVersionError, MissingInstanceError):
         assert not issubclass(error, ToolFailure)
     assert UnsupportedVersionError is not run_state.UnsupportedVersionError
-    for function in (read, hw_profile_of, tolerance_of):
+    for function in (read, hw_profile_of, tolerance_of, source_commit_of):
         parameters = inspect.signature(function).parameters
         assert list(parameters) == ["data_root", "run_id"]
         for parameter in parameters.values():
@@ -227,7 +241,7 @@ def test_a_minimal_content_gives_the_key_and_the_record():
     result = parse(raw(doc()))
 
     assert type(result) is Instance
-    assert result == Instance(KEY, record(), None, {})
+    assert result == Instance(KEY, record(), None, None, {})
     assert type(result.hw_profile) is dict
     assert key_of(result.hw_profile) == result.hw_profile_key
     assert validate(doc()) is None
@@ -238,7 +252,7 @@ def test_a_record_with_its_optional_fields():
 
     result = parse(raw(doc(profile)))
 
-    assert result == Instance(key_of(profile), profile, None, {})
+    assert result == Instance(key_of(profile), profile, None, None, {})
     assert result.hw_profile_key == key_of(record(ext={"example_field": 3}))
     assert result.hw_profile_key != KEY
 
@@ -282,7 +296,7 @@ OTHERS = {
 def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     result = parse(raw(doc(**OTHERS)))
 
-    assert result == Instance(KEY, record(), None, OTHERS)
+    assert result == Instance(KEY, record(), None, None, OTHERS)
     assert list(result.others) == list(OTHERS)
     assert validate(doc(**OTHERS)) is None
 
@@ -294,7 +308,7 @@ def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
         {"hw_profiles": {"key": OTHER_KEY, "record": OTHER_RECORD}},
         {"objective": None, "budget": -1},
         {"budget": [], "objective": "", "hw_profile_key": OTHER_KEY},
-        {"layout_version": 99, "source_commit": False, "run_id": "another"},
+        {"layout_version": 99, "run_id": "another"},
     ],
 )
 def test_the_top_level_is_open(others):
@@ -693,7 +707,7 @@ def test_a_content_with_the_member_states_the_two_values():
     result = parse(raw(doc(tolerance=TOLERANCE, example=[1])))
 
     assert result == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), {"example": [1]}
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, {"example": [1]}
     )
     assert type(result.tolerance) is Tolerance
     assert (result.tolerance.rtol, result.tolerance.atol) == (TEST_RTOL, TEST_ATOL)
@@ -766,7 +780,7 @@ def test_a_minus_zero_built_in_memory_is_handed_out_as_zero():
 def test_any_order_of_the_members_of_a_tolerance(content):
     result = parse(content)
 
-    assert result == Instance(KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), {})
+    assert result == Instance(KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, {})
 
 
 def test_the_member_of_the_example_of_adr_0020():
@@ -808,7 +822,7 @@ def test_another_version_is_reported_before_a_tolerance_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_tolerance(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, others)
+    assert result == Instance(KEY, record(), None, None, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(tolerance=TOLERANCE, **others)))
@@ -1045,6 +1059,449 @@ def test_nothing_of_the_module_holds_a_tolerance_value():
     assert numbers == {"SCHEMA_VERSION": 1, "_MAX": MAX}
 
 
+# --- happy: the member source_commit (ADR-0022) ---
+
+
+def committed(literal, *more):
+    return text(VERSION, SECTION, f'"source_commit": {literal}', *more)
+
+
+@pytest.mark.parametrize(
+    "commit",
+    [COMMIT, OTHER_COMMIT, LONG_COMMIT, "0" * 40, "f" * 64, "9a" * 20, COMMIT[::-1]],
+)
+def test_a_content_with_the_member_states_that_string(commit):
+    document = doc(source_commit=commit, example=[1])
+
+    result = parse(raw(document))
+
+    assert result == Instance(KEY, record(), None, commit, {"example": [1]})
+    assert type(result.source_commit) is str
+    assert "source_commit" not in result.others
+    assert validate(document) is None
+    assert parse(committed(f'"{commit}"')).source_commit == commit
+
+
+def test_every_one_of_the_sixteen_characters_and_both_lengths_are_accepted():
+    assert sorted(set(COMMIT)) == sorted(set(LONG_COMMIT)) == list("0123456789abcdef")
+    assert (len(COMMIT), len(OTHER_COMMIT), len(LONG_COMMIT)) == (40, 40, 64)
+
+    for character in "0123456789abcdef":
+        for length in (40, 64):
+            assert parse(committed(f'"{character * length}"')).source_commit == (
+                character * length
+            )
+
+
+def test_a_content_without_the_member_states_no_source_commit():
+    without = parse(raw(doc(tolerance=TOLERANCE)))
+    stating = parse(raw(doc(tolerance=TOLERANCE, source_commit=COMMIT)))
+
+    assert without.source_commit is None
+    assert parse(raw(doc())).source_commit is None
+    assert (
+        without[:3] == stating[:3] == (KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL))
+    )
+    assert without.others == stating.others == {}
+    assert validate(doc(tolerance=TOLERANCE)) is None
+
+
+MEMBERS = [
+    VERSION,
+    SECTION,
+    '"tolerance": {"rtol": 0.25, "atol": 3.0}',
+    f'"source_commit": "{COMMIT}"',
+]
+
+
+@pytest.mark.parametrize("order", list(itertools.permutations(range(4))), ids=repr)
+def test_any_order_of_the_three_members_and_the_version(order):
+    content = text(*(MEMBERS[index] for index in order))
+
+    assert parse(content) == Instance(
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, {}
+    )
+    assert validate(json.loads(content)) is None
+
+
+def test_white_space_of_json_around_the_member_is_not_part_of_the_value():
+    content = text(VERSION, SECTION, f'\r\n\t"source_commit" :\n "{COMMIT}" \n')
+
+    assert parse(content).source_commit == COMMIT
+
+
+def test_an_escape_of_json_for_one_of_the_sixteen_states_that_character():
+    content = committed('"\\u0030' + COMMIT[1:] + '"')
+
+    assert parse(content).source_commit == COMMIT
+
+
+# The Example of ADR-0022, as written in the record: the shape of the member, not a valid file.
+EXAMPLE_OF_ADR_0022 = b"""{
+  "schema_version": 1,
+  "hw_profile": {
+    "key": "cpu_standin-b0d8610d8f470856",
+    "record": {
+      "schema_version": 1,
+      "accelerator": "cpu_standin",
+      "revision": "NOT-DECIDED-HERE",
+      "toolchain": {"clang": "NOT-DECIDED-HERE"},
+      "host": {"cpu": "NOT-DECIDED-HERE", "os": "NOT-DECIDED-HERE"},
+      "hw_source": "NOT-DECIDED-HERE"
+    }
+  },
+  "tolerance": {"rtol": 1e-4, "atol": 0.01},
+  "source_commit": "0123456789abcdef0123456789abcdef01234567"
+}
+"""
+
+
+def test_the_member_of_the_example_of_adr_0022():
+    invalid("hw_profile.record.hw_source: must be ", parse, EXAMPLE_OF_ADR_0022)
+
+    source = b'"hw_source": "NOT-DECIDED-HERE"'
+    result = parse(EXAMPLE_OF_ADR_0022.replace(source, b'"hw_source": "in_house"'))
+    assert result.source_commit == COMMIT
+    assert result.tolerance == Tolerance(0.0001, 0.01)
+    assert result.others == {}
+
+
+# --- branch: the member source_commit ---
+
+BROKEN_COMMITS = [
+    None,
+    False,
+    7,
+    "",
+    "main",
+    COMMIT[:7],
+    COMMIT.upper(),
+    {"commit": COMMIT},
+]
+
+
+@pytest.mark.parametrize("version", [0, 2, MAX])
+@pytest.mark.parametrize("commit", [*BROKEN_COMMITS, COMMIT], ids=repr)
+def test_another_version_is_reported_before_a_source_commit_is_looked_at(
+    version, commit
+):
+    document = doc(schema_version=version, source_commit=commit)
+
+    for function, argument in ((parse, raw(document)), (validate, document)):
+        with pytest.raises(UnsupportedVersionError) as caught:
+            function(argument)
+        assert str(caught.value) == f"schema_version: {version} is not supported"
+
+
+@pytest.mark.parametrize(
+    "others",
+    [
+        {"source-commit": COMMIT},
+        {"sourceCommit": COMMIT},
+        {"source_commits": [COMMIT]},
+        {"commit": COMMIT},
+        {"Source_Commit": COMMIT},
+        {"source_commit ": "main"},
+        {"source-commit": False, "commit": "main", "sourceCommit": COMMIT[:7]},
+    ],
+    ids=repr,
+)
+def test_a_top_level_member_of_another_name_states_no_source_commit(others):
+    result = parse(raw(doc(**others)))
+
+    assert result == Instance(KEY, record(), None, None, others)
+    assert validate(doc(**others)) is None
+
+    result = parse(raw(doc(source_commit=OTHER_COMMIT, **others)))
+    assert result.source_commit == OTHER_COMMIT
+    assert result.others == others
+
+
+NO_COMMIT = "source_commit: must be a str of 40 or of 64 characters, each one of 0-9 and a-f, got "
+
+
+@pytest.mark.parametrize(
+    "place, changes",
+    [
+        ("hw_profile: must be", {"hw_profile": None, "source_commit": None}),
+        (
+            "document: lacks the member hw_profile",
+            {"hw_profile": REMOVE, "source_commit": "main"},
+        ),
+        (
+            "hw_profile.key: ",
+            {"hw_profile": section(key=OTHER_KEY), "source_commit": False},
+        ),
+        ("tolerance: must be", {"tolerance": None, "source_commit": None}),
+        (
+            "tolerance: lacks the member atol",
+            {"tolerance": {"rtol": TEST_RTOL}, "source_commit": "main"},
+        ),
+        (
+            "tolerance.rtol: must be",
+            {"tolerance": {"rtol": -1, "atol": 0}, "source_commit": COMMIT[:7]},
+        ),
+        (NO_COMMIT + "str 'main'", {"tolerance": TOLERANCE, "source_commit": "main"}),
+        (NO_COMMIT + "bool", {"source_commit": False}),
+    ],
+)
+def test_the_first_broken_rule_is_reported_with_a_source_commit(place, changes):
+    document = doc(**changes)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+# --- error / negative: the member source_commit ---
+
+NO_COMMITS = [
+    None,
+    True,
+    False,
+    0,
+    7,
+    int("1" * 40),
+    int(COMMIT, 16),
+    0.5,
+    [],
+    [COMMIT],
+    list(COMMIT),
+    {},
+    {"commit": COMMIT},
+    {"sha1": COMMIT},
+    "",
+    COMMIT[:7],
+    COMMIT[:12],
+    COMMIT[:39],
+    COMMIT + "0",
+    LONG_COMMIT[:63],
+    LONG_COMMIT + "0",
+    COMMIT + COMMIT,
+    COMMIT + "0" * 12,
+    COMMIT.upper(),
+    LONG_COMMIT.upper(),
+    COMMIT[:-1] + "F",
+    "A" + COMMIT[1:],
+    COMMIT[:20] + "E" + COMMIT[21:],
+    COMMIT[:-1] + "g",
+    COMMIT[:-1] + " ",
+    COMMIT[:20] + "-" + COMMIT[21:],
+    COMMIT[:20] + " " + COMMIT[21:],
+    COMMIT + "\n",
+    COMMIT[:-1] + "\n",
+    LONG_COMMIT[:-1] + "\n",
+    COMMIT + "\r\n",
+    " " + COMMIT,
+    " " + COMMIT[1:],
+    COMMIT + " ",
+    "\t" + COMMIT[2:] + "\t",
+    "sha1:" + COMMIT,
+    "sha1:" + COMMIT[5:],
+    "0x" + COMMIT,
+    "0x" + COMMIT[2:],
+    "+" + COMMIT[1:],
+    "-" + COMMIT[1:],
+    COMMIT[:5] + "_" + COMMIT[6:],
+    "\x00" + COMMIT[1:],
+    "\uff10" + COMMIT[1:],
+    "\uff10" * 40,
+    "\u0660" + COMMIT[1:],
+    "\u0663" * 40,
+    "\u0966" * 64,
+    "\uff41" + COMMIT[1:],
+    "\u00e9" + COMMIT[1:],
+    "main",
+    "v1.0",
+    "HEAD",
+    "refs/heads/main",
+    "v1.0-3-g0123456",
+    "0123456-dirty",
+    COMMIT + "-dirty",
+]
+
+
+@pytest.mark.parametrize("value", NO_COMMITS, ids=ascii)
+def test_what_is_no_value_of_the_member(value):
+    document = doc(tolerance=TOLERANCE, source_commit=value, example=[1])
+    expected = NO_COMMIT + type(value).__name__
+
+    for content in (raw(document), json.dumps(document, ensure_ascii=False).encode()):
+        message = invalid(expected, parse, content)
+        if type(value) is str:
+            assert message == f"{expected} {reprlib.repr(value)}"
+    invalid(expected, validate, document)
+
+
+LOOSER_RULES = {
+    "str.isdigit": (str.isdigit, ["０" * 40, "٣" * 40, "०" * 64]),
+    "a digit class": (
+        lambda value: re.fullmatch(r"\d{40}", value),
+        ["０" * 40, "٣" * 40],
+    ),
+    "int(value, 16)": (
+        lambda value: int(value, 16) >= 0,
+        [
+            COMMIT.upper(),
+            " " + COMMIT[1:],
+            "+" + COMMIT[1:],
+            COMMIT[:5] + "_" + COMMIT[6:],
+            "0x" + COMMIT[2:],
+            COMMIT[:-1] + "\n",
+            "０" * 40,
+        ],
+    ),
+    "bytes.fromhex": (
+        lambda value: len(bytes.fromhex(value)) > 0,
+        [COMMIT.upper(), LONG_COMMIT.upper(), COMMIT[:20] + "  " + COMMIT[20:-2]],
+    ),
+    "a pattern ending in $": (
+        lambda value: re.match(r"[0-9a-f]{40}$|[0-9a-f]{64}$", value),
+        [COMMIT + "\n", LONG_COMMIT + "\n"],
+    ),
+}
+
+
+@pytest.mark.parametrize("rule", LOOSER_RULES)
+def test_a_value_a_looser_rule_would_accept_is_refused(rule):
+    looser, values = LOOSER_RULES[rule]
+
+    for value in values:
+        assert looser(value)
+        invalid(NO_COMMIT + "str", parse, raw(doc(source_commit=value)))
+        invalid(NO_COMMIT + "str", validate, doc(source_commit=value))
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        '"0123456"',
+        '"main"',
+        '"0123456789ABCDEF0123456789ABCDEF01234567"',
+        "false",
+        '{"commit": "0123456789abcdef0123456789abcdef01234567"}',
+        "null",
+        "true",
+        "1111111111111111111111111111111111111111",
+        '["0123456789abcdef0123456789abcdef01234567"]',
+        '"0123456789abcdef0123456789abcdef01234567\\n"',
+        '"0123456789abcdef0123456789abcdef0123456\\n"',
+    ],
+)
+def test_the_invalid_files_of_the_walk_through_of_adr_0022(literal):
+    more = '"tolerance": {"rtol": 0.25, "atol": 3.0}'
+
+    invalid("source_commit: must be", parse, committed(literal, more))
+    assert parse(text(VERSION, SECTION, more)).tolerance is not None
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        (f'"source_commit": "{COMMIT}"', f'"source_commit": "{COMMIT}"'),
+        (f'"source_commit": "{COMMIT}"', f'"source_commit": "{OTHER_COMMIT}"'),
+        (f'"source_commit": "{COMMIT}"', '"source_commit": false'),
+        ('"source_commit": "main"', f'"source_commit": "{COMMIT}"'),
+    ],
+)
+def test_the_member_name_twice_at_the_top_level(members):
+    message = invalid(
+        "content: cannot be read as one JSON text",
+        parse,
+        text(VERSION, SECTION, *members),
+    )
+    assert "a JSON object repeats a member name" in message
+
+
+class Text(str):
+    """A test-only subclass: not exactly a ``str``."""
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        Text(COMMIT),
+        Text(LONG_COMMIT),
+        COMMIT.encode(),
+        LONG_COMMIT.encode(),
+        bytes.fromhex(COMMIT),
+        bytearray(COMMIT.encode()),
+        tuple(COMMIT),
+        (COMMIT,),
+    ],
+    ids=shown,
+)
+def test_validate_refuses_a_source_commit_built_in_memory(value):
+    document = doc(source_commit=value)
+
+    assert invalid(NO_COMMIT, validate, document) == NO_COMMIT + type(value).__name__
+
+
+def test_a_long_value_is_shown_shortened():
+    message = invalid(NO_COMMIT, parse, raw(doc(source_commit=COMMIT.upper())))
+
+    assert message == f"{NO_COMMIT}str {reprlib.repr(COMMIT.upper())}"
+    assert COMMIT.upper() not in message and "..." in message
+
+
+def test_a_check_of_a_source_commit_modifies_nothing():
+    for document in (doc(source_commit=COMMIT), doc(source_commit="main")):
+        kept = json.dumps(document)
+        assert accepted(validate, document) == (document["source_commit"] == COMMIT)
+        assert json.dumps(document) == kept
+
+
+# --- no substitute: nothing of the module is or obtains a commit ---
+
+
+def test_nothing_of_the_module_holds_a_source_commit():
+    held = []
+    for value in vars(instance).values():
+        if type(value) in (tuple, list, set, frozenset):
+            held.extend(value)
+        elif type(value) is dict and value is not vars(instance).get("__builtins__"):
+            held.extend(value.values())
+        else:
+            held.append(value)
+
+    texts = [value for value in held if type(value) in (str, bytes)]
+    assert len(texts) > 10
+    assert not [
+        value for value in texts if accepted(validate, doc(source_commit=value))
+    ]
+    assert re.search(r"[0-9a-fA-F]{40}", inspect.getsource(instance)) is None
+    for function in (
+        parse,
+        validate,
+        read,
+        hw_profile_of,
+        tolerance_of,
+        source_commit_of,
+    ):
+        assert function.__defaults__ is None and function.__kwdefaults__ is None
+    assert Instance._field_defaults == {}
+
+
+def test_the_module_loads_nothing_that_could_run_git():
+    code = (
+        "import sys, hilclaw.instance; "
+        "print(sorted(name for name in sys.modules "
+        "if name.split('.')[0] in ('subprocess', 'shutil', 'importlib_metadata')))"
+    )
+
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+
+    assert done.stdout.strip() == "[]"
+    names = set(vars(instance))
+    assert not names & {"subprocess", "shutil", "hilclaw", "__version__", "sys"}
+
+
 # --- happy: the reader ---
 
 
@@ -1060,7 +1517,7 @@ def test_the_reader_returns_the_record_the_file_embeds(tmp_path, root):
     assert (
         read(root, RUN)
         == parse(content)
-        == Instance(KEY, record(), None, {"example": [1, 2]})
+        == Instance(KEY, record(), None, None, {"example": [1, 2]})
     )
     assert type(read(root, RUN)) is Instance
     assert snapshot(tmp_path) == before
@@ -1252,7 +1709,143 @@ def test_the_reader_of_the_tolerance_opens_only_the_instance_file(root, monkeypa
     assert opened == [FILE]
 
 
+# --- the reader of the source commit ---
+
+
+def test_the_reader_returns_the_source_commit_the_file_states(tmp_path, root):
+    place(root, raw(doc(tolerance=TOLERANCE, source_commit=COMMIT, example=[1])))
+    before = snapshot(tmp_path)
+
+    found = source_commit_of(root, RUN)
+
+    assert found == COMMIT and type(found) is str
+    assert found == read(root, RUN).source_commit
+    assert source_commit_of(str(root), RUN) == found
+    assert hw_profile_of(root, RUN) == record()
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert snapshot(tmp_path) == before
+
+    place(root, raw(doc(source_commit=LONG_COMMIT)))
+    assert source_commit_of(root, RUN) == LONG_COMMIT
+
+
+def test_a_run_without_the_member_states_no_source_commit(tmp_path, root):
+    others = {"source-commit": COMMIT, "commit": OTHER_COMMIT, "sourceCommit": COMMIT}
+    place(root, raw(doc(tolerance=TOLERANCE, **others)))
+    before = snapshot(tmp_path)
+
+    assert source_commit_of(root, RUN) is None
+    assert read(root, RUN).source_commit is None
+    assert read(root, RUN).others == others
+    assert hw_profile_of(root, RUN) == record()
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert snapshot(tmp_path) == before
+
+
+def refuse(*arguments, **options):
+    raise AssertionError("a process was started")
+
+
+def test_no_value_is_substituted_inside_a_checkout(tmp_path, monkeypatch):
+    checkout = tmp_path / "checkout"
+    place(checkout, f"{OTHER_COMMIT}\n".encode(), ".git/HEAD")
+    place(checkout, f"{OTHER_COMMIT}\n".encode(), ".git/ORIG_HEAD")
+    place(checkout, f"{OTHER_COMMIT}\n".encode(), ".git/refs/heads/main")
+    place(checkout, raw(doc()))
+    place(checkout, raw(doc(source_commit=COMMIT)), f"runs/{OTHER_RUN}/instance.json")
+    monkeypatch.setattr(subprocess, "Popen", refuse)
+    monkeypatch.setattr(subprocess, "run", refuse)
+    for name in ("GIT_COMMIT", "GITHUB_SHA", "SOURCE_COMMIT", "HILCLAW_SOURCE_COMMIT"):
+        monkeypatch.setenv(name, OTHER_COMMIT)
+    before = snapshot(tmp_path)
+
+    for directory in (checkout, checkout / ".git", Path(__file__).resolve().parents[1]):
+        monkeypatch.chdir(directory)
+        assert source_commit_of(checkout, RUN) is None
+        assert read(checkout, RUN).source_commit is None
+        assert source_commit_of(checkout, OTHER_RUN) == COMMIT
+    monkeypatch.chdir(checkout)
+    assert source_commit_of(".", RUN) is None
+    assert source_commit_of(Path("."), OTHER_RUN) == COMMIT
+
+    assert snapshot(tmp_path) == before
+
+
+def test_a_source_commit_replaced_between_two_calls_is_seen_at_the_second(root):
+    place(root, raw(doc(source_commit=COMMIT)))
+    assert source_commit_of(root, RUN) == COMMIT
+
+    place(root, raw(doc(source_commit=OTHER_COMMIT)))
+    assert source_commit_of(root, RUN) == OTHER_COMMIT
+
+    place(root, raw(doc()))
+    assert source_commit_of(root, RUN) is None
+
+    place(root, raw(doc(schema_version=2, source_commit=COMMIT)))
+    with pytest.raises(UnsupportedVersionError):
+        source_commit_of(root, RUN)
+
+    (root / FILE).unlink()
+    with pytest.raises(MissingInstanceError):
+        source_commit_of(root, RUN)
+
+    place(root, raw(doc(source_commit=LONG_COMMIT)))
+    assert source_commit_of(root, RUN) == LONG_COMMIT
+
+
+@pytest.mark.parametrize("value", ["main", COMMIT[:7], COMMIT.upper(), False, None])
+def test_no_member_of_a_file_with_an_invalid_source_commit_is_used(root, value):
+    place(root, raw(doc(tolerance=TOLERANCE, source_commit=COMMIT)))
+    assert source_commit_of(root, RUN) == COMMIT
+
+    place(root, raw(doc(tolerance=TOLERANCE, source_commit=value)))
+    for call in READERS:
+        invalid(f"{FILE}: {NO_COMMIT}{type(value).__name__}", call, root, RUN)
+
+    place(root, raw(doc(tolerance=TOLERANCE)))
+    assert source_commit_of(root, RUN) is None
+    assert hw_profile_of(root, RUN) == record()
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+
+
+def test_two_runs_state_their_own_source_commits(root):
+    place(root, raw(doc(source_commit=COMMIT)))
+    place(root, raw(doc(source_commit=LONG_COMMIT)), f"runs/{OTHER_RUN}/instance.json")
+    place(root, raw(doc()), "runs/run-c/instance.json")
+
+    assert source_commit_of(root, RUN) == COMMIT
+    assert source_commit_of(root, OTHER_RUN) == LONG_COMMIT
+    assert source_commit_of(root, "run-c") is None
+    assert source_commit_of(root, RUN) == COMMIT
+
+
+def test_the_reader_of_the_source_commit_opens_only_the_instance_file(
+    root, monkeypatch
+):
+    place(root, raw(doc(source_commit=COMMIT)))
+    place(root, b"{}", f"runs/{RUN}/STATE.json")
+    place(root, f"{OTHER_COMMIT}\n".encode(), ".git/HEAD")
+    opened, real = [], Path.read_bytes
+
+    def read_bytes(path):
+        opened.append(path.relative_to(root).as_posix())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setattr(subprocess, "Popen", refuse)
+    monkeypatch.setenv("HILCLAW_DATA_ROOT", "elsewhere")
+
+    assert source_commit_of(root, RUN) == COMMIT
+    assert opened == [FILE]
+
+    place(root, raw(doc()))
+    assert source_commit_of(root, RUN) is None
+    assert opened == [FILE, FILE]
+
+
 # --- error / negative: the four situations of decision 4 ---
+
+READERS = [read, hw_profile_of, tolerance_of, source_commit_of]
 
 
 def absent(root):
@@ -1286,7 +1879,7 @@ MISSING = [
 ]
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
+@pytest.mark.parametrize("call", READERS)
 @pytest.mark.parametrize("build", MISSING)
 def test_a_missing_file(tmp_path, root, call, build):
     build(root)
@@ -1321,10 +1914,18 @@ INVALID_FILES = {
         raw(doc(tolerance={"rtol": TEST_RTOL, "atol": -1})),
         "tolerance.atol: must be",
     ),
+    "a source_commit that is no string": (
+        raw(doc(source_commit=False)),
+        "source_commit: must be",
+    ),
+    "an abbreviated source_commit": (
+        raw(doc(tolerance=TOLERANCE, source_commit=COMMIT[:7])),
+        "source_commit: must be",
+    ),
 }
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
+@pytest.mark.parametrize("call", READERS)
 @pytest.mark.parametrize("case", INVALID_FILES)
 def test_an_invalid_file_is_named_by_its_relative_path(tmp_path, root, call, case):
     content, reason = INVALID_FILES[case]
@@ -1337,7 +1938,7 @@ def test_an_invalid_file_is_named_by_its_relative_path(tmp_path, root, call, cas
     assert snapshot(tmp_path) == before
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
+@pytest.mark.parametrize("call", READERS)
 @pytest.mark.parametrize("version", [0, 2, MAX])
 def test_a_file_of_another_version(root, call, version):
     place(root, raw(doc(schema_version=version, hw_profile=REMOVE)))
@@ -1349,7 +1950,7 @@ def test_a_file_of_another_version(root, call, version):
     assert not isinstance(caught.value, (ToolFailure, ValueError, OSError))
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
+@pytest.mark.parametrize("call", READERS)
 @pytest.mark.parametrize(
     "error", [PermissionError("denied"), OSError("example"), FileNotFoundError("gone")]
 )
@@ -1369,7 +1970,7 @@ def test_an_os_error_while_the_file_is_read_passes_through(
     assert not isinstance(caught.value, ToolFailure)
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
+@pytest.mark.parametrize("call", READERS)
 def test_a_file_that_cannot_be_examined_passes_the_os_error_through(
     root, call, monkeypatch
 ):
@@ -1386,7 +1987,7 @@ def test_a_file_that_cannot_be_examined_passes_the_os_error_through(
     assert caught.value is error
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
+@pytest.mark.parametrize("call", READERS)
 def test_a_directory_in_the_place_of_the_file(tmp_path, root, call):
     (root / FILE).mkdir(parents=True)
     before = snapshot(tmp_path)
@@ -1395,7 +1996,7 @@ def test_a_directory_in_the_place_of_the_file(tmp_path, root, call):
     assert snapshot(tmp_path) == before
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
+@pytest.mark.parametrize("call", READERS)
 @pytest.mark.parametrize("target", ["a file", "nothing"])
 def test_a_symbolic_link_in_the_place_of_the_file(tmp_path, root, call, target):
     elsewhere = tmp_path / "elsewhere.json"
@@ -1410,7 +2011,7 @@ def test_a_symbolic_link_in_the_place_of_the_file(tmp_path, root, call, target):
 # --- error / negative: arguments ---
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
+@pytest.mark.parametrize("call", READERS)
 @pytest.mark.parametrize(
     "run_id", ["", "Run-A", "../run-a", "a/b", ".", "a" * 65, None, 1, b"run-a"]
 )
@@ -1421,14 +2022,14 @@ def test_an_invalid_run_id_is_refused_before_the_file_system(tmp_path, call, run
     assert snapshot(tmp_path) == {}
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
+@pytest.mark.parametrize("call", READERS)
 def test_a_data_root_that_does_not_exist(tmp_path, call):
     with pytest.raises(FileNotFoundError, match="data root is not an existing"):
         call(tmp_path / "absent", RUN)
     assert snapshot(tmp_path) == {}
 
 
-@pytest.mark.parametrize("call", [read, hw_profile_of, tolerance_of])
+@pytest.mark.parametrize("call", READERS)
 def test_a_file_in_the_place_of_the_data_root(tmp_path, call):
     (tmp_path / "data").write_bytes(raw(doc()))
 
@@ -1712,6 +2313,32 @@ def test_a_file_invalid_by_its_tolerance_alone_is_run_file_invalid(root, repaire
         "run_file_invalid",
         InvalidInstanceError,
         "tolerance: lacks the member atol",
+    )
+    assert kinds(root) == []
+
+    place(root, raw(repaired))
+    assert tool.function(dict(REQUEST)) == {"example_member": 1}
+    assert kinds(root) == ["step_started", "step_ended"]
+    assert (len(tool.asked), tool.performed) == (1, 1)
+    assert [seen for _, _, seen in tool.asked] == [record()]
+
+
+@pytest.mark.parametrize(
+    "repaired", [doc(), doc(source_commit=COMMIT)], ids=["removed", "valid"]
+)
+@pytest.mark.parametrize("broken", ["main", COMMIT[:7], COMMIT.upper(), False])
+def test_a_file_invalid_by_its_source_commit_alone_is_run_file_invalid(
+    root, broken, repaired
+):
+    place(started(root), raw(doc(tolerance=TOLERANCE, source_commit=broken)))
+    tool = Tool(root)
+
+    assert_no_step_started(
+        tool,
+        root,
+        "run_file_invalid",
+        InvalidInstanceError,
+        "source_commit: must be a str of 40 or of 64 characters",
     )
     assert kinds(root) == []
 
