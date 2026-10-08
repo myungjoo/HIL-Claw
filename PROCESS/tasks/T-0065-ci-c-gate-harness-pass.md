@@ -2,7 +2,7 @@
 id: T-0065
 title: Add the "harness pass" half of the C gate to the CI workflow - the job `C gate (clang)` runs the three-state calibration of the gemm verification harness itself, and fails when it is skipped
 phase: P0.5
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: ["#9", "CLAUDE.md language policy", "#5 A-12", FR-9, OD-16]
 dependsOn: [T-0035, T-0060, T-0061, T-0062, T-0063]
@@ -106,3 +106,39 @@ Names of steps, the Python version of the job and the means of the skip check ar
 - (integrator, document mode) The "CI 미구축" notes of CLAUDE.md and the skills, once the gates of #9 are all on `main`.
 
 ## Result
+**DONE.** PR #58 https://github.com/myungjoo/HIL-Claw/pull/58, squash commit `57ba830` on `main` (`T-0065: Run the three-state calibration in the C gate (harness pass) (#58)`, last body line `Task: T-0065`), merged 2026-10-08T09:34:20Z. Fresh start at 09:22Z (landed check: nothing with `Task: T-0065` on `origin/main`, no PR, no branch; no open PR). Remote and local branch `claude/T-0065-ci-c-gate-harness-pass` deleted in separate commands after `state: MERGED`. No BLOCKED reason arose; no force push; no tool call was denied.
+
+**On `main`**: one file, `.github/workflows/ci.yml` (+30 lines, 0 deleted, 215 total, `i/lf`), job `c` only. After the unchanged `Check out` and `clang build` steps: `Set up Python 3.14` (`actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0`, copied), `Install dev tools` and `Install runtime dependencies` (copied from the `coverage` job without change), and `harness pass` (`shell: bash`): `python -m pytest tests/harness/test_calibration.py -rs --junitxml="$RUNNER_TEMP/calibration.xml"`, then an inline Python heredoc that counts the `testcase` elements of that report and those with a `skipped` child, prints `calibration: N case(s) selected, M skipped`, and exits 1 when M > 0 or N = 0. The other four jobs, the triggers, `permissions`, `concurrency` and the action pins are unchanged; nothing new is installed.
+
+**Branch commits** (squashed; no force push): `3663c01` the workflow change; `bce8393` temporary, the conforming kernel made wrong; `a8ff89e` temporary, the kernel restored exactly (final head; `git diff origin/main -- tests/` empty, `git diff origin/main --stat` only `.github/workflows/ci.yml`).
+
+**CI runs on the PR** (evidence comment https://github.com/myungjoo/HIL-Claw/pull/58#issuecomment-6056932160):
+- `3663c01`: https://github.com/myungjoo/HIL-Claw/actions/runs/37756443960 - six checks successful. Step `harness pass`: `shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}` / `platform linux -- Python 3.14.7, pytest-9.1.1` / `collected 6 items` / `tests/harness/test_calibration.py ......` / `6 passed in 1.37s` / `calibration: 6 case(s) selected, 0 skipped`.
+- `bce8393` (deliberate red; `c[0] += 1.0f;` appended to `hilclaw_gemm` in `tests/harness/calibration/gemm_conforming.c`): https://github.com/myungjoo/HIL-Claw/actions/runs/37756737690 - `C gate (clang)` = failure **at `harness pass`**, with `clang build` = success. Lines: `tests/harness/test_calibration.py FF....` / `E       AssertionError: seed 2026, counts (Counts(failed=1, non_finite=0),)` / `tests/harness/test_calibration.py:82: AssertionError` / `2 failed, 4 passed in 1.41s` / `Process completed with exit code 1.` `Python gate (3.11)`, `Python gate (3.14)` and `Coverage gate (hilclaw)` failed too (same test, expected); `sh gate (shellcheck)` and `Test presence (hilclaw)` passed. Not counted toward the 3-consecutive-failures limit.
+- `a8ff89e` (final head): https://github.com/myungjoo/HIL-Claw/actions/runs/37757009431 - **all six checks successful** (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`); the reviewer read `6 passed in 0.81s` and `calibration: 6 case(s) selected, 0 skipped` in its log.
+- No CI failure other than the deliberate one.
+- `push` run on `main` after the merge (`57ba830`): https://github.com/myungjoo/HIL-Claw/actions/runs/37757583418 - `completed` / `success`, six jobs successful.
+
+**Duration of the job `C gate (clang)`**: 12 s before (run 37753770000 on `main`, T-0064); 21 s, 38 s (the red run) and 30 s on the PR, 20 s on the `push` run after. Steps of the first run: about 5 s `Install dev tools`, 3 s `Install runtime dependencies`, 3 s `harness pass`.
+
+**Not exercised on a runner** (by reading, by the executor and the reviewer, and by hand on the driver machine with the heredoc copied to a file outside the repository): a skipped case - the JUnit report of the six cases that skip on Windows gave `calibration: 6 case(s) selected, 6 skipped`, one `::error::calibration case ... was skipped` line per case and exit 1; no selected case (`-k` matching nothing) - pytest exit 5, the check exit 1; a missing test file - pytest exit 4; a report with passing cases only - exit 0. Under `bash -e` a non-zero pytest status ends the step before the heredoc. A missing clang fails at `clang build`; a failed install fails the job before the harness runs.
+
+**Local verification** (Windows, no clang; ruff 0.16.10, pytest 9.1.1; nothing installed - the machine's numpy is 2.5.2, not the pin 2.4.6, which this task did not change): `python -m ruff check .` -> `All checks passed!`; `python -m ruff format --check .` -> `169 files already formatted`; `python -m pytest` -> `6195 passed, 266 skipped` (unchanged); `git ls-files --eol -- .github/workflows/ci.yml` -> `i/lf w/lf attr/text=auto eol=lf`; the workflow loads as YAML.
+
+**Review**: 1 round, by a fresh-context `dev-reviewer` agent on head `a8ff89e`: **Approve** (https://github.com/myungjoo/HIL-Claw/pull/58#issuecomment-6056961913). No Blocking / Major / Minor. One Nit, no change requested: the inline check refuses zero cases and skips but does not pin the number of cases to six, so a later change of `test_calibration.py` that removes a state would still pass. Left as it is on purpose (response https://github.com/myungjoo/HIL-Claw/pull/58#issuecomment-6056970330): ADR-0003 decision 6 extends the calibration set with new operation kinds and defences, a fixed count would have to be edited each time, and the step prints the count. The head did not change after the review, so no second round. The reviewer on the task's questions: (a) the wrong kernel is blocked at `harness pass` with `clang build` successful (from run 37756737690), and a skip, zero collected cases and a missing file fail the step (by reading); (b) agreement with every planner's judgement - no owner-only item and no OD, the C gate job runs the harness itself, the calibration as its content, "stand-in kernels" = the tracked C sources (the same three gemm files under the reading "kernels for `cpu_standin`"); no question for an ADR, an OD or the owner; (c) the other four jobs, triggers, `permissions`, `concurrency` and pins are unchanged, only the existing pins are installed; (d) the A-13 reading holds. No security concern.
+
+**Provisional choices** (conventions of this task, not requirements):
+- Content = the three-state calibration: ADR-0003 names it as the candidate, and it also shows that the harness fails a wrong kernel and a kernel that is right on known inputs only.
+- Step name `harness pass`: the wording of #9 and the PLAN, next to `clang build`.
+- Python 3.14 and the step names `Set up Python 3.14`, `Install dev tools`, `Install runtime dependencies`: copied from the `coverage` job, so the installs stay one text.
+- Skip check = `--junitxml` under `$RUNNER_TEMP` read by an inline Python heredoc: a report meant for machines instead of the wording of pytest's summary line; no plugin, no script file, nothing written for a later step. An xfail is reported as skipped there and fails the step too.
+- `-rs`: a skip shows its reason in the log.
+- The number of cases is not pinned (see the review nit).
+
+**Records**: issue #5 had no comment after https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6053035869 at start, so there was nothing of the owner's on the C gate, #9 or P0.5-1 to follow. No ARCHITECTURE file, OD row or ADR was edited. Reading of #9 taken: one gate with two parts, so the job that builds the C sources also runs the harness.
+
+**Tests and language**: no test added (CLAUDE.md test rule 5: a CI workflow is no test target). No file under `hilclaw/` or `tests/` changed on `main`, so rules 1 to 4 had nothing to act on. No tool-layer language choice was needed (workflow YAML with inline bash and Python).
+
+**PLAN P0.5-1**: the executor and the reviewer both read it as **complete with this task** - the sh gate (T-0010), the clang-build half (T-0035) and now the harness-pass half of the C gate are on `main`. The driver can tick the checkbox.
+
+**Follow-ups**: none new; those under `## Follow-ups` stand. Observation for a later calibration task (the review nit): the gate does not notice a calibration state being removed from `test_calibration.py`; that is a matter for the review of such a change. No HQ.
