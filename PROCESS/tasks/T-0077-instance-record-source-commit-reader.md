@@ -2,7 +2,7 @@
 id: T-0077
 title: Implement the member `source_commit` of `instance.json` in `hilclaw/instance.py` (ADR-0022, the code slice of its Consequences) - the validity of the member by decision 3 and a reader of the source commit of a run beside `hw_profile_of` and `tolerance_of` - bound to no tool, without any `git` call and without any substitute value
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-13, NFR-2, NFR-7, OD-8, "#5 A-1", "#5 A-12"]
 dependsOn: [T-0067, T-0070, T-0072, T-0076]
@@ -136,3 +136,46 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (a small code task) Whether `PROCESS/` Markdown leaves the set of `ruff format --check .`; public names for `journaled_tool._built` and `backends._hw_tool`; one public function for the section check of `spec._keyed` and `instance._hw_profile`.
 
 ## Result
+**DONE.** PR #65 (https://github.com/myungjoo/HIL-Claw/pull/65), squash-merged to `main` as `47e0340f9762d88301619d1da53ed20903e6bded`; the branch `claude/T-0077-instance-record-source-commit-reader` is deleted remotely and locally. Branch commits: `dc53b56` (the change), `08e597f` (round 1), `2ecc88a` (round 2). This task ticks **no** PLAN checkbox (P1-8 stays open). No HQ is needed.
+
+### Review
+3 rounds, each by a fresh-context `dev-reviewer`; every round Approve, no blocking and no Low finding, no `SECURITY`, no point read as needing a record or the owner.
+- Round 1 (https://github.com/myungjoo/HIL-Claw/pull/65#issuecomment-6066482176): four Nit. (N1) a docstring sentence about the two lengths could be read against ADR-0022 decision 3 ("the length of a value tells which") - reworded to "Either length is a value: the module does not know or check which of the two the source repository uses"; (N2) the JSON-escape case is pinned by a test but was not among the provisional choices - added to the PR body and below; (N3) the child-process test also named `shutil`, `sys` and a third-party backport - narrowed to `subprocess`, the one module the task names; (N4) three docstring passages not re-wrapped - re-wrapped.
+- Round 2 (https://github.com/myungjoo/HIL-Claw/pull/65#issuecomment-6066556849): one optional Nit (N5), the one-line docstring of `InvalidInstanceError` at 112 columns - split into a summary line and one sentence.
+- Round 3 (https://github.com/myungjoo/HIL-Claw/pull/65#issuecomment-6066595756): Approve, nothing left, nits included.
+- The reviewers re-checked the planner's judgements and agreed with each: the reader is bound nowhere (`source_commit` occurs in no file of `hilclaw/` but `instance.py`), "not stated" is `None`, no error and no kind, no `git` and nothing of the running source, `hilclaw/hw_tool.py` untouched and its docstring sentences (lines 36-47, 61-83) still true, and the A-13 reading (a first implementation of a member an accepted record defines; the BLOCKED reason does not apply). Each ran `parse` / `validate` with a script of its own against decision 3, the Walk-through rows and the pitfalls.
+
+### Public API as landed (`hilclaw/instance.py`)
+- `Instance`: `NamedTuple(hw_profile_key: str, hw_profile: dict, tolerance: Tolerance | None, source_commit: str | None, others: dict)`. `source_commit` is the new fourth field; `others` stays last and no longer holds a `source_commit` member.
+- `source_commit_of(data_root, run_id)` returns `read(data_root, run_id).source_commit`: the `str` of the member exactly as the file states it (40 or 64 characters of `0`-`9` and `a`-`f`), or **`None` when the valid file has no member `source_commit`** ("not stated"; no value is substituted). It raises what `read` raises, unchanged: `hilclaw.layout.InvalidPathValueError`, `FileNotFoundError` / `NotADirectoryError` (the data root), `MissingInstanceError`, an `OSError` of the file system, `InvalidInstanceError` (the message starts with the path relative to the data root), `UnsupportedVersionError`. None is a `hilclaw.tools.ToolFailure`.
+- `parse(content)`, `validate(document)`, `read(data_root, run_id)`, `hw_profile_of(data_root, run_id)`, `tolerance_of(data_root, run_id)`: signatures unchanged. Each of the three readers now raises `InvalidInstanceError` for a file whose `source_commit` is invalid.
+- Which rule raises what: one rule, one message, `InvalidInstanceError` - `source_commit: must be a str of 40 or of 64 characters, each one of 0-9 and a-f, got <type>` and, for a `str`, the value as `reprlib.repr` shows it. It is checked after the rules for the whole text, `schema_version`, `hw_profile` and `tolerance`. The member name twice is the existing text rule (`content: cannot be read as one JSON text`). Another `schema_version` is `UnsupportedVersionError` before the member is looked at.
+- `SCHEMA_VERSION` is unchanged (1). The module's new constants are the two lengths `(40, 64)` and the set of the sixteen characters; no constant, parameter default or field default is a commit, and the source text holds no run of 40 hexadecimal digits (tests pin both).
+
+### Provisional choices (each left to this task by ADR-0022 Consequences)
+- Name and call form `source_commit_of(data_root, run_id)`: those of `hw_profile_of` and `tolerance_of`.
+- `Instance.source_commit` is the fourth field and `others` stays last: the defined members first, in the order their records defined them.
+- "Not stated" is `None`, in the field and from the reader: a valid file may lack the member, so it is no error and gets no tool-failure kind.
+- Order of the checks: `source_commit` after `hw_profile` and `tolerance` (the order of the records); the version still comes before all three.
+- The rule is written as a type, a length and a set comparison over the sixteen ASCII characters instead of a pattern, `int(value, 16)` or `bytes.fromhex`: no digit of another script, no upper case, no sign, no `_`, no white space and no trailing line feed can pass.
+- The one rule is reported as a whole by the module's `_fail` (the type, and a `str` shortened by `reprlib`): which part of the form is broken is not told apart.
+- For a value built in memory `validate` accepts exactly a `str`: a subclass of `str` and `bytes` are none, as for `hw_profile.key`.
+- The string is handed out as the file states it: nothing is normalised, shortened or resolved.
+- A value is the string as `json.loads` returns it, so a JSON escape that spells one of the sixteen characters states that character: the module's existing convention for every value, and the file is JSON.
+- No criterion of this task file disagreed with the record.
+
+### Verification
+- Local (Windows, Python 3.14), before the first commit, on each later head and before the merge: `python -m pytest` 7598 passed, 274 skipped (7363 passed, 272 skipped before, measured on `dae26cf`; the two further skips are the symbolic-link cases of the new reader); `python -m ruff check .` and `python -m ruff format --check .` exit 0.
+- `git diff origin/main --stat` listed `hilclaw/instance.py` and `tests/test_instance.py` only. The grep of the task for `subprocess`, `rev-parse`, `.git`, `environ`, `__version__` and `ToolFailure` in `hilclaw/instance.py`: one match, the sentence about `hilclaw.tools.ToolFailure` inside the module docstring, which was there before. The grep for writes: no match. `git ls-files --eol`: `i/lf` for both files.
+- CI on the PR, final head `2ecc88a`: run https://github.com/myungjoo/HIL-Claw/actions/runs/37825558517 - all six checks successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. The runs of the two earlier heads (37824619717, 37825210167) were also green: no failed CI run.
+- Coverage (final head): `lines: 2823/2839 executed = 99.43% (minimum 80%)`, `functions: 292/292 entered = 100.00% (minimum 80%)`; `hilclaw/instance.py` 136 statements, 0 missed, 100 %.
+- `push` run on `main` after the merge (`47e0340`): https://github.com/myungjoo/HIL-Claw/actions/runs/37826081499 - `success`.
+
+### Size and language
+- Non-test diff: 113 added, 33 removed lines in 1 file (`hilclaw/instance.py`; 12 more statements, the rest docstrings); tests: 646 added, 20 removed in `tests/test_instance.py`. Inside the cap (300 LOC / 5 files).
+- Language: Python, because the module exists in Python.
+- Nothing else was edited: no ADR, no register, `hilclaw/hw_tool.py`, `pyproject.toml` and `.github/` are as they were; no new dependency, no JSON Schema file, no file written by the module, no `git` call.
+
+### Follow-ups found while doing the task
+- None beyond the list above. No docstring sentence of `hilclaw/hw_tool.py` was found false.
+- (note for the writer's record) `source_commit_of` returns `None` both for a file without the member and for one whose member name is misspelt (ADR-0022 decision 8); a reader that must tell them apart looks at `Instance.others`.
