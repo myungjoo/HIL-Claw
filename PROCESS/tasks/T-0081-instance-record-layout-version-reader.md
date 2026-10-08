@@ -2,7 +2,7 @@
 id: T-0081
 title: Carry ADR-0024 into the code (the code slice of its Consequences) - the docstrings of `hilclaw/instance.py` and `hilclaw/layout.py` say how a run states its layout version, and `hilclaw/instance.py` gains a reader of the layout version of a run beside the five that exist, from a pairing keyed by the schema version and not from `hilclaw.layout.LAYOUT_VERSION` - no member, no rule of validity, no comparison with `LAYOUT_VERSION`, bound to no tool
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-13, NFR-2, NFR-7, OD-8]
 dependsOn: [T-0021, T-0067, T-0079, T-0080]
@@ -132,3 +132,46 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (a small code task) Whether `PROCESS/` Markdown leaves the set of `ruff format --check .`; public names for `journaled_tool._built` and `backends._hw_tool`; one public function for the section check of `spec._keyed` and `instance._hw_profile`.
 
 ## Result
+**DONE.** PR #67 (https://github.com/myungjoo/HIL-Claw/pull/67), squash-merged as `19145e5` (branch head `0e5d60d`, one commit); the remote and the local branch are deleted. This task ticks **no** PLAN checkbox: P1-8 stays open.
+
+**Review**: 1 round, Approve (https://github.com/myungjoo/HIL-Claw/pull/67#issuecomment-6070342408), by a fresh-context `dev-reviewer`. No Blocker, Major or Minor; no point read as a design choice needing a record or the owner; no security concern. The reviewer agreed with every judgement of `## Why`, with the A-13 reading and with the six provisional choices. Findings, none of which asked for a change, so nothing was pushed after the review:
+- Info: the reader looks the pairing up with the module constant `SCHEMA_VERSION` and not with the version of the file it just read. That is exact while `read` returns for one version only; a task that makes the module read a second schema version must hand the version of the file to the lookup, an entry in `_STATED_LAYOUT` alone is not enough.
+- Info: the coverage figures were not in the PR body (they are below).
+- Nit (optional, not taken): the AST check of `test_the_module_does_not_name_the_layout_the_source_builds` sees `Name` and `Attribute` nodes only, so a `getattr(layout, "LAYOUT_VERSION")` would pass it; `test_the_layout_the_source_builds_does_not_stand_in` catches a read at call time, and the reviewer judged the two together sufficient.
+
+**Public API as landed** (`hilclaw/instance.py`):
+- `layout_version_of(data_root, run_id)` - no version argument, no default. It calls `read(data_root, run_id)` and returns `_STATED_LAYOUT[SCHEMA_VERSION]`: for a valid file of schema version 1 the `int` 1, whatever other members the file holds (a member `layout_version` of any value is passed over and stays in `others`).
+- It raises what `read` raises, unchanged, and returns nothing then: `hilclaw.layout.InvalidPathValueError` for an invalid `run_id` (before the file system); `FileNotFoundError` / `NotADirectoryError` for a data root that is no existing directory; `MissingInstanceError` for no file; `InvalidInstanceError` for an invalid content (empty, partial, no `schema_version` or one that is no integer of ADR-0001, a `hw_profile`, `tolerance`, `source_commit` or `n_max` that breaks its rule - though the file holds `"schema_version": 1`) and for a path that is no regular file; `UnsupportedVersionError` for an integer `schema_version` other than 1; an `OSError` of the file system as it is.
+- The pairing is the private module-level mapping `_STATED_LAYOUT = {SCHEMA_VERSION: 1}`, keyed by the schema version, the number written as a literal. `hilclaw.layout.LAYOUT_VERSION` is named in two docstrings of `hilclaw/instance.py` and in no statement.
+- Unchanged: `SCHEMA_VERSION`, `_DEFINED`, `Instance._fields`, `parse`, `validate`, `_checked`, the four other readers; the set of valid files. The reader is bound to no tool, registry, front or hook.
+- `hilclaw/layout.py`: two docstring lines under "What this module does not do" (it reads no stamp of a run; `LAYOUT_VERSION` is the layout the module builds and not what a run states). No statement changed.
+
+**Docstrings**: the module docstring of `hilclaw/instance.py` names ADR-0024 in the first line and the first paragraph, lists the new reader, says "the five records" in the conventions heading (the conventions are what none of the five fixes), gains one conventions bullet and one closing paragraph "Of the layout version ..."; "It reads no other version (OD-11)" stays. `InvalidInstanceError` and `validate` keep "four" because ADR-0024 adds no rule of validity; `validate` now says so. The phrase "no valid file is silent" is not used anywhere.
+
+**Provisional choices** (each one line of reason; also in the commit and the PR body):
+- A function is added, not docstrings alone: without it the pairing lives in prose only and decision 4 cannot be tested.
+- Its name is `layout_version_of`, after the readers that exist.
+- The pairing is a private mapping keyed by the schema version, named `_STATED_LAYOUT`: a later schema version adds an entry and no branch; a mapping leaves the expected dictionary of `test_nothing_of_the_module_holds_a_tolerance_value` unedited; and the name avoids the string `LAYOUT_VERSION` so that the verification grep stays meaningful.
+- The reader looks the pairing up with `SCHEMA_VERSION`, since `read` returns for a file of that version only; the lookup cannot miss and has no error path (see the first Info above).
+- `Instance` gains no field: the layout version is no member, so `parse`, `validate` and every positional comparison of the tests stay as they are.
+- A `schema_version` that is no integer of ADR-0001 (`1.0`, `true`, `"1"`, `-1`, above the maximum) gives no layout version: it is an invalid file, as before.
+
+No criterion of the task disagreed with the record.
+
+**Tests** (`tests/test_instance.py`): edited `test_the_public_names` (the name; the reader in the signature loop) and `READERS` (the reader joins every parametrised error case of `read`); no other existing test edited, no assertion weakened. New: `test_the_reader_returns_the_layout_version_the_file_states`, `test_a_member_that_looks_like_a_stamp_is_passed_over`, `test_the_layout_version_is_read_from_the_file_at_each_call`, `test_each_run_states_its_own_layout_version`, `test_an_invalid_file_that_holds_version_1_states_no_layout_version`, `test_a_version_that_is_no_integer_states_no_layout_version`, `test_the_layout_the_source_builds_does_not_stand_in` (with `hilclaw.layout.LAYOUT_VERSION` replaced by 0, 2 and 99), `test_the_module_does_not_name_the_layout_the_source_builds`, `test_the_reader_of_the_layout_version_opens_only_the_instance_file`. No test pins the pairing against `LAYOUT_VERSION`; the answer is asserted with the number 1.
+
+**Verification**:
+- Local (Windows), `python -m pytest`: `origin/main` before (`662c6cc`) 7937 passed, 276 skipped; branch head 8005 passed, 278 skipped; `main` after the merge (`19145e5`) 8005 passed, 278 skipped. `python -m ruff check .` and `python -m ruff format --check .` exit 0 (198 files). Coverage was not measured locally; the figures are those of CI.
+- `git diff origin/main --stat` listed only the three files of `touchesFiles` (numstat: `hilclaw/instance.py` 60 added / 8 removed, `hilclaw/layout.py` 2 / 0, `tests/test_instance.py` 156 / 2). Non-test diff: 62 added and 8 removed lines in 2 files (cap 300 LOC / 5 files); of them 2 statement lines of the reader, 1 line of the pairing and the rest docstring.
+- `git diff origin/main -- hilclaw/layout.py`: the module docstring only. `git grep -n "LAYOUT_VERSION" -- hilclaw/instance.py`: two matches, both in docstrings. The grep for write calls in `hilclaw/instance.py`: no match. `git ls-files --eol`: `i/lf` for the three files.
+- CI on the PR head `0e5d60d`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37853487089 - all six successful on the first run (no failed run): `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. Coverage lines: `lines: 2834/2850 executed = 99.43 (minimum 80)` and `functions: 295/295 entered = 100.00 (minimum 80)`, both in percent; no unexecuted line in `hilclaw/instance.py`.
+- The `push` run on `main` for `19145e5`: `success`, https://github.com/myungjoo/HIL-Claw/actions/runs/37853907443.
+- Issue #5: no comment after the ADR-0024 notice at the start of the task. No open PR at the start; the landed check found no commit and no PR of T-0081.
+
+**Language**: Python, because the modules exist in Python.
+
+**BLOCKED**: no. No new HQ. No new external dependency, no data-plane schema change, nothing of Boundaries or OD-8 sub-question 22 decided.
+
+**Follow-ups** (beyond those listed above, which stand):
+- (whoever makes `hilclaw/instance.py` read a second `schema_version`, which is OD-11) `layout_version_of` must then look the pairing up with the version of the file it read, not with `SCHEMA_VERSION`.
+- (unchanged, not touched here) The `source_commit` bullet under "Conventions of this module" still mixes the rule of the record with the conventions; this task rewrote no sentence of that bullet.
