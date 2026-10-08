@@ -2,7 +2,7 @@
 id: T-0083
 title: Carry ADR-0025 into the code (the code slice of its Consequences) - a new module of `hilclaw` with one function that puts a whole, valid content of `runs/<run_id>/instance.json` under its final name by the steps of the record (content first, a new temporary file `instance.json.<token>.tmp`, a flush, a last step that cannot replace and has no replacing fallback, a taken name told apart from every other failure) - composing no content, filling in no value, reading no file under the name, bound to no tool and to no start of an instance
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-13, NFR-1, C-7, OD-8]
 dependsOn: [T-0021, T-0067, T-0079, T-0081, T-0082]
@@ -131,3 +131,61 @@ Everything ADR-0025 leaves open stays open:
 - (a small code task) Whether `PROCESS/` Markdown leaves the set of `ruff format --check .`; public names for `journaled_tool._built` and `backends._hw_tool`; one public function for the section check of `spec._keyed` and `instance._hw_profile`.
 
 ## Result
+**DONE.** PR https://github.com/myungjoo/HIL-Claw/pull/68, squash commit `ed2eed14d31baef540defff471b8f76dd4bf1bd1` on `main` (its message ends with `Task: T-0083`). Remote and local branch `claude/T-0083-instance-file-write` deleted. This task ticks **no** PLAN checkbox: P1-8 stays open. No new HQ.
+
+### Review
+3 rounds, each by a fresh-context `dev-reviewer`, all three **Approve**; no blocking finding, no security finding, no point read as a design choice needing a record or the owner.
+- Round 1 (head `852790e`, https://github.com/myungjoo/HIL-Claw/pull/68#issuecomment-6071115036): Low - "the temporary file of this call is removed" was unconditional in two paragraphs of the docstring of `write`; Nit - "a name that was free does not exist until the last step" holds only for what this call does. Both fixed in `c59cecb`.
+- Round 2 (head `c59cecb`, https://github.com/myungjoo/HIL-Claw/pull/68#issuecomment-6071140584): Low - "nothing is under the final name" where the link is not possible; Nit - "After a return the final name holds exactly these bytes", and the limits without the premise of the table of decision 7. All three fixed in `086a66a`.
+- Round 3 (head `086a66a`, https://github.com/myungjoo/HIL-Claw/pull/68#issuecomment-6071160968): one Nit the reviewer asked to leave (the "This" of "This holds on the POSIX systems of C-7" now points across one sentence; one short docstring line). Left as it is.
+- Only docstring sentences changed after the first commit; the statements and the tests are those of the first commit.
+
+### Public API as landed
+- Module `hilclaw/instance_file.py`. Public names: `WrittenFormError(ValueError)`, `NameTakenError(Exception)`, `write(data_root, run_id, content)`.
+- `write` returns `None` after it gave the final name `runs/<run_id>/instance.json` to a file of exactly the bytes of `content`.
+- Order of the checks: `run_id` (`hilclaw.layout.InvalidPathValueError`), then the validity of the content (`hilclaw.instance.parse`: `TypeError` for what is not exactly `bytes`, `InvalidInstanceError`, `UnsupportedVersionError`, all passed through unchanged), then the written form (`WrittenFormError`: the content does not end with a line feed, or holds a carriage return byte), then `data_root` (`FileNotFoundError` or `NotADirectoryError`; never created), then the file system. Nothing is created before the last of them.
+- `runs/` and the run directory are created when missing (`mkdir(parents=True, exist_ok=True)`) and **stay** when a later step fails.
+- The temporary file is `instance.json.<token>.tmp` in the run directory, `<token>` = the process id, a hyphen and 16 random hexadecimal characters; opened with `"xb"`, written, flushed, `os.fsync`, closed.
+- The last step is `os.link(temporary, final)`, then `os.unlink(temporary)`. A `FileExistsError` of the link raises `NameTakenError` (message: the path relative to the data root and "the name is taken; the content was not written"). Every other failing step raises its `OSError` unchanged (a temporary name in use and a file in the place of `runs/` or of the run directory are an `OSError`, possibly a `FileExistsError`, never `NameTakenError`).
+- After any exception before the name is given (an interrupt included) the temporary file of the call is removed where possible; a removal that fails is not reported in the place of the failure. A removal that fails after the name was given is not reported: the function returns `None` and the temporary name stays as a second name of the file.
+- `NameTakenError` is **not** an `OSError`: a caller that catches `OSError` for a failed disk does not catch it. Nothing under the final name is opened, read, examined or compared; equal bytes get the same type and message as other bytes.
+
+### Provisional choices (each left to the code task by ADR-0025; one line of reason)
+- Module `hilclaw/instance_file.py`: after `run_state_file.py`; `hilclaw/instance.py` stays a module that writes no file and is not edited.
+- `write(data_root, run_id, content)` returning `None`: the call form of `run_state_file.replace` with the content in the place of the values.
+- Bytes, not a document: the module chooses no text form, and "the bytes written are the bytes given" is tested byte for byte.
+- The errors of `parse` pass through unchanged: they already name the place in the content.
+- `WrittenFormError(ValueError)`, not `InvalidInstanceError`: a content not in the written form is valid, so the other class would say the wrong thing.
+- The reading of "LF line ends" for bytes is the planner's, re-checked by the reviewer: the content ends with a line feed and holds no carriage return byte (in a content `parse` accepts, a raw carriage return can only be white space between tokens). Nothing else of the form is checked.
+- `NameTakenError(Exception)`, no `OSError`: see above; a `FileExistsError` of another step cannot be mistaken for it.
+- Order of the checks as in `run_state_file.replace`.
+- `os.link` then removal: the step the record cites and `key_records._store` uses; standard library only.
+- The directories stay on a failure (as `run_state_file.replace`, unlike `key_records._store`): removing them could take the directory from another writer of the run, and an empty run directory is a missing file for a reader (ADR-0025 decision 5).
+- No helper shared with `key_records._store` or `run_state_file.replace`.
+- One case met beyond the list, stated in the module docstring and not decided: an interrupt that arrives after the link and before the function returns leaves the file under the final name while the call raises. It is the row "after the last step" of decision 7 seen by a living caller (the write has happened, the caller was not told - sub-question 23), not a new rule.
+
+No criterion of the task disagreed with the record.
+
+### Tests
+`tests/test_instance_file.py` (new, 700 lines, 100 cases after parametrisation): public names and signature; the bytes under the final name for the two contents, `data_root` as a `str`, as a path and relative; the directory rule (six states of the run directory, a second run); the steps watched at the flush and at the link; the death moments of decision 7 (a `BaseException` at the write, the flush, the link and the removal, with the reader's view recorded at that moment); a taken name of seven kinds; equal bytes reported as other bytes; a name freed by other means; 17 refused contents, each with the name free and taken; an invalid `run_id`; the data root; a file in the place of a directory; failed steps, interrupts, a temporary name in use, three failed removals, a temporary file removed by another; the order of the checks; nothing added. `os.replace` and `os.rename` fail the test in every case (an autouse fixture).
+- **Linux (CI)**: every case runs, none skipped.
+- **Windows (the driver's clone, native, CPython 3.14)**: 98 passed, 2 skipped - the two symbolic-link kinds of a taken name ("symbolic links cannot be created here"). A directory under the final name gives `FileExistsError` from `os.link` there too, so that case runs.
+
+### Verification
+- Local, before the task (`origin/main` at `66a6c9b`): `python -m pytest` - 8005 passed, 278 skipped. With the change (full run on the first commit `852790e`): 8103 passed, 280 skipped; the new test file was run again after each of the two docstring-only commits: 98 passed, 2 skipped. `python -m ruff check .` - "All checks passed!"; `python -m ruff format --check .` - "203 files already formatted". `coverage` is not installed locally and nothing was installed, so the coverage figures are those of CI.
+- `git diff origin/main --stat` before the merge: `hilclaw/instance_file.py` (158 lines) and `tests/test_instance_file.py` (700 lines), nothing else. `git grep -n -E "os\.replace|os\.rename|\.rename\(|\.replace\(" -- hilclaw/instance_file.py`: no match at all. `git ls-files --eol`: `i/lf` for both files.
+- Line count of the new module: 158 lines = 42 statement lines (coverage counts 42 statements), 108 docstring lines, 8 blank lines. Size: 158 non-test lines in 1 file (estimate 130; cap 300 / 5).
+- CI on the PR, final head `086a66a`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37860233217 - all six checks successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. CI pytest: 8383 passed, none skipped. Coverage lines: "lines: 2876/2892 executed = 99.44% (minimum 80%)" and "functions: 296/296 entered = 100.00% (minimum 80%)"; `hilclaw/instance_file.py`: 42 statements, 0 missed. No CI run failed (the run of `c59cecb` was cancelled by the next push).
+- The `push` run on `main` for `ed2eed1`: https://github.com/myungjoo/HIL-Claw/actions/runs/37860508369 - conclusion `success`.
+
+### Language
+Python, because the content is checked by `hilclaw.instance.parse` and the two landed write techniques are Python.
+
+### Follow-ups from this task
+- None new. The Follow-ups section above stands as the planner wrote it. Nothing calls `hilclaw.instance_file.write` but its tests; binding it waits on the first part of sub-question 17, sub-question 10 and OD-23.
+
+### Note for the next planner
+- P1-8 now has no slice that does not wait on the owner (the first Follow-up above: sub-question 20 last part and sub-question 21, with sub-question 23 part (i) judged against DRIVER §9).
+- The write function takes bytes, so the record that names the writer (or its code slice) must also say how the bytes of a content are composed: no record fixes a text form for this file beyond LF line ends and a final line feed.
+- A caller has to catch `NameTakenError` separately from `OSError`; what it does then is sub-question 23 part (i).
+- Process: rounds 2 and 3 were spent on five docstring sentences that were unconditional (what a name "holds" or "is" instead of what one call does). Writing every sentence about the final name as a statement about this call from the start would have saved both.
