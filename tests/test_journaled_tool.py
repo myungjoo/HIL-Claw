@@ -611,6 +611,18 @@ def test_a_change_of_the_run_between_two_calls_is_seen(root):
     assert tool.function(request()) == {"example_member": 2}
 
 
+def test_the_run_and_the_identity_are_those_checked_before_the_own_check(root):
+    store(root, run="run-b")
+    function, _ = build(
+        source=lambda: root,
+        check=lambda request: request.update(run_id="run-b", round=9, execution=2),
+        perform=lambda data_root, request: (SPEND, {}),
+    )
+    assert function(request()) == {}
+    assert lines(root) == [started(), ended(result={})]
+    assert lines(root, "run-b") == []
+
+
 # --- a refused request ---
 
 REFUSED = [

@@ -95,11 +95,11 @@ def tool_function(*, step, numbers, source, check, perform):
             raise TypeError(f"{name} must be callable, got {type(value).__name__}")
 
     def journaled(request):
-        identity = _identity(step, numbers, request)
+        run_id, identity = _checked(step, numbers, request)
         check(request)
         data_root = data_root_source.obtain(source)
         return journaled_step.run(
-            data_root, request["run_id"], identity, lambda: perform(data_root, request)
+            data_root, run_id, identity, lambda: perform(data_root, request)
         )
 
     return journaled
@@ -109,7 +109,7 @@ def _refuse(message, cause=None):
     raise tools.ToolFailure(tools.KIND_INVALID_REQUEST, message) from cause
 
 
-def _identity(step, numbers, request):
+def _checked(step, numbers, request):
     if type(request) is not dict:
         _refuse(f"the request must be an object, got {type(request).__name__}")
     for name in ("run_id", "execution", *numbers):
@@ -122,7 +122,7 @@ def _identity(step, numbers, request):
             _refuse(f"{name}: must be an integer, got null")
     given = (request[name] for name in numbers)
     try:
-        layout.check_run_id(request["run_id"])
-        return journal.step_identity(step, request["execution"], *given)
+        run_id = layout.check_run_id(request["run_id"])
+        return run_id, journal.step_identity(step, request["execution"], *given)
     except _INVALID as error:
         _refuse(str(error).removeprefix("data."), error)
