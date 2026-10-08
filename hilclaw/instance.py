@@ -32,12 +32,12 @@ Conventions of this module, which the three records do not fix:
   ``schema_version``, then ``hw_profile``, then ``tolerance`` when the document
   holds it, then ``source_commit`` when the document holds it: the order in
   which the records defined them. A content this interpreter cannot read (an
-  integer too long for it anywhere in the text, nesting too deep) raises :class:`InvalidInstanceError`
-  too, though it is a limit of this reader and not damage; the limits stay as
-  the interpreter has them. A number beyond the float range in a member not
-  defined here is read as an infinity and is no error, as
-  :mod:`hilclaw.run_state` has it; in ``tolerance`` it makes the content
-  invalid (ADR-0020 decision 4).
+  integer too long for it anywhere in the text, nesting too deep) raises
+  :class:`InvalidInstanceError` too, though it is a limit of this reader and
+  not damage; the limits stay as the interpreter has them. A number beyond
+  the float range in a member not defined here is read as an infinity and is
+  no error, as :mod:`hilclaw.run_state` has it; in ``tolerance`` it makes the
+  content invalid (ADR-0020 decision 4).
 - ``schema_version`` is an integer of ADR-0001, from 0 to
   :data:`hilclaw.keys.MAX_INTEGER`: a value outside that range is no integer of
   the records and makes the content invalid, it is not another version. ``-0``
@@ -62,11 +62,11 @@ Conventions of this module, which the three records do not fix:
   of the sixteen ASCII characters ``0``-``9`` and ``a``-``f``; the characters
   themselves are compared, so a digit of another script is none. The one rule
   is reported as a whole, and a ``str`` that breaks it is shown as every
-  ``str`` is, a long one shortened. The length of a value is not looked at
-  beyond the rule: which of the two the source repository uses is not told.
-  The source commit is handed out as the ``str`` of the file, unchanged. A
-  content without the member has ``None`` in that place: it
-  states no source commit, and that is no error of the content.
+  ``str`` is, a long one shortened. Either length is a value: the module does
+  not know or check which of the two the source repository uses. The source
+  commit is handed out as the ``str`` of the file, unchanged. A content
+  without the member has ``None`` in that place: it states no source commit,
+  and that is no error of the content.
 - The file is read as :mod:`hilclaw.run_journal` reads ``STATE.json``:
   ``run_id`` is checked first, then ``data_root``, which is used as given and
   must be an existing directory (:class:`FileNotFoundError` or
@@ -239,9 +239,9 @@ def validate(document):
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
-    ``tolerance.rtol`` or ``source_commit``). The version comes first: an integer other than
-    :data:`SCHEMA_VERSION` raises :class:`UnsupportedVersionError` before any
-    other member is looked at.
+    ``tolerance.rtol`` or ``source_commit``). The version comes first: an
+    integer other than :data:`SCHEMA_VERSION` raises
+    :class:`UnsupportedVersionError` before any other member is looked at.
     """
     _checked(document)
 

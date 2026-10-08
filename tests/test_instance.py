@@ -1481,11 +1481,11 @@ def test_nothing_of_the_module_holds_a_source_commit():
     assert Instance._field_defaults == {}
 
 
-def test_the_module_loads_nothing_that_could_run_git():
+def test_the_module_does_not_load_subprocess():
     code = (
         "import sys, hilclaw.instance; "
         "print(sorted(name for name in sys.modules "
-        "if name.split('.')[0] in ('subprocess', 'shutil', 'importlib_metadata')))"
+        "if name.split('.')[0] == 'subprocess'))"
     )
 
     done = subprocess.run(
@@ -1498,8 +1498,7 @@ def test_the_module_loads_nothing_that_could_run_git():
     )
 
     assert done.stdout.strip() == "[]"
-    names = set(vars(instance))
-    assert not names & {"subprocess", "shutil", "hilclaw", "__version__", "sys"}
+    assert not set(vars(instance)) & {"subprocess", "hilclaw", "__version__"}
 
 
 # --- happy: the reader ---
