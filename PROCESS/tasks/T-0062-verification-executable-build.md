@@ -1,0 +1,147 @@
+---
+id: T-0062
+title: Add the build step of a verification run (hilclaw/harness/verification_build.py) - one clang_build.build call over verification_program.c and the sources of one kernel per ADR-0017 decision 2 - and its tests
+phase: P1
+status: IN_PROGRESS
+commitMode: code
+coversReq: [FR-9, OD-16, C-7, "#5 A-7", "#5 A-12"]
+dependsOn: [T-0013, T-0034, T-0059, T-0061]
+touchesFiles: [hilclaw/harness/verification_build.py, hilclaw/harness/__init__.py, tests/harness/test_verification_build.py]
+estimatedSize: {loc: 100, files: 2}   # non-test: the new module and one docstring sentence of the package file; the test file is excluded from the cap (D4)
+hq: []   # implements an accepted decision (ADR-0017 decisions 2 and 9); closes no OD, writes no ADR, adds no dependency, names no data-plane field
+---
+## Why
+**ADR-0017** (accepted 2026-10-08, with the owner's HQ-0004 answers) fixed the verification run of a C `gemm` kernel at `cpu_standin`. Three slices are on `main`:
+- slice 1 (T-0059, `de54c66`): `hilclaw/harness/verification_program.c`, the C verification program;
+- slice 2 (T-0060, `c8a6f65`): `hilclaw/harness/verification_arrays.py`, the array side in NumPy, and the pin `numpy==2.4.6`;
+- slice 3a (T-0061, `e9f35c1`): `hilclaw/harness/verification.py`, `run_verification` over an executable that is **already built**.
+
+The part in between is missing. ADR-0017 decision 2: "a verification executable is built from it and all source files of **one** kernel by **one call of `clang_build.build`** with the caller's flags, exactly as ADR-0009 decision 2 builds a timing executable." Today only tests do this, by spelling the path of the program themselves (`tests/harness/test_verification_program.py`, `tests/harness/test_verification.py`). A caller of the package has no function for it and no name for the program source.
+
+This task is **slice 3b**: one small module, the mirror of `hilclaw/harness/timing_build.py` (T-0034, 82 lines). With it a caller goes from kernel sources to a verdict with two calls: build (this module), then `verification.run_verification`.
+
+**PLAN checkbox.** PLAN P1-3 reads: "하네스 `harness/`: 무작위 입력(비파일 시드), f64 reference(NumPy float64는 #5 A-7 권고 — **오너 확정 필요**), tolerance 비교(instance 파라미터), 반복 타이밍". The planner's reading is that **P1-3 is complete when this task lands**: drawn inputs from a seed that is no file (T-0059, T-0060), the float64 reference (T-0060; the owner item was answered as HQ-0004), the tolerance comparison with caller-given `rtol` / `atol` (T-0060, T-0061), repeated timing (`timing.py`, `timing_driver.c`, `timing_build.py`, `measurement.py`), and with this task the build of the verification executable. **The executor does not edit PLAN.md**: state in `## Result` whether you and the reviewer agree that the named parts exist and what, if anything, of P1-3 remains; the driver ticks the box from that (precedent: T-0034 for P1-2).
+
+A-13 check (planner's reading - the reviewer is asked to re-check):
+- No new dependency: the module uses the standard library and `hilclaw.clang_build` only. It does **not** import `numpy`, `verification.py` or `verification_arrays.py`. `pyproject.toml` and `.github/` are unchanged.
+- No data-plane file or field is read, written or named. The module adds **no rule and no value** to ADR-0017: it chooses no flag, no compiler, no time limit and no output path.
+- What the record leaves to the code and this task fixes as **provisional conventions of the source** (each stated with one line of reason in the commit body, the PR body and `## Result`): the module name, its public names, the position of the program source among the sources, and the cases under "unsaid" below.
+
+Known risks, accepted: (1) the record's own choices of ADR-0017 are inside their objection window (until 2026-10-15). (2) The names and call forms of T-0059 / T-0061 are provisional conventions; this module and its tests follow them as landed. (3) The driver machine is Windows without a C compiler: the real-clang tests run on CI only; the stub-compiler tests run everywhere.
+
+Note on the test rules: `hilclaw/harness/` is the verification harness of the product (FR-9, layer 2), not the test harness of this repository; tests of it are required.
+
+## Required Reading
+- PROCESS/DRIVER.md §3-5 (executor procedure, naming `T-NNNN`, resume rule, 2h30m limit) and §5 (task format, size cap D4, test rules D12, language line in `Result`) - mandatory for every task (§6)
+- PROCESS/DRIVER.md §1-5 (Bypass permissions; forbidden actions held by discipline; a denied or failed tool call is BLOCKED), §3 "BLOCKED 사유" paragraph, §9
+- ARCHITECTURE/decisions/ADR-0017-od16-cpu-standin-verification-run.md - decisions 1 (terms), **2** (the whole of it), **9** (the row "Flags, trailing flags, compiler, build time limit, path of the executable - the caller, handed to `clang_build.build`"; "Environment and working directory - handed on unchanged"; the sentence after the table), 10; Boundaries ("Build settings"; sub-question 6: whether the verified and the timed executable are built with the same flags)
+- ARCHITECTURE/decisions/ADR-0009-od13-cpu-standin-timing-run.md - decision 2 (the precedent the record points at); ARCHITECTURE/decisions/ADR-0008-od6-gemm-kernel-contract.md - decisions 4 and 7 (a kernel defines `hilclaw_gemm` and no `main`)
+- **`hilclaw/harness/timing_build.py` (whole file, 82 lines) - the model of this module**: the docstring sections, `DRIVER_SOURCE`, `build_timing_executable`, the order of the checks. **Not edited**
+- **`tests/harness/test_timing_build.py` (whole file) - the model of the test file**: the `Stub` compiler written as a Python script and run as `(sys.executable, script)`, its record file, the fixtures `stub`, `kernel`, `out`, `clang`, every stub case, the two real-clang cases. **Not edited; nothing is imported from it**
+- PROCESS/tasks/T-0034-timing-executable-build.md - `## Result` ("Public API as landed", "Provisional conventions", "Cases the record leaves unsaid, as chosen", the review findings, follow-up (b) on packaging)
+- PROCESS/tasks/T-0061-verification-run-python-side.md - `## Result`: "Public names and signatures as landed" (`run_verification`, `VerificationResult`, `Broken`, `Verdict`), "What `run` holds", the real-clang kernels and their flags, follow-ups (a) and (b)
+- PROCESS/tasks/T-0059-verification-program-c-source.md - `## Result`: "Conventions as landed" (path, command line), "Flags the tests build with"
+- `hilclaw/clang_build.py` - the whole module (`build`, `BuildResult`, `CompilerNotFoundError`, `_checked_sources`: what it accepts as `sources` and what it raises); `hilclaw/harness/verification.py` - the module docstring and `run_verification` (the consumer of the executable; it builds nothing); `hilclaw/harness/verification_program.c` - the header comment (lines 1-55); `hilclaw/harness/__init__.py`. **`clang_build.py`, `verification.py` and the C file are not edited**
+- `tests/harness/test_verification.py` - the real-clang part (the `clang` fixture, the `gemm` kernel text, the once-per-session build, `verify`). **Not edited; nothing is imported from it**
+- `.github/workflows/ci.yml` (the six jobs; `Test presence (hilclaw)` maps `hilclaw/harness/verification_build.py` to `tests/harness/test_verification_build.py`); `pyproject.toml`
+- CLAUDE.md - 상시 규칙: "세 층 모델", "도구 계층 언어 정책", "브랜치·merge 절차" (code mode; BLOCKED reasons), "테스트 규칙" ①-⑤, "코멘트 최소화", "미결은 발명하지 않는다"
+- .claude/skills/dev-item-address/SKILL.md (procedure); .claude/skills/dev-code-review/SKILL.md (what the reviewer checks)
+- Issue #5: every comment after the ADR-0017 notice https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6053035869 (`gh issue view 5 --repo myungjoo/HIL-Claw --comments`; it was the last comment at planning time, 2026-10-08T07:45Z). If the owner has objected to ADR-0017 in a way that changes a rule used here, do not start: return BLOCKED ("requirement unclear") quoting the comment
+
+## Acceptance Criteria
+ADR-0017 fixes the rule. Names, shapes and the unsaid cases are **conventions chosen by this task, provisional**. Where a criterion below and the ADR disagree, **the ADR wins**: follow it and say so in `## Result`.
+
+### Files
+- `hilclaw/harness/verification_build.py` (new; about 60-100 lines, most of it docstring; hard limit 120). Python because `clang_build` and the consumer `verification.run_verification` are Python - one line in the commit body and `## Result`. A separate module, not an addition to `verification.py`: that module states that it builds nothing, imports `numpy`, and is at 234 lines. If you judge another name or place better, say why.
+- `hilclaw/harness/__init__.py` - only the docstring sentence that lists what the sub-package holds is brought up to date. It must stay true that `verification_arrays` and `verification` are the two modules that import `numpy`. No code, no re-export, no import.
+- `tests/harness/test_verification_build.py` (new).
+- Nothing else.
+
+### Constraints
+- **Standard library and `hilclaw.clang_build` only**; no other `hilclaw` module and no `numpy` is imported by the new module; `pyproject.toml` unchanged; runs on CPython 3.11 and 3.14.
+- **The harness adds no flag** (decision 2, "with the caller's flags, exactly as ADR-0009 decision 2"; decision 9: "No flag, language standard, `-march`, thread count or time-limit value is decided here"): the module never puts a flag, a library, a language standard, an optimisation level, `-march`, an OpenMP option or a define on the command line, and never inspects, filters or corrects the caller's flags. Whether the caller's flags produce an executable is the caller's matter; the module does not look at the artefact.
+- **Exactly one `clang_build.build` call** per call of the build function, one compiler process, no retry. It runs nothing that it built, reads no configuration and no environment variable of its own, and writes nothing but what `clang_build.build` writes.
+- **No default for the build time limit or the output path**; no compiler chosen here (`None` means what it means in `clang_build`).
+- **Nothing relates this build to the build of a timing executable**: no shared function with `timing_build.py`, no function that builds both, no comparison or copying of flags (OD-16 sub-question 6 is open). The few duplicated lines are accepted, as T-0059 accepted them for the C sources.
+- No field, no file form, no `main`, no command-line entry point, no tool registration (OD-18). A failed build is a result, never retried, repaired or stored (OD-10).
+
+### Capabilities (provisional names; each must exist and every public name must be tested)
+1. **The program source has a name.** A public constant gives the path of `verification_program.c` as the installed package holds it - recommended `PROGRAM_SOURCE = Path(__file__).with_name("verification_program.c")`, with a one-line docstring as `DRIVER_SOURCE` has. It is the one place in `hilclaw/` that spells the file name.
+2. **Build a verification executable** - recommended `build_verification_executable(kernel_sources, output, *, timeout_s, flags=(), trailing_flags=(), compiler=None, cwd=None, env=None)` returning the `clang_build.BuildResult`: one call `clang_build.build((PROGRAM_SOURCE, *kernel_sources), output, timeout_s=..., flags=..., trailing_flags=..., compiler=..., cwd=..., env=...)` with every argument handed over unchanged (the caller's own object) and the result returned as it is. `kernel_sources` is one path (`str` or `os.PathLike`) or a non-empty iterable of paths: all source files of one kernel. The defaults of `flags`, `trailing_flags`, `compiler`, `cwd` and `env` are those of `clang_build.build` (the convention of T-0034: decision 9 writes "no default" on the seed, `draws`, the tolerance and the time limit of the process, not on the build row, and an empty flag list is not a flag). If you read ADR-0017 decision 6 or 9 as requiring `flags` without a default, do that and say so.
+3. **Errors.** A compile failure, a link failure or a timeout is the `BuildResult` (`ok` false). What `clang_build.build` raises (`FileNotFoundError`, `IsADirectoryError`, `NotADirectoryError`, `ValueError`, `TypeError`, `CompilerNotFoundError`, `OSError`) is passed on unchanged. **No kernel source** raises `ValueError` before anything is started and before every other argument is looked at (as `timing_build.py`); `kernel_sources` that is neither a path nor iterable raises `TypeError`.
+4. **Docstring**: what the module is (the build step of a verification run of ADR-0017, decisions 2 and 9), the command as `clang_build` forms it with the program source first, "The harness adds no flag", "Conventions of this module", "What this module does not do" (it chooses no flag, compiler, time limit or output path; it runs nothing that it built; it does not retry, repair or store a failed build; it reads no configuration; it does not make the flags of this build equal to those of a timing build). Keep it exact and short, so that review rounds are not spent on wording. Otherwise comments only where the code cannot say it.
+
+### Cases the record leaves unsaid - choose, implement, test and list each with one line of reason
+The recommended choice for each is that of `timing_build.py` as landed (T-0034 `## Result`), so that the two build modules behave alike:
+- The position of the program source among the sources (first).
+- A kernel source that is the program source itself, or the same path twice (no check; the linker reports the duplicate and that is a failed build).
+- A bare `str` / `os.PathLike` as `kernel_sources` (one path) against other iterables (a generator is read once); a `bytes` path (the `TypeError` of `clang_build.build`; an empty `bytes` is an empty iterable, hence "no kernel source").
+- A program source that is missing from the installation (the `FileNotFoundError` of `clang_build.build`, unchanged).
+- Flags that produce an object or a shared library (a successful build, not looked at).
+- Anything else you meet. If you read one as a design choice that needs an ADR or the owner - in particular anything under ADR-0017 Boundaries "Build settings" or sub-question 6 (a flag, a language standard, a thread or environment setting, a time-limit value, a rule that ties this build to the timing build), a function that builds and runs, or anything that reads as a request, result member or failure kind of `correctness.check` (ADR-0016) - do not choose: return BLOCKED with the exact question.
+
+### Tests (`tests/harness/test_verification_build.py`; excluded from the size cap)
+The stub compiler is a Python script the test writes into `tmp_path` and passes as `compiler=(sys.executable, script)`; it records its `argv`, working directory and one environment variable and writes the file after `-o`, as the `Stub` of `tests/harness/test_timing_build.py` does. Write this file's own copy (import nothing from another test module, edit no other test file). It is a test helper and gets no tests of its own (test rule ⑤). All tests except the real-clang ones must pass on Windows without a C compiler. The file may import `numpy`-using modules (`hilclaw.harness.verification`) for the real-clang cases; the new module must not.
+
+- happy (stub):
+  - the build succeeds and the returned value is the `BuildResult` of the call (`ok`, `output`, `log`); the recorded `argv` is exactly `<flags...> <program source> <kernel sources...> <trailing flags...> -o <temporary name>`, the program source being the absolute path of capability 1, and **nothing added** when `flags` and `trailing_flags` are empty; the artefact is at `output`;
+  - `cwd` and `env` reach the compiler process; the environment is inherited by default;
+  - `PROGRAM_SOURCE` exists, is a regular file named `verification_program.c` and lies next to `hilclaw/harness/__init__.py`; it is not `timing_build.DRIVER_SOURCE`.
+- branch (stub):
+  - one kernel source given as `str`, as `Path`, as a one-element list, as a tuple of two files and as a generator; a relative kernel source;
+  - flags and trailing flags in the order given, around the sources; `compiler` as a prefix sequence;
+  - the same kernel path twice is handed over twice (no check);
+  - with `clang_build.build` replaced by a recording function (`monkeypatch`): it is called exactly once, every argument is the caller's own object, and the defaults are those of `clang_build.build`.
+- error (stub): a compiler that exits non-zero gives `ok` false with the log passed on and no file at `output`; a timeout gives `timed_out`.
+- negative (stub; where nothing may start, assert that the stub left no record):
+  - no kernel source (`()`, `[]`, an empty generator, `b""`) raises `ValueError`, also when another argument is wrong as well (it is tested first);
+  - `kernel_sources` of `None`, `7`, `1.5` raises `TypeError`; a `bytes` path, bare and in a list, raises `TypeError`;
+  - a kernel source that does not exist or is a directory; a program source that is missing (`monkeypatch` of `PROGRAM_SOURCE`): the exception of `clang_build.build`;
+  - a flag that sets the output (`ValueError`), a bare `str` as flags (`TypeError`), in `flags` and in `trailing_flags`;
+  - `timeout_s` omitted (`TypeError`), `output` omitted (`TypeError`), `timeout_s` of `0`, `-1`, an infinity, NaN (`ValueError`), of `None`, `True`, `"10"` (`TypeError`);
+  - a compiler that does not exist (`CompilerNotFoundError`), an empty compiler prefix, an output directory that does not exist, an output that is a directory.
+- **real clang** (fixture: skip when `os.name != "posix"` or clang is absent; `pytest.fail` when `GITHUB_ACTIONS == "true"` and clang is absent). Keep it to these builds; the behaviour of the program and of the run is covered by the test files of T-0059 and T-0061:
+  - (a) a plain triple-loop `hilclaw_gemm` kernel (the prototype of ADR-0008 decision 4) is built **by the new function** with the tests' own flags (`-std=c99 -Wall -Wextra -Wpedantic -Werror -O2`), `result.ok` with `result.log` as the message, and `verification.run_verification(<the executable itself, a path, no prefix>, m=..., k=..., n=..., draws=..., seed=..., rtol=..., atol=..., timeout_s=...)` at a small non-square shape gives a completed run (`broken is None`) with verdict `PASS` under a tolerance the test chooses (`atol` > 0; a test value, not a tolerance of the harness);
+  - (b) the same with a kernel split over two source files (the entry point in one, a helper it calls in the other), given as a tuple: `ok`, and the run passes - "all source files of one kernel";
+  - (c) negative: a kernel source without `hilclaw_gemm` gives `ok` false and a non-empty log; nothing is at `output`.
+  - The fixture kernels are test code: they are not the calibration kernels of ADR-0003 (PLAN P1-4) and get no tests of their own.
+- Test rules of CLAUDE.md / DRIVER §5 (D12): ① the coverage of `hilclaw/` stays >= 80% lines and functions (reach every line of the new module **from the stub tests alone**; the job `Coverage gate (hilclaw)` must stay green - record its two percentages); ② happy, error, branch and negative cases as above; ③ every public name of the new module is tested; ④ the new module has its test file at `tests/harness/test_verification_build.py` (the job `Test presence (hilclaw)` checks it); ⑤ no tests for test code (the stub compiler, the fixture kernels), the CI workflow or helper scripts.
+- Keep the file's CI run time small (one timeout test of a few seconds; three real builds): the suite runs in three jobs.
+
+### Verification (record summary lines and run URLs in `## Result`)
+- Local Python environment: the suite needs the pinned `numpy` 2.4.6. **Do not change the user-level Python environment of the driver machine** (it holds numpy 2.5.2). Use a venv **outside the repository**: the one T-0060 left in place (`C:\Users\myung\AppData\Local\Temp\claude\C--Users-myung-HIL-Claw-driver\62adb481-ac07-4add-b2d0-508a61831447\scratchpad\venv-t0060`) if it still exists and holds numpy 2.4.6, pytest 9.1.1 and ruff 0.16.10; otherwise create one in the session scratchpad (`--group dev` and the pinned `numpy` with `--only-binary=:all:`). Record which was used and `numpy.__version__`. Nothing is installed into the tree; leave the venv in place (no recursive delete).
+- Local, before the commit and before the merge: `python -m pytest` exits 0 (record pass and skip counts; the real-clang tests of the new file skip here), `python -m ruff check .` and `python -m ruff format --check .` exit 0.
+- `git ls-files --eol` shows `i/lf` for the changed files; `git status --short` after the tests shows no stray file; `git diff origin/main --stat` lists only the files in `touchesFiles`.
+- CI on the PR: `gh pr checks <PR> --watch` ends with **six** successful checks on the final head - `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. **Open the log of both Python gates and of the coverage gate and confirm that the tests of `tests/harness/test_verification_build.py` ran and passed there with no skip** (record the pass / skip counts and the two coverage percentages). Merge only then.
+- After the squash-merge, check the `push` run on `main` and record its conclusion; if it is not `success`, do not fix forward on `main`: record it and say so in the returned summary.
+
+### Process
+- First the §3-5 landed check: `git log origin/main --grep='^Task: T-0062'` and `gh pr list --repo myungjoo/HIL-Claw --search T-0062 --state all`; then `gh pr list --repo myungjoo/HIL-Claw --state open` (none at planning time; a PR touching `hilclaw/harness/` is BLOCKED "open PR conflict"). The unmerged remote branches `claude/dazzling-wu-a91228` and `feature/uc-alignment` are not PRs of this task.
+- Code mode: branch `claude/T-0062-verification-executable-build` from `origin/main`; Draft PR with the `DONOTMERGE` label; PR title contains `T-0062`; executor commits end with the trailer `Task: T-0062`.
+- **No local compiler.** Install nothing. A clang that already exists at hand (the WSL distribution of the driver machine had clang 14 in T-0059 and T-0061) may be used for an optional check with its output outside the repository; CI stays the verification of record. After a failed CI run, read the whole failed log (`gh run view <id> --log-failed`) and fix every diagnostic in it before pushing again. **Three consecutive failed CI runs on the PR: stop and return BLOCKED ("CI 3 consecutive failures")** with the last log excerpt in `## Result`.
+- Reviewer cycle via a fresh-context `dev-reviewer` sub-agent running dev-code-review (at most 7 rounds; if the cap is passed without a final Approve, return BLOCKED). Ask it explicitly to (a) compare the module with ADR-0017 decision 2 and the build rows of decision 9 sentence by sentence - one `clang_build.build` call, the program and all sources of one kernel, the caller's flags unchanged, no flag added, nothing corrected; (b) confirm that the module imports neither `numpy` nor a module that does, and that it relates nothing to the timing build (sub-question 6); (c) re-check the planner's judgements in `## Why` (the A-13 reading, each provisional convention, **and whether PLAN P1-3 is complete with this task**); (d) report anything the module decides that ADR-0017 lists under Boundaries or leaves open by name (a flag, a language standard, a thread or environment setting, a time-limit value, a field of any file), or that reads as a part of the `correctness.check` contract. If the reviewer reads (c) or (d) as a design choice needing an ADR or the owner, return BLOCKED with the question. A result starting with `SECURITY` is BLOCKED. If you cannot spawn a reviewer, return BLOCKED - do not self-review.
+- Squash-merge per CLAUDE.md A-13 once the reviewer approved and CI is green: remove `DONOTMERGE`, mark the PR ready, confirm the six checks on the final head, then `gh pr merge <PR> --squash --body-file <file>` with the PR body, whose **last line is `Task: T-0062`**. Delete the remote branch and the local branch in **separate** commands and only after `gh pr view <PR> --json state` reports `MERGED`.
+- `## Result`: fill it in **after** the merge, on `main`, and leave that edit **uncommitted** - the driver commits it (DRIVER §3-6). The branch and the PR must not contain this task file. `PROCESS/STATE.json`, `PROCESS/journal/` and `PROCESS/PLAN.md` belong to the driver. Record: PR and commit, review rounds and findings, the number of CI runs and failures, **the public API as landed** (P1-4 and the C gate are written against that text), the provisional conventions and unsaid cases, the verification outcomes, the language line, and **the reading on the PLAN P1-3 checkbox** (yours and the reviewer's: complete or not, and what remains if not).
+- Size: about 100 non-test lines in 2 files; the cap is 300 LOC / 5 files (tests excluded).
+- If ADR-0017 is ambiguous or self-contradictory on a point the code must decide and that is not one of the provisional conventions above, do not guess and do not edit the ADR: return BLOCKED ("requirement unclear") with the exact question.
+- If a needed tool call is denied or fails, return BLOCKED rather than working around it (DRIVER §1-5). Never edit `.claude/settings.json` or `.claude/settings.local.json`; never use `git push --force*`, `rm -rf` or `gh repo delete`.
+- Return a summary of at most 200 characters (result, PR / commit, BLOCKED or not).
+
+## Out of Scope
+- Any edit of `verification.py`, `verification_arrays.py`, `verification_program.c`, `timing.py`, `timing_build.py`, `timing_driver.c`, `measurement.py`, `clang_build.py`, `local_run.py`, or of an existing test file (replacing the program path spelled in `tests/harness/test_verification_program.py` and `tests/harness/test_verification.py` by the new name is not done here).
+- A function that builds **and** runs, a function that builds the timing and the verification executable together, a cache of built executables, a choice of output path or temporary directory, cleaning up artefacts.
+- Build settings: flags, the language standard, `-march`, the OpenMP runtime and thread count, `task.build`, whether a kernel may link another library (ADR-0017 Boundaries; OD-6 sub-question 2); whether the two builds of an attempt use the same flags or are one executable (OD-16 sub-question 6).
+- The calibration kernels of ADR-0003 and their tests (PLAN P1-4); the "harness pass" half of the C gate (P0.5-1).
+- Everything else ADR-0017 leaves open: other shapes (OD-16 sub-question 1), the relation to timing inputs (OD-13 sub-question 7), where a seed comes from, the number of draws and what is recorded of a run (sub-question 5), tolerance values, time-limit values, a sandbox (OD-14), what is kept of a failed build or a broken run (OD-10).
+- `.github/`, `pyproject.toml`, any dependency or pin, packaging of non-Python files (T-0034 follow-up (b) stays open: `PROGRAM_SOURCE` is valid in a source checkout only, as `DRIVER_SOURCE`).
+- Fields of `eval.json` / `sim.json` / `board.json` / `instance.json` / events (P1-8); the contract of `correctness.check`, the harness / backend split, a tool registration (P1-1, OD-18).
+- Any ADR, the OD register, README.md, CLAUDE.md, DRIVER.md, PLAN.md, the skills, the agents.
+
+## Follow-ups
+- (planner, next) PLAN P1-4, the three-state calibration (conforming / failing / violating kernels of ADR-0003, read through ADR-0017 decision 8, each test passing its own `rtol`, `atol` > 0, seed and `draws`), built with this task's function and judged with `run_verification`. P1-4 is marked "OD-16 종결 필요(§9 ADR 경로)": judge first whether ADR-0003 and ADR-0017 together already fix everything the code must decide (then a code task), or whether a part of OD-16 still needs a record in the task's scope.
+- (planner) Then the "harness pass" half of the C gate (ticks PLAN P0.5-1): judge first what it adds beyond the Python gates, which already build and run both C programs with clang on every push (T-0033 follow-up (b), T-0034 `## Follow-ups`); if what the gate must check is not determined by #9 and the PLAN text, that is a question before a task.
+- (planner, independent) Slice 3 of ADR-0016: the path of a HW tool over a backend, checked through both fronts by a test-only tool with the mock, written against the call forms in T-0058 `## Result` (code mode, PLAN P1-1).
+- (integrator or planner, document mode) Still open from T-0059 / T-0060: README "로컬 검사" names the install of the runtime dependency; the annotations of ADR-0010 / ADR-0015; the note on ADR-0017 decision 3 ("two draws of one run differ").
+- (later, small) Use `PROGRAM_SOURCE` in `tests/harness/test_verification_program.py` and `tests/harness/test_verification.py`.
+
+## Result
