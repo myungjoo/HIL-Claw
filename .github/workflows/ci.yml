@@ -98,3 +98,80 @@ jobs:
           done
           echo "checked ${checked} module(s) under hilclaw/, ${missing} without a test file"
           [[ $missing -eq 0 ]]
+
+  coverage:
+    name: Coverage gate (hilclaw)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Install dev tools
+        run: |
+          python -m pip install --upgrade "pip>=25.1"
+          python -m pip install --group dev
+      - name: Line and function coverage of hilclaw/
+        shell: bash
+        run: |
+          data="$RUNNER_TEMP/hilclaw.coverage"
+          report="$RUNNER_TEMP/hilclaw-coverage.json"
+          python -m coverage run --data-file="$data" --source=hilclaw -m pytest
+          python -m coverage report --data-file="$data" --show-missing
+          python -m coverage json --data-file="$data" -o "$report"
+          python - "$report" <<'EOF'
+          import json
+          import subprocess
+          import sys
+
+          minimum = {"lines": 80, "functions": 80}
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              files = json.load(handle)["files"]
+          tracked = subprocess.run(
+              ["git", "ls-files", "-z", "--", "hilclaw/*.py"],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout.split("\0")
+          unmeasured = sorted(set(tracked) - {""} - set(files))
+          functions = {
+              f"{path}:{name}": bool(function["executed_lines"])
+              for path, entry in files.items()
+              for name, function in entry["functions"].items()
+              if name
+          }
+          summaries = [entry["summary"] for entry in files.values()]
+          counts = {
+              "lines": (
+                  sum(summary["covered_lines"] for summary in summaries),
+                  sum(summary["num_statements"] for summary in summaries),
+                  "executed",
+              ),
+              "functions": (sum(functions.values()), len(functions), "entered"),
+          }
+          failed = bool(unmeasured)
+          for path in unmeasured:
+              print(f"::error file={path}::{path} is tracked but not measured")
+          for kind, (covered, total, verb) in counts.items():
+              if total == 0:
+                  failed = True
+                  print(f"::error::the coverage report has no {kind} of hilclaw/")
+                  continue
+              floor = minimum[kind]
+              percent = covered * 10000 // total / 100
+              print(f"{kind}: {covered}/{total} {verb} = {percent:.2f}% (minimum {floor}%)")
+              if covered * 100 < floor * total:
+                  failed = True
+                  print(f"::error::hilclaw/ is below the minimum of {floor}% for {kind}")
+          for path, entry in sorted(files.items()):
+              if entry["missing_lines"]:
+                  print(f"lines not executed: {path}: {entry['missing_lines']}")
+          for name, entered in sorted(functions.items()):
+              if not entered:
+                  print(f"function not entered: {name}")
+          sys.exit(1 if failed else 0)
+          EOF
