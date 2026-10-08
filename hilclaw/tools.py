@@ -24,12 +24,14 @@ import math
 import re
 import typing
 
-#: The reserved kinds (ADR-0015 decision 2): one meaning in every tool, not enforced.
+#: The reserved kinds (ADR-0015 decision 2, ADR-0016 decision 3): one meaning in every tool, not enforced.
 KIND_INVALID_REQUEST = "invalid_request"  #: the tool function refused the request
 KIND_NO_DATA_ROOT = "no_data_root"  #: the data root could not be obtained
 KIND_STEP_OPEN = "step_open"  #: the journaled step of this identity is open
 KIND_TOOL_CRASHED = "tool_crashed"  #: the tool function raised what is no tool failure
 KIND_BAD_RESULT = "bad_result"  #: the tool function returned no result object
+KIND_NO_BACKEND = "no_backend"  #: the backend table has no entry for the accelerator
+KIND_NOT_OFFERED = "not_offered"  #: the selected backend has no operation for the tool
 RESERVED_KINDS = frozenset(
     {
         KIND_INVALID_REQUEST,
@@ -37,6 +39,8 @@ RESERVED_KINDS = frozenset(
         KIND_STEP_OPEN,
         KIND_TOOL_CRASHED,
         KIND_BAD_RESULT,
+        KIND_NO_BACKEND,
+        KIND_NOT_OFFERED,
     }
 )
 
