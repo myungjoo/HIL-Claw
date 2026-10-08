@@ -35,10 +35,15 @@ def fail(request):
 
 
 registry = Registry()
-registry.register("test.echo", lambda request: {{"echo": request}})
-registry.register("test.fail", fail)
+registry.register(
+    "test.echo", lambda request: {{"echo": request}}, {description!r}, {schema!r}
+)
+registry.register("test.fail", fail, {description!r}, {schema!r})
 raise SystemExit(main(registry=registry))
 """
+
+DESCRIPTION = "A tool of the tests."
+SCHEMA = {"type": "object"}
 
 
 class Calls:
@@ -70,7 +75,7 @@ def raising(error):
 def registry_with(**functions):
     registry = Registry()
     for name, function in functions.items():
-        registry.register(name.replace("_", "."), function)
+        registry.register(name.replace("_", "."), function, DESCRIPTION, SCHEMA)
     return registry
 
 
@@ -107,6 +112,16 @@ def test_a_result_is_one_json_line_with_status_0():
     assert out == b'{"echo":{"n":1,"list":[true,null]}}\n'
     assert err == b""
     assert calls.requests == [{"n": 1, "list": [True, None]}]
+
+
+def test_a_call_reaches_a_tool_whatever_its_schema_says():
+    calls = Calls()
+    registry = Registry()
+    schema = {"type": "object", "required": ["example_member"]}
+    registry.register("test.echo", calls.echo, "Echoes the request. 한글", schema)
+    status, out, err = run(["test.echo"], b"{}", registry)
+    assert (status, out, err) == (0, b'{"echo":{}}\n', b"")
+    assert calls.requests == [{}]
 
 
 def test_a_non_ascii_request_round_trips():
@@ -414,7 +429,10 @@ def run_module(args, data):
 
 def run_helper(tmp_path, name, data):
     script = tmp_path / "front_with_test_tools.py"
-    script.write_text(HELPER_SCRIPT.format(root=str(REPO_ROOT)), encoding="utf-8")
+    text = HELPER_SCRIPT.format(
+        root=str(REPO_ROOT), description=DESCRIPTION, schema=SCHEMA
+    )
+    script.write_text(text, encoding="utf-8")
     return subprocess.run(
         [sys.executable, str(script), name],
         input=data,

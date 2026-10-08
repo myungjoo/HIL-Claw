@@ -29,12 +29,13 @@ no answer.
 Only the protocol revision 2025-06-18 is implemented, and ``initialize``
 answers it whatever revision was asked for. The server keeps no state: every
 request is served alike before and after ``initialize``, and a tool is listed
-without a description, with the input schema ``{"type": "object"}``.
-Messages are handled one at a time in the order read, so
-standard input must be a blocking stream. Exit status 0 is the end of
-standard input; 4 means an argument was given or a standard stream is closed
-or failed when it was needed (120 instead if standard output cannot be
-written and the interpreter's own flush at exit fails as well).
+with the description and, as ``inputSchema``, the input schema that the
+registry holds for it (ADR-0015 decision 2). Messages are handled one at a
+time in the order read, so standard input must be a blocking stream. Exit
+status 0 is the end of standard input; 4 means an argument was given or a
+standard stream is closed or failed when it was needed (120 instead if
+standard output cannot be written and the interpreter's own flush at exit
+fails as well).
 """
 
 import contextlib
@@ -87,8 +88,17 @@ def _ping(registry, params):
 def _list(registry, params):
     if params.get("cursor") is not None:
         raise _Refused(INVALID_PARAMS, "unknown cursor")
-    names = mcp_names(registry)
-    return {"tools": [{"name": n, "inputSchema": {"type": "object"}} for n in names]}
+    listed = []
+    for name, registry_name in mcp_names(registry).items():
+        held = registry.definition(registry_name)
+        listed.append(
+            {
+                "name": name,
+                "description": held.description,
+                "inputSchema": held.input_schema,
+            }
+        )
+    return {"tools": listed}
 
 
 def _call(registry, params):

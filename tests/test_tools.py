@@ -2,10 +2,11 @@ import json
 
 import pytest
 
-from hilclaw import tools
+from hilclaw import journaled_step, tools
 from hilclaw.tools import (
     InvalidRequestError,
     Registry,
+    ToolDefinition,
     ToolFailure,
     UnknownToolError,
     call,
@@ -45,6 +46,22 @@ class Mapping(dict):
 
 
 ECHO = object()
+DESCRIPTION = "A tool of the tests."
+SCHEMA = {"type": "object"}
+RICH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "example_text": {"type": "string", "description": "héllo 한글"},
+        "example_list": {"type": "array", "items": {"type": ["integer", "null"]}},
+        "example_object": {
+            "type": "object",
+            "properties": {"example_number": {"type": "number", "minimum": 0.5}},
+            "required": ["example_number"],
+        },
+    },
+    "required": ["example_text"],
+    "additionalProperties": False,
+}
 
 
 class Recorder:
@@ -62,7 +79,7 @@ class Recorder:
 def registry_of(**functions):
     registry = Registry()
     for name, function in functions.items():
-        registry.register(name.replace("_", "."), function)
+        registry.register(name.replace("_", "."), function, DESCRIPTION, SCHEMA)
     return registry
 
 
@@ -155,8 +172,8 @@ def test_register_get_and_names():
 
     registry = Registry()
     assert registry.names() == ()
-    registry.register("sim.run", first)
-    registry.register("blob.push", second)
+    registry.register("sim.run", first, DESCRIPTION, SCHEMA)
+    registry.register("blob.push", second, "Another tool.", RICH_SCHEMA)
     assert registry.get("sim.run") is first
     assert registry.get("blob.push") is second
     assert registry.names() == ("blob.push", "sim.run")
@@ -165,7 +182,7 @@ def test_register_get_and_names():
 @pytest.mark.parametrize("name", ["a", "sim.run", "a1.b2.c3", "profiler.collect"])
 def test_register_accepts_dotted_lowercase_words(name):
     registry = Registry()
-    registry.register(name, dict)
+    registry.register(name, dict, DESCRIPTION, SCHEMA)
     assert registry.names() == (name,)
 
 
@@ -177,7 +194,7 @@ def test_register_accepts_dotted_lowercase_words(name):
 def test_register_refuses_a_name_that_breaks_the_rule(name):
     registry = Registry()
     with pytest.raises(ValueError, match="not a tool name"):
-        registry.register(name, dict)
+        registry.register(name, dict, DESCRIPTION, SCHEMA)
     assert registry.names() == ()
 
 
@@ -185,7 +202,7 @@ def test_register_refuses_a_name_that_breaks_the_rule(name):
 def test_register_refuses_a_name_that_is_not_a_str(name):
     registry = Registry()
     with pytest.raises(TypeError, match="must be a str"):
-        registry.register(name, dict)
+        registry.register(name, dict, DESCRIPTION, SCHEMA)
     assert registry.names() == ()
 
 
@@ -193,7 +210,7 @@ def test_register_refuses_a_name_that_is_not_a_str(name):
 def test_register_refuses_a_function_that_is_not_callable(function):
     registry = Registry()
     with pytest.raises(TypeError, match="not callable"):
-        registry.register("sim.run", function)
+        registry.register("sim.run", function, DESCRIPTION, SCHEMA)
     assert registry.names() == ()
 
 
@@ -201,8 +218,12 @@ def test_register_refuses_a_second_function_for_one_name():
     first = Recorder()
     registry = registry_of(sim_run=first)
     with pytest.raises(ValueError, match="registered already"):
-        registry.register("sim.run", Recorder())
+        registry.register("sim.run", Recorder(), "Another tool.", RICH_SCHEMA)
+    with pytest.raises(ValueError, match="registered already"):
+        registry.register("sim.run", Recorder(), "", None)
     assert registry.get("sim.run") is first
+    assert registry.definition("sim.run") == ("sim.run", first, DESCRIPTION, SCHEMA)
+    assert registry.names() == ("sim.run",)
 
 
 @pytest.mark.parametrize("name", ["board.run", "sim", "sim.run.x", "", None, 1, []])
@@ -214,11 +235,234 @@ def test_get_raises_its_own_lookup_error(name):
     assert not isinstance(caught.value, ToolFailure)
 
 
+# The tool definition
+
+
+def assert_refused(error, said, *definition):
+    registry = registry_of(board_run=Recorder())
+    with pytest.raises(error, match=said):
+        registry.register("sim.run", *definition)
+    assert registry.names() == ("board.run",)
+    with pytest.raises(UnknownToolError):
+        registry.definition("sim.run")
+    registry.register("sim.run", Recorder(), DESCRIPTION, SCHEMA)
+    assert registry.names() == ("board.run", "sim.run")
+
+
+def test_a_definition_is_read_back_with_its_four_parts():
+    tool = Recorder()
+    registry = Registry()
+    registry.register("sim.run", tool, "Runs a thing. 한글 \U0001f600", RICH_SCHEMA)
+    held = registry.definition("sim.run")
+    assert isinstance(held, ToolDefinition)
+    assert held._fields == ("name", "function", "description", "input_schema")
+    assert held.name == "sim.run"
+    assert held.function is tool is registry.get("sim.run")
+    assert held.description == "Runs a thing. 한글 \U0001f600"
+    assert held.input_schema == RICH_SCHEMA
+    assert registry.names() == ("sim.run",)
+    with pytest.raises(AttributeError):
+        held.description = "another"
+
+
+def test_two_tools_keep_two_definitions_apart():
+    first, second = Recorder(), Recorder()
+    registry = Registry()
+    registry.register("sim.run", first, "The first.", SCHEMA)
+    registry.register("board.run", second, "The second.", RICH_SCHEMA)
+    assert registry.definition("sim.run") == ("sim.run", first, "The first.", SCHEMA)
+    assert registry.definition("board.run") == (
+        "board.run",
+        second,
+        "The second.",
+        RICH_SCHEMA,
+    )
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [
+        pytest.param({"type": "object"}, id="type only"),
+        pytest.param(RICH_SCHEMA, id="further keywords"),
+        pytest.param({"type": "object", "example_keyword": [1, None]}, id="unknown"),
+        pytest.param({"type": "object", "properties": nested(20)}, id="nested"),
+    ],
+)
+def test_register_checks_nothing_of_a_schema_but_its_type(schema):
+    registry = Registry()
+    registry.register("sim.run", Recorder(), DESCRIPTION, schema)
+    assert registry.definition("sim.run").input_schema == schema
+
+
+def test_register_takes_a_description_of_any_length_with_whitespace_around_it():
+    text = "  " + "long " * 20_000 + "\n"
+    registry = Registry()
+    registry.register("sim.run", Recorder(), text, SCHEMA)
+    assert registry.definition("sim.run").description == text
+
+
+def test_the_registry_keeps_its_own_copy_of_a_schema():
+    schema = {"type": "object", "properties": {"example_member": {"type": "string"}}}
+    registry = Registry()
+    registry.register("sim.run", Recorder(), DESCRIPTION, schema)
+    schema["properties"]["example_member"]["type"] = "integer"
+    schema["type"] = "array"
+    assert registry.definition("sim.run").input_schema == {
+        "type": "object",
+        "properties": {"example_member": {"type": "string"}},
+    }
+
+
+def test_a_reader_gets_a_copy_of_a_schema_at_each_reading():
+    registry = Registry()
+    registry.register("sim.run", Recorder(), DESCRIPTION, RICH_SCHEMA)
+    first = registry.definition("sim.run")
+    assert first.input_schema is not RICH_SCHEMA
+    first.input_schema["properties"]["example_text"]["type"] = "integer"
+    first.input_schema.clear()
+    second = registry.definition("sim.run")
+    assert second.input_schema == RICH_SCHEMA
+    assert second.input_schema is not first.input_schema
+    assert second == registry.definition("sim.run")
+
+
+@pytest.mark.parametrize("name", ["board.run", "sim", "sim.run.x", "", None, 1, []])
+def test_definition_raises_the_lookup_error_of_get(name):
+    registry = registry_of(sim_run=Recorder())
+    with pytest.raises(UnknownToolError, match="unknown tool") as caught:
+        registry.definition(name)
+    assert not isinstance(caught.value, ToolFailure)
+
+
+@pytest.mark.parametrize("description", [None, b"text", 3, ["text"], Text("text")])
+def test_register_refuses_a_description_that_is_not_a_str(description):
+    said = "description of sim.run must be a str"
+    assert_refused(TypeError, said, Recorder(), description, SCHEMA)
+
+
+@pytest.mark.parametrize("description", ["", " ", "\n\t ", "　 "])
+def test_register_refuses_an_empty_or_blank_description(description):
+    assert_refused(
+        ValueError, "description of sim.run is empty", Recorder(), description, SCHEMA
+    )
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [None, [], [SCHEMA], '{"type": "object"}', 3, ("type", "object"), Mapping(SCHEMA)],
+)
+def test_register_refuses_a_schema_that_is_not_a_dict(schema):
+    assert_refused(
+        TypeError, "schema of sim.run must be a dict", Recorder(), DESCRIPTION, schema
+    )
+
+
+@pytest.mark.parametrize(
+    "member",
+    [
+        pytest.param({1: "a"}, id="int member name"),
+        pytest.param({Text("a"): 1}, id="str subclass member name"),
+        pytest.param({"a": float("nan")}, id="nan"),
+        pytest.param({"a": [float("inf")]}, id="inf at depth"),
+        pytest.param({"a": (1, 2)}, id="tuple"),
+        pytest.param({"a": [{"b": {1, 2}}]}, id="set at depth"),
+        pytest.param({"a": b"bytes"}, id="bytes"),
+        pytest.param({"a": Mapping()}, id="dict subclass"),
+        pytest.param({"a": cyclic()}, id="cyclic"),
+        pytest.param({"a": nested(100_000)}, id="too deep"),
+    ],
+)
+def test_register_refuses_a_schema_that_is_no_json_object(member):
+    said = "schema of sim.run is not JSON: "
+    schema = {"type": "object"} | member
+    assert_refused(ValueError, said, Recorder(), DESCRIPTION, schema)
+
+
+def test_register_refuses_a_schema_that_is_too_deep_to_copy(monkeypatch):
+    def too_deep(value):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    registry = registry_of(board_run=Recorder())
+    with monkeypatch.context() as patched:
+        patched.setattr(tools.copy, "deepcopy", too_deep)
+        with pytest.raises(ValueError, match="of sim.run is nested too deeply") as e:
+            registry.register("sim.run", Recorder(), DESCRIPTION, RICH_SCHEMA)
+    assert e.value.__cause__ is None
+    assert registry.names() == ("board.run",)
+    registry.register("sim.run", Recorder(), DESCRIPTION, RICH_SCHEMA)
+    assert registry.names() == ("board.run", "sim.run")
+
+
+def test_register_refuses_a_schema_that_holds_itself():
+    schema = {"type": "object"}
+    schema["properties"] = {"example_member": schema}
+    assert_refused(ValueError, "is not JSON: ", Recorder(), DESCRIPTION, schema)
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [
+        pytest.param({}, id="no type"),
+        pytest.param({"properties": {"type": "object"}}, id="type at depth only"),
+        pytest.param({"type": "string"}, id="string"),
+        pytest.param({"type": ["object"]}, id="list"),
+        pytest.param({"type": ["object", "null"]}, id="longer list"),
+        pytest.param({"type": None}, id="null"),
+        pytest.param({"type": "Object"}, id="capital"),
+        pytest.param({"type": "object "}, id="trailing blank"),
+        pytest.param({"type": {"type": "object"}}, id="object"),
+        pytest.param({"Type": "object"}, id="capital member name"),
+    ],
+)
+def test_register_refuses_a_schema_whose_type_is_not_object(schema):
+    assert_refused(
+        ValueError, 'must have the type "object"', Recorder(), DESCRIPTION, schema
+    )
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [(), (DESCRIPTION,), (SCHEMA,)],
+)
+def test_register_has_no_default_for_the_description_or_the_schema(arguments):
+    assert_refused(TypeError, "missing", Recorder(), *arguments)
+
+
+def test_register_checks_the_description_before_the_schema():
+    assert_refused(TypeError, "description", Recorder(), None, None)
+    assert_refused(TypeError, "not callable", None, None, None)
+
+
+# The reserved kinds
+
+
+def test_the_reserved_kinds_are_the_five_of_the_record():
+    assert tools.KIND_INVALID_REQUEST == "invalid_request"
+    assert tools.KIND_NO_DATA_ROOT == "no_data_root"
+    assert tools.KIND_STEP_OPEN == "step_open"
+    assert tools.KIND_TOOL_CRASHED == "tool_crashed"
+    assert tools.KIND_BAD_RESULT == "bad_result"
+    assert type(tools.RESERVED_KINDS) is frozenset
+    assert tools.RESERVED_KINDS == {
+        "invalid_request",
+        "no_data_root",
+        "step_open",
+        "tool_crashed",
+        "bad_result",
+    }
+    assert journaled_step.KIND_STEP_OPEN is tools.KIND_STEP_OPEN
+
+
+@pytest.mark.parametrize("kind", sorted(tools.RESERVED_KINDS))
+def test_a_tool_failure_takes_a_reserved_kind_from_anyone(kind):
+    assert ToolFailure(kind, "stated by a tool").kind == kind
+
+
 def test_default_registry_is_empty_and_not_shared():
     first = default_registry()
     assert isinstance(first, Registry)
     assert first.names() == ()
-    first.register("sim.run", Recorder())
+    first.register("sim.run", Recorder(), DESCRIPTION, SCHEMA)
     assert default_registry().names() == ()
 
 
@@ -437,3 +681,32 @@ def test_call_turns_what_is_not_a_result_into_a_tool_failure(result):
 def test_call_turns_a_missing_return_value_into_a_tool_failure():
     with pytest.raises(ToolFailure, match="expected an object, got NoneType"):
         call(registry_of(sim_run=lambda request: None), "sim.run", {})
+
+
+@pytest.mark.parametrize(
+    "request_value",
+    [
+        pytest.param({}, id="required member absent"),
+        pytest.param({"example_text": 3}, id="wrong type"),
+        pytest.param({"example_text": "a", "example_other": None}, id="further member"),
+    ],
+)
+def test_call_compares_no_request_with_the_schema(request_value):
+    tool = Recorder()
+    registry = Registry()
+    registry.register("sim.run", tool, DESCRIPTION, RICH_SCHEMA)
+    assert call(registry, "sim.run", request_value) is request_value
+    assert tool.requests == [request_value]
+    assert tool.requests[0] is request_value
+
+
+@pytest.mark.parametrize("kind", sorted(tools.RESERVED_KINDS))
+def test_call_lets_a_tool_failure_of_a_reserved_kind_through_unchanged(kind):
+    failure = ToolFailure(kind, "stated by the tool function")
+    with pytest.raises(ToolFailure) as caught:
+        call(registry_of(sim_run=Recorder(failure)), "sim.run", {})
+    assert caught.value is failure
+    assert caught.value.__cause__ is None
+    assert caught.value.error_object() == {
+        "error": {"kind": kind, "message": "stated by the tool function"}
+    }
