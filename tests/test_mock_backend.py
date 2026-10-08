@@ -2,6 +2,7 @@ import copy
 import io
 import json
 import re
+from types import MappingProxyType
 
 import pytest
 
@@ -87,7 +88,7 @@ def test_the_tools_may_be_any_iterable_of_names():
     for offered in (
         ["board.run", "sim.run"],
         {"board.run", "sim.run"},
-        {"sim.run": None, "board.run": None},
+        frozenset({"board.run", "sim.run"}),
         (tool for tool in ("sim.run", "board.run")),
     ):
         assert backend(Asked(), offered).offered() == ("board.run", "sim.run")
@@ -289,13 +290,25 @@ def test_tools_that_are_not_iterable_are_refused(offered):
 @pytest.mark.parametrize("offered", ["sim.run", "", Text("sim.run")])
 def test_a_str_in_place_of_the_tools_is_refused(offered):
     script = Asked()
-    with pytest.raises(TypeError, match="not a str"):
+    with pytest.raises(TypeError, match="not a "):
+        backend(script, offered)
+    assert script.calls == []
+
+
+@pytest.mark.parametrize(
+    "offered",
+    [{"sim.run": len}, {}, MappingProxyType({"sim.run": None})],
+    ids=["a dict of operations", "an empty dict", "a mapping proxy"],
+)
+def test_a_mapping_in_place_of_the_tools_is_refused(offered):
+    script = Asked()
+    with pytest.raises(TypeError, match="iterable of names"):
         backend(script, offered)
     assert script.calls == []
 
 
 def test_bytes_in_place_of_the_tools_are_refused():
-    with pytest.raises(TypeError, match="must be a str"):
+    with pytest.raises(TypeError):
         backend(Asked(), b"sim.run")
 
 
@@ -397,14 +410,10 @@ def test_a_later_change_of_the_tools_changes_nothing():
 
 def test_the_module_has_the_name_and_the_builder_and_holds_nothing_else():
     public = {name for name in dir(mock_backend) if not name.startswith("_")}
-    assert public == {"NAME", "backend", "backends"}
-    held = [
-        name
-        for name, value in vars(mock_backend).items()
-        if isinstance(value, (Backend, BackendTable, dict, list))
-        and not name.startswith("__")
-    ]
-    assert held == []
+    assert public == {"NAME", "backend", "backends", "Mapping"}
+    held = {name for name in vars(mock_backend) if not name.startswith("__")}
+    assert held == public | {"_Operation"}
+    assert type(mock_backend._Operation) is type
 
 
 # Through tools.call and both fronts

@@ -19,11 +19,13 @@ The kinds ``no_backend`` and ``not_offered`` are no matter of a script. They
 come from the selection, before any operation is called: from a table without
 the mock, and from a mock built without the operation of the called tool.
 
-Not here yet: the script of the default registry, which comes with the first
-tool contract, and fault injection in a live session (OD-18 sub-question 8,
-open). The module defines no script, no table and no tool, and holds no
+Not here yet: the script of the default registry, which comes with the contract
+of the first HW tool, and fault injection in a live session (OD-18 sub-question
+8, open). The module defines no script, no table and no tool, and holds no
 backend.
 """
+
+from collections.abc import Mapping
 
 from hilclaw import backends
 
@@ -63,14 +65,17 @@ def backend(script, tools):
     :class:`BaseException`.
 
     Raises :class:`TypeError` when ``script`` is not callable, ``tools`` is a
-    ``str`` or not iterable or a tool is no ``str``, and :class:`ValueError`
-    when a tool is no HW tool or is given twice. Building asks the script
-    nothing.
+    ``str``, a mapping or not iterable or a tool is no ``str``, and
+    :class:`ValueError` when a tool is no HW tool or is given twice. Building
+    asks the script nothing.
     """
     if not callable(script):
         raise TypeError("the script of a mock backend must be callable")
-    if isinstance(tools, str):
-        raise TypeError("the tools of a mock backend must be an iterable, not a str")
+    if isinstance(tools, (str, Mapping)):
+        raise TypeError(
+            "the tools of a mock backend must be an iterable of names, "
+            f"not a {type(tools).__name__}"
+        )
     named = list(tools)
     made = backends.Backend(NAME, {tool: _Operation(script, tool) for tool in named})
     if len(made.offered()) != len(named):
