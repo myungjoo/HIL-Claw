@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P0.5",
-  "currentTask": null,
-  "nextTask": null,
-  "lock": null,
+  "currentTask": "T-0058",
+  "nextTask": "T-0014",
+  "lock": {
+    "owner": "AKIHA:caf6e87a-2",
+    "acquiredAt": "2026-10-08T04:39:31Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -31,7 +35,9 @@
       "reason": "new-external-dependency",
       "question": "PLAN P0.5-3 (coverage gate, D12: `hilclaw/` line >= 80% and function >= 80%) needs three choices D12 leaves open. (1) Tool: (a) add `coverage` (exact pin) to the `dev` dependency group, a new external dependency (A-13); or (b) a stdlib-only tracer (`sys.settrace` around pytest), a 100-150 line gate script that test rule 5 leaves untested? (2) Is \"function coverage\" = `def`s entered at least once / all `def`s in `hilclaw/` (methods and nested functions counted; lambdas, comprehensions and class bodies not)? (3) Are the thresholds on the package total, and may a CI check script live outside `hilclaw/` (a new top-level directory), or must it stay inline in the workflow as in T-0011?",
       "askedAt": "2026-10-06T11:23:05Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6015206161"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6015206161",
+      "resolvedAt": "2026-10-08T04:39:31Z",
+      "decision": "(1)(a), (2) yes as written, (3) package total and inline — owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6052108898: add `coverage==7.16.2` to the `dev` dependency group of pyproject.toml as an exact pin (its JSON report carries per-function data since 7.6.0); a function is every `def` / `async def` under `hilclaw/`, methods and nested functions included, lambdas, comprehensions, generator expressions and class bodies not; a function counts as entered when at least one of its lines executed; coverage.py's unnamed module-level region (name \"\" in the JSON report) is excluded from numerator and denominator; both thresholds apply to the package total of `hilclaw/`, not per module; the lines computing the function percentage from the JSON report stay inline in the workflow step as in T-0011, no new top-level directory and nothing under `hilclaw/`. Resume T-0014. T-0014 set to TODO, nextTask = T-0014."
     },
     {
       "id": "HQ-0004",
