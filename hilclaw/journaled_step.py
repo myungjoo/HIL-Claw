@@ -28,6 +28,11 @@ Conventions of this module, which the records do not fix:
   end line holds, at the call depth of the lookup of a repeated call.
 - The checks come in this order: ``run_id``, ``identity``, that ``step`` is
   callable (:class:`TypeError`), then ``data_root`` and the files.
+- :func:`run_prepared` is :func:`run` with one place more, between the lookup
+  and the start line: there the tool function of a journaled HW tool selects
+  its backend (ADR-0016 decision 2), after the lookup so that an ended or an
+  open identity is answered from the log alone, and before the start line so
+  that a call that fails there has not started the step and leaves no line.
 - Where the state is read (decision 6, last bullet): for an identity whose
   ``round`` is the ``round`` stored in ``STATE.json`` the stored view and the
   tail decide, and the lines before the stored position are not interpreted.
@@ -67,7 +72,8 @@ depends on the interpreter and on the depth of the call: a lookup made from a
 deeper call than the one that wrote the line can fail to copy it.
 
 It is not a tool and not a hook: the tool function of a journaled tool, built
-by :mod:`hilclaw.journaled_tool`, calls it (ADR-0015 decision 5).
+by :mod:`hilclaw.journaled_tool` or :mod:`hilclaw.hw_tool`, calls it (ADR-0015
+decision 5).
 It names no step, no axis and no result member, derives no identity and raises
 no ``execution``, runs no open or ended step again, compares no total with a
 limit, writes no ``STATE.json`` and reads no configuration (OD-10, OD-19,
@@ -128,15 +134,37 @@ def run(data_root, run_id, identity, step):
     :func:`hilclaw.events.read`, :func:`hilclaw.journal.step_state`,
     :func:`hilclaw.events.append` and ``step`` raise, unchanged.
     """
+    return run_prepared(data_root, run_id, identity, step, before_start=_nothing)
+
+
+def run_prepared(data_root, run_id, identity, step, *, before_start):
+    """Carry out the journaled step ``identity`` as :func:`run` does, after ``before_start``.
+
+    ``before_start`` is a callable without arguments. It is called exactly
+    once and only for an identity with no line, after the state was
+    established and before the start line is appended; what it returns is not
+    used, so what it prepared reaches ``step`` through the caller. For an ended
+    or an open identity it is not called.
+
+    What ``before_start`` raises passes through unchanged, whatever it is:
+    nothing was appended and ``step`` was not called, so the identity still has
+    no line and the same call can be repeated.
+
+    Everything else is as in :func:`run`. Raises also :class:`TypeError` when
+    ``before_start`` is not callable, ``None`` included, after the check of
+    ``step`` and before any file is read.
+    """
     layout.check_run_id(run_id)
     journal.step_state(identity, ())
-    if not callable(step):
-        raise TypeError(f"step must be callable, got {type(step).__name__}")
+    for name, value in (("step", step), ("before_start", before_start)):
+        if not callable(value):
+            raise TypeError(f"{name} must be callable, got {type(value).__name__}")
     found = _state(data_root, run_id, identity)
     if found.state is journal.State.OPEN:
         raise tools.ToolFailure(KIND_STEP_OPEN, f"{_named(identity)} is open")
     if found.state is journal.State.ENDED:
         return _answer(found.result, found.failure)
+    before_start()
     numbers = dict(zip(_NUMBERS, identity[2:]))
     data = {"step": identity.step, "execution": identity.execution}
     events.append(data_root, run_id, journal.STEP_STARTED, dict(data), **numbers)
@@ -148,6 +176,10 @@ def run(data_root, run_id, identity, step):
     end_data = _checked_end(numbers, data | outcome)
     end = events.append(data_root, run_id, journal.STEP_ENDED, end_data, **numbers)
     return _answer(end["data"].get("result"), end["data"].get("failure"))
+
+
+def _nothing():
+    return None
 
 
 def _state(data_root, run_id, identity):

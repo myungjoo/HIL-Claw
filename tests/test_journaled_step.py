@@ -899,3 +899,202 @@ def test_no_state_is_kept_between_calls(root):
     step = Step(({}, {"example_member": 2}))
     assert journaled_step.run(root, RUN, ID, step) == {"example_member": 2}
     assert step.calls == 1
+
+
+# --- run_prepared: the place between the lookup and the start line (ADR-0016 decision 2) ---
+
+
+class Before:
+    """What is called before the start line: it counts and records the log it sees."""
+
+    def __init__(self, root, error=None):
+        self.root, self.error = root, error
+        self.calls, self.seen = 0, None
+
+    def __call__(self):
+        self.calls += 1
+        log = self.root / LOG
+        self.seen = log.read_bytes() if log.exists() else None
+        if self.error is not None:
+            raise self.error
+        return "not used"
+
+
+def prepared(root, step, before, identity=ID):
+    return journaled_step.run_prepared(root, RUN, identity, step, before_start=before)
+
+
+def test_the_signature_of_run_prepared():
+    parameters = inspect.signature(journaled_step.run_prepared).parameters
+    assert list(parameters) == [*inspect.signature(run).parameters, "before_start"]
+    assert parameters["before_start"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameters["before_start"].default is inspect.Parameter.empty
+
+
+def test_before_start_is_called_once_before_the_start_line_exists(root):
+    before, step = Before(root), Step(root=root)
+    assert prepared(root, step, before) == RESULT
+    assert (before.calls, step.calls) == (1, 1)
+    assert before.seen is None
+    seen = [json.loads(line) for line in step.seen.splitlines()]
+    assert list(map(without_time, seen)) == [without_time(started(ID))]
+    assert list(map(without_time, lines(root))) == [
+        without_time(started(ID)),
+        without_time(ended(ID, 7, result=RESULT)),
+    ]
+
+
+def test_run_prepared_writes_the_lines_run_writes(tmp_path):
+    logs = []
+    for name in ("plain", "prepared"):
+        path = tmp_path / name
+        store(path)
+        place(path, raw(other()))
+        before = Before(path)
+        if name == "plain":
+            assert run(path, RUN, ID, Step()) == RESULT
+        else:
+            assert prepared(path, Step(), before) == RESULT
+            assert before.seen == raw(other())
+        logs.append(list(map(without_time, lines(path))))
+    assert logs[0] == logs[1]
+    assert len(logs[0]) == 3
+
+
+def test_before_start_comes_after_the_lookup_and_before_the_append(root, monkeypatch):
+    order = []
+    real_state, real_append = journal.step_state, events.append
+
+    def step_state(*args):
+        order.append("step_state")
+        return real_state(*args)
+
+    def append(data_root, run_id, kind, data, **numbers):
+        order.append(kind)
+        return real_append(data_root, run_id, kind, data, **numbers)
+
+    monkeypatch.setattr(journal, "step_state", step_state)
+    monkeypatch.setattr(events, "append", append)
+
+    def step():
+        order.append("step")
+        return SPEND, RESULT
+
+    def before():
+        order.append("before_start")
+
+    assert prepared(root, step, before) == RESULT
+    assert order == [
+        "step_state",
+        "step_state",
+        "before_start",
+        "step_started",
+        "step",
+        "step_state",
+        "step_ended",
+    ]
+    del order[:]
+    assert prepared(root, step, before) == RESULT
+    assert order == ["step_state", "step_state"]
+
+
+@pytest.mark.parametrize(
+    "content,expected",
+    [
+        (raw(started(ID), ended(ID, 7, result=RESULT)), None),
+        (raw(started(ID), ended(ID, 2, failure=FAILURE)), FAILURE["kind"]),
+        (raw(started(ID)), KIND_STEP_OPEN),
+    ],
+    ids=["ended-result", "ended-failure", "open"],
+)
+def test_before_start_is_not_called_for_an_ended_or_an_open_identity(
+    root, content, expected
+):
+    place(root, content)
+    snap = snapshot(root)
+    before, step = Before(root, RuntimeError("must not be called")), Step()
+    if expected is None:
+        assert prepared(root, step, before) == RESULT
+    else:
+        with pytest.raises(tools.ToolFailure) as caught:
+            prepared(root, step, before)
+        assert caught.value.kind == expected
+    assert (before.calls, step.calls) == (0, 0)
+    assert snapshot(root) == snap
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        tools.ToolFailure("example_failure", "not prepared"),
+        tools.ToolFailure(KIND_STEP_OPEN, "a reserved kind"),
+        RuntimeError("died"),
+        KeyboardInterrupt(),
+        SystemExit(9),
+    ],
+    ids=["tool-failure", "reserved-kind", "exception", "interrupt", "exit"],
+)
+def test_what_before_start_raises_passes_through_and_leaves_no_line(root, error):
+    snap = snapshot(root)
+    before, step = Before(root, error), Step()
+    with pytest.raises(type(error)) as caught:
+        prepared(root, step, before)
+    assert caught.value is error
+    assert (before.calls, step.calls) == (1, 0)
+    assert snapshot(root) == snap
+    again = Before(root)
+    assert prepared(root, step, again) == RESULT
+    assert (again.calls, step.calls) == (1, 1)
+    assert len(lines(root)) == 2
+
+
+@pytest.mark.parametrize("before", [None, "before", 1, (SPEND, RESULT)])
+def test_a_before_start_that_is_not_callable_is_refused_before_any_file_is_read(
+    tmp_path, before
+):
+    missing = tmp_path / "missing"
+    with pytest.raises(TypeError, match="before_start must be callable"):
+        prepared(missing, Step(), before)
+    with pytest.raises(TypeError, match="step must be callable"):
+        prepared(missing, None, before)
+    with pytest.raises(journal.JournalError):
+        prepared(missing, None, before, identity=None)
+    with pytest.raises(layout.InvalidPathValueError):
+        journaled_step.run_prepared(missing, "Bad Run", None, None, before_start=before)
+    with pytest.raises(TypeError):
+        journaled_step.run_prepared(missing, RUN, ID, Step())
+    with pytest.raises(TypeError):
+        journaled_step.run_prepared(missing, RUN, ID, Step(), Before(missing))
+    assert snapshot(tmp_path) == {}
+
+
+def test_an_error_of_the_lookup_comes_before_before_start_is_called(tmp_path, root):
+    for path, error in (
+        (tmp_path / "missing", FileNotFoundError),
+        (tmp_path, run_journal.MissingStateError),
+    ):
+        before, step = Before(path), Step()
+        with pytest.raises(error):
+            prepared(path, step, before)
+        assert (before.calls, step.calls) == (0, 0)
+    place(root, b"not a line\n")
+    before = Before(root)
+    with pytest.raises(events.CorruptEventsError):
+        prepared(root, Step(), before)
+    assert before.calls == 0
+
+
+def test_a_failed_start_line_after_before_start_does_not_call_the_step(
+    root, monkeypatch
+):
+    def append(*args, **numbers):
+        raise OSError("example failure of the append")
+
+    before, step = Before(root), Step()
+    with monkeypatch.context() as patch:
+        patch.setattr(events, "append", append)
+        with pytest.raises(OSError, match="example failure"):
+            prepared(root, step, before)
+    assert (before.calls, step.calls) == (1, 0)
+    assert prepared(root, step, before) == RESULT
+    assert (before.calls, step.calls) == (2, 1)
