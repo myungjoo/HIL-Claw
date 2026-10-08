@@ -591,8 +591,10 @@ def test_a_failing_source_is_no_data_root_and_asks_no_reader(
 
 def test_a_run_that_cannot_be_read_is_found_before_the_reader_is_asked(tmp_path):
     tool = Tool(tmp_path)
-    with pytest.raises(run_journal.MissingStateError):
+    with pytest.raises(ToolFailure) as caught:
         tool.function(request())
+    assert caught.value.kind == tools.KIND_RUN_FILE_MISSING == "run_file_missing"
+    assert type(caught.value.__cause__) is run_journal.MissingStateError
     assert tool.source.calls == 1 and tool.untouched()
     assert snapshot(tmp_path) == {}
 

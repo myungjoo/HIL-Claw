@@ -42,7 +42,6 @@ REQUEST = {"run_id": RUN, "round": ROUND, "candidate": 2, "attempt": 1, "executi
 ID = Identity(STEP, 1, ROUND, 2, 1)
 MAX = keys.MAX_INTEGER
 INVALID = tools.KIND_INVALID_REQUEST
-NOT_FOR_AN_UNUSABLE_RUN = {INVALID, tools.KIND_NO_DATA_ROOT, tools.KIND_STEP_OPEN}
 FAILURE = {"error": {"kind": "example_failure", "message": "no outcome"}}
 
 HELPER_SCRIPT = """\
@@ -755,7 +754,7 @@ def test_both_fronts_report_a_refused_request_alike(root, asked, member):
     assert snapshot(root) == before
 
 
-# --- a run that cannot be used: a tool failure whose kind no record fixes (OD-18 sub-question 4) ---
+# --- a run that cannot be used: a tool failure of one of the four kinds of ADR-0019 ---
 
 
 def no_run_directory(root):
@@ -767,34 +766,111 @@ def no_state(root):
     (root / "runs" / RUN / "STATE.json").unlink()
 
 
+STATE = f"runs/{RUN}/STATE.json"
+
+
+def other_version_state(root):
+    content = run_state.dump(ROUND, EMPTY)
+    changed = content.replace(b'"schema_version": 1', b'"schema_version": 2')
+    assert changed != content
+    place(root, changed, STATE)
+
+
+def line_of_another_version(root):
+    place(root, raw({"schema_version": 2, "kind": "example_kind", "data": {}}))
+
+
+def step_line_that_breaks_the_journal(root):
+    place(root, raw(event("step_started", {"step": STEP}, ID)))
+
+
 UNUSABLE = {
-    "no-run-directory": no_run_directory,
-    "no-state": no_state,
-    "invalid-state": lambda root: place(root, b"{", f"runs/{RUN}/STATE.json"),
-    "damaged-log": lambda root: place(root, b"not a line\n"),
-    "position-beyond-the-log": lambda root: store(root, SpendView({}, 5, frozenset())),
+    "no-run-directory": (no_run_directory, "run_file_missing", STATE),
+    "no-state": (no_state, "run_file_missing", STATE),
+    "invalid-state": (
+        lambda root: place(root, b"{", STATE),
+        "run_file_invalid",
+        STATE,
+    ),
+    "empty-state": (lambda root: place(root, b"", STATE), "run_file_invalid", STATE),
+    "other-version-state": (other_version_state, "run_file_unsupported", STATE),
+    "damaged-log": (
+        lambda root: place(root, b"not a line\n"),
+        "run_file_invalid",
+        LOG,
+    ),
+    "line-of-another-version": (line_of_another_version, "run_file_unsupported", LOG),
+    "step-line-that-breaks-the-journal": (
+        step_line_that_breaks_the_journal,
+        "run_file_invalid",
+        LOG,
+    ),
+    "position-beyond-the-log": (
+        lambda root: store(root, SpendView({}, 5, frozenset())),
+        "run_file_invalid",
+        LOG,
+    ),
 }
 
 
 @pytest.mark.parametrize("damage", list(UNUSABLE))
-def test_an_unusable_run_is_a_tool_failure_of_no_frame_kind(root, damage):
-    UNUSABLE[damage](root)
+def test_an_unusable_run_is_a_tool_failure_of_its_run_file_kind(root, damage):
+    change, kind, file = UNUSABLE[damage]
+    change(root)
     before = snapshot(root)
-    with pytest.raises(Exception) as expected:
+    with pytest.raises(ToolFailure) as expected:
         journaled_step.run(root, RUN, ID, lambda: (SPEND, {}))
-    assert not isinstance(expected.value, ToolFailure)
+    assert expected.value.kind == kind
     tool = Tool(root)
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(ToolFailure) as caught:
         tool.function(request())
-    assert type(caught.value) is type(expected.value)
-    assert str(caught.value) == str(expected.value)
+    assert type(caught.value) is ToolFailure
+    assert caught.value.args == expected.value.args
+    assert caught.value.__cause__ is not None
+    assert caught.value.message.startswith(f"{file}: ")
     answers = {way: WAYS[way](tool, request()) for way in WAYS}
     assert answers["cli"] == answers["mcp"] == answers["call"]
-    failed, answer = answers["cli"]
-    assert failed is True
-    assert answer["error"]["kind"] not in NOT_FOR_AN_UNUSABLE_RUN
+    assert answers["cli"] == (True, caught.value.error_object())
+    assert answers["cli"][1]["error"]["kind"] == kind
+    assert kind in tools.RESERVED_KINDS
     assert tool.performed == 0
     assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("way", list(WAYS))
+def test_a_well_formed_run_id_that_names_no_run_is_missing_not_a_refused_request(
+    root, way
+):
+    before = snapshot(root)
+    tool = Tool(root)
+    failed, answer = WAYS[way](tool, request(run_id="run-b"))
+    assert failed is True
+    assert answer["error"]["kind"] == "run_file_missing" != INVALID
+    assert answer["error"]["message"] == "runs/run-b/STATE.json: is missing"
+    assert (tool.source.calls, tool.performed) == (1, 0)
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("way", list(WAYS))
+def test_what_the_step_raises_in_a_class_of_a_row_is_still_a_crashed_tool(root, way):
+    tool = Tool(root, outcome=FileNotFoundError(2, "No such file or directory"))
+    failed, answer = WAYS[way](tool, request())
+    assert (failed, answer["error"]["kind"]) == (True, "tool_crashed")
+    assert tool.performed == 1
+    failed, answer = WAYS[way](tool, request())
+    assert (failed, answer["error"]["kind"]) == (True, "step_open")
+
+
+@pytest.mark.parametrize("way", list(WAYS))
+def test_the_same_request_is_answered_once_the_state_is_written(root, way):
+    no_state(root)
+    tool = Tool(root)
+    failed, answer = WAYS[way](tool, request())
+    assert (failed, answer["error"]["kind"]) == (True, "run_file_missing")
+    store(root)
+    assert WAYS[way](tool, request()) == (False, {"example_member": 1})
+    assert WAYS[way](tool, request()) == (False, {"example_member": 1})
+    assert tool.performed == 1
 
 
 # --- the builder ---

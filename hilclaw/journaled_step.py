@@ -38,12 +38,29 @@ Conventions of this module, which the records do not fix:
   tail decide, and the lines before the stored position are not interpreted.
   For every other identity (another round, or none) the log is read from its
   first line. Whether such steps exist or need an index is open (sub-question
-  1 of OD-17). A stored position beyond the log raises
-  :class:`hilclaw.events.PositionBeyondLogError` on both paths, before
-  anything is appended: an append would hide it.
+  1 of OD-17). A stored position beyond the log is found on both paths,
+  before anything is appended: an append would hide it.
 - ``STATE.json`` is required as :func:`hilclaw.run_journal.read_state`
-  requires it. An error of that read, of the read of the log or of the lookup
-  passes through: nothing is appended and the step is not called.
+  requires it. What the lookup finds in ``STATE.json`` or in the log that
+  ADR-0019 decisions 3 and 4 count as a situation is answered with a
+  ``ToolFailure`` of one of the four kinds of its decision 2, chained to the
+  error it answers for; this call then appended nothing and did not call the
+  step. ``run_file_missing``: no ``STATE.json`` (no run directory included),
+  or a data root that is no existing directory at a read. ``run_file_invalid``:
+  an invalid ``STATE.json``, a damaged complete line among the lines read, a
+  step line among them that breaks ADR-0011, a stored position beyond the log,
+  a path of either file that is no regular file. ``run_file_unsupported``:
+  another ``schema_version`` of ``STATE.json`` or of a line read.
+  ``run_file_unreadable``: any other :class:`OSError` of either read.
+- A log that is not there below a data root that is there is no such
+  situation, also when it goes between the check and the read of one call:
+  the log is then read once more, so that the reader says what is there, and
+  only when it goes again in that read the lookup goes on with no line read.
+- Only the reads and the lookup are answered this way: the same classes out
+  of ``before_start``, out of the step or out of an append are not.
+- The message of such a failure starts with the path of the file relative to
+  the data root, ``runs/<run_id>/STATE.json`` or ``runs/<run_id>/events.ndjson``
+  (ADR-0019 decision 6); nothing may depend on the rest of its wording.
 - A failed append passes through. After a failed start line the step is not
   called: the identity has no line, or is open, though nothing ran, when the
   failure came after the line feed (:mod:`hilclaw.events`; the opposite
@@ -80,11 +97,28 @@ limit, writes no ``STATE.json`` and reads no configuration (OD-10, OD-19,
 OD-23, the rest of OD-17).
 """
 
-from hilclaw import events, journal, layout, run_journal, tools
+from hilclaw import (
+    events,
+    journal,
+    layout,
+    run_files,
+    run_journal,
+    run_state,
+    tools,
+)
 
 KIND_STEP_OPEN = tools.KIND_STEP_OPEN
 
 _NUMBERS = ("round", "candidate", "attempt")
+_STATE_KINDS = {
+    run_journal.MissingStateError: tools.KIND_RUN_FILE_MISSING,
+    run_state.InvalidStateError: tools.KIND_RUN_FILE_INVALID,
+    run_state.UnsupportedVersionError: tools.KIND_RUN_FILE_UNSUPPORTED,
+}
+_LOG_KINDS = {
+    events.CorruptEventsError: tools.KIND_RUN_FILE_INVALID,
+    events.UnsupportedVersionError: tools.KIND_RUN_FILE_UNSUPPORTED,
+}
 
 
 class StepFailed(Exception):
@@ -128,11 +162,14 @@ def run(data_root, run_id, identity, step):
     Raises also :class:`hilclaw.layout.InvalidPathValueError` for ``run_id``,
     :class:`hilclaw.journal.JournalError` or
     :class:`hilclaw.events.InvalidEventError` for ``identity`` and
-    :class:`TypeError` for ``step``, each before any file is read;
+    :class:`TypeError` for ``step``, each before any file is read; a
+    ``ToolFailure`` of kind ``run_file_missing``, ``run_file_unreadable``,
+    ``run_file_invalid`` or ``run_file_unsupported`` for what the lookup finds
+    in ``STATE.json`` or in the log (ADR-0019 decisions 2 to 4; the module
+    docstring has the cases), with nothing appended and ``step`` not called;
     :class:`InvalidOutcomeError` for an outcome of ``step`` that an end line
-    cannot hold; and what :func:`hilclaw.run_journal.read_state`,
-    :func:`hilclaw.events.read`, :func:`hilclaw.journal.step_state`,
-    :func:`hilclaw.events.append` and ``step`` raise, unchanged.
+    cannot hold; and what :func:`hilclaw.events.append` and ``step`` raise,
+    unchanged.
     """
     return run_prepared(data_root, run_id, identity, step, before_start=_nothing)
 
@@ -150,7 +187,9 @@ def run_prepared(data_root, run_id, identity, step, *, before_start):
     nothing was appended and ``step`` was not called, so the identity still has
     no line and the same call can be repeated.
 
-    Everything else is as in :func:`run`. Raises also :class:`TypeError` when
+    Everything else is as in :func:`run`: the ``ToolFailure`` of one of the
+    four kinds of ADR-0019 for what the lookup finds is raised before
+    ``before_start`` is called. Raises also :class:`TypeError` when
     ``before_start`` is not callable, ``None`` included, after the check of
     ``step`` and before any file is read.
     """
@@ -183,17 +222,36 @@ def _nothing():
 
 
 def _state(data_root, run_id, identity):
-    state = run_journal.read_state(data_root, run_id)
+    with run_files.reading(data_root, run_id, "STATE.json", _STATE_KINDS):
+        state = run_journal.read_state(data_root, run_id)
     view = state.budget_spent if identity.round == state.round else journal.EMPTY
-    log = events.read(data_root, run_id, view.position)
-    stored, lines = state.budget_spent.position, view.position + len(log.events)
-    if lines < stored:
-        file = f"runs/{run_id}/events.ndjson"
-        end = f"the end of the log, complete lines: {lines}"
-        raise events.PositionBeyondLogError(
-            f"{file}: position {stored} is beyond {end}"
-        )
-    return journal.step_state(identity, log.events, view)
+    file = run_files.relative(run_id, "events.ndjson")
+    with run_files.reading(data_root, run_id, "events.ndjson", _LOG_KINDS):
+        lines, read = _lines(data_root, run_id, view.position)
+        stored = state.budget_spent.position
+        if lines < stored:
+            end = f"the end of the log, complete lines: {lines}"
+            raise events.PositionBeyondLogError(
+                f"{file}: position {stored} is beyond {end}"
+            )
+    try:
+        return journal.step_state(identity, read, view)
+    except journal.JournalError as error:
+        message = f"{file}: {error}"
+        raise tools.ToolFailure(tools.KIND_RUN_FILE_INVALID, message) from error
+
+
+def _lines(data_root, run_id, position):
+    for last in (False, True):
+        try:
+            read = events.read(data_root, run_id, position).events
+        except run_files.NOT_THERE:
+            if not run_files.data_root_is_there(data_root):
+                raise
+            if last:
+                return 0, []
+        else:
+            return position + len(read), read
 
 
 def _answer(result, failure):

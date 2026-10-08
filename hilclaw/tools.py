@@ -24,7 +24,7 @@ import math
 import re
 import typing
 
-#: The reserved kinds (ADR-0015 decision 2, ADR-0016 decision 3): one meaning in every tool, not enforced.
+#: The reserved kinds (ADR-0015 decision 2, ADR-0016 decision 3, ADR-0019 decision 2): one meaning in every tool, not enforced.
 KIND_INVALID_REQUEST = "invalid_request"  #: the tool function refused the request
 KIND_NO_DATA_ROOT = "no_data_root"  #: the data root could not be obtained
 KIND_STEP_OPEN = "step_open"  #: the journaled step of this identity is open
@@ -32,6 +32,10 @@ KIND_TOOL_CRASHED = "tool_crashed"  #: the tool function raised what is no tool 
 KIND_BAD_RESULT = "bad_result"  #: the tool function returned no result object
 KIND_NO_BACKEND = "no_backend"  #: the backend table has no entry for the accelerator
 KIND_NOT_OFFERED = "not_offered"  #: the selected backend has no operation for the tool
+KIND_RUN_FILE_MISSING = "run_file_missing"  #: a frame file the call needs is not there
+KIND_RUN_FILE_UNREADABLE = "run_file_unreadable"  #: the read of a frame file failed for a reason other than its not being there; its content was not judged
+KIND_RUN_FILE_INVALID = "run_file_invalid"  #: a frame file, a complete line of the log or the stored position is invalid, or the place of a frame file holds no regular file
+KIND_RUN_FILE_UNSUPPORTED = "run_file_unsupported"  #: a frame file or a line of the log has another schema_version; nothing of it was interpreted
 RESERVED_KINDS = frozenset(
     {
         KIND_INVALID_REQUEST,
@@ -41,6 +45,10 @@ RESERVED_KINDS = frozenset(
         KIND_BAD_RESULT,
         KIND_NO_BACKEND,
         KIND_NOT_OFFERED,
+        KIND_RUN_FILE_MISSING,
+        KIND_RUN_FILE_UNREADABLE,
+        KIND_RUN_FILE_INVALID,
+        KIND_RUN_FILE_UNSUPPORTED,
     }
 )
 
