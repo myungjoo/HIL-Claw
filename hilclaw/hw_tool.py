@@ -38,9 +38,10 @@ selection raises for the record, pass through unchanged with no kind given here
 
 Conventions of this module, which the records do not fix:
 
-- The reader of the hw_profile of a run is a parameter. Where a run states its
-  hw_profile is open (OD-18 sub-question 6), so this module reads no file for
-  it and names none.
+- The reader of the hw_profile of a run is a parameter. A run states its
+  hw_profile in ``runs/<run_id>/instance.json`` (ADR-0018 decision 3), which
+  :func:`hilclaw.instance.hw_profile_of` reads; this module reads no file for
+  it and binds no reader.
 - The step of the contract calls the operation, not this module: what an
   operation returns and how that becomes the amounts and the result of the
   step are each tool's contract. Nothing here checks that the step calls it,
