@@ -2,7 +2,7 @@
 id: T-0058
 title: Add the mock backend of ADR-0016 decision 5 (hilclaw/mock_backend.py - the reserved name of the mock and the one builder of a mock backend bound to a script, whose operations ask the script with the called tool, the request and the hw_profile) over the backend table of T-0057
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, "#5 A-7", "#5 A-12"]
 dependsOn: [T-0056, T-0057]
@@ -141,3 +141,59 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): ① `hilclaw/` keeps line and functi
 - (unchanged) OD-18 sub-question ④ (a small §9 record; to judge whether it can be closed apart from OD-10); sub-questions ⑥, ⑦ and ⑧; the integrator items after 2026-10-15 (T-0056 Follow-ups); the rest of P1-8; the T-0053, T-0054, T-0055 and T-0057 follow-ups.
 
 ## Result
+**DONE.** PR #50 (https://github.com/myungjoo/HIL-Claw/pull/50), squash commit `0339bfb` on `main`. Branch commits `2af734e` (the change) and `7ba7c10` (review round 1). This task ticks **no** PLAN checkbox: P1-1 stays open.
+
+### What landed
+- `hilclaw/mock_backend.py` (new, 83 lines): the reserved name `NAME` and the one builder `backend`. It imports `backends` from `hilclaw` and nothing else of the package (and `collections.abc.Mapping`).
+- `tests/test_mock_backend.py` (new, 547 lines, 83 tests).
+- Nothing else: `hilclaw/backends.py`, `hilclaw/tools.py` (`default_registry` included) and every existing file are unchanged. No default script, no default table, no tool; nothing read or kept.
+
+### Public API as landed (slice ③ and every later backend are written against it)
+- `mock_backend.NAME == "mock"` — the name reserved for the mock backend.
+- `mock_backend.backend(script, tools)` returns a `hilclaw.backends.Backend` whose name is `NAME`, with one operation for each tool of `tools`. `script`: any callable. `tools`: any iterable of members of `backends.HW_TOOLS`, may be empty, read once. `TypeError`: `script` not callable (also with no tools); `tools` a `str`, a mapping or not iterable; a tool no `str` (what `backends.Backend` raises, or Python's own message for an unhashable tool). `ValueError`: a tool outside `HW_TOOLS` (what `backends.Backend` raises), a tool given twice. Building asks the script nothing.
+- **The call form of an operation: `operation(request, hw_profile)`** — exactly two arguments, both positional-only; a missing, a further or a keyword argument is a `TypeError` and the script is asked nothing.
+- **The call form of a script: `script(tool, request, hw_profile)`** — three positional arguments: the name of the called HW tool, the very request object and the very hw_profile object. It is asked once for each call of an operation and at no other moment (not when the backend or the table is built, not by `backends.select`).
+- The outcome of an operation is the script's: the object it returns is returned as it is (not copied, not checked); whatever it raises passes through as the same object — a `ToolFailure` of any kind, any other `Exception`, a `BaseException` such as `SystemExit` or `KeyboardInterrupt`.
+- A mock operation is reached through `backends.select(table, hw_profile, tool)` only, with a table that holds the mock and a record whose `accelerator` is `NAME`. `no_backend` and `not_offered` come from `select` as before.
+- If a tool's contract later hands an operation more than the request and the hw_profile (ADR-0016 decision 2, last bullet), the call form of an operation and of a script change together (`_Operation.__call__`); nothing accepts a further argument today.
+
+### Provisional choices (the record leaves them to the code task)
+- Module `hilclaw/mock_backend.py`, constant `NAME`, builder `backend`: read as `mock_backend.NAME` and `mock_backend.backend(...)` beside `backends.Backend`.
+- The reserved name is spelled `mock`: the word FR-10 and ADR-0016 use, and a name in the sense of ADR-0001.
+- The builder takes no name: a mock backend has the reserved name and no other.
+- An operation is called as `operation(request, hw_profile)`, positional-only, nothing else accepted: exactly what ADR-0016 decision 2 names; what else an operation is handed is each tool's contract, so nothing is silently ignored.
+- A script is asked as `script(tool, request, hw_profile)`: the order in which decision 5 (c) names the three.
+- `tools` is any iterable, read once, as `BackendTable` takes any iterable.
+- A `str` in place of `tools` is a `TypeError`: iterated it would be read as its characters, and an empty `str` would silently build a mock that offers nothing.
+- A mapping in place of `tools` is a `TypeError` (review round 1): read as its keys, its values would be dropped silently, and `backends.Backend` takes a mapping of that shape as its operations.
+- A tool given twice is a `ValueError`, as `BackendTable` and `Registry` refuse a name given twice; a tool that is no HW tool is reported first.
+- A script that is not callable is a `TypeError` when the backend is built, as `default_registry` does for the data-root source.
+- Each tool has an operation object of its own (a private class with `__slots__`), compared by identity; `repr`: `<operation of the mock backend for 'sim.run'>`; the script is not shown.
+- The docstrings name no value of a hw_profile record but the reserved name, and list what the mock does not use as "no clock, no random source, no counter, no file", so that the verification grep for `environ` has no match.
+
+### Review (dev-reviewer, fresh context, 2 rounds, final Approve; no SECURITY, no point needing a record or the owner)
+- Round 1 (head `2af734e`): Approve with two Lows and five Nits — https://github.com/myungjoo/HIL-Claw/pull/50#issuecomment-6052468680. Low 1: a mapping handed as `tools` was read as its keys (fixed: refused; tests added). Low 2: the reserved name is a convention — `BackendTable([Backend(mock_backend.NAME, {...})])` is accepted, so a backend that is no mock can sit under the reserved name (not changed: `hilclaw/backends.py` is out of scope and no default table exists; see the note below). Nits: "the first tool contract" (now "the contract of the first HW tool"); "bound to when it is built" against "when the backend table is built" (kept: the same moment in effect); the message for an unhashable tool (kept); the module-level test (tightened to every name the module holds); a test pinned a message of `hilclaw/backends.py` (dropped). Response: https://github.com/myungjoo/HIL-Claw/pull/50#issuecomment-6052495781.
+- Round 2 (head `7ba7c10`): Approve — https://github.com/myungjoo/HIL-Claw/pull/50#issuecomment-6052537576. Low: the two notes promised for this section must be written (they are: the call-form note above and the reserved-name note below). Nits, no change asked: `["sim.run", Text("sim.run")]` is refused as "given twice" and the reverse order as "no str"; the first branch commit's body still says 78 lines / 80 tests (the squash message uses the corrected PR body); the public module-level name `Mapping`, as in `hilclaw/backends.py`.
+- The reviewer confirmed points (a) to (f) of the task, the planner's three judgements (② apart from ③, no public lookup in `BackendTable`, no default script yet), the call form against decision 2 and the A-13 readings.
+
+### Verification
+- Local (Windows, Python 3.14.4): `python -m pytest` — 5538 passed / 147 skipped before, **5621 passed / 147 skipped** on the final head and again on `main` at `0339bfb` (+83). `python -m ruff check .` and `python -m ruff format --check .` exit 0.
+- Test rule ①: coverage is not measured by CI yet and nothing was installed. `python -m trace --count --missing --coverdir <scratch directory outside the repository> --module pytest tests/test_mock_backend.py` leaves **no line** of `hilclaw/mock_backend.py` marked as missing (0 lines `>>>>>>`), on both heads. Rules ② to ⑤ hold.
+- Greps: `git grep -n -i "mock" -- hilclaw/` matches the new module only; `git grep -n -E "environ|import config|open\(|import (os|time|random|itertools)" -- hilclaw/mock_backend.py` and `git grep -n -i "cpu_standin" -- hilclaw/mock_backend.py` have no match; `git ls-files --eol` gave `i/lf` for the two files; `git status --short` after the tests showed no stray file; the PR diff listed only the two files of `touchesFiles`.
+- CI on the final head `7ba7c10`: five checks passed — `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)` — https://github.com/myungjoo/HIL-Claw/actions/runs/37729288242. No failed CI run on the PR; no coverage check had landed.
+- `push` run on `main` after the squash-merge (`0339bfb`): **success** — https://github.com/myungjoo/HIL-Claw/actions/runs/37729592451.
+- `main` moved once during the task (`0250999`, a one-line edit of `PROCESS/tasks/T-0036-adr-cpu-standin-verification-run.md`). The branch was not rebased: the PR was `MERGEABLE` / `CLEAN`, that commit touches no file of this task, and updating a rewritten branch would have needed a forced push.
+- The remote and the local branch are deleted (after `MERGED`).
+
+### Size
+- Non-test: 83 lines in 1 new file (estimate 70-90), inside the cap.
+
+### Language
+- Python, because the module it is built on (`hilclaw/backends.py`) is Python.
+
+### Notes for the driver and the planner
+- No new HQ. No criterion disagreed with the record.
+- **For the task that binds the default table** (with the first HW tool's contract): the reserved name is not enforced. `backends.Backend(mock_backend.NAME, …)` builds a backend that is no mock under the reserved name, and a table accepts it. Whether the default table (or `backends`) must refuse that is to be judged there (ADR-0016 decision 5 (b): "no hardware, simulator or stand-in is registered under that name").
+- Seen on #5 after the HQ-0003 answer: an owner comment answering HQ-0004 (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6052377983). It is no objection to ADR-0016, ADR-0015 or ADR-0001 and changed nothing here; it is the driver's to sync (§3-2).
+- The squash commit ends with the `Co-Authored-By` line followed by `Task: T-0058` as its last line.
+- Follow-ups are unchanged from `## Follow-ups`.
