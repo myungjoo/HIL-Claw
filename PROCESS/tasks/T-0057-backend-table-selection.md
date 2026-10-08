@@ -2,7 +2,7 @@
 id: T-0057
 title: Add the backend table and the selection of ADR-0016 decisions 2 to 4 (hilclaw/backends.py - a backend with its name and its operations, the backend table, and the selection as a function from a hw_profile record and a HW tool to an operation) and the two reserved kinds no_backend and not_offered beside the five of hilclaw/tools.py
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, FR-14, OD-18, NFR-6, "#5 A-7", "#5 A-12"]
 dependsOn: [T-0053, T-0054, T-0055, T-0056]
@@ -153,3 +153,57 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): ① `hilclaw/` keeps line and functi
 - (unchanged) Sub-questions ⑥ (with the `instance.json` record, P1-8), ⑦ (with the first HW tool contract; an HQ if it needs the owner's reading of #5 A-7) and ⑧; the integrator items after 2026-10-15 (T-0056 Follow-ups); the rest of P1-8; the T-0053, T-0054 and T-0055 follow-ups.
 
 ## Result
+**DONE.** PR #49 (https://github.com/myungjoo/HIL-Claw/pull/49), squash commit `3bc6821` on `main`. Branch commits `efeb007` (the change) and `e604d5e` (review round 1). This task ticks **no** PLAN checkbox: P1-1 stays open.
+
+### What landed
+- `hilclaw/backends.py` (new, 169 lines): `HW_TOOLS`, `Backend`, `BackendTable`, `select`. It imports `keys` and `tools` from `hilclaw` and nothing else of the package.
+- `hilclaw/tools.py` (284 lines, was 280): `KIND_NO_BACKEND = "no_backend"`, `KIND_NOT_OFFERED = "not_offered"`, both in `RESERVED_KINDS` (seven), and the comment above the kinds names ADR-0016 decision 3. `default_registry`, `call`, `Registry` and every docstring are unchanged; `tools.py` does not import the new module.
+- `tests/test_backends.py` (new, 644 lines, 141 tests); `tests/test_tools.py`: `test_the_reserved_kinds_are_the_five_of_the_record` became `test_the_reserved_kinds_are_the_seven_of_the_records` (the one existing test whose expectation changed; nothing weakened).
+- No backend, no mock name, no script, no tool, no order of a call; nothing read or kept. `InvalidRecordError` of an invalid record passes through `select` unchanged and gets no kind (sub-question ④ stays open).
+
+### Public API as landed (slices ② and ③ are written against it)
+- `backends.HW_TOOLS == ("sim.run", "board.run", "profiler.collect", "correctness.check")` (a tuple).
+- `backends.Backend(name, operations)` — `name`: exactly a `str` matching `[a-z][a-z0-9_]{0,31}`; `operations`: a mapping from a member of `HW_TOOLS` to a callable, may be empty, copied. `TypeError`: `name` or a member name no `str`, `operations` no mapping, an operation not callable. `ValueError`: `name` no name, a member name outside `HW_TOOLS`. Read-only property `name`; method `offered()` returns the offered tool names as a sorted tuple. No other public attribute (`__slots__`).
+- `backends.BackendTable(backends)` — any iterable of `Backend`, may be empty. `TypeError`: not iterable, an entry no `Backend`. `ValueError`: a name twice. Method `names()` returns a sorted tuple. No `register`, no public lookup of a backend.
+- `backends.select(table, hw_profile, tool)` returns the operation object the backend was built with and calls nothing. In this order: `TypeError` (`table` no `BackendTable`; `tool` no `str`), `ValueError` (`tool` outside `HW_TOOLS`), `hilclaw.keys.InvalidRecordError` unchanged (the record is validated in full by `keys.hw_profile_key`), `ToolFailure(tools.KIND_NO_BACKEND, "the backend table has no entry for the accelerator <accelerator>")`, `ToolFailure(tools.KIND_NOT_OFFERED, "the backend <name> offers no operation for <tool>")`.
+- **What an operation is called with is not fixed here**: `select` only returns it. The tests call it with the request alone; slice ③ decides the call (ADR-0016 decision 2: the request and the hw_profile of the call).
+
+### Provisional choices (the records leave them to the code task)
+- Names `HW_TOOLS`, `Backend`, `BackendTable`, `select`; positional parameters: each takes two or three values of different kinds, so none is easy to swap silently.
+- `Backend` and `BackendTable` are plain classes with `__slots__` and no setter, not named tuples or dataclasses: both must check and copy what they are handed, and a tuple would expose the held mapping.
+- A backend shows its `name` and `offered()`; an operation is obtained through `select` only, so there is one way to an operation and it always passes the record check.
+- An operation under a name that is none of the four HW tools is refused when the backend is built: ADR-0016 defines an operation for a HW tool only; a test-only tool function is registered under one of the four names in a registry of its own. Not read as closing a door slice ③ needs.
+- A backend name and a HW tool name are exactly a `str` (a subclass is refused, as `hilclaw.keys` does for a name): what is no `str` is `TypeError`, a `str` that is no name or no HW tool is `ValueError`, as `ToolFailure` does for a kind. A wrong type therefore stays apart from `InvalidRecordError`, which is a `ValueError` (changed in review round 1; it was `ValueError` for every case of a tool name).
+- A table files a backend under the name it was built with, not under a `name` property a subclass may redefine (review round 1).
+- `BackendTable` takes any iterable and `names()` returns a sorted tuple, as `Registry.names()` does. The table has no public lookup of a backend: nothing needs one yet (a conformance test builds the backends itself; slice ② or ③ may add one).
+- `select` returns the operation alone: the caller of slice ③ needs nothing else, and the backend is named in the message of `not_offered`.
+- The record is validated in full before anything is looked up: a record that is no valid record never selects a backend (decision 4), also when the table holds an entry of that spelling. Not read as more than decision 4 carries; the reviewer agreed.
+- In `select`, the table and the tool are checked before the record: they are defects of the tool's author and the same for every record.
+- Equality and hashing are by identity: an operation is a callable and compares by identity anyway. `repr`: `Backend('acc_a', offered=('sim.run',))`, `BackendTable(('acc_a', 'acc_b'))`.
+- The wording of the messages is not fixed by a record; they name the `accelerator`, or the backend and the tool.
+- The module's docstring writes "variable of the front process" where the task says "environment variable", so that the verification grep for `environ` has no match.
+
+### Review (dev-reviewer, fresh context, 2 rounds, final Approve; no SECURITY, no point needing a record or the owner)
+- Round 1 (head `efeb007`): Approve with one Low and three Nits — https://github.com/myungjoo/HIL-Claw/pull/49#issuecomment-6052204689. Low: the table took its key from the public `name` property, which a subclass can redefine (fixed: it reads the held value; regression test added). Nit: `hw_profile["accelerator"]` is read a second time after the validation (not changed: `keys.hw_profile_key` returns the key and not the validated fields, and `hilclaw/keys.py` is out of scope; it holds for any mapping whose reads are stable). Nit: exception class of a tool name of another type (changed to `TypeError`). Nit: size above the estimate. Response: https://github.com/myungjoo/HIL-Claw/pull/49#issuecomment-6052228241.
+- Round 2 (head `e604d5e`): Approve — https://github.com/myungjoo/HIL-Claw/pull/49#issuecomment-6052259813. Low: the PR body still described `efeb007` (updated before the merge: the two choices of round 1 and the count 5538; no code change, so no further round). Nits: the subclass regression test pins undocumented behaviour (accepted by the reviewer); the grep wording below.
+- The reviewer confirmed points (a) to (f) of the task, the planner's judgements and the A-13 readings (no data-plane schema change, no new dependency, only the four files of `touchesFiles`).
+
+### Verification
+- Local (Windows, Python 3.14.4): `python -m pytest` — 5393 passed / 147 skipped before, **5538 passed / 147 skipped** on the final head and again on `main` at `3bc6821` (+141 in `tests/test_backends.py`, +4 from the two tests parametrized over `RESERVED_KINDS`). `python -m ruff check .` and `python -m ruff format --check .` exit 0.
+- Test rule ①: coverage is not measured by CI yet and nothing was installed. `python -m trace --count --missing --coverdir <scratch directory outside the repository> --module pytest tests/test_backends.py` leaves **no line** of `hilclaw/backends.py` marked as missing (0 lines `>>>>>>`), on both heads. Rules ② to ⑤ hold: negative cases, every public name tested, the test file exists, helpers untested.
+- Greps: `git grep -n -E "environ|import config|open\(|import (time|random)" -- hilclaw/backends.py` and `git grep -n -i -E "mock|cpu_standin" -- hilclaw/backends.py` have no match. `git grep -n -i "backend" -- hilclaw/` matches `hilclaw/backends.py` and **three** lines of `hilclaw/tools.py` (the two constants and the set member `KIND_NO_BACKEND`), not the two the task wrote — all three are the kinds. `git diff origin/main -- hilclaw/tools.py` showed only the kinds and the comment; `git ls-files --eol` gave `i/lf` for the four files; `git status --short` after the tests showed no stray file; the diff listed only the four files of `touchesFiles`.
+- CI on the final head `e604d5e`: five checks passed — `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)` — https://github.com/myungjoo/HIL-Claw/actions/runs/37727616470. No failed CI run on the PR.
+- `push` run on `main` after the squash-merge (`3bc6821`): **success** — https://github.com/myungjoo/HIL-Claw/actions/runs/37727867384.
+- The remote and the local branch are deleted (after `MERGED`).
+
+### Size
+- Non-test: 169 new lines in `hilclaw/backends.py` (estimate 120-130; the difference is docstrings and the `__repr__` of the two classes) and 6 changed lines in `hilclaw/tools.py` — about 175 lines in 2 files, inside the cap (300 LOC / 5 files).
+
+### Language
+- Python, because the modules it joins (`hilclaw/tools.py`, `hilclaw/keys.py`) are Python.
+
+### Notes for the driver and the planner
+- No new HQ. No criterion disagreed with a record; the only deviations from the task's wording are the three grep lines and the docstring wording noted above.
+- Seen on #5 after the ADR-0016 notice: an owner comment answering HQ-0003 (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6052108898). It is no objection to ADR-0016, ADR-0015 or ADR-0001 and changed nothing here; it is the driver's to sync (§3-2).
+- The squash commit ends with the `Co-Authored-By` line followed by `Task: T-0057` as its last line; the first branch commit has a blank line between its `Task:` and `Co-Authored-By` lines, which does not affect `git log --grep='^Task: T-0057'`.
+- Follow-ups are unchanged from `## Follow-ups`; one addition for slice ② or ③: decide whether the table needs a public lookup of a backend (for example for the conformance tests "over each backend that offers a tool").
