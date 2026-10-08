@@ -2,7 +2,7 @@
 id: T-0075
 title: Add the source of seeds of ADR-0021 decision 3 as a new module of the harness, `hilclaw/harness/seed_source.py` - the form of a seed source (a callable without arguments), the one source of the package that draws from the operating system's random generator over the whole range of seeds the harness accepts, and the one function that asks a source once and refuses what is no seed - with its test file, bound to no tool and to no registry
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, OD-18, OD-16, "#5 A-12"]
 dependsOn: [T-0060, T-0073, T-0074]
@@ -132,3 +132,42 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (a small code task) Whether `PROCESS/` Markdown leaves the set of `ruff format --check .`; public names for `journaled_tool._built` and `backends._hw_tool`.
 
 ## Result
+**DONE.** PR #64 (https://github.com/myungjoo/HIL-Claw/pull/64), squash-merged to `main` as `8d86265` (`8d862653065db03e13919d958fa52d5d4a005f15`); branch commits `c8fc435`, `4ab63f7`, `dd2e015`, `f8e3100`; remote and local branch deleted. This task ticks **no** PLAN checkbox (P1-1 stays open). No comment on #5 after the ADR-0021 notice at the start; no other open PR.
+
+**Review**: 4 rounds, each by a fresh-context `dev-reviewer`, each verdict Approve; no blocking finding, no `SECURITY`, no point read as needing a record or the owner. The planner's judgements (no record needed, bound nowhere, no tool-failure kind and no import of `hilclaw.tools`, the moment of the draw not the module's) and the A-13 reading were re-checked and confirmed in every round.
+- Round 1 (https://github.com/myungjoo/HIL-Claw/pull/64#issuecomment-6064714237): two Low notes (a refused value stays in the local `named` of a traceback frame; the type names in a message are the source's own) and one Nit (the place of the new clause in `hilclaw/harness/__init__.py`). Addressed in `4ab63f7`: the module docstring states both limits, and the clause moved ahead of the verification modules so the `numpy` sentence reads as before.
+- Round 2 (https://github.com/myungjoo/HIL-Claw/pull/64#issuecomment-6064758169): Nit - "the one source of ADR-0021 decision 3" read as if the record named a source. Addressed in `dd2e015` ("the one source of the package, with the property of ADR-0021 decision 3").
+- Round 3 (https://github.com/myungjoo/HIL-Claw/pull/64#issuecomment-6064787474): Nit - "reads no ... file" is too wide where a platform reaches its generator through a device file. Addressed in `f8e3100` with the record's words ("file of the data plane or of the source").
+- Round 4 (https://github.com/myungjoo/HIL-Claw/pull/64#issuecomment-6064821854): Approve of the final head `f8e3100`. One optional Nit **not taken**: "of the source" could be read as "of the seed source"; the reviewer proposed "of the source of an attempt". The phrase is the record's own wording and the proposal is a reading of the record, so it was left as quoted (a point for the integrator if the record's phrase is ever made more exact).
+
+**Public API as landed** (`hilclaw/harness/seed_source.py`; the tool function of `correctness.check` and the conformance tests are written against it):
+- A *seed source* is a callable without arguments that returns a seed or fails. A seed is exactly an `int` (`type(value) is int`) with `0 <= seed < 2**64`.
+- `SEED_BITS = 64`, `SEED_LIMIT = 1 << SEED_BITS` (equal to `verification_arrays.SEED_LIMIT`; pinned by a test).
+- `system()` - no parameter; returns `secrets.randbits(SEED_BITS)`, an `int` uniform over the whole range. No state, no seeding, no default generator of `random`, no NumPy. What the platform raises without a random source is passed on.
+- `draw(source)` - asks `source` exactly once and returns its answer unchanged (the same object) when it is a seed. In this order it raises: `TypeError` ("the seed source must be callable") when `source` is not callable, nothing asked; `SeedSourceError` ("the seed source failed: <type name of the exception>"), chained through `__cause__`, when the source raises an `Exception` (a callable that needs an argument included); `SeedSourceError` ("the seed source named no seed: got <type name>, not an int") for anything not exactly an `int` (`bool`, `float`, `str`, `None`, `bytes`, list, NumPy integers, a subclass of `int`); `SeedSourceError` ("the seed source named no seed: an int outside 0 <= seed < 2**64") for an `int` outside the range. A `BaseException` that is no `Exception` (`KeyboardInterrupt`, `SystemExit`, `GeneratorExit`) passes through untouched. Nothing is clamped, reduced, converted, replaced or asked again; nothing is kept, written or printed.
+- `SeedSourceError(Exception)` - the one class; it is no `ToolFailure`, no `ValueError` and no `VerificationArgumentError`. Its message and `args` hold a type name and the rule only.
+- A test binds its own source by handing `draw` another callable (for example `draw(lambda: 7)`); the package offers no deterministic source.
+- The module imports only `secrets`: not `numpy`, not `hilclaw.tools`, not another module of the harness. It is bound to no tool and no registry.
+
+**Provisional choices** (ADR-0021 decision 3 leaves the form and the binding to the code task):
+- Module `seed_source`, names `system` / `draw`: the counterpart of `data_root_source` (`configured` / `obtain`), so a builder is handed a source the same way.
+- One exception class for a failing source and for a source that names no seed: one thing for a caller to catch; no tool-failure kind exists for it in any record.
+- A source's `Exception` is wrapped and chained; other `BaseException`s pass through, as in the data-root source.
+- The message never shows a returned value and never the message of what a source raised (only its type name): an error of the module cannot show a drawn value (ADR-0021 decisions 3 and 5). Limits stated in the docstring: the type names are the source's own; the chained exception and the frames of a traceback (which hold a refused value in a local) are not filtered.
+- The limit is written in the module, not imported from `verification_arrays`: no `numpy` load for an 18-statement module, and one constant gives both the width asked of the generator and the range accepted; tests pin the agreement with `SEED_LIMIT`, `program_arguments` and `draw_inputs` value by value (precedent: `hilclaw.instance` and `check_tolerance`).
+- A subclass of `int` is no seed: the harness's own rule (`_integer` / `_digits`), held equal by a test.
+- Order of the checks in `draw`: callable, the call, the type, the range.
+- Nothing met was read as a rule about a tool's contract, a tool-failure kind, a request or result member, the moment of the draw, the recording of a seed or the binding in `default_registry`; none of these is decided.
+- No criterion disagreed with a record.
+
+**Tests**: `tests/harness/test_seed_source.py`, 80 cases, no process, no clang. The import check is done on the module's globals (the only module it holds is `secrets`) rather than in a child process, because the criteria ask for tests that need no process; the environment is emptied or filled with `monkeypatch.delenv` / `setenv`. The only test that can fail by chance compares four draws (probability 2**-192 per case).
+
+**Verification**:
+- Local (Windows clone, final head `f8e3100`): `python -m pytest` 7363 passed, 272 skipped (before: 7283 passed, 272 skipped); `python -m ruff check .` and `python -m ruff format --check .` exit 0. `coverage` is not installed locally and nothing was installed, so the coverage figures are CI's.
+- `git diff origin/main --stat`: only the three files of `touchesFiles`. Non-test diff: 105 insertions, 1 deletion in 2 files (`seed_source.py` 102 lines, 18 statements; `__init__.py` +3 / -1). Test file: 365 lines. The first `git grep` matches two docstring lines only ("environment variable"); the second has no match; `git ls-files --eol` shows `i/lf` for the three files.
+- CI on the PR, final head `f8e3100`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37812100742 - all six successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. Coverage lines: `lines: 2811/2827 executed = 99.43% (minimum 80%)`, `functions: 290/290 entered = 100.00% (minimum 80%)`; `hilclaw/harness/seed_source.py` 18 statements, 0 missed. The runs of the three earlier heads were cancelled by the next push (concurrency group), not failed; no CI failure occurred.
+- `push` run on `main` for `8d86265`: https://github.com/myungjoo/HIL-Claw/actions/runs/37812720037 - `success`.
+
+**Language**: Python, standard library only for the draw (`secrets`) - the harness sub-module is Python and the platform's generator needs nothing else. No new dependency; `pyproject.toml` unchanged.
+
+**Follow-ups** (nothing new beyond `## Follow-ups`): the task that adds the tool function of `correctness.check` binds `seed_source.system` in `default_registry`, decides what a call answers for `SeedSourceError`, and should not log a traceback of `draw` unfiltered.
