@@ -1,14 +1,24 @@
-"""Python side of a verification run of ADR-0017: start it, check its report, give the verdict.
+"""Python side of a verification run of ADR-0017: judge its report, or start it and judge.
 
 ``ARCHITECTURE/decisions/ADR-0017-od16-cpu-standin-verification-run.md`` is the
-rule. A verification executable (the verification program of the harness built
-with one kernel) draws the inputs of each draw from a seed in a process of its
-own and reports a check value and the kernel's output per draw.
+rule; a decision cited by its number alone is one of that record. A
+verification executable (the verification program of the harness built with
+one kernel) draws the inputs of each draw from a seed in a process of its own
+and reports a check value and the kernel's output per draw.
+:func:`judge_report` takes such a report and judges it: whether it has the
+form of a complete report, whether the check value of each draw is the one of
+the inputs regenerated from the seed, and, if both hold, the reference and the
+count of the elements outside the tolerance per draw with
+:mod:`hilclaw.harness.verification_arrays` (decisions 4, 5 and 7).
 :func:`run_verification` starts that process for an executable that is already
-built, decides whether the run is completed or broken (decision 7) and, for a
-completed run, regenerates the inputs of each draw, computes the reference and
-counts the elements outside the tolerance with
-:mod:`hilclaw.harness.verification_arrays` (decisions 4 and 5).
+built, decides whether it timed out or failed (decision 7) and judges its
+report in the same way.
+
+The judging is available without a process start because
+``ARCHITECTURE/decisions/ADR-0021-od18-correctness-check-split.md`` (its
+decision 2) gives all of it to the side that is the same for every backend.
+:func:`run_verification` remains the run of a verification on one machine and
+is about no run of the data plane.
 
 Command line and report are those of the header comment of
 ``verification_program.c``. Exactly five arguments, each decimal digits with no
@@ -27,6 +37,7 @@ Conventions of this module (not rules of the record):
 - The conditions of a completed run are tested in the order of
   :class:`Broken`, and the first that fails is the one reported. A signal is
   not told apart from a non-zero exit status; ``run.returncode`` shows it.
+  :func:`judge_report` has no process and tests the last two only.
 - The length of a complete report is computed from ``m``, ``n`` and ``draws``
   alone and compared before any byte is read; no output byte is interpreted
   to find a boundary, and nothing is allocated from the expected length.
@@ -34,23 +45,30 @@ Conventions of this module (not rules of the record):
   the check value is compared, then the counts are taken. The first check
   value that disagrees makes the run broken and the counts taken so far are
   dropped. No array of a draw is kept for the next.
-- ``run`` of a result is what the runner captured apart from the report: its
-  ``stdout`` is replaced by ``b""`` and every other member is passed on
-  unfiltered. The record says so of a broken run; this module carries the same
-  member for a completed run. Standard error and the command line are not
-  free of the inputs (decision 7); what a caller may keep of them is not
-  decided here.
+- The module holds one implementation of the form check and of the loop over
+  the draws; :func:`judge_report` and :func:`run_verification` both use it.
+- The ``report`` argument of :func:`judge_report` is exactly ``bytes``. For
+  anything else, a ``bytearray``, a ``memoryview`` and an instance of a
+  subclass included, it raises a ``TypeError`` and never reports a wrong
+  form: that condition is a statement about what a process wrote.
+- ``run`` of a :class:`VerificationResult` is what the runner captured apart
+  from the report: its ``stdout`` is replaced by ``b""`` and every other
+  member is passed on unfiltered. The record says so of a broken run; this
+  module carries the same member for a completed run. Standard error and the
+  command line are not free of the inputs (decision 7); what a caller may
+  keep of them is not decided here.
 - ``executable`` is a path or a sequence used as a command prefix, as in
   :func:`hilclaw.harness.timing.run_timing`.
 - A parameter of the program or a tolerance outside what is stated raises
   :class:`hilclaw.harness.verification_arrays.VerificationArgumentError`
-  before anything is started, so one class covers the whole verification. An
-  ``executable`` that is an empty sequence or neither a path nor iterable
-  raises a plain ``ValueError`` or ``TypeError``, and what
-  :func:`hilclaw.local_run.run` raises is passed on.
+  before anything is started and before a report is looked at, so one class
+  covers the whole verification. An ``executable`` that is an empty sequence
+  or neither a path nor iterable raises a plain ``ValueError`` or
+  ``TypeError``, and what :func:`hilclaw.local_run.run` raises is passed on.
 - What NumPy raises for arrays it cannot allocate (``MemoryError``, or a plain
-  ``ValueError`` for a size it cannot hold) is passed on. It arrives after
-  the process has ended, and the caller gets no result for that run.
+  ``ValueError`` for a size it cannot hold) is passed on. In
+  :func:`run_verification` it arrives after the process has ended, and the
+  caller gets no result for that run.
 
 What this module does not do: it builds nothing and holds no path of the
 program; it holds no tolerance value, seed, source of a seed, number of draws
@@ -93,9 +111,33 @@ class Verdict(enum.Enum):
     FAIL = enum.auto()
 
 
+class Judgement(NamedTuple):
+    """Outcome of one :func:`judge_report` call: the judgement of one report.
+
+    For a report that has the form of a complete report and whose check
+    values all agree, ``broken`` is ``None``, ``verdict`` is ``Verdict.PASS``
+    when no element of any draw failed the tolerance and ``Verdict.FAIL``
+    otherwise, and ``counts`` holds one
+    :class:`hilclaw.harness.verification_arrays.Counts` per draw in order. For
+    any other report ``broken`` is ``Broken.REPORT_FORM`` or
+    ``Broken.CHECK_VALUE`` and ``verdict`` and ``counts`` are ``None``,
+    whatever the draws of the report hold: it is neither a pass nor a fail.
+
+    Nothing else is held: no capture of a process, no byte of the report, no
+    seed, and no index, deviation or element of the inputs, the reference or
+    the output (decision 7).
+    """
+
+    broken: Broken | None
+    verdict: Verdict | None
+    counts: tuple[Counts, ...] | None
+
+
 class VerificationResult(NamedTuple):
     """Outcome of one :func:`run_verification` call.
 
+    The first three members are those of :class:`Judgement`, with the two
+    conditions a process can fail before it has a report to judge added.
     For a completed run ``broken`` is ``None``, ``verdict`` is
     ``Verdict.PASS`` when no element of any draw failed the tolerance and
     ``Verdict.FAIL`` otherwise, and ``counts`` holds one
@@ -137,6 +179,48 @@ def program_arguments(*, m, k, n, draws, seed):
     )
 
 
+def judge_report(report, *, m, k, n, draws, seed, rtol, atol):
+    """Judge one report of a verification process and return a :class:`Judgement`.
+
+    ``report`` is what a verification process wrote on its report channel, as
+    exactly ``bytes`` in the form of the module docstring; ``m``, ``k``, ``n``,
+    ``draws`` and ``seed`` are the parameters that process was started with,
+    as in :func:`program_arguments`, and ``rtol`` and ``atol`` the tolerance
+    of :func:`hilclaw.harness.verification_arrays.count_failures`. All but
+    ``report`` are keyword-only and none has a default.
+
+    In this order: the length of a complete report for ``m``, ``n`` and
+    ``draws`` is compared with the length of ``report`` and the end mark is
+    looked for, and a report that fails either is ``Broken.REPORT_FORM``; then
+    for each draw in order the inputs are regenerated from ``seed``, the
+    reported check value is compared with theirs, and the output is counted
+    against the float64 reference under the tolerance. The first check value
+    that disagrees is ``Broken.CHECK_VALUE``. Otherwise the verdict is a pass
+    when no element of any draw failed and a fail when one did.
+
+    Whether a process ended by itself, with which status and within which
+    time is not known here: ``Broken.TIMEOUT`` and ``Broken.EXIT_STATUS`` are
+    never returned, and what a process that timed out or failed wrote is not
+    a report to hand over.
+
+    The function starts no process, reads and writes no file, reads no
+    environment variable, clock or random source and keeps nothing between
+    calls: its outcome follows from its arguments alone.
+
+    Raised before any byte of ``report`` is looked at, in this order:
+    :class:`hilclaw.harness.verification_arrays.VerificationArgumentError` as
+    in :func:`program_arguments`, the same for a tolerance that
+    :func:`hilclaw.harness.verification_arrays.check_tolerance` refuses, and
+    :class:`TypeError` for a ``report`` that is not exactly ``bytes``. What
+    NumPy raises for arrays it cannot allocate is passed on.
+    """
+    program_arguments(m=m, k=k, n=n, draws=draws, seed=seed)
+    verification_arrays.check_tolerance(rtol, atol)
+    if type(report) is not bytes:
+        raise TypeError(f"report: must be bytes, got {type(report).__name__}")
+    return _judgement(report, m, k, n, draws, seed, rtol, atol)
+
+
 def run_verification(
     executable,
     *,
@@ -165,7 +249,10 @@ def run_verification(
     The run is completed only if it did not time out, its exit status is 0,
     its standard output has the form of a complete report for ``m``, ``n`` and
     ``draws``, and the check value of every draw equals the one of the inputs
-    regenerated from ``seed``. Every other run is broken.
+    regenerated from ``seed``. Every other run is broken. The last two
+    conditions and the verdict are those of :func:`judge_report` for the
+    standard output; a run that timed out or failed is broken whatever it
+    wrote.
 
     Raised before anything is started, in this order:
     :class:`hilclaw.harness.verification_arrays.VerificationArgumentError` as
@@ -188,24 +275,26 @@ def run_verification(
     run = local_run.run((*prefix, *arguments), timeout_s=timeout_s, cwd=cwd, env=env)
     report = run.stdout
     run = run._replace(stdout=b"")
-    block = 4 + 4 * m * n
     if run.timed_out:
-        broken = Broken.TIMEOUT
-    elif run.returncode != 0:
-        broken = Broken.EXIT_STATUS
-    elif len(report) != draws * block + 4 or not report.endswith(END_MARK):
-        broken = Broken.REPORT_FORM
-    else:
-        counts = []
-        for draw in range(draws):
-            taken = _counts(report, draw * block, m, k, n, seed, draw, rtol, atol)
-            if taken is None:
-                return VerificationResult(Broken.CHECK_VALUE, None, None, run)
-            counts.append(taken)
-        failed = any(count.failed for count in counts)
-        verdict = Verdict.FAIL if failed else Verdict.PASS
-        return VerificationResult(None, verdict, tuple(counts), run)
-    return VerificationResult(broken, None, None, run)
+        return VerificationResult(Broken.TIMEOUT, None, None, run)
+    if run.returncode != 0:
+        return VerificationResult(Broken.EXIT_STATUS, None, None, run)
+    judgement = _judgement(report, m, k, n, draws, seed, rtol, atol)
+    return VerificationResult(*judgement, run)
+
+
+def _judgement(report, m, k, n, draws, seed, rtol, atol):
+    block = 4 + 4 * m * n
+    if len(report) != draws * block + 4 or not report.endswith(END_MARK):
+        return Judgement(Broken.REPORT_FORM, None, None)
+    counts = []
+    for draw in range(draws):
+        taken = _counts(report, draw * block, m, k, n, seed, draw, rtol, atol)
+        if taken is None:
+            return Judgement(Broken.CHECK_VALUE, None, None)
+        counts.append(taken)
+    failed = any(count.failed for count in counts)
+    return Judgement(None, Verdict.FAIL if failed else Verdict.PASS, tuple(counts))
 
 
 def _counts(report, start, m, k, n, seed, draw, rtol, atol):

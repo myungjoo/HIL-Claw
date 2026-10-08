@@ -14,8 +14,10 @@ from hilclaw import clang_build
 from hilclaw.harness.verification import (
     END_MARK,
     Broken,
+    Judgement,
     Verdict,
     VerificationResult,
+    judge_report,
     program_arguments,
     run_verification,
 )
@@ -507,6 +509,247 @@ def test_prefix_part_of_the_wrong_type_starts_nothing(stand_in):
     with pytest.raises(TypeError):
         verify((program, Path(script)))
     assert not stand_in.started
+
+
+def judge(report, shape=SHAPE, draws=3, seed=SEED, **changes):
+    m, k, n = shape
+    arguments = {"m": m, "k": k, "n": n, "draws": draws, "seed": seed}
+    return judge_report(report, **{**arguments, **TOLERANCE, **changes})
+
+
+def assert_judged(judgement, verdict, counts):
+    assert type(judgement) is Judgement
+    assert judgement.broken is None
+    assert judgement.verdict is verdict
+    assert type(judgement.counts) is tuple
+    assert all(type(count) is Counts for count in judgement.counts)
+    assert judgement.counts == tuple(counts)
+
+
+def assert_judged_broken(judgement, condition):
+    assert type(judgement) is Judgement
+    assert judgement.broken is condition
+    assert judgement.verdict is None
+    assert judgement.counts is None
+
+
+@pytest.mark.parametrize("draws", [1, 3])
+def test_judge_report_passes_a_report_of_rounded_references(draws):
+    judgement = judge(passing_report(*SHAPE, draws, SEED), draws=draws)
+    assert_judged(judgement, Verdict.PASS, [(0, 0)] * draws)
+    assert judgement._fields == ("broken", "verdict", "counts")
+
+
+@pytest.mark.parametrize("seed", [0, LAST])
+def test_judge_report_takes_the_whole_range_of_seeds(seed):
+    judgement = judge(passing_report(*SHAPE, 2, seed), draws=2, seed=seed)
+    assert_judged(judgement, Verdict.PASS, [(0, 0)] * 2)
+
+
+def test_judge_report_fails_one_element_outside_the_tolerance():
+    outputs = rounded_references(*SHAPE, 3, SEED)
+    outputs[1][2, 4] += np.float32(0.25)
+    judgement = judge(report_of(*SHAPE, SEED, outputs))
+    assert_judged(judgement, Verdict.FAIL, [(0, 0), (1, 0), (0, 0)])
+
+
+def test_judge_report_counts_several_failing_draws_apart():
+    outputs = rounded_references(*SHAPE, 3, SEED)
+    outputs[0][0, :] = 9.0
+    outputs[2][:, 0] = -9.0
+    judgement = judge(report_of(*SHAPE, SEED, outputs))
+    assert_judged(judgement, Verdict.FAIL, [(5, 0), (0, 0), (3, 0)])
+
+
+def test_judge_report_fails_and_counts_non_finite_outputs():
+    outputs = rounded_references(*SHAPE, 3, SEED)
+    outputs[0][1, 1] = np.nan
+    outputs[0][2, 2] = np.inf
+    outputs[0][0, 0] = 70.0
+    outputs[2][0, 3] = -np.inf
+    judgement = judge(report_of(*SHAPE, SEED, outputs), rtol=1.0, atol=1.0)
+    assert_judged(judgement, Verdict.FAIL, [(3, 2), (0, 0), (1, 1)])
+
+
+def test_judge_report_with_a_zero_tolerance():
+    a, b = draw_inputs(1, 1, 1, seed=EXACT_SEED, draw=0)
+    output = reference(a, b).astype(np.float32)
+    shape = (1, 1, 1)
+    report = report_of(*shape, EXACT_SEED, [output])
+    for zero in (0.0, 0):
+        judgement = judge(report, shape, 1, EXACT_SEED, rtol=zero, atol=zero)
+        assert_judged(judgement, Verdict.PASS, [(0, 0)])
+    off = np.nextafter(output, np.float32(2.0))
+    report = report_of(*shape, EXACT_SEED, [off])
+    judgement = judge(report, shape, 1, EXACT_SEED, rtol=0.0, atol=0.0)
+    assert_judged(judgement, Verdict.FAIL, [(1, 0)])
+
+
+def test_judge_report_with_integer_tolerances():
+    report = report_of(*SHAPE, SEED, [np.zeros((3, 5), dtype=np.float32)] * 3)
+    assert_judged(judge(report, rtol=1, atol=0), Verdict.PASS, [(0, 0)] * 3)
+    assert_judged(judge(report, rtol=0, atol=4), Verdict.PASS, [(0, 0)] * 3)
+    assert_judged(judge(report, rtol=0, atol=0), Verdict.FAIL, [(15, 0)] * 3)
+
+
+@pytest.mark.parametrize("shape", [(1, 4, 5), (3, 1, 5), (3, 4, 1), (1, 1, 1)])
+def test_judge_report_of_shapes_with_a_dimension_of_one(shape):
+    m, _, n = shape
+    judgement = judge(passing_report(*shape, 2, SEED), shape, 2)
+    assert_judged(judgement, Verdict.PASS, [(0, 0)] * 2)
+    outputs = rounded_references(*shape, 2, SEED)
+    outputs[1][m - 1, n - 1] = 9.0
+    judgement = judge(report_of(*shape, SEED, outputs), shape, 2)
+    assert_judged(judgement, Verdict.FAIL, [(0, 0), (1, 0)])
+
+
+@pytest.mark.parametrize("name", BAD_FORMS)
+def test_judge_report_of_another_form_is_broken(name):
+    assert_judged_broken(judge(BAD_FORMS[name]), Broken.REPORT_FORM)
+
+
+def test_judge_report_takes_the_form_from_the_parameters_alone():
+    assert_judged(judge(GOOD), Verdict.PASS, [(0, 0)] * 3)
+    assert_judged_broken(judge(GOOD, draws=2), Broken.REPORT_FORM)
+    assert_judged_broken(judge(GOOD, draws=LAST), Broken.REPORT_FORM)
+    assert_judged_broken(judge(GOOD, (3, 2, 5)), Broken.CHECK_VALUE)
+    assert_judged_broken(judge(GOOD, (2**40, 4, 2**40)), Broken.REPORT_FORM)
+
+
+def test_judge_report_tests_the_form_before_any_check_value():
+    outputs = rounded_references(*SHAPE, 3, SEED)
+    report = report_of(*SHAPE, SEED, outputs, wrong_check={0, 1, 2})
+    assert_judged_broken(judge(report), Broken.CHECK_VALUE)
+    assert_judged_broken(judge(report[:-4] + b"END\n"), Broken.REPORT_FORM)
+    assert_judged_broken(judge(report + b"\n"), Broken.REPORT_FORM)
+
+
+@pytest.mark.parametrize("draw", [0, 1, 2])
+@pytest.mark.parametrize("passing", [True, False])
+def test_judge_report_with_a_check_value_that_disagrees_is_broken(draw, passing):
+    outputs = rounded_references(*SHAPE, 3, SEED)
+    if not passing:
+        outputs[0][0, 0] = np.nan
+        outputs[2][1, 1] = 9.0
+    report = report_of(*SHAPE, SEED, outputs, wrong_check={draw})
+    assert_judged_broken(judge(report), Broken.CHECK_VALUE)
+
+
+def test_judge_report_of_another_seed_is_broken():
+    report = passing_report(*SHAPE, 3, SEED + 1)
+    assert_judged_broken(judge(report), Broken.CHECK_VALUE)
+
+
+@pytest.mark.parametrize(("name", "value"), BAD_ARGUMENTS, ids=ids(BAD_ARGUMENTS))
+@pytest.mark.parametrize("report", [GOOD, b"", None], ids=["good", "empty", "none"])
+def test_judge_report_refuses_arguments_before_the_report(report, name, value):
+    with pytest.raises(VerificationArgumentError, match=f"^{name}: "):
+        judge(report, **{name: value})
+
+
+@pytest.mark.parametrize(("name", "value"), BAD_TOLERANCES, ids=ids(BAD_TOLERANCES))
+@pytest.mark.parametrize("report", [GOOD, b"", None], ids=["good", "empty", "none"])
+def test_judge_report_refuses_tolerances_before_the_report(report, name, value):
+    with pytest.raises(VerificationArgumentError, match=f"^{name}: "):
+        judge(report, **{name: value})
+
+
+def test_judge_report_refuses_arguments_before_the_tolerance():
+    with pytest.raises(VerificationArgumentError, match="^seed: "):
+        judge(None, seed=-1, rtol=-1.0, atol=-1.0)
+    with pytest.raises(VerificationArgumentError, match="^rtol: "):
+        judge(None, rtol=-1.0, atol=-1.0)
+    with pytest.raises(VerificationArgumentError, match="^atol: "):
+        judge(None, atol=-1.0)
+
+
+class BytesSubclass(bytes):
+    pass
+
+
+@pytest.mark.parametrize(
+    "report",
+    [None, GOOD.decode("latin-1"), 0, len(GOOD), list(GOOD), (GOOD,)]
+    + [
+        bytearray(GOOD),
+        memoryview(GOOD),
+        BytesSubclass(GOOD),
+        np.frombuffer(GOOD, dtype=np.uint8),
+    ],
+    ids=lambda report: type(report).__name__,
+)
+def test_judge_report_refuses_a_report_that_is_not_bytes(report):
+    with pytest.raises(TypeError, match="^report: must be bytes, got ") as caught:
+        judge(report)
+    assert str(caught.value).endswith(f"got {type(report).__name__}")
+
+
+@pytest.mark.parametrize("missing", ["m", "k", "n", "draws", "seed", "rtol", "atol"])
+def test_judge_report_has_no_default_for(missing):
+    arguments = {"m": 3, "k": 4, "n": 5, "draws": 3, "seed": 7, **TOLERANCE}
+    del arguments[missing]
+    with pytest.raises(TypeError, match=missing):
+        judge_report(GOOD, **arguments)
+
+
+def test_judge_report_parameters_are_keyword_only():
+    with pytest.raises(TypeError):
+        judge_report(GOOD, 3, 4, 5, 3, 7, 1e-5, 1e-6)
+    with pytest.raises(TypeError):
+        judge_report(GOOD, 3, 4, 5, draws=3, seed=7, **TOLERANCE)
+    with pytest.raises(TypeError, match="report"):
+        judge_report(m=3, k=4, n=5, draws=3, seed=7, **TOLERANCE)
+
+
+FAILING = rounded_references(*SHAPE, 3, SEED)
+FAILING[1][0, 0] = np.inf
+JUDGED = {
+    "pass": GOOD,
+    "fail": report_of(*SHAPE, SEED, FAILING),
+    "wrong-form": GOOD[:-1],
+    "empty": b"",
+    "wrong-check-value": report_of(*SHAPE, SEED, FAILING, wrong_check={2}),
+    "another-seed": passing_report(*SHAPE, 3, SEED + 1),
+}
+
+
+@pytest.mark.parametrize("name", JUDGED)
+def test_judge_report_starts_nothing_and_depends_on_its_arguments_alone(
+    name, monkeypatch
+):
+    def refuse(*args, **kwargs):
+        pytest.fail("judge_report started a process")
+
+    monkeypatch.setattr("hilclaw.local_run.run", refuse)
+    monkeypatch.setattr("subprocess.Popen", refuse)
+    report = JUDGED[name]
+    first = judge(report)
+    assert judge(bytes(bytearray(report))) == first
+    assert judge(report) == first
+
+
+@pytest.mark.parametrize("name", JUDGED)
+def test_judgement_holds_no_seed_report_or_array(name):
+    judgement = judge(JUDGED[name], seed=SEED)
+    assert type(judgement.broken) in (Broken, type(None))
+    assert type(judgement.verdict) in (Verdict, type(None))
+    for count in judgement.counts or ():
+        assert count._fields == ("failed", "non_finite")
+        assert all(type(value) is int for value in count)
+
+
+@pytest.mark.parametrize("name", JUDGED)
+def test_run_verification_and_judge_report_agree(name, stand_in):
+    report = JUDGED[name]
+    result = verify(stand_in(report))
+    assert result[:3] == judge(report)
+    assert result.run.returncode == 0
+
+
+@pytest.mark.parametrize("report", [GOOD, JUDGED["fail"]], ids=["pass", "fail"])
+def test_what_judge_report_cannot_know_stays_with_the_run(report, stand_in):
+    assert judge(report).broken is None
+    assert_broken(verify(stand_in(report, status=3)), Broken.EXIT_STATUS)
 
 
 PROGRAM = Path(hilclaw.harness.__file__).parent / "verification_program.c"
