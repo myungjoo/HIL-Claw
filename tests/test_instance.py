@@ -1,3 +1,4 @@
+import ast
 import inspect
 import io
 import itertools
@@ -24,7 +25,7 @@ from hilclaw import (
     tools,
 )
 from hilclaw.backends import BackendTable
-from hilclaw.harness import verification_arrays
+from hilclaw.harness import measurement, verification_arrays
 from hilclaw.instance import (
     SCHEMA_VERSION,
     Instance,
@@ -33,6 +34,7 @@ from hilclaw.instance import (
     Tolerance,
     UnsupportedVersionError,
     hw_profile_of,
+    n_max_of,
     parse,
     read,
     source_commit_of,
@@ -206,6 +208,7 @@ def test_the_public_names():
         "Tolerance",
         "UnsupportedVersionError",
         "hw_profile_of",
+        "n_max_of",
         "parse",
         "read",
         "source_commit_of",
@@ -218,6 +221,7 @@ def test_the_public_names():
         "hw_profile",
         "tolerance",
         "source_commit",
+        "n_max",
         "others",
     )
     assert Tolerance._fields == ("rtol", "atol")
@@ -228,7 +232,7 @@ def test_the_public_names():
     for error in (InvalidInstanceError, UnsupportedVersionError, MissingInstanceError):
         assert not issubclass(error, ToolFailure)
     assert UnsupportedVersionError is not run_state.UnsupportedVersionError
-    for function in (read, hw_profile_of, tolerance_of, source_commit_of):
+    for function in (read, hw_profile_of, tolerance_of, source_commit_of, n_max_of):
         parameters = inspect.signature(function).parameters
         assert list(parameters) == ["data_root", "run_id"]
         for parameter in parameters.values():
@@ -241,7 +245,7 @@ def test_a_minimal_content_gives_the_key_and_the_record():
     result = parse(raw(doc()))
 
     assert type(result) is Instance
-    assert result == Instance(KEY, record(), None, None, {})
+    assert result == Instance(KEY, record(), None, None, None, {})
     assert type(result.hw_profile) is dict
     assert key_of(result.hw_profile) == result.hw_profile_key
     assert validate(doc()) is None
@@ -252,7 +256,7 @@ def test_a_record_with_its_optional_fields():
 
     result = parse(raw(doc(profile)))
 
-    assert result == Instance(key_of(profile), profile, None, None, {})
+    assert result == Instance(key_of(profile), profile, None, None, None, {})
     assert result.hw_profile_key == key_of(record(ext={"example_field": 3}))
     assert result.hw_profile_key != KEY
 
@@ -296,7 +300,7 @@ OTHERS = {
 def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     result = parse(raw(doc(**OTHERS)))
 
-    assert result == Instance(KEY, record(), None, None, OTHERS)
+    assert result == Instance(KEY, record(), None, None, None, OTHERS)
     assert list(result.others) == list(OTHERS)
     assert validate(doc(**OTHERS)) is None
 
@@ -461,6 +465,7 @@ def test_nesting_too_deep_for_the_interpreter_is_reported():
         (VERSION, SECTION, f'"example_member": {TOO_LONG_TEXT}'),
         (f'"schema_version": {TOO_LONG_TEXT}', SECTION),
         ('"schema_version": 2', f'"example_member": [-{TOO_LONG_TEXT}]'),
+        (VERSION, SECTION, f'"n_max": {TOO_LONG_TEXT}'),
     ],
 )
 def test_an_integer_too_long_for_the_interpreter_is_reported(members):
@@ -707,7 +712,7 @@ def test_a_content_with_the_member_states_the_two_values():
     result = parse(raw(doc(tolerance=TOLERANCE, example=[1])))
 
     assert result == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, {"example": [1]}
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, None, {"example": [1]}
     )
     assert type(result.tolerance) is Tolerance
     assert (result.tolerance.rtol, result.tolerance.atol) == (TEST_RTOL, TEST_ATOL)
@@ -780,7 +785,9 @@ def test_a_minus_zero_built_in_memory_is_handed_out_as_zero():
 def test_any_order_of_the_members_of_a_tolerance(content):
     result = parse(content)
 
-    assert result == Instance(KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, {})
+    assert result == Instance(
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, None, {}
+    )
 
 
 def test_the_member_of_the_example_of_adr_0020():
@@ -822,7 +829,7 @@ def test_another_version_is_reported_before_a_tolerance_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_tolerance(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, others)
+    assert result == Instance(KEY, record(), None, None, None, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(tolerance=TOLERANCE, **others)))
@@ -1075,7 +1082,7 @@ def test_a_content_with_the_member_states_that_string(commit):
 
     result = parse(raw(document))
 
-    assert result == Instance(KEY, record(), None, commit, {"example": [1]})
+    assert result == Instance(KEY, record(), None, commit, None, {"example": [1]})
     assert type(result.source_commit) is str
     assert "source_commit" not in result.others
     assert validate(document) is None
@@ -1119,7 +1126,7 @@ def test_any_order_of_the_three_members_and_the_version(order):
     content = text(*(MEMBERS[index] for index in order))
 
     assert parse(content) == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, {}
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, None, {}
     )
     assert validate(json.loads(content)) is None
 
@@ -1209,7 +1216,7 @@ def test_another_version_is_reported_before_a_source_commit_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_source_commit(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, others)
+    assert result == Instance(KEY, record(), None, None, None, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(source_commit=OTHER_COMMIT, **others)))
@@ -1476,6 +1483,7 @@ def test_nothing_of_the_module_holds_a_source_commit():
         hw_profile_of,
         tolerance_of,
         source_commit_of,
+        n_max_of,
     ):
         assert function.__defaults__ is None and function.__kwdefaults__ is None
     assert Instance._field_defaults == {}
@@ -1501,6 +1509,432 @@ def test_the_module_does_not_load_subprocess():
     assert not set(vars(instance)) & {"subprocess", "hilclaw", "__version__"}
 
 
+# --- happy: the member n_max (ADR-0023) ---
+
+# Test values of a bound: neither is a default, recommended or typical value.
+BOUND, OTHER_BOUND = 12, 7
+NO_BOUND = f"n_max: must be an int from 5 to {MAX}, got "
+
+
+def bounded(literal, *more):
+    return text(VERSION, SECTION, f'"n_max": {literal}', *more)
+
+
+@pytest.mark.parametrize(
+    "bound", [5, 6, 9, 10, 11, 12, 30, 31, 1000, 2**31, 2**32 + 1, MAX - 1, MAX]
+)
+def test_a_content_with_the_member_states_that_bound(bound):
+    document = doc(n_max=bound, example=[1])
+
+    result = parse(raw(document))
+
+    assert result == Instance(KEY, record(), None, None, bound, {"example": [1]})
+    assert type(result.n_max) is int
+    assert "n_max" not in result.others
+    assert validate(document) is None
+    assert parse(bounded(str(bound))).n_max == bound
+
+
+def test_both_bounds_of_the_member_are_inclusive():
+    assert MAX == 2**53 - 1
+
+    for bound in (5, MAX):
+        assert parse(bounded(str(bound))).n_max == bound
+        assert validate(doc(n_max=bound)) is None
+    for bound in (4, MAX + 1):
+        assert invalid(NO_BOUND, parse, bounded(str(bound))) == NO_BOUND + "int"
+        assert invalid(NO_BOUND, validate, doc(n_max=bound)) == NO_BOUND + "int"
+    invalid(NO_BOUND, parse, bounded("9007199254740992"))
+    assert parse(bounded("9007199254740991")).n_max == MAX
+
+
+def test_a_content_without_the_member_states_no_bound():
+    members = {"tolerance": TOLERANCE, "source_commit": COMMIT}
+    without = parse(raw(doc(**members)))
+    stating = parse(raw(doc(**members, n_max=BOUND)))
+
+    assert without.n_max is None
+    assert parse(raw(doc())).n_max is None
+    assert stating.n_max == BOUND
+    assert (
+        without[:4]
+        == stating[:4]
+        == (KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT)
+    )
+    assert without.others == stating.others == {}
+    assert validate(doc(**members)) is None
+
+
+BOUNDED_MEMBERS = [*MEMBERS, f'"n_max": {BOUND}']
+
+
+@pytest.mark.parametrize("order", list(itertools.permutations(range(5))), ids=repr)
+def test_any_order_of_the_four_members_and_the_version(order):
+    content = text(*(BOUNDED_MEMBERS[index] for index in order))
+
+    assert parse(content) == Instance(
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, BOUND, {}
+    )
+    assert validate(json.loads(content)) is None
+
+
+def test_white_space_of_json_around_the_number_is_not_part_of_the_value():
+    content = text(VERSION, SECTION, f'\r\n\t"n_max" :\n {BOUND} \n')
+
+    assert parse(content).n_max == BOUND
+
+
+# The Example of ADR-0023, as written in the record: the shape of the member, not a valid file.
+EXAMPLE_OF_ADR_0023 = b"""{
+  "schema_version": 1,
+  "hw_profile": {
+    "key": "cpu_standin-b0d8610d8f470856",
+    "record": {
+      "schema_version": 1,
+      "accelerator": "cpu_standin",
+      "revision": "NOT-DECIDED-HERE",
+      "toolchain": {"clang": "NOT-DECIDED-HERE"},
+      "host": {"cpu": "NOT-DECIDED-HERE", "os": "NOT-DECIDED-HERE"},
+      "hw_source": "NOT-DECIDED-HERE"
+    }
+  },
+  "tolerance": {"rtol": 1e-4, "atol": 0.01},
+  "source_commit": "0123456789abcdef0123456789abcdef01234567",
+  "n_max": 10
+}
+"""
+
+
+def test_the_member_of_the_example_of_adr_0023():
+    invalid("hw_profile.record.hw_source: must be ", parse, EXAMPLE_OF_ADR_0023)
+
+    source = b'"hw_source": "NOT-DECIDED-HERE"'
+    result = parse(EXAMPLE_OF_ADR_0023.replace(source, b'"hw_source": "in_house"'))
+    assert result.n_max == 10 and type(result.n_max) is int
+    assert result.source_commit == COMMIT
+    assert result.tolerance == Tolerance(0.0001, 0.01)
+    assert result.others == {}
+
+    silent = parse(EXAMPLE_OF_ADR_0022.replace(source, b'"hw_source": "in_house"'))
+    assert silent.n_max is None
+    assert silent[:4] == result[:4]
+
+
+# --- branch: the member n_max ---
+
+BROKEN_BOUNDS = [None, True, 4, 0, -10, 10.0, "10", [10], {"value": 10}, MAX + 1]
+
+
+@pytest.mark.parametrize("version", [0, 2, MAX])
+@pytest.mark.parametrize("bound", [*BROKEN_BOUNDS, BOUND], ids=repr)
+def test_another_version_is_reported_before_a_bound_is_looked_at(version, bound):
+    document = doc(schema_version=version, n_max=bound)
+
+    for function, argument in ((parse, raw(document)), (validate, document)):
+        with pytest.raises(UnsupportedVersionError) as caught:
+            function(argument)
+        assert str(caught.value) == f"schema_version: {version} is not supported"
+
+
+@pytest.mark.parametrize(
+    "others",
+    [
+        {"nmax": BOUND},
+        {"N_max": BOUND},
+        {"n-max": BOUND},
+        {"nMax": BOUND},
+        {"N_MAX": BOUND},
+        {"n_max ": 4},
+        {"n_min": 5},
+        {"repeats": BOUND},
+        {"nmax": True, "n-max": 4, "N_max": "10", "nMax": 10.0, "n_min": 0},
+    ],
+    ids=repr,
+)
+def test_a_top_level_member_of_another_name_states_no_bound(others):
+    result = parse(raw(doc(**others)))
+
+    assert result == Instance(KEY, record(), None, None, None, others)
+    assert result.n_max is None
+    assert validate(doc(**others)) is None
+
+    result = parse(raw(doc(n_max=OTHER_BOUND, **others)))
+    assert result.n_max == OTHER_BOUND
+    assert result.others == others
+
+
+@pytest.mark.parametrize(
+    "place, changes",
+    [
+        ("hw_profile: must be", {"hw_profile": None, "n_max": 4}),
+        (
+            "document: lacks the member hw_profile",
+            {"hw_profile": REMOVE, "n_max": True},
+        ),
+        (
+            "hw_profile.key: ",
+            {"hw_profile": section(key=OTHER_KEY), "n_max": "10"},
+        ),
+        ("tolerance: must be", {"tolerance": None, "n_max": None}),
+        (
+            "tolerance.rtol: must be",
+            {"tolerance": {"rtol": -1, "atol": 0}, "n_max": 0},
+        ),
+        (NO_COMMIT + "str 'main'", {"source_commit": "main", "n_max": 4}),
+        (
+            NO_COMMIT + "bool",
+            {"tolerance": TOLERANCE, "source_commit": False, "n_max": 10.0},
+        ),
+        (
+            NO_BOUND + "int",
+            {"tolerance": TOLERANCE, "source_commit": COMMIT, "n_max": 4},
+        ),
+        (NO_BOUND + "bool", {"n_max": False}),
+    ],
+)
+def test_the_first_broken_rule_is_reported_with_a_bound(place, changes):
+    document = doc(**changes)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+# --- error / negative: the member n_max ---
+
+NO_BOUND_LITERALS = {
+    "true": "bool",
+    "false": "bool",
+    "null": "NoneType",
+    '"10"': "str '10'",
+    '"12"': "str '12'",
+    '""': "str ''",
+    '"ten"': "str 'ten'",
+    "[10]": "list",
+    "[]": "list",
+    '{"value": 10}': "dict",
+    "{}": "dict",
+    "10.0": "float",
+    "1e1": "float",
+    "1E1": "float",
+    "10e0": "float",
+    "5.0": "float",
+    "12.5": "float",
+    "4.9": "float",
+    "1e999": "float",
+    "-0.0": "float",
+    "-0": "int",
+    "0": "int",
+    "1": "int",
+    "2": "int",
+    "3": "int",
+    "4": "int",
+    "-1": "int",
+    "-5": "int",
+    "-10": "int",
+    "-12": "int",
+    "9007199254740992": "int",
+    "9007199254740993": "int",
+    "10000000000000000000000": "int",
+}
+
+
+@pytest.mark.parametrize("literal", NO_BOUND_LITERALS)
+def test_what_is_no_value_of_the_bound(literal):
+    more = (MEMBERS[2], MEMBERS[3], '"example": [1]')
+    content = bounded(literal, *more)
+
+    assert invalid(NO_BOUND, parse, content) == NO_BOUND + NO_BOUND_LITERALS[literal]
+    invalid(NO_BOUND, validate, json.loads(content))
+    assert parse(text(VERSION, SECTION, *more)) == Instance(
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, None, {"example": [1]}
+    )
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        "4",
+        "0",
+        "-10",
+        "10.0",
+        "1e1",
+        '"10"',
+        "true",
+        "null",
+        "[10]",
+        "9007199254740992",
+    ],
+)
+def test_the_invalid_files_of_the_walk_through_of_adr_0023(literal):
+    more = (MEMBERS[2], MEMBERS[3])
+
+    invalid("n_max: must be", parse, bounded(literal, *more))
+    kept = parse(text(VERSION, SECTION, *more))
+    assert (kept.tolerance, kept.source_commit) == (
+        Tolerance(TEST_RTOL, TEST_ATOL),
+        COMMIT,
+    )
+    assert parse(text(VERSION, SECTION, '"nmax": 12')).n_max is None
+    assert parse(bounded("12")).n_max == 12
+
+
+def test_minus_zero_is_refused_as_the_integer_0_below_the_bound():
+    assert type(json.loads("-0")) is int and json.loads("-0") == 0
+
+    assert invalid(NO_BOUND, parse, bounded("-0")) == NO_BOUND + "int"
+    assert invalid(NO_BOUND, parse, bounded("0")) == NO_BOUND + "int"
+
+
+class Number(int):
+    """A test-only subclass: not exactly an ``int``."""
+
+
+LOOSER_BOUND_RULES = {
+    "isinstance(value, int)": (
+        lambda value: isinstance(value, int) and 5 <= value <= MAX,
+        [Number(10), Number(5), Number(MAX)],
+    ),
+    "isinstance(value, int) without the bound": (
+        lambda value: isinstance(value, int),
+        [True, False, Number(12)],
+    ),
+    "an equal value": (
+        lambda value: value == 10 or value == 5,
+        [10.0, 5.0, Number(10)],
+    ),
+    "float.is_integer": (
+        lambda value: float(value).is_integer() and value >= 5,
+        [10.0, 5.0, 12.0, 1e1, float(2**40)],
+    ),
+    "int(value)": (
+        lambda value: 5 <= int(value) <= MAX,
+        ["10", " 12 ", "1_0", "+10", 10.0, 10.9, 5.5, Number(10)],
+    ),
+}
+
+
+@pytest.mark.parametrize("rule", LOOSER_BOUND_RULES)
+def test_a_bound_a_looser_rule_would_accept_is_refused(rule):
+    looser, values = LOOSER_BOUND_RULES[rule]
+
+    for value in values:
+        assert looser(value)
+        expected = NO_BOUND + type(value).__name__
+        invalid(expected, validate, doc(n_max=value))
+        if type(value) is not Number:
+            invalid(expected, parse, raw(doc(n_max=value)))
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        (f'"n_max": {BOUND}', f'"n_max": {BOUND}'),
+        (f'"n_max": {BOUND}', f'"n_max": {OTHER_BOUND}'),
+        (f'"n_max": {BOUND}', '"n_max": 4'),
+        ('"n_max": true', f'"n_max": {BOUND}'),
+    ],
+)
+def test_the_member_name_n_max_twice_at_the_top_level(members):
+    message = invalid(
+        "content: cannot be read as one JSON text",
+        parse,
+        text(VERSION, SECTION, *members),
+    )
+    assert "a JSON object repeats a member name" in message
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        True,
+        False,
+        10.0,
+        5.0,
+        float("inf"),
+        float("nan"),
+        Number(10),
+        Number(5),
+        Number(4),
+        TOO_LONG,
+        -TOO_LONG,
+        b"10",
+        (10,),
+        {10},
+        range(10),
+    ],
+    ids=shown,
+)
+def test_validate_refuses_a_bound_built_in_memory(value):
+    document = doc(n_max=value)
+
+    assert invalid(NO_BOUND, validate, document) == NO_BOUND + type(value).__name__
+
+
+def test_a_refused_integer_is_not_shown():
+    for bound in (4, 0, -10, MAX + 1):
+        message = invalid(NO_BOUND, validate, doc(n_max=bound))
+        assert message == NO_BOUND + "int"
+        assert not message.endswith(str(bound))
+
+
+def test_a_check_of_a_bound_modifies_nothing():
+    for document in (doc(n_max=BOUND), doc(n_max=4), doc(n_max=10.0)):
+        kept = json.dumps(document)
+        assert accepted(validate, document) == (document["n_max"] == BOUND)
+        assert json.dumps(document) == kept
+
+
+# --- no substitute: nothing of the module is a bound ---
+
+
+def test_a_content_without_the_member_states_no_bound_though_the_harness_has_a_default():
+    default = measurement.N_MAX_DEFAULT
+    assert type(default) is int
+
+    for document in (
+        doc(),
+        doc(tolerance=TOLERANCE, source_commit=COMMIT),
+        doc(nmax=7),
+    ):
+        result = parse(raw(document))
+        assert result.n_max is None
+        assert default not in result
+
+
+def test_nothing_of_the_module_holds_a_bound():
+    default = measurement.N_MAX_DEFAULT
+    held = []
+    for value in vars(instance).values():
+        if type(value) in (tuple, list, set, frozenset):
+            held.extend(value)
+        elif type(value) is dict and value is not vars(instance).get("__builtins__"):
+            held.extend(value.values())
+        else:
+            held.append(value)
+
+    numbers = [value for value in held if type(value) in (int, float)]
+    assert len(numbers) >= 2
+    assert default not in numbers
+    functions = [
+        value
+        for value in vars(instance).values()
+        if inspect.isfunction(value) and value.__module__ == instance.__name__
+    ]
+    assert len(functions) > 10 and n_max_of in functions
+    for function in functions:
+        assert function.__defaults__ is None and function.__kwdefaults__ is None
+    assert Instance._field_defaults == Tolerance._field_defaults == {}
+    written = [
+        node.value
+        for node in ast.walk(ast.parse(inspect.getsource(instance)))
+        if isinstance(node, ast.Constant) and type(node.value) is int
+    ]
+    assert 5 in written and default not in written
+    assert not {"measurement", "harness", "N_MIN", "N_MAX_DEFAULT", "n_max"} & set(
+        vars(instance)
+    )
+
+
 # --- happy: the reader ---
 
 
@@ -1516,7 +1950,7 @@ def test_the_reader_returns_the_record_the_file_embeds(tmp_path, root):
     assert (
         read(root, RUN)
         == parse(content)
-        == Instance(KEY, record(), None, None, {"example": [1, 2]})
+        == Instance(KEY, record(), None, None, None, {"example": [1, 2]})
     )
     assert type(read(root, RUN)) is Instance
     assert snapshot(tmp_path) == before
@@ -1842,9 +2276,142 @@ def test_the_reader_of_the_source_commit_opens_only_the_instance_file(
     assert opened == [FILE, FILE]
 
 
+# --- the reader of the bound of repeats ---
+
+
+def test_the_reader_returns_the_bound_the_file_states(tmp_path, root):
+    members = {"tolerance": TOLERANCE, "source_commit": COMMIT}
+    place(root, raw(doc(**members, n_max=BOUND, example=[1])))
+    before = snapshot(tmp_path)
+
+    found = n_max_of(root, RUN)
+
+    assert found == BOUND and type(found) is int
+    assert found == read(root, RUN).n_max
+    assert n_max_of(str(root), RUN) == found
+    assert hw_profile_of(root, RUN) == record()
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert source_commit_of(root, RUN) == COMMIT
+    assert snapshot(tmp_path) == before
+
+    for bound in (5, 10, 11, MAX):
+        place(root, raw(doc(n_max=bound)))
+        assert n_max_of(root, RUN) == bound
+        assert type(n_max_of(root, RUN)) is int
+
+
+def test_a_run_without_the_member_states_no_bound(tmp_path, root, monkeypatch):
+    others = {"nmax": BOUND, "N_max": BOUND, "n-max": BOUND, "nMax": BOUND}
+    place(root, raw(doc(tolerance=TOLERANCE, source_commit=COMMIT, **others)))
+    place(root, raw(doc(n_max=OTHER_BOUND)), f"runs/{OTHER_RUN}/instance.json")
+    for name in ("N_MAX", "HILCLAW_N_MAX", "N_MAX_DEFAULT"):
+        monkeypatch.setenv(name, str(BOUND))
+    before = snapshot(tmp_path)
+
+    assert type(measurement.N_MAX_DEFAULT) is int
+    assert n_max_of(root, RUN) is None
+    assert read(root, RUN).n_max is None
+    assert read(root, RUN).others == others
+    assert hw_profile_of(root, RUN) == record()
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert source_commit_of(root, RUN) == COMMIT
+    assert n_max_of(root, OTHER_RUN) == OTHER_BOUND
+    assert n_max_of(root, RUN) is None
+    assert snapshot(tmp_path) == before
+
+
+def test_a_bound_replaced_between_two_calls_is_seen_at_the_second(root):
+    place(root, raw(doc(n_max=BOUND)))
+    assert n_max_of(root, RUN) == BOUND
+
+    place(root, raw(doc(n_max=OTHER_BOUND)))
+    assert n_max_of(root, RUN) == OTHER_BOUND
+
+    place(root, raw(doc()))
+    assert n_max_of(root, RUN) is None
+
+    place(root, raw(doc(n_max=4)))
+    invalid(f"{FILE}: {NO_BOUND}int", n_max_of, root, RUN)
+
+    place(root, raw(doc(schema_version=2, n_max=BOUND)))
+    with pytest.raises(UnsupportedVersionError):
+        n_max_of(root, RUN)
+
+    (root / FILE).unlink()
+    with pytest.raises(MissingInstanceError):
+        n_max_of(root, RUN)
+
+    place(root, raw(doc(n_max=5)))
+    assert n_max_of(root, RUN) == 5
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        "4",
+        "0",
+        "-0",
+        "-10",
+        "10.0",
+        "1e1",
+        '"10"',
+        "true",
+        "null",
+        "[10]",
+        "9007199254740992",
+    ],
+)
+def test_no_member_of_a_file_with_an_invalid_n_max_is_used(root, literal):
+    more = (MEMBERS[2], MEMBERS[3])
+    place(root, bounded(str(BOUND), *more))
+    assert n_max_of(root, RUN) == BOUND
+
+    place(root, bounded(literal, *more))
+    for call in READERS:
+        invalid(f"{FILE}: {NO_BOUND}", call, root, RUN)
+
+    place(root, text(VERSION, SECTION, *more))
+    assert n_max_of(root, RUN) is None
+    assert hw_profile_of(root, RUN) == record()
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert source_commit_of(root, RUN) == COMMIT
+
+
+def test_two_runs_state_their_own_bounds(root):
+    place(root, raw(doc(n_max=12)))
+    place(root, raw(doc(n_max=5)), f"runs/{OTHER_RUN}/instance.json")
+    place(root, raw(doc()), "runs/run-c/instance.json")
+
+    assert n_max_of(root, RUN) == 12
+    assert n_max_of(root, OTHER_RUN) == 5
+    assert n_max_of(root, "run-c") is None
+    assert n_max_of(root, RUN) == 12
+
+
+def test_the_reader_of_the_bound_opens_only_the_instance_file(root, monkeypatch):
+    place(root, raw(doc(n_max=BOUND)))
+    place(root, b"{}", f"runs/{RUN}/STATE.json")
+    place(root, raw(doc(n_max=OTHER_BOUND)), f"runs/{OTHER_RUN}/instance.json")
+    opened, real = [], Path.read_bytes
+
+    def read_bytes(path):
+        opened.append(path.relative_to(root).as_posix())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setenv("HILCLAW_DATA_ROOT", "elsewhere")
+
+    assert n_max_of(root, RUN) == BOUND
+    assert opened == [FILE]
+
+    place(root, raw(doc()))
+    assert n_max_of(root, RUN) is None
+    assert opened == [FILE, FILE]
+
+
 # --- error / negative: the four situations of decision 4 ---
 
-READERS = [read, hw_profile_of, tolerance_of, source_commit_of]
+READERS = [read, hw_profile_of, tolerance_of, source_commit_of, n_max_of]
 
 
 def absent(root):
@@ -1920,6 +2487,11 @@ INVALID_FILES = {
     "an abbreviated source_commit": (
         raw(doc(tolerance=TOLERANCE, source_commit=COMMIT[:7])),
         "source_commit: must be",
+    ),
+    "an n_max below 5": (raw(doc(n_max=4)), "n_max: must be"),
+    "an n_max that is no integer": (
+        raw(doc(tolerance=TOLERANCE, source_commit=COMMIT, n_max=10.0)),
+        "n_max: must be",
     ),
 }
 
@@ -2338,6 +2910,31 @@ def test_a_file_invalid_by_its_source_commit_alone_is_run_file_invalid(
         "run_file_invalid",
         InvalidInstanceError,
         "source_commit: must be a str of 40 or of 64 characters",
+    )
+    assert kinds(root) == []
+
+    place(root, raw(repaired))
+    assert tool.function(dict(REQUEST)) == {"example_member": 1}
+    assert kinds(root) == ["step_started", "step_ended"]
+    assert (len(tool.asked), tool.performed) == (1, 1)
+    assert [seen for _, _, seen in tool.asked] == [record()]
+
+
+@pytest.mark.parametrize(
+    "repaired", [doc(), doc(n_max=BOUND)], ids=["removed", "valid"]
+)
+@pytest.mark.parametrize("broken", [4, 0, 10.0, "10", True, None, MAX + 1], ids=repr)
+def test_a_file_invalid_by_its_n_max_alone_is_run_file_invalid(root, broken, repaired):
+    members = {"tolerance": TOLERANCE, "source_commit": COMMIT}
+    place(started(root), raw(doc(**members, n_max=broken)))
+    tool = Tool(root)
+
+    assert_no_step_started(
+        tool,
+        root,
+        "run_file_invalid",
+        InvalidInstanceError,
+        "n_max: must be an int from 5 to",
     )
     assert kinds(root) == []
 
