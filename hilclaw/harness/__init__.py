@@ -9,5 +9,7 @@ the build of a verification executable from it
 (:mod:`hilclaw.harness.verification_build`), the array side of that run
 (:mod:`hilclaw.harness.verification_arrays`) and its Python side over an
 executable that is already built (:mod:`hilclaw.harness.verification`), these last
-two being the two modules that import ``numpy``, and nothing else of the harness.
+two being the two modules that import ``numpy``, the form of a source of seeds
+with the one source of ADR-0021 decision 3 (:mod:`hilclaw.harness.seed_source`),
+and nothing else of the harness.
 """
