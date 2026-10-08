@@ -74,14 +74,15 @@ Conventions of this module, which the four records do not fix:
   commit is handed out as the ``str`` of the file, unchanged. A content
   without the member has ``None`` in that place: it states no source commit,
   and that is no error of the content.
-- The range of ``n_max``, 5 to :data:`hilclaw.keys.MAX_INTEGER` with both
-  included, is ADR-0023 decision 3; here the value is exactly an ``int``, so
-  ``true``, ``10.0`` and ``1e1`` are none, and ``-0`` is read as the integer
-  0, which is below 5. The one rule is reported as a whole,
-  and an ``int`` that breaks it is not shown, as for ``schema_version``. The
-  bound is handed out as the ``int`` of the file, unchanged. A content
-  without the member has ``None`` in that place: it states no bound, and that
-  is no error of the content.
+- What is a value of ``n_max`` is ADR-0023 decision 3 and not a convention:
+  an integer from 5 to :data:`hilclaw.keys.MAX_INTEGER`, both included, so
+  ``true``, ``10.0``, ``1e1`` and ``-0`` are none. The conventions are that a
+  value built in memory must be exactly an ``int`` (a subclass is none), that
+  ``-0`` is refused as the integer 0 it is read as, that the one rule is
+  reported as a whole, and that an ``int`` that breaks it is not shown, as
+  for ``schema_version``. The bound is handed out as the ``int`` of the file,
+  unchanged. A content without the member has ``None`` in that place: it
+  states no bound, and that is no error of the content.
 - The file is read as :mod:`hilclaw.run_journal` reads ``STATE.json``:
   ``run_id`` is checked first, then ``data_root``, which is used as given and
   must be an existing directory (:class:`FileNotFoundError` or
