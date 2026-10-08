@@ -46,13 +46,15 @@ answered with a ``ToolFailure`` of one of the four kinds of ADR-0019 decision
 - ``run_file_unsupported``: :class:`hilclaw.instance.UnsupportedVersionError`.
 - ``run_file_unreadable``: every other :class:`OSError`.
 
-Everything else the reader raises passes through unchanged, a ``ToolFailure``
-and a :class:`BaseException` included, and so does what the selection raises
-for a record that is no valid hw_profile record
-(:class:`hilclaw.keys.InvalidRecordError`): neither is one of the four kinds,
-and :func:`hilclaw.tools.call` answers both as ``tool_crashed`` (ADR-0019
-decision 4). The file is read for an identity with no line only, so an ended
-or an open identity is answered whatever the state of the file.
+Everything else the reader raises passes through unchanged, and so does what
+the selection raises for a record that is no valid hw_profile record
+(:class:`hilclaw.keys.InvalidRecordError`): no kind is given here, and an
+:class:`Exception` among them that is no ``ToolFailure`` is ``tool_crashed``
+at :func:`hilclaw.tools.call` (ADR-0019 decision 4). A ``ToolFailure`` the
+reader raises itself keeps the kind it has, and a :class:`BaseException` that
+is no ``Exception`` is not answered at all. The file is read for an identity
+with no line only, so an ended or an open identity is answered whatever the
+state of the file.
 
 Conventions of this module, which the records do not fix:
 

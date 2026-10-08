@@ -824,6 +824,28 @@ def test_an_ended_and_an_open_identity_are_answered_without_the_reader(root, err
 
 
 @by_class
+@pytest.mark.parametrize("line", ["step_started", "step_ended"])
+def test_the_same_class_out_of_an_append_is_not_answered_with_a_kind(
+    root, monkeypatch, line, error
+):
+    real = events.append
+
+    def append(data_root, run_id, kind, data, **numbers):
+        if kind == line:
+            raise error
+        return real(data_root, run_id, kind, data, **numbers)
+
+    monkeypatch.setattr(events, "append", append)
+    tool = Tool(root)
+    with pytest.raises(type(error)) as caught:
+        tool.function(request())
+    assert caught.value is error
+    assert (len(tool.read), tool.performed) == (1, line == "step_ended")
+    failed, answer = by_call(tool, request(execution=2))
+    assert (failed, answer["error"]["kind"]) == (True, "tool_crashed")
+
+
+@by_class
 @pytest.mark.parametrize("where", ["script", "outcome"])
 def test_the_same_class_out_of_the_step_is_not_answered_and_leaves_it_open(
     root, where, error
