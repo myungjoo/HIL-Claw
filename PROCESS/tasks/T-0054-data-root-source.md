@@ -2,7 +2,7 @@
 id: T-0054
 title: Add the data-root source of ADR-0015 decision 3 (hilclaw/data_root_source.py - the source of the fronts over hilclaw.config.load_data_repo() and the function that asks a source at a call and raises no_data_root), let default_registry take the source its tools are bound to, and let the two fronts pass the configured source
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, FR-13, OD-18, NFR-6, C-3, "#5 A-1", "#5 A-12"]
 dependsOn: [T-0012, T-0038, T-0039, T-0052, T-0053]
@@ -156,3 +156,66 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): ① `hilclaw/` keeps line and functi
 - (unchanged) The rest of P1-8; the integrator items after 2026-10-14 (T-0040, T-0042, T-0046, T-0049 and T-0052 Follow-ups); OD-18 sub-questions ①, ③ and ⑤; the T-0047, T-0048, T-0050 and T-0051 follow-ups.
 
 ## Result
+**DONE.** PR https://github.com/myungjoo/HIL-Claw/pull/47, squash commit `6d4e873` on `main` (branch `claude/T-0054-data-root-source`, final head `59459d5`, deleted remotely and locally after `MERGED`). This task ticks **no** PLAN checkbox; `default_registry` still returns an empty registry.
+
+§3-5 check before starting: no commit with `Task: T-0054` on `origin/main`, no PR for T-0054, no open PR. No comment on #5 after the ADR-0015 notice (issuecomment-6040392389).
+
+### Public API as landed
+- `hilclaw/data_root_source.py` (new, 74 lines)
+  - `configured()` -> `pathlib.Path`: `hilclaw.config.load_data_repo().local_path`, read from the default configuration file and `os.environ` at each call. Raises `hilclaw.config.ConfigError` as the loader does; no check that the directory exists; keeps nothing.
+  - `obtain(source)` -> `pathlib.Path`: calls `source` once and returns the data root it names. Raises `hilclaw.tools.ToolFailure` of kind `hilclaw.tools.KIND_NO_DATA_ROOT` when the source raises an `Exception`, returns no path or an empty `str`, or names what is no existing directory. Raises `TypeError` when `source` is not callable. It touches the file system only through `os.path.isdir`.
+  - Messages: `the data-root source failed: <Type>: <text>` (the type alone when the text cannot be formed), `the data-root source named no path: got <Type>`, `the data root is not an existing directory: <path>`.
+- `hilclaw.tools.default_registry(data_root_source)`: one required parameter, no default; `TypeError` when it is not callable; building never calls it. `hilclaw/tools.py` imports neither `hilclaw.config` nor `hilclaw.data_root_source`.
+- `hilclaw/__main__.py` and `hilclaw/mcp_front.py`: `main` without a `registry` builds `tools.default_registry(data_root_source.configured)`. A front never calls the source. No kind, exit status or JSON-RPC code was added; `no_data_root` arrives as every tool failure of a call does (exit status 3 / text block with `isError` true).
+- How a tool is bound (shown by the test-only tool): the tool function is built with the source in reach (closure) and calls `obtain(source)` itself, after it has checked its request. There is no wrapper.
+
+### Provisional choices (ADR-0015 decision 3 leaves them to the code task)
+- `default_registry` stays the one builder and the fronts pass the source: `tools.py` keeps reading no configuration and no import cycle arises.
+- No wrapper around a tool function: a refusal (`invalid_request`) still comes before the data root is asked (decision 2).
+- Names `configured` and `obtain`; the source of the fronts is a plain function: nothing to hold between calls.
+- Every `Exception` of a source is `no_data_root`, a `ToolFailure` raised by a source included: the record gives a failing source one kind. A `BaseException` that is no `Exception` passes through, as in `tools.call`.
+- Chaining: the failure is chained to the error of the source. When the text of that error cannot be formed, it is chained to the error of forming the text, whose `__context__` is the error of the source.
+- A source may return a `str` or an `os.PathLike` giving a `str`. Anything else (`None`, `bytes`, a number, a `DataRepo`, a path object that gives `bytes` or raises) and an empty `str` are `no_data_root`: an empty `str` must not be read as the current directory. The message names the type of the value only (no `repr`).
+- A relative path is used as given, not resolved: the loader already returns an absolute one.
+- A symbolic link to a directory counts as an existing directory and an embedded NUL does not, both as `os.path.isdir` answers.
+- A `source` that is not callable is a `TypeError` from `obtain`: a defect of the tool's author.
+- The message repeats the text of a `ConfigError`: it names the file and the key the caller must correct.
+- No criterion disagreed with a record.
+
+### Review (context-isolated `dev-reviewer`, 3 rounds)
+- Round 1, head `cabf2b3`: **Approve** — https://github.com/myungjoo/HIL-Claw/pull/47#issuecomment-6051060690
+  - Low 1: a returned path object whose `__fspath__` raises, or a value whose `repr` raises, arrived as `tool_crashed`. Fixed in `3010845`.
+  - Low 2: no test failed when a front passed another source. One case per front added in `3010845`.
+  - Info: absolute paths appear in the message. Kept, as stated in the PR body.
+  - Response: https://github.com/myungjoo/HIL-Claw/pull/47#issuecomment-6051082686
+- Round 2, head `3010845`: **Approve** — https://github.com/myungjoo/HIL-Claw/pull/47#issuecomment-6051125115
+  - Low 1: a source error whose `__str__` raises arrived as `tool_crashed`. Fixed in `59459d5`.
+  - Nit 1: a test call wrote to the real standard error. Fixed in `59459d5`.
+  - Response: https://github.com/myungjoo/HIL-Claw/pull/47#issuecomment-6051147952
+- Round 3, head `59459d5`: **Approve**, no finding and no nit — https://github.com/myungjoo/HIL-Claw/pull/47#issuecomment-6051185143
+  - Info, no change asked: a source that returns a `str` subclass whose `__bool__` or `__format__` raises still arrives as `tool_crashed`.
+- The reviewer agreed in every round with the planner's readings: a code task without a record, `default_registry` as the builder, a test-only tool as a sufficient vehicle, A-13 "data-plane schema change" and "new dependency" not applying. It found nothing of Boundaries or of slice 3 decided, and no security concern.
+
+### Tests
+- New `tests/test_data_root_source.py`: 64 cases plus 1 symbolic-link case that is skipped on Windows. It covers happy, branch, error and negative cases through `obtain`, `configured`, `tools.call`, both fronts in memory and child processes of both fronts.
+- Existing tests whose expectation changed: `test_default_registry_is_empty_and_not_shared` (`tests/test_tools.py`) and `test_the_fixed_tool_set_is_empty_today` (`tests/test_mcp_front.py`) pass a source to `default_registry`. No assertion was weakened.
+- New cases in existing files:
+  - `tests/test_tools.py`: building and reading never call the source; a source that is not callable; the parameter has no default.
+  - `tests/test___main__.py` and `tests/test_mcp_front.py`: the default registry is built with `data_root_source.configured`; it answers an unknown tool and lists no tool while the configuration cannot be read.
+- Coverage: `python -m trace --count --missing --coverdir <outside the repository> --module pytest tests/test_data_root_source.py` shows no missing line in `hilclaw/data_root_source.py`. The changed lines of the three other modules were not measured; the new cases in their test files call them. Nothing was installed.
+
+### Verification
+- Local on the final head: `python -m pytest` 5251 passed, 147 skipped (before, on `84ea4b1`: 5175 passed, 146 skipped; the new skip is the symbolic-link case on Windows). `python -m ruff check .` and `python -m ruff format --check .` clean.
+- `git grep -n -E "load_data_repo|hilclaw.config|import config" -- hilclaw/`: `hilclaw/data_root_source.py` only, beside `hilclaw/config.py`.
+- `git grep -n "default_registry()" -- hilclaw/ tests/`: no match.
+- `git ls-files --eol`: `i/lf` for the 8 files. `git status --short` after the tests: empty. The diff against `origin/main` lists only the 8 files of `touchesFiles`.
+- Line counts after the change: `hilclaw/data_root_source.py` 74, `hilclaw/tools.py` 280, `hilclaw/__main__.py` 102, `hilclaw/mcp_front.py` 246. The four non-test files stay inside the cap.
+- CI on the PR, final head `59459d5`: five successful checks — `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)` — https://github.com/myungjoo/HIL-Claw/actions/runs/37719677212. No failed CI run on the PR.
+- `push` run on `main` for `6d4e873`: `success` — https://github.com/myungjoo/HIL-Claw/actions/runs/37720002020.
+
+Language: Python, because the modules it joins are Python.
+
+### Follow-ups left
+- (reviewer, with the first tool that needs the data plane) A child-process case through the **default** registry, showing that `python -m hilclaw` and `python -m hilclaw.mcp_front` answer from the configured directory and answer `no_data_root`. It cannot be written while the fixed set is empty.
+- (info, no action asked) A source returning a `str` subclass whose `__bool__` or `__format__` raises is `tool_crashed`; only a source built on purpose can do it.
+- (next, unchanged) Slice ③: the path of a journaled tool over `hilclaw/journaled_step.py`, asking the data root through `data_root_source.obtain`.
