@@ -22,6 +22,8 @@ file or directory; it defines no field or content of any file named here; it
 builds no ``run_id`` and does not know whether one is unique; it does not
 verify that a key directory name belongs to a record; and it enforces neither
 the single writer of a directory nor any isolation (ADR-0004 decision 10).
+It reads no stamp of a run: :data:`LAYOUT_VERSION` is the layout this module
+builds and not what a run states (ADR-0024 decisions 4 and 5).
 """
 
 import re

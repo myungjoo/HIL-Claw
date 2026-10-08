@@ -1,4 +1,4 @@
-"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023).
+"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024).
 
 ``ARCHITECTURE/decisions/ADR-0018-od8-instance-record-hw-profile.md`` fixes the
 file as a whole (decision 2), the member ``hw_profile`` in which a run states
@@ -18,15 +18,22 @@ member ``n_max``, in which a run states the upper bound of repeats of one
 timing measurement (decisions 2 and 3), says that a valid file may lack it,
 that a present one must be valid and that no value stands in for an absent
 one (decision 4), and says where the bound a run states is read from
-(decision 5). This module is those rules: :func:`parse` and :func:`validate`
-are pure functions of the bytes of a content and of a parsed document, and
-:func:`read`, :func:`hw_profile_of`, :func:`tolerance_of`,
-:func:`source_commit_of` and :func:`n_max_of` read the file of a run.
+(decision 5).
+``ARCHITECTURE/decisions/ADR-0024-od8-instance-record-layout-version.md`` adds
+no member and no rule of validity: the file states the layout version of its
+run through its ``schema_version`` (decision 3), so a file this module
+accepts states layout version 1, and the record says when a reader has the
+layout version of a run and from where it is read (decisions 4 and 5). This
+module is those rules: :func:`parse` and :func:`validate` are pure functions
+of the bytes of a content and of a parsed document, and :func:`read`,
+:func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
+:func:`n_max_of` and :func:`layout_version_of` read the file of a run.
 :func:`hw_profile_of` has the call form of the parameter ``hw_profile_of`` of
 :func:`hilclaw.hw_tool.tool_function`; nothing here binds it,
-:func:`tolerance_of`, :func:`source_commit_of` or :func:`n_max_of` to a tool.
+:func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of` or
+:func:`layout_version_of` to a tool.
 
-Conventions of this module, which the four records do not fix:
+Conventions of this module, which the five records do not fix:
 
 - A content is exactly ``bytes`` (:class:`TypeError` otherwise: the encoding is
   part of validity). Values are as :func:`json.loads` returns them, an integer
@@ -83,6 +90,12 @@ Conventions of this module, which the four records do not fix:
   for ``schema_version``. The bound is handed out as the ``int`` of the file,
   unchanged. A content without the member has ``None`` in that place: it
   states no bound, and that is no error of the content.
+- Which layout version a schema version states is ADR-0024 decision 3 and not
+  a convention: schema version 1 states layout version 1. The conventions are
+  that the pairing is a mapping keyed by the schema version with the number
+  written in it, that the layout version is handed out as an ``int`` by
+  :func:`layout_version_of`, which goes through :func:`read`, and that
+  :class:`Instance` has no field for it, as it is no member.
 - The file is read as :mod:`hilclaw.run_journal` reads ``STATE.json``:
   ``run_id`` is checked first, then ``data_root``, which is used as given and
   must be an existing directory (:class:`FileNotFoundError` or
@@ -137,6 +150,22 @@ and what a call answers when no bound is stated is not said here; "not
 stated" is no error of the content here either, this module gives it no
 tool-failure kind, and :func:`n_max_of` is bound to no tool and to no timing
 run.
+Of the layout version it gives what the ``schema_version`` of a valid file
+states by the pairing of ADR-0024 decision 3 and nothing else (decisions 4
+and 5). It defines no member for the layout version and interprets none: a
+member named ``layout_version`` is passed over, is handed back among the
+members not defined and is no stamp (decision 6). The number is the one the
+record pairs with schema version 1, written here; it is not taken from
+:data:`hilclaw.layout.LAYOUT_VERSION`, which this module does not read. It
+compares the stamp with nothing and refuses no run on that ground. It does
+not check that the tree of the run has the stated layout or which of its
+files exist, and the stamp says nothing about ``db/``, about ``blobs/`` or
+about the content of any other file (decision 2). For a file of another
+``schema_version`` it has no layout version and infers none: neither that the
+layout differs nor that it is the same. Which tool or component reads the
+stamp, at which moment, and in which order a call reads the files of a run is
+not said here (OD-8 sub-question 22), and :func:`layout_version_of` is bound
+to no tool.
 It reads no other file, so the stored record of the key below ``db/`` is not
 read or compared (ADR-0018 decision 4) and no reader here needs it to exist; how
 the two records relate is open (OD-8 sub-question 18). None of its errors is a
@@ -168,6 +197,7 @@ _SECTION = ("key", "record")
 _TOLERANCE = ("rtol", "atol")
 _COMMIT_LENGTHS = (40, 64)
 _COMMIT_CHARACTERS = frozenset("0123456789abcdef")
+_STATED_LAYOUT = {SCHEMA_VERSION: 1}
 
 
 class InvalidInstanceError(ValueError):
@@ -282,7 +312,7 @@ def validate(document):
     measurement was or can be taken under the bound. Its other members are
     not looked at. The rules for the text (the encoding, a member name twice)
     cannot be checked on a parsed value. The four records are ADR-0018,
-    ADR-0020, ADR-0022 and ADR-0023.
+    ADR-0020, ADR-0022 and ADR-0023; ADR-0024 adds no rule of validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
@@ -394,6 +424,28 @@ def n_max_of(data_root, run_id):
     version.
     """
     return read(data_root, run_id).n_max
+
+
+def layout_version_of(data_root, run_id):
+    """Return the layout version the run ``run_id`` states (ADR-0024 decisions 3 to 5).
+
+    ``runs/<run_id>/instance.json`` is read through :func:`read`, as a whole
+    and at each call, and must be valid. No member holds the layout version:
+    a valid file of schema version 1 states layout version 1 through its
+    ``schema_version`` (decision 3), and that number, the ``int`` 1, is
+    returned, from the pairing this module holds per schema version. Nothing
+    stands in (decision 4): the result does not depend on
+    :data:`hilclaw.layout.LAYOUT_VERSION`, the layout that module builds,
+    which is not read here, nor on another run, nor on a member such as
+    ``layout_version``, which is passed over and is no stamp. The result is
+    compared with nothing and no run is refused for it; that the tree of the
+    run has that layout is not checked. Raises what :func:`read` raises, so
+    no layout version is returned, and none is inferred, for a missing or
+    unreadable file, for an invalid file, though it may hold
+    ``"schema_version": 1``, or for one of another version.
+    """
+    read(data_root, run_id)
+    return _STATED_LAYOUT[SCHEMA_VERSION]
 
 
 def _fail(place, rule, value):
