@@ -45,6 +45,10 @@ position beyond the log) is found only by reading: it is no refused request,
 and what ``journaled_step.run`` raises for it passes through with no kind given
 here (OD-18 sub-question 4, open).
 
+The tool function of a journaled HW tool has one moment more, the selection of
+a backend between the lookup and the start line (ADR-0016 decision 2):
+:mod:`hilclaw.hw_tool` builds it over the same check of the request.
+
 It registers nothing, names no tool, no step, no axis and no result member and
 reads no configuration.
 """
@@ -85,12 +89,22 @@ def tool_function(*, step, numbers, source, check, perform):
     :func:`hilclaw.data_root_source.obtain` and
     :func:`hilclaw.journaled_step.run` raise. It does not modify the request.
     """
+
+    def carry_out(data_root, run_id, identity, request):
+        return journaled_step.run(
+            data_root, run_id, identity, lambda: perform(data_root, request)
+        )
+
+    return _built(step, numbers, carry_out, source=source, check=check, perform=perform)
+
+
+def _built(step, numbers, carry_out, *, source, check, **others):
     journal.step_identity(step, 1)
     if type(numbers) is not tuple:
         raise TypeError(f"numbers must be a tuple, got {type(numbers).__name__}")
     if numbers != _NUMBERS[: len(numbers)]:
         raise ValueError(f"numbers must be a prefix of {_NUMBERS}, got {numbers}")
-    for name, value in (("source", source), ("check", check), ("perform", perform)):
+    for name, value in {"source": source, "check": check, **others}.items():
         if not callable(value):
             raise TypeError(f"{name} must be callable, got {type(value).__name__}")
 
@@ -98,9 +112,7 @@ def tool_function(*, step, numbers, source, check, perform):
         run_id, identity = _checked(step, numbers, request)
         check(request)
         data_root = data_root_source.obtain(source)
-        return journaled_step.run(
-            data_root, run_id, identity, lambda: perform(data_root, request)
-        )
+        return carry_out(data_root, run_id, identity, request)
 
     return journaled
 
