@@ -2,7 +2,7 @@
 id: T-0014
 title: Add the coverage gate for hilclaw/ (line >= 80%, function >= 80%) to CI
 phase: P0.5
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: ["#5 D12", "#9"]
 dependsOn: [T-0003, T-0009, T-0011]
