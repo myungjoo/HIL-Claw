@@ -1,4 +1,4 @@
-"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031).
+"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032).
 
 ``ARCHITECTURE/decisions/ADR-0018-od8-instance-record-hw-profile.md`` fixes the
 file as a whole (decision 2), the member ``hw_profile`` in which a run states
@@ -35,18 +35,25 @@ the member ``op_signature``, in which a run states an op_signature record and
 the key derived from it (decisions 2 and 3), says that a valid file may lack
 it, that a present one must be valid and that nothing stands in for an absent
 one (decision 5), and says where the op_signature a run states is read from
-(decision 6). This module is those rules: :func:`parse` and :func:`validate`
-are pure functions of the bytes of a content and of a parsed document, and
-:func:`read`, :func:`hw_profile_of`, :func:`tolerance_of`,
-:func:`source_commit_of`, :func:`n_max_of`, :func:`candidates_per_round_of`,
-:func:`op_signature_of` and :func:`layout_version_of` read the file of a run.
+(decision 6).
+``ARCHITECTURE/decisions/ADR-0032-od8-instance-record-round-budget.md`` adds
+the member ``round_budget``, in which a run states the budget of loop
+iterations the instance was started with, as a number of rounds (decisions 2
+and 3), says that a valid file may lack it, that a present one must be valid
+and that no value stands in for an absent one (decision 4), and says where
+the round budget a run states is read from (decision 5). This module is those
+rules: :func:`parse` and :func:`validate` are pure functions of the bytes of a
+content and of a parsed document, and :func:`read`, :func:`hw_profile_of`,
+:func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
+:func:`candidates_per_round_of`, :func:`op_signature_of`,
+:func:`round_budget_of` and :func:`layout_version_of` read the file of a run.
 :func:`hw_profile_of` has the call form of the parameter ``hw_profile_of`` of
 :func:`hilclaw.hw_tool.tool_function`; nothing here binds it,
 :func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
-:func:`candidates_per_round_of`, :func:`op_signature_of` or
-:func:`layout_version_of` to a tool.
+:func:`candidates_per_round_of`, :func:`op_signature_of`,
+:func:`round_budget_of` or :func:`layout_version_of` to a tool.
 
-Conventions of this module, which the seven records do not fix:
+Conventions of this module, which the eight records do not fix:
 
 - A content is exactly ``bytes`` (:class:`TypeError` otherwise: the encoding is
   part of validity). Values are as :func:`json.loads` returns them, an integer
@@ -58,15 +65,17 @@ Conventions of this module, which the seven records do not fix:
   ``schema_version``, then ``hw_profile``, then ``tolerance`` when the document
   holds it, then ``source_commit`` when the document holds it, then ``n_max``
   when the document holds it, then ``candidates_per_round`` when the document
-  holds it, then ``op_signature`` when the document holds it: the order in
-  which the records defined them. A content this interpreter cannot read (an
-  integer too long for it anywhere in the text, nesting too deep) raises
+  holds it, then ``op_signature`` when the document holds it, then
+  ``round_budget`` when the document holds it: the order in which the records
+  defined them. A content this interpreter cannot read (an integer too long
+  for it anywhere in the text, nesting too deep) raises
   :class:`InvalidInstanceError` too, though it is a limit of this reader and
   not damage; the limits stay as the interpreter has them. A number beyond the
   float range in a member not defined here is read as an infinity and is no
-  error, as :mod:`hilclaw.run_state` has it; in ``tolerance``, as ``n_max`` and
-  as ``candidates_per_round`` it makes the content invalid (ADR-0020 decision
-  4, ADR-0023 decision 3, ADR-0028 decision 3).
+  error, as :mod:`hilclaw.run_state` has it; in ``tolerance``, as ``n_max``,
+  as ``candidates_per_round`` and as ``round_budget`` it makes the content
+  invalid (ADR-0020 decision 4, ADR-0023 decision 3, ADR-0028 decision 3,
+  ADR-0032 decision 3).
 - ``schema_version`` is an integer of ADR-0001, from 0 to
   :data:`hilclaw.keys.MAX_INTEGER`: a value outside that range is no integer of
   the records and makes the content invalid, it is not another version. ``-0``
@@ -132,6 +141,17 @@ Conventions of this module, which the seven records do not fix:
   The number is handed out as the ``int`` of the file, unchanged. A content
   without the member has ``None`` in that place: it states no number of
   candidates per round, and that is no error of the content.
+- What is a value of ``round_budget`` is ADR-0032 decision 3 and not a
+  convention: an integer from 1 to :data:`hilclaw.keys.MAX_INTEGER`, both
+  included, so ``true``, ``8.0``, ``8e0``, ``0`` and ``-0`` are none, and
+  ``1``, ``4``, ``11`` and ``20`` are values. The conventions are that a value
+  built in memory must be exactly an ``int`` (a subclass is none), that ``-0``
+  is refused as the integer 0 it is read as, that the one rule is reported as
+  a whole, and that an ``int`` that breaks it is not shown, as for
+  ``schema_version``. The round budget is handed out as the ``int`` of the
+  file, unchanged. That a content without the member states no round budget,
+  and that this is no error of the content, is ADR-0032 decision 4 and not a
+  convention; the convention is that it has ``None`` in that place.
 - Which layout version a schema version states is ADR-0024 decision 3 and not
   a convention: schema version 1 states layout version 1. The conventions are
   that the pairing is a mapping keyed by the schema version with the number
@@ -150,10 +170,11 @@ Conventions of this module, which the seven records do not fix:
   the read is an :class:`OSError`, as every other failure of the file system.
 
 It writes, creates and removes no file and composes no content. It defines no
-member besides the seven (``schema_version``, ``hw_profile``, ``tolerance``,
-``source_commit``, ``n_max``, ``candidates_per_round`` and ``op_signature``)
-and interprets no other: a file it accepts is not thereby a complete instance
-record, and not enough to start a run (ADR-0018 decisions 1 and 2).
+member besides the eight (``schema_version``, ``hw_profile``, ``tolerance``,
+``source_commit``, ``n_max``, ``candidates_per_round``, ``op_signature`` and
+``round_budget``) and interprets no other: a file it accepts is not thereby a
+complete instance record, and not enough to start a run (ADR-0018 decisions 1
+and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
 default and substitutes no value (ADR-0020 decision 3), does not check that a
 run is of the first case, and gives the member no meaning for a run of another
@@ -235,6 +256,35 @@ member and at which moment is not said here (ADR-0031 decision 6 and
 Boundaries); "not stated" is no error of the content here either, this
 module gives it no tool-failure kind, and :func:`op_signature_of` is bound to
 no tool, to no spec and to nothing below ``db/``.
+Of the round budget it gives what the file states and nothing else (ADR-0032
+decisions 4 and 5): it holds no default and substitutes no value for a member
+that is absent, no number, no infinity or other sign of "unlimited", no
+constant of this module and nothing taken from another member, from another
+file of the run, from a count of round directories or from another run. It
+does not read "not stated" as "unlimited", as a default or as zero, and it
+concludes neither that the run may go on without end nor that it may not
+begin (ADR-0032 decision 4). The lower end is the number 1 of ADR-0032
+decision 3, written here, and there is no upper end below
+:data:`hilclaw.keys.MAX_INTEGER`: the module holds no range of the cap of the
+initial runs (#5 B-4, a budget of 5 to 10 rounds), which ADR-0032 decision 3
+reads as no rule of the file, so 1, 4, 11 and 20 are values as 5 and 10 are.
+It checks the form of the member only. It does not read, import or compare
+``STATE.json``, the journal or the spend view, and it concludes nothing from
+the member and a ``round`` together (ADR-0032 decision 5). It counts nothing,
+says nothing of what counts against the budget, stops nothing and ends no run
+(ADR-0032 decisions 2 and 5). It does not say that the run had, has or will
+have that many rounds. It makes the member no number of candidates per round
+and no ``n_max``, no number of coder calls, of specs, of attempts or of
+repair calls, no amount of tokens, of time or of hardware quota and no target
+metric, and it names no other budget axis (ADR-0032 decision 2 and
+Boundaries). A file it accepts need not state a round budget; what counts
+against a stated one, whether an instance may start with no budget axis and
+what ends a run whose valid file states none, is open (OD-8 sub-question 29).
+Which tool or component reads the member, at which moment, and what follows
+when no round budget is stated is not said here (ADR-0032 decision 5 and
+Boundaries); "not stated" is no error of the content here either, this module
+gives it no tool-failure kind, and :func:`round_budget_of` is bound to no
+tool, to no ``STATE.json`` and to nothing that ends a run.
 Of the layout version it gives what the ``schema_version`` of a valid file
 states by the pairing of ADR-0024 decision 3 and nothing else (decisions 4
 and 5). It defines no member for the layout version and interprets none: a
@@ -295,6 +345,7 @@ _DEFINED = (
     "n_max",
     "candidates_per_round",
     "op_signature",
+    "round_budget",
 )
 _SECTION = ("key", "record")
 _TOLERANCE = ("rtol", "atol")
@@ -306,8 +357,8 @@ _STATED_LAYOUT = {SCHEMA_VERSION: 1}
 class InvalidInstanceError(ValueError):
     """A content, a document or a path breaks a rule; the message names it.
 
-    The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028
-    and ADR-0031 and the conventions of this module.
+    The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
+    ADR-0031 and ADR-0032 and the conventions of this module.
     """
 
 
@@ -355,7 +406,9 @@ class Instance(NamedTuple):
     without that member. ``candidates_per_round`` is the ``int`` of the member
     ``candidates_per_round``, or ``None`` for a content without that member.
     ``op_signature`` is an :class:`OpSignature`, or ``None`` for a content
-    without the member ``op_signature``.
+    without the member ``op_signature``. ``round_budget`` is the ``int`` of
+    the member ``round_budget``, or ``None`` for a content without that
+    member.
     No field has a default. ``others`` is the last field.
     """
 
@@ -366,6 +419,7 @@ class Instance(NamedTuple):
     n_max: int | None
     candidates_per_round: int | None
     op_signature: OpSignature | None
+    round_budget: int | None
     others: dict
 
 
@@ -392,14 +446,18 @@ def parse(content):
     ``op_signature`` (ADR-0031 decision 3), its ``key`` the ``str`` and its
     ``record`` the ``dict`` parsed from this content, or ``None`` when the
     content has no such member, and nothing is substituted then either, no
-    record and no key;
+    record and no key; ``round_budget`` is the ``int`` of the member
+    ``round_budget`` as the content states it (ADR-0032 decision 3), not
+    clamped to a range, rounded or replaced, or ``None`` when the content has
+    no such member, and no value is substituted then either: ``None`` is not
+    "unlimited", not a default and not zero (ADR-0032 decision 4);
     ``others`` holds every top-level member that is none of
     ``schema_version``, ``hw_profile``, ``tolerance``, ``source_commit``,
-    ``n_max``, ``candidates_per_round`` and ``op_signature``, as parsed and
-    not interpreted, whatever its name and value (``tolerence``, a top-level
-    ``rtol``, ``source-commit``, ``nmax``, ``candidates``, ``op`` or ``task``
-    among them). Any order of members and any white space of JSON are
-    accepted.
+    ``n_max``, ``candidates_per_round``, ``op_signature`` and
+    ``round_budget``, as parsed and not interpreted, whatever its name and
+    value (``tolerence``, a top-level ``rtol``, ``source-commit``, ``nmax``,
+    ``candidates``, ``op``, ``task``, ``rounds`` or ``budget`` among them).
+    Any order of members and any white space of JSON are accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
     a byte order mark, is not exactly one JSON text (the tokens ``NaN``,
@@ -424,7 +482,7 @@ def parse(content):
 
 
 def validate(document):
-    """Check ``document``, a parsed ``instance.json``, against the six records.
+    """Check ``document``, a parsed ``instance.json``, against the seven records.
 
     ``document`` must be a ``dict`` with ``schema_version`` (an ``int`` from 0
     to :data:`hilclaw.keys.MAX_INTEGER`) and, at version 1, ``hw_profile``: a
@@ -455,19 +513,23 @@ def validate(document):
     ``str``, the name derived from it (ADR-0031 decisions 3 and 5): for a
     value built in memory, a subclass of ``dict`` and one of ``str`` are
     none. Only that is checked: the member is compared with no spec, with no
-    file below ``db/`` and with no other member. Its other
-    members are not looked at. The rules for the text (the encoding, a member
-    name twice) cannot be checked on a parsed value. The six records are
-    ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028 and ADR-0031; ADR-0024
-    adds no rule of validity.
+    file below ``db/`` and with no other member. It may hold
+    ``round_budget``, which is then exactly an ``int`` from 1 to
+    :data:`hilclaw.keys.MAX_INTEGER`, both included (ADR-0032 decisions 3 and
+    4): for a value built in memory, a ``bool``, a ``float`` such as ``8.0``
+    and a subclass of ``int`` are none. Only that form is checked: the member
+    is compared with no other member, with no other file and with no range a
+    run is started in. Its other members are not looked at. The rules for the
+    text (the encoding, a member name twice) cannot be checked on a parsed
+    value. The seven records are ADR-0018, ADR-0020, ADR-0022, ADR-0023,
+    ADR-0028, ADR-0031 and ADR-0032; ADR-0024 adds no rule of validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
     ``tolerance.rtol``, ``source_commit``, ``n_max``,
-    ``candidates_per_round`` or ``op_signature.key``). The version comes
-    first: an integer other
-    than :data:`SCHEMA_VERSION` raises :class:`UnsupportedVersionError`
-    before any other member is looked at.
+    ``candidates_per_round``, ``op_signature.key`` or ``round_budget``). The
+    version comes first: an integer other than :data:`SCHEMA_VERSION` raises
+    :class:`UnsupportedVersionError` before any other member is looked at.
     """
     _checked(document)
 
@@ -518,10 +580,10 @@ def hw_profile_of(data_root, run_id):
     by ADR-0001 and new at each call, which the caller may hand to
     :func:`hilclaw.backends.select`. Raises what :func:`read` raises, so
     :class:`InvalidInstanceError` also for a file whose ``tolerance``,
-    ``source_commit``, ``n_max``, ``candidates_per_round`` or
-    ``op_signature`` is invalid: no member of an invalid file is used
+    ``source_commit``, ``n_max``, ``candidates_per_round``, ``op_signature``
+    or ``round_budget`` is invalid: no member of an invalid file is used
     (ADR-0020 decision 3, ADR-0022 decision 5, ADR-0023 decision 4, ADR-0028
-    decision 4, ADR-0031 decision 5).
+    decision 4, ADR-0031 decision 5, ADR-0032 decision 4).
     """
     return read(data_root, run_id).hw_profile
 
@@ -621,6 +683,31 @@ def op_signature_of(data_root, run_id):
     return read(data_root, run_id).op_signature
 
 
+def round_budget_of(data_root, run_id):
+    """Return the round budget the run ``run_id`` states, or ``None`` when it states none.
+
+    It is the ``round_budget`` of what :func:`read` returns (ADR-0032
+    decision 5): the ``int`` of the member ``round_budget`` of
+    ``runs/<run_id>/instance.json``, from 1 to
+    :data:`hilclaw.keys.MAX_INTEGER`, as the file states it at this call, or
+    ``None`` for a valid file without that member. The member states the
+    budget of loop iterations the instance was started with, as a number of
+    rounds (ADR-0032 decision 2). ``None`` says that no round budget is
+    stated: it is not "unlimited", not a default and not zero, and no value
+    stands in for it (ADR-0032 decision 4), no number, no infinity, no
+    constant of this module, nothing taken from another member or from
+    another file of the run and not the round budget of another run. Only
+    the instance file is read, and the number is compared with nothing: not
+    with the ``round`` of a ``STATE.json`` beside it, with the spend view or
+    with another member, so nothing is reported or refused because a run is
+    at or beyond the number, and what counts against the budget is not said
+    here. Raises what :func:`read` raises, so no round budget is returned,
+    and none is inferred, for a missing, unreadable or invalid file or one
+    of another version.
+    """
+    return read(data_root, run_id).round_budget
+
+
 def layout_version_of(data_root, run_id):
     """Return the layout version the run ``run_id`` states (ADR-0024 decisions 3 to 5).
 
@@ -675,8 +762,13 @@ def _checked(document):
     if "op_signature" in document:
         section = document["op_signature"]
         op = OpSignature(*_keyed("op_signature", section, keys.op_signature_key))
+    budget = None
+    if "round_budget" in document:
+        budget = _round_budget(document["round_budget"])
     others = {name: value for name, value in document.items() if name not in _DEFINED}
-    return Instance(key, record, tolerance, commit, n_max, candidates, op, others)
+    return Instance(
+        key, record, tolerance, commit, n_max, candidates, op, budget, others
+    )
 
 
 def _keyed(place, section, derive):
@@ -744,6 +836,12 @@ def _n_max(value):
 def _candidates_per_round(value):
     if type(value) is not int or not 1 <= value <= _MAX:
         _fail("candidates_per_round", f"an int from 1 to {_MAX}", value)
+    return value
+
+
+def _round_budget(value):
+    if type(value) is not int or not 1 <= value <= _MAX:
+        _fail("round_budget", f"an int from 1 to {_MAX}", value)
     return value
 
 
