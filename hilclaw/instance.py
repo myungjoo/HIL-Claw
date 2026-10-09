@@ -188,16 +188,16 @@ Conventions of this module, which the ten records do not fix:
   of 1 to 255 characters, each one from U+0020 to U+007E, so the empty
   string, a string that holds a line feed, a tab or a letter of another
   script and everything that is no string are none, and a string of spaces
-  only is a value. That each is handed out as the ``str`` of the file,
-  unchanged, with no case folded and no space removed, is decision 3 too.
-  The conventions are that a value built in memory must be exactly a ``str``,
-  that the one rule is reported as a whole, that a ``str`` that breaks it is
-  shown as every ``str`` is, a long one shortened, and that the rule is
-  written here and agrees with the *string* of :mod:`hilclaw.keys`, of which
-  no private name is used. That a content without one of the two states no
-  owner or no project, and that this is no error of the content, is ADR-0034
-  decision 4 and not a convention; the convention is that it has ``None`` in
-  that place.
+  only is a value. That no case is folded and no space removed is decision
+  3 too. The conventions are that a value built in memory must be exactly a
+  ``str``, that the one rule is reported as a whole, that a ``str`` that
+  breaks it is shown as every ``str`` is, a long one shortened, that the rule
+  is written here and agrees with the *string* of :mod:`hilclaw.keys`, of
+  which no private name is used, and that each member is handed out as the
+  ``str`` of the file, unchanged. That a content without one of the two
+  states no owner or no project, and that this is no error of the content, is
+  ADR-0034 decision 4 and not a convention; the convention is that it has
+  ``None`` in that place.
 - Which layout version a schema version states is ADR-0024 decision 3 and not
   a convention: schema version 1 states layout version 1. The conventions are
   that the pairing is a mapping keyed by the schema version with the number
@@ -906,8 +906,8 @@ def owner_of(data_root, run_id):
     to 255 printable ASCII characters, as the file states it at this call,
     unchanged, or ``None`` for a valid file without that member. The member
     states the owner the instance was started with, as a name, and no more
-    (ADR-0034 decision 2): the name is no identity, is checked against
-    nothing, and no right follows from it. ``None`` says that the file states
+    (ADR-0034 decision 2): the name is no identity, only its form is
+    checked, and no right follows from it. ``None`` says that the file states
     no owner, not that the run has none: it is no default and no anonymous or
     shared value, and nothing stands in for it (ADR-0034 decision 4), not the
     user name of a process, not an author or a committer, not a GitHub
@@ -930,8 +930,8 @@ def project_of(data_root, run_id):
     1 to 255 printable ASCII characters, as the file states it at this call,
     unchanged, or ``None`` for a valid file without that member. The member
     states the project the instance was started with, as a name, and no more
-    (ADR-0034 decision 2): the name says nothing about the run itself, is
-    checked against nothing, and no right follows from it. ``None`` says that
+    (ADR-0034 decision 2): the name says nothing about the run itself, only
+    its form is checked, and no right follows from it. ``None`` says that
     the file states no project, not that the run belongs to none: it is no
     default and no shared value, and nothing stands in for it (ADR-0034
     decision 4), not the name of a directory or of a repository, not a part
@@ -1006,8 +1006,9 @@ def _checked(document):
     seconds = None
     if "wall_clock_budget_s" in document:
         seconds = _wall_clock_budget_s(document["wall_clock_budget_s"])
-    owner = _string("owner", document["owner"]) if "owner" in document else None
-    project = None
+    owner = project = None
+    if "owner" in document:
+        owner = _string("owner", document["owner"])
     if "project" in document:
         project = _string("project", document["project"])
     others = {name: value for name, value in document.items() if name not in _DEFINED}
