@@ -79,6 +79,7 @@ FULL = written(
         n_max=7,
         candidates_per_round=3,
         op_signature={"key": keys.op_signature_key(OP).name, "record": OP},
+        round_budget=6,
         example_member={"b": [1, None, "x"], "a": 2.5},
     )
 )
@@ -125,6 +126,7 @@ REFUSED = {
         written(doc(op_signature={"key": "gemm-0123456789abcdef", "record": OP})),
         InvalidInstanceError,
     ),
+    "round_budget": (written(doc(round_budget=0)), InvalidInstanceError),
     "no final line feed": (MINIMAL[:-1], WrittenFormError),
     "CRLF line ends": (MINIMAL.replace(b"\n", b"\r\n"), WrittenFormError),
     "one carriage return": (b"\r" + MINIMAL, WrittenFormError),
