@@ -30,9 +30,16 @@ Conventions of this module, which the records do not fix:
   callable (:class:`TypeError`), then ``data_root`` and the files.
 - :func:`run_prepared` is :func:`run` with one place more, between the lookup
   and the start line: there the tool function of a journaled HW tool selects
-  its backend (ADR-0016 decision 2), after the lookup so that an ended or an
-  open identity is answered from the log alone, and before the start line so
-  that a call that fails there has not started the step and leaves no line.
+  its backend (ADR-0016 decision 2), after the lookup so that nothing is
+  asked there for an ended or an open identity, which this function answers
+  from ``STATE.json`` and the log, and before the start line so that a call
+  that fails there has not started the step and leaves no line.
+- Neither function reads ``runs/<run_id>/instance.json``. A tool function
+  built by :mod:`hilclaw.journaled_tool` or :mod:`hilclaw.hw_tool` reads the
+  layout version stamp of the run before it calls this module, and answers a
+  run whose stamp cannot be had itself, for every identity (ADR-0030
+  decisions 3 and 4). What holds for another caller of these functions is not
+  said here (OD-8 sub-question 27).
 - Where the state is read (decision 6, last bullet): for an identity whose
   ``round`` is the ``round`` stored in ``STATE.json`` the stored view and the
   tail decide, and the lines before the stored position are not interpreted.
@@ -56,11 +63,13 @@ Conventions of this module, which the records do not fix:
   situation, also when it goes between the check and the read of one call:
   the log is then read once more, so that the reader says what is there, and
   only when it goes again in that read the lookup goes on with no line read.
-- Only the reads and the lookup are answered this way: the same classes out
-  of ``before_start``, out of the step or out of an append are not. Out of an
-  append an :class:`OSError` and a :class:`hilclaw.events.CorruptEventsError`
-  are answered with the kind of the append (below) and the others pass
-  through.
+- In this module only its two reads and the lookup are answered this way:
+  the same classes out of ``before_start``, out of the step or out of an
+  append are not. What a tool function answers with the same four kinds for
+  ``instance.json``, before it calls this module or inside ``before_start``,
+  is that tool function's. Out of an append an :class:`OSError` and a
+  :class:`hilclaw.events.CorruptEventsError` are answered with the kind of
+  the append (below) and the others pass through.
 - The message of such a failure starts with the path of the file relative to
   the data root, ``runs/<run_id>/STATE.json`` or ``runs/<run_id>/events.ndjson``
   (ADR-0019 decision 6); nothing may depend on the rest of its wording.

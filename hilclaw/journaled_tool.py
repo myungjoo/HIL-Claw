@@ -21,11 +21,37 @@ A call, in this order:
    ``invalid_request``: nothing was asked, read, written or consumed.
 2. The data root is asked, once, through
    :func:`hilclaw.data_root_source.obtain`; its ``no_data_root`` passes through.
+   Then the layout version stamp of the run is read (ADR-0030 decision 3):
+   ``runs/<run_id>/instance.json`` below that data root, as a whole, by
+   :func:`hilclaw.instance.layout_version_of`, before ``STATE.json`` or the
+   log is opened. When the stamp cannot be had, the call is a tool failure of
+   one of the four reserved kinds of ADR-0019 decision 2, and what follows
+   under 3 does not take place (ADR-0030 decision 4; the cases are below).
 3. The step of the identity is carried out by ``journaled_step.run``. What it
    returns is returned and what it raises passes through unchanged: the tool
-   failure of one of the four reserved kinds of ADR-0019 decision 2 for what
-   the lookup finds in ``STATE.json`` or in the log, the tool failure of an
-   ended step with a ``failure``, ``step_open``, every other exception.
+   failure of one of the same four kinds for what the lookup finds in
+   ``STATE.json`` or in the log, the tool failure of an ended step with a
+   ``failure``, ``step_open``, every other exception.
+
+What the read of the stamp raises for ``runs/<run_id>/instance.json`` is
+answered with a ``ToolFailure`` chained to the error it answers for, by the
+rows ADR-0019 decision 3 has for that file and the borders of its decision 4:
+
+- ``run_file_missing``: :class:`hilclaw.instance.MissingInstanceError`, and a
+  :class:`FileNotFoundError` or :class:`NotADirectoryError` (a data root that
+  is no existing directory at the read, a file gone during the read).
+- ``run_file_invalid``: :class:`hilclaw.instance.InvalidInstanceError` (an
+  invalid content, an empty file included, or a path that is no regular file).
+- ``run_file_unsupported``: :class:`hilclaw.instance.UnsupportedVersionError`.
+- ``run_file_unreadable``: every other :class:`OSError`.
+
+Such a call appended no line, opened neither ``STATE.json`` nor the log and
+did not call the step. The kind is answered for every identity and says
+nothing about it: the lookup was not carried out, so an ended or an open
+identity of such a run is not answered from the log (ADR-0030 decision 4).
+The same request again is answered as if the failed call had not been made.
+Everything else the read raises passes through unchanged, a ``ToolFailure``
+and a :class:`BaseException` included.
 
 Conventions of this module, which the records do not fix:
 
@@ -35,28 +61,57 @@ Conventions of this module, which the records do not fix:
   the identity would otherwise drop what the caller stated.
 - No other member is looked at: it is the tool's own check's.
 - What the tool's own check raises passes through unchanged, whatever it is.
-- Nothing is kept between calls (ADR-0010 decision 7).
+- Nothing is kept between calls (ADR-0010 decision 7): the stamp is read at
+  each call that has a data root.
+- The stamp is read in :func:`checked_function`, the part the two builders
+  share, so that they cannot differ. It is therefore read for whatever
+  ``carry_out`` that function is handed; that is the placement of this module
+  and no rule of the record for another user of that function.
+- The reader of the stamp is no parameter: ADR-0030 decision 3 names the file
+  and ADR-0024 decision 4 the condition, and
+  :func:`hilclaw.instance.layout_version_of` is both.
+- What that function returns is compared with nothing (ADR-0030 decision 5).
+- Only the read of the stamp is answered this way here: the same classes out
+  of the tool's own check or out of ``carry_out`` are not.
+- The message of such a failure starts with ``runs/<run_id>/instance.json``
+  (ADR-0019 decision 6): for the three classes it is the message of the
+  reader as it is, and for an :class:`OSError` it is composed by
+  :mod:`hilclaw.run_files`. Nothing may depend on the rest of the wording.
 
 Limits it does not remove (ADR-0015 decision 7): a caller that states the
 numbers of another target or raises ``execution`` by itself, a round above the
 stored ``round``, two calls at once, a check that accepts what the stated
 schema excludes, and a step that states a reserved kind. A run that cannot be
-used at a call (no run directory, no valid ``STATE.json``, a damaged log, a
-stored position beyond the log) is found only by reading: it is no refused
-request, and ``journaled_step.run`` answers it with a tool failure of kind
-``run_file_missing``, ``run_file_unreadable``, ``run_file_invalid`` or
-``run_file_unsupported`` (ADR-0019 decisions 2 to 4), which passes through.
+used at a call (no run directory, an ``instance.json`` from which the stamp
+cannot be had, no valid ``STATE.json``, a damaged log, a stored position
+beyond the log) is found only by reading: it is no refused request, and the
+read of the stamp or ``journaled_step.run`` answers it with a tool failure of
+kind ``run_file_missing``, ``run_file_unreadable``, ``run_file_invalid`` or
+``run_file_unsupported`` (ADR-0019 decisions 2 to 4, ADR-0030 decision 4).
+The file can change or go between the read of the stamp and a later read of
+the same call, and nothing checks the tree of the run against the stamp
+(ADR-0030 decision 7).
 
 The tool function of a journaled HW tool has one moment more, the selection of
 a backend between the lookup and the start line (ADR-0016 decision 2):
-:mod:`hilclaw.hw_tool` builds it over the same check of the request, which
-:func:`checked_function` holds for the two builders.
+:mod:`hilclaw.hw_tool` builds it over the same check of the request and the
+same read of the stamp, which :func:`checked_function` holds for the two
+builders.
 
 It registers nothing, names no tool, no step, no axis and no result member and
 reads no configuration.
 """
 
-from hilclaw import data_root_source, events, journal, journaled_step, layout, tools
+from hilclaw import (
+    data_root_source,
+    events,
+    instance,
+    journal,
+    journaled_step,
+    layout,
+    run_files,
+    tools,
+)
 
 _NUMBERS = ("round", "candidate", "attempt")
 _INVALID = (
@@ -64,6 +119,11 @@ _INVALID = (
     journal.JournalError,
     events.InvalidEventError,
 )
+_STAMP_KINDS = {
+    instance.MissingInstanceError: tools.KIND_RUN_FILE_MISSING,
+    instance.InvalidInstanceError: tools.KIND_RUN_FILE_INVALID,
+    instance.UnsupportedVersionError: tools.KIND_RUN_FILE_UNSUPPORTED,
+}
 
 
 def tool_function(*, step, numbers, source, check, perform):
@@ -88,11 +148,15 @@ def tool_function(*, step, numbers, source, check, perform):
 
     The function returned takes one request and returns the ``result`` of the
     step, a ``dict``. It raises ``ToolFailure`` of kind ``invalid_request``
-    with a message that names the member, and otherwise what ``check``,
-    :func:`hilclaw.data_root_source.obtain` and
+    with a message that names the member; of one of the four kinds
+    ``run_file_missing``, ``run_file_unreadable``, ``run_file_invalid`` and
+    ``run_file_unsupported`` when the layout version stamp of the run cannot
+    be had (ADR-0030 decision 4; the module docstring has the cases), having
+    appended no line and not called ``perform``; and otherwise what ``check``,
+    :func:`hilclaw.data_root_source.obtain`, the read of the stamp and
     :func:`hilclaw.journaled_step.run` raise, among them the ``ToolFailure``
-    of one of the four kinds of ADR-0019 for what the lookup finds. It does
-    not modify the request.
+    of one of the same four kinds for what the lookup finds. It does not
+    modify the request.
     """
 
     def carry_out(data_root, run_id, identity, request):
@@ -115,8 +179,11 @@ def checked_function(*, step, numbers, carry_out, source, check, **others):
 
     This is the part :func:`tool_function` and
     :func:`hilclaw.hw_tool.tool_function` share: the check when built and, at
-    a call, the check of the request, the tool's own check and the data root
-    asked once. Everything after that is ``carry_out``'s.
+    a call, the check of the request, the tool's own check, the data root
+    asked once and the read of the layout version stamp of the run (ADR-0030
+    decision 3). Everything after that is ``carry_out``'s. It does not hand on
+    right after the data root: the stamp is read first, whatever ``carry_out``
+    it was given.
 
     - ``step``, ``numbers``, ``source``, ``check``: as in
       :func:`tool_function`.
@@ -124,7 +191,9 @@ def checked_function(*, step, numbers, carry_out, source, check, **others):
       request)`` with the data root, a :class:`pathlib.Path`, the checked
       ``run_id``, the :class:`hilclaw.journal.Identity` formed from ``step``
       and the request, and the request as the caller gave it; once in a call,
-      and only after both checks passed and the data root was obtained.
+      and only after both checks passed, the data root was obtained and
+      :func:`hilclaw.instance.layout_version_of` returned for that data root
+      and that ``run_id``.
     - ``others``: further arguments by name, meant for the callables
       ``carry_out`` uses. Each is checked for being callable when built and
       is not used otherwise.
@@ -138,10 +207,13 @@ def checked_function(*, step, numbers, carry_out, source, check, **others):
 
     The function returned takes one request and returns what ``carry_out``
     returns. It raises ``ToolFailure`` of kind ``invalid_request`` with a
-    message that names the member, or says that the request is no object, and
-    otherwise what ``check``, :func:`hilclaw.data_root_source.obtain` and
-    ``carry_out`` raise, unchanged. It does not modify the request itself;
-    what ``check`` and ``carry_out`` do with it is theirs.
+    message that names the member, or says that the request is no object; of
+    one of the four kinds ``run_file_missing``, ``run_file_unreadable``,
+    ``run_file_invalid`` and ``run_file_unsupported`` when the stamp cannot be
+    had, with ``carry_out`` not called (the module docstring has the cases);
+    and otherwise what ``check``, :func:`hilclaw.data_root_source.obtain`, the
+    read of the stamp and ``carry_out`` raise, unchanged. It does not modify
+    the request itself; what ``check`` and ``carry_out`` do with it is theirs.
 
     What it does not do: it calls no function of
     :mod:`hilclaw.journaled_step`, so the lookup, the two step lines and the
@@ -165,6 +237,8 @@ def checked_function(*, step, numbers, carry_out, source, check, **others):
         run_id, identity = _checked(step, numbers, request)
         check(request)
         data_root = data_root_source.obtain(source)
+        with run_files.reading(data_root, run_id, "instance.json", _STAMP_KINDS):
+            instance.layout_version_of(data_root, run_id)
         return carry_out(data_root, run_id, identity, request)
 
     return journaled

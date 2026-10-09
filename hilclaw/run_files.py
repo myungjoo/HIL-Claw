@@ -1,8 +1,10 @@
 """The answer of a tool function for a frame file of a run that cannot be used (ADR-0019).
 
 ``ARCHITECTURE/decisions/ADR-0019-od18-unusable-run-kind.md`` reserves four
-kinds for what the lookup or the selection of one call finds in a *frame file*
-of ``runs/<run_id>/`` (``STATE.json``, ``events.ndjson``, ``instance.json``):
+kinds for what one call of a tool finds in a *frame file* of
+``runs/<run_id>/`` (``STATE.json``, ``events.ndjson``, ``instance.json``) at
+the lookup or at the selection, and ADR-0030 decision 4 has them answered also
+at the read of the layout version stamp, which comes before both:
 ``run_file_missing``, ``run_file_unreadable``, ``run_file_invalid`` and
 ``run_file_unsupported`` (decisions 2 and 3). This module holds what every
 such read shares: the name of the file in a message (decision 6), "not there"

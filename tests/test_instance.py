@@ -3520,21 +3520,30 @@ def test_a_first_call_selects_the_backend_of_the_embedded_record(root, way):
     assert tool.performed == 1
 
 
-def test_an_ended_identity_is_answered_after_the_file_was_removed(root):
+def test_an_ended_identity_is_not_answered_after_the_file_was_removed(root):
     path = place(started(root), raw(doc()))
     tool = Tool(root)
     assert tool.function(dict(REQUEST)) == {"example_member": 1}
 
     path.unlink()
 
+    before = snapshot(root)
+    for asked in (REQUEST, {**REQUEST, "execution": 2}):
+        with pytest.raises(ToolFailure) as caught:
+            tool.function(dict(asked))
+        assert caught.value.kind == tools.KIND_RUN_FILE_MISSING == "run_file_missing"
+        assert type(caught.value.__cause__) is MissingInstanceError
+        assert caught.value.message.startswith(f"{FILE}: is missing")
+        for way in THROUGH_CALL.values():
+            assert way(tool, asked) == (True, caught.value.error_object())
+    assert (len(tool.asked), tool.performed) == (1, 1)
+    assert snapshot(root) == before
+
+    place(root, raw(doc()))
     for way in THROUGH_CALL.values():
         assert way(tool, REQUEST) == (False, {"example_member": 1})
     assert tool.function(dict(REQUEST)) == {"example_member": 1}
     assert (len(tool.asked), tool.performed) == (1, 1)
-    with pytest.raises(ToolFailure) as caught:
-        tool.function({**REQUEST, "execution": 2})
-    assert caught.value.kind == tools.KIND_RUN_FILE_MISSING == "run_file_missing"
-    assert kinds(root) == ["step_started", "step_ended"]
 
 
 @pytest.mark.parametrize("case", UNUSABLE)
@@ -3613,8 +3622,10 @@ def test_a_file_gone_between_the_check_and_the_read_is_run_file_missing(
 
 def test_a_data_root_gone_at_the_call_of_the_reader_is_run_file_missing(root):
     state = started(root) / f"runs/{RUN}/STATE.json"
+    file = place(root, raw(doc()))
 
     def reader(data_root, run_id):
+        file.unlink()
         state.unlink()
         for directory in (state.parent, state.parent.parent, root):
             directory.rmdir()
