@@ -148,8 +148,9 @@ def tool_function(*, step, numbers, source, check, perform):
 
     The function returned takes one request and returns the ``result`` of the
     step, a ``dict``. It raises ``ToolFailure`` of kind ``invalid_request``
-    with a message that names the member; of one of the four kinds
-    ``run_file_missing``, ``run_file_unreadable``, ``run_file_invalid`` and
+    with a message that names the member, or says that the request is no
+    object; of one of the four kinds ``run_file_missing``,
+    ``run_file_unreadable``, ``run_file_invalid`` and
     ``run_file_unsupported`` when the layout version stamp of the run cannot
     be had (ADR-0030 decision 4; the module docstring has the cases), having
     appended no line and not called ``perform``; and otherwise what ``check``,

@@ -136,13 +136,12 @@ the final name included, lists no directory, compares nothing and knows no
 "same content"; it creates, enters, reads and lists no ``output`` in the
 attempt directory of the final name (decision 6); it composes no content and
 fills in no value; it takes no lock, makes no commit and writes no other
-file. The module builds no spec and no bytes; it
-does not say that a content is right beyond decisions 2 and 3, that a coder
-was or will be called with it or that the coder reads the file; it reads no
-other version; and it is no tool. What composes or writes a spec, when, in
-which order against any other file, what follows a taken name and what a
-second write for a tuple means are open (OD-23, sub-questions 10 and 26 of
-OD-8).
+file. The module builds no spec and no bytes; it does not say that a content is
+right beyond decisions 2 and 3, that a coder was or will be called with it or
+that the coder reads the file; it reads no other version; and it is no tool.
+What composes or writes a spec, when, in which order against any other file,
+what follows a taken name and what a second write for a tuple means are open
+(OD-23, sub-questions 10 and 26 of OD-8).
 """
 
 import codecs
