@@ -51,15 +51,15 @@ Conventions of this module, which the six records do not fix:
   ``schema_version``, then ``hw_profile``, then ``tolerance`` when the document
   holds it, then ``source_commit`` when the document holds it, then ``n_max``
   when the document holds it, then ``candidates_per_round`` when the document
-  holds it: the order in which the records defined them. A
-  content this interpreter cannot read (an integer too long for it anywhere
-  in the text, nesting too deep) raises :class:`InvalidInstanceError` too,
-  though it is a limit of this reader and not damage; the limits stay as the
-  interpreter has them. A number beyond the float range in a member not
-  defined here is read as an infinity and is no error, as
-  :mod:`hilclaw.run_state` has it; in ``tolerance``, as ``n_max`` and as
-  ``candidates_per_round`` it makes the content invalid (ADR-0020 decision 4,
-  ADR-0023 decision 3, ADR-0028 decision 3).
+  holds it: the order in which the records defined them. A content this
+  interpreter cannot read (an integer too long for it anywhere in the text,
+  nesting too deep) raises :class:`InvalidInstanceError` too, though it is a
+  limit of this reader and not damage; the limits stay as the interpreter has
+  them. A number beyond the float range in a member not defined here is read
+  as an infinity and is no error, as :mod:`hilclaw.run_state` has it; in
+  ``tolerance``, as ``n_max`` and as ``candidates_per_round`` it makes the
+  content invalid (ADR-0020 decision 4, ADR-0023 decision 3, ADR-0028
+  decision 3).
 - ``schema_version`` is an integer of ADR-0001, from 0 to
   :data:`hilclaw.keys.MAX_INTEGER`: a value outside that range is no integer of
   the records and makes the content invalid, it is not another version. ``-0``
