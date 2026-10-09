@@ -180,12 +180,13 @@ the ``id.candidates`` of one (ADR-0028 decision 5). It does not say that any
 round of the run had, has or will have that many candidates, and it makes the
 member no number of coder calls, of specs, of attempts or of promoted
 candidates and no budget member (ADR-0028 decision 2). A file it accepts need
-not state the number. Where it is checked that an instance states one, which
-tool or component reads the member, at which moment, and what follows when
-none is stated is not said here (OD-8 sub-question 25); "not stated" is no
-error of the content here either, this module gives it no tool-failure kind,
-and :func:`candidates_per_round_of` is bound to no tool and to nothing that
-issues a spec.
+not state the number; where it is checked that an instance states one, and
+what follows for a round of a run whose file states none, is open (OD-8
+sub-question 25). Which tool or component reads the member and at which
+moment is not said here (ADR-0028 decision 5 and Boundaries); "not stated" is
+no error of the content here either, this module gives it no tool-failure
+kind, and :func:`candidates_per_round_of` is bound to no tool and to nothing
+that issues a spec.
 Of the layout version it gives what the ``schema_version`` of a valid file
 states by the pairing of ADR-0024 decision 3 and nothing else (decisions 4
 and 5). It defines no member for the layout version and interprets none: a
