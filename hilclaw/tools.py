@@ -24,7 +24,7 @@ import math
 import re
 import typing
 
-#: The reserved kinds (ADR-0015 decision 2, ADR-0016 decision 3, ADR-0019 decision 2): one meaning in every tool, not enforced.
+#: The reserved kinds (ADR-0015 decision 2, ADR-0016 decision 3, ADR-0019 decision 2, ADR-0026 decision 3): one meaning in every tool, not enforced.
 KIND_INVALID_REQUEST = "invalid_request"  #: the tool function refused the request
 KIND_NO_DATA_ROOT = "no_data_root"  #: the data root could not be obtained
 KIND_STEP_OPEN = "step_open"  #: the journaled step of this identity is open
@@ -36,6 +36,8 @@ KIND_RUN_FILE_MISSING = "run_file_missing"  #: a frame file the call needs is no
 KIND_RUN_FILE_UNREADABLE = "run_file_unreadable"  #: the read of a frame file failed for a reason other than its not being there; its content was not judged
 KIND_RUN_FILE_INVALID = "run_file_invalid"  #: a frame file, a complete line of the log or the stored position is invalid, or the place of a frame file holds no regular file
 KIND_RUN_FILE_UNSUPPORTED = "run_file_unsupported"  #: a frame file or a line of the log has another schema_version; nothing of it was interpreted
+KIND_START_LINE_FAILED = "start_line_failed"  #: the append of the start line of this call failed; this call did not call the step
+KIND_END_LINE_FAILED = "end_line_failed"  #: the append of the end line of this call failed; this call ran the step to its end and the answer carries no outcome
 RESERVED_KINDS = frozenset(
     {
         KIND_INVALID_REQUEST,
@@ -49,6 +51,8 @@ RESERVED_KINDS = frozenset(
         KIND_RUN_FILE_UNREADABLE,
         KIND_RUN_FILE_INVALID,
         KIND_RUN_FILE_UNSUPPORTED,
+        KIND_START_LINE_FAILED,
+        KIND_END_LINE_FAILED,
     }
 )
 

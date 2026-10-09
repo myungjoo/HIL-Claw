@@ -823,9 +823,12 @@ def test_an_ended_and_an_open_identity_are_answered_without_the_reader(root, err
     assert snapshot(root) == before
 
 
+LINE_FAILED = {"step_started": "start_line_failed", "step_ended": "end_line_failed"}
+
+
 @by_class
-@pytest.mark.parametrize("line", ["step_started", "step_ended"])
-def test_the_same_class_out_of_an_append_is_not_answered_with_a_kind(
+@pytest.mark.parametrize("line", list(LINE_FAILED))
+def test_a_class_out_of_an_append_is_the_kind_of_the_line_or_no_kind(
     root, monkeypatch, line, error
 ):
     real = events.append
@@ -837,12 +840,54 @@ def test_the_same_class_out_of_an_append_is_not_answered_with_a_kind(
 
     monkeypatch.setattr(events, "append", append)
     tool = Tool(root)
-    with pytest.raises(type(error)) as caught:
-        tool.function(request())
-    assert caught.value is error
-    assert (len(tool.read), tool.performed) == (1, line == "step_ended")
-    failed, answer = by_call(tool, request(execution=2))
-    assert (failed, answer["error"]["kind"]) == (True, "tool_crashed")
+    ran = int(line == "step_ended")
+    if isinstance(error, OSError):
+        with pytest.raises(ToolFailure) as caught:
+            tool.function(request())
+        assert caught.value.kind == LINE_FAILED[line]
+        assert caught.value.__cause__ is error
+        assert caught.value.message.startswith(f"{LOG}: ")
+        assert "elsewhere" not in caught.value.message
+        assert "example_member" not in caught.value.message
+    else:
+        with pytest.raises(type(error)) as caught:
+            tool.function(request())
+        assert caught.value is error
+    assert (len(tool.read), tool.performed, len(tool.asked)) == (1, ran, ran)
+    kind = LINE_FAILED[line] if isinstance(error, OSError) else "tool_crashed"
+    outcomes = [
+        through(tool, request(execution=execution))
+        for execution, through in enumerate(THROUGH_CALL.values(), start=2)
+    ]
+    assert outcomes[0] == outcomes[1] == outcomes[2]
+    failed, answer = outcomes[0]
+    assert (failed, answer["error"]["kind"]) == (True, kind)
+    assert (tool.performed, len(tool.asked)) == (4 * ran, 4 * ran)
+    assert [entry["kind"] for entry in lines(root)] == ["step_started"] * 4 * ran
+
+
+@pytest.mark.parametrize("line", list(LINE_FAILED))
+def test_a_place_of_the_log_that_is_no_regular_file_at_an_append_is_the_kind_of_the_line(
+    tmp_path, monkeypatch, line
+):
+    error = events.CorruptEventsError(f"{LOG}: is not a regular file")
+    real = events.append
+
+    def append(data_root, run_id, kind, data, **numbers):
+        if kind == line:
+            raise error
+        return real(data_root, run_id, kind, data, **numbers)
+
+    monkeypatch.setattr(events, "append", append)
+    ran = int(line == "step_ended")
+    answer = {"error": {"kind": LINE_FAILED[line], "message": str(error)}}
+    for way, through in WAYS.items():
+        path = tmp_path / way
+        store(path)
+        tool = Tool(path)
+        assert through(tool, request()) == (True, answer)
+        assert (tool.performed, len(tool.asked)) == (ran, ran)
+        assert lines(path) == [started()] * ran
 
 
 @by_class
