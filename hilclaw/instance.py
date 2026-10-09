@@ -186,18 +186,18 @@ Conventions of this module, which the ten records do not fix:
 - What is a value of ``owner`` and of ``project`` is ADR-0034 decision 3 with
   ADR-0001 decision 1 and not a convention: the string after JSON decoding,
   of 1 to 255 characters, each one from U+0020 to U+007E, so the empty
-  string, a string that holds a line feed, a tab or a letter of another
-  script and everything that is no string are none, and a string of spaces
-  only is a value. That no case is folded and no space removed is decision
-  3 too. The conventions are that a value built in memory must be exactly a
-  ``str``, that the one rule is reported as a whole, that a ``str`` that
-  breaks it is shown as every ``str`` is, a long one shortened, that the rule
-  is written here and agrees with the *string* of :mod:`hilclaw.keys`, of
-  which no private name is used, and that each member is handed out as the
-  ``str`` of the file, unchanged. That a content without one of the two
-  states no owner or no project, and that this is no error of the content, is
-  ADR-0034 decision 4 and not a convention; the convention is that it has
-  ``None`` in that place.
+  string, a string longer than 255 characters, a string that holds a line
+  feed, a tab or a letter of another script and everything that is no string
+  are none, and a string of spaces only is a value. That no case is folded
+  and no space removed is decision 3 too. The conventions are that a value
+  built in memory must be exactly a ``str``, that the one rule is reported as
+  a whole, that a ``str`` that breaks it is shown as every ``str`` is, a long
+  one shortened, that the rule is written here and agrees with the *string*
+  of :mod:`hilclaw.keys`, of which no private name is used, and that each
+  member is handed out as the ``str`` of the file, unchanged. That a content
+  without one of the two states no owner or no project, and that this is no
+  error of the content, is ADR-0034 decision 4 and not a convention; the
+  convention is that it has ``None`` in that place.
 - Which layout version a schema version states is ADR-0024 decision 3 and not
   a convention: schema version 1 states layout version 1. The conventions are
   that the pairing is a mapping keyed by the schema version with the number
@@ -906,9 +906,9 @@ def owner_of(data_root, run_id):
     to 255 printable ASCII characters, as the file states it at this call,
     unchanged, or ``None`` for a valid file without that member. The member
     states the owner the instance was started with, as a name, and no more
-    (ADR-0034 decision 2): the name is no identity, only its form is
-    checked, and no right follows from it. ``None`` says that the file states
-    no owner, not that the run has none: it is no default and no anonymous or
+    (ADR-0034 decision 2): the name is no identity, nothing checks it against
+    one, and no right follows from it. ``None`` says that the file states no
+    owner, not that the run has none: it is no default and no anonymous or
     shared value, and nothing stands in for it (ADR-0034 decision 4), not the
     user name of a process, not an author or a committer, not a GitHub
     account, not the name of a directory or of a repository, not a part of
@@ -930,18 +930,17 @@ def project_of(data_root, run_id):
     1 to 255 printable ASCII characters, as the file states it at this call,
     unchanged, or ``None`` for a valid file without that member. The member
     states the project the instance was started with, as a name, and no more
-    (ADR-0034 decision 2): the name says nothing about the run itself, only
-    its form is checked, and no right follows from it. ``None`` says that
-    the file states no project, not that the run belongs to none: it is no
-    default and no shared value, and nothing stands in for it (ADR-0034
-    decision 4), not the name of a directory or of a repository, not a part
-    of the ``run_id``, not the member ``owner``, not the project of another
-    run and no constant of this module. Only the instance file is read, and
-    the name is compared with nothing: no run is looked up, grouped, allowed
-    or refused by it, and two runs that state equal names are not thereby
-    related. Raises what :func:`read` raises, so no project is returned, and
-    none is inferred, for a missing, unreadable or invalid file or one of
-    another version.
+    (ADR-0034 decision 2): the name says nothing about the run itself, and no
+    right follows from it. ``None`` says that the file states no project, not
+    that the run belongs to none: it is no default and no shared value, and
+    nothing stands in for it (ADR-0034 decision 4), not the name of a
+    directory or of a repository, not a part of the ``run_id``, not the
+    member ``owner``, not the project of another run and no constant of this
+    module. Only the instance file is read, and the name is compared with
+    nothing: no run is looked up, grouped, allowed or refused by it, and two
+    runs that state equal names are not thereby related. Raises what
+    :func:`read` raises, so no project is returned, and none is inferred, for
+    a missing, unreadable or invalid file or one of another version.
     """
     return read(data_root, run_id).project
 
