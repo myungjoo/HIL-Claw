@@ -1,10 +1,12 @@
 import ast
 import datetime
+import getpass
 import inspect
 import io
 import itertools
 import json
 import math
+import os
 import re
 import reprlib
 import subprocess
@@ -40,7 +42,9 @@ from hilclaw.instance import (
     layout_version_of,
     n_max_of,
     op_signature_of,
+    owner_of,
     parse,
+    project_of,
     read,
     round_budget_of,
     source_commit_of,
@@ -220,7 +224,9 @@ def test_the_public_names():
         "layout_version_of",
         "n_max_of",
         "op_signature_of",
+        "owner_of",
         "parse",
+        "project_of",
         "read",
         "round_budget_of",
         "source_commit_of",
@@ -239,6 +245,8 @@ def test_the_public_names():
         "op_signature",
         "round_budget",
         "wall_clock_budget_s",
+        "owner",
+        "project",
         "others",
     )
     assert Tolerance._fields == ("rtol", "atol")
@@ -261,6 +269,8 @@ def test_the_public_names():
         op_signature_of,
         round_budget_of,
         wall_clock_budget_s_of,
+        owner_of,
+        project_of,
         layout_version_of,
     ):
         parameters = inspect.signature(function).parameters
@@ -276,7 +286,7 @@ def test_a_minimal_content_gives_the_key_and_the_record():
 
     assert type(result) is Instance
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, {}
+        KEY, record(), None, None, None, None, None, None, None, None, None, {}
     )
     assert type(result.hw_profile) is dict
     assert key_of(result.hw_profile) == result.hw_profile_key
@@ -289,7 +299,18 @@ def test_a_record_with_its_optional_fields():
     result = parse(raw(doc(profile)))
 
     assert result == Instance(
-        key_of(profile), profile, None, None, None, None, None, None, None, {}
+        key_of(profile),
+        profile,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        {},
     )
     assert result.hw_profile_key == key_of(record(ext={"example_field": 3}))
     assert result.hw_profile_key != KEY
@@ -335,7 +356,7 @@ def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     result = parse(raw(doc(**OTHERS)))
 
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, OTHERS
+        KEY, record(), None, None, None, None, None, None, None, None, None, OTHERS
     )
     assert list(result.others) == list(OTHERS)
     assert validate(doc(**OTHERS)) is None
@@ -757,6 +778,8 @@ def test_a_content_with_the_member_states_the_two_values():
         None,
         None,
         None,
+        None,
+        None,
         {"example": [1]},
     )
     assert type(result.tolerance) is Tolerance
@@ -840,6 +863,8 @@ def test_any_order_of_the_members_of_a_tolerance(content):
         None,
         None,
         None,
+        None,
+        None,
         {},
     )
 
@@ -884,7 +909,7 @@ def test_a_top_level_member_of_another_name_states_no_tolerance(others):
     result = parse(raw(doc(**others)))
 
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, others
+        KEY, record(), None, None, None, None, None, None, None, None, None, others
     )
     assert validate(doc(**others)) is None
 
@@ -1139,7 +1164,18 @@ def test_a_content_with_the_member_states_that_string(commit):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), None, commit, None, None, None, None, None, {"example": [1]}
+        KEY,
+        record(),
+        None,
+        commit,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        {"example": [1]},
     )
     assert type(result.source_commit) is str
     assert "source_commit" not in result.others
@@ -1188,6 +1224,8 @@ def test_any_order_of_the_three_members_and_the_version(order):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
+        None,
         None,
         None,
         None,
@@ -1284,7 +1322,7 @@ def test_a_top_level_member_of_another_name_states_no_source_commit(others):
     result = parse(raw(doc(**others)))
 
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, others
+        KEY, record(), None, None, None, None, None, None, None, None, None, others
     )
     assert validate(doc(**others)) is None
 
@@ -1598,7 +1636,18 @@ def test_a_content_with_the_member_states_that_bound(bound):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), None, None, bound, None, None, None, None, {"example": [1]}
+        KEY,
+        record(),
+        None,
+        None,
+        bound,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        {"example": [1]},
     )
     assert type(result.n_max) is int
     assert "n_max" not in result.others
@@ -1649,6 +1698,8 @@ def test_any_order_of_the_four_members_and_the_version(order):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
+        None,
         None,
         None,
         None,
@@ -1735,7 +1786,7 @@ def test_a_top_level_member_of_another_name_states_no_bound(others):
     result = parse(raw(doc(**others)))
 
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, others
+        KEY, record(), None, None, None, None, None, None, None, None, None, others
     )
     assert result.n_max is None
     assert validate(doc(**others)) is None
@@ -1832,6 +1883,8 @@ def test_what_is_no_value_of_the_bound(literal):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
+        None,
         None,
         None,
         None,
@@ -2046,7 +2099,18 @@ def test_a_content_with_the_member_states_that_number(count):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), None, None, None, count, None, None, None, {"example": [1]}
+        KEY,
+        record(),
+        None,
+        None,
+        None,
+        count,
+        None,
+        None,
+        None,
+        None,
+        None,
+        {"example": [1]},
     )
     assert type(result.candidates_per_round) is int
     assert "candidates_per_round" not in result.others
@@ -2099,6 +2163,8 @@ def test_any_order_of_the_five_members_and_the_version(order):
         COMMIT,
         BOUND,
         COUNT,
+        None,
+        None,
         None,
         None,
         None,
@@ -2210,7 +2276,7 @@ def test_a_top_level_member_of_another_name_states_no_number(others):
     result = parse(raw(doc(**others)))
 
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, others
+        KEY, record(), None, None, None, None, None, None, None, None, None, others
     )
     assert result.candidates_per_round is None
     assert validate(doc(**others)) is None
@@ -2316,6 +2382,8 @@ def test_what_is_no_value_of_the_number_of_candidates(literal):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
+        None,
         None,
         None,
         None,
@@ -2596,6 +2664,8 @@ def test_a_content_with_the_member_states_that_key_and_that_record(case):
         OpSignature(op_key_of(stated_record), stated_record),
         None,
         None,
+        None,
+        None,
         {"example": [1]},
     )
     assert type(result.op_signature) is OpSignature
@@ -2645,6 +2715,8 @@ def test_any_order_of_the_six_members_and_the_version():
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
+        None,
         None,
         None,
         {},
@@ -2837,7 +2909,7 @@ def test_a_top_level_member_of_another_name_states_no_op_signature(others):
     result = parse(raw(doc(**others)))
 
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, others
+        KEY, record(), None, None, None, None, None, None, None, None, None, others
     )
     assert result.op_signature is None
     assert validate(doc(**others)) is None
@@ -3355,7 +3427,18 @@ def test_the_reader_returns_the_record_the_file_embeds(tmp_path, root):
         read(root, RUN)
         == parse(content)
         == Instance(
-            KEY, record(), None, None, None, None, None, None, None, {"example": [1, 2]}
+            KEY,
+            record(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            {"example": [1, 2]},
         )
     )
     assert type(read(root, RUN)) is Instance
@@ -3906,7 +3989,7 @@ def test_no_member_of_a_file_with_an_invalid_candidates_per_round_is_used(
     assert candidates_per_round_of(root, RUN) == COUNT
 
     place(root, counted(literal, *more))
-    assert candidates_per_round_of in READERS and len(READERS) == 10
+    assert candidates_per_round_of in READERS and len(READERS) == 12
     for call in READERS:
         invalid(f"{FILE}: {NO_COUNT}", call, root, RUN)
 
@@ -4065,7 +4148,7 @@ def test_no_member_of_a_file_with_an_invalid_op_signature_is_used(root, value):
 
     document["op_signature"] = value
     place(root, raw(document))
-    assert op_signature_of in READERS and len(READERS) == 10
+    assert op_signature_of in READERS and len(READERS) == 12
     for call in READERS:
         invalid(f"{FILE}: op_signature", call, root, RUN)
 
@@ -4291,6 +4374,8 @@ READERS = [
     op_signature_of,
     round_budget_of,
     wall_clock_budget_s_of,
+    owner_of,
+    project_of,
     layout_version_of,
 ]
 
@@ -4394,6 +4479,16 @@ INVALID_FILES = {
     "a wall_clock_budget_s that is a string": (
         raw(doc(**OP_MEMBERS, round_budget=1, wall_clock_budget_s="8h")),
         "wall_clock_budget_s: must be",
+    ),
+    "an owner that is the empty string": (raw(doc(owner="")), "owner: must be"),
+    "an owner that is no string": (
+        raw(doc(**OP_MEMBERS, project="example-project", owner=7)),
+        "owner: must be",
+    ),
+    "a project that is null": (raw(doc(project=None)), "project: must be"),
+    "a project with a line feed": (
+        raw(doc(**OP_MEMBERS, owner="example-owner", project="example\nproject")),
+        "project: must be",
     ),
 }
 
@@ -4958,7 +5053,18 @@ def test_a_content_with_the_member_states_that_round_budget(budget):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, budget, None, {"example": [1]}
+        KEY,
+        record(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        budget,
+        None,
+        None,
+        None,
+        {"example": [1]},
     )
     assert type(result.round_budget) is int
     assert "round_budget" not in result.others
@@ -5012,6 +5118,8 @@ def test_any_place_of_the_round_budget_among_the_other_members(index):
         COUNT,
         OpSignature(OP_KEY, op_record()),
         BUDGET,
+        None,
+        None,
         None,
         {},
     )
@@ -5159,7 +5267,7 @@ def test_a_top_level_member_of_another_name_states_no_round_budget(others):
     result = parse(raw(doc(**others)))
 
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, others
+        KEY, record(), None, None, None, None, None, None, None, None, None, others
     )
     assert result.round_budget is None
     assert validate(doc(**others)) is None
@@ -5252,6 +5360,8 @@ def test_what_is_no_value_of_the_round_budget(literal):
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
+        None,
         None,
         None,
         {"example": [1]},
@@ -5547,7 +5657,7 @@ def test_no_member_of_a_file_with_an_invalid_round_budget_is_used(root, literal)
     assert_the_other_members_are_stated(root)
 
     place(root, budgeted(literal, *EVERY_MEMBER_TEXT))
-    assert round_budget_of in READERS and len(READERS) == 10
+    assert round_budget_of in READERS and len(READERS) == 12
     for call in READERS:
         invalid(f"{FILE}: {NO_BUDGET}", call, root, RUN)
 
@@ -5670,7 +5780,18 @@ def test_a_content_with_the_member_states_that_wall_clock_budget(seconds):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, seconds, {"example": [1]}
+        KEY,
+        record(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        seconds,
+        None,
+        None,
+        {"example": [1]},
     )
     assert type(result.wall_clock_budget_s) is int
     assert "wall_clock_budget_s" not in result.others
@@ -5709,7 +5830,7 @@ def test_a_content_without_the_member_states_no_wall_clock_budget(members):
 
 @pytest.mark.parametrize("index", range(9))
 def test_any_place_of_the_wall_clock_budget_among_the_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_SECONDS, SECONDS, {})
+    expected = Instance(*STATED_BESIDE_THE_SECONDS, SECONDS, None, None, {})
 
     for others in (
         [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER],
@@ -5866,7 +5987,7 @@ def test_a_top_level_member_of_another_name_states_no_wall_clock_budget(others):
     result = parse(raw(doc(**others)))
 
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, others
+        KEY, record(), None, None, None, None, None, None, None, None, None, others
     )
     assert result.wall_clock_budget_s is None
     assert validate(doc(**others)) is None
@@ -5959,7 +6080,9 @@ def test_what_is_no_value_of_the_wall_clock_budget(literal):
     assert invalid(NO_SECONDS, parse, content) == expected
     invalid(NO_SECONDS, validate, json.loads(content))
     kept = parse(text(VERSION, SECTION, *ALL_BUT_SECONDS_TEXT, '"example": [1]'))
-    assert kept == Instance(*STATED_BESIDE_THE_SECONDS, None, {"example": [1]})
+    assert kept == Instance(
+        *STATED_BESIDE_THE_SECONDS, None, None, None, {"example": [1]}
+    )
 
 
 WALK_THROUGH_OF_ADR_0033 = [
@@ -6288,7 +6411,7 @@ def test_no_member_of_a_file_with_an_invalid_wall_clock_budget_is_used(root, lit
     assert_the_members_beside_the_seconds_are_stated(root)
 
     place(root, timed(literal, *ALL_BUT_SECONDS_TEXT))
-    assert wall_clock_budget_s_of in READERS and len(READERS) == 10
+    assert wall_clock_budget_s_of in READERS and len(READERS) == 12
     for call in READERS:
         invalid(f"{FILE}: {NO_SECONDS}", call, root, RUN)
 
@@ -6379,6 +6502,809 @@ def test_a_file_invalid_by_its_wall_clock_budget_alone_is_run_file_invalid(
     assert kinds(root) == []
 
     place(root, raw(repaired))
+    assert tool.function(dict(REQUEST)) == {"example_member": 1}
+    assert kinds(root) == ["step_started", "step_ended"]
+    assert (len(tool.asked), tool.performed) == (1, 1)
+    assert [seen for _, _, seen in tool.asked] == [record()]
+
+
+# --- happy: the members owner and project (ADR-0034) ---
+
+# Placeholders: they name no person, no account and no project that exists, and none is a default.
+OWNER, OTHER_OWNER = "example-owner", "another-example-owner"
+PROJECT, OTHER_PROJECT = "example-project", "another-example-project"
+NAMED = {"owner": owner_of, "project": project_of}
+STATED = {"owner": OWNER, "project": PROJECT}
+OTHER_OF = {"owner": "project", "project": "owner"}
+NO_NAME = ": must be a str of 1 to 255 printable ASCII characters, got "
+OWNER_MEMBER = f'"owner": "{OWNER}"'
+PROJECT_MEMBER = f'"project": "{PROJECT}"'
+EVERY_CHARACTER = "".join(chr(code) for code in range(0x20, 0x7F))
+NAMES = [
+    OWNER,
+    PROJECT,
+    "Example-Owner",
+    "example-owner ",
+    " example-owner",
+    "a b",
+    "x/y",
+    "user@example.invalid",
+    " ",
+    "   ",
+    "~",
+    "e",
+    '"',
+    "\\",
+    "e" * 255,
+    " " * 255,
+    EVERY_CHARACTER,
+]
+ALL_BUT_THE_NAMES = {**ALL_BUT_SECONDS, "wall_clock_budget_s": SECONDS}
+ALL_BUT_THE_NAMES_TEXT = (*ALL_BUT_SECONDS_TEXT, SECONDS_MEMBER)
+STATED_BESIDE_THE_NAMES = (*STATED_BESIDE_THE_SECONDS, SECONDS)
+# A made-up word that is no name of a user, of a directory or of a run outside these tests.
+MARKER = "marker-of-the-tests"
+
+
+def named(member, literal, *more):
+    return text(VERSION, SECTION, f'"{member}": {literal}', *more)
+
+
+def pair(member, value):
+    return (value, None) if member == "owner" else (None, value)
+
+
+def assert_the_members_beside_the_names_are_stated(root, run=RUN):
+    assert_the_members_beside_the_seconds_are_stated(root, run)
+    assert wall_clock_budget_s_of(root, run) == SECONDS
+
+
+@pytest.mark.parametrize("member", NAMED)
+@pytest.mark.parametrize("name", NAMES, ids=shown)
+def test_a_content_with_the_member_states_that_name(member, name):
+    document = doc(**{member: name}, example=[1])
+
+    result = parse(raw(document))
+
+    assert result == Instance(
+        KEY, record(), *[None] * 7, *pair(member, name), {"example": [1]}
+    )
+    assert type(getattr(result, member)) is str
+    assert member not in result.others
+    assert validate(document) is None
+    assert getattr(parse(named(member, json.dumps(name))), member) == name
+
+
+def test_both_ends_of_the_length_and_of_the_character_range_are_inclusive():
+    assert (EVERY_CHARACTER[0], EVERY_CHARACTER[-1]) == (" ", "~")
+    assert len(EVERY_CHARACTER) == 95
+
+    for member in NAMED:
+        refused = member + NO_NAME + "str"
+        for length in (1, 2, 254, 255):
+            for character in (" ", "e", "~"):
+                document = doc(**{member: character * length})
+                assert getattr(parse(raw(document)), member) == character * length
+                assert validate(document) is None
+        for name in ("", "e" * 256, "e" * 257, " " * 256, "\x1f", "\x7f"):
+            invalid(refused, validate, doc(**{member: name}))
+            invalid(refused, parse, raw(doc(**{member: name})))
+
+
+@pytest.mark.parametrize(
+    "literal, name",
+    [
+        ('"\\u0041"', "A"),
+        ('"\\u0020"', " "),
+        ('"\\u007e"', "~"),
+        ('"\\u007E"', "~"),
+        ('"x\\/y"', "x/y"),
+        ('"\\"\\\\"', '"\\'),
+        ('"\\u0065xample-owner"', OWNER),
+    ],
+)
+def test_the_value_is_the_string_after_json_decoding(literal, name):
+    for member in NAMED:
+        assert getattr(parse(named(member, literal)), member) == name
+
+
+@pytest.mark.parametrize("member", NAMED)
+@pytest.mark.parametrize(
+    "members", [{}, EVERY_MEMBER, ALL_BUT_THE_NAMES, {"round_budget": 1}], ids=repr
+)
+def test_a_content_without_a_member_states_none_for_it(member, members):
+    other = OTHER_OF[member]
+
+    for beside in ({}, {other: STATED[other]}):
+        without = parse(raw(doc(**members, **beside)))
+        stated = parse(raw(doc(**members, **beside, **{member: STATED[member]})))
+
+        assert getattr(without, member) is None
+        assert getattr(stated, member) == STATED[member]
+        assert getattr(without, other) == getattr(stated, other) == beside.get(other)
+        assert without[:9] == stated[:9]
+        assert without.others == stated.others == {}
+        assert validate(doc(**members, **beside)) is None
+
+
+@pytest.mark.parametrize("index", range(10))
+def test_any_place_of_the_names_among_the_other_members(index):
+    expected = Instance(*STATED_BESIDE_THE_NAMES, OWNER, PROJECT, {})
+    others = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
+
+    for first, second in (
+        (OWNER_MEMBER, PROJECT_MEMBER),
+        (PROJECT_MEMBER, OWNER_MEMBER),
+    ):
+        members = [*others[:index], first, *others[index:]]
+        members.insert(len(others) - index, second)
+        assert parse(text(*members)) == expected
+        assert validate(json.loads(text(*members))) is None
+
+
+def test_white_space_of_json_around_a_name_is_not_part_of_the_value_and_inside_it_is():
+    for member, name in STATED.items():
+        content = text(VERSION, SECTION, f'\r\n\t"{member}" :\n "{name}" \n')
+        assert getattr(parse(content), member) == name
+
+        assert getattr(parse(named(member, f'" {name}  "')), member) == f" {name}  "
+
+
+# The Example of ADR-0034: that of ADR-0033 with the two members the record adds, not a valid file.
+EXAMPLE_OF_ADR_0034 = EXAMPLE_OF_ADR_0033.replace(
+    b'"wall_clock_budget_s": 5400\n',
+    b'"wall_clock_budget_s": 5400,\n'
+    b'  "owner": "example-owner",\n'
+    b'  "project": "example-project"\n',
+)
+
+
+def test_the_members_of_the_example_of_adr_0034():
+    assert EXAMPLE_OF_ADR_0034.count(b'"example-') == 2
+    invalid("hw_profile.record.hw_source: must be ", parse, EXAMPLE_OF_ADR_0034)
+
+    result = parse(
+        EXAMPLE_OF_ADR_0034.replace(EXAMPLE_SOURCE, b'"hw_source": "in_house"')
+    )
+    assert (result.owner, result.project) == ("example-owner", "example-project")
+    assert (result.round_budget, result.wall_clock_budget_s) == (8, 5400)
+    assert result.others == {}
+
+    silent = parse(
+        EXAMPLE_OF_ADR_0033.replace(EXAMPLE_SOURCE, b'"hw_source": "in_house"')
+    )
+    assert (silent.owner, silent.project) == (None, None)
+    assert silent[:9] == result[:9]
+
+
+def test_the_valid_files_of_the_walk_through_of_adr_0034(root):
+    stated = (*ALL_BUT_THE_NAMES_TEXT, OWNER_MEMBER)
+
+    place(root, text(VERSION, SECTION, *stated, PROJECT_MEMBER))
+    for _ in range(2):
+        assert (owner_of(root, RUN), project_of(root, RUN)) == (OWNER, PROJECT)
+
+    place(root, text(VERSION, SECTION, *stated))
+    assert (owner_of(root, RUN), project_of(root, RUN)) == (OWNER, None)
+
+    place(root, text(VERSION, SECTION, *ALL_BUT_THE_NAMES_TEXT))
+    assert (owner_of(root, RUN), project_of(root, RUN)) == (None, None)
+    assert_the_members_beside_the_names_are_stated(root)
+
+    for name, value in (("Owner", OWNER), ("user", OWNER), ("projectname", PROJECT)):
+        place(root, text(VERSION, SECTION, f'"{name}": "{value}"'))
+        assert (owner_of(root, RUN), project_of(root, RUN)) == (None, None)
+        assert read(root, RUN).others == {name: value}
+
+
+# --- branch: the members owner and project ---
+
+
+@pytest.mark.parametrize(
+    "owner, project",
+    [
+        (OWNER, PROJECT),
+        (OWNER, None),
+        (None, PROJECT),
+        (None, None),
+        (OWNER, OWNER),
+        (PROJECT, OWNER),
+        (" ", "~"),
+        ("e" * 255, "e"),
+        ("Example-Owner", "example-owner"),
+    ],
+    ids=shown,
+)
+def test_the_two_members_do_not_bound_each_other(root, owner, project):
+    stated = {"owner": owner, "project": project}
+    document = doc(
+        **{name: value for name, value in stated.items() if value is not None}
+    )
+
+    result = parse(raw(document))
+
+    assert (result.owner, result.project) == (owner, project)
+    assert validate(document) is None
+    place(root, raw(document))
+    assert owner_of(root, RUN) == owner
+    assert project_of(root, RUN) == project
+
+
+def test_values_that_differ_in_case_or_in_a_final_space_are_three_values(root):
+    spellings = ["Example-Owner", "example-owner", "example-owner "]
+
+    for member, reader in NAMED.items():
+        found = []
+        for spelling in spellings:
+            place(root, raw(doc(**{member: spelling})))
+            found.append(reader(root, RUN))
+        assert found == spellings
+        assert len(set(found)) == 3
+
+
+def test_a_name_equal_to_another_value_of_the_run_is_valid_and_nothing_follows(
+    tmp_path, root
+):
+    profile = record(label="a label")
+
+    for name in ("a label", "external", RUN, root.name, COMMIT, key_of(profile)):
+        for member, reader in NAMED.items():
+            document = doc(profile, source_commit=COMMIT, **{member: name})
+            place(root, raw(document))
+            before = snapshot(tmp_path)
+
+            assert reader(root, RUN) == name
+            assert validate(document) is None
+            assert hw_profile_of(root, RUN) == profile
+            assert source_commit_of(root, RUN) == COMMIT
+            assert snapshot(tmp_path) == before
+
+
+BROKEN_NAMES = [None, True, 7, "", "e" * 256, "a\nb", [OWNER], {"name": OWNER}]
+
+
+@pytest.mark.parametrize("member", NAMED)
+@pytest.mark.parametrize("version", [0, 2, MAX])
+@pytest.mark.parametrize("name", [*BROKEN_NAMES, OWNER], ids=shown)
+def test_another_version_is_reported_before_the_names_are_looked_at(
+    member, version, name
+):
+    document = doc(schema_version=version, **{member: name})
+
+    for function, argument in ((parse, raw(document)), (validate, document)):
+        with pytest.raises(UnsupportedVersionError) as caught:
+            function(argument)
+        assert str(caught.value) == f"schema_version: {version} is not supported"
+
+
+@pytest.mark.parametrize(
+    "others",
+    [
+        {"Owner": OWNER},
+        {"OWNER": OWNER},
+        {"user": OWNER},
+        {"username": OWNER},
+        {"owner_name": OWNER},
+        {"account": OWNER},
+        {"started_by": OWNER},
+        {"owner ": ""},
+        {"Project": PROJECT},
+        {"PROJECT": PROJECT},
+        {"projectname": PROJECT},
+        {"project_name": PROJECT},
+        {"project ": None},
+        {"meta": {"owner": OWNER, "project": PROJECT}},
+        {"lock": {"owner": OWNER, "heartbeat": 1}},
+        {
+            "Owner": "",
+            "user": None,
+            "username": 7,
+            "meta": {"owner": "", "project": []},
+            "Project": [],
+            "projectname": "a\nb",
+        },
+    ],
+    ids=repr,
+)
+def test_a_top_level_member_of_another_name_states_no_owner_and_no_project(others):
+    result = parse(raw(doc(**others)))
+
+    assert result == Instance(KEY, record(), *[None] * 9, others)
+    assert (result.owner, result.project) == (None, None)
+    assert validate(doc(**others)) is None
+
+    result = parse(raw(doc(owner=OTHER_OWNER, project=OTHER_PROJECT, **others)))
+    assert (result.owner, result.project) == (OTHER_OWNER, OTHER_PROJECT)
+    assert result.others == others
+
+
+@pytest.mark.parametrize(
+    "place, changes",
+    [
+        ("hw_profile: must be", {"hw_profile": None, "owner": ""}),
+        (
+            "document: lacks the member hw_profile",
+            {"hw_profile": REMOVE, "project": 7},
+        ),
+        ("tolerance: must be", {"tolerance": None, "owner": None}),
+        (NO_COMMIT + "str 'main'", {"source_commit": "main", "project": ""}),
+        (NO_BOUND + "int", {"n_max": 4, "owner": ""}),
+        (NO_COUNT + "int", {"candidates_per_round": 0, "owner": ""}),
+        (
+            "op_signature: must be an object, got NoneType",
+            {"op_signature": None, "project": ""},
+        ),
+        (NO_BUDGET + "int", {"round_budget": 0, "owner": "", "project": ""}),
+        (NO_SECONDS + "int", {"owner": "", "project": "", "wall_clock_budget_s": 0}),
+        (
+            NO_SECONDS + "str '8h'",
+            {**ALL_BUT_SECONDS, "wall_clock_budget_s": "8h", "owner": 7},
+        ),
+        ("owner" + NO_NAME + "str ''", {"owner": "", "project": 7}),
+        ("owner" + NO_NAME + "str ''", {"project": 7, "owner": ""}),
+        ("owner" + NO_NAME + "int", {**ALL_BUT_THE_NAMES, "owner": 7, "project": ""}),
+        ("owner" + NO_NAME + "NoneType", {"project": PROJECT, "owner": None}),
+        ("project" + NO_NAME + "str ''", {"owner": OWNER, "project": ""}),
+        ("project" + NO_NAME + "bool", {"project": False}),
+    ],
+)
+def test_the_first_broken_rule_is_reported_with_the_names(place, changes):
+    document = doc(**changes)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+# --- error / negative: the members owner and project ---
+
+WALK_THROUGH_OF_ADR_0034 = [
+    '""',
+    "null",
+    "7",
+    "true",
+    '["example-owner"]',
+    '{"name": "example-owner"}',
+    '"' + "e" * 256 + '"',
+    '"example\\nowner"',
+    '"\\u00e9xample-owner"',
+]
+NO_NAME_LITERALS = [
+    *WALK_THROUGH_OF_ADR_0034,
+    "false",
+    "0",
+    "1.5",
+    "[]",
+    "{}",
+    '"example-owner\\n"',
+    '"\\nexample-owner"',
+    '"\\u000a"',
+    '"\\t"',
+    '"example\\towner"',
+    '"example-owner\\r"',
+    '"example\\u007fowner"',
+    '"example-owner\\u0000"',
+    '"\\u001f"',
+    '"\\u0080"',
+    '"examplé"',
+    '"example-한"',
+    '"\\ud55c\\uae00"',
+    '"\\ud83d"',
+    '"example-owner\\ud83d"',
+]
+
+
+def got(literal):
+    value = json.loads(literal)
+    if type(value) is str:
+        return f"str {reprlib.repr(value)}"
+    return type(value).__name__
+
+
+@pytest.mark.parametrize("member", NAMED)
+@pytest.mark.parametrize("literal", NO_NAME_LITERALS, ids=ascii)
+def test_what_is_no_value_of_the_names(root, member, literal):
+    content = named(member, literal, *ALL_BUT_THE_NAMES_TEXT, '"example": [1]')
+    expected = member + NO_NAME + got(literal)
+
+    assert invalid(member + NO_NAME, parse, content) == expected
+    assert invalid(member + NO_NAME, validate, json.loads(content)) == expected
+    place(root, content)
+    assert invalid(FILE, NAMED[member], root, RUN) == f"{FILE}: {expected}"
+    kept = parse(text(VERSION, SECTION, *ALL_BUT_THE_NAMES_TEXT, '"example": [1]'))
+    assert kept == Instance(*STATED_BESIDE_THE_NAMES, None, None, {"example": [1]})
+
+
+# A line feed, a carriage return, a tab, U+0000, U+001F, U+007F, U+0080, a letter with an accent, a Hangul letter, a full-width letter and a lone surrogate.
+OUTSIDE = [
+    "\n",
+    "\r",
+    "\t",
+    "\x00",
+    "\x1f",
+    "\x7f",
+    "\x80",
+    "é",
+    "한",
+    "ａ",
+    "\ud83d",
+]
+
+
+@pytest.mark.parametrize("member", NAMED)
+@pytest.mark.parametrize("character", OUTSIDE, ids=ascii)
+def test_a_character_outside_the_range_is_refused_at_any_position(member, character):
+    for name in (
+        character,
+        character + OWNER,
+        OWNER[:7] + character + OWNER[7:],
+        OWNER + character,
+        "e" * 254 + character,
+    ):
+        expected = f"{member}{NO_NAME}str {reprlib.repr(name)}"
+        assert invalid(member + NO_NAME, validate, doc(**{member: name})) == expected
+        assert invalid(member + NO_NAME, parse, raw(doc(**{member: name}))) == expected
+        assert validate(doc(**{member: name.replace(character, "e")})) is None
+
+
+LOOSER_NAME_RULES = {
+    "valid after trimming": (
+        lambda value: re.fullmatch(r"[\x20-\x7e]{1,255}", value.strip()) is not None,
+        [
+            "example-owner\n",
+            "\texample-owner",
+            "\r\nexample-owner\r\n",
+            "e" * 255 + "\n",
+        ],
+    ),
+    "a pattern ending in $": (
+        lambda value: re.match(r"[\x20-\x7e]{1,255}$", value) is not None,
+        ["example-owner\n", "e" * 255 + "\n", " \n"],
+    ),
+    "a non-empty string of any characters": (
+        lambda value: isinstance(value, str) and len(value) > 0,
+        ["éxample", "한글", "a\nb", "\t", "e" * 256, Text(OWNER)],
+    ),
+    "a JSON string of any length": (
+        lambda value: type(value) is str,
+        ["", "e" * 256, "e" * 5000],
+    ),
+    "str.isascii": (str.isascii, ["", "\t", "example\x7fowner", "\x00", "e" * 256]),
+    "str.isprintable": (str.isprintable, ["", "éxample", "한", "e" * 256]),
+    "a value for nobody": (
+        lambda value: value in (None, 0, ""),
+        [None, 0, False, ""],
+    ),
+}
+
+
+@pytest.mark.parametrize("member", NAMED)
+@pytest.mark.parametrize("rule", LOOSER_NAME_RULES)
+def test_a_name_a_looser_rule_would_accept_is_refused(member, rule):
+    looser, values = LOOSER_NAME_RULES[rule]
+
+    for value in values:
+        assert looser(value)
+        expected = member + NO_NAME + type(value).__name__
+        invalid(expected, validate, doc(**{member: value}))
+        if type(value) in JSON_TYPES:
+            invalid(expected, parse, raw(doc(**{member: value})))
+
+
+@pytest.mark.parametrize("member", NAMED)
+def test_the_member_name_of_a_name_twice_at_the_top_level(member):
+    stated = f'"{member}": "{STATED[member]}"'
+
+    for members in (
+        (stated, stated),
+        (stated, f'"{member}": "{OTHER_OWNER}"'),
+        (stated, f'"{member}": ""'),
+        (f'"{member}": null', stated),
+    ):
+        message = invalid(
+            "content: cannot be read as one JSON text",
+            parse,
+            text(VERSION, SECTION, *members),
+        )
+        assert "a JSON object repeats a member name" in message
+
+
+@pytest.mark.parametrize("member", NAMED)
+@pytest.mark.parametrize(
+    "value",
+    [
+        Text(OWNER),
+        Text(" "),
+        OWNER.encode(),
+        bytearray(OWNER.encode()),
+        7,
+        0,
+        1.5,
+        True,
+        None,
+        [OWNER],
+        list(OWNER),
+        (OWNER,),
+        {OWNER},
+        {"name": OWNER},
+    ],
+    ids=shown,
+)
+def test_validate_refuses_a_name_built_in_memory(member, value):
+    document = doc(**{member: value})
+
+    expected = member + NO_NAME + type(value).__name__
+    assert invalid(member + NO_NAME, validate, document) == expected
+
+
+@pytest.mark.parametrize("member", NAMED)
+def test_a_refused_string_is_shown_and_a_refused_value_of_another_type_is_not(member):
+    start = member + NO_NAME
+    assert invalid(start, validate, doc(**{member: ""})) == start + "str ''"
+    assert invalid(start, validate, doc(**{member: "a\nb"})) == start + "str 'a\\nb'"
+
+    long = "example-" * 40
+    message = invalid(start, parse, raw(doc(**{member: long})))
+    assert message == start + "str " + reprlib.repr(long)
+    assert long not in message and "..." in message and len(message) < 130
+
+    for value in ([OWNER], {"name": OWNER}, (OWNER,), 7, None):
+        message = invalid(start, validate, doc(**{member: value}))
+        assert message == start + type(value).__name__
+        assert OWNER not in message
+
+
+def test_a_check_of_a_name_modifies_nothing():
+    for document, valid in (
+        (doc(owner=OWNER, project=PROJECT), True),
+        (doc(owner=" Example-Owner ", project=" "), True),
+        (doc(owner=""), False),
+        (doc(owner=OWNER, project="a\nb"), False),
+        (doc(**ALL_BUT_THE_NAMES, project=[PROJECT]), False),
+    ):
+        kept = json.dumps(document)
+        assert accepted(validate, document) == valid
+        assert json.dumps(document) == kept
+
+
+# --- no substitute: nothing of the module stands in for an owner or a project ---
+
+
+@pytest.mark.parametrize("member", NAMED)
+def test_a_run_without_the_member_states_none_and_nothing_stands_in(
+    tmp_path, monkeypatch, member
+):
+    def fail(*arguments):
+        pytest.fail("the user name of the process was asked for")
+
+    monkeypatch.setattr(getpass, "getuser", fail)
+    monkeypatch.setattr(os, "getlogin", fail)
+    for name in ("USER", "USERNAME", "LOGNAME"):
+        monkeypatch.setenv(name, MARKER)
+    root = tmp_path / MARKER
+    root.mkdir()
+    run, other = f"{MARKER}-run", OTHER_OF[member]
+    file = f"runs/{run}/instance.json"
+    others = {"Owner": "o", "user": "u", "projectname": "p", "meta": {member: "m"}}
+    place(root, raw(doc(**ALL_BUT_THE_NAMES, **{other: STATED[other]}, **others)), file)
+    place(root, raw(doc(**{member: OTHER_OWNER})), OTHER_FILE)
+    before = snapshot(tmp_path)
+
+    found = NAMED[member](root, run)
+
+    assert found is None
+    for stand_in in (MARKER, STATED[other], OTHER_OWNER, "anonymous", "unknown", ""):
+        assert found != stand_in
+    result = read(root, run)
+    assert getattr(result, member) is None
+    assert getattr(result, other) == STATED[other]
+    assert result.others == others
+    assert MARKER not in repr(result)
+    assert NAMED[other](root, run) == STATED[other]
+    assert NAMED[member](root, OTHER_RUN) == OTHER_OWNER
+    assert NAMED[member](root, run) is None
+    assert snapshot(tmp_path) == before
+
+    place(root, raw(doc()), file)
+    assert (owner_of(root, run), project_of(root, run)) == (None, None)
+
+
+def test_nothing_of_the_module_stands_in_for_an_owner_or_a_project():
+    functions = [
+        value
+        for value in vars(instance).values()
+        if inspect.isfunction(value) and value.__module__ == instance.__name__
+    ]
+    assert owner_of in functions and project_of in functions
+    for function in functions:
+        assert function.__defaults__ is None and function.__kwdefaults__ is None
+    assert Instance._field_defaults == {}
+    imported = set()
+    for node in ast.walk(ast.parse(inspect.getsource(instance))):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+    parts = {part for name in imported for part in name.split(".")}
+    assert "keys" in parts
+    assert not parts & {
+        "getpass",
+        "pwd",
+        "subprocess",
+        "socket",
+        "driver_state",
+        "run_state",
+        "journal",
+        "run_journal",
+        "events",
+        "run_id",
+    }
+    assert not {"getpass", "pwd", "owner", "project"} & set(vars(instance))
+
+
+# --- the readers of the owner and of the project (ADR-0034) ---
+
+
+@pytest.mark.parametrize("member", NAMED)
+def test_the_reader_returns_the_name_the_file_states(tmp_path, root, member):
+    reader, other = NAMED[member], OTHER_OF[member]
+    place(root, raw(doc(**ALL_BUT_THE_NAMES, **STATED, example=[1])))
+    before = snapshot(tmp_path)
+
+    found = reader(root, RUN)
+
+    assert found == STATED[member] and type(found) is str
+    assert found == getattr(read(root, RUN), member)
+    assert reader(str(root), RUN) == found
+    assert NAMED[other](root, RUN) == STATED[other]
+    assert_the_members_beside_the_names_are_stated(root)
+    assert snapshot(tmp_path) == before
+
+    for name in NAMES:
+        place(root, raw(doc(**{member: name})))
+        assert reader(root, RUN) == name
+        assert NAMED[other](root, RUN) is None
+
+
+@pytest.mark.parametrize("member", NAMED)
+def test_a_name_replaced_between_two_calls_is_seen_at_the_second(root, member):
+    reader = NAMED[member]
+    place(root, raw(doc(**{member: OWNER})))
+    assert reader(root, RUN) == OWNER
+
+    place(root, raw(doc(**{member: OTHER_OWNER})))
+    assert reader(root, RUN) == OTHER_OWNER
+
+    place(root, raw(doc()))
+    assert reader(root, RUN) is None
+
+    place(root, raw(doc(**{member: ""})))
+    invalid(f"{FILE}: {member}{NO_NAME}str ''", reader, root, RUN)
+
+    place(root, raw(doc(schema_version=2, **{member: OWNER})))
+    with pytest.raises(UnsupportedVersionError):
+        reader(root, RUN)
+
+    (root / FILE).unlink()
+    with pytest.raises(MissingInstanceError):
+        reader(root, RUN)
+
+    place(root, raw(doc(**{member: " "})))
+    assert reader(root, RUN) == " "
+
+
+@pytest.mark.parametrize("member", NAMED)
+@pytest.mark.parametrize(
+    "literal",
+    [*WALK_THROUGH_OF_ADR_0034, "false", "{}", '"example-owner\\n"', '"\\t"'],
+    ids=ascii,
+)
+def test_no_member_of_a_file_with_an_invalid_name_is_used(root, member, literal):
+    other = OTHER_OF[member]
+    stated = (*ALL_BUT_THE_NAMES_TEXT, f'"{other}": "{STATED[other]}"')
+    place(root, named(member, json.dumps(STATED[member]), *stated))
+    assert NAMED[member](root, RUN) == STATED[member]
+    assert_the_members_beside_the_names_are_stated(root)
+
+    place(root, named(member, literal, *stated))
+    assert owner_of in READERS and project_of in READERS and len(READERS) == 12
+    for call in READERS:
+        invalid(f"{FILE}: {member}{NO_NAME}", call, root, RUN)
+
+    place(root, text(VERSION, SECTION, *stated))
+    assert NAMED[member](root, RUN) is None
+    assert NAMED[other](root, RUN) == STATED[other]
+    assert_the_members_beside_the_names_are_stated(root)
+
+
+@pytest.mark.parametrize("member", NAMED)
+def test_two_runs_that_state_the_same_name_state_their_own_and_nothing_follows(
+    tmp_path, root, member
+):
+    reader = NAMED[member]
+    place(root, raw(doc(**{member: OWNER})))
+    place(root, raw(doc(OTHER_RECORD, **{member: OWNER})), OTHER_FILE)
+    place(root, raw(doc(**{member: OTHER_OWNER})), "runs/run-c/instance.json")
+    place(root, raw(doc()), "runs/run-d/instance.json")
+    before = snapshot(tmp_path)
+
+    assert reader(root, RUN) == reader(root, OTHER_RUN) == OWNER
+    assert reader(root, "run-c") == OTHER_OWNER
+    assert reader(root, "run-d") is None
+    assert hw_profile_of(root, RUN) == record()
+    assert hw_profile_of(root, OTHER_RUN) == OTHER_RECORD
+    assert reader(root, RUN) == OWNER
+    assert snapshot(tmp_path) == before
+
+
+def test_only_the_instance_file_is_opened_for_an_owner_and_a_project(root, monkeypatch):
+    place(root, raw(doc(owner=OWNER, project=PROJECT)))
+    place(root, run_state.dump(12, EMPTY), STATE_FILE)
+    place(root, b'{"seq": 1, "owner": "another-example-owner"}\n', EVENTS_FILE)
+    place(root, raw(doc(owner=OTHER_OWNER, project=OTHER_PROJECT)), OTHER_FILE)
+    place(root, b'{"owner": "another-example-owner"}', f"db/{KEY}/example.json")
+    before = snapshot(root)
+    opened, real = [], Path.read_bytes
+
+    def read_bytes(path):
+        opened.append(path.relative_to(root).as_posix())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setenv("HILCLAW_DATA_ROOT", "elsewhere")
+
+    assert owner_of(root, RUN) == OWNER
+    assert opened == [FILE]
+    assert project_of(root, RUN) == PROJECT
+    assert opened == [FILE, FILE]
+    monkeypatch.setattr(Path, "read_bytes", real)
+    assert snapshot(root) == before
+
+
+# --- the rule of the two members and the string of the key records ---
+
+STRINGS = [
+    *NAMES,
+    "e" * 254,
+    *(json.loads(literal) for literal in NO_NAME_LITERALS if literal[0] == '"'),
+    *("example" + character for character in OUTSIDE),
+    *(values for _, strings in LOOSER_NAME_RULES.values() for values in strings),
+]
+
+
+@pytest.mark.parametrize(
+    "value", [value for value in STRINGS if type(value) is str], ids=ascii
+)
+def test_the_rule_agrees_with_the_string_of_the_key_records(value):
+    try:
+        keys.hw_profile_key(record(label=value))
+        a_string = True
+    except keys.InvalidRecordError:
+        a_string = False
+
+    for member in NAMED:
+        assert accepted(validate, doc(**{member: value})) == a_string
+
+
+# --- with hilclaw.hw_tool: a file invalid by its owner or its project alone ---
+
+
+@pytest.mark.parametrize("member", NAMED)
+@pytest.mark.parametrize(
+    "repaired", [None, OWNER, " "], ids=["removed", "valid", "valid and one space"]
+)
+@pytest.mark.parametrize("broken", ["", "e" * 256, "a\nb", 7, None, [OWNER]], ids=shown)
+def test_a_file_invalid_by_a_name_alone_is_run_file_invalid(
+    root, member, broken, repaired
+):
+    place(started(root), raw(doc(**ALL_BUT_THE_NAMES, **{member: broken})))
+    tool = Tool(root)
+
+    assert_no_step_started(
+        tool, root, "run_file_invalid", InvalidInstanceError, member + NO_NAME
+    )
+    assert kinds(root) == []
+
+    place(root, raw(doc() if repaired is None else doc(**{member: repaired})))
     assert tool.function(dict(REQUEST)) == {"example_member": 1}
     assert kinds(root) == ["step_started", "step_ended"]
     assert (len(tool.asked), tool.performed) == (1, 1)
