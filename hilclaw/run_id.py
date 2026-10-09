@@ -26,11 +26,17 @@ Conventions of this module (not rules of the record):
 - The bits are exactly an ``int`` with 0 <= bits < 2**64: a ``bool``, a
   ``float`` and an instance of a subclass of ``int`` are no bits.
 - A value of another type raises :class:`TypeError` and a value of the right
-  type that cannot be written in the form raises :class:`ValueError`. Nothing
-  is clamped, wrapped, converted or replaced, and no message shows a value.
+  type that cannot be written in the form raises :class:`ValueError`. Of the
+  two values :func:`compose` is given, nothing is clamped, wrapped, converted
+  or replaced, and no message shows a value.
 - :func:`new` asks the clock through the module-level name ``_utc_now`` and
   the random source through the module ``secrets``; a test replaces the two
   names in this module.
+- The reading of the clock is what ``datetime.datetime.now`` gives for UTC,
+  and a reading that cannot be written in the form (ADR-0027 decision 7) is
+  left to that function: this module never sees a second of 60, which the
+  standard library reads as 59 where a platform reports one, and what the
+  function raises for a year outside ``0001`` to ``9999`` is passed on.
 - The result is not passed through :func:`hilclaw.layout.check_run_id`: every
   string :func:`compose` returns matches the pattern of ADR-0004 decision 8,
   so the call could only be an assertion.
@@ -39,8 +45,9 @@ What this module does not do, in the words of ADR-0027 decisions 1 and 3 to 6:
 the form binds what builds an id and is no rule of validity, so this module
 checks, parses, recognises and compares no id, and what a valid ``run_id`` is
 stays what :func:`hilclaw.layout.check_run_id` checks; an id states nothing,
-no fact of a run is read from one, and the time part is the reading of a
-clock at the moment of the build and no record of when a run started; two
+no fact of a run is read from one, and the time part of a result of
+:func:`new` is the reading of a clock at the moment of the build and no
+record of when a run started; two
 names of the form whose time parts differ are in the byte order of those
 parts, which for two results of :func:`new` is the order of two clock
 readings and not of events, is for a person who lists ``runs/``, and is
@@ -105,11 +112,15 @@ def new():
     of the operating system; each is asked exactly once and the result is
     what :func:`compose` writes of the two. The function takes no argument:
     it cannot be handed a time, bits, a seed or a generator, it uses neither
-    the module ``random`` nor anything derived from the time, the process or
-    a caller for the bits, and it looks at no ``runs/`` directory and at no
-    earlier id.
+    the default generator of the module ``random`` nor anything derived from
+    the time, the process or a caller for the bits, and it looks at no
+    ``runs/`` directory and at no earlier id.
 
-    What the platform raises when it has no random source is passed on, and
-    no id is returned.
+    The reading is the one ``datetime.datetime.now`` gives: a second of 60
+    that a platform reports reaches this function as 59, by the standard
+    library and not by a rule of this module. What that function raises for
+    a reading it cannot hold, a year outside ``0001`` to ``9999`` among them,
+    and what the platform raises when it has no random source are passed on,
+    and no id is returned.
     """
     return compose(_utc_now(), secrets.randbits(_BITS))

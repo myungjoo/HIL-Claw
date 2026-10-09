@@ -73,7 +73,10 @@ class Clock:
 
     def __call__(self):
         self.calls += 1
-        return self.readings[self.calls - 1]
+        reading = self.readings[self.calls - 1]
+        if isinstance(reading, BaseException):
+            raise reading
+        return reading
 
 
 def utc(*fields):
@@ -359,7 +362,7 @@ def test_new_takes_no_argument():
             run_id.new(*arguments, **named)
 
 
-def test_new_uses_nothing_of_the_module_random(monkeypatch):
+def test_new_does_not_use_the_default_generator_of_random(monkeypatch):
     for name in ("random", "getrandbits", "seed", "randrange", "randint", "randbytes"):
         monkeypatch.setattr(random, name, fail)
     monkeypatch.setattr(random, "Random", fail)
@@ -368,9 +371,13 @@ def test_new_uses_nothing_of_the_module_random(monkeypatch):
 
 def test_new_does_not_follow_a_seed_of_the_module_random():
     drawn = set()
-    for _ in range(4):
-        random.seed(20261009)
-        drawn.add(run_id.new()[17:])
+    state = random.getstate()
+    try:
+        for _ in range(4):
+            random.seed(20261009)
+            drawn.add(run_id.new()[17:])
+    finally:
+        random.setstate(state)
     # four equal draws of a working source have probability 2**-192
     assert len(drawn) > 1
 
@@ -418,6 +425,19 @@ def test_an_error_of_the_random_source_is_passed_on(monkeypatch, error):
 
 
 @pytest.mark.parametrize(
+    "error",
+    [OverflowError("date value out of range"), ValueError("year 10000"), OSError(22)],
+    ids=lambda error: type(error).__name__,
+)
+def test_an_error_of_the_clock_is_passed_on(monkeypatch, error):
+    monkeypatch.setattr(run_id, "_utc_now", Clock(error))
+    monkeypatch.setattr(run_id, "secrets", Bits(0))
+    with pytest.raises(type(error)) as caught:
+        run_id.new()
+    assert caught.value is error
+
+
+@pytest.mark.parametrize(
     ("reading", "drawn", "kind"),
     [
         (NAIVE, 0, ValueError),
@@ -426,7 +446,7 @@ def test_an_error_of_the_random_source_is_passed_on(monkeypatch, error):
         (EXAMPLE_TIME, 1.5, TypeError),
     ],
 )
-def test_new_writes_nothing_the_form_cannot_hold(monkeypatch, reading, drawn, kind):
+def test_new_writes_nothing_compose_refuses(monkeypatch, reading, drawn, kind):
     monkeypatch.setattr(run_id, "_utc_now", Clock(reading))
     monkeypatch.setattr(run_id, "secrets", Bits(drawn))
     with pytest.raises(kind):
