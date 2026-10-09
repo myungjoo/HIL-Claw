@@ -631,6 +631,20 @@ def test_host_os_of_256_characters_is_not_cut(machine):
     fails(machine, "host.os")
 
 
+def test_reason_of_a_long_value_outside_ascii_is_the_character(machine):
+    machine.clang = b"\xc3\xa9" * 200 + b"\n"
+    assert "outside 0x20 to 0x7E" in fails(machine, "toolchain.clang")
+    machine.clang = b"c" * 256 + b"\n"
+    assert "longer than 255 characters" in fails(machine, "toolchain.clang")
+
+
+@pytest.mark.parametrize("compiler", [7, 3.5, object()])
+def test_compiler_that_cannot_be_iterated(machine, compiler):
+    with pytest.raises(TypeError):
+        local_record("external", timeout_s=TIMEOUT, compiler=compiler)
+    assert machine.asked == []
+
+
 def test_macos_host_os_length_limit(machine):
     machine.kernel = DARWIN
     machine.sw_vers = b"v" * 249 + b"\n"

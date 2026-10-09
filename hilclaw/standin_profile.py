@@ -130,11 +130,12 @@ def local_record(hw_source, *, timeout_s, compiler=None):
     What :func:`hilclaw.local_run.run` raises for its arguments is passed on,
     from the first command and after the kernel name was read:
     :class:`TypeError` for a ``timeout_s`` that is not a number or a
-    ``compiler`` part of the wrong type, :class:`ValueError` for a
+    part of ``compiler`` of the wrong type, :class:`ValueError` for a
     ``timeout_s`` that is not positive and finite or an argument
     :mod:`subprocess` cannot hand over, and :class:`OverflowError` for a finite
-    ``timeout_s`` longer than the platform can wait for. An empty ``compiler``
-    prefix is a :class:`ValueError` raised before the machine is read.
+    ``timeout_s`` longer than the platform can wait for. Raised before the
+    machine is read: :class:`TypeError` for a ``compiler`` of another type that
+    cannot be iterated and :class:`ValueError` for an empty prefix.
     """
     if type(hw_source) is not str or hw_source not in keys.HW_SOURCES:
         rule = " or ".join(keys.HW_SOURCES)
@@ -210,13 +211,13 @@ def _spelling(fact, raw):
     text = _RUN.sub(b" ", raw).strip(b" ")
     if not text:
         raise UnreadableFactError(f"{fact}: the value is empty")
-    if len(text) > _MAX_LENGTH:
-        raise UnreadableFactError(
-            f"{fact}: the value is longer than {_MAX_LENGTH} characters"
-        )
     if not _STRING.fullmatch(text):
         raise UnreadableFactError(
             f"{fact}: the value holds a character outside 0x20 to 0x7E"
+        )
+    if len(text) > _MAX_LENGTH:
+        raise UnreadableFactError(
+            f"{fact}: the value is longer than {_MAX_LENGTH} characters"
         )
     return text
 
