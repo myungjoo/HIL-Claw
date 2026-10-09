@@ -61,18 +61,17 @@ taken, and the file is never a mixture of the two. The name is given once
 only against another write by these steps: nothing here prevents a process
 from writing, replacing or removing the file by other means.
 
-It composes no content and fills in no value: no member is put in or taken
-out, and a valid content without ``tolerance``, ``source_commit``, ``n_max``,
+It composes no content and fills in no value: no member is put in or taken out,
+and a valid content without ``tolerance``, ``source_commit``, ``n_max``,
 ``candidates_per_round`` or ``op_signature`` is written as it is (decision 2;
 the last two of the five members are ADR-0028's and ADR-0031's). It does not
-say that a content is right,
-complete or enough to start a run. It reads no file, the one under the final
-name included, lists no directory, compares nothing and knows no "same
-content" (decision 4). It
-is no lock and not the means by which a ``run_id`` is unique. It takes no
-lock, makes no commit, writes no other file and is not a tool: what writes the
-file, when, in which order against ``STATE.json`` and what a caller does with
-a taken name are open (OD-23, sub-questions 10, 17 and 23 of OD-8).
+say that a content is right, complete or enough to start a run. It reads no
+file, the one under the final name included, lists no directory, compares
+nothing and knows no "same content" (decision 4). It is no lock and not the
+means by which a ``run_id`` is unique. It takes no lock, makes no commit,
+writes no other file and is not a tool: what writes the file, when, in which
+order against ``STATE.json`` and what a caller does with a taken name are open
+(OD-23, sub-questions 10, 17 and 23 of OD-8).
 """
 
 import contextlib

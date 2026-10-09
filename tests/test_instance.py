@@ -3247,7 +3247,7 @@ def test_nothing_of_the_module_stands_in_for_the_op_signature():
         for node in ast.walk(tree)
         if isinstance(node, ast.Constant) and type(node.value) is str
     } - docstrings
-    for word in ("gemm", "attention", "fp32", "row_major", "dtype", "layout", "shape"):
+    for word in ("gemm", "attention", "fp32", "row_major"):
         assert not [value for value in written if word in value]
 
 

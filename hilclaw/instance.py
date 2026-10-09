@@ -59,15 +59,14 @@ Conventions of this module, which the seven records do not fix:
   holds it, then ``source_commit`` when the document holds it, then ``n_max``
   when the document holds it, then ``candidates_per_round`` when the document
   holds it, then ``op_signature`` when the document holds it: the order in
-  which the records defined them. A content this
-  interpreter cannot read (an integer too long for it anywhere in the text,
-  nesting too deep) raises :class:`InvalidInstanceError` too, though it is a
-  limit of this reader and not damage; the limits stay as the interpreter has
-  them. A number beyond the float range in a member not defined here is read
-  as an infinity and is no error, as :mod:`hilclaw.run_state` has it; in
-  ``tolerance``, as ``n_max`` and as ``candidates_per_round`` it makes the
-  content invalid (ADR-0020 decision 4, ADR-0023 decision 3, ADR-0028
-  decision 3).
+  which the records defined them. A content this interpreter cannot read (an
+  integer too long for it anywhere in the text, nesting too deep) raises
+  :class:`InvalidInstanceError` too, though it is a limit of this reader and
+  not damage; the limits stay as the interpreter has them. A number beyond the
+  float range in a member not defined here is read as an infinity and is no
+  error, as :mod:`hilclaw.run_state` has it; in ``tolerance``, as ``n_max`` and
+  as ``candidates_per_round`` it makes the content invalid (ADR-0020 decision
+  4, ADR-0023 decision 3, ADR-0028 decision 3).
 - ``schema_version`` is an integer of ADR-0001, from 0 to
   :data:`hilclaw.keys.MAX_INTEGER`: a value outside that range is no integer of
   the records and makes the content invalid, it is not another version. ``-0``
@@ -153,9 +152,8 @@ Conventions of this module, which the seven records do not fix:
 It writes, creates and removes no file and composes no content. It defines no
 member besides the seven (``schema_version``, ``hw_profile``, ``tolerance``,
 ``source_commit``, ``n_max``, ``candidates_per_round`` and ``op_signature``)
-and interprets no
-other: a file it accepts is not thereby a complete instance record, and not
-enough to start a run (ADR-0018 decisions 1 and 2).
+and interprets no other: a file it accepts is not thereby a complete instance
+record, and not enough to start a run (ADR-0018 decisions 1 and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
 default and substitutes no value (ADR-0020 decision 3), does not check that a
 run is of the first case, and gives the member no meaning for a run of another
@@ -265,13 +263,11 @@ key or of the op_signature key, is read or compared (ADR-0018 decision 4,
 ADR-0031 decision 6) and no reader here needs one to exist; how an embedded
 record and the stored one relate is open (OD-8 sub-question 18 for the
 hw_profile, part (iii) of sub-question 28 for the op_signature). None of its
-errors is a
-:class:`hilclaw.tools.ToolFailure`: the kind a call of a tool answers for them
-is given by the tool function that calls :func:`hw_profile_of` or
-:func:`layout_version_of` (:mod:`hilclaw.hw_tool`,
-:mod:`hilclaw.journaled_tool`; ADR-0019, ADR-0030), not here. It reads no
-other version
-(OD-11) and says nothing of what writes the file, of when, or of a run
+errors is a :class:`hilclaw.tools.ToolFailure`: the kind a call of a tool
+answers for them is given by the tool function that calls :func:`hw_profile_of`
+or :func:`layout_version_of` (:mod:`hilclaw.hw_tool`,
+:mod:`hilclaw.journaled_tool`; ADR-0019, ADR-0030), not here. It reads no other
+version (OD-11) and says nothing of what writes the file, of when, or of a run
 directory without it (OD-8 sub-questions 10 and 17). Nothing is kept between
 calls, so a file changed between two calls is read as changed (ADR-0018
 decision 6).
