@@ -866,6 +866,30 @@ def test_a_class_out_of_an_append_is_the_kind_of_the_line_or_no_kind(
     assert [entry["kind"] for entry in lines(root)] == ["step_started"] * 4 * ran
 
 
+@pytest.mark.parametrize("line", list(LINE_FAILED))
+def test_a_place_of_the_log_that_is_no_regular_file_at_an_append_is_the_kind_of_the_line(
+    tmp_path, monkeypatch, line
+):
+    error = events.CorruptEventsError(f"{LOG}: is not a regular file")
+    real = events.append
+
+    def append(data_root, run_id, kind, data, **numbers):
+        if kind == line:
+            raise error
+        return real(data_root, run_id, kind, data, **numbers)
+
+    monkeypatch.setattr(events, "append", append)
+    ran = int(line == "step_ended")
+    answer = {"error": {"kind": LINE_FAILED[line], "message": str(error)}}
+    for way, through in WAYS.items():
+        path = tmp_path / way
+        store(path)
+        tool = Tool(path)
+        assert through(tool, request()) == (True, answer)
+        assert (tool.performed, len(tool.asked)) == (ran, ran)
+        assert lines(path) == [started()] * ran
+
+
 @by_class
 @pytest.mark.parametrize("where", ["script", "outcome"])
 def test_the_same_class_out_of_the_step_is_not_answered_and_leaves_it_open(
