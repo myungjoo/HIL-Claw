@@ -31,12 +31,14 @@ from hilclaw.instance import (
     Instance,
     InvalidInstanceError,
     MissingInstanceError,
+    OpSignature,
     Tolerance,
     UnsupportedVersionError,
     candidates_per_round_of,
     hw_profile_of,
     layout_version_of,
     n_max_of,
+    op_signature_of,
     parse,
     read,
     source_commit_of,
@@ -206,6 +208,7 @@ def test_the_public_names():
         "Instance",
         "InvalidInstanceError",
         "MissingInstanceError",
+        "OpSignature",
         "SCHEMA_VERSION",
         "Tolerance",
         "UnsupportedVersionError",
@@ -213,6 +216,7 @@ def test_the_public_names():
         "hw_profile_of",
         "layout_version_of",
         "n_max_of",
+        "op_signature_of",
         "parse",
         "read",
         "source_commit_of",
@@ -227,10 +231,13 @@ def test_the_public_names():
         "source_commit",
         "n_max",
         "candidates_per_round",
+        "op_signature",
         "others",
     )
     assert Tolerance._fields == ("rtol", "atol")
+    assert OpSignature._fields == ("key", "record")
     assert Tolerance._field_defaults == Instance._field_defaults == {}
+    assert OpSignature._field_defaults == {}
     assert issubclass(InvalidInstanceError, ValueError)
     for error in (UnsupportedVersionError, MissingInstanceError):
         assert not issubclass(error, (ValueError, OSError))
@@ -244,6 +251,7 @@ def test_the_public_names():
         source_commit_of,
         n_max_of,
         candidates_per_round_of,
+        op_signature_of,
         layout_version_of,
     ):
         parameters = inspect.signature(function).parameters
@@ -258,7 +266,7 @@ def test_a_minimal_content_gives_the_key_and_the_record():
     result = parse(raw(doc()))
 
     assert type(result) is Instance
-    assert result == Instance(KEY, record(), None, None, None, None, {})
+    assert result == Instance(KEY, record(), None, None, None, None, None, {})
     assert type(result.hw_profile) is dict
     assert key_of(result.hw_profile) == result.hw_profile_key
     assert validate(doc()) is None
@@ -269,7 +277,9 @@ def test_a_record_with_its_optional_fields():
 
     result = parse(raw(doc(profile)))
 
-    assert result == Instance(key_of(profile), profile, None, None, None, None, {})
+    assert result == Instance(
+        key_of(profile), profile, None, None, None, None, None, {}
+    )
     assert result.hw_profile_key == key_of(record(ext={"example_field": 3}))
     assert result.hw_profile_key != KEY
 
@@ -313,7 +323,7 @@ OTHERS = {
 def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     result = parse(raw(doc(**OTHERS)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, OTHERS)
+    assert result == Instance(KEY, record(), None, None, None, None, None, OTHERS)
     assert list(result.others) == list(OTHERS)
     assert validate(doc(**OTHERS)) is None
 
@@ -731,6 +741,7 @@ def test_a_content_with_the_member_states_the_two_values():
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.tolerance) is Tolerance
@@ -805,7 +816,7 @@ def test_any_order_of_the_members_of_a_tolerance(content):
     result = parse(content)
 
     assert result == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, None, None, {}
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, None, None, None, {}
     )
 
 
@@ -848,7 +859,7 @@ def test_another_version_is_reported_before_a_tolerance_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_tolerance(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, others)
+    assert result == Instance(KEY, record(), None, None, None, None, None, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(tolerance=TOLERANCE, **others)))
@@ -1101,7 +1112,9 @@ def test_a_content_with_the_member_states_that_string(commit):
 
     result = parse(raw(document))
 
-    assert result == Instance(KEY, record(), None, commit, None, None, {"example": [1]})
+    assert result == Instance(
+        KEY, record(), None, commit, None, None, None, {"example": [1]}
+    )
     assert type(result.source_commit) is str
     assert "source_commit" not in result.others
     assert validate(document) is None
@@ -1145,7 +1158,7 @@ def test_any_order_of_the_three_members_and_the_version(order):
     content = text(*(MEMBERS[index] for index in order))
 
     assert parse(content) == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, None, None, {}
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, None, None, None, {}
     )
     assert validate(json.loads(content)) is None
 
@@ -1235,7 +1248,7 @@ def test_another_version_is_reported_before_a_source_commit_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_source_commit(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, others)
+    assert result == Instance(KEY, record(), None, None, None, None, None, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(source_commit=OTHER_COMMIT, **others)))
@@ -1547,7 +1560,9 @@ def test_a_content_with_the_member_states_that_bound(bound):
 
     result = parse(raw(document))
 
-    assert result == Instance(KEY, record(), None, None, bound, None, {"example": [1]})
+    assert result == Instance(
+        KEY, record(), None, None, bound, None, None, {"example": [1]}
+    )
     assert type(result.n_max) is int
     assert "n_max" not in result.others
     assert validate(document) is None
@@ -1592,7 +1607,7 @@ def test_any_order_of_the_four_members_and_the_version(order):
     content = text(*(BOUNDED_MEMBERS[index] for index in order))
 
     assert parse(content) == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, BOUND, None, {}
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, BOUND, None, None, {}
     )
     assert validate(json.loads(content)) is None
 
@@ -1673,7 +1688,7 @@ def test_another_version_is_reported_before_a_bound_is_looked_at(version, bound)
 def test_a_top_level_member_of_another_name_states_no_bound(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, others)
+    assert result == Instance(KEY, record(), None, None, None, None, None, others)
     assert result.n_max is None
     assert validate(doc(**others)) is None
 
@@ -1769,6 +1784,7 @@ def test_what_is_no_value_of_the_bound(literal):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
         None,
         None,
         {"example": [1]},
@@ -1979,7 +1995,9 @@ def test_a_content_with_the_member_states_that_number(count):
 
     result = parse(raw(document))
 
-    assert result == Instance(KEY, record(), None, None, None, count, {"example": [1]})
+    assert result == Instance(
+        KEY, record(), None, None, None, count, None, {"example": [1]}
+    )
     assert type(result.candidates_per_round) is int
     assert "candidates_per_round" not in result.others
     assert validate(document) is None
@@ -2025,7 +2043,7 @@ def test_any_order_of_the_five_members_and_the_version(order):
     content = text(*(COUNTED_MEMBERS[index] for index in order))
 
     assert parse(content) == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, BOUND, COUNT, {}
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, BOUND, COUNT, None, {}
     )
     assert validate(json.loads(content)) is None
 
@@ -2132,7 +2150,7 @@ def test_another_version_is_reported_before_the_number_of_candidates_is_looked_a
 def test_a_top_level_member_of_another_name_states_no_number(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, others)
+    assert result == Instance(KEY, record(), None, None, None, None, None, others)
     assert result.candidates_per_round is None
     assert validate(doc(**others)) is None
 
@@ -2237,6 +2255,7 @@ def test_what_is_no_value_of_the_number_of_candidates(literal):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
         None,
         {"example": [1]},
     )
@@ -2437,6 +2456,820 @@ def test_nothing_of_the_module_stands_in_for_the_number_of_candidates():
     assert not {"spec", "candidates", "candidates_per_round"} & set(vars(instance))
 
 
+# --- happy: the member op_signature (ADR-0031) ---
+
+
+# Synthetic gemm records: no operation, shape, dtype, layout or M of a real run, and no default.
+def op_record(**changes):
+    made = {
+        "schema_version": 1,
+        "kind": "gemm",
+        "shape": {"m": 3, "k": 5, "n": 7},
+        "dtype": "dtype_a",
+        "layout": "layout_a",
+    }
+    for name, value in changes.items():
+        made[name] = value
+    return {name: value for name, value in made.items() if value is not REMOVE}
+
+
+def op_key_of(op):
+    return keys.op_signature_key(op).name
+
+
+def stating(op):
+    return {"key": op_key_of(op), "record": op}
+
+
+OP_KEY = op_key_of(op_record())
+OTHER_OP = op_record(shape={"m": 4, "k": 5, "n": 7}, label="another")
+OTHER_OP_KEY = op_key_of(OTHER_OP)
+OP_SECTION = f'"op_signature": {json.dumps(stating(op_record()))}'
+OP_MEMBERS = {
+    "tolerance": TOLERANCE,
+    "source_commit": COMMIT,
+    "n_max": BOUND,
+    "candidates_per_round": COUNT,
+}
+OP_PLACE = "op_signature"
+NO_OP_KEY = f"op_signature.key: must be {OP_KEY}, the name derived from op_signature.record, got "
+
+
+def op_section(**changes):
+    made = stating(op_record())
+    for name, value in changes.items():
+        if value is REMOVE:
+            del made[name]
+        else:
+            made[name] = value
+    return made
+
+
+OP_RECORDS = {
+    "the key fields": op_record(),
+    "a label": op_record(label="a label"),
+    "an ext": op_record(ext={"example": 1, "other": "x"}),
+    "an ext and a label": op_record(ext={"example": "x"}, label="both"),
+    "m 0": op_record(shape={"m": 0, "k": 0, "n": 0}),
+    "the largest integers": op_record(shape={"m": MAX, "k": MAX, "n": MAX}),
+    "other names": op_record(dtype="x9", layout="col_major"),
+}
+
+
+@pytest.mark.parametrize("case", OP_RECORDS)
+def test_a_content_with_the_member_states_that_key_and_that_record(case):
+    stated_record = OP_RECORDS[case]
+    document = doc(op_signature=stating(stated_record), example=[1])
+
+    result = parse(raw(document))
+
+    assert result == Instance(
+        KEY,
+        record(),
+        None,
+        None,
+        None,
+        None,
+        OpSignature(op_key_of(stated_record), stated_record),
+        {"example": [1]},
+    )
+    assert type(result.op_signature) is OpSignature
+    assert type(result.op_signature.key) is str
+    assert type(result.op_signature.record) is dict
+    assert "op_signature" not in result.others
+    assert validate(document) is None
+
+
+def test_the_record_handed_out_is_the_one_parsed_from_the_content():
+    stated_record = op_record(label="kept", ext={"example": 1})
+    content = raw(doc(op_signature=stating(stated_record)))
+
+    first, second = parse(content), parse(content)
+
+    assert first.op_signature == second.op_signature
+    assert first.op_signature.record == stated_record
+    assert first.op_signature.record is not second.op_signature.record
+    assert first.op_signature.record["label"] == "kept"
+    assert list(first.op_signature._asdict()) == ["key", "record"]
+
+
+def test_a_content_without_the_member_states_no_op_signature():
+    without = parse(raw(doc(**OP_MEMBERS)))
+    with_it = parse(raw(doc(**OP_MEMBERS, op_signature=stating(op_record()))))
+
+    assert without.op_signature is None
+    assert parse(raw(doc())).op_signature is None
+    assert with_it.op_signature == OpSignature(OP_KEY, op_record())
+    assert (
+        without[:6]
+        == with_it[:6]
+        == (KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, BOUND, COUNT)
+    )
+    assert without.others == with_it.others == {}
+    assert validate(doc(**OP_MEMBERS)) is None
+    assert validate(doc()) is None
+
+
+def test_any_order_of_the_six_members_and_the_version():
+    members = [*COUNTED_MEMBERS, OP_SECTION]
+    expected = Instance(
+        KEY,
+        record(),
+        Tolerance(TEST_RTOL, TEST_ATOL),
+        COMMIT,
+        BOUND,
+        COUNT,
+        OpSignature(OP_KEY, op_record()),
+        {},
+    )
+
+    for order in itertools.permutations(range(7)):
+        content = text(*(members[index] for index in order))
+        assert parse(content) == expected
+    assert validate(json.loads(text(*reversed(members)))) is None
+
+
+def test_any_order_and_any_white_space_inside_the_member():
+    turned = json.dumps(op_record(label="x"), sort_keys=True)
+    shape = '{"n": 7, "k": 5, "m": 3}'
+    for member in (
+        f'"op_signature": {{"record": {json.dumps(op_record())}, "key": "{OP_KEY}"}}',
+        f'"op_signature": {{"record": {turned}, "key": "{OP_KEY}"}}',
+        f'\r\n\t"op_signature" :\n {{ "key" : "{OP_KEY}" ,\n "record" : {turned} }} \n',
+        OP_SECTION.replace('{"m": 3, "k": 5, "n": 7}', shape),
+    ):
+        result = parse(text(VERSION, SECTION, member))
+        assert result.op_signature.key == OP_KEY
+        assert op_key_of(result.op_signature.record) == OP_KEY
+        assert result.others == {}
+
+
+# The Example of ADR-0031, as written in the record: the shape of the member, not a valid file.
+EXAMPLE_OF_ADR_0031 = b"""{
+  "schema_version": 1,
+  "hw_profile": {
+    "key": "cpu_standin-b0d8610d8f470856",
+    "record": {
+      "schema_version": 1,
+      "accelerator": "cpu_standin",
+      "revision": "NOT-DECIDED-HERE",
+      "toolchain": {"clang": "NOT-DECIDED-HERE"},
+      "host": {"cpu": "NOT-DECIDED-HERE", "os": "NOT-DECIDED-HERE"},
+      "hw_source": "NOT-DECIDED-HERE"
+    }
+  },
+  "op_signature": {
+    "key": "gemm-485b9bc494d477eb",
+    "record": {
+      "schema_version": 1,
+      "kind": "gemm",
+      "shape": {"m": 1, "k": 2048, "n": 8192},
+      "dtype": "fp32",
+      "layout": "row_major"
+    }
+  },
+  "tolerance": {"rtol": 1e-4, "atol": 0.01},
+  "source_commit": "0123456789abcdef0123456789abcdef01234567",
+  "n_max": 10,
+  "candidates_per_round": 2
+}
+"""
+EXAMPLE_SOURCE = b'"hw_source": "NOT-DECIDED-HERE"'
+EXAMPLE_FILE = EXAMPLE_OF_ADR_0031.replace(EXAMPLE_SOURCE, b'"hw_source": "in_house"')
+EXAMPLE_OP_KEY = "gemm-485b9bc494d477eb"
+EXAMPLE_OP_KEY_OF_M_32 = "gemm-a463eb52b19cfa97"
+
+
+def example_op(**changes):
+    made = {
+        "schema_version": 1,
+        "kind": "gemm",
+        "shape": {"m": 1, "k": 2048, "n": 8192},
+        "dtype": "fp32",
+        "layout": "row_major",
+    }
+    for name, value in changes.items():
+        made[name] = value
+    return {name: value for name, value in made.items() if value is not REMOVE}
+
+
+def test_the_member_of_the_example_of_adr_0031():
+    invalid("hw_profile.record.hw_source: must be ", parse, EXAMPLE_OF_ADR_0031)
+
+    result = parse(EXAMPLE_FILE)
+    assert result.op_signature == OpSignature(EXAMPLE_OP_KEY, example_op())
+    assert op_key_of(example_op()) == EXAMPLE_OP_KEY
+    assert op_key_of(example_op(shape={"m": 32, "k": 2048, "n": 8192})) == (
+        EXAMPLE_OP_KEY_OF_M_32
+    )
+    assert result.candidates_per_round == 2
+    assert result.n_max == 10
+    assert result.source_commit == COMMIT
+    assert result.tolerance == Tolerance(0.0001, 0.01)
+    assert result.others == {}
+
+    silent = parse(
+        EXAMPLE_OF_ADR_0028.replace(EXAMPLE_SOURCE, b'"hw_source": "in_house"')
+    )
+    assert silent.op_signature is None
+    assert silent[:6] == result[:6]
+
+
+# --- branch: the member op_signature ---
+
+
+def test_a_change_of_the_label_keeps_the_key_and_one_of_a_key_field_does_not():
+    for label in ("x", "another label"):
+        section = op_section(record=op_record(label=label))
+        assert parse(raw(doc(op_signature=section))).op_signature == (
+            OpSignature(OP_KEY, op_record(label=label))
+        )
+        assert validate(doc(op_signature=section)) is None
+    for changed in (
+        op_record(shape={"m": 4, "k": 5, "n": 7}),
+        op_record(shape={"m": 3, "k": 6, "n": 7}),
+        op_record(shape={"m": 3, "k": 5, "n": 8}),
+        op_record(dtype="dtype_b"),
+        op_record(layout="layout_b"),
+        op_record(ext={"example": 1}),
+    ):
+        document = doc(op_signature=op_section(record=changed))
+        expected = (
+            f"op_signature.key: must be {op_key_of(changed)}, "
+            f"the name derived from op_signature.record, got str '{OP_KEY}'"
+        )
+        assert invalid("op_signature.key: ", parse, raw(document)) == expected
+        assert invalid("op_signature.key: ", validate, document) == expected
+        assert validate(doc(op_signature=stating(changed))) is None
+
+
+@pytest.mark.parametrize("profile", [record(), OTHER_RECORD], ids=["a", "b"])
+@pytest.mark.parametrize("case", OP_RECORDS)
+@pytest.mark.parametrize("tolerance", [REMOVE, TOLERANCE, {"rtol": 0, "atol": 0}])
+def test_the_member_the_hw_profile_and_the_tolerance_are_valid_each_by_itself(
+    profile, case, tolerance
+):
+    stated_record = OP_RECORDS[case]
+    changes = {"op_signature": stating(stated_record)}
+    if tolerance is not REMOVE:
+        changes["tolerance"] = tolerance
+    document = doc(profile, **changes)
+
+    result = parse(raw(document))
+
+    assert (result.hw_profile_key, result.hw_profile) == (key_of(profile), profile)
+    assert result.op_signature == OpSignature(op_key_of(stated_record), stated_record)
+    assert (result.tolerance is None) == (tolerance is REMOVE)
+    assert validate(document) is None
+
+
+BROKEN_OPS = [
+    None,
+    OP_KEY,
+    7,
+    True,
+    [],
+    [stating(op_record())],
+    {},
+    {"key": OP_KEY},
+    op_section(key=OTHER_OP_KEY),
+    op_section(record=op_record(kind="attention")),
+]
+
+
+@pytest.mark.parametrize("version", [0, 2, MAX])
+@pytest.mark.parametrize("value", [*BROKEN_OPS, stating(op_record())], ids=shown)
+def test_another_version_is_reported_before_the_op_signature_is_looked_at(
+    version, value
+):
+    document = doc(schema_version=version, op_signature=value)
+
+    for function, argument in ((parse, raw(document)), (validate, document)):
+        with pytest.raises(UnsupportedVersionError) as caught:
+            function(argument)
+        assert str(caught.value) == f"schema_version: {version} is not supported"
+
+
+@pytest.mark.parametrize(
+    "others",
+    [
+        {"op": stating(op_record())},
+        {"opSignature": stating(op_record())},
+        {"op-signature": stating(op_record())},
+        {"Op_signature": stating(op_record())},
+        {"OP_SIGNATURE": stating(op_record())},
+        {"op_signature ": None},
+        {"op_signatures": [stating(op_record())]},
+        {"operation": OP_KEY, "kernel": OP_KEY},
+        {"task": {"op_signature": stating(op_record())}},
+        {"op": None, "opSignature": OP_KEY, "task": {"op_signature": 7}},
+    ],
+    ids=shown,
+)
+def test_a_top_level_member_of_another_name_states_no_op_signature(others):
+    result = parse(raw(doc(**others)))
+
+    assert result == Instance(KEY, record(), None, None, None, None, None, others)
+    assert result.op_signature is None
+    assert validate(doc(**others)) is None
+
+    result = parse(raw(doc(op_signature=stating(OTHER_OP), **others)))
+    assert result.op_signature == OpSignature(OTHER_OP_KEY, OTHER_OP)
+    assert result.others == others
+
+
+@pytest.mark.parametrize(
+    "place, changes",
+    [
+        ("hw_profile: must be", {"hw_profile": None, "op_signature": None}),
+        (
+            "document: lacks the member hw_profile",
+            {"hw_profile": REMOVE, "op_signature": OP_KEY},
+        ),
+        (
+            "hw_profile.key: ",
+            {"hw_profile": section(key=OTHER_KEY), "op_signature": {}},
+        ),
+        ("tolerance: must be", {"tolerance": None, "op_signature": None}),
+        (NO_COMMIT + "str 'main'", {"source_commit": "main", "op_signature": []}),
+        (NO_BOUND + "int", {"n_max": 4, "op_signature": None}),
+        (
+            NO_COUNT + "int",
+            {**OP_MEMBERS, "candidates_per_round": 0, "op_signature": None},
+        ),
+        ("op_signature: must be an object, got NoneType", {"op_signature": None}),
+        (
+            "op_signature: must be an object, got list",
+            {**OP_MEMBERS, "op_signature": []},
+        ),
+        ("op_signature: must be an object without", {"op_signature": {"example": 1}}),
+        (
+            "op_signature: must be an object without",
+            {"op_signature": {"key": 7, "example": 1}},
+        ),
+        ("op_signature: lacks the member key", {"op_signature": {"record": None}}),
+        ("op_signature: lacks the member record", {"op_signature": {"key": 7}}),
+        (
+            "op_signature.key: must be a str",
+            {"op_signature": {"key": 7, "record": None}},
+        ),
+        (
+            "op_signature.key: must be a str",
+            {"op_signature": {"key": 7, "record": op_record(kind="Gemm")}},
+        ),
+        (
+            "op_signature.record: must be an object",
+            {"op_signature": {"key": "", "record": None}},
+        ),
+        (
+            "op_signature.record.kind",
+            {"op_signature": {"key": "", "record": op_record(kind="Gemm")}},
+        ),
+        ("op_signature.key: must be gemm-", {"op_signature": op_section(key="")}),
+    ],
+)
+def test_the_first_broken_rule_is_reported_with_an_op_signature(place, changes):
+    document = doc(**changes)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+# --- error / negative: the member op_signature ---
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, [], [stating(op_record())], "text", OP_KEY, "", 7, 0, 1.5, True, False],
+    ids=shown,
+)
+def test_an_op_signature_that_is_no_object(value):
+    document = doc(**OP_MEMBERS, op_signature=value, example=[1])
+    expected = "op_signature: must be an object, got " + type(value).__name__
+    if type(value) is str:
+        expected += " " + reprlib.repr(value)
+
+    assert invalid("op_signature: ", parse, raw(document)) == expected
+    assert invalid("op_signature: ", validate, document) == expected
+    del document["op_signature"]
+    assert parse(raw(document)).op_signature is None
+
+
+@pytest.mark.parametrize(
+    ("place", "op_signature"),
+    [
+        ("op_signature: lacks the member key", {}),
+        ("op_signature: lacks the member key", op_section(key=REMOVE)),
+        ("op_signature: lacks the member record", op_section(record=REMOVE)),
+        (
+            "op_signature: must be an object without the member, got str 'label'",
+            op_section(label="x"),
+        ),
+        (
+            "op_signature: must be an object without the member, got str 'schema_version'",
+            op_section(schema_version=1),
+        ),
+        (
+            "op_signature: must be an object without the member, got str 'schema_version'",
+            op_record(),
+        ),
+        (
+            "op_signature: must be an object without the member, got str 'Key'",
+            {"Key": OP_KEY, "record": op_record()},
+        ),
+        (
+            "op_signature: must be an object without the member, got str 'hw_profile'",
+            op_section(hw_profile=section()),
+        ),
+        ("op_signature.key: must be a str, got int", op_section(key=7)),
+        ("op_signature.key: must be a str, got NoneType", op_section(key=None)),
+        ("op_signature.key: must be a str, got bool", op_section(key=True)),
+        ("op_signature.key: must be a str, got list", op_section(key=[OP_KEY])),
+        ("op_signature.key: must be a str, got dict", op_section(key={"name": OP_KEY})),
+        (
+            "op_signature.record: must be an object, got NoneType",
+            op_section(record=None),
+        ),
+        ("op_signature.record: must be an object, got list", op_section(record=[])),
+        (
+            "op_signature.record: must be an object, got list",
+            op_section(record=[op_record()]),
+        ),
+        (
+            "op_signature.record: must be an object, got str 'text'",
+            op_section(record="text"),
+        ),
+        ("op_signature.record: must be an object, got str", op_section(record=OP_KEY)),
+        ("op_signature.record: must be an object, got int", op_section(record=7)),
+        ("op_signature.record: must be an object, got bool", op_section(record=True)),
+    ],
+)
+def test_an_op_signature_that_is_not_the_closed_object(place, op_signature):
+    document = doc(op_signature=op_signature)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "",
+        " ",
+        OTHER_OP_KEY,
+        op_key_of(op_record(dtype="dtype_b")),
+        "gemm",
+        OP_KEY.upper(),
+        OP_KEY[:-1],
+        OP_KEY + "0",
+        " " + OP_KEY,
+        OP_KEY + "\n",
+        OP_KEY.replace("-", "_"),
+        keys.op_signature_key(op_record()).digest,
+        "../" + OP_KEY,
+        KEY,
+    ],
+)
+def test_a_key_that_is_not_the_name_derived_from_the_op_signature_record(key):
+    document = doc(op_signature=op_section(key=key))
+
+    assert invalid(NO_OP_KEY, parse, raw(document)) == (
+        NO_OP_KEY + f"str {reprlib.repr(key)}"
+    )
+    assert invalid(NO_OP_KEY, validate, document) == (
+        NO_OP_KEY + f"str {reprlib.repr(key)}"
+    )
+
+
+OP_RECORD = "op_signature.record."
+
+
+@pytest.mark.parametrize(
+    ("place", "stated_record"),
+    [
+        (OP_RECORD + "schema_version: required", {}),
+        (OP_RECORD + "schema_version: required", op_record(schema_version=REMOVE)),
+        (OP_RECORD + "kind: required", op_record(kind=REMOVE)),
+        (OP_RECORD + "shape: required", op_record(shape=REMOVE)),
+        (OP_RECORD + "dtype: required", op_record(dtype=REMOVE)),
+        (OP_RECORD + "layout: required", op_record(layout=REMOVE)),
+        (OP_RECORD + "schema_version: must be", op_record(schema_version=2)),
+        (OP_RECORD + "schema_version: must be", op_record(schema_version=True)),
+        (OP_RECORD + "kind: must be a name", op_record(kind="Gemm")),
+        (OP_RECORD + "kind: must be a name", op_record(kind=7)),
+        (OP_RECORD + "shape: must be a map", op_record(shape=[3, 5, 7])),
+        (OP_RECORD + "shape: must be a map with", op_record(shape={})),
+        (OP_RECORD + "shape: must be a map with", op_record(shape={"k": 5, "n": 7})),
+        (
+            OP_RECORD + "shape: must be a map with",
+            op_record(shape={"m": 3, "k": 5, "n": 7, "p": 1}),
+        ),
+        (OP_RECORD + "shape.m: must be", op_record(shape={"m": 3.0, "k": 5, "n": 7})),
+        (OP_RECORD + "shape.m: must be", op_record(shape={"m": -1, "k": 5, "n": 7})),
+        (
+            OP_RECORD + "shape.k: must be",
+            op_record(shape={"m": 3, "k": 2**53, "n": 7}),
+        ),
+        (OP_RECORD + "shape.n: must be", op_record(shape={"m": 3, "k": 5, "n": "7"})),
+        (OP_RECORD + "shape: member name", op_record(shape={"M": 3, "k": 5, "n": 7})),
+        (OP_RECORD + "dtype: must be a name", op_record(dtype="FP32")),
+        (OP_RECORD + "dtype: must be a name", op_record(dtype=None)),
+        (OP_RECORD + "layout: must be a name", op_record(layout="row major")),
+        (OP_RECORD + "ext: must be", op_record(ext={})),
+        (OP_RECORD + "ext.example: must be", op_record(ext={"example": None})),
+        (OP_RECORD + "label: must be", op_record(label="")),
+        (OP_RECORD + "'language': unknown field", op_record(language="c")),
+        (OP_RECORD + "'key': unknown field", op_record(key=OP_KEY)),
+        (OP_RECORD + "'hw_source': unknown field", op_record(hw_source="external")),
+        (OP_RECORD + "'accelerator': unknown field", record()),
+    ],
+)
+@pytest.mark.parametrize("key", [OP_KEY, OTHER_OP_KEY, ""])
+def test_an_op_signature_record_that_is_not_valid_by_adr_0001(
+    place, stated_record, key
+):
+    document = doc(op_signature={"key": key, "record": stated_record})
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+@pytest.mark.parametrize("kind", ["attention", "conv", "gemm2", "matmul"])
+@pytest.mark.parametrize("key", [OP_KEY, "", "attention-0123456789abcdef"])
+def test_a_record_of_a_kind_the_keys_module_does_not_know(kind, key):
+    unknown = op_record(kind=kind)
+    with pytest.raises(keys.InvalidRecordError) as refused:
+        keys.op_signature_key(unknown)
+    document = doc(**OP_MEMBERS, op_signature={"key": key, "record": unknown})
+
+    assert invalid(OP_RECORD, parse, raw(document)) == OP_RECORD + str(refused.value)
+    assert invalid(OP_RECORD, validate, document) == OP_RECORD + str(refused.value)
+    assert str(refused.value).startswith("kind: must be a known kind")
+
+
+WALK_THROUGH_OF_ADR_0031 = {
+    "the key of the m 32 record": (
+        {"key": EXAMPLE_OP_KEY_OF_M_32, "record": example_op()},
+        (
+            f"op_signature.key: must be {EXAMPLE_OP_KEY}, the name derived from "
+            f"op_signature.record, got str '{EXAMPLE_OP_KEY_OF_M_32}'"
+        ),
+    ),
+    "no layout": (
+        {"key": EXAMPLE_OP_KEY, "record": example_op(layout=REMOVE)},
+        "op_signature.record.layout: required field is missing",
+    ),
+    "a shape without m": (
+        {"key": EXAMPLE_OP_KEY, "record": example_op(shape={"k": 2048, "n": 8192})},
+        "op_signature.record.shape: must be a map with exactly the members k, m, n",
+    ),
+    "the dtype FP32": (
+        {"key": EXAMPLE_OP_KEY, "record": example_op(dtype="FP32")},
+        "op_signature.record.dtype: must be a name",
+    ),
+    "a member language": (
+        {"key": EXAMPLE_OP_KEY, "record": example_op(language="c")},
+        "op_signature.record.'language': unknown field",
+    ),
+    "the key string alone": (
+        EXAMPLE_OP_KEY,
+        f"op_signature: must be an object, got str '{EXAMPLE_OP_KEY}'",
+    ),
+    "null": (None, "op_signature: must be an object, got NoneType"),
+    "an array": ([], "op_signature: must be an object, got list"),
+    "an array of one valid object": (
+        [{"key": EXAMPLE_OP_KEY, "record": example_op()}],
+        "op_signature: must be an object, got list",
+    ),
+}
+
+
+@pytest.mark.parametrize("row", WALK_THROUGH_OF_ADR_0031)
+def test_the_invalid_files_of_the_walk_through_of_adr_0031(root, row):
+    value, reason = WALK_THROUGH_OF_ADR_0031[row]
+    document = json.loads(EXAMPLE_FILE)
+    assert document["op_signature"] == {"key": EXAMPLE_OP_KEY, "record": example_op()}
+    document["op_signature"] = value
+
+    invalid(reason, parse, raw(document))
+    invalid(reason, validate, document)
+    place(root, raw(document))
+    invalid(f"{FILE}: {reason}", read, root, RUN)
+    invalid(f"{FILE}: {reason}", op_signature_of, root, RUN)
+    invalid(f"{FILE}: {reason}", hw_profile_of, root, RUN)
+
+    for renamed in (value, {"key": EXAMPLE_OP_KEY, "record": example_op()}):
+        del document["op_signature"]
+        document["op"] = renamed
+        place(root, raw(document))
+        assert op_signature_of(root, RUN) is None
+        assert read(root, RUN).others == {"op": renamed}
+        document["op_signature"] = document.pop("op")
+    assert hw_profile_of(root, RUN)["accelerator"] == "cpu_standin"
+    assert tolerance_of(root, RUN) == Tolerance(0.0001, 0.01)
+    assert source_commit_of(root, RUN) == COMMIT
+    assert n_max_of(root, RUN) == 10
+    assert candidates_per_round_of(root, RUN) == 2
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        (OP_SECTION, OP_SECTION),
+        (OP_SECTION, '"op_signature": null'),
+        ('"op_signature": null', OP_SECTION),
+        (OP_SECTION, f'"op_signature": {json.dumps(stating(OTHER_OP))}'),
+        (f'"op_signature": {{"key": "{OP_KEY}", "key": "{OP_KEY}", "record": {{}}}}',),
+        (
+            (
+                f'"op_signature": {{"key": "{OP_KEY}", "record": '
+                '{"schema_version": 1, "kind": "gemm", "kind": "gemm"}}'
+            ),
+        ),
+        (
+            OP_SECTION.replace(
+                '{"m": 3, "k": 5, "n": 7}', '{"m": 3, "m": 3, "k": 5, "n": 7}'
+            ),
+        ),
+    ],
+)
+def test_a_member_name_twice_with_an_op_signature_is_a_text_error(members):
+    message = invalid(
+        "content: cannot be read as one JSON text",
+        parse,
+        text(VERSION, SECTION, *members),
+    )
+    assert "a JSON object repeats a member name" in message
+    assert "op_signature" not in message
+
+
+def test_an_integer_too_long_inside_the_member_is_a_text_error():
+    member = OP_SECTION.replace('"m": 3', f'"m": {TOO_LONG_TEXT}')
+
+    message = invalid(
+        "content: cannot be read as one JSON text",
+        parse,
+        text(VERSION, SECTION, member),
+    )
+    assert "op_signature" not in message
+
+
+class Map(dict):
+    pass
+
+
+def test_validate_refuses_an_op_signature_built_in_memory():
+    looped = {"k": 5, "n": 7}
+    looped["m"] = looped
+    for place_of, value in (
+        ("op_signature: must be an object, got Map", Map(stating(op_record()))),
+        ("op_signature: must be an object, got tuple", (OP_KEY, op_record())),
+        (
+            "op_signature: must be an object, got OpSignature",
+            OpSignature(OP_KEY, op_record()),
+        ),
+        ("op_signature.key: must be a str, got Text", op_section(key=Text(OP_KEY))),
+        ("op_signature.key: must be a str, got bytes", op_section(key=OP_KEY.encode())),
+        (
+            "op_signature.record: must be an object, got Map",
+            op_section(record=Map(op_record())),
+        ),
+        (
+            "op_signature.record.shape.m: must be",
+            op_section(record=op_record(shape=looped)),
+        ),
+        (
+            "op_signature.record.ext.m: must be",
+            op_section(record=op_record(ext=looped)),
+        ),
+        (
+            "op_signature.record.shape: must be a map with",
+            op_section(record=op_record(shape=Map())),
+        ),
+        (
+            "op_signature.record.kind: must be a name",
+            op_section(record=op_record(kind=Text("gemm"))),
+        ),
+        (
+            "op_signature.record.1: unknown field",
+            op_section(record={**op_record(), 1: 2}),
+        ),
+    ):
+        invalid(place_of, validate, doc(op_signature=value))
+
+    assert (
+        validate(
+            doc(op_signature=op_section(record=op_record(shape=Map(m=3, k=5, n=7))))
+        )
+        is None
+    )
+
+
+def test_a_long_key_is_shown_shortened():
+    document = doc(op_signature=op_section(key="gemm-" + "0" * 200))
+
+    message = invalid(NO_OP_KEY, validate, document)
+
+    assert message == NO_OP_KEY + "str " + reprlib.repr("gemm-" + "0" * 200)
+    assert len(message) < 160
+
+
+def test_a_check_of_an_op_signature_modifies_nothing():
+    for valid, value in (
+        (True, stating(op_record(label="x", ext={"example": 1}))),
+        (False, op_section(key=OTHER_OP_KEY)),
+        (False, op_section(record=op_record(kind="attention"))),
+        (False, op_section(record=op_record(layout=REMOVE))),
+        (False, None),
+    ):
+        document = doc(op_signature=value)
+        kept = json.dumps(document)
+        assert accepted(validate, document) == valid
+        assert json.dumps(document) == kept
+
+
+# --- no substitute: nothing of the module stands in for the op_signature ---
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        doc(),
+        doc(**OP_MEMBERS),
+        doc(op=stating(op_record())),
+        doc(task={"op_signature": stating(op_record())}),
+        doc(OTHER_RECORD, op_signatures=[stating(op_record())]),
+    ],
+    ids=shown,
+)
+def test_a_content_without_the_member_states_none_and_nothing_else(document):
+    result = parse(raw(document))
+
+    assert result.op_signature is None
+    assert result._asdict()["op_signature"] is None
+    assert validate(document) is None
+
+
+def test_nothing_of_the_module_stands_in_for_the_op_signature():
+    functions = [
+        value
+        for value in vars(instance).values()
+        if inspect.isfunction(value) and value.__module__ == instance.__name__
+    ]
+    assert op_signature_of in functions
+    for function in functions:
+        assert function.__defaults__ is None and function.__kwdefaults__ is None
+    assert OpSignature._field_defaults == Instance._field_defaults == {}
+    held = [
+        name
+        for name, value in vars(instance).items()
+        if isinstance(value, (OpSignature, keys.Key))
+    ]
+    assert held == []
+
+    tree = ast.parse(inspect.getsource(instance))
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+    assert "hilclaw.keys" in imported
+    assert not [name for name in imported if "spec" in name or "key_records" in name]
+    documented = (ast.Module, ast.ClassDef, ast.FunctionDef)
+    docstrings = {
+        ast.get_docstring(node, clean=False)
+        for node in ast.walk(tree)
+        if isinstance(node, documented)
+    }
+    written = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and type(node.value) is str
+    } - docstrings
+    for word in ("gemm", "attention", "fp32", "row_major", "dtype", "layout", "shape"):
+        assert not [value for value in written if word in value]
+
+
+def test_the_module_does_not_load_the_spec_or_the_key_records():
+    code = (
+        "import sys, hilclaw.instance; "
+        "print(sorted(name for name in sys.modules "
+        "if name in ('hilclaw.spec', 'hilclaw.spec_file', 'hilclaw.key_records')))"
+    )
+
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+
+    assert done.stdout.strip() == "[]"
+
+
 # --- happy: the reader ---
 
 
@@ -2452,7 +3285,7 @@ def test_the_reader_returns_the_record_the_file_embeds(tmp_path, root):
     assert (
         read(root, RUN)
         == parse(content)
-        == Instance(KEY, record(), None, None, None, None, {"example": [1, 2]})
+        == Instance(KEY, record(), None, None, None, None, None, {"example": [1, 2]})
     )
     assert type(read(root, RUN)) is Instance
     assert snapshot(tmp_path) == before
@@ -3002,7 +3835,7 @@ def test_no_member_of_a_file_with_an_invalid_candidates_per_round_is_used(
     assert candidates_per_round_of(root, RUN) == COUNT
 
     place(root, counted(literal, *more))
-    assert candidates_per_round_of in READERS and len(READERS) == 7
+    assert candidates_per_round_of in READERS and len(READERS) == 8
     for call in READERS:
         invalid(f"{FILE}: {NO_COUNT}", call, root, RUN)
 
@@ -3046,6 +3879,195 @@ def test_the_reader_of_the_number_opens_only_the_instance_file(root, monkeypatch
     place(root, raw(doc()))
     assert candidates_per_round_of(root, RUN) is None
     assert opened == [FILE, FILE]
+
+
+# --- the reader of the op_signature (ADR-0031) ---
+
+
+def test_the_reader_returns_the_op_signature_the_file_states(tmp_path, root):
+    stated_record = op_record(label="of this run", ext={"example": 1})
+    place(root, raw(doc(**OP_MEMBERS, op_signature=stating(stated_record), x=[1])))
+    before = snapshot(tmp_path)
+
+    found = op_signature_of(root, RUN)
+
+    assert found == OpSignature(op_key_of(stated_record), stated_record)
+    assert type(found) is OpSignature
+    assert type(found.key) is str and type(found.record) is dict
+    assert found == read(root, RUN).op_signature
+    assert op_signature_of(str(root), RUN) == found
+    assert op_signature_of(Path(root), RUN) == found
+    assert hw_profile_of(root, RUN) == record()
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert source_commit_of(root, RUN) == COMMIT
+    assert n_max_of(root, RUN) == BOUND
+    assert candidates_per_round_of(root, RUN) == COUNT
+    assert snapshot(tmp_path) == before
+
+    place(root, EXAMPLE_FILE)
+    assert op_signature_of(root, RUN) == OpSignature(EXAMPLE_OP_KEY, example_op())
+
+
+def test_a_run_without_the_member_states_no_op_signature(tmp_path, root, monkeypatch):
+    others = {
+        "op": stating(op_record()),
+        "opSignature": stating(op_record()),
+        "op-signature": OP_KEY,
+        "op_signatures": [stating(op_record())],
+        "task": {"op_signature": stating(op_record())},
+    }
+    place(root, raw(doc(**OP_MEMBERS, **others)))
+    place(root, raw(doc(op_signature=stating(OTHER_OP))), OTHER_FILE)
+    place(
+        root, json.dumps(op_record()).encode(), f"db/{KEY}/{OP_KEY}/op_signature.json"
+    )
+    spec = f"runs/{RUN}/rounds/0001/coder/candidates/01/attempts/01/spec.json"
+    place(root, raw({"task": {"op_signature": stating(op_record())}}), spec)
+    for name in ("OP_SIGNATURE", "HILCLAW_OP_SIGNATURE"):
+        monkeypatch.setenv(name, OP_KEY)
+    before = snapshot(tmp_path)
+
+    assert op_signature_of(root, RUN) is None
+    assert read(root, RUN).op_signature is None
+    assert read(root, RUN).others == others
+    assert hw_profile_of(root, RUN) == record()
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert source_commit_of(root, RUN) == COMMIT
+    assert n_max_of(root, RUN) == BOUND
+    assert candidates_per_round_of(root, RUN) == COUNT
+    assert op_signature_of(root, OTHER_RUN) == OpSignature(OTHER_OP_KEY, OTHER_OP)
+    assert op_signature_of(root, RUN) is None
+    assert snapshot(tmp_path) == before
+
+    place(root, raw(doc()))
+    assert op_signature_of(root, RUN) is None
+
+
+def test_an_op_signature_replaced_between_two_calls_is_seen_at_the_second(root):
+    place(root, raw(doc(op_signature=stating(op_record()))))
+    assert op_signature_of(root, RUN) == OpSignature(OP_KEY, op_record())
+
+    place(root, raw(doc(op_signature=stating(OTHER_OP))))
+    assert op_signature_of(root, RUN) == OpSignature(OTHER_OP_KEY, OTHER_OP)
+
+    place(root, raw(doc()))
+    assert op_signature_of(root, RUN) is None
+
+    place(root, raw(doc(op_signature=op_section(key=OTHER_OP_KEY))))
+    invalid(f"{FILE}: {NO_OP_KEY}", op_signature_of, root, RUN)
+
+    place(root, raw(doc(schema_version=2, op_signature=stating(op_record()))))
+    with pytest.raises(UnsupportedVersionError):
+        op_signature_of(root, RUN)
+
+    (root / FILE).unlink()
+    with pytest.raises(MissingInstanceError):
+        op_signature_of(root, RUN)
+
+    place(root, raw(doc(op_signature=stating(op_record(label="again")))))
+    assert op_signature_of(root, RUN) == OpSignature(OP_KEY, op_record(label="again"))
+
+
+def test_each_call_returns_a_new_op_signature(root):
+    place(root, raw(doc(op_signature=stating(op_record()))))
+
+    first, second = op_signature_of(root, RUN), op_signature_of(root, RUN)
+    assert first == second
+    assert first is not second
+    assert first.record is not second.record
+
+    first.record["dtype"] = "changed"
+    first.record["shape"]["m"] = 99
+    assert op_signature_of(root, RUN) == OpSignature(OP_KEY, op_record())
+
+
+@pytest.mark.parametrize(
+    "value",
+    [row[0] for row in WALK_THROUGH_OF_ADR_0031.values()]
+    + [7, True, {}, {"key": EXAMPLE_OP_KEY}, {"record": example_op()}],
+    ids=shown,
+)
+def test_no_member_of_a_file_with_an_invalid_op_signature_is_used(root, value):
+    document = json.loads(EXAMPLE_FILE)
+    place(root, raw(document))
+    assert op_signature_of(root, RUN) == OpSignature(EXAMPLE_OP_KEY, example_op())
+
+    document["op_signature"] = value
+    place(root, raw(document))
+    assert op_signature_of in READERS and len(READERS) == 8
+    for call in READERS:
+        invalid(f"{FILE}: op_signature", call, root, RUN)
+
+    del document["op_signature"]
+    place(root, raw(document))
+    assert op_signature_of(root, RUN) is None
+    assert hw_profile_of(root, RUN)["accelerator"] == "cpu_standin"
+    assert tolerance_of(root, RUN) == Tolerance(0.0001, 0.01)
+    assert source_commit_of(root, RUN) == COMMIT
+    assert n_max_of(root, RUN) == 10
+    assert candidates_per_round_of(root, RUN) == 2
+    assert layout_version_of(root, RUN) == 1
+
+
+def test_two_runs_that_differ_in_m_only_state_their_own_op_signatures(root):
+    other = json.loads(EXAMPLE_FILE)
+    other["op_signature"] = stating(example_op(shape={"m": 32, "k": 2048, "n": 8192}))
+    place(root, EXAMPLE_FILE)
+    place(root, raw(other), OTHER_FILE)
+    place(root, raw(doc()), "runs/run-c/instance.json")
+
+    first, second = op_signature_of(root, RUN), op_signature_of(root, OTHER_RUN)
+
+    assert (first.key, second.key) == (EXAMPLE_OP_KEY, EXAMPLE_OP_KEY_OF_M_32)
+    assert (first.record["shape"]["m"], second.record["shape"]["m"]) == (1, 32)
+    assert {**first.record, "shape": None} == {**second.record, "shape": None}
+    assert hw_profile_of(root, RUN) == hw_profile_of(root, OTHER_RUN)
+    assert op_signature_of(root, "run-c") is None
+    assert op_signature_of(root, RUN) == first
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        json.dumps(op_record(label="changed since")).encode(),
+        json.dumps(OTHER_OP).encode(),
+        b"",
+        b"not JSON",
+        None,
+        REMOVE,
+    ],
+    ids=["another label", "another record", "empty", "no JSON", "no file", "no db"],
+)
+def test_the_reader_of_the_op_signature_opens_only_the_instance_file(
+    tmp_path, root, monkeypatch, stored
+):
+    stated_record = op_record(label="of this run")
+    place(root, raw(doc(op_signature=stating(stated_record))))
+    place(root, b"{}", f"runs/{RUN}/STATE.json")
+    spec = f"runs/{RUN}/rounds/0001/coder/candidates/01/attempts/01/spec.json"
+    place(root, raw({"task": {"op_signature": stating(OTHER_OP)}}), spec)
+    place(root, raw(doc(op_signature=stating(OTHER_OP))), OTHER_FILE)
+    if stored is None:
+        layout.op_signature_dir(root, KEY, OP_KEY).mkdir(parents=True)
+    elif stored is not REMOVE:
+        file = layout.op_signature_file(root, KEY, OP_KEY, "op_signature.json")
+        place(root, stored, file.relative_to(root))
+    before = snapshot(tmp_path)
+    opened, real = [], Path.read_bytes
+
+    def read_bytes(path):
+        opened.append(path.relative_to(root).as_posix())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setenv("HILCLAW_DATA_ROOT", "elsewhere")
+
+    assert op_signature_of(root, RUN) == OpSignature(OP_KEY, stated_record)
+    assert opened == [FILE]
+
+    monkeypatch.undo()
+    assert snapshot(tmp_path) == before
+    assert (root / "db").exists() == (stored is not REMOVE)
 
 
 # --- the reader of the layout version (ADR-0024) ---
@@ -3195,6 +4217,7 @@ READERS = [
     source_commit_of,
     n_max_of,
     candidates_per_round_of,
+    op_signature_of,
     layout_version_of,
 ]
 
@@ -3277,6 +4300,14 @@ INVALID_FILES = {
     "an n_max that is no integer": (
         raw(doc(tolerance=TOLERANCE, source_commit=COMMIT, n_max=10.0)),
         "n_max: must be",
+    ),
+    "an op_signature that is no object": (
+        raw(doc(op_signature=OP_KEY)),
+        "op_signature: must be an object, got str",
+    ),
+    "an op_signature whose key is not the derived name": (
+        raw(doc(**OP_MEMBERS, op_signature=op_section(key=OTHER_OP_KEY))),
+        NO_OP_KEY,
     ),
 }
 
@@ -3758,6 +4789,46 @@ def test_a_file_invalid_by_its_candidates_per_round_alone_is_run_file_invalid(
         "run_file_invalid",
         InvalidInstanceError,
         "candidates_per_round: must be an int from 1 to",
+    )
+    assert kinds(root) == []
+
+    place(root, raw(repaired))
+    assert tool.function(dict(REQUEST)) == {"example_member": 1}
+    assert kinds(root) == ["step_started", "step_ended"]
+    assert (len(tool.asked), tool.performed) == (1, 1)
+    assert [seen for _, _, seen in tool.asked] == [record()]
+
+
+@pytest.mark.parametrize(
+    "repaired",
+    [doc(), doc(op_signature=stating(op_record()))],
+    ids=["removed", "valid"],
+)
+@pytest.mark.parametrize(
+    "broken",
+    [
+        None,
+        OP_KEY,
+        [stating(op_record())],
+        {"key": OP_KEY},
+        op_section(key=OTHER_OP_KEY),
+        op_section(record=op_record(kind="attention")),
+        op_section(record=op_record(layout=REMOVE)),
+    ],
+    ids=shown,
+)
+def test_a_file_invalid_by_its_op_signature_alone_is_run_file_invalid(
+    root, broken, repaired
+):
+    place(started(root), raw(doc(**OP_MEMBERS, op_signature=broken)))
+    tool = Tool(root)
+
+    assert_no_step_started(
+        tool,
+        root,
+        "run_file_invalid",
+        InvalidInstanceError,
+        "op_signature",
     )
     assert kinds(root) == []
 

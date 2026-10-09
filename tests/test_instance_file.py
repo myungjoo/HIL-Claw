@@ -64,12 +64,21 @@ def text(*members):
 VERSION = '"schema_version": 1'
 SECTION = f'"hw_profile": {json.dumps(doc()["hw_profile"])}'
 MINIMAL = written(doc())
+OP = {
+    "schema_version": 1,
+    "kind": "gemm",
+    "shape": {"m": 3, "k": 5, "n": 7},
+    "dtype": "dtype_a",
+    "layout": "layout_a",
+    "label": "example",
+}
 FULL = written(
     doc(
         tolerance={"rtol": 0.25, "atol": 3.0},
         source_commit=COMMIT,
         n_max=7,
         candidates_per_round=3,
+        op_signature={"key": keys.op_signature_key(OP).name, "record": OP},
         example_member={"b": [1, None, "x"], "a": 2.5},
     )
 )
@@ -110,6 +119,10 @@ REFUSED = {
     "n_max": (written(doc(n_max=4)), InvalidInstanceError),
     "candidates_per_round": (
         written(doc(candidates_per_round=0)),
+        InvalidInstanceError,
+    ),
+    "op_signature": (
+        written(doc(op_signature={"key": "gemm-0123456789abcdef", "record": OP})),
         InvalidInstanceError,
     ),
     "no final line feed": (MINIMAL[:-1], WrittenFormError),

@@ -1,4 +1,4 @@
-"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028).
+"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031).
 
 ``ARCHITECTURE/decisions/ADR-0018-od8-instance-record-hw-profile.md`` fixes the
 file as a whole (decision 2), the member ``hw_profile`` in which a run states
@@ -29,17 +29,24 @@ adds the member ``candidates_per_round``, in which a run states its number of
 candidates per round (decisions 2 and 3), says that a valid file may lack it,
 that a present one must be valid and that no value stands in for an absent
 one (decision 4), and says where the number a run states is read from
-(decision 5). This module is those rules: :func:`parse` and :func:`validate`
+(decision 5).
+``ARCHITECTURE/decisions/ADR-0031-od8-instance-record-op-signature.md`` adds
+the member ``op_signature``, in which a run states an op_signature record and
+the key derived from it (decisions 2 and 3), says that a valid file may lack
+it, that a present one must be valid and that nothing stands in for an absent
+one (decision 5), and says where the op_signature a run states is read from
+(decision 6). This module is those rules: :func:`parse` and :func:`validate`
 are pure functions of the bytes of a content and of a parsed document, and
 :func:`read`, :func:`hw_profile_of`, :func:`tolerance_of`,
-:func:`source_commit_of`, :func:`n_max_of`, :func:`candidates_per_round_of`
-and :func:`layout_version_of` read the file of a run. :func:`hw_profile_of`
-has the call form of the parameter ``hw_profile_of`` of
+:func:`source_commit_of`, :func:`n_max_of`, :func:`candidates_per_round_of`,
+:func:`op_signature_of` and :func:`layout_version_of` read the file of a run.
+:func:`hw_profile_of` has the call form of the parameter ``hw_profile_of`` of
 :func:`hilclaw.hw_tool.tool_function`; nothing here binds it,
 :func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
-:func:`candidates_per_round_of` or :func:`layout_version_of` to a tool.
+:func:`candidates_per_round_of`, :func:`op_signature_of` or
+:func:`layout_version_of` to a tool.
 
-Conventions of this module, which the six records do not fix:
+Conventions of this module, which the seven records do not fix:
 
 - A content is exactly ``bytes`` (:class:`TypeError` otherwise: the encoding is
   part of validity). Values are as :func:`json.loads` returns them, an integer
@@ -51,7 +58,8 @@ Conventions of this module, which the six records do not fix:
   ``schema_version``, then ``hw_profile``, then ``tolerance`` when the document
   holds it, then ``source_commit`` when the document holds it, then ``n_max``
   when the document holds it, then ``candidates_per_round`` when the document
-  holds it: the order in which the records defined them. A content this
+  holds it, then ``op_signature`` when the document holds it: the order in
+  which the records defined them. A content this
   interpreter cannot read (an integer too long for it anywhere in the text,
   nesting too deep) raises :class:`InvalidInstanceError` too, though it is a
   limit of this reader and not damage; the limits stay as the interpreter has
@@ -69,6 +77,20 @@ Conventions of this module, which the six records do not fix:
   ``record``, both present, ``key`` a ``str``, ``record`` an object, the record
   valid, ``key`` the derived name. The first rule found broken is reported. An
   empty ``key`` and one of another form are reported as not the derived name.
+- What is a value of ``op_signature`` is ADR-0031 decision 3 and not a
+  convention: an object with exactly ``key`` and ``record``, the record one
+  that :func:`hilclaw.keys.op_signature_key` accepts and ``key`` the name that
+  function derives from it. The conventions are the order inside the member,
+  which is that of ``hw_profile`` with the other place name, the first rule
+  found broken being reported and an empty ``key`` and one of another form as
+  not the derived name; that for a value built in memory the member and
+  ``record`` must each be exactly a ``dict`` and ``key`` exactly a ``str``;
+  and that a message of :mod:`hilclaw.keys` about the record is given as it
+  is, after ``op_signature.record.``. The member is handed out as an
+  :class:`OpSignature`: the ``str`` and the ``dict`` of the file, unchanged.
+  That a content without the member states no op_signature, and that this is
+  no error of the content, is ADR-0031 decision 5 and not a convention; the
+  convention is that it has ``None`` in that place.
 - Inside ``tolerance`` the order is: an object, no member besides ``rtol`` and
   ``atol``, both present, ``rtol`` a valid value, ``atol`` a valid value. A
   value is exactly an ``int`` or a ``float`` (``true`` is none) whose ``float``
@@ -129,8 +151,9 @@ Conventions of this module, which the six records do not fix:
   the read is an :class:`OSError`, as every other failure of the file system.
 
 It writes, creates and removes no file and composes no content. It defines no
-member besides the six (``schema_version``, ``hw_profile``, ``tolerance``,
-``source_commit``, ``n_max`` and ``candidates_per_round``) and interprets no
+member besides the seven (``schema_version``, ``hw_profile``, ``tolerance``,
+``source_commit``, ``n_max``, ``candidates_per_round`` and ``op_signature``)
+and interprets no
 other: a file it accepts is not thereby a complete instance record, and not
 enough to start a run (ADR-0018 decisions 1 and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
@@ -190,6 +213,30 @@ moment is not said here (ADR-0028 decision 5 and Boundaries); "not stated" is
 no error of the content here either, this module gives it no tool-failure
 kind, and :func:`candidates_per_round_of` is bound to no tool and to nothing
 that issues a spec.
+Of the op_signature it gives what the file states and nothing else (ADR-0031
+decisions 5 and 6): it substitutes nothing for a member that is absent, no
+record, no key and no constant of this module, and nothing taken from
+``hw_profile``, from another member, from another run, from a spec or from a
+directory below ``db/``. The record is judged by
+:func:`hilclaw.keys.op_signature_key` alone: this module holds no list of
+kinds, dtypes, layouts or shapes and no value of M, so a record of a kind
+that function does not know makes the file invalid here (ADR-0031 decision
+7). It reads, imports and compares no spec, reads no file below ``db/``,
+compares the member with no other member and does not conclude that a stored
+record or a directory exists for the key (decisions 2 and 6). It does not
+say that a spec, a measurement or a result of the run concerns the stated
+operation, that the run is of the first case, or which kernel contract or
+kernel language the run has (decision 2). It does not say that an instance
+concerns no more than one op_signature: the member is one object because a
+file of version 1 states at most one, and whether one instance may cover
+several values of M is open (ADR-0031 decision 4; OD-6 sub-question 3). A
+file it accepts need not state an op_signature; where it is checked that an
+instance states one, and what follows for a run whose valid file states
+none, is open (OD-8 sub-question 28). Which tool or component reads the
+member and at which moment is not said here (ADR-0031 decision 6 and
+Boundaries); "not stated" is no error of the content here either, this
+module gives it no tool-failure kind, and :func:`op_signature_of` is bound to
+no tool, to no spec and to nothing below ``db/``.
 Of the layout version it gives what the ``schema_version`` of a valid file
 states by the pairing of ADR-0024 decision 3 and nothing else (decisions 4
 and 5). It defines no member for the layout version and interprets none: a
@@ -213,9 +260,12 @@ whether a source holds the stamp against the layout it builds, is not said
 here (OD-8 sub-question 27), and neither is what states the layout of
 ``db/``, of ``blobs/`` and of the rest of the top level (part (ii) of
 sub-question 22).
-It reads no other file, so the stored record of the key below ``db/`` is not
-read or compared (ADR-0018 decision 4) and no reader here needs it to exist; how
-the two records relate is open (OD-8 sub-question 18). None of its errors is a
+It reads no other file, so no stored record below ``db/``, of the hw_profile
+key or of the op_signature key, is read or compared (ADR-0018 decision 4,
+ADR-0031 decision 6) and no reader here needs one to exist; how an embedded
+record and the stored one relate is open (OD-8 sub-question 18 for the
+hw_profile, part (iii) of sub-question 28 for the op_signature). None of its
+errors is a
 :class:`hilclaw.tools.ToolFailure`: the kind a call of a tool answers for them
 is given by the tool function that calls :func:`hw_profile_of` or
 :func:`layout_version_of` (:mod:`hilclaw.hw_tool`,
@@ -248,6 +298,7 @@ _DEFINED = (
     "source_commit",
     "n_max",
     "candidates_per_round",
+    "op_signature",
 )
 _SECTION = ("key", "record")
 _TOLERANCE = ("rtol", "atol")
@@ -259,8 +310,8 @@ _STATED_LAYOUT = {SCHEMA_VERSION: 1}
 class InvalidInstanceError(ValueError):
     """A content, a document or a path breaks a rule; the message names it.
 
-    The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023 and
-    ADR-0028 and the conventions of this module.
+    The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028
+    and ADR-0031 and the conventions of this module.
     """
 
 
@@ -284,6 +335,20 @@ class Tolerance(NamedTuple):
     atol: float
 
 
+class OpSignature(NamedTuple):
+    """The op_signature a content states (ADR-0031 decisions 2 and 3).
+
+    ``key`` is ``op_signature.key`` and ``record`` is ``op_signature.record``.
+    As :func:`parse` returns it, the record is one that
+    :func:`hilclaw.keys.op_signature_key` accepts and the key is the name
+    derived from it. Both are what the content states; neither is a default,
+    and neither says that a stored record exists for the key.
+    """
+
+    key: str
+    record: dict
+
+
 class Instance(NamedTuple):
     """Result of :func:`parse`: what a content states and the members not defined.
 
@@ -293,6 +358,8 @@ class Instance(NamedTuple):
     ``n_max`` is the ``int`` of the member ``n_max``, or ``None`` for a content
     without that member. ``candidates_per_round`` is the ``int`` of the member
     ``candidates_per_round``, or ``None`` for a content without that member.
+    ``op_signature`` is an :class:`OpSignature`, or ``None`` for a content
+    without the member ``op_signature``.
     No field has a default. ``others`` is the last field.
     """
 
@@ -302,6 +369,7 @@ class Instance(NamedTuple):
     source_commit: str | None
     n_max: int | None
     candidates_per_round: int | None
+    op_signature: OpSignature | None
     others: dict
 
 
@@ -324,12 +392,18 @@ def parse(content):
     ``candidates_per_round`` as the content states it (ADR-0028 decision 3),
     not clamped to a range, rounded or replaced, or ``None`` when the content
     has no such member, and no value is substituted then either, 1 included;
+    ``op_signature`` is the :class:`OpSignature` of the member
+    ``op_signature`` (ADR-0031 decision 3), its ``key`` the ``str`` and its
+    ``record`` the ``dict`` parsed from this content, or ``None`` when the
+    content has no such member, and nothing is substituted then either, no
+    record and no key;
     ``others`` holds every top-level member that is none of
     ``schema_version``, ``hw_profile``, ``tolerance``, ``source_commit``,
-    ``n_max`` and ``candidates_per_round``, as parsed and not interpreted,
-    whatever its name and value (``tolerence``, a top-level ``rtol``,
-    ``source-commit``, ``nmax`` or ``candidates`` among them). Any order of
-    members and any white space of JSON are accepted.
+    ``n_max``, ``candidates_per_round`` and ``op_signature``, as parsed and
+    not interpreted, whatever its name and value (``tolerence``, a top-level
+    ``rtol``, ``source-commit``, ``nmax``, ``candidates``, ``op`` or ``task``
+    among them). Any order of members and any white space of JSON are
+    accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
     a byte order mark, is not exactly one JSON text (the tokens ``NaN``,
@@ -354,7 +428,7 @@ def parse(content):
 
 
 def validate(document):
-    """Check ``document``, a parsed ``instance.json``, against the five records.
+    """Check ``document``, a parsed ``instance.json``, against the six records.
 
     ``document`` must be a ``dict`` with ``schema_version`` (an ``int`` from 0
     to :data:`hilclaw.keys.MAX_INTEGER`) and, at version 1, ``hw_profile``: a
@@ -378,16 +452,24 @@ def validate(document):
     :data:`hilclaw.keys.MAX_INTEGER`, both included (ADR-0028 decisions 3 and
     4): for a value built in memory, a ``bool``, a ``float`` such as ``2.0``
     and a subclass of ``int`` are none. Only that form is checked: the member
-    is compared with no spec and with no range of a user interface. Its other
+    is compared with no spec and with no range of a user interface. It may
+    hold ``op_signature``, which is then a ``dict`` with exactly ``key`` and
+    ``record``, the record a ``dict`` that
+    :func:`hilclaw.keys.op_signature_key` accepts and the key exactly a
+    ``str``, the name derived from it (ADR-0031 decisions 3 and 5): for a
+    value built in memory, a subclass of ``dict`` and one of ``str`` are
+    none. Only that is checked: the member is compared with no spec, with no
+    file below ``db/`` and with no other member. Its other
     members are not looked at. The rules for the text (the encoding, a member
-    name twice) cannot be checked on a parsed value. The five records are
-    ADR-0018, ADR-0020, ADR-0022, ADR-0023 and ADR-0028; ADR-0024 adds no
-    rule of validity.
+    name twice) cannot be checked on a parsed value. The six records are
+    ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028 and ADR-0031; ADR-0024
+    adds no rule of validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
-    ``tolerance.rtol``, ``source_commit``, ``n_max`` or
-    ``candidates_per_round``). The version comes first: an integer other
+    ``tolerance.rtol``, ``source_commit``, ``n_max``,
+    ``candidates_per_round`` or ``op_signature.key``). The version comes
+    first: an integer other
     than :data:`SCHEMA_VERSION` raises :class:`UnsupportedVersionError`
     before any other member is looked at.
     """
@@ -440,9 +522,10 @@ def hw_profile_of(data_root, run_id):
     by ADR-0001 and new at each call, which the caller may hand to
     :func:`hilclaw.backends.select`. Raises what :func:`read` raises, so
     :class:`InvalidInstanceError` also for a file whose ``tolerance``,
-    ``source_commit``, ``n_max`` or ``candidates_per_round`` is invalid: no
-    member of an invalid file is used (ADR-0020 decision 3, ADR-0022 decision
-    5, ADR-0023 decision 4, ADR-0028 decision 4).
+    ``source_commit``, ``n_max``, ``candidates_per_round`` or
+    ``op_signature`` is invalid: no member of an invalid file is used
+    (ADR-0020 decision 3, ADR-0022 decision 5, ADR-0023 decision 4, ADR-0028
+    decision 4, ADR-0031 decision 5).
     """
     return read(data_root, run_id).hw_profile
 
@@ -519,6 +602,29 @@ def candidates_per_round_of(data_root, run_id):
     return read(data_root, run_id).candidates_per_round
 
 
+def op_signature_of(data_root, run_id):
+    """Return the op_signature the run ``run_id`` states, or ``None`` when it states none.
+
+    It is the ``op_signature`` of what :func:`read` returns (ADR-0031
+    decision 6): an :class:`OpSignature` with the ``key`` and the ``record``
+    of the member ``op_signature`` of ``runs/<run_id>/instance.json`` as the
+    file states them at this call, the record a ``dict`` valid by ADR-0001
+    and new at each call and the key the name derived from it, or ``None``
+    for a valid file without that member. ``None`` says that no op_signature
+    is stated; nothing stands in for it (ADR-0031 decision 5): not the
+    ``task.op_signature`` of a spec, not the name of a directory below
+    ``db/``, not the op_signature of another run, not a constant of this
+    module and nothing inferred from another member. No spec and no file
+    below ``db/`` is read, and the result is compared with nothing: that a
+    stored record exists for the key, or that a spec, a measurement or a
+    result of the run concerns the stated operation, is not checked. Raises
+    what :func:`read` raises, so no op_signature is returned, and none is
+    inferred, for a missing, unreadable or invalid file or one of another
+    version.
+    """
+    return read(data_root, run_id).op_signature
+
+
 def layout_version_of(data_root, run_id):
     """Return the layout version the run ``run_id`` states (ADR-0024 decisions 3 to 5).
 
@@ -560,7 +666,7 @@ def _checked(document):
         raise UnsupportedVersionError(f"schema_version: {version} is not supported")
     if "hw_profile" not in document:
         raise InvalidInstanceError("document: lacks the member hw_profile")
-    key, record = _hw_profile(document["hw_profile"])
+    key, record = _keyed("hw_profile", document["hw_profile"], keys.hw_profile_key)
     tolerance = _tolerance(document["tolerance"]) if "tolerance" in document else None
     commit = None
     if "source_commit" in document:
@@ -569,30 +675,34 @@ def _checked(document):
     candidates = None
     if "candidates_per_round" in document:
         candidates = _candidates_per_round(document["candidates_per_round"])
+    op = None
+    if "op_signature" in document:
+        section = document["op_signature"]
+        op = OpSignature(*_keyed("op_signature", section, keys.op_signature_key))
     others = {name: value for name, value in document.items() if name not in _DEFINED}
-    return Instance(key, record, tolerance, commit, n_max, candidates, others)
+    return Instance(key, record, tolerance, commit, n_max, candidates, op, others)
 
 
-def _hw_profile(section):
+def _keyed(place, section, derive):
     if type(section) is not dict:
-        _fail("hw_profile", "an object", section)
+        _fail(place, "an object", section)
     for name in section:
         if name not in _SECTION:
-            _fail("hw_profile", "an object without the member", name)
+            _fail(place, "an object without the member", name)
     for name in _SECTION:
         if name not in section:
-            raise InvalidInstanceError(f"hw_profile: lacks the member {name}")
+            raise InvalidInstanceError(f"{place}: lacks the member {name}")
     key, record = section["key"], section["record"]
     if type(key) is not str:
-        _fail("hw_profile.key", "a str", key)
+        _fail(f"{place}.key", "a str", key)
     if type(record) is not dict:
-        _fail("hw_profile.record", "an object", record)
+        _fail(f"{place}.record", "an object", record)
     try:
-        name = keys.hw_profile_key(record).name
+        name = derive(record).name
     except keys.InvalidRecordError as error:
-        raise InvalidInstanceError(f"hw_profile.record.{error}") from None
+        raise InvalidInstanceError(f"{place}.record.{error}") from None
     if key != name:
-        _fail("hw_profile.key", f"{name}, the name derived from hw_profile.record", key)
+        _fail(f"{place}.key", f"{name}, the name derived from {place}.record", key)
     return key, record
 
 
