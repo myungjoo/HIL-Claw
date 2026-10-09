@@ -49,7 +49,8 @@ request, and ``journaled_step.run`` answers it with a tool failure of kind
 
 The tool function of a journaled HW tool has one moment more, the selection of
 a backend between the lookup and the start line (ADR-0016 decision 2):
-:mod:`hilclaw.hw_tool` builds it over the same check of the request.
+:mod:`hilclaw.hw_tool` builds it over the same check of the request, which
+:func:`checked_function` holds for the two builders.
 
 It registers nothing, names no tool, no step, no axis and no result member and
 reads no configuration.
@@ -99,16 +100,63 @@ def tool_function(*, step, numbers, source, check, perform):
             data_root, run_id, identity, lambda: perform(data_root, request)
         )
 
-    return _built(step, numbers, carry_out, source=source, check=check, perform=perform)
+    return checked_function(
+        step=step,
+        numbers=numbers,
+        carry_out=carry_out,
+        source=source,
+        check=check,
+        perform=perform,
+    )
 
 
-def _built(step, numbers, carry_out, *, source, check, **others):
+def checked_function(*, step, numbers, carry_out, source, check, **others):
+    """Return a function of one request that checks it and hands on to ``carry_out``.
+
+    This is the part :func:`tool_function` and
+    :func:`hilclaw.hw_tool.tool_function` share: the check when built and, at
+    a call, the check of the request, the tool's own check and the data root
+    asked once. Everything after that is ``carry_out``'s.
+
+    - ``step``, ``numbers``, ``source``, ``check``: as in
+      :func:`tool_function`.
+    - ``carry_out``: called as ``carry_out(data_root, run_id, identity,
+      request)`` with the data root, a :class:`pathlib.Path`, the checked
+      ``run_id``, the :class:`hilclaw.journal.Identity` formed from ``step``
+      and the request, and the request as the caller gave it; once in a call,
+      and only after both checks passed and the data root was obtained.
+    - ``others``: further arguments by name, meant for the callables
+      ``carry_out`` uses. Each is checked for being callable when built and
+      is not used otherwise.
+
+    Raises, in this order: :class:`ValueError` when ``step`` is no name;
+    :class:`TypeError` when ``numbers`` is no ``tuple`` and
+    :class:`ValueError` when it is no such prefix; :class:`TypeError`, with a
+    message that starts with the name of the argument, for the first of
+    ``carry_out``, ``source``, ``check`` and the ``others`` in the order given
+    that is not callable. Building calls none of them.
+
+    The function returned takes one request and returns what ``carry_out``
+    returns. It raises ``ToolFailure`` of kind ``invalid_request`` with a
+    message that names the member, and otherwise what ``check``,
+    :func:`hilclaw.data_root_source.obtain` and ``carry_out`` raise,
+    unchanged. It does not modify the request.
+
+    What it does not do: it calls no function of
+    :mod:`hilclaw.journaled_step`, so the lookup, the two step lines and the
+    step are the part of ``carry_out``, and nothing here checks that
+    ``carry_out`` carries them out. The function returned is the tool function
+    of a journaled tool in the sense of ADR-0015 decision 5 only if
+    ``carry_out`` carries out the step by the sequence of ADR-0011 decision 3.
+    It registers nothing and names no tool.
+    """
     journal.step_identity(step, 1)
     if type(numbers) is not tuple:
         raise TypeError(f"numbers must be a tuple, got {type(numbers).__name__}")
     if numbers != _NUMBERS[: len(numbers)]:
         raise ValueError(f"numbers must be a prefix of {_NUMBERS}, got {numbers}")
-    for name, value in {"source": source, "check": check, **others}.items():
+    parts = {"carry_out": carry_out, "source": source, "check": check, **others}
+    for name, value in parts.items():
         if not callable(value):
             raise TypeError(f"{name} must be callable, got {type(value).__name__}")
 

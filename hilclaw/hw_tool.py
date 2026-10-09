@@ -10,8 +10,9 @@ builder here.
 A call, in the order of ADR-0016 decision 2:
 
 1. The request is checked as :mod:`hilclaw.journaled_tool` checks it, by the
-   same code: ``run_id``, ``execution`` and the numbers the contract requires,
-   then the tool's own check. A refusal is ``invalid_request``.
+   same code (:func:`hilclaw.journaled_tool.checked_function`): ``run_id``,
+   ``execution`` and the numbers the contract requires, then the tool's own
+   check. A refusal is ``invalid_request``.
 2. The data root is asked, once; ``no_data_root`` passes through.
 3. The lookup. An ended identity is answered with what its end line holds and
    an open one with ``step_open``. For neither is the hw_profile read, a
@@ -148,7 +149,7 @@ def tool_function(*, tool, step, numbers, source, table, hw_profile_of, check, p
     :func:`hilclaw.journaled_step.run_prepared` raise. It does not modify the
     request or the record.
     """
-    backends._hw_tool(tool)
+    backends.check_hw_tool(tool)
     if not isinstance(table, backends.BackendTable):
         raise TypeError(f"table must be a BackendTable, got {type(table).__name__}")
 
@@ -169,10 +170,10 @@ def tool_function(*, tool, step, numbers, source, table, hw_profile_of, check, p
             before_start=select,
         )
 
-    return journaled_tool._built(
-        step,
-        numbers,
-        carry_out,
+    return journaled_tool.checked_function(
+        step=step,
+        numbers=numbers,
+        carry_out=carry_out,
         source=source,
         check=check,
         hw_profile_of=hw_profile_of,
