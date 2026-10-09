@@ -191,7 +191,7 @@ def test_example_machine_gives_the_example_record(machine):
     ]
     assert hw_profile_key(record).name == EXAMPLE_KEY
     command = ("clang", "--version")
-    assert machine.asked == [command, "kernel", CPUINFO_PATH, OS_RELEASE_PATH]
+    assert machine.asked == ["kernel", command, CPUINFO_PATH, OS_RELEASE_PATH]
     assert machine.timeouts == [TIMEOUT]
 
 
@@ -247,7 +247,7 @@ def test_macos_branch(machine):
     record = local_record("external", timeout_s=TIMEOUT)
     assert record == example(os="macos 0.0")
     assert hw_profile_key(record).name.startswith("cpu_standin-")
-    assert machine.asked == [("clang", "--version"), "kernel", SYSCTL, SW_VERS]
+    assert machine.asked == ["kernel", ("clang", "--version"), SYSCTL, SW_VERS]
     assert machine.timeouts == [TIMEOUT, TIMEOUT, TIMEOUT]
 
 
@@ -362,7 +362,7 @@ def test_darwin_release_with_microsoft_is_still_macos(machine):
 def test_kernel_name_without_a_rule(machine, name):
     machine.kernel = (name, "0.0.0-microsoft")
     message = fails(machine, "kernel name")
-    assert machine.asked == [("clang", "--version"), "kernel"]
+    assert machine.asked == ["kernel"]
     assert name == "" or name not in message
 
 
@@ -599,7 +599,7 @@ COMMAND_FAILURES = {
 def test_clang_line_that_cannot_be_read(machine, failure):
     machine.clang = COMMAND_FAILURES[failure]
     fails(machine, "toolchain.clang")
-    assert machine.asked == [("clang", "--version")]
+    assert machine.asked == ["kernel", ("clang", "--version")]
 
 
 @pytest.mark.parametrize("failure", COMMAND_FAILURES)
@@ -670,14 +670,14 @@ def test_messages_hold_no_text_read_from_the_machine(machine):
 )
 def test_compiler_forms(machine, compiler, prefix):
     assert local_record("external", timeout_s=7, compiler=compiler) == EXAMPLE
-    assert machine.asked[0] == (*prefix, "--version")
+    assert machine.asked[1] == (*prefix, "--version")
     assert machine.timeouts == [7]
 
 
 def test_default_compiler_is_that_of_clang_build(machine, monkeypatch):
     monkeypatch.setattr(standin_profile.clang_build, "DEFAULT_COMPILER", "other-cc")
     local_record("external", timeout_s=TIMEOUT)
-    assert machine.asked[0] == ("other-cc", "--version")
+    assert machine.asked[1] == ("other-cc", "--version")
 
 
 @pytest.mark.parametrize("compiler", [(), [], iter(())])
@@ -693,7 +693,7 @@ def test_empty_compiler_prefix(machine, compiler):
 def test_compiler_of_the_wrong_type(real_commands, compiler):
     with pytest.raises(TypeError):
         local_record("external", timeout_s=TIMEOUT, compiler=compiler)
-    assert real_commands.asked == []
+    assert set(real_commands.asked) <= {"kernel"}
 
 
 class Text(str):
@@ -772,7 +772,7 @@ def test_timeout_that_is_not_positive_and_finite(real_commands, stub, timeout_s)
     compiler = stub("print('never started')")
     with pytest.raises(ValueError, match="timeout_s"):
         local_record("external", timeout_s=timeout_s, compiler=compiler)
-    assert real_commands.asked == []
+    assert set(real_commands.asked) <= {"kernel"}
 
 
 @pytest.mark.parametrize("timeout_s", BAD_TIMEOUT_TYPES)
@@ -780,7 +780,7 @@ def test_timeout_that_is_no_number(real_commands, stub, timeout_s):
     compiler = stub("print('never started')")
     with pytest.raises(TypeError, match="timeout_s"):
         local_record("external", timeout_s=timeout_s, compiler=compiler)
-    assert real_commands.asked == []
+    assert set(real_commands.asked) <= {"kernel"}
 
 
 def test_bad_hw_source_wins_over_a_bad_timeout(real_commands):
@@ -809,7 +809,7 @@ def test_started_compiler_with_a_non_zero_status(real_commands, stub):
     compiler = stub(WRITE_LINE + "; sys.exit(1)")
     message = fails(real_commands, "toolchain.clang", compiler=compiler)
     assert "status 1" in message
-    assert real_commands.asked == []
+    assert set(real_commands.asked) <= {"kernel"}
 
 
 def test_started_compiler_that_writes_only_to_standard_error(real_commands, stub):
@@ -821,7 +821,7 @@ def test_started_compiler_that_does_not_finish(real_commands, stub):
     compiler = stub(WRITE_LINE + "; sys.stdout.flush(); time.sleep(30)")
     with pytest.raises(UnreadableFactError, match="^toolchain.clang: .*did not finish"):
         local_record("external", timeout_s=1, compiler=compiler)
-    assert real_commands.asked == []
+    assert set(real_commands.asked) <= {"kernel"}
 
 
 @pytest.mark.parametrize(
@@ -836,7 +836,7 @@ def test_started_compiler_that_does_not_finish(real_commands, stub):
 def test_compiler_that_is_not_found(real_commands, compiler):
     message = fails(real_commands, "toolchain.clang", compiler=compiler)
     assert "not found" in message
-    assert real_commands.asked == []
+    assert set(real_commands.asked) <= {"kernel"}
 
 
 def test_a_call_writes_no_file(real_commands, stub, tmp_path, monkeypatch):
@@ -888,7 +888,7 @@ def test_platform_without_os_uname_has_no_kernel_name(real_kernel, monkeypatch):
     monkeypatch.delattr(os, "uname", raising=False)
     with pytest.raises(UnreadableFactError, match="^kernel name: "):
         local_record("external", timeout_s=TIMEOUT)
-    assert real_kernel.asked == [("clang", "--version")]
+    assert real_kernel.asked == []
 
 
 @pytest.fixture
@@ -961,19 +961,12 @@ def test_module_is_bound_nowhere_and_imports_no_store():
 
 
 def test_public_names_of_the_module():
-    public = {name for name in vars(standin_profile) if not name.startswith("_")}
-    assert public == {
-        "ACCELERATOR",
-        "REVISION",
-        "UnreadableFactError",
-        "local_record",
-        "clang_build",
-        "keys",
-        "local_run",
-        "os",
-        "re",
-        "reprlib",
+    public = {
+        name
+        for name, value in vars(standin_profile).items()
+        if not name.startswith("_") and not inspect.ismodule(value)
     }
+    assert public == {"ACCELERATOR", "REVISION", "UnreadableFactError", "local_record"}
     assert issubclass(UnreadableFactError, Exception)
     assert not issubclass(UnreadableFactError, (InvalidRecordError, OSError))
 

@@ -54,15 +54,17 @@ other accelerator and no other machine than the one the process runs on, adds
 no further member to ``toolchain`` or ``host``, does not tell WSL 1 from WSL 2
 and never compares a machine with a record again. The limits ADR-0035 names in
 decision 7 are not handled: the first ``model name`` line stands for the
-machine, and nothing checks that ``compiler`` is the compiler a later build
-uses.
+machine. Nothing checks that ``compiler`` is the compiler a later build uses
+(decision 3).
 
-It starts at most three commands through :func:`hilclaw.local_run.run`
-(without a shell, found on ``PATH``, with the limits that module documents):
-``<compiler> --version`` and, for the kernel name ``Darwin`` only,
-``sysctl -n machdep.cpu.brand_string`` and ``sw_vers -productVersion``. It
-reads the two files named above and no other, and writes none. Every fact is
-read at each call and nothing is kept between calls.
+The kernel name is read first, and for a name without a rule nothing is
+started. Otherwise the module starts at most three commands through
+:func:`hilclaw.local_run.run` (without a shell, found on ``PATH``, with the
+limits that module documents): ``<compiler> --version`` and, for the kernel
+name ``Darwin`` only, ``sysctl -n machdep.cpu.brand_string`` and
+``sw_vers -productVersion``. It reads the two files named above and no other,
+and writes none. Every fact is read at each call and nothing is kept between
+calls.
 """
 
 import os
@@ -85,11 +87,12 @@ _MAX_LENGTH = 255
 
 
 class UnreadableFactError(RuntimeError):
-    """A fact of the machine cannot be read by the rules of ADR-0035 decision 6.
+    """A fact of the machine cannot be read, so no record is made (ADR-0035 decision 6).
 
     The message starts with the fact (``toolchain.clang``, ``host.cpu``,
     ``host.os`` or ``kernel name``) and gives the reason. It holds no text read
-    from the machine.
+    from the machine. Decision 6 lists the cases of the record;
+    :func:`local_record` says which further cases this module reads as such.
     """
 
 
@@ -106,44 +109,49 @@ def local_record(hw_source, *, timeout_s, compiler=None):
     ``hw_source`` is one of :data:`hilclaw.keys.HW_SOURCES`. It has no default
     and is checked before the machine is read. ``timeout_s`` is the limit in
     seconds of each command that is started. ``compiler`` names the clang whose
-    version line is read, as in :func:`hilclaw.clang_build.build`: ``None`` for
+    version line is read: ``None`` for
     :data:`hilclaw.clang_build.DEFAULT_COMPILER` on ``PATH``, the name or path
-    of an executable, or a sequence of ``str`` used as a command prefix.
+    of an executable (``str`` or :class:`os.PathLike`), or a sequence used as a
+    command prefix: the program followed by ``str`` arguments.
 
     Raises :class:`hilclaw.keys.InvalidRecordError` for a ``hw_source`` that is
     not one of the two values, whatever the machine holds. Raises
-    :class:`UnreadableFactError` when a fact cannot be read: a command that is
-    not found, cannot be started, does not finish within ``timeout_s`` or ends
-    with a status other than 0; a file that is missing or cannot be read; no
-    ``model name`` line; no ``ID`` line; an ``ID`` or a ``VERSION_ID`` that,
-    without its quotes, is empty or holds a space or a tab; a kernel name other
-    than ``Darwin`` and ``Linux``, compared as it is, or a platform without
-    :func:`os.uname`; and a value that after the spelling rule is empty, longer
-    than 255 characters or holds a character outside 0x20 to 0x7E. Raised as by
-    :func:`hilclaw.local_run.run`, before anything is started:
+    :class:`UnreadableFactError` when a fact cannot be read. The cases of the
+    record: a command that is not found or ends with a status other than 0; a
+    file that is missing; no ``model name`` line; no ``ID`` line; an ``ID`` or
+    a ``VERSION_ID`` that, without its quotes, is empty or holds a space or a
+    tab; a kernel name other than ``Darwin`` and ``Linux``, compared as it is;
+    and a value that after the spelling rule is empty, longer than 255
+    characters or holds a character outside 0x20 to 0x7E. Read as such by this
+    module, where the record names no case: a command that cannot be started
+    or does not finish within ``timeout_s``, a file that exists and cannot be
+    read, and a platform without :func:`os.uname`.
+
+    What :func:`hilclaw.local_run.run` raises for its arguments is passed on,
+    from the first command and after the kernel name was read:
     :class:`TypeError` for a ``timeout_s`` that is not a number or a
-    ``compiler`` that is not given as ``str`` or :class:`os.PathLike`, and
-    :class:`ValueError` for a ``timeout_s`` that is not positive and finite or
-    an empty ``compiler`` prefix.
+    ``compiler`` part of the wrong type, :class:`ValueError` for a
+    ``timeout_s`` that is not positive and finite or an argument
+    :mod:`subprocess` cannot hand over, and :class:`OverflowError` for a finite
+    ``timeout_s`` longer than the platform can wait for. An empty ``compiler``
+    prefix is a :class:`ValueError` raised before the machine is read.
     """
     if type(hw_source) is not str or hw_source not in keys.HW_SOURCES:
         rule = " or ".join(keys.HW_SOURCES)
         got = reprlib.repr(hw_source)
         raise keys.InvalidRecordError(f"hw_source: must be {rule}, got {got}")
-    clang = _command_line(
-        "toolchain.clang",
-        (*_prefix(compiler), "--version"),
-        "<compiler> --version",
-        timeout_s,
-    )
+    command = (*_prefix(compiler), "--version")
     name, release = _kernel()
+    if name not in ("Darwin", "Linux"):
+        raise UnreadableFactError("kernel name: this module has no rule for it")
+    clang = _command_line("toolchain.clang", command, "<compiler> --version", timeout_s)
     if name == "Darwin":
         cpu = _command_line("host.cpu", _CPU_COMMAND, " ".join(_CPU_COMMAND), timeout_s)
         words = [
             b"macos",
             _command_line("host.os", _OS_COMMAND, " ".join(_OS_COMMAND), timeout_s),
         ]
-    elif name == "Linux":
+    else:
         cpu = _cpuinfo_model_name()
         lines = _file_lines("host.os", _OS_RELEASE)
         distribution = _os_release_value(lines, b"ID")
@@ -153,8 +161,6 @@ def local_record(hw_source, *, timeout_s, compiler=None):
         words = [b"wsl" if _MICROSOFT.search(release) else b"linux", distribution]
         if version is not None:
             words.append(version)
-    else:
-        raise UnreadableFactError("kernel name: this module has no rule for it")
     return {
         "schema_version": keys.SCHEMA_VERSION,
         "accelerator": ACCELERATOR,
