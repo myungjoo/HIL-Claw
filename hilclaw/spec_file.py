@@ -81,7 +81,11 @@ _MINUS_ZERO = object()
 
 
 class InvalidSpecFileError(ValueError):
-    """A content is no valid spec file by ADR-0029 decision 2; the message names the place."""
+    """A content breaks a rule of ADR-0029 decision 2 or cannot be read by this interpreter.
+
+    The message names the place. The second case is a limit of this reader
+    and no rule of the record (module docstring).
+    """
 
 
 class UnsupportedVersionError(Exception):
@@ -100,7 +104,9 @@ def parse(content):
     ``Infinity`` and ``-Infinity`` are no JSON; an empty content is none), is
     no object, holds a member name twice in any object, is a document
     :func:`hilclaw.spec.validate` refuses or writes ``-0`` at an *integer*
-    place. Raises :class:`UnsupportedVersionError`, before any other member is
+    place, and also when this interpreter cannot read the text (an integer
+    literal too long for it, nesting too deep), which is no rule of the
+    record. Raises :class:`UnsupportedVersionError`, before any other member is
     looked at, when the text passes the rules for the whole text and its
     ``schema_version`` is an ``int`` from 0 to :data:`hilclaw.keys.MAX_INTEGER`
     other than 1 and not written ``-0``. Nothing is returned then, and nothing
