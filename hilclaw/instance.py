@@ -80,15 +80,18 @@ Conventions of this module, which the six records do not fix:
   for an integer literal, and a zero as ``0.0`` whatever its sign in the file.
   A content without the member has ``None`` in that place: it states no
   tolerance, and that is no error of the content.
-- ``source_commit`` is exactly a ``str`` of 40 or of 64 characters, each one
-  of the sixteen ASCII characters ``0``-``9`` and ``a``-``f``; the characters
-  themselves are compared, so a digit of another script is none. The one rule
-  is reported as a whole, and a ``str`` that breaks it is shown as every
-  ``str`` is, a long one shortened. Either length is a value: the module does
-  not know or check which of the two the source repository uses. The source
-  commit is handed out as the ``str`` of the file, unchanged. A content
-  without the member has ``None`` in that place: it states no source commit,
-  and that is no error of the content.
+- What is a value of ``source_commit`` is ADR-0022 decision 3 and not a
+  convention: a string of exactly 40 or exactly 64 characters, each one of
+  ``0``-``9`` and ``a``-``f``. Either length is a value: the module does not
+  know or check which of the two the source repository uses. The conventions
+  are that a value built in memory must be exactly a ``str``, that the
+  characters themselves are compared with the sixteen ASCII ones, so a digit
+  of another script is none, that the one rule is reported as a whole, and
+  that a ``str`` that breaks it is shown as every ``str`` is, a long one
+  shortened. The source commit is handed out as the ``str`` of the file,
+  unchanged. That a content without the member states no source commit, and
+  that this is no error of the content, is ADR-0022 decision 5 and not a
+  convention; the convention is that it has ``None`` in that place.
 - What is a value of ``n_max`` is ADR-0023 decision 3 and not a convention:
   an integer from 5 to :data:`hilclaw.keys.MAX_INTEGER`, both included, so
   ``true``, ``10.0``, ``1e1`` and ``-0`` are none. The conventions are that a
@@ -181,7 +184,7 @@ round of the run had, has or will have that many candidates, and it makes the
 member no number of coder calls, of specs, of attempts or of promoted
 candidates and no budget member (ADR-0028 decision 2). A file it accepts need
 not state the number; where it is checked that an instance states one, and
-what follows for a round of a run whose file states none, is open (OD-8
+what follows for a round of a run whose valid file states none, is open (OD-8
 sub-question 25). Which tool or component reads the member and at which
 moment is not said here (ADR-0028 decision 5 and Boundaries); "not stated" is
 no error of the content here either, this module gives it no tool-failure

@@ -161,8 +161,9 @@ def tool_function(*, tool, step, numbers, source, table, hw_profile_of, check, p
 
     The function returned takes one request and returns the ``result`` of the
     step, a ``dict``. It raises ``ToolFailure`` of kind ``invalid_request``
-    with a message that names the member; of one of the four kinds
-    ``run_file_missing``, ``run_file_unreadable``, ``run_file_invalid`` and
+    with a message that names the member, or says that the request is no
+    object; of one of the four kinds ``run_file_missing``,
+    ``run_file_unreadable``, ``run_file_invalid`` and
     ``run_file_unsupported`` when the layout version stamp of the run cannot
     be had, for every identity, and for what ``hw_profile_of`` raises that the
     module docstring counts as a situation of ``instance.json``, for an
