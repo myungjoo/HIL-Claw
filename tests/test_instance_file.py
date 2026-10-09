@@ -69,6 +69,7 @@ FULL = written(
         tolerance={"rtol": 0.25, "atol": 3.0},
         source_commit=COMMIT,
         n_max=7,
+        candidates_per_round=3,
         example_member={"b": [1, None, "x"], "a": 2.5},
     )
 )
@@ -107,6 +108,10 @@ REFUSED = {
     ),
     "source_commit": (written(doc(source_commit="abc")), InvalidInstanceError),
     "n_max": (written(doc(n_max=4)), InvalidInstanceError),
+    "candidates_per_round": (
+        written(doc(candidates_per_round=0)),
+        InvalidInstanceError,
+    ),
     "no final line feed": (MINIMAL[:-1], WrittenFormError),
     "CRLF line ends": (MINIMAL.replace(b"\n", b"\r\n"), WrittenFormError),
     "one carriage return": (b"\r" + MINIMAL, WrittenFormError),

@@ -1,4 +1,4 @@
-"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024).
+"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028).
 
 ``ARCHITECTURE/decisions/ADR-0018-od8-instance-record-hw-profile.md`` fixes the
 file as a whole (decision 2), the member ``hw_profile`` in which a run states
@@ -23,17 +23,23 @@ one (decision 4), and says where the bound a run states is read from
 no member and no rule of validity: the file states the layout version of its
 run through its ``schema_version`` (decision 3), so a file this module
 accepts states layout version 1, and the record says when a reader has the
-layout version of a run and from where it is read (decisions 4 and 5). This
-module is those rules: :func:`parse` and :func:`validate` are pure functions
-of the bytes of a content and of a parsed document, and :func:`read`,
-:func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
-:func:`n_max_of` and :func:`layout_version_of` read the file of a run.
-:func:`hw_profile_of` has the call form of the parameter ``hw_profile_of`` of
+layout version of a run and from where it is read (decisions 4 and 5).
+``ARCHITECTURE/decisions/ADR-0028-od8-instance-record-candidates-per-round.md``
+adds the member ``candidates_per_round``, in which a run states its number of
+candidates per round (decisions 2 and 3), says that a valid file may lack it,
+that a present one must be valid and that no value stands in for an absent
+one (decision 4), and says where the number a run states is read from
+(decision 5). This module is those rules: :func:`parse` and :func:`validate`
+are pure functions of the bytes of a content and of a parsed document, and
+:func:`read`, :func:`hw_profile_of`, :func:`tolerance_of`,
+:func:`source_commit_of`, :func:`n_max_of`, :func:`candidates_per_round_of`
+and :func:`layout_version_of` read the file of a run. :func:`hw_profile_of`
+has the call form of the parameter ``hw_profile_of`` of
 :func:`hilclaw.hw_tool.tool_function`; nothing here binds it,
-:func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of` or
-:func:`layout_version_of` to a tool.
+:func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
+:func:`candidates_per_round_of` or :func:`layout_version_of` to a tool.
 
-Conventions of this module, which the five records do not fix:
+Conventions of this module, which the six records do not fix:
 
 - A content is exactly ``bytes`` (:class:`TypeError` otherwise: the encoding is
   part of validity). Values are as :func:`json.loads` returns them, an integer
@@ -44,14 +50,16 @@ Conventions of this module, which the five records do not fix:
 - The rules for the whole text come first, whatever the version, then
   ``schema_version``, then ``hw_profile``, then ``tolerance`` when the document
   holds it, then ``source_commit`` when the document holds it, then ``n_max``
-  when the document holds it: the order in which the records defined them. A
-  content this interpreter cannot read (an integer too long for it anywhere
-  in the text, nesting too deep) raises :class:`InvalidInstanceError` too,
-  though it is a limit of this reader and not damage; the limits stay as the
-  interpreter has them. A number beyond the float range in a member not
-  defined here is read as an infinity and is no error, as
-  :mod:`hilclaw.run_state` has it; in ``tolerance`` and as ``n_max`` it makes
-  the content invalid (ADR-0020 decision 4, ADR-0023 decision 3).
+  when the document holds it, then ``candidates_per_round`` when the document
+  holds it: the order in which the records defined them. A content this
+  interpreter cannot read (an integer too long for it anywhere in the text,
+  nesting too deep) raises :class:`InvalidInstanceError` too, though it is a
+  limit of this reader and not damage; the limits stay as the interpreter has
+  them. A number beyond the float range in a member not defined here is read
+  as an infinity and is no error, as :mod:`hilclaw.run_state` has it; in
+  ``tolerance``, as ``n_max`` and as ``candidates_per_round`` it makes the
+  content invalid (ADR-0020 decision 4, ADR-0023 decision 3, ADR-0028
+  decision 3).
 - ``schema_version`` is an integer of ADR-0001, from 0 to
   :data:`hilclaw.keys.MAX_INTEGER`: a value outside that range is no integer of
   the records and makes the content invalid, it is not another version. ``-0``
@@ -90,6 +98,16 @@ Conventions of this module, which the five records do not fix:
   for ``schema_version``. The bound is handed out as the ``int`` of the file,
   unchanged. A content without the member has ``None`` in that place: it
   states no bound, and that is no error of the content.
+- What is a value of ``candidates_per_round`` is ADR-0028 decision 3 and not
+  a convention: an integer from 1 to :data:`hilclaw.keys.MAX_INTEGER`, both
+  included, so ``true``, ``2.0``, ``2e0``, ``0`` and ``-0`` are none, and a
+  value above 5 is one. The conventions are that a value built in memory
+  must be exactly an ``int`` (a subclass is none), that ``-0`` is refused as
+  the integer 0 it is read as, that the one rule is reported as a whole, and
+  that an ``int`` that breaks it is not shown, as for ``schema_version``.
+  The number is handed out as the ``int`` of the file, unchanged. A content
+  without the member has ``None`` in that place: it states no number of
+  candidates per round, and that is no error of the content.
 - Which layout version a schema version states is ADR-0024 decision 3 and not
   a convention: schema version 1 states layout version 1. The conventions are
   that the pairing is a mapping keyed by the schema version with the number
@@ -108,10 +126,10 @@ Conventions of this module, which the five records do not fix:
   the read is an :class:`OSError`, as every other failure of the file system.
 
 It writes, creates and removes no file and composes no content. It defines no
-member besides the five (``schema_version``, ``hw_profile``, ``tolerance``,
-``source_commit`` and ``n_max``) and interprets no other: a file it accepts is
-not thereby a complete instance record, and not enough to start a run
-(ADR-0018 decisions 1 and 2).
+member besides the six (``schema_version``, ``hw_profile``, ``tolerance``,
+``source_commit``, ``n_max`` and ``candidates_per_round``) and interprets no
+other: a file it accepts is not thereby a complete instance record, and not
+enough to start a run (ADR-0018 decisions 1 and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
 default and substitutes no value (ADR-0020 decision 3), does not check that a
 run is of the first case, and gives the member no meaning for a run of another
@@ -150,6 +168,25 @@ and what a call answers when no bound is stated is not said here; "not
 stated" is no error of the content here either, this module gives it no
 tool-failure kind, and :func:`n_max_of` is bound to no tool and to no timing
 run.
+Of the number of candidates per round it gives what the file states and
+nothing else (ADR-0028 decisions 4 and 5): it holds no default and substitutes
+no value for a member that is absent, not 1 and not a number taken from
+another member, from another run or from a spec. The lower end is the number
+1 of ADR-0028 decision 3, written here, and there is no upper end below
+:data:`hilclaw.keys.MAX_INTEGER`: the module holds no range of a user
+interface, and a value above 5 is a value. It checks the form of the member
+only. It does not read, import or compare a spec and concludes nothing about
+the ``id.candidates`` of one (ADR-0028 decision 5). It does not say that any
+round of the run had, has or will have that many candidates, and it makes the
+member no number of coder calls, of specs, of attempts or of promoted
+candidates and no budget member (ADR-0028 decision 2). A file it accepts need
+not state the number; where it is checked that an instance states one, and
+what follows for a round of a run whose file states none, is open (OD-8
+sub-question 25). Which tool or component reads the member and at which
+moment is not said here (ADR-0028 decision 5 and Boundaries); "not stated" is
+no error of the content here either, this module gives it no tool-failure
+kind, and :func:`candidates_per_round_of` is bound to no tool and to nothing
+that issues a spec.
 Of the layout version it gives what the ``schema_version`` of a valid file
 states by the pairing of ADR-0024 decision 3 and nothing else (decisions 4
 and 5). It defines no member for the layout version and interprets none: a
@@ -192,7 +229,14 @@ from hilclaw import keys, layout
 SCHEMA_VERSION = 1
 
 _MAX = keys.MAX_INTEGER
-_DEFINED = ("schema_version", "hw_profile", "tolerance", "source_commit", "n_max")
+_DEFINED = (
+    "schema_version",
+    "hw_profile",
+    "tolerance",
+    "source_commit",
+    "n_max",
+    "candidates_per_round",
+)
 _SECTION = ("key", "record")
 _TOLERANCE = ("rtol", "atol")
 _COMMIT_LENGTHS = (40, 64)
@@ -203,8 +247,8 @@ _STATED_LAYOUT = {SCHEMA_VERSION: 1}
 class InvalidInstanceError(ValueError):
     """A content, a document or a path breaks a rule; the message names it.
 
-    The rules are those of ADR-0018, ADR-0020, ADR-0022 and ADR-0023 and the
-    conventions of this module.
+    The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023 and
+    ADR-0028 and the conventions of this module.
     """
 
 
@@ -235,7 +279,9 @@ class Instance(NamedTuple):
     the member ``tolerance``. ``source_commit`` is the ``str`` of the member
     ``source_commit``, or ``None`` for a content without that member.
     ``n_max`` is the ``int`` of the member ``n_max``, or ``None`` for a content
-    without that member. No field has a default. ``others`` is the last field.
+    without that member. ``candidates_per_round`` is the ``int`` of the member
+    ``candidates_per_round``, or ``None`` for a content without that member.
+    No field has a default. ``others`` is the last field.
     """
 
     hw_profile_key: str
@@ -243,6 +289,7 @@ class Instance(NamedTuple):
     tolerance: Tolerance | None
     source_commit: str | None
     n_max: int | None
+    candidates_per_round: int | None
     others: dict
 
 
@@ -261,11 +308,16 @@ def parse(content):
     either; ``n_max`` is the ``int`` of the member ``n_max`` as the content
     states it (ADR-0023 decision 3), not clamped, rounded or replaced, or
     ``None`` when the content has no such member, and no value is substituted
-    then either; ``others`` holds every top-level member that is none of
-    ``schema_version``, ``hw_profile``, ``tolerance``, ``source_commit`` and
-    ``n_max``, as parsed and not interpreted, whatever its name and value
-    (``tolerence``, a top-level ``rtol``, ``source-commit`` or ``nmax`` among
-    them). Any order of members and any white space of JSON are accepted.
+    then either; ``candidates_per_round`` is the ``int`` of the member
+    ``candidates_per_round`` as the content states it (ADR-0028 decision 3),
+    not clamped to a range, rounded or replaced, or ``None`` when the content
+    has no such member, and no value is substituted then either, 1 included;
+    ``others`` holds every top-level member that is none of
+    ``schema_version``, ``hw_profile``, ``tolerance``, ``source_commit``,
+    ``n_max`` and ``candidates_per_round``, as parsed and not interpreted,
+    whatever its name and value (``tolerence``, a top-level ``rtol``,
+    ``source-commit``, ``nmax`` or ``candidates`` among them). Any order of
+    members and any white space of JSON are accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
     a byte order mark, is not exactly one JSON text (the tokens ``NaN``,
@@ -290,7 +342,7 @@ def parse(content):
 
 
 def validate(document):
-    """Check ``document``, a parsed ``instance.json``, against the four records.
+    """Check ``document``, a parsed ``instance.json``, against the five records.
 
     ``document`` must be a ``dict`` with ``schema_version`` (an ``int`` from 0
     to :data:`hilclaw.keys.MAX_INTEGER`) and, at version 1, ``hw_profile``: a
@@ -309,16 +361,23 @@ def validate(document):
     :data:`hilclaw.keys.MAX_INTEGER`, both included (ADR-0023 decisions 3 and
     4): for a value built in memory, a ``bool``, a ``float`` such as ``10.0``
     and a subclass of ``int`` are none. Only that form is checked, not that a
-    measurement was or can be taken under the bound. Its other members are
-    not looked at. The rules for the text (the encoding, a member name twice)
-    cannot be checked on a parsed value. The four records are ADR-0018,
-    ADR-0020, ADR-0022 and ADR-0023; ADR-0024 adds no rule of validity.
+    measurement was or can be taken under the bound. It may hold
+    ``candidates_per_round``, which is then exactly an ``int`` from 1 to
+    :data:`hilclaw.keys.MAX_INTEGER`, both included (ADR-0028 decisions 3 and
+    4): for a value built in memory, a ``bool``, a ``float`` such as ``2.0``
+    and a subclass of ``int`` are none. Only that form is checked: the member
+    is compared with no spec and with no range of a user interface. Its other
+    members are not looked at. The rules for the text (the encoding, a member
+    name twice) cannot be checked on a parsed value. The five records are
+    ADR-0018, ADR-0020, ADR-0022, ADR-0023 and ADR-0028; ADR-0024 adds no
+    rule of validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
-    ``tolerance.rtol``, ``source_commit`` or ``n_max``). The version comes
-    first: an integer other than :data:`SCHEMA_VERSION` raises
-    :class:`UnsupportedVersionError` before any other member is looked at.
+    ``tolerance.rtol``, ``source_commit``, ``n_max`` or
+    ``candidates_per_round``). The version comes first: an integer other
+    than :data:`SCHEMA_VERSION` raises :class:`UnsupportedVersionError`
+    before any other member is looked at.
     """
     _checked(document)
 
@@ -369,8 +428,9 @@ def hw_profile_of(data_root, run_id):
     by ADR-0001 and new at each call, which the caller may hand to
     :func:`hilclaw.backends.select`. Raises what :func:`read` raises, so
     :class:`InvalidInstanceError` also for a file whose ``tolerance``,
-    ``source_commit`` or ``n_max`` is invalid: no member of an invalid file is
-    used (ADR-0020 decision 3, ADR-0022 decision 5, ADR-0023 decision 4).
+    ``source_commit``, ``n_max`` or ``candidates_per_round`` is invalid: no
+    member of an invalid file is used (ADR-0020 decision 3, ADR-0022 decision
+    5, ADR-0023 decision 4, ADR-0028 decision 4).
     """
     return read(data_root, run_id).hw_profile
 
@@ -426,6 +486,27 @@ def n_max_of(data_root, run_id):
     return read(data_root, run_id).n_max
 
 
+def candidates_per_round_of(data_root, run_id):
+    """Return the candidates per round the run ``run_id`` states, or ``None`` when it states none.
+
+    It is the ``candidates_per_round`` of what :func:`read` returns (ADR-0028
+    decision 5): the ``int`` of the member ``candidates_per_round`` of
+    ``runs/<run_id>/instance.json``, from 1 to
+    :data:`hilclaw.keys.MAX_INTEGER`, as the file states it at this call, or
+    ``None`` for a valid file without that member. The member states the
+    number of candidates per round the instance was started with (ADR-0028
+    decision 2). ``None`` says that no number is stated; no value stands in
+    for it (ADR-0028 decision 4): not 1, not a number of a range a user is
+    offered, not a constant of this module, not a number taken from a spec
+    and not the number of another run. The number is compared with nothing:
+    not with a spec, and that a round had or will have that many candidates
+    is not checked. Raises what :func:`read` raises, so no number is
+    returned, and none is inferred, for a missing, unreadable or invalid
+    file or one of another version.
+    """
+    return read(data_root, run_id).candidates_per_round
+
+
 def layout_version_of(data_root, run_id):
     """Return the layout version the run ``run_id`` states (ADR-0024 decisions 3 to 5).
 
@@ -473,8 +554,11 @@ def _checked(document):
     if "source_commit" in document:
         commit = _source_commit(document["source_commit"])
     n_max = _n_max(document["n_max"]) if "n_max" in document else None
+    candidates = None
+    if "candidates_per_round" in document:
+        candidates = _candidates_per_round(document["candidates_per_round"])
     others = {name: value for name, value in document.items() if name not in _DEFINED}
-    return Instance(key, record, tolerance, commit, n_max, others)
+    return Instance(key, record, tolerance, commit, n_max, candidates, others)
 
 
 def _hw_profile(section):
@@ -536,6 +620,12 @@ def _source_commit(value):
 def _n_max(value):
     if type(value) is not int or not 5 <= value <= _MAX:
         _fail("n_max", f"an int from 5 to {_MAX}", value)
+    return value
+
+
+def _candidates_per_round(value):
+    if type(value) is not int or not 1 <= value <= _MAX:
+        _fail("candidates_per_round", f"an int from 1 to {_MAX}", value)
     return value
 
 
