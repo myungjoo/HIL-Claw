@@ -2,7 +2,7 @@
 id: T-0103
 title: Carry ADR-0033 into the code (the code slice of its Consequences) - `hilclaw/instance.py` checks the validity of the member `wall_clock_budget_s` (exactly an integer from 1 to 2^53 - 1, counted in seconds, no upper end below the integer range, may be absent) and gains a reader of the wall-clock budget a run states beside `round_budget_of` - no default, absent is never "unlimited", no clock, no measuring of time, no comparison with `round_budget`, `STATE.json`, the spend view or the log, bound to no tool and to nothing that ends a run
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-3, FR-13, NFR-2, NFR-7, OD-8]
 dependsOn: [T-0101, T-0102]
@@ -138,3 +138,51 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (integrator) The sentences ADR-0033 Consequences lists as "not edited and now less exact".
 
 ## Result
+**DONE** - not BLOCKED. Language of this section: English (DRIVER §5).
+
+- **PR / commit**: PR #79 (https://github.com/myungjoo/HIL-Claw/pull/79), squash-merged to `main` as `66fa807` (`66fa807456fb3b9740e2987dc464c88f21ea98f6`); the squash message ends with `Task: T-0103`. Branch `claude/T-0103-instance-record-wall-clock-budget-reader` deleted on the remote and locally. Branch commits: `eb2e2ac` (the change), `5dc9ca8` (round 1 nits), `586778b` (round 2 nit).
+- **This task ticks no PLAN checkbox**: P1-8 stays open.
+- **Start checks**: no landed `Task: T-0103` commit and no PR for T-0103 at the start; no open PR; no comment on #5 after the ADR-0033 notice (issuecomment-6084225340), so no objection and no answer that changes the name, the unit, the range or the reading of an absent member.
+
+**Review**: 3 rounds, each by a fresh-context `dev-reviewer` sub-agent, each ending in Approve; no blocking finding, no `SECURITY` result, no point read as a design choice needing a record or the owner.
+- Round 1 (head `eb2e2ac`, https://github.com/myungjoo/HIL-Claw/pull/79#issuecomment-6084591079): Approve with two nits. (1) Five docstring lines of `hilclaw/instance.py` were left longer than the lines around them by the edit - wrapped again. (2) The assertions on rows 2, 4 and 5 of the Walk-through were repeated for each literal of row 3 - moved to a case of their own (`test_the_valid_files_of_the_walk_through_of_adr_0033`).
+- Round 2 (head `5dc9ca8`, https://github.com/myungjoo/HIL-Claw/pull/79#issuecomment-6084708710): Approve with three nits. (1) The wrap of round 1 left short lines, and one line of `hilclaw/instance_file.py` was 81 characters - reflowed, white space only (the word diff of that commit is empty). (2) The value 754 of `FULL` in `tests/test_instance_file.py` has no marker of its own - not changed: line 20 of that file marks every value of the file as synthetic and as no default, and the neighbouring values have none either. (3) An observation with no change asked for: the "opens only the instance file" case watches `Path.read_bytes` only, as its `round_budget` model does.
+- Round 3 (head `586778b`, https://github.com/myungjoo/HIL-Claw/pull/79#issuecomment-6084819088): Approve with one nit the reviewer judged not worth a change in this PR: in the docstring of `wall_clock_budget_s_of`, the words "because of any such time" follow a list that also names things that are no time (the `round` of a `STATE.json`, the spend view, another member). The sentence is not false and decides nothing; it is left as it is (see Follow-ups).
+- The reviewers confirmed items (a) to (g) of the task: the validity against decisions 3 and 4 and all six rows of the Walk-through; no path that yields a budget the file does not state; no clock, no comparison, no binding; the eight existing members unchanged; the planner's judgements and the A-13 reading; every counting and enumerating docstring sentence item by item; the eight provisional choices.
+
+**Public API as landed** (`hilclaw/instance.py`)
+- `Instance._fields` is `("hw_profile_key", "hw_profile", "tolerance", "source_commit", "n_max", "candidates_per_round", "op_signature", "round_budget", "wall_clock_budget_s", "others")`; no field has a default. `wall_clock_budget_s` is `int | None`.
+- `wall_clock_budget_s_of(data_root, run_id)`: no further argument and no default. It returns the field `wall_clock_budget_s` of what `read` returns: the `int` of the member as the file states it at that call, a number of seconds from 1 to `hilclaw.keys.MAX_INTEGER`, unchanged, or `None` for a valid file without the member. `None` means "not stated"; nothing stands in for it.
+- It raises what `read` raises, unchanged: `hilclaw.layout.InvalidPathValueError` for a `run_id` that is none; `FileNotFoundError` or `NotADirectoryError` for a data root that is no existing directory; `MissingInstanceError` for a missing file; an `OSError` of the file system for a file that cannot be read; `InvalidInstanceError` for an invalid content or a path that is no regular file; `UnsupportedVersionError` for another `schema_version`. In none of them a wall-clock budget is returned or inferred.
+- `parse` and `validate`: a present `wall_clock_budget_s` is valid exactly when `type(value) is int` and 1 <= value <= `MAX_INTEGER`. Otherwise `InvalidInstanceError` with the message `wall_clock_budget_s: must be an int from 1 to 9007199254740991, got <type name>` (a refused `int` is not shown; a `str` is shown through `reprlib.repr`, as every `str` of the module); through `read` the message starts with the relative path of the file. The member is checked after `round_budget`; another `schema_version` is still `UnsupportedVersionError` before it is looked at; a member name twice and an integer too long for the interpreter stay text errors.
+- The member is in `_DEFINED`, so it is no longer handed back in `others`; a top-level member of any other name (`wall_clock_budget`, `time_budget`, `timeout_s`, a `budget` object and so on) stays in `others`.
+- Unchanged: `SCHEMA_VERSION`, the rules, messages and order of the eight existing members, the signatures of `parse`, `validate`, `read` and of the eight existing readers, `OpSignature`, `Tolerance`, `_STATED_LAYOUT`. No new module-level `int` or `float`, no new import. The reader is called from nowhere in the package.
+- `hilclaw/instance_file.py`: one docstring clause only (seven members a valid content may lack, the last four ADR-0028's, ADR-0031's, ADR-0032's and ADR-0033's); no statement changed. `write` refuses a content with an invalid member through `instance.parse` (row `wall_clock_budget_s` of `REFUSED`).
+
+**Provisional choices** (ADR-0033 leaves them to the code task; each re-checked by the reviewers)
+- Field and reader are named after the member (`wall_clock_budget_s`, `wall_clock_budget_s_of`): the suffix of the other readers, and the unit stays visible to the caller.
+- The field stands after `round_budget` and before `others`: the order in which the records defined the members; `others` stays last.
+- "Not stated" is `None`: as for every other member that may be absent.
+- The member is checked after `round_budget`: the order of the records, as the module docstring says of the others.
+- The message and that a refused `int` is not shown while a `str` is: as for `round_budget`.
+- `validate` takes exactly an `int` for a value built in memory (a `bool`, a `float`, a subclass of `int`, a `datetime.timedelta` are none): as for `round_budget`.
+- The check is a private function of its own beside `_round_budget` and shares no helper: the existing checks stay as they are, byte for byte.
+- The value is handed out as the `int` of the file, in seconds, unchanged: the module converts nothing.
+- No criterion of this task disagreed with the record; nothing met was read as a rule about the clock, the counting, another file, another axis, the writer or a tool.
+
+**The HW-tool case**: `test_a_file_invalid_by_its_wall_clock_budget_alone_is_run_file_invalid` pins, with the id "valid and of one second", that a journaled HW tool call works for a file whose valid `wall_clock_budget_s` is 1. This follows ADR-0033 decisions 5 and 6 (the member stops nothing) and has to be changed deliberately once OD-19 / OD-8 sub-question 30 (i) is decided.
+
+**Verification**
+- Local (Windows), `python -m pytest`: 10675 passed, 288 skipped on `origin/main` `e61c826` before; 10972 passed, 290 skipped on the final head `586778b` (the two further skips are the symbolic-link cases of the cases parametrised by `READERS`, which gained one reader). `python -m ruff check .` and `python -m ruff format --check .` exit 0. Nothing installed.
+- `git diff origin/main --stat` listed only the four files of `touchesFiles`; the diff of `hilclaw/instance_file.py` touches the module docstring only; the two `git grep` checks on imports and on writing calls in `hilclaw/instance.py` have no match; `git grep -n "wall_clock_budget_s_of" -- hilclaw` matches the definition and three docstring lines of `hilclaw/instance.py` only; `git ls-files --eol` shows `i/lf` for the four files.
+- Line counts: non-test diff 170 added and 51 removed lines in 2 files (`hilclaw/instance.py` 166 / 47, `hilclaw/instance_file.py` 4 / 4), of which 13 are statement lines; cap 300 LOC / 5 files. Tests: `tests/test_instance.py` about 820 added lines, `tests/test_instance_file.py` 5.
+- CI on the final head `586778b`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37957812015 - all six checks successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. Coverage lines of that run: "lines: 3044/3060 executed = 99.47 (minimum 80)" and "functions: 313/313 entered = 100.00 (minimum 80)", both in percent; `hilclaw/instance.py` 181 statements, 0 missed. No CI run failed on the PR.
+- `push` run on `main` after the merge (`66fa807`): https://github.com/myungjoo/HIL-Claw/actions/runs/37958355465 - `success`.
+- Test rules D12: 1 held (figures above); 2 happy, branch, no-substitute, error and negative cases for the member and the reader; 3 every public function of `hilclaw.instance` has tests, the new reader included; 4 no new module; 5 no test targets test code, CI or a helper script.
+
+**Language**: Python, because the modules exist in Python.
+
+**Follow-ups left by this task**
+- (optional, with the next edit of that docstring) The clause "because of any such time" in the docstring of `wall_clock_budget_s_of` (round 3 nit): reword so that the list before it and the clause agree.
+- (deliberate change later) The HW-tool case id "valid and of one second" once OD-19 / OD-8 sub-question 30 (i) is decided.
+- The follow-ups of the task file stand as written; this task adds no other.
