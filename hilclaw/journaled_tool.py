@@ -138,9 +138,10 @@ def checked_function(*, step, numbers, carry_out, source, check, **others):
 
     The function returned takes one request and returns what ``carry_out``
     returns. It raises ``ToolFailure`` of kind ``invalid_request`` with a
-    message that names the member, and otherwise what ``check``,
-    :func:`hilclaw.data_root_source.obtain` and ``carry_out`` raise,
-    unchanged. It does not modify the request.
+    message that names the member, or says that the request is no object, and
+    otherwise what ``check``, :func:`hilclaw.data_root_source.obtain` and
+    ``carry_out`` raise, unchanged. It does not modify the request itself;
+    what ``check`` and ``carry_out`` do with it is theirs.
 
     What it does not do: it calls no function of
     :mod:`hilclaw.journaled_step`, so the lookup, the two step lines and the
