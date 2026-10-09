@@ -2,7 +2,7 @@
 id: T-0110
 title: Carry ADR-0008 into the package (decisions 4, 5 and 9) - a new module `hilclaw/gemm_contract.py` that returns the op-side values of a spec for the contract (`gemm`, `fp32`, `row_major`, `c`) - the op_signature record of a shape, the `task.contract` object of a shape, and the shapes of the twelve first instances - bound to no tool, writing no spec and no file
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-5, FR-13, OD-6, OD-4, "#5 B-4", "#5 A-7"]
 dependsOn: [T-0030]
@@ -117,3 +117,54 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (planner - not before 2026-10-16, code mode, no change of behaviour) One shared once-only write helper for the three writers (`key_records`, `instance_file`, `spec_file`).
 
 ## Result
+**DONE** - landed on `main` as squash commit `24e2282` ("T-0110: Add gemm_contract, the op-side values of a spec for the first gemm contract (ADR-0008) (#82)"), PR https://github.com/myungjoo/HIL-Claw/pull/82 (code mode, Draft with `DONOTMERGE`, then ready and squash-merged by the executor; the squash body is the PR body, last line `Task: T-0110`). The remote and the local task branch were deleted in separate commands after the PR reported `MERGED`. **No BLOCKED exit and no new HQ.** This task ticks **no PLAN checkbox** (P1-5 stays open). Wall clock by `date -u`: started 2026-10-09T22:23Z, push run on `main` finished by 22:43Z. This `## Result` is left uncommitted for the driver.
+
+§3-5 check before starting: no commit with `Task: T-0110` on `origin/main`, no PR for T-0110, no open PR - a fresh start. Issue #5: the last comment was the ADR-0035 notice (issuecomment-6089042706) at the start and again directly before the merge; no objection to ADR-0001, ADR-0002 or ADR-0008.
+
+### Files
+`hilclaw/gemm_contract.py` (new, 131 lines: 22 statements, the rest docstrings) and `tests/test_gemm_contract.py` (new, 372 lines, 125 cases). Nothing else changed.
+
+### Public API as landed
+- Constants: `KIND` = `"gemm"`, `DTYPE` = `"fp32"`, `LAYOUT` = `"row_major"`, `LANGUAGE` = `"c"`, `PROTOTYPE` = the single line of ADR-0008 decision 4 (a `str`, no line break, semicolon included).
+- `FIRST_SHAPES`: a `tuple` of twelve `(m, k, n)` tuples, in the order of the table of decision 9 (rows by projection (k, n) = (2048, 8192), (8192, 2048), (2048, 3072), (2048, 2048); columns m = 1, 32, 512). No projection has a name.
+- `op_signature_record(m, k, n)`: returns a new plain `dict` with exactly `schema_version` (`keys.SCHEMA_VERSION`), `kind`, `shape` (a new `dict` with `m`, `k`, `n`), `dtype`, `layout`. No `label`, no `ext`; the key is not returned.
+- `task_contract(m, k, n)`: returns a new plain `dict` with exactly `language`, `prototype`, `operands`; `operands` is a new `list` of three new `dict`s, `a` `input` `[m, k]`, `b` `input` `[k, n]`, `c` `output` `[m, n]`, each with `dtype` `fp32`, exactly the four members `name`, `role`, `dtype`, `shape`, and a new `list` as `shape`.
+- Both functions take the three dimensions positionally or by name. Each must be exactly an `int` (`bool` and subclasses refused) from 1 to `keys.MAX_INTEGER`; otherwise `keys.InvalidRecordError` is raised before anything is built, with the message `shape.<m|k|n>: must be an integer from 1 to 2**53 - 1, got <reprlib.repr of the value>`; the first bad dimension in the order m, k, n is the one named. A missing or surplus argument is Python's own `TypeError`.
+- The module imports `reprlib` and `hilclaw.keys` only, is imported by no module of the package, reads and writes no file and has no command-line entry.
+
+### Provisional choices (each with its reason; all reviewed in three rounds)
+- Names `gemm_contract`, `op_signature_record`, `task_contract`, `KIND`, `DTYPE`, `LAYOUT`, `LANGUAGE`, `PROTOTYPE`, `FIRST_SHAPES`: the recommendations of this task file.
+- Call form `(m, k, n)`, positional or by name: the order of the definition and of the prototype.
+- `FIRST_SHAPES` as a tuple of tuples: a constant no caller can change, in the order of the table.
+- No name for a projection: the record's words for them are prose.
+- Exception class `keys.InvalidRecordError` with a message starting with `shape.<dimension>`: one class for a record `keys` would refuse and for one this module refuses, in the wording of `keys`.
+- A missing or surplus argument: Python's own `TypeError`.
+- **Lower bound of a dimension: 1, as the planner read it.** ADR-0001 allows 0; ADR-0008 decision 6 has the caller pass dimensions of at least 1. **No reviewer asked for the fallback**; all three accepted the bound as a provisional choice of the helper (`keys` and `spec` still accept 0, and the docstring, the commit and the PR body say that no record states the bound). A test pins the difference (`op_signature_key` accepts a shape with 0, this module refuses it).
+
+### For a later record (not decided here)
+- Whether an op_signature of this contract may hold a dimension of 0. Until a record says so, the bound of 1 is this module's own.
+- Round-1 note: `keys.InvalidRecordError` is documented as "breaks a rule of ADR-0001", while the value 0 breaks no rule of ADR-0001 - the module's docstring states the difference; a later record or the first caller may want a class of its own.
+
+### Where a criterion and the record differed
+- The criterion for the module docstring asked for the sentence that the guarantees and obligations of decisions 6 and 7 "are not represented in any value it returns". Decision 4 has `restrict` state the no-overlap guarantee of decision 6 in the declaration, so the record wins: the landed sentence excepts what the prototype text itself states (round-2 finding).
+- The docstring also lists `feedback` among the parts of a spec the module does not build (the criterion's list stops at `guidance`), so that the enumeration matches the top-level members of ADR-0002.
+
+### Review rounds (3; fresh-context `dev-reviewer` each, model opus; comments on the PR)
+- Round 1 (head `a14b2ab`): **Approve**, 3 Nit. Fixed: an unevenly wrapped docstring paragraph; a redundant rebinding of `m`, `k`, `n` in `task_contract`. Recorded above, not changed: the `InvalidRecordError` docstring note.
+- Round 2 (head `5741a82`): **Approve**, 1 Nit, fixed: the docstring sentence on decisions 6 and 7 was stronger than the record (above).
+- Round 3 (head `f7a4f61`): **Approve**, no finding, nothing trivially fixable left.
+- All three compared the prototype, the contract of decision 5, the canonical form, digest and name of decision 9 and the twelve names with the record and found them equal, and agreed with the planner's judgements: selectable without the repository owner; the lower bound of 1 acceptable without the fallback; a module without a caller acceptable as for `standin_profile.local_record`; no A-13 BLOCKED reason applies (no new dependency, no schema or data-plane file). No result started with `SECURITY`.
+- Round-3 remark, no finding: the structure test fails as soon as a module of the package imports `gemm_contract`, so the task that binds the values must change that assertion on purpose.
+
+### Verification
+- Local (Windows clone, `coverage` not installed - nothing was installed): `python -m pytest` on `origin/main` 11943 passed, 295 skipped; on the final head 12068 passed, 295 skipped (run before the first commit and again before the merge). `python -m ruff check .` and `python -m ruff format --check .` exit 0 (249 files).
+- `git diff origin/main --stat` listed only the two files (503 insertions); `git grep -n "gemm_contract" -- hilclaw` has no match outside the new module (the module does not hold its own name, so no match at all); the import grep has no match; `git grep -n -i "objective"` matches one docstring line only; `git ls-files --eol` shows `i/lf` for both. Non-test diff: 131 lines in 1 file (cap 300 / 5).
+- CI on the PR, final head `f7a4f61`, run https://github.com/myungjoo/HIL-Claw/actions/runs/38000027152: all six checks successful (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`). Coverage lines: `lines: 3186/3202 executed = 99.50` and `functions: 331/331 entered = 100.00`; `hilclaw/gemm_contract.py` 22 statements, none unexecuted. Three CI runs on the PR: the first was cancelled by the next push, none failed.
+- After the merge: the `push` run on `main` for `24e2282` concluded `success` (https://github.com/myungjoo/HIL-Claw/actions/runs/38000509037).
+
+### Language
+Python - `keys` and `spec`, which must accept the values, are Python and the values are mappings for Python callers.
+
+### Follow-ups left
+- The four items of `## Follow-ups` stand as written; the second (a dimension of 0) is open, with the note on the exception class above.
+- When a caller binds the values: change the structure assertion of `tests/test_gemm_contract.py` that no module of `hilclaw/` names `gemm_contract`.
