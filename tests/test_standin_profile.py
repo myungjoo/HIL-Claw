@@ -992,7 +992,10 @@ def test_live_record_of_this_machine_has_the_shapes_of_the_record():
         if os.environ.get("GITHUB_ACTIONS") == "true":
             pytest.fail("clang is not on PATH of the CI runner")
         pytest.skip("clang is not on PATH")
-    record = local_record("external", timeout_s=TIMEOUT)
+    try:
+        record = local_record("external", timeout_s=TIMEOUT)
+    except UnreadableFactError as error:
+        pytest.fail(str(error), pytrace=False)
     try:
         hw_profile_key(record)
         accepted = True
