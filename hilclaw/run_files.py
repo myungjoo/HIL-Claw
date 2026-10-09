@@ -28,8 +28,9 @@ Conventions of this module, which the record does not fix:
   message of a file that is not there and for :func:`data_root_is_there`; a
   data root that cannot be asked counts as not there.
 
-It reads no frame file, writes nothing, keeps nothing between calls and says
-nothing of a failed append (OD-18 sub-question 9).
+It reads no frame file, writes nothing and keeps nothing between calls. A
+failed append of a step line is not answered here:
+:mod:`hilclaw.journaled_step` gives it one of the two kinds of ADR-0026.
 """
 
 import contextlib

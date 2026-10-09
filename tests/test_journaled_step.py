@@ -2,6 +2,7 @@ import inspect
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -374,7 +375,11 @@ def test_an_ended_step_is_answered_with_a_torn_tail_left_in_place(root):
 # --- the three death points ---
 
 
-def fail_append(monkeypatch, kind, after=False):
+class Died(BaseException):
+    """Stands for the death of the process: no kind answers it and nothing catches it."""
+
+
+def die_in_append(monkeypatch, kind, after=False):
     real = events.append
 
     def append(data_root, run_id, line_kind, data, **numbers):
@@ -382,16 +387,33 @@ def fail_append(monkeypatch, kind, after=False):
             return real(data_root, run_id, line_kind, data, **numbers)
         if after:
             real(data_root, run_id, line_kind, data, **numbers)
-        raise OSError("example failure of the append")
+        raise Died()
+
+    monkeypatch.setattr(events, "append", append)
+
+
+def break_append(monkeypatch, kind, error, written="nothing"):
+    """Make the append of the line ``kind`` raise ``error`` with nothing, part or all of it written."""
+    real = events.append
+
+    def append(data_root, run_id, line_kind, data, **numbers):
+        if line_kind != kind:
+            return real(data_root, run_id, line_kind, data, **numbers)
+        if written != "nothing":
+            real(data_root, run_id, line_kind, data, **numbers)
+        if written == "part":
+            log = Path(data_root) / LOG
+            log.write_bytes(log.read_bytes()[:-1])
+        raise error
 
     monkeypatch.setattr(events, "append", append)
 
 
 def test_death_before_the_start_line_is_complete_the_next_call_runs(root, monkeypatch):
     with monkeypatch.context() as patch:
-        fail_append(patch, "step_started")
+        die_in_append(patch, "step_started")
         step = Step()
-        with pytest.raises(OSError, match="example failure"):
+        with pytest.raises(Died):
             run(root, RUN, ID, step)
         assert step.calls == 0
     assert not (root / LOG).exists()
@@ -405,9 +427,9 @@ def test_death_after_the_start_line_and_before_the_step_leaves_it_open(
     root, monkeypatch
 ):
     with monkeypatch.context() as patch:
-        fail_append(patch, "step_started", after=True)
+        die_in_append(patch, "step_started", after=True)
         step = Step()
-        with pytest.raises(OSError, match="example failure"):
+        with pytest.raises(Died):
             run(root, RUN, ID, step)
         assert step.calls == 0
     assert list(map(without_time, lines(root))) == [without_time(started(ID))]
@@ -465,8 +487,8 @@ def test_death_between_the_outcome_and_the_end_line_leaves_it_open(
     root, monkeypatch, step
 ):
     with monkeypatch.context() as patch:
-        fail_append(patch, "step_ended")
-        with pytest.raises(OSError, match="example failure"):
+        die_in_append(patch, "step_ended")
+        with pytest.raises(Died):
             run(root, RUN, ID, step)
     assert step.calls == 1
     assert [line["kind"] for line in lines(root)] == ["step_started"]
@@ -478,8 +500,8 @@ def test_death_after_the_end_line_the_next_call_answers_and_counts_once(
     root, monkeypatch
 ):
     with monkeypatch.context() as patch:
-        fail_append(patch, "step_ended", after=True)
-        with pytest.raises(OSError, match="example failure"):
+        die_in_append(patch, "step_ended", after=True)
+        with pytest.raises(Died):
             run(root, RUN, ID, Step())
     before = snapshot(root)
     step = Step(({AXIS: 99}, {}))
@@ -1041,18 +1063,29 @@ def test_a_missing_an_empty_and_a_torn_log_are_no_situation(root, identity, cont
     assert len(lines(root)) == 2
 
 
-CLASSES_OF_THE_ROWS = [
+# events.append raises no PositionBeyondLogError; as a CorruptEventsError it is answered like one.
+FAILED_APPEND_CLASSES = [
     OSError("example"),
     FileNotFoundError(2, "No such file or directory"),
     NotADirectoryError(20, "Not a directory"),
     PermissionError(13, "Permission denied"),
+    events.CorruptEventsError(f"{LOG}: line 1: is damaged"),
+    events.PositionBeyondLogError(f"{LOG}: position 1 is beyond"),
+]
+OTHER_CLASSES_OF_THE_ROWS = [
     run_journal.MissingStateError(f"{STATE}: is missing"),
     run_state.InvalidStateError(f"{STATE}: example"),
     run_state.UnsupportedVersionError(f"{STATE}: example"),
-    events.CorruptEventsError(f"{LOG}: line 1: is damaged"),
-    events.PositionBeyondLogError(f"{LOG}: position 1 is beyond"),
     events.UnsupportedVersionError(f"{LOG}: line 1: example"),
     journal.JournalError("line 1: example"),
+]
+CLASSES_OF_THE_ROWS = [*FAILED_APPEND_CLASSES, *OTHER_CLASSES_OF_THE_ROWS]
+NO_FAILED_APPEND = [
+    *OTHER_CLASSES_OF_THE_ROWS,
+    events.InvalidEventError("data: example"),
+    RuntimeError("died"),
+    tools.ToolFailure("example_failure", "stated at the append"),
+    KeyboardInterrupt(),
 ]
 of_each_row = pytest.mark.parametrize(
     "error", CLASSES_OF_THE_ROWS, ids=lambda error: type(error).__qualname__
@@ -1084,25 +1117,41 @@ def test_a_class_of_a_row_out_of_before_start_passes_through(root, error):
     assert snapshot(root) == snap
 
 
-@of_each_row
-@pytest.mark.parametrize("kind", ["step_started", "step_ended"])
-def test_a_class_of_a_row_out_of_an_append_passes_through(
-    root, monkeypatch, error, kind
+@pytest.mark.parametrize(
+    "error", FAILED_APPEND_CLASSES, ids=lambda error: type(error).__qualname__
+)
+@pytest.mark.parametrize(
+    "line,kind",
+    [("step_started", "start_line_failed"), ("step_ended", "end_line_failed")],
+)
+def test_a_class_of_a_failed_append_out_of_an_append_is_the_kind_of_its_line(
+    root, monkeypatch, error, line, kind
 ):
-    real = events.append
-
-    def append(data_root, run_id, line_kind, data, **numbers):
-        if line_kind == kind:
-            raise error
-        return real(data_root, run_id, line_kind, data, **numbers)
-
     step = Step()
     with monkeypatch.context() as patch:
-        patch.setattr(events, "append", append)
+        break_append(patch, line, error)
+        with pytest.raises(tools.ToolFailure) as caught:
+            run(root, RUN, ID, step)
+    assert caught.value.kind == kind
+    assert caught.value.__cause__ is error
+    assert step.calls == (line == "step_ended")
+
+
+@pytest.mark.parametrize(
+    "error", NO_FAILED_APPEND, ids=lambda error: type(error).__qualname__
+)
+@pytest.mark.parametrize("line", ["step_started", "step_ended"])
+def test_what_is_no_failed_append_out_of_an_append_passes_through_unchanged(
+    root, monkeypatch, error, line
+):
+    step = Step()
+    with monkeypatch.context() as patch:
+        break_append(patch, line, error)
         with pytest.raises(type(error)) as caught:
             run(root, RUN, ID, step)
     assert caught.value is error
-    assert step.calls == (kind == "step_ended")
+    assert error.__cause__ is None
+    assert step.calls == (line == "step_ended")
 
 
 # --- the same request again (ADR-0019 decision 3) ---
@@ -1508,14 +1557,340 @@ def test_an_answer_of_the_lookup_comes_before_before_start_is_called(tmp_path, r
 def test_a_failed_start_line_after_before_start_does_not_call_the_step(
     root, monkeypatch
 ):
-    def append(*args, **numbers):
-        raise OSError("example failure of the append")
-
+    error = OSError("example failure of the append")
     before, step = Before(root), Step()
     with monkeypatch.context() as patch:
-        patch.setattr(events, "append", append)
-        with pytest.raises(OSError, match="example failure"):
+        break_append(patch, "step_started", error)
+        with pytest.raises(tools.ToolFailure) as caught:
             prepared(root, step, before)
+    assert caught.value.kind == tools.KIND_START_LINE_FAILED == "start_line_failed"
+    assert caught.value.__cause__ is error
     assert (before.calls, step.calls) == (1, 0)
     assert prepared(root, step, before) == RESULT
     assert (before.calls, step.calls) == (2, 1)
+
+
+# --- a failed append of a step line (ADR-0026) ---
+
+START_FAILED = tools.KIND_START_LINE_FAILED
+END_FAILED = tools.KIND_END_LINE_FAILED
+ELSEWHERE = "/elsewhere/events.ndjson"
+NOT_REGULAR = f"{LOG}: is not a regular file"
+FAILED_APPENDS = [
+    OSError(28, "No space left on device", ELSEWHERE),
+    PermissionError(13, "Permission denied", ELSEWHERE),
+    FileNotFoundError(f"data root is not an existing directory: {ELSEWHERE}"),
+    NotADirectoryError(20, "Not a directory", ELSEWHERE),
+    OSError("no errno"),
+    events.CorruptEventsError(NOT_REGULAR),
+]
+each_failed_append = pytest.mark.parametrize(
+    "error", FAILED_APPENDS, ids=lambda error: type(error).__qualname__
+)
+each_entry = pytest.mark.parametrize("via", ["run", "run_prepared"])
+each_extent = pytest.mark.parametrize("written", ["nothing", "part", "all"])
+
+
+def carry_out(via, root, step):
+    if via == "run":
+        return run(root, RUN, ID, step)
+    return prepared(root, step, Before(root))
+
+
+def assert_failed_append(failure, kind, error):
+    assert type(failure) is tools.ToolFailure
+    assert failure.kind == kind
+    assert failure.__cause__ is error
+    assert failure.message.startswith(f"{LOG}: ")
+    if isinstance(error, events.CorruptEventsError):
+        assert failure.message == str(error)
+    for text in ("elsewhere", AXIS, "example_member", *FAILURE.values()):
+        assert text not in failure.message
+
+
+@each_entry
+@each_failed_append
+@each_extent
+def test_a_failed_start_line_is_start_line_failed_and_the_step_is_not_called(
+    root, monkeypatch, via, error, written
+):
+    step = Step()
+    with monkeypatch.context() as patch:
+        break_append(patch, "step_started", error, written)
+        with pytest.raises(tools.ToolFailure) as caught:
+            carry_out(via, root, step)
+    assert_failed_append(caught.value, START_FAILED, error)
+    assert step.calls == 0
+    log = events.read(root, RUN)
+    assert (log.torn_tail > 0) == (written == "part")
+    if written == "all":
+        assert list(map(without_time, log.events)) == [without_time(started(ID))]
+        assert_open_and_not_run(root)
+    else:
+        assert log.events == []
+        assert carry_out(via, root, step) == RESULT
+        assert step.calls == 1
+        after = events.read(root, RUN)
+        assert [line["kind"] for line in after.events] == ["step_started", "step_ended"]
+        assert after.torn_tail == 0
+        assert dict(run_journal.current(root, RUN).view.totals) == SPEND
+
+
+@each_entry
+@each_failed_append
+@each_extent
+@pytest.mark.parametrize("outcome", ["pair", "step-failed"])
+def test_a_failed_end_line_is_end_line_failed_and_no_outcome_is_returned(
+    root, monkeypatch, via, error, written, outcome
+):
+    step = Step() if outcome == "pair" else failed({AXIS: 2})
+    with monkeypatch.context() as patch:
+        break_append(patch, "step_ended", error, written)
+        with pytest.raises(tools.ToolFailure) as caught:
+            carry_out(via, root, step)
+    assert_failed_append(caught.value, END_FAILED, error)
+    assert step.calls == 1
+    log = events.read(root, RUN)
+    kinds = ["step_started", "step_ended"] if written == "all" else ["step_started"]
+    assert [line["kind"] for line in log.events] == kinds
+    assert (log.torn_tail > 0) == (written == "part")
+    before = snapshot(root)
+    again = Step(({AXIS: 99}, {"example_member": 2}))
+    now = run_journal.current(root, RUN)
+    if written != "all":
+        assert dict(now.view.totals) == {}
+        assert now.view.open_steps == frozenset({ID})
+        assert_open_and_not_run(root)
+    elif outcome == "pair":
+        assert carry_out(via, root, again) == RESULT
+        assert dict(now.view.totals) == SPEND
+    else:
+        with pytest.raises(tools.ToolFailure) as stored:
+            carry_out(via, root, again)
+        assert stored.value.args == tuple(FAILURE.values())
+        assert dict(now.view.totals) == {AXIS: 2}
+    assert again.calls == 0
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("line", ["step_started", "step_ended"])
+def test_a_failing_call_reads_nothing_again_and_appends_once(root, monkeypatch, line):
+    order = []
+    real_read, real_state = events.read, run_journal.read_state
+
+    def read(*args):
+        order.append("read")
+        return real_read(*args)
+
+    def read_state(*args):
+        order.append("read_state")
+        return real_state(*args)
+
+    def append(data_root, run_id, kind, data, **numbers):
+        order.append(kind)
+        if kind == line:
+            raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(events, "read", read)
+    monkeypatch.setattr(run_journal, "read_state", read_state)
+    monkeypatch.setattr(events, "append", append)
+    with pytest.raises(tools.ToolFailure):
+        run(root, RUN, ID, Step())
+    appended = ["step_started", "step_ended"][: 1 + (line == "step_ended")]
+    assert order == ["read_state", "read", *appended]
+
+
+def fail_fsync(monkeypatch, nth):
+    calls = []
+
+    def fsync(descriptor):
+        calls.append(descriptor)
+        if len(calls) == nth:
+            raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(os, "fsync", fsync)
+
+
+def test_a_start_line_that_fails_after_the_line_feed_leaves_the_identity_open(
+    root, monkeypatch
+):
+    step = Step()
+    with monkeypatch.context() as patch:
+        fail_fsync(patch, 1)
+        with pytest.raises(tools.ToolFailure) as caught:
+            run(root, RUN, ID, step)
+    assert caught.value.kind == START_FAILED
+    assert type(caught.value.__cause__) is OSError
+    assert caught.value.message == (
+        f"{LOG}: the line could not be appended: OSError: Input/output error"
+    )
+    assert step.calls == 0
+    assert list(map(without_time, lines(root))) == [without_time(started(ID))]
+    assert events.read(root, RUN).torn_tail == 0
+    assert_open_and_not_run(root)
+
+
+@pytest.mark.parametrize(
+    "step,spent", [(Step(), SPEND), (failed({AXIS: 2}), {AXIS: 2})]
+)
+def test_an_end_line_that_fails_after_the_line_feed_is_answered_by_the_next_call(
+    root, monkeypatch, step, spent
+):
+    with monkeypatch.context() as patch:
+        fail_fsync(patch, 2)
+        with pytest.raises(tools.ToolFailure) as caught:
+            run(root, RUN, ID, step)
+    assert caught.value.kind == END_FAILED
+    assert step.calls == 1
+    assert [line["kind"] for line in lines(root)] == ["step_started", "step_ended"]
+    again = Step()
+    if isinstance(step.outcome, StepFailed):
+        with pytest.raises(tools.ToolFailure) as stored:
+            run(root, RUN, ID, again)
+        assert stored.value.args == tuple(FAILURE.values())
+    else:
+        assert run(root, RUN, ID, again) == RESULT
+    assert again.calls == 0
+    now = run_journal.current(root, RUN)
+    assert dict(now.view.totals) == spent
+    assert now.view.open_steps == frozenset()
+
+
+def put_a_directory_in_the_place_of_the_log(root):
+    log = root / LOG
+    if log.exists():
+        log.unlink()
+    log.mkdir()
+
+
+def assert_answered_by_the_lookup(root, kind):
+    step = Step()
+    with pytest.raises(tools.ToolFailure) as caught:
+        run(root, RUN, ID, step)
+    assert caught.value.kind == kind
+    assert step.calls == 0
+
+
+def test_a_directory_in_the_place_of_the_log_at_the_start_line(root):
+    step = Step()
+    with pytest.raises(tools.ToolFailure) as caught:
+        prepared(root, step, lambda: put_a_directory_in_the_place_of_the_log(root))
+    assert (caught.value.kind, caught.value.message) == (START_FAILED, NOT_REGULAR)
+    assert type(caught.value.__cause__) is events.CorruptEventsError
+    assert step.calls == 0
+    assert_answered_by_the_lookup(root, INVALID)
+
+
+def test_a_directory_in_the_place_of_the_log_at_the_end_line(root):
+    def step():
+        put_a_directory_in_the_place_of_the_log(root)
+        return SPEND, RESULT
+
+    with pytest.raises(tools.ToolFailure) as caught:
+        run(root, RUN, ID, step)
+    assert (caught.value.kind, caught.value.message) == (END_FAILED, NOT_REGULAR)
+    assert type(caught.value.__cause__) is events.CorruptEventsError
+    assert_answered_by_the_lookup(root, INVALID)
+
+
+def test_a_data_root_gone_at_the_start_line(root):
+    step = Step()
+    with pytest.raises(tools.ToolFailure) as caught:
+        prepared(root, step, lambda: shutil.rmtree(root))
+    assert caught.value.kind == START_FAILED
+    assert type(caught.value.__cause__) is FileNotFoundError
+    assert caught.value.message.startswith(f"{LOG}: ")
+    assert str(root) not in caught.value.message
+    assert step.calls == 0 and not root.exists()
+    assert_answered_by_the_lookup(root, MISSING)
+
+
+def test_a_data_root_gone_at_the_end_line(root):
+    def step():
+        shutil.rmtree(root)
+        return SPEND, RESULT
+
+    with pytest.raises(tools.ToolFailure) as caught:
+        run(root, RUN, ID, step)
+    assert caught.value.kind == END_FAILED
+    assert type(caught.value.__cause__) is FileNotFoundError
+    assert caught.value.message.startswith(f"{LOG}: ")
+    assert str(root) not in caught.value.message
+    assert not root.exists()
+    assert_answered_by_the_lookup(root, MISSING)
+
+
+# --- negative: what is no failed append ---
+
+
+def test_a_run_directory_gone_at_the_start_line_is_created_again(root):
+    step = Step()
+    assert prepared(root, step, lambda: shutil.rmtree(root / "runs" / RUN)) == RESULT
+    assert step.calls == 1
+    assert [line["kind"] for line in lines(root)] == ["step_started", "step_ended"]
+    assert_answered_by_the_lookup(root, MISSING)
+
+
+def test_a_run_directory_gone_at_the_end_line_is_created_again(root):
+    def step():
+        shutil.rmtree(root / "runs" / RUN)
+        return SPEND, RESULT
+
+    assert run(root, RUN, ID, step) == RESULT
+    assert list(map(without_time, lines(root))) == [
+        without_time(ended(ID, 7, result=RESULT))
+    ]
+    assert_answered_by_the_lookup(root, MISSING)
+
+
+def test_a_log_gone_between_the_two_lines_is_created_again(root):
+    def step():
+        (root / LOG).unlink()
+        return SPEND, RESULT
+
+    assert run(root, RUN, ID, step) == RESULT
+    assert list(map(without_time, lines(root))) == [
+        without_time(ended(ID, 7, result=RESULT))
+    ]
+    (report,) = run_journal.current(root, RUN).reports
+    assert report.problem is journal.Problem.END_NOT_OPEN
+
+
+def test_a_torn_tail_met_at_the_end_line_is_removed_and_is_no_failure(root):
+    def step():
+        with open(root / LOG, "ab") as log:
+            log.write(b'{"schema_version": 1, "ti')
+        return SPEND, RESULT
+
+    assert run(root, RUN, ID, step) == RESULT
+    log = events.read(root, RUN)
+    assert [line["kind"] for line in log.events] == ["step_started", "step_ended"]
+    assert log.torn_tail == 0
+
+
+@pytest.mark.parametrize("outcome", ["no pair", (SPEND, {"example_member": {1}})])
+def test_an_outcome_an_end_line_cannot_hold_is_no_failed_end_line(root, outcome):
+    step = Step(outcome)
+    with pytest.raises(InvalidOutcomeError) as caught:
+        run(root, RUN, ID, step)
+    assert not isinstance(caught.value, tools.ToolFailure)
+    assert [line["kind"] for line in lines(root)] == ["step_started"]
+    assert_open_and_not_run(root)
+
+
+@each_failed_append
+def test_a_class_of_a_failed_append_out_of_before_start_or_the_step_is_not_answered(
+    root, error
+):
+    before, step = Before(root, error), Step()
+    with pytest.raises(type(error)) as caught:
+        prepared(root, step, before)
+    assert caught.value is error
+    assert (before.calls, step.calls) == (1, 0)
+    assert not (root / LOG).exists()
+    step = Step(error)
+    with pytest.raises(type(error)) as caught:
+        run(root, RUN, ID, step)
+    assert caught.value is error
+    assert step.calls == 1
+    assert [line["kind"] for line in lines(root)] == ["step_started"]

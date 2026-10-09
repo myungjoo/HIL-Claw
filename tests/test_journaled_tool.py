@@ -245,7 +245,11 @@ def snapshot(path):
     }
 
 
-def fail_append(monkeypatch, kind, after=False):
+class Died(BaseException):
+    """Stands for the death of the process: no kind answers it and no front catches it."""
+
+
+def die_in_append(monkeypatch, kind, after=False):
     real = events.append
 
     def append(data_root, run_id, line_kind, data, **numbers):
@@ -253,7 +257,18 @@ def fail_append(monkeypatch, kind, after=False):
             return real(data_root, run_id, line_kind, data, **numbers)
         if after:
             real(data_root, run_id, line_kind, data, **numbers)
-        raise OSError("example failure of the append")
+        raise Died()
+
+    monkeypatch.setattr(events, "append", append)
+
+
+def break_append(monkeypatch, kind, error):
+    real = events.append
+
+    def append(data_root, run_id, line_kind, data, **numbers):
+        if line_kind != kind:
+            return real(data_root, run_id, line_kind, data, **numbers)
+        raise error
 
     monkeypatch.setattr(events, "append", append)
 
@@ -427,9 +442,9 @@ def test_death_before_the_start_line_the_next_call_runs(
 ):
     tool = Tool(root)
     with monkeypatch.context() as patch:
-        fail_append(patch, "step_started")
-        failed, _ = FRONTS[first](tool, REQUEST)
-    assert failed is True
+        die_in_append(patch, "step_started")
+        with pytest.raises(Died):
+            FRONTS[first](tool, REQUEST)
     assert tool.performed == 0
     assert not (root / LOG).exists()
     assert FRONTS[second](tool, REQUEST) == (False, {"example_member": 1})
@@ -451,9 +466,9 @@ def test_death_after_the_start_line_before_the_step_leaves_it_open(
 ):
     tool = Tool(root)
     with monkeypatch.context() as patch:
-        fail_append(patch, "step_started", after=True)
-        failed, _ = FRONTS[first](tool, REQUEST)
-    assert failed is True
+        die_in_append(patch, "step_started", after=True)
+        with pytest.raises(Died):
+            FRONTS[first](tool, REQUEST)
     assert tool.performed == 0
     assert lines(root) == [started()]
     assert_open_and_not_run(tool, root, second)
@@ -506,10 +521,9 @@ def test_death_between_the_outcome_and_the_end_line_leaves_it_open(
 ):
     tool = Tool(root)
     with monkeypatch.context() as patch:
-        fail_append(patch, "step_ended")
-        failed, answer = FRONTS[first](tool, asked)
-    assert failed is True
-    assert answer != FAILURE
+        die_in_append(patch, "step_ended")
+        with pytest.raises(Died):
+            FRONTS[first](tool, asked)
     assert tool.performed == 1
     assert lines(root) == [started()]
     assert_open_and_not_run(tool, root, second, asked)
@@ -529,13 +543,80 @@ def test_death_after_the_end_line_the_next_call_answers_what_it_holds(
 ):
     tool = Tool(root)
     with monkeypatch.context() as patch:
-        fail_append(patch, "step_ended", after=True)
-        died = FRONTS[first](tool, asked)
-    assert died[0] is True and died != stored
+        die_in_append(patch, "step_ended", after=True)
+        with pytest.raises(Died):
+            FRONTS[first](tool, asked)
     before = snapshot(root)
     assert FRONTS[second](tool, asked) == stored
     assert tool.performed == 1
     assert snapshot(root) == before
+
+
+# --- a failed append of a step line (ADR-0026) ---
+
+
+@pytest.mark.parametrize(
+    "line,kind,performed",
+    [("step_started", "start_line_failed", 0), ("step_ended", "end_line_failed", 1)],
+)
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError(28, "No space left on device", "/elsewhere/events.ndjson"),
+        events.CorruptEventsError(f"{LOG}: is not a regular file"),
+    ],
+    ids=["OSError", "CorruptEventsError"],
+)
+@pytest.mark.parametrize(
+    "asked", [request(), request(example_fail="example_failure")], ids=["ok", "failed"]
+)
+def test_a_failed_append_is_the_kind_of_its_line_in_every_way(
+    tmp_path, monkeypatch, line, kind, performed, error, asked
+):
+    outcomes = []
+    for way, through in WAYS.items():
+        tool = Tool(new_root(tmp_path, way))
+        with monkeypatch.context() as patch:
+            break_append(patch, line, error)
+            outcomes.append(through(tool, asked))
+        assert tool.performed == performed
+        assert lines(tmp_path / way) == [started()] * performed
+    assert outcomes[0] == outcomes[1] == outcomes[2]
+    failed, answer = outcomes[0]
+    assert failed is True
+    assert set(answer["error"]) == {"kind", "message"}
+    assert answer["error"]["kind"] == kind
+    message = answer["error"]["message"]
+    assert message.startswith(f"{LOG}: ")
+    for text in ("elsewhere", AXIS, "example_member", "example_failure", "no outcome"):
+        assert text not in message
+
+
+@one_then_the_other
+def test_after_a_failed_start_line_the_same_request_runs_the_step(
+    root, monkeypatch, first, second
+):
+    tool = Tool(root)
+    with monkeypatch.context() as patch:
+        break_append(patch, "step_started", OSError(28, "No space left on device"))
+        failed, answer = FRONTS[first](tool, REQUEST)
+    assert (failed, answer["error"]["kind"]) == (True, "start_line_failed")
+    assert tool.performed == 0
+    assert FRONTS[second](tool, REQUEST) == (False, {"example_member": 1})
+    assert tool.performed == 1
+
+
+@one_then_the_other
+def test_after_a_failed_end_line_the_same_request_is_step_open(
+    root, monkeypatch, first, second
+):
+    tool = Tool(root)
+    with monkeypatch.context() as patch:
+        break_append(patch, "step_ended", OSError(28, "No space left on device"))
+        failed, answer = FRONTS[first](tool, REQUEST)
+    assert (failed, answer["error"]["kind"]) == (True, "end_line_failed")
+    assert tool.performed == 1
+    assert_open_and_not_run(tool, root, second)
 
 
 # --- the order of a call ---

@@ -71,8 +71,9 @@ Conventions of this module, which the records do not fix:
   module cannot tell why a reader raised one of them; the three of
   :mod:`hilclaw.instance` are named here for that and no file is read.
 - Only the call of the reader is answered this way: the same classes out of
-  the selection, out of the step, out of an operation or out of an append are
-  not.
+  the selection, out of the step or out of an operation are not, and out of
+  an append :mod:`hilclaw.journaled_step` answers them with
+  ``start_line_failed`` or ``end_line_failed`` (ADR-0026 decision 3).
 - The reader is not asked a second time in one call: "not there" is
   ``run_file_missing`` at whatever read it is found (ADR-0019 decision 4).
 - The message of such a failure starts with ``runs/<run_id>/instance.json``

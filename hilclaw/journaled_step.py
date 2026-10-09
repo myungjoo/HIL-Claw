@@ -57,16 +57,32 @@ Conventions of this module, which the records do not fix:
   the log is then read once more, so that the reader says what is there, and
   only when it goes again in that read the lookup goes on with no line read.
 - Only the reads and the lookup are answered this way: the same classes out
-  of ``before_start``, out of the step or out of an append are not.
+  of ``before_start`` or out of the step are not, and out of an append they
+  are answered with the kind of the append (below).
 - The message of such a failure starts with the path of the file relative to
   the data root, ``runs/<run_id>/STATE.json`` or ``runs/<run_id>/events.ndjson``
   (ADR-0019 decision 6); nothing may depend on the rest of its wording.
-- A failed append passes through. After a failed start line the step is not
-  called: the identity has no line, or is open, though nothing ran, when the
-  failure came after the line feed (:mod:`hilclaw.events`; the opposite
-  failure decision 2 accepts). After a failed end line the outcome is not
-  returned in the place of the error: the step is open, or ended when the
-  failure came after the line feed.
+- A failed append of a step line is answered with a ``ToolFailure`` of one of
+  the two kinds of ADR-0026 decision 3, chained to the error it answers for.
+  ``start_line_failed``: the append of the start line of this call failed, and
+  this call did not call the step and appended no end line.
+  ``end_line_failed``: the append of the end line of this call failed; this
+  call ran the step to its end, and neither a ``result`` nor the ``failure``
+  of the step is returned or raised in its place. Neither kind says which
+  state the identity is in: where the log is as this call left it, it has no
+  line or is open after the first, and is open or ended after the second
+  (:mod:`hilclaw.events`: a failure can come after the line feed). The call
+  does not read the log again and does not try the append again.
+- A failed append is an :class:`OSError` or a
+  :class:`hilclaw.events.CorruptEventsError` out of one of the two calls of
+  :func:`hilclaw.events.append`, and only there (ADR-0026 decisions 1 and 6).
+  Everything else an append raises passes through unchanged, a
+  :class:`hilclaw.events.InvalidEventError` included.
+- The message of such a failure starts with ``runs/<run_id>/events.ndjson``
+  and carries nothing of the outcome (ADR-0026 decision 6): the message of a
+  ``CorruptEventsError`` is used as it is, and for an ``OSError`` it is
+  composed from the class and the text of the system, without the path the
+  system gave. Nothing may depend on the rest of its wording.
 - A first call returns the ``result`` as the end line holds it, the copy
   :func:`hilclaw.events.append` returns; a failure is raised as a
   ``ToolFailure`` of the ``kind`` and ``message`` on the line, with no cause
@@ -114,6 +130,10 @@ _STATE_KINDS = {
     run_journal.MissingStateError: tools.KIND_RUN_FILE_MISSING,
     run_state.InvalidStateError: tools.KIND_RUN_FILE_INVALID,
     run_state.UnsupportedVersionError: tools.KIND_RUN_FILE_UNSUPPORTED,
+}
+_APPEND_KINDS = {
+    journal.STEP_STARTED: tools.KIND_START_LINE_FAILED,
+    journal.STEP_ENDED: tools.KIND_END_LINE_FAILED,
 }
 _LOG_KINDS = {
     events.CorruptEventsError: tools.KIND_RUN_FILE_INVALID,
@@ -167,9 +187,13 @@ def run(data_root, run_id, identity, step):
     ``run_file_invalid`` or ``run_file_unsupported`` for what the lookup finds
     in ``STATE.json`` or in the log (ADR-0019 decisions 2 to 4; the module
     docstring has the cases), with nothing appended and ``step`` not called;
+    a ``ToolFailure`` of kind ``start_line_failed`` or ``end_line_failed`` for
+    a failed append of the start line or of the end line (ADR-0026 decision 3;
+    the module docstring has the classes), after the first with ``step`` not
+    called and after the second with ``step`` called and no outcome returned;
     :class:`InvalidOutcomeError` for an outcome of ``step`` that an end line
-    cannot hold; and what :func:`hilclaw.events.append` and ``step`` raise,
-    unchanged.
+    cannot hold; and everything else :func:`hilclaw.events.append` raises and
+    what ``step`` raises, unchanged.
     """
     return run_prepared(data_root, run_id, identity, step, before_start=_nothing)
 
@@ -206,19 +230,31 @@ def run_prepared(data_root, run_id, identity, step, *, before_start):
     before_start()
     numbers = dict(zip(_NUMBERS, identity[2:]))
     data = {"step": identity.step, "execution": identity.execution}
-    events.append(data_root, run_id, journal.STEP_STARTED, dict(data), **numbers)
+    _append(data_root, run_id, journal.STEP_STARTED, dict(data), numbers)
     try:
         outcome = _outcome(step())
     except StepFailed as failed:
         failure = {"kind": failed.kind, "message": failed.message}
         outcome = {"spend": failed.spend, "failure": failure}
     end_data = _checked_end(numbers, data | outcome)
-    end = events.append(data_root, run_id, journal.STEP_ENDED, end_data, **numbers)
+    end = _append(data_root, run_id, journal.STEP_ENDED, end_data, numbers)
     return _answer(end["data"].get("result"), end["data"].get("failure"))
 
 
 def _nothing():
     return None
+
+
+def _append(data_root, run_id, kind, data, numbers):
+    try:
+        return events.append(data_root, run_id, kind, data, **numbers)
+    except events.CorruptEventsError as error:
+        raise tools.ToolFailure(_APPEND_KINDS[kind], str(error)) from error
+    except OSError as error:
+        file = run_files.relative(run_id, "events.ndjson")
+        reported = ": ".join(filter(None, (type(error).__name__, error.strerror)))
+        message = f"{file}: the line could not be appended: {reported}"
+        raise tools.ToolFailure(_APPEND_KINDS[kind], message) from error
 
 
 def _state(data_root, run_id, identity):

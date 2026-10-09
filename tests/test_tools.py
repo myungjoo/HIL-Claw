@@ -438,7 +438,7 @@ def test_register_checks_the_description_before_the_schema():
 # The reserved kinds
 
 
-def test_the_reserved_kinds_are_the_eleven_of_the_records():
+def test_the_reserved_kinds_are_the_thirteen_of_the_records():
     assert tools.KIND_INVALID_REQUEST == "invalid_request"
     assert tools.KIND_NO_DATA_ROOT == "no_data_root"
     assert tools.KIND_STEP_OPEN == "step_open"
@@ -450,6 +450,8 @@ def test_the_reserved_kinds_are_the_eleven_of_the_records():
     assert tools.KIND_RUN_FILE_UNREADABLE == "run_file_unreadable"
     assert tools.KIND_RUN_FILE_INVALID == "run_file_invalid"
     assert tools.KIND_RUN_FILE_UNSUPPORTED == "run_file_unsupported"
+    assert tools.KIND_START_LINE_FAILED == "start_line_failed"
+    assert tools.KIND_END_LINE_FAILED == "end_line_failed"
     assert type(tools.RESERVED_KINDS) is frozenset
     assert tools.RESERVED_KINDS == {
         "invalid_request",
@@ -463,8 +465,10 @@ def test_the_reserved_kinds_are_the_eleven_of_the_records():
         "run_file_unreadable",
         "run_file_invalid",
         "run_file_unsupported",
+        "start_line_failed",
+        "end_line_failed",
     }
-    assert len(tools.RESERVED_KINDS) == 11
+    assert len(tools.RESERVED_KINDS) == 13
     assert journaled_step.KIND_STEP_OPEN is tools.KIND_STEP_OPEN
 
 
@@ -714,6 +718,8 @@ def test_call_turns_any_other_exception_into_a_tool_failure(raised):
 @pytest.mark.parametrize(
     "raised",
     [
+        OSError("example"),
+        OSError(28, "No space left on device"),
         FileNotFoundError(2, "No such file or directory"),
         NotADirectoryError(20, "Not a directory"),
         PermissionError(13, "Permission denied"),
@@ -727,11 +733,12 @@ def test_call_turns_any_other_exception_into_a_tool_failure(raised):
     ],
     ids=lambda raised: type(raised).__qualname__,
 )
-def test_call_gives_no_run_file_kind_by_the_class_of_an_exception(raised):
+def test_call_gives_no_kind_by_the_class_of_an_exception(raised):
     with pytest.raises(ToolFailure) as caught:
         call(registry_of(sim_run=Recorder(raised)), "sim.run", {})
     assert caught.value.kind == "tool_crashed"
     assert not caught.value.kind.startswith("run_file_")
+    assert not caught.value.kind.endswith("_line_failed")
     assert caught.value.__cause__ is raised
 
 
