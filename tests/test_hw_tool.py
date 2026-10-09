@@ -1523,11 +1523,21 @@ def test_the_same_class_out_of_the_own_check_is_not_answered_with_a_kind(
     assert snapshot(root) == before
 
 
-@pytest.mark.parametrize("version", [0, 2, "1", None])
+NO_CONSTANT = object()
+
+
+@pytest.mark.parametrize(
+    "version",
+    [0, 2, "1", None, NO_CONSTANT],
+    ids=["0", "2", "a-string", "null", "no-constant"],
+)
 def test_the_layout_the_source_builds_is_compared_with_nothing(
     root, monkeypatch, version
 ):
-    monkeypatch.setattr(layout, "LAYOUT_VERSION", version)
+    if version is NO_CONSTANT:
+        monkeypatch.delattr(layout, "LAYOUT_VERSION")
+    else:
+        monkeypatch.setattr(layout, "LAYOUT_VERSION", version)
     tool = Tool(root)
     for _ in range(2):
         assert tool.function(request()) == {"example_member": 1}
@@ -1536,4 +1546,3 @@ def test_the_layout_the_source_builds_is_compared_with_nothing(
     with pytest.raises(ToolFailure) as caught:
         tool.function(request())
     assert caught.value.kind == "run_file_unsupported"
-    assert not hasattr(hw_tool, "LAYOUT_VERSION")

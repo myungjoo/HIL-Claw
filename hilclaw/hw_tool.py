@@ -69,10 +69,10 @@ at :func:`hilclaw.tools.call` (ADR-0019 decision 4). A ``ToolFailure`` the
 reader raises itself keeps the kind it has, and a :class:`BaseException` that
 is no ``Exception`` is not answered at all. The reader is asked for an
 identity with no line only; the stamp is read at each call that has a data
-root, whatever the identity. The two are two reads (ADR-0030 decision 4): the
-read of the stamp serves nothing in 4, so a file from which the stamp was had
-and for which the reader then raises one of the classes above is answered in
-4, the identity having no line.
+root, whatever the identity. The read of the stamp and the call of the reader
+are two (ADR-0030 decision 4): the read of the stamp serves nothing in 4, so
+a run whose stamp was had and for which the reader then raises one of the
+classes above is answered in 4, the identity having no line.
 
 Conventions of this module, which the records do not fix:
 

@@ -951,19 +951,23 @@ def test_a_well_formed_run_id_that_names_no_run_is_missing_not_a_refused_request
     assert snapshot(root) == before
 
 
-@pytest.mark.parametrize("way", list(WAYS))
-def test_no_run_directory_is_missing_and_the_message_names_the_instance_record(
-    root, way
-):
+def test_no_run_directory_is_missing_and_the_message_names_the_instance_record(root):
     no_run_directory(root)
     before = snapshot(root)
     with pytest.raises(ToolFailure) as direct:
         journaled_step.run(root, RUN, ID, lambda: (SPEND, {}))
     assert direct.value.message.startswith(f"{STATE}: ")
     tool = Tool(root)
-    failed, answer = WAYS[way](tool, request())
-    assert (failed, answer["error"]["kind"]) == (True, "run_file_missing")
-    assert answer["error"]["message"].startswith(f"{STAMP}: is missing")
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(request())
+    assert type(caught.value) is ToolFailure
+    assert caught.value.kind == "run_file_missing"
+    assert caught.value.kind in tools.RESERVED_KINDS
+    assert type(caught.value.__cause__) is instance.MissingInstanceError
+    assert caught.value.message.startswith(f"{STAMP}: is missing")
+    answers = {way: WAYS[way](tool, request()) for way in WAYS}
+    assert answers["cli"] == answers["mcp"] == answers["call"]
+    assert answers["cli"] == (True, caught.value.error_object())
     assert tool.performed == 0
     assert snapshot(root) == before
 
@@ -1694,11 +1698,21 @@ def test_the_same_class_out_of_the_check_or_the_step_is_not_answered_with_a_kind
     assert [line["kind"] for line in lines(root)] == ["step_started"] * 2
 
 
-@pytest.mark.parametrize("version", [0, 2, "1", None])
+NO_CONSTANT = object()
+
+
+@pytest.mark.parametrize(
+    "version",
+    [0, 2, "1", None, NO_CONSTANT],
+    ids=["0", "2", "a-string", "null", "no-constant"],
+)
 def test_the_layout_the_source_builds_is_compared_with_nothing(
     root, monkeypatch, version
 ):
-    monkeypatch.setattr(layout, "LAYOUT_VERSION", version)
+    if version is NO_CONSTANT:
+        monkeypatch.delattr(layout, "LAYOUT_VERSION")
+    else:
+        monkeypatch.setattr(layout, "LAYOUT_VERSION", version)
     tool = Tool(root)
     for _ in range(2):
         assert tool.function(request()) == {"example_member": 1}
@@ -1707,7 +1721,6 @@ def test_the_layout_the_source_builds_is_compared_with_nothing(
     with pytest.raises(ToolFailure) as caught:
         tool.function(request())
     assert caught.value.kind == "run_file_unsupported"
-    assert not hasattr(journaled_tool, "LAYOUT_VERSION")
 
 
 def test_checked_function_reads_the_stamp_before_it_hands_on(root, monkeypatch):
