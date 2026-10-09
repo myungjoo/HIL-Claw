@@ -28,9 +28,10 @@ and writes no file, starts no process, stores and registers nothing, is bound
 to no tool and has no command-line entry.
 
 The guarantees and obligations of a call and what the source of a kernel
-provides (decisions 6 and 7) are not represented in any value returned here:
-of the contract, only the language, the prototype text and the operand entries
-travel in a spec (decision 8).
+provides (decisions 6 and 7) are not represented in any value returned here,
+beyond what the prototype text itself states (``restrict`` states the
+no-overlap guarantee, decision 4): of the contract, only the language, the
+prototype text and the operand entries travel in a spec (decision 8).
 """
 
 import reprlib
