@@ -91,8 +91,9 @@ class UnreadableFactError(RuntimeError):
 
     The message starts with the fact (``toolchain.clang``, ``host.cpu``,
     ``host.os`` or ``kernel name``) and gives the reason. It holds no text read
-    from a file, from the output of a command or from the kernel name. Decision 6 lists the cases of the record;
-    :func:`local_record` says which further cases this module reads as such.
+    from a file, from the output of a command or from the kernel name.
+    Decision 6 lists the cases of the record; :func:`local_record` says which
+    further cases this module reads as such.
     """
 
 
