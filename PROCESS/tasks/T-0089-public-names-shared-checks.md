@@ -2,7 +2,7 @@
 id: T-0089
 title: Give public names to the two checks `hilclaw/hw_tool.py` shares with its sibling modules - the shared builder of `hilclaw/journaled_tool.py` (`_built`) and the HW tool name check of `hilclaw/backends.py` (`_hw_tool`) - so that no module of `hilclaw/` calls a private name of another, with no change of behaviour
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0064]
@@ -109,3 +109,57 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (planner - judge each against DRIVER §9 first; neither blocks a PLAN item today) OD-8 sub-question 22 (i); the rest of OD-16 sub-question 5 (it goes with the second record of `correctness.check`). After this task the planner of T-0089 knows of no further code or record slice that is independent of the owner: if HQ-0005 is still unanswered, the next iteration has no selectable task (DRIVER §3-3) unless one of these two is judged cuttable.
 
 ## Result
+### Outcome
+- DONE. PR https://github.com/myungjoo/HIL-Claw/pull/71 , squash commit `4289576` on `main`, last line `Task: T-0089`. Branch `claude/T-0089-public-names-shared-checks` deleted (remote and local).
+- This task ticks **no** PLAN checkbox: P1-1 stays open.
+
+### Public names as landed
+- `hilclaw.backends.check_hw_tool(tool)` (was `_hw_tool`): returns `tool`, the same object, when it is exactly a `str` and one of `HW_TOOLS`; raises `TypeError` ("a HW tool name must be a str, got ...") when it is no `str` and `ValueError` ("... is no HW tool; the HW tools are ...") otherwise. Classes and messages unchanged. `Backend.__init__` and `select` use it as before.
+- `hilclaw.journaled_tool.checked_function(*, step, numbers, carry_out, source, check, **others)` (was `_built(step, numbers, carry_out, *, source, check, **others)`): returns a function of one request.
+  - At a call it checks the request, calls `check(request)`, asks the data root once, then returns what `carry_out(data_root, run_id, identity, request)` returns.
+  - When built it raises, in this order: `ValueError` for a `step` that is no name; `TypeError` for `numbers` that is no `tuple`; `ValueError` for `numbers` that is no prefix; `TypeError` ("<name> must be callable, got ...") for the first of `carry_out`, `source`, `check` and the `others` that is not callable.
+  - The function returned raises `ToolFailure` of kind `invalid_request` for a refused request, and otherwise what `check`, `data_root_source.obtain` and `carry_out` raise, unchanged.
+- `hilclaw/hw_tool.py` calls the two public names. No private alias of either old name stays.
+- `journaled_tool.tool_function`, `hw_tool.tool_function`, `Backend` and `select` are unchanged in signature, order of refusals and messages.
+
+### Provisional choices
+- `check_hw_tool`: named by the model of `hilclaw.layout.check_run_id`.
+- One builder and no split into two checks: the two builders keep one implementation of the order "request check, the tool's own check, the data root".
+- The parameters of `checked_function` are keyword-only, as those of the two `tool_function` builders. The further callables stay a `**` parameter, so that each is refused under the name its caller gave it.
+- `carry_out` is checked for being callable when built, first among the callables (`_built` did not look at it). Both `tool_function` builders hand it a function of their own, so no existing refusal changes its order or message.
+- The docstring of `checked_function` states what it does not guarantee: it calls no function of `hilclaw.journaled_step`, so a function built with it is the tool function of a journaled tool (ADR-0015 decision 5) only if `carry_out` carries out the sequence of ADR-0011 decision 3. No record was edited.
+- Exposing the builder was judged to need no record, by the executor and by both reviewers: ADR-0015 decision 5 leaves the shape to the code task and places its requirement on the registry, and `checked_function` registers nothing.
+- "No private name of a sibling module" is checked by `git grep` in the verification, not by a test that reads the sources. A regression would therefore not be caught by CI (reviewer Nit, accepted as the stated choice).
+- No criterion disagreed with a record.
+
+### Review (context-isolated `dev-reviewer`, 2 rounds, final Approve; no SECURITY, no point needing a record or the owner)
+- Round 1, head `769e73e`: Approve - https://github.com/myungjoo/HIL-Claw/pull/71#issuecomment-6073704477
+  - Low: the coverage figures were not yet in the PR body (added before the merge).
+  - Nits: two sentences of the docstring of `checked_function` ("names the member", "does not modify the request") were fixed in `6e3267a`; no automatic guard for the private-name rule (kept as the choice above); the anchored grep (recorded below).
+  - Response: https://github.com/myungjoo/HIL-Claw/pull/71#issuecomment-6073711755
+- Round 2, head `6e3267a`: Approve - https://github.com/myungjoo/HIL-Claw/pull/71#issuecomment-6073764668
+  - Low: figures of the PR body not of the final head (fixed in the body before the merge).
+  - Nit, no change asked: the older sentence "with a message that names the member" in the docstrings of the two `tool_function` builders has the same inexactness (see Follow-ups).
+- Both rounds confirmed (a) to (e) of the task.
+
+### Verification
+- Local (Windows, Python 3.14): `python -m pytest` gave 8337 passed, 280 skipped on `origin/main` at `391500c`, and 8410 passed, 280 skipped on the branch (+60 in `tests/test_journaled_tool.py`, +13 in `tests/test_backends.py`). `python -m ruff check .` and `python -m ruff format --check .` exit 0.
+- The baseline run was started in the background and module edits may have begun before it ended; its counts equal those recorded at T-0087.
+- `coverage` is not installed locally and nothing was installed, so the coverage figures are those of CI.
+- CI on the final head `6e3267a`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37879728808 : all six checks successful - `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. Both Python gates: 8690 passed.
+- Coverage gate: "lines: 2907/2923 executed = 99.45 (minimum 80)", "functions: 299/299 entered = 100.00 (minimum 80)". No unexecuted line in `backends.py`, `journaled_tool.py` or `hw_tool.py`.
+- Two CI runs on the PR, both successful.
+- `push` run on `main` for `4289576`: success - https://github.com/myungjoo/HIL-Claw/actions/runs/37880215148 (same two coverage lines).
+- `git diff origin/main --stat` before the merge: five files, all of `touchesFiles` (`tests/test_hw_tool.py` untouched). `git diff origin/main -- tests/` removes one line only, the allowed assertion (now `["tool_function", "checked_function"]`).
+- `git grep -n -E "\b(_built|_hw_tool)\b" -- hilclaw/ tests/`: no match. The unanchored pattern of the task matches the new public name `check_hw_tool` (the planner's suggested name) in `hilclaw/` and nothing else there.
+- `git grep -n -E "\b[a-z_]+\._[a-z]" -- hilclaw/` shows only: `self._...` accesses; `backend._name`, `table._backends` and `backend._operations` inside `backends.py`, which defines them; `._replace` of a named tuple in `harness/verification.py` and `tools.py`. None is a private name of another `hilclaw` module.
+- `git ls-files --eol`: `i/lf` for the five changed files.
+- Size: non-test +71 / -16 lines in 3 files (estimate 60 / 3), inside the cap. Tests: +270 / -1.
+
+### Language
+- Python, because the three modules are Python.
+
+### Follow-ups left
+- (a later task or the integrator) The sentence "with a message that names the member" in the docstrings of `journaled_tool.tool_function` and `hw_tool.tool_function`: the refusal of a request that is no object names no member. It was left because it did not become inexact through this change.
+- (planner) Whether the rule "no private name of a sibling module" gets an automatic guard (a lint rule or a CI step).
+- The unchanged items of `## Follow-ups`.
