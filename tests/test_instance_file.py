@@ -81,6 +81,8 @@ FULL = written(
         op_signature={"key": keys.op_signature_key(OP).name, "record": OP},
         round_budget=6,
         wall_clock_budget_s=754,
+        owner="example-owner",
+        project="example-project",
         example_member={"b": [1, None, "x"], "a": 2.5},
     )
 )
@@ -130,6 +132,11 @@ REFUSED = {
     "round_budget": (written(doc(round_budget=0)), InvalidInstanceError),
     "wall_clock_budget_s": (
         written(doc(wall_clock_budget_s=0)),
+        InvalidInstanceError,
+    ),
+    "owner": (written(doc(owner="")), InvalidInstanceError),
+    "project": (
+        written(doc(owner="example-owner", project="example\nproject")),
         InvalidInstanceError,
     ),
     "no final line feed": (MINIMAL[:-1], WrittenFormError),

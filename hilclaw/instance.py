@@ -1,4 +1,4 @@
-"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032, ADR-0033).
+"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032, ADR-0033, ADR-0034).
 
 ``ARCHITECTURE/decisions/ADR-0018-od8-instance-record-hw-profile.md`` fixes the
 file as a whole (decision 2), the member ``hw_profile`` in which a run states
@@ -47,21 +47,27 @@ adds the member ``wall_clock_budget_s``, in which a run states the budget of
 wall-clock time the instance was started with, as a number of seconds
 (decisions 2 and 3), says that a valid file may lack it, that a present one
 must be valid and that no value stands in for an absent one (decision 4), and
-says where the wall-clock budget a run states is read from (decision 5). This
+says where the wall-clock budget a run states is read from (decision 5).
+``ARCHITECTURE/decisions/ADR-0034-od8-instance-record-owner-project.md`` adds
+the members ``owner`` and ``project``, in which a run states the owner and the
+project the instance was started with, each as a name (decisions 2 and 3),
+says that a valid file may lack either, that a present one must be valid and
+that nothing stands in for an absent one (decision 4), and says where the
+owner and the project a run states are read from (decision 5). This
 module is those rules: :func:`parse` and :func:`validate` are pure functions of
 the bytes of a content and of a parsed document, and :func:`read`,
 :func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
 :func:`n_max_of`, :func:`candidates_per_round_of`, :func:`op_signature_of`,
-:func:`round_budget_of`, :func:`wall_clock_budget_s_of` and
-:func:`layout_version_of` read the file of a run.
+:func:`round_budget_of`, :func:`wall_clock_budget_s_of`, :func:`owner_of`,
+:func:`project_of` and :func:`layout_version_of` read the file of a run.
 :func:`hw_profile_of` has the call form of the parameter ``hw_profile_of`` of
 :func:`hilclaw.hw_tool.tool_function`; nothing here binds it,
 :func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
 :func:`candidates_per_round_of`, :func:`op_signature_of`,
-:func:`round_budget_of`, :func:`wall_clock_budget_s_of` or
-:func:`layout_version_of` to a tool.
+:func:`round_budget_of`, :func:`wall_clock_budget_s_of`, :func:`owner_of`,
+:func:`project_of` or :func:`layout_version_of` to a tool.
 
-Conventions of this module, which the nine records do not fix:
+Conventions of this module, which the ten records do not fix:
 
 - A content is exactly ``bytes`` (:class:`TypeError` otherwise: the encoding is
   part of validity). Values are as :func:`json.loads` returns them, an integer
@@ -75,7 +81,9 @@ Conventions of this module, which the nine records do not fix:
   when the document holds it, then ``candidates_per_round`` when the document
   holds it, then ``op_signature`` when the document holds it, then
   ``round_budget`` when the document holds it, then ``wall_clock_budget_s``
-  when the document holds it: the order in which the records defined them. A
+  when the document holds it, then ``owner`` when the document holds it, then
+  ``project`` when the document holds it: the order in which the records
+  defined them, and for the two of ADR-0034 the order in which it names them. A
   content this interpreter cannot read (an integer too long for it anywhere in
   the text, nesting too deep) raises :class:`InvalidInstanceError` too,
   though it is a limit of this reader and not damage; the limits stay as the
@@ -175,6 +183,21 @@ Conventions of this module, which the nine records do not fix:
   to no other unit. That a content without the member states no wall-clock
   budget, and that this is no error of the content, is ADR-0033 decision 4
   and not a convention; the convention is that it has ``None`` in that place.
+- What is a value of ``owner`` and of ``project`` is ADR-0034 decision 3 with
+  ADR-0001 decision 1 and not a convention: the string after JSON decoding,
+  of 1 to 255 characters, each one from U+0020 to U+007E, so the empty
+  string, a string longer than 255 characters, a string that holds a line
+  feed, a tab or a letter of another script and everything that is no string
+  are none, and a string of spaces only is a value. That no case is folded
+  and no space removed is decision 3 too. The conventions are that a value
+  built in memory must be exactly a ``str``, that the one rule is reported as
+  a whole, that a ``str`` that breaks it is shown as every ``str`` is, a long
+  one shortened, that the rule is written here and agrees with the *string*
+  of :mod:`hilclaw.keys`, of which no private name is used, and that each
+  member is handed out as the ``str`` of the file, unchanged. That a content
+  without one of the two states no owner or no project, and that this is no
+  error of the content, is ADR-0034 decision 4 and not a convention; the
+  convention is that it has ``None`` in that place.
 - Which layout version a schema version states is ADR-0024 decision 3 and not
   a convention: schema version 1 states layout version 1. The conventions are
   that the pairing is a mapping keyed by the schema version with the number
@@ -193,9 +216,10 @@ Conventions of this module, which the nine records do not fix:
   the read is an :class:`OSError`, as every other failure of the file system.
 
 It writes, creates and removes no file and composes no content. It defines no
-member besides the nine (``schema_version``, ``hw_profile``, ``tolerance``,
+member besides the eleven (``schema_version``, ``hw_profile``, ``tolerance``,
 ``source_commit``, ``n_max``, ``candidates_per_round``, ``op_signature``,
-``round_budget`` and ``wall_clock_budget_s``) and interprets no other: a file
+``round_budget``, ``wall_clock_budget_s``, ``owner`` and ``project``) and
+interprets no other: a file
 it accepts is not thereby a complete instance record, and not enough to start a
 run (ADR-0018 decisions 1 and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
@@ -348,6 +372,41 @@ decision 5 and Boundaries); "not stated" is no error of the content here
 either, this module gives it no tool-failure kind, and
 :func:`wall_clock_budget_s_of` is bound to no tool, to no clock, to no
 ``STATE.json``, to no log and to nothing that ends a run.
+Of the owner and of the project it gives what the file states and nothing
+else (ADR-0034 decisions 4 and 5): it holds no default and substitutes nothing
+for a member that is absent, not the user name of a process, not the author or
+the committer of a commit, not a GitHub account, not the name of a directory,
+of the data repository or of the source repository, not a part of the
+``run_id``, not the value of the other member or of another run and no
+constant of this module. It does not conclude that a run without the member
+has no owner or belongs to no project, only that the file states none
+(ADR-0034 decision 4). It checks the form of the members only. It makes
+neither value an identity: not the name of a person, of an account or of a
+service account, not a user name of an operating system, not an author or a
+committer, not a GitHub account and not the account of a Claude Code session,
+and it checks the value against none (ADR-0034 decision 2). It draws no right
+from either value: no access control exists (ADR-0010 decision 8), and what
+is shared or promoted is OD-25, which this module does not enter. It makes
+neither value a path level or a part of a ``run_id``. It folds no case and
+removes no space, so two values that differ in any character are two values
+(ADR-0034 decision 3). It relates no two runs by equal values and looks up,
+groups, counts, orders, refuses and notifies nothing by either value, and it
+adds no rule between the two members or between either and another member
+(the ``hw_source`` and the ``label`` of the hw_profile record and
+``source_commit`` among them), another file or another run (ADR-0034
+decisions 2 and 5). The member ``owner`` is not the holder of a lock of a
+``STATE.json``, a lock no record defines (OD-17), and not the ``lock.owner``
+of the ``PROCESS/STATE.json`` of the development driver
+(:mod:`hilclaw.driver_state`, which this module does not import). A file it
+accepts need not state an owner or a project; what an owner and a project of
+a run are beyond a stated name, where the start of an instance takes the
+names from, whether anything checks them and what follows for a run whose
+valid file states none is open (OD-8 sub-question 31). Which tool or
+component reads the members and at which moment is not said here (ADR-0034
+decision 5 and Boundaries); "not stated" is no error of the content here
+either, this module gives it no tool-failure kind, and :func:`owner_of` and
+:func:`project_of` are bound to no tool, to no hook, to no ``STATE.json``, to
+nothing below ``db/`` and to nothing that lists, groups or allows.
 Of the layout version it gives what the ``schema_version`` of a valid file
 states by the pairing of ADR-0024 decision 3 and nothing else (decisions 4
 and 5). It defines no member for the layout version and interprets none: a
@@ -410,6 +469,8 @@ _DEFINED = (
     "op_signature",
     "round_budget",
     "wall_clock_budget_s",
+    "owner",
+    "project",
 )
 _SECTION = ("key", "record")
 _TOLERANCE = ("rtol", "atol")
@@ -422,7 +483,8 @@ class InvalidInstanceError(ValueError):
     """A content, a document or a path breaks a rule; the message names it.
 
     The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
-    ADR-0031, ADR-0032 and ADR-0033 and the conventions of this module.
+    ADR-0031, ADR-0032, ADR-0033 and ADR-0034 and the conventions of this
+    module.
     """
 
 
@@ -474,7 +536,9 @@ class Instance(NamedTuple):
     the member ``round_budget``, or ``None`` for a content without that
     member. ``wall_clock_budget_s`` is the ``int`` of the member
     ``wall_clock_budget_s``, a number of seconds, or ``None`` for a content
-    without that member.
+    without that member. ``owner`` and ``project`` are each the ``str`` of the
+    member of that name, unchanged, or ``None`` for a content without that
+    member: ``None`` says that the content states none.
     No field has a default. ``others`` is the last field.
     """
 
@@ -487,6 +551,8 @@ class Instance(NamedTuple):
     op_signature: OpSignature | None
     round_budget: int | None
     wall_clock_budget_s: int | None
+    owner: str | None
+    project: str | None
     others: dict
 
 
@@ -523,14 +589,21 @@ def parse(content):
     number of seconds, not converted to another unit, clamped to a range,
     rounded or replaced, or ``None`` when the content has no such member, and
     no value is substituted then either: ``None`` is not "unlimited", not a
-    default and not zero (ADR-0033 decision 4);
+    default and not zero (ADR-0033 decision 4); ``owner`` and ``project``
+    are each the string of the member of that name as the content states it
+    after JSON decoding (ADR-0034 decision 3), with no case folded, no space
+    removed and nothing normalised, shortened or split, or ``None`` when the
+    content has no such member, and nothing is substituted then either:
+    ``None`` is no default and no anonymous or shared value (ADR-0034
+    decision 4);
     ``others`` holds every top-level member that is none of
     ``schema_version``, ``hw_profile``, ``tolerance``, ``source_commit``,
-    ``n_max``, ``candidates_per_round``, ``op_signature``, ``round_budget``
-    and ``wall_clock_budget_s``, as parsed and not interpreted, whatever its
-    name and value (``tolerence``, a top-level ``rtol``, ``source-commit``,
-    ``nmax``, ``candidates``, ``op``, ``task``, ``rounds``, ``budget``,
-    ``wall_clock_budget`` or ``time_budget`` among them).
+    ``n_max``, ``candidates_per_round``, ``op_signature``, ``round_budget``,
+    ``wall_clock_budget_s``, ``owner`` and ``project``, as parsed and not
+    interpreted, whatever its name and value (``tolerence``, a top-level
+    ``rtol``, ``source-commit``, ``nmax``, ``candidates``, ``op``, ``task``,
+    ``rounds``, ``budget``, ``wall_clock_budget``, ``time_budget``,
+    ``Owner``, ``user``, ``username`` or ``projectname`` among them).
     Any order of members and any white space of JSON are accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
@@ -556,7 +629,7 @@ def parse(content):
 
 
 def validate(document):
-    """Check ``document``, a parsed ``instance.json``, against the eight records.
+    """Check ``document``, a parsed ``instance.json``, against the nine records.
 
     ``document`` must be a ``dict`` with ``schema_version`` (an ``int`` from 0
     to :data:`hilclaw.keys.MAX_INTEGER`) and, at version 1, ``hw_profile``: a
@@ -598,19 +671,25 @@ def validate(document):
     included, a number of seconds (ADR-0033 decisions 3 and 4): for a value
     built in memory, a ``bool``, a ``float`` such as ``5400.0`` and a
     subclass of ``int`` are none. Only that form is checked: the member is
-    compared with no other member, with no other file and with no clock. Its
-    other members are not looked at. The rules for the text (the encoding, a
-    member name twice) cannot be checked on a parsed value. The eight records
-    are ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028, ADR-0031, ADR-0032
-    and ADR-0033; ADR-0024 adds no rule of validity.
+    compared with no other member, with no other file and with no clock. It
+    may hold ``owner`` and it may hold ``project``, each of which is then
+    exactly a ``str`` of 1 to 255 characters, each one from U+0020 to U+007E
+    (ADR-0034 decisions 3 and 4): for a value built in memory, a subclass of
+    ``str`` and a ``bytes`` are none. Only that form is checked: neither is
+    compared with the other, with another member, with another file or with
+    an identity. Its other members are not looked at. The rules for the text
+    (the encoding, a member name twice) cannot be checked on a parsed value.
+    The nine records are ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
+    ADR-0031, ADR-0032, ADR-0033 and ADR-0034; ADR-0024 adds no rule of
+    validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
     ``tolerance.rtol``, ``source_commit``, ``n_max``,
-    ``candidates_per_round``, ``op_signature.key``, ``round_budget`` or
-    ``wall_clock_budget_s``). The version comes first: an integer other than
-    :data:`SCHEMA_VERSION` raises :class:`UnsupportedVersionError` before any
-    other member is looked at.
+    ``candidates_per_round``, ``op_signature.key``, ``round_budget``,
+    ``wall_clock_budget_s``, ``owner`` or ``project``). The version comes
+    first: an integer other than :data:`SCHEMA_VERSION` raises
+    :class:`UnsupportedVersionError` before any other member is looked at.
     """
     _checked(document)
 
@@ -662,10 +741,11 @@ def hw_profile_of(data_root, run_id):
     :func:`hilclaw.backends.select`. Raises what :func:`read` raises, so
     :class:`InvalidInstanceError` also for a file whose ``tolerance``,
     ``source_commit``, ``n_max``, ``candidates_per_round``,
-    ``op_signature``, ``round_budget`` or ``wall_clock_budget_s`` is invalid:
-    no member of an invalid file is used (ADR-0020 decision 3, ADR-0022
-    decision 5, ADR-0023 decision 4, ADR-0028 decision 4, ADR-0031 decision
-    5, ADR-0032 decision 4, ADR-0033 decision 4).
+    ``op_signature``, ``round_budget``, ``wall_clock_budget_s``, ``owner`` or
+    ``project`` is invalid: no member of an invalid file is used (ADR-0020
+    decision 3, ADR-0022 decision 5, ADR-0023 decision 4, ADR-0028 decision
+    4, ADR-0031 decision 5, ADR-0032 decision 4, ADR-0033 decision 4,
+    ADR-0034 decision 4).
     """
     return read(data_root, run_id).hw_profile
 
@@ -818,6 +898,53 @@ def wall_clock_budget_s_of(data_root, run_id):
     return read(data_root, run_id).wall_clock_budget_s
 
 
+def owner_of(data_root, run_id):
+    """Return the owner the run ``run_id`` states, a name, or ``None`` when it states none.
+
+    It is the ``owner`` of what :func:`read` returns (ADR-0034 decision 5):
+    the string of the member ``owner`` of ``runs/<run_id>/instance.json``, 1
+    to 255 printable ASCII characters, as the file states it at this call,
+    unchanged, or ``None`` for a valid file without that member. The member
+    states the owner the instance was started with, as a name, and no more
+    (ADR-0034 decision 2): the name is no identity, nothing checks it against
+    one, and no right follows from it. ``None`` says that the file states no
+    owner, not that the run has none: it is no default and no anonymous or
+    shared value, and nothing stands in for it (ADR-0034 decision 4), not the
+    user name of a process, not an author or a committer, not a GitHub
+    account, not the name of a directory or of a repository, not a part of
+    the ``run_id``, not the member ``project``, not the owner of another run
+    and no constant of this module. Only the instance file is read, and the
+    name is compared with nothing: no run is looked up, grouped, allowed or
+    refused by it. Raises what :func:`read` raises, so no owner is returned,
+    and none is inferred, for a missing, unreadable or invalid file or one of
+    another version.
+    """
+    return read(data_root, run_id).owner
+
+
+def project_of(data_root, run_id):
+    """Return the project the run ``run_id`` states, a name, or ``None`` when it states none.
+
+    It is the ``project`` of what :func:`read` returns (ADR-0034 decision 5):
+    the string of the member ``project`` of ``runs/<run_id>/instance.json``,
+    1 to 255 printable ASCII characters, as the file states it at this call,
+    unchanged, or ``None`` for a valid file without that member. The member
+    states the project the instance was started with, as a name, and no more
+    (ADR-0034 decision 2): the name says nothing about the run itself, and no
+    right follows from it. ``None`` says that the file states no project, not
+    that the run belongs to none: it is no default and no shared value, and
+    nothing stands in for it (ADR-0034 decision 4), not the name of a
+    directory or of a repository, not a part of the ``run_id``, not the
+    member ``owner``, not the project of another run and no constant of this
+    module. Only the instance file is read, and the name is compared with
+    nothing: no run is looked up, grouped, allowed or refused by it, and two
+    runs that state equal names are not thereby related. Raises what
+    :func:`read` raises, so no project is returned, and none is inferred, for
+    a missing, unreadable or invalid file or one of another version.
+    """
+    return read(data_root, run_id).project
+
+
 def layout_version_of(data_root, run_id):
     """Return the layout version the run ``run_id`` states (ADR-0024 decisions 3 to 5).
 
@@ -878,9 +1005,25 @@ def _checked(document):
     seconds = None
     if "wall_clock_budget_s" in document:
         seconds = _wall_clock_budget_s(document["wall_clock_budget_s"])
+    owner = project = None
+    if "owner" in document:
+        owner = _string("owner", document["owner"])
+    if "project" in document:
+        project = _string("project", document["project"])
     others = {name: value for name, value in document.items() if name not in _DEFINED}
     return Instance(
-        key, record, tolerance, commit, n_max, candidates, op, budget, seconds, others
+        key,
+        record,
+        tolerance,
+        commit,
+        n_max,
+        candidates,
+        op,
+        budget,
+        seconds,
+        owner,
+        project,
+        others,
     )
 
 
@@ -961,6 +1104,16 @@ def _round_budget(value):
 def _wall_clock_budget_s(value):
     if type(value) is not int or not 1 <= value <= _MAX:
         _fail("wall_clock_budget_s", f"an int from 1 to {_MAX}", value)
+    return value
+
+
+def _string(place, value):
+    if (
+        type(value) is not str
+        or not 1 <= len(value) <= 255
+        or not all(" " <= character <= "~" for character in value)
+    ):
+        _fail(place, "a str of 1 to 255 printable ASCII characters", value)
     return value
 
 
