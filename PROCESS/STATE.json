@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "phase": "P0.5",
+  "phase": "P1",
   "currentTask": null,
   "nextTask": null,
   "lock": null,
@@ -60,18 +60,26 @@
       "question": "T-0106 (live check of the MCP front, ADR-0010 F10 / OD-18 sub-question 1) needs a `claude -p` child session, and the `claude` 2.1.280 on the PATH of the driver machine is not logged in (\"OAuth session expired and could not be refreshed\"; `claude auth status` reports loggedIn false). Which do you want: (a) you log that command line in (`claude auth login` in a terminal on the driver machine) and the task is run again as written; (b) you make the live check yourself, or name another way of running it; (c) the check is put off and the task is closed without a result?",
       "askedAt": "2026-10-09T18:30:37Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6086916123"
+    },
+    {
+      "id": "HQ-0007",
+      "taskId": "T-0107",
+      "reason": "requirement-unclear",
+      "question": "PLAN P0.5-4 leaves one part to the planner: a `PreToolUse` guard for the commands DRIVER §1-5 forbids under Bypass permissions (`git push --force*` / `-f`, `rm -rf`, `gh repo delete`), \"in the same hook\" as the merge guard of T-0007. T-0007 put it off with a question on your test rule that was never asked. (1) Do you want this guard written: (a) yes; (b) no - the discipline of DRIVER §1-5 and the deny list of `.claude/settings.json` on the CLI path are enough, and T-0107 is closed without a change? (2) If yes, where and with which tests - your rule (CLAUDE.md test rule 5, D12, and your user-level rule) allows tests for exactly two tools: (a) inside `hilclaw/merge_guard.py` - one hook command, one registration, the tokeniser that is already tested - and the new part counts as part of \"the `gh pr merge` guard hook\" (exception 2), so tests in `tests/test_merge_guard.py` are required; (b) inside `hilclaw/merge_guard.py`, with **no** test for the new part (the package total stays far above 80 %; test rule 3 is set aside for it by this answer); (c) something else (name the place and the tests)? (3) The merge guard has been on `main` since 2026-10-06 and is not registered in `.claude/settings.json`, which only you edit; PLAN P0.5-4 and the D15 migration wait on that. Is the registration still intended: (a) yes, you will register `python -m hilclaw.merge_guard` as a `PreToolUse` hook; (b) not for now? Not asked here: what exactly the guard matches (the executor's choice under review, listed in the task result), and any change of DRIVER.md or CLAUDE.md.",
+      "askedAt": "2026-10-09T19:24:23Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 110,
+    "iterations": 111,
     "tasksDone": 104,
-    "tasksBlocked": 6,
+    "tasksBlocked": 7,
     "reviewRoundsTotal": 329
   },
   "lastIteration": {
-    "at": "2026-10-09T18:30:37Z",
-    "owner": "AKIHA:632150fd-1",
-    "taskId": "T-0106",
+    "at": "2026-10-09T19:24:23Z",
+    "owner": "AKIHA:7d9037dc-1",
+    "taskId": "T-0107",
     "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
