@@ -66,9 +66,9 @@ Conventions of this module, which the eight records do not fix:
   holds it, then ``source_commit`` when the document holds it, then ``n_max``
   when the document holds it, then ``candidates_per_round`` when the document
   holds it, then ``op_signature`` when the document holds it, then
-  ``round_budget`` when the document holds it: the order in
-  which the records defined them. A content this interpreter cannot read (an
-  integer too long for it anywhere in the text, nesting too deep) raises
+  ``round_budget`` when the document holds it: the order in which the records
+  defined them. A content this interpreter cannot read (an integer too long
+  for it anywhere in the text, nesting too deep) raises
   :class:`InvalidInstanceError` too, though it is a limit of this reader and
   not damage; the limits stay as the interpreter has them. A number beyond the
   float range in a member not defined here is read as an infinity and is no
@@ -143,11 +143,11 @@ Conventions of this module, which the eight records do not fix:
   candidates per round, and that is no error of the content.
 - What is a value of ``round_budget`` is ADR-0032 decision 3 and not a
   convention: an integer from 1 to :data:`hilclaw.keys.MAX_INTEGER`, both
-  included, so ``true``, ``8.0``, ``8e0``, ``0`` and ``-0`` are none, and a
-  value below 5 or above 10 is one. The conventions are that a value built in
-  memory must be exactly an ``int`` (a subclass is none), that ``-0`` is
-  refused as the integer 0 it is read as, that the one rule is reported as a
-  whole, and that an ``int`` that breaks it is not shown, as for
+  included, so ``true``, ``8.0``, ``8e0``, ``0`` and ``-0`` are none, and
+  ``1``, ``4``, ``11`` and ``20`` are values. The conventions are that a value
+  built in memory must be exactly an ``int`` (a subclass is none), that ``-0``
+  is refused as the integer 0 it is read as, that the one rule is reported as
+  a whole, and that an ``int`` that breaks it is not shown, as for
   ``schema_version``. The round budget is handed out as the ``int`` of the
   file, unchanged. That a content without the member states no round budget,
   and that this is no error of the content, is ADR-0032 decision 4 and not a
@@ -172,8 +172,9 @@ Conventions of this module, which the eight records do not fix:
 It writes, creates and removes no file and composes no content. It defines no
 member besides the eight (``schema_version``, ``hw_profile``, ``tolerance``,
 ``source_commit``, ``n_max``, ``candidates_per_round``, ``op_signature`` and
-``round_budget``) and interprets no other: a file it accepts is not thereby a complete instance
-record, and not enough to start a run (ADR-0018 decisions 1 and 2).
+``round_budget``) and interprets no other: a file it accepts is not thereby a
+complete instance record, and not enough to start a run (ADR-0018 decisions 1
+and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
 default and substitutes no value (ADR-0020 decision 3), does not check that a
 run is of the first case, and gives the member no meaning for a run of another
@@ -266,8 +267,8 @@ begin (ADR-0032 decision 4). The lower end is the number 1 of ADR-0032
 decision 3, written here, and there is no upper end below
 :data:`hilclaw.keys.MAX_INTEGER`: the module holds no range of the cap of the
 initial runs (#5 B-4, a budget of 5 to 10 rounds), which ADR-0032 decision 3
-reads as no rule of the file, so a value below 5 or above 10 is a value. It
-checks the form of the member only. It does not read, import or compare
+reads as no rule of the file, so 1, 4, 11 and 20 are values as 5 and 10 are.
+It checks the form of the member only. It does not read, import or compare
 ``STATE.json``, the journal or the spend view, and it concludes nothing from
 the member and a ``round`` together (ADR-0032 decision 5). It counts nothing,
 says nothing of what counts against the budget, stops nothing and ends no run
@@ -456,8 +457,7 @@ def parse(content):
     ``round_budget``, as parsed and not interpreted, whatever its name and
     value (``tolerence``, a top-level ``rtol``, ``source-commit``, ``nmax``,
     ``candidates``, ``op``, ``task``, ``rounds`` or ``budget`` among them).
-    Any order of members and any white space of JSON are
-    accepted.
+    Any order of members and any white space of JSON are accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
     a byte order mark, is not exactly one JSON text (the tokens ``NaN``,
@@ -519,19 +519,17 @@ def validate(document):
     4): for a value built in memory, a ``bool``, a ``float`` such as ``8.0``
     and a subclass of ``int`` are none. Only that form is checked: the member
     is compared with no other member, with no other file and with no range a
-    run is started in. Its other
-    members are not looked at. The rules for the text (the encoding, a member
-    name twice) cannot be checked on a parsed value. The seven records are
-    ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028, ADR-0031 and ADR-0032;
-    ADR-0024 adds no rule of validity.
+    run is started in. Its other members are not looked at. The rules for the
+    text (the encoding, a member name twice) cannot be checked on a parsed
+    value. The seven records are ADR-0018, ADR-0020, ADR-0022, ADR-0023,
+    ADR-0028, ADR-0031 and ADR-0032; ADR-0024 adds no rule of validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
     ``tolerance.rtol``, ``source_commit``, ``n_max``,
     ``candidates_per_round``, ``op_signature.key`` or ``round_budget``). The
-    version comes first: an integer other
-    than :data:`SCHEMA_VERSION` raises :class:`UnsupportedVersionError`
-    before any other member is looked at.
+    version comes first: an integer other than :data:`SCHEMA_VERSION` raises
+    :class:`UnsupportedVersionError` before any other member is looked at.
     """
     _checked(document)
 
