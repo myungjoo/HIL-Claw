@@ -33,6 +33,7 @@ from hilclaw.instance import (
     MissingInstanceError,
     Tolerance,
     UnsupportedVersionError,
+    candidates_per_round_of,
     hw_profile_of,
     layout_version_of,
     n_max_of,
@@ -208,6 +209,7 @@ def test_the_public_names():
         "SCHEMA_VERSION",
         "Tolerance",
         "UnsupportedVersionError",
+        "candidates_per_round_of",
         "hw_profile_of",
         "layout_version_of",
         "n_max_of",
@@ -224,6 +226,7 @@ def test_the_public_names():
         "tolerance",
         "source_commit",
         "n_max",
+        "candidates_per_round",
         "others",
     )
     assert Tolerance._fields == ("rtol", "atol")
@@ -240,6 +243,7 @@ def test_the_public_names():
         tolerance_of,
         source_commit_of,
         n_max_of,
+        candidates_per_round_of,
         layout_version_of,
     ):
         parameters = inspect.signature(function).parameters
@@ -254,7 +258,7 @@ def test_a_minimal_content_gives_the_key_and_the_record():
     result = parse(raw(doc()))
 
     assert type(result) is Instance
-    assert result == Instance(KEY, record(), None, None, None, {})
+    assert result == Instance(KEY, record(), None, None, None, None, {})
     assert type(result.hw_profile) is dict
     assert key_of(result.hw_profile) == result.hw_profile_key
     assert validate(doc()) is None
@@ -265,7 +269,7 @@ def test_a_record_with_its_optional_fields():
 
     result = parse(raw(doc(profile)))
 
-    assert result == Instance(key_of(profile), profile, None, None, None, {})
+    assert result == Instance(key_of(profile), profile, None, None, None, None, {})
     assert result.hw_profile_key == key_of(record(ext={"example_field": 3}))
     assert result.hw_profile_key != KEY
 
@@ -309,7 +313,7 @@ OTHERS = {
 def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     result = parse(raw(doc(**OTHERS)))
 
-    assert result == Instance(KEY, record(), None, None, None, OTHERS)
+    assert result == Instance(KEY, record(), None, None, None, None, OTHERS)
     assert list(result.others) == list(OTHERS)
     assert validate(doc(**OTHERS)) is None
 
@@ -721,7 +725,13 @@ def test_a_content_with_the_member_states_the_two_values():
     result = parse(raw(doc(tolerance=TOLERANCE, example=[1])))
 
     assert result == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, None, {"example": [1]}
+        KEY,
+        record(),
+        Tolerance(TEST_RTOL, TEST_ATOL),
+        None,
+        None,
+        None,
+        {"example": [1]},
     )
     assert type(result.tolerance) is Tolerance
     assert (result.tolerance.rtol, result.tolerance.atol) == (TEST_RTOL, TEST_ATOL)
@@ -795,7 +805,7 @@ def test_any_order_of_the_members_of_a_tolerance(content):
     result = parse(content)
 
     assert result == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, None, {}
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, None, None, {}
     )
 
 
@@ -838,7 +848,7 @@ def test_another_version_is_reported_before_a_tolerance_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_tolerance(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, others)
+    assert result == Instance(KEY, record(), None, None, None, None, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(tolerance=TOLERANCE, **others)))
@@ -1091,7 +1101,7 @@ def test_a_content_with_the_member_states_that_string(commit):
 
     result = parse(raw(document))
 
-    assert result == Instance(KEY, record(), None, commit, None, {"example": [1]})
+    assert result == Instance(KEY, record(), None, commit, None, None, {"example": [1]})
     assert type(result.source_commit) is str
     assert "source_commit" not in result.others
     assert validate(document) is None
@@ -1135,7 +1145,7 @@ def test_any_order_of_the_three_members_and_the_version(order):
     content = text(*(MEMBERS[index] for index in order))
 
     assert parse(content) == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, None, {}
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, None, None, {}
     )
     assert validate(json.loads(content)) is None
 
@@ -1225,7 +1235,7 @@ def test_another_version_is_reported_before_a_source_commit_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_source_commit(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, others)
+    assert result == Instance(KEY, record(), None, None, None, None, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(source_commit=OTHER_COMMIT, **others)))
@@ -1537,7 +1547,7 @@ def test_a_content_with_the_member_states_that_bound(bound):
 
     result = parse(raw(document))
 
-    assert result == Instance(KEY, record(), None, None, bound, {"example": [1]})
+    assert result == Instance(KEY, record(), None, None, bound, None, {"example": [1]})
     assert type(result.n_max) is int
     assert "n_max" not in result.others
     assert validate(document) is None
@@ -1582,7 +1592,7 @@ def test_any_order_of_the_four_members_and_the_version(order):
     content = text(*(BOUNDED_MEMBERS[index] for index in order))
 
     assert parse(content) == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, BOUND, {}
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, BOUND, None, {}
     )
     assert validate(json.loads(content)) is None
 
@@ -1663,7 +1673,7 @@ def test_another_version_is_reported_before_a_bound_is_looked_at(version, bound)
 def test_a_top_level_member_of_another_name_states_no_bound(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, others)
+    assert result == Instance(KEY, record(), None, None, None, None, others)
     assert result.n_max is None
     assert validate(doc(**others)) is None
 
@@ -1755,7 +1765,13 @@ def test_what_is_no_value_of_the_bound(literal):
     assert invalid(NO_BOUND, parse, content) == NO_BOUND + NO_BOUND_LITERALS[literal]
     invalid(NO_BOUND, validate, json.loads(content))
     assert parse(text(VERSION, SECTION, *more)) == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, None, {"example": [1]}
+        KEY,
+        record(),
+        Tolerance(TEST_RTOL, TEST_ATOL),
+        COMMIT,
+        None,
+        None,
+        {"example": [1]},
     )
 
 
@@ -1944,6 +1960,483 @@ def test_nothing_of_the_module_holds_a_bound():
     )
 
 
+# --- happy: the member candidates_per_round (ADR-0028) ---
+
+# Test values of a number of candidates per round: neither is a default, recommended or typical value.
+COUNT, OTHER_COUNT = 3, 4
+NO_COUNT = f"candidates_per_round: must be an int from 1 to {MAX}, got "
+
+
+def counted(literal, *more):
+    return text(VERSION, SECTION, f'"candidates_per_round": {literal}', *more)
+
+
+@pytest.mark.parametrize(
+    "count", [1, 2, 3, 5, 6, 7, 100, 1000, 2**31, 2**32 + 1, MAX - 1, MAX]
+)
+def test_a_content_with_the_member_states_that_number(count):
+    document = doc(candidates_per_round=count, example=[1])
+
+    result = parse(raw(document))
+
+    assert result == Instance(KEY, record(), None, None, None, count, {"example": [1]})
+    assert type(result.candidates_per_round) is int
+    assert "candidates_per_round" not in result.others
+    assert validate(document) is None
+    assert parse(counted(str(count))).candidates_per_round == count
+
+
+def test_both_ends_of_the_range_are_inclusive_and_nothing_ends_it_below_the_maximum():
+    assert MAX == 2**53 - 1
+
+    for count in (1, 6, 100, MAX):
+        assert parse(counted(str(count))).candidates_per_round == count
+        assert validate(doc(candidates_per_round=count)) is None
+    for count in (0, MAX + 1):
+        assert invalid(NO_COUNT, parse, counted(str(count))) == NO_COUNT + "int"
+        document = doc(candidates_per_round=count)
+        assert invalid(NO_COUNT, validate, document) == NO_COUNT + "int"
+    invalid(NO_COUNT, parse, counted("9007199254740992"))
+    assert parse(counted("9007199254740991")).candidates_per_round == MAX
+
+
+def test_a_content_without_the_member_states_no_number():
+    members = {"tolerance": TOLERANCE, "source_commit": COMMIT, "n_max": BOUND}
+    without = parse(raw(doc(**members)))
+    stating = parse(raw(doc(**members, candidates_per_round=COUNT)))
+
+    assert without.candidates_per_round is None
+    assert parse(raw(doc())).candidates_per_round is None
+    assert stating.candidates_per_round == COUNT
+    assert (
+        without[:5]
+        == stating[:5]
+        == (KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, BOUND)
+    )
+    assert without.others == stating.others == {}
+    assert validate(doc(**members)) is None
+
+
+COUNTED_MEMBERS = [*BOUNDED_MEMBERS, f'"candidates_per_round": {COUNT}']
+
+
+@pytest.mark.parametrize("order", list(itertools.permutations(range(6))), ids=repr)
+def test_any_order_of_the_five_members_and_the_version(order):
+    content = text(*(COUNTED_MEMBERS[index] for index in order))
+
+    assert parse(content) == Instance(
+        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, BOUND, COUNT, {}
+    )
+    assert validate(json.loads(content)) is None
+
+
+def test_white_space_of_json_around_the_number_of_candidates_is_not_part_of_the_value():
+    content = text(VERSION, SECTION, f'\r\n\t"candidates_per_round" :\n {COUNT} \n')
+
+    assert parse(content).candidates_per_round == COUNT
+
+
+# The Example of ADR-0028, as written in the record: the shape of the member, not a valid file.
+EXAMPLE_OF_ADR_0028 = b"""{
+  "schema_version": 1,
+  "hw_profile": {
+    "key": "cpu_standin-b0d8610d8f470856",
+    "record": {
+      "schema_version": 1,
+      "accelerator": "cpu_standin",
+      "revision": "NOT-DECIDED-HERE",
+      "toolchain": {"clang": "NOT-DECIDED-HERE"},
+      "host": {"cpu": "NOT-DECIDED-HERE", "os": "NOT-DECIDED-HERE"},
+      "hw_source": "NOT-DECIDED-HERE"
+    }
+  },
+  "tolerance": {"rtol": 1e-4, "atol": 0.01},
+  "source_commit": "0123456789abcdef0123456789abcdef01234567",
+  "n_max": 10,
+  "candidates_per_round": 2
+}
+"""
+
+
+def test_the_member_of_the_example_of_adr_0028():
+    invalid("hw_profile.record.hw_source: must be ", parse, EXAMPLE_OF_ADR_0028)
+
+    source = b'"hw_source": "NOT-DECIDED-HERE"'
+    result = parse(EXAMPLE_OF_ADR_0028.replace(source, b'"hw_source": "in_house"'))
+    assert result.candidates_per_round == 2
+    assert type(result.candidates_per_round) is int
+    assert result.n_max == 10
+    assert result.source_commit == COMMIT
+    assert result.tolerance == Tolerance(0.0001, 0.01)
+    assert result.others == {}
+
+    silent = parse(EXAMPLE_OF_ADR_0023.replace(source, b'"hw_source": "in_house"'))
+    assert silent.candidates_per_round is None
+    assert silent[:5] == result[:5]
+
+
+# --- branch: the member candidates_per_round ---
+
+
+@pytest.mark.parametrize(
+    "count, bound", [(100, 5), (1, MAX), (MAX, 5), (6, 6), (1, 5), (MAX, MAX)]
+)
+def test_the_member_and_n_max_do_not_bound_each_other(count, bound):
+    document = doc(candidates_per_round=count, n_max=bound)
+
+    result = parse(raw(document))
+
+    assert (result.candidates_per_round, result.n_max) == (count, bound)
+    assert validate(document) is None
+
+
+BROKEN_COUNTS = [None, True, 0, -1, 2.0, "2", [2], {"value": 2}, MAX + 1]
+
+
+@pytest.mark.parametrize("version", [0, 2, MAX])
+@pytest.mark.parametrize("count", [*BROKEN_COUNTS, COUNT], ids=repr)
+def test_another_version_is_reported_before_the_number_of_candidates_is_looked_at(
+    version, count
+):
+    document = doc(schema_version=version, candidates_per_round=count)
+
+    for function, argument in ((parse, raw(document)), (validate, document)):
+        with pytest.raises(UnsupportedVersionError) as caught:
+            function(argument)
+        assert str(caught.value) == f"schema_version: {version} is not supported"
+
+
+@pytest.mark.parametrize(
+    "others",
+    [
+        {"candidates": COUNT},
+        {"n": COUNT},
+        {"N": COUNT},
+        {"candidatesPerRound": COUNT},
+        {"candidates-per-round": COUNT},
+        {"Candidates_per_round": COUNT},
+        {"CANDIDATES_PER_ROUND": COUNT},
+        {"candidates_per_round ": 0},
+        {"candidates_per_rounds": COUNT},
+        {"id": {"candidates": COUNT, "candidates_per_round": COUNT}},
+        {
+            "candidates": True,
+            "n": 0,
+            "candidatesPerRound": "2",
+            "candidates-per-round": 2.0,
+            "id": {"candidates": -1},
+        },
+    ],
+    ids=repr,
+)
+def test_a_top_level_member_of_another_name_states_no_number(others):
+    result = parse(raw(doc(**others)))
+
+    assert result == Instance(KEY, record(), None, None, None, None, others)
+    assert result.candidates_per_round is None
+    assert validate(doc(**others)) is None
+
+    result = parse(raw(doc(candidates_per_round=OTHER_COUNT, **others)))
+    assert result.candidates_per_round == OTHER_COUNT
+    assert result.others == others
+
+
+@pytest.mark.parametrize(
+    "place, changes",
+    [
+        ("hw_profile: must be", {"hw_profile": None, "candidates_per_round": 0}),
+        (
+            "document: lacks the member hw_profile",
+            {"hw_profile": REMOVE, "candidates_per_round": True},
+        ),
+        (
+            "hw_profile.key: ",
+            {"hw_profile": section(key=OTHER_KEY), "candidates_per_round": "2"},
+        ),
+        ("tolerance: must be", {"tolerance": None, "candidates_per_round": None}),
+        (
+            "tolerance.rtol: must be",
+            {"tolerance": {"rtol": -1, "atol": 0}, "candidates_per_round": 0},
+        ),
+        (
+            NO_COMMIT + "str 'main'",
+            {"source_commit": "main", "candidates_per_round": 0},
+        ),
+        (NO_BOUND + "int", {"n_max": 4, "candidates_per_round": 0}),
+        (
+            NO_BOUND + "bool",
+            {
+                "tolerance": TOLERANCE,
+                "source_commit": COMMIT,
+                "n_max": True,
+                "candidates_per_round": 2.0,
+            },
+        ),
+        (
+            NO_COUNT + "int",
+            {
+                "tolerance": TOLERANCE,
+                "source_commit": COMMIT,
+                "n_max": BOUND,
+                "candidates_per_round": 0,
+            },
+        ),
+        (NO_COUNT + "bool", {"candidates_per_round": False}),
+    ],
+)
+def test_the_first_broken_rule_is_reported_with_a_number_of_candidates(place, changes):
+    document = doc(**changes)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+# --- error / negative: the member candidates_per_round ---
+
+NO_COUNT_LITERALS = {
+    "true": "bool",
+    "false": "bool",
+    "null": "NoneType",
+    '"2"': "str '2'",
+    '"1"': "str '1'",
+    '""': "str ''",
+    '"two"': "str 'two'",
+    "[2]": "list",
+    "[]": "list",
+    '{"value": 2}': "dict",
+    "{}": "dict",
+    "2.0": "float",
+    "2e0": "float",
+    "2E0": "float",
+    "1.0": "float",
+    "1.5": "float",
+    "0.5": "float",
+    "1e999": "float",
+    "-0.0": "float",
+    "-0": "int",
+    "0": "int",
+    "-1": "int",
+    "-2": "int",
+    "-5": "int",
+    "9007199254740992": "int",
+    "9007199254740993": "int",
+    "10000000000000000000000": "int",
+}
+
+
+@pytest.mark.parametrize("literal", NO_COUNT_LITERALS)
+def test_what_is_no_value_of_the_number_of_candidates(literal):
+    more = (MEMBERS[2], MEMBERS[3], BOUNDED_MEMBERS[4], '"example": [1]')
+    content = counted(literal, *more)
+
+    assert invalid(NO_COUNT, parse, content) == NO_COUNT + NO_COUNT_LITERALS[literal]
+    invalid(NO_COUNT, validate, json.loads(content))
+    assert parse(text(VERSION, SECTION, *more)) == Instance(
+        KEY,
+        record(),
+        Tolerance(TEST_RTOL, TEST_ATOL),
+        COMMIT,
+        BOUND,
+        None,
+        {"example": [1]},
+    )
+
+
+WALK_THROUGH_OF_ADR_0028 = [
+    "0",
+    "-1",
+    "2.0",
+    "2e0",
+    '"2"',
+    "true",
+    "null",
+    "[2]",
+    "9007199254740992",
+]
+
+
+@pytest.mark.parametrize("literal", WALK_THROUGH_OF_ADR_0028)
+def test_the_invalid_files_of_the_walk_through_of_adr_0028(literal):
+    more = (MEMBERS[2], MEMBERS[3], BOUNDED_MEMBERS[4])
+
+    invalid("candidates_per_round: must be", parse, counted(literal, *more))
+    kept = parse(text(VERSION, SECTION, *more))
+    assert kept[2:6] == (Tolerance(TEST_RTOL, TEST_ATOL), COMMIT, BOUND, None)
+    silent = parse(text(VERSION, SECTION, '"candidates": 2'))
+    assert silent.candidates_per_round is None
+    assert silent.others == {"candidates": 2}
+    assert parse(counted("2")).candidates_per_round == 2
+    for count in (6, 100):
+        assert parse(counted(str(count), *more)).candidates_per_round == count
+
+
+def test_minus_zero_is_refused_as_the_integer_0_below_the_lower_end():
+    assert type(json.loads("-0")) is int and json.loads("-0") == 0
+
+    assert invalid(NO_COUNT, parse, counted("-0")) == NO_COUNT + "int"
+    assert invalid(NO_COUNT, parse, counted("0")) == NO_COUNT + "int"
+
+
+LOOSER_COUNT_RULES = {
+    "isinstance(value, int)": (
+        lambda value: isinstance(value, int) and 1 <= value <= MAX,
+        [True, Number(2), Number(1), Number(MAX)],
+    ),
+    "isinstance(value, int) without the range": (
+        lambda value: isinstance(value, int),
+        [True, False, Number(3)],
+    ),
+    "an equal value": (
+        lambda value: value == 2 or value == 1,
+        [2.0, 1.0, True, Number(2)],
+    ),
+    "float.is_integer": (
+        lambda value: float(value).is_integer() and value >= 1,
+        [2.0, 1.0, 3.0, 2e0, float(2**40)],
+    ),
+    "int(value)": (
+        lambda value: 1 <= int(value) <= MAX,
+        ["2", " 3 ", "1_0", "+2", 2.0, 2.9, 1.5, True, Number(2)],
+    ),
+}
+
+
+@pytest.mark.parametrize("rule", LOOSER_COUNT_RULES)
+def test_a_number_of_candidates_a_looser_rule_would_accept_is_refused(rule):
+    looser, values = LOOSER_COUNT_RULES[rule]
+
+    for value in values:
+        assert looser(value)
+        expected = NO_COUNT + type(value).__name__
+        invalid(expected, validate, doc(candidates_per_round=value))
+        if type(value) is not Number:
+            invalid(expected, parse, raw(doc(candidates_per_round=value)))
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        (f'"candidates_per_round": {COUNT}', f'"candidates_per_round": {COUNT}'),
+        (f'"candidates_per_round": {COUNT}', f'"candidates_per_round": {OTHER_COUNT}'),
+        (f'"candidates_per_round": {COUNT}', '"candidates_per_round": 0'),
+        ('"candidates_per_round": true', f'"candidates_per_round": {COUNT}'),
+    ],
+)
+def test_the_member_name_candidates_per_round_twice_at_the_top_level(members):
+    message = invalid(
+        "content: cannot be read as one JSON text",
+        parse,
+        text(VERSION, SECTION, *members),
+    )
+    assert "a JSON object repeats a member name" in message
+
+
+def test_a_number_of_candidates_too_long_for_the_interpreter_is_a_text_error():
+    message = invalid(
+        "content: cannot be read as one JSON text",
+        parse,
+        counted(TOO_LONG_TEXT),
+    )
+    assert "candidates_per_round" not in message
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        True,
+        False,
+        2.0,
+        1.0,
+        float("inf"),
+        float("nan"),
+        Number(2),
+        Number(1),
+        Number(0),
+        TOO_LONG,
+        -TOO_LONG,
+        "2",
+        None,
+        b"2",
+        (2,),
+        {2},
+        range(2),
+    ],
+    ids=shown,
+)
+def test_validate_refuses_a_number_of_candidates_built_in_memory(value):
+    document = doc(candidates_per_round=value)
+
+    message = invalid(NO_COUNT + type(value).__name__, validate, document)
+
+    if type(value) is not str:
+        assert message == NO_COUNT + type(value).__name__
+
+
+def test_a_refused_number_of_candidates_is_not_shown_and_a_string_is():
+    for count in (0, -1, -7, MAX + 1):
+        message = invalid(NO_COUNT, validate, doc(candidates_per_round=count))
+        assert message == NO_COUNT + "int"
+        assert not message.endswith(str(count))
+
+    message = invalid(NO_COUNT, validate, doc(candidates_per_round="2" * 200))
+    assert message == NO_COUNT + "str " + reprlib.repr("2" * 200)
+    assert len(message) < 120
+
+
+def test_a_check_of_a_number_of_candidates_modifies_nothing():
+    for document in (
+        doc(candidates_per_round=COUNT),
+        doc(candidates_per_round=0),
+        doc(candidates_per_round=2.0),
+    ):
+        kept = json.dumps(document)
+        valid = document["candidates_per_round"] == COUNT
+        assert accepted(validate, document) == valid
+        assert json.dumps(document) == kept
+
+
+# --- no substitute: nothing of the module stands in for the number of candidates ---
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        doc(),
+        doc(tolerance=TOLERANCE, source_commit=COMMIT, n_max=BOUND),
+        doc(candidates=2),
+        doc(n=1, id={"candidates": 1}),
+    ],
+    ids=repr,
+)
+def test_a_content_without_the_member_states_no_number_and_not_1(document):
+    result = parse(raw(document))
+
+    assert result.candidates_per_round is None
+    assert result._asdict()["candidates_per_round"] is None
+    assert validate(document) is None
+
+
+def test_nothing_of_the_module_stands_in_for_the_number_of_candidates():
+    functions = [
+        value
+        for value in vars(instance).values()
+        if inspect.isfunction(value) and value.__module__ == instance.__name__
+    ]
+    assert candidates_per_round_of in functions
+    for function in functions:
+        assert function.__defaults__ is None and function.__kwdefaults__ is None
+    assert Instance._field_defaults == {}
+    imported = set()
+    for node in ast.walk(ast.parse(inspect.getsource(instance))):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+    assert "hilclaw.keys" in imported
+    assert not [name for name in imported if "spec" in name]
+    assert not {"spec", "candidates", "candidates_per_round"} & set(vars(instance))
+
+
 # --- happy: the reader ---
 
 
@@ -1959,7 +2452,7 @@ def test_the_reader_returns_the_record_the_file_embeds(tmp_path, root):
     assert (
         read(root, RUN)
         == parse(content)
-        == Instance(KEY, record(), None, None, None, {"example": [1, 2]})
+        == Instance(KEY, record(), None, None, None, None, {"example": [1, 2]})
     )
     assert type(read(root, RUN)) is Instance
     assert snapshot(tmp_path) == before
@@ -2418,6 +2911,143 @@ def test_the_reader_of_the_bound_opens_only_the_instance_file(root, monkeypatch)
     assert opened == [FILE, FILE]
 
 
+# --- the reader of the number of candidates per round (ADR-0028) ---
+
+
+def test_the_reader_returns_the_number_the_file_states(tmp_path, root):
+    members = {"tolerance": TOLERANCE, "source_commit": COMMIT, "n_max": BOUND}
+    place(root, raw(doc(**members, candidates_per_round=COUNT, example=[1])))
+    before = snapshot(tmp_path)
+
+    found = candidates_per_round_of(root, RUN)
+
+    assert found == COUNT and type(found) is int
+    assert found == read(root, RUN).candidates_per_round
+    assert candidates_per_round_of(str(root), RUN) == found
+    assert hw_profile_of(root, RUN) == record()
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert source_commit_of(root, RUN) == COMMIT
+    assert n_max_of(root, RUN) == BOUND
+    assert snapshot(tmp_path) == before
+
+    for count in (1, 2, 5, 6, 100, MAX):
+        place(root, raw(doc(candidates_per_round=count)))
+        assert candidates_per_round_of(root, RUN) == count
+        assert type(candidates_per_round_of(root, RUN)) is int
+
+
+def test_a_run_without_the_member_states_no_number(tmp_path, root, monkeypatch):
+    others = {
+        "candidates": COUNT,
+        "n": COUNT,
+        "candidatesPerRound": COUNT,
+        "candidates-per-round": COUNT,
+        "id": {"candidates": COUNT},
+    }
+    members = {"tolerance": TOLERANCE, "source_commit": COMMIT, "n_max": BOUND}
+    place(root, raw(doc(**members, **others)))
+    place(root, raw(doc(candidates_per_round=OTHER_COUNT)), OTHER_FILE)
+    for name in ("N", "CANDIDATES_PER_ROUND", "HILCLAW_CANDIDATES_PER_ROUND"):
+        monkeypatch.setenv(name, str(COUNT))
+    before = snapshot(tmp_path)
+
+    assert candidates_per_round_of(root, RUN) is None
+    assert read(root, RUN).candidates_per_round is None
+    assert read(root, RUN).others == others
+    assert hw_profile_of(root, RUN) == record()
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert source_commit_of(root, RUN) == COMMIT
+    assert n_max_of(root, RUN) == BOUND
+    assert candidates_per_round_of(root, OTHER_RUN) == OTHER_COUNT
+    assert candidates_per_round_of(root, RUN) is None
+    assert snapshot(tmp_path) == before
+
+    place(root, raw(doc()))
+    assert candidates_per_round_of(root, RUN) is None
+
+
+def test_a_number_replaced_between_two_calls_is_seen_at_the_second(root):
+    place(root, raw(doc(candidates_per_round=COUNT)))
+    assert candidates_per_round_of(root, RUN) == COUNT
+
+    place(root, raw(doc(candidates_per_round=OTHER_COUNT)))
+    assert candidates_per_round_of(root, RUN) == OTHER_COUNT
+
+    place(root, raw(doc()))
+    assert candidates_per_round_of(root, RUN) is None
+
+    place(root, raw(doc(candidates_per_round=0)))
+    invalid(f"{FILE}: {NO_COUNT}int", candidates_per_round_of, root, RUN)
+
+    place(root, raw(doc(schema_version=2, candidates_per_round=COUNT)))
+    with pytest.raises(UnsupportedVersionError):
+        candidates_per_round_of(root, RUN)
+
+    (root / FILE).unlink()
+    with pytest.raises(MissingInstanceError):
+        candidates_per_round_of(root, RUN)
+
+    place(root, raw(doc(candidates_per_round=1)))
+    assert candidates_per_round_of(root, RUN) == 1
+
+
+@pytest.mark.parametrize(
+    "literal", [*WALK_THROUGH_OF_ADR_0028, "-0", "false", "{}", "1.5"]
+)
+def test_no_member_of_a_file_with_an_invalid_candidates_per_round_is_used(
+    root, literal
+):
+    more = (MEMBERS[2], MEMBERS[3], BOUNDED_MEMBERS[4])
+    place(root, counted(str(COUNT), *more))
+    assert candidates_per_round_of(root, RUN) == COUNT
+
+    place(root, counted(literal, *more))
+    assert candidates_per_round_of in READERS and len(READERS) == 7
+    for call in READERS:
+        invalid(f"{FILE}: {NO_COUNT}", call, root, RUN)
+
+    place(root, text(VERSION, SECTION, *more))
+    assert candidates_per_round_of(root, RUN) is None
+    assert hw_profile_of(root, RUN) == record()
+    assert tolerance_of(root, RUN) == Tolerance(TEST_RTOL, TEST_ATOL)
+    assert source_commit_of(root, RUN) == COMMIT
+    assert n_max_of(root, RUN) == BOUND
+    assert layout_version_of(root, RUN) == 1
+
+
+def test_two_runs_state_their_own_numbers(root):
+    place(root, raw(doc(candidates_per_round=1)))
+    place(root, raw(doc(candidates_per_round=3)), OTHER_FILE)
+    place(root, raw(doc()), "runs/run-c/instance.json")
+
+    assert candidates_per_round_of(root, RUN) == 1
+    assert candidates_per_round_of(root, OTHER_RUN) == 3
+    assert candidates_per_round_of(root, "run-c") is None
+    assert candidates_per_round_of(root, RUN) == 1
+
+
+def test_the_reader_of_the_number_opens_only_the_instance_file(root, monkeypatch):
+    place(root, raw(doc(candidates_per_round=COUNT)))
+    place(root, b"{}", f"runs/{RUN}/STATE.json")
+    place(root, b"{}", f"runs/{RUN}/rounds/0001/candidates/01/spec.json")
+    place(root, raw(doc(candidates_per_round=OTHER_COUNT)), OTHER_FILE)
+    opened, real = [], Path.read_bytes
+
+    def read_bytes(path):
+        opened.append(path.relative_to(root).as_posix())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setenv("HILCLAW_DATA_ROOT", "elsewhere")
+
+    assert candidates_per_round_of(root, RUN) == COUNT
+    assert opened == [FILE]
+
+    place(root, raw(doc()))
+    assert candidates_per_round_of(root, RUN) is None
+    assert opened == [FILE, FILE]
+
+
 # --- the reader of the layout version (ADR-0024) ---
 
 ALL_MEMBERS = {"tolerance": TOLERANCE, "source_commit": COMMIT, "n_max": BOUND}
@@ -2564,6 +3194,7 @@ READERS = [
     tolerance_of,
     source_commit_of,
     n_max_of,
+    candidates_per_round_of,
     layout_version_of,
 ]
 
@@ -3089,6 +3720,33 @@ def test_a_file_invalid_by_its_n_max_alone_is_run_file_invalid(root, broken, rep
         "run_file_invalid",
         InvalidInstanceError,
         "n_max: must be an int from 5 to",
+    )
+    assert kinds(root) == []
+
+    place(root, raw(repaired))
+    assert tool.function(dict(REQUEST)) == {"example_member": 1}
+    assert kinds(root) == ["step_started", "step_ended"]
+    assert (len(tool.asked), tool.performed) == (1, 1)
+    assert [seen for _, _, seen in tool.asked] == [record()]
+
+
+@pytest.mark.parametrize(
+    "repaired", [doc(), doc(candidates_per_round=COUNT)], ids=["removed", "valid"]
+)
+@pytest.mark.parametrize("broken", [0, -1, 2.0, "2", True, None, MAX + 1], ids=repr)
+def test_a_file_invalid_by_its_candidates_per_round_alone_is_run_file_invalid(
+    root, broken, repaired
+):
+    members = {"tolerance": TOLERANCE, "source_commit": COMMIT, "n_max": BOUND}
+    place(started(root), raw(doc(**members, candidates_per_round=broken)))
+    tool = Tool(root)
+
+    assert_no_step_started(
+        tool,
+        root,
+        "run_file_invalid",
+        InvalidInstanceError,
+        "candidates_per_round: must be an int from 1 to",
     )
     assert kinds(root) == []
 

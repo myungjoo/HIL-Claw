@@ -62,8 +62,9 @@ only against another write by these steps: nothing here prevents a process
 from writing, replacing or removing the file by other means.
 
 It composes no content and fills in no value: no member is put in or taken
-out, and a valid content without ``tolerance``, ``source_commit`` or ``n_max``
-is written as it is (decision 2). It does not say that a content is right,
+out, and a valid content without ``tolerance``, ``source_commit``, ``n_max``
+or ``candidates_per_round`` is written as it is (decision 2; the last of the
+four members is ADR-0028's). It does not say that a content is right,
 complete or enough to start a run. It reads no file, the one under the final
 name included, lists no directory, compares nothing and knows no "same
 content" (decision 4). It
