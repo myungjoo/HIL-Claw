@@ -50,9 +50,8 @@ must be valid and that no value stands in for an absent one (decision 4), and
 says where the wall-clock budget a run states is read from (decision 5). This
 module is those rules: :func:`parse` and :func:`validate` are pure functions of
 the bytes of a content and of a parsed document, and :func:`read`,
-:func:`hw_profile_of`,
-:func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
-:func:`candidates_per_round_of`, :func:`op_signature_of`,
+:func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
+:func:`n_max_of`, :func:`candidates_per_round_of`, :func:`op_signature_of`,
 :func:`round_budget_of`, :func:`wall_clock_budget_s_of` and
 :func:`layout_version_of` read the file of a run.
 :func:`hw_profile_of` has the call form of the parameter ``hw_profile_of`` of
@@ -78,12 +77,12 @@ Conventions of this module, which the nine records do not fix:
   ``round_budget`` when the document holds it, then ``wall_clock_budget_s``
   when the document holds it: the order in which the records defined them. A
   content this interpreter cannot read (an integer too long for it anywhere in
-  the text, nesting too deep) raises
-  :class:`InvalidInstanceError` too, though it is a limit of this reader and
-  not damage; the limits stay as the interpreter has them. A number beyond the
-  float range in a member not defined here is read as an infinity and is no
-  error, as :mod:`hilclaw.run_state` has it; in ``tolerance``, as ``n_max``,
-  as ``candidates_per_round``, as ``round_budget`` and as
+  the text, nesting too deep) raises :class:`InvalidInstanceError` too,
+  though it is a limit of this reader and not damage; the limits stay as the
+  interpreter has them. A number beyond the float range in a member not
+  defined here is read as an infinity and is no error, as
+  :mod:`hilclaw.run_state` has it; in ``tolerance``, as ``n_max``, as
+  ``candidates_per_round``, as ``round_budget`` and as
   ``wall_clock_budget_s`` it makes the content invalid (ADR-0020 decision 4,
   ADR-0023 decision 3, ADR-0028 decision 3, ADR-0032 decision 3, ADR-0033
   decision 3).
@@ -198,8 +197,7 @@ member besides the nine (``schema_version``, ``hw_profile``, ``tolerance``,
 ``source_commit``, ``n_max``, ``candidates_per_round``, ``op_signature``,
 ``round_budget`` and ``wall_clock_budget_s``) and interprets no other: a file
 it accepts is not thereby a complete instance record, and not enough to start a
-run (ADR-0018 decisions 1
-and 2).
+run (ADR-0018 decisions 1 and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
 default and substitutes no value (ADR-0020 decision 3), does not check that a
 run is of the first case, and gives the member no meaning for a run of another
@@ -303,9 +301,9 @@ and no ``n_max``, no number of coder calls, of specs, of attempts or of
 repair calls, no amount of tokens, of time or of hardware quota and no target
 metric, and it makes the member no statement of any other budget axis
 (ADR-0032 decision 2 and Boundaries). A file it accepts need not state a round
-budget; what counts against a stated one, whether an instance may start with no
-budget axis and
-what ends a run whose valid file states none, is open (OD-8 sub-question 29).
+budget; what counts against a stated one, whether an instance may start with
+no budget axis and what ends a run whose valid file states none, is open (OD-8
+sub-question 29).
 Which tool or component reads the member, at which moment, and what follows
 when no round budget is stated is not said here (ADR-0032 decision 5 and
 Boundaries); "not stated" is no error of the content here either, this module
@@ -601,11 +599,10 @@ def validate(document):
     built in memory, a ``bool``, a ``float`` such as ``5400.0`` and a
     subclass of ``int`` are none. Only that form is checked: the member is
     compared with no other member, with no other file and with no clock. Its
-    other members are not looked at. The rules for the
-    text (the encoding, a member name twice) cannot be checked on a parsed
-    value. The eight records are ADR-0018, ADR-0020, ADR-0022, ADR-0023,
-    ADR-0028, ADR-0031, ADR-0032 and ADR-0033; ADR-0024 adds no rule of
-    validity.
+    other members are not looked at. The rules for the text (the encoding, a
+    member name twice) cannot be checked on a parsed value. The eight records
+    are ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028, ADR-0031, ADR-0032
+    and ADR-0033; ADR-0024 adds no rule of validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
