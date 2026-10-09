@@ -2,7 +2,7 @@
 id: T-0104
 title: Write the ADR fixing the two members of `instance.json` in which a run states its owner and its project (the two meta fields #4 §2c moved out of the path) - their names, form and validity, what a reader may and may not conclude from them, and what a file without them means - one more part of the rest of OD-8 - without identity, without access or governance (OD-25), without a writer and without a tool contract, and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-13, NFR-2, NFR-6, C-2, OD-8, "#5 D6"]
 dependsOn: [T-0015, T-0021, T-0066, T-0102]
@@ -128,3 +128,67 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (planner, not before 2026-10-16 - code mode, no change of behaviour) One helper for the once-only write shared by `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py` (T-0094 `## Result`).
 
 ## Result
+**DONE** - landed on `main` as commit `576ea8c` ("T-0104: Add ADR-0034, the owner and project members of instance.json (one more part of the rest of OD-8)"), document mode, pushed as a fast-forward of `5975ae2`; no PR. The task branch was deleted remotely and locally (separate commands, after the push was confirmed). This task ticks **no PLAN checkbox** (P1-8 stays open: further members, the writer and the start of an instance, the result files, the rest of `STATE.json` and the event kinds remain). The §9 owner notice **was posted by the executor**, as the spawn prompt asked: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6085383575 (2026-10-09 UTC; objection window until 2026-10-16). **No new HQ** and no BLOCKED exit: neither the executor nor any of the three reviewers read a point as inventing a definition of an owner or a project, as entering OD-25 or as needing the repository owner. CI: the `push` run on `main` for `576ea8c` concluded `success` (https://github.com/myungjoo/HIL-Claw/actions/runs/37962413943). Wall clock: started 2026-10-09T16:32Z, pushed to `main` about 16:54Z. This task file is not part of the landed commit; this `## Result` is left uncommitted for the driver (DRIVER §3-6) - the spawn prompt's "include it in the landed commit" could not be followed, since the Result holds the commit hash and the CI result, and the task file and the executor definition both say uncommitted.
+
+§3-5 check before starting: no commit with `Task: T-0104` on `origin/main`, no PR for T-0104, no remote branch, no open PR - a fresh start.
+
+### The record
+`ARCHITECTURE/decisions/ADR-0034-od8-instance-record-owner-project.md` (191 lines; ADR-0034 was the next free number). Status: accepted 2026-10-09 under DRIVER §9 by reviewer approval; closes one more part of the rest of OD-8; the status wording of the OD-8 and OD-25 rows is unchanged; no proposal of OD-25, OD-17, OD-20, OD-23 or OD-27 adopted or rejected. The record calls the person of DRIVER §9 "the repository owner" throughout, to keep that word apart from the member `owner` and from the member `project`.
+
+### The members as landed (the code slice is written against these)
+- **Names and place**: two top-level members of `runs/<run_id>/instance.json`, `owner` and `project`. `owner` is #4 §2c's name; `project` is the word of #4's agreed layout (the record's choice over `projectname`).
+- **Form**: each is a *string* of ADR-0001 - 1 to 255 printable ASCII characters (0x20 to 0x7E), the form `hilclaw/keys.py` checks with `[\x20-\x7e]{1,255}`. The two are valid independently of each other.
+- **No value**: the empty string, a string longer than 255 characters, a string with a character outside 0x20 to 0x7E (a line feed, a tab, a letter of another script), `null`, `true`, `false`, a number, an array, an object.
+- **Comparison**: the value - the string after JSON decoding - is compared character for character; no case folding, no trimming. `Example-Owner`, `example-owner` and `example-owner ` (final space) are three values. A value of spaces only is valid; `a b`, `x/y` and `user@example.invalid` are valid.
+- **Absent**: each member may be absent from a valid file, independently; `schema_version` stays `1`. Absent means "not stated": no default, and a reader never substitutes a value (not the user of the process, not an author or committer, not a GitHub account, not the name of a directory or repository, not a part of the `run_id`, not the value of another run), and it does not conclude that the run has no owner or belongs to no project.
+- **Present and invalid**: the whole file is invalid in the sense of ADR-0018 decision 2 (reported, no member of it used, nothing repaired).
+- **A reader has the owner (the project) of a run only** when the file of that run is valid, of version 1 and holds the member. A missing, unreadable or invalid file, a file of another version and a valid file without the member each leave it without one.
+- **Rules towards anything else**: none - not between the two, not with another member, another file or another run. Reading: the file of the run as a whole, nothing kept between calls.
+- **Meaning**: each states the name the instance was started with as its owner / its project, uninterpreted. No identity, no right, no path level, no part of a `run_id`, no relation between runs with equal values. Neither an owner nor a project is defined.
+
+### Decisions and their sources
+1. Scope: the two members only (own; ADR-0018 decision 1 for "not a complete instance record").
+2. What each states: that the file holds the two and the name `owner` are #4's (cited as agreed in #4); that the file holds what the instance was started with is ADR-0004 decision 1; that each is a name and nothing more, and the lists of what a reader may and may not conclude, are the record's own reading. Planner's expectation (a) confirmed: the inputs carry no more than a name given at the start.
+3. The members: top-level against a `meta` object (an object needs a name no input gives and would judge which other members are "meta"); the *string* against a *name* (an identifier syntax no input gives), a *text* of ADR-0002 or a wider string (no upper length, line feeds, several spellings of one visible name), an object with a kind, an array. The *string* is the narrower of the two existing free-text forms: a later widening makes no existing file invalid. Cost named: a name in another script cannot be stated.
+4. Absent allowed, version 1 (ADR-0018 decision 2's first choice, as the seven earlier member records); required and version 2 rejected (#4's list of seven inputs is not read as a rule of validity - three of them have no form; UC-1 step 1 lists neither).
+5. No rule towards anything; nothing reads, writes or checks either member today (checked: `git grep -i -E "owner|project" -- hilclaw tests` finds only the driver lock, test URLs and `pyproject` handling).
+6. Limits: whoever can write the file states any owner and project; written once; a committed name stays in the history of the data repository (ADR-0004 decision 7; who may read is OD-25, nothing decided); spelling; misspelt member names; two sources.
+
+### Left open, with the exact questions (OD-8 sub-question ㉛, registered)
+- (i) What the start of an instance states as the owner of a run: whether an owner of a run is a person or an account; what a CI or an autonomous actor states as the owner; where the start takes the name from; and whether anything checks it (with ⑰, OD-23).
+- (ii) What a project of a run is and what it groups; where the start takes the name from; and whether anything checks it (with ⑰, OD-23).
+- (iii) Whether the start of an instance refuses to begin without an owner or without a project, and what follows for a run whose valid file states none (with ⑰, OD-23).
+
+### Boundaries
+Identity and its check; access, sharing and governance (OD-25, reserved for the repository owner); a lookup of runs by owner or project (no record defines one; the registered index question is sub-question ②, by key, with OD-20); notifications (FR-16, OD-27); the lock of #4 §2e and its `owner` (OD-17); every other member of `instance.json`; the writer and the start of an instance; any tool's contract; any member of `STATE.json`; OD-11. No change to ADR-0001 to ADR-0033, `hilclaw/`, tests, CI, `pyproject.toml`, settings or the data repository.
+
+### Edits of existing documents (same commit)
+- `ARCHITECTURE/Requirements.md`: the OD-8 row only - one clause in the status parenthesis, one passage for the record, and the new sub-question in the list of what is open. 29 OD rows as before; the OD-25 row is untouched (no clause there became less exact).
+- `ARCHITECTURE/OpenDecisionProposals.md`: section OD-8 - the heading note, the "채택분(ADR-0034 …)" bullet after the ADR-0033 one, the sub-question ㉛ bullet after ㉚; section OD-25 - one dated note that the place is fixed and that no proposal of the section is adopted or rejected.
+- `ARCHITECTURE/StandardScenarios.md`: coverage re-check - heading note, a 9th dated passage of 2026-10-09 in the history paragraph, rows S2 and S5. **No verdict changes and no gap**: re-applied to the steps that start an instance or choose its inputs (S0-1 to 3, S1-2, S1-b-2, S2-1, S3-3, S6-1, S8-1) and to those that pick, look up or restore stored runs or cases (S3-1 and 2, S5-1, S6-2, S10-1 and 2); no step gives an instance an owner or a project or leans on either; what a CI states as the owner in S2-1 is ㉛ (i).
+
+### Review rounds (3; fresh-context `dev-reviewer` each, model opus)
+- Round 1: **Approve**, five nits, all fixed: (1) "the form the key records give free text (`label`, `revision`)" - `revision` is a key field, not free text; (2) "compared byte for byte" could be read as a comparison of file bytes (`"A"` against `"A"`) - now "the string after JSON decoding … character for character", mirrored in the Korean row; (3) "`hilclaw/driver_state.py` checks" the `lock.owner` - it does so through `PROCESS/STATE.schema.json`; (4) two unqualified uses of "owner-only"; (5) a verbatim quote attributed to ADR-0001 as well as ADR-0004.
+- Round 2: **Approve**, one nit, fixed: five places in the Korean summaries rendered "whether anything checks it" as "what checks it" (which presumes a checker).
+- Round 3: **Approve**, no findings.
+- All three weighed the weakest point (a meaning without a definition) independently and found it holds: the record says only "the name given at the start, uninterpreted", names the cost, and registers the rest as ㉛. All three read "data-plane schema change" as not applying, and found nothing of OD-25 taken.
+
+### Document checks
+- Session entry: no open PR; #4 (last update 2026-10-01), #7, #8 hold nothing newer; #5's last comment before this task was the ADR-0033 notice (issuecomment-6084225340); no comment without the driver tail speaks of an owner, a project, a username or an account of a run; no objection to ADR-0004, ADR-0018 or ADR-0024. The comments of #4 mention `owner` only in `lock{owner, heartbeat}`.
+- Pairs checked: each decision against #4 §2c (every clause) and the agreed layout, FR-13, NFR-2, NFR-6, C-2, UC-1 step 1 and the actors, S2 step 1, the OD-8 and OD-25 rows, ADR-0001 decision 1 (line 34), ADR-0002 (the *text* form), ADR-0004 (Context line 15; decision 1 path table; decision 4; decision 7 line 124; decision 9 line 139; decision 10), ADR-0010 decisions 7 and 8, ADR-0018 decisions 1, 2, 4 and 6, ADR-0024 decision 3, ADR-0027 decision 3 and Alternatives; code statements against `hilclaw/instance.py` (`_DEFINED`, `others`), `hilclaw/instance_file.py`, `hilclaw/keys.py`, `hilclaw/driver_state.py`, `tests/test_instance.py`.
+- Negative check: no definition, identity, right, policy, grouping, index, writer, tool or lock rule is stated as decided; nothing is attributed to the repository owner.
+- Links in the new record resolve; `git diff origin/main -- ARCHITECTURE/Requirements.md` touches line 95 only; 29 OD rows; `git ls-files --eol` shows `i/lf` for the four files; `git diff --check` clean; `git show --stat` lists only the record and the three documents (200 insertions, 6 deletions); `python -m ruff format --check .` exits 0 (238 files).
+- A correction to the task file: it names ADR-0033 among the Boundaries lists that say "owner and project"; ADR-0033's does not. The lists that do are those of ADR-0012, ADR-0018, ADR-0023, ADR-0028, ADR-0031 and ADR-0032.
+
+### Provisional choices the repository owner may want to revisit (all in the notice)
+- The ASCII-only form: a name in another script (Hangul, for instance) cannot be stated; widening later raises `schema_version`.
+- The name `project` over `projectname`.
+- That a valid file may lack both members.
+
+### Follow-ups
+- (planner, next - code mode, P1-8) The code slice: in `hilclaw/instance.py` the validity of `owner` and `project` by decision 3 and readers of the owner and of the project of a run beside `wall_clock_budget_s_of`, with tests in `tests/test_instance.py` (D12 rules). `hilclaw/keys.py` already holds the check of a *string* in a private helper; whether the slice reuses it is the code task's. Docstring sentences that change: the list of records, "the nine records", the order of the checks, the descriptions of `Instance.others` and of the records in `validate` (which today says "the eight records"). Binding a reader to anything is not in the slice.
+- (integrator) Sentences of earlier records now less exact, not edited: the Boundaries of ADR-0012, ADR-0018, ADR-0023, ADR-0028, ADR-0031 and ADR-0032; the lists of what makes `instance.json` invalid in ADR-0018 decisions 2 and 4 and ADR-0019 decision 3; ADR-0025 decision 2.
+- (driver / owner) Of the seven inputs #4 lists for `instance.json`, the three without a member all wait on the repository owner: `model_ref` (#5 B-5), `target` (#5 A-4), `gates` (#5 A-5), with the token axis (#5 A-8). HQ-0005 is unchanged.
+
+### Note for the next planner
+After the code slice of ADR-0034 no member of `instance.json` is left that a §9 record could take without the repository owner; the next design-level candidates lie outside the member list (the writer and the start of an instance - sub-questions ⑩ and ⑰ with OD-23 -, result files, event kinds) and each is to be judged, not assumed. Process note: keeping the Korean summaries short and deriving them clause by clause from the English record brought the review down to three rounds; the two rounds of nits were about single words ("byte", "what checks" against "whether anything checks").
