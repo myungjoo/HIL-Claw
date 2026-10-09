@@ -2,7 +2,7 @@
 id: T-0101
 title: Carry ADR-0032 into the code (the code slice of its Consequences) - `hilclaw/instance.py` checks the validity of the member `round_budget` (exactly an integer from 1 to 2^53 - 1, no lower end at 5 and no upper end at 10, may be absent) and gains a reader of the round budget a run states beside `candidates_per_round_of` - no default, absent is never "unlimited", no comparison with `STATE.json` or the spend view, bound to no tool and to nothing that ends a run
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-3, FR-13, NFR-2, NFR-7, OD-8]
 dependsOn: [T-0091, T-0099, T-0100]
@@ -135,3 +135,33 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (integrator) The sentences ADR-0032 Consequences lists as "not edited and now less exact".
 
 ## Result
+- **Outcome**: DONE. PR #78 (https://github.com/myungjoo/HIL-Claw/pull/78), squash commit `84e89d3` on `main`. Code mode; the branch was deleted remotely and locally. This task ticks **no** PLAN checkbox (P1-8 stays open).
+- **Language**: Python, because the modules exist in Python.
+- **Review**: 2 rounds, both `Approve` (fresh-context `dev-reviewer` each round).
+  - Round 1 (head `782f799`): no Blocker / Major / Minor; three nits. Nit 1 (edited docstring sentences not re-wrapped) and nit 2 (the two sentences "a value below 5 or above 10 is a value" are literally true only inside the range from 1, since 0 is below 5) were fixed in a second commit, docstrings only: the sentences now name the values 1, 4, 11 and 20. Nit 3 was an observation and is kept: the case id "valid and below the round of the request" of `test_a_file_invalid_by_its_round_budget_alone_is_run_file_invalid` pins that a journaled HW tool call of request round 3 works for a file with `round_budget` 1. It follows ADR-0032 decisions 5 and 6 (the member stops nothing) and adds no rule of counting; **it has to be changed deliberately once OD-19 / OD-8 sub-question 29 (i) is decided**.
+  - Round 2 (head `758384e`): no Blocker / Major / Minor; one nit with no change asked (a short line left in the edited clause of `hilclaw/instance_file.py`; re-wrapping the next sentence would widen the one-clause edit), left as it is.
+  - The reviewers confirmed points (a) to (g) of the task, the planner's judgements and the A-13 reading (no data-plane schema change beyond ADR-0032, no new dependency), and found no sentence that decides anything of Limits, Boundaries or sub-question 29 and none that attributes a choice of the record to the owner.
+- **Public API as landed** (`hilclaw/instance.py`):
+  - `Instance._fields` is `("hw_profile_key", "hw_profile", "tolerance", "source_commit", "n_max", "candidates_per_round", "op_signature", "round_budget", "others")`; `round_budget` is `int | None`; no field has a default.
+  - `round_budget_of(data_root, run_id)`: returns the `round_budget` of what `read` returns, the `int` the file states at that call (1 to `hilclaw.keys.MAX_INTEGER`), or `None` for a valid file without the member. It takes no further argument, has no default, keeps nothing between calls, opens only the instance file and is called from nowhere in the package.
+  - It raises what `read` raises, unchanged: `hilclaw.layout.InvalidPathValueError` (invalid `run_id`), `FileNotFoundError` / `NotADirectoryError` (data root), `MissingInstanceError` (no file), an `OSError` (unreadable), `InvalidInstanceError` (invalid content, a present and invalid `round_budget` included, and a path that is no regular file), `UnsupportedVersionError` (another `schema_version`, reported before the member is looked at).
+  - Message of an invalid member: `round_budget: must be an int from 1 to 9007199254740991, got <type name>` (through `read` it starts with the relative path, `runs/<run_id>/instance.json: `); a refused `int` is not shown, a `str` is shown shortened as every `str`.
+  - `parse` and `validate` keep their signatures; `round_budget` is in `_DEFINED`, so it is no longer in `others`; it is checked after `op_signature` by the private `_round_budget`. `SCHEMA_VERSION` stays 1. The rules, messages and order of the seven existing members are unchanged. No new module-level `int` or `float`.
+  - `hilclaw/instance_file.py`: one docstring clause (the members a valid content may lack now name `round_budget`, attributed to ADR-0032); no statement changed.
+- **Provisional choices** (ADR-0032 Consequences leaves them to the code task; the record and the criteria did not disagree anywhere):
+  - Reader `round_budget_of` and field `round_budget`: the member name with the suffix the other readers have.
+  - The field stands after `op_signature` and before `others`: the order in which the records defined the members; `others` stays last.
+  - "Not stated" is `None`, as for every other optional member; nothing stands in.
+  - The member is checked after `op_signature`: the order of the records.
+  - The message above, a refused `int` not shown and a `str` shown: the manner of `candidates_per_round` and `schema_version`.
+  - `validate` takes exactly an `int` for a value built in memory (a `bool`, a `float` such as `8.0` or an infinity, and a subclass of `int` are none): one spelling per value.
+  - A private check of its own, not a helper shared with `_candidates_per_round`: three statements, and the code of the existing member stays untouched.
+  - Tests only: the order of members is tested by placing the member at each of the 8 positions of two base orders (16 contents) instead of all 40320 permutations of eight members.
+- **Verification**:
+  - Local (Windows), `origin/main` at `746e97b`: `python -m pytest` 10410 passed, 286 skipped. Final head `758384e`: 10675 passed, 288 skipped (the two further skips are the symbolic-link cases of the new reader); `python -m ruff check .` and `python -m ruff format --check .` exit 0. Nothing was installed.
+  - `git diff origin/main --stat` listed only the four files of `touchesFiles`; the diff of `hilclaw/instance_file.py` is inside its module docstring; the grep for imports of `run_state`, `journal` or `spec` in `hilclaw/instance.py` matches docstring lines only; the grep for writes has no match; `round_budget_of` matches its definition and three docstring lines in `hilclaw/`; `git ls-files --eol` shows `i/lf` for the four files.
+  - Size: non-test diff 143 lines added and 44 removed in 2 files (`hilclaw/instance.py` +140 / -42, about 15 of them statement lines; `hilclaw/instance_file.py` +3 / -2), inside the cap of 300 LOC / 5 files. Tests: `tests/test_instance.py` about +780, `tests/test_instance_file.py` +2.
+  - CI on the PR, final head `758384e`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37945405772 : all six checks successful - `Python gate (3.11)` (10963 passed), `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. No CI run failed. Coverage lines of the gate: `lines: 3035/3051 executed = 99.47 (minimum 80)` and `functions: 311/311 entered = 100.00 (minimum 80)`, both in percent.
+  - `push` run on `main` for `84e89d3`: `success`, https://github.com/myungjoo/HIL-Claw/actions/runs/37945750927 .
+- **Issue #5**: no comment after the ADR-0032 notice at the start of the task; no owner objection.
+- **Notes for the planner**: the follow-ups of the task file stand as written. One addition: when OD-19 / OD-8 sub-question 29 (i) is decided, revisit the HW-tool case named under Review round 1. The docstring of `hilclaw/instance.py` is now about 320 lines; a further member will add about 40 more.
