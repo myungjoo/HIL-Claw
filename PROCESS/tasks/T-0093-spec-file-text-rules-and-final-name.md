@@ -2,7 +2,7 @@
 id: T-0093
 title: Carry the reading half of ADR-0029 into the code (first of the two parts of the code slice of its Consequences) - a new module `hilclaw/spec_file.py` that turns the bytes of a spec file into a document by the text rules of decision 2 (the literal `-0` at an integer place included, another `schema_version` set apart) and gives the final name the `id` of a content formats to (decision 3) - writes, reads and creates no file, bound to no tool and no coder call
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-5, FR-6, FR-13, NFR-2, OD-8, OD-6]
 dependsOn: [T-0018, T-0022, T-0092]
@@ -125,3 +125,48 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (integrator) The sentences ADR-0029 Consequences lists as "not edited and now less exact"; the docstring tidies of T-0079, T-0081, T-0087, T-0089 and T-0091.
 
 ## Result
+
+**DONE** - landed on `main` as squash commit `f75fa5d` ("T-0093: Add the text rules of a spec file and the final name of its content (ADR-0029 decisions 2 and 3) (#73)"), PR https://github.com/myungjoo/HIL-Claw/pull/73 (code mode, Draft with `DONOTMERGE`, then ready and squash-merged by the executor per A-13). The remote and the local task branch were deleted in separate commands after the PR state was `MERGED`. This task ticks **no PLAN checkbox** (P1-8 and P1-5 stay open). No new HQ. Wall clock: started 2026-10-09T06:22Z, merged about 06:40Z.
+
+§3-5 check before starting: no commit with `Task: T-0093` on `origin/main`, no PR for T-0093, no open PR - a fresh start. Issue #5: no comment after the ADR-0029 notice (issuecomment-6075251658); no owner objection.
+
+### Files
+- `hilclaw/spec_file.py` (new, 191 lines, 61 statements), `tests/test_spec_file.py` (new, 881 lines, 307 cases), `hilclaw/spec.py` (the last paragraph of the module docstring only: 5 lines in, 3 out). Nothing else changed; `tests/test_spec.py` is unedited and no statement of `hilclaw/spec.py` changed.
+- Non-test diff: 196 insertions, 3 deletions in 2 files (cap 300 LOC / 5 files).
+- Language: Python, because the modules it stands on (`hilclaw.spec`, `hilclaw.layout`) are Python.
+
+### Public API as landed (the write task is written against it)
+- **`parse(content)`** - `content` exactly `bytes`, else `TypeError("content must be bytes, got <type name>")`. Returns the plain `dict` that `json.loads` gives (a new one per call; nothing added, defaulted, normalised or repaired). The written form is not checked: any white space, member order, CR LF and a missing final line feed are accepted.
+- **Order of the checks of `parse`**: (1) the type; (2) the byte order mark - `InvalidSpecFileError("content: starts with a byte order mark")`; (3) the encoding and the JSON text, a member name twice in any object and the tokens `NaN`, `Infinity`, `-Infinity` included - `"content: cannot be read as one JSON text: <reason>"` (reasons of the module: `a JSON object repeats a member name`, `<token> is not a JSON value`), and `"content: is nested too deeply to parse"`; (4) the text is an object - `"content: must be a JSON object, got <type name>"`; (5) the version; (6) `hilclaw.spec.validate` - its `InvalidSpecError` wrapped as `InvalidSpecFileError` with the message unchanged and the original as `__cause__`; (7) the spelling - `"<path>: is written as -0, which is no integer"`, the path in the form `validate` uses (`id.round`, `feedback.attempts[0].round`, `task.op_signature.record.shape.m`), the first `-0` in the order of the text.
+- **`InvalidSpecFileError(ValueError)`** - every invalid content; it is no subclass of `hilclaw.spec.InvalidSpecError`. It is also raised for a text this interpreter cannot read (an over-long integer literal anywhere, nesting too deep), stated in the docstrings as a limit of the reader and no rule of the record.
+- **`UnsupportedVersionError(Exception)`** - no `ValueError`; raised at step 5 when `schema_version` is exactly an `int` from 0 to 2^53 - 1 other than 1 and not written `-0`, before any other member is looked at; message `schema_version: is <N>, not 1`. A `schema_version` written `-0` is invalid (`schema_version: is written as -0, which is no integer`); `"1"`, `1.0`, `true`, `null`, `-1`, 2^53 and an absent one are invalid by `validate` (note: for a content with other members missing, `validate` may name a missing required member before the version).
+- **The free places** are found by path: the top-level `ext`, `task.objective`, `feedback.attempts[i].profile`. Everything else of a valid document is walked, so the `ext`, `host` and `shape` of the embedded records, `task.build`, the refs and `id` are covered. Below the free places nothing is checked beyond JSON: `-0`, `-0.0`, fractions, exponents and integers above 2^53 - 1 come back as `json.loads` reads them; `1e999` is `inf` (convention, as `hilclaw.run_state`); an integer literal longer than the interpreter's digit limit raises `InvalidSpecFileError` (convention; it depends on the interpreter setting - with the limit switched off the same bytes are accepted and three test cases would fail, as the like cases of `tests/test_instance.py` would).
+- **`final_name(data_root, document)`** - validates `document` with `hilclaw.spec.validate` itself (its `InvalidSpecError` passes through unwrapped: the argument is a document, not a content), then returns `hilclaw.layout.attempt_artefact(data_root, id.run_id, id.round, id.candidate, id.attempt, "spec.json")`. Pure; `data_root` is used as given (`TypeError` from `pathlib` for a value that is no path). A valid document whose `id.run_id` is no run directory name raises `hilclaw.layout.InvalidPathValueError` unchanged; `parse` accepts the same content. A document of another `schema_version` gets `InvalidSpecError` here, so a write that wants to report another version by its own class has to call `parse` first.
+- No function takes a path, opens a file or checks the written form. `git grep -n spec_file -- hilclaw` matches the new file and line 24 of `hilclaw/spec.py` only.
+
+### Provisional choices (one line of reason each)
+- Names `spec_file`, `parse`, `final_name`, `InvalidSpecFileError`, `UnsupportedVersionError`: as `hilclaw.instance` and `hilclaw.run_state` name theirs.
+- `parse` returns the plain `dict`: the record defines no view of a spec.
+- Rule breaks of ADR-0002 are wrapped in `parse`: one class says "invalid" for a content, one says "another version".
+- The order of the checks, the rules for the whole text before the version: as `hilclaw.instance`.
+- `-0` as `schema_version` is invalid, not another version: the record takes `-0` as no *integer*.
+- The free places by path and a walk of everything else: every *integer* place is covered without a second list of them (in a document `validate` accepts, every number outside the three places is at an *integer* place).
+- Numbers below the free places as `json.loads` reads them; the over-long literal as a limit of the reader: the convention of the package's other parsers.
+- `final_name` validates itself: no unchecked member (`id.round` as `True` or `"3"`) yields a path.
+- No path: `layout.InvalidPathValueError` passed through - the class of the module that holds the rule; no new class needed.
+- No criterion of the task disagreed with the record.
+
+### Review (2 rounds, context-isolated `dev-reviewer`, Approve)
+- Round 1, Approve with one Minor: the docstring of `InvalidSpecFileError` and the Raises list of `parse` named only the rules of decision 2 although the class also covers the two limits of the reader - fixed in a second commit (docstrings only), hence round 2. Three Info points, recorded above: the interpreter setting; `final_name` and another version; `final_name(...) == path` compares `Path` values as written.
+- Round 2, Approve, nothing to fix in the code. Info: the line count of the PR body (corrected to 196 before the merge); an escaped lone surrogate (`\ud800`) in a *text* member or a free place is accepted by `parse` and gives a `str` that cannot be encoded to UTF-8 - no record has a rule for it, so none was added (it matters only if the write task builds bytes from a document; the reviewer read this from the code and did not run it, and neither did the executor); a content of another version that also holds an over-long integer literal is reported as invalid (it follows from the order of the checks and is pinned by a test).
+- Both rounds confirmed points (a) to (h) of the task and the planner's judgements (the split, no reader of a file, the A-13 reading). No point was read as needing a record or the owner.
+
+### Verification
+- Local `python -m pytest`: 9348 passed, 282 skipped on `origin/main` (`f524d1e`); 9655 passed, 282 skipped on the final head. `python -m ruff check .` and `python -m ruff format --check .` exit 0 (pytest 9.1.1, ruff 0.16.10, Python 3.14.4; nothing installed - `coverage` is not installed in the driver's clone, so the coverage figures are those of CI).
+- `git diff origin/main --stat` listed the three files of `touchesFiles`; the diff of `hilclaw/spec.py` is inside the module docstring; the grep for file operations in `hilclaw/spec_file.py` has no match; `git ls-files --eol` shows `i/lf` for the changed files.
+- CI on the PR, final head `4560bb1`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37894440462 - all six successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. Coverage of the package: lines 2977 of 2993 executed, 99.46 (minimum 80); functions 307 of 307 entered, 100.00 (minimum 80); `hilclaw/spec_file.py` 61 statements, 0 missed. The first head `a21203b` was green too (run 37893853833); no CI run failed.
+- `push` run on `main` for `f75fa5d`: https://github.com/myungjoo/HIL-Claw/actions/runs/37894861167 - conclusion `success`.
+
+### Follow-ups of this task
+- (planner, next) The second part of the slice, as listed under `## Follow-ups` above: `write(data_root, content)` on `parse` and `final_name`. Notes for it: call `parse` before `final_name` so that another version keeps its class; `InvalidPathValueError` is the "no path" case; the written-form check (a final line feed, no carriage return) is still to be added there, as `hilclaw/instance_file.py` has it; the lone-surrogate point matters only if bytes are built from a document.
+- No split was needed: the scope stayed within the cap.
