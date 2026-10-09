@@ -2,7 +2,7 @@
 id: T-0109
 title: Carry ADR-0035 into the code (the code slice of its Consequences) - a new module `hilclaw/standin_profile.py` with one function that returns the hw_profile record of the local `cpu_standin` by decisions 3 to 6 (`revision` is `host`, `toolchain` has the one member `clang` with the first line of `<compiler> --version`, `host.cpu` and `host.os` read from the machine in the one spelling of the record), `hw_source` given by the caller, an unreadable fact an error and never a placeholder - bound to no tool, no start of an instance, no registration and no storage
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, FR-13, FR-14, C-7, OD-4, "#5 A-7"]
 dependsOn: [T-0108]
@@ -118,3 +118,66 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (integrator) The sentences ADR-0035 Consequences lists as "not edited and now less exact".
 
 ## Result
+**DONE** - landed on `main` as squash commit `a8b5593` ("T-0109: Add standin_profile.local_record, the hw_profile record of the local cpu_standin (ADR-0035) (#81)"), PR https://github.com/myungjoo/HIL-Claw/pull/81 (code mode, Draft with `DONOTMERGE`, then ready and squash-merged by the executor; the squash body is the PR body, last line `Task: T-0109`). The remote and the local task branch were deleted in separate commands after the PR reported `MERGED`. **No BLOCKED exit and no new HQ.** This task ticks **no PLAN checkbox**. Wall clock: started 2026-10-09T21:23Z, merged about 22:09Z. This `## Result` is left uncommitted for the driver.
+
+§3-5 check before starting: no commit with `Task: T-0109` on `origin/main`, no PR for T-0109, no open PR - a fresh start. Issue #5: no comment after the ADR-0035 notice (issuecomment-6089042706) at the start, and none at the round-4 review either.
+
+### Files
+`hilclaw/standin_profile.py` (new, 280 lines: 107 statements, the rest docstrings) and `tests/test_standin_profile.py` (new, 1018 lines). Nothing else changed; `hilclaw/clang_build.py`, `hilclaw/keys.py`, `hilclaw/local_run.py` and `pyproject.toml` are untouched.
+
+### Public API as landed
+- `standin_profile.ACCELERATOR` = `"cpu_standin"`, `standin_profile.REVISION` = `"host"`.
+- `standin_profile.local_record(hw_source, *, timeout_s, compiler=None)` returns a new plain `dict` with exactly `schema_version` (`keys.SCHEMA_VERSION`), `accelerator`, `revision`, `toolchain` (`{"clang": <line>}`), `host` (`{"cpu": ..., "os": ...}`) and `hw_source` (the caller's value, unchanged). The key is not returned; `keys.hw_profile_key(record)` gives it.
+- `standin_profile.UnreadableFactError(RuntimeError)`: a fact cannot be read; no record is returned. Messages (the fact, a colon, the reason; no text from a file, a command output or the kernel name): `kernel name: this module has no rule for it`; `kernel name: this platform has no os.uname`; `<fact>: the command of <command> was not found`; `<fact>: <command> could not be started (<OSError class>)`; `<fact>: <command> did not finish within <timeout_s> s`; `<fact>: <command> ended with status <n>`; `<fact>: the value is empty`; `<fact>: the value holds a character outside 0x20 to 0x7E`; `<fact>: the value is longer than 255 characters`; `<fact>: <path> cannot be read (<OSError class>)`; `host.cpu: /proc/cpuinfo has no model name line`; `host.os: /etc/os-release has no ID line`; `host.os: ID` (or `VERSION_ID`) `in /etc/os-release is empty or holds a space or a tab`. The compiler command is shown as `<compiler> --version`, never as its path.
+- Other errors: `keys.InvalidRecordError` for a `hw_source` that is not exactly `external` or `in_house` (same message as `hw_profile_key`), raised first, before anything of the machine is read; `ValueError` for an empty compiler prefix and `TypeError` for a compiler that cannot be iterated, both before the machine is read; what `local_run.run` raises for its arguments (`TypeError` / `ValueError` for `timeout_s` or a prefix part, `OverflowError`) at the first command, after the kernel name was read and before anything is started.
+- Order of reading: kernel name and release (`os.uname`), then `<compiler> --version`, then `host.cpu`, then `host.os`. For a kernel name without a rule nothing is started.
+
+### Finding on `clang_build.compiler_version` against the record (decision 3 asks for it)
+**The two differ, so the module does not call the function.** `compiler_version` decodes with replacement, splits with `str.splitlines` and trims with `str.strip`. Checked with a stub compiler: for a first line holding a form feed, a lone carriage return or U+0085 in the middle it returns the text before that character (a valid-looking string), where decision 6 says the fact cannot be read. For a leading form feed it raises (no version line), which agrees in outcome. The module runs the command through `local_run.run` and applies the line rule and the spelling on the raw bytes. `clang_build.py` was not edited; only `DEFAULT_COMPILER` is used. Where the Consequences sentence ("using `clang_build.compiler_version`") and decision 3 disagree, decision 3 was followed - the one place where a criterion-level sentence and the record differ.
+
+### Provisional choices (each with its reason; all reviewed)
+- Names `standin_profile`, `local_record`, `UnreadableFactError`: the task's recommendations.
+- Return form: the record only - the key is one call of `hw_profile_key` away.
+- `hw_source` checked first - a wrong statement of the caller is reported whatever the machine holds and costs no command.
+- `timeout_s` checked by `local_run.run` at the first command - one check, no copy of it.
+- Kernel name and release from `os.uname()` at each call (`platform.uname()` caches). A platform without `os.uname` (native Windows) is an `UnreadableFactError` for the kernel name.
+- The kernel name is read before the compiler is started (changed in review round 1), so that nothing is started on a platform without a rule.
+- Seam: three private module-level functions the tests replace - `_kernel()`, `_read(path)`, `_run(command, timeout_s)`; no public argument carries a machine fact.
+- Bytes throughout: a byte outside ASCII outside the fact does not matter; one inside makes the fact unreadable; nothing is decoded with replacement.
+- A line ends at a line feed only; one carriage return directly before it is dropped; a carriage return at the end of data without a line feed is a character of the line (unreadable).
+- A timeout, a command that cannot be started (an `OSError`) and a file that exists but cannot be read: the fact cannot be read. The docstring tells these apart from the cases decision 6 lists.
+- An empty file is "no model name line" / "no ID line".
+- os-release quotes, literally: one pair is removed only when the same quote character is the first and the last character of a value of at least two characters. `ID="x` gives `linux "x`; `ID=""x""` gives `linux "x"`; `ID="` gives `linux "`; a trailing space after the value is unreadable.
+- `host.os` is spelt and length-checked as a whole (255 characters apply to the string of the record).
+- `microsoft` is matched with ASCII case folding only.
+- The character range is checked before the length (round 2), so the reason given for a long value outside ASCII is its character.
+
+### For a later record (not decided here)
+- **macOS product version of several words**: the code keeps it as spelt (`macos 0.0 beta`). Decision 4 calls `host.os` "two or three words", while its macOS row and the list of decision 6 give no rule against a version that holds a space. The reviewers read this as a tension inside ADR-0035, not as a choice of this task.
+- Still unchecked on a machine: everything about macOS, WSL 1, containers, a CPU without a `model name` line; a user-built WSL kernel whose release lacks `microsoft`.
+
+### The live case on native Linux (shapes only)
+`test_live_record_of_this_machine_has_the_shapes_of_the_record` ran on the `ubuntu-latest` runners in all three pytest jobs and passed: the CI summary of the final head reads 12238 passed with no skip (on `main` before: 11842 passed), and on CI the case fails instead of skipping when clang is missing. Shapes confirmed on native Linux: the record is accepted by `hw_profile_key`, has exactly the six members, `revision` is `host`, `toolchain` has the one member `clang`, `host` has `cpu` and `os`, `host.os` has two or three words and starts with `linux` or `wsl`. **No difference from the rules of the record was found on native Linux**; no value was printed or recorded. The case reports an `UnreadableFactError` by its message only (no traceback), since a pytest traceback prints the arguments of the failing frame.
+
+### Review rounds (5; fresh-context `dev-reviewer` each, model opus; comments on the PR)
+- Round 1: **Approve**, 2 Minor and 4 Nit. Fixed: the compiler was started before the kernel name was read (order swapped); a docstring item attributed to decision 7 instead of decision 3; the unreadable cases of this task not told apart from those of decision 6, and pass-through errors unlisted; "as in `clang_build.build`" not exact; a test pinning imported module names. Recorded, not changed: the macOS several-word version (above).
+- Round 2: **Approve**, 2 Nit, both fixed: the docstring on a compiler that cannot be iterated; the length check ran before the range check.
+- Round 3: **Request changes**, 1 Major and 2 Nit, all fixed. Major: the live case called `local_record` unguarded, and a pytest traceback prints the arguments of the raising frame - the bytes read from the machine (reproduced by the reviewer with marker values); rounds 1 and 2 had judged this wrongly. Now reported with `pytest.fail(..., pytrace=False)`. Nits: a PR-body quotation of a message; the exception docstring wider than the code.
+- Round 4: **Approve**, 1 Nit (one over-long docstring line), fixed.
+- Round 5: **Approve**, no finding, nothing trivially fixable left.
+- All five agreed with the planner's judgements: selectable without the repository owner; the `compiler_version` difference is real and not calling it follows decision 3; no A-13 reason applies; the program lookup on `PATH` is the trust model `clang_build.build` already has and no security problem. No result started with `SECURITY`.
+
+### Verification
+- Local (Windows clone, no clang, `coverage` not installed - nothing was installed): `python -m pytest` on `origin/main` 11548 passed, 294 skipped; on the final head 11943 passed, 295 skipped (the added skip is the live case, off Linux). `python -m ruff check .` and `python -m ruff format --check .` exit 0 (246 files).
+- `git diff origin/main --stat` listed only the two files; `git grep -n "standin_profile" -- hilclaw` matches the new module only; the import grep has no match; the write / environ grep matches one docstring line only (the word "environment"); `git ls-files --eol` shows `i/lf` for both. Non-test diff: 280 lines in 1 file (cap 300 / 5).
+- CI on the PR, final head `68fe323`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37996939242: all six checks successful (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`). Coverage lines: `lines: 3164/3180 executed = 99.49` and `functions: 327/327 entered = 100.00`; `hilclaw/standin_profile.py` 107 statements, none unexecuted. Five CI runs on the PR, none failed.
+- After the merge: the `push` run on `main` for `a8b5593` concluded `success` (https://github.com/myungjoo/HIL-Claw/actions/runs/37997617035).
+
+### Language
+Python - the modules it builds on (`keys`, `local_run`, `clang_build`) are Python and the function returns a mapping to Python callers.
+
+### Follow-ups
+- (planner, when a caller exists) Whether `clang_build.compiler_version` is kept, changed to the rule of the record or removed; it still has no caller and differs from the record as described above.
+- (planner / integrator, a later record) The macOS several-word version; the unchecked statements (macOS, WSL 1, containers, a WSL kernel without `microsoft`).
+- (planner) Binding the function - a tool, the start of an instance, registration and storage - waits on OD-26 / OD-18; nothing calls `local_record` today.
+- Note for the next planner: one review round went to what a test prints on failure, not to the code. A test that touches a real machine must report failures without a traceback.
