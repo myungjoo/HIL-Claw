@@ -22,11 +22,10 @@ where the product of an m x k and a k x n matrix is an m x n matrix:
 What the module does not do: it builds no spec and no other part of one - no
 ``task`` object, no ``task.objective``, no ``task.build`` and so no build
 setting, no ``hw_profile``, no ``id``, no ``guidance`` and no ``feedback``. It
-does not check
-that the ``task.contract`` of a spec is the one of this record. It knows no
-other contract: no other kind, dtype, layout or language. It reads and writes
-no file, starts no process, stores and registers nothing, is bound to no tool
-and has no command-line entry.
+does not check that the ``task.contract`` of a spec is the one of this record.
+It knows no other contract: no other kind, dtype, layout or language. It reads
+and writes no file, starts no process, stores and registers nothing, is bound
+to no tool and has no command-line entry.
 
 The guarantees and obligations of a call and what the source of a kernel
 provides (decisions 6 and 7) are not represented in any value returned here:
@@ -104,8 +103,7 @@ def task_contract(m, k, n):
     refused one raises :class:`hilclaw.keys.InvalidRecordError` in the same
     way. Nothing is returned then.
     """
-    shape = _shape(m, k, n)
-    m, k, n = shape["m"], shape["k"], shape["n"]
+    _shape(m, k, n)
     return {
         "language": LANGUAGE,
         "prototype": PROTOTYPE,
