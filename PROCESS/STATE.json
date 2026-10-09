@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P0.5",
-  "currentTask": "T-0106",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:632150fd-1",
-    "acquiredAt": "2026-10-09T18:25:35Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -56,19 +52,27 @@
       "question": "The rest of PLAN P1-1 (the contracts of `sim.run` / `board.run` and the second record of `correctness.check`) needs the owner's reading of #5 A-7 against FR-1, FR-9 and FR-10 (OD-18 sub-question 7), for the first backend `cpu_standin` only. A-7 names one \"run\" in its loop; FR-1 has a sim step and a board step, and FR-9 has the correctness check \"at both points\"; `cpu_standin` has one kind of experiment, the compiled kernel run on the CPU. (1) Under which HW tool is that experiment offered: (a) `board.run` only - the backend does not offer `sim.run`; (b) `sim.run` only - it does not offer `board.run`; (c) both, each carrying out the same local run; (d) something else (name it)? (2) If (1) leaves a point the target does not offer (a call there answers the reserved kind `not_offered`, ADR-0016), what does the round loop of FR-1 do: (a) it skips that step and the rules FR-1 gives the remaining point apply unchanged (board only: a failed check drops the candidate, there is no repair return and no promotion filter; sim only: a failed check returns to code generation, and the sim measurement is what the round evaluates and records); (b) it skips that step and the one point takes both roles (a failed check returns to code generation up to the repair bound and then drops the candidate; its measurement is the final one); (c) another rule (name it)? (3) Correctness on `cpu_standin`: (a) one check per attempt, at the one offered point; (b) two checks per attempt, one as the sim-point check and one as the board-point check, also where both are the same local run? If two: does FR-9's \"동일 검증을 반복한다\" mean (i) the same procedure with inputs drawn anew for each check (the reading ADR-0021 decision 3 took), or (ii) the same drawn inputs at both points? (4) The mock backend (FR-10: contract tests): may a run whose hw_profile names the mock be answered by the first case's `correctness.check` contract - the oracle of the HQ-0004 answer, and the `tolerance` member of `instance.json` read with the meaning it has for `cpu_standin` - so that the contract tests of P1-1 run the judging over the mock: (a) yes; (b) no, the mock gets its own rule (name it)? Not asked here: anything about a real simulator or board (#5 B-2, B-3), the promotion rule and k (OD-15, OD-29), the objective (#5 A-4), `profiler.collect`, `blob.push` / `blob.fetch`, budgets and spend (OD-2, OD-19), recovery after a failure (OD-10), and the oracle or tolerance of any other backend beyond (4).",
       "askedAt": "2026-10-09T02:48:50Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6073236975"
+    },
+    {
+      "id": "HQ-0006",
+      "taskId": "T-0106",
+      "reason": "tool-call-failed",
+      "question": "T-0106 (live check of the MCP front, ADR-0010 F10 / OD-18 sub-question 1) needs a `claude -p` child session, and the `claude` 2.1.280 on the PATH of the driver machine is not logged in (\"OAuth session expired and could not be refreshed\"; `claude auth status` reports loggedIn false). Which do you want: (a) you log that command line in (`claude auth login` in a terminal on the driver machine) and the task is run again as written; (b) you make the live check yourself, or name another way of running it; (c) the check is put off and the task is closed without a result?",
+      "askedAt": "2026-10-09T18:30:37Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 109,
+    "iterations": 110,
     "tasksDone": 104,
-    "tasksBlocked": 5,
+    "tasksBlocked": 6,
     "reviewRoundsTotal": 329
   },
   "lastIteration": {
-    "at": "2026-10-09T17:55:19Z",
-    "owner": "AKIHA:abca6cb9-1",
-    "taskId": "T-0105",
-    "outcome": "DONE"
+    "at": "2026-10-09T18:30:37Z",
+    "owner": "AKIHA:632150fd-1",
+    "taskId": "T-0106",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }

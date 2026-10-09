@@ -2,13 +2,13 @@
 id: T-0106
 title: Check the MCP front of the tool layer in a live Claude Code session (ADR-0010 fact F10, OD-18 sub-question 1) with a throwaway `--mcp-config` outside the repository, and record what was observed - and no more - in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: doc
 coversReq: [FR-10, C-7, OD-18]
 dependsOn: [T-0037, T-0038, T-0039, T-0053]
 touchesFiles: [ARCHITECTURE/OpenDecisionProposals.md, ARCHITECTURE/StandardScenarios.md, ARCHITECTURE/Requirements.md]   # Requirements.md only if a sentence of the OD-18 row became false (expected: no edit); no file under hilclaw/, tests/, .github/, .claude/ and no `.mcp.json`
 estimatedSize: {loc: 30, files: 3}   # a dated note and a few narrowed sentences; the fixture of the check is never committed
-hq: []   # a verification of a fact, no decision: nothing of OD-18 is closed, no way of registration is chosen. Guarded exits: BLOCKED if the child session cannot be started without a forbidden or broader permission, and BLOCKED with the HQ question if the finding reopens ADR-0010 decision 3 (an MCP SDK is a new external dependency - the repository owner's)
+hq: [HQ-0006]   # a verification of a fact, no decision: nothing of OD-18 is closed, no way of registration is chosen. Guarded exits: BLOCKED if the child session cannot be started without a forbidden or broader permission, and BLOCKED with the HQ question if the finding reopens ADR-0010 decision 3 (an MCP SDK is a new external dependency - the repository owner's)
 ---
 ## Why
 PLAN P1-1 ("FR-10 도구 계약 인터페이스 + mock 백엔드 + 백엔드 적합성 테스트") is open. ADR-0010 (accepted 2026-10-07, objection window until 2026-10-14) made the stdio **MCP server** the front that agents use and rested that on one fact it could not verify:
@@ -90,3 +90,31 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (planner, not before 2026-10-16 - code mode, no change of behaviour) One helper for the once-only write shared by `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py`.
 
 ## Result
+**BLOCKED** - the error case "`claude` is not logged in" of the Acceptance Criteria. No outcome A, B or C is claimed. Nothing was committed, no branch was created, no document was edited, no review round of a diff ran. This task ticks **no** PLAN checkbox.
+
+**What stopped it.** The `claude` on the PATH of the driver's machine (`C:\Users\myung\.local\bin\claude`, 2.1.280) has no usable login: `claude auth status` reports `"loggedIn": false, "authMethod": "none"`, and the first child session ended with exit status 1 and the result `Failed to authenticate: OAuth session expired and could not be refreshed` (`is_error` true, `apiKeySource` `none`). This is not transient, so the one allowed retry was not spent. Logging in (`claude auth login`) writes the owner's user configuration with the owner's credentials and was not attempted; no API key was set (C-7 ②); nothing else was tried (DRIVER §1-5). The driver's own session is a different installation (the Claude Desktop bundled Claude Code 2.1.293, authenticated by its host), which is why the driver runs while this command line does not.
+
+**HQ question for the owner.** T-0106 (live check of the MCP front, ADR-0010 F10 / OD-18 sub-question 1) needs a `claude -p` child session, and the `claude` 2.1.280 on the PATH of the driver machine is not logged in ("OAuth session expired and could not be refreshed"). Which do you want: (a) you log that command line in (`claude auth login` in a terminal on the driver machine) and the task is run again as written; (b) you make the live check yourself, or name another way of running it; (c) the check is put off and the task is closed without a result?
+
+**Sessions started: 1 of 4** (2026-10-09T18:28:56Z), from the fixture directory as the working directory, with the environment inherited from the executor's session:
+claude -p "Do not call any tool. Reply with the list of every tool name available to you, one per line, and nothing else." --mcp-config fixture.mcp.json --strict-mcp-config --setting-sources project --tools "" --permission-mode dontAsk --no-session-persistence --output-format stream-json --verbose
+- It was the inheritance probe the pre-check reviewer asked for (no tool call, hence no `--allowedTools`). `--setting-sources project` kept the user-level settings out (they hold `defaultMode: auto`, an allow rule for a shell tool and a `SessionEnd` hook - read by the executor to judge what a child inherits; the hook, the allow list and the plugin names were read as well as the permission keys, which is more than the reviewer's condition 8 allows and is disclosed here). `--tools ""` switched the built-in tools off; `--no-session-persistence` kept the transcript off the disk.
+- Its init event: `permissionMode` `dontAsk`; `tools` exactly `mcp__hilclaw__test_echo`, `mcp__hilclaw__test_fail`; `mcp_servers` exactly `hilclaw`, `connected`; no `mcp_server_errors`; `apiKeySource` `none`. No bypass flag, no `claude mcp add`, no settings file edited, no prompt appeared.
+
+**Partial observation (one session that never reached the model; not written into any ARCHITECTURE document, and not a finding of this task).** Conditions: Claude Code 2.1.280, Windows 11 (Git Bash, MSYS 3.6.6), CPython 3.14.4, the server given by `--mcp-config` to one throwaway `-p` session, the fixture launcher calling the unchanged `hilclaw.mcp_front.main(registry=...)` with two fixture tools. Evidence: the launcher's `wire.log.jsonl` unless the init event is named.
+- Before `initialize`, Claude Code sent a request the task did not foresee: `{"id":"server-discover-probe-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28", ...clientInfo, clientCapabilities}}}`. The server answered the JSON-RPC error -32601 `unknown method 'server/discover'` with that id, and the client went on.
+- `initialize`: `protocolVersion` `2025-11-25`, `clientInfo` `{"name":"claude-code","title":"Claude Code","version":"2.1.280", ...}`, capabilities `roots.listChanged` and `elicitation`. The server answered `2025-06-18`; the client sent `notifications/initialized` and went on.
+- `tools/list` came with **no `params` member** (no `cursor`); both tools were listed and the init event shows them as `mcp__hilclaw__test_echo` and `mcp__hilclaw__test_fail` with the server `connected`.
+- The one JSON-RPC error on the wire was the -32601 above; no `"id": null` error occurred. The server ended with status 0 at the end of its input, 0.2 s after its start.
+- **Not shown at all**: any tool call, a tool failure as it reaches the model, how the tool list and a result are shown to the model, the unchanged start command (`unchanged.mcp.json` was written and not used), and everything the task lists under "what it does not show".
+
+**Pre-check consultation (not a review round).** Before any session was started, a fresh-context `dev-reviewer` (`model: opus`) was asked the task's weakest point. Verdict PROCEED with conditions: giving the server by `--mcp-config` to throwaway `-p` sessions is a use of one of the ways of ADR-0010 line 127, not the choice of one for a run (lines 117, 148), and the documents must therefore say "given by `--mcp-config` to throwaway sessions; no way of registration for a run is chosen" and never "no registration"; starting the sessions needs no owner decision under A-13 / DRIVER §3 / §9; conditions: an explicit non-bypass permission mode, an inheritance probe first, no API key, stop at any prompt, no persistence, record what the child inherited. The executor judged the same and held every condition except the disclosed reading of condition 8.
+
+**Document checks.** Landed check: `git log origin/main --grep='^Task: T-0106'` empty, no PR for T-0106. Session-entry check: no open PR; no comment of the owner on #4, #5, #7 or #8 about OD-18, ADR-0010, MCP or the registration (every #5 comment naming them carries the driver trailer). The other document checks do not apply: no file changed. `git status` in the clone showed nothing from the check at any time.
+
+**Fixture.** Left in place because no review cycle ran and the log is the only evidence of the lines above: `C:\Users\myung\AppData\Local\Temp\claude\C--Users-myung-HIL-Claw-driver\632150fd-c750-42e8-8e52-48456e33de8d\scratchpad\t0106-mcp-SXTz0k` (outside both repositories; `launcher.py`, `fixture.mcp.json`, `unchanged.mcp.json`, `wire.log.jsonl`, `dryrun.wire.log.jsonl`, `s1.out.jsonl`, `s1.err.txt`, `s1.started.txt`). It holds no secret. Whoever resumes the task deletes these files by name and the directory with `rmdir`, or builds a new one.
+
+**Follow-ups.**
+- (resume, after the owner's answer) Run the task again as written; the probe may be repeated as session 1. Keep `--setting-sources project`, `--tools ""`, `--permission-mode dontAsk` and `--no-session-persistence`, and add `--allowedTools mcp__hilclaw__test_echo,mcp__hilclaw__test_fail` for the session that calls.
+- (resume) Add `server/discover` to the points to record: with this version the client probes it first, with a protocol revision (`2026-07-28`) later than the one it then asks for in `initialize` (`2025-11-25`), and accepts -32601. Whether a later version does more than accept is unknown.
+- (planner) The task's Required Reading named `claude` 2.1.280 on the PATH but not that it must be logged in; a later task that starts a child session should check `claude auth status` first.
