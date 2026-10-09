@@ -59,7 +59,7 @@
       "reason": "tool-call-failed",
       "question": "T-0106 (live check of the MCP front, ADR-0010 F10 / OD-18 sub-question 1) needs a `claude -p` child session, and the `claude` 2.1.280 on the PATH of the driver machine is not logged in (\"OAuth session expired and could not be refreshed\"; `claude auth status` reports loggedIn false). Which do you want: (a) you log that command line in (`claude auth login` in a terminal on the driver machine) and the task is run again as written; (b) you make the live check yourself, or name another way of running it; (c) the check is put off and the task is closed without a result?",
       "askedAt": "2026-10-09T18:30:37Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6086916123"
     }
   ],
   "counters": {
