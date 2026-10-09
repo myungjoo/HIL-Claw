@@ -57,8 +57,10 @@ Conventions of this module, which the records do not fix:
   the log is then read once more, so that the reader says what is there, and
   only when it goes again in that read the lookup goes on with no line read.
 - Only the reads and the lookup are answered this way: the same classes out
-  of ``before_start`` or out of the step are not, and out of an append they
-  are answered with the kind of the append (below).
+  of ``before_start``, out of the step or out of an append are not. Out of an
+  append an :class:`OSError` and a :class:`hilclaw.events.CorruptEventsError`
+  are answered with the kind of the append (below) and the others pass
+  through.
 - The message of such a failure starts with the path of the file relative to
   the data root, ``runs/<run_id>/STATE.json`` or ``runs/<run_id>/events.ndjson``
   (ADR-0019 decision 6); nothing may depend on the rest of its wording.
