@@ -18,9 +18,11 @@ spec copies the sections of attempt 1. Not inspected: ``task.objective``, the
 members of ``profile``, the values of ``ext``, and the vocabularies of
 ``language``, ``dtype`` and the member names of ``task.build`` and ``ext``.
 
-This module reads and writes no file and builds no spec. The file name and
-location of a spec are not part of it (OD-8), and neither is reading a spec of
-another schema version (OD-11).
+This module reads and writes no file and builds no spec. The path of a spec
+file is ADR-0004's and :mod:`hilclaw.layout` builds it; the text form of the
+file and the final name of a content are ADR-0029's and
+:mod:`hilclaw.spec_file` holds them. Reading a spec of another schema version
+is not part of this module either (OD-11).
 """
 
 import re
