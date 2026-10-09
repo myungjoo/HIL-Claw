@@ -9,6 +9,7 @@ import pytest
 
 from hilclaw import (
     events,
+    instance,
     journal,
     journaled_step,
     keys,
@@ -239,6 +240,27 @@ def test_the_data_root_may_be_a_str(root):
     assert run(str(root), RUN, ID, Step()) == RESULT
     assert run(str(root), RUN, ID, Step()) == RESULT
     assert len(lines(root)) == 2
+
+
+def test_neither_function_reads_the_instance_record(root, monkeypatch):
+    def read(*arguments):
+        raise AssertionError("instance.json must not be read here")
+
+    monkeypatch.setattr(instance, "read", read)
+    assert not (root / f"runs/{RUN}/instance.json").exists()
+    step = Step()
+    assert journaled_step.run(root, RUN, ID, step) == RESULT
+    assert journaled_step.run(root, RUN, ID, step) == RESULT
+    other = ID._replace(execution=2)
+    prepared = []
+    assert (
+        journaled_step.run_prepared(
+            root, RUN, other, step, before_start=lambda: prepared.append(1)
+        )
+        == RESULT
+    )
+    assert (step.calls, prepared) == (2, [1])
+    assert [line["kind"] for line in lines(root)] == ["step_started", "step_ended"] * 2
 
 
 def test_a_second_run_is_untouched_and_has_its_own_identities(root):

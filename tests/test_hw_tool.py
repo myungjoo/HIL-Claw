@@ -2,6 +2,7 @@ import copy
 import inspect
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +13,8 @@ from hilclaw import (
     hw_tool,
     instance,
     journal,
+    keys,
+    layout,
     mcp_front,
     mock_backend,
     run_journal,
@@ -263,7 +266,14 @@ def place(root, content, relative=LOG):
     return path
 
 
+def stamp(**changes):
+    section = {"key": keys.hw_profile_key(record()).name, "record": record()}
+    document = {"schema_version": 1, "hw_profile": section}
+    return json.dumps(document | changes).encode()
+
+
 def store(root, run=RUN):
+    place(root, stamp(), f"runs/{run}/instance.json")
     return place(root, run_state.dump(ROUND, EMPTY), f"runs/{run}/STATE.json")
 
 
@@ -355,6 +365,11 @@ def test_the_order_of_a_call(root, monkeypatch):
     order = tool.order
     selections(monkeypatch, order)
     real_state, real_append = run_journal.read_state, events.append
+    real_stamp = instance.layout_version_of
+
+    def layout_version_of(*args):
+        order.append("stamp")
+        return real_stamp(*args)
 
     def read_state(*args):
         order.append("lookup")
@@ -364,12 +379,14 @@ def test_the_order_of_a_call(root, monkeypatch):
         order.append(kind)
         return real_append(data_root, run_id, kind, data, **numbers)
 
+    monkeypatch.setattr(instance, "layout_version_of", layout_version_of)
     monkeypatch.setattr(run_journal, "read_state", read_state)
     monkeypatch.setattr(events, "append", append)
     assert tool.function(request()) == {"example_member": 1}
     assert order == [
         "check",
         "source",
+        "stamp",
         "lookup",
         "reader",
         "select",
@@ -382,7 +399,7 @@ def test_the_order_of_a_call(root, monkeypatch):
     assert tool.log_at_script == [started()]
     del order[:]
     assert tool.function(request()) == {"example_member": 1}
-    assert order == ["check", "source", "lookup"]
+    assert order == ["check", "source", "stamp", "lookup"]
 
 
 @pytest.mark.parametrize(
@@ -589,9 +606,18 @@ def test_a_run_that_cannot_be_read_is_found_before_the_reader_is_asked(tmp_path)
     with pytest.raises(ToolFailure) as caught:
         tool.function(request())
     assert caught.value.kind == tools.KIND_RUN_FILE_MISSING == "run_file_missing"
-    assert type(caught.value.__cause__) is run_journal.MissingStateError
+    assert type(caught.value.__cause__) is instance.MissingInstanceError
+    assert caught.value.message.startswith(f"{FILE}: is missing")
     assert tool.source.calls == 1 and tool.untouched()
     assert snapshot(tmp_path) == {}
+    place(tmp_path, stamp(), FILE)
+    before = snapshot(tmp_path)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(request())
+    assert caught.value.kind == "run_file_missing"
+    assert type(caught.value.__cause__) is run_journal.MissingStateError
+    assert tool.source.calls == 2 and tool.untouched()
+    assert snapshot(tmp_path) == before
 
 
 # --- the reader ---
@@ -710,6 +736,7 @@ def test_a_data_root_gone_at_the_read_is_said_in_the_message(root):
 
     def reader(data_root, run_id):
         (root / f"runs/{RUN}/STATE.json").unlink()
+        (root / FILE).unlink()
         (root / f"runs/{RUN}").rmdir()
         (root / "runs").rmdir()
         root.rmdir()
@@ -809,17 +836,27 @@ def test_what_is_no_situation_of_the_file_keeps_its_answer_and_can_be_repeated(
 
 
 @by_class
-def test_an_ended_and_an_open_identity_are_answered_without_the_reader(root, error):
+def test_an_ended_and_an_open_identity_are_answered_without_the_reader(
+    root, monkeypatch, error
+):
     assert Tool(root).function(request()) == {"example_member": 1}
     store(root, OTHER_RUN)
     place(root, raw(started()), f"runs/{OTHER_RUN}/events.ndjson")
     before = snapshot(root)
+    stamps, real = [], instance.layout_version_of
+
+    def layout_version_of(data_root, run_id):
+        stamps.append(run_id)
+        return real(data_root, run_id)
+
+    monkeypatch.setattr(instance, "layout_version_of", layout_version_of)
     tool = Tool(root, table=[], profile=error)
     for through in WAYS.values():
         assert through(tool, request()) == (False, {"example_member": 1})
         failed, answer = through(tool, request(run_id=OTHER_RUN))
         assert (failed, answer["error"]["kind"]) == (True, "step_open")
     assert tool.untouched()
+    assert stamps == [RUN, OTHER_RUN] * 4
     assert snapshot(root) == before
 
 
@@ -1125,3 +1162,387 @@ def test_a_parameter_cannot_be_given_by_position_or_left_out():
             tool_function(
                 **{other: value for other, value in given.items() if other != name}
             )
+
+
+# --- the layout version stamp, read before the lookup (ADR-0030) ---
+
+STATE = f"runs/{RUN}/STATE.json"
+
+
+def no_stamp(root, patch):
+    (root / FILE).unlink()
+
+
+def content(made):
+    return lambda root, patch: place(root, made, FILE)
+
+
+def a_directory(root, patch):
+    (root / FILE).unlink()
+    (root / FILE).mkdir()
+
+
+def failing_at_the_bytes(error, *arguments):
+    """The reader of the stamp, with ``Path.read_bytes`` failing during its call only."""
+
+    def change(root, patch):
+        real = instance.layout_version_of
+
+        def read_bytes(path):
+            raise error(*arguments, str(path))
+
+        def reader(data_root, run_id):
+            with patch.context() as inner:
+                inner.setattr(Path, "read_bytes", read_bytes)
+                return real(data_root, run_id)
+
+        patch.setattr(instance, "layout_version_of", reader)
+
+    return change
+
+
+MISSING = ("run_file_missing", instance.MissingInstanceError)
+BROKEN = ("run_file_invalid", instance.InvalidInstanceError)
+OTHER_VERSION = ("run_file_unsupported", instance.UnsupportedVersionError)
+NO_STAMP = {
+    "missing": (no_stamp, *MISSING),
+    "empty": (content(b""), *BROKEN),
+    "partial": (content(stamp()[:40]), *BROKEN),
+    "a-member-that-breaks-its-rule": (
+        content(stamp(tolerance={"rtol": 0.25})),
+        *BROKEN,
+    ),
+    "a-directory": (a_directory, *BROKEN),
+    "version-0": (content(stamp(schema_version=0)), *OTHER_VERSION),
+    "version-2": (content(stamp(schema_version=2)), *OTHER_VERSION),
+    "a-version-that-is-a-string": (content(stamp(schema_version="1")), *BROKEN),
+    "a-version-that-is-a-float": (content(stamp(schema_version=1.0)), *BROKEN),
+    "a-version-that-is-a-boolean": (content(stamp(schema_version=True)), *BROKEN),
+    "unreadable": (
+        failing_at_the_bytes(PermissionError, 13, "Permission denied"),
+        "run_file_unreadable",
+        PermissionError,
+    ),
+    "gone-between-the-check-and-the-read": (
+        failing_at_the_bytes(FileNotFoundError, 2, "No such file or directory"),
+        "run_file_missing",
+        FileNotFoundError,
+    ),
+}
+IDENTITIES = {
+    "no-line": (None, False, {"example_member": 1}),
+    "ended-with-a-result": (
+        raw(started(), ended(result={"example_member": 1})),
+        False,
+        {"example_member": 1},
+    ),
+    "ended-with-a-failure": (
+        raw(started(), ended(failure=FAILURE["error"])),
+        True,
+        FAILURE,
+    ),
+    "open": (raw(started()), True, None),
+}
+each_identity = pytest.mark.parametrize("identity", list(IDENTITIES))
+each_state = pytest.mark.parametrize("state", list(NO_STAMP))
+
+
+def with_identity(root, identity):
+    log = IDENTITIES[identity][0]
+    if log is not None:
+        place(root, log)
+
+
+def recorded(made, label, real):
+    def spy(*arguments, **named):
+        made.append(label)
+        return real(*arguments, **named)
+
+    return spy
+
+
+def reads(monkeypatch, made=None):
+    made = [] if made is None else made
+    spied = {
+        "stamp": (instance, "layout_version_of"),
+        "state": (run_journal, "read_state"),
+        "log": (events, "read"),
+        "append": (events, "append"),
+    }
+    for label, (module, name) in spied.items():
+        monkeypatch.setattr(module, name, recorded(made, label, getattr(module, name)))
+    return made
+
+
+def put_right(root):
+    if (root / FILE).is_dir():
+        (root / FILE).rmdir()
+    place(root, stamp(), FILE)
+
+
+def with_reader(tool, root, reader):
+    return tool_function(
+        tool=TOOL,
+        step=STEP,
+        numbers=NUMBERS,
+        source=lambda: root,
+        table=tool.table,
+        hw_profile_of=reader,
+        check=tool.check,
+        perform=tool.perform,
+    )
+
+
+@each_identity
+@each_state
+def test_a_run_whose_stamp_cannot_be_had_is_answered_before_the_lookup(
+    root, monkeypatch, state, identity
+):
+    change, kind, cause = NO_STAMP[state]
+    with_identity(root, identity)
+    change(root, monkeypatch)
+    before = snapshot(root)
+    made, selected = reads(monkeypatch), selections(monkeypatch)
+    tool = Tool(root)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(request())
+    assert type(caught.value) is ToolFailure
+    assert caught.value.kind == kind and kind in tools.RESERVED_KINDS
+    assert type(caught.value.__cause__) is cause
+    assert caught.value.message.startswith(f"{FILE}: ")
+    assert str(root) not in caught.value.message
+    for through in WAYS.values():
+        assert through(tool, request()) == (True, caught.value.error_object())
+    assert made == ["stamp"] * 5 and selected == []
+    assert tool.source.calls == 5 and tool.untouched()
+    assert snapshot(root) == before
+
+
+@each_identity
+@each_state
+def test_the_same_request_is_answered_as_a_first_call_once_the_stamp_can_be_had(
+    root, monkeypatch, state, identity
+):
+    change, kind, _ = NO_STAMP[state]
+    _, fails, stored = IDENTITIES[identity]
+    with_identity(root, identity)
+    tool = Tool(root)
+    with monkeypatch.context() as patch:
+        change(root, patch)
+        failed, answer = by_call(tool, request())
+        assert (failed, answer["error"]["kind"]) == (True, kind)
+    put_right(root)
+    for through in WAYS.values():
+        failed, answer = through(tool, request())
+        assert failed is fails
+        if identity == "open":
+            assert answer["error"]["kind"] == "step_open"
+        else:
+            assert answer == stored
+    first = int(identity == "no-line")
+    assert (len(tool.read), len(tool.asked), tool.performed) == (first,) * 3
+    if first:
+        assert lines(root) == [started(), ended(result={"example_member": 1})]
+
+
+def test_a_first_call_reads_the_file_for_the_stamp_and_again_in_the_selection(
+    root, monkeypatch
+):
+    read, real = [], instance.read
+
+    def spy(*arguments):
+        read.append(arguments)
+        return real(*arguments)
+
+    monkeypatch.setattr(instance, "read", spy)
+    tool = Tool(root)
+    function = with_reader(tool, root, instance.hw_profile_of)
+    assert function(request()) == {"example_member": 1}
+    assert read == [(root, RUN)] * 2
+    assert tool.seen[0][2] == record()
+    assert function(request()) == {"example_member": 1}
+    assert read == [(root, RUN)] * 3
+    place(root, raw(started()), f"runs/{OTHER_RUN}/events.ndjson")
+    store(root, OTHER_RUN)
+    with pytest.raises(ToolFailure) as caught:
+        function(request(run_id=OTHER_RUN))
+    assert caught.value.kind == "step_open"
+    assert read[3:] == [(root, OTHER_RUN)]
+    assert tool.performed == 1
+
+
+def test_a_file_valid_for_the_stamp_and_not_in_the_selection_is_answered_there(
+    root, monkeypatch
+):
+    made, selected = reads(monkeypatch), selections(monkeypatch)
+    tool = Tool(root)
+
+    def reader(data_root, run_id):
+        place(root, stamp(schema_version=2), FILE)
+        return instance.hw_profile_of(data_root, run_id)
+
+    function = with_reader(tool, root, reader)
+    with pytest.raises(ToolFailure) as caught:
+        function(request())
+    assert caught.value.kind == "run_file_unsupported"
+    assert type(caught.value.__cause__) is instance.UnsupportedVersionError
+    assert caught.value.message.startswith(f"{FILE}: ")
+    assert made == ["stamp", "state", "log"] and selected == []
+    assert tool.untouched() and not (root / LOG).exists()
+    with pytest.raises(ToolFailure) as caught:
+        function(request())
+    assert caught.value.kind == "run_file_unsupported"
+    assert made == ["stamp", "state", "log", "stamp"]
+
+
+@each_way
+def test_a_situation_of_the_stamp_is_answered_before_one_of_the_state(root, way):
+    place(root, b"", STATE)
+    tool = Tool(root)
+    failed, answer = WAYS[way](tool, request())
+    assert (failed, answer["error"]["kind"]) == (True, "run_file_invalid")
+    assert answer["error"]["message"].startswith(f"{STATE}: ")
+    (root / FILE).unlink()
+    before = snapshot(root)
+    failed, answer = WAYS[way](tool, request())
+    assert (failed, answer["error"]["kind"]) == (True, "run_file_missing")
+    assert answer["error"]["message"].startswith(f"{FILE}: ")
+    assert tool.untouched()
+    assert snapshot(root) == before
+
+
+def test_a_refused_request_and_a_failing_source_read_no_file(
+    root, tmp_path, monkeypatch
+):
+    made = reads(monkeypatch)
+    for asked in (request(execution=0), request(example_marker=1)):
+        with pytest.raises(ToolFailure) as caught:
+            Tool(root).function(asked)
+        assert caught.value.kind == "invalid_request"
+    for answer in (tmp_path / "missing", RuntimeError("no configuration")):
+        with pytest.raises(ToolFailure) as caught:
+            Tool(answer).function(request())
+        assert caught.value.kind == "no_data_root"
+    assert made == []
+
+
+def test_the_stamp_is_read_again_at_each_call_and_nothing_is_kept(root, monkeypatch):
+    made = reads(monkeypatch)
+    tool = Tool(root)
+    assert tool.function(request()) == {"example_member": 1}
+    del made[:]
+    changes = [
+        (no_stamp, "run_file_missing"),
+        (content(b"{"), "run_file_invalid"),
+        (content(stamp(schema_version=2)), "run_file_unsupported"),
+    ]
+    for change, kind in changes:
+        change(root, monkeypatch)
+        with pytest.raises(ToolFailure) as caught:
+            tool.function(request())
+        assert caught.value.kind == kind
+    put_right(root)
+    assert tool.function(request()) == {"example_member": 1}
+    assert made == ["stamp"] * 4 + ["state", "log"]
+    assert (len(tool.read), tool.performed) == (1, 1)
+
+
+def test_a_data_root_gone_at_the_read_of_the_stamp_is_said_in_the_message(
+    root, monkeypatch
+):
+    real = instance.layout_version_of
+
+    def reader(data_root, run_id):
+        for name in ("STATE.json", "instance.json"):
+            (root / f"runs/{RUN}/{name}").unlink()
+        for directory in (root / f"runs/{RUN}", root / "runs", root):
+            directory.rmdir()
+        return real(data_root, run_id)
+
+    monkeypatch.setattr(instance, "layout_version_of", reader)
+    tool = Tool(root)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(request())
+    gone = f"{FILE}: is missing: the data root is not an existing directory"
+    assert (caught.value.kind, caught.value.message) == ("run_file_missing", gone)
+    assert type(caught.value.__cause__) is FileNotFoundError
+    assert tool.untouched() and not root.exists()
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(request())
+    assert caught.value.kind == "no_data_root"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [*(error for error, _ in PASSED.values()), *ENDS_THE_PROCESS.values()],
+    ids=[*PASSED, *ENDS_THE_PROCESS],
+)
+def test_what_else_the_read_of_the_stamp_raises_passes_through_as_the_same_object(
+    root, monkeypatch, error
+):
+    def reader(data_root, run_id):
+        raise error
+
+    monkeypatch.setattr(instance, "layout_version_of", reader)
+    before = snapshot(root)
+    made, selected = reads(monkeypatch), selections(monkeypatch)
+    tool = Tool(root)
+    with pytest.raises(type(error)) as caught:
+        tool.function(request())
+    assert caught.value is error and error.__cause__ is None
+    assert made == ["stamp"] and selected == []
+    assert tool.untouched()
+    assert snapshot(root) == before
+
+
+@by_class
+def test_the_same_class_out_of_the_own_check_is_not_answered_with_a_kind(
+    root, monkeypatch, error
+):
+    before = snapshot(root)
+    made = reads(monkeypatch)
+    tool = Tool(root)
+
+    def check(asked):
+        raise error
+
+    function = tool_function(
+        tool=TOOL,
+        step=STEP,
+        numbers=NUMBERS,
+        source=tool.source,
+        table=tool.table,
+        hw_profile_of=tool.reader,
+        check=check,
+        perform=tool.perform,
+    )
+    with pytest.raises(type(error)) as caught:
+        function(request())
+    assert caught.value is error
+    assert made == [] and tool.source.calls == 0 and tool.untouched()
+    assert snapshot(root) == before
+
+
+NO_CONSTANT = object()
+
+
+@pytest.mark.parametrize(
+    "version",
+    [0, 2, "1", None, NO_CONSTANT],
+    ids=["0", "2", "a-string", "null", "no-constant"],
+)
+def test_the_layout_the_source_builds_is_compared_with_nothing(
+    root, monkeypatch, version
+):
+    if version is NO_CONSTANT:
+        monkeypatch.delattr(layout, "LAYOUT_VERSION")
+    else:
+        monkeypatch.setattr(layout, "LAYOUT_VERSION", version)
+    tool = Tool(root)
+    for _ in range(2):
+        assert tool.function(request()) == {"example_member": 1}
+    assert tool.performed == 1
+    place(root, stamp(schema_version=2), FILE)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(request())
+    assert caught.value.kind == "run_file_unsupported"

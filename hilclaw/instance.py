@@ -199,16 +199,25 @@ not check that the tree of the run has the stated layout or which of its
 files exist, and the stamp says nothing about ``db/``, about ``blobs/`` or
 about the content of any other file (decision 2). For a file of another
 ``schema_version`` it has no layout version and infers none: neither that the
-layout differs nor that it is the same. Which tool or component reads the
-stamp, at which moment, and in which order a call reads the files of a run is
-not said here (OD-8 sub-question 22), and :func:`layout_version_of` is bound
-to no tool.
+layout differs nor that it is the same. For a call of a tool whose tool
+function carries out the lookup of a journaled tool or the selection of a HW
+tool about a run, ADR-0030 decision 3 says when the call has the stamp: after
+the data root was obtained and before it uses any other path of that run.
+:func:`hilclaw.journaled_tool.checked_function`, the part the two builders of
+such a tool function share, calls :func:`layout_version_of` for that. Whether
+and at which moment another user of a path of a run has the stamp, and
+whether a source holds the stamp against the layout it builds, is not said
+here (OD-8 sub-question 27), and neither is what states the layout of
+``db/``, of ``blobs/`` and of the rest of the top level (part (ii) of
+sub-question 22).
 It reads no other file, so the stored record of the key below ``db/`` is not
 read or compared (ADR-0018 decision 4) and no reader here needs it to exist; how
 the two records relate is open (OD-8 sub-question 18). None of its errors is a
 :class:`hilclaw.tools.ToolFailure`: the kind a call of a tool answers for them
-is given by the tool function that calls :func:`hw_profile_of`
-(:mod:`hilclaw.hw_tool`, ADR-0019), not here. It reads no other version
+is given by the tool function that calls :func:`hw_profile_of` or
+:func:`layout_version_of` (:mod:`hilclaw.hw_tool`,
+:mod:`hilclaw.journaled_tool`; ADR-0019, ADR-0030), not here. It reads no
+other version
 (OD-11) and says nothing of what writes the file, of when, or of a run
 directory without it (OD-8 sub-questions 10 and 17). Nothing is kept between
 calls, so a file changed between two calls is read as changed (ADR-0018
