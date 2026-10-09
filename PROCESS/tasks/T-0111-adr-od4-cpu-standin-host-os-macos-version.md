@@ -2,7 +2,7 @@
 id: T-0111
 title: Write the ADR that settles the tension inside ADR-0035 decision 4 on the `host.os` of a `cpu_standin` hw_profile under macOS - the sentence "two or three words" against a first line of `sw_vers -productVersion` that holds a space or a tab, for which neither the macOS row nor the list of unreadable facts in decision 6 gives a rule - and names in the limits the WSL kernel whose release lacks `microsoft`; reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, FR-13, FR-14, C-7, OD-4, OD-26, "#5 A-7", "#5 D6"]
 dependsOn: [T-0108, T-0109]
@@ -121,3 +121,65 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (planner - not before 2026-10-16, code mode, no change of behaviour) One shared once-only write helper for the three writers (`key_records`, `instance_file`, `spec_file`).
 
 ## Result
+**DONE** - landed on `main` as commit `588a6db` ("T-0111: Add ADR-0036, the host.os of a cpu_standin hw_profile under macOS when the product version line holds a space or a tab (one point inside the part of OD-4 that ADR-0035 closed)"), document mode, pushed as a fast-forward of `396a2c8`; no PR. The task branch was deleted remotely and locally (separate commands, after the push was confirmed). This task ticks **no PLAN checkbox**. The §9 owner notice **was posted by the executor**, as the spawn prompt asked: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6091146697 (2026-10-09 UTC; objection window until 2026-10-16). **No new HQ** and no BLOCKED exit: neither the executor nor any of the five reviewers read the point as needing the repository owner or a macOS machine. CI: the `push` run on `main` for `588a6db` concluded `success` (https://github.com/myungjoo/HIL-Claw/actions/runs/38005584992). Wall clock: started 2026-10-09T23:23Z, pushed to `main` about 23:40Z. This task file is not part of the landed commit; this `## Result` is left uncommitted for the driver (DRIVER §3-6) - the spawn prompt's "include that edit in your landed commit" was not followed, since the Result holds the commit hash and the CI result, and the task file and the executor definition both say uncommitted.
+
+§3-5 check before starting: no commit with `Task: T-0111` on `origin/main`, no PR for T-0111, no open PR - a fresh start.
+
+### The record
+`ARCHITECTURE/decisions/ADR-0036-od4-cpu-standin-host-os-macos-version.md` (116 lines; ADR-0036 was the next free number). Status: accepted 2026-10-09 (the UTC date of `date -u` at execution) under DRIVER §9 by reviewer approval; settles one point inside the part of the rest of OD-4 that ADR-0035 closed and closes nothing further; the status wording of the OD-4 row is unchanged; OD-26 stays `미착수`; made without a macOS machine; falls with ADR-0035 if that record is reverted. ADR-0035 is not edited.
+
+### The rule as landed, with its moment (alternative (b) of `## Why`)
+- **Scope**: the `host.os` of a hw_profile whose `accelerator` is `cpu_standin`, kernel name `Darwin`, in the case that the first line of the output of `sw_vers -productVersion` holds a space or a tab.
+- **Rule**: a space or a tab in that line is **no** fact that cannot be read. `host.os` is `macos`, one space, and the first line in the spelling of ADR-0035 decision 6, whole.
+- **Moment**: **no check for a space or a tab is made at any moment**, neither before nor after the spelling. Steps: take the first line without its line end; make each run of space and tab characters one space and remove the spaces at both ends; an empty result or a character outside 0x20 to 0x7E is a fact that cannot be read (ADR-0035 decision 6); a result longer than 249 characters gives no record (`host.os` is a *string* of ADR-0001, 255 characters at most); otherwise put `macos` and one space before it.
+- **So**: spaces and tabs at the two ends leave no trace; each run between other characters is one space; a line with several runs keeps all its words; a line `0.0 beta` and a line `0.0`, tab, `beta` give the same `macos 0.0 beta`.
+- **How ADR-0035 is read**: the macOS row and decision 6 as written; the sentence "two or three words joined by single spaces" as a statement of the shapes of the Linux and WSL rows, not as a rule that limits the macOS row. Under macOS it holds when the spelt line has one word or two.
+- **Shapes**: Linux and WSL two or three words; macOS two or more.
+- **Why (b) and not (a)**: the row, its bullet and the spelling ("nothing is cut") agree and the list of decision 6 names its cases one by one; the ground of the `ID` / `VERSION_ID` rule (two machine values side by side, so a space inside one could make two different files give one string - **the record's own reading, ADR-0035 states no reason**) is absent under macOS, where one value follows a fixed word; that rule is applied before the spelling and so cannot be carried over to a command line whose ends the spelling removes without a new moment; and (a) would leave a machine without a record with nothing gained. The record says plainly that the reading is chosen, not found.
+- **Limit named, not decided**: a WSL system whose kernel release does not contain `microsoft` is described as `linux` and shares a key with a native Linux system of equal values; no other way of recognising WSL is chosen or rejected.
+
+### A correction of the task file's own description
+`## Why` gives `0.0 beta` as the line that breaks "two or three words". It does not: `macos 0.0 beta` has three words. **The count is contradicted only by a line the spelling leaves with three or more words** (`0.0 beta 1` gives four). Review round 1 found this in the first draft; the record states it exactly and the rule covers both lines.
+
+### Whether the code agrees
+**It agrees; no change of the code follows and no code task is named.** `hilclaw/standin_profile.py` (the `Darwin` branch) spells the first line, puts `macos` and a space before it and makes no check for a space or a tab. Tests that pin it: `test_macos_branch` (`0.0`), `test_macos_facts_are_spelt_and_later_lines_ignored` (a tab before, two spaces after), `test_macos_version_of_several_words_is_kept` (space, tab, space between `0.0` and `beta`), `test_macos_command_that_cannot_be_read` (no output, an empty first line, a first line of spaces and tabs only), `test_macos_host_os_length_limit` (249 against 250 characters). **No test pins a line left with three or more words**; the code has no branch on the number of words.
+
+### Left open
+Everything under Boundaries of the record: any fact about what macOS prints and whether the case occurs; any other source of the macOS version; telling WSL 1 from WSL 2 and any other way of recognising an environment; onboarding and a re-check of the machine (OD-26, rest of OD-4); any tool. **No question was registered and no new OD number or sub-question was created.**
+
+### Provisional choices the repository owner may want to revisit (all in the notice)
+- The reading itself: (b) kept-whole against (a) unreadable.
+- That the point was settled without a macOS machine.
+- The acceptance date: 2026-10-09, the UTC date at execution.
+
+### Edits of existing documents (same commit)
+- `ARCHITECTURE/Requirements.md`: the OD-4 row, one clause after the passage on ADR-0035; status wording kept; the OD-26 row untouched; 29 OD rows as before.
+- `ARCHITECTURE/OpenDecisionProposals.md`: section OD-4 - one clause in the heading note and one "채택분(ADR-0036 ...)" bullet; the ADR-0035 bullet unchanged (the rule does not change what it says); no proposal text deleted.
+- `ARCHITECTURE/StandardScenarios.md`: coverage re-check - the heading note and an 11th dated passage of 2026-10-09 in the history paragraph; no row edited. **No verdict changes and no gap**: re-applied to the same three groups as the 10th passage (HW onboarding S0-1, S1-1, S1-b-1 and 3; the choice of a hw_profile S0-1, S1-2, S1-b-2, S2-1, S6-1, S8-1; lookups by hw_profile key S0-3, S5-1, S6-1 and 2, S9-4, S10-3 and 4, S1-b-4).
+
+### Review rounds (5; fresh-context `dev-reviewer` each, model opus)
+- Round 1: **Request changes**, 1 Minor and 2 Nit, fixed. Minor: "Under macOS it holds exactly when the spelt line is one word" was false (one word or two), and the tension was shown with `0.0 beta`, which does not contradict the count; one Korean clause carried the same overstatement. Nits: the length case missing from the list of steps; the branch commit body (completed in the landing commit).
+- Round 2: **Approve**, 2 Nit, fixed: the length step was cited to ADR-0035 decisions 4 and 6 instead of ADR-0001 decision 1; the labels (a) and (c) of the alternatives had no meaning inside the record.
+- Round 3: **Request changes**, 1 Minor and 2 Nit, fixed. Minor: "its tests pin the cases of the Walk-through that matter" - no test pins a line of three or more words; the sentence now lists what each test pins. Nits: a quotation of the T-0109 heading; the 250-character row without its character range.
+- Round 4: **Approve**, 1 Nit, fixed: "through it" was inexact for ADR-0001 decision 4, which the record cites directly.
+- Round 5: **Approve**, no finding, nothing trivially fixable left.
+- All five agreed with the planner's judgements: design-level and not owner-only; **it can be settled without a macOS machine** (a conditional rule that states no fact about macOS); worth a record; no A-13 reason applies. No result started with `SECURITY`.
+
+### Document checks
+- Session entry (2026-10-09T23:23Z, before the first edit): no open PR; #4 (last comment 2026-07-31), #7 (2026-09-07) and #8 (2026-10-03) hold nothing newer; #5's last comment was the ADR-0035 notice (issuecomment-6089042706), 68 comments; the only comments without the driver tail that match `macOS`, `mac`, `sw_vers`, `host.os`, `ADR-0035` or `ADR-0001` are B-6 and A-7, neither of which speaks of a version string; no objection to ADR-0035 or ADR-0001. Checked again before the notice: still 68 comments.
+- Pairs checked: the rule against ADR-0035 decision 4 (the sentence above the table, the macOS row, the `ID` / `VERSION_ID` paragraph, the "macOS" bullet, the listed shapes), decision 6 (the line, the spelling, the list of unreadable facts, "Nothing is substituted", "The property meant", "What was checked and what was not"), decision 7, decision 1 ("a record `hw_profile_key` accepts"), its Walk-through and Alternatives; against ADR-0001 decision 1 (the *string*) and decision 4 (byte-equal canonical forms). Quotations were compared word for word by the reviewers.
+- Code statements checked against `hilclaw/standin_profile.py` (`_OS_COMMAND`, the `Darwin` branch, `_command_line`, `_spelling`) and the five tests named above plus the live case; `git grep` finds no reader of a part of `host.os` in `hilclaw/`.
+- Statements about macOS: only the quotation of ADR-0035 decision 6 ("taken from documentation"); none added. The WSL case is marked "whether and when that occurs was not checked".
+- Negative check: no fact about a real macOS version, no other source of the version, no other recognition of WSL, no registry or tool, no change of an earlier record, nothing attributed to the repository owner.
+- Links in the new record and the edited lines resolve; `git diff origin/main -- ARCHITECTURE/Requirements.md` touches the OD-4 row only; 29 OD rows; `git ls-files --eol` shows `i/lf` for the four files; `git diff --check` clean; `git show --stat` lists only the record and the three documents (121 insertions, 4 deletions); `python -m ruff format --check .` exits 0 (251 files). The rebase onto `origin/main` changed nothing (`main` had not moved).
+- A note on size: the record has 116 lines against "about 70-110"; the reviewers took it as within the cap.
+
+### Follow-ups
+- (planner, optional - code mode, tiny) A test of `hilclaw/standin_profile.py` that pins a macOS line left with three or more words (`macos 0.0 beta 1`), the one case where ADR-0036 and a literal reading of "two or three words" differ; no change of the module is needed.
+- (planner, candidate after this - document mode, §9 route) Whether an op_signature of the contract of ADR-0008 may hold a dimension of 0 (T-0110 `## Result`).
+- (planner / integrator, a later record) Another way of recognising WSL (the kernel without `microsoft`), WSL 1 against WSL 2, and the macOS statements once a macOS machine is at hand.
+- (integrator) Not edited and now read with ADR-0036: the sentence above the table in ADR-0035 decision 4, and its decision 7; the OD-26 row and the S1 row cite ADR-0035 alone for "which spelling".
+- (driver / owner) HQ-0005, HQ-0006 and HQ-0007 are untouched by this task.
+
+### Note for the next planner
+The task file's own example of the contradiction was off by one word; a planner's worked example should be counted before it is written into `## Why`. Two of five rounds again went to single sentences that said more than the files carry (a word count, what the tests pin).
