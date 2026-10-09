@@ -62,8 +62,8 @@ def check_run_id(value):
 
     A ``run_id`` is a ``str`` that matches ``[a-z0-9][a-z0-9_-]{0,63}`` as a
     whole. Only this constraint is checked: the form of an id that a component
-    of the system builds (ADR-0027 decision 2, built by :mod:`hilclaw.run_id`)
-    is no rule of validity and is not checked here (ADR-0027 decision 1).
+    of the system builds (ADR-0027 decision 2; :mod:`hilclaw.run_id` writes
+    that form) is no rule of validity and is not checked here (decision 1).
     Raises :class:`InvalidPathValueError` otherwise.
     """
     if type(value) is not str or not _RUN_ID.fullmatch(value):

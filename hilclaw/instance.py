@@ -82,15 +82,15 @@ Conventions of this module, which the six records do not fix:
   tolerance, and that is no error of the content.
 - What is a value of ``source_commit`` is ADR-0022 decision 3 and not a
   convention: a string of exactly 40 or exactly 64 characters, each one of
-  ``0``-``9`` and ``a``-``f``, so either length is a value. The conventions
+  ``0``-``9`` and ``a``-``f``. Either length is a value: the module does not
+  know or check which of the two the source repository uses. The conventions
   are that a value built in memory must be exactly a ``str``, that the
   characters themselves are compared with the sixteen ASCII ones, so a digit
-  of another script is none, that the module does not know or check which of
-  the two lengths the source repository uses, that the one rule is reported
-  as a whole, and that a ``str`` that breaks it is shown as every ``str`` is,
-  a long one shortened. The source commit is handed out as the ``str`` of the
-  file, unchanged. That a content without the member states no source commit,
-  and that this is no error of the content, is ADR-0022 decision 5 and not a
+  of another script is none, that the one rule is reported as a whole, and
+  that a ``str`` that breaks it is shown as every ``str`` is, a long one
+  shortened. The source commit is handed out as the ``str`` of the file,
+  unchanged. That a content without the member states no source commit, and
+  that this is no error of the content, is ADR-0022 decision 5 and not a
   convention; the convention is that it has ``None`` in that place.
 - What is a value of ``n_max`` is ADR-0023 decision 3 and not a convention:
   an integer from 5 to :data:`hilclaw.keys.MAX_INTEGER`, both included, so
