@@ -2,7 +2,7 @@
 id: T-0094
 title: Carry the write half of ADR-0029 into the code (second of the two parts of the code slice of its Consequences) - a function `write(data_root, content)` in `hilclaw/spec_file.py` that puts a valid content of version 1 under the path its `id` formats to by the steps of decisions 4 to 7 (the content first, a new temporary file beside the final name, a flush, a last step that cannot replace and has no fallback, a taken name reported apart from an `OSError`) - reads no file, creates nothing of `output/`, bound to no tool and no coder call
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-5, FR-6, FR-13, NFR-1, NFR-2, OD-8, OD-6]
 dependsOn: [T-0083, T-0092, T-0093]
@@ -125,3 +125,55 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (integrator) The sentences ADR-0029 Consequences lists as "not edited and now less exact"; the docstring tidies of T-0079, T-0081, T-0087, T-0089 and T-0091.
 
 ## Result
+
+**DONE** - landed on `main` as squash commit `fa59657` ("T-0094: Add the write of a spec file by the steps of ADR-0029 decisions 4 to 7 (#74)"), PR https://github.com/myungjoo/HIL-Claw/pull/74 (code mode, Draft with `DONOTMERGE`, then ready and squash-merged by the executor per A-13; the squash message is the PR body and ends with `Task: T-0094`). The remote and the local task branch were deleted in separate commands after the PR state was `MERGED`. This task ticks **no PLAN checkbox** (P1-8 and P1-5 stay open). No new HQ. Wall clock: started 2026-10-09T07:23Z, merged about 07:47Z, `push` run on `main` finished 07:50Z.
+
+§3-5 check before starting: no commit with `Task: T-0094` on `origin/main`, no PR for T-0094, no open PR - a fresh start. Issue #5: no comment after the ADR-0029 notice (issuecomment-6075251658); no owner objection.
+
+### Files
+- `hilclaw/spec_file.py` (353 lines after the change, 100 statements: `write`, `WrittenFormError`, `NameTakenError`, the module docstring), `tests/test_spec_file.py` (116 new cases, three landed tests adapted), `hilclaw/spec.py` (one sentence of the last paragraph of the module docstring: "the text form of the file, the final name of a content and the write of the file are ADR-0029's"). Nothing else changed; `hilclaw/instance_file.py`, `hilclaw/key_records.py`, `hilclaw/layout.py` and `tests/test_instance_file.py` are unedited and no statement of `hilclaw/spec.py` changed.
+- Non-test diff: 179 insertions, 17 deletions in 2 files (cap 300 LOC / 5 files). Test file: 747 insertions, 4 deletions.
+- Language: Python, because the module it extends and the modules it stands on (`hilclaw.spec`, `hilclaw.layout`) are Python.
+
+### Public API as landed
+- **`write(data_root, content)`** returns `None`; no default argument. `content` is the whole file as `bytes` and is written as given. The final name is `final_name(data_root, parse(content))` and nothing else; the function takes no tuple, no `run_id` and no path.
+- **Order of the checks**: (1) `parse(content)` - `TypeError`, `InvalidSpecFileError` and `UnsupportedVersionError` pass through unchanged (another version is not written); (2) `final_name` - `hilclaw.layout.InvalidPathValueError` for a valid content whose `id.run_id` is no run directory name, and the `TypeError` of `pathlib` for a `data_root` that is no path; (3) the written form - `WrittenFormError("content: does not end with a line feed")`, then `WrittenFormError("content: holds a carriage return byte")`; (4) `data_root` - `FileNotFoundError` or `NotADirectoryError` with the message `data root is not an existing directory: <root>`; (5) the file system. Nothing is created before step 5.
+- **Step 5**: `path.parent.mkdir(parents=True, exist_ok=True)`; the temporary file `spec.json.<pid>-<16 hexadecimal characters>.tmp` in the attempt directory, opened with mode `"xb"`; `write`, `flush`, `os.fsync`; `os.link(temporary, final)`; removal of the temporary name. No `os.replace`, no `os.rename`, no fallback. The final name is never opened; no directory is listed.
+- **`NameTakenError(Exception)`** (no `OSError`, no `ValueError`) when `os.link` raises `FileExistsError`; message `<file relative to the data root, POSIX form>: the name is taken; the content was not written`. The same report for equal bytes, other bytes, an invalid or empty file, a directory and a symbolic link. The temporary file is removed; nothing is retried.
+- **`WrittenFormError(ValueError)`**, no `InvalidSpecFileError`. Both new classes are the module's own, not those of `hilclaw.instance_file`.
+- **Failures of a step**: the `OSError` passes through as the same object (a temporary name in use is a `FileExistsError` and that file stays; a file in the place of a directory is an `OSError` of `mkdir`). The temporary file this call created is removed after any exception before the name is given, a `BaseException` included; a removal that fails is suppressed and does not replace the failure. After the link, a removal that fails is no failure and the temporary name stays as a second name of the file.
+- **What stays after a failure**: the directories the write created; no temporary file where the removal was possible; the final name as it was.
+- `parse`, `final_name`, `InvalidSpecFileError` and `UnsupportedVersionError` are unchanged. `git grep -n spec_file -- hilclaw` matches `hilclaw/spec_file.py` and line 24 of `hilclaw/spec.py` only: nothing calls `write`.
+
+### Provisional choices (one line of reason each)
+- `write(data_root, content)` returning `None`, bytes in and written as given: as `hilclaw.instance_file.write`; no bytes are built, so no rule for a document that cannot be encoded (the lone-surrogate note of T-0093) is needed.
+- No tuple, `run_id` or path argument: decision 3 gives a write no other final name and no caller exists.
+- Order of the checks, "no path" before "not in the written form": both belong to the content and the path is part of validity by decision 2; a `data_root` that is no path comes with the path because `final_name` builds it.
+- What `parse` and `final_name` raise passes through: no new class for a case that has one.
+- The classes are the module's own: those of `hilclaw.instance_file` name ADR-0018 and its file.
+- The written form as a final line feed and no carriage return byte: as `hilclaw.instance_file`.
+- The message of a taken name names the file relative to the data root.
+- `os.link` plus removal, not a non-replacing rename: the standard library has no portable one, and it is the landed technique.
+- `<token>` as the process id, a hyphen and 16 random hexadecimal characters; the mode of the new file as the process gives it.
+- Created directories stay after a failure: removing them would need a look at what else is in them.
+- No helper shared with `hilclaw.instance_file` or `hilclaw.key_records`: it would edit two landed modules inside their objection windows.
+- `test_no_file_is_opened` was renamed `test_parse_and_final_name_open_no_file` (body unchanged) so that its name says which functions it is about; `test_the_public_names_and_the_call_forms` now takes the public names as those defined in the module, because the module imports `Path`.
+- No criterion of the task disagreed with the record.
+
+### Review (3 rounds, context-isolated `dev-reviewer`, Approve, Approve, Approve)
+- Round 1, Approve (issuecomment-6076573040), one Nit: the module docstring said the write requires neither the presence nor the absence of "any directory", wider than decision 5 and the code (the data root must exist) - fixed in commit `e56e599` (docstring only). Info: the changed filter of the public-names test (added to the PR body); the test file imports `hilclaw.instance_file` for two class-identity assertions; a `BaseException` in the clean-up after a taken name replaces `NameTakenError` (the death case of decision 7, as the landed model); the document is validated twice (`parse`, then `final_name`, which is unchanged).
+- Round 2, Approve (issuecomment-6076655539), one Nit: "creates nothing named `output`" was wider than decision 6 and the code - `output` is a valid run directory name, so a content whose `id.run_id` is `output` gets `runs/output/` created - fixed in commit `d328225` (docstring only: "no `output` in the attempt directory of the final name"). The wording came from this task file; the behaviour was right.
+- Round 3, Approve (issuecomment-6076728315), no Blocker, Major, Minor or Nit. Info, not changed: one short line in the reflowed docstring paragraph; "nothing else is required" has the two stated exceptions (a file in the place of a directory, a temporary name in use), as decision 5's own sentence has; the `created` flag is set in the statement after `open` returns, so an interrupt between the two leaves the temporary file (the final name untouched; `hilclaw/instance_file.py` has the same form).
+- All three rounds confirmed points (a) to (i) and the planner's judgements (bytes in, the A-13 reading, no shared helper). No point was read as needing a record or the owner.
+
+### Verification
+- Local `python -m pytest` (Windows, Python 3.14.4, pytest 9.1.1, ruff 0.16.10; nothing installed): 9655 passed, 282 skipped on `origin/main` (`32ba34b`); 9769 passed, 284 skipped on the final head (the two new skips are the symbolic-link cases, which Windows cannot make here). `python -m ruff check .` and `python -m ruff format --check .` exit 0, before the first commit and before the merge.
+- `git diff origin/main --stat` listed the three files of `touchesFiles`; the diff of `hilclaw/spec.py` is one docstring line; the grep for replacing, reading and listing calls in `hilclaw/spec_file.py` has no match at all; `git ls-files --eol` shows `i/lf` for the changed files.
+- CI on the PR, final head `d328225`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37900489416 - all six successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. Coverage of the package: lines 3016 of 3032 executed, 99.47 (minimum 80); functions 308 of 308 entered, 100.00 (minimum 80); `hilclaw/spec_file.py` 100 statements, 0 missed. The head `e56e599` was green too (run 37899969006); no CI run failed.
+- `push` run on `main` for `fa59657`: https://github.com/myungjoo/HIL-Claw/actions/runs/37901113833 - conclusion `success`.
+
+### Follow-ups of this task
+- The code slice of ADR-0029 is complete: `hilclaw/spec_file.py` holds decisions 2 to 7 as far as one content and one write show them. Nothing binds `write` to a tool, a coder call or a caller (OD-23, OD-18; sub-question 26 of OD-8).
+- (planner, candidate) One helper for the once-only write shared by `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py` (code mode, no change of behaviour): about 25 statement lines are now repeated three times. Only after the objection windows of ADR-0025 (2026-10-15) and ADR-0029 (2026-10-16), or with a note of the risk. The round-3 note on the `created` flag would be settled once for the three writers there.
+- (integrator, docstring tidy) The short line in the last paragraph of the module docstring of `hilclaw/spec_file.py`.
+- The other follow-ups are those listed under `## Follow-ups` above (HQ-0005, PLAN P1-5, PLAN P0.5-4, the sentences ADR-0029 Consequences lists as less exact). No split was needed: the scope stayed within the cap.
