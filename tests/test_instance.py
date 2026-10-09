@@ -1,4 +1,5 @@
 import ast
+import datetime
 import inspect
 import io
 import itertools
@@ -45,6 +46,7 @@ from hilclaw.instance import (
     source_commit_of,
     tolerance_of,
     validate,
+    wall_clock_budget_s_of,
 )
 from hilclaw.journal import EMPTY
 from hilclaw.tools import Registry, ToolFailure
@@ -224,6 +226,7 @@ def test_the_public_names():
         "source_commit_of",
         "tolerance_of",
         "validate",
+        "wall_clock_budget_s_of",
     ]
     assert SCHEMA_VERSION == 1
     assert Instance._fields == (
@@ -235,6 +238,7 @@ def test_the_public_names():
         "candidates_per_round",
         "op_signature",
         "round_budget",
+        "wall_clock_budget_s",
         "others",
     )
     assert Tolerance._fields == ("rtol", "atol")
@@ -256,6 +260,7 @@ def test_the_public_names():
         candidates_per_round_of,
         op_signature_of,
         round_budget_of,
+        wall_clock_budget_s_of,
         layout_version_of,
     ):
         parameters = inspect.signature(function).parameters
@@ -270,7 +275,9 @@ def test_a_minimal_content_gives_the_key_and_the_record():
     result = parse(raw(doc()))
 
     assert type(result) is Instance
-    assert result == Instance(KEY, record(), None, None, None, None, None, None, {})
+    assert result == Instance(
+        KEY, record(), None, None, None, None, None, None, None, {}
+    )
     assert type(result.hw_profile) is dict
     assert key_of(result.hw_profile) == result.hw_profile_key
     assert validate(doc()) is None
@@ -282,7 +289,7 @@ def test_a_record_with_its_optional_fields():
     result = parse(raw(doc(profile)))
 
     assert result == Instance(
-        key_of(profile), profile, None, None, None, None, None, None, {}
+        key_of(profile), profile, None, None, None, None, None, None, None, {}
     )
     assert result.hw_profile_key == key_of(record(ext={"example_field": 3}))
     assert result.hw_profile_key != KEY
@@ -327,7 +334,9 @@ OTHERS = {
 def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     result = parse(raw(doc(**OTHERS)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, None, None, OTHERS)
+    assert result == Instance(
+        KEY, record(), None, None, None, None, None, None, None, OTHERS
+    )
     assert list(result.others) == list(OTHERS)
     assert validate(doc(**OTHERS)) is None
 
@@ -747,6 +756,7 @@ def test_a_content_with_the_member_states_the_two_values():
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.tolerance) is Tolerance
@@ -821,7 +831,16 @@ def test_any_order_of_the_members_of_a_tolerance(content):
     result = parse(content)
 
     assert result == Instance(
-        KEY, record(), Tolerance(TEST_RTOL, TEST_ATOL), None, None, None, None, None, {}
+        KEY,
+        record(),
+        Tolerance(TEST_RTOL, TEST_ATOL),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        {},
     )
 
 
@@ -864,7 +883,9 @@ def test_another_version_is_reported_before_a_tolerance_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_tolerance(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, None, None, others)
+    assert result == Instance(
+        KEY, record(), None, None, None, None, None, None, None, others
+    )
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(tolerance=TOLERANCE, **others)))
@@ -1118,7 +1139,7 @@ def test_a_content_with_the_member_states_that_string(commit):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), None, commit, None, None, None, None, {"example": [1]}
+        KEY, record(), None, commit, None, None, None, None, None, {"example": [1]}
     )
     assert type(result.source_commit) is str
     assert "source_commit" not in result.others
@@ -1167,6 +1188,7 @@ def test_any_order_of_the_three_members_and_the_version(order):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
         None,
         None,
         None,
@@ -1261,7 +1283,9 @@ def test_another_version_is_reported_before_a_source_commit_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_source_commit(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, None, None, others)
+    assert result == Instance(
+        KEY, record(), None, None, None, None, None, None, None, others
+    )
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(source_commit=OTHER_COMMIT, **others)))
@@ -1574,7 +1598,7 @@ def test_a_content_with_the_member_states_that_bound(bound):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), None, None, bound, None, None, None, {"example": [1]}
+        KEY, record(), None, None, bound, None, None, None, None, {"example": [1]}
     )
     assert type(result.n_max) is int
     assert "n_max" not in result.others
@@ -1625,6 +1649,7 @@ def test_any_order_of_the_four_members_and_the_version(order):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
         None,
         None,
         None,
@@ -1709,7 +1734,9 @@ def test_another_version_is_reported_before_a_bound_is_looked_at(version, bound)
 def test_a_top_level_member_of_another_name_states_no_bound(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, None, None, others)
+    assert result == Instance(
+        KEY, record(), None, None, None, None, None, None, None, others
+    )
     assert result.n_max is None
     assert validate(doc(**others)) is None
 
@@ -1805,6 +1832,7 @@ def test_what_is_no_value_of_the_bound(literal):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
         None,
         None,
         None,
@@ -2018,7 +2046,7 @@ def test_a_content_with_the_member_states_that_number(count):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), None, None, None, count, None, None, {"example": [1]}
+        KEY, record(), None, None, None, count, None, None, None, {"example": [1]}
     )
     assert type(result.candidates_per_round) is int
     assert "candidates_per_round" not in result.others
@@ -2071,6 +2099,7 @@ def test_any_order_of_the_five_members_and_the_version(order):
         COMMIT,
         BOUND,
         COUNT,
+        None,
         None,
         None,
         {},
@@ -2180,7 +2209,9 @@ def test_another_version_is_reported_before_the_number_of_candidates_is_looked_a
 def test_a_top_level_member_of_another_name_states_no_number(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, None, None, others)
+    assert result == Instance(
+        KEY, record(), None, None, None, None, None, None, None, others
+    )
     assert result.candidates_per_round is None
     assert validate(doc(**others)) is None
 
@@ -2285,6 +2316,7 @@ def test_what_is_no_value_of_the_number_of_candidates(literal):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
         None,
         None,
         None,
@@ -2563,6 +2595,7 @@ def test_a_content_with_the_member_states_that_key_and_that_record(case):
         None,
         OpSignature(op_key_of(stated_record), stated_record),
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.op_signature) is OpSignature
@@ -2612,6 +2645,7 @@ def test_any_order_of_the_six_members_and_the_version():
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
         None,
         {},
     )
@@ -2802,7 +2836,9 @@ def test_another_version_is_reported_before_the_op_signature_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_op_signature(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, None, None, others)
+    assert result == Instance(
+        KEY, record(), None, None, None, None, None, None, None, others
+    )
     assert result.op_signature is None
     assert validate(doc(**others)) is None
 
@@ -3319,7 +3355,7 @@ def test_the_reader_returns_the_record_the_file_embeds(tmp_path, root):
         read(root, RUN)
         == parse(content)
         == Instance(
-            KEY, record(), None, None, None, None, None, None, {"example": [1, 2]}
+            KEY, record(), None, None, None, None, None, None, None, {"example": [1, 2]}
         )
     )
     assert type(read(root, RUN)) is Instance
@@ -3870,7 +3906,7 @@ def test_no_member_of_a_file_with_an_invalid_candidates_per_round_is_used(
     assert candidates_per_round_of(root, RUN) == COUNT
 
     place(root, counted(literal, *more))
-    assert candidates_per_round_of in READERS and len(READERS) == 9
+    assert candidates_per_round_of in READERS and len(READERS) == 10
     for call in READERS:
         invalid(f"{FILE}: {NO_COUNT}", call, root, RUN)
 
@@ -4029,7 +4065,7 @@ def test_no_member_of_a_file_with_an_invalid_op_signature_is_used(root, value):
 
     document["op_signature"] = value
     place(root, raw(document))
-    assert op_signature_of in READERS and len(READERS) == 9
+    assert op_signature_of in READERS and len(READERS) == 10
     for call in READERS:
         invalid(f"{FILE}: op_signature", call, root, RUN)
 
@@ -4254,6 +4290,7 @@ READERS = [
     candidates_per_round_of,
     op_signature_of,
     round_budget_of,
+    wall_clock_budget_s_of,
     layout_version_of,
 ]
 
@@ -4349,6 +4386,14 @@ INVALID_FILES = {
     "a round_budget that is no integer": (
         raw(doc(**OP_MEMBERS, round_budget=8.0)),
         "round_budget: must be",
+    ),
+    "a wall_clock_budget_s of 0": (
+        raw(doc(wall_clock_budget_s=0)),
+        "wall_clock_budget_s: must be",
+    ),
+    "a wall_clock_budget_s that is a string": (
+        raw(doc(**OP_MEMBERS, round_budget=1, wall_clock_budget_s="8h")),
+        "wall_clock_budget_s: must be",
     ),
 }
 
@@ -4913,7 +4958,7 @@ def test_a_content_with_the_member_states_that_round_budget(budget):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, budget, {"example": [1]}
+        KEY, record(), None, None, None, None, None, budget, None, {"example": [1]}
     )
     assert type(result.round_budget) is int
     assert "round_budget" not in result.others
@@ -4967,6 +5012,7 @@ def test_any_place_of_the_round_budget_among_the_other_members(index):
         COUNT,
         OpSignature(OP_KEY, op_record()),
         BUDGET,
+        None,
         {},
     )
 
@@ -5112,7 +5158,9 @@ def test_another_version_is_reported_before_the_round_budget_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_round_budget(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), None, None, None, None, None, None, others)
+    assert result == Instance(
+        KEY, record(), None, None, None, None, None, None, None, others
+    )
     assert result.round_budget is None
     assert validate(doc(**others)) is None
 
@@ -5204,6 +5252,7 @@ def test_what_is_no_value_of_the_round_budget(literal):
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
         None,
         {"example": [1]},
     )
@@ -5498,7 +5547,7 @@ def test_no_member_of_a_file_with_an_invalid_round_budget_is_used(root, literal)
     assert_the_other_members_are_stated(root)
 
     place(root, budgeted(literal, *EVERY_MEMBER_TEXT))
-    assert round_budget_of in READERS and len(READERS) == 9
+    assert round_budget_of in READERS and len(READERS) == 10
     for call in READERS:
         invalid(f"{FILE}: {NO_BUDGET}", call, root, RUN)
 
@@ -5571,6 +5620,758 @@ def test_a_file_invalid_by_its_round_budget_alone_is_run_file_invalid(
         "run_file_invalid",
         InvalidInstanceError,
         "round_budget: must be an int from 1 to",
+    )
+    assert kinds(root) == []
+
+    place(root, raw(repaired))
+    assert tool.function(dict(REQUEST)) == {"example_member": 1}
+    assert kinds(root) == ["step_started", "step_ended"]
+    assert (len(tool.asked), tool.performed) == (1, 1)
+    assert [seen for _, _, seen in tool.asked] == [record()]
+
+
+# --- happy: the member wall_clock_budget_s (ADR-0033) ---
+
+# Test values of a wall-clock budget, in seconds: neither is a default, recommended or typical value.
+SECONDS, OTHER_SECONDS = 754, 13007
+NO_SECONDS = f"wall_clock_budget_s: must be an int from 1 to {MAX}, got "
+SECONDS_MEMBER = f'"wall_clock_budget_s": {SECONDS}'
+ALL_BUT_SECONDS = {**EVERY_MEMBER, "round_budget": BUDGET}
+ALL_BUT_SECONDS_TEXT = (*EVERY_MEMBER_TEXT, BUDGET_MEMBER)
+STATED_BESIDE_THE_SECONDS = (
+    KEY,
+    record(),
+    Tolerance(TEST_RTOL, TEST_ATOL),
+    COMMIT,
+    BOUND,
+    COUNT,
+    OpSignature(OP_KEY, op_record()),
+    BUDGET,
+)
+EVENTS_FILE = f"runs/{RUN}/events.ndjson"
+
+
+def timed(literal, *more):
+    return text(VERSION, SECTION, f'"wall_clock_budget_s": {literal}', *more)
+
+
+def assert_the_members_beside_the_seconds_are_stated(root, run=RUN):
+    assert_the_other_members_are_stated(root, run)
+    assert round_budget_of(root, run) == BUDGET
+
+
+@pytest.mark.parametrize(
+    "seconds",
+    [1, 59, 60, 3600, 5400, 28800, 86400, 2**31, 2**32 + 1, MAX - 1, MAX],
+)
+def test_a_content_with_the_member_states_that_wall_clock_budget(seconds):
+    document = doc(wall_clock_budget_s=seconds, example=[1])
+
+    result = parse(raw(document))
+
+    assert result == Instance(
+        KEY, record(), None, None, None, None, None, None, seconds, {"example": [1]}
+    )
+    assert type(result.wall_clock_budget_s) is int
+    assert "wall_clock_budget_s" not in result.others
+    assert validate(document) is None
+    assert parse(timed(str(seconds))).wall_clock_budget_s == seconds
+
+
+def test_both_ends_of_the_wall_clock_budget_are_inclusive_and_nothing_ends_it_between():
+    assert MAX == 2**53 - 1
+
+    for seconds in (1, 2, 59, 86400, 86401, 10**12, MAX):
+        assert parse(timed(str(seconds))).wall_clock_budget_s == seconds
+        assert validate(doc(wall_clock_budget_s=seconds)) is None
+    for seconds in (0, MAX + 1):
+        assert invalid(NO_SECONDS, parse, timed(str(seconds))) == NO_SECONDS + "int"
+        document = doc(wall_clock_budget_s=seconds)
+        assert invalid(NO_SECONDS, validate, document) == NO_SECONDS + "int"
+    invalid(NO_SECONDS, parse, timed("9007199254740992"))
+    assert parse(timed("9007199254740991")).wall_clock_budget_s == MAX
+
+
+@pytest.mark.parametrize(
+    "members", [{}, EVERY_MEMBER, ALL_BUT_SECONDS, {"round_budget": 1}], ids=repr
+)
+def test_a_content_without_the_member_states_no_wall_clock_budget(members):
+    without = parse(raw(doc(**members)))
+    stated = parse(raw(doc(**members, wall_clock_budget_s=SECONDS)))
+
+    assert without.wall_clock_budget_s is None
+    assert stated.wall_clock_budget_s == SECONDS
+    assert without[:8] == stated[:8]
+    assert without.round_budget == members.get("round_budget")
+    assert without.others == stated.others == {}
+    assert validate(doc(**members)) is None
+
+
+@pytest.mark.parametrize("index", range(9))
+def test_any_place_of_the_wall_clock_budget_among_the_other_members(index):
+    expected = Instance(*STATED_BESIDE_THE_SECONDS, SECONDS, {})
+
+    for others in (
+        [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER],
+        [BUDGET_MEMBER, OP_SECTION, *COUNTED_MEMBERS[::-1]],
+    ):
+        members = [*others[:index], SECONDS_MEMBER, *others[index:]]
+        assert parse(text(*members)) == expected
+        assert validate(json.loads(text(*members))) is None
+
+
+def test_white_space_of_json_around_the_wall_clock_budget_is_not_part_of_the_value():
+    content = text(VERSION, SECTION, f'\r\n\t"wall_clock_budget_s" :\n {SECONDS} \n')
+
+    assert parse(content).wall_clock_budget_s == SECONDS
+
+
+# The Example of ADR-0033, as written in the record: the shape of the member, not a valid file.
+EXAMPLE_OF_ADR_0033 = b"""{
+  "schema_version": 1,
+  "hw_profile": {
+    "key": "cpu_standin-b0d8610d8f470856",
+    "record": {
+      "schema_version": 1,
+      "accelerator": "cpu_standin",
+      "revision": "NOT-DECIDED-HERE",
+      "toolchain": {"clang": "NOT-DECIDED-HERE"},
+      "host": {"cpu": "NOT-DECIDED-HERE", "os": "NOT-DECIDED-HERE"},
+      "hw_source": "NOT-DECIDED-HERE"
+    }
+  },
+  "op_signature": {
+    "key": "gemm-485b9bc494d477eb",
+    "record": {
+      "schema_version": 1,
+      "kind": "gemm",
+      "shape": {"m": 1, "k": 2048, "n": 8192},
+      "dtype": "fp32",
+      "layout": "row_major"
+    }
+  },
+  "tolerance": {"rtol": 1e-4, "atol": 0.01},
+  "source_commit": "0123456789abcdef0123456789abcdef01234567",
+  "n_max": 10,
+  "candidates_per_round": 2,
+  "round_budget": 8,
+  "wall_clock_budget_s": 5400
+}
+"""
+
+
+def test_the_member_of_the_example_of_adr_0033():
+    invalid("hw_profile.record.hw_source: must be ", parse, EXAMPLE_OF_ADR_0033)
+
+    result = parse(
+        EXAMPLE_OF_ADR_0033.replace(EXAMPLE_SOURCE, b'"hw_source": "in_house"')
+    )
+    assert result.wall_clock_budget_s == 5400
+    assert type(result.wall_clock_budget_s) is int
+    assert result.round_budget == 8
+    assert result.candidates_per_round == 2
+    assert result.n_max == 10
+    assert result.source_commit == COMMIT
+    assert result.tolerance == Tolerance(0.0001, 0.01)
+    assert result.op_signature == OpSignature(EXAMPLE_OP_KEY, example_op())
+    assert result.others == {}
+
+    silent = parse(
+        EXAMPLE_OF_ADR_0032.replace(EXAMPLE_SOURCE, b'"hw_source": "in_house"')
+    )
+    assert silent.wall_clock_budget_s is None
+    assert silent[:8] == result[:8]
+
+
+# --- branch: the member wall_clock_budget_s ---
+
+
+@pytest.mark.parametrize(
+    "budget, seconds",
+    [
+        (1000, 1),
+        (1, MAX),
+        (MAX, 1),
+        (MAX, MAX),
+        (1, 1),
+        (8, 5400),
+        (None, SECONDS),
+        (BUDGET, None),
+        (None, None),
+    ],
+)
+def test_the_two_budget_members_do_not_bound_each_other(root, budget, seconds):
+    stated = {"round_budget": budget, "wall_clock_budget_s": seconds}
+    document = doc(
+        **{name: value for name, value in stated.items() if value is not None},
+        candidates_per_round=MAX,
+        n_max=5,
+    )
+
+    result = parse(raw(document))
+
+    assert (result.round_budget, result.wall_clock_budget_s) == (budget, seconds)
+    assert validate(document) is None
+    place(root, raw(document))
+    assert round_budget_of(root, RUN) == budget
+    assert wall_clock_budget_s_of(root, RUN) == seconds
+
+
+BROKEN_SECONDS = [None, True, 0, -5400, 5400.0, "5400", "8h", [5400], {}, MAX + 1]
+
+
+@pytest.mark.parametrize("version", [0, 2, MAX])
+@pytest.mark.parametrize("seconds", [*BROKEN_SECONDS, SECONDS], ids=repr)
+def test_another_version_is_reported_before_the_wall_clock_budget_is_looked_at(
+    version, seconds
+):
+    document = doc(schema_version=version, wall_clock_budget_s=seconds)
+
+    for function, argument in ((parse, raw(document)), (validate, document)):
+        with pytest.raises(UnsupportedVersionError) as caught:
+            function(argument)
+        assert str(caught.value) == f"schema_version: {version} is not supported"
+
+
+@pytest.mark.parametrize(
+    "others",
+    [
+        {"wall_clock_budget": SECONDS},
+        {"wall_clock_s": SECONDS},
+        {"wallclock_budget_s": SECONDS},
+        {"time_budget": SECONDS},
+        {"wall_clock_budget_seconds": SECONDS},
+        {"Wall_clock_budget_s": SECONDS},
+        {"WALL_CLOCK_BUDGET_S": SECONDS},
+        {"wall-clock-budget-s": SECONDS},
+        {"wall_clock_budget_s ": 0},
+        {"deadline": SECONDS},
+        {"timeout_s": SECONDS},
+        {"duration_s": SECONDS},
+        {"max_wall_clock_s": SECONDS},
+        {"budget": SECONDS},
+        {"budget": {"wall_clock_budget_s": SECONDS, "wall_clock_s": SECONDS}},
+        {
+            "wall_clock_budget": "8h",
+            "wall_clock_s": 0,
+            "time_budget": "PT90M",
+            "deadline": None,
+            "timeout_s": -1,
+            "budget": True,
+        },
+    ],
+    ids=repr,
+)
+def test_a_top_level_member_of_another_name_states_no_wall_clock_budget(others):
+    result = parse(raw(doc(**others)))
+
+    assert result == Instance(
+        KEY, record(), None, None, None, None, None, None, None, others
+    )
+    assert result.wall_clock_budget_s is None
+    assert validate(doc(**others)) is None
+
+    result = parse(raw(doc(wall_clock_budget_s=OTHER_SECONDS, **others)))
+    assert result.wall_clock_budget_s == OTHER_SECONDS
+    assert result.others == others
+
+
+@pytest.mark.parametrize(
+    "place, changes",
+    [
+        ("hw_profile: must be", {"hw_profile": None, "wall_clock_budget_s": 0}),
+        (
+            "document: lacks the member hw_profile",
+            {"hw_profile": REMOVE, "wall_clock_budget_s": True},
+        ),
+        (
+            "hw_profile.key: ",
+            {"hw_profile": section(key=OTHER_KEY), "wall_clock_budget_s": "8h"},
+        ),
+        ("tolerance: must be", {"tolerance": None, "wall_clock_budget_s": None}),
+        (
+            NO_COMMIT + "str 'main'",
+            {"source_commit": "main", "wall_clock_budget_s": 0},
+        ),
+        (NO_BOUND + "int", {"n_max": 4, "wall_clock_budget_s": 0}),
+        (NO_COUNT + "int", {"candidates_per_round": 0, "wall_clock_budget_s": 0}),
+        (
+            "op_signature: must be an object, got NoneType",
+            {"op_signature": None, "wall_clock_budget_s": 0},
+        ),
+        (NO_BUDGET + "int", {"round_budget": 0, "wall_clock_budget_s": 0}),
+        (
+            NO_BUDGET + "float",
+            {**EVERY_MEMBER, "round_budget": 8.0, "wall_clock_budget_s": "5400"},
+        ),
+        (NO_SECONDS + "int", {**ALL_BUT_SECONDS, "wall_clock_budget_s": 0}),
+        (NO_SECONDS + "bool", {"wall_clock_budget_s": False}),
+    ],
+)
+def test_the_first_broken_rule_is_reported_with_a_wall_clock_budget(place, changes):
+    document = doc(**changes)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+# --- error / negative: the member wall_clock_budget_s ---
+
+NO_SECONDS_LITERALS = {
+    "true": "bool",
+    "false": "bool",
+    "null": "NoneType",
+    '"5400"': "str '5400'",
+    '"1"': "str '1'",
+    '""': "str ''",
+    '"8h"': "str '8h'",
+    '"PT90M"': "str 'PT90M'",
+    '"PT8H"': "str 'PT8H'",
+    '"unlimited"': "str 'unlimited'",
+    "[5400]": "list",
+    "[]": "list",
+    '{"value": 8, "unit": "h"}': "dict",
+    "{}": "dict",
+    "5400.0": "float",
+    "5.4e3": "float",
+    "5.4E3": "float",
+    "54e2": "float",
+    "1.0": "float",
+    "1.5": "float",
+    "0.5": "float",
+    "1e999": "float",
+    "-0.0": "float",
+    "-0": "int",
+    "0": "int",
+    "-1": "int",
+    "-5400": "int",
+    "9007199254740992": "int",
+    "9007199254740993": "int",
+    "10000000000000000000000": "int",
+}
+
+
+@pytest.mark.parametrize("literal", NO_SECONDS_LITERALS)
+def test_what_is_no_value_of_the_wall_clock_budget(literal):
+    content = timed(literal, *ALL_BUT_SECONDS_TEXT, '"example": [1]')
+
+    expected = NO_SECONDS + NO_SECONDS_LITERALS[literal]
+    assert invalid(NO_SECONDS, parse, content) == expected
+    invalid(NO_SECONDS, validate, json.loads(content))
+    kept = parse(text(VERSION, SECTION, *ALL_BUT_SECONDS_TEXT, '"example": [1]'))
+    assert kept == Instance(*STATED_BESIDE_THE_SECONDS, None, {"example": [1]})
+
+
+WALK_THROUGH_OF_ADR_0033 = [
+    '"5400"',
+    '"PT90M"',
+    "5400.0",
+    "5.4e3",
+    "1.5",
+    "-5400",
+    "0",
+    "null",
+    "true",
+    "[5400]",
+    "9007199254740992",
+]
+
+
+@pytest.mark.parametrize("literal", WALK_THROUGH_OF_ADR_0033)
+def test_the_invalid_files_of_the_walk_through_of_adr_0033(literal):
+    invalid(
+        "wall_clock_budget_s: must be", parse, timed(literal, *ALL_BUT_SECONDS_TEXT)
+    )
+    kept = parse(text(VERSION, SECTION, *ALL_BUT_SECONDS_TEXT))
+    assert kept[:8] == STATED_BESIDE_THE_SECONDS
+    assert kept.wall_clock_budget_s is None
+    for name in ("wall_clock_budget", "wall_clock_s", "time_budget"):
+        silent = parse(text(VERSION, SECTION, f'"{name}": 5400'))
+        assert silent.wall_clock_budget_s is None
+        assert silent.others == {name: 5400}
+    found = parse(timed("5400", *ALL_BUT_SECONDS_TEXT))
+    assert (found.round_budget, found.wall_clock_budget_s) == (BUDGET, 5400)
+
+
+def test_minus_zero_is_refused_as_the_integer_0_below_the_lower_end_of_the_seconds():
+    assert invalid(NO_SECONDS, parse, timed("-0")) == NO_SECONDS + "int"
+    assert invalid(NO_SECONDS, parse, timed("0")) == NO_SECONDS + "int"
+
+
+JSON_TYPES = (bool, int, float, str, type(None))
+LOOSER_SECONDS_RULES = {
+    "isinstance(value, int)": (
+        lambda value: isinstance(value, int) and 1 <= value <= MAX,
+        [True, Number(5400), Number(1), Number(MAX)],
+    ),
+    "a float equal to an integer": (
+        lambda value: float(value).is_integer() and value >= 1,
+        [5400.0, 1.0, 5.4e3, float(2**40)],
+    ),
+    "a string of digits": (
+        lambda value: 1 <= int(value) <= MAX,
+        ["5400", " 60 ", "5_400", "+5400", 5400.9, 1.5, True, Number(5400)],
+    ),
+    "a duration string": (
+        lambda value: re.fullmatch(r"PT\d+[HMS]|\d+[hms]", value) is not None,
+        ["PT90M", "PT8H", "PT5400S", "8h", "90m", "5400s"],
+    ),
+    "an amount of time of the standard library": (
+        lambda value: value.total_seconds() >= 1,
+        [datetime.timedelta(seconds=5400), datetime.timedelta(hours=8)],
+    ),
+    "a sign of no limit": (
+        lambda value: value in (None, 0, math.inf, "unlimited", ""),
+        [None, 0, 0.0, False, float("inf"), "unlimited", ""],
+    ),
+}
+
+
+@pytest.mark.parametrize("rule", LOOSER_SECONDS_RULES)
+def test_a_wall_clock_budget_a_looser_rule_would_accept_is_refused(rule):
+    looser, values = LOOSER_SECONDS_RULES[rule]
+
+    for value in values:
+        assert looser(value)
+        expected = NO_SECONDS + type(value).__name__
+        invalid(expected, validate, doc(wall_clock_budget_s=value))
+        if type(value) in JSON_TYPES and value != math.inf:
+            invalid(expected, parse, raw(doc(wall_clock_budget_s=value)))
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        (SECONDS_MEMBER, SECONDS_MEMBER),
+        (SECONDS_MEMBER, f'"wall_clock_budget_s": {OTHER_SECONDS}'),
+        (SECONDS_MEMBER, '"wall_clock_budget_s": 0'),
+        ('"wall_clock_budget_s": true', SECONDS_MEMBER),
+    ],
+)
+def test_the_member_name_wall_clock_budget_s_twice_at_the_top_level(members):
+    message = invalid(
+        "content: cannot be read as one JSON text",
+        parse,
+        text(VERSION, SECTION, *members),
+    )
+    assert "a JSON object repeats a member name" in message
+
+
+def test_a_wall_clock_budget_too_long_for_the_interpreter_is_a_text_error():
+    message = invalid(
+        "content: cannot be read as one JSON text",
+        parse,
+        timed(TOO_LONG_TEXT),
+    )
+    assert "wall_clock_budget_s" not in message
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        True,
+        False,
+        5400.0,
+        1.0,
+        float("inf"),
+        float("-inf"),
+        float("nan"),
+        Number(5400),
+        Number(1),
+        Number(0),
+        TOO_LONG,
+        -TOO_LONG,
+        "5400",
+        "8h",
+        "unlimited",
+        None,
+        b"5400",
+        (5400,),
+        {5400},
+        range(5400),
+        datetime.timedelta(seconds=5400),
+    ],
+    ids=shown,
+)
+def test_validate_refuses_a_wall_clock_budget_built_in_memory(value):
+    document = doc(wall_clock_budget_s=value)
+
+    message = invalid(NO_SECONDS + type(value).__name__, validate, document)
+
+    if type(value) is not str:
+        assert message == NO_SECONDS + type(value).__name__
+
+
+def test_a_refused_wall_clock_budget_is_not_shown_and_a_string_is():
+    for seconds in (0, -1, -7, MAX + 1):
+        message = invalid(NO_SECONDS, validate, doc(wall_clock_budget_s=seconds))
+        assert message == NO_SECONDS + "int"
+        assert not message.endswith(str(seconds))
+
+    message = invalid(NO_SECONDS, validate, doc(wall_clock_budget_s="8" * 200))
+    assert message == NO_SECONDS + "str " + reprlib.repr("8" * 200)
+    assert len(message) < 130
+
+
+def test_a_check_of_a_wall_clock_budget_modifies_nothing():
+    for document in (
+        doc(wall_clock_budget_s=SECONDS),
+        doc(wall_clock_budget_s=0),
+        doc(wall_clock_budget_s=5400.0),
+        doc(**ALL_BUT_SECONDS, wall_clock_budget_s="8h"),
+    ):
+        kept = json.dumps(document)
+        valid = document["wall_clock_budget_s"] == SECONDS
+        assert accepted(validate, document) == valid
+        assert json.dumps(document) == kept
+
+
+# --- no substitute: nothing of the module stands in for the wall-clock budget ---
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        doc(),
+        doc(**EVERY_MEMBER),
+        doc(**ALL_BUT_SECONDS),
+        doc(round_budget=MAX),
+        doc(wall_clock_budget=5400),
+        doc(budget={"wall_clock_budget_s": 5400}, time_budget="8h", timeout_s=60),
+    ],
+    ids=repr,
+)
+def test_a_content_without_the_member_states_no_wall_clock_budget_and_no_number(
+    document,
+):
+    result = parse(raw(document))
+
+    assert result.wall_clock_budget_s is None
+    assert result._asdict()["wall_clock_budget_s"] is None
+    assert validate(document) is None
+
+
+def test_nothing_of_the_module_stands_in_for_the_wall_clock_budget():
+    functions = [
+        value
+        for value in vars(instance).values()
+        if inspect.isfunction(value) and value.__module__ == instance.__name__
+    ]
+    assert wall_clock_budget_s_of in functions
+    for function in functions:
+        assert function.__defaults__ is None and function.__kwdefaults__ is None
+    assert Instance._field_defaults == {}
+    imported = set()
+    for node in ast.walk(ast.parse(inspect.getsource(instance))):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+    parts = {part for name in imported for part in name.split(".")}
+    assert "keys" in parts
+    assert not parts & {
+        "time",
+        "datetime",
+        "calendar",
+        "run_state",
+        "journal",
+        "run_journal",
+        "events",
+        "run_id",
+    }
+    assert not {"time", "datetime", "events", "run_id", "wall_clock_budget_s"} & set(
+        vars(instance)
+    )
+
+
+# --- the reader of the wall-clock budget (ADR-0033) ---
+
+
+def test_the_reader_returns_the_wall_clock_budget_the_file_states(tmp_path, root):
+    place(root, raw(doc(**ALL_BUT_SECONDS, wall_clock_budget_s=SECONDS, example=[1])))
+    before = snapshot(tmp_path)
+
+    found = wall_clock_budget_s_of(root, RUN)
+
+    assert found == SECONDS and type(found) is int
+    assert found == read(root, RUN).wall_clock_budget_s
+    assert wall_clock_budget_s_of(str(root), RUN) == found
+    assert_the_members_beside_the_seconds_are_stated(root)
+    assert snapshot(tmp_path) == before
+
+    for seconds in (1, 59, 60, 3600, 5400, 28800, 86400, MAX):
+        place(root, raw(doc(wall_clock_budget_s=seconds)))
+        assert wall_clock_budget_s_of(root, RUN) == seconds
+        assert type(wall_clock_budget_s_of(root, RUN)) is int
+
+
+def test_a_run_without_the_member_states_no_wall_clock_budget(
+    tmp_path, root, monkeypatch
+):
+    others = {
+        "wall_clock_budget": SECONDS,
+        "wall_clock_s": SECONDS,
+        "wallclock_budget_s": SECONDS,
+        "time_budget": SECONDS,
+        "budget": {"wall_clock_budget_s": SECONDS},
+        "deadline": "2026-01-01T00:00:00Z",
+        "timeout_s": SECONDS,
+    }
+    place(root, raw(doc(**ALL_BUT_SECONDS, **others)))
+    place(root, raw(doc(wall_clock_budget_s=OTHER_SECONDS)), OTHER_FILE)
+    place(root, run_state.dump(12, EMPTY), STATE_FILE)
+    place(root, b'{"time": "2026-01-01T00:00:00Z"}\n', EVENTS_FILE)
+    for name in ("WALL_CLOCK_BUDGET_S", "HILCLAW_WALL_CLOCK_BUDGET_S", "TIMEOUT"):
+        monkeypatch.setenv(name, str(SECONDS))
+    before = snapshot(tmp_path)
+
+    found = wall_clock_budget_s_of(root, RUN)
+
+    assert found is None
+    for stand_in in (28800, 5400, 3600, 1, 0, math.inf, BUDGET, SECONDS):
+        assert found != stand_in
+    assert read(root, RUN).wall_clock_budget_s is None
+    assert read(root, RUN).others == others
+    assert_the_members_beside_the_seconds_are_stated(root)
+    assert wall_clock_budget_s_of(root, OTHER_RUN) == OTHER_SECONDS
+    assert wall_clock_budget_s_of(root, RUN) is None
+    assert snapshot(tmp_path) == before
+
+    place(root, raw(doc()))
+    assert wall_clock_budget_s_of(root, RUN) is None
+
+
+def test_a_wall_clock_budget_replaced_between_two_calls_is_seen_at_the_second(root):
+    place(root, raw(doc(wall_clock_budget_s=SECONDS)))
+    assert wall_clock_budget_s_of(root, RUN) == SECONDS
+
+    place(root, raw(doc(wall_clock_budget_s=OTHER_SECONDS)))
+    assert wall_clock_budget_s_of(root, RUN) == OTHER_SECONDS
+
+    place(root, raw(doc()))
+    assert wall_clock_budget_s_of(root, RUN) is None
+
+    place(root, raw(doc(wall_clock_budget_s=0)))
+    invalid(f"{FILE}: {NO_SECONDS}int", wall_clock_budget_s_of, root, RUN)
+
+    place(root, raw(doc(schema_version=2, wall_clock_budget_s=SECONDS)))
+    with pytest.raises(UnsupportedVersionError):
+        wall_clock_budget_s_of(root, RUN)
+
+    (root / FILE).unlink()
+    with pytest.raises(MissingInstanceError):
+        wall_clock_budget_s_of(root, RUN)
+
+    place(root, raw(doc(wall_clock_budget_s=1)))
+    assert wall_clock_budget_s_of(root, RUN) == 1
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        *WALK_THROUGH_OF_ADR_0033,
+        "-0",
+        "false",
+        "{}",
+        "0.5",
+        '"8h"',
+        '"unlimited"',
+        '""',
+    ],
+)
+def test_no_member_of_a_file_with_an_invalid_wall_clock_budget_is_used(root, literal):
+    place(root, timed(str(SECONDS), *ALL_BUT_SECONDS_TEXT))
+    assert wall_clock_budget_s_of(root, RUN) == SECONDS
+    assert_the_members_beside_the_seconds_are_stated(root)
+
+    place(root, timed(literal, *ALL_BUT_SECONDS_TEXT))
+    assert wall_clock_budget_s_of in READERS and len(READERS) == 10
+    for call in READERS:
+        invalid(f"{FILE}: {NO_SECONDS}", call, root, RUN)
+
+    place(root, text(VERSION, SECTION, *ALL_BUT_SECONDS_TEXT))
+    assert wall_clock_budget_s_of(root, RUN) is None
+    assert_the_members_beside_the_seconds_are_stated(root)
+
+
+def test_two_runs_state_their_own_wall_clock_budgets(root):
+    place(root, raw(doc(wall_clock_budget_s=1)))
+    place(root, raw(doc(wall_clock_budget_s=86400)), OTHER_FILE)
+    place(root, raw(doc(round_budget=BUDGET)), "runs/run-c/instance.json")
+
+    assert wall_clock_budget_s_of(root, RUN) == 1
+    assert wall_clock_budget_s_of(root, OTHER_RUN) == 86400
+    assert wall_clock_budget_s_of(root, "run-c") is None
+    assert wall_clock_budget_s_of(root, RUN) == 1
+
+
+# Two lines whose time values lie a day apart: bytes beside the file, which no reader of the module opens.
+LOG_OF_A_DAY = (
+    b'{"seq": 1, "time": "2026-01-01T00:00:00Z"}\n'
+    b'{"seq": 2, "time": "2026-01-02T00:00:00Z"}\n'
+)
+
+
+@pytest.mark.parametrize(
+    "state, log",
+    [
+        (run_state.dump(12, EMPTY), LOG_OF_A_DAY),
+        (run_state.dump(0, EMPTY), b""),
+        (b'{"round": 12, "started": "2026-01-01T00:00:00Z"}', LOG_OF_A_DAY),
+        (b"\xff", b"\xff"),
+    ],
+    ids=["round 12 and a day", "round 0 and no line", "a text with a time", "no text"],
+)
+def test_times_beside_the_file_change_nothing_and_only_the_instance_file_is_opened(
+    root, monkeypatch, state, log
+):
+    place(root, raw(doc(round_budget=8, wall_clock_budget_s=5400)))
+    place(root, state, STATE_FILE)
+    place(root, log, EVENTS_FILE)
+    place(root, b"{}", f"runs/{RUN}/rounds/0000/candidates/01/spec.json")
+    place(root, raw(doc(wall_clock_budget_s=OTHER_SECONDS)), OTHER_FILE)
+    before = snapshot(root)
+    opened, real = [], Path.read_bytes
+
+    def read_bytes(path):
+        opened.append(path.relative_to(root).as_posix())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setenv("HILCLAW_DATA_ROOT", "elsewhere")
+
+    assert wall_clock_budget_s_of(root, RUN) == 5400
+    assert opened == [FILE]
+    assert wall_clock_budget_s_of(root, RUN) == 5400
+    assert round_budget_of(root, RUN) == 8
+    assert opened == [FILE, FILE, FILE]
+    monkeypatch.setattr(Path, "read_bytes", real)
+    assert snapshot(root) == before
+
+
+# --- with hilclaw.hw_tool: a file invalid by its wall_clock_budget_s alone ---
+
+
+@pytest.mark.parametrize(
+    "repaired",
+    [doc(), doc(wall_clock_budget_s=SECONDS), doc(wall_clock_budget_s=1)],
+    ids=["removed", "valid", "valid and of one second"],
+)
+@pytest.mark.parametrize(
+    "broken", [0, -5400, 5400.0, "5400", "8h", True, None, MAX + 1], ids=repr
+)
+def test_a_file_invalid_by_its_wall_clock_budget_alone_is_run_file_invalid(
+    root, broken, repaired
+):
+    place(started(root), raw(doc(**ALL_BUT_SECONDS, wall_clock_budget_s=broken)))
+    tool = Tool(root)
+
+    assert_no_step_started(
+        tool,
+        root,
+        "run_file_invalid",
+        InvalidInstanceError,
+        "wall_clock_budget_s: must be an int from 1 to",
     )
     assert kinds(root) == []
 

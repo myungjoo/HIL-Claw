@@ -80,6 +80,7 @@ FULL = written(
         candidates_per_round=3,
         op_signature={"key": keys.op_signature_key(OP).name, "record": OP},
         round_budget=6,
+        wall_clock_budget_s=754,
         example_member={"b": [1, None, "x"], "a": 2.5},
     )
 )
@@ -127,6 +128,10 @@ REFUSED = {
         InvalidInstanceError,
     ),
     "round_budget": (written(doc(round_budget=0)), InvalidInstanceError),
+    "wall_clock_budget_s": (
+        written(doc(wall_clock_budget_s=0)),
+        InvalidInstanceError,
+    ),
     "no final line feed": (MINIMAL[:-1], WrittenFormError),
     "CRLF line ends": (MINIMAL.replace(b"\n", b"\r\n"), WrittenFormError),
     "one carriage return": (b"\r" + MINIMAL, WrittenFormError),
