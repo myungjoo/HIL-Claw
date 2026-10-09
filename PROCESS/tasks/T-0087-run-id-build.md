@@ -2,7 +2,7 @@
 id: T-0087
 title: Carry ADR-0027 into the code (the code slice of its Consequences) - a new small module of `hilclaw` that builds a `run_id` of the fixed form `<time>-<random>` (33 characters, `YYYYMMDDthhmmssz` in UTC plus 64 random bits as lower-case hexadecimal) - checking no id, reading no directory, reserving nothing, bound to no tool and to no start of an instance
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-13, NFR-1, C-7, OD-8]
 dependsOn: [T-0086]
@@ -118,3 +118,42 @@ Everything ADR-0027 leaves open stays open:
 - (a small code task) Public names for `journaled_tool._built` and `backends._hw_tool`; whether `PROCESS/` Markdown leaves the set of `ruff format --check .`.
 
 ## Result
+**DONE.** Landed as `acc9112` on `main` (https://github.com/myungjoo/HIL-Claw/commit/acc91129cfda01c9cd7ce75df4d5922388e2ffc1), code mode, squash-merge of PR #70 (https://github.com/myungjoo/HIL-Claw/pull/70; reviewed head `73f4e42`, tree identical to the squash commit). The remote and the local task branch are deleted (separate commands, after the PR reported `MERGED`). The landed commit does not contain this task file; this section is left uncommitted for the driver. **This task ticks no PLAN checkbox** (P1-8 stays open). No new HQ is needed. Issue #5 had no comment after the ADR-0027 notice and no PR was open when the work started.
+
+**Review**: 3 rounds, a fresh-context `dev-reviewer` each (spawned with `model: opus`), no `SECURITY` finding, no point read as needing a record or the owner.
+- Round 1, Request changes (1 Minor, 3 Nit), all fixed in `afbf13c`: (m) what `new()` does with a clock reading the form cannot hold (ADR-0027 decision 7) was not stated, and "Nothing is clamped" was unconditional although the standard library reads a second of 60 as 59 - the choice is now stated in the module docstring, the docstring of `new()`, the PR body and the commit body, the sentence is narrowed to the two values `compose` is given, and a test of a failing clock was added; (n) "uses neither the module `random`" said too much, as `secrets` draws through `random.SystemRandom` - now "the default generator of the module `random`", with the test name; (n) "the time part is the reading of a clock at the moment of the build" is true of a result of `new()` only - narrowed; (n) the test that re-seeds the module `random` did not restore its state - it does now.
+- Round 2, Approve with 1 Nit (a short line left in the middle of a docstring paragraph), fixed in `73f4e42` (line breaks only).
+- Round 3, Approve, no finding. https://github.com/myungjoo/HIL-Claw/pull/70#issuecomment-6073107165
+
+**Public API as landed** (`hilclaw/run_id.py`; the public names are these two functions and nothing else):
+- `compose(time, bits)` - pure; returns a `str` of 33 characters, `YYYYMMDDthhmmssz-` followed by 16 characters of lower-case hexadecimal, formatted field by field (no `strftime`). Raises, in this order: `TypeError` when `time` is not exactly a `datetime.datetime` (a subclass, a `date`, a `str`, an `int` and `None` included); `ValueError` when `time` is naive or its offset from UTC is not zero; `TypeError` when `bits` is not exactly an `int` (`bool`, `float`, a subclass of `int`); `ValueError` when `bits` is outside 0 <= bits < 2**64. What the `tzinfo` raises when asked for the offset is passed on. No message shows a value.
+- `new()` - no argument; asks the UTC clock once and `secrets.randbits(64)` once and returns `compose` of the two. What the clock or the random source raises is passed on and no id is returned.
+- A test replaces the module-level names `run_id._utc_now` (a `functools.partial(datetime.datetime.now, datetime.UTC)`) and `run_id.secrets` with `monkeypatch.setattr`.
+- The module imports `datetime`, `functools` and `secrets` only; it does not import `hilclaw.layout`. Nothing in `hilclaw/` calls it.
+
+**Provisional choices** (ADR-0027 decisions 6 and 7 leave them to the code; each is in the commit body and the PR body):
+- Module `hilclaw/run_id.py`, not `hilclaw/layout.py`: the docstring of `layout` says it builds no `run_id`, and that stays true.
+- Two functions, `compose` and `new`: the form is testable value for value and the function meant for a run can be handed no time, bits or seed.
+- The time is exactly a `datetime.datetime`: with it a year outside 0001-9999 and a second of 60 cannot be given at all.
+- A naive time is refused: it does not say that it is UTC.
+- A time whose offset is not zero is refused, not converted: the digits written are the digits given, and no conversion can overflow at year 1 or 9999. Every spelling of an offset of zero is accepted.
+- A fraction of a second is dropped, not rounded: the form is to the second and rounding could carry into a year the form cannot hold.
+- The bits are exactly an `int` with 0 <= bits < 2**64, the rule of `hilclaw/harness/seed_source.py`.
+- `TypeError` for a wrong type and `ValueError` for a wrong value; no error class of the module (one public name fewer).
+- No call of `hilclaw.layout.check_run_id` on the result (it could only be an assertion; the tests check it) and no public constant for the shape or the length (a public pattern would invite its use as a rule of validity).
+- **`new()` leaves a clock reading the form cannot hold to `datetime.datetime.now`** (added in round 1): the standard library reads a second of 60 as 59 before the module sees it, and what it raises for a year outside 0001-9999 is passed on. **Where this differs from the task's criterion** "a value that cannot be written in the form is reported, not written": that holds for the two values `compose` is given; for the clock of `new()` the module adds no route of its own that would see a leap second, as ADR-0027 decision 7 leaves the case to the code task. The docstrings say so. If the owner or a later record wants a leap second reported, `new()` has to read the clock through `time.gmtime` instead; that is a small code change and no change of the form.
+
+**Tests**: `tests/test_run_id.py`, 77 cases, no file system, none skipped on either platform. Windows (the driver's clone, Python 3.14): 77 passed. Linux (CI, Python 3.11 and 3.14): passed in both Python gates, the years 1 and 999 included.
+
+**Verification**:
+- Local, native Windows: `python -m pytest` on `origin/main` before the change 8260 passed, 280 skipped; on the final head 8337 passed, 280 skipped (re-run before the merge). `python -m ruff check .` and `python -m ruff format --check .` exit 0. Nothing installed (`coverage` is not installed in the clone, so the two coverage figures are the CI's).
+- `git diff origin/main --stat` listed `hilclaw/run_id.py` (125 lines) and `tests/test_run_id.py` (453 lines) only; the `git grep` for a use of the module `random` in `hilclaw/run_id.py` has no match; `git ls-files --eol` shows `i/lf` for both.
+- Line count of the new module: 125 lines = 99 docstring lines, 20 code lines, 6 blank lines outside docstrings (estimate 90; cap 300 LOC / 5 files, 1 non-test file).
+- CI on the PR, final head `73f4e42`, run https://github.com/myungjoo/HIL-Claw/actions/runs/37875254895 - all six successful: `Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`. Coverage lines: lines 2906/2922 executed = 99.45 (minimum 80); functions 299/299 entered = 100.00 (minimum 80); no unexecuted line in `hilclaw/run_id.py`. No CI run failed (the run of `afbf13c` was cancelled by the next push, not failed).
+- `push` run on `main` for `acc9112`: `success` (https://github.com/myungjoo/HIL-Claw/actions/runs/37875633984).
+
+**Language**: Python, because the package's path rules (`hilclaw.layout`) and its other uses of the system's random source are Python. Standard library only; no new dependency; no data-plane schema change.
+
+**Follow-ups added by this task** (the list in `## Follow-ups` stands unchanged):
+- (planner, with the record of the start of an instance) Whether the builder must report a clock reading with a second of 60 instead of taking the standard library's reading of it as 59 (ADR-0027 decision 7 leaves it to the code; chosen here provisionally).
+- (integrator) The docstring of `check_run_id` in `hilclaw/layout.py` ("the form of a `run_id` is open") can now point at `hilclaw.run_id`; not edited here.
