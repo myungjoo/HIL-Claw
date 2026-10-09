@@ -5982,6 +5982,9 @@ def test_the_invalid_files_of_the_walk_through_of_adr_0033(literal):
     invalid(
         "wall_clock_budget_s: must be", parse, timed(literal, *ALL_BUT_SECONDS_TEXT)
     )
+
+
+def test_the_valid_files_of_the_walk_through_of_adr_0033():
     kept = parse(text(VERSION, SECTION, *ALL_BUT_SECONDS_TEXT))
     assert kept[:8] == STATED_BESIDE_THE_SECONDS
     assert kept.wall_clock_budget_s is None

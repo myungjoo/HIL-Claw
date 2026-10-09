@@ -48,8 +48,9 @@ wall-clock time the instance was started with, as a number of seconds
 (decisions 2 and 3), says that a valid file may lack it, that a present one
 must be valid and that no value stands in for an absent one (decision 4), and
 says where the wall-clock budget a run states is read from (decision 5). This
-module is those rules: :func:`parse` and :func:`validate` are pure functions of the bytes of a
-content and of a parsed document, and :func:`read`, :func:`hw_profile_of`,
+module is those rules: :func:`parse` and :func:`validate` are pure functions of
+the bytes of a content and of a parsed document, and :func:`read`,
+:func:`hw_profile_of`,
 :func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
 :func:`candidates_per_round_of`, :func:`op_signature_of`,
 :func:`round_budget_of`, :func:`wall_clock_budget_s_of` and
@@ -75,8 +76,9 @@ Conventions of this module, which the nine records do not fix:
   when the document holds it, then ``candidates_per_round`` when the document
   holds it, then ``op_signature`` when the document holds it, then
   ``round_budget`` when the document holds it, then ``wall_clock_budget_s``
-  when the document holds it: the order in which the records defined them. A content this interpreter cannot read (an integer too long
-  for it anywhere in the text, nesting too deep) raises
+  when the document holds it: the order in which the records defined them. A
+  content this interpreter cannot read (an integer too long for it anywhere in
+  the text, nesting too deep) raises
   :class:`InvalidInstanceError` too, though it is a limit of this reader and
   not damage; the limits stay as the interpreter has them. A number beyond the
   float range in a member not defined here is read as an infinity and is no
@@ -194,8 +196,9 @@ Conventions of this module, which the nine records do not fix:
 It writes, creates and removes no file and composes no content. It defines no
 member besides the nine (``schema_version``, ``hw_profile``, ``tolerance``,
 ``source_commit``, ``n_max``, ``candidates_per_round``, ``op_signature``,
-``round_budget`` and ``wall_clock_budget_s``) and interprets no other: a file it accepts is not thereby a
-complete instance record, and not enough to start a run (ADR-0018 decisions 1
+``round_budget`` and ``wall_clock_budget_s``) and interprets no other: a file
+it accepts is not thereby a complete instance record, and not enough to start a
+run (ADR-0018 decisions 1
 and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
 default and substitutes no value (ADR-0020 decision 3), does not check that a
@@ -299,8 +302,9 @@ have that many rounds. It makes the member no number of candidates per round
 and no ``n_max``, no number of coder calls, of specs, of attempts or of
 repair calls, no amount of tokens, of time or of hardware quota and no target
 metric, and it makes the member no statement of any other budget axis
-(ADR-0032 decision 2 and Boundaries). A file it accepts need not state a round budget; what counts
-against a stated one, whether an instance may start with no budget axis and
+(ADR-0032 decision 2 and Boundaries). A file it accepts need not state a round
+budget; what counts against a stated one, whether an instance may start with no
+budget axis and
 what ends a run whose valid file states none, is open (OD-8 sub-question 29).
 Which tool or component reads the member, at which moment, and what follows
 when no round budget is stated is not said here (ADR-0032 decision 5 and
@@ -607,8 +611,9 @@ def validate(document):
     naming the place (for example ``hw_profile.record.accelerator``,
     ``tolerance.rtol``, ``source_commit``, ``n_max``,
     ``candidates_per_round``, ``op_signature.key``, ``round_budget`` or
-    ``wall_clock_budget_s``). The version comes first: an integer other than :data:`SCHEMA_VERSION` raises
-    :class:`UnsupportedVersionError` before any other member is looked at.
+    ``wall_clock_budget_s``). The version comes first: an integer other than
+    :data:`SCHEMA_VERSION` raises :class:`UnsupportedVersionError` before any
+    other member is looked at.
     """
     _checked(document)
 
