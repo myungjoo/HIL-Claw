@@ -20,7 +20,7 @@ members of ``profile``, the values of ``ext``, and the vocabularies of
 
 This module reads and writes no file and builds no spec. The path of a spec
 file is ADR-0004's and :mod:`hilclaw.layout` builds it; the text form of the
-file and the final name of a content are ADR-0029's and
+file, the final name of a content and the write of the file are ADR-0029's and
 :mod:`hilclaw.spec_file` holds them. Reading a spec of another schema version
 is not part of this module either (OD-11).
 """

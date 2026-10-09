@@ -1,20 +1,26 @@
 import ast
 import builtins
+import codecs
 import copy
 import inspect
 import io
 import json
 import os
+import re
+import secrets
 from pathlib import Path
 
 import pytest
 
-from hilclaw import instance, keys, layout, run_state, spec, spec_file
+from hilclaw import instance, instance_file, keys, layout, run_state, spec, spec_file
 from hilclaw.spec_file import (
     InvalidSpecFileError,
+    NameTakenError,
     UnsupportedVersionError,
+    WrittenFormError,
     final_name,
     parse,
+    write,
 )
 
 # Synthetic values only: no record, key, member or tuple of a real run.
@@ -824,7 +830,7 @@ def test_nothing_is_modified_or_kept():
     assert document == before
 
 
-def test_no_file_is_opened(monkeypatch, tmp_path):
+def test_parse_and_final_name_open_no_file(monkeypatch, tmp_path):
     def refuse(*arguments, **named):
         raise AssertionError("a file was opened")
 
@@ -854,8 +860,12 @@ def test_the_module_imports_only_what_it_needs():
             imported |= {f"{node.module}.{alias.name}" for alias in node.names}
     assert imported == {
         "codecs",
+        "contextlib",
         "json",
+        "os",
         "re",
+        "secrets",
+        "pathlib.Path",
         "hilclaw.keys",
         "hilclaw.layout",
         "hilclaw.spec",
@@ -866,16 +876,749 @@ def test_the_public_names_and_the_call_forms():
     public = {
         name
         for name, value in vars(spec_file).items()
-        if not name.startswith("_") and not inspect.ismodule(value)
+        if getattr(value, "__module__", None) == spec_file.__name__
+        and not name.startswith("_")
     }
     assert public == {
         "InvalidSpecFileError",
         "UnsupportedVersionError",
+        "WrittenFormError",
+        "NameTakenError",
         "parse",
         "final_name",
+        "write",
     }
     assert str(inspect.signature(parse)) == "(content)"
     assert str(inspect.signature(final_name)) == "(data_root, document)"
-    for function in (parse, final_name):
+    assert str(inspect.signature(write)) == "(data_root, content)"
+    for function in (parse, final_name, write):
         parameters = inspect.signature(function).parameters.values()
         assert all(item.default is inspect.Parameter.empty for item in parameters)
+
+
+# --- the write (ADR-0029 decisions 4 to 7) ---
+
+TEMPORARY = re.compile(r"spec\.json\.[a-z0-9-]{1,64}\.tmp")
+STEPS = ("creation", "write", "flush", "link")
+RUN = "runs/synthetic-run-1"
+ROUND = f"{RUN}/rounds/0001"
+CANDIDATE = f"{ROUND}/coder/candidates/01"
+FIRST = f"{CANDIDATE}/attempts/01"
+SECOND = f"{CANDIDATE}/attempts/02"
+FILE = f"{FIRST}/spec.json"
+LEFTOVER = f"{SECOND}/spec.json.4242-0123456789abcdef.tmp"
+TAKEN_REPORT = f"{FILE}: the name is taken; the content was not written"
+
+
+def written(document):
+    return json.dumps(document, indent=2).encode() + b"\n"
+
+
+def wide():
+    made = minimal()
+    made["id"].update(round=12345, candidate=123, candidates=200, attempt=100)
+    made["id"].update(relation="same_technique", variant="synthetic variant")
+    failure = {"attempt": 99, "stage": "compile", "report": "synthetic report"}
+    made["repair"] = {"failures": [failure]}
+    return made
+
+
+def unusual():
+    prototype = ("task", "contract", "prototype")
+    document = changed(full(), prototype, "synthetic\r\nprototype")
+    turned = dict(reversed(document.items()))
+    marked = changed(turned, ("task", "objective"), MARK)
+    body = json.dumps(marked, separators=(" ,", "\t: "))
+    free = '[-0,  1.50, 1E+2 ,{"b" :null}]'
+    return ("\n\t " + body.replace(f'"{MARK}"', free) + "\n\n").encode()
+
+
+def no_path(run_id="No Path", **members):
+    made = changed(minimal(), ("id", "run_id"), run_id)
+    for name, value in members.items():
+        made = changed(made, name.split("."), value)
+    return made
+
+
+MINIMAL = written(minimal())
+FULL = written(full())
+REPAIR = written(repair())
+OTHER = written(changed(minimal(), ("task", "contract", "prototype"), "another"))
+ELSEWHERE = written(changed(minimal(), ("id", "run_id"), "synthetic-run-2"))
+UNUSUAL = unusual()
+CONTENTS = {
+    "required members only": MINIMAL,
+    "every optional part": FULL,
+    "repair": REPAIR,
+    "round 0": written(with_zeros()),
+    "wide numbers": written(wide()),
+}
+PREVIOUS = {"free": None, "taken": OTHER}
+TAKEN = {
+    "other bytes": OTHER,
+    "equal bytes": MINIMAL,
+    "invalid": MINIMAL[:20],
+    "empty": b"",
+    "directory": None,
+    "link to a file": None,
+    "dangling link": None,
+}
+PRESENT = {
+    "nothing": {},
+    "runs": {"runs": None},
+    "run directory": {RUN: None},
+    "instance and state": {
+        f"{RUN}/instance.json": b"an instance",
+        f"{RUN}/STATE.json": b"a state",
+    },
+    "round directory": {ROUND: None},
+    "decision log": {f"{ROUND}/decision/decision.md": b"a decision"},
+    "attempt 1": {FILE: MINIMAL, f"{FIRST}/output/kernel.c": b"a source"},
+    "output": {f"{SECOND}/output/kernel.c": b"a source"},
+    "partial leftover": {LEFTOVER: REPAIR[:9]},
+    "whole leftover": {LEFTOVER: REPAIR},
+}
+REFUSED = {
+    "str": (MINIMAL.decode(), TypeError),
+    "bytearray": (bytearray(MINIMAL), TypeError),
+    "dict": (minimal(), TypeError),
+    "None": (None, TypeError),
+    "empty": (b"", InvalidSpecFileError),
+    "partial": (MINIMAL[:20], InvalidSpecFileError),
+    "byte order mark": (codecs.BOM_UTF8 + MINIMAL, InvalidSpecFileError),
+    "member name twice": (
+        b'{"schema_version": 1, ' + raw(minimal())[1:] + b"\n",
+        InvalidSpecFileError,
+    ),
+    "-0 at an integer place": (
+        spelt(minimal(), ("id", "round"), b"-0") + b"\n",
+        InvalidSpecFileError,
+    ),
+    "refused by validate": (
+        written(changed(minimal(), ("id", "attempt"), 0)),
+        InvalidSpecFileError,
+    ),
+    "version 0": (
+        written(changed(minimal(), ("schema_version",), 0)),
+        UnsupportedVersionError,
+    ),
+    "version 2": (
+        written(changed(minimal(), ("schema_version",), 2)),
+        UnsupportedVersionError,
+    ),
+    "no path: upper case": (
+        written(no_path("Synthetic")),
+        layout.InvalidPathValueError,
+    ),
+    "no path: space": (written(no_path("synthetic run")), layout.InvalidPathValueError),
+    "no path: 65 characters": (
+        written(no_path("s" * 65)),
+        layout.InvalidPathValueError,
+    ),
+    "no path: leading hyphen": (
+        written(no_path("-synthetic")),
+        layout.InvalidPathValueError,
+    ),
+    "no final line feed": (MINIMAL[:-1], WrittenFormError),
+    "CRLF line ends": (MINIMAL.replace(b"\n", b"\r\n"), WrittenFormError),
+    "one carriage return": (b"\r" + MINIMAL, WrittenFormError),
+}
+
+
+class Stop(BaseException):
+    pass
+
+
+@pytest.fixture
+def root(tmp_path):
+    path = tmp_path / "data"
+    path.mkdir()
+    return path
+
+
+@pytest.fixture(autouse=True)
+def no_replacing_step(monkeypatch):
+    def refuse(*arguments, **named):
+        pytest.fail("a replacing step was called")
+
+    monkeypatch.setattr(os, "replace", refuse)
+    monkeypatch.setattr(os, "rename", refuse)
+
+
+def rel(content):
+    return final_name(Path("."), parse(content)).as_posix()
+
+
+def between(file):
+    return {parent.as_posix(): None for parent in Path(file).parents if parent.name}
+
+
+def place(root, content, relative=FILE):
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return path
+
+
+def fill(root, present):
+    for name, content in present.items():
+        if content is None:
+            (root / name).mkdir(parents=True)
+        else:
+            place(root, content, name)
+    return snapshot(root)
+
+
+def snapshot(directory):
+    return {
+        path.relative_to(directory).as_posix(): (
+            path.read_bytes() if path.is_file() else None
+        )
+        for path in directory.rglob("*")
+    }
+
+
+def temporaries(directory):
+    return [
+        name for name in snapshot(directory) if TEMPORARY.fullmatch(Path(name).name)
+    ]
+
+
+def held(root):
+    path = root / FILE
+    return path.read_bytes() if os.path.lexists(path) else None
+
+
+def link(path, target):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links cannot be created here")
+
+
+def kind(path):
+    if path.is_symlink():
+        return ("link", os.readlink(path))
+    return ("directory" if path.is_dir() else "file", None)
+
+
+def take(root, how):
+    path = root / FILE
+    target = root.parent / "target.json"
+    if how == "directory":
+        path.mkdir(parents=True)
+    elif how == "link to a file":
+        target.write_bytes(OTHER)
+        link(path, target)
+    elif how == "dangling link":
+        link(path, target)
+    else:
+        place(root, TAKEN[how])
+
+
+def spy(monkeypatch):
+    opened = []
+    real, low = open, os.open
+
+    def high(file, mode="r", *arguments, **named):
+        opened.append((Path(file), mode))
+        return real(file, mode, *arguments, **named)
+
+    def descriptor(file, flags, *arguments, **named):
+        opened.append((Path(file), flags))
+        return low(file, flags, *arguments, **named)
+
+    monkeypatch.setattr("builtins.open", high)
+    monkeypatch.setattr(io, "open", high)
+    monkeypatch.setattr(os, "open", descriptor)
+    return opened
+
+
+def no_listing(monkeypatch):
+    def refuse(*arguments, **named):
+        raise AssertionError("a directory was listed")
+
+    monkeypatch.setattr(os, "listdir", refuse)
+    monkeypatch.setattr(os, "scandir", refuse)
+
+
+@pytest.fixture
+def watch(monkeypatch, root):
+    seen = []
+    flush, give = os.fsync, os.link
+
+    def fsync(descriptor):
+        files = {
+            name: content
+            for name, content in snapshot(root).items()
+            if content is not None
+        }
+        status = os.fstat(descriptor)
+        same = [
+            name for name in files if os.path.samestat(status, os.stat(root / name))
+        ]
+        seen.append({"step": "flush", "files": files, "flushed": same})
+        seen[-1].update(descriptor=descriptor)
+        return flush(descriptor)
+
+    def linking(source, target):
+        with pytest.raises(OSError):
+            os.fstat(seen[-1]["descriptor"])
+        content = Path(source).read_bytes()
+        taken = os.path.lexists(target)
+        seen.append({"step": "link", "taken": taken, "content": content})
+        seen[-1].update(source=Path(source), target=Path(target))
+        return give(source, target)
+
+    monkeypatch.setattr(os, "fsync", fsync)
+    monkeypatch.setattr(os, "link", linking)
+    return seen
+
+
+class Partial:
+    def __init__(self, file, error, observe):
+        self.file = file
+        self.error = error
+        self.observe = observe
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exception):
+        return self.file.__exit__(*exception)
+
+    def write(self, content):
+        self.file.write(content[:7])
+        self.observe()
+        raise self.error
+
+
+def break_step(monkeypatch, step, error, observe=lambda: None):
+    real = open
+
+    def refuse(*arguments, **named):
+        observe()
+        raise error
+
+    def creation(file, mode="r", *arguments, **named):
+        if "x" not in mode:
+            return real(file, mode, *arguments, **named)
+        if step == "creation":
+            raise error
+        return Partial(real(file, mode, *arguments, **named), error, observe)
+
+    if step in ("creation", "write"):
+        monkeypatch.setattr("builtins.open", creation)
+    else:
+        name = {"flush": "fsync", "link": "link", "unlink": "unlink"}[step]
+        monkeypatch.setattr(os, name, refuse)
+
+
+@pytest.mark.parametrize("as_type", [Path, str])
+@pytest.mark.parametrize("content", CONTENTS.values(), ids=CONTENTS)
+def test_the_bytes_given_are_the_bytes_under_the_final_name(root, content, as_type):
+    assert write(as_type(root), content) is None
+
+    file = rel(content)
+    assert root / file == final_name(root, parse(content))
+    assert snapshot(root.parent) == {"data": None} | {
+        f"data/{name}": held for name, held in (between(file) | {file: content}).items()
+    }
+    assert parse((root / file).read_bytes()) == parse(content)
+
+
+def test_the_directories_created_are_those_between_the_root_and_the_name(root):
+    write(root, MINIMAL)
+    write(root, CONTENTS["round 0"])
+    write(root, CONTENTS["wide numbers"])
+
+    directories = sorted(name for name, held in snapshot(root).items() if held is None)
+    lone = [
+        "runs",
+        RUN,
+        f"{RUN}/rounds",
+        ROUND,
+        f"{ROUND}/coder",
+        f"{ROUND}/coder/candidates",
+        CANDIDATE,
+        f"{CANDIDATE}/attempts",
+        FIRST,
+    ]
+    assert set(between(FILE)) == set(lone)
+    zero = f"{RUN}/rounds/0000/coder/candidates/01/attempts/01/spec.json"
+    high = f"{RUN}/rounds/12345/coder/candidates/123/attempts/100/spec.json"
+    assert directories == sorted(set(lone) | set(between(zero)) | set(between(high)))
+    assert not [name for name in snapshot(root) if "output" in name]
+    assert snapshot(root)[zero] == CONTENTS["round 0"]
+    assert snapshot(root)[high] == CONTENTS["wide numbers"]
+
+
+def test_data_root_as_a_relative_path(root, monkeypatch):
+    monkeypatch.chdir(root.parent)
+
+    write("data", MINIMAL)
+    write(Path("data"), FULL)
+
+    assert snapshot(root)[FILE] == MINIMAL
+    assert snapshot(root)[rel(FULL)] == FULL
+    assert temporaries(root) == []
+
+
+@pytest.mark.parametrize("present", PRESENT.values(), ids=PRESENT)
+def test_the_write_is_the_same_whatever_is_there_before(root, monkeypatch, present):
+    before = fill(root, present)
+    opened = spy(monkeypatch)
+    no_listing(monkeypatch)
+
+    write(root, REPAIR)
+    monkeypatch.undo()
+
+    file = f"{SECOND}/spec.json"
+    assert snapshot(root) == before | between(file) | {file: REPAIR}
+    ((path, mode),) = opened
+    assert (path.parent, mode) == (root / SECOND, "xb")
+    assert TEMPORARY.fullmatch(path.name)
+    assert temporaries(root) == [name for name in present if name == LEFTOVER]
+
+
+def test_a_second_tuple_and_a_second_run_are_untouched(root):
+    write(root, ELSEWHERE)
+    write(root, FULL)
+    place(root, b"a state", "runs/synthetic-run-2/STATE.json")
+    others = snapshot(root)
+
+    write(root, MINIMAL)
+
+    after = snapshot(root)
+    assert {name: held for name, held in after.items() if name in others} == others
+    assert after == others | between(FILE) | {FILE: MINIMAL}
+    assert after[rel(ELSEWHERE)] == ELSEWHERE
+
+
+def test_the_temporary_file_is_whole_and_the_final_name_absent_until_the_link(
+    root, watch
+):
+    write(root, FULL)
+
+    flush, give = watch
+    source = give["source"]
+    assert (flush["step"], give["step"]) == ("flush", "link")
+    assert give["taken"] is False
+    assert give["target"] == final_name(root, parse(FULL))
+    assert source.parent == give["target"].parent
+    assert TEMPORARY.fullmatch(source.name)
+    assert source.name not in layout.ATTEMPT_ARTEFACTS
+    assert source.name.startswith(f"spec.json.{os.getpid()}-")
+    assert give["content"] == FULL
+    assert flush["files"] == {source.relative_to(root).as_posix(): FULL}
+    assert flush["flushed"] == list(flush["files"])
+    assert temporaries(root) == []
+    assert snapshot(root)[rel(FULL)] == FULL
+
+
+def test_every_write_uses_another_temporary_name(root, watch):
+    write(root, MINIMAL)
+    write(root, REPAIR)
+    with pytest.raises(NameTakenError):
+        write(root, MINIMAL)
+
+    sources = [entry["source"].name for entry in watch if entry["step"] == "link"]
+    assert len(set(sources)) == 3
+    assert all(TEMPORARY.fullmatch(name) for name in sources)
+
+
+@pytest.mark.parametrize("previous", PREVIOUS.values(), ids=PREVIOUS)
+@pytest.mark.parametrize("step", STEPS[1:])
+def test_a_stop_before_the_name_is_given_leaves_the_final_name_as_it_was(
+    root, monkeypatch, step, previous
+):
+    before = fill(root, {} if previous is None else {FILE: previous})
+    seen = []
+    break_step(monkeypatch, step, Stop(), lambda: seen.append(held(root)))
+
+    with pytest.raises(Stop):
+        write(root, MINIMAL)
+    monkeypatch.undo()
+
+    assert seen == [previous]
+    assert held(root) == previous
+    assert snapshot(root) == before | between(FILE)
+
+
+def test_a_stop_after_the_name_is_given_leaves_the_whole_content(root, monkeypatch):
+    seen = []
+    break_step(monkeypatch, "unlink", Stop(), lambda: seen.append(held(root)))
+
+    with pytest.raises(Stop):
+        write(root, MINIMAL)
+    monkeypatch.undo()
+
+    assert seen == [MINIMAL]
+    assert held(root) == MINIMAL
+    (leftover,) = temporaries(root)
+    assert os.path.samefile(root / leftover, root / FILE)
+
+
+def test_a_stop_at_the_removal_leaves_a_taken_name_as_it_was(root, monkeypatch):
+    place(root, OTHER)
+    seen = []
+    break_step(monkeypatch, "unlink", Stop(), lambda: seen.append(held(root)))
+
+    with pytest.raises(Stop):
+        write(root, MINIMAL)
+    monkeypatch.undo()
+
+    assert seen == [OTHER]
+    assert held(root) == OTHER
+    (leftover,) = temporaries(root)
+    assert snapshot(root)[leftover] == MINIMAL
+
+
+@pytest.mark.parametrize("how", TAKEN)
+def test_a_taken_name_is_reported_and_what_is_there_is_unchanged(
+    root, monkeypatch, how
+):
+    take(root, how)
+    before = (snapshot(root.parent), kind(root / FILE))
+    opened = spy(monkeypatch)
+    no_listing(monkeypatch)
+
+    with pytest.raises(NameTakenError) as caught:
+        write(root, MINIMAL)
+    monkeypatch.undo()
+
+    assert str(caught.value) == TAKEN_REPORT
+    assert not isinstance(caught.value, OSError)
+    assert (snapshot(root.parent), kind(root / FILE)) == before
+    assert temporaries(root) == []
+    ((path, mode),) = opened
+    assert TEMPORARY.fullmatch(path.name) and mode == "xb"
+
+
+def test_equal_bytes_are_reported_as_other_bytes(root):
+    write(root, MINIMAL)
+    reports = []
+    for content in (MINIMAL, OTHER):
+        with pytest.raises(NameTakenError) as caught:
+            write(root, content)
+        reports.append((type(caught.value), str(caught.value)))
+
+    assert reports[0] == reports[1]
+    assert snapshot(root) == between(FILE) | {FILE: MINIMAL}
+
+
+def test_a_name_freed_by_other_means_is_given_again(root):
+    write(root, MINIMAL)
+    with pytest.raises(NameTakenError):
+        write(root, OTHER)
+    (root / FILE).unlink()
+
+    write(root, OTHER)
+
+    assert snapshot(root) == between(FILE) | {FILE: OTHER}
+
+
+@pytest.mark.parametrize("previous", PREVIOUS.values(), ids=PREVIOUS)
+@pytest.mark.parametrize("content, error", REFUSED.values(), ids=REFUSED)
+def test_a_refused_content_creates_and_changes_nothing(root, content, error, previous):
+    before = fill(root, {} if previous is None else {FILE: previous})
+
+    with pytest.raises(error) as caught:
+        write(root, content)
+
+    assert type(caught.value) is error
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("as_type", [Path, str])
+def test_a_missing_data_root_is_not_created(tmp_path, as_type):
+    with pytest.raises(FileNotFoundError, match="data root"):
+        write(as_type(tmp_path / "absent"), MINIMAL)
+
+    assert snapshot(tmp_path) == {}
+
+
+@pytest.mark.parametrize("as_type", [Path, str])
+def test_a_file_in_the_place_of_the_data_root(tmp_path, as_type):
+    place(tmp_path, b"a file", "data")
+
+    with pytest.raises(NotADirectoryError, match="data root"):
+        write(as_type(tmp_path / "data"), MINIMAL)
+
+    assert snapshot(tmp_path) == {"data": b"a file"}
+
+
+@pytest.mark.parametrize("data_root", [None, 7, b"data"])
+def test_a_data_root_that_is_no_path(data_root):
+    with pytest.raises(TypeError):
+        write(data_root, MINIMAL)
+
+
+@pytest.mark.parametrize(
+    "name", ["runs", RUN, f"{RUN}/rounds", f"{CANDIDATE}/attempts", FIRST]
+)
+def test_a_file_in_the_place_of_a_directory_above_the_final_name(root, name):
+    place(root, b"a file", name)
+    before = snapshot(root)
+
+    with pytest.raises(OSError):
+        write(root, MINIMAL)
+
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("previous", PREVIOUS.values(), ids=PREVIOUS)
+@pytest.mark.parametrize("step", STEPS)
+def test_a_failed_step_leaves_the_final_name_and_no_temporary_file(
+    root, monkeypatch, step, previous
+):
+    before = fill(root, {} if previous is None else {FILE: previous})
+    error = OSError(f"{step} refused: no hard links here")
+    break_step(monkeypatch, step, error)
+
+    with pytest.raises(OSError) as caught:
+        write(root, MINIMAL)
+    monkeypatch.undo()
+
+    assert caught.value is error
+    assert snapshot(root) == before | between(FILE)
+
+
+@pytest.mark.parametrize("previous", PREVIOUS.values(), ids=PREVIOUS)
+@pytest.mark.parametrize("step", STEPS[1:])
+def test_an_interrupt_removes_the_temporary_file_too(root, monkeypatch, step, previous):
+    before = fill(root, {} if previous is None else {FILE: previous})
+    break_step(monkeypatch, step, KeyboardInterrupt())
+
+    with pytest.raises(KeyboardInterrupt):
+        write(root, MINIMAL)
+    monkeypatch.undo()
+
+    assert snapshot(root) == before | between(FILE)
+
+
+@pytest.mark.parametrize("previous", PREVIOUS.values(), ids=PREVIOUS)
+def test_a_temporary_name_in_use_is_an_error_and_that_file_stays(
+    root, monkeypatch, previous
+):
+    if previous is not None:
+        place(root, previous)
+    monkeypatch.setattr(secrets, "token_hex", lambda size: "0" * 2 * size)
+    name = f"{FIRST}/spec.json.{os.getpid()}-{'0' * 16}.tmp"
+    place(root, b"of another writer", name)
+    before = snapshot(root)
+
+    with pytest.raises(FileExistsError) as caught:
+        write(root, MINIMAL)
+
+    assert not isinstance(caught.value, NameTakenError)
+    assert snapshot(root) == before
+
+
+def test_a_removal_that_fails_does_not_hide_the_failure_of_the_step(root, monkeypatch):
+    error = OSError("link refused")
+    break_step(monkeypatch, "link", error)
+    break_step(monkeypatch, "unlink", OSError("removal refused"))
+
+    with pytest.raises(OSError) as caught:
+        write(root, MINIMAL)
+    monkeypatch.undo()
+
+    assert caught.value is error
+    assert held(root) is None
+    (leftover,) = temporaries(root)
+    assert snapshot(root)[leftover] == MINIMAL
+
+
+def test_a_removal_that_fails_does_not_hide_a_taken_name(root, monkeypatch):
+    place(root, OTHER)
+    break_step(monkeypatch, "unlink", OSError("removal refused"))
+
+    with pytest.raises(NameTakenError):
+        write(root, MINIMAL)
+    monkeypatch.undo()
+
+    assert held(root) == OTHER
+    assert len(temporaries(root)) == 1
+
+
+def test_a_removal_that_fails_after_the_name_is_given_is_no_failure(root, monkeypatch):
+    break_step(monkeypatch, "unlink", OSError("removal refused"))
+
+    assert write(root, MINIMAL) is None
+    monkeypatch.undo()
+
+    assert held(root) == MINIMAL
+    (leftover,) = temporaries(root)
+    assert os.path.samefile(root / leftover, root / FILE)
+
+
+def test_a_temporary_file_removed_by_another_fails_the_link_and_gives_no_name(
+    root, monkeypatch
+):
+    give = os.link
+
+    def removed_first(source, target):
+        Path(source).unlink()
+        return give(source, target)
+
+    monkeypatch.setattr(os, "link", removed_first)
+
+    with pytest.raises(FileNotFoundError):
+        write(root, MINIMAL)
+
+    assert snapshot(root) == between(FILE)
+
+
+def test_the_order_of_the_checks_of_write(tmp_path):
+    absent = tmp_path / "absent"
+    file = place(tmp_path, b"a file", "file")
+    cases = [
+        (absent, None, TypeError),
+        (absent, MINIMAL[:20], InvalidSpecFileError),
+        (absent, raw(no_path(schema_version=2)), UnsupportedVersionError),
+        (absent, raw(no_path(**{"id.attempt": 0})) + b"\r", InvalidSpecFileError),
+        (absent, raw(no_path()) + b"\r", layout.InvalidPathValueError),
+        (None, MINIMAL[:-1], TypeError),
+        (absent, MINIMAL[:-1], WrittenFormError),
+        (file, b"\r" + MINIMAL, WrittenFormError),
+        (absent, MINIMAL, FileNotFoundError),
+        (file, MINIMAL, NotADirectoryError),
+    ]
+
+    for data_root, content, error in cases:
+        with pytest.raises(error) as caught:
+            write(data_root, content)
+        assert type(caught.value) is error
+
+    assert snapshot(tmp_path) == {"file": b"a file"}
+
+
+def test_white_space_member_order_and_free_values_are_written_as_given(root):
+    write(root, UNUSUAL)
+
+    file = rel(UNUSUAL)
+    assert snapshot(root)[file] == UNUSUAL
+    document = parse((root / file).read_bytes())
+    assert document == parse(UNUSUAL)
+    assert list(document) == list(reversed(list(full())))
+    assert document["task"]["contract"]["prototype"] == "synthetic\r\nprototype"
+    assert b"\\r" in UNUSUAL and b"\r" not in UNUSUAL
+    assert b'[-0,  1.50, 1E+2 ,{"b" :null}]' in UNUSUAL
+
+
+def test_the_classes_of_the_write():
+    assert issubclass(WrittenFormError, ValueError)
+    assert not issubclass(WrittenFormError, InvalidSpecFileError)
+    assert not issubclass(NameTakenError, (OSError, ValueError))
+    assert WrittenFormError is not instance_file.WrittenFormError
+    assert NameTakenError is not instance_file.NameTakenError
+
+
+def test_the_module_holds_no_value_of_a_content():
+    own = [value for name, value in vars(spec_file).items() if not name.startswith("_")]
+    assert all(
+        inspect.ismodule(value) or inspect.isclass(value) or inspect.isfunction(value)
+        for value in own
+    )
