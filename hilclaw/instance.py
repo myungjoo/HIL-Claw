@@ -1,4 +1,4 @@
-"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032).
+"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032, ADR-0033).
 
 ``ARCHITECTURE/decisions/ADR-0018-od8-instance-record-hw-profile.md`` fixes the
 file as a whole (decision 2), the member ``hw_profile`` in which a run states
@@ -41,19 +41,27 @@ the member ``round_budget``, in which a run states the budget of loop
 iterations the instance was started with, as a number of rounds (decisions 2
 and 3), says that a valid file may lack it, that a present one must be valid
 and that no value stands in for an absent one (decision 4), and says where
-the round budget a run states is read from (decision 5). This module is those
-rules: :func:`parse` and :func:`validate` are pure functions of the bytes of a
-content and of a parsed document, and :func:`read`, :func:`hw_profile_of`,
-:func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
-:func:`candidates_per_round_of`, :func:`op_signature_of`,
-:func:`round_budget_of` and :func:`layout_version_of` read the file of a run.
+the round budget a run states is read from (decision 5).
+``ARCHITECTURE/decisions/ADR-0033-od8-instance-record-wall-clock-budget.md``
+adds the member ``wall_clock_budget_s``, in which a run states the budget of
+wall-clock time the instance was started with, as a number of seconds
+(decisions 2 and 3), says that a valid file may lack it, that a present one
+must be valid and that no value stands in for an absent one (decision 4), and
+says where the wall-clock budget a run states is read from (decision 5). This
+module is those rules: :func:`parse` and :func:`validate` are pure functions of
+the bytes of a content and of a parsed document, and :func:`read`,
+:func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
+:func:`n_max_of`, :func:`candidates_per_round_of`, :func:`op_signature_of`,
+:func:`round_budget_of`, :func:`wall_clock_budget_s_of` and
+:func:`layout_version_of` read the file of a run.
 :func:`hw_profile_of` has the call form of the parameter ``hw_profile_of`` of
 :func:`hilclaw.hw_tool.tool_function`; nothing here binds it,
 :func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
 :func:`candidates_per_round_of`, :func:`op_signature_of`,
-:func:`round_budget_of` or :func:`layout_version_of` to a tool.
+:func:`round_budget_of`, :func:`wall_clock_budget_s_of` or
+:func:`layout_version_of` to a tool.
 
-Conventions of this module, which the eight records do not fix:
+Conventions of this module, which the nine records do not fix:
 
 - A content is exactly ``bytes`` (:class:`TypeError` otherwise: the encoding is
   part of validity). Values are as :func:`json.loads` returns them, an integer
@@ -66,16 +74,18 @@ Conventions of this module, which the eight records do not fix:
   holds it, then ``source_commit`` when the document holds it, then ``n_max``
   when the document holds it, then ``candidates_per_round`` when the document
   holds it, then ``op_signature`` when the document holds it, then
-  ``round_budget`` when the document holds it: the order in which the records
-  defined them. A content this interpreter cannot read (an integer too long
-  for it anywhere in the text, nesting too deep) raises
-  :class:`InvalidInstanceError` too, though it is a limit of this reader and
-  not damage; the limits stay as the interpreter has them. A number beyond the
-  float range in a member not defined here is read as an infinity and is no
-  error, as :mod:`hilclaw.run_state` has it; in ``tolerance``, as ``n_max``,
-  as ``candidates_per_round`` and as ``round_budget`` it makes the content
-  invalid (ADR-0020 decision 4, ADR-0023 decision 3, ADR-0028 decision 3,
-  ADR-0032 decision 3).
+  ``round_budget`` when the document holds it, then ``wall_clock_budget_s``
+  when the document holds it: the order in which the records defined them. A
+  content this interpreter cannot read (an integer too long for it anywhere in
+  the text, nesting too deep) raises :class:`InvalidInstanceError` too,
+  though it is a limit of this reader and not damage; the limits stay as the
+  interpreter has them. A number beyond the float range in a member not
+  defined here is read as an infinity and is no error, as
+  :mod:`hilclaw.run_state` has it; in ``tolerance``, as ``n_max``, as
+  ``candidates_per_round``, as ``round_budget`` and as
+  ``wall_clock_budget_s`` it makes the content invalid (ADR-0020 decision 4,
+  ADR-0023 decision 3, ADR-0028 decision 3, ADR-0032 decision 3, ADR-0033
+  decision 3).
 - ``schema_version`` is an integer of ADR-0001, from 0 to
   :data:`hilclaw.keys.MAX_INTEGER`: a value outside that range is no integer of
   the records and makes the content invalid, it is not another version. ``-0``
@@ -152,6 +162,19 @@ Conventions of this module, which the eight records do not fix:
   file, unchanged. That a content without the member states no round budget,
   and that this is no error of the content, is ADR-0032 decision 4 and not a
   convention; the convention is that it has ``None`` in that place.
+- What is a value of ``wall_clock_budget_s`` is ADR-0033 decision 3 and not a
+  convention: an integer from 1 to :data:`hilclaw.keys.MAX_INTEGER`, both
+  included, that counts seconds, so ``true``, ``5400.0``, ``5.4e3``, ``0``,
+  ``-0`` and every string (``"5400"``, ``"8h"`` and ``"PT90M"`` among them)
+  are none, and every integer from the one end to the other is a value. The
+  conventions are that a value built in memory must be exactly an ``int`` (a
+  subclass is none), that ``-0`` is refused as the integer 0 it is read as,
+  that the one rule is reported as a whole, and that an ``int`` that breaks
+  it is not shown, as for ``schema_version``. The wall-clock budget is handed
+  out as the ``int`` of the file, unchanged: a number of seconds, converted
+  to no other unit. That a content without the member states no wall-clock
+  budget, and that this is no error of the content, is ADR-0033 decision 4
+  and not a convention; the convention is that it has ``None`` in that place.
 - Which layout version a schema version states is ADR-0024 decision 3 and not
   a convention: schema version 1 states layout version 1. The conventions are
   that the pairing is a mapping keyed by the schema version with the number
@@ -170,11 +193,11 @@ Conventions of this module, which the eight records do not fix:
   the read is an :class:`OSError`, as every other failure of the file system.
 
 It writes, creates and removes no file and composes no content. It defines no
-member besides the eight (``schema_version``, ``hw_profile``, ``tolerance``,
-``source_commit``, ``n_max``, ``candidates_per_round``, ``op_signature`` and
-``round_budget``) and interprets no other: a file it accepts is not thereby a
-complete instance record, and not enough to start a run (ADR-0018 decisions 1
-and 2).
+member besides the nine (``schema_version``, ``hw_profile``, ``tolerance``,
+``source_commit``, ``n_max``, ``candidates_per_round``, ``op_signature``,
+``round_budget`` and ``wall_clock_budget_s``) and interprets no other: a file
+it accepts is not thereby a complete instance record, and not enough to start a
+run (ADR-0018 decisions 1 and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
 default and substitutes no value (ADR-0020 decision 3), does not check that a
 run is of the first case, and gives the member no meaning for a run of another
@@ -276,15 +299,55 @@ says nothing of what counts against the budget, stops nothing and ends no run
 have that many rounds. It makes the member no number of candidates per round
 and no ``n_max``, no number of coder calls, of specs, of attempts or of
 repair calls, no amount of tokens, of time or of hardware quota and no target
-metric, and it names no other budget axis (ADR-0032 decision 2 and
-Boundaries). A file it accepts need not state a round budget; what counts
-against a stated one, whether an instance may start with no budget axis and
-what ends a run whose valid file states none, is open (OD-8 sub-question 29).
+metric, and it makes the member no statement of any other budget axis
+(ADR-0032 decision 2 and Boundaries). A file it accepts need not state a round
+budget; what counts against a stated one, whether an instance may start with
+no budget axis and what ends a run whose valid file states none, is open (OD-8
+sub-question 29).
 Which tool or component reads the member, at which moment, and what follows
 when no round budget is stated is not said here (ADR-0032 decision 5 and
 Boundaries); "not stated" is no error of the content here either, this module
 gives it no tool-failure kind, and :func:`round_budget_of` is bound to no
 tool, to no ``STATE.json`` and to nothing that ends a run.
+Of the wall-clock budget it gives what the file states and nothing else
+(ADR-0033 decisions 4 and 5): it holds no default and substitutes no value for
+a member that is absent, no number, no infinity or other sign of "unlimited",
+no constant of this module and nothing taken from ``round_budget`` or from
+another member, from another file of the run, from the ``time`` values of a
+log, from the time part of a ``run_id`` or from another run. It does not read
+"not stated" as "unlimited", as a default or as zero, and it concludes neither
+that the run may go on without end nor that it may not begin (ADR-0033
+decision 4). The lower end is the number 1 of ADR-0033 decision 3, written
+here, and there is no upper end below :data:`hilclaw.keys.MAX_INTEGER`: the
+"8h" of StandardScenarios S2 is no rule of this module, as ADR-0033 decision
+3 reads it as the value of an example and as no cap, no default and no
+typical value. It checks the form of the member only. It hands out a number
+of seconds and converts nothing: it accepts no other unit or notation and
+produces none (ADR-0033 decision 3). It reads no clock and measures no time,
+and it does not say from which moment the time runs, what counts against the
+budget or against which clock it is read: that is not decided (ADR-0033
+decision 2; OD-8 sub-question 30). It does not read, import or compare
+``STATE.json``, the journal, the log or the spend view, and it concludes
+nothing from the member together with a ``round``, with the ``time`` of a
+line of a log or with the time part of a ``run_id`` (ADR-0033 decision 5). It
+adds no rule between the member and ``round_budget``: each is valid by
+itself, a file may state either, both or neither, and neither bounds the
+other (ADR-0033 decision 5). It counts nothing, stops nothing and ends no
+run, and it does not say that the run took, takes or will take that long
+(ADR-0033 decisions 2 and 5). It makes the member no time of day and no
+deadline, no limit of one process, build, measurement, coder call or tool
+call (it is no ``timeout_s``), no amount of hardware time, no number of
+rounds, no amount of tokens and no target metric (ADR-0033 decision 2). The
+name is that of a member of this file and of nothing else: the module names
+no axis of the spend view (ADR-0033 decision 3). A file it accepts need not
+state a wall-clock budget; whether an instance may start with no budget axis
+and what ends a run whose valid file states none is open (OD-8 sub-question
+29). Which tool or component reads the member, at which moment, and what
+follows when no wall-clock budget is stated is not said here (ADR-0033
+decision 5 and Boundaries); "not stated" is no error of the content here
+either, this module gives it no tool-failure kind, and
+:func:`wall_clock_budget_s_of` is bound to no tool, to no clock, to no
+``STATE.json``, to no log and to nothing that ends a run.
 Of the layout version it gives what the ``schema_version`` of a valid file
 states by the pairing of ADR-0024 decision 3 and nothing else (decisions 4
 and 5). It defines no member for the layout version and interprets none: a
@@ -346,6 +409,7 @@ _DEFINED = (
     "candidates_per_round",
     "op_signature",
     "round_budget",
+    "wall_clock_budget_s",
 )
 _SECTION = ("key", "record")
 _TOLERANCE = ("rtol", "atol")
@@ -358,7 +422,7 @@ class InvalidInstanceError(ValueError):
     """A content, a document or a path breaks a rule; the message names it.
 
     The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
-    ADR-0031 and ADR-0032 and the conventions of this module.
+    ADR-0031, ADR-0032 and ADR-0033 and the conventions of this module.
     """
 
 
@@ -408,7 +472,9 @@ class Instance(NamedTuple):
     ``op_signature`` is an :class:`OpSignature`, or ``None`` for a content
     without the member ``op_signature``. ``round_budget`` is the ``int`` of
     the member ``round_budget``, or ``None`` for a content without that
-    member.
+    member. ``wall_clock_budget_s`` is the ``int`` of the member
+    ``wall_clock_budget_s``, a number of seconds, or ``None`` for a content
+    without that member.
     No field has a default. ``others`` is the last field.
     """
 
@@ -420,6 +486,7 @@ class Instance(NamedTuple):
     candidates_per_round: int | None
     op_signature: OpSignature | None
     round_budget: int | None
+    wall_clock_budget_s: int | None
     others: dict
 
 
@@ -451,12 +518,19 @@ def parse(content):
     clamped to a range, rounded or replaced, or ``None`` when the content has
     no such member, and no value is substituted then either: ``None`` is not
     "unlimited", not a default and not zero (ADR-0032 decision 4);
+    ``wall_clock_budget_s`` is the ``int`` of the member
+    ``wall_clock_budget_s`` as the content states it (ADR-0033 decision 3), a
+    number of seconds, not converted to another unit, clamped to a range,
+    rounded or replaced, or ``None`` when the content has no such member, and
+    no value is substituted then either: ``None`` is not "unlimited", not a
+    default and not zero (ADR-0033 decision 4);
     ``others`` holds every top-level member that is none of
     ``schema_version``, ``hw_profile``, ``tolerance``, ``source_commit``,
-    ``n_max``, ``candidates_per_round``, ``op_signature`` and
-    ``round_budget``, as parsed and not interpreted, whatever its name and
-    value (``tolerence``, a top-level ``rtol``, ``source-commit``, ``nmax``,
-    ``candidates``, ``op``, ``task``, ``rounds`` or ``budget`` among them).
+    ``n_max``, ``candidates_per_round``, ``op_signature``, ``round_budget``
+    and ``wall_clock_budget_s``, as parsed and not interpreted, whatever its
+    name and value (``tolerence``, a top-level ``rtol``, ``source-commit``,
+    ``nmax``, ``candidates``, ``op``, ``task``, ``rounds``, ``budget``,
+    ``wall_clock_budget`` or ``time_budget`` among them).
     Any order of members and any white space of JSON are accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
@@ -482,7 +556,7 @@ def parse(content):
 
 
 def validate(document):
-    """Check ``document``, a parsed ``instance.json``, against the seven records.
+    """Check ``document``, a parsed ``instance.json``, against the eight records.
 
     ``document`` must be a ``dict`` with ``schema_version`` (an ``int`` from 0
     to :data:`hilclaw.keys.MAX_INTEGER`) and, at version 1, ``hw_profile``: a
@@ -519,17 +593,24 @@ def validate(document):
     4): for a value built in memory, a ``bool``, a ``float`` such as ``8.0``
     and a subclass of ``int`` are none. Only that form is checked: the member
     is compared with no other member, with no other file and with no range a
-    run is started in. Its other members are not looked at. The rules for the
-    text (the encoding, a member name twice) cannot be checked on a parsed
-    value. The seven records are ADR-0018, ADR-0020, ADR-0022, ADR-0023,
-    ADR-0028, ADR-0031 and ADR-0032; ADR-0024 adds no rule of validity.
+    run is started in. It may hold ``wall_clock_budget_s``, which is then
+    exactly an ``int`` from 1 to :data:`hilclaw.keys.MAX_INTEGER`, both
+    included, a number of seconds (ADR-0033 decisions 3 and 4): for a value
+    built in memory, a ``bool``, a ``float`` such as ``5400.0`` and a
+    subclass of ``int`` are none. Only that form is checked: the member is
+    compared with no other member, with no other file and with no clock. Its
+    other members are not looked at. The rules for the text (the encoding, a
+    member name twice) cannot be checked on a parsed value. The eight records
+    are ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028, ADR-0031, ADR-0032
+    and ADR-0033; ADR-0024 adds no rule of validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
     ``tolerance.rtol``, ``source_commit``, ``n_max``,
-    ``candidates_per_round``, ``op_signature.key`` or ``round_budget``). The
-    version comes first: an integer other than :data:`SCHEMA_VERSION` raises
-    :class:`UnsupportedVersionError` before any other member is looked at.
+    ``candidates_per_round``, ``op_signature.key``, ``round_budget`` or
+    ``wall_clock_budget_s``). The version comes first: an integer other than
+    :data:`SCHEMA_VERSION` raises :class:`UnsupportedVersionError` before any
+    other member is looked at.
     """
     _checked(document)
 
@@ -580,10 +661,11 @@ def hw_profile_of(data_root, run_id):
     by ADR-0001 and new at each call, which the caller may hand to
     :func:`hilclaw.backends.select`. Raises what :func:`read` raises, so
     :class:`InvalidInstanceError` also for a file whose ``tolerance``,
-    ``source_commit``, ``n_max``, ``candidates_per_round``, ``op_signature``
-    or ``round_budget`` is invalid: no member of an invalid file is used
-    (ADR-0020 decision 3, ADR-0022 decision 5, ADR-0023 decision 4, ADR-0028
-    decision 4, ADR-0031 decision 5, ADR-0032 decision 4).
+    ``source_commit``, ``n_max``, ``candidates_per_round``,
+    ``op_signature``, ``round_budget`` or ``wall_clock_budget_s`` is invalid:
+    no member of an invalid file is used (ADR-0020 decision 3, ADR-0022
+    decision 5, ADR-0023 decision 4, ADR-0028 decision 4, ADR-0031 decision
+    5, ADR-0032 decision 4, ADR-0033 decision 4).
     """
     return read(data_root, run_id).hw_profile
 
@@ -708,6 +790,34 @@ def round_budget_of(data_root, run_id):
     return read(data_root, run_id).round_budget
 
 
+def wall_clock_budget_s_of(data_root, run_id):
+    """Return the wall-clock budget the run ``run_id`` states, in seconds, or ``None``.
+
+    It is the ``wall_clock_budget_s`` of what :func:`read` returns (ADR-0033
+    decision 5): the ``int`` of the member ``wall_clock_budget_s`` of
+    ``runs/<run_id>/instance.json``, from 1 to
+    :data:`hilclaw.keys.MAX_INTEGER`, as the file states it at this call, or
+    ``None`` for a valid file without that member. The member states the
+    budget of wall-clock time the instance was started with, as a number of
+    seconds (ADR-0033 decisions 2 and 3), and the number is returned as it
+    is, converted to no other unit. ``None`` says that no wall-clock budget
+    is stated: it is not "unlimited", not a default and not zero, and no
+    value stands in for it (ADR-0033 decision 4), no number, no infinity, no
+    constant of this module, nothing taken from ``round_budget``, from
+    another member or from another file of the run and not the wall-clock
+    budget of another run. Only the instance file is read and no clock is:
+    the number is compared with nothing, not with a time that has passed,
+    with the ``time`` of a line of a log beside it, with the ``round`` of a
+    ``STATE.json`` beside it, with the spend view or with another member, so
+    nothing is reported or refused because of any such time, and from which
+    moment the time runs and what counts against the budget is not said
+    here. Raises what :func:`read` raises, so no wall-clock budget is
+    returned, and none is inferred, for a missing, unreadable or invalid
+    file or one of another version.
+    """
+    return read(data_root, run_id).wall_clock_budget_s
+
+
 def layout_version_of(data_root, run_id):
     """Return the layout version the run ``run_id`` states (ADR-0024 decisions 3 to 5).
 
@@ -765,9 +875,12 @@ def _checked(document):
     budget = None
     if "round_budget" in document:
         budget = _round_budget(document["round_budget"])
+    seconds = None
+    if "wall_clock_budget_s" in document:
+        seconds = _wall_clock_budget_s(document["wall_clock_budget_s"])
     others = {name: value for name, value in document.items() if name not in _DEFINED}
     return Instance(
-        key, record, tolerance, commit, n_max, candidates, op, budget, others
+        key, record, tolerance, commit, n_max, candidates, op, budget, seconds, others
     )
 
 
@@ -842,6 +955,12 @@ def _candidates_per_round(value):
 def _round_budget(value):
     if type(value) is not int or not 1 <= value <= _MAX:
         _fail("round_budget", f"an int from 1 to {_MAX}", value)
+    return value
+
+
+def _wall_clock_budget_s(value):
+    if type(value) is not int or not 1 <= value <= _MAX:
+        _fail("wall_clock_budget_s", f"an int from 1 to {_MAX}", value)
     return value
 
 
