@@ -46,8 +46,8 @@ link from the temporary name to the final name, followed by the removal of
 the temporary name. There is no fallback to a replacing rename: where the
 link is not possible the write fails and has put nothing under the final
 name. Every missing directory between the data root and the final name is
-created, and neither the presence nor the absence of any directory or of any
-other file is required (decision 5).
+created, and neither the presence nor the absence of any of them nor of any
+other file below the data root is required (decision 5).
 
 Conventions of this module, which the record does not fix:
 
