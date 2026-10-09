@@ -298,7 +298,7 @@ def test_the_public_names_and_the_signature():
     public = [name for name in vars(journaled_tool) if not name.startswith("_")]
     assert [
         name for name in public if not inspect.ismodule(vars(journaled_tool)[name])
-    ] == ["tool_function"]
+    ] == ["tool_function", "checked_function"]
     parameters = inspect.signature(tool_function).parameters
     assert list(parameters) == ["step", "numbers", "source", "check", "perform"]
     for parameter in parameters.values():
@@ -1095,3 +1095,255 @@ def test_process_a_refused_request_and_a_missing_data_root(tmp_path):
         failed, answer = process_outcome(tmp_path, front, missing, REQUEST)
         assert (failed, answer["error"]["kind"]) == (True, "no_data_root")
     assert not missing.exists()
+
+
+# --- the part the two builders share ---
+
+checked_function = journaled_tool.checked_function
+
+
+class Shared:
+    def __init__(self, *answers, numbers=NUMBERS, refusal=None, outcome=None, **others):
+        self.order, self.seen = [], []
+        self.refusal, self.outcome = refusal, outcome
+        self.source = Source(*answers, order=self.order)
+        self.function = checked_function(
+            step=STEP,
+            numbers=numbers,
+            carry_out=self.carry_out,
+            source=self.source,
+            check=self.check,
+            **others,
+        )
+
+    def check(self, request):
+        self.order.append("check")
+        if self.refusal is not None:
+            raise self.refusal
+
+    def carry_out(self, *arguments):
+        self.order.append("carry_out")
+        self.seen.append(arguments)
+        if isinstance(self.outcome, BaseException):
+            raise self.outcome
+        return self.outcome
+
+
+def shared_parts(**changes):
+    called = []
+    arguments = {
+        "step": STEP,
+        "numbers": NUMBERS,
+        "carry_out": lambda *arguments: called.append("carry_out"),
+        "source": lambda: called.append("source"),
+        "check": lambda request: called.append("check"),
+    }
+    return arguments | changes, called
+
+
+def test_the_signature_of_checked_function():
+    parameters = inspect.signature(checked_function).parameters
+    named = ["step", "numbers", "carry_out", "source", "check"]
+    assert list(parameters) == [*named, "others"]
+    for name in named:
+        assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameters[name].default is inspect.Parameter.empty
+    assert parameters["others"].kind is inspect.Parameter.VAR_KEYWORD
+
+
+def test_checked_function_hands_a_checked_request_to_carry_out_once(root):
+    outcome = {"example_member": 1}
+    shared = Shared(str(root), outcome=outcome)
+    asked = request(example_other={"nested": [1, 2]})
+    given, before = copy.deepcopy(asked), snapshot(root)
+    assert shared.function(asked) is outcome
+    assert shared.order == ["check", "source", "carry_out"]
+    assert shared.source.calls == 1
+    ((data_root, run_id, identity, handed),) = shared.seen
+    assert isinstance(data_root, Path) and data_root == root
+    assert (run_id, identity) == (RUN, ID)
+    assert handed is asked and asked == given
+    assert snapshot(root) == before
+
+
+def test_checked_function_asks_the_source_at_each_call(root, tmp_path):
+    other = new_root(tmp_path, "other")
+    shared = Shared(str(root), str(other))
+    shared.function(dict(REQUEST))
+    shared.function(dict(REQUEST))
+    assert [seen[0] for seen in shared.seen] == [root, other]
+    assert shared.order == ["check", "source", "carry_out"] * 2
+
+
+@pytest.mark.parametrize("count", [0, 1, 2, 3])
+def test_checked_function_forms_the_identity_of_each_prefix_of_the_numbers(root, count):
+    numbers = NUMBERS[:count]
+    shared = Shared(str(root), numbers=numbers)
+    asked = without(*NUMBERS[count:])
+    assert shared.function(asked) is None
+    values = [REQUEST[name] for name in numbers] + [None] * (3 - count)
+    assert shared.seen == [(root, RUN, Identity(STEP, 1, *values), asked)]
+
+
+def test_checked_function_gives_a_new_function_each_time_and_calls_nothing():
+    given, called = shared_parts(perform=lambda: called.append("perform"))
+    one, other = checked_function(**given), checked_function(**given)
+    assert callable(one) and one is not other
+    assert list(inspect.signature(one).parameters) == ["request"]
+    assert called == []
+
+
+def test_checked_function_does_not_call_a_further_callable(root):
+    called = []
+    shared = Shared(
+        str(root),
+        hw_profile_of=lambda *arguments: called.append("hw_profile_of"),
+        perform=lambda *arguments: called.append("perform"),
+    )
+    shared.function(dict(REQUEST))
+    assert called == [] and shared.order == ["check", "source", "carry_out"]
+
+
+@pytest.mark.parametrize(
+    "step", ["", "Example", "example-step", "1step", "a" * 33, 7, None, ["example"]]
+)
+def test_checked_function_refuses_a_step_that_is_no_name(step):
+    given, called = shared_parts(step=step)
+    with pytest.raises(ValueError, match="step"):
+        checked_function(**given)
+    assert called == []
+
+
+@pytest.mark.parametrize(
+    "numbers,error,message",
+    [
+        (("candidate",), ValueError, "numbers must be a prefix"),
+        (("round", "attempt"), ValueError, "numbers must be a prefix"),
+        (("round", "candidate", "attempt", "round"), ValueError, "must be a prefix"),
+        (("example",), ValueError, "numbers must be a prefix"),
+        (["round"], TypeError, "numbers must be a tuple, got list"),
+        ("round", TypeError, "numbers must be a tuple, got str"),
+        (None, TypeError, "numbers must be a tuple, got NoneType"),
+    ],
+)
+def test_checked_function_refuses_numbers_of_another_form(numbers, error, message):
+    given, called = shared_parts(numbers=numbers)
+    with pytest.raises(error, match=message):
+        checked_function(**given)
+    assert called == []
+
+
+@pytest.mark.parametrize(
+    "name", ["carry_out", "source", "check", "perform", "hw_profile_of"]
+)
+@pytest.mark.parametrize("value", [None, "example", 1])
+def test_checked_function_refuses_a_part_that_is_not_callable(name, value):
+    given, called = shared_parts(perform=len, hw_profile_of=len)
+    with pytest.raises(TypeError, match=f"^{name} must be callable, got "):
+        checked_function(**(given | {name: value}))
+    assert called == []
+
+
+def test_checked_function_checks_in_the_order_of_its_docstring():
+    given, _ = shared_parts(
+        step=None, numbers=None, carry_out=None, source=None, check=None
+    )
+    given |= {"hw_profile_of": None, "perform": None}
+    with pytest.raises(ValueError, match="step"):
+        checked_function(**given)
+    given["step"] = STEP
+    with pytest.raises(TypeError, match="numbers must be a tuple"):
+        checked_function(**given)
+    given["numbers"] = ("attempt",)
+    with pytest.raises(ValueError, match="numbers must be a prefix"):
+        checked_function(**given)
+    given["numbers"] = ()
+    for name in ("carry_out", "source", "check", "hw_profile_of", "perform"):
+        with pytest.raises(TypeError, match=f"^{name} must be callable"):
+            checked_function(**given)
+        given[name] = len
+    assert callable(checked_function(**given))
+
+
+def test_the_parts_of_checked_function_are_given_by_name_and_all_are_required():
+    given, _ = shared_parts()
+    with pytest.raises(TypeError):
+        checked_function(*given.values())
+    for name in given:
+        with pytest.raises(TypeError, match=name):
+            checked_function(
+                **{other: value for other, value in given.items() if other != name}
+            )
+
+
+@pytest.mark.parametrize(
+    "numbers,asked,member",
+    [
+        (NUMBERS, None, "the request must be an object, got NoneType"),
+        (NUMBERS, [REQUEST], "the request must be an object, got list"),
+        (NUMBERS, without("run_id"), "run_id: is required"),
+        (NUMBERS, without("execution"), "execution: is required"),
+        (NUMBERS, without("attempt"), "attempt: is required"),
+        ((), without("candidate", "attempt"), "round: is no member"),
+        (("round",), without("attempt"), "candidate: is no member"),
+        (NUMBERS, request(round=None), "round: must be an integer, got null"),
+        (NUMBERS, request(run_id="Run A"), "run_id"),
+        (NUMBERS, request(run_id=7), "run_id"),
+        (NUMBERS, request(execution=0), "execution"),
+    ],
+)
+def test_checked_function_refuses_a_request_before_anything_is_called(
+    root, numbers, asked, member
+):
+    shared = Shared(str(root), numbers=numbers)
+    before = snapshot(root)
+    with pytest.raises(ToolFailure) as caught:
+        shared.function(asked)
+    assert caught.value.kind == INVALID == "invalid_request"
+    assert member in caught.value.message
+    assert shared.order == [] and shared.source.calls == 0
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [ToolFailure(INVALID, "example_marker: is no member"), KeyError("example"), Died()],
+    ids=["a refusal", "another exception", "a death"],
+)
+def test_checked_function_lets_what_check_raises_pass_through(root, refusal):
+    shared = Shared(str(root), refusal=refusal)
+    with pytest.raises(type(refusal)) as caught:
+        shared.function(dict(REQUEST))
+    assert caught.value is refusal
+    assert shared.order == ["check"] and shared.source.calls == 0
+
+
+def test_checked_function_lets_no_data_root_pass_through(tmp_path):
+    missing = tmp_path / "missing"
+    for answer in (str(missing), OSError("no configuration"), 7):
+        shared = Shared(answer)
+        with pytest.raises(ToolFailure) as caught:
+            shared.function(dict(REQUEST))
+        assert caught.value.kind == tools.KIND_NO_DATA_ROOT == "no_data_root"
+        assert shared.order == ["check", "source"]
+    assert not missing.exists()
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        ToolFailure(tools.KIND_STEP_OPEN, "example"),
+        StepFailed(SPEND, "example_failure", "no outcome"),
+        KeyError("example"),
+        Died(),
+    ],
+    ids=["a tool failure", "a failed step", "another exception", "a death"],
+)
+def test_checked_function_lets_what_carry_out_raises_pass_through(root, outcome):
+    shared = Shared(str(root), outcome=outcome)
+    before = snapshot(root)
+    with pytest.raises(type(outcome)) as caught:
+        shared.function(dict(REQUEST))
+    assert caught.value is outcome
+    assert shared.order == ["check", "source", "carry_out"]
+    assert snapshot(root) == before

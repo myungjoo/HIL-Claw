@@ -102,6 +102,23 @@ def test_the_hw_tools_are_the_four_of_fr_10():
     assert type(HW_TOOLS) is tuple
 
 
+@pytest.mark.parametrize("tool", HW_TOOLS)
+def test_check_hw_tool_returns_the_name_of_a_hw_tool_as_the_same_object(tool):
+    assert backends.check_hw_tool(tool) is tool
+
+
+@pytest.mark.parametrize("tool", ["blob.push", "sim_run", "SIM.RUN", "sim.run ", ""])
+def test_check_hw_tool_refuses_a_name_that_is_no_hw_tool(tool):
+    with pytest.raises(ValueError, match="no HW tool"):
+        backends.check_hw_tool(tool)
+
+
+@pytest.mark.parametrize("tool", [7, None, ("sim.run",), Text("sim.run")])
+def test_check_hw_tool_refuses_what_is_no_str(tool):
+    with pytest.raises(TypeError, match="must be a str"):
+        backends.check_hw_tool(tool)
+
+
 # A backend
 
 

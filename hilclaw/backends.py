@@ -39,7 +39,12 @@ HW_TOOLS = ("sim.run", "board.run", "profiler.collect", "correctness.check")
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 
 
-def _hw_tool(tool):
+def check_hw_tool(tool):
+    """Return ``tool`` when it is the name of a HW tool, one of :data:`HW_TOOLS`.
+
+    Raises :class:`TypeError` when ``tool`` is not exactly a ``str`` and
+    :class:`ValueError` when it is a ``str`` that is none of the four.
+    """
     if type(tool) is not str:
         raise TypeError(f"a HW tool name must be a str, got {type(tool).__name__}")
     if tool not in HW_TOOLS:
@@ -78,7 +83,7 @@ class Backend:
         for tool, operation in operations.items():
             if not callable(operation):
                 raise TypeError(f"the operation of {name} for {tool!r} is not callable")
-            held[_hw_tool(tool)] = operation
+            held[check_hw_tool(tool)] = operation
         self._name = name
         self._operations = held
 
@@ -151,7 +156,7 @@ def select(table, hw_profile, tool):
     """
     if not isinstance(table, BackendTable):
         raise TypeError(f"a BackendTable is required, got {type(table).__name__}")
-    _hw_tool(tool)
+    check_hw_tool(tool)
     keys.hw_profile_key(hw_profile)
     accelerator = hw_profile["accelerator"]
     backend = table._backends.get(accelerator)
