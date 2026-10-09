@@ -2,7 +2,7 @@
 id: T-0108
 title: Write the ADR fixing how the hw key-field values of the first hw_profile `cpu_standin` are obtained on the machine that builds and runs the kernel (the members of `toolchain` and the form of their version strings, the source and normalisation of `host.cpu` and `host.os`, what `revision` holds for a stand-in, and what is said about `hw_source`) - the point ADR-0001 Boundaries left to "the task that registers `cpu_standin`", one more part of the rest of OD-4 - without an onboarding registry, without a writer, without a remote host and without a tool contract, and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, FR-13, FR-14, C-7, OD-4, OD-26, "#5 A-7", "#5 D6"]
 dependsOn: [T-0013, T-0015, T-0016]
@@ -127,3 +127,77 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (planner, not before 2026-10-16 - code mode, no change of behaviour) One helper for the once-only write shared by `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py` (T-0094 `## Result`).
 
 ## Result
+**DONE** - landed on `main` as commit `f57b628` ("T-0108: Add ADR-0035, how the hw key-field values of a cpu_standin hw_profile are obtained (one more part of the rest of OD-4)"), document mode, pushed as a fast-forward of `a7751ee`; no PR. The task branch was deleted remotely and locally (separate commands, after the push was confirmed). This task ticks **no PLAN checkbox** (P1-5 stays open: `task.objective` and a technique are still missing). The §9 owner notice **was posted by the executor**, as the spawn prompt asked: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6089042706 (2026-10-09 UTC; objection window until 2026-10-16). **No new HQ** and no BLOCKED exit: neither the executor nor any of the four reviewers read a point as needing the repository owner. CI: the `push` run on `main` for `f57b628` concluded `success` (https://github.com/myungjoo/HIL-Claw/actions/runs/37989679881). Wall clock: started 2026-10-09T20:24Z, pushed to `main` about 20:50Z. This task file is not part of the landed commit; this `## Result` is left uncommitted for the driver (DRIVER §3-6) - the spawn prompt's "include that edit in your landed commit" could not be followed, since the Result holds the commit hash and the CI result, and the task file and the executor definition both say uncommitted.
+
+§3-5 check before starting: no commit with `Task: T-0108` on `origin/main`, no PR for T-0108, no open PR - a fresh start.
+
+### The record
+`ARCHITECTURE/decisions/ADR-0035-od4-cpu-standin-hw-key-values.md` (199 lines; ADR-0035 was the next free number). Status: accepted 2026-10-09 under DRIVER §9 by reviewer approval; closes one more part of the rest of OD-4 for a hw_profile whose `accelerator` is `cpu_standin` and for nothing else; the status wording of the OD-4 row is unchanged; OD-26 stays `미착수` and no proposal of it is adopted or rejected.
+
+### The rule for each value as landed (the code slice is written against these)
+- **Machine**: the one on which the kernel is built and run; under WSL the Linux environment, not the Windows system around it. Not covered: a build on one machine and a run on another; a remote stand-in.
+- **A line** is its text without the line end (LF, or CR LF). **Spelling of every string taken from the machine**: each run of space and tab characters becomes one space; spaces at both ends are removed; nothing else is changed (no case folding, no replacement, no cutting). The result must be 1 to 255 characters, each 0x20 to 0x7E.
+- **`toolchain`**: exactly one member, `clang`. Value: the first line that `<compiler> --version` writes to standard output, in that spelling, where `<compiler>` is the clang the kernels of the profile are built with. For a command ending with status 0 and an output in printable ASCII this is `clang_build.compiler_version` plus the whitespace rule; for any other output the rule of the record holds, and whether the function differs there is for the code task to check.
+- **`host.cpu`**: Linux and WSL - of the first line of `/proc/cpuinfo` whose text before its first colon, with spaces and tabs removed at both ends, is `model name`: the text after that colon. macOS - the first line of the output of `sysctl -n machdep.cpu.brand_string`.
+- **`host.os`**: the environment word, then the release. macOS (kernel name `uname -s` is `Darwin`): `macos`, then the first line of `sw_vers -productVersion`. WSL (kernel name `Linux` and the kernel release `uname -r` contains `microsoft` in any case): `wsl`, then `ID`, then `VERSION_ID` when the file has one. Linux (kernel name `Linux` otherwise): `linux`, then the same. A value of `/etc/os-release` is the text after `ID=` or `VERSION_ID=` on the first line that starts so, without one pair of double or single quotes. Shapes: `linux exampleos 0.0`, `wsl exampleos 0.0`, `macos 0.0`, `linux exampleos`.
+- **No further `host` member** (core count, memory size, frequency policy and SMT were weighed and are named as outside the key).
+- **`revision`**: the fixed string `host`.
+- **A fact that cannot be read yields no value and then no record; nothing is substituted** (no `unknown`, no placeholder, no shortened or transliterated text). Cases: the command or file is missing or gives nothing; the command ends with a status other than 0; no `model name` line; no `ID` line (the default of `os-release(5)` is not used); an `ID` or `VERSION_ID` that, after the quotes are removed and before the spelling rule, is empty or holds a space or a tab; a kernel name without a rule; a result that is empty, longer than 255 characters or holds a character outside 0x20 to 0x7E.
+- **`hw_source`**: no value fixed; stated by whoever makes the record, never read from the machine - so the function of the code slice takes it from its caller.
+- **Example** (a plainly fictitious machine): `revision` `host`, `toolchain.clang` `Example clang version 0.0.0 (fictitious-build 1)`, `host.cpu` `Example(R) Fictitious(TM) X-0000 CPU @ 0.00GHz`, `host.os` `linux exampleos 0.0` gives `cpu_standin-8c0be275e5925ab0`; the clang line with `0.0.1` gives `cpu_standin-d77e9423bfc2a90c`; `host.os` `linux exampleos 0.1` gives `cpu_standin-9238984cf1643768`; `wsl exampleos 0.0` gives `cpu_standin-d3b1abbab96cb59c`.
+
+### Decisions and their sources
+1. Scope: `cpu_standin` only; values, not an act of registration (own).
+2. The machine of the build and the run (own; that both are local processes is ADR-0009's).
+3. `toolchain` = `clang` only (clang as the single toolchain is the owner's, A-7; the single member and the whole first line are own). Rejected: the dotted number (two vendors' clangs of one number are different compilers; needs an invented parsing rule), vendor and number, the target line (the target follows from flags, which are no key fields). No member for an OpenMP runtime (exists only for a build whose flags ask for it; no one way to name it on the three environments), the C library or the linker. The gap against ADR-0001's "Version of every software component" is stated, not closed.
+4. `host.cpu` and `host.os` as above (own). The kernel release was rejected as the value (changes with every update; names Microsoft's kernel under WSL). WSL is told apart from native Linux (ADR-0001's criterion; the first host is a PC under WSL, B-4 ⑤).
+5. `revision` = `host` (own). Rejected: repeating `host.cpu`; family, model, stepping or microcode (no one source on the three environments); `none` and the like (would say there is no revision). Answers ADR-0001's question for `cpu_standin` only.
+6. One spelling; no substitution for an unreadable fact (a placeholder would give one key to machines that differ in the missing fact).
+7. Limits named, none decided.
+8. `hw_source`: outcome (a) of the task - not fixed, stated, never probed. Whether the CPU of a machine is external or in-house hardware is a fact about an organisation that no command reports.
+
+### ADR-0001 Boundaries item, clause by clause
+Members of `toolchain`: answered for `cpu_standin` only. Form of version strings: answered for the clang of `cpu_standin` only. Source and normalisation of `host.cpu` and `host.os`: answered for `cpu_standin` on Linux, macOS and WSL. Optional `host` members: none for `cpu_standin`. `revision` for hardware without one: answered for `cpu_standin` only; open in general. `hw_source` of a stand-in: no value fixed; one question filed under OD-26. Who fills in the record (probing or by hand): left open (OD-26).
+
+### Left open, with the exact question (filed in the OD-26 section and row)
+- Whether a hw_profile of `cpu_standin` always states one fixed value of `hw_source` whatever its CPU, and which. (Reason: ADR-0001 decision 1 says the same accelerator cannot differ in `hw_source` only, and the record gives no rule by which two makers of a record of one key state the same value.)
+- **New OD sub-questions registered: none numbered**; that one question is a dated note of the OD-26 section, in the manner of its 2026-10-08 note. No new OD number.
+
+### Provisional choices the repository owner may want to revisit (all in the notice)
+- `toolchain` holds `clang` only: an OpenMP runtime, the C library and the linker are outside the key.
+- The whole first line of `clang --version` (a repackaged compiler starts a new key).
+- `host.os`: WSL against native Linux is a new key; WSL 1 and WSL 2 are not told apart; updates that keep `VERSION_ID` keep the key; every macOS version change starts a new key.
+- `revision` = `host`; stepping and microcode outside the key.
+- No `host` member for core or socket count, memory size, frequency policy or SMT.
+- `hw_source` left to whoever registers.
+
+### Edits of existing documents (same commit)
+- `ARCHITECTURE/Requirements.md`: the OD-4 row (one clause in the status parenthesis; the clause "hw 쪽 값 ... 출처가 없어 미정" replaced by the passage naming ADR-0035 and what stays open) and the OD-26 row (one clause; status unchanged). 29 OD rows as before.
+- `ARCHITECTURE/OpenDecisionProposals.md`: section OD-4 - the heading note, one "채택분(ADR-0035 ...)" bullet, one dated clause inside the 2026-10-07 note; section OD-26 - one dated note of 2026-10-09 with the filed question. No proposal text deleted.
+- `ARCHITECTURE/StandardScenarios.md`: coverage re-check - heading note, a 10th dated passage of 2026-10-09 in the history paragraph, rows S1 and S10. **No verdict changes and no gap**: re-applied to the steps that onboard a HW (S0-1, S1-1, S1-b-1 and 3), that choose a hw_profile at the start of an instance (S0-1, S1-2, S1-b-2, S2-1, S6-1, S8-1) and that look up, record or compare by hw_profile key (S0-3, S5-1, S6-1 and 2, S9-4, S10-3 and 4, S1-b-4).
+
+### Review rounds (4; fresh-context `dev-reviewer` each, model opus)
+- Round 1: **Request changes**, 4 Minor and 5 Nit, all fixed: the line end of a command output was not excluded from the fact; a missing `ID` line had no rule; an unmarked generalisation about what a release move replaces (and "inside a release" undefined); a Korean clause wider than the record; citation scope of A-7 in decision 5; the equality with `compiler_version` outside ASCII; the filed question shortened in Status and vague in the S1 row; the relation to ADR-0001's "cannot differ in `hw_source` only"; UC-0 step 1 named as less exact.
+- Round 2: **Request changes**, 3 Minor and 3 Nit, all fixed: the `model name` field name was not defined against the tab before the colon; decision 6's list of unreadable facts lacked the empty or spaced `ID` / `VERSION_ID` and the order of that check; a Korean clause on `VERSION_ID` read as covering macOS; capital in a quotation; three platform statements unmarked; the owner attribution of the `hw_source` vocabulary (it is FR-14 ④'s and ADR-0001 Context's, not a #5 comment's).
+- Round 3: **Approve**, 3 nits, all fixed: "core count follows from the CPU model" (not for several sockets); a command ending with a non-zero status; firmware and driver of ADR-0001's definition not weighed in decision 3.
+- Round 4: **Approve**, nothing trivially fixable left. One optional observation not acted on (see Follow-ups): a user-built WSL kernel whose release lacks `microsoft` is described as `linux`, and decision 7 does not name that case.
+- All four agreed with the planner's judgements: design-level and not owner-only, outcome (a) for `hw_source` invents nothing, nothing of the onboarding flow is taken, and "data-plane schema change" does not apply.
+
+### Document checks
+- Session entry (2026-10-09T20:24Z, before the first edit): no open PR; #4 (last update 2026-10-01), #7, #8 hold nothing newer; #5's last comment was the HQ-0007 mirror (issuecomment-6087750069); no comment without the driver tail speaks of the values of a `cpu_standin` profile, of the `hw_source` of a stand-in or of its host beyond A-7, B-4 and B-6; no objection to ADR-0001.
+- Pairs checked: each decision against ADR-0001 (decision 1 every row, decisions 3, 5, 6, 7, Alternatives, Consequences, Boundaries clause by clause), #5 A-7, B-4 ⑤, B-6 (quotations word for word), C-7, FR-10, FR-14 ④, UC-0, ADR-0002 decision 8 and Boundaries, ADR-0008 Consequences, ADR-0009 decisions 1 and 2, ADR-0016 decisions 4 and 6, ADR-0017, ADR-0018 decision 3 and Example.
+- Code statements checked against `hilclaw/keys.py`, `hilclaw/clang_build.py` (`DEFAULT_COMPILER`, `_resolve`, `compiler_version`, no caller in the package), `hilclaw/local_run.py`, `hilclaw/key_records.py`, `hilclaw/backends.py`; `git grep -n -i -E "platform\.|uname|cpuinfo|sysctl" -- hilclaw tests` finds nothing; `git grep cpu_standin -- hilclaw` finds nothing.
+- Platform statements: checked on one WSL installation at hand, **shapes only, no value recorded or published** - kernel name `Linux`, a kernel release containing `microsoft`, a `model name` line (a tab before the colon), `ID` and `VERSION_ID` in `/etc/os-release` (the second quoted), a first line of `clang --version` in printable ASCII and a target line below it. **Not checked, marked in the record as taken from documentation**: everything about macOS, native Linux, WSL 1, containers, Linux on a CPU without a `model name` line.
+- The example: the four keys were recomputed with `hilclaw.keys.hw_profile_key` (and by all four reviewers); the record is valid; with `in_house` or a `label` the key is the same.
+- Negative check: no registry, writer, moment of registration, remote host, re-check rule, build setting as a key field, handling per `hw_source`, tool, call or tool-failure kind, value of a real machine or change of an earlier record is stated as decided; nothing is attributed to the repository owner beyond A-7, B-4 ⑤, B-6 and the `hw_source` vocabulary (FR-14 ④).
+- Links in the new record resolve; `git diff origin/main -- ARCHITECTURE/Requirements.md` touches the OD-4 and OD-26 rows only; 29 OD rows; `git ls-files --eol` shows `i/lf` for the four files; `git diff --check` clean; `git show --stat` lists only the record and the three documents (209 insertions, 8 deletions); `python -m ruff format --check .` exits 0 (243 files).
+- A note on the task file: its `## Why` dates the planner's judgements 2026-10-10 UTC; the UTC date at execution was 2026-10-09, which the record uses.
+
+### Follow-ups
+- (planner, next - code mode, P1-5 / P1-2) The code slice: a function of the package that returns the hw_profile record of the local `cpu_standin` by decisions 3 to 6 of ADR-0035, in a new small module with its test file, using `clang_build.compiler_version`; `hw_source` is an argument; the facts of the machine are passed in or read through a seam the tests replace; an unreadable fact is an error, never a placeholder; bound to no tool, no start and no registration. The slice should check on CI (Linux) what the record marks as unchecked for native Linux, and report a difference rather than adapt the rule. D12 rules apply.
+- (planner / integrator, a later record) Name in ADR-0035's limits, or decide: a user-built WSL kernel whose release lacks `microsoft` (described as `linux`); telling WSL 1 from WSL 2; the macOS statements once a macOS machine is at hand.
+- (integrator) Sentences now less exact and not edited: ADR-0001 decision 7 (the "not decided here" rows for the hw values) and its Boundaries item; ADR-0002 decision 8 and Boundaries; ADR-0008 Consequences ("Still missing ... the hw-side values"); the Example of ADR-0018 and of the records that copy it; UC-0 step 1 ("호스트 환경(CPU type, DRAM 등)" - a `cpu_standin` profile carries no memory member); the "first commit" paragraph above the OD register does not list ADR-0035.
+- (driver / owner) PLAN P1-5 still needs `task.objective` (#5 A-4) and a technique of the stand-in catalog. HQ-0005, HQ-0006 and HQ-0007 are untouched by this task.
+
+### Note for the next planner
+The hw-side values no longer wait on a record; what a real first instance needs now is the code slice above and a machine to run it on. Review rounds went to single sentences again: the two Request-changes rounds were about under-specified reading rules (line ends, the tab in `/proc/cpuinfo`, a missing `ID` line) - a rule that a program and a person must both follow needs every such case spelt out before the first review.
