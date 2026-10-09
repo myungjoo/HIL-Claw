@@ -47,15 +47,14 @@ checks, parses, recognises and compares no id, and what a valid ``run_id`` is
 stays what :func:`hilclaw.layout.check_run_id` checks; an id states nothing,
 no fact of a run is read from one, and the time part of a result of
 :func:`new` is the reading of a clock at the moment of the build and no
-record of when a run started; two
-names of the form whose time parts differ are in the byte order of those
-parts, which for two results of :func:`new` is the order of two clock
-readings and not of events, is for a person who lists ``runs/``, and is
-nothing a component may depend on; that two results of :func:`new` differ
-rests on a probability, whose bound holds as far as the draws are
-independent, and the form is no check and no reservation, so collisions are
-improbable, not excluded, and nothing here notices one; the clock is
-compared with nothing and trusted for nothing. This module reads,
+record of when a run started; two names of the form whose time parts differ
+are in the byte order of those parts, which for two results of :func:`new` is
+the order of two clock readings and not of events, is for a person who lists
+``runs/``, and is nothing a component may depend on; that two results of
+:func:`new` differ rests on a probability, whose bound holds as far as the
+draws are independent, and the form is no check and no reservation, so
+collisions are improbable, not excluded, and nothing here notices one; the
+clock is compared with nothing and trusted for nothing. This module reads,
 lists and creates no file or directory and takes no ``data_root``, how the
 platform reaches its random source being the platform's; it keeps nothing
 between two calls and draws once for an id; it is bound to no tool and to no
