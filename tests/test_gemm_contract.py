@@ -55,6 +55,14 @@ ADR_TABLE = [
     ((512, 2048, 2048), "gemm-66f7a94f78826a41"),
 ]
 
+# ADR-0037 walk-through, copied from the record.
+ADR_0037_NO_ZERO = ((1, 2048, 8192), "gemm-485b9bc494d477eb")
+ADR_0037_NOT_COVERED = [
+    ((0, 2048, 8192), "gemm-d765fb955295628a"),
+    ((1, 0, 8192), "gemm-ae3e9e269ea6e812"),
+    ((0, 0, 0), "gemm-f5ed2636b2d123a9"),
+]
+
 FUNCTIONS = [op_signature_record, task_contract]
 DIMENSIONS = ["m", "k", "n"]
 SHAPE = {"m": 3, "k": 5, "n": 7}
@@ -330,6 +338,30 @@ def test_zero_is_accepted_by_keys_and_refused_here():
     assert op_signature_key(record).name.startswith("gemm-")
     with pytest.raises(InvalidRecordError):
         op_signature_record(0, 1, 1)
+
+
+def test_walk_through_shape_without_a_zero_has_the_values_of_the_contract():
+    shape, name = ADR_0037_NO_ZERO
+    assert op_signature_key(op_signature_record(*shape)).name == name
+    assert task_contract(*shape) == ADR_CONTRACT
+
+
+@pytest.mark.parametrize(("shape", "name"), ADR_0037_NOT_COVERED)
+def test_walk_through_shape_with_a_zero_has_a_key_and_is_not_covered(shape, name):
+    record = {
+        "schema_version": keys.SCHEMA_VERSION,
+        "kind": KIND,
+        "shape": dict(zip(DIMENSIONS, shape, strict=True)),
+        "dtype": DTYPE,
+        "layout": LAYOUT,
+    }
+    assert op_signature_key(record).name == name
+    first_zero = DIMENSIONS[shape.index(0)]
+    for function in FUNCTIONS:
+        with pytest.raises(InvalidRecordError) as caught:
+            function(*shape)
+        assert type(caught.value) is InvalidRecordError
+        assert str(caught.value).startswith(f"shape.{first_zero}: ")
 
 
 def test_module_is_bound_nowhere_and_imports_keys_only():
