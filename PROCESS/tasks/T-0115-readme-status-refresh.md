@@ -2,7 +2,7 @@
 id: T-0115
 title: Bring the status sections of README.md up to date with what main holds
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: ["#5 A-12", "#5 A-13", "#9"]
 dependsOn: []
@@ -93,3 +93,25 @@ Process:
 - (planner) After this task the planner of T-0115 knows of no further task that is executable without an owner answer before 2026-10-16; the next iterations may find no selectable task (DRIVER §3-3).
 
 ## Result
+- Document mode, no PR. Landed on `main` as `17ce57f` ("T-0115: Bring the status sections of README.md up to date"), fast-forward from `e4ec243` on the first push. Change: `README.md` only, +16/-8. Branch commits `37fdaa5` and `6363337`; remote and local branch `claude/T-0115-readme-status-refresh` deleted; `main` == `origin/main`. Wall clock about 10 minutes (04:23Z to 04:33Z).
+- Review: 2 rounds, each by a fresh-context `dev-reviewer` agent (dev-code-review, document mode), both Approve, no security concern.
+  - Both reviewers weighed the weakest point first and read `README.md` as this task's to edit (CLAUDE.md A-13 names it for document mode; no rule reserves it for the integrator or the owner; T-0005 was a driver task; the owner's sections have no diff). The guarded exit was not taken.
+  - Round 1 on `37fdaa5`: (Low) the branch commit body lacked the convention lines - written into the squashed commit; (Low, optional) the layer-2 list read as closed although `hilclaw/config.py` fell under none of its kinds - addressed in `6363337` (the loader is named and the list opens with "주로"); (Info) the clang sentence was exact for local runs only and `tests/test_clang_build.py` looks at clang alone - addressed in `6363337`; (Info) the second local command relies on word splitting - left, see Follow-ups.
+  - Round 2 on `6363337`: no change asked for. Info only: this task is upkeep of a ticked PLAN item, and DRIVER §3-3 / §6 name only unticked PLAN items as planner input without forbidding such a task (T-0114 was of the same kind); README and CLAUDE.md line 24 now describe different states of CI; ADR-0004 is inside its 7-day objection period, and the README says no more than the OD-8 register row does.
+- Files against this task file: no statement of `## Why` or of the Acceptance Criteria was found false. One point is narrower in the file than in the task text: the workflow runs on pull requests and on pushes **to `main`** (`push: branches: [main]`), and the README says so. "개발 절차" was left unchanged (no sentence there is false; "테스트 통과" stays and CLAUDE.md is still the pointer).
+- Document checks:
+  - Relative links: the loop of T-0005 prints nothing. In-page anchors `#현재-상태와-mvp-범위` and `#로컬-검사` match their headings; the cross-file anchor `PROCESS/DRIVER.md#9-od-종결-권한-d6-확정-2026-10-05` matches the heading at DRIVER.md line 141 (GitHub rendering not opened).
+  - `git diff --stat origin/main` and `git show --stat HEAD` on the squashed commit: `README.md` only. The hunks are at old lines 3, 26, 34-36, 45-47 and 60-63; none inside the owner's sections. `git ls-files --eol README.md`: `i/lf`; `git diff --cached --check`: clean. The tree of the squashed commit is identical to the reviewed head `6363337`.
+  - Word sweep ("아직", "없다", "미결", "모든/모두", "완료") over the changed sentences, each true of `main` at `e4ec243`: the runtime does not exist (PLAN P2 unticked); `.claude/agents/` holds only the three `dev-*` files and `.claude/skills/` only the two development skills; `tools.default_registry` returns an empty registry; `.claude/settings.json` has no `hooks` entry; OD-23 is "논의중" and the isolation means of OD-8 is not fixed. "완료" does not occur.
+  - The three limits of point 2, as landed: "일부만 구현된 상태이다: FR-10 도구는 아직 하나도 등록되어 있지 않고(도구 레지스트리의 기본 집합이 비어 있다), `gh pr merge` 가드는 hook으로 등록되어 있지 않다."
+  - The "do not" of point 5: the README has no sentence on CI replacing the local runs or the reverse. As landed: "CI는 [.github/workflows/ci.yml](.github/workflows/ci.yml)이며, pull request와 `main`으로의 push에서 실행된다." and "아래 명령은 Python 게이트와 같은 검사를 로컬에서 실행한다."
+- Commands of the local block, all run from the driver clone with exit 0, in a throw-away virtual environment outside the repository (Python 3.14.4, pip 26.0.1, Windows). The clone's own interpreter was not used for the installs because it holds numpy 2.5.2, not the pinned 2.4.6, and has no `coverage`; installing there would have changed the machine's Python. Nothing outside `pyproject.toml` was installed.
+  - `python -m pip install --group dev` -> 0; `python -m pip install --only-binary=:all: $(python -c "...")` -> 0; `python -m pytest` -> `12089 passed, 295 skipped`; `python -m ruff check .` -> `All checks passed!`; `python -m ruff format --check .` -> `257 files already formatted`.
+  - **No `clang` on this machine, and it is Windows.** Seen: the tests that build C are skipped, not failed ("clang is not on PATH", "a timing / verification executable needs a POSIX system"). Read in the test sources, not run: on a POSIX system without clang the same fixtures skip, and under `GITHUB_ACTIONS=true` they fail instead (round-2 reviewer). The README sentence is therefore limited to local runs. The C gate itself (clang build of the `.c` files, the calibration run) was not run here; the README describes it as what the workflow runs.
+- Deviation from the launch instruction, on purpose: this `## Result` edit is **left uncommitted** in the driver clone and is not part of `17ce57f`. DRIVER §2 and §3-6 and `.claude/agents/dev-executor.md` give the commit of `Result` to the driver's wrap-up, the document check above asks for `README.md` only, and a commit cannot record its own hash. The working tree therefore shows this one modified file.
+- Follow-ups:
+  - (integrator / repository owner) CLAUDE.md line 24 "**CI 미구축**" and the "(CI 구축 전: 로컬 테스트)" clause of A-13, with the matching notes in dev-item-address step 13 and dev-code-review, describe a state that ended with PLAN P0-3. The README now says that CI exists, so the two documents differ until that rule text is updated. Not touched here.
+  - (integrator, optional) DRIVER §3-3 / §6 do not say whether the planner may create an upkeep task for a ticked PLAN item (T-0114, T-0115); one sentence there would settle it.
+  - (next README touch) The second local command passes the `dependencies` of `pyproject.toml` by word splitting; an entry with a space or an environment marker would need the requirements-file form the workflow uses.
+  - (next README touch) The layer-2 cell and the layer-3 cell go stale when the first FR-10 tool is registered, when the merge guard is registered (HQ-0007), or when OD-23 / the isolation means of OD-8 is closed.
+  - The other follow-ups of the `## Follow-ups` section above stand unchanged.
