@@ -2,7 +2,7 @@
 id: T-0119
 title: Let the ruff gate report an access to a private name of another object or module inside `hilclaw/` (rule `SLF001`), so that the rule "no module of `hilclaw/` uses a private name of a sibling module" of T-0089 is held by CI and not by a `git grep` at review time; no change of behaviour
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: ["#9", "CLAUDE.md language policy (Python gate: pytest + ruff)", "T-0089 follow-up"]
 dependsOn: [T-0089]
@@ -83,3 +83,35 @@ Planner's judgements (2026-10-10, **the reviewer is asked to re-check each**):
 - (driver / owner) HQ-0005 (T-0088) and HQ-0008 (T-0116): the rest of PLAN P1-1. HQ-0006 (T-0106). HQ-0007 (T-0107) and the hook registration of PLAN P0.5-4. HQ-0009 (T-0117): PLAN P1-5.
 
 ## Result
+**DONE** - PR #85 (https://github.com/myungjoo/HIL-Claw/pull/85), squash commit `4749af4` on `main`; 1 review round (Approve, no Blocker / Major / Minor); branch deleted, remote and local.
+
+### What changed
+- `pyproject.toml`: `[tool.ruff.lint]` with `extend-select = ["SLF001"]`, and `[tool.ruff.lint.per-file-ignores]` with `"tests/**" = ["SLF001"]`. No other rule, no preview mode, no other setting of the rule (`ignore-names` and the like were not needed), no change of `target-version`, of a pin, of a dependency or of the pytest table.
+- `hilclaw/backends.py`: five lines (124, 125, 126, 162, 168), each unchanged but for `  # noqa: SLF001` at its end. No other file under `hilclaw/` changed; no test file changed.
+- Non-test lines: 11 added, 5 removed (6 added in `pyproject.toml`; 5 lines of `backends.py` rewritten with the marker).
+- Language: Python only (configuration of the Python gate and markers in a Python module that already is Python).
+
+### The choice per line of `hilclaw/backends.py`
+- Lines 124-126, `backend._name` in `BackendTable.__init__`: **kept and marked**. `backend.name` is not equal there: `isinstance(backend, Backend)` admits a subclass, and `tests/test_backends.py` (`test_a_table_files_a_backend_under_the_name_it_was_built_with`, a subclass `Renamed` that overrides the `name` property) fixes that the table files a backend under the name it was built with. Replacing the access would change behaviour.
+- Line 162 `table._backends` and line 168 `backend._operations` in `select`: **kept and marked**. No public expression is equal to either (`names()` and `offered()` return sorted names only), and the task allows no new public name.
+- Since no line was replaced, no existing test case had to be named for a replaced line.
+
+### Verification
+- Facts of `## Why` re-checked at execution time (`main` at `fc6e78c`, ruff 0.16.10): the 14 findings were as listed (5 in `hilclaw/backends.py`, 9 in `tests/`); no finding outside `hilclaw/backends.py` and `tests/`.
+- `python -m ruff check .`: All checks passed. `python -m ruff format --check .`: 261 files already formatted.
+- `python -m pytest`, local (Windows, Python 3.14): 12089 passed, 295 skipped, before and after. CI (Linux): 12384 passed on the PR run, the same as on the push run of `fc6e78c`.
+- Coverage of `hilclaw/`: `coverage` is not installed in the local environment and was not installed for this task; the figures are those of the CI coverage job, which runs the command of `ci.yml`. PR run and the push run of `fc6e78c` are identical: lines 3186/3202 = 99.50%, functions 331/331 = 100.00%, `hilclaw/backends.py` 62 statements, 100%.
+- The guard bites: `from hilclaw import tools` / `print(tools._x)` with `--stdin-filename hilclaw/_probe.py` reports `SLF001 Private member accessed: _x`; the same text with `--stdin-filename tests/_probe.py` reports no `SLF001`. (Both also report the default rule `I001` for the probe text, which has no blank line after the import; unrelated.)
+- The limit: `from hilclaw.tools import _x` / `print(_x)` under `hilclaw/` reports no `SLF001` (only `I001`). No second mechanism was added.
+- Defaults still selected: `ruff check --show-settings` before and after differs only by `private-member-access (SLF001)` added to the enabled rules and by the `tests/**` per-file ignore; a probe `import os` still reports `F401`.
+- `git diff --stat` against `fc6e78c`: `hilclaw/backends.py` and `pyproject.toml` only (11 insertions, 5 deletions); `git ls-files --eol` shows `i/lf` for both.
+- PR checks green before the merge (run 38059729793: Python gate 3.11 and 3.14, Coverage gate, Test presence, sh gate, C gate); the push run on `main` for `4749af4` (run 38059919124) succeeded, all six jobs.
+- Landed check before starting: no commit with `Task: T-0119` on `origin/main`, no PR for T-0119, no open PR at all.
+
+### Review (1 round, Approve)
+- The reviewer re-checked the planner's judgements and agreed with each, the weakest point first: no document fixes the rule set of the gate, a lint rule is no owner-only item of DRIVER §9 and no Requirements OD, and the rule mechanises a convention T-0089 already landed under review; the "requirement unclear" exit was not taken. It confirmed line by line that `backends.py` changed in comments only, ran the three probes with the results above, and confirmed the defaults by the settings diff and `--ignore-noqa` (exactly the five lines, no superfluous marker).
+- Nit, recorded here as the reviewer asked: `SLF001` is selected for every Python file outside `tests/`, not for `hilclaw/` alone. All tracked `.py` files are under `hilclaw/` or `tests/` today, so the effect equals the title; a Python file added elsewhere later is held to the rule too.
+- Note: `SLF001` does not tell an access to a sibling module from an access to another class of the same module, hence the five markers. The next HW tool builders will meet the same case; `# noqa: SLF001` with no text is the form to follow.
+
+### Limits
+- The guard is partial: `from hilclaw.x import _name` is not reported (`PLC2701` is a preview rule in ruff 0.16.10). See `## Follow-ups`, first item.
