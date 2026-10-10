@@ -81,9 +81,9 @@ def op_signature_record(m, k, n):
     (ADR-0001, unchanged): the refusal says that the contract does not cover
     the shape, not that the record is invalid.
 
-    Raises :class:`hilclaw.keys.InvalidRecordError` for a dimension outside
-    that range; the message starts with ``shape.`` and the name of the
-    dimension. Nothing is returned then. The class is reused for a dimension
+    Raises :class:`hilclaw.keys.InvalidRecordError` for a dimension that is
+    not such an integer; the message starts with ``shape.`` and the name of
+    the dimension. Nothing is returned then. The class is reused for a dimension
     of 0, which breaks no rule of ADR-0001: the refusal there follows the rule
     of ADR-0037.
     """
