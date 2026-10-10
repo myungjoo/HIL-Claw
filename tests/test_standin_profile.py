@@ -72,6 +72,15 @@ BAD_TEXT = {
 BAD_TIMEOUT_VALUES = [0, -1, -0.5, 0.0, float("nan"), float("inf")]
 BAD_TIMEOUT_TYPES = [None, True, False, "10", [1], 1 + 0j]
 
+# ADR-0036 walk-through, copied from the record.
+ADR_0036_LINES = [
+    (b"0.0", "macos 0.0"),
+    (b"\t0.0  ", "macos 0.0"),
+    (b"0.0 beta", "macos 0.0 beta"),
+    (b"0.0\tbeta", "macos 0.0 beta"),
+    (b"0.0 \t beta  1", "macos 0.0 beta 1"),
+]
+
 
 def done(returncode, stdout=b""):
     return RunResult(returncode, returncode is None, stdout, b"", ("x",), 0.0)
@@ -265,6 +274,83 @@ def test_macos_version_of_several_words_is_kept(machine):
     machine.sw_vers = b"0.0 \t beta\n"
     record = local_record("external", timeout_s=TIMEOUT)
     assert record["host"]["os"] == "macos 0.0 beta"
+
+
+def macos(fake, line):
+    fake.kernel = DARWIN
+    fake.sw_vers = line + b"\n"
+    fake.asked.clear()
+    return local_record("external", timeout_s=TIMEOUT)
+
+
+@pytest.mark.parametrize(("line", "expected"), ADR_0036_LINES)
+def test_adr_0036_walk_through_line_gives_its_host_os(machine, line, expected):
+    assert macos(machine, line) == example(os=expected)
+
+
+def test_macos_line_left_with_three_words_gives_a_host_os_of_four(machine):
+    record = macos(machine, ADR_0036_LINES[4][0])
+    assert record == example(os="macos 0.0 beta 1")
+    assert record["host"]["os"].split(" ") == ["macos", "0.0", "beta", "1"]
+    assert hw_profile_key(record).name.startswith("cpu_standin-")
+    assert machine.asked == ["kernel", ("clang", "--version"), SYSCTL, SW_VERS]
+
+
+def test_macos_lines_that_differ_in_their_runs_only_give_one_key(machine):
+    one_space = macos(machine, ADR_0036_LINES[2][0])
+    one_tab = macos(machine, ADR_0036_LINES[3][0])
+    three_words = macos(machine, ADR_0036_LINES[4][0])
+    assert one_space["host"]["os"] == one_tab["host"]["os"]
+    assert hw_profile_key(one_space).name == hw_profile_key(one_tab).name
+    assert hw_profile_key(three_words).name != hw_profile_key(one_space).name
+    spread = macos(machine, b" \t0.0\t\t beta \t 1 \t")
+    assert spread == macos(machine, b"0.0 beta 1") == three_words
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        b"0.0 beta\x0c1",
+        b"0.0 beta \x0c 1",
+        b"0.0 beta \xff 1",
+        b"0.0 be\x7fta 1",
+        b"0.0\x0bbeta 1",
+        b"0.0 beta\xc2\xa01",
+        b"0.0 beta\r1",
+        b"0.0 \x00 beta 1",
+    ],
+)
+def test_macos_line_of_several_words_with_a_character_out_of_range(machine, line):
+    machine.kernel = DARWIN
+    machine.sw_vers = line + b"\n"
+    assert "outside 0x20 to 0x7E" in fails(machine, "host.os")
+
+
+def test_macos_line_of_several_words_is_counted_after_the_spelling(machine):
+    spelt = b" ".join([b"v" * 100, b"w" * 100, b"x" * 47])
+    assert len(spelt) == 249
+    record = macos(machine, spelt)
+    assert record == example(os="macos " + spelt.decode("ascii"))
+    assert len(record["host"]["os"]) == 255
+    assert len(record["host"]["os"].split(" ")) == 4
+    assert hw_profile_key(record).name.startswith("cpu_standin-")
+    padded = b" \t" * 9 + spelt.replace(b" ", b" \t " * 40) + b"\t " * 9
+    assert len(padded) > 249
+    assert macos(machine, padded) == record
+    longer = b" ".join([b"v" * 100, b"w" * 100, b"x" * 48])
+    assert len(longer) == 250
+    machine.sw_vers = longer + b"\n"
+    assert "longer than 255 characters" in fails(machine, "host.os")
+    machine.sw_vers = b"\t" + longer.replace(b" ", b"  ") + b" \n"
+    assert "longer than 255 characters" in fails(machine, "host.os")
+
+
+def test_macos_failures_of_a_line_of_several_words_hold_no_text_of_it(machine):
+    machine.kernel = DARWIN
+    machine.sw_vers = b"SECRETMARK beta\x0c1\n"
+    assert "SECRETMARK" not in fails(machine, "host.os")
+    machine.sw_vers = b"SECRETMARK " + b"v" * 250 + b"\n"
+    assert "SECRETMARK" not in fails(machine, "host.os")
 
 
 @pytest.mark.parametrize("word", ["linux", "wsl"])
