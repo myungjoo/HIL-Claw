@@ -38,7 +38,7 @@ The rules, in short:
   around the whole of it. The words of ``host.os`` are joined by single spaces.
   Under macOS the first line of the output of ``sw_vers -productVersion`` is
   kept whole in the spelling of decision 6, so ``host.os`` has two or more
-  words there and two or three under Linux and WSL
+  words there; under Linux and WSL it has two or three
   (``ARCHITECTURE/decisions/ADR-0036-od4-cpu-standin-host-os-macos-version.md``,
   decisions 2 and 3).
 * A line is the text up to a line feed, without one carriage return directly
