@@ -121,9 +121,9 @@ class BackendTable:
                 raise TypeError(
                     f"an entry of a backend table must be a Backend, got {type(backend).__name__}"
                 )
-            if backend._name in held:
-                raise ValueError(f"the backend {backend._name} is given twice")
-            held[backend._name] = backend
+            if backend._name in held:  # noqa: SLF001
+                raise ValueError(f"the backend {backend._name} is given twice")  # noqa: SLF001
+            held[backend._name] = backend  # noqa: SLF001
         self._backends = held
 
     def names(self):
@@ -159,13 +159,13 @@ def select(table, hw_profile, tool):
     check_hw_tool(tool)
     keys.hw_profile_key(hw_profile)
     accelerator = hw_profile["accelerator"]
-    backend = table._backends.get(accelerator)
+    backend = table._backends.get(accelerator)  # noqa: SLF001
     if backend is None:
         raise tools.ToolFailure(
             tools.KIND_NO_BACKEND,
             f"the backend table has no entry for the accelerator {accelerator}",
         )
-    operation = backend._operations.get(tool)
+    operation = backend._operations.get(tool)  # noqa: SLF001
     if operation is None:
         raise tools.ToolFailure(
             tools.KIND_NOT_OFFERED,
