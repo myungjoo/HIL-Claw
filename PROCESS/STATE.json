@@ -68,19 +68,27 @@
       "question": "PLAN P0.5-4 leaves one part to the planner: a `PreToolUse` guard for the commands DRIVER §1-5 forbids under Bypass permissions (`git push --force*` / `-f`, `rm -rf`, `gh repo delete`), \"in the same hook\" as the merge guard of T-0007. T-0007 put it off with a question on your test rule that was never asked. (1) Do you want this guard written: (a) yes; (b) no - the discipline of DRIVER §1-5 and the deny list of `.claude/settings.json` on the CLI path are enough, and T-0107 is closed without a change? (2) If yes, where and with which tests - your rule (CLAUDE.md test rule 5, D12, and your user-level rule) allows tests for exactly two tools: (a) inside `hilclaw/merge_guard.py` - one hook command, one registration, the tokeniser that is already tested - and the new part counts as part of \"the `gh pr merge` guard hook\" (exception 2), so tests in `tests/test_merge_guard.py` are required; (b) inside `hilclaw/merge_guard.py`, with **no** test for the new part (the package total stays far above 80 %; test rule 3 is set aside for it by this answer); (c) something else (name the place and the tests)? (3) The merge guard has been on `main` since 2026-10-06 and is not registered in `.claude/settings.json`, which only you edit; PLAN P0.5-4 and the D15 migration wait on that. Is the registration still intended: (a) yes, you will register `python -m hilclaw.merge_guard` as a `PreToolUse` hook; (b) not for now? Not asked here: what exactly the guard matches (the executor's choice under review, listed in the task result), and any change of DRIVER.md or CLAUDE.md.",
       "askedAt": "2026-10-09T19:24:23Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6087750069"
+    },
+    {
+      "id": "HQ-0008",
+      "taskId": "T-0116",
+      "reason": "owner-only-decision",
+      "question": "PLAN P1-1 names `blob.push` / `blob.fetch`, and your decisions fix their frame: a two-function contract `blob.push(hash)` / `blob.fetch(hash)`, a local implementation in the MVP (one machine, C-2), a storage backend plugged in once #5 B-2 is decided (#5 A-2 supplement 1), and no automatic push - `blob.push` runs on a user command (#5 A-3). No input says what a local push and a local fetch do on one machine, where the only store is `blobs/sha256/` under the data root; ADR-0005 and ADR-0016 filed that as yours, and it was never asked. (1) What does the MVP's local implementation do: (a) nothing is copied - the local store is the only store; `blob.push(hash)` and `blob.fetch(hash)` each look at the local store and answer whether a blob of that hash is there (whether the content is also re-hashed is left to the record); (b) there is a second store on the same machine, a directory outside the data repository that the user names - `blob.push(hash)` copies the blob from `blobs/sha256/` to it, and `blob.fetch(hash)` copies it back when it is missing locally; (c) the pair is put off - no `blob.push` / `blob.fetch` tool is written until #5 B-2 is answered, and PLAN P1-1 does not wait for the pair; (d) something else (say what each of the two does)? (2) Only under (1)(b): where does the user name that directory - (a) a new member of `hilclaw.config.json` with an environment override, in the manner of `data_repo.local_path` (#5 A-1 detail 2); (b) you leave the place to the record; (c) another place (name it)? Not asked here: the board farm access and the remote backend (#5 B-2), retention, GC and `gc_at`, any \"pushed\" or \"location\" member of `artifacts.json`, who may call the pair (OD-23), and the request and result members and failure kinds of the two tools (the design of the record, under review).",
+      "askedAt": "2026-10-10T09:23:03Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 119,
+    "iterations": 120,
     "tasksDone": 112,
-    "tasksBlocked": 7,
+    "tasksBlocked": 8,
     "reviewRoundsTotal": 358
   },
   "lastIteration": {
-    "at": "2026-10-10T04:34:22Z",
-    "owner": "AKIHA:d2f69f6e-1",
-    "taskId": "T-0115",
-    "outcome": "DONE"
+    "at": "2026-10-10T09:23:03Z",
+    "owner": "AKIHA:32111dfc-1",
+    "taskId": "T-0116",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
