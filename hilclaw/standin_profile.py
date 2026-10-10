@@ -36,6 +36,11 @@ The rules, in short:
   A value of ``/etc/os-release`` is the text after ``ID=`` or ``VERSION_ID=``
   on the first line that starts so, without one pair of double or single quotes
   around the whole of it. The words of ``host.os`` are joined by single spaces.
+  Under macOS the first line of the output of ``sw_vers -productVersion`` is
+  kept whole in the spelling of decision 6, so ``host.os`` has two or more
+  words there; under Linux and WSL it has two or three
+  (``ARCHITECTURE/decisions/ADR-0036-od4-cpu-standin-host-os-macos-version.md``,
+  decisions 2 and 3).
 * A line is the text up to a line feed, without one carriage return directly
   before that line feed; nothing else ends a line. Every string taken from the
   machine is spelt in one way: each run of space and tab characters becomes one
@@ -126,7 +131,9 @@ def local_record(hw_source, *, timeout_s, compiler=None):
     characters or holds a character outside 0x20 to 0x7E. Read as such by this
     module, where the record names no case: a command that cannot be started
     or does not finish within ``timeout_s``, a file that exists and cannot be
-    read, and a platform without :func:`os.uname`.
+    read, and a platform without :func:`os.uname`. A space or a tab in the
+    first line of the output of ``sw_vers -productVersion`` is no fact that
+    cannot be read (ADR-0036 decision 2).
 
     What :func:`hilclaw.local_run.run` raises for its arguments is passed on,
     from the first command and after the kernel name was read:
