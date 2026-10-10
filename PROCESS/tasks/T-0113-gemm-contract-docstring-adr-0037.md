@@ -2,7 +2,7 @@
 id: T-0113
 title: Correct the docstrings of `hilclaw/gemm_contract.py` after ADR-0037 - the refusal of a dimension of 0 is no longer "this module's choice, not a rule of a record" - settle in the docstring which exception class that refusal has, and pin the four walk-through shapes of ADR-0037 in the tests; no change of behaviour
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-5, FR-13, OD-6, OD-4]
 dependsOn: [T-0110, T-0112]
@@ -102,3 +102,37 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (planner - not before 2026-10-16, code mode, no change of behaviour) One shared once-only write helper for the three writers (`key_records`, `instance_file`, `spec_file`).
 
 ## Result
+**DONE.** PR #83 (https://github.com/myungjoo/HIL-Claw/pull/83), squash-merged to `main` as `3c052cafe47f8d8b8440a1b11c190a845a73c53d`; branch `claude/T-0113-gemm-contract-docstring-adr-0037` deleted (remote and local). This task ticks **no** PLAN checkbox. Before the start, #5 was read: the ADR-0037 notice (issuecomment-6091831907) is its last comment, no objection to ADR-0037, ADR-0008 or ADR-0001; no open PR.
+
+**Language**: Python (the module exists in Python; no choice arises).
+
+**Review**: 3 rounds, context-isolated `dev-reviewer`, last verdict **Approve** with no finding. No reviewer disagreed with a judgement of `## Why`; none asked for an exception class of its own, none read the choice as needing a record or the repository owner.
+- Round 1 (head `9f33a96`): Approve, three low findings on docstring wording, all taken: "it returns none" could be read as returning `None`; "the rule refused there" (a value is refused, not a rule); "outside that rule" had lost its antecedent.
+- Round 2 (head `b977614`): Approve, one low finding, taken: "outside that range" named the bounds only, while the same exception is raised for a value that is not exactly an `int`.
+- Round 3 (head `1816148`): Approve, no finding. Review comments: issuecomment-6092193826, -6092195528, -6092231079, -6092232423, -6092260533, -6092262643 on the PR.
+
+**The docstring sentences as landed** (`hilclaw/gemm_contract.py`, docstring lines only):
+- Module: "For a shape that holds a 0 it returns no values: by `ARCHITECTURE/decisions/ADR-0037-od6-gemm-contract-zero-dimension.md` (decision 2) the contract of ADR-0008 covers no such shape. The values:" (the list of values follows as before).
+- `op_signature_record`: "The lower bound of 1 is the rule of ADR-0037 (decision 2): the contract of ADR-0008 covers no shape that holds a 0, so the contract has no op-side values for such a shape and there is no op_signature record of it under this contract to return. ADR-0001 lets a shape value be 0, and ADR-0008 decision 6 has the caller of a kernel pass dimensions of at least 1, so a shape with a 0 describes a call this contract never has." Then: "A record with these members whose shape holds a 0 is still a valid op_signature record with a key for `hilclaw.keys.op_signature_key` (ADR-0001, unchanged): the refusal says that the contract does not cover the shape, not that the record is invalid." Then: "Raises `hilclaw.keys.InvalidRecordError` for a dimension that is not such an integer; the message starts with `shape.` and the name of the dimension. Nothing is returned then. The class is reused for a dimension of 0, which breaks no rule of ADR-0001: the refusal there follows the rule of ADR-0037."
+- `task_contract`: "For a shape that holds a 0 the contract has no `task.contract` and nothing is substituted (ADR-0037 decision 2)."
+- One sentence outside the three the criteria name was reworded at a reviewer's request: the existing "Raises ... for a dimension outside that rule" became "for a dimension that is not such an integer" (the antecedent of "that rule" had moved once the paragraph before it named ADR-0037).
+
+**Exception class as landed**: `keys.InvalidRecordError`, kept; no class of its own, `hilclaw/keys.py` not edited. Reason: no change of behaviour, the module has no caller that could tell two classes apart, and one check refuses a 0 together with the values `keys` itself refuses. Note of the round-3 reviewer for the task that adds a class: four tests assert `type(...) is InvalidRecordError` for a 0 and must then be changed on purpose.
+
+**No statement changed**: `git diff origin/main -- hilclaw/gemm_contract.py` touches only docstring lines; the coverage log of the final head reports `hilclaw/gemm_contract.py 22 0 100%`.
+
+**Tests added** (`tests/test_gemm_contract.py`, 125 existing cases unchanged, 4 added, 129 in the file): the literals `ADR_0037_NO_ZERO` and `ADR_0037_NOT_COVERED`, copied from the walk-through of the record under a comment naming it. All four names were computed with `hilclaw.keys.op_signature_key` before they were written and equal the record: (1, 2048, 8192) `gemm-485b9bc494d477eb`; (0, 2048, 8192) `gemm-d765fb955295628a`; (1, 0, 8192) `gemm-ae3e9e269ea6e812`; (0, 0, 0) `gemm-f5ed2636b2d123a9`.
+- happy: `test_walk_through_shape_without_a_zero_has_the_values_of_the_contract` - the key name of `op_signature_record(1, 2048, 8192)` is the first name and `task_contract(1, 2048, 8192)` equals the contract of ADR-0008 decision 5.
+- negative (3 parametrized cases): `test_walk_through_shape_with_a_zero_has_a_key_and_is_not_covered` - a record built from the module's constants is accepted by `op_signature_key` with exactly the name of the record; `op_signature_record` and `task_contract` each raise, `type(...) is InvalidRecordError`, and the message starts with `shape.` and the first dimension that is 0 (m, k, m).
+- branch: **not duplicated**. `BAD_DIMENSIONS` already holds 0, so `test_bad_dimension_is_refused` already refuses a 0 in each single position (m only, k only, n only) for both functions.
+- No test asserts the wording of a docstring; no helper was added.
+
+**Verification**:
+- Local `python -m pytest`: `origin/main` (`66d9513`) `12068 passed, 295 skipped`; with the change (first commit) `12072 passed, 295 skipped`. `python -m ruff check .` ("All checks passed!") and `python -m ruff format --check .` ("255 files already formatted") exit 0 at every commit. After the two review commits (docstring words only) the local run was the 129 cases of `tests/test_gemm_contract.py` plus both ruff commands; the whole suite of the final head ran in CI, not again locally.
+- `git diff origin/main --stat`: only `hilclaw/gemm_contract.py` (+24 / -10) and `tests/test_gemm_contract.py` (+32); `git ls-files --eol` shows `i/lf` for both; `git diff --check` clean. Non-test diff: 34 changed lines in 1 file (cap 300 LOC / 5 files).
+- CI of the final head `1816148`: run https://github.com/myungjoo/HIL-Claw/actions/runs/38013732317, all six checks successful (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`). Coverage lines: `lines: 3186/3202 executed = 99.50% (minimum 80%)` and `functions: 331/331 entered = 100.00% (minimum 80%)`. No CI run failed on the PR.
+- `push` run on `main` for `3c052ca`: https://github.com/myungjoo/HIL-Claw/actions/runs/38013977749, conclusion `success`.
+
+**Criteria and the record**: no criterion disagreed with ADR-0037; nothing was followed against a criterion.
+
+**Follow-ups left** (unchanged from `## Follow-ups`; nothing new of substance): when a caller binds the values of `gemm_contract`, whether the refusal of a 0 gets an exception class of its own (the four `type(...) is InvalidRecordError` assertions for a 0 change with it). Next candidate: the test of `hilclaw/standin_profile.py` for a macOS product version of three or more words (T-0111 `## Result`). If ADR-0037 is reverted inside its objection window (until 2026-10-17), the docstring edit of `3c052ca` is reverted with it.
