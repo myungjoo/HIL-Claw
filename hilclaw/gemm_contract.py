@@ -7,7 +7,7 @@ ADR-0001 (the fields of an op_signature) and ADR-0002 (the members of
 ``row_major`` and the kernel language ``c`` (the record cites #5 A-7). This
 module returns the values that record fixes for a shape ``m``, ``k``, ``n``,
 where the product of an m x k and a k x n matrix is an m x n matrix. For a
-shape that holds a 0 it returns none: by
+shape that holds a 0 it returns no values: by
 ``ARCHITECTURE/decisions/ADR-0037-od6-gemm-contract-zero-dimension.md``
 (decision 2) the contract of ADR-0008 covers no such shape. The values:
 
@@ -82,9 +82,9 @@ def op_signature_record(m, k, n):
     the shape, not that the record is invalid.
 
     Raises :class:`hilclaw.keys.InvalidRecordError` for a dimension outside
-    that rule; the message starts with ``shape.`` and the name of the
+    that range; the message starts with ``shape.`` and the name of the
     dimension. Nothing is returned then. The class is reused for a dimension
-    of 0, which breaks no rule of ADR-0001: the rule refused there is the one
+    of 0, which breaks no rule of ADR-0001: the refusal there follows the rule
     of ADR-0037.
     """
     return {
