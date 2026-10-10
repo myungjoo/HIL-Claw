@@ -2,7 +2,7 @@
 id: T-0114
 title: Pin in the tests of `hilclaw/standin_profile.py` the walk-through lines of ADR-0036 that no test holds yet - above all a macOS product version line left with three or more words - and name ADR-0036 in the docstrings of the module; no change of behaviour
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, FR-13, C-7, OD-4]
 dependsOn: [T-0109, T-0111]
@@ -104,3 +104,34 @@ Test rules of CLAUDE.md / DRIVER §5 (D12): 1 the package total of `hilclaw/` st
 - (driver / owner) HQ-0005 (T-0088), HQ-0006 (T-0106), HQ-0007 (T-0107). PLAN P1-5: `task.objective` (#5 A-4); the place and form of a committed example.
 
 ## Result
+**DONE.** PR #84 (https://github.com/myungjoo/HIL-Claw/pull/84), squash-merged to `main` as `546d24a6f77aa45546220f24a488b83148030172`; branch `claude/T-0114-standin-profile-macos-several-words-adr-0036` deleted (remote and local, in separate commands, after the PR reported `MERGED`). This task ticks **no** PLAN checkbox. Before the start, #5 was read: the ADR-0037 notice (issuecomment-6091831907) is still its last comment (70 comments), no objection to ADR-0036, ADR-0035 or ADR-0001; no landed commit and no PR for T-0114; no open PR.
+
+**Language**: Python (the module exists in Python; no choice arises).
+
+**Review**: 2 rounds, context-isolated `dev-reviewer`, last verdict **Approve** with no finding. No reviewer disagreed with a judgement of `## Why` (worth of the slice, docstring says no more than ADR-0036, selectable without the repository owner, A-13 reading: code mode, no BLOCKED reason).
+- Round 1 (head `7026fa6`): Approve, one low finding, taken: in the module docstring the word "so" also governed the clause on Linux and WSL, as if their two or three words followed from keeping the macOS line whole. One info note, no change asked: some new cases overlap each other or existing tests (the task allows either). Comment: issuecomment-6092417335.
+- Round 2 (head `1b3bbf2`): Approve, no finding; the round-1 finding is settled. Comment: issuecomment-6092449454.
+
+**The docstring sentences as landed** (`hilclaw/standin_profile.py`, docstring lines only, no comment added):
+- Module, after "The words of `host.os` are joined by single spaces.": "Under macOS the first line of the output of `sw_vers -productVersion` is kept whole in the spelling of decision 6, so `host.os` has two or more words there; under Linux and WSL it has two or three (`ARCHITECTURE/decisions/ADR-0036-od4-cpu-standin-host-os-macos-version.md`, decisions 2 and 3)."
+- `local_record`, at the end of the paragraph that lists the cases: "A space or a tab in the first line of the output of `sw_vers -productVersion` is no fact that cannot be read (ADR-0036 decision 2)." The sentence on `ID` and `VERSION_ID` is unchanged.
+
+**No statement changed**: `git diff` of the module touches only lines inside the two docstrings. Statement count that coverage reports for the module: `hilclaw/standin_profile.py 107 0 100%` on `main` before (push run 38014350038 at `56e0a3d`) and `107 0 100%` at the final head (run 38015061485). The `coverage` package is not installed locally and nothing was installed, so both figures are from the CI logs; a local count of `ast` statements gave 107 before and after as well.
+
+**Tests added** (`tests/test_standin_profile.py`; every existing case unchanged; 17 cases added; one helper `macos(fake, line)` in the test file, without tests of its own). All new cases passed against the unchanged statements of the module at the first run.
+- `ADR_0036_LINES`, under the comment "ADR-0036 walk-through, copied from the record.": row 1 `0.0`, row 2 a tab, `0.0`, two spaces, row 3 `0.0 beta`, row 4 `0.0`, a tab, `beta`, row 5 `0.0`, a space, a tab, a space, `beta`, two spaces, `1`, each with its expected `host.os`. `test_adr_0036_walk_through_line_gives_its_host_os` (5 cases) pins rows 1 to 5 as whole records. Row 1 is also pinned by `test_macos_branch` and row 2 by `test_macos_facts_are_spelt_and_later_lines_ignored` (existing). **Rows 6 and 7 (no record) are left to the existing tests**: row 6 to `test_macos_command_that_cannot_be_read` ("no output", "only a line end", "blank first line"), row 7 to `test_macos_host_os_length_limit` (250 characters).
+- happy: `test_macos_line_left_with_three_words_gives_a_host_os_of_four` - row 5: the whole record equals `example(os="macos 0.0 beta 1")`, exactly the four words, `hw_profile_key` accepts it, and `machine.asked` is the kernel name and the three commands.
+- branch: `test_macos_lines_that_differ_in_their_runs_only_give_one_key` - rows 3 and 4 give equal `host.os` and equal key names; the key name of row 5 differs from that of row 3; a line with several runs and with spaces and tabs at both ends equals the same words joined by single spaces and the record of row 5.
+- negative: `test_macos_line_of_several_words_with_a_character_out_of_range` (8 cases: form feed with and without spaces around it, 0xFF, DEL inside a word, vertical tab, U+00A0, a lone carriage return, NUL), each through `fails(machine, "host.os")`; `test_macos_line_of_several_words_is_counted_after_the_spelling` - a spelt form of 249 characters (asserted with `len`) gives a `host.os` of 255 characters and four words that `hw_profile_key` accepts, a raw line longer than 249 bytes only by its runs gives the same record, and a spelt form of 250 characters gives none, also when its runs are longer; `test_macos_failures_of_a_line_of_several_words_hold_no_text_of_it` - the messages of both failure kinds hold no text of the line.
+- No test asserts the wording of a docstring or anything about a real macOS; the live case is not changed.
+
+**Verification**:
+- Local `python -m pytest`: `origin/main` (`56e0a3d`) `12072 passed, 295 skipped`; with the change (first commit) `12089 passed, 295 skipped`. `python -m ruff check .` ("All checks passed!") and `python -m ruff format --check .` ("256 files already formatted") exit 0 at both commits. After the review commit (one docstring line) the local run was the cases of `tests/test_standin_profile.py` (`412 passed, 1 skipped`) plus both ruff commands; the whole suite of the final head ran in CI.
+- `git diff --stat` against `origin/main`: only `hilclaw/standin_profile.py` (+8 / -1) and `tests/test_standin_profile.py` (+86); `git ls-files --eol` shows `i/lf` for both; `git diff --check` clean. Non-test diff: 9 changed lines in 1 file (cap 300 LOC / 5 files).
+- CI of the final head `1b3bbf2`: run https://github.com/myungjoo/HIL-Claw/actions/runs/38015061485, all six checks successful (`Python gate (3.11)`, `Python gate (3.14)`, `sh gate (shellcheck)`, `C gate (clang)`, `Test presence (hilclaw)`, `Coverage gate (hilclaw)`). Coverage lines: `lines: 3186/3202 executed = 99.50% (minimum 80%)` and `functions: 331/331 entered = 100.00% (minimum 80%)`. No CI run failed on the PR (the run of the first head `7026fa6`, 38014783258, was green too).
+- `push` run on `main` for `546d24a`: https://github.com/myungjoo/HIL-Claw/actions/runs/38015268513, conclusion `success`.
+- The squash commit ends with `Task: T-0114`; `git log origin/main --grep='^Task: T-0114'` finds `546d24a`.
+
+**Criteria and the record**: no criterion disagreed with ADR-0036; nothing was followed against a criterion. No new test failed against the unchanged module, so the code and the record agree as the record states.
+
+**Follow-ups left** (unchanged from `## Follow-ups`; nothing new): no further item for `hilclaw/standin_profile.py` comes out of this task. If ADR-0036 is reverted inside its objection window (until 2026-10-16), the change of `546d24a` is reverted with it.
