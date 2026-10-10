@@ -6,7 +6,10 @@ ADR-0001 (the fields of an op_signature) and ADR-0002 (the members of
 ``gemm``, the dtype ``fp32`` (the record cites #5 B-4), the layout
 ``row_major`` and the kernel language ``c`` (the record cites #5 A-7). This
 module returns the values that record fixes for a shape ``m``, ``k``, ``n``,
-where the product of an m x k and a k x n matrix is an m x n matrix:
+where the product of an m x k and a k x n matrix is an m x n matrix. For a
+shape that holds a 0 it returns none: by
+``ARCHITECTURE/decisions/ADR-0037-od6-gemm-contract-zero-dimension.md``
+(decision 2) the contract of ADR-0008 covers no such shape. The values:
 
 * :data:`KIND`, :data:`DTYPE`, :data:`LAYOUT` and :data:`LANGUAGE`: the binding
   of the contract (decisions 1 and 2).
@@ -65,14 +68,24 @@ def op_signature_record(m, k, n):
 
     Each of ``m``, ``k`` and ``n`` is exactly an ``int`` (``bool`` and other
     subclasses are refused, as in :mod:`hilclaw.keys`) from 1 to
-    :data:`hilclaw.keys.MAX_INTEGER`. The lower bound of 1 is this module's
-    choice, not a rule of a record: ADR-0001 lets a shape value be 0, and
-    ADR-0008 decision 6 has the caller of a kernel pass dimensions of at least
-    1, so a shape with a 0 describes a call this contract never has.
+    :data:`hilclaw.keys.MAX_INTEGER`. The lower bound of 1 is the rule of
+    ADR-0037 (decision 2): the contract of ADR-0008 covers no shape that
+    holds a 0, so the contract has no op-side values for such a shape and
+    there is no op_signature record of it under this contract to return.
+    ADR-0001 lets a shape value be 0, and ADR-0008 decision 6 has the caller
+    of a kernel pass dimensions of at least 1, so a shape with a 0 describes a
+    call this contract never has.
+
+    A record with these members whose shape holds a 0 is still a valid
+    op_signature record with a key for :func:`hilclaw.keys.op_signature_key`
+    (ADR-0001, unchanged): the refusal says that the contract does not cover
+    the shape, not that the record is invalid.
 
     Raises :class:`hilclaw.keys.InvalidRecordError` for a dimension outside
     that rule; the message starts with ``shape.`` and the name of the
-    dimension. Nothing is returned then.
+    dimension. Nothing is returned then. The class is reused for a dimension
+    of 0, which breaks no rule of ADR-0001: the rule refused there is the one
+    of ADR-0037.
     """
     return {
         "schema_version": keys.SCHEMA_VERSION,
@@ -102,7 +115,8 @@ def task_contract(m, k, n):
 
     The dimensions follow the rule of :func:`op_signature_record`, and a
     refused one raises :class:`hilclaw.keys.InvalidRecordError` in the same
-    way. Nothing is returned then.
+    way. Nothing is returned then. For a shape that holds a 0 the contract
+    has no ``task.contract`` and nothing is substituted (ADR-0037 decision 2).
     """
     _shape(m, k, n)
     return {
