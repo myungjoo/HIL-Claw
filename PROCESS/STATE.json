@@ -76,18 +76,26 @@
       "question": "PLAN P1-1 names `blob.push` / `blob.fetch`, and your decisions fix their frame: a two-function contract `blob.push(hash)` / `blob.fetch(hash)`, a local implementation in the MVP (one machine, C-2), a storage backend plugged in once #5 B-2 is decided (#5 A-2 supplement 1), and no automatic push - `blob.push` runs on a user command (#5 A-3). No input says what a local push and a local fetch do on one machine, where the only store is `blobs/sha256/` under the data root; ADR-0005 and ADR-0016 filed that as yours, and it was never asked. (1) What does the MVP's local implementation do: (a) nothing is copied - the local store is the only store; `blob.push(hash)` and `blob.fetch(hash)` each look at the local store and answer whether a blob of that hash is there (whether the content is also re-hashed is left to the record); (b) there is a second store on the same machine, a directory outside the data repository that the user names - `blob.push(hash)` copies the blob from `blobs/sha256/` to it, and `blob.fetch(hash)` copies it back when it is missing locally; (c) the pair is put off - no `blob.push` / `blob.fetch` tool is written until #5 B-2 is answered, and PLAN P1-1 does not wait for the pair; (d) something else (say what each of the two does)? (2) Only under (1)(b): where does the user name that directory - (a) a new member of `hilclaw.config.json` with an environment override, in the manner of `data_repo.local_path` (#5 A-1 detail 2); (b) you leave the place to the record; (c) another place (name it)? Not asked here: the board farm access and the remote backend (#5 B-2), retention, GC and `gc_at`, any \"pushed\" or \"location\" member of `artifacts.json`, who may call the pair (OD-23), and the request and result members and failure kinds of the two tools (the design of the record, under review).",
       "askedAt": "2026-10-10T09:23:03Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6096088546"
+    },
+    {
+      "id": "HQ-0009",
+      "taskId": "T-0117",
+      "reason": "owner-only-decision",
+      "question": "PLAN P1-5 (the committed GEMM spec example) lacks `task.objective`, the target of the instance (FR-2), which ADR-0002 and ADR-0008 file as owner-only under #5 A-4 / OD-1. For the first case only (`cpu_standin`, `gemm`, fp32, C kernel): (1) Which target does the run state: (a) latency minimisation - the time of the kernel call as the harness timing run measures it, lower is better; (b) throughput maximisation (name the quantity and its unit); (c) something else (name it)? (2) Is there a constraint beside it: (a) none; (b) a memory ceiling (say how it is stated); (c) another (name it)? (3) Scope of your answer: (a) the first case only, #5 A-4 stays open; (b) you also confirm the proposal of #5 A-4 (a single objective plus an optional memory ceiling; weighted combinations and Pareto later) as the MVP menu - then list its types? (4) ADR-0002 raises the spec's `schema_version` when `task.objective` gets defined members, and a change of the spec schema needs you (CLAUDE.md A-13): (a) version 1 stays - the record says what value the first case carries, `task.objective` remains \"any JSON value\" and `hilclaw/spec.py` checks nothing in it; (b) you approve version 2 of the spec, with the members of `task.objective` defined by the record and checked by the validator? Not asked here: how the value is spelt in `spec.json` and which member of `instance.json` it is copied from (the design of a record, under review), the improvement threshold (OD-13), the baseline (OD-28), promotion (OD-15, OD-29), any target value at which a run stops, and a technique of the stand-in catalog.",
+      "askedAt": "2026-10-10T10:22:52Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 120,
+    "iterations": 121,
     "tasksDone": 112,
-    "tasksBlocked": 8,
+    "tasksBlocked": 9,
     "reviewRoundsTotal": 358
   },
   "lastIteration": {
-    "at": "2026-10-10T09:23:03Z",
-    "owner": "AKIHA:32111dfc-1",
-    "taskId": "T-0116",
+    "at": "2026-10-10T10:22:52Z",
+    "owner": "AKIHA:8212143c-1",
+    "taskId": "T-0117",
     "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
