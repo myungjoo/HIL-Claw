@@ -2,7 +2,7 @@
 id: T-0120
 title: Keep `ruff format --check .` of the Python gate off the Markdown files under `PROCESS/`, so that a Python code block in a task file, a journal or a driver document, pushed to `main` by an unreviewed driver state commit, cannot turn `main` red again (the T-0063 / T-0064 incident); configuration only, no change of behaviour of the package
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: ["#9", "CLAUDE.md language policy (Python gate: pytest + ruff)", "DRIVER §2 (driver state commits)", "T-0064 follow-up"]
 dependsOn: []
@@ -85,3 +85,36 @@ Planner's judgements (2026-10-11, **the reviewer is asked to re-check each**):
 - (driver / owner) HQ-0005 (T-0088) and HQ-0008 (T-0116): the rest of PLAN P1-1. HQ-0006 (T-0106). HQ-0007 (T-0107) and the hook registration of PLAN P0.5-4. HQ-0009 (T-0117): PLAN P1-5.
 
 ## Result
+**DONE** - PR #86 (https://github.com/myungjoo/HIL-Claw/pull/86), squash commit `1bc96b6` on `main`; 1 review round (Approve, no Blocker / Major / Minor); branch deleted, remote and local.
+
+### What changed
+- `pyproject.toml`: a new table `[tool.ruff.format]` with `exclude = ["PROCESS/**/*.md"]`. 3 lines added (one of them blank), none removed. `target-version`, the `[tool.ruff.lint]` tables of T-0119, the pins, the dependencies and the pytest table are unchanged; no other file changed.
+- **The coverage of the gate is narrower from this commit on**: `python -m ruff format --check .` no longer reads the Markdown files under `PROCESS/`. The reviewer asked that this be stated here so that the repository owner can object.
+- Language: the TOML configuration of the Python gate only.
+
+### The chosen setting and the reason
+- The first form of the order of preference: an exclusion of the formatter only, for Markdown under `PROCESS/` only. It works as the verification shows, so the second form (`extend-exclude` for ruff as a whole) was not needed.
+- Reason: a Python file added under `PROCESS/` later is still linted and formatted (probe below), ruff's default exclusions are not touched (`exclude` of `[tool.ruff]` is not set), and the lint step is not concerned at all.
+- The pattern is anchored at the project root: a directory named `PROCESS` elsewhere (`hilclaw/PROCESS/`, `tests/PROCESS/`) is not excluded (reviewer's probe). It also matches a Markdown file directly under `PROCESS/` (`PROCESS/DRIVER.md`, `PROCESS/PLAN.md`).
+- What it leaves uncovered: the format of a Python block in a Markdown file under `PROCESS/` is checked by nothing now.
+
+### Verification
+- Landed check before starting: no commit with `Task: T-0120` on `origin/main`, no PR for T-0120, no open PR at all.
+- Facts of `## Why` re-checked (`main` at `43a1888`, ruff 0.16.10). The counts are one higher than at planning time, because this task file was added: `ruff format --check .` reported 262 files (84 `.py`, 178 `.md`, of which 129 under `PROCESS/`). `PROCESS/` holds no Python file (besides Markdown only `STATE.json` and `STATE.schema.json`). `ruff check --show-files .` lists no `.md` file. `pyproject.toml` had no exclusion. `b6076cb` is the T-0063 wrap-up commit and `b0e0595` the repair (one line added to the T-0063 task file).
+- `python -m ruff check .`: All checks passed, before and after.
+- `python -m ruff format --check .`: 262 files before, 133 after. The difference, 129, equals the number of tracked `.md` files under `PROCESS/` (`git ls-files 'PROCESS/*.md' 'PROCESS/**/*.md'`, without duplicates).
+- The two file lists: `ruff format` 0.16.10 has no `--show-files` option (it is refused as an unexpected argument), so the equal means was used: the `format_path; path=` lines of `python -m ruff format --check -v .`, before and after. 129 paths left, all Markdown under `PROCESS/`; no path outside `PROCESS/` left, none was added; 84 `.py` and 49 `.md` remain, none under `PROCESS/`.
+- The exclusion holds, shown without a file in the tree: a Markdown text with the Python block of the task's example, piped to `python -m ruff format --check --force-exclude --stdin-filename PROCESS/tasks/_probe.md -`, exits 1 on `origin/main` and 0 with the change; with `PROCESS/_probe.md` it exits 0 as well.
+- The check still bites elsewhere: the same text as `ARCHITECTURE/_probe.md` exits 1; the unformatted Python text as `hilclaw/_probe.py` exits 1, and as `PROCESS/x/_probe.py` exits 1 too (a Python file under `PROCESS/` stays under the check).
+- `python -m pytest`, local (Windows, Python 3.14): 12089 passed, 295 skipped, the figures recorded for `origin/main` by T-0119 (no Python file changed; the local run was made on the branch only). CI (Linux): 12384 passed on the PR run and on the push run, the figure of the push run of T-0119.
+- `git diff --stat origin/main`: `pyproject.toml` only, 3 insertions; `git ls-files --eol pyproject.toml`: `i/lf`.
+- PR checks green before the merge (run 38071618993: Python gate 3.11 and 3.14, Coverage gate, Test presence, sh gate, C gate; the format step reports 133 files). The push run on `main` for `1bc96b6` (run 38071807205) succeeded, all six jobs, 133 files in the format step.
+- No test was added and none was changed.
+
+### Review (1 round, Approve)
+- The reviewer re-checked the planner's judgements and agreed with each, the weakest point first: no document puts Markdown under ruff; CLAUDE.md applies the Python gate to layer 2 and `PROCESS/` Markdown is process state; the present coverage came from the default behaviour of the pinned ruff and the `.` of the workflow, not from a recorded decision; it is no owner-only item of DRIVER §9, no Requirements OD and no BLOCKED reason. It weighed the opposite reading (a process loosening its own gate) and found that only the format of Python blocks in files DRIVER §2 already exempts from review is given up. The "requirement unclear" exit was not taken.
+- It ran the probes itself on both revisions (eight Markdown names and four Python names, with the results above), compared the two file lists (262 and 133, the 129 lost paths equal to the tracked Markdown under `PROCESS/`), and found by `ruff check --show-settings` that the only difference is `formatter.exclude`: the default exclusions of the file resolver, `extend_exclude` and the linter section are identical, and `SLF001` behaves as before.
+- Nit, no change asked: the figures 261 / 128 / 177 of `## Why` are 262 / 129 / 178 on the base of the PR (this task file). The figures above are the current ones.
+
+### Follow-ups
+- None new. Those of `## Follow-ups` stand; the first two are the ones this task opens: the sentence "No fenced code block in it" is no longer needed for the sake of the gate from the next task file on, and whether the reviewed Markdown outside `PROCESS/` stays under the format check is still to be judged.
