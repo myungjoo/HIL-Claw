@@ -2,13 +2,13 @@
 id: T-0123
 title: Move the once-only write steps that `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py` repeat into one shared helper module, with no change of behaviour of any public function
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: code
 coversReq: [FR-13, NFR-1, OD-8, "ADR-0014", "ADR-0025", "ADR-0029"]
 dependsOn: [T-0083, T-0094]
 touchesFiles: [hilclaw/once_write.py, hilclaw/key_records.py, hilclaw/instance_file.py, hilclaw/spec_file.py, tests/test_once_write.py, tests/test_key_records.py, tests/test_instance_file.py, tests/test_spec_file.py]
 estimatedSize: {loc: 140, files: 4}   # non-test: one new module of about 40 statement lines plus its docstring, and about 20 lines replaced by a call in each of the three writers; tests are outside the cap (D4)
-hq: []   # no owner-only decision and no OD closure: a refactoring under three accepted records, no rule written, changed or dropped
+hq: [HQ-0011]
 ---
 ## Why
 Three modules of the layer-2 package give a file its final name "once only" by the same steps, written out three times:
@@ -95,3 +95,26 @@ Verify the description of `## Why` against the files at execution time; the file
 - (planner) After this task the planner of T-0123 knows of no further task that is executable without an owner answer; the next iterations may find no selectable task (DRIVER §3-3).
 
 ## Result
+**BLOCKED ("task needs re-planning")** - executor, 2026-10-11T04:26Z, at `main` `c0dfc10`. Nothing was landed: no branch, no commit, no PR, no reviewer round (0 rounds), no file other than this section changed.
+
+### The finding (the stop condition of `## Why`, second judgement, and of "Tests", second bullet)
+An existing test of one of the three writers asserts something the refactoring must change, and the edit is not a change of a patch target:
+
+- `tests/test_spec_file.py`, `test_the_module_imports_only_what_it_needs` (lines 853-872) parses the source of `hilclaw/spec_file.py` and asserts that the set of its imports **equals** `{"codecs", "contextlib", "json", "os", "re", "secrets", "pathlib.Path", "hilclaw.keys", "hilclaw.layout", "hilclaw.spec"}`. It walks the whole tree, so an import inside a function counts too.
+- After the move, `spec_file` must import the helper (`hilclaw.once_write` joins the set) and no longer uses `contextlib`, `os` or `secrets` (all three are used only in the last lines of `write`, 303-324), which the acceptance criterion "Imports that become unused are removed" and ruff `F401` both require to be dropped. The asserted set would become `{"codecs", "json", "re", "pathlib.Path", "hilclaw.keys", "hilclaw.layout", "hilclaw.once_write", "hilclaw.spec"}`.
+- The test can therefore only be kept by changing what it asserts. The task allows edits of existing tests for patch targets only and says to stop in this case; the reviewer is asked (c) to check exactly that. The only ways to keep the assertion untouched (leaving unused imports with a `noqa`, or loading the helper without an import statement) would defeat the test rather than satisfy it, so they were not taken.
+- T-0094 line 81 shows the precedent for how this test is meant to be handled: it was "adapted" there to "list the imports the write adds". The planner of T-0123 did not list it; a re-planned task can name it as a permitted edit (the import set of `spec_file` after the move), which is the executor's suggestion. No other blocker was found.
+
+### What was verified before stopping (for the re-planner)
+- Landed check: `git log origin/main --grep='^Task: T-0123'` empty; no PR for T-0123 in any state; no open PR at all; no comment on issue #5 newer than 2026-10-11T04:00Z.
+- `## Why` matches the files at `c0dfc10`: `key_records._store` lines 250-290, `instance_file.write` lines 139-161, `spec_file.write` lines 302-324; the repeated steps and the three differences are as described.
+- Baseline on `main`: `python -m pytest` = 12089 passed, 295 skipped.
+- Edits of existing tests that are patch-target changes only, as the task foresaw (all in `tests/test_key_records.py`): line 858 (`spy_on_open`), lines 896 and 898 (`break_step`, "creation" and "write") patch `key_records.open` and would have to reach the helper's `open`; line 1111 patches `key_records.secrets.token_hex` and `key_records` would no longer import `secrets`. The `key_records.os` patches (682, 725, 742, 758, 846-847, 872, 901, 1039) stay valid: `key_records` still imports `os` for `os.lstat`, and the attribute is the shared `os` module. `tests/test_instance_file.py` and the write tests of `tests/test_spec_file.py` patch `builtins.open`, `io.open`, `os.*` and `secrets.token_hex` on the shared modules and need no edit.
+- No test asserts the order, in `key_records._store`, of the removal of the temporary file against the second reading of a taken name (`test_the_last_step_finds_the_name_taken` and `test_a_taken_name_that_is_absent_again_is_the_error_of_the_link` look only at the end state).
+- `tests/test_instance_file.py` has no import-set test; `test_signature_and_public_names` and the "holds no value" tests of both modules filter by `__module__` or accept modules, so an imported `once_write` passes them.
+
+### Not done
+Helper, callers, `tests/test_once_write.py`, PR, review, merge: none started. Language line (for the re-planned task): Python, because the three callers are Python modules of `hilclaw/`. The note on the `created` flag and the objection windows (ADR-0025 until 2026-10-15, ADR-0029 until 2026-10-16) stands as the planner wrote it; no reviewer weighed it.
+
+### Follow-ups
+- (planner) Re-plan T-0123 with `test_the_module_imports_only_what_it_needs` named as a permitted edit (the new import set above), or decide that the import set of `spec_file` is to stay and drop the task.

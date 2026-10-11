@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0123",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:9ea6929e-1",
-    "acquiredAt": "2026-10-11T04:22:24Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -96,19 +92,27 @@
       "question": "The isolation means of a coder call (the rest of OD-8 that ADR-0004 left open; the same decision as the write scope of OD-14; NFR-4) has two registered candidates, neither chosen: ① \"layout = permission model\" - the coder (`claude -p`) runs behind an OS boundary, the repository mounted read-only plus a scratch directory; ② \"scratch copy + diff import\" - only the files the coder needs are copied to a scratch directory and the result is brought back, with no container and no read-only mount. ADR-0004 says the choice \"rests on facts only the owner has (container availability, out-of-tree builds of the target toolchain — #5 B-1)\"; those facts were named in two notices and never asked. For the MVP's first case only (`cpu_standin`, C kernel, clang) and the machines that run HIL-Claw instances (C-7: your local PC first - Windows with WSL - then macOS and Linux PCs): (1) A container runtime (Docker or Podman): (a) it is available on all of those machines and the MVP may require it; (b) it is available on some, and the MVP must not require it; (c) it is not available, or must not be required; (d) something else (say what)? (2) Apart from containers, may the MVP require something of a machine that needs administrator rights or a set-up step per machine (a second OS user, a read-only mount, a sandbox tool installed by hand): (a) yes (say what is acceptable); (b) no - a run must work for an ordinary user after cloning the two repositories and installing the package; (c) something else (say what)? (3) May the isolation means be decided now for the first case alone, before #5 B-1 is answered (candidate ①'s stated prerequisite is that the target toolchain builds out of tree, which clang does), to be judged again when B-1 is known: (a) yes; (b) no - wait for B-1? Not asked here: which candidate is taken and its details (the design of a record under DRIVER §9, under review, with the 7-day objection window), the agent roster and the per-agent tool allowlists (OD-23), time limits, resource ceilings and board safety (the rest of OD-14), what a coder may search or read (OD-12, OD-16), the coder model (#5 A-8), gates (#5 A-5), and #5 B-1 itself.",
       "askedAt": "2026-10-10T21:25:00Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6102335605"
+    },
+    {
+      "id": "HQ-0011",
+      "taskId": "T-0123",
+      "reason": "requirement-unclear",
+      "question": "T-0123 (one shared helper `hilclaw/once_write.py` for the once-only write that `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py` repeat; code mode, no change of behaviour; planned from the T-0094 follow-up) stopped before any change: the task allowed edits of existing tests for patch targets only, and `tests/test_spec_file.py::test_the_module_imports_only_what_it_needs` asserts the exact import set of `hilclaw/spec_file.py`, which the move must change (`hilclaw.once_write` joins it; `contextlib`, `os` and `secrets` leave it). The follow-up also said \"only after the objection windows of ADR-0025 (2026-10-15) and ADR-0029 (2026-10-16), or with a note of the risk\". Which do you want: (a) the task is run again now, with that one assertion named as a permitted edit (the import set of `spec_file` after the move) and the note of the risk in the commit body; (b) the same, but not before 2026-10-16; (c) the task is dropped - the three writers keep their own copies of the steps? Not asked here: the helper's name and signature and how a taken name is signalled (the executor's choice under review), and any change of a rule of ADR-0014, ADR-0025 or ADR-0029.",
+      "askedAt": "2026-10-11T04:26:23Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 126,
+    "iterations": 127,
     "tasksDone": 116,
-    "tasksBlocked": 10,
+    "tasksBlocked": 11,
     "reviewRoundsTotal": 363
   },
   "lastIteration": {
-    "at": "2026-10-11T00:31:36Z",
-    "owner": "AKIHA:d24f1f7b-1",
-    "taskId": "T-0122",
-    "outcome": "DONE"
+    "at": "2026-10-11T04:26:23Z",
+    "owner": "AKIHA:9ea6929e-1",
+    "taskId": "T-0123",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
