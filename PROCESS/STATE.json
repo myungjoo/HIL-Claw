@@ -99,7 +99,7 @@
       "reason": "requirement-unclear",
       "question": "T-0123 (one shared helper `hilclaw/once_write.py` for the once-only write that `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py` repeat; code mode, no change of behaviour; planned from the T-0094 follow-up) stopped before any change: the task allowed edits of existing tests for patch targets only, and `tests/test_spec_file.py::test_the_module_imports_only_what_it_needs` asserts the exact import set of `hilclaw/spec_file.py`, which the move must change (`hilclaw.once_write` joins it; `contextlib`, `os` and `secrets` leave it). The follow-up also said \"only after the objection windows of ADR-0025 (2026-10-15) and ADR-0029 (2026-10-16), or with a note of the risk\". Which do you want: (a) the task is run again now, with that one assertion named as a permitted edit (the import set of `spec_file` after the move) and the note of the risk in the commit body; (b) the same, but not before 2026-10-16; (c) the task is dropped - the three writers keep their own copies of the steps? Not asked here: the helper's name and signature and how a taken name is signalled (the executor's choice under review), and any change of a rule of ADR-0014, ADR-0025 or ADR-0029.",
       "askedAt": "2026-10-11T04:26:23Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6105421386"
     }
   ],
   "counters": {
