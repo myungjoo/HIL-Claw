@@ -42,6 +42,11 @@
 - *확장 고려(S10)*: 재현 시 노이즈 범위를 넘는 차이가 나면 환경 변화(드라이버/펌웨어/호스트)를 새 hw_profile 키 후보로 표시.
 - **첫 구체 인스턴스(#5 B-4, 2026-10-02)**: hw = `cpu_standin`(오너 로컬 PC, Windows/WSL; 이후 LAN 머신) · op = Llama 3.2 1B 디코더 projection GEMM — gate/up(2048→8192), down(8192→2048), QKV(2048→3072), O(2048→2048), M∈{1, 32, 512}, fp32(layout은 B-4에 없음 — row-major는 통합자 가정이었고 2026-10-07 ADR-0008이 `row_major`로 확정; 12개 op_signature 디렉토리 이름은 그 기록의 결정 9); 2차 = 같은 모델의 KV cache 포함 SDPA(GQA 16/8, head_dim 64, causal). → 설계 함의(제안): op_signature는 (op 종류, M·N·K 또는 seq·head 구성, dtype, layout)을 담고 **M(토큰 수)이 instance 파라미터**임을 키 설계가 수용해야 한다.
 
+**등록부(Requirements.md) OD-4 행의 마지막 칸에서 옮긴 글 (2026-10-11, 문장 변경 없음)**
+
+- 첫 인스턴스 = `cpu_standin` × Llama 3.2 1B GEMM/SDPA(#5 B-4) — **첫 layout 값 = `row_major`**(2026-10-07, 같은 경로, [ADR-0008](decisions/ADR-0008-od6-gemm-kernel-contract.md))로 GEMM 12개 op_signature의 이름이 정해졌고, `accelerator`가 `cpu_standin`인 hw_profile의 hw 키 필드 값을 얻는 방법은 2026-10-09 같은 경로로 [ADR-0035](decisions/ADR-0035-od4-cpu-standin-hw-key-values.md)가 정했다(커널을 빌드하고 실행하는 머신 기준; `toolchain`은 `clang` 한 멤버 = `<compiler> --version` 첫 줄, `host.cpu` = OS가 보고하는 모델명, `host.os` = 환경 단어 `linux`·`wsl`·`macos` + 배포판 `ID`·`VERSION_ID`(macOS는 제품 버전), 그 밖의 `host` 멤버 없음, `revision` = 고정 문자열 `host`; 읽을 수 없는 사실에는 대체값을 넣지 않고 그 기록으로는 레코드를 만들지 않는다; 다른 accelerator에는 적용하지 않는다) — 그 가운데 macOS에서 `sw_vers -productVersion`의 첫 줄에 공백이나 탭이 들어 있는 경우의 `host.os`는 2026-10-09 같은 경로로 [ADR-0036](decisions/ADR-0036-od4-cpu-standin-host-os-macos-version.md)이 정했다(읽을 수 없는 사실이 아니며 표기한 줄 전체를 `macos` 뒤에 싣는다; ADR-0035의 "two or three words"는 Linux·WSL 행이 주는 모양에 대한 진술로 읽는다; macOS 머신 없이 정했고 ADR-0035는 고치지 않았다).
+- 미정으로 남은 것: 실제 머신의 값(그 기록은 가상의 예만 담는다), `hw_source`(그 기록은 값을 정하지 않았다 — 레코드를 만드는 쪽이 말하고 머신에서 읽지 않는다; `cpu_standin`의 hw_profile이 그 CPU가 무엇이든 항상 정해진 한 `hw_source` 값을 말하는지, 그렇다면 어느 값인지는 OD-26), 누가 언제 등록하는지(OD-26), SDPA의 shape 멤버(ADR-0001 Boundaries).
+
 ## OD-5
 
 **정확도-성능 trade-off 정책** — **확정(2026-10-01, #5 A-6)**: hard floor.
@@ -196,6 +201,11 @@
 - **하위 질문(ADR-0009가 넘긴 것, 2026-10-07 등재, 미결)**: ⑦ 타이밍 입력의 시드 정책 — 고정인지 실행마다 새로 뽑는지, 실행 뒤 기록하는지 — 와 타이밍 실행의 입력이 같은 시도의 검증 실행의 입력과 같아야 하는지(OD-16과 함께; 하네스 검증 쪽 설계 PLAN P1-3). (2026-10-08) [ADR-0017](decisions/ADR-0017-od16-cpu-standin-verification-run.md)는 이 질문을 **닫지 않았다** — 검증 실행은 타이밍 실행과 별개의 프로그램·프로세스이고 시드도 따로 받는 호출자의 파라미터(기본값 없음)이며, 두 실행의 입력을 같게도 다르게도 만들지 않는다. 검증 쪽 시드의 출처와 실행 뒤 기록 여부는 OD-16 하위 질문 ⑤로 함께 등재되었다. ⑧ 한 번의 호출이 시계 해상도에 가까운 커널(이후의 연산 종류·작은 shape)에서 반복당 호출 수를 늘릴지 — 늘리면 instance별 기록이 필요하다(OD-11 제안).
 - 제안: **적응적 반복**(throughput 변동계수 <5%에서 중단, n∈[5,30]) · **trimmed mean**(min 금지) · **paired interleaved 측정 + 비율의 부트스트랩 95% CI 전체가 1+δ 초과 시에만 개선 인정, δ=2%** · **per-repeat 원시 벡터 저장** · 고정 warmup 폐기하고 **steady-state 검출·라벨링** · 클럭/온도/펌웨어 기록, 후보 순서 무작위화.
 - 첫 board run 전에 닫아야 한다(#7 G2).
+
+**등록부(Requirements.md) OD-13 행의 마지막 칸에서 옮긴 글 (2026-10-11, 문장 변경 없음)**
+
+- **P1 정책**: 반복마다 스칼라 샘플 하나(측정량과 그 방향은 정하지 않음 — OD-1), 타이밍 구간은 준비된 피연산자에 대한 커널 실행만, 원시 샘플은 순서대로 전부 보존, **적응적 반복**(전체 샘플의 변동계수 < 5%에서 중단, 하한 5·상한 10(#5 B-4, instance 파라미터); 상한까지 그 기준을 채우지 못하면 "미수렴" 표시 후 사용), 대표값 = **trimmed mean**(양끝 하나씩 제외; 최솟값·최댓값 금지), warm-up은 버리지도 라벨링하지도 않음, **차이 판정** = 두 샘플 집합의 대표값 비율에 대한 부트스트랩 95% 구간 전체가 1+δ 초과 또는 1/(1+δ) 미만일 때만 "다름"(δ=2%, 재표본 2000회, 고정 시드로 재현 가능). `cpu_standin`에 적용하며 sim·board에는 초기값일 뿐이다. 반영: [ADR-0007](decisions/ADR-0007-od13-measurement-policy.md).
+- **`cpu_standin`에서 C 커널의 샘플을 얻는 방법**(잔여 중 하위 질문 ⑤와 타이밍 실행의 메커니즘)도 같은 날 같은 경로로 확정: 하네스의 C 드라이버 프로그램과 커널 하나를 한 실행 파일로 빌드해 별도 프로세스로 실행, `clock_gettime(CLOCK_MONOTONIC)` 두 읽기 사이의 구간 길이(ns)를 보고, 반복당 커널 호출 1회, 모든 반복이 같은 버퍼·입력을 재사용, 첫 반복 전 비계측 실행 1회, 중단 규칙은 드라이버가 적용하고 Python 쪽이 `stopping_state`로 재확인 — OD-14·OD-16의 제안은 채택도 기각도 하지 않았다. 반영: [ADR-0009](decisions/ADR-0009-od13-cpu-standin-timing-run.md).
 
 ## OD-14
 
