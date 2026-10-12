@@ -40,7 +40,7 @@ Choices that are this module's own and no rule of the record:
 
 What the module does not do: it judges nothing and compares no output with a
 reference. It maps nothing from a type of the harness or from what an
-operation returns. It is no tool and no part of one, and it checks no stored
+operation returns. It is no tool and is bound to none, and it checks no stored
 result against the table. It gives no default of any value: no number of
 draws, no tolerance and no dimension. It reads and writes no file, starts no
 process, keeps nothing between calls and has no command-line entry. It
@@ -157,7 +157,7 @@ def _number(name, value):
     try:
         number = float(value)
     except OverflowError:
-        raise ValueError(f"{name}: an int too large for a float") from None
+        raise ValueError(f"{name}: an int beyond what a float holds") from None
     if not 0 <= number < math.inf:
         raise ValueError(f"{name}: must be finite and not negative, got {number!r}")
     return number
