@@ -2,7 +2,7 @@
 id: T-0116
 title: Write the ADR that gives `blob.push` / `blob.fetch` their contract for the MVP's local implementation on one machine - as the repository owner answers the HQ of this task (what a local push and a local fetch do) - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: BLOCKED
+status: TODO
 commitMode: doc
 coversReq: [FR-10, C-3, "#5 A-2", "#5 A-3", "#5 B-2", OD-18, "#5 D6"]
 dependsOn: [T-0008, T-0052]

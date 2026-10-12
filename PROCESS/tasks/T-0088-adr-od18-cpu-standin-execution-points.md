@@ -2,7 +2,7 @@
 id: T-0088
 title: Write the ADR answering OD-18 sub-question 7 for `cpu_standin` - which HW tools the backend offers, what the round loop does at a point the target does not offer, at which execution point or points a correctness check of an attempt is called and how a call states its point, and whether a run at the mock is answered by the first case's `correctness.check` contract - as the owner answered HQ-0005, and reflect it in the ARCHITECTURE documents
 phase: P1
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [FR-1, FR-9, FR-10, OD-18, OD-16, "#5 A-7", "#5 B-7", "#5 D6"]
 dependsOn: [T-0056, T-0073]
