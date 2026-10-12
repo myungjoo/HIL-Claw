@@ -2,7 +2,7 @@
 id: T-0088
 title: Write the ADR answering OD-18 sub-question 7 for `cpu_standin` - which HW tools the backend offers, what the round loop does at a point the target does not offer, at which execution point or points a correctness check of an attempt is called and how a call states its point, and whether a run at the mock is answered by the first case's `correctness.check` contract - as the owner answered HQ-0005, and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-9, FR-10, OD-18, OD-16, "#5 A-7", "#5 B-7", "#5 D6"]
 dependsOn: [T-0056, T-0073]
@@ -150,3 +150,87 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (planner - judge each against DRIVER §9 first; neither blocks a PLAN item today) OD-8 sub-question 22 (i); the rest of OD-16 sub-question 5 (it names a result member or a log line, so it goes with the second record of `correctness.check`).
 
 ## Result
+
+**DONE** - landed on `main` as commit `dbe15d6` (`dbe15d632ec1ddfc98839636e606058f93f17e0b`, "T-0088: Add ADR-0038, the execution points of cpu_standin - the run tools it offers, the two correctness checks of an attempt and how a call states its point, and a run at the mock (OD-18 sub-question 7 for cpu_standin, one clause of sub-question 10)"), document mode, pushed as a fast-forward of `bbbfb92`; no PR. The task branch was deleted remotely and locally (separate commands, after the push was confirmed). Trailers: `Reviewed-by: reviewer agent (6 rounds, Approve)`, `Task: T-0088`. The commit holds four files: the new `ARCHITECTURE/decisions/ADR-0038-od18-cpu-standin-execution-points.md` (144 lines) and edits of `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionProposals.md` and `ARCHITECTURE/StandardScenarios.md` (157 insertions, 11 deletions). This task ticks **no PLAN checkbox**; P1-1 stays open. This `## Result` is left uncommitted in the working tree on `main` for the driver.
+
+### What the record holds, and whose each part is
+
+- **Owner (HQ-0005 answer, https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6117798837; quoted verbatim in the record, not subject to the 7-day window)**: (1)(c) `cpu_standin` offers both `sim.run` and `board.run`; in the first case (the owner's local PC, native build and run) the two carry out the same local run and only the execution point distinguishes the two operations. (2) Not applicable; the rule for a target that lacks a point (OD-26; S1-b) is not answered. (3)(b)(i) Two checks per attempt, one as the sim-point check and one as the board-point check; "동일 검증" is the same harness, predicate and tolerance with inputs drawn anew; ADR-0021 decision 3 is confirmed and not reopened. (4)(a) A run whose hw_profile names the mock is answered by the first case's `correctness.check` contract; the script stands in for the kernel, the reference stays with the tool function; the default script is the second record's.
+- **The record's own design (DRIVER §9; the owner may object within 7 days of the notice)**:
+  - An execution point is a place of the FR-1 loop, not a machine.
+  - "The same local run" is read as: each of the two operations carries the run out itself when called. Whether a call of one run tool reads anything of the data plane that a call of the other left is left to the contract of the run tools.
+  - `cpu_standin` offers `correctness.check` as well (two checks are made there, a check reaches an operation, and an operation is reached only at a backend that offers the tool). `profiler.collect` stays open.
+  - A call of `correctness.check` is about exactly one execution point; the two checks of an attempt are two calls. The call states its point in a **member of the request**: required, no default, exactly two values; a request without it or with another value is `invalid_request` (the kind is cited from ADR-0015). **The name of the member and the spelling of its values are the second record's.**
+  - If the tool is journaled, the two checks of one attempt are two identities that differ in `step`, not in `execution`: a journaled contract has one `step` value per point and the `step` of a call follows from the point its request states. No value is listed. **Whether the tool is journaled is not decided.** Whether an operation is handed the point is not decided.
+  - With answer (4), what ADR-0021 decision 2 wrote under the condition "if a run at the mock is answered by this contract" holds. The `tolerance` member keeps its form and meaning and holds for one more class of run, so the record reads the answer as raising no version of `instance.json` (ADR-0020 is not edited).
+- **Alternatives weighed for the point of a call**: nothing stated; one call for both points; `execution` as the carrier; two tools; derivation from the data plane; `step` in the request; deciding here that the tool is journaled. Each with its reason in the record's Alternatives table.
+- **Registered, not decided**: the configuration the owner foresees (a board of a non-native ISA with `sim.run` as an emulated run of the board's ISA on the local host) is OD-18 sub-question 12, to be settled with the emulator dependency (A-13, owner), the hw_profile of a kernel built on one machine and run on another (ADR-0035 Boundaries, OD-4) and remote access (#5 B-2). That its home is OD-18 is the record's (and the planner's) choice; the answer says only "registered as an open point".
+
+### Boundaries (not decided by the record)
+
+A real simulator or board and how a backend is reached (#5 B-2, B-3); the rule for a target that lacks a point and a sim-only onboarding (OD-26); the contract of `sim.run` and `board.run` beyond which of them `cpu_standin` offers, including whether the measurement policy of ADR-0007 is applied at each point; the rest of the second record of `correctness.check` (ADR-0021 decision 1's list minus the two items answered) and the first three clauses of sub-question 10; the default script of the mock and the mock in a live session (sub-question 8); the promotion rule and k (OD-15, OD-29), the repair bound (OD-19), recovery, retry and triage (OD-10, OD-17), the Round-Manager (PLAN P2-1); `profiler.collect`, `blob.push`, `blob.fetch`; any other backend's oracle or tolerance (#5 B-7); any member of a data-plane file, any `step` value, any new `kind`. ADR-0001 to ADR-0037, UsageCases, `hilclaw/`, tests and CI are not edited.
+
+### Edits of existing documents
+
+- `Requirements.md`: the FR-9 row (one clause: two checks per attempt on `cpu_standin`, the meaning of "동일 검증" for those two checks, limited to `cpu_standin`), the FR-10 row (one clause: both run tools offered; the mock run answered by the first case's contract; the rule for a target without a point not answered) and the OD-18 row (what was fixed, owner's part and record's part apart; the list of the rest now names sub-questions 7, 10 and 12). **The FR-1 row is not edited** (answer (2) is "not applicable" and changes no sentence of it). **The OD-16 row and section are not edited** (answer (3)(i) confirms what they say of ADR-0021). 29 OD rows before and after, no new OD number, status wording of OD-18 kept (`제안됨`).
+- `OpenDecisionProposals.md`, section OD-18: the heading note, one bullet for ADR-0038, dated notes on sub-questions 7 (answered for `sim.run`, `board.run`, `correctness.check` of `cpu_standin`; `profiler.collect` and the second half open) and 10 (only the mock clause answered), and the new sub-question 12. No proposal text deleted.
+- `StandardScenarios.md`, "검사 결과": heading date 2026-10-12 and note, one dated passage, the note rows of S0, S1-b and S8. **Coverage re-check outcome: no verdict changes and there is no gap.** The rules were re-applied to five groups: steps that run or measure an attempt at the sim or the board step (S0-5, S0-6, S1-4, S1-6, S1-b-2, S1-b-4, S2-2, S3-4, S8-3, extension S9-1 to S9-3, S10-3); steps that verify correctness (S0-6, S1-4, S1-6, S1-b-2, S2-2, S8-3, extension S7-1, S7-2); steps of a target without a point (S1-b-1, S1-b-2); the other steps that cite FR-1 or FR-9 (S0-4, S0-10, S1-2, S1-3, S8-1); the note row that named sub-question 7 (S0).
+
+### Review rounds (6, each a fresh-context `dev-reviewer` with `model: opus`; Approve in rounds 5 and 6)
+
+1. Request changes. Blocking: the reading of "the same local run" cited ADR-0010 decision 7 for more than it carries (it excludes state kept in a process, not a hand-over through the data plane) and a Walk-through cell touched the contract of a run tool. Should-fix: the FR-9 clause on "동일 검증" read as general, not limited to `cpu_standin`; the first Limits item said "can come only" and "have no instance". Nits: "no file of the data plane says it"; the OD-18 home of sub-question 12 attributed to the owner; the mock extension of the confirmation attributed to the owner; "three items" of the ADR-0021 list; a P2-1 sentence; the source of one quotation in Context. All addressed.
+2. Request changes. Should-fix: a Limits sentence asserted that the sim point "is neither cheaper nor less exact", which touches the open contract of the run tools. Nits: the list of causes still read as closed; the "builds on" range of ADR-0021 in Status. All addressed, with the Korean mirror sentences.
+3. Request changes. Should-fix: an Alternatives row said a further tool name would change ADR-0010, whose table of names is not a closed list; a Korean mirror ("무엇보다") was stronger than the record's "among other things". Both addressed.
+4. Request changes. Should-fix: the coverage passage did not list five steps that cite FR-1 or FR-9 (S0-4, S0-10, S1-2, S1-3, S8-1). Nits: two more sentences citing ADR-0010 decision 7 as "keeps nothing"; ADR-0018 missing from the cited records in Status; a claim that a docstring of `hilclaw/mock_backend.py` became less exact (it stays true while the first HW tool with a contract is `correctness.check`). All addressed; the commit body's coverage sentence was aligned.
+5. Approve, with one trivially fixable nit: the Limits sentence on the promotion was not limited to the local configuration. Addressed with its Korean mirror, then re-reviewed.
+6. Approve; nothing trivially fixable left in the diff. One wording nit in the proposed commit message (the same limitation), applied at landing.
+
+Process note for later records of this kind: five of six rounds were again spent on single sentences that said more than the cited source carries, and on Korean mirror sentences that drifted from the record. Citing ADR-0010 decision 7 as "nothing is kept between calls" is too strong: it says that no outcome may depend on state a process kept.
+
+### Document checks
+
+- §3-5 landed check before anything else (2026-10-12): no commit on `origin/main` with `Task: T-0088`, no PR for T-0088 in any state, no remote branch `claude/T-0088-*`. Fresh run.
+- Session entry (before the first edit): no open PR; #4 (last update 2026-10-01), #7 (2026-09-07) and #8 (2026-10-05) hold nothing newer about the stand-in, the two points, the mock or OD-18; on #5 the comments after the HQ-0005 mirror are other HQ mirrors, the HQ-0005 answer (issuecomment-6117798837) and the HQ-0008 answer (issuecomment-6118118695, about blobs, not this task). No owner objection to ADR-0016, ADR-0017, ADR-0020 or ADR-0021 was found.
+- Owner sentences: every sentence the record marks **owner** is a verbatim quotation of the HQ-0005 answer (only bold markup dropped); confirmed against the comment by the reviewers of rounds 1, 2, 3, 5 and 6.
+- Pairs checked: decision 2 against ADR-0016 decisions 2 and 3 (offers = has an operation; `not_offered`); decision 4 against ADR-0021 decision 1 (a check is one call), ADR-0015 decisions 2 and 4 (`invalid_request`; the request carries no `step`; no `step` value shared between tools) and ADR-0011 decision 3 (identity; meaning of `execution`; an ended identity is answered from the log); decision 5 against ADR-0021 decision 3 (no sentence replaced, no carrier of a seed); decision 6 against ADR-0021 decisions 1 and 2, ADR-0016 decision 5, ADR-0020 decision 2 and ADR-0018 decision 2; Limits against ADR-0021 decision 6 and ADR-0016 decisions 5 (d) and 6. Nothing contradicts the docstrings of `hilclaw/backends.py`, `hilclaw/mock_backend.py`, `hilclaw/hw_tool.py`, `hilclaw/harness/verification.py` or `hilclaw/harness/seed_source.py`.
+- Relative links: 102 link targets in the added lines checked by a throw-away script (not committed), none broken; anchors `#od-16`, `#od-18`, `#od-26` exist.
+- OD numbers: 29 register rows before and after; `git diff origin/main -- ARCHITECTURE/Requirements.md` touched the FR-9, FR-10 and OD-18 rows only.
+- Nothing in the record states an excluded item as decided (reviewer check (c), rounds 2 to 6).
+- `git ls-files --eol`: `i/lf` for the four files; `git show --stat HEAD` listed only the new record and the three documents; `git diff --check` clean.
+- CI: the `push` run for `dbe15d6` (https://github.com/myungjoo/HIL-Claw/actions/runs/38209977228) completed with conclusion `success`.
+
+### Owner notice (DRIVER §9) - posted by the driver on 2026-10-12: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6118632006 (window until 2026-10-19, UTC)
+
+The task file says not to post it unless the spawn prompt says so, and the spawn prompt makes it conditional on the task file, so the executor left the posting to the driver, as in earlier tasks. Text:
+
+### OD-18 - the execution points of cpu_standin fixed by ADR-0038 under DRIVER §9 (T-0088)
+
+`ARCHITECTURE/decisions/ADR-0038-od18-cpu-standin-execution-points.md`, commit `dbe15d6` on `main` (reviewer agent, 6 rounds, Approve).
+
+What the record holds:
+- Your HQ-0005 answers, quoted: `cpu_standin` offers both `sim.run` and `board.run` (the same local run on your local PC); two correctness checks per attempt, one at each point, with inputs drawn anew (ADR-0021 decision 3 confirmed); a run at the mock is answered by the first case's `correctness.check` contract. These are yours and are not subject to the 7-day window.
+- The record's own design, open to your objection: a call of `correctness.check` is about one execution point and states it in a required member of the request with two values and no default (name and spelling left to the second record); if the tool is journaled, the two checks of an attempt are two identities that differ in `step`, not in `execution`; `cpu_standin` offers `correctness.check` as well.
+- The configuration you foresee (a board of a non-native ISA, `sim.run` as an emulated run on the local host) is registered as OD-18 sub-question 12 and not decided.
+
+Readings to check:
+1. "The same local run" is read as: each of the two operations carries the run out itself when it is called - not one run carried out once for both calls. Whether `board.run` may read what `sim.run` left in the data plane is left to the contract of the run tools.
+2. Answer (4) is read as giving the `tolerance` member of `instance.json` the same form and meaning for a run at the mock, so no version of `instance.json` is raised (ADR-0020 is not edited; its sentence "no meaning for any other run" is now less exact).
+3. The confirmation of "inputs drawn anew" is read as holding for a run at the mock as well, since the same contract answers it; it is not read as an answer for any other backend (#5 B-7).
+4. The home of the foreseen configuration is OD-18 (sub-question 12), with pointers to A-13, OD-4 / ADR-0035 and #5 B-2; no new OD number was created.
+5. FR-1 was not edited: the record states no rule for a target that lacks a point and adds none for `cpu_standin`.
+
+Left open: the rule for a target without a point (OD-26); `profiler.collect`; the contracts of `sim.run` and `board.run`; whether `correctness.check` is journaled, the name of the member and the rest of its second record; the default script of the mock; promotion, repair bound and triage (OD-15, OD-29, OD-19, OD-10); every other backend's oracle and tolerance (#5 B-7).
+
+A-13 reading: document mode; no code, dependency, settings or schema file changed; the record names no member of a request, a result or a data-plane file, no `step` value and no `kind`.
+
+You may object to the record's own design on this issue within 7 days of this notice (until 2026-10-19 if it is posted on 2026-10-12); an objection creates a task that reverts those parts.
+
+— posted by driver
+
+### Follow-ups
+
+- (planner, next) The second record of the `correctness.check` contract: whether the tool is journaled, its two `step` values if so and the meaning of `execution`; the name and the two values of the member that states the point and every other request member, the input schema and the description; where `draws`, the dimensions, the kernel of the attempt, the flags and the time limits come from; the result members and the tool-failure kinds of a backend; the spend; the operation and the default script of the mock; whether an operation is handed the point; the first three clauses of sub-question 10. Then its code slices (tool function, mock operation and script cases, `cpu_standin` operation, conformance tests of P1-1). Observation for the code: `hilclaw.hw_tool.tool_function` takes one `step`.
+- (planner) The records of `sim.run` and `board.run` for `cpu_standin`: what the local run is, whether each is journaled, whether the measurement policy of ADR-0007 is applied at each point, and whether a call of one reads what the other left. They need OD-1 / #5 A-4 for the sample form.
+- (driver / owner) OD-18 sub-question 12 (the foreseen non-native-ISA configuration) is owner-side: emulator dependency, cross-built hw_profile, remote access. Not to be picked up by a planner without those.
+- (integrator - sentences not edited and now less exact) ADR-0016 decision 3 and its Alternatives row "A backend per execution point"; ADR-0021 decisions 1, 2 and 3 (conditional or "this record's own" wording now answered or confirmed); ADR-0020 decision 2; ADR-0007 decision 1 and ADR-0009 ("the `cpu_standin` execution point", singular); ADR-0017 decision 1.
+- (unchanged from the planner's list) Public names for `journaled_tool._built` / `backends._hw_tool` if still open, the stale docstring sentence of `check_run_id`; OD-8 sub-questions 20 to 24; PLAN P1-5 (`task.objective`, #5 A-4); PLAN P0.5-4.
