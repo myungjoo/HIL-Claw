@@ -38,6 +38,7 @@ from hilclaw.instance import (
     Tolerance,
     UnsupportedVersionError,
     candidates_per_round_of,
+    draws_of,
     hw_profile_of,
     layout_version_of,
     n_max_of,
@@ -220,6 +221,7 @@ def test_the_public_names():
         "Tolerance",
         "UnsupportedVersionError",
         "candidates_per_round_of",
+        "draws_of",
         "hw_profile_of",
         "layout_version_of",
         "n_max_of",
@@ -247,6 +249,7 @@ def test_the_public_names():
         "wall_clock_budget_s",
         "owner",
         "project",
+        "draws",
         "others",
     )
     assert Tolerance._fields == ("rtol", "atol")
@@ -271,6 +274,7 @@ def test_the_public_names():
         wall_clock_budget_s_of,
         owner_of,
         project_of,
+        draws_of,
         layout_version_of,
     ):
         parameters = inspect.signature(function).parameters
@@ -286,7 +290,7 @@ def test_a_minimal_content_gives_the_key_and_the_record():
 
     assert type(result) is Instance
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, None, None, {}
+        KEY, record(), None, None, None, None, None, None, None, None, None, None, {}
     )
     assert type(result.hw_profile) is dict
     assert key_of(result.hw_profile) == result.hw_profile_key
@@ -301,6 +305,7 @@ def test_a_record_with_its_optional_fields():
     assert result == Instance(
         key_of(profile),
         profile,
+        None,
         None,
         None,
         None,
@@ -355,9 +360,7 @@ OTHERS = {
 def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     result = parse(raw(doc(**OTHERS)))
 
-    assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, None, None, OTHERS
-    )
+    assert result == Instance(KEY, record(), *[None] * 10, OTHERS)
     assert list(result.others) == list(OTHERS)
     assert validate(doc(**OTHERS)) is None
 
@@ -780,6 +783,7 @@ def test_a_content_with_the_member_states_the_two_values():
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.tolerance) is Tolerance
@@ -865,6 +869,7 @@ def test_any_order_of_the_members_of_a_tolerance(content):
         None,
         None,
         None,
+        None,
         {},
     )
 
@@ -908,9 +913,7 @@ def test_another_version_is_reported_before_a_tolerance_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_tolerance(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, None, None, others
-    )
+    assert result == Instance(KEY, record(), *[None] * 10, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(tolerance=TOLERANCE, **others)))
@@ -1175,6 +1178,7 @@ def test_a_content_with_the_member_states_that_string(commit):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.source_commit) is str
@@ -1224,6 +1228,7 @@ def test_any_order_of_the_three_members_and_the_version(order):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
         None,
         None,
         None,
@@ -1321,9 +1326,7 @@ def test_another_version_is_reported_before_a_source_commit_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_source_commit(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, None, None, others
-    )
+    assert result == Instance(KEY, record(), *[None] * 10, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(source_commit=OTHER_COMMIT, **others)))
@@ -1647,6 +1650,7 @@ def test_a_content_with_the_member_states_that_bound(bound):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.n_max) is int
@@ -1698,6 +1702,7 @@ def test_any_order_of_the_four_members_and_the_version(order):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
         None,
         None,
         None,
@@ -1785,9 +1790,7 @@ def test_another_version_is_reported_before_a_bound_is_looked_at(version, bound)
 def test_a_top_level_member_of_another_name_states_no_bound(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, None, None, others
-    )
+    assert result == Instance(KEY, record(), *[None] * 10, others)
     assert result.n_max is None
     assert validate(doc(**others)) is None
 
@@ -1883,6 +1886,7 @@ def test_what_is_no_value_of_the_bound(literal):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
         None,
         None,
         None,
@@ -2110,6 +2114,7 @@ def test_a_content_with_the_member_states_that_number(count):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.candidates_per_round) is int
@@ -2163,6 +2168,7 @@ def test_any_order_of_the_five_members_and_the_version(order):
         COMMIT,
         BOUND,
         COUNT,
+        None,
         None,
         None,
         None,
@@ -2275,9 +2281,7 @@ def test_another_version_is_reported_before_the_number_of_candidates_is_looked_a
 def test_a_top_level_member_of_another_name_states_no_number(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, None, None, others
-    )
+    assert result == Instance(KEY, record(), *[None] * 10, others)
     assert result.candidates_per_round is None
     assert validate(doc(**others)) is None
 
@@ -2382,6 +2386,7 @@ def test_what_is_no_value_of_the_number_of_candidates(literal):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
         None,
         None,
         None,
@@ -2666,6 +2671,7 @@ def test_a_content_with_the_member_states_that_key_and_that_record(case):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.op_signature) is OpSignature
@@ -2715,6 +2721,7 @@ def test_any_order_of_the_six_members_and_the_version():
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
         None,
         None,
         None,
@@ -2908,9 +2915,7 @@ def test_another_version_is_reported_before_the_op_signature_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_op_signature(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, None, None, others
-    )
+    assert result == Instance(KEY, record(), *[None] * 10, others)
     assert result.op_signature is None
     assert validate(doc(**others)) is None
 
@@ -3429,6 +3434,7 @@ def test_the_reader_returns_the_record_the_file_embeds(tmp_path, root):
         == Instance(
             KEY,
             record(),
+            None,
             None,
             None,
             None,
@@ -3989,7 +3995,7 @@ def test_no_member_of_a_file_with_an_invalid_candidates_per_round_is_used(
     assert candidates_per_round_of(root, RUN) == COUNT
 
     place(root, counted(literal, *more))
-    assert candidates_per_round_of in READERS and len(READERS) == 12
+    assert candidates_per_round_of in READERS and len(READERS) == 13
     for call in READERS:
         invalid(f"{FILE}: {NO_COUNT}", call, root, RUN)
 
@@ -4148,7 +4154,7 @@ def test_no_member_of_a_file_with_an_invalid_op_signature_is_used(root, value):
 
     document["op_signature"] = value
     place(root, raw(document))
-    assert op_signature_of in READERS and len(READERS) == 12
+    assert op_signature_of in READERS and len(READERS) == 13
     for call in READERS:
         invalid(f"{FILE}: op_signature", call, root, RUN)
 
@@ -4376,6 +4382,7 @@ READERS = [
     wall_clock_budget_s_of,
     owner_of,
     project_of,
+    draws_of,
     layout_version_of,
 ]
 
@@ -4489,6 +4496,11 @@ INVALID_FILES = {
     "a project with a line feed": (
         raw(doc(**OP_MEMBERS, owner="example-owner", project="example\nproject")),
         "project: must be",
+    ),
+    "a draws of 0": (raw(doc(draws=0)), "draws: must be"),
+    "a draws that is a string": (
+        raw(doc(**OP_MEMBERS, owner="example-owner", draws="2")),
+        "draws: must be",
     ),
 }
 
@@ -5064,6 +5076,7 @@ def test_a_content_with_the_member_states_that_round_budget(budget):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.round_budget) is int
@@ -5118,6 +5131,7 @@ def test_any_place_of_the_round_budget_among_the_other_members(index):
         COUNT,
         OpSignature(OP_KEY, op_record()),
         BUDGET,
+        None,
         None,
         None,
         None,
@@ -5266,9 +5280,7 @@ def test_another_version_is_reported_before_the_round_budget_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_round_budget(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, None, None, others
-    )
+    assert result == Instance(KEY, record(), *[None] * 10, others)
     assert result.round_budget is None
     assert validate(doc(**others)) is None
 
@@ -5360,6 +5372,7 @@ def test_what_is_no_value_of_the_round_budget(literal):
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
         None,
         None,
         None,
@@ -5657,7 +5670,7 @@ def test_no_member_of_a_file_with_an_invalid_round_budget_is_used(root, literal)
     assert_the_other_members_are_stated(root)
 
     place(root, budgeted(literal, *EVERY_MEMBER_TEXT))
-    assert round_budget_of in READERS and len(READERS) == 12
+    assert round_budget_of in READERS and len(READERS) == 13
     for call in READERS:
         invalid(f"{FILE}: {NO_BUDGET}", call, root, RUN)
 
@@ -5791,6 +5804,7 @@ def test_a_content_with_the_member_states_that_wall_clock_budget(seconds):
         seconds,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.wall_clock_budget_s) is int
@@ -5830,7 +5844,7 @@ def test_a_content_without_the_member_states_no_wall_clock_budget(members):
 
 @pytest.mark.parametrize("index", range(9))
 def test_any_place_of_the_wall_clock_budget_among_the_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_SECONDS, SECONDS, None, None, {})
+    expected = Instance(*STATED_BESIDE_THE_SECONDS, SECONDS, None, None, None, {})
 
     for others in (
         [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER],
@@ -5986,9 +6000,7 @@ def test_another_version_is_reported_before_the_wall_clock_budget_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_wall_clock_budget(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, None, None, others
-    )
+    assert result == Instance(KEY, record(), *[None] * 10, others)
     assert result.wall_clock_budget_s is None
     assert validate(doc(**others)) is None
 
@@ -6081,7 +6093,7 @@ def test_what_is_no_value_of_the_wall_clock_budget(literal):
     invalid(NO_SECONDS, validate, json.loads(content))
     kept = parse(text(VERSION, SECTION, *ALL_BUT_SECONDS_TEXT, '"example": [1]'))
     assert kept == Instance(
-        *STATED_BESIDE_THE_SECONDS, None, None, None, {"example": [1]}
+        *STATED_BESIDE_THE_SECONDS, None, None, None, None, {"example": [1]}
     )
 
 
@@ -6411,7 +6423,7 @@ def test_no_member_of_a_file_with_an_invalid_wall_clock_budget_is_used(root, lit
     assert_the_members_beside_the_seconds_are_stated(root)
 
     place(root, timed(literal, *ALL_BUT_SECONDS_TEXT))
-    assert wall_clock_budget_s_of in READERS and len(READERS) == 12
+    assert wall_clock_budget_s_of in READERS and len(READERS) == 13
     for call in READERS:
         invalid(f"{FILE}: {NO_SECONDS}", call, root, RUN)
 
@@ -6567,7 +6579,7 @@ def test_a_content_with_the_member_states_that_name(member, name):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), *[None] * 7, *pair(member, name), {"example": [1]}
+        KEY, record(), *[None] * 7, *pair(member, name), None, {"example": [1]}
     )
     assert type(getattr(result, member)) is str
     assert member not in result.others
@@ -6629,7 +6641,7 @@ def test_a_content_without_a_member_states_none_for_it(member, members):
 
 @pytest.mark.parametrize("index", range(10))
 def test_any_place_of_the_names_among_the_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_NAMES, OWNER, PROJECT, {})
+    expected = Instance(*STATED_BESIDE_THE_NAMES, OWNER, PROJECT, None, {})
     others = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
 
     for first, second in (
@@ -6809,7 +6821,7 @@ def test_another_version_is_reported_before_the_names_are_looked_at(
 def test_a_top_level_member_of_another_name_states_no_owner_and_no_project(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 9, others)
+    assert result == Instance(KEY, record(), *[None] * 10, others)
     assert (result.owner, result.project) == (None, None)
     assert validate(doc(**others)) is None
 
@@ -6911,7 +6923,9 @@ def test_what_is_no_value_of_the_names(root, member, literal):
     place(root, content)
     assert invalid(FILE, NAMED[member], root, RUN) == f"{FILE}: {expected}"
     kept = parse(text(VERSION, SECTION, *ALL_BUT_THE_NAMES_TEXT, '"example": [1]'))
-    assert kept == Instance(*STATED_BESIDE_THE_NAMES, None, None, {"example": [1]})
+    assert kept == Instance(
+        *STATED_BESIDE_THE_NAMES, None, None, None, {"example": [1]}
+    )
 
 
 # A line feed, a carriage return, a tab, U+0000, U+001F, U+007F, U+0080, a letter with an accent, a Hangul letter, a full-width letter and a lone surrogate.
@@ -7206,7 +7220,7 @@ def test_no_member_of_a_file_with_an_invalid_name_is_used(root, member, literal)
     assert_the_members_beside_the_names_are_stated(root)
 
     place(root, named(member, literal, *stated))
-    assert owner_of in READERS and project_of in READERS and len(READERS) == 12
+    assert owner_of in READERS and project_of in READERS and len(READERS) == 13
     for call in READERS:
         invalid(f"{FILE}: {member}{NO_NAME}", call, root, RUN)
 
@@ -7305,6 +7319,684 @@ def test_a_file_invalid_by_a_name_alone_is_run_file_invalid(
     assert kinds(root) == []
 
     place(root, raw(doc() if repaired is None else doc(**{member: repaired})))
+    assert tool.function(dict(REQUEST)) == {"example_member": 1}
+    assert kinds(root) == ["step_started", "step_ended"]
+    assert (len(tool.asked), tool.performed) == (1, 1)
+    assert [seen for _, _, seen in tool.asked] == [record()]
+
+
+# --- happy: the member draws (ADR-0046) ---
+
+# Test values of a number of draws: neither is a default, recommended or typical value, and neither is said to be enough for anything.
+DRAWS, OTHER_DRAWS = 9, 23
+NO_DRAWS = f"draws: must be an int from 1 to {MAX}, got "
+DRAWS_MEMBER = f'"draws": {DRAWS}'
+ALL_BUT_DRAWS = {**ALL_BUT_THE_NAMES, "owner": OWNER, "project": PROJECT}
+ALL_BUT_DRAWS_TEXT = (*ALL_BUT_THE_NAMES_TEXT, OWNER_MEMBER, PROJECT_MEMBER)
+STATED_BESIDE_THE_DRAWS = (*STATED_BESIDE_THE_NAMES, OWNER, PROJECT)
+
+
+def drawn(literal, *more):
+    return text(VERSION, SECTION, f'"draws": {literal}', *more)
+
+
+def assert_the_members_beside_the_draws_are_stated(root, run=RUN):
+    assert_the_members_beside_the_names_are_stated(root, run)
+    assert (owner_of(root, run), project_of(root, run)) == (OWNER, PROJECT)
+
+
+@pytest.mark.parametrize("draws", [1, 2, 3, 64, 2**31, 2**32 + 1, MAX - 1, MAX])
+def test_a_content_with_the_member_states_that_number_of_draws(draws):
+    document = doc(draws=draws, example=[1])
+
+    result = parse(raw(document))
+
+    assert result == Instance(KEY, record(), *[None] * 9, draws, {"example": [1]})
+    assert type(result.draws) is int
+    assert "draws" not in result.others
+    assert validate(document) is None
+    assert parse(drawn(str(draws))).draws == draws
+
+
+def test_both_ends_of_the_draws_are_inclusive_and_nothing_ends_them_between():
+    assert MAX == 2**53 - 1
+
+    for draws in (1, 2, 3, 64, 65, 10**12, MAX):
+        assert parse(drawn(str(draws))).draws == draws
+        assert validate(doc(draws=draws)) is None
+    for draws in (0, MAX + 1):
+        assert invalid(NO_DRAWS, parse, drawn(str(draws))) == NO_DRAWS + "int"
+        assert invalid(NO_DRAWS, validate, doc(draws=draws)) == NO_DRAWS + "int"
+    invalid(NO_DRAWS, parse, drawn("9007199254740992"))
+    assert parse(drawn("9007199254740991")).draws == MAX
+
+
+@pytest.mark.parametrize(
+    "members", [{}, EVERY_MEMBER, ALL_BUT_DRAWS, {"tolerance": TOLERANCE}], ids=repr
+)
+def test_a_content_without_the_member_states_no_number_of_draws(members):
+    without = parse(raw(doc(**members)))
+    stated = parse(raw(doc(**members, draws=DRAWS)))
+
+    assert without.draws is None
+    assert stated.draws == DRAWS
+    assert without[:11] == stated[:11]
+    assert without.others == stated.others == {}
+    assert validate(doc(**members)) is None
+
+
+@pytest.mark.parametrize("index", range(12))
+def test_any_place_of_the_draws_among_the_eleven_other_members(index):
+    expected = Instance(*STATED_BESIDE_THE_DRAWS, DRAWS, {})
+    stated = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
+    assert None not in expected
+
+    for others in (
+        [*stated, OWNER_MEMBER, PROJECT_MEMBER],
+        [PROJECT_MEMBER, OWNER_MEMBER, *stated[::-1]],
+    ):
+        members = [*others[:index], DRAWS_MEMBER, *others[index:]]
+        assert len(members) == 12
+        assert parse(text(*members)) == expected
+        assert validate(json.loads(text(*members))) is None
+
+
+def test_white_space_of_json_around_the_draws_is_not_part_of_the_value():
+    content = text(VERSION, SECTION, f'\r\n\t"draws" :\n {DRAWS} \n')
+
+    assert parse(content).draws == DRAWS
+
+
+# The Example of ADR-0046, as written in the record: the shape of the member, not a valid file. Its 2 is the placeholder of the record: no proposed, default or typical number.
+EXAMPLE_OF_ADR_0046 = b"""{
+  "schema_version": 1,
+  "hw_profile": {
+    "key": "cpu_standin-b0d8610d8f470856",
+    "record": {
+      "schema_version": 1,
+      "accelerator": "cpu_standin",
+      "revision": "NOT-DECIDED-HERE",
+      "toolchain": {"clang": "NOT-DECIDED-HERE"},
+      "host": {"cpu": "NOT-DECIDED-HERE", "os": "NOT-DECIDED-HERE"},
+      "hw_source": "NOT-DECIDED-HERE"
+    }
+  },
+  "tolerance": {"rtol": 1e-4, "atol": 0.01},
+  "draws": 2
+}
+"""
+
+
+def test_the_member_of_the_example_of_adr_0046():
+    invalid("hw_profile.record.hw_source: must be ", parse, EXAMPLE_OF_ADR_0046)
+    example = EXAMPLE_OF_ADR_0046.replace(EXAMPLE_SOURCE, b'"hw_source": "in_house"')
+
+    result = parse(example)
+    assert result.draws == 2
+    assert type(result.draws) is int
+    assert result.tolerance == Tolerance(0.0001, 0.01)
+    assert result.others == {}
+
+    silent = parse(example.replace(b',\n  "draws": 2', b""))
+    assert silent.draws is None
+    assert silent[:11] == result[:11]
+
+
+# --- branch: the member draws ---
+
+
+@pytest.mark.parametrize(
+    "draws, bound, count, budget",
+    [
+        (MAX, 5, 1, 1),
+        (1, MAX, MAX, MAX),
+        (1, 5, 1, 1),
+        (MAX, MAX, MAX, MAX),
+        (DRAWS, None, None, None),
+        (None, BOUND, COUNT, BUDGET),
+        (None, None, None, None),
+    ],
+)
+def test_the_draws_and_the_other_numbers_do_not_bound_each_other(
+    root, draws, bound, count, budget
+):
+    stated = {
+        "draws": draws,
+        "n_max": bound,
+        "candidates_per_round": count,
+        "round_budget": budget,
+    }
+    document = doc(
+        **{name: value for name, value in stated.items() if value is not None}
+    )
+
+    result = parse(raw(document))
+
+    assert result.draws == draws
+    assert (result.n_max, result.candidates_per_round) == (bound, count)
+    assert result.round_budget == budget
+    assert validate(document) is None
+    place(root, raw(document))
+    assert draws_of(root, RUN) == draws
+    assert n_max_of(root, RUN) == bound
+    assert candidates_per_round_of(root, RUN) == count
+    assert round_budget_of(root, RUN) == budget
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        {},
+        {"tolerance": TOLERANCE},
+        {"op_signature": stating(op_record())},
+        {"tolerance": TOLERANCE, "op_signature": stating(op_record())},
+    ],
+    ids=["neither", "a tolerance", "an op_signature", "both"],
+)
+def test_a_file_is_valid_with_and_without_draws_whatever_else_it_states(root, members):
+    for stated in ({}, {"draws": DRAWS}):
+        document = doc(**members, **stated)
+
+        assert validate(document) is None
+        place(root, raw(document))
+        assert draws_of(root, RUN) == stated.get("draws")
+        assert (tolerance_of(root, RUN) is None) == ("tolerance" not in members)
+        assert (op_signature_of(root, RUN) is None) == ("op_signature" not in members)
+
+
+BROKEN_DRAWS = [None, True, 0, -2, 2.0, "2", [2], {}, MAX + 1]
+
+
+@pytest.mark.parametrize("version", [0, 2, MAX])
+@pytest.mark.parametrize("draws", [*BROKEN_DRAWS, DRAWS], ids=repr)
+def test_another_version_is_reported_before_the_draws_are_looked_at(version, draws):
+    document = doc(schema_version=version, draws=draws)
+
+    for function, argument in ((parse, raw(document)), (validate, document)):
+        with pytest.raises(UnsupportedVersionError) as caught:
+            function(argument)
+        assert str(caught.value) == f"schema_version: {version} is not supported"
+
+
+@pytest.mark.parametrize(
+    "others",
+    [
+        {"n_draws": DRAWS},
+        {"Draws": DRAWS},
+        {"DRAWS": DRAWS},
+        {"draw": DRAWS},
+        {"check_draws": DRAWS},
+        {"correctness_draws": DRAWS},
+        {"draws_per_check": DRAWS},
+        {"num_draws": DRAWS},
+        {"draws ": 0},
+        {"check": {"draws": DRAWS}},
+        {
+            "n_draws": 0,
+            "Draws": "2",
+            "draw": True,
+            "check_draws": None,
+            "num_draws": -2,
+            "check": {"draws": 2.0},
+        },
+    ],
+    ids=repr,
+)
+def test_a_top_level_member_of_another_name_states_no_number_of_draws(others):
+    result = parse(raw(doc(**others)))
+
+    assert result == Instance(KEY, record(), *[None] * 10, others)
+    assert result.draws is None
+    assert validate(doc(**others)) is None
+
+    result = parse(raw(doc(draws=OTHER_DRAWS, **others)))
+    assert result.draws == OTHER_DRAWS
+    assert result.others == others
+
+
+def test_draws_inside_the_tolerance_is_judged_by_the_rule_of_the_tolerance():
+    document = doc(tolerance={**TOLERANCE, "draws": DRAWS})
+    expected = "tolerance: must be an object without the member, got str 'draws'"
+
+    assert invalid("tolerance: ", parse, raw(document)) == expected
+    assert invalid("tolerance: ", validate, document) == expected
+    assert invalid("tolerance: ", validate, {**document, "draws": DRAWS}) == expected
+
+
+@pytest.mark.parametrize(
+    "place, changes",
+    [
+        ("hw_profile: must be", {"hw_profile": None, "draws": 0}),
+        (
+            "document: lacks the member hw_profile",
+            {"hw_profile": REMOVE, "draws": True},
+        ),
+        ("tolerance: must be", {"tolerance": None, "draws": None}),
+        (NO_COMMIT + "str 'main'", {"source_commit": "main", "draws": 0}),
+        (NO_BOUND + "int", {"n_max": 4, "draws": 0}),
+        (NO_COUNT + "int", {"candidates_per_round": 0, "draws": 0}),
+        (
+            "op_signature: must be an object, got NoneType",
+            {"op_signature": None, "draws": 0},
+        ),
+        (NO_BUDGET + "int", {"round_budget": 0, "draws": 0}),
+        (NO_SECONDS + "int", {"draws": 0, "wall_clock_budget_s": 0}),
+        ("owner" + NO_NAME + "str ''", {"draws": "2", "owner": ""}),
+        ("project" + NO_NAME + "str ''", {"draws": 0, "project": ""}),
+        ("project" + NO_NAME + "int", {**ALL_BUT_DRAWS, "draws": 2.0, "project": 7}),
+        (NO_DRAWS + "int", {**ALL_BUT_DRAWS, "draws": 0}),
+        (NO_DRAWS + "bool", {"draws": False}),
+    ],
+)
+def test_the_first_broken_rule_is_reported_with_draws(place, changes):
+    document = doc(**changes)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+# --- error / negative: the member draws ---
+
+NO_DRAWS_LITERALS = {
+    "true": "bool",
+    "false": "bool",
+    "null": "NoneType",
+    '"2"': "str '2'",
+    '"1"': "str '1'",
+    '""': "str ''",
+    '"two"': "str 'two'",
+    "[2]": "list",
+    "[]": "list",
+    '{"value": 2}': "dict",
+    "{}": "dict",
+    "2.0": "float",
+    "2e0": "float",
+    "2E0": "float",
+    "1.0": "float",
+    "1.5": "float",
+    "0.5": "float",
+    "1e999": "float",
+    "-0.0": "float",
+    "-0": "int",
+    "0": "int",
+    "-1": "int",
+    "-2": "int",
+    "9007199254740992": "int",
+    "9007199254740993": "int",
+    "10000000000000000000000": "int",
+}
+# The literals of the row of invalid values of the Walk-through of ADR-0046.
+WALK_THROUGH_OF_ADR_0046 = ["0", "-2", "2.0", '"2"', "true", "null"]
+
+
+@pytest.mark.parametrize("literal", NO_DRAWS_LITERALS)
+def test_what_is_no_value_of_the_draws(root, literal):
+    content = drawn(literal, *ALL_BUT_DRAWS_TEXT, '"example": [1]')
+    expected = NO_DRAWS + NO_DRAWS_LITERALS[literal]
+
+    assert set(WALK_THROUGH_OF_ADR_0046) < set(NO_DRAWS_LITERALS)
+    assert invalid(NO_DRAWS, parse, content) == expected
+    assert invalid(NO_DRAWS, validate, json.loads(content)) == expected
+    place(root, content)
+    assert invalid(FILE, draws_of, root, RUN) == f"{FILE}: {expected}"
+    assert invalid(FILE, read, root, RUN) == f"{FILE}: {expected}"
+    kept = parse(text(VERSION, SECTION, *ALL_BUT_DRAWS_TEXT, '"example": [1]'))
+    assert kept == Instance(*STATED_BESIDE_THE_DRAWS, None, {"example": [1]})
+
+
+def test_minus_zero_is_refused_as_the_integer_0_below_the_lower_end_of_the_draws():
+    assert invalid(NO_DRAWS, parse, drawn("-0")) == NO_DRAWS + "int"
+    assert invalid(NO_DRAWS, parse, drawn("0")) == NO_DRAWS + "int"
+
+
+LOOSER_DRAWS_RULES = {
+    "isinstance(value, int)": (
+        lambda value: isinstance(value, int) and 1 <= value <= MAX,
+        [True, Number(2), Number(1), Number(MAX)],
+    ),
+    "a float equal to an integer": (
+        lambda value: float(value).is_integer() and value >= 1,
+        [2.0, 1.0, 2e0, float(2**40)],
+    ),
+    "a string of digits": (
+        lambda value: 1 <= int(value) <= MAX,
+        ["2", " 2 ", "+2", 2.9, 1.5, True, Number(2)],
+    ),
+    "a number that is not negative": (
+        lambda value: 0 <= value <= MAX,
+        [0, False, 0.0, 0.5],
+    ),
+    "a sign of no number": (
+        lambda value: value in (None, 0, ""),
+        [None, 0, False, ""],
+    ),
+}
+
+
+@pytest.mark.parametrize("rule", LOOSER_DRAWS_RULES)
+def test_a_number_of_draws_a_looser_rule_would_accept_is_refused(rule):
+    looser, values = LOOSER_DRAWS_RULES[rule]
+
+    for value in values:
+        assert looser(value)
+        expected = NO_DRAWS + type(value).__name__
+        invalid(expected, validate, doc(draws=value))
+        if type(value) in JSON_TYPES:
+            invalid(expected, parse, raw(doc(draws=value)))
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        (DRAWS_MEMBER, DRAWS_MEMBER),
+        (DRAWS_MEMBER, f'"draws": {OTHER_DRAWS}'),
+        (DRAWS_MEMBER, '"draws": 0'),
+        ('"draws": true', DRAWS_MEMBER),
+    ],
+)
+def test_the_member_name_draws_twice_at_the_top_level(members):
+    message = invalid(
+        "content: cannot be read as one JSON text",
+        parse,
+        text(VERSION, SECTION, *members),
+    )
+    assert "a JSON object repeats a member name" in message
+
+
+def test_a_number_of_draws_too_long_for_the_interpreter_is_a_text_error():
+    message = invalid(
+        "content: cannot be read as one JSON text", parse, drawn(TOO_LONG_TEXT)
+    )
+    assert "draws" not in message
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        True,
+        False,
+        2.0,
+        1.0,
+        float("inf"),
+        float("-inf"),
+        float("nan"),
+        Number(2),
+        Number(1),
+        Number(0),
+        TOO_LONG,
+        -TOO_LONG,
+        "2",
+        "",
+        None,
+        b"2",
+        (2,),
+        {2},
+        range(2),
+    ],
+    ids=shown,
+)
+def test_validate_refuses_a_number_of_draws_built_in_memory(value):
+    document = doc(draws=value)
+
+    message = invalid(NO_DRAWS + type(value).__name__, validate, document)
+
+    if type(value) is not str:
+        assert message == NO_DRAWS + type(value).__name__
+
+
+def test_a_refused_number_of_draws_is_not_shown_and_a_string_is():
+    for draws in (0, -1, -7, MAX + 1):
+        message = invalid(NO_DRAWS, validate, doc(draws=draws))
+        assert message == NO_DRAWS + "int"
+        assert not message.endswith(str(draws))
+
+    message = invalid(NO_DRAWS, validate, doc(draws="8" * 200))
+    assert message == NO_DRAWS + "str " + reprlib.repr("8" * 200)
+    assert len(message) < 130
+
+
+def test_a_check_of_a_number_of_draws_modifies_nothing():
+    for document in (
+        doc(draws=DRAWS),
+        doc(draws=0),
+        doc(draws=2.0),
+        doc(**ALL_BUT_DRAWS, draws="2"),
+    ):
+        kept = json.dumps(document)
+        valid = document["draws"] == DRAWS
+        assert accepted(validate, document) == valid
+        assert json.dumps(document) == kept
+
+
+# --- no substitute: nothing of the module stands in for the number of draws ---
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        doc(),
+        doc(**EVERY_MEMBER),
+        doc(**ALL_BUT_DRAWS),
+        doc(n_draws=DRAWS),
+        doc(check={"draws": DRAWS}, Draws=DRAWS, num_draws=1),
+    ],
+    ids=repr,
+)
+def test_a_content_without_the_member_states_no_draws_and_no_number(document):
+    result = parse(raw(document))
+
+    assert result.draws is None
+    assert result._asdict()["draws"] is None
+    assert validate(document) is None
+
+
+def test_nothing_of_the_module_stands_in_for_the_number_of_draws():
+    functions = [
+        value
+        for value in vars(instance).values()
+        if inspect.isfunction(value) and value.__module__ == instance.__name__
+    ]
+    assert draws_of in functions
+    for function in functions:
+        assert function.__defaults__ is None and function.__kwdefaults__ is None
+    assert Instance._field_defaults == {}
+    tree = ast.parse(inspect.getsource(instance))
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+    parts = {part for name in imported for part in name.split(".")}
+    assert "keys" in parts
+    assert not parts & {"numpy", "harness", "verification", "tools", "backends"}
+    assert not [part for part in parts if part.startswith(("check_", "mock_"))]
+    assert not {"draws", "harness", "verification", "tools"} & set(vars(instance))
+    documented = (ast.Module, ast.ClassDef, ast.FunctionDef)
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, documented) and ast.get_docstring(node) is not None
+    }
+    code = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and type(node.value) is str
+        and id(node) not in docstrings
+    ]
+    assert "draws" in code and len(docstrings) > 20
+    for word in ("draws_not_stated", "tolerance_not_stated", "correctness"):
+        assert not [held for held in (*code, *vars(instance)) if word in held]
+
+
+# --- the reader of the number of draws (ADR-0046) ---
+
+
+def test_the_reader_returns_the_number_of_draws_the_file_states(tmp_path, root):
+    place(root, raw(doc(**ALL_BUT_DRAWS, draws=DRAWS, example=[1])))
+    before = snapshot(tmp_path)
+
+    found = draws_of(root, RUN)
+
+    assert found == DRAWS and type(found) is int
+    assert found == read(root, RUN).draws
+    assert draws_of(str(root), RUN) == found
+    assert_the_members_beside_the_draws_are_stated(root)
+    assert snapshot(tmp_path) == before
+
+    for draws in (1, 2, 3, 64, 2**31, 2**32 + 1, MAX - 1, MAX):
+        place(root, raw(doc(draws=draws)))
+        assert draws_of(root, RUN) == draws
+        assert type(draws_of(root, RUN)) is int
+
+
+def test_a_run_without_the_member_states_no_number_of_draws(
+    tmp_path, root, monkeypatch
+):
+    others = {
+        "n_draws": DRAWS,
+        "Draws": DRAWS,
+        "check_draws": DRAWS,
+        "num_draws": DRAWS,
+        "check": {"draws": DRAWS},
+    }
+    place(root, raw(doc(**ALL_BUT_DRAWS, **others)))
+    place(root, raw(doc(draws=OTHER_DRAWS)), OTHER_FILE)
+    place(root, run_state.dump(12, EMPTY), STATE_FILE)
+    for name in ("DRAWS", "HILCLAW_DRAWS"):
+        monkeypatch.setenv(name, str(DRAWS))
+    before = snapshot(tmp_path)
+
+    found = draws_of(root, RUN)
+
+    assert found is None
+    for stand_in in (1, 2, 0, DRAWS, OTHER_DRAWS, BOUND, COUNT, BUDGET):
+        assert found != stand_in
+    assert read(root, RUN).draws is None
+    assert read(root, RUN).others == others
+    assert_the_members_beside_the_draws_are_stated(root)
+    assert draws_of(root, OTHER_RUN) == OTHER_DRAWS
+    assert draws_of(root, RUN) is None
+    assert snapshot(tmp_path) == before
+
+    place(root, raw(doc()))
+    assert draws_of(root, RUN) is None
+
+
+def test_a_number_of_draws_replaced_between_two_calls_is_seen_at_the_second(root):
+    place(root, raw(doc(draws=DRAWS)))
+    assert draws_of(root, RUN) == DRAWS
+
+    place(root, raw(doc(draws=OTHER_DRAWS)))
+    assert draws_of(root, RUN) == OTHER_DRAWS
+
+    place(root, raw(doc()))
+    assert draws_of(root, RUN) is None
+
+    place(root, raw(doc(draws=0)))
+    invalid(f"{FILE}: {NO_DRAWS}int", draws_of, root, RUN)
+
+    place(root, raw(doc(schema_version=2, draws=DRAWS)))
+    with pytest.raises(UnsupportedVersionError):
+        draws_of(root, RUN)
+
+    (root / FILE).unlink()
+    with pytest.raises(MissingInstanceError):
+        draws_of(root, RUN)
+
+    place(root, raw(doc(draws=1)))
+    assert draws_of(root, RUN) == 1
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        *WALK_THROUGH_OF_ADR_0046,
+        "-0",
+        "2e0",
+        "1.5",
+        "false",
+        "[2]",
+        "{}",
+        '""',
+        "9007199254740992",
+    ],
+)
+def test_no_member_of_a_file_with_an_invalid_number_of_draws_is_used(root, literal):
+    place(root, drawn(str(DRAWS), *ALL_BUT_DRAWS_TEXT))
+    assert draws_of(root, RUN) == DRAWS
+    assert_the_members_beside_the_draws_are_stated(root)
+
+    place(root, drawn(literal, *ALL_BUT_DRAWS_TEXT))
+    assert draws_of in READERS and len(READERS) == 13
+    for call in READERS:
+        invalid(f"{FILE}: {NO_DRAWS}", call, root, RUN)
+
+    place(root, text(VERSION, SECTION, *ALL_BUT_DRAWS_TEXT))
+    assert draws_of(root, RUN) is None
+    assert_the_members_beside_the_draws_are_stated(root)
+
+
+def test_two_runs_state_their_own_numbers_of_draws(root):
+    place(root, raw(doc(draws=1)))
+    place(root, raw(doc(draws=OTHER_DRAWS)), OTHER_FILE)
+    place(root, raw(doc(n_max=BOUND)), "runs/run-c/instance.json")
+
+    assert draws_of(root, RUN) == 1
+    assert draws_of(root, OTHER_RUN) == OTHER_DRAWS
+    assert draws_of(root, "run-c") is None
+    assert draws_of(root, RUN) == 1
+
+
+def test_only_the_instance_file_is_opened_for_the_number_of_draws(root, monkeypatch):
+    place(root, raw(doc(draws=DRAWS, tolerance=TOLERANCE)))
+    place(root, run_state.dump(12, EMPTY), STATE_FILE)
+    place(root, b'{"seq": 1, "draws": 23}\n', EVENTS_FILE)
+    place(root, b'{"draws": 23}', f"runs/{RUN}/rounds/0000/candidates/01/spec.json")
+    place(root, raw(doc(draws=OTHER_DRAWS)), OTHER_FILE)
+    place(root, b'{"draws": 23}', f"db/{KEY}/example.json")
+    before = snapshot(root)
+    opened, real = [], Path.read_bytes
+
+    def read_bytes(path):
+        opened.append(path.relative_to(root).as_posix())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setenv("HILCLAW_DATA_ROOT", "elsewhere")
+
+    assert draws_of(root, RUN) == DRAWS
+    assert opened == [FILE]
+    assert draws_of(root, RUN) == DRAWS
+    assert opened == [FILE, FILE]
+    monkeypatch.setattr(Path, "read_bytes", real)
+    assert snapshot(root) == before
+
+
+# --- with hilclaw.hw_tool: a file invalid by its draws alone ---
+
+
+@pytest.mark.parametrize(
+    "repaired",
+    [doc(), doc(draws=DRAWS), doc(draws=1)],
+    ids=["removed", "valid", "valid and of one draw"],
+)
+@pytest.mark.parametrize("broken", [0, -2, 2.0, "2", True, None, MAX + 1], ids=repr)
+def test_a_file_invalid_by_its_draws_alone_is_run_file_invalid(root, broken, repaired):
+    place(started(root), raw(doc(**ALL_BUT_DRAWS, draws=broken)))
+    tool = Tool(root)
+
+    assert_no_step_started(
+        tool,
+        root,
+        "run_file_invalid",
+        InvalidInstanceError,
+        "draws: must be an int from 1 to",
+    )
+    assert kinds(root) == []
+
+    place(root, raw(repaired))
     assert tool.function(dict(REQUEST)) == {"example_member": 1}
     assert kinds(root) == ["step_started", "step_ended"]
     assert (len(tool.asked), tool.performed) == (1, 1)

@@ -1,4 +1,4 @@
-"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032, ADR-0033, ADR-0034).
+"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046).
 
 ``ARCHITECTURE/decisions/ADR-0018-od8-instance-record-hw-profile.md`` fixes the
 file as a whole (decision 2), the member ``hw_profile`` in which a run states
@@ -53,21 +53,28 @@ the members ``owner`` and ``project``, in which a run states the owner and the
 project the instance was started with, each as a name (decisions 2 and 3),
 says that a valid file may lack either, that a present one must be valid and
 that nothing stands in for an absent one (decision 4), and says where the
-owner and the project a run states are read from (decision 5). This
+owner and the project a run states are read from (decision 5).
+``ARCHITECTURE/decisions/ADR-0046-od18-correctness-check-draws.md`` adds the
+member ``draws``, in which a run states the number of draws of a check of
+``correctness.check`` about one of its attempts, says that a valid file may
+lack it, that a present one must be valid and that no value stands in for an
+absent one (decision 3), and says from which read of the file a call of that
+tool takes the number (decision 4); no such call is made here. This
 module is those rules: :func:`parse` and :func:`validate` are pure functions of
 the bytes of a content and of a parsed document, and :func:`read`,
 :func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
 :func:`n_max_of`, :func:`candidates_per_round_of`, :func:`op_signature_of`,
 :func:`round_budget_of`, :func:`wall_clock_budget_s_of`, :func:`owner_of`,
-:func:`project_of` and :func:`layout_version_of` read the file of a run.
+:func:`project_of`, :func:`draws_of` and :func:`layout_version_of` read the
+file of a run.
 :func:`hw_profile_of` has the call form of the parameter ``hw_profile_of`` of
 :func:`hilclaw.hw_tool.tool_function`; nothing here binds it,
 :func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
 :func:`candidates_per_round_of`, :func:`op_signature_of`,
 :func:`round_budget_of`, :func:`wall_clock_budget_s_of`, :func:`owner_of`,
-:func:`project_of` or :func:`layout_version_of` to a tool.
+:func:`project_of`, :func:`draws_of` or :func:`layout_version_of` to a tool.
 
-Conventions of this module, which the ten records do not fix:
+Conventions of this module, which the eleven records do not fix:
 
 - A content is exactly ``bytes`` (:class:`TypeError` otherwise: the encoding is
   part of validity). Values are as :func:`json.loads` returns them, an integer
@@ -82,18 +89,19 @@ Conventions of this module, which the ten records do not fix:
   holds it, then ``op_signature`` when the document holds it, then
   ``round_budget`` when the document holds it, then ``wall_clock_budget_s``
   when the document holds it, then ``owner`` when the document holds it, then
-  ``project`` when the document holds it: the order in which the records
-  defined them, and for the two of ADR-0034 the order in which it names them. A
+  ``project`` when the document holds it, then ``draws`` when the document
+  holds it: the order in which the records defined them, and for the two of
+  ADR-0034 the order in which it names them. A
   content this interpreter cannot read (an integer too long for it anywhere in
   the text, nesting too deep) raises :class:`InvalidInstanceError` too,
   though it is a limit of this reader and not damage; the limits stay as the
   interpreter has them. A number beyond the float range in a member not
   defined here is read as an infinity and is no error, as
   :mod:`hilclaw.run_state` has it; in ``tolerance``, as ``n_max``, as
-  ``candidates_per_round``, as ``round_budget`` and as
-  ``wall_clock_budget_s`` it makes the content invalid (ADR-0020 decision 4,
-  ADR-0023 decision 3, ADR-0028 decision 3, ADR-0032 decision 3, ADR-0033
-  decision 3).
+  ``candidates_per_round``, as ``round_budget``, as
+  ``wall_clock_budget_s`` and as ``draws`` it makes the content invalid
+  (ADR-0020 decision 4, ADR-0023 decision 3, ADR-0028 decision 3, ADR-0032
+  decision 3, ADR-0033 decision 3, ADR-0046 decision 3).
 - ``schema_version`` is an integer of ADR-0001, from 0 to
   :data:`hilclaw.keys.MAX_INTEGER`: a value outside that range is no integer of
   the records and makes the content invalid, it is not another version. ``-0``
@@ -198,6 +206,19 @@ Conventions of this module, which the ten records do not fix:
   without one of the two states no owner or no project, and that this is no
   error of the content, is ADR-0034 decision 4 and not a convention; the
   convention is that it has ``None`` in that place.
+- What is a value of ``draws`` is ADR-0046 decision 3 and not a convention:
+  an integer from 1 to :data:`hilclaw.keys.MAX_INTEGER`, both included, so
+  ``true``, ``false``, ``null``, ``2.0``, ``2e0``, ``"2"``, an array, an
+  object, ``0``, ``-0`` and every negative number are none, and every
+  integer from the one end to the other is a value. The conventions are that
+  a value built in memory must be exactly an ``int`` (a subclass is none),
+  that ``-0`` is refused as the integer 0 it is read as, that the one rule
+  is reported as a whole, and that an ``int`` that breaks it is not shown,
+  as for ``schema_version``. The number is handed out as the ``int`` of the
+  file, unchanged. That a content without the member states no number of
+  draws, and that this is no error of the content, is ADR-0046 decision 3
+  and not a convention; the convention is that it has ``None`` in that
+  place.
 - Which layout version a schema version states is ADR-0024 decision 3 and not
   a convention: schema version 1 states layout version 1. The conventions are
   that the pairing is a mapping keyed by the schema version with the number
@@ -216,10 +237,10 @@ Conventions of this module, which the ten records do not fix:
   the read is an :class:`OSError`, as every other failure of the file system.
 
 It writes, creates and removes no file and composes no content. It defines no
-member besides the eleven (``schema_version``, ``hw_profile``, ``tolerance``,
+member besides the twelve (``schema_version``, ``hw_profile``, ``tolerance``,
 ``source_commit``, ``n_max``, ``candidates_per_round``, ``op_signature``,
-``round_budget``, ``wall_clock_budget_s``, ``owner`` and ``project``) and
-interprets no other: a file
+``round_budget``, ``wall_clock_budget_s``, ``owner``, ``project`` and
+``draws``) and interprets no other: a file
 it accepts is not thereby a complete instance record, and not enough to start a
 run (ADR-0018 decisions 1 and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
@@ -407,6 +428,34 @@ decision 5 and Boundaries); "not stated" is no error of the content here
 either, this module gives it no tool-failure kind, and :func:`owner_of` and
 :func:`project_of` are bound to no tool, to no hook, to no ``STATE.json``, to
 nothing below ``db/`` and to nothing that lists, groups or allows.
+Of the number of draws it gives what the file states and nothing else
+(ADR-0046 decision 3): it holds no default and substitutes no value for a
+member that is absent, not 1, not the 2 that stands in the Example of that
+record, no constant of this module or of the harness, which it does not
+import, and nothing taken from another member or from another run. The lower
+end is the number 1 of ADR-0046 decision 3, written here; there is no lower
+end above it and no upper end below :data:`hilclaw.keys.MAX_INTEGER`, which
+is the end of the form of an integer of ADR-0001 and no bound chosen for a
+number of draws, and a valid value is not thereby one a check can be carried
+out with (ADR-0046 decision 3). It checks the form of the member only. It
+does not check that the run is one ADR-0046 gives the member a meaning for,
+a run of the first case or one whose hw_profile names the mock, and it gives
+the member no meaning for any other run (ADR-0046 decisions 1 and 3). It
+makes the member no budget member and no bound (ADR-0046 decision 3), no
+number of repeats of a timing measurement (it is no ``n_max``) and no number
+of candidates, of attempts, of checks or of executions. It does not say
+which number an instance should state, whether a promotion-level
+re-verification or a gate uses another number or whether the two execution
+points use two: none of that is decided (ADR-0046 decision 7). It compares
+the member with nothing: not with ``n_max``, with ``candidates_per_round``,
+with ``op_signature``, with ``tolerance`` or with a limit of the harness. A
+file it accepts need not state a number of draws; whether the start of an
+instance checks that one is stated is open (OD-8 sub-question 32). Which
+tool reads the member, at which moment, and what a call answers for a valid
+file without it is said by ADR-0046 decisions 4 and 5 for
+``correctness.check`` and is not done here: "not stated" is no error of the
+content here either, this module gives it no tool-failure kind, and
+:func:`draws_of` is bound to no tool and to no check.
 Of the layout version it gives what the ``schema_version`` of a valid file
 states by the pairing of ADR-0024 decision 3 and nothing else (decisions 4
 and 5). It defines no member for the layout version and interprets none: a
@@ -471,6 +520,7 @@ _DEFINED = (
     "wall_clock_budget_s",
     "owner",
     "project",
+    "draws",
 )
 _SECTION = ("key", "record")
 _TOLERANCE = ("rtol", "atol")
@@ -483,8 +533,8 @@ class InvalidInstanceError(ValueError):
     """A content, a document or a path breaks a rule; the message names it.
 
     The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
-    ADR-0031, ADR-0032, ADR-0033 and ADR-0034 and the conventions of this
-    module.
+    ADR-0031, ADR-0032, ADR-0033, ADR-0034 and ADR-0046 and the conventions
+    of this module.
     """
 
 
@@ -538,7 +588,9 @@ class Instance(NamedTuple):
     ``wall_clock_budget_s``, a number of seconds, or ``None`` for a content
     without that member. ``owner`` and ``project`` are each the ``str`` of the
     member of that name, unchanged, or ``None`` for a content without that
-    member: ``None`` says that the content states none.
+    member: ``None`` says that the content states none. ``draws`` is the
+    ``int`` of the member ``draws``, a number of draws, or ``None`` for a
+    content without that member.
     No field has a default. ``others`` is the last field.
     """
 
@@ -553,6 +605,7 @@ class Instance(NamedTuple):
     wall_clock_budget_s: int | None
     owner: str | None
     project: str | None
+    draws: int | None
     others: dict
 
 
@@ -595,15 +648,19 @@ def parse(content):
     removed and nothing normalised, shortened or split, or ``None`` when the
     content has no such member, and nothing is substituted then either:
     ``None`` is no default and no anonymous or shared value (ADR-0034
-    decision 4);
+    decision 4); ``draws`` is the ``int`` of the member ``draws`` as the
+    content states it (ADR-0046 decision 3), not clamped to a range, rounded
+    or replaced, or ``None`` when the content has no such member, and no
+    value is substituted then either, 1 included;
     ``others`` holds every top-level member that is none of
     ``schema_version``, ``hw_profile``, ``tolerance``, ``source_commit``,
     ``n_max``, ``candidates_per_round``, ``op_signature``, ``round_budget``,
-    ``wall_clock_budget_s``, ``owner`` and ``project``, as parsed and not
-    interpreted, whatever its name and value (``tolerence``, a top-level
-    ``rtol``, ``source-commit``, ``nmax``, ``candidates``, ``op``, ``task``,
-    ``rounds``, ``budget``, ``wall_clock_budget``, ``time_budget``,
-    ``Owner``, ``user``, ``username`` or ``projectname`` among them).
+    ``wall_clock_budget_s``, ``owner``, ``project`` and ``draws``, as parsed
+    and not interpreted, whatever its name and value (``tolerence``, a
+    top-level ``rtol``, ``source-commit``, ``nmax``, ``candidates``, ``op``,
+    ``task``, ``rounds``, ``budget``, ``wall_clock_budget``, ``time_budget``,
+    ``Owner``, ``user``, ``username``, ``projectname``, ``n_draws``,
+    ``Draws`` or ``check_draws`` among them).
     Any order of members and any white space of JSON are accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
@@ -629,7 +686,7 @@ def parse(content):
 
 
 def validate(document):
-    """Check ``document``, a parsed ``instance.json``, against the nine records.
+    """Check ``document``, a parsed ``instance.json``, against the ten records.
 
     ``document`` must be a ``dict`` with ``schema_version`` (an ``int`` from 0
     to :data:`hilclaw.keys.MAX_INTEGER`) and, at version 1, ``hw_profile``: a
@@ -677,18 +734,24 @@ def validate(document):
     (ADR-0034 decisions 3 and 4): for a value built in memory, a subclass of
     ``str`` and a ``bytes`` are none. Only that form is checked: neither is
     compared with the other, with another member, with another file or with
-    an identity. Its other members are not looked at. The rules for the text
+    an identity. It may hold ``draws``, which is then exactly an ``int``
+    from 1 to :data:`hilclaw.keys.MAX_INTEGER`, both included (ADR-0046
+    decision 3): for a value built in memory, a ``bool``, a ``float`` such
+    as ``2.0`` and a subclass of ``int`` are none. Only that form is
+    checked: the member is compared with no other member and with no limit
+    of the harness, and that a check can be carried out with the number is
+    not checked. Its other members are not looked at. The rules for the text
     (the encoding, a member name twice) cannot be checked on a parsed value.
-    The nine records are ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
-    ADR-0031, ADR-0032, ADR-0033 and ADR-0034; ADR-0024 adds no rule of
-    validity.
+    The ten records are ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
+    ADR-0031, ADR-0032, ADR-0033, ADR-0034 and ADR-0046; ADR-0024 adds no
+    rule of validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
     ``tolerance.rtol``, ``source_commit``, ``n_max``,
     ``candidates_per_round``, ``op_signature.key``, ``round_budget``,
-    ``wall_clock_budget_s``, ``owner`` or ``project``). The version comes
-    first: an integer other than :data:`SCHEMA_VERSION` raises
+    ``wall_clock_budget_s``, ``owner``, ``project`` or ``draws``). The
+    version comes first: an integer other than :data:`SCHEMA_VERSION` raises
     :class:`UnsupportedVersionError` before any other member is looked at.
     """
     _checked(document)
@@ -741,11 +804,11 @@ def hw_profile_of(data_root, run_id):
     :func:`hilclaw.backends.select`. Raises what :func:`read` raises, so
     :class:`InvalidInstanceError` also for a file whose ``tolerance``,
     ``source_commit``, ``n_max``, ``candidates_per_round``,
-    ``op_signature``, ``round_budget``, ``wall_clock_budget_s``, ``owner`` or
-    ``project`` is invalid: no member of an invalid file is used (ADR-0020
-    decision 3, ADR-0022 decision 5, ADR-0023 decision 4, ADR-0028 decision
-    4, ADR-0031 decision 5, ADR-0032 decision 4, ADR-0033 decision 4,
-    ADR-0034 decision 4).
+    ``op_signature``, ``round_budget``, ``wall_clock_budget_s``, ``owner``,
+    ``project`` or ``draws`` is invalid: no member of an invalid file is
+    used (ADR-0020 decision 3, ADR-0022 decision 5, ADR-0023 decision 4,
+    ADR-0028 decision 4, ADR-0031 decision 5, ADR-0032 decision 4, ADR-0033
+    decision 4, ADR-0034 decision 4, ADR-0046 decision 3).
     """
     return read(data_root, run_id).hw_profile
 
@@ -945,6 +1008,33 @@ def project_of(data_root, run_id):
     return read(data_root, run_id).project
 
 
+def draws_of(data_root, run_id):
+    """Return the number of draws the run ``run_id`` states, or ``None`` when it states none.
+
+    It is the ``draws`` of what :func:`read` returns: the ``int`` of the
+    member ``draws`` of ``runs/<run_id>/instance.json``, from 1 to
+    :data:`hilclaw.keys.MAX_INTEGER`, as the file states it at this call,
+    unchanged, or ``None`` for a valid file without that member (ADR-0046
+    decision 3). The member states the number of draws of a check of
+    ``correctness.check`` about an attempt of the run, for a run of the
+    first case and for one whose hw_profile names the mock; that the run is
+    one of them is not checked here, and the record gives the member no
+    meaning for any other run (ADR-0046 decisions 1 and 3). ``None`` says
+    that no number is stated: there is no default, and no value stands in
+    for it (ADR-0046 decision 3), not 1, no constant of this module or of
+    the harness, nothing taken from another member and not the number of
+    another run. Only the instance file is read, and the number is compared
+    with nothing: a returned number is not thereby one a check can be
+    carried out with, and nothing here hands it to a check. What a call of
+    the tool answers for a valid file without the member is ADR-0046
+    decision 5 and is not done here: this function raises no tool failure.
+    Raises what :func:`read` raises, so no number is returned, and none is
+    inferred, for a missing, unreadable or invalid file or one of another
+    version.
+    """
+    return read(data_root, run_id).draws
+
+
 def layout_version_of(data_root, run_id):
     """Return the layout version the run ``run_id`` states (ADR-0024 decisions 3 to 5).
 
@@ -1010,6 +1100,7 @@ def _checked(document):
         owner = _string("owner", document["owner"])
     if "project" in document:
         project = _string("project", document["project"])
+    draws = _draws(document["draws"]) if "draws" in document else None
     others = {name: value for name, value in document.items() if name not in _DEFINED}
     return Instance(
         key,
@@ -1023,6 +1114,7 @@ def _checked(document):
         seconds,
         owner,
         project,
+        draws,
         others,
     )
 
@@ -1104,6 +1196,12 @@ def _round_budget(value):
 def _wall_clock_budget_s(value):
     if type(value) is not int or not 1 <= value <= _MAX:
         _fail("wall_clock_budget_s", f"an int from 1 to {_MAX}", value)
+    return value
+
+
+def _draws(value):
+    if type(value) is not int or not 1 <= value <= _MAX:
+        _fail("draws", f"an int from 1 to {_MAX}", value)
     return value
 
 
