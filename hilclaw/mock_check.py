@@ -24,8 +24,9 @@ Choices that are this module's own and no rule of a record:
   :func:`hilclaw.harness.verification_arrays.draw_inputs`, ``check_value``
   and ``reference`` give the inputs, the check value and the float64 product
   of a draw, NumPy's conversion to ``float32`` rounds each element to the
-  nearest value with a tie going to the even one, and the check value is
-  written with ``struct`` format ``=I`` and followed after the last draw by
+  nearest value with a tie going to the even one under the default rounding
+  mode, and the check value is written with ``struct`` format ``=I`` and
+  followed after the last draw by
   :data:`hilclaw.harness.verification.END_MARK`, as
   :func:`hilclaw.harness.verification.judge_report` reads them.
 * What is shared has a limit (decision 7): a defect of the generator, of the
