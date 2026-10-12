@@ -86,7 +86,7 @@ def completed(*, m, k, n, draws, rtol, atol, counts):
     :class:`ValueError` for another value of an accepted type, as the module
     docstring says; the message names the parameter, and for a count the
     entry (``counts[1].failed``). No argument is modified or kept, and the
-    result shares no object with ``counts``.
+    result shares no mutable object with ``counts``.
     """
     common = _common(m, k, n, draws, rtol, atol)
     entries = _counts(counts, draws, m * n)
