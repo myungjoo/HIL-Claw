@@ -37,9 +37,12 @@ Choices that are this module's own and no rule of a record:
   is the operation's. A tool failure raised anywhere else under ``ask``, by
   its own code or by the judging it calls, is an error of this side and
   passes through as the same object; out of a step it leaves the step open
-  by the convention of :mod:`hilclaw.journaled_step`. An
+  by the convention of :mod:`hilclaw.journaled_step`. A tool failure the
+  operation raised is answered as one whatever else its class is, so it is
+  looked for first. Any other
   :class:`hilclaw.check_operation.OperationAnswerInvalid` out of ``ask`` is
-  taken as the one ``ask`` raised, whichever code under it raised it.
+  taken as the one ``ask`` raised: the operation is not its source, and
+  which code of this side raised it is not told.
 * How the operation's own tool failure is told. ``ask`` is handed a callable
   of this module that calls the operation with the three objects as they
   are, remembers the tool failure that call raised and raises it again as
@@ -112,18 +115,20 @@ def carry_out(operation, request, hw_profile, parameters, *, rtol, atol):
     ``operation(request, hw_profile, parameters)``. Then:
 
     1. ``ask`` returned a result: the same ``dict`` object is returned.
-    2. ``ask`` raised :class:`hilclaw.check_operation.OperationAnswerInvalid`,
-       for a returned value of neither form or a raised error:
-       :class:`EndedWithoutOutcome` with the ``kind`` and the ``message`` of
-       that exception, unchanged (ADR-0045 decisions 3 to 5).
-    3. The call of the operation raised a
-       :class:`hilclaw.tools.ToolFailure`, of any kind and of any subclass:
+    2. The call of the operation raised a
+       :class:`hilclaw.tools.ToolFailure`, of any kind and of any subclass,
+       one that is an ``OperationAnswerInvalid`` as well included:
        :class:`EndedWithoutOutcome` with the pair
        :func:`hilclaw.check_failure.ended_with` returns for it (ADR-0047
        decisions 3 and 4).
-    4. A ``ToolFailure`` came out of ``ask`` that the call of the operation
+    3. A ``ToolFailure`` came out of ``ask`` that the call of the operation
        did not raise: it is not caught, and the same object passes through.
        This line is the module's own choice (see the module docstring).
+    4. ``ask`` raised a
+       :class:`hilclaw.check_operation.OperationAnswerInvalid` that is no
+       ``ToolFailure``, for a returned value of neither form or a raised
+       error: :class:`EndedWithoutOutcome` with the ``kind`` and the
+       ``message`` of that exception, unchanged (ADR-0045 decisions 3 to 5).
     5. Everything else passes through unchanged: the :class:`TypeError` of
        ``ask`` for ``parameters`` of another type, raised before the
        operation is called; what the judging raises for a value of the five
@@ -153,11 +158,11 @@ def carry_out(operation, request, hw_profile, parameters, *, rtol, atol):
         return check_operation.ask(
             call, request, hw_profile, parameters, rtol=rtol, atol=atol
         )
-    except check_operation.OperationAnswerInvalid as invalid:
-        kind, message = invalid.kind, invalid.message
     except tools.ToolFailure as raised:
         if raised is not own:
             raise
         kind, message = check_failure.ended_with(raised)
+    except check_operation.OperationAnswerInvalid as invalid:
+        kind, message = invalid.kind, invalid.message
     own = None
     raise EndedWithoutOutcome(kind, message)

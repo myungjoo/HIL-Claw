@@ -89,6 +89,13 @@ class Text(str):
     pass
 
 
+class BothFailure(tools.ToolFailure, check_operation.OperationAnswerInvalid):
+    def __init__(self, kind, message):
+        Exception.__init__(self, kind, message)
+        self.kind = kind
+        self.message = message
+
+
 class EndingKind(tools.ToolFailure):
     @property
     def kind(self):
@@ -304,6 +311,33 @@ def test_an_instance_of_a_subclass_of_tool_failure_is_answered_alike():
     assert (error.kind, error.message) == check_failure.ended_with(
         failure(EXAMPLE_KIND)
     )
+
+
+@pytest.mark.parametrize("kind", [EXAMPLE_KIND, tools.KIND_STEP_OPEN])
+def test_a_tool_failure_that_is_an_invalid_answer_too_is_a_tool_failure(kind):
+    raised = BothFailure(kind, MARKER)
+    operation = Recording(error=raised)
+    error = ended(operation)
+    assert len(operation.calls) == 1
+    assert (error.kind, error.message) == check_failure.ended_with(failure(kind))
+    assert error.kind == check_failure.KIND_OPERATION_FAILURE_INVALID
+    assert not any(value is raised for value in held_by_the_module(error))
+    raised.message = None
+    assert ended(Recording(error=raised)).message == error.message
+
+
+def test_a_tool_failure_of_the_judging_that_is_an_invalid_answer_too_passes(
+    monkeypatch,
+):
+    raised = BothFailure(EXAMPLE_KIND, MARKER)
+
+    def broken_judging(answer, **arguments):
+        raise raised
+
+    monkeypatch.setattr(check_answer, "from_answer", broken_judging)
+    with pytest.raises(tools.ToolFailure) as caught:
+        carried(Recording(answer=GOOD))
+    assert caught.value is raised
 
 
 def test_a_backend_kind_gives_the_raised_kind_and_message(monkeypatch):
