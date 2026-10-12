@@ -2,7 +2,7 @@
 id: T-0142
 title: Add one new pure module `hilclaw/check_identity.py` that renders the request side of ADR-0040 as code ahead of the tool function - the member `point` with its two values, the two `step` values of `correctness.check`, the three required numbers, the check of `point` (a refusal is `invalid_request`) and the `step` that follows from a request - with its tests; bound to no tool, no existing file edited
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, NFR-1, OD-18]
 dependsOn: [T-0125]
@@ -124,3 +124,26 @@ Recommended public names, and no other: `MEMBER`, `SIM`, `BOARD`, `STEP_SIM`, `S
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+- **Outcome**: DONE. PR #96 (https://github.com/myungjoo/HIL-Claw/pull/96), squash commit `ae69aa0` on `main`; the branch is deleted, remote and local. Files: `hilclaw/check_identity.py` (new, 141 lines, about 30 of them code) and `tests/test_check_identity.py` (new, 370 lines). No existing file and no existing assertion was edited; no other module imports the new one.
+- **Review**: 3 rounds with a fresh-context `dev-reviewer` each, final verdict Approve, no security finding.
+  - Round 1, Request changes: (1) `MEMBER not in request` is a lookup, and a lookup calls `__eq__` of a stored key whose hash equals that of `point`, so the two functions were not total as the docstring said - fixed in code (below); (2) the module docstring said every message names the two values, which holds for two of the four - sentence fixed.
+  - Round 2, Approve with one nit: the kept-out scan of the test saw no f-string text from Python 3.12 on (`FSTRING_MIDDLE` tokens) - fixed in the test. Two notes without a change request are recorded under "Limits" below.
+  - Round 3, Approve, nothing left. Its remark that the body of the first branch commit still says "keeps both functions total" concerns history only; the squash message (the PR body) does not hold the sentence.
+- **CI**: the six checks of head `6e3606b` green on the first complete run (the run of `c88537b` was cancelled by the next push; no failed run). Coverage gate: lines 3525/3541 = 99.54 %, functions 366/366 = 100.00 %; every line of the new module is executed. Local (Windows, Python 3.14): `ruff check`, `ruff format --check`, `pytest` 13222 passed, 303 skipped.
+- **Language**: Python - the module joins the Python modules of `hilclaw/` and its caller to come, the tool function, is Python.
+- **The interface as landed** (`hilclaw.check_identity`; public names exactly these nine):
+  - `MEMBER = "point"`, `SIM = "sim"`, `BOARD = "board"` (ADR-0040 decision 4).
+  - `STEP_SIM = "correctness_check_sim"`, `STEP_BOARD = "correctness_check_board"`, `STEPS = (STEP_SIM, STEP_BOARD)` (decision 3). The two values are spelt as literals, each once in the package; the order of the tuple means nothing.
+  - `NUMBERS = ("round", "candidate", "attempt")` (decision 5), in the form `checked_function` takes as `numbers`.
+  - `check(request)` (one positional-or-keyword parameter, no default): returns `None`, or raises `hilclaw.tools.ToolFailure` (exact type) of kind `tools.KIND_INVALID_REQUEST` when the request has no member `point` or its value is not exactly the `str` `"sim"` or `"board"`. It looks at no other member and does not close the member list.
+  - `step_of(request)` (same signature): returns `STEP_SIM` for `"sim"` and `STEP_BOARD` for `"board"`, never another value; for every request `check` refuses it raises the same kind with the same message (both go through one private function), so no `KeyError` or `TypeError` comes out of it.
+  - A `request` whose type is not exactly `dict` (`None`, a list, a string, a number, an instance of a `dict` subclass) is refused with the same kind. A value of `point` whose type is not exactly `str` (an instance of a `str` subclass included) is "another value" and is refused without being compared, hashed or printed.
+  - **Changed from the recommendation in round 1**: the member is found by going through the items of the request and taking the key that is exactly the `str` `point`, not by a lookup. No code of a key is called. Consequence: a key that is an instance of a `str` subclass equal to `point` is **no** member `point`, and such a request is refused as "point: is required" although `"point" in request` is true. The frame (`journaled_tool._checked`) uses `name in request`, so the two differ for such a key; it cannot come out of JSON.
+  - The message: one of four constants built at import, exactly a `str`, at most 100 characters (the longest is 73). It starts with `point:`; where a value was given it names the two accepted values. **Changed from the recommendation**: it shows nothing of the given value, not even the name of its type (reading the name of a type can run code of a metaclass and has no bound). Nothing may depend on the wording beyond the member name at its start.
+  - Imports `hilclaw.tools` only. The code spells none of `invalid_request`, `run_id`, `execution` nor any of the kept-out kinds.
+- **Limits** (reviewer notes, no code change): (a) a request whose keys are changed by another thread while a call goes through them raises Python's `RuntimeError`; "total" is meant over the values and keys of a request, not over concurrent mutation. (b) the key rule above beside the frame's `name in request`.
+- **Where the task file and the code disagreed** (the code wins, reviewer agreed): the criterion `hilclaw.journal.step_identity(step, 1, 0, 0, 0)` is refused by the envelope rule (`candidate` and `attempt` start at 1; `hilclaw/events.py`); the test uses `step_identity(step, 1, 0, 1, 1)`. The planner's sentence that `hilclaw/backends.py` (`HW_TOOLS`) holds `sim` and `board` is inexact: it holds `sim.run` and `board.run`; `hilclaw/spec.py` (`_STAGES`) does hold both words, so the reading of the T-0126 sentence stands.
+- **Where the launch prompt and the documents disagreed**: the prompt asked for `## Result` inside the PR branch; DRIVER §3-6, this task file ("fill it in after the merge, on `main`, and leave that edit uncommitted"; "Files: nothing else") and the executor definition say otherwise, and the squash commit is not known before the merge. The documents were followed: this section is an uncommitted edit on `main` for the driver's wrap-up commit.
+- **Issue #5**: no comment after the ADR-0047 notice (checked at the start); no owner answer to HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011 or HQ-0012 was seen. ADR-0040 and ADR-0038 are inside their objection windows until 2026-10-19, ADR-0015 until 2026-10-14 (stated in the first branch commit and the PR body).
+- **Size**: non-test diff 141 lines in one file (D4 cap 300 LOC, 5 files); estimated 120.
+- **Follow-ups**: those listed above under `## Follow-ups` stand unchanged. One addition for the tool-function task: its own check should call `check_identity.check` after the frame check, and should be written knowing the exact-`str` key rule above.
