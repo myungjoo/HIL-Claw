@@ -111,7 +111,7 @@
       "reason": "requirement-unclear",
       "question": "T-0126 (a builder for the tool function of a journaled HW tool whose `step` follows from the checked request, the code slice ADR-0040 Consequences cut; code mode) stopped before any change: it must add one public function to `hilclaw/hw_tool.py` and a shared public part to `hilclaw/journaled_tool.py`, and the task forbade edits of existing tests, while `test_the_public_names_and_the_signature` in `tests/test_hw_tool.py` and in `tests/test_journaled_tool.py` assert the exact list of public names of these two modules (`[\"tool_function\"]` and `[\"tool_function\", \"checked_function\"]`), and `test_the_signature_of_checked_function` pins the parameters of `checked_function`. Which do you want: (a) the task is run again with those two name-list assertions named as the only permitted edits of existing tests (one name added to each expected list, nothing else); (b) the builder goes into a new module (for example `hilclaw/stepped_hw_tool.py`) with its own test file, the public surfaces of both existing modules stay as they are, and the shared check of the request is repeated there or reached some other way you name; (c) something else (name it)? Not asked here: the names and signatures of the new functions (the executor's choice under review) and any rule of ADR-0016, ADR-0021 or ADR-0040.",
       "askedAt": "2026-10-12T09:24:38Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6121441448"
     }
   ],
   "counters": {
