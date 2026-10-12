@@ -2,7 +2,7 @@
 id: T-0128
 title: Write the ADR that fixes the members of a result of `correctness.check` (the third slice of the second record of that contract) - how a result reports pass, fail or broken and the condition of a broken run, whether it holds the per-draw counts and what the check was made with, what it never holds, and whether its member list is closed - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-10, NFR-2, OD-18, OD-16, OD-17, "#5 D6"]
 dependsOn: [T-0125, T-0127]
@@ -112,3 +112,86 @@ Known risk, accepted: ADR-0038, ADR-0040 and ADR-0041 are inside their objection
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+
+**DONE** - landed on `main` as commit `5eed4a0` (`5eed4a0f8102fc6b168cbb64f0719789b153e5fa`, "T-0128: Add ADR-0042, the members of a result of correctness.check and its closed member list (one more part of OD-18)"), document mode, pushed as a fast-forward of `6308afe`; no PR. The task branch was deleted remotely and locally (separate commands, after the push was confirmed). Trailers: `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0128`, then the attribution trailer. The commit holds four files: the new `ARCHITECTURE/decisions/ADR-0042-od18-correctness-check-result-members.md` (220 lines) and edits of `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionProposals.md` and `ARCHITECTURE/StandardScenarios.md` (227 insertions, 6 deletions). This task ticks **no PLAN checkbox**; P1-1 stays open and the tool still cannot be registered. This `## Result` is left uncommitted in the working tree on `main` for the driver.
+
+### The members as landed (the next slices and the code are written against this table)
+
+All of it is the record's own design (DRIVER §9); no sentence of the owner is used as a decision. Scope: a result of a check (a call that reached moment 6 and whose judging ended in pass, fail or broken) about one attempt of a run of the first case or of a run whose hw_profile names the mock, whose file states a covered op_signature. One form at both execution points and for a run at the mock. A tool failure is not a result and gets no member. No member holds `null`; a member that does not apply is left out. String values are compared as they are.
+
+| Member | Type and values | Present |
+|---|---|---|
+| `outcome` | string: `"pass"`, `"fail"` or `"broken"` | always |
+| `condition` | string: `"time_limit"`, `"exit_status"`, `"report_form"` or `"check_value"` - the first condition that failed, in the order of ADR-0021 decision 5 (the first two are found by the operation, the last two by the tool function) | exactly when `outcome` is `"broken"` |
+| `shape` | object with exactly `m`, `k`, `n`, each an integer of at least 1 - the dimensions of the check (ADR-0041 decision 2) | always |
+| `draws` | integer of at least 1 - the number of draws this check used; no value, source or default is fixed | always |
+| `tolerance` | object with exactly `rtol`, `atol`, each a JSON number, finite and not negative - the two numbers read in moment 4 for this check; the spelling of the literal is the code task's | always, in a broken result too |
+| `counts` | array with one object per draw, in the order of the draws, each with exactly `failed` and `non_finite`, integers of at least 0 | exactly when `outcome` is `"pass"` or `"fail"` |
+
+- Relations that follow from the cited definitions (no further rule): in every entry `non_finite` <= `failed` <= m*n; in a pass every `failed` is 0; in a fail at least one `failed` is 1 or more; `counts` has `draws` entries.
+- A result repeats none of the six members a request requires (`run_id`, `round`, `candidate`, `attempt`, `execution`, `point`). The record says nothing of a member a later slice gives a request.
+- A result never holds (cited from ADR-0021 decision 5, not re-decided): an element of the inputs or of the reference; and until OD-16 sub-question 5 is answered, the seed, the command line or the standard error of the kernel's process. Of what the runner captured for a broken run it holds the condition and nothing else (no exit status, signal, time or byte of the report); this closes nothing of OD-10 and OD-14. No index, no largest deviation, no version member, no free-text member.
+- **The member list is closed**: a tool function that follows the records up to ADR-0042 returns exactly these six members; only a record adds a member and then amends the table. A caller may rely on the table, the presence rules and the relations for a result made under the record, but not on every stored result having been made under it: a repeated call returns what the end line holds, so a result stored by one source commit comes back member for member at a later one. How a result of another member list is read stays open (OD-8 sub-question 8, OD-11).
+- Three examples (synthetic; the `2` for the number of draws is a marked placeholder and no proposed value) are in decision 7 of the record.
+
+### Provisional choices
+
+- **That a result holds the per-draw counts.** A count is a number the kernel can set (it decides its output and holds the seed during the check), so the member widens a path from the kernel's process into the log; the record names this as a limit and looks at the choice again when OD-16 sub-question 5 is answered.
+- **The member `draws`**: fixed before the slice that says where the number of draws comes from. It is revisited if that slice gives a check something other than one number of draws, or makes the number a member of the request.
+- Not called provisional: `outcome`, `condition`, `shape`, `tolerance`, that the point is not repeated, the closed list, no version member.
+
+### Not decided, as the task required
+
+- **OD-16 sub-question 5 is not closed.** An answer "the seed may be recorded in a result" reopens the first sentence of decision 7 (the member list; the record that renders the answer adds the member) and with it the weighing of decision 4, and the limit "a fail cannot be reproduced from a result" then no longer holds as written. An answer under which nothing from which an input follows may reach the log adds no member, reopens the weighing of decision 4 and also reaches ADR-0021 decision 5 (the path runs through `outcome` and `condition` as well).
+- What anybody does after a fail or a broken result; the result file of an attempt (`eval.json`) and who writes it from an end line; the `spend` of the end line (as ADR-0040 decision 6 left it); how the operation reports to the tool function (the four values of `condition` are not the spelling of what an operation returns); which role reads a result.
+
+### Sub-question registered
+
+None. A dated note was added under OD-16 sub-question 5 (not closed; what the record now says).
+
+### Edits of existing documents
+
+- `Requirements.md`: one clause in the OD-18 row. 29 OD rows before and after, no new OD number, status wording of OD-18 kept (`제안됨`). **Rows judged and left**: OD-16 and OD-17 (the record reads none of its answers as a part of either; the OD-16 row's sentence that the number of draws and the recording after a check are open stays true), OD-10, OD-6, and FR-9, FR-10 and NFR-2 (no sentence became false).
+- `OpenDecisionProposals.md`: section OD-18 - the heading note and one "채택분" bullet for ADR-0042; section OD-16 - a dated note on sub-question 5. No proposal text deleted. No note was added to OD-18 sub-question 10: the record answers no clause of it.
+- `StandardScenarios.md`, "검사 결과": the heading note, one dated passage, and the note row of S0 (one clause brought up to ADR-0042). **Coverage re-check outcome: no verdict changes and there is no gap.** The rules were re-applied to three groups: steps that verify correctness (S0-6, S1-4, S1-6, S1-b-2, S2-2, S8-3, extension S7-1, S7-2); steps that act on a verdict or store or look one up (S0-6, S0-7, S0-8, S1-4, S1-6, S2-2, S5-2, S8-3, S8-4, extension S7-3, S7-4); the note row that names the second record (S0). What follows a fail or a broken result, what of a result is shown to a coder and the result file of an attempt are registered open items, so by the rules of that file none is a gap; S7-3 stays "확장 호환" (`condition` is not the failure type of that step, and nothing requires that tagging to be a member of a result). No scenario step was edited.
+- ADR-0001 to ADR-0041 and UsageCases.md are not edited.
+
+### Review rounds (7, each a fresh-context `dev-reviewer` with `model: opus`, told to write no file; Approve in rounds 6 and 7)
+
+1. Request changes, no blocking finding. Should-fix: "can be promised of a closed list only" contradicted ADR-0021 decision 5 and ADR-0040 decision 2, which bound a result while the list was open, and the text-member sentence ignored the path through `counts`; the working commit message lacked the provisional choices and the windows. Nits: "leaves the member list as it is"; the Status list of less exact sentences read as complete; `run_id` is said by the path, not by a line; OD-8 sub-question 8 missing beside OD-11; the ADR-0039 analogy in the A-13 reading; the NFR-2 quotation. All addressed.
+2. Request changes. Should-fix: "and nothing else of this record" for the answer "the seed may be recorded" contradicted decisions 4 and 9; "the predicate was applied to nothing" in a broken result (false for a check-value break after an earlier draw was judged); "Consequences lists all of them". Nits: "the tolerance is the gate" (FR-9: the tolerance sets it); "a tool function or a backend". All addressed.
+3. Request changes. Should-fix: one Alternatives row still carried the reasoning removed in round 1. Nits: a second Alternatives row without OD-8 sub-question 8; ADR-0015 in Status without a citing sentence; a spliced quotation of ADR-0021 decision 2; one phrase of the landing message. All addressed.
+4. Request changes. Should-fix: "A call answered before moment 6 ... return[s] no result" was false for a repeated call under an ended identity. Nits: an observation on `Judgement` less exact than Context; ADR-0016 named without a reference. All addressed.
+5. Request changes. Should-fix: "A result repeats no member of the request" in universal wording while the member list of a request is open and the result holds `draws` (it would have pre-decided that a request carries no `draws`); now limited to the six required members, with the case of a request member for the number of draws named. Nits: "every repeated call"; the length of the subject line. All addressed.
+6. Approve, four nits, each "may land unchanged" (ADR-0041 Consequences missing from the less-exact list; "only when" for "exactly when" in the Korean mirrors and the message; a tool failure during moment 6; "all consequences of"). All addressed, then re-reviewed.
+7. Approve: no blocking and no should-fix finding; three nits, each "may land unchanged". **They were not applied**, because a change after round 7 would need an eighth round (CLAUDE.md A-13). They are listed under Follow-ups. The landed tree is identical to the commit reviewed in round 7 (`git diff e00c3bb HEAD` empty after the squash).
+
+Process notes for the next slice. (1) As in T-0127, T-0125 and T-0088, every should-fix was a single sentence in universal wording that said more than its source or than another part of the same record ("only", "nothing else", "no member of the request", "return no result"); none changed a decision. Before the first round, each such sentence of a record should be tested against the record's own walk-through and limits, not only against its sources. (2) A sentence about "the request" must say whether it means the members fixed so far or the open list. (3) The Consequences list of less exact sentences should say from the first draft that it holds what the record found.
+
+### Document checks
+
+- §3-5 landed check before anything else (2026-10-12): no commit on `origin/main` with `Task: T-0128`, no PR for T-0128 in any state. Fresh run.
+- Session entry (before the first edit): no open PR; #4 (last update 2026-10-01), #7 (2026-09-07) and #8 (closed, 2026-10-05) hold nothing newer; on #5 the last comment was the ADR-0041 notice (issuecomment-6123372263) and nothing followed it. No owner objection to ADR-0041, ADR-0040, ADR-0038, ADR-0021, ADR-0017 or ADR-0011 was found.
+- A-13 reading held by the executor and by the reviewers of all seven rounds: the members inside the `result` of a `step_ended` line are no "데이터 plane 스키마 변경" (the member `result` and its place are ADR-0011's; no member of `STATE.json`, `instance.json`, a spec, `artifacts.json`, a result file, the envelope or the `data` of a line is added, removed or changed; `eval.json` is not defined). The record says openly that this result, unlike that of ADR-0039, is stored in the log, and the notice puts the reading to the owner.
+- Citations: every quotation of the record was compared with its source by the reviewers of all seven rounds (ADR-0002, 0006, 0010, 0011, 0015, 0017, 0020, 0021, 0031, 0038, 0039, 0040, 0041 and NFR-2), with the record and decision number.
+- Name collisions (searched in `hilclaw/`, `tests/` and `ARCHITECTURE/` on 2026-10-12): no record and no module gives a request, a result, a line of the log or a file of the data plane a member named `outcome`, `condition`, `counts`, `non_finite` or `draws`; `outcome` is a member only in `tests/test_driver_state.py` (the driver's `PROCESS/STATE.json`); `failed` is a value of `retention_class` (ADR-0005); `broken`, `verdict`, `counts`, `failed`, `non_finite` are field names of the harness's tuples and `draws` a parameter of the harness, with the meanings used; `shape` and `tolerance` are taken with the form they have in `instance.json`. None of the seven string values is a reserved kind, a kind of a record or a `step` value.
+- Relative links: all link targets of the new record resolve, with the anchors `#od-8`, `#od-16`, `#od-18` (script outside the repository; confirmed by the reviewers). ADR-0042 was free on `origin/main` at the push.
+- OD register: 29 rows before and after; only the OD-18 row differs.
+- Each sentence of the Decision is marked by the rule stated at its head (cited / the record's own; none is the owner's); no sentence states an item of the "Do not invent" list or of Boundaries as decided (reviewer checks (b) and (c), every round).
+- `git ls-files --eol`: `i/lf` for the four files; `git show --stat HEAD` lists only the new record and the three documents; `git diff --check` clean.
+- CI: the `push` run for `5eed4a0` is https://github.com/myungjoo/HIL-Claw/actions/runs/38249576691 (in progress when this was written; the commit changes documents only).
+- Wall clock: started 2026-10-12 11:36 UTC, landed 12:31 UTC.
+
+### Owner notice (DRIVER §9) - posted by the executor on 2026-10-12, as the spawn prompt directed: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6124322561 (window until 2026-10-19, UTC)
+
+The notice says what the record holds (no owner sentence used as a decision; what is cited from ADR-0021 and ADR-0017; the six members with their presence rules as the record's own design), eight readings to check - the per-draw counts are held and provisional, with the path a kernel is given said plainly; OD-16 sub-question 5 is not closed and what either answer reopens; `draws` only as what a check used, provisional; the shape and the tolerance of a check are named and the point is not repeated; of a broken run only the condition; the closed member list, no version member; the names `outcome` and `condition`; the rows judged and left - then the limits, what is left open, the A-13 reading (stored as the `result` of a `step_ended` line; no member of a data-plane file added, removed or changed; unlike the result of the blob pair it is written to the log; a different reading of A-13 is an objection to the whole record), the windows of the records built on, and the 7-day objection window. Last line `— posted by driver`.
+
+### Follow-ups
+
+- (integrator - document mode; the three nits of review round 7, each judged "may land unchanged") (1) ADR-0042 decision 5: "each an integer of at least 1" for `shape` and "an integer of at least 1" for `draws` carry no source; the bounds are those of ADR-0041 decision 5 and of ADR-0017 decisions 3 and 9 and can be marked cited. (2) ADR-0042 Walk-through, row 5: the moment 3 is of the table of ADR-0040 decision 7, which the Status list of decisions built on does not name (the cited decision 3 carries the sentence). (3) ADR-0042 decision 5: the quotation "An operation is never handed the tolerance" stops in the middle of the source sentence without an ellipsis.
+- (integrator - sentences of earlier records not edited and now less exact; the list is in ADR-0042 Consequences) ADR-0021 decisions 1 and 5 and its Boundaries; ADR-0040 decision 2, its Walk-through, Consequences and Boundaries; ADR-0041 decision 2 (a), decision 7 (last bullet), decision 9 (first bullet), its Walk-through, Consequences and Boundaries; ADR-0038 decision 7; ADR-0020 Boundaries; ADR-0011 Boundaries and Example; ADR-0006 decision 7. Also still open from earlier tasks: the lists of T-0127, T-0125, T-0116 and T-0088, and the README layer-2 cell, stale since T-0124.
+- (planner, next - document mode, P1-1) The next slices of the second record: `draws` (OD-16 sub-question 5 - judge against DRIVER §9 whether a number of draws can be a record's design or needs the owner; ADR-0042 already gives a result the member `draws` and says it is revisited if the number becomes a member of the request); the tool-failure kinds of a backend and the form between the operation and the tool function (the four values of `condition` are not that form); the operation and the default script of the mock (a script that is to pass must lead to a result of the form of the first example of ADR-0042 decision 7); whether an operation is handed the point; then the closed member list of a request, the input schema and the description. The slice on the kernel of the attempt is tied to OD-23 and HQ-0010.
+- (planner - code mode, after HQ-0012) T-0126, the builder; then the tool function of `correctness.check`, which returns the six members above: `outcome`, `counts` and the last two values of `condition` from `Judgement` / `Counts`, the first two values of `condition` from what the operation returns, `shape` and `tolerance` from the read of moment 4.
+- (planner - PLAN P1-8) The record of the result file of an attempt: ADR-0042 names no member of `eval.json`; if that file needs of a check something a result does not hold, that record revisits ADR-0042.
+- (owner, with OD-16 sub-question 5) Whether the per-draw counts may stay in a result, given that a kernel can set them (reading 1 of the notice).
+- (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none was needed here.
