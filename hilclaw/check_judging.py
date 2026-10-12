@@ -36,11 +36,10 @@ Choices that are this module's own and no rule of a record:
 * A refused argument raises :class:`TypeError` when it, or a field of the
   judgement, is of a type that is not accepted, and :class:`ValueError` when
   a judgement does not have its three fields or when its fields are of
-  accepted types and do not agree. The
-  message starts with ``broken: ``, ``judgement: ``, ``judgement.broken: ``,
-  ``judgement.verdict: `` or ``judgement.counts: ``. What
-  :mod:`hilclaw.check_result` and ``judge_report`` raise is passed on
-  unchanged. Nothing is returned then.
+  accepted types and do not agree. The message starts with ``broken: ``,
+  ``judgement: ``, ``judgement.broken: ``, ``judgement.verdict: `` or
+  ``judgement.counts: ``. What :mod:`hilclaw.check_result` and
+  ``judge_report`` raise is passed on unchanged. Nothing is returned then.
 * The order of the checks, stated with each function.
 
 What the module does not do: it is no tool and is bound to none. It calls no
