@@ -81,7 +81,6 @@ _VALUES = tuple(
         (int, "an integer"),
         (float, "a floating number"),
         (str, "a string"),
-        (bytes, "a byte string"),
         (bytearray, "a byte array"),
         (memoryview, "a memory view"),
         (list, "a list"),

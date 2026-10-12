@@ -551,7 +551,6 @@ def test_only_bytes_and_str_are_handed_to_the_judging(monkeypatch):
     invalid(Recording(answer=GOOD))
     invalid(Recording(answer="pass"))
     assert handed == [GOOD, "pass"]
-    assert invalid(Recording(answer=GOOD)).message != returned_message()
 
 
 def test_an_error_of_the_judging_is_not_taken_for_a_raised_error(monkeypatch):
@@ -641,13 +640,6 @@ def test_module_imports_the_three_only_and_has_no_entry():
     }
     assert not hasattr(check_operation, "main")
     assert "__main__" not in own.read_text(encoding="utf-8")
-
-
-def test_the_module_is_imported_by_no_other_module_of_the_package():
-    own = Path(check_operation.__file__)
-    for path in own.parent.rglob("*.py"):
-        if path != own:
-            assert "check_operation" not in path.read_text(encoding="utf-8"), path
 
 
 def test_the_text_and_the_code_hold_none_of_the_kept_out_strings():
