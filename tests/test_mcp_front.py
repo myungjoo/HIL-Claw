@@ -989,7 +989,7 @@ def helper(tmp_path):
     return [sys.executable, str(script)]
 
 
-def test_process_handshake_and_empty_tool_list():
+def test_process_handshake_and_tool_list():
     data = (
         message("initialize", 1, INITIALIZE)
         + message("notifications/initialized")

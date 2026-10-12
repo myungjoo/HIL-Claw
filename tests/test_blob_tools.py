@@ -1,5 +1,6 @@
 import errno
 import hashlib
+import inspect
 import io
 import json
 import os
@@ -396,14 +397,12 @@ def test_a_source_that_names_no_existing_directory_is_no_data_root(
 
 
 def unreadable(root, name, error):
-    before = tree(root)
     with pytest.raises(ToolFailure) as failed:
         ask(root, name, DIGEST)
     assert failed.value.kind == blob_tools.KIND_BLOB_UNREADABLE
     assert failed.value.__cause__ is error
     assert DIGEST in failed.value.message
     assert type(error).__name__ in failed.value.message
-    return before
 
 
 @pytest.mark.parametrize(
@@ -422,8 +421,9 @@ def test_a_failed_look_is_a_tool_failure_and_not_an_absent_blob(
     if stored:
         cas.put_bytes(root, DATA)
     path = cas.blob_path(root, DIGEST)
+    before = tree(root)
     monkeypatch.setattr(os, "stat", only_at(path, raising(error), os.stat))
-    before = unreadable(root, name, error)
+    unreadable(root, name, error)
     monkeypatch.undo()
     assert tree(root) == before
 
@@ -439,8 +439,9 @@ def test_a_failed_look_is_a_tool_failure_and_not_an_absent_blob(
 )
 def test_a_failed_open_is_a_tool_failure(root, name, monkeypatch, error):
     cas.put_bytes(root, DATA)
+    before = tree(root)
     monkeypatch.setattr(blob_tools, "open", raising(error), raising=False)
-    before = unreadable(root, name, error)
+    unreadable(root, name, error)
     monkeypatch.undo()
     assert tree(root) == before
 
@@ -535,15 +536,18 @@ def test_calls_of_every_kind_leave_the_data_root_as_it_was(root, name, monkeypat
 
 
 def test_the_module_imports_nothing_that_writes_or_runs():
-    reached = set(vars(blob_tools))
-    assert not reached & {
-        "artifacts",
-        "journaled_tool",
-        "journaled_step",
-        "hw_tool",
-        "backends",
+    values = vars(blob_tools).values()
+    origins = {getattr(value, "__module__", None) for value in values}
+    origins |= {value.__name__ for value in values if inspect.ismodule(value)}
+    assert not origins & {
+        "hilclaw.artifacts",
+        "hilclaw.journaled_tool",
+        "hilclaw.journaled_step",
+        "hilclaw.hw_tool",
+        "hilclaw.backends",
         "subprocess",
     }
+    assert {"hilclaw.cas", "hilclaw.tools", "os"} <= origins
 
 
 # Through the command-line front
