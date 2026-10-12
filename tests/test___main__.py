@@ -202,12 +202,16 @@ def test_an_interrupt_is_not_answered():
 
 
 @pytest.mark.parametrize("name", FIXED_NAMES)
-def test_the_fixed_tool_set_is_empty_today(name):
-    """No FR-10 / C-3 tool has a contract yet; this changes when the first tool lands."""
+def test_the_fixed_tool_set_is_the_two_blob_tools_today(name):
+    """Only the C-3 pair has a contract (ADR-0039); no FR-10 HW tool has one yet."""
     stdout, stderr = io.BytesIO(), io.BytesIO()
     status = main([name], stdin=io.BytesIO(b"{}"), stdout=stdout, stderr=stderr)
-    assert status == front.EXIT_FRONT_FAILURE == 4
-    assert error_of(stdout.getvalue(), "unknown_tool") == f"unknown tool {name!r}"
+    if name in ("blob.push", "blob.fetch"):
+        assert status == front.EXIT_TOOL_FAILURE == 3
+        assert error_of(stdout.getvalue(), "invalid_request")
+    else:
+        assert status == front.EXIT_FRONT_FAILURE == 4
+        assert error_of(stdout.getvalue(), "unknown_tool") == f"unknown tool {name!r}"
     assert stderr.getvalue()
 
 

@@ -15,7 +15,8 @@ checks its own request.
 
 A front decodes a request, calls :func:`call` and encodes the outcome; it holds
 no tool logic. Nothing here keeps state between calls, reads configuration or
-the data plane, or writes to a standard stream.
+the data plane, or writes to a standard stream; what a tool of
+:func:`default_registry` reads is stated in the module that defines it.
 """
 
 import copy
@@ -186,12 +187,18 @@ def default_registry(data_root_source):
     bound; building the registry does not call it. Raises :class:`TypeError`
     when it is not callable.
 
-    The set is empty. A tool is added here, in the source, and in no other way:
-    no option, environment variable, entry point or plugin registers one.
+    The set is ``blob.fetch`` and ``blob.push`` (:mod:`hilclaw.blob_tools`,
+    ADR-0039). A tool is added here, in the source, and in no other way: no
+    option, environment variable, entry point or plugin registers one.
     """
+    from hilclaw import blob_tools
+
     if not callable(data_root_source):
         raise TypeError("the data-root source must be callable")
-    return Registry()
+    registry = Registry()
+    for definition in blob_tools.definitions(data_root_source):
+        registry.register(*definition)
+    return registry
 
 
 def check_json_object(value):
