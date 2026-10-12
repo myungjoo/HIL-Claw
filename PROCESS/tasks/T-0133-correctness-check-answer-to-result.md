@@ -2,7 +2,7 @@
 id: T-0133
 title: Add one new pure module `hilclaw/check_answer.py` that turns an answer of an operation of `correctness.check` in the form of ADR-0043 decision 4 into the result of the check - a byte string is judged through `hilclaw.check_judging.from_report`, one of the two strings `"time_limit"` / `"exit_status"` becomes a broken result through `hilclaw.check_result.broken`, and an answer of neither form is refused with an exception of the module's own that is no tool failure - with its tests; bound to no tool
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, NFR-2, OD-18]
 dependsOn: [T-0130, T-0131, T-0132]
@@ -116,3 +116,50 @@ One public function and one public exception class, and no other public name (re
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+**DONE** - code mode, landed on `main`.
+
+- **PR**: #91, https://github.com/myungjoo/HIL-Claw/pull/91 - "T-0133: Add check_answer, from an operation's answer to a result of correctness.check". Squash commit `0cd79f4a66c3b21a69f4eb7ab1afc4e2d16a6f91` on `main`; its message ends with `Task: T-0133`. The DONOTMERGE label was removed before the merge; the branch `claude/T-0133-correctness-check-answer-to-result` is deleted, remote and local.
+- **Resume check (DRIVER §3-5)**: nothing had landed and no PR existed. No other PR was open. Issue #5 held no comment after the ADR-0043 notice (issuecomment-6127127012), so no objection and no HQ answer.
+- **Files**: new `hilclaw/check_answer.py` (115 lines, 13 statements, the rest docstrings) and new `tests/test_check_answer.py` (448 lines). No existing file or assertion was edited. Non-test diff: 1 file, +115 lines (cap 130 / 300).
+- **Language**: Python - the module joins two Python modules of the package and its callers to come are Python.
+
+**The interface as landed** (every recommended choice of the task was taken; none was changed)
+
+- Public names of `hilclaw.check_answer`: exactly `from_answer` and `NeitherFormError`.
+- Signature: `from_answer(answer, *, m, k, n, draws, seed, rtol, atol)`. No parameter has a default; the seven after `answer` are keyword-only. It returns a new `dict` on every call.
+- Which Python types count:
+  - (A) a byte string is exactly `bytes` (`type(answer) is bytes`), which is what `judge_report` takes.
+  - (B) a string is exactly `str` and must be one of `check_result.CONDITIONS[:2]`, that is `"time_limit"` or `"exit_status"`, compared as it is. The code does not spell the two strings again.
+  - A `bytearray`, a `memoryview` and an instance of a subclass of `bytes` or `str` are neither form.
+- (A) returns `check_judging.from_report(answer, m=, k=, n=, draws=, seed=, rtol=, atol=)`. Every `bytes` value is a report: `b""`, a short, long or unmarked one and `b"time_limit"` give `"broken"` / `"report_form"`.
+- (B) returns `check_result.broken(answer, m=, k=, n=, draws=, rtol=, atol=)`. Nothing is judged, and `seed` is neither used nor checked.
+- Neither form raises `NeitherFormError`:
+  - Its only base is `Exception`. It is no `ToolFailure`, `StepFailed`, `TypeError` or `ValueError`.
+  - It has no attribute beyond those of `Exception`: no `kind`, no `spend`, and it does not hold the answer. `args` is the one message string.
+  - The message is `answer: must be bytes or one of ('time_limit', 'exit_status'), got <type name>`; for an exact `str` it ends with `got the str <reprlib.repr(answer)>`. It never holds a byte of a report.
+- Refused argument:
+  - Beside a report, what `from_report` / `judge_report` raise passes through unchanged (`VerificationArgumentError`).
+  - Beside a condition, what `check_result.broken` raises passes through unchanged (`TypeError` / `ValueError`).
+- Order of the checks: the form of `answer` is established first, before any other argument is looked at.
+- Imports: `reprlib`, `hilclaw.check_judging`, `hilclaw.check_result`, nothing else. No other module of `hilclaw/` imports it. No docstring says what a call answers for an answer of neither form (OD-18 sub-question 15 is untouched).
+
+**Review**: 1 round (fresh-context `dev-reviewer`), verdict Approve, no blocking or non-blocking finding; comment https://github.com/myungjoo/HIL-Claw/pull/91#issuecomment-6127338892. Two nits, neither changed anything:
+1. `type(answer).__name__` in the message is not length-bounded, and a class whose metaclass overrides `__name__` could make that expression raise something other than `NeitherFormError`. The reviewer asked for no change: `check_judging` and `check_result` name types the same way.
+2. A process note that three CI checks were still pending at review time; they were green before the merge.
+
+**Tests / coverage**
+
+- `tests/test_check_answer.py`: 117 cases - happy, branch, negative (24 answers of neither form, the form first, refused arguments of both paths, Python's own `TypeError`), purity and module pins.
+- Local (Windows, Python 3.14.4, ruff 0.16.10): `ruff check .` and `ruff format --check .` clean; `python -m pytest` 12829 passed, 303 skipped.
+- CI run 38270247594: all six checks passed - Python gate 3.11 and 3.14, sh gate, C gate, Test presence, Coverage gate. First CI run, no failure.
+- Coverage from the CI gate: `hilclaw/` lines 3367/3383 = 99.52 %, functions 350/350 = 100.00 %; `hilclaw/check_answer.py` 13/13 statements = 100 %.
+
+**Notes**
+
+- ADR-0043 and ADR-0042 are inside their objection windows until 2026-10-19. An objection that changes the two forms or the two strings changes this module.
+- No HQ was answered or needed.
+
+**Follow-ups added by the executor** (the list above stands unchanged)
+
+- (planner - code mode, with the tool function) The tool function calls `check_answer.from_answer` with what the operation returned. A caller that must not let a `VerificationArgumentError` through checks the check parameters before it calls the operation (ADR-0043 Consequences). What it does on `NeitherFormError` is sub-question 15.
+- (integrator - optional, low priority) Review nit 1: bound the type name in the messages of `check_answer`, `check_judging` and `check_result` together if that is ever wanted.
