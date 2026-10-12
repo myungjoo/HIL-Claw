@@ -2,7 +2,7 @@
 id: T-0130
 title: Carry the member table of ADR-0042 decision 7 into the code as one new pure module `hilclaw/check_result.py` - two functions that build the result object of a check of `correctness.check` (a completed run from its per-draw counts, a broken run from its condition) with exactly the six members and their presence rules, refusing parts the table does not admit - with its tests; bound to no tool
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, NFR-2, OD-18]
 dependsOn: [T-0128]
@@ -116,3 +116,59 @@ ADR-0042 fixes the members. The module name, the names and parameters of the fun
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+
+**DONE** - PR #89 (https://github.com/myungjoo/HIL-Claw/pull/89), squash-merged to `main` as `8778332` (`87783320514fe07a4ee91ef577da513ff5d71c8e`, "T-0130: Add check_result, the builder of a result of correctness.check (ADR-0042 decision 7) (#89)"); the squash message ends with `Task: T-0130`. The DONOTMERGE label was removed and the PR marked ready before the merge; the task branch was deleted remotely and locally (separate commands). The commit adds two files and edits none: `hilclaw/check_result.py` (193 lines) and `tests/test_check_result.py` (546 lines). This task ticks **no PLAN checkbox**; P1-1 stays open. This `## Result` is left uncommitted on `main` for the driver.
+
+Language: **Python** - the callers to come (the tool function, the default script of the mock, the conformance tests) are Python and the result is a `dict` that `hilclaw.tools.call` checks.
+
+### The interface as landed (the tool function and the mock's script are written against this)
+
+- Public names of `hilclaw.check_result`, exactly six: `PASS` (`"pass"`), `FAIL` (`"fail"`), `BROKEN` (`"broken"`), `CONDITIONS` (the tuple `("time_limit", "exit_status", "report_form", "check_value")`, in the order of ADR-0042 decision 3), `completed`, `broken`. None of the names occurred in `hilclaw/` or `tests/` as a module-level name before; `broken` is also a field name of the harness's tuples, with the same meaning.
+- `completed(*, m, k, n, draws, rtol, atol, counts)` - all keyword-only, no default. Returns a new `dict` with exactly `outcome`, `shape`, `draws`, `tolerance`, `counts`; no `condition`.
+- `broken(condition, *, m, k, n, draws, rtol, atol)` - `condition` positional or by keyword, the rest keyword-only, no default. Returns a new `dict` with exactly `outcome` (`"broken"`), `condition`, `shape`, `draws`, `tolerance`; no `counts`, and the function takes none.
+- **How `outcome` is determined**: `completed` derives it from `counts` and takes no verdict argument - `"pass"` when every `failed` is 0, `"fail"` when at least one is 1 or more.
+- **Accepted argument types**:
+  - `m`, `k`, `n`, `draws`: exactly an `int` (`bool` and other subclasses refused) of at least 1. No upper bound is added, except the one named under "Arguments the table admits but the module refuses".
+  - `rtol`, `atol`: exactly an `int` or a `float`, finite, not negative, and for an `int` within what a `float` holds (what the harness's `check_tolerance` accepts).
+  - `condition`: exactly a `str` (a subclass of `str` is refused) that is one of `CONDITIONS`. A member of an enumeration, the harness's `Broken` among them, is refused like any other non-`str`.
+  - `counts`: exactly a `list` or a `tuple` with `draws` entries. Each entry is a `tuple` of two items `(failed, non_finite)`; an instance of a `tuple` subclass (the harness's `Counts`) is read as the tuple it is (through `tuple.__iter__`, so a subclass that overrides its own iteration or length cannot change the outcome). **A `list` as an entry is refused.** Each item is exactly an `int` of at least 0 with `non_finite <= failed <= m * n`.
+- **What a refused argument raises**: `TypeError` for a type that is not accepted, `ValueError` for a value of an accepted type that the table does not admit. The message starts with the name of the parameter and `: ` (`m: `, `rtol: `, `condition: `, `counts: `, `counts[1]: `, `counts[1].failed: `). An entry that is a tuple of another length than 2, and a `counts` of another length than `draws`, are `ValueError`. A missing, surplus or positional argument is Python's own `TypeError`. No own exception class.
+- **Member order** of the returned `dict` (the module's choice, said so in the docstring): `outcome`, `condition`, `shape`, `draws`, `tolerance`, `counts`; within `shape` `m`, `k`, `n`; within `tolerance` `rtol`, `atol`; within an entry `failed`, `non_finite`.
+- **Spelling of the tolerance numbers**: each is returned as the `float` of the argument, so `hilclaw.tools.encode` writes the literal of the binary64 value (an `int` such as `2**53 + 1` comes back as its `float`). A negative zero is accepted (it is not negative, and `check_tolerance` accepts it) and returned as it is, so `encode` writes `-0.0`.
+- Imports: `math` and `reprlib` only. The module text holds neither `gemm_contract` nor `standin_profile`, and no file under `hilclaw/` imports it.
+
+### Arguments the table admits but the module refuses
+
+One kind: an `int` that the interpreter does not convert to decimal text (more digits than `sys.get_int_max_str_digits()`, 4300 by default) as `m`, `k`, `n`, `draws`, `failed` or `non_finite` is refused with `ValueError`, because `hilclaw.tools.check_json_object` refuses an object that holds one (its `json.dumps` raises). Where that limit is switched off, nothing is refused on this ground. No other argument the table admits is refused.
+
+### Where a criterion and the record disagreed
+
+Nowhere. All recommended choices of the task were taken as recommended. Two choices were added that the task left to the executor: `counts` exactly a `list` or a `tuple` with entries that are tuples (so that the outcome is determinate for every argument), and the negative zero.
+
+### Review (3 rounds, each a fresh-context `dev-reviewer` with `model: opus`, told to write no file; Approve in every round)
+
+1. Approve. Two nits: a negative `int` beyond the range of a float was refused with the message "too large for a float"; the module docstring said "no part of one [tool]", more than the task states. One observation (the negative zero, no change asked). Both nits addressed in a second commit.
+2. Approve. One nit: "the result shares no object with `counts`" was stronger than the fact (the `int` objects are shared; now "no mutable object"). Addressed in a third commit.
+3. Approve, no blocking finding, no should-fix and no nit; three observations, each "may land unchanged" (the negative zero; an `int` tolerance above 2**53 comes back as its `float`, as documented; the non-test file is 193 lines against the estimate of 120). Nothing was changed after this round: the merged tree is the head `a9b2813` the round reviewed.
+
+The reviewers did not run the module (their Bash scope is read-only `git` / `gh`); their check of (b) is a static trace, and the evidence of execution is the test suite locally and in CI.
+
+### Tests and CI
+
+- Local, before the PR (Windows, Python 3.14.4): `python -m ruff check .` and `python -m ruff format --check .` clean; `python -m pytest`: 12533 passed, 303 skipped. `tests/test_check_result.py` alone: 196 passed. `tests/test_gemm_contract.py` and `tests/test_standin_profile.py` pass unedited.
+- **No existing assertion was edited.**
+- CI on the merged head `a9b2813` (run 38252989835): all six checks passed - `Python gate (3.11)`, `Python gate (3.14)`, `Coverage gate (hilclaw)`, `Test presence (hilclaw)`, `sh gate (shellcheck)`, `C gate (clang)`. No CI failure in any round.
+- Coverage as the CI step printed it (reported by the round-3 reviewer from the job log; `coverage` is not installed locally and nothing was installed): lines 3313/3329 = 99.51 %, functions 345/345 = 100.00 %; `hilclaw/check_result.py` 64 statements, none missed.
+- Size of the non-test diff: one file, 193 lines added (64 statements; the rest is docstrings and blank lines) - above the estimate of 120, inside the cap of 300 (D4).
+
+### Notes
+
+- §3-5 landed check before anything else: no commit on `origin/main` with `Task: T-0130` and no PR for T-0130 in any state; no open PR at all. Issue #5 held no comment after the ADR-0042 notice (issuecomment-6124322561).
+- ADR-0042 is inside its objection window until 2026-10-19 and two of its choices are provisional (that a result holds `counts`; the member `draws`); the commit body says so.
+
+### Follow-ups
+
+- (planner) The tool function of `correctness.check` maps `Judgement.counts` (a tuple of `Counts`) straight to the argument `counts`, and maps `Broken` to one of `CONDITIONS` itself (`Broken.TIMEOUT` is `"time_limit"`); this module refuses the enumeration member.
+- (planner, optional) If a later caller holds counts as lists of two (for example read back from JSON), widening the entry type is a change of this module with its own task.
+- (owner / a later record) If the record of `tolerance` should ever want a negative zero spelled `0.0` in a result, this module is where it is changed; ADR-0042 and ADR-0020 say "not negative" and no more.
+- The follow-ups of the planner listed above this section stand unchanged.
