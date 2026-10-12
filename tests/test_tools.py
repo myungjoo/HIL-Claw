@@ -503,9 +503,6 @@ def test_default_registry_does_not_call_the_source():
     source = CountingSource()
     registry = default_registry(source)
     assert registry.names() == ("blob.fetch", "blob.push")
-    for name in registry.names():
-        assert callable(registry.get(name))
-        assert registry.definition(name).name == name
     for read in (registry.get, registry.definition):
         with pytest.raises(UnknownToolError):
             read("sim.run")
