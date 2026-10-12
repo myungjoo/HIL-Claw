@@ -2,7 +2,7 @@
 id: T-0129
 title: Carry the test of "covered" of ADR-0041 decision 5 into the code as one pure function of `hilclaw/gemm_contract.py` - whether the contract of ADR-0008 covers an op_signature record (`kind` `gemm`, `dtype` `fp32`, `layout` `row_major`, each of `shape.m`, `shape.k`, `shape.n` at least 1; `ext` and `label` not looked at) - with its tests; bound to no tool
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, OD-18, OD-6]
 dependsOn: [T-0127, T-0110, T-0113]
@@ -105,3 +105,37 @@ ADR-0041 decision 5 fixes the rule. The name of the function, the docstring text
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+DONE. PR #88 (https://github.com/myungjoo/HIL-Claw/pull/88), squash-merged to `main` as `ea669ea` (branch commit `f4b2cd4`; `Task: T-0129` is the last line of the squash message). The remote and the local branch are deleted. No acceptance criterion disagreed with the record.
+
+**Review**: 1 round, Approve (fresh-context `dev-reviewer`; comment https://github.com/myungjoo/HIL-Claw/pull/88#issuecomment-6124510313). No High / Medium / Low finding, no security suspicion. The reviewer confirmed (a) to (e) of the task file, the planner's judgements and the placement included. Three Nits, none changed:
+- A hand-made `Mapping` whose reads differ (first `fp16`, then `fp32`) can be answered by its second read, since the record is read once by the validation and again for the answer. Not changed: a snapshot would need a new import (`collections.abc`) or a change of `hilclaw/keys.py`, both outside the task's limits, and the later caller passes the plain `dict` of `Instance.op_signature.record`. **Known limit for the tool-function task**: pass a plain `dict`.
+- The first line of the module docstring does not mention the new test. Left as it is: the sentence is not false, and the task has only false sentences corrected.
+- Merge only after CI is green: done so.
+
+**CI** on the reviewed head `f4b2cd4`: all six checks pass at the first run (`Python gate (3.11)`, `Python gate (3.14)`, `Coverage gate (hilclaw)`, `C gate (clang)`, `sh gate (shellcheck)`, `Test presence (hilclaw)`). Coverage of `hilclaw/` as the CI step computes it: lines 3249/3265 = 99.50 %, functions 339/339 = 100.00 %; `hilclaw/gemm_contract.py` has no line not executed. Local (Windows clone): `python -m pytest` 12337 passed, 303 skipped; `python -m ruff check .` and `python -m ruff format --check .` clean.
+
+**Language**: Python - the function sits beside the constants it compares with, in a Python module.
+
+**The function, as landed** (the tool function is written against this):
+- Name and signature: `hilclaw.gemm_contract.covers(record)` - one parameter, by position or by name. The recommended name was kept: it is the verb ADR-0037 and ADR-0041 use of the contract, and no such name existed in `hilclaw/` or `tests/`.
+- For a record `keys.op_signature_key` accepts it returns exactly `True` or `False`: `True` when `record["kind"] == KIND`, `record["dtype"] == DTYPE`, `record["layout"] == LAYOUT` and each of `record["shape"]["m"]`, `["k"]`, `["n"]` is at least 1. All four conditions are written out; the `kind` condition is tested first, so the shape of another kind is never looked up. `ext` and `label` are not read for the answer. No bound beyond that of a valid record.
+- **A refused argument**: the function calls `keys.op_signature_key(record)` first and lets its `keys.InvalidRecordError` pass through unchanged (same type, same message); nothing is returned. `False` therefore always means "a valid record this contract does not cover", never "not a record". The key the validation computes is discarded; nothing but the `bool` is returned.
+- Pure: `record` is not modified, no file, no process, no state. No new import (`reprlib`, `hilclaw.keys`); no other file under `hilclaw/` mentions `gemm_contract`; the string `op_signature_not_covered` is not in `hilclaw/`.
+
+**How the `kind` condition is tested**: by replacement of the private table `keys._SHAPE_MEMBERS` with `monkeypatch` (two tests): once with a second kind whose shape members are `m`, `k`, `n` (the record differs from the covered walk-through record in `kind` alone, is accepted by the replaced source with a key `other-...`, and `covers` answers `False`), once with a second kind with other shape members (`False`, and no `KeyError`). Without replacement an unknown `kind` is among the refused arguments (`InvalidRecordError`).
+
+**Existing tests edited** (only the permitted ones): the import block gains `import copy` and `covers` in the `from hilclaw.gemm_contract import (...)` list; the literal set of `test_public_names_of_the_module` gains `"covers"`. `FUNCTIONS`, `test_module_is_bound_nowhere_and_imports_keys_only` and every other existing test are untouched; no other existing assertion failed. New module-level constants (`ADR_0041_RECORD`, `ADR_0041_NOT_COVERED`, `NOT_COVERED`, `OPTIONAL_MEMBERS`, `REFUSED`), one helper (`gemm_record`) and twelve new test functions were added (217 tests in the file).
+
+**Docstring sentences changed** in `hilclaw/gemm_contract.py`:
+- Module docstring: "The values:" became "The values, and one test of a record:" (the new bullet is no value, so the old lead-in would have been false of the list), and one bullet was added for `covers`, naming ADR-0041 decision 5. Judged and left unchanged: the first line, and "What the module does not do" - the module still builds and checks no spec, knows no other contract, and is bound to no tool.
+- `covers` has a new docstring: what is compared; that an `ext` and a `label` are not looked at; that no bound is added; that "covered" is the reading ADR-0041 decision 5 makes of ADR-0008 decision 1 and ADR-0037 decision 2; that `True` says the judging of the first case is defined for the record, not that a kernel, a build or a target exists (ADR-0041 decision 9); what a refused argument does. Nothing about the kernel language or about what a caller does on `False`.
+- No docstring of `op_signature_record`, `task_contract` or another module was edited.
+
+**Size**: non-test 36 added lines, 1 changed (`hilclaw/gemm_contract.py`); tests 179 added lines.
+
+**Objection windows**: ADR-0041 until 2026-10-19, ADR-0037 until 2026-10-17, ADR-0008 until 2026-10-14 - stated in the commit body; an objection creates a reverting task. No comment on Issue #5 after the ADR-0042 notice at the start of the task or at review time.
+
+**Follow-ups**
+- (planner - code mode, after HQ-0012) The tool function of `correctness.check` calls `gemm_contract.covers(instance.op_signature.record)` between the selection and the start line; `False` is the tool failure `op_signature_not_covered`. It will be the first file under `hilclaw/` to mention `gemm_contract`, so `test_module_is_bound_nowhere_and_imports_keys_only` must be named among the permitted edits of that task.
+- (planner, optional) If a caller ever passes a `Mapping` that is no plain `dict`, decide whether `covers` should answer from one snapshot (the reviewer's first Nit); not needed for `Instance.op_signature.record`.
+- The other follow-ups of the task file (document slices of the second record, the integrator's less exact sentences, the open HQs) stand unchanged.
