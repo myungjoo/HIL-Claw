@@ -35,7 +35,8 @@ Choices that are this module's own and no rule of a record:
   counts give (ADR-0042 decision 4).
 * A refused argument raises :class:`TypeError` when it, or a field of the
   judgement, is of a type that is not accepted, and :class:`ValueError` when
-  the fields of a judgement are of accepted types and do not agree. The
+  a judgement does not have its three fields or when its fields are of
+  accepted types and do not agree. The
   message starts with ``broken: ``, ``judgement: ``, ``judgement.broken: ``,
   ``judgement.verdict: `` or ``judgement.counts: ``. What
   :mod:`hilclaw.check_result` and ``judge_report`` raise is passed on
