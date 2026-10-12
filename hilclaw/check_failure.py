@@ -81,9 +81,8 @@ def ended_with(raised):
       raised, an instance of :class:`hilclaw.tools.ToolFailure`. That an
       operation raised it is the caller's statement and is not checked.
 
-    The parameter has no default. Before anything is read,
-    :class:`TypeError` is raised when ``raised`` is no instance of
-    ``ToolFailure``.
+    The parameter has no default. First, :class:`TypeError` is raised when
+    ``raised`` is no instance of ``ToolFailure``.
 
     1. The kind is no member of :data:`BACKEND_KINDS`, a kind outside the
        contract: the pair is :data:`KIND_OPERATION_FAILURE_INVALID` and a
@@ -92,7 +91,9 @@ def ended_with(raised):
        decision 4). As long as :data:`BACKEND_KINDS` is empty this is every
        tool failure (decision 5).
     2. The kind is a member of :data:`BACKEND_KINDS`: the pair is the raised
-       kind and the raised message, as they are (decision 4).
+       kind and the raised message, as they are (decision 4). What such a
+       message may hold is said by the record that names the kind and is not
+       checked here.
     3. The kind, or for a backend kind the message, cannot be read as exactly
        a ``str``: the pair is :data:`KIND_OPERATION_FAILURE_INVALID` and a
        message of this module. This is the module's own choice (see the

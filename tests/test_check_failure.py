@@ -181,7 +181,7 @@ def test_the_kind_is_read_once_and_the_message_not_at_all():
     raised = CountedReads(EXAMPLE_KIND, MARKER)
     raised.reads = reads = []
     outside(raised)
-    assert [name for name in reads if name != "reads"] == ["kind"]
+    assert reads == ["kind"]
 
 
 def test_the_backend_kinds_as_shipped_are_none():
@@ -224,7 +224,7 @@ def test_the_message_of_a_backend_kind_is_read_once(monkeypatch):
     raised = CountedReads(EXAMPLE_BACKEND_KIND, MARKER)
     raised.reads = reads = []
     assert ended_with(raised) == (EXAMPLE_BACKEND_KIND, MARKER)
-    assert [name for name in reads if name != "reads"] == ["kind", "message"]
+    assert reads == ["kind", "message"]
 
 
 @pytest.mark.parametrize(
