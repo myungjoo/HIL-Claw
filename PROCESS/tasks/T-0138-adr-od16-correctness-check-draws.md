@@ -2,7 +2,7 @@
 id: T-0138
 title: Write the ADR that says where the number of draws of a check of `correctness.check` comes from - the `draws` part of OD-16 sub-question 5, and the item "where `draws` comes from" of the second record of that contract (OD-18) - without fixing any value, default or bound of it, and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-10, FR-13, OD-16, OD-18, OD-8, "#5 D6"]
 dependsOn: [T-0127, T-0128, T-0132, T-0136]
@@ -129,3 +129,93 @@ Where a criterion below and a landed record disagree, **the record wins**: follo
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+**DONE** - landed on `main` as commit `ec5fed4` (`ec5fed4e3e3c0b76787ca712c071bad6a6587f11`, "T-0138: Add ADR-0046, where the number of draws of a correctness.check check comes from (the draws part of OD-16 sub-question 5)"), document mode, pushed as a fast-forward of `cb67ef2`; no PR. The task branch was deleted remotely and locally (separate commands, after the push was confirmed). Trailers: `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0138`, then the attribution trailer. The commit holds four files: the new `ARCHITECTURE/decisions/ADR-0046-od18-correctness-check-draws.md` (231 lines) and edits of `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionProposals.md` and `ARCHITECTURE/StandardScenarios.md` (243 insertions, 9 deletions; inside the cap of 300 lines and 5 files, nothing was moved to a follow-up for size). This task ticks **no PLAN checkbox**; P1-1 stays open and the tool still cannot be registered. This `## Result` is left uncommitted in the working tree on `main` (at `origin/main` `ec5fed4`) for the driver.
+
+Owner notice (DRIVER §9), posted as the spawn prompt told the executor to: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6132010862 (2026-10-12 20:24 UTC; objection window until 2026-10-19). The posted comment is the notice text: what the record holds (nothing of the owner's; what is cited; the record's own design), nine readings to check (the three-part §9 cut; that no value is fixed and who states the number, with the range of the integer form; the chosen source and how the argument of ADR-0020 decision 5 was met; the cost of the choice, among it that a run that states no number gets no check although no owner sentence says an instance must state one; the place of the new kind; the kind being the tool's own; the names; the A-13 reading; the rows judged and left), the other limits, what is left open, what would reopen the choice, the coverage outcome, the records it builds on, and the last line `— posted by driver`.
+
+Entry checks at the start (2026-10-12 19:24 UTC): no commit with `Task: T-0138` on `origin/main`, no PR for T-0138, no open PR at all; issue #5 held no comment after the ADR-0045 notice (no owner objection to ADR-0017, ADR-0018, ADR-0020, ADR-0021 or ADR-0040 to ADR-0044, no owner sentence on a number of draws or the strength of a verification, no answer to HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011 or HQ-0012); issues #4, #7 and #8 unchanged.
+
+### The slice as landed (the reader of the file and the tool function are written against this)
+
+No sentence of the owner is used; everything decided is the record's own design (DRIVER §9). Scope: a call of `correctness.check` about one attempt of a run of the first case or of a run whose hw_profile names the mock. Four points and nothing else.
+
+- **The source: (b), a member of the file of the run.** The number of draws of a check is the member `draws` of `runs/<run_id>/instance.json` of the run the request names. The tool function uses it for its own part and hands the same number to the operation (among the check parameters of ADR-0043 decision 2). No other source stands in when the file gives none: not a request member, not a constant of the source, not a value kept from an earlier call, not a number of another run. A verification about no run (the calibration tests) keeps passing its own number.
+- **The member `draws` of `instance.json`** (ADR-0046 decision 3):
+  - top-level; an *integer* of ADR-0001 that is at least 1; written as a JSON number in decimal digits without sign, fraction or exponent (the written form of ADR-0023 decision 3);
+  - no value: `true`, `false`, `null`, a number with a fraction or an exponent (`2.0`, `2e0`), a string (`"2"`), an array, an object, `0`, `-0`, every negative number, an integer above the *integer* range;
+  - no lower end above 1 and no upper end below the *integer* range (the end of that range is a property of the form, not a bound chosen for a number of draws);
+  - may be absent from a valid file; `schema_version` stays `1`; **no default, and no reader substitutes a value** (not 1, not a constant of the source, not a value of another run);
+  - present and invalid: the file is invalid as a whole (no member of it is used);
+  - meaning: the number of draws of a check of `correctness.check` about an attempt of the run, given for the runs in scope only (as ADR-0020 decision 2 does for `tolerance`); a validator of the file cannot check whether a run is such a run and does not;
+  - one number per run in version 1; no budget member and no bound.
+- **The moment and the read**: moment 4, from the one read of `instance.json` that gives the hw_profile, the op_signature and the tolerance; no further read and no other file. The read of the stamp moment is not used for it. A call answered before moment 4 takes no number. A repeated call under an ended identity is answered from the end line, whatever number the file then states. A further `execution` reads the file again and takes the number it then states.
+- **A valid version 1 file without the member: tool failure `draws_not_stated`** (a *name* of ADR-0001, 16 characters; this tool's own, not reserved - `hilclaw.tools.RESERVED_KINDS` stays as it is). Properties: no operation called, nothing consumed at any target, no seed drawn, no line appended; the same request can be repeated and is answered by what the file then states; answered in moment 4 before the start line; raised in no other situation and never as the `failure` of an end line.
+- **Its place in the order of the answers of moment 4** (one answer for a file with several faults: the first whose condition holds): a situation of the file (the four `run_file_*` kinds), `no_backend`, `not_offered`, `op_signature_not_stated`, `op_signature_not_covered`, **`draws_not_stated`**, `tolerance_not_stated`. So, once the backend is selected: a covered op_signature, a tolerance and no `draws` gives `draws_not_stated`; a covered op_signature and neither `draws` nor a tolerance gives `draws_not_stated`; a covered op_signature, `draws` and no tolerance gives `tolerance_not_stated`; no op_signature gives `op_signature_not_stated` whatever else is missing.
+- **A member that is present and invalid** is not this kind: the file is invalid, and the call answers `run_file_invalid` at the stamp moment, so also for an ended identity. A misspelt member name is passed over and the file states none.
+- **The request**: no member for the number of draws. The member list of a request stays open; the record does not say what the tool function does with a member no record names (a request member named `draws` included).
+- **The result member `draws`** stands as ADR-0042 decision 5 fixed it and is not revisited: neither case of its provisional clause arises (a check has one number; the request does not carry it). The number a result states is the one the file stated at the read of moment 4 of that check.
+
+### The weighing, the cost and what would reopen the choice
+
+- Five sources against five tests (who chooses how strong a check is and whether the calling agent can lower it; whether a value is needed that no fixed input gives; which read, file or answer is needed that no landed record has; what the log shows; what bounds the cost): (a) a request member, (b) the member of the file - **chosen** -, (c) a constant - not weighed, a value no source gives -, (d) the file as a floor plus a request member that may only raise it, (e) the spec, a stored key record, the backend - answered by citation.
+- The argument of ADR-0020 decision 5, part by part: the predicate - does not carry over; what a pass assures - carries over (the choice rests on this part alone); "nothing shows it" - does not carry over (a result states `draws`; showing is not refusing); FR-9 is not read as saying who chooses the number of draws.
+- Cost, stated and not resolved: one number for every check of the run for as long as the file is not changed (every round, every attempt, both execution points); a run that states no number gets no check, and no record recommends a number; the number is fixed before the run has shown anything.
+- Would reopen it: a record that gives a promotion-level re-verification, a gate or the hard floor a number of its own (for example by a member or a request member of its own, or by making this member a floor - the last changes the meaning of the member and needs the version rule of ADR-0018 decision 2); a record that needs two numbers for the two execution points; a statement of the owner on who sets the strength of a verification.
+
+### Not decided, as the task required
+
+- Which number an instance or a caller uses: no value, default, recommended or typical value; no bound beyond the 1 of ADR-0017 and the range of the *integer* form.
+- A promotion-level re-verification (whether it is a call of this tool at all), gates and the hard floor (OD-3; #5 A-5; OD-18 sub-question 14 - untouched, with a dated note).
+- The rest of OD-16 sub-question 5 (what is recorded after a check) and sub-questions 1 and 6; any upper bound of the cost of a check (OD-14); whether the two execution points use two numbers; what anybody does after `draws_not_stated`; the rest of the second record.
+- **One sub-question was registered: OD-8 sub-question 32** (where it is checked that an instance of a run this contract covers states its number of draws - whether the start of the instance refuses to start without one - beyond the check made at each call that reaches that answer in moment 4). The next free sub-question numbers are now 33 for OD-8 and, unchanged, 16 for OD-18.
+
+### OD status changes
+
+- No status word of the register changed. OD-16 stays `제안됨` (the `draws` part of sub-question 5 is answered as far as a check of this tool goes; which number, and the rest of the sub-question, stay open); OD-18 stays `제안됨` (one more slice of the second record of `correctness.check`); OD-8 keeps its wording (one more "확정" clause for the new member of `instance.json`).
+
+### Where a criterion and the landed text differ
+
+1. The task says the record "may cite [HQ-0004 (3)] for the tolerance only": the record cites it in Context only, to say that it is not stretched to `draws`.
+2. The task asks for sources "each against the same tests": the record says which sources were put to which tests ((a), (b) and (d) to all five; (c) not weighed; (e) by citation, bearing on the first and the third), after review round 1 found the sentence "five tests were put to each source" stronger than the text.
+3. The first version of the branch put `draws_not_stated` last, after `tolerance_not_stated`. Review round 1 named the landed sentence that prefers the other order (ADR-0041 decision 4: "`tolerance_not_stated` then says, as before, that the tolerance is the one thing missing"); the landed record puts the new kind before `tolerance_not_stated` and weighs both orders in decision 5.
+4. Section OD-8 of OpenDecisionProposals: besides the "채택분" bullet and the sub-question, one clause was added to the heading note of the section (as the earlier member records did). The block "등록부(Requirements.md) OD-8 행의 마지막 칸에서 옮긴 글 (2026-10-10, 문장 변경 없음)" was not edited, since it is marked as moved text.
+5. The Example of the record drops `source_commit` and `n_max` from the Example of ADR-0023 and says so.
+
+### Edits of existing documents
+
+- `Requirements.md`: one clause in the OD-18 row (after the ADR-0045 clause); the clause "draw 수와 검사 뒤의 기록은 미결 그대로" of the OD-16 row rewritten to say that where the number comes from is answered for a check of this tool and that which number, the re-verification and the recording stay open; one clause and one link in the OD-8 row. 29 OD rows before and after, no new OD number, no status word changed. **Rows judged and left**: FR-3, FR-9, FR-10, FR-13, OD-3, OD-10, OD-14 and OD-17 (no sentence became false).
+- `OpenDecisionProposals.md`: section OD-16 - a dated note on sub-question 5 (the registered text kept); section OD-18 - the heading note, one "채택분" bullet for ADR-0046, a dated note on sub-question 14 (untouched); section OD-8 - the heading note, one "채택분" bullet, sub-question 32. No proposal text deleted.
+- `StandardScenarios.md`, "검사 결과": the heading note and one dated passage. **Coverage re-check outcome: no verdict change and no gap.** The rules were re-applied to the steps that verify correctness (S0-6, S1-4, S1-6, S1-b-2, S2-2, S8-3, extension S7-1, S7-2), the steps that start an instance with parameters (S1-2, S1-b-2, S2-1, S8-1) and the steps that name FR-3 or a re-verification (S0-7, S1-7, S2-5, S3-3; S1-6, extension S7-2). S1 step 2 does not list a number of draws among the instance parameters; by the rules this is no gap (where the start takes the number from and whether it checks it: OD-8 sub-questions 17 and 32; which number: OD-16 sub-question 5). No scenario step and no note row was edited.
+- ADR-0001 to ADR-0045 and UsageCases.md are not edited.
+
+### Review rounds (7, the cap; final verdict Approve)
+
+- Round 1 - Request changes: four should-fix (the weighing of the order passed over the landed "one thing missing" sentence, and the list of less exact sentences lacked it and ADR-0038 decision 5; "no upper end" stronger than decision 3 and its mirrors; "one number for every check of the run" stronger than the limits and the walk-through; "five tests were put to each source" stronger than the text) and five nits. All addressed; the order of the new kind was changed (see above).
+- Round 2 - Approve, five nits (two Korean mirror sentences without a qualifier, one note in the list of less exact sentences narrower than the table, a pointer to the limit beside "has no way", the commit message). Addressed.
+- Round 3 - Approve, three nits (a quotation mark over two decisions of ADR-0017 of which one has other words; a sentence on cost wider than ADR-0017 decision 10; the pointer of round 2 missing in the mirrors). Addressed.
+- Round 4 - Approve, two nits (a mirror put ADR-0017 into another group than Status; a quote of ADR-0042 decision 5 one member wider than its source). Addressed.
+- Round 5 - Approve, three nits (a sentence that read as listing everything stored below `db/`; "each call" in sub-question 32 wider than decisions 4 and 5; a decision missing in References). Addressed, together with two citations the executor found (a quote said of each list of the next slices that only four of the six lists carry literally; a walk-through row that named ADR-0044 decision 4 for what a script is handed).
+- Round 6 - Approve, four nits (a quote of ADR-0031 used for the hw_profile record as well; a closed list of how a later record would give a re-verification a number; References incomplete; the list of less exact sentences uneven). Addressed.
+- Round 7 - Approve, two nits, **not addressed** (a change after the last allowed round would be unreviewed); see the first follow-up.
+- In every round the reviewer judged the §9 cut and the A-13 reading as holding and did not conclude that the choice of source is one only the owner can make.
+- Process notes: (1) as in T-0127 to T-0136, nearly every finding was a single sentence in universal wording that said more than its source or than another part of the record; six of the seven rounds were spent on such sentences and on quotes. (2) Each fresh reviewer found new nits of that kind, so a round that fixes nits buys one more round; with the cap at 7 the last nits stay. (3) The Korean text of the OD-18 row of Requirements and of the ADR-0046 "채택분" bullet of section OD-18 share most of their sentences; a later edit of one must be made in both.
+
+### Document checks
+
+- Relative links: every relative link of the new record resolves, and so do the links of the edited passages (all to ADR-0046). ADR-0046 was free on `origin/main` at the push (`cb67ef2`).
+- `git diff --stat origin/main` at the push: the four files of `touchesFiles` only; no file under `hilclaw/`, `tests/`, `.github/`, `.claude/` or `PROCESS/`. `git diff --check` clean; the four files are `i/lf`. The tree of the landed commit equals the tree the reviewer approved in round 7 (branch commit `e20220d`).
+- Each sentence of the Decision is marked as cited or the record's own (head sentence of the Decision); the citations were checked against their sources by the executor before round 1 and by the reviewer in every round.
+- Names: `draws` as a member of `instance.json` and `draws_not_stated` were searched for in `hilclaw/`, `tests/` and `ARCHITECTURE/` on 2026-10-12. `draws` occurs there as the harness parameter, a check parameter, a result member and in prose, nowhere as a member of `instance.json`; `draws_not_stated` occurred nowhere.
+- Digits next to `draws` in the diff: the `2` of the Example (marked as standing in for the number only), the invalid forms of the Walk-through and of decision 3 (`0`, `-2`, `2.0`, `2e0`, `"2"`), "not 1" (no default), "a valid number can be 1", and the observed harness limit 2^64. No value, default or bound beyond the 1 of ADR-0017 and the range of the integer form.
+- The OD register has 29 rows before and after; only the OD-8, OD-16 and OD-18 rows differ.
+- Coverage re-check outcome stated (no verdict change, no gap).
+
+### Follow-ups
+
+- (integrator - document mode) The two nits of review round 7, both in ADR-0046 and in its two Korean mirrors (the OD-18 row of Requirements and the ADR-0046 "채택분" bullet of section OD-18): (1) decision 2 - the tests bullet and the head of (e) say "(e) is answered by what ADR-0041 said of the same places", while (e) now also cites ADR-0018 decision 6 directly for the hw_profile record; (2) decision 5 - "A valid file that states a covered op_signature and neither a number of draws nor a tolerance is answered `draws_not_stated`" reads, alone, without the condition that the selection succeeded (`no_backend` and `not_offered` come first in the table of decision 8).
+- (integrator - document mode) The sentences ADR-0046 lists as not edited and now less exact (its Consequences), with the lists of T-0136 and earlier tasks.
+- (planner - code mode) The reader of the member `draws` in `hilclaw/instance.py` (validity by ADR-0046 decision 3, a reader beside `tolerance_of` and `n_max_of`). `tests/test_instance.py` pins `Instance._fields` (line 238) and compares whole `Instance` tuples (for example lines 912 and 1325), so a new field edits those assertions: name each one in the task, or wait if HQ-0011 / HQ-0012 forbid such an edit.
+- (planner - document mode) The closed member list of a request, the input schema and the description, as far as they do not hang on the kernel of the attempt (OD-23, HQ-0010); judge against DRIVER §9 first.
+- (planner - code mode, after HQ-0012 and those slices) The tool function of `correctness.check`, written against the Results of T-0136, T-0137 and this task; the place between the selection and the start line carries four answers in the order given above.
+- (planner - document mode, later) The tool-failure kinds of a backend (OD-18 sub-question 10, third clause).
+- (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none was needed here. The objection window of ADR-0046 runs until 2026-10-19.
