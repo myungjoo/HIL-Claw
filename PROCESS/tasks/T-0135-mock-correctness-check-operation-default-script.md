@@ -2,7 +2,7 @@
 id: T-0135
 title: Add the mock's side of `correctness.check` as code, in two new modules and without editing any existing file - `hilclaw/check_parameters.py` (the one value that holds the five check parameters of ADR-0043 decision 2) and `hilclaw/mock_check.py` (the mock's operation of this tool, which asks its script with four things and passes the answer on unseen, and the default script's answer for this tool by the rule of ADR-0044 decision 4) - with their tests; bound to no registry
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, NFR-2, OD-18]
 dependsOn: [T-0088, T-0131, T-0132, T-0133, T-0134]
@@ -131,3 +131,28 @@ Recommended public names: `operation`, `default_script`. No other public name be
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+- **Outcome: DONE.** PR #92 (https://github.com/myungjoo/HIL-Claw/pull/92), squash commit `442ee3a` on `main`; branch deleted (remote and local). Four new files, no existing file edited, no existing assertion edited.
+- **Language: Python** - both modules sit between Python modules of the package and compute with NumPy through the harness.
+- **Review: 3 rounds, Approve in each** (context-isolated `dev-reviewer`; no High / Medium / Low finding, no `SECURITY`).
+  - Round 1: Nit - the module docstring of `hilclaw/mock_check.py` left out "under the default rounding mode" (ADR-0044 decision 4, observation). Fixed in `988aadb`.
+  - Round 2: Nit - the shared-defect limit stood in the list headed "no rule of a record" although it is ADR-0044 decision 7. Moved to a paragraph of its own in `976deeb`. Two observations without a change request (see the last two bullets of "The interface as landed").
+  - Round 3: Approve, three observations, none with a change request (the two above, and that one test pins the argument name at the start of the harness's message).
+- **CI** on head `976deeb`: all six checks pass. Coverage gate: lines 3401/3417 = 99.53 %, functions 355/355 = 100.00 %; every line of both new modules is executed. Local (Windows): `ruff check`, `ruff format --check` clean, `pytest` 12921 passed / 303 skipped. One CI incident, no code cause: the job `Test presence (hilclaw)` ended with conclusion `success` and all steps green, but its status stayed `in_progress` for over ten minutes, so `gh pr checks` showed `pending`; the job was re-run once and passed. It counts as no CI failure.
+- **Size of the non-test diff**: 2 files, 197 lines (`hilclaw/check_parameters.py` 49, `hilclaw/mock_check.py` 148), most of both docstrings; cap 260 / 2.
+- **Issue #5**: no comment after the ADR-0044 notice at the start of the task; no owner answer to HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011 or HQ-0012 was seen. ADR-0043 and ADR-0044 are inside their objection windows until 2026-10-19 (stated in the commit body).
+- **Criterion against record**: none disagreed. Every recommended choice of the task was taken; two points were added within "the exception raised, the order of checks" (an instance of a subclass of `CheckParameters` is refused; the report buffer is allocated before the first draw).
+
+### The interface as landed
+- `hilclaw.check_parameters` - public name: `CheckParameters`. A `typing.NamedTuple` with the fields `seed`, `draws`, `m`, `k`, `n` in this order, no default, no method of its own. It validates nothing (no kind, no bound). The module imports `typing` only.
+- `hilclaw.mock_check` - public names: `operation`, `default_script`. Imports: `struct`, `numpy`, `hilclaw.check_parameters`, `hilclaw.harness.verification`, `hilclaw.harness.verification_arrays`. It imports neither `hilclaw.mock_backend` nor `hilclaw.backends` and builds no backend.
+- `operation(script)` returns a callable (repr: the text "operation of the mock backend for 'correctness.check'" in angle brackets). `script` not callable is `TypeError` at building. The operation is called as `operation(request, hw_profile, parameters)`, three positional-only arguments; it asks `script("correctness.check", request, hw_profile, parameters)` once, four positional arguments, with the three objects as they are, returns the very object the script returned and catches nothing. It looks at neither the third thing nor the answer.
+- A caller composes a backend from public parts: `hilclaw.backends.Backend(hilclaw.mock_backend.NAME, {"correctness.check": hilclaw.mock_check.operation(script)})`.
+- `default_script(tool, request, hw_profile, parameters)` - four ordinary parameters (positional or keyword), none with a default; the first three are not read. It returns exactly `bytes`: `draws * (4 + 4*m*n) + 4` bytes, for each draw the check value (`struct` format `=I`) and the `m*n` fp32 elements, then `verification.END_MARK`.
+- Which code computes the report: `verification_arrays.draw_inputs`, `check_value` and `reference` of the same source commit, then `.astype(numpy.float32)`. The docstring states the shared-defect limit of ADR-0044 decision 7.
+- What it raises, in this order and before any input is drawn: (1) `TypeError` for `parameters` whose type is not exactly `CheckParameters` (a plain tuple and an instance of a subclass included); (2) `hilclaw.harness.verification_arrays.VerificationArgumentError`, unchanged, for five values that `verification.program_arguments` refuses; (3) what Python raises for a `bytearray` of the report's size it cannot hold (`OverflowError` or `MemoryError`). After that, what NumPy raises for arrays it cannot allocate passes through. No exception has a `kind` or a `spend`; no bound of its own.
+- Memory: the report is allocated whole before the first draw and held twice at the end (the buffer and the `bytes` returned); one draw's arrays at a time.
+- Reviewer observation: importing `hilclaw.harness.verification` loads `os` and `hilclaw.local_run` transitively; `mock_check` calls nothing of either.
+- Reviewer observation: on a host that overcommits memory, a report that is large but addressable is allocated and the loop then runs for all draws; nothing bounds it (ADR-0044 decision 7, "The cost lies in the front process"). A point for the slice that fixes where `draws` and the dimensions come from.
+
+### Follow-ups added by the executor
+- None beyond the list under "Follow-ups" above. For the planner of the tool function and of the backend table: write against "The interface as landed"; the second reviewer observation belongs to the `draws` slice (OD-16 sub-question 5).
