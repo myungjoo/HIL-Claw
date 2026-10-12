@@ -29,10 +29,11 @@ Choices that are this module's own and no rule of a record:
   followed after the last draw by
   :data:`hilclaw.harness.verification.END_MARK`, as
   :func:`hilclaw.harness.verification.judge_report` reads them.
-* What is shared has a limit (decision 7): a defect of the generator, of the
-  check function or of the float64 product that this script and the judging
-  share is not seen by a check answered by this script.
 * What :func:`default_script` raises, and in which order: see there.
+
+The limit of sharing that code is that of decision 7: a defect of the
+generator, of the check function or of the float64 product that this script
+and the judging share is not seen by a check answered by this script.
 
 What the module does not do: it builds no backend and no backend table and is
 bound to no registry. It is not the whole default script of the default
