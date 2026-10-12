@@ -321,12 +321,14 @@ def test_the_text_and_the_code_hold_none_of_the_kept_out_strings():
     text = Path(check_identity.__file__).read_text(encoding="utf-8")
     assert "gemm_contract" not in text
     assert "standin_profile" not in text
+    pieces = getattr(tokenize, "FSTRING_MIDDLE", tokenize.STRING)
     code = [
         token.string
         for token in tokenize.generate_tokens(io.StringIO(text).readline)
-        if token.type in (tokenize.NAME, tokenize.STRING)
+        if token.type in (tokenize.NAME, tokenize.STRING, pieces)
         and not token.string.startswith('"""')
     ]
+    assert [string for string in code if "cannot be read" in string]
     for kept_out in (
         "tolerance_not_stated",
         "draws_not_stated",
