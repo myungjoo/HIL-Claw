@@ -2,13 +2,13 @@
 id: T-0126
 title: Add a builder for the tool function of a journaled HW tool whose `step` follows from the checked request and which has a place between the selection of the backend and the start line (the code slice ADR-0040 Consequences cut), in `hilclaw/hw_tool.py` over `hilclaw/journaled_tool.py`, tested with test-only steps; no tool is defined or registered
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: code
 coversReq: [FR-10, FR-9, OD-18, OD-17]
 dependsOn: [T-0125]
 touchesFiles: [hilclaw/hw_tool.py, hilclaw/journaled_tool.py, tests/test_hw_tool.py, tests/test_journaled_tool.py]
 estimatedSize: {loc: 220, files: 2}   # non-test: about 150 lines in hilclaw/hw_tool.py and about 70 in hilclaw/journaled_tool.py, docstrings included; the two test files are excluded from the cap (D4)
-hq: []   # implements landed records (ADR-0040, ADR-0021 decision 4, ADR-0016 decision 2); closes no OD, writes no ADR, standard library and existing package modules only, no data-plane file format changes. Independent of HQ-0006, HQ-0007, HQ-0009, HQ-0010 and HQ-0011
+hq: [HQ-0012]   # implements landed records (ADR-0040, ADR-0021 decision 4, ADR-0016 decision 2); closes no OD, writes no ADR, standard library and existing package modules only, no data-plane file format changes. Independent of HQ-0006, HQ-0007, HQ-0009, HQ-0010 and HQ-0011
 ---
 ## Why
 PLAN P1-1 (the FR-10 tool contracts, the mock backend, the conformance tests) is open: of the four HW tools none is registered. `correctness.check` is the furthest. ADR-0040 (landed as `eb3f13f`, T-0125) fixed the identity of a call of it: the tool is journaled, it has **two** `step` values, and "the tool function takes the `step` of a call from the checked value of" the request member `point` (its decision 3). ADR-0021 decision 4 fixed that the tolerance is taken in moment 4 "from the same read of `instance.json` from which the hw_profile of the call is taken", and that a valid file without a tolerance is answered "after the selection has succeeded ... and before the start line" with a tool failure for which the call "called no operation, consumed nothing at any target, drew no seed and appended no line".
@@ -126,3 +126,24 @@ One new public function that returns the tool function of a journaled HW tool. R
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011 as before; none is needed here.
 
 ## Result
+**BLOCKED - requirement unclear (two acceptance criteria contradict each other; HQ-0012). Nothing was implemented.** No branch, no commit, no PR, no review round. Iteration of 2026-10-12 (driver AKIHA:5b15a009-1).
+
+Checks done before stopping: `git log origin/main --grep='^Task: T-0126'` and `gh pr list --search T-0126 --state all` are empty; no open PR; no owner objection to the ADR-0040 notice on #5.
+
+The contradiction:
+- "The new builder" requires one new public function in `hilclaw/hw_tool.py`, with a shared part in `hilclaw/journaled_tool.py`.
+- "What exists must not change" requires that every existing test of the two test files passes unedited ("If an existing test fails, do not edit it: fix the code, or return BLOCKED with the output").
+- `tests/test_hw_tool.py::test_the_public_names_and_the_signature` asserts that the public non-module names of `hilclaw.hw_tool` are exactly `["tool_function"]`.
+- `tests/test_journaled_tool.py::test_the_public_names_and_the_signature` asserts the same for `hilclaw.journaled_tool` with exactly `["tool_function", "checked_function"]`.
+- `tests/test_journaled_tool.py::test_the_signature_of_checked_function` pins the parameters of `checked_function`, so the shared part cannot be a new parameter of that function either.
+
+Both tests pass on `main`; with a public name added in memory (no file edited) each fails with an AssertionError on the name lists. The task's judgement "No existing test asserts something this task makes false" does not hold for these two tests.
+
+Why the code cannot be fixed instead: an underscore name is not a public function (the later tool task needs one); hanging the builder on `tool_function` as an attribute or on a class evades tests whose purpose is to pin the public surface; a new module is forbidden by the task; `hw_tool.tool_function` has a pinned signature with no place for the one read or for the place between the selection and the start line. Choosing among these, or editing the two tests, was not decided here. Same class of cause as HQ-0011.
+
+Language: none chosen, no code written (Python was the expectation).
+
+Follow-ups:
+- (owner) Answer HQ-0012 on #5. With (a), the task is run again with the two name-list assertions named as the only permitted edits of existing tests. With (b), it is re-planned with `touchesFiles` holding the new module and its test file; how the shared check of the request is reached must then be stated.
+- (planner) When a task adds a public name to a `hilclaw/` module, grep that module's test file for `vars(<module>)` name-list assertions before judging that no existing test becomes false.
+- The other follow-ups of this task file stand unchanged.

@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0126",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:5b15a009-1",
-    "acquiredAt": "2026-10-12T09:22:31Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -108,19 +104,27 @@
       "question": "T-0123 (one shared helper `hilclaw/once_write.py` for the once-only write that `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py` repeat; code mode, no change of behaviour; planned from the T-0094 follow-up) stopped before any change: the task allowed edits of existing tests for patch targets only, and `tests/test_spec_file.py::test_the_module_imports_only_what_it_needs` asserts the exact import set of `hilclaw/spec_file.py`, which the move must change (`hilclaw.once_write` joins it; `contextlib`, `os` and `secrets` leave it). The follow-up also said \"only after the objection windows of ADR-0025 (2026-10-15) and ADR-0029 (2026-10-16), or with a note of the risk\". Which do you want: (a) the task is run again now, with that one assertion named as a permitted edit (the import set of `spec_file` after the move) and the note of the risk in the commit body; (b) the same, but not before 2026-10-16; (c) the task is dropped - the three writers keep their own copies of the steps? Not asked here: the helper's name and signature and how a taken name is signalled (the executor's choice under review), and any change of a rule of ADR-0014, ADR-0025 or ADR-0029.",
       "askedAt": "2026-10-11T04:26:23Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6105421386"
+    },
+    {
+      "id": "HQ-0012",
+      "taskId": "T-0126",
+      "reason": "requirement-unclear",
+      "question": "T-0126 (a builder for the tool function of a journaled HW tool whose `step` follows from the checked request, the code slice ADR-0040 Consequences cut; code mode) stopped before any change: it must add one public function to `hilclaw/hw_tool.py` and a shared public part to `hilclaw/journaled_tool.py`, and the task forbade edits of existing tests, while `test_the_public_names_and_the_signature` in `tests/test_hw_tool.py` and in `tests/test_journaled_tool.py` assert the exact list of public names of these two modules (`[\"tool_function\"]` and `[\"tool_function\", \"checked_function\"]`), and `test_the_signature_of_checked_function` pins the parameters of `checked_function`. Which do you want: (a) the task is run again with those two name-list assertions named as the only permitted edits of existing tests (one name added to each expected list, nothing else); (b) the builder goes into a new module (for example `hilclaw/stepped_hw_tool.py`) with its own test file, the public surfaces of both existing modules stay as they are, and the shared check of the request is repeated there or reached some other way you name; (c) something else (name it)? Not asked here: the names and signatures of the new functions (the executor's choice under review) and any rule of ADR-0016, ADR-0021 or ADR-0040.",
+      "askedAt": "2026-10-12T09:24:38Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 131,
+    "iterations": 132,
     "tasksDone": 120,
-    "tasksBlocked": 11,
+    "tasksBlocked": 12,
     "reviewRoundsTotal": 385
   },
   "lastIteration": {
-    "at": "2026-10-12T09:17:47Z",
-    "owner": "AKIHA:f8dfebda-1",
-    "taskId": "T-0125",
-    "outcome": "DONE"
+    "at": "2026-10-12T09:24:38Z",
+    "owner": "AKIHA:5b15a009-1",
+    "taskId": "T-0126",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
