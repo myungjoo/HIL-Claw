@@ -2,7 +2,7 @@
 id: T-0144
 title: Add one new pure module `hilclaw/check_admission.py` that renders, ahead of the tool function, the four answers a call of `correctness.check` gives between the selection of the backend and the start line - `op_signature_not_stated`, `op_signature_not_covered`, `draws_not_stated`, `tolerance_not_stated`, in that fixed order - and hands out the dimensions, the number of draws and the tolerance of a check that is admitted; with its tests; bound to no tool, no existing file edited
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, OD-18, OD-16, OD-8]
 dependsOn: [T-0127, T-0129, T-0138, T-0143]
@@ -136,3 +136,25 @@ Recommended public names, and no other: `KIND_OP_SIGNATURE_NOT_STATED`, `KIND_OP
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+- **Outcome**: DONE. PR #98 (https://github.com/myungjoo/HIL-Claw/pull/98), squash commit `567ecab9a3a62c46b2ad02cd3f9ed906a25c35d0` on `main`; remote and local branch `claude/T-0144-correctness-check-admission` deleted after the PR reported `MERGED`.
+- **Files**: new `hilclaw/check_admission.py` (188 lines) and new `tests/test_check_admission.py` (576 lines). Nothing else; no existing assertion edited.
+- **Language**: Python, because the module joins the Python modules of the package and its caller to come is Python.
+- **Review rounds** (context-isolated `dev-reviewer`, 3 rounds, final Approve):
+  - Round 1 (head `4a06787`): Approve, two Low findings, both in the module docstring: "it gives no answer for another accelerator ..." differed from what the code does (the answer is the same whatever the hw_profile names), and "none of its kinds is ever the `failure` of an end line" stood without a source. Both fixed in `d0e35d5`, docstring only.
+  - Round 2 (head `d0e35d5`): Approve, two Info: one docstring line of 95 characters (rewrapped in `c17d563`, no word changed) and the line count in the PR body (updated to 188).
+  - Round 3 (head `c17d563`): Approve, no findings.
+  - All three rounds agreed with the planner's judgements: DRIVER §9 (no ADR needed), the predicate handed over as a callable, and the reading of the T-0126 sentence.
+- **Interface as landed** (`hilclaw.check_admission`; public names exactly these seven):
+  - `KIND_OP_SIGNATURE_NOT_STATED`, `KIND_OP_SIGNATURE_NOT_COVERED`, `KIND_DRAWS_NOT_STATED`, `KIND_TOLERANCE_NOT_STATED` (each the string of its kind) and `KINDS`, a `tuple` of the four in that order (ADR-0046 decision 8).
+  - `Admitted`: a `typing.NamedTuple` with the fields `m`, `k`, `n`, `draws`, `rtol`, `atol` in that order, no default; the values are the objects the instance holds, unchanged.
+  - `admit(instance, *, covers)`: raises a `hilclaw.tools.ToolFailure` (exact type) for the first condition that holds, else returns an `Admitted`: (1) `instance.op_signature is None` - `op_signature_not_stated`, `covers` not called; (2) `covers(instance.op_signature.record)` returns `False` - `op_signature_not_covered`, `covers` called exactly once with the record object itself; (3) `instance.draws is None` - `draws_not_stated`; (4) `instance.tolerance is None` - `tolerance_not_stated`.
+  - An `instance` whose type is not exactly `hilclaw.instance.Instance` (a subclass included) is `TypeError`; then a `covers` that is not callable is `TypeError`; an answer of `covers` that is not exactly a `bool` is `TypeError` and never admits; what `covers` raises passes through as the same object.
+  - The values of an `Instance` are not validated again: only `None` says "not stated" (a hand-built `Instance` with `draws=0` is admitted, pinned by a test).
+  - Messages: built at import, at most 200 characters, showing nothing of the content; nothing may depend on the wording.
+  - Imports: `typing`, `hilclaw.instance`, `hilclaw.tools` only. No other file under `hilclaw/` imports the module.
+- **Choices taken**: all as recommended, except that `instance` is checked by exact type rather than `isinstance`. No criterion disagreed with a landed record.
+- **CI**: every run on the PR succeeded. Final head `c17d563`: https://github.com/myungjoo/HIL-Claw/actions/runs/38323399189, all six checks pass. Coverage at the gate: `lines: 3564/3580 executed = 99.55% (minimum 80%)`, `functions: 370/370 entered = 100.00% (minimum 80%)`.
+- **pytest**: local Windows 13635 passed, 305 skipped on the final head (13498 passed on `origin/main` `71786a7`); CI Linux coverage job 13940 passed. `ruff check` and `ruff format --check` exit 0.
+- **Risk**: ADR-0020 and ADR-0021 are inside their objection windows until 2026-10-15, ADR-0031 until 2026-10-16, ADR-0041 and ADR-0046 until 2026-10-19; an objection creates a reverting task.
+- **Follow-ups**: the five in `## Follow-ups` stand unchanged. One addition: a later task that makes `admit` validate the values of an `Instance` again must edit `tests/test_check_admission.py::test_none_alone_says_not_stated_and_no_value_is_validated_again`.
+- **PLAN**: no checkbox ticked; P1-1 stays open.
