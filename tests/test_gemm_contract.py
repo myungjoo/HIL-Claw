@@ -1,4 +1,5 @@
 import ast
+import copy
 import inspect
 import json
 from pathlib import Path
@@ -14,6 +15,7 @@ from hilclaw.gemm_contract import (
     LANGUAGE,
     LAYOUT,
     PROTOTYPE,
+    covers,
     op_signature_record,
     task_contract,
 )
@@ -61,6 +63,20 @@ ADR_0037_NOT_COVERED = [
     ((0, 2048, 8192), "gemm-d765fb955295628a"),
     ((1, 0, 8192), "gemm-ae3e9e269ea6e812"),
     ((0, 0, 0), "gemm-f5ed2636b2d123a9"),
+]
+
+# ADR-0041 walk-through, copied from the record.
+ADR_0041_RECORD = {
+    "schema_version": 1,
+    "kind": "gemm",
+    "shape": {"m": 1, "k": 2048, "n": 8192},
+    "dtype": "fp32",
+    "layout": "row_major",
+}
+ADR_0041_NOT_COVERED = [
+    {"dtype": "fp16"},
+    {"layout": "col_major"},
+    {"shape": {"m": 0, "k": 2048, "n": 8192}},
 ]
 
 FUNCTIONS = [op_signature_record, task_contract]
@@ -387,6 +403,7 @@ def test_public_names_of_the_module():
         "LANGUAGE",
         "PROTOTYPE",
         "FIRST_SHAPES",
+        "covers",
         "op_signature_record",
         "task_contract",
     }
@@ -401,4 +418,166 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
     for function in FUNCTIONS:
         with pytest.raises(InvalidRecordError):
             function(0, 5, 7)
+    assert list(tmp_path.iterdir()) == []
+
+
+def gemm_record(m, k, n, **members):
+    shape = {"m": m, "k": k, "n": n}
+    return dict(ADR_0041_RECORD, shape=shape, **members)
+
+
+NOT_COVERED = [
+    gemm_record(3, 5, 7, dtype="fp16"),
+    gemm_record(3, 5, 7, dtype="fp64"),
+    gemm_record(3, 5, 7, dtype="row_major"),
+    gemm_record(3, 5, 7, layout="col_major"),
+    gemm_record(3, 5, 7, layout="fp32"),
+    gemm_record(0, 5, 7),
+    gemm_record(3, 0, 7),
+    gemm_record(3, 5, 0),
+    gemm_record(0, 0, 0),
+    gemm_record(0, MAX_INTEGER, MAX_INTEGER),
+    gemm_record(3, 5, 7, dtype="fp16", layout="col_major"),
+    gemm_record(0, 5, 7, dtype="fp16"),
+    gemm_record(3, 5, 0, layout="col_major"),
+    gemm_record(0, 0, 0, dtype="row_major", layout="fp32"),
+]
+OPTIONAL_MEMBERS = [
+    {"ext": {"variant": "a"}},
+    {"ext": {"n": 1}},
+    {"ext": {"m": 0, "dtype": "fp16", "kind": "other"}},
+    {"label": "gate/up at M = 1"},
+    {"ext": {"variant": "a"}, "label": "x"},
+]
+REFUSED = [
+    None,
+    [],
+    "gemm",
+    1,
+    {},
+    list(ADR_0041_RECORD.items()),
+    {k: v for k, v in ADR_0041_RECORD.items() if k != "shape"},
+    {k: v for k, v in ADR_0041_RECORD.items() if k != "kind"},
+    dict(ADR_0041_RECORD, unknown=1),
+    dict(ADR_0041_RECORD, schema_version=2),
+    dict(ADR_0041_RECORD, schema_version=True),
+    dict(ADR_0041_RECORD, dtype="FP32"),
+    dict(ADR_0041_RECORD, dtype=None),
+    dict(ADR_0041_RECORD, layout="row-major"),
+    dict(ADR_0041_RECORD, kind="conv"),
+    dict(ADR_0041_RECORD, kind=["gemm"]),
+    dict(ADR_0041_RECORD, shape=None),
+    dict(ADR_0041_RECORD, shape=[1, 2048, 8192]),
+    gemm_record(True, 5, 7),
+    gemm_record(3, -1, 7),
+    gemm_record(3, 5, 1.0),
+    gemm_record(MAX_INTEGER + 1, 5, 7),
+    gemm_record(3, "5", 7),
+    dict(ADR_0041_RECORD, shape={"m": 3, "k": 5}),
+    dict(ADR_0041_RECORD, shape={"m": 3, "k": 5, "n": 7, "p": 1}),
+    dict(ADR_0041_RECORD, ext={}),
+    dict(ADR_0041_RECORD, ext={"variant": 1.5}),
+    dict(ADR_0041_RECORD, label=""),
+    dict(ADR_0041_RECORD, label=1),
+]
+
+
+@pytest.mark.parametrize(
+    "shape", [*FIRST_SHAPES, (1, 1, 1), (MAX_INTEGER, MAX_INTEGER, MAX_INTEGER)]
+)
+def test_record_of_this_contract_is_covered(shape):
+    assert covers(op_signature_record(*shape)) is True
+
+
+def test_walk_through_record_of_adr_0041_is_covered():
+    assert covers(ADR_0041_RECORD) is True
+    assert op_signature_key(ADR_0041_RECORD).name == "gemm-485b9bc494d477eb"
+
+
+@pytest.mark.parametrize("change", ADR_0041_NOT_COVERED, ids=repr)
+def test_walk_through_records_of_adr_0041_are_valid_and_not_covered(change):
+    record = dict(ADR_0041_RECORD, **change)
+    assert op_signature_key(record).name.startswith("gemm-")
+    assert covers(record) is False
+
+
+@pytest.mark.parametrize(("shape", "name"), ADR_0037_NOT_COVERED)
+def test_walk_through_shape_with_a_zero_is_a_record_not_covered(shape, name):
+    record = gemm_record(*shape)
+    assert op_signature_key(record).name == name
+    assert covers(record) is False
+
+
+@pytest.mark.parametrize("record", NOT_COVERED, ids=repr)
+def test_record_failing_a_condition_is_valid_and_not_covered(record):
+    assert op_signature_key(record).name.startswith("gemm-")
+    assert covers(record) is False
+
+
+def test_record_of_another_kind_is_not_covered(monkeypatch):
+    members = {"gemm": frozenset(DIMENSIONS), "other": frozenset(DIMENSIONS)}
+    monkeypatch.setattr(keys, "_SHAPE_MEMBERS", members)
+    record = dict(ADR_0041_RECORD, kind="other")
+    assert op_signature_key(record).name.startswith("other-")
+    assert covers(record) is False
+    assert covers(ADR_0041_RECORD) is True
+
+
+def test_record_of_another_kind_with_other_shape_members_is_not_covered(monkeypatch):
+    members = {"gemm": frozenset(DIMENSIONS), "other": frozenset({"h", "w"})}
+    monkeypatch.setattr(keys, "_SHAPE_MEMBERS", members)
+    record = dict(ADR_0041_RECORD, kind="other", shape={"h": 1, "w": 1})
+    assert op_signature_key(record).name.startswith("other-")
+    assert covers(record) is False
+
+
+@pytest.mark.parametrize("members", OPTIONAL_MEMBERS, ids=repr)
+def test_ext_and_label_do_not_change_the_answer(members):
+    assert covers(dict(ADR_0041_RECORD, **members)) is True
+    for record in NOT_COVERED:
+        assert covers(dict(record, **members)) is False
+
+
+@pytest.mark.parametrize("argument", REFUSED, ids=repr)
+def test_argument_that_is_no_valid_record_is_refused(argument):
+    with pytest.raises(InvalidRecordError) as caught:
+        op_signature_key(argument)
+    expected = str(caught.value)
+    with pytest.raises(InvalidRecordError) as caught:
+        covers(argument)
+    assert type(caught.value) is InvalidRecordError
+    assert str(caught.value) == expected
+
+
+@pytest.mark.parametrize("record", [ADR_0041_RECORD, *NOT_COVERED], ids=repr)
+def test_covers_does_not_modify_its_argument_and_repeats_its_answer(record):
+    argument = dict(copy.deepcopy(record), ext={"variant": "a"}, label="x")
+    before = copy.deepcopy(argument)
+    first = covers(argument)
+    assert argument == before
+    assert covers(argument) is first
+    assert covers(copy.deepcopy(before)) is first
+
+
+def test_covers_takes_one_argument_by_position_or_by_name():
+    assert list(inspect.signature(covers).parameters) == ["record"]
+    assert covers(record=ADR_0041_RECORD) is True
+    assert covers(record=gemm_record(0, 5, 7)) is False
+    for args, kwargs in [
+        ((), {}),
+        ((ADR_0041_RECORD, ADR_0041_RECORD), {}),
+        ((ADR_0041_RECORD,), {"record": ADR_0041_RECORD}),
+        ((), {"op_signature": ADR_0041_RECORD}),
+        ((3, 5, 7), {}),
+    ]:
+        with pytest.raises(TypeError):
+            covers(*args, **kwargs)
+
+
+def test_a_call_of_covers_writes_no_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert covers(ADR_0041_RECORD) is True
+    assert covers(gemm_record(0, 5, 7)) is False
+    with pytest.raises(InvalidRecordError):
+        covers({})
     assert list(tmp_path.iterdir()) == []

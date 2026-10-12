@@ -9,7 +9,8 @@ module returns the values that record fixes for a shape ``m``, ``k``, ``n``,
 where the product of an m x k and a k x n matrix is an m x n matrix. For a
 shape that holds a 0 it returns no values: by
 ``ARCHITECTURE/decisions/ADR-0037-od6-gemm-contract-zero-dimension.md``
-(decision 2) the contract of ADR-0008 covers no such shape. The values:
+(decision 2) the contract of ADR-0008 covers no such shape. The values, and
+one test of a record:
 
 * :data:`KIND`, :data:`DTYPE`, :data:`LAYOUT` and :data:`LANGUAGE`: the binding
   of the contract (decisions 1 and 2).
@@ -21,6 +22,9 @@ shape that holds a 0 it returns no values: by
   three operand entries in the order of the parameters (decision 5).
 * :data:`FIRST_SHAPES`: the shapes of the twelve first instances, in the order
   of the table of decision 9 (the record cites #5 B-4 for them).
+* :func:`covers`: whether an op_signature record is covered by this contract
+  (``ARCHITECTURE/decisions/ADR-0041-od18-correctness-check-dimensions.md``,
+  decision 5).
 
 What the module does not do: it builds no spec and no other part of one - no
 ``task`` object, no ``task.objective``, no ``task.build`` and so no build
@@ -94,6 +98,37 @@ def op_signature_record(m, k, n):
         "dtype": DTYPE,
         "layout": LAYOUT,
     }
+
+
+def covers(record):
+    """Return whether this contract covers the op_signature ``record``.
+
+    ``record`` is an op_signature record, one that
+    :func:`hilclaw.keys.op_signature_key` accepts. The result is ``True`` when
+    its ``kind`` is :data:`KIND`, its ``dtype`` is :data:`DTYPE`, its
+    ``layout`` is :data:`LAYOUT` and each of ``shape.m``, ``shape.k`` and
+    ``shape.n`` is at least 1, and ``False`` otherwise. It is exactly a
+    ``bool`` and nothing else is returned. An ``ext`` and a ``label`` are not
+    looked at for the answer. No bound is added to that of a valid record
+    (:data:`hilclaw.keys.MAX_INTEGER`).
+
+    "Covered" is the reading ADR-0041 (decision 5) makes of the binding of
+    ADR-0008 (decision 1) and of ADR-0037 (decision 2). ``True`` says that the
+    judging of the first case is defined for the record, not that a kernel, a
+    build or a target exists for it (ADR-0041 decision 9).
+
+    ``record`` is first validated with :func:`hilclaw.keys.op_signature_key`,
+    so ``False`` always says that a valid record is not covered. Raises
+    :class:`hilclaw.keys.InvalidRecordError`, as that function raises it, for
+    an argument it refuses, which includes a ``kind`` it does not know.
+    Nothing is returned then. ``record`` is not modified.
+    """
+    keys.op_signature_key(record)
+    if record["kind"] != KIND:
+        return False
+    if record["dtype"] != DTYPE or record["layout"] != LAYOUT:
+        return False
+    return all(record["shape"][name] >= 1 for name in ("m", "k", "n"))
 
 
 def task_contract(m, k, n):
