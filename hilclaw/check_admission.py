@@ -50,14 +50,16 @@ which read the instance is from: whoever calls says so by calling. It selects
 no backend, and it does not come before or after ``no_backend`` or
 ``not_offered`` by itself: that its answers follow the selection is the
 caller's to keep. It does not check that the run is one the records speak of
-(ADR-0041 decision 1), and it gives no answer for another accelerator,
-another kernel language or a kernel that is not of the stated operation
-(ADR-0041 decisions 5 and 7). It draws no seed and builds no check
-parameters. It appends no line, and none of its kinds is ever the ``failure``
-of an end line. It says nothing of what anybody does after an answer, of
-whether the start of an instance checks these members, or of which number of
-draws or which tolerance is enough for anything. It keeps nothing between
-calls. It imports :mod:`typing`, :mod:`hilclaw.instance` and
+(ADR-0041 decision 1), and it has no answer of its own for another
+accelerator, another kernel language or a kernel that is not of the stated
+operation (ADR-0041 decisions 5 and 7): it does not tell such a run apart,
+and its answer is the same whatever the hw_profile names. It draws no seed
+and builds no check parameters. It appends no line; by the records no kind
+of the four is ever the ``failure`` of an end line (ADR-0021 decision 4;
+ADR-0041 decisions 4 and 5; ADR-0046 decision 5). It says nothing of what
+anybody does after an answer, of whether the start of an instance checks
+these members, or of which number of draws or which tolerance is enough for
+anything. It keeps nothing between calls. It imports :mod:`typing`, :mod:`hilclaw.instance` and
 :mod:`hilclaw.tools` and nothing else.
 """
 
