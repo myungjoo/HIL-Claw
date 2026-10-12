@@ -208,17 +208,18 @@ Conventions of this module, which the eleven records do not fix:
   convention is that it has ``None`` in that place.
 - What is a value of ``draws`` is ADR-0046 decision 3 and not a convention:
   an integer from 1 to :data:`hilclaw.keys.MAX_INTEGER`, both included, so
-  ``true``, ``false``, ``null``, ``2.0``, ``2e0``, ``"2"``, an array, an
-  object, ``0``, ``-0`` and every negative number are none, and every
-  integer from the one end to the other is a value. The conventions are that
-  a value built in memory must be exactly an ``int`` (a subclass is none),
-  that ``-0`` is refused as the integer 0 it is read as, that the one rule
-  is reported as a whole, and that an ``int`` that breaks it is not shown,
-  as for ``schema_version``. The number is handed out as the ``int`` of the
-  file, unchanged. That a content without the member states no number of
-  draws, and that this is no error of the content, is ADR-0046 decision 3
-  and not a convention; the convention is that it has ``None`` in that
-  place.
+  ``true``, ``false``, ``null``, a number with a fraction or an exponent
+  (``2.0`` and ``2e0`` among them), every string (``"2"`` among them), an
+  array, an object, ``0``, ``-0``, every negative number and an integer
+  above that range are none, and every integer from the one end to the
+  other is a value. The conventions are that a value built in memory must
+  be exactly an ``int`` (a subclass is none), that ``-0`` is refused as the
+  integer 0 it is read as, that the one rule is reported as a whole, and
+  that an ``int`` that breaks it is not shown, as for ``schema_version``.
+  The number is handed out as the ``int`` of the file, unchanged. That a
+  content without the member states no number of draws, and that this is no
+  error of the content, is ADR-0046 decision 3 and not a convention; the
+  convention is that it has ``None`` in that place.
 - Which layout version a schema version states is ADR-0024 decision 3 and not
   a convention: schema version 1 states layout version 1. The conventions are
   that the pairing is a mapping keyed by the schema version with the number
