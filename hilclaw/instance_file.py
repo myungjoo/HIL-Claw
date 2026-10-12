@@ -64,10 +64,11 @@ from writing, replacing or removing the file by other means.
 It composes no content and fills in no value: no member is put in or taken out,
 and a valid content without ``tolerance``, ``source_commit``, ``n_max``,
 ``candidates_per_round``, ``op_signature``, ``round_budget``,
-``wall_clock_budget_s``, ``owner`` or ``project`` is written as it is (decision
-2; of the nine members the last six are ADR-0028's, ADR-0031's, ADR-0032's,
-ADR-0033's and, the last two, ADR-0034's). It does not say that a content is
-right, complete or enough to start a run. It reads no
+``wall_clock_budget_s``, ``owner``, ``project`` or ``draws`` is written as it
+is (decision 2; of the ten members the last seven are ADR-0028's, ADR-0031's,
+ADR-0032's, ADR-0033's, the two of ADR-0034 and, the last, ADR-0046's). It
+does not say that a content is right, complete or enough to start a run. It
+reads no
 file, the one under the final name included, lists no directory, compares
 nothing and knows no "same content" (decision 4). It is no lock and not the
 means by which a ``run_id`` is unique. It takes no lock, makes no commit,

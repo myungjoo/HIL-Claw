@@ -83,6 +83,7 @@ FULL = written(
         wall_clock_budget_s=754,
         owner="example-owner",
         project="example-project",
+        draws=9,
         example_member={"b": [1, None, "x"], "a": 2.5},
     )
 )
@@ -139,6 +140,7 @@ REFUSED = {
         written(doc(owner="example-owner", project="example\nproject")),
         InvalidInstanceError,
     ),
+    "draws": (written(doc(draws=0)), InvalidInstanceError),
     "no final line feed": (MINIMAL[:-1], WrittenFormError),
     "CRLF line ends": (MINIMAL.replace(b"\n", b"\r\n"), WrittenFormError),
     "one carriage return": (b"\r" + MINIMAL, WrittenFormError),
