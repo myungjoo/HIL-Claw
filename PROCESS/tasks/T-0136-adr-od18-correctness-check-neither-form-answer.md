@@ -2,7 +2,7 @@
 id: T-0136
 title: Write the ADR that answers OD-18 sub-question 15 - what a call of `correctness.check` answers, and what the log then holds, when the answer of the operation has neither form of ADR-0043 decision 4 (the sixth slice of the second record of that contract) - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, NFR-1, NFR-2, OD-18, "#5 D6"]
 dependsOn: [T-0125, T-0132, T-0134]
@@ -125,3 +125,97 @@ Where a criterion below and a landed record disagree, **the record wins**: follo
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+**DONE** - landed on `main` as commit `40f8e05` (`40f8e052bc227bc87de55134367c4bd958aa615a`, "T-0136: Add ADR-0045, what a call of correctness.check answers for an answer of neither form (OD-18 sub-question 15)"), document mode, pushed as a fast-forward of `c3bfea6`; no PR. The task branch was deleted remotely and locally (separate commands, after the push was confirmed). Trailers: `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0136`, then the attribution trailer. The commit holds four files: the new `ARCHITECTURE/decisions/ADR-0045-od18-correctness-check-neither-form-answer.md` (187 lines) and edits of `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionProposals.md` and `ARCHITECTURE/StandardScenarios.md` (194 insertions, 6 deletions). This task ticks **no PLAN checkbox**; P1-1 stays open and the tool still cannot be registered. This `## Result` is left uncommitted in the working tree on `main` (at `origin/main` `40f8e05`) for the driver.
+
+Owner notice (DRIVER §9), posted as the spawn prompt told the executor to: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6130210222 (2026-10-12 UTC; objection window until 2026-10-19). The posted comment is the notice text: what the record holds (nothing of the owner's; what is cited; the record's own design), eight readings to check (the §9 cut and the reading of ADR-0043 decision 5; the chosen state and its cost; the reading of ADR-0019 decision 4; the kind being the tool's own; that a backend may not raise it; the message naming a kind of value; the four limits; the rows judged and left), the other limits, what is left open, the A-13 reading, the records it builds on, and the last line `— posted by driver`.
+
+### The slice as landed (the tool function is written against this)
+
+No sentence of the owner is used; everything decided is the record's own design (DRIVER §9). Scope: a check (a call that reached moment 6) of `correctness.check` about one attempt of a run of the first case or of a run whose hw_profile names the mock, whose operation gave an answer of neither form (ADR-0043 decision 5). Not in scope: a tool failure an operation raises, and the death of the process while the operation runs. Four points and nothing else.
+
+- **Three ways into the case** (the record's terms; the Python classes are observations, and where the line between the last two runs in code is the code task's):
+  - *a returned value*: the operation returned a value that is neither a byte string nor one of the two strings;
+  - *a raised error*: it raised something that is no tool failure and that the language counts as an error of the program (in Python: an `Exception`);
+  - *a raised request to end*: it raised something that is no tool failure and no such error (in Python: a `BaseException` that is no `Exception`, such as `SystemExit`, `KeyboardInterrupt`).
+- **A returned value and a raised error are answered alike**:
+  - *The log*: the tool function ends the step without an outcome. It appends the end line of the identity with a `failure`; the identity is ended. The `spend` of the line is what ADR-0040 decision 6 says of every end line of this tool (the empty object as long as no record names an axis of the log); the record adds no rule.
+  - *The call answers*: the tool failure that line holds, kind **`operation_answer_invalid`**.
+  - *A repeated call* that the lookup answers: the same tool failure again; no backend selected, no tolerance read, no seed drawn, no operation called, nothing appended.
+  - *If the append of that end line fails*: the call is `end_line_failed` (ADR-0026), not this kind.
+- **A raised request to end is not answered**: the tool function does not catch it and appends nothing; it passes through unchanged. The identity stays open, and a repeated call is `step_open`. No kind is given. What a front or the process does with what passed through is not the record's.
+- **The kind**: a name of ADR-0001 (24 characters), **this tool's own, not reserved** - `hilclaw.tools.RESERVED_KINDS` stays as it is. Only the tool function raises it, only as the `failure` of an end line, never before the start line, and in no other situation. A backend may not raise it; what the tool function does with a tool failure an operation raises (this one included) is not decided. Collision check 2026-10-12: the string occurred nowhere in `hilclaw/`, `tests/` or `ARCHITECTURE/`; the nearest is `operation_answer`, an example value in ADR-0043 Alternatives that is no kind.
+- **The sentence a caller may rely on**: in the check of this identity the operation was called and its call is over; what it returned or raised was neither a report nor one of the two conditions, and no tool failure; no result was made; the answer is what a complete end line of the identity holds, so the identity is ended. Nothing about the attempt, about what happened at a target, or about why.
+- **The message**: carries nothing taken from the content of the answer - no part or rendering of a returned value; of what was raised neither its message nor its arguments nor where it was raised. It says that the answer had neither form and which of the two ways it was, and it may name of which kind the value or the error was (in Python: the name of a type). Nothing may depend on its wording. **For the code task**: the message of `hilclaw.check_answer.NeitherFormError` shows a returned string shortened, so it cannot be used as the message of the `failure` as it is.
+- **Left to the code task** (the record says so by name): the wording of the message; where the code draws the line between what an operation raised and what the tool function's own code raised (an error on that line can fall on either side); the line between a raised error and a raised request to end. Observations that bind nothing: a step of `hilclaw.journaled_step` ends without an outcome by raising `StepFailed` with amounts, a kind and a message, so `hilclaw.journaled_step` and `hilclaw.tools` need no change by this record.
+- **The mock and the tests**: an answer of neither form that a script gives is answered by the way it came, for a script of a test and for the default script alike; the record adds nothing to what the default script does. The list of ADR-0021 decision 2 ("a script must be able to express") is unchanged; a conformance test can still exercise the case because the mock passes a script's answer on unseen.
+
+### Candidates weighed, and the cost
+
+- Five candidates against four tests (what a caller can tell and whether it is true; what a later call is given and whether it differs from a death; what the log records; what is needed that no record has): (a) nothing appended and `tool_crashed`; (b) an end line with a kind of the tool's own - **chosen**; (c) an end line with a kind the frame reserves for every HW tool; (d) an end line with `tool_crashed` or `bad_result`; (e) nothing appended and a kind of the tool's own. A result of any kind was not weighed again (ADR-0043 decision 5).
+- Why ended: an open step says that it is not known whether an outcome existed; after such an answer the tool function knows the call of the operation is over and there is no outcome, which is the state ADR-0011 has as ended with a `failure`.
+- Cost of the choice, stated in one place and not resolved: the identity is used up by one such answer; under the landed records no later line puts an outcome in its place; a further check would be a new identity with a higher `execution` (whether and when: OD-10, the retry part of OD-17, sub-question 14); what a backend consumed before it answered is on no line beyond the `spend` the tool function states, and an ended identity is not among the open steps the spend view lists. The other choice would have had the stop of ADR-0040 decision 2 follow every such answer.
+- Cost of (b) against (c): a later record that reserves a kind for this situation in every HW tool cannot take this name unchanged (ADR-0016 decision 3).
+
+### Readings the record states (each named in its Status)
+
+- **ADR-0043 decision 5, "a question of recovery"**: read as joining two questions; the record decides only which lines the tool function appends in that call, and what anybody does afterwards stays with OD-10 and the retry part of OD-17. Stated as a ground for an owner objection to the whole record.
+- **ADR-0019 decision 4** (the landed sentence ADR-0043 did not cite): read as what holds for an exception that comes out of a step, not as a rule that a tool's contract may not end its own step. For this tool a raised error of an operation no longer comes out of the step; the sentence stands as written for every exception that does (a defect in the tool function's own part of moment 6 included: `tool_crashed`, open identity). ADR-0043's "No landed sentence gives this tool a tool-failure kind for the case" is therefore listed as less exact.
+- **ADR-0040 decision 7** ("those a backend may raise") and **ADR-0021 decision 5** ("Tool failures of this contract so far") are listed as less exact for this tool.
+
+### Not decided, as the task required (the four limits were kept)
+
+- Limit 1: nothing of what a caller, a resumed turn, a role or a person does after the answer; no rule on a further `execution`.
+- Limit 2: no tool-failure kind of a backend; nothing on a tool failure an operation raises; the third clause of sub-question 10 stays open.
+- Limit 3: this tool and these runs only; the kind is not reserved by the frame; nothing of the other HW tools, of a target on another machine, of fault injection in a live session or of class (iii).
+- Limit 4: no value, source or default of `draws`, no seed, no tolerance value, no axis or amount of the spend.
+- Also not decided: whether an answer of neither form is kept outside the log; sub-questions 8, 10, 11 and 14.
+- **No sub-question was registered.** OD-18 sub-question 15 is answered; the next free sub-question number stays 16.
+
+### Where a criterion and the landed record differ
+
+1. The criteria speak of "an `Exception` that is no tool failure" and "a `BaseException` that is no `Exception`" as the ways into the case. The record names the ways at the level of the contract ("a raised error", "a raised request to end") and gives the Python classes as observations, because the task forbids a Python class as a rule.
+2. The criteria ask to say whether ADR-0043's sentence "No landed sentence gives this tool a tool-failure kind for the case" is confirmed or less exact: the record names it less exact (ADR-0019 decision 4 gave the frame's answer for a raised error).
+3. The Walk-through has two rows beyond those the criteria list: a script that raises a `SystemExit` (the third way), and a script that raises a tool failure ("not decided").
+4. The coverage passage re-applies the rules to a third group the criteria name only in Required Reading (steps that resume a run: S2-3, S3-2, S3-3) and edits no note row.
+
+### Edits of existing documents
+
+- `Requirements.md`: one clause in the OD-18 row; sub-question 15 taken out of the list of the rest ("ADR-0043이 등재한 ⑮는 답해짐", in the manner of sub-question 9). 29 OD rows before and after, no new OD number, the status word kept (`제안됨`). **Rows judged and left**: OD-10 (no recovery rule, no tool-failure kind of a backend), OD-16 (nothing of sub-question 5), OD-17 (nothing of the retry part), FR-9, FR-10, NFR-1 and NFR-2 (no sentence became false).
+- `OpenDecisionProposals.md`, section OD-18: the heading note; one "채택분" bullet for ADR-0045; a dated note on sub-question 10 (no clause answered; the third clause untouched); a dated note on sub-question 15 (answered, and by what; the registered text kept). No proposal text deleted.
+- `StandardScenarios.md`, "검사 결과": the heading note and one dated passage. **Coverage re-check outcome: no verdict changes and no gap.** The rules were re-applied to the steps that verify correctness (S0-6, S1-4, S1-6, S1-b-2, S2-2, S8-3, extension S7-1, S7-2), the steps in which a backend carries out an experiment or handles its fault (S0-5, S1-b-2, extension S9-1, S9-2), and the steps that resume a run (S2-3, S3-2, S3-3). What follows the tool failure, the tool failures of a backend and recovery are registered open items (OD-10, the retry part of OD-17, sub-questions 10 and 14), so none is a gap. No scenario step and no note row was edited.
+- ADR-0001 to ADR-0044 and UsageCases.md are not edited.
+
+### Review rounds (7, each a fresh-context `dev-reviewer` with `model: opus`, told to write no file; Approve in rounds 4, 5, 6 and 7)
+
+1. Request changes: two should-fix (a universal sentence in decision 5, "the landed records say nothing different of the two", against the record's own reading of ADR-0019 decision 4; a citation of ADR-0040 decision 7 that carried "calls no operation", which is ADR-0016 decision 2's), five nits. All addressed.
+2. Request changes: one should-fix (Status named "Two sentences" as less exact while Consequences listed more, ADR-0019 decision 4 among them), six nits. All addressed.
+3. Request changes: two should-fix (Status still shorter than Consequences by the two sentences of ADR-0026; "The kind says that the form was wrong, and nothing else" said more than decision 4), two nits. All addressed.
+4. Approve: five nits, all "may land unchanged"; applied (References, one qualification in decision 5, one in decision 6, limit 3 of Status).
+5. Approve: three nits, all "may land unchanged"; two applied (the source of the name `step_open`; a bracket in a quotation), one kept as a note for the code task (below).
+6. Approve: four nits, all "may land unchanged"; three applied (the grounds of "no later line", the spend view in the cost paragraph, "without the item that record struck off itself"), one left (the coverage passage summarises the grounds of group 1 as the earlier passages do).
+7. Approve: no blocking and no should-fix finding; five nits, each "may land unchanged". **They were not applied**, because a change after round 7 would need an eighth round (CLAUDE.md A-13). They are listed under Follow-ups. The landed tree is identical to the commit reviewed in round 7 (`git diff e4cb92e HEAD` empty after the squash).
+
+Every round re-checked the §9 judgement and the A-13 reading and held both; none found a sentence that decides an item of the "Do not invent" list.
+
+Process notes for the next slice. (1) As in T-0125 to T-0134, every should-fix was a single sentence that said more than its source or than another part of the same record; none changed a decision. (2) Two of the three should-fix rounds were about the same thing: the list of less exact sentences in Status must be the list under Consequences - write Status last, from the Consequences list, or name groups with "among them". (3) A reviewer's command that ran long was moved to the background by the harness, which wrote its output into the session's temporary directory outside the repository (round 5; reported by the reviewer, not intended); from round 6 on the prompt asked for short foreground commands only.
+
+### Document checks
+
+- Links: every relative link of the new record (38) and of the three edited documents resolves; `OpenDecisionProposals.md#od-18`, `#od-17` and `#od-10` are headings of that file.
+- The ADR number 0045 was free on `origin/main` at the push (`c3bfea6`); the push was a fast-forward.
+- `git diff --stat origin/main` before the push showed exactly the four files of `touchesFiles`; no file under `hilclaw/`, `tests/`, `.github/`, `.claude/` or `PROCESS/` is in the commit. `git diff --check` clean; the four files are `i/lf`.
+- Each sentence of the Decision is marked by the rule at its head (cited / the record's own; none is the owner's); the quotations were compared with their sources by the executor before round 1 and by the reviewers of all seven rounds (ADR-0006, 0010, 0011, 0015, 0016, 0019, 0021, 0026, 0040, 0041, 0042, 0043, 0044); the code observations were compared with `hilclaw/` and `tests/test_hw_tool.py`.
+- The name `operation_answer_invalid` was searched for in `hilclaw/`, `tests/` and `ARCHITECTURE/` on 2026-10-12: no collision.
+- The OD register has 29 rows before and after; only the OD-18 row differs.
+- Coverage re-check: no verdict change, no gap (above).
+- A-13 reading, held by the executor and by the reviewers of all seven rounds: the record gives one value of `error.kind` a meaning and a place in a member that exists (the `kind` of the `failure` of an end line, ADR-0011 decision 3; no record lists its values; `hilclaw/journal.py` checks it as a name only); no member of `STATE.json`, `instance.json`, a spec, `artifacts.json`, a result file or a line of `events.ndjson` is added, removed or changed. No "데이터 plane 스키마 변경". The record states openly that this is the first kind a record names for an end line.
+- Session entry check: no open PR; no PR and no landed commit for T-0136 before the start; issue #5 held no comment after the ADR-0044 notice (issuecomment-6128212498), so no owner objection and no HQ answer; issues #4 and #7 open and unchanged, #8 closed.
+- Objection windows read for the Status: ADR-0006, 0010, 0011, 0015 until 2026-10-14; ADR-0016, 0019, 0021 until 2026-10-15; ADR-0026 until 2026-10-16 (its Status states no date; taken from its notice of 2026-10-09 on issue #5); ADR-0038, 0040 to 0044 until 2026-10-19.
+
+### Follow-ups
+
+- (integrator - document mode; the five nits of review round 7, each "may land unchanged") (1) Where the record and its mirrors say that after a failed end line "the identity is open or ended", ADR-0026 has the condition "Where the log is as this call left it" (decision 4 of ADR-0045; the OD-18 row; the "채택분" bullet and the note on sub-question 15; the coverage passage). (2) "the two sentences of ADR-0026 that repeat it": ADR-0026 decision 7 holds a third mention ("as for an exception out of the step, ADR-0019 decision 4"). (3) References names sections of ADR-0011, 0040, 0043 and 0044 that Status does not. (4) Decision 3, "the identity is used up by an answer of neither form": by ADR-0043's definition the third way is also such an answer and leaves the identity open; the paragraph is headed "Ended". (5) See the code-task note on the name of a kind of value below.
+- (integrator - document mode) The nit of round 6 that was left: the coverage passage gives the grounds of its first group as "FR-1·FR-9·FR-10" in summary, as the earlier passages do. And the sentences ADR-0045 Consequences lists as less exact in ADR-0019, ADR-0021, ADR-0026, ADR-0040, ADR-0043 and ADR-0044, beside the lists of T-0134 and earlier tasks.
+- (planner - code mode, after HQ-0012 and the remaining slices) The tool function of `correctness.check`, written against "The slice as landed" above. Its criteria should say: (i) the step turns `check_answer.NeitherFormError` and an error an operation raised into a step that ended without an outcome, kind `operation_answer_invalid`, and lets a `BaseException` that is no `Exception` pass; (ii) the message is composed by the tool function and does not reuse the message of `NeitherFormError` or of the raised error; (iii) whether the message names a Python type or one of a fixed set of categories of its own is the code task's choice inside decision 6 - a type name is a string the backend's code chose and it stays in `events.ndjson` (reviewer notes of rounds 5 and 7); (iv) where the line around the call of the operation is drawn, so that a defect of the tool function's own code is not answered as `operation_answer_invalid`; (v) what the tool function does with a tool failure an operation raises is still not decided - the task must not give it a rule. No change of `hilclaw.tools.RESERVED_KINDS` is needed: the kind is not reserved.
+- (planner - document mode) `draws` (OD-16 sub-question 5), as in the Follow-ups above; then the closed member list of a request, the input schema and the description. Later: the tool-failure kinds of a backend and a tool failure an operation raises (sub-question 10, third clause).
+- (driver / owner) The objection window of ADR-0045 runs until 2026-10-19 (UTC). HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011 and HQ-0012 are unchanged; no owner answer to any of them was found at the start of this task.
