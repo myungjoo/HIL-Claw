@@ -449,19 +449,21 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 # The fixed tool set
 
 
-def test_the_fixed_tool_set_is_empty_today():
-    """No FR-10 / C-3 tool has a contract yet; this changes when the first tool lands."""
-    assert mcp_names(default_registry(lambda: REPO_ROOT)) == {}
+def test_the_fixed_tool_set_is_the_two_blob_tools_today():
+    """Only the C-3 pair has a contract (ADR-0039); no FR-10 HW tool has one yet."""
+    held = {"blob_fetch": "blob.fetch", "blob_push": "blob.push"}
+    assert mcp_names(default_registry(lambda: REPO_ROOT)) == held
+    unknown = [name for name in FIXED_NAMES.values() if name not in held]
     data = message("tools/list", 0) + b"".join(
-        call(i, name) for i, name in enumerate(FIXED_NAMES.values(), 1)
+        call(i, name) for i, name in enumerate(unknown, 1)
     )
     stdout = io.BytesIO()
     status = main([], stdin=io.BytesIO(data), stdout=stdout, stderr=io.BytesIO())
     assert status == 0
     listed, *refused = responses(stdout.getvalue())
-    assert listed == {"jsonrpc": "2.0", "id": 0, "result": {"tools": []}}
-    assert len(refused) == 6
-    for i, (name, document) in enumerate(zip(FIXED_NAMES.values(), refused), 1):
+    assert [tool["name"] for tool in listed["result"]["tools"]] == list(held)
+    assert len(refused) == 4
+    for i, (name, document) in enumerate(zip(unknown, refused), 1):
         assert error_of(document, -32602, i) == f"unknown tool {name!r}"
 
 
@@ -486,7 +488,8 @@ def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
     stdout, stderr = io.BytesIO(), io.BytesIO()
     assert main([], stdin=io.BytesIO(data), stdout=stdout, stderr=stderr) == 0
     listed, refused = responses(stdout.getvalue())
-    assert listed == {"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}
+    names = [tool["name"] for tool in listed["result"]["tools"]]
+    assert names == ["blob_fetch", "blob_push"]
     assert error_of(refused, -32602, 2) == "unknown tool 'sim_run'"
     assert stderr.getvalue() == b""
 
@@ -915,9 +918,9 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
     monkeypatch.setattr(sys, "stdout", stdout)
     monkeypatch.setattr(sys, "stderr", stderr)
     assert main() == 0
-    assert (
-        stdout.buffer.getvalue() == b'{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}\n'
-    )
+    (listed,) = responses(stdout.buffer.getvalue())
+    names = [tool["name"] for tool in listed["result"]["tools"]]
+    assert (listed["id"], names) == (1, ["blob_fetch", "blob_push"])
     assert stderr.buffer.getvalue() == b""
     monkeypatch.setattr(sys, "argv", ["python -m hilclaw.mcp_front", "sim_run"])
     assert main() == 4
@@ -986,7 +989,7 @@ def helper(tmp_path):
     return [sys.executable, str(script)]
 
 
-def test_process_handshake_and_empty_tool_list():
+def test_process_handshake_and_tool_list():
     data = (
         message("initialize", 1, INITIALIZE)
         + message("notifications/initialized")
@@ -994,12 +997,16 @@ def test_process_handshake_and_empty_tool_list():
     )
     done = run_module(data)
     assert done.returncode == 0
-    assert done.stdout == (
+    first, second = done.stdout.splitlines(keepends=True)
+    assert first == (
         b'{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18",'
         b'"capabilities":{"tools":{}},"serverInfo":{"name":"hilclaw","version":"'
         + __version__.encode()
-        + b'"}}}\n{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}\n'
+        + b'"}}}\n'
     )
+    (listed,) = responses(second)
+    names = [tool["name"] for tool in listed["result"]["tools"]]
+    assert (listed["id"], names) == (2, ["blob_fetch", "blob_push"])
     assert done.stderr == b""
 
 

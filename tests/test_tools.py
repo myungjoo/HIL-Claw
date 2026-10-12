@@ -486,20 +486,23 @@ class CountingSource:
         raise RuntimeError("no data root in this test")
 
 
-def test_default_registry_is_empty_and_not_shared():
+def test_default_registry_holds_the_blob_tools_and_is_not_shared():
     source = CountingSource()
     first = default_registry(source)
     assert isinstance(first, Registry)
-    assert first.names() == ()
+    assert first.names() == ("blob.fetch", "blob.push")
     first.register("sim.run", Recorder(), DESCRIPTION, SCHEMA)
-    assert default_registry(source).names() == ()
-    assert default_registry(data_root_source=source).names() == ()
+    assert default_registry(source).names() == ("blob.fetch", "blob.push")
+    assert default_registry(data_root_source=source).names() == (
+        "blob.fetch",
+        "blob.push",
+    )
 
 
 def test_default_registry_does_not_call_the_source():
     source = CountingSource()
     registry = default_registry(source)
-    assert registry.names() == ()
+    assert registry.names() == ("blob.fetch", "blob.push")
     for read in (registry.get, registry.definition):
         with pytest.raises(UnknownToolError):
             read("sim.run")
