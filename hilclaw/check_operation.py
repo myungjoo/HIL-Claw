@@ -48,9 +48,11 @@ Choices that are this module's own and no rule of a record:
   type, and with one word for everything else. No name is read from the
   answer or from its type, so no string that the code of a backend chose
   reaches the message. Every message is a constant of this module.
-* The exception is raised after the handler of the error has been left, so
-  that it holds nothing of the answer: neither its ``__cause__`` nor its
-  ``__context__`` is the error an operation raised.
+* The exception is raised after the handler of the error has been left and
+  after the name of the returned value has been unbound, so that it holds
+  nothing of the answer: neither its ``__cause__`` nor its ``__context__``
+  is the error an operation raised, and the frame of :func:`ask` in its
+  traceback holds neither that error nor the returned value.
 
 What the module does not do: it is no tool and no step and is bound to none.
 It appends no line and states no spend. It selects no backend, draws no seed,
@@ -79,6 +81,7 @@ _VALUES = tuple(
         (int, "an integer"),
         (float, "a floating number"),
         (str, "a string"),
+        (bytes, "a byte string"),
         (bytearray, "a byte array"),
         (memoryview, "a memory view"),
         (list, "a list"),
@@ -207,4 +210,5 @@ def ask(operation, request, hw_profile, parameters, *, rtol, atol):
                 )
             except check_answer.NeitherFormError:
                 pass
+        del answer
     raise OperationAnswerInvalid(message)

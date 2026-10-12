@@ -108,6 +108,16 @@ def invalid(operation, parameters=PARAMETERS, tolerance=EXAMPLE_TOLERANCE):
     return error
 
 
+def held_by_the_module(error):
+    held = []
+    traceback = error.__traceback__
+    while traceback is not None:
+        if traceback.tb_frame.f_code.co_filename == check_operation.__file__:
+            held.extend(traceback.tb_frame.f_locals.values())
+        traceback = traceback.tb_next
+    return held
+
+
 def returned_message():
     return invalid(Recording(answer=object())).message
 
@@ -321,6 +331,13 @@ def test_the_default_script_of_the_mock_passes():
     assert result["draws"] == DRAWS
 
 
+@pytest.mark.parametrize(("name", "value"), [("m", 0), ("draws", 0), ("seed", -1)])
+def test_an_error_of_the_default_script_is_an_invalid_answer(name, value):
+    parameters = PARAMETERS._replace(**{name: value})
+    error = invalid(mock_check.operation(mock_check.default_script), parameters)
+    assert error.message == raised_message()
+
+
 @pytest.mark.parametrize("report", [GOOD[:-1], b"", GOOD + b"\x00"])
 def test_a_report_cut_short_is_a_broken_result_and_no_exception(report):
     result = asked(Recording(answer=report))
@@ -370,6 +387,7 @@ def test_a_returned_value_of_neither_form_is_an_invalid_answer(index):
     if type(answer) is str and len(answer) > 3:
         assert answer not in error.message
     assert not any(value is answer for value in vars(error).values())
+    assert not any(value is answer for value in held_by_the_module(error))
 
 
 def test_a_returned_value_is_named_by_a_word_of_the_module_only():
@@ -396,6 +414,7 @@ def test_a_raised_error_is_an_invalid_answer(index):
     assert error is not raised
     assert error.message != returned_message()
     assert not any(value is raised for value in vars(error).values())
+    assert not any(value is raised for value in held_by_the_module(error))
     assert not hasattr(error, "spend")
 
 
@@ -532,6 +551,7 @@ def test_only_bytes_and_str_are_handed_to_the_judging(monkeypatch):
     invalid(Recording(answer=GOOD))
     invalid(Recording(answer="pass"))
     assert handed == [GOOD, "pass"]
+    assert invalid(Recording(answer=GOOD)).message != returned_message()
 
 
 def test_an_error_of_the_judging_is_not_taken_for_a_raised_error(monkeypatch):
