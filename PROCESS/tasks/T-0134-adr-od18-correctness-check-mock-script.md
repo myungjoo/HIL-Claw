@@ -2,7 +2,7 @@
 id: T-0134
 title: Write the ADR that fixes the mock's side of `correctness.check` (the fifth slice of the second record of that contract) - how the mock's operation of this tool asks its script, and what the default script answers and by which rule it derives a report - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-10, OD-18, "#5 D6"]
 dependsOn: [T-0088, T-0128, T-0132]
@@ -112,3 +112,116 @@ Where a criterion below and a landed record disagree, **the record wins**: follo
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+**DONE** - landed on `main` as commit `4eabb62` (`4eabb62b091627982dee64c9b0e0dcb8c1864c4f`, "T-0134: Add ADR-0044, the mock's side of correctness.check (one more part of OD-18)"), document mode, pushed as a fast-forward of `9d136c5`; no PR. The task branch was deleted remotely and locally. Trailers: `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0134`, then the attribution trailer. The commit holds four files: the new `ARCHITECTURE/decisions/ADR-0044-od18-correctness-check-mock-script.md` (186 lines) and edits of `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionProposals.md` and `ARCHITECTURE/StandardScenarios.md` (192 insertions, 5 deletions; the three existing documents only gained text). This task ticks **no PLAN checkbox**; P1-1 stays open and the tool still cannot be registered.
+
+### The slice as landed (the code is written against this)
+
+One answer of the owner is quoted (HQ-0005 (4), through ADR-0038 decision 6); everything decided is the record's own design (DRIVER §9). Scope: the mock backend and a check (a call that reached moment 6) about one attempt of a run whose hw_profile names the mock and whose stated op_signature is covered. Three points and nothing else.
+
+- **What a script of this tool is asked with** (decision 2): the called tool, plus the three things the operation was called with - the request (the member `point` in it), the hw_profile and the check parameters (the seed, `draws`, `m`, `k`, `n`). The three reach the script as they are: none derived, replaced or left out, nothing added.
+- **When**: exactly once for each call of the operation and at no other moment. A call that does not reach moment 6 asks no script. ("Asked when the operation is called" is cited from ADR-0016 decision 5 (c); "exactly once and at no other moment" is the record's own, since that decision does not say it.)
+- **Whether the mock looks at the answer**: no. What the script returned is what the operation returns, whatever it is; what it raised passes through unchanged. The mock establishes no form; the tool function does (ADR-0043 decision 5). A script of a test can therefore give an answer of neither form. Weighed and not taken: a mock that checks the form itself (two places for one form, and a statement on sub-question 15).
+- **A script of another tool is not touched.**
+- **What the default script answers** (decision 3): for every check whose check parameters it can compute a report for, an answer of the form (A) - a complete report for the check parameters, holding the right product for each draw. It never answers (B) and raises no tool failure.
+- **What the answer depends on**: the check parameters and nothing else the script is asked with - not `point`, not another request member, not the hw_profile. The two checks of an attempt are answered by one rule and differ only as their check parameters differ (each check has its own seed).
+- **What it stands for**: the output of a right kernel for the covered op_signature (`gemm`, `fp32`, `row_major`, the `m`, `k`, `n` of the check parameters); no kernel language, source, build or flag.
+- **Weighed and not taken** for the answer: one that depends on a request member (fault injection in a live session, sub-question 8); always a condition or always a tool failure; no answer for this tool. A record that answers sub-question 8 may amend decision 3.
+- **The rule of the report** (decision 4): a complete report in the form of ADR-0017 decision 7, in the spelling and framing of the harness of the same source commit. For each draw in order:
+  - the check value of the inputs the generator gives for the seed, that draw and the dimensions;
+  - m·n fp32 elements in `row_major`, as the bytes they have on the host of the script (which is the host of the tool function). **Each element is the fp32 value nearest to the corresponding element of the float64 product of the inputs widened to float64**, a tie going to the value whose last significand bit is 0.
+  - After the last draw the end mark, and nothing else.
+- **Weighed and not taken** for the product: fp32 arithmetic in one fixed order of summation; "any product a right kernel could return".
+- **Left to the code task** (the record says so by name):
+  - the Python names, positions and types by which the four things reach a script;
+  - whether one script callable serves every tool with one signature;
+  - how the default script is laid out and how a mock backend is built so that its operation of this tool takes a third thing;
+  - the spelling and framing of the report;
+  - which code computes the inputs, the check value and the float64 product (functions of `hilclaw/harness/` or other code), and in which order of additions;
+  - how much is held at once;
+  - what is raised for check parameters no report can be computed for.
+- **Constraint on that last item** (reviewer note of round 7, for the code task's criteria): "never (B), no tool failure" holds for those check parameters too. What is left to the code is therefore something that is neither. Where it raises something that is no tool failure, that is an answer of neither form, and what the call then answers is sub-question 15, which the record does not touch.
+
+### Readings and limits the record states
+
+- **The record's own reading of ADR-0016 decision 5 (e)**, named in Status: the float64 product is fixed no further than it is for the reference (no record fixes the order of its additions). Rounded elements can differ between two computations - by one fp32 step at a midpoint, by more at an element whose terms cancel. Equal bytes on two hosts or from two numeric libraries are not promised.
+- **Against the owner's sentence**: the roles are apart, the arithmetic is not independent. The script draws the inputs the tool function regenerates, and its product has the definition of the reference. A defect both sides share is not seen by a check at the default mock. Whether code is shared is the code task's.
+- **Tolerance**: the default script is never handed it. A run can state a valid tolerance under which the report is judged a fail. A pass at the default mock does not show that a right kernel passes under that tolerance. No tolerance value is named, and no rule says what a run at the mock states.
+- **Other limits**: the default script proves nothing about any kernel; a fail of a wrong kernel, a condition and a tool failure are reached at the mock by a script of a test (in a live session: sub-question 8); the cost lies in the front process and is bounded by nothing; a script is handed the seed; a script of a test that does not answer the contract is not detected by the mock.
+
+### Not decided, as the task required (the four limits were kept)
+
+- Limit 1: nothing of fault injection in a live session; sub-question 8 stays open as it is.
+- Limit 2: no tool-failure kind of a backend, no value of `error.kind` added or given to a situation, nothing on what a call answers for an answer of neither form.
+- Limit 3: nothing of a script, operation or contract of `sim.run`, `board.run` or `profiler.collect`; nothing of class (iii).
+- Limit 4: no value, source or default of `draws`, no seed, no tolerance value.
+- **No sub-question was registered.** Check parameters the default script cannot compute for could be left to the code task without deciding what a call answers.
+- Also not decided: when the default registry comes to hold the mock with this operation; a target on another machine; every other request member, the input schema, the description; the spend.
+
+### Where a criterion and the landed record differ
+
+1. The criteria ask to list ADR-0016 decision 5 (c) ("what that script answers for a tool is written with that tool's contract") among the sentences that become less exact. The record says explicitly that it is not among them: the record does for one tool what that sentence says. The reviewers of rounds 1, 3, 5, 6 and 7 judged this correct.
+2. The criteria expected "asked once for each call and at no other moment" as a citation of ADR-0016 decision 5 (c). That decision says only "asked when the operation is called", so the record marks the rest as its own.
+3. The criteria name "ADR-0021 decision 3" for "the seed reaches a script as a part of its call"; the sentence is in ADR-0021 decision 2, and the record cites it there.
+4. The coverage passage edits no note row (T-0132 edited the S0 row): no clause of a note row became false.
+
+### Edits of existing documents
+
+- `Requirements.md`: one clause in the OD-18 row. 29 OD rows before and after, no new OD number, the status word kept (`제안됨`), no item added to the list of the rest. **Rows judged and left**: OD-16 (nothing of sub-question 5 is closed), OD-10 (no tool-failure kind is named), FR-9 and FR-10 (no sentence became false).
+- `OpenDecisionProposals.md`, section OD-18: the heading note; one "채택분" bullet for ADR-0044; a dated note on sub-question 8 (the record answers no part of it, and why the default script's answer depends on no request member). No note on sub-question 10 (no clause of it is touched). No proposal text deleted.
+- `StandardScenarios.md`, "검사 결과": the heading note and one dated passage. **Coverage re-check outcome: no verdict changes and no gap.** The rules were re-applied to the steps that verify correctness (S0-6, S1-4, S1-6, S1-b-2, S2-2, S8-3, extension S7-1, S7-2) and the steps in which a backend carries out an experiment or handles its fault (S0-5, S1-b-2, extension S9-1, S9-2). No scenario step names the mock (an observation of the re-check). Sub-question 8, the tool failures of a backend (OD-10), class (iii) and #5 B-2 are registered open items, so none is a gap. No scenario step and no note row was edited.
+- ADR-0001 to ADR-0043 and UsageCases.md are not edited.
+
+### Review rounds (7, each a fresh-context `dev-reviewer`, told to write no file; Approve in rounds 3, 5, 6 and 7)
+
+1. Request changes. Should-fix (2): "For every check" and "gives no other answer" were stronger than the record's own bullet on check parameters it cannot compute for; "One sentence of the owner is used" although three sentences are quoted. Nits (4): "no file" cited without "of its own"; a quotation of the owner's reference definition without "drawn fp32"; ADR-0016 decision 5 (c) absent from the less-exact list; ADR-0038 decision 7 missing in Status. All addressed (for 5 (c) by an explicit sentence, see above).
+2. Request changes. Should-fix (1): the limit "gives no fail of a wrong kernel, no broken result and no tool failure ... by a script of a test only" was stronger than decision 3 and leaned on an answer to sub-question 15; same in three Korean mirrors. Nits (3): two "pass" sentences without the qualifier of decision 4; "decision N" inside quotations not marked as another record's; a citation of ADR-0016 decision 2 (b) carrying more than its sentence. All addressed.
+3. Approve, three nits (walk-through row 2 asserted a pass without its premise; a wrong back-reference with "today"; alternative (iii) not related to the owner's sentence). All addressed, then re-reviewed.
+4. Request changes. Should-fix (1): in the A-13 reading, "What of a check at the mock reaches a file does so by ADR-0042 alone" - the request's `execution` and `point` (as `step`) and the spend reach the log by other records. Narrowed to the check parameters and a script's answer, in the record and the mirror. Nits (4): a citation of ADR-0042 decision 7 where decision 1 also carries it; "introduces no term" beside a defined term; an inference marked as cited; the reading of ADR-0016 decision 5 (e) not visible in Status. All addressed.
+5. Approve, three nits (two float64 computations can differ by more than one fp32 step at a cancelling element; a tolerance sentence without the "products agree" condition; "the first clauses" of sub-question 10). All addressed, then re-reviewed.
+6. Approve, three nits (the binding of the default registry "comes with the registration" asserted under "Not decided"; "the layer above can be carried through" without "as far as this tool goes"; a citation for `point`). All addressed, then re-reviewed.
+7. Approve: no blocking and no should-fix finding; three nits, each "may land unchanged". **They were not applied**, because a change after round 7 would need an eighth round (CLAUDE.md A-13). They are under Follow-ups. The landed tree is identical to the commit reviewed in round 7 (`d7d29a2`; the diff after the squash is empty).
+
+Process notes for the next slice. (1) Again every should-fix was one sentence in universal wording that said more than another part of the same record (rounds 1, 2) or than the landed records (round 4). (2) Process note (2) of T-0132 recurred in round 4 in a new shape: a sentence on what "reaches a file" must name its subject narrowly (the values of this slice), because the request reaches the log by ADR-0011 and ADR-0040. (3) A statement on floating-point differences is checked as a fact; say "can differ" and name the cancelling case. (4) No reviewer wrote a file.
+
+### Document checks
+
+- §3-5 landed check before anything else (2026-10-12 UTC): no commit on `origin/main` with `Task: T-0134`, no PR for T-0134 in any state, no leftover branch. Fresh run.
+- Session entry (before the first edit): no open PR; #4 (last update 2026-10-01), #7 (2026-09-07) and #8 (2026-10-05) hold nothing newer. On #5 the last comment was the ADR-0043 notice (issuecomment-6127127012) and nothing followed it: no owner objection to ADR-0016, 0017, 0021, 0038 or 0040 to 0043, and no answer to HQ-0006, 0007, 0009, 0010, 0011 or 0012.
+- A-13 reading held by the executor and by all seven reviewers: inner structure of layer 2; no member added to a request or a result; no value given a place in a file of the data plane; no member of `STATE.json`, `instance.json`, a spec, `artifacts.json`, a result file or a line of `events.ndjson` added, removed or changed. No data-plane schema change.
+- The planner's other judgements under "Why" were re-checked by every reviewer and held: selectable without the owner (OD-18 is design-level; HQ-0005 (4) delegates by name), the four limits, the scope.
+- Citations: every quotation was compared with its source by the reviewers of all seven rounds (ADR-0016, 0017, 0021, 0038, 0040, 0041, 0042, 0043, with record and decision number); the code observations were compared with `hilclaw/` and `tests/`.
+- Each sentence of the Decision is marked by the rule at its head (owner / cited / the record's own). No sentence states an item of the "Do not invent" list or of Boundaries as decided.
+- Names: the record fixes no name of code, of a member or of a value; "the default mock" is defined as short for the mock of a registry that `default_registry` builds, bound to the default script.
+- Relative links of the new record all resolve, with the anchors `#od-16` and `#od-18`; ADR-0044 was free on `origin/main` at the push.
+- OD register: 29 rows before and after; only the OD-18 row differs.
+- `git ls-files --eol`: `i/lf` for the four files. The commit lists only the new record and the three documents (nothing under `hilclaw/`, `tests/`, `.github/`, `.claude/` or `PROCESS/`). `git diff --check` clean.
+- CI: the `push` run for `4eabb62` is https://github.com/myungjoo/HIL-Claw/actions/runs/38276575535 (in progress when this was written; the commit changes documents only).
+- Wall clock: landed 2026-10-12 16:19 UTC, notice 16:20 UTC.
+
+### Owner notice (DRIVER §9) - posted by the executor, as the spawn prompt directed
+
+https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6128212498 (exactly one comment, after the push to `main` succeeded; objection window until 2026-10-19, UTC; last line `— posted by driver`).
+
+The notice says what the record holds (what is the owner's, what is cited, the three points as the record's own design) and lists seven readings to check: the rule of the product against the owner's sentence and what stays unseen; the limit under a tight tolerance; the reading of ADR-0016 decision 5 (e); the four limits; check parameters the default script cannot compute for; that the mock passes answers on unseen; the rows judged and left, with the ADR-0016 decision 5 (c) point. Then the other limits, what is left open, the A-13 reading (a different reading is an objection to the whole record), and the windows of the records built on.
+
+### Follow-ups added by the executor
+
+- (integrator - document mode; the three nits of review round 7, each judged "may land unchanged")
+  1. ADR-0044 Status says "One answer of the owner is used", while decision 4 also uses the HQ-0004 (1) answer as ADR-0017 decision 4 cites it. Suggested wording: "used directly ...; the HQ-0004 answer is used only as ADR-0017 decision 4 cites it". Two Korean mirrors say the same.
+  2. The ADR-0016 decision 5 (c) point above (no edit needed).
+  3. See the planner item on the code task below.
+- (integrator - sentences of earlier records not edited and now less exact; the list is in ADR-0044 Consequences)
+  - ADR-0021 decision 2 and the item of its decision 1.
+  - ADR-0038 decisions 6, 7 and 8.
+  - The item "the operation and the default script of the mock" in the Consequences of ADR-0040 to ADR-0043 and in the Boundaries of ADR-0040 to ADR-0042.
+  - ADR-0043 decision 6 and its Boundaries.
+  - The docstring sentence "Not here yet" of `hilclaw/mock_backend.py`.
+  - Still open from earlier tasks: the lists of T-0132, T-0128, T-0127, T-0125, T-0116 and T-0088; the README layer-2 cell.
+- (planner - code mode, P1-1, now possible) The mock's operation of `correctness.check` and the default script, written against ADR-0044 and ADR-0043.
+  - `tests/test_mock_backend.py` pins the two-argument call of an operation and the three-argument call of a script, so the task names those assertions as permitted edits or uses a new module with its own test file.
+  - **The criteria must say**: the default script never returns one of the two strings and raises no `ToolFailure`, also for check parameters it cannot compute a report for. What it raises there is an exception of the code's own, with no kind (giving it one would decide sub-question 15).
+  - The report is bytes equal to what the judging takes as complete. Whether `draw_inputs` / `check_value` / `reference` are called or other code is used is the task's choice and should be stated, with the shared-defect limit of ADR-0044 decision 7 in mind.
+  - Name no string that the criteria of T-0126 keep out of `hilclaw/`.
+- (planner - document mode) OD-18 sub-question 15 together with the tool-failure kinds of a backend (sub-question 10, third clause): judge against DRIVER §9 first whether it needs the owner. Then `draws` (OD-16 sub-question 5), the closed member list of a request, the input schema and the description. Sub-question 8 (PLAN P2-4, P2-5) may amend ADR-0044 decision 3.
+- (planner - code mode, after HQ-0012 and those slices) The tool function of `correctness.check` and its registration; the backend table of the default registry with the mock in it.
+- (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none was needed here and none was answered during this task.
