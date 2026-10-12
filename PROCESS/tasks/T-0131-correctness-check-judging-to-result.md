@@ -2,7 +2,7 @@
 id: T-0131
 title: Add one new pure module `hilclaw/check_judging.py` that turns the harness's judgement of a report into the result object of a check of `correctness.check` - the mapping from `Broken` to the four values of `condition`, from a `Judgement` to a result built by `hilclaw.check_result`, and the composition with `judge_report` for one report - with its tests; bound to no tool
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, NFR-2, OD-18]
 dependsOn: [T-0128, T-0130]
@@ -115,3 +115,61 @@ Three public functions and no other public name (recommended names and parameter
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+
+**DONE** - PR #90 (https://github.com/myungjoo/HIL-Claw/pull/90), squash-merged to `main` as `4d29215` (`4d29215728659389566783edbdf1453fb4603061`, "T-0131: Add check_judging, the join from the harness's judgement to a result of correctness.check (#90)"); the squash message ends with `Task: T-0131`. The DONOTMERGE label was removed and the PR marked ready before the merge; the task branch was deleted remotely and locally (separate commands). The commit adds two files and edits none: `hilclaw/check_judging.py` (184 lines) and `tests/test_check_judging.py` (641 lines). This task ticks **no PLAN checkbox**; P1-1 stays open. This `## Result` is left uncommitted on `main` for the driver.
+
+Language: **Python** - the module joins two Python modules of the package and its callers to come are Python.
+
+### The interface as landed (the tool function is written against this)
+
+- Public names of `hilclaw.check_judging`, exactly three: `condition_of`, `from_judgement`, `from_report` - the recommended names. None occurred in `hilclaw/` or `tests/` before. No constant and no exception class.
+- `condition_of(broken)` - `broken` positional or by keyword, no default. Accepts exactly a member of `hilclaw.harness.verification.Broken` and returns the item of `check_result.CONDITIONS` at the member's position: `TIMEOUT` -> `"time_limit"`, `EXIT_STATUS` -> `"exit_status"`, `REPORT_FORM` -> `"report_form"`, `CHECK_VALUE` -> `"check_value"`. Everything else (`None`, any `str`, an `int`, a `bool`, a member of another enumeration, the class `Broken` itself) raises `TypeError` with a message starting `broken: `. There is no `ValueError` case.
+- `from_judgement(judgement, *, m, k, n, draws, rtol, atol)` - the six after `judgement` keyword-only, no default. Returns the new `dict` of `check_result.completed(m=..., ..., counts=judgement.counts)` when `judgement.broken` is `None`, and of `check_result.broken(condition_of(judgement.broken), m=..., ...)` otherwise. There is no `seed` parameter.
+  - `judgement`: exactly a `Judgement` (`type(...) is Judgement`). A plain tuple, a list, a `dict`, a `VerificationResult`, `None` are `TypeError` (`judgement: `).
+  - `judgement.counts` is handed to the builder as it is, so what the builder accepts is accepted: a `tuple` or a `list` of `draws` tuples of two (the harness's `Counts` included).
+  - All four members of `Broken` are mapped, also `TIMEOUT` and `EXIT_STATUS`, which `judge_report` never returns.
+- `from_report(report, *, m, k, n, draws, seed, rtol, atol)` - the seven after `report` keyword-only, no default. It is `from_judgement(judge_report(report, m=..., k=..., n=..., draws=..., seed=..., rtol=..., atol=...), m=..., k=..., n=..., draws=..., rtol=..., atol=...)`. `seed` goes to the judging only; no result holds it.
+- **What a refused argument raises**: `TypeError` when the argument, or a field of the judgement, is of a type that is not accepted; `ValueError` when a judgement does not have its three fields or when its fields are of accepted types and do not agree. The message starts with `broken: `, `judgement: `, `judgement.broken: `, `judgement.verdict: ` or `judgement.counts: `. What `check_result` raises (`m: `, `rtol: `, `counts: `, `counts[1].failed: `, ...) and what `judge_report` raises are passed on unchanged. A missing, surplus or positional argument is Python's own `TypeError`. No own exception class.
+- **Order of the checks in `from_judgement`** (the first that fails raises):
+  1. `judgement` not exactly a `Judgement`: `TypeError`. A `Judgement` without its three fields (only to be made with `tuple.__new__`): `ValueError` (`judgement: `).
+  2. `broken` neither `None` nor a member of `Broken`: `TypeError` (`judgement.broken: `); then `verdict` neither `None` nor a member of `Verdict`: `TypeError` (`judgement.verdict: `).
+  3. For a broken judgement: `verdict` not `None`: `ValueError` (`judgement.verdict: `); then `counts` not `None`, whatever its type: `ValueError` (`judgement.counts: `). For any other: `verdict` `None`: `ValueError` (`judgement.verdict: `, which is also what `Judgement(None, None, None)` raises); then `counts` `None`: `ValueError` (`judgement.counts: `).
+  4. What the builder of `check_result` raises for `m`, `k`, `n`, `draws`, `rtol`, `atol` and the counts.
+  5. For a completed judgement: a `verdict` that is not the `outcome` the builder derived from the counts (`Verdict.PASS` beside a failed count, `Verdict.FAIL` beside all-zero counts): `ValueError` (`judgement.verdict: `).
+- **Order of the checks in `from_report`**: that of `judge_report` - `VerificationArgumentError` (a `ValueError` subclass) for `m`, `k`, `n`, `draws`, `seed`, then for `rtol`, `atol`; then `TypeError` for a `report` that is not exactly `bytes`; what NumPy raises for arrays it cannot allocate is passed on. Note that `judge_report` bounds `draws` by `2**64 - 1` and `check_result` does not.
+- Imports: `hilclaw.check_result` and `hilclaw.harness.verification` only (no `reprlib`, no `verification_arrays`). The module text holds neither `gemm_contract` nor `standin_profile`, and no file under `hilclaw/` imports it. It is the first module of `hilclaw/*.py` that imports `hilclaw.harness`.
+
+### Where a criterion and the record disagreed
+
+Nowhere. All recommended choices of the task were taken as recommended. Choices added that the task left to the executor: the split between `TypeError` (a field of a type it never holds) and `ValueError` (fields that do not agree, a `counts` or a `verdict` of `None` in a completed judgement included, where the builder alone would have raised `TypeError` for `counts`); the `ValueError` for a `Judgement` without its three fields; the pairing of `Broken` with `CONDITIONS` by position (`zip(..., strict=True)`, so a change of the number of members of either fails at import), with each row pinned as a literal in the tests.
+
+### Review (3 rounds, each a fresh-context `dev-reviewer` with `model: opus`, told to write no file; Approve in every round)
+
+1. Approve (head `0e73410`). One nit: the module docstring gave `ValueError` for fields that do not agree only, although a `Judgement` without its three fields raises it too. Addressed in a second commit (`eea3b51`, two docstring lines). Observations, no change asked: see Notes.
+2. Approve (head `eea3b51`). Two nits: the edit left a short line inside that bullet; the "Refusal" bullet of the PR body did not name the three-field case. Both addressed (`c748810`, a reflow of the docstring with no sentence changed; the PR body edited).
+3. Approve (head `c748810`), no blocking finding, no should-fix and no nit to fix in the PR; observations only. Nothing was changed after this round: the merged tree is the head the round reviewed.
+
+The reviewers did not run the module (their Bash scope is read-only `git` / `gh`); their check of (b) is a static trace, and the evidence of execution is the test suite locally and in CI.
+
+### Tests and CI
+
+- Local, before the PR (Windows, Python 3.14.4): `python -m ruff check .` and `python -m ruff format --check .` clean; `python -m pytest`: 12712 passed, 303 skipped. `tests/test_check_judging.py` alone: 179 passed. `tests/test_gemm_contract.py` and `tests/test_standin_profile.py` pass unedited.
+- **No existing assertion was edited.**
+- CI on the merged head `c748810` (run 38256915282): all six checks passed - `Python gate (3.11)`, `Python gate (3.14)`, `Coverage gate (hilclaw)`, `Test presence (hilclaw)`, `sh gate (shellcheck)`, `C gate (clang)`. No CI failure in any round.
+- Coverage as the CI step printed it (read from the job log; `coverage` is not installed locally and nothing was installed): lines 3354/3370 = 99.52 %, functions 349/349 = 100.00 %; `hilclaw/check_judging.py` 41 statements, none missed.
+- Size of the non-test diff: one file, 184 lines added (41 statements; the rest is docstrings and blank lines) - above the estimate of 150, inside the cap of 300 (D4).
+
+### Notes
+
+- §3-5 landed check before anything else: no commit on `origin/main` with `Task: T-0131` and no PR for T-0131 in any state; no open PR at all. Issue #5 held no comment after the ADR-0042 notice (issuecomment-6124322561), at the start and at round 3.
+- ADR-0042 is inside its objection window until 2026-10-19 and two of its choices are provisional (that a result holds `counts`; the member `draws`); the commit body says so.
+- Reviewer observations left unchanged on purpose:
+  - `from_report` documents that what is raised is what `judge_report` raises. That holds because the harness's checks of the parameters and the tolerance accept nothing `check_result` refuses today; nothing ties the two sets of checks together, and the tests pin sample values. If either side is changed, a `TypeError` / `ValueError` of the builder could surface after the judging.
+  - The table from `Verdict` to `outcome` lists the two members by hand; a third member of `Verdict` would pass the type check and leak a `KeyError`. Not reachable today.
+  - Importing the module loads `numpy` and `hilclaw.local_run` through the harness, although its own import set is the two modules named.
+
+### Follow-ups
+
+- (planner - code mode, the tool function of `correctness.check`) It calls `check_judging.from_report(report, m=..., k=..., n=..., draws=..., seed=..., rtol=..., atol=...)` for a report an operation returned, and `check_result.broken` with `"time_limit"` or `"exit_status"` itself for the two conditions an operation finds (this module takes no "no report and why"). A module that comes to import `check_judging` also loads `numpy` and `hilclaw.local_run`: check the import-set test of that module (for example the scan in `tests/test_instance.py`) when the task is written.
+- (planner, with any task that changes the argument checks of `hilclaw/harness/verification.py` or of `hilclaw/check_result.py`) Re-check the sentence of `from_report` on what is raised, and the table from `Verdict` if `Verdict` gains a member.
+- The follow-ups of the planner listed above this section stand unchanged.
