@@ -28,13 +28,14 @@ Choices that are this module's own and no rule of a record:
 * A value of ``point`` whose type is not exactly ``str``, an instance of a
   subclass of ``str`` included, is "another value". It is refused without
   calling any code of the value: it is not compared, hashed or printed.
+* The member is found by going through the keys of the request, not by a
+  lookup, which could call the code of a key. A key whose type is not exactly
+  ``str`` is no member ``point``, and no code of a key is called.
 * The message of a refusal is one of four texts built when the module is
   imported, at most 100 characters long. It starts with the name of the
-  member and names the two values of decision 4; it shows nothing of the
-  value that was given, not even its type. Nothing may depend on its wording
-  beyond the name of the member at its start.
-* The member is looked up as Python looks up a key of a ``dict``. A key of
-  the request that is no ``str`` is not this module's.
+  member, and where a value was given it names the two values of decision 4.
+  It shows nothing of the value that was given, not even its type. Nothing
+  may depend on its wording beyond the name of the member at its start.
 
 What the module does not do: it is no tool and no step and is bound to none.
 It builds no identity and checks none of ``run_id``, ``execution`` and the
@@ -98,7 +99,7 @@ def check(request):
        module's own choice (see the module docstring).
 
     No member but ``point`` is looked at. The request is not modified, no
-    code of the value is called, and no file is read or written.
+    code of a key or of a value is called, and no file is read or written.
     """
     _step(request)
 
@@ -124,9 +125,11 @@ def step_of(request):
 def _step(request):
     if type(request) is not dict:
         _refuse(_NO_OBJECT)
-    if MEMBER not in request:
+    for key, value in request.items():
+        if type(key) is str and key == MEMBER:
+            break
+    else:
         _refuse(_MISSING)
-    value = request[MEMBER]
     if type(value) is not str:
         _refuse(_NO_STRING)
     if value not in _STEP_OF:

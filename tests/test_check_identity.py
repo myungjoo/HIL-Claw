@@ -86,6 +86,25 @@ class HostileText(str):
         raise Called("__repr__")
 
 
+class HostileKey:
+    def __eq__(self, other):
+        raise Called("__eq__")
+
+    def __hash__(self):
+        return hash("point")
+
+    def __repr__(self):
+        raise Called("__repr__")
+
+
+class HostileTextKey(str):
+    def __eq__(self, other):
+        raise Called("__eq__")
+
+    def __hash__(self):
+        return hash("point")
+
+
 class Mapping(dict):
     pass
 
@@ -235,6 +254,18 @@ def test_a_subclass_of_str_is_another_value():
 def test_no_code_of_a_hostile_value_is_called(hostile):
     refused_alike({"point": hostile})
     refused_alike(FRAME | {"point": hostile})
+
+
+@pytest.mark.parametrize("key", [HostileKey, lambda: HostileTextKey("point")])
+def test_no_code_of_a_hostile_key_is_called(key):
+    refused_alike({key(): "sim"})
+    refused_alike({"run_id": "r1", key(): "board", "execution": 1})
+
+
+def test_a_key_that_is_a_subclass_of_str_is_no_member():
+    request = {Text("point"): "sim"}
+    assert "point" in request
+    refused_alike(request)
 
 
 @pytest.mark.parametrize("request_", NO_OBJECT, ids=repr)
