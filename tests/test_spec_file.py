@@ -29,7 +29,6 @@ MARK = "@@synthetic-mark@@"
 TOO_LONG_TEXT = "1" + "0" * 5000
 NOT_ONE_TEXT = "content: cannot be read as one JSON text"
 FREE_PLACES = {
-    "task.objective": ("task", "objective"),
     "a member of a profile": ("feedback", "attempts", 0, "profile", "synthetic"),
     "a value of ext": ("ext", "synthetic_ext"),
 }
@@ -80,7 +79,7 @@ def minimal(hw=None, op=None, shape=(3, 5)):
         "shape": list(shape),
     }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "id": {
             "run_id": "synthetic-run-1",
             "round": 1,
@@ -97,7 +96,10 @@ def minimal(hw=None, op=None, shape=(3, 5)):
                 "prototype": "synthetic prototype text",
                 "operands": [operand],
             },
-            "objective": None,
+            "objective": {
+                "objectives": [{"type": "latency_minimisation"}],
+                "constraints": [],
+            },
         },
         "guidance": {"techniques": []},
         "feedback": {"attempts": []},
@@ -116,7 +118,6 @@ def full():
     made = minimal(hw, op)
     made["id"].update(round=4, candidate=2, candidates=3, relation="same_technique")
     made["id"]["variant"] = "synthetic variant: the second of three"
-    made["task"]["objective"] = {"synthetic_target": 1.5}
     made["task"]["build"] = {
         "synthetic_flag": "-synthetic",
         "synthetic_threads": 4,
@@ -142,6 +143,13 @@ def repair():
     made["id"]["attempt"] = 2
     failure = {"attempt": 1, "stage": "compile", "report": "synthetic report"}
     made["repair"] = {"failures": [failure]}
+    return made
+
+
+def version_one():
+    made = full()
+    made["schema_version"] = 1
+    made["task"]["objective"] = {"synthetic_target": 1.5}
     return made
 
 
@@ -172,7 +180,8 @@ def invalid(place, content):
 def other_version(content, version):
     with pytest.raises(UnsupportedVersionError) as caught:
         parse(content)
-    assert str(caught.value) == f"schema_version: is {version}, not 1"
+    assert str(caught.value) == f"schema_version: is {version}, not 2"
+    assert not isinstance(caught.value, ValueError)
 
 
 def with_zeros():
@@ -339,7 +348,7 @@ def test_an_integer_place_outside_the_range_is_refused(literal, place):
 
 @pytest.mark.parametrize("literal", FREE_LITERALS)
 @pytest.mark.parametrize("place", FREE_PLACES)
-def test_any_json_value_is_accepted_below_the_three_free_places(place, literal):
+def test_any_json_value_is_accepted_below_the_two_free_places(place, literal):
     document = changed(full(), ("feedback", "attempts", 0, "profile"), {})
     content = spelt(document, FREE_PLACES[place], literal.encode())
     result = parse(content)
@@ -357,6 +366,45 @@ def test_a_profile_and_an_ext_value_may_nest_minus_zero_deeply():
     path = ("feedback", "attempts", 1, "profile")
     content = spelt(document, path, b'{"a": -0, "b": {"c": [-0]}}')
     assert parse(content)["feedback"]["attempts"][1]["profile"]["a"] == 0
+
+
+def test_the_free_places_are_two_and_the_objective_is_none_of_them():
+    assert len(FREE_PLACES) == 2
+    assert not any("objective" in path for path in FREE_PLACES.values())
+
+
+OBJECTIVE_PATHS = {
+    "task.objective": ("task", "objective"),
+    "task.objective.objectives": ("task", "objective", "objectives"),
+    "task.objective.objectives[0]": ("task", "objective", "objectives", 0),
+    "task.objective.objectives[0].type": ("task", "objective", "objectives", 0, "type"),
+    "task.objective.constraints": ("task", "objective", "constraints"),
+}
+OBJECTIVE_LITERALS = [
+    "-0",
+    "0",
+    "1.5",
+    "1e999",
+    "[-0]",
+    "[1.5, 1e999]",
+    '{"a": {"b": [-0, 1E+2, -0.0]}, "c": null}',
+    '[{"type": "memory_ceiling", "bound": -0}]',
+    '[{"type": "memory_ceiling", "bound": 5.0}]',
+    '[{"type": "memory_ceiling", "bound": 123456789}]',
+    '{"objectives": [{"type": "latency_minimisation", "weight": -0}], "constraints": []}',
+    '{"objectives": [{"type": "latency_minimisation"}], "constraints": [], "x": 1.5}',
+]
+
+
+@pytest.mark.parametrize("literal", OBJECTIVE_LITERALS)
+@pytest.mark.parametrize("place", OBJECTIVE_PATHS)
+def test_a_number_inside_the_objective_is_invalid_by_the_validator(place, literal):
+    content = spelt(full(), OBJECTIVE_PATHS[place], literal.encode())
+    with pytest.raises(spec.InvalidSpecError) as expected:
+        spec.validate(json.loads(content))
+    message = invalid("task.objective", content)
+    assert message == str(expected.value)
+    assert "is written as -0" not in message
 
 
 @pytest.mark.parametrize("place", FREE_PLACES)
@@ -467,7 +515,7 @@ def test_the_tokens_that_are_no_json_are_refused_everywhere(token):
         invalid(NOT_ONE_TEXT, spelt(document, path, literal))
         invalid(NOT_ONE_TEXT, spelt(document, path, b'[{"a": ' + literal + b"}]"))
     invalid(NOT_ONE_TEXT, spelt(document, ("id", "round"), literal))
-    invalid(NOT_ONE_TEXT, b'{"schema_version": 2, "x": ' + literal + b"}")
+    invalid(NOT_ONE_TEXT, b'{"schema_version": 1, "x": ' + literal + b"}")
 
 
 @pytest.mark.parametrize(
@@ -521,7 +569,10 @@ TWICE = {
         '"failure":', '"techniques": [], "failure":'
     ),
     "task.objective": lambda text: text.replace(
-        '"synthetic_target":', '"synthetic_target": 1.5, "synthetic_target":'
+        '"constraints":', '"constraints": [], "constraints":'
+    ),
+    "an objective entry": lambda text: text.replace(
+        '"type":', '"type": "latency_minimisation", "type":'
     ),
     "a profile": lambda text: text.replace(
         '"synthetic": [', '"synthetic": [1, 2.5, null], "synthetic": ['
@@ -581,10 +632,21 @@ def test_a_document_the_validator_refuses_is_invalid_with_its_message(
     assert not isinstance(caught.value, spec.InvalidSpecError)
 
 
-@pytest.mark.parametrize("version", [2, 0, 3, MAX])
+@pytest.mark.parametrize("version", [1, 0, 3, MAX])
 def test_another_version_is_set_apart_from_an_invalid_content(version):
     other_version(raw(changed(minimal(), ("schema_version",), version)), version)
     other_version(json.dumps({"schema_version": version}).encode(), version)
+
+
+def test_a_version_one_content_is_set_apart_and_not_read():
+    document = version_one()
+    as_version_two = raw(changed(document, ("schema_version",), 2))
+    invalid("task.objective: unknown member", as_version_two)
+    other_version(raw(document), 1)
+    other_version(written(document), 1)
+    other_version(b'{"schema_version": 1}', 1)
+    with pytest.raises(spec.InvalidSpecError, match="^schema_version: must be the"):
+        spec.validate(document)
 
 
 @pytest.mark.parametrize(
@@ -598,21 +660,22 @@ def test_another_version_is_set_apart_from_an_invalid_content(version):
     ],
 )
 def test_another_version_is_reported_whatever_else_the_content_holds(rest):
-    other_version(f'{{{rest}, "schema_version": 2}}'.encode(), 2)
-    other_version(f'{{"schema_version": 2, {rest}}}'.encode(), 2)
+    other_version(f'{{{rest}, "schema_version": 1}}'.encode(), 1)
+    other_version(f'{{"schema_version": 1, {rest}}}'.encode(), 1)
+    other_version(f'{{"schema_version": 3, {rest}}}'.encode(), 3)
 
 
 @pytest.mark.parametrize(
     "content",
     [
-        b'\xef\xbb\xbf{"schema_version": 2}',
-        b'{"schema_version": 2, "schema_version": 2}',
-        b'{"schema_version": 2, "x": {"a": 1, "a": 2}}',
-        b'{"schema_version": 2, "x": NaN}',
-        b'{"schema_version": 2} {}',
-        b'{"schema_version": 2, "x": "\xff"}',
-        b'[{"schema_version": 2}]',
-        b'{"schema_version": 2, "x": ' + TOO_LONG_TEXT.encode() + b"}",
+        b'\xef\xbb\xbf{"schema_version": 1}',
+        b'{"schema_version": 1, "schema_version": 1}',
+        b'{"schema_version": 1, "x": {"a": 1, "a": 2}}',
+        b'{"schema_version": 1, "x": NaN}',
+        b'{"schema_version": 1} {}',
+        b'{"schema_version": 1, "x": "\xff"}',
+        b'[{"schema_version": 1}]',
+        b'{"schema_version": 1, "x": ' + TOO_LONG_TEXT.encode() + b"}",
     ],
 )
 def test_the_rules_for_the_whole_text_come_before_the_version(content):
@@ -639,7 +702,7 @@ def test_the_rules_for_the_whole_text_come_before_the_version(content):
 )
 def test_a_schema_version_that_is_no_integer_is_invalid(literal):
     content = spelt(minimal(), ("schema_version",), literal.encode())
-    invalid("schema_version: must be the integer 1, got", content)
+    invalid("schema_version: must be the integer 2, got", content)
     invalid("", f'{{"schema_version": {literal}}}'.encode())
 
 
@@ -668,7 +731,7 @@ def test_the_order_of_the_checks():
     invalid("content: must be a JSON object", b"[2]")
     refused = changed(with_zeros(), ("id", "candidate"), 2)
     other_version(
-        spelt(changed(refused, ("schema_version",), 2), ("id", "round"), b"-0"), 2
+        spelt(changed(refused, ("schema_version",), 1), ("id", "round"), b"-0"), 1
     )
     invalid("id.candidate: ", spelt(refused, ("id", "round"), b"-0"))
     invalid("id.round: ", spelt(with_zeros(), ("id", "round"), b"-0"))
@@ -793,7 +856,8 @@ def test_a_data_root_that_is_no_path_is_a_type_error(data_root):
             ("id",),
             {"run_id": "synthetic-run-1", "round": 1, "candidate": 1, "attempt": 1},
         ),
-        (("schema_version",), 2),
+        (("schema_version",), 1),
+        (("schema_version",), 3),
         (("schema_version",), True),
         (("task", "objective_typo"), None),
     ],
@@ -803,6 +867,14 @@ def test_a_document_that_is_no_valid_spec_yields_no_path(path, value):
     with pytest.raises(spec.InvalidSpecError) as caught:
         final_name("synthetic-root", document)
     assert not isinstance(caught.value, InvalidSpecFileError)
+
+
+def test_a_version_one_document_yields_no_path():
+    for document in (version_one(), changed(minimal(), ("schema_version",), 1)):
+        with pytest.raises(spec.InvalidSpecError) as caught:
+            final_name("synthetic-root", document)
+        assert str(caught.value).startswith("schema_version: must be the integer 2")
+        assert not isinstance(caught.value, InvalidSpecFileError)
 
 
 @pytest.mark.parametrize("document", [None, [], "text", 7, b"{}", {}, {"id": {}}])
@@ -845,7 +917,7 @@ def test_parse_and_final_name_open_no_file(monkeypatch, tmp_path):
     with pytest.raises(InvalidSpecFileError):
         parse(b"")
     with pytest.raises(UnsupportedVersionError):
-        parse(b'{"schema_version": 2}')
+        parse(b'{"schema_version": 1}')
     with pytest.raises(layout.InvalidPathValueError):
         final_name(tmp_path, changed(document, ("id", "run_id"), "No Path"))
 
@@ -927,7 +999,7 @@ def unusual():
     prototype = ("task", "contract", "prototype")
     document = changed(full(), prototype, "synthetic\r\nprototype")
     turned = dict(reversed(document.items()))
-    marked = changed(turned, ("task", "objective"), MARK)
+    marked = changed(turned, ("ext", "other"), MARK)
     body = json.dumps(marked, separators=(" ,", "\t: "))
     free = '[-0,  1.50, 1E+2 ,{"b" :null}]'
     return ("\n\t " + body.replace(f'"{MARK}"', free) + "\n\n").encode()
@@ -1002,9 +1074,23 @@ REFUSED = {
         written(changed(minimal(), ("schema_version",), 0)),
         UnsupportedVersionError,
     ),
-    "version 2": (
-        written(changed(minimal(), ("schema_version",), 2)),
+    "version 1": (
+        written(changed(minimal(), ("schema_version",), 1)),
         UnsupportedVersionError,
+    ),
+    "version 1, the whole document": (written(version_one()), UnsupportedVersionError),
+    "version 1, no other member": (b'{"schema_version": 1}\n', UnsupportedVersionError),
+    "version 3": (
+        written(changed(minimal(), ("schema_version",), 3)),
+        UnsupportedVersionError,
+    ),
+    "version 2**53 - 1": (
+        written(changed(minimal(), ("schema_version",), MAX)),
+        UnsupportedVersionError,
+    ),
+    "a number in the objective": (
+        written(changed(minimal(), ("task", "objective", "constraints"), [1.5])),
+        InvalidSpecFileError,
     ),
     "no path: upper case": (
         written(no_path("Synthetic")),
@@ -1577,7 +1663,7 @@ def test_the_order_of_the_checks_of_write(tmp_path):
     cases = [
         (absent, None, TypeError),
         (absent, MINIMAL[:20], InvalidSpecFileError),
-        (absent, raw(no_path(schema_version=2)), UnsupportedVersionError),
+        (absent, raw(no_path(schema_version=1)), UnsupportedVersionError),
         (absent, raw(no_path(**{"id.attempt": 0})) + b"\r", InvalidSpecFileError),
         (absent, raw(no_path()) + b"\r", layout.InvalidPathValueError),
         (None, MINIMAL[:-1], TypeError),

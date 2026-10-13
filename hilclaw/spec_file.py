@@ -1,4 +1,4 @@
-"""The spec of a coder call as a file: its text form, its final name and its write (ADR-0029).
+"""The spec of a coder call as a file: its text form, its final name and its write (ADR-0029, ADR-0051).
 
 ``ARCHITECTURE/decisions/ADR-0029-od8-spec-file.md`` fixes what the bytes of
 the file ``.../coder/candidates/<CC>/attempts/<AA>/spec.json`` are (decision 2),
@@ -7,31 +7,45 @@ by which steps the bytes come under that name (decisions 4 to 7). This module
 is the first two as far as one content shows them, as two pure functions, and
 the steps as a third function: :func:`parse` turns the bytes of a content into
 its document or refuses them, :func:`final_name` gives the one path the ``id``
-of a document formats to, and :func:`write` puts a valid content of version 1
+of a document formats to, and :func:`write` puts a valid content of version 2
 under that path if the name is free. The rule of decision 3 for a file at a
 path is ``final_name(data_root, parse(content)) == path`` for whoever holds
 both; no function here takes a path.
 
+``ARCHITECTURE/decisions/ADR-0051-od6-spec-file-version-2.md`` carries the
+rules of ADR-0029 over to a file of version 2 of the spec, and this module
+follows them as carried over: a decision named below without its record is
+one of ADR-0029, read with the changes of ADR-0051 (its decisions 1 to 3).
+The document is valid by ADR-0050 in the place of ADR-0002, the ``bound`` of
+a constraint entry joins the *integer* places, and a file of another version
+is one whose ``schema_version`` is an *integer* other than 2, while a write
+writes version 2 only.
+
 The rules of the record that :func:`parse` holds: the content is exactly one
 JSON text that is an object, in UTF-8 without a byte order mark, with no
 member name twice in any object; the document it parses to is valid by
-ADR-0002 (:func:`hilclaw.spec.validate`, with the limits of its docstring);
+ADR-0050 (:func:`hilclaw.spec.validate`, with the limits of its docstring);
 and a number at an *integer* place is written in decimal digits without sign,
 fraction or exponent. ``1.0`` and ``1e0`` are refused there by
 :func:`hilclaw.spec.validate`, which takes an integer as exactly an ``int``.
 ``-0`` parses to the ``int`` 0, so it is refused by its text. In a document
 :func:`hilclaw.spec.validate` accepts, every number stands at an *integer*
-place unless it is below one of the three places where ADR-0002 allows any
-JSON value or lists no members: ``task.objective``, the ``profile`` of an
-entry of ``feedback.attempts`` and the top-level ``ext``. The ``ext`` of an
-embedded record is none of the three: its values are strings or integers.
-Below those three places the record adds no rule for a number beyond the
+place unless it is below one of the two places where ADR-0002 allows any
+JSON value or lists no members: the ``profile`` of an entry of
+``feedback.attempts`` and the top-level ``ext`` (ADR-0051 decision 2). The
+``ext`` of an embedded record is neither of the two: its values are strings or
+integers. ``task.objective`` is neither of the two in version 2: its one
+member of a number type, the ``bound`` of a constraint entry, is an *integer*
+place that no valid document holds yet (ADR-0050 decision 5), and a number
+anywhere else inside it makes the document invalid.
+Below those two places the records add no rule for a number beyond the
 grammar of JSON, and neither does this module: a sign, a fraction, an
 exponent and an integer above 2**53 - 1 are accepted there and returned as
 parsed, and nothing here says that such a number is a value of its member.
-A content whose ``schema_version`` is an *integer* other than 1 is set apart
-from an invalid one (decision 2; what such a file is and how it is read is
-OD-11).
+A content whose ``schema_version`` is an *integer* other than 2 is set apart
+from an invalid one (ADR-0051 decision 3). A version-1 file is such a content:
+it is set apart and not read, no member of it is used, and what such a file
+is and how it is read is OD-11.
 
 The steps of the record that :func:`write` holds (decision 4): the whole
 content first, valid by decisions 2 and 3 as far as one content shows it and
@@ -55,7 +69,7 @@ Conventions of this module, which the record does not fix:
   part of validity). The document is returned as :func:`json.loads` gives it:
   a new ``dict`` at every call, with nothing added, defaulted, normalised or
   repaired.
-- Every broken rule of the text and of ADR-0002 raises
+- Every broken rule of the text and of ADR-0050 raises
   :class:`InvalidSpecFileError`, so one class says "invalid" for a content;
   what :func:`hilclaw.spec.validate` raises is wrapped with its message
   unchanged. Another version raises :class:`UnsupportedVersionError` of this
@@ -69,7 +83,7 @@ Conventions of this module, which the record does not fix:
   anywhere in the text, nesting too deep) raises :class:`InvalidSpecFileError`
   too, though it is a limit of this reader and no rule of the record; the
   limits stay as the interpreter has them. A number beyond the float range
-  below one of the three places is read as an infinity and is no error, as
+  below one of the two places is read as an infinity and is no error, as
   :mod:`hilclaw.run_state` has it.
 - :func:`final_name` validates its document itself and lets
   :class:`hilclaw.spec.InvalidSpecError` pass through: its argument is a
@@ -154,12 +168,12 @@ from pathlib import Path
 
 from hilclaw import keys, layout, spec
 
-_FREE = re.compile(r"ext|task\.objective|feedback\.attempts\[[0-9]+\]\.profile")
+_FREE = re.compile(r"ext|feedback\.attempts\[[0-9]+\]\.profile")
 _MINUS_ZERO = object()
 
 
 class InvalidSpecFileError(ValueError):
-    """A content breaks a rule of ADR-0029 decision 2 or cannot be read by this interpreter.
+    """A content breaks a rule of ADR-0029 decision 2, as ADR-0051 carries it over, or cannot be read by this interpreter.
 
     The message names the place. The second case is a limit of this reader
     and no rule of the record (module docstring).
@@ -167,7 +181,7 @@ class InvalidSpecFileError(ValueError):
 
 
 class UnsupportedVersionError(Exception):
-    """``schema_version`` is an integer other than 1: not damage, and nothing is interpreted."""
+    """``schema_version`` is an integer other than 2, 1 among them: not damage, and nothing is interpreted."""
 
 
 class WrittenFormError(ValueError):
@@ -187,7 +201,7 @@ class NameTakenError(Exception):
 
 
 def parse(content):
-    """Return the document of ``content``, the bytes of a spec file (ADR-0029 decision 2).
+    """Return the document of ``content``, the bytes of a version-2 spec file (ADR-0051 decision 1).
 
     The result is the ``dict`` :func:`json.loads` gives for the text. Any
     order of members, any white space of JSON, any line ends and a missing
@@ -203,8 +217,9 @@ def parse(content):
     record. Raises :class:`UnsupportedVersionError`, before any other member is
     looked at, when the text passes the rules for the whole text and its
     ``schema_version`` is an ``int`` from 0 to :data:`hilclaw.keys.MAX_INTEGER`
-    other than 1 and not written ``-0``. Nothing is returned then, and nothing
-    is repaired. The order of the checks is in the module docstring.
+    other than 2 and not written ``-0``: a version-1 content is among them.
+    Nothing is returned then, and nothing is repaired or converted. The order
+    of the checks is in the module docstring.
     """
     if type(content) is not bytes:
         raise TypeError(f"content must be bytes, got {type(content).__name__}")
@@ -226,7 +241,8 @@ def parse(content):
     other = type(version) is int and version != spec.SCHEMA_VERSION
     if other and 0 <= version <= keys.MAX_INTEGER:
         _unsigned("schema_version", spelling["schema_version"])
-        raise UnsupportedVersionError(f"schema_version: is {version}, not 1")
+        expected = spec.SCHEMA_VERSION
+        raise UnsupportedVersionError(f"schema_version: is {version}, not {expected}")
     try:
         spec.validate(document)
     except spec.InvalidSpecError as error:
@@ -247,7 +263,7 @@ def final_name(data_root, document):
     ``document`` is validated first, so no unchecked member yields a path:
     raises :class:`hilclaw.spec.InvalidSpecError` for a document
     :func:`hilclaw.spec.validate` refuses, a document of another
-    ``schema_version`` among them. Raises
+    ``schema_version`` among them, version 1 included. Raises
     :class:`hilclaw.layout.InvalidPathValueError` for a valid document whose
     ``id.run_id`` is no run directory name: it has no path.
     """
@@ -271,7 +287,8 @@ def write(data_root, content):
     Raises, before the file system is touched and in this order: what
     :func:`parse` raises for ``content`` (:class:`TypeError`,
     :class:`InvalidSpecFileError`, or :class:`UnsupportedVersionError` for
-    another version, which is not written); what :func:`final_name` raises
+    another version than 2, version 1 among them, which is not written); what
+    :func:`final_name` raises
     (:class:`hilclaw.layout.InvalidPathValueError` for a valid content whose
     ``id.run_id`` is no run directory name, :class:`TypeError` for a
     ``data_root`` that is no path); :class:`WrittenFormError` for a content
