@@ -44,8 +44,8 @@ exponent and an integer above 2**53 - 1 are accepted there and returned as
 parsed, and nothing here says that such a number is a value of its member.
 A content whose ``schema_version`` is an *integer* other than 2 is set apart
 from an invalid one (ADR-0051 decision 3). A version-1 file is such a content:
-it is set apart and not read, no member of it is used, and what such a file
-is and how it is read is OD-11.
+it is set apart and not read, no member of it but ``schema_version`` is
+looked at, and what such a file is and how it is read is OD-11.
 
 The steps of the record that :func:`write` holds (decision 4): the whole
 content first, valid by decisions 2 and 3 as far as one content shows it and
