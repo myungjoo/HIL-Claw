@@ -2,7 +2,7 @@
 id: T-0146
 title: Add one new pure module `hilclaw/check_seed.py` that renders, ahead of the tool function, the two parts of a call of `correctness.check` that lie around the start line and need no log - the draw of the seed, answered `seed_not_drawn` when the source yields none (ADR-0048), and the step from an admitted check, a drawn seed and an operation to a result or an ending - with its tests; bound to no tool, no existing file edited
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, OD-18, OD-16]
 dependsOn: [T-0075, T-0133, T-0141, T-0144, T-0145]
@@ -153,3 +153,49 @@ Recommended public names, and no other: `KIND_SEED_NOT_DRAWN`, `draw`, `check`.
 - (driver / owner) HQ-0007, HQ-0009, HQ-0010, HQ-0011, HQ-0012 as before; none is needed here.
 
 ## Result
+
+**DONE.** PR [#99](https://github.com/myungjoo/HIL-Claw/pull/99), squash commit `de85e9825a2f08a1fa5b032465516228a208db59` on `main` (branch head `bd0b62a`; remote and local branch deleted). Two new files, `hilclaw/check_seed.py` and `tests/test_check_seed.py`; no existing file and no existing assertion edited. This task ticks **no** PLAN checkbox: P1-1 stays open.
+
+### Review
+Four rounds with a fresh-context `dev-reviewer` each, results as PR comments; no `SECURITY` result, and no point was read as a design choice needing a record or the owner.
+- Round 1, Request changes: (minor) "It validates no seed ..." was said of the whole module and is false of `draw` - narrowed to `check`; (nit) the order was cited to ADR-0048 decision 3 alone - now decision 3 for the draw and ADR-0040 decision 7 (cited by decision 2) for the call of the operation; (nit) the PR body said `__cause__` and `__context__` "are `None`" - corrected (`__context__` is the error of the caller's handler when `draw` is called inside one).
+- Round 2, Approve with three nits, all taken: the message said "the seed of the check" where no check was made - now "of the call"; the module's callable remembered that the source raised, so an error before the source answered was told as a returned value - it now remembers that the source **returned**; the bullet on what the answer keeps stood under "module's own" although the result is decision 6 - reworded.
+- Round 3, Request changes: (minor) no test pinned which message stands for which case, so swapping the two passed - one test now pins each message to its case; (nit) "what it names is the seed of the call" narrowed to "a seed it names".
+- Round 4, Approve. One nit with no change asked: an `Exception` raised on entering the module's callable before the source is reached (in effect a `RecursionError`) is answered with the first-case message; the kind is right and ADR-0048 Limits covers it.
+
+### Language
+Python - the module joins the Python modules of the package and its caller to come is Python.
+
+### Interface as landed (the tool function and the builder of T-0126 are written against this)
+- Public names, and no other: `KIND_SEED_NOT_DRAWN`, `draw`, `check`.
+- `KIND_SEED_NOT_DRAWN == "seed_not_drawn"` (ADR-0048 decision 5); the tool's own, not in `tools.RESERVED_KINDS`.
+- `draw(source)` - one positional-or-keyword parameter, no default. For the place before the start line.
+  - a seed (exactly an `int`, 0 <= seed < 2**64): the same object is returned; the source was asked exactly once, with no argument, through `seed_source.draw`.
+  - the source raised an `Exception` (any class, a `ToolFailure` and a `SeedSourceError` included; a callable that needs an argument): exactly a `tools.ToolFailure` of kind `seed_not_drawn`, first-case message.
+  - the source returned what is no seed (not exactly an `int`, or out of range): exactly a `tools.ToolFailure` of kind `seed_not_drawn`, second-case message.
+  - a request to end (`BaseException` that is no `Exception`): not caught, the same object passes through.
+  - a `source` that is not callable (`None` included): the module's own `TypeError("source: must be callable")`, raised before anything is asked; never `seed_not_drawn`. This is the line ADR-0048 Limits leaves to the code, stated in the docstring as the module's own choice.
+  - How the two cases are told apart: `seed_source.draw` is handed a callable of the module that calls the source and remembers whether that call **returned**; on `SeedSourceError` the message is the second case if it returned and the first if not. Neither the wording of `SeedSourceError` nor its chaining is read.
+  - The two messages: constants built at import, each exactly a `str` of at most 200 characters, a common prefix ("the draw of the seed of the call yielded no seed: ") and then "the source of seeds raised an error" or "the source of seeds returned what is no seed". No type name, no value, no digit. Nothing may depend on the wording.
+  - What the answer holds: `args == (kind, message)`, `error_object()` those two; `__cause__` is `None`; `__context__` is `None` outside a handler of the caller; the frame of `draw` holds `source`, the callable, a `bool` and the message - not the error of the source, not the `SeedSourceError`, not a returned value. Nothing is written, printed or kept.
+- `check(operation, request, hw_profile, admitted, seed)` - five positional-or-keyword parameters, no default. For the step after the start line.
+  - `admitted` not exactly a `check_admission.Admitted` (a subclass, a plain tuple, a `dict`, a `CheckParameters`, `None`): `TypeError`, before the operation is called.
+  - builds `CheckParameters(seed, admitted.draws, admitted.m, admitted.k, admitted.n)` and returns what `check_ending.carry_out(operation, request, hw_profile, parameters, rtol=admitted.rtol, atol=admitted.atol)` returns, the same `dict` object; `carry_out` is called once. Everything it raises passes through as the same object (`EndedWithoutOutcome`, a `ToolFailure` not raised by the operation, `TypeError` for an operation that is not callable, what the judging raises, a request to end).
+  - **A seed that is no seed - observed, and the observation differs from the criterion's "pin ... that it is no result"**: `check` does not look at the seed. With returned `bytes` (a report) the judging raises `hilclaw.harness.verification_arrays.VerificationArgumentError` (seen for `-1`, `2**64`, `True`, `"7"`, `None`), after the operation was called once with that value. With a returned condition (`"time_limit"`, `"exit_status"`) **a broken result is returned**, the seed never being looked at, and with an answer of neither form the ending is `operation_answer_invalid` as for any seed. No check of the seed was added (the criterion forbids it); the docstring says so and the test pins equality with `carry_out` for each of the three. A caller that keeps the order hands `check` only what `draw` returned.
+  - An operation that raises a `ToolFailure` of kind `seed_not_drawn` is ended with `operation_failure_invalid` (ADR-0048 Walk-through, ninth row).
+- No function calls both; the order `admit`, `draw`, start line, `check` is the caller's.
+- Import set: `hilclaw.check_admission`, `hilclaw.check_ending`, `hilclaw.check_parameters`, `hilclaw.tools`, `hilclaw.harness.seed_source`. The module names no source of its own and no default source.
+
+### Choices taken
+All recommended choices were taken (names, signatures, a remembering callable, two import-time messages without a type name, bound 200, exact-type check of `admitted`, own `TypeError` for a source that is not callable), with one difference inside "how the two cases are told apart": the callable remembers that the source returned, not that it raised (review round 2).
+
+### Verification
+- CI on the final head `bd0b62a`, all six checks successful: https://github.com/myungjoo/HIL-Claw/actions/runs/38333602534 . Coverage gate: "lines: 3588/3604 executed = 99.55% (minimum 80%)" and "functions: 373/373 entered = 100.00% (minimum 80%)"; the gate's list of lines not executed names no line of the new module.
+- pytest on Windows (driver clone): 13635 passed and 305 skipped before (the T-0144 head count in this task file; not re-run on the base here); 13709 passed and 305 skipped on the first commit of the branch with the 74 new tests; later commits changed docstrings, six lines of `draw` and one test, and were re-run for the new test file locally (74 passed) and in full by CI. Linux CI (3.14) on the final head: 14014 passed. `ruff check` and `ruff format --check` clean.
+- `git diff origin/main --stat` listed only the two files (190 + 693 lines); non-test diff 190 lines in 1 file (cap 300 / 5). `git grep check_seed -- hilclaw` matches nothing; `gemm_contract` / `standin_profile` in the module: nothing; `seed_not_drawn` under `hilclaw/`: `hilclaw/check_seed.py:84` only; both files `i/lf`.
+- Issue #5: no comment after the ADR-0048 notice (issuecomment-6135998814) at start; no owner answer to HQ-0007, HQ-0009, HQ-0010, HQ-0011 or HQ-0012 seen. No open PR at start.
+- Existing assertions edited: none.
+
+### Follow-ups
+- (planner - code mode, after HQ-0012) The tool function of `correctness.check`: `before_start` calls `check_admission.admit` and then `check_seed.draw` with the source its registry binds; the step calls `check_seed.check` and turns `EndedWithoutOutcome` into the end of the step. It must hand `check` only a seed `draw` returned: `check` does not refuse a non-seed when the operation answers with a condition.
+- (planner) After this task the plannable pure code of `correctness.check` that needs no HQ answer is used up; PLAN P1-9 (runtime self-check, ADR first) is the next candidate.
