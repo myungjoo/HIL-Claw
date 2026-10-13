@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0151",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:e81a5541-2",
-    "acquiredAt": "2026-10-13T09:45:55Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -144,19 +140,27 @@
       "question": "ADR-0052 (the memory figure behind `memory_ceiling` on `cpu_standin`, T-0149, main 08ccb21) rests on facts about what an operating system reports for an ended process that only a run on a machine of C-7 can confirm; under D16 they are runtime acceptance items, closed by your check by hand or by the runtime's own self-check, not by a driver task. On each kind of machine of C-7 (Linux, macOS, Windows with WSL 1 and WSL 2): (1) the wait for an ended timing run returns a positive `ru_maxrss` in the unit the record states - KiB on Linux and WSL, bytes on macOS (if macOS reported kilobytes, a candidate over its ceiling would be called within); (2) for a kernel that allocates nothing, how far the figure lies above the size of the operands; (3) on Linux and WSL, the size of the floor that comes from the Python process that starts the run, and whether it differs between two starts; (4) whether the usage returned for a timing run takes in a descendant process the run did or did not wait for. Nothing of this was tried, and nothing was required of the development machine. No task is blocked on this notice.",
       "askedAt": "2026-10-13T06:33:22Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6139794125"
+    },
+    {
+      "id": "HQ-0015",
+      "taskId": "T-0151",
+      "reason": "ci-3-consecutive-failures",
+      "question": "GitHub Actions has not started any job of myungjoo/HIL-Claw since 2026-10-13T10:44Z: three runs in a row on PR #105 (heads 82678e9, acbfe44, 679d85d) failed with zero steps and the annotation \"The job was not started because recent account payments have failed or your spending limit needs to be increased\". The three earlier heads of the same PR were green on all six checks. PR #105 (T-0151, the guard refuses a start of the `claude` program) is approved by the reviewer at 679d85d (round 5) and stays a Draft with DONOTMERGE; only a green CI run is missing. Nothing was re-run or worked around. Could you restore Actions under Billing & plans (payment or spending limit)? Until then every code-mode task stops at the same point; document-mode tasks are not affected. On your answer the driver re-runs CI on 679d85d and merges if it is green.",
+      "askedAt": "2026-10-13T11:25:57Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 161,
+    "iterations": 162,
     "tasksDone": 149,
-    "tasksBlocked": 12,
-    "reviewRoundsTotal": 510
+    "tasksBlocked": 13,
+    "reviewRoundsTotal": 515
   },
   "lastIteration": {
-    "at": "2026-10-13T09:42:38Z",
-    "owner": "AKIHA:e81a5541-1",
-    "taskId": "T-0150",
-    "outcome": "DONE"
+    "at": "2026-10-13T11:25:57Z",
+    "owner": "AKIHA:e81a5541-2",
+    "taskId": "T-0151",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
