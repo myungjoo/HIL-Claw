@@ -44,6 +44,8 @@ Conventions of this module, which the two ADRs do not fix:
   possible the store fails. A record that took the name in between is treated
   as one found before the write; when the name is free again at that reading,
   the :class:`FileExistsError` of the link is raised and nothing is retried.
+  The steps on the file itself are carried out by
+  :func:`hilclaw.once_write.write_once`.
 - When writing fails, the temporary file and the directories the call created
   are removed where possible. A file of that name form which another write
   left is never read, listed, removed or given the final name, and makes no
@@ -67,13 +69,12 @@ no atomicity between the two record files or with a commit (ADR-0004 decision
 import contextlib
 import json
 import os
-import secrets
 import stat
 from collections.abc import Mapping
 from pathlib import Path
 from typing import NamedTuple
 
-from hilclaw import keys, layout
+from hilclaw import keys, layout, once_write
 
 _OP_RECORD = "op_signature.json"
 
@@ -257,34 +258,17 @@ def _store(root, path, derive, key, record):
     while not directory.is_dir():
         missing.append(directory)
         directory = directory.parent
-    token = f"{os.getpid()}-{secrets.token_hex(8)}"
-    temporary = path.with_name(f"{path.name}.{token}.tmp")
     made = []
-    created = False
-    linked = True
     try:
         for directory in reversed(missing):
             directory.mkdir()
             made.append(directory)
-        with open(temporary, "xb") as f:
-            created = True
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
-        try:
-            os.link(temporary, path)
-        except FileExistsError:
-            if _read(root, path, derive, key) is None:
-                raise
-            linked = False
+        taken = once_write.write_once(path, content)
+        if taken is not None and _read(root, path, derive, key) is None:
+            raise taken
     except BaseException:
-        if created:
-            with contextlib.suppress(OSError):
-                os.unlink(temporary)
         for directory in reversed(made):
             with contextlib.suppress(OSError):
                 directory.rmdir()
         raise
-    with contextlib.suppress(OSError):
-        os.unlink(temporary)
-    return Stored(key, linked)
+    return Stored(key, taken is None)

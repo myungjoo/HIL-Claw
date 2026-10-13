@@ -113,6 +113,8 @@ Conventions of this module, which the record does not fix:
   otherwise); it is never created. The directories a write creates stay when a
   later step fails.
 - ``<token>`` is the process id, a hyphen and 16 random hexadecimal characters.
+- The steps on the file itself, from the temporary file to its removal, are
+  carried out by :func:`hilclaw.once_write.write_once`.
 - A final name that the last step finds taken raises :class:`NameTakenError`,
   which is no :class:`OSError`. Every other step that fails raises its
   :class:`OSError` unchanged, as the other writers of the package do; a
@@ -159,14 +161,11 @@ what follows a taken name and what a second write for a tuple means are open
 """
 
 import codecs
-import contextlib
 import json
-import os
 import re
-import secrets
 from pathlib import Path
 
-from hilclaw import keys, layout, spec
+from hilclaw import keys, layout, once_write, spec
 
 _FREE = re.compile(r"ext|feedback\.attempts\[[0-9]+\]\.profile")
 _MINUS_ZERO = object()
@@ -317,28 +316,10 @@ def write(data_root, content):
         error = NotADirectoryError if root.exists() else FileNotFoundError
         raise error(f"data root is not an existing directory: {root}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    token = f"{os.getpid()}-{secrets.token_hex(8)}"
-    temporary = path.with_name(f"{path.name}.{token}.tmp")
-    created = False
-    try:
-        with open(temporary, "xb") as f:
-            created = True
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
-        try:
-            os.link(temporary, path)
-        except FileExistsError:
-            file = path.relative_to(root).as_posix()
-            reason = f"{file}: the name is taken; the content was not written"
-            raise NameTakenError(reason) from None
-    except BaseException:
-        if created:
-            with contextlib.suppress(OSError):
-                os.unlink(temporary)
-        raise
-    with contextlib.suppress(OSError):
-        os.unlink(temporary)
+    if once_write.write_once(path, content) is not None:
+        file = path.relative_to(root).as_posix()
+        reason = f"{file}: the name is taken; the content was not written"
+        raise NameTakenError(reason)
 
 
 def _object(pairs):

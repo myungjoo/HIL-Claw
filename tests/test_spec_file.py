@@ -927,14 +927,12 @@ def test_the_module_imports_only_what_it_needs():
             imported |= {f"{node.module}.{alias.name}" for alias in node.names}
     assert imported == {
         "codecs",
-        "contextlib",
         "json",
-        "os",
         "re",
-        "secrets",
         "pathlib.Path",
         "hilclaw.keys",
         "hilclaw.layout",
+        "hilclaw.once_write",
         "hilclaw.spec",
     }
 
