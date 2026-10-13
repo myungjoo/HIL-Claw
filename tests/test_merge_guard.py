@@ -622,6 +622,25 @@ FORBIDDEN = [
     ("python -m pytest -k rm -rf", RM_RF),
     ("git rm -rf --cached .", RM_RF),
     ("high repo delete", REPO_DELETE),
+    ("git -C $(git rev-parse --show-toplevel)/sub push --force", FORCE_PUSH),
+    ("git -C $(pwd)/repo push -f", FORCE_PUSH),
+    ("git -C x$(a)y$(b)z push -f", FORCE_PUSH),
+    ("git -C $(echo $(pwd))/repo push -f", FORCE_PUSH),
+    ('git -C $(pwd)"/my repo" push -f', FORCE_PUSH),
+    ("git -C $(pwd)\\\n  push -f", FORCE_PUSH),
+    ("git --git-dir=$(pwd)/.git push -f", FORCE_PUSH),
+    ("git -C (Get-Location) push -f", FORCE_PUSH),
+    ("git -C `pwd`/repo push -f", FORCE_PUSH),
+    ("git -C `pwd` push -f", FORCE_PUSH),
+    ("gh -R $(x)/repo repo delete", REPO_DELETE),
+    ("gh --repo (x) repo delete y", REPO_DELETE),
+    ("rm -r $(pwd)/x -f", RM_RF),
+    (r"Remove-Item C:\my` dir -Recurse -Force", RM_RF),
+    ("rm -r (x -f", RM_RF),
+    ("git -C x >$(mktemp) push -f", FORCE_PUSH),
+    ("git -C x >$(mktemp)/log push -f", FORCE_PUSH),
+    ("git -C x<(ls)y push -f", FORCE_PUSH),
+    ("rm -r x 2>`mktemp` -f", RM_RF),
 ]
 
 NOT_FORBIDDEN = [
@@ -687,6 +706,10 @@ NOT_FORBIDDEN = [
     "case $x in a) rm -r y ;; esac; ls -f",
     "echo `ls -r` && rm -f x",
     "rm -r x) -f",
+    "git -C $(pwd)/push status -f",
+    "git -C $(pwd) status; git push",
+    "gh --repo $(x)/delete repo view",
+    "rm -r $(pwd)/-f",
 ]
 
 KNOWN_MISSES = [
@@ -707,6 +730,8 @@ KNOWN_MISSES = [
     "git -c remote.origin.push=+refs/heads/main push",
     'iex "rm -rf x"',
     "rm $'-rf' x",
+    "rm -r $(case $y in a) echo x;; esac) -f",
+    "git push origin $(x)#y -f",
 ]
 
 UNPARSABLE_FORBIDDEN = [

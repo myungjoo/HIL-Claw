@@ -30,6 +30,8 @@ EXIT_REFUSE = 2
 TIMEOUT_SECONDS = 60
 
 _SEPARATORS = ";&|()`\n"
+_NOT_IN_A_WORD = _SEPARATORS + " \t\r<>#"
+_GROUP = "()"
 _LONG_VALUE_FLAGS = frozenset(
     {
         "--body",
@@ -138,11 +140,18 @@ def _simple_commands(command, openers=None):
                 i += 1
             redirected = True
         elif c in _SEPARATORS:
+            if openers is not None:
+                after = text[i : i + 1]
+                openers.append(
+                    (
+                        c,
+                        None if redirected else word is not None,
+                        after not in _NOT_IN_A_WORD and text[i : i + 2] != "\\\n",
+                    )
+                )
             end_word()
             redirected = False
             commands.append([])
-            if openers is not None:
-                openers.append(c)
         else:
             word = (word or "") + c
     if quote:
@@ -213,11 +222,12 @@ def forbidden_command(command):
 
     A command is looked for in every simple command of the line, at any word, so
     ``sudo rm -rf x`` and ``env X=1 git push -f`` are found, and so is an
-    unquoted mention such as ``echo rm -rf x``. The words after a ``$( )``, a
-    backtick substitution or a parenthesis belong to the command before it.
-    Text inside a quoted argument or a comment is never a forbidden command. A
-    line that cannot be tokenised is refused when it looks like one of the
-    three.
+    unquoted mention such as ``echo rm -rf x``. A ``$( )``, a backtick
+    substitution or a parenthesis counts as one word, or as a part of the word
+    it is glued to, of the command around it, and the words after it belong to
+    that command. Text inside a quoted argument or a comment is never a
+    forbidden command. A line that cannot be tokenised is refused when it looks
+    like one of the three.
 
     Not recognised: flags or commands that only exist at run time (a variable,
     the output of a substitution, a brace expansion, ``$'...'``, standard input
@@ -226,10 +236,13 @@ def forbidden_command(command):
     force push by configuration (``remote.<name>.push=+...``, ``--mirror``); the
     ``cmd`` forms ``rd /s /q`` and ``del /s``; deletions through ``gh api``; a
     command between two quotes that the tokeniser pairs wrongly (a
-    here-document body, a PowerShell backtick-escaped quote).
+    here-document body, a PowerShell backtick-escaped quote); flags after a
+    substitution that holds an unpaired ``)`` (a ``case`` pattern) or that is
+    directly followed by ``#``.
     """
+    openers = []
     try:
-        commands = _outer_commands(command)
+        commands = _simple_commands(command, openers)
     except ValueError as e:
         for name, patterns in _LOOKS_FORBIDDEN:
             if _holds_in_order(command, patterns):
@@ -237,7 +250,7 @@ def forbidden_command(command):
                     f"cannot parse a command that looks like the forbidden {name} ({e})"
                 )
         return None
-    for words in commands:
+    for words in _outer_commands(commands, openers):
         for i, word in enumerate(words):
             name = _forbidden_at(word, words[i + 1 :])
             if name:
@@ -245,21 +258,30 @@ def forbidden_command(command):
     return None
 
 
-def _outer_commands(command):
-    openers = []
-    commands = _simple_commands(command, openers)
+def _outer_commands(commands, openers):
     current, enclosing, done = commands[0], [], []
-    for opener, words in zip(openers, commands[1:], strict=True):
+    for (opener, glued, followed), words in zip(openers, commands[1:], strict=True):
         if enclosing and (opener == ")" or opener == "`" == enclosing[-1][0]):
             done.append(current)
-            current = enclosing.pop()[1] + words
+            _, current, redirection = enclosing.pop()
+            if followed and words:
+                if not redirection:
+                    current = [*current[:-1], current[-1] + words[0]]
+                words = words[1:]
+            current = current + words
         elif opener in "(`":
-            enclosing.append((opener, current))
+            if glued:
+                current = [*current[:-1], current[-1] + _GROUP]
+            elif glued is not None:
+                current = [*current, _GROUP]
+            enclosing.append((opener, current, glued is None))
             current = words
         else:
             done.append(current)
             current = words
-    return [*done, current, *(words for _, words in enclosing)]
+    for _, words, _ in reversed(enclosing):
+        current = words + current
+    return [*done, current]
 
 
 def _holds_in_order(text, patterns):
