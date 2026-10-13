@@ -7,7 +7,13 @@ from pathlib import Path
 import pytest
 
 from hilclaw import merge_guard
-from hilclaw.merge_guard import checks_problem, evaluate, main, merge_invocations
+from hilclaw.merge_guard import (
+    checks_problem,
+    evaluate,
+    forbidden_command,
+    main,
+    merge_invocations,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 URL = "https://github.com/owner/repo/pull/17"
@@ -482,3 +488,350 @@ def test_module_entry_point_refuses_a_broken_payload():
     assert result.returncode == 2
     assert result.stdout == b""
     assert result.stderr.startswith(b"merge guard: ")
+
+
+FORCE_PUSH, RM_RF, REPO_DELETE = "git push --force", "rm -rf", "gh repo delete"
+
+FORBIDDEN = [
+    ("git push --force", FORCE_PUSH),
+    ("git push --force origin main", FORCE_PUSH),
+    ("git push origin main --force", FORCE_PUSH),
+    ("git push --force-with-lease", FORCE_PUSH),
+    ("git push --force-with-lease=main:abc origin main", FORCE_PUSH),
+    ("git push --force-if-includes origin main", FORCE_PUSH),
+    ("git push --forc", FORCE_PUSH),
+    ("git push -f", FORCE_PUSH),
+    ("git push -fu origin x", FORCE_PUSH),
+    ("git push -uf origin x", FORCE_PUSH),
+    ("git push origin x -f", FORCE_PUSH),
+    ("git push -o ci.skip -f", FORCE_PUSH),
+    ('git push "--force"', FORCE_PUSH),
+    ("git -C ../other push -f", FORCE_PUSH),
+    ("git -c user.name=x push --force", FORCE_PUSH),
+    ("git --git-dir .git --work-tree . push -f", FORCE_PUSH),
+    ("git --no-pager push -f", FORCE_PUSH),
+    ("git -C push push -f", FORCE_PUSH),
+    ("git push origin +main", FORCE_PUSH),
+    ("git push origin +HEAD:main", FORCE_PUSH),
+    ("git push -- origin +main", FORCE_PUSH),
+    ("git push --no-force --force", FORCE_PUSH),
+    ("git push --force --no-force", FORCE_PUSH),
+    ("git.exe push -f", FORCE_PUSH),
+    ("GIT.EXE push -f", FORCE_PUSH),
+    ("git.cmd push -f", FORCE_PUSH),
+    ("/usr/bin/git push -f", FORCE_PUSH),
+    (r'"C:\Program Files\Git\cmd\git.exe" push --force', FORCE_PUSH),
+    (r'& "C:\Program Files\Git\cmd\git.exe" push --force', FORCE_PUSH),
+    (r"C:\tools\git.exe push -f", FORCE_PUSH),
+    ("cd x && git push -f", FORCE_PUSH),
+    ("git status; git push -f", FORCE_PUSH),
+    ("git fetch | git push -f", FORCE_PUSH),
+    ("git status\ngit push -f\necho done", FORCE_PUSH),
+    ("echo $(git push -f)", FORCE_PUSH),
+    ("echo `git push -f`", FORCE_PUSH),
+    ("env X=1 git push -f", FORCE_PUSH),
+    ("X=1 git push -f", FORCE_PUSH),
+    ("if true; then git push -f; fi", FORCE_PUSH),
+    ("{ git push -f; }", FORCE_PUSH),
+    ("git push \\\n  --force", FORCE_PUSH),
+    ("git push `\n  --force", FORCE_PUSH),
+    ("git pu\\\nsh -f", FORCE_PUSH),
+    ("git push -f 2>&1 | tee push.log", FORCE_PUSH),
+    ("git push -f >push.log", FORCE_PUSH),
+    ("# first the rebase\ngit push -f", FORCE_PUSH),
+    ("echo git push -f", FORCE_PUSH),
+    ("cat <<EOF\ngit push -f\nEOF", FORCE_PUSH),
+    ("rm -rf x", RM_RF),
+    ("rm -rf", RM_RF),
+    ("rm -rf /", RM_RF),
+    ("rm -fr x", RM_RF),
+    ("rm -Rf x", RM_RF),
+    ("rm -r -f x", RM_RF),
+    ("rm -f -r x", RM_RF),
+    ("rm -rvf x", RM_RF),
+    ("rm -rfP x", RM_RF),
+    ("rm --recursive --force x", RM_RF),
+    ("rm -r --force x", RM_RF),
+    ("rm --force -R x", RM_RF),
+    ("rm --rec --for x", RM_RF),
+    ("rm x -rf", RM_RF),
+    ("rm -r x -f", RM_RF),
+    ("rm -rf -- x", RM_RF),
+    ('rm "-rf" x', RM_RF),
+    ("sudo rm -rf x", RM_RF),
+    ("command rm -rf x", RM_RF),
+    ("\\rm -rf x", RM_RF),
+    ("find . -name x -exec rm -rf {} +", RM_RF),
+    ("ls | xargs rm -rf", RM_RF),
+    ("/bin/rm -rf x", RM_RF),
+    ("rm.exe -rf x", RM_RF),
+    ("RM -rf x", RM_RF),
+    (r"C:\tools\rm.exe -rf x", RM_RF),
+    ("Remove-Item -Recurse -Force x", RM_RF),
+    ("Remove-Item x -Recurse -Force", RM_RF),
+    ("remove-item -rec -fo x", RM_RF),
+    ("Remove-Item -Recurse:$true -Force x", RM_RF),
+    ("rm -r -fo x", RM_RF),
+    ("ri -Recurse -Force x", RM_RF),
+    ("rd -Recurse -Force x", RM_RF),
+    ("del -Recurse -Force x", RM_RF),
+    ("erase -Recurse -Force x", RM_RF),
+    ("rmdir -Recurse -Force x", RM_RF),
+    ("cd x && rm -rf y", RM_RF),
+    ("(rm -rf x)", RM_RF),
+    ("echo $(rm -rf x)", RM_RF),
+    ("env X=1 rm -rf x", RM_RF),
+    ("if true; then rm -rf x; fi", RM_RF),
+    ("rm -rf x \\\n  y", RM_RF),
+    ("rm \\\n  -rf x", RM_RF),
+    ("rm -rf x >rm.log 2>&1", RM_RF),
+    ("echo rm -rf x", RM_RF),
+    ("git rm -r -f x", RM_RF),
+    ("cat <<EOF\nrm -rf x\nEOF", RM_RF),
+    ("gh repo delete", REPO_DELETE),
+    ("gh repo delete owner/repo", REPO_DELETE),
+    ("gh repo delete owner/repo --yes", REPO_DELETE),
+    ("gh repo delete --yes", REPO_DELETE),
+    ("gh repo delete --yes owner/repo", REPO_DELETE),
+    ("gh -R owner/repo repo delete", REPO_DELETE),
+    ("gh.exe repo delete x", REPO_DELETE),
+    (r"C:\tools\gh.exe repo delete x", REPO_DELETE),
+    (r'"C:\Program Files\GitHub CLI\gh.exe" repo delete x', REPO_DELETE),
+    ("env GH_TOKEN=a gh repo delete x", REPO_DELETE),
+    ("echo $(gh repo delete x)", REPO_DELETE),
+    ("gh repo \\\n  delete x", REPO_DELETE),
+    ("gh repo view; gh repo delete x", REPO_DELETE),
+    ("if true; then gh repo delete x; fi", REPO_DELETE),
+    ("echo gh repo delete x", REPO_DELETE),
+]
+
+NOT_FORBIDDEN = [
+    "git push",
+    "git push origin HEAD:main",
+    "git push --delete origin claude/T-0107",
+    "git push -u origin claude/T-0107",
+    "git push --no-force",
+    "git push --no-force-with-lease origin main",
+    "git push --follow-tags",
+    "git push -ofast origin main",
+    "git push -o fast origin main",
+    "git push origin HEAD:refs/heads/f",
+    "git push -- origin -f",
+    "git fetch --force",
+    "git checkout -f",
+    "git checkout -f feature/rm",
+    "git clean -fd",
+    "git reset --hard origin/main",
+    "git stash push -f",
+    "git -C push status -f",
+    "git log --oneline -- push -f",
+    "legit push -f",
+    "rm file",
+    "rm -f file",
+    "rm -r dir",
+    "rm -i -r dir",
+    "rm --force file",
+    "rm --recursive dir",
+    "rm -r -- -f",
+    "rm -f a && rm -r b",
+    "rm -f a; ls -r",
+    "rmdir dir",
+    "rm -Force file",
+    "Remove-Item file -Force -ErrorAction SilentlyContinue",
+    "Remove-Item -Recurse dir",
+    "Remove-Item dir -Filter x.tmp -Confirm:$false",
+    "docker run --rm -f x",
+    "terraform -r -f",
+    "ls -rf",
+    "gh repo view",
+    "gh repo clone owner/repo",
+    "gh repo list",
+    "gh delete repo x",
+    "gh issue delete 5",
+    "gh pr view --repo delete",
+    'git commit -m "never use rm -rf or git push --force"',
+    'gh pr create --body "do not run gh repo delete here"',
+    "echo 'rm -rf x'",
+    'echo "git push -f"',
+    'gh issue comment 5 --body "one\nrm -rf /\ngit push -f\ngh repo delete x"',
+    r'git commit -m "say \"rm -rf x\" never"',
+    "git status # rm -rf x",
+    "# git push --force",
+    "git status # gh repo delete x",
+    "",
+]
+
+KNOWN_MISSES = [
+    'bash -c "rm -rf x"',
+    "eval 'git push -f'",
+    "rm $FLAGS x",
+    "rm -r{f,} x",
+    "git push $FLAGS origin main",
+    "git -c alias.p='push -f' p",
+    "git push --mirror",
+    r"C:\tools\git push -f",
+    r"C:\tools\rm -rf x",
+    "cmd /c rd /s /q x",
+    "del /s x",
+    "gh api -X DELETE repos/owner/repo",
+]
+
+UNPARSABLE_FORBIDDEN = [
+    ('git push --force "unterminated', FORCE_PUSH),
+    ("git push -uf 'unterminated", FORCE_PUSH),
+    ('git push origin +main "unterminated', FORCE_PUSH),
+    ("rm -rf 'unterminated", RM_RF),
+    ('Remove-Item -Recurse -Force "unterminated', RM_RF),
+    ('gh repo delete "unterminated', REPO_DELETE),
+    ("git log 17>log.txt; rm -rf x", RM_RF),
+]
+
+UNPARSABLE_NOT_FORBIDDEN = [
+    'git push origin "unterminated',
+    "rm 'unterminated",
+    'gh repo view "unterminated',
+    "git log 17>log.txt; git push",
+]
+
+
+@pytest.mark.parametrize("command, name", FORBIDDEN)
+def test_forbidden_command_names_the_command(command, name):
+    reason = forbidden_command(command)
+    assert reason == f"{name} is a forbidden command (PROCESS/DRIVER.md 1-5)"
+
+
+@pytest.mark.parametrize("command", NOT_FORBIDDEN + NOT_A_MERGE + KNOWN_MISSES)
+def test_forbidden_command_finds_none(command):
+    assert forbidden_command(command) is None
+
+
+@pytest.mark.parametrize("command, expected", MERGES)
+def test_forbidden_command_leaves_merges_alone(command, expected):
+    assert forbidden_command(command) is None
+
+
+@pytest.mark.parametrize("command, name", UNPARSABLE_FORBIDDEN)
+def test_forbidden_command_refuses_what_it_cannot_parse(command, name):
+    reason = forbidden_command(command)
+    assert reason.startswith(
+        f"cannot parse a command that looks like the forbidden {name} ("
+    )
+    assert "\n" not in reason
+
+
+@pytest.mark.parametrize("command", UNPARSABLE_NOT_FORBIDDEN)
+def test_forbidden_command_lets_other_unparsable_commands_proceed(command):
+    assert forbidden_command(command) is None
+
+
+@pytest.mark.parametrize("command, name", FORBIDDEN + UNPARSABLE_FORBIDDEN)
+def test_evaluate_refuses_a_forbidden_command_without_calling_gh(command, name):
+    gh = FakeGh(AssertionError("gh must not be called"))
+    assert name in evaluate(payload(command), run=gh)
+    assert gh.calls == []
+
+
+@pytest.mark.parametrize(
+    "command", NOT_FORBIDDEN + KNOWN_MISSES + UNPARSABLE_NOT_FORBIDDEN
+)
+def test_evaluate_lets_commands_that_are_not_forbidden_proceed(command):
+    gh = FakeGh(AssertionError("gh must not be called"))
+    assert evaluate(payload(command), run=gh) is None
+    assert gh.calls == []
+
+
+@pytest.mark.parametrize(
+    "command, name",
+    [
+        ("gh pr merge 17 --squash && git push --force", FORCE_PUSH),
+        ("rm -rf x; gh pr merge 17 --squash", RM_RF),
+        ("gh pr merge 17 --squash; gh repo delete x", REPO_DELETE),
+        ('gh pr merge 17 --body "unterminated; rm -rf x', RM_RF),
+    ],
+)
+def test_evaluate_refuses_a_forbidden_command_before_checking_a_merge(command, name):
+    gh = FakeGh(green())
+    assert name in evaluate(payload(command), run=gh)
+    assert gh.calls == []
+
+
+@pytest.mark.parametrize("tool_name", ["PowerShell", "Edit", None])
+def test_evaluate_refuses_a_forbidden_command_of_any_tool(tool_name):
+    request = {"tool_name": tool_name, "tool_input": {"command": "rm -rf x"}}
+    assert RM_RF in evaluate(request, run=FakeGh(AssertionError("no gh")))
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        {"tool_name": "Write", "tool_input": {"content": "rm -rf x"}},
+        {"tool_name": "Bash", "tool_input": {"command": ["rm", "-rf", "x"]}},
+        {"tool_name": "Bash", "tool_input": "git push --force"},
+        {"tool_name": "Bash", "command": "gh repo delete x"},
+    ],
+)
+def test_evaluate_reads_only_a_string_command(other):
+    assert evaluate(other, run=FakeGh(AssertionError("no gh"))) is None
+
+
+@pytest.mark.parametrize("command, name", FORBIDDEN + UNPARSABLE_FORBIDDEN)
+def test_main_refuses_a_forbidden_command(monkeypatch, capsys, command, name):
+    status, out, err, gh = run_main(monkeypatch, capsys, json.dumps(payload(command)))
+    assert (status, out) == (2, "")
+    assert err.startswith("merge guard: ")
+    assert name in err
+    assert err.count("\n") == 1
+    assert gh.calls == []
+
+
+@pytest.mark.parametrize("command", NOT_FORBIDDEN + KNOWN_MISSES)
+def test_main_lets_commands_that_are_not_forbidden_proceed(
+    monkeypatch, capsys, command
+):
+    status, out, err, gh = run_main(monkeypatch, capsys, json.dumps(payload(command)))
+    assert (status, out, err) == (0, "", "")
+    assert gh.calls == []
+
+
+def test_main_refuses_a_forbidden_command_next_to_a_green_merge(monkeypatch, capsys):
+    text = json.dumps(payload("gh pr merge 17 --squash && git push -f"))
+    status, out, err, gh = run_main(monkeypatch, capsys, text, FakeGh(green()))
+    assert (status, out) == (2, "")
+    assert FORCE_PUSH in err
+    assert gh.calls == []
+
+
+def test_main_refuses_when_the_forbidden_command_check_fails(monkeypatch, capsys):
+    def broken(_command):
+        raise RuntimeError("bug in the check")
+
+    monkeypatch.setattr(merge_guard, "forbidden_command", broken)
+    status, out, err, gh = run_main(
+        monkeypatch, capsys, json.dumps(payload("git status"))
+    )
+    assert (status, out) == (2, "")
+    assert "the guard itself failed: RuntimeError: bug in the check" in err
+    assert gh.calls == []
+
+
+def test_main_help_names_the_forbidden_commands(capsys):
+    with pytest.raises(SystemExit) as helped:
+        main(["--help"])
+    assert helped.value.code == 0
+    shown = " ".join(capsys.readouterr().out.split())
+    assert all(name in shown for name in (FORCE_PUSH, RM_RF, REPO_DELETE))
+
+
+@pytest.mark.parametrize(
+    "command, name",
+    [
+        ("git push --force", FORCE_PUSH),
+        ("rm -rf x", RM_RF),
+        ("gh repo delete x", REPO_DELETE),
+    ],
+)
+def test_module_entry_point_refuses_a_forbidden_command(command, name):
+    result = run_module(json.dumps(payload(command, cwd=str(REPO_ROOT))))
+    assert result.returncode == 2
+    assert result.stdout == b""
+    assert result.stderr.startswith(b"merge guard: " + name.encode())
