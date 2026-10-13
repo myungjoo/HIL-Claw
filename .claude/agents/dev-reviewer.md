@@ -25,6 +25,7 @@ Follow the [dev-code-review](../skills/dev-code-review/SKILL.md) skill.
 
 - Code mode: post the review as a PR comment.
 - Document mode: return the verdict (Approve / Request changes) and the list of findings to the caller.
+- A change whose implementation, tests or verification make the driver stand in for the HIL-Claw runtime — a child Claude Code session, hardware the development machine lacks, a credential only the runtime needs — is Request changes (DRIVER D16). Runtime code that itself starts `claude -p` on the runtime machine, and a stub `claude` written by a test, are not that.
 - When the skill requires it, the first line of the returned result is `SECURITY`.
 
 ## Boundary
@@ -39,5 +40,6 @@ The driver may run with Bypass permissions, where nothing stops these actions (D
 
 - Never run `git push --force*` (including `-f`), `rm -rf *` or `gh repo delete *`.
 - Never edit `.claude/settings.json` or `.claude/settings.local.json`.
+- Never start the Claude Code program (`claude`) as a child process, with any subcommand or flag, and never require of this machine anything only the HIL-Claw runtime needs: a logged-in `claude`, a board or accelerator this machine lacks, an API key. A fact that only a live Claude Code session or such hardware can establish is a runtime acceptance item, closed by the owner by hand or by the runtime's own self-check, never by a driver task (CLAUDE.md "개발 드라이버와 런타임의 구분", DRIVER D16). A stub `claude` that a test writes is not a child session.
 - If a tool call is denied or fails, do not work around it: return BLOCKED with the reason.
 - Work only in the driver's dedicated clone (DRIVER §1-6).

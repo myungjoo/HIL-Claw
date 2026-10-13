@@ -1,6 +1,6 @@
 # 개발 PLAN
 
-[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D15는 모두 답변되어(2026-10-06) 본 PLAN에 ⚑ 항목은 없다. D15(드라이버 병렬 실행)의 전환은 PLAN 항목이 아니며 planner는 그것을 task로 만들지 않는다 — 루틴을 멈춘 통합자 세션이 P0-3 완료와 P0.5-4의 hook 등록 뒤에 수행한다(D15-3·D15-4, [proposals/D15-parallel-drivers.md](proposals/D15-parallel-drivers.md) §8).
+[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D16은 모두 답변되어(2026-10-13) 본 PLAN에 ⚑ 항목은 없다. D15(드라이버 병렬 실행)의 전환은 PLAN 항목이 아니며 planner는 그것을 task로 만들지 않는다 — 루틴을 멈춘 통합자 세션이 P0-3 완료와 P0.5-4의 hook 등록 뒤에 수행한다(D15-3·D15-4, [proposals/D15-parallel-drivers.md](proposals/D15-parallel-drivers.md) §8).
 
 현재 phase: `PROCESS/STATE.json`의 `phase`가 정본.
 
@@ -30,6 +30,7 @@
 - [x] P1-6 CAS blob 저장(`blobs/sha256/..`, `artifacts.json`, retention class 기록) · coversReq: C-3(A-2)
 - [x] P1-7 `hilclaw.config.json`(`data_repo.url`·`data_repo.local_path`, 환경변수 override — #5 A-1 세부 2) — 데이터 repo `HIL-Claw-data`는 2026-10-05 생성됨(D7; private, 빈 레이아웃) · coversReq: FR-13(A-1), #5 D7
 - [ ] P1-8 런타임 STATE/instance/events 스키마(#4 §4) — **OD-8 종결 필요(§9 ADR 경로)** · coversReq: FR-13, NFR-1, OD-8·OD-17
+- [ ] P1-9 런타임 자체 점검(인스턴스 bring-up이 런타임 머신에서 실행; P2-1 라운드 0이 호출): `claude auth status`로 CLI 로그인을 확인하고(미로그인이면 `claude auth login` 안내 후 중단) → 1회용 `claude -p`에 `--mcp-config`·`--strict-mcp-config`로 패키지 자신의 MCP front를 넘겨(좁은 권한 모드, bypass 금지) 핸드셰이크(`server/discover`·`initialize` 개정·`tools/list`)·도구 목록·호출 1회·도구 실패 1회가 모델에 닿는 모습을 관찰하며, front가 거부되면 bring-up 실패. 드라이버는 테스트가 만든 가짜 `claude` 스텁으로만 빌드·검증한다(실제 `claude` 금지 — D16). ADR에 기록: 런타임 사용자의 CLI 로그인이 인스턴스의 전제 조건임(C-7 ②·③의 파생; README·UsageCases에 명시), 점검이 쓰는 `--mcp-config` 경로와 run이 에이전트에 서버를 주는 방식(ADR-0010 148행, 미결)의 차이와 그로 인해 미관찰로 남는 것, 그리고 run 중 로그인 만료와 `-p`의 `--bare` 기본화 예고(bare 모드의 인증 동작은 ADR이 공식 문서에서 확인)는 판단만 하고 결정하지 않음. **기록의 저장 위치는 오너 미결** — 정해질 때까지 표준 출력과 인스턴스 로그에만 쓰고 데이터 plane 파일은 쓰지 않는다 · coversReq: FR-10, C-7, OD-18 ①, D16(오너 2026-10-13, HQ-0006 답변 b-2)
 
 ## P2 — 1층 런타임 오케스트레이션 (프롬프트·에이전트 정의)
 
