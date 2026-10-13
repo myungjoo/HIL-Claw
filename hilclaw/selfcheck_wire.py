@@ -34,9 +34,8 @@ whole copy unless a member says otherwise.
 - ``errors``: the errors condition (a) names, in the order of the copy, each
   as ``(code, method)``: every error answer except a -32601. ``method`` is one
   of :data:`SERVED_METHODS` when the error answered a request of it, else
-  ``None`` (a line the front could not read as a message). At most
-  :data:`MAX_LISTED` are kept, the first ones; ``errors_dropped`` says that
-  there were more.
+  ``None`` (a line the front could not read as a message). The first
+  :data:`MAX_LISTED` are kept; ``errors_dropped`` says that there were more.
 - ``unforeseen``: the distinct method names outside :data:`FORESEEN_METHODS`,
   bounded, in the order first seen, of every client line that is one JSON
   object with a string ``method`` - a notification as well as a request. At
