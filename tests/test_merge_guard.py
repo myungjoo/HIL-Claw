@@ -954,3 +954,481 @@ def test_module_entry_point_refuses_a_forbidden_command(command, name):
     assert result.returncode == 2
     assert result.stdout == b""
     assert result.stderr.startswith(b"merge guard: " + name.encode())
+
+
+CLAUDE = "claude"
+BRANCH_MERGE = "gh pr merge claude/T-0151-x --squash"
+
+CLAUDE_STARTS = [
+    "claude",
+    'claude -p "x"',
+    "claude --print x",
+    "claude auth status",
+    "claude --version",
+    "claude mcp list",
+    "claude -p x --mcp-config f --strict-mcp-config",
+    "claude.exe -p x",
+    "claude.cmd -p x",
+    "claude.bat -p x",
+    "claude.ps1 -p x",
+    "CLAUDE -p x",
+    "Claude.EXE --version",
+    "/usr/local/bin/claude -p x",
+    "~/.local/bin/claude -p x",
+    "./claude --version",
+    "C:/tools/claude.exe -p x",
+    r"C:\tools\claude.exe -p x",
+    r'"C:\Users\me\.local\bin\claude.exe" -p x',
+    r'& "C:\Program Files\Claude\claude.exe" -p x',
+    '"$HOME/.local/bin/claude" -p x',
+    "'claude' -p x",
+    "\\claude -p x",
+    "git status; claude -p x",
+    "cd x && claude -p x",
+    "false || claude -p x",
+    "echo x | claude -p",
+    "git status\nclaude -p x\necho done",
+    "git status\r\nclaude -p x",
+    "echo $(claude -p x)",
+    "out=$(claude -p x)",
+    "echo `claude -p x`",
+    "(claude -p x)",
+    "cat <(claude -p x)",
+    "claude \\\n  -p x",
+    "claude `\n  -p x",
+    "clau\\\nde -p x",
+    "X=1 claude -p x",
+    "X=1 Y=2 claude -p x",
+    "X=$(pwd) claude -p x",
+    "X=`pwd` claude -p x",
+    "$(npm bin)/claude -p x",
+    "$out = claude -p x",
+    "claude -p x >out.log 2>&1",
+    "claude -p x &",
+    "# first\nclaude -p x",
+    "if true; then claude -p x; fi",
+    "if claude -p x; then echo ok; fi",
+    "if false; then :; else claude -p x; fi",
+    "for f in a b; do claude -p $f; done",
+    "while claude -p x; do :; done",
+    "! claude -p x",
+    "{ claude -p x; }",
+    "f() { claude -p x; }; f",
+    "& {claude -p x}",
+    "ls | %{claude -p $_}",
+    "if ($x) {claude -p x}else{ls}",
+    "try{claude -p x}catch{}",
+    "case $x in a) claude -p x;; esac",
+    "env claude -p x",
+    "env X=1 claude -p x",
+    "env -i X=1 claude -p x",
+    "env -u X claude -p x",
+    "/usr/bin/env claude -p x",
+    "sudo claude -p x",
+    "sudo -u root claude -p x",
+    "sudo -Hu root claude -p x",
+    "sudo -E env X=1 nohup claude -p x",
+    "command claude -p x",
+    "command -p claude -p x",
+    "exec claude -p x",
+    "exec -a name claude -p x",
+    "nohup claude -p x &",
+    "time claude -p x",
+    "time -p claude -p x",
+    "timeout 60 claude -p x",
+    "timeout -k 5 2.5m claude -p x",
+    "nice -n 5 claude -p x",
+    "eval claude -p x",
+    "ls | xargs claude -p",
+    "ls | xargs -n 1 claude -p",
+    "ls | xargs -I {} claude -p {}",
+    "find . -name x -exec claude -p {} +",
+    r"find . -name x -execdir claude -p {} \;",
+    "npx claude -p x",
+    "npx -y @anthropic-ai/claude-code -p x",
+    "npx @anthropic-ai/claude-code@latest -p x",
+    "npx -p @anthropic-ai/claude-code claude -p x",
+    "wsl claude -p x",
+    "wsl -d Ubuntu -- claude -p x",
+    "wsl -e bash -lc claude",
+    "bash -c claude",
+    "cmd /c claude -p x",
+    "cmd.exe /c start claude",
+    "powershell -NoProfile -Command claude -p x",
+    "pwsh -c claude",
+    "Start-Process claude -ArgumentList '-p x'",
+    "Start-Process -FilePath claude.exe",
+    "start claude",
+    "saps claude",
+    "x=$(case $y in a) claude -p x;; esac)",
+    "ls | xargs -I{} claude -p {}",
+    "sudo -uroot claude -p x",
+    "sudo -g wheel -uroot claude -p x",
+    "timeout -k5 10 claude -p x",
+    "bash -eo pipefail -c claude",
+    "npx.cmd claude -p x",
+    "winpty claude -p x",
+    "$out=claude -p x",
+    "Start-Process -FilePath C:/tools/claude.exe",
+    "try{claude}catch{}",
+    "if($x){claude}else{}",
+    "%{claude}{}",
+    "claude{}",
+    "sudo claude{} -p x",
+    "$out= claude -p x",
+    "$out = 'claude' -p x; claude -p y",
+    "Set-Location C:\\x\\\nclaude -p x",
+    "X={} claude -p x",
+    "X=a{} Y={a,b} claude -p x",
+    "X=$Y{} claude -p x",
+    "env X={} claude -p x",
+    "sudo -u a{} claude -p x",
+    "${HOME}/.local/bin/claude -p x",
+    "claude{} -p x",
+    "if ($x) { ls; claude}",
+    "{ xargs -I{} claude -p {}; }",
+    "if ($x) { env X={} claude -p x }",
+    "cmd /c claude{}",
+]
+
+CLAUDE_FALSE_REFUSALS = [
+    "/tmp/x/claude --version",
+    "cat <<EOF\nclaude -p x\nEOF",
+    "echo a{claude}",
+    "myclaude.exe -p x",
+    "sh claude",
+    "cmd /c echo claude",
+    "powershell -Command Get-Command claude",
+    "Start-Process notepad -ArgumentList claude",
+    "cat <<EOF\nsee (claude) and `claude` here\nEOF",
+    'cat <<EOF\ncall f("claude") now\nEOF',
+    "cat <<EOF\nClaude Code is the program\nEOF",
+    "cmd /c dir claude",
+    "powershell -Command Test-Path C:/tools/claude",
+    'echo "-exec" claude',
+    "sudo -l claude",
+    "grep -rn \\\nclaude .",
+    '"claude" | Set-Content x',
+    'ForEach-Object { "claude" }',
+]
+
+NOT_A_CLAUDE_START = [
+    "git checkout -b claude/T-0151-x",
+    "git switch claude/T-0151-x",
+    "git push -u origin claude/T-0151-x",
+    "git push origin --delete claude/T-0151-x",
+    "git branch -d claude/T-0151-x",
+    "gh pr list --head claude/T-0151-x",
+    "git ls-remote origin 'claude/T-*'",
+    "ls .claude/agents",
+    "cat .claude/skills/dev-item-address/SKILL.md",
+    "cat CLAUDE.md",
+    "git add CLAUDE.md",
+    "git diff origin/main -- .claude",
+    "ls ~/.claude",
+    "python tools/claude_stub.py",
+    "pip show claude-agent-sdk",
+    "cat claude.md",
+    "ls /tmp/claude/x/scratchpad",
+    "python -m pytest",
+    "python -m pytest tests/test_merge_guard.py -k claude",
+    'git commit -m "never start claude -p"',
+    'gh pr create --body "the guard refuses claude auth status too"',
+    "echo 'claude -p x'",
+    'echo "claude"',
+    "git status # claude -p",
+    "# claude -p x",
+    'gh issue comment 5 --body "one\nclaude -p x\ntwo"',
+    r'git commit -m "say \"claude -p x\" never"',
+    "grep -rn claude .",
+    "git log --author claude",
+    "which claude",
+    "where claude",
+    "where.exe claude",
+    "command -v claude",
+    "command -V claude",
+    "command -pv claude",
+    "type claude",
+    "Get-Command claude",
+    "echo claude",
+    "gh pr list --search claude",
+    "git ls-files | xargs grep -l claude",
+    "find . -name x -exec grep -l claude {} +",
+    "sudo grep claude x",
+    "env X=1 grep claude x",
+    "time grep -rn claude .",
+    "timeout 60 grep claude x",
+    "bash run.sh claude",
+    "wsl which claude",
+    "echo $(date) claude",
+    "echo `date` claude",
+    "git log --author=$(git config user.name) claude",
+    "git diff HEAD@{1} claude",
+    "for b in claude codex; do echo $b; done",
+    "test $x = claude",
+    "[ $name = claude ]",
+    "npm install -g @anthropic-ai/claude-code",
+    "npm view @anthropic-ai/claude-code version",
+    "npx prettier claude.md",
+    "claude/T-0151-x",
+    "claude-code --version",
+    "claudette -p x",
+    "notclaude -p x",
+    ".claude/hooks/check.sh",
+    "ls /tmp/claude",
+    "cd ~/.claude && ls",
+    "echo ${claude}",
+    "echo {claude,codex}",
+    "X=claude",
+    "export CLAUDE=claude",
+    "git -C claude status",
+    "Start-Process notepad claude.md",
+    "cmd /c dir .claude",
+    "start .",
+    'git commit -m "fix {claude} placeholder"',
+    "echo '{claude}'",
+    "jq -n '{claude}'",
+    "sed 's/{claude}/x/' f",
+    "ls | xargs -I '{}' echo claude",
+    'powershell -Command "Get-Command claude.exe"',
+    'powershell -Command "Test-Path C:/tools/claude"',
+    "git commit -m \"$(cat <<'EOF'\nclaude is refused (claude)\nEOF\n)\"",
+    "cat <<EOF\nCo-Authored-By: Claude\nEOF",
+    "sudo -u claude ls",
+    "sudo -uclaude ls",
+    r'$tmp = "C:\Users\me\AppData\Local\Temp\claude"',
+    r'$dir = "$env:TEMP\claude"',
+    '$name = "claude"',
+    "$name = 'Claude'",
+    '$name="claude"',
+    '$name= "claude"',
+    '$name = "claude" + $x',
+    'find . -name "{}"',
+    "X={} grep claude x",
+    "echo {} claude",
+]
+
+CLAUDE_KNOWN_MISSES = [
+    'bash -c "claude -p x"',
+    "sh -lc 'claude -p x'",
+    'cmd /c "claude -p x"',
+    'powershell -Command "claude -p x"',
+    "eval 'claude -p x'",
+    'iex "claude -p x"',
+    "$CLAUDE -p x",
+    "c=claude; $c -p x",
+    "alias c=claude",
+    "node /usr/lib/node_modules/@anthropic-ai/claude-code/cli.js -p x",
+    "npm exec @anthropic-ai/claude-code -- -p x",
+    "bunx @anthropic-ai/claude-code -p x",
+    "python -c \"import subprocess; subprocess.run(['claude', '-p', 'x'])\"",
+    "python tools/run_child.py",
+    r"C:\tools\claude -p x",
+    "sudo --chroot d claude -p x",
+    "doas claude -p x",
+    "echo claude | xargs -I{} {} -p x",
+    'out="$(claude -p x)"',
+    'echo "`claude -p x`"',
+    "echo $(case $y in a) claude -p x;; esac)",
+    "trap 'claude -p x' EXIT",
+    "cp /usr/local/bin/claude /tmp/cc && /tmp/cc -p x",
+    "case $x in (a) claude -p x;; esac",
+    "$(true) claude -p x",
+    "$EMPTY claude -p x",
+    r"C:\Windows\System32\cmd.exe /c claude -p x",
+    r'Start-Process "C:\Program Files\Claude\claude.exe"',
+    ". claude -p x",
+    "$x += claude -p x",
+    "$x =claude -p x",
+]
+
+UNPARSABLE_CLAUDE = [
+    'claude -p "unterminated',
+    "claude -p 'unterminated",
+    'claude.exe -p "unterminated',
+    '/usr/local/bin/claude -p "unterminated',
+    'git status; claude -p "unterminated',
+    'cd x && X=1 claude -p "unterminated',
+    'echo $(claude -p "unterminated)',
+    'git status\nclaude -p "unterminated',
+    'git status\r\nCLAUDE -p "unterminated',
+    "git log 17>log.txt; claude -p x",
+    'echo "a; claude -p x',
+    "cat <<EOF\nit's (Claude Code) here\nEOF",
+    r'"C:\Program Files\Claude\claude.exe" -p "unterminated',
+    '$out = claude -p "unterminated',
+    '$name = "claude"; echo "unterminated',
+]
+
+UNPARSABLE_NOT_CLAUDE = [
+    'git commit -m "never start claude -p',
+    "echo 'claude is the program",
+    'git checkout "claude/T-0151-x',
+    "git log 17>log.txt; git switch claude/T-0151-x",
+    "cat 'CLAUDE.md",
+    'grep -rn claude "unterminated',
+    'sudo claude -p "unterminated',
+    "cat <<EOF\nit's Co-Authored-By: Claude\nEOF",
+    'echo "notes/claude are here',
+]
+
+CLAUDE_REFUSED = CLAUDE_STARTS + CLAUDE_FALSE_REFUSALS
+CLAUDE_PROCEEDS = NOT_A_CLAUDE_START + CLAUDE_KNOWN_MISSES + UNPARSABLE_NOT_CLAUDE
+
+
+@pytest.mark.parametrize("command", CLAUDE_REFUSED)
+def test_forbidden_command_names_a_start_of_claude(command):
+    reason = forbidden_command(command)
+    assert reason == "claude is a forbidden command (PROCESS/DRIVER.md 1-5)"
+
+
+@pytest.mark.parametrize("command", [*CLAUDE_PROCEEDS, BRANCH_MERGE])
+def test_forbidden_command_finds_no_start_of_claude(command):
+    assert forbidden_command(command) is None
+
+
+@pytest.mark.parametrize("command", UNPARSABLE_CLAUDE)
+def test_forbidden_command_refuses_an_unparsable_start_of_claude(command):
+    reason = forbidden_command(command)
+    assert reason.startswith(
+        "cannot parse a command that looks like the forbidden claude ("
+    )
+    assert "\n" not in reason
+
+
+@pytest.mark.parametrize(
+    "command, name",
+    [
+        ("claude -p x; rm -rf y", RM_RF),
+        ("git push --force && claude -p x", FORCE_PUSH),
+        ("claude -p $(gh repo delete x)", REPO_DELETE),
+        ('claude -p "unterminated; rm -rf y', RM_RF),
+    ],
+)
+def test_forbidden_command_names_one_of_the_three_before_claude(command, name):
+    assert name in forbidden_command(command)
+    assert CLAUDE not in forbidden_command(command)
+
+
+@pytest.mark.parametrize("command", CLAUDE_REFUSED + UNPARSABLE_CLAUDE)
+def test_evaluate_refuses_a_start_of_claude_without_calling_gh(command):
+    gh = FakeGh(AssertionError("gh must not be called"))
+    assert CLAUDE in evaluate(payload(command), run=gh)
+    assert gh.calls == []
+
+
+@pytest.mark.parametrize("command", CLAUDE_PROCEEDS)
+def test_evaluate_lets_commands_that_start_no_claude_proceed(command):
+    gh = FakeGh(AssertionError("gh must not be called"))
+    assert evaluate(payload(command), run=gh) is None
+    assert gh.calls == []
+
+
+def test_evaluate_treats_a_branch_named_claude_as_a_merge_selector():
+    gh = FakeGh(green())
+    assert evaluate(payload(BRANCH_MERGE), run=gh) is None
+    assert [argv for argv, _ in gh.calls] == [
+        ["gh", "pr", "checks", "claude/T-0151-x", *CHECKS]
+    ]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr merge 17 --squash && claude -p x",
+        "claude -p x; gh pr merge 17 --squash",
+        'gh pr merge 17 --body "unterminated; claude -p x',
+    ],
+)
+def test_evaluate_refuses_a_start_of_claude_before_checking_a_merge(command):
+    gh = FakeGh(green())
+    assert CLAUDE in evaluate(payload(command), run=gh)
+    assert gh.calls == []
+
+
+@pytest.mark.parametrize("tool_name", ["PowerShell", "Edit", None])
+def test_evaluate_refuses_a_start_of_claude_of_any_tool(tool_name):
+    request = {"tool_name": tool_name, "tool_input": {"command": "claude -p x"}}
+    assert CLAUDE in evaluate(request, run=FakeGh(AssertionError("no gh")))
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        {"tool_name": "Write", "tool_input": {"content": "claude -p x"}},
+        {"tool_name": "Bash", "tool_input": {"command": ["claude", "-p", "x"]}},
+        {"tool_name": "Bash", "tool_input": "claude -p x"},
+        {"tool_name": "Bash", "command": "claude -p x"},
+    ],
+)
+def test_evaluate_reads_a_start_of_claude_only_from_a_string_command(other):
+    assert evaluate(other, run=FakeGh(AssertionError("no gh"))) is None
+
+
+@pytest.mark.parametrize("command", CLAUDE_REFUSED + UNPARSABLE_CLAUDE)
+def test_main_refuses_a_start_of_claude(monkeypatch, capsys, command):
+    status, out, err, gh = run_main(monkeypatch, capsys, json.dumps(payload(command)))
+    assert (status, out) == (2, "")
+    assert err.startswith("merge guard: ")
+    assert CLAUDE in err
+    assert err.count("\n") == 1
+    assert gh.calls == []
+
+
+@pytest.mark.parametrize("command", CLAUDE_PROCEEDS)
+def test_main_lets_commands_that_start_no_claude_proceed(monkeypatch, capsys, command):
+    status, out, err, gh = run_main(monkeypatch, capsys, json.dumps(payload(command)))
+    assert (status, out, err) == (0, "", "")
+    assert gh.calls == []
+
+
+def test_main_lets_a_green_merge_of_a_branch_named_claude_proceed(monkeypatch, capsys):
+    text = json.dumps(payload(BRANCH_MERGE))
+    status, out, err, gh = run_main(monkeypatch, capsys, text, FakeGh(green()))
+    assert (status, out, err) == (0, "", "")
+    assert len(gh.calls) == 1
+
+
+def test_main_refuses_a_start_of_claude_next_to_a_green_merge(monkeypatch, capsys):
+    text = json.dumps(payload("gh pr merge 17 --squash && claude -p x"))
+    status, out, err, gh = run_main(monkeypatch, capsys, text, FakeGh(green()))
+    assert (status, out) == (2, "")
+    assert CLAUDE in err
+    assert gh.calls == []
+
+
+@pytest.mark.parametrize("text", ['"claude -p x"', '["claude", "-p", "x"]'])
+def test_main_refuses_a_payload_with_claude_that_is_no_object(
+    monkeypatch, capsys, text
+):
+    status, out, err, gh = run_main(monkeypatch, capsys, text)
+    assert (status, out) == (2, "")
+    assert "not a JSON object" in err
+    assert gh.calls == []
+
+
+def test_main_refuses_when_the_check_for_claude_fails(monkeypatch, capsys):
+    def broken(_words):
+        raise RuntimeError("bug in the claude check")
+
+    monkeypatch.setattr(merge_guard, "_starts_claude", broken)
+    status, out, err, gh = run_main(
+        monkeypatch, capsys, json.dumps(payload("git status"))
+    )
+    assert (status, out) == (2, "")
+    assert "the guard itself failed: RuntimeError: bug in the claude check" in err
+    assert gh.calls == []
+
+
+def test_main_help_names_the_start_of_claude(capsys):
+    with pytest.raises(SystemExit) as helped:
+        main(["--help"])
+    assert helped.value.code == 0
+    assert "a start of claude" in " ".join(capsys.readouterr().out.split())
+
+
+def test_module_entry_point_refuses_a_start_of_claude():
+    result = run_module(json.dumps(payload("claude -p x", cwd=str(REPO_ROOT))))
+    assert result.returncode == 2
+    assert result.stdout == b""
+    assert result.stderr.startswith(b"merge guard: claude is a forbidden command")
