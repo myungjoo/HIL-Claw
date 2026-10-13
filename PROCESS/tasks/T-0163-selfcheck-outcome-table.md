@@ -2,7 +2,7 @@
 id: T-0163
 title: Add `hilclaw/selfcheck_outcome.py`, the outcome table of the runtime self-check (ADR-0054 decision 6, "The outcomes - a closed list of seven") - one pure function from the login outcome of step one, the facts of the wire copy and the session-side and model-side evidence handed in as already-read values to exactly one of the seven outcomes, first row that holds; no session, no `claude`, no file, no token, no report
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, C-7, OD-18, D16, "#5 D12"]
 dependsOn: [T-0153, T-0160, T-0162]
@@ -132,3 +132,63 @@ The module docstring names ADR-0054 decision 6 as what it renders and says, brie
 - (driver / owner) HQ-0013, 0014, 0016, 0017, 0018 (`runtime-acceptance`).
 
 ## Result
+**DONE.** PR #112 (https://github.com/myungjoo/HIL-Claw/pull/112), squash-merged as `f455358`; branch deleted. Diff: `hilclaw/selfcheck_outcome.py` (281 lines) and `tests/test_selfcheck_outcome.py` (199 cases) only. No existing module edited, no private name imported, no dependency, no data-plane file. No PLAN checkbox ticked. **No process and no `claude` was started** by the executor, a reviewer or a test. No comment was posted on issue #5 after the answer to HQ-0015, and no PR was open at the start.
+
+**Language: Python** - takes values of `hilclaw.selfcheck_login` and `hilclaw.selfcheck_wire` in-process.
+
+**Public names of `hilclaw.selfcheck_outcome`**
+- `decide(login_outcome, session, wire, *, torn=False) -> Verdict`. `login_outcome`: `LoginStatus.outcome` (`None` = logged in, else one of the three constants of `selfcheck_login`; not the `LoginStatus`). `session`: a `SessionEvidence`. `wire`: a `WireFacts` or `None` (no readable copy). `torn`: `WireCopy.torn`.
+- `FRONT_REFUSED = "front_refused"`, `PASSED = "passed"`, `NO_CALL = "no_call"`, `SESSION_FAILED = "session_failed"`.
+- `OUTCOMES`: the seven in table order; the first three are the objects `selfcheck_login.NO_CLAUDE`, `NOT_LOGGED_IN`, `LOGIN_UNREADABLE`.
+- `CONNECTED = "connected"`; `REFUSED_STATUS_WORDS = ("failed",)`.
+- `SessionEvidence(NamedTuple)`, every member defaulted; `SessionEvidence()` is "no session was started".
+- `Verdict(NamedTuple)`: `outcome: str`, `refused_a: bool = False`, `refused_b: bool = False` (which condition of `front_refused` held; both can; false for every other outcome). Hashable, no mutable member.
+
+**Members of `SessionEvidence`** (the session slice builds this value)
+
+| Member | Type | Meaning |
+|---|---|---|
+| `started` | bool | a session was started |
+| `timed_out` | bool | the time limit ended it |
+| `exit_status` | int / None | its exit status, negative for a signal on POSIX; `None` when it has none. `True`, a float or a string is refused |
+| `init_read` | bool | its `system/init` event was read |
+| `server_status` | str / None | the status word that event gives the server `hilclaw` among its servers; `None` when it does not name it there. Any value is accepted and compared exactly; never returned |
+| `server_in_errors` | bool | that event names `hilclaw` among its server errors |
+| `any_config_error` | bool | that event holds a server error entry, for any server |
+| `token_tool_listed`, `fail_tool_listed` | bool | that event holds the name of that tool |
+| `result_read` | bool | the `result` message was read |
+| `token_in_reply`, `fail_token_in_reply` | bool | the text the model wrote holds that token |
+
+**The expression of each row** (`s` session, `w` wire facts with `None` read as `WireFacts()`; first that holds)
+- *ended* = `s.started and not s.timed_out and s.exit_status is not None and s.exit_status >= 0`
+- 1-3: `login_outcome is not None` -> that word.
+- `front_refused`: `s.started and w.reached` and ((a) `bool(w.errors)` or (b) `w.initialize_answered and not w.list_after_initialize and ended and s.init_read and not s.server_in_errors and (s.server_status is None or s.server_status in REFUSED_STATUS_WORDS)`).
+- *connected* = `ended and s.exit_status == 0 and s.init_read and s.server_status == CONNECTED and s.result_read and w.reached`; *model* = `s.token_tool_listed and s.fail_tool_listed and w.token_call_answered and w.fail_call_answered and s.token_in_reply and s.fail_token_in_reply`.
+- `passed`: `connected and model and not s.any_config_error and not s.server_in_errors and w.initialize_answered and w.list_answered and w.list_both_tools and not w.errors and not w.unplaceable and not torn`.
+- `no_call`: `connected and not model`.
+- `session_failed`: everything else.
+
+**Conventions chosen** (each in the module docstring and tested)
+- *Names*: as the planner suggested (`decide`, `SessionEvidence`, `Verdict`, `OUTCOMES`, `CONNECTED`, `REFUSED_STATUS_WORDS`). The evidence members are named after what they say, not after a member of the session's output.
+- *Ended by itself*: the planner's reading. On Windows a kill has no sign, so a session another process ended reads as ended by itself; the caller reports its own kill in `timed_out`. It matters only for condition (b), since `passed` and `no_call` need status 0.
+- *No wire copy*: `wire=None`, read as an empty `WireFacts()`; `torn` then says nothing. The module catches nothing.
+- *Torn or unplaceable*: never `passed`; the facts the copy establishes stand ((a) still `front_refused`, `no_call` can hold); a session lacking nothing else is `session_failed`. The other reading (such a copy establishes nothing) was not taken: the whole records before a cut are the entry's own, and an unplaceable line is never an answer or an error. Cost: an unplaceable line leaves the request before it unanswered, so a call that was made can read as missing (`no_call`).
+- *A refusing word and also among the errors*: the entry wins, not (b). *An entry for another server only* does not undo (b) (round 1 Low; the row and row 7 speak of an entry naming the server).
+- *"No `mcp_server_errors` entry" of `passed`*: none for any server. `no_call` does not ask it, so `hilclaw` connected plus an entry (even one naming `hilclaw`, a contradiction) plus something missing is `no_call`, the row applied as it stands.
+- *`passed` needs `result_read`* (the reply is the text of that message) and `w.reached` beside `initialize_answered` (to the safe side for hand-built facts). Neither widens the row.
+- *Contradicting arguments*: not cross-checked.
+- *Status word*: only a `str` (not a subclass) equal to `connected` / a word of the list counts; any other non-`None` value is a word outside both.
+- *The items of `w.errors`* are counted, not read.
+- *Refused, before any row is read* (so also when a word of step one is given: after a failed step one the caller must still pass a well-formed `SessionEvidence()` and `None`): `TypeError` "the login outcome must be None or a string"; `ValueError` "the login outcome must be None or a word of step one"; `TypeError` "the session evidence must be a SessionEvidence"; "the wire facts must be a WireFacts or None"; "the errors of the wire facts must be a tuple"; "a yes-or-no value must be True or False" (every boolean member of the evidence, the eight wire members the rows read, `torn`); "the exit status must be None or an integer". Non-booleans are refused rather than read as false because a falsy reading of `timed_out`, `unplaceable` or `torn` would help `passed`.
+
+**Review: 2 rounds**, fresh-context `dev-reviewer` each; no `SECURITY` result.
+- Round 1 (`de00bf2`): Approve. Low - the (b) corner with an entry for another server was decided and tested but not stated as a convention (docstring sentence added). Nits - `errors` items not read (stated), validation before row 1 (recorded above), `passed` does not ask `list_after_initialize` (as the record and T-0162 have it).
+- Round 2 (`76811a1`): Approve, nothing left to edit in the PR files; PR body completed with the two added conventions. Both reviewers reported comparing `decide` against a table re-written from the record over about 16.8 million inputs: no difference; `passed` for exactly the two inputs that differ in `list_after_initialize` only.
+
+**Gates.** Local: 17096 passed, 311 skipped; ruff check and format clean. CI run 38478581367 on `76811a1`: six jobs passed. Coverage: lines 99.62% (4281/4297), functions 100.00% (434/434); no line of `hilclaw/selfcheck_outcome.py` among the lines not executed.
+
+**Follow-ups**
+- (document mode, a question for ADR-0054, not decided here) Whether a -32602 answered to a call of an unknown tool name should be an error of condition (a); implemented as written (`front_refused`).
+- (same document task) Row 4's "an entry in `mcp_server_errors` ... not this outcome": whether an entry for another server undoes (b). The code reads it as an entry naming `hilclaw`; row 5's "no entry" is read as none at all. The record allows both readings of row 4.
+- (same) Whether a connected server with `hilclaw` named in `mcp_server_errors` and something of the model's part missing is `no_call` (as applied) or `session_failed` (row 7's example).
+- Next slices as listed above: the session against a stub `claude` (builds `SessionEvidence`, maps the reader's `WireCopyError`/`OSError` to `wire=None`, passes `WireCopy.torn`), then the report and the package command (ticks P1-9).
