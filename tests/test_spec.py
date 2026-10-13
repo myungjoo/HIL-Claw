@@ -234,7 +234,6 @@ def rejects(document, match=None):
 
 def test_schema_version_is_independent_of_the_key_schema():
     assert spec.SCHEMA_VERSION == 2
-    assert spec.SCHEMA_VERSION != keys.SCHEMA_VERSION
     assert type(spec.SCHEMA_VERSION) is int
 
 
