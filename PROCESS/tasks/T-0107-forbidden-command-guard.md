@@ -2,7 +2,7 @@
 id: T-0107
 title: Let the `PreToolUse` guard of `hilclaw/merge_guard.py` also refuse the three commands DRIVER §1-5 forbids under Bypass permissions (`git push --force*` / `-f`, `rm -rf`, `gh repo delete`) - as the repository owner answers the HQ of this task (whether the guard is wanted, where it lives, and whether it gets tests) - without registering the hook
 phase: P0.5
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: code
 coversReq: ["#5 D10", "#5 D12", "#5 D13", OD-18, "DRIVER §1-5"]
 dependsOn: [T-0007]

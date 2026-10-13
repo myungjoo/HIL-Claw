@@ -2,7 +2,7 @@
 id: T-0126
 title: Add a builder for the tool function of a journaled HW tool whose `step` follows from the checked request and which has a place between the selection of the backend and the start line (the code slice ADR-0040 Consequences cut), in `hilclaw/hw_tool.py` over `hilclaw/journaled_tool.py`, tested with test-only steps; no tool is defined or registered
 phase: P1
-status: BLOCKED
+status: TODO
 commitMode: code
 coversReq: [FR-10, FR-9, OD-18, OD-17]
 dependsOn: [T-0125]

@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
-  "nextTask": null,
-  "lock": null,
+  "currentTask": "T-0107",
+  "nextTask": "T-0123",
+  "lock": {
+    "owner": "AKIHA:cc35c6bd-1",
+    "acquiredAt": "2026-10-13T06:34:51Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -71,7 +75,9 @@
       "reason": "requirement-unclear",
       "question": "PLAN P0.5-4 leaves one part to the planner: a `PreToolUse` guard for the commands DRIVER §1-5 forbids under Bypass permissions (`git push --force*` / `-f`, `rm -rf`, `gh repo delete`), \"in the same hook\" as the merge guard of T-0007. T-0007 put it off with a question on your test rule that was never asked. (1) Do you want this guard written: (a) yes; (b) no - the discipline of DRIVER §1-5 and the deny list of `.claude/settings.json` on the CLI path are enough, and T-0107 is closed without a change? (2) If yes, where and with which tests - your rule (CLAUDE.md test rule 5, D12, and your user-level rule) allows tests for exactly two tools: (a) inside `hilclaw/merge_guard.py` - one hook command, one registration, the tokeniser that is already tested - and the new part counts as part of \"the `gh pr merge` guard hook\" (exception 2), so tests in `tests/test_merge_guard.py` are required; (b) inside `hilclaw/merge_guard.py`, with **no** test for the new part (the package total stays far above 80 %; test rule 3 is set aside for it by this answer); (c) something else (name the place and the tests)? (3) The merge guard has been on `main` since 2026-10-06 and is not registered in `.claude/settings.json`, which only you edit; PLAN P0.5-4 and the D15 migration wait on that. Is the registration still intended: (a) yes, you will register `python -m hilclaw.merge_guard` as a `PreToolUse` hook; (b) not for now? Not asked here: what exactly the guard matches (the executor's choice under review, listed in the task result), and any change of DRIVER.md or CLAUDE.md.",
       "askedAt": "2026-10-09T19:24:23Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6087750069"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6087750069",
+      "resolvedAt": "2026-10-13T06:34:51Z",
+      "decision": "(1)(a), (2)(a), (3)(a) — owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6139142908: (1) yes, the guard is written. (2) inside `hilclaw/merge_guard.py` — one hook command, one registration, the tokeniser that is already tested — and the new part counts as part of \"the `gh pr merge` guard hook\", so tests in `tests/test_merge_guard.py` are required. (3) yes, the owner will register `python -m hilclaw.merge_guard` as a `PreToolUse` hook, after T-0107 has landed. (4) D16 left one point to this answer: the guard also refuses starting the Claude Code program (`claude`) as a child process — as a separate task after T-0107, in the same module and under the same test rule as (2)(a). T-0107 runs as written, with the three commands only, and lists this point in its Follow-ups. Resume T-0107."
     },
     {
       "id": "HQ-0008",
@@ -109,7 +115,9 @@
       "reason": "requirement-unclear",
       "question": "T-0123 (one shared helper `hilclaw/once_write.py` for the once-only write that `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py` repeat; code mode, no change of behaviour; planned from the T-0094 follow-up) stopped before any change: the task allowed edits of existing tests for patch targets only, and `tests/test_spec_file.py::test_the_module_imports_only_what_it_needs` asserts the exact import set of `hilclaw/spec_file.py`, which the move must change (`hilclaw.once_write` joins it; `contextlib`, `os` and `secrets` leave it). The follow-up also said \"only after the objection windows of ADR-0025 (2026-10-15) and ADR-0029 (2026-10-16), or with a note of the risk\". Which do you want: (a) the task is run again now, with that one assertion named as a permitted edit (the import set of `spec_file` after the move) and the note of the risk in the commit body; (b) the same, but not before 2026-10-16; (c) the task is dropped - the three writers keep their own copies of the steps? Not asked here: the helper's name and signature and how a taken name is signalled (the executor's choice under review), and any change of a rule of ADR-0014, ADR-0025 or ADR-0029.",
       "askedAt": "2026-10-11T04:26:23Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6105421386"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6105421386",
+      "resolvedAt": "2026-10-13T06:34:51Z",
+      "decision": "(a) — owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6139309682: the task is run again now, with that one assertion named as a permitted edit (the import set of `spec_file` after the move) and the note of the risk in the commit body. Owner's note: if the move makes another existing assertion false, a minimal edit of that assertion is permitted too, listed in `## Result` with the reason; an existing test that fails for any other reason is not edited. Resume T-0123."
     },
     {
       "id": "HQ-0012",
@@ -117,7 +125,9 @@
       "reason": "requirement-unclear",
       "question": "T-0126 (a builder for the tool function of a journaled HW tool whose `step` follows from the checked request, the code slice ADR-0040 Consequences cut; code mode) stopped before any change: it must add one public function to `hilclaw/hw_tool.py` and a shared public part to `hilclaw/journaled_tool.py`, and the task forbade edits of existing tests, while `test_the_public_names_and_the_signature` in `tests/test_hw_tool.py` and in `tests/test_journaled_tool.py` assert the exact list of public names of these two modules (`[\"tool_function\"]` and `[\"tool_function\", \"checked_function\"]`), and `test_the_signature_of_checked_function` pins the parameters of `checked_function`. Which do you want: (a) the task is run again with those two name-list assertions named as the only permitted edits of existing tests (one name added to each expected list, nothing else); (b) the builder goes into a new module (for example `hilclaw/stepped_hw_tool.py`) with its own test file, the public surfaces of both existing modules stay as they are, and the shared check of the request is repeated there or reached some other way you name; (c) something else (name it)? Not asked here: the names and signatures of the new functions (the executor's choice under review) and any rule of ADR-0016, ADR-0021 or ADR-0040.",
       "askedAt": "2026-10-12T09:24:38Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6121441448"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6121441448",
+      "resolvedAt": "2026-10-13T06:34:51Z",
+      "decision": "(a) — owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6139499329: the task is run again with those two name-list assertions named as the only permitted edits of existing tests (one name added to each expected list, nothing else). Owner's note: if adding the new public names makes another existing assertion of `tests/test_hw_tool.py` or `tests/test_journaled_tool.py` false, a minimal edit of that assertion is permitted too, listed in `## Result` with the reason; an existing test that fails for any other reason is not edited. Resume T-0126."
     },
     {
       "id": "HQ-0013",
