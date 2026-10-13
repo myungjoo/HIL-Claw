@@ -1,9 +1,10 @@
-"""Claude Code ``PreToolUse`` guard for ``gh pr merge`` and for three forbidden commands.
+"""Claude Code ``PreToolUse`` guard for ``gh pr merge``, three forbidden commands and ``claude``.
 
 The hook payload (one JSON object with ``tool_input.command`` and ``cwd``) is
 read from stdin. The guard refuses a shell command that holds a force push
 (``git push --force``), a recursive forced removal (``rm -rf``) or
-``gh repo delete``, the commands PROCESS/DRIVER.md 1-5 forbids. For every
+``gh repo delete``, or that starts the Claude Code program (``claude``, with
+any subcommand or flag) - what PROCESS/DRIVER.md 1-5 forbids. For every
 ``gh pr merge`` found in the command it runs the read-only
 ``gh pr checks <selector> --json name,bucket`` and nothing else: it never
 merges, comments, edits, pushes or deletes.
@@ -16,7 +17,9 @@ permission, and it fails closed: every failure of the guard itself exits 2.
 The guard reads the command line as text and is a second line behind the
 discipline of the session, not a sandbox: a command built at run time (a
 variable, ``eval``, ``bash -c "..."``, an alias) is not recognised, and the
-guard does nothing until it is registered as a hook.
+guard does nothing until it is registered as a hook. How the refusal of
+``claude`` and the nightly end-to-end routine (PROCESS/DRIVER.md D17) stand
+together is not decided here.
 """
 
 import argparse
@@ -66,6 +69,45 @@ _GIT_VALUE_OPTIONS = frozenset(
 )
 _RM_SHORT_FLAGS = frozenset("dfiIPrRvWx")
 _FORCE_PUSH, _RM_RF, _REPO_DELETE = "git push --force", "rm -rf", "gh repo delete"
+_CLAUDE_START = "claude"
+_CLAUDE_ENDINGS = r"(?:\.(?:exe|cmd|bat|ps1))?"
+_CLAUDE = re.compile(
+    rf"(?:.*[\\/])?claude{_CLAUDE_ENDINGS}|.*claude\.(?:exe|cmd|bat|ps1)"
+    r"|@anthropic-ai/claude-code(?:@.*)?",
+    re.DOTALL | re.IGNORECASE,
+)
+_LOOKS_LIKE_CLAUDE = re.compile(
+    r"(?:^|[;&|(`{\n])[ \t]*(?:\w+=\S*[ \t]+)*[\"']?(?:[^\s;&|\"']*[\\/])?"
+    rf"claude{_CLAUDE_ENDINGS}(?![\w.\\/-])",
+    re.IGNORECASE,
+)
+_ASSIGNMENT = re.compile(r"[A-Za-z_]\w*\+?=.*", re.DOTALL)
+_COUNT = re.compile(r"\d+(?:\.\d+)?[smhd]?")
+_QUERY = re.compile(r"-\w*[vV]\w*")
+_ANY_WORD = None
+_NO_VALUE = frozenset()
+_RUNNERS = {
+    **dict.fromkeys(
+        ("if", "then", "elif", "else", "while", "until", "do", "!", "time"), _NO_VALUE
+    ),
+    **dict.fromkeys(("command", "nohup", "eval"), _NO_VALUE),
+    **dict.fromkeys(("bash", "sh", "zsh", "dash"), frozenset({"-o", "-O"})),
+    "exec": frozenset({"-a"}),
+    "env": frozenset({"-u", "--unset", "-C", "--chdir"}),
+    "sudo": frozenset(
+        {"-u", "-g", "-h", "-p", "-C", "-D", "-R", "-T", "-U", "-r", "-t"}
+        | {"--user", "--group"}
+    ),
+    "nice": frozenset({"-n", "--adjustment"}),
+    "timeout": frozenset({"-k", "--kill-after", "-s", "--signal"}),
+    "xargs": frozenset({"-I", "-n", "-P", "-L", "-d", "-E", "-s", "-a"}),
+    "npx": frozenset({"-p", "--package"}),
+    "wsl": frozenset({"-d", "--distribution", "-u", "--user", "--cd"}),
+    **dict.fromkeys(
+        ("cmd", "powershell", "pwsh", "start-process", "saps", "start"), _ANY_WORD
+    ),
+}
+_EXEC = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
 _LOOKS_FORBIDDEN = (
     (_FORCE_PUSH, (r"git\b", r"\bpush\b", r"(?<!\w)--?\w*f|\+")),
     (_RM_RF, (rf"(?<![\w.-]){_RM_NAMES}\b", r"(?<!\w)--?\w*[rf]")),
@@ -232,6 +274,24 @@ def forbidden_command(command):
     inside double quotes included. A line that cannot be tokenised is refused
     when it looks like one of the three.
 
+    - ``claude``: a start of the Claude Code program, with any subcommand or
+      flag or none. The reason names it when none of the three above is found.
+      The program word is ``claude``, ``claude.exe``, ``.cmd``, ``.bat`` or
+      ``.ps1``, a path ending in one of them, or the package
+      ``@anthropic-ai/claude-code``, in any case, quoted or not. Unlike the
+      three, it counts only where a command starts: as the first word of a
+      simple command or of a brace block, after variable assignments, after
+      ``-exec`` (``-execdir``, ``-ok``, ``-okdir``), and after the words ``if``
+      ``then`` ``elif`` ``else`` ``while`` ``until`` ``do`` ``!`` ``time``
+      ``command`` (without ``-v`` / ``-V``) ``nohup`` ``eval`` ``exec`` ``env``
+      ``sudo`` ``nice`` ``timeout`` ``xargs`` ``npx`` ``wsl`` ``bash`` ``sh``
+      ``zsh`` ``dash`` with their options, the option values the guard knows
+      and a count. After ``cmd``, ``powershell``, ``pwsh``, ``Start-Process``,
+      ``saps`` and ``start`` it counts at any later word. An operand
+      (``grep claude x``, ``which claude``, a branch ``claude/T-1``, a path
+      ``.claude``) is not a start. A line that cannot be tokenised is refused
+      when a line or a command of it begins with the program word.
+
     Not recognised: flags or commands that only exist at run time (a variable,
     the output of a substitution, a brace expansion, ``$'...'``, standard input
     of ``xargs``); ``eval``, ``bash -c "..."``, ``iex``, ``Start-Process``,
@@ -245,6 +305,12 @@ def forbidden_command(command):
     pattern inside a substitution, whose unpaired ``)`` ends the substitution
     early; flags after a substitution that is directly followed by ``#``; a
     process substitution as the value of an option before the sub-command.
+    For ``claude`` also: any other way to the program (``node <path>/cli.js``,
+    ``npm exec``, ``bunx``, a script, ``python -c``, another name of the
+    file); a quoted command line (``sh -c "claude -p x"``,
+    ``cmd /c "claude -p x"``); a runner or an option value outside the lists
+    above (``sudo --chroot d claude``); a runner before the program word on a
+    line that cannot be tokenised.
     """
     texts = dict.fromkeys((command, _BACKSLASH_BEFORE_SPACE.sub("/", command)))
     try:
@@ -255,6 +321,11 @@ def forbidden_command(command):
                 return (
                     f"cannot parse a command that looks like the forbidden {name} ({e})"
                 )
+        if _LOOKS_LIKE_CLAUDE.search(command.replace("\r\n", "\n")):
+            return (
+                "cannot parse a command that looks like the forbidden "
+                f"{_CLAUDE_START} ({e})"
+            )
         return None
     for commands, openers in tokenised:
         for outer in [*commands, *_outer_commands(commands, openers)]:
@@ -264,6 +335,10 @@ def forbidden_command(command):
                     name = _forbidden_at(word.rpartition(_GROUP)[2], words[i + 1 :])
                     if name:
                         return f"{name} is a forbidden command (PROCESS/DRIVER.md 1-5)"
+    for commands, openers in tokenised:
+        starts = _command_starts(commands, openers) + _outer_commands(commands, openers)
+        if any(_starts_claude(words) for words in starts):
+            return f"{_CLAUDE_START} is a forbidden command (PROCESS/DRIVER.md 1-5)"
     return None
 
 
@@ -305,6 +380,62 @@ def _outer_commands(commands, openers):
             current, joined = words, False
     found += [current] if joined else []
     return [*found, *(outer + first for _, outer, _, first in enclosing)]
+
+
+def _command_starts(commands, openers):
+    starts, groups = [commands[0]], []
+    for (opener, _, _), words in zip(openers, commands[1:], strict=True):
+        if opener == ")" and "(" in groups:
+            del groups[len(groups) - 1 - groups[::-1].index("(") :]
+        elif opener == "`" and groups[-1:] == ["`"]:
+            groups.pop()
+        else:
+            groups += [opener] if opener in "(`" else []
+            starts.append(words)
+    return starts
+
+
+def _starts_claude(words):
+    parts = [
+        part
+        for word in words
+        for part in (
+            [word] if "${" in word or word == "{}" else re.split("([{}])", word)
+        )
+        if part
+    ]
+    after = [i + 1 for i, part in enumerate(parts) if part == "{" or part in _EXEC]
+    return any(_runs_claude(parts[i:]) for i in [0, *after])
+
+
+def _runs_claude(words):
+    i = 0
+    while i < len(words):
+        word = words[i]
+        i += 1
+        if _ASSIGNMENT.fullmatch(word):
+            continue
+        if word.startswith("$") and words[i : i + 1] == ["="]:
+            i += 1
+            continue
+        runner = re.split(r"[\\/]", word)[-1].lower().removesuffix(".exe")
+        if runner not in _RUNNERS:
+            return bool(_CLAUDE.fullmatch(word))
+        values = _RUNNERS[runner]
+        if values is _ANY_WORD:
+            return any(_CLAUDE.fullmatch(later) for later in words[i:])
+        while i < len(words):
+            option = words[i]
+            if option.startswith("-"):
+                if runner == "command" and _QUERY.fullmatch(option):
+                    return False
+                short = not option.startswith("--") and "-" + option[-1]
+                i += 1 if option not in values and short not in values else 2
+            elif _COUNT.fullmatch(option):
+                i += 1
+            else:
+                break
+    return False
 
 
 def _script_blocks(words):
@@ -459,7 +590,7 @@ def main(argv=None):
         prog="python -m hilclaw.merge_guard",
         description=(
             "PreToolUse hook: refuse gh pr merge unless the PR checks are green, and "
-            "refuse git push --force, rm -rf and gh repo delete."
+            "refuse git push --force, rm -rf, gh repo delete and a start of claude."
         ),
     ).parse_args(argv)
     try:
