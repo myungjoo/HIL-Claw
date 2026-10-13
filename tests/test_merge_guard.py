@@ -670,6 +670,13 @@ FORBIDDEN = [
     ("git push origin {a,b} --force", FORCE_PUSH),
     ("Remove-Item (Join-Path $a My` Dir) -Recurse -Force", RM_RF),
     ("git push origin (Get-Thing a` b) --force", FORCE_PUSH),
+    ("rm -r x >$(a)/$(b) -f", RM_RF),
+    ("git -C x >$(a)/$(b).log push -f", FORCE_PUSH),
+    (r"cd C:\x\;git push -f", FORCE_PUSH),
+    (r"ls .\a\|rm -rf x", RM_RF),
+    (r"git -C (Resolve-Path .\b\) push -f", FORCE_PUSH),
+    (r"find . -name x -exec rm -rf {} \;", RM_RF),
+    ("rm -r .\\a\\\nls -Force", RM_RF),
 ]
 
 NOT_FORBIDDEN = [
@@ -748,6 +755,13 @@ NOT_FORBIDDEN = [
     "try{rm -r x}catch{ls -f}",
     "ls | %{Remove-Item $_ -Recurse}",
     "find . -name x -exec rm -r {} +",
+    "> $(a)/$(b)",
+    "2>$(a)/$(b) make",
+    "ls && > $(a)/$(b).log",
+    "< $(a)/$(b) cat",
+    "echo x >$(a)$(b)`c`/d",
+    r"find . -name x -exec rm -r {} \; -print",
+    r"find . \( -name a -o -name b \) -exec rm -f {} \;",
 ]
 
 KNOWN_MISSES = [

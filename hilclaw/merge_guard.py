@@ -32,7 +32,7 @@ TIMEOUT_SECONDS = 60
 _SEPARATORS = ";&|()`\n"
 _NOT_IN_A_WORD = _SEPARATORS + " \t\r<>#"
 _GROUP = "()"
-_BACKSLASH_BEFORE_SPACE = re.compile(r"\\(?=\s)")
+_BACKSLASH_BEFORE_SPACE = re.compile(r"\\(?=[\s;|&)])")
 _LONG_VALUE_FLAGS = frozenset(
     {
         "--body",
@@ -227,7 +227,7 @@ def forbidden_command(command):
     part of the word it is glued to, of the command around it, so that the words
     after it belong to that command; with braces ignored at the ends of a word,
     and as the limits of a PowerShell script block; with a backslash before
-    white space as an escape, and as the end of a Windows path. Text inside a
+    white space or a separator as an escape, and as the end of a Windows path. Text inside a
     quoted argument or a comment is never a forbidden command, a substitution
     inside double quotes included. A line that cannot be tokenised is refused
     when it looks like one of the three.
@@ -273,8 +273,9 @@ def _tokenised(text):
 
 
 def _outer_commands(commands, openers):
-    current, joined, enclosing, found = commands[0], False, [], []
+    current, joined, enclosing, found, target = commands[0], False, [], [], False
     for (opener, glued, followed), words in zip(openers, commands[1:], strict=True):
+        in_target, target = target, False
         closes = opener == "`" and enclosing[-1:] and enclosing[-1][0] == "`"
         if opener == ")" and any(entry[0] == "(" for entry in enclosing):
             while enclosing[-1][0] != "(":
@@ -288,10 +289,13 @@ def _outer_commands(commands, openers):
             if followed and words:
                 if not redirection:
                     current = [*current[:-1], current[-1] + words[0]]
+                target = redirection and len(words) == 1
                 words = words[1:]
             current, joined = current + words, True
         elif opener in "(`":
-            if glued:
+            if in_target and glued:
+                glued = None
+            if glued and current:
                 current = [*current[:-1], current[-1] + _GROUP]
             elif glued is not None:
                 current = [*current, _GROUP]
