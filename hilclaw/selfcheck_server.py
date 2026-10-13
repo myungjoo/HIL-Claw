@@ -28,16 +28,16 @@ environment of the server process or the wire copy can read them.
 interpreter that builds it (``sys.executable``), the directory that holds this
 package (from the module's own location), the two tokens and the place of the
 wire copy. Nothing of ``os.environ`` is read or copied. The command line is
-``<python> -I -c <one line> <package directory>``; the one line puts that
-directory first on the module path and calls :func:`main`, which takes no
-argument. The tokens and the place travel in ``env`` as :data:`ENV_TOKEN`,
-:data:`ENV_FAIL_TOKEN` and :data:`ENV_WIRE_COPY`, since the arguments of a
-process show in the process listing. ``-I -c`` was taken over ``-m`` with
-``PYTHONPATH``: the working directory is then not on the module path, no
-``PYTHON*`` variable of whoever starts the server acts, an installed
-distribution does not win, and a directory whose name holds the path separator
-works. The place of the wire copy must be an absolute path, for the same
-independence of the working directory.
+``<python> -I -c <one line> <package directory>``, and there is no ``-m``
+form; the one line puts that directory first on the module path and calls
+:func:`main`, which takes no argument. The tokens and the place travel in
+``env`` as :data:`ENV_TOKEN`, :data:`ENV_FAIL_TOKEN` and :data:`ENV_WIRE_COPY`,
+since the arguments of a process show in the process listing. ``-I -c`` was
+taken over ``-m`` with ``PYTHONPATH``: the working directory is not on the
+module path, no ``PYTHON*`` variable of whoever starts the server acts, an
+installed distribution does not win, and a directory name with the path
+separator works. The place of the wire copy must be an absolute path, for the
+same independence of the working directory.
 
 **The wire copy** is one file, created exclusively (an existing file is
 refused, never extended): the line :data:`WIRE_COPY_MAGIC`, then one record
@@ -45,13 +45,13 @@ per line passed - ``C`` (from the client) or ``S`` (from the server), a space,
 the length of the line in decimal, LF, the bytes of the line unchanged, LF -
 so any bytes round-trip. A line of the client is copied as ``readline``
 returned it, before the front gets it. A line of the server is copied after it
-was written and flushed to the real output: the copy never holds an answer
-that was not sent. A record is handed to the system, unbuffered, before the
-entry goes on; standard error is not copied. A copy that fails reaches the
-front as the ``OSError`` of its stream and the front gives up by its own rule:
-no line is handled that the copy does not show, except that the one answer
-whose copy failed was already sent, and none follows it. The file grows with
-the session, without a size limit.
+was written and flushed to the real output, which is taken, as the front takes
+it, to write the whole line: the copy never holds an answer that was not sent.
+A record is handed to the system, unbuffered, before the entry goes on;
+standard error is not copied. A failed copy reaches the front as the
+``OSError`` of its stream and the front gives up by its own rule: no line is
+handled that the copy does not show, except that the one answer whose copy
+failed was already sent, and none follows it. The file grows without a limit.
 
 :func:`read_wire_copy` returns the copied lines in order. A file that does not
 begin with the whole magic line, an empty one included, is no wire copy

@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -34,9 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TOKEN = "0123456789abcdef0123456789abcdef"
 FAIL_TOKEN = "fedcba9876543210fedcba9876543210"
 ODD_NAME = "self check é한"
-# What a platform needs to start the interpreter at all, and nothing else of
-# the test process: Windows cannot initialise a process without SYSTEMROOT,
-# and a runner's interpreter may find its shared library by LD_LIBRARY_PATH.
+# All a child gets of the test process: what the platform needs to start one.
 PLATFORM_NAMES = ("SYSTEMROOT", "LD_LIBRARY_PATH")
 BAD_TOKENS = [
     pytest.param(None, FAIL_TOKEN, TypeError, id="first missing"),
@@ -324,6 +323,8 @@ def test_a_killed_child_leaves_every_handled_line_in_the_copy(tmp_path):
         cwd=tmp_path,
         env=child_environment(entry),
     )
+    watchdog = threading.Timer(60, child.kill)
+    watchdog.start()
     try:
         answers = []
         for line in (INITIALIZE, CALL_TOKEN):
@@ -331,6 +332,7 @@ def test_a_killed_child_leaves_every_handled_line_in_the_copy(tmp_path):
             child.stdin.flush()
             answers.append(child.stdout.readline())
     finally:
+        watchdog.cancel()
         child.kill()
         child.wait(timeout=60)
         child.stdin.close()
@@ -709,9 +711,8 @@ def test_the_server_entry_holds_only_what_the_check_made(tmp_path, monkeypatch):
     text = json.dumps(entry)
     for name, value in planted.items():
         assert name not in text and value not in text
-    for value in os.environ.values():
-        if len(value) > 8 and value not in (sys.executable, str(REPO_ROOT)):
-            assert value not in entry["args"] and value not in entry["env"].values()
+    made = [*entry["args"][:-1], *entry["env"].values()]
+    assert not any(value in made for value in os.environ.values() if len(value) > 8)
     assert TOKEN not in json.dumps(entry["args"])
     assert FAIL_TOKEN not in json.dumps(entry["args"])
     assert not place.exists()
