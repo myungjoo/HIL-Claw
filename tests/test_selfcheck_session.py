@@ -734,7 +734,6 @@ def test_a_configuration_file_that_cannot_be_written_is_raised(
     monkeypatch.setattr(json, "dump", fail)
     with pytest.raises(OSError, match="the disk is full"):
         run(timeout_s=TIMEOUT, parent=parent)
-    monkeypatch.undo()
     assert stub.calls() == []
     assert os.listdir(parent) == []
 
@@ -742,10 +741,10 @@ def test_a_configuration_file_that_cannot_be_written_is_raised(
 def test_a_removal_that_fails_keeps_the_evidence(stub, parent, monkeypatch, capfd):
     stub.install()
     tries, pauses = [], []
-    monkeypatch.setattr(shutil, "rmtree", lambda path, **how: tries.append(how))
-    monkeypatch.setattr(time, "sleep", pauses.append)
-    found = run(timeout_s=TIMEOUT, parent=parent)
-    monkeypatch.undo()
+    with monkeypatch.context() as patch:
+        patch.setattr(shutil, "rmtree", lambda path, **how: tries.append(how))
+        patch.setattr(time, "sleep", pauses.append)
+        found = run(timeout_s=TIMEOUT, parent=parent)
     assert found.removed is False
     assert outcome_of(found) == PASSED
     assert 1 < len(tries) <= 10
@@ -765,10 +764,10 @@ def test_a_removal_that_works_at_a_later_try(stub, parent, monkeypatch):
         if len(tries) > 1:
             real(path, **how)
 
-    monkeypatch.setattr(shutil, "rmtree", second_time)
-    monkeypatch.setattr(time, "sleep", lambda pause: None)
-    found = run(timeout_s=TIMEOUT, parent=parent)
-    monkeypatch.undo()
+    with monkeypatch.context() as patch:
+        patch.setattr(shutil, "rmtree", second_time)
+        patch.setattr(time, "sleep", lambda pause: None)
+        found = run(timeout_s=TIMEOUT, parent=parent)
     assert found.removed is True
     assert len(tries) == 2
     assert os.listdir(parent) == []
