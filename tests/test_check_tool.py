@@ -1,0 +1,719 @@
+import ast
+import copy
+import inspect
+import json
+import struct
+from pathlib import Path
+
+import pytest
+
+from hilclaw import (
+    backends,
+    check_admission,
+    check_seed,
+    check_tool,
+    events,
+    gemm_contract,
+    instance,
+    keys,
+    mock_backend,
+    mock_check,
+    run_state,
+    tools,
+)
+from hilclaw.backends import Backend, BackendTable
+from hilclaw.check_parameters import CheckParameters
+from hilclaw.check_tool import tool_function
+from hilclaw.journal import EMPTY
+from hilclaw.tools import Registry, ToolFailure
+
+# Test values only: the package defaults to none of them and recommends none.
+TOOL = "correctness.check"
+RUN = "run-a"
+FILE = f"runs/{RUN}/instance.json"
+ROUND = 3
+SEED = 987654321987654321
+OTHER_SEED = 123456789123456789
+SHAPE = {"m": 2, "k": 3, "n": 4}
+DRAWS = 2
+TOLERANCE = {"rtol": 0.25, "atol": 3.0}
+OP = {
+    "schema_version": 1,
+    "kind": "gemm",
+    "shape": SHAPE,
+    "dtype": "fp32",
+    "layout": "row_major",
+}
+REQUEST = {
+    "run_id": RUN,
+    "round": ROUND,
+    "candidate": 2,
+    "attempt": 1,
+    "execution": 1,
+    "point": "sim",
+}
+ABSENT = object()
+# The description and the schema of a test-only definition: no record gives this tool either.
+TEST_DESCRIPTION = "A definition of the tests; the tool has no description yet."
+TEST_SCHEMA = {"type": "object"}
+
+
+def profile(accelerator=mock_backend.NAME):
+    return {
+        "schema_version": 1,
+        "accelerator": accelerator,
+        "revision": "test-revision",
+        "toolchain": {"cc": "test"},
+        "host": {"cpu": "test", "os": "test"},
+        "hw_source": "external",
+    }
+
+
+def content(op=OP, draws=DRAWS, tolerance=TOLERANCE, accelerator=mock_backend.NAME):
+    record = profile(accelerator)
+    document = {
+        "schema_version": 1,
+        "hw_profile": {"key": keys.hw_profile_key(record).name, "record": record},
+    }
+    if op is not ABSENT:
+        document["op_signature"] = {"key": keys.op_signature_key(op).name, "record": op}
+    if draws is not ABSENT:
+        document["draws"] = draws
+    if tolerance is not ABSENT:
+        document["tolerance"] = tolerance
+    return json.dumps(document).encode()
+
+
+def place(root, data, relative=FILE):
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return path
+
+
+@pytest.fixture
+def root(tmp_path):
+    path = tmp_path / "data"
+    path.mkdir()
+    place(path, content())
+    place(path, run_state.dump(ROUND, EMPTY), f"runs/{RUN}/STATE.json")
+    return path
+
+
+def lines(root):
+    found = events.read(root, RUN).events
+    return [{name: line[name] for name in line if name != "time"} for line in found]
+
+
+def log_bytes(root):
+    path = root / f"runs/{RUN}/events.ndjson"
+    return path.read_bytes() if path.exists() else b""
+
+
+def request(**changes):
+    return {**REQUEST, **changes}
+
+
+def wrong_product(tool, asked, hw_profile, parameters):
+    report = bytearray(mock_check.default_script(tool, asked, hw_profile, parameters))
+    (element,) = struct.unpack_from("=f", report, 4)
+    struct.pack_into("=f", report, 4, element + 1000.0)
+    return bytes(report)
+
+
+class Bench:
+    """The function under test over a table that holds the mock, with every party recorded."""
+
+    def __init__(
+        self,
+        root,
+        *,
+        script=mock_check.default_script,
+        seeds=(SEED,),
+        covers=gemm_contract.covers,
+        offered=True,
+    ):
+        self.root, self.script_answer, self.covered = root, script, covers
+        self.order, self.asked, self.sources = [], [], 0
+        self.answers = list(seeds)
+        operations = {TOOL: mock_check.operation(self.script)} if offered else {}
+        self.backend = Backend(mock_backend.NAME, operations)
+        self.table = BackendTable([self.backend])
+        self.function = tool_function(
+            source=self.source, table=self.table, seeds=self.seeds, covers=self.covers
+        )
+
+    def source(self):
+        self.sources += 1
+        if isinstance(self.root, BaseException):
+            raise self.root
+        return self.root
+
+    def seeds(self):
+        self.order.append("seeds")
+        answer = self.answers.pop(0)
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    def covers(self, record):
+        self.order.append("covers")
+        return self.covered(record)
+
+    def script(self, tool, asked, hw_profile, parameters):
+        self.order.append("operation")
+        self.asked.append((tool, asked, hw_profile, parameters))
+        if isinstance(self.script_answer, BaseException):
+            raise self.script_answer
+        if callable(self.script_answer):
+            return self.script_answer(tool, asked, hw_profile, parameters)
+        return self.script_answer
+
+    def count(self, name):
+        return self.order.count(name)
+
+    def failure(self, asked=None):
+        with pytest.raises(ToolFailure) as caught:
+            self.function(request() if asked is None else asked)
+        assert type(caught.value) is ToolFailure
+        return caught.value
+
+
+@pytest.fixture
+def recorded(monkeypatch):
+    """Record the reads of ``instance.json``, the selections and the appends in ``order``."""
+    order = []
+    read, select, append = instance.read, backends.select, events.append
+
+    def recording_read(data_root, run_id):
+        order.append("read")
+        return read(data_root, run_id)
+
+    def recording_select(table, hw_profile, tool):
+        order.append("select")
+        return select(table, hw_profile, tool)
+
+    def recording_append(data_root, run_id, kind, data, **numbers):
+        order.append(kind)
+        return append(data_root, run_id, kind, data, **numbers)
+
+    monkeypatch.setattr(instance, "read", recording_read)
+    monkeypatch.setattr(backends, "select", recording_select)
+    monkeypatch.setattr(events, "append", recording_append)
+    return order
+
+
+def test_a_check_of_a_right_product_reports_pass_and_writes_two_lines(root):
+    bench = Bench(root)
+    asked = request()
+    kept = copy.deepcopy(asked)
+    result = bench.function(asked)
+    assert asked == kept
+    assert result == {
+        "outcome": "pass",
+        "shape": SHAPE,
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+        "counts": [{"failed": 0, "non_finite": 0}] * DRAWS,
+    }
+    numbers = {"round": ROUND, "candidate": 2, "attempt": 1}
+    step = {"step": "correctness_check_sim", "execution": 1}
+    assert lines(root) == [
+        {"schema_version": 1, "kind": "step_started", **numbers, "data": step},
+        {
+            "schema_version": 1,
+            "kind": "step_ended",
+            **numbers,
+            "data": {**step, "spend": {}, "result": result},
+        },
+    ]
+    ((tool, handed, hw_profile, parameters),) = bench.asked
+    assert tool == TOOL
+    assert handed is asked
+    assert hw_profile == profile()
+    assert type(parameters) is CheckParameters
+    assert parameters == CheckParameters(SEED, DRAWS, **SHAPE)
+    assert (bench.sources, bench.count("seeds"), bench.count("covers")) == (1, 1, 1)
+
+
+def test_a_wrong_product_reports_fail(root):
+    result = Bench(root, script=wrong_product).function(request())
+    assert result["outcome"] == "fail"
+    assert result["counts"][0]["failed"] >= 1
+    assert "condition" not in result
+    assert lines(root)[1]["data"]["spend"] == {}
+
+
+@pytest.mark.parametrize("condition", ["time_limit", "exit_status"])
+def test_a_condition_of_the_operation_reports_broken(root, condition):
+    result = Bench(root, script=condition).function(request())
+    assert result == {
+        "outcome": "broken",
+        "condition": condition,
+        "shape": SHAPE,
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+    }
+    assert lines(root)[1]["data"] == {
+        "step": "correctness_check_sim",
+        "execution": 1,
+        "spend": {},
+        "result": result,
+    }
+
+
+def test_the_order_of_a_call(root, recorded):
+    bench = Bench(root)
+    bench.order = recorded
+    bench.function(request())
+    # The first read is that of the layout version stamp, the second the one read of moment 4.
+    assert recorded == [
+        "read",
+        "read",
+        "select",
+        "covers",
+        "seeds",
+        "step_started",
+        "operation",
+        "step_ended",
+    ]
+
+
+def test_the_two_points_are_two_identities_each_with_its_own_draw(root):
+    bench = Bench(root, seeds=(SEED, OTHER_SEED))
+    sim = bench.function(request(point="sim"))
+    board = bench.function(request(point="board"))
+    assert sim["outcome"] == board["outcome"] == "pass"
+    written = lines(root)
+    assert [line["kind"] for line in written] == ["step_started", "step_ended"] * 2
+    assert [line["data"]["step"] for line in written] == [
+        "correctness_check_sim",
+        "correctness_check_sim",
+        "correctness_check_board",
+        "correctness_check_board",
+    ]
+    assert [asked[3].seed for asked in bench.asked] == [SEED, OTHER_SEED]
+    assert bench.count("seeds") == 2
+
+
+def test_an_ended_identity_is_answered_from_the_log_and_nothing_is_asked(
+    root, recorded
+):
+    first = Bench(root)
+    result = first.function(request())
+    before = log_bytes(root)
+    del recorded[:]
+    second = Bench(root, seeds=(), script=RuntimeError("must not be asked"))
+    second.order = recorded
+    assert second.function(request()) == result
+    # The one read is that of the layout version stamp.
+    assert recorded == ["read"]
+    assert log_bytes(root) == before
+
+
+def test_an_open_identity_is_step_open_and_nothing_is_asked(root, recorded):
+    interrupted = Bench(root, script=KeyboardInterrupt())
+    with pytest.raises(KeyboardInterrupt):
+        interrupted.function(request())
+    assert [line["kind"] for line in lines(root)] == ["step_started"]
+    before = log_bytes(root)
+    del recorded[:]
+    bench = Bench(root, seeds=())
+    bench.order = recorded
+    assert bench.failure().kind == tools.KIND_STEP_OPEN
+    assert recorded == ["read"]
+    assert log_bytes(root) == before
+
+
+def test_a_further_execution_is_carried_out_in_full_with_a_fresh_draw(root, recorded):
+    bench = Bench(root, seeds=(SEED, OTHER_SEED))
+    bench.order = recorded
+    bench.function(request())
+    del recorded[:]
+    assert bench.function(request(execution=2))["outcome"] == "pass"
+    assert recorded == [
+        "read",
+        "read",
+        "select",
+        "covers",
+        "seeds",
+        "step_started",
+        "operation",
+        "step_ended",
+    ]
+    assert [asked[3].seed for asked in bench.asked] == [SEED, OTHER_SEED]
+    assert [line["data"]["execution"] for line in lines(root)] == [1, 1, 2, 2]
+
+
+@pytest.mark.parametrize(
+    "asked,member",
+    [
+        ({name: REQUEST[name] for name in REQUEST if name != "point"}, "point"),
+        (request(point="Sim"), "point"),
+        (request(point="sim.run"), "point"),
+        (request(point=1), "point"),
+        (request(point=None), "point"),
+        ({name: REQUEST[name] for name in REQUEST if name != "run_id"}, "run_id"),
+        ({name: REQUEST[name] for name in REQUEST if name != "execution"}, "execution"),
+        ({name: REQUEST[name] for name in REQUEST if name != "attempt"}, "attempt"),
+        ({name: REQUEST[name] for name in REQUEST if name != "round"}, "round"),
+    ],
+)
+def test_a_refused_request_is_invalid_request_before_anything_is_asked(
+    root, recorded, asked, member
+):
+    bench = Bench(root, seeds=())
+    bench.order = recorded
+    failure = bench.failure(asked)
+    assert failure.kind == tools.KIND_INVALID_REQUEST
+    assert member in failure.message
+    assert (bench.sources, recorded, lines(root)) == (0, [], [])
+
+
+def test_the_frame_is_checked_before_the_point(root):
+    asked = {name: REQUEST[name] for name in REQUEST if name not in ("run_id", "point")}
+    failure = Bench(root).failure(asked)
+    assert failure.kind == tools.KIND_INVALID_REQUEST
+    assert "run_id" in failure.message
+
+
+def test_a_failing_data_root_source_is_no_data_root(recorded):
+    bench = Bench(RuntimeError("no root"), seeds=())
+    bench.order = recorded
+    assert bench.failure().kind == tools.KIND_NO_DATA_ROOT
+    assert (bench.sources, recorded) == (1, [])
+
+
+def test_a_missing_instance_file_is_answered_at_the_stamp(root, recorded):
+    (root / FILE).unlink()
+    bench = Bench(root, seeds=())
+    bench.order = recorded
+    failure = bench.failure()
+    assert failure.kind == tools.KIND_RUN_FILE_MISSING
+    assert failure.message.startswith(FILE)
+    assert (recorded, lines(root)) == (["read"], [])
+
+
+def test_a_file_that_is_invalid_at_the_one_read_is_answered_there(root, monkeypatch):
+    order, read = [], instance.read
+
+    def second_read_finds_damage(data_root, run_id):
+        order.append("read")
+        if len(order) == 2:
+            place(root, b"{")
+        return read(data_root, run_id)
+
+    monkeypatch.setattr(instance, "read", second_read_finds_damage)
+    bench = Bench(root, seeds=())
+    bench.order = order
+    failure = bench.failure()
+    assert failure.kind == tools.KIND_RUN_FILE_INVALID
+    assert failure.message.startswith(FILE)
+    assert (order, lines(root)) == (["read", "read"], [])
+
+
+def test_no_backend_is_answered_before_covers_and_the_draw(root, recorded):
+    place(root, content(accelerator="acc_b"))
+    bench = Bench(root, seeds=())
+    bench.order = recorded
+    assert bench.failure().kind == tools.KIND_NO_BACKEND
+    assert (recorded, lines(root)) == (["read", "read", "select"], [])
+
+
+def test_not_offered_is_answered_before_covers_and_the_draw(root, recorded):
+    bench = Bench(root, seeds=(), offered=False)
+    bench.order = recorded
+    assert bench.failure().kind == tools.KIND_NOT_OFFERED
+    assert (recorded, lines(root)) == (["read", "read", "select"], [])
+
+
+NOT_COVERED = {**OP, "dtype": "fp16"}
+ONE_FAULT = [
+    {"op": ABSENT},
+    {"op": NOT_COVERED},
+    {"draws": ABSENT},
+    {"tolerance": ABSENT},
+]
+ADMISSION = [
+    *zip(ONE_FAULT, check_admission.KINDS, strict=True),
+    ({"op": ABSENT, "draws": ABSENT, "tolerance": ABSENT}, "op_signature_not_stated"),
+    ({"op": NOT_COVERED, "draws": ABSENT}, "op_signature_not_covered"),
+    ({"draws": ABSENT, "tolerance": ABSENT}, "draws_not_stated"),
+]
+
+
+@pytest.mark.parametrize("faults,kind", ADMISSION)
+def test_an_answer_of_the_admission_leaves_no_line_and_asks_no_seed(
+    root, recorded, faults, kind
+):
+    place(root, content(**faults))
+    bench = Bench(root)
+    bench.order = recorded
+    assert bench.failure().kind == kind
+    assert bench.failure().kind == kind
+    assert "seeds" not in recorded
+    assert "operation" not in recorded
+    assert "step_started" not in recorded
+    assert lines(root) == []
+    place(root, content())
+    assert bench.function(request())["outcome"] == "pass"
+    assert bench.count("seeds") == 1
+    assert [line["data"]["execution"] for line in lines(root)] == [1, 1]
+
+
+def test_what_covers_raises_passes_through_with_no_line(root):
+    error = RuntimeError("covers failed")
+
+    def covers(record):
+        raise error
+
+    bench = Bench(root, covers=covers)
+    with pytest.raises(RuntimeError) as caught:
+        bench.function(request())
+    assert caught.value is error
+    assert (bench.count("seeds"), bench.asked, lines(root)) == (0, [], [])
+
+
+@pytest.mark.parametrize(
+    "answer", [RuntimeError(str(SEED)), "no seed", -1, 2**64, True, None, float(7)]
+)
+def test_a_draw_that_yields_no_seed_is_seed_not_drawn_and_can_be_repeated(
+    root, recorded, answer
+):
+    bench = Bench(root, seeds=(answer, SEED))
+    bench.order = recorded
+    failure = bench.failure()
+    assert failure.kind == check_seed.KIND_SEED_NOT_DRAWN == "seed_not_drawn"
+    assert failure.__cause__ is None
+    assert str(SEED) not in failure.message
+    assert recorded == ["read", "read", "select", "covers", "seeds"]
+    assert (bench.asked, lines(root)) == ([], [])
+    assert bench.function(request())["outcome"] == "pass"
+    assert bench.count("seeds") == 2
+    assert bench.asked[0][3].seed == SEED
+    assert [line["data"]["execution"] for line in lines(root)] == [1, 1]
+
+
+def test_a_request_to_end_out_of_the_seed_source_passes_through_with_no_line(root):
+    interrupt = KeyboardInterrupt()
+    bench = Bench(root, seeds=(interrupt, SEED))
+    with pytest.raises(KeyboardInterrupt) as caught:
+        bench.function(request())
+    assert caught.value is interrupt
+    assert (bench.asked, lines(root)) == ([], [])
+    assert bench.function(request())["outcome"] == "pass"
+
+
+ENDINGS = [
+    (17, "operation_answer_invalid"),
+    (ToolFailure("example_kind", "the operation failed"), "operation_failure_invalid"),
+    (ToolFailure("seed_not_drawn", "raised by a script"), "operation_failure_invalid"),
+]
+
+
+@pytest.mark.parametrize("script,kind", ENDINGS)
+def test_a_check_without_an_outcome_ends_the_step_with_that_failure(root, script, kind):
+    bench = Bench(root, script=script)
+    failure = bench.failure()
+    assert failure.kind == kind
+    started, ended = lines(root)
+    assert started["data"] == {"step": "correctness_check_sim", "execution": 1}
+    assert ended["data"] == {
+        "step": "correctness_check_sim",
+        "execution": 1,
+        "spend": {},
+        "failure": {"kind": kind, "message": failure.message},
+    }
+    before = log_bytes(root)
+    again = Bench(root, seeds=(), script=RuntimeError("must not be asked"))
+    repeated = again.failure()
+    assert (repeated.kind, repeated.message) == (kind, failure.message)
+    assert (again.asked, again.order, log_bytes(root)) == ([], [], before)
+
+
+def test_a_request_to_end_out_of_the_operation_leaves_the_identity_open(root):
+    interrupt = KeyboardInterrupt()
+    bench = Bench(root, script=interrupt)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        bench.function(request())
+    assert caught.value is interrupt
+    assert [line["kind"] for line in lines(root)] == ["step_started"]
+    assert Bench(root, seeds=()).failure().kind == tools.KIND_STEP_OPEN
+
+
+@pytest.mark.parametrize(
+    "refused",
+    [
+        ValueError("refused on this side"),
+        ToolFailure("example_kind", "raised on this side, not by the operation"),
+    ],
+)
+def test_an_error_of_this_side_passes_through_and_leaves_the_identity_open(
+    root, monkeypatch, refused
+):
+    def refuse(*args, **kwargs):
+        raise refused
+
+    bench = Bench(root)
+    with monkeypatch.context() as patch:
+        patch.setattr(check_seed, "check", refuse)
+        with pytest.raises(type(refused)) as caught:
+            bench.function(request())
+    assert caught.value is refused
+    assert bench.asked == []
+    assert [line["kind"] for line in lines(root)] == ["step_started"]
+    assert bench.failure().kind == tools.KIND_STEP_OPEN
+
+
+def test_a_failed_start_line_after_the_draw_hands_the_seed_to_no_operation(
+    root, monkeypatch
+):
+    append = events.append
+
+    def failing(data_root, run_id, kind, data, **numbers):
+        if kind == "step_started":
+            raise OSError("the disk is full")
+        return append(data_root, run_id, kind, data, **numbers)
+
+    bench = Bench(root, seeds=(SEED, OTHER_SEED))
+    with monkeypatch.context() as patch:
+        patch.setattr(events, "append", failing)
+        failure = bench.failure()
+    assert failure.kind == tools.KIND_START_LINE_FAILED
+    assert str(SEED) not in failure.message
+    assert (bench.count("seeds"), bench.asked, lines(root)) == (1, [], [])
+    assert bench.function(request())["outcome"] == "pass"
+    assert bench.asked[0][3].seed == OTHER_SEED
+
+
+@pytest.mark.parametrize(
+    "script",
+    [mock_check.default_script, wrong_product, "time_limit", 17, ENDINGS[1][0]],
+)
+def test_the_seed_is_in_no_line_and_in_no_answer(root, script):
+    bench = Bench(root, script=script)
+    try:
+        answer = json.dumps(bench.function(request()))
+    except ToolFailure as failure:
+        answer = failure.message
+    assert bench.asked[0][3].seed == SEED
+    assert str(SEED) not in answer
+    assert str(SEED).encode() not in log_bytes(root)
+    assert b"seed" not in log_bytes(root)
+
+
+def test_what_the_step_is_handed_shows_no_seed(root, monkeypatch):
+    seen = []
+    check = check_seed.check
+
+    def looking(operation, asked, hw_profile, admitted, seed):
+        seen.append(seed)
+        return check(operation, asked, hw_profile, admitted, seed)
+
+    def perform_spy(data_root, asked, hw_profile, operation, drawn):
+        seen.append(repr(drawn))
+        return perform(data_root, asked, hw_profile, operation, drawn)
+
+    perform = check_tool._perform
+    monkeypatch.setattr(check_tool, "_perform", perform_spy)
+    monkeypatch.setattr(check_seed, "check", looking)
+    Bench(root).function(request())
+    shown, seed = seen
+    assert seed == SEED
+    assert str(SEED) not in shown
+
+
+def table():
+    return BackendTable([Backend(mock_backend.NAME, {})])
+
+
+def nothing():
+    raise AssertionError("building must call nothing")
+
+
+GOOD = {"source": nothing, "table": None, "seeds": nothing, "covers": nothing}
+
+
+@pytest.mark.parametrize(
+    "changes,named",
+    [
+        ({"table": [], "source": None, "seeds": None, "covers": None}, "table"),
+        ({"table": None, "source": None}, "table"),
+        ({"source": None, "seeds": None, "covers": None}, "source"),
+        ({"source": "x"}, "source"),
+        ({"seeds": None, "covers": None}, "seeds"),
+        ({"seeds": 7}, "seeds"),
+        ({"covers": None}, "covers"),
+        ({"covers": True}, "covers"),
+    ],
+)
+def test_building_refuses_each_bad_argument_in_the_stated_order(changes, named):
+    arguments = {**GOOD, "table": table(), **changes}
+    with pytest.raises(TypeError) as caught:
+        tool_function(**arguments)
+    assert named in str(caught.value)
+
+
+def test_building_calls_nothing_and_takes_keywords_without_defaults():
+    assert callable(tool_function(**{**GOOD, "table": table()}))
+    parameters = inspect.signature(tool_function).parameters
+    assert list(parameters) == ["source", "table", "seeds", "covers"]
+    for parameter in parameters.values():
+        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameter.default is inspect.Parameter.empty
+    with pytest.raises(TypeError):
+        tool_function(source=nothing, table=table(), seeds=nothing)
+
+
+def test_the_table_and_the_request_are_not_modified_and_two_calls_share_nothing(root):
+    bench = Bench(root, seeds=(SEED, OTHER_SEED))
+    first, second = request(), request(point="board")
+    one = bench.function(first)
+    two = bench.function(second)
+    assert (first, second) == (request(), request(point="board"))
+    assert one == two
+    assert one is not two
+    assert bench.table.names() == (mock_backend.NAME,)
+    assert bench.backend.offered() == (TOOL,)
+    assert bench.asked[0][3] is not bench.asked[1][3]
+    assert bench.asked[0][2] is not bench.asked[1][2]
+    other = Bench(root, seeds=(SEED,))
+    assert other.function is not bench.function
+    assert other.function(first) == one
+    assert other.count("seeds") == 0
+
+
+def test_through_the_frame_of_a_registry_the_test_built(root):
+    bench = Bench(root, seeds=(RuntimeError("no entropy"), SEED, OTHER_SEED))
+    registry = Registry()
+    registry.register(TOOL, bench.function, TEST_DESCRIPTION, TEST_SCHEMA)
+    with pytest.raises(ToolFailure) as caught:
+        tools.call(registry, TOOL, request())
+    assert caught.value.kind == "seed_not_drawn"
+    assert lines(root) == []
+    assert tools.call(registry, TOOL, request())["outcome"] == "pass"
+    assert tools.call(registry, TOOL, request(point="board"))["outcome"] == "pass"
+
+
+def test_the_module_holds_what_it_joins_and_nothing_of_its_own():
+    own = Path(check_tool.__file__)
+    text = own.read_text(encoding="utf-8")
+    imported = set()
+    for node in ast.walk(ast.parse(text)):
+        assert not isinstance(node, ast.Import)
+        if isinstance(node, ast.ImportFrom):
+            assert node.module == "hilclaw"
+            imported.update(alias.name for alias in node.names)
+    assert imported == {
+        "check_admission",
+        "check_ending",
+        "check_identity",
+        "check_seed",
+        "hw_tool",
+        "instance",
+        "journaled_step",
+    }
+    for word in ("gemm" + "_contract", "standin" + "_profile", "register("):
+        assert word not in text
+    public = [name for name in vars(check_tool) if not name.startswith("_")]
+    assert sorted(set(public) - imported) == ["tool_function"]
