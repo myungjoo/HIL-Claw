@@ -28,9 +28,10 @@ call that lie around the start line and need no log:
 
 Choices that are this module's own and no rule of a record:
 
-* The names, and two functions with none that calls both. By decision 3 the
-  draw lies before the start line and the operation is called after it, so
-  the start line lies between the two. The order, which is
+* The names, and two functions with none that calls both. The draw lies
+  before the start line (decision 3) and the operation is called after it
+  (ADR-0040 decision 7, cited by decision 2), so the start line lies
+  between the two. The order, which is
   :func:`hilclaw.check_admission.admit`, then :func:`draw`, then the start
   line, then :func:`check`, is the caller's to keep.
 * How the two cases are told apart.
@@ -65,11 +66,11 @@ It does not check that the call reached the draw, that is, that its
 identity has no line and that none of the answers of moment 4 was given. It
 says nothing of whether a seed is recorded, returned or kept after a check
 (OD-16 sub-question 5); it writes the seed to no file and puts it in no
-message. It validates no seed, no number of draws, no dimension and no
-tolerance, and gives none a default. It says nothing of what anybody does
-after an answer, of a repeated call or of a retry. It is this tool's and
-gives no rule for another HW tool. It reserves no kind. It keeps nothing
-between calls. It imports :mod:`hilclaw.check_admission`,
+message. :func:`check` validates no seed, no number of draws, no dimension
+and no tolerance, and the module gives none a default. It says nothing of
+what anybody does after an answer, of a repeated call or of a retry. It is
+this tool's and gives no rule for another HW tool. It reserves no kind. It
+keeps nothing between calls. It imports :mod:`hilclaw.check_admission`,
 :mod:`hilclaw.check_ending`, :mod:`hilclaw.check_parameters`,
 :mod:`hilclaw.harness.seed_source` and :mod:`hilclaw.tools` and nothing
 else.
