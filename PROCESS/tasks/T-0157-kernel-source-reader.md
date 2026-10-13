@@ -2,7 +2,7 @@
 id: T-0157
 title: Add `hilclaw/kernel_source.py` - the admitted-name predicate (ADR-0055 decision 5, N1 and N2) and the reader that goes from the path of the `output/` of an attempt to the compiled set, to "no kernel source" or to a failure of the reader (ADR-0055 decision 3, R1 to R8) - with its tests; bound to nothing, no other module edited
 phase: P1
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [FR-5, FR-6, FR-9, FR-10, NFR-2, C-3, C-7, OD-23, OD-18, "#5 D12"]
 dependsOn: [T-0155, T-0156]
