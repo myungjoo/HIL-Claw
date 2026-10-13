@@ -2,7 +2,7 @@
 id: T-0164
 title: Add `hilclaw/selfcheck_stream.py`, the reading of the session's output of the runtime self-check (ADR-0054 decision 6, the session side and the model side) - one pure function from the bytes the session wrote on its standard output and the two tokens to named facts, and one from those facts and the way the process ended to the `SessionEvidence` of `hilclaw.selfcheck_outcome`; every member name of Claude Code's output a named constant marked verified, observed once or not verified; no session, no `claude`, no file, no outcome, no report
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, C-7, OD-18, D16, "#5 D12"]
 dependsOn: [T-0153, T-0161, T-0162, T-0163]
@@ -138,3 +138,66 @@ The module docstring names ADR-0054 decision 6 (the session side and the model s
 - (driver / owner) HQ-0013, 0014, 0016, 0017, 0018 (`runtime-acceptance`).
 
 ## Result
+**DONE.** PR #113 (https://github.com/myungjoo/HIL-Claw/pull/113), squash-merged as `1285270`; branch deleted. Diff: `hilclaw/selfcheck_stream.py` (300 lines, docstring included) and `tests/test_selfcheck_stream.py` (329 cases) only. No existing module edited, no private name of another module imported, no dependency, no data-plane file, no PLAN checkbox. **No process and no `claude` was started** by the executor, a reviewer or a test (the tests build the streams as bytes; no stub was written). At the start no PR was open and no comment stood on issue #5 after the answer to HQ-0015 (so no `T-0106 live check (owner)` comment and no answer to HQ-0016 to report).
+
+**Language: Python** - the module returns a value of `hilclaw.selfcheck_outcome` in-process.
+
+**Public names of `hilclaw.selfcheck_stream`**
+- `read(output, *, token, fail_token) -> StreamFacts`. `output`: the `bytes` of the session's standard output (`RunResult.stdout`), whole or cut by the time limit. The tokens: 32 lowercase hexadecimal characters each, different. Every `output` gives a value.
+- `evidence(facts, *, timed_out, exit_status) -> selfcheck_outcome.SessionEvidence` with `started=True`. "No session was started" stays `SessionEvidence()`, made by the caller.
+- `StreamFacts(NamedTuple)`, every member defaulted, hashable.
+- `SERVER_NAME = "hilclaw"` (the session slice writes the configuration file under it); `TOOL_PREFIX = "mcp__hilclaw__"`; `TOKEN_TOOL_SESSION_NAME = "mcp__hilclaw__selfcheck_token"`, `FAIL_TOOL_SESSION_NAME = "mcp__hilclaw__selfcheck_fail"` (built from `SERVER_NAME` and `selfcheck_wire.TOKEN_TOOL_NAME` / `FAIL_TOOL_NAME`; the two names `--allowedTools` needs); `OTHER_STATUS = selfcheck_wire.OTHER` (`"other"`).
+- The eleven constants of the table below.
+
+**Members of `StreamFacts`**
+
+| Member | Type | Meaning |
+|---|---|---|
+| `init_read` | bool | the output holds exactly one line that says it is the `system/init` event |
+| `server_status` | str / None | `connected`, a word of `REFUSED_STATUS_WORDS`, `None` or `OTHER_STATUS` (rule below) |
+| `server_in_errors`, `any_config_error` | bool | that event holds `mcp_server_errors` with any value but an empty array; the two always agree |
+| `token_tool_listed`, `fail_tool_listed` | bool | `tools` of that event is an array holding that exact session-side name as a string |
+| `result_read` | bool | the last line that is not blank says it is the `result` message |
+| `token_in_reply`, `fail_token_in_reply` | bool | the reply text of that message (a string) holds that token as an exact substring |
+| `session_tools` | tuple of str | for the report: the strings of `tools` beginning with `mcp__hilclaw__`, each bounded (1 to `MAX_STRING` = 64 characters of ASCII letters, digits, `.`, `_`, `-`, else `other`), then distinct, in the order first seen, at most `MAX_LISTED` = 16 |
+| `session_tools_dropped` | bool | a further distinct one was seen |
+
+The first nine go into `SessionEvidence` under the same names; the last two are not in it.
+
+**The constants read from the output**
+
+| Constant | Value taken | Standing |
+|---|---|---|
+| `SERVERS_KEY`, `SERVER_NAME_KEY`, `SERVER_STATUS_KEY` | `mcp_servers`, `name`, `status` | verified (K8) |
+| `SERVER_ERRORS_KEY` | `mcp_server_errors` | verified, with "omitted when there are no errors"; the form of an entry not verified (not read: any non-empty value counts) |
+| `TOOLS_KEY` | `tools` | observed once (K9); its form, taken as an array of strings, not verified |
+| `selfcheck_outcome.CONNECTED` | `connected` | observed once as a status word |
+| `selfcheck_outcome.REFUSED_STATUS_WORDS` | `failed` | not verified as a value of `status` |
+| `EVENT_KIND_KEY`, `EVENT_SUBKIND_KEY` | `type`, `subtype` | **not verified, provisional** |
+| `INIT_KIND`, `INIT_SUBKIND` | `system`, `init` | **not verified, provisional** |
+| `RESULT_KIND` | `result` (value of `EVENT_KIND_KEY`; `EVENT_SUBKIND_KEY` is not looked at for it) | **not verified, provisional** |
+| `REPLY_KEY` | `result` | **not verified, provisional** |
+
+Also verified (K8) and relied on: one JSON value per line; the last line is a `result` message. The provisional values are the planner's suggestion, taken as a guess and asserted nowhere; they stay runtime acceptance item (v) of ADR-0054 (HQ-0016). **What a wrong one costs**: no `init_read`, no `result_read`, no listed tool or no token - never `passed`. Condition (b) of `front_refused` never holds without `init_read` and reads nothing of the `result` message, so a wrong name on the init side makes (b) impossible and a wrong name on the result side leaves (b) exactly as the right name would. (Round 1, Medium: the task's sentence "never `front_refused` (b)" cannot hold literally for the result side, because row 4 of `decide` does not ask for the `result` message; the docstring, the PR body and the test state the property that does hold.)
+
+**Conventions chosen** (each in the module docstring and tested)
+- *A line*: `\n` ends it; the bytes after the last `\n` are a line too (a whole last object without its line end is read; one cut inside is no JSON). A line of spaces, tabs and carriage returns only is nothing. Others: strict UTF-8, strict JSON with that white space around the value. Not one JSON object, so nothing: a byte order mark, invalid UTF-8, another JSON value, `NaN`/`Infinity`, nesting too deep, **an object at any depth with a member name twice** (the whole line, not just that member: dropping only the member would let a doubled `mcp_server_errors` read as absent). Integers are not converted (round 1, Low: the interpreter's digit limit must not decide what is read). The depth limit is the interpreter's (stated under Known limits).
+- *The `system/init` event*: **exactly one, else not read** - a departure from the planner's "the first", to the safe side: the record speaks of one, two can contradict each other, and with "the first" a later event holding a non-empty `mcp_server_errors` could still pass. **Cost, for item (v)**: if a real session writes that event twice, the check can never be `passed` nor (b) - always `session_failed`.
+- *The `result` message*: the last line that is not blank, when its `EVENT_KIND_KEY` is `RESULT_KIND`; one followed by another line is not it; the text is read only when `REPLY_KEY` holds a string.
+- *The status word*: `None` only with a ground - `mcp_servers` is an array, every entry an object with a string `name`, none named `hilclaw`. One entry of that name gives its word when it is exactly `connected` or a refusing word. Everything else is `OTHER_STATUS`: **the member absent or no array, an entry of another form (also beside a good `hilclaw` entry)**, the server twice, a status absent / no string / any other string. This departs from the planner's "names nothing" for an absent or mistyped `mcp_servers`, to the safe side ((b) fails the bring-up, so it needs a readable list). **Cost, for the document follow-up**: if Claude Code omits `mcp_servers` when no server is left, a dropped front reads as `session_failed`, not `front_refused`.
+- *`mcp_server_errors`*: the planner's first reading - present with anything but `[]` sets both members. **With it the two members always agree, so the corner T-0163 left for the record (an entry for another server only) cannot arise from this reader**, and no stream with a non-empty `mcp_server_errors` reads as `passed` or as (b).
+- *Tokens*: exact substring of the reply text; no case folding, trimming or further decoding. Form checked before anything is read.
+- *Raised*, fixed texts: `read` - `TypeError` "the output must be bytes", "a token must be a str"; `ValueError` "a token must be 32 lowercase hexadecimal characters", "the two tokens must differ". `evidence` - `TypeError` "the facts must be a StreamFacts", "a yes-or-no value must be True or False" (the eight boolean members that go into the evidence), "the status word must be None or a word this module carries" (round 1, Low), "timed_out must be True or False", "the exit status must be None or an integer".
+- *A time limit together with an exit status*: handed on as given.
+
+**Review: 3 rounds**, fresh-context `dev-reviewer` each; no `SECURITY` result.
+- Round 1 (`f9185a6`): Request changes. Medium - the fail-safe sentence was wider than what holds for the result side (above); fixed in docstring, PR body and test. Low - `evidence` passed `server_status` unchecked (now refused). Low - a long integer made the result depend on the interpreter's digit limit (integers no longer converted). Nits - the wording on distinct `session_tools`; a status word in a test that is in no record (replaced).
+- Round 2 (`4f67add`): Approve. Nits - docstring: "white space" wider than the code, the depth limit not named (both fixed in `e280f51`, `dc98978`); the first branch commit's message keeps the wide sentence (the squash message is the PR body, which does not).
+- Round 3 (`dc98978`): Approve, nothing left to edit in the PR. Reviewers 2 and 3 reported 40,000 and 60,000 random stream variants through `read` / `evidence` / `decide` with no exception, no leak and no violated invariant.
+
+**Gates.** Local: 329 cases of the new file pass (full suite at the first commit: 17416 passed, 311 skipped); ruff check and format clean. CI run 38482102453 on `dc98978`: six jobs passed. Coverage: lines 99.63% (4399/4415), functions 100.00% (441/441); no line of `hilclaw/selfcheck_stream.py` among the lines not executed.
+
+**Follow-ups**
+- (document mode, for ADR-0054 / item (v), not decided here) The two costs above: a second `system/init` event makes every check `session_failed`; an omitted `mcp_servers` reads a dropped front as `session_failed`. Also that the `result` message is told by `type` alone.
+- (code mode, next) The session against a stub `claude` the tests write: it calls `read(RunResult.stdout, token=..., fail_token=...)`, then `evidence(facts, timed_out=RunResult.timed_out, exit_status=RunResult.returncode)`, writes the configuration file under `SERVER_NAME` and passes the two `..._SESSION_NAME` to `--allowedTools`. Then the report (decision 7), which takes `session_tools` / `session_tools_dropped` and ticks P1-9.
+- The three wording questions of T-0163 stay as they were; this reader cannot produce the second one.
