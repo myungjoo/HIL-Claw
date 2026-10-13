@@ -2,7 +2,7 @@
 id: T-0117
 title: Write the ADR that defines the members of `task.objective` in version 2 of the spec - the objective/constraint frame and the first-case value as the repository owner fixed them in the answer to HQ-0009 - and reflect it in the ARCHITECTURE documents (OD-1 frame, OD-6); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-2, FR-5, OD-1, OD-6, OD-11, OD-13, "#5 A-4", "#5 B-4", "#5 D6", "#8 M15"]
 dependsOn: [T-0017, T-0018]
@@ -122,3 +122,93 @@ History: planned 2026-10-10 with the HQ question; the first version of this file
 - (planner - not before 2026-10-16, code mode, no change of behaviour) One shared once-only write helper for the three writers (`key_records`, `instance_file`, `spec_file`) (T-0094 `## Result`).
 
 ## Result
+**DONE** (executor, 2026-10-13). Document mode, landed on `main` without a PR. Not BLOCKED; no new HQ question is needed.
+
+- **Owner answer followed**: the answer to HQ-0009, https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6136238336 (read in full before the first edit; no newer owner comment on #5 changes A1 to A5 - checked at the start and directly before the landing).
+- **Commit**: `fd337bd3a6bebcb7ebbbd85745608017b56bcf73` on `main` ("T-0117: Add ADR-0050, the members of task.objective in spec version 2 (OD-1 frame, OD-6)"), trailers `Reviewed-by: reviewer agent (6 rounds, Approve)`, `Task: T-0117`, `Co-Authored-By`. Four files, 226 insertions, 5 deletions: `ARCHITECTURE/decisions/ADR-0050-od6-task-objective-members.md` (new, 214 lines), `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionProposals.md`, `ARCHITECTURE/StandardScenarios.md`. The task branch was pushed once per round (no rejection), then deleted remotely and locally after the push to `main` was confirmed.
+- **Owner notice (DRIVER §9)**: posted by the executor as the spawn prompt asked, https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6137954046 (2026-10-13T04:02Z). Objection window for the record's own design: until 2026-10-20 UTC. Nothing else was posted on GitHub.
+
+### What landed
+- **Members (the record's own design)**: in version 2, `task.objective` is an object with exactly `objectives` (array of objective entries) and `constraints` (array of constraint entries, required, may be empty). Objective entry: `type` (name); no member for a direction; `weight` and `priority` reserved by name only, no type and no meaning, a spec carrying either is invalid. Constraint entry: `type` (name) and `bound` (integer of ADR-0001; unit and sense are the type's own); no two entries of one type.
+- **Type values**: `latency_minimisation` is the only admitted objective type; throughput maximisation gets no value. `memory_ceiling` is defined (bound in bytes, 0 a valid form meaning zero bytes) and is **not yet admitted**: a valid version-2 spec has an empty `constraints`; when it is admitted is for the record of the memory measurement to say.
+- **First-case value**: an object with `objectives` holding the one entry of type `latency_minimisation` and `constraints` as the empty array. The record restates the whole example of ADR-0002 decision 8 with `schema_version` 2, the example run id of ADR-0027, the fictitious machine of ADR-0035 and the op side of ADR-0008; the technique is still a placeholder.
+- **Version rule (decision 6)**: the clause of ADR-0002 decision 7 on `task.objective` is replaced (owner); the general clause of that bullet is not replaced and reaches the new members; the version is not raised for (a) a newly admitted `type` value (owner) and (b) the later admission of `weight`, `priority` or more than one objective by the combining-rule record - (b) is marked as an exception to the letter of ADR-0002 decision 7 whose only authority is the record's provisional reading of the owner's "the members exist so that the schema does not change later".
+- **Sub-questions registered**: ⑨ of OD-13 (which measurement stands for the memory of a ceiling on `cpu_standin`, how it is taken, at which execution point it is judged, the tool or result member; design-level, no further owner answer - placed under OD-13 because it asks what the harness measures, where ADR-0009 answered the same for time, and the spec members do not depend on it) and ⑤ of OD-6 (the text form and the write of a version-2 spec file; ADR-0029 covers version 1 only). The second was not foreseen by the task; review round 3 found it.
+- **Register status words**: OD-1 `차단됨` -> `**확정**` for the frame of the MVP menu, with the owner's answer as its authority and the rest of #5 A-4 listed as remaining; the row says the proposal "단일 목적 + 선택적 제약(메모리 상한)" is not confirmed. OD-6 `**확정**` -> `**확정**` (one clause added; "objective" left the list of values without a source). OD-13 `**확정**` -> `**확정**` (one cross-reference to sub-question ⑨). OD-11 not touched.
+
+### Limits the record states
+L1 the validator checks form, not that a type's quantity can be measured on the instance's backend; L2 nothing ties `task.objective` to `instance.json`; L3 nothing about more than one objective; L4 nothing was run and nothing accepts version 2; L5 two readers of version 2 can differ in the type values they admit; L6 no instance can state a memory ceiling or throughput yet; L7 the entry form holds "a new type is a new value" only for types that fit one integer bound; L8 no record defines a spec file of version 2.
+
+### Provisional choices (in the notice, most contestable first)
+1. Exception (b) of the version rule (above). 2. `memory_ceiling` has a form and is not admitted until something can judge it. 3. The memory measurement left to a later §9 record (the reading of "the record's design"). 4. The entry form (`type` + one integer `bound`). 5. The spellings, `constraints` required and possibly empty, no two entries of one type.
+
+### Review rounds (6, each a fresh-context `dev-reviewer`; none started with `SECURITY`)
+- Round 1, Request changes: decision 6 contradicted the general clause of ADR-0002 decision 7 without saying so (blocking); the one-integer `bound` conditions the owner's unconditional sentence and was not a stated limit; "later measurement" brought a time order ADR-0007 does not have; "one call" lacked its citation; two owner phrases missing in the Korean summaries. All fixed.
+- Round 2, Request changes: the first fix argued the general clause away by a scope reading that does not hold for version 2 - rewritten so that the clause stays and (b) is an exception to it as well; the register rows did not name the version-rule wording as the record's own; the admission of `memory_ceiling` was tied to a record rather than left to it; non-literal quotes in Korean passages. All fixed.
+- Round 3, Request changes: "the text form and the write of a spec file ... are not touched" was wrong against ADR-0029 decision 2 (blocking) - the record now says it is about the parsed document, adds L8 and sub-question ⑤; the direction sentence qualified by the sample form. Fixed.
+- Round 4, Request changes: the validator slice and the spec-file record are not independent (`hilclaw/spec_file.py` follows `spec.SCHEMA_VERSION` and `spec.validate`) - fact added to Context, slices reordered; four nits. Fixed.
+- Round 5, Approve with four nits (principle versus mechanism in decision 5; "to be offered" in the OD-1 row; "checked by the validator" in the Proposals bullet; three records missing in References). All fixed, so a further round followed.
+- Round 6, Approve; four remarks the reviewer did not ask to be fixed (Follow-ups below).
+- On acceptance criterion "weight and priority" (stop if the reading cannot stand next to ADR-0002 decision 7): the question was put to the reviewers of rounds 2 to 6 explicitly; each answered that it can stand and is not a point for the owner, on condition that the notice names exception (b) first among the provisional choices, which it does.
+
+### Document checks
+- Resume check (DRIVER §3-5) at the start: no commit with `Task: T-0117` on `origin/main`, no PR, no branch. Session entry: no open PR; #4 (last update 2026-10-01), #7 (2026-09-07), #8 (2026-10-05) hold nothing newer than the task; #5 had 95 comments, the newest being the HQ-0013 mirror of 03:13:28Z. Checked again directly before the landing: no open PR, no newer comment.
+- Relative links of the record and of the added passages resolve (script; the reviewers repeated it); anchors `#od-1`, `#od-6`, `#od-13` exist. ADR-0050 was free on `origin/main` at the push; sub-question numbers ⑤ (OD-6) and ⑨ (OD-13) were free.
+- `git show --stat` of the landed commit lists only the four files of `touchesFiles`; nothing under `hilclaw/`, `tests/`, `.github/`, `.claude/` or `PROCESS/`; 231 changed lines, 4 files (within D4).
+- O1 to O5 equal the five paragraphs of the owner's comment character for character (script: each paragraph, less its list number, is a substring of the record); every quoted string of 25 characters or more in the Decision section is a substring of the comment or of the named source (script); the reviewers compared the citations of ADR-0001, 0002, 0007, 0008, 0009, 0018, 0020, 0027, 0029, 0034, 0035, 0038 and of `hilclaw/spec.py` and `hilclaw/spec_file.py` with the sources.
+- Each sentence of the Decision section is the owner's (O1 to O5 named), cited, or the record's own, by the rule at the head of the section.
+- The example: with `schema_version` set to 1 the example document passes `hilclaw.spec.validate` of `main` (run once by the executor with the Python of this machine; it confirms the keys match the embedded records and nothing about version 2, which the validator refuses: "schema_version: must be the integer 1, got 2"). No spec file is committed in the source repository; `HIL-Claw-data` holds only `.gitignore`, `README.md` and three `.gitkeep` files (read through the GitHub API).
+- Korean summaries (the three register rows, the Proposals passages under OD-1, OD-6 and OD-13, the coverage paragraph) were compared with the record and the owner's words by the executor and by every reviewer; the differences found were fixed in rounds 1, 2, 4 and 5.
+- Coverage re-check (rules of StandardScenarios): **no verdict change, no gap**. Steps that name a target (S0-3, S0-7, S1-2, S1-b-2, S2-1, S3-3, the S6 acceptance criterion) keep FR-2 as their ground. S1-2 "target=latency 최소화" is now a type of the owner's minimum; S1-b-2 follows S1-2 (it does not name throughput). **S2-1 "target=throughput"**: FR-2 is the ground and the missing detail (quantity and unit) is registered as the rest of OD-1, so by the rules it is "미결" (allowed), not a gap - with the plain note that S2 cannot be started with the target as written until that rest is closed; S3-3 "다른 target" likewise. Steps that compare results (S0-6, S0-7, S1-6, S1-7, S2-5, S6-3, S8-3, S8-4, extension S9-3) keep their grounds; the two parentheses "방향 = OD-1" stay true. No scenario step names a memory ceiling. No scenario step and no row of the verdict table was edited; the heading note and one dated paragraph ("2026-10-13 (3차 ...)") were added.
+- `git diff --check` clean; `git ls-files --eol` shows `i/lf` for the edited documents; `python -m ruff format --check .` exits 0 ("170 files already formatted").
+
+### Runtime acceptance items
+None. Nothing in this record needs a live Claude Code session or hardware this machine lacks, and no `claude` child process was started (D16).
+
+### Owner notice as posted (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6137954046)
+> ### OD-1 / OD-6 - the members of `task.objective` in version 2 of the spec fixed by ADR-0050 under DRIVER §9, on your answer to HQ-0009 (T-0117)
+>
+> `ARCHITECTURE/decisions/ADR-0050-od6-task-objective-members.md`, commit [`fd337bd`](https://github.com/myungjoo/HIL-Claw/commit/fd337bd3a6bebcb7ebbbd85745608017b56bcf73) on `main`, accepted by a context-isolated reviewer after 6 rounds. Document mode: no code changed, `hilclaw/spec.py` still knows version 1 only.
+>
+> **Yours (your answer to HQ-0009, quoted in full in the record as O1 to O5 and not subject to the objection window):** an instance states a list of objective types, each with an optional weight or priority and a direction of its own, beside a set of constraint types; exactly one objective and neither a weight nor a priority until the combining rule is decided; latency minimisation (the time of the kernel call as the harness timing run measures it, lower is better) and the memory ceiling (an upper bound in bytes, operands included) as a minimum of the menu, not its list; throughput maximisation to be offered once its quantity and unit are fixed; version 2 of the spec, where a new type is a new value of a member and does not raise the version; your note on the final goal. The OD-1 register row now reads `확정` for this frame, with the rest of #5 A-4 listed as remaining, and says that the proposal "a single objective plus an optional memory ceiling" is not confirmed.
+>
+> **The record's own design (not confirmed by you):**
+> - `task.objective` is an object with exactly two members: `objectives` (an array of entries) and `constraints` (an array of entries, required, may be empty).
+> - An objective entry has `type` and no member for a direction. `weight` and `priority` are reserved by name only, with no type and no meaning; a spec that carries either is invalid until the combining rule is recorded. The only admitted objective `type` is `latency_minimisation`; throughput gets no value.
+> - A constraint entry has `type` and `bound` (an integer; its unit and sense are the type's own). The memory ceiling is `memory_ceiling`, its `bound` in bytes; 0 is a valid form and means zero bytes.
+> - The first case: `{"objectives": [{"type": "latency_minimisation"}], "constraints": []}`.
+> - For the quantity of the latency type the record only cites ADR-0009 (the interval around exactly one kernel call, in nanoseconds) and ADR-0007 (the trimmed mean), and applies your direction to the existing "different" verdict of ADR-0007. It gives no threshold, no baseline and no order beyond the direction.
+>
+> **Provisional choices you may want to revisit (most contestable first):**
+> 1. **The version rule has one exception that rests on a reading of your words, not on your part 4.** When the combining-rule record later gives `weight` and `priority` a type and admits them, or admits more than one objective, the record means the version **not** to be raised. By its letter that is against the general clause of ADR-0002 decision 7, which your answer does not replace. The record reads your "the members exist so that the schema does not change later" as the authority. If you do not share that reading, the exception falls and that later record raises the version; nothing else depends on it.
+> 2. **A memory-ceiling entry has a form but is not admitted yet.** Nothing can judge a ceiling today, so a valid version-2 spec has an empty `constraints`, and no instance can state a memory ceiling although your vocabulary has one. The record states as a principle that a ceiling that was not judged is never treated as met.
+> 3. **The memory measurement is left to a later record.** You called it "the record's design"; the record reads that as a later record under DRIVER §9, with no further question to you, and registers it as sub-question 9 of OD-13 (which measurement stands for that memory on `cpu_standin`, how it is taken, at which of the two execution points it is judged). That later record also says from when `memory_ceiling` is admitted.
+> 4. **The entry form holds "a new type is a new value" only for types that fit it.** A later constraint type that needs a bound with a fraction, a range, two bounds or a parameter of its own would need a new member and with it a new version.
+> 5. The spellings `objectives`, `constraints`, `type`, `bound`, `latency_minimisation`, `memory_ceiling`; `constraints` required and possibly empty rather than absent; no two constraint entries of one type.
+>
+> **Limits the record states:**
+> - The validator checks the form only, not that the quantity of a type can be measured on the backend of the instance. What is cited for latency is about a C kernel at `cpu_standin`.
+> - Nothing ties `task.objective` to `instance.json` yet; that member is a later record (PLAN P1-8).
+> - The frame says nothing of how two objectives are combined or compared.
+> - The record is about the parsed document. The text form and the write of a version-2 spec **file** are defined by no record (ADR-0029 covers version 1); registered as sub-question 5 of OD-6, to be settled before the validator code moves to version 2.
+> - Two readers of version 2 can differ in the type values they admit.
+> - Nothing was run, and nothing accepts a version-2 spec yet.
+>
+> Register: OD-1 from `차단됨` to `확정` for the frame (by your answer); OD-6 keeps `확정` and now names the version-2 members; OD-13 keeps `확정` and lists the new sub-question. Coverage re-check of StandardScenarios: no verdict change, no gap. S2 names "target=throughput": by your answer no instance can state that type until its quantity and unit are fixed, which the rules count as open under OD-1, not as a gap.
+>
+> Not touched, left for you or the integrator: the checkbox and text of #5 A-4, the README sentence on the final goal and the MVP as its subset (#8 M15), FR-2.
+>
+> Objection window for the record's own design: 7 days from this notice (until 2026-10-20 UTC). An objection creates a reverting task. ADR-0050 builds on ADR-0002 and falls with it.
+>
+> — posted by driver
+
+### Follow-ups left
+- **Changed against `## Follow-ups` above - order of the next slices.** The first follow-up there (version 2 in `hilclaw/spec.py`, "`hilclaw/spec_file.py` ... follow") must not be planned as written: `hilclaw/spec_file.py` has no version of its own and follows `spec.SCHEMA_VERSION` and `spec.validate`, so changing the validator's version alone would make the package write and accept version-2 spec files, which no record defines (ADR-0050 L8, Consequences). Order: (1) planner, document mode, §9 ADR - the record of OD-6 sub-question ⑤ (whether the rules of ADR-0029 carry over to a version-2 file, the spelling of `bound` in a file, what a writer and a reader of version 1 and version 2 do beside each other; with OD-8 and OD-11); (2) then code mode, P1-5 - version 2 in `hilclaw/spec.py` with the checks ADR-0050 lists ("What the validator of version 2 is to check"), `hilclaw/spec_file.py` and the tests, D12 rules.
+- (planner, document mode, §9 ADR; no further owner answer) The record of OD-13 sub-question ⑨, which also says from when `memory_ceiling` is admitted; then its harness slice. As in `## Follow-ups` above.
+- (integrator, document mode, tiny) The remarks of review round 6, none fixed: the parenthesis of OD-13 sub-question ⑨ in OpenDecisionProposals.md names two cases of FR-1 ("sim 실패의 복귀 / board 실패의 탈락") and leaves out FR-1 ⑶; the OD-13 register row says "메모리 상한(OD-1 확정분)을 대신하는 측정" where the measurement stands for the memory, not for the ceiling; References of ADR-0050 do not list `hilclaw/spec_file.py` and do not name the Context, Boundaries and Consequences sections of ADR-0007, 0009, 0029 and 0035 that Consequences points at; L4 is headed "Nothing was run" and reports one run of the version-1 validator.
+- (integrator) The sentences of earlier records ADR-0050 lists as less exact (ADR-0002, 0007, 0008, 0009, 0018, 0020, 0029, 0034, 0035, 0038) and the docstring of `hilclaw/spec.py`, now read with ADR-0050.
+- (reviewer side, for the driver's information) The round-4 reviewer reported that it wrote two files outside the repository by mistake (a diff in its scratchpad and the owner's comment body at `/tmp/none`); nothing in the working tree was touched. Later rounds were told to write no file.
+- The other items of `## Follow-ups` above stand as written.
+
+### Note for the next planner
+Three of six rounds went to places where the new record met an older record's general sentence that the task had not listed: the general clause of ADR-0002 decision 7 (beside the clause the owner replaced), ADR-0029's version-1-only file rules, and the coupling of `hilclaw/spec_file.py` to `hilclaw/spec.py`. A task for a record that raises a version could ask the executor to list, before writing, every record and module that names the old version or the changed member, and to say for each whether the new record covers it, leaves it open (registered) or makes it less exact.
