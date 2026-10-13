@@ -2,7 +2,7 @@
 id: T-0165
 title: Add `hilclaw/selfcheck_session.py`, step two of the runtime self-check (ADR-0054 decision 4) - one function that makes the directory of the check, the two tokens and the configuration file, starts exactly one `claude -p` through `hilclaw.local_run.run` with the options of the record, reads the session's output and the wire copy with the modules that landed, and removes the directory whatever happened; built and tested against a stub `claude` that the tests write, never a real one; no login step, no outcome, no report, no command
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, C-7, OD-18, D16, "#5 D12"]
 dependsOn: [T-0153, T-0160, T-0161, T-0162, T-0163, T-0164]
@@ -134,3 +134,66 @@ For each "not verified" name the executor takes a provisional value and the docs
 - (driver / owner) HQ-0013, 0014, 0016, 0017, 0018 (`runtime-acceptance`).
 
 ## Result
+**DONE.** PR #114 (`https://github.com/myungjoo/HIL-Claw/pull/114`), squash-merged as `749e710`; branch deleted. Two files: `hilclaw/selfcheck_session.py` (279 lines, docstring included; cap 300) and `tests/test_selfcheck_session.py`. No existing module was edited and no private name of another module is imported. This task ticks no PLAN checkbox.
+
+**D16.** No real `claude` was started by anyone - not by the executor, not by a reviewer, not by a test. The function was exercised only through `python -m pytest`, where an autouse fixture puts the stub's directory alone on `PATH` and a guard on `local_run.run` asserts before every start that the `claude` found is the stub (or none). The reviewers were told to write no file and to start no `claude`.
+
+**Language.** Python: the module calls four Python modules of the package in-process (CLAUDE.md language policy). Standard library only; no new dependency; no data-plane schema change.
+
+**Process checks.** Landed check empty before the start. `gh pr list --state open` was empty. Issue #5 has no comment after the answer to HQ-0015 (`issuecomment-6149396163`): no objection to ADR-0054, no `T-0106 live check (owner)` comment, no answer to HQ-0016.
+
+**Review: 4 rounds, each a fresh-context `dev-reviewer` (`model: opus`), all four verdicts Approve; no `SECURITY` result.**
+1. Approve. Minor: the stub wrote its `stream-json` lines with literals instead of the public constants of `selfcheck_stream`; a two-line comment; the case comparison of the place check not said. All three fixed (`af8c814`).
+2. Approve. Minor: three tests called `monkeypatch.undo()` mid-test, which also undid the stub-only `PATH` and the guard - no real `claude` was reachable (only assertions followed), but a later added line could have reached one. Fixed with `monkeypatch.context()` (`64d023e`). Note: the record's line 93 against `removed=False` (below).
+3. Approve. Minor: the stand-in for `time.sleep` in the two removal tests also reached the polling loop of `subprocess` on POSIX and could have broken the bound on the pauses. Fixed (`00b80bf`).
+4. Approve, no change asked. Nit kept: "no variable was added" is shown by the absence of the three named variables and by `local_run.run` being given no `env`, not by a whole comparison of the environment (the launcher's shell adds its own).
+
+**CI.** Run 38486141803 on the head `00b80bf`: all six jobs green (the three earlier heads were green too; no failing run). Coverage gate: `hilclaw/selfcheck_session.py` 80/80 statements = 100%; `hilclaw/` lines 4479/4495 = 99.64%, functions 446/446 = 100.00%. Local (Windows, CPython 3.14.4), on the first head: `python -m pytest` 17488 passed, 313 skipped; `ruff check` and `ruff format --check` clean; the new test file was re-run locally after each later commit (63 passed, 2 skipped). Gates: `git diff --stat origin/main` listed the two files only; both `i/lf`; `git diff --check` clean.
+
+**Public names of `hilclaw.selfcheck_session` as landed.**
+- `run(*, timeout_s, parent=None, keep_out=()) -> SessionRun` - runs step two once.
+- `SessionRun(NamedTuple)`:
+  - `session`: the `selfcheck_outcome.SessionEvidence` of the session; `SessionEvidence()` when none was started (no `claude` found, or an `OSError` of the start).
+  - `wire`: the `selfcheck_wire.WireFacts` of the wire copy; `None` when no readable copy exists (no file, something that is no wire copy, or no session was started).
+  - `torn`: the `torn` of that copy; `False` when there is none.
+  - `stream`: the `selfcheck_stream.StreamFacts` of the session's standard output; `None` when no session was started.
+  - `removed`: `True` when the directory of the check is gone, `False` when its removal failed.
+  - The value goes into `decide` as `decide(login_outcome, run.session, run.wire, torn=run.torn)`.
+- `COMMAND`: the whole argument list, a constant, the same for every call.
+- `PROMPT`, `CONFIG_FILE` (`selfcheck.mcp.json`), `WIRE_COPY_FILE` (`selfcheck.wire`).
+
+**The command-line and configuration-file constants** (value; standing):
+- `PROGRAM` `claude`.
+- `OPT_PRINT` `-p` with the prompt as its argument; `OPT_VERBOSE` `--verbose` - observed once (T-0106).
+- `OPT_MCP_CONFIG` `--mcp-config`, `OPT_STRICT_MCP_CONFIG` `--strict-mcp-config` - verified (K4).
+- `OPT_PERMISSION_MODE` `--permission-mode`, `PERMISSION_MODE` `dontAsk` - verified (K5).
+- `OPT_ALLOWED_TOOLS` `--allowedTools`, `OPT_TOOLS` `--tools`, `NO_TOOLS` `""` - verified (K6).
+- `OPT_NO_SESSION_PERSISTENCE` `--no-session-persistence`, `OPT_SETTING_SOURCES` `--setting-sources`, `SETTING_SOURCES` `project` - verified (K7).
+- `OPT_OUTPUT_FORMAT` `--output-format`, `OUTPUT_FORMAT` `stream-json` - verified (K8).
+- That those options except `--allowedTools` were accepted together, in the order kept, and that a file named by `--mcp-config` relative to the working directory connected the server - observed once.
+- `SERVERS_MEMBER` `mcpServers` - **not verified, provisional**.
+- `ALLOWED_TOOLS_SEPARATOR` `,` and `ALLOWED_TOOLS` `mcp__hilclaw__selfcheck_token,mcp__hilclaw__selfcheck_fail` (one argument) - **not verified, provisional**.
+- That a server entry needs no member beyond `command`, `args`, `env` - **not verified** (none is written).
+- Order of `COMMAND`: `claude -p <PROMPT> --mcp-config selfcheck.mcp.json --strict-mcp-config --setting-sources project --tools "" --permission-mode dontAsk --allowedTools <ALLOWED_TOOLS> --no-session-persistence --output-format stream-json --verbose` - the order of T-0106 line 102 with `--allowedTools` put after the permission mode.
+- A wrong provisional value fails safe: the tests run a stub that looks for the servers under another member (`wire is None`, `session_failed`) and one that reads the allowed tools in the other form (no call, `no_call`); neither is `passed`.
+
+**The prompt** (270 characters; ASCII letters, digits, spaces, `.`, `,`, `_` only; no token): `Call the tool mcp__hilclaw__selfcheck_token once and the tool mcp__hilclaw__selfcheck_fail once, each without arguments. The second one answers with a failure, which is expected. Then reply with the exact text that each of the two returned, the failure message included.`
+
+**Conventions chosen under "Left to this task".**
+- *Names*: as the planner suggested (`run`, `SessionRun` with the five members).
+- *Time limit*: no default, keyword-only. A bad `timeout_s` is refused by `local_run.run` (its check runs before the lookup), so nothing is started; the directory, already made, is removed. Taken over a check of its own because the private check of `local_run` may not be imported and a copy of it would be a second rule.
+- *Place of the directory*: `tempfile.mkdtemp(prefix="hilclaw-selfcheck-")` under `parent` (default `tempfile.gettempdir()`). **The check is made before anything is created**, on real paths: a `parent` that is, or lies inside, the directory that holds the package or a directory of `keep_out` is refused with the fixed text `the directory of the check would lie inside a checkout` (`ValueError`). Checking the parent is equivalent to checking the new directory and leaves nothing to remove. What it cannot check: any checkout the caller does not name (**`keep_out` defaults to `()`, so the composing slice must pass the data root**), and names that differ in case only on a file system that ignores case where `os.path.normcase` does not.
+- *The two files*: `selfcheck.mcp.json`, written (created exclusively, JSON) before anything is started; `selfcheck.wire`, left for the server to create (the stub saw only the configuration file in the directory at its start).
+- ***The configuration file is named to the session by its file name alone, not by a path*** - the executor's choice, to be weighed by the owner's check: it is what the one observed command line did (`--mcp-config fixture.mcp.json` from the fixture directory), it keeps every path out of the arguments (the process listing, and on Windows the command interpreter, where a temporary directory with a space or a `%` would matter), and it makes the whole command line one constant. It rests on the session reading that name against its working directory; if it does not, the server does not connect and the outcome is `session_failed`.
+- *A removal that fails*: `shutil.rmtree(..., ignore_errors=True)` is tried four times with pauses of 0, 0.2, 0.6 and 1.2 s (about two seconds in all, no new argument), then `removed=False`; nothing is raised and no system text leaves. An exception of the module still arrives after the removal was tried.
+- *What is passed on*: `TypeError` / `ValueError` of a bad `timeout_s`, `parent` or `keep_out` (a single `str`, `bytes` or path as `keep_out` is refused); `OverflowError` of `local_run.run`; `RuntimeError` of `server_entry`; `OSError` of making the directory or writing the configuration file, with the system's text, which may name the path. **The `OSError` of the check's own files is raised, not read as `SessionEvidence()`**: line 127 speaks of the session, and a disk that refuses the check's files is a fault of the check that `session_failed` ("says nothing about the front") would hide. No exception holds a token.
+- *The lookup*: `local_run.run` resolves `claude` on the `PATH` of the caller; `env` is not passed.
+
+**Observed while testing (stub only, on Windows).** After the time limit the launcher (`claude.cmd`, run by the command interpreter) is killed and the stub's Python process lives on and finishes: its later output is still collected, so `result_read` can be true together with `timed_out`. `decide` reads `timed_out` first (`session_failed`), so nothing passes for it; it is the known limit of `local_run` and is said in the docstring.
+
+**Where the record and the code now differ (for the document follow-up, not decided here).** ADR-0054 line 93 says "only a check whose process is killed leaves it [the directory] behind". With `removed=False` the directory - the configuration file, the wire copy and the two tokens, no credential - stays although nothing of the check was killed (the case foreseen: on Windows a server process that outlives a killed session keeps the wire copy open). The convention follows the task; the sentence of the record is less exact than the code.
+
+**Follow-ups.**
+- (planner, code mode; the next slice - composition and report, decision 7) What it gets from this module for "how far a failed session got": *started* = `run.session.started`; *`system/init` read* = `run.session.init_read`; *server started* = `run.wire is not None` (a wire copy exists) and `run.wire.reached` (the client's `initialize` arrived); *`result` message read* = `run.session.result_read`; the exit status = `run.session.exit_status` with `run.session.timed_out`. The session tools are `run.stream.session_tools` (`stream` is `None` when nothing was started). It must pass the data root in `keep_out`, choose both time limits, call this module only when step one says logged in, and **decide how the report says `removed=False`** (a named member; no path).
+- (planner, document mode, §9; for ADR-0054) Line 93 against `removed=False`; the three provisional names taken here (`mcpServers`, the comma form of `--allowedTools`, the configuration file given by its file name) join the runtime acceptance items of HQ-0016 - an owner's `T-0106 live check` that shows a command line or a configuration file settles them.
+- (owner / runtime acceptance, HQ-0016) Items (ii) to (viii) stay open; this task closed none.
