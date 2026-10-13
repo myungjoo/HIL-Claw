@@ -83,9 +83,10 @@ _LOOKS_LIKE_CLAUDE = re.compile(
     re.IGNORECASE,
 )
 _ASSIGNMENT = re.compile(r"[A-Za-z_]\w*\+?=.*", re.DOTALL)
-_ONLY_ENDS_IN_BRACES = re.compile(r"[^{}]*\{\}")
+_ONLY_ENDS_IN_BRACES = re.compile(r"(?:-[^{}]*)?\{\}")
 _ENDING = re.compile(r"\.(?:exe|cmd|bat|ps1)$")
-_QUOTED_BRACES = {"{": "\ue000", "}": "\ue001"}
+_QUOTE = "\ue002"
+_QUOTED = {"{": "\ue000", "}": "\ue001", "": _QUOTE}
 _COUNT = re.compile(r"\d+(?:\.\d+)?[smhd]?")
 _QUERY = re.compile(r"-\w*[vV]\w*")
 _ANY_WORD = None
@@ -164,7 +165,7 @@ def _simple_commands(command, openers=None, quoted=None):
             else:
                 word += c if quoted is None else quoted.get(c, c)
         elif c in "'\"":
-            quote, word = c, word or ""
+            quote, word = c, (word or "") + (quoted.get("", "") if quoted else "")
         elif c == "\\":
             if text[i : i + 1] != "\n":
                 word = (word or "") + text[i : i + 1]
@@ -282,7 +283,8 @@ def forbidden_command(command):
       flag or none. The reason names it when none of the three above is found.
       The program word is ``claude``, ``claude.exe``, ``.cmd``, ``.bat`` or
       ``.ps1``, a path ending in one of them, or the package
-      ``@anthropic-ai/claude-code``, in any case, quoted or not. Unlike the
+      ``@anthropic-ai/claude-code``, in any case, quoted or not (but a quoted
+      word after a PowerShell assignment ``$x =`` is a string). Unlike the
       three, it counts only where a command starts: as the first word of a
       simple command or of a brace block, after variable assignments, after
       ``-exec`` (``-execdir``, ``-ok``, ``-okdir``), and after the words ``if``
@@ -320,11 +322,13 @@ def forbidden_command(command):
     ``. claude``); a runner given as an unquoted backslash path; a start
     after a word that expands to nothing (``$EMPTY claude``,
     ``$(true) claude``); a start after a ``case`` pattern in parentheses; a
+    PowerShell assignment other than ``$x =`` (``$x += claude``); a
     runner before the program word on a line that cannot be tokenised.
     Unquoted text that is no command (a here-document body) is
     refused wherever the program word stands where a command would start: at
-    the beginning of a line, after a separator, an opening parenthesis or
-    brace, or inside backticks.
+    the beginning of a line (a continued line included), after a separator,
+    an opening parenthesis or brace, or inside backticks; so is a PowerShell
+    string expression at such a place (``"claude" | Set-Content x``).
     """
     texts = dict.fromkeys((command, _BACKSLASH_BEFORE_SPACE.sub("/", command)))
     try:
@@ -351,7 +355,7 @@ def forbidden_command(command):
                         return f"{name} is a forbidden command (PROCESS/DRIVER.md 1-5)"
     for text in texts:
         openers = []
-        commands = _simple_commands(text, openers, _QUOTED_BRACES)
+        commands = _simple_commands(text, openers, _QUOTED)
         starts = _command_starts(commands, openers) + _outer_commands(commands, openers)
         if any(_starts_claude(words) for words in starts):
             return f"{_CLAUDE_START} is a forbidden command (PROCESS/DRIVER.md 1-5)"
@@ -422,21 +426,27 @@ def _starts_claude(words):
         )
         if part
     ]
-    after = [i + 1 for i, part in enumerate(parts) if part == "{" or part in _EXEC]
+    after = [
+        i + 1
+        for i, part in enumerate(parts)
+        if part == "{" or part.replace(_QUOTE, "") in _EXEC
+    ]
     return any(_runs_claude(parts[i:]) for i in [0, *after])
 
 
-def _runs_claude(words):
+def _runs_claude(marked):
+    words = [word.replace(_QUOTE, "") for word in marked]
     i = 0
     while i < len(words):
         word = words[i]
         i += 1
         if _ASSIGNMENT.fullmatch(word):
             continue
-        if word.startswith("$") and words[i : i + 1] == ["="]:
-            i += 1
-            continue
-        if word.startswith("$") and "=" in word:
+        if word.startswith("$") and (words[i : i + 1] == ["="] or "=" in word):
+            i += words[i : i + 1] == ["="]
+            value = marked[i - 1].partition("=")[2] or "".join(marked[i : i + 1])
+            if value.startswith(_QUOTE):
+                return False
             word = word.partition("=")[2]
             if not word:
                 continue

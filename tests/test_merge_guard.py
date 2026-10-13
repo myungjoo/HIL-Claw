@@ -1073,6 +1073,11 @@ CLAUDE_STARTS = [
     "try{claude}catch{}",
     "if($x){claude}else{}",
     "%{claude}{}",
+    "claude{}",
+    "sudo claude{} -p x",
+    "$out= claude -p x",
+    "$out = 'claude' -p x; claude -p y",
+    "Set-Location C:\\x\\\nclaude -p x",
 ]
 
 CLAUDE_FALSE_REFUSALS = [
@@ -1091,6 +1096,9 @@ CLAUDE_FALSE_REFUSALS = [
     "powershell -Command Test-Path C:/tools/claude",
     'echo "-exec" claude',
     "sudo -l claude",
+    "grep -rn \\\nclaude .",
+    '"claude" | Set-Content x',
+    'ForEach-Object { "claude" }',
 ]
 
 NOT_A_CLAUDE_START = [
@@ -1177,6 +1185,14 @@ NOT_A_CLAUDE_START = [
     "cat <<EOF\nCo-Authored-By: Claude\nEOF",
     "sudo -u claude ls",
     "sudo -uclaude ls",
+    r'$tmp = "C:\Users\me\AppData\Local\Temp\claude"',
+    r'$dir = "$env:TEMP\claude"',
+    '$name = "claude"',
+    "$name = 'Claude'",
+    '$name="claude"',
+    '$name= "claude"',
+    '$name = "claude" + $x',
+    'find . -name "{}"',
 ]
 
 CLAUDE_KNOWN_MISSES = [
@@ -1209,6 +1225,7 @@ CLAUDE_KNOWN_MISSES = [
     r"C:\Windows\System32\cmd.exe /c claude -p x",
     r'Start-Process "C:\Program Files\Claude\claude.exe"',
     ". claude -p x",
+    "$x += claude -p x",
 ]
 
 UNPARSABLE_CLAUDE = [
@@ -1226,6 +1243,7 @@ UNPARSABLE_CLAUDE = [
     "cat <<EOF\nit's (Claude Code) here\nEOF",
     r'"C:\Program Files\Claude\claude.exe" -p "unterminated',
     '$out = claude -p "unterminated',
+    '$name = "claude"; echo "unterminated',
 ]
 
 UNPARSABLE_NOT_CLAUDE = [
