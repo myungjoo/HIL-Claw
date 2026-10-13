@@ -317,7 +317,7 @@ def test_the_public_names_and_the_signature():
     public = [name for name in vars(journaled_tool) if not name.startswith("_")]
     assert [
         name for name in public if not inspect.ismodule(vars(journaled_tool)[name])
-    ] == ["tool_function", "checked_function"]
+    ] == ["tool_function", "checked_function", "stepped_function"]
     parameters = inspect.signature(tool_function).parameters
     assert list(parameters) == ["step", "numbers", "source", "check", "perform"]
     for parameter in parameters.values():
@@ -1746,3 +1746,374 @@ def test_checked_function_does_not_hand_on_when_the_stamp_cannot_be_had(
     assert caught.value.message.startswith(f"{STAMP}: ")
     assert shared.order == ["check", "source"] and shared.seen == []
     assert snapshot(root) == before
+
+
+# --- the shared part for a contract whose step follows from the request (ADR-0040 decision 3) ---
+
+stepped_function = journaled_tool.stepped_function
+STEP_A, STEP_B = "example_step_a", "example_step_b"
+STEPS = (STEP_A, STEP_B)
+WAY_STEPS = {"a": STEP_A, "b": STEP_B}
+FROM_WAY = object()
+
+
+class Text(str):
+    pass
+
+
+def way(name, **changes):
+    return request(example_way=name, **changes)
+
+
+class SteppedShared(Shared):
+    def __init__(
+        self, *answers, steps=STEPS, step=FROM_WAY, numbers=NUMBERS, refusal=None
+    ):
+        self.order, self.seen = [], []
+        self.step, self.refusal, self.outcome = step, refusal, None
+        self.source = Source(*answers, order=self.order)
+        self.function = stepped_function(
+            steps=steps,
+            step_of=self.step_of,
+            numbers=numbers,
+            carry_out=self.carry_out,
+            source=self.source,
+            check=self.check,
+        )
+
+    def step_of(self, request):
+        self.order.append("step_of")
+        if isinstance(self.step, BaseException):
+            raise self.step
+        if self.step is not FROM_WAY:
+            return self.step
+        return WAY_STEPS[request["example_way"]]
+
+
+def stepped_parts(**changes):
+    called = []
+    arguments = {
+        "steps": STEPS,
+        "step_of": lambda request: called.append("step_of"),
+        "numbers": NUMBERS,
+        "carry_out": lambda *arguments: called.append("carry_out"),
+        "source": lambda: called.append("source"),
+        "check": lambda request: called.append("check"),
+    }
+    return arguments | changes, called
+
+
+def test_the_signature_of_stepped_function():
+    parameters = inspect.signature(stepped_function).parameters
+    named = ["steps", "step_of", "numbers", "carry_out", "source", "check"]
+    assert list(parameters) == [*named, "others"]
+    for name in named:
+        assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameters[name].default is inspect.Parameter.empty
+    assert parameters["others"].kind is inspect.Parameter.VAR_KEYWORD
+
+
+def test_stepped_function_forms_the_identity_from_the_step_of_each_request(root):
+    shared = SteppedShared(str(root))
+    first, second = way("a", example_other={"nested": [1, 2]}), way("b")
+    given, before = copy.deepcopy(first), snapshot(root)
+    assert shared.function(first) is None
+    assert shared.function(second) is None
+    assert shared.order == ["check", "step_of", "source", "carry_out"] * 2
+    assert shared.seen == [
+        (root, RUN, Identity(STEP_A, 1, ROUND, 2, 1), first),
+        (root, RUN, Identity(STEP_B, 1, ROUND, 2, 1), second),
+    ]
+    assert isinstance(shared.seen[0][0], Path)
+    assert shared.seen[0][3] is first and first == given
+    assert type(shared.seen[0][2]) is Identity
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("count", [0, 1, 2, 3])
+def test_stepped_function_forms_the_identity_of_each_prefix_of_the_numbers(root, count):
+    numbers = NUMBERS[:count]
+    shared = SteppedShared(str(root), numbers=numbers)
+    asked = {**without(*NUMBERS[count:]), "example_way": "b"}
+    shared.function(asked)
+    values = [REQUEST[name] for name in numbers] + [None] * (3 - count)
+    assert shared.seen == [(root, RUN, Identity(STEP_B, 1, *values), asked)]
+
+
+def test_stepped_function_reads_no_member_named_step(root):
+    shared = SteppedShared(str(root))
+    shared.function(way("a", step=STEP_B))
+    assert shared.seen[0][2].step == STEP_A
+
+
+def test_stepped_function_keeps_the_numbers_checked_before_the_own_check(root):
+    shared = SteppedShared(str(root))
+    real = shared.check
+
+    def check(asked):
+        real(asked)
+        asked.update(execution=5, example_way="b")
+
+    function = stepped_function(
+        steps=STEPS,
+        step_of=shared.step_of,
+        numbers=NUMBERS,
+        carry_out=shared.carry_out,
+        source=shared.source,
+        check=check,
+    )
+    function(way("a"))
+    assert shared.seen[0][2] == Identity(STEP_B, 1, ROUND, 2, 1)
+
+
+def test_stepped_function_with_one_step_answers_as_checked_function(root):
+    shared = Shared(str(root))
+    stepped = SteppedShared(str(root), steps=(STEP,), step=STEP)
+    for asked in (request(), request(execution=2), without("attempt"), None):
+        outcomes = []
+        for function in (shared.function, stepped.function):
+            try:
+                outcomes.append(function(asked))
+            except ToolFailure as failure:
+                outcomes.append(failure.error_object())
+        assert outcomes[0] == outcomes[1]
+    assert stepped.seen == shared.seen and len(shared.seen) == 2
+
+
+@pytest.mark.parametrize(
+    "numbers,asked,member",
+    [
+        (NUMBERS, None, "the request must be an object, got NoneType"),
+        (NUMBERS, [REQUEST], "the request must be an object, got list"),
+        (NUMBERS, {"example_way": "a", **without("run_id")}, "run_id: is required"),
+        (NUMBERS, {"example_way": "a", **without("execution")}, "execution: is"),
+        (NUMBERS, {"example_way": "a", **without("attempt")}, "attempt: is required"),
+        ((), way("a"), "round: is no member"),
+        (("round",), way("a"), "candidate: is no member"),
+        (NUMBERS, way("a", round=None), "round: must be an integer, got null"),
+        (NUMBERS, way("a", run_id="Run A"), "run_id"),
+        (NUMBERS, way("a", execution=0), "execution"),
+        (NUMBERS, way("a", execution=True), "execution"),
+        (NUMBERS, way("a", execution="1"), "execution"),
+    ],
+)
+def test_stepped_function_refuses_a_request_before_anything_is_called(
+    root, numbers, asked, member
+):
+    shared = SteppedShared(str(root), numbers=numbers)
+    before = snapshot(root)
+    with pytest.raises(ToolFailure) as caught:
+        shared.function(asked)
+    assert caught.value.kind == INVALID == "invalid_request"
+    assert member in caught.value.message
+    assert shared.order == [] and shared.source.calls == 0
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [ToolFailure(INVALID, "example_marker: is no member"), KeyError("example"), Died()],
+    ids=["a refusal", "another exception", "a death"],
+)
+def test_stepped_function_asks_for_no_step_when_the_own_check_refuses(root, refusal):
+    shared = SteppedShared(str(root), refusal=refusal)
+    with pytest.raises(type(refusal)) as caught:
+        shared.function(way("a"))
+    assert caught.value is refusal
+    assert shared.order == ["check"] and shared.source.calls == 0
+
+
+@pytest.mark.parametrize(
+    "error",
+    [ToolFailure(INVALID, "example_way: of the tests"), KeyError("example"), Died()],
+    ids=["a tool failure", "another exception", "a death"],
+)
+def test_stepped_function_lets_what_step_of_raises_pass_through(root, error):
+    shared = SteppedShared(str(root), step=error)
+    before = snapshot(root)
+    with pytest.raises(type(error)) as caught:
+        shared.function(way("a"))
+    assert caught.value is error
+    assert shared.order == ["check", "step_of"] and shared.source.calls == 0
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize(
+    "step,got",
+    [
+        ("example_step_c", "got 'example_step_c'"),
+        (STEP, f"got '{STEP}'"),
+        ("Example Step", "got 'Example Step'"),
+        ("", "got ''"),
+        (Text(STEP_A), "got Text"),
+        (None, "got NoneType"),
+        (7, "got int"),
+        ([STEP_A], "got list"),
+        (STEPS, "got tuple"),
+    ],
+    ids=repr,
+)
+def test_stepped_function_makes_no_identity_of_a_step_that_was_not_stated(
+    root, step, got
+):
+    shared = SteppedShared(str(root), step=step)
+    before = snapshot(root)
+    with pytest.raises(RuntimeError) as caught:
+        shared.function(way("a"))
+    assert type(caught.value) is RuntimeError
+    assert str(caught.value) == f"step_of must return one of {STEPS}, {got}"
+    assert shared.order == ["check", "step_of"] and shared.source.calls == 0
+    assert shared.seen == [] and snapshot(root) == before
+
+
+def test_stepped_function_lets_no_data_root_pass_through(tmp_path):
+    missing = tmp_path / "missing"
+    shared = SteppedShared(str(missing))
+    with pytest.raises(ToolFailure) as caught:
+        shared.function(way("a"))
+    assert caught.value.kind == tools.KIND_NO_DATA_ROOT == "no_data_root"
+    assert shared.order == ["check", "step_of", "source"]
+    assert not missing.exists()
+
+
+def test_stepped_function_reads_the_stamp_before_it_hands_on(root, monkeypatch):
+    shared = SteppedShared(str(root))
+    reads(monkeypatch, shared.order)
+    shared.function(way("a"))
+    assert shared.order == ["check", "step_of", "source", "stamp", "carry_out"]
+
+
+@each_state
+def test_stepped_function_does_not_hand_on_when_the_stamp_cannot_be_had(
+    root, monkeypatch, state
+):
+    change, kind, cause = NO_STAMP[state]
+    change(root, monkeypatch)
+    before = snapshot(root)
+    shared = SteppedShared(str(root))
+    with pytest.raises(ToolFailure) as caught:
+        shared.function(way("a"))
+    assert caught.value.kind == kind
+    assert type(caught.value.__cause__) is cause
+    assert shared.order == ["check", "step_of", "source"] and shared.seen == []
+    assert snapshot(root) == before
+
+
+def test_stepped_function_gives_a_new_function_each_time_and_calls_nothing():
+    given, called = stepped_parts(perform=lambda: called.append("perform"))
+    one, other = stepped_function(**given), stepped_function(**given)
+    assert callable(one) and one is not other
+    assert list(inspect.signature(one).parameters) == ["request"]
+    assert called == []
+
+
+def test_stepped_function_does_not_call_a_further_callable(root):
+    called = []
+    given, _ = stepped_parts(
+        step_of=lambda asked: STEP_A,
+        source=lambda: str(root),
+        read=lambda *arguments: called.append("read"),
+        admit=lambda *arguments: called.append("admit"),
+    )
+    assert stepped_function(**given)(dict(REQUEST)) is None
+    assert called == []
+
+
+@pytest.mark.parametrize(
+    "steps,error,message",
+    [
+        (list(STEPS), TypeError, "^steps must be a tuple, got list$"),
+        (STEP_A, TypeError, "^steps must be a tuple, got str$"),
+        (None, TypeError, "^steps must be a tuple, got NoneType$"),
+        (set(STEPS), TypeError, "^steps must be a tuple, got set$"),
+        ((), ValueError, "^steps must name at least one step$"),
+        (("",), ValueError, "step"),
+        ((STEP_A, "Example"), ValueError, "step"),
+        ((STEP_A, "a" * 33), ValueError, "step"),
+        ((STEP_A, 7), ValueError, "step"),
+        ((None, STEP_A), ValueError, "step"),
+        ((STEP_A, [STEP_B]), ValueError, "step"),
+        ((STEP_A, STEP_A), ValueError, "^steps must be distinct, got "),
+        ((STEP_A, STEP_B, STEP_A), ValueError, "^steps must be distinct, got "),
+    ],
+)
+def test_stepped_function_refuses_steps_of_another_form(steps, error, message):
+    given, called = stepped_parts(steps=steps)
+    with pytest.raises(error, match=message):
+        stepped_function(**given)
+    assert called == []
+
+
+@pytest.mark.parametrize(
+    "numbers,error,message",
+    [
+        (("candidate",), ValueError, "numbers must be a prefix"),
+        (("round", "attempt"), ValueError, "numbers must be a prefix"),
+        (["round"], TypeError, "numbers must be a tuple, got list"),
+        (None, TypeError, "numbers must be a tuple, got NoneType"),
+    ],
+)
+def test_stepped_function_refuses_numbers_of_another_form(numbers, error, message):
+    given, called = stepped_parts(numbers=numbers)
+    with pytest.raises(error, match=message):
+        stepped_function(**given)
+    assert called == []
+
+
+@pytest.mark.parametrize(
+    "name", ["step_of", "carry_out", "source", "check", "perform", "read"]
+)
+@pytest.mark.parametrize("value", [None, "example", 1])
+def test_stepped_function_refuses_a_part_that_is_not_callable(name, value):
+    given, called = stepped_parts(perform=len, read=len)
+    with pytest.raises(TypeError, match=f"^{name} must be callable, got "):
+        stepped_function(**(given | {name: value}))
+    assert called == []
+
+
+def test_stepped_function_checks_in_the_order_of_its_docstring():
+    given, _ = stepped_parts(
+        steps=None, step_of=None, numbers=None, carry_out=None, source=None, check=None
+    )
+    given |= {"read": None, "perform": None}
+    with pytest.raises(TypeError, match="steps must be a tuple"):
+        stepped_function(**given)
+    given["steps"] = ()
+    with pytest.raises(ValueError, match="at least one step"):
+        stepped_function(**given)
+    given["steps"] = (STEP_A, STEP_A, None)
+    with pytest.raises(ValueError, match="step") as caught:
+        stepped_function(**given)
+    assert "distinct" not in str(caught.value)
+    given["steps"] = (STEP_A, STEP_A)
+    with pytest.raises(ValueError, match="steps must be distinct"):
+        stepped_function(**given)
+    given["steps"] = STEPS
+    with pytest.raises(TypeError, match="numbers must be a tuple"):
+        stepped_function(**given)
+    given["numbers"] = ("attempt",)
+    with pytest.raises(ValueError, match="numbers must be a prefix"):
+        stepped_function(**given)
+    given["numbers"] = ()
+    for name in ("step_of", "carry_out", "source", "check", "read", "perform"):
+        with pytest.raises(TypeError, match=f"^{name} must be callable"):
+            stepped_function(**given)
+        given[name] = len
+    assert callable(stepped_function(**given))
+
+
+def test_the_parts_of_stepped_function_are_given_by_name_and_all_are_required():
+    given, _ = stepped_parts()
+    with pytest.raises(TypeError):
+        stepped_function(*given.values())
+    for name in given:
+        with pytest.raises(TypeError, match=name):
+            stepped_function(
+                **{other: value for other, value in given.items() if other != name}
+            )
+
+
+def test_checked_function_still_takes_a_further_callable_of_any_name(root):
+    shared = Shared(str(root), step_of=len, steps=len)
+    assert shared.function(dict(REQUEST)) is None
+    assert shared.seen[0][2] == ID

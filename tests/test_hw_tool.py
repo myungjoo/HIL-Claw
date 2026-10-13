@@ -314,7 +314,8 @@ def selections(monkeypatch, order=None):
 def test_the_public_names_and_the_signature():
     public = [name for name in vars(hw_tool) if not name.startswith("_")]
     assert [name for name in public if not inspect.ismodule(vars(hw_tool)[name])] == [
-        "tool_function"
+        "tool_function",
+        "stepped_tool_function",
     ]
     parameters = inspect.signature(tool_function).parameters
     assert list(parameters) == [
@@ -1546,3 +1547,712 @@ def test_the_layout_the_source_builds_is_compared_with_nothing(
     with pytest.raises(ToolFailure) as caught:
         tool.function(request())
     assert caught.value.kind == "run_file_unsupported"
+
+
+# --- the builder whose step follows from the request (ADR-0040 decision 3, ADR-0021 decision 4) ---
+
+stepped_tool_function = hw_tool.stepped_tool_function
+STEP_A, STEP_B = "example_step_a", "example_step_b"
+STEPS = (STEP_A, STEP_B)
+WAY_STEPS = {"a": STEP_A, "b": STEP_B}
+NOT_ADMITTED = "example_not_admitted"
+FROM_WAY = object()
+STEPPED_PARTS = (
+    "step_of",
+    "source",
+    "check",
+    "read",
+    "hw_profile_in",
+    "admit",
+    "perform",
+)
+UNTIL_SOURCE = ["check", "step_of", "source"]
+UNTIL_READ = [*UNTIL_SOURCE, "read"]
+
+
+def way(name, **changes):
+    return request(example_way=name, **changes)
+
+
+def identity_of(name, execution=1):
+    return Identity(WAY_STEPS[name], execution, ROUND, 2, 1)
+
+
+def both_lines(name, execution=1):
+    identity = identity_of(name, execution)
+    return [started(identity), ended(identity, result={"example_member": execution})]
+
+
+class Stepped:
+    """The test-only journaled HW tool whose step follows from the member ``example_way``."""
+
+    def __init__(
+        self,
+        answer,
+        *,
+        steps=STEPS,
+        step=FROM_WAY,
+        value=None,
+        refusal=None,
+        outcome=None,
+        table=None,
+        offered=HW_TOOLS,
+        numbers=NUMBERS,
+    ):
+        self.name, self.step, self.refusal, self.outcome = TOOL, step, refusal, outcome
+        self.file = {"example_profile": record(), "example_extra": [5]}
+        self.value = self.file if value is None else value
+        self.order, self.admitted, self.seen, self.asked = [], [], [], []
+        self.token = object()
+        self.source = Source(answer, self.order)
+        mock = mock_backend.backend(self.script, offered)
+        self.table = BackendTable([mock] if table is None else table)
+        self.function = stepped_tool_function(
+            tool=TOOL,
+            steps=steps,
+            step_of=self.step_of,
+            numbers=numbers,
+            source=self.source,
+            table=self.table,
+            read=self.read,
+            hw_profile_in=self.hw_profile_in,
+            check=self.check,
+            admit=self.admit,
+            perform=self.perform,
+        )
+        self.registry = Registry()
+        self.registry.register(TOOL, self.function, DESCRIPTION, SCHEMA)
+
+    def check(self, request):
+        self.order.append("check")
+        if "example_marker" in request:
+            raise ToolFailure(
+                tools.KIND_INVALID_REQUEST, "example_marker: is no member"
+            )
+
+    def step_of(self, request):
+        self.order.append("step_of")
+        if isinstance(self.step, BaseException):
+            raise self.step
+        if self.step is not FROM_WAY:
+            return self.step
+        return WAY_STEPS[request["example_way"]]
+
+    def read(self, data_root, run_id):
+        self.order.append("read")
+        if isinstance(self.value, BaseException):
+            raise self.value
+        return self.value
+
+    def hw_profile_in(self, value):
+        self.order.append("hw_profile_in")
+        profile = value["example_profile"]
+        if isinstance(profile, BaseException):
+            raise profile
+        return profile
+
+    def admit(self, request, value):
+        self.order.append("admit")
+        self.admitted.append((request, value))
+        if self.refusal is not None:
+            raise self.refusal
+        return self.token
+
+    def perform(self, data_root, request, hw_profile, operation, admitted):
+        self.order.append("perform")
+        self.seen.append((data_root, request, hw_profile, operation, admitted))
+        if self.outcome is not None:
+            raise self.outcome
+        return SPEND, operation(request, hw_profile)
+
+    def script(self, tool, request, hw_profile):
+        self.order.append("script")
+        self.asked.append((tool, request, hw_profile))
+        return {"example_member": request["execution"]}
+
+
+def moments(monkeypatch, order):
+    selections(monkeypatch, order)
+    real_state, real_append = run_journal.read_state, events.append
+    real_stamp = instance.layout_version_of
+
+    def append(data_root, run_id, kind, data, **numbers):
+        order.append(kind)
+        return real_append(data_root, run_id, kind, data, **numbers)
+
+    monkeypatch.setattr(
+        instance, "layout_version_of", recorded(order, "stamp", real_stamp)
+    )
+    monkeypatch.setattr(
+        run_journal, "read_state", recorded(order, "lookup", real_state)
+    )
+    monkeypatch.setattr(events, "append", append)
+
+
+def test_the_signature_of_stepped_tool_function():
+    parameters = inspect.signature(stepped_tool_function).parameters
+    assert list(parameters) == [
+        "tool",
+        "steps",
+        "step_of",
+        "numbers",
+        "source",
+        "table",
+        "read",
+        "hw_profile_in",
+        "check",
+        "admit",
+        "perform",
+    ]
+    for parameter in parameters.values():
+        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameter.default is inspect.Parameter.empty
+
+
+def test_a_call_under_each_step_has_two_lines_of_its_own(root):
+    tool = Stepped(str(root))
+    first, second = way("a", example_other={"nested": [1, 2]}), way("b")
+    assert tool.function(first) == {"example_member": 1}
+    assert lines(root) == both_lines("a")
+    assert lines(root)[0]["data"] == {"step": STEP_A, "execution": 1}
+    assert tool.function(second) == {"example_member": 1}
+    assert lines(root) == both_lines("a") + both_lines("b")
+    assert [line["data"]["step"] for line in lines(root)] == [STEP_A] * 2 + [STEP_B] * 2
+    assert lines(root)[2]["data"] == {"step": STEP_B, "execution": 1}
+    assert tool.order.count("perform") == tool.order.count("read") == 2
+    (data_root, seen, hw_profile, operation, admitted), _ = tool.seen
+    assert data_root == root and type(data_root) is type(root)
+    assert seen is first and hw_profile is tool.file["example_profile"]
+    assert operation is backends.select(tool.table, record(), TOOL)
+    assert admitted is tool.token
+    assert [asked for asked, _ in tool.admitted] == [first, second]
+    assert tool.admitted[0][0] is first and tool.admitted[0][1] is tool.file
+    assert [(called, asked) for called, asked, _ in tool.asked] == [
+        (TOOL, first),
+        (TOOL, second),
+    ]
+
+
+def test_the_order_of_a_stepped_call(root, monkeypatch):
+    tool = Stepped(root)
+    moments(monkeypatch, tool.order)
+    assert tool.function(way("a")) == {"example_member": 1}
+    assert tool.order == [
+        "check",
+        "step_of",
+        "source",
+        "stamp",
+        "lookup",
+        "read",
+        "hw_profile_in",
+        "select",
+        "admit",
+        "step_started",
+        "perform",
+        "script",
+        "step_ended",
+    ]
+    del tool.order[:]
+    assert tool.function(way("a")) == {"example_member": 1}
+    assert tool.order == ["check", "step_of", "source", "stamp", "lookup"]
+
+
+@pytest.mark.parametrize("numbers", [(), ("round",)])
+def test_a_stepped_tool_that_requires_fewer_numbers(root, numbers):
+    tool = Stepped(root, numbers=numbers)
+    left_out = [name for name in NUMBERS if name not in numbers]
+    asked = {**without(*left_out), "example_way": "b"}
+    assert tool.function(asked) == {"example_member": 1}
+    identity = Identity(STEP_B, 1, *(REQUEST[name] for name in numbers))
+    assert lines(root) == [
+        started(identity),
+        ended(identity, result={"example_member": 1}),
+    ]
+
+
+@pytest.mark.parametrize(
+    "log,fails,stored",
+    [
+        (
+            raw(
+                started(identity_of("a")),
+                ended(identity_of("a"), result={"example_member": 9}),
+            ),
+            False,
+            {"example_member": 9},
+        ),
+        (
+            raw(
+                started(identity_of("a")),
+                ended(identity_of("a"), failure=FAILURE["error"]),
+            ),
+            True,
+            FAILURE,
+        ),
+        (raw(started(identity_of("a"))), True, None),
+    ],
+    ids=["ended-with-a-result", "ended-with-a-failure", "open"],
+)
+def test_a_repeated_stepped_call_is_answered_from_the_log(
+    root, monkeypatch, log, fails, stored
+):
+    place(root, log)
+    before = snapshot(root)
+    made = selections(monkeypatch)
+    tool = Stepped(root, table=[], value=RuntimeError("the reader must not be asked"))
+    for through in WAYS.values():
+        failed, answer = through(tool, way("a"))
+        assert failed is fails
+        if stored is None:
+            assert answer["error"]["kind"] == tools.KIND_STEP_OPEN == "step_open"
+        else:
+            assert answer == stored
+    assert tool.order == UNTIL_SOURCE * 4 and made == []
+    assert (tool.admitted, tool.seen, tool.asked) == ([], [], [])
+    assert snapshot(root) == before
+
+
+def test_the_other_step_is_carried_out_although_one_ended_or_is_open(root):
+    place(root, raw(started(identity_of("a"))))
+    tool = Stepped(root)
+    assert tool.function(way("b")) == {"example_member": 1}
+    assert lines(root) == [started(identity_of("a")), *both_lines("b")]
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(way("a"))
+    assert caught.value.kind == "step_open"
+    assert tool.order.count("perform") == 1
+
+
+def test_a_further_execution_under_one_step_is_carried_out_in_full(root):
+    tool = Stepped(root)
+    assert tool.function(way("a")) == {"example_member": 1}
+    assert tool.function(way("a", execution=2)) == {"example_member": 2}
+    assert lines(root) == both_lines("a") + both_lines("a", 2)
+    for name in ("read", "hw_profile_in", "admit", "perform", "script"):
+        assert tool.order.count(name) == 2
+    assert all(line["data"]["step"] == STEP_A for line in lines(root))
+    assert tool.function(way("b")) == {"example_member": 1}
+    assert lines(root) == both_lines("a") + both_lines("a", 2) + both_lines("b")
+
+
+@pytest.mark.parametrize(
+    "numbers,asked,member",
+    [
+        (NUMBERS, None, "the request must be an object, got NoneType"),
+        (NUMBERS, [way("a")], "the request must be an object, got list"),
+        (NUMBERS, {"example_way": "a", **without("run_id")}, "run_id: is required"),
+        (NUMBERS, {"example_way": "a", **without("execution")}, "execution: is"),
+        (NUMBERS, {"example_way": "a", **without("attempt")}, "attempt: is required"),
+        (NUMBERS, way("a", execution=0), "execution"),
+        (NUMBERS, way("a", execution=True), "execution"),
+        (NUMBERS, way("a", execution="1"), "execution"),
+        (NUMBERS, way("a", candidate=None), "candidate: must be an integer, got null"),
+        (NUMBERS, way("a", run_id="Run A"), "run_id"),
+        (("round",), way("a"), "candidate: is no member"),
+        ((), way("a"), "round: is no member"),
+        (NUMBERS, way("a", example_marker=1), "example_marker: is no member"),
+    ],
+)
+def test_a_refused_stepped_request_asks_nothing_and_gives_no_step(
+    root, monkeypatch, numbers, asked, member
+):
+    before = snapshot(root)
+    made = selections(monkeypatch)
+    tool = Stepped(root, numbers=numbers)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(asked)
+    assert caught.value.kind == tools.KIND_INVALID_REQUEST == "invalid_request"
+    assert member in caught.value.message
+    assert tool.source.calls == 0 and made == []
+    assert tool.order == (["check"] if member.startswith("example_marker") else [])
+    assert snapshot(root) == before
+
+
+def test_a_member_named_step_is_not_read_from_a_stepped_request(root):
+    tool = Stepped(root)
+    assert tool.function(way("a", step=STEP_B)) == {"example_member": 1}
+    assert [line["data"]["step"] for line in lines(root)] == [STEP_A] * 2
+
+
+@pytest.mark.parametrize(
+    "step",
+    ["example_step_c", "Example Step", "", Text(STEP_A), None, 7, [STEP_A]],
+    ids=repr,
+)
+def test_a_step_outside_the_stated_ones_is_no_identity_and_no_refusal(root, step):
+    before = snapshot(root)
+    tool = Stepped(root, step=step)
+    with pytest.raises(RuntimeError, match="^step_of must return one of ") as caught:
+        tool.function(way("a"))
+    assert not isinstance(caught.value, ToolFailure)
+    assert tool.order == ["check", "step_of"] and tool.source.calls == 0
+    failed, answer = by_call(tool, way("a"))
+    assert failed is True
+    assert answer["error"]["kind"] == tools.KIND_TOOL_CRASHED == "tool_crashed"
+    assert tool.source.calls == 0 and snapshot(root) == before
+
+
+@pytest.mark.parametrize(
+    "error",
+    [ToolFailure("example_unreadable", "of the tests"), KeyError("example_way")],
+    ids=["a tool failure", "another exception"],
+)
+def test_what_the_step_callable_raises_passes_through_before_the_source(root, error):
+    before = snapshot(root)
+    tool = Stepped(root, step=error)
+    with pytest.raises(type(error)) as caught:
+        tool.function(way("a"))
+    assert caught.value is error
+    assert tool.order == ["check", "step_of"] and snapshot(root) == before
+
+
+def test_a_failing_source_of_a_stepped_tool_is_no_data_root(tmp_path):
+    tool = Stepped(tmp_path / "missing")
+    for through in WAYS.values():
+        failed, answer = through(tool, way("a"))
+        assert failed is True
+        assert answer["error"]["kind"] == tools.KIND_NO_DATA_ROOT == "no_data_root"
+    assert tool.order == UNTIL_SOURCE * 4
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "state", ["missing", "empty", "version-2", "unreadable", "a-directory"]
+)
+def test_a_stepped_run_whose_stamp_cannot_be_had_is_answered_before_the_lookup(
+    root, monkeypatch, state
+):
+    change, kind, cause = NO_STAMP[state]
+    place(root, raw(*both_lines("a")))
+    change(root, monkeypatch)
+    before = snapshot(root)
+    made, selected = reads(monkeypatch), selections(monkeypatch)
+    tool = Stepped(root)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(way("a"))
+    assert caught.value.kind == kind and kind in tools.RESERVED_KINDS
+    assert type(caught.value.__cause__) is cause
+    assert caught.value.message.startswith(f"{FILE}: ")
+    assert made == ["stamp"] and selected == []
+    assert tool.order == UNTIL_SOURCE
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("error,kind", MAPPED)
+def test_what_the_one_read_raises_for_the_file_is_answered_with_its_kind(
+    root, monkeypatch, error, kind
+):
+    before = snapshot(root)
+    made = selections(monkeypatch)
+    tool = Stepped(root, value=error)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(way("a"))
+    assert caught.value.kind == kind
+    assert caught.value.__cause__ is error
+    assert caught.value.message == expected_message(error)
+    assert tool.order == UNTIL_READ and made == []
+    assert snapshot(root) == before
+    tool.value = tool.file
+    assert tool.function(way("a")) == {"example_member": 1}
+    assert lines(root) == both_lines("a")
+
+
+@pytest.mark.parametrize("name", list(PASSED))
+def test_what_else_the_one_read_raises_passes_through_as_the_same_object(root, name):
+    error, kind = PASSED[name]
+    before = snapshot(root)
+    tool = Stepped(root, value=error)
+    with pytest.raises(type(error)) as caught:
+        tool.function(way("a"))
+    assert caught.value is error
+    failed, answer = by_call(tool, way("a"))
+    assert failed is True and answer["error"]["kind"] == kind
+    assert tool.order == UNTIL_READ * 2
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        instance.InvalidInstanceError(f"{FILE}: content: of the tests"),
+        OSError(5, "Input/output error", "/elsewhere/instance.json"),
+        KeyError("example_profile"),
+    ],
+    ids=["InvalidInstanceError", "OSError", "KeyError"],
+)
+def test_what_the_record_callable_raises_is_given_no_kind_and_leaves_no_line(
+    root, monkeypatch, error
+):
+    before = snapshot(root)
+    made = selections(monkeypatch)
+    value = {"example_profile": error}
+    tool = Stepped(root, value=value)
+    with pytest.raises(type(error)) as caught:
+        tool.function(way("a"))
+    assert caught.value is error
+    assert tool.order == [*UNTIL_READ, "hw_profile_in"] and made == []
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("profile", NO_RECORD, ids=repr)
+def test_what_the_record_callable_gives_is_validated_by_the_selection(root, profile):
+    before = snapshot(root)
+    tool = Stepped(root, value={"example_profile": profile})
+    with pytest.raises(InvalidRecordError):
+        tool.function(way("a"))
+    assert tool.order == [*UNTIL_READ, "hw_profile_in"]
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("options,kind", NOT_SELECTED)
+def test_a_failed_selection_does_not_reach_the_place_after_it(
+    root, monkeypatch, options, kind
+):
+    before = snapshot(root)
+    tool = Stepped(root, refusal=ToolFailure(NOT_ADMITTED, "of the tests"), **options)
+    selections(monkeypatch, tool.order)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(way("a"))
+    assert caught.value.kind == kind
+    assert tool.order == [*UNTIL_READ, "hw_profile_in", "select"]
+    assert (tool.admitted, tool.seen, tool.asked) == ([], [], [])
+    assert snapshot(root) == before
+    assert by_call(tool, way("a")) == (True, caught.value.error_object())
+    assert lines(root) == []
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        ToolFailure(NOT_ADMITTED, "of the tests"),
+        ToolFailure(tools.KIND_RUN_FILE_INVALID, "of the tests"),
+        instance.InvalidInstanceError(f"{FILE}: content: of the tests"),
+        instance.MissingInstanceError(f"{FILE}: is missing: of the tests"),
+        OSError(5, "Input/output error", "/elsewhere/instance.json"),
+        KeyError("example_extra"),
+    ],
+    ids=[
+        "a kind of the tests",
+        "a reserved kind",
+        "InvalidInstanceError",
+        "MissingInstanceError",
+        "OSError",
+        "KeyError",
+    ],
+)
+def test_what_the_place_after_the_selection_raises_passes_through_with_no_line(
+    root, monkeypatch, refusal
+):
+    before = snapshot(root)
+    tool = Stepped(root, refusal=refusal)
+    moments(monkeypatch, tool.order)
+    asked = way("a")
+    with pytest.raises(type(refusal)) as caught:
+        tool.function(asked)
+    assert caught.value is refusal and caught.value.__cause__ is None
+    assert tool.order == [
+        *UNTIL_SOURCE,
+        "stamp",
+        "lookup",
+        "read",
+        "hw_profile_in",
+        "select",
+        "admit",
+    ]
+    assert tool.admitted == [(asked, tool.file)]
+    assert (tool.seen, tool.asked) == ([], [])
+    assert snapshot(root) == before
+    tool.refusal = None
+    assert tool.function(way("a")) == {"example_member": 1}
+    assert lines(root) == both_lines("a")
+    assert tool.order.count("read") == tool.order.count("admit") == 2
+
+
+def test_a_stepped_step_that_raises_step_failed_ends_with_the_failure(root):
+    tool = Stepped(root, outcome=StepFailed(SPEND, "example_failure", "no outcome"))
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(way("b"))
+    assert caught.value.error_object() == FAILURE
+    identity = identity_of("b")
+    assert lines(root) == [
+        started(identity),
+        ended(identity, failure=FAILURE["error"]),
+    ]
+    assert lines(root)[1]["data"]["spend"] == SPEND
+    assert tool.asked == []
+    assert by_call(tool, way("b")) == (True, FAILURE)
+    assert tool.order.count("perform") == 1
+
+
+def test_what_else_the_stepped_step_raises_leaves_the_identity_open(root):
+    error = KeyError("example")
+    tool = Stepped(root, outcome=error)
+    with pytest.raises(KeyError) as caught:
+        tool.function(way("a"))
+    assert caught.value is error
+    assert lines(root) == [started(identity_of("a"))]
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(way("a"))
+    assert caught.value.kind == "step_open"
+
+
+def test_the_stepped_request_and_what_was_read_are_not_modified(root):
+    tool = Stepped(root)
+    asked = way("a", example_other={"nested": [1, 2]})
+    given, read = copy.deepcopy(asked), copy.deepcopy(tool.file)
+    assert tool.function(asked) == {"example_member": 1}
+    assert tool.function(asked) == {"example_member": 1}
+    assert asked == given and tool.file == read
+
+
+def test_nothing_is_kept_between_two_stepped_calls(root):
+    tool = Stepped(root)
+    assert tool.function(way("a")) == {"example_member": 1}
+    other = {"example_profile": record(OTHER), "example_extra": [6]}
+    tool.value = other
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(way("b"))
+    assert caught.value.kind == tools.KIND_NO_BACKEND == "no_backend"
+    assert OTHER in caught.value.message
+    assert lines(root) == both_lines("a")
+
+
+def test_one_stated_step_behaves_as_the_builder_of_one_step(tmp_path):
+    roots = []
+    for name in ("one", "stepped"):
+        roots.append(tmp_path / name)
+        roots[-1].mkdir()
+        store(roots[-1])
+    one = Tool(roots[0])
+    stepped = Stepped(roots[1], steps=(STEP,), step=STEP)
+    series = [
+        request(),
+        request(),
+        request(execution=2),
+        request(example_marker=1),
+        without("attempt"),
+        request(execution=0),
+        request(run_id=OTHER_RUN),
+    ]
+    for asked in series:
+        for through in WAYS.values():
+            assert through(one, asked) == through(stepped, asked)
+    assert lines(roots[0]) == lines(roots[1])
+    assert len(lines(roots[1])) == 4
+    assert one.performed == len(stepped.seen) == 2
+
+
+def stepped_build(**changes):
+    called = []
+
+    def part(name):
+        return lambda *args: called.append(name)
+
+    given = {
+        "tool": TOOL,
+        "steps": STEPS,
+        "numbers": NUMBERS,
+        "table": TABLE,
+        **{name: part(name) for name in STEPPED_PARTS},
+    }
+    given.update(changes)
+    return given, called
+
+
+def test_building_a_stepped_tool_calls_nothing_and_asks_the_table_nothing(
+    monkeypatch,
+):
+    made = selections(monkeypatch)
+    given, called = stepped_build()
+    one, other = stepped_tool_function(**given), stepped_tool_function(**given)
+    assert callable(one) and one is not other
+    assert list(inspect.signature(one).parameters) == ["request"]
+    assert called == [] and made == []
+
+
+@pytest.mark.parametrize(
+    "changes,error,message",
+    [
+        ({"tool": "blob.push"}, ValueError, "is no HW tool"),
+        ({"tool": 7}, TypeError, "must be a str"),
+        ({"tool": Text(TOOL)}, TypeError, "must be a str"),
+        ({"table": None}, TypeError, "table must be a BackendTable, got NoneType"),
+        ({"table": []}, TypeError, "table must be a BackendTable, got list"),
+        ({"steps": list(STEPS)}, TypeError, "steps must be a tuple, got list"),
+        ({"steps": STEP_A}, TypeError, "steps must be a tuple, got str"),
+        ({"steps": None}, TypeError, "steps must be a tuple, got NoneType"),
+        ({"steps": ()}, ValueError, "steps must name at least one step"),
+        ({"steps": (STEP_A, "Bad Step")}, ValueError, "step"),
+        ({"steps": (STEP_A, None)}, ValueError, "step"),
+        ({"steps": (STEP_A, [STEP_B])}, ValueError, "step"),
+        ({"steps": (STEP_A, STEP_B, STEP_A)}, ValueError, "steps must be distinct"),
+        ({"numbers": ("candidate",)}, ValueError, "numbers must be a prefix"),
+        ({"numbers": list(NUMBERS)}, TypeError, "numbers must be a tuple"),
+        *(
+            ({name: value}, TypeError, f"^{name} must be callable")
+            for name in STEPPED_PARTS
+            for value in (None, "text")
+        ),
+    ],
+)
+def test_a_stepped_tool_that_cannot_be_built_is_refused_and_nothing_is_called(
+    monkeypatch, changes, error, message
+):
+    made = selections(monkeypatch)
+    given, called = stepped_build(**changes)
+    with pytest.raises(error, match=message):
+        stepped_tool_function(**given)
+    assert called == [] and made == []
+
+
+def test_the_checks_of_a_stepped_tool_come_in_the_order_of_its_docstring():
+    bad = dict.fromkeys(STEPPED_PARTS)
+    given, _ = stepped_build(tool="sim", table=None, steps=None, numbers=None, **bad)
+    with pytest.raises(ValueError, match="is no HW tool"):
+        stepped_tool_function(**given)
+    given["tool"] = TOOL
+    with pytest.raises(TypeError, match="table must be a BackendTable"):
+        stepped_tool_function(**given)
+    given["table"] = TABLE
+    with pytest.raises(TypeError, match="steps must be a tuple"):
+        stepped_tool_function(**given)
+    given["steps"] = (STEP_A, STEP_A, "Bad Step")
+    with pytest.raises(journal.JournalError):
+        stepped_tool_function(**given)
+    given["steps"] = (STEP_A, STEP_A)
+    with pytest.raises(ValueError, match="steps must be distinct"):
+        stepped_tool_function(**given)
+    given["steps"] = STEPS
+    with pytest.raises(TypeError, match="numbers must be a tuple"):
+        stepped_tool_function(**given)
+    given["numbers"] = ()
+    for name in STEPPED_PARTS:
+        with pytest.raises(TypeError, match=f"^{name} must be callable"):
+            stepped_tool_function(**given)
+        given[name] = len
+    assert callable(stepped_tool_function(**given))
+
+
+def test_a_parameter_of_a_stepped_tool_cannot_be_given_by_position_or_left_out():
+    given, _ = stepped_build()
+    with pytest.raises(TypeError):
+        stepped_tool_function(*given.values())
+    for name in given:
+        with pytest.raises(TypeError):
+            stepped_tool_function(
+                **{other: value for other, value in given.items() if other != name}
+            )
+
+
+def test_a_stepped_tool_through_the_registry_gives_a_result_and_its_own_failure(root):
+    tool = Stepped(root)
+    assert by_call(tool, way("a")) == (False, {"example_member": 1})
+    tool.refusal = ToolFailure(NOT_ADMITTED, "of the tests")
+    answer = {"error": {"kind": NOT_ADMITTED, "message": "of the tests"}}
+    for through in THROUGH_CALL.values():
+        assert through(tool, way("b")) == (True, answer)
+    assert lines(root) == both_lines("a")
+    tool.refusal = None
+    for through in THROUGH_CALL.values():
+        assert through(tool, way("b")) == (False, {"example_member": 1})
+    assert lines(root) == both_lines("a") + both_lines("b")
