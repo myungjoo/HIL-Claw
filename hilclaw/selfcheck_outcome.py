@@ -61,10 +61,14 @@ it only by a change of the record that names its page or its observation.
   An unplaceable line leaves the request before it unanswered, so a call that
   was made can read as missing.
 - *The server named with a refusing word and also among the errors*: the entry
-  among the errors wins, so not (b).
+  among the errors wins, so not (b). An entry for another server
+  (``s.any_config_error`` alone) does not undo (b): the row and row 7 speak of
+  an entry that names the server of the check.
 - *No server error entry* of row 5 is no entry at all, for any server. Row 6
   does not ask it: an entry does not keep a session from :data:`NO_CALL` when
   the condition of that row holds.
+- *The errors of the wire facts* are counted, not read: any item of
+  ``w.errors`` is an error of condition (a).
 - *The reply* is the text of the ``result`` message, so row 5 needs
   ``s.result_read`` as well as both token facts.
 - *Arguments that contradict each other* are not cross-checked: the table is
