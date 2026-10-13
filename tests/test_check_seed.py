@@ -320,6 +320,10 @@ def test_the_two_messages_differ_and_show_no_value():
     failed = message_of_a_failed_source()
     no_seed = message_of_no_seed()
     assert failed != no_seed
+    assert failed == check_seed._SOURCE_FAILED
+    assert no_seed == check_seed._NAMED_NO_SEED
+    assert "raised" in failed and "raised" not in no_seed
+    assert "returned" in no_seed and "returned" not in failed
     assert not_drawn(Source(2**64)) == no_seed
     assert not any(character.isdigit() for character in failed + no_seed)
 

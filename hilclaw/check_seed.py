@@ -5,8 +5,8 @@ the rule for the draw; a decision cited by its number alone is one of that
 record. The module renders, ahead of the tool function, the two parts of a
 call that lie around the start line and need no log:
 
-* :func:`draw`: the draw of decision 3. The source is asked once, and what
-  it names is the seed of the call. A draw that yields no seed, because the
+* :func:`draw`: the draw of decision 3. The source is asked once, and a
+  seed it names is the seed of the call. A draw that yields no seed, because the
   source raised an error or because it returned what is no seed, is a tool
   failure of the kind :data:`KIND_SEED_NOT_DRAWN`, alike for both cases
   (decisions 4 and 5). No value stands in for a seed (decision 3). A raised
