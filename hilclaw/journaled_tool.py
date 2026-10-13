@@ -10,7 +10,11 @@ Five members of a request have one meaning in every tool, at the top level:
 ``run_id``, ``execution`` and the envelope numbers ``round``, ``candidate``
 and ``attempt``. The request of a journaled tool carries ``run_id``,
 ``execution`` (required, without a default) and the numbers its contract
-requires. ``step`` is the contract's and is never read from a request.
+requires. ``step`` is the contract's and is never read from a request. A
+contract with one ``step`` value states it when the function is built. A
+contract with several states them all then, with the callable that gives the
+``step`` of a checked request from its other members (ADR-0040 decision 3 has
+such a tool): :func:`stepped_function` is the check of the request for it.
 
 A call, in this order:
 
@@ -63,10 +67,16 @@ Conventions of this module, which the records do not fix:
 - What the tool's own check raises passes through unchanged, whatever it is.
 - Nothing is kept between calls (ADR-0010 decision 7): the stamp is read at
   each call that has a data root.
-- The stamp is read in :func:`checked_function`, the part the two builders
-  share, so that they cannot differ. It is therefore read for whatever
-  ``carry_out`` that function is handed; that is the placement of this module
-  and no rule of the record for another user of that function.
+- The stamp is read in the one function :func:`checked_function` and
+  :func:`stepped_function` return, the part the builders share, so that they
+  cannot differ. It is therefore read for whatever ``carry_out`` they are
+  handed; that is the placement of this module and no rule of the record for
+  another user of them.
+- With several ``step`` values the ``step`` of a call is obtained last in the
+  check of the request, after the five members and the tool's own check, so
+  that its callable sees a checked request only. A value it returns that is
+  none of the stated ones is a defect of the contract and no refused request:
+  it is a :class:`RuntimeError`, raised before the data root is asked.
 - The reader of the stamp is no parameter: ADR-0030 decision 3 names the file
   and ADR-0024 decision 4 the condition, and
   :func:`hilclaw.instance.layout_version_of` is both.
@@ -95,8 +105,8 @@ the same call, and nothing checks the tree of the run against the stamp
 The tool function of a journaled HW tool has one moment more, the selection of
 a backend between the lookup and the start line (ADR-0016 decision 2):
 :mod:`hilclaw.hw_tool` builds it over the same check of the request and the
-same read of the stamp, which :func:`checked_function` holds for the two
-builders.
+same read of the stamp, which :func:`checked_function` and
+:func:`stepped_function` hold for the builders of both modules.
 
 It registers nothing, names no tool, no step, no axis and no result member and
 reads no configuration.
@@ -129,7 +139,8 @@ _STAMP_KINDS = {
 def tool_function(*, step, numbers, source, check, perform):
     """Return the tool function of the journaled tool that these five state.
 
-    - ``step``: the ``step`` name the tool's contract fixes.
+    - ``step``: the ``step`` name the tool's contract fixes, for a contract
+      that fixes one.
     - ``numbers``: a ``tuple``, the prefix of ``("round", "candidate",
       "attempt")`` the contract requires; ``()`` for none.
     - ``source``: the data-root source the tool is bound to (ADR-0015
@@ -179,7 +190,9 @@ def checked_function(*, step, numbers, carry_out, source, check, **others):
     """Return a function of one request that checks it and hands on to ``carry_out``.
 
     This is the part :func:`tool_function` and
-    :func:`hilclaw.hw_tool.tool_function` share: the check when built and, at
+    :func:`hilclaw.hw_tool.tool_function` share, for a contract with one
+    ``step`` (:func:`stepped_function` is it for a contract with several): the
+    check when built and, at
     a call, the check of the request, the tool's own check, the data root
     asked once and the read of the layout version stamp of the run (ADR-0030
     decision 3). Everything after that is ``carry_out``'s. It does not hand on
@@ -225,18 +238,81 @@ def checked_function(*, step, numbers, carry_out, source, check, **others):
     It registers nothing and names no tool.
     """
     journal.step_identity(step, 1)
+    parts = {"carry_out": carry_out, "source": source, "check": check, **others}
+    _check_parts(numbers, parts)
+    return _function((step,), lambda request: step, numbers, carry_out, source, check)
+
+
+def stepped_function(*, steps, step_of, numbers, carry_out, source, check, **others):
+    """Return what :func:`checked_function` returns, for a contract whose ``step`` follows from the request.
+
+    The function returned is that of :func:`checked_function` but for the
+    ``step`` of the identity, which is no argument here: it is obtained from
+    each request, so two requests that differ only in what it follows from
+    are two identities.
+
+    - ``steps``: the ``step`` names of the tool's contract, a non-empty
+      ``tuple`` of distinct names.
+    - ``step_of``: called as ``step_of(request)``, once in a call, after the
+      five members were checked and ``check`` returned, and before the data
+      root is asked. It returns one of ``steps``, exactly a ``str``. It is
+      not called for a request refused before. No member ``step`` of a
+      request is read here (ADR-0015 decision 4).
+    - ``numbers``, ``carry_out``, ``source``, ``check``, ``others``: as in
+      :func:`checked_function`. The identity ``carry_out`` is handed holds
+      the ``step`` that ``step_of`` returned, and the ``execution`` and the
+      numbers as they were checked before ``check`` was called.
+
+    Raises, in this order: :class:`TypeError` when ``steps`` is no ``tuple``
+    and :class:`ValueError` when it is empty, when one of them is no name
+    (for the first such, the error of :func:`hilclaw.journal.step_identity`)
+    or when two are equal; then what :func:`checked_function` raises for
+    ``numbers``; then :class:`TypeError` for the first of ``step_of``,
+    ``carry_out``, ``source``, ``check`` and the ``others`` in the order
+    given that is not callable. Building calls none of them.
+
+    The function returned raises what that of :func:`checked_function`
+    raises, and besides: what ``step_of`` raises, unchanged, and
+    :class:`RuntimeError` when ``step_of`` returned what is none of
+    ``steps``, an instance of a subclass of ``str`` included. In both cases
+    the data root was not asked, nothing was read and ``carry_out`` was not
+    called. Such a value is a defect of the contract and not of the caller,
+    so it is no ``invalid_request``; at :func:`hilclaw.tools.call` it is
+    ``tool_crashed``. With one ``step`` in ``steps`` the function returned
+    answers a caller as that of :func:`checked_function` with that ``step``.
+    """
+    if type(steps) is not tuple:
+        raise TypeError(f"steps must be a tuple, got {type(steps).__name__}")
+    if not steps:
+        raise ValueError("steps must name at least one step")
+    for step in steps:
+        journal.step_identity(step, 1)
+    if len(set(steps)) != len(steps):
+        raise ValueError(f"steps must be distinct, got {steps}")
+    parts = {"step_of": step_of, "carry_out": carry_out, "source": source}
+    _check_parts(numbers, parts | {"check": check, **others})
+    return _function(steps, step_of, numbers, carry_out, source, check)
+
+
+def _check_parts(numbers, parts):
     if type(numbers) is not tuple:
         raise TypeError(f"numbers must be a tuple, got {type(numbers).__name__}")
     if numbers != _NUMBERS[: len(numbers)]:
         raise ValueError(f"numbers must be a prefix of {_NUMBERS}, got {numbers}")
-    parts = {"carry_out": carry_out, "source": source, "check": check, **others}
     for name, value in parts.items():
         if not callable(value):
             raise TypeError(f"{name} must be callable, got {type(value).__name__}")
 
+
+def _function(steps, step_of, numbers, carry_out, source, check):
     def journaled(request):
-        run_id, identity = _checked(step, numbers, request)
+        run_id, identity = _checked(steps[0], numbers, request)
         check(request)
+        step = step_of(request)
+        if type(step) is not str or step not in steps:
+            got = repr(step) if type(step) is str else type(step).__name__
+            raise RuntimeError(f"step_of must return one of {steps}, got {got}")
+        identity = identity._replace(step=step)
         data_root = data_root_source.obtain(source)
         with run_files.reading(data_root, run_id, "instance.json", _STAMP_KINDS):
             instance.layout_version_of(data_root, run_id)
