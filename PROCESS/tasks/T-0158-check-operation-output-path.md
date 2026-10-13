@@ -2,7 +2,7 @@
 id: T-0158
 title: Hand an operation of `correctness.check` its fourth thing, the output path (ADR-0056 decision 3) - the tool function forms the path of the attempt's `output/` with `hilclaw.layout.attempt_artefact` and reads nothing there, the path travels through `check_seed.check`, `check_ending.carry_out` and `check_operation.ask` to the operation, and the mock's operation asks its script with five things - with the tests; no backend kind, no reader call, nothing registered
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, C-3, OD-18, "#5 D12"]
 dependsOn: [T-0134, T-0139, T-0146, T-0150, T-0156]
@@ -120,3 +120,40 @@ Existing tests that pin three and four things are changed to four and five; none
 - (driver / owner) HQ-0013, 0014, 0016, 0017, 0018 (`runtime-acceptance`).
 
 ## Result
+**DONE.** PR #107 (`https://github.com/myungjoo/HIL-Claw/pull/107`), squash-merged as `639997c`; branch `claude/T-0158-check-operation-output-path` deleted (remote and local). Three commits on the branch: `93cc86f`, `90efb85`, `e51f777`.
+
+- **Review**: 3 rounds, fresh-context `dev-reviewer` each. Round 1 Request changes (Medium: two module docstrings called the path the fourth positional argument of `ask` and `carry_out`, where it is the fifth; Low: an indirect assertion on `formed`; Low: a test script that would have made slice (3) flip two assertions; Trivial: ragged paragraphs) - all four fixed in `90efb85`. Round 2 Approve with one Low (the reads-nothing helper did not guard `io.open`, through which `pathlib` opens a file) and one Trivial (a paragraph) - both fixed in `e51f777`. Round 3 Approve, no findings. No security finding in any round.
+- **CI**: green on each head, all six jobs; the run on the merged head `e51f777` is `38441474633` (earlier runs `38439712344`, `38440682984`, both green). Coverage gate on that run: lines 3899/3915 = 99.59%, functions 404/404 = 100.00%; `check_operation.py`, `check_ending.py`, `check_seed.py`, `check_tool.py` and `mock_check.py` each 100% of lines. No run showed the HQ-0015 pattern.
+- **Local gates**: `python -m pytest` 16325 passed, 309 skipped (run on the first commit; the two later commits changed docstrings and `tests/test_check_tool.py` only, and the five test files were re-run each time, 476 passed); `ruff check .` and `ruff format --check .` clean. `git diff --stat origin/main` listed exactly the ten files of `touchesFiles`, all `i/lf`, `git diff --check` clean. The five modules: +132/-77 (209 changed lines; cap 300).
+- **Language**: Python - the change is to five existing Python modules of the tool package (CLAUDE.md language policy).
+- **Process**: the landed check and `gh pr list --state open` were empty at the start; no comment on issue #5 after `issuecomment-6149396163`, so no objection to ADR-0055 or ADR-0056 and no answer to HQ-0013, 0014, 0016, 0017 or 0018.
+
+**The signatures as landed** (slice (3) and the operation of `cpu_standin` are written against these):
+- `hilclaw.check_operation.ask(operation, request, hw_profile, parameters, output_path, *, rtol, atol)`
+- `hilclaw.check_ending.carry_out(operation, request, hw_profile, parameters, output_path, *, rtol, atol)` - the same signature as `ask` (a test asserts it)
+- `hilclaw.check_seed.check(operation, request, hw_profile, admitted, seed, output_path)`
+- an operation: `operation(request, hw_profile, parameters, output_path)`; the mock's is `_Operation.__call__(self, request, hw_profile, parameters, output_path, /)`
+- a script: `script("correctness.check", request, hw_profile, parameters, output_path)`; `hilclaw.mock_check.default_script(tool, request, hw_profile, parameters, output_path)`
+- `hilclaw.check_tool._perform(data_root, request, hw_profile, operation, drawn)` and `tool_function` are unchanged in signature.
+
+**Conventions chosen under "Left to this task"** (each said in the docstring of the module it concerns, and tested):
+1. *Position.* The planner's suggestion: the fourth positional argument of an operation and the fifth of a script; in `ask` and `carry_out` the fifth positional parameter, right after the check parameters and before the keyword-only tolerance; in `check_seed.check` the last. No parameter of the five functions has a default; `_Operation.__call__` stays positional-only. Reason: the order of the table of ADR-0056 decision 3, and no keyword that an operation of another backend would have to know.
+2. *Type, not made absolute.* The `pathlib.Path` that `layout.attempt_artefact` returns, as it is: not resolved and not made absolute. Reason: making it absolute would read the working directory of the process, and `hilclaw.kernel_source.read_compiled_set` accepts the path as it is. A data root given with a `..` in it keeps it (tested).
+3. *`ask`, `carry_out` and `check` do not look at the path.* It is handed on as the same object - not checked, read or converted, whatever its type - as the request and the hw_profile are. The reviewers re-checked this reading and agreed.
+4. *Where it is formed.* In `check_tool._perform`, once per call, after the start line (moment 6). So no answer before the start line and no repeated call of an ended identity forms a path (tests assert it with a recorder on `layout.attempt_artefact`).
+5. *How the members are read.* `request["run_id"]`, `["round"]`, `["candidate"]`, `["attempt"]`, with no check of `check_tool`; a docstring sentence says the module relies on the frame.
+
+**Outcome of the check on `attempt_artefact`**: a frame-accepted request cannot make it raise. `journaled_tool._checked` checks `run_id` with `layout.check_run_id` itself, and the three numbers (all required for this tool, `check_identity.NUMBERS`) through `journal.step_identity` against the envelope rules of `hilclaw.events`: exactly `int`, `round` from 0, `candidate` and `attempt` from 1, each at most `keys.MAX_INTEGER` - the same type rule and bounds as `layout._number`; the name `"output"` is a constant among `ATTEMPT_ARTEFACTS`; nothing changes the request between the check and `_perform`. Pinned by `test_a_frame_accepted_request_is_one_the_layout_forms_a_path_for` (every value just outside a bound is `invalid_request` and is also what the layout refuses; the bounds themselves form a path) and by calls through the tool function with the least numbers, with `MAX_INTEGER` for all three and with a 64-character `run_id`. The reviewers confirmed it from the code.
+
+**Note on the tests of "reads nothing"**: `below_the_rounds` in `tests/test_check_tool.py` makes `os.stat`, `lstat`, `listdir`, `scandir`, `open`, `readlink`, `os.path.exists`/`lexists`/`isdir`/`isfile`/`islink`, `builtins.open` and `io.open` fail for paths below `runs/<run_id>/rounds`. It does not see `Path.resolve` on Windows; that is covered by the assertion that the text of `check_tool.py` holds no `resolve(` and no `absolute(`, and by the `..` test.
+
+**For slice (3)**: in `tests/test_check_tool.py` the row of `ENDINGS` that raises `ToolFailure("no_kernel_source", ...)` expects `KIND_OF_A_BACKEND_KIND = "operation_failure_invalid"`; that constant is the one assertion to flip. Once a backend kind is listed, the message an operation raised reaches the end line as raised, so whether such a message may hold the output path is then a question of ADR-0056 decision 6 for that slice; this task does not answer it.
+
+**Docstring sentences outside the five files that are now less exact** (not edited, out of scope):
+- `hilclaw/check_parameters.py`, module docstring: "decision 2 has an operation of this tool called with three things: the request, the hw_profile of the call and the check parameters" (four since ADR-0056 decision 3), and "nothing of class (iii)"; the class docstring "The five values an operation of `correctness.check` is handed beside the request and the hw_profile" (now also beside the output path).
+- `hilclaw/check_failure.py`: "The backend kinds of ADR-0047 decision 5: none" and "As long as :data:`BACKEND_KINDS` is empty this is every tool failure" - still true of the code, less exact against ADR-0056 decision 6 until slice (3).
+- The ADR sentences that ADR-0056 Consequences lists ("Not edited and now less exact") are unchanged by this task.
+
+**Follow-ups** (nothing new beyond the task's own list, except the second):
+- Slice (3) of ADR-0056: the two backend kinds in `hilclaw.check_failure.BACKEND_KINDS`.
+- (small) Bring the three sentences of `hilclaw/check_parameters.py` named above in line with four things; it can ride with slice (3) if that task lists the file in `touchesFiles`.
