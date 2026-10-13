@@ -2,7 +2,7 @@
 id: T-0162
 title: Add `hilclaw/selfcheck_wire.py`, the reading of the wire copy of the runtime self-check (ADR-0054 decision 6, the rows "read from the wire copy", and the wire-side members of decision 7) - one pure function that turns the copied lines `hilclaw.selfcheck_server.read_wire_copy` returns into named facts (the `initialize` request and its revisions, the `server/discover` probe, `tools/list`, the call of each tool, the JSON-RPC errors that condition (a) of `front_refused` names, the client version, the unforeseen methods) with every client-supplied string bounded; no outcome word, no session, no `claude`, no file
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, C-7, OD-18, D16, "#5 D12"]
 dependsOn: [T-0153, T-0161]
@@ -137,3 +137,71 @@ The module docstring names ADR-0054 decision 6 (the rows read from the wire copy
 - (driver / owner) HQ-0013, 0014, 0016, 0017, 0018 (`runtime-acceptance`).
 
 ## Result
+**DONE.** PR #111 (https://github.com/myungjoo/HIL-Claw/pull/111), squash-merged as `12ac82b`; branch deleted. Diff: `hilclaw/selfcheck_wire.py` (300 lines, at the cap) and `tests/test_selfcheck_wire.py` (311 cases) only. No existing module edited, no private name imported, no dependency, no data-plane file. No PLAN checkbox ticked. **No process and no `claude` was started** by the executor, a reviewer or a test.
+
+**Language: Python** - reads values of `hilclaw.selfcheck_server` and names of `hilclaw.mcp_front` in-process.
+
+**Public names of `hilclaw.selfcheck_wire`**
+- `read(lines) -> WireFacts`: `lines` is a tuple or list of `(direction, bytes)` pairs (the `lines` of a `WireCopy`, not the `WireCopy`; `torn` is not taken).
+- `OTHER = "other"`, `MAX_STRING = 64`, `MAX_LISTED = 16`.
+- `SERVED_METHODS = ("initialize", "ping", "tools/list", "tools/call")`; a test holds it equal to the front's method table.
+- `FORESEEN_METHODS`: the six of decision 6.
+- `TOKEN_TOOL_NAME = "selfcheck_token"`, `FAIL_TOOL_NAME = "selfcheck_fail"`, derived through `mcp_front.mcp_name`.
+- `WireFacts(NamedTuple)`: hashable, every member defaulted, so `WireFacts()` is the all-absent value.
+
+**Members of `WireFacts`**
+
+| Member | Type | Meaning |
+|---|---|---|
+| `reached` | bool | the copy holds an `initialize` request |
+| `client_version`, `revision_asked` | bounded str / None | `params.clientInfo.version`, `params.protocolVersion` of the first `initialize` request |
+| `initialize_answered` | bool | that first request was answered with a result |
+| `revision_answered` | bounded str / None | `protocolVersion` of that result |
+| `probe_seen` | bool | a `server/discover` request is in the copy |
+| `probe_before_initialize` | bool | no `initialize` request stands before the first probe |
+| `probe_revision` | bounded str / None | `params._meta["io.modelcontextprotocol/protocolVersion"]` of the first probe, read nowhere else |
+| `probe_error` | int / None | code of the error answered to the first probe |
+| `list_requested` | bool | a `tools/list` request |
+| `list_after_initialize` | bool | one stands after the first `initialize` request |
+| `list_answered` | bool | one was answered with a result whose `tools` is an array |
+| `list_both_tools` | bool | such an array names both tools as the `name` of an object |
+| `token_call_requested`, `fail_call_requested` | bool | a `tools/call` request whose `params.name` is that tool |
+| `token_call_answered`, `fail_call_answered` | bool | at least one such call answered with `isError` exactly JSON `false` / `true` |
+| `errors` | tuple of `(code, method or None)` | every error answer except -32601, in copy order, first 16 |
+| `errors_dropped` | bool | there were more than 16 |
+| `unforeseen` | tuple of bounded str | distinct method names outside `FORESEEN_METHODS`, first-seen order, at most 16 |
+| `unforeseen_dropped` | bool | a further distinct name was seen |
+| `unplaceable` | bool | the copy holds a line the front could not have written where it stands |
+
+**Rules**
+- **Pairing** is by position: a server line answers the client line immediately before it. The front reads one line, writes at most one and then reads the next, and the entry copies a client line before the front gets it and a server line after it was sent. Pairing by `id` was weighed and not taken: the client supplies it and may repeat it. A request with no server line after it is not answered.
+- **Client line**: read with `tools.decode_request`. A request of a method is one JSON object with a string `method` and an `id` member, whatever `jsonrpc` and the `id` value are.
+- **Server line**: an answer only when it directly follows a client line, is one JSON object with exactly one of `result` and `error`, and is what the front can write to that line.
+- **Unplaceable**: every other server line and any line of an unknown direction. It sets the flag, is never an answer and never an error of condition (a), and the client line before it stays unanswered. No error code outside the front's four leaves the module, so no stand-in code exists.
+- **Bounded string**: 1 to 64 characters of ASCII letters, digits, `.`, `_`, `-` (a method name also `/`); any other string, the empty one included, is `other`; absent or no string is `None`. The rule covers the three revisions.
+- **Raises**: `TypeError` with one of three fixed texts for an argument of another form; the bytes of a line never raise.
+
+**Wire-side conditions for the outcome table**
+- `front_refused` reached: `reached`.
+- `front_refused` (a): `bool(errors)`.
+- `front_refused` (b), wire half: `initialize_answered and not list_after_initialize`.
+- `passed`: `initialize_answered and list_answered and list_both_tools and token_call_answered and fail_call_answered and not errors`.
+- `no_call`: `reached`; the report takes the calls from the four `*_call_*` members.
+- `session_failed`: `not reached`, or `unplaceable` (the planner's reading "left no readable wire copy"; with `torn` and the reader's errors this is the next slice's to decide).
+
+**Notes for the next slice** (reviewer Nits, no code change)
+- `initialize_answered` and `list_after_initialize` look at the first `initialize` request only. A copy whose first is refused and second answered has `initialize_answered` false, with a (a) error in `errors`.
+- A -32600 can carry a served method name, e.g. `(-32600, "ping")`, when the line had a string `method` and an `id` member but a bad `jsonrpc` or `id`. `method is None` does not mean "every -32600".
+- A -32602 is accepted as an answer to any request of a served method.
+- A client line is decoded again in the reader's process. A line nested within a few levels of the recursion limit, or an integer near the digit limit, can read differently there, and the front's real answer then becomes `unplaceable` (round 1 Low; stated under Known limits in the docstring; it fails to the safe side). Do not read `unplaceable` as proof of a foreign writer, and never let an `unplaceable` copy pass.
+
+**Review: 2 rounds**, fresh-context `dev-reviewer` each; no `SECURITY` result.
+- Round 1 (`8a8f277`): Approve. Low - the re-decoding limit above (docstring). Nit - the `jsonrpc`/`id` premise was stated for -32601 only (docstring corrected). Nit - `initialize_answered` reads the first request (recorded above).
+- Round 2 (`dcbb968`): Approve, nothing left to edit in this PR; three Nits recorded above. Both reviewers fuzzed the real front in memory (6000 and 8000 sequences): no unplaceable line, `errors` always matching.
+
+**Gates.** Local: 16897 passed, 311 skipped; ruff clean. CI run 38472443669 on `dcbb968`: six jobs passed. Coverage: lines 99.62% (4213/4229), functions 100.00% (432/432); `hilclaw/selfcheck_wire.py` 141 statements, 0 missed.
+
+**Follow-ups**
+- Question for the record, not decided here: an unknown tool name, which the model can cause, is answered -32602 and so is an error of condition (a) as ADR-0054 is written. Whether that should end in `front_refused` belongs to the outcome-table slice (and to ADR-0054 if the table cannot answer it).
+- The module is at the 300-line cap; any addition needs a split.
+- The next slices are as listed under Follow-ups above: the pure outcome table (a new module), the session against a stub `claude`, the report and the package command (ticks P1-9).
