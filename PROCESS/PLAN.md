@@ -1,6 +1,6 @@
 # 개발 PLAN
 
-[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D16은 모두 답변되어(2026-10-13) 본 PLAN에 ⚑ 항목은 없다. D15(드라이버 병렬 실행)의 전환은 PLAN 항목이 아니며 planner는 그것을 task로 만들지 않는다 — 루틴을 멈춘 통합자 세션이 P0-3 완료와 P0.5-4의 hook 등록 뒤에 수행한다(D15-3·D15-4, [proposals/D15-parallel-drivers.md](proposals/D15-parallel-drivers.md) §8).
+[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D16은 모두 답변되어(2026-10-13) 본 PLAN에 ⚑ 항목은 없다. *(런타임 인수 항목)* 으로 표시된 줄은 체크리스트 항목이 아니며 planner가 task로 만들지 않는다(DRIVER §6, D16). D15(드라이버 병렬 실행)의 전환은 PLAN 항목이 아니며 planner는 그것을 task로 만들지 않는다 — 루틴을 멈춘 통합자 세션이 P0-3 완료와 P0.5-4의 hook 등록 뒤에 수행한다(D15-3·D15-4, [proposals/D15-parallel-drivers.md](proposals/D15-parallel-drivers.md) §8).
 
 현재 phase: `PROCESS/STATE.json`의 `phase`가 정본.
 
@@ -38,9 +38,13 @@
 - [ ] P2-2 coder-driver(`claude -p` 호출, spec 전달, 출력 캡처) — **OD-23 종결 필요(§9 ADR 경로)**(로스터·입출력 계약, 논의중) · coversReq: FR-5, OD-23
 - [ ] P2-3 evaluator(Write 권한 없음, 하네스만 호출) — **OD-16 종결 필요(§9 ADR 경로)** · coversReq: FR-9, OD-16
 - [ ] P2-4 hooks: PreToolUse 예산·gate 검사, PostToolUse 저널링, Stop 커밋 강제 — **OD-18·OD-19 종결 필요(§9 ADR 경로)** · coversReq: FR-3·4·11, OD-18·19
-- [ ] P2-5 첫 end-to-end run: `cpu_standin` × GEMM, N=1, 5라운드 · coversReq: S0, S1, S8(N=1)
+- [ ] P2-6 가설 레코드와 판정(오너 결정 2026-10-13): 기법 선택이 가설·근거·예상 효과·출처를 구조화 기록으로 남기고 evaluate가 가설마다 판정·원인을 기록 — 스키마·파일 자리는 **OD-30 종결 필요(§9 ADR 경로)**; 2층의 스키마 검증·쓰기와 1층 프롬프트(P2-1·P2-3)에의 반영을 포함. 수행 순서는 나열 순서(P2-5보다 앞) — 첫 run이 사례를 남기도록 · coversReq: FR-11·17, OD-30·OD-23
+- [ ] P2-7 가설–결과 사례 저장과 같은 키 정확 일치 조회(MVP 최소분, 오너 결정 2026-10-13): 라운드 종료 때 사례(기각·실패 포함)를 `db/<hw_profile_key>/<op_signature>/`에 저장, 기법 선택이 그 키의 사례를 읽고 참조를 결정 로그에 기록, instance 시작 시의 가설 주입 입력(FR-15) — **OD-30 종결 필요(§9 ADR 경로)**(사례 필드·싣는 사례의 선택; OD-20·OD-7과의 관계) · coversReq: FR-15·18, S11, OD-30·OD-20·OD-7
+- [ ] P2-5 첫 end-to-end run: `cpu_standin` × GEMM, N=1, 5라운드 · coversReq: S0, S1, S8(N=1), FR-17·18
+- [ ] P2-8 S6 수용 기준의 계산 도구: 같은 키의 두 run의 기록에서 첫 run의 best에 도달하기까지의 라운드 수와 두 번째 run의 결정 로그에 든 사례 참조의 유무를 계산(fixture로 검증) — 지표 정의는 **OD-30 종결 필요(§9 ADR 경로)** · coversReq: S6, FR-18, OD-30
+- P2-9 *(런타임 인수 항목 — 드라이버 task로 만들지 않는다, D16)* S6 수용 기준 측정: 오너가 런타임 머신에서 같은 키·target·tolerance·N·budget으로 run을 두 번(첫 run과 두 번째 run) 수행하고 P2-8의 도구로 판정한다 — 드라이버의 P2-5 검증(스텁 `claude`)의 run은 첫 run으로 쓰지 않는다. P2-8이 체크된 뒤 planner가 처음 PLAN을 읽는 iteration(DRIVER §3-3)에 DRIVER §8의 HQ(사유 `runtime-acceptance`, `taskId` = P2-8의 task)를 한 번 올린다; 이미 올렸는지는 `PROCESS/STATE.json`의 `humanQuestions`로 판정하며 PLAN 본문에는 적지 않는다. phase 전환 조건에 들지 않으며 오너의 수동 확인으로만 닫힌다 · coversReq: S6, FR-18
 
 ## P3 이후 (초안만)
 
-- Best-of-N(N≤5) 실행·승격 정책(OD-29), LAN 백엔드(SSH)·`board.run` 원격(B-2 대기), attention/KV cache 커널(B-4 2차), 기법 카탈로그 콜드스타트(OD-22), 크로스런 통계(OD-7), 알림(OD-27).
+- Best-of-N(N≤5) 실행·승격 정책(OD-29), LAN 백엔드(SSH)·`board.run` 원격(B-2 대기), attention/KV cache 커널(B-4 2차), 기법 카탈로그 콜드스타트(OD-22), 크로스런 통계의 랭킹 신호·유사 키 사례 활용(OD-7·OD-4 잔여 — 가설 레코드는 P2-6, 사례 저장과 정확 일치 조회는 P2-7), 알림(OD-27).
 - **예약(오너, 2026-10-13 채팅) — 지원 대상 순서와 2번째 대상**: 1번째 지원 대상은 CPU(현재의 `cpu_standin` 백엔드, #5 A-7 — 통합자 독해), **2번째 지원 대상은 Qualcomm NPU**다. QNN·AIMET 등을 이용해 HuggingFace의 주요 On-Device LLM 모델(3B급)을 최적화한다 — 목표 산출물은 더 빠르게 동작하고 더 적은 메모리를 쓰면서 품질 성능은 유지·향상되는 **양자화 모델**. 예약일 뿐이며 planner는 이 항목을 task로 만들지 않는다. **오너 확정 필요** — 위 문장에 없는 것은 어느 것도 정해지지 않았고, 이 항목은 #5 B-1·B-2·B-3·B-5(OD-9)·B-8·A-4의 어느 부분도 닫지 않는다. 정해지지 않은 것의 예(완결된 목록이 아니다): 대상 SoC·SDK 버전, 대상 모델 목록, 모델 입력 포맷·frontend 경계, 양자화 방식, 품질 지표와 평가 데이터, simulator 유무·종류, 실행 장비 접근 방식, 3층 코더의 역할, 단일 compute-kernel 범위(C-6)와 모델 단위 양자화 산출물의 관계.

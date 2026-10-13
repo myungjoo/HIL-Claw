@@ -26,6 +26,8 @@
 - **op_signature**: 최적화 대상 연산의 식별 키. 필드 스키마의 P1 최소분은 [ADR-0001](decisions/ADR-0001-od4-key-schema.md), 나머지는 미결(→ Requirements OD-4).
 - **데이터 plane**: run 산출물과 크로스런 지식(`runs/`, `db/`, `blobs/`)이 사는 저장 공간. **소스(도구) repo와 분리**된 별도 repo `HIL-Claw-data`(#5 A-1 확정)이며, 소스 쪽에서는 `hilclaw.config.json`으로 참조한다. 운영 모델 변경안(template 파생 등)은 미결 — Requirements OD-25.
 - **기법 카탈로그(technique catalog)**: 최적화 기법 후보군과 "언제 쓰면 좋은지(선택 기준)" 및 적용 지침·과거 통계를 담는 자료. Phase 1에서는 repo 내 문서로 시작.
+- **가설 레코드**: 라운드의 기법 선택이 남기는 구조화된 기록 — 가설·근거·예상 효과·출처. evaluate가 가설마다 판정과 원인을 덧붙인다(Requirements FR-17). 가설은 기본적으로 시스템이 스스로 세우며, 사용자가 직접 또는 논문 링크 등으로 주입할 수도 있다 — 주입은 시스템의 가설 수립을 대신하지 않는다(FR-15·17).
+- **사례(case)**: 가설 레코드·판정·원인을 측정 결과에 이어 `db/<hw_profile_key>/<op_signature>/`에 저장한 것. 기각·실패도 포함하며 같은 키의 이후 instance가 참조한다(FR-18). 필드·파일 = Requirements OD-30.
 - **HW 출처(hw_source)**: hw_profile의 속성. **외부 타사 HW** 또는 **자사 개발 중 HW**(2026-09-03 확정). 출처별 특성은 예상치다(예: 외부 타사 = 문서·툴체인이 벤더 고정, 자사 개발 중 = 실리콘 부재 가능·문서/도구/revision 변동). 키에 넣지 않는 필수 속성([ADR-0001](decisions/ADR-0001-od4-key-schema.md), Requirements OD-4), 출처별 처리 = OD-26.
 - **CAS(content-addressable storage)**: 바이너리 산출물을 해시로 식별해 git 밖에 두는 저장소(확정 결정 A-2: `HIL-Claw-data/blobs/sha256/`, git에는 `artifacts.json`의 해시 참조만).
 - **라운드 0 / bring-up**: instance 시작 시 해당 HW에서 *동작하는* 코드를 먼저 만들고 그 성능을 재는 라운드. 이 측정값이 **baseline**이다. baseline 선택지(bring-up 코드 / 벤더 라이브러리 / 기존 best) = Requirements OD-28.
@@ -68,20 +70,20 @@
 - **액터**: 배포 엔지니어 / CI
 - **선행조건**: 대상 HW(hw_profile)와 모델, 사용 가능한 sim/board 도구가 등록되어 있음(→ UC-0, Requirements FR-14 ④).
 - **주 흐름**
-  1. 사용자가 *(HW + 모델 + 최적화 target type + (선택) budget + (선택) gate 구성 + autonomy 모드 + 라운드당 후보 수 N + (선택) 참고 사례·자료)* 를 지정해 instance를 시작한다.
+  1. 사용자가 *(HW + 모델 + 최적화 target type + (선택) budget + (선택) gate 구성 + autonomy 모드 + 라운드당 후보 수 N + (선택) 참고 사례·자료 + (선택) 주입할 가설)* 를 지정해 instance를 시작한다.
   2. 시스템이 instance용 작업공간(데이터 plane의 `runs/<run_id>/` 또는 Phase 2 DB 레코드)을 만들고 STATE를 초기화한다.
-  3. **라운드 0**(bring-up: 해당 HW에서 동작하는 코드 생성 + baseline 성능 측정)을 수행한 뒤 라운드 루프(UC-2 또는 UC-3)로 진입한다.
+  3. **라운드 0**(bring-up: 해당 HW에서 동작하는 코드 생성 + baseline 성능 측정)을 수행한 뒤 라운드 루프(UC-2 또는 UC-3)로 진입한다. 라운드 루프는 같은 (hw_profile, op_signature) 키의 과거 사례를 조회해 입력으로 쓴다(FR-18).
 - **종료조건**: budget 소진 또는 (선택) target-metric 조기 달성. 기본 종료 의미론은 **best 결과 유지**.
-- **비고**: 목표 type은 메뉴(vocabulary)에서 선택한다. 예: latency 최소화 / throughput 최대화 / 동시 서빙 capacity 최대화 / 메모리 상한 내 latency 최소화(제약형) / 가중 조합. *(메뉴 최종 확정 = 미결)* 참고 사례·자료(내부 Storage의 기존 사례 참조, 외부 논문 링크)는 **참고사항으로만** 쓰이며 Ground Truth나 최종 목표가 아니다(Requirements FR-15). correctness tolerance도 instance 파라미터로 사용자가 지정한다(FR-9).
+- **비고**: 목표 type은 메뉴(vocabulary)에서 선택한다. 예: latency 최소화 / throughput 최대화 / 동시 서빙 capacity 최대화 / 메모리 상한 내 latency 최소화(제약형) / 가중 조합. *(메뉴 최종 확정 = 미결)* 참고 사례·자료(내부 Storage의 기존 사례 참조, 외부 논문 링크)는 **참고사항으로만** 쓰이며 Ground Truth나 최종 목표가 아니다(Requirements FR-15). 주입한 가설(직접 쓴 가설 또는 논문 링크 등 가설을 도출할 자료)도 같은 원칙을 따르며 시스템이 세운 가설과 같은 실험·검증·판정을 거친다 — 주입이 있어도 시스템은 라운드마다 결과에서 교훈을 얻어 스스로 추가 가설을 세운다(FR-15·17; 형식·시작 뒤의 주입 = OD-30). correctness tolerance도 instance 파라미터로 사용자가 지정한다(FR-9).
 
 ## UC-2. 인터랙티브 최적화 (checkpoint 모드)
 - **액터**: 배포 엔지니어
 - **선행조건**: instance가 checkpoint 모드, gate 집합이 정의됨.
 - **주 흐름**
-  1. 한 라운드를 실행: 기법 선택 → 후보 N개 코드 생성(외부 위임) → compile → sim **+ correctness**. correctness 실패 후보는 실패 리포트와 함께 코드 생성 단계로 복귀한다(repair).
+  1. 한 라운드를 실행: 기법 선택(**가설 레코드** 작성 — FR-17; 같은 키의 과거 사례 참조 — FR-18) → 후보 N개 코드 생성(외부 위임) → compile → sim **+ correctness**. correctness 실패 후보는 실패 리포트와 함께 코드 생성 단계로 복귀한다(repair).
   2. 정의된 **gate**(예: real-board 첫 투입 전 / 기법군 전환 / budget 50% 소진)에 도달하면 정지하고 사용자 승인을 기다린다.
-  3. 사용자가 승인/거부/방향 수정을 입력하면 진행한다(승격 시 sim 상위 k개를 board 측정 **+ correctness 재검증** → profile → evaluate). **sim 통과·board 실패**는 해당 측정을 격리하고 원인을 후보/board/시뮬레이터 결함으로 분류(triage)한 뒤 처리한다 — 시뮬레이터 결함으로 분류되면 escalate한다(sim 버그 리포트, → UC-7).
-  4. 결과·로그(전 후보 포함)를 저장(commit)하고 다음 라운드 여부를 결정한다.
+  3. 사용자가 승인/거부/방향 수정을 입력하면 진행한다(승격 시 sim 상위 k개를 board 측정 **+ correctness 재검증** → profile → evaluate — 가설마다 **판정과 원인**을 기록, FR-17). 방향 수정으로 가설을 주입하는 것은 OD-30. **sim 통과·board 실패**는 해당 측정을 격리하고 원인을 후보/board/시뮬레이터 결함으로 분류(triage)한 뒤 처리한다 — 시뮬레이터 결함으로 분류되면 escalate한다(sim 버그 리포트, → UC-7).
+  4. 결과·로그(전 후보 포함)와 가설–결과 사례(기각·실패 포함, FR-18)를 저장(commit)하고, 판정을 입력으로 다음 라운드 여부를 결정한다.
 - **대안 흐름**
   - 사용자가 거부하면 해당 기법군을 건너뛰거나 instance를 중단한다.
   - **검증 실패**: 검증 하네스가 correctness 실패(또는 최적화 중 노출되지 않은 입력에서의 불일치)를 판정하면 해당 후보를 **실패로 기록**하고 best·통계에 반영하지 않는다(FR-9 hard floor). sim 단계 실패는 실패 리포트와 함께 repair로 복귀하고(주 흐름 1), 복귀 횟수 상한은 OD-19; 실패 원인은 다음 라운드 코더 spec의 `feedback` 구획에 실린다(자리 = OD-6 확정분 [ADR-0002](decisions/ADR-0002-od6-codegen-spec.md); 어떤 시도를 싣는지는 OD-6 잔여).
@@ -93,7 +95,7 @@
 - **선행조건**: instance가 autonomous 모드, 권한 자동 승인.
 - **주 흐름**
   1. budget 소진/종료 조건까지 무정지로 라운드를 반복한다(`/loop` 또는 cron 재기동; 라운드 = 프로세스 경계 채택 여부 = Requirements OD-18).
-  2. 매 라운드 STATE/결과를 외부화(commit)하여 프로세스 사망에도 재개 가능하게 한다.
+  2. 매 라운드 STATE/결과(가설 레코드·판정·사례 포함 — UC-2 주 흐름 1·3·4와 같다)를 외부화(commit)하여 프로세스 사망에도 재개 가능하게 한다.
   3. 비수렴 시 기법군을 자동 전환(N회)하고, 실패하면 best 유지 종료 + 알림(UC-7, FR-16).
 - **대안 흐름**
   - 안전상 autonomous에서도 넘을 수 없는 gate(예: board 안전)가 있으면 거기서 정지·알림. *(그런 강제 gate 존재 여부 = 미결)*
@@ -118,7 +120,7 @@
   2. 신규 최적화 기법을 **후보 + 적용 가능성 메타데이터(언제 쓰면 좋은지 = 선택 기준)** 형태로 카탈로그에 추가한다.
   3. 기존 기법을 갱신/삭제한다.
 - **종료조건**: 카탈로그 갱신 완료. 이후 run의 기법 선택에 반영됨.
-- **비고**: "AI for Science"-like. 선택 기준은 Skill 트리거에, 적용 지침은 코더 spec에 실린다(하이브리드). 자동/HIL 큐레이션 경계 = 미결.
+- **비고**: "AI for Science"-like. 선택 기준은 Skill 트리거에, 적용 지침은 코더 spec에 실린다(하이브리드). 자동/HIL 큐레이션 경계 = 미결. instance에 주입된 가설(FR-15)은 본 UC와 다른 경로다 — 지지 판정을 받은 주입 가설을 카탈로그로 올리는 경로는 미결(OD-30·OD-24).
 
 ## UC-6. 결과·이력 조회·비교 (감사)
 - **액터**: 배포 엔지니어 / CI
@@ -126,7 +128,7 @@
 - **주 흐름**
   1. 사용자가 특정 run 또는 (hw_profile, op_signature)에 대한 이력을 조회한다.
   2. 라운드별·후보별 산출물·프로파일·정확도·점수와 best를 비교한다.
-  3. 결정 로그(어떤 기법을 왜 골랐는지)를 확인한다.
+  3. 결정 로그(어떤 기법을 왜 골랐는지 — 가설·예상 효과·판정·원인과 참조한 과거 사례, FR-11·17·18)를 확인한다.
 - **종료조건**: 조회 완료.
 - **비고**: Phase 1에서는 git history/diff가 곧 감사 로그(숨은 이점). 단 데이터 plane과 소스가 분리되어 있으므로 **두 history를 `instance.json`의 소스 commit 기록으로 이어야** 감사가 성립한다(→ Requirements NFR-2). 중간·최종·**실패** 결과가 모두 보존되어야 한다.
 
@@ -161,6 +163,7 @@ MVP 구현 대상이 아니다. 설계(STATE/spec/도구/레이아웃 인터페�
 - UC-2/UC-3의 매 라운드에 검증 하네스가 개입하며(sim·board 두 지점, FR-1), 검증 실패는 두 UC 공통의 대안 흐름이다.
 - UC-2/UC-3는 매 라운드 산출물을 남겨 UC-4(재개)·UC-6(조회)을 가능케 한다.
 - UC-5는 UC-2/UC-3의 "기법 선택" 품질을 좌우한다(guided search 근거 공급).
+- UC-2/UC-3의 매 라운드가 남긴 가설–결과 사례는 같은 키의 이후 UC-1 instance의 입력이 된다(FR-18, 크로스런 학습 — StandardScenarios S6).
 - UC-7은 UC-2/UC-3 내부의 분기 흐름이다.
 - UC-E1·E3·E4는 UC-2/UC-3·UC-6의 확장이며, MVP 인터페이스 설계 시 배제 여부만 검사한다.
 
