@@ -2,6 +2,7 @@ import ast
 import builtins
 import copy
 import inspect
+import io
 import json
 import os
 import struct
@@ -383,7 +384,8 @@ def below_the_rounds(root, monkeypatch):
         monkeypatch.setattr(os, name, guarded(getattr(os, name)))
     for name in ("exists", "lexists", "isdir", "isfile", "islink"):
         monkeypatch.setattr(os.path, name, guarded(getattr(os.path, name)))
-    monkeypatch.setattr(builtins, "open", guarded(builtins.open))
+    for module in (builtins, io):
+        monkeypatch.setattr(module, "open", guarded(module.open))
     return looked
 
 

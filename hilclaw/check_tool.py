@@ -58,12 +58,11 @@ and writes the path to no file and puts it in no message. It says nothing of
 flags or of time limits. It binds no source of seeds, no predicate, no
 backend, no table and no script, and no parameter has a default. It names no
 kind, no ``step`` value and no member of its own, and composes the message
-of no tool failure.
-It writes no seed anywhere and puts none in a message. It gives no rule for
-another HW tool and keeps nothing between calls. It imports
-:mod:`hilclaw.check_admission`,
-:mod:`hilclaw.check_ending`, :mod:`hilclaw.check_identity`,
-:mod:`hilclaw.check_seed`, :mod:`hilclaw.hw_tool`, :mod:`hilclaw.instance`,
+of no tool failure. It writes no seed anywhere and puts none in a message.
+It gives no rule for another HW tool and keeps nothing between calls. It
+imports :mod:`hilclaw.check_admission`, :mod:`hilclaw.check_ending`,
+:mod:`hilclaw.check_identity`, :mod:`hilclaw.check_seed`,
+:mod:`hilclaw.hw_tool`, :mod:`hilclaw.instance`,
 :mod:`hilclaw.journaled_step` and :mod:`hilclaw.layout` and nothing else.
 """
 
