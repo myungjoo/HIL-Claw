@@ -36,8 +36,8 @@ Choices that are this module's own and no rule of a record:
   line, then :func:`check`, is the caller's to keep.
 * How the two cases are told apart.
   :func:`hilclaw.harness.seed_source.draw` is handed a callable of this
-  module that calls the source and remembers whether that call raised an
-  error. The wording of the message of
+  module that calls the source and remembers whether that call returned.
+  The wording of the message of
   :class:`hilclaw.harness.seed_source.SeedSourceError` is not read.
 * The two messages. Each is built when the module is imported and is at
   most 200 characters long. Decision 6 lets a message name the kind of the
@@ -50,11 +50,12 @@ Choices that are this module's own and no rule of a record:
   of this module: it is taken as a registry bound to something that is no
   source, not as a source that fails. ADR-0048 Limits leaves that line to
   the code.
-* Nothing of what a source returned or raised is kept with the answer. The
-  tool failure is raised after the handler has been left and binds neither
-  the ``SeedSourceError`` nor what the source raised or returned, so
-  neither its ``__cause__`` nor its ``__context__`` is one of them, and the
-  frame of :func:`draw` in its traceback holds none of them.
+* How the answer is kept free of what a source returned or raised, which
+  is the rule of decision 6. The tool failure is raised after the handler
+  has been left, and :func:`draw` binds neither the ``SeedSourceError`` nor
+  what the source raised or returned, so neither its ``__cause__`` nor its
+  ``__context__`` is one of them, and the frame of :func:`draw` in its
+  traceback holds none of them.
 * ``admitted`` is checked to be exactly a
   :class:`hilclaw.check_admission.Admitted`, before anything is called.
 
@@ -82,7 +83,7 @@ from hilclaw.harness import seed_source
 #: The kind of ADR-0048 decision 5: the draw yielded no seed. The tool's own, not reserved.
 KIND_SEED_NOT_DRAWN = "seed_not_drawn"
 
-_NO_SEED = "the draw of the seed of the check yielded no seed: "
+_NO_SEED = "the draw of the seed of the call yielded no seed: "
 _SOURCE_FAILED = _NO_SEED + "the source of seeds raised an error"
 _NAMED_NO_SEED = _NO_SEED + "the source of seeds returned what is no seed"
 
@@ -120,20 +121,18 @@ def draw(source):
     """
     if not callable(source):
         raise TypeError("source: must be callable")
-    failed = False
+    returned = False
 
     def ask():
-        nonlocal failed
-        try:
-            return source()
-        except Exception:
-            failed = True
-            raise
+        nonlocal returned
+        named = source()
+        returned = True
+        return named
 
     try:
         return seed_source.draw(ask)
     except seed_source.SeedSourceError:
-        message = _SOURCE_FAILED if failed else _NAMED_NO_SEED
+        message = _NAMED_NO_SEED if returned else _SOURCE_FAILED
     raise tools.ToolFailure(KIND_SEED_NOT_DRAWN, message)
 
 
