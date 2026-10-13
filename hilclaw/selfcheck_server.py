@@ -50,8 +50,8 @@ it, to write the whole line: the copy never holds an answer that was not sent.
 A record is handed to the system, unbuffered, before the entry goes on;
 standard error is not copied. A failed copy reaches the front as the
 ``OSError`` of its stream and the front gives up by its own rule: no line is
-handled that the copy does not show, except that the one answer whose copy
-failed was already sent, and none follows it. The file grows without a limit.
+handled that the copy does not show, except the last answer sent, when its
+copy failed or the process was killed first. The file grows without a limit.
 
 :func:`read_wire_copy` returns the copied lines in order. A file that does not
 begin with the whole magic line, an empty one included, is no wire copy

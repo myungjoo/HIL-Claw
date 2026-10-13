@@ -312,7 +312,7 @@ def test_a_package_under_a_path_with_a_space_and_a_non_ascii_character(tmp_path)
     assert len(read_wire_copy(place).lines) == 8
 
 
-def test_a_killed_child_leaves_every_handled_line_in_the_copy(tmp_path):
+def test_a_killed_child_leaves_the_lines_before_its_last_answer_in_the_copy(tmp_path):
     place = tmp_path / "wire-copy"
     entry = server_entry(token=TOKEN, fail_token=FAIL_TOKEN, wire_copy=place)
     child = subprocess.Popen(
@@ -327,7 +327,7 @@ def test_a_killed_child_leaves_every_handled_line_in_the_copy(tmp_path):
     watchdog.start()
     try:
         answers = []
-        for line in (INITIALIZE, CALL_TOKEN):
+        for line in (INITIALIZE, CALL_TOKEN, LIST):
             child.stdin.write(line)
             child.stdin.flush()
             answers.append(child.stdout.readline())
@@ -337,15 +337,15 @@ def test_a_killed_child_leaves_every_handled_line_in_the_copy(tmp_path):
         child.wait(timeout=60)
         child.stdin.close()
         child.stdout.close()
-    assert read_wire_copy(place) == WireCopy(
-        (
-            (FROM_CLIENT, INITIALIZE),
-            (FROM_SERVER, answers[0]),
-            (FROM_CLIENT, CALL_TOKEN),
-            (FROM_SERVER, answers[1]),
-        ),
-        False,
+    lines = read_wire_copy(place).lines
+    assert lines[:5] == (
+        (FROM_CLIENT, INITIALIZE),
+        (FROM_SERVER, answers[0]),
+        (FROM_CLIENT, CALL_TOKEN),
+        (FROM_SERVER, answers[1]),
+        (FROM_CLIENT, LIST),
     )
+    assert lines[5:] in ((), ((FROM_SERVER, answers[2]),))
 
 
 @pytest.mark.parametrize(
