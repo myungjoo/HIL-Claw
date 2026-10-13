@@ -52,10 +52,9 @@ of the ``result`` message, so a wrong name of that message leaves it as it is.
   line of spaces, tabs and carriage returns only is nothing. Every other line
   is decoded as strict UTF-8 and parsed as strict JSON, with that white space
   allowed around the value. A line that is not one JSON object establishes
-  nothing and is no error: a byte order mark, invalid UTF-8, another JSON
-  value, ``NaN`` or ``Infinity``, nesting too deep to parse, and an object, at
-  any depth, that holds a member name twice, which has no single answer.
-  Integers are not converted.
+  nothing: a byte order mark, invalid UTF-8, another JSON value, ``NaN`` or
+  ``Infinity``, nesting too deep to parse, and an object at any depth with a
+  member name twice (no single answer). Integers are not converted.
 - *The* ``system/init`` *event* is the only line that says so. Two or more are
   an output the check cannot read, so ``init_read`` is false and nothing of
   the session side is read: the record speaks of one, two can contradict each
