@@ -77,12 +77,13 @@ _CLAUDE = re.compile(
     re.DOTALL | re.IGNORECASE,
 )
 _LOOKS_LIKE_CLAUDE = re.compile(
-    r"(?:^|[;&|(`{\n])[ \t]*(?:\w+=[^\s;&|()`]*[ \t]+)*[\"']?"
-    r"(?:[^\s;&|()`{\"']*[\\/])?"
+    r"(?:^|[;&|(`{\n])[ \t]*(?:\w+=[^\s;&|()`]*[ \t]+)*(?:\$[\w:.]+[ \t]*=[ \t]*)?"
+    r"(?:[\"'][^\"'\n]*[\\/]|[\"']?(?:[^\s;&|()`{\"']*[\\/])?)"
     rf"claude{_CLAUDE_ENDINGS}(?![\w.\\/-])",
     re.IGNORECASE,
 )
 _ASSIGNMENT = re.compile(r"[A-Za-z_]\w*\+?=.*", re.DOTALL)
+_ONLY_ENDS_IN_BRACES = re.compile(r"[^{}]*\{\}")
 _ENDING = re.compile(r"\.(?:exe|cmd|bat|ps1)$")
 _QUOTED_BRACES = {"{": "\ue000", "}": "\ue001"}
 _COUNT = re.compile(r"\d+(?:\.\d+)?[smhd]?")
@@ -315,11 +316,12 @@ def forbidden_command(command):
     file); a quoted command line (``sh -c "claude -p x"``,
     ``cmd /c "claude -p x"``) and a quoted path with white space after ``cmd``
     and the words listed with it; a runner or an option value outside the
-    lists above (``sudo --chroot d claude``); a runner given as an unquoted
-    backslash path; a start after a word that expands to nothing
-    (``$EMPTY claude``, ``$(true) claude``); a start after a ``case`` pattern
-    in parentheses; a runner before the program word on a line that cannot be
-    tokenised. Unquoted text that is no command (a here-document body) is
+    lists above (``doas claude``, ``sudo --chroot d claude``, the PowerShell
+    ``. claude``); a runner given as an unquoted backslash path; a start
+    after a word that expands to nothing (``$EMPTY claude``,
+    ``$(true) claude``); a start after a ``case`` pattern in parentheses; a
+    runner before the program word on a line that cannot be tokenised.
+    Unquoted text that is no command (a here-document body) is
     refused wherever the program word stands where a command would start: at
     the beginning of a line, after a separator, an opening parenthesis or
     brace, or inside backticks.
@@ -414,7 +416,9 @@ def _starts_claude(words):
         part
         for word in words
         for part in (
-            [word] if "${" in word or word.endswith("{}") else re.split("([{}])", word)
+            [word]
+            if "${" in word or _ONLY_ENDS_IN_BRACES.fullmatch(word)
+            else re.split("([{}])", word)
         )
         if part
     ]

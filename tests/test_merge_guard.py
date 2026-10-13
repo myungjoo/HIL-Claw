@@ -1070,6 +1070,9 @@ CLAUDE_STARTS = [
     "winpty claude -p x",
     "$out=claude -p x",
     "Start-Process -FilePath C:/tools/claude.exe",
+    "try{claude}catch{}",
+    "if($x){claude}else{}",
+    "%{claude}{}",
 ]
 
 CLAUDE_FALSE_REFUSALS = [
@@ -1086,6 +1089,8 @@ CLAUDE_FALSE_REFUSALS = [
     "cat <<EOF\nClaude Code is the program\nEOF",
     "cmd /c dir claude",
     "powershell -Command Test-Path C:/tools/claude",
+    'echo "-exec" claude',
+    "sudo -l claude",
 ]
 
 NOT_A_CLAUDE_START = [
@@ -1203,6 +1208,7 @@ CLAUDE_KNOWN_MISSES = [
     "$EMPTY claude -p x",
     r"C:\Windows\System32\cmd.exe /c claude -p x",
     r'Start-Process "C:\Program Files\Claude\claude.exe"',
+    ". claude -p x",
 ]
 
 UNPARSABLE_CLAUDE = [
@@ -1218,6 +1224,8 @@ UNPARSABLE_CLAUDE = [
     "git log 17>log.txt; claude -p x",
     'echo "a; claude -p x',
     "cat <<EOF\nit's (Claude Code) here\nEOF",
+    r'"C:\Program Files\Claude\claude.exe" -p "unterminated',
+    '$out = claude -p "unterminated',
 ]
 
 UNPARSABLE_NOT_CLAUDE = [
@@ -1229,6 +1237,7 @@ UNPARSABLE_NOT_CLAUDE = [
     'grep -rn claude "unterminated',
     'sudo claude -p "unterminated',
     "cat <<EOF\nit's Co-Authored-By: Claude\nEOF",
+    'echo "notes/claude are here',
 ]
 
 CLAUDE_REFUSED = CLAUDE_STARTS + CLAUDE_FALSE_REFUSALS
