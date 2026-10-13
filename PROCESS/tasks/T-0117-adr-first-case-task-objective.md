@@ -2,7 +2,7 @@
 id: T-0117
 title: Write the ADR that states what `task.objective` holds for the first case (`cpu_standin`, `gemm`, fp32, C kernel) - as the repository owner answers the HQ of this task (the target of the first instance) - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: BLOCKED
+status: TODO
 commitMode: doc
 coversReq: [FR-2, FR-5, OD-1, OD-6, "#5 A-4", "#5 B-4", "#5 D6"]
 dependsOn: [T-0017, T-0018]

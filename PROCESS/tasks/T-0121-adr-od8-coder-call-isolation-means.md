@@ -2,7 +2,7 @@
 id: T-0121
 title: Write the ADR that chooses the isolation means of a coder call for the first case (`cpu_standin`, C kernel, clang) between the two registered candidates of OD-8 - on the facts the repository owner gives in the HQ of this task (container runtime, what a machine may be required to have) - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [FR-13, NFR-4, C-7, OD-8, OD-14, "#5 B-6", "#5 D6"]
 dependsOn: [T-0021]
