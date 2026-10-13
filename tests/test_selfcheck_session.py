@@ -57,8 +57,6 @@ BAD_TIMEOUT_TYPES = [None, True, "10"]
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX behaviour")
 
-# The stub plays the client: it speaks to the server entry it finds in the
-# configuration file and writes stream-json lines. It is no Claude Code.
 STUB = r"""
 import json, os, subprocess, sys, time
 from pathlib import Path
@@ -100,7 +98,8 @@ noise = " ".join(scenario["noise"]) + " " + os.getcwd()
 err.write(noise.encode() + b"\n")
 err.flush()
 if scenario["garbage"]:
-    out.write(b"\x00\xff no json\n[1, 2]\n{\"type\": \"result\"\n")
+    cut = json.dumps({names.EVENT_KIND_KEY: names.RESULT_KIND})[:-1]
+    out.write(b"\x00\xff no json\n[1, 2]\n" + cut.encode() + b"\n")
     out.flush()
     sys.exit(0)
 
@@ -171,20 +170,26 @@ def serve():
 if entry is not None and upto != "nothing":
     serve()
 status = scenario["status"]
-servers = [] if status is None else [{"name": names.SERVER_NAME, "status": status}]
+named = {names.SERVER_NAME_KEY: names.SERVER_NAME, names.SERVER_STATUS_KEY: status}
 emit(
     {
-        "type": "system",
-        "subtype": "init",
+        names.EVENT_KIND_KEY: names.INIT_KIND,
+        names.EVENT_SUBKIND_KEY: names.INIT_SUBKIND,
         "cwd": os.getcwd(),
         "account": noise,
-        "mcp_servers": servers,
-        "tools": tools,
+        names.SERVERS_KEY: [] if status is None else [named],
+        names.TOOLS_KEY: tools,
     }
 )
-emit({"type": "assistant", "message": {"content": noise}})
+emit({names.EVENT_KIND_KEY: "assistant", "message": {"content": noise}})
 time.sleep(scenario["sleep"])
-emit({"type": "result", "result": scenario["say"] or " and ".join(reply), "by": noise})
+emit(
+    {
+        names.EVENT_KIND_KEY: names.RESULT_KIND,
+        names.REPLY_KEY: scenario["say"] or " and ".join(reply),
+        "by": noise,
+    }
+)
 sys.exit(scenario["exit"])
 """
 

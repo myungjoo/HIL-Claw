@@ -62,6 +62,9 @@ argument, not in the prompt, not in the returned value and in no exception.
   a ``parent`` that is, or lies inside, the directory that holds this package
   or a directory of ``keep_out`` is refused with a fixed text. The module
   knows no other checkout: the caller names the data root in ``keep_out``.
+  Names are compared as :func:`os.path.normcase` folds them: on a file
+  system that ignores case where the system's path rules do not, a name
+  that differs in case only is not recognised.
 - *The two files* are :data:`CONFIG_FILE` and :data:`WIRE_COPY_FILE` in that
   directory. The configuration file is written, created exclusively, before
   anything is started: one JSON object holding, under :data:`SERVERS_MEMBER`
