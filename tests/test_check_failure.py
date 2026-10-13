@@ -7,9 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import check_failure, check_operation, journaled_step, tools
+from hilclaw import (
+    check_admission,
+    check_failure,
+    check_operation,
+    check_seed,
+    journaled_step,
+    tools,
+)
 from hilclaw.check_failure import (
     BACKEND_KINDS,
+    KIND_KERNEL_SOURCE_UNREADABLE,
+    KIND_NO_KERNEL_SOURCE,
     KIND_OPERATION_FAILURE_INVALID,
     ended_with,
 )
@@ -19,12 +28,45 @@ MESSAGE_LIMIT = 200
 # Stand-ins of this file: no record gives either name a meaning.
 EXAMPLE_KIND = "example_kind"
 EXAMPLE_BACKEND_KIND = "example_backend_kind"
-NOT_RESERVED = [
-    EXAMPLE_KIND,
+# The two names as ADR-0056 decision 6 spells them.
+THE_TWO = ["no_kernel_source", "kernel_source_unreadable"]
+OTHER_KINDS_OF_THE_CONTRACT = [
     "operation_failure_invalid",
     "operation_answer_invalid",
+    "seed_not_drawn",
+    "op_signature_not_stated",
+    "op_signature_not_covered",
+    "draws_not_stated",
     "tolerance_not_stated",
-    "blob_unreadable",
+]
+NOT_RESERVED = [EXAMPLE_KIND, *OTHER_KINDS_OF_THE_CONTRACT, "blob_unreadable"]
+NEAR_MISSES = [
+    "no_kernel_sources",
+    "no_kernel_sourc",
+    "no_kernel_source_",
+    "kernel_source_unreadabl",
+    "kernel_source_unreadable_",
+    "kernel_source",
+    "no_kernel_source_unreadable",
+]
+# No name: a tool failure cannot be built with one, so the kind is replaced afterwards.
+NO_NAMES = [
+    "No_kernel_source",
+    "NO_KERNEL_SOURCE",
+    " no_kernel_source",
+    "no_kernel_source\n",
+    "no-kernel-source",
+    "kernel_source_unreadable ",
+    "Kernel_source_unreadable",
+    "",
+]
+UNCHECKED_MESSAGES = [
+    "nothing lies at /home/someone/data/runs/r1/rounds/0/candidates/1/attempts/1/output",
+    "C:\\Users\\someone\\data\\runs\\r1 could not be listed",
+    "one line\nand another\r\n",
+    "x" * 10_000,
+    "",
+    "seed 7; stderr: Segmentation fault",
 ]
 
 
@@ -184,11 +226,149 @@ def test_the_kind_is_read_once_and_the_message_not_at_all():
     assert reads == ["kind"]
 
 
-def test_the_backend_kinds_as_shipped_are_none():
+def test_the_backend_kinds_as_shipped_are_the_two_of_adr_0056():
     assert type(BACKEND_KINDS) is frozenset
-    assert BACKEND_KINDS == frozenset()
-    assert KIND_OPERATION_FAILURE_INVALID not in BACKEND_KINDS
+    assert BACKEND_KINDS == frozenset(THE_TWO)
+    assert len(BACKEND_KINDS) == 2
     assert check_failure.BACKEND_KINDS is BACKEND_KINDS
+    assert KIND_NO_KERNEL_SOURCE == "no_kernel_source"
+    assert KIND_KERNEL_SOURCE_UNREADABLE == "kernel_source_unreadable"
+    assert (len(KIND_NO_KERNEL_SOURCE), len(KIND_KERNEL_SOURCE_UNREADABLE)) == (16, 24)
+    with pytest.raises(AttributeError):
+        BACKEND_KINDS.add(EXAMPLE_KIND)
+
+
+@pytest.mark.parametrize("kind", THE_TWO)
+def test_each_backend_kind_is_a_name_a_tool_failure_takes(kind):
+    assert kind in BACKEND_KINDS
+    (member,) = BACKEND_KINDS & {kind}
+    assert type(member) is str
+    assert re.fullmatch(r"[a-z][a-z0-9_]{0,31}", member)
+    assert tools.ToolFailure(member, "x").kind == kind
+
+
+def test_no_other_kind_of_the_contract_and_no_reserved_kind_is_a_backend_kind():
+    assert not BACKEND_KINDS & tools.RESERVED_KINDS
+    assert KIND_OPERATION_FAILURE_INVALID not in BACKEND_KINDS
+    assert set(OTHER_KINDS_OF_THE_CONTRACT) == {
+        KIND_OPERATION_FAILURE_INVALID,
+        check_operation.KIND_OPERATION_ANSWER_INVALID,
+        check_seed.KIND_SEED_NOT_DRAWN,
+        *check_admission.KINDS,
+    }
+    assert not BACKEND_KINDS & set(OTHER_KINDS_OF_THE_CONTRACT)
+    assert not BACKEND_KINDS & {EXAMPLE_KIND, EXAMPLE_BACKEND_KIND, *NEAR_MISSES}
+
+
+@pytest.mark.parametrize("kind", THE_TWO)
+def test_each_of_the_two_kinds_is_answered_as_it_was_raised(kind):
+    raised = CountedReads(kind, MARKER)
+    raised.reads = reads = []
+    pair = ended_with(raised)
+    assert reads == ["kind", "message"]
+    raised.reads = None
+    assert pair == (kind, MARKER)
+    assert type(pair) is tuple
+    assert type(pair[0]) is str
+    assert type(pair[1]) is str
+    assert ended_with(raised) == pair
+    assert (raised.kind, raised.message, raised.args) == (kind, MARKER, pair)
+    assert raised.__cause__ is None
+    assert raised.__context__ is None
+    assert tools.ToolFailure(*pair).error_object() == {
+        "error": {"kind": kind, "message": MARKER}
+    }
+    failed = journaled_step.StepFailed({}, *pair)
+    assert (failed.kind, failed.message) == pair
+
+
+@pytest.mark.parametrize("kind", THE_TWO)
+@pytest.mark.parametrize(
+    "message",
+    UNCHECKED_MESSAGES,
+    ids=["posix-path", "windows-path", "newlines", "long", "empty", "seed-and-stderr"],
+)
+def test_the_message_of_a_backend_kind_is_not_checked(kind, message):
+    pair = ended_with(failure(kind, message))
+    assert pair == (kind, message)
+    assert type(pair[1]) is str
+    assert len(pair[1]) == len(message)
+
+
+@pytest.mark.parametrize("kind", THE_TWO)
+@pytest.mark.parametrize(
+    "message",
+    [None, 3, b"x", [MARKER], Text(MARKER), Unprintable()],
+    ids=["none", "int", "bytes", "list", "str-subclass", "unprintable"],
+)
+def test_one_of_the_two_kinds_with_a_replaced_message_is_answered_as_outside(
+    kind, message
+):
+    raised = failure(kind)
+    raised.message = message
+    text = outside(raised)
+    assert kind not in text
+    assert not [member for member in BACKEND_KINDS if member in text]
+    assert text != outside(failure(EXAMPLE_KIND))
+    assert raised.message is message
+
+
+@pytest.mark.parametrize("kind", THE_TWO)
+def test_one_of_the_two_kinds_whose_message_cannot_be_read_is_answered_as_outside(
+    kind,
+):
+    text = outside(ClosedMessage(kind, MARKER))
+    assert kind not in text
+    replaced = failure(kind)
+    replaced.message = None
+    assert text == outside(replaced)
+
+
+@pytest.mark.parametrize("kind", NEAR_MISSES)
+def test_a_name_near_one_of_the_two_is_outside(kind):
+    raised = CountedReads(kind, MARKER)
+    raised.reads = reads = []
+    message = outside(raised)
+    assert reads == ["kind"]
+    assert message == outside(failure(EXAMPLE_KIND))
+    assert not [member for member in BACKEND_KINDS if member in message]
+
+
+@pytest.mark.parametrize("kind", NO_NAMES)
+def test_a_replaced_kind_that_is_no_name_is_outside(kind):
+    with pytest.raises(ValueError):
+        failure(kind)
+    raised = failure(KIND_NO_KERNEL_SOURCE)
+    raised.kind = kind
+    assert outside(raised) == outside(failure(EXAMPLE_KIND))
+
+
+@pytest.mark.parametrize("kind", THE_TWO)
+def test_a_str_subclass_equal_to_one_of_the_two_is_outside(kind):
+    assert Text(kind) in BACKEND_KINDS
+    raised = failure(kind)
+    raised.kind = Text(kind)
+    message = outside(raised)
+    assert kind not in message
+    assert message != outside(failure(EXAMPLE_KIND))
+    closed = ClosedMessage(kind, MARKER)
+    closed.kind = Text(kind)
+    assert outside(closed) == message
+
+
+@pytest.mark.parametrize("kind", THE_TWO)
+def test_an_instance_of_a_subclass_with_one_of_the_two_kinds_is_answered_alike(kind):
+    class Narrower(tools.ToolFailure):
+        pass
+
+    assert ended_with(Narrower(kind, MARKER)) == (kind, MARKER)
+
+
+def test_a_kind_that_cannot_be_read_is_outside_beside_the_two():
+    message = outside(ClosedKind(KIND_NO_KERNEL_SOURCE, MARKER))
+    assert message == outside(ClosedKind(EXAMPLE_KIND, MARKER))
+    with pytest.raises(SystemExit):
+        ended_with(EndingKind(KIND_KERNEL_SOURCE_UNREADABLE, MARKER))
 
 
 def test_a_backend_kind_is_answered_as_it_was_raised(monkeypatch):
@@ -381,6 +561,9 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
     outside(tampered)
     with pytest.raises(TypeError):
         ended_with(None)
+    for kind in THE_TWO:
+        assert ended_with(failure(kind)) == (kind, MARKER)
+        outside(ClosedMessage(kind, MARKER))
     monkeypatch.setattr(
         check_failure, "BACKEND_KINDS", frozenset({EXAMPLE_BACKEND_KIND})
     )
@@ -397,7 +580,8 @@ def test_module_imports_the_tools_only_and_has_no_entry():
 
 
 def test_the_text_and_the_code_hold_none_of_the_kept_out_strings():
-    text = Path(check_failure.__file__).read_text(encoding="utf-8")
+    own = Path(check_failure.__file__)
+    text = own.read_text(encoding="utf-8")
     assert "gemm_contract" not in text
     assert "standin_profile" not in text
     code = [
@@ -418,6 +602,9 @@ def test_the_text_and_the_code_hold_none_of_the_kept_out_strings():
         assert not [string for string in code if kept_out in string], kept_out
     spelt = [string for string in code if "operation_failure_invalid" in string]
     assert spelt == ['"operation_failure_invalid"']
+    for kind in THE_TWO:
+        assert [string for string in code if kind in string] == [f'"{kind}"']
+    assert not [name for name in imported_modules(own) if "kernel_source" in name]
 
 
 def test_public_names_of_the_module_and_no_default():
@@ -426,7 +613,13 @@ def test_public_names_of_the_module_and_no_default():
         for name, value in vars(check_failure).items()
         if not name.startswith("_") and not inspect.ismodule(value)
     }
-    assert public == {"KIND_OPERATION_FAILURE_INVALID", "BACKEND_KINDS", "ended_with"}
+    assert public == {
+        "KIND_OPERATION_FAILURE_INVALID",
+        "KIND_NO_KERNEL_SOURCE",
+        "KIND_KERNEL_SOURCE_UNREADABLE",
+        "BACKEND_KINDS",
+        "ended_with",
+    }
     parameters = list(inspect.signature(ended_with).parameters.values())
     assert [parameter.name for parameter in parameters] == ["raised"]
     assert parameters[0].default is inspect.Parameter.empty
