@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
-  "nextTask": "T-0117",
-  "lock": null,
+  "currentTask": "T-0117",
+  "nextTask": null,
+  "lock": {
+    "owner": "AKIHA:b8974d58-1",
+    "acquiredAt": "2026-10-13T03:22:45Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -125,7 +129,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0049 (the isolation means of one coder call for the first case, T-0121, main 1646654) rests on facts that only a live Claude Code session and a container runtime on a machine of C-7 can confirm; under D16 they are runtime acceptance items, closed by your check by hand or by the runtime's own self-check, not by a driver task. On each kind of machine of C-7: (1) a `claude -p` call runs inside a container whose only writable host path is the scratch directory of the call; (2) after a call in which the coder tried to change files of both checkouts, neither checkout has changed; (3) the scratch can be removed afterwards by the user who runs the instance; (4) the container can reach Anthropic. Nothing of this was tried, and nothing was required of the development machine. No task is blocked on this notice.",
       "askedAt": "2026-10-13T03:13:14Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6137374764"
     }
   ],
   "counters": {
