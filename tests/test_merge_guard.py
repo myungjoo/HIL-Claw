@@ -641,6 +641,20 @@ FORBIDDEN = [
     ("git -C x >$(mktemp)/log push -f", FORCE_PUSH),
     ("git -C x<(ls)y push -f", FORCE_PUSH),
     ("rm -r x 2>`mktemp` -f", RM_RF),
+    ("(case $x in a)rm -rf y;; esac)", RM_RF),
+    ("x=$(case $x in a)git push -f;; esac)", FORCE_PUSH),
+    ("x=`case $x in a)gh repo delete y;; esac`", REPO_DELETE),
+    ("echo a >$(case $x in a)rm -rf y;; esac)", RM_RF),
+    ("rm -rf(x) y", RM_RF),
+    ("rm -r -f(x)", RM_RF),
+    ("Remove-Item -Recurse -Force(x)", RM_RF),
+    ("ls | ForEach-Object {Remove-Item $_ -Recurse -Force}", RM_RF),
+    ("ls | ForEach-Object { Remove-Item $_ -Recurse -Force}", RM_RF),
+    ("& {git push -f}", FORCE_PUSH),
+    ("{ gh repo delete}", REPO_DELETE),
+    ("git -C $(pwd)\\\n/repo push -f", FORCE_PUSH),
+    ("(case $x in a)rm -r pre`pwd` -f;; esac)", RM_RF),
+    ("x=$(case $x in a)git -C $(pwd) push origin x --force;; esac)", FORCE_PUSH),
 ]
 
 NOT_FORBIDDEN = [
@@ -710,6 +724,9 @@ NOT_FORBIDDEN = [
     "git -C $(pwd) status; git push",
     "gh --repo $(x)/delete repo view",
     "rm -r $(pwd)/-f",
+    "rm -r My` Dir; ls -f",
+    "ls | ForEach-Object {Remove-Item $_ -Recurse}",
+    "git push origin ${BRANCH}",
 ]
 
 KNOWN_MISSES = [
@@ -732,6 +749,9 @@ KNOWN_MISSES = [
     "rm $'-rf' x",
     "rm -r $(case $y in a) echo x;; esac) -f",
     "git push origin $(x)#y -f",
+    "git -C <(x) push -f",
+    "rm -r(x) -f",
+    "echo a >$(case $x in a)rm -r $(pwd) -f;; esac)",
 ]
 
 UNPARSABLE_FORBIDDEN = [
