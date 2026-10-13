@@ -1078,6 +1078,17 @@ CLAUDE_STARTS = [
     "$out= claude -p x",
     "$out = 'claude' -p x; claude -p y",
     "Set-Location C:\\x\\\nclaude -p x",
+    "X={} claude -p x",
+    "X=a{} Y={a,b} claude -p x",
+    "X=$Y{} claude -p x",
+    "env X={} claude -p x",
+    "sudo -u a{} claude -p x",
+    "${HOME}/.local/bin/claude -p x",
+    "claude{} -p x",
+    "if ($x) { ls; claude}",
+    "{ xargs -I{} claude -p {}; }",
+    "if ($x) { env X={} claude -p x }",
+    "cmd /c claude{}",
 ]
 
 CLAUDE_FALSE_REFUSALS = [
@@ -1193,6 +1204,8 @@ NOT_A_CLAUDE_START = [
     '$name= "claude"',
     '$name = "claude" + $x',
     'find . -name "{}"',
+    "X={} grep claude x",
+    "echo {} claude",
 ]
 
 CLAUDE_KNOWN_MISSES = [
@@ -1226,6 +1239,7 @@ CLAUDE_KNOWN_MISSES = [
     r'Start-Process "C:\Program Files\Claude\claude.exe"',
     ". claude -p x",
     "$x += claude -p x",
+    "$x =claude -p x",
 ]
 
 UNPARSABLE_CLAUDE = [

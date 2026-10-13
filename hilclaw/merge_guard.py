@@ -83,7 +83,6 @@ _LOOKS_LIKE_CLAUDE = re.compile(
     re.IGNORECASE,
 )
 _ASSIGNMENT = re.compile(r"[A-Za-z_]\w*\+?=.*", re.DOTALL)
-_ONLY_ENDS_IN_BRACES = re.compile(r"(?:-[^{}]*)?\{\}")
 _ENDING = re.compile(r"\.(?:exe|cmd|bat|ps1)$")
 _QUOTE = "\ue002"
 _QUOTED = {"{": "\ue000", "}": "\ue001", "": _QUOTE}
@@ -283,8 +282,9 @@ def forbidden_command(command):
       flag or none. The reason names it when none of the three above is found.
       The program word is ``claude``, ``claude.exe``, ``.cmd``, ``.bat`` or
       ``.ps1``, a path ending in one of them, or the package
-      ``@anthropic-ai/claude-code``, in any case, quoted or not (but a quoted
-      word after a PowerShell assignment ``$x =`` is a string). Unlike the
+      ``@anthropic-ai/claude-code``, in any case, quoted or not (but on a line
+      that can be tokenised, a quoted word after a PowerShell assignment
+      ``$x =`` is a string). Unlike the
       three, it counts only where a command starts: as the first word of a
       simple command or of a brace block, after variable assignments, after
       ``-exec`` (``-execdir``, ``-ok``, ``-okdir``), and after the words ``if``
@@ -322,7 +322,8 @@ def forbidden_command(command):
     ``. claude``); a runner given as an unquoted backslash path; a start
     after a word that expands to nothing (``$EMPTY claude``,
     ``$(true) claude``); a start after a ``case`` pattern in parentheses; a
-    PowerShell assignment other than ``$x =`` (``$x += claude``); a
+    PowerShell assignment other than ``$x =`` (``$x += claude``,
+    ``$x =claude``); a
     runner before the program word on a line that cannot be tokenised.
     Unquoted text that is no command (a here-document body) is
     refused wherever the program word stands where a command would start: at
@@ -415,52 +416,46 @@ def _command_starts(commands, openers):
     return starts
 
 
-def _starts_claude(words):
-    parts = [
-        part
-        for word in words
-        for part in (
-            [word]
-            if "${" in word or _ONLY_ENDS_IN_BRACES.fullmatch(word)
-            else re.split("([{}])", word)
-        )
-        if part
-    ]
-    after = [
-        i + 1
-        for i, part in enumerate(parts)
-        if part == "{" or part.replace(_QUOTE, "") in _EXEC
-    ]
-    return any(_runs_claude(parts[i:]) for i in [0, *after])
+def _starts_claude(marked):
+    if _runs_claude(marked, 0):
+        return True
+    for i, word in enumerate(marked):
+        pieces = _pieces(word.replace(_QUOTE, ""))
+        if not _EXEC.isdisjoint(pieces) and _runs_claude(marked, i + 1):
+            return True
+        for brace in [] if "${" in word else re.finditer("{", word):
+            block = word[brace.end() :]
+            if _runs_claude(marked, i if block else i + 1, block or None):
+                return True
+    return False
 
 
-def _runs_claude(marked):
-    words = [word.replace(_QUOTE, "") for word in marked]
-    i = 0
-    while i < len(words):
-        word = words[i]
+def _runs_claude(marked, i, first=None):
+    while i < len(marked):
+        quoted, first = first or marked[i], None
+        word = quoted.replace(_QUOTE, "")
         i += 1
         if _ASSIGNMENT.fullmatch(word):
             continue
-        if word.startswith("$") and (words[i : i + 1] == ["="] or "=" in word):
-            i += words[i : i + 1] == ["="]
-            value = marked[i - 1].partition("=")[2] or "".join(marked[i : i + 1])
+        if word.startswith("$") and (marked[i : i + 1] == ["="] or "=" in word):
+            i += marked[i : i + 1] == ["="]
+            value = quoted.partition("=")[2] or "".join(marked[i : i + 1])
             if value.startswith(_QUOTE):
                 return False
             word = word.partition("=")[2]
             if not word:
                 continue
+        word, *pieces = _pieces(word)
         runner = _ENDING.sub("", re.split(r"[\\/]", word)[-1].lower())
         if runner not in _RUNNERS:
             return bool(_CLAUDE.fullmatch(word))
         values = _RUNNERS[runner]
         if values is _ANY_WORD:
-            return any(
-                _CLAUDE.fullmatch(later) and not re.search(r"\s", later)
-                for later in words[i:]
-            )
-        while i < len(words):
-            option = words[i]
+            for later in marked[i:]:
+                pieces += _pieces(later.replace(_QUOTE, ""))
+            return any(_CLAUDE.fullmatch(w) and not re.search(r"\s", w) for w in pieces)
+        while i < len(marked):
+            option = marked[i].replace(_QUOTE, "")
             if option.startswith("-"):
                 if runner == "command" and _QUERY.fullmatch(option):
                     return False
@@ -472,6 +467,10 @@ def _runs_claude(marked):
             else:
                 break
     return False
+
+
+def _pieces(word):
+    return [word] if "${" in word else re.split("[{}]", word)
 
 
 def _script_blocks(words):
