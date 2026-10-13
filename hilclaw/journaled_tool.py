@@ -244,7 +244,7 @@ def checked_function(*, step, numbers, carry_out, source, check, **others):
 
 
 def stepped_function(*, steps, step_of, numbers, carry_out, source, check, **others):
-    """Return what :func:`checked_function` returns, for a contract whose ``step`` follows from the request.
+    """Return a function of one request whose ``step`` follows from that request.
 
     The function returned is that of :func:`checked_function` but for the
     ``step`` of the identity, which is no argument here: it is obtained from

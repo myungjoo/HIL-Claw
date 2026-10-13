@@ -1,12 +1,13 @@
 """The tool function of a journaled HW tool over a backend table (ADR-0016 decisions 2 to 4).
 
 :func:`tool_function` builds the tool function of a HW tool
-(:data:`hilclaw.backends.HW_TOOLS`) one call of which is one journaled step,
-for a contract with one ``step`` value; :func:`stepped_tool_function` is
-described after the order of a call. It is the tool function of :mod:`hilclaw.journaled_tool` with one moment more:
+(:data:`hilclaw.backends.HW_TOOLS`) one call of which is one journaled step.
+It is the tool function of :mod:`hilclaw.journaled_tool` with one moment more:
 the selection of the backend, between the lookup and the start line. Whether a
 HW tool is journaled is its contract's; a HW tool that is not journaled has no
-builder here.
+builder here. :func:`tool_function` is for a contract with one ``step``
+value; :func:`stepped_tool_function`, for one with several, is described
+after the order of a call.
 
 A call, in the order of ADR-0016 decision 2, with the read of the layout
 version stamp that ADR-0030 decision 3 places between 2 and 3:
@@ -242,9 +243,9 @@ def stepped_tool_function(
     admit,
     perform,
 ):
-    """Return the tool function of the journaled HW tool that these eleven state, its ``step`` following from the request.
+    """Return the tool function of the journaled HW tool that these eleven state.
 
-    It is for a contract with several ``step`` values and with something to
+    The ``step`` of a call follows from its request. It is for a contract with several ``step`` values and with something to
     take from ``instance.json`` besides the hw_profile, or something to
     answer before the step starts (ADR-0040 decisions 3 and 7, ADR-0021
     decision 4). The module docstring has the order of a call.

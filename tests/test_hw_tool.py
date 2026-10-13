@@ -1863,8 +1863,8 @@ def test_a_refused_stepped_request_asks_nothing_and_gives_no_step(
         tool.function(asked)
     assert caught.value.kind == tools.KIND_INVALID_REQUEST == "invalid_request"
     assert member in caught.value.message
-    assert tool.source.calls == 0 and "step_of" not in tool.order
-    assert tool.order in ([], ["check"]) and made == []
+    assert tool.source.calls == 0 and made == []
+    assert tool.order == (["check"] if member.startswith("example_marker") else [])
     assert snapshot(root) == before
 
 
