@@ -2,13 +2,13 @@
 id: T-0157
 title: Add `hilclaw/kernel_source.py` - the admitted-name predicate (ADR-0055 decision 5, N1 and N2) and the reader that goes from the path of the `output/` of an attempt to the compiled set, to "no kernel source" or to a failure of the reader (ADR-0055 decision 3, R1 to R8) - with its tests; bound to nothing, no other module edited
 phase: P1
-status: BLOCKED
+status: TODO
 commitMode: code
 coversReq: [FR-5, FR-6, FR-9, FR-10, NFR-2, C-3, C-7, OD-23, OD-18, "#5 D12"]
 dependsOn: [T-0155, T-0156]
 touchesFiles: [hilclaw/kernel_source.py, tests/test_kernel_source.py]
 estimatedSize: {loc: 150, files: 1}   # one new module of about 110-150 lines, docstrings included; the test file is outside the cap (DRIVER §5, D4)
-hq: [HQ-0015]   # GitHub Actions starts no job on the pull_request runs of PR #106 (billing); the same cause and the same owner question as HQ-0015
+hq: []   # HQ-0015 answered by the owner on 2026-10-13 (Actions restored)
 ---
 ## Why
 ADR-0055 fixed, for the first case, what lies below the `output/` of an attempt and which of it is the kernel source; ADR-0056 fixed that the operation of a backend applies "the reader of ADR-0055 decision 3" to the output path the tool function hands it. Both records name the same first code slice:

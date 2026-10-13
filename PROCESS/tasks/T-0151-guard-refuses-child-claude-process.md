@@ -2,13 +2,13 @@
 id: T-0151
 title: Let the `PreToolUse` guard of `hilclaw/merge_guard.py` also refuse a shell command that starts the Claude Code program (`claude`), with any subcommand or flag (D16; the repository owner's answer to HQ-0007, point (4)) - without registering the hook and without deciding how the guard and the nightly routine of D17 stand together
 phase: P0.5
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: code
 coversReq: ["#5 D10", "#5 D12", "DRIVER §1-5", "DRIVER D16", "HQ-0007"]
 dependsOn: [T-0007, T-0107]
 touchesFiles: [hilclaw/merge_guard.py, tests/test_merge_guard.py]   # no settings file, no file under .claude/, .github/, ARCHITECTURE/ or PROCESS/
 estimatedSize: {loc: 90, files: 1}   # non-test: hilclaw/merge_guard.py only (485 lines today); the test file is excluded from the cap (D4)
-hq: [HQ-0015]   # HQ-0007 is answered (point (4) is this task). HQ-0013 and HQ-0014 (runtime-acceptance) do not touch it
+hq: []   # HQ-0015 answered by the owner on 2026-10-13 (Actions restored)
 ---
 ## Why
 PLAN P0.5-4 (the merge guard hook) is the oldest unchecked item of the plan. Its code landed in two parts: T-0007 (`gh pr merge`, PR #17) and T-0107 (the three forbidden commands, PR #101, `c830fd7`). One part of it is decided by the repository owner and not yet written:
