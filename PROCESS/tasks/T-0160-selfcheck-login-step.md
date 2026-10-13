@@ -2,7 +2,7 @@
 id: T-0160
 title: Add `hilclaw/selfcheck_login.py`, step one of the runtime self-check (ADR-0054 decision 3) - one call of `claude auth status` through `hilclaw.local_run.run` with a time limit, read as logged in, `not_logged_in`, `login_unreadable` or `no_claude`, carrying of the status output nothing but the bounded `authMethod` value; tested only against a stub `claude` the tests write; no session, no report, no entry of the package, nothing bound to it
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, C-7, OD-18, D16, "#5 D12"]
 dependsOn: [T-0153]
@@ -117,3 +117,40 @@ The module docstring names ADR-0054 decision 3 as the record it renders and says
 - (driver / owner) HQ-0013, 0014, 0016, 0017, 0018 (`runtime-acceptance`).
 
 ## Result
+**DONE.** PR #109 (https://github.com/myungjoo/HIL-Claw/pull/109), squash-merged as `4f2c1a3`; remote and local branch deleted. `git diff --stat` against `c4bbb9c`: `hilclaw/selfcheck_login.py` (166 lines) and `tests/test_selfcheck_login.py` only; both `i/lf`; `git diff --check` clean. No PLAN checkbox is ticked by this slice.
+
+**No real `claude` was started**, by the executor or by any reviewer. The module's function ran only inside `python -m pytest`, against the stub the tests write.
+
+**Process checks (2026-10-13T19:23Z).** No commit with `Task: T-0160` on `origin/main` and no PR for it before the work; no open PR; no comment on issue #5 after the owner's answer to HQ-0015 (so no objection to ADR-0054, no `T-0106 live check (owner)` comment, no answer to HQ-0016).
+
+**Language: Python** - the module calls `hilclaw.local_run` and is called by the later Python slices of the check.
+
+**Public names of `hilclaw.selfcheck_login` as landed** (the later slices are written against these):
+- `read(*, timeout_s, cwd=None) -> LoginStatus` - starts `claude auth status` once through `local_run.run` (no `env`, so the caller's environment), never retries.
+- `LoginStatus(NamedTuple)` with the fields, in order: `outcome` (`None` when logged in, else one of the three words), `auth_method` (one of the seven words below, or `None`), `returncode` (`int`, negative for a signal on POSIX; `None` for `no_claude` and for the time limit), `timed_out` (`bool`).
+- `NO_CLAUDE = "no_claude"`, `NOT_LOGGED_IN = "not_logged_in"`, `LOGIN_UNREADABLE = "login_unreadable"`.
+- `AUTH_METHODS = ("none", "claude.ai", "oauth_token", "api_key", "api_key_helper", "third_party")`, `AUTH_METHOD_NONE = "none"`, `AUTH_METHOD_OTHER = "other"`.
+- `LOGIN_INSTRUCTION = "Nothing is logged in. Run `claude auth login`."`
+- **`outcome is None` is the only way to tell "logged in"**; there is no word and no flag for it. Hint of the round-3 reviewer for the later slices: when the outcome is moved into a mapping (the report), a missing member must never be read as `None` and so as logged in.
+
+**Conventions chosen under "Left to this task"** (each is in the module docstring and tested):
+- *Time limit*: `timeout_s` is a required keyword without a default, checked by `local_run.run` itself before anything is started (`TypeError` / `ValueError`). No value is fixed here and no reason to fix one was found; it belongs to the slice that composes the check.
+- *Working directory*: not chosen; `cwd` is passed through and `None` inherits.
+- *One JSON object*: the whole standard output decoded as strict UTF-8 and parsed as strict JSON, JSON white space around the object allowed. A byte order mark, invalid UTF-8 (UTF-16 too), a second value or trailing text, `NaN` / `Infinity` anywhere, and nesting too deep to parse (`RecursionError`) are `login_unreadable`; none raises. Integers are not converted (`parse_int` returns a constant), so the interpreter's limit on integer digits does not decide what is one JSON object (round-1 finding F3). **A duplicate `authMethod` key is read as no `authMethod`** (so `login_unreadable` at exit status 0, and no `auth_method` carried): two answers are not one answer, and neither "first wins" nor "last wins" can then make an ambiguous output read as logged in.
+- *`auth_method` for the other outcomes*: carried, bounded by rule 7, whenever the output is one JSON object with a single string `authMethod`, whatever the outcome (after the time limit: the output captured until then); otherwise `None`. Nothing is concluded from it for the outcome.
+- *Instruction text*: as above; it names the command and holds nothing of the output.
+- *Bad arguments*: `timeout_s` as `local_run.run`. **`cwd` goes one step beyond "follow `local_run.run`"**: because fixed point 5 reads every `OSError` of the start as `no_claude`, a `cwd` that is not a directory when the call begins is refused before the start with `FileNotFoundError("cwd is not a directory")` (no path in the message) and a `cwd` that is not a path with `TypeError`, so that a caller's bad argument is not reported as a missing `claude`. Differences from `local_run.run`, both before anything is started: a file given as `cwd` raises `FileNotFoundError`, not `NotADirectoryError`; with both arguments bad, the `cwd` error comes first. `OverflowError` for a `timeout_s` longer than the platform can wait for is passed on from `local_run.run` (after the child was started and killed).
+- *`no_claude`*: the lookup that finds nothing and every `OSError` of the call - a file the system cannot execute, and also a start that failed for another reason (a `cwd` that cannot be entered or vanished after the check). That last case has no test of its own (round-3 Nit; the `OSError` branch is covered by the POSIX test of a file the system cannot execute).
+
+**Tests** (`tests/test_selfcheck_login.py`, 90 cases). An `autouse` fixture replaces `PATH` by a directory of the test, changes into an empty working directory of the test and asserts that `shutil.which("claude")` finds nothing; `Stub.install` asserts that the lookup resolves to the launcher it just wrote. The stub is a Python script that appends one line per start to a record file, behind a launcher named `claude`: on POSIX an `sh` file that `exec`s the interpreter, **on Windows a `claude.cmd`**. **On the Windows development machine the tests ran**: 88 passed, 2 skipped by the explicit mark `posix_only` (a child ended by a signal; a file the system cannot execute). On the CI runner (Linux) all ran. The leak checks capture at the file-descriptor level (`capfd`), so a child stream passed on would fail them (round-1 finding F1).
+
+**Gates.** Local: `python -m pytest` 16487 passed, 311 skipped; `ruff check` and `ruff format --check` clean. CI on the merged head `62c10f5`: all six jobs passed (run 38456550365); three runs, none failed. Coverage of `hilclaw/` from the CI gate: lines 99.59% (3947/3963 on `a52277e`; the last commit changed a docstring only), functions 100.00% (408/408); no line of `hilclaw/selfcheck_login.py` is among the unexecuted lines (100% of the new module).
+
+**Review: 3 rounds**, each a fresh-context `dev-reviewer`; no `SECURITY` result.
+- Round 1 (`1eba59b`): Request changes. F1 Medium - the leak check used `capsys`, which cannot see a child stream passed on (fixed: `capfd`). F2 Low - the docstring said more of the `cwd` check than the code does (fixed in the docstring). F3 Low - the "huge number" case depended on the interpreter's integer-digit limit (fixed: integers not converted; the case is now a logged-in test). F4 Nit - small margin of the time-limit tests (now 5 s against a 12 s sleep).
+- Round 2 (`a52277e`): Approve. N1 Nit - `LoginStatus` docstring said "nothing was started" where an `OSError` after the start is `no_claude` too (fixed). N2 Nit - the order and kind of the `cwd` error (recorded above, no code change).
+- Round 3 (`62c10f5`): Approve, "nothing left that should still be edited in this PR".
+
+**Follow-ups** (none new beyond the task's list):
+- The next slices of ADR-0054 as listed under Follow-ups; the slice that composes the check fixes the value of the time limit and the working directory of step one, and must keep `outcome is None` as the only reading of "logged in".
+- On Windows a timed-out `claude.cmd`-style launcher leaves its child running until it ends (the known limit of `local_run.run`: only the started process is killed); the time-limit tests take about 12 s each there for that reason. Whether the runtime needs more than that on the machines of C-7 is for the slice that sets the time limit.
