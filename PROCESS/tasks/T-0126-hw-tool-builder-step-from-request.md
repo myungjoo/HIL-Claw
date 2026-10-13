@@ -2,7 +2,7 @@
 id: T-0126
 title: Add a builder for the tool function of a journaled HW tool whose `step` follows from the checked request and which has a place between the selection of the backend and the start line (the code slice ADR-0040 Consequences cut), in `hilclaw/hw_tool.py` over `hilclaw/journaled_tool.py`, tested with test-only steps; no tool is defined or registered
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, FR-9, OD-18, OD-17]
 dependsOn: [T-0125]
@@ -126,24 +126,47 @@ One new public function that returns the tool function of a journaled HW tool. R
 - (driver / owner) HQ-0006, HQ-0007, HQ-0009, HQ-0010, HQ-0011 as before; none is needed here.
 
 ## Result
-**BLOCKED - requirement unclear (two acceptance criteria contradict each other; HQ-0012). Nothing was implemented.** No branch, no commit, no PR, no review round. Iteration of 2026-10-12 (driver AKIHA:5b15a009-1).
+**DONE.** PR #103 (https://github.com/myungjoo/HIL-Claw/pull/103), squash commit `75a56d3` on `main`. Iteration of 2026-10-13, run again on the owner's answer to HQ-0012 (option (a), issue #5 comment 6139499329). The earlier BLOCKED run of 2026-10-12 implemented nothing.
 
-Checks done before stopping: `git log origin/main --grep='^Task: T-0126'` and `gh pr list --search T-0126 --state all` are empty; no open PR; no owner objection to the ADR-0040 notice on #5.
+Checks before starting: `git log origin/main --grep='^Task: T-0126'` empty; no PR for T-0126; no open PR; no owner objection on #5 to ADR-0040, ADR-0038, ADR-0021, ADR-0016, ADR-0015 or ADR-0011.
 
-The contradiction:
-- "The new builder" requires one new public function in `hilclaw/hw_tool.py`, with a shared part in `hilclaw/journaled_tool.py`.
-- "What exists must not change" requires that every existing test of the two test files passes unedited ("If an existing test fails, do not edit it: fix the code, or return BLOCKED with the output").
-- `tests/test_hw_tool.py::test_the_public_names_and_the_signature` asserts that the public non-module names of `hilclaw.hw_tool` are exactly `["tool_function"]`.
-- `tests/test_journaled_tool.py::test_the_public_names_and_the_signature` asserts the same for `hilclaw.journaled_tool` with exactly `["tool_function", "checked_function"]`.
-- `tests/test_journaled_tool.py::test_the_signature_of_checked_function` pins the parameters of `checked_function`, so the shared part cannot be a new parameter of that function either.
+Review: 3 rounds, each with a fresh-context `dev-reviewer`, each verdict Approve.
+- Round 1: two Low findings (an unclear "It" and overlong summary lines in the docstrings of `hilclaw/hw_tool.py`; one assertion of a new test that allowed the own check to be reached in every refused case). Both fixed.
+- Round 2: two Low findings (one line left unwrapped; the sentence on where a seed can be drawn could mislead after ADR-0048) and one informational (which function binds the reader of the stamp). All three fixed.
+- Round 3: no finding on code or tests; the non-test line counts in the PR body were corrected.
 
-Both tests pass on `main`; with a public name added in memory (no file edited) each fails with an AssertionError on the name lists. The task's judgement "No existing test asserts something this task makes false" does not hold for these two tests.
+CI on the head commit `6794a8d`: all six checks pass. Coverage gate (hilclaw): lines 3729/3745 = 99.57 %, functions 390/390 = 100.00 %; `hilclaw/hw_tool.py` and `hilclaw/journaled_tool.py` are each at 100 % lines. The `coverage` module is not installed on the driver machine, so the figures are the CI gate's. Local on Windows: `ruff check`, `ruff format --check`, `pytest` (15130 passed, 305 skipped).
 
-Why the code cannot be fixed instead: an underscore name is not a public function (the later tool task needs one); hanging the builder on `tool_function` as an attribute or on a class evades tests whose purpose is to pin the public surface; a new module is forbidden by the task; `hw_tool.tool_function` has a pinned signature with no place for the one read or for the place between the selection and the start line. Choosing among these, or editing the two tests, was not decided here. Same class of cause as HQ-0011.
+Language: Python, because both modules edited are Python modules of the layer-2 package.
 
-Language: none chosen, no code written (Python was the expectation).
+Size: 238 added and 32 removed non-test lines in 2 files (`hilclaw/hw_tool.py` 151/21, `hilclaw/journaled_tool.py` 87/11); cap D4 is 300 lines and 5 files. Tests: 711 added lines in `tests/test_hw_tool.py`, 372 in `tests/test_journaled_tool.py`. No other file changed.
+
+Public names and signatures as landed (the later tool task is written against them):
+- `hilclaw.journaled_tool.stepped_function(*, steps, step_of, numbers, carry_out, source, check, **others)`. The check of the request for a contract with several `step` values. `steps` is a non-empty tuple of distinct names; `step_of(request)` returns one of them, exactly a `str`. `carry_out(data_root, run_id, identity, request)` as in `checked_function`. Reason for a separate function: the signature of `checked_function` is pinned by a test, and a further argument named `step_of` handed to `checked_function` must stay a plain "other".
+- `hilclaw.hw_tool.stepped_tool_function(*, tool, steps, step_of, numbers, source, table, read, hw_profile_in, check, admit, perform)`. `read(data_root, run_id)` is called once in moment 4 under `run_files.reading` with the same three classes and four kinds; `hw_profile_in(value)` gives the record handed to `backends.select`; `admit(request, value)` is called once after the selection has succeeded and before the start line, what it raises passes through unchanged and what it returns reaches the step; `perform(data_root, request, hw_profile, operation, admitted)` is the step. Reason: the recommended form of the task, with the admitted object as a fifth argument of the step so that the four-argument step of `tool_function` stays as it is.
+- Building errors of `stepped_tool_function`, in order: `tool` (TypeError, ValueError), `table` (TypeError), `steps` (TypeError when no tuple; ValueError when empty, when one is no name, when two are equal), `numbers` (TypeError, ValueError), then TypeError for the first of `step_of`, `source`, `check`, `read`, `hw_profile_in`, `admit`, `perform` that is not callable.
+- Split between the modules: the check of the request and the read of the stamp stay in `hilclaw/journaled_tool.py` (private `_function`, shared by `checked_function` and `stepped_function`); moment 4 and the place after the selection are in `hilclaw/hw_tool.py` (private `_carry_out`, shared by the two builders there). The three existing public functions keep their signatures and behaviour and are re-expressed over these private parts.
+
+Where the `step` is obtained in moment 1: last, after the five frame members and after the tool's own `check`, before the data root is asked. The `execution` and the numbers of the identity are those checked before the own check, as in `checked_function`; only the `step` is taken after it. `step_of` is not called for a refused request. What `step_of` raises passes through unchanged.
+
+Exception for a `step` outside the stated values: `RuntimeError` ("step_of must return one of ..."), raised before the data root is asked, with nothing read and no line; an instance of a subclass of `str` is refused too. It is `tool_crashed` at `hilclaw.tools.call`. A builtin class was chosen because the owner's answer permits one new name in each pinned name list, so no exception class was added.
+
+Edits of existing tests (owner's answer to HQ-0012, option (a)):
+- `tests/test_hw_tool.py::test_the_public_names_and_the_signature`: `"stepped_tool_function"` added to the expected list of public names. Reason: the new public function.
+- `tests/test_journaled_tool.py::test_the_public_names_and_the_signature`: `"stepped_function"` added to the expected list. Reason: the new public function.
+- No other existing assertion became false and no other existing test was edited.
+
+Docstrings changed:
+- `hilclaw/journaled_tool.py`, module: after "`step` is the contract's and is never read from a request" (kept), sentences on a contract with one and with several `step` values; the convention on where the stamp is read now names both functions; a new convention on where the `step` is obtained and on the `RuntimeError`; the last paragraph names both functions. `tool_function`: "the `step` name the tool's contract fixes" now ends "for a contract that fixes one" (the sentence ADR-0040 Consequences named). `checked_function`: says it is the shared part for a contract with one `step`.
+- `hilclaw/hw_tool.py`, module: the first paragraph says which builder is for which contract; a new passage after the order of a call states what differs for `stepped_tool_function` in moments 1, 4 and 6; the conventions on what the reader returns, on the one read and the seed, on which callables are not answered with a `run_file_*` kind, and on what binds the reader of the stamp were brought up to the change.
+- Judged and left: "It defines no tool, no backend, no table, no reader, no script and no default, registers nothing" (still true); the order 1 to 7 and the paragraphs on the four kinds (true for both builders, said so in one added sentence); the docstring of `hilclaw.hw_tool.tool_function` (unchanged behaviour).
+
+Where a criterion and the present `main` disagree: the criterion that the strings `point`, `sim`, `board`, `correctness_check_sim`, `correctness_check_board` and `tolerance_not_stated` do not occur in the code of `hilclaw/` cannot hold for the whole package, because `hilclaw/check_identity.py` (T-0142) and `hilclaw/check_admission.py` (T-0144) landed after this task was planned. It was read for the two modules edited here, where none of them occurs. The reviewer agreed in each round.
+
+ARCHITECTURE / OD / PLAN effect: none. No ARCHITECTURE document, no OD and no ADR was touched; no external dependency was added; no data-plane schema changed. **No PLAN.md checkbox is completed by this task; P1-1 stays open.** ADR-0040 and ADR-0038 are inside their objection windows until 2026-10-19; an objection creates a reverting task and this change is revisited with it.
 
 Follow-ups:
-- (owner) Answer HQ-0012 on #5. With (a), the task is run again with the two name-list assertions named as the only permitted edits of existing tests. With (b), it is re-planned with `touchesFiles` holding the new module and its test file; how the shared check of the request is reached must then be stated.
-- (planner) When a task adds a public name to a `hilclaw/` module, grep that module's test file for `vars(<module>)` name-list assertions before judging that no existing test becomes false.
+- (planner - code mode) The tool function of `correctness.check` over `hilclaw.hw_tool.stepped_tool_function`. Notes for it: `hilclaw.check_identity.step_of` and `STEPS` fit `step_of` and `steps` as they are; `hilclaw.check_admission.admit(instance, *, covers)` has another form than `admit(request, value)` and must be wrapped; `admit` is not handed the data root, so a seed source reaches it through a closure; ADR-0048 places the draw of the seed before the start line, which is inside `admit`; if the tool's own `check` modified the request, the identity keeps the `execution` and numbers checked before it.
+- (integrator - document mode) `hilclaw/instance.py` line 476, "`checked_function`, the part the two builders ... share", is less exact now; so are the sentences listed in T-0125, T-0116 and T-0088 `## Result`, and the README layer-2 cell.
+- (planner) When a task adds a public name to a `hilclaw/` module, grep that module's test file for `vars(<module>)` name-list assertions before judging that no existing test becomes false (carried over from the BLOCKED run).
 - The other follow-ups of this task file stand unchanged.
