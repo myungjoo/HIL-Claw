@@ -36,6 +36,39 @@ ADR_EXAMPLE = json.loads(
 """
 )
 
+# The example of ADR-0050 ("The example of ADR-0002 decision 8, restated"),
+# copied from the record.
+ADR_0050_EXAMPLE = json.loads(
+    """
+{
+  "schema_version": 2,
+  "id": {"run_id": "20261009t012331z-9f3a6c1e0b7d4a52", "round": 1, "candidate": 1, "attempt": 1, "candidates": 1, "relation": "single"},
+  "hw_profile": {"key": "cpu_standin-8c0be275e5925ab0",
+    "record": {"schema_version": 1, "accelerator": "cpu_standin", "revision": "host",
+               "toolchain": {"clang": "Example clang version 0.0.0 (fictitious-build 1)"},
+               "host": {"cpu": "Example(R) Fictitious(TM) X-0000 CPU @ 0.00GHz", "os": "linux exampleos 0.0"}, "hw_source": "external"}},
+  "task": {
+    "op_signature": {"key": "gemm-485b9bc494d477eb",
+      "record": {"schema_version": 1, "kind": "gemm", "shape": {"m": 1, "k": 2048, "n": 8192}, "dtype": "fp32", "layout": "row_major"}},
+    "contract": {"language": "c",
+      "prototype": "void hilclaw_gemm(size_t m, size_t k, size_t n, const float *restrict a, const float *restrict b, float *restrict c);",
+      "operands": [
+        {"name": "a", "role": "input", "dtype": "fp32", "shape": [1, 2048]},
+        {"name": "b", "role": "input", "dtype": "fp32", "shape": [2048, 8192]},
+        {"name": "c", "role": "output", "dtype": "fp32", "shape": [1, 8192]}]},
+    "objective": {"objectives": [{"type": "latency_minimisation"}], "constraints": []}},
+  "guidance": {"techniques": [{"id": "NOT-DECIDED-HERE", "text": "NOT-DECIDED-HERE"}]},
+  "feedback": {"attempts": []}
+}
+"""
+)
+# The `task.objective` of the first case, copied from ADR-0050 (Example).
+ADR_0050_OBJECTIVE = json.loads(
+    '{"objectives": [{"type": "latency_minimisation"}], "constraints": []}'
+)
+# The memory-ceiling entry of ADR-0050 (Example, "Form only").
+ADR_0050_CEILING = json.loads('{"type": "memory_ceiling", "bound": 123456789}')
+
 BAD_NAMES = ["", "Upper", "1digit", "with-hyphen", "a" * 33, "name\n", 7, None]
 BAD_STRINGS = ["", "s" * 256, "line\nbreak", "café", 7, None, True, ["s"]]
 BAD_INTEGERS = [-1, 2**53, True, False, 1.0, "1", None, [1]]
@@ -51,6 +84,7 @@ class StrEnum(str, enum.Enum):
 
 class IntEnum(int, enum.Enum):
     ONE = 1
+    TWO = 2
 
 
 class StrSubclass(str):
@@ -90,10 +124,14 @@ def operand(name="synthetic_a", role="input", shape=(3, 5)):
     }
 
 
+def first_objective():
+    return {"objectives": [{"type": "latency_minimisation"}], "constraints": []}
+
+
 def minimal():
     hw, op = synthetic_hw(), synthetic_op()
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "id": {
             "run_id": "synthetic-run-1",
             "round": 1,
@@ -110,7 +148,7 @@ def minimal():
                 "prototype": "synthetic prototype text",
                 "operands": [operand()],
             },
-            "objective": None,
+            "objective": first_objective(),
         },
         "guidance": {"techniques": []},
         "feedback": {"attempts": []},
@@ -147,7 +185,6 @@ def full():
         operand("synthetic_c", "output", (3, 7)),
         operand("synthetic_s", "inout", ()),
     ]
-    result["task"]["objective"] = {"synthetic_target": 1.5}
     result["task"]["build"] = {
         "synthetic_flag": "-synthetic",
         "synthetic_threads": 4,
@@ -196,7 +233,7 @@ def rejects(document, match=None):
 
 
 def test_schema_version_is_independent_of_the_key_schema():
-    assert spec.SCHEMA_VERSION == 1
+    assert spec.SCHEMA_VERSION == 2
     assert type(spec.SCHEMA_VERSION) is int
 
 
@@ -221,6 +258,18 @@ def test_read_only_mappings_are_accepted():
     document["id"] = MappingProxyType(document["id"])
     document["ext"] = MappingProxyType(document["ext"])
     assert validate(MappingProxyType(document)) is None
+
+
+def test_read_only_mappings_are_accepted_inside_the_objective():
+    document = minimal()
+    entry = MappingProxyType({"type": "latency_minimisation"})
+    objective = MappingProxyType({"objectives": [entry], "constraints": []})
+    document["task"]["objective"] = objective
+    assert validate(document) is None
+    assert document["task"]["objective"] is objective
+    assert objective == {"objectives": [entry], "constraints": []}
+    assert objective["objectives"][0] is entry
+    assert entry == {"type": "latency_minimisation"}
 
 
 @pytest.mark.parametrize("build", [minimal, full, repair])
@@ -268,11 +317,162 @@ def test_repair_failures_need_not_report_every_earlier_attempt():
     validate(repair(5, [failure_entry(2), failure_entry(4)]))
 
 
+def test_restated_example_of_adr_0050_is_a_valid_spec():
+    assert validate(copy.deepcopy(ADR_0050_EXAMPLE)) is None
+
+
+def test_objective_of_the_first_case_is_valid():
+    document = changed(minimal(), ["task", "objective"], ADR_0050_OBJECTIVE)
+    assert validate(document) is None
+
+
+OBJECTIVE = "task.objective"
+OBJECTIVES = "task.objective.objectives"
+ENTRY = "task.objective.objectives[0]"
+CONSTRAINTS = "task.objective.constraints"
+ONE = {"type": "latency_minimisation"}
+
+
 @pytest.mark.parametrize(
-    "objective", [None, "synthetic", 1.5, 0, True, [], {}, {"synthetic": {"a": [1]}}]
+    ("objective", "message"),
+    [
+        (None, f"{OBJECTIVE}: must be an object, got None"),
+        ("synthetic", f"{OBJECTIVE}: must be an object, got 'synthetic'"),
+        ("latency_minimisation", f"{OBJECTIVE}: must be an object, got "),
+        (1.5, f"{OBJECTIVE}: must be an object, got 1.5"),
+        (0, f"{OBJECTIVE}: must be an object, got 0"),
+        (True, f"{OBJECTIVE}: must be an object, got True"),
+        ([], f"{OBJECTIVE}: must be an object, got []"),
+        ([ONE], f"{OBJECTIVE}: must be an object, got "),
+        ({}, f"{OBJECTIVES}: required member is missing"),
+        ({"constraints": []}, f"{OBJECTIVES}: required member is missing"),
+        ({"objectives": [ONE]}, f"{CONSTRAINTS}: required member is missing"),
+        (
+            {"objectives": [ONE], "constraints": [], "synthetic": 1},
+            f"{OBJECTIVE}: unknown member 'synthetic'",
+        ),
+        (
+            {"objectives": [ONE], "constraints": [], "direction": "lower"},
+            f"{OBJECTIVE}: unknown member 'direction'",
+        ),
+        ({"synthetic": {"a": [1]}}, f"{OBJECTIVE}: unknown member 'synthetic'"),
+        ({"synthetic_target": 1.5}, f"{OBJECTIVE}: unknown member 'synthetic_target'"),
+    ],
 )
-def test_objective_is_not_inspected(objective):
-    validate(changed(minimal(), ["task", "objective"], objective))
+def test_objective_that_is_not_the_object_of_two_members_is_rejected(
+    objective, message
+):
+    document = changed(minimal(), ["task", "objective"], objective)
+    assert rejects(document).startswith(message)
+
+
+@pytest.mark.parametrize(
+    "objectives",
+    [
+        None,
+        "latency_minimisation",
+        1,
+        ONE,
+        (ONE,),
+        [],
+        [ONE, ONE],
+        [ONE, {"type": "throughput_maximisation"}],
+        [ONE, None],
+        [None, ONE],
+        [ONE, ONE, ONE],
+    ],
+)
+def test_objectives_that_is_not_an_array_of_exactly_one_entry_is_rejected(objectives):
+    document = changed(minimal(), ["task", "objective", "objectives"], objectives)
+    message = rejects(document)
+    assert message.startswith(f"{OBJECTIVES}: must be an array of exactly one entry, ")
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        (None, f"{ENTRY}: must be an object, got None"),
+        ("latency_minimisation", f"{ENTRY}: must be an object, got "),
+        (["latency_minimisation"], f"{ENTRY}: must be an object, got "),
+        (1, f"{ENTRY}: must be an object, got 1"),
+        ({}, f"{ENTRY}.type: required member is missing"),
+        ({"Type": "latency_minimisation"}, f"{ENTRY}: unknown member 'Type'"),
+        ({**ONE, "weight": 1}, f"{ENTRY}: unknown member 'weight'"),
+        ({**ONE, "weight": None}, f"{ENTRY}: unknown member 'weight'"),
+        ({**ONE, "priority": 1}, f"{ENTRY}: unknown member 'priority'"),
+        ({**ONE, "priority": 0}, f"{ENTRY}: unknown member 'priority'"),
+        ({**ONE, "direction": "lower"}, f"{ENTRY}: unknown member 'direction'"),
+        ({**ONE, "bound": 1}, f"{ENTRY}: unknown member 'bound'"),
+        ({"weight": 1}, f"{ENTRY}: unknown member 'weight'"),
+    ],
+)
+def test_objective_entry_that_is_not_the_object_of_type_alone_is_rejected(
+    entry, message
+):
+    document = changed(minimal(), ["task", "objective", "objectives"], [entry])
+    assert rejects(document).startswith(message)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "throughput_maximisation",
+        "memory_ceiling",
+        "latency",
+        "latency_minimization",
+        "Latency_minimisation",
+        "latency_minimisation ",
+        "",
+        StrSubclass("latency_minimisation"),
+        StrEnum.SINGLE,
+        b"latency_minimisation",
+        ["latency_minimisation"],
+        {"name": "latency_minimisation"},
+        1,
+        None,
+        True,
+    ],
+)
+def test_objective_type_other_than_latency_minimisation_is_rejected(value):
+    document = changed(minimal(), ["task", "objective", "objectives", 0, "type"], value)
+    message = rejects(document)
+    assert message.startswith(f"{ENTRY}.type: must be latency_minimisation, got ")
+
+
+@pytest.mark.parametrize(
+    "value", [None, {}, ("a",), (), "", 0, False, ADR_0050_CEILING]
+)
+def test_constraints_that_is_not_an_array_is_rejected(value):
+    document = changed(minimal(), ["task", "objective", "constraints"], value)
+    assert rejects(document).startswith(f"{CONSTRAINTS}: must be an array, got ")
+
+
+@pytest.mark.parametrize(
+    "entries",
+    [
+        [ADR_0050_CEILING],
+        [{"type": "memory_ceiling", "bound": 0}],
+        [{"type": "memory_ceiling"}],
+        [{"type": "latency_minimisation"}],
+        [{}],
+        [None],
+        ["memory_ceiling"],
+        [[]],
+        [ADR_0050_CEILING, ADR_0050_CEILING],
+    ],
+)
+def test_no_constraint_entry_is_admitted(entries):
+    document = changed(minimal(), ["task", "objective", "constraints"], entries)
+    message = rejects(document, "no constraint type is admitted")
+    assert message.startswith(f"{CONSTRAINTS}[0]: must be absent: ")
+
+
+def test_objective_is_checked_after_the_contract_and_before_build():
+    document = changed(full(), ["task", "objective"], None)
+    document["task"]["build"] = {}
+    rejects(document, r"^task\.objective: ")
+    document["task"]["contract"]["language"] = "Upper"
+    rejects(document, r"^task\.contract\.language: ")
 
 
 TEXT_PATHS = [
@@ -403,6 +603,8 @@ REQUIRED = {
     ("task", "op_signature"): ["key", "record"],
     ("task", "contract"): ["language", "prototype", "operands"],
     ("task", "contract", "operands", 1): ["name", "role", "dtype", "shape"],
+    ("task", "objective"): ["objectives", "constraints"],
+    ("task", "objective", "objectives", 0): ["type"],
     ("guidance",): ["techniques"],
     ("guidance", "techniques", 1): ["id", "text"],
     ("feedback",): ["attempts"],
@@ -462,6 +664,8 @@ def test_member_name_that_is_a_str_subclass_is_rejected():
         ("task", "op_signature"),
         ("task", "contract"),
         ("task", "contract", "operands", 0),
+        ("task", "objective"),
+        ("task", "objective", "objectives", 0),
         ("guidance",),
         ("guidance", "techniques", 0),
         ("feedback",),
@@ -480,10 +684,18 @@ def test_value_that_is_not_an_object_is_rejected(where, value):
     assert message.startswith(dotted(where) + ": ")
 
 
-@pytest.mark.parametrize("value", [2, 0, True, "1", 1.0, None, IntEnum.ONE, [1]])
-def test_schema_version_other_than_the_integer_one_is_rejected(value):
+@pytest.mark.parametrize(
+    "value", [1, 0, 3, True, "2", 2.0, None, IntEnum.TWO, IntEnum.ONE, [2], -2]
+)
+def test_schema_version_other_than_the_integer_two_is_rejected(value):
     document = changed(minimal(), ["schema_version"], value)
-    rejects(document, "^schema_version: must be the integer 1")
+    rejects(document, "^schema_version: must be the integer 2, got ")
+
+
+def test_version_one_document_is_refused_as_any_other_wrong_value():
+    document = changed(minimal(), ["schema_version"], 1)
+    document["task"]["objective"] = None
+    rejects(document, "^schema_version: must be the integer 2, got 1$")
 
 
 @pytest.mark.parametrize(
@@ -573,6 +785,7 @@ def test_value_that_is_not_a_name_is_rejected(path, value):
     [
         (("id", "relation"), "single or same_technique or different_techniques"),
         (("task", "contract", "operands", 0, "role"), "input or output or inout"),
+        (("task", "objective", "objectives", 0, "type"), "latency_minimisation"),
         (("feedback", "attempts", 0, "failure", "stage"), "compile or sim or board"),
         (("repair", "failures", 0, "stage"), "compile or sim"),
     ],
@@ -658,6 +871,8 @@ def test_empty_operands_is_rejected():
     [
         ("task", "contract", "operands"),
         ("task", "contract", "operands", 0, "shape"),
+        ("task", "objective", "objectives"),
+        ("task", "objective", "constraints"),
         ("guidance", "techniques"),
         ("feedback", "attempts"),
         ("feedback", "attempts", 0, "techniques"),

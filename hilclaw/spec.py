@@ -1,10 +1,21 @@
-"""Validation of a codegen spec, the input of one coder invocation (ADR-0002).
+"""Validation of a codegen spec, the input of one coder invocation (ADR-0002, ADR-0050).
 
 ``ARCHITECTURE/decisions/ADR-0002-od6-codegen-spec.md`` fixes the sections and
 fields of version 1 of the spec, their types and the rules across fields
-(decisions 2 to 5 and 7, Consequences). :func:`validate` checks an
-already-parsed spec against those rules and nothing else. The two embedded
-records are validated, and their keys derived, by :mod:`hilclaw.keys`.
+(decisions 2 to 5 and 7, Consequences).
+``ARCHITECTURE/decisions/ADR-0050-od6-task-objective-members.md`` makes
+version 2 of it with one change: ``task.objective`` is an object with exactly
+the members ``objectives`` and ``constraints`` (decisions 1 to 5).
+:func:`validate` checks an already-parsed spec against the rules of version 2
+and nothing else. The two embedded records are validated, and their keys
+derived, by :mod:`hilclaw.keys`; they carry their own ``schema_version``.
+
+Of ``task.objective`` the checks 1 to 3 of ADR-0050 ("What the validator of
+version 2 is to check") are made: ``objectives`` holds exactly one entry,
+whose only member is ``type`` with the value ``latency_minimisation``, and
+``constraints`` is an empty array. Check 4 of that record, the form of a
+constraint entry, is not made: no constraint type is admitted yet (ADR-0050
+decision 5), so every entry is refused whatever its form.
 
 *name*, *string* and *integer* are the types of ADR-0001 and are exactly ``str``
 and ``int`` as in :mod:`hilclaw.keys`; a *text* is a ``str`` of at least one
@@ -13,16 +24,20 @@ character; an object or a map is a ``Mapping`` and an array is a ``list``.
 Not checked, because one spec does not show it or the record does not state it
 as a rule: that a ref names an earlier call, that ``feedback.base`` is also an
 entry of ``feedback.attempts``, that ``failure`` is present exactly when the
-attempt failed, that no field carries verification inputs, and that a repair
-spec copies the sections of attempt 1. Not inspected: ``task.objective``, the
-members of ``profile``, the values of ``ext``, and the vocabularies of
-``language``, ``dtype`` and the member names of ``task.build`` and ``ext``.
+attempt failed, that no field carries verification inputs, that a repair
+spec copies the sections of attempt 1, that the quantity of an objective type
+can be measured on the backend of the instance or at an execution point
+(ADR-0050 L1), and that ``task.objective`` is what the instance stated
+(ADR-0050 L2). Not inspected: the members of ``profile``, the values of
+``ext``, and the vocabularies of ``language``, ``dtype`` and the member names
+of ``task.build`` and ``ext``.
 
 This module reads and writes no file and builds no spec. The path of a spec
 file is ADR-0004's and :mod:`hilclaw.layout` builds it; the text form of the
-file, the final name of a content and the write of the file are ADR-0029's and
-:mod:`hilclaw.spec_file` holds them. Reading a spec of another schema version
-is not part of this module either (OD-11).
+file, the final name of a content and the write of the file are ADR-0029's as
+ADR-0051 carries them over to version 2, and :mod:`hilclaw.spec_file` holds
+them. Reading a spec of another schema version, version 1 among them, is not
+part of this module either (OD-11).
 """
 
 import re
@@ -32,7 +47,7 @@ from functools import partial
 
 from hilclaw import keys
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _STRING = re.compile(r"[\x20-\x7e]{1,255}")
@@ -40,26 +55,32 @@ _RELATIONS = ("single", "same_technique", "different_techniques")
 _ROLES = ("input", "output", "inout")
 _STAGES = ("compile", "sim", "board")
 _REPAIR_STAGES = ("compile", "sim")
+_OBJECTIVE_TYPES = ("latency_minimisation",)
 _TOP = ("schema_version", "id", "hw_profile", "task", "guidance", "feedback")
 _ID = ("run_id", "round", "candidate", "attempt", "candidates", "relation")
 _REF = ("round", "candidate", "attempt")
 
 
 class InvalidSpecError(ValueError):
-    """A spec breaks a rule of ADR-0002; the message names the field path and the rule."""
+    """A spec breaks a rule of ADR-0002 or ADR-0050; the message names the field path and the rule."""
 
 
 def validate(spec):
-    """Return when ``spec`` is a valid version-1 codegen spec (ADR-0002).
+    """Return when ``spec`` is a valid version-2 codegen spec (ADR-0002 with ADR-0050).
 
     ``spec`` is the parsed JSON document: a mapping with ``schema_version``
     (the integer :data:`SCHEMA_VERSION`), ``id``, ``hw_profile``, ``task``,
     ``guidance`` and ``feedback``, with ``repair`` exactly when ``id.attempt``
-    is greater than 1, and optionally ``ext``. It is not modified.
+    is greater than 1, and optionally ``ext``. ``task.objective`` is an object
+    with ``objectives``, an array of the one entry
+    ``{"type": "latency_minimisation"}``, and ``constraints``, an empty array.
+    ``spec`` is not modified.
 
     Raises :class:`InvalidSpecError` for the first rule found broken. A problem
     inside an embedded key record is reported with its path below
-    ``hw_profile.record`` or ``task.op_signature.record``.
+    ``hw_profile.record`` or ``task.op_signature.record``. A document of any
+    other ``schema_version``, the integer 1 among them, is refused as any
+    other wrong value.
     """
     _object("", spec, _TOP, ("repair", "ext"))
     version = spec["schema_version"]
@@ -193,6 +214,7 @@ def _task(task):
     _text("task.contract.prototype", contract["prototype"])
     operand = partial(_operand, sizes=sizes)
     _array("task.contract.operands", contract["operands"], operand, empty=False)
+    _objective(task["objective"])
     if "build" in task:
         _open_map("task.build", task["build"], _build_value)
 
@@ -209,6 +231,21 @@ def _size(path, value, *, sizes):
     _integer(path, value)
     if value not in sizes:
         _fail(path, "a value of task.op_signature.record.shape", value)
+
+
+def _objective(objective):
+    path = "task.objective"
+    _object(path, objective, ("objectives", "constraints"))
+    objectives = objective["objectives"]
+    if not isinstance(objectives, list) or len(objectives) != 1:
+        _fail(f"{path}.objectives", "an array of exactly one entry", objectives)
+    entry = _object(f"{path}.objectives[0]", objectives[0], ("type",))
+    _one_of(f"{path}.objectives[0].type", entry["type"], _OBJECTIVE_TYPES)
+    _array(f"{path}.constraints", objective["constraints"], _constraint)
+
+
+def _constraint(path, constraint):
+    _fail(path, "absent: no constraint type is admitted", constraint)
 
 
 def _build_value(path, value):

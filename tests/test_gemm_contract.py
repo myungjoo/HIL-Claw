@@ -115,7 +115,7 @@ def synthetic_spec(m, k, n):
     }
     op = op_signature_record(m, k, n)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "id": {
             "run_id": "synthetic-run-1",
             "round": 1,
@@ -128,7 +128,10 @@ def synthetic_spec(m, k, n):
         "task": {
             "op_signature": {"key": op_signature_key(op).name, "record": op},
             "contract": task_contract(m, k, n),
-            "objective": {"synthetic": "objective"},
+            "objective": {
+                "objectives": [{"type": "latency_minimisation"}],
+                "constraints": [],
+            },
         },
         "guidance": {"techniques": []},
         "feedback": {"attempts": []},
