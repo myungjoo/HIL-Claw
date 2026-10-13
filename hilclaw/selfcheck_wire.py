@@ -63,12 +63,12 @@ a copy whose last answer was sent and not copied.
 
 **How a server line is read**: it is an *answer* when it follows a client
 line directly, is one JSON object with exactly one of ``result`` and ``error``
-and is what the front can write to that line: a ``result`` object to a request
-of a served method whose ``params`` is an object or absent; -32602 to a
-request of a served method; -32601 to a request of another method with
-``"jsonrpc": "2.0"`` and a string or integer ``id``; -32600 or -32700 to a
-line that is not JSON text of one object; -32600 to an object the front
-refuses as a message; nothing to a blank line, a notification or a response.
+and is what the front can write to that line. To a request with
+``"jsonrpc": "2.0"`` and a string or integer ``id``: a ``result`` object or
+-32602 for a served method (-32602 alone when ``params`` is no object) and
+-32601 for another method. -32600 or -32700 to a line that is not JSON text
+of one object; -32600 to any other object the front refuses as a message;
+nothing to a blank line, a notification or a response.
 Every other server line, and a line whose direction is neither constant of
 :mod:`hilclaw.selfcheck_server`, is **unplaceable**: it sets ``unplaceable``,
 is never an answer and never an error of condition (a), and the client line
@@ -79,9 +79,8 @@ before it stays unanswered. Hence an error code outside the four of
 the module only when they are 1 to :data:`MAX_STRING` characters of ASCII
 letters, digits, ``.``, ``_`` and ``-`` (a method name also ``/``); any other
 string, the empty one included, is :data:`OTHER`, and a value that is absent
-or no string is ``None``. The revisions are bounded as the version is: the
-client supplies them too (the record names the version and the method name).
-A client that sends the word ``other`` is not told apart from the stand-in.
+or no string is ``None``. The record names the version and the method name;
+the revisions are the client's too. A client's own ``other`` reads the same.
 
 **The revision of the probe** is read from
 ``params._meta["io.modelcontextprotocol/protocolVersion"]`` and nowhere else.
@@ -99,8 +98,11 @@ the wire copy and the errors of its reader are not this module's.
 
 Known limits. Whoever can write the wire copy decides what is read (ADR-0054
 L6). The facts say what the front wrote, not what the model was given. A -32602
-answered to a call of a tool the registry does not hold is among ``errors``, as
-the record is written. Nothing calls the module yet.
+answered to a call of an unknown tool is among ``errors``, as the record is
+written. A client line is read again here, in another process than the
+front's: a line nested within a few levels of the interpreter's limit, or an
+integer near its digit limit, can read differently, and the answer the front
+wrote is then unplaceable. Nothing calls the module yet.
 """
 
 import re
