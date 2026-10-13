@@ -740,10 +740,12 @@ def test_a_configuration_file_that_cannot_be_written_is_raised(
 
 def test_a_removal_that_fails_keeps_the_evidence(stub, parent, monkeypatch, capfd):
     stub.install()
-    tries, pauses = [], []
+    tries, pauses, sleep = [], [], time.sleep
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "rmtree", lambda path, **how: tries.append(how))
-        patch.setattr(time, "sleep", pauses.append)
+        patch.setattr(
+            time, "sleep", lambda pause: pauses.append(pause) if tries else sleep(pause)
+        )
         found = run(timeout_s=TIMEOUT, parent=parent)
     assert found.removed is False
     assert outcome_of(found) == PASSED
@@ -757,7 +759,7 @@ def test_a_removal_that_fails_keeps_the_evidence(stub, parent, monkeypatch, capf
 
 def test_a_removal_that_works_at_a_later_try(stub, parent, monkeypatch):
     stub.install()
-    real, tries = shutil.rmtree, []
+    real, tries, sleep = shutil.rmtree, [], time.sleep
 
     def second_time(path, **how):
         tries.append(path)
@@ -766,7 +768,7 @@ def test_a_removal_that_works_at_a_later_try(stub, parent, monkeypatch):
 
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "rmtree", second_time)
-        patch.setattr(time, "sleep", lambda pause: None)
+        patch.setattr(time, "sleep", lambda pause: None if tries else sleep(pause))
         found = run(timeout_s=TIMEOUT, parent=parent)
     assert found.removed is True
     assert len(tries) == 2
