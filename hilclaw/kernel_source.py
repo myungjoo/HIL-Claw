@@ -21,10 +21,12 @@ sensitivity of the file system or on a normalisation.
 
 Conventions of this module, which are not rules of the record:
 
-- The path is a ``str`` or an :class:`os.PathLike` of ``str`` and is used as it
-  is: not resolved, not made absolute. A value of another type, and a path
-  whose last component is not exactly ``output``, is a mistake of the caller
-  and raises :class:`InvalidOutputPathError`; it is not "no kernel source".
+- The path is a ``str`` or an :class:`os.PathLike` of ``str`` and is used as
+  :class:`pathlib.Path` holds it: not resolved, not made absolute, a trailing
+  separator and ``.`` components dropped. A value of another type, a path that
+  holds a NUL character, and a path whose last component is not exactly
+  ``output``, is a mistake of the caller and raises
+  :class:`InvalidOutputPathError`; it is not "no kernel source".
 - The attempt directory is whatever the system lists at the parent of the
   path, so an attempt directory that is a symbolic link to a directory counts
   as a directory: the reader cannot tell it from a link in any component above
@@ -156,9 +158,10 @@ def _checked_output_path(value):
         text = os.fspath(value)
     except TypeError:
         text = None
-    if type(text) is not str:
+    if type(text) is not str or "\0" in text:
         raise InvalidOutputPathError(
-            f"output_path: must be a str or an os.PathLike of str, got {type(value).__name__}"
+            "output_path: must be a str or an os.PathLike of str without a NUL character, "
+            f"got {type(value).__name__}"
         )
     path = Path(text)
     if path.name != OUTPUT_NAME:

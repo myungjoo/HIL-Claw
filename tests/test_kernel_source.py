@@ -439,6 +439,7 @@ def test_kind_of_the_entry_output_itself(monkeypatch, output):
     with pytest.raises(KernelSourceReadError) as raised:
         read_compiled_set(output)
     assert raised.value.failure == ENTRY_KIND_UNDETERMINED
+    assert raised.value.__cause__ is error
 
 
 @pytest.mark.parametrize("name", ["b.c", "b.h", "Notes.md", "Fast.c", "con.c", "old"])
@@ -475,6 +476,22 @@ def test_a_path_whose_last_component_is_not_output(output, tail):
 def test_a_path_without_a_last_component(value):
     with pytest.raises(InvalidOutputPathError):
         read_compiled_set(value)
+
+
+@pytest.mark.parametrize(
+    "value", ["a\0b/output", "attempt/output\0", Path("a\0b") / "output"]
+)
+def test_a_path_that_holds_a_nul_character(value):
+    with pytest.raises(InvalidOutputPathError):
+        read_compiled_set(value)
+
+
+@pytest.mark.parametrize("suffix", ["/", "/.", "//"])
+def test_a_trailing_separator_or_dot_is_dropped(output, suffix):
+    write(output, "a.c")
+    assert read_compiled_set(str(output) + suffix) == KernelSource(
+        (output / "a.c",), None
+    )
 
 
 @pytest.mark.parametrize("value", [None, b"attempt/output", 7, ["output"], object()])
