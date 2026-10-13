@@ -2,7 +2,7 @@
 id: T-0148
 title: Move `hilclaw/spec.py` and `hilclaw/spec_file.py` to version 2 of the spec together - the validator checks the members of `task.objective` (ADR-0050) and the spec file is read and written as a version-2 file (ADR-0051) - with their tests; one move, not split by module
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-2, FR-5, OD-6, OD-1, OD-8, "#5 B-4"]
 dependsOn: [T-0092, T-0094, T-0117, T-0147]
@@ -129,3 +129,46 @@ No test is added for test helpers or for CI files (CLAUDE.md 테스트 규칙 5)
 - (driver / owner) HQ-0007 (T-0107), HQ-0011 (T-0123), HQ-0012 (T-0126), HQ-0013.
 
 ## Result
+**DONE.** Code mode. PR https://github.com/myungjoo/HIL-Claw/pull/100 , squash commit `dab6c42` (`dab6c427271620cdb3ab36715b962ffa2cf1d07c`) on `main`; remote and local branch deleted. The task ticks **no** PLAN checkbox.
+
+**Language**: Python - both modules exist in Python and are imported by the Python package.
+
+**Review**: 4 rounds, context-isolated `dev-reviewer`, final verdict Approve with no open finding; no security finding.
+- Round 1, Request changes: one test of `tests/test_spec_file.py` asserted only the test module's own table `FREE_PLACES` (test rule 5); a nit on one assertion of `tests/test_spec.py` that compared a copy of the record with a test helper. Both removed (`d7d2226`).
+- Round 2, Approve with a nit: the module docstring of `hilclaw/spec_file.py` said of a version-1 file "no member of it is used" while `parse` reads `schema_version`. Now "no member of it but ``schema_version`` is looked at" (`0f2ca1f`).
+- Round 3, Approve with a nit: an added assertion `spec.SCHEMA_VERSION != keys.SCHEMA_VERSION`, which independence does not imply. Removed (`ac177cf`).
+- Round 4, Approve, nothing left. The reviewer re-checked points (a) to (e) of the task in every round and confirmed the planner's judgements of `## Why`.
+
+**What landed**
+- `hilclaw/spec.py`: `SCHEMA_VERSION = 2`; `validate` makes checks 1 to 3 of ADR-0050 on `task.objective` and does not implement check 4; every other section as in version 1. Version 1 is refused at `schema_version` as any other wrong value ("schema_version: must be the integer 2, got 1").
+- `hilclaw/spec_file.py`: `parse` sets apart every `int` version from 0 to 2**53 - 1 other than 2, version 1 among them ("schema_version: is 1, not 2", built from `spec.SCHEMA_VERSION`); `_FREE` names two places (`ext`, the `profile` of an entry of `feedback.attempts`); the bodies of `final_name` and `write` are unchanged. Nothing reads, repairs or converts a version-1 content; no second version constant, flag or parameter.
+- No public name added, removed or renamed; no signature changed; no criterion disagreed with a record.
+
+**Choices of this task** (one line of reason each)
+- Private names `_OBJECTIVE_TYPES`, `_objective`, `_constraint`: the manner of the module's other private names.
+- The new checks run after `task.contract` and before `task.build`: the order of the members of `task` in the module.
+- The length of `objectives` is checked before its entry ("task.objective.objectives: must be an array of exactly one entry, got ..."): two entries are reported at the array whatever they hold.
+- Messages: an unknown member of an entry is "task.objective.objectives[0]: unknown member 'weight'" (the existing `_object`); a wrong type is "task.objective.objectives[0].type: must be latency_minimisation, got ..." (the existing `_one_of`, which takes exactly a `str`); a constraint entry is "task.objective.constraints[N]: must be absent: no constraint type is admitted, got ..." (the existing `_array` and `_fail`).
+- The message of another version is built from `spec.SCHEMA_VERSION`, so the literal is not repeated (the task's recommendation).
+- Docstrings: only the sentences that became false were edited; the module docstring of `hilclaw/spec_file.py` gained one paragraph that says how ADR-0051 carries ADR-0029 over, so that "decision N" below it keeps meaning ADR-0029.
+
+**Existing assertions changed** (each because version 2 makes it false)
+- `tests/test_spec.py`: `SCHEMA_VERSION == 1` to `== 2`; `test_objective_is_not_inspected` replaced by the refusals of `task.objective`; `test_schema_version_other_than_the_integer_one_is_rejected` renamed and its values and message moved to "the integer 2"; the helpers `minimal` and `full` build version 2 (the line of `full` that set a free-form objective is gone). `test_adr_example_is_not_a_valid_spec` (the ADR-0002 example) is kept and still holds.
+- `tests/test_spec_file.py`: the helper `other_version` expects "not 2"; `FREE_PLACES` has two entries and the test over it is renamed "two free places"; the cases that used version 2 as the other version use 1 (the set-apart versions, "reported whatever else the content holds", the rules of the whole text before the version, the order of the checks of `parse` and of `write`, `final_name` for another version, `parse` opening no file, the refused contents of `write`); "must be the integer 1" to "the integer 2" for a `schema_version` that is no integer; the member-name-twice case inside `task.objective` uses the members of version 2; the helper `unusual` puts its free value under `ext` instead of `task.objective`. The messages of the embedded key records ("must be the integer 1") are unchanged, as they are the records' own.
+- `tests/test_gemm_contract.py`: `synthetic_spec` builds version 2 with the `task.objective` of the first case; no assertion changed.
+- `tests/test_instance.py`: unchanged and passing, as expected.
+
+**Checks**
+- Local, on the branch before the PR (Windows): `python -m pytest` 13885 passed, 305 skipped; `python -m ruff check .` and `python -m ruff format --check .` exit 0. After each review fix: ruff twice and the touched test files, all passing.
+- CI on the final head `ac177cf`, all six checks successful: https://github.com/myungjoo/HIL-Claw/actions/runs/38352391448 (14189 passed in the coverage job). Coverage gate: "lines: 3602/3618 executed = 99.55% (minimum 80%)" and "functions: 375/375 entered = 100.00% (minimum 80%)"; `hilclaw/spec.py` 184 statements, 0 missed, 100%; `hilclaw/spec_file.py` 101 statements, 0 missed, 100%. `coverage` is not installed locally and nothing was installed; the numbers are the CI's.
+- `git grep -n "version 1\|not 1\|other than 1\|three places" -- hilclaw/spec.py hilclaw/spec_file.py`: four hits, each read and true - `spec.py:4` (ADR-0002 fixes version 1), `spec.py:39` (reading another version, version 1 among them, is OD-11), `spec_file.py:266` and `:290` (a document or content of version 1 is refused).
+- `git diff --stat` against `6de964b`: the five files only, 430 insertions and 77 deletions; under `hilclaw/` 92 added and 38 deleted lines (130 changed, cap 300).
+- The restated example of ADR-0050 (lines 132-151) and the one-line objective (line 126), copied word for word, pass `validate`.
+- Landed check and open PRs at the start: none. Issue #5: no comment after the ADR-0051 notice (6138568593), so no owner objection to ADR-0029, ADR-0050 or ADR-0051 and no answer to HQ-0007, HQ-0011, HQ-0012 or HQ-0013.
+
+**Known and accepted** (in the commit body): after this change nothing in the package interprets a version-1 spec file (OD-11 open; no spec file of any version is stored in either repository); the objection windows of ADR-0029 (until 2026-10-16) and of ADR-0050 and ADR-0051 (until 2026-10-20) are open.
+
+**Follow-ups left** (none new beyond the task's list)
+- The record of OD-13 sub-question 9 (memory measurement, admission of `memory_ceiling`), then check 4 of ADR-0050 in `hilclaw/spec.py`: `_constraint` is the one place that refuses every entry today.
+- The `instance.json` member that states objectives and constraints (PLAN P1-8); the committed GEMM spec example (PLAN P1-5, OD-22); OD-11 for a version-1 spec file.
+- No new HQ question.
