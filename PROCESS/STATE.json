@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0154",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:3cd2fb32-1",
+    "acquiredAt": "2026-10-13T13:20:40Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -155,7 +159,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0054 (the design record of the runtime self-check, PLAN P1-9; T-0153, main a5ed142) rests on facts that only a real, logged-in `claude` on a machine of C-7 can confirm; under D16 they are runtime acceptance items, closed by your check by hand or by the first runs of the self-check once its code exists, not by a driver task. On each kind of machine of C-7: (1) `claude auth status` exits 0 or 1 as the CLI reference says and its output is one JSON object with `authMethod`; (2) a `-p` session started with `--setting-sources project` from an empty directory still reads the stored login, and no managed setting changes what the check assumes; (3) with `--tools \"\"` and tool search at its default the model can call an MCP tool named in `--allowedTools`; (4) in `--permission-mode dontAsk` a call of a listed MCP tool runs without a prompt; (5) the `system/init` event of `--output-format stream-json` carries `mcp_servers` (name, status), `mcp_server_errors` and the tool names, which words `status` takes, which member of the last `result` message holds the final response text, and that the exit status tells a failed session from one that ended well; (6) the session ends by itself after the reply and leaves no file outside the check's directory; (7) the server process started from a working directory outside the checkout finds the `hilclaw` package; (8) Claude Code shows nothing of the configuration file's server entry (its `env` above all) to the model. Nothing of this was tried, and nothing was required of the development machine. No task is blocked on this notice.",
       "askedAt": "2026-10-13T13:17:35Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6146444000"
     }
   ],
   "counters": {
