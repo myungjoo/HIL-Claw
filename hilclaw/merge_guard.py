@@ -1,14 +1,22 @@
-"""Claude Code ``PreToolUse`` guard that refuses ``gh pr merge`` unless the PR checks are green.
+"""Claude Code ``PreToolUse`` guard for ``gh pr merge`` and for three forbidden commands.
 
 The hook payload (one JSON object with ``tool_input.command`` and ``cwd``) is
-read from stdin. For every ``gh pr merge`` found in the shell command the guard
-runs the read-only ``gh pr checks <selector> --json name,bucket`` and nothing
-else: it never merges, comments, edits or pushes.
+read from stdin. The guard refuses a shell command that holds a force push
+(``git push --force``), a recursive forced removal (``rm -rf``) or
+``gh repo delete``, the commands PROCESS/DRIVER.md 1-5 forbids. For every
+``gh pr merge`` found in the command it runs the read-only
+``gh pr checks <selector> --json name,bucket`` and nothing else: it never
+merges, comments, edits, pushes or deletes.
 
 Command line: ``python -m hilclaw.merge_guard``. Exit status is 0 with nothing
 on stdout when the tool call may proceed, and 2 with a ``merge guard: ...``
 reason on stderr when it is refused. The guard only refuses, it never grants a
 permission, and it fails closed: every failure of the guard itself exits 2.
+
+The guard reads the command line as text and is a second line behind the
+discipline of the session, not a sandbox: a command built at run time (a
+variable, ``eval``, ``bash -c "..."``, an alias) is not recognised, and the
+guard does nothing until it is registered as a hook.
 """
 
 import argparse
@@ -22,6 +30,9 @@ EXIT_REFUSE = 2
 TIMEOUT_SECONDS = 60
 
 _SEPARATORS = ";&|()`\n"
+_NOT_IN_A_WORD = _SEPARATORS + " \t\r<>#"
+_GROUP = "()"
+_BACKSLASH_BEFORE_SPACE = re.compile(r"\\(?=[\s;|&)])")
 _LONG_VALUE_FLAGS = frozenset(
     {
         "--body",
@@ -35,6 +46,31 @@ _LONG_VALUE_FLAGS = frozenset(
 _SHORT_VALUE_FLAGS = frozenset("bFtAR")
 _GH = re.compile(r".*gh(?:\.(?:exe|cmd|bat))?", re.DOTALL | re.IGNORECASE)
 _LOOKS_LIKE_MERGE = re.compile(r"gh\b.*?\bpr\b.*?\bmerge\b", re.DOTALL | re.IGNORECASE)
+_GIT = re.compile(r"(?:.*[\\/])?git|.*git\.(?:exe|cmd|bat)", re.DOTALL | re.IGNORECASE)
+_RM_NAMES = r"(?:rm|ri|rd|del|erase|rmdir|remove-item)"
+_RM = re.compile(
+    rf"(?:.*[\\/])?{_RM_NAMES}|.*{_RM_NAMES}\.(?:exe|cmd|bat)",
+    re.DOTALL | re.IGNORECASE,
+)
+_GIT_VALUE_OPTIONS = frozenset(
+    {
+        "-C",
+        "-c",
+        "--git-dir",
+        "--work-tree",
+        "--namespace",
+        "--super-prefix",
+        "--config-env",
+        "--attr-source",
+    }
+)
+_RM_SHORT_FLAGS = frozenset("dfiIPrRvWx")
+_FORCE_PUSH, _RM_RF, _REPO_DELETE = "git push --force", "rm -rf", "gh repo delete"
+_LOOKS_FORBIDDEN = (
+    (_FORCE_PUSH, (r"git\b", r"\bpush\b", r"(?<!\w)--?\w*f|\+")),
+    (_RM_RF, (rf"(?<![\w.-]){_RM_NAMES}\b", r"(?<!\w)--?\w*[rf]")),
+    (_REPO_DELETE, (r"gh\b", r"\brepo\b", r"\bdelete\b")),
+)
 
 
 def merge_invocations(command):
@@ -57,7 +93,7 @@ def merge_invocations(command):
     return [args for words in commands for args in _merges_in(words)]
 
 
-def _simple_commands(command):
+def _simple_commands(command, openers=None):
     text = command.replace("\r\n", "\n")
     commands, word, quote, redirected, i = [[]], None, None, False, 0
 
@@ -105,6 +141,13 @@ def _simple_commands(command):
                 i += 1
             redirected = True
         elif c in _SEPARATORS:
+            if openers is not None:
+                after = i
+                while text[after : after + 2] == "\\\n":
+                    after += 2
+                glued = None if redirected else word is not None
+                followed = text[after : after + 1] not in _NOT_IN_A_WORD
+                openers.append((c, glued, followed))
             end_word()
             redirected = False
             commands.append([])
@@ -162,6 +205,178 @@ def _split_flags(words):
     return positionals, repo
 
 
+def forbidden_command(command):
+    """Return ``None`` if a shell command line holds no forbidden command, else a one-line reason.
+
+    The forbidden commands are those of PROCESS/DRIVER.md 1-5, and the reason
+    names the one found:
+
+    - ``git push --force``: a ``git push`` with ``--force``,
+      ``--force-with-lease``, ``--force-if-includes`` (or an abbreviation down
+      to ``--for``), a short-flag word that holds ``f``, or a ``+<refspec>``.
+    - ``rm -rf``: ``rm`` with both a recursive and a force flag in any spelling
+      and position, whatever the operands are; the PowerShell ``Remove-Item``
+      and its aliases with ``-Recurse`` and ``-Force`` count as the same command.
+    - ``gh repo delete``.
+
+    A command is looked for in every simple command of the line, at any word, so
+    ``sudo rm -rf x`` and ``env X=1 git push -f`` are found, and so is an
+    unquoted mention such as ``echo rm -rf x``. The line is read in several
+    ways, and one refusal is enough: cut at every separator, and with each
+    ``$( )``, backtick substitution or parenthesis counted as one word, or as a
+    part of the word it is glued to, of the command around it, so that the words
+    after it belong to that command; with braces ignored at the ends of a word,
+    and as the limits of a PowerShell script block; with a backslash before
+    white space or a separator as an escape, and as the end of a Windows path. Text inside a
+    quoted argument or a comment is never a forbidden command, a substitution
+    inside double quotes included. A line that cannot be tokenised is refused
+    when it looks like one of the three.
+
+    Not recognised: flags or commands that only exist at run time (a variable,
+    the output of a substitution, a brace expansion, ``$'...'``, standard input
+    of ``xargs``); ``eval``, ``bash -c "..."``, ``iex``, ``Start-Process``,
+    aliases and shell functions; an unquoted backslash path without ``.exe``; a
+    force push by configuration (``remote.<name>.push=+...``, ``--mirror``); the
+    ``cmd`` forms ``rd /s /q`` and ``del /s``; deletions through ``gh api``; a
+    command between two quotes that the tokeniser pairs wrongly (a
+    here-document body, a PowerShell backtick-escaped quote); a command inside
+    ``"$( )"`` or backticks in double quotes; two PowerShell backtick escapes
+    that pair up as a substitution; a ``case``
+    pattern inside a substitution, whose unpaired ``)`` ends the substitution
+    early; flags after a substitution that is directly followed by ``#``; a
+    process substitution as the value of an option before the sub-command.
+    """
+    texts = dict.fromkeys((command, _BACKSLASH_BEFORE_SPACE.sub("/", command)))
+    try:
+        tokenised = [_tokenised(text) for text in texts]
+    except ValueError as e:
+        for name, patterns in _LOOKS_FORBIDDEN:
+            if _holds_in_order(command, patterns):
+                return (
+                    f"cannot parse a command that looks like the forbidden {name} ({e})"
+                )
+        return None
+    for commands, openers in tokenised:
+        for outer in [*commands, *_outer_commands(commands, openers)]:
+            unbraced = [word.strip("{}") or word for word in outer]
+            for words in (unbraced, *_script_blocks(outer)):
+                for i, word in enumerate(words):
+                    name = _forbidden_at(word.rpartition(_GROUP)[2], words[i + 1 :])
+                    if name:
+                        return f"{name} is a forbidden command (PROCESS/DRIVER.md 1-5)"
+    return None
+
+
+def _tokenised(text):
+    openers = []
+    return _simple_commands(text, openers), openers
+
+
+def _outer_commands(commands, openers):
+    current, joined, enclosing, found, target = commands[0], False, [], [], False
+    for (opener, glued, followed), words in zip(openers, commands[1:], strict=True):
+        in_target, target = target, False
+        closes = opener == "`" and enclosing[-1:] and enclosing[-1][0] == "`"
+        if opener == ")" and any(entry[0] == "(" for entry in enclosing):
+            while enclosing[-1][0] != "(":
+                _, outer, _, first = enclosing.pop()
+                found.append(outer + first)
+            closes = True
+        if joined and (closes or opener not in "(`"):
+            found.append(current)
+        if closes:
+            _, current, redirection, _ = enclosing.pop()
+            if followed and words:
+                if not redirection:
+                    current = [*current[:-1], current[-1] + words[0]]
+                target = redirection and len(words) == 1
+                words = words[1:]
+            current, joined = current + words, True
+        elif opener in "(`":
+            if in_target and glued:
+                glued = None
+            if glued and current:
+                current = [*current[:-1], current[-1] + _GROUP]
+            elif glued is not None:
+                current = [*current, _GROUP]
+            enclosing.append((opener, current, glued is None, words))
+            current, joined = words, False
+        else:
+            current, joined = words, False
+    found += [current] if joined else []
+    return [*found, *(outer + first for _, outer, _, first in enclosing)]
+
+
+def _script_blocks(words):
+    blocks = [[]]
+    for word in words:
+        first, *others = [word] if "${" in word else re.split("[{}]", word)
+        blocks[-1] += [first] if first else []
+        blocks += [[part] if part else [] for part in others]
+    return blocks[1:] and blocks
+
+
+def _holds_in_order(text, patterns):
+    at = 0
+    for pattern in patterns:
+        found = re.compile(pattern, re.IGNORECASE).search(text, at)
+        if not found:
+            return False
+        at = found.end()
+    return True
+
+
+def _forbidden_at(word, rest):
+    if _GIT.fullmatch(word) and _is_force_push(rest):
+        return _FORCE_PUSH
+    if _RM.fullmatch(word) and _is_recursive_force(rest):
+        return _RM_RF
+    if _GH.fullmatch(word) and _split_flags(rest)[0][:2] == ["repo", "delete"]:
+        return _REPO_DELETE
+    return None
+
+
+def _is_force_push(words):
+    i = 0
+    while i < len(words) and words[i].startswith("-"):
+        i += 2 if words[i] in _GIT_VALUE_OPTIONS else 1
+    if words[i : i + 1] != ["push"]:
+        return False
+    options = True
+    for word in words[i + 1 :]:
+        if word.startswith("+"):
+            return True
+        if word == "--":
+            options = False
+        elif options and word.startswith("--"):
+            if word.startswith("--for"):
+                return True
+        elif options and word.startswith("-") and "f" in word[1:].partition("o")[0]:
+            return True
+    return False
+
+
+def _is_recursive_force(words):
+    recursive = force = False
+    for word in words:
+        if word == "--":
+            break
+        flag = word.partition(":")[0]
+        name = flag.lstrip("-").lower()
+        if not flag.startswith("-") or not name:
+            continue
+        if flag.startswith("--"):
+            recursive |= "recursive".startswith(name)
+            force |= "force".startswith(name)
+        elif set(flag[1:]) <= _RM_SHORT_FLAGS:
+            recursive |= "r" in name
+            force |= "f" in name
+        else:
+            recursive |= "recurse".startswith(name)
+            force |= "force".startswith(name)
+    return recursive and force
+
+
 def checks_problem(checks):
     """Return ``None`` if the ``gh pr checks`` entries allow a merge, else a one-line reason.
 
@@ -213,12 +428,17 @@ def evaluate(payload, run=None):
 
     ``run`` replaces :func:`subprocess.run` (the default) so that tests need no
     real ``gh`` process. A payload without a string ``tool_input.command``
-    proceeds; every merge invocation in the command must pass.
+    proceeds. A command that holds a forbidden command
+    (:func:`forbidden_command`) is refused before ``gh`` is run; otherwise every
+    merge invocation in the command must pass.
     """
     tool_input = payload.get("tool_input")
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
     if not isinstance(command, str):
         return None
+    forbidden = forbidden_command(command)
+    if forbidden:
+        return forbidden
     try:
         invocations = merge_invocations(command)
     except ValueError as e:
@@ -237,7 +457,10 @@ def main(argv=None):
     """Read one hook payload from stdin and return the exit status (0 proceed, 2 refuse)."""
     argparse.ArgumentParser(
         prog="python -m hilclaw.merge_guard",
-        description="PreToolUse hook: refuse gh pr merge unless the PR checks are green.",
+        description=(
+            "PreToolUse hook: refuse gh pr merge unless the PR checks are green, and "
+            "refuse git push --force, rm -rf and gh repo delete."
+        ),
     ).parse_args(argv)
     try:
         raw = getattr(sys.stdin, "buffer", sys.stdin).read()
