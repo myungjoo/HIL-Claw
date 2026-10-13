@@ -1,0 +1,114 @@
+---
+id: T-0157
+title: Add `hilclaw/kernel_source.py` - the admitted-name predicate (ADR-0055 decision 5, N1 and N2) and the reader that goes from the path of the `output/` of an attempt to the compiled set, to "no kernel source" or to a failure of the reader (ADR-0055 decision 3, R1 to R8) - with its tests; bound to nothing, no other module edited
+phase: P1
+status: IN_PROGRESS
+commitMode: code
+coversReq: [FR-5, FR-6, FR-9, FR-10, NFR-2, C-3, C-7, OD-23, OD-18, "#5 D12"]
+dependsOn: [T-0155, T-0156]
+touchesFiles: [hilclaw/kernel_source.py, tests/test_kernel_source.py]
+estimatedSize: {loc: 150, files: 1}   # one new module of about 110-150 lines, docstrings included; the test file is outside the cap (DRIVER §5, D4)
+hq: []   # no decision is needed: ADR-0055 (R1 to R8, N1, N2) and ADR-0056 (which side applies the reader, the two kinds) are landed. Both are inside their objection window until 2026-10-20; build on them as landed
+---
+## Why
+ADR-0055 fixed, for the first case, what lies below the `output/` of an attempt and which of it is the kernel source; ADR-0056 fixed that the operation of a backend applies "the reader of ADR-0055 decision 3" to the output path the tool function hands it. Both records name the same first code slice:
+
+- `ARCHITECTURE/decisions/ADR-0055-od23-coder-output-form.md` Consequences (line 147): "(b) a pure function of the admitted name (N1, N2); (c) a function from the path of an `output/` to the compiled set or "none" (R1 to R4). A test of (c) with clang can show the include expectation of decision 3."
+- `ARCHITECTURE/decisions/ADR-0056-od18-correctness-check-verification-executable.md` Consequences (line 188): "(1) The reader of ADR-0055 (R1 to R8) as a function of the package — first." and decision 3: the reader lives in "a function of the package that every backend that builds uses, not a function of one backend".
+
+No module reads below an `output/` today (ADR-0056 Status: "no reader of ADR-0055 exists as code"). This task writes that reader and the name predicate as one new module that nothing calls yet. The slices that follow it (the bring-in of ADR-0055 B1 to B6; the fourth thing handed to an operation; the two backend kinds in `hilclaw.check_failure.BACKEND_KINDS`; later the operation of `cpu_standin`) are separate tasks.
+
+It ticks **no PLAN checkbox** (P1-1 stays open) and changes no OD.
+
+Planner's judgements (the reviewer is asked to re-check each):
+- **No undecided design is needed.** Everything the module does is R1 to R8, N1 and N2, word for word. Three things the records leave to "the code task" are listed under "Left to this task" below; each is a matter of the Python form, not of the contract.
+- **A-13**: code mode. No new dependency (standard library only), no data-plane file, path, member or schema touched: the module only reads directory listings.
+- **D16**: nothing here needs the `claude` program, a container runtime, a board or an API key. One test uses `clang`, which the CI runner has (the fixture pattern of `tests/harness/test_verification_build.py` lines 139-145).
+- **Why this item now**: GitHub Actions starts jobs again (the push runs on `main` for 728f39b, 816d82d and 3336cee ended in success on all six jobs), so code-mode tasks can land; this is the first of the code slices the last two tasks named, and the other slices import it.
+- **Session entry check (planner, 2026-10-14, `main` at 93f640a)**: one open pull request, #105 (branch `claude/T-0151-guard-refuses-child-claude-process`; files `hilclaw/merge_guard.py`, `tests/test_merge_guard.py`) - no file in common. HQ-0015 is open and blocks T-0151 only; HQ-0013, 0014, 0016, 0017, 0018 are `runtime-acceptance` notices that block nothing.
+
+## Required Reading
+Line numbers are those of `main` at `93f640a`; the text wins.
+- PROCESS/DRIVER.md §3-5 (line 72: executor procedure, `T-NNNN` naming, resume rule, the 2h30m limit) and §5 (lines 86-114: task format, size cap D4, commit trailers, the test rules D12) - mandatory for every task (§6)
+- PROCESS/DRIVER.md §1-5 (line 28: Bypass permissions; the forbidden actions; a denied or failed tool call is BLOCKED), §2 last bullets (lines 45-46: never touch `PROCESS/STATE.json`), the "BLOCKED 사유" paragraph (line 76)
+- CLAUDE.md - whole file; in particular "코멘트 최소화", "미결은 발명하지 않는다", "개발 드라이버와 런타임의 구분", "도구 계층 언어 정책", "브랜치·merge 절차" (code mode), "테스트 규칙"
+- .claude/skills/dev-item-address/SKILL.md (code mode path) and .claude/skills/dev-code-review/SKILL.md
+- **ARCHITECTURE/decisions/ADR-0055-od23-coder-output-form.md**: decision 1 terms (line 34), **decision 2, L1 to L7 (lines 36-44)**, **decision 3 whole (lines 46-65: R1 to R8 and "What follows, and why")**, **decision 5, the admitted names (lines 76-81: N1, N2 and what N1 keeps out)**, decision 6 (lines 96-102, for R7: the bounds are the bring-in's), decision 7 (lines 104-108), Consequences (lines 147-152)
+- **ARCHITECTURE/decisions/ADR-0056-od18-correctness-check-verification-executable.md**: decision 3 (lines 46-72: the output path, "the tool function reads nothing there", "What is fixed and what is the code task's"), decision 5 rows S1 and S2 (lines 95-102), **decision 6 (lines 115-124: the kinds `no_kernel_source` and `kernel_source_unreadable`, and "The message": what a message may and may not show)**, Consequences (line 188: the order of the code slices)
+- PROCESS/tasks/T-0155-adr-od23-coder-output-form.md `## Result`, "Note for the next planner" points (1) and (2); PROCESS/tasks/T-0156-adr-od18-check-verification-executable.md `## Result`, "Note for the next planner" points (2) and (3)
+- Code to follow in style and not to edit: `hilclaw/layout.py` (module docstring lines 1-27 as the model of a docstring that says what a module does not do; `attempt_artefact` lines 122-131; the `_fail` / exact-type convention lines 160-182), `hilclaw/harness/verification_build.py` (lines 1-60: what `kernel_sources` is), `hilclaw/clang_build.py` (`build`, `_checked_sources`: each source must be an existing regular file, handed over as absolute paths in the order given)
+- Tests to follow in style: `tests/test_layout.py`; `tests/harness/test_verification_build.py` lines 139-145 (the `clang` fixture: skip off POSIX, fail on the CI runner when clang is missing) and the `test_real_clang_*` tests near line 496
+- `.github/workflows/ci.yml` lines 105-135 (test presence: `hilclaw/kernel_source.py` needs `tests/test_kernel_source.py`) and lines 136-200 (coverage gate); `pyproject.toml` (ruff settings)
+
+## Acceptance Criteria
+### What the module is
+One new file `hilclaw/kernel_source.py`, Python (state the reason for the language in one line of the commit body and of `## Result`: CLAUDE.md language policy), standard library only. One new file `tests/test_kernel_source.py`. **No other file is created or edited.** The module imports nothing from `hilclaw.check_*`, `hilclaw.tools`, `hilclaw.backends` or any backend, and nothing imports it.
+
+A module docstring in the manner of `hilclaw/layout.py`: which record is the rule (ADR-0055 decisions 3 and 5; ADR-0056 decision 3 for who applies it), what the functions return, the conventions of this module that are not rules of the record (each of "Left to this task" below), and what the module does not do. Public functions carry docstrings; no multi-line comment and no comment that repeats the code.
+
+### Fixed by the records (not re-decided; implement exactly)
+1. **Admitted name** (N1, N2): a name is admitted when it matches **in full** `[a-z0-9][a-z0-9_-]{0,61}\.[ch]` and the part before the dot is none of `con`, `prn`, `aux`, `nul`, `com1` to `com9`, `lpt1` to `lpt9` (22 stems). "In full" excludes a trailing newline (`"a.c\n"` is not admitted). `com0.c`, `lpt0.h`, `cons.c` are admitted.
+2. **R1**: the reader starts from the path of the `output/` of an attempt. It lists the attempt directory (the parent of that path) and looks for the entry whose name **exactly as listed** is `output` (no case folding, no normalisation) and that is itself a directory (a symbolic link is not, whatever it points to). No attempt directory, an attempt path that is not a directory, no such entry, or an entry `output` that is not itself a directory: **no kernel source**. An entry listed as `Output` is not the `output/` on any file system - the reader must not find the directory by a path lookup alone.
+3. **R2, R5, R6**: the kernel files are the entries directly below `output/` that are themselves regular files (a symbolic link is not) and whose listed name is admitted. Nothing below a sub-directory is looked at. No file is opened, read, executed or stat-ed for its size.
+4. **R3, R4**: the compiled set is the kernel files whose name ends in `.c`, in ascending order of their names compared byte by byte (`a-b.c` < `a.c` < `a0.c` < `a_b.c`). "This attempt has a kernel source" means exactly: the compiled set is not empty. Headers (`.h`) are never in it.
+5. **R7**: no bound on number or size: 17 or 1,000 admitted files, or a file above 262,144 bytes, are read like any other.
+6. **R8**: a directory that exists and cannot be listed (the attempt directory or `output/`), or an entry of either whose kind cannot be determined, is **a failure of the reader**: a third outcome, never "no kernel source" and never passed over. Read it as T-0155 note (2) does: the reader determines the kind of every entry it lists in both directories.
+7. **The same answer on every machine of C-7**: nothing depends on the order of a directory listing, on the case sensitivity of the file system or on a normalisation.
+
+### Left to this task (Python form only; decide, say it in the module docstring as a convention of the module, test it, and list each choice in `## Result`)
+- **The form of the three outcomes.** Required: a caller can tell (i) a non-empty compiled set, (ii) "no kernel source" and (iii) a failure of the reader apart without reading anything again; for (ii) it can tell **which case** it was - no attempt directory, no `output` directory, or no file of the compiled set - and for (iii) **which of the two directories** could not be listed or that the kind of an entry could not be determined, each as a value of a closed set of constants of the module (ADR-0056 decision 6 lets a message say exactly these, so the later operation must not have to parse a text). Suggested, not required: a `NamedTuple` answer with the tuple of paths and a member that is `None` or one of three strings, and for (iii) an exception class of the module (a subclass of `OSError` or of `Exception`, your choice) with such a member and the original error as `__cause__`. The paths of the compiled set are `pathlib.Path` values formed as the given path joined with the listed name; the given path is used as it is (not resolved, not made absolute), as `hilclaw/layout.py` does.
+- **The argument.** Which types are accepted for the path (`str` and `os.PathLike` of `str` at least) and what a value of another type raises; and what the reader does with a path whose last component is not exactly `output` - the planner's reading is that this is a caller's mistake outside the three outcomes (R1 names the entry `output`; ADR-0056 forms the path with `hilclaw.layout.attempt_artefact(..., "output")`), raised as a value error of the module and **not** answered as "no kernel source". Ask the reviewer to check this reading.
+- **An attempt directory that is itself a symbolic link to a directory** (T-0155 round 6, nit 3: left open on purpose for the code task): decide whether it counts as a directory, say why in one line of the docstring, test it.
+- Names of functions, constants and classes; whether the non-`str` argument of the name predicate is `False` or an error (follow the exact-type convention of `hilclaw/keys.py` and `hilclaw/layout.py` and say which).
+
+### Do not invent
+- No tool failure, no kind `no_kernel_source` or `kernel_source_unreadable` raised or named as a value here, no edit of `hilclaw/check_failure.py`: mapping the outcomes to kinds and wording a message is the operation's (a later slice). The docstring may say that ADR-0056 decision 6 maps them.
+- No bring-in, no scratch, no write of any kind; no directory made; no bound of B2 or B3; no check of content (UTF-8, NUL, `hilclaw_gemm`, `main`).
+- No rule for an unfinished or second bring-in (ADR-0055 L5; OD-23 sub-question 1 (가)); no rule for what anybody does after an answer.
+- No flag, compiler, time limit, build directory or build; no change to `hilclaw/layout.py`, `hilclaw/clang_build.py` or the harness.
+- No new external dependency; no data-plane path, member, record kind or version.
+- If a rule of R1 to R8, N1 or N2 turns out not to be implementable as written, or two of them disagree, do not choose: return BLOCKED ("requirement unclear") quoting the sentences.
+
+### Tests (`tests/test_kernel_source.py`; CLAUDE.md test rules, D12)
+Every public function of the module is tested, with happy, error, branch and **negative** cases. Use `tmp_path` for real directories; use `monkeypatch` of the listing call for what a real file system cannot be made to do portably (an unlistable directory, an entry whose kind raises, a listing in reversed or shuffled order, a pair of names differing only in case). Tests that need a symbolic link skip where the machine refuses to create one, and run on the CI runner. At least:
+- **Name predicate, happy**: `a.c`, `a.h`, `gemm.c`, `0.c`, `a_b-c9.h`, a 64-character name, `com0.c`, `lpt0.h`, `cons.c`, `nul1.c`.
+- **Name predicate, negative**: empty string; `a.c\n`; 65 characters; `A.c`, `a.C`; leading `_`, `-`, `.`; `a.b.c`; `a.cc`, `a.o`, `a`; `a.`; a space; `/` and `\` inside; `..`; a non-ASCII letter and a full-width digit; each of the 22 stems of N2 with `.c` and one with `.h`; a non-`str` value (per the chosen convention).
+- **Reader, happy**: `gemm.c`, `pack.c`, `pack.h` → compiled set `gemm.c`, `pack.c` in that order as `Path` values below the given path; one file; the order `a-b.c`, `a.c`, `a0.c`, `a_b.c` from a listing given in another order; 17 admitted `.c` files and one file above 262,144 bytes are all in the set (R7).
+- **Reader, "no kernel source", each case told apart**: the attempt directory does not exist; the attempt path is a regular file; the attempt directory exists without `output`; `output` is a regular file; `output` is a symbolic link to a directory holding `a.c`; the only entry is `Output` (a real directory `Output` and the reader called with `.../output` - this must hold on a case-insensitive file system too); `output/` is empty; `output/` holds only `a.h`; only names that are not admitted (`Fast.c`, `Notes.md`, `con.c`); `a.c` only below a sub-directory; `a.c` is a symbolic link to a regular file; `a.c` is a directory.
+- **Reader, mixed**: admitted and not admitted entries side by side - only the admitted regular `.c` files are returned, and nothing is opened (a test may assert this by making a file unreadable or by patching `open`).
+- **Reader, failure (R8)**: listing the attempt directory raises `PermissionError`; listing `output/` raises `PermissionError`; another `OSError` at either; the kind of an entry of the attempt directory raises; the kind of an entry of `output/` raises - also when that entry's name is not admitted and when a valid `a.c` lies beside it (not passed over). Each is the failure outcome with its closed-set member, never an empty answer.
+- **Argument**: a `str` and a `Path` give the same answer; a path whose last component is not `output`, and a value of a type that is not accepted, behave as the docstring says.
+- **With clang** (the fixture pattern of `tests/harness/test_verification_build.py`): an `output/` holding `a.c` with `#include "pack.h"`, `pack.c` and `pack.h` is read, and the compiled set, handed as it is to `hilclaw.clang_build.build` with no flag that adds an include path, builds an executable that starts and exits 0 (one of the `.c` files of this test defines `main`; this test builds no kernel of ADR-0008). This shows on the CI machine the expectation ADR-0055 decision 3 marks "not verified"; record the outcome in `## Result` and do **not** edit the record.
+- No test targets test code, the CI workflow or a script (D12 rule 5).
+
+### Gates
+- `python -m pytest` passes locally; `python -m ruff check .` and `python -m ruff format --check .` exit 0.
+- CI green on the PR, all six jobs: both Python gates, the sh gate, the C gate, test presence, and coverage of `hilclaw/` at line ≥ 80% and function ≥ 80% (the new module itself should be at or near 100%; say the figures in `## Result`). The `coverage` module is not installed on the driver machine; do not add it to the repository's dependencies - take the figures from the CI gate.
+- `git diff --stat origin/main` lists exactly the two files; `git ls-files --eol` shows `i/lf` for both; `git diff --check` is clean. The module stays within 300 changed lines.
+
+### Process
+- Work only in the driver's dedicated clone. First the §3-5 landed check: `git log origin/main --grep='^Task: T-0157'` and `gh pr list --repo myungjoo/HIL-Claw --search T-0157 --state all`. Then `gh pr list --repo myungjoo/HIL-Claw --state open`: an open PR that touches either file of `touchesFiles` is BLOCKED ("open PR conflict"); PR #105 touches neither and is not yours to re-run, edit or merge.
+- Read the comments on issue #5 after `https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6148855382`. An owner comment that objects to ADR-0055 or ADR-0056, or speaks of the form of `output/` or of who reads it, is BLOCKED ("requirement unclear") quoting it. An answer to HQ-0013 to HQ-0018 does not stop this task; name it in `## Result`.
+- **D16, in practice**: neither the executor nor any agent it spawns starts the Claude Code program (`claude`) as a child process, with any subcommand or flag. Reviewers are spawned with the session's own agent tool and told to write no file and to start no `claude` process.
+- Code mode (CLAUDE.md A-13): branch `claude/T-0157-kernel-source-reader` from `origin/main`; Draft PR with `T-0157` in its title and `Task: T-0157` as the last line of its body; the reviewer cycle of dev-item-address with a fresh-context `dev-reviewer` each round, given the PR and this task file's path (at most 7 rounds; past the cap without a final Approve, BLOCKED; a result starting with `SECURITY` is BLOCKED; if no reviewer can be spawned, BLOCKED - do not self-review). Ask the reviewer explicitly to (a) check each of R1 to R8, N1 and N2 against the code, sentence by sentence; (b) attack R1 - a way in which `Output`, a symbolic link or a path lookup is taken for the `output/`; (c) attack R8 - an `OSError` that ends as "no kernel source", or an entry that is passed over; (d) check that nothing is opened, read, executed or written and that nothing on "Do not invent" is present; (e) re-check the planner's readings under "Left to this task", the last-component rule first; (f) check the D12 rules, the negative cases above, and that behaviour does not depend on the platform.
+- Merge: when the last review is an Approve and CI is green on the head, squash-merge yourself with `gh pr merge --squash --body` so that the squash message ends with `Task: T-0157` (after it, any attribution trailer your session requires), delete the branch, and check out `main` at `origin/main`. Commit and PR text in English. The body says in a few lines what the module does, the three conventions chosen, the language and why, and that nothing is bound to it.
+- **CI**: three consecutive failing runs are BLOCKED (`ci-3-consecutive-failures`). A run that starts no job (zero steps in every job - the pattern of HQ-0015) counts as a failure for this rule; it is not re-run in a loop and not worked around.
+- Never `git push --force*` / `-f`, never a recursive forced remove, never `gh repo delete`; no edit of `.claude/settings.json` or `.claude/settings.local.json`. A denied or failed tool call is BLOCKED, not worked around. A rejected push of the task branch: one rebase and one retry, then BLOCKED (`branch-contention`). Past 2h30m of wall-clock: write the state into `## Result` and return BLOCKED (`task-timeout`).
+- `## Result`: fill it in on `main` after the merge and leave that edit uncommitted for the driver (DRIVER §3-6). Record: the PR and squash commit, review rounds and findings, CI conclusion and coverage figures, the language and its reason, **the public names with their signatures and the closed sets of constants as landed** (the next slices are written against them), each convention chosen under "Left to this task" with its reason, the outcome of the clang test, any situation of the listing that R1 to R8 do not cover (registered as a follow-up, not decided), and the follow-ups. `PROCESS/STATE.json`, `PROCESS/journal/` and `PROCESS/PLAN.md` belong to the driver.
+- Return a summary of at most 200 characters (result, PR/commit, BLOCKED or not).
+
+## Out of Scope
+- The bring-in of ADR-0055 (B1 to B6) and slice (a) of ADR-0049; anything that writes below an `output/` or touches a scratch.
+- The fourth thing handed to an operation (`hilclaw/check_operation.py`, `hilclaw/mock_check.py`, `hilclaw/check_tool.py` and their tests) and the two backend kinds in `hilclaw/check_failure.py`.
+- The operation of `cpu_standin` for `correctness.check`, the build directory, any build or run of a kernel, the tool's registration (they wait on OD-18 sub-question 17).
+- Any ARCHITECTURE document, README, PLAN, DRIVER.md, CLAUDE.md; sentences of earlier records or docstrings that are now less exact.
+- PR #105, T-0151 and anything HQ-0013 to HQ-0018 ask.
+
+## Follow-ups
+- (planner, code mode, D12) The bring-in function of ADR-0055 (B1 to B6; slice (b) of ADR-0049), which uses the admitted-name predicate of this module and the bounds 16 and 262,144; what it does when the `output/` already exists is OD-23 sub-question 1 (가) and must not be invented.
+- (planner, code mode, D12) The fourth thing: `hilclaw.check_operation.ask` and `hilclaw.mock_check` go from three and four things to four and five, the tool function forms the output path with `hilclaw.layout.attempt_artefact`; then `no_kernel_source` and `kernel_source_unreadable` in `hilclaw.check_failure.BACKEND_KINDS` (ADR-0056 Consequences, slices 2 and 3).
+- (planner, code mode) The first slice of the runtime self-check of ADR-0054 against a test-made stub `claude` (PLAN P1-9); the member `objective` in `hilclaw/instance.py` (ADR-0053); the harness slice of ADR-0052.
+- (planner, document mode, §9; weigh an HQ first) The record for OD-18 sub-question 17 (가) and (나) - a compile or link failure as a result needs a fifth value of `condition`, very likely the owner's; the run-tool contracts (PLAN P1-1) meet the same question.
+- (driver / owner) HQ-0015 (T-0151, PR #105); HQ-0013, 0014, 0016, 0017, 0018 (`runtime-acceptance`).
+
+## Result

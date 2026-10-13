@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0157",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:ec98e3f9-1",
+    "acquiredAt": "2026-10-13T15:23:42Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -171,7 +175,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0056 (how `correctness.check` comes to the verification executable of an attempt for the first case, part of OD-18 sub-question 10; T-0156, main 3336cee) has the operation of `cpu_standin` build the verification executable at each call in a build directory of its own, outside both checkouts, and remove it before the call returns. One fact it rests on can only be established on a runtime machine; under D16 it is a runtime acceptance item, closed by your check by hand or by the first runs of the runtime once the operation exists, not by a driver task. On each kind of machine of C-7 (Linux, macOS, Windows with WSL): the place the code chooses for the build directory lets the user who runs the instance make a directory there, start an executable that was built into it (a location for temporary files may be set up so that nothing in it can be executed - the record's expectation, not verified), and remove it. A test with clang in CI can show it for the CI machine only. Nothing of this was tried, and nothing was required of the development machine. No task is blocked on this notice.",
       "askedAt": "2026-10-13T15:19:16Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6148899981"
     }
   ],
   "counters": {
