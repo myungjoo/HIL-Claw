@@ -655,6 +655,21 @@ FORBIDDEN = [
     ("git -C $(pwd)\\\n/repo push -f", FORCE_PUSH),
     ("(case $x in a)rm -r pre`pwd` -f;; esac)", RM_RF),
     ("x=$(case $x in a)git -C $(pwd) push origin x --force;; esac)", FORCE_PUSH),
+    (r"Remove-Item .\build\ -Recurse -Force", RM_RF),
+    (r"rm .\x\ -r -fo", RM_RF),
+    (r"git -C .\sub\ push --force", FORCE_PUSH),
+    ("Set-Location C:\\x\\\ngit push -f", FORCE_PUSH),
+    (r"gh repo view C:\x\ ; gh repo delete y", REPO_DELETE),
+    ("ls | %{Remove-Item $_ -Recurse -Force}", RM_RF),
+    ("ls | ForEach-Object{Remove-Item $_ -Recurse -Force}", RM_RF),
+    ("try{rm -rf x}catch{}", RM_RF),
+    ("if ($x) {git push -f}else{git push}", FORCE_PUSH),
+    ("if ($x) {gh repo delete y}else{ls}", REPO_DELETE),
+    ("rm -r ${DIR} -f", RM_RF),
+    ("rm -r build/{a,b} -f", RM_RF),
+    ("git push origin {a,b} --force", FORCE_PUSH),
+    ("Remove-Item (Join-Path $a My` Dir) -Recurse -Force", RM_RF),
+    ("git push origin (Get-Thing a` b) --force", FORCE_PUSH),
 ]
 
 NOT_FORBIDDEN = [
@@ -727,6 +742,12 @@ NOT_FORBIDDEN = [
     "rm -r My` Dir; ls -f",
     "ls | ForEach-Object {Remove-Item $_ -Recurse}",
     "git push origin ${BRANCH}",
+    "git push \\\n  origin main",
+    r"Set-Location C:\x\ ; git push",
+    r"Remove-Item .\build\ -Recurse",
+    "try{rm -r x}catch{ls -f}",
+    "ls | %{Remove-Item $_ -Recurse}",
+    "find . -name x -exec rm -r {} +",
 ]
 
 KNOWN_MISSES = [
@@ -751,6 +772,9 @@ KNOWN_MISSES = [
     "git push origin $(x)#y -f",
     "git -C <(x) push -f",
     "rm -r(x) -f",
+    'out="$(git push --force 2>&1)"',
+    'echo "`rm -rf x`"',
+    "Remove-Item a` b -Recurse c` d -Force",
     "echo a >$(case $x in a)rm -r $(pwd) -f;; esac)",
 ]
 

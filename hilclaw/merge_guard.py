@@ -32,6 +32,7 @@ TIMEOUT_SECONDS = 60
 _SEPARATORS = ";&|()`\n"
 _NOT_IN_A_WORD = _SEPARATORS + " \t\r<>#"
 _GROUP = "()"
+_BACKSLASH_BEFORE_SPACE = re.compile(r"\\(?=\s)")
 _LONG_VALUE_FLAGS = frozenset(
     {
         "--body",
@@ -220,13 +221,16 @@ def forbidden_command(command):
 
     A command is looked for in every simple command of the line, at any word, so
     ``sudo rm -rf x`` and ``env X=1 git push -f`` are found, and so is an
-    unquoted mention such as ``echo rm -rf x``. The line is read twice: cut at
-    every separator, and with each ``$( )``, backtick substitution or
-    parenthesis counted as one word, or as a part of the word it is glued to, of
-    the command around it, so that the words after it belong to that command.
-    Braces at either end of a word are ignored (a PowerShell script block). Text
-    inside a quoted argument or a comment is never a forbidden command. A line
-    that cannot be tokenised is refused when it looks like one of the three.
+    unquoted mention such as ``echo rm -rf x``. The line is read in several
+    ways, and one refusal is enough: cut at every separator, and with each
+    ``$( )``, backtick substitution or parenthesis counted as one word, or as a
+    part of the word it is glued to, of the command around it, so that the words
+    after it belong to that command; with braces ignored at the ends of a word,
+    and as the limits of a PowerShell script block; with a backslash before
+    white space as an escape, and as the end of a Windows path. Text inside a
+    quoted argument or a comment is never a forbidden command, a substitution
+    inside double quotes included. A line that cannot be tokenised is refused
+    when it looks like one of the three.
 
     Not recognised: flags or commands that only exist at run time (a variable,
     the output of a substitution, a brace expansion, ``$'...'``, standard input
@@ -235,14 +239,16 @@ def forbidden_command(command):
     force push by configuration (``remote.<name>.push=+...``, ``--mirror``); the
     ``cmd`` forms ``rd /s /q`` and ``del /s``; deletions through ``gh api``; a
     command between two quotes that the tokeniser pairs wrongly (a
-    here-document body, a PowerShell backtick-escaped quote); a ``case``
+    here-document body, a PowerShell backtick-escaped quote); a command inside
+    ``"$( )"`` or backticks in double quotes; two PowerShell backtick escapes
+    that pair up as a substitution; a ``case``
     pattern inside a substitution, whose unpaired ``)`` ends the substitution
     early; flags after a substitution that is directly followed by ``#``; a
     process substitution as the value of an option before the sub-command.
     """
-    openers = []
+    texts = dict.fromkeys((command, _BACKSLASH_BEFORE_SPACE.sub("/", command)))
     try:
-        commands = _simple_commands(command, openers)
+        tokenised = [_tokenised(text) for text in texts]
     except ValueError as e:
         for name, patterns in _LOOKS_FORBIDDEN:
             if _holds_in_order(command, patterns):
@@ -250,36 +256,60 @@ def forbidden_command(command):
                     f"cannot parse a command that looks like the forbidden {name} ({e})"
                 )
         return None
-    for words in [*commands, *_outer_commands(commands, openers)]:
-        words = [word.strip("{}") or word for word in words]
-        for i, word in enumerate(words):
-            name = _forbidden_at(word.rpartition(_GROUP)[2], words[i + 1 :])
-            if name:
-                return f"{name} is a forbidden command (PROCESS/DRIVER.md 1-5)"
+    for commands, openers in tokenised:
+        for outer in [*commands, *_outer_commands(commands, openers)]:
+            unbraced = [word.strip("{}") or word for word in outer]
+            for words in (unbraced, *_script_blocks(outer)):
+                for i, word in enumerate(words):
+                    name = _forbidden_at(word.rpartition(_GROUP)[2], words[i + 1 :])
+                    if name:
+                        return f"{name} is a forbidden command (PROCESS/DRIVER.md 1-5)"
     return None
 
 
+def _tokenised(text):
+    openers = []
+    return _simple_commands(text, openers), openers
+
+
 def _outer_commands(commands, openers):
-    current, enclosing, joined = commands[0], [], []
+    current, joined, enclosing, found = commands[0], False, [], []
     for (opener, glued, followed), words in zip(openers, commands[1:], strict=True):
-        if enclosing and (opener == ")" or opener == "`" == enclosing[-1][0]):
+        closes = opener == "`" and enclosing[-1:] and enclosing[-1][0] == "`"
+        if opener == ")" and any(entry[0] == "(" for entry in enclosing):
+            while enclosing[-1][0] != "(":
+                _, outer, _, first = enclosing.pop()
+                found.append(outer + first)
+            closes = True
+        if joined and (closes or opener not in "(`"):
+            found.append(current)
+        if closes:
             _, current, redirection, _ = enclosing.pop()
             if followed and words:
                 if not redirection:
                     current = [*current[:-1], current[-1] + words[0]]
                 words = words[1:]
-            current = current + words
-            joined.append(current)
+            current, joined = current + words, True
         elif opener in "(`":
             if glued:
                 current = [*current[:-1], current[-1] + _GROUP]
             elif glued is not None:
                 current = [*current, _GROUP]
             enclosing.append((opener, current, glued is None, words))
-            current = words
+            current, joined = words, False
         else:
-            current = words
-    return [*joined, *(outer + first for _, outer, _, first in enclosing)]
+            current, joined = words, False
+    found += [current] if joined else []
+    return [*found, *(outer + first for _, outer, _, first in enclosing)]
+
+
+def _script_blocks(words):
+    blocks = [[]]
+    for word in words:
+        first, *others = [word] if "${" in word else re.split("[{}]", word)
+        blocks[-1] += [first] if first else []
+        blocks += [[part] if part else [] for part in others]
+    return blocks[1:] and blocks
 
 
 def _holds_in_order(text, patterns):
