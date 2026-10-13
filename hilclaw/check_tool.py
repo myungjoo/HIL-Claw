@@ -2,8 +2,9 @@
 
 ``ARCHITECTURE/decisions/ADR-0048-od18-correctness-check-seed-draw.md``
 decision 10 is the order of a call; ADR-0021 and ADR-0040 to ADR-0047 are the
-rules of its moments. :func:`tool_function` joins the modules that render
-them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
+rules of its moments, and ADR-0056 decision 3 is the rule of the output
+path. :func:`tool_function` joins the modules that render them, over
+:func:`hilclaw.hw_tool.stepped_tool_function`:
 
 1. The request is checked: the frame, then ``point``
    (:func:`hilclaw.check_identity.check`), and the ``step`` follows from
@@ -18,8 +19,9 @@ them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
 4. The source of seeds is asked once, by :func:`hilclaw.check_seed.draw`
    (ADR-0048 decisions 3 to 5).
 5. The start line is appended.
-6. :func:`hilclaw.check_seed.check` calls the operation with the request, the
-   hw_profile and the check parameters, the seed among them.
+6. The output path is formed, and :func:`hilclaw.check_seed.check` calls the
+   operation with the request, the hw_profile, the check parameters, the
+   seed among them, and the output path (ADR-0056 decision 3).
 7. The end line is appended with the result, or with the ``failure`` of a
    check that made none (ADR-0045 decision 3, ADR-0047 decision 3), and in
    both cases with the empty ``spend`` (ADR-0040 decision 6).
@@ -33,21 +35,36 @@ Choices that are this module's own and no rule of a record:
   private class with two slots, alive for that call only. Its ``repr`` shows
   neither slot.
 * A ``seeds`` or a ``covers`` that is not callable is refused at building.
+* The output path is the :class:`pathlib.Path` that
+  :func:`hilclaw.layout.attempt_artefact` returns for the data root of the
+  call, the members ``run_id``, ``round``, ``candidate`` and ``attempt`` of
+  the request and the name ``output``, as it is: not resolved and not made
+  absolute, so that it does not depend on the working directory. It is
+  formed once for a call, after the start line, and handed on as that one
+  object.
+* The four members are read from the request without a check of this
+  module. It relies on the frame, which has checked their presence, types
+  and bounds before the start line, and those bounds are the ones
+  ``attempt_artefact`` accepts.
 
 What the module does not do: it registers nothing and defines no tool. The
 member list of a request is open (ADR-0040 decision 5), so the function is
 not yet the tool a registry offers: it has no input schema and no
-description, looks at no member but ``point`` and hands the request on as the
-caller gave it. It says nothing of the kernel of the attempt, of flags or of
-time limits. It binds no source of seeds, no predicate, no backend, no table
+description, looks at no member but ``point`` and the four the output path
+is formed from, and hands the request on as the caller gave it. Of the
+kernel of the attempt it forms the output path and hands it on; it reads
+nothing there, does not test whether the path or anything above it exists,
+and writes the path to no file and puts it in no message. It says nothing of
+flags or of time limits. It binds no source of seeds, no predicate, no
+backend, no table
 and no script, and no parameter has a default. It names no kind, no ``step``
 value and no member of its own, and composes the message of no tool failure.
 It writes no seed anywhere and puts none in a message. It gives no rule for
 another HW tool and keeps nothing between calls. It imports
 :mod:`hilclaw.check_admission`,
 :mod:`hilclaw.check_ending`, :mod:`hilclaw.check_identity`,
-:mod:`hilclaw.check_seed`, :mod:`hilclaw.hw_tool`, :mod:`hilclaw.instance`
-and :mod:`hilclaw.journaled_step` and nothing else.
+:mod:`hilclaw.check_seed`, :mod:`hilclaw.hw_tool`, :mod:`hilclaw.instance`,
+:mod:`hilclaw.journaled_step` and :mod:`hilclaw.layout` and nothing else.
 """
 
 from hilclaw import (
@@ -58,6 +75,7 @@ from hilclaw import (
     hw_tool,
     instance,
     journaled_step,
+    layout,
 )
 
 _TOOL = "correctness.check"
@@ -139,9 +157,17 @@ def _hw_profile(read):
 
 
 def _perform(data_root, request, hw_profile, operation, drawn):
+    output_path = layout.attempt_artefact(
+        data_root,
+        request["run_id"],
+        request["round"],
+        request["candidate"],
+        request["attempt"],
+        "output",
+    )
     try:
         result = check_seed.check(
-            operation, request, hw_profile, drawn.admitted, drawn.seed
+            operation, request, hw_profile, drawn.admitted, drawn.seed, output_path
         )
     except check_ending.EndedWithoutOutcome as ended:
         kind, message = ended.kind, ended.message

@@ -23,8 +23,9 @@ call that lie around the start line and need no log:
   five values of ADR-0043 decision 2: the seed of the call (ADR-0021
   decision 3), the number of draws (ADR-0046 decision 2) and the dimensions
   (ADR-0041 decision 2); the tolerance is that of ADR-0021 decision 4. The
-  call of the operation and what becomes of its answer are those of
-  :func:`hilclaw.check_ending.carry_out`.
+  output path is handed on beside them, as the fourth thing of ADR-0056
+  decision 3. The call of the operation and what becomes of its answer are
+  those of :func:`hilclaw.check_ending.carry_out`.
 
 Choices that are this module's own and no rule of a record:
 
@@ -58,6 +59,8 @@ Choices that are this module's own and no rule of a record:
   traceback holds none of them.
 * ``admitted`` is checked to be exactly a
   :class:`hilclaw.check_admission.Admitted`, before anything is called.
+* The output path is the last parameter of :func:`check`. It is handed to
+  ``carry_out`` as the same object and not checked, read or converted.
 
 What the module does not do: it is no tool and no step and is bound to none.
 It appends no line, so it does not by itself make the draw lie before a
@@ -67,11 +70,12 @@ It does not check that the call reached the draw, that is, that its
 identity has no line and that none of the answers of moment 4 was given. It
 says nothing of whether a seed is recorded, returned or kept after a check
 (OD-16 sub-question 5); it writes the seed to no file and puts it in no
-message. :func:`check` validates no seed, no number of draws, no dimension
-and no tolerance, and the module gives none a default. It says nothing of
-what anybody does after an answer, of a repeated call or of a retry. It is
-this tool's and gives no rule for another HW tool. It reserves no kind. It
-keeps nothing between calls. It imports :mod:`hilclaw.check_admission`,
+message. :func:`check` validates no seed, no number of draws, no dimension,
+no tolerance and no output path, and the module gives none a default. It
+says nothing of what anybody does after an answer, of a repeated call or of
+a retry. It is this tool's and gives no rule for another HW tool. It
+reserves no kind. It keeps nothing between calls. It imports
+:mod:`hilclaw.check_admission`,
 :mod:`hilclaw.check_ending`, :mod:`hilclaw.check_parameters`,
 :mod:`hilclaw.harness.seed_source` and :mod:`hilclaw.tools` and nothing
 else.
@@ -136,7 +140,7 @@ def draw(source):
     raise tools.ToolFailure(KIND_SEED_NOT_DRAWN, message)
 
 
-def check(operation, request, hw_profile, admitted, seed):
+def check(operation, request, hw_profile, admitted, seed, output_path):
     """Call ``operation`` once for an admitted check and a drawn seed and return the result, or raise what its step ends with.
 
     - ``operation``: an operation of ``correctness.check``, a callable.
@@ -146,6 +150,8 @@ def check(operation, request, hw_profile, admitted, seed):
       ``instance.json``, exactly a
       :class:`hilclaw.check_admission.Admitted`.
     - ``seed``: the seed of the call, as :func:`draw` returned it.
+    - ``output_path``: the output path of the call (ADR-0056 decision 3). It
+      is handed on as it is and not read, whatever its type is.
 
     No parameter has a default. :class:`TypeError` is raised before
     anything is called when ``admitted`` is of another type; this is the
@@ -154,8 +160,9 @@ def check(operation, request, hw_profile, admitted, seed):
     admitted.n)`` (ADR-0043 decision 2), each of the five the object that
     was handed in, and what
     :func:`hilclaw.check_ending.carry_out` returns for ``operation``,
-    ``request``, ``hw_profile``, these parameters, ``admitted.rtol`` and
-    ``admitted.atol`` is returned as it is. ``carry_out`` is called once.
+    ``request``, ``hw_profile``, these parameters, ``output_path``,
+    ``admitted.rtol`` and ``admitted.atol`` is returned as it is.
+    ``carry_out`` is called once.
 
     Everything ``carry_out`` raises passes through as the same object:
     :class:`hilclaw.check_ending.EndedWithoutOutcome`, a
@@ -185,6 +192,7 @@ def check(operation, request, hw_profile, admitted, seed):
         request,
         hw_profile,
         parameters,
+        output_path,
         rtol=admitted.rtol,
         atol=admitted.atol,
     )

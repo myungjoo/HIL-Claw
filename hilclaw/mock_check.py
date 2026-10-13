@@ -3,11 +3,12 @@
 ``ARCHITECTURE/decisions/ADR-0044-od18-correctness-check-mock-script.md`` is
 the rule; a decision cited by its number alone is one of that record. The
 module renders its decisions 2 to 4, with the check parameters of ADR-0043
-decision 2 (:class:`hilclaw.check_parameters.CheckParameters`):
+decision 2 (:class:`hilclaw.check_parameters.CheckParameters`) and the output
+path of ADR-0056 decision 3, which extends decision 2 by one thing:
 
 * :func:`operation`: the mock's operation of this tool bound to a script
   (decision 2). The script is asked once for each call, with the called tool
-  and the three things the operation was called with, as they are, and its
+  and the four things the operation was called with, as they are, and its
   answer is the operation's answer. The operation does not look at it.
 * :func:`default_script`: what the default script answers for this tool
   (decision 3), a complete report that holds for each draw the right product
@@ -15,11 +16,13 @@ decision 2 (:class:`hilclaw.check_parameters.CheckParameters`):
 
 Choices that are this module's own and no rule of a record:
 
-* A script of this tool is asked with four positional things:
-  ``script("correctness.check", request, hw_profile, parameters)``. An
-  operation is called with three positional things and no keyword.
-* :func:`default_script` has the four parameters of a script and reads the
-  last one only.
+* A script of this tool is asked with five positional things:
+  ``script("correctness.check", request, hw_profile, parameters,
+  output_path)``. An operation is called with four positional things and no
+  keyword; the output path is the last of them.
+* :func:`default_script` has the five parameters of a script and reads the
+  check parameters only. The output path is not read, checked or converted,
+  whatever its type is (ADR-0056 decision 3).
 * The report is computed with the harness of the same source commit:
   :func:`hilclaw.harness.verification_arrays.draw_inputs`, ``check_value``
   and ``reference`` give the inputs, the check value and the float64 product
@@ -43,7 +46,8 @@ It gives no value or default of a number of draws, a seed or a dimension. It
 says nothing of what a call answers when the answer of a script has neither
 form of ADR-0043 decision 4 or when the default script raises. It reads no
 clock, random source, counter, file or environment variable, starts no
-process and keeps nothing between calls.
+process and keeps nothing between calls. It looks at nothing at the output
+path.
 """
 
 import struct
@@ -62,8 +66,8 @@ class _Operation:
     def __init__(self, script):
         self._script = script
 
-    def __call__(self, request, hw_profile, parameters, /):
-        return self._script(_TOOL, request, hw_profile, parameters)
+    def __call__(self, request, hw_profile, parameters, output_path, /):
+        return self._script(_TOOL, request, hw_profile, parameters, output_path)
 
     def __repr__(self):
         return f"<operation of the mock backend for {_TOOL!r}>"
@@ -73,15 +77,17 @@ def operation(script):
     """Return the mock's operation of ``correctness.check`` bound to ``script``.
 
     - ``script``: a callable asked as
-      ``script("correctness.check", request, hw_profile, parameters)``.
+      ``script("correctness.check", request, hw_profile, parameters,
+      output_path)``.
 
     The operation returned is called as
-    ``operation(request, hw_profile, parameters)``, with exactly these three
-    positional arguments: the request, the hw_profile of the call and the
-    check parameters (ADR-0043 decision 2). It asks the script once with the
-    three objects as they are and returns the object the script returned,
-    whatever it is. It looks at none of the three and not at the answer, and
-    it catches nothing: whatever the script raises passes through unchanged,
+    ``operation(request, hw_profile, parameters, output_path)``, with exactly
+    these four positional arguments: the request, the hw_profile of the
+    call, the check parameters and the output path (ADR-0056 decision 3). It
+    asks the script once with the four objects as they are and returns the
+    object the script returned, whatever it is. It looks at none of the four,
+    at nothing at the output path and not at the answer, and it catches
+    nothing: whatever the script raises passes through unchanged,
     a :class:`hilclaw.tools.ToolFailure` of any kind as well as any other
     :class:`BaseException`.
 
@@ -96,13 +102,16 @@ def operation(script):
     return _Operation(script)
 
 
-def default_script(tool, request, hw_profile, parameters):
+def default_script(tool, request, hw_profile, parameters, output_path):
     """Return the default script's answer for ``correctness.check``, as ``bytes``.
 
     - ``tool``, ``request``, ``hw_profile``: what a script is asked with
       before the check parameters. They are not read, checked or modified.
     - ``parameters``: the check parameters, exactly a
       :class:`hilclaw.check_parameters.CheckParameters`.
+    - ``output_path``: the output path a script is asked with after the
+      check parameters. It is not read, checked or modified, and nothing at
+      it is looked at.
 
     The answer is a complete report for the ``m``, ``n`` and ``draws`` of
     ``parameters``, ``draws * (4 + 4*m*n) + 4`` bytes. For each draw in

@@ -5,8 +5,8 @@ is the rule for an answer of neither form of ADR-0043 decision 4; a decision
 cited by its number alone is one of that record. The module renders, ahead of
 the tool function, the part of its decisions 3 to 6 that needs no log:
 
-* :func:`ask`: calls an operation once with the three things of ADR-0043
-  decision 2 and hands what it returned to
+* :func:`ask`: calls an operation once with the four things of ADR-0056
+  decision 3 and hands what it returned to
   :func:`hilclaw.check_answer.from_answer`. A returned value of neither form
   and a raised error are answered alike (decision 5), with
   :class:`OperationAnswerInvalid`. A raised request to end is not caught
@@ -27,6 +27,10 @@ Choices that are this module's own and no rule of a record:
   :class:`Exception`. A :class:`BaseException` that is no ``Exception`` is a
   request to end (decision 1 observes this of Python and leaves the line to
   the code).
+* The output path is the fourth positional argument of an operation and of
+  :func:`ask`. It is treated as the request and the hw_profile are: handed
+  on as the same object, not checked, read or converted. The tool function
+  alone forms it.
 * What counts as raised by the operation: only what the one call of the
   operation raises. What counts as a returned value of neither form: a value
   whose type is neither exactly ``bytes`` nor exactly ``str``, and a
@@ -56,10 +60,11 @@ Choices that are this module's own and no rule of a record:
 
 What the module does not do: it is no tool and no step and is bound to none.
 It appends no line and states no spend. It selects no backend, draws no seed,
-reads no tolerance and no file of a run. It validates no check parameter and
-gives no default of any value. It keeps nothing between calls. It says
-nothing of what anybody does after the answer, nor of what a tool function
-does with a tool failure an operation raises. It imports
+reads no tolerance and no file of a run, and looks at nothing at the output
+path. It validates no check parameter and gives no default of any value. It
+keeps nothing between calls. It says nothing of what anybody does after the
+answer, nor of what a tool function does with a tool failure an operation
+raises. It imports
 :mod:`hilclaw.check_answer`, :mod:`hilclaw.check_parameters` and
 :mod:`hilclaw.tools` and nothing else.
 """
@@ -146,7 +151,7 @@ def _message(answer, known, other):
     return other
 
 
-def ask(operation, request, hw_profile, parameters, *, rtol, atol):
+def ask(operation, request, hw_profile, parameters, output_path, *, rtol, atol):
     """Call ``operation`` once and return the result of the check, as a new ``dict``.
 
     - ``operation``: an operation of ``correctness.check``, a callable.
@@ -154,6 +159,8 @@ def ask(operation, request, hw_profile, parameters, *, rtol, atol):
       call. They are handed on as they are and not read.
     - ``parameters``: the check parameters, exactly a
       :class:`hilclaw.check_parameters.CheckParameters`.
+    - ``output_path``: the output path of the call (ADR-0056 decision 3). It
+      is handed on as it is and not read, whatever its type is.
     - ``rtol``, ``atol``: the tolerance of the check, keyword-only.
 
     No parameter has a default. Before the operation is called,
@@ -161,8 +168,9 @@ def ask(operation, request, hw_profile, parameters, *, rtol, atol):
     ``parameters`` are not exactly a ``CheckParameters``. The five values and
     the tolerance are not checked here: whoever calls checks them.
 
-    The operation is called as ``operation(request, hw_profile, parameters)``,
-    with the three objects as they are (ADR-0043 decision 2). Then:
+    The operation is called as
+    ``operation(request, hw_profile, parameters, output_path)``, with the
+    four objects as they are (ADR-0056 decision 3). Then:
 
     1. It returned exactly ``bytes`` or exactly a ``str``: the result is
        that of :func:`hilclaw.check_answer.from_answer` for the returned
@@ -183,9 +191,10 @@ def ask(operation, request, hw_profile, parameters, *, rtol, atol):
     Only the call of the operation and the call of ``from_answer`` are inside
     a ``try``. The message of ``OperationAnswerInvalid`` says which of the
     cases 1 and 2 it was and may name the kind of the value or of the error
-    with a word of this module; it shows nothing of either, and composing it
-    calls no code of the answer. Neither the ``__cause__`` nor the
-    ``__context__`` of the exception is the error of case 2.
+    with a word of this module; it shows nothing of either and nothing of
+    the output path, and composing it calls no code of the answer. Neither
+    the ``__cause__`` nor the ``__context__`` of the exception is the error
+    of case 2.
 
     No argument is modified or kept, and no file is read or written.
     """
@@ -194,7 +203,7 @@ def ask(operation, request, hw_profile, parameters, *, rtol, atol):
     if type(parameters) is not check_parameters.CheckParameters:
         raise TypeError("parameters: must be CheckParameters")
     try:
-        answer = operation(request, hw_profile, parameters)
+        answer = operation(request, hw_profile, parameters, output_path)
     except tools.ToolFailure:
         raise
     except Exception as error:  # noqa: BLE001
