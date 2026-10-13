@@ -39,6 +39,9 @@ TIGHT = ADMITTED._replace(rtol=1e-5, atol=1e-6)
 REQUEST = {"run_id": "r1", "execution": 1}
 HW_PROFILE = {"accelerator": "mock"}
 MARKER = "zq7_marker_zq7"
+PATH_MARKER = "zq7_path_zq7"
+# A test value: nothing lies there, and no test makes it.
+OUTPUT_PATH = Path(PATH_MARKER) / "runs" / "r1" / "output"
 MESSAGE_LIMIT = 200
 # A stand-in of this file: no record gives the name a meaning.
 EXAMPLE_KIND = "example_kind"
@@ -87,7 +90,7 @@ def parameters_of(admitted=ADMITTED, seed=SEED):
 
 def good_report(admitted=ADMITTED, seed=SEED):
     return mock_check.default_script(
-        "correctness.check", None, None, parameters_of(admitted, seed)
+        "correctness.check", None, None, parameters_of(admitted, seed), None
     )
 
 
@@ -98,8 +101,8 @@ def off_by_a_quarter():
     return bytes(report)
 
 
-def checked(operation, admitted=ADMITTED, seed=SEED):
-    return check(operation, REQUEST, HW_PROFILE, admitted, seed)
+def checked(operation, admitted=ADMITTED, seed=SEED, output_path=OUTPUT_PATH):
+    return check(operation, REQUEST, HW_PROFILE, admitted, seed, output_path)
 
 
 def carried(operation, admitted=ADMITTED, seed=SEED):
@@ -108,6 +111,7 @@ def carried(operation, admitted=ADMITTED, seed=SEED):
         REQUEST,
         HW_PROFILE,
         parameters_of(admitted, seed),
+        OUTPUT_PATH,
         rtol=admitted.rtol,
         atol=admitted.atol,
     )
@@ -369,19 +373,22 @@ def test_the_call_of_draw_is_checked_by_python():
     assert source.calls == []
 
 
-def test_the_operation_is_called_once_with_the_three_and_the_five():
+def test_the_operation_is_called_once_with_the_four_and_the_five():
     request = dict(REQUEST)
     hw_profile = dict(HW_PROFILE)
     seed = LAST - 12345
     admitted = Admitted(m=3, k=4, n=5, draws=3, rtol=0.5, atol=3.0)
+    output_path = Path(OUTPUT_PATH)
     operation = Recording(answer=good_report(admitted, seed))
-    result = check(operation, request, hw_profile, admitted, seed)
+    result = check(operation, request, hw_profile, admitted, seed, output_path)
     assert type(result) is dict
     assert result["outcome"] == "pass"
     assert len(operation.calls) == 1
     args, kwargs = operation.calls[0]
     assert kwargs == {}
-    assert len(args) == 3
+    assert len(args) == 4
+    assert args[3] is output_path
+    assert output_path == OUTPUT_PATH
     assert args[0] is request
     assert args[1] is hw_profile
     assert type(args[2]) is CheckParameters
@@ -403,11 +410,13 @@ def test_the_six_values_and_the_seed_reach_carry_out_and_its_object_is_returned(
     monkeypatch.setattr(check_ending, "carry_out", stand_in)
     operation = Recording()
     seed = LAST - 12345
-    assert check(operation, REQUEST, HW_PROFILE, ADMITTED, seed) is made
+    output_path = Path(OUTPUT_PATH)
+    assert check(operation, REQUEST, HW_PROFILE, ADMITTED, seed, output_path) is made
     assert operation.calls == []
     assert len(stand_in.calls) == 1
     args, kwargs = stand_in.calls[0]
-    assert len(args) == 4
+    assert len(args) == 5
+    assert args[4] is output_path
     assert args[0] is operation
     assert args[1] is REQUEST
     assert args[2] is HW_PROFILE
@@ -417,6 +426,38 @@ def test_the_six_values_and_the_seed_reach_carry_out_and_its_object_is_returned(
     assert set(kwargs) == {"rtol", "atol"}
     assert kwargs["rtol"] is ADMITTED.rtol
     assert kwargs["atol"] is ADMITTED.atol
+
+
+@pytest.mark.parametrize(
+    "output_path",
+    [Path("elsewhere") / "output", PATH_MARKER, None, 17, object()],
+    ids=["path", "str", "none", "int", "object"],
+)
+def test_the_output_path_is_handed_on_whatever_it_is_and_changes_nothing(output_path):
+    for answer in (good_report(), "time_limit", "exit_status"):
+        operation = Recording(answer=answer)
+        assert checked(operation, output_path=output_path) == carried(
+            Recording(answer=answer)
+        )
+        ((args, kwargs),) = operation.calls
+        assert kwargs == {}
+        assert len(args) == 4
+        assert args[3] is output_path
+    for make in (
+        lambda: Recording(answer=None),
+        lambda: Recording(error=ValueError(MARKER)),
+        lambda: Recording(error=tools.ToolFailure(EXAMPLE_KIND, MARKER)),
+    ):
+        operation = make()
+        with pytest.raises(EndedWithoutOutcome) as caught:
+            checked(operation, output_path=output_path)
+        assert operation.calls[0][0][3] is output_path
+        error = caught.value
+        assert (error.kind, error.message) == ending_of(carried, make())
+        assert PATH_MARKER not in error.kind + error.message
+        assert error.args == (error.kind, error.message)
+        assert error.__cause__ is None
+        assert error.__context__ is None
 
 
 def test_the_tolerance_of_the_admitted_check_is_the_one_that_judges():
@@ -515,12 +556,17 @@ def test_what_carry_out_raises_passes_as_the_same_object(monkeypatch, raised):
     ],
     ids=["none", "tuple", "dict", "check-parameters", "subclass"],
 )
-def test_an_admitted_of_another_type_is_refused_before_the_call(admitted):
+def test_an_admitted_of_another_type_is_refused_before_the_call(admitted, monkeypatch):
     operation = Recording(answer="time_limit")
-    with pytest.raises(TypeError) as caught:
-        checked(operation, admitted)
-    assert type(caught.value) is TypeError
+    stand_in = Recording(answer={})
+    monkeypatch.setattr(check_ending, "carry_out", stand_in)
+    for output_path in (OUTPUT_PATH, PATH_MARKER, None, object()):
+        with pytest.raises(TypeError) as caught:
+            checked(operation, admitted, output_path=output_path)
+        assert type(caught.value) is TypeError
+        assert PATH_MARKER not in str(caught.value)
     assert operation.calls == []
+    assert stand_in.calls == []
 
 
 @pytest.mark.parametrize("operation", [None, "time_limit", 3])
@@ -560,8 +606,10 @@ def test_the_call_of_check_is_checked_by_python():
     four = (operation, REQUEST, HW_PROFILE, ADMITTED)
     for args, kwargs in (
         (four, {}),
-        ((*four, SEED, SEED), {}),
-        ((*four, SEED), {"rtol": 0.5}),
+        ((*four, SEED), {}),
+        ((*four, SEED, OUTPUT_PATH, OUTPUT_PATH), {}),
+        ((*four, SEED, OUTPUT_PATH), {"rtol": 0.5}),
+        ((*four, SEED, OUTPUT_PATH), {"output_path": OUTPUT_PATH}),
         ((), {}),
     ):
         with pytest.raises(TypeError) as caught:
@@ -574,7 +622,7 @@ def test_the_arguments_are_left_as_they_were():
     request = copy.deepcopy(REQUEST)
     hw_profile = copy.deepcopy(HW_PROFILE)
     admitted = Admitted(*ADMITTED)
-    checked_with = (request, hw_profile, admitted, SEED)
+    checked_with = (request, hw_profile, admitted, SEED, OUTPUT_PATH)
     check(Recording(answer="time_limit"), *checked_with)
     with pytest.raises(EndedWithoutOutcome):
         check(Recording(error=ValueError(MARKER)), *checked_with)
@@ -589,7 +637,7 @@ def test_admit_then_draw_then_check_ends_in_a_result():
     source = Source(SEED)
     seed = draw(source)
     operation = mock_check.operation(mock_check.default_script)
-    result = check(operation, REQUEST, HW_PROFILE, admitted, seed)
+    result = check(operation, REQUEST, HW_PROFILE, admitted, seed, OUTPUT_PATH)
     assert result["outcome"] == "pass"
     assert len(source.calls) == 1
 
@@ -600,7 +648,7 @@ def test_when_the_source_fails_the_operation_is_never_called():
     source = Source(OSError(5, MARKER))
     with pytest.raises(tools.ToolFailure) as caught:
         seed = draw(source)
-        check(operation, REQUEST, HW_PROFILE, admitted, seed)
+        check(operation, REQUEST, HW_PROFILE, admitted, seed, OUTPUT_PATH)
     assert caught.value.kind == KIND_SEED_NOT_DRAWN
     assert operation.calls == []
     assert len(source.calls) == 1
@@ -684,7 +732,10 @@ def test_public_names_of_the_module_and_no_default():
     positional = inspect.Parameter.POSITIONAL_OR_KEYWORD
     for function, names in (
         (draw, ["source"]),
-        (check, ["operation", "request", "hw_profile", "admitted", "seed"]),
+        (
+            check,
+            ["operation", "request", "hw_profile", "admitted", "seed", "output_path"],
+        ),
     ):
         parameters = list(inspect.signature(function).parameters.values())
         assert [parameter.name for parameter in parameters] == names

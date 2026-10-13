@@ -1,7 +1,10 @@
 import ast
+import builtins
 import copy
 import inspect
+import io
 import json
+import os
 import struct
 from pathlib import Path
 
@@ -16,6 +19,7 @@ from hilclaw import (
     gemm_contract,
     instance,
     keys,
+    layout,
     mock_backend,
     mock_check,
     run_state,
@@ -91,13 +95,15 @@ def place(root, data, relative=FILE):
     return path
 
 
+def a_run(root, run_id=RUN):
+    place(root, content(), f"runs/{run_id}/instance.json")
+    place(root, run_state.dump(ROUND, EMPTY), f"runs/{run_id}/STATE.json")
+    return root
+
+
 @pytest.fixture
 def root(tmp_path):
-    path = tmp_path / "data"
-    path.mkdir()
-    place(path, content())
-    place(path, run_state.dump(ROUND, EMPTY), f"runs/{RUN}/STATE.json")
-    return path
+    return a_run(tmp_path / "data")
 
 
 def lines(root):
@@ -114,8 +120,18 @@ def request(**changes):
     return {**REQUEST, **changes}
 
 
-def wrong_product(tool, asked, hw_profile, parameters):
-    report = bytearray(mock_check.default_script(tool, asked, hw_profile, parameters))
+FORM = layout.attempt_artefact
+
+
+def output_of(root, asked):
+    numbers = (asked[name] for name in ("run_id", "round", "candidate", "attempt"))
+    return FORM(root, *numbers, "output")
+
+
+def wrong_product(tool, asked, hw_profile, parameters, output_path):
+    report = bytearray(
+        mock_check.default_script(tool, asked, hw_profile, parameters, output_path)
+    )
     (element,) = struct.unpack_from("=f", report, 4)
     struct.pack_into("=f", report, 4, element + 1000.0)
     return bytes(report)
@@ -160,13 +176,13 @@ class Bench:
         self.order.append("covers")
         return self.covered(record)
 
-    def script(self, tool, asked, hw_profile, parameters):
+    def script(self, tool, asked, hw_profile, parameters, output_path):
         self.order.append("operation")
-        self.asked.append((tool, asked, hw_profile, parameters))
+        self.asked.append((tool, asked, hw_profile, parameters, output_path))
         if isinstance(self.script_answer, BaseException):
             raise self.script_answer
         if callable(self.script_answer):
-            return self.script_answer(tool, asked, hw_profile, parameters)
+            return self.script_answer(tool, asked, hw_profile, parameters, output_path)
         return self.script_answer
 
     def count(self, name):
@@ -203,6 +219,19 @@ def recorded(monkeypatch):
     return order
 
 
+@pytest.fixture
+def formed(monkeypatch):
+    """Record every path of an attempt's artefact that is formed."""
+    paths = []
+
+    def recording_form(*args):
+        paths.append(FORM(*args))
+        return paths[-1]
+
+    monkeypatch.setattr(layout, "attempt_artefact", recording_form)
+    return paths
+
+
 def test_a_check_of_a_right_product_reports_pass_and_writes_two_lines(root):
     bench = Bench(root)
     asked = request()
@@ -227,13 +256,180 @@ def test_a_check_of_a_right_product_reports_pass_and_writes_two_lines(root):
             "data": {**step, "spend": {}, "result": result},
         },
     ]
-    ((tool, handed, hw_profile, parameters),) = bench.asked
+    ((tool, handed, hw_profile, parameters, output_path),) = bench.asked
     assert tool == TOOL
     assert handed is asked
     assert hw_profile == profile()
     assert type(parameters) is CheckParameters
     assert parameters == CheckParameters(SEED, DRAWS, **SHAPE)
+    assert output_path == root / "runs" / RUN / "rounds" / "0003" / "coder" / (
+        "candidates/02/attempts/01/output"
+    )
     assert (bench.sources, bench.count("seeds"), bench.count("covers")) == (1, 1, 1)
+
+
+NUMBERS = [
+    {},
+    {"round": 0, "candidate": 1, "attempt": 1},
+    {"round": 12345, "candidate": 7, "attempt": 123},
+    {name: keys.MAX_INTEGER for name in ("round", "candidate", "attempt")},
+]
+
+
+@pytest.mark.parametrize("numbers", NUMBERS, ids=["example", "least", "padded", "most"])
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_the_script_is_handed_the_path_of_the_output_of_the_attempt(
+    root, formed, point, numbers
+):
+    bench = Bench(root)
+    asked = request(point=point, **numbers)
+    rounds = root / "runs" / RUN / "rounds"
+    assert not rounds.exists()
+    assert bench.function(asked)["outcome"] == "pass"
+    assert not rounds.exists()
+    ((*_, output_path),) = bench.asked
+    assert output_path == output_of(root, asked)
+    assert type(output_path) is type(root)
+    assert formed == [output_path]
+    assert formed[0] is output_path
+    assert output_path.name == "output"
+    assert output_path.parents[4].name == "coder"
+    assert output_path.is_relative_to(rounds)
+
+
+def test_the_padding_of_the_path_is_that_of_the_layout(root):
+    bench = Bench(root, seeds=(SEED, OTHER_SEED))
+    bench.function(request(round=0, candidate=7, attempt=123))
+    bench.function(request(round=12345, candidate=7, attempt=123))
+    below = root / "runs" / RUN / "rounds"
+    assert [asked[4] for asked in bench.asked] == [
+        below / "0000" / "coder" / "candidates" / "07" / "attempts" / "123" / "output",
+        below / "12345" / "coder" / "candidates" / "07" / "attempts" / "123" / "output",
+    ]
+
+
+def test_the_longest_run_id_forms_a_path(tmp_path):
+    run_id = "r" * 64
+    bench = Bench(a_run(tmp_path, run_id))
+    asked = request(run_id=run_id)
+    assert bench.function(asked)["outcome"] == "pass"
+    assert bench.asked[0][4] == output_of(tmp_path, asked)
+
+
+def test_the_data_root_of_the_path_is_the_one_of_the_call_as_it_is(root):
+    (root / "sub").mkdir()
+    unresolved = root / "sub" / ".."
+    bench = Bench(unresolved)
+    assert bench.function(request())["outcome"] == "pass"
+    output_path = bench.asked[0][4]
+    assert output_path == output_of(unresolved, request())
+    assert ".." in output_path.parts
+    assert output_path != output_of(root, request())
+
+
+def test_requests_that_differ_in_the_point_or_the_execution_are_handed_equal_paths(
+    root,
+):
+    bench = Bench(root, seeds=(SEED, OTHER_SEED, SEED))
+    for asked in (request(), request(point="board"), request(execution=2)):
+        bench.function(asked)
+    first, second, third = (asked[4] for asked in bench.asked)
+    assert first == second == third == output_of(root, request())
+    other = Bench(root, seeds=(SEED,))
+    other.function(request(attempt=2))
+    assert other.asked[0][4] != first
+
+
+def test_a_frame_accepted_request_is_one_the_layout_forms_a_path_for(root, formed):
+    for name, least in (("round", 0), ("candidate", 1), ("attempt", 1)):
+        for value in (least - 1, keys.MAX_INTEGER + 1, True, "1", 1.0, None):
+            bench = Bench(root, seeds=())
+            failure = bench.failure(request(**{name: value}))
+            assert failure.kind == tools.KIND_INVALID_REQUEST
+            assert name in failure.message
+            with pytest.raises(layout.InvalidPathValueError):
+                output_of(root, request(**{name: value}))
+        for value in (least, keys.MAX_INTEGER):
+            assert output_of(root, request(**{name: value})).name == "output"
+    for run_id in ("", "R", "a/b", "..", "r" * 65, 7, None):
+        failure = Bench(root, seeds=()).failure(request(run_id=run_id))
+        assert failure.kind == tools.KIND_INVALID_REQUEST
+        with pytest.raises(layout.InvalidPathValueError):
+            output_of(root, request(run_id=run_id))
+    assert formed == []
+    assert lines(root) == []
+
+
+def below_the_rounds(root, monkeypatch):
+    """Make every look at the file system below ``rounds`` of the run fail."""
+    rounds = os.path.join(str(root), "runs", RUN, "rounds")
+    looked = []
+
+    def guarded(function):
+        def guard(path, *args, **kwargs):
+            try:
+                name = os.fspath(path)
+            except TypeError:
+                name = ""
+            if isinstance(name, bytes):
+                name = os.fsdecode(name)
+            if name and os.path.abspath(name).startswith(rounds):
+                looked.append(name)
+                raise AssertionError(f"looked at {name}")
+            return function(path, *args, **kwargs)
+
+        return guard
+
+    for name in ("stat", "lstat", "listdir", "scandir", "open", "readlink"):
+        monkeypatch.setattr(os, name, guarded(getattr(os, name)))
+    for name in ("exists", "lexists", "isdir", "isfile", "islink"):
+        monkeypatch.setattr(os.path, name, guarded(getattr(os.path, name)))
+    for module in (builtins, io):
+        monkeypatch.setattr(module, "open", guarded(module.open))
+    return looked
+
+
+SCRIPTS = [mock_check.default_script, wrong_product, "time_limit", "exit_status", 17]
+
+
+@pytest.mark.parametrize("script", SCRIPTS)
+@pytest.mark.parametrize("lies", ["a_kernel", "a_file_for_the_attempt"])
+def test_a_call_is_answered_alike_whatever_lies_at_the_output_path(
+    tmp_path, monkeypatch, script, lies
+):
+    def answer_in(name, prepare):
+        root = a_run(tmp_path / name / "data")
+        prepare(root)
+        bench = Bench(root, script=script)
+        with monkeypatch.context() as patch:
+            looked = below_the_rounds(root, patch)
+            try:
+                answer = bench.function(request())
+            except ToolFailure as failure:
+                answer = (failure.kind, failure.message)
+        assert looked == []
+        return answer, lines(root), bench.asked[0][4]
+
+    def a_kernel(root):
+        place(output_of(root, request()), b"int kernel;\n", "kernel.c")
+
+    def a_file_for_the_attempt(root):
+        attempt = output_of(root, request()).parent
+        place(attempt.parent, b"no directory", attempt.name)
+
+    prepare = {"a_kernel": a_kernel, "a_file_for_the_attempt": a_file_for_the_attempt}
+    bare, bare_lines, bare_path = answer_in("bare", lambda root: None)
+    assert bare_path.parents[6].name == "rounds"
+    assert not bare_path.parents[6].exists()
+    answer, written, output_path = answer_in(lies, prepare[lies])
+    assert (answer, written) == (bare, bare_lines)
+    assert output_path.relative_to(tmp_path / lies) == bare_path.relative_to(
+        tmp_path / "bare"
+    )
+    if lies == "a_kernel":
+        assert [entry.name for entry in output_path.iterdir()] == ["kernel.c"]
+    else:
+        assert output_path.parent.read_bytes() == b"no directory"
 
 
 def test_a_wrong_product_reports_fail(root):
@@ -297,18 +493,20 @@ def test_the_two_points_are_two_identities_each_with_its_own_draw(root):
 
 
 def test_an_ended_identity_is_answered_from_the_log_and_nothing_is_asked(
-    root, recorded
+    root, recorded, formed
 ):
     first = Bench(root)
     result = first.function(request())
     before = log_bytes(root)
     del recorded[:]
+    assert len(formed) == 1
     second = Bench(root, seeds=(), script=RuntimeError("must not be asked"))
     second.order = recorded
     assert second.function(request()) == result
     # The one read is that of the layout version stamp.
     assert recorded == ["read"]
     assert log_bytes(root) == before
+    assert (second.asked, len(formed)) == ([], 1)
 
 
 def test_an_open_identity_is_step_open_and_nothing_is_asked(root, recorded):
@@ -360,7 +558,7 @@ def test_a_further_execution_is_carried_out_in_full_with_a_fresh_draw(root, reco
     ],
 )
 def test_a_refused_request_is_invalid_request_before_anything_is_asked(
-    root, recorded, asked, member
+    root, recorded, formed, asked, member
 ):
     bench = Bench(root, seeds=())
     bench.order = recorded
@@ -368,6 +566,7 @@ def test_a_refused_request_is_invalid_request_before_anything_is_asked(
     assert failure.kind == tools.KIND_INVALID_REQUEST
     assert member in failure.message
     assert (bench.sources, recorded, lines(root)) == (0, [], [])
+    assert (bench.asked, formed) == ([], [])
 
 
 def test_the_frame_is_checked_before_the_point(root):
@@ -384,7 +583,7 @@ def test_a_failing_data_root_source_is_no_data_root(recorded):
     assert (bench.sources, recorded) == (1, [])
 
 
-def test_a_missing_instance_file_is_answered_at_the_stamp(root, recorded):
+def test_a_missing_instance_file_is_answered_at_the_stamp(root, recorded, formed):
     (root / FILE).unlink()
     bench = Bench(root, seeds=())
     bench.order = recorded
@@ -392,6 +591,7 @@ def test_a_missing_instance_file_is_answered_at_the_stamp(root, recorded):
     assert failure.kind == tools.KIND_RUN_FILE_MISSING
     assert failure.message.startswith(FILE)
     assert (recorded, lines(root)) == (["read"], [])
+    assert (bench.asked, formed) == ([], [])
 
 
 def test_a_file_that_is_invalid_at_the_one_read_is_answered_there(root, monkeypatch):
@@ -444,7 +644,7 @@ ADMISSION = [
 
 @pytest.mark.parametrize("faults,kind", ADMISSION)
 def test_an_answer_of_the_admission_leaves_no_line_and_asks_no_seed(
-    root, recorded, faults, kind
+    root, recorded, formed, faults, kind
 ):
     place(root, content(**faults))
     bench = Bench(root)
@@ -455,6 +655,7 @@ def test_an_answer_of_the_admission_leaves_no_line_and_asks_no_seed(
     assert "operation" not in recorded
     assert "step_started" not in recorded
     assert lines(root) == []
+    assert (bench.asked, formed) == ([], [])
     place(root, content())
     assert bench.function(request())["outcome"] == "pass"
     assert bench.count("seeds") == 1
@@ -478,7 +679,7 @@ def test_what_covers_raises_passes_through_with_no_line(root):
     "answer", [RuntimeError(str(SEED)), "no seed", -1, 2**64, True, None, float(7)]
 )
 def test_a_draw_that_yields_no_seed_is_seed_not_drawn_and_can_be_repeated(
-    root, recorded, answer
+    root, recorded, formed, answer
 ):
     bench = Bench(root, seeds=(answer, SEED))
     bench.order = recorded
@@ -487,7 +688,7 @@ def test_a_draw_that_yields_no_seed_is_seed_not_drawn_and_can_be_repeated(
     assert failure.__cause__ is None
     assert str(SEED) not in failure.message
     assert recorded == ["read", "read", "select", "covers", "seeds"]
-    assert (bench.asked, lines(root)) == ([], [])
+    assert (bench.asked, lines(root), formed) == ([], [], [])
     assert bench.function(request())["outcome"] == "pass"
     assert bench.count("seeds") == 2
     assert bench.asked[0][3].seed == SEED
@@ -504,10 +705,23 @@ def test_a_request_to_end_out_of_the_seed_source_passes_through_with_no_line(roo
     assert bench.function(request())["outcome"] == "pass"
 
 
+def a_path_in_a_tool_failure(tool, asked, hw_profile, parameters, output_path):
+    raise ToolFailure("example_kind", f"nothing lies at {output_path}")
+
+
+def a_path_in_an_error(tool, asked, hw_profile, parameters, output_path):
+    raise FileNotFoundError(2, "No such file or directory", str(output_path))
+
+
+# A backend kind of ADR-0056 decision 6 is outside the contract as long as none is listed.
+KIND_OF_A_BACKEND_KIND = "operation_failure_invalid"
 ENDINGS = [
     (17, "operation_answer_invalid"),
     (ToolFailure("example_kind", "the operation failed"), "operation_failure_invalid"),
     (ToolFailure("seed_not_drawn", "raised by a script"), "operation_failure_invalid"),
+    (ToolFailure("no_kernel_source", "raised by a script"), KIND_OF_A_BACKEND_KIND),
+    (a_path_in_a_tool_failure, "operation_failure_invalid"),
+    (a_path_in_an_error, "operation_answer_invalid"),
 ]
 
 
@@ -524,6 +738,11 @@ def test_a_check_without_an_outcome_ends_the_step_with_that_failure(root, script
         "spend": {},
         "failure": {"kind": kind, "message": failure.message},
     }
+    assert ended["data"]["failure"]["message"] == failure.message
+    for word in (str(root), root.as_posix(), root.parent.name, "rounds", "candidates"):
+        assert word not in failure.message
+        assert word.encode() not in log_bytes(root)
+    assert failure.__cause__ is None
     before = log_bytes(root)
     again = Bench(root, seeds=(), script=RuntimeError("must not be asked"))
     repeated = again.failure()
@@ -606,9 +825,9 @@ def test_what_the_step_is_handed_shows_no_seed(root, monkeypatch):
     seen = []
     check = check_seed.check
 
-    def looking(operation, asked, hw_profile, admitted, seed):
+    def looking(operation, asked, hw_profile, admitted, seed, output_path):
         seen.append(seed)
-        return check(operation, asked, hw_profile, admitted, seed)
+        return check(operation, asked, hw_profile, admitted, seed, output_path)
 
     def perform_spy(data_root, asked, hw_profile, operation, drawn):
         seen.append(repr(drawn))
@@ -712,8 +931,10 @@ def test_the_module_holds_what_it_joins_and_nothing_of_its_own():
         "hw_tool",
         "instance",
         "journaled_step",
+        "layout",
     }
-    for word in ("gemm" + "_contract", "standin" + "_profile", "register("):
+    kept_out = ("gemm" + "_contract", "standin" + "_profile", "register(")
+    for word in (*kept_out, "kernel" + "_source", "resolve(", "absolute("):
         assert word not in text
     public = [name for name in vars(check_tool) if not name.startswith("_")]
     assert sorted(set(public) - imported) == ["tool_function"]

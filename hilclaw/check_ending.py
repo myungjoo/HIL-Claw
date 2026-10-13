@@ -44,10 +44,10 @@ Choices that are this module's own and no rule of a record:
   taken as the one ``ask`` raised: the operation is not its source, and
   which code of this side raised it is not told.
 * How the operation's own tool failure is told. ``ask`` is handed a callable
-  of this module that calls the operation with the three objects as they
-  are, remembers the tool failure that call raised and raises it again as
-  the same object. A tool failure out of ``ask`` is the operation's exactly
-  when it is that remembered object.
+  of this module that calls the operation with the four objects of ADR-0056
+  decision 3 as they are, remembers the tool failure that call raised and
+  raises it again as the same object. A tool failure out of ``ask`` is the
+  operation's exactly when it is that remembered object.
 * Nothing of what was raised is kept. The exception is raised after the
   handler has been left and after the remembered tool failure has been
   unbound: neither its ``__cause__`` nor its ``__context__`` is what the
@@ -57,15 +57,19 @@ Choices that are this module's own and no rule of a record:
   the log; this module keeps nothing.
 * ``operation`` is checked to be callable here, since ``ask`` is handed the
   callable of this module and no longer sees the object.
+* The output path is the fifth positional argument of :func:`carry_out`,
+  as it is of ``ask``, and the fourth of an operation. It is handed on as
+  the same object and not checked, read or converted, and it is in no
+  ``EndedWithoutOutcome``.
 
 What the module does not do: it is no tool and no step and is bound to none.
 It appends no line and states no spend. It selects no backend, draws no seed,
-reads no tolerance and no file of a run. It names no kind and no backend
-kind, and composes no message: both come from the two modules it joins. It is
-this tool's and gives no rule for another tool. It keeps nothing between
-calls. It says nothing of what anybody does after the answer. It imports
-:mod:`hilclaw.check_failure`, :mod:`hilclaw.check_operation` and
-:mod:`hilclaw.tools` and nothing else.
+reads no tolerance and no file of a run, and looks at nothing at the output
+path. It names no kind and no backend kind, and composes no message: both
+come from the two modules it joins. It is this tool's and gives no rule for
+another tool. It keeps nothing between calls. It says nothing of what
+anybody does after the answer. It imports :mod:`hilclaw.check_failure`,
+:mod:`hilclaw.check_operation` and :mod:`hilclaw.tools` and nothing else.
 """
 
 from hilclaw import check_failure, check_operation, tools
@@ -99,7 +103,7 @@ class EndedWithoutOutcome(Exception):
         self.message = message
 
 
-def carry_out(operation, request, hw_profile, parameters, *, rtol, atol):
+def carry_out(operation, request, hw_profile, parameters, output_path, *, rtol, atol):
     """Call ``operation`` once and return the result of the check, or raise what its step ends with.
 
     - ``operation``: an operation of ``correctness.check``, a callable.
@@ -107,12 +111,14 @@ def carry_out(operation, request, hw_profile, parameters, *, rtol, atol):
       call. They are handed on as they are and not read.
     - ``parameters``: the check parameters, exactly a
       :class:`hilclaw.check_parameters.CheckParameters`.
+    - ``output_path``: the output path of the call (ADR-0056 decision 3). It
+      is handed on as it is and not read, whatever its type is.
     - ``rtol``, ``atol``: the tolerance of the check, keyword-only.
 
     No parameter has a default. :class:`TypeError` is raised before anything
     is called when ``operation`` is not callable. The operation is then
     called once, through :func:`hilclaw.check_operation.ask`, as
-    ``operation(request, hw_profile, parameters)``. Then:
+    ``operation(request, hw_profile, parameters, output_path)``. Then:
 
     1. ``ask`` returned a result: the same ``dict`` object is returned.
     2. The call of the operation raised a
@@ -146,17 +152,17 @@ def carry_out(operation, request, hw_profile, parameters, *, rtol, atol):
         raise TypeError("operation: must be callable")
     own = None
 
-    def call(request, hw_profile, parameters):
+    def call(request, hw_profile, parameters, output_path):
         nonlocal own
         try:
-            return operation(request, hw_profile, parameters)
+            return operation(request, hw_profile, parameters, output_path)
         except tools.ToolFailure as raised:
             own = raised
             raise
 
     try:
         return check_operation.ask(
-            call, request, hw_profile, parameters, rtol=rtol, atol=atol
+            call, request, hw_profile, parameters, output_path, rtol=rtol, atol=atol
         )
     except tools.ToolFailure as raised:
         if raised is not own:

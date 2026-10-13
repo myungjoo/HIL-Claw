@@ -37,6 +37,9 @@ OTHER_TOLERANCE = {"rtol": 0.5, "atol": 0.25}
 REQUEST = {"run_id": "r1", "execution": 1}
 HW_PROFILE = {"accelerator": "mock"}
 MARKER = "zq7-marker-zq7"
+PATH_MARKER = "zq7-path-zq7"
+# A test value: nothing lies there, and no test makes it.
+OUTPUT_PATH = Path(PATH_MARKER) / "runs" / "r1" / "output"
 # Stand-ins of this file: no record gives either name a meaning.
 EXAMPLE_KIND = "example_kind"
 EXAMPLE_BACKEND_KIND = "example_backend_kind"
@@ -110,17 +113,31 @@ def failure(kind, message=MARKER):
     return tools.ToolFailure(kind, message)
 
 
-def carried(operation, parameters=PARAMETERS, tolerance=EXAMPLE_TOLERANCE):
-    return carry_out(operation, REQUEST, HW_PROFILE, parameters, **tolerance)
+def carried(
+    operation,
+    parameters=PARAMETERS,
+    tolerance=EXAMPLE_TOLERANCE,
+    output_path=OUTPUT_PATH,
+):
+    return carry_out(
+        operation, REQUEST, HW_PROFILE, parameters, output_path, **tolerance
+    )
 
 
 def asked(operation, parameters=PARAMETERS, tolerance=EXAMPLE_TOLERANCE):
-    return check_operation.ask(operation, REQUEST, HW_PROFILE, parameters, **tolerance)
+    return check_operation.ask(
+        operation, REQUEST, HW_PROFILE, parameters, OUTPUT_PATH, **tolerance
+    )
 
 
-def ended(operation, parameters=PARAMETERS, tolerance=EXAMPLE_TOLERANCE):
+def ended(
+    operation,
+    parameters=PARAMETERS,
+    tolerance=EXAMPLE_TOLERANCE,
+    output_path=OUTPUT_PATH,
+):
     with pytest.raises(EndedWithoutOutcome) as caught:
-        carried(operation, parameters, tolerance)
+        carried(operation, parameters, tolerance, output_path)
     error = caught.value
     assert type(error) is EndedWithoutOutcome
     assert type(error.kind) is str
@@ -130,6 +147,8 @@ def ended(operation, parameters=PARAMETERS, tolerance=EXAMPLE_TOLERANCE):
     assert error.__cause__ is None
     assert error.__context__ is None
     assert MARKER not in error.message
+    assert PATH_MARKER not in error.kind
+    assert PATH_MARKER not in error.message
     return error
 
 
@@ -191,25 +210,108 @@ def raised_errors():
     }
 
 
-def test_a_good_report_passes_and_the_operation_is_called_once_with_the_three():
+def test_a_good_report_passes_and_the_operation_is_called_once_with_the_four():
     operation = Recording(answer=GOOD)
     request = dict(REQUEST)
     hw_profile = dict(HW_PROFILE)
     parameters = CheckParameters(seed=SEED, draws=DRAWS, **SHAPE)
-    result = carry_out(operation, request, hw_profile, parameters, **EXAMPLE_TOLERANCE)
+    output_path = Path(OUTPUT_PATH)
+    result = carry_out(
+        operation, request, hw_profile, parameters, output_path, **EXAMPLE_TOLERANCE
+    )
     assert type(result) is dict
     assert result["outcome"] == "pass"
     assert result == asked(Recording(answer=GOOD))
     assert len(operation.calls) == 1
     args, kwargs = operation.calls[0]
     assert kwargs == {}
-    assert len(args) == 3
+    assert len(args) == 4
     assert args[0] is request
     assert args[1] is hw_profile
     assert args[2] is parameters
+    assert args[3] is output_path
     assert request == REQUEST
     assert hw_profile == HW_PROFILE
     assert parameters == PARAMETERS
+    assert output_path == OUTPUT_PATH
+
+
+@pytest.mark.parametrize(
+    "output_path",
+    [Path("elsewhere") / "output", PATH_MARKER, None, 17, object()],
+    ids=["path", "str", "none", "int", "object"],
+)
+def test_the_output_path_is_handed_on_whatever_it_is_and_changes_nothing(output_path):
+    for answer in (GOOD, "time_limit", "exit_status"):
+        operation = Recording(answer=answer)
+        assert carried(operation, output_path=output_path) == asked(
+            Recording(answer=answer)
+        )
+        ((args, kwargs),) = operation.calls
+        assert kwargs == {}
+        assert len(args) == 4
+        assert args[3] is output_path
+    for make in (
+        lambda: Recording(answer=None),
+        lambda: Recording(error=ValueError(MARKER)),
+        lambda: Recording(error=failure(EXAMPLE_KIND)),
+    ):
+        operation = make()
+        error = ended(operation, output_path=output_path)
+        assert operation.calls[0][0][3] is output_path
+        assert (error.kind, error.message) == (
+            ended(make()).kind,
+            ended(make()).message,
+        )
+        assert not any(value is output_path for value in vars(error).values())
+        assert not any(value is output_path for value in error.args)
+
+
+def test_ask_is_handed_the_very_four_objects(monkeypatch):
+    handed = []
+    made = {"outcome": "made"}
+
+    def recording(call, *args, **kwargs):
+        handed.append((call, args, kwargs))
+        return made
+
+    monkeypatch.setattr(check_operation, "ask", recording)
+    operation = Recording(answer=GOOD)
+    request, hw_profile = dict(REQUEST), dict(HW_PROFILE)
+    output_path = Path(OUTPUT_PATH)
+    assert (
+        carry_out(
+            operation, request, hw_profile, PARAMETERS, output_path, **EXAMPLE_TOLERANCE
+        )
+        is made
+    )
+    ((call, args, kwargs),) = handed
+    assert kwargs == EXAMPLE_TOLERANCE
+    assert len(args) == 4
+    assert args[0] is request
+    assert args[1] is hw_profile
+    assert args[2] is PARAMETERS
+    assert args[3] is output_path
+    assert operation.calls == []
+    assert call(request, hw_profile, PARAMETERS, output_path) is GOOD
+    assert operation.calls == [((request, hw_profile, PARAMETERS, output_path), {})]
+    for wrong in ((request, hw_profile, PARAMETERS), (request,) * 5):
+        with pytest.raises(TypeError):
+            call(*wrong)
+    assert len(operation.calls) == 1
+
+
+def test_an_operation_that_takes_three_things_only_ends_with_the_kind_of_adr_0045():
+    called = []
+
+    def of_three(request, hw_profile, parameters):
+        called.append(parameters)
+        return GOOD
+
+    error = ended(of_three)
+    assert called == []
+    assert error.kind == check_operation.KIND_OPERATION_ANSWER_INVALID
+    assert error.message == message_of_ask(Recording(error=TypeError()))
 
 
 def test_the_result_is_the_object_the_judging_made(monkeypatch):
@@ -448,16 +550,17 @@ def test_an_operation_that_is_not_callable_is_refused(operation):
 
 def test_the_call_itself_is_checked_by_python():
     operation = Recording(answer=GOOD)
+    four = (operation, REQUEST, HW_PROFILE, PARAMETERS)
+    five = (*four, OUTPUT_PATH)
     cases = [
         ((operation, REQUEST, HW_PROFILE), EXAMPLE_TOLERANCE),
-        ((operation, REQUEST, HW_PROFILE, PARAMETERS), {"rtol": 1e-5}),
-        ((operation, REQUEST, HW_PROFILE, PARAMETERS), {"atol": 1e-6}),
-        ((operation, REQUEST, HW_PROFILE, PARAMETERS, 1e-5, 1e-6), {}),
-        ((operation, REQUEST, HW_PROFILE, PARAMETERS, 1e-5), {"atol": 1e-6}),
-        (
-            (operation, REQUEST, HW_PROFILE, PARAMETERS),
-            {**EXAMPLE_TOLERANCE, "draws": 3},
-        ),
+        (four, EXAMPLE_TOLERANCE),
+        (five, {"rtol": 1e-5}),
+        (five, {"atol": 1e-6}),
+        ((*five, 1e-5, 1e-6), {}),
+        ((*five, 1e-5), {"atol": 1e-6}),
+        (five, {**EXAMPLE_TOLERANCE, "draws": 3}),
+        (five, {**EXAMPLE_TOLERANCE, "output_path": OUTPUT_PATH}),
     ]
     for args, kwargs in cases:
         with pytest.raises(TypeError) as caught:
@@ -619,6 +722,7 @@ def test_public_names_of_the_module_and_no_default():
         "request",
         "hw_profile",
         "parameters",
+        "output_path",
         "rtol",
         "atol",
     ]
@@ -626,6 +730,6 @@ def test_public_names_of_the_module_and_no_default():
     for parameter in parameters:
         assert parameter.default is inspect.Parameter.empty, parameter
     positional = inspect.Parameter.POSITIONAL_OR_KEYWORD
-    assert all(parameter.kind is positional for parameter in parameters[:4])
+    assert all(parameter.kind is positional for parameter in parameters[:5])
     keyword_only = inspect.Parameter.KEYWORD_ONLY
-    assert all(parameter.kind is keyword_only for parameter in parameters[4:])
+    assert all(parameter.kind is keyword_only for parameter in parameters[5:])
