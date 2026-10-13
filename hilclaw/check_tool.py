@@ -41,8 +41,8 @@ description, looks at no member but ``point`` and hands the request on as the
 caller gave it. It says nothing of the kernel of the attempt, of flags or of
 time limits. It binds no source of seeds, no predicate, no backend, no table
 and no script, and no parameter has a default. It names no kind, no ``step``
-value, no member and no message of its own. It writes no seed anywhere and
-puts none in a message. It gives no rule for another HW tool and keeps
+value and no member of its own, and composes the message of no tool failure.
+It writes no seed anywhere and puts none in a message. It gives no rule for another HW tool and keeps
 nothing between calls. It imports :mod:`hilclaw.check_admission`,
 :mod:`hilclaw.check_ending`, :mod:`hilclaw.check_identity`,
 :mod:`hilclaw.check_seed`, :mod:`hilclaw.hw_tool`, :mod:`hilclaw.instance`

@@ -10,7 +10,6 @@ import pytest
 from hilclaw import (
     backends,
     check_admission,
-    check_identity,
     check_seed,
     check_tool,
     events,
@@ -28,8 +27,7 @@ from hilclaw.check_tool import tool_function
 from hilclaw.journal import EMPTY
 from hilclaw.tools import Registry, ToolFailure
 
-# Test values only: none is a seed, a number of draws, a dimension or a
-# tolerance that the package defaults to or recommends.
+# Test values only: the package defaults to none of them and recommends none.
 TOOL = "correctness.check"
 RUN = "run-a"
 FILE = f"runs/{RUN}/instance.json"
@@ -379,7 +377,7 @@ def test_the_frame_is_checked_before_the_point(root):
     assert "run_id" in failure.message
 
 
-def test_a_failing_data_root_source_is_no_data_root(tmp_path, recorded):
+def test_a_failing_data_root_source_is_no_data_root(recorded):
     bench = Bench(RuntimeError("no root"), seeds=())
     bench.order = recorded
     assert bench.failure().kind == tools.KIND_NO_DATA_ROOT
@@ -430,19 +428,18 @@ def test_not_offered_is_answered_before_covers_and_the_draw(root, recorded):
 
 
 NOT_COVERED = {**OP, "dtype": "fp16"}
+ONE_FAULT = [
+    {"op": ABSENT},
+    {"op": NOT_COVERED},
+    {"draws": ABSENT},
+    {"tolerance": ABSENT},
+]
 ADMISSION = [
-    ({"op": ABSENT}, "op_signature_not_stated"),
-    ({"op": NOT_COVERED}, "op_signature_not_covered"),
-    ({"draws": ABSENT}, "draws_not_stated"),
-    ({"tolerance": ABSENT}, "tolerance_not_stated"),
+    *zip(ONE_FAULT, check_admission.KINDS, strict=True),
     ({"op": ABSENT, "draws": ABSENT, "tolerance": ABSENT}, "op_signature_not_stated"),
     ({"op": NOT_COVERED, "draws": ABSENT}, "op_signature_not_covered"),
     ({"draws": ABSENT, "tolerance": ABSENT}, "draws_not_stated"),
 ]
-
-
-def test_the_admission_cases_name_the_four_kinds_in_their_order():
-    assert tuple(kind for _, kind in ADMISSION[:4]) == check_admission.KINDS
 
 
 @pytest.mark.parametrize("faults,kind", ADMISSION)
@@ -544,20 +541,26 @@ def test_a_request_to_end_out_of_the_operation_leaves_the_identity_open(root):
     assert Bench(root, seeds=()).failure().kind == tools.KIND_STEP_OPEN
 
 
+@pytest.mark.parametrize(
+    "refused",
+    [
+        ValueError("refused on this side"),
+        ToolFailure("example_kind", "raised on this side, not by the operation"),
+    ],
+)
 def test_an_error_of_this_side_passes_through_and_leaves_the_identity_open(
-    root, monkeypatch
+    root, monkeypatch, refused
 ):
-    refused = ValueError("refused on this side")
-
     def refuse(*args, **kwargs):
         raise refused
 
     bench = Bench(root)
     with monkeypatch.context() as patch:
         patch.setattr(check_seed, "check", refuse)
-        with pytest.raises(ValueError) as caught:
+        with pytest.raises(type(refused)) as caught:
             bench.function(request())
     assert caught.value is refused
+    assert bench.asked == []
     assert [line["kind"] for line in lines(root)] == ["step_started"]
     assert bench.failure().kind == tools.KIND_STEP_OPEN
 
@@ -714,4 +717,3 @@ def test_the_module_holds_what_it_joins_and_nothing_of_its_own():
         assert word not in text
     public = [name for name in vars(check_tool) if not name.startswith("_")]
     assert sorted(set(public) - imported) == ["tool_function"]
-    assert check_identity.STEPS == ("correctness_check_sim", "correctness_check_board")
