@@ -2,7 +2,7 @@
 id: T-0164
 title: Add `hilclaw/selfcheck_stream.py`, the reading of the session's output of the runtime self-check (ADR-0054 decision 6, the session side and the model side) - one pure function from the bytes the session wrote on its standard output and the two tokens to named facts, and one from those facts and the way the process ended to the `SessionEvidence` of `hilclaw.selfcheck_outcome`; every member name of Claude Code's output a named constant marked verified, observed once or not verified; no session, no `claude`, no file, no outcome, no report
 phase: P1
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [FR-10, C-7, OD-18, D16, "#5 D12"]
 dependsOn: [T-0153, T-0161, T-0162, T-0163]
