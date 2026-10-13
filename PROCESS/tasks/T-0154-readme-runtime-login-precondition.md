@@ -2,7 +2,7 @@
 id: T-0154
 title: State in README.md that a logged-in Claude Code command line of the runtime user is a precondition of an instance (the owner's answer to HQ-0006, b-2; ADR-0054 decision 8; PLAN P1-9) - one short passage, README only, no code, and no `claude` process is started
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-7, FR-10, OD-18, "#5 D16"]
 dependsOn: [T-0153]
@@ -82,3 +82,14 @@ Planner's judgements (**the reviewer is asked to re-check each**):
 - (driver / owner) HQ-0015 (T-0151, PR #105 waits for a green CI run); HQ-0013, HQ-0014, HQ-0016 (`runtime-acceptance`).
 
 ## Result
+- **DONE.** Commit `ab7f27f` on `main` (document mode, no PR; `4d35986..ab7f27f`, fast-forward at the first push). Task branch deleted, remote and local. No new HQ.
+- **Review**: 1 round, Approve (fresh-context `dev-reviewer`). Findings: (Low) the commit body of the branch commit lacked the lines the task's "Landing" asks for - written into the landed commit's message, no content change; (Nit) one bullet holds three sentences and six links - within the limit of point 1, no change asked. The reviewer agreed with every judgement of `## Why` it re-checked; it did not reproduce the "Why this item now" claims about HQ-0015 and the other follow-ups. No point was read as needing the owner.
+- **The passage as landed** - one bullet, `README.md` line 27, the last bullet of "현재 상태와 MVP 범위" (placement: that section states what holds of an instance and of the runtime today; "로컬 검사" and "개발 절차" address a developer and the driver):
+  > - instance의 선행조건: instance를 실행하는 머신에서 런타임 사용자의 Claude Code 명령줄(`claude`)이 로그인되어 있어야 한다(Requirements C-7 ②·③의 파생 — [오너 답변 HQ-0006](https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6135246858), [ADR-0054](ARCHITECTURE/decisions/ADR-0054-od18-runtime-self-check.md) 결정 8, [UsageCases.md UC-1](ARCHITECTURE/UsageCases.md#uc-1-loop-instance-정의실행) "선행조건"). instance 시작 때 이 조건을 관찰할 런타임 자체 점검은 ADR-0054에 설계 기록만 있고 코드는 아직 없다([PROCESS/PLAN.md](PROCESS/PLAN.md) P1-9). 이 선행조건은 개발 머신에 대한 요구가 아니다([CLAUDE.md](CLAUDE.md) "개발 드라이버와 런타임의 구분").
+  - Point 4: the clause is "this precondition is not a requirement of the development machine", not "the development machine needs no login" - the host session that runs the driver is a Claude Code session, and CLAUDE.md keeps that apart from D16.
+  - `claude auth login`, a credential form, a version, and what happens when the login is missing are not named.
+- **Point 5 hits** (`claude`, `런타임`, `전제`, `필요` over the whole README): lines 3 and 26 ("런타임은 아직 없다" - consistent, unchanged); 35, 49, 50 (`.claude/` paths); 37 (3층 row, `claude -p` - out of scope, unchanged); 52 and 68 ("런타임 의존성", "필요하고" - Python dependencies and local checks, another sense); 59, 60 (development process). None is made false or inexact; none was edited.
+- **Document checks**: clause-by-clause comparison with the owner's sentence (comment 6135246858, fetched), ADR-0054 decision 8 and UC-1 line 71 - no more than they say (executor and reviewer). Links: the four relative paths exist; the anchor `#uc-1-loop-instance-정의실행` is present in the HTML GitHub renders for `ARCHITECTURE/UsageCases.md` (contents API, `application/vnd.github.html`); the #5 URL is comment 6135246858. `git diff --stat origin/main`: `README.md | 1 +` only; `git ls-files --eol README.md`: `i/lf w/lf`; `git diff --check` clean; `python -m ruff format --check .` exit 0 (178 files). No `ARCHITECTURE/` file changed, so no coverage re-check was due. No `claude` process was started and no stub was written.
+- **Process checks**: landed check empty (no `Task: T-0154` on `origin/main`, no PR); open PRs: #105 only (`hilclaw/merge_guard.py`, `tests/test_merge_guard.py`); newest #5 comments are 6146428610 (ADR-0054 notice) and 6146444000 (HQ-0016 mirror) - no newer owner comment, no answer to HQ-0013 to HQ-0016.
+- **Push run on `main`**: run 38404509449 for `ab7f27f`, conclusion `failure` - all six jobs ended with 0 steps, annotation "The job was not started because recent account payments have failed or your spending limit needs to be increased". This is the HQ-0015 condition; not re-run, not fixed forward.
+- **Follow-ups**: none new; those of `## Follow-ups` stand.
