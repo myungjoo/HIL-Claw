@@ -2,7 +2,7 @@
 id: T-0106
 title: Check the MCP front of the tool layer in a live Claude Code session (ADR-0010 fact F10, OD-18 sub-question 1) with a throwaway `--mcp-config` outside the repository, and record what was observed - and no more - in the ARCHITECTURE documents
 phase: P1
-status: BLOCKED
+status: DONE
 commitMode: doc
 coversReq: [FR-10, C-7, OD-18]
 dependsOn: [T-0037, T-0038, T-0039, T-0053]
@@ -90,6 +90,8 @@ Process (document mode, CLAUDE.md A-13, dev-item-address steps 9-12 and 15):
 - (planner, not before 2026-10-16 - code mode, no change of behaviour) One helper for the once-only write shared by `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py`.
 
 ## Result
+**Closed without a result by the owner's HQ-0006 answer (2026-10-13, DRIVER D16): not resumed.** The live check moved to the owner's manual run (answer b-1; the fixture was copied to `C:/Users/myung/HIL-Claw-fixtures/t0106-mcp`) and to the runtime self-check PLAN P1-9 (b-2). Nothing landed; the text below is the record as it stood when the task was BLOCKED.
+
 **BLOCKED** - the error case "`claude` is not logged in" of the Acceptance Criteria. No outcome A, B or C is claimed. Nothing was committed, no branch was created, no document was edited, no review round of a diff ran. This task ticks **no** PLAN checkbox.
 
 **What stopped it.** The `claude` on the PATH of the driver's machine (`C:\Users\myung\.local\bin\claude`, 2.1.280) has no usable login: `claude auth status` reports `"loggedIn": false, "authMethod": "none"`, and the first child session ended with exit status 1 and the result `Failed to authenticate: OAuth session expired and could not be refreshed` (`is_error` true, `apiKeySource` `none`). This is not transient, so the one allowed retry was not spent. Logging in (`claude auth login`) writes the owner's user configuration with the owner's credentials and was not attempted; no API key was set (C-7 ②); nothing else was tried (DRIVER §1-5). The driver's own session is a different installation (the Claude Desktop bundled Claude Code 2.1.293, authenticated by its host), which is why the driver runs while this command line does not.
