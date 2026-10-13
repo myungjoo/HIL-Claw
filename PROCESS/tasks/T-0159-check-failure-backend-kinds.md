@@ -2,7 +2,7 @@
 id: T-0159
 title: List the first two backend kinds of `correctness.check`, `no_kernel_source` and `kernel_source_unreadable`, in `hilclaw.check_failure.BACKEND_KINDS` (ADR-0056 decision 6; slice (3) of its Consequences) so that an end line holds them as raised - with the docstring sentences of `check_failure`, `check_ending` and `check_parameters` that this and T-0158 made less exact, and the tests; no operation raises them, no reader call, nothing registered
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0139, T-0140, T-0141, T-0156, T-0158]
@@ -119,3 +119,35 @@ Existing tests that pin the empty set are changed; none is deleted without a suc
 - (driver / owner) HQ-0013, 0014, 0016, 0017, 0018 (`runtime-acceptance`).
 
 ## Result
+**DONE.** PR #108 (`https://github.com/myungjoo/HIL-Claw/pull/108`), squash-merged as `6a0e026`; branch `claude/T-0159-check-failure-backend-kinds` deleted (remote and local). Two commits on the branch: `3b9f682`, `e95f3da`.
+
+- **Review**: 2 rounds, fresh-context `dev-reviewer` each. Round 1 Request changes: one Minor to fix (`check_ending.py`, "and it is in no `EndedWithoutOutcome`" was no longer exact, since a backend kind's message is taken as raised and may hold the path), one Minor for this section (`check_tool.py`, below), and six Nits (two loose docstring sentences on the row of a message that is not exactly a `str`; a sentence that told history; S1 and S2 are rows of decision 5, not 6; a 115-character docstring line; `"select" not in recorded` weaker than `recorded == ["read"]`) - all fixed in `e95f3da`. Round 2 Approve: no finding to fix; two Notes for this section (below) and one Nit left as it is with the reviewer's agreement (the sentence "The message of a backend kind is that of the operation, as raised, whatever it shows" states ADR-0047 decision 4 under the list of the module's own choices of `check_ending.py`; it qualifies the bullet it ends and is exact). No security finding in either round. Both reviewers confirmed points (a) to (f) of the task, among them the planner's reading that the message of a backend kind is not checked.
+- **CI**: green on both heads, all six jobs; the run on the merged head `e95f3da` is `38448012202`. Coverage gate on that run: lines 3901/3917 = 99.59%, functions 404/404 = 100.00%; `check_failure.py`, `check_ending.py` and `check_parameters.py` each 100% of lines. No run showed the HQ-0015 pattern.
+- **Local gates**: `python -m pytest` 16399 passed, 309 skipped (first commit; the second changed docstrings and one test, and the four test files were re-run, 336 passed; the round-2 reviewer re-ran the whole suite on `e95f3da`, 16399 passed); `ruff check .` and `ruff format --check .` clean. `git diff --stat origin/main` listed six files, all of `touchesFiles` and all `i/lf`; `git diff --check` clean. The three modules together: 83 changed lines (cap 300).
+- **`tests/test_check_parameters.py` needed no change**: its one assertion on the module's source is about imports, and the docstring change makes none false.
+- **Language**: Python - the change is to existing Python modules of the tool package (CLAUDE.md language policy).
+- **Process**: the landed check and `gh pr list --state open` were empty at the start; no comment on issue #5 after `issuecomment-6149396163`, so no objection to ADR-0047, ADR-0055 or ADR-0056 and no answer to HQ-0013, 0014, 0016, 0017 or 0018. No new HQ.
+
+**The public names of `hilclaw.check_failure` as landed** (the operation of `cpu_standin` is written against them):
+- `KIND_OPERATION_FAILURE_INVALID = "operation_failure_invalid"`
+- `KIND_NO_KERNEL_SOURCE = "no_kernel_source"` (S1 of ADR-0056 decision 5)
+- `KIND_KERNEL_SOURCE_UNREADABLE = "kernel_source_unreadable"` (S2)
+- `BACKEND_KINDS = frozenset({KIND_NO_KERNEL_SOURCE, KIND_KERNEL_SOURCE_UNREADABLE})`
+- `ended_with(raised)` - signature and code unchanged; only the set changed.
+
+**Conventions chosen under "Left to this task"** (each said in the docstring of `hilclaw/check_failure.py` and tested):
+1. *Public constants for the two names* - the planner's suggestion, taken: `BACKEND_KINDS` is built from them, so the later operation and test scripts name a kind without a literal. A test pins that each name is spelt once in the module's code.
+2. *The messages of the module are unchanged* - the planner's reading, taken. ADR-0047 decision 4 allows a message to name a kind of this contract and requires none; a backend kind reaches a message of this module only where its own message could not be read, and that message names no kind. Tests assert that neither name occurs in any such message.
+
+**What the tests pin about a message** (ADR-0056 decision 6, "A message that breaks this is not detected"): a backend kind's message with a path-like text, a newline, 10,000 characters or the empty string is returned as it is by `ended_with`; through the tool function over the mock, a script that raises `no_kernel_source` with the output path in its message is answered with that message, the end line holds it, and a repeated call returns it. That states the record and decides nothing; the rule of what such a message may show binds the code of the operation that raises, a later slice.
+
+**Docstring sentences of unedited modules that are now less exact** (not edited, out of scope):
+- `hilclaw/check_tool.py`, module docstring: "writes the path to no file and puts it in no message" and "It writes no seed anywhere and puts none in a message" - still true of what the tool function composes; but the message of a backend kind is written to the end line as the operation raised it, so a path or a seed an operation puts in such a message reaches `events.ndjson` through this function.
+- `hilclaw/check_seed.py`, module docstring: "it writes the seed to no file and puts it in no message" - true of the messages the module composes; `check` hands on, through `carry_out`, the message an operation raised (weak; to be read as "this module puts").
+- `hilclaw/check_operation.py`, "what a tool function does with a tool failure an operation raises is open (decision 8; OD-18 sub-question 10, third clause)" - less exact since ADR-0047, not made worse here.
+- `hilclaw/mock_check.py`: none found.
+- Records: ADR-0047 decision 4 ("Under the contract as it stands this bullet answers no call"; "this is every tool failure an operation raises"), decision 5 ("The contract as it stands has no backend kind") and its Limits ("Until a record names a backend kind ...") were already listed by ADR-0056 Consequences; ADR-0056 Consequences itself, "`hilclaw.check_failure.BACKEND_KINDS`, empty today", is now history.
+
+**Follow-ups** (nothing new beyond the task's own list, except the first two):
+- (small, code mode, docstrings only) Bring the two sentences of `hilclaw/check_tool.py` and the one of `hilclaw/check_seed.py` named above in line ("this module composes no message that holds ..."); it can ride with the next task that lists those files.
+- (for the task that writes the operation of `cpu_standin`) The rule "It shows no path, no name of an entry, no byte of a file and no text of an error" binds that code, and nothing downstream detects a breach - that task needs its own tests on the wording of the two messages.
