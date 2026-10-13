@@ -42,8 +42,9 @@ event, how a line says that it is the ``result`` message and which member of
 it holds the final response text are runtime acceptance item (v) of ADR-0054.
 **A wrong one costs a pass, never a false one**: with another name the stream
 gives no ``init_read``, no ``result_read``, no listed tool or no token, which
-:func:`hilclaw.selfcheck_outcome.decide` reads as ``session_failed`` or
-``no_call`` and never as ``passed`` or as condition (b) of ``front_refused``.
+:func:`hilclaw.selfcheck_outcome.decide` never reads as ``passed``. Condition
+(b) of ``front_refused`` never holds without ``init_read`` and reads nothing
+of the ``result`` message, so a wrong name of that message leaves it as it is.
 
 **Conventions of this module** (the record leaves them to the code):
 
@@ -52,8 +53,8 @@ gives no ``init_read``, no ``result_read``, no listed tool or no token, which
   UTF-8 and parsed as strict JSON, white space around the value allowed. A
   line that is not one JSON object establishes nothing and is no error: a
   byte order mark, invalid UTF-8, another JSON value, ``NaN`` or ``Infinity``,
-  nesting too deep or an integer too long to parse, and an object, at any
-  depth, that holds a member name twice, which has no single answer.
+  nesting too deep to parse, and an object, at any depth, that holds a member
+  name twice, which has no single answer. Integers are not converted.
 - *The* ``system/init`` *event* is the only line that says so. Two or more are
   an output the check cannot read, so ``init_read`` is false and nothing of
   the session side is read: the record speaks of one, two can contradict each
@@ -75,12 +76,13 @@ gives no ``init_read``, no ``result_read``, no listed tool or no token, which
   of the check names one server and nothing says how an entry names its
   server, ``server_in_errors`` as well. The two always agree here.
 - *A tool is listed* when :data:`TOOLS_KEY` is an array that holds its exact
-  session-side name as a string. ``session_tools`` holds the distinct strings
-  of that array that begin with :data:`TOOL_PREFIX`, in the order first seen,
-  each bounded as :mod:`hilclaw.selfcheck_wire` bounds a string (1 to
-  ``MAX_STRING`` characters of ASCII letters, digits, ``.``, ``_`` and ``-``,
-  else ``OTHER``); at most ``MAX_LISTED`` are kept and
-  ``session_tools_dropped`` says that a further one was seen.
+  session-side name as a string. ``session_tools`` holds the strings of that
+  array that begin with :data:`TOOL_PREFIX`, each bounded as
+  :mod:`hilclaw.selfcheck_wire` bounds a string (1 to ``MAX_STRING``
+  characters of ASCII letters, digits, ``.``, ``_`` and ``-``, else ``OTHER``)
+  and then each distinct value once, in the order first seen; at most
+  ``MAX_LISTED`` are kept and ``session_tools_dropped`` says that a further
+  distinct one was seen. It is a tuple of ``str``.
 - *A token is looked for* as an exact substring of the reply text: no case
   folding, no trimming, no decoding beyond what JSON did.
 - *What is refused*, each with a fixed text that holds nothing of the
@@ -89,9 +91,9 @@ gives no ``init_read``, no ``result_read``, no listed tool or no token, which
   hexadecimal characters, and two equal tokens (:class:`ValueError`). By
   :func:`evidence` (:class:`TypeError`): ``facts`` that is no
   :class:`StreamFacts` or holds a yes-or-no member of the evidence that is
-  not exactly ``True`` or ``False``, a ``timed_out`` of another type than
-  ``bool`` and an ``exit_status`` that is neither ``None`` nor an ``int``
-  (``True`` is none).
+  not exactly ``True`` or ``False`` or a status word other than the four
+  above, a ``timed_out`` of another type than ``bool`` and an ``exit_status``
+  that is neither ``None`` nor an ``int`` (``True`` is none).
   Nothing is raised for the content of the output. No default and no
   exception yields a listed tool, a token in the reply or a connected server.
 - *A time limit together with an exit status* is handed on as given.
@@ -138,15 +140,12 @@ _TOKEN = re.compile(r"[0-9a-f]{32}")
 _WORD = re.compile(rf"[A-Za-z0-9._-]{{1,{selfcheck_wire.MAX_STRING}}}")
 _BLANK = b" \t\r\n"
 _CARRIED = (selfcheck_outcome.CONNECTED, *selfcheck_outcome.REFUSED_STATUS_WORDS)
+_INIT = (INIT_KIND, INIT_SUBKIND)
+_WORDS = (*_CARRIED, OTHER_STATUS)
 
 
 class StreamFacts(NamedTuple):
-    """What :func:`read` found; the module docstring says what each member means.
-
-    The nine members before ``session_tools`` are those of the same name of
-    :class:`hilclaw.selfcheck_outcome.SessionEvidence`. Every member is
-    immutable: ``session_tools`` is a tuple of ``str``.
-    """
+    """What :func:`read` found; the module docstring says what each member means."""
 
     init_read: bool = False
     server_status: str | None = None
@@ -181,15 +180,11 @@ def _event(line):
             line.decode("utf-8"),
             object_pairs_hook=_pairs,
             parse_constant=_not_json,
+            parse_int=lambda _digits: 0,
         )
     except (ValueError, RecursionError):
         return {}
     return value if type(value) is dict else {}
-
-
-def _is_init(event):
-    kind, subkind = event.get(EVENT_KIND_KEY), event.get(EVENT_SUBKIND_KEY)
-    return kind == INIT_KIND and subkind == INIT_SUBKIND
 
 
 def _status(servers):
@@ -229,9 +224,8 @@ def read(output, *, token, fail_token):
     ``output`` is the bytes the session wrote, whole or cut by the time
     limit. ``token`` and ``fail_token`` are the two tokens of the check, of
     the form :mod:`hilclaw.selfcheck_server` accepts. Every ``output`` gives a
-    value. Raises :class:`TypeError` or :class:`ValueError` for an argument of
-    another form, as the module docstring lists; the message holds nothing of
-    the argument.
+    value. Raises :class:`TypeError` or :class:`ValueError`, with a fixed
+    text, for an argument of another form, as the module docstring lists.
     """
     if type(output) is not bytes:
         raise TypeError("the output must be bytes")
@@ -244,7 +238,11 @@ def read(output, *, token, fail_token):
         raise ValueError("the two tokens must differ")
     events = [_event(line) for line in output.split(b"\n") if line.strip(_BLANK)]
     facts = StreamFacts()
-    inits = [event for event in events if _is_init(event)]
+    inits = [
+        event
+        for event in events
+        if (event.get(EVENT_KIND_KEY), event.get(EVENT_SUBKIND_KEY)) == _INIT
+    ]
     if len(inits) == 1:
         init = inits[0]
         names = init.get(TOOLS_KEY)
@@ -286,6 +284,9 @@ def evidence(facts, *, timed_out, exit_status):
     flags = [getattr(facts, name) for name in _SHARED if name != "server_status"]
     if any(type(flag) is not bool for flag in flags):
         raise TypeError("a yes-or-no value must be True or False")
+    word = facts.server_status
+    if word is not None and (type(word) is not str or word not in _WORDS):
+        raise TypeError("the status word must be None or a word this module carries")
     if type(timed_out) is not bool:
         raise TypeError("timed_out must be True or False")
     if exit_status is not None and type(exit_status) is not int:

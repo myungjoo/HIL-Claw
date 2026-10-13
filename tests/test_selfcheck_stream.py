@@ -64,6 +64,7 @@ READ_ERROR_TEXTS = (
 EVIDENCE_ERROR_TEXTS = (
     "the facts must be a StreamFacts",
     "a yes-or-no value must be True or False",
+    "the status word must be None or a word this module carries",
     "timed_out must be True or False",
     "the exit status must be None or an integer",
 )
@@ -248,7 +249,7 @@ def test_walk_through_a_dropped_server_is_front_refused_by_b(servers):
     )
 
 
-@pytest.mark.parametrize("word", ["pending", "dropped", "needs-auth", MARKER])
+@pytest.mark.parametrize("word", ["pending", "dropped", "word-x", MARKER])
 def test_walk_through_a_word_outside_the_list_is_session_failed(word):
     output = stream(init(**{SERVERS_KEY: [server(word)]}), result())
     assert facts(output).server_status == OTHER_STATUS
@@ -667,6 +668,9 @@ def test_a_wrong_provisional_name_fails_safe(init_names, result_names, expected,
     assert outcome(output) != PASSED
     if init_names:
         assert outcome(output, DROPPED_WIRE) == SESSION_FAILED
+    else:
+        rightly_named = stream(dropped, result("none"))
+        assert outcome(output, DROPPED_WIRE) == outcome(rightly_named, DROPPED_WIRE)
 
 
 def renamed_result(names, text=REPLY):
@@ -823,9 +827,33 @@ def test_nesting_beyond_the_limit_of_the_interpreter_makes_the_line_nothing():
     assert facts(inside + line(result())) == NO_INIT
 
 
-def test_an_integer_too_long_to_convert_makes_the_line_nothing():
-    spoiled = line(result(note=0)).replace(b'"note": 0', b'"note": ' + b"9" * 10000)
-    assert facts(line(init()) + spoiled) == NO_RESULT
+def test_an_integer_too_long_to_convert_is_not_converted():
+    digits = b"9" * 10000
+    long_init = line(init(note=0)).replace(b'"note": 0', b'"note": -' + digits)
+    long_result = line(result(note=0)).replace(b'"note": 0', b'"note": ' + digits)
+    assert facts(long_init + long_result) == PASSING
+
+
+@pytest.mark.parametrize(
+    "word",
+    [
+        "pending",
+        "Connected",
+        "",
+        MARKER,
+        1,
+        True,
+        b"connected",
+        [CONNECTED],
+        (CONNECTED,),
+    ],
+    ids=label,
+)
+def test_facts_with_a_status_word_the_module_does_not_carry_are_refused(word):
+    with pytest.raises(TypeError) as caught:
+        evidence(PASSING._replace(server_status=word), timed_out=False, exit_status=0)
+    assert str(caught.value) == EVIDENCE_ERROR_TEXTS[2]
+    assert MARKER not in str(caught.value)
 
 
 def test_a_very_long_line_is_read():
@@ -959,7 +987,7 @@ def test_facts_with_a_member_that_is_no_boolean_are_refused(name, value):
 def test_a_timed_out_that_is_no_boolean_is_refused(value):
     with pytest.raises(TypeError) as caught:
         evidence(PASSING, timed_out=value, exit_status=0)
-    assert str(caught.value) == EVIDENCE_ERROR_TEXTS[2]
+    assert str(caught.value) == EVIDENCE_ERROR_TEXTS[3]
 
 
 @pytest.mark.parametrize(
@@ -968,7 +996,7 @@ def test_a_timed_out_that_is_no_boolean_is_refused(value):
 def test_an_exit_status_of_another_type_is_refused(value):
     with pytest.raises(TypeError) as caught:
         evidence(PASSING, timed_out=False, exit_status=value)
-    assert str(caught.value) == EVIDENCE_ERROR_TEXTS[3]
+    assert str(caught.value) == EVIDENCE_ERROR_TEXTS[4]
     assert MARKER not in str(caught.value)
 
 
