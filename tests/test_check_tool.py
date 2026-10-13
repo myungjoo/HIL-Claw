@@ -355,7 +355,7 @@ def test_a_frame_accepted_request_is_one_the_layout_forms_a_path_for(root, forme
         assert failure.kind == tools.KIND_INVALID_REQUEST
         with pytest.raises(layout.InvalidPathValueError):
             output_of(root, request(run_id=run_id))
-    assert [path for path in formed if path.parent.name != "01"] == []
+    assert formed == []
     assert lines(root) == []
 
 
@@ -703,8 +703,8 @@ def test_a_request_to_end_out_of_the_seed_source_passes_through_with_no_line(roo
     assert bench.function(request())["outcome"] == "pass"
 
 
-def no_source_at_the_path(tool, asked, hw_profile, parameters, output_path):
-    raise ToolFailure("no_kernel_source", f"no kernel source at {output_path}")
+def a_path_in_a_tool_failure(tool, asked, hw_profile, parameters, output_path):
+    raise ToolFailure("example_kind", f"nothing lies at {output_path}")
 
 
 def a_path_in_an_error(tool, asked, hw_profile, parameters, output_path):
@@ -718,7 +718,7 @@ ENDINGS = [
     (ToolFailure("example_kind", "the operation failed"), "operation_failure_invalid"),
     (ToolFailure("seed_not_drawn", "raised by a script"), "operation_failure_invalid"),
     (ToolFailure("no_kernel_source", "raised by a script"), KIND_OF_A_BACKEND_KIND),
-    (no_source_at_the_path, KIND_OF_A_BACKEND_KIND),
+    (a_path_in_a_tool_failure, "operation_failure_invalid"),
     (a_path_in_an_error, "operation_answer_invalid"),
 ]
 

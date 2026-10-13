@@ -75,10 +75,9 @@ no tolerance and no output path, and the module gives none a default. It
 says nothing of what anybody does after an answer, of a repeated call or of
 a retry. It is this tool's and gives no rule for another HW tool. It
 reserves no kind. It keeps nothing between calls. It imports
-:mod:`hilclaw.check_admission`,
-:mod:`hilclaw.check_ending`, :mod:`hilclaw.check_parameters`,
-:mod:`hilclaw.harness.seed_source` and :mod:`hilclaw.tools` and nothing
-else.
+:mod:`hilclaw.check_admission`, :mod:`hilclaw.check_ending`,
+:mod:`hilclaw.check_parameters`, :mod:`hilclaw.harness.seed_source` and
+:mod:`hilclaw.tools` and nothing else.
 """
 
 from hilclaw import check_admission, check_ending, check_parameters, tools

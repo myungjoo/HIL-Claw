@@ -56,9 +56,9 @@ kernel of the attempt it forms the output path and hands it on; it reads
 nothing there, does not test whether the path or anything above it exists,
 and writes the path to no file and puts it in no message. It says nothing of
 flags or of time limits. It binds no source of seeds, no predicate, no
-backend, no table
-and no script, and no parameter has a default. It names no kind, no ``step``
-value and no member of its own, and composes the message of no tool failure.
+backend, no table and no script, and no parameter has a default. It names no
+kind, no ``step`` value and no member of its own, and composes the message
+of no tool failure.
 It writes no seed anywhere and puts none in a message. It gives no rule for
 another HW tool and keeps nothing between calls. It imports
 :mod:`hilclaw.check_admission`,

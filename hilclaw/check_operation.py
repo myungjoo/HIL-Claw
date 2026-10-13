@@ -27,10 +27,10 @@ Choices that are this module's own and no rule of a record:
   :class:`Exception`. A :class:`BaseException` that is no ``Exception`` is a
   request to end (decision 1 observes this of Python and leaves the line to
   the code).
-* The output path is the fourth positional argument of an operation and of
-  :func:`ask`. It is treated as the request and the hw_profile are: handed
-  on as the same object, not checked, read or converted. The tool function
-  alone forms it.
+* The output path is the fourth positional argument of an operation and
+  the fifth of :func:`ask`, after the check parameters in both. It is
+  treated as the request and the hw_profile are: handed on as the same
+  object, not checked, read or converted. The tool function alone forms it.
 * What counts as raised by the operation: only what the one call of the
   operation raises. What counts as a returned value of neither form: a value
   whose type is neither exactly ``bytes`` nor exactly ``str``, and a
@@ -64,9 +64,8 @@ reads no tolerance and no file of a run, and looks at nothing at the output
 path. It validates no check parameter and gives no default of any value. It
 keeps nothing between calls. It says nothing of what anybody does after the
 answer, nor of what a tool function does with a tool failure an operation
-raises. It imports
-:mod:`hilclaw.check_answer`, :mod:`hilclaw.check_parameters` and
-:mod:`hilclaw.tools` and nothing else.
+raises. It imports :mod:`hilclaw.check_answer`,
+:mod:`hilclaw.check_parameters` and :mod:`hilclaw.tools` and nothing else.
 """
 
 from hilclaw import check_answer, check_parameters, tools
