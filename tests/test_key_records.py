@@ -8,7 +8,7 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-from hilclaw import key_records, keys, layout
+from hilclaw import key_records, keys, layout, once_write
 from hilclaw.key_records import (
     CorruptKeyRecordError,
     KeyCollisionError,
@@ -855,7 +855,7 @@ def spy_on_open(monkeypatch):
         opened.append((file, mode))
         return open(file, mode, *arguments, **named)
 
-    monkeypatch.setattr(key_records, "open", spy, raising=False)
+    monkeypatch.setattr(once_write, "open", spy, raising=False)
     return opened
 
 
@@ -893,9 +893,9 @@ def torn(error):
 
 def break_step(monkeypatch, step, error):
     if step == "creation":
-        monkeypatch.setattr(key_records, "open", failing(error), raising=False)
+        monkeypatch.setattr(once_write, "open", failing(error), raising=False)
     elif step == "write":
-        monkeypatch.setattr(key_records, "open", torn(error), raising=False)
+        monkeypatch.setattr(once_write, "open", torn(error), raising=False)
     else:
         name = {"flush": "fsync", "link": "link", "removal": "unlink"}[step]
         monkeypatch.setattr(key_records.os, name, failing(error))
@@ -1108,7 +1108,7 @@ def test_a_temporary_name_in_use_is_an_error_and_that_file_stays(
     root, tmp_path, monkeypatch, kind
 ):
     subject = case(root, kind)
-    monkeypatch.setattr(key_records.secrets, "token_hex", lambda size: "0" * 2 * size)
+    monkeypatch.setattr(once_write.secrets, "token_hex", lambda size: "0" * 2 * size)
     name = f"{subject.file}.{os.getpid()}-{'0' * 16}.tmp"
     place(root, name, b"of another writer")
     before = snapshot(tmp_path)
