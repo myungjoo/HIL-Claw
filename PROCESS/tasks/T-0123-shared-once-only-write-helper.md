@@ -2,7 +2,7 @@
 id: T-0123
 title: Move the once-only write steps that `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py` repeat into one shared helper module, with no change of behaviour of any public function
 phase: P1
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [FR-13, NFR-1, OD-8, "ADR-0014", "ADR-0025", "ADR-0029"]
 dependsOn: [T-0083, T-0094]
