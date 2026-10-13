@@ -2,7 +2,7 @@
 id: T-0161
 title: Add `hilclaw/selfcheck_server.py`, the server side of the runtime self-check (ADR-0054 decisions 5 and 6, "the server side") - a registry of the check's own two tools (`selfcheck.token`, `selfcheck.fail`), an entry of the package that serves it through the unchanged `hilclaw.mcp_front.main` over streams that copy every line with its direction to a wire-copy file, the reader of that file, and the values of the server entry by which a process started outside the checkout finds the package; no `claude` started, no session, no outcome, no report
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, C-7, OD-18, D16, "#5 D12"]
 dependsOn: [T-0039, T-0153]
@@ -123,3 +123,48 @@ The module docstring names ADR-0054 decisions 5 and 6 ("the server side") and th
 - (driver / owner) HQ-0013, 0014, 0016, 0017, 0018 (`runtime-acceptance`).
 
 ## Result
+**DONE.** PR #110 (https://github.com/myungjoo/HIL-Claw/pull/110), squash-merged as `b4f7c7d`; remote and local branch deleted. `git diff --stat` against `b794f25`: `hilclaw/selfcheck_server.py` (300 lines, at the cap and not over it) and `tests/test_selfcheck_server.py` only; both `i/lf`; `git diff --check` clean. `hilclaw/mcp_front.py` and `hilclaw/tools.py` are untouched. No PLAN checkbox is ticked by this slice.
+
+**No `claude` process was started**, real or stub, by the executor or by any reviewer. The only child process of the tests is the Python interpreter running the entry.
+
+**Process checks (2026-10-13T20:22Z).** No commit with `Task: T-0161` on `origin/main` and no PR for it before the work; no open PR; no comment on issue #5 after the owner's answer to HQ-0015 (so no objection to ADR-0054, no `T-0106 live check (owner)` comment, no answer to HQ-0016).
+
+**Language: Python** - the module calls `hilclaw.mcp_front.main` and `hilclaw.tools.Registry` in-process.
+
+**Public names of `hilclaw.selfcheck_server` as landed** (step two is written against these):
+- `TOKEN_TOOL = "selfcheck.token"`, `FAIL_TOOL = "selfcheck.fail"` (the front lists them as `selfcheck_token`, `selfcheck_fail`).
+- `RESULT_MEMBER = "token"`: the result of `selfcheck.token` is `{"token": <first token>}`. `FAIL_KIND = "selfcheck_expected"` (not a reserved kind): the failure of `selfcheck.fail` has that kind and the message `"the self-check asked for this failure; its token is <second token>"`. Through the front: one text block, `isError` false and true.
+- `ENV_TOKEN = "HILCLAW_SELFCHECK_TOKEN"`, `ENV_FAIL_TOKEN = "HILCLAW_SELFCHECK_FAIL_TOKEN"`, `ENV_WIRE_COPY = "HILCLAW_SELFCHECK_WIRE_COPY"`.
+- `FROM_CLIENT = "client"`, `FROM_SERVER = "server"`; `WIRE_COPY_MAGIC = b"hilclaw selfcheck wire copy 1\n"`.
+- `new_token() -> str`: `secrets.token_hex(16)`.
+- `registry(token, fail_token) -> tools.Registry`: a new registry of exactly the two tools. `TypeError` for a token that is not a `str`, `ValueError` for another form or two equal tokens; no message holds a token.
+- `server_entry(*, token, fail_token, wire_copy) -> dict`: exactly `{"command": sys.executable, "args": ["-I", "-c", <one line>, <directory that holds the package>], "env": {ENV_TOKEN: token, ENV_FAIL_TOKEN: fail_token, ENV_WIRE_COPY: <the place as str>}}`. `wire_copy` is a `str` or path object naming an **absolute** path; nothing is created. Raises as `registry` for the tokens, `TypeError` (not a `str`/path, `bytes` included) or `ValueError` (not absolute, or a NUL) for the place, `RuntimeError` when `sys.executable` is empty. No message holds a token or a path.
+- `main(argv=None, *, environ=None, stdin=None, stdout=None, stderr=None) -> int`: 0 at the end of input, 4 when the entry or the front gives up; never 1 or 2. `environ` defaults to `os.environ` and only the three variables are read.
+- `read_wire_copy(path) -> WireCopy`; `WireCopy(NamedTuple)` with `lines` (a tuple of `(direction, line)`, the direction `"client"` or `"server"`, the line `bytes`) and `torn` (`bool`); `WireCopyError(ValueError)`.
+
+**Conventions chosen under "Left to this task"** (each is in the module docstring and tested):
+- *How the values reach the entry*: variables of `env`, no argument (arguments show in the process listing; `mcp_front.main` takes none). An argument ends the entry with status 4 before the wire copy is created.
+- *How the server process finds the package*: `<sys.executable> -I -c "import sys; sys.path.insert(0, sys.argv.pop(1)); from hilclaw.selfcheck_server import main; raise SystemExit(main())" <package directory>`, the directory derived from the module's own `__file__`. **This departs from the planner's reading (`-m` with `PYTHONPATH`)** after weighing: with `-m` the working directory is first on the module path (a `hilclaw` directory there would be served), `PYTHONPATH` splits at the path separator, and any `PYTHON*` variable of whoever starts the server acts on it. With `-I -c` none of the three holds, an installed distribution does not win, and `env` holds only the three values of the check. There is no `-m` form (no `__main__` block). Cost, stated in the docstring: modules beside the package directory come before the standard library on the module path of the server process.
+- *The form of a token*: exactly 32 lowercase hexadecimal characters (`re.fullmatch`), the two different. The generator `new_token` is in this module so that the form and the generator stand together. A missing, empty, malformed, wrongly typed or repeated token ends the entry (status 4) before the wire copy is created and before a line is read.
+- *What each tool does with its request*: accepts any request object and ignores its members. Description of each tool: one short text for the model, no token, no path; input schema `{"type": "object", "properties": {}}`.
+- *The wire copy*: created exclusively (`open(place, "xb", buffering=0)`; an existing file is refused, never extended); the magic line, then one record per line: `C` or `S`, a space, the decimal length, LF, the bytes, LF. Each record is one unbuffered write (looped on a short write).
+- *Order*: a client line is copied before the front gets it; a server line after it was written and flushed to the real output. A copy that fails surfaces as `OSError("the wire copy cannot be written")` of the stream (no path), on which the front gives up with status 4. **Consequence for step two: the last answer sent can be missing from the copy** - when its copy failed, or when the process was killed between the flush and the record (round-2 finding M1). Every earlier line is there. A session ended by the time limit is `session_failed` anyway.
+- *The reader*: a file that does not begin with the whole magic line (an empty file, a torn magic line and any foreign file included) raises `WireCopyError`; after the magic line reading stops at the first place where no whole well-formed record stands, the records before it are returned and `torn` is true when bytes are left (a cut record and a malformed one are not told apart). A missing or unreadable file is the system's `OSError` (its message may name the path); a `path` that is no `str`/path is `TypeError`. A wire copy with the magic line alone is `WireCopy((), False)`. The reader reads the whole file into memory and parses no JSON-RPC.
+- *Exit statuses and standard error*: 0 and 4 as the front; one fixed line `hilclaw.selfcheck_server: <text>` when the entry gives up (three texts: an argument, an unusable token or place, a wire copy that cannot be created or written), holding no token and no path.
+
+**Notes for the author of step two** (reviewer Nits, no code change):
+- On Windows with Python 3.11/3.12 `os.path.isabs` takes a rooted path without a drive (`\dir\file`) as absolute; pass a full path (N6).
+- If closing the wire copy fails after the front returned 0, the entry returns 4; the records are already with the system (N7).
+- The real output is taken to write a whole line per `write`, as the front takes it; a raw stream with short writes would make the copy hold more than was sent (N2).
+- `_put` would loop if the copy's `write` returned 0 or `None`; not reachable with the blocking unbuffered regular file the entry opens (N5).
+
+**Tests** (`tests/test_selfcheck_server.py`, 99 cases). The child-process tests start the entry from exactly `command` and `args` of `server_entry`, with an environment of its `env` plus only `SYSTEMROOT` and `LD_LIBRARY_PATH` when the test process has them - `SYSTEMROOT` because Windows cannot initialise an interpreter process without it, `LD_LIBRARY_PATH` because a runner's interpreter may find its shared library through it; nothing else of the test process (no `PATH`, no `HOME`). Working directory `self check é한` under `tmp_path`, outside the checkout. Further child cases: a decoy `hilclaw` package in the working directory and in `PYTHONPATH` is not served; a copy of the package under a directory with a space and non-ASCII characters builds its own entry and serves; a killed child leaves the records before its last answer. **The child-process tests ran and passed on both machines**: the Windows development machine (99 passed, no skip) and the CI runner (Linux, Python 3.11 and 3.14).
+
+**Gates.** Local: `python -m pytest` 16586 passed, 311 skipped; `ruff check` and `ruff format --check` clean. CI on the merged head `33cf37a`: all six jobs passed (run 38465299499); three runs, none failed. Coverage of `hilclaw/` from the CI gate: lines 99.60% (4072/4088), functions 100.00% (425/425); `hilclaw/selfcheck_server.py` 125 statements, 0 missed (100%).
+
+**Review: 3 rounds**, each a fresh-context `dev-reviewer`; no `SECURITY` result.
+- Round 1 (`c1ef703`): Approve. L1 - the environment check of the server-entry test depended on how the checkout path is spelt (fixed). L2 - the kill test could wait forever on a silent child (fixed: a watchdog). N1 - three-line comment (now one line). N2, N3 - recorded in the docstring.
+- Round 2 (`64a9309`): Request changes. M1 - the kill test asserted the record of the last answer, which the order (copy after flush) does not guarantee; one false failure in 300 runs under load (fixed: a third request, the first five records asserted, the sixth optional). N4 - the docstring now names the kill beside the failed copy. N5 - no change.
+- Round 3 (`33cf37a`): Approve, "nothing left that should still be edited in this PR". N6, N7 recorded above.
+
+**Follow-ups** (none new beyond the task's list): the next slices of ADR-0054 as listed under Follow-ups. Step two writes `server_entry(...)` under the name `hilclaw` into its configuration file as it is, reads the copy with `read_wire_copy`, and must treat `WireCopyError`, `OSError` and a `torn` copy by the rows of decision 6 (none of them is decided here).
