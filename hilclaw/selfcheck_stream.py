@@ -49,12 +49,13 @@ of the ``result`` message, so a wrong name of that message leaves it as it is.
 **Conventions of this module** (the record leaves them to the code):
 
 - *A line* ends with ``\\n``; the bytes after the last one are a line too. A
-  line of white space only is nothing. Every other line is decoded as strict
-  UTF-8 and parsed as strict JSON, white space around the value allowed. A
-  line that is not one JSON object establishes nothing and is no error: a
-  byte order mark, invalid UTF-8, another JSON value, ``NaN`` or ``Infinity``,
-  nesting too deep to parse, and an object, at any depth, that holds a member
-  name twice, which has no single answer. Integers are not converted.
+  line of spaces, tabs and carriage returns only is nothing. Every other line
+  is decoded as strict UTF-8 and parsed as strict JSON, with that white space
+  allowed around the value. A line that is not one JSON object establishes
+  nothing and is no error: a byte order mark, invalid UTF-8, another JSON
+  value, ``NaN`` or ``Infinity``, nesting too deep to parse, and an object, at
+  any depth, that holds a member name twice, which has no single answer.
+  Integers are not converted.
 - *The* ``system/init`` *event* is the only line that says so. Two or more are
   an output the check cannot read, so ``init_read`` is false and nothing of
   the session side is read: the record speaks of one, two can contradict each
@@ -109,7 +110,8 @@ no report, no exit status of the check. "No session was started" is
 Known limits. Whoever writes the output decides what is read (ADR-0054 L6). A
 pass is one observation (L2). The tokens are found in whatever text the one
 member holds: that it holds the model's own text and no tool result is not
-shown here. Nothing calls the module yet.
+shown here. How deep a line may nest before it is nothing is the
+interpreter's limit. Nothing calls the module yet.
 """
 
 import json
