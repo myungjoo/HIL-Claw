@@ -603,6 +603,25 @@ FORBIDDEN = [
     ("gh repo view; gh repo delete x", REPO_DELETE),
     ("if true; then gh repo delete x; fi", REPO_DELETE),
     ("echo gh repo delete x", REPO_DELETE),
+    ("git push origin $(git branch --show-current) --force", FORCE_PUSH),
+    ("git push $(git remote) +main", FORCE_PUSH),
+    ("git -C $(pwd) push -f", FORCE_PUSH),
+    ("git push origin `git branch --show-current` -f", FORCE_PUSH),
+    ("git push origin $(echo $(git branch --show-current)) -f", FORCE_PUSH),
+    ("rm $(cat list.txt) -rf", RM_RF),
+    ("rm -r $(cat list.txt; cat more.txt) -f", RM_RF),
+    ("rm -r $((1 + 2)) -f", RM_RF),
+    ("rm -r <(ls x) -f", RM_RF),
+    ("Remove-Item (Join-Path $a b) -Recurse -Force", RM_RF),
+    ("gh -R $(echo owner/repo) repo delete", REPO_DELETE),
+    ("echo $(ls) | (cd x; rm -rf y)", RM_RF),
+    ("rm.cmd -rf x", RM_RF),
+    ("git push -o +x origin main", FORCE_PUSH),
+    ("if (Test-Path x) { git push } else { echo +1 }", FORCE_PUSH),
+    ("cp src/rm dst -r -f", RM_RF),
+    ("python -m pytest -k rm -rf", RM_RF),
+    ("git rm -rf --cached .", RM_RF),
+    ("high repo delete", REPO_DELETE),
 ]
 
 NOT_FORBIDDEN = [
@@ -659,6 +678,15 @@ NOT_FORBIDDEN = [
     "# git push --force",
     "git status # gh repo delete x",
     "",
+    "rm -r $(ls -f x)",
+    "rm -f `ls -r x`",
+    "git push origin $(git describe --force)",
+    "(cd x && rm -r y) && ls -f",
+    "for f in $(ls -r); do rm -f $f; done",
+    "f() { rm -r x; }; ls -f",
+    "case $x in a) rm -r y ;; esac; ls -f",
+    "echo `ls -r` && rm -f x",
+    "rm -r x) -f",
 ]
 
 KNOWN_MISSES = [
@@ -674,6 +702,11 @@ KNOWN_MISSES = [
     "cmd /c rd /s /q x",
     "del /s x",
     "gh api -X DELETE repos/owner/repo",
+    "echo -rf x | xargs rm",
+    "git push $(echo -f)",
+    "git -c remote.origin.push=+refs/heads/main push",
+    'iex "rm -rf x"',
+    "rm $'-rf' x",
 ]
 
 UNPARSABLE_FORBIDDEN = [
@@ -684,6 +717,9 @@ UNPARSABLE_FORBIDDEN = [
     ('Remove-Item -Recurse -Force "unterminated', RM_RF),
     ('gh repo delete "unterminated', REPO_DELETE),
     ("git log 17>log.txt; rm -rf x", RM_RF),
+    ('git push "--force" 12>x', FORCE_PUSH),
+    ('rm "-rf" x 12>log', RM_RF),
+    ('gh "repo" delete x 12>log', REPO_DELETE),
 ]
 
 UNPARSABLE_NOT_FORBIDDEN = [

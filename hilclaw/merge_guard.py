@@ -46,7 +46,8 @@ _LOOKS_LIKE_MERGE = re.compile(r"gh\b.*?\bpr\b.*?\bmerge\b", re.DOTALL | re.IGNO
 _GIT = re.compile(r"(?:.*[\\/])?git|.*git\.(?:exe|cmd|bat)", re.DOTALL | re.IGNORECASE)
 _RM_NAMES = r"(?:rm|ri|rd|del|erase|rmdir|remove-item)"
 _RM = re.compile(
-    rf"(?:.*[\\/])?{_RM_NAMES}|.*{_RM_NAMES}\.exe", re.DOTALL | re.IGNORECASE
+    rf"(?:.*[\\/])?{_RM_NAMES}|.*{_RM_NAMES}\.(?:exe|cmd|bat)",
+    re.DOTALL | re.IGNORECASE,
 )
 _GIT_VALUE_OPTIONS = frozenset(
     {
@@ -63,9 +64,9 @@ _GIT_VALUE_OPTIONS = frozenset(
 _RM_SHORT_FLAGS = frozenset("dfiIPrRvWx")
 _FORCE_PUSH, _RM_RF, _REPO_DELETE = "git push --force", "rm -rf", "gh repo delete"
 _LOOKS_FORBIDDEN = (
-    (_FORCE_PUSH, r"git\b.*?\bpush\b.*?\s(?:-\w*f|--for|\+)"),
-    (_RM_RF, rf"(?<![\w.-]){_RM_NAMES}\b.*?\s--?\w*[rf]"),
-    (_REPO_DELETE, r"gh\b.*?\brepo\b.*?\bdelete\b"),
+    (_FORCE_PUSH, (r"git\b", r"\bpush\b", r"(?<!\w)--?\w*f|\+")),
+    (_RM_RF, (rf"(?<![\w.-]){_RM_NAMES}\b", r"(?<!\w)--?\w*[rf]")),
+    (_REPO_DELETE, (r"gh\b", r"\brepo\b", r"\bdelete\b")),
 )
 
 
@@ -89,7 +90,7 @@ def merge_invocations(command):
     return [args for words in commands for args in _merges_in(words)]
 
 
-def _simple_commands(command):
+def _simple_commands(command, openers=None):
     text = command.replace("\r\n", "\n")
     commands, word, quote, redirected, i = [[]], None, None, False, 0
 
@@ -140,6 +141,8 @@ def _simple_commands(command):
             end_word()
             redirected = False
             commands.append([])
+            if openers is not None:
+                openers.append(c)
         else:
             word = (word or "") + c
     if quote:
@@ -210,19 +213,26 @@ def forbidden_command(command):
 
     A command is looked for in every simple command of the line, at any word, so
     ``sudo rm -rf x`` and ``env X=1 git push -f`` are found, and so is an
-    unquoted mention such as ``echo rm -rf x``. Text inside a quoted argument or
-    a comment is never a forbidden command. A line that cannot be tokenised is
-    refused when it looks like one of the three. Not recognised: flags or
-    commands built from a variable or a brace expansion, ``eval``,
-    ``bash -c "..."``, aliases and shell functions, an unquoted backslash path
-    without ``.exe``, ``git push --mirror``, the ``cmd`` forms ``rd /s /q`` and
-    ``del /s``, and deletions through ``gh api``.
+    unquoted mention such as ``echo rm -rf x``. The words after a ``$( )``, a
+    backtick substitution or a parenthesis belong to the command before it.
+    Text inside a quoted argument or a comment is never a forbidden command. A
+    line that cannot be tokenised is refused when it looks like one of the
+    three.
+
+    Not recognised: flags or commands that only exist at run time (a variable,
+    the output of a substitution, a brace expansion, ``$'...'``, standard input
+    of ``xargs``); ``eval``, ``bash -c "..."``, ``iex``, ``Start-Process``,
+    aliases and shell functions; an unquoted backslash path without ``.exe``; a
+    force push by configuration (``remote.<name>.push=+...``, ``--mirror``); the
+    ``cmd`` forms ``rd /s /q`` and ``del /s``; deletions through ``gh api``; a
+    command between two quotes that the tokeniser pairs wrongly (a
+    here-document body, a PowerShell backtick-escaped quote).
     """
     try:
-        commands = _simple_commands(command)
+        commands = _outer_commands(command)
     except ValueError as e:
-        for name, looks_like in _LOOKS_FORBIDDEN:
-            if re.search(looks_like, command, re.DOTALL | re.IGNORECASE):
+        for name, patterns in _LOOKS_FORBIDDEN:
+            if _holds_in_order(command, patterns):
                 return (
                     f"cannot parse a command that looks like the forbidden {name} ({e})"
                 )
@@ -233,6 +243,33 @@ def forbidden_command(command):
             if name:
                 return f"{name} is a forbidden command (PROCESS/DRIVER.md 1-5)"
     return None
+
+
+def _outer_commands(command):
+    openers = []
+    commands = _simple_commands(command, openers)
+    current, enclosing, done = commands[0], [], []
+    for opener, words in zip(openers, commands[1:], strict=True):
+        if enclosing and (opener == ")" or opener == "`" == enclosing[-1][0]):
+            done.append(current)
+            current = enclosing.pop()[1] + words
+        elif opener in "(`":
+            enclosing.append((opener, current))
+            current = words
+        else:
+            done.append(current)
+            current = words
+    return [*done, current, *(words for _, words in enclosing)]
+
+
+def _holds_in_order(text, patterns):
+    at = 0
+    for pattern in patterns:
+        found = re.compile(pattern, re.IGNORECASE).search(text, at)
+        if not found:
+            return False
+        at = found.end()
+    return True
 
 
 def _forbidden_at(word, rest):
