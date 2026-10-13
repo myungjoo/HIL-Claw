@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0155",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:3cd2fb32-2",
-    "acquiredAt": "2026-10-13T13:29:28Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -160,18 +156,26 @@
       "question": "ADR-0054 (the design record of the runtime self-check, PLAN P1-9; T-0153, main a5ed142) rests on facts that only a real, logged-in `claude` on a machine of C-7 can confirm; under D16 they are runtime acceptance items, closed by your check by hand or by the first runs of the self-check once its code exists, not by a driver task. On each kind of machine of C-7: (1) `claude auth status` exits 0 or 1 as the CLI reference says and its output is one JSON object with `authMethod`; (2) a `-p` session started with `--setting-sources project` from an empty directory still reads the stored login, and no managed setting changes what the check assumes; (3) with `--tools \"\"` and tool search at its default the model can call an MCP tool named in `--allowedTools`; (4) in `--permission-mode dontAsk` a call of a listed MCP tool runs without a prompt; (5) the `system/init` event of `--output-format stream-json` carries `mcp_servers` (name, status), `mcp_server_errors` and the tool names, which words `status` takes, which member of the last `result` message holds the final response text, and that the exit status tells a failed session from one that ended well; (6) the session ends by itself after the reply and leaves no file outside the check's directory; (7) the server process started from a working directory outside the checkout finds the `hilclaw` package; (8) Claude Code shows nothing of the configuration file's server entry (its `env` above all) to the model. Nothing of this was tried, and nothing was required of the development machine. No task is blocked on this notice.",
       "askedAt": "2026-10-13T13:17:35Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6146444000"
+    },
+    {
+      "id": "HQ-0017",
+      "taskId": "T-0155",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0055 (the files and form of `output/` of a coder call for the first case, part of OD-23; T-0155, main a239b6f) fixes the form of `output/` from documents alone. Two facts it rests on can only be established with a real coder call in a container on a runtime machine; under D16 they are runtime acceptance items, closed by your check by hand or by the first runs of the runtime once the coder-driver exists, not by a driver task. On each kind of machine of C-7: (1) the regular files a coder wrote into the directory `output` below the root of its scratch, from inside its container, can be read after the container is removed by the user who runs the instance (ADR-0049 L6 asks the same of their removal); (2) a coder that is told the place and the admitted names - by whatever PLAN P2-2 decides - leaves there a kernel source that the bring-in takes whole. They are separate from the items of HQ-0013 (ADR-0049). Nothing of this was tried, and nothing was required of the development machine. No task is blocked on this notice.",
+      "askedAt": "2026-10-13T14:24:10Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 165,
-    "tasksDone": 152,
+    "iterations": 166,
+    "tasksDone": 153,
     "tasksBlocked": 13,
-    "reviewRoundsTotal": 528
+    "reviewRoundsTotal": 534
   },
   "lastIteration": {
-    "at": "2026-10-13T13:23:57Z",
-    "owner": "AKIHA:3cd2fb32-1",
-    "taskId": "T-0154",
+    "at": "2026-10-13T14:24:10Z",
+    "owner": "AKIHA:3cd2fb32-2",
+    "taskId": "T-0155",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
