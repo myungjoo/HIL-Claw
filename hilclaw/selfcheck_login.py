@@ -96,8 +96,8 @@ class LoginStatus(NamedTuple):
     ``auth_method`` is one of :data:`AUTH_METHODS`, :data:`AUTH_METHOD_OTHER`
     or ``None`` when the output gave no string ``authMethod``. ``returncode``
     is the exit status of the child, negative when a signal ended it on POSIX,
-    and ``None`` when nothing was started or the time limit ended the call;
-    ``timed_out`` tells the last two apart.
+    and ``None`` when the outcome is :data:`NO_CLAUDE` or the time limit ended
+    the call; ``timed_out`` tells the last two apart.
     """
 
     outcome: str | None
