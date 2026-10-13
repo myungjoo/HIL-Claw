@@ -445,12 +445,13 @@ def _runs_claude(marked, i, first=None):
             word = word.partition("=")[2]
             if not word:
                 continue
-        word, *pieces = _pieces(word)
+        whole, word = word, _pieces(word, 1)[0]
         runner = _ENDING.sub("", re.split(r"[\\/]", word)[-1].lower())
         if runner not in _RUNNERS:
             return bool(_CLAUDE.fullmatch(word))
         values = _RUNNERS[runner]
         if values is _ANY_WORD:
+            pieces = _pieces(whole)[1:]
             for later in marked[i:]:
                 pieces += _pieces(later.replace(_QUOTE, ""))
             return any(_CLAUDE.fullmatch(w) and not re.search(r"\s", w) for w in pieces)
@@ -469,8 +470,8 @@ def _runs_claude(marked, i, first=None):
     return False
 
 
-def _pieces(word):
-    return [word] if "${" in word else re.split("[{}]", word)
+def _pieces(word, cuts=0):
+    return [word] if "${" in word else re.split("[{}]", word, maxsplit=cuts)
 
 
 def _script_blocks(words):
