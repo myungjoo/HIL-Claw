@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0146",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:bab3e3bd-1",
+    "acquiredAt": "2026-10-13T01:27:13Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -61,7 +65,9 @@
       "reason": "tool-call-failed",
       "question": "T-0106 (live check of the MCP front, ADR-0010 F10 / OD-18 sub-question 1) needs a `claude -p` child session, and the `claude` 2.1.280 on the PATH of the driver machine is not logged in (\"OAuth session expired and could not be refreshed\"; `claude auth status` reports loggedIn false). Which do you want: (a) you log that command line in (`claude auth login` in a terminal on the driver machine) and the task is run again as written; (b) you make the live check yourself, or name another way of running it; (c) the check is put off and the task is closed without a result?",
       "askedAt": "2026-10-09T18:30:37Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6086916123"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6086916123",
+      "resolvedAt": "2026-10-13T01:27:13Z",
+      "decision": "(b) — owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6135246858 (D16, main a1b6355): the driver and its agents never start `claude` as a child process and do not require runtime-only things of the development machine. (b-1) the owner makes the live check by hand and posts it on #5 under the heading `T-0106 live check (owner)`; only when that comment exists does the planner create one document task recording it in OD-18 sub-question 1 and the StandardScenarios coverage check. (b-2) PLAN P1-9: a runtime self-check built and tested against a stub `claude` only; where its record is stored is not decided. T-0106 is not resumed (closed DONE without a result by the owner, ec0f832)."
     },
     {
       "id": "HQ-0007",
