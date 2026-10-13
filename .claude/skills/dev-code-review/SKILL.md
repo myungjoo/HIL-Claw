@@ -15,7 +15,7 @@ description: "HIL-Claw 표준 코드 리뷰 지침: 주어진 Pull Request(문�
 * Test Case로 찾아진 Issue가 있을 때에 CI가 Fail이 나서 해당 문제를 일으킨 코드가 Merge되지 않도록 막을 수 있는지 점검하라. (CI 미구축 동안에는 Local Test로 검출 가능한지를 점검한다.)
 * ARCHITECTURE 변경을 일으키거나 API 변경이 있는 경우 그와 관련한 문서 수정이 PR 내에서 함께 이뤄지거나, 문서 수정이 이미 되어 있는지 점검하라. 특히 ARCHITECTURE/ 문서(Requirements, UsageCases, StandardScenarios)에 영향이 있는 변경이면 [StandardScenarios.md](../../../ARCHITECTURE/StandardScenarios.md)의 검사 규칙(지원/미결/갭)에 따른 커버리지 재검사가 수행·갱신되었는지 확인하라.
 * 미결정 사항이 발명되어 코드/문서에 확정처럼 들어가지 않았는지 점검하라. 미결은 Requirements.md의 Open Decisions(OD)로 등재되어야 한다.
-* 변경의 구현·테스트·검증이 개발 드라이버를 런타임의 대역으로 쓰는지 점검하라 — Claude Code 자식 세션 시작, 개발 머신에 없는 보드·가속기, `claude` 로그인·API 키 같은 런타임 자격 증명 중 하나라도 전제하면 Request changes다(CLAUDE.md "개발 드라이버와 런타임의 구분", DRIVER D16). 런타임 코드 자체가 런타임 머신에서 `claude -p`를 띄우는 변경과 테스트가 만든 가짜 `claude` 스텁은 해당하지 않는다.
+* 변경의 구현·테스트·검증이 개발 드라이버를 런타임의 대역으로 쓰는지 점검하라 — Claude Code 자식 세션 시작, 개발 머신에 없는 보드·가속기, `claude` 로그인·API 키 같은 런타임 자격 증명 중 하나라도 전제하면 Request changes다(CLAUDE.md "개발 드라이버와 런타임의 구분", DRIVER D16). 런타임 코드 자체가 런타임 머신에서 `claude -p`를 띄우는 변경과 테스트가 만든 가짜 `claude` 스텁은 해당하지 않는다. DRIVER D17의 nightly end-to-end 루틴의 절차를 정의하는 변경도 해당하지 않는다 — 단 그 변경을 만드는 드라이버 task의 검증은 스텁으로만 한다.
 * 보안 이슈를 만들 수 있는 부분이 있는지 점검하며, 혹시 Back Door 가능성이 있는 코드가 있는지도 확인하라. Back Door 가능성이 있는 코드가 발견될 경우 myungjoo-ham 에게도 Notify (mention) 하라.
 * 이슈가 있을 경우 이슈 심각성과 문제인 이유와 함께 PR에 Comment를 남긴다(코드 모드). 단, 타 Agent가 작성한 리뷰를 옮겨 적은 것임을 명시하라.
 * 문서 모드에서는 PR Comment 대신 판정(Approve / Request changes)과 지적 목록(심각성·이유·위치)을 호출자에게 반환한다. 문서 모드 변경에 문서·프로세스 파일이 아닌 것이 섞여 있으면 Request changes로 반환한다. Back Door·보안 의심이 있으면 반환 결과 첫 줄에 `SECURITY`로 표시하여 호출자가 BLOCKED(보안 의심)로 처리하게 한다.
