@@ -2,7 +2,7 @@
 id: T-0149
 title: Write the ADR that answers OD-13 sub-question 9 for the first case - which measurement stands for the memory of a `memory_ceiling` on `cpu_standin`, how it is taken, at which execution point it is judged, and from when `memory_ceiling` is an admitted constraint type - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-2, FR-9, FR-10, NFR-3, OD-13, OD-6, OD-1, "#5 D6"]
 dependsOn: [T-0117, T-0147, T-0148]
@@ -128,6 +128,7 @@ Planner's judgements (**the reviewer is asked to re-check each**):
 - **Deviation from the task text, on the driver's spawn prompt**: the prompt asked to follow the precedent of `38589df` (T-0147), where `## Result` is inside the landed commit; so the commit holds one file under `PROCESS/` (this one, `## Result` only; `status` untouched). The document check "nothing under `PROCESS/` is in the commit" holds for everything else. The spawn prompt also asked the executor to post the owner notice after the push; its URL is in the addendum.
 - **Check before starting** (spawn prompt): the owner's HQ-0009 answer was read with `gh api` (comment 6136238336). Its part 2 says in its own words "Which measurement of the first case stands for that memory on `cpu_standin`, how it is taken, and at which of the two execution points (HQ-0005) it is judged, is the record's design"; ADR-0050 quotes it word for word. The record is therefore the record's design and not an owner-only item.
 - **Session entry check** (2026-10-13): no open pull request; nothing landed for T-0149 before. Issues #4, #7, #8: nothing newer than 2026-10-03. On #5 three owner comments came after the ADR-0051 notice: the answers to **HQ-0007** (05:46Z), **HQ-0011** (05:59Z) and **HQ-0012** (06:14Z). None objects to ADR-0007, ADR-0009, ADR-0038, ADR-0050 or ADR-0051 or changes the answer to HQ-0009 or HQ-0005; by the task they do not stop it.
+- **Added after the landing (uncommitted, for the driver's wrap-up commit)**: landing commit `08ccb213057f5697efc791945fcb3a867d7fbdd8`; owner notice https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6139755334 (posted 2026-10-13T06:32Z; objection window until 2026-10-20 UTC). The task branch was deleted remotely and locally after the push to `main` was confirmed. Correction of the line above: the new record has 133 lines, not 131 (223 insertions and 10 deletions in the five files of the commit). The `runtime-acceptance` notice below was not posted; it is the driver's.
 
 ### The answer to each of the six items, as landed
 - **1. The quantity (decision 3)**: the maximum resident set size of the process of one timing run of the attempt (ADR-0009), over the whole life of that process, as the operating system reports it for the ended process, in bytes. Contains the three operand arrays (never exempted), what the kernel allocates and touches, the touched stacks of its threads, the pages in use of a run-time library it brings. One number: no baseline subtracted, no share of the harness removed.
