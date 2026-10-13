@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0121",
+  "currentTask": null,
   "nextTask": "T-0117",
-  "lock": {
-    "owner": "AKIHA:247e9244-1",
-    "acquiredAt": "2026-10-13T02:19:48Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -122,18 +118,26 @@
       "question": "T-0126 (a builder for the tool function of a journaled HW tool whose `step` follows from the checked request, the code slice ADR-0040 Consequences cut; code mode) stopped before any change: it must add one public function to `hilclaw/hw_tool.py` and a shared public part to `hilclaw/journaled_tool.py`, and the task forbade edits of existing tests, while `test_the_public_names_and_the_signature` in `tests/test_hw_tool.py` and in `tests/test_journaled_tool.py` assert the exact list of public names of these two modules (`[\"tool_function\"]` and `[\"tool_function\", \"checked_function\"]`), and `test_the_signature_of_checked_function` pins the parameters of `checked_function`. Which do you want: (a) the task is run again with those two name-list assertions named as the only permitted edits of existing tests (one name added to each expected list, nothing else); (b) the builder goes into a new module (for example `hilclaw/stepped_hw_tool.py`) with its own test file, the public surfaces of both existing modules stay as they are, and the shared check of the request is repeated there or reached some other way you name; (c) something else (name it)? Not asked here: the names and signatures of the new functions (the executor's choice under review) and any rule of ADR-0016, ADR-0021 or ADR-0040.",
       "askedAt": "2026-10-12T09:24:38Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6121441448"
+    },
+    {
+      "id": "HQ-0013",
+      "taskId": "T-0121",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0049 (the isolation means of one coder call for the first case, T-0121, main 1646654) rests on facts that only a live Claude Code session and a container runtime on a machine of C-7 can confirm; under D16 they are runtime acceptance items, closed by your check by hand or by the runtime's own self-check, not by a driver task. On each kind of machine of C-7: (1) a `claude -p` call runs inside a container whose only writable host path is the scratch directory of the call; (2) after a call in which the coder tried to change files of both checkouts, neither checkout has changed; (3) the scratch can be removed afterwards by the user who runs the instance; (4) the container can reach Anthropic. Nothing of this was tried, and nothing was required of the development machine. No task is blocked on this notice.",
+      "askedAt": "2026-10-13T03:13:14Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 152,
-    "tasksDone": 140,
+    "iterations": 153,
+    "tasksDone": 141,
     "tasksBlocked": 12,
-    "reviewRoundsTotal": 469
+    "reviewRoundsTotal": 475
   },
   "lastIteration": {
-    "at": "2026-10-13T01:49:53Z",
-    "owner": "AKIHA:bab3e3bd-1",
-    "taskId": "T-0146",
+    "at": "2026-10-13T03:13:14Z",
+    "owner": "AKIHA:247e9244-1",
+    "taskId": "T-0121",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
