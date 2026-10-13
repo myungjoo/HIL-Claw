@@ -2,7 +2,7 @@
 id: T-0123
 title: Move the once-only write steps that `hilclaw/key_records.py`, `hilclaw/instance_file.py` and `hilclaw/spec_file.py` repeat into one shared helper module, with no change of behaviour of any public function
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-13, NFR-1, OD-8, "ADR-0014", "ADR-0025", "ADR-0029"]
 dependsOn: [T-0083, T-0094]
@@ -95,26 +95,69 @@ Verify the description of `## Why` against the files at execution time; the file
 - (planner) After this task the planner of T-0123 knows of no further task that is executable without an owner answer; the next iterations may find no selectable task (DRIVER §3-3).
 
 ## Result
-**BLOCKED ("task needs re-planning")** - executor, 2026-10-11T04:26Z, at `main` `c0dfc10`. Nothing was landed: no branch, no commit, no PR, no reviewer round (0 rounds), no file other than this section changed.
+**DONE** - executor, 2026-10-13, on the owner's answer to HQ-0011 (issue #5 comment 6139309682: option (a), run again with the import-set assertion of `spec_file` as a permitted edit). This replaces the BLOCKED result of 2026-10-11.
 
-### The finding (the stop condition of `## Why`, second judgement, and of "Tests", second bullet)
-An existing test of one of the three writers asserts something the refactoring must change, and the edit is not a change of a patch target:
+### Landed
+- PR #102 (https://github.com/myungjoo/HIL-Claw/pull/102), squash commit `12b89361512568f0249518d5a7924ac7bd71c82f` on `main`; branch `claude/T-0123-shared-once-only-write-helper` deleted (remote and local).
+- CI: all six jobs green on the PR head `20dd857` (run 38370404924) and on the `push` run of `main` at `12b8936` (run 38370935965).
+- The squash message ends with `Task: T-0123`, a blank line, then the `Co-Authored-By` line. `git log origin/main --grep='^Task: T-0123'` finds the commit; because of the blank line, `Task:` is not in git's last trailer paragraph.
 
-- `tests/test_spec_file.py`, `test_the_module_imports_only_what_it_needs` (lines 853-872) parses the source of `hilclaw/spec_file.py` and asserts that the set of its imports **equals** `{"codecs", "contextlib", "json", "os", "re", "secrets", "pathlib.Path", "hilclaw.keys", "hilclaw.layout", "hilclaw.spec"}`. It walks the whole tree, so an import inside a function counts too.
-- After the move, `spec_file` must import the helper (`hilclaw.once_write` joins the set) and no longer uses `contextlib`, `os` or `secrets` (all three are used only in the last lines of `write`, 303-324), which the acceptance criterion "Imports that become unused are removed" and ruff `F401` both require to be dropped. The asserted set would become `{"codecs", "json", "re", "pathlib.Path", "hilclaw.keys", "hilclaw.layout", "hilclaw.once_write", "hilclaw.spec"}`.
-- The test can therefore only be kept by changing what it asserts. The task allows edits of existing tests for patch targets only and says to stop in this case; the reviewer is asked (c) to check exactly that. The only ways to keep the assertion untouched (leaving unused imports with a `noqa`, or loading the helper without an import statement) would defeat the test rather than satisfy it, so they were not taken.
-- T-0094 line 81 shows the precedent for how this test is meant to be handled: it was "adapted" there to "list the imports the write adds". The planner of T-0123 did not list it; a re-planned task can name it as a permitted edit (the import set of `spec_file` after the move), which is the executor's suggestion. No other blocker was found.
+### The helper as landed
+- `hilclaw/once_write.py`, one public function: `write_once(path, content)`. `path` is a `pathlib.Path` whose directory exists; `content` is the whole file as `bytes`.
+- **How a taken name is signalled**: `write_once` returns `None` when the name was given, and **returns (does not raise) the `FileExistsError` of the link** when the link finds the final name taken, after removing its temporary file. A `FileExistsError` for a temporary name in use is still raised, so the two cases stay apart. No new exception class.
+- Callers: `instance_file.write` and `spec_file.write` raise their own `NameTakenError` (same message, `from None`) when the result is not `None`; `key_records._store` reads the record again and raises that same `FileExistsError` object when the name is free at that reading. Directory creation and removal, validation and the order of checks stay in the callers.
+- The `created` flag keeps its form (set in the statement after `open` returns). The gap of the round-3 note of T-0094 (an interrupt between those two statements leaves the temporary file) was not closed; it now exists in one place.
+- Not a tool, not registered in `hilclaw/tools.py`, not exported from `hilclaw/__init__.py`.
 
-### What was verified before stopping (for the re-planner)
-- Landed check: `git log origin/main --grep='^Task: T-0123'` empty; no PR for T-0123 in any state; no open PR at all; no comment on issue #5 newer than 2026-10-11T04:00Z.
-- `## Why` matches the files at `c0dfc10`: `key_records._store` lines 250-290, `instance_file.write` lines 139-161, `spec_file.write` lines 302-324; the repeated steps and the three differences are as described.
-- Baseline on `main`: `python -m pytest` = 12089 passed, 295 skipped.
-- Edits of existing tests that are patch-target changes only, as the task foresaw (all in `tests/test_key_records.py`): line 858 (`spy_on_open`), lines 896 and 898 (`break_step`, "creation" and "write") patch `key_records.open` and would have to reach the helper's `open`; line 1111 patches `key_records.secrets.token_hex` and `key_records` would no longer import `secrets`. The `key_records.os` patches (682, 725, 742, 758, 846-847, 872, 901, 1039) stay valid: `key_records` still imports `os` for `os.lstat`, and the attribute is the shared `os` module. `tests/test_instance_file.py` and the write tests of `tests/test_spec_file.py` patch `builtins.open`, `io.open`, `os.*` and `secrets.token_hex` on the shared modules and need no edit.
-- No test asserts the order, in `key_records._store`, of the removal of the temporary file against the second reading of a taken name (`test_the_last_step_finds_the_name_taken` and `test_a_taken_name_that_is_absent_again_is_the_error_of_the_link` look only at the end state).
-- `tests/test_instance_file.py` has no import-set test; `test_signature_and_public_names` and the "holds no value" tests of both modules filter by `__module__` or accept modules, so an imported `once_write` passes them.
+### `## Why` against the files
+The description matched the files at `797e5fa`. Only line numbers had moved (`spec_file.write` was at lines 319-341, `instance_file.write` at 140-162).
 
-### Not done
-Helper, callers, `tests/test_once_write.py`, PR, review, merge: none started. Language line (for the re-planned task): Python, because the three callers are Python modules of `hilclaw/`. The note on the `created` flag and the objection windows (ADR-0025 until 2026-10-15, ADR-0029 until 2026-10-16) stands as the planner wrote it; no reviewer weighed it.
+### Non-test line counts (added / removed)
+- `hilclaw/once_write.py` +86 / -0 (new; 26 statements)
+- `hilclaw/key_records.py` +9 / -23
+- `hilclaw/instance_file.py` +7 / -26
+- `hilclaw/spec_file.py` +7 / -26
+
+Total 109 added, 75 removed, 4 files: inside the D4 cap.
+
+### Edits of existing tests
+- `tests/test_key_records.py`: the import line gains `once_write`; four patch targets move from `key_records` to `once_write` - `spy_on_open` (`open`), `break_step` "creation" and "write" (`open`), and `test_a_temporary_name_in_use_is_an_error_and_that_file_stays` (`secrets.token_hex`). No assertion changed.
+- `tests/test_spec_file.py`, `test_the_module_imports_only_what_it_needs`: the asserted import set loses `contextlib`, `os`, `secrets` and gains `hilclaw.once_write`. Reason: `spec_file` no longer uses those three and imports the helper. This is the edit HQ-0011 permits.
+- `tests/test_instance_file.py`: not edited. No other existing assertion became false.
+- New: `tests/test_once_write.py` (31 test cases) with every case the task lists. No platform skip was needed; the existing writer tests skip only for symbolic links.
+
+### Behaviour: what changed below the contract
+No public function changed its exception types, messages, order of checks, return values, files and directories left behind, bytes or names. Four differences that no docstring promises and no test asserts:
+- **The order question in `key_records._store`**: the temporary file is now removed before the second reading of a taken name, not after (allowed by the task).
+- `key_records._store`: a `KeyCollisionError` or `CorruptKeyRecordError` from that second reading no longer has the link's `FileExistsError` as `__context__`, so the traceback no longer prints "During handling of the above exception".
+- `instance_file.write` and `spec_file.write`: `NameTakenError` is raised `from None` outside the handler. It prints as before, but its `__context__` is `None` instead of the `FileExistsError`.
+- `key_records._store`: the removal of the temporary name after the link now runs inside the caller's `try`. An interrupt during that removal reaches the `rmdir` loop, which fails and is suppressed because the directory holds the record; the end state is the same.
+
+Also: on the taken path the returned exception, its traceback and the frame of `write_once` form a reference cycle, freed by the cyclic collector (memory only).
+
+### Review (2 rounds, both Approve, fresh-context `dev-reviewer`)
+- **Round 1** (https://github.com/myungjoo/HIL-Claw/pull/102#issuecomment-6141600858): Approve.
+  - On the weakest point: accepted. The owner's HQ-0011 answer says to run now with the note of the risk; the note is in the commit and PR body; no objection to ADR-0014, ADR-0025 or ADR-0029 on #5 since 2026-10-11T04:00Z; a revert is no harder.
+  - Findings, all Low: `NameTakenError` had lost `from None` (fixed in `20dd857`); the module docstring listed the token form and the hard link as if the records fixed them (fixed in `20dd857`: one sentence says they are the package's choices); the reference cycle (noted above); the `rmdir` loop on an interrupt (noted above).
+- **Round 2** (https://github.com/myungjoo/HIL-Claw/pull/102#issuecomment-6141702370): Approve, no change requested.
+  - On the weakest point: accepted again, same reasons.
+  - Checks (b), (c), (d): no change of behaviour at the level of the contract; test edits are patch targets plus the permitted assertion; the docstring states no new rule.
+  - Findings, all Low or informational: the `__context__` differences above; the reference cycle; "The directory entry is not flushed" in the helper's docstring reads a little stronger than the records' "need not be flushed" (left as is: the caller docstrings on `main` use the same words).
+
+### Checks and coverage
+- Local, before the PR and after the last change: `python -m ruff check .` and `python -m ruff format --check .` clean; `python -m pytest` = 14932 passed, 305 skipped.
+- **The coverage command was not run locally**: the `coverage` module is not installed on this machine, and it was not installed for this task. The figures are from the CI "Coverage gate (hilclaw)" job on `20dd857`: lines 3700/3716 = 99.56 %, functions 384/384 = 100.00 %. `hilclaw/once_write.py` 26/26 statements, `key_records.py`, `instance_file.py` and `spec_file.py` each 100 %.
+
+### Language
+Python, because the three callers are Python modules of `hilclaw/`.
+
+### Note of the risk (as in the commit body)
+ADR-0014 (accepted 2026-10-07), ADR-0025 (objection window until 2026-10-15) and ADR-0029 (until 2026-10-16) can still be objected to. A reverting task would change the steps in `hilclaw/once_write.py` and the caller-specific part in the caller the record covers.
+
+### Effect on ARCHITECTURE / OD / PLAN
+None. No file under `ARCHITECTURE/` was edited, no OD was opened or closed, no data-plane schema or layout changed, no dependency was added, and no PLAN checkbox is ticked by this task.
 
 ### Follow-ups
-- (planner) Re-plan T-0123 with `test_the_module_imports_only_what_it_needs` named as a permitted edit (the new import set above), or decide that the import set of `spec_file` is to stay and drop the task.
+- (planner, only if ADR-0014, ADR-0025 or ADR-0029 is objected to) The reverting task edits `hilclaw/once_write.py` and the affected caller.
+- (driver / owner, optional) Install the `dev` dependency group on the driver machine so that the coverage command can be run locally; until then the CI gate is the only source of the figures.
+- No split was needed and no other follow-up was found.
