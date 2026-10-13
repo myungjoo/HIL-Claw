@@ -6,7 +6,9 @@ key record files, ``ARCHITECTURE/decisions/ADR-0025-od8-instance-file-write.md``
 decisions 3 and 6 for ``instance.json`` and
 ``ARCHITECTURE/decisions/ADR-0029-od8-spec-file.md`` for ``spec.json``. This
 module is those steps, once, for :mod:`hilclaw.key_records`,
-:mod:`hilclaw.instance_file` and :mod:`hilclaw.spec_file`:
+:mod:`hilclaw.instance_file` and :mod:`hilclaw.spec_file`. The form of
+``<token>`` and the hard link as the last step are the choices of this
+package within what the records allow, not rules of the records:
 
 - a new temporary file ``<final name>.<token>.tmp`` beside the final name,
   created exclusively, where ``<token>`` is the process id, a hyphen and 16

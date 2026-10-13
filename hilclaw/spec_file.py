@@ -319,7 +319,7 @@ def write(data_root, content):
     if once_write.write_once(path, content) is not None:
         file = path.relative_to(root).as_posix()
         reason = f"{file}: the name is taken; the content was not written"
-        raise NameTakenError(reason)
+        raise NameTakenError(reason) from None
 
 
 def _object(pairs):
