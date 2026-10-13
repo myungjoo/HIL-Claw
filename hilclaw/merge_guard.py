@@ -72,16 +72,19 @@ _FORCE_PUSH, _RM_RF, _REPO_DELETE = "git push --force", "rm -rf", "gh repo delet
 _CLAUDE_START = "claude"
 _CLAUDE_ENDINGS = r"(?:\.(?:exe|cmd|bat|ps1))?"
 _CLAUDE = re.compile(
-    rf"(?:.*[\\/])?claude{_CLAUDE_ENDINGS}|.*claude\.(?:exe|cmd|bat|ps1)"
+    rf"(?:.*[\\/])?claude{_CLAUDE_ENDINGS}|\S*claude\.(?:exe|cmd|bat|ps1)"
     r"|@anthropic-ai/claude-code(?:@.*)?",
     re.DOTALL | re.IGNORECASE,
 )
 _LOOKS_LIKE_CLAUDE = re.compile(
-    r"(?:^|[;&|(`{\n])[ \t]*(?:\w+=\S*[ \t]+)*[\"']?(?:[^\s;&|\"']*[\\/])?"
+    r"(?:^|[;&|(`{\n])[ \t]*(?:\w+=[^\s;&|()`]*[ \t]+)*[\"']?"
+    r"(?:[^\s;&|()`{\"']*[\\/])?"
     rf"claude{_CLAUDE_ENDINGS}(?![\w.\\/-])",
     re.IGNORECASE,
 )
 _ASSIGNMENT = re.compile(r"[A-Za-z_]\w*\+?=.*", re.DOTALL)
+_ENDING = re.compile(r"\.(?:exe|cmd|bat|ps1)$")
+_QUOTED_BRACES = {"{": "\ue000", "}": "\ue001"}
 _COUNT = re.compile(r"\d+(?:\.\d+)?[smhd]?")
 _QUERY = re.compile(r"-\w*[vV]\w*")
 _ANY_WORD = None
@@ -90,7 +93,7 @@ _RUNNERS = {
     **dict.fromkeys(
         ("if", "then", "elif", "else", "while", "until", "do", "!", "time"), _NO_VALUE
     ),
-    **dict.fromkeys(("command", "nohup", "eval"), _NO_VALUE),
+    **dict.fromkeys(("command", "nohup", "eval", "winpty"), _NO_VALUE),
     **dict.fromkeys(("bash", "sh", "zsh", "dash"), frozenset({"-o", "-O"})),
     "exec": frozenset({"-a"}),
     "env": frozenset({"-u", "--unset", "-C", "--chdir"}),
@@ -135,7 +138,7 @@ def merge_invocations(command):
     return [args for words in commands for args in _merges_in(words)]
 
 
-def _simple_commands(command, openers=None):
+def _simple_commands(command, openers=None, quoted=None):
     text = command.replace("\r\n", "\n")
     commands, word, quote, redirected, i = [[]], None, None, False, 0
 
@@ -158,7 +161,7 @@ def _simple_commands(command, openers=None):
                 word += text[i]
                 i += 1
             else:
-                word += c
+                word += c if quoted is None else quoted.get(c, c)
         elif c in "'\"":
             quote, word = c, word or ""
         elif c == "\\":
@@ -283,14 +286,16 @@ def forbidden_command(command):
       simple command or of a brace block, after variable assignments, after
       ``-exec`` (``-execdir``, ``-ok``, ``-okdir``), and after the words ``if``
       ``then`` ``elif`` ``else`` ``while`` ``until`` ``do`` ``!`` ``time``
-      ``command`` (without ``-v`` / ``-V``) ``nohup`` ``eval`` ``exec`` ``env``
-      ``sudo`` ``nice`` ``timeout`` ``xargs`` ``npx`` ``wsl`` ``bash`` ``sh``
-      ``zsh`` ``dash`` with their options, the option values the guard knows
-      and a count. After ``cmd``, ``powershell``, ``pwsh``, ``Start-Process``,
-      ``saps`` and ``start`` it counts at any later word. An operand
-      (``grep claude x``, ``which claude``, a branch ``claude/T-1``, a path
-      ``.claude``) is not a start. A line that cannot be tokenised is refused
-      when a line or a command of it begins with the program word.
+      ``command`` (without ``-v`` / ``-V``) ``nohup`` ``eval`` ``winpty``
+      ``exec`` ``env`` ``sudo`` ``nice`` ``timeout`` ``xargs`` ``npx`` ``wsl``
+      ``bash`` ``sh`` ``zsh`` ``dash`` with their options, the option values
+      the guard knows and a count. After ``cmd``, ``powershell``, ``pwsh``,
+      ``Start-Process``, ``saps`` and ``start`` it counts at any later word
+      without white space. An operand (``grep claude x``, ``which claude``, a
+      branch ``claude/T-1``, a path ``.claude``) is not a start, and the words
+      after a closed ``$( )``, backtick substitution or parenthesis are
+      operands. A line that cannot be tokenised is refused when a line or a
+      command of it begins with the program word.
 
     Not recognised: flags or commands that only exist at run time (a variable,
     the output of a substitution, a brace expansion, ``$'...'``, standard input
@@ -308,9 +313,16 @@ def forbidden_command(command):
     For ``claude`` also: any other way to the program (``node <path>/cli.js``,
     ``npm exec``, ``bunx``, a script, ``python -c``, another name of the
     file); a quoted command line (``sh -c "claude -p x"``,
-    ``cmd /c "claude -p x"``); a runner or an option value outside the lists
-    above (``sudo --chroot d claude``); a runner before the program word on a
-    line that cannot be tokenised.
+    ``cmd /c "claude -p x"``) and a quoted path with white space after ``cmd``
+    and the words listed with it; a runner or an option value outside the
+    lists above (``sudo --chroot d claude``); a runner given as an unquoted
+    backslash path; a start after a word that expands to nothing
+    (``$EMPTY claude``, ``$(true) claude``); a start after a ``case`` pattern
+    in parentheses; a runner before the program word on a line that cannot be
+    tokenised. Unquoted text that is no command (a here-document body) is
+    refused wherever the program word stands where a command would start: at
+    the beginning of a line, after a separator, an opening parenthesis or
+    brace, or inside backticks.
     """
     texts = dict.fromkeys((command, _BACKSLASH_BEFORE_SPACE.sub("/", command)))
     try:
@@ -335,7 +347,9 @@ def forbidden_command(command):
                     name = _forbidden_at(word.rpartition(_GROUP)[2], words[i + 1 :])
                     if name:
                         return f"{name} is a forbidden command (PROCESS/DRIVER.md 1-5)"
-    for commands, openers in tokenised:
+    for text in texts:
+        openers = []
+        commands = _simple_commands(text, openers, _QUOTED_BRACES)
         starts = _command_starts(commands, openers) + _outer_commands(commands, openers)
         if any(_starts_claude(words) for words in starts):
             return f"{_CLAUDE_START} is a forbidden command (PROCESS/DRIVER.md 1-5)"
@@ -400,7 +414,7 @@ def _starts_claude(words):
         part
         for word in words
         for part in (
-            [word] if "${" in word or word == "{}" else re.split("([{}])", word)
+            [word] if "${" in word or word.endswith("{}") else re.split("([{}])", word)
         )
         if part
     ]
@@ -418,19 +432,27 @@ def _runs_claude(words):
         if word.startswith("$") and words[i : i + 1] == ["="]:
             i += 1
             continue
-        runner = re.split(r"[\\/]", word)[-1].lower().removesuffix(".exe")
+        if word.startswith("$") and "=" in word:
+            word = word.partition("=")[2]
+            if not word:
+                continue
+        runner = _ENDING.sub("", re.split(r"[\\/]", word)[-1].lower())
         if runner not in _RUNNERS:
             return bool(_CLAUDE.fullmatch(word))
         values = _RUNNERS[runner]
         if values is _ANY_WORD:
-            return any(_CLAUDE.fullmatch(later) for later in words[i:])
+            return any(
+                _CLAUDE.fullmatch(later) and not re.search(r"\s", later)
+                for later in words[i:]
+            )
         while i < len(words):
             option = words[i]
             if option.startswith("-"):
                 if runner == "command" and _QUERY.fullmatch(option):
                     return False
-                short = not option.startswith("--") and "-" + option[-1]
-                i += 1 if option not in values and short not in values else 2
+                glued = [k for k, c in enumerate(option) if k and "-" + c in values]
+                last = not option.startswith("--") and glued[:1] == [len(option) - 1]
+                i += 2 if option in values or last else 1
             elif _COUNT.fullmatch(option):
                 i += 1
             else:

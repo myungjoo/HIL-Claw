@@ -1061,6 +1061,15 @@ CLAUDE_STARTS = [
     "start claude",
     "saps claude",
     "x=$(case $y in a) claude -p x;; esac)",
+    "ls | xargs -I{} claude -p {}",
+    "sudo -uroot claude -p x",
+    "sudo -g wheel -uroot claude -p x",
+    "timeout -k5 10 claude -p x",
+    "bash -eo pipefail -c claude",
+    "npx.cmd claude -p x",
+    "winpty claude -p x",
+    "$out=claude -p x",
+    "Start-Process -FilePath C:/tools/claude.exe",
 ]
 
 CLAUDE_FALSE_REFUSALS = [
@@ -1072,6 +1081,11 @@ CLAUDE_FALSE_REFUSALS = [
     "cmd /c echo claude",
     "powershell -Command Get-Command claude",
     "Start-Process notepad -ArgumentList claude",
+    "cat <<EOF\nsee (claude) and `claude` here\nEOF",
+    'cat <<EOF\ncall f("claude") now\nEOF',
+    "cat <<EOF\nClaude Code is the program\nEOF",
+    "cmd /c dir claude",
+    "powershell -Command Test-Path C:/tools/claude",
 ]
 
 NOT_A_CLAUDE_START = [
@@ -1147,6 +1161,17 @@ NOT_A_CLAUDE_START = [
     "Start-Process notepad claude.md",
     "cmd /c dir .claude",
     "start .",
+    'git commit -m "fix {claude} placeholder"',
+    "echo '{claude}'",
+    "jq -n '{claude}'",
+    "sed 's/{claude}/x/' f",
+    "ls | xargs -I '{}' echo claude",
+    'powershell -Command "Get-Command claude.exe"',
+    'powershell -Command "Test-Path C:/tools/claude"',
+    "git commit -m \"$(cat <<'EOF'\nclaude is refused (claude)\nEOF\n)\"",
+    "cat <<EOF\nCo-Authored-By: Claude\nEOF",
+    "sudo -u claude ls",
+    "sudo -uclaude ls",
 ]
 
 CLAUDE_KNOWN_MISSES = [
@@ -1173,6 +1198,11 @@ CLAUDE_KNOWN_MISSES = [
     "echo $(case $y in a) claude -p x;; esac)",
     "trap 'claude -p x' EXIT",
     "cp /usr/local/bin/claude /tmp/cc && /tmp/cc -p x",
+    "case $x in (a) claude -p x;; esac",
+    "$(true) claude -p x",
+    "$EMPTY claude -p x",
+    r"C:\Windows\System32\cmd.exe /c claude -p x",
+    r'Start-Process "C:\Program Files\Claude\claude.exe"',
 ]
 
 UNPARSABLE_CLAUDE = [
@@ -1187,6 +1217,7 @@ UNPARSABLE_CLAUDE = [
     'git status\r\nCLAUDE -p "unterminated',
     "git log 17>log.txt; claude -p x",
     'echo "a; claude -p x',
+    "cat <<EOF\nit's (Claude Code) here\nEOF",
 ]
 
 UNPARSABLE_NOT_CLAUDE = [
@@ -1197,6 +1228,7 @@ UNPARSABLE_NOT_CLAUDE = [
     "cat 'CLAUDE.md",
     'grep -rn claude "unterminated',
     'sudo claude -p "unterminated',
+    "cat <<EOF\nit's Co-Authored-By: Claude\nEOF",
 ]
 
 CLAUDE_REFUSED = CLAUDE_STARTS + CLAUDE_FALSE_REFUSALS
