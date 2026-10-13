@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0156",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:96f6dc8f-1",
+    "acquiredAt": "2026-10-13T14:30:22Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -163,7 +167,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0055 (the files and form of `output/` of a coder call for the first case, part of OD-23; T-0155, main a239b6f) fixes the form of `output/` from documents alone. Two facts it rests on can only be established with a real coder call in a container on a runtime machine; under D16 they are runtime acceptance items, closed by your check by hand or by the first runs of the runtime once the coder-driver exists, not by a driver task. On each kind of machine of C-7: (1) the regular files a coder wrote into the directory `output` below the root of its scratch, from inside its container, can be read after the container is removed by the user who runs the instance (ADR-0049 L6 asks the same of their removal); (2) a coder that is told the place and the admitted names - by whatever PLAN P2-2 decides - leaves there a kernel source that the bring-in takes whole. They are separate from the items of HQ-0013 (ADR-0049). Nothing of this was tried, and nothing was required of the development machine. No task is blocked on this notice.",
       "askedAt": "2026-10-13T14:24:10Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6147779708"
     }
   ],
   "counters": {
