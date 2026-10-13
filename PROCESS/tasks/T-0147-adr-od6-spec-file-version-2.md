@@ -2,7 +2,7 @@
 id: T-0147
 title: Write the ADR that defines the text form and the write of a version-2 spec file - whether the rules of ADR-0029 carry over, how a number inside `task.objective` is spelt in a file, and what a writer and a reader do with a file of the other version - and reflect it in the ARCHITECTURE documents (OD-6 sub-question 5); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-5, FR-6, NFR-1, NFR-2, NFR-7, OD-6, OD-8, OD-11, "#5 D6"]
 dependsOn: [T-0092, T-0094, T-0117]
@@ -110,6 +110,7 @@ The one place where the question meets something that is not design-level: **OD-
 - **Commit**: the commit on `main` that carries this text, subject "T-0147: Add ADR-0051, the spec file of version 2 (OD-6 sub-question 5)", trailers `Reviewed-by: reviewer agent (5 rounds, Approve)`, `Task: T-0147`, `Co-Authored-By` (find it with `git log origin/main --grep='^Task: T-0147'`; a commit cannot hold its own id, so the id is in the executor's return summary). Files: `ARCHITECTURE/decisions/ADR-0051-od6-spec-file-version-2.md` (new, 144 lines), `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionProposals.md`, `ARCHITECTURE/StandardScenarios.md` (154 insertions, 7 deletions in those four), and this task file.
 - **Deviation from the task text, on the driver's spawn prompt**: the prompt asked for this `## Result` inside the landed commit, so the commit holds one file under `PROCESS/` (this one, `## Result` only; `status` untouched). The document check "nothing under `PROCESS/` is in the commit" holds for everything else.
 - **Owner notice (DRIVER §9)**: posted by the executor after the push, as the spawn prompt asked, on issue #5. Its URL cannot be in the commit it links to; it is in the executor's return summary. The text is below.
+- **Added after the landing (uncommitted, for the driver's wrap-up commit)**: landing commit `38589dfc77b24c6e08c8565e96714afe0ff94113`; owner notice https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6138568593 (2026-10-13; objection window until 2026-10-20 UTC). The task branch was deleted remotely and locally after the push to `main` was confirmed.
 
 ### The answer to each part of sub-question 5, as landed
 - **Which rules of ADR-0029 hold (decision 1)**: carried over by reference, nothing restated. Unchanged for a version-2 file: the text (one JSON object, UTF-8 without a byte order mark, no member name twice), the written form, a missing file, the `id` and the path (decision 3), the requirement, the steps and a taken name (decision 4), the directories (5), the temporary file and a leftover (6), the promises and limits (7). With a named change: "The document it parses to is valid by ADR-0002" becomes validity by ADR-0050 for a version-2 file (ADR-0002 stays the record for version 1); the *integer* places gain `bound`; the file of another version and the version a write writes (decision 3 of the record). Not holding: "today's check is `hilclaw.spec.validate`" (no check of a version-2 document exists) and the other today's-code citations, which describe version-1 code. Not carried: "The `schema_version` of the spec stays 1".
