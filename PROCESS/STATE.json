@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0153",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {"owner": "AKIHA:c1ebefe7-1", "acquiredAt": "2026-10-13T12:22:48Z", "ttlMinutes": 180},
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -148,18 +148,26 @@
       "question": "GitHub Actions has not started any job of myungjoo/HIL-Claw since 2026-10-13T10:44Z: three runs in a row on PR #105 (heads 82678e9, acbfe44, 679d85d) failed with zero steps and the annotation \"The job was not started because recent account payments have failed or your spending limit needs to be increased\". The three earlier heads of the same PR were green on all six checks. PR #105 (T-0151, the guard refuses a start of the `claude` program) is approved by the reviewer at 679d85d (round 5) and stays a Draft with DONOTMERGE; only a green CI run is missing. Nothing was re-run or worked around. Could you restore Actions under Billing & plans (payment or spending limit)? Until then every code-mode task stops at the same point; document-mode tasks are not affected. On your answer the driver re-runs CI on 679d85d and merges if it is green.",
       "askedAt": "2026-10-13T11:25:57Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6144488381"
+    },
+    {
+      "id": "HQ-0016",
+      "taskId": "T-0153",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0054 (the design record of the runtime self-check, PLAN P1-9; T-0153, main a5ed142) rests on facts that only a real, logged-in `claude` on a machine of C-7 can confirm; under D16 they are runtime acceptance items, closed by your check by hand or by the first runs of the self-check once its code exists, not by a driver task. On each kind of machine of C-7: (1) `claude auth status` exits 0 or 1 as the CLI reference says and its output is one JSON object with `authMethod`; (2) a `-p` session started with `--setting-sources project` from an empty directory still reads the stored login, and no managed setting changes what the check assumes; (3) with `--tools \"\"` and tool search at its default the model can call an MCP tool named in `--allowedTools`; (4) in `--permission-mode dontAsk` a call of a listed MCP tool runs without a prompt; (5) the `system/init` event of `--output-format stream-json` carries `mcp_servers` (name, status), `mcp_server_errors` and the tool names, which words `status` takes, which member of the last `result` message holds the final response text, and that the exit status tells a failed session from one that ended well; (6) the session ends by itself after the reply and leaves no file outside the check's directory; (7) the server process started from a working directory outside the checkout finds the `hilclaw` package; (8) Claude Code shows nothing of the configuration file's server entry (its `env` above all) to the model. Nothing of this was tried, and nothing was required of the development machine. No task is blocked on this notice.",
+      "askedAt": "2026-10-13T13:17:35Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 163,
-    "tasksDone": 150,
+    "iterations": 164,
+    "tasksDone": 151,
     "tasksBlocked": 13,
-    "reviewRoundsTotal": 520
+    "reviewRoundsTotal": 527
   },
   "lastIteration": {
-    "at": "2026-10-13T12:15:23Z",
-    "owner": "AKIHA:258e4029-1",
-    "taskId": "T-0152",
+    "at": "2026-10-13T13:17:35Z",
+    "owner": "AKIHA:c1ebefe7-1",
+    "taskId": "T-0153",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
