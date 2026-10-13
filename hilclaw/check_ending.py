@@ -16,9 +16,9 @@ needs no log:
 * It raised a tool failure: :class:`EndedWithoutOutcome` with the kind and
   the message of ADR-0047 decisions 3 and 4, as ``ended_with`` gives them.
   Under the contract as it stands that is the tool's own kind of decision 4
-  for every raised kind but a backend kind (decision 5), and for a backend
-  kind, today one of the two of ADR-0056 decision 6, the kind and the
-  message that were raised.
+  for every raised kind but a backend kind (decision 5). For a backend kind,
+  today one of the two of ADR-0056 decision 6, it is the kind and the message
+  that were raised, where the message can be read as exactly a ``str``.
 * It raised a request to end that is no tool failure: what was raised is not
   caught (ADR-0045 decision 5).
 
@@ -61,8 +61,9 @@ Choices that are this module's own and no rule of a record:
   callable of this module and no longer sees the object.
 * The output path is the fifth positional argument of :func:`carry_out`,
   as it is of ``ask``, and the fourth of an operation. It is handed on as
-  the same object and not checked, read or converted, and it is in no
-  ``EndedWithoutOutcome``.
+  the same object and not checked, read or converted, and this module puts
+  it in no ``EndedWithoutOutcome``. The message of a backend kind is that of
+  the operation, as raised, whatever it shows.
 
 What the module does not do: it is no tool and no step and is bound to none.
 It appends no line and states no spend. It selects no backend, draws no seed,

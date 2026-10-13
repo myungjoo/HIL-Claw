@@ -791,10 +791,12 @@ def test_a_backend_kind_a_script_raises_is_the_failure_of_the_end_line(
     before = log_bytes(root)
     del recorded[:]
     again = Bench(root, seeds=(), script=RuntimeError("must not be asked"))
+    again.order = recorded
     repeated = again.failure(asked)
     assert (repeated.kind, repeated.message) == (kind, RAISED)
-    assert (again.asked, again.order, log_bytes(root)) == ([], [], before)
-    assert "select" not in recorded
+    # The one read is that of the layout version stamp.
+    assert recorded == ["read"]
+    assert (again.asked, log_bytes(root)) == ([], before)
     further = Bench(root).function(request(point=point, execution=2))
     assert further["outcome"] == "pass"
     assert [line["data"]["execution"] for line in lines(root)] == [1, 1, 2, 2]

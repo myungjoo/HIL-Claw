@@ -13,9 +13,9 @@ the tool function, the part of its decisions 4 and 5 that needs no log:
 * :data:`BACKEND_KINDS`: the backend kinds of the contract as this source has
   it (decision 5). They are the two that
   ``ARCHITECTURE/decisions/ADR-0056-od18-correctness-check-verification-executable.md``
-  decision 6 names with the situations they mean:
-  :data:`KIND_NO_KERNEL_SOURCE` for its S1, the attempt has no kernel source,
-  and :data:`KIND_KERNEL_SOURCE_UNREADABLE` for its S2, the reader failed. A
+  decision 6 names with the situations they mean, S1 and S2 of its decision
+  5: :data:`KIND_NO_KERNEL_SOURCE` for S1, the attempt has no kernel source,
+  and :data:`KIND_KERNEL_SOURCE_UNREADABLE` for S2, the reader failed. A
   tool failure of any other kind that an operation raises is answered with
   :data:`KIND_OPERATION_FAILURE_INVALID`.
 * The message of that kind says that the operation raised a tool failure of a
@@ -50,7 +50,6 @@ Choices that are this module's own and no rule of a record:
   may tell a kind of this contract from any other name and may name it. The
   module says less: of the kinds of this contract it holds its own kind and
   the backend kinds only, and no message of this module names one of those.
-  The messages are those the module had before a backend kind was listed.
   Every message of this module is built when the module is imported.
 * The list of decision 5 is here, so that the tool function has one place
   for it. Each of the two names has a public constant, and
@@ -106,8 +105,8 @@ def ended_with(raised):
        contract: the pair is :data:`KIND_OPERATION_FAILURE_INVALID` and a
        message of this module, whichever kind was raised, a reserved kind
        and :data:`KIND_OPERATION_FAILURE_INVALID` itself included (ADR-0047
-       decision 4). This is every tool failure but one of the two kinds of
-       ADR-0056 decision 6.
+       decision 4). This is every tool failure whose kind is exactly a
+       ``str`` and neither of the two of ADR-0056 decision 6.
     2. The kind is a member of :data:`BACKEND_KINDS`: the pair is the raised
        kind and the raised message, as they are (decision 4). What such a
        message may show is said by the record that names the kind (ADR-0056

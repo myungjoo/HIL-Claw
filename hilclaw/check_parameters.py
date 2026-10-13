@@ -4,9 +4,10 @@
 decision 2 has an operation of this tool called with the request, the
 hw_profile of the call and the check parameters; since ADR-0056 decision 3
 it is called with four things, the fourth being the output path, which is no
-value of the check parameters. The check parameters are "one value that holds exactly these five values and nothing
-else": the seed of the call, the number of draws and the dimensions ``m``,
-``k`` and ``n``. :class:`CheckParameters` is the Python type of that value.
+value of the check parameters. The check parameters are "one value that holds
+exactly these five values and nothing else": the seed of the call, the number
+of draws and the dimensions ``m``, ``k`` and ``n``. :class:`CheckParameters`
+is the Python type of that value.
 
 The type has a module of its own so that the tool function and an operation
 of any backend build and read one type without importing a module of a
