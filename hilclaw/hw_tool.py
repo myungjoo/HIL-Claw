@@ -105,8 +105,8 @@ Conventions of this module, which the records do not fix:
   hw_profile in ``runs/<run_id>/instance.json`` (ADR-0018 decision 3), which
   :func:`hilclaw.instance.hw_profile_of` reads; this module reads no file for
   it and binds no reader of it. The reader of the stamp is no parameter:
-  :func:`hilclaw.journaled_tool.checked_function` binds
-  :func:`hilclaw.instance.layout_version_of`.
+  the part of :mod:`hilclaw.journaled_tool` that both builders are built
+  over binds :func:`hilclaw.instance.layout_version_of`.
 - The step of the contract calls the operation, not this module: what an
   operation returns and how that becomes the amounts and the result of the
   step are each tool's contract. Nothing here checks that the step calls it,
@@ -116,8 +116,8 @@ Conventions of this module, which the records do not fix:
   :func:`stepped_tool_function`, what the contract's callable gives for it.
 - The file is read once in 4 and not again by this module, so what the
   contract takes besides the hw_profile is of the same content of the file.
-  Nothing here says what that is, and no seed is drawn here: both the place
-  after the selection and the step can hold what a contract does there.
+  Nothing here says what that is, and no seed is drawn here: where a
+  contract draws one is that contract's record's, and its callables hold it.
 - The classes above count for whatever reader was handed over, since this
   module cannot tell why a reader raised one of them; the three of
   :mod:`hilclaw.instance` are named here for that and no file is read for it.
@@ -245,10 +245,11 @@ def stepped_tool_function(
 ):
     """Return the tool function of the journaled HW tool that these eleven state.
 
-    The ``step`` of a call follows from its request. It is for a contract with several ``step`` values and with something to
-    take from ``instance.json`` besides the hw_profile, or something to
-    answer before the step starts (ADR-0040 decisions 3 and 7, ADR-0021
-    decision 4). The module docstring has the order of a call.
+    The ``step`` of a call follows from its request. It is for a contract
+    with several ``step`` values and with something to take from
+    ``instance.json`` besides the hw_profile, or something to answer before
+    the step starts (ADR-0040 decisions 3 and 7, ADR-0021 decision 4). The
+    module docstring has the order of a call.
 
     - ``tool``, ``numbers``, ``source``, ``table``, ``check``: as in
       :func:`tool_function`.
