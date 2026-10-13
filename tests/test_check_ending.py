@@ -43,6 +43,8 @@ OUTPUT_PATH = Path(PATH_MARKER) / "runs" / "r1" / "output"
 # Stand-ins of this file: no record gives either name a meaning.
 EXAMPLE_KIND = "example_kind"
 EXAMPLE_BACKEND_KIND = "example_backend_kind"
+# The two names as ADR-0056 decision 6 spells them.
+THE_TWO = ["no_kernel_source", "kernel_source_unreadable"]
 
 
 def rounded_references():
@@ -455,6 +457,61 @@ def test_a_backend_kind_gives_the_raised_kind_and_message(monkeypatch):
     assert error.__context__ is None
     other = ended(Recording(error=failure(EXAMPLE_KIND)))
     assert other.kind == check_failure.KIND_OPERATION_FAILURE_INVALID
+
+
+@pytest.mark.parametrize("kind", THE_TWO)
+def test_each_backend_kind_as_shipped_gives_the_raised_kind_and_message(kind):
+    raised = failure(kind, "the raised text")
+    operation = Recording(error=raised)
+    with pytest.raises(EndedWithoutOutcome) as caught:
+        carried(operation)
+    error = caught.value
+    assert type(error) is EndedWithoutOutcome
+    assert (error.kind, error.message) == (kind, "the raised text")
+    assert check_failure.ended_with(raised) == (kind, "the raised text")
+    assert vars(error) == {"kind": kind, "message": "the raised text"}
+    assert error.__cause__ is None
+    assert error.__context__ is None
+    assert len(operation.calls) == 1
+    assert not any(value is raised for value in held_by_the_module(error))
+    tools.ToolFailure(error.kind, error.message)
+    journaled_step.StepFailed({}, error.kind, error.message)
+
+
+@pytest.mark.parametrize("kind", THE_TWO)
+def test_a_backend_kind_with_a_replaced_message_gives_the_kind_of_adr_0047(kind):
+    raised = failure(kind)
+    raised.message = None
+    error = ended(Recording(error=raised))
+    assert error.kind == check_failure.KIND_OPERATION_FAILURE_INVALID
+    assert kind not in error.message
+
+
+@pytest.mark.parametrize(
+    "kind", ["no_kernel_sources", "kernel_source", "seed_not_drawn"]
+)
+def test_a_kind_beside_the_two_still_gives_the_kind_of_adr_0047(kind):
+    error = ended(Recording(error=failure(kind)))
+    assert error.kind == check_failure.KIND_OPERATION_FAILURE_INVALID
+    assert (error.kind, error.message) == check_failure.ended_with(
+        failure(EXAMPLE_KIND)
+    )
+
+
+@pytest.mark.parametrize("kind", THE_TWO)
+def test_a_backend_kind_the_judging_raises_is_not_the_operations(monkeypatch, kind):
+    raised = failure(kind)
+
+    def broken_judging(answer, **arguments):
+        raise raised
+
+    monkeypatch.setattr(check_answer, "from_answer", broken_judging)
+    operation = Recording(answer=GOOD)
+    with pytest.raises(tools.ToolFailure) as caught:
+        carried(operation)
+    assert caught.value is raised
+    assert (raised.kind, raised.message) == (kind, MARKER)
+    assert len(operation.calls) == 1
 
 
 def test_a_tool_failure_of_the_judging_is_not_the_operations(monkeypatch):

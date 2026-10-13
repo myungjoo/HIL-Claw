@@ -1,9 +1,10 @@
 """The check parameters of ``correctness.check`` (ADR-0043 decision 2).
 
 ``ARCHITECTURE/decisions/ADR-0043-od18-correctness-check-operation-form.md``
-decision 2 has an operation of this tool called with three things: the
-request, the hw_profile of the call and the check parameters. The check
-parameters are "one value that holds exactly these five values and nothing
+decision 2 has an operation of this tool called with the request, the
+hw_profile of the call and the check parameters; since ADR-0056 decision 3
+it is called with four things, the fourth being the output path, which is no
+value of the check parameters. The check parameters are "one value that holds exactly these five values and nothing
 else": the seed of the call, the number of draws and the dimensions ``m``,
 ``k`` and ``n``. :class:`CheckParameters` is the Python type of that value.
 
@@ -24,7 +25,8 @@ value is checked, so no upper bound of a harness is adopted here; whoever
 uses the value checks it. It gives no field a default and names no source of
 a seed or of a number of draws. It holds no tolerance, no reference, no
 expected output and no member of a request, and nothing of class (iii) of
-ADR-0021 decision 2. It imports ``typing`` and nothing else.
+ADR-0021 decision 2: the output path is handed beside the check parameters
+and not in them. It imports ``typing`` and nothing else.
 """
 
 import typing
@@ -32,7 +34,8 @@ import typing
 
 class CheckParameters(typing.NamedTuple):
     """The five values an operation of ``correctness.check`` is handed beside
-    the request and the hw_profile (ADR-0043 decision 2).
+    the request, the hw_profile and the output path (ADR-0043 decision 2;
+    ADR-0056 decision 3).
 
     - ``seed``: the seed of the call.
     - ``draws``: the number of draws of the check.

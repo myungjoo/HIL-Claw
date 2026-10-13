@@ -16,7 +16,9 @@ needs no log:
 * It raised a tool failure: :class:`EndedWithoutOutcome` with the kind and
   the message of ADR-0047 decisions 3 and 4, as ``ended_with`` gives them.
   Under the contract as it stands that is the tool's own kind of decision 4
-  for every raised kind (decision 5).
+  for every raised kind but a backend kind (decision 5), and for a backend
+  kind, today one of the two of ADR-0056 decision 6, the kind and the
+  message that were raised.
 * It raised a request to end that is no tool failure: what was raised is not
   caught (ADR-0045 decision 5).
 

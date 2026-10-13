@@ -713,23 +713,42 @@ def a_path_in_an_error(tool, asked, hw_profile, parameters, output_path):
     raise FileNotFoundError(2, "No such file or directory", str(output_path))
 
 
-# A backend kind of ADR-0056 decision 6 is outside the contract as long as none is listed.
-KIND_OF_A_BACKEND_KIND = "operation_failure_invalid"
+def a_path_in_a_backend_kind(tool, asked, hw_profile, parameters, output_path):
+    raise ToolFailure("no_kernel_source", f"nothing lies at {output_path}")
+
+
+# The two names as ADR-0056 decision 6 spells them.
+THE_TWO = ["no_kernel_source", "kernel_source_unreadable"]
+RAISED = "raised by a script"
+OUTSIDE = "operation_failure_invalid"
+# The third member says whether the message is the raised one; else this side composed it.
 ENDINGS = [
-    (17, "operation_answer_invalid"),
-    (ToolFailure("example_kind", "the operation failed"), "operation_failure_invalid"),
-    (ToolFailure("seed_not_drawn", "raised by a script"), "operation_failure_invalid"),
-    (ToolFailure("no_kernel_source", "raised by a script"), KIND_OF_A_BACKEND_KIND),
-    (a_path_in_a_tool_failure, "operation_failure_invalid"),
-    (a_path_in_an_error, "operation_answer_invalid"),
+    (17, "operation_answer_invalid", False),
+    (ToolFailure("example_kind", RAISED), OUTSIDE, False),
+    (ToolFailure("seed_not_drawn", RAISED), OUTSIDE, False),
+    (ToolFailure("step_open", RAISED), OUTSIDE, False),
+    (ToolFailure("no_kernel_sources", RAISED), OUTSIDE, False),
+    (ToolFailure("operation_failure_invalid", RAISED), OUTSIDE, False),
+    (ToolFailure("no_kernel_source", RAISED), "no_kernel_source", True),
+    (
+        ToolFailure("kernel_source_unreadable", RAISED),
+        "kernel_source_unreadable",
+        True,
+    ),
+    (a_path_in_a_tool_failure, OUTSIDE, False),
+    (a_path_in_an_error, "operation_answer_invalid", False),
 ]
 
 
-@pytest.mark.parametrize("script,kind", ENDINGS)
-def test_a_check_without_an_outcome_ends_the_step_with_that_failure(root, script, kind):
+@pytest.mark.parametrize("script,kind,as_raised", ENDINGS)
+def test_a_check_without_an_outcome_ends_the_step_with_that_failure(
+    root, script, kind, as_raised
+):
     bench = Bench(root, script=script)
     failure = bench.failure()
     assert failure.kind == kind
+    assert (failure.message == RAISED) is as_raised
+    assert (RAISED in failure.message) is as_raised
     started, ended = lines(root)
     assert started["data"] == {"step": "correctness_check_sim", "execution": 1}
     assert ended["data"] == {
@@ -748,6 +767,59 @@ def test_a_check_without_an_outcome_ends_the_step_with_that_failure(root, script
     repeated = again.failure()
     assert (repeated.kind, repeated.message) == (kind, failure.message)
     assert (again.asked, again.order, log_bytes(root)) == ([], [], before)
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+@pytest.mark.parametrize("kind", THE_TWO)
+def test_a_backend_kind_a_script_raises_is_the_failure_of_the_end_line(
+    root, recorded, kind, point
+):
+    asked = request(point=point)
+    bench = Bench(root, script=ToolFailure(kind, RAISED))
+    failure = bench.failure(asked)
+    assert (failure.kind, failure.message) == (kind, RAISED)
+    assert failure.__cause__ is None
+    assert bench.count("operation") == 1
+    started, ended = lines(root)
+    assert started["kind"] == "step_started"
+    assert ended["data"] == {
+        "step": f"correctness_check_{point}",
+        "execution": 1,
+        "spend": {},
+        "failure": {"kind": kind, "message": RAISED},
+    }
+    before = log_bytes(root)
+    del recorded[:]
+    again = Bench(root, seeds=(), script=RuntimeError("must not be asked"))
+    repeated = again.failure(asked)
+    assert (repeated.kind, repeated.message) == (kind, RAISED)
+    assert (again.asked, again.order, log_bytes(root)) == ([], [], before)
+    assert "select" not in recorded
+    further = Bench(root).function(request(point=point, execution=2))
+    assert further["outcome"] == "pass"
+    assert [line["data"]["execution"] for line in lines(root)] == [1, 1, 2, 2]
+
+
+def test_a_backend_kind_whose_message_shows_the_output_path_is_not_detected(root):
+    bench = Bench(root, script=a_path_in_a_backend_kind)
+    failure = bench.failure()
+    shown = f"nothing lies at {output_of(root, request())}"
+    assert str(root) in shown
+    assert (failure.kind, failure.message) == ("no_kernel_source", shown)
+    assert lines(root)[1]["data"]["failure"] == {
+        "kind": "no_kernel_source",
+        "message": shown,
+    }
+    again = Bench(root, seeds=(), script=RuntimeError("must not be asked"))
+    assert again.failure().message == shown
+    assert again.asked == []
+
+
+def test_the_default_script_raises_neither_backend_kind(root):
+    bench = Bench(root, seeds=(SEED, SEED))
+    assert bench.function(request())["outcome"] == "pass"
+    assert bench.function(request(point="board"))["outcome"] == "pass"
+    assert b"kernel_source" not in log_bytes(root)
 
 
 def test_a_request_to_end_out_of_the_operation_leaves_the_identity_open(root):
