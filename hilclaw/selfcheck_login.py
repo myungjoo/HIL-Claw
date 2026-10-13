@@ -38,20 +38,23 @@ Conventions of this module (the record leaves them to the code):
   refuses it, before anything is started.
 - The record names no working directory for this call, so none is chosen:
   ``cwd`` is passed through and ``None`` inherits. A ``cwd`` that is not a
-  directory is the caller's error (:class:`FileNotFoundError`), checked before
-  the start so that it is not read as :data:`NO_CLAUDE`.
+  directory when the call begins is the caller's error
+  (:class:`FileNotFoundError`) and nothing is started.
 - "One JSON object" is the whole standard output decoded as strict UTF-8 and
   parsed as strict JSON, white space around the object allowed. A byte order
   mark, invalid UTF-8, a second value, ``NaN`` or ``Infinity`` anywhere, and
-  nesting too deep to parse are not one JSON object. An object that holds the
-  key ``authMethod`` more than once has no single answer and is read as having
+  nesting too deep to parse are not one JSON object. Integers are not
+  converted, so their length does not matter. An object that holds the key
+  ``authMethod`` more than once has no single answer and is read as having
   none.
 - ``auth_method`` is carried, under the rule above, whenever the output is one
   JSON object with a string ``authMethod``, whatever the outcome (after the
   time limit: the output captured until then); otherwise it is ``None``.
   Nothing is concluded from it except what "logged in" says.
 - :data:`NO_CLAUDE` covers the lookup that finds nothing and every
-  :class:`OSError` of the call, a file the system cannot execute included.
+  :class:`OSError` of the call: a file the system cannot execute, and also a
+  start that failed for a reason other than the program, such as a ``cwd``
+  that cannot be entered or that vanished after the check above.
 
 Known limits. Whoever controls the ``PATH`` or the environment decides what is
 seen (ADR-0054 L6). Any ``authMethod`` other than ``none``, an API key
@@ -141,12 +144,17 @@ def _not_json(constant):
     raise ValueError(constant)
 
 
+def _unread(_digits):
+    return 0
+
+
 def _auth_method(output):
     try:
         value = json.loads(
             output.decode("utf-8"),
             object_pairs_hook=_Object,
             parse_constant=_not_json,
+            parse_int=_unread,
         )
     except (ValueError, RecursionError):
         return None

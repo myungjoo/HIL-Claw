@@ -107,8 +107,8 @@ def stub(tmp_path, monkeypatch):
     return Stub(directory)
 
 
-def assert_nothing_leaked(status, capsys):
-    captured = capsys.readouterr()
+def assert_nothing_leaked(status, capfd):
+    captured = capfd.readouterr()
     for text in (repr(status), str(tuple(status)), captured.out, captured.err):
         for secret in SECRETS:
             assert secret not in text
@@ -161,7 +161,7 @@ def test_public_names():
 
 
 @pytest.mark.parametrize("method", LOGGED_IN_METHODS)
-def test_logged_in_with_a_documented_method(method, stub, monkeypatch, capsys):
+def test_logged_in_with_a_documented_method(method, stub, monkeypatch, capfd):
     monkeypatch.setenv("HILCLAW_TEST_MARK", "marked")
     stub.answers(status_output(method))
     status = read(timeout_s=TIMEOUT)
@@ -171,20 +171,25 @@ def test_logged_in_with_a_documented_method(method, stub, monkeypatch, capsys):
     assert call["argv"] == ["auth", "status"]
     assert call["stdin"] == ""
     assert call["mark"] == "marked"
-    assert_nothing_leaked(status, capsys)
+    assert_nothing_leaked(status, capfd)
 
 
 @pytest.mark.parametrize("method", UNLISTED_METHODS)
-def test_logged_in_with_an_unlisted_method_carries_other(method, stub, capsys):
+def test_logged_in_with_an_unlisted_method_carries_other(method, stub, capfd):
     stub.answers(status_output(method))
     status = read(timeout_s=TIMEOUT)
     assert status == LoginStatus(None, "other", 0, False)
     assert len(stub.calls()) == 1
-    assert_nothing_leaked(status, capsys)
+    assert_nothing_leaked(status, capfd)
 
 
 def test_white_space_around_the_object_is_allowed(stub):
     stub.answers(b' \r\n\t{"authMethod": "claude.ai"} \n\n')
+    assert read(timeout_s=TIMEOUT) == LoginStatus(None, "claude.ai", 0, False)
+
+
+def test_the_size_of_a_number_does_not_matter(stub):
+    stub.answers(b'{"authMethod": "claude.ai", "n": ' + b"9" * 10_000 + b"}")
     assert read(timeout_s=TIMEOUT) == LoginStatus(None, "claude.ai", 0, False)
 
 
@@ -227,12 +232,12 @@ def test_timeout_accepts_int_and_float(stub):
         (status_output("sso"), "other"),
     ],
 )
-def test_exit_status_one_is_not_logged_in(output, method, stub, capsys):
+def test_exit_status_one_is_not_logged_in(output, method, stub, capfd):
     stub.answers(output, code=1)
     status = read(timeout_s=TIMEOUT)
     assert status == LoginStatus(NOT_LOGGED_IN, method, 1, False)
     assert len(stub.calls()) == 1
-    assert_nothing_leaked(status, capsys)
+    assert_nothing_leaked(status, capfd)
 
 
 UNREADABLE_OUTPUTS = {
@@ -274,7 +279,6 @@ UNREADABLE_OUTPUTS = {
         b'{"authMethod": "claude.ai", "n": ' + b"[" * 200_000 + b"]" * 200_000 + b"}",
         None,
     ),
-    "huge number": (b'{"authMethod": "claude.ai", "n": ' + b"9" * 10_000 + b"}", None),
 }
 
 
@@ -282,13 +286,13 @@ UNREADABLE_OUTPUTS = {
     "output, method", UNREADABLE_OUTPUTS.values(), ids=UNREADABLE_OUTPUTS.keys()
 )
 def test_exit_status_zero_with_another_output_is_unreadable(
-    output, method, stub, capsys
+    output, method, stub, capfd
 ):
     stub.answers(output)
     status = read(timeout_s=TIMEOUT)
     assert status == LoginStatus(LOGIN_UNREADABLE, method, 0, False)
     assert len(stub.calls()) == 1
-    assert_nothing_leaked(status, capsys)
+    assert_nothing_leaked(status, capfd)
 
 
 def test_logged_in_member_without_a_method_is_unreadable(stub):
@@ -297,16 +301,16 @@ def test_logged_in_member_without_a_method_is_unreadable(stub):
 
 
 @pytest.mark.parametrize("code", [2, 3, 127, 255])
-def test_another_exit_status_is_unreadable(code, stub, capsys):
+def test_another_exit_status_is_unreadable(code, stub, capfd):
     stub.answers(status_output("claude.ai"), code=code)
     status = read(timeout_s=TIMEOUT)
     assert status == LoginStatus(LOGIN_UNREADABLE, "claude.ai", code, False)
     assert len(stub.calls()) == 1
-    assert_nothing_leaked(status, capsys)
+    assert_nothing_leaked(status, capfd)
 
 
 @posix_only
-def test_a_child_ended_by_a_signal_is_unreadable(stub, capsys):
+def test_a_child_ended_by_a_signal_is_unreadable(stub, capfd):
     stub.install(
         f"out.write({status_output('claude.ai')!r}); out.flush()\n"
         "os.kill(os.getpid(), signal.SIGKILL)"
@@ -314,36 +318,36 @@ def test_a_child_ended_by_a_signal_is_unreadable(stub, capsys):
     status = read(timeout_s=TIMEOUT)
     assert status == LoginStatus(LOGIN_UNREADABLE, "claude.ai", -signal.SIGKILL, False)
     assert len(stub.calls()) == 1
-    assert_nothing_leaked(status, capsys)
+    assert_nothing_leaked(status, capfd)
 
 
-def test_the_time_limit_is_unreadable(stub, capsys):
+def test_the_time_limit_is_unreadable(stub, capfd):
     stub.install(
         f"out.write({status_output('claude.ai')!r}); err.write({STDERR!r})\n"
-        "out.flush(); err.flush(); time.sleep(10)"
+        "out.flush(); err.flush(); time.sleep(12)"
     )
     before = time.monotonic()
-    status = read(timeout_s=3)
+    status = read(timeout_s=5)
     assert time.monotonic() - before < 30
     assert status == LoginStatus(LOGIN_UNREADABLE, "claude.ai", None, True)
     assert len(stub.calls()) == 1
-    assert_nothing_leaked(status, capsys)
+    assert_nothing_leaked(status, capfd)
 
 
 def test_the_time_limit_with_no_output_carries_no_method(stub):
-    stub.install("time.sleep(10)")
-    assert read(timeout_s=3) == LoginStatus(LOGIN_UNREADABLE, None, None, True)
+    stub.install("time.sleep(12)")
+    assert read(timeout_s=5) == LoginStatus(LOGIN_UNREADABLE, None, None, True)
     assert len(stub.calls()) == 1
 
 
-def test_no_claude_on_the_path(stub, capsys):
+def test_no_claude_on_the_path(stub, capfd):
     status = read(timeout_s=TIMEOUT)
     assert status == LoginStatus(NO_CLAUDE, None, None, False)
     assert stub.calls() == []
-    assert_nothing_leaked(status, capsys)
+    assert_nothing_leaked(status, capfd)
 
 
-def test_a_claude_file_that_is_not_a_program_is_no_claude(stub, capsys):
+def test_a_claude_file_that_is_not_a_program_is_no_claude(stub, capfd):
     marker = stub.directory / "ran"
     program = stub.directory / "claude"
     program.write_text(
@@ -354,17 +358,17 @@ def test_a_claude_file_that_is_not_a_program_is_no_claude(stub, capsys):
     status = read(timeout_s=TIMEOUT)
     assert status == LoginStatus(NO_CLAUDE, None, None, False)
     assert not marker.exists()
-    assert_nothing_leaked(status, capsys)
+    assert_nothing_leaked(status, capfd)
 
 
 @posix_only
-def test_a_claude_file_the_system_cannot_execute_is_no_claude(stub, capsys):
+def test_a_claude_file_the_system_cannot_execute_is_no_claude(stub, capfd):
     program = stub.directory / "claude"
     program.write_bytes(b"\x00\x01\x02 " + EMAIL.encode() + b"\n")
     program.chmod(0o755)
     status = read(timeout_s=TIMEOUT)
     assert status == LoginStatus(NO_CLAUDE, None, None, False)
-    assert_nothing_leaked(status, capsys)
+    assert_nothing_leaked(status, capfd)
 
 
 def test_nothing_is_retried(stub):
