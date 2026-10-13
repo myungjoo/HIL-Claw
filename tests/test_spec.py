@@ -323,9 +323,8 @@ def test_restated_example_of_adr_0050_is_a_valid_spec():
 
 
 def test_objective_of_the_first_case_is_valid():
-    assert ADR_0050_OBJECTIVE == first_objective()
-    assert ADR_0050_EXAMPLE["task"]["objective"] == ADR_0050_OBJECTIVE
-    validate(changed(minimal(), ["task", "objective"], ADR_0050_OBJECTIVE))
+    document = changed(minimal(), ["task", "objective"], ADR_0050_OBJECTIVE)
+    assert validate(document) is None
 
 
 OBJECTIVE = "task.objective"

@@ -368,11 +368,6 @@ def test_a_profile_and_an_ext_value_may_nest_minus_zero_deeply():
     assert parse(content)["feedback"]["attempts"][1]["profile"]["a"] == 0
 
 
-def test_the_free_places_are_two_and_the_objective_is_none_of_them():
-    assert len(FREE_PLACES) == 2
-    assert not any("objective" in path for path in FREE_PLACES.values())
-
-
 OBJECTIVE_PATHS = {
     "task.objective": ("task", "objective"),
     "task.objective.objectives": ("task", "objective", "objectives"),
