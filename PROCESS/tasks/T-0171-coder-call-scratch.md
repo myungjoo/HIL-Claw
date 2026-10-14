@@ -82,3 +82,10 @@ A new module (suggested `hilclaw/scratch.py`; the name is the executor's) with t
 - (commit body) ADR-0049 is within its objection window (notice 2026-10-13); an objection creates a reverting task and this module is reverted with it.
 
 ## Result
+- **Outcome**: DONE. PR #119 (squash-merged; see the driver's record for the merge commit). New module `hilclaw/scratch.py` (294 lines, docstrings included) and `tests/test_scratch.py`; no other file of the package edited.
+- **Language**: Python, as the rest of the `hilclaw` package; standard library only.
+- **Public names**: `create(spec_path, *, parent=None, keep_out=()) -> str`, `remove(scratch, *, keep_out=()) -> bool`, `SPEC_COPY_NAME = "spec.json"`, `PREFIX = "hilclaw-coder-"`, `InvalidScratchArgumentError(ValueError)`, `ScratchError` with `failure` in `SCRATCH_FAILURES = (SPEC_UNREADABLE, SPEC_NOT_REGULAR_FILE, SPEC_CHANGED)`.
+- **Choices left to the task**: the source is read whole (no bound); `remove` retries within about two seconds (pauses 0, 0.2, 0.6, 1.2 s, as `selfcheck_session`), and before each retry gives every directory below the root reached without following a link the owner's rwx bits and, on Windows, clears read-only on regular files. That step is an lstat-then-chmod race on every platform, stated in the docstring with the Windows `rmtree` race (review round 1).
+- **Review**: reviewer approved in round 1 with one minor (the chmod race was documented as Windows-only) and one nit (a test that exercised no new path); both addressed, then re-reviewed (rounds counted in the PR comments).
+- **CI**: round 1 head failed on Linux (`stat.IO_REPARSE_TAG_MOUNT_POINT` exists on Windows only; a test fake of `os.open` did not accept `dir_fd` used by `rmtree`); fixed, all six jobs green. `hilclaw/scratch.py` line coverage 99 % on Linux (the two uncovered lines are the Windows-only read-only clearing).
+- **Follow-ups**: none new beyond those listed above.
