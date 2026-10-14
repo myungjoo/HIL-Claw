@@ -2,7 +2,7 @@
 id: T-0177
 title: Bring the module docstring of check_operation.py in line with ADR-0047 on a tool failure an operation raises
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0159, T-0175]
@@ -117,3 +117,10 @@ The task is small, self-contained cleanup that depends on no open HQ. The substa
 - (integrator, document mode) The "now less exact" sentences that ADR-0047 lists (ADR-0043 decision 6, ADR-0045 Status/decisions 4 and 8/Walk-through, ADR-0040), and those of ADR-0050, ADR-0052 and ADR-0053 (T-0175 Follow-ups).
 
 ## Result
+
+- DONE. PR #123 squash-merged as 50f6b7e (branch deleted). Review: 1 round, Approve (one Nit, no change needed: the bullet states the ADR-0047 rule; the `str` check of the message is `check_failure`'s own choice). CI green in all six jobs on 4a694c8; coverage of `hilclaw/`: lines 99.62% (5002/5021), functions 100% (492/492). Local: pytest 18605 passed / 351 skipped; ruff check and format clean; diff is docstring-only in `hilclaw/check_operation.py`, `i/lf`.
+- Bullet, old: "That is no rule of a record: what a tool function does with a tool failure an operation raises is open (decision 8; OD-18 sub-question 10, third clause), and nothing here decides it."
+- Bullet, new: "That is no rule of a record. What the tool function then does with it is the rule of ``ADR-0047``: the step is ended with a ``failure`` (its decision 3), which holds the raised kind and message for a backend kind and otherwise the tool's own kind ``operation_failure_invalid`` (its decisions 4 and 5). The code gives that kind and message with `check_failure.ended_with`, joined with `ask` in `check_ending.carry_out`."
+- Last paragraph, old: "..., nor of what a tool function does with a tool failure an operation raises." New: "..., and it does not render what a tool function does with a tool failure an operation raises." (edited because the bullet now states that rule).
+- Point 3: no other module-docstring sentence called something undecided that ADR-0047 or ADR-0056 decision 6 decides. No test asserts on the edited text. Issue #5: no owner comment after 6160644223 (only the driver's HQ-0020 mirror); no HQ answered.
+- Follow-up (outside the module docstring, so not edited): the `ask` docstring, case 3, says "No record gives this a rule (see the module docstring)". It is still true if "this" means handing the object on, but a later task could make it say so plainly.
