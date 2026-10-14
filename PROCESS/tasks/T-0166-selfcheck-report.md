@@ -2,7 +2,7 @@
 id: T-0166
 title: Add `hilclaw/selfcheck_report.py`, the report of the runtime self-check (ADR-0054 decision 7) - pure functions from the values the landed modules return (`LoginStatus`, `SessionRun` or none) to the one JSON object on one line built from named members only, and from an outcome word to the exit status of the check; no process, no `claude`, no command of the package, no time limit, bound to nothing
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, C-7, OD-18, D16, "#5 D12"]
 dependsOn: [T-0153, T-0160, T-0162, T-0163, T-0164, T-0165]
@@ -133,3 +133,67 @@ No test starts a process. Values are built by hand from the public NamedTuples o
 - (driver / owner) HQ-0013, 0014, 0016, 0017, 0018 (`runtime-acceptance`).
 
 ## Result
+**DONE.** PR #115 (`https://github.com/myungjoo/HIL-Claw/pull/115`), squash-merged as `d489a43`; branch deleted. Two files: `hilclaw/selfcheck_report.py` (299 lines, docstring included; cap 300) and `tests/test_selfcheck_report.py`. No existing module was edited and no private name of another module is imported. This task ticks no PLAN checkbox.
+
+**D16.** No process and no `claude`, real or stub, was started by anyone - not by the executor, not by a reviewer, not by a test. `selfcheck_login.read` and `selfcheck_session.run` were never called; every value was built by hand. The reviewers were told to write no file and to start no `claude`.
+
+**Language.** Python: the module reads the NamedTuples of four Python modules of the package in-process (CLAUDE.md language policy). Standard library only; no new dependency; no data-plane schema change.
+
+**Process checks.** Landed check empty before the start; `gh pr list --state open` was empty. Issue #5 has no comment after the answer to HQ-0015 (`issuecomment-6149396163`): no objection to ADR-0054, no `T-0106 live check (owner)` comment, no answer to HQ-0016.
+
+**Review: 5 rounds, each a fresh-context `dev-reviewer` (`model: opus`); verdicts Request changes, Approve, Approve, Approve, Approve; no `SECURITY` result.**
+1. Request changes. (Low, required) a listed tool name was compared with the word `other` before its type was looked at, so a hand-built value with a comparison of its own could raise its own text out of `build`. Fixed: the type is checked first (`3f90d38`). (Low, optional) integers had no bound: a long digit run could reach the line and `line` refused a dict that `build` returned for an integer past the interpreter's digit limit. Fixed: an integer of 2**32 or more in size is refused. (Nits) the gate paragraph of the docstring; the leak helper of the tests depended on the machine's names. Both fixed. (Info) what the record's own bound lets through - see Follow-ups.
+2. Approve. Nits: two fixed texts picked by tuple position in a test; one hard-to-read docstring sentence. Both fixed (`1dea10e`).
+3. Approve. Nit: three fixed texts written twice in the test file. Fixed (`ce28f51`). Notes for this section (below).
+4. Approve. (Low, optional) `line` let the exception of a `dict` or `list` subclass inside the report through with its own text. Fixed: every exception of the writing is the one fixed `TypeError` (`cc85c5d`).
+5. Approve, no change asked. Nits kept: `contextlib.suppress(Exception)` also turns a fault that is not the report's (a `MemoryError`) into that `TypeError`; `SystemExit` and `KeyboardInterrupt` still pass, on purpose. Neither is reachable with a report `build` returned.
+
+**CI.** Run 38494151214 on the head `cc85c5d`: all six jobs green. Coverage gate: `hilclaw/` lines 4577/4593 = 99.65%, functions 456/456 = 100.00%; `hilclaw/selfcheck_report.py` has no line among those not executed (100%). **One failing run, an executor's mistake:** run 38491262976 on `3f90d38` failed in both Python gates - that commit was pushed with six failing cases of one new test (a command chain committed although the test run before it had failed). Fixed by the next commit `43a8f92`; the four later runs are green; not three in a row. Local (Windows, CPython 3.14.4) on the head: `python -m pytest` 17926 passed, 313 skipped; `ruff check` and `ruff format --check` clean. Gates: `git diff --stat origin/main` listed the two files only; both `i/lf`; `git diff --check` clean.
+
+**Public names of `hilclaw.selfcheck_report` as landed.**
+- `build(login, run, *, system) -> dict` - `login`: a `selfcheck_login.LoginStatus`; `run`: a `selfcheck_session.SessionRun` or `None` (no session step was run); `system`: a `SystemFacts`. Pure.
+- `line(report) -> bytes` - one compact ASCII JSON object and one LF, through `hilclaw.tools.encode`; member order as built.
+- `exit_status(outcome) -> int`.
+- `system_facts() -> SystemFacts` - `platform.system()`, `platform.release()`, `platform.python_version()`; the one function that reads anything.
+- `SystemFacts(NamedTuple)`: `os_name`, `os_release`, `python_version`.
+- `EXIT_PASSED` 0, `EXIT_NO_CLAUDE` 10, `EXIT_NOT_LOGGED_IN` 11, `EXIT_LOGIN_UNREADABLE` 12, `EXIT_FRONT_REFUSED` 13, `EXIT_NO_CALL` 14, `EXIT_SESSION_FAILED` 15.
+- No constant holds the member names (the planner's suggestion was not taken: the five tuples cost 45 lines of the cap); the docstring lists them in the order written and the tests compare that order.
+
+**The members, in the order written** (name - source - when absent or `null`).
+- Top level:
+  - `outcome` - `decide(login.outcome, run.session, run.wire, torn=run.torn).outcome`, or `decide(login.outcome, SessionEvidence(), None).outcome` without a `SessionRun` - always.
+  - `refused_a`, `refused_b` - `Verdict.refused_a`, `refused_b` - always (false for every outcome but `front_refused`).
+  - `instruction` - `selfcheck_login.LOGIN_INSTRUCTION` - left out unless the outcome is `not_logged_in`; never `null`.
+  - `login`, `system` - always. `session` - left out when `run` is `None`. `wire` - left out when `run.wire` is `None`.
+- `login`: `auth_method` (`LoginStatus.auth_method`; one of the six values, `other`, or `null` when `None`), `exit_status` (`returncode`; `null` when `None`), `timed_out`.
+- `system`: `os_name`, `os_release`, `python_version` (the `SystemFacts`; `other` outside the bound, `null` when `None`).
+- `session`: `started`, `init_read`, `result_read`, `exit_status` (`null` when `None`), `timed_out` (all of `run.session`); `wire_copy_read` (`run.wire is not None`); `tools`, `tools_dropped` (`run.stream.session_tools`, `session_tools_dropped`; an empty list and false when `run.stream` is `None`); `token_tool_listed`, `fail_tool_listed`, `token_in_reply`, `fail_token_in_reply` (`run.session`); `directory_removed` (`run.removed`).
+- `wire`: `initialize_seen` (`WireFacts.reached`), `client_version`, `revision_asked`, `revision_answered` (`null` when `None`), `probe_seen`, `probe_before_initialize`, `probe_revision` (`null` when `None`), `probe_error` (`null` when `None`), `token_call_requested`, `token_call_answered`, `fail_call_requested`, `fail_call_answered`, `unforeseen_methods` (`WireFacts.unforeseen`), `unforeseen_dropped`.
+- "How far the session got": `session.started`, `session.init_read`, the server started = `session.wire_copy_read` and `wire.initialize_seen` (two facts), `session.result_read`, with `session.exit_status` and `session.timed_out`.
+- The names `outcome`, `exit_status` and `tools` also occur in other outputs of the package (tool results, the MCP front); none is a member name of `instance.json`, `events.ndjson` or the run's `STATE.json`, and none is `schema_version`.
+
+**Example lines** (system facts given by hand).
+- `passed`: `{"outcome":"passed","refused_a":false,"refused_b":false,"login":{"auth_method":"claude.ai","exit_status":0,"timed_out":false},"system":{"os_name":"Linux","os_release":"6.8.0-45-generic","python_version":"3.14.4"},"session":{"started":true,"init_read":true,"result_read":true,"exit_status":0,"timed_out":false,"wire_copy_read":true,"tools":["mcp__hilclaw__selfcheck_token","mcp__hilclaw__selfcheck_fail"],"tools_dropped":false,"token_tool_listed":true,"fail_tool_listed":true,"token_in_reply":true,"fail_token_in_reply":true,"directory_removed":true},"wire":{"initialize_seen":true,"client_version":"2.1.280","revision_asked":"2025-11-25","revision_answered":"2025-06-18","probe_seen":true,"probe_before_initialize":true,"probe_revision":"2026-07-28","probe_error":-32601,"token_call_requested":true,"token_call_answered":true,"fail_call_requested":true,"fail_call_answered":true,"unforeseen_methods":[],"unforeseen_dropped":false}}`
+- `not_logged_in`: `{"outcome":"not_logged_in","refused_a":false,"refused_b":false,"instruction":"Nothing is logged in. Run `claude auth login`.","login":{"auth_method":"none","exit_status":1,"timed_out":false},"system":{"os_name":"Linux","os_release":"6.8.0-45-generic","python_version":"3.14.4"}}`
+
+**Exit status of each outcome.** `passed` 0; `no_claude` 10; `not_logged_in` 11; `login_unreadable` 12; `front_refused` 13; `no_call` 14; `session_failed` 15. A value that is no string: `TypeError`; a string that is no outcome word: `ValueError`.
+
+**Conventions chosen under "Left to this task".**
+- *Names and form*: as the planner suggested (`build`, `line`, `exit_status`, `system_facts`, a plain `dict`), grouped as `login` / `system` / `session` / `wire` by the source value, so that the absent-or-null rule is one rule per group.
+- *Absent or null*: a group is left out when its source does not exist; a member of a group that exists is always written and is `null` when its value is `None`; `instruction` is left out, never `null`. `refused_a` and `refused_b` are always written: the `Verdict` always has them.
+- *The gate*: the client version, the three revisions and a tool name are written only as 1 to 64 characters of ASCII letters, digits, `.`, `_`, `-`; a method name also `/`; any other value but `None`, a non-string or a string of another class included, is `other` (in a list `None` too). `auth_method`: one of the six, else `other`. A tool name that is no string or lacks the prefix is left out; **the reader's own `other` is kept** (the executor's reading of criterion 4: that word stands for a prefixed name the reader already replaced, and leaving it out would hide that such a name was there - re-checked by five reviewers, none objected). Each list holds every distinct value once and at most 16; `..._dropped` is true when the source said so or one was cut here.
+- *System facts*: the three `platform` calls and nothing else. The gate is applied to them too, with `+` allowed (a Python build or a kernel release can end in it), so the line stays short whatever a platform states; a value outside it, the empty one included, is `other`. This is narrower than "as the interpreter states them" for an unusual value; it was the executor's to choose and is said in the docstring.
+- *Integers* (added in review round 1): an exit status or the probe's error code is refused when it is no `int` or is 2**32 or more in size (POSIX signals and Windows statuses are inside), so no long digit run reaches the line.
+- *Exit statuses*: one distinct value per outcome, 10 to 15 in the order of `OUTCOMES`; none of 1, 2, 3, 4, 120 or 126 and above.
+- *Contradictions*: a `login.outcome` that is not `None` with a `SessionRun`, and one that is `None` without, are `ValueError` with one fixed text; nothing else is cross-checked (for example the `stream` against the `session`). The refusals of `decide` pass through with their own fixed texts.
+- *Refusals* (`TypeError`, fixed texts): a `login`, `run`, `system` or `stream` of another type; a list of names that is no tuple; a yes-or-no value that is not exactly `True` or `False` (every one is checked again here, also those `decide` does not read); `line` for a value that is no `dict` or cannot be written.
+- *`stream` is `None`*: `tools` is an empty list and `tools_dropped` false (the group exists).
+- *`line`* writes the `dict` it is given; the gate is `build`.
+
+**What the record's bound lets through (observed, not decided here).** A string inside the bound is written whatever it means: an unforeseen method name such as `/home/alice/x` is written as it is (line 138 allows `/`), and a client version or a tool name of 32 hexadecimal characters is written too. The module cannot refuse either without inventing a rule; the docstring says so.
+
+**Follow-ups.**
+- (planner, code mode, D12; the next task, **which ticks PLAN P1-9**) The composition and the command: `login = selfcheck_login.read(timeout_s=...)`; only when `login.outcome is None`, `run = selfcheck_session.run(timeout_s=..., keep_out=(<the data root>,))`, else `run = None` (**never pass a `SessionRun` with a step one that did not say logged in, and never `None` when it did: `build` refuses both**); `report = selfcheck_report.build(login, run, system=selfcheck_report.system_facts())`; write `selfcheck_report.line(report)` to standard output; return `selfcheck_report.exit_status(report["outcome"])`. **Its own fault status must not be 0, 1, 2, 3, 4, 10 to 15, 120 or 126 and above.** `build` raises `TypeError` / `ValueError` only for values the two steps never return; `system_facts()` is the one impure call here and on Windows the standard library may start the `ver` command to learn the release (not `claude`; read in the library's source, not tried).
+- (planner, document mode, §9; questions for ADR-0054, not decided in code) Line 138 (a method name may hold `/`) against line 139 (no path in the report), and that a token-shaped string passes the bound; the member `directory_removed` together with line 93 against `removed=False` (T-0165); whether the report should carry what decision 7 does not list (the error codes of condition (a), the status word of the server, `torn`, an unplaceable line); the bound this module applies to the system facts against "as the interpreter states them"; the three of T-0163, the two costs of T-0164 and the three provisional names of T-0165.
+- (planner, document mode, after P1-9) The README sentence on the precondition (owner, O5).
+- (owner / runtime acceptance, HQ-0016) Nothing of it was closed here.
