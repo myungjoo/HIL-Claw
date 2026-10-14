@@ -512,8 +512,9 @@ yet (ADR-0053 L5). A file it accepts need not state a target; that an
 instance states one is FR-2's, and where that is checked is open (ADR-0053
 decision 5; OD-8 sub-question 34 (i)).
 Which call reads the member and what it answers when none is stated is not
-said (ADR-0053 decision 7; OD-13 sub-question 10); "not stated" is no error
-of the content here either, this module gives it no tool-failure kind, and
+said: those are the contracts of the run tools (ADR-0053 decision 7; OD-18;
+OD-13 sub-question 10); "not stated" is no error of the content here either,
+this module gives it no tool-failure kind, and
 :func:`objective_of` is bound to no tool, to no spec and to nothing that
 judges a candidate.
 Of the layout version it gives what the ``schema_version`` of a valid file
