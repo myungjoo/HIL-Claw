@@ -79,9 +79,9 @@ output, **not of a data-plane schema**: the report is no record of
   no ``SystemFacts``, a ``stream`` that is neither ``None`` nor a
   ``StreamFacts``, a list of names that is no tuple, a yes-or-no value that
   is not ``True`` or ``False``, an integer value that is neither ``None`` nor
-  an ``int`` below 2**32 in size (``True`` is none). ``decide``'s pass on. By
-  :func:`exit_status`: no string (:class:`TypeError`), no outcome word
-  (:class:`ValueError`). By :func:`line`: a value that is no ``dict`` or
+  an ``int`` below 2**32 in size (``True`` is none). Those of ``decide`` pass
+  through. By :func:`exit_status`: no string (:class:`TypeError`), no outcome
+  word (:class:`ValueError`). By :func:`line`: a value that is no ``dict`` or
   cannot be written as JSON (:class:`TypeError`).
 
 **What a report holds**: booleans, integers, ``null``, the strings of the

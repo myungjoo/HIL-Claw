@@ -70,6 +70,9 @@ ERROR_TEXTS = (
     "the errors of the wire facts must be a tuple",
     "the exit status must be None or an integer",
 )
+CONTRADICTION_TEXT = "a session step goes with a step one that says logged in"
+INTEGER_TEXT = "an integer value must be None or an integer of 32 bits"
+DECIDE_EXIT_STATUS_TEXT = "the exit status must be None or an integer"
 SYSTEM = SystemFacts("Linux", "6.8.0-45-generic", "3.14.4")
 LOGGED_IN = LoginStatus(None, "claude.ai", 0, False)
 NOT_IN = LoginStatus(NOT_LOGGED_IN, "none", 1, False)
@@ -831,7 +834,7 @@ def test_system_facts_of_another_form_are_refused(system):
 def test_values_that_contradict_each_other_are_refused(login, run):
     with pytest.raises(ValueError) as caught:
         build(login, run, system=SYSTEM)
-    assert str(caught.value) == ERROR_TEXTS[4]
+    assert str(caught.value) == CONTRADICTION_TEXT
 
 
 @pytest.mark.parametrize(
@@ -903,17 +906,22 @@ def test_a_yes_or_no_value_of_another_form_is_refused(make, value):
     [
         lambda v: (LOGGED_IN._replace(returncode=v), PASS_RUN),
         lambda v: (LOGGED_IN, with_wire(probe_error=v)),
-        lambda v: (
-            LOGGED_IN,
-            PASS_RUN._replace(session=SESSION._replace(exit_status=v)),
-        ),
     ],
 )
 def test_an_integer_of_another_form_is_refused(make, value):
     login, run = make(value)
     with pytest.raises(TypeError) as caught:
         build(login, run, system=SYSTEM)
-    assert str(caught.value) in (ERROR_TEXTS[7], ERROR_TEXTS[-1])
+    assert str(caught.value) == INTEGER_TEXT
+
+
+@pytest.mark.parametrize("value", NOT_INTEGERS, ids=label)
+def test_a_session_exit_status_of_another_form_is_refused(value):
+    run = PASS_RUN._replace(session=SESSION._replace(exit_status=value))
+    with pytest.raises(TypeError) as caught:
+        build(LOGGED_IN, run, system=SYSTEM)
+    expected = INTEGER_TEXT if type(value) is int else DECIDE_EXIT_STATUS_TEXT
+    assert str(caught.value) == expected
 
 
 def test_the_exit_statuses():
