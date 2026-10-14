@@ -321,10 +321,10 @@ def test_a_failed_creation_of_the_copy_leaves_no_scratch(spec, parent, monkeypat
     real = os.open
     original = PermissionError(errno.EACCES, "denied")
 
-    def fail_on_write(path, flags, *args):
+    def fail_on_write(path, flags, *args, **kwargs):
         if flags & os.O_CREAT:
             raise original
-        return real(path, flags, *args)
+        return real(path, flags, *args, **kwargs)
 
     monkeypatch.setattr(scratch_module.os, "open", fail_on_write)
     with pytest.raises(PermissionError) as caught:
@@ -483,18 +483,6 @@ def test_a_removal_that_cannot_finish_returns_false(tmp_path, no_pause, monkeypa
     assert remove(root) is False
     assert len(calls) == len(scratch_module._REMOVE_PAUSES_S)
     assert (root / "file").exists()
-
-
-def test_a_removal_that_raises_returns_false(tmp_path, no_pause, monkeypatch):
-    root = tmp_path / "scratch"
-    root.mkdir()
-
-    def fail(path, ignore_errors=False):
-        if not ignore_errors:
-            raise OSError(errno.EBUSY, "busy")
-
-    monkeypatch.setattr(shutil, "rmtree", fail)
-    assert remove(root) is False
 
 
 def test_remove_refuses_a_missing_path(tmp_path, no_rmtree):

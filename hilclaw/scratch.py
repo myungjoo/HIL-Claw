@@ -39,7 +39,10 @@ Conventions of this module, which are not rules of the records:
   each retry, every directory below the root reached without following a
   link is given the owner's read, write and search permission and, on
   Windows, every regular file loses its read-only attribute (a coder can
-  ``chmod`` what it made). The same race applies to that step.
+  ``chmod`` what it made). That step checks each directory with
+  :func:`os.lstat` and then changes it by its path, so on every platform a
+  directory swapped for a link in between gives the link's target those
+  owner bits: the same race, not closed either.
 - What is raised: :class:`InvalidScratchArgumentError` for an argument that
   cannot be what it stands for, :class:`TypeError` for a ``keep_out`` given
   as one path, :class:`ScratchError` for a source that cannot be copied, and
@@ -72,6 +75,7 @@ SPEC_CHANGED = "spec_changed"
 SCRATCH_FAILURES = (SPEC_UNREADABLE, SPEC_NOT_REGULAR_FILE, SPEC_CHANGED)
 
 _PACKAGE_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_JUNCTION_TAG = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
 _REMOVE_PAUSES_S = (0.0, 0.2, 0.6, 1.2)
 _READ_FLAGS = (
     os.O_RDONLY
@@ -210,7 +214,7 @@ def _within(inner, outer):
 def _is_plain_directory(examined):
     return (
         stat.S_ISDIR(examined.st_mode)
-        and getattr(examined, "st_reparse_tag", 0) != stat.IO_REPARSE_TAG_MOUNT_POINT
+        and getattr(examined, "st_reparse_tag", 0) != _JUNCTION_TAG
     )
 
 
