@@ -188,7 +188,8 @@ def ask(operation, request, hw_profile, parameters, output_path, *, rtol, atol):
        :class:`hilclaw.tools.ToolFailure`: :class:`OperationAnswerInvalid`,
        whatever the class of the error is.
     3. It raised a ``ToolFailure``, of any kind: the same object is handed
-       on. No record gives this a rule (see the module docstring).
+       on, which is this module's own choice. What the tool function then
+       does with it is in the module docstring (ADR-0047).
     4. It raised a :class:`BaseException` that is no ``Exception``: it is not
        caught (ADR-0045 decision 5).
 
