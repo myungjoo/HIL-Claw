@@ -658,3 +658,13 @@ def test_the_order_does_not_depend_on_the_listing(scratch, place, output, monkey
     real = os.listdir
     monkeypatch.setattr(os, "listdir", lambda path: list(reversed(real(path))))
     assert bring_in(scratch, output) == tuple(sorted(names))
+
+
+def test_paths_without_a_common_path_are_apart(scratch, place, output, monkeypatch):
+    write(place, "gemm.c")
+
+    def commonpath(paths):
+        raise ValueError("Paths don't have the same drive")
+
+    monkeypatch.setattr(os.path, "commonpath", commonpath)
+    assert bring_in(scratch, output) == ("gemm.c",)
