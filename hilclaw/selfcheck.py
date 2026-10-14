@@ -51,12 +51,13 @@ name the data root is that module's.
   directory of the check that would lie inside a checkout included - and a
   standard output that the process does not have (seen before anything is
   started, so no session is spent) or that, after the check, cannot be
-  written or flushed or takes fewer bytes than the line. **It is not an eighth outcome and has no
-  report**: nothing is written to standard output unless the write or the
-  flush itself failed, so with this status whatever standard output holds
-  is no report. The value is none of 0, 1, 2 (the interpreter's), 3, 4
-  (``python -m hilclaw``), 10 to 15 (the outcomes), 120, and 126 and above.
-  If the interpreter's own flush at exit fails as well, the status is 120.
+  written or flushed or takes fewer bytes than the line. **It is not an
+  eighth outcome and has no report**: nothing is written to standard output
+  unless the write or the flush itself failed, so with this status whatever
+  standard output holds is no report. The value is none of 0, 1, 2 (the
+  interpreter's), 3, 4 (``python -m hilclaw``), 10 to 15 (the outcomes),
+  120, and 126 and above. If the interpreter's own flush at exit fails as
+  well, the status is 120.
 - *Standard error* then gets one line, ``hilclaw.selfcheck: fault: <class>``:
   the name of the exception's class and **never its text**, which may name a
   path under the user's name. A standard error that is closed or cannot be
@@ -135,10 +136,11 @@ def main(argv=None, *, stdout=None, stderr=None):
 
     ``argv`` defaults to ``sys.argv[1:]`` and must be empty. ``stdout`` and
     ``stderr`` are binary streams and default to the standard ones; a
-    standard stream that is closed or has no binary layer counts as closed.
-    Returns ``selfcheck_report.exit_status`` of the outcome written, or
-    :data:`EXIT_FAULT` when no report was written; no :class:`Exception` of
-    the check or of writing ``stdout`` leaves the call.
+    standard stream that the process does not have, or that has no binary
+    layer, is missing, and a missing ``stdout`` is refused before anything is
+    started. Returns ``selfcheck_report.exit_status`` of the outcome written,
+    or :data:`EXIT_FAULT` when no report was written; no :class:`Exception`
+    of the check or of writing ``stdout`` leaves the call.
     """
     args = sys.argv[1:] if argv is None else list(argv)
     stdout = _standard("stdout") if stdout is None else stdout

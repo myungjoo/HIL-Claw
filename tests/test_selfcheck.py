@@ -547,8 +547,8 @@ def test_a_login_that_cannot_be_read_starts_no_session(changes, stub):
 
 
 def test_the_time_limit_of_step_one(stub, starts, monkeypatch):
-    stub.install(auth_sleep=8)
-    monkeypatch.setattr(selfcheck, "LOGIN_TIMEOUT_S", 3)
+    stub.install(auth_sleep=12)
+    monkeypatch.setattr(selfcheck, "LOGIN_TIMEOUT_S", 5)
     before = time.monotonic()
     streams = Streams()
     assert streams.run() == selfcheck_report.EXIT_LOGIN_UNREADABLE
@@ -558,7 +558,7 @@ def test_the_time_limit_of_step_one(stub, starts, monkeypatch):
     assert report["login"]["timed_out"] is True
     assert report["login"]["exit_status"] is None
     assert stub.kinds() == ["login"]
-    assert [options["timeout_s"] for _, options in starts] == [3]
+    assert [options["timeout_s"] for _, options in starts] == [5]
 
 
 def test_the_time_limit_of_the_session(stub, starts, checks, monkeypatch):
