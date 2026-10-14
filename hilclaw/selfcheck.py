@@ -49,9 +49,9 @@ name the data root is that module's.
   :class:`Exception` of a step, of the report or of the data-root source
   other than the one above - "What is raised" of ``selfcheck_session``, a
   directory of the check that would lie inside a checkout included - and a
-  standard output that is closed (seen before anything is started, so no
-  session is spent), cannot be written or flushed, or takes fewer bytes
-  than the line. **It is not an eighth outcome and has no
+  standard output that the process does not have (seen before anything is
+  started, so no session is spent) or that, after the check, cannot be
+  written or flushed or takes fewer bytes than the line. **It is not an eighth outcome and has no
   report**: nothing is written to standard output unless the write or the
   flush itself failed, so with this status whatever standard output holds
   is no report. The value is none of 0, 1, 2 (the interpreter's), 3, 4
