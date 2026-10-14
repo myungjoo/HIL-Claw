@@ -58,7 +58,8 @@ argument, not in the prompt, not in the returned value and in no exception.
   directory, already made, is removed.
 - *The directory* is made by :func:`tempfile.mkdtemp`, with the permissions
   it gives, under ``parent`` - by default the temporary directory of the system.
-  "Outside both checkouts" is checked before anything is made, on real paths:
+  "Outside both checkouts" is checked before anything is made, by
+  :mod:`hilclaw.checkout_boundary` on real paths:
   a ``parent`` that is, or lies inside, the directory that holds this package
   or a directory of ``keep_out`` is refused with a fixed text. The module
   knows no other checkout: the caller names the data root in ``keep_out``.
@@ -120,6 +121,7 @@ import tempfile
 import time
 from typing import NamedTuple
 
+from hilclaw import checkout_boundary as _checkout_boundary
 from hilclaw import (
     local_run,
     selfcheck_outcome,
@@ -180,7 +182,6 @@ COMMAND = (
     OPT_VERBOSE,
 )
 
-_PACKAGE_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _PREFIX = "hilclaw-selfcheck-"
 _REMOVE_PAUSES_S = (0.0, 0.2, 0.6, 1.2)
 
@@ -213,14 +214,11 @@ def _real(path, what):
 
 
 def _refuse_inside(parent, keep_out):
-    if isinstance(keep_out, (str, bytes, os.PathLike)):
-        raise TypeError("keep_out must be a sequence of paths, not one path")
+    _checkout_boundary.refuse_one_path(keep_out)
     place = _real(parent, "the parent")
-    inside = os.path.normcase(place) + os.sep
-    for root in (_PACKAGE_DIRECTORY, *keep_out):
-        root = os.path.normcase(_real(root, "a directory of keep_out"))
-        if inside.startswith(root.rstrip(os.sep) + os.sep):
-            raise ValueError("the directory of the check would lie inside a checkout")
+    roots = (_real(root, "a directory of keep_out") for root in (*keep_out,))
+    if _checkout_boundary.meets_checkout(place, roots, containing=False):
+        raise ValueError("the directory of the check would lie inside a checkout")
     return place
 
 
