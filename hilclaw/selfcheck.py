@@ -136,8 +136,8 @@ def main(argv=None, *, stdout=None, stderr=None):
     ``stderr`` are binary streams and default to the standard ones; a
     standard stream that is closed or has no binary layer counts as closed.
     Returns ``selfcheck_report.exit_status`` of the outcome written, or
-    :data:`EXIT_FAULT` when no report was written; no :class:`Exception`
-    leaves the call.
+    :data:`EXIT_FAULT` when no report was written; no :class:`Exception` of
+    the check or of writing ``stdout`` leaves the call.
     """
     args = sys.argv[1:] if argv is None else list(argv)
     stdout = _standard("stdout") if stdout is None else stdout
