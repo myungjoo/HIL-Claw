@@ -2,11 +2,12 @@ import json
 import os
 import signal
 import sys
+import types
 from pathlib import Path
 
 import pytest
 
-from hilclaw.harness import measurement
+from hilclaw.harness import measurement, memory_ceiling, timing
 from hilclaw.harness.measurement import CV_MAX, N_MAX_DEFAULT, N_MIN, State
 from hilclaw.harness.timing import (
     SAMPLE_FORMS,
@@ -289,6 +290,7 @@ def test_worked_report_of_the_record_is_completed(stand_in):
         "intervals_ns",
         "resolution_ns",
         "run",
+        "memory_bytes",
     )
 
 
@@ -650,3 +652,122 @@ def test_prefix_part_of_the_wrong_type_starts_nothing(stand_in):
     with pytest.raises(TypeError):
         timed((*stand_in(WORKED_REPORT), 5))
     assert not stand_in.started
+
+
+def platform(monkeypatch, name):
+    monkeypatch.setattr(timing, "sys", types.SimpleNamespace(platform=name))
+
+
+def usage(monkeypatch, max_rss):
+    original = timing.local_run.run
+
+    def run(*arguments, **keywords):
+        return original(*arguments, **keywords)._replace(max_rss=max_rss)
+
+    monkeypatch.setattr(timing.local_run, "run", run)
+
+
+COMPLETED = {
+    "converged": (WORKED_REPORT, "interval", State.CONVERGED),
+    "not-converged": (
+        report(NOISY[:N_MAX_DEFAULT], "not_converged"),
+        "reciprocal",
+        State.NOT_CONVERGED,
+    ),
+}
+
+
+@pytest.mark.parametrize("name", COMPLETED)
+def test_completed_run_carries_the_figure_of_its_platform(name, stand_in):
+    stdout, sample_form, state = COMPLETED[name]
+    result = timed(stand_in(stdout), sample_form=sample_form)
+    assert result.broken is None
+    assert result.state is state
+    expected = memory_ceiling.figure(result.run.max_rss, sys.platform)
+    assert result.memory_bytes == expected
+    if sys.platform == "linux":
+        assert type(result.memory_bytes) is int
+        assert result.memory_bytes > 0
+        assert result.memory_bytes == result.run.max_rss * 1024
+    if os.name == "nt":
+        assert result.run.max_rss is None
+        assert result.memory_bytes is None
+
+
+@pytest.mark.parametrize("name", COMPLETED)
+def test_the_platform_is_read_at_the_call(name, stand_in, monkeypatch):
+    stdout, sample_form, _ = COMPLETED[name]
+    executable = stand_in(stdout)
+    usage(monkeypatch, 4096)
+    for system, expected in [("linux", 4096 * 1024), ("darwin", 4096), ("win32", None)]:
+        platform(monkeypatch, system)
+        result = timed(executable, sample_form=sample_form)
+        assert result.broken is None
+        assert result.run.max_rss == 4096
+        assert result.memory_bytes == expected
+
+
+@pytest.mark.skipif(not hasattr(os, "wait4"), reason="the runner gets a usage")
+def test_darwin_takes_the_value_of_the_runner_as_is(stand_in, monkeypatch):
+    platform(monkeypatch, "darwin")
+    result = timed(stand_in(WORKED_REPORT))
+    assert type(result.run.max_rss) is int
+    assert result.memory_bytes == result.run.max_rss
+
+
+@pytest.mark.parametrize("max_rss", [None, 0, -1, True, 4096.0])
+@pytest.mark.parametrize("name", ["linux", "darwin"])
+def test_a_completed_run_without_a_usage_has_no_figure(
+    max_rss, name, stand_in, monkeypatch
+):
+    usage(monkeypatch, max_rss)
+    platform(monkeypatch, name)
+    result = timed(stand_in(WORKED_REPORT))
+    assert_completed(result, State.CONVERGED, WORKED)
+    assert result.memory_bytes is None
+
+
+BROKEN_RUNS = {
+    "timeout": (
+        {"stdout": HEAD + b"interval_ns 100\n", "sleep": 30},
+        {"timeout_s": 2},
+        Broken.TIMEOUT,
+    ),
+    "exit-status": ({"stdout": WORKED_REPORT, "status": 3}, {}, Broken.EXIT_STATUS),
+    "report-form": ({"stdout": BAD_REPORTS["crlf"]}, {}, Broken.REPORT_FORM),
+    "zero-interval": ({"stdout": report((0,) * 5)}, {}, Broken.ZERO_INTERVAL),
+    "replay": ({"stdout": report(WORKED, "not_converged")}, {}, Broken.REPLAY),
+}
+
+
+@pytest.mark.parametrize("name", BROKEN_RUNS)
+def test_a_broken_run_has_no_figure_even_with_a_usage(name, stand_in, monkeypatch):
+    plan, changes, condition = BROKEN_RUNS[name]
+    usage(monkeypatch, 4096)
+    platform(monkeypatch, "linux")
+    result = timed(stand_in(**plan), **changes)
+    assert_broken(result, condition)
+    assert result.run.max_rss == 4096
+    assert result.memory_bytes is None
+
+
+@pytest.mark.skipif(not hasattr(os, "wait4"), reason="the runner gets a usage")
+def test_a_broken_run_with_a_reported_usage_has_no_figure(stand_in):
+    result = timed(stand_in(WORKED_REPORT, status=3))
+    assert_broken(result, Broken.EXIT_STATUS)
+    assert type(result.run.max_rss) is int
+    assert result.run.max_rss > 0
+    assert result.memory_bytes is None
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signals")
+def test_death_by_signal_has_no_figure(stand_in):
+    result = timed(stand_in(WORKED_REPORT, kill=signal.SIGKILL))
+    assert_broken(result, Broken.EXIT_STATUS)
+    assert result.memory_bytes is None
+
+
+def test_a_result_of_five_values_has_no_figure():
+    run = RunResult(0, False, b"", b"", ("x",), 0.0, 4096)
+    result = TimingResult(None, State.CONVERGED, (1,), 1, run)
+    assert result.memory_bytes is None
