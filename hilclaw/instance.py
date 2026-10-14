@@ -1,4 +1,4 @@
-"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046).
+"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046, ADR-0053).
 
 ``ARCHITECTURE/decisions/ADR-0018-od8-instance-record-hw-profile.md`` fixes the
 file as a whole (decision 2), the member ``hw_profile`` in which a run states
@@ -59,22 +59,29 @@ member ``draws``, in which a run states the number of draws of a check of
 ``correctness.check`` about one of its attempts, says that a valid file may
 lack it, that a present one must be valid and that no value stands in for an
 absent one (decision 3), and says from which read of the file a call of that
-tool takes the number (decision 4); no such call is made here. This
+tool takes the number (decision 4); no such call is made here.
+``ARCHITECTURE/decisions/ADR-0053-od8-instance-record-objective.md`` adds the
+member ``objective``, in which a run states its objectives and its
+constraints in the form of the ``task.objective`` of a version-2 spec
+(decision 4), says that a valid file may lack it, that a present one must be
+valid and that nothing stands in for an absent one (decision 5), and says how
+the member is read (decision 7). This
 module is those rules: :func:`parse` and :func:`validate` are pure functions of
 the bytes of a content and of a parsed document, and :func:`read`,
 :func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
 :func:`n_max_of`, :func:`candidates_per_round_of`, :func:`op_signature_of`,
 :func:`round_budget_of`, :func:`wall_clock_budget_s_of`, :func:`owner_of`,
-:func:`project_of`, :func:`draws_of` and :func:`layout_version_of` read the
-file of a run.
+:func:`project_of`, :func:`draws_of`, :func:`objective_of` and
+:func:`layout_version_of` read the file of a run.
 :func:`hw_profile_of` has the call form of the parameter ``hw_profile_of`` of
 :func:`hilclaw.hw_tool.tool_function`; nothing here binds it,
 :func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
 :func:`candidates_per_round_of`, :func:`op_signature_of`,
 :func:`round_budget_of`, :func:`wall_clock_budget_s_of`, :func:`owner_of`,
-:func:`project_of`, :func:`draws_of` or :func:`layout_version_of` to a tool.
+:func:`project_of`, :func:`draws_of`, :func:`objective_of` or
+:func:`layout_version_of` to a tool.
 
-Conventions of this module, which the eleven records do not fix:
+Conventions of this module, which the twelve records do not fix:
 
 - A content is exactly ``bytes`` (:class:`TypeError` otherwise: the encoding is
   part of validity). Values are as :func:`json.loads` returns them, an integer
@@ -90,8 +97,9 @@ Conventions of this module, which the eleven records do not fix:
   ``round_budget`` when the document holds it, then ``wall_clock_budget_s``
   when the document holds it, then ``owner`` when the document holds it, then
   ``project`` when the document holds it, then ``draws`` when the document
-  holds it: the order in which the records defined them, and for the two of
-  ADR-0034 the order in which it names them. A
+  holds it, then ``objective`` when the document holds it: the order in which
+  the records defined them, and for the two of ADR-0034 the order in which it
+  names them. A
   content this interpreter cannot read (an integer too long for it anywhere in
   the text, nesting too deep) raises :class:`InvalidInstanceError` too,
   though it is a limit of this reader and not damage; the limits stay as the
@@ -220,6 +228,28 @@ Conventions of this module, which the eleven records do not fix:
   content without the member states no number of draws, and that this is no
   error of the content, is ADR-0046 decision 3 and not a convention; the
   convention is that it has ``None`` in that place.
+- What is a value of ``objective`` is ADR-0053 decision 4 and not a
+  convention: a value ADR-0050 accepts as the ``task.objective`` of a
+  version-2 spec by its checks 1 to 3, which today is an object with exactly
+  ``objectives`` and ``constraints``, ``objectives`` an array of exactly one
+  entry, the entry an object with exactly ``type``, ``type`` the name
+  ``latency_minimisation`` and ``constraints`` an empty array, so one value
+  is valid today. Check 4 of ADR-0050, the form of a constraint entry, is
+  not made: no constraint type is admitted, so every entry is refused
+  whatever its form, ``memory_ceiling`` with a ``bound`` among them, and the
+  written form of a ``bound`` (ADR-0053 decision 4) binds nothing here. The
+  conventions are the order inside the member (an object, no member besides
+  the two, both present, ``objectives`` an array of one entry, the entry an
+  object, no member besides ``type``, ``type`` present, ``type`` the admitted
+  name, ``constraints`` an empty array), the first rule found broken being
+  reported with its place below ``objective``; that for a value built in
+  memory the member and the entry must each be exactly a ``dict``, the two
+  arrays exactly a ``list`` and ``type`` exactly a ``str``; and that the
+  member is handed out as the ``dict`` of the file, unchanged. That a
+  content without the member states
+  no objective and no set of constraints, and that this is no error of the
+  content, is ADR-0053 decision 5 and not a convention; the convention is
+  that it has ``None`` in that place, which no present member is equal to.
 - Which layout version a schema version states is ADR-0024 decision 3 and not
   a convention: schema version 1 states layout version 1. The conventions are
   that the pairing is a mapping keyed by the schema version with the number
@@ -238,10 +268,10 @@ Conventions of this module, which the eleven records do not fix:
   the read is an :class:`OSError`, as every other failure of the file system.
 
 It writes, creates and removes no file and composes no content. It defines no
-member besides the twelve (``schema_version``, ``hw_profile``, ``tolerance``,
-``source_commit``, ``n_max``, ``candidates_per_round``, ``op_signature``,
-``round_budget``, ``wall_clock_budget_s``, ``owner``, ``project`` and
-``draws``) and interprets no other: a file
+member besides the thirteen (``schema_version``, ``hw_profile``,
+``tolerance``, ``source_commit``, ``n_max``, ``candidates_per_round``,
+``op_signature``, ``round_budget``, ``wall_clock_budget_s``, ``owner``,
+``project``, ``draws`` and ``objective``) and interprets no other: a file
 it accepts is not thereby a complete instance record, and not enough to start a
 run (ADR-0018 decisions 1 and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
@@ -457,6 +487,36 @@ file without it is said by ADR-0046 decisions 4 and 5 for
 ``correctness.check`` and is not done here: "not stated" is no error of the
 content here either, this module gives it no tool-failure kind, and
 :func:`draws_of` is bound to no tool and to no check.
+Of the objective it gives what the file states and nothing else (ADR-0053
+decisions 5 and 7): it holds no default and substitutes nothing for a member
+that is absent, not ``latency_minimisation``, though that is the only type a
+file can state today, not the one valid value, not an empty set of
+constraints, no constant of this module and nothing taken from a spec, from
+another member or from another run. It does not conclude that a run whose
+file lacks the member has no constraint: "no constraint" is stated by a
+present member whose ``constraints`` is empty and by nothing else, and a
+top-level member of a nearby name (``objectives``, ``target``) is passed
+over (ADR-0053 decision 5 and L3). The rule is ADR-0050's, taken by citation
+(ADR-0053 decision 4); it is written here and agrees with
+:mod:`hilclaw.spec`, of which nothing is imported, and the type name is held
+as what makes a member valid and is handed out for no file that does not
+state it. It checks the form of the member only. It judges, measures and
+stops nothing (ADR-0053 L4): it makes the member no target metric of FR-3,
+no budget, no tolerance and no baseline, and it does not say that anything
+was measured or that a constraint is met (ADR-0053 decision 3). It reads,
+imports and compares no spec and does not say that a spec of the run
+carries the same value (ADR-0053 decision 6 and L8), and it adds no rule
+between the member and another member, another file or another run. It does
+not say that the quantity of the type can be measured where the run
+executes (ADR-0053 L9). No memory ceiling and no throughput can be stated
+yet (ADR-0053 L5). A file it accepts need not state a target; that an
+instance states one is FR-2's, and where that is checked is open (ADR-0053
+decision 5; OD-8 sub-question 34 (i)).
+Which call reads the member and what it answers when none is stated is not
+said (ADR-0053 decision 7; OD-13 sub-question 10); "not stated" is no error
+of the content here either, this module gives it no tool-failure kind, and
+:func:`objective_of` is bound to no tool, to no spec and to nothing that
+judges a candidate.
 Of the layout version it gives what the ``schema_version`` of a valid file
 states by the pairing of ADR-0024 decision 3 and nothing else (decisions 4
 and 5). It defines no member for the layout version and interprets none: a
@@ -522,20 +582,24 @@ _DEFINED = (
     "owner",
     "project",
     "draws",
+    "objective",
 )
 _SECTION = ("key", "record")
 _TOLERANCE = ("rtol", "atol")
 _COMMIT_LENGTHS = (40, 64)
 _COMMIT_CHARACTERS = frozenset("0123456789abcdef")
 _STATED_LAYOUT = {SCHEMA_VERSION: 1}
+_OBJECTIVE = ("objectives", "constraints")
+_OBJECTIVE_ENTRY = ("type",)
+_OBJECTIVE_TYPES = ("latency_minimisation",)
 
 
 class InvalidInstanceError(ValueError):
     """A content, a document or a path breaks a rule; the message names it.
 
     The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
-    ADR-0031, ADR-0032, ADR-0033, ADR-0034 and ADR-0046 and the conventions
-    of this module.
+    ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046 and ADR-0053 and the
+    conventions of this module.
     """
 
 
@@ -591,7 +655,11 @@ class Instance(NamedTuple):
     member of that name, unchanged, or ``None`` for a content without that
     member: ``None`` says that the content states none. ``draws`` is the
     ``int`` of the member ``draws``, a number of draws, or ``None`` for a
-    content without that member.
+    content without that member. ``objective`` is the ``dict`` of the member
+    ``objective``, the objectives and the constraints the content states
+    (ADR-0053 decision 4), or ``None`` for a content without that member:
+    ``None`` says that the content states no objective and no set of
+    constraints, and is not an empty set of constraints (ADR-0053 decision 5).
     No field has a default. ``others`` is the last field.
     """
 
@@ -607,6 +675,7 @@ class Instance(NamedTuple):
     owner: str | None
     project: str | None
     draws: int | None
+    objective: dict | None
     others: dict
 
 
@@ -652,16 +721,24 @@ def parse(content):
     decision 4); ``draws`` is the ``int`` of the member ``draws`` as the
     content states it (ADR-0046 decision 3), not clamped to a range, rounded
     or replaced, or ``None`` when the content has no such member, and no
-    value is substituted then either, 1 included;
+    value is substituted then either, 1 included; ``objective`` is the
+    ``dict`` of the member ``objective`` as parsed from this content
+    (ADR-0053 decision 4), with its ``objectives`` and its ``constraints``,
+    not completed, reordered or replaced, or ``None`` when the content has no
+    such member, and nothing is substituted then either: ``None`` is no
+    default, not ``latency_minimisation`` and not an empty set of
+    constraints (ADR-0053 decision 5);
     ``others`` holds every top-level member that is none of
     ``schema_version``, ``hw_profile``, ``tolerance``, ``source_commit``,
     ``n_max``, ``candidates_per_round``, ``op_signature``, ``round_budget``,
-    ``wall_clock_budget_s``, ``owner``, ``project`` and ``draws``, as parsed
-    and not interpreted, whatever its name and value (``tolerence``, a
-    top-level ``rtol``, ``source-commit``, ``nmax``, ``candidates``, ``op``,
-    ``task``, ``rounds``, ``budget``, ``wall_clock_budget``, ``time_budget``,
-    ``Owner``, ``user``, ``username``, ``projectname``, ``n_draws``,
-    ``Draws`` or ``check_draws`` among them).
+    ``wall_clock_budget_s``, ``owner``, ``project``, ``draws`` and
+    ``objective``, as parsed and not interpreted, whatever its name and value
+    (``tolerence``, a top-level ``rtol``, ``source-commit``, ``nmax``,
+    ``candidates``, ``op``, ``task``, ``rounds``, ``budget``,
+    ``wall_clock_budget``, ``time_budget``, ``Owner``, ``user``,
+    ``username``, ``projectname``, ``n_draws``, ``Draws``, ``check_draws``,
+    ``objectives``, a top-level ``constraints``, ``target``, ``Objective``
+    or ``goal`` among them).
     Any order of members and any white space of JSON are accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
@@ -687,7 +764,7 @@ def parse(content):
 
 
 def validate(document):
-    """Check ``document``, a parsed ``instance.json``, against the ten records.
+    """Check ``document``, a parsed ``instance.json``, against the eleven records.
 
     ``document`` must be a ``dict`` with ``schema_version`` (an ``int`` from 0
     to :data:`hilclaw.keys.MAX_INTEGER`) and, at version 1, ``hw_profile``: a
@@ -741,17 +818,27 @@ def validate(document):
     as ``2.0`` and a subclass of ``int`` are none. Only that form is
     checked: the member is compared with no other member and with no limit
     of the harness, and that a check can be carried out with the number is
+    not checked. It may hold ``objective``, which is then a ``dict`` with
+    exactly ``objectives`` and ``constraints``, ``objectives`` a ``list`` of
+    exactly one entry, the entry a ``dict`` with exactly ``type``, ``type``
+    the ``str`` ``latency_minimisation`` and ``constraints`` an empty
+    ``list`` (ADR-0053 decisions 4 and 5, with the checks 1 to 3 of
+    ADR-0050): for a value built in memory, a subclass of ``dict``, of
+    ``list`` or of ``str`` and a ``tuple`` are none. Only that form is
+    checked: the member is compared with no spec, with no other member and
+    with no other file, and that the quantity of the type can be measured is
     not checked. Its other members are not looked at. The rules for the text
     (the encoding, a member name twice) cannot be checked on a parsed value.
-    The ten records are ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
-    ADR-0031, ADR-0032, ADR-0033, ADR-0034 and ADR-0046; ADR-0024 adds no
-    rule of validity.
+    The eleven records are ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
+    ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046 and ADR-0053; ADR-0024
+    adds no rule of validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
     ``tolerance.rtol``, ``source_commit``, ``n_max``,
     ``candidates_per_round``, ``op_signature.key``, ``round_budget``,
-    ``wall_clock_budget_s``, ``owner``, ``project`` or ``draws``). The
+    ``wall_clock_budget_s``, ``owner``, ``project``, ``draws`` or
+    ``objective.objectives[0].type``). The
     version comes first: an integer other than :data:`SCHEMA_VERSION` raises
     :class:`UnsupportedVersionError` before any other member is looked at.
     """
@@ -806,10 +893,11 @@ def hw_profile_of(data_root, run_id):
     :class:`InvalidInstanceError` also for a file whose ``tolerance``,
     ``source_commit``, ``n_max``, ``candidates_per_round``,
     ``op_signature``, ``round_budget``, ``wall_clock_budget_s``, ``owner``,
-    ``project`` or ``draws`` is invalid: no member of an invalid file is
-    used (ADR-0020 decision 3, ADR-0022 decision 5, ADR-0023 decision 4,
-    ADR-0028 decision 4, ADR-0031 decision 5, ADR-0032 decision 4, ADR-0033
-    decision 4, ADR-0034 decision 4, ADR-0046 decision 3).
+    ``project``, ``draws`` or ``objective`` is invalid: no member of an
+    invalid file is used (ADR-0020 decision 3, ADR-0022 decision 5, ADR-0023
+    decision 4, ADR-0028 decision 4, ADR-0031 decision 5, ADR-0032 decision
+    4, ADR-0033 decision 4, ADR-0034 decision 4, ADR-0046 decision 3,
+    ADR-0053 decision 5).
     """
     return read(data_root, run_id).hw_profile
 
@@ -1036,6 +1124,34 @@ def draws_of(data_root, run_id):
     return read(data_root, run_id).draws
 
 
+def objective_of(data_root, run_id):
+    """Return the objectives and the constraints the run ``run_id`` states, or ``None``.
+
+    It is the ``objective`` of what :func:`read` returns (ADR-0053 decision
+    7): the ``dict`` of the member ``objective`` of
+    ``runs/<run_id>/instance.json`` as the file states it at this call, new
+    at each call, with ``objectives``, a ``list`` of the one entry
+    ``{"type": "latency_minimisation"}``, and ``constraints``, an empty
+    ``list`` (ADR-0053 decision 4), or ``None`` for a valid file without
+    that member. The member states the target the instance was started with
+    and no more (ADR-0053 decision 3): nothing here says that anything was
+    measured, compared or judged. ``None`` says that the file states no
+    objective and no set of constraints: it is no default and not "no
+    constraint", which a present member with an empty ``constraints`` states
+    and nothing else does, and nothing stands in for it (ADR-0053 decision
+    5), not ``latency_minimisation``, no constant of this module, not the
+    ``task.objective`` of a spec of the run, nothing taken from another
+    member and not the objective of another run. Only the instance file is
+    read, no spec is, and the result is compared with nothing. Raises what
+    :func:`read` raises, so no objective and no constraint is returned, and
+    none is inferred, for a missing, unreadable or invalid file or one of
+    another version (ADR-0053 decision 5). It raises no tool failure: what
+    a call of a tool answers when no target is stated is not said (ADR-0053
+    decision 7).
+    """
+    return read(data_root, run_id).objective
+
+
 def layout_version_of(data_root, run_id):
     """Return the layout version the run ``run_id`` states (ADR-0024 decisions 3 to 5).
 
@@ -1102,6 +1218,9 @@ def _checked(document):
     if "project" in document:
         project = _string("project", document["project"])
     draws = _draws(document["draws"]) if "draws" in document else None
+    objective = None
+    if "objective" in document:
+        objective = _objective(document["objective"])
     others = {name: value for name, value in document.items() if name not in _DEFINED}
     return Instance(
         key,
@@ -1116,6 +1235,7 @@ def _checked(document):
         owner,
         project,
         draws,
+        objective,
         others,
     )
 
@@ -1204,6 +1324,33 @@ def _draws(value):
     if type(value) is not int or not 1 <= value <= _MAX:
         _fail("draws", f"an int from 1 to {_MAX}", value)
     return value
+
+
+def _objective(section):
+    _closed("objective", section, _OBJECTIVE)
+    objectives, constraints = section["objectives"], section["constraints"]
+    if type(objectives) is not list or len(objectives) != 1:
+        _fail("objective.objectives", "an array of exactly one entry", objectives)
+    entry = objectives[0]
+    _closed("objective.objectives[0]", entry, _OBJECTIVE_ENTRY)
+    kind = entry["type"]
+    if type(kind) is not str or kind not in _OBJECTIVE_TYPES:
+        _fail("objective.objectives[0].type", " or ".join(_OBJECTIVE_TYPES), kind)
+    if type(constraints) is not list or constraints:
+        rule = "an empty array, as no constraint type is admitted"
+        _fail("objective.constraints", rule, constraints)
+    return section
+
+
+def _closed(place, section, names):
+    if type(section) is not dict:
+        _fail(place, "an object", section)
+    for name in section:
+        if name not in names:
+            _fail(place, "an object without the member", name)
+    for name in names:
+        if name not in section:
+            raise InvalidInstanceError(f"{place}: lacks the member {name}")
 
 
 def _string(place, value):

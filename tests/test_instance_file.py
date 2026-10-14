@@ -84,6 +84,7 @@ FULL = written(
         owner="example-owner",
         project="example-project",
         draws=9,
+        objective={"objectives": [{"type": "latency_minimisation"}], "constraints": []},
         example_member={"b": [1, None, "x"], "a": 2.5},
     )
 )
@@ -141,6 +142,10 @@ REFUSED = {
         InvalidInstanceError,
     ),
     "draws": (written(doc(draws=0)), InvalidInstanceError),
+    "objective": (
+        written(doc(objective={"objectives": [], "constraints": []})),
+        InvalidInstanceError,
+    ),
     "no final line feed": (MINIMAL[:-1], WrittenFormError),
     "CRLF line ends": (MINIMAL.replace(b"\n", b"\r\n"), WrittenFormError),
     "one carriage return": (b"\r" + MINIMAL, WrittenFormError),
