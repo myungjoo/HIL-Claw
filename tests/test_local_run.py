@@ -45,6 +45,7 @@ MIB = 1 << 20
 PID = "out.write(str(os.getpid()).encode()); out.flush()"
 HANG = PID + "; os.close(1); os.close(2); time.sleep(30)"
 CLOSED = "os.close(1); os.close(2); time.sleep(1); os._exit(0)"
+NOTED = "Path(__file__).with_name('pid').write_text(str(os.getpid()))"
 LOUD = "out.write(b'o' * (2 << 20)); err.write(b'e' * (2 << 20))"
 
 
@@ -573,15 +574,25 @@ def test_an_interrupted_wait_kills_and_reaps_the_process(child, monkeypatch):
         raise KeyboardInterrupt
 
     monkeypatch.setattr(os, "wait4", interrupted)
+    before = time.monotonic()
     with pytest.raises(KeyboardInterrupt):
-        run(child(PID), timeout_s=TIMEOUT)
+        run(child(NOTED + "; " + HANG), timeout_s=TIMEOUT)
+    assert time.monotonic() - before < 20
+    assert_reaped(int((child.directory / "pid").read_text()))
 
 
 @posix_only
 def test_a_descendant_holding_a_pipe_makes_a_timeout_at_the_limit(child):
-    body = "import subprocess; subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(15)'])"
-    result = run(child(body), timeout_s=3)
+    body = (
+        "import subprocess\n"
+        "kept = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
+        "Path(__file__).with_name('pid').write_text(str(kept.pid))"
+    )
+    try:
+        result = run(child(body), timeout_s=3)
+    finally:
+        os.kill(int((child.directory / "pid").read_text()), signal.SIGKILL)
     assert result.timed_out is True
     assert result.returncode is None
-    assert 3 <= result.duration_s < 12
+    assert 3 <= result.duration_s < 20
     assert type(result.max_rss) is int

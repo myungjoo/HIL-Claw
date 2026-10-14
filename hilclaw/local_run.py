@@ -19,11 +19,12 @@ and no environment variable of its own and writes no file.
 The process is started without a shell, with no standard input.
 
 Known limits. On a timeout only the process that was started is killed, not
-that process's children. A survivor that keeps an output pipe open makes the run
-count as timed out at the limit even where the started process ended, and on
-native Windows can make the call last longer than the limit. The output is held in memory without a size
-limit. The process is not sandboxed and its environment is not scrubbed. On
-Windows the program lookup also searches the current directory.
+that process's children. A survivor that keeps an output pipe open makes the
+run count as timed out at the limit even where the started process ended, and
+on native Windows can make the call last longer than the limit. The output is
+held in memory without a size limit. The process is not sandboxed and its
+environment is not scrubbed. On Windows the program lookup also searches the
+current directory.
 """
 
 import contextlib
