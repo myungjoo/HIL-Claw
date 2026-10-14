@@ -28,7 +28,10 @@ attempt failed, that no field carries verification inputs, that a repair
 spec copies the sections of attempt 1, that the quantity of an objective type
 can be measured on the backend of the instance or at an execution point
 (ADR-0050 L1), and that ``task.objective`` is what the instance stated
-(ADR-0050 L2). Not inspected: the members of ``profile``, the values of
+(ADR-0050 L2). ``instance.json`` now has the member ``objective`` (ADR-0053),
+which :func:`hilclaw.instance.objective_of` reads; this module does not read
+it, and no module of :mod:`hilclaw` compares a spec's ``task.objective`` with
+it yet. Not inspected: the members of ``profile``, the values of
 ``ext``, and the vocabularies of ``language``, ``dtype`` and the member names
 of ``task.build`` and ``ext``.
 

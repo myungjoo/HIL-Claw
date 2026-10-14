@@ -69,9 +69,14 @@ or a test binds one is not decided here (ADR-0021 decision 3; decision 9).
 It does not check that the call reached the draw, that is, that its
 identity has no line and that none of the answers of moment 4 was given. It
 says nothing of whether a seed is recorded, returned or kept after a check
-(OD-16 sub-question 5); it writes the seed to no file and puts it in no
-message. :func:`check` validates no seed, no number of draws, no dimension,
-no tolerance and no output path, and the module gives none a default. It
+(OD-16 sub-question 5); it writes the seed to no file and composes no
+message that holds it. :func:`check` passes on, through ``carry_out``, the
+message an operation raised with a backend kind as it was raised (ADR-0047
+decision 4), so a seed in that message reaches the caller. By the records
+such a message has no content that holds the seed (ADR-0047 decision 4,
+citing ADR-0021 decision 3); nothing detects a message that breaks this.
+:func:`check` validates no seed, no number of draws, no dimension, no
+tolerance and no output path, and the module gives none a default. It
 says nothing of what anybody does after an answer, of a repeated call or of
 a retry. It is this tool's and gives no rule for another HW tool. It
 reserves no kind. It keeps nothing between calls. It imports
