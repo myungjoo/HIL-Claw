@@ -2,7 +2,7 @@
 id: T-0172
 title: Make the local runner hand on the maximum resident set size of the process it waited for (ADR-0052 decision 4, first part of slice (1)) - `hilclaw/local_run.py` waits through `os.wait4` where the platform has it and adds one member to `RunResult` carrying the raw `ru_maxrss` value, `None` where no usage was obtained; no unit conversion, no figure, no verdict, no other module edited
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, C-7, OD-13, "#5 D12"]
 dependsOn: []
