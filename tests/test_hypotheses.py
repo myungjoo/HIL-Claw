@@ -33,6 +33,10 @@ ADR_EXAMPLE = json.loads(
 """
 )
 
+# Member names copied from the tables of ADR-0059 decisions 2 and 3.
+ADR_TOP = ["schema_version", "run_id", "round", "candidates", "hypotheses"]
+ADR_HYPOTHESIS = ["id", "statement", "basis", "expected", "origin", "tested_by"]
+
 BAD_NAMES = ["", "Upper", "1digit", "with-hyphen", "a" * 33, "name\n", 7, None]
 BAD_STRINGS = ["", "s" * 256, "line\nbreak", "café", 7, None, True, ["s"]]
 BAD_TEXTS = ["", 7, None, True, ["text"], {"a": "b"}, b"text"]
@@ -186,7 +190,7 @@ def test_document_that_is_not_a_mapping_is_rejected(value):
     rejected(value, "record")
 
 
-@pytest.mark.parametrize("name", hypotheses._TOP)
+@pytest.mark.parametrize("name", ADR_TOP)
 def test_missing_top_level_member_is_rejected(name):
     message = rejected(with_value(record(), [name], REMOVE), name)
     assert "required member is missing" in message
@@ -232,7 +236,7 @@ def test_hypothesis_that_is_not_an_object_is_rejected(value):
     rejected(record(value), "hypotheses[0]")
 
 
-@pytest.mark.parametrize("name", hypotheses._HYPOTHESIS)
+@pytest.mark.parametrize("name", ADR_HYPOTHESIS)
 def test_missing_hypothesis_member_is_rejected(name):
     path = ["hypotheses", 0, name]
     message = rejected(with_value(record(), path, REMOVE), f"hypotheses[0].{name}")
@@ -360,7 +364,7 @@ def test_ref_that_is_not_an_object_is_rejected(value):
     rejected(record(entry(basis=[basis])), "hypotheses[0].basis[0].ref")
 
 
-@pytest.mark.parametrize("name", hypotheses._REF)
+@pytest.mark.parametrize("name", ["round", "candidate", "attempt"])
 def test_missing_ref_member_is_rejected(name):
     basis = attempt_basis()
     del basis["ref"][name]
