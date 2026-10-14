@@ -2,7 +2,7 @@
 id: T-0174
 title: Clear the document nits left by T-0157 and T-0169 - ADR-0057 "For P2-1" says "with 0 or 10 to 15", ADR-0055 decision 3 notes that the include expectation was shown on the CI runner, StandardScenarios 2026-10-14 paragraph drops the quotes around "설계됨"; coverage re-check recorded
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-18, OD-23, "CLAUDE.md 문서 커버리지 재검사"]
 dependsOn: [T-0157, T-0169]
@@ -77,3 +77,10 @@ Planner's judgements (the reviewer is asked to re-check each):
 - (planner, later) OD-13 sub-question ⑩ and ADR-0052 decision 7 (c) wait for the run-tool contracts (PLAN P1-1) and the instance member (PLAN P1-8).
 
 ## Result
+- Commit `37f4df1` on `main` (document mode, fast-forward from `f4c5066`), trailers `Reviewed-by: reviewer agent (2 rounds, Approve)` and `Task: T-0174`; task branch deleted on the remote and locally.
+- Review: 2 rounds with a fresh-context dev-reviewer. Round 1 requested changes (minor: the 2nd paragraph omitted resume steps S2-3 and S3-2 - added with the reason they are unaffected; nit: name the CI run in the ADR-0055 note - run 38430280742 named). Round 2 Approve, no findings.
+- ADR-0057: "For P2-1" bullet now reads "with 0 or 10 to 15"; a Status bullet records the post-acceptance edit.
+- ADR-0055: decision 3 unchanged; a dated note (2026-10-14, T-0174) records that the T-0157 clang test showed the include expectation on the CI runner (Ubuntu, clang) only (push run of 2026-10-13 on `e8c19ce`); other C-7 machine kinds stay not verified. Status bullet added; no L6 pointer (L6 still true).
+- StandardScenarios: quotes around "설계됨" removed in the 1st paragraph; a 2026-10-14 (2nd) paragraph and a heading-list clause added.
+- Coverage re-check over the steps of the 1st paragraph and the 2026-10-13 8th paragraph (resume steps included): no verdict change, no gap; no FR, OD status or registered sub-question changed.
+- Follow-ups: unchanged (the `hilclaw/spec.py` docstring, code mode; the ADR-0053 less-exact list, integrator; OD-13 ⑩ / ADR-0052 7(c)).
