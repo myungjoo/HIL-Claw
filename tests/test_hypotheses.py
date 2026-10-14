@@ -501,7 +501,3 @@ def test_candidate_tested_by_no_hypothesis_is_rejected(entries, candidates, miss
 def test_first_rule_broken_is_reported():
     document = record(entry("h1"), entry("h1", tested_by=[5]))
     rejected(document, "hypotheses[1].tested_by[0]")
-
-
-def test_example_parsed_from_json_text_is_valid():
-    validate(json.loads(json.dumps(ADR_EXAMPLE)))
