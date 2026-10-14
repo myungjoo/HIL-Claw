@@ -1132,8 +1132,9 @@ def objective_of(data_root, run_id):
     at each call, with ``objectives`` and ``constraints`` - today a ``list``
     of the one entry ``{"type": "latency_minimisation"}`` and an empty
     ``list``, the one value ADR-0053 decision 4 gives -, or ``None`` for a
-    valid file without that member. The member states the target the instance was started with
-    and no more (ADR-0053 decision 3): nothing here says that anything was
+    valid file without that member. The member states the target the
+    instance was started with and no more (ADR-0053 decision 3): nothing
+    here says that anything was
     measured, compared or judged. ``None`` says that the file states no
     objective and no set of constraints: it is no default and not "no
     constraint", which a present member with an empty ``constraints`` states
