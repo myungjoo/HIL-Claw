@@ -50,17 +50,22 @@ Choices that are this module's own and no rule of a record:
 What the module does not do: it registers nothing and defines no tool. The
 member list of a request is open (ADR-0040 decision 5), so the function is
 not yet the tool a registry offers: it has no input schema and no
-description, looks at no member but ``point`` and the four the output path
-is formed from, and hands the request on as the caller gave it. Of the
-kernel of the attempt it forms the output path and hands it on; it reads
-nothing there, does not test whether the path or anything above it exists,
-and writes the path to no file and puts it in no message. It says nothing of
-flags or of time limits. It binds no source of seeds, no predicate, no
-backend, no table and no script, and no parameter has a default. It names no
-kind, no ``step`` value and no member of its own, and composes the message
-of no tool failure. It writes no seed anywhere and puts none in a message.
-It gives no rule for another HW tool and keeps nothing between calls. It
-imports :mod:`hilclaw.check_admission`, :mod:`hilclaw.check_ending`,
+description, looks at no member but ``point`` and the four the output path is
+formed from, and hands the request on as the caller gave it. Of the kernel of
+the attempt it forms the output path and hands it on; it reads nothing there,
+does not test whether the path or anything above it exists, and composes no
+message that holds the path. It says nothing of flags or of time limits. It
+binds no source of seeds, no predicate, no backend, no table and no script,
+and no parameter has a default. It names no kind, no ``step`` value and no
+member of its own, and composes the message of no tool failure. It composes
+no message that holds a seed. The end line holds the message of a backend
+kind an operation raised, where it is exactly a ``str``, as it was raised
+(ADR-0047 decision 4), so a path or a seed in that message reaches
+``events.ndjson``. By the records such a message shows no path (ADR-0056
+decision 6) and has no content that holds the seed (ADR-0047 decision 4,
+citing ADR-0021 decision 3); nothing detects a message that breaks this. It
+gives no rule for another HW tool and keeps nothing between calls. It imports
+:mod:`hilclaw.check_admission`, :mod:`hilclaw.check_ending`,
 :mod:`hilclaw.check_identity`, :mod:`hilclaw.check_seed`,
 :mod:`hilclaw.hw_tool`, :mod:`hilclaw.instance`,
 :mod:`hilclaw.journaled_step` and :mod:`hilclaw.layout` and nothing else.
