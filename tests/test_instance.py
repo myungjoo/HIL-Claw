@@ -25,6 +25,7 @@ from hilclaw import (
     mcp_front,
     mock_backend,
     run_state,
+    spec,
     tools,
 )
 from hilclaw.backends import BackendTable
@@ -42,6 +43,7 @@ from hilclaw.instance import (
     hw_profile_of,
     layout_version_of,
     n_max_of,
+    objective_of,
     op_signature_of,
     owner_of,
     parse,
@@ -225,6 +227,7 @@ def test_the_public_names():
         "hw_profile_of",
         "layout_version_of",
         "n_max_of",
+        "objective_of",
         "op_signature_of",
         "owner_of",
         "parse",
@@ -250,6 +253,7 @@ def test_the_public_names():
         "owner",
         "project",
         "draws",
+        "objective",
         "others",
     )
     assert Tolerance._fields == ("rtol", "atol")
@@ -275,6 +279,7 @@ def test_the_public_names():
         owner_of,
         project_of,
         draws_of,
+        objective_of,
         layout_version_of,
     ):
         parameters = inspect.signature(function).parameters
@@ -290,7 +295,20 @@ def test_a_minimal_content_gives_the_key_and_the_record():
 
     assert type(result) is Instance
     assert result == Instance(
-        KEY, record(), None, None, None, None, None, None, None, None, None, None, {}
+        KEY,
+        record(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        {},
     )
     assert type(result.hw_profile) is dict
     assert key_of(result.hw_profile) == result.hw_profile_key
@@ -305,6 +323,7 @@ def test_a_record_with_its_optional_fields():
     assert result == Instance(
         key_of(profile),
         profile,
+        None,
         None,
         None,
         None,
@@ -360,7 +379,7 @@ OTHERS = {
 def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     result = parse(raw(doc(**OTHERS)))
 
-    assert result == Instance(KEY, record(), *[None] * 10, OTHERS)
+    assert result == Instance(KEY, record(), *[None] * 11, OTHERS)
     assert list(result.others) == list(OTHERS)
     assert validate(doc(**OTHERS)) is None
 
@@ -370,8 +389,8 @@ def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     [
         {"hw_profiles": [record("acc_b")]},
         {"hw_profiles": {"key": OTHER_KEY, "record": OTHER_RECORD}},
-        {"objective": None, "budget": -1},
-        {"budget": [], "objective": "", "hw_profile_key": OTHER_KEY},
+        {"target": None, "budget": -1},
+        {"budget": [], "target": "", "hw_profile_key": OTHER_KEY},
         {"layout_version": 99, "run_id": "another"},
     ],
 )
@@ -784,6 +803,7 @@ def test_a_content_with_the_member_states_the_two_values():
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.tolerance) is Tolerance
@@ -870,6 +890,7 @@ def test_any_order_of_the_members_of_a_tolerance(content):
         None,
         None,
         None,
+        None,
         {},
     )
 
@@ -913,7 +934,7 @@ def test_another_version_is_reported_before_a_tolerance_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_tolerance(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 10, others)
+    assert result == Instance(KEY, record(), *[None] * 11, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(tolerance=TOLERANCE, **others)))
@@ -1179,6 +1200,7 @@ def test_a_content_with_the_member_states_that_string(commit):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.source_commit) is str
@@ -1228,6 +1250,7 @@ def test_any_order_of_the_three_members_and_the_version(order):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
         None,
         None,
         None,
@@ -1326,7 +1349,7 @@ def test_another_version_is_reported_before_a_source_commit_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_source_commit(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 10, others)
+    assert result == Instance(KEY, record(), *[None] * 11, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(source_commit=OTHER_COMMIT, **others)))
@@ -1651,6 +1674,7 @@ def test_a_content_with_the_member_states_that_bound(bound):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.n_max) is int
@@ -1702,6 +1726,7 @@ def test_any_order_of_the_four_members_and_the_version(order):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
         None,
         None,
         None,
@@ -1790,7 +1815,7 @@ def test_another_version_is_reported_before_a_bound_is_looked_at(version, bound)
 def test_a_top_level_member_of_another_name_states_no_bound(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 10, others)
+    assert result == Instance(KEY, record(), *[None] * 11, others)
     assert result.n_max is None
     assert validate(doc(**others)) is None
 
@@ -1886,6 +1911,7 @@ def test_what_is_no_value_of_the_bound(literal):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
         None,
         None,
         None,
@@ -2115,6 +2141,7 @@ def test_a_content_with_the_member_states_that_number(count):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.candidates_per_round) is int
@@ -2168,6 +2195,7 @@ def test_any_order_of_the_five_members_and_the_version(order):
         COMMIT,
         BOUND,
         COUNT,
+        None,
         None,
         None,
         None,
@@ -2281,7 +2309,7 @@ def test_another_version_is_reported_before_the_number_of_candidates_is_looked_a
 def test_a_top_level_member_of_another_name_states_no_number(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 10, others)
+    assert result == Instance(KEY, record(), *[None] * 11, others)
     assert result.candidates_per_round is None
     assert validate(doc(**others)) is None
 
@@ -2386,6 +2414,7 @@ def test_what_is_no_value_of_the_number_of_candidates(literal):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
         None,
         None,
         None,
@@ -2672,6 +2701,7 @@ def test_a_content_with_the_member_states_that_key_and_that_record(case):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.op_signature) is OpSignature
@@ -2721,6 +2751,7 @@ def test_any_order_of_the_six_members_and_the_version():
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
         None,
         None,
         None,
@@ -2915,7 +2946,7 @@ def test_another_version_is_reported_before_the_op_signature_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_op_signature(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 10, others)
+    assert result == Instance(KEY, record(), *[None] * 11, others)
     assert result.op_signature is None
     assert validate(doc(**others)) is None
 
@@ -3434,6 +3465,7 @@ def test_the_reader_returns_the_record_the_file_embeds(tmp_path, root):
         == Instance(
             KEY,
             record(),
+            None,
             None,
             None,
             None,
@@ -3995,7 +4027,7 @@ def test_no_member_of_a_file_with_an_invalid_candidates_per_round_is_used(
     assert candidates_per_round_of(root, RUN) == COUNT
 
     place(root, counted(literal, *more))
-    assert candidates_per_round_of in READERS and len(READERS) == 13
+    assert candidates_per_round_of in READERS and len(READERS) == 14
     for call in READERS:
         invalid(f"{FILE}: {NO_COUNT}", call, root, RUN)
 
@@ -4154,7 +4186,7 @@ def test_no_member_of_a_file_with_an_invalid_op_signature_is_used(root, value):
 
     document["op_signature"] = value
     place(root, raw(document))
-    assert op_signature_of in READERS and len(READERS) == 13
+    assert op_signature_of in READERS and len(READERS) == 14
     for call in READERS:
         invalid(f"{FILE}: op_signature", call, root, RUN)
 
@@ -4383,6 +4415,7 @@ READERS = [
     owner_of,
     project_of,
     draws_of,
+    objective_of,
     layout_version_of,
 ]
 
@@ -4501,6 +4534,23 @@ INVALID_FILES = {
     "a draws that is a string": (
         raw(doc(**OP_MEMBERS, owner="example-owner", draws="2")),
         "draws: must be",
+    ),
+    "an objective that is the name of its type": (
+        raw(doc(objective="latency_minimisation")),
+        "objective: must be an object, got str",
+    ),
+    "an objective with a memory ceiling": (
+        raw(
+            doc(
+                **OP_MEMBERS,
+                draws=2,
+                objective={
+                    "objectives": [{"type": "latency_minimisation"}],
+                    "constraints": [{"type": "memory_ceiling", "bound": 123456789}],
+                },
+            )
+        ),
+        "objective.constraints: must be",
     ),
 }
 
@@ -5077,6 +5127,7 @@ def test_a_content_with_the_member_states_that_round_budget(budget):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.round_budget) is int
@@ -5131,6 +5182,7 @@ def test_any_place_of_the_round_budget_among_the_other_members(index):
         COUNT,
         OpSignature(OP_KEY, op_record()),
         BUDGET,
+        None,
         None,
         None,
         None,
@@ -5280,7 +5332,7 @@ def test_another_version_is_reported_before_the_round_budget_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_round_budget(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 10, others)
+    assert result == Instance(KEY, record(), *[None] * 11, others)
     assert result.round_budget is None
     assert validate(doc(**others)) is None
 
@@ -5372,6 +5424,7 @@ def test_what_is_no_value_of_the_round_budget(literal):
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
         None,
         None,
         None,
@@ -5670,7 +5723,7 @@ def test_no_member_of_a_file_with_an_invalid_round_budget_is_used(root, literal)
     assert_the_other_members_are_stated(root)
 
     place(root, budgeted(literal, *EVERY_MEMBER_TEXT))
-    assert round_budget_of in READERS and len(READERS) == 13
+    assert round_budget_of in READERS and len(READERS) == 14
     for call in READERS:
         invalid(f"{FILE}: {NO_BUDGET}", call, root, RUN)
 
@@ -5805,6 +5858,7 @@ def test_a_content_with_the_member_states_that_wall_clock_budget(seconds):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.wall_clock_budget_s) is int
@@ -5844,7 +5898,7 @@ def test_a_content_without_the_member_states_no_wall_clock_budget(members):
 
 @pytest.mark.parametrize("index", range(9))
 def test_any_place_of_the_wall_clock_budget_among_the_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_SECONDS, SECONDS, None, None, None, {})
+    expected = Instance(*STATED_BESIDE_THE_SECONDS, SECONDS, *[None] * 4, {})
 
     for others in (
         [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER],
@@ -6000,7 +6054,7 @@ def test_another_version_is_reported_before_the_wall_clock_budget_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_wall_clock_budget(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 10, others)
+    assert result == Instance(KEY, record(), *[None] * 11, others)
     assert result.wall_clock_budget_s is None
     assert validate(doc(**others)) is None
 
@@ -6092,9 +6146,7 @@ def test_what_is_no_value_of_the_wall_clock_budget(literal):
     assert invalid(NO_SECONDS, parse, content) == expected
     invalid(NO_SECONDS, validate, json.loads(content))
     kept = parse(text(VERSION, SECTION, *ALL_BUT_SECONDS_TEXT, '"example": [1]'))
-    assert kept == Instance(
-        *STATED_BESIDE_THE_SECONDS, None, None, None, None, {"example": [1]}
-    )
+    assert kept == Instance(*STATED_BESIDE_THE_SECONDS, *[None] * 5, {"example": [1]})
 
 
 WALK_THROUGH_OF_ADR_0033 = [
@@ -6423,7 +6475,7 @@ def test_no_member_of_a_file_with_an_invalid_wall_clock_budget_is_used(root, lit
     assert_the_members_beside_the_seconds_are_stated(root)
 
     place(root, timed(literal, *ALL_BUT_SECONDS_TEXT))
-    assert wall_clock_budget_s_of in READERS and len(READERS) == 13
+    assert wall_clock_budget_s_of in READERS and len(READERS) == 14
     for call in READERS:
         invalid(f"{FILE}: {NO_SECONDS}", call, root, RUN)
 
@@ -6579,7 +6631,7 @@ def test_a_content_with_the_member_states_that_name(member, name):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), *[None] * 7, *pair(member, name), None, {"example": [1]}
+        KEY, record(), *[None] * 7, *pair(member, name), None, None, {"example": [1]}
     )
     assert type(getattr(result, member)) is str
     assert member not in result.others
@@ -6641,7 +6693,7 @@ def test_a_content_without_a_member_states_none_for_it(member, members):
 
 @pytest.mark.parametrize("index", range(10))
 def test_any_place_of_the_names_among_the_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_NAMES, OWNER, PROJECT, None, {})
+    expected = Instance(*STATED_BESIDE_THE_NAMES, OWNER, PROJECT, None, None, {})
     others = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
 
     for first, second in (
@@ -6821,7 +6873,7 @@ def test_another_version_is_reported_before_the_names_are_looked_at(
 def test_a_top_level_member_of_another_name_states_no_owner_and_no_project(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 10, others)
+    assert result == Instance(KEY, record(), *[None] * 11, others)
     assert (result.owner, result.project) == (None, None)
     assert validate(doc(**others)) is None
 
@@ -6924,7 +6976,7 @@ def test_what_is_no_value_of_the_names(root, member, literal):
     assert invalid(FILE, NAMED[member], root, RUN) == f"{FILE}: {expected}"
     kept = parse(text(VERSION, SECTION, *ALL_BUT_THE_NAMES_TEXT, '"example": [1]'))
     assert kept == Instance(
-        *STATED_BESIDE_THE_NAMES, None, None, None, {"example": [1]}
+        *STATED_BESIDE_THE_NAMES, None, None, None, None, {"example": [1]}
     )
 
 
@@ -7220,7 +7272,7 @@ def test_no_member_of_a_file_with_an_invalid_name_is_used(root, member, literal)
     assert_the_members_beside_the_names_are_stated(root)
 
     place(root, named(member, literal, *stated))
-    assert owner_of in READERS and project_of in READERS and len(READERS) == 13
+    assert owner_of in READERS and project_of in READERS and len(READERS) == 14
     for call in READERS:
         invalid(f"{FILE}: {member}{NO_NAME}", call, root, RUN)
 
@@ -7351,7 +7403,7 @@ def test_a_content_with_the_member_states_that_number_of_draws(draws):
 
     result = parse(raw(document))
 
-    assert result == Instance(KEY, record(), *[None] * 9, draws, {"example": [1]})
+    assert result == Instance(KEY, record(), *[None] * 9, draws, None, {"example": [1]})
     assert type(result.draws) is int
     assert "draws" not in result.others
     assert validate(document) is None
@@ -7387,9 +7439,9 @@ def test_a_content_without_the_member_states_no_number_of_draws(members):
 
 @pytest.mark.parametrize("index", range(12))
 def test_any_place_of_the_draws_among_the_eleven_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_DRAWS, DRAWS, {})
+    expected = Instance(*STATED_BESIDE_THE_DRAWS, DRAWS, None, {})
     stated = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
-    assert None not in expected
+    assert None not in expected[:12]
 
     for others in (
         [*stated, OWNER_MEMBER, PROJECT_MEMBER],
@@ -7545,7 +7597,7 @@ def test_another_version_is_reported_before_the_draws_are_looked_at(version, dra
 def test_a_top_level_member_of_another_name_states_no_number_of_draws(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 10, others)
+    assert result == Instance(KEY, record(), *[None] * 11, others)
     assert result.draws is None
     assert validate(doc(**others)) is None
 
@@ -7641,7 +7693,7 @@ def test_what_is_no_value_of_the_draws(root, literal):
     assert invalid(FILE, draws_of, root, RUN) == f"{FILE}: {expected}"
     assert invalid(FILE, read, root, RUN) == f"{FILE}: {expected}"
     kept = parse(text(VERSION, SECTION, *ALL_BUT_DRAWS_TEXT, '"example": [1]'))
-    assert kept == Instance(*STATED_BESIDE_THE_DRAWS, None, {"example": [1]})
+    assert kept == Instance(*STATED_BESIDE_THE_DRAWS, None, None, {"example": [1]})
 
 
 def test_minus_zero_is_refused_as_the_integer_0_below_the_lower_end_of_the_draws():
@@ -7929,7 +7981,7 @@ def test_no_member_of_a_file_with_an_invalid_number_of_draws_is_used(root, liter
     assert_the_members_beside_the_draws_are_stated(root)
 
     place(root, drawn(literal, *ALL_BUT_DRAWS_TEXT))
-    assert draws_of in READERS and len(READERS) == 13
+    assert draws_of in READERS and len(READERS) == 14
     for call in READERS:
         invalid(f"{FILE}: {NO_DRAWS}", call, root, RUN)
 
@@ -7993,6 +8045,823 @@ def test_a_file_invalid_by_its_draws_alone_is_run_file_invalid(root, broken, rep
         "run_file_invalid",
         InvalidInstanceError,
         "draws: must be an int from 1 to",
+    )
+    assert kinds(root) == []
+
+    place(root, raw(repaired))
+    assert tool.function(dict(REQUEST)) == {"example_member": 1}
+    assert kinds(root) == ["step_started", "step_ended"]
+    assert (len(tool.asked), tool.performed) == (1, 1)
+    assert [seen for _, _, seen in tool.asked] == [record()]
+
+
+# --- happy: the member objective (ADR-0053) ---
+
+# The one value a member can hold today (ADR-0053 decision 4); it stands here because a file states it, and it is no default.
+OBJECTIVE = {"objectives": [{"type": "latency_minimisation"}], "constraints": []}
+CEILING = {"type": "memory_ceiling", "bound": 123456789}
+OBJECTIVE_MEMBER = f'"objective": {json.dumps(OBJECTIVE)}'
+ALL_BUT_THE_OBJECTIVE = {**ALL_BUT_DRAWS, "draws": DRAWS}
+ALL_BUT_THE_OBJECTIVE_TEXT = (*ALL_BUT_DRAWS_TEXT, DRAWS_MEMBER)
+STATED_BESIDE_THE_OBJECTIVE = (*STATED_BESIDE_THE_DRAWS, DRAWS)
+NOT_AN_OBJECT = "objective: must be an object, got "
+NOT_ONE_ENTRY = "objective.objectives: must be an array of exactly one entry, got "
+NOT_AN_ENTRY = "objective.objectives[0]: must be an object"
+NOT_THE_TYPE = "objective.objectives[0].type: must be latency_minimisation, got "
+NOT_EMPTY = (
+    "objective.constraints: must be an empty array, as no constraint type is "
+    "admitted, got "
+)
+NEARBY = [
+    "objectives",
+    "constraints",
+    "target",
+    "Objective",
+    "OBJECTIVE",
+    "goal",
+    "task",
+    "task_objective",
+]
+
+
+def aimed(changes=None, entry=None):
+    made = json.loads(json.dumps(OBJECTIVE))
+    for name, value in (changes or {}).items():
+        if value is REMOVE:
+            del made[name]
+        else:
+            made[name] = value
+    for name, value in (entry or {}).items():
+        if value is REMOVE:
+            del made["objectives"][0][name]
+        else:
+            made["objectives"][0][name] = value
+    return made
+
+
+def objective_text(literal, *more):
+    return text(VERSION, SECTION, f'"objective": {literal}', *more)
+
+
+def assert_the_members_beside_the_objective_are_stated(root, run=RUN):
+    assert_the_members_beside_the_draws_are_stated(root, run)
+    assert draws_of(root, run) == DRAWS
+
+
+def test_a_content_with_the_member_states_its_objectives_and_its_constraints():
+    document = doc(objective=OBJECTIVE, example=[1])
+
+    result = parse(raw(document))
+
+    assert result == Instance(KEY, record(), *[None] * 10, OBJECTIVE, {"example": [1]})
+    assert type(result.objective) is dict
+    assert type(result.objective["objectives"]) is list
+    assert type(result.objective["constraints"]) is list
+    assert result.objective["constraints"] == []
+    assert "objective" not in result.others
+    assert validate(document) is None
+    assert parse(objective_text(json.dumps(OBJECTIVE))).objective == OBJECTIVE
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        '{"objectives": [{"type": "latency_minimisation"}], "constraints": []}',
+        '{"constraints": [], "objectives": [{"type": "latency_minimisation"}]}',
+        '{\r\n\t"constraints" : [ ] ,\n "objectives":[{ "type":"latency_minimisation" }]\n}',
+        '{"objectives":[{"type":"latency_minimisation"}],"constraints":[]}',
+    ],
+)
+def test_any_order_and_any_white_space_inside_the_objective(literal):
+    result = parse(objective_text(literal))
+
+    assert result.objective == OBJECTIVE
+    assert list(result.objective) == list(json.loads(literal))
+    assert validate(json.loads(objective_text(literal))) is None
+
+
+@pytest.mark.parametrize(
+    "members", [{}, EVERY_MEMBER, ALL_BUT_THE_OBJECTIVE, {"draws": DRAWS}], ids=repr
+)
+def test_a_content_without_the_member_states_no_objective(members):
+    without = parse(raw(doc(**members)))
+    stated = parse(raw(doc(**members, objective=OBJECTIVE)))
+
+    assert without.objective is None
+    assert stated.objective == OBJECTIVE
+    assert without[:12] == stated[:12]
+    assert without.others == stated.others == {}
+    assert without != stated
+    assert validate(doc(**members)) is None
+
+
+@pytest.mark.parametrize("index", range(13))
+def test_any_place_of_the_objective_among_the_twelve_other_members(index):
+    expected = Instance(*STATED_BESIDE_THE_OBJECTIVE, OBJECTIVE, {})
+    stated = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
+    assert None not in expected
+
+    for others in (
+        [*stated, OWNER_MEMBER, PROJECT_MEMBER, DRAWS_MEMBER],
+        [DRAWS_MEMBER, PROJECT_MEMBER, OWNER_MEMBER, *stated[::-1]],
+    ):
+        members = [*others[:index], OBJECTIVE_MEMBER, *others[index:]]
+        assert len(members) == 13
+        assert parse(text(*members)) == expected
+        assert validate(json.loads(text(*members))) is None
+
+
+# The Example of ADR-0053, as written in the record: the shape of the member, not a valid file. Its objective is there because the file states it: no default.
+EXAMPLE_OF_ADR_0053 = b"""{
+  "schema_version": 1,
+  "hw_profile": {
+    "key": "cpu_standin-b0d8610d8f470856",
+    "record": {
+      "schema_version": 1,
+      "accelerator": "cpu_standin",
+      "revision": "NOT-DECIDED-HERE",
+      "toolchain": {"clang": "NOT-DECIDED-HERE"},
+      "host": {"cpu": "NOT-DECIDED-HERE", "os": "NOT-DECIDED-HERE"},
+      "hw_source": "NOT-DECIDED-HERE"
+    }
+  },
+  "objective": {"objectives": [{"type": "latency_minimisation"}], "constraints": []}
+}
+"""
+
+
+def test_the_member_of_the_example_of_adr_0053():
+    invalid("hw_profile.record.hw_source: must be ", parse, EXAMPLE_OF_ADR_0053)
+    example = EXAMPLE_OF_ADR_0053.replace(EXAMPLE_SOURCE, b'"hw_source": "in_house"')
+
+    result = parse(example)
+    assert result.objective == OBJECTIVE
+    assert result.others == {}
+
+    silent = parse(example.replace(b',\n  "objective": ', b',\n  "target": '))
+    assert silent.objective is None
+    assert silent.others == {"target": OBJECTIVE}
+    assert silent[:12] == result[:12]
+
+
+# --- branch: the member objective ---
+
+
+@pytest.mark.parametrize("version", [0, 2, MAX])
+@pytest.mark.parametrize(
+    "objective", [OBJECTIVE, None, "latency_minimisation", {}, [OBJECTIVE]], ids=repr
+)
+def test_another_version_is_reported_before_the_objective_is_looked_at(
+    version, objective
+):
+    document = doc(schema_version=version, objective=objective)
+
+    for function, argument in ((parse, raw(document)), (validate, document)):
+        with pytest.raises(UnsupportedVersionError) as caught:
+            function(argument)
+        assert str(caught.value) == f"schema_version: {version} is not supported"
+
+
+@pytest.mark.parametrize("name", NEARBY)
+@pytest.mark.parametrize("value", [OBJECTIVE, None, "latency_minimisation", {}])
+def test_a_top_level_member_of_a_nearby_name_states_no_objective(root, name, value):
+    others = {name: value}
+
+    result = parse(raw(doc(**others)))
+
+    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result.objective is None
+    assert validate(doc(**others)) is None
+    place(root, raw(doc(**others)))
+    assert objective_of(root, RUN) is None
+    assert parse(raw(doc(objective=OBJECTIVE, **others))).others == others
+
+
+def test_the_members_of_the_objective_at_the_top_level_state_no_objective():
+    others = {"objectives": OBJECTIVE["objectives"], "constraints": []}
+
+    result = parse(raw(doc(**others)))
+
+    assert result.objective is None
+    assert result.others == others
+
+
+@pytest.mark.parametrize(
+    "place, changes",
+    [
+        ("hw_profile: must be", {"hw_profile": None, "objective": None}),
+        (
+            "document: lacks the member hw_profile",
+            {"hw_profile": REMOVE, "objective": 1},
+        ),
+        ("tolerance: must be", {"tolerance": None, "objective": {}}),
+        (NO_BOUND + "int", {"n_max": 4, "objective": []}),
+        ("project" + NO_NAME + "str ''", {"project": "", "objective": None}),
+        (NO_DRAWS + "int", {"draws": 0, "objective": None}),
+        (NO_DRAWS + "int", {**ALL_BUT_DRAWS, "draws": 0, "objective": {}}),
+        (NOT_AN_OBJECT + "NoneType", {**ALL_BUT_THE_OBJECTIVE, "objective": None}),
+    ],
+)
+def test_the_first_broken_rule_is_reported_with_the_objective(place, changes):
+    document = doc(**changes)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (
+            {"weight": 1},
+            "objective: must be an object without the member, got str 'weight'",
+        ),
+        ({"constraints": [CEILING]}, "objective: lacks the member objectives"),
+        ({"objectives": []}, "objective: lacks the member constraints"),
+        (aimed({"objectives": [], "constraints": None}), NOT_ONE_ENTRY + "list"),
+        (aimed({"objectives": [{"weight": 1}], "constraints": None}), NOT_AN_ENTRY),
+        (
+            aimed({"objectives": [{}], "constraints": None}),
+            "objective.objectives[0]: lacks the member type",
+        ),
+        (aimed({"constraints": None}, {"type": "x"}), NOT_THE_TYPE + "str 'x'"),
+        (aimed({"constraints": None}), NOT_EMPTY + "NoneType"),
+        (aimed({"constraints": [CEILING]}), NOT_EMPTY + "list"),
+    ],
+)
+def test_the_first_broken_rule_inside_the_objective_is_reported(value, expected):
+    message = invalid("objective", validate, doc(objective=value))
+
+    assert message.startswith(expected)
+    assert invalid("objective", parse, raw(doc(objective=value))) == message
+
+
+# --- error / negative: the member objective ---
+
+INVALID_OBJECTIVES = {
+    "null": (None, NOT_AN_OBJECT + "NoneType"),
+    "true": (True, NOT_AN_OBJECT + "bool"),
+    "false": (False, NOT_AN_OBJECT + "bool"),
+    "0": (0, NOT_AN_OBJECT + "int"),
+    "1": (1, NOT_AN_OBJECT + "int"),
+    "1.5": (1.5, NOT_AN_OBJECT + "float"),
+    "the name of the type": (
+        "latency_minimisation",
+        NOT_AN_OBJECT + "str 'latency_minimisation'",
+    ),
+    "the empty string": ("", NOT_AN_OBJECT + "str ''"),
+    "an array of the value": ([OBJECTIVE], NOT_AN_OBJECT + "list"),
+    "an empty array": ([], NOT_AN_OBJECT + "list"),
+    "an empty object": ({}, "objective: lacks the member objectives"),
+    "no constraints": (
+        aimed({"constraints": REMOVE}),
+        "objective: lacks the member constraints",
+    ),
+    "no objectives": (
+        aimed({"objectives": REMOVE}),
+        "objective: lacks the member objectives",
+    ),
+    "a third member": (
+        aimed({"weight": 1}),
+        "objective: must be an object without the member, got str 'weight'",
+    ),
+    "a third member named type": (
+        aimed({"type": "latency_minimisation"}),
+        "objective: must be an object without the member, got str 'type'",
+    ),
+    "objectives that is the entry": (
+        aimed({"objectives": {"type": "latency_minimisation"}}),
+        NOT_ONE_ENTRY + "dict",
+    ),
+    "objectives that is the name": (
+        aimed({"objectives": "latency_minimisation"}),
+        NOT_ONE_ENTRY + "str 'latency_minimisation'",
+    ),
+    "objectives that is null": (
+        aimed({"objectives": None}),
+        NOT_ONE_ENTRY + "NoneType",
+    ),
+    "objectives with no entry": (aimed({"objectives": []}), NOT_ONE_ENTRY + "list"),
+    "objectives with two entries": (
+        aimed({"objectives": [{"type": "latency_minimisation"}] * 2}),
+        NOT_ONE_ENTRY + "list",
+    ),
+    "objectives with a second type": (
+        aimed(
+            {
+                "objectives": [
+                    {"type": "latency_minimisation"},
+                    {"type": "throughput_maximisation"},
+                ]
+            }
+        ),
+        NOT_ONE_ENTRY + "list",
+    ),
+    "an entry that is the name": (
+        aimed({"objectives": ["latency_minimisation"]}),
+        NOT_AN_ENTRY + ", got str 'latency_minimisation'",
+    ),
+    "an entry that is null": (
+        aimed({"objectives": [None]}),
+        NOT_AN_ENTRY + ", got NoneType",
+    ),
+    "an entry that is an array": (
+        aimed({"objectives": [["latency_minimisation"]]}),
+        NOT_AN_ENTRY + ", got list",
+    ),
+    "an entry without type": (
+        aimed(entry={"type": REMOVE}),
+        "objective.objectives[0]: lacks the member type",
+    ),
+    "an entry with weight": (
+        aimed(entry={"weight": 1}),
+        NOT_AN_ENTRY + " without the member, got str 'weight'",
+    ),
+    "an entry with priority": (
+        aimed(entry={"priority": 1}),
+        NOT_AN_ENTRY + " without the member, got str 'priority'",
+    ),
+    "an entry with direction": (
+        aimed(entry={"direction": "minimise"}),
+        NOT_AN_ENTRY + " without the member, got str 'direction'",
+    ),
+    "an entry with a unit": (
+        aimed(entry={"unit": "ns"}),
+        NOT_AN_ENTRY + " without the member, got str 'unit'",
+    ),
+    "throughput_maximisation": (
+        aimed(entry={"type": "throughput_maximisation"}),
+        NOT_THE_TYPE + "str 'throughput_maximisation'",
+    ),
+    "memory_ceiling as a type": (
+        aimed(entry={"type": "memory_ceiling"}),
+        NOT_THE_TYPE + "str 'memory_ceiling'",
+    ),
+    "Latency_Minimisation": (
+        aimed(entry={"type": "Latency_Minimisation"}),
+        NOT_THE_TYPE + "str 'Latency_Minimisation'",
+    ),
+    "latency_minimization": (
+        aimed(entry={"type": "latency_minimization"}),
+        NOT_THE_TYPE + "str 'latency_minimization'",
+    ),
+    "a type with a space": (
+        aimed(entry={"type": "latency_minimisation "}),
+        NOT_THE_TYPE + "str 'latency_minimisation '",
+    ),
+    "an empty type": (aimed(entry={"type": ""}), NOT_THE_TYPE + "str ''"),
+    "a null type": (aimed(entry={"type": None}), NOT_THE_TYPE + "NoneType"),
+    "a type that is a number": (aimed(entry={"type": 1}), NOT_THE_TYPE + "int"),
+    "a type in an array": (
+        aimed(entry={"type": ["latency_minimisation"]}),
+        NOT_THE_TYPE + "list",
+    ),
+    "constraints that is an object": (aimed({"constraints": {}}), NOT_EMPTY + "dict"),
+    "constraints that is null": (aimed({"constraints": None}), NOT_EMPTY + "NoneType"),
+    "constraints that is a string": (
+        aimed({"constraints": "memory_ceiling"}),
+        NOT_EMPTY + "str 'memory_ceiling'",
+    ),
+    "constraints that is 0": (aimed({"constraints": 0}), NOT_EMPTY + "int"),
+    "a memory ceiling": (aimed({"constraints": [CEILING]}), NOT_EMPTY + "list"),
+    "a memory ceiling without a bound": (
+        aimed({"constraints": [{"type": "memory_ceiling"}]}),
+        NOT_EMPTY + "list",
+    ),
+    "a memory ceiling with a bound of 0": (
+        aimed({"constraints": [{"type": "memory_ceiling", "bound": 0}]}),
+        NOT_EMPTY + "list",
+    ),
+    "the objective as a constraint": (
+        aimed({"constraints": [{"type": "latency_minimisation"}]}),
+        NOT_EMPTY + "list",
+    ),
+    "an empty constraint": (aimed({"constraints": [{}]}), NOT_EMPTY + "list"),
+    "a null constraint": (aimed({"constraints": [None]}), NOT_EMPTY + "list"),
+}
+# The invalid rows of the Walk-through of ADR-0053.
+WALK_THROUGH_OF_ADR_0053 = [
+    "the name of the type",
+    "null",
+    "an empty object",
+    "objectives with no entry",
+    "objectives with two entries",
+    "an entry with weight",
+    "no constraints",
+    "a memory ceiling",
+]
+# The two contents test_the_top_level_is_open held before ADR-0053 made them invalid.
+NO_LONGER_OPEN = [
+    ({"objective": None, "budget": -1}, NOT_AN_OBJECT + "NoneType"),
+    (
+        {"budget": [], "objective": "", "hw_profile_key": OTHER_KEY},
+        NOT_AN_OBJECT + "str ''",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", INVALID_OBJECTIVES)
+def test_what_is_no_value_of_the_objective(root, case):
+    value, expected = INVALID_OBJECTIVES[case]
+    content = objective_text(json.dumps(value), *ALL_BUT_THE_OBJECTIVE_TEXT)
+
+    assert set(WALK_THROUGH_OF_ADR_0053) < set(INVALID_OBJECTIVES)
+    assert invalid("objective", parse, content) == expected
+    assert invalid("objective", validate, json.loads(content)) == expected
+    assert invalid("objective", validate, doc(objective=value)) == expected
+    place(root, content)
+    assert invalid(FILE, objective_of, root, RUN) == f"{FILE}: {expected}"
+    assert invalid(FILE, read, root, RUN) == f"{FILE}: {expected}"
+    kept = parse(text(VERSION, SECTION, *ALL_BUT_THE_OBJECTIVE_TEXT))
+    assert kept == Instance(*STATED_BESIDE_THE_OBJECTIVE, None, {})
+
+
+@pytest.mark.parametrize("others, expected", NO_LONGER_OPEN, ids=repr)
+def test_a_top_level_objective_among_members_not_defined_is_checked(
+    root, others, expected
+):
+    assert invalid("objective", parse, raw(doc(**others))) == expected
+    assert invalid("objective", validate, doc(**others)) == expected
+    place(root, raw(doc(**others)))
+    for call in READERS:
+        invalid(f"{FILE}: {expected}", call, root, RUN)
+
+
+class Members(dict):
+    """A test-only subclass: not exactly a ``dict``."""
+
+
+class Entries(list):
+    """A test-only subclass: not exactly a ``list``."""
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (Members(OBJECTIVE), NOT_AN_OBJECT + "Members"),
+        ((OBJECTIVE,), NOT_AN_OBJECT + "tuple"),
+        (
+            aimed({"objectives": Entries([{"type": "latency_minimisation"}])}),
+            NOT_ONE_ENTRY + "Entries",
+        ),
+        (
+            aimed({"objectives": ({"type": "latency_minimisation"},)}),
+            NOT_ONE_ENTRY + "tuple",
+        ),
+        (
+            aimed({"objectives": [Members(type="latency_minimisation")]}),
+            NOT_AN_ENTRY + ", got Members",
+        ),
+        (aimed(entry={"type": Text("latency_minimisation")}), NOT_THE_TYPE + "Text"),
+        (aimed(entry={"type": b"latency_minimisation"}), NOT_THE_TYPE + "bytes"),
+        (aimed({"constraints": Entries()}), NOT_EMPTY + "Entries"),
+        (aimed({"constraints": ()}), NOT_EMPTY + "tuple"),
+        (aimed({"constraints": set()}), NOT_EMPTY + "set"),
+        (aimed({1: 1}), "objective: must be an object without the member, got int"),
+        (
+            aimed(entry={("type",): 1}),
+            NOT_AN_ENTRY + " without the member, got tuple",
+        ),
+    ],
+    ids=shown,
+)
+def test_validate_refuses_an_objective_built_in_memory(value, expected):
+    assert invalid("objective", validate, doc(objective=value)) == expected
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        '{"objectives": [], "objectives": [], "constraints": []}',
+        '{"constraints": [], "objectives": [{"type": "x"}], "constraints": []}',
+        '{"objectives": [{"type": "x", "type": "x"}], "constraints": []}',
+        '{"objectives": [{"type": "x", "type": "latency_minimisation"}]}',
+    ],
+)
+def test_a_member_name_twice_inside_the_objective_is_a_text_error(literal):
+    message = invalid(
+        "content: cannot be read as one JSON text", parse, objective_text(literal)
+    )
+    assert "a JSON object repeats a member name" in message
+
+
+def test_the_member_name_objective_twice_at_the_top_level():
+    message = invalid(
+        "content: cannot be read as one JSON text",
+        parse,
+        text(VERSION, SECTION, OBJECTIVE_MEMBER, OBJECTIVE_MEMBER),
+    )
+    assert "a JSON object repeats a member name" in message
+
+
+def test_an_integer_too_long_for_the_interpreter_inside_the_objective_is_a_text_error():
+    literal = (
+        '{"objectives": [{"type": "latency_minimisation"}], "constraints": '
+        f'[{{"type": "memory_ceiling", "bound": {TOO_LONG_TEXT}}}]}}'
+    )
+
+    message = invalid(
+        "content: cannot be read as one JSON text", parse, objective_text(literal)
+    )
+    assert "objective" not in message
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        doc(objective=OBJECTIVE),
+        doc(objective={}),
+        doc(objective=aimed({"constraints": [CEILING]})),
+        doc(**ALL_BUT_THE_OBJECTIVE, objective=aimed(entry={"weight": 1})),
+    ],
+    ids=repr,
+)
+def test_a_check_of_an_objective_modifies_nothing(document):
+    kept = json.dumps(document)
+    valid = document["objective"] == OBJECTIVE
+
+    assert accepted(validate, document) == valid
+    assert accepted(parse, raw(document)) == valid
+    assert json.dumps(document) == kept
+
+
+# --- one set of accepted values in both modules (ADR-0053 Consequences) ---
+
+# The example of ADR-0050 ("The example of ADR-0002 decision 8, restated"), copied from the record: a valid version-2 spec.
+SPEC_OF_ADR_0050 = json.loads(
+    """
+{
+  "schema_version": 2,
+  "id": {"run_id": "20261009t012331z-9f3a6c1e0b7d4a52", "round": 1, "candidate": 1, "attempt": 1, "candidates": 1, "relation": "single"},
+  "hw_profile": {"key": "cpu_standin-8c0be275e5925ab0",
+    "record": {"schema_version": 1, "accelerator": "cpu_standin", "revision": "host",
+               "toolchain": {"clang": "Example clang version 0.0.0 (fictitious-build 1)"},
+               "host": {"cpu": "Example(R) Fictitious(TM) X-0000 CPU @ 0.00GHz", "os": "linux exampleos 0.0"}, "hw_source": "external"}},
+  "task": {
+    "op_signature": {"key": "gemm-485b9bc494d477eb",
+      "record": {"schema_version": 1, "kind": "gemm", "shape": {"m": 1, "k": 2048, "n": 8192}, "dtype": "fp32", "layout": "row_major"}},
+    "contract": {"language": "c",
+      "prototype": "void hilclaw_gemm(size_t m, size_t k, size_t n, const float *restrict a, const float *restrict b, float *restrict c);",
+      "operands": [
+        {"name": "a", "role": "input", "dtype": "fp32", "shape": [1, 2048]},
+        {"name": "b", "role": "input", "dtype": "fp32", "shape": [2048, 8192]},
+        {"name": "c", "role": "output", "dtype": "fp32", "shape": [1, 8192]}]},
+    "objective": {"objectives": [{"type": "latency_minimisation"}], "constraints": []}},
+  "guidance": {"techniques": [{"id": "NOT-DECIDED-HERE", "text": "NOT-DECIDED-HERE"}]},
+  "feedback": {"attempts": []}
+}
+"""
+)
+CORPUS = {
+    "the value": OBJECTIVE,
+    "the value with its members swapped": {
+        "constraints": [],
+        "objectives": [{"type": "latency_minimisation"}],
+    },
+    **{case: value for case, (value, _) in INVALID_OBJECTIVES.items()},
+    **{repr(others): others["objective"] for others, _ in NO_LONGER_OPEN},
+}
+
+
+def judged_as_a_spec(value):
+    spec_document = json.loads(json.dumps(SPEC_OF_ADR_0050))
+    spec_document["task"]["objective"] = value
+    try:
+        spec.validate(spec_document)
+    except spec.InvalidSpecError:
+        return False
+    return True
+
+
+@pytest.mark.parametrize("case", CORPUS)
+def test_the_objective_and_the_task_objective_of_a_spec_accept_the_same_values(case):
+    value = json.loads(json.dumps(CORPUS[case]))
+    assert spec.validate(json.loads(json.dumps(SPEC_OF_ADR_0050))) is None
+
+    there = judged_as_a_spec(value)
+    here = accepted(validate, doc(objective=value))
+
+    assert here == there
+    assert accepted(parse, raw(doc(objective=value))) == here
+    assert here == (case.startswith("the value"))
+
+
+# --- no substitute: nothing of the module stands in for the objective ---
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        doc(),
+        doc(**EVERY_MEMBER),
+        doc(**ALL_BUT_THE_OBJECTIVE),
+        doc(objectives=OBJECTIVE["objectives"], constraints=[]),
+        doc(
+            target=OBJECTIVE, goal="latency_minimisation", task={"objective": OBJECTIVE}
+        ),
+    ],
+    ids=repr,
+)
+def test_a_content_without_the_member_states_no_objective_and_no_constraint(document):
+    result = parse(raw(document))
+
+    assert result.objective is None
+    assert result._asdict()["objective"] is None
+    assert validate(document) is None
+
+
+def test_not_stated_and_an_empty_set_of_constraints_are_two_results():
+    stated = parse(raw(doc(objective=OBJECTIVE)))
+    silent = parse(raw(doc()))
+
+    assert stated.objective["constraints"] == []
+    assert silent.objective is None
+    assert stated.objective != silent.objective
+    assert stated != silent
+    for stand_in in (OBJECTIVE, {}, [], "", "latency_minimisation", False, 0):
+        assert silent.objective != stand_in
+
+
+def test_nothing_of_the_module_stands_in_for_the_objective():
+    functions = [
+        value
+        for value in vars(instance).values()
+        if inspect.isfunction(value) and value.__module__ == instance.__name__
+    ]
+    assert objective_of in functions
+    for function in functions:
+        assert function.__defaults__ is None and function.__kwdefaults__ is None
+    assert Instance._field_defaults == {}
+    tree = ast.parse(inspect.getsource(instance))
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+    parts = {part for name in imported for part in name.split(".")}
+    assert "keys" in parts
+    assert not parts & {"spec", "spec_file", "tools", "harness"}
+    assert not {"spec", "spec_file", "objective", "OBJECTIVE"} & set(vars(instance))
+
+
+# --- the reader of the objective (ADR-0053) ---
+
+
+def test_the_reader_returns_the_objective_the_file_states(tmp_path, root):
+    place(root, raw(doc(**ALL_BUT_THE_OBJECTIVE, objective=OBJECTIVE, example=[1])))
+    before = snapshot(tmp_path)
+
+    found = objective_of(root, RUN)
+
+    assert found == OBJECTIVE and type(found) is dict
+    assert found == read(root, RUN).objective
+    assert objective_of(str(root), RUN) == found
+    assert_the_members_beside_the_objective_are_stated(root)
+    assert snapshot(tmp_path) == before
+
+    again = objective_of(root, RUN)
+    assert again == found and again is not found
+    assert again["objectives"] is not found["objectives"]
+    found["constraints"].append(CEILING)
+    found["objectives"][0]["type"] = "throughput_maximisation"
+    assert objective_of(root, RUN) == OBJECTIVE
+    assert snapshot(tmp_path) == before
+
+
+def test_a_run_without_the_member_states_no_objective(tmp_path, root, monkeypatch):
+    others = {name: OBJECTIVE for name in NEARBY}
+    place(root, raw(doc(**ALL_BUT_THE_OBJECTIVE, **others)))
+    place(root, raw(doc(objective=OBJECTIVE)), OTHER_FILE)
+    place(root, run_state.dump(12, EMPTY), STATE_FILE)
+    place(root, json.dumps(SPEC_OF_ADR_0050).encode(), f"runs/{RUN}/spec.json")
+    for name in ("OBJECTIVE", "HILCLAW_OBJECTIVE"):
+        monkeypatch.setenv(name, json.dumps(OBJECTIVE))
+    before = snapshot(tmp_path)
+
+    found = objective_of(root, RUN)
+
+    assert found is None
+    for stand_in in (OBJECTIVE, {}, [], "latency_minimisation"):
+        assert found != stand_in
+    assert read(root, RUN).objective is None
+    assert read(root, RUN).others == others
+    assert_the_members_beside_the_objective_are_stated(root)
+    assert objective_of(root, OTHER_RUN) == OBJECTIVE
+    assert objective_of(root, RUN) is None
+    assert snapshot(tmp_path) == before
+
+    place(root, raw(doc()))
+    assert objective_of(root, RUN) is None
+
+
+def test_an_objective_replaced_between_two_calls_is_seen_at_the_second(root):
+    place(root, raw(doc(objective=OBJECTIVE)))
+    assert objective_of(root, RUN) == OBJECTIVE
+
+    place(root, raw(doc()))
+    assert objective_of(root, RUN) is None
+
+    place(root, raw(doc(objective=aimed({"constraints": [CEILING]}))))
+    invalid(f"{FILE}: {NOT_EMPTY}list", objective_of, root, RUN)
+
+    place(root, raw(doc(schema_version=2, objective=OBJECTIVE)))
+    with pytest.raises(UnsupportedVersionError):
+        objective_of(root, RUN)
+
+    (root / FILE).unlink()
+    with pytest.raises(MissingInstanceError):
+        objective_of(root, RUN)
+
+    place(root, raw(doc(objective=OBJECTIVE)))
+    assert objective_of(root, RUN) == OBJECTIVE
+
+
+@pytest.mark.parametrize(
+    "case",
+    [*WALK_THROUGH_OF_ADR_0053, "true", "an entry with priority", "a null constraint"],
+)
+def test_no_member_of_a_file_with_an_invalid_objective_is_used(root, case):
+    value, expected = INVALID_OBJECTIVES[case]
+    place(root, objective_text(json.dumps(OBJECTIVE), *ALL_BUT_THE_OBJECTIVE_TEXT))
+    assert objective_of(root, RUN) == OBJECTIVE
+    assert_the_members_beside_the_objective_are_stated(root)
+
+    place(root, objective_text(json.dumps(value), *ALL_BUT_THE_OBJECTIVE_TEXT))
+    assert objective_of in READERS and len(READERS) == 14
+    for call in READERS:
+        invalid(f"{FILE}: {expected}", call, root, RUN)
+
+    place(root, text(VERSION, SECTION, *ALL_BUT_THE_OBJECTIVE_TEXT))
+    assert objective_of(root, RUN) is None
+    assert_the_members_beside_the_objective_are_stated(root)
+
+
+def test_two_runs_state_their_own_objectives(root):
+    place(root, raw(doc(objective=OBJECTIVE)))
+    place(root, raw(doc(draws=DRAWS)), OTHER_FILE)
+    place(root, raw(doc(objective=None)), "runs/run-c/instance.json")
+
+    assert objective_of(root, RUN) == OBJECTIVE
+    assert objective_of(root, OTHER_RUN) is None
+    invalid(f"runs/run-c/instance.json: {NOT_AN_OBJECT}", objective_of, root, "run-c")
+    assert objective_of(root, RUN) == OBJECTIVE
+
+
+def test_only_the_instance_file_is_opened_for_the_objective(root, monkeypatch):
+    place(root, raw(doc(objective=OBJECTIVE, tolerance=TOLERANCE)))
+    place(root, run_state.dump(12, EMPTY), STATE_FILE)
+    place(root, b'{"seq": 1, "objective": {}}\n', EVENTS_FILE)
+    spec_file = f"runs/{RUN}/rounds/0000/candidates/01/spec.json"
+    place(root, json.dumps(SPEC_OF_ADR_0050).encode(), spec_file)
+    place(root, raw(doc()), OTHER_FILE)
+    place(root, b'{"objective": {}}', f"db/{KEY}/example.json")
+    before = snapshot(root)
+    opened, real = [], Path.read_bytes
+
+    def read_bytes(path):
+        opened.append(path.relative_to(root).as_posix())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setenv("HILCLAW_DATA_ROOT", "elsewhere")
+
+    assert objective_of(root, RUN) == OBJECTIVE
+    assert opened == [FILE]
+    assert objective_of(root, RUN) == OBJECTIVE
+    assert opened == [FILE, FILE]
+    monkeypatch.setattr(Path, "read_bytes", real)
+    assert snapshot(root) == before
+
+
+# --- with hilclaw.hw_tool: a file invalid by its objective alone ---
+
+
+@pytest.mark.parametrize(
+    "repaired",
+    [doc(), doc(objective=OBJECTIVE)],
+    ids=["removed", "valid"],
+)
+@pytest.mark.parametrize(
+    "broken",
+    [
+        None,
+        "latency_minimisation",
+        {},
+        aimed({"constraints": [CEILING]}),
+        aimed(entry={"weight": 1}),
+        aimed({"objectives": []}),
+    ],
+    ids=repr,
+)
+def test_a_file_invalid_by_its_objective_alone_is_run_file_invalid(
+    root, broken, repaired
+):
+    place(started(root), raw(doc(**ALL_BUT_THE_OBJECTIVE, objective=broken)))
+    tool = Tool(root)
+
+    assert_no_step_started(
+        tool, root, "run_file_invalid", InvalidInstanceError, "objective"
     )
     assert kinds(root) == []
 
