@@ -2,7 +2,7 @@
 id: T-0183
 title: Let hilclaw/selfcheck_server.py take the package directory from hilclaw.checkout_boundary instead of its own copy, with no change of behaviour
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, C-7]
 dependsOn: [T-0182]
@@ -62,3 +62,14 @@ Read Python sources with `PYTHONIOENCODING=utf-8` on this machine. Line numbers 
 - (driver/planner) Little else is selectable until HQ-0020 is answered (T-0176, then the `cpu_standin` operation for `correctness.check`). The remaining PLAN items P0.5-4 (owner's hook registration), P1-1 and P1-8 wait on owner answers or on that HQ.
 
 ## Result
+
+- **Outcome:** DONE. PR #127 was squash-merged as 1025578, and its branch was deleted. The review took 2 rounds. Round 1 was Approve with one nit: a short line left by the docstring rewrap. That nit was fixed by refilling the paragraph, whitespace only. Round 2 was Approve with no findings.
+- **Change:** `hilclaw/selfcheck_server.py` no longer defines `_PACKAGE_DIRECTORY`. `server_entry` now puts `_checkout_boundary.PACKAGE_DIRECTORY` last in `args`, imported as `from hilclaw import checkout_boundary as _checkout_boundary`. Nothing else in `server_entry`, `_START`, `main` or the registry changed. `hilclaw/checkout_boundary.py` was not edited.
+- **Docstrings:** in `selfcheck_server`, the parenthesis "(from the module's own location)" was no longer accurate. It now names `hilclaw.checkout_boundary.PACKAGE_DIRECTORY`, and the "server entry" paragraph was refilled. The `checkout_boundary` docstring is unchanged because none of its sentences became inaccurate.
+- **AC3 grep** (`grep -rn "dirname(os.path.dirname(os.path.abspath(__file__)))" hilclaw/ --include=*.py`):
+  `hilclaw/checkout_boundary.py:17:PACKAGE_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))`
+  The `--include` keeps stale `__pycache__` `.pyc` matches out of the output; the sources have no other match.
+- **Language:** Python, the language of the module it edits.
+- **Tests:** no test was edited, and none referred to `selfcheck_server._PACKAGE_DIRECTORY`. Locally the full suite gave 18663 passed, 354 skipped, and `ruff check` / `ruff format --check` were clean. CI: all six jobs passed.
+- **Coverage (CI coverage gate):** `hilclaw/` lines 5005/5024 = 99.62%, functions 494/494 = 100%. Both touched modules have 100% line coverage. Coverage was not measured locally because `coverage` is not installed on this machine.
+- **Follow-ups:** none.
