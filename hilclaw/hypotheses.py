@@ -94,7 +94,7 @@ def validate(document):
     hypothesis = partial(_hypothesis, round=round, candidates=candidates)
     hypotheses = document["hypotheses"]
     _array("hypotheses", hypotheses, hypothesis)
-    _unique("hypotheses", hypotheses, "id")
+    _unique("hypotheses", [entry["id"] for entry in hypotheses], "id")
     tested = {value for entry in hypotheses for value in entry["tested_by"]}
     for candidate in range(1, candidates + 1):
         if candidate not in tested:
@@ -157,12 +157,12 @@ def _array(path, value, entry):
         entry(f"{path}[{index}]", item)
 
 
-def _unique(path, entries, member):
+def _unique(path, values, member=None):
     seen = set()
-    for index, entry in enumerate(entries):
-        value = entry[member]
+    for index, value in enumerate(values):
         if value in seen:
-            _fail(f"{path}[{index}].{member}", "unique in the array", value)
+            where = f"{path}[{index}]" + (f".{member}" if member else "")
+            _fail(where, "unique in the array", value)
         seen.add(value)
 
 
@@ -172,13 +172,13 @@ def _hypothesis(path, entry, *, round, candidates):
     _text(f"{path}.statement", entry["statement"])
     _array(f"{path}.basis", entry["basis"], partial(_basis, round=round))
     _array(f"{path}.expected", entry["expected"], _expected)
-    _unique(f"{path}.expected", entry["expected"], "metric")
+    _unique(
+        f"{path}.expected", [item["metric"] for item in entry["expected"]], "metric"
+    )
     _one_of(f"{path}.origin", entry["origin"], _ORIGINS)
     tested_by = entry["tested_by"]
     _array(f"{path}.tested_by", tested_by, partial(_candidate, candidates=candidates))
-    for index, value in enumerate(tested_by):
-        if value in tested_by[:index]:
-            _fail(f"{path}.tested_by[{index}]", "unique in the array", value)
+    _unique(f"{path}.tested_by", tested_by)
 
 
 def _basis(path, entry, *, round):

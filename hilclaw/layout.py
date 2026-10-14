@@ -109,9 +109,8 @@ def hypothesis_record(data_root, run_id, round):
     :data:`hilclaw.keys.MAX_INTEGER`: round 0 has no hypothesis record
     (ADR-0059 decision 5). Every other rule is that of :func:`round_dir`.
     """
-    path = role_dir(data_root, run_id, round, "decision") / "hypotheses.json"
     _number("round", round, 1, 4)
-    return path
+    return role_dir(data_root, run_id, round, "decision") / "hypotheses.json"
 
 
 def attempt_dir(data_root, run_id, round, role, candidate, attempt):

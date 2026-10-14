@@ -206,9 +206,10 @@ def test_hypothesis_record_of_decision_1_of_adr_0059(number):
     assert path.parent == decision_log(ROOT, RUN, number).parent
 
 
-def test_round_zero_has_no_hypothesis_record():
+@pytest.mark.parametrize("number", [0, -1])
+def test_round_zero_has_no_hypothesis_record(number):
     with pytest.raises(InvalidPathValueError, match=r"^round: must be an int from 1 "):
-        hypothesis_record(ROOT, RUN, 0)
+        hypothesis_record(ROOT, RUN, number)
 
 
 @pytest.mark.parametrize("role", ["coder", "measure", "eval"])
