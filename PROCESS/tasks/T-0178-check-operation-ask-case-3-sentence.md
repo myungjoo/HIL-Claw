@@ -2,7 +2,7 @@
 id: T-0178
 title: Make case 3 of the ask() docstring in check_operation.py say plainly which part is this module's own choice and which is the rule of ADR-0047
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0177]
@@ -115,3 +115,10 @@ This is small cleanup that depends on no open HQ. The substantive P1-1 work (OD-
 - (integrator, document mode) The "now less exact" sentences that ADR-0047 Consequences lists in ADR-0021 and ADR-0040 to ADR-0046, and those that ADR-0053 Consequences lists.
 
 ## Result
+
+- DONE. PR #124 squash-merged as 464ee4a (branch deleted). Review: 1 round, Approve, no findings (comment 6165398771). CI green in all six jobs on 0b2d0b4; coverage of `hilclaw/`: lines 99.62% (5002/5021), functions 100% (492/492). Local: pytest 18605 passed / 351 skipped; ruff check and format clean; diff is one docstring line replaced by two in `hilclaw/check_operation.py`, `i/lf`, `git diff --check` clean.
+- Case 3, old: "It raised a ``ToolFailure``, of any kind: the same object is handed on. No record gives this a rule (see the module docstring)."
+- Case 3, new: "It raised a ``ToolFailure``, of any kind: the same object is handed on, which is this module's own choice. What the tool function then does with it is in the module docstring (ADR-0047)."
+- Point 2: no other sentence of the `ask` or module docstring changed. No test asserts on the edited text (the source-reading tests check imports, `__main__` and kept-out strings, all still true).
+- Issue #5: no comment after 6164154089; no HQ answered, no objection to ADR-0045/0047/0056. No open PR conflict.
+- Follow-ups: none new (the integrator's "now less exact" ADR sentences and T-0176/HQ-0020 stay as listed).
