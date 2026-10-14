@@ -11,9 +11,10 @@ rules of those decisions that one document shows, and nothing else.
 The top level is open (ADR-0059 decision 2, read with ADR-0018 decision 2): a
 member that ADR-0059 does not define is passed over, neither interpreted nor
 checked. Every object below it holds exactly its listed members. The values
-that ADR-0059 defines and does not admit are refused as any other value: the
-basis kind ``case``, the origin ``injected`` and every metric other than
-``latency_minimisation`` (``memory_ceiling`` among them).
+that ADR-0059 defines and does not admit, the basis kind ``case`` and the
+origin ``injected``, are refused as any other value, and so is every metric
+other than ``latency_minimisation``, the constraint type ``memory_ceiling`` of
+ADR-0050 among them (ADR-0059 decision 3).
 
 *name*, *string* and *integer* are the types of ADR-0001 and are exactly ``str``
 and ``int`` as in :mod:`hilclaw.keys`; a *text* is a ``str`` of at least one
