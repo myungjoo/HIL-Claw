@@ -2,7 +2,7 @@
 id: T-0173
 title: Yield the memory figure of a completed timing run and add the verdict of a memory ceiling (ADR-0052 decisions 4 and 5, rest of slice (1)) - a new pure module `hilclaw/harness/memory_ceiling.py` with the unit rule and the three-outcome verdict, and `hilclaw/harness/timing.py` adding the figure to `TimingResult` for a completed run only; no admission of `memory_ceiling`, no caller of the verdict
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, C-7, OD-13, OD-1, "#5 D12"]
 dependsOn: [T-0172]
@@ -70,3 +70,12 @@ Planner's judgements (the reviewer is asked to re-check each):
 - (commit body) ADR-0052 is within its objection window (notice 2026-10-13); an objection creates a reverting task and this change is reverted with it.
 
 ## Result
+- PR #121 (https://github.com/myungjoo/HIL-Claw/pull/121), squash-merged as 85fa0364676d1893116ae6598c00a56aede5e1b5; branch `claude/T-0173-timing-memory-figure-and-verdict` deleted.
+- Review: 2 rounds with a fresh-context dev-reviewer, both Approve. Round-1 nit: the parameter `figure` of `verdict` shadowed the module function `figure`; renamed to `figure_bytes` (a19bf3e).
+- New module `hilclaw/harness/memory_ceiling.py`: `figure(max_rss, platform)` applies the unit rule (linux x1024, darwin as is, anything else `None`; never raises); `Verdict` has exactly WITHIN, OVER, NOT_JUDGED; `verdict(figure_bytes, bound)` raises `MemoryCeilingError(ValueError)` outside its domain; `BOUND_MAX = 2**53 - 1`.
+- `hilclaw/harness/timing.py`: `TimingResult` gains `memory_bytes` (default `None`), filled only for a completed run (converged or not) from `sys.platform` read at call time; nothing in `timing.py` calls the verdict.
+- `hilclaw/harness/__init__.py`: docstring names the new module.
+- Deviation (as in T-0172): the `_fields` pin in `tests/harness/test_timing.py` gains `memory_bytes`; `touchesFiles` unchanged.
+- Local gates (native Windows, Python 3.14): pytest 18605 passed / 351 skipped; `ruff check` and `ruff format --check` clean; `memory_ceiling.py` at 100% line coverage. CI on a19bf3e green on all six jobs.
+- Language: Python - the harness Python side is Python and the rule needs only the standard library (recorded in the commit body).
+- Follow-ups: none new; the two above stand.
