@@ -71,8 +71,9 @@ identity has no line and that none of the answers of moment 4 was given. It
 says nothing of whether a seed is recorded, returned or kept after a check
 (OD-16 sub-question 5); it writes the seed to no file and composes no
 message that holds it. :func:`check` passes on, through ``carry_out``, the
-message an operation raised with a backend kind as it was raised (ADR-0047
-decision 4), so a seed in that message reaches the caller. By the records
+message an operation raised with a backend kind, where it is exactly a
+``str``, as it was raised (ADR-0047 decision 4), so a seed in that message
+reaches the caller. By the records
 such a message has no content that holds the seed (ADR-0047 decision 4,
 citing ADR-0021 decision 3); nothing detects a message that breaks this.
 :func:`check` validates no seed, no number of draws, no dimension, no
