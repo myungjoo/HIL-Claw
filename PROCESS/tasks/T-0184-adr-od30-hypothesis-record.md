@@ -2,7 +2,7 @@
 id: T-0184
 title: Write the ADR that settles the first part of OD-30 - the hypothesis record of a round (its file under the round's `decision/`, its frame, the members of one hypothesis, the vocabulary of its origin, how it maps to the round's candidates, and round 0) - and reflect it in the ARCHITECTURE registers; no verdict, no case file, no injection path, no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-11, FR-17, FR-15, OD-30, OD-8, OD-23, "#5 D6"]
 dependsOn: []
@@ -102,3 +102,8 @@ Sections in the order of ADR-0001 "Record format" (Status, Context, Decision, Al
 - (driver/planner) T-0176 stays BLOCKED until HQ-0020 is answered.
 
 ## Result
+
+- Landed on main as d7277f5 (document mode, `Reviewed-by: reviewer agent (7 rounds, Approve)`); branch deleted.
+- New record: `ARCHITECTURE/decisions/ADR-0059-od30-round-hypothesis-record.md` (one `decision/hypotheses.json` per round, its frame, the closed members of one hypothesis, origin vocabulary with `injected` defined but not admitted, candidate mapping, no record for round 0000). Register edits in Requirements.md (OD-30 row, status stays proposed), OpenDecisionProposals.md, StandardScenarios.md.
+- Coverage re-check: no verdict change, no gap. DRIVER §9 owner notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6170235111 (7-day objection window).
+- No PLAN checkbox ticked (P2-6 still needs the verdict, code and prompts). Follow-up: the verdict record of OD-30. No `claude` was started (D16).
