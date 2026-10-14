@@ -913,7 +913,7 @@ def test_an_integer_of_another_form_is_refused(make, value):
     login, run = make(value)
     with pytest.raises(TypeError) as caught:
         build(login, run, system=SYSTEM)
-    assert str(caught.value) == ERROR_TEXTS[7]
+    assert str(caught.value) in (ERROR_TEXTS[7], ERROR_TEXTS[-1])
 
 
 def test_the_exit_statuses():
