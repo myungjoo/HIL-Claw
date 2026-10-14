@@ -44,9 +44,14 @@ Choices that are this module's own and no rule of a record:
   composes for it reads the name of its type, which a metaclass can make
   code of the answer.
 * A :class:`hilclaw.tools.ToolFailure` an operation raises is handed on as
-  the same object. That is no rule of a record: what a tool function does
-  with a tool failure an operation raises is open (decision 8; OD-18
-  sub-question 10, third clause), and nothing here decides it.
+  the same object. That is no rule of a record. What the tool function then
+  does with it is the rule of
+  ``ARCHITECTURE/decisions/ADR-0047-od18-correctness-check-operation-tool-failure.md``:
+  the step is ended with a ``failure`` (its decision 3), which holds the
+  raised kind and message for a backend kind and otherwise the tool's own
+  kind ``operation_failure_invalid`` (its decisions 4 and 5). The code gives
+  that kind and message with :func:`hilclaw.check_failure.ended_with`,
+  joined with :func:`ask` in :func:`hilclaw.check_ending.carry_out`.
 * How the message names a kind of value: with a word of this module's own
   for each type of a closed list of built-in types, matched by the exact
   type, and with one word for everything else. No name is read from the
@@ -63,8 +68,8 @@ It appends no line and states no spend. It selects no backend, draws no seed,
 reads no tolerance and no file of a run, and looks at nothing at the output
 path. It validates no check parameter and gives no default of any value. It
 keeps nothing between calls. It says nothing of what anybody does after the
-answer, nor of what a tool function does with a tool failure an operation
-raises. It imports :mod:`hilclaw.check_answer`,
+answer, and it does not render what a tool function does with a tool
+failure an operation raises. It imports :mod:`hilclaw.check_answer`,
 :mod:`hilclaw.check_parameters` and :mod:`hilclaw.tools` and nothing else.
 """
 
