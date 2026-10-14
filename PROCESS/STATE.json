@@ -182,19 +182,27 @@
       "question": "ADR-0057 (the runtime self-check as landed, OD-18; T-0169, main fc74780) adopts values the landed check (`hilclaw/selfcheck*.py`) took provisionally. On each kind of machine of C-7, only a real logged-in `claude` can show: (ix) the configuration file wraps server entries in `mcpServers`, and an entry needs only `command`/`args`/`env`; (x) `--allowedTools` takes both MCP names as one comma-joined argument; (xi) `--mcp-config selfcheck.mcp.json` (file name only) is read against the session's working directory; (xii) the stream names `type`/`subtype` with `system`/`init`, `type` `result`, and the reply member `result`, and a session writes exactly one `system/init` event and still writes `mcp_servers` when it drops a server; (xiii) a real session ends within 300 s and `claude auth status` within 30 s; (xiv) on Windows the empty `--tools` argument and the comma pass through `claude.cmd` unchanged; (xv) whether Claude Code forwards a `tools/call` of a name the server did not list. Under D16 these are runtime acceptance items, closed by your check by hand or by the first runs of the self-check, not by a driver task. ADR-0054's items (i)-(viii) stay under HQ-0016. Nothing was tried; no task is blocked on this notice.",
       "askedAt": "2026-10-14T04:08:00Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6160644223"
+    },
+    {
+      "id": "HQ-0020",
+      "taskId": "T-0176",
+      "reason": "data-plane-schema-change",
+      "question": "PLAN P1-1 needs one answer that CLAUDE.md A-13 reserves for you (data-plane schema change). For `correctness.check` on `cpu_standin` (first case, and a run at the mock), what is a build of the attempt's kernel source that ends not ok, that is a compile or link failure or a build past its time limit (ADR-0056 S7, S8)? (1) (a) A result: `outcome` `broken` with a new value of `condition` (one value for both, or one each; name them if you wish). This grows ADR-0042's closed four-value list, stored in `events.ndjson`, and follows ADR-0021 decision 5's reasoning that what the attempt caused is a result. (b) A tool failure of a backend kind (ADR-0047 decision 5): no schema change, but a caller reads a property of the attempt out of a tool failure, the reading ADR-0021 decision 5 warned against. (c) Other. (2) The compiler's log: (a) neither returned nor kept by this contract for now, as today, left to a later `build.json` record; (b) returned or kept (say where), which is a further schema change. (3) Does the answer also apply to the timing build of `sim.run`/`board.run`: (a) yes; (b) no, to be decided with their records? Not asked: setting values or their source (driver ADR, OD-18 sub-question 17 (나)), situations S3-S6/S9/S10, what a round does after the answer.",
+      "askedAt": "2026-10-14T08:25:26Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 188,
+    "iterations": 189,
     "tasksDone": 174,
-    "tasksBlocked": 14,
+    "tasksBlocked": 15,
     "reviewRoundsTotal": 601
   },
   "lastIteration": {
-    "at": "2026-10-14T07:43:03Z",
-    "owner": "AKIHA:2fdbd97c-1",
-    "taskId": "T-0175",
-    "outcome": "DONE"
+    "at": "2026-10-14T08:25:26Z",
+    "owner": "AKIHA:425426cb-1",
+    "taskId": "T-0176",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
