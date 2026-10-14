@@ -1,0 +1,84 @@
+---
+id: T-0171
+title: Add the scratch of a coder call (ADR-0049 slices (a) and (c)) - one new module with a function that creates the scratch of one call outside the checkouts and places in it a copy of the bytes of the call's spec file (never in the place `output`), and a function that removes a scratch without following a link out of it - with its tests; bound to nothing, no other module edited
+phase: P1
+status: IN_PROGRESS
+commitMode: code
+coversReq: [NFR-4, FR-5, FR-9, C-7, OD-8, OD-14, OD-23, "#5 D12"]
+dependsOn: []
+touchesFiles: [hilclaw/scratch.py, tests/test_scratch.py]
+estimatedSize: {loc: 230, files: 1}   # one new module of about 180-240 lines, docstrings included; the test file is outside the cap (DRIVER §5, D4)
+hq: []
+---
+## Why
+ADR-0049 (the isolation means of a coder call) names four code slices, each "bound to nothing when it lands" (Consequences, line 144): "(a) a function that creates the scratch of a call - refusing a location inside a given checkout - and places copies in it; (b) a function that brings regular files from a scratch into the `output/` of an attempt ...; (c) a function that removes a scratch without following a link out of it (P4); (d) the start and removal of the container, with PLAN P2-2. (a) to (c) need no container runtime to test."
+
+Slice (b) landed as `hilclaw/bring_in.py` (T-0170, PR #118). This task writes slices (a) and (c) together, as one new module that nothing calls yet: they are the two ends of the life of the same directory, they share the "outside both checkouts" check, and slice (a) needs (c) to clean up after its own failure. With (b) they are the whole data side of one coder call that PLAN P2-2 (coder-driver) will put around the container of slice (d). It ticks **no PLAN checkbox** and changes no OD.
+
+Planner's judgements (the reviewer is asked to re-check each):
+- **No undecided design is needed.** ADR-0049 decision 3 leaves "the exact location and name" of the scratch to the code slice (line 70) and fixes only that it lies outside both checkouts and inside neither's `.git/`, one per call, new for that call (lines 68-69). Decision 4 fixes what is placed: "a copy of the bytes of the spec file of the call", "a copy with its own bytes - never a symbolic link or a hard link to a file of a checkout" (lines 78-79); "any further kind of file is a later record's" - so the function places exactly one copy and offers no way to place another. ADR-0055 decision 5 (line 92) adds that what the issuing side copies in "is never placed in the place" (the entry `output` directly below the scratch root). P4 (line 48) fixes the removal: "The removal of a scratch follows no symbolic link: it removes what lies below the scratch and nothing a name in it points to."
+- **The name of the copy inside the scratch** is this module's convention (a public constant, suggested `SPEC_COPY_NAME = "spec.json"`, directly below the scratch root). How the coder process is pointed at it is PLAN P2-2 (ADR-0049 line 78); the docstring says the name is a convention of the code, not of a record. If the reviewer reads choosing this name as an invention, return BLOCKED (`unclear-requirement`) rather than choose another design.
+- **What stays open and must not be invented**: when a scratch is removed (P4: once the bring-in has finished or been given up - the caller's moment), what happens to a scratch whose removal failed and how a later turn finds a scratch left by a dead process (sub-question ㉝ (나), L9), whether a checkout is shown inside the container (㉝ (다)), anything about containers (slice (d)), any bound on the size of a scratch (L7). The removal function reports whether the scratch is gone and decides nothing about what follows.
+- **Precedent in the package**: `hilclaw/selfcheck_session.py` already makes a temporary directory with `tempfile.mkdtemp` under a `parent` (default: the system's temporary directory), refuses a `parent` inside the directory that holds the package or a directory of `keep_out` (on real paths, `os.path.normcase`), and removes it with `shutil.rmtree`. The new module follows the same conventions so that the two read alike; it does **not** import that module's private helpers and does not edit it (a shared helper would be a refactoring task of its own).
+- **A-13**: code mode. No new dependency (standard library only). No data-plane schema, member, path or layout version is touched: the scratch "is no path of that tree" (ADR-0049 decision 3), layout version 1 and `hilclaw/layout.py` stay unchanged.
+- **D16**: nothing here needs the `claude` program, a container runtime, a board or an API key. The tests build directories in `tmp_path`.
+- **Why this item**: of the candidates the last journal names, ADR-0049 slices (a)/(c) are the remaining container-free pieces of the coder call and fully testable on every platform; the ADR-0052 harness slice changes how `hilclaw/local_run.py` waits (a POSIX-only path, a module many tools depend on) and is left for later; the T-0169 document nits stay as follow-ups.
+- **Session entry check (planner, 2026-10-14, `main` at 8e60131)**: no open pull request. HQ-0013, 0014, 0016, 0017, 0018, 0019 are `runtime-acceptance` notices that block no task. No answer on #5 since.
+
+## Required Reading
+- `PROCESS/DRIVER.md` §3-5 (executor procedure, resume rule, time limit 2 h 30 min) and §5 (naming convention: branch `claude/T-0171-<slug>`, `T-0171` in the PR title, trailer `Task: T-0171` in commits and as the last line of the PR body; D4 size cap; D12 test rules).
+- `CLAUDE.md` "상시 규칙" (comment minimisation, test rules ①-⑤, language policy - record the language and reason in the commit body).
+- `ARCHITECTURE/decisions/ADR-0049-od8-coder-call-isolation-means.md`: Status (lines 3-10), decision 2 P3 and P4 (lines 43-48), decision 3 (lines 66-72), decision 4 (lines 74-86), L6, L7, L9 (lines 102, 103, 105), Walk-through steps 1 and 3 (lines 124, 126), Consequences first bullet (line 144), Boundaries ㉝ (line 159).
+- `ARCHITECTURE/decisions/ADR-0055-od23-coder-output-form.md`: line 34 (the term *the place*), decision 5 last two paragraphs (lines 92-94).
+- `hilclaw/selfcheck_session.py`: module docstring "Conventions of this module", the bullet *The directory* and *The removal* (lines 53-66, 80-84), and lines 183-232 and 260-280 (`_PACKAGE_DIRECTORY`, `_real`, `_refuse_inside`, `_remove`, `run`) - the precedent to follow, not to import.
+- `hilclaw/bring_in.py` lines 1-52 (module docstring: path conventions, what the module does not do) and 156-175 (`_checked_path`, `_within`) - the argument conventions to follow; `hilclaw/kernel_source.py` `OUTPUT_NAME`.
+- `hilclaw/spec_file.py` lines 253-300 (`final_name`, `write`: where the spec file of a tuple lies; this module copies its bytes and does not parse them).
+- `tests/test_bring_in.py` (the `symlink` helper and the skip pattern for platforms that cannot make a link) - reuse the pattern.
+- Python documentation of `shutil.rmtree` (the attribute `rmtree.avoids_symlink_attacks`, the refusal of a symbolic-link root, junction handling on Windows) and `os.path.isjunction` (3.12+; `requires-python = ">=3.11"`).
+
+## Acceptance Criteria
+A new module (suggested `hilclaw/scratch.py`; the name is the executor's) with two public functions and the public names below.
+
+**Creation - slice (a)**, suggested `create(spec_path, *, parent=None, keep_out=()) -> str`:
+1. **Arguments.** `spec_path` is a `str` or `os.PathLike` of `str` without a NUL character (otherwise a `ValueError` subclass, e.g. `InvalidScratchArgumentError`, before anything is made). `parent` is the existing directory the scratch is made in (`None`: `tempfile.gettempdir()`). `keep_out` is a sequence of directories the scratch must not lie in; a single path given as `keep_out` (a `str`, `bytes` or `os.PathLike`) is a `TypeError`, as in `selfcheck_session`.
+2. **Outside both checkouts** (ADR-0049 decision 3). Before anything is made, on real paths (`os.path.realpath`, compared after `os.path.normcase`): a `parent` that is, or lies inside, the directory that holds this package (the source checkout, computed as `selfcheck_session` computes it) or a directory of `keep_out` is refused with the argument error and a fixed text holding no path. The caller names the data checkout in `keep_out`; the module knows no other checkout. A `spec_path` lying inside the would-be scratch is impossible by construction and needs no check.
+3. **One new directory per call**: `tempfile.mkdtemp(prefix=..., dir=parent)` with a public or private fixed prefix (e.g. `hilclaw-coder-`), never an existing directory; its permissions are those `mkdtemp` gives. The return value is the path of the new scratch as a `str`.
+4. **The copy.** The source must be, per `os.lstat`, a regular file (a symbolic link, directory or other kind is refused with a module error, e.g. `ScratchError` with a `failure` value from a public tuple, `__cause__` the `OSError` where there is one, `str()` holding no path). Its bytes are read (on POSIX with `O_NOFOLLOW`; on every platform compare `os.fstat` of the opened file with the `lstat` result - same device and inode, still regular - and refuse a mismatch) and written into a **new** regular file directly below the scratch root under `SPEC_COPY_NAME`, created exclusively (`O_CREAT | O_EXCL`), never as a link of any kind, no mode bit or time of the source carried over. `SPEC_COPY_NAME` is not `OUTPUT_NAME` (a module-level assertion or test), so nothing is ever placed in the place (ADR-0055 decision 5). The bytes are copied as they are: not parsed, not validated, not changed. Nothing else is placed and the function offers no argument to place anything else (ADR-0049 decision 4: further kinds of file are a later record's).
+5. **All or nothing.** Read the source before making the scratch where possible; if anything fails after the scratch was made, the scratch is removed (with the removal of point 7) before the exception propagates, and the original exception is what arrives. A source that is missing or unreadable is the module error, raised before any directory is made.
+
+**Removal - slice (c)**, suggested `remove(scratch, *, keep_out=()) -> bool`:
+6. **Arguments and refusals** (argument error, nothing removed): wrong type or NUL as in point 1; a `scratch` that does not exist; a `scratch` that is not, per `os.lstat`, a directory - a symbolic link (to a directory or dangling) or, on Windows, a junction (`os.path.isjunction` where it exists) is refused, so the root itself is never followed; a `scratch` whose real path equals, contains or lies inside the directory that holds this package or a directory of `keep_out` (a guard against a wrong path deleting a checkout).
+7. **What is removed** (P4): the scratch and everything below it, **following no symbolic link or junction met below it**: a link is removed as a name, what it points to is untouched. `shutil.rmtree` may be used (it does not follow links below the root and, since 3.8 on Windows, does not descend into junctions); the docstring states that where `shutil.rmtree.avoids_symlink_attacks` is false (Windows) a name swapped for a link during the removal is a race the module does not close, and that after P4 no process of the call is expected to be running (ADR-0049 decision 4, first bullet, not verified - L1). Entries without write permission below the scratch (a coder can `chmod` a directory) may be made writable and retried once; the executor states the choice. A removal error raises nothing.
+8. **Return value**: `True` when the path no longer exists afterwards (`os.path.lexists`), `False` otherwise. Nothing is logged or written; what follows a `False` is the caller's (㉝ (나)). Retries over time, as `selfcheck_session._remove` does for Windows file handles, are the executor's choice and stated in the docstring.
+
+**Both:**
+9. **Docstring** (module): cites ADR-0049 decisions 3, 4 and P4 and ADR-0055 decision 5; states the conventions (location, prefix, `SPEC_COPY_NAME` as a convention of the code; how the coder is pointed at the copy is PLAN P2-2) and what the module does not do - no container (slice (d)), no bring-in (slice (b), `hilclaw/bring_in.py`), no moment of removal, no handling of a leftover scratch (㉝ (나)), no bound on the size of a scratch (L7), no check of what a coder writes, and that nothing calls it yet. Keep it within the comment-minimisation rule otherwise.
+10. **Tests** (`tests/test_scratch.py`, D12 ②-④; symlink and junction cases skip where the platform cannot make them, as in `tests/test_bring_in.py`; POSIX-only cases skip on Windows):
+    - happy: `create` under `tmp_path` with a `keep_out` elsewhere returns a new directory below `parent` holding exactly one entry `SPEC_COPY_NAME` with the source's bytes (including bytes that are not valid JSON or UTF-8 - copied as they are); two calls give two different directories; `remove` then returns `True` and the directory is gone; `create` then `hilclaw.bring_in.bring_in` from that scratch takes nothing (the copy is not in the place);
+    - refusals of `create`: `parent` equal to / inside a `keep_out` directory; `parent` inside the package checkout; `keep_out` given as one path; wrong types; NUL; source missing; source a directory; source a symbolic link (to a regular file) - each with nothing made below `parent`;
+    - attributes: a source with executable bits gives a copy without them (POSIX only); the copy is not a hard link of the source (`st_nlink == 1` and different inode);
+    - all or nothing: a failure while writing the copy (monkeypatched `os.write` or `os.open` raising `OSError`) leaves no scratch below `parent` and the original exception arrives; an identity mismatch between `lstat` and `fstat` (monkeypatched) is refused;
+    - removal: nested directories and files are removed; a symbolic link below the scratch pointing to a directory outside it with a file inside - the link is gone, the outside directory and its file are untouched; a dangling link inside is removed; a junction inside (Windows only) - its target untouched;
+    - refusals of `remove`: missing path; a regular file; a symbolic link to a directory (the directory and its content untouched); a path equal to, inside or containing a `keep_out` directory; the package checkout;
+    - a removal that cannot finish (monkeypatched `shutil.rmtree`, or a directory made unremovable on POSIX when not running as root) returns `False` and raises nothing;
+    - the error texts of the module error and the argument errors hold no path.
+11. Local gates: `python -m pytest`, `ruff check .`, `ruff format --check .` pass; CI green on all jobs; coverage gate (line and function >= 80 %) holds, the new module at or near 100 %.
+
+## Left to this task
+- The exact public names, the exception hierarchy, the failure values, the prefix.
+- Whether `remove` retries over time, and whether it makes write-protected entries writable before a retry.
+- Whether the source of the copy is read with a bound (none is decided; reading it whole is acceptable for a file the tree's own writer produced).
+
+## Out of Scope
+- Any edit of `hilclaw/selfcheck_session.py`, `hilclaw/bring_in.py`, `hilclaw/spec_file.py`, `hilclaw/layout.py` or any other existing module; any caller of the new functions.
+- Containers, images, the start of a coder (ADR-0049 slice (d), PLAN P2-2); placing any file other than the spec copy; telling the coder where the copy or the place is.
+- Finding or removing a scratch left by a dead process (㉝ (나)), the moment of removal, OD-19, OD-14 ceilings; any change of an ADR or of `ARCHITECTURE/`.
+- The ADR-0052 harness slice; the T-0169 document nits.
+
+## Follow-ups
+- (planner, code mode) The ADR-0052 harness slice (`hilclaw/local_run.py` hands on the usage of the waited-for process; `hilclaw/harness/timing.py` yields the figure; the verdict of decision 5).
+- (planner, document mode, small) The T-0169/T-0170 nits: StandardScenarios 2026-10-14 paragraph drops the quotes around "설계됨"; ADR-0057 "For P2-1" reads "with 0 or 10 to 15"; ADR-0055 decision 3's "not verified" include expectation shown by T-0157's clang test; the ADR-0053 Consequences sentences and the `hilclaw/spec.py` docstring sentence that can name `objective` (T-0168). Could ride together in one document task.
+- (planner, code mode, optional) A shared helper for the "outside both checkouts" check used by `selfcheck_session` and this module.
+- (commit body) ADR-0049 is within its objection window (notice 2026-10-13); an objection creates a reverting task and this module is reverted with it.
+
+## Result
