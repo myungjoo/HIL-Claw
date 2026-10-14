@@ -135,7 +135,7 @@ def test_a_bound_outside_its_domain_raises(bound, figure_bytes):
 @pytest.mark.parametrize("bound", [0, 1, BOUND_MAX])
 @pytest.mark.parametrize("figure_bytes", BAD_FIGURES, ids=repr)
 def test_a_figure_outside_its_domain_raises(figure_bytes, bound):
-    with pytest.raises(MemoryCeilingError, match="^figure: must be "):
+    with pytest.raises(MemoryCeilingError, match="^figure_bytes: must be "):
         verdict(figure_bytes, bound)
 
 

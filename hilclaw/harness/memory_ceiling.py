@@ -54,23 +54,25 @@ def figure(max_rss, platform):
     return max_rss * unit
 
 
-def verdict(figure, bound):
-    """Return the :class:`Verdict` of ``figure`` against ``bound``.
+def verdict(figure_bytes, bound):
+    """Return the :class:`Verdict` of ``figure_bytes`` against ``bound``.
 
-    ``Verdict.NOT_JUDGED`` if ``figure`` is ``None``, ``Verdict.WITHIN`` if
-    ``figure <= bound`` (equality is within) and ``Verdict.OVER`` if
-    ``figure > bound``. ``bound`` is exactly an ``int`` with
+    ``figure_bytes`` is a figure as :func:`figure` returns it. The result is
+    ``Verdict.NOT_JUDGED`` if it is ``None``, ``Verdict.WITHIN`` if
+    ``figure_bytes <= bound`` (equality is within) and ``Verdict.OVER`` if
+    ``figure_bytes > bound``. ``bound`` is exactly an ``int`` with
     0 <= ``bound`` <= :data:`BOUND_MAX` (an integer of ADR-0001, in bytes) and
-    ``figure`` is ``None`` or exactly an ``int`` of at least 1; a ``bool`` is not
-    an ``int`` here. Raises :class:`MemoryCeilingError` otherwise.
+    ``figure_bytes`` is ``None`` or exactly an ``int`` of at least 1; a
+    ``bool`` is not an ``int`` here. Raises :class:`MemoryCeilingError`
+    otherwise.
     """
     if type(bound) is not int or not 0 <= bound <= BOUND_MAX:
         _fail("bound", "an int with 0 <= bound <= 2**53 - 1", bound)
-    if figure is None:
+    if figure_bytes is None:
         return Verdict.NOT_JUDGED
-    if type(figure) is not int or figure < 1:
-        _fail("figure", "None or an int of at least 1", figure)
-    return Verdict.WITHIN if figure <= bound else Verdict.OVER
+    if type(figure_bytes) is not int or figure_bytes < 1:
+        _fail("figure_bytes", "None or an int of at least 1", figure_bytes)
+    return Verdict.WITHIN if figure_bytes <= bound else Verdict.OVER
 
 
 def _fail(name, rule, value):
