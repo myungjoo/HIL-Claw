@@ -14,10 +14,11 @@ directly below the scratch root). :func:`create` is slice (a) of ADR-0049 and
 Conventions of this module, which are not rules of the records:
 
 - Every path argument is a ``str`` or an :class:`os.PathLike` of ``str``
-  without a NUL character. "Outside both checkouts" is checked on real paths,
-  compared as :func:`os.path.normcase` folds them, against the directory that
-  holds this package and the directories of ``keep_out``: the module knows no
-  other checkout, so the caller names the data root in ``keep_out``.
+  without a NUL character. "Outside both checkouts" is checked by
+  :mod:`hilclaw.checkout_boundary` on real paths, compared as
+  :func:`os.path.normcase` folds them, against the directory that holds this
+  package and the directories of ``keep_out``: the module knows no other
+  checkout, so the caller names the data root in ``keep_out``.
 - The scratch is made by :func:`tempfile.mkdtemp`, with the permissions it
   gives, under ``parent`` (by default the temporary directory of the system),
   with the name prefix :data:`PREFIX`. Its path is returned as a ``str``.
@@ -66,6 +67,8 @@ import stat
 import tempfile
 import time
 
+from hilclaw import checkout_boundary as _checkout_boundary
+
 SPEC_COPY_NAME = "spec.json"
 PREFIX = "hilclaw-coder-"
 
@@ -74,7 +77,6 @@ SPEC_NOT_REGULAR_FILE = "spec_not_regular_file"
 SPEC_CHANGED = "spec_changed"
 SCRATCH_FAILURES = (SPEC_UNREADABLE, SPEC_NOT_REGULAR_FILE, SPEC_CHANGED)
 
-_PACKAGE_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _JUNCTION_TAG = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
 _REMOVE_PAUSES_S = (0.0, 0.2, 0.6, 1.2)
 _READ_FLAGS = (
@@ -188,27 +190,15 @@ def _checked_path(argument, value):
 
 
 def _refuse_inside_checkout(path, keep_out, *, argument, containing):
-    if isinstance(keep_out, (str, bytes, os.PathLike)):
-        raise TypeError("keep_out must be a sequence of paths, not one path")
-    roots = [_PACKAGE_DIRECTORY]
-    roots.extend(_checked_path("keep_out", root) for root in keep_out)
+    _checkout_boundary.refuse_one_path(keep_out)
+    roots = [_checked_path("keep_out", root) for root in keep_out]
     real = os.path.realpath(_checked_path(argument, path))
-    folded = os.path.normcase(real)
-    for root in roots:
-        root = os.path.normcase(os.path.realpath(root))
-        if _within(folded, root) or (containing and _within(root, folded)):
-            raise InvalidScratchArgumentError(
-                f"{argument}: must not be or lie inside a checkout"
-                + (", nor contain one" if containing else "")
-            )
+    if _checkout_boundary.meets_checkout(real, roots, containing=containing):
+        raise InvalidScratchArgumentError(
+            f"{argument}: must not be or lie inside a checkout"
+            + (", nor contain one" if containing else "")
+        )
     return real
-
-
-def _within(inner, outer):
-    try:
-        return os.path.commonpath([inner, outer]) == outer
-    except ValueError:
-        return False
 
 
 def _is_plain_directory(examined):

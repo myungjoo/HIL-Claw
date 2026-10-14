@@ -48,6 +48,7 @@ import os
 import stat
 from pathlib import Path
 
+from hilclaw import checkout_boundary as _checkout_boundary
 from hilclaw.kernel_source import OUTPUT_NAME, is_admitted_name
 
 MAX_FILES = 16  # ADR-0055 decision 6: provisional value of the record.
@@ -135,7 +136,9 @@ def bring_in(scratch_root, output_path):
     real_output = os.path.normcase(
         os.path.join(os.path.realpath(output.parent), OUTPUT_NAME)
     )
-    if _within(real_scratch, real_output) or _within(real_output, real_scratch):
+    if _checkout_boundary.within(
+        real_scratch, real_output
+    ) or _checkout_boundary.within(real_output, real_scratch):
         raise InvalidBringInArgumentError(
             "scratch_root and output_path: neither may be or lie inside the other"
         )
@@ -164,13 +167,6 @@ def _checked_path(argument, value):
             f"got {type(value).__name__}"
         )
     return Path(text)
-
-
-def _within(inner, outer):
-    try:
-        return os.path.commonpath([inner, outer]) == outer
-    except ValueError:
-        return False
 
 
 def _refuse_existing_output(output):

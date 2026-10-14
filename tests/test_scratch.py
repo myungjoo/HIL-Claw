@@ -571,14 +571,6 @@ def test_remove_refuses_a_bad_scratch(value, no_rmtree):
     assert "scratch" in str(caught.value)
 
 
-def test_paths_on_different_drives_are_not_within_each_other(monkeypatch):
-    def fail(paths):
-        raise ValueError("different drives")
-
-    monkeypatch.setattr(scratch_module.os.path, "commonpath", fail)
-    assert scratch_module._within("a", "b") is False
-
-
 def test_the_failures_are_distinct_and_texts_hold_no_path():
     assert len(set(SCRATCH_FAILURES)) == len(SCRATCH_FAILURES) == 3
     for failure in SCRATCH_FAILURES:
