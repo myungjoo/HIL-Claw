@@ -2,7 +2,7 @@
 id: T-0180
 title: Commit the GEMM spec example examples/spec/gemm-485b9bc494d477eb.json fixed by ADR-0058 with a test that makes checks T1-T4 of its decision 4, completing PLAN P1-5
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-5, OD-6, "#5 B-4"]
 dependsOn: [T-0179]
@@ -94,3 +94,13 @@ Locate the file from the test's own path (for example `Path(__file__).resolve().
 - (planner, document mode, small) The four non-blocking round-7 findings of T-0179 on ADR-0058 and `StandardScenarios.md` (listed in `PROCESS/tasks/T-0179-adr-od6-committed-gemm-spec-example.md` `## Follow-ups`).
 
 ## Result
+
+- **Outcome: DONE.** PR #125 (https://github.com/myungjoo/HIL-Claw/pull/125) squash-merged as `5f5621a` on `main`; branch deleted. Squash message ends with `Task: T-0180`.
+- **Checks before work.** Landed check: no commit with `Task: T-0180`, no PR matching T-0180; no open PR at all. Issue #5 after the ADR-0058 notice (comment 6166739084): no further comment, so no owner objection and no answer to HQ-0013, HQ-0014, HQ-0016..HQ-0020.
+- **Files.** `examples/spec/gemm-485b9bc494d477eb.json` (20 lines): lines 80-99 of ADR-0058 copied verbatim (the Example's own layout), so every string is byte-identical; `git ls-files --eol` gives `i/lf w/lf`; no BOM, no CR, final LF. `tests/test_spec_example.py` (22 tests): T1 parse; T2 written form; T3 whole-document `==` against a document built from `gemm_contract.op_signature_record/task_contract(1, 2048, 8192)` and `keys`, with `gemm-485b9bc494d477eb`, `cpu_standin-8c0be275e5925ab0` and `SCHEMA_VERSION == 2` asserted; T4 parametrised over the 12 `FIRST_SHAPES` (count asserted); negatives: key of another shape (refused), record at M = 512 with the example's contract left at M = 1 (refused), prepended BOM (refused by `parse`), ADR-0050 placeholder technique (not equal to T3's expected), plus a changed run id (not equal). Every negative failed as stated; no finding on `hilclaw/spec.py` or ADR-0058.
+- **Language.** JSON data as ADR-0058 fixes it; Python/pytest test because the checks call the `hilclaw` package (in the commit body).
+- **Review.** 2 rounds, fresh-context `dev-reviewer` each. Round 1 Approve with two non-blocking nits: the M = 1 negative used `task_contract(1, 8192, 2048)` instead of leaving the example's own contract (fixed in 7e1dacf: now replaces only the op_signature with (512, 2048, 8192) and asserts the contract is unchanged); an extra run-id negative beyond the list (kept, harmless). Round 2 Approve, no findings. Reviewer noted `spec.validate` does not check the prototype string's value; T3's whole-document comparison covers it for the example (not a defect, ADR-0002 does not make it a rule).
+- **CI.** Run 38557063652 on head 7e1dacf: all six jobs green (Python 3.11, 3.14, Coverage, C, sh, Test presence). Locally: `python -m pytest` 18627 passed, 351 skipped; ruff check and format clean; `git diff --check` clean. No `hilclaw/` module changed, so coverage is unchanged.
+- **ADR-0058 decision 5 completion items on `main`:** (i) ADR-0058 and register edits — yes (aa00f86); (ii) version 2 in `hilclaw/spec.py` and `hilclaw/spec_file.py` — yes (since T-0148); (iii) the example file — yes (5f5621a); (iv) the T1-T4 test passing in CI — yes (5f5621a, run 38557063652). **The driver can tick PLAN P1-5.**
+- **D16.** No `claude` process started by the executor or the reviewers; nothing needed a board or API key.
+- **Follow-ups.** None new. The existing one stands: the four non-blocking round-7 nits of T-0179 on ADR-0058 and StandardScenarios (document mode).

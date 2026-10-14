@@ -26,7 +26,7 @@
 - [x] P1-2 `cpu_standin` 어댑터: clang 빌드 래퍼, 로컬 실행, 타이밍 수집(OpenMP/SIMD 허용) · coversReq: FR-10, #5 A-7, C-7
 - [x] P1-3 하네스 `harness/`: 무작위 입력(비파일 시드), f64 reference(NumPy float64는 #5 A-7 권고 — **오너 확정 필요**), tolerance 비교(instance 파라미터), 반복 타이밍 · coversReq: FR-9, OD-16 최소분(FR-9 조항), OD-13 초기값
 - [x] P1-4 하네스 3-상태 캘리브레이션 테스트(통과 커널 / 실패 커널 / 기능 통과·계약 위반 커널) — **OD-16 종결 필요(§9 ADR 경로)**(#7 S-2 N8의 제안이 OD-16에 흡수된 상태) · coversReq: OD-16
-- [ ] P1-5 GEMM spec 예시(Llama 3.2 1B projection, M∈{1,32,512}, fp32)와 `spec.json` 스키마 — **OD-6 종결 필요(§9 ADR 경로)** · coversReq: FR-5, OD-6, #5 B-4
+- [x] P1-5 GEMM spec 예시(Llama 3.2 1B projection, M∈{1,32,512}, fp32)와 `spec.json` 스키마 — **OD-6 종결 필요(§9 ADR 경로)** · coversReq: FR-5, OD-6, #5 B-4
 - [x] P1-6 CAS blob 저장(`blobs/sha256/..`, `artifacts.json`, retention class 기록) · coversReq: C-3(A-2)
 - [x] P1-7 `hilclaw.config.json`(`data_repo.url`·`data_repo.local_path`, 환경변수 override — #5 A-1 세부 2) — 데이터 repo `HIL-Claw-data`는 2026-10-05 생성됨(D7; private, 빈 레이아웃) · coversReq: FR-13(A-1), #5 D7
 - [ ] P1-8 런타임 STATE/instance/events 스키마(#4 §4) — **OD-8 종결 필요(§9 ADR 경로)** · coversReq: FR-13, NFR-1, OD-8·OD-17
