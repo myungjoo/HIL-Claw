@@ -131,9 +131,10 @@ def test_negative_key_of_another_shape_is_refused():
 
 
 def test_negative_contract_left_at_m_1_is_refused():
-    document = substituted(
-        spec_file.parse(content()), (512, 8192, 2048), (1, 8192, 2048)
-    )
+    document = spec_file.parse(content())
+    contract = copy.deepcopy(document["task"]["contract"])
+    document = substituted(document, (512, 2048, 8192), (1, 2048, 8192))
+    assert document["task"]["contract"] == contract
     with pytest.raises(spec.InvalidSpecError):
         spec.validate(document)
 
