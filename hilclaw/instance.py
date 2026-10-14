@@ -893,10 +893,10 @@ def hw_profile_of(data_root, run_id):
     ``source_commit``, ``n_max``, ``candidates_per_round``,
     ``op_signature``, ``round_budget``, ``wall_clock_budget_s``, ``owner``,
     ``project``, ``draws`` or ``objective`` is invalid: no member of an
-    invalid file is used (ADR-0020 decision 3, ADR-0022 decision 5, ADR-0023
-    decision 4, ADR-0028 decision 4, ADR-0031 decision 5, ADR-0032 decision
-    4, ADR-0033 decision 4, ADR-0034 decision 4, ADR-0046 decision 3,
-    ADR-0053 decision 5).
+    invalid file is used (ADR-0020 decision 3, ADR-0022 decision 5,
+    ADR-0023 decision 4, ADR-0028 decision 4, ADR-0031 decision 5, ADR-0032
+    decision 4, ADR-0033 decision 4, ADR-0034 decision 4, ADR-0046 decision
+    3, ADR-0053 decision 5).
     """
     return read(data_root, run_id).hw_profile
 
@@ -1134,20 +1134,19 @@ def objective_of(data_root, run_id):
     ``list``, the one value ADR-0053 decision 4 gives -, or ``None`` for a
     valid file without that member. The member states the target the
     instance was started with and no more (ADR-0053 decision 3): nothing
-    here says that anything was
-    measured, compared or judged. ``None`` says that the file states no
-    objective and no set of constraints: it is no default and not "no
-    constraint", which a present member with an empty ``constraints`` states
-    and nothing else does, and nothing stands in for it (ADR-0053 decision
-    5), not ``latency_minimisation``, no constant of this module, not the
-    ``task.objective`` of a spec of the run, nothing taken from another
-    member and not the objective of another run. Only the instance file is
-    read, no spec is, and the result is compared with nothing. Raises what
-    :func:`read` raises, so no objective and no constraint is returned, and
-    none is inferred, for a missing, unreadable or invalid file or one of
-    another version (ADR-0053 decision 5). It raises no tool failure: what
-    a call of a tool answers when no target is stated is not said (ADR-0053
-    decision 7).
+    here says that anything was measured, compared or judged. ``None`` says
+    that the file states no objective and no set of constraints: it is no
+    default and not "no constraint", which a present member with an empty
+    ``constraints`` states and nothing else does, and nothing stands in for
+    it (ADR-0053 decision 5), not ``latency_minimisation``, no constant of
+    this module, not the ``task.objective`` of a spec of the run, nothing
+    taken from another member and not the objective of another run. Only the
+    instance file is read, no spec is, and the result is compared with
+    nothing. Raises what :func:`read` raises, so no objective and no
+    constraint is returned, and none is inferred, for a missing, unreadable
+    or invalid file or one of another version (ADR-0053 decision 5). It
+    raises no tool failure: what a call of a tool answers when no target is
+    stated is not said (ADR-0053 decision 7).
     """
     return read(data_root, run_id).objective
 
