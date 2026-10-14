@@ -510,7 +510,10 @@ def test_a_read_error_of_a_candidate(scratch, place, output, monkeypatch):
     assert_failure(caught, CANDIDATE_UNREADABLE, output)
 
 
-def test_a_link_met_at_the_open_is_not_taken(scratch, place, output, monkeypatch):
+@pytest.mark.parametrize("number", [errno.ELOOP, errno.EMLINK])
+def test_a_link_met_at_the_open_is_not_taken(
+    scratch, place, output, monkeypatch, number
+):
     write(place, "gemm.c")
     write(place, "pack.c")
 
@@ -518,7 +521,7 @@ def test_a_link_met_at_the_open_is_not_taken(scratch, place, output, monkeypatch
 
     def open_(path, *args):
         if Path(path).name == "pack.c":
-            raise OSError(errno.ELOOP, "too many levels of symbolic links")
+            raise OSError(number, "a symbolic link")
         return real(path, *args)
 
     monkeypatch.setattr(os, "open", open_)

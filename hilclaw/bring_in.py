@@ -72,6 +72,9 @@ _READ_FLAGS = (
     | getattr(os, "O_NONBLOCK", 0)
     | getattr(os, "O_BINARY", 0)
 )
+_LINK_ERRNOS = frozenset(
+    (errno.ELOOP, errno.EMLINK, getattr(errno, "EFTYPE", errno.ELOOP))
+)
 _WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
 
 
@@ -216,7 +219,7 @@ def _read(path, examined):
     try:
         descriptor = os.open(path, _READ_FLAGS)
     except OSError as error:
-        if error.errno == errno.ELOOP:
+        if error.errno in _LINK_ERRNOS:
             return None
         raise BringInError(CANDIDATE_UNREADABLE) from error
     try:
