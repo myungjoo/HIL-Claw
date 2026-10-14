@@ -38,10 +38,11 @@ name the data root is that module's.
   outcome is then ``login_unreadable`` or ``session_failed``.
 - *The data root* is asked of ``data_root_source.configured`` once, just
   before the session, and only named to it: nothing in it is read or written
-  and it need not exist. **When none is configured**
-  (``hilclaw.config.ConfigError``) **the check goes on with an empty**
-  ``keep_out``: the check needs no data root (decision 5), and a bring-up
-  without a configuration fails for that elsewhere. "Outside both checkouts"
+  and it need not exist. **When the configuration names none**
+  (``hilclaw.config.ConfigError``: no file, one that cannot be read, a
+  missing value) **the check goes on with an empty** ``keep_out``: the
+  check needs no data root (decision 5), and a bring-up without a
+  configuration fails for that elsewhere. "Outside both checkouts"
   is then checked against the source checkout only. Nothing of this is in the
   report and the text of that error, which names a path, reaches no stream.
 - *A fault of the check itself* is :data:`EXIT_FAULT` (20): any
@@ -50,9 +51,9 @@ name the data root is that module's.
   directory of the check that would lie inside a checkout included - and a
   standard output that is closed, cannot be written or flushed, or takes
   fewer bytes than the line. **It is not an eighth outcome and has no
-  report**: nothing is written to standard output unless the write itself
-  failed part-way, so with this status whatever standard output holds is no
-  report. The value is none of 0, 1, 2 (the interpreter's), 3, 4
+  report**: nothing is written to standard output unless the write or the
+  flush itself failed, so with this status whatever standard output holds
+  is no report. The value is none of 0, 1, 2 (the interpreter's), 3, 4
   (``python -m hilclaw``), 10 to 15 (the outcomes), 120, and 126 and above.
   If the interpreter's own flush at exit fails as well, the status is 120.
 - *Standard error* then gets one line, ``hilclaw.selfcheck: fault: <class>``:
