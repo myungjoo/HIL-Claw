@@ -26,8 +26,9 @@ environment of the server process or the wire copy can read them.
 **The server entry** (:func:`server_entry`) is ``command``, ``args`` and
 ``env`` of one stdio server. It holds only values made here or handed in: the
 interpreter that builds it (``sys.executable``), the directory that holds this
-package (from the module's own location), the two tokens and the place of the
-wire copy. Nothing of ``os.environ`` is read or copied. The command line is
+package (:data:`hilclaw.checkout_boundary.PACKAGE_DIRECTORY`), the two tokens
+and the place of the wire copy. Nothing of ``os.environ`` is read or copied.
+The command line is
 ``<python> -I -c <one line> <package directory>``, and there is no ``-m``
 form; the one line puts that directory first on the module path and calls
 :func:`main`, which takes no argument. The tokens and the place travel in
@@ -83,6 +84,7 @@ import secrets
 import sys
 from typing import NamedTuple
 
+from hilclaw import checkout_boundary as _checkout_boundary
 from hilclaw import mcp_front, tools
 
 TOKEN_TOOL = "selfcheck.token"
@@ -96,7 +98,6 @@ FROM_CLIENT = "client"
 FROM_SERVER = "server"
 WIRE_COPY_MAGIC = b"hilclaw selfcheck wire copy 1\n"
 
-_PACKAGE_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _TOKEN = re.compile(r"[0-9a-f]{32}")
 _RECORD = re.compile(rb"([CS]) (0|[1-9][0-9]{0,17})\n")
 _MARKS = {FROM_CLIENT: b"C", FROM_SERVER: b"S"}
@@ -196,7 +197,7 @@ def server_entry(*, token, fail_token, wire_copy):
         raise RuntimeError("the interpreter does not know its own path")
     return {
         "command": sys.executable,
-        "args": ["-I", "-c", _START, _PACKAGE_DIRECTORY],
+        "args": ["-I", "-c", _START, _checkout_boundary.PACKAGE_DIRECTORY],
         "env": {ENV_TOKEN: token, ENV_FAIL_TOKEN: fail_token, ENV_WIRE_COPY: place},
     }
 
