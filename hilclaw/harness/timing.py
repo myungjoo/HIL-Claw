@@ -47,20 +47,28 @@ Conventions of this module (not rules of the record):
   ``ValueError`` or ``TypeError``, and what :func:`hilclaw.local_run.run`
   raises for the command, the time limit, ``cwd`` or ``env`` is passed on.
 
+A completed run also yields the memory figure of ADR-0052 decision 4: the
+``ru_maxrss`` the runner handed on, converted by
+:func:`hilclaw.harness.memory_ceiling.figure` for the :data:`sys.platform` read
+at the call; a broken run yields none.
+
 What this module does not do: it builds nothing and reads no clock; it does not
 defend against forged timing (decision 10); it does not retry, repair, store or
-judge a broken run or one that is not converged; it gives no default to the
-sample form, the seed or the time limit; and it summarises nothing.
+judge a broken run or one that is not converged; it gives no verdict on the
+memory figure (that is :func:`hilclaw.harness.memory_ceiling.verdict`, which
+nothing here calls); it gives no default to the sample form, the seed or the
+time limit; and it summarises nothing.
 """
 
 import enum
 import os
 import re
 import reprlib
+import sys
 from typing import NamedTuple
 
 from hilclaw import local_run
-from hilclaw.harness import measurement
+from hilclaw.harness import measurement, memory_ceiling
 from hilclaw.harness.measurement import N_MAX_DEFAULT, State
 
 SAMPLE_FORMS = ("interval", "reciprocal")
@@ -105,6 +113,11 @@ class TimingResult(NamedTuple):
     names the failed condition and the three other fields are ``None``: no
     interval of a broken run is offered. ``run`` is what the runner captured,
     in both cases.
+
+    ``memory_bytes`` is the memory figure of ADR-0052 decision 4 in bytes, an
+    ``int``, for a completed run whose platform has a unit rule and whose
+    ``run.max_rss`` is a positive ``int``; it is ``None`` otherwise, and always
+    for a broken run, even where ``run.max_rss`` holds a value.
     """
 
     broken: Broken | None
@@ -112,6 +125,7 @@ class TimingResult(NamedTuple):
     intervals_ns: tuple[int, ...] | None
     resolution_ns: int | None
     run: local_run.RunResult
+    memory_bytes: int | None = None
 
 
 def driver_arguments(*, m, k, n, n_max, sample_form, seed):
@@ -183,7 +197,9 @@ def run_timing(
     of 0, and the replay agrees: with the samples taken from the intervals in
     order (the lengths for ``interval``, their reciprocals for ``reciprocal``),
     ``stopping_state`` is ``CONTINUE`` for every proper prefix and gives the
-    reported state for the whole sequence. Every other run is broken.
+    reported state for the whole sequence. Every other run is broken. Only a
+    completed run, in either state, carries a memory figure
+    (:attr:`TimingResult.memory_bytes`).
 
     Raised before anything is started: :class:`TimingArgumentError` as in
     :func:`driver_arguments`, :class:`TypeError` for an ``executable`` that is
@@ -214,8 +230,9 @@ def run_timing(
     elif not _replay_agrees(report, sample_form, n_max):
         broken = Broken.REPLAY
     else:
+        memory = memory_ceiling.figure(run.max_rss, sys.platform)
         return TimingResult(
-            None, report.state, report.intervals_ns, report.resolution_ns, run
+            None, report.state, report.intervals_ns, report.resolution_ns, run, memory
         )
     return TimingResult(broken, None, None, None, run)
 
