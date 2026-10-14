@@ -51,15 +51,18 @@ from hilclaw.selfcheck_wire import MAX_LISTED, MAX_STRING, OTHER, WireFacts
 TOKEN = "0123456789abcdef0123456789abcdef"
 FAIL_TOKEN = "fedcba9876543210fedcba9876543210"
 MARKER = "marker-3f9c"
+CONTRADICTION_TEXT = "a session step goes with a step one that says logged in"
+INTEGER_TEXT = "an integer value must be None or an integer of 32 bits"
+DECIDE_EXIT_STATUS_TEXT = "the exit status must be None or an integer"
 ERROR_TEXTS = (
     "the login must be a LoginStatus",
     "the system facts must be a SystemFacts",
     "the run must be a SessionRun or None",
     "the stream facts must be a StreamFacts or None",
-    "a session step goes with a step one that says logged in",
+    CONTRADICTION_TEXT,
     "a list of names must be a tuple",
     "a yes-or-no value must be True or False",
-    "an integer value must be None or an integer of 32 bits",
+    INTEGER_TEXT,
     "the report must be a dict that build returned",
     "the outcome must be a string",
     "the outcome must be a word of the closed list",
@@ -68,11 +71,8 @@ ERROR_TEXTS = (
     "the session evidence must be a SessionEvidence",
     "the wire facts must be a WireFacts or None",
     "the errors of the wire facts must be a tuple",
-    "the exit status must be None or an integer",
+    DECIDE_EXIT_STATUS_TEXT,
 )
-CONTRADICTION_TEXT = "a session step goes with a step one that says logged in"
-INTEGER_TEXT = "an integer value must be None or an integer of 32 bits"
-DECIDE_EXIT_STATUS_TEXT = "the exit status must be None or an integer"
 SYSTEM = SystemFacts("Linux", "6.8.0-45-generic", "3.14.4")
 LOGGED_IN = LoginStatus(None, "claude.ai", 0, False)
 NOT_IN = LoginStatus(NOT_LOGGED_IN, "none", 1, False)
