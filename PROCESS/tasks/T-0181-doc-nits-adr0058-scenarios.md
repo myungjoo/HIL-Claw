@@ -2,7 +2,7 @@
 id: T-0181
 title: Clear the four non-blocking round-7 review nits of T-0179 - ADR-0058 cites OD-12 for "a coder chooses a technique itself" (it is OD-23; OD-12 is the coder's own search), gives ADR-0035 a purpose in its own words, says "sha256-derived" instead of ADR-0002's wording, and the StandardScenarios 2026-10-14 (3차) paragraph misses S0-4; coverage re-check recorded
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-6, OD-12, OD-23, "CLAUDE.md 문서 커버리지 재검사"]
 dependsOn: [T-0179, T-0180]
@@ -84,3 +84,11 @@ Line numbers are those of `main` at `8214105`; the text wins. ARCHITECTURE lines
 - (driver/planner) T-0176 stays BLOCKED until HQ-0020 is answered; P1-1 and what rests on it wait with it.
 
 ## Result
+- Commit `b0f561c` on `main` (document mode, fast-forward from `ee9274c`), trailers `Reviewed-by: reviewer agent (1 rounds, Approve)` and `Task: T-0181`; task branch deleted on the remote and locally.
+- Entry checks: not landed before (no `Task: T-0181` on `origin/main`, no PR); no open PR; no comment on #5 after the ADR-0058 notice (so no owner objection and no HQ answer).
+- ADR-0058: decision 1 and the Boundaries bullet "OD-22 and FR-8" now read "(OD-23; the coder's own search is OD-12)"; Alternatives row 3 quotes ADR-0035's own words ("a plainly fictitious machine, not the first real instance, not the driver machine and not the repository owner's PC") and its rejection stands; decision 5 (a) reads "each `key` is the name derived from its `record` (`hilclaw.keys`)"; one Status bullet records the edit after acceptance (objection window unchanged).
+- StandardScenarios: 3rd 2026-10-14 paragraph now lists "S0-4·8·9" and reads "(OD-23; 코더의 직접 검색은 OD-12)"; a 2026-10-14 (4th) paragraph and a heading-list clause record the re-check.
+- Coverage re-check over the 3rd paragraph's steps plus S0-4 (judged on its own: FR-5, FR-1 round 0, baseline OD-28 untouched): no verdict change, no gap. No scenario step or 비고 row edited.
+- Review: 1 round, fresh-context dev-reviewer, Approve. It re-confirmed the four planner checks and found no change of meaning. Two nits needed no change: the `Reviewed-by` trailer belongs on the landed commit, and the Status bullet's "three citations" counts decision 1 and Boundaries as one fix, which matches the criterion.
+- Reviewer's view on editing an accepted record during its objection window: acceptable for citation and wording fixes only. The edit is disclosed in a dated Status bullet (as T-0174 did), and ADR-0058's revert clause covers "the edits made with it". Any change of meaning in the window needs a new record.
+- Nothing was built or run; no `claude` process was started. Follow-ups: none new.
