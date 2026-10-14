@@ -2,7 +2,7 @@
 id: T-0168
 title: Carry the member `objective` of ADR-0053 into the code (the code slice of its Consequences) - `hilclaw/instance.py` checks the validity of the top-level member `objective` of `instance.json` (valid exactly as the `task.objective` of a version-2 spec, may be absent) and gains a reader of the target a run states beside `draws_of` - no default, nothing stands in for an absent member, no tool-failure kind, bound to no tool
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-2, FR-13, OD-8, OD-1, OD-6]
 dependsOn: [T-0148, T-0152, T-0143]
@@ -138,3 +138,55 @@ Helpers live in the test files and get no tests of their own (test rule 5). The 
 - (driver / owner) HQ-0013, HQ-0014, HQ-0016, HQ-0017, HQ-0018 stay as they were; none is needed here.
 
 ## Result
+- **DONE.** PR #117 squash-merged as `2eefb9d` (`T-0168: Read the member objective of instance.json (ADR-0053 decisions 4, 5, 7)`); the squash message ends with `Task: T-0168`. The remote and local branch were deleted. Not BLOCKED. This task ticks **no** PLAN checkbox (P1-8 stays open).
+- **Review**: 5 rounds with a fresh-context `dev-reviewer`, every round Approve. No round found a defect in behaviour. The follow-up commits addressed the optional findings: round 1, the reader's docstring stated the one admitted value without the "today" of ADR-0053 decision 4, and two module-docstring lines were wrapped unevenly; round 2, a 94-character docstring line; round 3, a short line and an uneven break in the list of `hw_profile_of`; round 4, OD-18 is now named beside OD-13 sub-question 10 where the module leaves the reading call open (decision 7: "the contracts of the run tools (OD-18; PLAN P1-1)"). Round 5 had one cosmetic note, which was declined: in `test_what_is_no_value_of_the_objective` the subset assertion on the Walk-through rows runs once per parameter. It follows the `draws` block, which the task names as the model and which does the same with `WALK_THROUGH_OF_ADR_0046`.
+- **CI**: run 38505329643 was green on the head `6c65b7d`, all six jobs. Coverage of `hilclaw/`: lines 4654/4671 = 99.63 %, functions 464/464 = 100.00 %; `hilclaw/instance.py` is at 100 %. Locally, `python -m pytest` gave 18317 passed and 315 skipped on Windows, and `ruff check` and `ruff format --check` were clean.
+- **Language**: Python, because the modules exist in Python.
+- **Public API as landed**:
+  - `Instance._fields` = (`hw_profile_key`, `hw_profile`, `tolerance`, `source_commit`, `n_max`, `candidates_per_round`, `op_signature`, `round_budget`, `wall_clock_budget_s`, `owner`, `project`, `draws`, `objective`, `others`). `_field_defaults` is empty.
+  - The new reader is `objective_of(data_root, run_id)`, with no defaults. It returns `read(data_root, run_id).objective`: either the `dict` of the file, unchanged and new at each call, or `None` for a valid file without the member.
+  - It raises exactly what `read` raises:
+    - `InvalidPathValueError` for a bad `run_id`;
+    - `FileNotFoundError` or `NotADirectoryError` for the data root;
+    - `MissingInstanceError` for a missing file;
+    - an `OSError` when the file cannot be read;
+    - `InvalidInstanceError` for an invalid file, with the relative path in front;
+    - `UnsupportedVersionError` for another version.
+  - Every reader raises `InvalidInstanceError` for a file whose `objective` is invalid.
+  - The messages of an invalid member, with the first broken rule reported:
+    - `objective: must be an object, got <type>`
+    - `objective: must be an object without the member, got str '<name>'`
+    - `objective: lacks the member objectives` / `constraints`
+    - `objective.objectives: must be an array of exactly one entry, got <type>`
+    - `objective.objectives[0]: must be an object, got <type>`
+    - `objective.objectives[0]: must be an object without the member, got ...`
+    - `objective.objectives[0]: lacks the member type`
+    - `objective.objectives[0].type: must be latency_minimisation, got <type>`
+    - `objective.constraints: must be an empty array, as no constraint type is admitted, got <type>`
+  - A `str` value is shown by `reprlib`, as for every other member.
+- **Choices**, each with its reason:
+  - **Return form**: the `dict` of the file, unchanged, with no new named tuple. ADR-0053 decision 6 calls the copy to a spec "a copy of one JSON value", and a later admission then changes no type of this module.
+  - **"Not stated"**: `None` and nothing else. A present member with an empty `constraints` is a `dict` and never equals `None` (decision 5).
+  - **The checks are repeated, not shared**: `_objective` and `_constraint` of `hilclaw/spec.py` are private and report places below `task.objective`, and sharing would need an edit of `hilclaw/spec.py` outside this task's files. A test gives one corpus of JSON values to both validators and asserts the same verdict, so "one set of accepted values in both modules" is checked at every commit. All five reviews agreed that the record leaves this choice to the code task.
+  - **Order of the checks**: the member is checked after `draws`. Inside it the order is that of `hilclaw/spec.py`: an object, no other member, both members present, `objectives` an array of one entry, the entry an object with only `type`, the admitted name, `constraints` an empty array.
+  - **Values built in memory**: the member and the entry must each be exactly a `dict`, the arrays exactly a `list`, and `type` exactly a `str`. This is the module's convention, and these values are outside the cross-module corpus.
+  - **Private helpers**: `_OBJECTIVE_TYPES` holds the admitted name only to judge a present member, and `_closed` checks a closed object for the new member only. No existing check was merged with them.
+  - **Not implemented**: check 4 of ADR-0050 (every constraint entry is refused) and the written form of a `bound`.
+- **Existing assertions edited**:
+  - in `tests/test_instance.py`:
+    - the import list, which gains `spec` and `objective_of`;
+    - in `test_the_public_names`, the sorted names, `Instance._fields` and the signature loop;
+    - `READERS`, and the six `len(READERS) == 13` assertions, now 14;
+    - every positional `Instance(...)` comparison, which has one more `None` before `others`;
+    - two new rows of `INVALID_FILES`;
+    - in `test_the_top_level_is_open`, the member name `objective` of the two parameter sets became `target`, with the values kept. Both original contents are now negative cases (`NO_LONGER_OPEN`).
+  - one further minimal edit, under the owner's note on HQ-0011 and HQ-0012: in `test_any_place_of_the_draws_among_the_eleven_other_members`, `assert None not in expected` became `assert None not in expected[:12]`. The expected `Instance` now holds `None` in the field `objective`, and the slice covers the same twelve fields as before.
+  - in `tests/test_instance_file.py`: `FULL` gains the valid `objective`, and `REFUSED` gains the row `objective`.
+  - The cases the task names as unchanged still pass unedited.
+- **Line counts** (`git diff --numstat 001afdd 2eefb9d`):
+  - non-test: `hilclaw/instance.py` +180/-33 and `hilclaw/instance_file.py` +4/-3 (module docstring only), 2 files and 220 changed lines (cap 300 / 5 files);
+  - tests: `tests/test_instance.py` +899/-30 and `tests/test_instance_file.py` +5/-0.
+  - The import set of `hilclaw/instance.py` is unchanged. `objective_of` appears under `hilclaw/` only in its definition and in docstrings. All four files are `i/lf`, and `git diff --check` is clean.
+- **Session checks**: no open PR when the task started. Issue #5 has no comment after the HQ-0015 answer `issuecomment-6149396163`, so nothing objects to ADR-0053, ADR-0050 or ADR-0018. Neither the executor nor a reviewer started a `claude` process (D16).
+- **Commit body line**: ADR-0053 and ADR-0050 are inside their objection windows until 2026-10-20; an objection creates a reverting task and this change is reverted with it.
+- **Follow-ups**: none new. The planner's follow-ups above stand, including the `hilclaw/spec.py` docstring sentence that can now name the member, and the judgement of decision 5 at the admission of `memory_ceiling`.
