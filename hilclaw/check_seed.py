@@ -63,24 +63,23 @@ Choices that are this module's own and no rule of a record:
   ``carry_out`` as the same object and not checked, read or converted.
 
 What the module does not do: it is no tool and no step and is bound to none.
-It appends no line, so it does not by itself make the draw lie before a
-start line. It binds no source and holds no default source; how a registry
-or a test binds one is not decided here (ADR-0021 decision 3; decision 9).
-It does not check that the call reached the draw, that is, that its
-identity has no line and that none of the answers of moment 4 was given. It
-says nothing of whether a seed is recorded, returned or kept after a check
-(OD-16 sub-question 5); it writes the seed to no file and composes no
-message that holds it. :func:`check` passes on, through ``carry_out``, the
-message an operation raised with a backend kind, where it is exactly a
-``str``, as it was raised (ADR-0047 decision 4), so a seed in that message
-reaches the caller. By the records such a message has no content that holds
-the seed (ADR-0047 decision 4, citing ADR-0021 decision 3); nothing detects a
-message that breaks this. :func:`check` validates no seed, no number of
-draws, no dimension, no tolerance and no output path, and the module gives
-none a default. It
-says nothing of what anybody does after an answer, of a repeated call or of
-a retry. It is this tool's and gives no rule for another HW tool. It
-reserves no kind. It keeps nothing between calls. It imports
+It appends no line, so it does not by itself make the draw lie before a start
+line. It binds no source and holds no default source; how a registry or a
+test binds one is not decided here (ADR-0021 decision 3; decision 9). It does
+not check that the call reached the draw, that is, that its identity has no
+line and that none of the answers of moment 4 was given. It says nothing of
+whether a seed is recorded, returned or kept after a check (OD-16
+sub-question 5); it writes the seed to no file and composes no message that
+holds it. :func:`check` passes on, through ``carry_out``, the message an
+operation raised with a backend kind, where it is exactly a ``str``, as it
+was raised (ADR-0047 decision 4), so a seed in that message reaches the
+caller. By the records such a message has no content that holds the seed
+(ADR-0047 decision 4, citing ADR-0021 decision 3); nothing detects a message
+that breaks this. :func:`check` validates no seed, no number of draws, no
+dimension, no tolerance and no output path, and the module gives none a
+default. It says nothing of what anybody does after an answer, of a repeated
+call or of a retry. It is this tool's and gives no rule for another HW tool.
+It reserves no kind. It keeps nothing between calls. It imports
 :mod:`hilclaw.check_admission`, :mod:`hilclaw.check_ending`,
 :mod:`hilclaw.check_parameters`, :mod:`hilclaw.harness.seed_source` and
 :mod:`hilclaw.tools` and nothing else.
