@@ -39,9 +39,8 @@ output, **not of a data-plane schema**: the report is no record of
   ``fail_call_requested``, ``fail_call_answered``, ``unforeseen_methods``
   (``unforeseen``), ``unforeseen_dropped``.
 
-"The server started" of the record is two members: ``wire_copy_read`` and
-``initialize_seen``. ``directory_removed`` is the one member the record does
-not list.
+"The server started" of the record is ``wire_copy_read`` and
+``initialize_seen``. The record does not list ``directory_removed``.
 
 **Conventions of this module** (the record leaves them to the code):
 
@@ -55,12 +54,13 @@ not list.
   client version, the three revisions and a tool name: 1 to
   ``selfcheck_wire.MAX_STRING`` characters of ASCII letters, digits, ``.``,
   ``_`` and ``-``; a method name also ``/``; any other value but ``None``, a
-  non-string included, is ``selfcheck_wire.OTHER``. ``auth_method``: one of
-  ``selfcheck_login.AUTH_METHODS``, else ``AUTH_METHOD_OTHER``. Of the tool
-  names only those that begin with ``selfcheck_stream.TOOL_PREFIX``, and the
-  reader's own ``OTHER``, are written. Each of the two lists holds every
-  distinct value once and at most ``selfcheck_wire.MAX_LISTED``; its
-  ``..._dropped`` member is true when the source said so or one was cut here.
+  non-string included, is ``selfcheck_wire.OTHER`` (in a list ``None`` too).
+  ``auth_method``: one of ``selfcheck_login.AUTH_METHODS``, else
+  ``AUTH_METHOD_OTHER``. Of the tool names only the strings that begin with
+  ``selfcheck_stream.TOOL_PREFIX``, and the reader's own ``OTHER``, are
+  written. Each list holds every distinct value once and at most
+  ``selfcheck_wire.MAX_LISTED``; ``..._dropped`` is true when the source said
+  so or one was cut here.
 - *The system facts* are ``platform.system()``, ``platform.release()`` and
   ``platform.python_version()`` and nothing else of the machine: no host
   name. The record sets no bound for them; the gate is applied all the same,
@@ -79,27 +79,27 @@ not list.
   no ``SystemFacts``, a ``stream`` that is neither ``None`` nor a
   ``StreamFacts``, a list of names that is no tuple, a yes-or-no value that
   is not ``True`` or ``False``, an integer value that is neither ``None`` nor
-  an ``int`` (``True`` is none). The errors of ``decide`` pass through. By
+  an ``int`` below 2**32 in size (``True`` is none). ``decide``'s pass on. By
   :func:`exit_status`: no string (:class:`TypeError`), no outcome word
   (:class:`ValueError`). By :func:`line`: a value that is no ``dict`` or
   cannot be written as JSON (:class:`TypeError`).
 
 **What a report holds**: booleans, integers, ``null``, the strings of the
 gate, the fixed instruction text and outcome words, and lists and objects of
-those. No line or fragment of any output or of the wire copy, no reply text,
-no token, no path, no command line, no environment variable, no host name, no
-user name and no text of an exception.
+those. Nothing is copied whole or in part from an output, the wire copy, a
+reply, the environment or an exception, and nothing names the host or the user.
 
 Known limits. A pass is one observation (ADR-0054 L2). The yes-or-no values
-and the integers are believed as given (L6). A ``session_failed`` report says
-how far the session got and not why. The record lists no member for the error
-codes of condition (a), the status word of the server, a torn copy or an
-unplaceable line, so the report does not say them. A string inside the bound
-is written whatever it means. :func:`line` writes the ``dict`` it is given:
-the gate is :func:`build`. What :mod:`platform` does to learn its three values
-is the interpreter's. Where the report is kept and what the instance's log is
-are not this module's (O7). No step is called, no stream is written and no
-command of the package exists here. Nothing calls the module yet.
+and the integers of that size are believed as given (L6). A string inside the
+bound is written whatever it means: a method name may look like a path. A
+``session_failed`` report says how far the session got and not why. The
+record lists no member for the error codes of condition (a), the status word
+of the server, a torn copy or an unplaceable line, so the report does not say
+them. :func:`line` writes the ``dict`` it is given: the gate is :func:`build`.
+What :mod:`platform` does to learn its three values is the interpreter's.
+Where the report is kept and what the instance's log is are not this module's
+(O7). No step is called, no stream is written and no command of the package
+exists here. Nothing calls the module yet.
 """
 
 import platform
@@ -153,8 +153,8 @@ def _flag(value):
 
 
 def _integer(value):
-    if value is not None and type(value) is not int:
-        raise TypeError("an integer value must be None or an integer")
+    if value is not None and (type(value) is not int or abs(value) >> 32):
+        raise TypeError("an integer value must be None or an integer of 32 bits")
     return value
 
 
@@ -164,14 +164,14 @@ def _bounded(value, form):
     return value if type(value) is str and form.fullmatch(value) else OTHER
 
 
-def _listed(source, member, form, prefix=None):
+def _listed(source, member, form, prefix=""):
     values = getattr(source, member)
     if type(values) is not tuple:
         raise TypeError("a list of names must be a tuple")
     kept, cut = [], _flag(getattr(source, member + "_dropped"))
     for value in values:
-        named = type(value) is str and value.startswith(prefix or "")
-        if prefix and value != OTHER and not named:
+        named = type(value) is str and (value == OTHER or value.startswith(prefix))
+        if prefix and not named:
             continue
         word = _bounded(value, form) or OTHER
         if word in kept:

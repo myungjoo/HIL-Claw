@@ -59,7 +59,7 @@ ERROR_TEXTS = (
     "a session step goes with a step one that says logged in",
     "a list of names must be a tuple",
     "a yes-or-no value must be True or False",
-    "an integer value must be None or an integer",
+    "an integer value must be None or an integer of 32 bits",
     "the report must be a dict that build returned",
     "the outcome must be a string",
     "the outcome must be a word of the closed list",
@@ -235,11 +235,39 @@ PLANTED = [
 NOT_STRINGS = [1, True, 1.5, b"2.1.280", ["2.1.280"], ("a",), {"a": 1}]
 WORD_MEMBERS = ["client_version", "revision_asked", "revision_answered"]
 NOT_BOOLEANS = [1, 0, "true", "", None, [True], MARKER]
-NOT_INTEGERS = ["1", True, False, 1.0, [1], MARKER]
+NOT_INTEGERS = [
+    "1",
+    True,
+    False,
+    1.0,
+    [1],
+    MARKER,
+    2**32,
+    -(2**32),
+    int(TOKEN, 16),
+    10**5000,
+]
+
+
+class Loud:
+    def __eq__(self, other):
+        raise RuntimeError(MARKER)
+
+    def __ne__(self, other):
+        raise RuntimeError(MARKER)
+
+    __hash__ = None
+
+
+class Word(str):
+    pass
 
 
 def label(value):
-    return repr(value)[:24]
+    try:
+        return repr(value)[:24]
+    except ValueError:
+        return "huge"
 
 
 def decided(login, run):
@@ -258,11 +286,18 @@ def no_leak(data, planted=()):
     rest = json.dumps(parsed)
     assert "/" not in rest and "\\" not in rest
     machine = (socket.gethostname(), getpass.getuser(), os.path.expanduser("~"))
-    for word in (*machine, *planted):
+    words = [word for word in machine if word.lower() not in VOCABULARY]
+    for word in (*words, *planted):
         escaped = json.dumps(word)[1:-1]
         if len(word) >= 4:
             assert word.lower() not in text.lower()
             assert escaped.lower() not in text.lower()
+
+
+VOCABULARY = "".join(
+    line(build(*CASES[case][:2], system=SYSTEM)).decode().lower() + OTHER
+    for case in ("a pass", "not logged in")
+)
 
 
 def with_wire(**members):
@@ -601,6 +636,56 @@ def test_a_tool_name_without_the_prefix_is_left_out(value):
     no_leak(line(report), [value] if type(value) is str else [])
 
 
+def test_a_value_that_cannot_be_compared_never_raises_its_own_text():
+    loud = Loud()
+    run = SessionRun(
+        SESSION,
+        WIRE._replace(unforeseen=(loud, "a/b"), client_version=loud),
+        False,
+        STREAM._replace(session_tools=(loud, TOKEN_TOOL_SESSION_NAME)),
+        True,
+    )
+    login = LOGGED_IN._replace(auth_method=loud)
+    report = build(login, run, system=SYSTEM._replace(os_name=loud))
+    assert report["session"]["tools"] == [TOKEN_TOOL_SESSION_NAME]
+    assert report["wire"]["unforeseen_methods"] == [OTHER, "a/b"]
+    assert report["wire"]["client_version"] == OTHER
+    assert report["login"]["auth_method"] == OTHER
+    assert report["system"]["os_name"] == OTHER
+    no_leak(line(report), [MARKER])
+
+
+def test_a_string_of_another_class_is_no_word():
+    run = SessionRun(
+        SESSION,
+        WIRE._replace(unforeseen=(Word("a/b"),), client_version=Word("2.1.280")),
+        False,
+        STREAM._replace(session_tools=(Word(OTHER), Word(TOKEN_TOOL_SESSION_NAME))),
+        True,
+    )
+    login = LOGGED_IN._replace(auth_method=Word("claude.ai"))
+    report = build(login, run, system=SYSTEM)
+    assert report["session"]["tools"] == []
+    assert report["wire"]["unforeseen_methods"] == [OTHER]
+    assert report["wire"]["client_version"] == OTHER
+    assert report["login"]["auth_method"] == OTHER
+    assert all(type(name) is str for name in report["wire"]["unforeseen_methods"])
+
+
+@pytest.mark.parametrize("value", [0, -9, 255, 3221225786, 2**32 - 1, 1 - 2**32])
+def test_an_integer_of_32_bits_is_carried(value):
+    login = LoginStatus(LOGIN_UNREADABLE, None, value, False)
+    report = build(login, None, system=SYSTEM)
+    assert report["login"]["exit_status"] == value
+    assert json.loads(line(report)) == report
+    run = SessionRun(SESSION._replace(exit_status=value), WIRE, False, STREAM, True)
+    report = build(
+        LOGGED_IN, run._replace(wire=WIRE._replace(probe_error=value)), system=SYSTEM
+    )
+    assert report["session"]["exit_status"] == value
+    assert report["wire"]["probe_error"] == value
+
+
 def test_the_word_the_reader_put_for_a_tool_name_is_kept():
     run = with_stream(session_tools=(OTHER, TOKEN_TOOL_SESSION_NAME, OTHER))
     report = build(LOGGED_IN, run, system=SYSTEM)
@@ -818,13 +903,17 @@ def test_a_yes_or_no_value_of_another_form_is_refused(make, value):
     [
         lambda v: (LOGGED_IN._replace(returncode=v), PASS_RUN),
         lambda v: (LOGGED_IN, with_wire(probe_error=v)),
+        lambda v: (
+            LOGGED_IN,
+            PASS_RUN._replace(session=SESSION._replace(exit_status=v)),
+        ),
     ],
 )
 def test_an_integer_of_another_form_is_refused(make, value):
     login, run = make(value)
     with pytest.raises(TypeError) as caught:
         build(login, run, system=SYSTEM)
-    assert str(caught.value) == "an integer value must be None or an integer"
+    assert str(caught.value) == ERROR_TEXTS[7]
 
 
 def test_the_exit_statuses():
