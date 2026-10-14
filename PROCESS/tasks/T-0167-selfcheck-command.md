@@ -2,7 +2,7 @@
 id: T-0167
 title: Add `hilclaw/selfcheck.py`, the composition and the command of the runtime self-check (ADR-0054 decisions 1, 3, 4 and 7) - step one, then the session only when logged in (with the data root in `keep_out`), then the report written as one line to standard output and its exit status returned; the two time limits and a fault status of its own; tested only against a stub `claude` the tests write
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, C-7, OD-18, D16, "#5 D12"]
 dependsOn: [T-0153, T-0160, T-0165, T-0166]
@@ -126,3 +126,48 @@ Line numbers are those of `main` at `111dc82`; the text wins.
 - (planner, code mode, D12) The bring-in function of ADR-0055 (B1 to B6); the member `objective` in `hilclaw/instance.py` (ADR-0053); the harness slice of ADR-0052.
 
 ## Result
+**DONE.** PR #116 (`https://github.com/myungjoo/HIL-Claw/pull/116`), squash-merged as `e779b98`; branch deleted. Two files: `hilclaw/selfcheck.py` (167 lines, docstring included; cap 300) and `tests/test_selfcheck.py`. No existing module or test file was edited and no private name of another module is imported. **This task completes PLAN P1-9** (the driver ticks the checkbox).
+
+**D16 - who started what.** No real `claude` was started by anyone - not by the executor, not by a reviewer, not by a test. `hilclaw.selfcheck.main` and `check` ran only inside `python -m pytest`, under four autouse fixtures of `tests/test_selfcheck.py`: a `PATH` that holds the stub's directory alone, an empty temporary working directory, a guard on `local_run.run` that asserts before every start that the `claude` found is the stub or none, and `tempfile.tempdir` set to a temporary directory. One test (`test_the_command`) starts a child **Python** interpreter with `-m hilclaw.selfcheck` under an environment whose `PATH` is the stub's directory alone, after asserting that `shutil.which("claude", path=...)` is the stub. Nothing of the module was run from a shell, a script or a REPL. The six reviewers were told to write no file, to start no `claude` and to run nothing of the module outside `python -m pytest`; each reported that it ran nothing at all.
+
+**Language.** Python: the module calls Python modules of the package in-process (CLAUDE.md language policy). Standard library only; no new dependency; no data-plane schema (the report is the output of a process).
+
+**Process checks.** Landed check empty before the start (`git log origin/main --grep='^Task: T-0167'`, `gh pr list --search T-0167 --state all`). `gh pr list --state open` was empty. Issue #5 has no comment after the answer to HQ-0015 (`issuecomment-6149396163`): no objection to ADR-0054, no `T-0106 live check (owner)` comment, no answer to HQ-0016.
+
+**Review: 6 rounds, each a fresh-context `dev-reviewer` (`model: opus`); all six verdicts Approve; no `SECURITY` result.**
+1. Approve. (Low) the docstring said nothing is on standard output with the fault status "unless the write itself failed part-way", which a failed flush contradicts. Fixed (`62a7222`). (Nit) the data-root convention did not say that `ConfigError` also covers a file that cannot be read. Fixed. (Nit, kept) the reviewer read `# noqa: BLE001` as suppressing nothing; with the pinned ruff 0.16.10 `python -m ruff check .` did report BLE001 on that line in this clone before the marker was added, and three other modules carry it.
+2. Approve. (Nit) the docstring of `main` said no `Exception` leaves the call, which an `argv` that cannot be listed and a `stderr` that is no binary stream contradict. Narrowed to the check and the writing of `stdout` (`508d1bd`).
+3. Approve. (Low) a standard output that was already closed was seen only after the check, so a session could be spent for a report that could not be written. **Fixed in code: a missing standard output is refused before step one** (`0e714d1`); the test asserts that nothing was started.
+4. Approve. (Nit) the docstring said "closed" where the early refusal covers only a stream the process does not have. Fixed (`5ee5db6`). **The reviewer of this round could not post its comment** (its own `gh pr comment` ended in a shell syntax error before `gh` ran) and returned the review to the executor, who posted it on the PR marked as relayed (`issuecomment-6159028209`).
+5. Approve. (Nits) one docstring line left long; the docstring of `main` still said "closed"; the PR body's line count. (Note) the test of the limit of step one had a 3 s margin for the stub's start. All four fixed (`f26e51d`; the test now 5 s against a 12 s stub).
+6. Approve, nothing left to change.
+
+**CI.** Run 38497978811 on the head `f26e51d`: all six jobs green. The five earlier heads were green too (runs 38496140179, 38496454029, 38496716650, 38497066942, 38497404845); no failing run. Coverage gate: `hilclaw/` lines 4623/4640 = 99.63%, functions 461/461 = 100.00%; `hilclaw/selfcheck.py` 46 of 47 statements (98%) - the one line not executed is `raise SystemExit(main())` under `if __name__ == "__main__"`, which runs only in the child interpreter of `test_the_command`, where coverage does not measure (the same line of `hilclaw/__main__.py` is in the list for the same reason). Local (Windows, CPython 3.14.4): `python -m pytest` 17988 passed, 313 skipped, on the first head and again before the last commit; `ruff check` and `ruff format --check` clean; the new test file re-run before every push (62 passed). Gates: `git diff --stat origin/main` listed the two files only; both `i/lf`; `git diff --check` clean.
+
+**Public names of `hilclaw.selfcheck` as landed.**
+- `check() -> dict` - runs one check and returns the report of `selfcheck_report.build`; writes to no stream; what the steps, the report and the data-root source raise is passed on with its own text (`hilclaw.config.ConfigError` of the source excepted).
+- `main(argv=None, *, stdout=None, stderr=None) -> int` - `argv` defaults to `sys.argv[1:]` and must be empty; `stdout` and `stderr` are binary streams that default to the standard ones.
+- `LOGIN_TIMEOUT_S = 30`, `SESSION_TIMEOUT_S = 300`, `EXIT_FAULT = 20`.
+- **The command**: `python -m hilclaw.selfcheck` (no argument, no option, nothing read from standard input). `hilclaw/__main__.py` and `pyproject.toml` are not edited; no console script.
+
+**Order as landed** (`check`): `selfcheck_login.read(timeout_s=LOGIN_TIMEOUT_S)` once, no `cwd`; only when `login.outcome is None`, `selfcheck_session.run(timeout_s=SESSION_TIMEOUT_S, keep_out=...)` once, else `run = None`; `selfcheck_report.build(login, run, system=selfcheck_report.system_facts())`. `main` then writes `selfcheck_report.line(report)`, flushes, and returns `selfcheck_report.exit_status(report["outcome"])`: 0 for `passed` only, 10 to 15 for the other six.
+
+**Conventions chosen under "Left to this task".**
+- *The composition is a public function of its own* (`check`), so a later caller in the package gets the report as a value; `main` is the command.
+- *The two time limits*: 30 s (step one) and 300 s (the session), the planner's suggestion. Fixed constants; no argument, option or environment variable changes them. **Both are provisional**: no run on a runtime machine stands behind either. A limit that is too short gives `login_unreadable` or `session_failed`, never a pass.
+- *The data root*: `data_root_source.configured()` is asked once, just before the session and only when a session is started (not at all after a step one that did not say logged in); it is only named in `keep_out`, nothing in it is read or written, and it need not exist.
+- ***No data root configured*** (`hilclaw.config.ConfigError`: no file, one that cannot be read, a missing value): **the check goes on with an empty `keep_out`** - the planner's reading; the check needs no data root (decision 5) and a bring-up without a configuration fails for that elsewhere. What this cannot show: "outside both checkouts" is then checked against the source checkout only. The report has no member for it and the text of the error reaches no stream. Any other exception of the source is a fault.
+- ***The fault status***: `EXIT_FAULT = 20` - none of 0, 1, 2, 3, 4, 10 to 15, 120, and 126 and above (the test asserts it against that list, the three statuses of `hilclaw/__main__.py` and `exit_status` of all seven outcomes). It covers any `Exception` of a step, of the report or of the data-root source, a standard output the process does not have (**refused before anything is started**, round 3), and one that after the check cannot be written or flushed or **takes fewer bytes than the line** (the return value of `write` is compared with the length, so no 0 is returned for a line written in part). It is not an eighth outcome: no report is written; when the write or the flush itself failed, whatever standard output holds is no report. If the interpreter's own flush at exit fails as well, the status is 120 (as for `python -m hilclaw`).
+- ***A bad usage shares the fault status*** (one value; standard error tells the two apart): any argument, `--help` and the empty string included, is refused before anything is started, with no report.
+- ***Standard error***: nothing when a report was written. Otherwise one fixed ASCII line: `hilclaw.selfcheck: fault: <class>` - the name of the exception's class and never its text - or `hilclaw.selfcheck: usage: no argument is taken`. A standard error that is missing or cannot be written gets nothing and the status stays.
+- `KeyboardInterrupt` and `SystemExit` are not caught (`selfcheck_session.run` still removes its directory).
+- The environment: the module sets, removes and reads no variable and passes no `env` (the test compares `os.environ` before and after and the options of each start).
+
+**Observed while testing (stub only).** pytest's own capture keeps its files in `tempfile.tempdir`, so the tests look for a left-over directory by the prefix `hilclaw-selfcheck-` and not by an empty listing.
+
+**Follow-ups.**
+- (driver, at wrap-up) Tick PLAN P1-9.
+- (planner, document mode, §9; for ADR-0054, not decided in code) What this task adds to the list already under `## Follow-ups`: the two time limits as provisional values (30 s, 300 s); the fault status 20 and that a bad usage shares it; the convention for a missing data root; that a missing standard output is refused before step one; the name of the command (`python -m hilclaw.selfcheck`; Consequences line 187 says "no module, entry or value is named").
+- (planner, PLAN P2-1) The bring-up is the first caller: it decides when to run the check, what follows each outcome and status 20, and where the check's standard error and report are kept (O7).
+- (owner / runtime acceptance, HQ-0016) Whether a real session ends within 300 s and a real `claude auth status` within 30 s are facts only a runtime machine shows; nothing of HQ-0016 was closed here.
+- No split was needed (167 lines, one module).
