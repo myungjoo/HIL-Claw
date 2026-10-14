@@ -2,7 +2,7 @@
 id: T-0170
 title: Add the bring-in of a coder call (ADR-0055 decision 5, B1 to B6; ADR-0049 decision 4, slice (b)) - one function that takes the admitted regular files of the place `output/` of a scratch into the not yet existing `output/` of an attempt - with its tests; bound to nothing, no other module edited
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-5, FR-6, FR-9, C-3, C-7, NFR-2, OD-23, OD-8, "#5 D12"]
 dependsOn: [T-0155, T-0157]
@@ -80,3 +80,24 @@ A new module (suggested `hilclaw/bring_in.py`; the name is the executor's) with 
 - (commit body) ADR-0055 and ADR-0049 are within or near their objection windows (ADR-0055 notice 2026-10-13, until 2026-10-20); an objection creates a reverting task and this module is reverted with it.
 
 ## Result
+- **DONE.** PR #118 was squash-merged as `409698d` ("T-0170: Add the bring-in of a coder call (ADR-0055 decision 5, ADR-0049 slice (b)) (#118)"). The squash message ends with `Task: T-0170`. The remote and local branches were deleted. Not BLOCKED. The task ticks no PLAN checkbox and changes no OD.
+- **Review**: 3 rounds with a fresh-context `dev-reviewer`.
+  - Round 1, Request changes. `test_an_unlistable_attempt_directory` failed on Python 3.11, where `Path.iterdir` goes through the patched `os.listdir`. The fix undoes the patch before the last check (`c60dd95`). A test of the `ValueError` branch of `os.path.commonpath` (other drives) was added for coverage (`ce5a9b0`).
+  - Round 2, Approve. One nit was fixed: an `O_NOFOLLOW` open that fails with `EMLINK` (FreeBSD) or `EFTYPE` (NetBSD) now means "a link, not taken", as `ELOOP` does (`e778607`). Two nits were declined:
+    - B3 counts the candidates by `lstat`. Counting after the reads would read files when more than 16 are candidates, which AC 5 forbids.
+    - An empty path string is accepted, following the `kernel_source` path convention.
+  - Round 3, Approve, with info notes only. Each reviewer judged that the refusal of an existing `output/` is not an invention of OD-23 sub-question ① (가): it is the precondition of ADR-0055 decision 1's scope.
+- **CI**: run 38512487873 was green on the head `e778607`, all six jobs. `hilclaw/bring_in.py` has 100 % line coverage, and function coverage of `hilclaw/` is 100 %. Locally on Windows: the full `python -m pytest` gave 18388 passed and 323 skipped, on the first commit. `ruff check` and `ruff format --check` were clean. The symlink, FIFO and mode-bit cases skip on this machine and ran in CI.
+- **Language**: Python, because it is the language of the 2nd-layer package and of its reader `hilclaw/kernel_source.py`.
+- **Public API as landed** (`hilclaw/bring_in.py`, 256 lines):
+  - `bring_in(scratch_root, output_path) -> tuple[str, ...]`.
+  - `MAX_FILES = 16` and `MAX_FILE_BYTES = 262_144`.
+  - The exceptions `InvalidBringInArgumentError(ValueError)`, `OutputExistsError(Exception)` and `BringInError(Exception)`. The `failure` of `BringInError` is one of `BRING_IN_FAILURES` = (`attempt_directory_unlistable`, `scratch_root_unlistable`, `place_unlistable`, `entry_kind_undetermined`, `candidate_unreadable`).
+- **Choices**:
+  - **File creation**: `os.open(O_CREAT | O_EXCL)` with mode `0o666` under the umask, not `write_once`. It needs no hard link and leaves no temporary name.
+  - **Scratch root**: a symbolic link to a directory counts as a directory, following the reader's convention.
+  - **Kind checks**: only admitted names have their kind asked for.
+  - **Missing scratch root**: reported as `scratch_root_unlistable`.
+  - **Unlistable attempt directory**: an attempt directory that exists but cannot be listed is `attempt_directory_unlistable`.
+  - **OSErrors of creation and writing**: raised unwrapped, and the files already written stay (L5).
+- **Follow-ups**: none new beyond those listed above.
