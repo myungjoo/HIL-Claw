@@ -2,7 +2,7 @@
 id: T-0171
 title: Add the scratch of a coder call (ADR-0049 slices (a) and (c)) - one new module with a function that creates the scratch of one call outside the checkouts and places in it a copy of the bytes of the call's spec file (never in the place `output`), and a function that removes a scratch without following a link out of it - with its tests; bound to nothing, no other module edited
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [NFR-4, FR-5, FR-9, C-7, OD-8, OD-14, OD-23, "#5 D12"]
 dependsOn: []
