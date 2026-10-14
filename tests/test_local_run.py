@@ -1,8 +1,10 @@
+import gc
 import json
 import os
 import signal
 import sys
 import time
+import warnings
 from pathlib import Path
 
 import pytest
@@ -38,6 +40,12 @@ MISSING_PROGRAMS = [
 TIMEOUT = 60
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX behaviour")
+windows_only = pytest.mark.skipif(os.name != "nt", reason="native Windows behaviour")
+MIB = 1 << 20
+PID = "out.write(str(os.getpid()).encode()); out.flush()"
+HANG = PID + "; os.close(1); os.close(2); time.sleep(30)"
+CLOSED = "os.close(1); os.close(2); time.sleep(1); os._exit(0)"
+LOUD = "out.write(b'o' * (2 << 20)); err.write(b'e' * (2 << 20))"
 
 
 class Child:
@@ -88,6 +96,7 @@ def test_result_fields():
         "stderr",
         "command",
         "duration_s",
+        "max_rss",
     )
 
 
@@ -338,3 +347,241 @@ def test_timeout_has_no_default(child):
     with pytest.raises(TypeError):
         run(child(QUIET))
     assert not child.started
+
+
+def allocating(size):
+    return f"b = bytearray({size})\nfor i in range(0, {size}, 4096):\n    b[i] = 1"
+
+
+def without_wait4(monkeypatch):
+    if hasattr(os, "wait4"):
+        monkeypatch.delattr(os, "wait4")
+
+
+def assert_reaped(pid):
+    with pytest.raises(ChildProcessError):
+        os.waitpid(pid, os.WNOHANG)
+
+
+def test_a_result_built_with_six_values_has_no_usage():
+    result = RunResult(0, False, b"", b"", ("x",), 0.0)
+    assert result.max_rss is None
+    assert result._replace(stdout=b"y").max_rss is None
+
+
+@posix_only
+def test_a_quiet_process_hands_on_a_positive_usage(child):
+    result = run(child(QUIET), timeout_s=TIMEOUT)
+    assert result.returncode == 0
+    assert type(result.max_rss) is int
+    assert result.max_rss > 0
+
+
+@posix_only
+def test_a_process_that_touches_more_memory_reports_a_larger_usage(child):
+    import resource
+
+    linux = sys.platform.startswith("linux")
+    own_peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    size = 64 * MIB + own_peak * (1024 if linux else 1)
+    quiet = run(child(QUIET), timeout_s=TIMEOUT)
+    touched = run(child(allocating(size)), timeout_s=TIMEOUT)
+    assert touched.returncode == 0
+    assert type(touched.max_rss) is int
+    assert touched.max_rss > quiet.max_rss
+    if linux:
+        assert touched.max_rss >= size // 1024
+
+
+@posix_only
+@pytest.mark.parametrize(
+    "body, returncode, stdout, timeout_s",
+    [
+        (FAIL, 3, b"partial result", TIMEOUT),
+        (SIGNAL, -getattr(signal, "SIGKILL", 9), b"last words", TIMEOUT),
+        (SLEEP, None, b"before", 3),
+    ],
+)
+def test_the_usage_is_handed_on_for_a_broken_run(
+    body, returncode, stdout, timeout_s, child
+):
+    result = run(child(body), timeout_s=timeout_s)
+    assert result.returncode == returncode
+    assert result.timed_out is (returncode is None)
+    assert result.stdout == stdout
+    assert type(result.max_rss) is int
+    assert result.max_rss > 0
+
+
+@posix_only
+def test_the_wait_goes_through_wait4_for_the_started_process(child, monkeypatch):
+    real, calls = os.wait4, []
+
+    def watched(pid, options):
+        calls.append(pid)
+        return real(pid, options)
+
+    monkeypatch.setattr(os, "wait4", watched)
+    result = run(child(PID), timeout_s=TIMEOUT)
+    assert calls
+    assert set(calls) == {int(result.stdout)}
+    assert type(result.max_rss) is int
+
+
+@posix_only
+def test_a_process_that_closes_its_output_and_runs_on_is_waited_for(child):
+    result = run(child(CLOSED), timeout_s=TIMEOUT)
+    assert result.returncode == 0
+    assert result.timed_out is False
+    assert result.duration_s >= 1
+    assert type(result.max_rss) is int
+
+
+@posix_only
+def test_a_process_that_closes_its_output_and_hangs_times_out(child):
+    result = run(child(HANG), timeout_s=3)
+    assert result.timed_out is True
+    assert result.returncode is None
+    assert result.stdout.isdigit()
+    assert 3 <= result.duration_s < 20
+    assert type(result.max_rss) is int
+    assert_reaped(int(result.stdout))
+
+
+@pytest.mark.parametrize("body", [QUIET, BOTH, FAIL, BAD_UTF8])
+def test_without_wait4_the_usage_is_none_and_the_rest_is_kept(body, child, monkeypatch):
+    with_platform_wait = run(child(body, "x"), timeout_s=TIMEOUT)
+    without_wait4(monkeypatch)
+    result = run(child(body, "x"), timeout_s=TIMEOUT)
+    assert result.max_rss is None
+    assert result[:5] == with_platform_wait[:5]
+    assert 0 <= result.duration_s < TIMEOUT
+
+
+def test_without_wait4_a_timeout_is_kept(child, monkeypatch):
+    without_wait4(monkeypatch)
+    result = run(child(SLEEP), timeout_s=3)
+    assert result.timed_out is True
+    assert result.returncode is None
+    assert (result.stdout, result.stderr) == (b"before", b"sleep")
+    assert result.max_rss is None
+
+
+@windows_only
+def test_native_windows_hands_on_no_usage(child):
+    result = run(child(BOTH), timeout_s=TIMEOUT)
+    assert result.returncode == 0
+    assert result.stdout == b"to stdout\n"
+    assert result.max_rss is None
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_a_large_output_on_both_streams_does_not_deadlock(
+    platform_wait, child, monkeypatch
+):
+    if not platform_wait:
+        without_wait4(monkeypatch)
+    result = run(child(LOUD), timeout_s=TIMEOUT)
+    assert result.returncode == 0
+    assert result.stdout == b"o" * (2 * MIB)
+    assert result.stderr == b"e" * (2 * MIB)
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_a_timeout_too_long_for_the_platform_is_an_overflow_error(
+    platform_wait, child, monkeypatch
+):
+    if not platform_wait:
+        without_wait4(monkeypatch)
+    with pytest.raises(OverflowError):
+        run(child(QUIET), timeout_s=1e300)
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+@pytest.mark.parametrize("body", [QUIET, LOUD, SLEEP])
+def test_no_resource_warning_is_left_behind(body, platform_wait, child, monkeypatch):
+    if not platform_wait:
+        without_wait4(monkeypatch)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        run(child(body), timeout_s=3)
+        gc.collect()
+    assert not [w for w in caught if issubclass(w.category, ResourceWarning)]
+
+
+@posix_only
+@pytest.mark.parametrize("body, timeout_s", [(PID, TIMEOUT), (HANG, 3)])
+def test_the_process_is_reaped(body, timeout_s, child):
+    result = run(child(body), timeout_s=timeout_s)
+    assert_reaped(int(result.stdout))
+
+
+@posix_only
+def test_a_process_reaped_by_someone_else_gives_no_usage(child, monkeypatch):
+    def reaped_elsewhere(pid, options):
+        os.waitpid(pid, 0)
+        raise ChildProcessError(10, "No child processes")
+
+    monkeypatch.setattr(os, "wait4", reaped_elsewhere)
+    result = run(child(PID), timeout_s=TIMEOUT)
+    assert result.returncode == 0
+    assert result.timed_out is False
+    assert result.max_rss is None
+    assert_reaped(int(result.stdout))
+
+
+@posix_only
+def test_a_process_reaped_by_someone_else_after_the_kill_gives_no_usage(
+    child, monkeypatch
+):
+    real = os.wait4
+
+    def reaped_after_the_kill(pid, options):
+        if options == os.WNOHANG:
+            return real(pid, options)
+        os.waitpid(pid, 0)
+        raise ChildProcessError(10, "No child processes")
+
+    monkeypatch.setattr(os, "wait4", reaped_after_the_kill)
+    result = run(child(HANG), timeout_s=3)
+    assert result.timed_out is True
+    assert result.returncode is None
+    assert result.max_rss is None
+    assert_reaped(int(result.stdout))
+
+
+@posix_only
+def test_a_process_gone_before_the_kill_gives_no_usage(child, monkeypatch):
+    real_kill = os.kill
+
+    def gone(pid, sig):
+        real_kill(pid, sig)
+        os.waitpid(pid, 0)
+        raise ProcessLookupError(3, "No such process")
+
+    monkeypatch.setattr(os, "kill", gone)
+    result = run(child(HANG), timeout_s=3)
+    assert result.timed_out is True
+    assert result.returncode is None
+    assert result.max_rss is None
+    assert_reaped(int(result.stdout))
+
+
+@posix_only
+def test_an_interrupted_wait_kills_and_reaps_the_process(child, monkeypatch):
+    def interrupted(pid, options):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(os, "wait4", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        run(child(PID), timeout_s=TIMEOUT)
+
+
+@posix_only
+def test_a_descendant_holding_a_pipe_makes_a_timeout_at_the_limit(child):
+    body = "import subprocess; subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(15)'])"
+    result = run(child(body), timeout_s=3)
+    assert result.timed_out is True
+    assert result.returncode is None
+    assert 3 <= result.duration_s < 12
+    assert type(result.max_rss) is int
