@@ -2,7 +2,7 @@
 id: T-0169
 title: Write the ADR that brings the record of the runtime self-check (ADR-0054) in line with the code landed by T-0160 to T-0167 - it records the values and conventions the record left to "the code task", settles the places where the record and the code now differ, and answers or registers the wording questions those tasks left - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, C-7, OD-18, "D16", "#5 D6"]
 dependsOn: [T-0153, T-0160, T-0161, T-0162, T-0163, T-0164, T-0165, T-0166, T-0167]
@@ -122,3 +122,11 @@ About 260 changed lines over at most 4 files. If the record cannot stay inside t
 - (driver) The owner notice of this record; a `runtime-acceptance` HQ for the items of point 6.
 
 ## Result
+
+DONE. Landed on main as `fc74780` (doc mode, no PR; `Reviewed-by: reviewer agent (7 rounds, Approve)`). Changed: new `ARCHITECTURE/decisions/ADR-0057-od18-runtime-self-check-as-landed.md` (133 lines), one adopted-part bullet in the OD-18 section of OpenDecisionProposals, the heading and a new 2026-10-14 paragraph in StandardScenarios, and one sentence in the OD-18 row of Requirements (status word unchanged; a deviation from the planner's "no edit" after review round 4). Nothing built or run; no `claude` started. Task branch deleted (remote and local).
+Review: R1-R4 Request changes (a wrong token-shape claim; the stderr/stdout wording for status 20; a third case where the directory is left behind (status 20 with no report); q2 narrower than ADR-0054 line 124, now adopted with line 124 listed as less exact; the register row; the package directory rather than the source checkout). R5-R7 Approve; the Lows were fixed after R5 and R6.
+Points: (1) values adopted as provisional (command, 30 s/300 s, exit statuses 0/10-15/20, stderr line, early refusal of a missing stdout, empty `keep_out`, report members and bound 64/16, `COMMAND`). (2) Five ADR-0054 sentences settled (lines 93, 137, 138/139, 187, 126); the report does not promise "no path, no token-shaped string" (accepted as the bound's cost, no code follow-up). (3) q1, q2 and q3 decided equal to the code, none registered. (4) Four safe-side costs stated. (5) The report stays as landed. (6) Runtime items (ix)-(xv) added. (7) Boundaries: O7, O8, (가)-(바) of item 16, sub-question 1 open.
+ADR-0054 lines made less exact: 70, 91, 93, 94, 124, 130, 137, 138, 139, 140, 187. Register status: 제안됨 before and after. Coverage re-check: no verdict change, no gap.
+Code vs task Result: T-0166 says a 32-hex tool name passes the bound; the code only writes tool names with the prefix `mcp__hilclaw__`, so only such a name followed by 32 hex passes. The record follows the code.
+Driver: the OD-18 owner notice (DRIVER §9) and HQ-0019 (`runtime-acceptance`, items (ix)-(xv)) are posted on #5 by the driver after the wrap-up commit.
+Follow-ups: (doc, nit) StandardScenarios 2026-10-14 paragraph: drop the quotes around "설계됨"; ADR-0057 "For P2-1": "with 0 to 15" should read "with 0 or 10 to 15". Next code candidates unchanged: the ADR-0055 bring-in function, the ADR-0052 harness slice; P2-1 can plan against ADR-0054 together with ADR-0057.
