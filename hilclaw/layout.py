@@ -97,8 +97,20 @@ def role_dir(data_root, run_id, round, role):
 
 
 def decision_log(data_root, run_id, round):
-    """Return ``<round_dir>/decision/decision.md``, the decision log of the round."""
+    """Return ``<round_dir>/decision/decision.md``, the narrative of the round's decision log."""
     return role_dir(data_root, run_id, round, "decision") / "decision.md"
+
+
+def hypothesis_record(data_root, run_id, round):
+    """Return ``<round_dir>/decision/hypotheses.json``, the hypothesis record of the round.
+
+    The file is the structured part of the round's decision log (ADR-0059
+    decision 1). ``round`` is an integer from 1 to
+    :data:`hilclaw.keys.MAX_INTEGER`: round 0 has no hypothesis record
+    (ADR-0059 decision 5). Every other rule is that of :func:`round_dir`.
+    """
+    _number("round", round, 1, 4)
+    return role_dir(data_root, run_id, round, "decision") / "hypotheses.json"
 
 
 def attempt_dir(data_root, run_id, round, role, candidate, attempt):

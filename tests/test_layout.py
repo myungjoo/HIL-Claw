@@ -17,6 +17,7 @@ from hilclaw.layout import (
     decision_log,
     hw_profile_dir,
     hw_profile_record,
+    hypothesis_record,
     op_signature_dir,
     op_signature_file,
     role_dir,
@@ -148,6 +149,7 @@ def synthetic_op_record():
 
 def every_path(root):
     paths = [run_dir(root, RUN), round_dir(root, RUN, 7), decision_log(root, RUN, 7)]
+    paths.append(hypothesis_record(root, RUN, 7))
     paths += [run_file(root, RUN, name) for name in RUN_FILES]
     paths += [role_dir(root, RUN, 7, role) for role in ROLES]
     paths += [attempt_dir(root, RUN, 7, role, 3, 2) for role in ATTEMPT_ROLES]
@@ -195,6 +197,21 @@ def test_decision_log_of_the_bring_up_round():
     assert decision_log(ROOT, RUN, 0).parent == role_dir(ROOT, RUN, 0, "decision")
 
 
+@pytest.mark.parametrize("number", [1, 7, 10000, keys.MAX_INTEGER])
+def test_hypothesis_record_of_decision_1_of_adr_0059(number):
+    expected = f"runs/synthetic-run_01/rounds/{number:04d}/decision/hypotheses.json"
+    path = hypothesis_record(ROOT, RUN, number)
+    assert rel(path) == expected
+    assert path.parent == role_dir(ROOT, RUN, number, "decision")
+    assert path.parent == decision_log(ROOT, RUN, number).parent
+
+
+@pytest.mark.parametrize("number", [0, -1])
+def test_round_zero_has_no_hypothesis_record(number):
+    with pytest.raises(InvalidPathValueError, match=r"^round: must be an int from 1 "):
+        hypothesis_record(ROOT, RUN, number)
+
+
 @pytest.mark.parametrize("role", ["coder", "measure", "eval"])
 def test_attempt_dir(role):
     expected = f"runs/synthetic-run_01/rounds/0007/{role}/candidates/03/attempts/02"
@@ -238,6 +255,7 @@ def test_every_file_of_a_round_has_exactly_one_role_directory_above_it():
     base = round_dir(ROOT, RUN, 7)
     files = [attempt_artefact(ROOT, RUN, 7, 3, 2, name) for name in ATTEMPT_ARTEFACTS]
     files.append(decision_log(ROOT, RUN, 7))
+    files.append(hypothesis_record(ROOT, RUN, 7))
     for path in files:
         parts = path.relative_to(base).parts
         assert parts[0] in ROLES
@@ -357,6 +375,7 @@ def test_invalid_run_id_is_rejected(run_id):
         lambda: round_dir(ROOT, run_id, 0),
         lambda: role_dir(ROOT, run_id, 0, "coder"),
         lambda: decision_log(ROOT, run_id, 0),
+        lambda: hypothesis_record(ROOT, run_id, 1),
         lambda: attempt_dir(ROOT, run_id, 0, "coder", 1, 1),
         lambda: attempt_artefact(ROOT, run_id, 0, 1, 1, "spec.json"),
     ]
@@ -371,6 +390,7 @@ def test_invalid_round_is_rejected(number):
         lambda: round_dir(ROOT, RUN, number),
         lambda: role_dir(ROOT, RUN, number, "coder"),
         lambda: decision_log(ROOT, RUN, number),
+        lambda: hypothesis_record(ROOT, RUN, number),
         lambda: attempt_dir(ROOT, RUN, number, "coder", 1, 1),
         lambda: attempt_artefact(ROOT, RUN, number, 1, 1, "spec.json"),
     ]
@@ -502,6 +522,7 @@ def test_module_defines_no_reader_writer_or_entry_point():
         "decision_log",
         "hw_profile_dir",
         "hw_profile_record",
+        "hypothesis_record",
         "op_signature_dir",
         "op_signature_file",
         "role_dir",
