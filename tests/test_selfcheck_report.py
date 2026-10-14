@@ -993,6 +993,24 @@ def test_a_report_of_another_form_is_refused(report):
     assert str(caught.value) == "the report must be a dict that build returned"
 
 
+def test_a_container_of_another_class_never_raises_its_own_text():
+    class LoudDict(dict):
+        def items(self):
+            raise RuntimeError(MARKER)
+
+    class LoudList(list):
+        def __iter__(self):
+            raise OSError(MARKER)
+
+        def __len__(self):
+            raise OSError(MARKER)
+
+    for report in ({"a": LoudDict(b=1)}, {"a": LoudList([1])}, LoudDict(b=1)):
+        with pytest.raises(TypeError) as caught:
+            line(report)
+        assert str(caught.value) == "the report must be a dict that build returned"
+
+
 def test_a_report_nested_too_deeply_is_refused():
     report = {}
     for _ in range(100000):

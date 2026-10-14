@@ -102,6 +102,7 @@ Where the report is kept and what the instance's log is are not this module's
 exists here. Nothing calls the module yet.
 """
 
+import contextlib
 import platform
 import re
 from typing import NamedTuple
@@ -279,11 +280,9 @@ def line(report):
     the same bytes, in its member order. Raises :class:`TypeError`, with a
     fixed text, for a value that is no ``dict`` or cannot be written as JSON.
     """
-    try:
+    with contextlib.suppress(Exception):
         if type(report) is dict:
             return tools.encode(report)
-    except (TypeError, ValueError, RecursionError):
-        pass
     raise TypeError("the report must be a dict that build returned")
 
 
