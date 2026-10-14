@@ -591,7 +591,9 @@ def test_a_descendant_holding_a_pipe_makes_a_timeout_at_the_limit(child):
     try:
         result = run(child(body), timeout_s=3)
     finally:
-        os.kill(int((child.directory / "pid").read_text()), signal.SIGKILL)
+        noted = child.directory / "pid"
+        if noted.exists():
+            os.kill(int(noted.read_text()), signal.SIGKILL)
     assert result.timed_out is True
     assert result.returncode is None
     assert 3 <= result.duration_s < 20
