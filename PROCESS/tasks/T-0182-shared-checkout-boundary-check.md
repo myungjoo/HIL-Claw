@@ -2,7 +2,7 @@
 id: T-0182
 title: Move the "outside both checkouts" path check of scratch.py and selfcheck_session.py into one shared module, with no change of behaviour
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [NFR-4, OD-8, OD-18, C-7]
 dependsOn: [T-0165, T-0171]
@@ -80,3 +80,25 @@ Read Python sources with `PYTHONIOENCODING=utf-8` on this machine. Line numbers 
 - (driver/planner) T-0176 stays BLOCKED until HQ-0020 is answered. The operation of `cpu_standin` for `correctness.check`, which comes after it, should use this shared module for its build directory.
 
 ## Result
+
+- **Outcome:** DONE. PR #126 was squash-merged as 3910a5f, and its branch was deleted. The review took 1 round: Approve, with two nits and a reminder.
+- **Files:** as in `touchesFiles`, keeping the proposed module name `hilclaw/checkout_boundary.py`. The new module holds four public names:
+  - `PACKAGE_DIRECTORY`;
+  - `refuse_one_path(keep_out)`;
+  - `within(inner, outer)`;
+  - `meets_checkout(path, roots, *, containing)`, which reads `roots` lazily after the package directory.
+- **Callers:** `_PACKAGE_DIRECTORY` and `_within` are removed from scratch, selfcheck_session and bring_in. Each module now imports the shared module under the private alias `_checkout_boundary`, so its public names are unchanged; `tests/test_selfcheck_session.py::test_public_names` pins them. The check order is kept:
+  - scratch checks every `keep_out` entry before the path;
+  - selfcheck_session checks the parent first, then unpacks `(*keep_out,)` eagerly (the same `TypeError` text for a non-iterable), and checks each root only when it is reached.
+- **Language:** Python, the language of the two modules it serves.
+- **startswith/commonpath agreement:** the old `selfcheck_session._refuse_inside` test and the shared `meets_checkout` were compared on 170 cases on Windows. The cases covered:
+  - a path equal to a root, below a root, and beside one with a common name prefix (`data` against `data2`);
+  - a root with a trailing separator, and case variants;
+  - the drive root and a drive-relative `c:` root;
+  - other drives, and a junction into a root;
+  - the package directory and its parent.
+
+  No case differed. On POSIX, `realpath` never returns a `//` prefix, so the two tests agree for the cases listed in Why; this was not run here. The documented behaviour is unchanged.
+- **Tests:** `tests/test_checkout_boundary.py` is new. `test_paths_on_different_drives_are_not_within_each_other` moved there from `tests/test_scratch.py`. The other tests of scratch, selfcheck_session and bring_in were not edited and pass. Local results: full suite 18663 passed, 354 skipped; ruff check and ruff format --check are clean. CI: all six jobs are green.
+- **Coverage (CI coverage gate):** `hilclaw/checkout_boundary.py` 100% line (20/20). `hilclaw/` overall: 99.62% line, 100% function (494/494). Local coverage was not measured because `coverage` is not installed on this machine.
+- **Follow-ups:** none required. `hilclaw/selfcheck_server.py:99` keeps its own `_PACKAGE_DIRECTORY`, which serves a different purpose (the server's start argument) and was out of scope. A later cleanup could import `checkout_boundary.PACKAGE_DIRECTORY` there.
