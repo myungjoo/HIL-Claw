@@ -99,9 +99,8 @@ Conventions of this module, which the twelve records do not fix:
   ``project`` when the document holds it, then ``draws`` when the document
   holds it, then ``objective`` when the document holds it: the order in which
   the records defined them, and for the two of ADR-0034 the order in which it
-  names them. A
-  content this interpreter cannot read (an integer too long for it anywhere in
-  the text, nesting too deep) raises :class:`InvalidInstanceError` too,
+  names them. A content this interpreter cannot read (an integer too long for
+  it anywhere in the text, nesting too deep) raises :class:`InvalidInstanceError` too,
   though it is a limit of this reader and not damage; the limits stay as the
   interpreter has them. A number beyond the float range in a member not
   defined here is read as an infinity and is no error, as
@@ -246,10 +245,10 @@ Conventions of this module, which the twelve records do not fix:
   memory the member and the entry must each be exactly a ``dict``, the two
   arrays exactly a ``list`` and ``type`` exactly a ``str``; and that the
   member is handed out as the ``dict`` of the file, unchanged. That a
-  content without the member states
-  no objective and no set of constraints, and that this is no error of the
-  content, is ADR-0053 decision 5 and not a convention; the convention is
-  that it has ``None`` in that place, which no present member is equal to.
+  content without the member states no objective and no set of constraints,
+  and that this is no error of the content, is ADR-0053 decision 5 and not a
+  convention; the convention is that it has ``None`` in that place, which no
+  present member is equal to.
 - Which layout version a schema version states is ADR-0024 decision 3 and not
   a convention: schema version 1 states layout version 1. The conventions are
   that the pairing is a mapping keyed by the schema version with the number
@@ -1130,10 +1129,10 @@ def objective_of(data_root, run_id):
     It is the ``objective`` of what :func:`read` returns (ADR-0053 decision
     7): the ``dict`` of the member ``objective`` of
     ``runs/<run_id>/instance.json`` as the file states it at this call, new
-    at each call, with ``objectives``, a ``list`` of the one entry
-    ``{"type": "latency_minimisation"}``, and ``constraints``, an empty
-    ``list`` (ADR-0053 decision 4), or ``None`` for a valid file without
-    that member. The member states the target the instance was started with
+    at each call, with ``objectives`` and ``constraints`` - today a ``list``
+    of the one entry ``{"type": "latency_minimisation"}`` and an empty
+    ``list``, the one value ADR-0053 decision 4 gives -, or ``None`` for a
+    valid file without that member. The member states the target the instance was started with
     and no more (ADR-0053 decision 3): nothing here says that anything was
     measured, compared or judged. ``None`` says that the file states no
     objective and no set of constraints: it is no default and not "no
