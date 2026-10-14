@@ -457,7 +457,8 @@ def test_an_unlistable_attempt_directory(scratch, place, output, monkeypatch):
         bring_in(scratch, output)
     assert caught.value.failure == ATTEMPT_DIRECTORY_UNLISTABLE
     assert isinstance(caught.value.__cause__, PermissionError)
-    assert list(output.parent.iterdir()) == []
+    monkeypatch.undo()
+    assert os.listdir(output.parent) == []
 
 
 def test_the_kind_of_the_place_undetermined(scratch, place, output, monkeypatch):
