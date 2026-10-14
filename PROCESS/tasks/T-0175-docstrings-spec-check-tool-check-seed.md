@@ -2,7 +2,7 @@
 id: T-0175
 title: Bring three stale docstring passages of spec.py, check_tool.py and check_seed.py in line with the landed code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-2, OD-8, OD-18]
 dependsOn: [T-0159, T-0168]
@@ -118,3 +118,17 @@ This is small, self-contained cleanup. The substantive P1-1 work (the run-tool c
 - (integrator) The "now less exact" sentences of ADR-0053 Consequences line 153 and of ADR-0052 / ADR-0050 Context.
 
 ## Result
+
+**DONE.** PR #122, squash-merged as `a9fcb23` (squash message ends with `Task: T-0175`); branch deleted on the remote and locally; clone back on `main` at `origin/main`.
+
+- **Review**: 3 rounds, all Approve (`dev-reviewer`, fresh context each). Round 1 nit: "as it was raised" is wider than the code, since `check_failure.ended_with` passes a backend kind's message on only where it is exactly a `str` (otherwise `operation_failure_invalid`); fixed by adding "where it is exactly a ``str``" in both modules. Round 2: a cosmetic short line in `check_seed.py` (fixed by rewrapping the paragraph, words unchanged) and a nit judged needing no change (the `check_tool` sentence speaks of the end line when it is written, not of `end_line_failed`). Round 3: no finding.
+- **Gates**: local `python -m pytest` 18605 passed, 351 skipped; `ruff check` and `ruff format --check` clean. CI on head `c31d466` (run 38529620976): all six jobs green. Coverage of `hilclaw/` from the CI gate: lines 5002/5021 = 99.62%, functions 492/492 = 100.00%. `git diff --check` clean, `i/lf` for the three files, only module-docstring lines changed (the two paragraphs of `check_tool.py` and `check_seed.py` were rewrapped; words outside the edited sentences unchanged).
+- **Session entry**: landed check empty; no open PR; no comment on #5 after `issuecomment-6160644223` (so no objection and no HQ answer to name).
+- **Edited sentences** (old -> new):
+  - `hilclaw/spec.py`: "and that ``task.objective`` is what the instance stated (ADR-0050 L2)." -> the same item, followed by "``instance.json`` now has the member ``objective`` (ADR-0053), which :func:`hilclaw.instance.objective_of` reads; this module does not read it, and no module of :mod:`hilclaw` compares a spec's ``task.objective`` with it yet."
+  - `hilclaw/check_tool.py`: "and writes the path to no file and puts it in no message" -> "and composes no message that holds the path"; "It writes no seed anywhere and puts none in a message." -> "It composes no message that holds a seed. The end line holds the message of a backend kind an operation raised, where it is exactly a ``str``, as it was raised (ADR-0047 decision 4), so a path or a seed in that message reaches ``events.ndjson``. By the records such a message shows no path (ADR-0056 decision 6) and has no content that holds the seed (ADR-0047 decision 4, citing ADR-0021 decision 3); nothing detects a message that breaks this."
+  - `hilclaw/check_seed.py`: "it writes the seed to no file and puts it in no message." -> "it writes the seed to no file and composes no message that holds it. :func:`check` passes on, through ``carry_out``, the message an operation raised with a backend kind, where it is exactly a ``str``, as it was raised (ADR-0047 decision 4), so a seed in that message reaches the caller. By the records such a message has no content that holds the seed (ADR-0047 decision 4, citing ADR-0021 decision 3); nothing detects a message that breaks this."
+- **Note on the citation**: ADR-0056 decision 6 forbids a path (and names, bytes, error text) in the message but says nothing of a seed; the seed rule is ADR-0047 decision 4 citing ADR-0021 decision 3. The sentences cite each for its part instead of naming ADR-0056 for both as the task's Why put it.
+- **Point 4**: no further sentence of the form "puts ... in no message" / "writes ... to no file" for something an operation's message can carry was found in the three module docstrings (`check_seed.py`'s two `draw` messages are module constants holding no seed; `check_tool.py`'s "composes the message of no tool failure" stays true).
+- **Tests**: none changed; no test asserts on the edited text. `test_check_seed.py`'s kept-out strings are not added.
+- **Follow-ups**: unchanged from the task's list (OD-18 ⑰ (가) / run-tool contracts question for the owner; `check_operation.py` decision 8 sentence; integrator's "now less exact" sentences of ADR-0050/0052/0053).
