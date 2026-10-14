@@ -751,12 +751,16 @@ def test_a_standard_output_that_cannot_be_written_is_a_fault(stdout, error, stub
     assert stub.kinds() == ["login", "session"]
 
 
-def test_a_closed_standard_output_is_a_fault(stub, monkeypatch, capfdbinary):
+def test_a_closed_standard_output_is_a_fault_before_anything_is_started(
+    stub, starts, monkeypatch, capfdbinary
+):
     stub.install()
     with monkeypatch.context() as patch:
         patch.setattr(sys, "stdout", None)
         assert main([]) == EXIT_FAULT
     assert capfdbinary.readouterr() == (b"", FAULT_LINE % b"OSError")
+    assert stub.calls() == []
+    assert starts == []
 
 
 @pytest.mark.parametrize("error", [OSError(PLANTED), ValueError(PLANTED)])

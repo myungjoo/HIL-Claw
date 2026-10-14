@@ -49,8 +49,9 @@ name the data root is that module's.
   :class:`Exception` of a step, of the report or of the data-root source
   other than the one above - "What is raised" of ``selfcheck_session``, a
   directory of the check that would lie inside a checkout included - and a
-  standard output that is closed, cannot be written or flushed, or takes
-  fewer bytes than the line. **It is not an eighth outcome and has no
+  standard output that is closed (seen before anything is started, so no
+  session is spent), cannot be written or flushed, or takes fewer bytes
+  than the line. **It is not an eighth outcome and has no
   report**: nothing is written to standard output unless the write or the
   flush itself failed, so with this status whatever standard output holds
   is no report. The value is none of 0, 1, 2 (the interpreter's), 3, 4
@@ -146,11 +147,11 @@ def main(argv=None, *, stdout=None, stderr=None):
         _say(stderr, "usage: no argument is taken")
         return EXIT_FAULT
     try:
+        if stdout is None:
+            raise OSError("standard output is closed")
         report = check()
         line = selfcheck_report.line(report)
         status = selfcheck_report.exit_status(report["outcome"])
-        if stdout is None:
-            raise OSError("standard output is closed")
         if stdout.write(line) != len(line):
             raise OSError("standard output took a part of the line")
         stdout.flush()
