@@ -2,7 +2,7 @@
 id: T-0179
 title: Write the ADR that settles what the committed GEMM spec example of PLAN P1-5 is - its technique list (a DRIVER §9 judgement on an empty `guidance.techniques`), which op_signatures it covers, which example values it carries, where the files live and in which text form, and what still has to land for P1-5 to be ticked - and reflect it in the ARCHITECTURE registers; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-5, FR-8, OD-6, OD-22, "#5 B-4", "#5 D6"]
 dependsOn: []
@@ -105,3 +105,64 @@ Status, Context, Decision, Alternatives considered, Consequences, Boundaries, Re
 - (driver/planner) T-0176 stays BLOCKED until HQ-0020 is answered.
 
 ## Result
+
+**DONE.** Landed on `main` as **aa00f86** (document mode, one squashed commit, fast-forward push; trailers `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0179`). The task branch was deleted locally and on the remote. This `## Result` edit is left uncommitted for the driver.
+
+- **Record**: `ARCHITECTURE/decisions/ADR-0058-od6-committed-gemm-spec-example.md` (next free number; T-0176 took none).
+- **Checks before work**: no earlier landing or PR for T-0179; no open PR; no comment on #5 after the HQ-0020 mirror (6164154089), so there was no owner objection and no answer to HQ-0013, HQ-0014 or HQ-0016..HQ-0020.
+- **Review**: 7 rounds, a fresh `dev-reviewer` (opus) each round. Every round returned Approve with no blocking finding. Rounds 1-6 raised non-blocking findings and nits, all fixed: a wrong claim that "`repair` exactly when attempt > 1" cannot be stated in JSON Schema (it can, with if/then); a too-wide reading of OD-6 sub-question ③ (which is about several values of M only); S5-3 and S11 missing from the coverage paragraph; cited and own content marked inconsistently across the ADR and the register lines; the decision numbers of the "builds on" list; a redundant register clause. Round 7 approved and was the last round allowed. Its four non-blocking findings were not applied, because changing the text after the last round would have landed unreviewed content. They are listed under Follow-ups.
+- **Answers as landed**:
+  1. **Techniques**: the example carries `"guidance": {"techniques": []}`. By ADR-0002 this only means that no technique is named for this call. The record writes no `id` or `text`, does not close OD-22, and decides nothing about whether a real call may carry an empty list. The placeholder entry was rejected because it passes validation and would therefore state a catalog entry that does not exist.
+  2. **Op_signatures**: one file, gate/up at M = 1. Twelve files would need twelve identifying tuples, and the records give only one. Whether one run may cover several op_signatures is said by no record (for M it is sub-question ③, still open). The twelve shapes are covered instead by check T4: for each shape in `FIRST_SHAPES`, the example with that shape's op side substituted passes `spec.validate`. The `id` values and the empty `feedback.attempts` are cited from ADR-0002 decision 8.
+  3. **Values**: the run id is the ADR-0027 example; the machine is the fictitious one from the ADR-0035 Example; `task.objective` comes from ADR-0050 with no constraint. The example is a spec of correct form, not the spec of a real call.
+  4. **Place and form**: `examples/spec/gemm-485b9bc494d477eb.json`, outside `ARCHITECTURE/`, `hilclaw/`, `tests/` and any data plane. Its bytes must be accepted by `hilclaw.spec_file.parse` and be in the written form (LF line ends, final line feed). It is not a file under a spec path. Checks for the later test: T1 parse accepts the bytes; T2 final LF and no CR; T3 the document equals the Example, with values from `gemm_contract` and `keys`; T4 the form check over the twelve shapes.
+  5. **Schema**: the "`spec.json` 스키마" of P1-5 is the records (ADR-0002 + ADR-0050 for the document, ADR-0029 + ADR-0051 for the file), checked by `hilclaw/spec.py` and `hilclaw/spec_file.py`. No JSON Schema file is written, because some cross-field rules cannot be expressed in it and checking it would need a new dependency or a second validator. **Completion criterion of P1-5**: tick it when all of these are on `main`: (i) ADR-0058 and its register edits; (ii) the version-2 code (already there, T-0148); (iii) the example file with the Example content; (iv) a test under `tests/` that performs T1-T4 and passes CI.
+- **Sentences of other records that are now less exact (point 7; none edited)**:
+  - ADR-0002: decision 8, Consequences (JSON Schema; "The example becomes a valid spec only after…"), Boundaries (the first-GEMM values bullet, the JSON Schema files)
+  - ADR-0050: the Example ("still lacking" and the sentence after it), Consequences slice (d), Boundaries
+  - ADR-0035: Consequences line 175, Boundaries
+  - ADR-0029: Boundaries ("a committed example with real values … a JSON Schema file")
+  - ADR-0008: Consequences (still true of a real instance)
+  - ADR-0004: the `spec.json` path-table row
+- **Register edits**:
+  - `Requirements.md` OD-6 row: one ADR-0058 clause added, and the closing "미정" clause narrowed to the values of a real call. Status stays 확정; the OD-22 row is unchanged (제안됨).
+  - `OpenDecisionProposals.md`: an "채택분(ADR-0058 …)" line in the OD-6 section, and one line in the OD-22 section saying the empty list leaves OD-22 as it is.
+- **Coverage re-check**: `StandardScenarios.md` 검사 결과, new paragraph "2026-10-14 (3차 …)" plus the heading suffix. No verdict changes and no gap; the reviewer re-checked independently each round and agreed.
+- **Document checks**: all relative links resolve; `git diff --check` is clean; the new file is `i/lf`; the diff is 4 files, +161/−2.
+- **D16**: nothing was built or run, and no `claude` process was started by the executor or by any reviewer.
+
+**Owner notice (DRIVER §9), posted by the driver as https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6166739084:**
+
+### OD-6 - the committed GEMM spec example fixed by ADR-0058 under DRIVER §9 (T-0179)
+
+`ARCHITECTURE/decisions/ADR-0058-od6-committed-gemm-spec-example.md` (commit aa00f86; 7 review rounds, Approve). It is a design record: no code, nothing was run, no `claude` process was started.
+
+**What it decides**
+- The committed example of PLAN P1-5 is one version-2 spec file, `examples/spec/gemm-485b9bc494d477eb.json`: the first call of round 1 for `cpu_standin` x gate/up (2048->8192) at M = 1.
+- Its `guidance.techniques` is the empty array. No technique `id` or `text` is written.
+- Its bytes must pass `hilclaw.spec_file.parse` and be in the written form. A later test makes four checks, including a form check over all twelve first shapes in place of twelve files.
+- The "spec.json schema" of P1-5 is the records plus `hilclaw/spec.py` and `hilclaw/spec_file.py`. No JSON Schema file is written.
+- P1-5 is ticked once the example file and a passing test of those checks land; the version-2 code is already on main.
+
+**Cited, not re-decided**: every value of the example. The run id is the ADR-0027 example, the machine is the fictitious one from ADR-0035, the op side and contract come from ADR-0008, `task.objective` comes from ADR-0050 (your HQ-0009 answer: no constraint value in the first committed example), and the `id`/`feedback` values come from ADR-0002. The example is a spec of correct form, not the spec of a real call.
+
+**The record's own, most contestable first**
+1. **P1-5 is satisfied by a fictitious-machine example plus a form check, not by real values or twelve files.** ADR-0029 Boundaries spoke of "a committed example with real values", and PLAN names M in {1, 32, 512}. If you want a real machine's profile or one file per M and projection, that is an objection to this point.
+2. **No JSON Schema file.** Some cross-field rules (key derivation, candidate <= candidates, ordering of repair failures, operand shapes) cannot be stated in JSON Schema, and checking such a file would need a validator package (a new dependency) or a second validator.
+3. **An empty technique list instead of the placeholder.** The placeholder would pass validation and so would name a catalog entry that does not exist.
+
+**Stays open**: OD-22 (the technique catalog and any technique; the register row stays 제안됨); whether a real call may carry an empty list; OD-6 sub-question ③; real-machine values; OD-23. The OD-6 register word stays 확정.
+
+The 7-day objection window ends on 2026-10-21 if this notice is posted on 2026-10-14; otherwise it ends 7 days after the posting date.
+
+— posted by driver
+
+**Follow-ups**
+- (planner, code mode, PLAN P1-5) Commit `examples/spec/gemm-485b9bc494d477eb.json` with the content of the ADR-0058 Example, and a test under `tests/` that makes checks T1-T4 of decision 4. That task ticks P1-5 by the criterion of decision 5.
+- (planner, document mode, small) Apply the four non-blocking round-7 findings to ADR-0058 and `StandardScenarios.md`:
+  1. OD-12 is cited as the OD about whether a coder chooses a technique, but OD-12 covers only the coder's own search. This appears in decision 1, in Boundaries, and in ⑵ of the 3차 paragraph; make it "(OD-23; the coder's own search is OD-12)".
+  2. In the Alternatives row 3, ADR-0035 is given a purpose it does not state; use its own words ("not the driver machine and not the repository owner's PC").
+  3. Add S0-4 to the steps of the 3차 paragraph.
+  4. In decision 5 (a), "sha256-derived" is not ADR-0002's wording; use "the name derived from its `record` (`hilclaw.keys`)".
+- (driver) Post the OD-6 notice above on #5.
+- (driver/planner) T-0176 stays BLOCKED until HQ-0020 is answered.
