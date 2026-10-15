@@ -2,7 +2,7 @@
 id: T-0185
 title: Add the validator of a parsed hypothesis record of a round (ADR-0059 decisions 2 to 5) as `hilclaw/hypotheses.py`, and its path `layout.hypothesis_record`; no file read or write
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-17, FR-11, OD-30, OD-8]
 dependsOn: [T-0184]
@@ -92,3 +92,14 @@ Line numbers are those of `main` at `437816b`; the text wins. Read long ARCHITEC
 - (driver/planner) T-0176 stays BLOCKED until HQ-0020 is answered.
 
 ## Result
+
+**DONE** (confirmed on resume after a stale lock; the landed check of DRIVER §3-5 found the task already merged, so nothing was re-implemented).
+
+- PR: https://github.com/myungjoo/HIL-Claw/pull/128 (MERGED 2026-10-14T14:28:37Z), squash-merge commit `cabf21f` on `main`, body ending `Task: T-0185`.
+- Review: 5 rounds by a context-isolated `dev-reviewer`, each posted as "## Review (round N)" on PR #128; final verdict (round 5) **Approve**.
+- CI: all six jobs green on run https://github.com/myungjoo/HIL-Claw/actions/runs/38582087633 (C gate (clang), Coverage gate (hilclaw), Python gate 3.11, Python gate 3.14, Test presence (hilclaw), sh gate (shellcheck)).
+- Coverage (PR test plan, final commit): 18987 passed, 354 skipped; `hilclaw/hypotheses.py` 100%, `hilclaw/layout.py` 100%; `hilclaw/` line 98.7%, function 99.2%. ruff check and format clean.
+- Public names: `hilclaw.hypotheses.validate(document)`, `InvalidHypothesisRecordError(ValueError)` ("field path: rule"), `SCHEMA_VERSION = 1`; `hilclaw.layout.hypothesis_record(data_root, run_id, round)` -> `<round_dir>/decision/hypotheses.json`, named after "the hypothesis record" of ADR-0059 and placed beside `decision_log`. It refuses round 0 (and any round below 1) with `InvalidPathValueError` before the other checks (ADR-0059 decision 5); other rules are those of `round_dir`. The `decision_log` docstring now names `decision.md` as the narrative part of the decision log.
+- Language: Python, as the rest of the package.
+- Left unchecked (one document does not show it): `run_id`/`round` against the path, `candidates` against the round's specs, existence of a referenced attempt, `metric` against `instance.json`; the causal-misattribution recommendation of decision 4 is not enforced. `case`, `injected` and `memory_ceiling` are refused as defined-not-admitted values; the top level is open.
+- Follow-ups: as listed under `## Follow-ups` (second half of the ADR-0059 code slice, `hypotheses_file.py` with `parse`/`final_name`/`write`; the next OD-30 record on the verdict; T-0176 stays BLOCKED on HQ-0020).
