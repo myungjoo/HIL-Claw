@@ -2,7 +2,7 @@
 id: T-0203
 title: Record ADR-0065, the form between the tool function and an operation of sim.run / board.run and the answer of neither form (ADR-0061 Consequences item (4), OD-18)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18, OD-13]
 dependsOn: [T-0191, T-0195, T-0199, T-0201]
@@ -75,3 +75,24 @@ This is part of OD-18, a design-level OD, not owner-only (DRIVER §9: owner-only
 ## Follow-ups
 
 ## Result
+
+- **DONE.** Landed on `main` as `593c186` (document mode, direct push after rebase on `origin/main` at `42e7082`; one squashed commit with `Reviewed-by: reviewer agent (6 rounds, Approve)`, `Task: T-0203`, `Co-Authored-By`). Branch `claude/T-0203-od18-run-tools-operation-form` deleted locally and on origin. No PR (document mode).
+- **Review:** 6 rounds with a fresh-context `dev-reviewer`. R1 asked for changes (ADR-0019 decision 4 reading not carried, owner-quote scope, a less-exact item). R2 asked for changes (ADR-0045 decision 4's single-contract test no longer carries the non-reservation; less-exact list; bounds at the cut). R3 to R5 approved with nits, each addressed. R6 approved with no findings.
+- **What ADR-0065 decides** (both halves; no sub-question registered):
+  - The form: an operation is called with four things — request, hw_profile, the *timing parameters* (exactly `m`, `k`, `n`, `n_max`, sample form, timing seed) and the output path. The point is the operation called. (A) is a pair (report bytes, figure >= 1 or none). (B) is one of four strings, tied to the first four `condition` values and to the check's form (B).
+  - The neither-form answer: the step ends with an end line whose `failure` is the run tools' own `operation_answer_invalid`, shared with `correctness.check`. A raised request to end leaves the identity open.
+  - ADR-0064 decision 4 answered: no end line of either tool holds `seed_not_drawn`, `objective_not_stated` or `objective_not_covered`.
+- **A-13:** read as ADR-0045 read it. This gives one `error.kind` value a place as an end-line `failure`, stated openly as the first such kind of the run tools' contract. No member changes, and ADR-0063 decision 9's closed list is untouched. Not a BLOCKED reason.
+- **Document checks:**
+  - All relative links in the new and edited text resolve (67 checked, 0 bad, including `#od-18` / `#od-13`).
+  - `git diff --stat 42e7082 593c186` shows only the four `touchesFiles`: ADR-0065 (197 lines), Requirements, OpenDecisionProposals, StandardScenarios (202 insertions, 2 deletions).
+  - `git diff --check` is clean.
+  - The OD register has 30 rows before and after.
+  - ADR-0065 was still free on `origin/main` at push time.
+- **Coverage re-check:** StandardScenarios got the 2026-10-15 10th passage and a heading clause. There was no verdict change and no gap.
+- **Owner notice (DRIVER §9):** https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6192876746 — the objection window runs 7 days, until 2026-10-22.
+- **D16:** nothing was built or run. Only read-only git/gh and link checks were used; no `claude`, compiler, kernel or container was started.
+- **Follow-ups:**
+  - Code slice: the run tools' check of an operation's answer — (A), (B) or neither — with its tests, in the manner of `hilclaw/check_operation.py`.
+  - Contract slices still open: (5) the mock's operation and scripts; (6) ⑲ (가) to (라), with what the tool function does with a tool failure an operation raises, bound by ADR-0065 decision 8; (7) the spend.
+  - The integrator's list of less-exact sentences is in ADR-0065 Consequences.
