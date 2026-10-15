@@ -2,7 +2,7 @@
 id: T-0187
 title: Add the owner's two build values of `condition` (`build_time_limit`, `build_exit_status`) to the result and the form (B) answer of `correctness.check`, ADR-0060 decision 4, code slice (1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0176]
@@ -92,3 +92,11 @@ Line numbers are those of `main` at `0d89b20`; the text wins. Read long ARCHITEC
 - (planner, document mode, §9) The run-tool contracts of PLAN P1-1, taking the build answers from ADR-0060 and O3.
 
 ## Result
+
+- **Outcome**: DONE. PR https://github.com/myungjoo/HIL-Claw/pull/130, squash-merged as `2c58b93` (branch deleted). Commits on the branch: `070a2a2`, `2d6f3f1`.
+- **Landed check / entry checks**: no `Task: T-0187` commit, no PR, no open PR at start; no comment on #5 after the ADR-0060 notice (no objection, no HQ answer).
+- **Review**: 2 rounds, fresh-context `dev-reviewer` each (R1 Approve with 3 nits: the 97-character `_RETURNED` line wrapped; the two build strings added to the pass-through test of `tests/test_mock_check.py`; the `hilclaw/mock_check.py` "two strings" docstring left out of scope, see follow-ups. R2 Approve, no findings).
+- **CI**: run 38684090723 on `2d6f3f1`, all jobs green (Python 3.11/3.14, coverage, C, sh, test presence). Local: ruff check/format clean; 19239 passed, 354 skipped; `hilclaw/` line coverage 99%, functions 583/587.
+- **Choices**: form (B) is `check_result.CONDITIONS[:4]` (in the amended table the first four values are exactly those found by the operation, so one source of the values remains and the `NeitherFormError` message lists them); `check_judging` pairs `verification.Broken` with `CONDITIONS[-4:]` by position (both in ADR-0021 decision 5 order; the build values stand for no member). `Broken` unchanged. The `operation_answer_invalid` message now says "one of the four conditions". Nothing else of the data plane changed.
+- **Language**: Python, as the rest of the `hilclaw` package.
+- **Follow-ups**: (code mode, small, may join slice (2)) the `hilclaw/mock_check.py` `default_script` docstring "never one of the two strings of ADR-0043 decision 4" is now less exact (four strings since ADR-0060 decision 4).
