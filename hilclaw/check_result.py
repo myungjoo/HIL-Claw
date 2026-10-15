@@ -8,8 +8,8 @@ other. This module renders that table as plain Python values:
 
 * :data:`PASS`, :data:`FAIL` and :data:`BROKEN`: the three values of
   ``outcome``.
-* :data:`CONDITIONS`: the four values of ``condition``, in the order of
-  decision 3.
+* :data:`CONDITIONS`: the six values of ``condition``, in the order of
+  decision 3 as ADR-0060 decision 4 amends it.
 * :func:`completed`: the result of a completed run, from its per-draw counts.
   It has ``outcome``, ``shape``, ``draws``, ``tolerance`` and ``counts`` and
   no ``condition``.
@@ -53,7 +53,14 @@ import reprlib
 PASS = "pass"
 FAIL = "fail"
 BROKEN = "broken"
-CONDITIONS = ("time_limit", "exit_status", "report_form", "check_value")
+CONDITIONS = (
+    "build_time_limit",
+    "build_exit_status",
+    "time_limit",
+    "exit_status",
+    "report_form",
+    "check_value",
+)
 
 
 def completed(*, m, k, n, draws, rtol, atol, counts):
@@ -109,7 +116,7 @@ def broken(condition, *, m, k, n, draws, rtol, atol):
     each follows the rule of :func:`completed`.
 
     Raises :class:`TypeError` and :class:`ValueError` as :func:`completed`
-    does; a ``str`` that is none of the four values is a :class:`ValueError`.
+    does; a ``str`` that is none of the six values is a :class:`ValueError`.
     """
     if type(condition) is not str:
         raise TypeError(f"condition: must be a str, got {type(condition).__name__}")

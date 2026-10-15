@@ -157,9 +157,11 @@ def test_condition_of_gives_the_value_of_the_record(member, condition):
     assert type(condition_of(member)) is str
 
 
-def test_condition_of_over_the_enumeration_is_the_tuple_of_conditions():
+def test_condition_of_over_the_enumeration_gives_the_four_run_conditions():
     values = tuple(condition_of(member) for member in Broken)
-    assert values == check_result.CONDITIONS
+    assert values == ("time_limit", "exit_status", "report_form", "check_value")
+    assert values == check_result.CONDITIONS[-4:]
+    assert not {"build_time_limit", "build_exit_status"} & set(values)
     assert len(list(Broken)) == 4
 
 

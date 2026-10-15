@@ -20,11 +20,12 @@ the two:
 
 Choices that are this module's own and no rule of a record:
 
-* The four members of ``Broken`` and the four values of
+* The four members of ``Broken`` and the last four values of
   :data:`hilclaw.check_result.CONDITIONS` are paired by their position; both
-  are in the order of ADR-0021 decision 5. All four members are mapped, also
-  the two that ``judge_report`` never returns. Nothing is said thereby of
-  where a condition is found in a call.
+  are in the order of ADR-0021 decision 5. The two values ADR-0060 decision 4
+  puts before them are found by an operation and stand for no member. All
+  four members are mapped, also the two that ``judge_report`` never returns.
+  Nothing is said thereby of where a condition is found in a call.
 * ``judgement`` is exactly a ``Judgement``. A plain tuple, a
   :class:`hilclaw.harness.verification.VerificationResult` and anything else
   are refused.
@@ -55,7 +56,7 @@ nothing else.
 from hilclaw import check_result
 from hilclaw.harness import verification
 
-_CONDITIONS = dict(zip(verification.Broken, check_result.CONDITIONS, strict=True))
+_CONDITIONS = dict(zip(verification.Broken, check_result.CONDITIONS[-4:], strict=True))
 _OUTCOMES = {
     verification.Verdict.PASS: check_result.PASS,
     verification.Verdict.FAIL: check_result.FAIL,

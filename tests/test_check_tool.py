@@ -389,7 +389,15 @@ def below_the_rounds(root, monkeypatch):
     return looked
 
 
-SCRIPTS = [mock_check.default_script, wrong_product, "time_limit", "exit_status", 17]
+SCRIPTS = [
+    mock_check.default_script,
+    wrong_product,
+    "time_limit",
+    "exit_status",
+    "build_time_limit",
+    "build_exit_status",
+    17,
+]
 
 
 @pytest.mark.parametrize("script", SCRIPTS)
@@ -440,7 +448,9 @@ def test_a_wrong_product_reports_fail(root):
     assert lines(root)[1]["data"]["spend"] == {}
 
 
-@pytest.mark.parametrize("condition", ["time_limit", "exit_status"])
+@pytest.mark.parametrize(
+    "condition", ["time_limit", "exit_status", "build_time_limit", "build_exit_status"]
+)
 def test_a_condition_of_the_operation_reports_broken(root, condition):
     result = Bench(root, script=condition).function(request())
     assert result == {
@@ -456,6 +466,10 @@ def test_a_condition_of_the_operation_reports_broken(root, condition):
         "spend": {},
         "result": result,
     }
+    before = log_bytes(root)
+    again = Bench(root, seeds=(), script=RuntimeError("must not be asked"))
+    assert again.function(request()) == result
+    assert (again.asked, log_bytes(root)) == ([], before)
 
 
 def test_the_order_of_a_call(root, recorded):

@@ -79,7 +79,8 @@ from hilclaw import check_answer, check_parameters, tools
 KIND_OPERATION_ANSWER_INVALID = "operation_answer_invalid"
 
 _RETURNED = (
-    "the operation returned {}, which is neither a report nor one of the two conditions"
+    "the operation returned {}, which is neither a report"
+    " nor one of the four conditions"
 )
 _RAISED = "the operation raised {}, which is no tool failure"
 _VALUES = tuple(
@@ -123,8 +124,9 @@ class OperationAnswerInvalid(Exception):
 
     In the words of ADR-0045 decision 4: the operation was called and its
     call is over; what it returned or raised was neither a report nor one of
-    the two conditions of ADR-0043 decision 4, and no tool failure. It says
-    nothing about the attempt or about why the answer had neither form.
+    the conditions of ADR-0043 decision 4 (four since ADR-0060 decision 4),
+    and no tool failure. It says nothing about the attempt or about why the
+    answer had neither form.
 
     - ``kind``: always :data:`KIND_OPERATION_ANSWER_INVALID`.
     - ``message``: exactly a ``str``, composed by this module. Nothing may

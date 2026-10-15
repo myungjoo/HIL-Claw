@@ -155,7 +155,14 @@ def decimal_limit():
 
 def test_constants_are_those_of_the_record():
     assert (PASS, FAIL, BROKEN) == ("pass", "fail", "broken")
-    assert CONDITIONS == ("time_limit", "exit_status", "report_form", "check_value")
+    assert CONDITIONS == (
+        "build_time_limit",
+        "build_exit_status",
+        "time_limit",
+        "exit_status",
+        "report_form",
+        "check_value",
+    )
     assert type(CONDITIONS) is tuple
 
 
@@ -259,7 +266,15 @@ def test_outcome_is_pass_exactly_when_every_failed_is_zero():
 
 
 @pytest.mark.parametrize(
-    "condition", ["time_limit", "exit_status", "report_form", "check_value"]
+    "condition",
+    [
+        "build_time_limit",
+        "build_exit_status",
+        "time_limit",
+        "exit_status",
+        "report_form",
+        "check_value",
+    ],
 )
 def test_each_condition_gives_a_broken_result(condition):
     result = broken(condition, **SMALL)
@@ -358,6 +373,11 @@ def test_a_count_without_decimal_text_is_refused(decimal_limit):
         ("timeout", ValueError),
         ("TIME_LIMIT", ValueError),
         (" time_limit", ValueError),
+        ("build_time_limit ", ValueError),
+        ("BUILD_EXIT_STATUS", ValueError),
+        ("build_exit", ValueError),
+        ("build_status", ValueError),
+        ("build_timeout", ValueError),
         ("", ValueError),
         (None, TypeError),
         (1, TypeError),
@@ -365,6 +385,8 @@ def test_a_count_without_decimal_text_is_refused(decimal_limit):
         (("time_limit",), TypeError),
         (Condition.TIME_LIMIT, TypeError),
         (Text("time_limit"), TypeError),
+        (Text("build_exit_status"), TypeError),
+        (b"build_time_limit", TypeError),
     ],
 )
 def test_a_bad_condition_is_refused(condition, expected):
@@ -516,7 +538,14 @@ def test_arguments_are_not_modified_and_results_share_nothing():
     one["shape"]["k"] = 99
     one["tolerance"]["atol"] = 9.0
     assert other == broken("report_form", **SMALL)
-    assert CONDITIONS == ("time_limit", "exit_status", "report_form", "check_value")
+    assert CONDITIONS == (
+        "build_time_limit",
+        "build_exit_status",
+        "time_limit",
+        "exit_status",
+        "report_form",
+        "check_value",
+    )
 
 
 def test_a_call_writes_no_file(tmp_path, monkeypatch):

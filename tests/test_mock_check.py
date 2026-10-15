@@ -146,6 +146,8 @@ def test_a_fourth_thing_that_is_no_path_reaches_the_script(fourth):
         b"",
         "time_limit",
         "exit_status",
+        "build_time_limit",
+        "build_exit_status",
         None,
         {"outcome": "pass"},
         "pass",
