@@ -2,7 +2,7 @@
 id: T-0176
 title: Write the ADR that answers OD-18 sub-question 17 (가) and (나) for `correctness.check` of the first case (`cpu_standin`, `gemm`, fp32, the C kernel of ADR-0008) and of a run at the mock - what a call answers in situations S3 to S10 of ADR-0056 decision 5 (the build and the start of the verification executable), with the class of S7 and S8 taken from the owner's answer to the HQ raised at planning, and through which side an operation has its flags, trailing flags, compiler, two time limits and environment - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [FR-9, FR-10, FR-1, NFR-2, NFR-4, C-3, OD-18, OD-6, OD-14, OD-16, "#5 D6"]
 dependsOn: [T-0156, T-0157, T-0158, T-0159]

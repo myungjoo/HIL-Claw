@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0176",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:ebab4e69",
+    "acquiredAt": "2026-10-15T03:18:50Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -189,7 +193,9 @@
       "reason": "data-plane-schema-change",
       "question": "PLAN P1-1 needs one answer that CLAUDE.md A-13 reserves for you (data-plane schema change). For `correctness.check` on `cpu_standin` (first case, and a run at the mock), what is a build of the attempt's kernel source that ends not ok, that is a compile or link failure or a build past its time limit (ADR-0056 S7, S8)? (1) (a) A result: `outcome` `broken` with a new value of `condition` (one value for both, or one each; name them if you wish). This grows ADR-0042's closed four-value list, stored in `events.ndjson`, and follows ADR-0021 decision 5's reasoning that what the attempt caused is a result. (b) A tool failure of a backend kind (ADR-0047 decision 5): no schema change, but a caller reads a property of the attempt out of a tool failure, the reading ADR-0021 decision 5 warned against. (c) Other. (2) The compiler's log: (a) neither returned nor kept by this contract for now, as today, left to a later `build.json` record; (b) returned or kept (say where), which is a further schema change. (3) Does the answer also apply to the timing build of `sim.run`/`board.run`: (a) yes; (b) no, to be decided with their records? Not asked: setting values or their source (driver ADR, OD-18 sub-question 17 (나)), situations S3-S6/S9/S10, what a round does after the answer.",
       "askedAt": "2026-10-14T08:25:26Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6164154089"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6164154089",
+      "resolvedAt": "2026-10-15T02:27:01Z",
+      "decision": "Owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6183004538: 1 (a) S7/S8 are results, outcome `broken` with new condition values `build_exit_status` (S7) and `build_time_limit` (S8); 2 (b) the build output is kept, not returned: in a file of the attempt, never in the result or events.ndjson, path and form left to a record (with build.json, ADR-0004 decision 3); 3 (a) yes, as the principle that such a build is a result. Builds run in a container (owner decisions 2026-10-15, issuecomment-6182984913; design is OD-14's, T-0176 cites it). Resume T-0176."
     }
   ],
   "counters": {
