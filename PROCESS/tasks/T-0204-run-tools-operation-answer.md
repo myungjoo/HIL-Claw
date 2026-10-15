@@ -2,7 +2,7 @@
 id: T-0204
 title: Add hilclaw/run_parameters.py and hilclaw/run_operation.py, the timing parameters and the check of an operation's answer of sim.run / board.run (ADR-0065 decisions 2, 4, 6 and 7)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0203]
@@ -79,3 +79,12 @@ This task adds that slice as two new modules: `hilclaw/run_parameters.py` (the P
 ## Follow-ups
 
 ## Result
+
+- **DONE.** PR #139, squash-merged as `8ab70a9`; branch `claude/T-0204-run-tools-operation-answer` deleted.
+- **Review:** 1 round (dev-reviewer, Approve; one Info and one Nit, neither asking for a change).
+- **CI green:** Python 3.11/3.14, Coverage gate, C, sh, Test presence. Local: ruff check/format clean; pytest 20196 passed, 354 skipped; `hilclaw/` coverage 99%, new modules 100%.
+- Added `hilclaw/run_parameters.py` (`TimingParameters`: m, k, n, n_max, sample_form, seed) and `hilclaw/run_operation.py` (`ask`, `Reported`, `CONDITIONS`, `OperationAnswerInvalid`, `KIND_OPERATION_ANSWER_INVALID`), plus `tests/test_run_parameters.py` and `tests/test_run_operation.py`. Non-test change: 288 LOC in 2 files.
+- Choices: only an exact tuple counts as a pair, so a tuple subclass (`Reported` included) is neither form; the exception class is this module's own; a `ToolFailure` is handed on as the same object (OD-18 ⑲ (나), bound by ADR-0065 decision 8).
+- `CONDITIONS` is spelt in the module rather than imported, because the existing `test_run_result` guard forbids any package module from importing `run_result`; a test ties it to `run_result.CONDITIONS[:4]`.
+- Language: Python, the same as the other run-tool modules and `check_operation`.
+- No schema change, no new dependency, nothing starts `claude` (D16). Follow-ups: none.
