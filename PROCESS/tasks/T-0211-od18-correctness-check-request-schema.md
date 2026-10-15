@@ -2,7 +2,7 @@
 id: T-0211
 title: Record ADR-0069, the member list of a request of correctness.check, what the tool function does with a member no record names, and the tool's input schema and description (OD-18)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0189]
@@ -76,3 +76,31 @@ This is part of OD-18, a design-level OD, not owner-only (DRIVER §9: owner-only
 ## Follow-ups
 
 ## Result
+
+- **Outcome**: DONE. Landed on `main` as `bf4a795` (document mode, direct push after rebase onto `origin/main`; trailers `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0211`). Branch `claude/T-0211-od18-correctness-check-request-schema` deleted locally and on origin.
+- **Review**: 7 rounds with a fresh-context `dev-reviewer` each round; rounds 1-3 and 5-7 Approve with nits (all addressed except the round-7 nit below), round 4 Request changes (A-13 sentence said "a start line holds exactly `step` and `execution`"; fixed to the `data` of a start line).
+- **Record**: `ARCHITECTURE/decisions/ADR-0069-od18-correctness-check-request-schema.md` (150 lines). ADR-0069 was free on `origin/main` and on every remote branch at push time (T-0210's branch holds ADR-0068 only). Decisions: (1) scope; (2) the member list is closed at the six members of ADR-0040 decision 5, each named input having a source outside the request (ADR-0041, ADR-0046, ADR-0056 d3, ADR-0060 d3; seed/tolerance ADR-0021); a later member is a contract change; OD-18 (18)(ga) not answered; (3) a member no record names is `invalid_request` in moment 1, before the data root is asked; the message may name refused member names and shows nothing of their values; (4) the full input schema (`run_id` pattern of ADR-0004 d8, integer bounds of ADR-0001, `point` enum, all six required, `additionalProperties: false`), the only function refusal beyond it being numbers written with a fraction or exponent; the reduction rule of ADR-0039 d3 taken over; sub-question (5) open; (5) what the description must at least tell (text is the code task's). No new kind, member or `step` value; no data-plane change.
+- **Edited**: `ARCHITECTURE/Requirements.md` (OD-18 row: one sentence with the 반영 link to ADR-0069; status wording unchanged), `ARCHITECTURE/OpenDecisionProposals.md` (one adopted-part bullet after ADR-0067; no sub-question note — none is answered; none registered), `ARCHITECTURE/StandardScenarios.md` (heading clause + "2026-10-16 (2차)" passage: no verdict change, no gap).
+- **Document checks**: every relative link in the new and edited text resolves (script over the ADR and the added lines; `#od-18` anchor present); `git diff --stat origin/main` before the push showed only the four `touchesFiles`; `git diff --check` clean; OD register rows 30 before and 30 after. Nothing built or run; no `claude` process started.
+- **OD state**: OD-18 stays `제안됨` (a further part closed). Owner notice for #5 (DRIVER §9) to be posted by the driver:
+
+  ```
+  ### OD-18 - the member list of a request of correctness.check, what is done with a member no record names, and the tool's input schema and description, fixed by ADR-0069 under DRIVER §9 (T-0211)
+
+  ADR-0069 (commit bf4a795) answers the item ADR-0040 decision 5 left open for `correctness.check`. It is the record's own design; no owner sentence is used.
+
+  - The member list of a request is closed at the six members `run_id`, `round`, `candidate`, `attempt`, `execution`, `point`: every input ADR-0040 decision 5 named now has a source outside the request (dimensions ADR-0041, `draws` ADR-0046, the kernel ADR-0056 decision 3, flags and time limits ADR-0060 decision 3; seed and tolerance ADR-0021). A later record that gives the request a member changes the contract; OD-18 sub-question 18 (ga) is not answered.
+  - A request with any other member (`draws`, `seed`, `tolerance`, a dimension, a misspelling such as `Point`) is refused as `invalid_request` in moment 1, before the data root is asked and before anything is read, drawn or appended; the message shows nothing of the refused member's value.
+  - The input schema is stated in full (`additionalProperties: false`, the forms of ADR-0004, ADR-0001 and ADR-0040), with the reduction rule of ADR-0039 decision 3; what the description must at least tell is fixed, its text is the code task's. Sub-question 5 stays open.
+  - No data-plane file or member changes; no new kind, member or `step` value; no sub-question registered.
+
+  Objection window: 7 days from this notice. An objection creates a task that reverts ADR-0069 and the edits made with it.
+
+  — posted by driver
+  ```
+
+## Follow-ups (from the executor)
+
+- Round-7 reviewer nit, not addressed (fixing it would have needed an eighth round): ADR-0069 decision 1 says the terms "ADR-0040 (the moments ① to ⑦, `point`)"; the moments ① to ⑦ are ADR-0016's terms, which ADR-0040 uses. A one-word source correction for the integrator.
+- For the code task of ADR-0069 (reviewer note, round 6): the refusal message may echo caller-supplied member names; the code task should decide how it bounds their length and treats control characters.
+- Code slice now possible: the refusal of unnamed members in moment 1 and the input schema and description of `correctness.check`, with tests per Walk-through row.
