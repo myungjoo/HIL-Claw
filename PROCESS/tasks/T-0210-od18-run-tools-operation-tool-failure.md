@@ -2,7 +2,7 @@
 id: T-0210
 title: Record ADR-0068, the kinds of the situations in which sim.run / board.run have no timing executable other than a failed build, and what the tool function does with a tool failure an operation raises (OD-18 sub-question 19 part (na))
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: doc
 coversReq: [FR-10, OD-18, OD-14]
 dependsOn: [T-0191, T-0195, T-0199, T-0201, T-0203, T-0205, T-0208]
@@ -12,7 +12,7 @@ touchesFiles:
   - ARCHITECTURE/OpenDecisionProposals.md
   - ARCHITECTURE/StandardScenarios.md
 estimatedSize: {loc: 270, files: 4}
-hq: []
+hq: [HQ-0021]
 ---
 ## Why
 
@@ -77,3 +77,18 @@ This is the next closed piece of item (6) and needs no setting value or containe
 ## Follow-ups
 
 ## Result
+
+BLOCKED (review rounds > 7, CLAUDE.md A-13); HQ-0021. Not landed; no #5 owner notice (§9) posted.
+Branch: claude/T-0210-od18-run-tools-operation-tool-failure (pushed), head fe4e2d7, 8 commits over origin/main 0c11bf7, each with trailer `Task: T-0210`.
+Content: new ARCHITECTURE/decisions/ADR-0068-od18-run-tools-operation-tool-failure.md (about 180 lines):
+- S1-S10 of ADR-0056 decision 5 read for the timing build: no situation added or missing. S7 and S8 are not re-decided. TimingArgumentError is a defect of the operation's own code, not a row.
+- The eight backend kinds of correctness.check are defined again by the run tools' contract.
+- A raised tool failure ends the step with a failure end line: a backend kind is kept as raised; every other kind, the six kinds no end line holds among them, becomes operation_failure_invalid.
+- The mock's test scripts may raise the eight kinds.
+- The isolated-environment part and an error of two rows stay open under 19 (na). No sub-question registered.
+Other edits (on the branch): Requirements OD-18 row reflection link (status wording unchanged; OD rows 30 -> 30); OpenDecisionProposals OD-18 adopted-part bullet and dated note on sub-question 19; StandardScenarios coverage re-check, no verdict change and no gap.
+Document checks at fe4e2d7: relative links resolve; git diff --check clean; diff touches only the 4 touchesFiles; ADR-0068 still free on origin/main.
+Review: 7 rounds. Rounds 1-3 and 6 Approve; rounds 4, 5 and 7 Request changes (each one blocking citation/accuracy point, all fixed). The round-7 fixes (fe4e2d7) are unreviewed.
+Note: the Required Reading cites "ADR-0067 decision 5" for the widened list of six kinds; it is decision 6, and the record cites decision 6.
+On resume: one more reviewer round on fe4e2d7; on Approve rebase onto origin/main, land per A-13 document mode with the Reviewed-by trailer, delete the branch, post the §9 notice on #5.
+Nothing was built or run. No claude process was started (D16).
