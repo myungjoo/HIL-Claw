@@ -2,7 +2,7 @@
 id: T-0200
 title: Carry the member table of ADR-0063 decision 9 into the code as one new pure module `hilclaw/run_result.py` - two functions that build the result object of a call of `sim.run` / `board.run` (a completed run from its outcome, intervals, resolution and figure; a broken run from its condition), with the `ceiling` verdict or not_stated and the `bound`, exactly the ten members and their presence rules, refusing what the table does not admit - with its tests; bound to no tool
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, NFR-2, OD-18, OD-13]
 dependsOn: [T-0199]
@@ -110,3 +110,55 @@ ADR-0063 fixes the members. The module name, names and parameters of functions a
 - (integrator - document mode) The less-exact sentences listed in ADR-0063 Consequences.
 
 ## Result
+DONE. PR #137 (https://github.com/myungjoo/HIL-Claw/pull/137), squash-merged as `43dfb77` (squash message ends `Task: T-0200`). Branch commits `24ed50b` (module and tests) and `914b03f` (review nit). The remote and local branches are deleted.
+
+- **Review**: 2 rounds with a fresh-context `dev-reviewer` (opus). Round 1 approved with two non-blocking nits. (1) An unrelated `CONDITIONS` assertion at the end of the purity test: removed in `914b03f`. (2) The `decimal_limit` fixture sets the limit to 4300 instead of skipping where the limit is switched off: kept, as in `tests/test_check_result.py`, so the case runs on every interpreter and the limit is restored at teardown; the reviewer accepted this. Round 2 approved with no findings. Both reviewers re-checked the planner's judgements under "Why" and found them sound. No comment on Issue #5 after the ADR-0063 notice, so there is no objection.
+- **CI**: all six checks green on `914b03f` (Python 3.11 / 3.14, coverage, test presence, shellcheck, clang); no failures. Locally: `ruff check` and `ruff format --check` clean; full `pytest` gives 20030 passed, 354 skipped (Windows, Python 3.14).
+- **Coverage** (CI coverage gate): `hilclaw/` lines 5347/5366 = 99.64 %, functions 530/530 = 100 %; `hilclaw/run_result.py` 65/65 statements = 100 %.
+- **Language**: Python, because the callers to come are Python and a result is a `dict` that `hilclaw.tools.call` checks.
+- **Files**: new `hilclaw/run_result.py` (247 lines, most of them docstrings; non-test diff only this file) and `tests/test_run_result.py`. No existing file was edited and no existing assertion changed. Imports are `reprlib` and `hilclaw.harness.memory_ceiling` only. The module text contains neither `gemm_contract` nor `standin_profile`, and no other module imports it.
+
+The interface as landed (the tool functions and the mock's script are to be written against it):
+- **Public names**:
+  - `CONVERGED = "converged"`, `NOT_CONVERGED = "not_converged"`, `BROKEN = "broken"`.
+  - `CONDITIONS = ("build_time_limit", "build_exit_status", "time_limit", "exit_status", "report_form", "zero_interval", "replay")`, the order of ADR-0063 decision 3.
+  - `SAMPLE_FORMS = ("interval", "reciprocal")`, restated rather than imported from `timing`; a test asserts that it equals `timing.SAMPLE_FORMS`.
+  - `WITHIN = "within"`, `OVER = "over"`, `NOT_JUDGED = "not_judged"`, `NOT_STATED = "not_stated"`.
+  - `completed` and `broken`.
+  - Reason: callers then never spell a value again.
+- **`completed(outcome, *, intervals_ns, resolution_ns, memory_bytes, m, k, n, n_max, sample_form, bound)`**:
+  - Returns `outcome`, `shape`, `n_max`, `sample_form`, `resolution_ns`, `intervals_ns` (a new `list`), `memory_bytes` (only when not `None`), `ceiling` and `bound` (only when not `None`).
+  - Accepted arguments:
+    - `outcome`: exactly a `str`, `"converged"` or `"not_converged"`.
+    - `intervals_ns`: exactly a `list` or `tuple` of exactly-`int` entries, each >= 1, no upper bound; it may be empty.
+    - `resolution_ns`: exactly an `int` >= 0, no upper bound.
+    - `memory_bytes`: `None`, or exactly an `int` >= 1 with no upper bound.
+- **`broken(condition, *, m, k, n, n_max, sample_form, bound)`**:
+  - Returns `outcome` (`"broken"`), `condition`, `shape`, `n_max`, `sample_form`, `ceiling` and `bound` (only when not `None`).
+  - Takes no measurement, because ADR-0063 decision 3 says "A broken result carries no measurement".
+- **Common parameters** (both functions; no parameter has a default):
+  - `m`, `k`, `n`: exactly an `int` from 1 to 2**53 - 1.
+  - `n_max`: exactly an `int` from 5 to 2**53 - 1.
+  - `sample_form`: exactly a `str`, one of `SAMPLE_FORMS`.
+  - `bound`: `None` (no ceiling stated), or exactly an `int` from 0 to 2**53 - 1.
+  - These are the ADR-0001 integers. Only `resolution_ns`, the intervals and `memory_bytes` have no upper bound (ADR-0063 decision 4).
+- **What a refused argument raises**:
+  - `TypeError` for a type that is not accepted, including `bool`, subclasses of `int` / `str`, enum members, generators and `None` where it is not admitted.
+  - `ValueError` for a value of an accepted type that is not admitted.
+  - The message starts with the parameter name, for example `intervals_ns[2]: ...`.
+  - An `int` beyond `sys.get_int_max_str_digits()` raises `ValueError` even where the table states no upper bound, because `check_json_object` / `encode` could not write it.
+  - A missing or surplus keyword raises Python's own `TypeError`.
+  - No other exception leaks; in particular `MemoryCeilingError` cannot, because `bound` is checked before `verdict` is called.
+- **`ceiling` is derived, never an argument**:
+  - `bound is None` gives `"not_stated"`, whatever `memory_bytes` is.
+  - Otherwise it is `memory_ceiling.verdict(memory_bytes, bound)` mapped to `"within"` / `"over"` / `"not_judged"`. Equality counts as within; a broken run passes the figure `None`, which gives `"not_judged"`.
+  - Reason: no call can state a verdict that its figure contradicts, and the comparison rule is written once in the package.
+- **Member order**: the order of the table — `outcome`, `condition`, `shape`, `n_max`, `sample_form`, `resolution_ns`, `intervals_ns`, `memory_bytes`, `ceiling`, `bound`; within `shape`, `m`, `k`, `n`. This is the order of the four examples in the record.
+- **Pure**: no argument is modified or kept, the result shares no mutable object with an argument, and no file, process or state is used.
+- **Admitted by the table but refused by the module**: only an `int` without decimal text on this interpreter, as described above. No length relation was added, and an empty `intervals_ns` is admitted.
+- **Conflicts**: none between the acceptance criteria and the record.
+- **Not done here**: condition (c) of ADR-0052 decision 7 is not met by this change. `memory_ceiling` is still not admitted.
+
+Follow-ups: as listed in `## Follow-ups` (the timing seed, then the tool functions of `sim.run` / `board.run`, and the integrator's list of less-exact sentences). This task adds none.
+
+Language of this Result: English.
