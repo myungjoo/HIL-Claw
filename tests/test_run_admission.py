@@ -315,9 +315,10 @@ def test_what_run_objective_raises_passes_through(bad, error, n_max):
 
 def test_no_bound_is_substituted_and_the_harness_is_not_imported():
     refused(content(n_max=ABSENT), KIND_N_MAX_NOT_STATED)
-    text = Path(run_admission.__file__).read_text(encoding="utf-8")
-    assert "harness" not in text
-    assert "N_MAX_DEFAULT" not in text
+    tree = ast.parse(Path(run_admission.__file__).read_text(encoding="utf-8"))
+    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    names |= {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+    assert not {"harness", "measurement", "N_MAX_DEFAULT"} & names
 
 
 @pytest.mark.parametrize("accelerator", ["cpu_standin", "mock", "another_name"])
@@ -335,6 +336,9 @@ def test_the_rest_of_the_instance_changes_no_answer(
         some_other_member={"n_max": 99, "op_signature": MARKER},
     )
     assert stated.others == {"some_other_member": {"n_max": 99, "op_signature": MARKER}}
+    if stated.op_signature is not None:
+        rekeyed = stated.op_signature._replace(key=MARKER)
+        stated = stated._replace(op_signature=rekeyed, hw_profile_key=MARKER)
     if kind is None:
         assert admit(stated, covers=gemm_contract.covers) == (
             1,
