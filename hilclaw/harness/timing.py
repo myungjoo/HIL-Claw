@@ -183,8 +183,7 @@ def driver_arguments(*, m, k, n, n_max, sample_form, seed):
     sizes = [_digits(name, value, 1) for name, value in (("m", m), ("k", k), ("n", n))]
     n_min = measurement.N_MIN
     limit = _digits("n_max", n_max, n_min)
-    if type(sample_form) is not str or sample_form not in SAMPLE_FORMS:
-        _fail("sample_form", " or ".join(map(repr, SAMPLE_FORMS)), sample_form)
+    _sample_form(sample_form)
     if type(seed) is not int or not 0 <= seed < SEED_LIMIT:
         _fail("seed", "an int with 0 <= seed < 2**64", seed)
     cv_max = repr(measurement.CV_MAX)
@@ -246,8 +245,7 @@ def judge_report(report, *, sample_form, n_max):
     :class:`TypeError` for a ``report`` that is not exactly ``bytes``.
     """
     _digits("n_max", n_max, measurement.N_MIN)
-    if type(sample_form) is not str or sample_form not in SAMPLE_FORMS:
-        _fail("sample_form", " or ".join(map(repr, SAMPLE_FORMS)), sample_form)
+    _sample_form(sample_form)
     if type(report) is not bytes:
         raise TypeError(f"report: must be bytes, got {type(report).__name__}")
     return _judgement(report, sample_form, n_max)
@@ -358,6 +356,11 @@ def _digits(name, value, minimum):
         return str(value)
     except ValueError:
         _fail(name, "an int the interpreter can write in decimal digits", value)
+
+
+def _sample_form(value):
+    if type(value) is not str or value not in SAMPLE_FORMS:
+        _fail("sample_form", " or ".join(map(repr, SAMPLE_FORMS)), value)
 
 
 def _fail(name, rule, value):

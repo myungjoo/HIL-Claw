@@ -974,7 +974,7 @@ def test_judge_report_parameters_are_keyword_only():
     with pytest.raises(TypeError):
         judge_report(WORKED_REPORT, "interval", N_MAX_DEFAULT)
     with pytest.raises(TypeError):
-        judge_report(report=WORKED_REPORT, sample_form="interval")
+        judge_report(WORKED_REPORT, "interval", n_max=N_MAX_DEFAULT)
 
 
 @pytest.mark.parametrize("system", ["linux", "darwin", "win32", "plan9"])
