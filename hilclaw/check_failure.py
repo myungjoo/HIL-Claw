@@ -11,22 +11,35 @@ the tool function, the part of its decisions 4 and 5 that needs no log:
   backend kind it is the kind and the message that were raised (decision 4).
 * :data:`KIND_OPERATION_FAILURE_INVALID`: the kind of decision 4.
 * :data:`BACKEND_KINDS`: the backend kinds of the contract as this source has
-  it (decision 5). They are the two that
-  ``ARCHITECTURE/decisions/ADR-0056-od18-correctness-check-verification-executable.md``
-  decision 6 names with the situations they mean, S1 and S2 of its decision
-  5: :data:`KIND_NO_KERNEL_SOURCE` for S1, the attempt has no kernel source,
-  and :data:`KIND_KERNEL_SOURCE_UNREADABLE` for S2, the reader failed. A
-  tool failure of any other kind that an operation raises is answered with
-  :data:`KIND_OPERATION_FAILURE_INVALID`.
+  it (decision 5). They are eight, each named by a record with the situation
+  of ``ARCHITECTURE/decisions/ADR-0056-od18-correctness-check-verification-executable.md``
+  decision 5 it means. The two of ADR-0056 decision 6:
+  :data:`KIND_NO_KERNEL_SOURCE` for S1, the attempt has no kernel source,
+  and :data:`KIND_KERNEL_SOURCE_UNREADABLE` for S2, the reader failed. The
+  six of
+  ``ARCHITECTURE/decisions/ADR-0060-od18-correctness-check-build-answers-and-settings.md``
+  decision 4: :data:`KIND_BUILD_DIRECTORY_UNUSABLE` for S3, the build
+  directory cannot be made or written; :data:`KIND_SETTINGS_REFUSED` for S4,
+  a setting is one the functions refuse; :data:`KIND_BUILD_INPUT_MISSING`
+  for S5, a file of the compiled set is no longer a regular file or the
+  verification program is missing; :data:`KIND_COMPILER_UNAVAILABLE` for
+  S6, the compiler is not found or cannot be started;
+  :data:`KIND_BUILD_OUTPUT_MISSING` for S9, after a status 0 no executable
+  is at the path or it cannot be moved there; and
+  :data:`KIND_EXECUTABLE_UNSTARTABLE` for S10, the executable cannot be
+  started. A tool failure of any other kind that an operation raises is
+  answered with :data:`KIND_OPERATION_FAILURE_INVALID`.
 * The message of that kind says that the operation raised a tool failure of a
   kind the contract does not let a backend raise. It carries nothing of the
   message that was raised and shows no raised kind that is not reserved
   (decision 4).
 
-Any backend may raise the two kinds, a script of the mock included (ADR-0056
-decision 6). What a message of either may show is said by that decision, as a
-rule for the code of an operation that raises; "A message that breaks this is
-not detected", and this module checks nothing of a message beyond its type.
+Any backend may raise the eight kinds, a script of the mock included
+(ADR-0056 decision 6; ADR-0060 decision 4). What a message of one may show is
+said by the record that names its kind (ADR-0056 decision 6; ADR-0060
+decision 5), as a rule for the code of an operation that raises; "A message
+that breaks this is not detected", and this module checks nothing of a
+message beyond its type.
 A backend kind raised for a situation it does not mean "is taken as it is"
 (ADR-0047 Limits): nothing here decides whether a kind fits.
 
@@ -52,9 +65,9 @@ Choices that are this module's own and no rule of a record:
   the backend kinds only, and no message of this module names one of those.
   Every message of this module is built when the module is imported.
 * The list of decision 5 is here, so that the tool function has one place
-  for it. Each of the two names has a public constant, and
-  :data:`BACKEND_KINDS` is built from the two: an operation and a script of a
-  test can name a kind without a literal.
+  for it. Each of the eight names has a public constant, and
+  :data:`BACKEND_KINDS` is built from the eight: an operation and a script
+  of a test can name a kind without a literal.
 
 What the module does not do: it is no tool and no step and is bound to none.
 It is this tool's and gives no rule for another tool. It calls no operation
@@ -77,8 +90,37 @@ KIND_NO_KERNEL_SOURCE = "no_kernel_source"
 #: The backend kind of ADR-0056 decision 6 for S2: the reader of the kernel source failed.
 KIND_KERNEL_SOURCE_UNREADABLE = "kernel_source_unreadable"
 
+#: The backend kind of ADR-0060 decision 4 for S3: the build directory cannot be made or written.
+KIND_BUILD_DIRECTORY_UNUSABLE = "build_directory_unusable"
+
+#: The backend kind of ADR-0060 decision 4 for S4: a setting is one the functions refuse.
+KIND_SETTINGS_REFUSED = "settings_refused"
+
+#: The backend kind of ADR-0060 decision 4 for S5: a file of the compiled set is no longer a regular file, or the verification program is missing.
+KIND_BUILD_INPUT_MISSING = "build_input_missing"
+
+#: The backend kind of ADR-0060 decision 4 for S6: the compiler is not found or cannot be started.
+KIND_COMPILER_UNAVAILABLE = "compiler_unavailable"
+
+#: The backend kind of ADR-0060 decision 4 for S9: status 0 and no executable at the path, or it cannot be moved there.
+KIND_BUILD_OUTPUT_MISSING = "build_output_missing"
+
+#: The backend kind of ADR-0060 decision 4 for S10: the executable cannot be started.
+KIND_EXECUTABLE_UNSTARTABLE = "executable_unstartable"
+
 #: The backend kinds of ADR-0047 decision 5. A kind is added only when a record of this tool's contract names it.
-BACKEND_KINDS = frozenset({KIND_NO_KERNEL_SOURCE, KIND_KERNEL_SOURCE_UNREADABLE})
+BACKEND_KINDS = frozenset(
+    {
+        KIND_NO_KERNEL_SOURCE,
+        KIND_KERNEL_SOURCE_UNREADABLE,
+        KIND_BUILD_DIRECTORY_UNUSABLE,
+        KIND_SETTINGS_REFUSED,
+        KIND_BUILD_INPUT_MISSING,
+        KIND_COMPILER_UNAVAILABLE,
+        KIND_BUILD_OUTPUT_MISSING,
+        KIND_EXECUTABLE_UNSTARTABLE,
+    }
+)
 
 _OUTSIDE = "the operation raised a tool failure of a kind the contract does not let a backend raise: "
 _RESERVED = {
@@ -106,12 +148,13 @@ def ended_with(raised):
        message of this module, whichever kind was raised, a reserved kind
        and :data:`KIND_OPERATION_FAILURE_INVALID` itself included (ADR-0047
        decision 4). This is every tool failure whose kind is exactly a
-       ``str`` and neither of the two of ADR-0056 decision 6.
+       ``str`` and none of the eight of ADR-0056 decision 6 and ADR-0060
+       decision 4.
     2. The kind is a member of :data:`BACKEND_KINDS`: the pair is the raised
        kind and the raised message, as they are (decision 4). What such a
        message may show is said by the record that names the kind (ADR-0056
-       decision 6) and is not checked here, and neither is whether the kind
-       fits the situation it was raised for.
+       decision 6; ADR-0060 decision 5) and is not checked here, and neither
+       is whether the kind fits the situation it was raised for.
     3. The kind, or for a backend kind the message, cannot be read as exactly
        a ``str``: the pair is :data:`KIND_OPERATION_FAILURE_INVALID` and a
        message of this module. This is the module's own choice (see the

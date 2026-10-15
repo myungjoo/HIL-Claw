@@ -11,15 +11,22 @@ from hilclaw import (
     check_admission,
     check_failure,
     check_operation,
+    check_result,
     check_seed,
     journaled_step,
     tools,
 )
 from hilclaw.check_failure import (
     BACKEND_KINDS,
+    KIND_BUILD_DIRECTORY_UNUSABLE,
+    KIND_BUILD_INPUT_MISSING,
+    KIND_BUILD_OUTPUT_MISSING,
+    KIND_COMPILER_UNAVAILABLE,
+    KIND_EXECUTABLE_UNSTARTABLE,
     KIND_KERNEL_SOURCE_UNREADABLE,
     KIND_NO_KERNEL_SOURCE,
     KIND_OPERATION_FAILURE_INVALID,
+    KIND_SETTINGS_REFUSED,
     ended_with,
 )
 
@@ -30,6 +37,18 @@ EXAMPLE_KIND = "example_kind"
 EXAMPLE_BACKEND_KIND = "example_backend_kind"
 # The two names as ADR-0056 decision 6 spells them.
 THE_TWO = ["no_kernel_source", "kernel_source_unreadable"]
+# The six names as ADR-0060 decision 4 spells them, for S3 to S6, S9 and S10.
+THE_SIX = [
+    "build_directory_unusable",
+    "settings_refused",
+    "build_input_missing",
+    "compiler_unavailable",
+    "build_output_missing",
+    "executable_unstartable",
+]
+THE_EIGHT = [*THE_TWO, *THE_SIX]
+# Values of condition (ADR-0060 decision 4), never kinds.
+THE_BUILD_CONDITIONS = ["build_time_limit", "build_exit_status"]
 OTHER_KINDS_OF_THE_CONTRACT = [
     "operation_failure_invalid",
     "operation_answer_invalid",
@@ -48,6 +67,14 @@ NEAR_MISSES = [
     "kernel_source_unreadable_",
     "kernel_source",
     "no_kernel_source_unreadable",
+    "settings_refuse",
+    "compiler_unavailable_",
+    "build_output",
+    "executable_unstartables",
+    "build_directory",
+    "build_input_missing_",
+    "compiler_build_output_missing",
+    *THE_BUILD_CONDITIONS,
 ]
 # No name: a tool failure cannot be built with one, so the kind is replaced afterwards.
 NO_NAMES = [
@@ -58,6 +85,10 @@ NO_NAMES = [
     "no-kernel-source",
     "kernel_source_unreadable ",
     "Kernel_source_unreadable",
+    "Settings_refused",
+    "compiler-unavailable",
+    "build_output_missing ",
+    "EXECUTABLE_UNSTARTABLE",
     "",
 ]
 UNCHECKED_MESSAGES = [
@@ -226,19 +257,29 @@ def test_the_kind_is_read_once_and_the_message_not_at_all():
     assert reads == ["kind"]
 
 
-def test_the_backend_kinds_as_shipped_are_the_two_of_adr_0056():
+def test_the_backend_kinds_as_shipped_are_the_eight_of_adr_0056_and_adr_0060():
     assert type(BACKEND_KINDS) is frozenset
-    assert BACKEND_KINDS == frozenset(THE_TWO)
-    assert len(BACKEND_KINDS) == 2
+    assert BACKEND_KINDS == frozenset(THE_EIGHT)
+    assert len(BACKEND_KINDS) == 8
     assert check_failure.BACKEND_KINDS is BACKEND_KINDS
     assert KIND_NO_KERNEL_SOURCE == "no_kernel_source"
     assert KIND_KERNEL_SOURCE_UNREADABLE == "kernel_source_unreadable"
     assert (len(KIND_NO_KERNEL_SOURCE), len(KIND_KERNEL_SOURCE_UNREADABLE)) == (16, 24)
+    assert [
+        KIND_BUILD_DIRECTORY_UNUSABLE,
+        KIND_SETTINGS_REFUSED,
+        KIND_BUILD_INPUT_MISSING,
+        KIND_COMPILER_UNAVAILABLE,
+        KIND_BUILD_OUTPUT_MISSING,
+        KIND_EXECUTABLE_UNSTARTABLE,
+    ] == THE_SIX
     with pytest.raises(AttributeError):
         BACKEND_KINDS.add(EXAMPLE_KIND)
+    with pytest.raises(AttributeError):
+        BACKEND_KINDS.discard(KIND_SETTINGS_REFUSED)
 
 
-@pytest.mark.parametrize("kind", THE_TWO)
+@pytest.mark.parametrize("kind", THE_EIGHT)
 def test_each_backend_kind_is_a_name_a_tool_failure_takes(kind):
     assert kind in BACKEND_KINDS
     (member,) = BACKEND_KINDS & {kind}
@@ -260,8 +301,15 @@ def test_no_other_kind_of_the_contract_and_no_reserved_kind_is_a_backend_kind():
     assert not BACKEND_KINDS & {EXAMPLE_KIND, EXAMPLE_BACKEND_KIND, *NEAR_MISSES}
 
 
-@pytest.mark.parametrize("kind", THE_TWO)
-def test_each_of_the_two_kinds_is_answered_as_it_was_raised(kind):
+def test_no_value_of_condition_is_a_backend_kind():
+    assert set(THE_BUILD_CONDITIONS) <= set(check_result.CONDITIONS)
+    assert not BACKEND_KINDS & set(check_result.CONDITIONS)
+    for condition in check_result.CONDITIONS:
+        assert outside(failure(condition)) == outside(failure(EXAMPLE_KIND))
+
+
+@pytest.mark.parametrize("kind", THE_EIGHT)
+def test_each_of_the_eight_kinds_is_answered_as_it_was_raised(kind):
     raised = CountedReads(kind, MARKER)
     raised.reads = reads = []
     pair = ended_with(raised)
@@ -282,7 +330,7 @@ def test_each_of_the_two_kinds_is_answered_as_it_was_raised(kind):
     assert (failed.kind, failed.message) == pair
 
 
-@pytest.mark.parametrize("kind", THE_TWO)
+@pytest.mark.parametrize("kind", THE_EIGHT)
 @pytest.mark.parametrize(
     "message",
     UNCHECKED_MESSAGES,
@@ -295,13 +343,13 @@ def test_the_message_of_a_backend_kind_is_not_checked(kind, message):
     assert len(pair[1]) == len(message)
 
 
-@pytest.mark.parametrize("kind", THE_TWO)
+@pytest.mark.parametrize("kind", THE_EIGHT)
 @pytest.mark.parametrize(
     "message",
     [None, 3, b"x", [MARKER], Text(MARKER), Unprintable()],
     ids=["none", "int", "bytes", "list", "str-subclass", "unprintable"],
 )
-def test_one_of_the_two_kinds_with_a_replaced_message_is_answered_as_outside(
+def test_one_of_the_eight_kinds_with_a_replaced_message_is_answered_as_outside(
     kind, message
 ):
     raised = failure(kind)
@@ -313,8 +361,8 @@ def test_one_of_the_two_kinds_with_a_replaced_message_is_answered_as_outside(
     assert raised.message is message
 
 
-@pytest.mark.parametrize("kind", THE_TWO)
-def test_one_of_the_two_kinds_whose_message_cannot_be_read_is_answered_as_outside(
+@pytest.mark.parametrize("kind", THE_EIGHT)
+def test_one_of_the_eight_kinds_whose_message_cannot_be_read_is_answered_as_outside(
     kind,
 ):
     text = outside(ClosedMessage(kind, MARKER))
@@ -325,7 +373,7 @@ def test_one_of_the_two_kinds_whose_message_cannot_be_read_is_answered_as_outsid
 
 
 @pytest.mark.parametrize("kind", NEAR_MISSES)
-def test_a_name_near_one_of_the_two_is_outside(kind):
+def test_a_name_near_one_of_the_eight_is_outside(kind):
     raised = CountedReads(kind, MARKER)
     raised.reads = reads = []
     message = outside(raised)
@@ -343,8 +391,8 @@ def test_a_replaced_kind_that_is_no_name_is_outside(kind):
     assert outside(raised) == outside(failure(EXAMPLE_KIND))
 
 
-@pytest.mark.parametrize("kind", THE_TWO)
-def test_a_str_subclass_equal_to_one_of_the_two_is_outside(kind):
+@pytest.mark.parametrize("kind", THE_EIGHT)
+def test_a_str_subclass_equal_to_one_of_the_eight_is_outside(kind):
     assert Text(kind) in BACKEND_KINDS
     raised = failure(kind)
     raised.kind = Text(kind)
@@ -356,15 +404,15 @@ def test_a_str_subclass_equal_to_one_of_the_two_is_outside(kind):
     assert outside(closed) == message
 
 
-@pytest.mark.parametrize("kind", THE_TWO)
-def test_an_instance_of_a_subclass_with_one_of_the_two_kinds_is_answered_alike(kind):
+@pytest.mark.parametrize("kind", THE_EIGHT)
+def test_an_instance_of_a_subclass_with_one_of_the_eight_kinds_is_answered_alike(kind):
     class Narrower(tools.ToolFailure):
         pass
 
     assert ended_with(Narrower(kind, MARKER)) == (kind, MARKER)
 
 
-def test_a_kind_that_cannot_be_read_is_outside_beside_the_two():
+def test_a_kind_that_cannot_be_read_is_outside_beside_the_eight():
     message = outside(ClosedKind(KIND_NO_KERNEL_SOURCE, MARKER))
     assert message == outside(ClosedKind(EXAMPLE_KIND, MARKER))
     with pytest.raises(SystemExit):
@@ -561,7 +609,7 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
     outside(tampered)
     with pytest.raises(TypeError):
         ended_with(None)
-    for kind in THE_TWO:
+    for kind in THE_EIGHT:
         assert ended_with(failure(kind)) == (kind, MARKER)
         outside(ClosedMessage(kind, MARKER))
     monkeypatch.setattr(
@@ -602,7 +650,7 @@ def test_the_text_and_the_code_hold_none_of_the_kept_out_strings():
         assert not [string for string in code if kept_out in string], kept_out
     spelt = [string for string in code if "operation_failure_invalid" in string]
     assert spelt == ['"operation_failure_invalid"']
-    for kind in THE_TWO:
+    for kind in THE_EIGHT:
         assert [string for string in code if kind in string] == [f'"{kind}"']
     assert not [name for name in imported_modules(own) if "kernel_source" in name]
 
@@ -617,6 +665,12 @@ def test_public_names_of_the_module_and_no_default():
         "KIND_OPERATION_FAILURE_INVALID",
         "KIND_NO_KERNEL_SOURCE",
         "KIND_KERNEL_SOURCE_UNREADABLE",
+        "KIND_BUILD_DIRECTORY_UNUSABLE",
+        "KIND_SETTINGS_REFUSED",
+        "KIND_BUILD_INPUT_MISSING",
+        "KIND_COMPILER_UNAVAILABLE",
+        "KIND_BUILD_OUTPUT_MISSING",
+        "KIND_EXECUTABLE_UNSTARTABLE",
         "BACKEND_KINDS",
         "ended_with",
     }

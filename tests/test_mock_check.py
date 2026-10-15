@@ -266,6 +266,7 @@ def test_an_operation_takes_four_positional_things_and_nothing_else(call):
     [
         ToolFailure("example_fault", "a message of the tests"),
         ToolFailure("no_backend", "a message of the tests"),
+        ToolFailure("compiler_unavailable", "a message of the tests"),
         RuntimeError("a fault of the tests"),
         KeyError("example_member"),
         SystemExit(3),

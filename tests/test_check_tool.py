@@ -733,6 +733,16 @@ def a_path_in_a_backend_kind(tool, asked, hw_profile, parameters, output_path):
 
 # The two names as ADR-0056 decision 6 spells them.
 THE_TWO = ["no_kernel_source", "kernel_source_unreadable"]
+# The six names as ADR-0060 decision 4 spells them.
+THE_SIX = [
+    "build_directory_unusable",
+    "settings_refused",
+    "build_input_missing",
+    "compiler_unavailable",
+    "build_output_missing",
+    "executable_unstartable",
+]
+THE_EIGHT = [*THE_TWO, *THE_SIX]
 RAISED = "raised by a script"
 OUTSIDE = "operation_failure_invalid"
 # The third member says whether the message is the raised one; else this side composed it.
@@ -749,6 +759,11 @@ ENDINGS = [
         "kernel_source_unreadable",
         True,
     ),
+    *[(ToolFailure(kind, RAISED), kind, True) for kind in THE_SIX],
+    (ToolFailure("settings_refuse", RAISED), OUTSIDE, False),
+    (ToolFailure("executable_unstartables", RAISED), OUTSIDE, False),
+    (ToolFailure("build_exit_status", RAISED), OUTSIDE, False),
+    (ToolFailure("build_time_limit", RAISED), OUTSIDE, False),
     (a_path_in_a_tool_failure, OUTSIDE, False),
     (a_path_in_an_error, "operation_answer_invalid", False),
 ]
@@ -784,7 +799,7 @@ def test_a_check_without_an_outcome_ends_the_step_with_that_failure(
 
 
 @pytest.mark.parametrize("point", ["sim", "board"])
-@pytest.mark.parametrize("kind", THE_TWO)
+@pytest.mark.parametrize("kind", THE_EIGHT)
 def test_a_backend_kind_a_script_raises_is_the_failure_of_the_end_line(
     root, recorded, kind, point
 ):
@@ -831,11 +846,13 @@ def test_a_backend_kind_whose_message_shows_the_output_path_is_not_detected(root
     assert again.asked == []
 
 
-def test_the_default_script_raises_neither_backend_kind(root):
+def test_the_default_script_raises_no_backend_kind(root):
     bench = Bench(root, seeds=(SEED, SEED))
     assert bench.function(request())["outcome"] == "pass"
     assert bench.function(request(point="board"))["outcome"] == "pass"
     assert b"kernel_source" not in log_bytes(root)
+    for kind in THE_SIX:
+        assert kind.encode() not in log_bytes(root)
 
 
 def test_a_request_to_end_out_of_the_operation_leaves_the_identity_open(root):

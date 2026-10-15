@@ -123,8 +123,9 @@ def default_script(tool, request, hw_profile, parameters, output_path):
     last significand bit is 0. After the last draw it holds the end mark, and
     nothing else (decision 4).
 
-    The answer follows from ``parameters`` alone. It is never one of the two
-    strings of ADR-0043 decision 4 and never anything but ``bytes``.
+    The answer follows from ``parameters`` alone. It is never one of the four
+    strings of the form (B) of ADR-0043 decision 4, as ADR-0060 decision 4
+    has it, and never anything but ``bytes``.
 
     Raised, in this order and before any input is drawn: :class:`TypeError`
     for ``parameters`` that are not exactly a ``CheckParameters``;
