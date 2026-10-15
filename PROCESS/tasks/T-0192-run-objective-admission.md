@@ -2,7 +2,7 @@
 id: T-0192
 title: Add a package function that classifies the value `objective_of` returns for a run tool call (not stated / not covered / covered) and gives, for a covered one, the sample form and the `bound` or that none is stated (ADR-0061 code slice (1))
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, OD-13, "#5 D12"]
 dependsOn: [T-0191]
@@ -59,3 +59,10 @@ Slice (2) (the judging half split out of `run_timing`) is a separate later task.
 - (planner, document mode, P1-1) The second slice of the run tools' contract (call identity), then OD-18 sub-question 19 (가)/(나), the result members, the timing seed.
 
 ## Result
+- **DONE.** PR #133 (https://github.com/myungjoo/HIL-Claw/pull/133) squash-merged as `139ac1a`; branch `claude/T-0192-run-objective-admission` deleted.
+- **Files** (touchesFiles kept): new `hilclaw/run_objective.py` (`KIND_OBJECTIVE_NOT_STATED`, `KIND_OBJECTIVE_NOT_COVERED`, `KINDS`, `Admitted(sample_form, bound)`, `admit(objective)`), new `tests/test_run_objective.py`, one docstring sentence of `objective_of` in `hilclaw/instance.py` (now cites ADR-0061 decision 4 for the run tools and keeps ADR-0053 decision 7 for other tools; no behaviour change).
+- **Module's own choices** (listed in its docstring): not stated tested first; values `read` cannot return (non-dict, members other than exactly `objectives`/`constraints`, non-list members, non-dict entries, an entry of either list without a `str` `type`) are `TypeError` before coverage; of a covered value, a `memory_ceiling` entry not exactly `type`+`bound` or two of them is `TypeError`, a non-`int` `bound` is `TypeError` and one outside `0..memory_ceiling.BOUND_MAX` is `ValueError` (the bound is re-validated).
+- **Language**: Python, because the module is a pure function over the dict the Python instance reader returns and raises the Python `ToolFailure` of `hilclaw.tools`.
+- **Review**: 2 rounds, dev-reviewer (fresh context). R1 Approve with 4 Nits (objective/constraint entry handling made symmetric, not-covered message uses the ADR's phrase, docstring sentence reworded, public-name/import test relaxed), all addressed in `1d54688`; R2 Approve with 1 Nit (squash message must reflect the R1 change and keep the language line), addressed in the PR body used as the squash body.
+- **Tests**: local `python -m pytest` 19449 passed / 354 skipped (before R1; new file 49 tests after R1, `tests/test_instance.py` re-run green); `ruff check` and `ruff format --check` clean; `hilclaw/run_objective.py` 100% line and branch. CI run 38700161559 on head `1d54688`: all six jobs green (Python 3.11/3.14, Coverage, Test presence, C, sh).
+- **Follow-ups**: none new; the task file's existing Follow-ups (T-0191 R7 Nits, ADR-0061 code slice (2), next run-tools contract slice) stand.
