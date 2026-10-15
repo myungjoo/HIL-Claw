@@ -2,7 +2,7 @@
 id: T-0176
 title: Write the ADR that answers OD-18 sub-question 17 (가) and (나) for `correctness.check` of the first case (`cpu_standin`, `gemm`, fp32, the C kernel of ADR-0008) and of a run at the mock - what a call answers in situations S3 to S10 of ADR-0056 decision 5 (the build and the start of the verification executable), with the class of S7 and S8 taken from the owner's answer to the HQ raised at planning, and through which side an operation has its flags, trailing flags, compiler, two time limits and environment - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-10, FR-1, NFR-2, NFR-4, C-3, OD-18, OD-6, OD-14, OD-16, "#5 D6"]
 dependsOn: [T-0156, T-0157, T-0158, T-0159]
@@ -324,3 +324,135 @@ The cap is 300 changed lines and 5 files (DRIVER §5, D4). If the record cannot 
 - (planner, code mode, small) `hilclaw/check_operation.py`, the sentence on decision 8 / sub-question ⑩, third clause: less exact since ADR-0047 (T-0175 Follow-ups).
 
 ## Result
+
+**DONE** (executor, 2026-10-15). Landed on `main` as `4060d70` (document mode, one commit, fast-forward push; trailers `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0176`). Branch `claude/T-0176-adr-od18-check-build-answers-and-settings` deleted (remote, then local). Record: `ARCHITECTURE/decisions/ADR-0060-od18-correctness-check-build-answers-and-settings.md` (182 lines). Diff: 4 files, +190/-4.
+
+Resume check: no commit with `Task: T-0176`, no PR and no remote branch before execution. Session entry check: no open PR. On #5 after `issuecomment-6160644223` there are only the ADR-0058/0059 notices, the owner decisions of 2026-10-15 (`6182984913`) and the HQ-0020 answer (`6183004538`). No objection to ADR-0042, ADR-0047 or ADR-0056; no answer to HQ-0013/0014/0016-0019. #4, #7, #8: no new comment.
+
+### Review rounds
+- R1 Request changes. Major: the error-to-row mapping had double answers and gaps; run-level time limits and the hw_profile `toolchain` were not weighed. Minor: S9/S10 reasoning; wrong module named for the form (B) test (it is `check_answer.py`); decision 7 and Korean lines unqualified; the Walk-through implied a writer of the log.
+- R2 Request changes. Major: flags sent to OD-6 sub-question ② although option (a) excludes that route; no "reads no setting" sentence. Minor: code defaults; incomplete order citation; signal reading; more two-row errors; decision 7 on sub-question ⑩.
+- R3 Request changes. Major: the cost of coder-chosen settings under #5 A-7 ② (OpenMP and intrinsics allowed) was unstated; the OSError of S6/S9/temp-file removal could not be told apart. Minor: no writer of the log is possible under ADR-0056 decision 3; environment confused with the isolated environment; less-exact entries missing.
+- R4 Approve with Minors: the request as a settings route; local_run ValueErrors; a dropped phrase of the order table restored; sub-question ⑩ qualifier.
+- R5 Approve with Minors: TypeError symmetry; decision 7 exception for two-row errors, registered as ⑱ (마).
+- R6 Approve with Minors: one canonical two-row list; S4 header marked as the record's reading; Korean "S7·S8 빌드의".
+- R7 Approve. Four Nits were left as they are because any change would need an eighth round (see Follow-ups).
+
+### The points as landed
+- Guarded exit: not taken, and the record was not narrowed. Point 3 chose (a), which needs no member of `task.build` or `instance.json`.
+- Point 1 scope. Point 2 limits: nothing built; no values; other backends undetected; process unprotected; host code only until OD-14 ①; cause not established.
+- Point 3, settings table (ADR-0056 decision 4 as amended):
+  - Path of the executable and working directory: the operation's own (ADR-0056).
+  - Flags and trailing flags: the backend's own; the tool function hands none. Value open (⑱ (라); OD-16 ⑥; a prescribed one: ⑱ (가)).
+  - Compiler: the backend's own; clang as the single toolchain (#5 A-7 ②). Installation and version open (OD-14 ①, container of O4).
+  - Time limit of the build and of the process: the backend's own; open (OD-14).
+  - Environment (thread settings): the backend's own; open (⑱ (라)).
+  - The operation reads no setting from any file of the data plane, the hw_profile, the request or the check parameters. The mock and its scripts get no setting.
+  - Provisional as to prescribed or coder-chosen settings, run-level time limits and the `toolchain` relation (⑱ (가)).
+  - OD-16 ⑥ (a consequence only): the two checks of an attempt use the same settings only as far as the backend's source is constant.
+- Point 4, table of S3 to S10. All are found by the operation in ⑥, after the start line. Tool failures are answered from the end line with a `failure`, results from the end line with a `result`.
+  - S3, the build directory cannot be made or written: tool failure `build_directory_unusable`, before the build.
+  - S4, a setting is refused (output flag, time limit not positive and finite, env that cannot be handed over, empty compiler prefix or wrong type, process time limit the platform cannot wait for): tool failure `settings_refused`, before the process the setting belongs to; in the last case after the process was started and killed.
+  - S5, a compiled-set file is no longer regular, or the verification program is missing: tool failure `build_input_missing`, before the compiler starts.
+  - S6, the compiler is not found or cannot start: tool failure `compiler_unavailable`, at the start of the build.
+  - S7, the compiler ends with a non-zero status (a signal included; the record's reading): result, `outcome` broken, `condition` `build_exit_status` (owner).
+  - S8, the build passes its time limit: result, broken, `condition` `build_time_limit` (owner).
+  - S9, status 0 and no executable, or it cannot be moved: tool failure `build_output_missing`, after the build ended.
+  - S10, the executable cannot be started: tool failure `executable_unstartable`, at the start of the process.
+  - `condition` order: `build_time_limit`, `build_exit_status`, `time_limit`, `exit_status`, `report_form`, `check_value`; extending the order is the record's own. Form (B) becomes one of four strings. All six kinds are backend kinds that any backend may raise, the mock's scripts included.
+  - Errors that one call raises in one class for two rows get no kind; the code task separates or registers them (⑱ (마)). They are: the OSError of S6/S9/temp-file removal; a missing cwd (S3 against S6 or S10); a TypeError for a setting against another argument; a local_run ValueError/TypeError for env against another argument; path errors (S3 against S5).
+- Point 5: messages show no path, entry name, file byte, error text, setting value or log. The compiler log of the S7/S8 builds is kept in a file of the attempt and not returned (owner); its path, form and writer, and the logs of other builds, are ⑱ (나).
+- Point 6: the order table with its ⑥ and ⑦ rows changed. A repeated call gets the stored result or the same tool failure and builds nothing.
+- Point 7:
+  - (가) answered for S3-S10, except two-row errors;
+  - (나) answered for every setting, provisionally (⑱ (가)); no values;
+  - (다) not answered;
+  - run tools: O3 quoted only;
+  - a note on sub-question ⑩.
+- Point 8:
+  - Code slices that can now be cut: the two `condition` values (`hilclaw/check_result.py`, `hilclaw/check_answer.py`; mind the positional pairing in `check_answer.py` and `check_judging.py`) and the six kinds in `BACKEND_KINDS`.
+  - Not yet possible: the operation of `cpu_standin` (no setting values, no container design, no log file), and so the registration.
+  - A-13: only the two owner-approved `condition` values enter the data plane; six `error.kind` values are named.
+  - Runtime acceptance items: none beyond ADR-0056's.
+- New sub-question ⑱ under OD-18, in five parts:
+  - (가) settings placed in a file of the run or attempt, coder-chosen settings, request members, and the relation to `toolchain`;
+  - (나) the log file;
+  - (다) situations of the isolated environment;
+  - (라) source and values of the backend's flags and environment;
+  - (마) two-row errors.
+
+### Register and coverage
+- Status word of OD-18: `제안됨` before and after. Rule applied: the "상태 어휘" preamble. `확정` means the whole OD is decided, and OD-18 keeps a long 잔여 list, as it did after ADR-0056.
+- OD-6, OD-14 and OD-16 rows and sections: no sentence became false, so none was edited. OD row count 30 before and after.
+- OpenDecisionProposals OD-18: the ADR-0060 채택분 bullet; dated notes on ⑩ and ⑰; the new ⑱ bullet.
+- Requirements OD-18 row: one 확정분 clause; the ⑩ and ⑰ 잔여 items updated; a ⑱ item added.
+- StandardScenarios: heading note and the paragraph "2026-10-15 (2차)". Re-checked: S0-5/6/10, S1-3/4/6, S1-b-2/4, S2-2, S3-4, S6-3, S11-3, S8-3, and the storage and resume steps S0-6, S8-4, S2-3, S3-2. No verdict change, no gap.
+
+### Inventory
+Searched for ⑰, sub-question 17, S7, S8, condition, exactly four values, compile failure, link failure, time limit of the build, flags, task.build, 빌드가 ok가 아니게, 플래그.
+- Covered by this record: ADR-0056 decisions 4-6 and 8 (the S3-S10 answers and the settings table); the text of OD-18 sub-question ⑰ (가)(나) in OpenDecisionProposals and Requirements.
+- Left open and registered: ⑰ (다) of ADR-0056 (unchanged); the log file, prescribed or coder-chosen settings, situations of the container, the source of the flags, and two-row errors (all ⑱).
+- Now less exact (listed in Consequences, not edited):
+  - ADR-0042 decisions 3, 6, 7;
+  - ADR-0021 decisions 2, 5;
+  - ADR-0043 decisions 4, 7;
+  - ADR-0044 decisions 2, 3, 5;
+  - ADR-0045 decisions 1, 4 and Alternatives;
+  - ADR-0047 decisions 5, 8;
+  - ADR-0056 decisions 3, 4, 6, 8;
+  - ADR-0017 decision 9;
+  - the docstrings of `hilclaw/check_result.py`, `check_answer.py`, `check_operation.py`, `check_ending.py`, `check_judging.py`, `check_failure.py` and `harness/verification_build.py`.
+- Not affected: ADR-0002 (line 13, "repair after a compile failure"; decision 6 (b) is cited only); the hits of S7 and S8 that name scenarios; `hilclaw/spec.py` and `gemm_contract.py` (`task.build`); `harness/timing_build.py`.
+
+### Document checks
+- Owner sentences O1-O5 checked word for word against comments 6183004538, 6182984913 and 6117798837, and the question 6164154089. The reviewer re-checked them in every round.
+- Citations checked in place, decision numbers included. Statements about code checked against `clang_build.py`, `local_run.py`, `harness/verification_build.py`, `check_result.py`, `check_failure.py`, `check_answer.py` and `check_judging.py` at `97a0816`.
+- Negative sweep:
+  - no item of "Do not invent" is stated as decided;
+  - S3-S10 have one answer each;
+  - what the functions return or raise is mapped, and what cannot be placed is registered as ⑱ (마);
+  - the eight names collide with nothing in `hilclaw/`, `tests/` or `ARCHITECTURE/`.
+- Mechanical checks:
+  - relative links resolve;
+  - ADR-0060 and ⑱ were free at the push;
+  - `git diff --stat origin/main` listed the record and the three documents only;
+  - `i/lf`; `git diff --check` clean; `python -m ruff format --check .` exited 0.
+- The push run on `main` for `4060d70` (workflow CI) was in_progress when this was written; that is not a BLOCKED reason.
+
+### Runtime acceptance items
+None beyond ADR-0056's.
+
+### Owner notice (posted by the driver: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6184597227)
+### OD-18 - the answers of the build of a check of correctness.check and the side its settings come through (first case) fixed by ADR-0060 under DRIVER §9 (T-0176)
+
+ADR-0060 (commit 4060d70) answers parts (가) and (나) of OD-18 sub-question ⑰:
+- S7 (compile or link failure) and S8 (build past its time limit) are broken results with `condition` `build_exit_status` / `build_time_limit` (your HQ-0020 answer). `condition` now has six values, the two build values first.
+- The compiler's log of those builds is kept in a file of the attempt, never in the result or events.ndjson (your answer). Its path, form and writer are registered (sub-question ⑱ (나)).
+- S3-S6, S9 and S10 are tool failures of six new backend kinds: build_directory_unusable, settings_refused, build_input_missing, compiler_unavailable, build_output_missing, executable_unstartable.
+- Flags, trailing flags, compiler, both time limits and the environment are all the backend's own. The tool function hands none, and no value is decided.
+
+Yours: the class of S7/S8, the two value names, keeping the log, the principle for the run tools' timing build, and the container (cited, not designed). Everything else is the record's own.
+
+Provisional choices, most contestable first:
+1. All settings are the backend's own. A setting later prescribed in `task.build`, chosen by the coder or stated for a run does not reach the build. So a kernel within its contract that needs a flag the backend does not give (OpenMP and intrinsics are allowed, #5 A-7) is stored as a broken `build_exit_status` result.
+2. A compiler ended by a signal is read as S7.
+3. S5, S9 and S10 are tool failures although they may follow from the attempt; a result would need a value you have not approved.
+
+Limits: nothing was built or run; no setting has a value; the situations were read from host code, not from a container; the cause (machine, settings or kernel) is not established. The operation of `cpu_standin` for this tool still cannot be written to its end.
+
+Register: OD-18 stays `제안됨`. New sub-question ⑱ under OD-18. The objection window ends 2026-10-22.
+
+— posted by driver
+
+### Follow-ups
+- (planner, code mode) Add the two `condition` values to `hilclaw/check_result.py` and form (B) of `hilclaw/check_answer.py`, minding the positional pairing with `check_judging.py`. Add the six kinds to `BACKEND_KINDS` in `hilclaw/check_failure.py`. Tests per D12.
+- (planner, document mode, small) The R7 Nits, not applied because the cap was reached:
+  - in decision 4, narrow `NotADirectoryError` to the output path only;
+  - give one line of reason why a wrongly typed setting is `settings_refused` while a wrongly typed argument the operation formed is `operation_answer_invalid`;
+  - make the Status list "Single sentences rest on" match References (ADR-0006, 0010, 0026, 0040, 0044 and 0055 are missing), or mark it as not exhaustive;
+  - optionally, mention the keeping of the log (⑱ (나)) in the ⑥ row of decision 6.
+- (planner, document mode) Sub-questions ⑱ (나) (the log file, with `build.json`) and ⑱ (라) (the source of the backend's flags and environment) come before the `cpu_standin` operation. OD-14 ① (the container) gates it too.
+- (planner, document mode, §9) The run-tool contracts of PLAN P1-1, taking the build answers from ADR-0060 and O3.
+- (planner, code mode, small) The `hilclaw/check_operation.py` sentence on decision 8 / sub-question ⑩ (T-0175 Follow-ups) is still open.
+
+Note for the next planner: ADR-0060 lets a code slice add only the two values and the six kinds. The operation of `cpu_standin` for `correctness.check` stays blocked on the setting values (OD-14, ⑱ (라)), the container design (OD-14 ①) and the log file (⑱ (나)). Do not plan it before those are answered.
