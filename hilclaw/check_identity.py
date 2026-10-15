@@ -62,12 +62,11 @@ What the module does not do: it is no tool and no step and is bound to none.
 It builds no identity and checks none of ``run_id``, ``execution`` and the
 numbers: the frame does. The input schema and the description of the tool
 (ADR-0069 decisions 4 and 5) are :mod:`hilclaw.check_definition`'s. It reads
-no file and no log. It does
-not say at which point an attempt is checked, in which order, or who may raise
-``execution``. Whether an operation is handed the point is another record's
-(ADR-0043). It is this tool's and gives no rule for the ``step`` values of
-another tool (decision 3). It keeps nothing between calls. It imports
-:mod:`re` and :mod:`hilclaw.tools` and nothing else.
+no file and no log. It does not say at which point an attempt is checked, in
+which order, or who may raise ``execution``. Whether an operation is handed
+the point is another record's (ADR-0043). It is this tool's and gives no rule
+for the ``step`` values of another tool (decision 3). It keeps nothing between
+calls. It imports :mod:`re` and :mod:`hilclaw.tools` and nothing else.
 """
 
 import re
@@ -151,8 +150,8 @@ def step_of(request):
     message.
 
     No value but that of ``point`` is read: two requests it does not refuse
-    that differ in anything else have the same ``step``. The identity of the call is formed by the
-    builder and not here. The request is not modified.
+    that differ in anything else have the same ``step``. The identity of the
+    call is formed by the builder and not here. The request is not modified.
     """
     return _step(request)
 

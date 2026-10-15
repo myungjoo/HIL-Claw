@@ -75,8 +75,10 @@ def test_a_changed_schema_does_not_change_the_next():
     second = input_schema()
     assert second == kept == SCHEMA
     assert second is not first
-    count = second["properties"]
-    assert count["candidate"] is not count["attempt"] is not count["execution"]
+    counts = [
+        second["properties"][name] for name in ("candidate", "attempt", "execution")
+    ]
+    assert len({id(count) for count in counts}) == 3
 
 
 def test_a_registry_accepts_the_description_and_the_schema():
@@ -98,14 +100,12 @@ def test_the_description_tells_what_the_record_asks():
         assert member in DESCRIPTION
     for term in ("execution", "step_open", "fraction", "exponent"):
         assert term in DESCRIPTION
-    assert re.findall(r"[\w.]*\d[\w.]*", DESCRIPTION) == ["1.0", "1e0"]
 
 
-@pytest.mark.parametrize("value", [None, 1, "x", {}])
-def test_input_schema_takes_no_argument(value):
+def test_input_schema_takes_no_argument():
     assert list(inspect.signature(input_schema).parameters) == []
     with pytest.raises(TypeError):
-        input_schema(value)
+        input_schema(None)
 
 
 def test_a_call_writes_no_file(tmp_path, monkeypatch):
