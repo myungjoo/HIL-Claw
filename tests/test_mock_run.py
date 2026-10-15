@@ -26,7 +26,7 @@ PATH_MARKER = "zq7-path-zq7"
 # A test value: nothing lies there, and no test makes it.
 OUTPUT_PATH = Path(PATH_MARKER) / "runs" / "r1" / "output"
 EXPECTED_REPORT = (
-    b"resolution_ns 1\n" + b"interval_ns 1000000\n" * 5 + b"stop converged\n"
+    b"resolution_ns 1\n" + b"interval_ns 1000000\n" * N_MIN + b"stop converged\n"
 )
 
 
@@ -435,7 +435,13 @@ def test_the_module_imports_the_measurement_constants_only_and_has_no_entry():
     assert imported == {"hilclaw.harness", "hilclaw.harness.measurement"}
     assert not hasattr(mock_run, "main")
     assert "__main__" not in own.read_text(encoding="utf-8")
-    assert "CV_MAX" not in own.read_text(encoding="utf-8").split('"""')[-1]
+    names = {
+        node.attr if isinstance(node, ast.Attribute) else node.id
+        for node in ast.walk(ast.parse(own.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Attribute | ast.Name)
+    }
+    assert "N_MIN" in names
+    assert "CV_MAX" not in names
 
 
 def test_public_names_of_the_module_and_no_default():
