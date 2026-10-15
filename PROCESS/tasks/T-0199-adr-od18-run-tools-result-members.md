@@ -2,7 +2,7 @@
 id: T-0199
 title: Write the third record of the run tools' contract (`sim.run` / `board.run`, first case and mock) - the members of a result - the measurement, the state or the condition of broken, the memory figure, the verdict and *no ceiling stated* (ADR-0061 Consequences item (2); the result half of the third clause of OD-13 sub-question 10, in the manner of ADR-0042) - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, NFR-2, NFR-3, C-4, OD-18, OD-13, "#5 D6"]
 dependsOn: [T-0191, T-0193, T-0195, T-0197]
@@ -99,3 +99,43 @@ Known risk, accepted: ADR-0038 (until 2026-10-19), ADR-0052, ADR-0053, ADR-0055,
 - (planner, document mode, §9, P1-1) The timing seed (ADR-0061 Consequences item (3), OD-13 sub-question 7), in the manner of ADR-0048; then item (4), the form of what crosses the cut and the neither-form answer (ADR-0043, ADR-0045 manner).
 
 ## Result
+- Landed as 582cc5a on main (document mode, no PR; fast-forward after rebase on origin/main; trailers `Reviewed-by: reviewer agent (6 rounds, Approve)`, `Task: T-0199`, `Co-Authored-By`). The local branch was deleted. It was never pushed, so no remote branch existed.
+- Owner notice (DRIVER §9) posted on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6190947723. The objection window runs until 2026-10-22.
+- Review rounds (fresh-context dev-reviewer, opus):
+  - R1, request changes. Major: the A-13 reading did not weigh the opposite precedent ADR-0060 / HQ-0020. Fixed by distinguishing a change to a landed closed list from a first definition, and by quoting O4 without reading it as approval. Minors fixed: the owner-sentence self-description, the condition (c) wording in Status, ADR-0006 d7 described as a property of the line, a Limit 3 citation, and the StandardScenarios replay claim.
+  - R2, request changes. Fixed: the replay needs n_min/cv_max from the source commit; the Korean mirrors now say "at least" the code part of (c); the ADR-0009 Consequences result-file sentence is now weighed; "the place ADR-0011 decision 3 made and its Boundaries left empty"; ADR-0053 decision 7 added to the less-exact list.
+  - R3, approve with minors. Fixed: the S2-1 / S8-4 sentences in StandardScenarios and the decision numbers in Status.
+  - R4, approve with a minor. Fixed: `intervals_ns`, `resolution_ns` and `memory_bytes` are now JSON integers with no upper bound instead of ADR-0001 *integers*, so a report value at or above 2^53 gets no invented answer.
+  - R5, request changes. Fixed: a false precedent argument ("results already stored", "no result can exist in any log") was removed; the ADR-0052 L4 citation was weakened to "evade" plus the record's own reading; `n_max` ≥ 5 is cited from ADR-0023 decision 3.
+  - R6, approve with three Korean nits (a typo, who asked HQ-0020, and the reason `memory_bytes` has no upper bound). All three were fixed with the reviewer's wording before landing.
+- Deviation from the task text: Acceptance Criteria point 2 says "nine conditions … four found by the operation, the last five by the tool function". ADR-0061 decision 7 has **seven** conditions: four found by the operation and three by the tool function. Its "last five" are the five conditions of ADR-0009 decision 8, which overlap the operation's two run conditions. The record follows the source (seven). Reviewers R1 to R6 confirmed this.
+- Result members as landed (ADR-0063 decision 9). The same list holds for `sim.run` and `board.run`, and it is closed: only a record adds a member. No member is ever `null`; an absent member is left out.
+  - `outcome`: string. Values `"converged"`, `"not_converged"`, `"broken"`. Always present.
+  - `condition`: string. Present exactly when `outcome` is `"broken"`. The seven values, in order:
+    - Found by the operation: `"build_time_limit"`, `"build_exit_status"`, `"time_limit"`, `"exit_status"`.
+    - Found by the tool function: `"report_form"`, `"zero_interval"`, `"replay"`.
+  - `shape`: object with exactly `m`, `k`, `n`, each an *integer* ≥ 1. Always present.
+  - `n_max`: *integer* ≥ 5. Always present.
+  - `sample_form`: string, `"interval"` or `"reciprocal"`. Today it is always `"interval"`. Always present.
+  - `resolution_ns`: JSON integer ≥ 0, no upper bound. Present exactly when `outcome` is `"converged"` or `"not_converged"`.
+  - `intervals_ns`: array of JSON integers ≥ 1, no upper bound, in the order taken. Present under the same rule as `resolution_ns`.
+  - `memory_bytes`: JSON integer ≥ 1, no upper bound. Present exactly when the run completed and yielded a figure, whether or not a ceiling is stated.
+  - `ceiling`: string. Values `"within"`, `"over"`, `"not_judged"`, `"not_stated"`. Always present. A broken run with a stated ceiling is `"not_judged"`. Today every result is `"not_stated"`.
+  - `bound`: *integer*. Present exactly when `ceiling` is not `"not_stated"`.
+  - What a result never holds: there is no summary, no point, no request member, no `n_min` / `cv_max`, no seed, no command line, no stderr, no input value, no compiler log, no exit status / signal / time, no path, no setting value, no text member and no version member.
+  - Open, and not decided by the record: the result-file half (`sim.json` / `board.json`) and the seed (OD-13 ⑦).
+- Condition (c) of ADR-0052 decision 7 is still not met. ADR-0061, ADR-0062 and ADR-0063 now state, for a record, which call returns the verdict, where it reads the `bound` and in which member it returns the verdict. At least the code part is missing: no tool function returns `ceiling`. Whether the remaining contract records, or the record and code of whatever states a constraint, must add more is not judged. `memory_ceiling` stays not admitted, and check 4 of ADR-0050 is unchanged.
+- Sub-questions registered: none.
+- Document checks:
+  - Every relative link of ADR-0063 and of the edited passages resolves (checked by script), and ADR-0063 was free on origin/main at the push.
+  - `git diff --stat origin/main` showed only the four `touchesFiles` files. `git diff --check` was clean, and all four files are `i/lf`.
+  - The OD register has 30 rows before and after. Only the OD-13 and OD-18 rows changed, and their status words are unchanged.
+  - Rows judged and left unchanged: OD-8 (no result-file member named), FR-10, NFR-2, NFR-3 and C-4 (no sentence became false).
+  - Citations were checked against their sources by the executor and by every review round. Member names and values were searched in `hilclaw/`, `tests/` and `ARCHITECTURE/` (decision 9 lists the findings), with no clash of meaning.
+  - The two example reports were checked with `judge_report` at 826706c (pure Python, no process started). The first is converged; the second is not converged. A converged report re-labelled `stop not_converged` gives `REPLAY`.
+  - Coverage re-check (StandardScenarios 2026-10-15, 8th passage): no verdict change and no gap.
+- Notice text: as posted at the URL above. It ends with `— posted by driver`.
+- Follow-ups:
+  - (planner, code mode, P1-1) A function that builds the result object of either run tool from the outcome or condition, the judgement, the figure, the verdict or not_stated, `shape`, `n_max`, `sample_form` and `bound`, refusing what the table does not admit, with D12 tests. Write it against the member table above, not against the task's "nine conditions".
+  - (planner, document mode, §9) The timing seed (OD-13 ⑦, ADR-0061 Consequences item (3)). Then the form of what crosses the cut and the neither-form answer.
+  - (integrator) ADR-0063 Consequences lists the earlier-record sentences that are now less exact: ADR-0061 d6, d7, Limit 5 and Boundaries; ADR-0062 d2, Walk-through and Boundaries; ADR-0052 d7; ADR-0053 d7; ADR-0009 d8.
