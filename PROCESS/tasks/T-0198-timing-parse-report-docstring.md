@@ -2,7 +2,7 @@
 id: T-0198
 title: Make the `parse_report` docstring of `hilclaw/harness/timing.py` name `judge_report` as the function that reports a zero interval as broken
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, OD-13, "#5 D12"]
 dependsOn: [T-0194]
@@ -93,3 +93,16 @@ Line numbers are those of `main` at `8be645b`; the text wins. Read Python with `
 - (planner, document mode, §9, P1-1; candidate for the next task) The next run-tools contract slice: the result members carrying the measurement, the state or condition, the figure, the verdict and *no ceiling stated* (ADR-0061 Consequences (2), OD-13 sub-question ⑩ third clause; written to `events.ndjson`, so judge the A-13 data-plane reading first), or the timing seed (ADR-0061 Consequences (3), OD-13 sub-question ⑦).
 
 ## Result
+
+DONE. Landed as squash commit `cd9468b` via PR #136 (branch `claude/T-0198-timing-parse-report-docstring`, deleted; commits `c3df0cc`, `494dce5`).
+
+- **Entry checks**: no `Task: T-0198` on `origin/main`, no PR for T-0198, no open PR. No comment on issue #5 after issuecomment-6189063464; no HQ answer to name.
+- **Sentence changed** (`parse_report` docstring): "it is :func:`run_timing` that reports the run as broken." became "it is :func:`judge_report` (and so :func:`run_timing`, which judges in the same way) that reports such a report as broken, ``Broken.ZERO_INTERVAL``." The opening "An ``interval_ns 0`` line is of the form here" is kept; `_judgement` is not named.
+- **Checked and left** in `timing.py`: module docstring (lines 1-77), `TimingArgumentError`, `Broken` ("The condition of a completed run (decision 8) that a broken run failed first." - `Judgement.broken` now also carries it for a report without a process; still true when read as the run whose report it is, and the module docstring states that `judge_report` tests the last three only; reviewer round 2 suggested listing it here, not editing), `Report`, `Judgement`, `TimingResult`, `driver_arguments`, `judge_report`, `run_timing`.
+- **Other modules** (read, not edited; still exact): `hilclaw/harness/memory_ceiling.py` line 16, `hilclaw/harness/timing_build.py` line 7, `hilclaw/harness/verification.py` line 61. No follow-up.
+- **No code line changed**: diff is inside the docstring only (+2/-1 overall), only `hilclaw/harness/timing.py`; `git diff --check` clean. No test uses `__doc__`.
+- **Tests**: none added (docstring only). Public functions stay covered by `tests/harness/test_timing.py`: `driver_arguments` (`test_driver_arguments_*`), `parse_report` (`test_parse_report_accepts_the_form`, `..._refuses_every_other_form`, `..._never_raises_on_bytes`), `judge_report` (`test_judge_report_*`, incl. bad arguments, non-bytes, zero interval, replay), `run_timing` (completed/broken/argument-error/figure groups).
+- **Reviews**: 2 rounds, `dev-reviewer` in fresh context. Round 1 Approve with 2 optional Nits: "reports it" referred to the line, fixed in `494dce5` ("such a report"); `Broken` docstring, listed above. Round 2 Approve, one Nit (list `Broken` here), done.
+- **Gates**: local `python -m pytest` 19802 passed, 354 skipped; ruff check and format check clean. CI run 38720284334 on `494dce5` green on all jobs (Python 3.11/3.14, C gate, sh gate, Test presence, Coverage gate); coverage of `hilclaw/`: lines 5282/5301 = 99.64%, functions 523/523 = 100.00%.
+- **Language**: Python, as the rest of the `hilclaw` package (docstring only).
+- **Follow-ups**: none from this task.
