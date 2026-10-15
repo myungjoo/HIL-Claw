@@ -198,7 +198,7 @@ def parse_report(stdout):
     of another keyword makes the whole output not of the form. No ``bytes``
     value raises. An ``interval_ns 0`` line is of the form here; it is
     :func:`judge_report` (and so :func:`run_timing`, which judges in the same
-    way) that reports it as broken, ``Broken.ZERO_INTERVAL``.
+    way) that reports such a report as broken, ``Broken.ZERO_INTERVAL``.
     """
     *lines, rest = stdout.split(b"\n")
     if rest or len(lines) < 2:
