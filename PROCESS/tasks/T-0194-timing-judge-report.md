@@ -2,7 +2,7 @@
 id: T-0194
 title: Make the judging half of `run_timing` a public function of `hilclaw/harness/timing.py` (ADR-0061 code slice (2)) - it takes the report of a timing run with the sample form and `n_max` and judges it (form, zero interval, replay, completed with its state / broken with its condition) without starting anything - and keep `run_timing` unchanged in behaviour on top of it
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, OD-18, OD-13, "#5 A-12", "#5 D12"]
 dependsOn: [T-0191]
@@ -103,3 +103,11 @@ Recommended shape (names yours): a public **`judge_report(report, *, sample_form
 - (planner, later, document mode) The result members (ADR-0061 Consequences item (2), the third clause of OD-13 sub-question ⑩ - may need a data-plane reading under A-13), the timing seed (OD-13 sub-question ⑦), and the form of what crosses the cut (item (4)).
 
 ## Result
+- PR #134, squash-merged as 7ac9490 (branch claude/T-0194-timing-judge-report deleted); CI six jobs green.
+- Review: 2 rounds (R1 Approve with 1 Low + 1 Nit, both addressed; R2 Approve, 1 Nit left: parse_report docstring, out of scope).
+- Added public judge_report(report, *, sample_form, n_max) -> Judgement(broken, state, intervals_ns, resolution_ns); one private core _judgement shared with run_timing (behaviour, signature, raise order, memory_bytes unchanged; no existing assertion changed).
+- Provisional choices: names after T-0074; no defaults (tool function hands n_max, ADR-0061 d3); raise order n_max, sample_form (TimingArgumentError), then TypeError for a non-bytes report, all before the report is read; no class (B) type, no build condition in Broken.
+- Round-1 change: a private _sample_form helper is now shared by driver_arguments and judge_report (driver_arguments behaviour unchanged).
+- Local: pytest 19759 passed / 354 skipped; ruff check + format clean; timing.py branches 100%, lines 99% (2 pre-existing lines of _fail's except ValueError unreachable on Python 3.14).
+- Language: Python, because hilclaw/harness/timing.py is a Python module.
+- Follow-ups: (planner, document mode) run tools' call identity (ADR-0061 Consequences (1)); later result members (2), timing seed (3), form of what crosses the cut (4); parse_report docstring nit (R2).
