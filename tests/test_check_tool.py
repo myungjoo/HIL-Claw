@@ -13,6 +13,7 @@ import pytest
 from hilclaw import (
     backends,
     check_admission,
+    check_definition,
     check_seed,
     check_tool,
     events,
@@ -57,9 +58,6 @@ REQUEST = {
     "point": "sim",
 }
 ABSENT = object()
-# The description and the schema of a test-only definition: no record gives this tool either.
-TEST_DESCRIPTION = "A definition of the tests; the tool has no description yet."
-TEST_SCHEMA = {"type": "object"}
 
 
 def profile(accelerator=mock_backend.NAME):
@@ -583,6 +581,69 @@ def test_a_refused_request_is_invalid_request_before_anything_is_asked(
     assert (bench.asked, formed) == ([], [])
 
 
+def without_point(**changes):
+    return {**{name: REQUEST[name] for name in REQUEST if name != "point"}, **changes}
+
+
+@pytest.mark.parametrize(
+    "asked,start",
+    [
+        (request(draws=1000), "draws: "),
+        (request(seed=7), "seed: "),
+        (request(tolerance={"rtol": 0.1}), "tolerance: "),
+        (request(m=1), "m: "),
+        (request(draws=None), "draws: "),
+        (without_point(Point="sim"), "Point: "),
+        (request(execution=1.0), "execution"),
+        (request(execution=json.loads("1e0")), "execution"),
+        (request(round=3.0), "round"),
+        (request(point="Sim"), "point: "),
+    ],
+    ids=[
+        "draws",
+        "seed",
+        "tolerance",
+        "m",
+        "null",
+        "Point",
+        "1.0",
+        "1e0",
+        "round",
+        "Sim",
+    ],
+)
+def test_each_refusal_of_the_walk_through_is_made_before_anything_is_asked(
+    root, recorded, formed, asked, start
+):
+    kept = copy.deepcopy(asked)
+    bench = Bench(root, seeds=())
+    bench.order = recorded
+    failure = bench.failure(asked)
+    assert failure.kind == tools.KIND_INVALID_REQUEST
+    assert failure.message.startswith(start)
+    assert "1000" not in failure.message and "rtol" not in failure.message
+    assert (bench.sources, recorded, lines(root), log_bytes(root)) == (0, [], [], b"")
+    assert (bench.asked, formed) == ([], [])
+    assert asked == kept
+
+
+def test_an_unnamed_member_after_an_ended_call_is_refused_not_answered(root, recorded):
+    first = Bench(root)
+    result = first.function(request())
+    before = log_bytes(root)
+    del recorded[:]
+    again = Bench(root, seeds=(), script=RuntimeError("must not be asked"))
+    again.order = recorded
+    assert again.function(request()) == result
+    assert recorded == ["read"]
+    del recorded[:]
+    failure = again.failure(request(draws=1000))
+    assert failure.kind == tools.KIND_INVALID_REQUEST
+    assert failure.message.startswith("draws: ")
+    assert (again.sources, recorded, again.asked) == (1, [], [])
+    assert log_bytes(root) == before
+
+
 def test_the_frame_is_checked_before_the_point(root):
     asked = {name: REQUEST[name] for name in REQUEST if name not in ("run_id", "point")}
     failure = Bench(root).failure(asked)
@@ -1010,7 +1071,13 @@ def test_the_table_and_the_request_are_not_modified_and_two_calls_share_nothing(
 def test_through_the_frame_of_a_registry_the_test_built(root):
     bench = Bench(root, seeds=(RuntimeError("no entropy"), SEED, OTHER_SEED))
     registry = Registry()
-    registry.register(TOOL, bench.function, TEST_DESCRIPTION, TEST_SCHEMA)
+    registry.register(
+        TOOL,
+        bench.function,
+        check_definition.DESCRIPTION,
+        check_definition.input_schema(),
+    )
+    assert registry.definition(TOOL).input_schema == check_definition.input_schema()
     with pytest.raises(ToolFailure) as caught:
         tools.call(registry, TOOL, request())
     assert caught.value.kind == "seed_not_drawn"
