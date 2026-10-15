@@ -13,10 +13,12 @@ from hilclaw.harness.timing import (
     SAMPLE_FORMS,
     SEED_LIMIT,
     Broken,
+    Judgement,
     Report,
     TimingArgumentError,
     TimingResult,
     driver_arguments,
+    judge_report,
     parse_report,
     run_timing,
 )
@@ -771,3 +773,216 @@ def test_a_result_of_five_values_has_no_figure():
     run = RunResult(0, False, b"", b"", ("x",), 0.0, 4096)
     result = TimingResult(None, State.CONVERGED, (1,), 1, run)
     assert result.memory_bytes is None
+
+
+def judged(stdout, sample_form="interval", n_max=N_MAX_DEFAULT):
+    return judge_report(stdout, sample_form=sample_form, n_max=n_max)
+
+
+def assert_judged_completed(judgement, state, intervals, resolution=1):
+    assert type(judgement) is Judgement
+    assert judgement.broken is None
+    assert judgement.state is state
+    assert judgement.intervals_ns == tuple(intervals)
+    assert type(judgement.intervals_ns) is tuple
+    assert all(type(interval) is int for interval in judgement.intervals_ns)
+    assert judgement.resolution_ns == resolution
+    assert type(judgement.resolution_ns) is int
+
+
+def assert_judged_broken(judgement, condition):
+    assert type(judgement) is Judgement
+    assert judgement == (condition, None, None, None)
+
+
+def test_judgement_has_the_first_four_fields_of_a_timing_result():
+    assert Judgement._fields == TimingResult._fields[:4]
+    assert Judgement._fields == ("broken", "state", "intervals_ns", "resolution_ns")
+
+
+@pytest.mark.parametrize("sample_form", SAMPLE_FORMS)
+def test_judge_report_completes_the_worked_report(sample_form):
+    assert_judged_completed(judged(WORKED_REPORT, sample_form), State.CONVERGED, WORKED)
+
+
+def test_judge_report_completes_a_report_ended_at_n_max():
+    intervals = NOISY[:N_MAX_DEFAULT]
+    judgement = judged(report(intervals, "not_converged", resolution=41))
+    assert_judged_completed(judgement, State.NOT_CONVERGED, intervals, resolution=41)
+
+
+@pytest.mark.parametrize("sample_form", SAMPLE_FORMS)
+def test_judge_report_with_a_larger_n_max(sample_form):
+    stdout = report(NOISY, "not_converged")
+    judgement = judged(stdout, sample_form, n_max=len(NOISY))
+    assert_judged_completed(judgement, State.NOT_CONVERGED, NOISY)
+
+
+def test_judge_report_with_n_max_equal_to_n_min():
+    intervals = NOISY[:N_MIN]
+    judgement = judged(report(intervals, "not_converged"), n_max=N_MIN)
+    assert_judged_completed(judgement, State.NOT_CONVERGED, intervals)
+
+
+def test_judge_report_honours_the_sample_form():
+    assert_judged_completed(judged(report(SPLIT), "reciprocal"), State.CONVERGED, SPLIT)
+    assert_judged_broken(judged(report(SPLIT), "interval"), Broken.REPLAY)
+    longer = (*SPLIT, 100)
+    assert_judged_completed(judged(report(longer)), State.CONVERGED, longer)
+    assert_judged_broken(judged(report(longer), "reciprocal"), Broken.REPLAY)
+
+
+@pytest.mark.parametrize("name", GOOD_REPORTS)
+def test_judge_report_on_every_report_of_the_form(name):
+    stdout, parsed = GOOD_REPORTS[name]
+    judgement = judged(stdout)
+    if name == "worked":
+        assert_judged_completed(judgement, parsed.state, parsed.intervals_ns)
+    elif name == "interval-zero":
+        assert_judged_broken(judgement, Broken.ZERO_INTERVAL)
+    else:
+        assert_judged_broken(judgement, Broken.REPLAY)
+
+
+@pytest.mark.parametrize("sample_form", SAMPLE_FORMS)
+@pytest.mark.parametrize("name", BAD_REPORTS)
+def test_judge_report_finds_every_other_form(name, sample_form):
+    assert_judged_broken(judged(BAD_REPORTS[name], sample_form), Broken.REPORT_FORM)
+
+
+def test_judge_report_tests_the_form_before_a_zero_interval():
+    assert_judged_broken(judged(HEAD + b"interval_ns 0\n"), Broken.REPORT_FORM)
+    assert_judged_broken(judged(report((0,) * 5, "continue")), Broken.REPORT_FORM)
+
+
+@pytest.mark.parametrize("sample_form", SAMPLE_FORMS)
+@pytest.mark.parametrize(
+    "intervals",
+    [(100, 100, 0, 100, 100), (0,) * 5, (*WORKED, 0), (0,)],
+)
+def test_judge_report_finds_a_zero_interval(intervals, sample_form):
+    assert_judged_broken(judged(report(intervals), sample_form), Broken.ZERO_INTERVAL)
+
+
+@pytest.mark.parametrize("sample_form", SAMPLE_FORMS)
+@pytest.mark.parametrize("name", REPLAY_DISAGREEMENTS)
+def test_judge_report_finds_a_replay_disagreement(name, sample_form):
+    intervals, stop = REPLAY_DISAGREEMENTS[name]
+    assert_judged_broken(judged(report(intervals, stop), sample_form), Broken.REPLAY)
+
+
+def test_judge_report_replays_with_the_caller_n_max():
+    stdout = report(NOISY[:N_MAX_DEFAULT], "not_converged")
+    assert_judged_broken(judged(stdout, n_max=N_MAX_DEFAULT + 1), Broken.REPLAY)
+    assert_judged_broken(judged(stdout, n_max=N_MAX_DEFAULT - 1), Broken.REPLAY)
+    assert judged(stdout).broken is None
+
+
+def test_judge_report_never_returns_a_process_condition():
+    stdouts = [WORKED_REPORT, *BAD_REPORTS.values(), report((0,) * 5)]
+    stdouts += [report(*case) for case in REPLAY_DISAGREEMENTS.values()]
+    for stdout in stdouts:
+        for sample_form in SAMPLE_FORMS:
+            judgement = judged(stdout, sample_form)
+            assert judgement.broken not in (Broken.TIMEOUT, Broken.EXIT_STATUS)
+
+
+EQUIVALENCE = (
+    [(f"good-{name}", stdout) for name, (stdout, _) in GOOD_REPORTS.items()]
+    + [(f"bad-{name}", BAD_REPORTS[name]) for name in THROUGH_A_RUN]
+    + [(f"replay-{name}", report(*case)) for name, case in REPLAY_DISAGREEMENTS.items()]
+    + [("zero-interval", report((100, 0, 100)))]
+)
+
+
+@pytest.mark.parametrize("sample_form", SAMPLE_FORMS)
+@pytest.mark.parametrize(
+    ("name", "stdout"), EQUIVALENCE, ids=[e[0] for e in EQUIVALENCE]
+)
+def test_judge_report_agrees_with_run_timing(name, stdout, sample_form, stand_in):
+    result = timed(stand_in(stdout), sample_form=sample_form)
+    assert judged(stdout, sample_form) == result[:4]
+
+
+def test_judge_report_and_run_timing_agree_on_n_max(stand_in):
+    stdout = report(NOISY, "not_converged")
+    executable = stand_in(stdout)
+    for n_max in (N_MIN, N_MAX_DEFAULT, len(NOISY), len(NOISY) + 1):
+        assert judged(stdout, n_max=n_max) == timed(executable, n_max=n_max)[:4]
+
+
+JUDGING_ARGUMENTS = [
+    (name, value) for name, value in BAD_ARGUMENTS if name in ("n_max", "sample_form")
+]
+
+
+class Output(bytes):
+    pass
+
+
+class Untouchable(bytes):
+    def __getattribute__(self, name):
+        raise AssertionError(f"the report was looked at: {name}")
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    JUDGING_ARGUMENTS,
+    ids=[f"{name}-{position}" for position, (name, _) in enumerate(JUDGING_ARGUMENTS)],
+)
+def test_judge_report_refuses_bad_arguments_before_the_report(name, value):
+    arguments = {"sample_form": "interval", "n_max": N_MAX_DEFAULT, name: value}
+    with pytest.raises(TimingArgumentError, match=f"^{name}: must be "):
+        judge_report(Untouchable(WORKED_REPORT), **arguments)
+    with pytest.raises(TimingArgumentError, match=f"^{name}: must be "):
+        judge_report(None, **arguments)
+
+
+def test_judge_report_refuses_n_max_before_the_sample_form():
+    with pytest.raises(TimingArgumentError, match="^n_max: must be "):
+        judge_report(None, sample_form="time", n_max=0)
+
+
+def test_judge_report_follows_the_policy_n_min(monkeypatch):
+    monkeypatch.setattr(measurement, "N_MIN", 6)
+    with pytest.raises(
+        TimingArgumentError, match="^n_max: must be an int of at least 6"
+    ):
+        judged(WORKED_REPORT, n_max=5)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [WORKED_REPORT.decode(), bytearray(WORKED_REPORT), memoryview(WORKED_REPORT)]
+    + [None, list(WORKED_REPORT), Output(WORKED_REPORT), b"".join, 0],
+)
+def test_judge_report_refuses_a_report_that_is_not_bytes(value):
+    with pytest.raises(TypeError, match="^report: must be bytes, got ") as raised:
+        judged(value)
+    assert not isinstance(raised.value, TimingArgumentError)
+
+
+@pytest.mark.parametrize("missing", ["sample_form", "n_max"])
+def test_judge_report_has_no_default_for(missing):
+    arguments = {"sample_form": "interval", "n_max": N_MAX_DEFAULT}
+    del arguments[missing]
+    with pytest.raises(TypeError, match=missing):
+        judge_report(WORKED_REPORT, **arguments)
+
+
+def test_judge_report_parameters_are_keyword_only():
+    with pytest.raises(TypeError):
+        judge_report(WORKED_REPORT, "interval", N_MAX_DEFAULT)
+    with pytest.raises(TypeError):
+        judge_report(WORKED_REPORT, "interval", n_max=N_MAX_DEFAULT)
+
+
+@pytest.mark.parametrize("system", ["linux", "darwin", "win32", "plan9"])
+def test_judge_report_does_not_read_the_platform(system, monkeypatch):
+    expected = judged(WORKED_REPORT)
+    platform(monkeypatch, system)
+    judgement = judged(WORKED_REPORT)
+    assert judgement == expected
+    assert len(judgement) == 4
+    assert not hasattr(judgement, "memory_bytes")
+    assert not hasattr(judgement, "run")

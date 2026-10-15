@@ -1,13 +1,22 @@
-"""Python side of a timing run of ADR-0009: start it, read its report, replay the rule.
+"""Python side of a timing run of ADR-0009: judge its report, or start it and judge.
 
 ``ARCHITECTURE/decisions/ADR-0009-od13-cpu-standin-timing-run.md`` is the rule.
 A timing executable (the driver program of the harness built with one kernel)
 takes the repeats of one measurement in a process of its own and reports them
-on its standard output. :func:`run_timing` starts that process for an
-executable that is already built, :func:`parse_report` reads the report, and
-the run is accepted only if replaying
+on its standard output. :func:`parse_report` reads the report and
+:func:`judge_report` judges it: the run is accepted only if the report has the
+form, no interval is 0 and replaying
 :func:`hilclaw.harness.measurement.stopping_state` on every prefix of the
-reported intervals agrees with it (decisions 7 and 8).
+reported intervals agrees with it (decisions 7 and 8). :func:`run_timing`
+starts that process for an executable that is already built, decides whether
+it timed out or failed and judges its report in the same way.
+
+The judging is available without a process start because
+``ARCHITECTURE/decisions/ADR-0061-od18-run-tools-split.md`` (its decision 3)
+gives all of the judging of a timing run to the tool function, the side that
+is the same for every backend, while the operation of a backend starts the
+run. :func:`run_timing` remains the timing run on one machine about no call of
+a tool; the build and driver tests and calibration use it.
 
 Command line of the driver program (decision 9 leaves spelling and order to the
 code; the C side is written against this text). Exactly eight arguments, in
@@ -39,6 +48,13 @@ Conventions of this module (not rules of the record):
 - The conditions of a completed run are tested in the order of
   :class:`Broken`, and the first that fails is the one reported. A signal is
   not told apart from a non-zero exit status; ``run.returncode`` shows it.
+  :func:`judge_report` has no process and tests the last three only.
+- The module holds one implementation of the three conditions of the judging
+  and of the replay; :func:`judge_report` and :func:`run_timing` both use it.
+- The ``report`` argument of :func:`judge_report` is exactly ``bytes``. For
+  anything else, a ``bytearray``, a ``memoryview`` and an instance of a
+  subclass included, it raises a ``TypeError`` and never reports a wrong
+  form: that condition is a statement about what a process wrote.
 - ``executable`` is a path or a sequence used as a command prefix, as
   ``compiler`` in :func:`hilclaw.clang_build.build`.
 - A parameter of the driver program outside the above raises
@@ -47,10 +63,12 @@ Conventions of this module (not rules of the record):
   ``ValueError`` or ``TypeError``, and what :func:`hilclaw.local_run.run`
   raises for the command, the time limit, ``cwd`` or ``env`` is passed on.
 
-A completed run also yields the memory figure of ADR-0052 decision 4: the
-``ru_maxrss`` the runner handed on, converted by
+A completed run of :func:`run_timing` also yields the memory figure of
+ADR-0052 decision 4: the ``ru_maxrss`` the runner handed on, converted by
 :func:`hilclaw.harness.memory_ceiling.figure` for the :data:`sys.platform` read
-at the call; a broken run yields none.
+at the call; a broken run yields none. :func:`judge_report` takes no usage and
+yields no figure: ADR-0061 decision 3 has the figure converted where the
+process was waited for.
 
 What this module does not do: it builds nothing and reads no clock; it does not
 defend against forged timing (decision 10); it does not retry, repair, store or
@@ -103,6 +121,29 @@ class Report(NamedTuple):
     state: State
 
 
+class Judgement(NamedTuple):
+    """Outcome of one :func:`judge_report` call: the judgement of one report.
+
+    The four fields are the first four of :class:`TimingResult`, with the same
+    meaning. For a report that has the form, holds no interval of 0 and whose
+    replay agrees, ``broken`` is ``None``, ``state`` is ``State.CONVERGED`` or
+    ``State.NOT_CONVERGED``, ``intervals_ns`` holds the lengths of the timed
+    intervals in nanoseconds in the order taken and ``resolution_ns`` the
+    reported clock resolution. For any other report ``broken`` is
+    ``Broken.REPORT_FORM``, ``Broken.ZERO_INTERVAL`` or ``Broken.REPLAY`` and
+    the three other fields are ``None``: no interval of a broken run is
+    offered.
+
+    Nothing else is held: no capture of a process, no byte of the report and
+    no memory figure.
+    """
+
+    broken: Broken | None
+    state: State | None
+    intervals_ns: tuple[int, ...] | None
+    resolution_ns: int | None
+
+
 class TimingResult(NamedTuple):
     """Outcome of one :func:`run_timing` call.
 
@@ -142,8 +183,7 @@ def driver_arguments(*, m, k, n, n_max, sample_form, seed):
     sizes = [_digits(name, value, 1) for name, value in (("m", m), ("k", k), ("n", n))]
     n_min = measurement.N_MIN
     limit = _digits("n_max", n_max, n_min)
-    if type(sample_form) is not str or sample_form not in SAMPLE_FORMS:
-        _fail("sample_form", " or ".join(map(repr, SAMPLE_FORMS)), sample_form)
+    _sample_form(sample_form)
     if type(seed) is not int or not 0 <= seed < SEED_LIMIT:
         _fail("seed", "an int with 0 <= seed < 2**64", seed)
     cv_max = repr(measurement.CV_MAX)
@@ -168,6 +208,47 @@ def parse_report(stdout):
     if resolution is None or None in intervals or state is None:
         return None
     return Report(resolution, tuple(intervals), state)
+
+
+def judge_report(report, *, sample_form, n_max):
+    """Judge one report of a timing process and return a :class:`Judgement`.
+
+    ``report`` is what a timing process wrote on its standard output, as
+    exactly ``bytes`` in the form of the module docstring; ``sample_form`` and
+    ``n_max`` are those the process was started with, as in
+    :func:`driver_arguments`. Both are keyword-only and neither has a default:
+    the caller hands the ``n_max`` it read, and no
+    :data:`measurement.N_MAX_DEFAULT` stands in.
+
+    In this order: a report that is not of the form of :func:`parse_report`
+    is ``Broken.REPORT_FORM``; one with an interval of 0 is
+    ``Broken.ZERO_INTERVAL``; and one whose replay disagrees is
+    ``Broken.REPLAY``. The replay takes the samples from the intervals in
+    order (the lengths for ``interval``, their reciprocals for
+    ``reciprocal``) and requires ``stopping_state`` with ``n_max`` to be
+    ``CONTINUE`` for every proper prefix and to give the reported state for
+    the whole sequence. Otherwise the report is completed with its state,
+    intervals and resolution.
+
+    Whether a process ended by itself, with which status and within which
+    time is not known here: ``Broken.TIMEOUT`` and ``Broken.EXIT_STATUS`` are
+    never returned, and what a process that timed out or failed wrote is not
+    a report to hand over. No memory figure is taken or returned.
+
+    The function starts no process, reads and writes no file, reads no
+    environment variable, clock, :data:`sys.platform` or random source and
+    keeps nothing between calls: its outcome follows from its arguments alone.
+
+    Raised before any byte of ``report`` is looked at, in this order:
+    :class:`TimingArgumentError` for an ``n_max`` and then for a
+    ``sample_form`` that :func:`driver_arguments` refuses, and
+    :class:`TypeError` for a ``report`` that is not exactly ``bytes``.
+    """
+    _digits("n_max", n_max, measurement.N_MIN)
+    _sample_form(sample_form)
+    if type(report) is not bytes:
+        raise TypeError(f"report: must be bytes, got {type(report).__name__}")
+    return _judgement(report, sample_form, n_max)
 
 
 def run_timing(
@@ -197,7 +278,9 @@ def run_timing(
     of 0, and the replay agrees: with the samples taken from the intervals in
     order (the lengths for ``interval``, their reciprocals for ``reciprocal``),
     ``stopping_state`` is ``CONTINUE`` for every proper prefix and gives the
-    reported state for the whole sequence. Every other run is broken. Only a
+    reported state for the whole sequence. Every other run is broken. The last
+    three conditions are those of :func:`judge_report` for the standard
+    output; a run that timed out or failed is broken whatever it wrote. Only a
     completed run, in either state, carries a memory figure
     (:attr:`TimingResult.memory_bytes`).
 
@@ -218,23 +301,28 @@ def run_timing(
         if not prefix:
             raise ValueError("executable command prefix is empty")
     run = local_run.run((*prefix, *arguments), timeout_s=timeout_s, cwd=cwd, env=env)
-    report = None
     if run.timed_out:
-        broken = Broken.TIMEOUT
-    elif run.returncode != 0:
-        broken = Broken.EXIT_STATUS
-    elif (report := parse_report(run.stdout)) is None:
+        return TimingResult(Broken.TIMEOUT, None, None, None, run)
+    if run.returncode != 0:
+        return TimingResult(Broken.EXIT_STATUS, None, None, None, run)
+    judgement = _judgement(run.stdout, sample_form, n_max)
+    if judgement.broken is not None:
+        return TimingResult(*judgement, run)
+    memory = memory_ceiling.figure(run.max_rss, sys.platform)
+    return TimingResult(*judgement, run, memory)
+
+
+def _judgement(stdout, sample_form, n_max):
+    report = parse_report(stdout)
+    if report is None:
         broken = Broken.REPORT_FORM
     elif 0 in report.intervals_ns:
         broken = Broken.ZERO_INTERVAL
     elif not _replay_agrees(report, sample_form, n_max):
         broken = Broken.REPLAY
     else:
-        memory = memory_ceiling.figure(run.max_rss, sys.platform)
-        return TimingResult(
-            None, report.state, report.intervals_ns, report.resolution_ns, run, memory
-        )
-    return TimingResult(broken, None, None, None, run)
+        return Judgement(None, report.state, report.intervals_ns, report.resolution_ns)
+    return Judgement(broken, None, None, None)
 
 
 def _replay_agrees(report, sample_form, n_max):
@@ -268,6 +356,11 @@ def _digits(name, value, minimum):
         return str(value)
     except ValueError:
         _fail(name, "an int the interpreter can write in decimal digits", value)
+
+
+def _sample_form(value):
+    if type(value) is not str or value not in SAMPLE_FORMS:
+        _fail("sample_form", " or ".join(map(repr, SAMPLE_FORMS)), value)
 
 
 def _fail(name, rule, value):
