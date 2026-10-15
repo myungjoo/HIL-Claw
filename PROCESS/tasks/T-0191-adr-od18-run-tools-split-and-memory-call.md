@@ -2,7 +2,7 @@
 id: T-0191
 title: Write the first record of the run tools' contract (`sim.run` / `board.run`, first case and mock) - what a call's operation does, the split between the tool function and the operation, the sample form taken from the run's objective, and the call that carries the memory figure and where it reads the `bound` (OD-13 sub-question 10, first two clauses) - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, FR-1, NFR-3, OD-18, OD-13, OD-1, "#5 D6"]
 dependsOn: [T-0176]
@@ -101,3 +101,104 @@ Known risk, accepted: ADR-0052, ADR-0053, ADR-0055 and ADR-0056 are inside their
 - (planner, later) OD-18 sub-question 18 (나) and (라) before the `cpu_standin` operation (T-0190 Follow-ups).
 
 ## Result
+
+**DONE** (executor, 2026-10-15). Landed on `main` as `8f971f1` (document mode, one commit, fast-forward push; trailers `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0191`). Branch `claude/T-0191-adr-od18-run-tools-split-and-memory-call` deleted (remote, then local). Record: `ARCHITECTURE/decisions/ADR-0061-od18-run-tools-split.md` (176 lines). Diff: 4 files, +185/-5.
+
+Resume and entry checks: no commit with `Task: T-0191`, no PR, no open PR at all. On #5 there is no comment after `issuecomment-6184597227`, so no objection to ADR-0038, ADR-0052, ADR-0053, ADR-0056 or ADR-0060. #4, #7 and #8 have no new comment.
+
+### Review rounds
+- R1 Request changes. Major: the report parsing and the replay had been put on the operation's side, against the ADR-0021 decision 2 pattern, with a wrong reason. Minor: HQ-0020 point 1 was not weighed; the Requirements OD-18 clause left out O3 and O5. Nits: a failed build "not judged" was marked as cited; Boundaries needed a qualifier; one StandardScenarios sentence was too strong; L2 needed the (마) reading stated.
+- R2 Request changes. Major: Boundaries listed "the seed's choice" as kept out of a request, which no decision says. Nits: punctuation in L2; the `memory_ceiling` docstring attribution; the Korean "not covered" list was narrower than the record.
+- R3 Approve with Nits: the † marker; ADR-0009 decision 8 added to the less-exact list; "ADR-0052 decisions 3 and 4"; where `n_min` and `cv_max` come from; the Korean list of what the operation is handed.
+- R4 Approve with Nits: "Limit 7" instead of "L7"; "OD-18 sub-question ⑲"; Korean wording for an unusable file; "결과·결과 파일".
+- R5 Request changes. Minor: the Requirements mirror let "builds at each call" read as applying to the mock as well; the same scope Nit in StandardScenarios.
+- R6 Approve with one Nit: the "builds on ADR-0038" decision list.
+- R7 Approve. Two Nits are left as they are, because fixing them would need an eighth round (see Follow-ups).
+
+### The split as landed (the next slice and the code are written against it)
+- Scope: one contract for both tools. The two tools stay two tools with two operations and differ only in name and execution point. Covered runs: `cpu_standin` in the local configuration, and a run at the mock. Applying the contract to the mock is the record's own choice, made for the reason the owner gave in HQ-0005 point 4.
+- Who builds, and when: the operation of the called tool, at each call. It builds from the compiled set the ADR-0055 reader finds at the output path, into a build directory of its own that it removes (the ADR-0056 decision 4 way).
+  - Rejected: built once per attempt (no holder, path or tie to the source; state between calls); a cache (its key cannot be stated).
+  - Cost: four builds per attempt that reaches the board point, and the file timed at one point is not the file timed at the other.
+  - ADR-0007 applies at both points with the values of `cpu_standin`, and the two measurements are never pooled.
+- What the tool function reads, all in the one read of `instance.json` in moment ④:
+  - the dimensions, from the `shape` of the op_signature (the ADR-0041 decision 2 source);
+  - `n_max` (ADR-0023);
+  - `objective` (ADR-0053).
+  - From these it derives the sample form and the `bound`, and forms the output path.
+- What the operation is handed: the request, the hw_profile, the dimensions, `n_max`, the sample form, a seed and the output path.
+  - The seed's source and recording stay with OD-13 sub-question ⑦.
+  - `n_min` and `cv_max` come from `measurement.py`.
+  - The operation is never handed the `bound` or the `objective`.
+- What the operation returns, exactly one of:
+  - (A) the raw report, together with the figure (converted to bytes on the operation side, because its unit depends on the platform) or that there is none;
+  - (B) no report, and the first failed condition, in this order: build time limit, compiler exit status, run time limit, exit status or signal (the order of ADR-0060 decision 4).
+- Which side computes what: the tool function does all of the judging of the run (report form, an interval of 0, the replay) and computes the memory verdict. A figure is used only for a run the tool function finds completed. Observation: `run_timing` does both halves today and is to be split, as `run_verification` was.
+- Settings (flags, compiler, both time limits, environment): the backend's own, by the cut of ADR-0060 decision 3. The tool function hands none, and no value is given.
+- Sample form: one objective `latency_minimisation` gives `interval`.
+- The kinds named: `objective_not_stated` (a valid file without the member) and `objective_not_covered` (a type, count, weight or priority, or a constraint type, that this contract does not cover; impossible today). Both are:
+  - kinds of this contract, not reserved (provisional);
+  - answered in ④ after `no_backend` and `not_offered`, before the start line, and never as an end-line `failure`.
+- The memory figure: the run tool of a point is the call whose figure is judged; each call judges its own run, and `correctness.check` carries no figure. The `bound` comes from `objective.constraints` in the same read (not a request, a spec, a kept value or a default).
+  - An empty `constraints` means no ceiling is stated. The result must tell that apart from *not judged*.
+  - An unreadable file gets the four kinds of ADR-0019.
+- Results: completed (converged or not converged) and broken. Broken is one class with the first failed condition.
+  - A failed timing build is a result (owner, HQ-0020 point 3). Putting it in the broken class, with the build conditions first, is the record's reading of points 3 and 1 together. No member is taken over.
+  - The order of the conditions after the build: run time limit, exit status, report form, zero interval, replay (the `run_timing` order, taken as the record's own).
+  - Where a ceiling is stated: within, over or not judged. A broken run, and by the record's reading a failed build, is not judged.
+- Never in a result: standard error, the command line, input values, and the seed until OD-13 sub-question ⑦ is answered. The compiler log is not returned.
+- Tool failures: every situation in which no timing executable can be had or started, other than a failed build (S1-S6, S9 and S10, read for the timing build). Their kinds are ⑲ (나).
+- Container limit: under a container, the waited-for process may not be the kernel's. The record is read against the host code. The question is held by OD-14 sub-question ① (마), read as including where and how the figure is obtained, so no new sub-question was registered for it.
+- ADR-0052 decision 7 (c) is still not met. `memory_ceiling` stays not admitted.
+
+### Sub-question registered
+OD-18 ⑲, for `sim.run` and `board.run`:
+- (가) the answer for a run that states no op_signature, an uncovered op_signature or no `n_max`, and its kinds (own, `correctness.check`'s, or reserved per ADR-0041 decision 4), with their place in ④;
+- (나) the kinds of the no-executable situations;
+- (다) the log of a timing build;
+- (라) the source and values of the timing build and run settings, and whether they equal those of the verification build.
+
+### Register and coverage
+- OD register: 30 rows before and after. Only OD-13 and OD-18 changed, and their status words are unchanged (`확정 (P1 최소분…)` and `제안됨`).
+  - OD-13 row: ADR-0061 added to 반영, and the ⑩ remainder item updated (the call and the place of the `bound` are answered; the result and result-file members remain).
+  - OD-18 row: one clause for ADR-0061, and ⑲ added to the 잔여 list.
+- Rows judged and left: FR-10, FR-1, NFR-3, OD-1, OD-14 and OD-16. No sentence of theirs became false.
+- OpenDecisionProposals: an OD-18 heading-note clause, the ADR-0061 채택분 bullet, the ⑲ bullet, and a dated 2026-10-15 note on OD-13 ⑩. No proposal text was deleted.
+- StandardScenarios: the heading note of `# 검사 결과` and the passage "2026-10-15 (4차)". Steps re-checked:
+  - run and measure steps: S0-5/6/10, S1-3/4/6, S1-b-2/4, S2-2, S3-4, S6-3, S11-3, S8-2/3/4;
+  - instance-start steps: S1-2, S2-1, S3-3, S6-1.
+  - Outcome: no verdict change and no gap. S2's throughput target goes to OD-1 and to the record that admits the type.
+
+### Document checks
+- Relative links of the record and of the edited passages resolve. ADR-0061 and OD-18 ⑲ were free at the push.
+- `git diff --stat b3aa12f origin/main` lists the four files of `touchesFiles` only. `git diff --check` is clean, and all four files are `i/lf`.
+- Every Decision sentence is marked as the owner's, cited, or the record's own. Owner quotations O1 to O5 were checked word for word against comments 6117798837, 6136238336, 6164154089, 6183004538 and 6182984913; the reviewer re-checked them in every round. About 60 record citations were checked in place, decision numbers included.
+- `objective_not_stated` and `objective_not_covered` collide with nothing in `hilclaw/`, `tests/` or `ARCHITECTURE/`.
+- Nothing was built or run, and no compiler, kernel, container or `claude` process was started (D16).
+
+### Owner notice (posted by the driver as https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6186830791)
+### OD-18 / OD-13 - the first part of the sim.run / board.run contract fixed by ADR-0061 under DRIVER §9 (T-0191)
+
+ADR-0061 (commit 8f971f1) is the first record of the run tools' contract, for cpu_standin in the local configuration and for a run at the mock. It answers the first two clauses of OD-13 sub-question ⑩.
+- Both tools follow one contract. At cpu_standin each call builds the timing executable itself, from the attempt's output/, and carries out one ADR-0009 timing run. ADR-0007 applies at both points.
+- The operation returns the raw report with the ADR-0052 figure, or the first failed condition (build time limit, build exit status, run time limit, exit status). The tool function judges the run (form, replay) and computes the memory verdict.
+- The tool function reads the dimensions, n_max and objective in one read of instance.json. latency_minimisation gives the sample form interval. A run that states no objective, or one this contract does not cover, is a tool failure of objective_not_stated / objective_not_covered, answered before anything starts.
+- The run tool of a point is the call whose memory figure is judged, with the bound read from objective.constraints of the run. "No ceiling stated" is an outcome distinct from not judged.
+
+Yours, quoted and not re-decided: both tools carry out the same local run (HQ-0005); latency minimisation and the memory ceiling (HQ-0009); "yes, as the principle that such a build is a result" for the timing build (HQ-0020 point 3); builds and runs in a container (2026-10-15). Everything else is the record's own.
+
+Readings to check, most contestable first:
+1. Each call builds its own timing executable, so the file timed at the sim point is not the one timed at the board point (four builds per attempt that reaches the board point).
+2. A failed timing build is put into the broken class with the build conditions first, reading your HQ-0020 point 1 (given for correctness.check) together with point 3. No member is taken over.
+3. Under a container, the process whose usage is read may not be the kernel's. The record reads OD-14 sub-question ① (마) as holding this, and is read against the host code until the container is designed.
+
+Open: call identity, request and result members (the third clause of ⑩, so ADR-0052 decision 7 (c) is still not met and memory_ceiling stays not admitted), the timing seed (OD-13 ⑦), the mock, setting values, and the new OD-18 sub-question ⑲.
+
+A-13: document mode. No request, result or data-plane member is named. The two error.kind values are answered before the start line and never reach events.ndjson. Register: OD-18 stays 제안됨 and OD-13 keeps its status. The objection window ends 2026-10-22.
+
+— posted by driver
+
+### Follow-ups
+- (planner, document mode, small) The two R7 Nits, not applied because the review cap was reached: in decision 5 of ADR-0061, "At an execution point of the first case" should also cover a run at the mock; the OD-13 ⑩ note in OpenDecisionProposals should add "전의 호출에서 남긴 값" to the list of non-sources.
+- (planner, code mode) Two code slices from ADR-0061 Consequences. (1) A function that classifies an `objective_of` value (not stated / not covered / covered) and gives the sample form and the `bound`. (2) The judging half of a timing run, split out of `run_timing`: it takes the report or the condition, with the sample form and `n_max`. D12 tests.
+- (planner, document mode, P1-1) The second slice of the run tools' contract: the call identity (journaled or not, `step` values per tool, `execution`, request members), in the manner of ADR-0040. Then OD-18 ⑲ (가)/(나), the result members (the third clause of OD-13 ⑩), and the timing seed (OD-13 ⑦).
