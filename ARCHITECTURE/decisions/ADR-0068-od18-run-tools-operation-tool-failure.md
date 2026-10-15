@@ -91,7 +91,7 @@ The table of ADR-0062 decision 6 as ADR-0064 decision 7, ADR-0065 and ADR-0067 d
 
 | Moment | What happens | A call answered here | Source |
 |---|---|---|---|
-| ① to ④, the draw, ⑤ | as those records have them | their answers there; none of the eight kinds and not `operation_failure_invalid` | ADR-0062 decision 6; ADR-0064 decision 7; ADR-0067 decision 5 |
+| ① to ④, the draw, ⑤ | as those records have them | their answers there; none of them gives one of the eight kinds or `operation_failure_invalid` as a new answer, but at ③ an ended identity gives its stored `failure`, which may hold one of them (cited: ADR-0062 decision 6, "the stored `failure` again") | ADR-0062 decision 6; ADR-0064 decision 7; ADR-0067 decision 5 |
 | ⑥ | The operation is called with the four things; it applies the reader, builds, starts the timing run. **In S1 to S6, S9 and S10 it raises the backend kind of the row; S7 and S8 are returned as (B)** | What it returned or raised is answered from the end line of ⑦ | ADR-0065 decisions 2 and 4; **this record**, decisions 2 and 3 |
 | ⑦ | The end line, its `spend` the empty object (cited: ADR-0062 decision 5), with a `result` or a `failure`; the call returns what it holds | `end_line_failed`; else a result, or the tool failure of its `failure` — **among them the eight kinds and `operation_failure_invalid`** | ADR-0062 decision 6; ADR-0026 decision 3; **this record**, decision 4 |
 
