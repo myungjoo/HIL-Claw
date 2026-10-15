@@ -2,7 +2,7 @@
 id: T-0212
 title: Refuse a correctness.check request member no record names in moment 1 and state the tool's input schema and description (ADR-0069)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0211]
@@ -81,3 +81,9 @@ This task does not depend on T-0210 (ADR-0068, BLOCKED on HQ-0021, unlanded): th
 ## Follow-ups
 
 ## Result
+
+- **DONE.** PR #142, squash-merged as `5ed027b` (branch deleted). Review: 3 rounds by a context-isolated `dev-reviewer`, final verdict Approve with no findings (round 1: three nits, round 2: one nit, all addressed). CI green on head `99cc2e9` (Python 3.11/3.14, coverage, sh, C, test presence).
+- Language: Python, as the other `check_*` modules of the layer-2 package.
+- Changes: `hilclaw/check_identity.py` (`MEMBERS`; refusal of a member no record names in moment 1, before `point`; message shows the given name only if 1-32 chars of `[A-Za-z0-9_.-]`, else `(a name not shown)`, at most 160 chars, no value), new `hilclaw/check_definition.py` (`input_schema()`, `DESCRIPTION`), `hilclaw/check_tool.py` (docstring only); tests in `tests/test_check_identity.py`, new `tests/test_check_definition.py`, `tests/test_check_tool.py`. Non-test change about 184 added lines in 3 files.
+- Local: ruff check/format clean; full pytest 20667 passed, 354 skipped; coverage of the touched modules 100%, `hilclaw/` total 99%.
+- Follow-ups: none.
