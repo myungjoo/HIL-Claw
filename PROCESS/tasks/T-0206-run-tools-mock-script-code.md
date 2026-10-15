@@ -2,7 +2,7 @@
 id: T-0206
 title: Add hilclaw/mock_run.py, the mock's operation and default script of sim.run / board.run (ADR-0066 decisions 2 to 4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, OD-13]
 dependsOn: [T-0204, T-0205]
@@ -69,3 +69,12 @@ ADR-0066 Consequences, "Code slice made possible", names the next code slice: **
 ## Follow-ups
 
 ## Result
+
+- **DONE.** PR https://github.com/myungjoo/HIL-Claw/pull/140 squash-merged into `main` as `e18264d` (`Task: T-0206` trailer on main). Branch `claude/T-0206-run-tools-mock-script-code` deleted. All six CI jobs green.
+- **Files:** new `hilclaw/mock_run.py` (123 LOC, mostly docstrings; the only non-test file) and `tests/test_mock_run.py` (102 tests). `hilclaw/mock_backend.py`, `hilclaw/mock_check.py` and their tests untouched.
+- **Module's own choices** (in its docstring): `operation(tool, script)` raises `TypeError` for a tool that is not exactly a `str` and `ValueError` for any other tool name (including `correctness.check`, `profiler.collect`); a non-callable script raises `TypeError`; checks run in that order before anything is built. One script may serve both tools and is asked `script(tool, request, hw_profile, parameters, output_path)`. The default report is built once at import with `N_MIN` from `hilclaw.harness.measurement` (`CV_MAX` not read); `default_script` returns a new `(report, None)` per call. Public names: `operation`, `default_script`.
+- **Tests (D12):** `mock_run.py` 100%, `hilclaw/` 99% locally; happy paths for both tools, errors passed through unchanged (`ToolFailure`, `KeyboardInterrupt`, `SystemExit`), refused inputs, the default answer through `ask`/`parse_report`/`judge_report`, independence from what it is asked with, ADR-0066 decision 5 test-script answers, no file written. `ruff check`/`ruff format --check` pass; full `pytest` 20298 passed, 354 skipped.
+- **Review:** 2 rounds. R1 Approve with a minor (hard-coded interval count 5 -> `N_MIN`) and a nit (`CV_MAX` absence check now walks the whole module AST), both fixed in `da131ef`; R2 Approve, no findings.
+- **Language:** Python — the analogue `mock_check.py` and the `run_*` modules it works with are Python.
+- **A-13 / D16:** no data-plane schema change, no new dependency; no `claude` was started.
+- **Follow-ups:** none from this task. Binding these operations into a backend or the default registry, and the run tool functions (OD-18 ⑲), remain out of scope.
