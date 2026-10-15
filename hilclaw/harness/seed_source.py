@@ -1,4 +1,4 @@
-"""The source of the seed of a correctness check (ADR-0021 decision 3).
+"""The form of a seed source with the property of ADR-0021 decision 3.
 
 ``ARCHITECTURE/decisions/ADR-0021-od18-correctness-check-split.md`` fixes the
 property in its decision 3, "The source, as a property and not an algorithm":
@@ -7,7 +7,9 @@ before the draw - not derived from the request, the identity, any file of the
 data plane or of the source, a clock, a counter or anything an earlier call
 left - and it is drawn over the whole range of seeds the harness accepts. The
 record leaves to the code how a source is bound and whether a test binds one of
-its own; this module is that form and nothing more.
+its own; this module is that form and nothing more. It serves the seed of a
+correctness check and, as ADR-0064 decision 2 takes the same property for it,
+the timing seed of ``sim.run`` and ``board.run``.
 
 A *seed source* is a callable without arguments that returns a seed or fails.
 A seed is what :func:`hilclaw.harness.verification.program_arguments` and
