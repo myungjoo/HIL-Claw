@@ -96,7 +96,7 @@ KIND_BUILD_DIRECTORY_UNUSABLE = "build_directory_unusable"
 #: The backend kind of ADR-0060 decision 4 for S4: a setting is one the functions refuse.
 KIND_SETTINGS_REFUSED = "settings_refused"
 
-#: The backend kind of ADR-0060 decision 4 for S5: a file of the compiled set is no regular file, or the verification program is missing.
+#: The backend kind of ADR-0060 decision 4 for S5: a file of the compiled set is no longer a regular file, or the verification program is missing.
 KIND_BUILD_INPUT_MISSING = "build_input_missing"
 
 #: The backend kind of ADR-0060 decision 4 for S6: the compiler is not found or cannot be started.
