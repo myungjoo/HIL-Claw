@@ -2,7 +2,7 @@
 id: T-0196
 title: Add one new pure module `hilclaw/run_identity.py` that renders the request side of ADR-0062 as code ahead of the tool functions - the one `step` value of `sim.run` and of `board.run`, the three required numbers and the `step` that follows from the tool - with its tests; bound to no tool, no existing file edited
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, NFR-1, OD-18]
 dependsOn: [T-0195]
@@ -109,3 +109,32 @@ Recommended public names, and no other: `STEP_SIM_RUN`, `STEP_BOARD_RUN`, `STEPS
 - (planner - document mode, §9, P1-1) The next run-tools contract slice: the result members (ADR-0061 Consequences (2), OD-13 sub-question 10 third clause; now written to `events.ndjson`, judge the A-13 reading) or the timing seed (OD-13 sub-question 7).
 
 ## Result
+Language of this section: English.
+
+DONE. PR #135, squash-merged as c7a1edb (branch claude/T-0196-run-tools-step-values-and-numbers deleted, remote and local). Source commit on the branch: 21012b1.
+
+Review: 1 round, Approve (fresh-context dev-reviewer). Findings, none blocking: (1) minor - `step_of(tool)` shares its name with `check_identity.step_of(request)` and with the `step_of` parameter of `journaled_tool.stepped_function`, which takes a request; passing it as that parameter unchanged would raise `TypeError` at a call. The docstring says it takes no request and is meant for building; a note for the tool-function task. (2) nit - a redundant type assertion inside an `except` clause of one test; left as is. (3) process - wait for the pending CI gates; all were green before the merge.
+
+Language: Python - the package and the tool functions that will use the module are Python.
+
+Interface as landed (hilclaw/run_identity.py, no imports):
+- `STEP_SIM_RUN = "sim_run_timing"`, `STEP_BOARD_RUN = "board_run_timing"` (ADR-0062 decision 3), each spelt once in the package.
+- `STEPS = (STEP_SIM_RUN, STEP_BOARD_RUN)`, a tuple; the order means nothing. Each value alone fits `journaled_tool.checked_function(step=...)`; the tuple is accepted as `steps` by `journaled_tool.stepped_function` (tested, building only).
+- `NUMBERS = ("round", "candidate", "attempt")` (ADR-0062 decision 4), the contract's own value, not imported from `check_identity`.
+- `step_of(tool)`, one positional-or-keyword parameter, no default: returns `STEP_SIM_RUN` for exactly `"sim.run"` and `STEP_BOARD_RUN` for exactly `"board.run"`, nothing else. A value whose type is not exactly `str` (str subclasses included) raises `TypeError`, checked by `type(...) is` first, so no code of the value is called (no `==`, `hash`, `str`, `repr`). Every other `str` raises `ValueError`, compared as it is (other HW tools, MCP spellings, case and whitespace variants, the empty string and the step values themselves). It is no `ToolFailure` and takes no request.
+- Messages: two constant texts built at import, each about 80 characters (bound 100), naming `"sim.run"` and `"board.run"` and showing nothing of the given value or its type. Nothing may depend on the wording.
+- No `check(request)`: ADR-0062 names no member beyond the frame's five, which the frame checks in moment 1; what a tool function does with a member no record names (`point` among them) stays a later slice's.
+
+Choices that follow the task's recommendations unchanged: the five public names, no imports (the tool names are literals rather than taken from `backends.HW_TOOLS`), `ValueError` / `TypeError`. No point where a criterion and a landed record disagreed.
+
+Existing assertions edited: none. Files: only the two new files; no existing file under `hilclaw/` or `tests/` changed.
+
+Tests: tests/test_run_identity.py, 43 tests - constants (literal, exact str, name pattern, no `.`, not a reserved kind, accepted by `journal.step_identity(step, 1, 0, 1, 1)`, none of the tool-name spellings, not in `check_identity.STEPS`), happy path, fit to the frame (no attempt / execution / round / candidate and `"execution": 0` refused as `invalid_request` without asking the source; `"round": 0` reaches the source, answered `no_data_root`), negative and hostile values, message bound and marker, argument count, branch over the whole list, purity (no file written), import set, kept-out strings, public names. Note: `journal.step_identity(step, 1, 0, 0, 0)` as the task suggested is refused (attempt 0 is no valid envelope number), so the test uses `(step, 1, 0, 1, 1)`, the form of `tests/test_check_identity.py`.
+
+Local run (Windows, Python 3.14.4, ruff 0.16.10): ruff check and ruff format --check clean; full pytest 19802 passed, 354 skipped. Coverage of hilclaw/ as the CI step computes it: lines 98.8 % (5301 statements, 65 missed), functions 99.2 % (519 of 523); hilclaw/run_identity.py 100 %. CI on the PR: all six gates green.
+
+Size: non-test diff is one new file of 85 lines (16 statements; the rest docstrings and `#:` comments).
+
+Issue #5: no comment after the ADR-0062 notice (issuecomment-6189063464) at the start; no owner answer to a runtime-acceptance HQ seen.
+
+Follow-ups: the tool functions of `sim.run` / `board.run` take their step from `run_identity` (mind finding 1 if `stepped_function` is used: its `step_of` parameter takes a request); the follow-ups listed above stay as they are.
