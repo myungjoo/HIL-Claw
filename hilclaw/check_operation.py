@@ -78,7 +78,10 @@ from hilclaw import check_answer, check_parameters, tools
 #: The kind of ADR-0045 decision 4: the tool's own, not reserved.
 KIND_OPERATION_ANSWER_INVALID = "operation_answer_invalid"
 
-_RETURNED = "the operation returned {}, which is neither a report nor one of the four conditions"
+_RETURNED = (
+    "the operation returned {}, which is neither a report"
+    " nor one of the four conditions"
+)
 _RAISED = "the operation raised {}, which is no tool failure"
 _VALUES = tuple(
     (kind, _RETURNED.format(word))
