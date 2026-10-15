@@ -89,7 +89,7 @@ STEPS = (STEP_SIM, STEP_BOARD)
 
 #: The numbers a request of this tool requires (ADR-0040 decision 5), as a builder of :mod:`hilclaw.journaled_tool` takes them.
 NUMBERS = ("round", "candidate", "attempt")
-#: The members of a request of this tool, each once; no other is taken (ADR-0069 decision 2).
+#: The members of a request of this tool; no other is taken (ADR-0069 decision 2).
 MEMBERS = ("run_id", *NUMBERS, "execution", MEMBER)
 
 _STEP_OF = {SIM: STEP_SIM, BOARD: STEP_BOARD}
@@ -107,7 +107,7 @@ _UNNAMED = (
 
 
 def check(request):
-    """Check the member list and the member ``point`` of ``request``; return ``None`` or refuse.
+    """Check the members of ``request`` and its ``point``; return ``None`` or refuse.
 
     - ``request``: the request of a call of ``correctness.check``.
 
