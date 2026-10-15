@@ -2,7 +2,7 @@
 id: T-0188
 title: Add the six build backend kinds of ADR-0060 decision 4 to `hilclaw.check_failure.BACKEND_KINDS` (code slice (2)), with the docstring sentences of `check_failure`, `check_ending` and `mock_check` this and T-0187 made less exact
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0159, T-0176, T-0187]
@@ -112,3 +112,15 @@ Existing tests that pin the two are changed; none is deleted without a successor
 - (planner, document mode, §9) The run-tool contracts of PLAN P1-1 (OD-13 sub-question ⑩), taking the build answers from ADR-0060.
 
 ## Result
+
+- **Outcome**: DONE. PR #131 (https://github.com/myungjoo/HIL-Claw/pull/131), squash-merged as `1a3abf5`; branch `claude/T-0188-check-failure-build-backend-kinds` deleted (remote and local).
+- **Checks at start**: landed check empty (no `Task: T-0188` commit, no PR); no open PR; no comment on issue #5 after the ADR-0060 notice (6184597227), so no objection and no HQ answer.
+- **Review**: 2 rounds, `dev-reviewer` (fresh context each round). R1 Approve with one nit (the `#:` comment of `KIND_BUILD_INPUT_MISSING` said "no regular file"; ADR-0060 says "no longer a regular file"), fixed in `2287dd9`; R2 Approve, no findings. Both reviewers checked (a) to (e) of the task: spelling of the eight against ADR-0056 decision 6 and the ADR-0060 decision 4 table, `build_time_limit`/`build_exit_status` not kinds, no path for a kind outside the eight to reach an end line as raised, nothing on "Do not invent".
+- **CI**: run 38685596006 on head `2287dd9`, all jobs green (Python gate 3.11 and 3.14, coverage, test presence, C gate, sh gate). Coverage gate: lines 5211/5230 = 99.63%, functions 517/517 = 100.00%. Local: `python -m pytest` 19402 passed, 354 skipped; ruff check and format check clean. The run on the first head `41cb00b` was cancelled by the push of `2287dd9`, not failed.
+- **Language**: Python, as the rest of the `hilclaw` package.
+- **Public names of `hilclaw.check_failure` as landed**: `KIND_OPERATION_FAILURE_INVALID`, `KIND_NO_KERNEL_SOURCE`, `KIND_KERNEL_SOURCE_UNREADABLE`, `KIND_BUILD_DIRECTORY_UNUSABLE` (S3), `KIND_SETTINGS_REFUSED` (S4), `KIND_BUILD_INPUT_MISSING` (S5), `KIND_COMPILER_UNAVAILABLE` (S6), `KIND_BUILD_OUTPUT_MISSING` (S9), `KIND_EXECUTABLE_UNSTARTABLE` (S10), `BACKEND_KINDS`, `ended_with`.
+- **Choices**: each of the six has a public constant with a one-line `#:` comment naming ADR-0060 decision 4 and its situation; `BACKEND_KINDS` is a `frozenset` built from the eight constants (module docstring says so). The code of `ended_with`, its three messages, its signature and order of reads are unchanged; `check_ending.py` and `mock_check.py` change in docstrings only.
+- **Docstrings edited**: `check_failure.py` module docstring (the eight kinds with S1 to S6, S9, S10; message rule ADR-0056 decision 6 / ADR-0060 decision 5; "Each of the eight names has a public constant") and `ended_with` items 1 and 2; `check_ending.py` lines 18-21 (one of the eight of ADR-0056 decision 6 and ADR-0060 decision 4); `mock_check.py` `default_script` ("never one of the four strings of the form (B) of ADR-0043 decision 4, as ADR-0060 decision 4 has it"). The `mock_check.py` module docstring (lines 40-50) had no sentence made less exact.
+- **Tests**: `tests/test_check_failure.py` (THE_SIX/THE_EIGHT; the eight as shipped; no value of `check_result.CONDITIONS` is a kind; happy, replaced/unreadable message, str subclass, subclass-instance, unchecked-message tests parametrized over the eight; near misses and non-names of the six added; public-name set extended); `tests/test_check_ending.py` (three tests over the eight, near misses incl. `build_exit_status`/`build_time_limit`); `tests/test_check_tool.py` (`ENDINGS` gains the six as raised and `settings_refuse`, `executable_unstartables`, `build_exit_status`, `build_time_limit` as `operation_failure_invalid`; the sim/board end-line test over the eight; the default-script test also checks none of the six reaches the log); `tests/test_mock_check.py` (the pass-through test of a raised tool failure now includes `compiler_unavailable`; no assertion was made false).
+- **Less exact sentences left in unedited modules**: `hilclaw/check_tool.py` module docstring, "By the records such a message shows no path (ADR-0056 decision 6)" - true of the two kinds of ADR-0056 only; the message rule of the six is ADR-0060 decision 5 (reviewer R1). No such sentence found in `check_operation.py` or `check_seed.py`.
+- **Follow-ups**: (code mode, small) bring the `check_tool.py` sentence above in line with ADR-0060 decision 5. The operation of `cpu_standin` that raises the six stays blocked (OD-14, OD-18 ⑱ (나)(라)(마)).
