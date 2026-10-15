@@ -12,6 +12,7 @@ from hilclaw import check_identity, journal, journaled_tool, tools
 from hilclaw.check_identity import (
     BOARD,
     MEMBER,
+    MEMBERS,
     NUMBERS,
     SIM,
     STEP_BOARD,
@@ -23,6 +24,8 @@ from hilclaw.check_identity import (
 
 MARKER = "zq7-marker-zq7"
 MESSAGE_LIMIT = 100
+UNNAMED_LIMIT = 160
+NOT_SHOWN = "(a name not shown)"
 FRAME = {"run_id": "r1", "round": 3, "candidate": 2, "attempt": 1, "execution": 1}
 ANOTHER_VALUE = [
     "Sim",
@@ -48,6 +51,44 @@ ANOTHER_VALUE = [
     b"sim",
 ]
 NO_OBJECT = [None, [], [("point", "sim")], "sim", '{"point": "sim"}', 0, 1]
+UNNAMED = [
+    "draws",
+    "seed",
+    "tolerance",
+    "m",
+    "k",
+    "n",
+    "shape",
+    "op_signature",
+    "step",
+    "hw_profile",
+    "data_root",
+    "Point",
+    "POINT",
+    "run-id",
+    "Execution",
+    "flags",
+    "time_limit",
+    "a" * 32,
+]
+NOT_SHOWABLE = [
+    "",
+    "point ",
+    " point",
+    "dra\nws",
+    "draws\n",
+    "\x00",
+    "seed\x00",
+    "\x1b[31m",
+    "a b",
+    "draws'",
+    'draws"',
+    "p\u00f6int",
+    "\u202epoint",
+    "a" * 33,
+    MARKER * 5000,
+]
+UNNAMED_VALUES = [None, 0, 1000, 1.5, True, "sim", MARKER, [MARKER], {MARKER: MARKER}]
 
 
 class Called(Exception):
@@ -109,21 +150,31 @@ class Mapping(dict):
     pass
 
 
-def refusal(function, request):
+def refusal(function, request, start="point", limit=MESSAGE_LIMIT):
     with pytest.raises(tools.ToolFailure) as caught:
         function(request)
     error = caught.value
     assert type(error) is tools.ToolFailure
     assert error.kind == tools.KIND_INVALID_REQUEST == "invalid_request"
     assert type(error.message) is str
-    assert error.message.startswith("point")
-    assert 0 < len(error.message) <= MESSAGE_LIMIT
+    assert error.message.startswith(start)
+    assert 0 < len(error.message) <= limit
     return error.message
 
 
 def refused_alike(request):
     message = refusal(check, request)
     assert refusal(step_of, request) == message
+    return message
+
+
+def unnamed_alike(request, start=NOT_SHOWN):
+    message = refusal(check, request, start + ": ", UNNAMED_LIMIT)
+    assert refusal(step_of, request, start + ": ", UNNAMED_LIMIT) == message
+    assert message.isascii() and message.isprintable()
+    assert MARKER not in message
+    for member in MEMBERS:
+        assert member in message
     return message
 
 
@@ -163,12 +214,17 @@ def test_a_step_value_is_a_name_formed_from_its_point(step, literal, point):
     assert journal.step_identity(step, 1, 0, 1, 1).step == step
 
 
-def test_the_step_values_and_the_numbers_are_tuples():
+def test_the_step_values_the_numbers_and_the_members_are_tuples():
     assert type(STEPS) is tuple
     assert STEPS == (STEP_SIM, STEP_BOARD)
     assert STEP_SIM != STEP_BOARD
     assert type(NUMBERS) is tuple
     assert NUMBERS == ("round", "candidate", "attempt")
+    assert type(MEMBERS) is tuple
+    assert MEMBERS == ("run_id", "round", "candidate", "attempt", "execution", "point")
+    assert all(type(member) is str for member in MEMBERS)
+    assert len(set(MEMBERS)) == len(MEMBERS)
+    assert set(MEMBERS) == set(FRAME) | {MEMBER}
 
 
 @pytest.mark.parametrize(("point", "step"), [("sim", STEP_SIM), ("board", STEP_BOARD)])
@@ -182,14 +238,85 @@ def test_a_request_with_a_valid_point(point, step):
 
 
 @pytest.mark.parametrize(("point", "step"), [("sim", STEP_SIM), ("board", STEP_BOARD)])
-def test_no_other_member_is_looked_at(point, step):
+def test_no_value_of_another_named_member_is_looked_at(point, step):
     alone = {"point": point}
-    unnamed = {"point": point, "example_member": [MARKER], "POINT": "x", "step": "y"}
-    hostile = {"point": point, "example_member": Hostile(), "run_id": Hostile()}
-    for request in (alone, unnamed, hostile):
+    hostile = {"point": point, "run_id": Hostile(), "execution": HostileText("1")}
+    for request in (alone, hostile):
         assert check(request) is None
         assert step_of(request) == step
     assert alone == {"point": point}
+
+
+@pytest.mark.parametrize("value", UNNAMED_VALUES, ids=repr)
+@pytest.mark.parametrize("name", UNNAMED)
+def test_a_member_no_record_names_is_refused_whatever_its_value(name, value):
+    for point in (SIM, BOARD):
+        request = FRAME | {"point": point, name: value}
+        before = copy.deepcopy(request)
+        unnamed_alike(request, name)
+        assert request == before
+
+
+@pytest.mark.parametrize("name", NOT_SHOWABLE, ids=lambda name: repr(name)[:40])
+def test_a_name_that_is_not_shown_is_replaced_by_the_fixed_text(name):
+    message = unnamed_alike(FRAME | {"point": SIM, name: None})
+    assert "\n" not in message and "\x00" not in message
+
+
+def test_the_message_names_a_short_name_as_it_is_and_is_bounded():
+    message = unnamed_alike({"point": SIM, "a" * 32: 1}, "a" * 32)
+    assert len(message) <= UNNAMED_LIMIT
+    assert unnamed_alike({"point": SIM, "a" * 33: 1}).startswith(NOT_SHOWN)
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    [Hostile(), HostileText("x"), HostileText("sim")],
+    ids=["any", "str", "sim"],
+)
+def test_no_code_of_a_hostile_value_of_an_unnamed_member_is_called(hostile):
+    unnamed_alike(FRAME | {"point": SIM, "draws": hostile}, "draws")
+    unnamed_alike({"Point": hostile}, "Point")
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        HostileKey,
+        lambda: HostileTextKey("point"),
+        lambda: HostileTextKey("draws"),
+        lambda: Text("point"),
+        lambda: Text("draws"),
+        lambda: 1,
+        lambda: None,
+        lambda: b"point",
+        lambda: ("point",),
+    ],
+    ids=[
+        "any",
+        "hostile-point",
+        "hostile-draws",
+        "point",
+        "draws",
+        "int",
+        "none",
+        "bytes",
+        "tuple",
+    ],
+)
+def test_a_key_that_is_not_exactly_a_str_is_a_member_no_record_names(key):
+    unnamed_alike({key(): "sim"})
+    unnamed_alike(FRAME | {key(): None})
+
+
+def test_the_first_fault_in_the_stated_order_is_named():
+    assert unnamed_alike(FRAME | {"Point": "sim"}, "Point")
+    assert unnamed_alike(FRAME | {"point": "Sim", "draws": 1}, "draws")
+    assert unnamed_alike(FRAME | {"point": None, "seed": 7}, "seed")
+    assert unnamed_alike({"draws": 1, "point": "sim", "seed": 7}, "draws")
+    assert unnamed_alike({"seed": 7, "point": "sim", "draws": 1}, "seed")
+    assert unnamed_alike({HostileKey(): 1, "draws": 1}, NOT_SHOWN)
+    refused_alike(Mapping(draws=1))
 
 
 def test_requests_that_differ_in_anything_else_have_the_same_step():
@@ -221,10 +348,12 @@ def test_the_frame_takes_the_check_and_refuses_before_the_source(step):
     )
     refusal(function, dict(FRAME))
     refusal(function, FRAME | {"point": "Sim"})
+    refusal(function, FRAME | {"point": "sim", "draws": 1000}, "draws: ", UNNAMED_LIMIT)
+    refusal(function, FRAME | {"Point": "sim"}, "Point: ", UNNAMED_LIMIT)
     assert asked == []
 
 
-@pytest.mark.parametrize("request_", [{}, dict(FRAME), {"Point": "sim"}, {"sim": 1}])
+@pytest.mark.parametrize("request_", [{}, dict(FRAME), {"run_id": "r1"}])
 def test_a_request_without_the_member_is_refused(request_):
     before = copy.deepcopy(request_)
     refused_alike(request_)
@@ -258,14 +387,14 @@ def test_no_code_of_a_hostile_value_is_called(hostile):
 
 @pytest.mark.parametrize("key", [HostileKey, lambda: HostileTextKey("point")])
 def test_no_code_of_a_hostile_key_is_called(key):
-    refused_alike({key(): "sim"})
-    refused_alike({"run_id": "r1", key(): "board", "execution": 1})
+    unnamed_alike({key(): "sim"})
+    unnamed_alike({"run_id": "r1", key(): "board", "execution": 1})
 
 
 def test_a_key_that_is_a_subclass_of_str_is_no_member():
     request = {Text("point"): "sim"}
     assert "point" in request
-    refused_alike(request)
+    unnamed_alike(request)
 
 
 @pytest.mark.parametrize("request_", NO_OBJECT, ids=repr)
@@ -307,12 +436,14 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
     refused_alike({"point": "Sim"})
     refused_alike({"point": None})
     refused_alike(None)
+    unnamed_alike(FRAME | {"point": SIM, "draws": 1}, "draws")
+    unnamed_alike({"point": SIM, "x\ny": None})
     assert list(tmp_path.iterdir()) == []
 
 
-def test_module_imports_the_tools_only_and_has_no_entry():
+def test_module_imports_re_and_the_tools_only_and_has_no_entry():
     own = Path(check_identity.__file__)
-    assert imported_modules(own) == {"hilclaw", "hilclaw.tools"}
+    assert imported_modules(own) == {"re", "hilclaw", "hilclaw.tools"}
     assert not hasattr(check_identity, "main")
     assert "__main__" not in own.read_text(encoding="utf-8")
 
@@ -337,10 +468,12 @@ def test_the_text_and_the_code_hold_none_of_the_kept_out_strings():
         "operation_failure_invalid",
         "step_open",
         "invalid_request",
-        "run_id",
-        "execution",
     ):
         assert not [string for string in code if kept_out in string], kept_out
+    for spelt_once in ("run_id", "execution"):
+        assert [string for string in code if spelt_once in string] == [
+            f'"{spelt_once}"'
+        ]
     for spelt_once in ("correctness_check_sim", "correctness_check_board"):
         spelt = [string for string in code if spelt_once in string]
         assert spelt == [f'"{spelt_once}"']
@@ -360,6 +493,7 @@ def test_public_names_of_the_module_and_no_default():
         "STEP_BOARD",
         "STEPS",
         "NUMBERS",
+        "MEMBERS",
         "check",
         "step_of",
     }

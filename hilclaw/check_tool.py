@@ -6,9 +6,9 @@ rules of its moments, and ADR-0056 decision 3 is the rule of the output
 path. :func:`tool_function` joins the modules that render them, over
 :func:`hilclaw.hw_tool.stepped_tool_function`:
 
-1. The request is checked: the frame, then ``point``
+1. The request is checked: the frame, then the member list and ``point``
    (:func:`hilclaw.check_identity.check`), and the ``step`` follows from
-   ``point`` (ADR-0040 decisions 3 to 5).
+   ``point`` (ADR-0040 decisions 3 to 5, ADR-0069 decisions 2 and 3).
 2. The data root, the layout version stamp and the lookup, as
    :mod:`hilclaw.hw_tool` has them.
 3. For an identity with no line ``instance.json`` is read once, by
@@ -48,10 +48,13 @@ Choices that are this module's own and no rule of a record:
   ``attempt_artefact`` accepts.
 
 What the module does not do: it registers nothing and defines no tool. The
-member list of a request is open (ADR-0040 decision 5), so the function is
-not yet the tool a registry offers: it has no input schema and no
-description, looks at no member but ``point`` and the four the output path is
-formed from, and hands the request on as the caller gave it. Of the kernel of
+member list of a request is closed at six (ADR-0069 decisions 2 and 3), and
+the input schema and the description of the tool are those of
+:mod:`hilclaw.check_definition`, which this module does not import. The
+function is still not the tool a registry offers, since no backend, source of
+seeds or predicate "covered" is bound. It looks at no value but that of
+``point`` and of the four the output path is formed from, and hands the
+request on as the caller gave it. Of the kernel of
 the attempt it forms the output path and hands it on; it reads nothing there,
 does not test whether the path or anything above it exists, and composes no
 message that holds the path. It says nothing of flags or of time limits. It
