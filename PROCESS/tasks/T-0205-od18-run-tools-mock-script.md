@@ -2,7 +2,7 @@
 id: T-0205
 title: Record ADR-0066, the mock's side of sim.run / board.run - how the mock's operation asks its script, what the default script answers and the rule of its report (ADR-0061 Consequences item (5), OD-18)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18, OD-13]
 dependsOn: [T-0191, T-0195, T-0199, T-0201, T-0203, T-0204]
@@ -75,3 +75,15 @@ This is part of OD-18, a design-level OD, not owner-only (DRIVER §9: owner-only
 ## Follow-ups
 
 ## Result
+
+- **DONE.** Landed on `main` as `edf70d5` (doc mode, direct push after rebase on `origin/main` at `15984d5`; one squashed commit with `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0205`, `Co-Authored-By`). Branch `claude/T-0205-od18-run-tools-mock-script` deleted locally and on origin. No PR.
+- **Review:** 7 rounds with a fresh-context `dev-reviewer`. R1-R5 approved with minors/nits, each addressed. R6 asked for changes: a not-converged report that reads neither `n_min` nor `cv_max` does exist, so the weighing in decision 4 was rewritten. R7 approved with one minor, left open (Follow-ups).
+- **What ADR-0066 decides:** the mock's operation asks its script once per call with the called tool and the four things of ADR-0065 decision 2, as they are; the answer is passed on unseen. The default script answers both tools alike and depends on nothing it is asked with: form (A), with the report `resolution_ns 1`, `n_min` x `interval_ns 1000000`, `stop converged`, and no figure. `n_min` is read from the source commit's constant (ADR-0009 decision 7, ADR-0061 decision 3). It never gives (B), a tool failure or an answer of neither form. No sub-question registered.
+- **A-13:** no data-plane schema change. No member is added or changed, ADR-0063 decision 9 is unchanged, and no `error.kind` value is added or given a place.
+- **Document checks:** all 62 relative links in the added lines resolve (`#od-18` included). `git diff --stat 15984d5 edf70d5` shows only the four `touchesFiles` (169 insertions, 2 deletions; ADR 164 lines). `git diff --check` is clean. The OD register has 30 rows before and after. ADR-0066 was still free on `origin/main` at push time.
+- **Coverage re-check:** StandardScenarios got the 2026-10-15 11th passage and a heading clause. There was no verdict change and no gap.
+- **Owner notice (DRIVER §9):** https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6194231066 (objection window until 2026-10-22).
+- **D16:** no `claude` was started.
+- **Follow-ups:**
+  - R7 minor: ADR-0066 decision 4 (iii) says "None exists" for a converged report that reads neither constant; under the standard applied to (ii), such a report fitted to a narrow window of `cv_max` around 0.05 can be built. The sentence and the "(존재하지 않는다)" in the OpenDecisionProposals bullet should say it is tuned to `cv_max`'s value. The choice of (i) is unaffected.
+  - Code slice: the mock's operation and default script per ADR-0066.
