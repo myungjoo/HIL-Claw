@@ -2,7 +2,7 @@
 id: T-0195
 title: Write the second record of the run tools' contract (`sim.run` / `board.run`, first case and mock) - the identity of a call - whether each tool is journaled, its `step` values and the meaning of `execution`, the run and identity members of a request, the `spend` of an end line and the order of a call (ADR-0061 Consequences item (1), in the manner of ADR-0040) - and reflect it in the ARCHITECTURE documents; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, NFR-1, NFR-2, C-4, OD-18, OD-17, "#5 D6"]
 dependsOn: [T-0191, T-0193]
@@ -96,3 +96,11 @@ Known risk, accepted: ADR-0038 (until 2026-10-19), ADR-0052, ADR-0053, ADR-0055,
 - (planner, small code task, any time) The `parse_report` docstring nit of `hilclaw/harness/timing.py` from the T-0194 round-2 review.
 
 ## Result
+- Landed as 02b35d1 on main (document mode, no PR; trailers `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0195`); branch deleted on the remote and locally.
+- Review: rounds 1, 2 and 4 approved with minor/nit findings, all fixed; rounds 3, 5 and 6 asked for changes (main one in round 5: the second half of the ADR-0011 definition does not hold at the mock, by ADR-0016 decision 5 (e)); round 7 approved. Two minor and two nit findings of round 7 left unfixed (an eighth round would exceed the cap) and carried to Follow-ups.
+- ADR-0062: both `sim.run` and `board.run` are journaled (provisional for the local configuration and the mock until the recovery of an open step is decided, and for `sim.run` where the sim point is not the board point's run); one `step` value per tool (`sim_run_timing`, `board_run_timing`); `execution` counts the timing runs of one attempt at the tool's point, never pooled; a request requires `run_id`, `round`, `candidate`, `attempt`, `execution` (list not closed, no member states the point); end line `spend` is `{}`; order of a call fixed (seed and output path before the operation, place relative to step 5 not decided).
+- Registered OD-18 sub-question 20 (which of several ended timing runs of one attempt at one point counts, and what stops re-measuring).
+- Document checks: links resolve; diff limited to the 4 touchesFiles; OD register 30 rows before and after, only the OD-18 row changed. Coverage re-check: no verdict change, no gap.
+- Owner notice on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6189063464 (objection window until 2026-10-22).
+- Follow-ups: (integrator, round-7 doc nits) ADR-0062 decision 2 should scope its citation of ADR-0061 decisions 2 and 5 for the board target (use FR-1/FR-10 there); StandardScenarios 6th check (3) "어느 대상에서든" should be scoped to the ADR-0061 decision 1 runs; (1) there should also mention `execution`; Limit 5's ADR-0038 decision 8 cite should be marked "same reasoning".
+- Follow-ups: (planner) result members (ADR-0061 Consequences (2), OD-13 sub-question 10 third clause; now written to `events.ndjson`, so judge the A-13 reading there) or the timing seed (OD-13 sub-question 7); code slice now possible: the run tools' identity module (two step values, check of the five members); the `parse_report` docstring nit from T-0194.
