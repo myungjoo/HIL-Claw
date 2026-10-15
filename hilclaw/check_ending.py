@@ -7,7 +7,7 @@ are the rules. The module puts :func:`hilclaw.check_operation.ask` and
 and so renders the part of the rows of the table of ADR-0047 decision 8 that
 needs no log:
 
-* The operation returned a report or one of the two conditions:
+* The operation returned a report or one of the four conditions:
   :func:`carry_out` returns the result (ADR-0040 decision 7; ADR-0042
   decision 3; ADR-0043 decision 4).
 * It returned a value of neither form, or raised an error that is no tool

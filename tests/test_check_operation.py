@@ -222,6 +222,10 @@ NEITHER_FORM = [
     None,
     "report_form",
     "check_value",
+    "build_time_limit ",
+    "BUILD_EXIT_STATUS",
+    "build_exit",
+    "build_status",
     "",
     0,
     True,
@@ -397,8 +401,10 @@ def test_a_report_with_one_element_off_fails():
     assert result == expected(report)
 
 
-@pytest.mark.parametrize("condition", ["time_limit", "exit_status"])
-def test_one_of_the_two_strings_gives_the_broken_result(condition):
+@pytest.mark.parametrize(
+    "condition", ["time_limit", "exit_status", "build_time_limit", "build_exit_status"]
+)
+def test_one_of_the_four_strings_gives_the_broken_result(condition):
     result = asked(Recording(answer=condition))
     assert result["outcome"] == "broken"
     assert result["condition"] == condition
@@ -485,6 +491,17 @@ def test_a_returned_value_is_named_by_a_word_of_the_module_only():
     assert invalid(Recording(answer="pass")).message == messages[str]
     assert invalid(Recording(answer="x" * 10_000)).message == messages[str]
     assert invalid(Recording(answer=[MARKER])).message == messages[list]
+
+
+@pytest.mark.parametrize(
+    "answer", ["build_exit", "build_time_limit ", "report_form", "check_value"]
+)
+def test_a_returned_str_near_a_condition_is_shown_by_its_type_only(answer):
+    message = invalid(Recording(answer=answer)).message
+    assert message == invalid(Recording(answer="pass")).message
+    assert "four conditions" in message
+    assert answer.strip() not in message
+    assert "build" not in message
 
 
 @by_index(RAISED)

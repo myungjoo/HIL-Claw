@@ -123,6 +123,11 @@ NEITHER_FORM = [
     "time_limit ",
     " time_limit",
     "timeout",
+    "build_time_limit ",
+    "BUILD_EXIT_STATUS",
+    "build_exit",
+    "build_status",
+    "build_",
     None,
     0,
     1,
@@ -136,6 +141,8 @@ NEITHER_FORM = [
     bytearray(GOOD),
     memoryview(GOOD),
     Text("time_limit"),
+    Text("build_time_limit"),
+    Text("build_exit_status"),
     Octets(GOOD),
 ]
 
@@ -202,8 +209,11 @@ def test_the_smallest_check_is_judged():
     assert_sound(result, COMPLETED_MEMBERS)
 
 
-@pytest.mark.parametrize("condition", ["time_limit", "exit_status"])
-def test_one_of_the_two_strings_gives_the_broken_result(condition):
+FORM_B = ["time_limit", "exit_status", "build_time_limit", "build_exit_status"]
+
+
+@pytest.mark.parametrize("condition", FORM_B)
+def test_one_of_the_four_strings_gives_the_broken_result(condition):
     result = from_answer(condition, **CALL)
     assert result == {
         "outcome": "broken",
@@ -218,8 +228,9 @@ def test_one_of_the_two_strings_gives_the_broken_result(condition):
     assert "seed" not in result
 
 
-def test_the_two_strings_are_the_first_two_conditions_of_the_builder():
-    assert check_result.CONDITIONS[:2] == ("time_limit", "exit_status")
+def test_the_four_strings_are_the_conditions_an_operation_finds():
+    assert set(check_result.CONDITIONS[:4]) == set(FORM_B)
+    assert check_result.CONDITIONS[4:] == ("report_form", "check_value")
 
 
 def test_time_limit_gives_the_third_example_of_the_record():
@@ -239,6 +250,8 @@ def test_time_limit_gives_the_third_example_of_the_record():
         GOOD[: -len(END_MARK)] + b"END\n",
         b"time_limit",
         b"exit_status",
+        b"build_time_limit",
+        b"build_exit_status",
     ],
 )
 def test_a_byte_string_of_any_content_is_a_report(report):
@@ -256,10 +269,11 @@ def test_a_report_with_a_wrong_check_value_is_broken_by_it():
     assert_sound(result, BROKEN_MEMBERS)
 
 
+@pytest.mark.parametrize("condition", FORM_B)
 @pytest.mark.parametrize("seed", [-1, 2**64, None, "7", True])
-def test_the_seed_is_not_checked_beside_a_condition(seed):
-    result = from_answer("exit_status", **SMALL, seed=seed)
-    assert result == check_result.broken("exit_status", **SMALL)
+def test_the_seed_is_not_checked_beside_a_condition(seed, condition):
+    result = from_answer(condition, **SMALL, seed=seed)
+    assert result == check_result.broken(condition, **SMALL)
 
 
 @pytest.mark.parametrize(
@@ -273,8 +287,11 @@ def test_an_answer_of_neither_form_makes_no_result(answer):
     assert type(answer).__name__ in str(error)
 
 
+FOUR = "('build_time_limit', 'build_exit_status', 'time_limit', 'exit_status')"
+
+
 def test_the_message_names_the_type_and_shows_a_str():
-    expected = "answer: must be bytes or one of ('time_limit', 'exit_status'), got "
+    expected = f"answer: must be bytes or one of {FOUR}, got "
     assert str(neither_form(None, **CALL)) == expected + "NoneType"
     assert str(neither_form("pass", **CALL)) == expected + "the str 'pass'"
     assert str(neither_form(Text("time_limit"), **CALL)) == expected + "Text"
@@ -282,7 +299,7 @@ def test_the_message_names_the_type_and_shows_a_str():
 
 
 def test_the_message_stays_short_and_holds_no_byte_of_a_report():
-    expected = "answer: must be bytes or one of ('time_limit', 'exit_status'), got "
+    expected = f"answer: must be bytes or one of {FOUR}, got "
     long = str(neither_form("x" * 10_000, **CALL))
     assert long.startswith(expected + "the str 'xxx")
     assert len(long) < len(expected) + 50
@@ -319,7 +336,7 @@ def test_a_bad_argument_beside_a_report_raises_what_the_judging_raises(name, val
 
 
 @pytest.mark.parametrize(("name", "value", "expected"), BAD_BESIDE_A_CONDITION)
-@pytest.mark.parametrize("condition", ["time_limit", "exit_status"])
+@pytest.mark.parametrize("condition", FORM_B)
 def test_a_bad_argument_beside_a_condition_raises_what_the_builder_raises(
     condition, name, value, expected
 ):
@@ -359,7 +376,9 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize("answer", [GOOD, failing_report(), b"", "exit_status"])
+@pytest.mark.parametrize(
+    "answer", [GOOD, failing_report(), b"", "exit_status", "build_exit_status"]
+)
 def test_equal_arguments_give_equal_and_distinct_results(answer):
     arguments = copy.deepcopy(CALL)
     first = from_answer(answer, **arguments)
@@ -376,6 +395,8 @@ def test_equal_arguments_give_equal_and_distinct_results(answer):
     assert second == kept
     assert arguments == CALL
     assert check_result.CONDITIONS == (
+        "build_time_limit",
+        "build_exit_status",
         "time_limit",
         "exit_status",
         "report_form",

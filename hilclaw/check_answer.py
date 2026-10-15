@@ -2,14 +2,15 @@
 
 ``ARCHITECTURE/decisions/ADR-0043-od18-correctness-check-operation-form.md``
 fixes what an operation returns (decision 4): a byte string, which is the
-report, or one of the two strings ``"time_limit"`` and ``"exit_status"``,
-which says that there is no report and which condition failed. An answer of
-neither form "is never made into a result" (decision 5). This module renders
-the two decisions:
+report, or a string that says that there is no report and which condition
+failed. ADR-0060 decision 4 amends the second form to one of the four
+strings ``"time_limit"``, ``"exit_status"``, ``"build_time_limit"`` and
+``"build_exit_status"``. An answer of neither form "is never made into a
+result" (ADR-0043 decision 5). This module renders the decisions:
 
 * :func:`from_answer`: the result for one answer. A byte string is judged by
   :func:`hilclaw.check_judging.from_report`, whatever its bytes are; one of
-  the two strings becomes a broken result by
+  the four strings becomes a broken result by
   :func:`hilclaw.check_result.broken`, with the string as its ``condition``
   and without any judging.
 * :class:`NeitherFormError`: raised for an answer of neither form.
@@ -21,8 +22,9 @@ Choices that are this module's own and no rule of a record:
   exactly ``str``, as :func:`hilclaw.check_result.broken` takes its
   condition. A ``bytearray``, a ``memoryview`` and an instance of a subclass
   of ``bytes`` or of ``str`` are neither form.
-* The two strings are the first two items of
-  :data:`hilclaw.check_result.CONDITIONS` and are compared as they are. The
+* The four strings are the first four items of
+  :data:`hilclaw.check_result.CONDITIONS`, the values found by the operation
+  in the table of ADR-0060 decision 4, and are compared as they are. The
   other two items are values of ``condition`` that only the judging of a
   report finds; as an answer they are neither form.
 * An answer of neither form raises :class:`NeitherFormError`, a class of this
@@ -34,7 +36,7 @@ Choices that are this module's own and no rule of a record:
   at, so an answer of neither form raises :class:`NeitherFormError` also when
   another argument would be refused. The checks that follow are those of the
   function called and are made in its order.
-* Beside one of the two strings ``seed`` is neither used nor checked: nothing
+* Beside one of the four strings ``seed`` is neither used nor checked: nothing
   is judged, and no result holds a seed (ADR-0042 decision 6).
 
 The form is established, not the truth (ADR-0043 decision 5 and Limits): an
@@ -55,15 +57,16 @@ import reprlib
 
 from hilclaw import check_judging, check_result
 
-_NO_REPORT = check_result.CONDITIONS[:2]
+_NO_REPORT = check_result.CONDITIONS[:4]
 
 
 class NeitherFormError(Exception):
     """The answer has neither form of ADR-0043 decision 4, so no result was made.
 
     Raised by :func:`from_answer` for a value that is neither exactly
-    ``bytes`` nor exactly one of the two strings ``"time_limit"`` and
-    ``"exit_status"``. The message names the type of the answer and, for a
+    ``bytes`` nor exactly one of the four strings ``"time_limit"``,
+    ``"exit_status"``, ``"build_time_limit"`` and ``"build_exit_status"``
+    (ADR-0060 decision 4). The message names the type of the answer and, for a
     ``str``, shows it shortened by ``reprlib``; it holds no byte of a report.
     The instance does not hold the answer and has no attribute beyond those
     of :class:`Exception`.
@@ -81,18 +84,19 @@ def from_answer(answer, *, m, k, n, draws, seed, rtol, atol):
     The form of ``answer`` is established first:
 
     1. Exactly ``bytes``: the answer is a report, also when it is empty,
-       short, long or malformed, or spells one of the two strings. The result
+       short, long or malformed, or spells one of the four strings. The result
        is that of :func:`hilclaw.check_judging.from_report` with all eight
        arguments. What each of the other arguments must be, the order of
        their checks and what is raised are those of that function and are
        passed on unchanged.
-    2. Exactly a ``str`` that is ``"time_limit"`` or ``"exit_status"``: the
-       result is that of :func:`hilclaw.check_result.broken` with the answer
+    2. Exactly a ``str`` that is ``"time_limit"``, ``"exit_status"``,
+       ``"build_time_limit"`` or ``"build_exit_status"``: the result is
+       that of :func:`hilclaw.check_result.broken` with the answer
        as its condition and ``m``, ``k``, ``n``, ``draws``, ``rtol`` and
        ``atol``. Nothing is judged, and ``seed`` is neither used nor checked.
        What that function raises for the six is passed on unchanged.
     3. Anything else: :class:`NeitherFormError`, whatever the other arguments
-       are. Nothing is returned then. A ``str`` that differs from the two in
+       are. Nothing is returned then. A ``str`` that differs from the four in
        any character, ``"report_form"`` and ``"check_value"`` included, is
        not made into a broken result.
 

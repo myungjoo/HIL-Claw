@@ -186,10 +186,22 @@ def imported_modules(path):
     return found
 
 
-NEITHER_FORM = [None, "pass", "", 0, True, 1.5, [MARKER], {MARKER: MARKER}, object()]
+NEITHER_FORM = [
+    None,
+    "pass",
+    "build_exit",
+    "",
+    0,
+    True,
+    1.5,
+    [MARKER],
+    {MARKER: MARKER},
+    object(),
+]
 NEITHER_FORM_IDS = [
     "none",
     "word",
+    "near-build-value",
     "empty",
     "int",
     "bool",
@@ -329,8 +341,10 @@ def test_a_report_with_one_element_off_fails():
     assert result == asked(Recording(answer=report))
 
 
-@pytest.mark.parametrize("condition", ["time_limit", "exit_status"])
-def test_one_of_the_two_strings_gives_the_broken_result(condition):
+@pytest.mark.parametrize(
+    "condition", ["time_limit", "exit_status", "build_time_limit", "build_exit_status"]
+)
+def test_one_of_the_four_strings_gives_the_broken_result(condition):
     result = carried(Recording(answer=condition))
     assert result["outcome"] == "broken"
     assert result["condition"] == condition
