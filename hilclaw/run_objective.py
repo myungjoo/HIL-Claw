@@ -25,8 +25,8 @@ Choices that are this module's own and no rule of a record:
   and is never taken as covered: one that is neither ``None`` nor exactly a
   ``dict``; a ``dict`` whose members are not exactly ``objectives`` and
   ``constraints``; either of those not exactly a ``list``; an entry of either
-  that is not exactly a ``dict``; a constraint entry without a ``type`` that is
-  exactly a ``str``. These are raised before coverage is looked at.
+  that is not exactly a ``dict`` or has no ``type`` that is exactly a
+  ``str``. These are raised before coverage is looked at.
 * Of a covered value, a ``memory_ceiling`` entry whose members are not exactly
   ``type`` and ``bound``, or two such entries, are :class:`TypeError`; a
   ``bound`` that is not exactly an ``int`` is :class:`TypeError` and one below
@@ -64,7 +64,7 @@ KINDS = (KIND_OBJECTIVE_NOT_STATED, KIND_OBJECTIVE_NOT_COVERED)
 
 _MESSAGES = {
     KIND_OBJECTIVE_NOT_STATED: "objective: the instance record of the run states none, and nothing stands in for it",
-    KIND_OBJECTIVE_NOT_COVERED: "objective: the stated objectives or constraints are ones the run tools have no sample form or verdict for",
+    KIND_OBJECTIVE_NOT_COVERED: "objective: the stated objectives or constraints are not covered by the contract of the run tools",
 }
 
 _SAMPLE_FORM = "interval"
@@ -123,10 +123,8 @@ def admit(objective):
             raise TypeError(f"objective.{name}: must be exactly a list")
         if any(type(entry) is not dict for entry in entries):
             raise TypeError(f"objective.{name}: each entry must be exactly a dict")
-    if any(type(entry.get("type")) is not str for entry in constraints):
-        raise TypeError(
-            "objective.constraints: each entry must have a type that is exactly a str"
-        )
+        if any(type(entry.get("type")) is not str for entry in entries):
+            raise TypeError(f"objective.{name}: each entry must have a str type")
     if objectives != [_COVERED_OBJECTIVE] or any(
         entry["type"] != _CEILING for entry in constraints
     ):

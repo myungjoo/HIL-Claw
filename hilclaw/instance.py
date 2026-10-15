@@ -1146,8 +1146,9 @@ def objective_of(data_root, run_id):
     nothing. Raises what :func:`read` raises, so no objective and no
     constraint is returned, and none is inferred, for a missing, unreadable
     or invalid file or one of another version (ADR-0053 decision 5). It
-    raises no tool failure: what a call of a run tool answers when no target
-    is stated, or one that is not covered, is ADR-0061 decision 4.
+    raises no tool failure: for the run tools, what a call answers when no
+    objective is stated or the stated one is not covered is ADR-0061
+    decision 4; for any other tool it is not said (ADR-0053 decision 7).
     """
     return read(data_root, run_id).objective
 

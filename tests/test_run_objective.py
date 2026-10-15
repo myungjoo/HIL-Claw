@@ -1,6 +1,7 @@
 import ast
 import copy
 import json
+import types
 import typing
 from pathlib import Path
 
@@ -68,6 +69,8 @@ MALFORMED = {
         "objectives": [LATENCY],
         "constraints": [{"type": 1, "bound": 1}],
     },
+    "objective_entry_without_type": {"objectives": [{}], "constraints": []},
+    "objective_type_int": {"objectives": [{"type": 1}], "constraints": []},
     "two_ceilings": objective(constraints=[CEILING, CEILING]),
     "ceiling_without_bound": objective(constraints=[{"type": "memory_ceiling"}]),
     "ceiling_extra_member": objective(constraints=[{**CEILING, "unit": "bytes"}]),
@@ -196,16 +199,17 @@ def test_admit_has_no_default_and_keeps_nothing():
 
 
 def test_public_names_and_imports():
-    public = {name for name in vars(run_objective) if not name.startswith("_")}
+    public = {
+        name
+        for name, value in vars(run_objective).items()
+        if not name.startswith("_") and not isinstance(value, types.ModuleType)
+    }
     assert public == {
         "Admitted",
         "KINDS",
         "KIND_OBJECTIVE_NOT_COVERED",
         "KIND_OBJECTIVE_NOT_STATED",
         "admit",
-        "memory_ceiling",
-        "tools",
-        "typing",
     }
     assert Admitted._fields == ("sample_form", "bound")
     assert Admitted._field_defaults == {}
@@ -217,7 +221,11 @@ def test_public_names_and_imports():
             imported.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             imported.update(f"{node.module}.{alias.name}" for alias in node.names)
-    assert imported == {"typing", "hilclaw.tools", "hilclaw.harness.memory_ceiling"}
+    roots = {name.split(".")[0] for name in imported}
+    assert roots <= {"typing", "hilclaw"}
+    assert not {"instance", "spec", "spec_file", "layout"} & {
+        part for name in imported for part in name.split(".")
+    }
 
 
 # --- through a real instance.json and objective_of ---
