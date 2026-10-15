@@ -2,7 +2,7 @@
 id: T-0202
 title: Add hilclaw/run_seed.py, the timing seed draw of sim.run / board.run answered seed_not_drawn (ADR-0064 decisions 2 to 4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, NFR-3, OD-13, OD-18]
 dependsOn: [T-0201]
@@ -68,3 +68,10 @@ This task adds that slice as a new module `hilclaw/run_seed.py` with its test fi
 - (planner, document mode, §9, P1-1) ADR-0061 Consequences item (4): the form of what crosses the cut of `sim.run` / `board.run` and what a call answers when an operation returns neither form (in the manner of ADR-0043 and ADR-0045); it should also carry ADR-0064 decision 4's request that no end line holds `seed_not_drawn`.
 
 ## Result
+
+- **DONE.** Landed as `5eecd42` via PR #138 (squash-merge; branch `claude/T-0202-run-tools-seed-draw` deleted).
+- Changes: new `hilclaw/run_seed.py` (`KIND_SEED_NOT_DRAWN`, `draw`; goes through `hilclaw.harness.seed_source.draw` directly, not `check_seed.draw`, so the messages name the timing seed without a re-raise); module docstring of `hilclaw/harness/seed_source.py` only; new `tests/test_run_seed.py` (36 tests). Non-test change: 2 files, about 116 LOC.
+- Review: 1 round, Approve (fresh-context dev-reviewer, https://github.com/myungjoo/HIL-Claw/pull/138#issuecomment-6192030007). Low finding not taken in this PR: `run_seed.draw` duplicates the body of `check_seed.draw` except for the two messages; a shared helper would need a change to `check_seed.py`, which this task excludes. Nit (tests read the private message constants) accepted as the module's own tests.
+- Tests: `ruff check`, `ruff format --check`, full `pytest` (20066 passed, 354 skipped) green locally; CI all green (Python 3.11/3.14, coverage gate, test presence, sh, C). Coverage of `run_seed.py` and `seed_source.py`: 100%.
+- Language: Python, as the run tools' modules and the seed source it wraps.
+- Follow-ups: none new beyond the planner item above. Optional: a shared draw helper for `check_seed` and `run_seed` (message as a parameter), if a later task touches `check_seed.py`.
