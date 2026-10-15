@@ -45,6 +45,16 @@ EXAMPLE_KIND = "example_kind"
 EXAMPLE_BACKEND_KIND = "example_backend_kind"
 # The two names as ADR-0056 decision 6 spells them.
 THE_TWO = ["no_kernel_source", "kernel_source_unreadable"]
+# The six names as ADR-0060 decision 4 spells them.
+THE_SIX = [
+    "build_directory_unusable",
+    "settings_refused",
+    "build_input_missing",
+    "compiler_unavailable",
+    "build_output_missing",
+    "executable_unstartable",
+]
+THE_EIGHT = [*THE_TWO, *THE_SIX]
 
 
 def rounded_references():
@@ -473,7 +483,7 @@ def test_a_backend_kind_gives_the_raised_kind_and_message(monkeypatch):
     assert other.kind == check_failure.KIND_OPERATION_FAILURE_INVALID
 
 
-@pytest.mark.parametrize("kind", THE_TWO)
+@pytest.mark.parametrize("kind", THE_EIGHT)
 def test_each_backend_kind_as_shipped_gives_the_raised_kind_and_message(kind):
     raised = failure(kind, "the raised text")
     operation = Recording(error=raised)
@@ -492,7 +502,7 @@ def test_each_backend_kind_as_shipped_gives_the_raised_kind_and_message(kind):
     journaled_step.StepFailed({}, error.kind, error.message)
 
 
-@pytest.mark.parametrize("kind", THE_TWO)
+@pytest.mark.parametrize("kind", THE_EIGHT)
 def test_a_backend_kind_with_a_replaced_message_gives_the_kind_of_adr_0047(kind):
     raised = failure(kind)
     raised.message = None
@@ -502,9 +512,18 @@ def test_a_backend_kind_with_a_replaced_message_gives_the_kind_of_adr_0047(kind)
 
 
 @pytest.mark.parametrize(
-    "kind", ["no_kernel_sources", "kernel_source", "seed_not_drawn"]
+    "kind",
+    [
+        "no_kernel_sources",
+        "kernel_source",
+        "seed_not_drawn",
+        "settings_refuse",
+        "compiler_unavailable_",
+        "build_exit_status",
+        "build_time_limit",
+    ],
 )
-def test_a_kind_beside_the_two_still_gives_the_kind_of_adr_0047(kind):
+def test_a_kind_beside_the_eight_still_gives_the_kind_of_adr_0047(kind):
     error = ended(Recording(error=failure(kind)))
     assert error.kind == check_failure.KIND_OPERATION_FAILURE_INVALID
     assert (error.kind, error.message) == check_failure.ended_with(
@@ -512,7 +531,7 @@ def test_a_kind_beside_the_two_still_gives_the_kind_of_adr_0047(kind):
     )
 
 
-@pytest.mark.parametrize("kind", THE_TWO)
+@pytest.mark.parametrize("kind", THE_EIGHT)
 def test_a_backend_kind_the_judging_raises_is_not_the_operations(monkeypatch, kind):
     raised = failure(kind)
 
