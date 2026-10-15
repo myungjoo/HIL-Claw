@@ -2,7 +2,7 @@
 id: T-0207
 title: Clear the round-7 review minor of T-0205 - ADR-0066 decision 4 (iii) and its Alternatives row no longer say a converged report that reads neither constant "does not exist" but that one exists only tuned to a narrow window around the value of cv_max, and the "(존재하지 않는다)" in the OD-18 ADR-0066 bullet of OpenDecisionProposals says the same; coverage re-check recorded
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-18, FR-10, "CLAUDE.md 문서 커버리지 재검사"]
 dependsOn: [T-0205, T-0206]
@@ -84,3 +84,17 @@ ARCHITECTURE lines are very long: read them with `sed -n '<line>p' <file> | fold
 - (planner, document mode, §9, P1-1) The next run-tools contract slice: OD-18 sub-question ⑲ — the tool functions of `sim.run` / `board.run` and their registration over the mock (ADR-0061 to ADR-0066 Consequences), in the manner of the earlier ADRs of this contract.
 
 ## Result
+
+- **Landed:** `105e807` on `main` (document mode, fast-forward push, no PR; trailers `Reviewed-by: reviewer agent (1 rounds, Approve)`, `Task: T-0207`). Branch `claude/T-0207-adr-0066-r7-minor` deleted on origin and locally. Files: ADR-0066, OpenDecisionProposals, StandardScenarios only.
+- **Checks before starting:** no earlier landing (`git log origin/main --grep='^Task: T-0207'` and `gh pr list --search T-0207 --state all` empty); no open PR; no comment on #5 after the ADR-0066 notice (issuecomment-6194231066), so no objection and no HQ answer; #4/#7/#8 have no new comments bearing on this.
+- **Edits (exact new wording):**
+  - ADR-0066 decision 4 (iii) (line 66): "**(iii) A converged report that reads neither constant.** One exists only tuned to a narrow window around the value of `cv_max`: a converged report stops ... (cited: ADR-0007 decision 4). [equal-samples half unchanged]; of unequal samples, it must have a CV of at least `cv_max` at each proper prefix from `n_min` on and below `cv_max` at the whole, so the replay agrees only for a `cv_max` between the CV of the whole and the least CV of those prefixes, a narrow window that the values must be tuned to around today's 0.05 (this record's arithmetic: the `n_max` = 5 intervals 1 000 000, 1 095 000, 1 000 000, 1 095 000 and 1 047 500 have a CV of about 0.064 at two samples, above 0.051 at three and at four, and of about 0.045 at five, in either sample form, so the replay agrees for every `n_min` ≤ `n_max` and every `cv_max` from about 0.046 to about 0.051). It rests on the value of `cv_max`, not on a bound of it as (i) and (ii) do, and is not chosen."
+  - ADR-0066 Alternatives row (line 134): "See decision 4: one exists only tuned to a narrow window around the value of `cv_max`, so it rests on that value, not on a bound of it."
+  - ADR-0066 Status bullet (line 14): "Edited after acceptance on 2026-10-15 by task T-0207 (document mode)": (iii) and its row, the OpenDecisionProposals bullet aligned, the choice still (i), no decision changed meaning, objection window (issuecomment-6194231066, until 2026-10-22) unchanged.
+  - OpenDecisionProposals line 316: "두 상수를 읽지 않는 수렴 보고(`cv_max`의 값 둘레의 좁은 창에 맞춘 것만 있어 그 경계가 아니라 그 값에 기댄다)". No other copy of the claim found in `ARCHITECTURE/` (grep for "none exists", "존재하지 않", "reads neither constant", "읽지 않는 수렴").
+  - StandardScenarios: heading clause "ADR-0066의 승인 뒤 정정 하나(... — 판정·결정 변화 없음)" and the "2026-10-15 (12차, 승인된 기록의 정정 ...)" paragraph (line 222).
+- **Arithmetic relied on:** CV (sample sd, n−1) per prefix of the example: interval 0.0641/0.0532/0.0524/0.0453, reciprocal 0.0641/0.0516/0.0524/0.0454; `stopping_state` (with `N_MIN` patched to 2..5 and `CV_MAX` varied) gives CONTINUE at every proper prefix and CONVERGED at the whole for every `n_min` 2..5 and `cv_max` in about (0.0454, 0.0516]. A random search found the ratio of the least prefix CV to the whole's CV at most about 1.3 at five samples (less at more), so the window is always narrow. Observations only; nothing built, no `claude` process.
+- **Coverage re-check:** the 검사 규칙 over the four groups of the 11차 paragraph (S0-5·6, S1-3·4·6, S1-b-2·S2-2·S3-4·S6-3·S11-3, S8-2·3; S0-7, S2-3, S3-1~4; S5-1·2·3; extension S7-2, S9-3, S10-3): no verdict change, no gap. Requirements untouched (OD-18 stays 제안됨).
+- **Review:** 1 round, Approve (dev-reviewer, fresh context). It confirmed the planner's reading and the arithmetic, that no decision changed meaning and the choice stays (i), and the coverage re-check independently. Two optional nits, not applied (they would have needed another round for no change of meaning): (1) line 66 "from `n_min` on" could add "(from two samples on, for a report that does not read `n_min`)"; (2) "from about 0.046" could read "just above 0.045". Reviewer judgement on editing an accepted record in place during its objection window: acceptable, as in T-0190/T-0193/T-0197; the edit corrects an unchosen weighing, the Status bullet discloses it, the revert clause covers it, and the window need not be extended; a #5 note would only be warranted if a correction changed a reason for the decision.
+- **OD status:** unchanged; no #5 comment posted (DRIVER §9 not triggered).
+- **Follow-ups:** none required; the two reviewer nits above may be folded into the next edit of ADR-0066 if one happens.
