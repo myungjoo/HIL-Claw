@@ -2,7 +2,7 @@
 id: T-0209
 title: Add hilclaw/run_admission.py, the run tools' admission of op_signature, objective and n_max in the order of ADR-0067 decision 5
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, OD-8, OD-13]
 dependsOn: [T-0192, T-0204, T-0208]
@@ -68,3 +68,10 @@ ADR-0067 Consequences, "Code ... Possible now", names this slice: "the run tools
 ## Follow-ups
 
 ## Result
+
+- **DONE.** PR #141 (`claude/T-0209-run-tools-admission-code`) squash-merged as `256b8de`; branch deleted (local and remote).
+- **Change:** new `hilclaw/run_admission.py` (`KIND_OP_SIGNATURE_NOT_STATED`, `KIND_OP_SIGNATURE_NOT_COVERED`, `KIND_N_MAX_NOT_STATED`, `KINDS` (five answers, steps 3 to 7 of ADR-0067 decision 5), `Admitted(m, k, n, n_max, sample_form, bound)`, `admit(instance, *, covers)` calling `run_objective.admit` for steps 5 and 6); the op_signature kinds are defined in the module (not imported from `check_admission`), with a test asserting equal spelling. `hilclaw/run_objective.py`: one docstring sentence now names ADR-0067 decision 5. New `tests/test_run_admission.py` (18-row order table, Walk-through rows, `covers` call checks, pass-through, type errors, messages, imports, public names, no file written). Non-test change about 184 LOC in 2 files.
+- **Language:** Python, as the other `run_*` modules and `check_admission`, which this module mirrors.
+- **Checks:** ruff check and format, full pytest (20442 passed, 354 skipped) and coverage locally (`run_admission.py` 100%, total 99%); CI green on `777ec87` (all six gates).
+- **Review:** 2 rounds, Approve both times. Round 1 raised two nits (narrow the no-bound test to code names; vary the keys in the rest-of-instance test), both fixed and approved in round 2.
+- **Follow-ups:** none.
