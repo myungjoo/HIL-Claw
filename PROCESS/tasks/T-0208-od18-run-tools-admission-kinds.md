@@ -2,7 +2,7 @@
 id: T-0208
 title: Record ADR-0067, what a call of sim.run / board.run answers for a run whose file states no op_signature, an op_signature the contract does not cover, or no n_max, and the order of those answers in moment 4 (OD-18 sub-question 19 part (ga), ADR-0061 Consequences item (6))
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18, OD-8, OD-13]
 dependsOn: [T-0191, T-0195, T-0199, T-0201, T-0203, T-0205, T-0207]
@@ -76,3 +76,26 @@ Part (가) is the smallest closed piece of item (6) and needs no setting value o
 ## Follow-ups
 
 ## Result
+
+- **DONE.** Landed on `main` as `73996b5` (doc mode, direct push; branch `claude/T-0208-od18-run-tools-admission-kinds` deleted locally and remotely). Review: 1 round, Approve (fresh-context `dev-reviewer`; findings were two Info and one Nit, none needing a change).
+- **ADR-0067** (`ARCHITECTURE/decisions/ADR-0067-od18-run-tools-admission-kinds.md`, 167 lines; the number was still free on origin/main at push). It answers OD-18 sub-question 19 (ga):
+  - A file stating no op_signature gets `op_signature_not_stated`; an uncovered op_signature gets `op_signature_not_covered`. Both are run tools' kinds with the check's spelling and meaning. "Covered" is the same predicate as the check's, for the timing run's own reasons.
+  - A file stating no n_max gets the new kind `n_max_not_stated`.
+  - None of the three is reserved (provisional).
+  - Order in moment 4: run_file_*, no_backend, not_offered, op_signature x2, objective x2, n_max_not_stated, then the seed draw.
+  - None of the three ever appears on an end line, and messages show no file content.
+- **Other edits:**
+  - Requirements: the OD-18 row gets a clause with a link to ADR-0067, and its 잔여 clause for sub-question 19 now says that (ga) is answered. The status wording is unchanged, and there are 30 OD rows before and after.
+  - OpenDecisionProposals: an ADR-0067 adopted bullet after the ADR-0066 bullet, and dated notes on OD-18 19, OD-8 21 and OD-8 28 ("as far as a call of these tools goes").
+  - StandardScenarios: passage 2026-10-16 (1차) and a heading clause. No verdict change and no gap.
+- **Checks:**
+  - 72 relative links were added in the diff and all of them resolve.
+  - `git diff --stat origin/main` showed only the 4 touchesFiles before landing.
+  - `git diff --check` is clean.
+  - Name check: `n_max_not_stated` occurs nowhere else, and the two op_signature kinds equal the check's on purpose.
+  - Nothing was built or run, and no `claude` process was started.
+- **Deviations from the task text:**
+  - ADR-0064 has no sentence that leaves its order relative to 19 (ga) open. Consequences says so instead of listing one.
+  - Dated notes were added to OD-8 sub-questions 21 and 28 (following the ADR-0041 precedent), which goes beyond AC 8's OD-18 bullet.
+- Owner notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6195996166 (objection window 7 days).
+- Follow-up candidate: a code task for the run tools' admission of the op_signature, the dimensions and n_max, in the manner of `hilclaw/check_admission.py`.
