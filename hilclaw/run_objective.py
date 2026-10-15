@@ -44,8 +44,9 @@ file. It computes no verdict and admits no ``memory_ceiling``. It takes no
 default and no other source for the objective or the ``bound``: not the
 request, not a spec, not a value kept from an earlier call (ADR-0061
 decision 6); it keeps nothing between calls. Its place relative to the
-answers for the op_signature and ``n_max`` is not its own to decide (OD-18
-sub-question ⑲ (가)): whoever calls places it.
+answers for the op_signature and ``n_max`` is ADR-0067 decision 5: after the
+op_signature answers and before ``n_max_not_stated``. Keeping it is the
+caller's, as :mod:`hilclaw.run_admission` does.
 """
 
 import typing
