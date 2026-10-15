@@ -1,0 +1,114 @@
+---
+id: T-0188
+title: Add the six build backend kinds of ADR-0060 decision 4 to `hilclaw.check_failure.BACKEND_KINDS` (code slice (2)), with the docstring sentences of `check_failure`, `check_ending` and `mock_check` this and T-0187 made less exact
+phase: P1
+status: IN_PROGRESS
+commitMode: code
+coversReq: [FR-9, FR-10, OD-18, "#5 D12"]
+dependsOn: [T-0159, T-0176, T-0187]
+touchesFiles: [hilclaw/check_failure.py, hilclaw/check_ending.py, hilclaw/mock_check.py, tests/test_check_failure.py, tests/test_check_ending.py, tests/test_check_tool.py, tests/test_mock_check.py]
+estimatedSize: {loc: 70, files: 3}   # six constants and one frozenset in check_failure, the rest docstring sentences in three modules; test files are outside the cap (DRIVER §5, D4)
+hq: []
+---
+## Why
+
+PLAN P1-1 (FR-10 tool contracts, `correctness.check` included) is open. ADR-0060 (T-0176, `4060d70`; owner notice https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6184597227, objection window until 2026-10-22) decides in decision 4 that S3 to S6, S9 and S10 of ADR-0056 decision 5 are tool failures of six new backend kinds. Its Consequences (line 155) cut two code slices: "(1) The two values in `hilclaw/check_result.py` ..." - landed as T-0187 (PR #130, `2c58b93`) - and "**(2) The six kinds in `hilclaw.check_failure.BACKEND_KINDS`, with their tests.**" This task is slice (2).
+
+State of `main` at `60f9c83`: `hilclaw/check_failure.py` has `BACKEND_KINDS = frozenset({KIND_NO_KERNEL_SOURCE, KIND_KERNEL_SOURCE_UNREADABLE})` (T-0159, ADR-0056 decision 6), and `ended_with` answers a tool failure of any other kind - each of the six included - with `operation_failure_invalid`. After this task a tool failure of one of the six that an operation raises is answered from the end line with the raised kind and message (ADR-0047 decision 4), as the two of ADR-0056 already are.
+
+The task also takes T-0187's follow-up: the `hilclaw/mock_check.py` `default_script` docstring "never one of the two strings of ADR-0043 decision 4" is less exact since ADR-0060 decision 4 made form (B) four strings.
+
+It ticks **no PLAN checkbox** (P1-1 stays open) and changes no OD.
+
+Planner's judgements (the reviewer is asked to re-check each):
+- **No undecided design is needed.** The six names, the situation each means, that "Any backend may raise the six kinds, a script of the mock included; the tool function raises none of them itself", and that the end line holds the raised kind and message are ADR-0060 decision 4 and ADR-0047 decisions 4 and 5, word for word. What a message of the six may show is ADR-0060 decision 5, a rule for the code of an operation that raises; "A message that breaks this is not detected", so `ended_with` gains no check of a message.
+- **A-13 (data plane)**: ADR-0060 Consequences "A-13 reading" (line 158): "It names six values of `error.kind`, held as the `kind` of the `failure` of an end line, as ADR-0056 did for two." That member exists; T-0159 landed the two of ADR-0056 under the same reading, as no data-plane schema change. The owner's approved data-plane change of ADR-0060 (the two values of `condition`) is already landed (T-0187). This task adds no value of `condition`, no member, path, file, event kind or version.
+- **D16**: nothing here needs the `claude` program, a compiler, a container runtime, a board or an API key. All tests run over the mock.
+- **Session entry check (planner, 2026-10-15, `main` at `60f9c83`)**: `gh pr list --state open` is empty. The newest comment on issue #5 is the driver's ADR-0060 notice above; no owner comment objects to ADR-0056, ADR-0047 or ADR-0060. HQ-0013, 0014, 0016..0019 are `runtime-acceptance` notices and block nothing. The task touches no `ARCHITECTURE/` file.
+
+## Required Reading
+
+Line numbers are those of `main` at `60f9c83`; the text wins. Read long ARCHITECTURE lines with `fold` or `cut`. Read Python with `PYTHONIOENCODING=utf-8`.
+
+- **PROCESS/DRIVER.md §3-5** (line 72: executor procedure, landed check, resume rule, `T-NNNN` naming, the 2h30m limit) and **§5** (lines 86-114: task format, naming and trailers, size cap D4, language line at 112, **test rules ① to ⑤ at line 113**) - mandatory for every task (§6). Also §1-5 (line 28: forbidden actions; a denied or failed tool call is BLOCKED) and the "BLOCKED 사유" paragraph (line 76).
+- CLAUDE.md, the whole file; above all "코멘트 최소화", "미결은 발명하지 않는다", "개발 드라이버와 런타임의 구분", "도구 계층 언어 정책", "브랜치·merge 절차" (code mode), "테스트 규칙".
+- .claude/skills/dev-item-address/SKILL.md (code mode path); .claude/skills/dev-code-review/SKILL.md.
+- **ARCHITECTURE/decisions/ADR-0060-od18-correctness-check-build-answers-and-settings.md**: Status (lines 3-14); **decision 4 (lines 68-102)** - above all line 84 (S3 to S6, S9, S10 are tool failures of backend kinds), the eight-row table (lines 88-97, column "Kind or `condition`"), line 98 ("Every row is found by the operation ... Any backend may raise the six kinds, a script of the mock included; the tool function raises none of them itself"), line 99 ("Why six kinds"), line 100 ("The names"); **decision 5 line 106** (what a message of the six may show; "A message that breaks this is not detected"); decision 6 (lines 109-120, rows ⑥ and ⑦); **Consequences (lines 153-160)**: line 155 (slice (2)), line 157 ("Not edited and now less exact": `hilclaw/check_failure.py` "the two backend kinds", `hilclaw/check_ending.py`), line 158 (A-13 reading).
+- ARCHITECTURE/decisions/ADR-0047-od18-correctness-check-operation-tool-failure.md decisions 3, 4 and 5 and its Limits ("is taken as it is") - the rule `ended_with` renders.
+- ARCHITECTURE/decisions/ADR-0056-od18-correctness-check-verification-executable.md decision 5 (the rows S1 to S10) and decision 6 (the first two kinds; "The message"; "The names").
+- ARCHITECTURE/decisions/ADR-0001-od4-key-schema.md, the definition of a *name*.
+- PROCESS/tasks/T-0159-check-failure-backend-kinds.md (the precedent: Acceptance Criteria and `## Result`) and PROCESS/tasks/T-0187-check-build-condition-values.md `## Result` (the follow-up on `mock_check.py`).
+- **Code to edit** (read each whole, docstring first): `hilclaw/check_failure.py` (142 lines; module docstring lines 1-67, the constants at 71-81, the `ended_with` docstring at 95-127, above all line 109); `hilclaw/check_ending.py` (177 lines; module docstring lines 1-75, the sentence at lines 18-21); `hilclaw/mock_check.py` (157 lines; the module docstring at lines 40-50 and the `default_script` docstring at lines 107-135, the sentence at lines 126-127).
+- **Code to read and not to edit**: `hilclaw/tools.py` (`ToolFailure`, `RESERVED_KINDS`, the name check), `hilclaw/check_tool.py` (module docstring; `_perform`), `hilclaw/check_operation.py` (`KIND_OPERATION_ANSWER_INVALID`), `hilclaw/check_seed.py` (`KIND_SEED_NOT_DRAWN`), `hilclaw/check_admission.py` (`KINDS`), `hilclaw/check_result.py` (`CONDITIONS`, six values since T-0187).
+- Tests to change and to follow in style: `tests/test_check_failure.py` (626 lines; the constants at lines 25-60 - `THE_TWO`, `OTHER_KINDS_OF_THE_CONTRACT`, `NEAR_MISSES`, `NO_NAMES` - and the tests at lines 229-260: `test_the_backend_kinds_as_shipped_are_the_two_of_adr_0056`, `test_each_backend_kind_is_a_name_a_tool_failure_takes`, `test_no_other_kind_of_the_contract_and_no_reserved_kind_is_a_backend_kind`; the public-name assertion of the module), `tests/test_check_ending.py` (line 47 `THE_TWO` and its uses; line 505), `tests/test_check_tool.py` (lines 725-760: `THE_TWO`, `ENDINGS` and the test over them; around line 824), `tests/test_mock_check.py` (the pass-through tests of a script's raised tool failure and its returned strings).
+- `.github/workflows/ci.yml` (the jobs); `pyproject.toml` (ruff settings).
+
+## Acceptance Criteria
+
+### Fixed by the records (not re-decided; implement exactly)
+
+1. **The list.** `hilclaw.check_failure.BACKEND_KINDS` holds exactly eight names: the two of ADR-0056 decision 6 (`no_kernel_source`, `kernel_source_unreadable`) and the six of ADR-0060 decision 4, spelt so: `build_directory_unusable` (S3), `settings_refused` (S4), `build_input_missing` (S5), `compiler_unavailable` (S6), `build_output_missing` (S9), `executable_unstartable` (S10). It stays a `frozenset`. `KIND_OPERATION_FAILURE_INVALID`, every reserved kind of `hilclaw.tools.RESERVED_KINDS`, every other kind of this contract (`operation_answer_invalid`, `seed_not_drawn`, the four of `hilclaw.check_admission.KINDS`) and every value of `hilclaw.check_result.CONDITIONS` (`build_time_limit` and `build_exit_status` above all: they are values of `condition`, never kinds) are not members.
+2. **A raised backend kind is answered as raised.** For a tool failure an operation raised whose kind is one of the six, `ended_with` returns the raised kind and message as they are (ADR-0047 decision 4), and through `hilclaw.check_ending.carry_out` and the tool function the end line's `failure` holds exactly that kind and message with the empty `spend` (ADR-0040 decision 6); the caller gets a tool failure of that kind and message; the identity is ended, and the same request afterwards is answered from the log with the same tool failure, no script asked (ADR-0060 decision 6 row ⑦; ADR-0056 decision 7).
+3. **Every other kind is answered as before**, the two of ADR-0056 included: unchanged rows of `ended_with` for a kind outside the list and for a kind or message that cannot be read as exactly a `str`.
+4. **Who raises.** Any backend may raise the six, a script of the mock included; the tool function raises none of them itself. `hilclaw/check_tool.py`, `hilclaw/check_operation.py`, `hilclaw/check_seed.py`, `hilclaw/check_result.py` and `hilclaw/check_answer.py` are not edited. `default_script` still raises no tool failure and its code is not changed.
+5. **The message is not checked** beyond its type (ADR-0060 decision 5: "A message that breaks this is not detected"). A kind raised for a situation it does not mean "is taken as it is" (ADR-0047 Limits).
+
+### Left to this task (Python form only; say each choice in the module docstring of `hilclaw/check_failure.py` where it is a convention of the module, and list each in `## Result`)
+- Whether each of the six gets a public constant beside the set, as the two of ADR-0056 have. Planner's suggestion, not required: `KIND_BUILD_DIRECTORY_UNUSABLE`, `KIND_SETTINGS_REFUSED`, `KIND_BUILD_INPUT_MISSING`, `KIND_COMPILER_UNAVAILABLE`, `KIND_BUILD_OUTPUT_MISSING`, `KIND_EXECUTABLE_UNSTARTABLE`, each with a one-line `#:` comment naming ADR-0060 decision 4 and its situation, and `BACKEND_KINDS` built from the eight constants (the module's own choice of T-0159, "an operation and a script of a test can name a kind without a literal"). The later operation of `cpu_standin` is written against these names; record them in `## Result`.
+- Nothing else. The three messages of the module, the signature of `ended_with` and its order of reads stay.
+
+### Docstrings (part of the change; CLAUDE.md "코멘트 최소화")
+- `hilclaw/check_failure.py`: the module docstring (lines 13-20: "They are the two that ... ADR-0056 decision 6 names"; line 26: "Any backend may raise the two kinds, a script of the mock included (ADR-0056 decision 6)"; lines 27-29: "What a message of either may show is said by that decision"; lines 54-57: "Each of the two names has a public constant, and `BACKEND_KINDS` is built from the two") and the `ended_with` docstring (line 109: "neither of the two of ADR-0056 decision 6"; lines 111-113: "the record that names the kind (ADR-0056 decision 6)") are brought in line: the list names the two of ADR-0056 decision 6 (S1, S2) and the six of ADR-0060 decision 4 (S3 to S6, S9, S10), each record saying what the messages of its kinds may show (ADR-0056 decision 6; ADR-0060 decision 5). Search the module for further sentences.
+- `hilclaw/check_ending.py` lines 18-21: "For a backend kind, today one of the two of ADR-0056 decision 6" becomes one of the eight of ADR-0056 decision 6 and ADR-0060 decision 4 (wording the executor's). No code line of this module changes.
+- `hilclaw/mock_check.py`: `default_script` docstring line 127 "It is never one of the two strings of ADR-0043 decision 4" - form (B) is four strings since ADR-0060 decision 4 (T-0187); say so exactly, without changing what the function does. Check the module docstring (lines 40-50) for a sentence the eight kinds or the four strings made less exact. No code line of this module changes.
+- List in `## Result` any sentence in unedited modules (for example `hilclaw/check_tool.py`, `hilclaw/check_operation.py`) that this change makes less exact.
+
+### Do not invent
+- No operation raises the six after this task but a script a test hands to the mock. No mapping of a `BuildResult`, of `clang_build.build` / `local_run.run` errors or of any situation to a kind; no wording of a message of the six in `hilclaw/` (that is the operation's code, a later slice, blocked on OD-14 and OD-18 ⑱ (나)(라)(마)).
+- No kind for an error of two rows (ADR-0060 Consequences line 156; ⑱ (마)); no seventh new kind; no value of `condition`; no member of a request or a result; no line, member, path, record kind or version of the data plane beyond the `kind` and `message` values the existing `failure` member already carries.
+- No change of `hilclaw/tools.py`, `hilclaw/hw_tool.py`, `hilclaw/journaled_*.py`, `hilclaw/backends.py`, `hilclaw/mock_backend.py`, `hilclaw/clang_build.py`, `hilclaw/local_run.py`, `hilclaw/harness/`; nothing registered.
+- No new external dependency.
+- **Guarded exit**: if the change seems to need anything above, stop and return BLOCKED (`data-plane-schema-change` or `requirement-unclear`) quoting the sentence and writing the question for an HQ.
+
+### Tests (CLAUDE.md test rules, D12; DRIVER §5 line 113)
+Existing tests that pin the two are changed; none is deleted without a successor covering the same behaviour. Every public function and constant of the three modules stays tested with happy, error, branch and **negative** cases. At least:
+- **`tests/test_check_failure.py`, the list**: the set as shipped is exactly the eight names, a `frozenset`, immutable; each member is a name `ToolFailure` accepts as a kind; no member is reserved, is another kind of this contract, or is a value of `check_result.CONDITIONS`; each public constant (if added) equals its spelling.
+- **`ended_with`, happy, without patching**: for each of the six the pair is the raised kind and message as they are, `ToolFailure(*pair)` can be built, and the message is read once.
+- **`ended_with`, negative, without patching**: for each of the six, a message replaced by a non-`str` and a message whose read raises are `operation_failure_invalid` with the module's message, showing neither the raised message nor the raised kind; near misses (`settings_refuse`, `compiler_unavailable_`, `build_output`, `executable_unstartables`, `build_directory`, `build_input_missing_`) and the two values `build_time_limit` and `build_exit_status` are outside; names `ToolFailure` refuses (`Settings_refused`, `compiler-unavailable`, `build_output_missing ` with a trailing space), where the kind is replaced after building as the existing `NO_NAMES` tests do, are outside; a `str` subclass equal to a new member is outside.
+- **Message not checked**: a message of one of the six holding a path-like text, a newline and 10,000 characters is returned as it is.
+- **`tests/test_check_ending.py`**: without patching, a recording operation that raises each of the six gives `EndedWithoutOutcome` with that kind and message and neither `__cause__` nor `__context__`; one of the six raised by the judging (not by the operation) still passes through as the same object.
+- **`tests/test_check_tool.py`, through the tool function over the mock**: extend `ENDINGS` (or a successor) so that a script raising each of the six gives a tool failure of that kind and message, an end line whose `failure` is `{"kind": <raised>, "message": <raised>}` with `"spend": {}`, an ended identity, and a repeated call answered with the same tool failure without the script being asked and without a byte added to the log; a near miss of a new name and `build_exit_status` raised as a kind stay `operation_failure_invalid`.
+- **`tests/test_mock_check.py`**: edit only if an assertion is made false or a pass-through test of a raised tool failure should include one of the six; say which in `## Result`.
+- `hilclaw/` line and function coverage stay >= 80% (CI gate). No test targets test code, the CI workflow or a script (D12 rule ⑤).
+
+### Gates
+- `python -m pytest` passes locally; `python -m ruff check .` and `python -m ruff format --check .` exit 0.
+- CI green on the PR, all jobs; coverage figures from the CI gate in `## Result`.
+- `git diff --stat origin/main` lists only files of `touchesFiles` (fewer is fine); `git diff --check` is clean; the three modules together stay within 300 changed lines.
+
+### Process
+- Work only in the driver's dedicated clone. First the §3-5 landed check: `git log origin/main --grep='^Task: T-0188'` and `gh pr list --repo myungjoo/HIL-Claw --search T-0188 --state all`. Then `gh pr list --repo myungjoo/HIL-Claw --state open`: an open PR that touches a file of `touchesFiles` is BLOCKED ("open PR conflict"); none was open at planning time.
+- Read the comments on issue #5 after https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6184597227. Skip comments ending `— posted by driver`. An owner comment that objects to ADR-0060 decision 4 (the class of S3 to S6, S9, S10 as tool failures, the six names, or "one kind for all six" declined), to ADR-0056 or to ADR-0047 makes the task BLOCKED ("requirement-unclear"); quote it. An answer to HQ-0013, 0014, 0016..0019 does not stop this task; name it in `## Result`.
+- **D16**: neither the executor nor any agent it spawns starts the Claude Code program (`claude`) as a child process, with any subcommand or flag. Reviewers are spawned with the session's own agent tool and told to write no file and to start no `claude` process. No compiler is needed.
+- **Code mode** (CLAUDE.md A-13): branch `claude/T-0188-check-failure-build-backend-kinds` from `origin/main`; Draft PR with `T-0188` in its title and `Task: T-0188` as the last line of its body; reviewer cycle with a fresh-context `dev-reviewer` each round, given the PR and this task file's path (at most 7 rounds; past the cap without Approve: BLOCKED; a result starting with `SECURITY`: BLOCKED; if no reviewer can be spawned: BLOCKED, do not self-review). Ask the reviewer to (a) check the eight names and their spelling against ADR-0056 decision 6 and the ADR-0060 decision 4 table; (b) check that `build_time_limit` / `build_exit_status` are not kinds; (c) attack fixed point 3 - a kind outside the eight reaching an end line as raised; (d) look for anything on "Do not invent"; (e) check each edited docstring sentence against the code and the records, and name less exact sentences in unedited modules.
+- Merge: when the last review is an Approve and CI is green on the head, `gh pr merge --squash --body` with the PR body whose last line is `Task: T-0188` (then any attribution trailer the session requires); delete the branch; check out `main` at `origin/main`. Commit and PR text in English; executor commits end with the trailer `Task: T-0188`; the commit body has one line on the language (Python, as the rest of the `hilclaw` package) and the constants chosen.
+- **CI**: three consecutive failing runs are BLOCKED (`ci-3-consecutive-failures`); a run that starts no job counts as a failure and is reported, not worked around.
+- **Prohibitions**: never `git push --force*` / `-f`, never a recursive forced remove, never `gh repo delete`; no edit of `.claude/settings.json` or `.claude/settings.local.json`. A denied or failed tool call is BLOCKED, not worked around. A rejected push of the task branch: one rebase and one retry, then BLOCKED (`branch-contention`). Past 2h30m of wall-clock: write the state into `## Result` and return BLOCKED (`task-timeout`).
+- **`## Result`**: fill it in on `main` after the merge and leave it uncommitted for the driver (DRIVER §3-6): PR and squash commit, review rounds and findings, CI run and coverage, the language line, the public names of `hilclaw.check_failure` as landed, the choices made, less exact sentences left, follow-ups. `PROCESS/STATE.json`, `PROCESS/journal/` and `PROCESS/PLAN.md` belong to the driver.
+- Return a summary of at most 200 characters (result, PR/commit, BLOCKED or not).
+
+## Out of Scope
+
+- The operation of `cpu_standin` for `correctness.check`: placing a `BuildResult` or a raised error in a row, the messages of the six, the compiler's log file, any setting value, the container, the tool's registration (blocked on OD-14, OD-18 ⑱ (나)(라)(마); ADR-0060 Consequences).
+- Any change to the values of `condition` or form (B) (T-0187, landed).
+- `hilclaw/check_tool.py`, `hilclaw/check_operation.py`, `hilclaw/check_seed.py`, `hilclaw/check_result.py`, `hilclaw/check_answer.py`, `hilclaw/check_judging.py`, `hilclaw/harness/`, the other three HW tools.
+- Any ARCHITECTURE, PLAN, DRIVER, README or `.claude/` edit; the "now less exact" ADR sentences of ADR-0060 Consequences.
+- Anything HQ-0013, 0014, 0016..0019 ask.
+
+## Follow-ups
+
+- (planner, document mode, small) The R7 nits of T-0176 on ADR-0060 (T-0176 Follow-ups).
+- (planner, code mode, small) `hilclaw/check_operation.py`, the sentence on decision 8 / sub-question ⑩, third clause (T-0175, T-0176 Follow-ups).
+- (planner, document mode, §9) The run-tool contracts of PLAN P1-1 (OD-13 sub-question ⑩), taking the build answers from ADR-0060.
+
+## Result
