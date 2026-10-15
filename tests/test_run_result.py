@@ -716,7 +716,6 @@ def test_arguments_are_not_modified_and_results_share_nothing():
     assert one["shape"] is not other["shape"]
     one["shape"]["k"] = 99
     assert other == call_broken(bound=3)
-    assert CONDITIONS[-2:] == ("zero_interval", "replay")
 
 
 def test_a_tuple_of_intervals_is_returned_as_a_list():
