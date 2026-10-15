@@ -2,7 +2,7 @@
 id: T-0186
 title: Add the hypothesis record of a round as a file - its text form, its final name and its write (ADR-0059 decisions 1 and 2, by ADR-0029 decisions 2 to 7) - as `hilclaw/hypotheses_file.py`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-17, FR-11, OD-30, OD-8]
 dependsOn: [T-0184, T-0185]
@@ -92,3 +92,14 @@ Public names are the executor's; the suggested ones mirror `hilclaw.spec_file` s
 
 ## Result
 
+
+DONE. PR https://github.com/myungjoo/HIL-Claw/pull/129, squash-merged as `412de91` (branch deleted).
+
+- **Checks at start**: no landed commit or PR for T-0186; no open PR; no comment on issue #5 after the ADR-0059 notice (6170235111), so no objection and no HQ answer to report.
+- **Review**: 1 round, fresh-context `dev-reviewer` (opus), Approve. Three nits left as they are: (1) `-0` at `round`/`candidates`/`tested_by`/`ref.candidate`/`ref.attempt` is refused by `validate`'s minimum before the `-0` rule (unavoidable; `ref.round` checks the `-0` message itself); (2) `test_the_public_names` also lists imported modules; (3) `_DEFINED` duplicates `hilclaw.hypotheses._TOP` (no private import allowed), so a future top-level *integer* member must be added to both.
+- **CI**: run 38671390640, all six jobs green (Python gate 3.11/3.14, Coverage gate, C gate, sh gate, Test presence).
+- **Coverage**: `hilclaw/hypotheses_file.py` 100% line and branch; `hilclaw/` total 99%. Local full suite 19146 passed, 354 skipped; ruff check/format clean.
+- **Public names** (they mirror `hilclaw.spec_file`): `InvalidHypothesisFileError(ValueError)`, `UnsupportedVersionError(Exception)`, `WrittenFormError(ValueError)`, `NameTakenError(Exception)`, `parse(content)`, `final_name(data_root, document)`, `write(data_root, content)`. Python, as the rest of the package (line in the commit body).
+- **Left to the caller** (ADR-0059 Boundaries, stated in the docstring): what follows a taken name and what a second write for a round means (OD-17, OD-23); which agent writes the file and when (OD-23, OD-18); reading another version (OD-11); every cross-file check (`candidates` against the specs, a `ref`'s attempt existing, `metric` against `instance.json`).
+- No change to `hypotheses.py`, `layout.py`, `spec_file.py` or `once_write.py`. Module is 260 lines (under the 300 cap).
+- **Follow-ups**: (optional) a shared private helper module for the JSON text rules used by `spec_file.py` and `hypotheses_file.py` (`_object`, `_nan`, `_literal`, `_unsigned`); the follow-ups listed above stay as written.
