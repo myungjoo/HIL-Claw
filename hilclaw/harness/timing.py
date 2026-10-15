@@ -197,7 +197,8 @@ def parse_report(stdout):
     missing final LF, a blank line, a second space, a line in another place or
     of another keyword makes the whole output not of the form. No ``bytes``
     value raises. An ``interval_ns 0`` line is of the form here; it is
-    :func:`run_timing` that reports the run as broken.
+    :func:`judge_report` (and so :func:`run_timing`, which judges in the same
+    way) that reports such a report as broken, ``Broken.ZERO_INTERVAL``.
     """
     *lines, rest = stdout.split(b"\n")
     if rest or len(lines) < 2:
