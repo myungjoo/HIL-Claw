@@ -15,12 +15,15 @@ function here takes a path.
 The rules :func:`parse` holds: the content is exactly one JSON text that is an
 object, in UTF-8 without a byte order mark, with no member name twice in any
 object, unknown top-level members included (a rule for the whole text,
-ADR-0018 decision 2); the document is valid by ADR-0059 decisions 2 to 5
-(:func:`hilclaw.hypotheses.validate`); and a number at an *integer* place is
-written in decimal digits without sign, fraction or exponent, so ``-0``, which
-parses to the ``int`` 0, is refused by its text. The top level is open: below
-a top-level member that ADR-0059 does not define, the record sets no rule for
-a number, and neither does this module. A sign, a fraction, an exponent and an
+ADR-0018 decision 2); the document is valid by ADR-0059 decisions 2 to 5 and
+by the in-file rules of ADR-0073 decisions 2 and 3 for the basis kind ``case``
+and the optional top-level member ``cases_read``
+(:func:`hilclaw.hypotheses.validate`); and a number at an *integer* place,
+below ``cases_read`` included, is written in decimal digits without sign,
+fraction or exponent, so ``-0``, which parses to the ``int`` 0, is refused by
+its text. The top level is open: below a top-level member that neither
+ADR-0059 nor ADR-0073 defines, the record sets no rule for a number, and
+neither does this module. A sign, a fraction, an exponent and an
 integer above 2**53 - 1 are accepted there and returned as parsed; a number
 beyond the float range there is read as an infinity. Every other number of a
 valid document stands at an *integer* place. A content whose
@@ -75,7 +78,9 @@ under the final name included, lists no directory, knows no "same content",
 composes no content, takes no lock and makes no commit. Nothing here checks
 what one content does not show: ``candidates`` against the ``id.candidates``
 of the round's specs, a ``ref`` naming an attempt that exists, a ``metric``
-against the run's ``instance.json``. It reads no other version (OD-11) and is
+against the run's ``instance.json``, the rules between files of ADR-0073
+decisions 2 and 3 (a ``case`` entry or a ``cases_read`` entry against the
+cases of the key directory). It reads no other version (OD-11) and is
 no tool. Which agent writes the file and when, what follows a taken name and
 what a second write for a round means are open (ADR-0059 Boundaries; OD-23,
 OD-18, OD-17).
@@ -87,12 +92,19 @@ from pathlib import Path
 
 from hilclaw import hypotheses, keys, layout, once_write
 
-_DEFINED = ("schema_version", "run_id", "round", "candidates", "hypotheses")
+_DEFINED = (
+    "schema_version",
+    "run_id",
+    "round",
+    "candidates",
+    "hypotheses",
+    "cases_read",
+)
 _MINUS_ZERO = object()
 
 
 class InvalidHypothesisFileError(ValueError):
-    """A content breaks the text form or a rule of ADR-0059 decisions 2 to 5, or cannot be read by this interpreter.
+    """A content breaks the text form, a rule of ADR-0059 decisions 2 to 5 or of ADR-0073, or cannot be read by this interpreter.
 
     The message names the field path and the rule. The second case is a
     limit of this reader and no rule of the record (module docstring).

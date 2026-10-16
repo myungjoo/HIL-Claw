@@ -405,6 +405,57 @@ def test_the_string_minus_zero_is_no_number():
     assert parse(raw(document)) == document
 
 
+OTHER_RUN = "20261001t000000z-0123456789abcdef"
+
+
+def with_case():
+    document = example()
+    document["cases_read"] = [
+        {"run_id": "third-run", "round": 4},
+        {"run_id": OTHER_RUN, "round": 2},
+    ]
+    case = {"run_id": OTHER_RUN, "round": 2, "hypothesis": "h3"}
+    document["hypotheses"][0]["basis"].append(
+        {"kind": "case", "case": case, "text": "stored case"}
+    )
+    return document
+
+
+def test_a_file_with_cases_read_and_a_case_entry_parses_to_its_document():
+    document = with_case()
+    assert parse(raw(document)) == document
+
+
+def test_a_file_with_an_empty_cases_read_parses_to_its_document():
+    document = {**example(), "cases_read": []}
+    assert parse(raw(document)) == document
+
+
+@pytest.mark.parametrize(
+    ("path", "start"),
+    [
+        (("cases_read", 0, "round"), "cases_read[0].round:"),
+        (("cases_read", 1, "round"), "cases_read[1].round:"),
+        (
+            ("hypotheses", 0, "basis", 1, "case", "round"),
+            "hypotheses[0].basis[1].case.round:",
+        ),
+    ],
+)
+def test_minus_zero_at_a_case_round_is_refused_with_its_path(path, start):
+    message = invalid(start, spelt(with_case(), path, b"-0"))
+    assert message == f"{start} must be an integer from 1 to 2**53 - 1, got 0"
+
+
+def test_a_case_entry_the_validator_refuses_is_invalid_with_its_message():
+    document = with_case()
+    del document["cases_read"]
+    with pytest.raises(InvalidHypothesisFileError) as caught:
+        parse(raw(document))
+    assert str(caught.value).startswith("hypotheses[0].basis[1].case:")
+    assert isinstance(caught.value.__cause__, hypotheses.InvalidHypothesisRecordError)
+
+
 def test_the_classes_tell_invalid_from_another_version():
     assert issubclass(InvalidHypothesisFileError, ValueError)
     assert not issubclass(UnsupportedVersionError, ValueError)

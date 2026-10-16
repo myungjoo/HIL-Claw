@@ -597,6 +597,49 @@ def test_the_string_minus_zero_is_no_number():
     assert parse(raw(document)) == document
 
 
+OTHER_RUN = "20261001t000000z-0123456789abcdef"
+
+
+def with_case_basis():
+    document = example()
+    document["hypothesis_record"]["cases_read"] = [
+        {"run_id": "third-run", "round": 4},
+        {"run_id": OTHER_RUN, "round": 2},
+    ]
+    case = {"run_id": OTHER_RUN, "round": 2, "hypothesis": "h3"}
+    document["hypothesis_record"]["hypotheses"][0]["basis"].append(
+        {"kind": "case", "case": case, "text": "stored case"}
+    )
+    return document
+
+
+def test_a_case_whose_hypothesis_copy_rests_on_a_case_parses():
+    document = with_case_basis()
+    assert parse(raw(document)) == document
+
+
+@pytest.mark.parametrize(
+    ("path", "start"),
+    [
+        ((*H, "cases_read", 1, "round"), "hypothesis_record.cases_read[1].round:"),
+        (
+            (*H, "hypotheses", 0, "basis", 1, "case", "round"),
+            "hypothesis_record.hypotheses[0].basis[1].case.round:",
+        ),
+    ],
+)
+def test_minus_zero_at_a_case_round_of_the_copy_is_refused_with_its_path(path, start):
+    message = invalid(start, spelt(with_case_basis(), path, b"-0"))
+    assert message == f"{start} must be an integer from 1 to 2**53 - 1, got 0"
+
+
+def test_a_copy_breaking_an_in_file_rule_of_the_case_basis_is_invalid():
+    document = with_case_basis()
+    document["hypothesis_record"]["cases_read"].pop()
+    message = invalid("hypothesis_record.hypotheses[0].basis[1].case:", raw(document))
+    assert "no entry of cases_read" in message
+
+
 def test_the_classes_tell_invalid_from_another_version():
     assert issubclass(InvalidCaseFileError, ValueError)
     assert not issubclass(UnsupportedVersionError, ValueError)

@@ -306,6 +306,54 @@ def test_hypothesis_record_invalid_inside():
     assert str(error.__cause__) == f"hypotheses[0].id: {rule}"
 
 
+OTHER_RUN = "20261001t000000z-0123456789abcdef"
+
+
+def with_case_basis():
+    case = example()
+    case["hypothesis_record"]["cases_read"] = [{"run_id": OTHER_RUN, "round": 2}]
+    stored = {"run_id": OTHER_RUN, "round": 2, "hypothesis": "h3"}
+    case["hypothesis_record"]["hypotheses"][0]["basis"].append(
+        {"kind": "case", "case": stored, "text": "stored case"}
+    )
+    return case
+
+
+def test_hypothesis_copy_resting_on_a_case_is_valid():
+    assert validate(with_case_basis()) is None
+
+
+def test_build_keeps_cases_read_and_case_entries_of_the_copy():
+    case = with_case_basis()
+    built = build(case["hypothesis_record"], case["verdict_record"])
+    assert built == case
+
+
+def test_hypothesis_copy_with_a_case_pair_not_read_is_invalid():
+    case = with_case_basis()
+    case["hypothesis_record"]["cases_read"] = []
+    rule = "its run_id and round are no entry of cases_read"
+    error = invalid(
+        case,
+        f"hypothesis_record.hypotheses[0].basis[1].case: {rule}",
+        InvalidHypothesisRecordError,
+    )
+    assert str(error.__cause__) == f"hypotheses[0].basis[1].case: {rule}"
+
+
+def test_hypothesis_copy_reading_its_own_run_is_invalid():
+    case = with_case_basis()
+    case["hypothesis_record"]["cases_read"].append(
+        {"run_id": case["run_id"], "round": 1}
+    )
+    with pytest.raises(InvalidCaseError) as raised:
+        validate(case)
+    message = str(raised.value)
+    assert message.startswith("hypothesis_record.cases_read[1].run_id: ")
+    assert f"must be other than run_id ({case['run_id']})" in message
+    assert type(raised.value.__cause__) is InvalidHypothesisRecordError
+
+
 @pytest.mark.parametrize("member", MEMBERS)
 def test_copy_of_schema_version_2(member):
     case = example()
