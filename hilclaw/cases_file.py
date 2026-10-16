@@ -81,7 +81,7 @@ version (OD-11) and is no tool, no hook and no command. Promotion (whether,
 when and by whom a round is promoted, whether a round without verdicts is,
 what a second case write after a taken name means: OD-29, OD-23, OD-25,
 NFR-1, OD-17) is open (ADR-0072 Boundaries). The lookup of the cases of a key
-directory is decided (ADR-0073 decision 1) and has no code yet.
+directory (ADR-0073 decision 1) is :mod:`hilclaw.case_lookup`.
 """
 
 import codecs
