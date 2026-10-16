@@ -55,7 +55,7 @@ OF_TYPE = {
     "object": {},
 }
 PATTERN_CANDIDATES = ("", "R1", "-", "x y", "G" * 64, "A" * 64, "0" * 65)
-PYTHON_ONLY = re.compile(r"\(\?P|\(\?[aiLmsux-]|\(\?#|\\[AZ]")
+PYTHON_ONLY = re.compile(r"\(\?P|\(\?[aiLmsux-]|\(\?#|\\[AZz]|\{,")
 ENUM_CANDIDATES = (None, True, False, 0, -1, 0.5, "", "x", [], {})
 
 
