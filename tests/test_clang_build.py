@@ -1,3 +1,4 @@
+import errno
 import json
 import os
 import pickle
@@ -652,9 +653,16 @@ def test_failed_test_of_the_temporary_and_failed_removal(
     assert "stub warning: kept" in error.result.log
 
 
-@pytest.mark.parametrize("absent", [FileNotFoundError, NotADirectoryError])
-def test_absent_temporary_reads_as_no_artefact(absent, stub, src, out_dir, monkeypatch):
-    errors = fail_stat_of_temporary(monkeypatch, lambda path: absent(2, "absent", path))
+@pytest.mark.parametrize(
+    "absent, number",
+    [(FileNotFoundError, errno.ENOENT), (NotADirectoryError, errno.ENOTDIR)],
+)
+def test_absent_temporary_reads_as_no_artefact(
+    absent, number, stub, src, out_dir, monkeypatch
+):
+    errors = fail_stat_of_temporary(
+        monkeypatch, lambda path: absent(number, "absent", path)
+    )
     out = out_dir / "kernel.o"
     result = build(src, out, timeout_s=TIMEOUT, compiler=stub(LOGGED_WRITE))
     assert len(errors) == 1
