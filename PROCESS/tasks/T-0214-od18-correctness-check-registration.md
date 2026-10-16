@@ -2,7 +2,7 @@
 id: T-0214
 title: Record ADR-0070, whether and how correctness.check is registered in the default registry - the backend table, the source of seeds and the predicate "covered" it is bound to (OD-18)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0211, T-0212, T-0213]
@@ -98,3 +98,13 @@ ARCHITECTURE lines are very long: read them with `sed -n '<a>,<b>p' <file> | fol
 ## Follow-ups
 
 ## Result
+
+- **Outcome**: DONE. Document mode; landed on `main` as `3c78714` (fast-forward from `ecc1461`, one squashed commit, trailers `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0214`). Branch `claude/T-0214-od18-correctness-check-registration` deleted (remote and local). No PR.
+- **Files** (all in `touchesFiles`): `ARCHITECTURE/decisions/ADR-0070-od18-correctness-check-registration.md` (new, 132 lines), `ARCHITECTURE/Requirements.md` (OD-18 row: one adopted-part sentence with the 반영 link; status wording unchanged), `ARCHITECTURE/OpenDecisionProposals.md` (ADR-0070 adopted bullet after ADR-0069; a dated note on sub-question ⑩ saying ADR-0070 answers no part of it), `ARCHITECTURE/StandardScenarios.md` (heading clause; 2026-10-16 4th paragraph). ADR-0070 was free on `origin/main` and on every remote branch at push time.
+- **What ADR-0070 decides** (all the record's own design): register `correctness.check` in the registry `default_registry` builds now, without waiting for the `cpu_standin` operation (it replaces the "and so the tool's registration" sentence of ADR-0060 Consequences and the matching one of ADR-0056 Consequences; no earlier record edited); the default backend table holds only the mock, offering only this tool's operation bound to the ADR-0044 default script; no `cpu_standin` entry until that operation exists, so calls about `cpu_standin` runs (and runs of other accelerators) are `no_backend`; seed source = the OS generator (`seed_source.system`, relying only on the ADR-0021 decision 3 property); predicate = ADR-0041 decision 5; `default_registry` keeps its one parameter; tests build their own registry. Name check: no new kind, member, `step` value or reserved kind. No data-plane schema change, no request member, no new dependency.
+- **Coverage re-check** (StandardScenarios §검사 규칙): no verdict change, no gap; no scenario step or 비고 row edited.
+- **Document checks**: all relative links in new/edited text resolve; `git diff --stat ecc1461 3c78714` lists only the four `touchesFiles`; `git diff --check` clean; LF line endings (no CR); OD register rows 30 before and 30 after.
+- **Session entry check**: no open PR; no PR or landed commit for T-0214 before the work; no comment on #5 after the ADR-0069 notice (issuecomment-6199031235), so no owner objection and no HQ answer to name.
+- **Review**: 7 rounds of a fresh-context `dev-reviewer`; every round returned Approve with non-blocking findings, which were addressed in rounds 1 to 6. Round 7's three nits were not addressed, because any further change would need an 8th round past the cap: (1) ADR-0070 calls the ADR-0056 Consequences sentence "replaced" while the same-shaped "Not yet possible ... registration" sentences of ADR-0043/ADR-0044 are listed as "less exact"; (2) the Requirements OD-18 row's "정하지 않았고" list omits ⑩ (the ADR Status and the Proposals note include it); (3) ADR-0070 decision 2 (c) cites ADR-0047 decision 5 for `operation_failure_invalid` and omits the `end_line_failed` case. None changes a decision.
+- **D16**: no `claude` process started by the executor or any reviewer; nothing built or run (read-only git/gh, grep, link checks).
+- **Owner notice**: posted on #5 by the driver after the wrap-up push (§9).
