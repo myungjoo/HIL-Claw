@@ -2,7 +2,7 @@
 id: T-0218
 title: Write the ADR that settles the next part of OD-30 - the verdict and cause of each hypothesis of a round (its file, frame, vocabulary, cause, the references it rests on, and what it does and does not compare) - and reflect it in the ARCHITECTURE registers; no case file, no injection path, no S6 metric, no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-17, FR-11, FR-9, OD-30, OD-8, OD-13, OD-23, "#5 D6"]
 dependsOn: [T-0184]
@@ -105,3 +105,21 @@ Sections in the order of ADR-0001 "Record format" (Status, Context, Decision wit
 - (planner, document mode, §9) Whatever this record leaves to "a later record of OD-30" (for instance a `basis` kind that cites an earlier verdict, which raises the version of `hypotheses.json`).
 
 ## Result
+
+- **Landed** on `main` as `5ab4767` (document mode, one squashed commit, `Reviewed-by: reviewer agent (4 rounds, Approve)`, `Task: T-0218`). Branch `claude/T-0218-adr-od30-hypothesis-verdict` was never pushed; deleted locally after the push. No PLAN checkbox ticked.
+- **Checks before work**: landed check (`git log origin/main --grep='^Task: T-0218'`, `gh pr list --search T-0218 --state all`) empty; no open PR; no comment on #5 after the ADR-0070 notice (6205474647); no owner objection to ADR-0059 / ADR-0004; no answer to HQ-0013/14/16..19/21 seen.
+- **Record**: `ARCHITECTURE/decisions/ADR-0071-od30-hypothesis-verdict-record.md` (160 lines; ADR-0071 was free, ADR-0068 untouched).
+  1. Place: `runs/<run_id>/rounds/<RRRR>/eval/verdicts.json`, one per round ≥ 1, evaluation role (no agent), written once by ADR-0029 decisions 4-7 (temp `verdicts.json.<token>.tmp`); one verdict per hypothesis `id` of the round's `hypotheses.json` (rule between two files, not checked by the write); a hypothesis without an entry has no verdict (never read as `inconclusive`). Weighed: second file under `decision/`, per-attempt / per-candidate files, members in `eval.json` / `hypotheses.json`, a replaceable file.
+  2. Frame: ADR-0029 decision 2 text form; own `schema_version` 1; open top level `run_id`, `round`, `verdicts`; closed entries, version rule of ADR-0059 decision 2.
+  3. One verdict: `hypothesis` (name), `verdict` (`supported`/`refuted`/`inconclusive`; no partial support in v1), `cause` (text; structure carried by `verdict` and `evidence`), `evidence` (`check`: `ref`, `point`, `outcome` of ADR-0042; `comparison`: `metric` (`latency_minimisation` only), `point`, `measured`, `against`, `difference` `lower`/`higher`/`not_different`). No file paths, samples or magnitudes.
+  4. Rule: counted comparison = `board` comparison whose two attempts have a board `pass` check; `supported` = every expected metric has a counted comparison and all are as expected; `refuted` = a contrary one and none as expected; otherwise `inconclusive` (this answers FR-17's "검증 실패로 측정에 이르지 못한 가설의 판정 값"). `not_different` never refutes. Comparisons under a memory ceiling are left to the record that admits `memory_ceiling`. Open: base of comparison and which comparisons a verdict must include (OD-20, OD-28), margin (OD-13, OD-1), drift, sim-only hardware (OD-26), not-converged base (OD-13 ②), which execution counts (OD-18 ⑳).
+  5. Shared candidates: judged for each hypothesis; recommendation (not a rule) that the cause says the effect is not attributed to one hypothesis alone.
+  6. Round 0: no verdicts file.
+- **A-13 reading**: document mode; a new file in a place ADR-0004 left open and the OD-30 row names; no member, value or version of any existing data-plane file (incl. `eval.json`, `hypotheses.json`) changes; no `basis` kind added.
+- **Less exact, not edited** (integrator follow-ups): ADR-0059 Boundaries "The verdict and cause of each hypothesis" and "A basis that cites an earlier hypothesis or verdict", ADR-0059 decision 1 "where it goes is the next part of OD-30"; ADR-0004 `eval.json` row "round-level files: OD-20, OD-29" and decision 3 "which exist is left to OD-20, OD-29 and OD-19"; OD-30 proposal bullets 판정 / 인과 오귀속 / 파일 자리 ②; FR-17 and FR-11 parentheses (still true as pointers).
+- **Register edits**: Requirements OD-30 row 확정분 clause (status stays `제안됨`, 30 rows); OpenDecisionProposals OD-30 header date list and one 채택분 bullet; StandardScenarios heading clause and the dated paragraph "2026-10-16 (6차)". Coverage re-check: no verdict change, no gap (S0, S1-b, S2, S5, S6, S8, S11 checked).
+- **Document checks**: relative links resolve; `git diff --check` clean; new file `i/lf`; diff 4 files, +166/-3.
+- **Review**: round 1 Request changes (full owner quote and cause-as-text relation to FR-17; cost of board-only counting; proposals bullet classification; name check; `tested_by` rule for `measured`); round 2 Request changes (memory-ceiling case left to the admitting record; "Both" reading marked as own; failed-candidate alternative wording; name observations; Status scope); round 3 Approve with nits (validity scope, open choice of included comparisons, not-converged base, no case-file prediction, Status order, proposals wording) - applied; round 4 Approve (optional nit left: decision 1 could also name OD-19 beside OD-20 / OD-29).
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6206950125 (window ends 2026-10-23).
+- **Follow-ups**: (code mode) reader/validator and writer of `verdicts.json` in `hilclaw/` plus the path beside `hypothesis_record` in `hilclaw/layout.py`, optionally a cross-file check against `hypotheses.json`; (doc mode, §9) a `basis` kind that cites a verdict (raises `hypotheses.json` version), the base of comparison with OD-20 / OD-28, rounds that never reach evaluate (OD-17).
+- D16: nothing built or run; no `claude` process started by the executor or the reviewers.
