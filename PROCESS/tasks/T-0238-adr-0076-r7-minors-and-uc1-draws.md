@@ -2,7 +2,7 @@
 id: T-0238
 title: Correct ADR-0076 after acceptance - the round-7 minors (b)-(d) of T-0236 (objective coverage at the start registered under OD-8 sub-question 34 (ga), the order of the n_max fill-in in decision 3, the O3 quote) - and the UC-1 note on `draws` (e), with the register lines they touch and the coverage re-check
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, FR-2, FR-9, "#5 D6"]
 dependsOn: [T-0236, T-0237]
@@ -99,3 +99,31 @@ ARCHITECTURE lines are very long: read them with `sed -n '<line>p' <file> | fold
 - (code, OD-23) Bind `accelerators=(standin_profile.ACCELERATOR, mock_backend.NAME)` and `covers=gemm_contract.covers` in whatever component performs the start, with the two binding tests and the `standin_profile` docstring named in T-0237's `## Result`; waits on OD-23.
 
 ## Result
+
+- **Landed** on `main` as `942350d` in document mode, with no PR. It is one commit with the trailers `Reviewed-by: reviewer agent (2 rounds, Approve)` and `Task: T-0238`. The task branch is deleted locally and on the remote.
+  - 5 files, +11/-10, all in `touchesFiles`. `git diff --check` is clean, line endings are LF and the new links resolve.
+  - Entry checks: no open PR; no owner comment on #5 after the ADR-0076 notice (only driver comments); no HQ answer. Nothing was built or run, and no `claude` process was started (D16).
+- **ADR-0076 edits** (exact new wording):
+  - (c) Decision 3: "the content composed from the start's inputs is checked for validity first (ADR-0025 decision 2; today `hilclaw.instance.parse`) — an invalid content is not written, as ADR-0025 already has it; a valid content is read for the scope of decision 1; **a valid content in scope has `n_max` filled in when none was given (decision 2) and is then checked against the required set**; only a content that passes is written by the steps of ADR-0025 decision 3. An invalid or out-of-scope content gets nothing filled in. The default neither makes an invalid content valid nor a valid one invalid, so every content in scope is written, refused or reported as it would be were the default filled in before the validity check."
+    - Decision 2's `n_max` bullet: "into the content it then validates and writes" became "into the content it then checks against the required set and writes (decision 3)". The old wording contradicted the new order.
+    - The "never replaced" rule is not moved. No outcome changes: the default 10 is valid under ADR-0023 decision 3, the scope does not read `n_max`, and an out-of-scope content was outside the record (decision 1) before as well.
+  - (b) Boundaries: the item now ends "(ADR-0061 decision 4; registered under OD-8 sub-question ㉞ (가))". It stays open.
+  - (d) Context's O3 quote: "Until the rule that combines more than one objective (priority order, weighted sum, Pareto) is decided under A-4, an instance states exactly one objective" — reading "exactly one" as excluding none as well as two is ADR-0053's reading (decision 5), not the owner's.
+    - The `objective` row reads "FR-2; **owner** O1, and O3 as ADR-0053 decision 5 reads it (cited above); …".
+  - New last Status bullet: "Edited after acceptance on 2026-10-16" (UTC date) by T-0238. It lists the edits, says decision 3 orders the `n_max` fill-in after the validity and scope checks (the order `hilclaw/instance_start.py`, task T-0237, implements), says no decision's outcome changed, and says the objection window (until 2026-10-23) is unchanged.
+  - References: added `hilclaw/instance_start.py` and task T-0237, which the new bullet cites.
+- **OpenDecisionProposals ㉞**: the "남음:" part was rewritten in place to "(가)의 무엇이·어느 입력에서·메뉴, 시작이 적힌 objective가 다뤄지는지(covered, ADR-0061 결정 4)도 확인하는지, 그 밖의 instance; (나)·(다)."
+  - The wording of the question did not change, and neither did the adopted line 114 (it is still true).
+- **Requirements, OD-8 row `**잔여**:`**: added "㉞ (가)" to the parenthetical list of sub-questions under "instance의 시작이 그 밖에 무엇을 확인하는지(…)".
+  - Why it was needed: that parenthetical lists the sub-questions where the start's other checks are registered. ㉞ (가) was missing from it, so the list would have pointed away from the newly registered part. The generic "①~㉞ 가운데 미결분" alone did not name it.
+- **UC-1 비고**, one sentence after the tolerance sentence: "첫 사례의 instance는 correctness 검사의 draw 수(`draws`)도 적으며, 시작이 그 수를 무엇에서 정하는지는 미결이다([ADR-0046](decisions/ADR-0046-od18-correctness-check-draws.md) 결정 2·3, [OD-8](OpenDecisionProposals.md#od-8) ㉜)."
+  - Step 1 is unchanged, so no source of the number is decided. "첫 사례" limits the sentence to the instances for which ADR-0046 gives the member a meaning.
+- **Coverage re-check**: S0, S1, S2 and S8 were re-checked; no verdict changed and no gap was found. The "최근 재검사" line of StandardScenarios was rewritten in place, and no "판정 변화 이력" item was added.
+- **Review**:
+  - Round 1 (opus): Approve, with 3 nits. Two were applied: the outcome sentence now says "in scope", and the Status bullet now says decision 3 "orders" the fill-in. The third, the References additions not being listed in the Status bullet, was left; the reviewer said it was optional.
+  - Round 2: Approve, with 1 nit, not applied. It suggested also linking ADR-0076 in the UC-1 sentence; criterion 3 named ADR-0046 and OD-8 ㉜ as the links.
+  - Neither round reported a security finding.
+- **Left unchanged**: every other part of ADR-0076, the question wording of ㉞, and the adopted line of OpenDecisionProposals.
+- **Follow-ups**:
+  - (code, OD-23) Bind `accelerators=(standin_profile.ACCELERATOR, mock_backend.NAME)` and `covers=gemm_contract.covers` in whatever component performs the start. This includes the two binding tests and the `standin_profile` docstring named in T-0237's `## Result`. It waits on OD-23.
+  - (optional nit) Also cite ADR-0076 decision 2 in the UC-1 `draws` sentence.
