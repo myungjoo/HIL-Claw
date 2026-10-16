@@ -2,7 +2,7 @@
 id: T-0240
 title: Write the ADR that answers the first half of OD-18 sub-question 5 - what checks that a tool's stated input schema and the check of its tool function agree - and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18, "#5 D6"]
 dependsOn: [T-0214, T-0215]
@@ -96,3 +96,4 @@ Planner's notes (2026-10-17 UTC, `main` at `25221c9`, from the files; the review
   — posted by driver
   ```
 - **Follow-ups**: (code, next-task candidate) the test of ADR-0077 decisions 2 to 4 (Consequences); later registrations of `sim.run` / `board.run` add one accepted request to its data. (driver) whether the second half of sub-question 5 is notified as a `runtime-acceptance` HQ or folded into the runtime self-check (task file Follow-ups; not decided here).
+- **Driver**: landed as `43e10d7`; §9 owner notice on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6222457394 (window ends 2026-10-23).
