@@ -52,7 +52,8 @@ take its output and record ``cases_read`` (OD-18, OD-23). It has no selection
 rule for many cases (OD-30), no similar-key lookup (OD-4) and no ranking
 (OD-7). It does not check the rules between files of ADR-0073 decisions 2 and
 3 (that the ``case`` entries and ``cases_read`` of a ``hypotheses.json`` name
-cases of the key directory), resolves no *ref* inside a case, compares no
+cases of the key directory; :mod:`hilclaw.hypotheses_cases` checks them),
+resolves no *ref* inside a case, compares no
 copy with ``runs/`` and reads no other version (OD-11). Besides the run's
 ``instance.json`` read by :func:`lookup` and the two key record files, it
 reads nothing outside the key directory, nothing below ``runs/`` of another
