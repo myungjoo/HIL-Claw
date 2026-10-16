@@ -2,7 +2,7 @@
 id: T-0229
 title: Add the check of the rules between a round's `hypotheses.json` and the stored cases of its key directory (ADR-0073 decisions 2 and 3) as `hilclaw/hypotheses_cases.py`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-18, FR-11, NFR-2, OD-30]
 dependsOn: [T-0227, T-0228]
