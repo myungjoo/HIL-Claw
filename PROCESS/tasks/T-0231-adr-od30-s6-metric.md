@@ -1,0 +1,125 @@
+---
+id: T-0231
+title: Write the ADR that settles the S6 metric part of OD-30 for one pair of runs - what "the first run's best", "reached" and "a case reference" mean, the boundary cases, and how drift between runs is treated - and reflect it in the ARCHITECTURE registers by their recording rules; no number of pairs, no control run, no cost limit, no code
+phase: P1
+status: IN_PROGRESS
+commitMode: doc
+coversReq: [S6, FR-18, FR-11, FR-17, NFR-3, NFR-5, OD-30, OD-1, OD-13, OD-11, OD-20, OD-28, "#5 D6"]
+dependsOn: [T-0218, T-0226, T-0230]
+touchesFiles: [ARCHITECTURE/decisions/, ARCHITECTURE/Requirements.md, ARCHITECTURE/OpenDecisionProposals.md, ARCHITECTURE/StandardScenarios.md]   # one new record under ARCHITECTURE/decisions/: ADR-0074 at planning time (ADR-0068 is held by the BLOCKED T-0210 branch - never take it); the next free number above ADR-0073 at execution time
+estimatedSize: {loc: 240, files: 4}   # one new record of about 170-210 lines; the register edits are a few in-place lines each
+hq: []
+---
+## Why
+
+PLAN P2-8 ("S6 수용 기준의 계산 도구: 같은 키의 두 run의 기록에서 첫 run의 best에 도달하기까지의 라운드 수와 두 번째 run의 결정 로그에 든 사례 참조의 유무를 계산(fixture로 검증) — 지표 정의는 **OD-30 종결 필요(§9 ADR 경로)**") is open. Its tool cannot be written until the metric is defined: the S6 acceptance criterion in StandardScenarios says its metric is a **proposal** ("아래 지표 정의는 제안이며 확정 = OD-30"), and the OD-30 section of OpenDecisionProposals lists three open sub-questions under "S6 수용 기준의 지표 정의·경계 사례·반복 수·대조군": ① boundary cases (the first run's best from round 0 or 1), ② the judgement of "reached" (ADR-0007 decision 7 says only `different` / `not different`, not which is better, and does not cancel drift between measurements), ③ how many pairs, a control run without case lookup, and how much of the C-7 subscription to spend. FR-18 (owner, 2026-10-13): "효과에는 측정 가능한 수용 기준을 둔다(... 지표 정의의 확정 = OD-30)". **This task writes the record that defines the metric of one pair of runs** (① and ②, and what "a case reference" in the second run's decision log is), and ticks **no PLAN checkbox** (the P2-8 tool is a later code task).
+
+**Why this item now.** No lock, no TODO or INTERRUPTED task, no open PR (checked 2026-10-16 at `33d4837`). T-0210 (P1-1) is BLOCKED on HQ-0021 and T-0225 on HQ-0022; this task touches neither's scope. P0.5-4 waits on the owner's hook registration; P1-8 and P2-1 to P2-4 need run tools or roster decisions (OD-23, OD-16, OD-18) that are not landed; the remaining slices of P2-6/P2-7 are 1층 prompts and injection (the latter an owner HQ per the OD-30 section). The metric rests only on landed records (ADR-0007, ADR-0050 with the owner's HQ-0009 answer, ADR-0059, ADR-0063, ADR-0071, ADR-0072, ADR-0073), and the previous planner named it as the next candidate. The objection windows of ADR-0071, ADR-0072 and ADR-0073 run until 2026-10-23 (notices https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6206950125, https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6208691987, https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6210927027); this record builds on them as ADR-0073 built on ADR-0072 inside its window, and an objection would revert it with them. No owner comment on #5 after the ADR-0073 notice (checked at planning time).
+
+**Planner's judgements (the reviewer is asked to re-check each):**
+- **Authority (DRIVER §9).** OD-30 is design-level and not owner-only, and PLAN P2-8 marks the metric definition "OD-30 종결 필요(§9 ADR 경로)". **Not to be decided**: the number of pairs, whether a control run without case lookup is required, and how much subscription or hardware cost the acceptance test may spend (sub-question ③). The cost is the owner's spend on the C-7 subscription and on hardware (a value judgement of the kind DRIVER §9 keeps for the owner), and the owner performs P2-9 by hand. The record defines the verdict of **one pair**. It may say what a verdict of one pair does and does not show, and it names ③ in Boundaries as a question for the owner. Write the question text under `## Follow-ups` so the driver can raise it as an HQ; do not raise it yourself. Also not decided: the objective types other than latency minimisation, and any combination rule (OD-1 residue, #5 A-4, owner-only); MVP scope (C-6); OD-25; OD-3.
+- **Direction.** ADR-0007 decision 7 leaves "better" to OD-1, and ADR-0007 Boundaries call the direction owner-only. The owner's answer to HQ-0009 (quoted in ADR-0050 Context) fixes latency minimisation, lower is better, as the only objective type an instance can name for now. The record may use that direction **for that type only**, quoting the owner, and must name every other type as outside it.
+- **"The first run's best".** OD-20 leaves the content of `best.json` / `best_ref` open, and ADR-0007 decision 7 is a pairwise rule that need not be transitive. The record must define, **for the metric only and without defining `best.json`**, which attempt of the first run is its best, and from which recorded facts. Candidates to weigh include the attempt with the lowest summary statistic of ADR-0007 decision 5 among attempts with a passing board check (ADR-0071 decision 4's "counted" condition) and a converged board result (ADR-0063 decision 2), versus the attempt a later `best_ref` names (OD-20). The record must say what happens when two attempts tie, and that a sim-only measurement counts for nothing (ADR-0071 decision 4; OD-26 for sim-only hardware). Do not coin a numeric constant without a cited source or a stated derivation; reuse ADR-0007's `delta`, `confidence` and `resamples` as they are.
+- **"Reached" and drift (②).** The S6 proposal reads "reached" as a second-run measurement that is `not different` from, or `different` in the target direction from, the first run's best by ADR-0007 decision 7. The two sample sets come from different sessions, and ADR-0007 decisions 7 and 10 say drift between them is not cancelled. Weigh at least: (a) compare the recorded sample sets as they are, and name drift as a limit of the verdict; (b) a re-measurement of the first run's best in the second run's session (OD-11's incumbent re-measurement, OD-13's paired re-measurement; it costs hardware time (C-4), and needs the first run's binary to be runnable again (CAS, OD-20)). Option (b) would add run behaviour or a record that no landed ADR gives. If it is adopted it must not add or change a data-plane file; if it cannot be defined without one, it goes to Boundaries.
+- **Rounds counted and boundary cases (①).** Define which round a run "reached" its best in: the round of the attempt, counted from round 0 per ADR-0059 decision 5 and ADR-0071 decision 6. When the first run's best is from round 0 (the baseline) or round 1, "fewer rounds" cannot hold. Weigh at least: such a pair is "not applicable" (the verdict says so and is neither pass nor fail), versus another metric for that case (for example the best at an equal round count). State what the verdict values of one pair are, as a closed list.
+- **"A case reference" (S6: "두 번째 run의 결정 로그에는 첫 run의 사례 참조가 하나 이상").** ADR-0073 decision 3 distinguishes the cases a selection **read** (`cases_read`) from the cases a hypothesis **rests on** (`basis` kind `case`). Decide which of the two (or both) the metric requires, and which rounds of the second run are looked at (up to the round that reached, or all rounds). A case of the first run is identified by its `run_id` in the case file name (ADR-0072 decision 1).
+- **Board measurements and token spend (NFR-5).** S6 asks to record the number of board measurements and the token spend up to the round that reached. Say which landed record gives each. If a landed record gives none (the token ledger is OD-19 and NFR-5; the result files are PLAN P1-8), name it in Boundaries and do not invent one.
+- **Inputs of the later tool.** The result files' paths and members are not defined (PLAN P1-8; ADR-0071 decision 3 "Not recorded"). The record therefore defines the metric over recorded **facts**: attempt refs, rounds, board check outcomes, `intervals_ns` of ADR-0063 decision 4, and `hypotheses.json` / case files. It does not define a file the tool reads. Consequences say that the P2-8 tool can be tested on fixtures of those facts until P1-8 lands.
+- **Data-plane schema (A-13).** The record changes **no** member, value or version of `hypotheses.json`, `verdicts.json`, the case file, `eval.json`, `STATE.json`, `instance.json`, `spec.json`, `artifacts.json`, `events.ndjson`, the key record files, `best.json` or `technique_stats.json`. It adds no file to the data plane. The acceptance verdict is not a run record: if a place to store it seems needed, name it in Boundaries.
+- **D16.** The metric is measured by the owner on a runtime machine (P2-9, runtime acceptance). The record is written from documents and source alone. Nothing is built or run; no `claude`, board or API key is needed. The nightly routine's runs (P2-10, D17) are excluded from the metric by PLAN P2-9; the record cites that rather than restating it.
+
+## Required Reading
+
+Line numbers are those of `main` at `33d4837`; the text wins. ARCHITECTURE lines are long: read them with `sed -n '<line>p' | cut -c...` or `fold`, never whole files at once. Read Korean files and Python with `PYTHONIOENCODING=utf-8` (the console code page is cp949).
+
+- **PROCESS/DRIVER.md §3-5** (line 72: executor procedure, landed check, resume rule, the 2h30m limit) and **§5** (lines 86-114: task format, naming, size cap D4, trailers); §8 (lines 135-139: comment format and the `— posted by driver` footer); **§9 whole (lines 141-148)**.
+- CLAUDE.md, the whole file. Above all: "문서 커버리지 재검사", "미결은 발명하지 않는다", "세션 진입 점검", "개발 드라이버와 런타임의 구분" (D16, D17), and "브랜치·merge 절차" (document mode, `Reviewed-by`, the A-13 BLOCKED reasons).
+- .claude/skills/dev-item-address/SKILL.md (document mode: steps 9-12 and 15); .claude/skills/dev-code-review/SKILL.md (document-mode path; the "no invented decisions" check).
+- PROCESS/PLAN.md lines 41-46 (P2-6, P2-7, P2-5, **P2-8**, **P2-9**, P2-10).
+- ARCHITECTURE/Requirements.md: **line 84 (the register's "행 형식", the recording rule your row edit follows)**; FR-1 (19), FR-2 (20), FR-9 (27), FR-11 (29), FR-15 (33), FR-17 (35), **FR-18 (36)**, NFR-3 (46), NFR-5 (48), C-4 (61), C-7 (64); register rows OD-1 (92), OD-11 (102), OD-13 (104), OD-19 (110), OD-20 (111), OD-28 (119), OD-29 (120), **OD-30 (121)**.
+- **ARCHITECTURE/OpenDecisionProposals.md line 8 (the header's "기록 규칙")** and the **OD-30 section (lines 397-417)**: the four 채택분 lines, "제안으로 남는 부분", and **line 416 ("S6 수용 기준의 지표 정의·경계 사례·반복 수·대조군")**. Read the OD-11 section from line 162 (incumbent re-measurement), OD-13 from 181 (paired re-measurement), OD-20 from 314, and OD-28 from 378.
+- ARCHITECTURE/StandardScenarios.md: 검사 규칙 (lines 13-29), **S6 (101-111, including its 수용 기준 paragraph)**, S0 (30-44), and **§검사 결과 (from line 168; line 170 is its recording rule, line 172 the "최근 재검사" line, line 193 the S6 row)**.
+- **ARCHITECTURE/decisions/ADR-0007-od13-measurement-policy.md**: decisions 1, 5 and **7 (lines 60-71)**, 9 and **10**, and Boundaries (150-159).
+- ARCHITECTURE/decisions/ADR-0050-od6-task-objective-members.md: Status and Context (lines 3-26; the owner's HQ-0009 answer quoted as O1-O5), decisions 2-3 (48-64).
+- **ARCHITECTURE/decisions/ADR-0071-od30-hypothesis-verdict-record.md**: decisions 3-4 (lines 49-75; `comparison` and `check` entries, "counted comparison", the open comparison base), decision 6 (81-84), Boundaries (140-153).
+- ARCHITECTURE/decisions/ADR-0063-od18-run-tools-result-members.md: decisions 2 and 4 (lines 37-44, 66-76).
+- ARCHITECTURE/decisions/ADR-0059-od30-round-hypothesis-record.md: decision 3 (lines 51-75; `expected`, `latency_minimisation`), decision 5 (84-87).
+- **ARCHITECTURE/decisions/ADR-0073-od30-case-lookup-and-case-basis.md, whole (132 lines)**: the record this one continues, and the model of form. Above all decision 1, decision 3 (`cases_read` versus `case` basis), and Boundaries.
+- ARCHITECTURE/decisions/ADR-0072-od30-hypothesis-outcome-case-file.md: decision 1 (the case file name carries `run_id` and round).
+- ARCHITECTURE/decisions/ADR-0001-od4-key-schema.md "Record format" (from line 146); ADR-0027 (run id form) for any example value.
+- Code, read as observations only (this record binds no code): `hilclaw/case_lookup.py`, `hilclaw/hypotheses_cases.py`, `hilclaw/verdicts.py`, and the measurement-comparison code if one exists on `main` (grep `hilclaw/` for `resamples` / `trimmed`).
+- `PROCESS/tasks/T-0226-adr-od30-case-lookup.md` `## Result`: review findings of the previous OD-30 step. Do **not** copy its register-edit wording; follow the recording rules named below.
+
+## Acceptance Criteria
+
+### The record (one new ADR, English, under `ARCHITECTURE/decisions/`)
+
+Number: the next free number above ADR-0073 on `origin/main` and on every remote branch at execution time (ADR-0074 at planning time). **Never ADR-0068**: it is held by the unlanded branch `claude/T-0210-od18-run-tools-operation-tool-failure`. Confirm the number before the push. If it is taken, use the next free one and update every reference.
+
+Sections in the order of ADR-0001 "Record format", accepted under DRIVER §9 (owner notice, 7-day window). The Status says it answers **one more part of OD-30**, sub-questions ① and ② of the S6 bullet and the meaning of "a case reference", and that OD-30 stays `제안됨`. Quote the owner only where an owner sentence exists (FR-18, the 2026-10-13 decision, the HQ-0009 answer), and link it. Mark everything else as this record's own design ("cited" versus "own", as ADR-0071/0073 do). Keep the record to about 210 lines or fewer. It decides the following points, each weighed against at least one alternative:
+
+1. **The first run's best for the metric**, from recorded facts, with ties and sim-only measurements treated (see `## Why`). `best.json` and `best_ref` are not defined.
+2. **"Reached"**: the comparison rule (ADR-0007 decision 7, the latency direction from the owner's HQ-0009 answer), the treatment of drift (option chosen, and its limit stated), and the round in which the second run reached.
+3. **The verdict of one pair**: the round counts compared, the boundary cases (round 0 and round 1 bests, a second run that never reaches, a first run with no verified board measurement), and the closed list of verdict values.
+4. **The case-reference condition**: `cases_read` and/or `basis` kind `case`, which rounds of the second run are looked at, and how a case of the first run is recognised.
+5. **What is recorded beside the verdict** (NFR-5): board measurement count and token spend, each from a named landed record, or named as open in Boundaries.
+6. **A worked example** on synthetic values (no unit claims beyond ADR-0063's nanoseconds), showing one pair that passes and one boundary case, in the manner of ADR-0007's worked example. Any JSON shown must parse.
+7. **Guarded exit**: name in Boundaries any point that needs one of the following: an owner-only item (#5 A/B, C-6, OD-25, OD-3, the cost spend of ③); a new or changed data-plane file; a new external dependency; or inventing what OD-1 / OD-11 / OD-13 / OD-19 / OD-20 / OD-28 / OD-29 leave open. If the record cannot stand without such a point, return BLOCKED (`owner-only-decision`, `data-plane-schema-change` or `requirement-unclear`) before landing anything, with the question written for an HQ.
+
+**Boundaries must name at least**: the number of pairs, a control run, and the cost limit (③, for the owner); objective types other than latency minimisation, and combinations (OD-1 residue); `best.json` / `best_ref` (OD-20); the baseline (OD-28); the incumbent and paired re-measurement (OD-11, OD-13), if not adopted; sim-only hardware (OD-26); similar-key pairs (OD-4 residue); where an acceptance verdict is stored, if anywhere; the token ledger (OD-19, NFR-5); the result files (PLAN P1-8); the runtime acceptance itself (P2-9, D16); the nightly runs (P2-10, D17); code, tests and prompts.
+
+**Consequences**: the code slice it makes possible (the P2-8 tool over fixtures of the facts of point 1-5; names left to that task); the A-13 reading (no data-plane file changes); a name check of every new term or value (grep `hilclaw/`, `tests/`, `ARCHITECTURE/` on the day; report equalities and whether they are on purpose); the sentences of accepted records that become less exact, listed and not edited.
+
+### Register edits (in place, in Korean as the documents are). Follow the recording rules, not earlier task files
+
+- `ARCHITECTURE/Requirements.md` OD-30 row (line 121), by the "행 형식" of line 84: add **one** ADR link with a few-word subject to `**확정분**:`, and rewrite `**잔여**:` in place ("S6 지표" becomes what is left of it). The status stays `제안됨`. Do not restate the record and add no dated chain. Edit FR-18's "지표 정의의 확정 = OD-30" or another sentence only if it becomes false; otherwise report it under Follow-ups. The register keeps 30 rows.
+- `ARCHITECTURE/OpenDecisionProposals.md` OD-30 section, by the header's "기록 규칙" (line 8): add one `- **채택분** [ADR-NNNN](…) — 다룬 것 (답함: …)` line after the ADR-0073 one. Rewrite in place the S6 entry of "제안으로 남는 부분", and the status of the line-416 bullet with its `→ 부분 답: … 남음: …` ending. Keep the question's wording, and add no dated notes.
+- `ARCHITECTURE/StandardScenarios.md`: in the S6 수용 기준 paragraph, rewrite in place only the clauses that become false: "아래 지표 정의는 제안이며 확정 = OD-30" and the closing list of open items. Point to the ADR with a link, and do not restate it. Re-run the coverage check by its rules (lines 13-29; S6 is the one touched, and check S0 and S11 too). Then, by line 170, update the "최근 재검사" line (date, trigger, outcome) and the S6 row note (line 193) so that it names only what is still open. Add a "판정 변화 이력" entry only if a verdict or gap changes.
+- No other file: not README, PLAN, DRIVER.md, CLAUDE.md, any accepted ADR, any code, test, schema or `.claude/` file, and nothing in `HIL-Claw-data`.
+
+### Document checks (report in `## Result`)
+
+- Every relative link in the new record and the edited lines resolves, and any JSON in the record parses. `git diff --check` is clean. `git ls-files --eol` shows `i/lf` for the new file. `git diff --stat origin/main` shows only `touchesFiles`, within 300 changed lines and 4 files.
+
+### Process
+
+- Work only in the driver's dedicated clone. First run the §3-5 landed check: `git log origin/main --grep='^Task: T-0231'` and `gh pr list --repo myungjoo/HIL-Claw --search T-0231 --state all`. Then run the session entry check of CLAUDE.md: `gh pr list --repo myungjoo/HIL-Claw --state open`, and issues #4, #5, #7 and #8. The task is BLOCKED ("open PR conflict") if an open PR edits any of: the OD-30, OD-1, OD-11, OD-13 or OD-20 row or section; the S6 section; §검사 결과; or ADR-0007, ADR-0071 or ADR-0073. None was open at planning time. The branch of T-0210 edits the same register files but has no PR; if it lands first, rebase.
+- Read the comments on issue #5 after https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6210927027, skipping the driver's own (those ending `— posted by driver`). The task is BLOCKED ("requirement-unclear") by an owner comment that speaks to S6, the acceptance metric, cases, verdicts or OD-30, or that objects to ADR-0071, ADR-0072 or ADR-0073; quote it. An answer to an open HQ (HQ-0013, HQ-0014, HQ-0016..HQ-0019, HQ-0021, HQ-0022) does not stop this task; name it in `## Result`.
+- **D16**: neither the executor nor any agent it spawns starts the Claude Code program (`claude`) as a child process, with any subcommand or flag. Nothing is built or run. Tell each reviewer to write no file and start no `claude` process.
+- **Document mode** (CLAUDE.md A-13): branch `claude/T-0231-adr-od30-s6-metric` from `origin/main`; **no PR**. Run the reviewer cycle of dev-item-address steps 10-12, with a fresh-context `dev-reviewer` each round, given the branch name and this file's path. At most 7 rounds; past the cap without a final Approve, the task is BLOCKED `review-rounds-exceeded`. A result starting with `SECURITY` is BLOCKED. If no reviewer can be spawned, the task is BLOCKED; do not review your own work. Ask the reviewer to:
+  - (a) re-check the planner's judgements in `## Why`;
+  - (b) check every cited value and sentence against the cited record on `main`;
+  - (c) attack points 1-5 for a hidden change to a data-plane file, or a hidden definition of `best.json`, the baseline or the token ledger;
+  - (d) look for any invented constant, any owner-only decision (above all the number of pairs, a control run, the cost, or objective types other than latency), or any decided OD-1/OD-11/OD-13/OD-20/OD-28 item;
+  - (e) check the register edits against the three recording rules.
+- **Landing**:
+  - `git fetch origin` and rebase onto `origin/main`. Squash to one commit with `git reset --soft origin/main` after the rebase. If the rebase changed content, the change goes back to review.
+  - Push with `git push origin HEAD:main` (fast-forward). If it is rejected, fetch, rebase and retry, at most 3 times.
+  - The commit message is in English and its subject starts with `T-0231:`. The body says what the record decides, what it leaves open (③ for the owner), the register edits and the coverage outcome, and that nothing was built or run.
+  - Trailers in this order: `Reviewed-by: reviewer agent (N rounds, Approve)`, `Task: T-0231`, then any attribution trailer the session requires.
+  - Delete the task branch (remote and local) only after the push is confirmed.
+- **Owner notice (DRIVER §9)**: after landing, post on issue #5 in English, in the form of the earlier OD-30 notices:
+  - heading `### OD-30 - the S6 acceptance metric of one pair of runs fixed by ADR-NNNN under DRIVER §9 (T-0231)`;
+  - what the record decides, in six lines or fewer;
+  - what is quoted from the owner and what is the record's own;
+  - the most contestable choice first (likely the drift treatment or the boundary-case verdict);
+  - that the number of pairs, a control run and the cost are left to the owner (the driver will raise them as an HQ), that OD-30 stays `제안됨`, and the date the 7-day window ends;
+  - last line `— posted by driver`.
+
+  Record the URL in `## Result`.
+- **Prohibitions**: never `git push --force*` / `-f`, never a recursive forced remove, never `gh repo delete`. Do not edit `.claude/settings.json` or `.claude/settings.local.json`. A denied or failed tool call makes the task BLOCKED; do not work around it. If the task-branch push is rejected, rebase and retry once, then return BLOCKED (`branch-contention`). Past 2h30m of wall-clock time, return BLOCKED (`task-timeout`) with the state in `## Result`.
+- **`## Result`**: fill it in on `main` after the push and leave it uncommitted for the driver (DRIVER §3-6). Include: the commit; the review rounds and findings; the answers to points 1-5 as landed; the A-13 reading; the less-exact sentences; the register edits; the coverage outcome; the notice URL; the HQ question text for ③ under Follow-ups; and any other follow-ups. `PROCESS/STATE.json`, `PROCESS/journal/` and `PROCESS/PLAN.md` belong to the driver.
+- Return a summary of at most 200 characters.
+
+## Out of Scope
+
+- Any change to a data-plane file or version listed in `## Why`; any new data-plane file; the definition of `best.json`, `best_ref`, the baseline, the token ledger or the result files.
+- The number of pairs, a control run, and the cost limit of the acceptance test (③, for the owner via the driver's HQ); objective types other than latency minimisation (OD-1, #5 A-4).
+- Injection (FR-15; owner HQ per the OD-30 section); the case selection rule for many cases; promotion timing and policy (OD-29, OD-23, OD-17).
+- The P2-8 tool, its tests and fixtures; any prompt; the runtime acceptance of P2-9; the nightly routine of P2-10.
+- The two optional R2 nits of T-0230 and the less-exact sentences ADR-0073 listed for ADR-0059/0071/0072. Do not edit any accepted record.
+- OD-18 ⑲ / HQ-0021 (T-0210); the JSON text helper / HQ-0022 (T-0225); anything in `HIL-Claw-data`.
+
+## Follow-ups
+
+## Result
