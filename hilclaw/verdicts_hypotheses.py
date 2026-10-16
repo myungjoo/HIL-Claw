@@ -95,7 +95,7 @@ def check(verdicts, hypotheses):
         if ident not in have:
             _broken(
                 "verdicts",
-                f"hold no verdict for hypothesis {reprlib.repr(ident)} "
+                f"must hold a verdict for hypothesis {reprlib.repr(ident)} "
                 f"(hypotheses[{index}].id of the hypothesis record)",
             )
     for index, entry in enumerate(entries):

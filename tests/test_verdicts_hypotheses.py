@@ -331,6 +331,13 @@ def test_run_id_is_checked_before_round():
         check(verdicts, hypotheses)
 
 
+def test_round_is_checked_before_ids():
+    verdicts, hypotheses = pair([verdict("inconclusive", [], "h9")])
+    hypotheses["round"] = 2
+    with pytest.raises(MismatchError, match=r"^round: "):
+        check(verdicts, hypotheses)
+
+
 def test_verdict_for_unknown_id():
     entries = [verdict("supported", counted()), verdict("inconclusive", [], "h9")]
     mismatch(
@@ -343,7 +350,7 @@ def test_hypothesis_without_verdict():
     hyps = [hypothesis("h1"), hypothesis("h2")]
     mismatch(
         *pair([verdict("supported", counted())], hyps),
-        "verdicts: hold no verdict for hypothesis 'h2' "
+        "verdicts: must hold a verdict for hypothesis 'h2' "
         "(hypotheses[1].id of the hypothesis record)",
     )
 
@@ -359,7 +366,7 @@ def test_missing_verdict_is_reported_before_measured_outside_tested_by():
     hyps = [hypothesis("h1"), hypothesis("h2", (2,))]
     entries = [verdict("inconclusive", [comparison((1, 2, 1))])]
     with pytest.raises(
-        MismatchError, match=r"^verdicts: hold no verdict for hypothesis 'h2'"
+        MismatchError, match=r"^verdicts: must hold a verdict for hypothesis 'h2'"
     ):
         check(*pair(entries, hyps, candidates=2))
 
