@@ -392,13 +392,17 @@ def test_the_module_holds_no_number_of_its_own():
 
 
 def test_public_names_of_the_module():
-    public = {name for name in vars(instance_start) if not name.startswith("_")}
-    assert {
+    public = {
+        name
+        for name, value in vars(instance_start).items()
+        if not name.startswith("_") and not inspect.ismodule(value)
+    }
+    assert public == {
         "REPORT_ORDER",
         "OutOfScopeError",
         "MissingMembersError",
         "prepare",
-    } <= public
+    }
 
 
 def test_the_arguments_are_one_document_and_two_by_name_without_default():

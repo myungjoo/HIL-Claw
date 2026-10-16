@@ -28,9 +28,9 @@ Choices that are this module's own and no rule of a record:
   the document form of the same rules.
 * The order is validity, then scope, then the filling-in of ``n_max``, then
   the required set. ADR-0076 decision 3 lists the filling-in before validity;
-  for a valid document the outcome is the same, since a valid ``n_max`` added
-  to it makes it neither valid nor invalid, and so a document outside
-  decision 1 or an invalid one has nothing filled in.
+  for a valid document the outcome is the same, since adding a valid
+  ``n_max`` does not change whether a document is valid; and an invalid
+  document or one outside decision 1 has nothing filled in.
 * The names of the accelerators of decision 1 and "covered" reach
   :func:`prepare` from its caller, as ``accelerators`` and ``covers``: the
   names of ADR-0016 decisions 4 and 5 are
@@ -88,7 +88,9 @@ class OutOfScopeError(Exception):
     Why is either the accelerator of ``hw_profile.record`` or a stated
     ``op_signature`` that the ``covers`` handed to :func:`prepare` does not
     cover.
-    Nothing is required of such a document here and nothing is allowed.
+    Nothing is required of such a document here and nothing is allowed. It is
+    no refusal of the start: what the start does with such a document stays
+    open (ADR-0076 decision 1 and Boundaries).
     """
 
 
