@@ -113,6 +113,18 @@ def hypothesis_record(data_root, run_id, round):
     return role_dir(data_root, run_id, round, "decision") / "hypotheses.json"
 
 
+def verdict_record(data_root, run_id, round):
+    """Return ``<round_dir>/eval/verdicts.json``, the verdicts of the hypotheses of the round.
+
+    The file is the evaluation role's, one per round (ADR-0071 decision 1).
+    ``round`` is an integer from 1 to :data:`hilclaw.keys.MAX_INTEGER`: round 0
+    has no verdicts file (ADR-0071 decision 6). Every other rule is that of
+    :func:`round_dir`.
+    """
+    _number("round", round, 1, 4)
+    return role_dir(data_root, run_id, round, "eval") / "verdicts.json"
+
+
 def attempt_dir(data_root, run_id, round, role, candidate, attempt):
     """Return ``<round_dir>/<role>/candidates/<CC>/attempts/<AA>``.
 
