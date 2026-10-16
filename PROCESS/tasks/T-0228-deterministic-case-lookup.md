@@ -2,7 +2,7 @@
 id: T-0228
 title: Add the deterministic exact-match lookup of stored cases of a run's key directory (ADR-0073 decision 1) and the `cases_read` value it gives (decision 3) as `hilclaw/case_lookup.py`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-18, FR-11, NFR-2, OD-30]
 dependsOn: [T-0224, T-0226, T-0227]
