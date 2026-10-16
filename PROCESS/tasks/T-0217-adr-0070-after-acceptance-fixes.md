@@ -2,7 +2,7 @@
 id: T-0217
 title: Correct ADR-0070 after acceptance - the NumPy-at-build observation T-0216 made untrue and the three round-7 nits of T-0214; coverage re-check recorded
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-18, FR-10, "CLAUDE.md 문서 커버리지 재검사"]
 dependsOn: [T-0214, T-0215, T-0216]
@@ -101,3 +101,19 @@ ARCHITECTURE lines are very long: read them with `sed -n '<line>p' <file> | fold
 ## Follow-ups
 
 ## Result
+
+- **Outcome**: DONE. Landed as `f9f2038` on `main` (document mode, fast-forward push from `408b15f`, one squashed commit, trailers `Reviewed-by: reviewer agent (1 rounds, Approve)`, `Task: T-0217`). No PR; the branch `claude/T-0217-adr-0070-after-acceptance-fixes` was never pushed and the local branch is deleted. Nothing was built or run; no `claude` process was started.
+- **Checks before work**: `git log origin/main --grep='^Task: T-0217'` and `gh pr list --search T-0217 --state all` empty; no open PR. Issue #5 after the ADR-0070 notice (comment 6205474647): no further comment, so no owner objection and no answer to HQ-0013, HQ-0014, HQ-0016..HQ-0019 or HQ-0021. No new comment on #4/#7/#8 since 2026-10-15.
+- **Code confirmed** (read only): `hilclaw/check_definition.py` imports `check_tool` / `mock_check` only inside functions (module docstring, `default_table`, the closure of `definition`); `default_registry` docstring says building imports no NumPy.
+- **Edits (exact wording)**:
+  - ADR-0070 Consequences, last sentence of "Code sentences a code task changes": "Building the default registry then imported NumPy through `hilclaw/mock_check.py`, a dependency the package already has (`pyproject.toml`); since task T-0216 (`dca5f2d`) the modules that pull NumPy are imported only at the first call of `correctness.check`, so building the registry imports none."
+  - ADR-0070 decision 2 (c): "... the kind it raised is outside the contract and the call ends with `operation_failure_invalid`, or with `end_line_failed` when the append of its end line fails (cited: ADR-0047 decision 5). Either way it would start a step and end the identity with a `failure` (or, where that end line cannot be appended, leave it open or ended) for a fault of registration - ..." (the reason against (c) adjusted minimally, since with `end_line_failed` the identity may stay open; ADR-0047 line 96, in decision 5, carries both endings; ADR-0047 was already in References).
+  - ADR-0070 Consequences "Not edited and now less exact" (nit 1, placed here, not in Status line 9): after "... as far as they name the registration" added "(each names it beside the tool function of `correctness.check`, itself not yet possible at that record, where the two replaced sentences name it beside the operation of `cpu_standin` alone, ADR-0060 as following from it: "and so")". The lists of replaced and less exact sentences are unchanged.
+  - ADR-0070 Status, new last bullet: "**Edited after acceptance on 2026-10-16** by task T-0217 (document mode): ..." naming the three edits and the two aligned passages, "No decision changed meaning", and the objection window of https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6205474647 (until 2026-10-23) unchanged.
+  - Requirements OD-18 row: "하위 질문 ①·⑤·⑧·⑩·⑭·⑱, run 도구의 등록". OD-18 stays `제안됨`; 30 rows.
+  - OpenDecisionProposals line 319 (aligned, since it stated the ending as complete): "계약 밖의 종류여서 `operation_failure_invalid`로(끝 줄의 추가가 실패하면 `end_line_failed`로) 끝나고 — ADR-0047 결정 5 —". "어느 쪽이든 등록의 결함이 식별을 써 버린다" stays true and was not edited.
+  - StandardScenarios: heading clause ", ADR-0070의 승인 뒤 정정(관찰 하나를 T-0216 뒤의 코드에 맞춤, 대안 (c)의 끝맺음에 `end_line_failed`, 대체/덜 정확함 구분의 근거 한 구절, 등록부 OD-18 행의 미결 하위 질문에 ⑩ — 판정·결정 변화 없음)" before " 후)"; new paragraph `2026-10-16 (5차, 승인된 기록의 정정 — ADR-0070의 결정 2 대안 (c)와 Consequences 두 항목, 등록부의 OD-18 행; 결정 변화 없음)` after the 4차 paragraph.
+- **Coverage re-check**: rules re-applied to the four groups of the 4차 paragraph (S0-5·6, S1-3·4·6, S1-b-2·S2-2·S3-4·S6-3·S11-3, S8-2·3; S0-7, S2-3, S3-1~4; S5-1·2·3; S7-2, S9-3, S10-3): no verdict change, no gap; confirmed independently by the reviewer. No scenario step or 비고 row edited.
+- **Review**: 1 round, Approve (fresh-context `dev-reviewer`, opus). It confirmed the planner's reading, the code observation, that no decision changed meaning and the re-check. Three optional nits, not applied (any change would need another round; none affects correctness): (1) the 5차 paragraph title does not name the Proposals alignment (its body ⑵ does); (2) the task's `## Why` cites "ADR-0047 line 77 (decision 5)", but line 77 is in decision 4 - decision 5's sentence is line 96, so the ADR's "cited: ADR-0047 decision 5" is right; (3) a denser alternative wording for the nit-1 clause quoting "its registration".
+- **Reviewer judgement on editing in place during the objection window**: acceptable - follows T-0190/T-0193/T-0197/T-0207/T-0213, disclosed by the Status bullet; an objection would revert the record with its edits (Status line 11); the #5 notice text mentions none of the edited points, so no new §9 notice is needed.
+- **Follow-ups**: none new; the ADR-0070 "less exact" list stays the integrator's follow-up, as the record says.
