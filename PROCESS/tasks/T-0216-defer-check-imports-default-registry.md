@@ -2,7 +2,7 @@
 id: T-0216
 title: Defer the NumPy-pulling imports of correctness.check until its first call, so building the default registry imports no NumPy (T-0215 follow-ups 1 and 2)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, C-7]
 dependsOn: [T-0215]
@@ -74,3 +74,15 @@ ARCHITECTURE lines are very long: read them with `sed -n '<a>,<b>p' <file> | fol
 ## Follow-ups
 
 ## Result
+
+DONE. PR https://github.com/myungjoo/HIL-Claw/pull/144, squash-merged as `dca5f2d` (branch deleted). Review: 1 round, Approve (dev-reviewer, fresh context; one nit, not acted on: the per-definition cache does not guard two concurrent first calls, which neither front makes since both answer requests in sequence). CI green (Python 3.11 / 3.14, coverage gate, C, sh, test presence). Local: `ruff check`, `ruff format --check`, full `pytest` on Windows 20698 passed, 354 skipped.
+
+- Language: Python, as the rest of `hilclaw/` (the change is inside existing modules).
+- Mechanism: `check_definition.definition` checks `source` at build (same `TypeError` message as `blob_tools` / `default_registry`) and returns a closure that, at its first call, imports `check_tool`, calls `default_table()` (which imports `mock_check`) and binds `check_tool.tool_function` to that table, `seed_source.system` and `gemm_contract.covers`; the bound function is kept in a list local to the definition (no module-level state). A failure while binding caches nothing; the exception reaches `tools.call` as before (`tool_crashed`, chained).
+- Final `touchesFiles`: `hilclaw/check_definition.py`, `hilclaw/tools.py`, `hilclaw/gemm_contract.py` (docstring only), `tests/test_check_definition.py`, `tests/test___main__.py`. `tests/test_tools.py` and `tests/test_gemm_contract.py` needed no edit (they pass unchanged).
+- Remaining limit (criterion 6): a process that calls `correctness.check` itself with fd 2 closed on Windows still imports NumPy and can still die in that import; out of scope.
+- No open HQ was answered on #5 after the ADR-0070 notice; no owner objection.
+
+### Follow-ups
+
+1. ADR-0070 Consequences sentence "Building the default registry then imports NumPy through `hilclaw/mock_check.py`" is no longer exact (now the first call of `correctness.check` does); add it to the doc task that takes the ADR-0070 "less exact" list and the T-0214 round-7 nits.
