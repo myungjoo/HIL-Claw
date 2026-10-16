@@ -40,7 +40,8 @@ that ``candidates`` equals the ``id.candidates`` of the round's specs
 ``instance.json``; nor the rules between files of ADR-0073 decisions 2 and 3:
 that a ``case`` entry names a valid case in the key directory of the run's
 instance whose ``hypothesis_record`` holds ``case.hypothesis``, and that
-``cases_read`` names valid cases there and is what a lookup gave. The
+``cases_read`` names valid cases there and is what a lookup gave
+(:mod:`hilclaw.hypotheses_cases` checks all but the last). The
 recommendation on causal misattribution (decision 4) is a recommendation and
 is not enforced.
 
