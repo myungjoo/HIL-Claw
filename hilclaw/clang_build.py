@@ -59,6 +59,42 @@ class CompilerNotFoundError(LookupError):
     """The compiler executable could not be found; nothing was started."""
 
 
+class _EndedBuildError(OSError):
+    def __init__(self, error, result):
+        super().__init__(*error.args)
+        for name in ("errno", "strerror", "filename", "filename2"):
+            if getattr(error, name) is not None:
+                setattr(self, name, getattr(error, name))
+        self.result = result
+
+
+class ArtefactNotPlacedError(_EndedBuildError):
+    """The compiler exited with 0 and left its output, but moving it to ``output`` failed.
+
+    Raised by :func:`build` from the :class:`OSError` of :func:`os.replace`,
+    whose ``errno``, ``strerror``, ``filename`` and ``filename2`` it carries.
+    ``result`` is the :class:`BuildResult` of the ended compiler process, with
+    ``ok`` false and the compiler's ``log``. ``removal_error`` is the
+    :class:`OSError` from removing the temporary file afterwards, or ``None``
+    when that removal did not fail.
+    """
+
+    def __init__(self, error, result, removal_error=None):
+        super().__init__(error, result)
+        self.removal_error = removal_error
+
+
+class TemporaryNotRemovedError(_EndedBuildError):
+    """Removing the temporary file failed after the compiler process had ended.
+
+    Raised by :func:`build` from the :class:`OSError` of that removal, whose
+    ``errno``, ``strerror``, ``filename`` and ``filename2`` it carries, when no
+    :class:`ArtefactNotPlacedError` is raised. ``result`` is the
+    :class:`BuildResult` the call would otherwise have returned, ``ok``
+    included.
+    """
+
+
 def build(
     sources,
     output,
@@ -92,8 +128,13 @@ def build(
     ``--output``, which includes unrelated options with that prefix such as
     ``-objcmt-*``); :class:`TypeError` for arguments of the wrong type,
     including a bare ``str`` as flags; and :class:`CompilerNotFoundError`. An
-    :class:`OSError` from starting the process or from moving the artefact into
-    place is passed on.
+    :class:`OSError` from starting the process is passed on as it is. Once the
+    compiler process has ended, an :class:`OSError` from moving the artefact
+    into place is raised as :class:`ArtefactNotPlacedError`, and one from
+    removing the temporary file as :class:`TemporaryNotRemovedError`; both are
+    :class:`OSError` subclasses whose ``result`` holds the :class:`BuildResult`
+    with the compiler's log. When both fail, :class:`ArtefactNotPlacedError` is
+    raised and the removal's error is its ``removal_error``.
     """
     _check_timeout(timeout_s)
     flags = _checked_flags(flags, "flags")
@@ -110,6 +151,8 @@ def build(
         f"{target.stem}.tmp-{os.getpid()}-{secrets.token_hex(8)}{target.suffix}"
     )
     command = (*prefix, *flags, *source_paths, *trailing_flags, "-o", str(temporary))
+    move_error = removal_error = None
+    ended = False
     started = time.monotonic()
     try:
         try:
@@ -129,10 +172,19 @@ def build(
         duration_s = time.monotonic() - started
         ok = returncode == 0 and temporary.is_file()
         if ok:
-            os.replace(temporary, target)
+            try:
+                os.replace(temporary, target)
+            except OSError as error:
+                ok, move_error = False, error
+        ended = True
     finally:
-        temporary.unlink(missing_ok=True)
-    return BuildResult(
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError as error:
+            if not ended:
+                raise
+            removal_error = error
+    result = BuildResult(
         ok=ok,
         returncode=returncode,
         timed_out=returncode is None,
@@ -141,6 +193,11 @@ def build(
         command=command,
         duration_s=duration_s,
     )
+    if move_error is not None:
+        raise ArtefactNotPlacedError(move_error, result, removal_error) from move_error
+    if removal_error is not None:
+        raise TemporaryNotRemovedError(removal_error, result) from removal_error
+    return result
 
 
 def compiler_version(compiler=None, *, timeout_s):
