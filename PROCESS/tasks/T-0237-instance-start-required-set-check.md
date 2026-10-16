@@ -2,7 +2,7 @@
 id: T-0237
 title: Add `hilclaw/instance_start.py`, the pure check of a composed `instance.json` document against the scope and required set of ADR-0076 that fills in the `n_max` default, with its test file; no change to `hilclaw/instance.py`, no writer, no bytes
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-13, FR-2, FR-9, FR-1, OD-8, "#5 D12"]
 dependsOn: [T-0236]
@@ -95,3 +95,19 @@ Line numbers are those of `main` at `8c00bed`; the text wins. Read Korean files 
 - (planner, doc mode) T-0236 R7 minors (b)-(d) on ADR-0076 (register in the rest of ㉞ (가) whether the start checks that the stated objective is covered; decision 3 should say filling in `n_max` happens only for a valid in-scope content, as this task implements it; the O3 quote) and the UC-1 `draws` note (e), with the OD-8 register lines they touch.
 
 ## Result
+
+- **Status: DONE.** PR https://github.com/myungjoo/HIL-Claw/pull/153, squash-merged as `722ec95` (branch `claude/T-0237-instance-start-required-set-check` deleted, local and remote). Landed check at start: no commit with `Task: T-0237`, no PR; no open PR; no comment on #5 after 6218483981, so no owner objection and no HQ answer to name.
+- **Files**: `hilclaw/instance_start.py` (178 lines), `tests/test_instance_start.py` (524 lines); `git diff --stat` showed only these two. `hilclaw/instance.py`, all other modules and all existing tests are unchanged.
+- **Final public names**: `REPORT_ORDER` (the ADR-0076 decision 3 tuple), `OutOfScopeError(Exception)` (no `ValueError`; its docstring says it is no refusal of the start, since what the start does then stays open), `MissingMembersError(Exception)` with `missing` (every absent member in `REPORT_ORDER` order), and `prepare(document, *, accelerators, covers)`.
+- **Deviation from AC 2.3 / the planner's imports (reviewer-accepted in both rounds)**: importing `standin_profile.ACCELERATOR` and `gemm_contract.covers` breaks two existing tests, `tests/test_standin_profile.py::test_module_is_bound_nowhere_and_imports_no_store` (no other `hilclaw/*.py` may contain `standin_profile`; that module's docstring says it is "bound to no tool and to no start of an instance") and `tests/test_gemm_contract.py::test_module_is_bound_by_the_default_registry_only_and_imports_keys_only` (only `check_definition.py` may name `gemm_contract`). Editing them is out of scope, and writing the names out as literals would restate constants. So, following the `check_admission.admit(..., *, covers)` precedent, the caller passes `accelerators` (exactly a tuple of exactly `str`) and `covers` (callable; an answer that is not exactly `bool` raises `TypeError`) by name, with no default. The tests pass `(standin_profile.ACCELERATOR, mock_backend.NAME)` and `gemm_contract.covers`. The module imports only `hilclaw.instance` and `hilclaw.harness.measurement` and holds no integer literal (an AST test checks this).
+- **Order reading (the one place the code reads ADR-0076's order)**: type checks, then `instance.validate` (errors pass through, and a given invalid `n_max` is never replaced), then the scope, then the `n_max` fill-in with `measurement.N_MAX_DEFAULT`, then the required set. For a valid document the outcome is the same as decision 3's order. An invalid or out-of-scope document gets nothing filled in. The check runs on a document, not on bytes, and uses `validate`, the document form of `parse`.
+- **Review**: 2 rounds with a context-isolated `dev-reviewer` (opus), Approve in both. In round 1 the reviewer made 2 minor findings and 2 nits. Applied in `df11e3c`: the `OutOfScopeError` docstring now says it is no refusal of the start, the order note is reworded, and the public-name test checks the exact set. In round 2 the reviewer made only notes for this Result (the deviation above, and the `-I` check below), with no code change. Neither round reported a SECURITY finding.
+- **Checks**:
+  - Local: `python -m pytest` gave 22017 passed and 355 skipped. `ruff check .` and `ruff format --check .` (ruff 0.16.10) are clean.
+  - Coverage: `hilclaw/instance_start.py` is at 100 % and `hilclaw/` at 99 %.
+  - NumPy: `python -I -c "import sys; sys.path.insert(0, <repo>); import hilclaw.instance_start; print('numpy' in sys.modules)"` prints `False`. The literal `python -I -c` of the task cannot find `hilclaw`, because the package is not installed and `-I` leaves the cwd off `sys.path`. The test runs the same check without `-I`, with cwd at the repo root.
+  - CI on `df11e3c`: all six checks green (Python 3.11/3.14, Coverage, C, sh, Test presence).
+- **Language**: Python, because the check runs over `hilclaw.instance` documents in the existing Python package. This is recorded in the commit body.
+- **Follow-ups**:
+  - (a) Code, OD-23: whatever component performs the start must bind `accelerators=(standin_profile.ACCELERATOR, mock_backend.NAME)` and `covers=gemm_contract.covers`. Doing that inside `hilclaw/` means updating the two binding tests named above and the `standin_profile` docstring sentence "bound to ... no start of an instance".
+  - (b) Doc mode: the T-0236 R7 minors (b) to (d) and the UC-1 `draws` note (e), unchanged from the task's Follow-ups. Note there that this task implements minor (c), filling in `n_max` only for a valid in-scope content.
