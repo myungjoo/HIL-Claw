@@ -2,7 +2,7 @@
 id: T-0242
 title: Write the ADR that answers OD-18 sub-question 18 part (na) for `correctness.check` - the file of the attempt that keeps the compiler's log (path, form, writing side, which builds' logs) - and reflect it in the ARCHITECTURE registers by their recording rules; no timing build, no container, no setting values, no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-10, C-3, NFR-2, OD-18, OD-8, "#5 D6"]
 dependsOn: [T-0176]
