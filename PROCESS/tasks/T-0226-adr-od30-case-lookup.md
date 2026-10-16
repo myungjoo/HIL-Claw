@@ -2,7 +2,7 @@
 id: T-0226
 title: Write the ADR that settles the next part of OD-30 - the exact-match lookup of stored cases (who reads what from the key directory, which cases, how many, in what order), the admission of the `basis` kind `case` with its reference member, and the identification of the cases a selection read (FR-11) - and reflect it in the ARCHITECTURE registers by their recording rules; no injection, no promotion timing, no S6 metric, no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-18, FR-11, FR-17, FR-15, OD-30, OD-4, OD-7, OD-20, OD-11, "#5 A-1", "#5 D6"]
 dependsOn: [T-0218, T-0222]
@@ -98,3 +98,15 @@ Sections in the order of ADR-0001 "Record format", accepted under DRIVER §9 (ow
 ## Follow-ups
 
 ## Result
+
+- **Landed** on `main` as `e350435` (document mode, one squashed commit, `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0226`). Branch never pushed; deleted locally. No PLAN checkbox. Not BLOCKED.
+- **Checks before work**: landed check empty; no open PR; no comment on #5 after 6208691987 except the driver's HQ-0022 mirror; no HQ answer seen. ADR-0073 free on `origin/main` and every remote branch.
+- **Record** `ARCHITECTURE/decisions/ADR-0073-od30-case-lookup-and-case-basis.md` (131 lines): (1) the selection role of every round >= 1 takes a deterministic exact-match lookup on its instance's key (ADR-0001 decision 4 hit): every valid `case-*.json` directly in the key directory except the reader's own run's; invalid / unknown-version cases reported and set apart; no cap, recency, verdict filter or summary; byte order of file names, claiming no meaning; no source-run file read; FR-15 cited. (2) `basis` kind `case` admitted with `case: {run_id, round, hypothesis}` + `text`; in-file rules: `case.run_id` differs from the file's, each cited case listed in `cases_read`; existence of the case and hypothesis is a rule between files checked by no write. (3) optional top-level `cases_read: [{run_id, round}]` in `hypotheses.json` (read vs rested on; present-empty = nothing read, absent = no identification). Example parses as JSON.
+- **A-13 reading**: no version raise of `hypotheses.json` (ADR-0059 decision 2 exemption; ADR-0018 decision 2 for the optional member); no other data-plane file changes; indirect effect named: a pre-ADR-0073 case reader refuses a later case whose copy uses `case`.
+- **Less exact, not edited**: ADR-0059 decision 2 (validity list), decision 3 (`case` not admitted; round-1 gap), Consequences, Boundaries (case file and lookup; cross-run basis); ADR-0072 decision 3 (source files; copy validity), decision 4, Boundaries (lookup, `case`, FR-11 identification), Consequences; ADR-0071 Boundaries (lookup); FR-11 / FR-18 parentheses (still true as pointers); docstrings of `hilclaw/hypotheses.py`, `cases.py`, `cases_file.py`.
+- **Register edits**: Requirements OD-30 row (one ADR link, residue rewritten, `제안됨`, 30 rows); OpenDecisionProposals OD-30 (one 채택분 line, 제안으로 남는 부분, lookup bullet `(일부 답함)` + `→ 부분 답`); StandardScenarios "최근 재검사" line only. Coverage S0, S5, S6, S11: no verdict change, no gap.
+- **Document checks**: links resolve; `git diff --check` clean; new file `i/lf`; 4 files, +136/-4.
+- **Review** (7 rounds, fresh `dev-reviewer`, all Approve with nits): R1 indirect case-file effect, empty `cases_read` cases, round-1 gap sentences, example assumption; R2 order alternatives, S6 wording, key inputs, `cases_read` pre-existing name; R3 recency kept open, order rationale, key record paths; R4 own-run hypothesis/verdict kind left open, ADR-0004 decision 8, test names, prose row, ADR-0071 Boundaries; R5 less-exact validity sentences, position cost, 부분 답 form; R6 copy-rule version clause, time-order reading. R7 nits left unapplied (cap reached): (a) decision 3 "FR-18 and FR-11 require a selection ... to record it" should say this record reads FR-11's "참조한 과거 사례" as every case given, and list that reading as its own; (b) Status "ADR-0072's Boundaries name these three as one later record" -> cite Boundaries and Alternatives point 4; (c) split the long A-13 sentence; (d) shorten the 채택분 line to "선택이 읽은 사례의 식별(FR-11)".
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6210927027 (window ends 2026-10-23).
+- **Follow-ups**: (code, P2-7) admit `case` and `cases_read` in `hilclaw/hypotheses.py` / `hypotheses_file.py` (adjust the tests that use `case` as unadmitted) and a deterministic case lookup over a key directory using `key_records.lookup` and `cases_file.parse`; (doc) the R7 nits above and the S5 note "참조 사례의 필드·파일 OD-30" in StandardScenarios in a later correction; a selection rule for many cases when needed.
+- D16: nothing built or run (JSON parse of the example only); no `claude` process started by the executor or reviewers.
