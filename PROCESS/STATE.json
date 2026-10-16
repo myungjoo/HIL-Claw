@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0234",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:fc8dafef-1",
+    "acquiredAt": "2026-10-16T13:20:53Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -223,7 +227,7 @@
       "reason": "requirement-unclear",
       "question": "T-0233 (code: validate the optional instance.json member `injections` and admit `origin` `injected` in hilclaw/hypotheses.py, ADR-0075) cannot land within its acceptance criterion 12, which lists the existing tests it may edit. Adding the `injections` field to `Instance` makes 13 more existing tests fail: `tests/test_instance.py::test_any_place_of_the_objective_among_the_twelve_other_members[0-12]` (about line 8163) builds the expected Instance and asserts `None not in expected`, which now fails because `injections` is None for a content without the member (criterion 3). May criterion 12 also allow limiting that assertion to the fields before `injections` (`assert None not in expected[:13]`, the same form already used at about line 7445), which keeps the check that every stated member is not None? If yes, the driver resumes T-0233 on branch `claude/T-0233-admit-injections-and-injected-origin` (WIP commit 5a3d147, no PR yet).",
       "askedAt": "2026-10-16T12:33:48Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6215598943"
     }
   ],
   "counters": {
