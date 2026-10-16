@@ -81,3 +81,10 @@ A side effect, not a decision: today ADR-0060 decision 4 notes that an `OSError`
 - ADR-0078 slices 1 to 3 after HQ-0026 is answered.
 
 ## Result
+
+- **Outcome:** DONE. PR #155 (https://github.com/myungjoo/HIL-Claw/pull/155), squash-merged into `main`. The squash commit carries the trailer `Task: T-0244`; look it up with `git log origin/main --grep='^Task: T-0244'`.
+- **Review:** 2 rounds by a context-isolated reviewer agent, both Approve. Round 1 raised two nits, both fixed in round 2: the new errors could not be pickled, and the docstring did not say that a failed removal after a failed start replaces the start error. Round 2 found nothing.
+- **Change:** `hilclaw/clang_build.py` adds `ArtefactNotPlacedError` and `TemporaryNotRemovedError`. Both are `OSError` subclasses through the private base `_EndedBuildError`, which copies `errno`/`strerror`/`filename`/`filename2`, holds `result` and defines `__reduce__`. Once the compiler process has ended, a failed `os.replace` raises `ArtefactNotPlacedError`, with `result.ok` false and `removal_error` holding the error of the removal that is still attempted. A failed removal alone raises `TemporaryNotRemovedError`. Errors raised before the start, and the error from starting the compiler, are unchanged: an `ended` flag keeps today's `finally` behaviour. The `build` docstring is updated. `BuildResult` and the module docstring are unchanged.
+- **Tests:** `tests/test_clang_build.py` has new tests for each of AC2 to AC7, plus pickling and an `OSError` without an errno. They patch through the module and do not rely on file permissions. The existing tests changed only in the import list. Full `python -m pytest` passed locally (22125 passed, 355 skipped), and ruff check and ruff format are clean. Coverage of `hilclaw/clang_build.py` is 100% and of `hilclaw/` 99%.
+- **Language:** Python, because the module is Python (CLAUDE.md tool-layer language policy).
+- **Follow-ups:** the doc follow-up in the task (record in OD-18 ⑱ (마) and in OpenDecisionProposals that `build` now tells these errors apart from S6). ADR-0078 slices 1 to 3 wait on HQ-0026. No new follow-up.
