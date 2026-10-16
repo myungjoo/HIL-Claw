@@ -161,14 +161,12 @@ what follows a taken name and what a second write for a tuple means are open
 """
 
 import codecs
-import json
 import re
 from pathlib import Path
 
-from hilclaw import keys, layout, once_write, spec
+from hilclaw import json_text, keys, layout, once_write, spec
 
 _FREE = re.compile(r"ext|feedback\.attempts\[[0-9]+\]\.profile")
-_MINUS_ZERO = object()
 
 
 class InvalidSpecFileError(ValueError):
@@ -226,8 +224,7 @@ def parse(content):
         raise InvalidSpecFileError("content: starts with a byte order mark")
     try:
         text = content.decode("utf-8")
-        document = json.loads(text, object_pairs_hook=_object, parse_constant=_nan)
-        spelling = json.loads(text, parse_int=_literal)
+        document, spelling = json_text.load(text)
     except RecursionError:
         raise InvalidSpecFileError("content: is nested too deeply to parse") from None
     except ValueError as error:
@@ -322,29 +319,8 @@ def write(data_root, content):
         raise NameTakenError(reason) from None
 
 
-def _object(pairs):
-    members = dict(pairs)
-    if len(members) != len(pairs):
-        raise ValueError("a JSON object repeats a member name")
-    return members
-
-
-def _nan(name):
-    raise ValueError(f"{name} is not a JSON value")
-
-
-def _literal(literal):
-    return _MINUS_ZERO if literal == "-0" else None
-
-
 def _unsigned(path, value):
-    if _FREE.fullmatch(path):
-        return
-    if value is _MINUS_ZERO:
-        raise InvalidSpecFileError(f"{path}: is written as -0, which is no integer")
-    if isinstance(value, dict):
-        for name, item in value.items():
-            _unsigned(f"{path}.{name}" if path else name, item)
-    elif isinstance(value, list):
-        for index, item in enumerate(value):
-            _unsigned(f"{path}[{index}]", item)
+    found = json_text.minus_zero(path, value, _FREE.fullmatch)
+    if found is not None:
+        message = f"{found}: is written as -0, which is no integer"
+        raise InvalidSpecFileError(message)

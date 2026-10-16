@@ -70,13 +70,11 @@ Boundaries; OD-23, OD-18, OD-17).
 """
 
 import codecs
-import json
 from pathlib import Path
 
-from hilclaw import keys, layout, once_write, verdicts
+from hilclaw import json_text, keys, layout, once_write, verdicts
 
 _DEFINED = ("schema_version", "run_id", "round", "verdicts")
-_MINUS_ZERO = object()
 
 
 class InvalidVerdictFileError(ValueError):
@@ -131,8 +129,7 @@ def parse(content):
         raise InvalidVerdictFileError("content: starts with a byte order mark")
     try:
         text = content.decode("utf-8")
-        document = json.loads(text, object_pairs_hook=_object, parse_constant=_nan)
-        spelling = json.loads(text, parse_int=_literal)
+        document, spelling = json_text.load(text)
     except RecursionError:
         reason = "content: is nested too deeply to parse"
         raise InvalidVerdictFileError(reason) from None
@@ -221,28 +218,8 @@ def write(data_root, content):
         raise NameTakenError(reason) from None
 
 
-def _object(pairs):
-    members = dict(pairs)
-    if len(members) != len(pairs):
-        raise ValueError("a JSON object repeats a member name")
-    return members
-
-
-def _nan(name):
-    raise ValueError(f"{name} is not a JSON value")
-
-
-def _literal(literal):
-    return _MINUS_ZERO if literal == "-0" else None
-
-
 def _unsigned(path, value):
-    if value is _MINUS_ZERO:
-        message = f"{path}: is written as -0, which is no integer"
+    found = json_text.minus_zero(path, value)
+    if found is not None:
+        message = f"{found}: is written as -0, which is no integer"
         raise InvalidVerdictFileError(message)
-    if isinstance(value, dict):
-        for name, item in value.items():
-            _unsigned(f"{path}.{name}", item)
-    elif isinstance(value, list):
-        for index, item in enumerate(value):
-            _unsigned(f"{path}[{index}]", item)
