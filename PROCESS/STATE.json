@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0231",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:2ff8373a-2",
-    "acquiredAt": "2026-10-16T10:33:01Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -212,19 +208,27 @@
       "question": "T-0225 (code: move the JSON text helpers repeated in `hilclaw/spec_file.py`, `hypotheses_file.py`, `verdicts_file.py` and `cases_file.py` into one module `hilclaw/json_text.py`, no behaviour change) cannot land as planned. The task forbids editing any existing test, but four existing tests pin the callers' import surface rather than behaviour: `tests/test_spec_file.py::test_the_module_imports_only_what_it_needs` (exact import set including `json`) and `test_the_public_names` in `tests/test_hypotheses_file.py`, `tests/test_verdicts_file.py`, `tests/test_cases_file.py` (exact public-name list including `json`). After the move the callers no longer import `json` (an unused import fails ruff F401) and do import `hilclaw.json_text`, so those four assertions fail; all behaviour tests pass (1116 passed, 4 failed). The work is saved on branch `claude/T-0225-shared-json-text-helper` (`42f345b`, no PR). Which do you want: (a) T-0225 may update exactly those four import/public-name assertions (swap `json` for `json_text` / `hilclaw.json_text`) and no other test, then it resumes from that branch; (b) drop T-0225 and keep the four copies; (c) something else (name it)?",
       "askedAt": "2026-10-16T06:25:19Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6209496883"
+    },
+    {
+      "id": "HQ-0023",
+      "taskId": "T-0231",
+      "reason": "review-rounds-exceeded",
+      "question": "T-0231 (ADR-0074, the OD-30 S6 metric of one pair of runs, document mode) reached the 7-round review limit of CLAUDE.md A-13 without a final Approve. Rounds 5 and 6 approved; round 7 raised one Medium point (OD-13 sub-question 11 and the owner decision of 2026-10-15 missing from Boundaries and the S6 note), which was fixed on branch `claude/T-0231-adr-od30-s6-metric` (head `a109812`, 4 files, about +150/-6). The last fix has not been reviewed. (1) May the driver run one more reviewer round on `a109812` and, on Approve, land it as A-13 document mode prescribes (with the DRIVER §9 notice)? Or do you want to review the branch yourself, or drop or re-plan the task? (2) Separately, and not blocking the landing: ADR-0074 deliberately leaves sub-question 3 of the OD-30 S6 bullet to you as a value judgment for the runtime acceptance P2-9: how many pairs must be run and how their verdicts (`met` / `not met` / `not applicable`) are combined; whether a control run with the case lookup turned off is required beside each second run, and how many; and how much of the C-7 Max subscription and of board/host time the acceptance test may spend (a cap per pair or in total).",
+      "askedAt": "2026-10-16T11:16:35Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 244,
+    "iterations": 245,
     "tasksDone": 227,
-    "tasksBlocked": 17,
-    "reviewRoundsTotal": 770
+    "tasksBlocked": 18,
+    "reviewRoundsTotal": 777
   },
   "lastIteration": {
-    "at": "2026-10-16T10:28:49Z",
-    "owner": "AKIHA:2ff8373a-1",
-    "taskId": "T-0230",
-    "outcome": "DONE"
+    "at": "2026-10-16T11:16:35Z",
+    "owner": "AKIHA:2ff8373a-2",
+    "taskId": "T-0231",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }

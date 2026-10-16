@@ -2,13 +2,13 @@
 id: T-0231
 title: Write the ADR that settles the S6 metric part of OD-30 for one pair of runs - what "the first run's best", "reached" and "a case reference" mean, the boundary cases, and how drift between runs is treated - and reflect it in the ARCHITECTURE registers by their recording rules; no number of pairs, no control run, no cost limit, no code
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: doc
 coversReq: [S6, FR-18, FR-11, FR-17, NFR-3, NFR-5, OD-30, OD-1, OD-13, OD-11, OD-20, OD-28, "#5 D6"]
 dependsOn: [T-0218, T-0226, T-0230]
 touchesFiles: [ARCHITECTURE/decisions/, ARCHITECTURE/Requirements.md, ARCHITECTURE/OpenDecisionProposals.md, ARCHITECTURE/StandardScenarios.md]   # one new record under ARCHITECTURE/decisions/: ADR-0074 at planning time (ADR-0068 is held by the BLOCKED T-0210 branch - never take it); the next free number above ADR-0073 at execution time
 estimatedSize: {loc: 240, files: 4}   # one new record of about 170-210 lines; the register edits are a few in-place lines each
-hq: []
+hq: [HQ-0023]
 ---
 ## Why
 
@@ -122,4 +122,18 @@ Sections in the order of ADR-0001 "Record format", accepted under DRIVER §9 (ow
 
 ## Follow-ups
 
+- **HQ for the owner (sub-question ③ of the OD-30 S6 bullet; reason `owner-only-decision`)** — question text: "ADR-0074 (branch `claude/T-0231-adr-od30-s6-metric`, not landed) defines the S6 verdict of **one pair** of runs (`met` / `not met` / `not applicable`). For the runtime acceptance P2-9: (1) How many pairs must be run, and how are their verdicts combined (for example: all `met`, a majority of the applicable pairs, at least k of n; what to do when many are `not applicable`)? (2) Is a control run with the case lookup turned off required beside each second run, and if so how many? (3) How much of the C-7 Max subscription and of board/host time may the acceptance test spend (a cap per pair or in total)?"
+- (P2-8 code task) The pair conditions read `instance.json` members that a run may change while it runs (ADR-0023 decision 6): which moment's values are compared is for the P2-8 task (round-6 reviewer nit, not written into the record).
+- (Integrator, not edited) Less exact after ADR-0074 lands: the Boundaries line "The S6 metric, its boundary cases, repetitions and control (P2-8)" of ADR-0059, ADR-0071, ADR-0072 and ADR-0073 (and ADR-0073 Status "... and the S6 metric stay open"); ADR-0073 decision 3 "which one the S6 criterion counts is its metric"; ADR-0050 decision 3 (order of more than two measurements / different sessions — still true for a run); FR-18 "지표 정의의 확정 = OD-30" (still true as a pointer); PLAN P2-8 "지표 정의는 OD-30 종결 필요" (driver's).
+
 ## Result
+
+- **BLOCKED (`review-rounds-exceeded`)**: seven fresh-context `dev-reviewer` rounds (opus) without a final Approve. Rounds 5 and 6 approved; round 7 returned Request changes (Medium: OD-13 sub-question ⑪ and the owner decision of 2026-10-15 missing from Boundaries and the S6 note). The fix was applied in commit `a109812` but **has not been reviewed** (the cap forbids an eighth round), so nothing was landed on `main` and no #5 notice was posted.
+- **State**: branch `claude/T-0231-adr-od30-s6-metric` pushed to origin (normal push, head `a109812`, 11 commits on `a71beae`); diff vs `origin/main`: 4 files (`ARCHITECTURE/decisions/ADR-0074-od30-s6-metric-one-pair.md` new, 143 lines; `Requirements.md`, `OpenDecisionProposals.md`, `StandardScenarios.md` in-place), about +150/-6. To finish: one review round of `a109812` (ask the reviewer to check only the round-7 fix plus a full pass), then rebase, squash with `Reviewed-by: reviewer agent (8 rounds, Approve)` (or as the owner directs), `Task: T-0231`, push to `main`, delete the branch, post the §9 notice.
+- **Checks before work**: landed check empty (`git log origin/main --grep='^Task: T-0231'`, `gh pr list --search T-0231`); no open PR; no comment on #5 after 6210927027; no HQ answer seen. ADR-0074 free on `origin/main` and every remote branch (ADR-0068 untouched).
+- **What the record decides (on the branch)**: (1) pair = ordered pair named by the user of the metric, same `hw_profile.key`/`op_signature.key`, `objective`, `tolerance`, `candidates_per_round`, `round_budget`, `wall_clock_budget_s`, `n_max`; latency minimisation only, no constraint. Eligible attempt = exactly one board timing run with `outcome` `converged` + exactly one board check `pass` (metric-only rule; not an answer to OD-13 ②). First-run best = lowest trimmed mean, ties to lowest round/candidate/attempt; the first-run round = earliest round of the first run holding it or an attempt reaching it. (2) Reached = ADR-0007 decision 7 not different, or different and lower (owner O1); drift: recorded sets compared as they are, limit stated; re-measurement not adopted (Boundaries). (3) Verdicts `met` / `not met` / `not applicable` (no best; first-run round 0 or 1; second run reaches at round 0). (4) Case condition = a `basis` kind `case` entry citing the first run's `run_id` in rounds 1..second-run round (not `cases_read`). (5) Reported: board timing-run counts (ADR-0063 results), token spend "not available" (OD-19), equal `source_commit` / `draws`. Worked example on ADR-0007's A, C, D; JSON parses.
+- **A-13 reading**: no data-plane member, value, version or file changes; the verdict is not stored.
+- **Register edits**: Requirements OD-30 row (one ADR link, 잔여 rewritten, `제안됨`, 30 rows); OpenDecisionProposals OD-30 (one 채택분 line, 제안으로 남는 부분, S6 bullet `(일부 답함)` + `→ 부분 답 … 남음 …`); StandardScenarios S6 수용 기준 (false clauses only), S6 row note, "최근 재검사" line. Coverage S0/S6/S11: no verdict change, no gap.
+- **Document checks**: relative links resolve; JSON parses; `git diff --check` clean; new file `i/lf`; 4 files within touchesFiles.
+- **Review findings by round**: R1 ADR-0050 decision 3 limits (order of >2, cross-session) → marked metric-only + Boundaries; pair key = `key` members; counts; quotes; `B1` name clash. R2 round-0 lookup claim, tie rationale, ADR-0035 decision number, example, absent members, promotion. R3 "not counted for or against" pre-empted ③; `r1`/`r2` name check; less-exact list; option labels; #5 A-8. R4 `r1`/`r2` clash with walk-through run names → renamed to "first-run round"/"second-run round". R5 Approve (nits: keyless runs, `schema_version`, (iii) alternative). R6 Approve (nits: example round-0 assumption, `draws`). R7 Request changes (OD-13 ⑪; unstated budgets) → fixed, unreviewed.
+- **Owner notice**: not posted (not landed). **D16**: nothing built or run; no `claude` process started by the executor or the reviewers.
