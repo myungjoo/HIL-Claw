@@ -214,10 +214,9 @@ def test_a_case_entry_passes_whatever_the_verdict_of_the_case(verdict):
     check(document, found_of(stored))
 
 
-@pytest.mark.parametrize("found", [Found(None, (), ()), None])
-def test_a_record_without_cases_read_passes_against_any_found(found):
-    found = found or found_of(case(OTHER_A, 1))
-    check(reader_record(None), found)
+@pytest.mark.parametrize("stored", [(), (OTHER_A,)])
+def test_a_record_without_cases_read_passes_against_any_found(stored):
+    check(reader_record(None), found_of(*(case(run_id, 1) for run_id in stored)))
 
 
 def test_an_empty_cases_read_passes_against_an_empty_found():

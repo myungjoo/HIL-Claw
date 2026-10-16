@@ -36,7 +36,7 @@ and repairs nothing, takes no lock and logs nothing, and it reads only what
 import reprlib
 
 from hilclaw import case_lookup
-from hilclaw import hypotheses as hypothesis_record
+from hilclaw.hypotheses import validate as validate_hypotheses
 
 
 class MismatchError(ValueError):
@@ -69,7 +69,7 @@ def check(hypotheses, found):
     """
     if not isinstance(found, case_lookup.Found):
         raise TypeError(f"found must be a Found, got {type(found).__name__}")
-    hypothesis_record.validate(hypotheses)
+    validate_hypotheses(hypotheses)
     stored = {(case["run_id"], case["round"]): case for case in found.cases}
     for index, entry in enumerate(hypotheses.get("cases_read", ())):
         pair = (entry["run_id"], entry["round"])
@@ -104,7 +104,7 @@ def check_run(data_root, hypotheses):
     :class:`MismatchError`. The returned value lets a caller see the reports
     of the lookup.
     """
-    hypothesis_record.validate(hypotheses)
+    validate_hypotheses(hypotheses)
     found = case_lookup.lookup(data_root, hypotheses["run_id"])
     check(hypotheses, found)
     return found
