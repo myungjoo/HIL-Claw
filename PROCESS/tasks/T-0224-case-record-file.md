@@ -2,7 +2,7 @@
 id: T-0224
 title: Add the stored hypothesis-outcome case as a file - its text form, its final name and its write-once without creating a directory (ADR-0072 decisions 1 and 2, by ADR-0029 decisions 2, 4, 6, 7) - as `hilclaw/cases_file.py`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-18, FR-11, OD-30, OD-8]
 dependsOn: [T-0222, T-0223, T-0220]
@@ -92,3 +92,12 @@ Public names are the executor's; the suggested ones mirror `hilclaw.verdicts_fil
 - (integrator) The "not edited and now less exact" sentences of ADR-0072 Consequences line 125.
 
 ## Result
+
+- **Outcome**: DONE. PR #149 (https://github.com/myungjoo/HIL-Claw/pull/149), squash-merged as `b484b79`; branch `claude/T-0224-case-record-file` deleted.
+- **Review**: 1 round (dev-reviewer, fresh context), Approve; three nits answered on the PR without code change (a `-0` at a copy's own `round` / `candidates` is refused by `cases.validate` first, so the reachable copy places carry the full-path assertions; the public-names test and the docstring reference to `hypotheses_file` follow the model).
+- **CI**: run 38858168528 green on all six jobs (Python 3.11 / 3.14, coverage, test presence, C, sh). Local: 21704 passed, 354 skipped; `hilclaw/` line coverage 99%, `hilclaw/cases_file.py` 100%; ruff check and format clean.
+- **Public names**: `InvalidCaseFileError`, `UnsupportedVersionError`, `WrittenFormError`, `NameTakenError`, `parse(content)`, `final_name(data_root, hw_profile_key, op_signature, document)`, `write(data_root, hw_profile_key, op_signature, content)` (mirroring `hilclaw.verdicts_file`). Module 286 lines.
+- **Language**: Python, as the rest of the `hilclaw` package.
+- **Left to the caller** (ADR-0072 Boundaries, not chosen): what follows a taken name or a second case write, whether a round without verdicts is promoted, promotion timing and agent, reading another version (OD-11), the lookup and the `basis` kind `case`, checking the key directory against the run's instance or the copies against `runs/`.
+- **Issue #5**: no comment after the ADR-0072 notice (checked 2026-10-16).
+- **Follow-ups**: none new beyond those listed above (shared private JSON-text helper module, now duplicated in four modules).
