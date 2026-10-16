@@ -184,8 +184,9 @@ def default_registry(data_root_source):
 
     ``data_root_source`` is the callable without arguments (ADR-0015
     decision 3) to which every tool of the set that needs the data plane is
-    bound; building the registry does not call it. Raises :class:`TypeError`
-    when it is not callable.
+    bound; building the registry does not call it, and imports no module of
+    the operation of ``correctness.check`` and so no NumPy. Raises
+    :class:`TypeError` when it is not callable.
 
     The set is ``blob.fetch`` and ``blob.push`` (:mod:`hilclaw.blob_tools`,
     ADR-0039) and ``correctness.check`` (:func:`hilclaw.check_definition.definition`,

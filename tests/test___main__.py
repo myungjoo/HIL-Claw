@@ -426,11 +426,6 @@ def test_a_closed_standard_output_is_status_4(monkeypatch, stream):
     assert stderr.getvalue() == b"hilclaw: cannot write standard output: it is closed\n"
 
 
-@pytest.mark.xfail(
-    sys.platform == "win32",
-    reason="on Windows, importing NumPy (default registry, ADR-0070) with fd 2 closed ends the process",
-    strict=True,
-)
 def test_a_process_started_without_standard_error_still_answers():
     code = "import os, runpy, sys; os.close(2); sys.stderr = None; "
     code += "sys.argv = ['hilclaw', 'sim.run']; runpy.run_module('hilclaw', run_name='__main__')"
