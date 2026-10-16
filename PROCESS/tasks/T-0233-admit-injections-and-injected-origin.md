@@ -2,13 +2,13 @@
 id: T-0233
 title: Validate the optional `instance.json` member `injections` (ADR-0075 decisions 1 and 2) in `hilclaw/instance.py` and admit `origin` `injected` with its member `injection` (ADR-0075 decision 3, in-file rules) in `hilclaw/hypotheses.py`; no cross-file check
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: code
 coversReq: [FR-15, FR-17, FR-11, OD-30, "ADR-0075", "ADR-0059", "ADR-0018"]
 dependsOn: [T-0232, T-0227]
 touchesFiles: [hilclaw/instance.py, hilclaw/hypotheses.py, hilclaw/hypotheses_file.py, hilclaw/instance_file.py, tests/test_instance.py, tests/test_hypotheses.py, tests/test_hypotheses_file.py, tests/test_cases.py, tests/test_instance_file.py]
 estimatedSize: {loc: 170, files: 4}   # non-test: about 60-80 lines in instance.py (validator, NamedTuple field, docstrings), 30-40 in hypotheses.py, docstring sentences in hypotheses_file.py and instance_file.py; tests outside the cap (D4)
-hq: []
+hq: [HQ-0024]
 ---
 ## Why
 
@@ -102,3 +102,10 @@ Relation to the BLOCKED tasks: T-0225 (HQ-0022) moves the private JSON-text help
 - ADR-0075 "not edited and now less exact" list and R7 nits (doc). The register row for the reference input at start is an integrator follow-up.
 
 ## Result
+
+**BLOCKED** (requirement unclear: the allowed test edits of criterion 12 are insufficient). No PR, no review round, nothing landed.
+
+- Work so far is on branch `claude/T-0233-admit-injections-and-injected-origin` (commit `5a3d147`, pushed; no PR): the code and docstrings of criteria 1-10 in `hilclaw/instance.py`, `hilclaw/hypotheses.py`, `hilclaw/hypotheses_file.py` and `hilclaw/instance_file.py`, and the criterion-12 edits of `tests/test_instance.py` (`_fields`, the extra `None` in all 41 positional `Instance(...)`). The new tests of criterion 11 and the two `tests/test_hypotheses.py` edits of criterion 12 are not written yet. `ruff check` and `ruff format --check` pass.
+- The block: with the new field, the whole suite has 15 failures. 2 are the `tests/test_hypotheses.py` tests that criterion 12 allows to change. The other 13 are `test_any_place_of_the_objective_among_the_twelve_other_members[0-12]` in `tests/test_instance.py` (about line 8163): it builds `expected = Instance(*STATED_BESIDE_THE_OBJECTIVE, OBJECTIVE, None, {})` (the allowed extra `None`) and then asserts `assert None not in expected`, which now fails because `injections` is `None` for a content without the member (criterion 3). Making it pass needs an edit that criterion 12 does not list, e.g. `assert None not in expected[:13]` (the same form as `assert None not in expected[:12]` at about line 7445), which keeps the check that every stated member is not `None`. The executor stopped rather than exceed criterion 12.
+- Question for the owner: may criterion 12 also allow that assertion to be limited to the fields before `injections` (`expected[:13]`)? If yes, the task resumes on the existing branch.
+- Language: Python, as the modules extended (recorded in the branch commit body).

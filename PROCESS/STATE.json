@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0233",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:ce03b12d-1",
-    "acquiredAt": "2026-10-16T12:21:26Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -220,19 +216,27 @@
       "question": "T-0231 (ADR-0074, the OD-30 S6 metric of one pair of runs, document mode) reached the 7-round review limit of CLAUDE.md A-13 without a final Approve. Rounds 5 and 6 approved; round 7 raised one Medium point (OD-13 sub-question 11 and the owner decision of 2026-10-15 missing from Boundaries and the S6 note), which was fixed on branch `claude/T-0231-adr-od30-s6-metric` (head `a109812`, 4 files, about +150/-6). The last fix has not been reviewed. (1) May the driver run one more reviewer round on `a109812` and, on Approve, land it as A-13 document mode prescribes (with the DRIVER §9 notice)? Or do you want to review the branch yourself, or drop or re-plan the task? (2) Separately, and not blocking the landing: ADR-0074 deliberately leaves sub-question 3 of the OD-30 S6 bullet to you as a value judgment for the runtime acceptance P2-9: how many pairs must be run and how their verdicts (`met` / `not met` / `not applicable`) are combined; whether a control run with the case lookup turned off is required beside each second run, and how many; and how much of the C-7 Max subscription and of board/host time the acceptance test may spend (a cap per pair or in total).",
       "askedAt": "2026-10-16T11:16:35Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6214319655"
+    },
+    {
+      "id": "HQ-0024",
+      "taskId": "T-0233",
+      "reason": "requirement-unclear",
+      "question": "T-0233 (code: validate the optional instance.json member `injections` and admit `origin` `injected` in hilclaw/hypotheses.py, ADR-0075) cannot land within its acceptance criterion 12, which lists the existing tests it may edit. Adding the `injections` field to `Instance` makes 13 more existing tests fail: `tests/test_instance.py::test_any_place_of_the_objective_among_the_twelve_other_members[0-12]` (about line 8163) builds the expected Instance and asserts `None not in expected`, which now fails because `injections` is None for a content without the member (criterion 3). May criterion 12 also allow limiting that assertion to the fields before `injections` (`assert None not in expected[:13]`, the same form already used at about line 7445), which keeps the check that every stated member is not None? If yes, the driver resumes T-0233 on branch `claude/T-0233-admit-injections-and-injected-origin` (WIP commit 5a3d147, no PR yet).",
+      "askedAt": "2026-10-16T12:33:48Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 246,
+    "iterations": 247,
     "tasksDone": 228,
-    "tasksBlocked": 18,
+    "tasksBlocked": 19,
     "reviewRoundsTotal": 784
   },
   "lastIteration": {
-    "at": "2026-10-16T12:04:15Z",
-    "owner": "AKIHA:f9d98fd3-1",
-    "taskId": "T-0232",
-    "outcome": "DONE"
+    "at": "2026-10-16T12:33:48Z",
+    "owner": "AKIHA:ce03b12d-1",
+    "taskId": "T-0233",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
