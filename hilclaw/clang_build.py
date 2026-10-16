@@ -67,6 +67,11 @@ class _EndedBuildError(OSError):
                 setattr(self, name, getattr(error, name))
         self.result = result
 
+    def __reduce__(self):
+        error = OSError(*self.args)
+        error.filename, error.filename2 = self.filename, self.filename2
+        return type(self), (error, self.result), self.__dict__
+
 
 class ArtefactNotPlacedError(_EndedBuildError):
     """The compiler exited with 0 and left its output, but moving it to ``output`` failed.
@@ -128,13 +133,15 @@ def build(
     ``--output``, which includes unrelated options with that prefix such as
     ``-objcmt-*``); :class:`TypeError` for arguments of the wrong type,
     including a bare ``str`` as flags; and :class:`CompilerNotFoundError`. An
-    :class:`OSError` from starting the process is passed on as it is. Once the
-    compiler process has ended, an :class:`OSError` from moving the artefact
-    into place is raised as :class:`ArtefactNotPlacedError`, and one from
-    removing the temporary file as :class:`TemporaryNotRemovedError`; both are
-    :class:`OSError` subclasses whose ``result`` holds the :class:`BuildResult`
-    with the compiler's log. When both fail, :class:`ArtefactNotPlacedError` is
-    raised and the removal's error is its ``removal_error``.
+    :class:`OSError` from starting the process is passed on as it is, unless
+    removing the temporary file then fails too, whose error is passed on
+    instead. Once the compiler process has ended, an :class:`OSError` from
+    moving the artefact into place is raised as :class:`ArtefactNotPlacedError`,
+    and one from removing the temporary file as
+    :class:`TemporaryNotRemovedError`; both are :class:`OSError` subclasses
+    whose ``result`` holds the :class:`BuildResult` with the compiler's log.
+    When both fail, :class:`ArtefactNotPlacedError` is raised and the removal's
+    error is its ``removal_error``.
     """
     _check_timeout(timeout_s)
     flags = _checked_flags(flags, "flags")

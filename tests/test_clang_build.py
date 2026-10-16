@@ -1,5 +1,6 @@
 import json
 import os
+import pickle
 import shutil
 import sys
 import time
@@ -382,6 +383,26 @@ def test_new_error_without_errno_keeps_its_message():
     assert error.result is None
     placed = ArtefactNotPlacedError(OSError("plain"), None)
     assert placed.removal_error is None
+
+
+def test_new_errors_survive_pickling():
+    result = BuildResult(True, 0, False, Path("a.o"), "log", ("cc",), 0.5)
+    removal = OSError(5, "io", "a.tmp")
+    move = PermissionError(13, "denied", "a.tmp", None, "a.o")
+    errors = [
+        ArtefactNotPlacedError(move, result, removal),
+        TemporaryNotRemovedError(removal, result),
+        TemporaryNotRemovedError(OSError("plain"), result),
+    ]
+    for error in errors:
+        copy = pickle.loads(pickle.dumps(error))
+        assert type(copy) is type(error)
+        assert str(copy) == str(error)
+        assert (copy.errno, copy.strerror) == (error.errno, error.strerror)
+        assert (copy.filename, copy.filename2) == (error.filename, error.filename2)
+        assert copy.result == result
+    copy = pickle.loads(pickle.dumps(errors[0]))
+    assert (copy.removal_error.errno, copy.removal_error.filename) == (5, "a.tmp")
 
 
 def test_failed_move_raises_with_the_log(stub, src, out_dir, failing_replace):
