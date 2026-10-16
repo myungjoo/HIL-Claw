@@ -2,7 +2,7 @@
 id: T-0220
 title: Add the verdicts file of a round as a file - its text form, its final name and its write (ADR-0071 decisions 1 and 2, by ADR-0029 decisions 2 to 7) - as `hilclaw/verdicts_file.py`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-17, FR-11, OD-30, OD-8]
 dependsOn: [T-0218, T-0219]
@@ -94,3 +94,27 @@ Public names are the executor's; the suggested ones mirror `hilclaw.hypotheses_f
 - (integrator) The "not edited and now less exact" sentences listed in ADR-0071 Consequences.
 
 ## Result
+
+DONE. PR https://github.com/myungjoo/HIL-Claw/pull/146, squash-merged as `4155d34`; branch `claude/T-0220-verdict-record-file` deleted.
+
+- **Review**: 2 rounds with a fresh-context `dev-reviewer`, both Approve (comments https://github.com/myungjoo/HIL-Claw/pull/146#issuecomment-6207614987, #issuecomment-6207638158). Round 1's non-blocking point (the `InvalidVerdictFileError` docstring should say "the file-local part of 4") was fixed. The optional point was not taken: the per-place `-0` test checks only the class, not the message. At `round`, `ref.candidate`, `ref.attempt`, `measured.*` and `against.attempt`, `validate` refuses the 0 first. The message is pinned where `-0` would otherwise give a valid 0 (`check ref.round`, `against.round`).
+- **CI**: run 38847225408 green on all jobs. `hilclaw/` coverage: lines 5701/5720 = 99.66%, functions 569/569 = 100%; `hilclaw/verdicts_file.py` 79/79 = 100%. ruff check and format clean; 174 tests in `tests/test_verdicts_file.py`.
+- **Public names** mirror `hilclaw.hypotheses_file`:
+  - `InvalidVerdictFileError(ValueError)`
+  - `UnsupportedVersionError(Exception)`
+  - `WrittenFormError(ValueError)`
+  - `NameTakenError(Exception)`
+  - `parse(content)`
+  - `final_name(data_root, document)`
+  - `write(data_root, content)`
+
+  The private helpers and `_DEFINED` are duplicated, not imported.
+- **Language**: Python, as the rest of the package (commit body line).
+- **No change** to `verdicts.py`, `layout.py`, `hypotheses_file.py`, `spec_file.py` or `once_write.py`.
+- **Left to the caller (ADR-0071 Boundaries; OD-23, OD-18, OD-17)**: what follows a taken name or a second write for a round, reading another version (OD-11), and which agent writes the file and when. All cross-file checks (one verdict per `id` of `hypotheses.json`, the value against `expected`, `measured.candidate` within `tested_by`, whether a referenced attempt exists, the base of the comparison) are left too. The module docstring says so.
+- **Issue #5**: no comment after the ADR-0071 notice (checked 2026-10-16), so no objection and no HQ answer. No open PR conflicted.
+- **D16**: no `claude` process was started; no hardware or API key was needed.
+
+**Follow-ups:**
+
+- The follow-ups listed above stand unchanged: the cross-file check between `verdicts.json` and `hypotheses.json`, and the optional shared helper module, now with three copies of `_object`, `_nan`, `_literal` and `_unsigned`.
