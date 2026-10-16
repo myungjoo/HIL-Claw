@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0226",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:07b97863-1",
+    "acquiredAt": "2026-10-16T07:23:08Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -207,7 +211,7 @@
       "reason": "requirement-unclear",
       "question": "T-0225 (code: move the JSON text helpers repeated in `hilclaw/spec_file.py`, `hypotheses_file.py`, `verdicts_file.py` and `cases_file.py` into one module `hilclaw/json_text.py`, no behaviour change) cannot land as planned. The task forbids editing any existing test, but four existing tests pin the callers' import surface rather than behaviour: `tests/test_spec_file.py::test_the_module_imports_only_what_it_needs` (exact import set including `json`) and `test_the_public_names` in `tests/test_hypotheses_file.py`, `tests/test_verdicts_file.py`, `tests/test_cases_file.py` (exact public-name list including `json`). After the move the callers no longer import `json` (an unused import fails ruff F401) and do import `hilclaw.json_text`, so those four assertions fail; all behaviour tests pass (1116 passed, 4 failed). The work is saved on branch `claude/T-0225-shared-json-text-helper` (`42f345b`, no PR). Which do you want: (a) T-0225 may update exactly those four import/public-name assertions (swap `json` for `json_text` / `hilclaw.json_text`) and no other test, then it resumes from that branch; (b) drop T-0225 and keep the four copies; (c) something else (name it)?",
       "askedAt": "2026-10-16T06:25:19Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6209496883"
     }
   ],
   "counters": {
