@@ -78,7 +78,7 @@ def validate(document):
     string), ``round`` (an integer of at least 1) and ``verdicts`` (an array of
     at least one verdict); any other top-level member is passed over. Each
     verdict has exactly ``hypothesis`` (a name unique in the document),
-    ``verdict``, ``cause`` and ``evidence``; ``evidence`` is empty only when
+    ``verdict``, ``cause`` and ``evidence``; ``evidence`` may be empty only when
     ``verdict`` is ``inconclusive``. A ``check`` entry has ``ref``, ``point``
     and ``outcome``, and no two of one verdict share ``ref`` and ``point``. A
     ``comparison`` entry has ``metric``, ``point``, ``measured`` (a ref of the
