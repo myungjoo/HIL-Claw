@@ -1,5 +1,6 @@
 import json
 import os
+import pickle
 import shutil
 import sys
 import time
@@ -10,8 +11,10 @@ import pytest
 from hilclaw import clang_build
 from hilclaw.clang_build import (
     DEFAULT_COMPILER,
+    ArtefactNotPlacedError,
     BuildResult,
     CompilerNotFoundError,
+    TemporaryNotRemovedError,
     build,
     compiler_version,
 )
@@ -315,6 +318,234 @@ def test_stub_compiler_version_is_the_first_line(stub):
         "stub clang version 1.2.3 (test)"
     )
     assert stub.call()["argv"] == ["--version"]
+
+
+LOGGED_WRITE = "print('stub warning: kept'); out.write_bytes(b'artefact')"
+LOGGED_NOTHING = "print('stub warning: no artefact')"
+FILE_ERRORS = (ArtefactNotPlacedError, TemporaryNotRemovedError)
+
+
+def is_temporary(path):
+    return ".tmp-" in Path(path).name
+
+
+@pytest.fixture
+def failing_replace(monkeypatch):
+    errors = []
+
+    def replace(source, destination):
+        error = PermissionError(13, "denied", str(source), None, str(destination))
+        errors.append(error)
+        raise error
+
+    monkeypatch.setattr(clang_build.os, "replace", replace)
+    return errors
+
+
+@pytest.fixture
+def failing_unlink(monkeypatch):
+    errors = []
+    unlink = Path.unlink
+
+    def fake(self, missing_ok=False):
+        if not is_temporary(self):
+            return unlink(self, missing_ok=missing_ok)
+        error = PermissionError(13, "busy", str(self))
+        errors.append(error)
+        raise error
+
+    monkeypatch.setattr(clang_build.Path, "unlink", fake)
+    return errors
+
+
+def test_new_error_classes():
+    for cls in FILE_ERRORS:
+        assert issubclass(cls, OSError)
+        assert cls.__doc__
+    assert not issubclass(ArtefactNotPlacedError, TemporaryNotRemovedError)
+    assert not issubclass(TemporaryNotRemovedError, ArtefactNotPlacedError)
+    assert BuildResult._fields == (
+        "ok",
+        "returncode",
+        "timed_out",
+        "output",
+        "log",
+        "command",
+        "duration_s",
+    )
+
+
+def test_new_error_without_errno_keeps_its_message():
+    error = TemporaryNotRemovedError(OSError("plain"), None)
+    assert str(error) == "plain"
+    assert error.errno is None
+    assert error.filename is None
+    assert error.result is None
+    placed = ArtefactNotPlacedError(OSError("plain"), None)
+    assert placed.removal_error is None
+
+
+def test_new_errors_survive_pickling():
+    result = BuildResult(True, 0, False, Path("a.o"), "log", ("cc",), 0.5)
+    removal = OSError(5, "io", "a.tmp")
+    move = PermissionError(13, "denied", "a.tmp", None, "a.o")
+    errors = [
+        ArtefactNotPlacedError(move, result, removal),
+        TemporaryNotRemovedError(removal, result),
+        TemporaryNotRemovedError(OSError("plain"), result),
+    ]
+    for error in errors:
+        copy = pickle.loads(pickle.dumps(error))
+        assert type(copy) is type(error)
+        assert str(copy) == str(error)
+        assert (copy.errno, copy.strerror) == (error.errno, error.strerror)
+        assert (copy.filename, copy.filename2) == (error.filename, error.filename2)
+        assert copy.result == result
+    copy = pickle.loads(pickle.dumps(errors[0]))
+    assert (copy.removal_error.errno, copy.removal_error.filename) == (5, "a.tmp")
+
+
+def test_failed_move_raises_with_the_log(stub, src, out_dir, failing_replace):
+    out = out_dir / "kernel.o"
+    out.write_bytes(b"previous")
+    with pytest.raises(ArtefactNotPlacedError) as caught:
+        build(src, out, timeout_s=TIMEOUT, compiler=stub(BOTH))
+    error = caught.value
+    (cause,) = failing_replace
+    assert error.__cause__ is cause
+    assert (error.errno, error.strerror) == (13, "denied")
+    assert (error.filename, error.filename2) == (cause.filename, cause.filename2)
+    assert is_temporary(error.filename)
+    assert error.filename2 == str(out)
+    assert error.removal_error is None
+    result = error.result
+    assert isinstance(result, BuildResult)
+    assert result.ok is False
+    assert result.returncode == 0
+    assert result.timed_out is False
+    assert "to stdout" in result.log
+    assert "to stderr" in result.log
+    assert result.output == out
+    assert result.command[-1] == cause.filename
+    assert result.command[-2] == "-o"
+    assert result.duration_s >= 0
+    assert out.read_bytes() == b"previous"
+    assert names(out_dir) == ["kernel.o"]
+
+
+def test_failed_move_and_failed_removal(
+    stub, src, out_dir, failing_replace, failing_unlink
+):
+    with pytest.raises(ArtefactNotPlacedError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(LOGGED_WRITE))
+    error = caught.value
+    assert error.__cause__ is failing_replace[0]
+    assert error.removal_error is failing_unlink[0]
+    assert error.errno == 13
+    assert error.strerror == "denied"
+    assert error.result.ok is False
+    assert "stub warning: kept" in error.result.log
+
+
+def test_failed_removal_after_an_ok_build(
+    stub, src, out_dir, failing_unlink, monkeypatch
+):
+    monkeypatch.setattr(clang_build.os, "replace", shutil.copyfile)
+    out = out_dir / "kernel.o"
+    with pytest.raises(TemporaryNotRemovedError) as caught:
+        build(src, out, timeout_s=TIMEOUT, compiler=stub(LOGGED_WRITE))
+    error = caught.value
+    (cause,) = failing_unlink
+    assert not isinstance(error, ArtefactNotPlacedError)
+    assert error.__cause__ is cause
+    assert (error.errno, error.strerror, error.filename) == (13, "busy", cause.filename)
+    assert Path(cause.filename).is_file()
+    result = error.result
+    assert result.ok is True
+    assert result.returncode == 0
+    assert "stub warning: kept" in result.log
+    assert result.command[-1] == cause.filename
+    assert out.read_bytes() == b"artefact"
+
+
+def test_failed_removal_after_a_compile_error(stub, src, out_dir, failing_unlink):
+    with pytest.raises(TemporaryNotRemovedError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(FAIL))
+    result = caught.value.result
+    assert caught.value.__cause__ is failing_unlink[0]
+    assert result.ok is False
+    assert result.returncode not in (0, None)
+    assert result.timed_out is False
+    assert "error: stub says no" in result.log
+    assert not (out_dir / "kernel.o").exists()
+
+
+def test_failed_removal_after_a_timeout(stub, src, out_dir, failing_unlink):
+    with pytest.raises(TemporaryNotRemovedError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=5, compiler=stub(SLEEP))
+    result = caught.value.result
+    assert result.ok is False
+    assert result.timed_out is True
+    assert result.returncode is None
+    assert "before sleep" in result.log
+    assert not (out_dir / "kernel.o").exists()
+
+
+def test_failed_removal_after_exit_zero_without_artefact(
+    stub, src, out_dir, failing_unlink
+):
+    with pytest.raises(TemporaryNotRemovedError) as caught:
+        build(
+            src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(LOGGED_NOTHING)
+        )
+    result = caught.value.result
+    assert result.ok is False
+    assert result.returncode == 0
+    assert result.timed_out is False
+    assert "stub warning: no artefact" in result.log
+    assert names(out_dir) == []
+
+
+def test_error_from_starting_the_compiler_is_passed_on(stub, src, out_dir, monkeypatch):
+    error = PermissionError(13, "cannot start")
+
+    def run(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(clang_build.subprocess, "run", run)
+    with pytest.raises(PermissionError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value is error
+    assert not isinstance(caught.value, FILE_ERRORS)
+    assert not hasattr(caught.value, "result")
+    assert names(out_dir) == []
+
+
+def test_failed_removal_after_a_failed_start_is_passed_on(
+    stub, src, out_dir, monkeypatch, failing_unlink
+):
+    def run(*args, **kwargs):
+        raise PermissionError(13, "cannot start")
+
+    monkeypatch.setattr(clang_build.subprocess, "run", run)
+    with pytest.raises(PermissionError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value is failing_unlink[0]
+    assert not isinstance(caught.value, FILE_ERRORS)
+    assert not hasattr(caught.value, "result")
+
+
+@pytest.mark.parametrize("which", ["move", "removal"])
+def test_except_oserror_catches_both_new_errors(which, stub, src, out_dir, request):
+    request.getfixturevalue("failing_replace" if which == "move" else "failing_unlink")
+    try:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    except OSError as error:
+        caught = error
+    else:
+        pytest.fail("build did not raise")
+    expected = ArtefactNotPlacedError if which == "move" else TemporaryNotRemovedError
+    assert type(caught) is expected
 
 
 @pytest.mark.parametrize(
