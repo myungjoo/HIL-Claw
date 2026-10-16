@@ -2,7 +2,7 @@
 id: T-0223
 title: Add the validator and the pure builder of a stored hypothesis-outcome case (ADR-0072 decisions 2 and 3), `hilclaw/cases.py`, and its path `layout.case_record` (ADR-0072 decision 1); no bytes reader or writer
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-18, FR-17, OD-30, "#5 A-1"]
 dependsOn: [T-0222, T-0219, T-0221]
@@ -91,3 +91,10 @@ Public names are the executor's (the module name too, if a better one fits; avoi
 - (integrator) The "not edited and now less exact" sentences of ADR-0072 Consequences line 125.
 
 ## Result
+
+DONE. PR #148, squash-merged as `12b69e8`; 2 review rounds (fresh-context `dev-reviewer`, Approve both; round-1 nit fixed in-PR); CI run 38856924478 green on all jobs. Local: full pytest 21442 passed; `hilclaw/cases.py` and `hilclaw/layout.py` 100% line coverage, `hilclaw/` 99%; ruff check and format clean.
+- Public names as suggested: `hilclaw.cases.SCHEMA_VERSION`, `InvalidCaseError(ValueError)`, `validate(document)`, `build(hypotheses, verdicts=None)`; `hilclaw.layout.case_record(data_root, hw_profile_key, op_signature, run_id, round)` (checks key names, then `run_id`, then `round` ≥ 1). Language: Python, as the package.
+- Copy errors: raised as `InvalidCaseError` with the member name prefixed to the copy's field path (a copy's `record` path becomes the member name) and chained to the original `InvalidHypothesisRecordError` / `InvalidVerdictRecordError` / `MismatchError`; no pass-through.
+- Left to the caller (ADR-0072 leaves it open or it needs files): the file name against `run_id`/`round`, the key directory of the run's instance, equality with the `runs/` sources, *ref* existence, other `schema_version`s (OD-11), whether a round without verdicts is promoted (`build(h)` only gives the admitted form), lookup, `case` basis kind, promotion. `build` inputs are parsed JSON (`dict`); a mapping `copy.deepcopy` cannot copy is not handled (docstring).
+- Issue #5: no comment after the ADR-0072 notice; no open PR conflict.
+- Follow-ups: T-0224 candidate `hilclaw/cases_file.py` (parse, final name, write-once) as listed above; the planner and integrator follow-ups above are unchanged.
