@@ -19,10 +19,12 @@ The kinds ``no_backend`` and ``not_offered`` are no matter of a script. They
 come from the selection, before any operation is called: from a table without
 the mock, and from a mock built without the operation of the called tool.
 
-Not here yet: the script of the default registry, which comes with the contract
-of the first HW tool, and fault injection in a live session (OD-18 sub-question
-8, open). The module defines no script, no table and no tool, and holds no
-backend.
+The mock of the default registry is not built here: it offers
+``correctness.check`` with the operation and default script of
+:mod:`hilclaw.mock_check` (:func:`hilclaw.check_definition.default_table`,
+ADR-0070), whose operation takes four arguments. Fault injection in a live
+session is not here either (OD-18 sub-question 8, open). The module defines
+no script, no table and no tool, and holds no backend.
 """
 
 from collections.abc import Mapping

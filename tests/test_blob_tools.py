@@ -175,7 +175,7 @@ def test_a_tool_function_can_be_called_without_a_registry(root):
 
 def test_the_default_registry_holds_the_definitions(root):
     registry = default_registry(lambda: root)
-    assert registry.names() == NAMES
+    assert registry.names() == (*NAMES, "correctness.check")
     for held in blob_tools.definitions(lambda: root):
         assert registry.definition(held.name).description == held.description
         assert registry.definition(held.name).input_schema == SCHEMA
@@ -685,10 +685,12 @@ def outcome(document, is_error=False):
     return json.loads(block["text"])
 
 
-def test_the_mcp_front_lists_the_two_tools(configured):
+def test_the_mcp_front_lists_the_two_tools_and_correctness_check(configured):
     (listed,) = serve(message("tools/list", 1))
     fetch, push = blob_tools.definitions(lambda: configured)
-    assert listed["result"] == {
+    *blob, check = listed["result"]["tools"]
+    assert check["name"] == "correctness_check"
+    assert {"tools": blob} == {
         "tools": [
             {
                 "name": "blob_fetch",

@@ -383,11 +383,13 @@ def test_walk_through_shape_with_a_zero_has_a_key_and_is_not_covered(shape, name
         assert str(caught.value).startswith(f"shape.{first_zero}: ")
 
 
-def test_module_is_bound_nowhere_and_imports_keys_only():
+def test_module_is_bound_by_the_default_registry_only_and_imports_keys_only():
     own = Path(gemm_contract.__file__)
+    binder = own.parent / "check_definition.py"
     assert imported_modules(own) == {"reprlib", "hilclaw", "hilclaw.keys"}
+    assert "gemm_contract" in binder.read_text(encoding="utf-8")
     for path in sorted(own.parent.rglob("*.py")):
-        if path != own:
+        if path not in (own, binder):
             assert "gemm_contract" not in path.read_text(encoding="utf-8"), path.name
     assert not hasattr(gemm_contract, "main")
     assert "__main__" not in own.read_text(encoding="utf-8")

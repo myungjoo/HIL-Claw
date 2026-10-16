@@ -188,16 +188,22 @@ def default_registry(data_root_source):
     when it is not callable.
 
     The set is ``blob.fetch`` and ``blob.push`` (:mod:`hilclaw.blob_tools`,
-    ADR-0039). A tool is added here, in the source, and in no other way: no
-    option, environment variable, entry point or plugin registers one.
+    ADR-0039) and ``correctness.check`` (:func:`hilclaw.check_definition.definition`,
+    ADR-0070). The backend table of the latter holds the mock alone, offering
+    that tool with the default script of ADR-0044. Its source of seeds is the
+    generator of the operating system. Its predicate "covered" is that of
+    ADR-0041 decision 5. A tool is added here, in the source, and in no other
+    way: no option, environment variable, entry point or plugin registers one
+    or chooses what it is bound to.
     """
-    from hilclaw import blob_tools
+    from hilclaw import blob_tools, check_definition
 
     if not callable(data_root_source):
         raise TypeError("the data-root source must be callable")
     registry = Registry()
     for definition in blob_tools.definitions(data_root_source):
         registry.register(*definition)
+    registry.register(*check_definition.definition(data_root_source))
     return registry
 
 
