@@ -2,7 +2,7 @@
 id: T-0235
 title: Correct ADR-0072 and ADR-0071 after acceptance - the two round-7 nits of T-0222 (a present but invalid verdicts file in the Promotion boundary; a run_id collision finds the case name taken) and the round-4 nit of T-0218 (OD-19 beside OD-20 / OD-29 in ADR-0071 decision 1) - each with an after-acceptance Status bullet; no other file
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-30, FR-17, FR-18, "#5 D6"]
 dependsOn: [T-0218, T-0222]
@@ -98,3 +98,11 @@ ARCHITECTURE lines are very long: read them with `sed -n '<line>p' <file> | fold
 - (planner, document mode, after T-0210 / T-0231 land) The OD-29 row naming the round promotion `runs/` → `db/` timing (T-0222 follow-up) and nit (e) of T-0232 R7. Both edit register files of those branches.
 
 ## Result
+
+- Landed on `main` as `4799f68` (document mode, no PR; single commit with `Reviewed-by: reviewer agent (2 rounds, Approve)` and `Task: T-0235`); task branch deleted locally and on the remote. Files: the two ADRs only (+7/-5); `git diff --check` clean, LF, the new link to `ADR-0027-od8-run-id-form.md` resolves.
+- Nit (a), ADR-0072 Boundaries "Promotion": added what promotion does with a round whose `verdicts.json` is present but invalid (no member used, ADR-0071 decision 2; no case holding `verdict_record` by decision 3 of this record). Nothing about promotion is decided.
+- Nit (b), ADR-0072 decision 1: a collision of the built `run_id` form is improbable, not excluded (ADR-0027 decision 5); a case write whose name is already taken replaces nothing and reports the taken name; meaning held open under Boundaries (Promotion). ADR-0027 (decision 5) added to Status "builds on" and References.
+- Nit (c), ADR-0071 decision 1: "what OD-20, OD-29 and OD-19 keep" (matches ADR-0004 decision 3 and ADR-0071 Context).
+- Each record has a new last Status bullet "Edited after acceptance on 2026-10-16 by task T-0235 (document mode)": no decision changed meaning; objection windows (#5 issuecomment-6208691987 and 6206950125, until 2026-10-23) unchanged.
+- Review: R1 Request changes (one minor: ambiguous "decision 3"; two nits: restore "only"/"when the case was written", link ADR-0027 at first mention) — all applied; R2 Approve (one info note left as is).
+- No register file changed, so no coverage re-check; no #5 notice. No `claude` was started (D16). Follow-ups: none new; the ones above remain after T-0210 / T-0231 land.
