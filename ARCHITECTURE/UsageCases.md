@@ -74,7 +74,7 @@
   2. 시스템이 instance용 작업공간(데이터 plane의 `runs/<run_id>/` 또는 Phase 2 DB 레코드)을 만들고 STATE를 초기화한다.
   3. **라운드 0**(bring-up: 해당 HW에서 동작하는 코드 생성 + baseline 성능 측정)을 수행한 뒤 라운드 루프(UC-2 또는 UC-3)로 진입한다. 라운드 루프는 같은 (hw_profile, op_signature) 키의 과거 사례를 조회해 입력으로 쓴다(FR-18).
 - **종료조건**: budget 소진 또는 (선택) target-metric 조기 달성. 기본 종료 의미론은 **best 결과 유지**.
-- **비고**: 목표 type은 메뉴(vocabulary)에서 선택한다. 예: latency 최소화 / throughput 최대화 / 동시 서빙 capacity 최대화 / 메모리 상한 내 latency 최소화(제약형) / 가중 조합. *(메뉴 최종 확정 = 미결)* 참고 사례·자료(내부 Storage의 기존 사례 참조, 외부 논문 링크)는 **참고사항으로만** 쓰이며 Ground Truth나 최종 목표가 아니다(Requirements FR-15). 주입한 가설(직접 쓴 가설 또는 논문 링크 등 가설을 도출할 자료)도 같은 원칙을 따르며 시스템이 세운 가설과 같은 실험·검증·판정을 거친다 — 주입이 있어도 시스템은 라운드마다 결과에서 교훈을 얻어 스스로 추가 가설을 세운다(FR-15·17; 형식·시작 뒤의 주입 = OD-30). correctness tolerance도 instance 파라미터로 사용자가 지정한다(FR-9).
+- **비고**: 목표 type은 메뉴(vocabulary)에서 선택한다. 예: latency 최소화 / throughput 최대화 / 동시 서빙 capacity 최대화 / 메모리 상한 내 latency 최소화(제약형) / 가중 조합. *(메뉴 최종 확정 = 미결)* 참고 사례·자료(내부 Storage의 기존 사례 참조, 외부 논문 링크)는 **참고사항으로만** 쓰이며 Ground Truth나 최종 목표가 아니다(Requirements FR-15). 주입한 가설(직접 쓴 가설 또는 논문 링크 등 가설을 도출할 자료)도 같은 원칙을 따르며 시스템이 세운 가설과 같은 실험·검증·판정을 거친다 — 주입이 있어도 시스템은 라운드마다 결과에서 교훈을 얻어 스스로 추가 가설을 세운다(FR-15·17; 형식·시작 뒤의 주입 = OD-30). correctness tolerance도 instance 파라미터로 사용자가 지정한다(FR-9). 첫 사례의 instance는 correctness 검사의 draw 수(`draws`)도 적으며, 시작이 그 수를 무엇에서 정하는지는 미결이다([ADR-0046](decisions/ADR-0046-od18-correctness-check-draws.md) 결정 2·3, [OD-8](OpenDecisionProposals.md#od-8) ㉜).
 
 ## UC-2. 인터랙티브 최적화 (checkpoint 모드)
 - **액터**: 배포 엔지니어
