@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0243",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:75ab231e-1",
-    "acquiredAt": "2026-10-16T20:25:47Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -236,19 +232,27 @@
       "question": "The rest of PLAN P1-1 needs the owner's reading of #5 A-7 for `profiler.collect` (FR-10), for the first backend `cpu_standin` only (OD-18 sub-question 7, rest). HQ-0005 settled that `cpu_standin` offers `sim.run`, `board.run` and `correctness.check`, and did not ask about `profiler.collect` (ADR-0038 decision 2: \"was not asked and stays open\"). FR-1's loop has a `profile` step after the board point; A-7 fixes C + clang with OpenMP/SIMD on the owner's local PC; C-7 has the system behave alike on Linux, macOS and Windows with WSL; a spec's `feedback.attempts[].profile` has a place for \"the measured result and the profile summary of an attempt\" whose members are not defined (ADR-0002 decision 4). (1) Does `cpu_standin` offer `profiler.collect` in the MVP: (a) no - on `cpu_standin` the round's profile is what `sim.run` / `board.run` already return (the timing samples and the memory figure), and a call of `profiler.collect` there answers the reserved kind `not_offered`; (b) yes, with a profile taken from the local run by means the package already has, needing no new external dependency and the same on every machine of C-7 (name what it should hold, or leave it to the record); (c) yes, with a hardware-counter or sampling profiler (for example Linux `perf`) - a new external dependency (CLAUDE.md A-13) that is not available alike on macOS and WSL 1 (C-7); (d) something else (name it)? (2) If (1) is (a): may the record of the round loop treat the `profile` step of FR-1 on `cpu_standin` as carried out by the run tools' results, with no further step, until a target that offers `profiler.collect` exists: (a) yes; (b) no (say what the loop does)? Not asked here: the profile of any other backend or of a real simulator or board (#5 B-2, B-3), the structure of a profile summary in a spec beyond what (1) needs, the mock's script for `profiler.collect` (the record's design), the rule for a target that lacks a point (OD-26), and budgets and spend (OD-2, OD-19).",
       "askedAt": "2026-10-16T16:38:43Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6220178853"
+    },
+    {
+      "id": "HQ-0026",
+      "taskId": "T-0243",
+      "reason": "requirement-unclear",
+      "question": "T-0243 (code: ADR-0078 slice 1, the path function of the compiler's log file in `hilclaw/layout.py` and a new module `hilclaw/build_log.py` with the log keeper, the kind `build_log_unwritable` and the once-only write) cannot start within its acceptance criteria. Criterion 1 adds a public function to `hilclaw/layout.py`, but the existing test `tests/test_layout.py::test_module_defines_no_reader_writer_or_entry_point` (about line 565) asserts that the set of public names defined in `hilclaw.layout` equals a literal set, so any new public function fails it. Criterion 3 permits edits only to the import block and the `every_path` helper (\"No existing assertion is edited or removed\"), and criterion 14 says to stop rather than edit a failing existing test. May the task also permit adding the new function's name to that literal set (nothing else in that test changes; precedent T-0129, and T-0242's Follow-ups asked for it)? If yes, the driver re-runs T-0243 from the start (no branch, commit or PR was made).",
+      "askedAt": "2026-10-16T20:27:37Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 256,
+    "iterations": 257,
     "tasksDone": 236,
-    "tasksBlocked": 20,
+    "tasksBlocked": 21,
     "reviewRoundsTotal": 815
   },
   "lastIteration": {
-    "at": "2026-10-16T20:21:41Z",
-    "owner": "AKIHA:7cfae21d-2",
-    "taskId": "T-0242",
-    "outcome": "DONE"
+    "at": "2026-10-16T20:27:37Z",
+    "owner": "AKIHA:75ab231e-1",
+    "taskId": "T-0243",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }

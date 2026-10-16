@@ -2,13 +2,13 @@
 id: T-0243
 title: Add the path of the compiler's log file to `hilclaw/layout.py` and a new module `hilclaw/build_log.py` holding the log keeper, the kind `build_log_unwritable` and the once-only write of the file (ADR-0078 decisions 2-4, 6, 7, code slice 1 of its Consequences), with tests; no change to `check_operation`, `check_ending`, `check_seed`, `check_tool`, `mock_check` or `clang_build`
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: code
 coversReq: [FR-10, FR-6, FR-9, OD-18, "#5 D12"]
 dependsOn: [T-0242]
 touchesFiles: [hilclaw/layout.py, hilclaw/build_log.py, tests/test_layout.py, tests/test_build_log.py]
 estimatedSize: {loc: 180, files: 2}   # tests excluded from the cap (DRIVER §5, D4); the test files are expected to be longer
-hq: []
+hq: [HQ-0026]
 ---
 ## Why
 
@@ -77,3 +77,8 @@ Tests (D12), `tests/test_build_log.py`:
 - (code, later) `hilclaw/clang_build.py` keeps the log on an `OSError` from moving the artefact or removing its temporary file, or the case is registered (ADR-0078 Consequences slice 4).
 
 ## Result
+
+**BLOCKED** (requirement unclear, HQ-0026), before any change; no branch, commit or PR was made. No review round.
+
+- Criterion 1 adds a public function to `hilclaw/layout.py`, but the existing test `tests/test_layout.py::test_module_defines_no_reader_writer_or_entry_point` (lines 565-586 at `91ca524`) asserts that the set of public names defined in `hilclaw.layout` equals a literal set, so any new public function fails it. Criterion 3 permits edits only to the import block and the `every_path` helper ("No existing assertion is edited or removed"), and criterion 14 says to stop with BLOCKED rather than edit a failing existing test. Hiding the function from the check (a non-`layout` `__module__`) would weaken the test's intent and was not done.
+- Fix proposed for re-planning: also permit adding the new function's name to the literal set of that test (precedent: T-0129; T-0242's Follow-ups asked to list the tests pinning the module's public names as editable). The rest of the task is unchanged.
