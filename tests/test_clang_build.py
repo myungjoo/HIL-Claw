@@ -16,6 +16,7 @@ from hilclaw.clang_build import (
     ArtefactNotPlacedError,
     BuildResult,
     CompilerNotFoundError,
+    CompilerNotStartedError,
     TemporaryNotRemovedError,
     build,
     compiler_version,
@@ -519,33 +520,214 @@ def test_failed_removal_after_exit_zero_without_artefact(
     assert names(out_dir) == []
 
 
-def test_error_from_starting_the_compiler_is_passed_on(stub, src, out_dir, monkeypatch):
-    error = PermissionError(13, "cannot start")
+def failing_start(monkeypatch, make_error):
+    errors = []
 
-    def run(*args, **kwargs):
+    def popen(command, *args, **kwargs):
+        error = make_error(command[0])
+        errors.append(error)
         raise error
 
-    monkeypatch.setattr(clang_build.subprocess, "run", run)
-    with pytest.raises(PermissionError) as caught:
+    monkeypatch.setattr(clang_build.subprocess, "Popen", popen)
+    return errors
+
+
+def cannot_start(path):
+    return PermissionError(errno.EACCES, "cannot start", path)
+
+
+@pytest.mark.parametrize(
+    "make_error",
+    [cannot_start, lambda path: FileNotFoundError(errno.ENOENT, "absent", path)],
+    ids=["permission", "not-found"],
+)
+def test_error_from_starting_the_compiler_is_raised_as_not_started(
+    make_error, stub, src, out_dir, monkeypatch
+):
+    errors = failing_start(monkeypatch, make_error)
+    out = out_dir / "kernel.o"
+    out.write_bytes(b"previous")
+    with pytest.raises(CompilerNotStartedError) as caught:
+        build(src, out, timeout_s=TIMEOUT, compiler=stub(WRITE))
+    error = caught.value
+    (cause,) = errors
+    assert error.__cause__ is cause
+    assert (error.errno, error.strerror, error.filename) == (
+        cause.errno,
+        cause.strerror,
+        cause.filename,
+    )
+    assert os.path.samefile(error.filename, sys.executable)
+    assert error.removal_error is None
+    assert not isinstance(error, FILE_ERRORS)
+    assert not hasattr(error, "result")
+    assert not stub.started
+    assert out.read_bytes() == b"previous"
+    assert names(out_dir) == ["kernel.o"]
+
+
+def test_failed_removal_after_a_failed_start(
+    stub, src, out_dir, monkeypatch, failing_unlink
+):
+    errors = failing_start(monkeypatch, cannot_start)
+    with pytest.raises(CompilerNotStartedError) as caught:
         build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
-    assert caught.value is error
-    assert not isinstance(caught.value, FILE_ERRORS)
-    assert not hasattr(caught.value, "result")
+    error = caught.value
+    assert error.__cause__ is errors[0]
+    assert error.removal_error is failing_unlink[0]
+    assert (error.errno, error.strerror) == (errno.EACCES, "cannot start")
+    assert not isinstance(error, FILE_ERRORS)
+    assert not hasattr(error, "result")
     assert names(out_dir) == []
 
 
-def test_failed_removal_after_a_failed_start_is_passed_on(
-    stub, src, out_dir, monkeypatch, failing_unlink
-):
-    def run(*args, **kwargs):
-        raise PermissionError(13, "cannot start")
+def test_missing_working_directory_is_a_failed_start(stub, src, out_dir, tmp_path):
+    with pytest.raises(CompilerNotStartedError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            cwd=tmp_path / "absent",
+        )
+    assert isinstance(caught.value.__cause__, OSError)
+    assert caught.value.removal_error is None
+    assert not stub.started
+    assert names(out_dir) == []
 
-    monkeypatch.setattr(clang_build.subprocess, "run", run)
-    with pytest.raises(PermissionError) as caught:
-        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
-    assert caught.value is failing_unlink[0]
-    assert not isinstance(caught.value, FILE_ERRORS)
+
+def test_no_start_for_an_error_before_the_start(stub, src, out_dir, monkeypatch):
+    calls = []
+
+    def popen(*args, **kwargs):
+        calls.append(args)
+        raise AssertionError("the compiler was started")
+
+    monkeypatch.setattr(clang_build.subprocess, "Popen", popen)
+    with pytest.raises(FileNotFoundError) as caught:
+        build(
+            src.parent / "missing.c",
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+        )
+    assert type(caught.value) is FileNotFoundError
+    assert calls == []
+    assert names(out_dir) == []
+
+
+@pytest.fixture
+def failing_communicate(monkeypatch):
+    processes = []
+    error = OSError(errno.EIO, "input/output error")
+
+    class Popen(clang_build.subprocess.Popen):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            processes.append(self)
+
+        def communicate(self, *args, **kwargs):
+            if not getattr(self, "failed", False):
+                self.failed = True
+                raise error
+            return super().communicate(*args, **kwargs)
+
+    monkeypatch.setattr(clang_build.subprocess, "Popen", Popen)
+    return processes, error
+
+
+def test_error_after_the_start_is_passed_on(stub, src, out_dir, failing_communicate):
+    processes, error = failing_communicate
+    before = time.monotonic()
+    with pytest.raises(OSError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
+    assert time.monotonic() - before < 20
+    assert caught.value is error
+    assert not isinstance(caught.value, (CompilerNotStartedError, *FILE_ERRORS))
     assert not hasattr(caught.value, "result")
+    (process,) = processes
+    assert process.poll() is not None
+    assert process.returncode != 0
+    assert process.stdout.closed
+    assert names(out_dir) == []
+
+
+def test_failed_removal_after_an_error_after_the_start(
+    stub, src, out_dir, failing_communicate, failing_unlink
+):
+    processes, error = failing_communicate
+    with pytest.raises(PermissionError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
+    assert caught.value is failing_unlink[0]
+    assert caught.value.__context__ is error
+    assert not isinstance(caught.value, (CompilerNotStartedError, *FILE_ERRORS))
+    assert not hasattr(caught.value, "result")
+    assert processes[0].poll() is not None
+
+
+@pytest.mark.parametrize("windows", [True, False], ids=["windows", "posix"])
+def test_timeout_on_either_platform(windows, stub, src, out_dir, monkeypatch):
+    monkeypatch.setattr(clang_build, "_WINDOWS", windows)
+    before = time.monotonic()
+    result = build(src, out_dir / "kernel.o", timeout_s=5, compiler=stub(SLEEP))
+    assert time.monotonic() - before < 20
+    assert result.ok is False
+    assert result.timed_out is True
+    assert result.returncode is None
+    if windows or sys.platform != "win32":
+        assert "before sleep" in result.log
+    assert stub.started
+    assert names(out_dir) == []
+
+
+def test_not_started_error_class():
+    assert issubclass(CompilerNotStartedError, OSError)
+    assert CompilerNotStartedError.__doc__
+    for other in FILE_ERRORS:
+        assert not issubclass(CompilerNotStartedError, other)
+        assert not issubclass(other, CompilerNotStartedError)
+    error = CompilerNotStartedError(OSError("plain"))
+    assert str(error) == "plain"
+    assert error.errno is None
+    assert error.filename is None
+    assert error.removal_error is None
+    assert not hasattr(error, "result")
+
+
+def test_not_started_error_survives_pickling():
+    removal = OSError(errno.EIO, "io", "a.tmp")
+    errors = [
+        CompilerNotStartedError(
+            PermissionError(13, "denied", "cc", None, "x"), removal
+        ),
+        CompilerNotStartedError(FileNotFoundError(errno.ENOENT, "absent", "cc")),
+        CompilerNotStartedError(OSError("plain")),
+    ]
+    for error in errors:
+        copy = pickle.loads(pickle.dumps(error))
+        assert type(copy) is CompilerNotStartedError
+        assert str(copy) == str(error)
+        assert (copy.errno, copy.strerror) == (error.errno, error.strerror)
+        assert (copy.filename, copy.filename2) == (error.filename, error.filename2)
+        assert not hasattr(copy, "result")
+    copy = pickle.loads(pickle.dumps(errors[0]))
+    assert (copy.removal_error.errno, copy.removal_error.filename) == (
+        errno.EIO,
+        "a.tmp",
+    )
+    assert copy.filename2 == "x"
+    assert pickle.loads(pickle.dumps(errors[1])).removal_error is None
+
+
+def test_except_oserror_catches_not_started(stub, src, out_dir, monkeypatch):
+    failing_start(monkeypatch, cannot_start)
+    try:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    except OSError as error:
+        caught = error
+    else:
+        pytest.fail("build did not raise")
+    assert type(caught) is CompilerNotStartedError
 
 
 @pytest.mark.parametrize("which", ["move", "removal"])
@@ -709,18 +891,14 @@ def test_no_test_of_the_temporary_after_a_timeout(stub, src, out_dir, failing_st
     assert "before sleep" in result.log
 
 
-def test_error_from_starting_is_no_new_error_with_a_failing_test(
+def test_error_from_starting_is_not_started_with_a_failing_test(
     stub, src, out_dir, failing_stat, monkeypatch
 ):
-    error = PermissionError(13, "cannot start")
-
-    def run(*args, **kwargs):
-        raise error
-
-    monkeypatch.setattr(clang_build.subprocess, "run", run)
-    with pytest.raises(PermissionError) as caught:
+    errors = failing_start(monkeypatch, cannot_start)
+    with pytest.raises(CompilerNotStartedError) as caught:
         build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
-    assert caught.value is error
+    assert caught.value.__cause__ is errors[0]
+    assert caught.value.removal_error is None
     assert not isinstance(caught.value, FILE_ERRORS)
     assert not hasattr(caught.value, "result")
     assert failing_stat == []

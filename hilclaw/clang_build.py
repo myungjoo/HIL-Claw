@@ -29,11 +29,13 @@ import secrets
 import shutil
 import stat
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import NamedTuple
 
 DEFAULT_COMPILER = "clang"
+_WINDOWS = sys.platform == "win32"
 
 
 class BuildResult(NamedTuple):
@@ -60,18 +62,44 @@ class CompilerNotFoundError(LookupError):
     """The compiler executable could not be found; nothing was started."""
 
 
-class _EndedBuildError(OSError):
-    def __init__(self, error, result):
+class _CopiedOSError(OSError):
+    def __init__(self, error):
         super().__init__(*error.args)
         for name in ("errno", "strerror", "filename", "filename2"):
             if getattr(error, name) is not None:
                 setattr(self, name, getattr(error, name))
+
+    def _copy(self):
+        error = OSError(*self.args)
+        error.filename, error.filename2 = self.filename, self.filename2
+        return error
+
+
+class CompilerNotStartedError(_CopiedOSError):
+    """Creating the compiler process failed; no compiler process exists.
+
+    Raised by :func:`build` from the :class:`OSError` of creating the process,
+    whose ``errno``, ``strerror``, ``filename`` and ``filename2`` it carries.
+    It has no ``result``: there is no log. ``removal_error`` is the
+    :class:`OSError` from removing the temporary file afterwards, or ``None``
+    when that removal did not fail.
+    """
+
+    def __init__(self, error, removal_error=None):
+        super().__init__(error)
+        self.removal_error = removal_error
+
+    def __reduce__(self):
+        return type(self), (self._copy(),), self.__dict__
+
+
+class _EndedBuildError(_CopiedOSError):
+    def __init__(self, error, result):
+        super().__init__(error)
         self.result = result
 
     def __reduce__(self):
-        error = OSError(*self.args)
-        error.filename, error.filename2 = self.filename, self.filename2
-        return type(self), (error, self.result), self.__dict__
+        return type(self), (self._copy(), self.result), self.__dict__
 
 
 class ArtefactNotPlacedError(_EndedBuildError):
@@ -152,9 +180,13 @@ def build(
     ``--output``, which includes unrelated options with that prefix such as
     ``-objcmt-*``); :class:`TypeError` for arguments of the wrong type,
     including a bare ``str`` as flags; and :class:`CompilerNotFoundError`. An
-    :class:`OSError` from starting the process is passed on as it is, unless
-    removing the temporary file then fails too, whose error is passed on
-    instead. Once the compiler process has ended, an :class:`OSError` from
+    :class:`OSError` from creating the compiler process is raised as
+    :class:`CompilerNotStartedError`, an :class:`OSError` subclass without
+    ``result``; when removing the temporary file then fails too, the removal's
+    error is its ``removal_error``. Any other :class:`OSError` raised while the
+    process runs is passed on as it is, unless removing the temporary file then
+    fails too, whose error is passed on instead. Once the compiler process has
+    ended, an :class:`OSError` from
     moving the artefact into place is raised as :class:`ArtefactNotPlacedError`,
     and one from removing the temporary file as
     :class:`TemporaryNotRemovedError`; both are :class:`OSError` subclasses
@@ -184,46 +216,47 @@ def build(
         f"{target.stem}.tmp-{os.getpid()}-{secrets.token_hex(8)}{target.suffix}"
     )
     command = (*prefix, *flags, *source_paths, *trailing_flags, "-o", str(temporary))
-    check_error = move_error = removal_error = None
+    start_error = check_error = move_error = removal_error = None
     ended = False
     started = time.monotonic()
     try:
         try:
-            done = subprocess.run(
+            process = subprocess.Popen(
                 command,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=cwd,
                 env=env,
-                timeout=timeout_s,
-                check=False,
             )
-            returncode, raw = done.returncode, done.stdout
-        except subprocess.TimeoutExpired as expired:
-            returncode, raw = None, expired.stdout or b""
-        duration_s = time.monotonic() - started
-        ok = False
-        if returncode == 0:
-            try:
-                ok = stat.S_ISREG(os.stat(temporary).st_mode)
-            except (FileNotFoundError, NotADirectoryError):
-                pass
-            except OSError as error:
-                check_error = error
-        if ok:
-            try:
-                os.replace(temporary, target)
-            except OSError as error:
-                ok, move_error = False, error
-        ended = True
+        except OSError as error:
+            start_error = error
+        else:
+            returncode, raw = _communicate(process, timeout_s)
+            duration_s = time.monotonic() - started
+            ok = False
+            if returncode == 0:
+                try:
+                    ok = stat.S_ISREG(os.stat(temporary).st_mode)
+                except (FileNotFoundError, NotADirectoryError):
+                    pass
+                except OSError as error:
+                    check_error = error
+            if ok:
+                try:
+                    os.replace(temporary, target)
+                except OSError as error:
+                    ok, move_error = False, error
+            ended = True
     finally:
         try:
             temporary.unlink(missing_ok=True)
         except OSError as error:
-            if not ended:
+            if not ended and start_error is None:
                 raise
             removal_error = error
+    if start_error is not None:
+        raise CompilerNotStartedError(start_error, removal_error) from start_error
     result = BuildResult(
         ok=ok,
         returncode=returncode,
@@ -272,6 +305,23 @@ def compiler_version(compiler=None, *, timeout_s):
     if not lines or not lines[0].strip():
         raise RuntimeError(f"{command} printed no version line")
     return lines[0].strip()
+
+
+def _communicate(process, timeout_s):
+    with process:
+        try:
+            raw, _ = process.communicate(timeout=timeout_s)
+        except subprocess.TimeoutExpired as expired:
+            process.kill()
+            if _WINDOWS:
+                expired.stdout, _ = process.communicate()
+            else:
+                process.wait()
+            return None, expired.stdout or b""
+        except BaseException:
+            process.kill()
+            raise
+        return process.poll(), raw
 
 
 def _check_timeout(timeout_s):
