@@ -1,0 +1,160 @@
+# ADR-0071: The verdict of each hypothesis of a round — its file under `eval/`, its frame, the members of one verdict, the vocabulary of its value and its evidence, the rule that leads to each value, shared candidates, and round 0 (one more part of OD-30)
+
+## Status
+
+- **Accepted on 2026-10-16** under [PROCESS/DRIVER.md](../../PROCESS/DRIVER.md) §9 (owner decision D6): written by the development driver's executor and accepted by the approval of a context-isolated reviewer. The owner has not confirmed it.
+- Answers **one more part of OD-30** (Open Decisions register in [Requirements](../Requirements.md)): the verdict and cause that evaluate records per hypothesis (FR-17) — the file that holds them, the file as a whole, the members of one verdict, the vocabulary of its value, what it rests on, which landed facts lead to each value, how a candidate shared by several hypotheses is judged, and round 0. It builds on the hypothesis record of [ADR-0059](ADR-0059-od30-round-hypothesis-record.md), whose Boundaries name this as "the next part of OD-30". The OD-30 register row names the round's `eval/` among the places it decides. **OD-30 keeps its status word `제안됨`**: the cases, the injection paths, the S6 metric and the pieces of point 4 that OD-13, OD-20 and OD-28 leave open stay open (Boundaries).
+- It builds on [ADR-0001](ADR-0001-od4-key-schema.md) (decision 1), [ADR-0002](ADR-0002-od6-codegen-spec.md) (decision 2, the *ref*), [ADR-0004](ADR-0004-od8-data-plane-layout.md) (decisions 1 to 4 and 9), [ADR-0007](ADR-0007-od13-measurement-policy.md) (decisions 4, 7 and 10), [ADR-0014](ADR-0014-od8-whole-file-writes.md) (decision 4), [ADR-0018](ADR-0018-od8-instance-record-hw-profile.md) (decision 2), [ADR-0029](ADR-0029-od8-spec-file.md) (decisions 2 to 7), [ADR-0040](ADR-0040-od18-correctness-check-call-identity.md) (decision 4), [ADR-0042](ADR-0042-od18-correctness-check-result-members.md) (decision 2), [ADR-0050](ADR-0050-od6-task-objective-members.md) (decisions 3 to 5), [ADR-0052](ADR-0052-od13-memory-ceiling-measurement.md) (decision 7), [ADR-0053](ADR-0053-od8-instance-record-objective.md) (decision 4), [ADR-0059](ADR-0059-od30-round-hypothesis-record.md) (decisions 1 to 5) and [ADR-0063](ADR-0063-od18-run-tools-result-members.md) (decisions 2, 3 and 7). If one of them is reverted, this record is revisited with it.
+- The owner is notified on issue #5. The owner may object within 7 days of that notice; an objection creates a task that reverts this record and the edits made with it.
+- The format follows the "Record format" section of ADR-0001.
+
+## Context
+
+- **Owner** ([decision of 2026-10-13](https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6136462569), point 1): "Each round's technique selection records a structured hypothesis record (hypothesis, rationale, expected effect); evaluate records a verdict and its cause per hypothesis. Both are required structured fields, not free prose." Point 4: "An injected hypothesis goes through the same experiment, verification and verdict as the runtime's own." The same decision leaves "verdict vocabulary, file places" to OD-30.
+- FR-17: evaluate records per hypothesis a verdict ("실험 결과가 가설을 지지하는지 기각하는지, 또는 판정할 수 없는지 — 어휘 = OD-30") and a cause ("예상과 측정이 왜 일치·불일치했는지"), linked to the hypothesis and the measurement results; a round that reached evaluate does not end without verdicts; "**지지** 판정은 검증 하네스를 통과한 결과에만 기댄다" — a failed candidate's measurement cannot support, and a measurement isolated under FR-1 ⑶ can neither support nor refute ("검증 실패로 측정에 이르지 못한 가설의 판정 값 = OD-30"); the next round takes earlier verdicts as input. FR-1: board is the final measurement; FR-9: board is the final correctness judgement.
+- ADR-0059 fixed `decision/hypotheses.json`: one file per round ≥ 1, written once by the selection role; a hypothesis is identified by (`run_id`, `round`, `id`); `expected` entries name a `metric` (in version 1 only `latency_minimisation`) and a `direction` (`lower` or `higher`, the movement of the quantity, not "better"); `tested_by` lists the candidates that test it; no magnitude and no base of comparison are recorded. Its decision 1 says the verdict "is not in this file".
+- ADR-0004 gives the round an `eval/` directory owned by the evaluation role (decision 4); its path table leaves the round-level files of `eval/` to OD-20 and OD-29, and its decision 3 leaves files of a role "that concern a whole candidate or a whole round (a ranking, which attempts went to the board, cost per candidate)" to OD-20, OD-29 and OD-19.
+- ADR-0007 decision 7 judges two given measurements, A and B, of one quantity **different** or **not different** from the bootstrap interval of the ratio T(B)/T(A); "Not different … is never an improvement"; which side is better is the quantity's direction, and the rule does not cancel drift (decision 10). ADR-0050 decision 3 gives the direction of `latency_minimisation` (owner: "lower is better") and leaves open which measurement is A and which is B (OD-28, OD-20). The result vocabularies are landed: `correctness.check` reports `outcome` `pass`, `fail` or `broken` (ADR-0042 decision 2), and a broken run of `sim.run` or `board.run` "carries no measurement" (ADR-0063 decision 3).
+- No verdict file, no case file and no result file (`sim.json`, `board.json`, `eval.json`: PLAN P1-8) has members; no module of `hilclaw/` reads or writes a verdict.
+
+## Decision
+
+A value is **cited** when a source is named with it. Everything else is **this record's own** design: the file name, the frame, every member name, type and validity rule, the values `check`, `comparison` and `not_different`, the adoption of `supported`, `refuted` and `inconclusive` as values, the choice of "written once", the rule of decision 4 and the treatment of shared candidates in decision 5.
+
+### 1. Place, name and the write
+
+- **The verdicts of round `<RRRR>` of run `<run_id>` are one file, `runs/<run_id>/rounds/<RRRR>/eval/verdicts.json`**, directly under the round's `eval/`. The file is the evaluation role's (cited: ADR-0004 decision 4, and FR-17 "evaluate는 … 기록한다"); which agent or tool holds that role, and whether a tool writes for an evaluator without Write permission, is OD-23 and OD-16 and is not decided here.
+- **Why `eval/` and one file per round.** The verdict is the evaluation role's, so it is not a second file of `decision/`, which is the selection role's (ADR-0004 decision 4; ADR-0059 decision 1 kept it out of `hypotheses.json` for that reason). A hypothesis may span candidates (ADR-0059 decision 4) and is judged once, so a file per attempt below `eval/candidates/<CC>/attempts/<AA>/` would split or repeat one verdict across attempts. **It does not pre-empt what OD-20 and OD-29 keep**: it holds no ranking, no record of which attempts went to the board, no cost, no `best_ref` and no promotion — the round-level files ADR-0004 decision 3 lists for them — and their later files can stand beside it under other names.
+- **It is written once and never replaced**, for the reason of ADR-0059 decision 1 read for a verdict: the next round takes the verdict as input (FR-17), and a verdict that could be rewritten after a later round rested on it would no longer be the one that round read (NFR-2). A later re-judgement is not a rewrite of this file; whether it exists and where it goes is not decided (Boundaries).
+- **The write is that of ADR-0029 decisions 4 to 7 with this final name, cited as ADR-0059 decision 1 cites it**: the content first, valid by decisions 2 and 3, the file-local checks of decision 4 and decision 6 of this record; a temporary file `verdicts.json.<token>.tmp` in `eval/` (the form of ADR-0014 decision 4); stable storage; a last step that gives the final name only if it does not exist, with no fallback to a replacing rename. The final name is derived from the content's `run_id` and `round`. **The write reads no other file** — not `hypotheses.json`, not a result file, not `instance.json` — so no rule of this record that needs another file is checked by it. ADR-0029 decision 6 read ADR-0004 decisions 2 and 7 for a temporary file in an attempt directory; this record reads them the same way for `eval/`.
+- **Relation to `hypotheses.json` of the same round**: the file has exactly one verdict per hypothesis `id` of that file and none for an `id` it does not hold. This rule is between two files and is not checked by the write. **A hypothesis without a verdict entry has no verdict** — the absence is never read as `inconclusive` or as any other value; a pair of files that breaks the rule is reported by a reader that holds both, and what checks it and when is not decided (Boundaries).
+- **The layout version stays 1**: a file is added in a place ADR-0004 left open (cited: ADR-0004 decision 9).
+
+### 2. The file as a whole
+
+- **The text form is that of ADR-0029 decision 2, with this file's members**, as ADR-0059 decision 2 has it: one JSON object, UTF-8 without a byte order mark, no member name twice in any object, an *integer* in decimal digits without sign, fraction or exponent; LF line ends and a final line feed bind the writer; no member order is fixed.
+- **Top-level members** (*name*, *string*, *integer* of ADR-0001 decision 1; *text* and *ref* of ADR-0002 decision 2):
+
+| Member | Type | Required | Meaning |
+|---|---|---|---|
+| `schema_version` | integer | yes | `1` for this record. |
+| `run_id` | string | yes | The run directory name of the file. |
+| `round` | integer ≥ 1 | yes | The round of the file (decision 6). |
+| `verdicts` | array of verdict, at least one | yes | One entry per hypothesis of the round (decision 3). The order carries no meaning. |
+
+- **`run_id` and `round` against the path**: the rule of ADR-0059 decision 2 (after ADR-0029 decision 3), applied to this file.
+- **Its own `schema_version`, not the layout version**, for the reason of ADR-0059 decision 2: later parts of OD-30 will add members, which are no change of the layout. **The top level is open and the entries are closed**, with the version rule of ADR-0059 decision 2 read for this file: adding, removing or changing a member inside an entry of `verdicts` or of `evidence` raises the version, except the admission of a further type name as a value of `metric` (decision 3).
+- **An invalid file** is reported, no member of it is used and nothing is repaired; another *integer* `schema_version` is set apart (OD-11); an empty file is invalid, not missing (all as ADR-0059 decision 2). **A missing file** means that the tree holds no verdicts for that round and nothing more — in particular not that the round did not reach evaluate.
+
+### 3. One verdict
+
+An entry of `verdicts` is an object with exactly these members:
+
+| Member | Type | Required | Meaning |
+|---|---|---|---|
+| `hypothesis` | name | yes | The `id` of the judged hypothesis in the round's `hypotheses.json`; unique in the file. The hypothesis is (`run_id`, `round`, `hypothesis`). |
+| `verdict` | `supported` \| `refuted` \| `inconclusive` | yes | FR-17's three cases; the rule is decision 4. |
+| `cause` | text | yes | FR-17: why the expectation and the measurement agreed or disagreed. |
+| `evidence` | array of evidence entry | yes | What the verdict rests on. At least one entry when `verdict` is `supported` or `refuted`; may be empty when it is `inconclusive`. |
+
+- **The vocabulary.** The three values of the OD-30 proposal are adopted; they are the three cases FR-17 names (support, refute, cannot judge). **No partial support in version 1**: a hypothesis whose evidence is mixed is `inconclusive` (decision 4), and the mix stays visible in `evidence`. A value for partial or shared support would be a new value of a closed entry and raises the version.
+- **The cause is text, and its structure is the evidence.** This record reads the owner's "Both" as the hypothesis record and the verdict — the reading of the first clause of point 1 and of FR-17 ("가설 레코드와 판정은 자유 서술이 아닌 **구조화된 기록**"). The verdict is such a record: a closed entry whose value is from a closed list and whose grounds are structured `evidence`; `cause` is one required member of it, as `statement` (text) is one member of a hypothesis beside its structured `basis` (ADR-0059 decision 3). What is structural in a cause — no verified result, a difference within the noise range, a movement against the expectation — follows from `verdict` and `evidence`. What `cause` adds is the mechanism (why a change did or did not move the quantity), for which no landed vocabulary exists; a closed list of causes would coin one.
+- **Evidence entries**, each an object with exactly the members of its `kind`:
+  - `kind` `check` — a correctness check the verdict rests on: `ref` (a *ref* of an attempt of the same run; every attempt a verdict can name is a coder call made before it, so the "earlier coder call" of ADR-0002 holds), `point` (`sim` or `board`: the member and values of ADR-0040 decision 4, with their meaning) and `outcome` (`pass`, `fail` or `broken`: the values of ADR-0042 decision 2, with their meaning). No two `check` entries of one verdict have the same `ref` and `point`.
+  - `kind` `comparison` — one application of ADR-0007 decision 7: `metric` (a *name*; in version 1 only `latency_minimisation`, the admission of ADR-0059 decision 3 taken unchanged), `point`, `measured` (the B of the pair: a *ref* whose `round` is the file's `round` and whose `candidate` is in the judged hypothesis's `tested_by`, the latter a rule between two files like the one of decision 1), `against` (a *ref* of the same run, `round` not above the file's, other than `measured`: the A of the pair), and `difference`: `lower` or `higher` when the pair is **different**, saying whether the quantity of B lies below or above that of A — for `latency_minimisation`, whose samples are interval lengths (ADR-0050 decision 3), `lower` when the whole interval of T(B)/T(A) lies below 1 / (1 + `delta`) and `higher` when it lies above 1 + `delta` — and `not_different` when the pair is **not different** (cited: ADR-0007 decision 7). One member with three values follows the form chosen in ADR-0042 decision 2 and ADR-0063 decision 2: no presence rule, no state without a meaning. `lower` and `higher` are spelled as `direction` of ADR-0059 on purpose, so that "as expected" is equality of two values.
+  - **Not recorded**: a file path or a member of a result file (PLAN P1-8 has not defined them); a sample, a ratio, an interval or a magnitude; which execution of a check or of a timing run an entry stands for when an attempt has several at one point (OD-18 sub-question ⑳; Boundaries). A *ref* names the attempt and `point` the place; that is the link FR-17 asks for until the result files exist.
+
+### 4. The rule of each value
+
+- **A counted comparison** is a `comparison` entry whose `point` is `board` and for whose `measured` and `against` the same verdict holds a `check` entry at `board` with `outcome` `pass`. *Why `board`*: FR-1 calls the board measurement final and FR-9 makes board the final correctness judgement; a sim comparison may be recorded but counts for nothing. Whether a sim comparison counts where sim is the final measurement (sim-only hardware, OD-26) is not decided. *Why both sides pass*: FR-17 and FR-9 let only verified results support, and a comparison with an unverified base says nothing about the change either. A board measurement isolated under FR-1 ⑶ has a board check that is not `pass`, so it is never counted — neither for support nor for refutation, as FR-17 requires. A broken timing run has no measurement (ADR-0063 decision 3), so no comparison entry can name it; a "not converged" measurement is "usable and marked" (cited: ADR-0007 decision 4) and is not excluded here. **Only comparisons without a memory ceiling are covered**: no instance can state a ceiling today (cited: ADR-0053 decision 4, as ADR-0063 decision 7 reads it), so every run-tool result says `not_stated`. How a comparison of a candidate whose ceiling is *over* or *not judged* counts — the owner's "A candidate over its ceiling is infeasible and is not compared on the objectives" (O2, cited: ADR-0050 decision 4) and "No part of the runtime may treat a ceiling that was not judged as met" (cited: ADR-0050 decision 5) — and how the evidence records it is for the record that admits `memory_ceiling` (ADR-0050 decision 5; ADR-0052 decision 7), which may raise this file's version. **The cost**: a hypothesis tested only by candidates that were not promoted to the board (k < N, C-4; OD-29, OD-15) has no counted comparison and is `inconclusive`, so a hypothesis whose candidates were screened out at sim is never `refuted`; a case built from it (FR-18, P2-7) would carry `inconclusive`, not `refuted`.
+- **Each counted comparison is read against the hypothesis's `expected` entry of the same `metric`** (ADR-0059 decision 3): **as expected** when `difference` equals `direction`; **contrary** when it is the other of `lower` and `higher`; **no difference** when it is `not_different`. A comparison of a metric the hypothesis does not expect is read as none of the three and counts for nothing below.
+- **`supported`**: every `expected` entry has at least one counted comparison of its metric, and every counted comparison of an expected metric is as expected. **`refuted`**: at least one counted comparison of an expected metric is contrary and none is as expected. **`inconclusive`**: every other case — no counted comparison (in particular when no candidate testing the hypothesis passed its board check or reached a measurement, the case FR-17 leaves to OD-30), only no-difference comparisons, or as-expected comparisons mixed with others.
+- **"Not different" never refutes here.** The OD-30 proposal maps a difference within the noise to `inconclusive`, and this record adopts it: ADR-0007 decision 7 tests for a difference, not for equivalence, and "not different" covers both an interval that straddles a bound and one wholly inside the bounds; telling them apart needs a rule no landed record gives (OD-13). The cost: a change without effect is `inconclusive`, not `refuted`, until such a rule exists.
+- **What the file itself makes checkable** (without another file): the forms of decisions 2 and 3, `measured.round` equal to the file's `round`, and that a `supported` or `refuted` entry holds at least one counted comparison. That the value follows the rule above needs the `expected` entries of `hypotheses.json`, and that `measured` belongs to a candidate in the hypothesis's `tested_by` needs that file too; both are rules between two files, not checked by the write (decision 1).
+- **Open, and not filled here**: **the base of the comparison** — which attempt `against` must be (the attempt in the hypothesis's `basis`, the incumbent of OD-20's `best_ref`, the baseline of OD-28, another candidate of the round); the entry records the pair compared and the rule holds for whatever pair is recorded, and which comparisons a verdict must include stays open with the base; a base that is not an attempt of the run (OD-28) cannot be recorded. **A magnitude or an improvement margin** beyond the `delta` of ADR-0007 decision 7 (OD-13, OD-1). **Drift** between two measurements (ADR-0007 decision 10). Whether a pair is an improvement for the run (ADR-0050 decision 3) is not the verdict's question: the verdict judges the hypothesis's expected movement, and what becomes best is OD-20.
+
+### 5. Shared candidates and causal misattribution
+
+- **A candidate that tests several hypotheses** (`tested_by`, ADR-0059 decision 4) is judged for each of them by the same rule: a comparison of its attempt may appear in the evidence of each such verdict, and each verdict is reached alone. No member "shared with" is added: it would repeat `tested_by`, the reason ADR-0059 decision 4 gave against "applied together".
+- **Recommendation, not a rule**: the `cause` of a verdict whose counted comparisons all measure candidates shared with another hypothesis **should** say that the effect is not attributed to this hypothesis alone. A rule that makes such a verdict `inconclusive` was weighed and not taken: in a round with N = 1 and two hypotheses neither could ever be supported, and a joint effect is what both predicted. ADR-0059 decision 4 already recommends one hypothesis per candidate where N allows.
+
+### 6. Round 0
+
+**Round `0000` has no verdicts file, and a file whose `round` is 0 is invalid**: it has no hypotheses (ADR-0059 decision 5).
+
+### Example
+
+The verdicts of the round of ADR-0059's example (run id of [ADR-0027](ADR-0027-od8-run-id-form.md), round `0001`, N = 1, hypothesis `h1` tested by candidate 1). It assumes, as ADR-0059 does, a round-0 attempt `0000/01/01`, and it uses it as `against` only to show the form, not as a choice of the base (decision 4). The `difference` is that of the pair B / A of ADR-0007's worked example (different, wholly below 1 / 1.02), read as `against` = A and `measured` = B; the two `pass` outcomes are assumed; the cause is a placeholder, as in ADR-0059. Path: `runs/20261009t012331z-9f3a6c1e0b7d4a52/rounds/0001/eval/verdicts.json`.
+
+```json
+{
+  "schema_version": 1,
+  "run_id": "20261009t012331z-9f3a6c1e0b7d4a52",
+  "round": 1,
+  "verdicts": [
+    {
+      "hypothesis": "h1",
+      "verdict": "supported",
+      "cause": "NOT-DECIDED-HERE",
+      "evidence": [
+        {"kind": "check", "ref": {"round": 1, "candidate": 1, "attempt": 1}, "point": "board", "outcome": "pass"},
+        {"kind": "check", "ref": {"round": 0, "candidate": 1, "attempt": 1}, "point": "board", "outcome": "pass"},
+        {"kind": "comparison", "metric": "latency_minimisation", "point": "board",
+         "measured": {"round": 1, "candidate": 1, "attempt": 1},
+         "against": {"round": 0, "candidate": 1, "attempt": 1}, "difference": "lower"}
+      ]
+    }
+  ]
+}
+```
+
+With the `expected` entry `{"metric": "latency_minimisation", "direction": "lower"}` of ADR-0059's example, the one counted comparison is as expected, so the value is `supported`.
+
+## Alternatives considered
+
+| Point | Alternative | Why not |
+|---|---|---|
+| 1 | A verdict member in `hypotheses.json` or in `eval.json` | Changes an existing data-plane file (A-13); `hypotheses.json` is written once by the selection role. |
+| 1 | A second file under `decision/` | `decision/` is the selection role's; the verdict is the evaluation role's (ADR-0004 decision 4). |
+| 1 | One file per attempt or per candidate under `eval/candidates/` | A hypothesis spanning candidates would be judged in pieces; the verdict is per hypothesis. |
+| 1 | A replaceable file | A verdict a later round rested on could change under it (NFR-2). |
+| 3 | A fourth value for partial support | No landed rule says when support is partial; the mix is kept in `evidence` and gives `inconclusive`. |
+| 3 | A closed vocabulary of causes | Its structural part repeats `verdict` and `evidence`; the rest would coin a taxonomy no source gives. |
+| 3 | Evidence by file path, or copies of samples and intervals | Result files have no members yet (P1-8); copies would make this file a second home of measurements. |
+| 3 | `different` plus a separate direction member | Two members with a presence rule; ADR-0042 decision 2 and ADR-0063 decision 2 chose one member for the same reason. |
+| 4 | `not_different` refutes | ADR-0007 decision 7 is not an equivalence test; a noisy measurement would refute a true hypothesis. |
+| 4 | Sim comparisons count | FR-1 makes board the final measurement; a sim-only exception waits for OD-26. |
+| 4 | A failed candidate may refute | FR-17 lets only verified results support; that a failed candidate cannot refute either is this record's own: its timing is of code that does not implement the change correctly. |
+| 4 | A fixed base (basis attempt, incumbent or baseline) | Would decide OD-20 or OD-28. |
+| 5 | Shared-only evidence gives `inconclusive` | Would forbid support in every N = 1 round with two hypotheses. |
+| 6 | A verdicts file for round 0 | Round 0 has no hypotheses. |
+
+## Consequences
+
+- **A code slice can be cut** (code mode, P2-6's 2층 part): a reader and validator of the bytes of this file by decisions 2, 3 and the file-local checks of decision 4, a writer by the steps of ADR-0029 decision 4 with this final name, and the path in `hilclaw/layout.py` beside `hypothesis_record`, in the manner of `hilclaw/hypotheses.py` and `hilclaw/hypotheses_file.py`; names are that task's. A check of the rules between this file and `hypotheses.json` (one verdict per `id`, the value against `expected`, `measured` within `tested_by`) can be a function over both parsed documents; whether it is in that slice is that task's choice. Binding it to an agent, a prompt or a hook is not.
+- **A-13 reading**: document mode. A new file is added in the round's `eval/`, a place ADR-0004 left open and the OD-30 row names; no member, value or version of `STATE.json`, `instance.json`, `spec.json`, `eval.json`, `artifacts.json`, `events.ndjson`, `hypotheses.json` or a key record changes — the route ADR-0059, ADR-0029 and ADR-0018 took. Nothing was built or run, and no `claude` process was started.
+- **Names checked on 2026-10-16 in `hilclaw/`, `tests/` and `ARCHITECTURE/`.** `verdicts.json`, `verdicts`, `hypothesis` (as a member), `evidence`, `cause`, `measured`, `against`, `difference`, `comparison` (as a value) and `not_different` occur as no member, value, kind or `step` of a record; `against` appears in `tests/test_hypotheses.py` only as an unknown member that an `expected` entry must refuse, which this record does not change; `not_different` appears only inside test function names of the harness, with the meaning used here; `evidence` is a function of `hilclaw/selfcheck_stream.py` and a test parameter, and `SessionEvidence` a class of the self-check, none a data-plane member. `verdict` is a field of the harness's `Judgement` and of `judgement` in `hilclaw/check_judging.py`, and `Verdict` a name in `hilclaw/harness/verification.py`, `hilclaw/selfcheck_outcome.py` and other modules (observations) and the word ADR-0042 decision 2 and ADR-0063 decision 7 declined for their members; here it is the owner's word for this judgement (point 1). Taken with their meaning on purpose: `kind` and `ref` as in ADR-0059's `basis`; `metric` as in its `expected`; `lower` and `higher` as its `direction`; `point` with `sim` and `board` as in ADR-0040 decision 4; `outcome` with `pass`, `fail` and `broken` as in ADR-0042 decision 2; `check` is a parameter and function name in `hilclaw/` (observation) and a word of `correctness.check`, and here names an entry about that check. No value is a reserved kind or a `step` value.
+- **Until a later record gives a verdict a kind of reference in `basis`**, the next round cites an earlier verdict through an `attempt` entry and its `text`, as ADR-0059 Boundaries has it.
+- **Not edited and now less exact** (follow-ups for the integrator): ADR-0059 Boundaries "The verdict and cause of each hypothesis" (now answered in part) and "A basis that cites an earlier hypothesis or verdict" (the verdict now has a file; the kind is still for a later record), and its decision 1 "where it goes is the next part of OD-30"; ADR-0004's `eval.json` row "round-level files: OD-20, OD-29" and its decision 3 "which exist is left to OD-20, OD-29 and OD-19", as far as the round's verdicts go; the OD-30 bullets "판정(제안)", "인과 오귀속" and "파일 자리(제안)" ② of [OpenDecisionProposals](../OpenDecisionProposals.md#od-30) beyond the line added with this record; the parentheses of FR-17 ("판정 어휘·파일 자리 … = OD-30", "검증 실패로 측정에 이르지 못한 가설의 판정 값 = OD-30") and FR-11 ("어느 파일이 무엇을 담는지 = OD-30"), now partly answered and still true as pointers.
+
+## Boundaries (not decided here)
+
+- **The hypotheses of a round that never reaches evaluate** (budget exhausted, process death): closed, left open or resumed (NFR-1, OD-17); and what a second write for a round means after the name was taken (with ADR-0059's same item).
+- **A re-judgement** of an earlier hypothesis by later evidence (a re-measurement, a triage under FR-1 ⑶ that finds a board defect): whether it exists and where it is recorded.
+- **The case file under `db/`**, the lookup, and how a later round or run reads verdicts (FR-18, P2-7; OD-7, OD-20, OD-24). **No `basis` kind that cites a verdict is added**: it would change `hypotheses.json` and raise its version, and is for a later record of OD-30.
+- **Injection in any form** — at instance start, at a gate or during a run, and whether the latter two are in the MVP (owner, HQ, per the OD-30 section). An injected hypothesis, once admitted, is judged by this record like any other (owner, point 4).
+- **The S6 metric**, its boundary cases, repetitions and control (P2-8).
+- **Which agent writes the file**, whether the evaluator has Write permission or a tool writes for it, when it is written against the round's other files (sub-question ⑩ of OD-8), and how its presence and the rules between it and `hypotheses.json` are enforced — "evaluate에 이른 라운드는 판정 없이 끝나지 않는다" (OD-23, OD-16, OD-18, P2-3).
+- **The base of the comparison**, `best_ref` and promotion (OD-20, OD-29), the baseline and a base that is not an attempt (OD-28), a magnitude or margin beyond `delta` (OD-13, OD-1), drift and comparability across sessions (ADR-0007 decision 10; OD-11, OD-13 residue), an equivalence rule that would let "not different" refute (OD-13), whether a sim comparison counts on sim-only hardware (OD-26), which execution of a check or a timing run counts (OD-18 sub-question ⑳), and whether a "not converged" measurement may serve as `against` (OD-13 sub-question ②).
+- **How a comparison counts when the candidate's memory ceiling is *over* or *not judged*** (O2; ADR-0050 decisions 4 and 5): for the record that admits `memory_ceiling`.
+- Metric names beyond `latency_minimisation` and the memory ceiling as a metric (FR-3 ④, OD-1, OD-13; ADR-0059 decision 3); a value for partial or shared support; reading a file of another version (OD-11).
+- **Owner-only (DRIVER §9)**: #5 A and B items, C-6, OD-25, OD-3. Nothing of them is touched.
+- Code, tests, schema files and prompts (P2-1, P2-3, P2-6's later slices); any change to an accepted record or to the `HIL-Claw-data` repository; any new external dependency.
+
+## References
+
+- [Requirements](../Requirements.md): FR-1, FR-9, FR-11, FR-15, FR-17, FR-18, NFR-1, NFR-2; register rows OD-1, OD-11, OD-13, OD-16, OD-17, OD-18, OD-20, OD-23, OD-26, OD-28, OD-29, OD-30.
+- [OpenDecisionProposals OD-30](../OpenDecisionProposals.md#od-30); [StandardScenarios](../StandardScenarios.md) S0, S6, S8, S11.
+- [ADR-0001](ADR-0001-od4-key-schema.md) (decision 1; record format); [ADR-0002](ADR-0002-od6-codegen-spec.md) (decision 2); [ADR-0004](ADR-0004-od8-data-plane-layout.md) (decisions 1 to 4, 9; path table); [ADR-0007](ADR-0007-od13-measurement-policy.md) (decisions 4, 7, 10; worked example); [ADR-0014](ADR-0014-od8-whole-file-writes.md) (decision 4); [ADR-0018](ADR-0018-od8-instance-record-hw-profile.md) (decision 2); [ADR-0027](ADR-0027-od8-run-id-form.md) (example); [ADR-0029](ADR-0029-od8-spec-file.md) (decisions 2 to 7); [ADR-0040](ADR-0040-od18-correctness-check-call-identity.md) (decision 4); [ADR-0042](ADR-0042-od18-correctness-check-result-members.md) (decision 2); [ADR-0050](ADR-0050-od6-task-objective-members.md) (decisions 3 to 5); [ADR-0052](ADR-0052-od13-memory-ceiling-measurement.md) (decision 7); [ADR-0053](ADR-0053-od8-instance-record-objective.md) (decision 4); [ADR-0059](ADR-0059-od30-round-hypothesis-record.md) (decisions 1 to 5; Boundaries); [ADR-0063](ADR-0063-od18-run-tools-result-members.md) (decisions 2, 3, 7).
+- Owner decision 2026-10-13 https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6136462569 · D6 https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-5986348506 .
+- [PROCESS/DRIVER.md](../../PROCESS/DRIVER.md) §9; PROCESS/PLAN.md P1-8, P2-3, P2-6, P2-7, P2-8; `hilclaw/layout.py`, `hilclaw/hypotheses.py`, `hilclaw/hypotheses_file.py`; tasks T-0184, T-0218.
