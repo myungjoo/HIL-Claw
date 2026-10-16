@@ -183,6 +183,21 @@ def op_signature_file(data_root, hw_profile_key, op_signature, name):
     return key_dir / _one_of("name", name, OP_SIGNATURE_FILES)
 
 
+def case_record(data_root, hw_profile_key, op_signature, run_id, round):
+    """Return ``db/<hw_profile_key>/<op_signature>/case-<run_id>-<RRRR>.json``, a stored case.
+
+    The file is the hypothesis-outcome case of round ``round`` of run
+    ``run_id`` (ADR-0072 decision 1). ``run_id`` is checked by
+    :func:`check_run_id` and ``round`` is an integer from 1 to
+    :data:`hilclaw.keys.MAX_INTEGER`, written as in :func:`round_dir`: round 0
+    has no case (ADR-0072 decision 3). Both key names are as in
+    :func:`op_signature_dir`.
+    """
+    key_dir = op_signature_dir(data_root, hw_profile_key, op_signature)
+    number = _number("round", round, 1, 4)
+    return key_dir / f"case-{check_run_id(run_id)}-{number}.json"
+
+
 def _fail(argument, rule, value):
     got = f"{type(value).__name__} {reprlib.repr(value)}"
     raise InvalidPathValueError(f"{argument}: must be {rule}, got {got}")

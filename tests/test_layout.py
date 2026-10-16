@@ -13,6 +13,7 @@ from hilclaw.layout import (
     InvalidPathValueError,
     attempt_artefact,
     attempt_dir,
+    case_record,
     check_run_id,
     decision_log,
     hw_profile_dir,
@@ -250,6 +251,41 @@ def test_knowledge_tree():
     assert rel(hw_profile_dir(ROOT, HW)) == f"db/{HW}"
     assert rel(hw_profile_record(ROOT, HW)) == f"db/{HW}/hw_profile.json"
     assert rel(op_signature_dir(ROOT, HW, OP)) == f"db/{HW}/{OP}"
+
+
+@pytest.mark.parametrize("number", [1, 7, 10000, keys.MAX_INTEGER])
+def test_case_record_of_decision_1_of_adr_0072(number):
+    expected = f"db/{HW}/{OP}/case-synthetic-run_01-{number:04d}.json"
+    path = case_record(ROOT, HW, OP, RUN, number)
+    assert rel(path) == expected
+    assert path.parent == op_signature_dir(ROOT, HW, OP)
+    assert path.name.endswith(f"-{hypothesis_record(ROOT, RUN, number).parts[-3]}.json")
+
+
+def test_case_record_of_the_adr_0072_example():
+    run_id = "20261009t012331z-9f3a6c1e0b7d4a52"
+    expected = f"db/{ADR_HW_NAME}/{ADR_OP_NAME}/case-{run_id}-0001.json"
+    assert rel(case_record(ROOT, ADR_HW_NAME, ADR_OP_NAME, run_id, 1)) == expected
+
+
+@pytest.mark.parametrize("number", [0, -1, *BAD_ROUNDS])
+def test_round_zero_has_no_case_record(number):
+    with pytest.raises(InvalidPathValueError, match=r"^round: must be an int from 1 "):
+        case_record(ROOT, HW, OP, RUN, number)
+
+
+@pytest.mark.parametrize("run_id", BAD_RUN_IDS)
+def test_invalid_run_id_of_a_case_record_is_rejected(run_id):
+    with pytest.raises(InvalidPathValueError, match=r"^run_id: must be "):
+        case_record(ROOT, HW, OP, run_id, 1)
+
+
+@pytest.mark.parametrize("name", BAD_KEY_NAMES)
+def test_invalid_key_name_of_a_case_record_is_rejected(name):
+    with pytest.raises(InvalidPathValueError, match=r"^hw_profile_key: must be "):
+        case_record(ROOT, name, OP, RUN, 1)
+    with pytest.raises(InvalidPathValueError, match=r"^op_signature: must be "):
+        case_record(ROOT, HW, name, RUN, 1)
 
 
 @pytest.mark.parametrize(("name", "expected"), ADR_OP_FILES.items())
@@ -537,6 +573,7 @@ def test_module_defines_no_reader_writer_or_entry_point():
         "InvalidPathValueError",
         "attempt_artefact",
         "attempt_dir",
+        "case_record",
         "check_run_id",
         "decision_log",
         "hw_profile_dir",
