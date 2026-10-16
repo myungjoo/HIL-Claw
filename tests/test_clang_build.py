@@ -392,10 +392,6 @@ def test_new_error_without_errno_keeps_its_message():
     assert error.result is None
     placed = ArtefactNotPlacedError(OSError("plain"), None)
     assert placed.removal_error is None
-    checked = ArtefactNotCheckedError(OSError("plain"), None)
-    assert str(checked) == "plain"
-    assert checked.result is None
-    assert checked.removal_error is None
 
 
 def test_new_errors_survive_pickling():
@@ -563,6 +559,15 @@ def test_except_oserror_catches_both_new_errors(which, stub, src, out_dir, reque
         pytest.fail("build did not raise")
     expected = ArtefactNotPlacedError if which == "move" else TemporaryNotRemovedError
     assert type(caught) is expected
+
+
+def test_artefact_not_checked_error_without_errno():
+    error = ArtefactNotCheckedError(OSError("plain"), None)
+    assert str(error) == "plain"
+    assert error.errno is None
+    assert error.filename is None
+    assert error.result is None
+    assert error.removal_error is None
 
 
 def fail_stat_of_temporary(monkeypatch, make_error):
