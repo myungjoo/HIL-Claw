@@ -2,7 +2,7 @@
 id: T-0245
 title: Write an ADR that answers OD-18 sub-question 18 part (ma) for the errors of one `clang_build.build` call that the code now tells apart (start of the compiler, moving the artefact, removing the temporary file), for `correctness.check`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-6, FR-10, OD-18]
 dependsOn: [T-0244]
@@ -70,3 +70,11 @@ T-0244 (PR #155, `7003362`) changed the code for one of those entries. `hilclaw.
 - The remaining entries of ⑱ (마), when code tells them apart or a record places them.
 
 ## Result
+
+- **Outcome:** DONE. Document mode; landed on `main` as `994ca3d` (https://github.com/myungjoo/HIL-Claw/commit/994ca3d51c40cfe7cfff1b704062d8f5c07b86e8), one commit with `Reviewed-by: reviewer agent (5 rounds, Approve)` and `Task: T-0245`. Branch `claude/T-0245-adr-od18-build-errors-told-apart` deleted (remote and local).
+- **Session entry check (before the first edit):** `gh pr list` showed no open PR; issues #4, #5, #7, #8 read. No owner comment on #5 speaks to errors of two rows, to S9 or to ⑱ (마) (the latest owner comments are the 2026-10-15 decisions and the HQ-0020 answer, both already quoted by ADR-0060). ADR-0079 was free on `main` and on every remote branch.
+- **Change:** new `ARCHITECTURE/decisions/ADR-0079-od18-correctness-check-build-errors-told-apart.md`. `ArtefactNotPlacedError` → S9 `build_output_missing`. `TemporaryNotRemovedError` → the row of the carried build (candidate (b)), because the temporary file lies in the build directory that the operation removes. An `OSError` from starting the compiler, a missing cwd included → S6 `compiler_unavailable`, placed by moment, only where the operation can tell the error came from the start; telling it apart stays the code's. Open under (마) and named: same-class errors before the start or after the end, the path errors S5/S3, the `TypeError` of `clang_build.build`, other `subprocess` errors, and the `local_run.run` entries. Register edits: Requirements OD-18 row (one 확정분 link, 잔여 "(마)의 나머지"), OpenDecisionProposals (one 채택분 bullet, ⑱ end status rewritten), StandardScenarios "최근 재검사" line (S0, S1-b, S2, S5 and S6 re-checked; no verdict change, no gap). 4 files, +108/-3.
+- **Review:** 5 rounds, all by a context-isolated `dev-reviewer` (opus). Round 1 asked for changes. The S6 rule was too broad: by class, a start error cannot be told from pre-start path-test errors (pathlib propagates other `OSError`s on Python 3.11-3.13) or from the post-end `temporary.is_file()` error. "Found usable" was presented as cited, and the two registers' open lists differed. Rounds 2 to 4 approved, each with one nit that was then fixed: the Python version of the pathlib observation, a reachable walk-through row, and the version scope of the lost-log consequence. Round 5 approved with no findings.
+- **§9 notice:** https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6225487199 (7-day objection window from 2026-10-17).
+- **D16:** nothing was built or run, and no `claude` was started. The facts come from the code and the records (pathlib behaviour was read from the installed 3.14 source and the 3.11-3.13 docs).
+- **Follow-ups:** (1) code: on Python 3.11-3.13 an `OSError` from `clang_build.build`'s post-build `temporary.is_file()` test is passed on with no `result`, so the log is lost against ADR-0078 decision 2. A code task should wrap it or register it, in the manner of T-0244. (2) code: a way for the operation to tell a compiler-start `OSError` from same-class errors (for example a class of its own in `clang_build.build`), so that ADR-0079 decision 4 can be applied. (3) the remaining entries of ⑱ (마).
