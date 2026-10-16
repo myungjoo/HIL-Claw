@@ -31,8 +31,11 @@ What the module does not do: it builds no spec and no other part of one - no
 setting, no ``hw_profile``, no ``id``, no ``guidance`` and no ``feedback``. It
 does not check that the ``task.contract`` of a spec is the one of this record.
 It knows no other contract: no other kind, dtype, layout or language. It reads
-and writes no file, starts no process, stores and registers nothing, is bound
-to no tool and has no command-line entry.
+and writes no file, starts no process, stores and registers nothing and has
+no command-line entry. It is bound to one tool: :func:`covers` is the
+predicate of the ``correctness.check`` of the default registry
+(``ARCHITECTURE/decisions/ADR-0070-od18-correctness-check-registration.md``,
+decision 4).
 
 The guarantees and obligations of a call and what the source of a kernel
 provides (decisions 6 and 7) are not represented in any value returned here,

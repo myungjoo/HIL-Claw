@@ -5,6 +5,8 @@ import io
 import json
 import re
 import struct
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -37,6 +39,7 @@ from hilclaw.check_parameters import CheckParameters
 from hilclaw.harness import seed_source
 from hilclaw.journal import EMPTY
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
 TOOL = "correctness.check"
 # ADR-0069 decision 4, written out.
 SCHEMA = {
@@ -149,25 +152,33 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == []
 
 
+def imports_by_function(node, owner=None, found=None):
+    found = {} if found is None else found
+    for child in ast.iter_child_nodes(node):
+        assert not isinstance(child, ast.Import)
+        if isinstance(child, ast.ImportFrom):
+            assert child.module in ("hilclaw", "hilclaw.harness")
+            found.setdefault(owner, set()).update(alias.name for alias in child.names)
+        inner = child.name if isinstance(child, ast.FunctionDef) else owner
+        imports_by_function(child, inner, found)
+    return found
+
+
 def test_the_module_imports_what_it_names_and_has_its_public_names_only():
     own = Path(check_definition.__file__)
     text = own.read_text(encoding="utf-8")
-    imported = set()
-    for node in ast.walk(ast.parse(text)):
-        assert not isinstance(node, ast.Import)
-        if isinstance(node, ast.ImportFrom):
-            assert node.module in ("hilclaw", "hilclaw.harness")
-            imported.update(alias.name for alias in node.names)
-    assert imported == {
-        "backends",
-        "check_identity",
-        "check_tool",
-        "gemm_contract",
-        "keys",
-        "mock_backend",
-        "mock_check",
-        "tools",
-        "seed_source",
+    assert imports_by_function(ast.parse(text)) == {
+        None: {
+            "backends",
+            "check_identity",
+            "gemm_contract",
+            "keys",
+            "mock_backend",
+            "tools",
+            "seed_source",
+        },
+        "default_table": {"mock_check"},
+        "function": {"check_tool"},
     }
     public = {
         name
@@ -280,10 +291,12 @@ def parties(monkeypatch):
         "seeds": Recorder(seed_source.system),
         "covers": Recorder(gemm_contract.covers),
         "script": Recorder(mock_check.default_script),
+        "table": Recorder(check_definition.default_table),
     }
     monkeypatch.setattr(seed_source, "system", recorded["seeds"])
     monkeypatch.setattr(gemm_contract, "covers", recorded["covers"])
     monkeypatch.setattr(mock_check, "default_script", recorded["script"])
+    monkeypatch.setattr(check_definition, "default_table", recorded["table"])
     return recorded
 
 
@@ -343,6 +356,7 @@ def test_definition_is_the_tool_of_the_record(parties):
     assert callable(held.function)
     assert definition(source).input_schema is not held.input_schema
     assert (source.calls, *counts(parties)) == (0, 0, 0, 0)
+    assert parties["table"].calls == []
 
 
 @pytest.mark.parametrize("source", [None, "data", 3, {}, Path(".")])
@@ -357,6 +371,7 @@ def test_building_the_default_registry_calls_no_party(parties):
     assert registry.names() == ("blob.fetch", "blob.push", TOOL)
     assert (source.calls, *counts(parties)) == (0, 0, 0, 0)
     assert tools.default_registry(source).get(TOOL) is not registry.get(TOOL)
+    assert parties["table"].calls == []
 
 
 @pytest.mark.parametrize("source", [None, "data", 3])
@@ -364,6 +379,7 @@ def test_the_default_registry_refuses_a_source_that_is_not_callable(source, part
     with pytest.raises(TypeError, match="must be callable"):
         tools.default_registry(source)
     assert counts(parties) == (0, 0, 0)
+    assert parties["table"].calls == []
 
 
 def test_tools_list_of_the_mcp_front_holds_the_three_tools():
@@ -554,4 +570,137 @@ def test_the_command_line_front_serves_the_tool_of_the_default_registry(
     assert status == __main__.EXIT_TOOL_FAILURE
     assert answer["error"]["kind"] == tools.KIND_NO_BACKEND
     assert no_log(configured, "run-b")
+    assert counts(parties) == (1, 1, 1)
+
+
+# When the modules of the operation are imported
+
+HEAVY = (
+    "numpy",
+    "hilclaw.check_tool",
+    "hilclaw.mock_check",
+    "hilclaw.harness.verification",
+)
+CHILD_END = """
+import sys
+print(",".join(name for name in {heavy!r} if name in sys.modules))
+"""
+LIST_CHILD = """
+import io, json
+from hilclaw import mcp_front
+line = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}) + "\\n"
+out = io.BytesIO()
+status = mcp_front.main([], stdin=io.BytesIO(line.encode()), stdout=out, stderr=io.BytesIO())
+print(status, *(tool["name"] for tool in json.loads(out.getvalue())["result"]["tools"]))
+"""
+CALL_CHILD = """
+import io, sys
+from hilclaw import __main__, data_root_source
+data_root_source.configured = lambda: sys.argv[1]
+out = io.BytesIO()
+request = io.BytesIO(b'{{"sha256": "{hash}"}}')
+status = __main__.main([{name!r}], stdin=request, stdout=out, stderr=io.BytesIO())
+print(status, out.getvalue().decode().strip())
+"""
+ABSENT = "0" * 64
+
+
+def heavy_modules_after(code, tmp_path):
+    done = subprocess.run(
+        [sys.executable, "-c", code + CHILD_END.format(heavy=HEAVY), str(tmp_path)],
+        capture_output=True,
+        cwd=REPO_ROOT,
+        timeout=60,
+        check=False,
+    )
+    assert (done.returncode, done.stderr) == (0, b"")
+    *answers, loaded = done.stdout.decode().splitlines()
+    return answers, loaded
+
+
+def test_building_the_default_registry_imports_no_numpy(tmp_path):
+    code = "from hilclaw import tools\ntools.default_registry(lambda: None)\n"
+    assert heavy_modules_after(code, tmp_path) == ([], "")
+
+
+def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
+    answers, loaded = heavy_modules_after(LIST_CHILD, tmp_path)
+    assert answers == ["0 blob_fetch blob_push correctness_check"]
+    assert loaded == ""
+
+
+@pytest.mark.parametrize(
+    ("name", "answer"),
+    [
+        ("blob.push", '0 {"sha256":"' + ABSENT + '","present":false}'),
+        ("blob.fetch", '0 {"sha256":"' + ABSENT + '","present":false}'),
+        (
+            "sim.run",
+            '4 {"error":{"kind":"unknown_tool","message":"unknown tool \'sim.run\'"}}',
+        ),
+    ],
+)
+def test_a_call_of_another_tool_through_the_command_line_imports_no_numpy(
+    tmp_path, name, answer
+):
+    code = CALL_CHILD.format(hash=ABSENT, name=name)
+    assert heavy_modules_after(code, tmp_path) == ([answer], "")
+
+
+def test_the_first_call_binds_the_tool_function_of_the_record(
+    root, parties, monkeypatch
+):
+    bound = []
+    real = check_tool.tool_function
+
+    def binding(**parts):
+        bound.append(parts)
+        return real(**parts)
+
+    monkeypatch.setattr(check_tool, "tool_function", binding)
+    source = CountingSource(root)
+    registry = tools.default_registry(source)
+    assert bound == []
+    assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
+    assert bound == [
+        {
+            "source": source,
+            "table": parties["table"].answers[0],
+            "seeds": parties["seeds"],
+            "covers": parties["covers"],
+        }
+    ]
+
+
+def test_the_table_is_built_once_per_registry(tmp_path, parties):
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    registry = tools.default_registry(lambda: root)
+    assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
+    refused(registry, {**REQUEST, "run_id": "run-b"}, tools.KIND_NO_BACKEND)
+    assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
+    assert len(parties["table"].calls) == 1
+    other = tools.default_registry(lambda: root)
+    assert tools.call(other, TOOL, dict(REQUEST)) == PASSED
+    assert len(parties["table"].calls) == 2
+    assert parties["table"].answers[0] is not parties["table"].answers[1]
+
+
+def test_a_first_call_whose_binding_fails_keeps_nothing(root, parties, monkeypatch):
+    broken = RuntimeError("no table")
+    failures = [broken]
+
+    def fails_once():
+        if failures:
+            raise failures.pop()
+        return parties["table"]()
+
+    monkeypatch.setattr(check_definition, "default_table", fails_once)
+    registry = tools.default_registry(lambda: root)
+    failure = refused(registry, REQUEST, tools.KIND_TOOL_CRASHED)
+    assert failure.__cause__ is broken
+    assert no_log(root)
+    assert counts(parties) == (0, 0, 0)
+    assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
+    assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
+    assert len(parties["table"].calls) == 1
     assert counts(parties) == (1, 1, 1)

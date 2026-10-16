@@ -31,6 +31,17 @@ text of :data:`DESCRIPTION`, and that the schema is returned by a function,
 a fresh object at each call, so that a caller that changes one does not
 change the next.
 
+When the modules are imported is this module's own choice too: it imports
+:mod:`hilclaw.check_tool` and :mod:`hilclaw.mock_check`, and through them
+NumPy, only inside functions, so that importing it or building a definition
+imports neither. :func:`default_table` imports :mod:`hilclaw.mock_check` when
+it is called; the tool function of a definition imports
+:mod:`hilclaw.check_tool`, builds the table and binds the tool function at
+its first call, and keeps that one bound function for its later calls. A
+first call whose import or binding raises keeps nothing, and the next call
+binds again; what it raises reaches the front as anything a tool function
+raises does.
+
 What the module does not do: it registers nothing; the registration is
 :func:`hilclaw.tools.default_registry`'s. No request, option or environment
 variable chooses the table, the source of seeds or the predicate. The schema
@@ -38,20 +49,12 @@ is a statement to the caller and checks nothing (ADR-0015 decision 2): the
 tool function checks its own request (:func:`hilclaw.check_identity.check`
 and the frame). Whether Claude Code accepts the keywords of the schema is not
 verified (OD-18 sub-question ⑤), and no reduced schema is given. It reads no
-file and keeps nothing between calls; building a definition calls neither
-the data-root source, the source of seeds, the predicate nor the script.
+file and keeps nothing between calls but the bound function of a definition;
+building a definition calls neither the data-root source, the source of
+seeds, the predicate, the script nor :func:`default_table`.
 """
 
-from hilclaw import (
-    backends,
-    check_identity,
-    check_tool,
-    gemm_contract,
-    keys,
-    mock_backend,
-    mock_check,
-    tools,
-)
+from hilclaw import backends, check_identity, gemm_contract, keys, mock_backend, tools
 from hilclaw.harness import seed_source
 
 _TOOL = "correctness.check"
@@ -109,7 +112,10 @@ def default_table():
     with :func:`hilclaw.mock_check.operation` bound to
     :func:`hilclaw.mock_check.default_script`. It holds no ``cpu_standin``
     entry, so a call about any other ``accelerator`` is ``no_backend``.
+    It imports :mod:`hilclaw.mock_check`, and so NumPy.
     """
+    from hilclaw import mock_check
+
     operation = mock_check.operation(mock_check.default_script)
     return backends.BackendTable(
         [backends.Backend(mock_backend.NAME, {_TOOL: operation})]
@@ -124,14 +130,28 @@ def definition(source):
     :func:`hilclaw.check_tool.tool_function` bound to a new
     :func:`default_table`, to :func:`hilclaw.harness.seed_source.system` and
     to :func:`hilclaw.gemm_contract.covers` (ADR-0070 decisions 3 and 4); the
-    description is :data:`DESCRIPTION` and the schema a new
-    :func:`input_schema`. Raises :class:`TypeError` when ``source`` is not
-    callable.
+    binding is made at the first call of the definition's function, which
+    then imports :mod:`hilclaw.check_tool` and builds the table, and is kept
+    for its later calls. The description is :data:`DESCRIPTION` and the
+    schema a new :func:`input_schema`. Raises :class:`TypeError` when
+    ``source`` is not callable.
     """
-    function = check_tool.tool_function(
-        source=source,
-        table=default_table(),
-        seeds=seed_source.system,
-        covers=gemm_contract.covers,
-    )
+    if not callable(source):
+        raise TypeError("the data-root source must be callable")
+    bound = []
+
+    def function(request):
+        if not bound:
+            from hilclaw import check_tool
+
+            bound.append(
+                check_tool.tool_function(
+                    source=source,
+                    table=default_table(),
+                    seeds=seed_source.system,
+                    covers=gemm_contract.covers,
+                )
+            )
+        return bound[0](request)
+
     return tools.ToolDefinition(_TOOL, function, DESCRIPTION, input_schema())
