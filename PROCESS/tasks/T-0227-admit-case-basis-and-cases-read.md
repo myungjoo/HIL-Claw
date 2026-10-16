@@ -2,7 +2,7 @@
 id: T-0227
 title: Admit the `basis` kind `case` and the optional top-level member `cases_read` in the hypothesis record (ADR-0073 decisions 2 and 3, in-file rules) in `hilclaw/hypotheses.py`, and extend the `-0` text rule of `hilclaw/hypotheses_file.py` and of the hypothesis copy in `hilclaw/cases_file.py` to `cases_read`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-18, FR-11, OD-30, "ADR-0073", "ADR-0059", "ADR-0072"]
 dependsOn: [T-0226, T-0224]
@@ -78,3 +78,11 @@ Relation to T-0225 (BLOCKED, HQ-0022): T-0225 also lists `hilclaw/hypotheses_fil
 - ADR-0073 R7 nits, the S5 note and the "not edited and now less exact" list (doc).
 
 ## Result
+
+- **Outcome**: DONE. PR #150 (https://github.com/myungjoo/HIL-Claw/pull/150), squash-merged as `4407ebe`; branch `claude/T-0227-admit-case-basis-and-cases-read` deleted.
+- **Review**: 3 rounds (dev-reviewer, fresh context), all Approve; round-1/2 findings (one Minor, two Nits) fixed in the PR.
+- **CI**: green on head `58fe418`. `hilclaw/` coverage 99% overall, 100% for the four touched modules.
+- **Change**: `hilclaw/hypotheses.py` admits the basis kind `case` and the optional `cases_read` with the in-file rules of ADR-0073 decisions 2 and 3 (checks run top level, then `cases_read`, then `hypotheses`); `SCHEMA_VERSION` stays 1 and origin `injected` is still refused. `cases_read` added to `hypotheses_file._DEFINED` and the hypothesis copy in `cases_file._COPIES`. Docstrings of the four modules updated; the three tests using `case` as an unadmitted kind adapted.
+- **Note**: every integer under `cases_read` and `case.round` has minimum 1, so `validate` refuses `-0` before the text rule; the new tuple entries are defensive consistency (the Why's "otherwise -0 would be accepted" premise did not hold) and the tests assert the validator message.
+- **Language**: Python, as the modules this change extends.
+- **Follow-ups**: deterministic case lookup (ADR-0073 decision 1, code, T-0228 candidate); check of the rules between files (decisions 2-3, code); ADR-0073 R7 nits and the S5 note (doc).
