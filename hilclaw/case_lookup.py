@@ -112,7 +112,7 @@ def find(data_root, hw_profile, op_signature, run_id):
     returned; one whose ``run_id`` is ``run_id`` is left out without a report.
 
     Raises :class:`hilclaw.layout.InvalidPathValueError` for a ``run_id`` that
-    is none and :class:`FileNotFoundError` or :class:`NotADirectoryError` for a
+    is not a valid run id and :class:`FileNotFoundError` or :class:`NotADirectoryError` for a
     ``data_root`` that is no existing directory, before any file is read; what
     :mod:`hilclaw.keys` raises for an invalid record; and the
     :class:`OSError` of listing the key directory.
