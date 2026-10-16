@@ -2,7 +2,7 @@
 id: T-0247
 title: Let `hilclaw.clang_build.build` tell an `OSError` from starting the compiler apart from same-class errors before the start and after the end, by raising it as a new `OSError` subclass `CompilerNotStartedError` (ADR-0079 decision 4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-6, FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0244, T-0245, T-0246]
@@ -83,5 +83,6 @@ This task does not place any other error and edits no `ARCHITECTURE/` file. A la
 - PR #157 (squash-merged; the squash commit is recorded by the driver). Review: 2 rounds, Approve (round 1 Approve with one docstring-reflow nit, fixed and re-reviewed).
 - `hilclaw/clang_build.py`: `build` creates the compiler with `subprocess.Popen` and mirrors the `with Popen(...)` block of CPython 3.14's `subprocess.run` in the private `_communicate`; the platform test is the module constant `_WINDOWS` (`sys.platform == "win32"`, as `subprocess._mswindows`), patched by `test_timeout_on_either_platform` so both timeout branches are covered on every platform. New public `CompilerNotStartedError(error, removal_error=None)`; it and the private `_EndedBuildError` share the private base `_CopiedOSError` (copy of `errno`/`strerror`/`filename`/`filename2` and the pickling copy), so it is in no subclass relation with the three file-error classes. The `build` docstring sentence was replaced as criterion 8 says; the module docstring is unchanged (its timeout sentences stay true).
 - Tests: the three `subprocess.run`-patching tests were replaced by `Popen`-patching ones (criteria 2, 3 and the `failing_stat` case); new tests cover a real failed start (missing `cwd`), an `OSError` from `communicate` with and without a failing removal, no `Popen` call for a pre-start error, both timeout branches, class relations, pickling and `except OSError`. Local (Windows, Python 3.14): full `python -m pytest` 22145 passed, 355 skipped; ruff check/format clean; `hilclaw/clang_build.py` coverage 100%.
+- CI run 38978665951 on head `f17bd17`: all gates green (Python 3.11 and 3.14, coverage with `hilclaw/clang_build.py` 100% and `hilclaw/` 99%, C, sh, test presence). Landed as squash commit `03f9007`; branch deleted.
 - Language: Python, because the module is Python.
 - Follow-ups: the doc follow-up above stands. The reviewer noted (info) that an `OSError` raised inside `Popen.__init__` after the OS created the process (POSIX: reading or closing the exec error pipe; Windows: closing the thread handle) is also raised as `CompilerNotStartedError`; this is within the task's definition ("raised while constructing `subprocess.Popen`") and practically unreachable, and may be noted in the same doc task under OD-18 ⑱ (마).
