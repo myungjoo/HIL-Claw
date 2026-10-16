@@ -239,7 +239,7 @@
       "reason": "requirement-unclear",
       "question": "T-0243 (code: ADR-0078 slice 1, the path function of the compiler's log file in `hilclaw/layout.py` and a new module `hilclaw/build_log.py` with the log keeper, the kind `build_log_unwritable` and the once-only write) cannot start within its acceptance criteria. Criterion 1 adds a public function to `hilclaw/layout.py`, but the existing test `tests/test_layout.py::test_module_defines_no_reader_writer_or_entry_point` (about line 565) asserts that the set of public names defined in `hilclaw.layout` equals a literal set, so any new public function fails it. Criterion 3 permits edits only to the import block and the `every_path` helper (\"No existing assertion is edited or removed\"), and criterion 14 says to stop rather than edit a failing existing test. May the task also permit adding the new function's name to that literal set (nothing else in that test changes; precedent T-0129, and T-0242's Follow-ups asked for it)? If yes, the driver re-runs T-0243 from the start (no branch, commit or PR was made).",
       "askedAt": "2026-10-16T20:27:37Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6224083902"
     }
   ],
   "counters": {
