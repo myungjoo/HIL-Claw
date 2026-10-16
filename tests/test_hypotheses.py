@@ -295,7 +295,7 @@ def test_basis_without_kind_is_rejected():
     assert "required member is missing" in message
 
 
-@pytest.mark.parametrize("kind", ["case", "paper", "", None, 1, ["attempt"]])
+@pytest.mark.parametrize("kind", ["paper", "injected", "", None, 1, ["attempt"]])
 def test_basis_kind_not_admitted_is_rejected(kind):
     basis = {**attempt_basis(), "kind": kind}
     rejected(record(entry(basis=[basis])), "hypotheses[0].basis[0].kind")
@@ -303,7 +303,7 @@ def test_basis_kind_not_admitted_is_rejected(kind):
 
 def test_case_basis_with_a_reference_member_is_rejected():
     basis = {"kind": "case", "case": "synthetic", "text": "stored case"}
-    rejected(record(entry(basis=[basis])), "hypotheses[0].basis[0].kind")
+    rejected(record(entry(basis=[basis])), "hypotheses[0].basis[0].case")
 
 
 @pytest.mark.parametrize(
@@ -406,7 +406,7 @@ def test_ref_round_just_below_the_round_is_valid():
 
 
 def test_later_bad_basis_entry_is_reported_with_its_index():
-    basis = [attempt_basis(), {**external_basis(), "kind": "case"}]
+    basis = [attempt_basis(), {**external_basis(), "kind": "paper"}]
     rejected(record(entry(basis=basis)), "hypotheses[0].basis[1].kind")
 
 
@@ -501,3 +501,277 @@ def test_candidate_tested_by_no_hypothesis_is_rejected(entries, candidates, miss
 def test_first_rule_broken_is_reported():
     document = record(entry("h1"), entry("h1", tested_by=[5]))
     rejected(document, "hypotheses[1].tested_by[0]")
+
+
+# The example of ADR-0073 (Example), copied from the record.
+ADR_0073_EXAMPLE = json.loads(
+    """
+{
+  "schema_version": 1, "run_id": "20261020t093000z-0f1e2d3c4b5a6978", "round": 1, "candidates": 1,
+  "cases_read": [{"run_id": "20261009t012331z-9f3a6c1e0b7d4a52", "round": 1}],
+  "hypotheses": [
+    {"id": "h1", "statement": "NOT-DECIDED-HERE",
+     "basis": [
+       {"kind": "case", "case": {"run_id": "20261009t012331z-9f3a6c1e0b7d4a52", "round": 1, "hypothesis": "h1"}, "text": "NOT-DECIDED-HERE"},
+       {"kind": "attempt", "ref": {"round": 0, "candidate": 1, "attempt": 1}, "text": "NOT-DECIDED-HERE"}],
+     "expected": [{"metric": "latency_minimisation", "direction": "lower"}],
+     "origin": "system", "tested_by": [1]}
+  ]
+}
+"""
+)
+
+OWN_RUN = "synthetic-run_01"
+OTHER_RUN = "other-run_02"
+
+
+def case_basis(run_id=OTHER_RUN, round=1, hypothesis="h1", text="stored case"):
+    case = {"run_id": run_id, "round": round, "hypothesis": hypothesis}
+    return {"kind": "case", "case": case, "text": text}
+
+
+def read_entry(run_id=OTHER_RUN, round=1):
+    return {"run_id": run_id, "round": round}
+
+
+def with_cases(*read, basis=None):
+    document = record(entry(basis=basis if basis is not None else [case_basis()]))
+    document["cases_read"] = list(read)
+    return document
+
+
+def test_adr_0073_example_is_valid():
+    assert validate(ADR_0073_EXAMPLE) is None
+
+
+def test_adr_0073_example_is_not_modified():
+    before = copy.deepcopy(ADR_0073_EXAMPLE)
+    validate(ADR_0073_EXAMPLE)
+    assert before == ADR_0073_EXAMPLE
+
+
+def test_empty_cases_read_without_case_entry_is_valid():
+    validate(with_cases(basis=[attempt_basis()]))
+
+
+def test_absent_cases_read_without_case_entry_is_valid():
+    assert "cases_read" not in record()
+    validate(record())
+
+
+def test_cases_read_none_of_which_is_rested_on_is_valid():
+    read = [read_entry(), read_entry("third-run", 4)]
+    validate(with_cases(*read, basis=[attempt_basis(), external_basis()]))
+
+
+def test_cases_read_beyond_the_rested_on_cases_is_valid():
+    validate(with_cases(read_entry(), read_entry("third-run", 4)))
+
+
+def test_cases_read_order_is_not_checked():
+    validate(with_cases(read_entry("zz-run"), read_entry("aa-run", 2), read_entry()))
+
+
+def test_same_run_with_different_rounds_is_no_duplicate():
+    basis = [case_basis(round=1), case_basis(round=2, hypothesis="h9")]
+    validate(with_cases(read_entry(round=1), read_entry(round=2), basis=basis))
+
+
+def test_case_entry_of_any_stored_hypothesis_id_is_valid():
+    validate(with_cases(read_entry(), basis=[case_basis(hypothesis="refuted_h7")]))
+
+
+def test_two_case_entries_on_one_case_are_valid():
+    basis = [case_basis(), case_basis(hypothesis="h2", text="another")]
+    validate(with_cases(read_entry(), basis=basis))
+
+
+def test_case_entry_bounds_are_valid():
+    top = hypotheses.keys.MAX_INTEGER
+    basis = [case_basis(run_id="s" * 255, round=top, hypothesis="h" * 32)]
+    validate(with_cases(read_entry("s" * 255, top), basis=basis))
+
+
+def test_read_only_case_mappings_are_accepted():
+    basis = case_basis()
+    basis["case"] = MappingProxyType(basis["case"])
+    read = MappingProxyType(read_entry())
+    document = with_cases(read, basis=[MappingProxyType(basis)])
+    validate(MappingProxyType(document))
+
+
+@pytest.mark.parametrize("value", NOT_ARRAYS)
+def test_cases_read_that_is_not_an_array_is_rejected(value):
+    document = {**record(), "cases_read": value}
+    assert "must be an array" in rejected(document, "cases_read")
+
+
+@pytest.mark.parametrize("value", NOT_OBJECTS)
+def test_cases_read_entry_that_is_not_an_object_is_rejected(value):
+    rejected(with_cases(value, basis=[attempt_basis()]), "cases_read[0]")
+
+
+@pytest.mark.parametrize("name", ["run_id", "round"])
+def test_missing_cases_read_member_is_rejected(name):
+    read = read_entry()
+    del read[name]
+    document = with_cases(read, basis=[attempt_basis()])
+    message = rejected(document, f"cases_read[0].{name}")
+    assert "required member is missing" in message
+
+
+@pytest.mark.parametrize("name", ["hypothesis", "extra", 1])
+def test_unknown_cases_read_member_is_rejected(name):
+    document = with_cases({**read_entry(), name: "x"}, basis=[attempt_basis()])
+    assert "unknown member" in rejected(document, "cases_read[0]")
+
+
+@pytest.mark.parametrize("value", BAD_STRINGS)
+def test_bad_cases_read_run_id_is_rejected(value):
+    document = with_cases(read_entry(run_id=value), basis=[attempt_basis()])
+    rejected(document, "cases_read[0].run_id")
+
+
+@pytest.mark.parametrize("value", BAD_POSITIVE_INTEGERS)
+def test_bad_cases_read_round_is_rejected(value):
+    document = with_cases(read_entry(round=value), basis=[attempt_basis()])
+    rejected(document, "cases_read[0].round")
+
+
+def test_cases_read_entry_of_the_own_run_is_rejected():
+    read = [read_entry(), read_entry(run_id=OWN_RUN)]
+    message = rejected(with_cases(*read), "cases_read[1].run_id")
+    assert f"other than run_id ({OWN_RUN})" in message
+
+
+def test_duplicate_cases_read_entry_is_rejected():
+    read = [read_entry(), read_entry("third-run", 4), read_entry()]
+    message = rejected(with_cases(*read), "cases_read[2]")
+    assert "unique in the array" in message
+
+
+@pytest.mark.parametrize("name", ["case", "text"])
+def test_missing_case_basis_member_is_rejected(name):
+    basis = case_basis()
+    del basis[name]
+    document = with_cases(read_entry(), basis=[basis])
+    message = rejected(document, f"hypotheses[0].basis[0].{name}")
+    assert "required member is missing" in message
+
+
+@pytest.mark.parametrize("name", ["ref", "source", "extra"])
+def test_unknown_case_basis_member_is_rejected(name):
+    document = with_cases(read_entry(), basis=[{**case_basis(), name: "x"}])
+    assert "unknown member" in rejected(document, "hypotheses[0].basis[0]")
+
+
+@pytest.mark.parametrize("value", BAD_TEXTS)
+def test_bad_case_basis_text_is_rejected(value):
+    document = with_cases(read_entry(), basis=[{**case_basis(), "text": value}])
+    rejected(document, "hypotheses[0].basis[0].text")
+
+
+@pytest.mark.parametrize("value", NOT_OBJECTS)
+def test_case_member_that_is_not_an_object_is_rejected(value):
+    document = with_cases(read_entry(), basis=[{**case_basis(), "case": value}])
+    assert "must be an object" in rejected(document, "hypotheses[0].basis[0].case")
+
+
+@pytest.mark.parametrize("name", ["run_id", "round", "hypothesis"])
+def test_missing_case_member_is_rejected(name):
+    basis = case_basis()
+    del basis["case"][name]
+    document = with_cases(read_entry(), basis=[basis])
+    message = rejected(document, f"hypotheses[0].basis[0].case.{name}")
+    assert "required member is missing" in message
+
+
+@pytest.mark.parametrize("name", ["id", "candidate", "extra"])
+def test_unknown_case_member_is_rejected(name):
+    basis = case_basis()
+    basis["case"][name] = 1
+    document = with_cases(read_entry(), basis=[basis])
+    assert "unknown member" in rejected(document, "hypotheses[0].basis[0].case")
+
+
+@pytest.mark.parametrize("value", BAD_STRINGS)
+def test_bad_case_run_id_is_rejected(value):
+    document = with_cases(read_entry(), basis=[case_basis(run_id=value)])
+    rejected(document, "hypotheses[0].basis[0].case.run_id")
+
+
+@pytest.mark.parametrize("value", BAD_POSITIVE_INTEGERS)
+def test_bad_case_round_is_rejected(value):
+    document = with_cases(read_entry(), basis=[case_basis(round=value)])
+    rejected(document, "hypotheses[0].basis[0].case.round")
+
+
+@pytest.mark.parametrize("value", BAD_NAMES)
+def test_bad_case_hypothesis_is_rejected(value):
+    document = with_cases(read_entry(), basis=[case_basis(hypothesis=value)])
+    rejected(document, "hypotheses[0].basis[0].case.hypothesis")
+
+
+def test_case_entry_of_the_own_run_is_rejected():
+    document = with_cases(read_entry(), basis=[case_basis(run_id=OWN_RUN)])
+    message = rejected(document, "hypotheses[0].basis[0].case.run_id")
+    assert f"other than run_id ({OWN_RUN})" in message
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        [],
+        [read_entry(round=2)],
+        [read_entry(run_id="third-run")],
+        [read_entry(run_id="third-run", round=2), read_entry(round=3)],
+    ],
+)
+def test_case_entry_not_in_cases_read_is_rejected(read):
+    message = rejected(with_cases(*read), "hypotheses[0].basis[0].case")
+    assert "no entry of cases_read" in message
+
+
+def test_case_entry_without_cases_read_is_rejected():
+    document = record(entry(basis=[case_basis()]))
+    message = rejected(document, "hypotheses[0].basis[0].case")
+    assert "no entry of cases_read" in message
+
+
+def test_case_entry_of_a_later_hypothesis_is_reported_with_its_index():
+    document = with_cases(read_entry(), basis=[attempt_basis()])
+    document["candidates"] = 2
+    basis = [external_basis(), case_basis(round=5)]
+    document["hypotheses"].append(entry("h2", tested_by=(2,), basis=basis))
+    rejected(document, "hypotheses[1].basis[1].case")
+
+
+def test_cases_read_is_checked_before_the_hypotheses():
+    basis = [case_basis(hypothesis="Bad")]
+    rejected(with_cases(read_entry(round=0), basis=basis), "cases_read[0].round")
+
+
+def test_cases_read_is_checked_after_the_top_level_members():
+    document = {**with_cases(read_entry(round=0)), "candidates": 0}
+    rejected(document, "candidates")
+
+
+def test_cases_read_entries_are_checked_before_their_uniqueness():
+    read = [read_entry(), read_entry(), read_entry(round=0)]
+    rejected(with_cases(*read), "cases_read[2].round")
+
+
+def test_case_form_is_checked_before_its_in_file_rules():
+    basis = [case_basis(run_id=OWN_RUN, hypothesis="Bad")]
+    rejected(record(entry(basis=basis)), "hypotheses[0].basis[0].case.hypothesis")
+
+
+def test_case_own_run_is_checked_before_cases_read_membership():
+    basis = [case_basis(run_id=OWN_RUN)]
+    rejected(record(entry(basis=basis)), "hypotheses[0].basis[0].case.run_id")
+
+
+def test_injected_origin_is_still_rejected_with_cases_read():
+    document = with_cases(read_entry())
+    document["hypotheses"][0]["origin"] = "injected"
+    rejected(document, "hypotheses[0].origin")

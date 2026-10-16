@@ -19,11 +19,14 @@ that the copies equal the source files in ``runs/`` (audit, NFR-2); that a
 ``ref`` names an attempt that exists; reading a case or a copy of another
 ``schema_version`` (only version 1 of each is read; setting apart is the
 caller's, OD-11); the text form, final name and write of the file (ADR-0029
-decisions 2, 4, 6 and 7). Nothing of the lookup, the ``basis`` kind ``case``,
-promotion (whether, when and by whom a round is promoted: OD-29, OD-23, OD-25,
-NFR-1, OD-17), ``best.json``, ``technique_stats.json`` or injection is decided
-here. This module reads, writes and logs nothing; it is no tool, no hook and
-no command.
+decisions 2, 4, 6 and 7). The hypothesis copy is checked by
+:func:`hilclaw.hypotheses.validate`, which admits the ``basis`` kind ``case``
+and ``cases_read`` by the in-file rules of ADR-0073 decisions 2 and 3; the
+rules between files of those decisions are not checked here. Nothing of the
+lookup (ADR-0073 decision 1), promotion (whether, when and by whom a round is
+promoted: OD-29, OD-23, OD-25, NFR-1, OD-17), ``best.json``,
+``technique_stats.json`` or injection is done here. This module reads, writes
+and logs nothing; it is no tool, no hook and no command.
 """
 
 import copy

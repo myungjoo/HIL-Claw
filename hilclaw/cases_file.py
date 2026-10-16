@@ -17,17 +17,19 @@ The rules :func:`parse` holds, in this order: the type; the byte order mark;
 the encoding and the JSON text, with no member name twice in any object,
 unknown members and both copies included (a rule for the whole text, ADR-0018
 decision 2); that the text is an object; the versions; the document is valid
-by ADR-0072 decisions 2 and 3 (:func:`hilclaw.cases.validate`); and a number
-at an *integer* place is written in decimal digits without sign, fraction or
-exponent, so ``-0``, which parses to the ``int`` 0, is refused by its text.
-That last rule covers what stands below a defined top-level member of the case
-(``schema_version``, ``run_id``, ``round``) and below a defined top-level
-member of each copy (those of ADR-0059 and ADR-0071), so that a copy obeys
-the text rule its source file obeys in :mod:`hilclaw.hypotheses_file` and
-:mod:`hilclaw.verdicts_file`. Both top levels are open: below a top-level
-member of the case or of a copy that its record does not define, ADR-0072,
-ADR-0059 and ADR-0071 set no rule for a number, and neither does this module.
-A sign, a fraction, an exponent, ``-0`` and an integer above 2**53 - 1 are
+by ADR-0072 decisions 2 and 3 (:func:`hilclaw.cases.validate`), each copy by
+its own record, the hypothesis copy by the in-file rules of ADR-0073
+decisions 2 and 3 too; and a number at an *integer* place is written in
+decimal digits without sign, fraction or exponent, so ``-0``, which parses to
+the ``int`` 0, is refused by its text. That last rule covers what stands below
+a defined top-level member of the case (``schema_version``, ``run_id``,
+``round``) and below a defined top-level member of each copy (those of
+ADR-0059 and ``cases_read`` of ADR-0073 for the hypothesis copy, those of
+ADR-0071 for the verdict copy), so that a copy obeys the text rule its source
+file obeys in :mod:`hilclaw.hypotheses_file` and :mod:`hilclaw.verdicts_file`.
+Both top levels are open: below a top-level member of the case or of a copy
+that its records do not define, ADR-0072, ADR-0059, ADR-0073 and ADR-0071 set
+no rule for a number, and neither does this module. A sign, a fraction, an exponent, ``-0`` and an integer above 2**53 - 1 are
 accepted there and returned as parsed; a number beyond the float range there
 is read as an infinity.
 
@@ -72,12 +74,13 @@ directory, knows no "same content", composes no content
 (:func:`hilclaw.cases.build` gives a document; its bytes are the caller's),
 takes no lock and makes no commit. Nothing here checks that the key directory
 is that of the run's instance, that the copies equal the source files in
-``runs/``, or that a *ref* names an attempt that exists. It reads no other
+``runs/``, that a *ref* names an attempt that exists, or the rules between
+files of ADR-0073 decisions 2 and 3 for the hypothesis copy. It reads no other
 version (OD-11) and is no tool, no hook and no command. Promotion (whether,
 when and by whom a round is promoted, whether a round without verdicts is,
 what a second case write after a taken name means: OD-29, OD-23, OD-25,
-NFR-1, OD-17), the lookup and the ``basis`` kind ``case`` are open (ADR-0072
-Boundaries).
+NFR-1, OD-17) is open (ADR-0072 Boundaries). The lookup of the cases of a key
+directory is decided (ADR-0073 decision 1) and has no code yet.
 """
 
 import codecs
@@ -90,7 +93,14 @@ _DEFINED = ("schema_version", "run_id", "round")
 _COPIES = {
     "hypothesis_record": (
         hypotheses.SCHEMA_VERSION,
-        ("schema_version", "run_id", "round", "candidates", "hypotheses"),
+        (
+            "schema_version",
+            "run_id",
+            "round",
+            "candidates",
+            "hypotheses",
+            "cases_read",
+        ),
     ),
     "verdict_record": (
         verdicts.SCHEMA_VERSION,
