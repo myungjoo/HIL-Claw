@@ -80,3 +80,9 @@ Public names are the executor's; the suggested ones are given. Reasons for any d
 ## Follow-ups
 
 ## Result
+
+- PR #152 (squash-merged; branch `claude/T-0229-hypotheses-cases-cross-check`). Review: 2 rounds, Approve (round 1 Approve with three nits, all fixed; round 2 Approve, no findings).
+- Added `hilclaw/hypotheses_cases.py` with `MismatchError`, `check(hypotheses, found)` and `check_run(data_root, hypotheses)` using the suggested names. Added pointer sentences to the docstrings of `hilclaw/case_lookup.py` and `hilclaw/hypotheses.py`. Added the new test file `tests/test_hypotheses_cases.py` (32 tests). Module coverage is 100%. `ruff check`, `ruff format --check` and the full `pytest` suite pass locally.
+- I left out the optional report hint in the mismatch message. A `cases_read` `run_id` need not be a valid run id, so building the case file name could raise. ADR-0073 line 121 also leaves open how a report is carried.
+- Language: Python, as the rest of `hilclaw/`.
+- Follow-ups: none.
