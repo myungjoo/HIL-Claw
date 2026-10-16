@@ -186,9 +186,8 @@ def build(
     error is its ``removal_error``. Any other :class:`OSError` raised while the
     process runs is passed on as it is, unless removing the temporary file then
     fails too, whose error is passed on instead. Once the compiler process has
-    ended, an :class:`OSError` from
-    moving the artefact into place is raised as :class:`ArtefactNotPlacedError`,
-    and one from removing the temporary file as
+    ended, an :class:`OSError` from moving the artefact into place is raised as
+    :class:`ArtefactNotPlacedError`, and one from removing the temporary file as
     :class:`TemporaryNotRemovedError`; both are :class:`OSError` subclasses
     whose ``result`` holds the :class:`BuildResult` with the compiler's log.
     When both fail, :class:`ArtefactNotPlacedError` is raised and the removal's
