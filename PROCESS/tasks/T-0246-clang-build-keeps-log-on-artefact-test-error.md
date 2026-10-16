@@ -78,3 +78,12 @@ This task does not say which row (S6, S9, …) or `error.kind` the new error map
 - (doc) Record under OD-18 ⑱ (마) that `build` now tells apart the post-end test error, and place it in a row, or leave it open with a reason. When editing `ARCHITECTURE/Requirements.md` and `ARCHITECTURE/OpenDecisionProposals.md`, follow the recording rules written in those files: the Requirements register's "행 형식" and the OpenDecisionProposals header's "기록 규칙". Re-check coverage per the first paragraph of StandardScenarios §검사 결과.
 
 ## Result
+
+- PR #156 (squash-merged; the squash commit is the one with trailer `Task: T-0246` on `main`). Branch `claude/T-0246-clang-build-keeps-log-on-artefact-test-error`.
+- `hilclaw/clang_build.py`: after an exit 0, `build` tests the temporary file with `os.stat` + `stat.S_ISREG` instead of `Path.is_file`. `FileNotFoundError` and `NotADirectoryError` read as no artefact (unchanged result); any other `OSError` is raised as the new `ArtefactNotCheckedError` (on `_EndedBuildError`, `removal_error` as in `ArtefactNotPlacedError`), carrying the `BuildResult` with the log. No move is attempted then; it takes precedence over `TemporaryNotRemovedError`. Same behaviour on Python 3.11 to 3.14. `build` and `TemporaryNotRemovedError` docstrings amended; module docstring unchanged.
+- Tests: new tests in `tests/test_clang_build.py` for AC 2-7 (failing test, failing test plus failing removal, `FileNotFoundError`/`NotADirectoryError` as absent, non-regular temporary, no test after non-zero exit or timeout, start error unchanged); the new class added to the import list, `FILE_ERRORS`, the class-relation and pickling tests; its no-errno case is a new test. Full `pytest` passes (22134 passed, 355 skipped locally on 3.14); `hilclaw/` coverage 99%, `hilclaw/clang_build.py` 100%; ruff check/format clean. CI green on 3.11 and 3.14.
+- Review: 3 rounds (round 1 Approve, nit fixed: `NotADirectoryError` built with `ENOTDIR`; round 2 Approve, info fixed: the new class's no-errno assertions moved out of an existing test into a new one, per AC 9; round 3 Approve).
+- Language: Python, because the module is Python.
+- Follow-ups:
+  - (doc) The Follow-ups above stand. When placing `ArtefactNotCheckedError` under OD-18 ⑱ (마), record that on 3.11 to 3.13 the change also turns errors `Path.is_file` used to swallow as `False` (`ELOOP`, `EBADF`, Windows errors 21/123/1921) into `ArtefactNotCheckedError` (reviewer round 1, Low).
+  - (code, candidate next task) ADR-0079 decision 4, as in Follow-ups above.

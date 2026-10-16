@@ -27,6 +27,7 @@ import math
 import os
 import secrets
 import shutil
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -89,14 +90,32 @@ class ArtefactNotPlacedError(_EndedBuildError):
         self.removal_error = removal_error
 
 
+class ArtefactNotCheckedError(_EndedBuildError):
+    """The compiler exited with 0, but testing whether it left its output failed.
+
+    Raised by :func:`build` from the :class:`OSError` of testing whether the
+    temporary file exists and is a regular file, other than one that means it
+    is absent, whose ``errno``, ``strerror``, ``filename`` and ``filename2`` it
+    carries. Nothing is moved to ``output``. ``result`` is the
+    :class:`BuildResult` of the ended compiler process, with ``ok`` false and
+    the compiler's ``log``. ``removal_error`` is the :class:`OSError` from
+    removing the temporary file afterwards, or ``None`` when that removal did
+    not fail.
+    """
+
+    def __init__(self, error, result, removal_error=None):
+        super().__init__(error, result)
+        self.removal_error = removal_error
+
+
 class TemporaryNotRemovedError(_EndedBuildError):
     """Removing the temporary file failed after the compiler process had ended.
 
     Raised by :func:`build` from the :class:`OSError` of that removal, whose
-    ``errno``, ``strerror``, ``filename`` and ``filename2`` it carries, when no
-    :class:`ArtefactNotPlacedError` is raised. ``result`` is the
-    :class:`BuildResult` the call would otherwise have returned, ``ok``
-    included.
+    ``errno``, ``strerror``, ``filename`` and ``filename2`` it carries, when
+    neither :class:`ArtefactNotPlacedError` nor :class:`ArtefactNotCheckedError`
+    is raised. ``result`` is the :class:`BuildResult` the call would otherwise
+    have returned, ``ok`` included.
     """
 
 
@@ -141,7 +160,14 @@ def build(
     :class:`TemporaryNotRemovedError`; both are :class:`OSError` subclasses
     whose ``result`` holds the :class:`BuildResult` with the compiler's log.
     When both fail, :class:`ArtefactNotPlacedError` is raised and the removal's
-    error is its ``removal_error``.
+    error is its ``removal_error``. After the compiler exited with 0, only a
+    :class:`FileNotFoundError` or :class:`NotADirectoryError` from testing
+    whether the temporary file exists reads as no artefact; any other
+    :class:`OSError` of that test is raised as :class:`ArtefactNotCheckedError`,
+    an :class:`OSError` subclass whose ``result`` holds the :class:`BuildResult`
+    with the compiler's log, and nothing is moved. When removing the temporary
+    file then fails too, :class:`ArtefactNotCheckedError` is raised and the
+    removal's error is its ``removal_error``.
     """
     _check_timeout(timeout_s)
     flags = _checked_flags(flags, "flags")
@@ -158,7 +184,7 @@ def build(
         f"{target.stem}.tmp-{os.getpid()}-{secrets.token_hex(8)}{target.suffix}"
     )
     command = (*prefix, *flags, *source_paths, *trailing_flags, "-o", str(temporary))
-    move_error = removal_error = None
+    check_error = move_error = removal_error = None
     ended = False
     started = time.monotonic()
     try:
@@ -177,7 +203,14 @@ def build(
         except subprocess.TimeoutExpired as expired:
             returncode, raw = None, expired.stdout or b""
         duration_s = time.monotonic() - started
-        ok = returncode == 0 and temporary.is_file()
+        ok = False
+        if returncode == 0:
+            try:
+                ok = stat.S_ISREG(os.stat(temporary).st_mode)
+            except (FileNotFoundError, NotADirectoryError):
+                pass
+            except OSError as error:
+                check_error = error
         if ok:
             try:
                 os.replace(temporary, target)
@@ -200,6 +233,10 @@ def build(
         command=command,
         duration_s=duration_s,
     )
+    if check_error is not None:
+        raise ArtefactNotCheckedError(
+            check_error, result, removal_error
+        ) from check_error
     if move_error is not None:
         raise ArtefactNotPlacedError(move_error, result, removal_error) from move_error
     if removal_error is not None:
