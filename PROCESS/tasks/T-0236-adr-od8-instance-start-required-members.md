@@ -2,7 +2,7 @@
 id: T-0236
 title: Write the ADR that settles which members the start of a first-case instance requires before it writes `instance.json`, and what the start does when one is missing (OD-8 sub-questions 19, 21, 25 (ga), 28 (ga), 32, 34 (ga) in part), and reflect it in the ARCHITECTURE registers by their recording rules; no budget, owner/project, source-commit or injection rule, no writer component, no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-13, FR-2, FR-9, FR-1, OD-8, OD-21, "#5 D6"]
 dependsOn: []
@@ -105,3 +105,10 @@ Sections in the order of ADR-0001 "Record format", accepted under DRIVER §9 (ow
 - (planner, code mode, after this record lands) A pure check of an instance content against the record's required set (and, if the record so decides, the filling-in of `n_max`), in a new `hilclaw/` module with its own test file, not touching `hilclaw/instance.py` (the BLOCKED T-0233 branch edits it).
 
 ## Result
+
+- Landed on `main` as `be43ff0` (document mode, no PR; one commit with `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0236`); task branch deleted locally and on the remote. New `ARCHITECTURE/decisions/ADR-0076-od8-instance-start-required-members.md`; Requirements OD-8 row, OpenDecisionProposals OD-8 section (⑲, ㉑, ㉕ (가), ㉘ (가), ㉜, ㉞ (가) partly answered) and the StandardScenarios "최근 재검사" line updated. 4 files, +118/-8; `git diff --check` clean, LF, links resolve.
+- Decides, for instances on `cpu_standin` or the mock with an absent or ADR-0041-covered `op_signature`: the start requires `op_signature`, `objective`, `candidates_per_round`, `n_max`, `draws`, `tolerance`; only `n_max` is filled in (ADR-0007 decision 8 default) before the ADR-0025 write; otherwise the start writes no `instance.json` and reports every missing member in a fixed order. Validity, `schema_version` and the tools' `*_not_stated` answers are unchanged.
+- Coverage re-check: S0, S1, S2, S8 re-checked; no verdict change, no gap.
+- Review: R1-R3 Request changes (value provenance wording, partial answers for ⑲/㉜, HQ-0005 among owner sources, complete list of less-exact sentences) — all applied; R4-R7 Approve (minors/nits applied through R6; R7 non-blocking findings left, past the cap).
+- §9 owner notice on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6218483981 (window ends 2026-10-23). No `claude` was started (D16).
+- Follow-ups: (a) code task: a pure check of an instance content against the required set and scope, filling in `n_max`, in a new `hilclaw/` module with tests, reusing `instance.parse`; (b) R7 minor: register in the rest of ㉞ (가) whether the start checks that the stated objective is covered (ADR-0061 decision 4), and adjust ADR-0076 Boundaries; (c) R7 minor: decision 3 should say filling in `n_max` happens only for a valid in-scope content; (d) R7 nit: keep "Until the combining rule is decided under A-4" in the O3 quote and mark the reading as ADR-0053's; (e) UC-1 step 1 does not list `draws` among start inputs (UsageCases not edited).
