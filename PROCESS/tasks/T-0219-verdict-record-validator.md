@@ -2,7 +2,7 @@
 id: T-0219
 title: Add the validator of a parsed verdicts file of a round (ADR-0071 decisions 2, 3, the file-local checks of decision 4, and decision 6) as `hilclaw/verdicts.py`, and its path `layout.verdict_record`; no file read or write
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-17, FR-9, OD-30, OD-8]
 dependsOn: [T-0218]
@@ -90,3 +90,13 @@ Line numbers are those of `main` at `94722bd`; the text wins. Read long ARCHITEC
 - (planner, document mode, §9) What ADR-0071 leaves to a later record of OD-30 (a `basis` kind citing a verdict, the base of comparison with OD-20 / OD-28, rounds that never reach evaluate).
 
 ## Result
+
+- **Outcome**: DONE in code mode. PR https://github.com/myungjoo/HIL-Claw/pull/145, squash-merged as `86e5e9f`; branch `claude/T-0219-verdict-record-validator` deleted.
+- **Review**: 3 rounds of a context-isolated `dev-reviewer`. Round 1 Approve with one Nit (docstring "may be empty only when"), fixed. Round 2 Request changes: the task file's `## Result` had been committed on the branch, against the task's Process section and DRIVER §3-6; dropped from the branch. Round 3 Approve.
+- **CI**: run 38846154770 green on all jobs (Python 3.11 and 3.14, Coverage, Test presence, C, sh). Local: 21075 passed, 354 skipped; `hilclaw/` coverage 99%; `hilclaw/verdicts.py` and `hilclaw/layout.py` 100% line; `ruff check` and `ruff format --check` clean.
+- **Public names**: `hilclaw.verdicts.validate`, `hilclaw.verdicts.InvalidVerdictRecordError(ValueError)`, `hilclaw.verdicts.SCHEMA_VERSION = 1`; `hilclaw.layout.verdict_record(data_root, run_id, round)`, named after `hypothesis_record`, the path function of the sibling record.
+- **Language**: Python, as the rest of the package (commit body).
+- **Left unchecked** (stated in the module docstring): `run_id` and `round` against the path; one verdict per `id` of `hypotheses.json`; the value against `expected`; `measured.candidate` within `tested_by`; existence of a referenced attempt; the base of the comparison (decision 4 "Open"); the shared-candidate recommendation (decision 5). `check.ref.round` has no upper bound because ADR-0071 sets none.
+- **Optional cross-file function**: not taken, so that this slice holds only the file-local rules the next slice's writer needs. It stays a follow-up.
+- **Issue #5**: no comment after the ADR-0071 notice (checked 2026-10-16), so there is no HQ answer to name.
+- **Follow-ups**: the ones listed above, namely the bytes slice `hilclaw/verdicts_file.py` and the cross-file check.
