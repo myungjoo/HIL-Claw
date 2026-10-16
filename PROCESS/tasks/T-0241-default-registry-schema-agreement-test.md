@@ -2,7 +2,7 @@
 id: T-0241
 title: Add the package test of ADR-0077 that checks, for every tool of `default_registry`, that each request derived from one accepted request and refused by the stated input schema is refused by the tool function as `invalid_request`; tests only, no module of `hilclaw/` changes
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0240]
