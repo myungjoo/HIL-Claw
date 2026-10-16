@@ -69,11 +69,11 @@ None of this changes the verdict, and none of it is stored by this record (Bound
 - the first-run best (round, candidate, attempt) and the first-run round; the second-run round or "not reached"; the attempt that reached; the rounds and hypotheses of the `case` entries found, or which value of decision 3 applied and why.
 - **The board measurement count** (NFR-5) of each run up to its count — rounds 0 to the first-run round for the first run, 0 to the second-run round (or to its last recorded round, if it did not reach) for the second: the number of board timing runs of those rounds, each a result of ADR-0063 whatever its `outcome`, as `board.run` of [ADR-0061](ADR-0061-od18-run-tools-split.md) returns it. The fact is defined by ADR-0063; the file it is read from is PLAN P1-8.
 - **The token spend** up to the same rounds: **no landed record gives it** (OD-19, NFR-5, #5 A-8). The metric reports it as not available until a record defines it; it invents no figure.
-- Whether the two `instance.json` state the same `source_commit` (ADR-0022): a harness change between the runs is a further limit of the comparison (ADR-0007 decision 10), not a condition.
+- Whether the two `instance.json` state the same `source_commit` (ADR-0022) and the same `draws`: a harness change between the runs is a further limit of the comparison (ADR-0007 decision 10), and a different number of verification draws changes how strong a board `pass` is; neither is a condition.
 
 ### Worked example (synthetic values; samples in nanoseconds, ADR-0063 decision 4)
 
-Both runs: the same key, N = 1, one attempt per candidate, every attempt with one board timing run and one board check `pass`; no further round. First run `20261009t012331z-9f3a6c1e0b7d4a52` (the example of [ADR-0027](ADR-0027-od8-run-id-form.md)), second run `20261020t093000z-0f1e2d3c4b5a6978` (the placeholder of ADR-0073's Example). A, C and D are the measurements of ADR-0007's worked example.
+Both runs: the same key, N = 1, one attempt per candidate, every attempt with one board timing run and one board check `pass`; no further round. Round 0's attempts are assumed, as in ADR-0071's and ADR-0073's Examples, although no record yet says a round-0 attempt exists (OD-28). First run `20261009t012331z-9f3a6c1e0b7d4a52` (the example of [ADR-0027](ADR-0027-od8-run-id-form.md)), second run `20261020t093000z-0f1e2d3c4b5a6978` (the placeholder of ADR-0073's Example). A, C and D are the measurements of ADR-0007's worked example.
 
 | Run, round | Samples (`intervals_ns`) | Outcome | Trimmed mean | Against the first-run best = A |
 |---|---|---|---|---|
