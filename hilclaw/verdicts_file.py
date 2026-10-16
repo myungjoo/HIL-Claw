@@ -80,7 +80,7 @@ _MINUS_ZERO = object()
 
 
 class InvalidVerdictFileError(ValueError):
-    """A content breaks the text form or a rule of ADR-0071 decisions 2 to 4 and 6, or cannot be read by this interpreter.
+    """A content breaks the text form or a rule of ADR-0071 decisions 2, 3, the file-local part of 4 and 6, or cannot be read by this interpreter.
 
     The message names the field path and the rule. The second case is a
     limit of this reader and no rule of the record (module docstring).
