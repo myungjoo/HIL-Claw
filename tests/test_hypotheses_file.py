@@ -443,7 +443,8 @@ def test_a_file_with_an_empty_cases_read_parses_to_its_document():
     ],
 )
 def test_minus_zero_at_a_case_round_is_refused_with_its_path(path, start):
-    invalid(start, spelt(with_case(), path, b"-0"))
+    message = invalid(start, spelt(with_case(), path, b"-0"))
+    assert message == f"{start} must be an integer from 1 to 2**53 - 1, got 0"
 
 
 def test_a_case_entry_the_validator_refuses_is_invalid_with_its_message():

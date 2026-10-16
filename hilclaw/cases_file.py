@@ -29,9 +29,10 @@ ADR-0071 for the verdict copy), so that a copy obeys the text rule its source
 file obeys in :mod:`hilclaw.hypotheses_file` and :mod:`hilclaw.verdicts_file`.
 Both top levels are open: below a top-level member of the case or of a copy
 that its records do not define, ADR-0072, ADR-0059, ADR-0073 and ADR-0071 set
-no rule for a number, and neither does this module. A sign, a fraction, an exponent, ``-0`` and an integer above 2**53 - 1 are
-accepted there and returned as parsed; a number beyond the float range there
-is read as an infinity.
+no rule for a number, and neither does this module. A sign, a fraction, an
+exponent, ``-0`` and an integer above 2**53 - 1 are accepted there and
+returned as parsed; a number beyond the float range there is read as an
+infinity.
 
 The versions are set apart before anything else is validated, and are not
 called damage (OD-11): a content whose ``schema_version`` is an *integer*

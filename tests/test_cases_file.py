@@ -629,7 +629,8 @@ def test_a_case_whose_hypothesis_copy_rests_on_a_case_parses():
     ],
 )
 def test_minus_zero_at_a_case_round_of_the_copy_is_refused_with_its_path(path, start):
-    invalid(start, spelt(with_case_basis(), path, b"-0"))
+    message = invalid(start, spelt(with_case_basis(), path, b"-0"))
+    assert message == f"{start} must be an integer from 1 to 2**53 - 1, got 0"
 
 
 def test_a_copy_breaking_an_in_file_rule_of_the_case_basis_is_invalid():
