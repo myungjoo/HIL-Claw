@@ -2,7 +2,7 @@
 id: T-0248
 title: Write an ADR that answers more of OD-18 sub-question 18 part (ma) for `correctness.check` — `CompilerNotStartedError` (T-0247) as the start error ADR-0079 decision 4 places, and the row of `ArtefactNotCheckedError` (T-0246)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-6, FR-10, OD-18]
 dependsOn: [T-0245, T-0246, T-0247]
@@ -103,3 +103,12 @@ The unlanded branches of T-0210 (ADR-0068) and T-0231 (ADR-0074) also edit row O
 - The remaining entries of ⑱ (마), when code tells them apart or a record places them.
 
 ## Result
+
+- Landed on `main` as `afb9f2e` (document mode, one squashed commit with `Task: T-0248` and `Reviewed-by: reviewer agent (7 rounds, Approve)`); branch `claude/T-0248-adr-od18-build-errors-now-told-apart` deleted locally and on `origin`.
+- Session entry check (before the first edit): `gh pr list` showed no open PR; issues #4, #7 (no activity since 2026-10-01 / 2026-09-07) and #8 (closed) read; #5 has no owner comment on ADR-0079, errors of two rows, S9 or ⑱ (마) after the ADR-0079 notice (all comments since 2026-10-16 carry the driver tail). The unlanded branches of T-0210 and T-0231 were not touched; 0080 was free on `main` and on every branch.
+- Record: `ARCHITECTURE/decisions/ADR-0080-od18-correctness-check-build-errors-now-told-apart.md`. Decision 2: `CompilerNotStartedError` is an error "the operation can tell came from the start" (ADR-0079 decision 4 → S6), with or without `removal_error`; the reviewer-named case inside `Popen` construction after the process exists stays under decision 4, cost stated. Decision 3: `ArtefactNotCheckedError` is S9, `build_output_missing` (candidate (a); (b), (c), (d) as S3 and as `operation_answer_invalid` weighed); log per ADR-0078 decisions 2, 6, 7. Decision 4: open list (post-creation `OSError`, pre-start path tests, ADR-0079 decision 5's other entries). Observations at `03f9007`; CPython `pathlib` read in 3.11.9 and 3.14.4, 3.12/3.13 and the Windows `nt` functions named as not read (taken from T-0246's Result / ADR-0079 N2).
+- Registers: Requirements row OD-18 (one 확정분 link; 잔여 unchanged, still true), OpenDecisionProposals (one 채택분 line; ⑱ end status rewritten), StandardScenarios "최근 재검사" line (S0, S1-b, S2, S5, S6; no verdict change, no gap; no S-row note changed). 4 files, +103/−3.
+- Review: 7 rounds, every round Approve; findings of rounds 1-6 (version wording for 3.14, unread Windows source, walk-through pipe row, M5 example list, ADR-0078 decision 2 in the less-exact list, T-0247 wording, register link grouping) were fixed and re-reviewed. Round 7 (Approve) left one nit and one info, not applied because a further edit would need an eighth round: the "(S9)" in the new OpenDecisionProposals 채택분 line restates content, and decision 3's "same answer on every version" paragraph could add that a false test followed by a failed removal comes up as `TemporaryNotRemovedError`, also S9 by ADR-0079 decision 3.
+- §9 notice on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6226759593 (7-day window from 2026-10-17).
+- D16: nothing was built or run; no `claude` was started.
+- Follow-ups: (doc, small) the two round-7 wording items above, if a later record touches the same lines. The Follow-ups above stand.
