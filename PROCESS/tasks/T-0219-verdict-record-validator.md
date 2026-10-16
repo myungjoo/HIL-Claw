@@ -90,13 +90,3 @@ Line numbers are those of `main` at `94722bd`; the text wins. Read long ARCHITEC
 - (planner, document mode, §9) What ADR-0071 leaves to a later record of OD-30 (a `basis` kind citing a verdict, the base of comparison with OD-20 / OD-28, rounds that never reach evaluate).
 
 ## Result
-
-- **Outcome**: DONE in code mode. PR https://github.com/myungjoo/HIL-Claw/pull/145 (branch `claude/T-0219-verdict-record-validator`), squash-merged by the executor; the merge commit is the one whose body ends `Task: T-0219` on `main`.
-- **Review**: context-isolated `dev-reviewer`, round 1 Approve with one Nit (docstring "may be empty only when"), fixed; round 2 on the fix (see PR comments).
-- **Tests and CI**: full local suite 21075 passed, 354 skipped; `hilclaw/` coverage 99% (`hilclaw/verdicts.py` and `hilclaw/layout.py` 100% line); `ruff check` and `ruff format --check` clean; CI on the PR green before merge.
-- **Public names**: `hilclaw.verdicts.validate`, `hilclaw.verdicts.InvalidVerdictRecordError(ValueError)`, `hilclaw.verdicts.SCHEMA_VERSION = 1`; `hilclaw.layout.verdict_record(data_root, run_id, round)` (named after `hypothesis_record`, the path of the sibling record).
-- **Language**: Python, as the rest of the package (commit body).
-- **Left unchecked** (module docstring): `run_id` / `round` against the path; one verdict per `id` of `hypotheses.json`; the value against `expected`; `measured.candidate` within `tested_by`; existence of a referenced attempt; the base of the comparison (decision 4 "Open"); the shared-candidate recommendation (decision 5). A `check.ref.round` has no upper bound, as ADR-0071 sets none.
-- **Optional cross-file function**: not taken; it stays a follow-up so that this slice holds the file-local rules the writer of the next slice needs.
-- **Issue #5**: no comment after the ADR-0071 notice (checked 2026-10-16); no HQ answer to name.
-- **Follow-ups**: as listed above (the bytes slice `hilclaw/verdicts_file.py`; the cross-file check).
