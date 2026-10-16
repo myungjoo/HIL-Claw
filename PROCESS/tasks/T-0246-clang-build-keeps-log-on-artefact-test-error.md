@@ -2,7 +2,7 @@
 id: T-0246
 title: Let `hilclaw.clang_build.build` keep the compiler's log when testing for the temporary file after the compiler ended raises an `OSError`, on every supported Python version, by raising a new `OSError` subclass `ArtefactNotCheckedError` that carries the `BuildResult`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-6, FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0244, T-0245]
