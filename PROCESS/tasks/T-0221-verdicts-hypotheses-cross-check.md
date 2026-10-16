@@ -2,7 +2,7 @@
 id: T-0221
 title: Add the check of the rules between a round's verdicts file and its hypothesis record (ADR-0071 decisions 1, 3 and 4) as a pure function over both parsed documents, `hilclaw/verdicts_hypotheses.py`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-17, FR-9, OD-30]
 dependsOn: [T-0185, T-0219]
@@ -91,3 +91,16 @@ Public names are the executor's (the module name too, if a better one fits; avoi
 - (integrator) The "not edited and now less exact" sentences listed in ADR-0071 Consequences.
 
 ## Result
+
+DONE. PR https://github.com/myungjoo/HIL-Claw/pull/147, squash-merged as `05de32c` on `main` (branch deleted).
+
+- **Review**: 2 rounds with a fresh-context `dev-reviewer`, both Approve. Round 1 had two nits (the missing-verdict message was a statement, not a rule; no test fixed step 2 before step 3), both fixed in the PR and approved in round 2.
+- **CI**: run 38850883119 on head `9817414`, all six jobs green (Python 3.11 and 3.14, Coverage gate, Test presence, C gate, sh gate). Locally: 21303 passed, ruff check and format clean, `hilclaw/` 99% coverage, the new module 100% line and branch.
+- **Public names**: `hilclaw.verdicts_hypotheses.check(verdicts, hypotheses)` and `MismatchError(ValueError)`, the task's suggested names. No public `value()` helper: on unvalidated entries it would be undefined and no caller needs it yet.
+- **Language**: Python, as the rest of the `hilclaw` package.
+- **`hilclaw/verdicts.py`**: not touched. Its counted-comparison predicate is inline in `_verdict` and could not be made public without restructuring it, so the new module implements the definition again. No other existing module changed.
+- **Order**: both validators (verdicts first); `run_id`, then `round`; an unknown `id`, then a hypothesis without a verdict; `measured.candidate` within `tested_by` for every comparison of every verdict (counted or not; `against` not checked); then the value of every verdict by decision 4.
+- **Unreachable branches** (by the validators in version 1, so documented and not tested): a counted comparison of a metric with no `expected` entry, and `supported` with an `expected` metric lacking a counted comparison. All six recorded/computed disagreements are reachable and tested.
+- **Left to the caller** (ADR-0071 leaves them open): the base of the comparison and which comparisons a verdict must include (OD-20, OD-28), sim on sim-only hardware (OD-26), memory ceilings, magnitude and drift, and who calls the check, when, and what follows a mismatch (OD-23, OD-16, OD-18, P2-3).
+- **Issue #5**: no comment after the ADR-0071 notice (6206950125) at the time of the check, so no objection and no HQ answer to name.
+- **Follow-ups**: none new. The task's own follow-ups stand (shared JSON-text helper module; later OD-30 record items; integrator's "less exact" sentences).
