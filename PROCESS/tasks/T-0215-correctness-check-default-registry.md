@@ -2,7 +2,7 @@
 id: T-0215
 title: Register correctness.check in the default registry with the mock-only backend table, the OS seed source and the ADR-0041 predicate (ADR-0070)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0212, T-0214]
@@ -94,3 +94,15 @@ ARCHITECTURE lines are very long: read them with `sed -n '<a>,<b>p' <file> | fol
 ## Follow-ups
 
 ## Result
+
+- **Outcome**: DONE. PR #143 (https://github.com/myungjoo/HIL-Claw/pull/143), squash-merged as `f40c317`; branch deleted.
+- **Review**: 2 rounds with a context-isolated `dev-reviewer` (dev-code-review), both Approve; round-1 nit (test name) fixed in round 2's head; remaining items are the follow-ups below.
+- **CI**: green on head `bde7e3c` (Python 3.11/3.14, coverage, C, sh, test presence). Local: `ruff check .`, `ruff format --check .`, full `pytest` 20689 passed, 354 skipped, 1 xfailed (Windows).
+- **Language**: Python, as the rest of the `hilclaw/` layer-2 package it extends.
+- **What landed**: `hilclaw.check_definition.default_table()` (one backend, the mock under `mock_backend.NAME`, offering only `correctness.check` with `mock_check.operation(mock_check.default_script)`; no `cpu_standin` entry) and `check_definition.definition(source)` (`check_tool.tool_function` bound to that table, `seed_source.system`, `gemm_contract.covers`; `DESCRIPTION`, `input_schema()`); `tools.default_registry` registers it and keeps one parameter. Docstrings of the five modules updated per criterion 5. Non-test change about 105 lines in 5 files.
+- **Final touchesFiles**: `hilclaw/tools.py`, `hilclaw/check_definition.py`, `hilclaw/check_tool.py`, `hilclaw/mock_check.py`, `hilclaw/mock_backend.py`, `tests/test_check_definition.py`, `tests/test_blob_tools.py`, `tests/test_mcp_front.py`, `tests/test___main__.py`, `tests/test_tools.py`, `tests/test_gemm_contract.py` (`tests/test_check_tool.py` was not changed; `tests/test_gemm_contract.py`'s "bound nowhere" pin now allows `check_definition.py` as its one binder).
+- **#5 after the ADR-0070 notice**: no owner comment; no open PR conflict at start.
+- **Follow-ups**:
+  1. Windows only: building the default registry now imports NumPy (via `mock_check`, foreseen by ADR-0070 Consequences); a process started with fd 2 closed then dies at NumPy import (0xC0000409) instead of answering. `tests/test___main__.py::test_a_process_started_without_standard_error_still_answers` is a strict xfail on win32 (Linux CI still asserts it). Options: lazy NumPy import in `mock_check` (a code change criterion 5 forbade here), or a decision that this case is not a runtime-platform concern on Windows.
+  2. `hilclaw/gemm_contract.py` docstring says the module "is bound to no tool"; its `covers` is now bound by the default registry (ADR-0070 decision 4). A one-line docstring fix was out of this task's five-file cap.
+  3. ADR-0070 Consequences "Not edited and now less exact" list and the T-0214 round-7 nits stay for a later doc task (Out of Scope here).
