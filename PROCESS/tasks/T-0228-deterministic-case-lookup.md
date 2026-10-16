@@ -82,7 +82,7 @@ Public names are the executor's; the suggested ones are given. Reasons for any d
 
 ## Result
 
-- Landed by PR #151 (squash-merge); review: 3 rounds, Approve (round 1 and 2 nits on docstring wording fixed in the PR).
+- Landed by PR #151 (squash-merge); review: 4 rounds, Approve (nits of rounds 1 to 3 on docstring wording and wrapping fixed in the PR). Local suite: 21873 passed, 355 skipped; ruff check and format clean.
 - `hilclaw/case_lookup.py` (new): `Report`, `Found`, `find`, `lookup`, `cases_read` with the suggested names; `tests/test_case_lookup.py` (new, 100% of the module; the symlink case is skipped where the platform refuses symlinks); `hilclaw/cases_file.py` docstring lines 83-84 point to the new module. No other module changed and no private name imported.
 - Language: Python, as the rest of the `hilclaw` package it builds on.
 - Departures stated in the module docstring and commit body: an `OSError` of `os.lstat` on a counted entry is reported as `"unreadable"` like one of reading its bytes; the `"key_record"` report path is chosen by matching the message prefix `key_records` gives against the hw_profile record path (the op_signature record path otherwise); with `op_signature is None` the hw_profile record is not validated; the name check compares the POSIX strings of `final_name` and the entry path, so a case-insensitive file system does not make a differently cased name match.
