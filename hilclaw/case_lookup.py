@@ -12,7 +12,7 @@ ascending byte order of the file names. A file counts when its name begins
 :func:`find` is that lookup for given records, :func:`lookup` reads them from
 the run's ``instance.json`` (:func:`hilclaw.instance.read`), and
 :func:`cases_read` gives the value of ``cases_read`` (decision 3) that a
-selection which was given the result records.
+selection given the result records.
 
 The result depends only on the two records, the two key record files, the
 counted entries of the key directory and the reader's ``run_id``, not on the
