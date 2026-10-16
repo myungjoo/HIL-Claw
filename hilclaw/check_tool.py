@@ -1,4 +1,4 @@
-"""The tool function of ``correctness.check``, for the part of a call the records fix; bound to no registry.
+"""The tool function of ``correctness.check``, for the part of a call the records fix.
 
 ``ARCHITECTURE/decisions/ADR-0048-od18-correctness-check-seed-draw.md``
 decision 10 is the order of a call; ADR-0021 and ADR-0040 to ADR-0047 are the
@@ -51,8 +51,9 @@ What the module does not do: it registers nothing and defines no tool. The
 member list of a request is closed at six (ADR-0069 decisions 2 and 3), and
 the input schema and the description of the tool are those of
 :mod:`hilclaw.check_definition`, which this module does not import. The
-function is still not the tool a registry offers, since no backend, source of
-seeds or predicate "covered" is bound. It looks at no value but that of
+function becomes the tool a registry offers once a backend table, a source of
+seeds and a predicate "covered" are bound; the default registry binds them
+(ADR-0070), this module does not. It looks at no value but that of
 ``point`` and of the four the output path is formed from, and hands the
 request on as the caller gave it. Of the kernel of the attempt it forms the
 output path and hands it on; it reads nothing there, does not test whether the

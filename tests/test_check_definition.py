@@ -1,13 +1,41 @@
 import ast
 import copy
 import inspect
+import io
+import json
 import re
+import struct
 from pathlib import Path
 
 import pytest
 
-from hilclaw import check_definition, check_identity, keys, layout, tools
-from hilclaw.check_definition import DESCRIPTION, input_schema
+from hilclaw import (
+    __main__,
+    backends,
+    check_definition,
+    check_identity,
+    check_tool,
+    data_root_source,
+    events,
+    gemm_contract,
+    keys,
+    layout,
+    mcp_front,
+    mock_backend,
+    mock_check,
+    run_state,
+    tools,
+)
+from hilclaw.backends import Backend, BackendTable
+from hilclaw.check_definition import (
+    DESCRIPTION,
+    default_table,
+    definition,
+    input_schema,
+)
+from hilclaw.check_parameters import CheckParameters
+from hilclaw.harness import seed_source
+from hilclaw.journal import EMPTY
 
 TOOL = "correctness.check"
 # ADR-0069 decision 4, written out.
@@ -89,8 +117,15 @@ def test_a_registry_accepts_the_description_and_the_schema():
     assert registry.names() == (TOOL,)
 
 
-def test_the_default_registry_holds_no_definition_of_the_tool():
-    assert TOOL not in tools.default_registry(lambda: None).names()
+def test_the_default_registry_holds_the_definition_of_the_tool():
+    registry = tools.default_registry(lambda: None)
+    assert registry.names() == ("blob.fetch", "blob.push", TOOL)
+    held = registry.definition(TOOL)
+    assert (held.name, held.description, held.input_schema) == (
+        TOOL,
+        DESCRIPTION,
+        SCHEMA,
+    )
 
 
 def test_the_description_tells_what_the_record_asks():
@@ -121,14 +156,402 @@ def test_the_module_imports_what_it_names_and_has_its_public_names_only():
     for node in ast.walk(ast.parse(text)):
         assert not isinstance(node, ast.Import)
         if isinstance(node, ast.ImportFrom):
-            assert node.module == "hilclaw"
+            assert node.module in ("hilclaw", "hilclaw.harness")
             imported.update(alias.name for alias in node.names)
-    assert imported == {"check_identity", "keys"}
+    assert imported == {
+        "backends",
+        "check_identity",
+        "check_tool",
+        "gemm_contract",
+        "keys",
+        "mock_backend",
+        "mock_check",
+        "tools",
+        "seed_source",
+    }
     public = {
         name
         for name, value in vars(check_definition).items()
         if not name.startswith("_") and not inspect.ismodule(value)
     }
-    assert public == {"DESCRIPTION", "input_schema"}
-    for word in ("register(", "ToolDefinition(", "default_registry", "__main__"):
-        assert word not in text.split('"""', 2)[2]
+    assert public == {"DESCRIPTION", "default_table", "definition", "input_schema"}
+    code = text.split('"""', 2)[2]
+    for word in ("register(", "default_registry", "__main__", "environ", "getenv"):
+        assert word not in code
+
+
+# The default registry (ADR-0070); test values only.
+
+RUN = "run-a"
+ROUND = 3
+SHAPE = {"m": 2, "k": 3, "n": 4}
+DRAWS = 2
+TOLERANCE = {"rtol": 0.25, "atol": 3.0}
+OP = {
+    "schema_version": 1,
+    "kind": "gemm",
+    "shape": SHAPE,
+    "dtype": "fp32",
+    "layout": "row_major",
+}
+REQUEST = {
+    "run_id": RUN,
+    "round": ROUND,
+    "candidate": 2,
+    "attempt": 1,
+    "execution": 1,
+    "point": "sim",
+}
+PASSED = {
+    "outcome": "pass",
+    "shape": SHAPE,
+    "draws": DRAWS,
+    "tolerance": TOLERANCE,
+    "counts": [{"failed": 0, "non_finite": 0}] * DRAWS,
+}
+STEP = {"step": "correctness_check_sim", "execution": 1}
+NUMBERS = {"round": ROUND, "candidate": 2, "attempt": 1}
+
+
+def profile(accelerator=mock_backend.NAME):
+    return {
+        "schema_version": 1,
+        "accelerator": accelerator,
+        "revision": "test-revision",
+        "toolchain": {"cc": "test"},
+        "host": {"cpu": "test", "os": "test"},
+        "hw_source": "external",
+    }
+
+
+def a_run(root, run_id=RUN, accelerator=mock_backend.NAME, op=OP):
+    record = profile(accelerator)
+    document = {
+        "schema_version": 1,
+        "hw_profile": {"key": keys.hw_profile_key(record).name, "record": record},
+        "op_signature": {"key": keys.op_signature_key(op).name, "record": op},
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+    }
+    run = root / "runs" / run_id
+    run.mkdir(parents=True)
+    (run / "instance.json").write_text(json.dumps(document), encoding="utf-8")
+    (run / "STATE.json").write_bytes(run_state.dump(ROUND, EMPTY))
+    return root
+
+
+def lines(root, run_id=RUN):
+    found = events.read(root, run_id).events
+    return [{name: line[name] for name in line if name != "time"} for line in found]
+
+
+def no_log(root, run_id=RUN):
+    return not (root / "runs" / run_id / "events.ndjson").exists()
+
+
+class Recorder:
+    def __init__(self, real):
+        self.real, self.calls, self.answers = real, [], []
+
+    def __call__(self, *args):
+        self.calls.append(args)
+        self.answers.append(self.real(*args))
+        return self.answers[-1]
+
+
+class CountingSource:
+    def __init__(self, root=None):
+        self.root, self.calls = root, 0
+
+    def __call__(self):
+        self.calls += 1
+        return self.root
+
+
+@pytest.fixture
+def root(tmp_path):
+    return a_run(tmp_path / "data")
+
+
+@pytest.fixture
+def parties(monkeypatch):
+    """Record the source of seeds, the predicate and the default script the source binds."""
+    recorded = {
+        "seeds": Recorder(seed_source.system),
+        "covers": Recorder(gemm_contract.covers),
+        "script": Recorder(mock_check.default_script),
+    }
+    monkeypatch.setattr(seed_source, "system", recorded["seeds"])
+    monkeypatch.setattr(gemm_contract, "covers", recorded["covers"])
+    monkeypatch.setattr(mock_check, "default_script", recorded["script"])
+    return recorded
+
+
+def counts(parties):
+    return tuple(len(parties[name].calls) for name in ("seeds", "covers", "script"))
+
+
+def refused(registry, request, kind):
+    with pytest.raises(tools.ToolFailure) as caught:
+        tools.call(registry, TOOL, request)
+    assert caught.value.kind == kind
+    return caught.value
+
+
+def mcp_document(name, arguments):
+    params = {"name": name, "arguments": arguments}
+    document = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params}
+    return json.dumps(document).encode() + b"\n"
+
+
+def test_default_table_holds_the_mock_offering_this_tool_alone():
+    table = default_table()
+    assert type(table) is BackendTable
+    assert table.names() == (mock_backend.NAME,)
+    assert callable(backends.select(table, profile(), TOOL))
+    for tool in backends.HW_TOOLS:
+        if tool != TOOL:
+            with pytest.raises(tools.ToolFailure) as caught:
+                backends.select(table, profile(), tool)
+            assert caught.value.kind == tools.KIND_NOT_OFFERED
+    for accelerator in ("cpu_standin", "acc_b"):
+        with pytest.raises(tools.ToolFailure) as caught:
+            backends.select(table, profile(accelerator), TOOL)
+        assert caught.value.kind == tools.KIND_NO_BACKEND
+    assert default_table() is not table
+
+
+def test_default_table_operation_answers_with_the_default_script(parties):
+    operation = backends.select(default_table(), profile(), TOOL)
+    asked = CheckParameters(7, 1, 1, 1, 1)
+    answer = operation(REQUEST, profile(), asked, Path("output"))
+    assert parties["script"].calls == [
+        (TOOL, REQUEST, profile(), asked, Path("output"))
+    ]
+    assert answer == parties["script"].answers[0]
+
+
+def test_definition_is_the_tool_of_the_record(parties):
+    source = CountingSource()
+    held = definition(source)
+    assert type(held) is tools.ToolDefinition
+    assert (held.name, held.description, held.input_schema) == (
+        TOOL,
+        DESCRIPTION,
+        SCHEMA,
+    )
+    assert callable(held.function)
+    assert definition(source).input_schema is not held.input_schema
+    assert (source.calls, *counts(parties)) == (0, 0, 0, 0)
+
+
+@pytest.mark.parametrize("source", [None, "data", 3, {}, Path(".")])
+def test_definition_refuses_a_source_that_is_not_callable(source):
+    with pytest.raises(TypeError, match="callable"):
+        definition(source)
+
+
+def test_building_the_default_registry_calls_no_party(parties):
+    source = CountingSource()
+    registry = tools.default_registry(source)
+    assert registry.names() == ("blob.fetch", "blob.push", TOOL)
+    assert (source.calls, *counts(parties)) == (0, 0, 0, 0)
+    assert tools.default_registry(source).get(TOOL) is not registry.get(TOOL)
+
+
+@pytest.mark.parametrize("source", [None, "data", 3])
+def test_the_default_registry_refuses_a_source_that_is_not_callable(source, parties):
+    with pytest.raises(TypeError, match="must be callable"):
+        tools.default_registry(source)
+    assert counts(parties) == (0, 0, 0)
+
+
+def test_tools_list_of_the_mcp_front_holds_the_three_tools():
+    data = (
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode() + b"\n"
+    )
+    stdout = io.BytesIO()
+    status = mcp_front.main(
+        [],
+        registry=tools.default_registry(lambda: None),
+        stdin=io.BytesIO(data),
+        stdout=stdout,
+        stderr=io.BytesIO(),
+    )
+    assert status == 0
+    listed = json.loads(stdout.getvalue())["result"]["tools"]
+    assert [tool["name"] for tool in listed] == [
+        "blob_fetch",
+        "blob_push",
+        "correctness_check",
+    ]
+    assert listed[2]["description"] == DESCRIPTION
+    assert listed[2]["inputSchema"] == SCHEMA
+
+
+def test_a_call_about_a_run_at_the_mock_passes(root, parties):
+    registry = tools.default_registry(lambda: root)
+    assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
+    assert lines(root) == [
+        {"schema_version": 1, "kind": "step_started", **NUMBERS, "data": STEP},
+        {
+            "schema_version": 1,
+            "kind": "step_ended",
+            **NUMBERS,
+            "data": {**STEP, "spend": {}, "result": PASSED},
+        },
+    ]
+    assert counts(parties) == (1, 1, 1)
+    ((_, _, _, parameters, _),) = parties["script"].calls
+    assert parameters.seed == parties["seeds"].answers[0]
+
+
+@pytest.mark.parametrize("accelerator", ["cpu_standin", "acc_b"])
+def test_a_call_about_a_run_at_another_accelerator_is_no_backend(
+    tmp_path, parties, accelerator
+):
+    root = a_run(tmp_path / "data", accelerator=accelerator)
+    registry = tools.default_registry(lambda: root)
+    refused(registry, REQUEST, tools.KIND_NO_BACKEND)
+    refused(registry, REQUEST, tools.KIND_NO_BACKEND)
+    assert no_log(root)
+    assert counts(parties) == (0, 0, 0)
+
+
+def test_the_same_request_again_returns_the_stored_result(root, parties):
+    first = tools.call(tools.default_registry(lambda: root), TOOL, dict(REQUEST))
+    again = tools.call(tools.default_registry(lambda: root), TOOL, dict(REQUEST))
+    assert again == first == PASSED
+    assert counts(parties) == (1, 1, 1)
+    assert len(lines(root)) == 2
+
+
+def test_an_op_signature_not_covered_is_answered_through_the_default_registry(
+    tmp_path, parties
+):
+    root = a_run(tmp_path / "data", op={**OP, "dtype": "fp16"})
+    registry = tools.default_registry(lambda: root)
+    refused(registry, REQUEST, "op_signature_not_covered")
+    assert no_log(root)
+    assert counts(parties) == (0, 1, 0)
+
+
+@pytest.mark.parametrize(
+    "asked",
+    [
+        {**REQUEST, "draws": 3},
+        {**REQUEST, "seed": 7},
+        {**REQUEST, "point": "elsewhere"},
+        {name: REQUEST[name] for name in REQUEST if name != "point"},
+    ],
+)
+def test_a_request_the_record_refuses_is_invalid_request(root, parties, asked):
+    refused(tools.default_registry(lambda: root), asked, tools.KIND_INVALID_REQUEST)
+    assert no_log(root)
+    assert counts(parties) == (0, 0, 0)
+
+
+def test_no_environment_variable_chooses_the_table_or_the_seeds(
+    tmp_path, parties, monkeypatch
+):
+    monkeypatch.setenv("HILCLAW_BACKEND", "cpu_standin")
+    monkeypatch.setenv("HILCLAW_SEED", "7")
+    monkeypatch.setenv("HILCLAW_SCRIPT", "fail")
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    registry = tools.default_registry(lambda: root)
+    assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
+    refused(registry, {**REQUEST, "run_id": "run-b"}, tools.KIND_NO_BACKEND)
+    assert counts(parties) == (1, 1, 1)
+    assert parties["script"].calls[0][3].seed == parties["seeds"].answers[0]
+
+
+def wrong_product(tool, asked, hw_profile, parameters, output_path):
+    report = bytearray(
+        mock_check.default_script(tool, asked, hw_profile, parameters, output_path)
+    )
+    (element,) = struct.unpack_from("=f", report, 4)
+    struct.pack_into("=f", report, 4, element + 1000.0)
+    return bytes(report)
+
+
+def test_a_registry_of_the_test_answers_what_its_script_answers(root, parties):
+    script = Recorder(wrong_product)
+    operation = mock_check.operation(script)
+    function = check_tool.tool_function(
+        source=lambda: root,
+        table=BackendTable([Backend(mock_backend.NAME, {TOOL: operation})]),
+        seeds=lambda: 7,
+        covers=gemm_contract.covers,
+    )
+    registry = tools.Registry()
+    registry.register(TOOL, function, DESCRIPTION, input_schema())
+    stdout = io.BytesIO()
+    status = __main__.main(
+        [TOOL],
+        registry=registry,
+        stdin=io.BytesIO(json.dumps(REQUEST).encode()),
+        stdout=stdout,
+        stderr=io.BytesIO(),
+    )
+    assert status == __main__.EXIT_RESULT
+    result = json.loads(stdout.getvalue())
+    assert result["outcome"] == "fail"
+    assert result["counts"][0]["failed"] >= 1
+    ((_, _, _, parameters, _),) = script.calls
+    assert parameters.seed == 7
+    stdout = io.BytesIO()
+    data = io.BytesIO(mcp_document("correctness_check", REQUEST))
+    assert mcp_front.main([], registry=registry, stdin=data, stdout=stdout) == 0
+    answer = json.loads(stdout.getvalue())["result"]
+    assert answer["isError"] is False
+    assert json.loads(answer["content"][0]["text"]) == result
+    assert len(script.calls) == 1
+    assert counts(parties) == (0, 1, 1)
+
+
+@pytest.fixture
+def configured(tmp_path, monkeypatch):
+    """A data root with a run at the mock and one at cpu_standin, as the fronts' source."""
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    monkeypatch.setattr(data_root_source, "configured", lambda: root)
+    return root
+
+
+def mcp_call(arguments):
+    stdin = io.BytesIO(mcp_document("correctness_check", arguments))
+    stdout, stderr = io.BytesIO(), io.BytesIO()
+    status = mcp_front.main([], stdin=stdin, stdout=stdout, stderr=stderr)
+    assert (status, stderr.getvalue()) == (0, b"")
+    answer = json.loads(stdout.getvalue())["result"]
+    return answer["isError"], json.loads(answer["content"][0]["text"])
+
+
+def command_call(arguments):
+    stdout = io.BytesIO()
+    status = __main__.main(
+        [TOOL],
+        stdin=io.BytesIO(json.dumps(arguments).encode()),
+        stdout=stdout,
+        stderr=io.BytesIO(),
+    )
+    return status, json.loads(stdout.getvalue())
+
+
+def test_the_mcp_front_serves_the_tool_of_the_default_registry(configured, parties):
+    assert mcp_call(REQUEST) == (False, PASSED)
+    failed, answer = mcp_call({**REQUEST, "run_id": "run-b"})
+    assert failed is True
+    assert answer["error"]["kind"] == tools.KIND_NO_BACKEND
+    assert no_log(configured, "run-b")
+    assert counts(parties) == (1, 1, 1)
+
+
+def test_the_command_line_front_serves_the_tool_of_the_default_registry(
+    configured, parties
+):
+    assert command_call(REQUEST) == (__main__.EXIT_RESULT, PASSED)
+    status, answer = command_call({**REQUEST, "run_id": "run-b"})
+    assert status == __main__.EXIT_TOOL_FAILURE
+    assert answer["error"]["kind"] == tools.KIND_NO_BACKEND
+    assert no_log(configured, "run-b")
+    assert counts(parties) == (1, 1, 1)

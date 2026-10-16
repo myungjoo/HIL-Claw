@@ -1,7 +1,9 @@
-"""The input schema and the description of ``correctness.check``; bound to no registry.
+"""The tool definition of ``correctness.check`` in the default registry (ADR-0069, ADR-0070).
 
 ``ARCHITECTURE/decisions/ADR-0069-od18-correctness-check-request-schema.md``
 is the rule; a decision cited by its number alone is one of that record.
+``ARCHITECTURE/decisions/ADR-0070-od18-correctness-check-registration.md``
+is the rule of :func:`default_table` and :func:`definition`.
 
 * :func:`input_schema`: the schema of decision 4, as a Python value. The
   bound of the numbers is :data:`hilclaw.keys.MAX_INTEGER` (ADR-0001
@@ -16,23 +18,43 @@ is the rule; a decision cited by its number alone is one of that record.
   schema admits it (decision 4). It states no tolerance, number of draws,
   dimension or setting as a value and no rule of who may raise
   ``execution`` or when.
+* :func:`default_table`: the backend table of the default registry, whose
+  one entry is the mock under :data:`hilclaw.mock_backend.NAME` offering
+  this tool alone with the default script (ADR-0070 decision 3).
+* :func:`definition`: the tool definition :func:`hilclaw.tools.default_registry`
+  registers, the tool function bound to that table, to
+  :func:`hilclaw.harness.seed_source.system` and to
+  :func:`hilclaw.gemm_contract.covers` (ADR-0070 decisions 4 and 5).
 
 Choices that are this module's own and no rule of a record: the names, the
 text of :data:`DESCRIPTION`, and that the schema is returned by a function,
 a fresh object at each call, so that a caller that changes one does not
 change the next.
 
-What the module does not do: it registers nothing, builds no
-:class:`hilclaw.tools.ToolDefinition` and binds no tool function. The schema
+What the module does not do: it registers nothing; the registration is
+:func:`hilclaw.tools.default_registry`'s. No request, option or environment
+variable chooses the table, the source of seeds or the predicate. The schema
 is a statement to the caller and checks nothing (ADR-0015 decision 2): the
 tool function checks its own request (:func:`hilclaw.check_identity.check`
 and the frame). Whether Claude Code accepts the keywords of the schema is not
 verified (OD-18 sub-question ⑤), and no reduced schema is given. It reads no
-file and keeps nothing between calls. It imports :mod:`hilclaw.check_identity`
-and :mod:`hilclaw.keys` and nothing else.
+file and keeps nothing between calls; building a definition calls neither
+the data-root source, the source of seeds, the predicate nor the script.
 """
 
-from hilclaw import check_identity, keys
+from hilclaw import (
+    backends,
+    check_identity,
+    check_tool,
+    gemm_contract,
+    keys,
+    mock_backend,
+    mock_check,
+    tools,
+)
+from hilclaw.harness import seed_source
+
+_TOOL = "correctness.check"
 
 #: What a caller of ``correctness.check`` is told of the tool (ADR-0069 decision 5).
 DESCRIPTION = (
@@ -77,3 +99,39 @@ def input_schema():
         "required": list(check_identity.MEMBERS),
         "additionalProperties": False,
     }
+
+
+def default_table():
+    """Return a new backend table of the default registry (ADR-0070 decision 3).
+
+    It holds one :class:`hilclaw.backends.Backend` named
+    :data:`hilclaw.mock_backend.NAME` that offers ``correctness.check`` alone,
+    with :func:`hilclaw.mock_check.operation` bound to
+    :func:`hilclaw.mock_check.default_script`. It holds no ``cpu_standin``
+    entry, so a call about any other ``accelerator`` is ``no_backend``.
+    """
+    operation = mock_check.operation(mock_check.default_script)
+    return backends.BackendTable(
+        [backends.Backend(mock_backend.NAME, {_TOOL: operation})]
+    )
+
+
+def definition(source):
+    """Return the :class:`hilclaw.tools.ToolDefinition` of ``correctness.check`` bound to ``source``.
+
+    ``source`` is the data-root source (ADR-0015 decision 3), asked at each
+    call and not here. The tool function is
+    :func:`hilclaw.check_tool.tool_function` bound to a new
+    :func:`default_table`, to :func:`hilclaw.harness.seed_source.system` and
+    to :func:`hilclaw.gemm_contract.covers` (ADR-0070 decisions 3 and 4); the
+    description is :data:`DESCRIPTION` and the schema a new
+    :func:`input_schema`. Raises :class:`TypeError` when ``source`` is not
+    callable.
+    """
+    function = check_tool.tool_function(
+        source=source,
+        table=default_table(),
+        seeds=seed_source.system,
+        covers=gemm_contract.covers,
+    )
+    return tools.ToolDefinition(_TOOL, function, DESCRIPTION, input_schema())

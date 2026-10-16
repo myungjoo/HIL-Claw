@@ -38,8 +38,9 @@ The limit of sharing that code is that of decision 7: a defect of the
 generator, of the check function or of the float64 product that this script
 and the judging share is not seen by a check answered by this script.
 
-What the module does not do: it builds no backend and no backend table and is
-bound to no registry. It is not the whole default script of the default
+What the module does not do: it builds no backend and no backend table and
+registers nothing; the default registry binds :func:`operation` and
+:func:`default_script` (ADR-0070). It is not the whole default script of the default
 registry: it says nothing of the other three HW tools. It injects no fault
 (OD-18 sub-question 8, open). It is handed no tolerance and judges nothing.
 It gives no value or default of a number of draws, a seed or a dimension. It
