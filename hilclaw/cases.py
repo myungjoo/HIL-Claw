@@ -111,7 +111,9 @@ def build(hypotheses, verdicts=None):
     absent, never ``null``. Nothing in the copies is added, removed or altered
     (ADR-0072 decision 3). Whether a round without verdicts is promoted is the
     caller's (ADR-0072 Boundaries). The inputs are not modified and the result
-    shares no mutable object with them.
+    shares no mutable object with them. Both are parsed JSON documents, whose
+    objects are ``dict``; another mapping is copied only if
+    :func:`copy.deepcopy` copies it.
 
     Raises :class:`InvalidCaseError` when the result would not pass
     :func:`validate`.
