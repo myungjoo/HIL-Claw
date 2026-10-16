@@ -2,7 +2,7 @@
 id: T-0244
 title: Let `hilclaw.clang_build.build` keep the compiler's log when moving the artefact into place or removing its temporary file fails, by raising two new `OSError` subclasses that carry the `BuildResult` (ADR-0078 Consequences, code slice 4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-6, FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0242]
