@@ -2,7 +2,7 @@
 id: T-0230
 title: Correct ADR-0073 after acceptance - the four round-7 nits of T-0226 - and rewrite the S5 note of StandardScenarios to name only what OD-30 still leaves open; coverage re-check recorded
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-30, FR-11, FR-18, "CLAUDE.md 문서 커버리지 재검사"]
 dependsOn: [T-0226, T-0227, T-0228, T-0229]
@@ -97,3 +97,25 @@ ARCHITECTURE lines are very long: read them with `sed -n '<line>p' <file> | fold
 ## Follow-ups
 
 ## Result
+
+- **Landed** on `main` as `35df7df` (document mode, one squashed commit, `Reviewed-by: reviewer agent (2 rounds, Approve)`, `Task: T-0230`). Rebase onto `origin/main` (`8aa27f9`) changed nothing. The branch was never pushed and was deleted locally. No PLAN checkbox ticked. Not BLOCKED.
+- **Checks before work**: the landed check and the PR search for T-0230 were empty; no PR was open; #8 is closed. The only comment on #5 from 6210927027 onward is the ADR-0073 notice itself (`— posted by driver`): no objection, no HQ answer.
+- **ADR-0073** (`ARCHITECTURE/decisions/ADR-0073-od30-case-lookup-and-case-basis.md`):
+  - (a) Decision 3, "Present and empty" bullet: "This record reads FR-11's "그 결정이 참조한 과거 사례" as every case the lookup gave the selection, read whether or not a hypothesis rests on the case; so read, FR-18 and FR-11 require a selection of the runtime to record those cases. The member is still optional …". The Decision opening now ends "…, the choice of the decision log's place, and the reading of FR-11's "참조한 과거 사례" as every case the selection was given (decision 3)."
+  - (b) Status bullet 2: "ADR-0072's Boundaries leave these three open and tie the `case` kind to the lookup; its Alternatives (point 4) names the reference member as best fixed with the lookup and the FR-11 identification." ADR-0072's Boundaries list the three parts as separate open bullets, and only the `case` bullet says "fixed with the lookup". So the old claim that they name "one later record" was stronger than the text supports; Alternatives point 4 is what ties all three.
+  - (c) The A-13 reading bullet is split into five sentences at the old dash and semicolon boundaries; no claim or citation was added or dropped.
+  - A new last Status bullet, "Edited after acceptance on 2026-10-16 by task T-0230 (document mode)", names the edits, says no decision changed meaning and that the objection window (until 2026-10-23) is unchanged.
+- **OpenDecisionProposals** line 404 (d): "… `case` 근거 종류와 그 참조, 선택이 읽은 사례의 식별(FR-11) (부분 답: 조회해 싣는 사례의 선택과 양)".
+- **StandardScenarios**:
+  - S5 3단계 note: "FR-11·17·18·NFR-2(주입 가설의 식별 OD-30, 예상 효과의 크기 OD-30·OD-13·OD-1, 결정 로그 기록의 강제 OD-18·OD-23)".
+  - S0 6단계 was edited, because its "가설·판정·사례의 필드·파일 OD-30" is answered by ADR-0059/0071/0072. It now reads "(판정의 비교 기준 OD-30·OD-20·OD-28, 판정 파일을 쓰는 주체 OD-23·OD-16, evaluate에 이르지 못한 라운드 OD-30·OD-17, 실패한 시도의 기록 OD-13·PLAN P1-8, 라운드 승격의 시점·주체·부분 실패 OD-30·OD-29·OD-23·OD-17)".
+  - S6 2단계 was edited, because ADR-0073 answers "선택·양" in its MVP form. It now reads "(사례가 쌓일 때의 선택 규칙 OD-30, 참조 사례 기록의 강제 OD-18·OD-23, 다른 버전·소스 commit의 사례 OD-11, …)"; the rest is unchanged.
+  - No step text was edited.
+  - The "최근 재검사" line was rewritten in place. The re-check of S0, S5, S6 and S11 found no verdict change and no gap, so no history entry was added.
+- **Review**: two rounds, each by a fresh `dev-reviewer` (opus), both Approve.
+  - R1 nits, all applied: an unclear "it" in decision 3; OD-16 added beside OD-23 for the writer of the verdict file; the S0 / S5 / S6 notes made complete (rounds that never reach evaluate, failed-attempt records, the magnitude's OD-13·OD-1, enforcement of the record OD-18·OD-23, cases of another version OD-11); "OD-30 항목" changed to "OD 항목" in the 재검사 line.
+  - R2 nits, optional and left unapplied: write "OD-13 잔여·OD-1 잔여" in the S5/S0 notes, as other rows of the table do; "PLAN P1-8" is neither an FR nor an OD (there is precedent for it in the S5 2단계 note).
+  - The reviewer judged that no reason for a decision changed, so no #5 comment is needed.
+- **Document checks**: links resolve; `git diff --check` is clean; all three files are LF; only the files in `touchesFiles` changed (3 files, +10/-9).
+- **Follow-ups**: (doc, optional) the two R2 nits above. None of the scenario step texts was judged wrong.
+- D16: nothing was built or run, and neither the executor nor the reviewers started a `claude` process.
