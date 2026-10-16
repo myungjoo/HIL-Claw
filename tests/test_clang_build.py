@@ -17,6 +17,7 @@ from hilclaw.clang_build import (
     BuildResult,
     CompilerNotFoundError,
     CompilerNotStartedError,
+    CompilerRunError,
     TemporaryNotRemovedError,
     build,
     compiler_version,
@@ -619,7 +620,7 @@ def test_no_start_for_an_error_before_the_start(stub, src, out_dir, monkeypatch)
 @pytest.fixture
 def failing_communicate(monkeypatch):
     processes = []
-    error = OSError(errno.EIO, "input/output error")
+    errors = [OSError(errno.EIO, "input/output error")]
 
     class Popen(clang_build.subprocess.Popen):
         def __init__(self, *args, **kwargs):
@@ -629,22 +630,38 @@ def failing_communicate(monkeypatch):
         def communicate(self, *args, **kwargs):
             if not getattr(self, "failed", False):
                 self.failed = True
-                raise error
+                raise errors[0]
             return super().communicate(*args, **kwargs)
 
     monkeypatch.setattr(clang_build.subprocess, "Popen", Popen)
-    return processes, error
+    return processes, errors
 
 
-def test_error_after_the_start_is_passed_on(stub, src, out_dir, failing_communicate):
-    processes, error = failing_communicate
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError(errno.EIO, "input/output error"),
+        FileNotFoundError(errno.ENOENT, "absent"),
+    ],
+    ids=["io", "not-found"],
+)
+def test_error_after_the_start_is_raised_as_run_error(
+    error, stub, src, out_dir, failing_communicate
+):
+    processes, errors = failing_communicate
+    errors[0] = error
     before = time.monotonic()
     with pytest.raises(OSError) as caught:
         build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
     assert time.monotonic() - before < 20
-    assert caught.value is error
-    assert not isinstance(caught.value, (CompilerNotStartedError, *FILE_ERRORS))
-    assert not hasattr(caught.value, "result")
+    raised = caught.value
+    assert type(raised) is CompilerRunError
+    assert raised.__cause__ is error
+    assert (raised.errno, raised.strerror) == (error.errno, error.strerror)
+    assert raised.removal_error is None
+    assert not isinstance(raised, (CompilerNotStartedError, *FILE_ERRORS))
+    assert not isinstance(raised, FileNotFoundError)
+    assert not hasattr(raised, "result")
     (process,) = processes
     assert process.poll() is not None
     assert process.returncode != 0
@@ -655,14 +672,82 @@ def test_error_after_the_start_is_passed_on(stub, src, out_dir, failing_communic
 def test_failed_removal_after_an_error_after_the_start(
     stub, src, out_dir, failing_communicate, failing_unlink
 ):
-    processes, error = failing_communicate
+    processes, errors = failing_communicate
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
+    error = caught.value
+    assert error.__cause__ is errors[0]
+    assert error.removal_error is failing_unlink[0]
+    assert (error.errno, error.strerror) == (errno.EIO, "input/output error")
+    assert not isinstance(error, (CompilerNotStartedError, *FILE_ERRORS))
+    assert not hasattr(error, "result")
+    assert processes[0].poll() is not None
+
+
+def test_error_from_kill_after_a_failed_communicate(
+    stub, src, out_dir, failing_communicate, monkeypatch
+):
+    processes, errors = failing_communicate
+    popen = clang_build.subprocess.Popen
+    kill_errors = []
+
+    def kill(self):
+        error = OSError(errno.EPERM, "cannot kill")
+        kill_errors.append(error)
+        raise error
+
+    monkeypatch.setattr(popen, "kill", kill)
+    try:
+        with pytest.raises(CompilerRunError) as caught:
+            build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    finally:
+        for process in processes:
+            super(popen, process).kill()
+            process.wait()
+    (kill_error,) = kill_errors
+    assert caught.value.__cause__ is kill_error
+    assert kill_error.__context__ is errors[0]
+    assert caught.value.errno == errno.EPERM
+    assert caught.value.removal_error is None
+    assert stub.started
+    assert names(out_dir) == []
+
+
+def test_keyboard_interrupt_after_the_start_is_passed_on(
+    stub, src, out_dir, failing_communicate
+):
+    processes, errors = failing_communicate
+    errors[0] = KeyboardInterrupt()
+    with pytest.raises(KeyboardInterrupt) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
+    assert caught.value is errors[0]
+    (process,) = processes
+    assert process.wait(timeout=20) != 0
+    assert names(out_dir) == []
+
+
+def test_failed_removal_after_a_keyboard_interrupt_after_the_start(
+    stub, src, out_dir, failing_communicate, failing_unlink
+):
+    processes, errors = failing_communicate
+    errors[0] = KeyboardInterrupt()
     with pytest.raises(PermissionError) as caught:
         build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
     assert caught.value is failing_unlink[0]
-    assert caught.value.__context__ is error
-    assert not isinstance(caught.value, (CompilerNotStartedError, *FILE_ERRORS))
-    assert not hasattr(caught.value, "result")
-    assert processes[0].poll() is not None
+    assert caught.value.__context__ is errors[0]
+    assert not isinstance(caught.value, CompilerRunError)
+    (process,) = processes
+    assert process.wait(timeout=20) != 0
+
+
+def test_errors_outside_the_run_are_not_run_errors(stub, src, out_dir, monkeypatch):
+    with pytest.raises(FileNotFoundError) as caught:
+        build(src.parent / "missing.c", out_dir / "kernel.o", timeout_s=TIMEOUT)
+    assert not isinstance(caught.value, CompilerRunError)
+    failing_start(monkeypatch, cannot_start)
+    with pytest.raises(CompilerNotStartedError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert not isinstance(caught.value, CompilerRunError)
 
 
 @pytest.mark.parametrize("windows", [True, False], ids=["windows", "posix"])
@@ -717,6 +802,83 @@ def test_not_started_error_survives_pickling():
     )
     assert copy.filename2 == "x"
     assert pickle.loads(pickle.dumps(errors[1])).removal_error is None
+
+
+def test_run_error_class():
+    assert issubclass(CompilerRunError, OSError)
+    assert CompilerRunError.__doc__
+    for other in (CompilerNotStartedError, *FILE_ERRORS):
+        assert not issubclass(CompilerRunError, other)
+        assert not issubclass(other, CompilerRunError)
+    error = CompilerRunError(OSError("plain"))
+    assert str(error) == "plain"
+    assert error.errno is None
+    assert error.filename is None
+    assert error.removal_error is None
+    assert not hasattr(error, "result")
+
+
+def test_run_error_survives_pickling():
+    removal = OSError(errno.EIO, "io", "a.tmp")
+    errors = [
+        CompilerRunError(PermissionError(13, "denied", "cc", None, "x"), removal),
+        CompilerRunError(OSError(errno.EIO, "input/output error")),
+        CompilerRunError(OSError("plain")),
+    ]
+    for error in errors:
+        copy = pickle.loads(pickle.dumps(error))
+        assert type(copy) is CompilerRunError
+        assert str(copy) == str(error)
+        assert (copy.errno, copy.strerror) == (error.errno, error.strerror)
+        assert (copy.filename, copy.filename2) == (error.filename, error.filename2)
+        assert not hasattr(copy, "result")
+    copy = pickle.loads(pickle.dumps(errors[0]))
+    assert type(copy.removal_error) is OSError
+    assert (copy.removal_error.errno, copy.removal_error.filename) == (
+        errno.EIO,
+        "a.tmp",
+    )
+    assert copy.filename2 == "x"
+    assert pickle.loads(pickle.dumps(errors[1])).removal_error is None
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        CompilerNotStartedError,
+        CompilerRunError,
+        lambda error: ArtefactNotPlacedError(error, None),
+        lambda error: ArtefactNotCheckedError(error, None),
+        lambda error: TemporaryNotRemovedError(error, None),
+    ],
+    ids=["not-started", "run", "not-placed", "not-checked", "not-removed"],
+)
+def test_error_with_errno_and_no_filename_survives_pickling(make):
+    error = make(OSError(errno.EIO, "input/output error"))
+    copy = pickle.loads(pickle.dumps(error))
+    assert type(copy) is type(error)
+    assert str(copy) == str(error) == "[Errno 5] input/output error"
+    assert copy.args == error.args
+    assert (copy.filename, copy.filename2) == (None, None)
+
+
+def test_except_oserror_catches_run_error(stub, src, out_dir, failing_communicate):
+    try:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
+    except OSError as error:
+        caught = error
+    else:
+        pytest.fail("build did not raise")
+    assert type(caught) is CompilerRunError
+    assert BuildResult._fields == (
+        "ok",
+        "returncode",
+        "timed_out",
+        "output",
+        "log",
+        "command",
+        "duration_s",
+    )
 
 
 def test_except_oserror_catches_not_started(stub, src, out_dir, monkeypatch):
