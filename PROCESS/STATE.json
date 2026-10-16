@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0225",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:9d6cd735-1",
-    "acquiredAt": "2026-10-16T06:21:54Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -204,19 +200,27 @@
       "question": "T-0210 (ADR-0068, OD-18 sub-question 19 part (na), document mode) reached the 7-round review limit of CLAUDE.md A-13 without a final Approve. Rounds 1-3 and 6 approved; rounds 4, 5 and 7 each raised one blocking citation or accuracy point, and each was fixed on branch `claude/T-0210-od18-run-tools-operation-tool-failure` (head `fe4e2d7`). The last fix has not been reviewed. May the driver run one more reviewer round on `fe4e2d7` and, on Approve, land it as A-13 document mode prescribes? Or do you want to review the branch yourself, or drop or re-plan the task?",
       "askedAt": "2026-10-15T17:31:48Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6198269472"
+    },
+    {
+      "id": "HQ-0022",
+      "taskId": "T-0225",
+      "reason": "requirement-unclear",
+      "question": "T-0225 (code: move the JSON text helpers repeated in `hilclaw/spec_file.py`, `hypotheses_file.py`, `verdicts_file.py` and `cases_file.py` into one module `hilclaw/json_text.py`, no behaviour change) cannot land as planned. The task forbids editing any existing test, but four existing tests pin the callers' import surface rather than behaviour: `tests/test_spec_file.py::test_the_module_imports_only_what_it_needs` (exact import set including `json`) and `test_the_public_names` in `tests/test_hypotheses_file.py`, `tests/test_verdicts_file.py`, `tests/test_cases_file.py` (exact public-name list including `json`). After the move the callers no longer import `json` (an unused import fails ruff F401) and do import `hilclaw.json_text`, so those four assertions fail; all behaviour tests pass (1116 passed, 4 failed). The work is saved on branch `claude/T-0225-shared-json-text-helper` (`42f345b`, no PR). Which do you want: (a) T-0225 may update exactly those four import/public-name assertions (swap `json` for `json_text` / `hilclaw.json_text`) and no other test, then it resumes from that branch; (b) drop T-0225 and keep the four copies; (c) something else (name it)?",
+      "askedAt": "2026-10-16T06:25:19Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 238,
+    "iterations": 239,
     "tasksDone": 222,
-    "tasksBlocked": 16,
+    "tasksBlocked": 17,
     "reviewRoundsTotal": 752
   },
   "lastIteration": {
-    "at": "2026-10-16T05:58:39Z",
-    "owner": "AKIHA:24a69fc8-2",
-    "taskId": "T-0224",
-    "outcome": "DONE"
+    "at": "2026-10-16T06:25:19Z",
+    "owner": "AKIHA:9d6cd735-1",
+    "taskId": "T-0225",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }

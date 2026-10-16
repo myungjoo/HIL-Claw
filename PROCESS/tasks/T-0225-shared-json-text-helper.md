@@ -2,13 +2,13 @@
 id: T-0225
 title: Move the JSON text helpers that `hilclaw/spec_file.py`, `hilclaw/hypotheses_file.py`, `hilclaw/verdicts_file.py` and `hilclaw/cases_file.py` repeat into one shared helper module `hilclaw/json_text.py`, with no change of behaviour of any public function
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: code
 coversReq: [FR-13, FR-11, FR-18, OD-8, OD-30, "ADR-0029", "ADR-0059", "ADR-0071", "ADR-0072"]
 dependsOn: [T-0224]
 touchesFiles: [hilclaw/json_text.py, hilclaw/spec_file.py, hilclaw/hypotheses_file.py, hilclaw/verdicts_file.py, hilclaw/cases_file.py, tests/test_json_text.py]
 estimatedSize: {loc: 160, files: 5}   # non-test: one new module of about 40 statement lines plus its docstring; in each of the four callers about 25 lines of private helpers removed and the calls renamed; one new test file besides (outside the cap, D4)
-hq: []
+hq: [HQ-0022]
 ---
 ## Why
 
@@ -109,3 +109,10 @@ Verify the description of `## Why` against the files at execution time; the file
 - (planner, document mode, §9) The lookup of P2-7 with the `basis` kind `case` and the FR-11 identification of read cases (later OD-30 records); the round promotion `runs/` → `db/` timing named in the OD-29 row; the two R7 nits of T-0222 (from T-0223 / T-0224 `## Follow-ups`).
 
 ## Result
+
+BLOCKED (task needs re-planning), 2026-10-16, executor. No PR was opened and nothing was pushed or merged; review rounds 0; CI not run.
+
+- **Finding.** Four existing tests pin the import surface of the callers. `tests/test_spec_file.py::test_the_module_imports_only_what_it_needs` (lines 920-937) asserts that the set of names `spec_file` imports is exactly `{codecs, json, re, pathlib.Path, hilclaw.keys, hilclaw.layout, hilclaw.once_write, hilclaw.spec}`. `test_the_public_names` in `tests/test_hypotheses_file.py` (851-868), `tests/test_verdicts_file.py` (around 905) and `tests/test_cases_file.py` (around 1136) asserts that the module's non-underscore names are exactly a fixed list that includes `json`. Any static import of `hilclaw.json_text` adds `hilclaw.json_text` / `json_text`, and the callers no longer need `json`; keeping an unused `import json` fails ruff F401. An alias such as `from hilclaw import json_text as _json_text` still fails the spec test, and a dynamic import would only get round the tests. The task says that in this case the executor stops (`## Why`, "No change of behaviour is the whole contract"; `## Acceptance Criteria`, "no existing test is edited").
+- **State of the work.** Local branch `claude/T-0225-shared-json-text-helper`, commit `42f345b` (not pushed): `hilclaw/json_text.py` (public names `MINUS_ZERO`, `object_pairs`, `no_constant`, `integer_literal`, `load(text)` -> `(document, spelling)`, `minus_zero(path, value, skip=None)` returning the path of the first `-0` or `None`), `tests/test_json_text.py`, and the four callers moved onto it, each keeping a three-line `_unsigned` that raises its own error class (spec_file passes `_FREE.fullmatch` as `skip`). Net change of the callers: -117 / +20 lines. Local result: ruff check and ruff format --check clean; the five test files run 1116 passed, 2 skipped, and 4 failed, which are exactly the four tests above. All the `-0`, repeated-name, NaN, nesting and long-literal tests of the four callers pass unchanged.
+- **Differences from `## Why`.** None in the helper code (line numbers and behaviour as described). The file names of ADR-0051, ADR-0071 and ADR-0072 are `ADR-0051-od6-spec-file-version-2.md`, `ADR-0071-od30-hypothesis-verdict-record.md` and `ADR-0072-od30-hypothesis-outcome-case-file.md`.
+- **For re-planning.** Either (a) allow these four import and public-name assertions to be updated (swap `json` for `json_text`, and `hilclaw.json_text` for `json` in the spec set): they pin the import list, not any behaviour of a public function. This is an exception to "no existing test is edited", so the planner or the owner decides it. Or (b) drop the task. Language: Python, as the callers.
