@@ -15,6 +15,8 @@ Rules come from [CLAUDE.md](../../CLAUDE.md), then [PROCESS/DRIVER.md](../../PRO
 
 Follow DRIVER §6 for your inputs and rules and DRIVER §5 for the task file format, the size cap and the naming convention. The driver's spawn prompt may add the open-PR list it collected in §3 step 0.
 
+When a task edits `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionProposals.md` or `ARCHITECTURE/StandardScenarios.md`, point its acceptance criteria at the recording rules written in those files (the Requirements register's "행 형식", the OpenDecisionProposals header's "기록 규칙", the first paragraph of StandardScenarios §검사 결과): one link per new ADR, open parts rewritten in place, no restatement of the record and no dated paragraphs. Do not copy the wording of earlier task files for these edits.
+
 ## Output
 
 - Exactly one new file `PROCESS/tasks/T-NNNN-<slug>.md` in the DRIVER §5 format, with `status: TODO` and an English body.
