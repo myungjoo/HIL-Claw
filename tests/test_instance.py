@@ -254,6 +254,7 @@ def test_the_public_names():
         "project",
         "draws",
         "objective",
+        "injections",
         "others",
     )
     assert Tolerance._fields == ("rtol", "atol")
@@ -308,6 +309,7 @@ def test_a_minimal_content_gives_the_key_and_the_record():
         None,
         None,
         None,
+        None,
         {},
     )
     assert type(result.hw_profile) is dict
@@ -323,6 +325,7 @@ def test_a_record_with_its_optional_fields():
     assert result == Instance(
         key_of(profile),
         profile,
+        None,
         None,
         None,
         None,
@@ -379,7 +382,7 @@ OTHERS = {
 def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     result = parse(raw(doc(**OTHERS)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, OTHERS)
+    assert result == Instance(KEY, record(), *[None] * 12, OTHERS)
     assert list(result.others) == list(OTHERS)
     assert validate(doc(**OTHERS)) is None
 
@@ -804,6 +807,7 @@ def test_a_content_with_the_member_states_the_two_values():
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.tolerance) is Tolerance
@@ -891,6 +895,7 @@ def test_any_order_of_the_members_of_a_tolerance(content):
         None,
         None,
         None,
+        None,
         {},
     )
 
@@ -934,7 +939,7 @@ def test_another_version_is_reported_before_a_tolerance_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_tolerance(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(tolerance=TOLERANCE, **others)))
@@ -1201,6 +1206,7 @@ def test_a_content_with_the_member_states_that_string(commit):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.source_commit) is str
@@ -1250,6 +1256,7 @@ def test_any_order_of_the_three_members_and_the_version(order):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
         None,
         None,
         None,
@@ -1349,7 +1356,7 @@ def test_another_version_is_reported_before_a_source_commit_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_source_commit(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(source_commit=OTHER_COMMIT, **others)))
@@ -1675,6 +1682,7 @@ def test_a_content_with_the_member_states_that_bound(bound):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.n_max) is int
@@ -1726,6 +1734,7 @@ def test_any_order_of_the_four_members_and_the_version(order):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
         None,
         None,
         None,
@@ -1815,7 +1824,7 @@ def test_another_version_is_reported_before_a_bound_is_looked_at(version, bound)
 def test_a_top_level_member_of_another_name_states_no_bound(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.n_max is None
     assert validate(doc(**others)) is None
 
@@ -1911,6 +1920,7 @@ def test_what_is_no_value_of_the_bound(literal):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
         None,
         None,
         None,
@@ -2142,6 +2152,7 @@ def test_a_content_with_the_member_states_that_number(count):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.candidates_per_round) is int
@@ -2195,6 +2206,7 @@ def test_any_order_of_the_five_members_and_the_version(order):
         COMMIT,
         BOUND,
         COUNT,
+        None,
         None,
         None,
         None,
@@ -2309,7 +2321,7 @@ def test_another_version_is_reported_before_the_number_of_candidates_is_looked_a
 def test_a_top_level_member_of_another_name_states_no_number(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.candidates_per_round is None
     assert validate(doc(**others)) is None
 
@@ -2414,6 +2426,7 @@ def test_what_is_no_value_of_the_number_of_candidates(literal):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
         None,
         None,
         None,
@@ -2702,6 +2715,7 @@ def test_a_content_with_the_member_states_that_key_and_that_record(case):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.op_signature) is OpSignature
@@ -2751,6 +2765,7 @@ def test_any_order_of_the_six_members_and_the_version():
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
         None,
         None,
         None,
@@ -2946,7 +2961,7 @@ def test_another_version_is_reported_before_the_op_signature_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_op_signature(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.op_signature is None
     assert validate(doc(**others)) is None
 
@@ -3465,6 +3480,7 @@ def test_the_reader_returns_the_record_the_file_embeds(tmp_path, root):
         == Instance(
             KEY,
             record(),
+            None,
             None,
             None,
             None,
@@ -5128,6 +5144,7 @@ def test_a_content_with_the_member_states_that_round_budget(budget):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.round_budget) is int
@@ -5182,6 +5199,7 @@ def test_any_place_of_the_round_budget_among_the_other_members(index):
         COUNT,
         OpSignature(OP_KEY, op_record()),
         BUDGET,
+        None,
         None,
         None,
         None,
@@ -5332,7 +5350,7 @@ def test_another_version_is_reported_before_the_round_budget_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_round_budget(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.round_budget is None
     assert validate(doc(**others)) is None
 
@@ -5424,6 +5442,7 @@ def test_what_is_no_value_of_the_round_budget(literal):
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
         None,
         None,
         None,
@@ -5859,6 +5878,7 @@ def test_a_content_with_the_member_states_that_wall_clock_budget(seconds):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.wall_clock_budget_s) is int
@@ -5898,7 +5918,7 @@ def test_a_content_without_the_member_states_no_wall_clock_budget(members):
 
 @pytest.mark.parametrize("index", range(9))
 def test_any_place_of_the_wall_clock_budget_among_the_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_SECONDS, SECONDS, *[None] * 4, {})
+    expected = Instance(*STATED_BESIDE_THE_SECONDS, SECONDS, *[None] * 4, None, {})
 
     for others in (
         [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER],
@@ -6054,7 +6074,7 @@ def test_another_version_is_reported_before_the_wall_clock_budget_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_wall_clock_budget(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.wall_clock_budget_s is None
     assert validate(doc(**others)) is None
 
@@ -6146,7 +6166,9 @@ def test_what_is_no_value_of_the_wall_clock_budget(literal):
     assert invalid(NO_SECONDS, parse, content) == expected
     invalid(NO_SECONDS, validate, json.loads(content))
     kept = parse(text(VERSION, SECTION, *ALL_BUT_SECONDS_TEXT, '"example": [1]'))
-    assert kept == Instance(*STATED_BESIDE_THE_SECONDS, *[None] * 5, {"example": [1]})
+    assert kept == Instance(
+        *STATED_BESIDE_THE_SECONDS, *[None] * 5, None, {"example": [1]}
+    )
 
 
 WALK_THROUGH_OF_ADR_0033 = [
@@ -6631,7 +6653,14 @@ def test_a_content_with_the_member_states_that_name(member, name):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), *[None] * 7, *pair(member, name), None, None, {"example": [1]}
+        KEY,
+        record(),
+        *[None] * 7,
+        *pair(member, name),
+        None,
+        None,
+        None,
+        {"example": [1]},
     )
     assert type(getattr(result, member)) is str
     assert member not in result.others
@@ -6693,7 +6722,7 @@ def test_a_content_without_a_member_states_none_for_it(member, members):
 
 @pytest.mark.parametrize("index", range(10))
 def test_any_place_of_the_names_among_the_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_NAMES, OWNER, PROJECT, None, None, {})
+    expected = Instance(*STATED_BESIDE_THE_NAMES, OWNER, PROJECT, None, None, None, {})
     others = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
 
     for first, second in (
@@ -6873,7 +6902,7 @@ def test_another_version_is_reported_before_the_names_are_looked_at(
 def test_a_top_level_member_of_another_name_states_no_owner_and_no_project(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert (result.owner, result.project) == (None, None)
     assert validate(doc(**others)) is None
 
@@ -6976,7 +7005,7 @@ def test_what_is_no_value_of_the_names(root, member, literal):
     assert invalid(FILE, NAMED[member], root, RUN) == f"{FILE}: {expected}"
     kept = parse(text(VERSION, SECTION, *ALL_BUT_THE_NAMES_TEXT, '"example": [1]'))
     assert kept == Instance(
-        *STATED_BESIDE_THE_NAMES, None, None, None, None, {"example": [1]}
+        *STATED_BESIDE_THE_NAMES, None, None, None, None, None, {"example": [1]}
     )
 
 
@@ -7403,7 +7432,9 @@ def test_a_content_with_the_member_states_that_number_of_draws(draws):
 
     result = parse(raw(document))
 
-    assert result == Instance(KEY, record(), *[None] * 9, draws, None, {"example": [1]})
+    assert result == Instance(
+        KEY, record(), *[None] * 9, draws, None, None, {"example": [1]}
+    )
     assert type(result.draws) is int
     assert "draws" not in result.others
     assert validate(document) is None
@@ -7439,7 +7470,7 @@ def test_a_content_without_the_member_states_no_number_of_draws(members):
 
 @pytest.mark.parametrize("index", range(12))
 def test_any_place_of_the_draws_among_the_eleven_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_DRAWS, DRAWS, None, {})
+    expected = Instance(*STATED_BESIDE_THE_DRAWS, DRAWS, None, None, {})
     stated = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
     assert None not in expected[:12]
 
@@ -7597,7 +7628,7 @@ def test_another_version_is_reported_before_the_draws_are_looked_at(version, dra
 def test_a_top_level_member_of_another_name_states_no_number_of_draws(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.draws is None
     assert validate(doc(**others)) is None
 
@@ -7693,7 +7724,9 @@ def test_what_is_no_value_of_the_draws(root, literal):
     assert invalid(FILE, draws_of, root, RUN) == f"{FILE}: {expected}"
     assert invalid(FILE, read, root, RUN) == f"{FILE}: {expected}"
     kept = parse(text(VERSION, SECTION, *ALL_BUT_DRAWS_TEXT, '"example": [1]'))
-    assert kept == Instance(*STATED_BESIDE_THE_DRAWS, None, None, {"example": [1]})
+    assert kept == Instance(
+        *STATED_BESIDE_THE_DRAWS, None, None, None, {"example": [1]}
+    )
 
 
 def test_minus_zero_is_refused_as_the_integer_0_below_the_lower_end_of_the_draws():
@@ -8113,7 +8146,9 @@ def test_a_content_with_the_member_states_its_objectives_and_its_constraints():
 
     result = parse(raw(document))
 
-    assert result == Instance(KEY, record(), *[None] * 10, OBJECTIVE, {"example": [1]})
+    assert result == Instance(
+        KEY, record(), *[None] * 10, OBJECTIVE, None, {"example": [1]}
+    )
     assert type(result.objective) is dict
     assert type(result.objective["objectives"]) is list
     assert type(result.objective["constraints"]) is list
@@ -8157,7 +8192,7 @@ def test_a_content_without_the_member_states_no_objective(members):
 
 @pytest.mark.parametrize("index", range(13))
 def test_any_place_of_the_objective_among_the_twelve_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_OBJECTIVE, OBJECTIVE, {})
+    expected = Instance(*STATED_BESIDE_THE_OBJECTIVE, OBJECTIVE, None, {})
     stated = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
     assert None not in expected
 
@@ -8229,7 +8264,7 @@ def test_a_top_level_member_of_a_nearby_name_states_no_objective(root, name, val
 
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.objective is None
     assert validate(doc(**others)) is None
     place(root, raw(doc(**others)))
@@ -8473,7 +8508,7 @@ def test_what_is_no_value_of_the_objective(root, case):
     assert invalid(FILE, objective_of, root, RUN) == f"{FILE}: {expected}"
     assert invalid(FILE, read, root, RUN) == f"{FILE}: {expected}"
     kept = parse(text(VERSION, SECTION, *ALL_BUT_THE_OBJECTIVE_TEXT))
-    assert kept == Instance(*STATED_BESIDE_THE_OBJECTIVE, None, {})
+    assert kept == Instance(*STATED_BESIDE_THE_OBJECTIVE, None, None, {})
 
 
 @pytest.mark.parametrize("others, expected", NO_LONGER_OPEN, ids=repr)

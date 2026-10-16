@@ -17,7 +17,8 @@ object, in UTF-8 without a byte order mark, with no member name twice in any
 object, unknown top-level members included (a rule for the whole text,
 ADR-0018 decision 2); the document is valid by ADR-0059 decisions 2 to 5 and
 by the in-file rules of ADR-0073 decisions 2 and 3 for the basis kind ``case``
-and the optional top-level member ``cases_read``
+and the optional top-level member ``cases_read`` and of ADR-0075 decision 3
+for the origin ``injected`` and its member ``injection``
 (:func:`hilclaw.hypotheses.validate`); and a number at an *integer* place,
 below ``cases_read`` included, is written in decimal digits without sign,
 fraction or exponent, so ``-0``, which parses to the ``int`` 0, is refused by
@@ -80,7 +81,8 @@ what one content does not show: ``candidates`` against the ``id.candidates``
 of the round's specs, a ``ref`` naming an attempt that exists, a ``metric``
 against the run's ``instance.json``, the rules between files of ADR-0073
 decisions 2 and 3 (a ``case`` entry or a ``cases_read`` entry against the
-cases of the key directory). It reads no other version (OD-11) and is
+cases of the key directory) and of ADR-0075 decision 3 (an ``injection``
+against the ``injections`` of the run's ``instance.json``). It reads no other version (OD-11) and is
 no tool. Which agent writes the file and when, what follows a taken name and
 what a second write for a round means are open (ADR-0059 Boundaries; OD-23,
 OD-18, OD-17).
