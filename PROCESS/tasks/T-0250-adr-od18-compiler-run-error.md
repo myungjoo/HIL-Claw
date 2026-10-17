@@ -2,7 +2,7 @@
 id: T-0250
 title: Write an ADR that places `CompilerRunError` (T-0249) for `correctness.check`, or leaves it open with a reason, under OD-18 sub-question 18 part (ma)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-6, FR-10, OD-18]
 dependsOn: [T-0248, T-0249]
@@ -109,3 +109,33 @@ The unlanded branches of T-0210 (ADR-0068) and T-0231 (ADR-0074) also edit row O
 - The rest of ⑱ (마), when code tells it apart or a record places it.
 
 ## Result
+
+- Landed on `main` as `d2a2c03` (document mode, one squashed commit with `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0250`). The branch `claude/T-0250-adr-od18-compiler-run-error` was deleted locally and on `origin`.
+- Session entry check, before the first edit:
+  - `gh pr list` showed no open PR.
+  - Issues #4 and #7 have had no activity since 2026-10-01 and 2026-09-07. #8 is closed.
+  - On #5, every comment since 2026-10-16 carries the driver tail. No owner comment speaks to ADR-0079, ADR-0080, S6, S9 or ⑱ (마).
+  - 0081 was free on `main` and on every remote branch. The branches of T-0210 and T-0231 were not touched.
+- Record: `ARCHITECTURE/decisions/ADR-0081-od18-correctness-check-compiler-run-error.md`. Observations at `065113b` are K1 to K4.
+  - Decision 2: the row of `CompilerRunError` stays open (candidate (e)); (a), (b), (c), (d) and (d′) were weighed. The reason: from what `build` states, the class does not tell the time-limit branch (S8, O1) from a compiler lost while it ran, and it carries no log. The exception chain tells this in part (`TimeoutExpired` as `__context__`; on POSIX its `output`), but no answer rests on it. To place the row needs (i) a code change that tells the time-limit branch apart and keeps the output, and (ii) a record for the other branch. Cost: until then the landed `operation_answer_invalid` answers an S8 call against O1. `removal_error` changes nothing.
+  - Decision 3: the log is lost for every `CompilerRunError` whose compiler ended by itself or was killed for its time limit. That is against ADR-0078 decision 2 and, for S8, against O2.
+  - Decision 4: the task's Why point 3 was corrected as an observation. A plain `OSError` of `build` comes from before `Popen`, **or** is the removal error re-raised in place of a non-`OSError` exception (the `finally`). This case is now named as open.
+- Registers:
+  - Requirements: one 확정분 link in row OD-18; 잔여 unchanged.
+  - OpenDecisionProposals: one 채택분 line; ⑱ end status rewritten. The round-7 item of T-0248 was applied: "(S9)" was dropped from the ADR-0080 line, and the reviewer agreed. The second item was not applied, because the record does not restate that paragraph.
+  - StandardScenarios: the "최근 재검사" line covers S0, S1-b, S2, S5 and S6. No verdict changed, no gap was found, and no S-row note changed.
+  - Size: 4 files, +116/−4.
+- Review: 7 rounds.
+  - Round 1, Request changes: the log reach of the non-timeout branch, "may need" a new kind, register restatement.
+  - Round 2, Request changes: the O1 and O2 costs of the chosen "open".
+  - Round 3, Approve with nits.
+  - Round 4, Request changes: the exception chain.
+  - Round 5, Approve with nits.
+  - Round 6, Approve with one nit.
+  - Round 7, Approve with two info items and one nit, not applied because the cap was reached. The info items: the "end not seen" wording for the `with` exit after a normal communicate ("may not be seen"), and that K4 (ii) turns a `KeyboardInterrupt` into an `OSError` that the landed rules answer `operation_answer_invalid`.
+- §9 notice on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6227726414 (7-day window).
+- D16: nothing was built or run, and no `claude` was started. One reviewer round read the CPython `subprocess` source by importing it into Python (read only).
+- Follow-ups:
+  - (code) Tell the time-limit branch of `CompilerRunError` apart and keep the output read so far (ADR-0081 decision 2).
+  - (code) Tell apart the removal error re-raised in place of a non-`OSError` exception (K4 (ii)). Note that it turns a `KeyboardInterrupt` into an `OSError`.
+  - (doc) A record that places `CompilerRunError` after the first code change.
