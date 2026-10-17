@@ -2,13 +2,13 @@
 id: T-0264
 title: Write ADR-0088 on which rows of `correctness.check` the `parameter` of a pre-start `TypeError` or `ValueError` of `local_run.run` (T-0263) lets an operation place (more of OD-18 sub-question 18 part (ma))
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: doc
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0263]
 touchesFiles: [ARCHITECTURE/decisions/ADR-0088-od18-correctness-check-local-run-parameter.md, ARCHITECTURE/Requirements.md, ARCHITECTURE/OpenDecisionProposals.md, ARCHITECTURE/StandardScenarios.md]
 estimatedSize: {loc: 150, files: 4}
-hq: []
+hq: [HQ-0027]
 ---
 ## Why
 
@@ -110,3 +110,12 @@ This task writes the record that weighs what `parameter` of `run` makes true for
 - (possible HQ) If ADR-0088 leaves a case open because only a new `error.kind` would place it, the driver records that question for the owner.
 
 ## Result
+
+- **BLOCKED (review rounds exceeded, CLAUDE.md A-13).** Not landed; nothing pushed to `main`; no §9 notice posted on #5.
+- Branch `claude/T-0264-adr-od18-local-run-parameter` (kept, pushed), head `f2f8318`, 4 files, +135/-3: new `ARCHITECTURE/decisions/ADR-0088-od18-correctness-check-local-run-parameter.md`; OD-18 register row link (`**잔여**` unchanged); OpenDecisionProposals adopted line and the "부분 답 … 남음 …" end of sub-question 18 rewritten; StandardScenarios "최근 재검사" updated (S0, S1-b, S2, S5, S6 rechecked; no verdict change, no gap).
+- ADR-0088 decides: a `TypeError`/`ValueError` of `local_run.run` with `parameter` `"timeout_s"` is S4 `settings_refused`; with `"command"` it is no row (`operation_answer_invalid` by the landed rules); errors with no `parameter`, the missing-`cwd` `OSError` and the pre-start lookup `OSError` stay open under (마). No data-plane change; no earlier ADR edited; no runtime acceptance item.
+- Session entry check (2026-10-17): no open PR; ADR-0088 was free; no owner comment on #5 without the driver tail since 2026-10-15.
+- Review: 7 rounds. R1 Approve (4 low/nit, fixed), R2 Approve (3 nits, fixed), R3 Request changes (a misquoted ADR-0060 phrase, fixed), R4 Approve (3 nits, fixed), R5 Approve (2 nits, fixed), R6 Approve (2 nits; the pre-start lookup `OSError` added to Boundaries), R7 Request changes (minor: that `OSError` must also be listed open in decision 8 and in the sub-question 18 "남음"; nit: L3 "only" → "chiefly"). The R7 fix is committed on the branch as `f2f8318` but has not been reviewed, because an 8th round is not allowed.
+- Question for the owner: "T-0264 (ADR-0088, OD-18 sub-question 18 (ma)) stopped after 7 review rounds. Round 7 asked for one change: list the pre-start `OSError` of `local_run.run`'s program lookup as still open in decision 8 and in the OpenDecisionProposals 'remaining' list. That change is on branch `claude/T-0264-adr-od18-local-run-parameter` (`f2f8318`) but was not reviewed. Do you allow (a) one more reviewer round and landing on Approve, (b) landing the branch as it is, or (c) dropping the branch and re-planning?"
+- Follow-ups: as in the task file; plus (code, later) the pre-start lookup `OSError` of `local_run.run` (`os.getcwd` inside `os.path.abspath`) needs a way to be told apart if it is to get a row.
+- No `claude` was started (D16).
