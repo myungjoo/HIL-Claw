@@ -1,3 +1,4 @@
+import errno
 import gc
 import json
 import os
@@ -734,6 +735,7 @@ def test_a_missing_cwd_names_no_parameter(child, tmp_path):
     assert isinstance(error, OSError)
     assert not hasattr(error, "parameter")
     assert not child.started
+    assert error.path_role == "cwd"
 
 
 def refusing(error):
@@ -1036,6 +1038,8 @@ def test_an_interrupted_wait_names_no_parameter(child, monkeypatch):
         ([], {"timeout_s": TIMEOUT}, ValueError),
         ([sys.executable], {"env": {"A=B": "x"}}, ValueError),
         ([sys.executable], {"env": {"A": 3}}, TypeError),
+        ([sys.executable], {"cwd": 3}, TypeError),
+        ([sys.executable], {"cwd": "a\0b"}, ValueError),
     ],
 )
 def test_the_parameter_survives_pickling(command, settings, kind):
@@ -1044,3 +1048,291 @@ def test_the_parameter_survives_pickling(command, settings, kind):
     assert type(loaded) is kind
     assert loaded.args == error.args
     assert loaded.parameter == error.parameter
+
+
+CWD_TYPES = [str, Path, os.fsencode]
+
+
+@pytest.mark.parametrize("as_type", CWD_TYPES)
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_existing_cwd_is_where_the_process_runs(
+    as_type, platform_wait, child, monkeypatch, tmp_path
+):
+    wait_path(platform_wait, monkeypatch)
+    directory = tmp_path / "work"
+    directory.mkdir()
+    result = run(child(QUIET), timeout_s=TIMEOUT, cwd=as_type(str(directory)))
+    assert result.returncode == 0
+    assert os.path.samefile(child.call()["cwd"], directory)
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_no_cwd_inherits_the_working_directory(platform_wait, child, monkeypatch):
+    wait_path(platform_wait, monkeypatch)
+    result = run(child(QUIET), timeout_s=TIMEOUT, cwd=None)
+    assert result.returncode == 0
+    assert os.path.samefile(child.call()["cwd"], os.getcwd())
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_the_cwd_is_handed_on_as_given(platform_wait, child, monkeypatch, tmp_path):
+    seen = []
+
+    def record(*arguments, **keywords):
+        seen.append(keywords["cwd"])
+        raise LookupError("recorded")
+
+    if platform_wait and hasattr(os, "wait4"):
+        monkeypatch.setattr(subprocess, "Popen", record)
+    else:
+        without_wait4(monkeypatch)
+        monkeypatch.setattr(subprocess, "run", record)
+    error = raised(child(QUIET), cwd=tmp_path)
+    assert type(error) is LookupError
+    assert seen[0] is tmp_path
+
+
+REFUSED_CWDS = [
+    3,
+    IntPath(),
+    "a\0b",
+    Path("a\0b"),
+    b"a\0b",
+    pytest.param("a\ud800b", marks=posix_only),
+]
+
+
+@pytest.mark.parametrize("cwd", REFUSED_CWDS)
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_a_refused_cwd_names_cwd(cwd, platform_wait, child, monkeypatch):
+    expected = directly(child(QUIET), cwd, None)
+    wait_path(platform_wait, monkeypatch)
+    error = raised(child(QUIET), cwd=cwd)
+    assert expected in (TypeError, ValueError)
+    assert type(error) is expected
+    assert error.parameter == "cwd"
+    assert not hasattr(error, "path_role")
+    assert not child.started
+
+
+def test_the_type_error_of_fspath_names_cwd(child):
+    with pytest.raises(TypeError) as direct:
+        os.fspath(IntPath())
+    error = raised(child(QUIET), cwd=IntPath())
+    assert error.args == direct.value.args
+    assert error.parameter == "cwd"
+
+
+def started_error(command, cwd):
+    with pytest.raises(OSError) as caught:
+        subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            cwd=cwd,
+            check=False,
+        )
+    return caught.value
+
+
+def no_start(monkeypatch):
+    monkeypatch.setattr(subprocess, "Popen", refusing(AssertionError))
+    monkeypatch.setattr(subprocess, "run", refusing(AssertionError))
+
+
+def missing(tmp_path):
+    return tmp_path / "absent"
+
+
+def missing_under_missing(tmp_path):
+    return tmp_path / "absent" / "sub"
+
+
+def regular_file(tmp_path):
+    path = tmp_path / "file"
+    path.write_text("not a directory", encoding="utf-8")
+    return path
+
+
+def under_a_file(tmp_path):
+    return regular_file(tmp_path) / "sub"
+
+
+BAD_CWDS = [
+    missing,
+    missing_under_missing,
+    regular_file,
+    pytest.param(under_a_file, marks=posix_only),
+]
+
+
+@pytest.mark.parametrize("make", BAD_CWDS)
+@pytest.mark.parametrize("as_type", CWD_TYPES)
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_a_cwd_that_is_no_directory_is_refused_before_the_start(
+    make, as_type, platform_wait, child, monkeypatch, tmp_path
+):
+    path = make(tmp_path)
+    cwd = as_type(str(path))
+    existed = path.exists()
+    direct = started_error(child(QUIET), cwd)
+    assert not child.started
+    wait_path(platform_wait, monkeypatch)
+    no_start(monkeypatch)
+    error = raised(child(QUIET), cwd=cwd)
+    assert type(error) is type(direct)
+    assert error.errno == direct.errno
+    assert error.path_role == "cwd"
+    assert not hasattr(error, "parameter")
+    if os.name == "nt":
+        assert error.winerror == direct.winerror == 267
+    else:
+        assert os.fspath(error.filename) == os.fspath(direct.filename)
+        if not isinstance(cwd, Path):
+            assert error.filename == direct.filename
+    assert path.exists() == existed
+    assert not child.started
+
+
+def stat_raising(monkeypatch, cwd, given):
+    real = os.stat
+
+    def fake(path, *arguments, **keywords):
+        if os.fspath(path) == os.fspath(cwd):
+            raise given
+        return real(path, *arguments, **keywords)
+
+    monkeypatch.setattr(os, "stat", fake)
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_a_permission_error_of_the_cwd_test_names_cwd(
+    platform_wait, child, monkeypatch, tmp_path
+):
+    command = child(QUIET)
+    given = PermissionError(errno.EACCES, "denied", str(tmp_path))
+    wait_path(platform_wait, monkeypatch)
+    no_start(monkeypatch)
+    stat_raising(monkeypatch, tmp_path, given)
+    error = raised(command, cwd=tmp_path)
+    assert error.path_role == "cwd"
+    assert not hasattr(error, "parameter")
+    if os.name == "nt":
+        assert type(error) is NotADirectoryError
+        assert error.winerror == 267
+        assert error.filename is tmp_path
+        assert error.__cause__ is given
+    else:
+        assert error is given
+        assert type(error) is PermissionError
+        assert error.args == (errno.EACCES, "denied")
+        assert error.errno == errno.EACCES
+        assert error.filename == str(tmp_path)
+    assert not child.started
+
+
+def test_an_error_of_the_cwd_test_of_the_kept_class_is_the_same_object(
+    child, monkeypatch, tmp_path
+):
+    command = child(QUIET)
+    winerror = (267,) if os.name == "nt" else ()
+    given = OSError(errno.ENOTDIR, "kept", str(tmp_path), *winerror)
+    no_start(monkeypatch)
+    stat_raising(monkeypatch, tmp_path, given)
+    error = raised(command, cwd=tmp_path)
+    assert error is given
+    assert type(error) is NotADirectoryError
+    assert error.args == (errno.ENOTDIR, "kept")
+    assert error.filename == str(tmp_path)
+    assert error.path_role == "cwd"
+    assert error.__cause__ is None
+
+
+def test_a_missing_program_comes_before_the_cwd(tmp_path):
+    error = raised(("hilclaw-no-such-program", "x"), cwd=tmp_path / "absent")
+    assert type(error) is ProgramNotFoundError
+    assert not hasattr(error, "path_role")
+
+
+def test_the_env_is_named_before_the_cwd(child, tmp_path):
+    error = raised(child(QUIET), env={"A=B": "x"}, cwd=tmp_path / "absent")
+    assert type(error) is ValueError
+    assert error.parameter == "env"
+    assert not hasattr(error, "path_role")
+
+
+@pytest.mark.parametrize(
+    "command, settings, parameter",
+    [
+        (["x"], {"timeout_s": 0}, "timeout_s"),
+        ([], {}, "command"),
+        ([sys.executable, 3], {}, "command"),
+        ([sys.executable], {"env": {"A": 3}}, "env"),
+    ],
+)
+def test_the_cwd_is_checked_last(command, settings, parameter):
+    error = raised(command, cwd=3, **settings)
+    assert error.parameter == parameter
+
+
+@pytest.mark.parametrize(
+    "command, settings",
+    [
+        (["x"], {"timeout_s": "10"}),
+        ([], {}),
+        ([sys.executable, "x\0"], {}),
+        ([sys.executable], {"env": {"A=B": "x"}}),
+        (["hilclaw-no-such-program"], {}),
+    ],
+)
+def test_no_other_error_of_the_checks_has_a_path_role(command, settings):
+    error = raised(command, **settings)
+    assert not hasattr(error, "path_role")
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_oserror_from_the_start_has_no_path_role(
+    platform_wait, child, monkeypatch, tmp_path
+):
+    given = FileNotFoundError(errno.ENOENT, "removed", str(tmp_path))
+    if platform_wait and hasattr(os, "wait4"):
+        monkeypatch.setattr(subprocess, "Popen", refusing(given))
+    else:
+        without_wait4(monkeypatch)
+        monkeypatch.setattr(subprocess, "run", refusing(given))
+    error = raised(child(QUIET), cwd=tmp_path)
+    assert error is given
+    assert not hasattr(error, "path_role")
+    assert not hasattr(error, "parameter")
+
+
+@posix_only
+def test_a_file_the_system_cannot_execute_has_no_path_role(tmp_path):
+    program = tmp_path / "program"
+    program.write_bytes(b"\x00\x01\x02 not a program\n")
+    program.chmod(0o755)
+    error = raised([program], cwd=tmp_path)
+    assert isinstance(error, OSError)
+    assert not hasattr(error, "path_role")
+    assert not hasattr(error, "parameter")
+
+
+@posix_only
+def test_an_oserror_of_the_program_lookup_has_no_attribute(monkeypatch, tmp_path):
+    program = os.path.join(".", os.path.basename(sys.executable))
+    monkeypatch.chdir(os.path.dirname(sys.executable))
+    given = FileNotFoundError(errno.ENOENT, "no working directory")
+    monkeypatch.setattr(os, "getcwd", refusing(given))
+    error = raised([program], cwd=tmp_path)
+    assert error is given
+    assert not hasattr(error, "path_role")
+    assert not hasattr(error, "parameter")
+
+
+def test_the_path_role_survives_pickling(tmp_path):
+    error = raised([sys.executable], cwd=tmp_path / "absent")
+    loaded = pickle.loads(pickle.dumps(error))
+    assert type(loaded) is type(error)
+    assert loaded.errno == error.errno
+    assert loaded.filename == error.filename
+    assert loaded.path_role == "cwd"

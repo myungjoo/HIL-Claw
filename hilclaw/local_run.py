@@ -28,16 +28,19 @@ current directory.
 """
 
 import contextlib
+import errno
 import math
 import os
 import selectors
 import shutil
 import signal
+import stat
 import subprocess
 import time
 from typing import NamedTuple
 
 _READ_SIZE = 32768
+_ERROR_DIRECTORY = 267
 _Selector = getattr(selectors, "PollSelector", selectors.SelectSelector)
 
 
@@ -107,24 +110,47 @@ def run(command, *, timeout_s, cwd=None, env=None):
     mapping are left to :mod:`subprocess`. ``env`` itself is handed on as
     given.
 
+    A ``cwd`` that is not ``None`` is checked after ``env``, before the start,
+    and refused with the class :mod:`subprocess` would raise for it: it is
+    converted as :mod:`subprocess` converts it (:func:`os.fsencode` on POSIX,
+    :func:`os.fsdecode` on Windows, so ``str``, ``bytes`` and
+    :class:`os.PathLike` pass), which raises :class:`TypeError` for another
+    type, and a NUL character in it is refused with :class:`ValueError`. It is
+    then tested with :func:`os.stat`: a path that cannot be tested or is not a
+    directory raises the :class:`OSError` a start in that ``cwd`` raises on
+    the platform. On POSIX that is the error :func:`os.stat` raised, as the
+    same object, or :class:`NotADirectoryError` for a path that is no
+    directory; on native Windows it is :class:`NotADirectoryError` with
+    ``winerror`` 267 in both cases, chained from the :func:`os.stat` error if
+    there is one. Each such :class:`OSError` has ``cwd`` as its ``filename``
+    (one :func:`os.stat` raised has the ``str`` or ``bytes`` of ``cwd``) and
+    carries an attribute ``path_role`` with the value ``"cwd"``; read it as
+    ``getattr(error, "path_role", None)``. ``cwd`` itself is handed on as
+    given.
+
     What :mod:`subprocess` raises is passed on: an :class:`OSError` from
     starting the process (a file the system cannot execute, a ``cwd`` that
-    does not exist), what it raises for ``cwd`` or for an ``env`` the check
-    above leaves to it, and an :class:`OverflowError` for a finite
-    ``timeout_s`` longer than the platform can wait for (a bound that depends
-    on the platform and can be a matter of weeks), which arrives after the
-    process was started and killed.
+    was removed or changed after the test above or that the test passes but
+    the start refuses, such as a directory without search permission), what
+    it raises for an ``env`` the check above leaves to it, and an
+    :class:`OverflowError` for a finite ``timeout_s`` longer than the platform
+    can wait for (a bound that depends on the platform and can be a matter of
+    weeks), which arrives after the process was started and killed. None of
+    these, and no other error of :func:`run`, carries ``path_role``.
 
     Every :class:`TypeError` and :class:`ValueError` raised by the checks
     before the start, including one Python raises inside them, carries an
     attribute ``parameter`` naming the parameter of :func:`run` it is about:
     ``"timeout_s"`` for the time limit, ``"command"`` for the command, the
-    program or an argument (including a NUL character in an argument) and
-    ``"env"`` for the environment. The time limit is checked first, then the
-    command (so :class:`ProgramNotFoundError` comes before an ``env`` error),
-    then ``env``. An error from anywhere else, including what
-    :mod:`subprocess` raises and :class:`ProgramNotFoundError`, carries no
-    ``parameter``; read it as ``getattr(error, "parameter", None)``.
+    program or an argument (including a NUL character in an argument),
+    ``"env"`` for the environment and ``"cwd"`` for the working directory.
+    The time limit is checked first, then the command (so
+    :class:`ProgramNotFoundError` comes before an ``env`` or ``cwd`` error),
+    then ``env``, then ``cwd``. An error from anywhere else, including what
+    :mod:`subprocess` raises, :class:`ProgramNotFoundError`, an
+    :class:`OSError` of the program lookup and the :class:`OSError` of the
+    ``cwd`` test, carries no ``parameter``; read it as
+    ``getattr(error, "parameter", None)``.
 
     Where :func:`os.wait4` is used and it finds the process already reaped by
     someone else (for example with ``SIGCHLD`` ignored), the exit status is
@@ -137,6 +163,7 @@ def run(command, *, timeout_s, cwd=None, env=None):
         resolved = _resolve(command)
     with _parameter("env"):
         _check_env(env)
+    _check_cwd(cwd)
     wait = _run_with_usage if hasattr(os, "wait4") else _run_without_usage
     started = time.monotonic()
     returncode, stdout, stderr, max_rss = wait(resolved, timeout_s, cwd, env)
@@ -300,3 +327,29 @@ def _env_text(item):
     if not isinstance(item, str):
         raise TypeError(f"env keys and values must be str, not {type(item).__name__}")
     return item
+
+
+def _check_cwd(cwd):
+    if cwd is None:
+        return
+    with _parameter("cwd"):
+        path = os.fsdecode(cwd) if os.name == "nt" else os.fsencode(cwd)
+        if ("\0" if isinstance(path, str) else b"\0") in path:
+            raise ValueError("cwd contains a NUL character")
+    try:
+        try:
+            is_directory = stat.S_ISDIR(os.stat(cwd).st_mode)
+        except OSError as error:
+            if os.name != "nt" or getattr(error, "winerror", None) == _ERROR_DIRECTORY:
+                raise
+            raise _not_a_directory(cwd) from error
+        if not is_directory:
+            raise _not_a_directory(cwd)
+    except OSError as error:
+        error.path_role = "cwd"
+        raise
+
+
+def _not_a_directory(cwd):
+    winerror = (_ERROR_DIRECTORY,) if os.name == "nt" else ()
+    return OSError(errno.ENOTDIR, os.strerror(errno.ENOTDIR), cwd, *winerror)
