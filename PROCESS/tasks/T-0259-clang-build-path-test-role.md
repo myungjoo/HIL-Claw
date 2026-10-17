@@ -2,7 +2,7 @@
 id: T-0259
 title: Make every OSError from the path tests of `clang_build.build` say whether it came from a source or from the output, so both are told from the other lines before the start
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0255, T-0257]
@@ -157,3 +157,12 @@ The name `path_role` occurs nowhere in `hilclaw/` or `tests/` (`grep -rn path_ro
   The sources with no `path_role` (P3 (b) to (e)) stay as they are.
 
 ## Result
+
+- PR #163, squash-merged as 92d5432; branch `claude/T-0259-clang-build-path-role` deleted.
+- Review: 3 rounds by a context-isolated dev-reviewer. R1 Approve with a docstring-wrap nit; R2 Request changes (the rewrap left a 112-column docstring line); R3 Approve (docstring identical to main apart from the new sentence).
+- Entry check: no open PR touched `hilclaw/clang_build.py` or `tests/test_clang_build.py`.
+- Language: Python, the language of the existing `clang_build` module.
+- Code: `path_role` is set in two `except OSError as raised:` blocks that set the attribute on the same object and re-raise with a bare `raise` — `"source"` in `_checked_sources` around `path.is_file()` / `path.is_dir()` and the errors raised after them; `"output"` in `build` around `target.parent.is_dir()` / `target.parent.exists()` / `target.is_dir()` and the errors raised after them. `os.path.abspath`, `_resolve`, `secrets.token_hex`, `time.monotonic` and everything after them stay outside both blocks. No class, message, check order or public name changed; the `build` docstring gains one sentence on `path_role`.
+- Tests: a check that raises `PermissionError` itself keeps object, class, errno, args and traceback; no `path_role` on errors from `abspath` (source and output), `token_hex`, `which`, the run and after it, `ValueError`, `TypeError`, `CompilerNotFoundError`; a successful build; pickling of both roles.
+- Local: pytest 22200 passed / 355 skipped; ruff check and format clean; `hilclaw/` line coverage 99%, `clang_build.py` 100%. CI: all gates green (Python 3.11 and 3.14, Coverage, C, sh, Test presence).
+- Follow-ups: (doc) the OD-18 (ma) record above. Reviewer note: on Python 3.14 `Path.is_file`/`is_dir`/`exists` may swallow `OSError`; not checked here — if so, the check-raised case only occurs on 3.11.
