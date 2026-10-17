@@ -2,7 +2,7 @@
 id: T-0279
 title: Write ADR-0092 on which row of `correctness.check` the new pre-start check of the output file name of `clang_build.build` (a `ValueError` or, on POSIX, a `UnicodeEncodeError` with `parameter` "output", raised after the output path tests) lets an operation place, and what is now left of U4 (more of OD-18 sub-question 18 part (ma)); no `local_run.run`, no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18, "#5 D6"]
 dependsOn: [T-0277, T-0278]
@@ -147,4 +147,23 @@ This is a design-level part of OD-18, not an owner-only item (DRIVER §9). It cl
 
 ## Follow-ups
 
+- A doc task that reads `PurePath.with_name` and what `subprocess.Popen` raises for the arguments `build` hands it, and places what is left of U4 (ADR-0092 decision 3); or a code task that makes `build` refuse an `env` with no `items` method (or another such value) in a named check before the start. Neither needs an owner HQ: ADR-0092 left no case open for want of a new value.
+- Possible code follow-up noted by the round-1 reviewer (not established by running code): on Windows an output file name whose second character is `:` (for example `a:b.exe`) passes the NUL check, and `with_name` may then refuse the temporary name as a drive with an unnamed `ValueError`. A named check of the output file name for that case would remove it from U4.
+
 ## Result
+
+- Landed on `main` in document mode as `1ac785b` (rebased on `origin/main` `a9eea38`, one squashed commit with the trailers `Reviewed-by: reviewer agent (6 rounds, Approve)` and `Task: T-0279`). Branch `claude/T-0279-adr-od18-output-name-value-errors` deleted, remote and local.
+- Files: new `ARCHITECTURE/decisions/ADR-0092-od18-correctness-check-output-name-value-errors.md`; one `**확정분**` link in the Requirements OD-18 row (`**잔여**` unchanged, as its text did not change); one adopted-record line and the in-place sub-question 18 status in OpenDecisionProposals `## OD-18` (the "남음" entry on the unnamed pre-start `ValueError` now names `with_name`, `time.monotonic` and `subprocess.Popen`); the StandardScenarios "최근 재검사" line. 4 files, +117/-3.
+- Coverage: S0, S1-b, S2, S5 and S6 (every row that cites OD-18) re-checked; no verdict change, no gap.
+- Decisions: the name error (`parameter` `"output"`, raised after the path tests) is no row, with its own reason in place of ADR-0091's "Not S3"; S3, S4 (ADR-0090 decision 2 analogy), "still U4" and a new kind declined; U4 narrowed (output file name NUL / POSIX-unencodable removed) and left open; no data-plane change; no earlier ADR edited.
+- Review: 6 rounds (dev-reviewer, opus, fresh context each round).
+  - Round 1, Request changes: (Medium) "U4 holds no defect of the output file name" went beyond what was read, as `with_name` may refuse more (e.g. a drive-like name on Windows); narrowed to NUL / unencodable characters. (Low) the U4 summary dropped the clock; restored. (Low) the walk-through header contradicted row 3; qualified. (Info) a "still holds" sentence in the less-exact list; removed.
+  - Round 2, Request changes: (Minor) another "still holds" item (ADR-0091 walk-through U4 row); removed. (Nit) the Status list of cited ADR-0091 parts did not match the body; aligned (and References).
+  - Round 3, Approve with two nits: the S4 contrast grounded in ADR-0060 decision 4 as well as ADR-0089 decision 3; ADR-0090 N3 added to the less-exact list. Both fixed.
+  - Round 4, Approve with one nit: T-0278 is a change "of that kind" for a value that is no setting, not the setting way out of ADR-0091 decision 3 "done"; three sentences reworded.
+  - Round 5, Approve with one nit: the ADR-0091 Consequences entry aligned with that wording.
+  - Round 6, Approve, no findings.
+- §9 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6239802629 (ends with the driver tail).
+- Session entry check (2026-10-18): `gh pr list` empty; issues #4, #7, #8 (closed) and #5 read, nothing touches OD-18 sub-question 18 or the four files. `ADR-0092` was free on `main` and on every remote branch. No owner comment on #5 (one without the driver tail) after 2026-10-15, so none on ADR-0091, T-0278 or (ma). HQ-0027 unanswered. T-0264's branch not touched.
+- Overlap: the unlanded branches `claude/T-0264-adr-od18-local-run-parameter`, `claude/T-0210-od18-run-tools-operation-tool-failure` and `claude/T-0231-adr-od30-s6-metric` edit the same OD-18 register row, the sub-question 18 status and/or the "최근 재검사" line, and must rebase over `1ac785b`. When ADR-0088 lands, its text must keep the entries of ADR-0089 to ADR-0092.
+- No `claude` program, compiler or container was started (D16); nothing was established by running code. This Result is left uncommitted for the driver.
