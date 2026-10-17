@@ -83,3 +83,10 @@ What does not change:
 - (code, after HQ-0021) The same change in `build_timing_executable` (`hilclaw/harness/timing_build.py`), if the run tools' record of situations does not settle it otherwise.
 
 ## Result
+
+- PR #171 (https://github.com/myungjoo/HIL-Claw/pull/171), squash-merged with `gh pr merge --squash --body` (the body ends with `Task: T-0270`); branch `claude/T-0270-verification-build-kernel-sources-parameter` deleted.
+- Review: 1 round, Approve (#issuecomment-6234153874), no findings.
+- CI green on 955433d: Python 3.11 and 3.14, coverage, test presence, shellcheck, clang. Local (Windows, Python 3.14): full pytest 22547 passed, 474 skipped; `ruff check` and `ruff format --check` clean. Without the source change, 5 of the new tests fail.
+- Language: Python, the language of the module being changed (`hilclaw/harness/verification_build.py`).
+- Implementation: `tuple(kernel_sources)` wrapped in a local `try`/`except TypeError` that sets `parameter = "kernel_sources"` and re-raises with a bare `raise`; `clang_build._parameter` not imported. Docstring paragraph "Raised before anything is started" updated. Size: `hilclaw/harness/verification_build.py` +15/-6; tests +121 in `tests/harness/test_verification_build.py`, no existing test edited.
+- Follow-ups: unchanged from the list above; none new. No `claude` was started (D16).
