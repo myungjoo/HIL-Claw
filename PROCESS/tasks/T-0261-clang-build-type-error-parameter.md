@@ -2,7 +2,7 @@
 id: T-0261
 title: Make every TypeError that `clang_build.build` raises from its checks before the start name the parameter it is about, so a setting is told from an argument the operation forms
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0259]
@@ -171,3 +171,34 @@ The callers `hilclaw/harness/verification_build.py`, `hilclaw/harness/timing_bui
 - (code, later) The same kind of split for `local_run.run`: its `ValueError` or `TypeError` for an `env` against one for an argument, and its `OSError` for a missing `cwd` (S3) against other start errors (S10). The design is left to that task.
 
 ## Result
+
+- **Outcome:** DONE. PR #164 (`claude/T-0261-clang-build-type-error-parameter`), squash-merged as `a46a4d6`. The squash message ends with `Task: T-0261`. The branch was deleted.
+- **Entry check:** `gh pr list` showed no open PR before the first edit.
+- **Review:** 2 rounds, both with the `dev-reviewer` sub-agent in a fresh context.
+  - Round 1: Approve with one Nit: also assert `__context__ is None` in the identity test. Addressed in `5e076e9`.
+  - Round 2: Approve, no open items.
+- **CI:** run 39014139867 on head `5e076e9` was green on all gates: Python 3.11 and 3.14, Coverage, Test presence, shellcheck, clang.
+- **Local checks:** full `pytest` passed (22227 passed, 355 skipped). `ruff check` and `ruff format --check` passed. `hilclaw/` line coverage is 99%, and `hilclaw/clang_build.py` is at 100%, including the new function.
+- **Language:** Python, because it is the language of the module being changed (`hilclaw/clang_build.py`).
+- **What sets `parameter` (from the code at `a46a4d6`, `hilclaw/clang_build.py`):**
+  - The private context manager `_parameter(name)` (line 433) catches `TypeError`, sets `error.parameter = name` and re-raises it with a bare `raise`.
+  - `build` wraps each check in it, so each check gets its own value:
+    - line 271: `_check_timeout(timeout_s)` gets `"timeout_s"`;
+    - line 273: `_checked_flags(flags, "flags")` gets `"flags"`;
+    - line 275: `_checked_flags(trailing_flags, ...)` gets `"trailing_flags"`;
+    - line 277: `_checked_sources(sources)` gets `"sources"`;
+    - line 279: `Path(os.path.abspath(output))` gets `"output"`;
+    - line 292: `_resolve(compiler)` gets `"compiler"`.
+  - The helpers are unchanged, so the errors of `compiler_version` carry no `parameter`. The output-directory tests, the call binding and `subprocess.Popen` and everything after it are outside every wrapper.
+  - `build`'s docstring gained one sentence that names the attribute and its six values.
+- **Pickling:** a plain `TypeError` keeps its instance attribute through `pickle`, because `BaseException.__reduce__` includes `__dict__`. `test_type_errors_keep_their_parameter_through_pickling` asserts that `parameter` survives. No class was added.
+- **Tests:** assertions were added only to the six permitted existing tests. The new tests cover:
+  - the settings;
+  - each parameter;
+  - foreign errors, with their message and identity;
+  - the check order;
+  - the negatives (`ValueError`, `CompilerNotFoundError`, `OSError` with `path_role`, a `Popen` `TypeError`, `compiler_version`);
+  - a successful build;
+  - pickling.
+- **Size:** 2 files. Excluding tests, 36 lines changed in `hilclaw/clang_build.py`.
+- **Follow-ups:** unchanged from the task's Follow-ups section: a doc record under OD-18 (ma) on what `parameter` makes true for `correctness.check`, and the same kind of split for `local_run.run`.
