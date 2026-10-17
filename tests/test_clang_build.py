@@ -2863,8 +2863,8 @@ def test_a_nul_in_a_path_keeps_the_path_error(stub, src, out_dir):
 OUTPUT_NAMES = [
     ("kernel\0.o", ValueError),
     ("\0", ValueError),
-    pytest.param("k\udcff.o", UnicodeEncodeError, marks=posix_only),
-    pytest.param("k\udcff\0.o", UnicodeEncodeError, marks=posix_only),
+    pytest.param("k\ud800.o", UnicodeEncodeError, marks=posix_only),
+    pytest.param("k\ud800\0.o", UnicodeEncodeError, marks=posix_only),
 ]
 
 
@@ -2890,7 +2890,7 @@ def test_a_bad_output_file_name_is_refused_before_the_start(
 def test_an_unencodable_output_name_is_the_error_of_fsencode(
     stub, src, out_dir, monkeypatch
 ):
-    target = os.path.abspath(str(out_dir / "k\udcff.o"))
+    target = os.path.abspath(str(out_dir / "k\ud800.o"))
     with pytest.raises(UnicodeEncodeError) as direct:
         os.fsencode(target)
     forbid_start(monkeypatch)
