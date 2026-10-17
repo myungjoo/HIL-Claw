@@ -60,15 +60,24 @@ def build_verification_executable(
 
     Raised before anything is started: :class:`ValueError` for no kernel
     source, tested before every other argument, and :class:`TypeError` for
-    ``kernel_sources`` that is neither a path nor iterable. Whatever
-    :func:`hilclaw.clang_build.build` raises is passed on unchanged. That
-    includes :class:`FileNotFoundError` for a program source that is missing
-    from the installation and :class:`TypeError` for a ``bytes`` path (an empty
-    one is no kernel source).
+    ``kernel_sources`` that is neither a path nor iterable. That
+    :class:`TypeError`, and any :class:`TypeError` raised while iterating
+    ``kernel_sources``, carries the attribute ``parameter`` set to
+    ``"kernel_sources"``, read as ``getattr(error, "parameter", None)``; the
+    :class:`ValueError` carries none. Whatever
+    :func:`hilclaw.clang_build.build` raises is passed on unchanged, with its
+    own attributes. That includes :class:`FileNotFoundError` for a program
+    source that is missing from the installation and :class:`TypeError` for a
+    ``bytes`` path, with ``parameter`` ``"sources"`` (an empty one is no kernel
+    source).
     """
     if isinstance(kernel_sources, (str, os.PathLike)):
         kernel_sources = (kernel_sources,)
-    kernel_sources = tuple(kernel_sources)
+    try:
+        kernel_sources = tuple(kernel_sources)
+    except TypeError as error:
+        error.parameter = "kernel_sources"
+        raise
     if not kernel_sources:
         raise ValueError("no kernel source file given")
     return clang_build.build(
