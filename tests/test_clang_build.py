@@ -2637,21 +2637,19 @@ def test_a_refused_argument_has_the_class_popen_raises(
 
 
 @windows_only
-@pytest.mark.parametrize("keyword", ["flags", "trailing_flags"])
+@pytest.mark.parametrize("place", PLACES)
 @pytest.mark.parametrize("in_cwd", [False, True])
-def test_a_lone_surrogate_flag_is_accepted_on_windows_as_by_popen(
-    keyword, in_cwd, stub, src, out_dir, tmp_path
+def test_a_lone_surrogate_argument_is_accepted_on_windows_as_by_popen(
+    place, in_cwd, stub, src, out_dir, tmp_path
 ):
     cwd = tmp_path if in_cwd else None
     assert directly_with("-D\ud800", cwd) is None
-    result = build(
-        src,
-        out_dir / "kernel.o",
-        timeout_s=TIMEOUT,
-        compiler=stub(WRITE),
-        cwd=cwd,
-        **{keyword: ("-D\ud800",)},
-    )
+    compiler = stub(WRITE)
+    if place == "compiler":
+        settings = {"compiler": (*compiler, "-D\ud800")}
+    else:
+        settings = {"compiler": compiler, place: ("-D\ud800",)}
+    result = build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, cwd=cwd, **settings)
     assert result.ok
     assert "-D\ud800" in stub.call()["argv"]
 
