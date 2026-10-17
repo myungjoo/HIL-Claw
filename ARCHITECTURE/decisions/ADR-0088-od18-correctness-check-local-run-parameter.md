@@ -114,7 +114,7 @@ The names of ADR-0056: run `r1`, `round` 3, `candidate` 2, `attempt` 1, `"execut
 
 ## Boundaries (not decided here)
 
-- **The row of an unnamed `TypeError` or `ValueError` of a call of `local_run.run`** and of the `OSError` for a missing `cwd` (decision 5); `VerificationArgumentError` of `run_verification`.
+- **The row of an unnamed `TypeError` or `ValueError` of a call of `local_run.run`** and of the `OSError` for a missing `cwd` (decision 5); an `OSError` of `local_run.run` from the lookup of the program before the start (for example `os.getcwd` inside `os.path.abspath` for a relative program), which carries no `parameter` and is not "from starting the process" (cited: ADR-0060 decision 4); `VerificationArgumentError` of `run_verification`.
 - **A part of the command that comes from the backend's side**, whether any does, and the row of a `"command"` error of such a part (decision 4).
 - **The other open entries of (마)** (decision 8).
 - **⑱ (가), (다), (라) and the size bound of (나)**; the values and sources of the settings (⑱ (라), OD-14).
