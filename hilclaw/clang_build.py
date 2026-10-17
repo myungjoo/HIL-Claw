@@ -299,7 +299,7 @@ def build(
         raise CompilerNotStartedError(start_error, removal_error) from start_error
     if run_error is not None:
         raise CompilerRunError(
-            run_error, removal_error, timed_out=held.timed_out, log=held.log()
+            run_error, removal_error, timed_out=held.timed_out, log=held.decoded()
         ) from run_error
     result = BuildResult(
         ok=ok,
@@ -356,7 +356,7 @@ class _Held:
         self.timed_out = False
         self.raw = None
 
-    def log(self):
+    def decoded(self):
         return None if self.raw is None else self.raw.decode("utf-8", errors="replace")
 
 
