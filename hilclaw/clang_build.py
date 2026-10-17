@@ -223,7 +223,12 @@ def build(
     prefix, or a flag that sets the output (any flag that starts with ``-o`` or
     ``--output``, which includes unrelated options with that prefix such as
     ``-objcmt-*``); :class:`TypeError` for arguments of the wrong type,
-    including a bare ``str`` as flags; and :class:`CompilerNotFoundError`. An
+    including a bare ``str`` as flags; and :class:`CompilerNotFoundError`. Any
+    :class:`OSError` from testing a source path or the output path, including
+    one that the test itself raises such as a :class:`PermissionError`, is
+    raised with the attribute ``path_role`` set to ``"source"`` or
+    ``"output"``; an :class:`OSError` from anywhere else, such as forming the
+    absolute path, carries no ``path_role``. An
     :class:`OSError` from creating the compiler process is raised as
     :class:`CompilerNotStartedError`, an :class:`OSError` subclass without
     ``result``; when removing the temporary file then fails too, the removal's
@@ -259,11 +264,17 @@ def build(
     trailing_flags = _checked_flags(trailing_flags, "trailing_flags")
     source_paths = _checked_sources(sources)
     target = Path(os.path.abspath(output))
-    if not target.parent.is_dir():
-        error = NotADirectoryError if target.parent.exists() else FileNotFoundError
-        raise error(f"output directory is not an existing directory: {target.parent}")
-    if target.is_dir():
-        raise IsADirectoryError(f"output is a directory: {target}")
+    try:
+        if not target.parent.is_dir():
+            error = NotADirectoryError if target.parent.exists() else FileNotFoundError
+            raise error(
+                f"output directory is not an existing directory: {target.parent}"
+            )
+        if target.is_dir():
+            raise IsADirectoryError(f"output is a directory: {target}")
+    except OSError as raised:
+        raised.path_role = "output"
+        raise
     prefix = _resolve(compiler)
     temporary = target.with_name(
         f"{target.stem}.tmp-{os.getpid()}-{secrets.token_hex(8)}{target.suffix}"
@@ -435,9 +446,13 @@ def _checked_sources(sources):
                 f"a source must be str or os.PathLike, not {type(source).__name__}"
             )
         path = Path(os.path.abspath(source))
-        if not path.is_file():
-            error = IsADirectoryError if path.is_dir() else FileNotFoundError
-            raise error(f"source is not an existing regular file: {path}")
+        try:
+            if not path.is_file():
+                error = IsADirectoryError if path.is_dir() else FileNotFoundError
+                raise error(f"source is not an existing regular file: {path}")
+        except OSError as raised:
+            raised.path_role = "source"
+            raise
         paths.append(str(path))
     if not paths:
         raise ValueError("no source file given")

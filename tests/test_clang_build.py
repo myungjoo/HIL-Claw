@@ -615,6 +615,7 @@ def test_no_start_for_an_error_before_the_start(stub, src, out_dir, monkeypatch)
             compiler=stub(WRITE),
         )
     assert type(caught.value) is FileNotFoundError
+    assert caught.value.path_role == "source"
     assert calls == []
     assert names(out_dir) == []
 
@@ -1107,6 +1108,7 @@ def test_failed_clock_before_the_start_stays_plain(stub, src, out_dir, failing_c
     assert not isinstance(
         caught.value, (CompilerRunError, CompilerNotStartedError, *FILE_ERRORS)
     )
+    assert not hasattr(caught.value, "path_role")
     assert not stub.started
     assert names(out_dir) == []
 
@@ -1115,10 +1117,12 @@ def test_errors_outside_the_run_are_not_run_errors(stub, src, out_dir, monkeypat
     with pytest.raises(FileNotFoundError) as caught:
         build(src.parent / "missing.c", out_dir / "kernel.o", timeout_s=TIMEOUT)
     assert not isinstance(caught.value, CompilerRunError)
+    assert caught.value.path_role == "source"
     failing_start(monkeypatch, cannot_start)
     with pytest.raises(CompilerNotStartedError) as caught:
         build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
     assert not isinstance(caught.value, CompilerRunError)
+    assert not hasattr(caught.value, "path_role")
 
 
 @pytest.mark.parametrize("windows", [True, False], ids=["windows", "posix"])
@@ -1484,20 +1488,27 @@ def test_error_from_starting_is_not_started_with_a_failing_test(
 )
 def test_unusable_sources(sources, error, stub, src, out_dir, monkeypatch):
     monkeypatch.chdir(src.parent)
-    with pytest.raises(error):
+    with pytest.raises(error) as caught:
         build(sources, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert type(caught.value) is error
+    if issubclass(error, OSError):
+        assert caught.value.path_role == "source"
+    else:
+        assert not hasattr(caught.value, "path_role")
     assert not stub.started
     assert names(out_dir) == []
 
 
 def test_missing_output_directory(stub, src, tmp_path):
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError) as caught:
         build(
             src,
             tmp_path / "absent" / "kernel.o",
             timeout_s=TIMEOUT,
             compiler=stub(WRITE),
         )
+    assert type(caught.value) is FileNotFoundError
+    assert caught.value.path_role == "output"
     assert not stub.started
     assert not (tmp_path / "absent").exists()
 
@@ -1505,16 +1516,185 @@ def test_missing_output_directory(stub, src, tmp_path):
 def test_output_parent_is_a_regular_file(stub, src, out_dir):
     blocker = out_dir / "file"
     blocker.write_bytes(b"x")
-    with pytest.raises(NotADirectoryError):
+    with pytest.raises(NotADirectoryError) as caught:
         build(src, blocker / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert type(caught.value) is NotADirectoryError
+    assert caught.value.path_role == "output"
     assert not stub.started
 
 
 def test_output_is_a_directory(stub, src, out_dir):
-    with pytest.raises(IsADirectoryError):
+    with pytest.raises(IsADirectoryError) as caught:
         build(src, out_dir, timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert type(caught.value) is IsADirectoryError
+    assert caught.value.path_role == "output"
     assert not stub.started
     assert names(out_dir) == []
+
+
+def refusing(monkeypatch, name, refused):
+    errors = []
+    real = getattr(clang_build.Path, name)
+
+    def fake(path):
+        if os.fspath(path) == os.fspath(refused):
+            error = PermissionError(errno.EACCES, "refused", os.fspath(path))
+            errors.append(error)
+            raise error
+        return real(path)
+
+    monkeypatch.setattr(clang_build.Path, name, fake)
+    return errors
+
+
+def assert_refusal(caught, errors, role):
+    (error,) = errors
+    assert caught.value is error
+    assert type(caught.value) is PermissionError
+    assert caught.value.errno == errno.EACCES
+    assert caught.value.args == (errno.EACCES, "refused")
+    assert caught.value.__traceback__ is not None
+    assert caught.value.path_role == role
+
+
+@pytest.mark.parametrize("name", ["is_file", "is_dir"])
+def test_refused_test_of_a_source_has_the_source_role(
+    name, stub, src, out_dir, monkeypatch
+):
+    if name == "is_dir":
+        monkeypatch.setattr(clang_build.Path, "is_file", lambda self: False)
+    errors = refusing(monkeypatch, name, src)
+    with pytest.raises(PermissionError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert_refusal(caught, errors, "source")
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize(
+    "name, tested",
+    [("is_dir", "parent"), ("exists", "parent"), ("is_dir", "output")],
+)
+def test_refused_test_of_the_output_has_the_output_role(
+    name, tested, stub, src, out_dir, tmp_path, monkeypatch
+):
+    out = (tmp_path / "absent" if name == "exists" else out_dir) / "kernel.o"
+    errors = refusing(monkeypatch, name, out.parent if tested == "parent" else out)
+    with pytest.raises(PermissionError) as caught:
+        build(src, out, timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert_refusal(caught, errors, "output")
+    assert not stub.started
+    assert names(out_dir) == []
+    assert not os.path.exists(tmp_path / "absent")
+
+
+def failing_abspath(monkeypatch, failing):
+    errors = []
+    real = os.path.abspath
+
+    def fake(path):
+        if os.fspath(path) == os.fspath(failing):
+            error = FileNotFoundError(errno.ENOENT, "no working directory")
+            errors.append(error)
+            raise error
+        return real(path)
+
+    monkeypatch.setattr(clang_build.os.path, "abspath", fake)
+    return errors
+
+
+def failing_call(monkeypatch, owner, name):
+    errors = []
+
+    def fake(*args, **kwargs):
+        error = PermissionError(errno.EACCES, "refused")
+        errors.append(error)
+        raise error
+
+    monkeypatch.setattr(owner, name, fake)
+    return errors
+
+
+@pytest.mark.parametrize("where", ["source", "output", "token_hex", "which"])
+def test_other_errors_before_the_start_have_no_role(
+    where, stub, src, out_dir, monkeypatch
+):
+    out = out_dir / "kernel.o"
+    compiler = stub(WRITE)
+    if where == "source":
+        errors = failing_abspath(monkeypatch, src)
+    elif where == "output":
+        errors = failing_abspath(monkeypatch, out)
+    elif where == "token_hex":
+        errors = failing_call(monkeypatch, clang_build.secrets, "token_hex")
+    else:
+        errors = failing_call(monkeypatch, clang_build.shutil, "which")
+    with pytest.raises(OSError) as caught:
+        build(src, out, timeout_s=TIMEOUT, compiler=compiler)
+    assert caught.value is errors[0]
+    assert not hasattr(caught.value, "path_role")
+    assert not isinstance(caught.value, (CompilerRunError, CompilerNotStartedError))
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize(
+    "fixture, expected",
+    [
+        ("failing_communicate", CompilerRunError),
+        ("failing_replace", ArtefactNotPlacedError),
+        ("failing_stat", ArtefactNotCheckedError),
+        ("failing_unlink", TemporaryNotRemovedError),
+    ],
+)
+def test_errors_of_the_run_and_after_have_no_role(
+    fixture, expected, stub, src, out_dir, request
+):
+    request.getfixturevalue(fixture)
+    with pytest.raises(expected) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert type(caught.value) is expected
+    assert not hasattr(caught.value, "path_role")
+
+
+@pytest.mark.parametrize(
+    "kwargs, expected",
+    [
+        ({"timeout_s": 0}, ValueError),
+        ({"timeout_s": TIMEOUT, "flags": "-O2"}, TypeError),
+        (
+            {"timeout_s": TIMEOUT, "compiler": "hilclaw-no-such-compiler"},
+            CompilerNotFoundError,
+        ),
+    ],
+)
+def test_checks_other_than_paths_have_no_role(kwargs, expected, src, out_dir):
+    with pytest.raises(expected) as caught:
+        build(src, out_dir / "kernel.o", **kwargs)
+    assert not hasattr(caught.value, "path_role")
+    assert names(out_dir) == []
+
+
+def test_successful_build_after_the_path_tests(stub, src, out_dir):
+    result = build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert type(result) is BuildResult
+    assert result.ok is True
+    assert not hasattr(result, "path_role")
+    assert names(out_dir) == ["kernel.o"]
+
+
+@pytest.mark.parametrize("role", ["source", "output"])
+def test_path_errors_keep_their_role_through_pickling(role, stub, src, out_dir):
+    if role == "source":
+        sources, out = src.parent / "missing.c", out_dir / "kernel.o"
+    else:
+        sources, out = src, out_dir / "absent" / "kernel.o"
+    with pytest.raises(FileNotFoundError) as caught:
+        build(sources, out, timeout_s=TIMEOUT, compiler=stub(WRITE))
+    loaded = pickle.loads(pickle.dumps(caught.value))
+    assert type(loaded) is FileNotFoundError
+    assert str(loaded) == str(caught.value)
+    assert loaded.path_role == role
 
 
 @pytest.mark.parametrize("keyword", ["flags", "trailing_flags"])
