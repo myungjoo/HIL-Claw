@@ -238,18 +238,21 @@ def build(
     is passed on, and a NUL character in it raises :class:`ValueError`.
     After the compiler is found, and still before anything is started, ``env``
     and ``cwd`` are checked as :mod:`subprocess` would refuse them, with the
-    class it would raise for the same single defect: when ``env`` has an
-    ``items`` method, each key and value must convert as on the platform
+    class it would raise for the same single defect, with one exception: an
+    ``env`` that is not ``None`` and has no ``items`` method is refused with
+    :class:`TypeError`, as :mod:`subprocess` has no single class for it (the
+    class differs by platform and start path). When ``env`` has an ``items``
+    method, each key and value must convert as on the platform
     (:func:`os.fsencode` on POSIX, ``str`` only on Windows; else
     :class:`TypeError`), and :class:`ValueError` is raised for a NUL character
     in either or a ``=`` after the first character of a key, with a message
-    that may name the key but never the value; any other ``env`` is left to
-    :mod:`subprocess`. A ``cwd`` that is not ``None`` must convert as on the
-    platform (:func:`os.fsdecode` on Windows, :func:`os.fsencode` on POSIX;
-    else :class:`TypeError`, or a :class:`ValueError` such as
-    :class:`UnicodeEncodeError`), and :class:`ValueError` is raised for a NUL
-    character in it. Whether ``cwd`` exists is not tested here: a missing one
-    fails the start, as :class:`CompilerNotStartedError` below. Any
+    that may name the key but never the value. A ``cwd`` that is not ``None``
+    must convert as on the platform (:func:`os.fsdecode` on Windows,
+    :func:`os.fsencode` on POSIX; else :class:`TypeError`, or a
+    :class:`ValueError` such as :class:`UnicodeEncodeError`), and
+    :class:`ValueError` is raised for a NUL character in it. Whether ``cwd``
+    exists is not tested here: a missing one fails the start, as
+    :class:`CompilerNotStartedError` below. Any
     :class:`TypeError` or :class:`ValueError` (including a subclass such as
     :class:`UnicodeEncodeError`) from the checks of ``timeout_s``, ``flags``,
     ``trailing_flags``, ``sources``, ``output``, ``compiler``, ``env`` and
@@ -480,9 +483,13 @@ def _parameter(name):
 
 
 def _check_env(env):
+    if env is None:
+        return
     items = getattr(env, "items", None)
     if items is None:
-        return
+        raise TypeError(
+            f"env must be None or have an items method, not {type(env).__name__}"
+        )
     for key, value in items():
         key, value = _env_text(key), _env_text(value)
         nul, equals = ("\0", "=") if isinstance(key, str) else (b"\0", b"=")
