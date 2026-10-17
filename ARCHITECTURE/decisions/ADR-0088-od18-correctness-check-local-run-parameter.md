@@ -1,0 +1,131 @@
+# ADR-0088: What a check of `correctness.check` answers for a `TypeError` or `ValueError` of `local_run.run`, now that `run` states its `parameter` — S4 for the time limit, no row for the command; an error with no `parameter` stays as the landed records leave it (more of part (마) of sub-question ⑱ of OD-18)
+
+## Status
+
+- **Accepted on 2026-10-17** under [PROCESS/DRIVER.md](../../PROCESS/DRIVER.md) §9 (owner decision D6): written by the development driver's executor and accepted by the approval of a context-isolated reviewer. The owner has not confirmed it.
+- **Three kinds of content.** **Owner** sentences: none is quoted here. Of O1 to O5 of [ADR-0060](ADR-0060-od18-correctness-check-build-answers-and-settings.md) Context, O2 reaches this record only through [ADR-0078](ADR-0078-od18-correctness-check-compiler-log-file.md) decision 2 (the log of a build that ended ok), and the classing of settings cited from ADR-0060 decision 3 rests in part on O4; neither is applied here beyond what those records say. What a requirement or an accepted record says is **cited** with its source. **Everything else is this record's own design**: that the operation tells an error of `run` apart by `parameter`, and on which reading; that `"timeout_s"` is S4 and `"command"` no row, for both classes, and the readings of S4 and of ADR-0060 decision 4 this rests on, an error Python raises inside a check included; that an error with no `parameter` stays as left; and every weighing. Statements about code are **observations** at `7994476` of what `local_run.run` and `run_verification` state and do, and bind no code; none was established by running code. Names and modules stay the code tasks'.
+- Answers **more of part (마) of sub-question ⑱ of OD-18** (Open Decisions register in [Requirements](../Requirements.md)) for `correctness.check` of the first case and of the mock: **the row of a `TypeError` or `ValueError` of `local_run.run` that carries `parameter`** (decisions 2 to 4). It leaves open an error with no `parameter` (decision 5) and the rest decision 8 names. Parts (가), (다), (라) and the size bound of (나) are not answered. OD-18 keeps its status word.
+- **No member of any file, result, request or line is added or changed; no value of `condition` and no value of `error.kind` is added, no kind is reserved, and no `schema_version` and no layout version changes** (decision 7).
+- **No sentence of an earlier record is replaced or edited.** Consequences lists the sentences that become less exact.
+- It builds on [ADR-0087](ADR-0087-od18-correctness-check-type-error-parameter.md) (decisions 2, 3, 8; its window runs until 2026-10-24), [ADR-0086](ADR-0086-od18-correctness-check-path-role.md) (decision 2; until 2026-10-24), [ADR-0085](ADR-0085-od18-correctness-check-clock-error-return-code.md) (decision 2; until 2026-10-24), ADR-0078 (decisions 2, 6, 7; until 2026-10-23), ADR-0060 (decisions 3 to 5 and 7, Consequences; until 2026-10-22), [ADR-0056](ADR-0056-od18-correctness-check-verification-executable.md) (decisions 3 to 5; until 2026-10-20) and [ADR-0045](ADR-0045-od18-correctness-check-neither-form-answer.md) (decisions 4 and 5; until 2026-10-19). **If one of them is reverted, this record falls with it.**
+- **It is a record, not code, and nothing was built or run**: no compiler, verification executable, container, Python interpreter or `claude` process was started; the sources were read as files.
+- The owner is notified on issue #5 and may object within 7 days of that notice; an objection creates a task that reverts this record and the edits made with it.
+- The format follows the "Record format" section of [ADR-0001](ADR-0001-od4-key-schema.md).
+
+## Context
+
+- ADR-0060 decision 4 names among the errors that "arise in one class in two rows" "a `ValueError` or `TypeError` of `local_run.run` for an `env` (S4) or for an argument the operation's own code formed", and answers the two halves apart: "a `ValueError` or `TypeError` for a setting — a time limit, a flag, the compiler — … → S4, whether the setting is refused for its value or for its type", and "a `TypeError` or `ValueError` of `local_run.run` for an argument its own code formed or an empty command" is an error the operation lets pass, "answered `operation_answer_invalid` (cited: ADR-0045 decisions 4 and 5)" (cited). Its Consequences make telling them apart "a condition of the operation's code" (cited). ADR-0087 decision 8 kept "the `ValueError` or `TypeError` and the `OSError` for "a `cwd` that does not exist" of `local_run.run`" open under (마). Task T-0263 (PR #165, `7994476`) changed `run` and placed nothing in a row.
+- **Observations at `7994476`** (`hilclaw/local_run.py`, `hilclaw/harness/verification.py`; no code is bound):
+  - **L1. The docstring of `run`.** "Every `TypeError` and `ValueError` raised by the checks before the start, including one Python raises inside them, carries an attribute `parameter` naming the parameter of `run` it is about: `"timeout_s"` for the time limit and `"command"` for the command, the program or an argument. The time limit is checked first. An error from anywhere else, including what `subprocess` raises and `ProgramNotFoundError`, carries no `parameter`; read it as `getattr(error, "parameter", None)`."
+  - **L2. How it is set.** `run` runs each of its two checks inside a private context manager that catches `TypeError` and `ValueError`, sets `parameter` on that object and re-raises it with a bare `raise`; class, arguments and chain are unchanged (T-0263 Result). Both checks run before anything is started, the time limit first; the first that fails is raised.
+  - **L3. What raises inside a check.** The check of the time limit raises its own `TypeError` for a `bool` or a value that is no `int` or `float`, and its own `ValueError` for one that is not positive and finite; Python raises in it only from the comparisons of a handed number object, which is that object's code. The check of the command raises its own `TypeError` for one `str` or `bytes`, a program that is no `str` or `os.PathLike` or whose path is `bytes`, and an argument that is no `str`, and its own `ValueError` for an empty command; Python raises from `tuple` of the command, from iterating it and from `os.fspath` of the program. `ProgramNotFoundError` is raised in the same check but is a `LookupError` and carries no `parameter`.
+  - **L4. No other error carries it.** A `TypeError` from binding the call (for example a missing `timeout_s`), "an `OSError` from starting the process (a file the system cannot execute, a `cwd` that does not exist), a `ValueError` or `TypeError` for an argument or `env` it cannot hand over, and an `OverflowError` for a finite `timeout_s` longer than the platform can wait for" (cited: the docstring of `run`) carry none.
+  - **L5. Through `run_verification`.** It forms the command from `executable` and the arguments of `program_arguments`, hands `timeout_s`, `cwd` and `env` over unchanged and passes on what `run` raises unchanged, so the object and its `parameter` are the same. Before it calls `run` it raises, with no `parameter`, `VerificationArgumentError` (a `ValueError`) for a parameter of the program or a tolerance, a `TypeError` for an `executable` that is neither a path nor iterable and a `ValueError` for an empty `executable` sequence. A `bytes` `executable`, or a sequence whose first element is no path, ends as a `TypeError` of `"command"` in `run`.
+- No owner comment on #5 speaks to ADR-0060 decision 4, ADR-0087, T-0263 or ⑱ (마) (checked on 2026-10-17; the last comments without the driver tail are of 2026-10-15, the owner decisions O1 to O5 and the answer to HQ-0020).
+
+## Decision
+
+### 1. Scope and terms
+
+- A call of `correctness.check` whose operation, after a build that ended ok, calls `local_run.run`, directly or through `run_verification`. **A named error** is a `TypeError` or `ValueError` that `run` raises with a `parameter`; **an unnamed error** is one with none (L4), and one of `run_verification` itself (L5). **A setting** is one of ADR-0060 decision 3's table: the time limit of the process and the environment are "the backend's own"; the path of the executable and the working directory are "the operation's own" (cited: ADR-0060 decision 3; ADR-0056 decision 4). The arguments of the command are formed by the operation from the check parameters it is handed (cited: ADR-0056 decision 3) and are "an argument of the command", no setting (cited: ADR-0060 decision 4). **The mock** starts no process and is unchanged.
+
+### 2. The operation tells them apart by `parameter`
+
+- **From what `run` states alone**: `isinstance(error, (TypeError, ValueError))` and `getattr(error, "parameter", None)`. `"timeout_s"` names the time limit of the process, `"command"` the command the operation forms, and `None` no check of L1 (L1, L4).
+- **On which reading.** "What the operation observes decides the row" (cited: ADR-0060 decision 4). **This record reads what the operation observes as what `run` states of the error — its class and its documented members**, as ADR-0085 decision 2 read `returncode`, ADR-0086 decision 2 `path_role` and ADR-0087 decision 2 `parameter` of `build`. It reads no exception chain, no message and no private state.
+- **"An error of two rows"** (ADR-0060 decision 4) **no longer holds for a named error**: neither check of `run` looks at `env`, so no named error is for an `env`, and `parameter` says which of a setting and the command it is for. It still holds for an unnamed `TypeError` or `ValueError`, whose class says nothing of the argument (decision 5).
+- **The order of the tests.** A named error is neither an `OSError`, nor `ProgramNotFoundError`, nor an `OverflowError`, which is no `ValueError`; so no error ADR-0060 decision 4 places by its class meets this record's test, and `VerificationArgumentError`, which carries no `parameter`, does not either.
+
+### 3. `"timeout_s"` is S4, `settings_refused`
+
+- **The operation raises a named error whose `parameter` is `"timeout_s"` as S4, `settings_refused`, whether it is a `TypeError` or a `ValueError`** — "A setting is one the functions refuse (…, a time limit that is no positive finite number, …; … a setting of the wrong type; …)", found "before the process the refused setting belongs to is started" (cited: ADR-0060 decision 4). `timeout_s` of `run` is the time limit of the process, the backend's own (decision 1), so "whether the setting is refused for its value or for its type, as every setting is the backend's own" (cited: ADR-0060 decision 4) applies as written.
+- **An error Python raises inside that check** (L3: only from the comparisons of a handed number object) **is read as covered by S4**, as ADR-0087 decision 3 read it for `build`: the check could not take the value as the setting it must be, and L1 states the same parameter. **The cost, stated**: a fault in the code of a handed object is read as a refused setting; the object is the backend's own setting, so S4's "follows from the backend's own settings" (cited: ADR-0060 decision 4) still holds of it.
+- **The `OverflowError` for the time limit** carries no `parameter` and arrives after the process was started (L4); ADR-0060 decision 4 places it in S4, and this record does not read it again.
+
+### 4. `"command"` is no row
+
+- **A named error whose `parameter` is `"command"` is no row, whether it is a `TypeError` or a `ValueError`**: "a `TypeError` or `ValueError` of `local_run.run` for an argument its own code formed or an empty command" is an error the operation lets pass, answered `operation_answer_invalid` (cited: ADR-0060 decision 4; ADR-0045 decisions 4 and 5); "That says what the landed rules do with it; it is no answer of this record" (cited, same). The program is the path of the executable, the operation's own, and the arguments are formed by the operation (decision 1); no setting of the backend's is in the command. A wrong value that Python finds inside the check (L3) is the same command and gets the same answer.
+- **This record changes nothing ADR-0060 decision 4 says for them; it applies it.** What changed is that the operation can now tell them from the time limit (decision 2).
+- **Not S10.** S10 names "The executable cannot be started: not found, not executable, or refused by the system" (cited: ADR-0060 decision 4); a value of the wrong type or an empty command says none of these. `ProgramNotFoundError` stays S10 (cited: ADR-0060 decision 4) and carries no `parameter` (L3).
+- **A part of the command from the backend's side.** `run_verification` accepts an `executable` that is "a non-empty sequence that is used as the start of the command" (L5). **No landed record says that a command of `correctness.check` has a part before the path of the executable, or from which side one would come**: ADR-0056 decision 4 and ADR-0060 decision 3 name the path of the executable and no prefix. This record does not decide it; its answer is for the command those records describe. A later record that gives a part of the command to the backend's side revisits this decision for a `"command"` error of that part (Boundaries).
+- **The cost, stated.** Such an error is a defect of code, and it is answered by a kind that says the backend's answer had neither form, which tells a caller nothing of the side, and the identity is ended (cited: ADR-0045 decision 3) after a build that ended ok. ADR-0087 decision 4 bears the same cost for `"sources"` and `"output"`.
+
+### 5. An unnamed error stays as left
+
+- **This record places no unnamed `TypeError` or `ValueError`.** One from binding the call says the operation's call of `run` is malformed; one that `run` passes on from `subprocess` is still of two rows — an `env` is a setting (S4), an argument or a `cwd` is the operation's own (cited: ADR-0060 decisions 3 and 4); one of `run_verification` itself (L5) is for the `executable`, the operation's own, but the operation cannot tell it by the object from one `run` passes on for an `env`. Reading any of them into a row is not this record's.
+- **The `OSError` for "a `cwd` that does not exist"** stays "an error of two rows" (S3 against S10; cited: ADR-0060 decision 4), and `ProgramNotFoundError` and another `OSError` from starting the process stay S10 (cited, same). This record adds no rule for them.
+- **Until then**, an operation that lets an unnamed `TypeError` or `ValueError` pass is answered `operation_answer_invalid` (cited: ADR-0045 decisions 4 and 5).
+
+### 6. The log, and the message
+
+- **No process of the check was started**, so there is no output of one; `run` returns none with these errors. **The compiler's log of the build before it is kept** as ADR-0078 has it: "every build whose compiler process was started and has ended … is kept: … every build that ended ok, whatever followed it (S10, S4 for a setting of the process refused after the build …)" (cited: decision 2), handed to the keeper "at most once, before it returns or raises" (cited: decision 6) and written "whatever the operation returned or raised, a tool failure or another error" (cited: decision 7). That holds for `"timeout_s"` and for `"command"` alike. No rule is added.
+- **The message of `settings_refused`** may say which setting it was ("for S4 which setting") and of which kind the error was, and shows "no text of an error, no value of a setting" (cited: ADR-0060 decision 5) — so not the message of the error, which shows the value or its type. No rule is added; the wording is the code's.
+
+### 7. No data-plane change
+
+- `parameter` is an attribute of a Python exception inside the tool function's process, read by the operation; it is no member of a file, a result, a request or a line. S4 is a kind already named (ADR-0060 decision 4), and no row needs no kind. No value of `condition` or `error.kind` is added, no kind is reserved, and no `schema_version` or layout version changes. No case is left open here for want of a new value.
+
+### 8. How far (마) is answered
+
+- **Answered now, for `correctness.check` of the first case and of the mock**: a named `TypeError` or `ValueError` of `local_run.run` — S4 for `"timeout_s"`, one Python raises inside the check included, and no row for `"command"`, each with the compiler's log kept as ADR-0078 has it (decisions 2 to 6); with it the entry "the `ValueError` or `TypeError` … of `local_run.run`" of ADR-0087 decision 8, for a named one.
+- **Open under (마)**: an unnamed `TypeError` or `ValueError` of a call of `local_run.run` — from binding the call, from `subprocess`, or of `run_verification` itself for `executable` (decision 5); the `OSError` for "a `cwd` that does not exist" of `local_run.run`; an unnamed `TypeError` of `build` — from binding the call or from `subprocess.Popen` or later — or of `build_verification_executable` for `kernel_sources` (cited: ADR-0087 decision 5); whatever `clang_build.build` passes on from `subprocess` beyond the `OSError` its docstring names; an unroled `OSError` of `build` — from `os.getcwd`, `os.urandom`, `time.monotonic` or the search for the compiler before the start (cited: ADR-0086 decision 6); and the row of a `CompilerRunError` whose `timed_out` is false and whose `returncode` is `None` (cited: ADR-0085 decision 6).
+
+### Walk-through
+
+The names of ADR-0056: run `r1`, `round` 3, `candidate` 2, `attempt` 1, `"execution": 1, "point": "sim"`. In every line the build ended ok.
+
+| The call of `run` | `local_run.run` | The operation | The caller gets |
+|---|---|---|---|
+| The backend's time limit of the process is the string `"10"` | `TypeError`, `parameter` `"timeout_s"` | raises `settings_refused` (decision 3) | tool failure `settings_refused`; the build's log kept |
+| The backend's time limit is `0` | `ValueError`, `"timeout_s"` | the same | the same |
+| The operation's code puts the integer `3` among the arguments | `TypeError`, `"command"` | lets it pass: no row (decision 4) | tool failure `operation_answer_invalid` (landed rules); the build's log kept |
+| The operation's code hands an empty command | `ValueError`, `"command"` | the same | the same |
+| The operation's code hands a command that is no iterable | `TypeError` of Python, `"command"` | the same | the same |
+| Through `run_verification`, `executable` is the integer `3` | `TypeError` of `run_verification`, no `parameter` | open under (마) (decision 5) | — |
+| An `env` that `subprocess` cannot hand over | `TypeError` or `ValueError` from `subprocess`, no `parameter` | the same | — |
+| The `cwd` does not exist | `OSError` from the start, no `parameter` | open: S3 against S10 (decision 5) | — |
+| The executable is not found | `ProgramNotFoundError`, no `parameter` | raises `executable_unstartable` (S10, ADR-0060 decision 4) | tool failure `executable_unstartable` |
+
+## Alternatives considered
+
+| Point | Alternative | Why not |
+|---|---|---|
+| 3, 4 | **(a)** S4 for `"timeout_s"`, no row for `"command"` (chosen) | It applies ADR-0060 decision 4's two answers by what `run` now states. The cost: a fault in a handed number object's code is read as a refused setting (decision 3), and a defect of the operation's code is answered by a kind that names no side (decision 4). |
+| 3, 4 | **(b)** Leave every error of `run` open | The stop, that one class serves two rows, is gone for a named error (L1). Left open, a refused time limit, S4 by its meaning, is answered by a kind that says the backend's answer had neither form. |
+| 4 | **(c)** S4 for every named error | The command is no setting (decision 1); S4 would tell a caller that the backend's settings were refused where the operation's own code formed the command, against ADR-0060 decision 4's answer for "an argument its own code formed or an empty command". |
+| 4 | **(d)** S10 for `"command"` | S10 names an executable that cannot be started; a command of the wrong form names none of its three cases, and ProgramNotFoundError already marks the one it means (decision 4). |
+| 4 | **(e)** A new kind for a malformed command | A new value of `error.kind` is a data-plane change (CLAUDE.md A-13), and ADR-0060 decision 4 already gives such an error no row. |
+| 3 | **(f)** S4 only for an error `run`'s own test raises; one Python raises left open | The same wrong setting would get two answers by how it is wrong (decision 3), though L1 states the same parameter for both. |
+| 2 | **(g)** The operation's own step instead of `parameter` — testing its time limit and command before the call | `run` now states the parameter (L1); a test of its own would repeat `run`'s and could accept what `run` refuses, and an error of `run` would still need a row. ADR-0060 decision 4 still allows it. |
+| 2 | **(h)** Place by the text of the message | `run` states the parameter, not messages; declined as ADR-0086 alternative (f) and ADR-0087 alternative (h) declined it. |
+| 5 | **(i)** S4 or no row for an unnamed error | Its class does not say which argument (decision 5). |
+
+## Consequences
+
+- **Code** (code mode, D12 rules; names and modules are the code task's; **this record binds no code**): the operation of `cpu_standin` for `correctness.check`, when it is written, applies ADR-0079 to ADR-0087 and this record. For a `TypeError` or `ValueError` of `run` it reads `getattr(error, "parameter", None)`: it raises `settings_refused` for `"timeout_s"`, and leaves `"command"` and an unnamed error to the landed rules; in both cases it hands the log of the build over as ADR-0078 says. **No change of `local_run.run` or `run_verification` is needed for this.**
+- **Not edited and now less exact.**
+  - ADR-0060 decision 4: "a `ValueError` or `TypeError` of `local_run.run` for an `env` (S4) or for an argument the operation's own code formed", listed among the errors that "arise in one class in two rows", which no longer includes a named one (decision 2); "An operation places such an error by the step of its own at which it met it", since for these errors `run` states the parameter; decision 7: "except for an error that one call raises in one class for two rows" under (가), and "except for an error of two rows (⑱ (마))" under sub-question ⑩, which no longer include a named error of `run`.
+  - ADR-0060 Consequences: "The errors decision 4 names as arising in one class in two rows, from one call of `clang_build.build` or `local_run.run`, cannot be placed by an operation that sees the class alone", which T-0263 changed for the errors of `run`'s checks.
+  - ADR-0079 decision 5: the open entry "the `ValueError` or `TypeError` of `local_run.run` for an `env` (S4) or for an argument the operation's own code formed"; ADR-0080 decision 4, ADR-0083 decision 4, ADR-0084 decision 5, ADR-0085 decision 6, ADR-0086 decision 8 and ADR-0087 decision 8: the open entry "the `ValueError` or `TypeError` and the `OSError` for "a `cwd` that does not exist" of `local_run.run`", now only an unnamed one and the `OSError`.
+  - ADR-0080 to ADR-0086 Boundaries, "The timing build of `sim.run` / `board.run` and `local_run.run` (⑲)", and ADR-0087 Boundaries, "**`local_run.run`** and the timing build of `sim.run` / `board.run` (⑲)", where the named errors of `local_run.run` in `correctness.check` are now this record's.
+- **A question for the owner**: none is raised; no case is left open for want of a new value of `error.kind` (decision 7).
+- **A-13 reading.** Nothing of the data plane is added or changed: no member, no value of `condition` or `error.kind`, no file, no version (decision 7).
+- **Runtime acceptance items**: none. No `claude`, compiler, verification executable or container is started or required.
+
+## Boundaries (not decided here)
+
+- **The row of an unnamed `TypeError` or `ValueError` of a call of `local_run.run`** and of the `OSError` for a missing `cwd` (decision 5); `VerificationArgumentError` of `run_verification`.
+- **A part of the command that comes from the backend's side**, whether any does, and the row of a `"command"` error of such a part (decision 4).
+- **The other open entries of (마)** (decision 8).
+- **⑱ (가), (다), (라) and the size bound of (나)**; the values and sources of the settings (⑱ (라), OD-14).
+- **`clang_build.build`** and `compiler_version`; the timing runs of `sim.run` / `board.run` (⑲).
+- **Owner-only (DRIVER §9)**: the #5 A and B items; OD-3; OD-25; C-6.
+- Any change to ADR-0001 to ADR-0087, to UsageCases, to `hilclaw/`, to tests, to CI or to any settings file; any new external dependency; any new reserved `kind`.
+
+## References
+
+- [Requirements](../Requirements.md): FR-10; register row OD-18.
+- [OpenDecisionProposals OD-18](../OpenDecisionProposals.md#od-18) (sub-question ⑱).
+- [ADR-0001](ADR-0001-od4-key-schema.md) (record format); [ADR-0045](ADR-0045-od18-correctness-check-neither-form-answer.md) (decisions 3 to 5); [ADR-0056](ADR-0056-od18-correctness-check-verification-executable.md) (decisions 3 to 5); [ADR-0060](ADR-0060-od18-correctness-check-build-answers-and-settings.md) (decisions 3 to 5, 7; Consequences); [ADR-0078](ADR-0078-od18-correctness-check-compiler-log-file.md) (decisions 2, 6, 7); [ADR-0079](ADR-0079-od18-correctness-check-build-errors-told-apart.md) (decision 5); [ADR-0080](ADR-0080-od18-correctness-check-build-errors-now-told-apart.md) (decision 4; Boundaries); [ADR-0083](ADR-0083-od18-correctness-check-plain-oserror-before-start.md) (decision 4); [ADR-0084](ADR-0084-od18-correctness-check-clock-error-after-end.md) (decision 5); [ADR-0085](ADR-0085-od18-correctness-check-clock-error-return-code.md) (decisions 2, 6); [ADR-0086](ADR-0086-od18-correctness-check-path-role.md) (decisions 2, 6, 8; alternative (f)); [ADR-0087](ADR-0087-od18-correctness-check-type-error-parameter.md) (decisions 2 to 5, 8; alternative (h); Boundaries).
+- D6 https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-5986348506.
+- [PROCESS/DRIVER.md](../../PROCESS/DRIVER.md) §9; PROCESS/PLAN.md P1-1; `hilclaw/local_run.py` and `hilclaw/harness/verification.py` at `7994476`; task T-0263 (PR #165).
