@@ -2,7 +2,7 @@
 id: T-0272
 title: Make the "positive and finite" refusal of `timeout_s` in `clang_build.build` and `compiler_version` name `timeout_s` for an `int` too long to convert to text (for example `-10**5000`), keeping the message of every other value unchanged
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, C-7]
 dependsOn: [T-0271]
@@ -67,3 +67,10 @@ This adds no public name, no data-plane member or file, and no value of `conditi
 - (code, low, after HQ-0027) The same message fix in `local_run._check_timeout`, if the record of OD-18 sub-question 18 part (ma) on `local_run.run` leaves its pre-start `ValueError`s as they are.
 
 ## Result
+
+- PR #173 (https://github.com/myungjoo/HIL-Claw/pull/173), squash-merged as 57172c0 with `gh pr merge --squash --body` (the body ends with `Task: T-0272`); task branch deleted.
+- Review: 2 rounds, both Approve. Round 1 had one nit: the test helper built `stub(WRITE)` and `stub(VERSION)` up front though both overwrite the same `cc.py`; fixed by creating each stub at its call. Round 2 had no findings.
+- CI green on 9a0ff7a (run 39038056680): Python 3.11 and 3.14, C, sh, coverage, test presence. Local (Windows, Python 3.14): full pytest 22583 passed, 474 skipped; `hilclaw/` line coverage 99 %; `ruff check` and `ruff format --check` clean.
+- Language: Python, the language of the module being changed (`hilclaw/clang_build.py`).
+- Implementation: `_check_timeout` builds the "positive and finite" message inside `try`/`except ValueError` around `repr(timeout_s)`; when the conversion fails the message omits the value. Error class, no `parameter`, order of checks and the "at most" check unchanged; the digit limit is read at call time. Size: code +5/-1, tests +89 in `tests/test_clang_build.py`; no existing test edited.
+- Follow-ups: unchanged — the same message fix in `local_run._check_timeout` waits on HQ-0027 (code, low). No `claude` was started (D16).
