@@ -102,11 +102,28 @@ class CompilerRunError(_UnendedBuildError):
     Raised by :func:`build` from an :class:`OSError` raised after creating the
     compiler process returned and before its return code was known, for example
     from reading its output or killing it, whose ``errno``, ``strerror``,
-    ``filename`` and ``filename2`` it carries. It has no ``result``: the output
-    read so far is not kept. ``removal_error`` is the :class:`OSError` from
+    ``filename`` and ``filename2`` it carries. It has no ``result``.
+    ``timed_out`` is true when the time limit had passed before the error: the
+    error came from killing the compiler for its time limit, from reading or
+    waiting for it after that kill, or from closing the process afterwards. It
+    is false for an error from the first read, from killing the compiler after
+    that read failed, or from closing the process after a read that ended.
+    ``log`` is the output the call held when the error was raised, decoded as
+    :attr:`BuildResult.log` is: after the time limit, the output read before it
+    and anything read after the kill; after a read that ended, all of it. It is
+    ``None`` when the call held no output: after the first read failed, or when
+    the time limit passed before any output was read and nothing was read after
+    the kill. On Windows the output is read only after the kill, so a failed
+    kill or a failed read after it leaves ``None``. ``None`` does not mean that
+    the compiler wrote nothing. ``removal_error`` is the :class:`OSError` from
     removing the temporary file afterwards, or ``None`` when that removal did
     not fail.
     """
+
+    def __init__(self, error, removal_error=None, *, timed_out=False, log=None):
+        super().__init__(error, removal_error)
+        self.timed_out = timed_out
+        self.log = log
 
 
 class _EndedBuildError(_CopiedOSError):
@@ -201,7 +218,9 @@ def build(
     ``result``; when removing the temporary file then fails too, the removal's
     error is its ``removal_error``. Any other :class:`OSError` raised while the
     process runs is raised as :class:`CompilerRunError`, an :class:`OSError`
-    subclass without ``result``; when removing the temporary file then fails
+    subclass without ``result`` whose ``timed_out`` says whether the time limit
+    had passed before the error and whose ``log`` is the output read so far, or
+    ``None`` when none was held; when removing the temporary file then fails
     too, the removal's error is its ``removal_error``. Once the compiler process
     has ended, an :class:`OSError` from moving the artefact into place is raised
     as :class:`ArtefactNotPlacedError`, and one from removing the temporary file
@@ -248,8 +267,9 @@ def build(
         except OSError as error:
             start_error = error
         else:
+            held = _Held()
             try:
-                returncode, raw = _communicate(process, timeout_s)
+                returncode, raw = _communicate(process, timeout_s, held)
             except OSError as error:
                 run_error = error
             else:
@@ -278,7 +298,9 @@ def build(
     if start_error is not None:
         raise CompilerNotStartedError(start_error, removal_error) from start_error
     if run_error is not None:
-        raise CompilerRunError(run_error, removal_error) from run_error
+        raise CompilerRunError(
+            run_error, removal_error, timed_out=held.timed_out, log=held.log()
+        ) from run_error
     result = BuildResult(
         ok=ok,
         returncode=returncode,
@@ -329,21 +351,31 @@ def compiler_version(compiler=None, *, timeout_s):
     return lines[0].strip()
 
 
-def _communicate(process, timeout_s):
+class _Held:
+    def __init__(self):
+        self.timed_out = False
+        self.raw = None
+
+    def log(self):
+        return None if self.raw is None else self.raw.decode("utf-8", errors="replace")
+
+
+def _communicate(process, timeout_s, held):
     with process:
         try:
-            raw, _ = process.communicate(timeout=timeout_s)
+            held.raw, _ = process.communicate(timeout=timeout_s)
         except subprocess.TimeoutExpired as expired:
+            held.timed_out, held.raw = True, expired.output
             process.kill()
             if _WINDOWS:
-                expired.stdout, _ = process.communicate()
+                held.raw, _ = process.communicate()
             else:
                 process.wait()
-            return None, expired.stdout or b""
+            return None, held.raw or b""
         except BaseException:
             process.kill()
             raise
-        return process.poll(), raw
+        return process.poll(), held.raw
 
 
 def _check_timeout(timeout_s):
