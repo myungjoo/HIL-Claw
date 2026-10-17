@@ -221,10 +221,16 @@ def build(
     :class:`IsADirectoryError` or :class:`NotADirectoryError` for a source or
     output path that cannot be used; :class:`ValueError` for no source, a
     ``timeout_s`` that is not a positive finite number, an empty compiler
-    prefix, or a flag that sets the output (any flag that starts with ``-o`` or
+    prefix, a flag that sets the output (any flag that starts with ``-o`` or
     ``--output``, which includes unrelated options with that prefix such as
-    ``-objcmt-*``); :class:`TypeError` for arguments of the wrong type,
-    including a bare ``str`` as flags; and :class:`CompilerNotFoundError`.
+    ``-objcmt-*``), or a NUL character in a flag or in a part of the compiler
+    prefix after the first; :class:`TypeError` for arguments of the wrong type,
+    including a bare ``str`` as flags; and :class:`CompilerNotFoundError`. On
+    POSIX, each such flag or part must also convert with :func:`os.fsencode`,
+    else the :class:`UnicodeEncodeError` it raises is passed on. These two
+    checks give the class :mod:`subprocess` would raise for the same single
+    defect; the first part of the prefix is left to the lookup, and the
+    flags and parts are handed on unchanged.
     After the compiler is found, and still before anything is started, ``env``
     and ``cwd`` are checked as :mod:`subprocess` would refuse them, with the
     class it would raise for the same single defect: when ``env`` has an
@@ -508,7 +514,15 @@ def _checked_flags(flags, name):
             raise TypeError(f"{name} must contain only str, not {type(flag).__name__}")
         if flag.startswith(("-o", "--output")):
             raise ValueError(f"{name} must not set the output: {flag!r}")
+        _check_argument(flag, f"{name} contains a NUL character")
     return flags
+
+
+def _check_argument(argument, message):
+    if not _WINDOWS:
+        os.fsencode(argument)
+    if "\0" in argument:
+        raise ValueError(message)
 
 
 def _checked_sources(sources):
@@ -546,6 +560,10 @@ def _resolve(compiler):
     for part in prefix:
         if not isinstance(part, str):
             raise TypeError(f"compiler must be given as str, not {type(part).__name__}")
+    for part in prefix[1:]:
+        _check_argument(
+            part, "a compiler part after the first contains a NUL character"
+        )
     found = shutil.which(prefix[0])
     if found is None:
         raise CompilerNotFoundError(f"compiler executable not found: {prefix[0]!r}")
