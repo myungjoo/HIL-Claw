@@ -37,6 +37,7 @@ from typing import NamedTuple
 
 DEFAULT_COMPILER = "clang"
 _WINDOWS = sys.platform == "win32"
+_MAX_TIMEOUT_S = (2**31 - 1) / 1000
 
 
 class BuildResult(NamedTuple):
@@ -220,8 +221,9 @@ def build(
     Raised before anything is started: :class:`FileNotFoundError`,
     :class:`IsADirectoryError` or :class:`NotADirectoryError` for a source or
     output path that cannot be used; :class:`ValueError` for no source, a
-    ``timeout_s`` that is not a positive finite number, an empty compiler
-    prefix, a flag that sets the output (any flag that starts with ``-o`` or
+    ``timeout_s`` that is not a positive finite number or is longer than
+    (2**31 - 1) / 1000 seconds, about 24.8 days, an empty compiler prefix, a
+    flag that sets the output (any flag that starts with ``-o`` or
     ``--output``, which includes unrelated options with that prefix such as
     ``-objcmt-*``), or a NUL character in a flag or in a part of the compiler
     prefix after the first; :class:`TypeError` for arguments of the wrong type,
@@ -501,6 +503,8 @@ def _check_timeout(timeout_s):
         raise TypeError(f"timeout_s must be a number, not {type(timeout_s).__name__}")
     if not 0 < timeout_s < math.inf:
         raise ValueError(f"timeout_s must be positive and finite: {timeout_s!r}")
+    if timeout_s > _MAX_TIMEOUT_S:
+        raise ValueError(f"timeout_s must be at most {_MAX_TIMEOUT_S} s")
 
 
 def _checked_flags(flags, name):
