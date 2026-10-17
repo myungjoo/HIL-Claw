@@ -228,10 +228,9 @@ def build(
     one that the test itself raises such as a :class:`PermissionError`, is
     raised with the attribute ``path_role`` set to ``"source"`` or
     ``"output"``; an :class:`OSError` from anywhere else, such as forming the
-    absolute path, carries no ``path_role``. An
-    :class:`OSError` from creating the compiler process is raised as
-    :class:`CompilerNotStartedError`, an :class:`OSError` subclass without
-    ``result``; when removing the temporary file then fails too, the removal's
+    absolute path, carries no ``path_role``. An :class:`OSError` from creating
+    the compiler process is raised as :class:`CompilerNotStartedError`, an
+    :class:`OSError` subclass without ``result``; when removing the temporary file then fails too, the removal's
     error is its ``removal_error``. Any other :class:`OSError` raised while the
     process runs, or from reading the clock for the build's duration once the
     process has ended, is raised as :class:`CompilerRunError`, an :class:`OSError`
