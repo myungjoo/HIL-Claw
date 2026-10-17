@@ -1,5 +1,6 @@
 import json
 import os
+import pickle
 import shutil
 import sys
 from pathlib import Path
@@ -379,6 +380,126 @@ def test_bytes_path_is_refused(stub, kernel, out, as_list):
             compiler=stub(WRITE),
         )
     assert not stub.started
+
+
+@pytest.fixture
+def no_build(monkeypatch):
+    calls = []
+    monkeypatch.setattr(clang_build, "build", lambda *a, **k: calls.append(a))
+    return calls
+
+
+@pytest.mark.parametrize("value", [None, 7, 1.5], ids=repr)
+def test_kernel_sources_that_cannot_be_iterated_name_the_parameter(
+    stub, out, no_build, value
+):
+    with pytest.raises(TypeError) as caught:
+        build_verification_executable(
+            value, out, timeout_s=TIMEOUT, compiler=stub(WRITE)
+        )
+    assert caught.value.parameter == "kernel_sources"
+    assert no_build == []
+    assert not stub.started
+    assert list(out.parent.iterdir()) == []
+
+
+def test_a_type_error_from_the_iteration_is_the_same_object(
+    stub, kernel, out, no_build
+):
+    raised = TypeError("x")
+
+    def sources():
+        yield kernel()
+        raise raised
+
+    with pytest.raises(TypeError) as caught:
+        build_verification_executable(
+            sources(), out, timeout_s=TIMEOUT, compiler=stub(WRITE)
+        )
+    assert caught.value is raised
+    assert caught.value.args == ("x",)
+    assert caught.value.parameter == "kernel_sources"
+    assert no_build == []
+    assert not stub.started
+    assert list(out.parent.iterdir()) == []
+
+
+def test_other_errors_from_the_iteration_pass_unchanged(stub, kernel, out, no_build):
+    raised = RuntimeError("x")
+
+    def sources():
+        yield kernel()
+        raise raised
+
+    with pytest.raises(RuntimeError) as caught:
+        build_verification_executable(
+            sources(), out, timeout_s=TIMEOUT, compiler=stub(WRITE)
+        )
+    assert caught.value is raised
+    assert not hasattr(caught.value, "parameter")
+    assert no_build == []
+
+
+def test_the_kernel_sources_parameter_survives_pickling(stub, out):
+    with pytest.raises(TypeError) as caught:
+        build_verification_executable(
+            None, out, timeout_s=TIMEOUT, compiler=stub(WRITE)
+        )
+    copy = pickle.loads(pickle.dumps(caught.value))
+    assert type(copy) is TypeError
+    assert copy.args == caught.value.args
+    assert copy.parameter == "kernel_sources"
+
+
+@pytest.mark.parametrize("empty", [(), [], "generator"], ids=repr)
+def test_no_kernel_source_carries_no_parameter(stub, out, empty):
+    if empty == "generator":
+        empty = (path for path in ())
+    with pytest.raises(ValueError) as caught:
+        build_verification_executable(
+            empty, out, timeout_s=TIMEOUT, compiler=stub(WRITE)
+        )
+    assert not hasattr(caught.value, "parameter")
+
+
+@pytest.mark.parametrize("as_list", [False, True])
+def test_bytes_path_keeps_the_parameter_of_build(stub, kernel, out, as_list):
+    path = os.fsencode(kernel())
+    with pytest.raises(TypeError) as caught:
+        build_verification_executable(
+            [path] if as_list else path,
+            out,
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+        )
+    assert caught.value.parameter == "sources"
+    assert not stub.started
+
+
+@pytest.mark.parametrize(
+    ("settings", "parameter"),
+    [
+        ({"timeout_s": "soon"}, "timeout_s"),
+        ({"flags": 7}, "flags"),
+        ({"flags": [7]}, "flags"),
+        ({"trailing_flags": 7}, "trailing_flags"),
+        ({"compiler": 7}, "compiler"),
+        ({"compiler": [b"cc"]}, "compiler"),
+    ],
+    ids=repr,
+)
+def test_settings_keep_the_parameter_of_build(stub, kernel, out, settings, parameter):
+    arguments = {"timeout_s": TIMEOUT, "compiler": stub(WRITE), **settings}
+    with pytest.raises(TypeError) as caught:
+        build_verification_executable(kernel(), out, **arguments)
+    assert caught.value.parameter == parameter
+    assert not stub.started
+
+
+def test_a_missing_timeout_carries_no_parameter(kernel, out):
+    with pytest.raises(TypeError) as caught:
+        build_verification_executable(kernel(), out)
+    assert not hasattr(caught.value, "parameter")
 
 
 def test_missing_kernel_source(stub, kernel, out):
