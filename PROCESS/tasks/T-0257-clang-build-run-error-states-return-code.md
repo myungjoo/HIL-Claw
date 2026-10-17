@@ -159,3 +159,11 @@ So every existing test should pass unchanged. Edits to existing tests are allowe
 - (code) Make `build` tell the source path tests from the output path tests, and both from the other lines before the start (ADR-0083 decision 3, ADR-0084 decision 4).
 
 ## Result
+
+- PR #162 (`claude/T-0257-run-error-returncode`), squash-merged into `main`; reviewer cycle 2 rounds, Approve (round 1 Approve with nits: a duplicate test dropped and a docstring rewrap, then round 2 Approve).
+- Language: Python, the language of `hilclaw/clang_build.py`, which the change extends.
+- `CompilerRunError.__init__` gains keyword-only `returncode=None`, stored as `returncode`; `__reduce__` is unchanged and pickling keeps the member through `self.__dict__`.
+- From the code: `build` binds `returncode = None` before `_communicate` and passes it to every `CompilerRunError` it raises. The only source with a non-`None` `returncode` is an `OSError` from `duration_s = time.monotonic() - started` after `_communicate` returned from a normal end (0, a non-zero status, or a negative signal number on POSIX). After a kill for the time limit `_communicate` returns `None`, so that clock source keeps `None` (told apart by `timed_out` true). The first read, the kill after it, the kill for the time limit, the read or wait after that kill and closing the process all raise inside `_communicate`, so `returncode` stays `None`.
+- Tests: assertions added only to the permitted existing tests; new tests `test_failed_clock_states_the_exit_status` (3, 77), `test_failed_kill_after_the_time_limit_states_no_return_code`, `test_other_errors_carry_no_return_code`.
+- Local: full `pytest` 22182 passed / 355 skipped, `ruff check` and `ruff format --check` clean; `hilclaw/` line coverage 99%, functions 698/702.
+- Follow-ups unchanged from the task file (the OD-18 (ma) doc record on what the member makes true; telling the source path tests from the output path tests).
