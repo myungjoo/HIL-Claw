@@ -2,7 +2,7 @@
 id: T-0260
 title: Write ADR-0086 on which rows of `correctness.check` the `path_role` of `clang_build.build` (T-0259) lets an operation place for an `OSError` of the path tests before the start (more of OD-18 sub-question 18 part (ma))
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0259]
@@ -149,3 +149,4 @@ Why this item now: STATE has no lock, current or next task, and there is no open
 - Deviation from AC 2: Status says no owner sentence is quoted (O1 and O2 reach the record only through ADR-0060 and ADR-0078), as ADR-0080 does, because both rows placed are tool failures before any compiler ran; the reviewer accepted this.
 - Review: 6 rounds by a context-isolated dev-reviewer. R1 Request changes (less-exact list incomplete; owner-sentence status); R2 Request changes (a refused `target.is_dir()` on 3.14 lets the build go on); R3 to R5 Approve with nits, each fixed; R6 Approve.
 - Follow-ups: (possible HQ) whether an OSError with no `path_role` (failed working directory, random bytes, clock or compiler search before the start) gets its own situation and a new `error.kind`; the record names the question and does not decide it (ADR-0086 decision 6, Consequences). (code, later) the `cpu_standin` operation of `correctness.check` applies ADR-0079 to ADR-0086.
+- Landed on `main` as bb4ec03; §9 owner notice on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6230836828.
