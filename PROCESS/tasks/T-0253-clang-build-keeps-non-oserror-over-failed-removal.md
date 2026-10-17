@@ -2,7 +2,7 @@
 id: T-0253
 title: Make `clang_build.build` pass on an exception that is no `OSError` when removing the temporary file then fails, with the removal error attached as a note
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0251]
@@ -86,3 +86,9 @@ This task depends on neither. The other open follow-up, a record for the `Compil
 - (doc) A record for the `CompilerRunError` branch whose `timed_out` is false (ADR-0082 decision 4). It may need a new `error.kind`, which would make it a data-plane or owner question.
 
 ## Result
+
+DONE — squash-merged as 0305d7b (PR #160), reviewer agent 1 round Approve, CI green (Python 3.11/3.14, Coverage, C, sh, Test presence).
+build: a non-OSError that leaves the try early is recorded by `except BaseException` + `raise`; if removing the temporary file then fails, the exception passes on unchanged (same object, traceback, chain) with one note naming the temporary path and the removal error's repr. The `ended` flag is removed; every other path behaves as before. A plain OSError of build now comes only from the lines before subprocess.Popen (ADR-0081 K4 (i)).
+Tests: the PermissionError test is rewritten; new tests cover a KeyboardInterrupt from Popen and a RuntimeError from communicate; two existing tests gain no-note asserts. Full pytest 22170 passed, ruff clean, clang_build.py 100% and hilclaw/ 99% coverage.
+Language: Python, the language of the module being changed.
+Follow-up (planner candidate T-0254, no file yet): doc ADR under OD-18 (ma) on whether an OSError from before Popen gets a row for `correctness.check`.
