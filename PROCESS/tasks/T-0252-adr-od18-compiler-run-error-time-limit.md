@@ -2,7 +2,7 @@
 id: T-0252
 title: Write an ADR that places the time-limit branch of `CompilerRunError` (now told apart by `timed_out` and `log`) for `correctness.check`, or leaves it open with a reason, under OD-18 sub-question 18 part (ma)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-6, FR-10, OD-18]
 dependsOn: [T-0250, T-0251]
@@ -105,3 +105,13 @@ This record depends on neither. The other open follow-up, telling apart the K4 (
 - (doc) If this record leaves the branch that is not the time limit open, a record for it (ADR-0081 decision 2, second item).
 
 ## Result
+
+DONE. Document mode: one commit `4d13e64` pushed to `main` (fast-forward from `96be15c`), trailers `Reviewed-by: reviewer agent (6 rounds, Approve)` and `Task: T-0252`; branch `claude/T-0252-adr-od18-compiler-run-error-time-limit` deleted on `origin` and locally. §9 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6228367785 (window until 2026-10-24).
+
+- Session entry check (2026-10-17): no open PR; 0082 free on `main` and every remote branch; branches of T-0210 and T-0231 untouched; every #5 comment since 2026-10-16 carries the driver tail, so no owner comment bears on ADR-0081, `CompilerRunError` or ⑱ (마).
+- ADR-0082: a `CompilerRunError` whose `timed_out` is true is S8, form (B) `"build_time_limit"` (O1 applied); its `log` is handed to the keeper when not `None`, and a `None` is handed over as nothing; `removal_error` changes nothing; the operation applies it from the class and `timed_out` alone. Labelled readings of the record: S8/O1 reach a build whose kill, read or close failed after the limit; S8's moment "the build ended" / "the build ended; `ok` false" is the end of the call of the build; ADR-0078 decision 2 does not forbid keeping a log whose compiler's end was not seen. The branch whose `timed_out` is false stays open (ADR-0081 decision 2), no new `error.kind`. Consequences list the less exact sentences of ADR-0081 (K1, K2, decisions 2, 3, 5, walk-through, alternatives, Consequences Code) and of ADR-0078 decisions 2 and 7.
+- Registers: OD-18 row gets one link after `**확정분**:` (`**잔여**` unchanged, "(마)의 나머지" still holds); OpenDecisionProposals gets one `**채택분**` line and ⑱'s end status rewritten in place (head word "일부 답함" kept); StandardScenarios "최근 재검사" updated in place. Re-check of S0, S1-b, S2, S5, S6 (the S-rows citing OD-18): no verdict change, no gap, so no history entry.
+- Review rounds: 1 to 5 Request changes (citation accuracy: error.kind vs data plane, ADR-0081 quotes per alternative, missing less-exact sentences, ADR-0056 S8 "`ok` false", K2 vs decision 3 attribution, ADR-0078 decision 7); round 6 Approve with one optional nit (split the source of "Status 0" per row in alternatives point 4), left as is.
+- Note on the task's Why: it says that on Windows `log` is always `None` in the time-limit branch. The docstring at `d3becf0` says only a failed kill or a failed read after it leaves `None`; an error from closing the process after the post-kill read leaves the log set. The ADR follows the docstring (L3, L4).
+- Size: 4 files, +119/-3. Nothing built or run; no `claude` process started. Read the installed CPython 3.14.4 `Lib/subprocess.py` `Popen.__exit__` only as a file; the ADR rests on `build`'s docstrings and cites ADR-0081 K2 for the rest.
+- Follow-ups: (code) tell apart the K4 (ii) removal error (unchanged); (doc) a record for the `CompilerRunError` branch whose `timed_out` is false (ADR-0082 decision 4), which may need a new `error.kind` and so may be a data-plane/owner question.
