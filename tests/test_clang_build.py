@@ -3115,7 +3115,7 @@ def test_the_parameter_leaves_the_error_otherwise_unchanged(
     tagging = clang_build._parameter
 
     @contextlib.contextmanager
-    def untagged(name, kinds=(TypeError,)):
+    def untagged(name):
         try:
             yield
         except ValueError as error:
