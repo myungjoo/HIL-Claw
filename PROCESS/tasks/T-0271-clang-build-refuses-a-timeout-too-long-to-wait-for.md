@@ -2,7 +2,7 @@
 id: T-0271
 title: Make `clang_build.build` and `compiler_version` refuse, before anything is started, a `timeout_s` longer than (2**31 - 1) / 1000 seconds, so a time limit no platform wait can take no longer starts the compiler and then escapes as an undocumented OverflowError
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, C-7]
 dependsOn: [T-0268]
@@ -82,3 +82,11 @@ This adds no public name, no data-plane member or file, and no value of `conditi
 - (doc, after HQ-0027) Fold into the pending OD-18 sub-question 18 part (ma) record, together with the T-0265..T-0270 follow-ups: a time limit too long for the platform's wait is now a pre-start `ValueError` of `build` and `compiler_version`, so ADR-0060 decision 4's "a `ValueError` … for a setting — a time limit … → S4" reaches it. Before this change it reached only `local_run.run`'s `OverflowError`.
 
 ## Result
+
+- PR #172 (https://github.com/myungjoo/HIL-Claw/pull/172), squash-merged as e6553a2 with `gh pr merge --squash --body` (the body ends with `Task: T-0271`); branch `claude/T-0271-clang-build-timeout-bound` deleted.
+- Review: 2 rounds, both Approve. Round 1 had one Low nit: a `{timeout_s!r}` of an int past the int-to-str digit limit would raise a different `ValueError` and drop "timeout_s" from the message; fixed by naming only the bound in the message, with a `10**5000` test case added.
+- CI green on e27ca95: Python 3.11 and 3.14, coverage, C, sh, test presence. Local (Windows, Python 3.14): full pytest 22569 passed, 474 skipped; `hilclaw/` coverage 99 %; `ruff check` and `ruff format --check` clean. Without the source change, 13 of the new tests fail.
+- Language: Python, the language of the module being changed (`hilclaw/clang_build.py`).
+- Implementation: private `_MAX_TIMEOUT_S = (2**31 - 1) / 1000`; `_check_timeout` raises `ValueError("timeout_s must be at most 2147483.647 s")` after the type check and the positive-and-finite check, with no `parameter`; `compiler_version` gets the same refusal; `build`'s docstring names it. Size: source +6/-2, tests +89; no existing test edited.
+- Bound runs (`(2**31 - 1) / 1000` and the int 2147483, with stub compilers) passed locally (Windows) and on Linux CI (ubuntu-latest). CI has no macOS or Windows runner.
+- Follow-ups: the two above, plus (code, low) the existing "positive and finite" message also uses `{timeout_s!r}`, so a negative int past the digit limit (e.g. `-10**5000`) raises a `ValueError` whose message lacks "timeout_s" (class unchanged, nothing started). No `claude` was started (D16).
