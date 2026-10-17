@@ -2,7 +2,7 @@
 id: T-0278
 title: Make `clang_build.build` refuse, before the start, an output file name that holds a NUL character or (on POSIX) cannot be converted by `os.fsencode`, with the class `subprocess` would raise and `parameter` "output"
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, C-7]
 dependsOn: [T-0276, T-0277]
