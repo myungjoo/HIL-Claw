@@ -234,9 +234,9 @@ def build(
     had passed before the error, whose ``log`` is the output read so far, or
     ``None`` when none was held, and whose ``returncode`` is the compiler's
     return code when the clock failed after the compiler ended by itself, and
-    ``None`` otherwise; when removing the temporary file then fails
-    too, the removal's error is its ``removal_error``. Once the compiler process
-    has ended, an :class:`OSError` from moving the artefact into place is raised
+    ``None`` otherwise; when removing the temporary file then fails too, the
+    removal's error is its ``removal_error``. Once the compiler process has
+    ended, an :class:`OSError` from moving the artefact into place is raised
     as :class:`ArtefactNotPlacedError`, and one from removing the temporary file
     as :class:`TemporaryNotRemovedError`; both are :class:`OSError` subclasses
     whose ``result`` holds the :class:`BuildResult` with the compiler's log.

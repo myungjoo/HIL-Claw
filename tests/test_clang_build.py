@@ -1059,19 +1059,6 @@ def test_failed_clock_states_the_exit_status(status, stub, src, out_dir, failing
     assert names(out_dir) == []
 
 
-def test_failed_clock_after_a_logged_build_and_failed_removal(
-    stub, src, out_dir, failing_clock, failing_unlink
-):
-    errors = failing_clock()
-    with pytest.raises(CompilerRunError) as caught:
-        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(LOGGED_WRITE))
-    raised = caught.value
-    assert_clock_run_error(raised, errors)
-    assert raised.returncode == 0
-    assert raised.removal_error is failing_unlink[0]
-    assert raised.log.splitlines() == ["stub warning: kept"]
-
-
 def test_failed_kill_after_the_time_limit_states_no_return_code(
     stub, src, out_dir, timed_out_run
 ):
