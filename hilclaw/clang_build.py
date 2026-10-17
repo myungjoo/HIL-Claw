@@ -504,7 +504,7 @@ def _check_timeout(timeout_s):
     if not 0 < timeout_s < math.inf:
         raise ValueError(f"timeout_s must be positive and finite: {timeout_s!r}")
     if timeout_s > _MAX_TIMEOUT_S:
-        raise ValueError(f"timeout_s must be at most {_MAX_TIMEOUT_S} s: {timeout_s!r}")
+        raise ValueError(f"timeout_s must be at most {_MAX_TIMEOUT_S} s")
 
 
 def _checked_flags(flags, name):

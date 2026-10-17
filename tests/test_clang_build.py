@@ -2840,7 +2840,14 @@ def test_a_nul_in_a_path_keeps_the_path_error(stub, src, out_dir):
 
 
 TIMEOUT_BOUND = (2**31 - 1) / 1000
-TOO_LONG_TIMEOUTS = [2147483.648, 1e10, 1e300, 2**31, 10**400]
+TOO_LONG_TIMEOUTS = [
+    2147483.648,
+    1e10,
+    1e300,
+    2**31,
+    10**400,
+    pytest.param(10**5000, id="10**5000"),
+]
 
 
 @pytest.mark.parametrize("value", TOO_LONG_TIMEOUTS)
