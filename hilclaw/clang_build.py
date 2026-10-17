@@ -247,18 +247,19 @@ def build(
     :class:`UnicodeEncodeError`), and :class:`ValueError` is raised for a NUL
     character in it. Whether ``cwd`` exists is not tested here: a missing one
     fails the start, as :class:`CompilerNotStartedError` below. Any
-    :class:`TypeError` from the checks of ``sources`` and ``output``, and any
     :class:`TypeError` or :class:`ValueError` (including a subclass such as
     :class:`UnicodeEncodeError`) from the checks of ``timeout_s``, ``flags``,
-    ``trailing_flags``, ``compiler``, ``env`` and ``cwd``, including one that
-    Python itself raises inside a check such as for a value that cannot be
-    iterated, is raised with the attribute ``parameter`` set to the name of
-    that parameter: ``"timeout_s"``, ``"flags"``, ``"trailing_flags"``,
-    ``"sources"``, ``"output"``, ``"compiler"``, ``"env"`` or ``"cwd"``; any
-    :class:`ValueError` from the checks of ``sources`` and ``output``, such as
-    the one for no source, and a :class:`TypeError` or :class:`ValueError`
-    from anywhere else, such as binding the call or creating the compiler
-    process, carry no ``parameter``. Any
+    ``trailing_flags``, ``sources``, ``output``, ``compiler``, ``env`` and
+    ``cwd``, including the one for no source and one that Python or the code
+    of a handed object raises inside a check, such as for a value that cannot
+    be iterated or a path object whose ``__fspath__`` fails, is raised with
+    the attribute ``parameter`` set to the name of that parameter:
+    ``"timeout_s"``, ``"flags"``, ``"trailing_flags"``, ``"sources"``,
+    ``"output"``, ``"compiler"``, ``"env"`` or ``"cwd"``. The check of
+    ``output`` forms its absolute path; the tests of that path below are not
+    part of it. A :class:`TypeError` or :class:`ValueError` from anywhere
+    else, such as binding the call or creating the compiler process, carries
+    no ``parameter``. Any
     :class:`OSError` from testing a source path or the output path, including one
     that the test itself raises such as a :class:`PermissionError`, is raised with
     the attribute ``path_role`` set to ``"source"`` or ``"output"``; an
@@ -294,11 +295,11 @@ def build(
     temporary file then fails, the removal's error is not raised but added to
     that exception as a note naming the temporary path.
     """
-    with _parameter("timeout_s", (TypeError, ValueError)):
+    with _parameter("timeout_s"):
         _check_timeout(timeout_s)
-    with _parameter("flags", (TypeError, ValueError)):
+    with _parameter("flags"):
         flags = _checked_flags(flags, "flags")
-    with _parameter("trailing_flags", (TypeError, ValueError)):
+    with _parameter("trailing_flags"):
         trailing_flags = _checked_flags(trailing_flags, "trailing_flags")
     with _parameter("sources"):
         source_paths = _checked_sources(sources)
@@ -315,11 +316,11 @@ def build(
     except OSError as raised:
         raised.path_role = "output"
         raise
-    with _parameter("compiler", (TypeError, ValueError)):
+    with _parameter("compiler"):
         prefix = _resolve(compiler)
-    with _parameter("env", (TypeError, ValueError)):
+    with _parameter("env"):
         _check_env(env)
-    with _parameter("cwd", (TypeError, ValueError)):
+    with _parameter("cwd"):
         _check_cwd(cwd)
     temporary = target.with_name(
         f"{target.stem}.tmp-{os.getpid()}-{secrets.token_hex(8)}{target.suffix}"
@@ -462,10 +463,10 @@ def _communicate(process, timeout_s, held):
 
 
 @contextlib.contextmanager
-def _parameter(name, kinds=(TypeError,)):
+def _parameter(name):
     try:
         yield
-    except kinds as error:
+    except (TypeError, ValueError) as error:
         error.parameter = name
         raise
 
