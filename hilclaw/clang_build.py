@@ -261,9 +261,11 @@ def build(
     ``"output"``, ``"compiler"``, ``"env"`` or ``"cwd"``. The check of
     ``output`` forms its absolute path and, after the tests of that path
     below, which are not part of it, checks it on POSIX with
-    :func:`os.fsencode` and then for a NUL character. A :class:`TypeError` or
-    :class:`ValueError` from anywhere else, such as binding the call or
-    creating the compiler process, carries no ``parameter``. Any
+    :func:`os.fsencode` and then for a NUL character; after the check of
+    ``cwd``, forming the temporary name beside that path is part of it too.
+    A :class:`TypeError` or :class:`ValueError` from anywhere else, such as
+    binding the call or creating the compiler process, carries no
+    ``parameter``. Any
     :class:`OSError` from testing a source path or the output path, including one
     that the test itself raises such as a :class:`PermissionError`, is raised with
     the attribute ``path_role`` set to ``"source"`` or ``"output"``; an
@@ -328,9 +330,9 @@ def build(
         _check_env(env)
     with _parameter("cwd"):
         _check_cwd(cwd)
-    temporary = target.with_name(
-        f"{target.stem}.tmp-{os.getpid()}-{secrets.token_hex(8)}{target.suffix}"
-    )
+    token = f"{os.getpid()}-{secrets.token_hex(8)}"
+    with _parameter("output"):
+        temporary = target.with_name(f"{target.stem}.tmp-{token}{target.suffix}")
     command = (*prefix, *flags, *source_paths, *trailing_flags, "-o", str(temporary))
     start_error = run_error = check_error = move_error = removal_error = None
     escaping = None
