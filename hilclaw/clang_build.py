@@ -260,8 +260,8 @@ def build(
     ``"timeout_s"``, ``"flags"``, ``"trailing_flags"``, ``"sources"``,
     ``"output"``, ``"compiler"``, ``"env"`` or ``"cwd"``. The check of
     ``output`` forms its absolute path and, after the tests of that path
-    below, which are not part of it, checks it for a NUL character and, on
-    POSIX, with :func:`os.fsencode`. A :class:`TypeError` or
+    below, which are not part of it, checks it on POSIX with
+    :func:`os.fsencode` and then for a NUL character. A :class:`TypeError` or
     :class:`ValueError` from anywhere else, such as binding the call or
     creating the compiler process, carries no ``parameter``. Any
     :class:`OSError` from testing a source path or the output path, including one
