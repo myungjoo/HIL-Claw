@@ -502,7 +502,11 @@ def _check_timeout(timeout_s):
     if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)):
         raise TypeError(f"timeout_s must be a number, not {type(timeout_s).__name__}")
     if not 0 < timeout_s < math.inf:
-        raise ValueError(f"timeout_s must be positive and finite: {timeout_s!r}")
+        try:
+            shown = f": {timeout_s!r}"
+        except ValueError:
+            shown = ""
+        raise ValueError(f"timeout_s must be positive and finite{shown}")
     if timeout_s > _MAX_TIMEOUT_S:
         raise ValueError(f"timeout_s must be at most {_MAX_TIMEOUT_S} s")
 

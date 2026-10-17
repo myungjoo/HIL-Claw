@@ -2926,3 +2926,93 @@ def test_a_timeout_too_long_is_checked_before_the_other_arguments(
     assert type(caught.value) is ValueError
     assert not hasattr(caught.value, "parameter")
     assert not stub.started
+
+
+def assert_unprintable_timeout_refused(value, stub, src, out_dir, monkeypatch):
+    compiler, version = stub(WRITE), stub(VERSION)
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=value, compiler=compiler)
+    with pytest.raises(ValueError) as caught_version:
+        compiler_version(version, timeout_s=value)
+    for error in (caught.value, caught_version.value):
+        assert type(error) is ValueError
+        assert "timeout_s" in str(error)
+        assert "positive and finite" in str(error)
+        assert not hasattr(error, "parameter")
+        assert not hasattr(error, "path_role")
+    assert names(out_dir) == []
+    assert not stub.started
+
+
+def test_a_negative_timeout_too_long_to_print_names_timeout_s(
+    stub, src, out_dir, monkeypatch
+):
+    assert_unprintable_timeout_refused(-(10**5000), stub, src, out_dir, monkeypatch)
+
+
+@pytest.fixture
+def low_digit_limit():
+    limit = sys.get_int_max_str_digits()
+    sys.set_int_max_str_digits(640)
+    try:
+        yield
+    finally:
+        sys.set_int_max_str_digits(limit)
+
+
+def test_the_digit_limit_is_read_at_call_time(
+    low_digit_limit, stub, src, out_dir, monkeypatch
+):
+    assert_unprintable_timeout_refused(-(10**700), stub, src, out_dir, monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=-1, compiler=stub(WRITE))
+    assert str(caught.value) == "timeout_s must be positive and finite: -1"
+    with pytest.raises(ValueError) as caught:
+        compiler_version(stub(VERSION), timeout_s=-1)
+    assert str(caught.value) == "timeout_s must be positive and finite: -1"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [*BAD_TIMEOUT_VALUES, pytest.param(-(10**4000), id="-10**4000")],
+)
+def test_a_printable_bad_timeout_keeps_its_exact_message(value, stub, src, out_dir):
+    expected = "timeout_s must be positive and finite: " + repr(value)
+    with pytest.raises(ValueError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=value, compiler=stub(WRITE))
+    assert str(caught.value) == expected
+    with pytest.raises(ValueError) as caught:
+        compiler_version(stub(VERSION), timeout_s=value)
+    assert str(caught.value) == expected
+    assert not stub.started
+
+
+def test_the_neighbours_of_an_unprintable_timeout_are_unchanged(
+    stub, src, out_dir, monkeypatch
+):
+    forbid_start(monkeypatch)
+    with pytest.raises(TypeError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s="10", compiler=stub(WRITE))
+    assert caught.value.parameter == "timeout_s"
+    with pytest.raises(ValueError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=10**5000, compiler=stub(WRITE))
+    assert str(caught.value) == f"timeout_s must be at most {TIMEOUT_BOUND} s"
+    assert not stub.started
+
+
+@pytest.mark.parametrize(
+    "settings", [{"flags": ("-o", "x")}, {"compiler": ()}], ids=["flag", "prefix"]
+)
+def test_an_unprintable_timeout_is_checked_before_the_other_arguments(
+    settings, stub, src, out_dir, monkeypatch
+):
+    arguments = {"compiler": stub(WRITE), **settings}
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError, match="positive and finite") as caught:
+        build(src, out_dir / "kernel.o", timeout_s=-(10**5000), **arguments)
+    assert type(caught.value) is ValueError
+    assert "timeout_s" in str(caught.value)
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
+    assert names(out_dir) == []
