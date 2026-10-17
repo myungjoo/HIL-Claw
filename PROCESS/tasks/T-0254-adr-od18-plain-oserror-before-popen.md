@@ -2,7 +2,7 @@
 id: T-0254
 title: Write ADR-0083 on what T-0253 makes true for `correctness.check` - the K4 (ii) entry of OD-18 sub-question 18 (ma), and whether a plain `OSError` of `clang_build.build`, now only from before `Popen`, gets a row
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0253]
@@ -104,3 +104,9 @@ This is a design-level OD part. Under DRIVER §9 the executor may answer it with
 - (code, if ADR-0083 names one) A change of `build` that would let a later record place a plain `OSError` before the start, for example telling the source tests apart from the output-path tests by class.
 
 ## Result
+
+DONE — ADR-0083 pushed to main as 5a82c0c (doc mode), reviewer agent 5 rounds, Approve. #5 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6228820839 (objection window until 2026-10-24).
+ADR-0083: the ADR-0081 K4 (ii) entry is answered by existing rules (ADR-0045 d5 for a request to end; other Exceptions join entries already open; the note changes nothing). The row of a plain OSError of build stays open, with reasons and what would let it be placed.
+Finding: T-0253's claim "only from before Popen" is not exact. The unguarded `duration_s = time.monotonic() - started` after _communicate raises a plain OSError after the compiler ended and drops the log; the cost is recorded.
+Registers: OD-18 row link, one adopted line and the end status of sub-question 18 (ma) rewritten in place, StandardScenarios recheck line (no verdict change). No new condition or error.kind value, no data-plane change; runtime acceptance items: none.
+Follow-ups: (code) make build raise no plain OSError after the compiler starts and tell the source tests from the output tests; (doc) the row of the CompilerRunError branch whose timed_out is false (ADR-0082 d4).
