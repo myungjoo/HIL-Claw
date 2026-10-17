@@ -3416,6 +3416,7 @@ def test_a_type_error_from_forming_the_temporary_name_names_the_output(
         build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=compiler)
     assert caught.value is error
     assert caught.value.parameter == "output"
+    assert not hasattr(caught.value, "path_role")
     assert not stub.started
     assert names(out_dir) == []
 
