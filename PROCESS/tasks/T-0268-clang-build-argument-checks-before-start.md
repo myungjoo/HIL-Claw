@@ -2,7 +2,7 @@
 id: T-0268
 title: Make `clang_build.build` refuse, before the start, a flag or compiler part that `subprocess` would refuse (a NUL character, or on POSIX text `os.fsencode` cannot convert)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0267]
@@ -144,3 +144,15 @@ Which rows the records now give these errors is a later doc task (Follow-ups). T
 - (code) `local_run.run`: on POSIX, convert each argument with `os.fsencode` before the start, so an unencodable argument is refused with `parameter` `"command"` like the NUL check of T-0265. Today it is passed on from `subprocess`.
 
 ## Result
+
+- PR #169 (https://github.com/myungjoo/HIL-Claw/pull/169), squash-merged as 8aee9ba65ce3bf484c2e76b5c18b765f2de8e2db; branch `claude/T-0268-clang-build-argument-checks-before-start` deleted; squash message ends with `Task: T-0268`. Entry check: `gh pr list` showed no open PR.
+- Review: 2 rounds, both Approve (#issuecomment-6233430435, #issuecomment-6233452484). Round-1 Low addressed in 092aba3: the Windows test now covers a lone surrogate in flags, trailing_flags and a compiler part after the first. Info, no action: when one call has several defects, a NUL flag or part is now reported before later steps (sources/output, CompilerNotFoundError, env/cwd); every single-defect input keeps its class and message. The OD-18 (ma) follow-up record can say so.
+- CI green on 092aba3: Python 3.11 and 3.14, coverage (lines 99.58%, functions 100%; clang_build.py lines 486-488 are the Windows branch of `_env_text`), test presence, shellcheck, clang. Local (Windows, Python 3.14.4): full pytest 22526 passed, 462 skipped; `ruff check` and `ruff format --check` clean.
+- Language: Python, the language of the module being changed (`hilclaw/clang_build.py`).
+- New errors: private `_check_argument`: `os.fsencode` on POSIX (its UnicodeEncodeError is passed on as the same object), then a NUL gives ValueError naming the parameter, never the value. Called from `_checked_flags` after the str and -o/--output checks, and from `_resolve` for `prefix[1:]` after the str check of every part and before `shutil.which`. No `parameter`, no `path_role`, values handed on unchanged; `compiler_version` and module docstrings unchanged.
+- Platform: on Windows 3.14.4, a direct Popen accepts a lone surrogate with and without cwd, so build accepts it (pinned by a windows_only test). A NUL gives ValueError with and without cwd. Tests compare by exact class equality against a direct Popen with and without cwd; CI confirmed ValueError/UnicodeEncodeError on 3.11 and 3.14.
+- CPython read: no new reading; the T-0265/T-0267 record is used, plus the direct-Popen comparisons on CI.
+- Path NUL: a NUL in a source gives FileNotFoundError with path_role "source"; a NUL in the output directory gives FileNotFoundError with path_role "output".
+- First prefix part unchanged: an absolute path + NUL, or + lone surrogate on POSIX, still gives CompilerNotFoundError without `parameter`.
+- Tests: tests/test_clang_build.py only; no existing test edited. Size: clang_build.py +21/-3; tests +308.
+- Follow-ups: unchanged from the task file; none new. No `claude` was started (D16).
