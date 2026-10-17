@@ -1,3 +1,4 @@
+import contextlib
 import errno
 import json
 import os
@@ -1678,6 +1679,8 @@ def test_checks_other_than_paths_have_no_role(kwargs, expected, src, out_dir):
     assert not hasattr(caught.value, "path_role")
     if expected is TypeError:
         assert caught.value.parameter == "flags"
+    elif expected is ValueError:
+        assert caught.value.parameter == "timeout_s"
     else:
         assert not hasattr(caught.value, "parameter")
     assert names(out_dir) == []
@@ -1818,9 +1821,6 @@ def test_first_type_error_in_check_order_is_named(stub, src, out_dir):
 @pytest.mark.parametrize(
     "kwargs, expected",
     [
-        ({"timeout_s": 0}, ValueError),
-        ({"compiler": ()}, ValueError),
-        ({"flags": ("-o", "x.o")}, ValueError),
         ({"compiler": "hilclaw-no-such-compiler"}, CompilerNotFoundError),
         ({"sources": "missing.c"}, FileNotFoundError),
         ({"output": Path("absent") / "kernel.o"}, FileNotFoundError),
@@ -1839,6 +1839,30 @@ def test_other_errors_before_the_start_have_no_parameter(
     assert not hasattr(caught.value, "parameter")
     if issubclass(expected, OSError):
         assert caught.value.path_role == ("source" if "sources" in kwargs else "output")
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize(
+    "kwargs, parameter",
+    [
+        ({"timeout_s": 0}, "timeout_s"),
+        ({"compiler": ()}, "compiler"),
+        ({"flags": ("-o", "x.o")}, "flags"),
+    ],
+)
+def test_value_errors_of_the_settings_before_the_start_have_their_parameter(
+    kwargs, parameter, stub, src, out_dir, monkeypatch
+):
+    monkeypatch.chdir(src.parent)
+    arguments = {"sources": src, "output": out_dir / "kernel.o", "timeout_s": TIMEOUT}
+    arguments["compiler"] = stub(WRITE)
+    arguments.update(kwargs)
+    with pytest.raises(ValueError) as caught:
+        build(**arguments)
+    assert type(caught.value) is ValueError
+    assert caught.value.parameter == parameter
+    assert not hasattr(caught.value, "path_role")
     assert not stub.started
     assert names(out_dir) == []
 
@@ -2295,7 +2319,7 @@ def test_earlier_value_errors_come_before_env_and_cwd(kwargs, stub, src, out_dir
     with pytest.raises(ValueError) as caught:
         build(src, out_dir / "kernel.o", env={"A=B": "x"}, cwd="a\0b", **arguments)
     assert type(caught.value) is ValueError
-    assert not hasattr(caught.value, "parameter")
+    assert caught.value.parameter == next(iter(kwargs))
     assert not stub.started
 
 
@@ -2448,10 +2472,7 @@ def test_default_compiler_not_on_path(src, out_dir, monkeypatch):
 def test_malformed_compiler_argument(compiler, error, src, out_dir):
     with pytest.raises(error) as caught:
         build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=compiler)
-    if error is TypeError:
-        assert caught.value.parameter == "compiler"
-    else:
-        assert not hasattr(caught.value, "parameter")
+    assert caught.value.parameter == "compiler"
     with pytest.raises(error) as caught:
         compiler_version(compiler, timeout_s=TIMEOUT)
     assert not hasattr(caught.value, "parameter")
@@ -2585,7 +2606,7 @@ def test_a_nul_in_an_argument_is_refused_before_the_start(
     assert place in str(error)
     assert argument not in str(error)
     assert repr(argument)[1:-1] not in str(error)
-    assert not hasattr(error, "parameter")
+    assert error.parameter == place
     assert not hasattr(error, "path_role")
     assert not stub.started
 
@@ -2616,7 +2637,7 @@ def test_an_unencodable_argument_is_the_error_of_fsencode(
     assert error is raised[-1]
     assert type(error) is UnicodeEncodeError
     assert error.args == direct.value.args
-    assert not hasattr(error, "parameter")
+    assert error.parameter == place
     assert not hasattr(error, "path_role")
     assert not stub.started
 
@@ -2701,7 +2722,7 @@ def test_an_output_flag_with_a_nul_keeps_the_output_message(
             compiler=stub(WRITE),
             **{keyword: ("-o\0x",)},
         )
-    assert not hasattr(caught.value, "parameter")
+    assert caught.value.parameter == keyword
     assert not stub.started
 
 
@@ -2709,7 +2730,7 @@ def test_a_bad_timeout_comes_before_a_nul_flag(stub, src, out_dir):
     compiler = stub(WRITE)
     with pytest.raises(ValueError, match="timeout_s") as caught:
         build(src, out_dir / "kernel.o", timeout_s=0, compiler=compiler, flags=("\0",))
-    assert not hasattr(caught.value, "parameter")
+    assert caught.value.parameter == "timeout_s"
     with pytest.raises(TypeError) as caught:
         build(
             src, out_dir / "kernel.o", timeout_s="10", compiler=compiler, flags=("\0",)
@@ -2729,7 +2750,7 @@ def test_the_first_bad_flag_in_the_sequence_is_reported(keyword, stub, src, out_
             compiler=compiler,
             **{keyword: ("a\0", 5)},
         )
-    assert not hasattr(caught.value, "parameter")
+    assert caught.value.parameter == keyword
     with pytest.raises(TypeError) as caught:
         build(
             src,
@@ -2799,22 +2820,22 @@ def test_compiler_version_refuses_a_bad_part_before_the_start(value, stub, monke
 
 
 @pytest.mark.parametrize(
-    "settings, match",
+    "settings, match, parameter",
     [
-        ({"timeout_s": -1}, "timeout_s"),
-        ({"compiler": ()}, "empty"),
-        ({"flags": ("-o", "x")}, "must not set the output"),
-        ({"trailing_flags": ("-ox",)}, "must not set the output"),
+        ({"timeout_s": -1}, "timeout_s", "timeout_s"),
+        ({"compiler": ()}, "empty", "compiler"),
+        ({"flags": ("-o", "x")}, "must not set the output", "flags"),
+        ({"trailing_flags": ("-ox",)}, "must not set the output", "trailing_flags"),
     ],
 )
-def test_the_existing_value_errors_still_have_no_parameter(
-    settings, match, stub, src, out_dir
+def test_the_existing_value_errors_have_their_parameter(
+    settings, match, parameter, stub, src, out_dir
 ):
     arguments = {"timeout_s": TIMEOUT, "compiler": stub(WRITE), **settings}
     with pytest.raises(ValueError, match=match) as caught:
         build(src, out_dir / "kernel.o", **arguments)
     assert type(caught.value) is ValueError
-    assert not hasattr(caught.value, "parameter")
+    assert caught.value.parameter == parameter
     assert not stub.started
 
 
@@ -2859,7 +2880,7 @@ def test_a_timeout_too_long_to_wait_for_is_refused_before_the_start(
     with pytest.raises(ValueError, match="timeout_s") as caught:
         build(src, out_dir / "kernel.o", timeout_s=value, compiler=compiler)
     assert type(caught.value) is ValueError
-    assert not hasattr(caught.value, "parameter")
+    assert caught.value.parameter == "timeout_s"
     assert not hasattr(caught.value, "path_role")
     assert names(out_dir) == []
     assert not stub.started
@@ -2924,7 +2945,7 @@ def test_a_timeout_too_long_is_checked_before_the_other_arguments(
             flags=flags,
         )
     assert type(caught.value) is ValueError
-    assert not hasattr(caught.value, "parameter")
+    assert caught.value.parameter == "timeout_s"
     assert not stub.started
 
 
@@ -2934,11 +2955,12 @@ def assert_unprintable_timeout_refused(value, stub, src, out_dir, monkeypatch):
         build(src, out_dir / "kernel.o", timeout_s=value, compiler=stub(WRITE))
     with pytest.raises(ValueError) as caught_version:
         compiler_version(stub(VERSION), timeout_s=value)
+    assert caught.value.parameter == "timeout_s"
+    assert not hasattr(caught_version.value, "parameter")
     for error in (caught.value, caught_version.value):
         assert type(error) is ValueError
         assert "timeout_s" in str(error)
         assert "positive and finite" in str(error)
-        assert not hasattr(error, "parameter")
         assert not hasattr(error, "path_role")
     assert names(out_dir) == []
     assert not stub.started
@@ -3012,6 +3034,294 @@ def test_an_unprintable_timeout_is_checked_before_the_other_arguments(
         build(src, out_dir / "kernel.o", timeout_s=-(10**5000), **arguments)
     assert type(caught.value) is ValueError
     assert "timeout_s" in str(caught.value)
+    assert caught.value.parameter == "timeout_s"
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+def timeout_case(value):
+    return lambda compiler: {"compiler": compiler, "timeout_s": value}
+
+
+def prefix_case(prefix):
+    return lambda compiler: {"compiler": prefix, "timeout_s": TIMEOUT}
+
+
+def flags_case(keyword, flags):
+    return lambda compiler: {"compiler": compiler, "timeout_s": TIMEOUT, keyword: flags}
+
+
+def argument_case(place, value):
+    def settings(compiler):
+        _, compiler, extra = placed(place, value, compiler)
+        return {"compiler": compiler, "timeout_s": TIMEOUT, **extra}
+
+    return settings
+
+
+SETTING_VALUE_ERRORS = [
+    pytest.param(timeout_case(0), ValueError, "timeout_s", id="V2-0"),
+    pytest.param(timeout_case(float("nan")), ValueError, "timeout_s", id="V2-nan"),
+    pytest.param(timeout_case(-1), ValueError, "timeout_s", id="V2-negative"),
+    pytest.param(timeout_case(2**31), ValueError, "timeout_s", id="V3-2**31"),
+    pytest.param(prefix_case(()), ValueError, "compiler", id="V4-tuple"),
+    pytest.param(prefix_case([]), ValueError, "compiler", id="V4-list"),
+    pytest.param(flags_case("flags", ("-o", "x")), ValueError, "flags", id="V5-flags"),
+    pytest.param(
+        flags_case("trailing_flags", ("-ox",)),
+        ValueError,
+        "trailing_flags",
+        id="V5-trailing_flags",
+    ),
+    *(
+        pytest.param(argument_case(place, "a\0b"), ValueError, place, id=f"V6-{place}")
+        for place in PLACES
+    ),
+    *(
+        pytest.param(
+            argument_case(place, "a\ud800b"),
+            UnicodeEncodeError,
+            place,
+            id=f"V7-{place}",
+            marks=posix_only,
+        )
+        for place in PLACES
+    ),
+]
+
+
+@pytest.mark.parametrize("case, kind, parameter", SETTING_VALUE_ERRORS)
+def test_a_value_error_of_a_setting_names_the_setting(
+    case, kind, parameter, stub, src, out_dir, monkeypatch
+):
+    settings = case(stub(WRITE))
+    forbid_start(monkeypatch)
+    forbid_the_temporary_and_the_clock(monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        build(src, out_dir / "kernel.o", **settings)
+    assert type(caught.value) is kind
+    assert caught.value.parameter == parameter
+    assert not hasattr(caught.value, "path_role")
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("case, kind, parameter", SETTING_VALUE_ERRORS)
+def test_the_parameter_leaves_the_error_otherwise_unchanged(
+    case, kind, parameter, stub, src, out_dir, monkeypatch
+):
+    settings = case(stub(WRITE))
+    raised = []
+    tagging = clang_build._parameter
+
+    @contextlib.contextmanager
+    def untagged(name, kinds=(TypeError,)):
+        try:
+            yield
+        except ValueError as error:
+            raised.append(error)
+            raise
+
+    monkeypatch.setattr(clang_build, "_parameter", untagged)
+    with pytest.raises(ValueError) as plain:
+        build(src, out_dir / "kernel.o", **settings)
+    monkeypatch.setattr(clang_build, "_parameter", tagging)
+    with pytest.raises(ValueError) as caught:
+        build(src, out_dir / "kernel.o", **settings)
+    assert raised == [plain.value]
+    assert not hasattr(plain.value, "parameter")
+    assert type(caught.value) is type(plain.value)
+    assert caught.value.args == plain.value.args
+    assert str(caught.value) == str(plain.value)
+    assert caught.value.parameter == parameter
+
+
+class RaisingFlags:
+    def __init__(self, error):
+        self.error = error
+
+    def __iter__(self):
+        yield "-c"
+        raise self.error
+
+
+@pytest.mark.parametrize("keyword", ["flags", "trailing_flags"])
+def test_a_value_error_raised_inside_a_flags_step_names_the_step(
+    keyword, stub, src, out_dir, monkeypatch
+):
+    error = ValueError("cannot list the flags")
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            **{keyword: RaisingFlags(error)},
+        )
+    assert caught.value is error
+    assert caught.value.args == ("cannot list the flags",)
+    assert caught.value.parameter == keyword
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("keyword", ["flags", "trailing_flags"])
+def test_another_error_raised_inside_a_flags_step_has_no_parameter(
+    keyword, stub, src, out_dir, monkeypatch
+):
+    error = RuntimeError("cannot list the flags")
+    forbid_start(monkeypatch)
+    with pytest.raises(RuntimeError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            **{keyword: RaisingFlags(error)},
+        )
+    assert caught.value is error
+    assert not hasattr(caught.value, "parameter")
+    assert names(out_dir) == []
+
+
+def test_the_first_setting_in_the_order_is_named(stub, src, out_dir, monkeypatch):
+    compiler = stub(WRITE)
+    nul_part = (compiler[0], compiler[1] + "\0")
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError, match="timeout_s") as caught:
+        build(src, out_dir / "kernel.o", timeout_s=0, compiler=compiler, flags=("\0",))
+    assert caught.value.parameter == "timeout_s"
+    with pytest.raises(ValueError, match="NUL") as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=nul_part,
+            flags=("\0",),
+        )
+    assert caught.value.parameter == "flags"
+    with pytest.raises(ValueError, match="NUL") as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=nul_part,
+            trailing_flags=("\0",),
+        )
+    assert caught.value.parameter == "trailing_flags"
+    assert names(out_dir) == []
+
+
+def test_no_source_still_has_no_parameter(stub, out_dir, monkeypatch):
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError, match="no source file given") as caught:
+        build([], out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert type(caught.value) is ValueError
+    assert not hasattr(caught.value, "parameter")
+    assert not hasattr(caught.value, "path_role")
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("role", ["source", "output"])
+def test_a_missing_path_still_has_its_role_and_no_parameter(
+    role, stub, src, out_dir, monkeypatch
+):
+    sources, out = src, out_dir / "kernel.o"
+    if role == "source":
+        sources = src.parent / "missing.c"
+    else:
+        out = out_dir / "absent" / "kernel.o"
+    forbid_start(monkeypatch)
+    with pytest.raises(FileNotFoundError) as caught:
+        build(sources, out, timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value.path_role == role
+    assert not hasattr(caught.value, "parameter")
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("compiler", MISSING_COMPILERS)
+def test_a_missing_compiler_still_has_no_parameter(compiler, src, out_dir, monkeypatch):
+    forbid_start(monkeypatch)
+    with pytest.raises(CompilerNotFoundError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=compiler,
+            flags=("-c",),
+            trailing_flags=("-O2",),
+        )
+    assert type(caught.value) is CompilerNotFoundError
+    assert not hasattr(caught.value, "parameter")
+    assert names(out_dir) == []
+
+
+def test_a_value_error_from_creating_the_process_has_no_parameter(
+    stub, src, out_dir, monkeypatch
+):
+    error = ValueError("cannot hand over")
+
+    def popen(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(clang_build.subprocess, "Popen", popen)
+    with pytest.raises(ValueError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            flags=("-c",),
+            trailing_flags=("-O2",),
+        )
+    assert caught.value is error
     assert not hasattr(caught.value, "parameter")
     assert not stub.started
     assert names(out_dir) == []
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(timeout_case(0), id="V2-0"),
+        pytest.param(timeout_case(float("nan")), id="V2-nan"),
+        pytest.param(prefix_case(()), id="V4"),
+        pytest.param(argument_case("compiler", "a\0b"), id="V6"),
+        pytest.param(argument_case("compiler", "a\ud800b"), id="V7", marks=posix_only),
+    ],
+)
+def test_the_value_errors_of_compiler_version_still_have_no_parameter(
+    case, stub, monkeypatch
+):
+    settings = case(stub(VERSION))
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        compiler_version(**settings)
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
+
+
+@pytest.mark.parametrize(
+    "case, kind, parameter",
+    [
+        pytest.param(timeout_case(0), ValueError, "timeout_s", id="V2"),
+        pytest.param(flags_case("flags", ("-o", "x")), ValueError, "flags", id="V5"),
+        pytest.param(
+            argument_case("trailing_flags", "a\ud800b"),
+            UnicodeEncodeError,
+            "trailing_flags",
+            id="V7",
+            marks=posix_only,
+        ),
+    ],
+)
+def test_value_errors_of_a_setting_keep_their_parameter_through_pickling(
+    case, kind, parameter, stub, src, out_dir
+):
+    with pytest.raises(ValueError) as caught:
+        build(src, out_dir / "kernel.o", **case(stub(WRITE)))
+    loaded = pickle.loads(pickle.dumps(caught.value))
+    assert type(loaded) is kind
+    assert str(loaded) == str(caught.value)
+    assert loaded.args == caught.value.args
+    assert loaded.parameter == parameter

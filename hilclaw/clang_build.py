@@ -247,16 +247,17 @@ def build(
     :class:`UnicodeEncodeError`), and :class:`ValueError` is raised for a NUL
     character in it. Whether ``cwd`` exists is not tested here: a missing one
     fails the start, as :class:`CompilerNotStartedError` below. Any
-    :class:`TypeError` from the checks of ``timeout_s``, ``flags``,
-    ``trailing_flags``, ``sources``, ``output`` and ``compiler``,
-    and any :class:`TypeError` or :class:`ValueError` from the checks of
-    ``env`` and ``cwd``, including one that Python itself raises inside them
-    such as for a value that cannot be iterated, is raised with the attribute
-    ``parameter`` set to the name of that parameter: ``"timeout_s"``,
-    ``"flags"``, ``"trailing_flags"``, ``"sources"``, ``"output"``,
-    ``"compiler"``, ``"env"`` or ``"cwd"``; a :class:`ValueError` from the
-    other checks, and a :class:`TypeError` from anywhere else, such as binding
-    the call or creating the compiler process, carry no ``parameter``. Any
+    :class:`TypeError` from the checks of ``sources`` and ``output``, and any
+    :class:`TypeError` or :class:`ValueError` (including a subclass such as
+    :class:`UnicodeEncodeError`) from the checks of ``timeout_s``, ``flags``,
+    ``trailing_flags``, ``compiler``, ``env`` and ``cwd``, including one that
+    Python itself raises inside a check such as for a value that cannot be
+    iterated, is raised with the attribute ``parameter`` set to the name of
+    that parameter: ``"timeout_s"``, ``"flags"``, ``"trailing_flags"``,
+    ``"sources"``, ``"output"``, ``"compiler"``, ``"env"`` or ``"cwd"``; the
+    :class:`ValueError` for no source, and a :class:`TypeError` or
+    :class:`ValueError` from anywhere else, such as binding the call or
+    creating the compiler process, carry no ``parameter``. Any
     :class:`OSError` from testing a source path or the output path, including one
     that the test itself raises such as a :class:`PermissionError`, is raised with
     the attribute ``path_role`` set to ``"source"`` or ``"output"``; an
@@ -292,11 +293,11 @@ def build(
     temporary file then fails, the removal's error is not raised but added to
     that exception as a note naming the temporary path.
     """
-    with _parameter("timeout_s"):
+    with _parameter("timeout_s", (TypeError, ValueError)):
         _check_timeout(timeout_s)
-    with _parameter("flags"):
+    with _parameter("flags", (TypeError, ValueError)):
         flags = _checked_flags(flags, "flags")
-    with _parameter("trailing_flags"):
+    with _parameter("trailing_flags", (TypeError, ValueError)):
         trailing_flags = _checked_flags(trailing_flags, "trailing_flags")
     with _parameter("sources"):
         source_paths = _checked_sources(sources)
@@ -313,7 +314,7 @@ def build(
     except OSError as raised:
         raised.path_role = "output"
         raise
-    with _parameter("compiler"):
+    with _parameter("compiler", (TypeError, ValueError)):
         prefix = _resolve(compiler)
     with _parameter("env", (TypeError, ValueError)):
         _check_env(env)
@@ -405,8 +406,9 @@ def compiler_version(compiler=None, *, timeout_s):
     """Return the first line that ``<compiler> --version`` writes to stdout, stripped.
 
     ``compiler`` and ``timeout_s`` are as in :func:`build`, with the same
-    errors. Raises :class:`RuntimeError` when the command exits with a non-zero
-    status, does not finish within ``timeout_s`` or prints no version line.
+    errors, except that they carry no ``parameter``. Raises
+    :class:`RuntimeError` when the command exits with a non-zero status, does
+    not finish within ``timeout_s`` or prints no version line.
     """
     _check_timeout(timeout_s)
     command = (*_resolve(compiler), "--version")
