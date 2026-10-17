@@ -2,7 +2,7 @@
 id: T-0277
 title: Write ADR-0091 on which row of `correctness.check` a pre-start `ValueError` that now carries `parameter` "sources", "output" (of `clang_build.build`) or "kernel_sources" (of `build_verification_executable`) lets an operation place, and whether the unnamed rest (U4, U5) can now be placed (more of OD-18 sub-question 18 part (ma)); no `local_run.run`, no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18, "#5 D6"]
 dependsOn: [T-0275, T-0276]
@@ -166,3 +166,12 @@ This is a design-level part of OD-18, not an owner-only item (DRIVER §9). It cl
 ## Follow-ups
 
 ## Result
+
+- Outcome: DONE (document mode). The branch `claude/T-0277-adr-od18-sources-output-kernel-sources-value-errors` was rebased on `origin/main`, squashed and pushed fast-forward to `main` as `d993253` with the trailers `Reviewed-by: reviewer agent (4 rounds, Approve)` and `Task: T-0277`; the branch is deleted on the remote and locally. Fresh start (no earlier `Task: T-0277` commit).
+- Files (4, +119/-3): new `ARCHITECTURE/decisions/ADR-0091-od18-correctness-check-sources-output-kernel-sources-value-errors.md`; `ARCHITECTURE/Requirements.md` (one `**확정분**` link; `**잔여**` unchanged); `ARCHITECTURE/OpenDecisionProposals.md` (adopted-record line; sub-question 18 status rewritten in place — ADR-0091 added to the partial answers, "남음" now names only the unnamed `ValueError` from after all checks up to the start, U5 ruled out by the operation's own step; supersedes T-0275 Nit 1); `ARCHITECTURE/StandardScenarios.md` ("최근 재검사" updated; S0, S1-b, S2, S5, S6 re-checked, no verdict changed, no gap).
+- Decision: a `ValueError` named `"sources"`, `"output"` or `"kernel_sources"` (including one raised inside a handed object's code, e.g. a source's `__fspath__`) gets no row — not S5, not S3, no log. From the code at `1d61696` the still unnamed errors are U4 (after the checks up to and including the start; stays open because what `subprocess` raises was not read) and U5 (no kernel source; ruled out by the operation's own step). `compiler_version` stays a Boundary. No data-plane change. Consequences list the less exact sentences of ADR-0060, ADR-0087, ADR-0089 and ADR-0090 (takes up T-0275 Nit 2).
+- Review: 4 rounds with a context-isolated `dev-reviewer` — R1 Approve (Minor: an `env` without `items` presented as a `subprocess` `ValueError` not read; Nit: a reading attributed to ADR-0087 decision 4; both fixed); R2 Request changes (Minor: less-exact list missed ADR-0089 Status, decision 8, Alternatives (e), Boundaries and ADR-0090 Alternatives (e); Nit: "before any file is tested" wrong for a second source; both fixed); R3 Approve (Nit: same wording in Alternatives (b); fixed); R4 Approve, no findings.
+- §9 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6238194479
+- Overlap: the unlanded branches `claude/T-0264-*`, `claude/T-0210-*` and `claude/T-0231-*` edit the same OD-18 register row, the status of sub-question 18 and the "최근 재검사" line; they must rebase over `d993253`, and when ADR-0088 lands its text must keep the entries of ADR-0089, ADR-0090 and ADR-0091.
+- Follow-ups: (doc or code, candidate) place U4 — a later record reads what `subprocess.Popen` raises for the arguments `build` hands it, or a code change makes `build` refuse such a setting (e.g. an `env` without `items`) in a named check before the start. (doc/code, after HQ-0027) the `local_run.run` analogue, unchanged.
+- D16: no `claude` program, compiler or container was started.
