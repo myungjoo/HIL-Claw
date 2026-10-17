@@ -2,7 +2,7 @@
 id: T-0282
 title: Make `clang_build.build` refuse, before the start, an `env` that is not `None` and has no `items` method, with a `TypeError` that carries `parameter` "env"
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, C-7]
 dependsOn: [T-0281]
@@ -144,3 +144,5 @@ This is a code change only:
 - **Review**: 2 rounds. Round 1 Approve with a Minor (one docstring line of about 117 characters after the reflow) and a Nit (repeated "defect"), both fixed in `5974d19`; round 2 Approve with no findings.
 - **Language**: Python, the existing module.
 - **Follow-ups** (as listed in the task, none new): the doc task (ADR-0094 if free) confirming the S4 `settings_refused` row for this `TypeError` with `parameter` `"env"` and removing "an `env` with no `items` method" from the open entries of (마); the same change for `local_run.run` once HQ-0027 allows.
+
+Landed: PR #178 squash-merged as 4e05627 (driver record).
