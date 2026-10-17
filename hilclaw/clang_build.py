@@ -97,20 +97,23 @@ class CompilerNotStartedError(_UnendedBuildError):
 
 
 class CompilerRunError(_UnendedBuildError):
-    """Talking to the started compiler process failed before its end was known.
+    """Talking to the started compiler process, or timing it once ended, failed.
 
     Raised by :func:`build` from an :class:`OSError` raised after creating the
-    compiler process returned and before its return code was known, for example
-    from reading its output or killing it, whose ``errno``, ``strerror``,
-    ``filename`` and ``filename2`` it carries. It has no ``result``.
-    ``timed_out`` is true when the time limit had passed before the error: the
-    error came from killing the compiler for its time limit, from reading or
-    waiting for it after that kill, or from closing the process afterwards. It
-    is false for an error from the first read, from killing the compiler after
-    that read failed, or from closing the process after a read that ended.
+    compiler process returned, whose ``errno``, ``strerror``, ``filename`` and
+    ``filename2`` it carries: before the process's return code was known, for
+    example from reading its output or killing it, or, once the call had ended
+    the process, from reading the clock for the build's duration. It has no
+    ``result``. ``timed_out`` is true when the time limit had passed before the
+    error: the error came from killing the compiler for its time limit, from
+    reading or waiting for it after that kill, from closing the process
+    afterwards, or from reading the clock after such a kill. It is false for an
+    error from the first read, from killing the compiler after that read failed,
+    or from closing the process or reading the clock after a read that ended.
     ``log`` is the output the call held when the error was raised, decoded as
     :attr:`BuildResult.log` is: after the time limit, the output read before it
-    and anything read after the kill; after a read that ended, all of it. It is
+    and anything read after the kill; after a read that ended, all of it. A
+    failed read of the clock leaves ``log`` as the steps before it left it. It is
     ``None`` when the call held no output: after the first read failed, or when
     the time limit passed before any output was read and nothing was read after
     the kill. On Windows the output is read only after the kill, so a failed
@@ -217,7 +220,8 @@ def build(
     :class:`CompilerNotStartedError`, an :class:`OSError` subclass without
     ``result``; when removing the temporary file then fails too, the removal's
     error is its ``removal_error``. Any other :class:`OSError` raised while the
-    process runs is raised as :class:`CompilerRunError`, an :class:`OSError`
+    process runs, or from reading the clock for the build's duration once the
+    process has ended, is raised as :class:`CompilerRunError`, an :class:`OSError`
     subclass without ``result`` whose ``timed_out`` says whether the time limit
     had passed before the error and whose ``log`` is the output read so far, or
     ``None`` when none was held; when removing the temporary file then fails
@@ -274,10 +278,10 @@ def build(
             held = _Held()
             try:
                 returncode, raw = _communicate(process, timeout_s, held)
+                duration_s = time.monotonic() - started
             except OSError as error:
                 run_error = error
             else:
-                duration_s = time.monotonic() - started
                 ok = False
                 if returncode == 0:
                     try:

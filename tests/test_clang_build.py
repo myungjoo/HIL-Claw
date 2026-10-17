@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -939,6 +940,128 @@ def test_failed_removal_after_a_non_os_error_after_the_start(
     assert caught.value.__traceback__ is not None
     (process,) = processes
     assert process.wait(timeout=20) != 0
+
+
+@pytest.fixture
+def failing_clock(monkeypatch):
+    errors = []
+
+    def arm(reads=1, make=lambda: OSError(errno.EIO, "clock")):
+        calls = []
+
+        def monotonic():
+            calls.append(None)
+            if len(calls) <= reads:
+                return time.monotonic()
+            error = make()
+            errors.append(error)
+            raise error
+
+        monkeypatch.setattr(clang_build, "time", SimpleNamespace(monotonic=monotonic))
+        return errors
+
+    return arm
+
+
+def assert_clock_run_error(raised, errors):
+    (error,) = errors
+    assert type(raised) is CompilerRunError
+    assert raised.__cause__ is error
+    assert (raised.errno, raised.strerror) == (errno.EIO, "clock")
+    assert not isinstance(raised, (CompilerNotStartedError, *FILE_ERRORS))
+    assert not hasattr(raised, "result")
+
+
+@pytest.mark.parametrize("previous", [None, b"previous"], ids=["new", "existing"])
+def test_failed_clock_after_an_ok_build_is_a_run_error(
+    previous, stub, src, out_dir, failing_clock
+):
+    out = out_dir / "kernel.o"
+    if previous is not None:
+        out.write_bytes(previous)
+    errors = failing_clock()
+    with pytest.raises(OSError) as caught:
+        build(src, out, timeout_s=TIMEOUT, compiler=stub(LOGGED_WRITE))
+    raised = caught.value
+    assert_clock_run_error(raised, errors)
+    assert raised.timed_out is False
+    assert raised.log.splitlines() == ["stub warning: kept"]
+    assert raised.removal_error is None
+    assert not getattr(raised, "__notes__", [])
+    assert stub.started
+    if previous is None:
+        assert names(out_dir) == []
+    else:
+        assert out.read_bytes() == previous
+        assert names(out_dir) == ["kernel.o"]
+
+
+def test_failed_clock_after_a_compile_error_is_a_run_error(
+    stub, src, out_dir, failing_clock
+):
+    errors = failing_clock()
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(FAIL))
+    raised = caught.value
+    assert_clock_run_error(raised, errors)
+    assert raised.timed_out is False
+    assert "kernel.c:1:1: error: stub says no" in raised.log
+    assert raised.removal_error is None
+    assert names(out_dir) == []
+
+
+def test_failed_clock_after_the_time_limit_is_a_timed_out_run_error(
+    stub, src, out_dir, failing_clock
+):
+    errors = failing_clock()
+    before = time.monotonic()
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=5, compiler=stub(SLEEP))
+    assert time.monotonic() - before < 20
+    raised = caught.value
+    assert_clock_run_error(raised, errors)
+    assert raised.timed_out is True
+    assert "before sleep" in raised.log
+    assert raised.removal_error is None
+    assert names(out_dir) == []
+
+
+def test_failed_clock_and_failed_removal(
+    stub, src, out_dir, failing_clock, failing_unlink
+):
+    errors = failing_clock()
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    raised = caught.value
+    assert_clock_run_error(raised, errors)
+    assert raised.removal_error is failing_unlink[0]
+    assert not getattr(raised, "__notes__", [])
+    assert raised.timed_out is False
+
+
+def test_non_os_error_from_the_clock_after_the_end_is_passed_on(
+    stub, src, out_dir, failing_clock, failing_unlink
+):
+    errors = failing_clock(make=lambda: RuntimeError("not an OSError"))
+    with pytest.raises(RuntimeError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value is errors[0]
+    assert not isinstance(caught.value, CompilerRunError)
+    assert_removal_note(caught.value, failing_unlink)
+    assert stub.started
+
+
+def test_failed_clock_before_the_start_stays_plain(stub, src, out_dir, failing_clock):
+    errors = failing_clock(reads=0)
+    with pytest.raises(OSError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value is errors[0]
+    assert type(caught.value) is OSError
+    assert not isinstance(
+        caught.value, (CompilerRunError, CompilerNotStartedError, *FILE_ERRORS)
+    )
+    assert not stub.started
+    assert names(out_dir) == []
 
 
 def test_errors_outside_the_run_are_not_run_errors(stub, src, out_dir, monkeypatch):
