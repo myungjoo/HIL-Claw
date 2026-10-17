@@ -120,13 +120,21 @@ class CompilerRunError(_UnendedBuildError):
     kill or a failed read after it leaves ``None``. ``None`` does not mean that
     the compiler wrote nothing. ``removal_error`` is the :class:`OSError` from
     removing the temporary file afterwards, or ``None`` when that removal did
-    not fail.
+    not fail. ``returncode`` is the return code of the compiler process when the
+    error came from reading the clock after the process had ended by itself, the
+    value :attr:`BuildResult.returncode` would have held: 0, a non-zero status,
+    or a negative signal number on POSIX. It is ``None`` for every other source,
+    including reading the clock after a kill for the time limit; ``None`` does
+    not mean that the process did not end.
     """
 
-    def __init__(self, error, removal_error=None, *, timed_out=False, log=None):
+    def __init__(
+        self, error, removal_error=None, *, timed_out=False, log=None, returncode=None
+    ):
         super().__init__(error, removal_error)
         self.timed_out = timed_out
         self.log = log
+        self.returncode = returncode
 
 
 class _EndedBuildError(_CopiedOSError):
@@ -223,10 +231,12 @@ def build(
     process runs, or from reading the clock for the build's duration once the
     process has ended, is raised as :class:`CompilerRunError`, an :class:`OSError`
     subclass without ``result`` whose ``timed_out`` says whether the time limit
-    had passed before the error and whose ``log`` is the output read so far, or
-    ``None`` when none was held; when removing the temporary file then fails
-    too, the removal's error is its ``removal_error``. Once the compiler process
-    has ended, an :class:`OSError` from moving the artefact into place is raised
+    had passed before the error, whose ``log`` is the output read so far, or
+    ``None`` when none was held, and whose ``returncode`` is the compiler's
+    return code when the clock failed after the compiler ended by itself, and
+    ``None`` otherwise; when removing the temporary file then fails too, the
+    removal's error is its ``removal_error``. Once the compiler process has
+    ended, an :class:`OSError` from moving the artefact into place is raised
     as :class:`ArtefactNotPlacedError`, and one from removing the temporary file
     as :class:`TemporaryNotRemovedError`; both are :class:`OSError` subclasses
     whose ``result`` holds the :class:`BuildResult` with the compiler's log.
@@ -276,6 +286,7 @@ def build(
             start_error = error
         else:
             held = _Held()
+            returncode = None
             try:
                 returncode, raw = _communicate(process, timeout_s, held)
                 duration_s = time.monotonic() - started
@@ -310,7 +321,11 @@ def build(
         raise CompilerNotStartedError(start_error, removal_error) from start_error
     if run_error is not None:
         raise CompilerRunError(
-            run_error, removal_error, timed_out=held.timed_out, log=held.decoded()
+            run_error,
+            removal_error,
+            timed_out=held.timed_out,
+            log=held.decoded(),
+            returncode=returncode,
         ) from run_error
     result = BuildResult(
         ok=ok,
