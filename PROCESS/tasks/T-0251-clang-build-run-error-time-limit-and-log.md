@@ -2,7 +2,7 @@
 id: T-0251
 title: Make `CompilerRunError` of `clang_build.build` state whether the time limit had passed and carry the output read so far
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-10, OD-18]
 dependsOn: [T-0249, T-0250]
@@ -74,3 +74,12 @@ This is the Python API of a layer-2 tool, not the data plane: no `STATE`/spec/ev
 - (code) Tell apart the removal error raised in place of an exception that is no `OSError` (ADR-0081 K4 (ii)).
 
 ## Result
+
+DONE. PR #159 squash-merged as `d3becf0` (squash message ends with `Task: T-0251`); branch `claude/T-0251-run-error-time-limit-and-log` deleted.
+
+- Review: 2 rounds, both Approve. Round 1 nits: private `_Held.log()` renamed to `_Held.decoded()` (5bf1cde); `test_failed_kill_after_the_time_limit` waits through a real 5 s limit — kept, as acceptance criterion 5 asks for a real POSIX check and the existing timeout tests wait the same way.
+- CI: green on 5bf1cde (Python 3.11/3.14, coverage, C, sh, test-presence gates). Local: full pytest 22168 passed / 355 skipped; ruff check and format clean; `hilclaw/clang_build.py` 100% line coverage.
+- Language: Python, because the module is Python.
+- `CompilerRunError` gains keyword-only `timed_out=False` and `log=None`; positional construction and the class hierarchy (ADR-0081 K3) unchanged; pickling keeps both members. `build` passes a private `_Held` to `_communicate`; the members never come from `__context__`/`__cause__` or private `Popen` state.
+- Choice to note: if the exit of `with process:` fails after a normal `communicate`, `log` is the full output and `timed_out` is False ("None" is read as applying only to the `except BaseException` branch). On real Windows `TimeoutExpired` carries no output, so a failed kill or failed read after the kill leaves `log` as `None`; the docstring says so.
+- Follow-ups: (doc) a record placing `CompilerRunError` for `correctness.check` now that the time-limit branch and its log are stated (ADR-0081 decision 2); (code) tell apart the removal error raised in place of an exception that is no `OSError` (ADR-0081 K4 (ii); planner's candidate T-0252, no file yet).
