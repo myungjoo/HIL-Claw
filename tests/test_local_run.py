@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 import warnings
 from pathlib import Path
 
@@ -688,7 +689,8 @@ def test_an_error_of_the_command_iteration_is_passed_on_as_the_same_object():
     assert error.args == ("broken iteration",)
     assert error.__cause__ is cause
     assert error.__context__ is context
-    assert error.__traceback__ is not None
+    frames = [frame.name for frame in traceback.extract_tb(error.__traceback__)]
+    assert frames[-1] == "__next__"
 
 
 class IntPath:
