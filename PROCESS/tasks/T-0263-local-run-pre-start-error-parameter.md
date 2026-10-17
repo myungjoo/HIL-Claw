@@ -2,7 +2,7 @@
 id: T-0263
 title: Make every TypeError and ValueError that `local_run.run` raises from its checks before the start name the parameter it is about, so a refused time limit is told from a malformed command
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0261]
@@ -157,3 +157,12 @@ The pre-start errors of `run` are the part a member can split with no owner deci
 - (code, later) The errors `run` passes on from `subprocess`: an `env` error against an argument error (S4 against no row), and the `OSError` for a missing `cwd` (S3) against other start errors (S10). The design is left to that task.
 
 ## Result
+
+- PR #165 (https://github.com/myungjoo/HIL-Claw/pull/165), squash-merged as 7994476 on main; branch `claude/T-0263-local-run-pre-start-error-parameter` deleted. The squash message ends with `Task: T-0263`.
+- Review: 2 rounds, Approve. Round 1: Approve with one nit (the assertion `error.__traceback__ is not None` checked nothing), fixed in d3175c6 (the test now checks that the last traceback frame is `Broken.__next__`). Round 2: Approve with no findings.
+- CI green on d3175c6: Python 3.11 and 3.14, coverage gate, test presence, shellcheck and clang. Local: full pytest passed (22273 passed, 356 skipped, Windows/Python 3.14); `ruff check` and `ruff format --check` clean; line coverage of `hilclaw/` 99%.
+- Language: Python, the language of the module being changed (`hilclaw/local_run.py`).
+- In `run`, `with _parameter("timeout_s"): _check_timeout(timeout_s)` and `with _parameter("command"): resolved = _resolve(command)` set `parameter`. `_parameter` is a new private context manager that catches `(TypeError, ValueError)`, sets `error.parameter = name` on the same object and re-raises it. No other error carries the attribute (`ProgramNotFoundError`, call-binding errors, errors from subprocess or the wait). Classes, messages and check order are unchanged; no new public name; no import of `clang_build`.
+- Docstring of `run` extended with `parameter`, its two values and its coverage. Tests: only new tests in `tests/test_local_run.py`; no existing test edited. Size: `hilclaw/local_run.py` +22/-2; tests +210.
+- Follow-ups: (doc) an OD-18 (ma) record on what `parameter` of `local_run.run` makes true for `correctness.check`; (code) split the errors `run` passes on from subprocess (env vs argument, missing `cwd` S3 vs S10).
+- No `claude` was started (D16).
