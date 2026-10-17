@@ -663,6 +663,7 @@ def test_error_after_the_start_is_raised_as_run_error(
     assert raised.removal_error is None
     assert raised.timed_out is False
     assert raised.log is None
+    assert raised.returncode is None
     assert not isinstance(raised, (CompilerNotStartedError, *FILE_ERRORS))
     assert not isinstance(raised, FileNotFoundError)
     assert not hasattr(raised, "result")
@@ -861,6 +862,7 @@ def test_failed_close_after_a_read_that_ended(stub, src, out_dir, timed_out_run)
     assert "to stdout" in caught.value.log
     assert "to stderr" in caught.value.log
     assert processes[0].returncode == 0
+    assert caught.value.returncode is None
     assert names(out_dir) == []
 
 
@@ -987,6 +989,7 @@ def test_failed_clock_after_an_ok_build_is_a_run_error(
     assert raised.timed_out is False
     assert raised.log.splitlines() == ["stub warning: kept"]
     assert raised.removal_error is None
+    assert raised.returncode == 0
     assert not getattr(raised, "__notes__", [])
     assert stub.started
     if previous is None:
@@ -1007,6 +1010,7 @@ def test_failed_clock_after_a_compile_error_is_a_run_error(
     assert raised.timed_out is False
     assert "kernel.c:1:1: error: stub says no" in raised.log
     assert raised.removal_error is None
+    assert raised.returncode == 1
     assert names(out_dir) == []
 
 
@@ -1023,6 +1027,7 @@ def test_failed_clock_after_the_time_limit_is_a_timed_out_run_error(
     assert raised.timed_out is True
     assert "before sleep" in raised.log
     assert raised.removal_error is None
+    assert raised.returncode is None
     assert names(out_dir) == []
 
 
@@ -1037,6 +1042,61 @@ def test_failed_clock_and_failed_removal(
     assert raised.removal_error is failing_unlink[0]
     assert not getattr(raised, "__notes__", [])
     assert raised.timed_out is False
+    assert raised.returncode == 0
+
+
+@pytest.mark.parametrize("status", [3, 77])
+def test_failed_clock_states_the_exit_status(status, stub, src, out_dir, failing_clock):
+    errors = failing_clock()
+    body = f"print('exiting with {status}'); sys.exit({status})"
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(body))
+    raised = caught.value
+    assert_clock_run_error(raised, errors)
+    assert raised.returncode == status
+    assert raised.timed_out is False
+    assert raised.log.splitlines() == [f"exiting with {status}"]
+    assert names(out_dir) == []
+
+
+def test_failed_clock_after_a_logged_build_and_failed_removal(
+    stub, src, out_dir, failing_clock, failing_unlink
+):
+    errors = failing_clock()
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(LOGGED_WRITE))
+    raised = caught.value
+    assert_clock_run_error(raised, errors)
+    assert raised.returncode == 0
+    assert raised.removal_error is failing_unlink[0]
+    assert raised.log.splitlines() == ["stub warning: kept"]
+
+
+def test_failed_kill_after_the_time_limit_states_no_return_code(
+    stub, src, out_dir, timed_out_run
+):
+    processes, plan = timed_out_run
+    plan["errors"]["kill"] = OSError(errno.EPERM, "cannot kill")
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
+    assert caught.value.timed_out is True
+    assert caught.value.returncode is None
+    assert processes[0].poll() is not None
+
+
+def test_other_errors_carry_no_return_code(stub, src, out_dir, failing_unlink):
+    with pytest.raises(TemporaryNotRemovedError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value.result.returncode == 0
+    assert not hasattr(caught.value, "returncode")
+    for error in (
+        CompilerNotStartedError(OSError("plain")),
+        ArtefactNotPlacedError(OSError("plain"), None),
+        ArtefactNotCheckedError(OSError("plain"), None),
+        TemporaryNotRemovedError(OSError("plain"), None),
+    ):
+        assert not hasattr(error, "returncode")
+        assert not hasattr(pickle.loads(pickle.dumps(error)), "returncode")
 
 
 def test_non_os_error_from_the_clock_after_the_end_is_passed_on(
@@ -1141,7 +1201,12 @@ def test_run_error_class():
     assert error.removal_error is None
     assert error.timed_out is False
     assert error.log is None
+    assert error.returncode is None
     assert not hasattr(error, "result")
+    assert CompilerRunError(OSError("plain"), returncode=2).returncode == 2
+    assert CompilerRunError(OSError("plain"), returncode=0).returncode == 0
+    with pytest.raises(TypeError):
+        CompilerRunError(OSError("plain"), None, False, None, 0)
     removal = OSError("removal")
     error = CompilerRunError(OSError("plain"), removal)
     assert (error.removal_error, error.timed_out, error.log) == (removal, False, None)
@@ -1168,7 +1233,16 @@ def test_run_error_survives_pickling():
         assert (copy.errno, copy.strerror) == (error.errno, error.strerror)
         assert (copy.filename, copy.filename2) == (error.filename, error.filename2)
         assert (copy.timed_out, copy.log) == (error.timed_out, error.log)
+        assert copy.returncode is None
         assert not hasattr(copy, "result")
+    for returncode in (0, 1, -9, None):
+        error = CompilerRunError(
+            OSError(errno.EIO, "clock"), log="kept", returncode=returncode
+        )
+        copy = pickle.loads(pickle.dumps(error))
+        assert type(copy) is CompilerRunError
+        assert copy.returncode == returncode
+        assert (copy.errno, copy.log, copy.timed_out) == (errno.EIO, "kept", False)
     copy = pickle.loads(pickle.dumps(errors[3]))
     assert (copy.timed_out, copy.log) == (True, "so far")
     assert copy.removal_error.filename == "a.tmp"
