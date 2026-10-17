@@ -2,7 +2,7 @@
 id: T-0257
 title: Make `CompilerRunError` state the return code `clang_build.build` holds when reading the clock fails after the compiler ended by itself, so that source is told apart from the closing source
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0255, T-0256]
