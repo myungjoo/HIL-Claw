@@ -2,7 +2,7 @@
 id: T-0249
 title: Let `hilclaw.clang_build.build` raise an `OSError` from talking to the running compiler as a new `OSError` subclass `CompilerRunError`, so it is told apart by class from errors before the start (ADR-0080 decision 4, M3)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-6, FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0247, T-0248]
@@ -85,3 +85,12 @@ This task places no error in a row and edits no `ARCHITECTURE/` file. A later do
 - (code, later) The path tests before the start (ADR-0080 M4): make their raised classes independent of the Python version, if a record asks for it.
 
 ## Result
+DONE. PR #158, squash-merged as `065113b` (branch `claude/T-0249-clang-build-tells-run-errors-apart`, deleted). Review: 2 rounds (round 1 Approve with one nit: one docstring line ran to 84 columns, rewrapped in `daf8bc0`; round 2 Approve). CI green on the final head (Python 3.11 and 3.14 gates, coverage gate, C, sh and test-presence gates). Local (Windows, Python 3.14): full `pytest` 22157 passed, 355 skipped; `ruff check .` and `ruff format --check .` clean; `hilclaw/clang_build.py` at 100% line coverage.
+
+- Language: Python, because the module is Python.
+- `CompilerRunError` and `CompilerNotStartedError` now share a private base `_UnendedBuildError` (`removal_error` and `__reduce__`). Neither is a subclass of the other or of the three after-the-end classes. `build` wraps only the `_communicate` call, so an error inside `Popen` construction (ADR-0080 M5) stays `CompilerNotStartedError`.
+- Criterion 4 (kill branch) is covered by its own test. The test uses the `WRITE` stub, which exits by itself. With `SLEEP`, the `with process:` exit would wait the full 30 s for a process that a failing `kill` did not end. The `__cause__` is the `kill` error, and its `__context__` is the communicate error. The test then calls the real `kill` and `wait`.
+- A fix outside the task's design, needed for criterion 1's pickling (`str` preserved): `_CopiedOSError._copy` set `filename` and `filename2` to `None` explicitly. That made `OSError.__reduce__` emit five arguments. On Windows, an error with `errno` and no filename (for example the EIO of a failed communicate) then came back from pickle as `[WinError None] ...`. The bug affected all five error classes. Now the filenames are set only when there is a filename. A new regression test covers all five classes.
+- An extra test, `test_failed_removal_after_a_keyboard_interrupt_after_the_start`, keeps the unchanged path of a failed removal after a non-`OSError` covered. This path was covered before by the test that was replaced.
+- Criterion 6 is met with a new test, `test_except_oserror_catches_run_error`, and not by extending the existing parametrization, whose body would have needed editing. The module docstring is unchanged; none of its sentences became untrue.
+- Follow-ups: as listed above. The doc task that places `CompilerRunError` under OD-18 ⑱ (마) is the next candidate.
