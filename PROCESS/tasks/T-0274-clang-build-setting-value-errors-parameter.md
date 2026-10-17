@@ -2,7 +2,7 @@
 id: T-0274
 title: Give the pre-start `ValueError`s of `clang_build.build` for a setting (`timeout_s`, `flags`, `trailing_flags`, `compiler`) the attribute `parameter`, as T-0267 did for `env` and `cwd`; leave `sources`, `output` and `compiler_version` as they are
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0267, T-0268, T-0271, T-0272, T-0273]
@@ -127,3 +127,15 @@ This is an engineering choice inside `build` that ADR-0060 decision 4, ADR-0087 
 - (code, after HQ-0027) The same change in `local_run.run`, if the record on its pre-start errors asks for it.
 
 ## Result
+
+- PR #174 (https://github.com/myungjoo/HIL-Claw/pull/174), squash-merged as ecc319f5ed8f967507af5842766570484fd79a9a on main; branch `claude/T-0274-clang-build-setting-value-errors-parameter` deleted. The squash message ends with `Task: T-0274`.
+- Entry check: `gh pr list` showed no open PR before the first edit.
+- Review: 2 rounds, both Approve (https://github.com/myungjoo/HIL-Claw/pull/174#issuecomment-6236232459, #issuecomment-6236268876). Round 1 had one Low (docstring precision: a `ValueError` Python raises inside the `sources`/`output` checks was only covered by "anywhere else"); fixed in 68ff183 by naming "any `ValueError` from the checks of `sources` and `output`, such as the one for no source". Round 2: no findings.
+- CI green on 68ff183 (run 39047599513): Python 3.11 and 3.14, coverage gate (lines 99.58%, functions 100%), test presence, shellcheck, clang. Local (Windows, Python 3.14): full pytest 22624 passed, 482 skipped; `ruff check` and `ruff format --check` clean. POSIX-only V7 cases ran on CI only.
+- Language: Python, the language of the module being changed (`hilclaw/clang_build.py`).
+- Implementation: `_parameter` keeps `kinds=(TypeError,)`. `build` now calls `_parameter("timeout_s", (TypeError, ValueError))` (line 297), `_parameter("flags", ...)` (line 299), `_parameter("trailing_flags", ...)` (line 301) and `_parameter("compiler", ...)` (line 318), as `env`/`cwd` already did. `sources` and `output` still tag `TypeError` only; `compiler_version` code unchanged. `build`'s docstring sentence on `parameter` rewritten per criterion 3; `compiler_version`'s docstring gained "except that they carry no ``parameter``" (otherwise "with the same errors" became wrong). Module docstring unchanged.
+- Existing tests edited (criterion 4, `parameter` assertion only): `test_checks_other_than_paths_have_no_role` (new `elif` for the `timeout_s: 0` row → `"timeout_s"`); `test_other_errors_before_the_start_have_no_parameter` (three `ValueError` rows removed, covered by new `test_value_errors_of_the_settings_before_the_start_have_their_parameter`); `test_earlier_value_errors_come_before_env_and_cwd` (→ row key); `test_malformed_compiler_argument` (`build` branch → `"compiler"`, `compiler_version` assertion kept); `test_a_nul_in_an_argument_is_refused_before_the_start` and `test_an_unencodable_argument_is_the_error_of_fsencode` (→ `place`); `test_an_output_flag_with_a_nul_keeps_the_output_message` and `test_the_first_bad_flag_in_the_sequence_is_reported` (→ `keyword`); `test_a_bad_timeout_comes_before_a_nul_flag`, `test_a_timeout_too_long_to_wait_for_is_refused_before_the_start`, `test_a_timeout_too_long_is_checked_before_the_other_arguments`, `test_an_unprintable_timeout_is_checked_before_the_other_arguments` (→ `"timeout_s"`); `assert_unprintable_timeout_refused` (`build` error → `"timeout_s"`, `compiler_version` error still none); `test_the_existing_value_errors_still_have_no_parameter` renamed `test_the_existing_value_errors_have_their_parameter` with a `parameter` column. No other existing test edited; all pass, including `tests/harness/`.
+- New tests: V2-V7 branch cases (parameter, class, no start, no temporary/clock, empty output dir); error otherwise unchanged (class/args/message equal to an untagged run); `ValueError` inside a flags iterator tagged and same object, `RuntimeError` not tagged; check order; negatives (no source, missing source/output path role, `CompilerNotFoundError`, `Popen` `ValueError`, `compiler_version` V2/V4/V6/V7); pickling of V2, V5, V7.
+- Size: `hilclaw/clang_build.py` +19/-16 (1 non-test file); `tests/test_clang_build.py` +334/-24.
+- Follow-ups: unchanged (the doc OD-18 (ma) record placing the newly named `ValueError`s; the `local_run.run` analogue after HQ-0027). None new.
+- No `claude` was started (D16).
