@@ -27,14 +27,14 @@
 
 ### 1. Scope and terms
 
-- A call of `correctness.check` whose operation, after a build that ended ok, calls `local_run.run`, directly or through `run_verification`. **A named error** is a `TypeError` or `ValueError` that `run` raises with a `parameter`; **an unnamed error** is one with none (L4), and the `TypeError` or `ValueError` of `run_verification` itself for `executable` (L5). `VerificationArgumentError` is neither (Boundaries). **A setting** is one of ADR-0060 decision 3's table: the time limit of the process and the environment are "the backend's own"; the path of the executable and the working directory are "the operation's own" (cited: ADR-0060 decision 3; ADR-0056 decision 4). The arguments of the command are formed by the operation from the check parameters it is handed (cited for the parameters: ADR-0056 decision 3): "that code formed the argument from what it is handed", and "an argument of the command" is no setting (cited: ADR-0060 decision 4). **The mock** starts no process and is unchanged.
+- A call of `correctness.check` whose operation, after a build that ended ok, calls `local_run.run`, directly or through `run_verification`. **A named error** is a `TypeError` or `ValueError` that `run` raises with a `parameter`; **an unnamed error** is one with none (L4), and the `TypeError` or `ValueError` of `run_verification` itself for `executable` (L5). `VerificationArgumentError` is neither: its class tells it apart, so it is no error of two rows and not under (마), and its row is not this record's (Boundaries). **A setting** is one of ADR-0060 decision 3's table: the time limit of the process and the environment are "the backend's own"; the path of the executable and the working directory are "the operation's own" (cited: ADR-0060 decision 3; ADR-0056 decision 4). The arguments of the command are formed by the operation from the check parameters it is handed (cited for the parameters: ADR-0056 decision 3): "that code formed the argument from what it is handed", and "an argument of the command" is no setting (cited: ADR-0060 decision 4). **The mock** starts no process and is unchanged.
 
 ### 2. The operation tells them apart by `parameter`
 
 - **From what `run` states alone**: `isinstance(error, (TypeError, ValueError))` and `getattr(error, "parameter", None)`. `"timeout_s"` names the time limit of the process, `"command"` the command the operation forms, and `None` no check of L1 (L1, L4).
 - **On which reading.** "What the operation observes decides the row" (cited: ADR-0060 decision 4). **This record reads what the operation observes as what `run` states of the error — its class and its documented members**, as ADR-0085 decision 2 read `returncode`, ADR-0086 decision 2 `path_role` and ADR-0087 decision 2 `parameter` of `build`. It reads no exception chain, no message and no private state.
 - **"An error of two rows"** (ADR-0060 decision 4) **no longer holds for a named error**: neither check of `run` looks at `env`, so no named error is for an `env`, and `parameter` says which of a setting and the command it is for. It still holds for an unnamed `TypeError` or `ValueError`, whose class says nothing of the argument (decision 5).
-- **The order of the tests.** A named error is neither an `OSError`, nor `ProgramNotFoundError`, nor an `OverflowError`, which is no `ValueError`; so no error ADR-0060 decision 4 places by its class meets this record's test, and `VerificationArgumentError`, which carries no `parameter`, does not either.
+- **The order of the tests.** The errors `run`'s own tests raise are neither an `OSError`, nor `ProgramNotFoundError`, nor an `OverflowError`, which is no `ValueError`; so no error ADR-0060 decision 4 places by its class meets this record's test, and `VerificationArgumentError`, which carries no `parameter`, does not either. A named error that a handed object's code raises inside a check and that is also an `OSError` (for example `io.UnsupportedOperation`) is no `OSError` "from starting the process" (cited: ADR-0060 decision 4) and is read by its `parameter`.
 
 ### 3. `"timeout_s"` is S4, `settings_refused`
 
@@ -81,9 +81,9 @@ The names of ADR-0056: run `r1`, `round` 3, `candidate` 2, `attempt` 1, `"execut
 | The operation's code puts the integer `3` among the arguments | `TypeError`, `"command"` | lets it pass: no row (decision 4) | tool failure `operation_answer_invalid` (landed rules); the build's log kept |
 | The operation's code hands an empty command | `ValueError`, `"command"` | the same | the same |
 | The operation's code hands a command that is no iterable | `TypeError` of Python, `"command"` | the same | the same |
-| Through `run_verification`, `executable` is the integer `3` | `TypeError` of `run_verification`, no `parameter` | open under (마) (decision 5) | — |
-| An `env` that `subprocess` cannot hand over | `TypeError` or `ValueError` from `subprocess`, no `parameter` | the same | — |
-| The `cwd` does not exist | `OSError` from the start, no `parameter` | open: S3 against S10 (decision 5) | — |
+| Through `run_verification`, `executable` is the integer `3` | `TypeError` of `run_verification`, no `parameter` | open under (마) (decision 5) | open; `operation_answer_invalid` if the operation lets it pass (decision 5) |
+| An `env` that `subprocess` cannot hand over | `TypeError` or `ValueError` from `subprocess`, no `parameter` | the same | open; `operation_answer_invalid` if the operation lets it pass (decision 5) |
+| The `cwd` does not exist | `OSError` from the start, no `parameter` | open: S3 against S10 (decision 5) | open; `operation_answer_invalid` if the operation lets it pass (decision 5) |
 | The executable is not found | `ProgramNotFoundError`, no `parameter` | raises `executable_unstartable` (S10, ADR-0060 decision 4) | tool failure `executable_unstartable`; the build's log kept |
 
 ## Alternatives considered
