@@ -2,7 +2,7 @@
 id: T-0269
 title: Make `local_run.run` refuse, before the start, an argument that on POSIX `os.fsencode` cannot convert, with `parameter` "command"
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0265, T-0268]
