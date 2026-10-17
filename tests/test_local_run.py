@@ -761,20 +761,254 @@ def test_an_error_of_subprocess_names_no_parameter(
     assert not child.started
 
 
-@pytest.mark.parametrize(
-    "variable, kind", [({"A=B": "x"}, ValueError), ({"A": 3}, TypeError)]
+REFUSED_ENVS = [
+    ({"A=B": "x"}, ValueError),
+    ({"AB=": "x"}, ValueError),
+    ({"A\0": "x"}, ValueError),
+    ({"A": "x\0"}, ValueError),
+    ({"\0": ""}, ValueError),
+    ({"A": 3}, TypeError),
+    ({3: "x"}, TypeError),
+    ({"A": None}, TypeError),
+    ({"A": bytearray(b"x")}, TypeError),
+]
+REFUSED_POSIX_ENVS = [
+    ({b"A=B": b"x"}, ValueError),
+    ({b"A\0": b"x"}, ValueError),
+    ({"A": b"x\0"}, ValueError),
+    ({"A": Path("x\0")}, ValueError),
+    ({"A": IntPath()}, TypeError),
+]
+REFUSED_WINDOWS_ENVS = [
+    ({b"A": b"x"}, TypeError),
+    ({"A": b"x"}, TypeError),
+    ({"A": Path("x")}, TypeError),
+]
+REFUSED = (
+    REFUSED_ENVS
+    + [pytest.param(*case, marks=posix_only) for case in REFUSED_POSIX_ENVS]
+    + [pytest.param(*case, marks=windows_only) for case in REFUSED_WINDOWS_ENVS]
 )
-@pytest.mark.parametrize("platform_wait", [True, False])
-def test_an_env_that_subprocess_refuses_names_no_parameter(
-    variable, kind, platform_wait, child, monkeypatch
-):
+
+
+PASSED_ON = (AttributeError, OSError, TypeError, ValueError)
+
+
+def wait_path(platform_wait, monkeypatch):
     if not platform_wait:
         without_wait4(monkeypatch)
+
+
+def directly(command, cwd, env):
+    try:
+        subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            cwd=cwd,
+            env=env,
+            check=False,
+        )
+    except PASSED_ON as error:
+        return type(error)
+    return None
+
+
+@pytest.mark.parametrize("variable, kind", REFUSED)
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_env_that_subprocess_refuses_names_env(
+    variable, kind, platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
     error = raised(child(QUIET), env={**os.environ, **variable})
     assert type(error) is kind
-    assert not hasattr(error, "parameter")
+    assert error.parameter == "env"
     assert not child.started
     assert isinstance(run(child(QUIET), timeout_s=TIMEOUT), RunResult)
+
+
+@pytest.mark.parametrize("variable, kind", REFUSED)
+@pytest.mark.parametrize("in_cwd", [False, True])
+def test_a_refused_env_has_the_class_subprocess_raises(
+    variable, kind, in_cwd, child, tmp_path
+):
+    cwd = tmp_path if in_cwd else None
+    assert directly(child(QUIET), cwd, {**os.environ, **variable}) is kind
+    assert not child.started
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_env_error_message_names_the_key_and_not_the_value(
+    platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    error = raised(child(QUIET), env={**os.environ, "HILCLAW_K": "secret\0"})
+    assert "HILCLAW_K" in str(error)
+    assert "secret" not in str(error)
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_a_nul_in_an_argument_names_command(platform_wait, child, monkeypatch):
+    wait_path(platform_wait, monkeypatch)
+    error = raised(child(QUIET, "ok", "x\0y"))
+    assert type(error) is ValueError
+    assert error.parameter == "command"
+    assert str(error) == "an argument contains a NUL character"
+    assert not child.started
+
+
+def test_a_nul_in_an_argument_has_the_class_subprocess_raises(child):
+    assert directly(child(QUIET, "x\0y"), None, None) is ValueError
+    assert not child.started
+
+
+def test_a_nul_in_an_argument_is_named_before_the_program_lookup():
+    error = raised(("hilclaw-no-such-program", "x\0y"))
+    assert type(error) is ValueError
+    assert error.parameter == "command"
+
+
+ACCEPTED_ENVS = [
+    {"HILCLAW_TEST_MARK": "accepted"},
+    pytest.param({b"HILCLAW_TEST_MARK": b"accepted"}, marks=posix_only),
+    pytest.param({"HILCLAW_TEST_MARK": Path("accepted")}, marks=posix_only),
+    pytest.param({"=A": "x", "HILCLAW_TEST_MARK": "accepted"}, marks=windows_only),
+]
+
+
+@pytest.mark.parametrize("variable", ACCEPTED_ENVS)
+@pytest.mark.parametrize("in_cwd", [False, True])
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_accepted_env_reaches_the_process(
+    variable, in_cwd, platform_wait, child, monkeypatch, tmp_path
+):
+    monkeypatch.delenv("HILCLAW_TEST_MARK", raising=False)
+    wait_path(platform_wait, monkeypatch)
+    cwd = tmp_path if in_cwd else None
+    result = run(
+        child(QUIET), timeout_s=TIMEOUT, cwd=cwd, env={**os.environ, **variable}
+    )
+    assert result.returncode == 0
+    assert child.call()["mark"] == "accepted"
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_no_env_inherits_after_the_check(platform_wait, child, monkeypatch):
+    monkeypatch.setenv("HILCLAW_TEST_MARK", "inherited")
+    wait_path(platform_wait, monkeypatch)
+    result = run(child(QUIET), timeout_s=TIMEOUT, env=None)
+    assert result.returncode == 0
+    assert child.call()["mark"] == "inherited"
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_the_env_is_handed_on_as_given(platform_wait, child, monkeypatch):
+    seen = []
+
+    def record(*arguments, **keywords):
+        seen.append(keywords["env"])
+        raise LookupError("recorded")
+
+    if platform_wait and hasattr(os, "wait4"):
+        monkeypatch.setattr(subprocess, "Popen", record)
+    else:
+        without_wait4(monkeypatch)
+        monkeypatch.setattr(subprocess, "run", record)
+    env = {**os.environ, "HILCLAW_TEST_MARK": "given"}
+    error = raised(child(QUIET), env=env)
+    assert type(error) is LookupError
+    assert seen == [env]
+    assert seen[0] is env
+
+
+UNCHANGED_ENVS = [
+    {"": "x"},
+    pytest.param({"=A": "x"}, marks=posix_only),
+    pytest.param({b"=A": b"x"}, marks=posix_only),
+    pytest.param({b"": b"x"}, marks=posix_only),
+]
+
+
+@pytest.mark.parametrize("variable", UNCHANGED_ENVS)
+@pytest.mark.parametrize("in_cwd", [False, True])
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_env_left_to_subprocess_names_no_parameter(
+    variable, in_cwd, platform_wait, child, monkeypatch, tmp_path
+):
+    wait_path(platform_wait, monkeypatch)
+    cwd = tmp_path if in_cwd else None
+    env = {**os.environ, **variable}
+    expected = directly(child(QUIET), cwd, env)
+    try:
+        run(child(QUIET), timeout_s=TIMEOUT, cwd=cwd, env=env)
+    except PASSED_ON as error:
+        assert type(error) is expected
+        assert not hasattr(error, "parameter")
+    else:
+        assert expected is None
+
+
+@pytest.mark.parametrize("env", [[("A", "x")], 5, "A=x"])
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_env_that_is_not_a_mapping_keeps_its_class(
+    env, platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    expected = directly(child(QUIET), None, env)
+    error = raised(child(QUIET), env=env)
+    assert expected is not None
+    assert type(error) is expected
+    assert not hasattr(error, "parameter")
+    assert not child.started
+
+
+def test_a_list_env_still_raises_attribute_error(child):
+    error = raised(child(QUIET), env=[("A", "x")])
+    assert type(error) is AttributeError
+    assert not hasattr(error, "parameter")
+
+
+class Items(dict):
+    def __init__(self, error):
+        super().__init__()
+        self.error = error
+
+    def items(self):
+        raise self.error
+
+
+def test_a_type_error_of_env_items_names_env(child):
+    given = TypeError("items refused")
+    error = raised(child(QUIET), env=Items(given))
+    assert error is given
+    assert error.parameter == "env"
+    assert not child.started
+
+
+@pytest.mark.parametrize("given", [RuntimeError("broken"), LookupError("gone")])
+def test_another_error_of_env_items_is_passed_on(given, child):
+    error = raised(child(QUIET), env=Items(given))
+    assert error is given
+    assert not hasattr(error, "parameter")
+    assert not child.started
+
+
+def test_the_time_limit_is_named_before_the_env(child):
+    error = raised(child(QUIET), timeout_s=0, env={"A=B": "x"})
+    assert type(error) is ValueError
+    assert error.parameter == "timeout_s"
+
+
+@pytest.mark.parametrize("command", [[], ("x", 3), ("x", "y\0")])
+def test_the_command_is_named_before_the_env(command):
+    error = raised(command, env={"A": 3})
+    assert error.parameter == "command"
+
+
+def test_a_missing_program_comes_before_the_env():
+    error = raised(("hilclaw-no-such-program", "x"), env={"A=B": "x"})
+    assert type(error) is ProgramNotFoundError
+    assert not hasattr(error, "parameter")
 
 
 @pytest.mark.parametrize("platform_wait", [True, False])
@@ -800,6 +1034,8 @@ def test_an_interrupted_wait_names_no_parameter(child, monkeypatch):
     [
         (["x"], {"timeout_s": "10"}, TypeError),
         ([], {"timeout_s": TIMEOUT}, ValueError),
+        ([sys.executable], {"env": {"A=B": "x"}}, ValueError),
+        ([sys.executable], {"env": {"A": 3}}, TypeError),
     ],
 )
 def test_the_parameter_survives_pickling(command, settings, kind):
