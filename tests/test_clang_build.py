@@ -1496,7 +1496,7 @@ def test_unusable_sources(sources, error, stub, src, out_dir, monkeypatch):
         assert caught.value.path_role == "source"
     else:
         assert not hasattr(caught.value, "path_role")
-    if error is TypeError:
+    if error in (TypeError, ValueError):
         assert caught.value.parameter == "sources"
     else:
         assert not hasattr(caught.value, "parameter")
@@ -3212,14 +3212,176 @@ def test_the_first_setting_in_the_order_is_named(stub, src, out_dir, monkeypatch
     assert names(out_dir) == []
 
 
-def test_no_source_still_has_no_parameter(stub, out_dir, monkeypatch):
+def test_no_source_names_the_sources(stub, out_dir, monkeypatch):
     forbid_start(monkeypatch)
     with pytest.raises(ValueError, match="no source file given") as caught:
         build([], out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
     assert type(caught.value) is ValueError
-    assert not hasattr(caught.value, "parameter")
+    assert caught.value.args == ("no source file given",)
+    assert caught.value.parameter == "sources"
     assert not hasattr(caught.value, "path_role")
     assert names(out_dir) == []
+
+
+class SourceValueError(ValueError):
+    pass
+
+
+class RaisingSources:
+    def __init__(self, first, error):
+        self.first = first
+        self.error = error
+
+    def __iter__(self):
+        yield self.first
+        raise self.error
+
+
+class RaisingPath:
+    def __init__(self, error):
+        self.error = error
+
+    def __fspath__(self):
+        raise self.error
+
+
+@pytest.mark.parametrize("kind", [ValueError, SourceValueError, UnicodeError])
+def test_a_value_error_from_iterating_the_sources_names_the_sources(
+    kind, stub, src, out_dir, monkeypatch
+):
+    error = kind("cannot list the sources")
+    forbid_start(monkeypatch)
+    with pytest.raises(kind) as caught:
+        build(
+            RaisingSources(src, error),
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+        )
+    assert caught.value is error
+    assert type(caught.value) is kind
+    assert caught.value.args == ("cannot list the sources",)
+    assert caught.value.parameter == "sources"
+    assert not hasattr(caught.value, "path_role")
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("as_list", [False, True])
+def test_a_value_error_from_a_source_path_object_names_the_sources(
+    as_list, stub, src, out_dir, monkeypatch
+):
+    error = SourceValueError("no path")
+    source = RaisingPath(error)
+    forbid_start(monkeypatch)
+    with pytest.raises(SourceValueError) as caught:
+        build(
+            [src, source] if as_list else source,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+        )
+    assert caught.value is error
+    assert caught.value.args == ("no path",)
+    assert caught.value.parameter == "sources"
+    assert not hasattr(caught.value, "path_role")
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("kind", [ValueError, SourceValueError])
+def test_a_value_error_from_the_output_path_object_names_the_output(
+    kind, stub, src, out_dir, monkeypatch
+):
+    error = kind("no path")
+    forbid_start(monkeypatch)
+    with pytest.raises(kind) as caught:
+        build(src, RaisingPath(error), timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value is error
+    assert type(caught.value) is kind
+    assert caught.value.args == ("no path",)
+    assert caught.value.parameter == "output"
+    assert not hasattr(caught.value, "path_role")
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("place", ["sources", "output"])
+def test_another_error_from_a_path_step_has_no_parameter(
+    place, stub, src, out_dir, monkeypatch
+):
+    error = RuntimeError("no path")
+    sources, out = src, out_dir / "kernel.o"
+    if place == "sources":
+        sources = RaisingSources(src, error)
+    else:
+        out = RaisingPath(error)
+    forbid_start(monkeypatch)
+    with pytest.raises(RuntimeError) as caught:
+        build(sources, out, timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value is error
+    assert not hasattr(caught.value, "parameter")
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("role", ["source", "output"])
+def test_a_directory_path_still_has_its_role_and_no_parameter(
+    role, stub, src, out_dir, monkeypatch
+):
+    sources, out = src, out_dir / "kernel.o"
+    if role == "source":
+        sources = src.parent
+    else:
+        out = out_dir
+    forbid_start(monkeypatch)
+    with pytest.raises(IsADirectoryError) as caught:
+        build(sources, out, timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value.path_role == role
+    assert not hasattr(caught.value, "parameter")
+    assert names(out_dir) == []
+
+
+def test_the_path_steps_keep_their_place_in_the_order(stub, src, out_dir, monkeypatch):
+    out = out_dir / "kernel.o"
+    failing_output = RaisingPath(ValueError("no path"))
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError, match="timeout_s") as caught:
+        build([], out, timeout_s=0, compiler=stub(WRITE))
+    assert caught.value.parameter == "timeout_s"
+    with pytest.raises(ValueError, match="must not set the output") as caught:
+        build([], out, timeout_s=TIMEOUT, compiler=stub(WRITE), flags=("-o", "x"))
+    assert caught.value.parameter == "flags"
+    with pytest.raises(ValueError, match="no source file given") as caught:
+        build([], failing_output, timeout_s=TIMEOUT, compiler=())
+    assert caught.value.parameter == "sources"
+    with pytest.raises(ValueError, match="no path") as caught:
+        build(src, failing_output, timeout_s=TIMEOUT, compiler=())
+    assert caught.value.parameter == "output"
+    with pytest.raises(ValueError, match="no path") as caught:
+        build(
+            src,
+            failing_output,
+            timeout_s=TIMEOUT,
+            compiler="hilclaw-no-such-compiler",
+        )
+    assert caught.value.parameter == "output"
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("place", ["sources", "output"])
+def test_value_errors_of_the_path_steps_keep_their_parameter_through_pickling(
+    place, stub, src, out_dir
+):
+    sources, out = src, out_dir / "kernel.o"
+    if place == "sources":
+        sources = []
+    else:
+        out = RaisingPath(ValueError("no path"))
+    with pytest.raises(ValueError) as caught:
+        build(sources, out, timeout_s=TIMEOUT, compiler=stub(WRITE))
+    loaded = pickle.loads(pickle.dumps(caught.value))
+    assert type(loaded) is ValueError
+    assert str(loaded) == str(caught.value)
+    assert loaded.args == caught.value.args
+    assert loaded.parameter == place
+    assert not stub.started
 
 
 @pytest.mark.parametrize("role", ["source", "output"])

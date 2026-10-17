@@ -424,6 +424,77 @@ def test_a_type_error_from_the_iteration_is_the_same_object(
     assert list(out.parent.iterdir()) == []
 
 
+class KernelValueError(ValueError):
+    pass
+
+
+@pytest.mark.parametrize("kind", [ValueError, KernelValueError, UnicodeError])
+def test_a_value_error_from_the_iteration_names_the_kernel_sources(
+    stub, kernel, out, no_build, kind
+):
+    raised = kind("x")
+
+    def sources():
+        yield kernel()
+        raise raised
+
+    with pytest.raises(kind) as caught:
+        build_verification_executable(
+            sources(), out, timeout_s=TIMEOUT, compiler=stub(WRITE)
+        )
+    assert caught.value is raised
+    assert type(caught.value) is kind
+    assert caught.value.args == ("x",)
+    assert caught.value.parameter == "kernel_sources"
+    assert no_build == []
+    assert not stub.started
+    assert list(out.parent.iterdir()) == []
+
+
+def test_a_value_error_from_the_iteration_keeps_its_parameter_through_pickling(
+    stub, out
+):
+    def sources():
+        raise ValueError("x")
+        yield
+
+    with pytest.raises(ValueError) as caught:
+        build_verification_executable(
+            sources(), out, timeout_s=TIMEOUT, compiler=stub(WRITE)
+        )
+    copy = pickle.loads(pickle.dumps(caught.value))
+    assert type(copy) is ValueError
+    assert copy.args == ("x",)
+    assert copy.parameter == "kernel_sources"
+
+
+class FailingPath:
+    def __init__(self, error):
+        self.error = error
+
+    def __fspath__(self):
+        raise self.error
+
+
+@pytest.mark.parametrize("as_list", [False, True])
+def test_a_value_error_from_a_kernel_path_object_keeps_the_parameter_of_build(
+    stub, kernel, out, as_list
+):
+    raised = ValueError("no path")
+    source = FailingPath(raised)
+    with pytest.raises(ValueError) as caught:
+        build_verification_executable(
+            [kernel(), source] if as_list else source,
+            out,
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+        )
+    assert caught.value is raised
+    assert caught.value.parameter == "sources"
+    assert not stub.started
+    assert list(out.parent.iterdir()) == []
+
+
 def test_other_errors_from_the_iteration_pass_unchanged(stub, kernel, out, no_build):
     raised = RuntimeError("x")
 
