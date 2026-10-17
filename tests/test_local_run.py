@@ -1108,7 +1108,7 @@ def test_a_refused_cwd_names_cwd(cwd, platform_wait, child, monkeypatch):
     expected = directly(child(QUIET), cwd, None)
     wait_path(platform_wait, monkeypatch)
     error = raised(child(QUIET), cwd=cwd)
-    assert expected in (TypeError, ValueError)
+    assert issubclass(expected, (TypeError, ValueError))
     assert type(error) is expected
     assert error.parameter == "cwd"
     assert not hasattr(error, "path_role")
