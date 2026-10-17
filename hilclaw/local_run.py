@@ -99,14 +99,24 @@ def run(command, *, timeout_s, cwd=None, env=None):
     :class:`OverflowError` for a finite ``timeout_s`` longer than the platform
     can wait for (a bound that depends on the platform and can be a matter of
     weeks), which arrives after the process was started and killed.
+    Every :class:`TypeError` and :class:`ValueError` raised by the checks
+    before the start, including one Python raises inside them, carries an
+    attribute ``parameter`` naming the parameter of :func:`run` it is about:
+    ``"timeout_s"`` for the time limit and ``"command"`` for the command, the
+    program or an argument. The time limit is checked first. An error from
+    anywhere else, including what :mod:`subprocess` raises and
+    :class:`ProgramNotFoundError`, carries no ``parameter``; read it as
+    ``getattr(error, "parameter", None)``.
 
     Where :func:`os.wait4` is used and it finds the process already reaped by
     someone else (for example with ``SIGCHLD`` ignored), the exit status is
     unknown and is reported as ``0``, as :mod:`subprocess` does, with
     ``max_rss`` ``None``.
     """
-    _check_timeout(timeout_s)
-    resolved = _resolve(command)
+    with _parameter("timeout_s"):
+        _check_timeout(timeout_s)
+    with _parameter("command"):
+        resolved = _resolve(command)
     wait = _run_with_usage if hasattr(os, "wait4") else _run_without_usage
     started = time.monotonic()
     returncode, stdout, stderr, max_rss = wait(resolved, timeout_s, cwd, env)
@@ -204,6 +214,15 @@ def _kill_and_reap(pid):
     except ChildProcessError:
         return 0, None
     return status, usage
+
+
+@contextlib.contextmanager
+def _parameter(name):
+    try:
+        yield
+    except (TypeError, ValueError) as error:
+        error.parameter = name
+        raise
 
 
 def _check_timeout(timeout_s):
