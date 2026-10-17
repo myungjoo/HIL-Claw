@@ -3,6 +3,7 @@ import json
 import os
 import pickle
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -659,6 +660,8 @@ def test_error_after_the_start_is_raised_as_run_error(
     assert raised.__cause__ is error
     assert (raised.errno, raised.strerror) == (error.errno, error.strerror)
     assert raised.removal_error is None
+    assert raised.timed_out is False
+    assert raised.log is None
     assert not isinstance(raised, (CompilerNotStartedError, *FILE_ERRORS))
     assert not isinstance(raised, FileNotFoundError)
     assert not hasattr(raised, "result")
@@ -678,6 +681,8 @@ def test_failed_removal_after_an_error_after_the_start(
     error = caught.value
     assert error.__cause__ is errors[0]
     assert error.removal_error is failing_unlink[0]
+    assert error.timed_out is False
+    assert error.log is None
     assert (error.errno, error.strerror) == (errno.EIO, "input/output error")
     assert not isinstance(error, (CompilerNotStartedError, *FILE_ERRORS))
     assert not hasattr(error, "result")
@@ -709,8 +714,167 @@ def test_error_from_kill_after_a_failed_communicate(
     assert kill_error.__context__ is errors[0]
     assert caught.value.errno == errno.EPERM
     assert caught.value.removal_error is None
+    assert caught.value.timed_out is False
+    assert caught.value.log is None
     assert stub.started
     assert names(out_dir) == []
+
+
+@pytest.fixture
+def timed_out_run(monkeypatch):
+    processes = []
+    plan = {"time_limit": True, "output": b"read so far", "errors": {}}
+    popen = clang_build.subprocess.Popen
+
+    def fail(step):
+        error = plan["errors"].pop(step, None)
+        if error is not None:
+            raise error
+
+    class Popen(popen):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            processes.append(self)
+
+        def communicate(self, input=None, timeout=None):
+            if timeout is not None and plan["time_limit"]:
+                raise subprocess.TimeoutExpired(self.args, timeout, plan["output"])
+            fail("communicate")
+            return super().communicate(input, timeout)
+
+        def kill(self):
+            super().kill()
+            fail("kill")
+
+        def wait(self, timeout=None):
+            if self.returncode is None and "wait" in plan["errors"]:
+                super().wait(timeout)
+                fail("wait")
+            return super().wait(timeout)
+
+        def __exit__(self, *args):
+            super().__exit__(*args)
+            fail("exit")
+
+    monkeypatch.setattr(clang_build.subprocess, "Popen", Popen)
+    yield processes, plan
+    for process in processes:
+        if process.poll() is None:
+            popen.kill(process)
+            popen.wait(process)
+
+
+def test_failed_kill_after_the_time_limit(stub, src, out_dir, monkeypatch):
+    popen = clang_build.subprocess.Popen
+    kill = popen.kill
+    kill_errors = []
+
+    def failing_kill(self):
+        kill(self)
+        error = OSError(errno.EPERM, "cannot kill")
+        kill_errors.append(error)
+        raise error
+
+    monkeypatch.setattr(popen, "kill", failing_kill)
+    before = time.monotonic()
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=5, compiler=stub(SLEEP))
+    assert time.monotonic() - before < 20
+    error = caught.value
+    (kill_error,) = kill_errors
+    assert error.__cause__ is kill_error
+    assert error.errno == errno.EPERM
+    assert error.timed_out is True
+    assert error.removal_error is None
+    assert not hasattr(error, "result")
+    if sys.platform == "win32":
+        assert error.log is None
+    else:
+        assert "before sleep" in error.log
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize(
+    "output", [b"read so far \xff", b"", None], ids=["output", "empty", "none"]
+)
+def test_failed_kill_keeps_what_the_time_limit_read(
+    output, stub, src, out_dir, timed_out_run
+):
+    processes, plan = timed_out_run
+    plan["output"] = output
+    plan["errors"]["kill"] = OSError(errno.EPERM, "cannot kill")
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
+    assert caught.value.timed_out is True
+    expected = None if output is None else output.decode("utf-8", errors="replace")
+    assert caught.value.log == expected
+    assert processes[0].poll() is not None
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("windows", [True, False], ids=["windows", "posix"])
+def test_failed_read_or_wait_after_the_kill(
+    windows, stub, src, out_dir, timed_out_run, monkeypatch
+):
+    monkeypatch.setattr(clang_build, "_WINDOWS", windows)
+    processes, plan = timed_out_run
+    step = "communicate" if windows else "wait"
+    failure = plan["errors"][step] = OSError(errno.EIO, "input/output error")
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
+    assert caught.value.__cause__ is failure
+    assert caught.value.timed_out is True
+    assert caught.value.log == "read so far"
+    assert caught.value.removal_error is None
+    assert plan["errors"] == {}
+    assert processes[0].poll() is not None
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("windows", [True, False], ids=["windows", "posix"])
+def test_failed_close_after_the_time_limit(
+    windows, stub, src, out_dir, timed_out_run, monkeypatch
+):
+    monkeypatch.setattr(clang_build, "_WINDOWS", windows)
+    processes, plan = timed_out_run
+    plan["output"] = None
+    failure = plan["errors"]["exit"] = OSError(errno.EIO, "input/output error")
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
+    assert caught.value.__cause__ is failure
+    assert caught.value.timed_out is True
+    assert isinstance(caught.value.log, str) is windows
+    assert processes[0].poll() is not None
+    assert names(out_dir) == []
+
+
+def test_failed_close_after_a_read_that_ended(stub, src, out_dir, timed_out_run):
+    processes, plan = timed_out_run
+    plan["time_limit"] = False
+    failure = plan["errors"]["exit"] = OSError(errno.EIO, "input/output error")
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(BOTH))
+    assert caught.value.__cause__ is failure
+    assert caught.value.timed_out is False
+    assert "to stdout" in caught.value.log
+    assert "to stderr" in caught.value.log
+    assert processes[0].returncode == 0
+    assert names(out_dir) == []
+
+
+def test_failed_removal_after_the_time_limit(
+    stub, src, out_dir, timed_out_run, failing_unlink
+):
+    processes, plan = timed_out_run
+    plan["errors"]["kill"] = OSError(errno.EPERM, "cannot kill")
+    with pytest.raises(CompilerRunError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
+    error = caught.value
+    assert error.timed_out is True
+    assert error.log == "read so far"
+    assert error.removal_error is failing_unlink[0]
+    assert error.errno == errno.EPERM
+    assert processes[0].poll() is not None
 
 
 def test_keyboard_interrupt_after_the_start_is_passed_on(
@@ -815,7 +979,16 @@ def test_run_error_class():
     assert error.errno is None
     assert error.filename is None
     assert error.removal_error is None
+    assert error.timed_out is False
+    assert error.log is None
     assert not hasattr(error, "result")
+    removal = OSError("removal")
+    error = CompilerRunError(OSError("plain"), removal)
+    assert (error.removal_error, error.timed_out, error.log) == (removal, False, None)
+    error = CompilerRunError(OSError("plain"), timed_out=True, log="")
+    assert (error.removal_error, error.timed_out, error.log) == (None, True, "")
+    with pytest.raises(TypeError):
+        CompilerRunError(OSError("plain"), None, True)
 
 
 def test_run_error_survives_pickling():
@@ -824,6 +997,9 @@ def test_run_error_survives_pickling():
         CompilerRunError(PermissionError(13, "denied", "cc", None, "x"), removal),
         CompilerRunError(OSError(errno.EIO, "input/output error")),
         CompilerRunError(OSError("plain")),
+        CompilerRunError(
+            OSError(errno.EPERM, "cannot kill"), removal, timed_out=True, log="so far"
+        ),
     ]
     for error in errors:
         copy = pickle.loads(pickle.dumps(error))
@@ -831,7 +1007,13 @@ def test_run_error_survives_pickling():
         assert str(copy) == str(error)
         assert (copy.errno, copy.strerror) == (error.errno, error.strerror)
         assert (copy.filename, copy.filename2) == (error.filename, error.filename2)
+        assert (copy.timed_out, copy.log) == (error.timed_out, error.log)
         assert not hasattr(copy, "result")
+    copy = pickle.loads(pickle.dumps(errors[3]))
+    assert (copy.timed_out, copy.log) == (True, "so far")
+    assert copy.removal_error.filename == "a.tmp"
+    copy = pickle.loads(pickle.dumps(errors[1]))
+    assert (copy.timed_out, copy.log) == (False, None)
     copy = pickle.loads(pickle.dumps(errors[0]))
     assert type(copy.removal_error) is OSError
     assert (copy.removal_error.errno, copy.removal_error.filename) == (
