@@ -2,7 +2,7 @@
 id: T-0280
 title: Make a `ValueError` that `PurePath.with_name` raises while `clang_build.build` forms the temporary name carry `parameter` "output" (for example a Windows output file name such as `a:b.exe`), before the start
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, C-7]
 dependsOn: [T-0278, T-0279]
@@ -116,3 +116,25 @@ This is a code change only. It records no row of `correctness.check` (the follow
 - A doc task (ADR-0093, if free): place in `correctness.check` the `ValueError` with `parameter` `"output"` from forming the temporary name. Under ADR-0091 decision 2 and ADR-0092 decision 2, a `ValueError` named `"output"` is no row. Then say what is left of U4: the clock and `subprocess.Popen`.
 
 ## Result
+
+- **Outcome**: DONE. PR #177, squash-merged as `04b8a38` (branch `claude/T-0280-temporary-name-error-names-the-output` deleted, remote and local).
+- **Change**: `hilclaw/clang_build.py` (+8/-6). The pid and `secrets.token_hex(8)` are drawn after the `cwd` check and outside any step. Only `target.with_name(...)`, with the same name text, runs inside `with _parameter("output"):`. The `parameter` paragraph of the `build` docstring now says that, after the check of `cwd`, forming the temporary name beside the output path is part of the check of `output`. "Raised before anything is started" is unchanged. No code comments were added.
+- **Tests** (`tests/test_clang_build.py`, +100):
+  - error: a patched `pathlib.PurePath.with_name` raises `ValueError`, and separately `TypeError`. `build` raises the same object, with `parameter` `"output"` and no `path_role`.
+  - order: with that patch and a NUL in `cwd`, the error carries `parameter` `"cwd"`, so the `cwd` check still comes first.
+  - negative: a `ValueError` from `secrets.token_hex` comes out with no `parameter`.
+  - `windows_only` (see below).
+  - Every test proves that nothing was started (`forbid_start` and `stub.started`) and that the output directory is empty. The existing temporary-name tests pass unchanged.
+- **`windows_only` observation** (Windows 11, Python 3.14.4):
+  - `out_dir / "a:b.exe"` does not keep the name in `out_dir`: pathlib joins it to the drive-relative path `a:b.exe`, and `os.path.abspath` makes that `A:\b.exe`. `build` therefore refuses it in the parent test, with `FileNotFoundError` and `path_role` `"output"`, before the temporary name is drawn. The test asserts exactly this, and is skipped if `A:\` exists. So the round-1 reviewer case of T-0279 does not reach `with_name` in this form.
+  - Also seen here but not tested: a string path `<out_dir>\a:b.exe` keeps the name `a:b.exe`, and on Python 3.14 `with_name` accepts `a:b.tmp-<pid>-<hex>.exe` without error. Whether Python 3.11's `with_name` refuses it was not established.
+  - CI runs on Ubuntu, so the `windows_only` test ran only locally.
+- **Gates**: local `ruff check` and `ruff format --check` clean. Full `pytest` passed: 22654 passed, 485 skipped. `hilclaw/` coverage: lines 99%, functions 622/625. CI green on head `562469a`: Python 3.11 and 3.14, coverage, C, sh and test-presence gates.
+- **Review**: 2 rounds.
+  - Round 1: Approve, with one Nit (assert no `path_role` on the `TypeError` test), fixed in `562469a`, and two Info notes (wait for CI green; record the Windows observation here), both addressed.
+  - Round 2: Approve, with no new findings.
+- **Language**: Python, the existing module.
+- **Follow-ups**:
+  - The doc task from `## Follow-ups` (ADR-0093, if free): place in `correctness.check` the `ValueError` with `parameter` `"output"` from forming the temporary name, and say that U4 is left with the clock and `subprocess.Popen`.
+  - That record may cite the Windows observation above: the drive-relative form fails the parent test, and on Python 3.14 the in-directory form passes `with_name`.
+- D16: no `claude` program, real compiler or container was started. Only the stub compiler was used.
