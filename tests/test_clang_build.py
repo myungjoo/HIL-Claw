@@ -2929,12 +2929,11 @@ def test_a_timeout_too_long_is_checked_before_the_other_arguments(
 
 
 def assert_unprintable_timeout_refused(value, stub, src, out_dir, monkeypatch):
-    compiler, version = stub(WRITE), stub(VERSION)
     forbid_start(monkeypatch)
     with pytest.raises(ValueError) as caught:
-        build(src, out_dir / "kernel.o", timeout_s=value, compiler=compiler)
+        build(src, out_dir / "kernel.o", timeout_s=value, compiler=stub(WRITE))
     with pytest.raises(ValueError) as caught_version:
-        compiler_version(version, timeout_s=value)
+        compiler_version(stub(VERSION), timeout_s=value)
     for error in (caught.value, caught_version.value):
         assert type(error) is ValueError
         assert "timeout_s" in str(error)
