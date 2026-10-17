@@ -2,7 +2,7 @@
 id: T-0265
 title: Check `env` and NUL characters in the arguments in `local_run.run` before the start, so a refused `env` carries `parameter` "env" and a refused argument carries `parameter` "command"
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0263]
@@ -84,3 +84,14 @@ On POSIX, `subprocess` converts `env` in one of two places depending on the star
 - (doc, after HQ-0027) An OD-18 sub-question 18 (ma) record on what `parameter` `"env"` and the argument NUL check of `local_run.run` make true for `correctness.check`.
 
 ## Result
+
+- PR #166 (https://github.com/myungjoo/HIL-Claw/pull/166), squash-merged as f785231 on main; branch `claude/T-0265-local-run-env-and-argument-parameter` deleted. The squash message ends with `Task: T-0265`.
+- Review: 1 round, Approve (https://github.com/myungjoo/HIL-Claw/pull/166#issuecomment-6232358687). No Critical/Major. Minor: record the CPython revisions in the Result (done below). Nits left as they are, with reasons: an entry with two defects (for example `{"A=B": 3}`) gives `TypeError` from the check, which matches the `posix_spawn` path but not the `_fork_exec` path (`ValueError`); the two `subprocess` paths already disagree there and criterion 3 covers single defects only. On 3.11 `posix_spawn` is not used with the default `close_fds=True`, so the `in_cwd=False` rows exercise that path only on the 3.14 CI job. `test_a_list_env_still_raises_attribute_error` overlaps the parametrised non-mapping test but pins the `AttributeError` class of criterion 4.
+- CI green on 71c14c8: Python 3.11 and 3.14, coverage gate (lines 99.64%, functions 100%; `hilclaw/local_run.py` lines 300-302, the Windows branch of `_env_text`, are not executed on Linux), test presence, shellcheck, clang. Local (Windows, Python 3.14.4): full pytest 22356 passed, 396 skipped; `ruff check` and `ruff format --check` clean.
+- Language: Python, the language of the module being changed (`hilclaw/local_run.py`).
+- Implementation: `run` calls `_check_env(env)` inside `with _parameter("env"):` after `timeout_s` and `command`. `_check_env` does nothing for an `env` without `items` (so `None` and every non-mapping are left to `subprocess` exactly as on `main`, class unchanged, no `parameter`); otherwise it iterates `env.items()` once and per entry converts key and value (`os.fsencode` on POSIX, a `str` check on Windows → `TypeError`), then refuses a NUL in either (`ValueError`), then `=` in `key[1:]` (`ValueError`). Empty keys and a key whose only `=` is the first character are not refused. Error messages show the key, never the value. `env` is handed on unchanged. A `TypeError` from `items()` itself gets `parameter == "env"`; any other exception passes on without it.
+- Criterion 2: the NUL check of an argument is **before** the program lookup (in the argument loop of `_resolve`, after the `str` check); `ValueError("an argument contains a NUL character")`, `parameter == "command"`. The NUL handling of the program is unchanged.
+- CPython revisions read: `Lib/subprocess.py`, `Modules/posixmodule.c` (`parse_envlist`), `Modules/_winapi.c` (`getenvironment`, `normalize_environment`, `sort_environment_keys`), `Modules/_posixsubprocess.c` and `Objects/abstract.c` (`_PySequence_BytesToCharpArray`, which refuses an embedded NUL on the `_fork_exec` path before the fork) on branch `3.11` at 59d1bd5f0beb95f26771a96fe11eac1653d69ffa and branch `3.14` at b643e2f531f86d9afada130a36803e3bb025b5be; and the installed `Lib/subprocess.py` of Python 3.14.4 (tags/v3.14.4:23116f9). The Windows empty-key `OSError` [WinError 87] of the task's table comes from the `sortenvironmentkey` sort key in 3.14 (`LCMapStringEx` on an empty string), before `getenvironment`'s own empty-key `ValueError`.
+- Tests: only `tests/test_local_run.py`. `test_an_env_that_subprocess_refuses_names_no_parameter` was replaced by `test_an_env_that_subprocess_refuses_names_env`; `test_the_parameter_survives_pickling` got two `env` rows; no other existing test was edited. New tests compare each refused and each left-to-`subprocess` case with what a direct `subprocess.run` raises, with and without `cwd` (the two POSIX start paths). Size: `hilclaw/local_run.py` +60/-15; tests +242/-6.
+- Follow-ups: unchanged from the list above ((code) `cwd`/S3 vs S10 split including the pre-start lookup `OSError`; (doc, after HQ-0027) the OD-18 (ma) record for `parameter` `"env"` and the argument NUL check). None new.
+- No `claude` was started (D16).
