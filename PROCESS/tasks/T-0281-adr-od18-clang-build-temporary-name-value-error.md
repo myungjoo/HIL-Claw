@@ -2,7 +2,7 @@
 id: T-0281
 title: Write ADR-0093 on which row of `correctness.check` the error that `clang_build.build` now names "output" when forming the temporary name (`PurePath.with_name`) lets an operation place, and what is left of U4 (more of OD-18 sub-question 18 part (ma)); no code, no `local_run.run`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18, "#5 D6"]
 dependsOn: [T-0279, T-0280]
@@ -111,7 +111,13 @@ The planner does not decide the answer. The executor weighs the alternatives and
 
 ## Follow-ups
 
-- (filled by the executor)
+- Landed on `main` as `9706ed6` (document mode; trailers `Task: T-0281`, `Reviewed-by: reviewer agent (7 rounds, Approve)`). Branch `claude/T-0281-adr-od18-temporary-name-value-error` deleted locally and on the remote.
+- Files (4): new `ARCHITECTURE/decisions/ADR-0093-od18-correctness-check-temporary-name-value-error.md`; one-line edits to `ARCHITECTURE/Requirements.md` (OD-18 confirmed part), `ARCHITECTURE/OpenDecisionProposals.md` (adopted-part line after ADR-0092; sub-question 18 partial answer and remainder rewritten in place) and `ARCHITECTURE/StandardScenarios.md` (latest re-check line). Coverage re-check of S0, S1-b, S2, S5, S6: no judgement changed, no gap.
+- Decision: the `ValueError`/`TypeError` with `parameter` "output" raised while the temporary name is formed (`with_name`) gets no row of `correctness.check` (ADR-0087 decision 4, ADR-0091/0092 decision 2; reason ADR-0060 decision 3). S3, S4, keeping it in U4, and no row for the rest of U4 were rejected. U4 now: an unnamed pre-start `ValueError` from `os.getpid`/`secrets.token_hex`, the command, `time.monotonic` or `subprocess.Popen`; stays open. The open unnamed-`TypeError` entry now also names the draws, the command and the clock.
+- Review: 7 rounds, all Approve (R1-R6 raised minor points that were fixed; R7 Info only).
+- #5 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6240707886
+- Follow-ups: a later record or code task may read, or add a named check for, the rest of U4 (pid/token draws, the clock, what `subprocess.Popen` raises incl. an `env` without `items`); optionally list ADR-0087 T4 as a less-exact observation (R7 Info).
+- No `claude`, compiler or container was started (D16).
 
 ## Result
 
