@@ -2,7 +2,7 @@
 id: T-0267
 title: Check `env` and `cwd` in `clang_build.build` before the start, so a refused `env` carries `parameter` "env" and a refused `cwd` carries `parameter` "cwd"; a missing `cwd` stays a `CompilerNotStartedError`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0261, T-0265, T-0266]
@@ -93,3 +93,14 @@ This is an engineering choice inside `build`, which ADR-0060 decision 4 and ADR-
 - (doc, after HQ-0027) An OD-18 sub-question 18 part (ma) record on what `parameter` `"env"` and `"cwd"` of `clang_build.build` and of `local_run.run`, and `path_role` `"cwd"` of `local_run.run`, make true for `correctness.check` (S4 against no row; S3 against S10).
 
 ## Result
+
+- PR #168 (https://github.com/myungjoo/HIL-Claw/pull/168), squash-merged as e932bf3ff18490a54a7eaf1a9d64b4c77dcbedbe on main; branch `claude/T-0267-clang-build-env-and-cwd-parameter` deleted. The squash message ends with `Task: T-0267`.
+- Entry check: `gh pr list` showed no open PR before the first edit.
+- Review: 2 rounds, both Approve (https://github.com/myungjoo/HIL-Claw/pull/168#issuecomment-6232891868, #issuecomment-6232918342). No Critical/Major/Minor. Round-1 Nits addressed in 3a807c3: a 120-character docstring line rewrapped, and a POSIX test added for a lone surrogate in an `env` key or value (`UnicodeEncodeError`, the class of a direct `Popen`, `parameter == "env"`; the exception's `object` holds the value, as `subprocess` on `main` already did). Remaining Nit, no action: the Windows branches (`_env_text`'s `str` check, `_check_cwd`'s `os.fsdecode`) run only in `windows_only` tests and are not covered on Linux CI.
+- CI green on 3a807c3: Python 3.11 and 3.14, coverage gate (lines 99.58%, functions 100%; `hilclaw/clang_build.py` lines 480-482, the Windows branch of `_env_text`, not executed on Linux), test presence, shellcheck, clang. Local (Windows, Python 3.14.4): full pytest 22484 passed, 434 skipped; `ruff check` and `ruff format --check` clean.
+- Language: Python, the language of the module being changed (`hilclaw/clang_build.py`).
+- Implementation: `_parameter` gained `kinds=(TypeError,)`; the six existing steps still tag `TypeError` only. `parameter` `"env"` is set by `with _parameter("env", (TypeError, ValueError)):` around `_check_env(env)` (line 310) and `"cwd"` by `with _parameter("cwd", (TypeError, ValueError)):` around `_check_cwd(cwd)` (line 312), both after the `compiler` step and before the temporary name, the clock read and `Popen`. `_check_env`/`_env_text` mirror `local_run`'s (no `items` → left to `subprocess`; `os.fsencode` on POSIX, `str` check on Windows; NUL; `=` in `key[1:]`; message shows the key only). `_check_cwd` converts with `os.fsdecode` on Windows / `os.fsencode` on POSIX and refuses a NUL; no path test, so a missing or regular-file `cwd` stays `CompilerNotStartedError` without `parameter`/`path_role`. Platform test uses the module's `_WINDOWS` (`sys.platform == "win32"`, as `subprocess`'s `_mswindows`). `env` and `cwd` are handed on unchanged. No import from `hilclaw.local_run`, no new public name. `build`'s docstring states the checks and the two new `parameter` values; module docstring unchanged (no sentence became wrong).
+- CPython read: unchanged from T-0265's and T-0266's Results (installed `Lib/subprocess.py` 3.14.4; `posixmodule.c` `parse_envlist`/`path_converter`, `_winapi.c` `getenvironment`, `_posixsubprocess.c` on branches 3.11 and 3.14 at the revisions recorded there). New for `build`: with `cwd=None` its `Popen` arguments (stdin DEVNULL, stdout PIPE, stderr STDOUT, absolute executable) allow the `posix_spawn` path on 3.14 Linux, so the tests compare each refused `env` with a direct `Popen` with and without `cwd`; CI confirmed the classes on 3.11 and 3.14.
+- Tests: only `tests/test_clang_build.py`. Existing tests: one row (`{"cwd": 3}`) added to `test_type_errors_keep_their_parameter_through_pickling`; nothing else edited; all existing tests, including `tests/harness/`, pass unchanged. The `env` `ValueError` pickling case is a new test because the existing one catches `TypeError` only. Size: `hilclaw/clang_build.py` +60/-11; tests +463.
+- Follow-ups: unchanged ((doc, after HQ-0027) the OD-18 (ma) record for `parameter` `"env"`/`"cwd"` of `clang_build.build` and `local_run.run`). None new.
+- No `claude` was started (D16).
