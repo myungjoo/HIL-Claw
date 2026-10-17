@@ -2,7 +2,7 @@
 id: T-0273
 title: Write ADR-0089 on which rows of `correctness.check` the pre-start checks that `clang_build.build` and `build_verification_executable` gained after ADR-0087 (T-0267, T-0268, T-0270, T-0271) let an operation place - `parameter` "env"/"cwd", the NUL and unencodable flag or compiler part, the too-long time limit, `parameter` "kernel_sources" (more of OD-18 sub-question 18 part (ma)); no `local_run.run`, no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18, "#5 D6"]
 dependsOn: [T-0262, T-0267, T-0268, T-0270, T-0271]
@@ -104,3 +104,16 @@ This is a design-level part of OD-18, not an owner-only item (DRIVER §9). It cl
 - (possible HQ) If the record leaves a case open because only a new `error.kind` would place it, the driver records that question for the owner.
 
 ## Result
+
+- Landed on `main` as a4a8e7f (document mode, one squashed commit with `Reviewed-by: reviewer agent (3 rounds, Approve)` and `Task: T-0273`); branch `claude/T-0273-adr-od18-clang-build-pre-start-checks` deleted locally and on origin. ADR number 0089 as planned (0088 is held only by `origin/claude/T-0264-*`; no other branch holds 0088 or 0089).
+- Files: new `ARCHITECTURE/decisions/ADR-0089-od18-correctness-check-clang-build-pre-start-checks.md`; `ARCHITECTURE/Requirements.md` (one link in the OD-18 `**확정분**:`; `**잔여**:` unchanged, "(마)의 나머지" still exact); `ARCHITECTURE/OpenDecisionProposals.md` (one adopted-record line; end of sub-question 18 rewritten in place); `ARCHITECTURE/StandardScenarios.md` ("최근 재검사" line; S0, S1-b, S2, S5, S6 re-checked, no verdict change, no gap). About 136 lines added, 3 removed.
+- Answers: `parameter` `"env"` -> S4 `settings_refused`; `"cwd"` -> no row (missing `cwd` still `CompilerNotStartedError`, not re-placed); `"kernel_sources"` -> no row; every pre-start `ValueError` with no `parameter` (V1-V7 of P3, and the no-kernel-source one) left open: the class alone cannot tell a refused setting from what `subprocess` passes on. Too-long time limit: now a pre-start `ValueError`; an `OverflowError` after the start for this cause read as not reachable from `build`. `compiler_version` stays a Boundary. No data-plane change; no case left open for want of a new value, so no HQ is needed.
+- Review: round 1 Request changes (Medium: Consequences missed ADR-0087 decisions 1 and 2, ADR-0060 decision 4's setting->S4 sentence and ADR-0060 Consequences; Minor: register link grouping; Nits: restated reason in sub-question 18, walk-through row of a gone build directory, binding `TypeError` of `build_verification_executable`) - all fixed. Round 2 Approve with two Nits (sub-question 18 kept that binding `TypeError` open; ADR-0087 Status listed) - fixed. Round 3 Approve with two Nits (ADR-0056 decision numbers aligned to 3 to 5; unencodable example narrowed to a surrogate such as U+D800) - fixed after the Approve, wording only, before landing.
+- §9 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6235934863 (ends with the driver tail).
+- Session entry check: `gh pr list` empty; #4, #7, #8 read (no conflicting work; #8 closed). #5: no owner comment (without the driver tail) on ADR-0060 decision 4, ADR-0087, T-0267, T-0268, T-0270, T-0271 or (ma); HQ-0027 unanswered. T-0264's branch not touched.
+- Overlap: the unlanded branches `claude/T-0264-*` (ADR-0088), `claude/T-0210-*` and `claude/T-0231-*` edit the same OD-18 register row, sub-question 18 line and "최근 재검사" line, and must rebase over a4a8e7f. When ADR-0088 lands, its sub-question 18 text must keep ADR-0089's entries.
+- Follow-ups:
+  - (code) Give the pre-start `ValueError`s of `build` for a setting (V2-V7: `"timeout_s"`, `"flags"`, `"trailing_flags"`, `"compiler"`) a `parameter`, as T-0267 did for `env`/`cwd`; then a record places them (ADR-0089 decision 5).
+  - (doc, after HQ-0027) The `local_run.run` side, from ADR-0088 as it lands.
+  - No HQ: nothing was left open for want of a new `error.kind`.
+- No `claude`, compiler or container was started (D16).
