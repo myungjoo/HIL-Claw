@@ -68,3 +68,12 @@ This is a code change only. It records no row of `correctness.check`, adds no da
 ## Follow-ups
 
 ## Result
+
+- PR #176 (squash-merged; the merge commit is the one on `main` with the `Task: T-0278` trailer). Branch `claude/T-0278-clang-build-output-name-checks`, deleted at merge.
+- Change: `build` runs `_check_argument(str(target), ...)` inside `_parameter("output")` after the output path tests and before the compiler lookup, so a NUL character in the output file name raises `ValueError` and, on POSIX, an unencodable one raises the `UnicodeEncodeError` of `os.fsencode`, both with `parameter` `"output"` and no `path_role`. A defect in a parent directory still gives `FileNotFoundError` with `path_role` `"output"`. Docstring of `build` updated in both paragraphs. One non-test file, +11/-5.
+- Tests (`tests/test_clang_build.py`): bad output file names (NUL, NUL only, POSIX lone surrogate, surrogate plus NUL), the `UnicodeEncodeError` args equal those of `os.fsencode`, the output error precedes a missing compiler, a NUL flag precedes the output check; each asserts no start, no temporary name or clock, no file left.
+- Gates: local `pytest` 22649 passed / 485 skipped, `ruff check` and `ruff format --check` clean, `hilclaw/` line coverage 99%; CI green before merge.
+- Review: 3 rounds, Approve each round. Round 1: two nits (the docstring sentence on `os.fsencode` was ambiguous about what "one" referred to and did not say which error wins when both defects are present; a short line left by the reflow), both fixed. Round 2: one optional nit (the `parameter` paragraph named the checks in the reverse of their run order), fixed. Round 3: no findings.
+- Language: Python, the existing module.
+- No `claude` program, real compiler or container was started (D16).
+- Follow-ups: a doc task that records in the ADR-0091 line that a `ValueError` with `parameter` `"output"` from the new check gets no row (decision 2), and says what is left of U4.
