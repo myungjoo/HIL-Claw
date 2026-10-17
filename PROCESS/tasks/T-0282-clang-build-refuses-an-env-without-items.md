@@ -137,4 +137,10 @@ This is a code change only:
 
 ## Result
 
-- (filled by the executor)
+- **Outcome**: DONE. PR #178 (`claude/T-0282-clang-build-refuses-an-env-without-items`), squash-merged into `main`; the merge commit is the squash of this PR (its message ends with `Task: T-0282`).
+- **Change**: `_check_env` of `hilclaw/clang_build.py` raises `TypeError` (message `env must be None or have an items method, not <type>`) for an `env` that is not `None` and has no `items` method, inside the existing `"env"` step, so it carries `parameter` `"env"` and no `path_role`, and no temporary name or clock is drawn. The docstring of `build` states the refusal and that `subprocess` has no single class for this one defect.
+- **Tests** (`tests/test_clang_build.py`): the only permitted edit, `test_an_env_that_is_not_a_mapping_keeps_its_class`, is replaced by `test_an_env_without_items_is_a_type_error_naming_env` (`[("A", "x")]`, `5`, `"A=x"`, `b"A=x"`, `object()`, an object with `items = None`), a message negative case (`"SECRET=1"`), a non-callable `items = 3` refused by the call, the order against `cwd=3` and against `timeout_s=0`, and pickling. No other existing test was edited or failed.
+- **Gates**: `ruff check`, `ruff format --check` clean; full `pytest` locally on Windows 22662 passed, 485 skipped; `hilclaw/` line coverage 99%; CI green before merge.
+- **Review**: 2 rounds. Round 1 Approve with a Minor (one docstring line of about 117 characters after the reflow) and a Nit (repeated "defect"), both fixed in `5974d19`; round 2 Approve with no findings.
+- **Language**: Python, the existing module.
+- **Follow-ups** (as listed in the task, none new): the doc task (ADR-0094 if free) confirming the S4 `settings_refused` row for this `TypeError` with `parameter` `"env"` and removing "an `env` with no `items` method" from the open entries of (마); the same change for `local_run.run` once HQ-0027 allows.
