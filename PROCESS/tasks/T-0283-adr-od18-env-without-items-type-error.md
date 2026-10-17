@@ -2,7 +2,7 @@
 id: T-0283
 title: Write ADR-0094 on which row of `correctness.check` the `TypeError` with `parameter` "env" that `clang_build.build` now raises for an `env` with no `items` method gets (more of OD-18 sub-question 18 part (ma)); no code, no `local_run.run`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18, "#5 D6"]
 dependsOn: [T-0281, T-0282]
