@@ -234,7 +234,11 @@ def build(
     an :class:`OSError` subclass whose ``result`` holds the :class:`BuildResult`
     with the compiler's log, and nothing is moved. When removing the temporary
     file then fails too, :class:`ArtefactNotCheckedError` is raised and the
-    removal's error is its ``removal_error``.
+    removal's error is its ``removal_error``. An exception that is not an
+    :class:`OSError` and leaves the build early, such as
+    :class:`KeyboardInterrupt`, is passed on unchanged; when removing the
+    temporary file then fails, the removal's error is not raised but added to
+    that exception as a note naming the temporary path.
     """
     _check_timeout(timeout_s)
     flags = _checked_flags(flags, "flags")
@@ -252,7 +256,7 @@ def build(
     )
     command = (*prefix, *flags, *source_paths, *trailing_flags, "-o", str(temporary))
     start_error = run_error = check_error = move_error = removal_error = None
-    ended = False
+    escaping = None
     started = time.monotonic()
     try:
         try:
@@ -287,14 +291,17 @@ def build(
                         os.replace(temporary, target)
                     except OSError as error:
                         ok, move_error = False, error
-                ended = True
+    except BaseException as error:
+        escaping = error
+        raise
     finally:
         try:
             temporary.unlink(missing_ok=True)
         except OSError as error:
-            if not ended and start_error is None and run_error is None:
-                raise
-            removal_error = error
+            if escaping is None:
+                removal_error = error
+            else:
+                escaping.add_note(f"removing {temporary} failed: {error!r}")
     if start_error is not None:
         raise CompilerNotStartedError(start_error, removal_error) from start_error
     if run_error is not None:

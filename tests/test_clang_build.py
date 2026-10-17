@@ -681,6 +681,7 @@ def test_failed_removal_after_an_error_after_the_start(
     error = caught.value
     assert error.__cause__ is errors[0]
     assert error.removal_error is failing_unlink[0]
+    assert not getattr(error, "__notes__", [])
     assert error.timed_out is False
     assert error.log is None
     assert (error.errno, error.strerror) == (errno.EIO, "input/output error")
@@ -885,6 +886,7 @@ def test_keyboard_interrupt_after_the_start_is_passed_on(
     with pytest.raises(KeyboardInterrupt) as caught:
         build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
     assert caught.value is errors[0]
+    assert not getattr(caught.value, "__notes__", [])
     (process,) = processes
     assert process.wait(timeout=20) != 0
     assert names(out_dir) == []
@@ -895,11 +897,46 @@ def test_failed_removal_after_a_keyboard_interrupt_after_the_start(
 ):
     processes, errors = failing_communicate
     errors[0] = KeyboardInterrupt()
-    with pytest.raises(PermissionError) as caught:
+    with pytest.raises(KeyboardInterrupt) as caught:
         build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
-    assert caught.value is failing_unlink[0]
-    assert caught.value.__context__ is errors[0]
+    assert caught.value is errors[0]
+    assert_removal_note(caught.value, failing_unlink)
+    (process,) = processes
+    assert process.wait(timeout=20) != 0
+
+
+def assert_removal_note(error, removal_errors):
+    (removal,) = removal_errors
+    (note,) = error.__notes__
+    assert Path(removal.filename).name in note
+    assert removal.strerror in note
+    assert error.__cause__ is None
+    assert error.__context__ is None
+
+
+def test_failed_removal_after_a_keyboard_interrupt_from_starting(
+    stub, src, out_dir, monkeypatch, failing_unlink
+):
+    errors = failing_start(monkeypatch, lambda path: KeyboardInterrupt())
+    with pytest.raises(KeyboardInterrupt) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value is errors[0]
+    assert not isinstance(caught.value, CompilerNotStartedError)
+    assert_removal_note(caught.value, failing_unlink)
+    assert not stub.started
+
+
+def test_failed_removal_after_a_non_os_error_after_the_start(
+    stub, src, out_dir, failing_communicate, failing_unlink
+):
+    processes, errors = failing_communicate
+    errors[0] = RuntimeError("not an OSError")
+    with pytest.raises(RuntimeError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(SLEEP))
+    assert caught.value is errors[0]
     assert not isinstance(caught.value, CompilerRunError)
+    assert_removal_note(caught.value, failing_unlink)
+    assert caught.value.__traceback__ is not None
     (process,) = processes
     assert process.wait(timeout=20) != 0
 
