@@ -246,7 +246,11 @@ def build(
     (:func:`os.fsencode` on POSIX, ``str`` only on Windows; else
     :class:`TypeError`), and :class:`ValueError` is raised for a NUL character
     in either or a ``=`` after the first character of a key, with a message
-    that may name the key but never the value. A ``cwd`` that is not ``None``
+    that may name the key but never the value. On POSIX, :class:`ValueError`
+    is also raised for an empty key and for a ``=`` as the first character of
+    a key: each of these is refused with :class:`ValueError` by one of the
+    start paths of :mod:`subprocess` and accepted by the other, and ``build``
+    refuses both on every path. A ``cwd`` that is not ``None``
     must convert as on the platform (:func:`os.fsdecode` on Windows,
     :func:`os.fsencode` on POSIX; else :class:`TypeError`, or a
     :class:`ValueError` such as :class:`UnicodeEncodeError`), and
@@ -495,10 +499,15 @@ def _check_env(env):
         nul, equals = ("\0", "=") if isinstance(key, str) else (b"\0", b"=")
         if nul in key or nul in value:
             raise ValueError(f"an env key or value contains a NUL character: {key!r}")
-        if equals in key[1:]:
-            raise ValueError(
-                f"an env key contains '=' after its first character: {key!r}"
-            )
+        if _WINDOWS:
+            if equals in key[1:]:
+                raise ValueError(
+                    f"an env key contains '=' after its first character: {key!r}"
+                )
+        elif not key:
+            raise ValueError("an env key is empty")
+        elif equals in key:
+            raise ValueError(f"an env key contains '=': {key!r}")
 
 
 def _env_text(item):
