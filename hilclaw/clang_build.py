@@ -238,7 +238,7 @@ def build(
     is passed on, and a NUL character in it raises :class:`ValueError`.
     After the compiler is found, and still before anything is started, ``env``
     and ``cwd`` are checked as :mod:`subprocess` would refuse them, with the
-    class it would raise for the same single defect, but for one defect: an
+    class it would raise for the same single defect, with one exception: an
     ``env`` that is not ``None`` and has no ``items`` method is refused with
     :class:`TypeError`, as :mod:`subprocess` has no single class for it (the
     class differs by platform and start path). When ``env`` has an ``items``
@@ -250,8 +250,9 @@ def build(
     must convert as on the platform (:func:`os.fsdecode` on Windows,
     :func:`os.fsencode` on POSIX; else :class:`TypeError`, or a
     :class:`ValueError` such as :class:`UnicodeEncodeError`), and
-    :class:`ValueError` is raised for a NUL character in it. Whether ``cwd`` exists is not tested here: a missing one
-    fails the start, as :class:`CompilerNotStartedError` below. Any
+    :class:`ValueError` is raised for a NUL character in it. Whether ``cwd``
+    exists is not tested here: a missing one fails the start, as
+    :class:`CompilerNotStartedError` below. Any
     :class:`TypeError` or :class:`ValueError` (including a subclass such as
     :class:`UnicodeEncodeError`) from the checks of ``timeout_s``, ``flags``,
     ``trailing_flags``, ``sources``, ``output``, ``compiler``, ``env`` and
