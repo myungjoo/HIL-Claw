@@ -93,9 +93,11 @@ def run(command, *, timeout_s, cwd=None, env=None):
     that is one ``str`` or ``bytes``, a program that is not ``str`` or
     :class:`os.PathLike`, an argument that is not ``str`` or a ``timeout_s``
     that is not a number; :class:`ValueError` for an empty ``command``, an
-    argument that contains a NUL character or a ``timeout_s`` that is not
-    positive and finite; and :class:`ProgramNotFoundError`, which includes a
-    file that exists but is not executable.
+    argument that contains a NUL character, on POSIX an argument that
+    :func:`os.fsencode` cannot convert (the :class:`UnicodeEncodeError` it
+    raises; on Windows such an argument is not refused) or a ``timeout_s``
+    that is not positive and finite; and :class:`ProgramNotFoundError`, which
+    includes a file that exists but is not executable.
 
     An ``env`` that is not ``None`` and has ``items`` is checked before the
     start, by the rules :mod:`subprocess` hands an environment over with, and
@@ -142,7 +144,8 @@ def run(command, *, timeout_s, cwd=None, env=None):
     before the start, including one Python raises inside them, carries an
     attribute ``parameter`` naming the parameter of :func:`run` it is about:
     ``"timeout_s"`` for the time limit, ``"command"`` for the command, the
-    program or an argument (including a NUL character in an argument),
+    program or an argument (including a NUL character in an argument and,
+    on POSIX, an argument :func:`os.fsencode` cannot convert),
     ``"env"`` for the environment and ``"cwd"`` for the working directory.
     The time limit is checked first, then the command (so
     :class:`ProgramNotFoundError` comes before an ``env`` or ``cwd`` error),
@@ -298,6 +301,8 @@ def _resolve(command):
     for argument in arguments:
         if not isinstance(argument, str):
             raise TypeError(f"an argument must be str, not {type(argument).__name__}")
+        if os.name != "nt":
+            os.fsencode(argument)
         if "\0" in argument:
             raise ValueError("an argument contains a NUL character")
     found = shutil.which(program)
