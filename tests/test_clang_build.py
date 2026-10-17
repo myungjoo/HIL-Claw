@@ -2,6 +2,7 @@ import contextlib
 import errno
 import json
 import os
+import pathlib
 import pickle
 import shutil
 import subprocess
@@ -3376,6 +3377,104 @@ def test_a_value_error_from_the_output_path_object_names_the_output(
     assert caught.value.args == ("no path",)
     assert caught.value.parameter == "output"
     assert not hasattr(caught.value, "path_role")
+    assert names(out_dir) == []
+
+
+def refuse_the_temporary_name(monkeypatch, error):
+    def with_name(self, name):
+        raise error
+
+    monkeypatch.setattr(pathlib.PurePath, "with_name", with_name)
+
+
+def test_a_value_error_from_forming_the_temporary_name_names_the_output(
+    stub, src, out_dir, monkeypatch
+):
+    error = ValueError("no such name")
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    refuse_the_temporary_name(monkeypatch, error)
+    with pytest.raises(ValueError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=compiler)
+    assert caught.value is error
+    assert type(caught.value) is ValueError
+    assert caught.value.args == ("no such name",)
+    assert caught.value.parameter == "output"
+    assert not hasattr(caught.value, "path_role")
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+def test_a_type_error_from_forming_the_temporary_name_names_the_output(
+    stub, src, out_dir, monkeypatch
+):
+    error = TypeError("no such name")
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    refuse_the_temporary_name(monkeypatch, error)
+    with pytest.raises(TypeError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=compiler)
+    assert caught.value is error
+    assert caught.value.parameter == "output"
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+def test_a_refused_cwd_comes_before_the_temporary_name(stub, src, out_dir, monkeypatch):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    refuse_the_temporary_name(monkeypatch, ValueError("no such name"))
+    with pytest.raises(ValueError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=compiler,
+            cwd=str(out_dir) + "\0",
+        )
+    assert type(caught.value) is ValueError
+    assert caught.value.parameter == "cwd"
+    assert "no such name" not in str(caught.value)
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+def test_a_value_error_from_drawing_the_token_has_no_parameter(
+    stub, src, out_dir, monkeypatch
+):
+    error = ValueError("no token")
+
+    def token_hex(nbytes):
+        raise error
+
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    monkeypatch.setattr(clang_build.secrets, "token_hex", token_hex)
+    with pytest.raises(ValueError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=compiler)
+    assert caught.value is error
+    assert not hasattr(caught.value, "parameter")
+    assert not hasattr(caught.value, "path_role")
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+@windows_only
+def test_a_drive_like_output_name_is_tested_as_a_path_on_another_drive(
+    stub, src, out_dir, monkeypatch
+):
+    if os.path.exists("A:\\"):
+        pytest.skip("drive A: exists")
+    out = out_dir / "a:b.exe"
+    assert out.drive == "a:"
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    forbid_the_temporary_and_the_clock(monkeypatch)
+    with pytest.raises(FileNotFoundError) as caught:
+        build(src, out, timeout_s=TIMEOUT, compiler=compiler)
+    assert caught.value.path_role == "output"
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
     assert names(out_dir) == []
 
 
