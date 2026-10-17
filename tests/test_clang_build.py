@@ -1796,6 +1796,7 @@ def test_type_error_of_a_source_path_is_the_same_object(
     assert caught.value.args == ("abspath refused",)
     assert caught.value.__traceback__ is not None
     assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
     assert caught.value.parameter == "sources"
     assert not stub.started
 
