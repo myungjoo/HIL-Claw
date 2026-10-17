@@ -89,24 +89,42 @@ def run(command, *, timeout_s, cwd=None, env=None):
     Raised before anything is started: :class:`TypeError` for a ``command``
     that is one ``str`` or ``bytes``, a program that is not ``str`` or
     :class:`os.PathLike`, an argument that is not ``str`` or a ``timeout_s``
-    that is not a number; :class:`ValueError` for an empty ``command`` or a
-    ``timeout_s`` that is not positive and finite; and
-    :class:`ProgramNotFoundError`, which includes a file that exists but is not
-    executable. What :mod:`subprocess` raises is passed on: an
-    :class:`OSError` from starting the process (a file the system cannot
-    execute, a ``cwd`` that does not exist), a :class:`ValueError` or
-    :class:`TypeError` for an argument or ``env`` it cannot hand over, and an
-    :class:`OverflowError` for a finite ``timeout_s`` longer than the platform
-    can wait for (a bound that depends on the platform and can be a matter of
-    weeks), which arrives after the process was started and killed.
+    that is not a number; :class:`ValueError` for an empty ``command``, an
+    argument that contains a NUL character or a ``timeout_s`` that is not
+    positive and finite; and :class:`ProgramNotFoundError`, which includes a
+    file that exists but is not executable.
+
+    An ``env`` that is not ``None`` and has ``items`` is checked before the
+    start, by the rules :mod:`subprocess` hands an environment over with, and
+    refused with the class :mod:`subprocess` would raise: :class:`TypeError`
+    for a key or a value of a type the platform cannot hand over (on Windows
+    anything that is not ``str``; on POSIX anything :func:`os.fsencode`
+    refuses, so ``str``, ``bytes`` and :class:`os.PathLike` pass), and
+    :class:`ValueError` for a key with ``=`` after its first character or a
+    NUL character in a key or a value. The check refuses nothing that one of
+    the ways :mod:`subprocess` starts a process accepts: an empty key, a key
+    whose only ``=`` is its first character and an ``env`` that is not a
+    mapping are left to :mod:`subprocess`. ``env`` itself is handed on as
+    given.
+
+    What :mod:`subprocess` raises is passed on: an :class:`OSError` from
+    starting the process (a file the system cannot execute, a ``cwd`` that
+    does not exist), what it raises for ``cwd`` or for an ``env`` the check
+    above leaves to it, and an :class:`OverflowError` for a finite
+    ``timeout_s`` longer than the platform can wait for (a bound that depends
+    on the platform and can be a matter of weeks), which arrives after the
+    process was started and killed.
+
     Every :class:`TypeError` and :class:`ValueError` raised by the checks
     before the start, including one Python raises inside them, carries an
     attribute ``parameter`` naming the parameter of :func:`run` it is about:
-    ``"timeout_s"`` for the time limit and ``"command"`` for the command, the
-    program or an argument. The time limit is checked first. An error from
-    anywhere else, including what :mod:`subprocess` raises and
-    :class:`ProgramNotFoundError`, carries no ``parameter``; read it as
-    ``getattr(error, "parameter", None)``.
+    ``"timeout_s"`` for the time limit, ``"command"`` for the command, the
+    program or an argument (including a NUL character in an argument) and
+    ``"env"`` for the environment. The time limit is checked first, then the
+    command (so :class:`ProgramNotFoundError` comes before an ``env`` error),
+    then ``env``. An error from anywhere else, including what
+    :mod:`subprocess` raises and :class:`ProgramNotFoundError`, carries no
+    ``parameter``; read it as ``getattr(error, "parameter", None)``.
 
     Where :func:`os.wait4` is used and it finds the process already reaped by
     someone else (for example with ``SIGCHLD`` ignored), the exit status is
@@ -117,6 +135,8 @@ def run(command, *, timeout_s, cwd=None, env=None):
         _check_timeout(timeout_s)
     with _parameter("command"):
         resolved = _resolve(command)
+    with _parameter("env"):
+        _check_env(env)
     wait = _run_with_usage if hasattr(os, "wait4") else _run_without_usage
     started = time.monotonic()
     returncode, stdout, stderr, max_rss = wait(resolved, timeout_s, cwd, env)
@@ -251,7 +271,32 @@ def _resolve(command):
     for argument in arguments:
         if not isinstance(argument, str):
             raise TypeError(f"an argument must be str, not {type(argument).__name__}")
+        if "\0" in argument:
+            raise ValueError("an argument contains a NUL character")
     found = shutil.which(program)
     if found is None:
         raise ProgramNotFoundError(f"program not found or not executable: {program!r}")
     return (os.path.abspath(found), *arguments)
+
+
+def _check_env(env):
+    items = getattr(env, "items", None)
+    if items is None:
+        return
+    for key, value in items():
+        key, value = _env_text(key), _env_text(value)
+        nul, equals = ("\0", "=") if isinstance(key, str) else (b"\0", b"=")
+        if nul in key or nul in value:
+            raise ValueError(f"an env key or value contains a NUL character: {key!r}")
+        if equals in key[1:]:
+            raise ValueError(
+                f"an env key contains '=' after its first character: {key!r}"
+            )
+
+
+def _env_text(item):
+    if os.name != "nt":
+        return os.fsencode(item)
+    if not isinstance(item, str):
+        raise TypeError(f"env keys and values must be str, not {type(item).__name__}")
+    return item
