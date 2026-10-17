@@ -2143,18 +2143,79 @@ def test_an_env_left_to_subprocess_names_no_parameter(
         assert expected is None
 
 
-@pytest.mark.parametrize("env", [[("A", "x")], 5, "A=x"])
-def test_an_env_that_is_not_a_mapping_keeps_its_class(env, stub, src, out_dir):
-    expected = directly(None, env)
-    with pytest.raises(PASSED_ON) as caught:
-        build(
-            src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE), env=env
-        )
-    assert expected is not None
-    assert type(caught.value) is expected
-    assert not hasattr(caught.value, "parameter")
+class ItemsAttribute:
+    def __init__(self, items):
+        self.items = items
+
+
+NO_ITEMS_ENVS = [[("A", "x")], 5, "A=x", b"A=x", object(), ItemsAttribute(None)]
+
+
+@pytest.mark.parametrize("env", NO_ITEMS_ENVS)
+def test_an_env_without_items_is_a_type_error_naming_env(
+    env, stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env=env)
+    assert type(error) is TypeError
+    assert error.parameter == "env"
+    assert not hasattr(error, "path_role")
+    assert type(env).__name__ in str(error)
+    assert "items method" in str(error)
+    assert not stub.started
+
+
+def test_an_env_without_items_message_names_the_type_and_not_the_value(
+    stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env="SECRET=1")
+    assert "str" in str(error)
+    assert "SECRET" not in str(error)
+
+
+def test_an_env_whose_items_cannot_be_called_is_refused_by_the_call(
+    stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env=ItemsAttribute(3))
+    assert type(error) is TypeError
+    assert error.parameter == "env"
+    assert "items method" not in str(error)
+    assert not stub.started
+
+
+def test_an_env_without_items_is_named_before_the_cwd(stub, src, out_dir, monkeypatch):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env=5, cwd=3)
+    assert type(error) is TypeError
+    assert error.parameter == "env"
+
+
+def test_an_earlier_defect_comes_before_an_env_without_items(
+    stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=0, compiler=compiler, env=5)
+    assert caught.value.parameter == "timeout_s"
     assert not stub.started
     assert names(out_dir) == []
+
+
+def test_an_env_without_items_keeps_its_parameter_through_pickling(stub, src, out_dir):
+    with pytest.raises(TypeError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE), env=5)
+    loaded = pickle.loads(pickle.dumps(caught.value))
+    assert type(loaded) is TypeError
+    assert str(loaded) == str(caught.value)
+    assert loaded.args == caught.value.args
+    assert loaded.parameter == "env"
 
 
 def test_a_type_error_of_env_items_names_env(stub, src, out_dir, monkeypatch):
