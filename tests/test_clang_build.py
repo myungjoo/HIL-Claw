@@ -2837,3 +2837,85 @@ def test_a_nul_in_a_path_keeps_the_path_error(stub, src, out_dir):
     assert not hasattr(caught.value, "parameter")
     assert not stub.started
     assert names(out_dir) == []
+
+
+TIMEOUT_BOUND = (2**31 - 1) / 1000
+TOO_LONG_TIMEOUTS = [2147483.648, 1e10, 1e300, 2**31, 10**400]
+
+
+@pytest.mark.parametrize("value", TOO_LONG_TIMEOUTS)
+def test_a_timeout_too_long_to_wait_for_is_refused_before_the_start(
+    value, stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError, match="timeout_s") as caught:
+        build(src, out_dir / "kernel.o", timeout_s=value, compiler=compiler)
+    assert type(caught.value) is ValueError
+    assert not hasattr(caught.value, "parameter")
+    assert not hasattr(caught.value, "path_role")
+    assert names(out_dir) == []
+    assert not stub.started
+
+
+@pytest.mark.parametrize("value", TOO_LONG_TIMEOUTS)
+def test_compiler_version_refuses_a_timeout_too_long_to_wait_for(
+    value, stub, monkeypatch
+):
+    compiler = stub(VERSION)
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError, match="timeout_s") as caught:
+        compiler_version(compiler, timeout_s=value)
+    assert type(caught.value) is ValueError
+    assert not stub.started
+
+
+@pytest.mark.parametrize("value", [TIMEOUT_BOUND, 2147483])
+def test_a_timeout_at_the_bound_is_accepted(value, stub, src, out_dir):
+    result = build(src, out_dir / "kernel.o", timeout_s=value, compiler=stub(WRITE))
+    assert result.ok
+    assert (out_dir / "kernel.o").read_bytes() == b"artefact"
+    assert compiler_version(stub(VERSION), timeout_s=value) == (
+        "stub clang version 1.2.3 (test)"
+    )
+
+
+@pytest.mark.parametrize("value", BAD_TIMEOUT_VALUES)
+def test_a_bad_timeout_keeps_its_message(value, stub, src, out_dir):
+    with pytest.raises(ValueError, match="positive and finite"):
+        build(src, out_dir / "kernel.o", timeout_s=value, compiler=stub(WRITE))
+    with pytest.raises(ValueError, match="positive and finite"):
+        compiler_version(stub(VERSION), timeout_s=value)
+    assert not stub.started
+
+
+def test_a_timeout_of_the_wrong_type_is_still_a_type_error(stub, src, out_dir):
+    with pytest.raises(TypeError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s="10", compiler=stub(WRITE))
+    assert caught.value.parameter == "timeout_s"
+    assert not stub.started
+
+
+@pytest.mark.parametrize("defect", ["output flag", "missing source", "empty prefix"])
+def test_a_timeout_too_long_is_checked_before_the_other_arguments(
+    defect, stub, src, out_dir, monkeypatch
+):
+    sources, compiler, flags = src, stub(WRITE), ()
+    if defect == "output flag":
+        flags = ("-o", "x")
+    elif defect == "missing source":
+        sources = src.parent / "missing.c"
+    else:
+        compiler = ()
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError, match="timeout_s") as caught:
+        build(
+            sources,
+            out_dir / "kernel.o",
+            timeout_s=2**31,
+            compiler=compiler,
+            flags=flags,
+        )
+    assert type(caught.value) is ValueError
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
