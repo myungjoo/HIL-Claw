@@ -2,7 +2,7 @@
 id: T-0270
 title: Make the TypeError that `build_verification_executable` raises itself for `kernel_sources` carry `parameter` "kernel_sources", so it is no longer an unnamed TypeError
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0261]
