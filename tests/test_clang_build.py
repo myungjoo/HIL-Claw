@@ -2860,6 +2860,82 @@ def test_a_nul_in_a_path_keeps_the_path_error(stub, src, out_dir):
     assert names(out_dir) == []
 
 
+OUTPUT_NAMES = [
+    ("kernel\0.o", ValueError),
+    ("\0", ValueError),
+    pytest.param("k\ud800.o", UnicodeEncodeError, marks=posix_only),
+    pytest.param("k\ud800\0.o", UnicodeEncodeError, marks=posix_only),
+]
+
+
+@pytest.mark.parametrize("name, expected", OUTPUT_NAMES)
+def test_a_bad_output_file_name_is_refused_before_the_start(
+    name, expected, stub, src, out_dir, monkeypatch
+):
+    forbid_start(monkeypatch)
+    forbid_the_temporary_and_the_clock(monkeypatch)
+    with pytest.raises(expected) as caught:
+        build(src, str(out_dir / name), timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert type(caught.value) is expected
+    assert caught.value.parameter == "output"
+    assert not hasattr(caught.value, "path_role")
+    if expected is ValueError:
+        assert "NUL" in str(caught.value)
+        assert str(out_dir) not in str(caught.value)
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+@posix_only
+def test_an_unencodable_output_name_is_the_error_of_fsencode(
+    stub, src, out_dir, monkeypatch
+):
+    target = os.path.abspath(str(out_dir / "k\ud800.o"))
+    with pytest.raises(UnicodeEncodeError) as direct:
+        os.fsencode(target)
+    forbid_start(monkeypatch)
+    with pytest.raises(UnicodeEncodeError) as caught:
+        build(src, target, timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value.args == direct.value.args
+    assert caught.value.parameter == "output"
+    assert names(out_dir) == []
+
+
+def test_a_bad_output_file_name_comes_before_the_compiler_lookup(
+    src, out_dir, monkeypatch
+):
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        build(
+            src,
+            str(out_dir / "kernel\0.o"),
+            timeout_s=TIMEOUT,
+            compiler="hilclaw-no-such-compiler",
+        )
+    assert type(caught.value) is ValueError
+    assert caught.value.parameter == "output"
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("output", ["kernel.o", "kernel\0.o"])
+def test_a_bad_flag_comes_before_the_output_file_name(
+    output, stub, src, out_dir, monkeypatch
+):
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        build(
+            src,
+            str(out_dir / output),
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            flags=("-DX\0",),
+        )
+    assert type(caught.value) is ValueError
+    assert caught.value.parameter == "flags"
+    assert not stub.started
+    assert names(out_dir) == []
+
+
 TIMEOUT_BOUND = (2**31 - 1) / 1000
 TOO_LONG_TIMEOUTS = [
     2147483.648,

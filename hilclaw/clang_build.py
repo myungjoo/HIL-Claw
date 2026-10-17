@@ -232,7 +232,10 @@ def build(
     else the :class:`UnicodeEncodeError` it raises is passed on. These two
     checks give the class :mod:`subprocess` would raise for the same single
     defect; the first part of the prefix is left to the lookup, and the
-    flags and parts are handed on unchanged.
+    flags and parts are handed on unchanged. Once the output path has
+    passed its tests, its absolute path is checked the same way: on POSIX it
+    must convert with :func:`os.fsencode`, else its :class:`UnicodeEncodeError`
+    is passed on, and a NUL character in it raises :class:`ValueError`.
     After the compiler is found, and still before anything is started, ``env``
     and ``cwd`` are checked as :mod:`subprocess` would refuse them, with the
     class it would raise for the same single defect: when ``env`` has an
@@ -256,10 +259,11 @@ def build(
     the attribute ``parameter`` set to the name of that parameter:
     ``"timeout_s"``, ``"flags"``, ``"trailing_flags"``, ``"sources"``,
     ``"output"``, ``"compiler"``, ``"env"`` or ``"cwd"``. The check of
-    ``output`` forms its absolute path; the tests of that path below are not
-    part of it. A :class:`TypeError` or :class:`ValueError` from anywhere
-    else, such as binding the call or creating the compiler process, carries
-    no ``parameter``. Any
+    ``output`` forms its absolute path and, after the tests of that path
+    below, which are not part of it, checks it on POSIX with
+    :func:`os.fsencode` and then for a NUL character. A :class:`TypeError` or
+    :class:`ValueError` from anywhere else, such as binding the call or
+    creating the compiler process, carries no ``parameter``. Any
     :class:`OSError` from testing a source path or the output path, including one
     that the test itself raises such as a :class:`PermissionError`, is raised with
     the attribute ``path_role`` set to ``"source"`` or ``"output"``; an
@@ -316,6 +320,8 @@ def build(
     except OSError as raised:
         raised.path_role = "output"
         raise
+    with _parameter("output"):
+        _check_argument(str(target), "output contains a NUL character")
     with _parameter("compiler"):
         prefix = _resolve(compiler)
     with _parameter("env"):
