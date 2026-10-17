@@ -2,7 +2,7 @@
 id: T-0255
 title: Make `clang_build.build` raise no plain `OSError` after the compiler starts - a failed read of the clock after `_communicate` becomes a `CompilerRunError` that keeps the log
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0253, T-0254]
@@ -117,3 +117,9 @@ Nothing else changes:
 - (doc) The row of the `CompilerRunError` branch whose `timed_out` is false (ADR-0082 decision 4). It may need a new `error.kind`, which would make it a data-plane or owner question (HQ).
 
 ## Result
+
+DONE — squash-merged as 8782cf8 (PR #161), reviewer agent 1 round Approve, CI green (Python 3.11/3.14, Coverage, C, sh, Test presence).
+build: `duration_s = time.monotonic() - started` now stands inside the try around `_communicate`; an OSError from that read is raised as `CompilerRunError` from it, with `timed_out=held.timed_out`, `log=held.decoded()` and the existing `removal_error` rule. No artefact is moved; a non-OSError keeps the T-0253 note. Docstrings of `CompilerRunError` and `build` updated. A plain OSError of build now comes only from lines before subprocess.Popen (ADR-0083 P3 (a)-(e)), including `started = time.monotonic()`.
+Tests: 7 new tests faking only `clang_build.time` (ok build with new/existing output, exit 1, time limit, failed removal, non-OSError from the clock, failing start-time read stays plain); 5 fail without the fix. Full pytest 22177 passed, 355 skipped; ruff clean; clang_build.py 100% and hilclaw/ 99% line coverage. Two optional reviewer nits not applied (docstring wording on `log` after a failed clock read; a `log` check in `test_failed_clock_and_failed_removal`).
+Language: Python, the language of the module being changed.
+Follow-ups: (doc, suggested next) record under OD-18 ⑱ (ma) — a clock error after the end is now a `CompilerRunError`, so ADR-0082 decisions 2 and 4 reach it; (code) tell the source-path tests apart from the output-path tests (ADR-0083 decision 3); (doc) the row of the `timed_out`-false branch, which may need an HQ.
