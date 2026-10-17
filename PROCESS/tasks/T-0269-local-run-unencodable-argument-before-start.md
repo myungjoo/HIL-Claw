@@ -56,3 +56,10 @@ T-0268 (PR #169, `8aee9ba`) closed the same gap in `clang_build.build` with a pr
 - (doc, after HQ-0027) The OD-18 sub-question 18 (ma) record: an unencodable argument of `local_run.run` now carries `parameter` `"command"` before the start, together with the T-0265..T-0268 follow-ups.
 
 ## Result
+
+- PR #170 (https://github.com/myungjoo/HIL-Claw/pull/170), squash-merged with `gh pr merge --squash --body` (the body ends with `Task: T-0269`); branch `claude/T-0269-local-run-unencodable-argument-before-start` deleted.
+- Language: Python, the language of the module being changed (`hilclaw/local_run.py`).
+- Implementation: in `_resolve`, per argument after the program, after the `str` check and before the NUL check, `os.fsencode(argument)` on POSIX (`os.name != "nt"`); its `UnicodeEncodeError` is passed on as the same object inside `with _parameter("command"):`, so it carries `parameter == "command"`; `shutil.which` is not reached and the argument is handed on unchanged. The `run` docstring lists the refusal (POSIX only) and the `parameter` paragraph names it. `hilclaw/local_run.py` +9/-4.
+- Criterion 2 (NUL plus a lone surrogate, `"a\0\ud800"`): `run` now raises `UnicodeEncodeError` with `parameter == "command"`; a direct `subprocess.run` on POSIX also raises `UnicodeEncodeError`, with and without `cwd` (the conversion encodes before it looks for an embedded NUL). Seen on WSL Ubuntu (Python 3.10, outside the suite) and pinned by `test_a_nul_and_an_unencodable_character_give_the_class_subprocess_raises` on CI (3.11, 3.14). On native Windows a lone surrogate argument stays accepted and reaches the child as with a direct run (`test_on_windows_an_unencodable_argument_reaches_the_process_as_directly`, local 3.14.4).
+- Tests: `tests/test_local_run.py` only; no existing test edited; one new `posix_only` row in `test_the_parameter_survives_pickling`.
+- Follow-ups: unchanged from the list above; none new. No `claude` was started (D16).

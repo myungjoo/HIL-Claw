@@ -896,17 +896,20 @@ def test_an_unencodable_argument_names_command(platform_wait, child, monkeypatch
 def test_an_unencodable_argument_is_passed_on_as_the_fsencode_error(child, monkeypatch):
     refused = UnicodeEncodeError("utf-8", UNENCODABLE, 1, 2, "surrogates not allowed")
     seen = []
+    original = os.fsencode
 
     def fsencode(argument):
         seen.append(argument)
-        raise refused
+        if argument == UNENCODABLE:
+            raise refused
+        return original(argument)
 
     command = child(QUIET, UNENCODABLE)
     monkeypatch.setattr(os, "fsencode", fsencode)
     error = raised(command)
     assert error is refused
     assert error.parameter == "command"
-    assert seen == [UNENCODABLE]
+    assert seen == [command[1], UNENCODABLE]
     assert not child.started
 
 
