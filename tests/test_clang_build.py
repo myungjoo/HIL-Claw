@@ -1882,7 +1882,11 @@ def test_successful_build_carries_no_parameter(stub, src, out_dir):
 
 @pytest.mark.parametrize(
     "kwargs, parameter",
-    [({"timeout_s": "10"}, "timeout_s"), ({"output": 3}, "output")],
+    [
+        ({"timeout_s": "10"}, "timeout_s"),
+        ({"output": 3}, "output"),
+        ({"cwd": 3}, "cwd"),
+    ],
 )
 def test_type_errors_keep_their_parameter_through_pickling(
     kwargs, parameter, stub, src, out_dir
@@ -1892,6 +1896,463 @@ def test_type_errors_keep_their_parameter_through_pickling(
         build(src, compiler=stub(WRITE), **arguments)
     loaded = pickle.loads(pickle.dumps(caught.value))
     assert type(loaded) is TypeError
+    assert str(loaded) == str(caught.value)
+    assert loaded.args == caught.value.args
+    assert loaded.parameter == parameter
+
+
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX behaviour")
+windows_only = pytest.mark.skipif(os.name != "nt", reason="native Windows behaviour")
+PASSED_ON = (AttributeError, OSError, TypeError, ValueError)
+
+
+class IntPath:
+    def __fspath__(self):
+        return 3
+
+
+class Items(dict):
+    def __init__(self, error):
+        super().__init__()
+        self.error = error
+
+    def items(self):
+        raise self.error
+
+
+def directly(cwd, env):
+    try:
+        process = subprocess.Popen(
+            (os.path.abspath(sys.executable), "-c", "pass"),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=cwd,
+            env=env,
+        )
+    except PASSED_ON as error:
+        return type(error)
+    process.communicate()
+    return None
+
+
+def forbid_start(monkeypatch):
+    def popen(*args, **kwargs):
+        pytest.fail("a process was started")
+
+    monkeypatch.setattr(clang_build.subprocess, "Popen", popen)
+
+
+def refused(compiler, src, out_dir, **settings):
+    out = out_dir / "kernel.o"
+    out.write_bytes(b"kept")
+    with pytest.raises(Exception) as caught:
+        build(src, out, timeout_s=TIMEOUT, compiler=compiler, **settings)
+    assert out.read_bytes() == b"kept"
+    assert names(out_dir) == ["kernel.o"]
+    return caught.value
+
+
+REFUSED_ENVS = [
+    ({"A=B": "x"}, ValueError),
+    ({"A\0": "x"}, ValueError),
+    ({"A": "x\0"}, ValueError),
+    ({"\0": ""}, ValueError),
+    ({"A": 3}, TypeError),
+    ({3: "x"}, TypeError),
+    ({"A": None}, TypeError),
+    ({"A": bytearray(b"x")}, TypeError),
+]
+REFUSED_POSIX_ENVS = [
+    ({b"A=B": b"x"}, ValueError),
+    ({b"A\0": b"x"}, ValueError),
+    ({"A": b"x\0"}, ValueError),
+    ({"A": Path("x\0")}, ValueError),
+    ({"A": IntPath()}, TypeError),
+]
+REFUSED_WINDOWS_ENVS = [
+    ({b"A": b"x"}, TypeError),
+    ({"A": b"x"}, TypeError),
+    ({"A": Path("x")}, TypeError),
+]
+REFUSED = (
+    REFUSED_ENVS
+    + [pytest.param(*case, marks=posix_only) for case in REFUSED_POSIX_ENVS]
+    + [pytest.param(*case, marks=windows_only) for case in REFUSED_WINDOWS_ENVS]
+)
+
+
+@pytest.mark.parametrize("variable, kind", REFUSED)
+def test_a_refused_env_names_env_and_starts_nothing(
+    variable, kind, stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env={**os.environ, **variable})
+    assert type(error) is kind
+    assert error.parameter == "env"
+    assert not hasattr(error, "path_role")
+    assert not stub.started
+
+
+@pytest.mark.parametrize("variable, kind", REFUSED)
+@pytest.mark.parametrize("in_cwd", [False, True])
+def test_a_refused_env_has_the_class_popen_raises(variable, kind, in_cwd, tmp_path):
+    cwd = tmp_path if in_cwd else None
+    assert directly(cwd, {**os.environ, **variable}) is kind
+
+
+def test_an_env_error_message_names_the_key_and_not_the_value(
+    stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    env = {**os.environ, "HILCLAW_K": "secret\0"}
+    error = refused(compiler, src, out_dir, env=env)
+    assert "HILCLAW_K" in str(error)
+    assert "secret" not in str(error)
+
+
+ACCEPTED_ENVS = [
+    {"HILCLAW_TEST_MARK": "accepted"},
+    pytest.param({b"HILCLAW_TEST_MARK": b"accepted"}, marks=posix_only),
+    pytest.param({"HILCLAW_TEST_MARK": Path("accepted")}, marks=posix_only),
+    pytest.param({"=A": "x", "HILCLAW_TEST_MARK": "accepted"}, marks=windows_only),
+]
+
+
+@pytest.mark.parametrize("variable", ACCEPTED_ENVS)
+@pytest.mark.parametrize("in_cwd", [False, True])
+def test_an_accepted_env_reaches_the_compiler(
+    variable, in_cwd, stub, src, out_dir, tmp_path, monkeypatch
+):
+    monkeypatch.delenv("HILCLAW_TEST_MARK", raising=False)
+    cwd = tmp_path if in_cwd else None
+    result = build(
+        src,
+        out_dir / "kernel.o",
+        timeout_s=TIMEOUT,
+        compiler=stub(WRITE),
+        cwd=cwd,
+        env={**os.environ, **variable},
+    )
+    assert result.ok
+    assert stub.call()["mark"] == "accepted"
+
+
+def test_no_env_and_no_cwd_inherit_after_the_checks(stub, src, out_dir, monkeypatch):
+    monkeypatch.setenv("HILCLAW_TEST_MARK", "inherited")
+    result = build(
+        src,
+        out_dir / "kernel.o",
+        timeout_s=TIMEOUT,
+        compiler=stub(WRITE),
+        cwd=None,
+        env=None,
+    )
+    assert result.ok
+    call = stub.call()
+    assert call["mark"] == "inherited"
+    assert os.path.samefile(call["cwd"], os.getcwd())
+
+
+def test_env_and_cwd_are_handed_on_as_given(stub, src, out_dir, tmp_path, monkeypatch):
+    seen = []
+
+    def record(*args, **kwargs):
+        seen.append((kwargs["cwd"], kwargs["env"]))
+        raise LookupError("recorded")
+
+    monkeypatch.setattr(clang_build.subprocess, "Popen", record)
+    env = {**os.environ, "HILCLAW_TEST_MARK": "given"}
+    with pytest.raises(LookupError):
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            cwd=tmp_path,
+            env=env,
+        )
+    assert len(seen) == 1
+    assert seen[0][0] is tmp_path
+    assert seen[0][1] is env
+    assert names(out_dir) == []
+
+
+UNCHANGED_ENVS = [
+    {"": "x"},
+    pytest.param({"=A": "x"}, marks=posix_only),
+    pytest.param({b"=A": b"x"}, marks=posix_only),
+    pytest.param({b"": b"x"}, marks=posix_only),
+]
+
+
+@pytest.mark.parametrize("variable", UNCHANGED_ENVS)
+@pytest.mark.parametrize("in_cwd", [False, True])
+def test_an_env_left_to_subprocess_names_no_parameter(
+    variable, in_cwd, stub, src, out_dir, tmp_path
+):
+    cwd = tmp_path if in_cwd else None
+    env = {**os.environ, **variable}
+    expected = directly(cwd, env)
+    try:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            cwd=cwd,
+            env=env,
+        )
+    except PASSED_ON as error:
+        assert expected is not None
+        if issubclass(expected, OSError):
+            assert type(error) is CompilerNotStartedError
+            assert type(error.__cause__) is expected
+        else:
+            assert type(error) is expected
+        assert not hasattr(error, "parameter")
+        assert names(out_dir) == []
+    else:
+        assert expected is None
+
+
+@pytest.mark.parametrize("env", [[("A", "x")], 5, "A=x"])
+def test_an_env_that_is_not_a_mapping_keeps_its_class(env, stub, src, out_dir):
+    expected = directly(None, env)
+    with pytest.raises(PASSED_ON) as caught:
+        build(
+            src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE), env=env
+        )
+    assert expected is not None
+    assert type(caught.value) is expected
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+def test_a_type_error_of_env_items_names_env(stub, src, out_dir, monkeypatch):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    given = TypeError("items refused")
+    error = refused(compiler, src, out_dir, env=Items(given))
+    assert error is given
+    assert error.parameter == "env"
+
+
+@pytest.mark.parametrize("given", [RuntimeError("broken"), LookupError("gone")])
+def test_another_error_of_env_items_is_passed_on(
+    given, stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env=Items(given))
+    assert error is given
+    assert not hasattr(error, "parameter")
+
+
+CWD_TYPES = [str, Path, pytest.param(os.fsencode, marks=posix_only)]
+
+
+@pytest.mark.parametrize("as_type", CWD_TYPES)
+def test_an_existing_cwd_is_where_the_compiler_runs(
+    as_type, stub, src, out_dir, tmp_path
+):
+    work = tmp_path / "work"
+    work.mkdir()
+    result = build(
+        src,
+        out_dir / "kernel.o",
+        timeout_s=TIMEOUT,
+        compiler=stub(WRITE),
+        cwd=as_type(str(work)),
+    )
+    assert result.ok
+    assert os.path.samefile(stub.call()["cwd"], work)
+
+
+REFUSED_CWDS = [
+    3,
+    IntPath(),
+    "a\0b",
+    Path("a\0b"),
+    b"a\0b",
+    pytest.param("a\ud800b", marks=posix_only),
+]
+
+
+@pytest.mark.parametrize("cwd", REFUSED_CWDS)
+def test_a_refused_cwd_names_cwd_and_starts_nothing(
+    cwd, stub, src, out_dir, monkeypatch
+):
+    expected = directly(cwd, None)
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, cwd=cwd)
+    assert issubclass(expected, (TypeError, ValueError))
+    assert type(error) is expected
+    assert error.parameter == "cwd"
+    assert not hasattr(error, "path_role")
+    assert not stub.started
+
+
+@posix_only
+def test_a_lone_surrogate_cwd_is_a_value_error(stub, src, out_dir, monkeypatch):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, cwd="a\ud800b")
+    assert isinstance(error, ValueError)
+    assert error.parameter == "cwd"
+
+
+@posix_only
+@pytest.mark.parametrize("variable", [{"A\ud800": "x"}, {"A": "x\ud800"}])
+def test_a_lone_surrogate_in_env_has_the_class_popen_raises(
+    variable, stub, src, out_dir, monkeypatch
+):
+    env = {**os.environ, **variable}
+    expected = directly(None, env)
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env=env)
+    assert expected is UnicodeEncodeError
+    assert type(error) is expected
+    assert error.parameter == "env"
+
+
+def test_the_type_error_of_fspath_names_cwd(stub, src, out_dir, monkeypatch):
+    with pytest.raises(TypeError) as direct:
+        os.fspath(IntPath())
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, cwd=IntPath())
+    assert error.args == direct.value.args
+    assert error.parameter == "cwd"
+
+
+def absent_directory(tmp_path):
+    return tmp_path / "absent"
+
+
+def regular_file(tmp_path):
+    path = tmp_path / "plain"
+    path.write_text("not a directory", encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("make_cwd", [absent_directory, regular_file])
+def test_an_unusable_cwd_is_still_a_failed_start(
+    make_cwd, stub, src, out_dir, tmp_path
+):
+    with pytest.raises(CompilerNotStartedError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            cwd=make_cwd(tmp_path),
+        )
+    assert isinstance(caught.value.__cause__, OSError)
+    assert not hasattr(caught.value, "parameter")
+    assert not hasattr(caught.value, "path_role")
+    assert not hasattr(caught.value.__cause__, "parameter")
+    assert not hasattr(caught.value.__cause__, "path_role")
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("kind", [TypeError, ValueError])
+def test_an_error_from_creating_the_process_with_env_and_cwd_has_no_parameter(
+    kind, stub, src, out_dir, tmp_path, monkeypatch
+):
+    error = kind("cannot hand over")
+
+    def popen(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(clang_build.subprocess, "Popen", popen)
+    with pytest.raises(kind) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            cwd=tmp_path,
+            env=dict(os.environ),
+        )
+    assert caught.value is error
+    assert not hasattr(caught.value, "parameter")
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"timeout_s": 0}, {"compiler": ()}, {"flags": ("-o", "x.o")}],
+)
+def test_earlier_value_errors_come_before_env_and_cwd(kwargs, stub, src, out_dir):
+    arguments = {"timeout_s": TIMEOUT, "compiler": stub(WRITE), **kwargs}
+    with pytest.raises(ValueError) as caught:
+        build(src, out_dir / "kernel.o", env={"A=B": "x"}, cwd="a\0b", **arguments)
+    assert type(caught.value) is ValueError
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
+
+
+def test_a_missing_compiler_comes_before_the_env(src, out_dir):
+    with pytest.raises(CompilerNotFoundError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler="hilclaw-no-such-compiler",
+            env={"A=B": "x"},
+        )
+    assert not hasattr(caught.value, "parameter")
+    assert names(out_dir) == []
+
+
+def test_a_compiler_type_error_comes_before_the_env(src, out_dir):
+    with pytest.raises(TypeError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=(sys.executable, 3),
+            env={"A": 3},
+        )
+    assert caught.value.parameter == "compiler"
+
+
+def test_the_env_is_named_before_the_cwd(stub, src, out_dir, monkeypatch):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env={"A=B": "x"}, cwd=3)
+    assert type(error) is ValueError
+    assert error.parameter == "env"
+
+
+@pytest.mark.parametrize(
+    "settings, kind, parameter",
+    [
+        ({"env": {"A=B": "x"}}, ValueError, "env"),
+        ({"env": {"A": 3}}, TypeError, "env"),
+        ({"cwd": "a\0b"}, ValueError, "cwd"),
+    ],
+)
+def test_env_and_cwd_errors_keep_their_parameter_through_pickling(
+    settings, kind, parameter, stub, src, out_dir
+):
+    with pytest.raises(kind) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            **settings,
+        )
+    loaded = pickle.loads(pickle.dumps(caught.value))
+    assert type(loaded) is kind
     assert str(loaded) == str(caught.value)
     assert loaded.args == caught.value.args
     assert loaded.parameter == parameter

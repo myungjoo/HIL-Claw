@@ -224,15 +224,31 @@ def build(
     prefix, or a flag that sets the output (any flag that starts with ``-o`` or
     ``--output``, which includes unrelated options with that prefix such as
     ``-objcmt-*``); :class:`TypeError` for arguments of the wrong type,
-    including a bare ``str`` as flags; and :class:`CompilerNotFoundError`. Any
+    including a bare ``str`` as flags; and :class:`CompilerNotFoundError`.
+    After the compiler is found, and still before anything is started, ``env``
+    and ``cwd`` are checked as :mod:`subprocess` would refuse them, with the
+    class it would raise for the same single defect: when ``env`` has an
+    ``items`` method, each key and value must convert as on the platform
+    (:func:`os.fsencode` on POSIX, ``str`` only on Windows; else
+    :class:`TypeError`), and :class:`ValueError` is raised for a NUL character
+    in either or a ``=`` after the first character of a key, with a message
+    that may name the key but never the value; any other ``env`` is left to
+    :mod:`subprocess`. A ``cwd`` that is not ``None`` must convert as on the
+    platform (:func:`os.fsdecode` on Windows, :func:`os.fsencode` on POSIX;
+    else :class:`TypeError`, or a :class:`ValueError` such as
+    :class:`UnicodeEncodeError`), and :class:`ValueError` is raised for a NUL
+    character in it. Whether ``cwd`` exists is not tested here: a missing one
+    fails the start, as :class:`CompilerNotStartedError` below. Any
     :class:`TypeError` from the checks of ``timeout_s``, ``flags``,
-    ``trailing_flags``, ``sources``, ``output`` and ``compiler``, including one
-    that Python itself raises inside them such as for a value that cannot be
-    iterated, is raised with the attribute ``parameter`` set to the name of that
-    parameter: ``"timeout_s"``, ``"flags"``, ``"trailing_flags"``,
-    ``"sources"``, ``"output"`` or ``"compiler"``; a :class:`TypeError` from
-    anywhere else, such as binding the call or creating the compiler process,
-    carries no ``parameter``. Any
+    ``trailing_flags``, ``sources``, ``output`` and ``compiler``,
+    and any :class:`TypeError` or :class:`ValueError` from the checks of
+    ``env`` and ``cwd``, including one that Python itself raises inside them
+    such as for a value that cannot be iterated, is raised with the attribute
+    ``parameter`` set to the name of that parameter: ``"timeout_s"``,
+    ``"flags"``, ``"trailing_flags"``, ``"sources"``, ``"output"``,
+    ``"compiler"``, ``"env"`` or ``"cwd"``; a :class:`ValueError` from the
+    other checks, and a :class:`TypeError` from anywhere else, such as binding
+    the call or creating the compiler process, carry no ``parameter``. Any
     :class:`OSError` from testing a source path or the output path, including one
     that the test itself raises such as a :class:`PermissionError`, is raised with
     the attribute ``path_role`` set to ``"source"`` or ``"output"``; an
@@ -291,6 +307,10 @@ def build(
         raise
     with _parameter("compiler"):
         prefix = _resolve(compiler)
+    with _parameter("env", (TypeError, ValueError)):
+        _check_env(env)
+    with _parameter("cwd", (TypeError, ValueError)):
+        _check_cwd(cwd)
     temporary = target.with_name(
         f"{target.stem}.tmp-{os.getpid()}-{secrets.token_hex(8)}{target.suffix}"
     )
@@ -431,12 +451,43 @@ def _communicate(process, timeout_s, held):
 
 
 @contextlib.contextmanager
-def _parameter(name):
+def _parameter(name, kinds=(TypeError,)):
     try:
         yield
-    except TypeError as error:
+    except kinds as error:
         error.parameter = name
         raise
+
+
+def _check_env(env):
+    items = getattr(env, "items", None)
+    if items is None:
+        return
+    for key, value in items():
+        key, value = _env_text(key), _env_text(value)
+        nul, equals = ("\0", "=") if isinstance(key, str) else (b"\0", b"=")
+        if nul in key or nul in value:
+            raise ValueError(f"an env key or value contains a NUL character: {key!r}")
+        if equals in key[1:]:
+            raise ValueError(
+                f"an env key contains '=' after its first character: {key!r}"
+            )
+
+
+def _env_text(item):
+    if not _WINDOWS:
+        return os.fsencode(item)
+    if not isinstance(item, str):
+        raise TypeError(f"env keys and values must be str, not {type(item).__name__}")
+    return item
+
+
+def _check_cwd(cwd):
+    if cwd is None:
+        return
+    path = os.fsdecode(cwd) if _WINDOWS else os.fsencode(cwd)
+    if ("\0" if isinstance(path, str) else b"\0") in path:
+        raise ValueError("cwd contains a NUL character")
 
 
 def _check_timeout(timeout_s):
