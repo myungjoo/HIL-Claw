@@ -2,7 +2,7 @@
 id: T-0275
 title: Write ADR-0090 on which row of `correctness.check` a pre-start `ValueError` of `clang_build.build` that now carries `parameter` "timeout_s", "flags", "trailing_flags" or "compiler" (T-0274) lets an operation place, and what stays unnamed (more of OD-18 sub-question 18 part (ma)); no `local_run.run`, no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18, "#5 D6"]
 dependsOn: [T-0273, T-0274]
@@ -93,4 +93,17 @@ This is a design-level part of OD-18, not an owner-only item (DRIVER §9). It cl
 
 ## Follow-ups
 
+- (doc, optional) Two non-blocking Nits of review round 7, left because a further round would exceed the 7-round cap: (1) in `ARCHITECTURE/OpenDecisionProposals.md` sub-question 18 "남음", the entry "`clang_build.build`(`sources`·`output` 검사와 그 뒤)" could read "(`sources`·`output` 검사, 그리고 모든 검사 뒤 시작까지)" so that it cannot be read as including the now-named `compiler`/`env`/`cwd` checks; (2) ADR-0090 Consequences could also list ADR-0060 decision 7's "except for an error that one call raises in one class for two rows" (under (가) and sub-question 10) as now less exact (ADR-0089 omitted it too). Either goes into the next OD-18 (ma) record's edits rather than a task of its own.
+- (code, candidate, not required) Give a `parameter` to a `ValueError` of the `sources` and `output` checks of `clang_build.build` and of the tuple of `kernel_sources` in `build_verification_executable` (ADR-0090 decision 3), then a doc record places them.
+- (code, after HQ-0027) The `local_run.run` analogue, unchanged from T-0274.
+
 ## Result
+
+- **Landed** as `61504e8` on `main` (document mode, pushed directly; trailers `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0275`). Branch `claude/T-0275-adr-od18-clang-build-named-setting-value-errors` deleted on origin and locally. Files: new `ARCHITECTURE/decisions/ADR-0090-od18-correctness-check-clang-build-named-setting-value-errors.md`; `ARCHITECTURE/Requirements.md` (OD-18 `**확정분**:` link; `**잔여**:` unchanged, its text does not change); `ARCHITECTURE/OpenDecisionProposals.md` (adopted-record line; sub-question 18 status rewritten in place); `ARCHITECTURE/StandardScenarios.md` ("최근 재검사" line: S0, S1-b, S2, S5, S6 re-checked, no verdict change, no gap). 4 files, +119/-3.
+- **Decisions**: named `ValueError` with `parameter` `timeout_s`/`flags`/`trailing_flags`/`compiler` -> S4 `settings_refused`, one raised inside a handed object's code included, no log, message names the setting only; unnamed pre-start `ValueError` (U1-U6 listed from the code at `ecc319f`) stays open, narrowed (U5 ruled out by the operation's own step; U4 = what `subprocess` passes on, not read); `compiler_version` stays a Boundary; no data-plane change, no owner HQ needed.
+- **Review**: 7 rounds (context-isolated `dev-reviewer`, opus). R1 Approve with 2 Minor + 2 Nit (ADR-0087 T1/T2 missing from less-exact list; `env` with no `items` presented as a `subprocess` `ValueError`; U3 scope; Status P5) - fixed. R2 Request changes: Minor (U1 would also be named after a further tag) + 3 Nit (traceback vs chain, References, adopted-record line format) - fixed. R3 Approve with 2 Nit (path-test `ValueError` unread; U5 wording) - fixed. R4 Request changes: Medium (alternative (c) said "exception chain", which does not tell the cases apart) + Low (U5 wording in decision 3) - fixed. R5 Approve with 1 Low (V7 and handed-code messages also show values) - fixed. R6 Approve with 1 Low (ADR-0089 Alternatives (a) cost sentence missing from less-exact list) - fixed. R7 Approve with 2 Nit, not applied (Follow-ups) to stay within the cap.
+- **§9 notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6237037614 (English, ends with `— posted by driver`).
+- **Session entry check** (2026-10-18, before any edit): `gh pr list` empty; issues #4, #7 (no activity since 2026-09), #8 (closed) and #5 read. `ADR-0090` free on `main` and every remote branch; only `origin/claude/T-0264-adr-od18-local-run-parameter` holds 0088. No owner comment (without the driver tail) on ADR-0089, ADR-0087, ADR-0060 decision 4, T-0274 or (ma); the last non-driver comment on #5 is of 2026-10-15. HQ-0027 unanswered. T-0264's branch not touched.
+- **Resume check**: `git log origin/main --grep='^Task: T-0275'` was empty at start; fresh start.
+- **Overlap with unlanded branches** `claude/T-0264-*`, `claude/T-0210-*`, `claude/T-0231-*`: they edit the same OD-18 register row, the sub-question 18 status line and the StandardScenarios "최근 재검사" line, and must rebase over `61504e8`. When ADR-0088 lands, its edits must keep the ADR-0089 and ADR-0090 entries (확정분 link, adopted-record line, the (ma) partial-answer list and the narrowed unnamed-`ValueError` entry of "남음").
+- No `claude` program, compiler, Python run of the sources or container was started (D16); code was read as files.
