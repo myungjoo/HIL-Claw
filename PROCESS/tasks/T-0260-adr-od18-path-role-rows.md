@@ -141,3 +141,11 @@ Why this item now: STATE has no lock, current or next task, and there is no open
 - (code, later) The `cpu_standin` operation of `correctness.check` applies ADR-0079 to ADR-0086 when it is written. HQ-0026 and PLAN P1-1 govern that.
 
 ## Result
+
+- Landed in document mode as one commit on `main` (hash and the #5 notice URL are added below after landing); branch `claude/T-0260-adr-od18-path-role` deleted.
+- Files: new `ARCHITECTURE/decisions/ADR-0086-od18-correctness-check-path-role.md`; one link each in `Requirements.md` (row OD-18), `OpenDecisionProposals.md` (OD-18 adopted line and sub-question 18 "남음" rewritten in place) and `StandardScenarios.md` ("최근 재검사" line; S0, S1-b, S2, S5, S6 rechecked, no verdict change, no gap). 148 lines added, 3 removed.
+- Entry check: no open PR; ADR-0086 was the next free number; no owner comment on #5 about ADR-0083/0084/0085, T-0259 or (ma) (every comment since 2026-10-16 carries the driver tail).
+- Decisions: `path_role` read as a documented member of what `build` states; `"source"` is S5 `build_input_missing`, `"output"` is S3 `build_directory_unusable`, an OSError the test itself raises included (same answer on every Python version, except a refused `target.is_dir()` that does not raise on 3.14, whose version-dependent cost is stated); no log (ADR-0078 decision 2); the NotADirectoryError S3 row of ADR-0060 decision 4 unchanged; an OSError with no `path_role` stays open. No data-plane change; no earlier ADR edited.
+- Deviation from AC 2: Status says no owner sentence is quoted (O1 and O2 reach the record only through ADR-0060 and ADR-0078), as ADR-0080 does, because both rows placed are tool failures before any compiler ran; the reviewer accepted this.
+- Review: 6 rounds by a context-isolated dev-reviewer. R1 Request changes (less-exact list incomplete; owner-sentence status); R2 Request changes (a refused `target.is_dir()` on 3.14 lets the build go on); R3 to R5 Approve with nits, each fixed; R6 Approve.
+- Follow-ups: (possible HQ) whether an OSError with no `path_role` (failed working directory, random bytes, clock or compiler search before the start) gets its own situation and a new `error.kind`; the record names the question and does not decide it (ADR-0086 decision 6, Consequences). (code, later) the `cpu_standin` operation of `correctness.check` applies ADR-0079 to ADR-0086.
