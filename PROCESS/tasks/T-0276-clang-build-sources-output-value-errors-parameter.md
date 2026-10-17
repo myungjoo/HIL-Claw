@@ -2,7 +2,7 @@
 id: T-0276
 title: Give the pre-start `ValueError`s of the `sources` and `output` checks of `clang_build.build` the attribute `parameter`, and a `ValueError` raised while `build_verification_executable` makes a tuple of `kernel_sources` the `parameter` "kernel_sources"; leave the no-kernel-source error, the output path tests and `compiler_version` as they are
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0270, T-0274, T-0275]
@@ -140,3 +140,13 @@ It records nothing in `ARCHITECTURE/`. It is not an owner-only item under DRIVER
 - (doc, after this lands) An OD-18 sub-question 18 part (ma) record on the `ValueError`s that now carry `parameter` `"sources"`, `"output"` or `"kernel_sources"`, and on what stays unnamed (U4, U5), planned against the code as landed. Its edits follow the recording rules of `ARCHITECTURE/Requirements.md` ("행 형식"), of the `ARCHITECTURE/OpenDecisionProposals.md` header ("기록 규칙") and of the first paragraph of `ARCHITECTURE/StandardScenarios.md` §검사 결과. It can also take up the two Nits listed in T-0275's `## Follow-ups`. It must keep clear of the unlanded branches `claude/T-0264-*`, `claude/T-0210-*` and `claude/T-0231-*`, which edit the same OD-18 lines.
 
 ## Result
+
+- Outcome: DONE. PR https://github.com/myungjoo/HIL-Claw/pull/175 was squash-merged as `1d61696` with `gh pr merge --squash --body` (last body line `Task: T-0276`). The branch `claude/T-0276-clang-build-sources-output-value-errors-parameter` is deleted on the remote and locally.
+- Entry check: no open PRs before the first edit; `git log origin/main --grep='^Task: T-0276'` found nothing (fresh start).
+- Change: `hilclaw/clang_build.py` — the `sources` and `output` check steps set `parameter` on `TypeError` and `ValueError` (output path tests stay outside the `output` step; `OSError`s with `path_role` get no `parameter`); `_parameter` dropped its `kinds` argument. `hilclaw/harness/verification_build.py` — the `kernel_sources` tuple step uses `except (TypeError, ValueError)`; the no-kernel-source `ValueError` (U5) still has no `parameter`. Docstrings of `build` and `build_verification_executable` rewritten per criterion 4. Not touched: `compiler_version`, module docstrings, `timing_build.py`. Size: 2 non-test files, +25/-23.
+- Language: Python, because both modules are Python.
+- Existing tests edited (criterion 5): `test_no_source_still_has_no_parameter` renamed to `test_no_source_names_the_sources` and expects `"sources"`; `test_unusable_sources` also asserts `parameter == "sources"` on `[]`/`()`; the replacement `_parameter` in `test_the_parameter_leaves_the_error_otherwise_unchanged` lost its unused `kinds` default (round 1 Nit).
+- New tests: happy (iterator raising `ValueError`/subclass/`UnicodeError`; source and output `__fspath__` raising), negative (`RuntimeError` gets no `parameter`; directory source/output keeps `path_role`, no `parameter`), check order, pickling, and the `build_verification_executable` `"kernel_sources"` cases (`build` not called). The new and changed tests fail on the old code (19 failures) and pass on the new.
+- Local verification: pytest 22644 passed, 482 skipped; `ruff check` and `ruff format --check` clean; `hilclaw/` line coverage 99%. CI on head `fa020e6` all green.
+- Review: 2 rounds with a context-isolated `dev-reviewer` — round 1 Approve with one Nit (fixed in `fa020e6`) and one Info (CI pending); round 2 Approve.
+- Follow-ups: (doc) an OD-18 sub-question 18 (ma) record on the `ValueError`s that now carry `"sources"`, `"output"` or `"kernel_sources"`, and on what stays unnamed (U4, U5); it can also take up T-0275's two Nits and must keep clear of the unlanded branches `claude/T-0264-*`, `claude/T-0210-*`, `claude/T-0231-*`.
