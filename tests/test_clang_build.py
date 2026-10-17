@@ -2529,3 +2529,311 @@ def test_clang_version(clang):
     assert "clang" in line
     assert "\n" not in line
     assert line == line.strip()
+
+
+def forbid_the_temporary_and_the_clock(monkeypatch):
+    def fail(*args, **kwargs):
+        pytest.fail("a temporary name was drawn or the clock was read")
+
+    monkeypatch.setattr(clang_build.secrets, "token_hex", fail)
+    monkeypatch.setattr(clang_build, "time", SimpleNamespace(monotonic=fail))
+
+
+def directly_with(argument, cwd):
+    try:
+        process = subprocess.Popen(
+            (os.path.abspath(sys.executable), "-c", "pass", argument),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=cwd,
+        )
+    except PASSED_ON as error:
+        return type(error)
+    process.communicate()
+    return None
+
+
+def placed(place, value, compiler):
+    if place == "compiler":
+        argument = compiler[1] + value
+        return argument, (compiler[0], argument), {}
+    argument = "-DX" + value
+    return argument, compiler, {place: ("-c", argument)}
+
+
+PLACES = ["flags", "trailing_flags", "compiler"]
+REFUSED_ARGUMENTS = [
+    "\0",
+    "a\0b",
+    pytest.param("\ud800", marks=posix_only),
+    pytest.param("a\ud800b", marks=posix_only),
+]
+
+
+@pytest.mark.parametrize("place", PLACES)
+@pytest.mark.parametrize("value", ["\0", "a\0b"])
+def test_a_nul_in_an_argument_is_refused_before_the_start(
+    place, value, stub, src, out_dir, monkeypatch
+):
+    argument, compiler, settings = placed(place, value, stub(WRITE))
+    forbid_start(monkeypatch)
+    forbid_the_temporary_and_the_clock(monkeypatch)
+    error = refused(compiler, src, out_dir, **settings)
+    assert type(error) is ValueError
+    assert "NUL" in str(error)
+    assert place in str(error)
+    assert argument not in str(error)
+    assert repr(argument)[1:-1] not in str(error)
+    assert not hasattr(error, "parameter")
+    assert not hasattr(error, "path_role")
+    assert not stub.started
+
+
+@posix_only
+@pytest.mark.parametrize("place", PLACES)
+@pytest.mark.parametrize("value", ["\ud800", "a\ud800b", "a\ud800\0"])
+def test_an_unencodable_argument_is_the_error_of_fsencode(
+    place, value, stub, src, out_dir, monkeypatch
+):
+    argument, compiler, settings = placed(place, value, stub(WRITE))
+    with pytest.raises(UnicodeEncodeError) as direct:
+        os.fsencode(argument)
+    raised = []
+    real = os.fsencode
+
+    def fsencode(text):
+        try:
+            return real(text)
+        except UnicodeEncodeError as error:
+            raised.append(error)
+            raise
+
+    forbid_start(monkeypatch)
+    forbid_the_temporary_and_the_clock(monkeypatch)
+    monkeypatch.setattr(clang_build.os, "fsencode", fsencode)
+    error = refused(compiler, src, out_dir, **settings)
+    assert error is raised[-1]
+    assert type(error) is UnicodeEncodeError
+    assert error.args == direct.value.args
+    assert not hasattr(error, "parameter")
+    assert not hasattr(error, "path_role")
+    assert not stub.started
+
+
+@pytest.mark.parametrize("place", PLACES)
+@pytest.mark.parametrize("value", REFUSED_ARGUMENTS)
+@pytest.mark.parametrize("in_cwd", [False, True])
+def test_a_refused_argument_has_the_class_popen_raises(
+    place, value, in_cwd, stub, src, out_dir, tmp_path, monkeypatch
+):
+    cwd = tmp_path if in_cwd else None
+    expected = directly_with(value, cwd)
+    assert expected is (ValueError if "\0" in value else UnicodeEncodeError)
+    _, compiler, settings = placed(place, value, stub(WRITE))
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, cwd=cwd, **settings)
+    assert type(error) is expected
+
+
+@windows_only
+@pytest.mark.parametrize("place", PLACES)
+@pytest.mark.parametrize("in_cwd", [False, True])
+def test_a_lone_surrogate_argument_is_accepted_on_windows_as_by_popen(
+    place, in_cwd, stub, src, out_dir, tmp_path
+):
+    cwd = tmp_path if in_cwd else None
+    assert directly_with("-D\ud800", cwd) is None
+    compiler = stub(WRITE)
+    if place == "compiler":
+        settings = {"compiler": (*compiler, "-D\ud800")}
+    else:
+        settings = {"compiler": compiler, place: ("-D\ud800",)}
+    result = build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, cwd=cwd, **settings)
+    assert result.ok
+    assert "-D\ud800" in stub.call()["argv"]
+
+
+ACCEPTED_FLAGS = [
+    "-DNAME=é",
+    "-DNAME=漢字",
+    pytest.param("-D\udcff", marks=posix_only),
+]
+
+
+@pytest.mark.parametrize("keyword", ["flags", "trailing_flags"])
+@pytest.mark.parametrize("flag", ACCEPTED_FLAGS)
+def test_a_non_ascii_flag_reaches_the_compiler(keyword, flag, stub, src, out_dir):
+    out = out_dir / "kernel.o"
+    result = build(
+        src, out, timeout_s=TIMEOUT, compiler=stub(WRITE), **{keyword: (flag,)}
+    )
+    assert result.ok
+    assert out.read_bytes() == b"artefact"
+    assert flag in stub.call()["argv"]
+    assert flag in result.command
+
+
+def test_a_non_ascii_compiler_part_reaches_the_compiler(stub, src, out_dir):
+    script = Path(stub(WRITE)[1])
+    renamed = script.with_name("cc-é.py")
+    script.rename(renamed)
+    result = build(
+        src,
+        out_dir / "kernel.o",
+        timeout_s=TIMEOUT,
+        compiler=(sys.executable, str(renamed)),
+    )
+    assert result.ok
+    assert stub.started
+    assert result.command[1] == str(renamed)
+
+
+@pytest.mark.parametrize("keyword", ["flags", "trailing_flags"])
+def test_an_output_flag_with_a_nul_keeps_the_output_message(
+    keyword, stub, src, out_dir
+):
+    with pytest.raises(ValueError, match="must not set the output") as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            **{keyword: ("-o\0x",)},
+        )
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
+
+
+def test_a_bad_timeout_comes_before_a_nul_flag(stub, src, out_dir):
+    compiler = stub(WRITE)
+    with pytest.raises(ValueError, match="timeout_s") as caught:
+        build(src, out_dir / "kernel.o", timeout_s=0, compiler=compiler, flags=("\0",))
+    assert not hasattr(caught.value, "parameter")
+    with pytest.raises(TypeError) as caught:
+        build(
+            src, out_dir / "kernel.o", timeout_s="10", compiler=compiler, flags=("\0",)
+        )
+    assert caught.value.parameter == "timeout_s"
+    assert not stub.started
+
+
+@pytest.mark.parametrize("keyword", ["flags", "trailing_flags"])
+def test_the_first_bad_flag_in_the_sequence_is_reported(keyword, stub, src, out_dir):
+    compiler = stub(WRITE)
+    with pytest.raises(ValueError, match="NUL") as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=compiler,
+            **{keyword: ("a\0", 5)},
+        )
+    assert not hasattr(caught.value, "parameter")
+    with pytest.raises(TypeError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=compiler,
+            **{keyword: (5, "a\0")},
+        )
+    assert caught.value.parameter == keyword
+    assert not stub.started
+
+
+def test_a_nul_flag_comes_before_a_nul_compiler_part(stub, src, out_dir):
+    compiler = stub(WRITE)
+    with pytest.raises(ValueError, match="flags") as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=(compiler[0], compiler[1] + "\0"),
+            flags=("\0",),
+        )
+    assert "compiler" not in str(caught.value)
+    assert not stub.started
+
+
+def test_the_type_of_every_compiler_part_comes_before_a_nul(stub, src, out_dir):
+    compiler = stub(WRITE)
+    with pytest.raises(TypeError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=(compiler[0], "a\0", 5),
+        )
+    assert caught.value.parameter == "compiler"
+    assert not stub.started
+
+
+FIRST_PARTS = ["\0", pytest.param("\ud800", marks=posix_only)]
+
+
+@pytest.mark.parametrize("value", FIRST_PARTS)
+def test_a_bad_first_compiler_part_is_still_not_found(value, stub, src, out_dir):
+    compiler = stub(WRITE)
+    prefix = (os.path.abspath(sys.executable) + value, compiler[1])
+    with pytest.raises(CompilerNotFoundError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=prefix)
+    assert not hasattr(caught.value, "parameter")
+    with pytest.raises(CompilerNotFoundError) as caught:
+        compiler_version(prefix, timeout_s=TIMEOUT)
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize("value", REFUSED_ARGUMENTS)
+def test_compiler_version_refuses_a_bad_part_before_the_start(value, stub, monkeypatch):
+    compiler = stub(VERSION)
+    expected = ValueError if "\0" in value else UnicodeEncodeError
+    forbid_start(monkeypatch)
+    with pytest.raises(expected) as caught:
+        compiler_version((compiler[0], compiler[1] + value), timeout_s=TIMEOUT)
+    assert type(caught.value) is expected
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
+
+
+@pytest.mark.parametrize(
+    "settings, match",
+    [
+        ({"timeout_s": -1}, "timeout_s"),
+        ({"compiler": ()}, "empty"),
+        ({"flags": ("-o", "x")}, "must not set the output"),
+        ({"trailing_flags": ("-ox",)}, "must not set the output"),
+    ],
+)
+def test_the_existing_value_errors_still_have_no_parameter(
+    settings, match, stub, src, out_dir
+):
+    arguments = {"timeout_s": TIMEOUT, "compiler": stub(WRITE), **settings}
+    with pytest.raises(ValueError, match=match) as caught:
+        build(src, out_dir / "kernel.o", **arguments)
+    assert type(caught.value) is ValueError
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
+
+
+def test_a_nul_in_a_path_keeps_the_path_error(stub, src, out_dir):
+    compiler = stub(WRITE)
+    with pytest.raises(FileNotFoundError) as caught:
+        build(
+            str(src) + "\0", out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=compiler
+        )
+    assert caught.value.path_role == "source"
+    assert not hasattr(caught.value, "parameter")
+    with pytest.raises(FileNotFoundError) as caught:
+        build(
+            src,
+            str(out_dir / "a\0b" / "kernel.o"),
+            timeout_s=TIMEOUT,
+            compiler=compiler,
+        )
+    assert caught.value.path_role == "output"
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
+    assert names(out_dir) == []
