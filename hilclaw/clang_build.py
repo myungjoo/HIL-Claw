@@ -238,8 +238,9 @@ def build(
     else :class:`TypeError`, or a :class:`ValueError` such as
     :class:`UnicodeEncodeError`), and :class:`ValueError` is raised for a NUL
     character in it. Whether ``cwd`` exists is not tested here: a missing one
-    fails the start, as :class:`CompilerNotStartedError` below. Any :class:`TypeError` from the checks of ``timeout_s``,
-    ``flags``, ``trailing_flags``, ``sources``, ``output`` and ``compiler``,
+    fails the start, as :class:`CompilerNotStartedError` below. Any
+    :class:`TypeError` from the checks of ``timeout_s``, ``flags``,
+    ``trailing_flags``, ``sources``, ``output`` and ``compiler``,
     and any :class:`TypeError` or :class:`ValueError` from the checks of
     ``env`` and ``cwd``, including one that Python itself raises inside them
     such as for a value that cannot be iterated, is raised with the attribute

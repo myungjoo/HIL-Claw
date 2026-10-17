@@ -2206,6 +2206,21 @@ def test_a_lone_surrogate_cwd_is_a_value_error(stub, src, out_dir, monkeypatch):
     assert error.parameter == "cwd"
 
 
+@posix_only
+@pytest.mark.parametrize("variable", [{"A\ud800": "x"}, {"A": "x\ud800"}])
+def test_a_lone_surrogate_in_env_has_the_class_popen_raises(
+    variable, stub, src, out_dir, monkeypatch
+):
+    env = {**os.environ, **variable}
+    expected = directly(None, env)
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env=env)
+    assert expected is UnicodeEncodeError
+    assert type(error) is expected
+    assert error.parameter == "env"
+
+
 def test_the_type_error_of_fspath_names_cwd(stub, src, out_dir, monkeypatch):
     with pytest.raises(TypeError) as direct:
         os.fspath(IntPath())
