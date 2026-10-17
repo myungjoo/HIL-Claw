@@ -2,7 +2,7 @@
 id: T-0256
 title: Write ADR-0084 on what T-0255 makes true for `correctness.check` - a failed clock read after the compiler's end is now a `CompilerRunError`, so ADR-0082 decisions 2 and 4 reach it, and a plain `OSError` of `clang_build.build` comes only from before the start (more of OD-18 sub-question 18 part (ma))
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0254, T-0255]
@@ -106,3 +106,9 @@ Leaving any of these open is acceptable if the record gives its reasons and name
 - (doc) The row of the `CompilerRunError` branch whose `timed_out` is false (ADR-0082 decision 4). It may need a new `error.kind`, and so be a data-plane or owner question (HQ).
 
 ## Result
+
+DONE — pushed to main as 26e8ac0 (document mode; trailers Reviewed-by: reviewer agent (5 rounds, Approve), Task: T-0256). Branch claude/T-0256-adr-od18-clock-error-after-end deleted locally and on origin.
+ADR-0084: (1) a failed clock read after a time-limit kill is S8 by ADR-0082 decisions 2 and 3, on this record's reading of their reason; the compiler had ended and was waited for. (2) After a normal end it stays in ADR-0082 decision 4's open entry, for a reason of its own: what build states cannot tell it from the closing source, and the return code is not stated (S7 if non-zero, no row by its wording for status 0). The log is held but not handed over; costs stated. (3) A plain OSError of build now comes only from before Popen; ADR-0083 decision 3's other three reasons still hold, so it has no row.
+Registers: Requirements OD-18 row (one link), OpenDecisionProposals OD-18 (adopted line; the ⑱ (마) list rewritten in place), StandardScenarios latest re-check (S0, S1-b, S2, S5, S6: no verdict change, no gap). No new condition/error.kind value, member or version. Runtime acceptance items: none.
+§9 notice on #5 (7-day window until 2026-10-24): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6229403473
+Follow-ups: (code, suggested next) make clang_build.build state the return code it holds for a failed clock read and tell that source from the closing source (ADR-0084 decision 3); (code) tell the source path tests from the output path tests (ADR-0083 decision 3); (doc) the row of the timed_out-false branch as a whole, which may need a new error.kind (HQ).
