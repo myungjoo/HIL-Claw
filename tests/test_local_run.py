@@ -1,7 +1,9 @@
 import gc
 import json
 import os
+import pickle
 import signal
+import subprocess
 import sys
 import time
 import warnings
@@ -598,3 +600,209 @@ def test_a_descendant_holding_a_pipe_makes_a_timeout_at_the_limit(child):
     assert result.returncode is None
     assert 3 <= result.duration_s < 20
     assert type(result.max_rss) is int
+
+
+def raised(command, **settings):
+    settings.setdefault("timeout_s", TIMEOUT)
+    with pytest.raises(BaseException) as caught:
+        run(command, **settings)
+    return caught.value
+
+
+@pytest.mark.parametrize(
+    "value, kind",
+    [(v, TypeError) for v in BAD_TIMEOUT_TYPES]
+    + [(v, ValueError) for v in BAD_TIMEOUT_VALUES],
+)
+def test_a_refused_time_limit_names_timeout_s(value, kind, child):
+    error = raised(child(QUIET), timeout_s=value)
+    assert type(error) is kind
+    assert error.parameter == "timeout_s"
+    assert not child.started
+
+
+@pytest.mark.parametrize("command", [[], ()])
+def test_an_empty_command_names_command(command):
+    error = raised(command)
+    assert type(error) is ValueError
+    assert error.parameter == "command"
+    assert str(error) == "command is empty"
+
+
+@pytest.mark.parametrize("as_type", [str, os.fsencode])
+def test_a_command_as_one_string_names_command(as_type, child):
+    error = raised(as_type(" ".join(child(QUIET))))
+    assert type(error) is TypeError
+    assert error.parameter == "command"
+    assert not child.started
+
+
+@pytest.mark.parametrize(
+    "as_type", [os.fsencode, BytesPath, lambda _: 3, lambda _: None]
+)
+def test_a_program_of_the_wrong_type_names_command(as_type, child):
+    command = child(QUIET)
+    error = raised((as_type(command[0]), *command[1:]))
+    assert type(error) is TypeError
+    assert error.parameter == "command"
+    assert "program" in str(error)
+    assert not child.started
+
+
+@pytest.mark.parametrize("argument", [3, None, b"x", Path("x"), ("x",)])
+def test_an_argument_that_is_not_a_str_names_command(argument, child):
+    error = raised(child(QUIET, "ok") + (argument,))
+    assert type(error) is TypeError
+    assert error.parameter == "command"
+    assert "argument must be str" in str(error)
+    assert not child.started
+
+
+def test_the_type_error_of_a_command_that_is_not_iterable_names_command():
+    with pytest.raises(TypeError) as direct:
+        tuple(5)
+    error = raised(5)
+    assert type(error) is TypeError
+    assert error.parameter == "command"
+    assert error.args == direct.value.args
+
+
+class Broken:
+    def __init__(self, error):
+        self.error = error
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        raise self.error
+
+
+def test_an_error_of_the_command_iteration_is_passed_on_as_the_same_object():
+    cause, context = KeyError("cause"), LookupError("context")
+    given = ValueError("broken iteration")
+    given.__cause__, given.__context__ = cause, context
+    error = raised(Broken(given))
+    assert error is given
+    assert error.parameter == "command"
+    assert error.args == ("broken iteration",)
+    assert error.__cause__ is cause
+    assert error.__context__ is context
+    assert error.__traceback__ is not None
+
+
+class IntPath:
+    def __fspath__(self):
+        return 3
+
+
+def test_the_type_error_of_fspath_names_command(child):
+    with pytest.raises(TypeError) as direct:
+        os.fspath(IntPath())
+    error = raised((IntPath(), *child(QUIET)[1:]))
+    assert type(error) is TypeError
+    assert error.parameter == "command"
+    assert error.args == direct.value.args
+    assert not child.started
+
+
+def test_the_time_limit_is_named_before_the_command():
+    error = raised([], timeout_s=0)
+    assert type(error) is ValueError
+    assert error.parameter == "timeout_s"
+
+
+def test_a_missing_time_limit_names_no_parameter(child):
+    with pytest.raises(TypeError) as caught:
+        run(child(QUIET))
+    assert not hasattr(caught.value, "parameter")
+    assert not child.started
+
+
+@pytest.mark.parametrize("program", MISSING_PROGRAMS)
+def test_a_program_not_found_names_no_parameter(program, child):
+    error = raised((program, child(QUIET)[1]))
+    assert type(error) is ProgramNotFoundError
+    assert not hasattr(error, "parameter")
+    assert not child.started
+
+
+def test_a_missing_cwd_names_no_parameter(child, tmp_path):
+    error = raised(child(QUIET), cwd=tmp_path / "absent")
+    assert isinstance(error, OSError)
+    assert not hasattr(error, "parameter")
+    assert not child.started
+
+
+def refusing(error):
+    def refuse(*arguments, **keywords):
+        raise error
+
+    return refuse
+
+
+@pytest.mark.parametrize("kind", [ValueError, TypeError])
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_error_of_subprocess_names_no_parameter(
+    kind, platform_wait, child, monkeypatch
+):
+    given = kind("refused by subprocess")
+    if platform_wait:
+        monkeypatch.setattr(os, "wait4", refusing(AssertionError), raising=False)
+        monkeypatch.setattr(subprocess, "Popen", refusing(given))
+    else:
+        without_wait4(monkeypatch)
+        monkeypatch.setattr(subprocess, "run", refusing(given))
+    error = raised(child(QUIET))
+    assert error is given
+    assert not hasattr(error, "parameter")
+    assert not child.started
+
+
+@pytest.mark.parametrize(
+    "variable, kind", [({"A=B": "x"}, ValueError), ({"A": 3}, TypeError)]
+)
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_env_that_subprocess_refuses_names_no_parameter(
+    variable, kind, platform_wait, child, monkeypatch
+):
+    if not platform_wait:
+        without_wait4(monkeypatch)
+    error = raised(child(QUIET), env={**os.environ, **variable})
+    assert type(error) is kind
+    assert not hasattr(error, "parameter")
+    assert not child.started
+    assert isinstance(run(child(QUIET), timeout_s=TIMEOUT), RunResult)
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_overflow_error_names_no_parameter(platform_wait, child, monkeypatch):
+    if not platform_wait:
+        without_wait4(monkeypatch)
+    error = raised(child(QUIET), timeout_s=1e300)
+    assert type(error) is OverflowError
+    assert not hasattr(error, "parameter")
+
+
+@posix_only
+def test_an_interrupted_wait_names_no_parameter(child, monkeypatch):
+    monkeypatch.setattr(os, "wait4", refusing(KeyboardInterrupt))
+    error = raised(child(NOTED + "; " + HANG))
+    assert type(error) is KeyboardInterrupt
+    assert not hasattr(error, "parameter")
+    assert_reaped(int((child.directory / "pid").read_text()))
+
+
+@pytest.mark.parametrize(
+    "command, settings, kind",
+    [
+        (["x"], {"timeout_s": "10"}, TypeError),
+        ([], {"timeout_s": TIMEOUT}, ValueError),
+    ],
+)
+def test_the_parameter_survives_pickling(command, settings, kind):
+    error = raised(command, **settings)
+    loaded = pickle.loads(pickle.dumps(error))
+    assert type(loaded) is kind
+    assert loaded.args == error.args
+    assert loaded.parameter == error.parameter
