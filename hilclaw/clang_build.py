@@ -23,6 +23,7 @@ survivor can still write the temporary file after the call has returned, and
 where it keeps the output pipe open the call can last longer than the limit.
 """
 
+import contextlib
 import math
 import os
 import secrets
@@ -224,6 +225,14 @@ def build(
     ``--output``, which includes unrelated options with that prefix such as
     ``-objcmt-*``); :class:`TypeError` for arguments of the wrong type,
     including a bare ``str`` as flags; and :class:`CompilerNotFoundError`. Any
+    :class:`TypeError` from the checks of ``timeout_s``, ``flags``,
+    ``trailing_flags``, ``sources``, ``output`` and ``compiler``, including one
+    that Python itself raises inside them such as for a value that cannot be
+    iterated, is raised with the attribute ``parameter`` set to the name of that
+    parameter: ``"timeout_s"``, ``"flags"``, ``"trailing_flags"``,
+    ``"sources"``, ``"output"`` or ``"compiler"``; a :class:`TypeError` from
+    anywhere else, such as binding the call or creating the compiler process,
+    carries no ``parameter``. Any
     :class:`OSError` from testing a source path or the output path, including one
     that the test itself raises such as a :class:`PermissionError`, is raised with
     the attribute ``path_role`` set to ``"source"`` or ``"output"``; an
@@ -259,11 +268,16 @@ def build(
     temporary file then fails, the removal's error is not raised but added to
     that exception as a note naming the temporary path.
     """
-    _check_timeout(timeout_s)
-    flags = _checked_flags(flags, "flags")
-    trailing_flags = _checked_flags(trailing_flags, "trailing_flags")
-    source_paths = _checked_sources(sources)
-    target = Path(os.path.abspath(output))
+    with _parameter("timeout_s"):
+        _check_timeout(timeout_s)
+    with _parameter("flags"):
+        flags = _checked_flags(flags, "flags")
+    with _parameter("trailing_flags"):
+        trailing_flags = _checked_flags(trailing_flags, "trailing_flags")
+    with _parameter("sources"):
+        source_paths = _checked_sources(sources)
+    with _parameter("output"):
+        target = Path(os.path.abspath(output))
     try:
         if not target.parent.is_dir():
             error = NotADirectoryError if target.parent.exists() else FileNotFoundError
@@ -275,7 +289,8 @@ def build(
     except OSError as raised:
         raised.path_role = "output"
         raise
-    prefix = _resolve(compiler)
+    with _parameter("compiler"):
+        prefix = _resolve(compiler)
     temporary = target.with_name(
         f"{target.stem}.tmp-{os.getpid()}-{secrets.token_hex(8)}{target.suffix}"
     )
@@ -413,6 +428,15 @@ def _communicate(process, timeout_s, held):
             process.kill()
             raise
         return process.poll(), held.raw
+
+
+@contextlib.contextmanager
+def _parameter(name):
+    try:
+        yield
+    except TypeError as error:
+        error.parameter = name
+        raise
 
 
 def _check_timeout(timeout_s):

@@ -1495,6 +1495,10 @@ def test_unusable_sources(sources, error, stub, src, out_dir, monkeypatch):
         assert caught.value.path_role == "source"
     else:
         assert not hasattr(caught.value, "path_role")
+    if error is TypeError:
+        assert caught.value.parameter == "sources"
+    else:
+        assert not hasattr(caught.value, "parameter")
     assert not stub.started
     assert names(out_dir) == []
 
@@ -1672,6 +1676,10 @@ def test_checks_other_than_paths_have_no_role(kwargs, expected, src, out_dir):
     with pytest.raises(expected) as caught:
         build(src, out_dir / "kernel.o", **kwargs)
     assert not hasattr(caught.value, "path_role")
+    if expected is TypeError:
+        assert caught.value.parameter == "flags"
+    else:
+        assert not hasattr(caught.value, "parameter")
     assert names(out_dir) == []
 
 
@@ -1697,10 +1705,202 @@ def test_path_errors_keep_their_role_through_pickling(role, stub, src, out_dir):
     assert loaded.path_role == role
 
 
+@pytest.mark.parametrize(
+    "kwargs, parameter",
+    [
+        ({"timeout_s": "10"}, "timeout_s"),
+        ({"timeout_s": True}, "timeout_s"),
+        ({"flags": "-O2"}, "flags"),
+        ({"trailing_flags": ("-lm", 1)}, "trailing_flags"),
+    ],
+)
+def test_type_errors_name_the_setting(kwargs, parameter, stub, src, out_dir):
+    arguments = {"timeout_s": TIMEOUT, "compiler": stub(WRITE), **kwargs}
+    with pytest.raises(TypeError) as caught:
+        build(src, out_dir / "kernel.o", **arguments)
+    assert type(caught.value) is TypeError
+    assert caught.value.parameter == parameter
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize(
+    "kwargs, parameter",
+    [
+        ({"sources": [3]}, "sources"),
+        ({"sources": [None]}, "sources"),
+        ({"sources": b"kernel.c"}, "sources"),
+        ({"output": 3}, "output"),
+        ({"compiler": (sys.executable, 3)}, "compiler"),
+        ({"compiler": b"clang"}, "compiler"),
+    ],
+)
+def test_type_errors_name_each_parameter(kwargs, parameter, stub, src, out_dir):
+    arguments = {"sources": src, "output": out_dir / "kernel.o", "timeout_s": TIMEOUT}
+    arguments["compiler"] = stub(WRITE)
+    arguments.update(kwargs)
+    with pytest.raises(TypeError) as caught:
+        build(**arguments)
+    assert type(caught.value) is TypeError
+    assert caught.value.parameter == parameter
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+def python_type_error(call):
+    with pytest.raises(TypeError) as caught:
+        call()
+    return caught.value
+
+
+@pytest.mark.parametrize(
+    "keyword, call",
+    [
+        ("flags", lambda: tuple(3)),
+        ("sources", lambda: [source for source in 3]),
+        ("compiler", lambda: tuple(3)),
+    ],
+)
+def test_type_errors_python_raises_in_a_check_name_the_parameter(
+    keyword, call, stub, src, out_dir
+):
+    arguments = {"sources": src, "timeout_s": TIMEOUT, "compiler": stub(WRITE)}
+    arguments[keyword] = 3
+    with pytest.raises(TypeError) as caught:
+        build(output=out_dir / "kernel.o", **arguments)
+    expected = python_type_error(call)
+    assert type(caught.value) is TypeError
+    assert caught.value.args == expected.args
+    assert str(caught.value) == str(expected)
+    assert caught.value.parameter == keyword
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+def test_type_error_of_a_source_path_is_the_same_object(
+    stub, src, out_dir, monkeypatch
+):
+    error = TypeError("abspath refused")
+    real = os.path.abspath
+
+    def fake(path):
+        if os.fspath(path) == os.fspath(src):
+            raise error
+        return real(path)
+
+    monkeypatch.setattr(clang_build.os.path, "abspath", fake)
+    with pytest.raises(TypeError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value is error
+    assert type(caught.value) is TypeError
+    assert caught.value.args == ("abspath refused",)
+    assert caught.value.__traceback__ is not None
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert caught.value.parameter == "sources"
+    assert not stub.started
+
+
+def test_first_type_error_in_check_order_is_named(stub, src, out_dir):
+    with pytest.raises(TypeError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s="10",
+            flags="-O2",
+            compiler=stub(WRITE),
+        )
+    assert caught.value.parameter == "timeout_s"
+    assert "timeout_s" in str(caught.value)
+    assert not stub.started
+
+
+@pytest.mark.parametrize(
+    "kwargs, expected",
+    [
+        ({"timeout_s": 0}, ValueError),
+        ({"compiler": ()}, ValueError),
+        ({"flags": ("-o", "x.o")}, ValueError),
+        ({"compiler": "hilclaw-no-such-compiler"}, CompilerNotFoundError),
+        ({"sources": "missing.c"}, FileNotFoundError),
+        ({"output": Path("absent") / "kernel.o"}, FileNotFoundError),
+    ],
+)
+def test_other_errors_before_the_start_have_no_parameter(
+    kwargs, expected, stub, src, out_dir, monkeypatch
+):
+    monkeypatch.chdir(src.parent)
+    arguments = {"sources": src, "output": out_dir / "kernel.o", "timeout_s": TIMEOUT}
+    arguments["compiler"] = stub(WRITE)
+    arguments.update(kwargs)
+    with pytest.raises(expected) as caught:
+        build(**arguments)
+    assert type(caught.value) is expected
+    assert not hasattr(caught.value, "parameter")
+    if issubclass(expected, OSError):
+        assert caught.value.path_role == ("source" if "sources" in kwargs else "output")
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+def test_type_error_from_creating_the_process_has_no_parameter(
+    stub, src, out_dir, monkeypatch
+):
+    error = TypeError("cannot hand over")
+
+    def popen(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(clang_build.subprocess, "Popen", popen)
+    with pytest.raises(TypeError) as caught:
+        build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert caught.value is error
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
+    assert names(out_dir) == []
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"timeout_s": "10"}, {"compiler": (sys.executable, 3), "timeout_s": TIMEOUT}],
+)
+def test_type_errors_of_compiler_version_have_no_parameter(kwargs, stub):
+    arguments = {"compiler": stub(VERSION), **kwargs}
+    with pytest.raises(TypeError) as caught:
+        compiler_version(**arguments)
+    assert type(caught.value) is TypeError
+    assert not hasattr(caught.value, "parameter")
+    assert not stub.started
+
+
+def test_successful_build_carries_no_parameter(stub, src, out_dir):
+    result = build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=stub(WRITE))
+    assert type(result) is BuildResult
+    assert result.ok is True
+    assert not hasattr(result, "parameter")
+
+
+@pytest.mark.parametrize(
+    "kwargs, parameter",
+    [({"timeout_s": "10"}, "timeout_s"), ({"output": 3}, "output")],
+)
+def test_type_errors_keep_their_parameter_through_pickling(
+    kwargs, parameter, stub, src, out_dir
+):
+    arguments = {"output": out_dir / "kernel.o", "timeout_s": TIMEOUT, **kwargs}
+    with pytest.raises(TypeError) as caught:
+        build(src, compiler=stub(WRITE), **arguments)
+    loaded = pickle.loads(pickle.dumps(caught.value))
+    assert type(loaded) is TypeError
+    assert str(loaded) == str(caught.value)
+    assert loaded.args == caught.value.args
+    assert loaded.parameter == parameter
+
+
 @pytest.mark.parametrize("keyword", ["flags", "trailing_flags"])
 @pytest.mark.parametrize("value", ["-O2", b"-O2", ("-c", 1), ("-c", None), 5])
 def test_flags_of_the_wrong_type(keyword, value, stub, src, out_dir):
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError) as caught:
         build(
             src,
             out_dir / "kernel.o",
@@ -1709,6 +1909,7 @@ def test_flags_of_the_wrong_type(keyword, value, stub, src, out_dir):
             **{keyword: value},
         )
     assert not stub.started
+    assert caught.value.parameter == keyword
 
 
 @pytest.mark.parametrize("keyword", ["flags", "trailing_flags"])
@@ -1736,18 +1937,22 @@ def test_timeout_must_be_positive_and_finite(value, stub, src, out_dir):
 
 @pytest.mark.parametrize("value", BAD_TIMEOUT_TYPES)
 def test_timeout_must_be_a_number(value, stub, src, out_dir):
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError) as caught:
         build(src, out_dir / "kernel.o", timeout_s=value, compiler=stub(WRITE))
-    with pytest.raises(TypeError):
+    assert caught.value.parameter == "timeout_s"
+    with pytest.raises(TypeError) as caught:
         compiler_version(stub(VERSION), timeout_s=value)
+    assert not hasattr(caught.value, "parameter")
     assert not stub.started
 
 
 def test_timeout_has_no_default(stub, src, out_dir):
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError) as caught:
         build(src, out_dir / "kernel.o", compiler=stub(WRITE))
-    with pytest.raises(TypeError):
+    assert not hasattr(caught.value, "parameter")
+    with pytest.raises(TypeError) as caught:
         compiler_version(stub(VERSION))
+    assert not hasattr(caught.value, "parameter")
     assert not stub.started
 
 
@@ -1780,10 +1985,15 @@ def test_default_compiler_not_on_path(src, out_dir, monkeypatch):
     ],
 )
 def test_malformed_compiler_argument(compiler, error, src, out_dir):
-    with pytest.raises(error):
+    with pytest.raises(error) as caught:
         build(src, out_dir / "kernel.o", timeout_s=TIMEOUT, compiler=compiler)
-    with pytest.raises(error):
+    if error is TypeError:
+        assert caught.value.parameter == "compiler"
+    else:
+        assert not hasattr(caught.value, "parameter")
+    with pytest.raises(error) as caught:
         compiler_version(compiler, timeout_s=TIMEOUT)
+    assert not hasattr(caught.value, "parameter")
 
 
 def test_compiler_version_of_a_failing_compiler(stub):
