@@ -254,10 +254,11 @@ def build(
     Python itself raises inside a check such as for a value that cannot be
     iterated, is raised with the attribute ``parameter`` set to the name of
     that parameter: ``"timeout_s"``, ``"flags"``, ``"trailing_flags"``,
-    ``"sources"``, ``"output"``, ``"compiler"``, ``"env"`` or ``"cwd"``; the
-    :class:`ValueError` for no source, and a :class:`TypeError` or
-    :class:`ValueError` from anywhere else, such as binding the call or
-    creating the compiler process, carry no ``parameter``. Any
+    ``"sources"``, ``"output"``, ``"compiler"``, ``"env"`` or ``"cwd"``; any
+    :class:`ValueError` from the checks of ``sources`` and ``output``, such as
+    the one for no source, and a :class:`TypeError` or :class:`ValueError`
+    from anywhere else, such as binding the call or creating the compiler
+    process, carry no ``parameter``. Any
     :class:`OSError` from testing a source path or the output path, including one
     that the test itself raises such as a :class:`PermissionError`, is raised with
     the attribute ``path_role`` set to ``"source"`` or ``"output"``; an
