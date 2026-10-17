@@ -870,6 +870,131 @@ def test_a_nul_in_an_argument_is_named_before_the_program_lookup():
     assert error.parameter == "command"
 
 
+UNENCODABLE = "a\ud800b"
+
+
+def fsencode_error(argument):
+    with pytest.raises(UnicodeEncodeError) as caught:
+        os.fsencode(argument)
+    return caught.value
+
+
+@posix_only
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_unencodable_argument_names_command(platform_wait, child, monkeypatch):
+    expected = directly(child(QUIET, "ok", UNENCODABLE), None, None)
+    wait_path(platform_wait, monkeypatch)
+    error = raised(child(QUIET, "ok", UNENCODABLE))
+    assert expected is UnicodeEncodeError
+    assert type(error) is expected
+    assert error.parameter == "command"
+    assert error.args == fsencode_error(UNENCODABLE).args
+    assert not child.started
+
+
+@posix_only
+def test_an_unencodable_argument_is_passed_on_as_the_fsencode_error(child, monkeypatch):
+    refused = UnicodeEncodeError("utf-8", UNENCODABLE, 1, 2, "surrogates not allowed")
+    seen = []
+    original = os.fsencode
+
+    def fsencode(argument):
+        seen.append(argument)
+        if argument == UNENCODABLE:
+            raise refused
+        return original(argument)
+
+    command = child(QUIET, UNENCODABLE)
+    monkeypatch.setattr(os, "fsencode", fsencode)
+    error = raised(command)
+    assert error is refused
+    assert error.parameter == "command"
+    assert seen == [command[1], UNENCODABLE]
+    assert not child.started
+
+
+@posix_only
+def test_a_bad_time_limit_is_named_before_an_unencodable_argument(child):
+    error = raised(child(QUIET, UNENCODABLE), timeout_s=0)
+    assert type(error) is ValueError
+    assert error.parameter == "timeout_s"
+
+
+@posix_only
+def test_an_unencodable_argument_is_named_before_the_program_lookup(monkeypatch):
+    looked_up = []
+    monkeypatch.setattr(
+        "hilclaw.local_run.shutil.which", lambda name: looked_up.append(name)
+    )
+    error = raised(("hilclaw-no-such-program", UNENCODABLE))
+    assert type(error) is UnicodeEncodeError
+    assert error.parameter == "command"
+    assert looked_up == []
+
+
+@posix_only
+def test_an_unencodable_argument_is_named_before_a_bad_env(child):
+    error = raised(child(QUIET, UNENCODABLE), env={"A=B": "x"})
+    assert type(error) is UnicodeEncodeError
+    assert error.parameter == "command"
+    assert not child.started
+
+
+@posix_only
+def test_an_argument_of_another_type_before_an_unencodable_one_is_a_type_error(
+    child,
+):
+    error = raised(child(QUIET, 3, UNENCODABLE))
+    assert type(error) is TypeError
+    assert error.parameter == "command"
+    assert not child.started
+
+
+@posix_only
+@pytest.mark.parametrize("in_cwd", [False, True])
+def test_a_nul_and_an_unencodable_character_give_the_class_subprocess_raises(
+    in_cwd, child, tmp_path
+):
+    argument = "a\0\ud800"
+    cwd = tmp_path if in_cwd else None
+    expected = directly(child(QUIET, argument), cwd, None)
+    error = raised(child(QUIET, argument), cwd=cwd)
+    assert expected is UnicodeEncodeError
+    assert type(error) is expected
+    assert error.parameter == "command"
+    assert not child.started
+
+
+@posix_only
+@pytest.mark.skipif(
+    (sys.getfilesystemencoding(), sys.getfilesystemencodeerrors())
+    != ("utf-8", "surrogateescape"),
+    reason="needs a UTF-8 file system encoding with surrogateescape",
+)
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_an_argument_fsencode_converts_reaches_the_process(
+    platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    command = child(QUIET, "ok", "\udc80")
+    result = run(command, timeout_s=TIMEOUT)
+    assert result.returncode == 0
+    assert result.command[1:] == command[1:]
+    assert child.call()["argv"] == ["ok", "\udc80"]
+
+
+@windows_only
+def test_on_windows_an_unencodable_argument_reaches_the_process_as_directly(child):
+    command = child(QUIET, "ok", UNENCODABLE)
+    assert directly(command, None, None) is None
+    direct = child.call()
+    child.record.unlink()
+    result = run(command, timeout_s=TIMEOUT)
+    assert result.returncode == 0
+    assert result.command[1:] == command[1:]
+    assert child.call() == direct
+
+
 ACCEPTED_ENVS = [
     {"HILCLAW_TEST_MARK": "accepted"},
     pytest.param({b"HILCLAW_TEST_MARK": b"accepted"}, marks=posix_only),
@@ -1040,6 +1165,9 @@ def test_an_interrupted_wait_names_no_parameter(child, monkeypatch):
         ([sys.executable], {"env": {"A": 3}}, TypeError),
         ([sys.executable], {"cwd": 3}, TypeError),
         ([sys.executable], {"cwd": "a\0b"}, ValueError),
+        pytest.param(
+            [sys.executable, "a\ud800b"], {}, UnicodeEncodeError, marks=posix_only
+        ),
     ],
 )
 def test_the_parameter_survives_pickling(command, settings, kind):
