@@ -2,7 +2,7 @@
 id: T-0262
 title: Write ADR-0087 on which rows of `correctness.check` the `parameter` of a `TypeError` of `clang_build.build` (T-0261) lets an operation place (more of OD-18 sub-question 18 part (ma))
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0261]
@@ -103,3 +103,55 @@ This task writes the record that weighs what `parameter` makes true. It is a des
 - (possible HQ) If ADR-0087 leaves a case open because only a new `error.kind` would place it, the driver records that question for the owner.
 
 ## Result
+
+- **Outcome:** DONE. Document mode. Landed on `main` as `31b0654` (one squashed commit, fast-forward push, trailers `Reviewed-by: reviewer agent (6 rounds, Approve)` and `Task: T-0262`). The branch `claude/T-0262-adr-od18-type-error-parameter` was deleted on the remote and locally; the clone is on `main` = `origin/main`.
+- **Entry check:** `gh pr list` showed no open PR. `ADR-0087` was the next free number. Issues #4, #7 and #8 have nothing newer that bears on this. #5 has no owner comment (without the driver tail) on ADR-0060 decision 4, ADR-0086, T-0261 or (ma).
+- **Files:** 4 files, +132/-3 lines.
+  - New: `ARCHITECTURE/decisions/ADR-0087-od18-correctness-check-type-error-parameter.md`.
+  - Edited: `ARCHITECTURE/Requirements.md` (one link added to `**확정분**:` of row OD-18; `**잔여**:` "(마)의 나머지" still holds and was left as is).
+  - Edited: `ARCHITECTURE/OpenDecisionProposals.md` (one `채택분` line; sub-question 18's "부분 답 … 남음 …" rewritten in place).
+  - Edited: `ARCHITECTURE/StandardScenarios.md` ("최근 재검사" line).
+- **What the record decides (its own design, under DRIVER §9):**
+  - The operation tells a `TypeError` of `build` apart by `getattr(error, "parameter", None)`, reading "what the operation observes" as the class and documented members, as ADR-0085 and ADR-0086 do.
+  - `"timeout_s"`, `"flags"`, `"trailing_flags"`, `"compiler"`: S4 `settings_refused`, including a `TypeError` Python raises inside the check. No log.
+  - `"sources"`, `"output"`: no row. This applies ADR-0060 decision 4 without changing it; the landed rules answer `operation_answer_invalid`.
+  - A `TypeError` with no `parameter` (binding the call, `subprocess.Popen` or later, or `build_verification_executable`'s own for `kernel_sources`) stays open.
+  - No data-plane change.
+- **Coverage recheck:** the rows that cite OD-18 (S0, S1-b, S2, S5, S6) were rechecked. None cites sub-question 18, and OD-18 stays open. No verdict changed and there is no gap.
+- **Review:** 6 rounds with `dev-reviewer` (opus, fresh context each round). Every round was Approve; the rounds continued only to fix Minor and Nit findings.
+  - Round 1: the owner-sentence account in Status (O1 to O5, the O4 basis of the settings table), the order note, and one ambiguous "Either".
+  - Round 2: the `bytes` wording in T5, a T1 citation, and the Status builds-on list.
+  - Round 3: the `bytes` wording in T5 again.
+  - Round 4: the scope of the open unnamed `TypeError` in decision 8 and in Proposals, and the source of T2.
+  - Round 5: the ADR-0045 citation (decisions 4 and 5), and the open-list wording in Proposals.
+  - Round 6: one optional Nit, not applied. It suggested listing ADR-0060's "a `TypeError` of the build for an argument of the wrong type" as now less exact; the reviewer itself read "argument" there as a non-setting argument and said no change was needed.
+- **A discrepancy in the task file:** AC 3 (d) and Required Reading cite ADR-0083 "decision 1" for the "Another `Exception`" bullet (line 43). That bullet is in decision 2. The ADR cites decision 2.
+- **Runtime acceptance items:** none.
+- **New HQ:** none. No case was left open for want of a new `error.kind`.
+- **§9 notice:** needed. The ADR closes part of OD-18 (a design-level OD). Following the driver's instruction, the executor did not post it, so the driver posted it after landing: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6231613019. Text posted on #5:
+
+```
+### OD-18 - correctness.check after T-0261: the TypeError of clang_build.build placed by parameter in ADR-0087 under DRIVER §9 (T-0262)
+
+**Record:** [ADR-0087](https://github.com/myungjoo/HIL-Claw/blob/main/ARCHITECTURE/decisions/ADR-0087-od18-correctness-check-type-error-parameter.md) covers what a check of `correctness.check` answers for a `TypeError` of `clang_build.build`. Since T-0261 (`a46a4d6`), every `TypeError` from the checks `build` makes before the start carries `parameter`: one of `"timeout_s"`, `"flags"`, `"trailing_flags"`, `"sources"`, `"output"`, `"compiler"`. No other error of `build` carries it. The record covers more of part (마) of sub-question ⑱ of OD-18. A context-isolated reviewer approved it under DRIVER §9 after 6 rounds. You have not confirmed it.
+
+**Answered, for `correctness.check` of the first case and of the mock:**
+- **Told apart by `parameter`:** the operation reads the class and the documented member, as ADR-0085 read `returncode` and ADR-0086 read `path_role`. "An error of two rows" (ADR-0060 decision 4) no longer holds for a `TypeError` that carries `parameter`.
+- **`"timeout_s"`, `"flags"`, `"trailing_flags"`, `"compiler"`:** S4, `settings_refused`. These are the backend's own settings (ADR-0060 decision 3). This includes a `TypeError` Python raises inside the check (for example `tuple(3)` for `flags`). Cost stated: a fault in the code of a handed setting object is read as a refused setting.
+- **`"sources"`, `"output"`:** no row. The operation forms these arguments. This applies ADR-0060 decision 4 without changing it; the landed rules answer `operation_answer_invalid`. Cost stated: a wrong path type handed by the tool function is answered the same way.
+- **No log:** no compiler ran (ADR-0078 decision 2). The S4 message may say which setting, but it does not show the error text or the value (ADR-0060 decision 5). No new rule.
+
+**Left open:** a `TypeError` with no `parameter`. It can come from binding the call, from `subprocess.Popen` or later (an `env` or a `cwd` that cannot be handed over), or from `build_verification_executable` itself for `kernel_sources`. The class does not say which argument, and what `Popen` passes on was not read.
+
+**Still open under (마):** what `build` passes on from `subprocess`; the `OSError` with no `path_role`; the `CompilerRunError` with `timed_out` false and `returncode` `None`; and the `local_run.run` entries.
+
+The record adds or changes no member, `condition` value, `error.kind` value, `schema_version` or layout version. It edits no earlier record. There is no question for you.
+
+**Landing commit:** https://github.com/myungjoo/HIL-Claw/commit/31b0654
+
+**Objection window:** you may object within 7 days of this notice. An objection creates a task that reverts the record and its register edits.
+
+— posted by driver
+```
+
+- **Follow-ups:** the same as the task's Follow-ups: the `local_run.run` split (code), and the `cpu_standin` operation applying ADR-0079 to ADR-0087 (HQ-0026, PLAN P1-1). The "possible HQ" follow-up is not needed.
