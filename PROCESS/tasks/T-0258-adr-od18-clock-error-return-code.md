@@ -2,7 +2,7 @@
 id: T-0258
 title: Write ADR-0085 on what the `returncode` of `CompilerRunError` (T-0257) lets `correctness.check` place for a failed clock read after the compiler ended by itself (more of OD-18 sub-question 18 part (ma))
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0256, T-0257]
@@ -76,3 +76,13 @@ This task writes the record ADR-0084 named: a design-level ADR under DRIVER §9 
 - (possible HQ) If ADR-0085 leaves `returncode` 0 open because only a new `error.kind` would place it, the driver records that question for the owner.
 
 ## Result
+
+- DONE. Document mode: landed on `main` as `55d4760` (direct push after rebase on `origin/main`; trailers `Reviewed-by: reviewer agent (6 rounds, Approve)`, `Task: T-0258`); branch `claude/T-0258-clock-error-return-code` deleted.
+- Review: 6 rounds, context-isolated `dev-reviewer`. Round 1 asked for changes: register and proposal lines restated the answers, and the less-exact list was incomplete. Round 2 approved with nits. Round 3 asked for changes: less-exact entries of ADR-0082 and ADR-0083 were missing. Rounds 4 and 5 approved with nits. Round 6 approved with no findings.
+- Session entry check (2026-10-17): no open PR; no owner comment on #4, #5, #7 or #8 since 2026-10-16 without the driver tail; ADR-0085 was the next free number.
+- ADR-0085: a `CompilerRunError` whose `returncode` is not `None` is told apart as a failed clock read after a normal end. A non-zero value (a negative signal included) is S7 `(B) "build_exit_status"`, and 0 is S9 `build_output_missing`, on ADR-0080 decision 3's reading. Both hand `log` over to the keeper. The branch with `timed_out` false and `returncode` `None` (first read, kill after it, closing source) stays open. No data-plane change; no earlier ADR edited.
+- Register: OD-18 row gained one `**확정분**` link (`**잔여**` "(마)의 나머지" still exact, unchanged); proposals gained one `**채택분**` line and the ⑱ status/남음 was rewritten in place (status word 일부 답함 kept); StandardScenarios "최근 재검사" rewritten (S0, S1-b, S2, S5, S6: no verdict change, no gap). OD-18 status word unchanged.
+- Size: 4 files, +128/-3.
+- §9 notice on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6229982692 (objection window until 2026-10-24).
+- Runtime acceptance items: none.
+- Follow-ups: the first follow-up (telling the source path tests from the output path tests) is unchanged. The possible HQ for `returncode` 0 is not needed, since S9 places it without a new value.
