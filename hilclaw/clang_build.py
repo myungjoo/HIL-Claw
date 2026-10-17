@@ -71,11 +71,21 @@ class _CopiedOSError(OSError):
 
     def _copy(self):
         error = OSError(*self.args)
-        error.filename, error.filename2 = self.filename, self.filename2
+        if self.filename is not None:
+            error.filename, error.filename2 = self.filename, self.filename2
         return error
 
 
-class CompilerNotStartedError(_CopiedOSError):
+class _UnendedBuildError(_CopiedOSError):
+    def __init__(self, error, removal_error=None):
+        super().__init__(error)
+        self.removal_error = removal_error
+
+    def __reduce__(self):
+        return type(self), (self._copy(),), self.__dict__
+
+
+class CompilerNotStartedError(_UnendedBuildError):
     """Creating the compiler process failed; no compiler process exists.
 
     Raised by :func:`build` from the :class:`OSError` of creating the process,
@@ -85,12 +95,18 @@ class CompilerNotStartedError(_CopiedOSError):
     when that removal did not fail.
     """
 
-    def __init__(self, error, removal_error=None):
-        super().__init__(error)
-        self.removal_error = removal_error
 
-    def __reduce__(self):
-        return type(self), (self._copy(),), self.__dict__
+class CompilerRunError(_UnendedBuildError):
+    """Talking to the started compiler process failed before its end was known.
+
+    Raised by :func:`build` from an :class:`OSError` raised after creating the
+    compiler process returned and before its return code was known, for example
+    from reading its output or killing it, whose ``errno``, ``strerror``,
+    ``filename`` and ``filename2`` it carries. It has no ``result``: the output
+    read so far is not kept. ``removal_error`` is the :class:`OSError` from
+    removing the temporary file afterwards, or ``None`` when that removal did
+    not fail.
+    """
 
 
 class _EndedBuildError(_CopiedOSError):
@@ -184,11 +200,12 @@ def build(
     :class:`CompilerNotStartedError`, an :class:`OSError` subclass without
     ``result``; when removing the temporary file then fails too, the removal's
     error is its ``removal_error``. Any other :class:`OSError` raised while the
-    process runs is passed on as it is, unless removing the temporary file then
-    fails too, whose error is passed on instead. Once the compiler process has
-    ended, an :class:`OSError` from moving the artefact into place is raised as
-    :class:`ArtefactNotPlacedError`, and one from removing the temporary file as
-    :class:`TemporaryNotRemovedError`; both are :class:`OSError` subclasses
+    process runs is raised as :class:`CompilerRunError`, an :class:`OSError`
+    subclass without ``result``; when removing the temporary file then fails
+    too, the removal's error is its ``removal_error``. Once the compiler process
+    has ended, an :class:`OSError` from moving the artefact into place is raised
+    as :class:`ArtefactNotPlacedError`, and one from removing the temporary file
+    as :class:`TemporaryNotRemovedError`; both are :class:`OSError` subclasses
     whose ``result`` holds the :class:`BuildResult` with the compiler's log.
     When both fail, :class:`ArtefactNotPlacedError` is raised and the removal's
     error is its ``removal_error``. After the compiler exited with 0, only a
@@ -215,7 +232,7 @@ def build(
         f"{target.stem}.tmp-{os.getpid()}-{secrets.token_hex(8)}{target.suffix}"
     )
     command = (*prefix, *flags, *source_paths, *trailing_flags, "-o", str(temporary))
-    start_error = check_error = move_error = removal_error = None
+    start_error = run_error = check_error = move_error = removal_error = None
     ended = False
     started = time.monotonic()
     try:
@@ -231,31 +248,37 @@ def build(
         except OSError as error:
             start_error = error
         else:
-            returncode, raw = _communicate(process, timeout_s)
-            duration_s = time.monotonic() - started
-            ok = False
-            if returncode == 0:
-                try:
-                    ok = stat.S_ISREG(os.stat(temporary).st_mode)
-                except (FileNotFoundError, NotADirectoryError):
-                    pass
-                except OSError as error:
-                    check_error = error
-            if ok:
-                try:
-                    os.replace(temporary, target)
-                except OSError as error:
-                    ok, move_error = False, error
-            ended = True
+            try:
+                returncode, raw = _communicate(process, timeout_s)
+            except OSError as error:
+                run_error = error
+            else:
+                duration_s = time.monotonic() - started
+                ok = False
+                if returncode == 0:
+                    try:
+                        ok = stat.S_ISREG(os.stat(temporary).st_mode)
+                    except (FileNotFoundError, NotADirectoryError):
+                        pass
+                    except OSError as error:
+                        check_error = error
+                if ok:
+                    try:
+                        os.replace(temporary, target)
+                    except OSError as error:
+                        ok, move_error = False, error
+                ended = True
     finally:
         try:
             temporary.unlink(missing_ok=True)
         except OSError as error:
-            if not ended and start_error is None:
+            if not ended and start_error is None and run_error is None:
                 raise
             removal_error = error
     if start_error is not None:
         raise CompilerNotStartedError(start_error, removal_error) from start_error
+    if run_error is not None:
+        raise CompilerRunError(run_error, removal_error) from run_error
     result = BuildResult(
         ok=ok,
         returncode=returncode,
