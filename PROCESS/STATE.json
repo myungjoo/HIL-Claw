@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0284",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:2d2b6e18-1",
-    "acquiredAt": "2026-10-17T23:22:38Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -252,19 +248,27 @@
       "question": "T-0264 (ADR-0088, OD-18 sub-question 18 part (ma), document mode) reached the 7-round review limit of CLAUDE.md A-13 without a final Approve. Rounds 1, 2 and 4-6 approved; rounds 3 and 7 requested changes. Round 7 asked for one change: list the pre-start `OSError` of the program lookup of `local_run.run` as still open in decision 8 and in the 'remaining' list of sub-question 18 in OpenDecisionProposals (plus a wording nit in L3). That change is on branch `claude/T-0264-adr-od18-local-run-parameter` (head `f2f8318`, 4 files, +135/-3) but has not been reviewed. Nothing was pushed to main and no §9 notice was posted. May the driver (a) run one more reviewer round on `f2f8318` and, on Approve, land it as A-13 document mode prescribes (with the DRIVER §9 notice); (b) land the branch as it is; or (c) drop the branch and re-plan the task?",
       "askedAt": "2026-10-17T09:08:00Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6232111378"
+    },
+    {
+      "id": "HQ-0028",
+      "taskId": "T-0284",
+      "reason": "requirement-unclear",
+      "question": "T-0284 (code: `clang_build.build` refuses, on POSIX and before the start, an empty `env` key or one with `=` anywhere, `ValueError` with `parameter` \"env\"; closes part of ADR-0094 decision 3) stopped on its own criterion 5: its premise does not hold on every supported Python. The task assumed each such key is refused by one of the two POSIX start paths of `subprocess`, so `build` would only refuse earlier what the start refuses anyway. CI (run 39079246945) shows that on Python 3.11 the empty key (`{\"\": \"x\"}`, `{b\"\": b\"x\"}`) is accepted by both start calls (3.11 uses fork/exec with the default `close_fds=True`; the `posix_spawn` path that refuses it is taken by default only from 3.13), while the leading-`=` keys are refused as assumed; on 3.14 all cases hold. `pyproject.toml` requires Python >= 3.11. The change is on Draft PR #179 (DONOTMERGE, branch `claude/T-0284-clang-build-refuses-posix-env-keys`, `e1a40c9`, 1 review round, Request changes); nothing was merged. Should the driver (a) keep the empty key in scope, so `build` refuses it on POSIX even where `subprocess` does not (stricter than `subprocess`, with the docstring saying so), and re-run T-0284 on that basis; (b) narrow T-0284 to keys with `=` (which held on 3.11 and 3.14) and leave the empty key to `subprocess`; or (c) drop T-0284 and close PR #179?",
+      "askedAt": "2026-10-17T23:37:02Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 297,
+    "iterations": 298,
     "tasksDone": 275,
-    "tasksBlocked": 22,
-    "reviewRoundsTotal": 953
+    "tasksBlocked": 23,
+    "reviewRoundsTotal": 954
   },
   "lastIteration": {
-    "at": "2026-10-17T22:29:57Z",
-    "owner": "AKIHA:23115e01-1",
-    "taskId": "T-0283",
-    "outcome": "DONE"
+    "at": "2026-10-17T23:37:02Z",
+    "owner": "AKIHA:2d2b6e18-1",
+    "taskId": "T-0284",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
