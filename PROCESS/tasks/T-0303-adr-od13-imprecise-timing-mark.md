@@ -2,7 +2,7 @@
 id: T-0303
 title: Write ADR-0104 on where and in which form the imprecise-timing finding of ADR-0103 is kept in the data plane — OD-13 sub-question ⑪ (나); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-13, NFR-3, OD-8, FR-10, "#5 D6", "owner decision 2026-10-15 item 3"]
 dependsOn: [T-0302]
@@ -88,3 +88,12 @@ No code can apply ADR-0103 until (나) says where its output goes. This task wri
 - (doc) ⑪ (다) and (라), when their dependencies (FR-18 case records, OD-27) allow.
 
 ## Result
+
+- **Outcome**: DONE. Landed on `main` as `ed4aba0` (document mode, one squashed commit, trailers `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0303`, `Co-Authored-By`). Branch `claude/T-0303-adr-od13-imprecise-timing-mark` deleted (remote and local). No force push.
+- **Pre-check**: `ADR-0104` was free on `origin/main` (b6dd95e); no record had answered ⑪ (나) (last OpenDecisionProposals change was ADR-0103, 274fed8); ADR-0103 not reverted; no owner comment on #5 about the mark after the 2026-10-15 decision. Open PRs: only #179 (`hilclaw/clang_build.py`), no overlap. Issues #4, #7, #8 had nothing new on OD-13.
+- **Record**: `ARCHITECTURE/decisions/ADR-0104-od13-imprecise-timing-mark.md`. Choice (a): both findings are derived, nothing is stored. The finding of a measurement comes from the `result` of its `sim_run_timing`/`board_run_timing` `step_ended` line. The finding of a run is a fold over those lines. The class ground is left to the record that produces its input. No data-plane schema change, so `EventKinds.md` and `StepValues.md` are unchanged and the integrator-note approval is not used. Files changed: 4 (ADR, Requirements OD-13 row, OpenDecisionProposals OD-13 section, StandardScenarios "최근 재검사" line; no verdict change, no gap).
+- **Sub-questions**: none registered.
+- **Review**: 7 rounds (R1, R2 and R6 requested changes; R3, R4, R5 and R7 approved with minors or nits that were addressed). R7 approved with two optional nits that were left unaddressed, because an eighth round would exceed the A-13 cap: (1) decision 5, the bullet about a run without `source_commit` could say the reader's own constant is not thereby stated as the run's source (ADR-0022); (2) the Consequences quote of ADR-0061 Limit 3 omits its leading "O5, item 3, and".
+- **Runtime-acceptance items**: none new. The record rests on no runtime fact, and ADR-0103 Limit 2 (HQ-0030) is cited unchanged.
+- **#5 notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6248933060 (objection window until 2026-10-25).
+- **Follow-ups**: as listed above. The code task that applies ADR-0103 now computes both findings as pure functions over the run tools' end lines and writes nothing. Optional doc touch-up of the two R7 nits.
