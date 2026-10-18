@@ -62,6 +62,7 @@ import re
 import reprlib
 import secrets
 import stat
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
 
@@ -73,17 +74,27 @@ RETENTION_CLASSES = ("best", "final", "intermediate", "failed")
 _FILE = "artifacts.json"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
-_STRING = re.compile(r"[\x20-\x7e]{1,255}")
+_TIME = re.compile("([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z")
 _MAX = keys.MAX_INTEGER
 _INTEGER = (int, range(_MAX + 1).__contains__, f"an int from 0 to {_MAX}")
 _CLASS = "one of " + ", ".join(RETENTION_CLASSES)
+
+
+def _is_time(value):
+    match = _TIME.fullmatch(value)
+    try:
+        return bool(match and datetime(*map(int, match.groups()), tzinfo=UTC))
+    except ValueError:
+        return False
+
+
 _CHECKS = {
     "sha256": (str, _SHA256.fullmatch, "a str of 64 lowercase hexadecimal characters"),
     "size": _INTEGER,
     "type": (str, _NAME.fullmatch, f"a str matching {_NAME.pattern}"),
     "round": _INTEGER,
     "retention_class": (str, RETENTION_CLASSES.__contains__, _CLASS),
-    "gc_at": (str, _STRING.fullmatch, "a str of 1 to 255 printable ASCII characters"),
+    "gc_at": (str, _is_time, "a str YYYY-MM-DDThh:mm:ssZ of an existing date and time"),
 }
 _REQUIRED = tuple(name for name in _CHECKS if name != "gc_at")
 
@@ -117,8 +128,8 @@ def validate(document):
     ``document`` must be a ``dict`` with exactly ``schema_version`` (the ``int``
     :data:`SCHEMA_VERSION`) and ``artifacts`` (a ``list`` of ``dict``), every
     record with exactly the members of decision 3 in their types and forms and
-    no ``sha256`` twice. A ``gc_at`` is checked to be a string of ADR-0001 and
-    nothing more. The order of members and of records is not checked, and
+    no ``sha256`` twice. A ``gc_at`` must be of the form of ADR-0006 decision 3,
+    ``YYYY-MM-DDThh:mm:ssZ`` of an existing date and time (ADR-0099). The order of members and of records is not checked, and
     ``type`` is checked against no vocabulary. Raises
     :class:`InvalidArtifactsError` for the first rule found broken, naming the
     place (for example ``artifacts[2].size``); returns ``None``.

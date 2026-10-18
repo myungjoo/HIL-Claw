@@ -28,7 +28,7 @@ MEMBERS = ["sha256", "size", "type", "round", "retention_class"]
 TEMPORARY = re.compile(r"artifacts\.json\.[a-z0-9-]{1,64}\.tmp")
 LEFTOVER = f"runs/{RUN}/artifacts.json.4242-0123456789abcdef.tmp"
 
-# The Example of ADR-0005, as written in the record.
+# The Example of ADR-0005, its gc_at placeholder replaced by a time of ADR-0099.
 EXAMPLE = (
     b"{\n"
     b'"schema_version": 1,\n'
@@ -40,7 +40,7 @@ EXAMPLE = (
     b' "size": 20480, "type": "example_kind", "round": 3, "retention_class": "best"},\n'
     b'{"sha256": "3333333333333333333333333333333333333333333333333333333333333333",'
     b' "size": 0, "type": "example_kind", "round": 3, "retention_class": "failed",'
-    b' "gc_at": "TIME-FORM-NOT-DECIDED-HERE"}\n'
+    b' "gc_at": "2024-01-02T03:04:05Z"}\n'
     b"]\n"
     b"}\n"
 )
@@ -257,7 +257,14 @@ def test_validate_accepts_the_example_of_adr_0005():
         doc(),
         doc(rec(type="a_kind_nobody_listed")),
         doc(rec(size=0, round=keys.MAX_INTEGER)),
-        doc(rec(gc_at="x"), rec("2" * 64, gc_at='"' + "~" * 254)),
+        doc(
+            rec(gc_at="0001-01-01T00:00:00Z"),
+            rec("2" * 64, gc_at="9999-12-31T23:59:59Z"),
+        ),
+        doc(
+            rec(gc_at="2024-02-29T12:00:00Z"),
+            rec("2" * 64, gc_at="2000-02-29T00:00:00Z"),
+        ),
         {"artifacts": [dict(reversed(rec().items()))], "schema_version": 1},
         doc(rec(round=3), rec("0123456789abcdef" * 4, round=0)),
     ],
@@ -310,7 +317,7 @@ def test_the_same_hash_in_the_files_of_two_runs(root):
 
 def test_a_file_in_another_valid_form_is_read_and_normalised_by_the_next_write(root):
     ref = put(root)
-    records = [rec(gc_at="SYNTHETIC-TIME"), rec("2" * 64, round=9)]
+    records = [rec(gc_at="2001-02-03T04:05:06Z"), rec("2" * 64, round=9)]
     shuffled = [dict(reversed(record.items())) for record in records]
     by_hand = json.dumps({"artifacts": shuffled, "schema_version": 1}, indent=4)
     place(root, FILE, by_hand.replace("\n", "\r\n").encode())
@@ -336,12 +343,15 @@ def test_set_retention_class_to_the_current_class_writes_nothing(root, tmp_path)
 
 
 def test_set_retention_class_on_a_record_with_gc_at(root):
-    records = [rec(gc_at="SYNTHETIC-TIME", retention_class="failed"), rec("2" * 64)]
+    records = [
+        rec(gc_at="2001-02-03T04:05:06Z", retention_class="failed"),
+        rec("2" * 64),
+    ]
     place(root, FILE, text(*records))
 
     result = set_retention_class(root, RUN, ONES, "best")
 
-    assert result == rec(gc_at="SYNTHETIC-TIME", retention_class="best")
+    assert result == rec(gc_at="2001-02-03T04:05:06Z", retention_class="best")
     assert (root / FILE).read_bytes() == text(result, records[1])
 
 
@@ -418,6 +428,25 @@ BAD_GC_AT = {
     "not ascii": "té",
     "control character": "a\tb",
     "256 characters": "x" * 256,
+    "placeholder of adr-0005": "TIME-FORM-NOT-DECIDED-HERE",
+    "x": "x",
+    "lower-case t": "2024-01-02t03:04:05Z",
+    "lower-case z": "2024-01-02T03:04:05z",
+    "offset": "2024-01-02T03:04:05+00:00",
+    "fractions": "2024-01-02T03:04:05.000Z",
+    "space for t": "2024-01-02 03:04:05Z",
+    "19 characters": "2024-01-02T03:04:05",
+    "21 characters": "2024-01-02T03:04:05ZZ",
+    "trailing newline": "2024-01-02T03:04:05Z\n",
+    "non-ascii digits": "\u0662\u0660\u0662\u0664-01-02T03:04:05Z",
+    "feb 29 of a common year": "2023-02-29T00:00:00Z",
+    "feb 30": "2024-02-30T00:00:00Z",
+    "hour 24": "2024-01-02T24:00:00Z",
+    "minute 60": "2024-01-02T03:60:00Z",
+    "second 60": "2024-01-02T03:04:60Z",
+    "year 0000": "0000-01-01T00:00:00Z",
+    "month 13": "2024-13-01T00:00:00Z",
+    "day 00": "2024-01-00T00:00:00Z",
 }
 BAD_MEMBERS = {
     "sha256": BAD_SHA256,
@@ -554,7 +583,7 @@ def test_add_record_requires_the_blob(root, tmp_path):
 
 
 def test_add_record_requires_the_blob_also_for_a_recorded_hash(root, tmp_path):
-    place(root, FILE, text(rec(gc_at="SYNTHETIC-TIME")))
+    place(root, FILE, text(rec(gc_at="2001-02-03T04:05:06Z")))
     before = snapshot(tmp_path)
 
     with pytest.raises(ArtifactNotFoundError, match="decision 8"):
@@ -712,6 +741,32 @@ def test_a_stored_file_that_is_not_valid(root, tmp_path, call, case):
     message = str(excinfo.value)
     assert message.startswith(f"{FILE}: must be UTF-8 JSON of a valid file")
     assert len(message) < 400
+    assert snapshot(tmp_path) == before
+
+
+def test_validate_names_the_place_and_the_form_of_gc_at():
+    document = doc(rec("2" * 64), rec(gc_at="TIME-FORM-NOT-DECIDED-HERE"))
+
+    with pytest.raises(InvalidArtifactsError) as excinfo:
+        validate(document)
+
+    rule = "a str YYYY-MM-DDThh:mm:ssZ of an existing date and time"
+    assert str(excinfo.value).startswith(f"artifacts[1].gc_at: must be {rule}, got str")
+
+
+@pytest.mark.parametrize("call", CALLS)
+@pytest.mark.parametrize(
+    "value", ["TIME-FORM-NOT-DECIDED-HERE", "2023-02-29T00:00:00Z"]
+)
+def test_a_stored_gc_at_not_of_the_time_form(root, tmp_path, call, value):
+    digest = cas.put_bytes(root, b"synthetic content").digest
+    place(root, FILE, text(rec(digest, size=19, gc_at=value)))
+    before = snapshot(tmp_path)
+
+    reason = r"artifacts\[0\]\.gc_at: must be a str YYYY-MM-DDThh:mm:ssZ"
+    with pytest.raises(CorruptArtifactsError, match=reason):
+        CALLS[call](root, RUN, digest)
+
     assert snapshot(tmp_path) == before
 
 
