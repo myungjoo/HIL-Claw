@@ -69,6 +69,10 @@ def symlink(link, target, *, directory=False):
         pytest.skip("this machine refuses to create a symbolic link")
 
 
+def link_target(link):
+    return os.readlink(link).removeprefix("\\\\?\\")
+
+
 @pytest.fixture(params=["bytes", "file"])
 def put(request, tmp_path_factory):
     if request.param == "bytes":
@@ -424,7 +428,7 @@ def test_a_place_that_is_a_link_not_to_an_intact_blob_is_an_error(
         put(root, DATA)
     assert info.value.filename == str(place)
     assert place.is_symlink()
-    assert os.readlink(place) == str(target)
+    assert link_target(place) == str(target)
     if kind == "directory":
         assert [p.name for p in target.iterdir()] == ["inner.bin"]
         assert (target / "inner.bin").read_bytes() == DATA
@@ -446,7 +450,7 @@ def test_a_place_that_is_a_link_to_an_intact_blob_is_kept(root, put, tmp_path):
     assert put(root, DATA) == BlobRef(DIGEST, len(DATA))
 
     assert place.is_symlink()
-    assert os.readlink(place) == str(target)
+    assert link_target(place) == str(target)
     assert target.read_bytes() == DATA
     assert target.stat().st_mtime == 1_000_000_000
     assert leftovers(root) == []
