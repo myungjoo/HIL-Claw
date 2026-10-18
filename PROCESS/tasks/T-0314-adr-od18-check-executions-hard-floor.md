@@ -2,7 +2,7 @@
 id: T-0314
 title: Record an ADR on which of several ended checks of one attempt at one execution point counts for the hard floor of FR-9 (OD-18 sub-question 14, first part, for `correctness.check` on first-case and mock runs)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-1, FR-10, NFR-4, OD-18, OD-16]
 dependsOn: []
@@ -84,3 +84,10 @@ No open HQ blocks it. None of the blocked tasks (T-0210 on ⑲ (나), T-0231 on 
 - If the reasoning carries over, a later doc task on ⑳'s counting part for `sim.run`/`board.run`.
 
 ## Result
+- DONE. ADR-0110 (number free on origin/main and every remote branch) landed on main as 4bc7f78 (document mode, reviewer agent 7 rounds, Approve; trailers `Reviewed-by` and `Task` checked with `git interpret-trailers --parse`). Task branch deleted locally and on origin.
+- Decision (first part of OD-18 ⑭, first-case and mock runs): per attempt and per point, every ended check with a result counts. Any `fail` or `broken` (all six conditions) makes the attempt not verified, and no further check changes it. A board fail under FR-1 ⑶ triage is left to FR-1 ⑶ and OD-10. Verified needs ≥1 pass, no fail or broken, no open identity and no class (ii) `failure`. Class (i) failures (the situation lies before the executable starts) count neither way. Class (ii) failures (`build_log_unwritable`, `operation_answer_invalid`, `operation_failure_invalid`, `settings_refused`) block verification permanently. The standing is read from the log alone and kept separate per point. The second part of ⑭ stays open.
+- Owner-only check: #5 and #4 hold no owner sentence answering ⑭. OD-3 (#5 A-5) is read as being about gates. ADR-0046's pairing of "what counts for the floor" with OD-3 is addressed in Status, with an objection clause.
+- Edits: OD-18 register row (one 확정분 link; ⑭ in 잔여 rewritten to the asking part and the other runs), OD-18 proposals section (adopted line; ⑭ → 일부 답함 / 부분 답), StandardScenarios recent re-check (no verdict change, no gap). Register rows 30 → 30.
+- §9 owner notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6254009096 (window until 2026-10-26).
+- Left unaddressed (round-7 Approve nits, citation locations only; a fix would have needed an 8th round): ADR-0110 decision 3 cites ADR-0026 decision 4 for "open or ended" after `end_line_failed` (decisions 2 and 4 would be more exact); the Status builds-on list names ADR-0011 decisions 3, 6 and 9 but decision 3 also leans on ADR-0011 decision 4 and Consequences (both are in References).
+- Follow-ups: a code task for a pure function over a run's log that returns an attempt's standing at a point (no binding module; it waits only for a caller, PLAN P2-1/P2-3). A doc task on ⑳'s counting part if wanted (Boundaries: the reasoning carries over only in part). Runtime acceptance items: none.
