@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import check_build, check_failure, check_result, clang_build
+from hilclaw import check_failure, check_result, clang_build
 from hilclaw.check_build import BUILT, place_error, read_build
 from hilclaw.check_failure import (
     KIND_BUILD_DIRECTORY_UNUSABLE,
@@ -230,20 +230,12 @@ def test_plain_os_error_rows(error, expected):
     assert place_error(error) == expected
 
 
-@pytest.mark.parametrize("parameter", check_build._SETTINGS)
+@pytest.mark.parametrize(
+    "parameter", ["timeout_s", "flags", "trailing_flags", "compiler", "env"]
+)
 @pytest.mark.parametrize("cls", [TypeError, ValueError])
 def test_named_setting_is_s4(cls, parameter):
     assert place_error(named(cls, parameter)) == KIND_SETTINGS_REFUSED
-
-
-def test_the_settings_are_the_five_of_the_records():
-    assert set(check_build._SETTINGS) == {
-        "timeout_s",
-        "flags",
-        "trailing_flags",
-        "compiler",
-        "env",
-    }
 
 
 @pytest.mark.parametrize("parameter", ["flags", "compiler", "env"])
