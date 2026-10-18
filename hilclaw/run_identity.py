@@ -32,9 +32,10 @@ Choices that are this module's own and no rule of a record:
 What the module does not do: it is no tool and no step and is bound to none.
 It holds no tool's own check of a request and looks at no request: the five
 members of decision 4 are the frame's, checked in moment ① (decision 6). It
-does not close the member list of a request, and what is done with a member
-no record names, a member ``point`` among them, is a later slice's (decision
-4). It builds no identity. It does not say which builder the tool functions
+does not close the member list of a request: that the list is closed at those
+five and that a member no record names, a member ``point`` among them, is
+refused are ADR-0106's (decisions 2 and 3) and live in
+:mod:`hilclaw.run_definition`. It builds no identity. It does not say which builder the tool functions
 use (ADR-0062 Consequences). It says nothing of who may raise ``execution``
 or which of several executions counts (OD-10, OD-17, OD-18 sub-question ⑳).
 It gives no rule for the ``step`` values of another tool: decision 3 "says
