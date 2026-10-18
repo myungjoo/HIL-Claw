@@ -2,7 +2,7 @@
 id: T-0295
 title: Narrow the `gc_at` check of `hilclaw/artifacts.py` `validate` to the time form of ADR-0099 (ADR-0006 decision 3), with tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-8, FR-13, NFR-2, C-3, "#5 D12"]
 dependsOn: [T-0294]
@@ -53,3 +53,10 @@ PLAN P1-8 is still open. ADR-0099 (T-0294, landed as `e85e4f2`) decided that eve
 - If a shared time-form helper for the data plane seems worth having (events and artifacts), propose it as a separate code task; do not do it here.
 
 ## Result
+
+- Landed as PR #182, squash commit `98809fc` on main (squash message ends with `Task: T-0295`); branch `claude/T-0295-artifacts-gc-at-time-form` deleted.
+- `hilclaw/artifacts.py`: the `gc_at` entry of `_CHECKS` accepts only `YYYY-MM-DDThh:mm:ssZ` of an existing date and time via a module-local `_TIME`/`_is_time` (same rule as `time` in `events.py`; `events.py` not edited, no private import). Unused `_STRING` dropped; `validate` docstring states the form and cites ADR-0099. No schema version, member set or writer change.
+- `tests/test_artifacts.py`: updated `EXAMPLE`, the `gc_at` accept cases (bounds, leap days), the `SYNTHETIC-TIME` tests and `BAD_GC_AT`; added tests for the error place/form and for a stored non-conforming `gc_at` (`load`, `add_record`, `set_retention_class`).
+- Review: 2 rounds, Approve (R1 Minor fixed; Info on the duplicated helper not applied, required by AC1). CI green; coverage lines 99.59%, functions 100%.
+- Language: Python (the changed module is Python). No `claude` process was started (D16).
+- Follow-up (optional): a shared data-plane time-form helper used by events and artifacts, as a separate code task.
