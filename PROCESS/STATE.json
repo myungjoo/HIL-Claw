@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0319",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:659dea85-1",
+    "acquiredAt": "2026-10-18T22:22:58Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -279,7 +283,7 @@
       "reason": "owner-only-decision",
       "question": "Must every hypothesis injected at instance start be tested during the run? Owner point 4 of #5 issuecomment-6136462569 and FR-15 read either as sameness only or as a duty to test. Options: (a) sameness only - testing each injected input is the selection's judgement; (b) test each written hypothesis once during the run at a round the selection chooses, untested-at-end is a shortfall the files show, not a fault; (c) as (b) with a pace - each round from round 1 tests at least one untested one. Draft ADR-0112 on branch claude/T-0318-od30-injected-system-distribution decides the rest (a system hypothesis every round, no fixed order/ratio, mixing allowed).",
       "askedAt": "2026-10-18T21:40:28Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6255484182"
     }
   ],
   "counters": {
