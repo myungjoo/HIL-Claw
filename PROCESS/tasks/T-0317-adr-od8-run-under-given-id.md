@@ -2,7 +2,7 @@
 id: T-0317
 title: Record an ADR on whether the start of a first-case instance may take a `run_id` it did not build (OD-8 sub-question 24, for the instances of ADR-0076 decision 1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-6, FR-13, NFR-1, OD-8]
 dependsOn: []
@@ -87,3 +87,10 @@ The scope is narrow on purpose. It covers only the start of an instance of ADR-0
 - If the record makes a code slice possible, a later code task. It must wait for a start component (⑰'s first part, OD-23).
 
 ## Result
+
+- **Outcome**: DONE. Document mode, landed on `main` as `3c1bb64` (trailers `Reviewed-by: reviewer agent (5 rounds, Approve)`, `Task: T-0317`, parsed by `git interpret-trailers --parse`). Task branch deleted (remote and local).
+- **Record**: `ARCHITECTURE/decisions/ADR-0111-od8-run-under-given-id.md` (ADR-0111 was free on `origin/main` and every remote branch). Decision: for the start of an instance of ADR-0076 decision 1, alternative (a): the start takes no `run_id` from whoever gives the values and builds its id by ADR-0027; a start given an id does not happen and reports that it takes no `run_id` (the look sits after ADR-0076 decision 3's validity and scope reading, before the `n_max` fill-in and the required-set check); a start that happened gives the built id back. ADR-0027 decision 1 is unchanged for readers. For this scope, ADR-0109 decision 1's count of a retried start's id is narrowed to an id the start kept itself (no text edited; listed as less exact). (b) was rejected because a uniqueness checker for given names needs ⑩ or the lock (OD-17); (c) gains nothing.
+- **Owner-sentence search**: the 38 of 177 comments of #5 without a "posted by driver" marker, and the body and 6 comments of #4, were searched for `run_id`, run name, naming, label, name, identifier and Korean forms. No sentence speaks to run names given by a user or caller (#4 body names the `${instanceID}` path element and §2c `run_id` only). Not BLOCKED.
+- **Other edits**: `Requirements.md` OD-8 row (one `**확정분**` link; `**잔여**` gains "㉔의 나머지"; status cell unchanged; 30 OD rows before and after). `OpenDecisionProposals.md` OD-8 section (one adopted-record line; ㉔ head 미결 → 일부 답함, tail `→ 부분 답: … 남음: 그 밖의 시작.`). `StandardScenarios.md` "최근 재검사" line rewritten (S0, S1, S2, S11, S3 re-checked; no verdict change, no gap; no history entry).
+- **Review**: 5 rounds (R1-R4 findings addressed; R5 Approve with one nit left by design: the ㉓ bullet tail of OpenDecisionProposals still mentions ㉔ for given ids, true outside the scope; criterion 10 limits the edit to the ㉔ bullet).
+- **Follow-ups**: the §9 owner notice on #5 (driver, with the §8 footer). A later code task for a start component that takes no `run_id` and returns the built id, waiting on ⑰'s first part / OD-23. Runtime acceptance items: none.
