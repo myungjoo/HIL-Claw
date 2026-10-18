@@ -55,3 +55,10 @@ This task applies those three corrections. It decides nothing new and writes no 
 - None expected. Record any new finding left unapplied in `## Result`.
 
 ## Result
+
+- Landed on main as one squashed document-mode commit (`Reviewed-by: reviewer agent (2 rounds, Approve)`; `Task: T-0297`). Files: ADR-0100, Requirements.md (OD-8 row), StandardScenarios.md (recent re-check line).
+- Finding 1 (decision 1): the bullet now names both builder pairs as read at `ab71b86` (no `hilclaw/` change up to the landing base): `journaled_tool.tool_function` / `hw_tool.tool_function` take one `step` at build time; `journaled_tool.stepped_function` / `hw_tool.stepped_tool_function` take `steps` and `step_of`, so a call's `step` follows from the checked request. `correctness.check` is built by `hw_tool.stepped_tool_function` (`hilclaw/check_tool.py`), its `step` following from `point`. No `sim.run`/`board.run` tool function is built in `hilclaw/`, and no module there imports `run_identity.py`. `hilclaw/check_tool.py` was added to the read-file lists in Status and References; the commit `ab71b86` stays. Consequences was already exact and is unchanged.
+- Finding 3: the (d) "meets" cell now states, from ADR-0011 decision 3 and ADR-0097 decision 4, that a new end kind is not found as an end until the journal and its reader change; "Why" unchanged.
+- Finding 2: the OD-8 row link reads `도구 \`result\` 정의 변경의 구분 [ADR-0100]`; nothing else changed.
+- No decision changed; OpenDecisionProposals.md not edited. StandardScenarios re-checked S1, S2, S3, S5, S6, S8, S10, S11 (those citing OD-8): no verdict change, no gap, no history entry.
+- Review: 2 rounds (R1 Approve with two Nits, both applied; R2 Approve, no findings). No unapplied findings. No #5 comment posted (not material to the objection window). No `claude` process, code, test, compiler or container was run.
