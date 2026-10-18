@@ -64,3 +64,12 @@ An end line holds either `result` or `failure` (`kind`, `message`; ADR-0011 deci
 - (code, only if ADR-0101 names one) the code follow-up in Consequences, as a separate code task.
 
 ## Result
+
+- **Outcome**: DONE. ADR-0101 (number was free) answers both parts of OD-8 sub-question ㊱; files: `ARCHITECTURE/decisions/ADR-0101-od8-failure-kind-change-and-step-values.md`, `ARCHITECTURE/StepValues.md`, `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionProposals.md`, `ARCHITECTURE/StandardScenarios.md`.
+- **(가)**: a failure kind an end line can hold (a "stored kind") keeps its meaning for good — its sentence a caller may rely on, or the situation its naming record says it means — and its name is never reused; a changed meaning takes a new kind name; a kind no longer raised stays a stored kind. A stored `failure` is therefore told apart by its `kind`, no `step` value changes, and the repeated call returns the stored failure unchanged across a tool-layer replacement or resumption. Placing a further case under a kind whose meaning covers it is no change. Reserved kinds (and every kind answered without an end line) are excluded: no end line holds one under the accepted records. Stored kinds today: eleven of `correctness.check`, and the run tools' `operation_answer_invalid` (ADR-0065 decision 7).
+- **(나)**: one index, `ARCHITECTURE/StepValues.md`, with the four values of today (`defined`), states `defined` / `not used` / `reverted`, and the rule for adding a row; nothing checks a line against it.
+- **Left open**: the run tools' other stored kinds (⑲ (나), HQ-0021), ㉟ (나), OD-11 beyond the rule, OD-10 / the rest of OD-17. No new sub-question registered. Scenario re-check: no verdict change, no gap.
+- **Review**: 7 rounds, Approve (rounds 3, 4, 6 and 7 Approve; findings of rounds 1-6 applied). Unapplied nits of round 7 (no round 8 allowed): (1) decision 2's "every other failure kind" could carry "under the accepted records"; (2) ADR-0016 decision 3 could be listed under "Not edited and now less exact", since decision 3 reads "uses the name" to include kinds no longer raised; (3) the `not used` link of `StepValues.md` has no column of its own (same as `EventKinds.md`'s `not written`).
+- **#5 notice**: (filled after landing)
+- **Follow-ups**: (doc) link `ARCHITECTURE/StepValues.md` from the README document table, as T-0293 did for `EventKinds.md`; (doc, optional) the three round-7 nits above. No code follow-up.
+- No `claude` process was started; no code, test, compiler or container was run.
