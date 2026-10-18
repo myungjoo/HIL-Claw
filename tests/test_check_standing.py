@@ -397,10 +397,13 @@ def test_outcome_too_long_to_show(monkeypatch):
 
     monkeypatch.setattr(check_standing.reprlib, "repr", refuse)
     with pytest.raises(
-        JournalError, match="^line 1: data.result.outcome: .* got int too long to show$"
+        JournalError,
+        match="^line 1: data.result.outcome: .* got int a value too long to show$",
     ):
         at([end(1, result={"outcome": 7})])
-    with pytest.raises(JournalError, match="^step: .* got str too long to show$"):
+    with pytest.raises(
+        JournalError, match="^step: .* got str a value too long to show$"
+    ):
         standing([], "sim_run", *ARGS)
 
 

@@ -17,7 +17,7 @@ module renders its decisions 2, 3 and 5 as one pure function of parsed lines:
   no identity of the point is open (a start line and no end line) and no end
   line holds a ``failure`` of class (ii); else undetermined (decision 3). A
   ``failure`` of class (i) counts neither way. Only the lines of the point's
-  ``step`` are read (decision 5), and the order of the lines does not matter.
+  ``step`` count (decision 5), and the order of the lines does not matter.
 
 Choices that are this module's own and no rule of the record:
 
@@ -131,10 +131,10 @@ def standing(lines, step, round, candidate, attempt):
 
 def _message(place, rule, value):
     try:
-        got = f"{type(value).__name__} {reprlib.repr(value)}"
+        got = reprlib.repr(value)
     except ValueError:
-        got = f"{type(value).__name__} too long to show"
-    return f"{place}: must be {rule}, got {got}"
+        got = "a value too long to show"
+    return f"{place}: must be {rule}, got {type(value).__name__} {got}"
 
 
 def _checked_line(number, event):
