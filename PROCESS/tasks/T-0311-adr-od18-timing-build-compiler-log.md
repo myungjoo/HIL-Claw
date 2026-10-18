@@ -2,7 +2,7 @@
 id: T-0311
 title: Record ADR-0108, whether the compiler's log of the timing build of `sim.run` / `board.run` is kept and, if so, in which file of the attempt, by which side and with what answer when it cannot be written (OD-18 sub-question 19 part (da), for the runs the existing contracts cover)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, FR-6, OD-18]
 dependsOn: [T-0310]
@@ -78,3 +78,10 @@ This is a design-level OD part. Under DRIVER §9 the executor writes the ADR, an
 - If the record makes a code slice possible, a later code task. It must wait for the run tools' tool functions and for HQ-0026 (T-0243).
 
 ## Result
+
+- DONE. Commit `5b5e6dc` (document mode, pushed straight to `main` with no PR) adds `ARCHITECTURE/decisions/ADR-0108-od18-run-tools-timing-build-compiler-log.md` and edits only the touchesFiles: the OD-18 row in Requirements.md, the OD-18 section of OpenDecisionProposals.md, and the "최근 재검사" line of StandardScenarios.md.
+- Decision: for the first case and the mock, the log of every timing build whose compiler ended is kept in `build-log-<step>-<EE>.txt` below the attempt's `measure/`, in ADR-0078's form, written by the tool function from a log the operation hands to a fifth argument, the log keeper. This amends ADR-0065 decisions 2 and 5 and ADR-0066 decisions 2 and 6 by restatement (those records are not edited). A failed write ends the step with `build_log_unwritable`, which binds part (na) of sub-question 19 in that one case.
+- Left open: the size bound (rest of part (da)), part (na), and the source and values of part (ra). StandardScenarios re-check: no verdict change, no gap.
+- Review: 7 rounds, round 7 Approve. Two round-7 nits left: decision 7's name check does not list the frame's kinds (no clash); the OpenDecisionProposals line lacks the "그 계약의 아홉째 기록" tail.
+- OD notice on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6252659013. Task branch deleted. No compiler, container or `claude` process was started (D16).
+- Follow-up: code slice (log path, keeper, write, kind, mock); waits for the run tools' tool functions and for T-0243 (HQ-0026).
