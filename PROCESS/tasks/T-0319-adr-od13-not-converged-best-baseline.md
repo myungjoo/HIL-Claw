@@ -2,7 +2,7 @@
 id: T-0319
 title: Record an ADR on whether a timing measurement marked "not converged" may stand as a best or as a baseline (OD-13 sub-question 2, for the runs of ADR-0061 decision 1); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [NFR-3, FR-1, FR-10, OD-13, OD-20, OD-28]
 dependsOn: []
@@ -103,3 +103,14 @@ No open HQ blocks this. The blocked tasks cover other subjects: HQ-0031 / T-0318
 - If the ADR's answer depends on ① or OD-28, register that link where the recording rules allow.
 
 ## Result
+
+- **Landed**: 7dca3994175e76697cd607a35338a54fc51db609 on `main` (doc mode, direct push after rebase on `origin/main` at df1602c). Trailers checked with `git interpret-trailers --parse`: `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0319`, `Co-Authored-By`. Branch `claude/T-0319-adr-od13-not-converged-best-baseline` deleted locally and on the remote.
+- **Record**: `ARCHITECTURE/decisions/ADR-0113-od13-not-converged-best-baseline.md` (ADR-0113 was free on `origin/main` and on every remote branch; ADR-0112 is on the kept T-0318 branch). Decision: for the runs of ADR-0061 decision 1, the "not converged" mark alone never makes a measurement of a completed `sim.run`/`board.run` result ineligible to stand as a best or as the round-0 baseline, and no re-measurement is required first. Whether a choice rule prefers converged measurements is left to the rest of OD-1 (best) and to OD-28 / OD-18 ⑳ (baseline). The `against` question that ADR-0071 files under ② stays open.
+- **Review**: 7 rounds (dev-reviewer, fresh context each). R1: narrow from "neither bars nor conditions" to eligibility only, since a preference for converged measurements is part of the owner-only choice rule; complete the less-exact list. R3: keep ADR-0071's `against` question open under ②, cut the restated ADR content from the proposals status line, widen the status-cell date range. R2, R4–R6: completeness nits and citation nits. R7: Approve, with two nits left unfixed because a further round would go past the 7-round cap: (1) decision 2 "a best is the base of the comparisons that follow it" could be conditional ("where a best is the base of later comparisons"); (2) "That is the effect NFR-3 asks for, an interval and not a cut-off" mixes a citation with this record's reading.
+- **Session entry check (AC1)**: one open PR, #179 (`hilclaw/clang_build.py`, `tests/test_clang_build.py`); it does not touch OD-13. Read #4, #5, #7 and #8. Nothing on OD-13 ② except #7 N7 (research, about sim results, not the mark).
+- **Owner-sentence search (AC2)**: the #5 comments without the driver marker, the #5 body, and the #4 body and comments, searched for converge/not converged/noisy/imprecise/best/baseline/미수렴/수렴/노이즈/부정확/기준. No owner sentence decides ② or reads two ways about it. Quoted in the ADR: O1 (2026-10-15 item 3), #5 A-6, #5 B-4, #5 A-5 "비수렴 시" (the run that stops progressing, not this mark), #7 N7.
+- **Register edits (AC8)**: OD-13 row: one link added under `**확정분**:`, the ② part of `**잔여**:` rewritten in place, status word kept. The status-cell date range went from `~18` to `~19`, as T-0302 did; the "행 형식" paragraph lists dates in the status cell. Proposals OD-13: one 채택분 line added, `→ 부분 답 … 남음 …` appended to ② with its wording kept, bullet head "일부 답함" unchanged. OD row count unchanged (30).
+- **Coverage re-check (AC9)**: S0, S1, S2, S3, S8 and S9 re-checked, no verdict change and no gap. Only the "최근 재검사" line was rewritten; no history entry.
+- **Document checks (AC10)**: every relative link in the new and edited text resolves. One link in `OpenDecisionProposals.md` was already broken on `origin/main` and is not part of this change. `git diff --stat origin/main` showed only the four `touchesFiles`. `git diff --check` is clean.
+- **Owner notice (AC12)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6256211016
+- **Follow-ups**: no code slice (the eligibility predicate would be `outcome != "broken"`). The P2-1 code that sets the round-0 baseline and keeps the best must not treat a `not_converged` measurement as ineligible. The two R7 nits above could be fixed in a later doc touch of ADR-0113. Runtime acceptance items: none.
