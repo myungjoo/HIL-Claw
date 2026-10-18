@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0287",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:71224e73-1",
+    "acquiredAt": "2026-10-18T01:24:33Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -263,7 +267,7 @@
       "reason": "requirement-unclear",
       "question": "T-0286 (code: `local_run.run` refuses, before the start, an `env` that is not `None` and has no `items` method with a `TypeError` carrying `parameter` \"env\", as T-0282 did for `clang_build.build`) stopped on its own criterion 3: some `subprocess` start path accepts such an `env`. On native Windows (Python 3.14.4, seen on the driver machine) `subprocess.run` with an `env` object that has only `keys`, `values`, `__getitem__` and `__len__` starts the child and passes the variables on; `local_run.run` takes that path on Windows (no `os.wait4`). By the CPython source the POSIX `posix_spawn` path, which `run` meets the conditions for, also reads `env` through `keys`/`values`; only fork/exec calls `env.items()`. Refusing every such `env` would make the docstring sentence 'The check refuses nothing that one of the ways subprocess starts a process accepts' false. Nothing was committed and no PR was opened. Should `local_run.run` (a) refuse every non-`None` `env` without `items` with `TypeError` (`parameter` \"env\") as `clang_build.build` does, dropping that sentence for this case; (b) refuse only an `env` that no start path accepts (for example one with neither `items` nor `keys`/`values`/`__getitem__`), keeping the sentence true; or (c) stay unchanged? And should `clang_build.build` (T-0282, 4e05627, already stricter than Windows `subprocess`) be aligned with the answer?",
       "askedAt": "2026-10-18T00:46:24Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6243877948"
     }
   ],
   "counters": {
