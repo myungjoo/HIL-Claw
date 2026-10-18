@@ -2,7 +2,7 @@
 id: T-0307
 title: Link `ARCHITECTURE/BlobTypes.md` from the README document table and apply the three unapplied round-7 findings of T-0306 to ADR-0105 (decision 9 review check, Consequences reviewer check, Terms on owner-decision commits); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, "ADR-0105", "#5 D6"]
 dependsOn: [T-0306]
@@ -63,3 +63,8 @@ This task applies these four edits. It decides nothing new and writes no code.
 - None expected. Record in `## Result` any new finding left unapplied.
 
 ## Result
+
+- DONE. Landed in document mode as `6b3ef6a` on main (fast-forward from `f2fd615`), `Reviewed-by: reviewer agent (3 rounds, Approve)`; branch `claude/T-0307-blobtypes-readme-link-and-adr0105-r7` deleted (remote and local).
+- Four edits applied: README line 46 links `[BlobTypes.md](ARCHITECTURE/BlobTypes.md)(artifacts.json blob type 값 목록)` after `SpendAxes.md`; ADR-0105 Terms adds "that commit counts as accepted while it is not reverted"; decision 9 second bullet now reads "The review of a defining record catches one that adds no row, reuses a taken value, names any content that a `defined` value names (other than the values it sets to `not written` in its landing commit), or names exactly the kind of a `not written` value" (split into two sentences, constant sentence kept); Consequences "For a defining record" adds "checks that no `defined` value names any of its content, other than the values it sets to `not written` in its landing commit (decisions 3 and 6)", reviewer sentence kept.
+- Review: round 1 approve with one nit (ambiguous `which` in Terms; applied), round 2 approve with one nit (long decision 9 bullet; split, applied), round 3 approve with no findings. No finding left unapplied.
+- No other file changed; no decision changed, no value of `type` named; no coverage re-check owed; no #5 notice needed. No code, test or compiler run; no `claude` started (D16).
