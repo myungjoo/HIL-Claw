@@ -129,10 +129,11 @@ def validate(document):
     :data:`SCHEMA_VERSION`) and ``artifacts`` (a ``list`` of ``dict``), every
     record with exactly the members of decision 3 in their types and forms and
     no ``sha256`` twice. A ``gc_at`` must be of the form of ADR-0006 decision 3,
-    ``YYYY-MM-DDThh:mm:ssZ`` of an existing date and time (ADR-0099). The order of members and of records is not checked, and
-    ``type`` is checked against no vocabulary. Raises
-    :class:`InvalidArtifactsError` for the first rule found broken, naming the
-    place (for example ``artifacts[2].size``); returns ``None``.
+    ``YYYY-MM-DDThh:mm:ssZ`` of an existing date and time (ADR-0099). The order
+    of members and of records is not checked, and ``type`` is checked against
+    no vocabulary. Raises :class:`InvalidArtifactsError` for the first rule
+    found broken, naming the place (for example ``artifacts[2].size``); returns
+    ``None``.
     """
     _records(document)
 
