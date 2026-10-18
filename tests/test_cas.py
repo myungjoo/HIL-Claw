@@ -1,5 +1,7 @@
+import errno
 import hashlib
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -52,6 +54,19 @@ def stored_files(root):
 
 def expected_files(*contents):
     return sorted({f"{sha(c)[:2]}/{sha(c)}" for c in contents})
+
+
+def leftovers(root):
+    return sorted(p.name for p in (Path(root) / "blobs" / "sha256").glob("tmp-*"))
+
+
+def symlink(link, target, *, directory=False):
+    try:
+        os.symlink(target, link, target_is_directory=directory)
+    except (OSError, NotImplementedError):
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            raise
+        pytest.skip("this machine refuses to create a symbolic link")
 
 
 @pytest.fixture(params=["bytes", "file"])
@@ -170,19 +185,45 @@ def test_blob_path_is_pure(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_a_repeated_put_keeps_the_stored_file(root, put):
+def test_a_repeated_put_keeps_an_intact_stored_file(root, put):
     first = put(root, DATA)
     path = blob_path(root, DIGEST)
-    path.write_bytes(b"marker")
     os.utime(path, (1_000_000_000, 1_000_000_000))
 
     second = put(root, DATA)
 
     assert second == first == BlobRef(DIGEST, len(DATA))
-    assert path.read_bytes() == b"marker"
+    assert path.read_bytes() == DATA
     assert path.stat().st_mtime == 1_000_000_000
     assert stored_files(root) == [f"{DIGEST[:2]}/{DIGEST}"]
+    assert leftovers(root) == []
+
+
+def test_a_repeated_put_replaces_a_stored_file_that_is_not_intact(root, put):
+    put(root, DATA)
+    path = blob_path(root, DIGEST)
+    path.write_bytes(b"marker")
     assert verify_blob(root, DIGEST) is False
+
+    assert put(root, DATA) == BlobRef(DIGEST, len(DATA))
+
+    assert path.read_bytes() == DATA
+    assert verify_blob(root, DIGEST) is True
+    assert stored_files(root) == [f"{DIGEST[:2]}/{DIGEST}"]
+    assert leftovers(root) == []
+
+
+def test_a_damaged_empty_blob_is_replaced(root, put):
+    place = blob_path(root, EMPTY)
+    place.parent.mkdir(parents=True)
+    place.write_bytes(b"marker")
+
+    assert put(root, b"") == BlobRef(EMPTY, 0)
+
+    assert place.read_bytes() == b""
+    assert verify_blob(root, EMPTY) is True
+    assert stored_files(root) == [f"e3/{EMPTY}"]
+    assert leftovers(root) == []
 
 
 def test_blobs_with_different_and_equal_prefixes(root):
@@ -338,13 +379,134 @@ def test_a_failed_read_of_the_source_leaves_no_temporary_file(
     assert stored_files(root) == []
 
 
-def test_a_blob_path_occupied_by_a_directory_is_an_error(root):
-    blob_path(root, DIGEST).mkdir(parents=True)
+def test_a_blob_path_occupied_by_a_directory_is_an_error(root, put):
+    place = blob_path(root, DIGEST)
+    place.mkdir(parents=True)
+    (place / "inner.bin").write_bytes(b"inner")
 
-    with pytest.raises(OSError):
-        put_bytes(root, DATA)
-    assert stored_files(root) == []
+    with pytest.raises(FileExistsError) as info:
+        put(root, DATA)
+    assert info.value.filename == str(place)
+    assert stored_files(root) == [f"{DIGEST[:2]}/{DIGEST}/inner.bin"]
     assert blob_path(root, DIGEST).is_dir()
+    assert (place / "inner.bin").read_bytes() == b"inner"
+    assert leftovers(root) == []
+
+
+def test_a_prefix_that_is_a_regular_file_is_an_error(root, put):
+    store = root / "blobs" / "sha256"
+    store.mkdir(parents=True)
+    prefix = store / DIGEST[:2]
+    prefix.write_bytes(b"not a directory")
+
+    with pytest.raises(FileExistsError):
+        put(root, DATA)
+    assert prefix.read_bytes() == b"not a directory"
+    assert [p.name for p in store.iterdir()] == [DIGEST[:2]]
+
+
+@pytest.mark.parametrize("kind", ["directory", "dangling", "other content"])
+def test_a_place_that_is_a_link_not_to_an_intact_blob_is_an_error(
+    root, put, tmp_path, kind
+):
+    target = tmp_path / "targets" / "target"
+    target.parent.mkdir()
+    if kind == "directory":
+        target.mkdir()
+        (target / "inner.bin").write_bytes(DATA)
+    elif kind == "other content":
+        target.write_bytes(b"marker")
+    place = blob_path(root, DIGEST)
+    place.parent.mkdir(parents=True)
+    symlink(place, target, directory=kind == "directory")
+
+    with pytest.raises(FileExistsError) as info:
+        put(root, DATA)
+    assert info.value.filename == str(place)
+    assert place.is_symlink()
+    assert os.readlink(place) == str(target)
+    if kind == "directory":
+        assert [p.name for p in target.iterdir()] == ["inner.bin"]
+        assert (target / "inner.bin").read_bytes() == DATA
+    elif kind == "other content":
+        assert target.read_bytes() == b"marker"
+    else:
+        assert not target.exists()
+    assert leftovers(root) == []
+
+
+def test_a_place_that_is_a_link_to_an_intact_blob_is_kept(root, put, tmp_path):
+    target = tmp_path / "target.bin"
+    target.write_bytes(DATA)
+    os.utime(target, (1_000_000_000, 1_000_000_000))
+    place = blob_path(root, DIGEST)
+    place.parent.mkdir(parents=True)
+    symlink(place, target)
+
+    assert put(root, DATA) == BlobRef(DIGEST, len(DATA))
+
+    assert place.is_symlink()
+    assert os.readlink(place) == str(target)
+    assert target.read_bytes() == DATA
+    assert target.stat().st_mtime == 1_000_000_000
+    assert leftovers(root) == []
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="this platform has no FIFO")
+def test_a_place_that_is_a_fifo_is_an_error(root, put):
+    place = blob_path(root, DIGEST)
+    place.parent.mkdir(parents=True)
+    os.mkfifo(place)
+
+    with pytest.raises(FileExistsError) as info:
+        put(root, DATA)
+    assert info.value.filename == str(place)
+    assert stat.S_ISFIFO(os.lstat(place).st_mode)
+    assert leftovers(root) == []
+
+
+@pytest.mark.parametrize("content", [DATA, b"marker"])
+def test_a_failed_look_at_the_place_propagates(root, put, monkeypatch, content):
+    place = blob_path(root, DIGEST)
+    place.parent.mkdir(parents=True)
+    place.write_bytes(content)
+    real_lstat = os.lstat
+    looks = []
+
+    def failing_lstat(path, *args, **kwargs):
+        if path == place:
+            looks.append(path)
+            raise PermissionError(errno.EACCES, "injected look failure", str(path))
+        return real_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(cas.os, "lstat", failing_lstat)
+    with pytest.raises(PermissionError, match="injected look failure"):
+        put(root, DATA)
+    monkeypatch.undo()
+
+    assert looks == [place]
+    assert place.read_bytes() == content
+    assert leftovers(root) == []
+
+
+def test_a_failed_read_of_a_file_at_the_place_propagates(root, monkeypatch):
+    place = blob_path(root, DIGEST)
+    place.parent.mkdir(parents=True)
+    place.write_bytes(b"marker")
+    reads = []
+
+    def failing_chunks(f):
+        reads.append(f.name)
+        raise OSError("injected re-hash failure")
+
+    monkeypatch.setattr(cas, "_chunks", failing_chunks)
+    with pytest.raises(OSError, match="injected re-hash failure"):
+        put_bytes(root, DATA)
+    monkeypatch.undo()
+
+    assert reads == [str(place)]
+    assert place.read_bytes() == b"marker"
+    assert leftovers(root) == []
 
 
 @pytest.mark.parametrize("data", ["text", None, 7, [1, 2], memoryview(b"abc")])

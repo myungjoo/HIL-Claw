@@ -8,14 +8,18 @@ configuration, runs no ``git`` and writes nowhere else.
 
 Blobs are only ever added. A blob is written to a temporary file inside
 ``blobs/sha256/`` and moved into place with :func:`os.replace`, so a reader
-never sees a partial blob under its final name. Storing content that is already
-present keeps the stored file as it is.
+never sees a partial blob under its final name. Storing content whose blob is
+already present and intact keeps the stored file as it is; a regular file at the
+place of the hash whose content is not that hash is replaced, and any other
+entry there makes the store fail.
 """
 
+import errno
 import hashlib
 import os
 import re
 import secrets
+import stat
 from pathlib import Path
 from typing import NamedTuple
 
@@ -49,8 +53,11 @@ def blob_path(data_root, digest):
 def put_bytes(data_root, data):
     """Store ``data`` (``bytes`` or ``bytearray``) and return its :class:`BlobRef`.
 
-    Raises :class:`TypeError` for any other type, and :class:`FileNotFoundError`
-    or :class:`NotADirectoryError` when ``data_root`` is not an existing directory.
+    Raises :class:`TypeError` for any other type, :class:`FileNotFoundError`
+    or :class:`NotADirectoryError` when ``data_root`` is not an existing directory,
+    and :class:`FileExistsError` when the place of the hash or its ``<hh>`` holds
+    an entry the store did not put there. An :class:`OSError` from looking at the
+    place or from reading a file already there propagates.
     """
     if not isinstance(data, (bytes, bytearray)):
         raise TypeError(f"data must be bytes or bytearray, not {type(data).__name__}")
@@ -62,7 +69,8 @@ def put_file(data_root, source):
 
     The file is read in chunks of ``CHUNK_SIZE`` bytes and is left untouched.
     Raises the underlying :class:`OSError` when ``source`` cannot be read, and
-    the same errors as :func:`put_bytes` for ``data_root``.
+    the same errors as :func:`put_bytes` for ``data_root`` and the place of the
+    hash, :class:`FileExistsError` included.
     """
     with open(source, "rb") as f:
         return _store(data_root, _chunks(f))
@@ -82,15 +90,35 @@ def verify_blob(data_root, digest):
     path = blob_path(data_root, digest)
     if not path.is_file():
         raise BlobNotFoundError(f"blob {digest} is not in the store")
-    sha = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in _chunks(f):
-            sha.update(chunk)
-    return sha.hexdigest() == digest
+    return _sha256_of(path) == digest
 
 
 def _chunks(f):
     return iter(lambda: f.read(CHUNK_SIZE), b"")
+
+
+def _sha256_of(path):
+    sha = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in _chunks(f):
+            sha.update(chunk)
+    return sha.hexdigest()
+
+
+def _holds_intact(target, digest):
+    try:
+        mode = os.lstat(target).st_mode
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    if stat.S_ISREG(mode):
+        return _sha256_of(target) == digest
+    if stat.S_ISLNK(mode) and target.is_file() and _sha256_of(target) == digest:
+        return True
+    raise FileExistsError(
+        errno.EEXIST,
+        "the place of the blob holds an entry the store did not put there",
+        str(target),
+    )
 
 
 def _store(data_root, chunks):
@@ -112,7 +140,7 @@ def _store(data_root, chunks):
             f.flush()
             os.fsync(f.fileno())
         target = blob_path(root, sha.hexdigest())
-        if not target.is_file():
+        if not _holds_intact(target, sha.hexdigest()):
             target.parent.mkdir(exist_ok=True)
             os.replace(temporary, target)
     finally:
