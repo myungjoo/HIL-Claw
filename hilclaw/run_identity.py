@@ -35,13 +35,13 @@ members of decision 4 are the frame's, checked in moment ① (decision 6). It
 does not close the member list of a request: that the list is closed at those
 five and that a member no record names, a member ``point`` among them, is
 refused are ADR-0106's (decisions 2 and 3) and live in
-:mod:`hilclaw.run_definition`. It builds no identity. It does not say which builder the tool functions
-use (ADR-0062 Consequences). It says nothing of who may raise ``execution``
-or which of several executions counts (OD-10, OD-17, OD-18 sub-question ⑳).
-It gives no rule for the ``step`` values of another tool: decision 3 "says
-how these two values were formed and is no rule for the ``step`` values of
-another tool". It keeps nothing between calls, reads no file and imports
-nothing.
+:mod:`hilclaw.run_definition`. It builds no identity. It does not say which
+builder the tool functions use (ADR-0062 Consequences). It says nothing of who
+may raise ``execution`` or which of several executions counts (OD-10, OD-17,
+OD-18 sub-question ⑳). It gives no rule for the ``step`` values of another
+tool: decision 3 "says how these two values were formed and is no rule for the
+``step`` values of another tool". It keeps nothing between calls, reads no
+file and imports nothing.
 """
 
 #: The one ``step`` of ``sim.run`` (ADR-0062 decision 3).
