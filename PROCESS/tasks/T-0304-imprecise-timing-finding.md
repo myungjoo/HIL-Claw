@@ -2,7 +2,7 @@
 id: T-0304
 title: Add the derived imprecise-timing finding of a measurement and of a run as pure functions (ADR-0103, ADR-0104)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [NFR-3, OD-13, FR-10, C-7, "ADR-0103", "ADR-0104"]
 dependsOn: [T-0302, T-0303]
