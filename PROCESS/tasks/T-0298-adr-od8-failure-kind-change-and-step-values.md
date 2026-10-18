@@ -2,7 +2,7 @@
 id: T-0298
 title: Write ADR-0101 on how a change in the failure kinds of a journaled step is told apart and where the `step` values used so far are listed — OD-8 sub-question ㊱ (가) and (나); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, OD-18, FR-13, NFR-2, NFR-7, "#5 D6"]
 dependsOn: [T-0296, T-0297]
@@ -70,6 +70,6 @@ An end line holds either `result` or `failure` (`kind`, `message`; ADR-0011 deci
 - **(나)**: one index, `ARCHITECTURE/StepValues.md`, with the four values of today (`defined`), states `defined` / `not used` / `reverted`, and the rule for adding a row; nothing checks a line against it.
 - **Left open**: the run tools' other stored kinds (⑲ (나), HQ-0021), ㉟ (나), OD-11 beyond the rule, OD-10 / the rest of OD-17. No new sub-question registered. Scenario re-check: no verdict change, no gap.
 - **Review**: 7 rounds, Approve (rounds 3, 4, 6 and 7 Approve; findings of rounds 1-6 applied). Unapplied nits of round 7 (no round 8 allowed): (1) decision 2's "every other failure kind" could carry "under the accepted records"; (2) ADR-0016 decision 3 could be listed under "Not edited and now less exact", since decision 3 reads "uses the name" to include kinds no longer raised; (3) the `not used` link of `StepValues.md` has no column of its own (same as `EventKinds.md`'s `not written`).
-- **#5 notice**: (filled after landing)
+- **#5 notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6247486885 (landed as `defa8ee`)
 - **Follow-ups**: (doc) link `ARCHITECTURE/StepValues.md` from the README document table, as T-0293 did for `EventKinds.md`; (doc, optional) the three round-7 nits above. No code follow-up.
 - No `claude` process was started; no code, test, compiler or container was run.
