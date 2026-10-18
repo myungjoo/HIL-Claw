@@ -2,7 +2,7 @@
 id: T-0285
 title: Add `hilclaw/check_build.py`, which places a build of the verification executable, returned or raised, in the row the accepted OD-18 records give it
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: []
