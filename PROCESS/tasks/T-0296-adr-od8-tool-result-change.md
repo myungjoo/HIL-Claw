@@ -2,7 +2,7 @@
 id: T-0296
 title: Write ADR-0100 on how a change in the members of a tool's `result` object, carried by a `step_ended` line, is told apart and what the repeated call finds across it — OD-8 sub-question ㉟ (가); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, OD-18, FR-13, NFR-2, NFR-7, "#5 D6"]
 dependsOn: [T-0291, T-0292]
@@ -65,3 +65,12 @@ Three tool contracts already close their result member lists (`correctness.check
 - Record any sub-question the record registers in `## Result`.
 
 ## Result
+
+- Landed b836dbe on main (document mode, squashed; `Reviewed-by: reviewer agent (7 rounds, Approve)`; `Task: T-0296`). Files: ADR-0100 (new), Requirements.md OD-8 row, OpenDecisionProposals.md OD-8 section, StandardScenarios.md re-check line.
+- Answer to OD-8 ㉟ (가): the result definition of a `step` value is fixed and never changes (fixed by the record that closes its member list, or at ab71b86 for the four existing values). A later change gives each affected step a new, never-used `step` value; values are never reused, so a result is told apart by its line's `step` alone. Under the later definition a repeated call finds no line for its new identity and runs the step; earlier lines stay and still count in the spend fold.
+- ADR-0042 decision 7 (no version member) kept. No existing step value, closed list, data member, schema_version or kind changes. OD-18 and OD-11 rows unchanged.
+- Registered OD-8 ㊱: (가) a change of a contract's failure kinds; (나) where the used step values are listed. Left open: ㉟ (나) (spend axes, #5 A-8), OD-11 policy, OD-10, the rest of OD-17.
+- StandardScenarios re-checked S0, S1, S1-b, S2, S3, S5-S11: no verdict change, no gap.
+- Not applied (R7 Approve): Minor — ADR-0100 decision 1 describes `hw_tool.tool_function`, but correctness.check is built by `hw_tool.stepped_tool_function` (`hilclaw/check_tool.py`); Nit — drop "(새 `step` 값)" from the OD-8 row link; Nit — alternative (d) "meets" cell is "—".
+- #5 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6246972062
+- Follow-ups: no code task (ADR-0100 Consequences: no code changes). Optional small doc task to apply the three R7 findings above. No `claude` process was started (D16).
