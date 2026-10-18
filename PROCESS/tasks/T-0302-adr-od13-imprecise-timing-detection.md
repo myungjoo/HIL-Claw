@@ -2,7 +2,7 @@
 id: T-0302
 title: Write ADR-0103 on how a measurement or a run is found to be taken in an imprecise timing environment — OD-13 sub-question ⑪ (가); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-13, NFR-3, FR-10, OD-14, "#5 D6", "owner decision 2026-10-15 item 3"]
 dependsOn: []
@@ -70,4 +70,19 @@ OD-13 registered this as sub-question ⑪ with four parts: (가) detection, (나
 
 ## Result
 
-- (filled by the executor)
+- DONE. Landed on `main` as 274fed8 (document mode, one squashed commit); reviewer agent 6 rounds, final Approve with no findings. Branch deleted, local and remote.
+- Pre-check: ADR-0103 was free, ⑪ (가) was unanswered on `origin/main`, and #5 had no owner comment on it. Open PR #179 does not overlap.
+- New file `ARCHITECTURE/decisions/ADR-0103-od13-imprecise-timing-detection.md`. It answers ⑪ (가) for the runs of ADR-0061 decision 1, using both grounds, either one sufficient:
+  - measured ground: `outcome` `not_converged`, or resolution above `resolution_share_max` = 1 % of the shortest interval (new policy constant, not an instance parameter);
+  - class ground: the timing run executed as a VM guest. The input is named; producing it is left to a later record with OD-14 ①;
+  - a run counts from its first finding on.
+- Register edits: OD-13 row (one link, `잔여` ⑪ rewritten, range ~18); the OD-13 section (one adopted line, ⑪ set to 일부 답함 with a partial-answer tail). StandardScenarios recheck covered S0, S1-b, S2, S5, S6, S9 and S10: no verdict change, no gap. No sub-question was registered.
+- #5 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6248388913
+- Runtime-acceptance (ADR-0103 Limit 2; raise via DRIVER §8):
+  - (1) whether and how a process in the Docker Desktop VM on macOS or Windows, or under WSL 2, can tell that it is a VM guest;
+  - (2) what CV and resolution timing runs show there and in a container on native Linux;
+  - (3) that WSL 2 runs its kernel in a VM;
+  - (4) that VM distortion shows mainly as additive overhead or drift, not in one measurement's CV.
+- Deviation: the landed commit puts `Co-Authored-By` in a paragraph after `Reviewed-by` and `Task:`, so those two trailers are not in the last paragraph. `git log --grep='^Task: T-0302'` still finds the commit. Fixing it would need a force push, so it was left as is.
+- Runtime-acceptance items raised by the driver as HQ-0030 (notice only; does not block this task).
+- Follow-up: (doc) an ADR on ⑪ (나), as planned.
