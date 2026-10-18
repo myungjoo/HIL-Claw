@@ -2,7 +2,7 @@
 id: T-0288
 title: Apply ADR-0095 in `hilclaw/cas.py` — the store step replaces a regular file at a hash's place whose content is not that hash, and raises `FileExistsError` for any other entry there
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, C-3, NFR-2, OD-18, "#5 A-2"]
 dependsOn: [T-0287]
@@ -131,3 +131,36 @@ The owner's 7-day window on ADR-0095 runs to 2026-10-25. If the owner objects, t
 - None required by ADR-0095 beyond this task. Record any new one found (for example a Windows-only behaviour of `os.lstat` under a non-directory `<hh>`) in `## Result`.
 
 ## Result
+
+DONE. PR #181 squash-merged as `24bdb0d` on `main`; branch deleted.
+
+- **Session entry check**: the only other open PR was #179 (T-0284; `hilclaw/clang_build.py`, `tests/test_clang_build.py`); no overlap. Issue #5 had no comment after 6244351320, so no owner objection to ADR-0095.
+- **Change**: `_store` calls a new private `_holds_intact(target, digest)`, which runs `os.lstat` on the place.
+  - `FileNotFoundError` / `NotADirectoryError` means nothing is there, and the existing `mkdir` + `os.replace` runs.
+  - A regular file is re-hashed: kept if intact, moved over if not.
+  - A link is kept only if `is_file()` holds and its target re-hashes to the digest.
+  - Anything else raises `FileExistsError(errno.EEXIST, ..., str(target))`.
+  - `verify_blob` now shares the private `_sha256_of` helper; its answers and errors are unchanged.
+  - Size: `hilclaw/cas.py` +37/-9.
+- **Review**: 2 rounds, both Approve.
+  - Round 1: two non-blocking points.
+    - (1) On a Windows account that can create links, `os.readlink` may return a `\?\`-prefixed path. Fixed in the PR with the test helper `link_target`, which strips the prefix.
+    - (2) Informational: a link to a regular file that cannot be opened propagates that `OSError` instead of raising `FileExistsError`. This matches the decision-3 rule "a failure to open or read an existing regular file for the re-hash propagates". ADR-0095 does not name the link case separately (see Differences below).
+  - Round 2: Approve, no new findings.
+- **Tests**:
+  - Windows local, `tests/test_cas.py`: 95 passed, 10 skipped.
+    - 8 link tests: "this machine refuses to create a symbolic link" (unprivileged account).
+    - 2 FIFO tests: no `os.mkfifo`.
+  - Windows local, full suite: 22812 passed, 495 skipped.
+  - CI (Linux, Python 3.11 and 3.14): 23266 passed, 41 skipped. The link and FIFO tests ran there.
+  - `ruff check` and `ruff format --check` are clean.
+- **Coverage (CI gate)**: `hilclaw/` lines 6371/6397 = 99.59%, functions 630/630 = 100%. `hilclaw/cas.py` is 72/72 in CI.
+  - Locally on Windows `cas.py` is 71/72: the intact-link `return True` is reached only where links can be created (Linux CI). No branch is reached only on Windows.
+- **Error from the look under a regular-file `<hh>`**:
+  - Windows (observed): `FileNotFoundError` (`[WinError 3]`).
+  - Linux: one of the two "nothing here" errors, because the regular-file `<hh>` test passes in CI and any other `OSError` would fail it. That makes it `NotADirectoryError` (ENOTDIR) per POSIX `lstat`, but CI does not print the class.
+- **Edits to existing tests**:
+  - `test_a_repeated_put_keeps_the_stored_file` was split into `..._keeps_an_intact_stored_file` and `..._replaces_a_stored_file_that_is_not_intact`.
+  - The directory test was narrowed to `FileExistsError` and now runs both `put` variants. Its old assertion `stored_files(root) == []` now expects the one file placed inside the directory, as AC 4 asks. This is the only way both requirements of AC 4 can hold at once.
+- **Differences from ADR-0095**: none in behaviour. One case is not named there: a link to a regular file that cannot be read raises that `OSError`, not `FileExistsError`. That is the reading of decision 3, where a re-hash read failure propagates.
+- **Follow-ups**: none.
