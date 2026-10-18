@@ -10,7 +10,7 @@
 - **It is a record, not code**: decision 1 was read from `hilclaw/check_build.py`, `hilclaw/check_failure.py` and `hilclaw/scratch.py` at `1ea1fd2` as files; nothing was established by running code, and no compiler, container or `claude` process was started. It binds no code until the code task of Consequences lands.
 - The owner is notified on issue #5 and may object within 7 days of that notice; an objection creates a task that reverts this record and the edits made with it.
 - The format follows the "Record format" section of [ADR-0001](ADR-0001-od4-key-schema.md).
-- **Edited after acceptance on 2026-10-18** by task T-0290 (document mode): the third "Why" bullet of decision 2 is headed "The next call never uses a leftover" and its last clause adds what a survivor writes outside the leftover to the space a leftover takes; the bullet that says what this record builds on gives the windows of ADR-0047 and ADR-0079; References lists ADR-0004 and ADR-0078, which the body cites. No decision changed meaning, and the objection window of the notice https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6244972784 is unchanged.
+- **Edited after acceptance on 2026-10-18** by task T-0290 (document mode): the third "Why" bullet of decision 2 is headed "The next call never uses a leftover" and its last clause now names, besides the space a leftover takes, what a survivor writes outside the leftover; the bullet that says what this record builds on gives the windows of ADR-0047 and ADR-0079; References lists ADR-0004 and ADR-0078, which the body cites. No decision changed meaning, and the objection window of the notice https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6244972784 is unchanged.
 
 ## Context
 
