@@ -2,7 +2,7 @@
 id: T-0297
 title: Apply the three unapplied R7 findings of ADR-0100 (the `stepped_tool_function` observation, the OD-8 row link words, the empty cell of alternative (d)); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, "#5 D6"]
 dependsOn: [T-0296]
