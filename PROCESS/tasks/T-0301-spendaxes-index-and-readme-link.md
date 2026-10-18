@@ -2,7 +2,7 @@
 id: T-0301
 title: Create the empty spend-axis index `ARCHITECTURE/SpendAxes.md` and link it from the README repository table (follow-up of T-0300, ADR-0102 decision 6); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, OD-17, "#5 D6"]
 dependsOn: [T-0300]
@@ -69,7 +69,14 @@ T-0300 landed ADR-0102 (OD-8 sub-question ㉟ (나)) as `7b0a22d`. Decision 6 of
 
 ## Follow-ups
 
-- (filled by the executor)
+- Landed on main as `27e3fd9` (document mode, fast-forward push; trailers `Reviewed-by: reviewer agent (1 rounds, Approve)`, `Task: T-0301`). Branch deleted locally and on origin.
+- Pre-check: `ARCHITECTURE/SpendAxes.md` was absent on `origin/main` (`ab403c2`), and ADR-0102 decision 6 still names that path and the three columns.
+- `ARCHITECTURE/SpendAxes.md` (new): title, intro linking ADR-0102 decisions 6 and 7 (index only; the defining record wins), bullets "Adding a row", "States" (`defined` / `not used` / `reverted`; rows never removed, names never changed) and "Nothing checks a line's axis names against this list", then the table `| Axis | Defined by | State |` with no data row. It names no axis, unit, meaning, measuring party or token scope.
+- `README.md`: one link to `ARCHITECTURE/SpendAxes.md` added to the `ARCHITECTURE/` row after `StepValues.md`. Nothing else changed.
+- Review: 1 round, Approve, no blocking findings. Unapplied nit: the "States" bullet does not render decision 7's transition sentence, left out to keep `StepValues.md` and `EventKinds.md` reading alike.
+- Coverage re-check: not applicable (neither file is Requirements, UsageCases or StandardScenarios). No ADR, OD or StandardScenarios edit; no #5 notice needed.
+- No code, test, compiler, container or `claude` process was run.
+- Follow-ups (optional): add decision 7's row-transition sentence to all three indexes (SpendAxes, StepValues, EventKinds) together; ADR-0102 Status does not say that reverting it also marks the index (listed only).
 
 ## Result
 
