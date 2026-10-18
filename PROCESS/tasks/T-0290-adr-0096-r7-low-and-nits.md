@@ -2,7 +2,7 @@
 id: T-0290
 title: Correct ADR-0096 after acceptance - the round-7 Low (the heading "The next call is not touched" of decision 2) and the two round-7 nits (objection windows of ADR-0047 and ADR-0079 in Status; ADR-0004 and ADR-0078 in References) left open by T-0289
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-18, FR-9, "#5 D6"]
 dependsOn: [T-0289]
