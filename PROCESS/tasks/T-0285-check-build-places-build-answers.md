@@ -135,3 +135,12 @@ Scope:
 - If a later record places one of the open entries, add its row here in the same task as the record's code follow-up.
 
 ## Result
+
+- Outcome: DONE. PR #180 (https://github.com/myungjoo/HIL-Claw/pull/180), squash-merged to main as c79f0ce5bf901522dde98b7722b4b72705e8a795; branch claude/T-0285-check-build-places-build-answers deleted. The PR body and squash message end with `Task: T-0285`.
+- Change: new hilclaw/check_build.py (BUILT, read_build, place_error) and tests/test_check_build.py. No other file changed: clang_build.py, ARCHITECTURE/, PROCESS/ and the settings files are untouched. No data-plane value was added and no rule was decided.
+- Rows: every row of criteria 2 and 3 checked against the Decision sections of ADR-0045, ADR-0060, ADR-0079, ADR-0080 and ADR-0082 to ADR-0094. No error got two rows and no row was missing, so criterion 7 did not trigger.
+- Module's own choices (stated in its docstring, no record rule): a `returncode` counts as a status only when its type is exactly `int`, so `True` is not placed; `BUILT` is a plain `object()` sentinel.
+- Review: 2 rounds (dev-reviewer, fresh context), both Approve. Round 1 had two nits (the S4 test now lists the five names literally instead of the private `_SETTINGS`; the exact-int `returncode` stays as documented, as the reviewer allowed). Round 2: no new findings.
+- Tests and CI: local full pytest 22800 passed, 485 skipped; ruff check and format clean; hilclaw/check_build.py coverage 100 %, hilclaw/ 99 %. CI (Python 3.11 and 3.14, coverage, test presence, shellcheck, C gate) green; no CI failures.
+- Language: Python, because the rows read Python exception classes and attributes of hilclaw.clang_build and the answer feeds the Python tool function.
+- Follow-ups: none new. The two already in the task stand: the cpu_standin operation of correctness.check, which waits for T-0243 / HQ-0026, and adding rows when a later record places an open entry.
