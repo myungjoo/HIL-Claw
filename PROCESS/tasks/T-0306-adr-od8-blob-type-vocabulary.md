@@ -2,7 +2,7 @@
 id: T-0306
 title: Write ADR-0105 on the vocabulary of `type` in `artifacts.json` and on how a changed meaning of a `type` value is told apart — the vocabulary part of OD-8 sub-question ⑥; names no value; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, C-3, FR-13, NFR-2, "#5 A-2", "#5 D6"]
 dependsOn: [T-0292, T-0300, T-0301]
@@ -64,6 +64,15 @@ ADR-0005 decision 5 fixed the form of `type` (a *name*) and no list. A reader tr
 
 ## Follow-ups
 
-- (filled by the executor)
+- Document: link `ARCHITECTURE/BlobTypes.md` from the README document table (ADR-0105 Consequences).
+- Document: apply the three round-7 remarks of the reviewer to ADR-0105 (left unapplied because round 7 was the last allowed): (1, minor) decision 9 second bullet, make the review check read "names any content that a `defined` value names (other than the values it sets to `not written` in its landing commit), or exactly the kind of a `not written` value"; (2, nit) Consequences "For a defining record", add "and checks that no `defined` value names any of its content (decisions 3 and 6)"; (3, nit) Terms, add that the document commit of an owner decision counts as accepted while it is not reverted.
+- Not edited and now less exact (ADR-0105 Consequences): ADR-0005 decision 5 ("The vocabulary stays open"), Limits and Boundaries ("the vocabulary of `type`"); ADR-0098 Boundaries (⑥ not answered); ADR-0097 and ADR-0099 Boundaries (⑥ listed as open).
 
 ## Result
+
+- DONE. Landed in document mode as `2aa6bc8` on main (fast-forward from `b6ac0a9`), `Reviewed-by: reviewer agent (7 rounds, Approve)`; branch `claude/T-0306-adr-od8-blob-type-vocabulary` deleted (remote and local).
+- Files as planned: `ARCHITECTURE/decisions/ADR-0105-od8-blob-type-vocabulary.md` (new; number was free), `ARCHITECTURE/BlobTypes.md` (new, no row), `ARCHITECTURE/Requirements.md` (OD-8 row: one `**확정분**` link, `**잔여**` gains the rest of ⑥ with OD-23; status cell unchanged), `ARCHITECTURE/OpenDecisionProposals.md` (adopted line after ADR-0102; ⑥/⑦ bullet head 일부 답함, tail `→ ⑥ 부분 답 … 남음 … ⑦ 미결.`; no new sub-question), `ARCHITECTURE/StandardScenarios.md` (최근 재검사 line: S1, S2, S3, S5, S6, S8, S10, S11 re-checked, no judgement change, no gap).
+- Review: round 1 request changes (reader of reverted values left to OD-11, as ADR-0098), round 2 request changes (replacement exception, placeholders), round 3 approve with remarks (applied), round 4 request changes (not-written exact-kind reuse), round 5 approve with remarks (applied), round 6 approve with nits (applied), round 7 approve with one minor and two nits (left as a follow-up above).
+- OD notice on #5 (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6250224623
+- PLAN: P1-8 stays open (OD-8 keeps other open parts); no checkbox to tick.
+- No code, test or schema file changed; `schema_version` not raised; no `claude` started (D16).
