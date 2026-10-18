@@ -2,7 +2,7 @@
 id: T-0309
 title: Add the request check, input schema and descriptions of sim.run and board.run (code slice of ADR-0106)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0308]
@@ -64,3 +64,11 @@ ADR-0106 (landed as 28cd947 by T-0308) closes the request member list of `sim.ru
 - The joining tool function of the run tools and their registration (needs ⑲ (나) and the backend/seed binding records).
 
 ## Result
+
+- DONE. PR #184 (https://github.com/myungjoo/HIL-Claw/pull/184), squash-merged as 8c9b2fa; branch deleted.
+- Review: 2 rounds, Approve in both (round 1 nit fixed: rewrap of the `run_identity.py` docstring paragraph, no word changed).
+- CI green on the head (Python 3.11/3.14, coverage, test presence, C, sh). Local: pytest 23235 passed / 495 skipped, ruff check and format clean; `hilclaw/` coverage 99%, `run_definition.py` 100%.
+- Language: Python, the language of the rest of `hilclaw/`.
+- New module `hilclaw/run_definition.py` (`MEMBERS`, `check`, `input_schema`, `SIM_DESCRIPTION`, `BOARD_DESCRIPTION`); `hilclaw/run_identity.py` docstring sentence only; new `tests/test_run_definition.py`. `tests/test_run_identity.py` unchanged.
+- Note: the task text names `tools.ToolRegistry()`; the class is `tools.Registry` (tests use it). The `"Execution": 1` row is refused by the frame check (`execution: is required`) before `run_definition.check`, as ADR-0106 decision 3 allows.
+- Follow-ups: none new beyond those already listed (ADR "less exact" sentences doc task; the joining tool function and registration of the run tools).
