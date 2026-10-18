@@ -2,7 +2,7 @@
 id: T-0313
 title: Record an ADR on what the start of a first-case instance does when the write of `instance.json` finds its final name taken, and what a second start under a `run_id` in use means (OD-8 sub-question 23 part (ga), for the instances of ADR-0076 decision 1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-6, FR-13, NFR-1, OD-8]
 dependsOn: []
@@ -74,3 +74,10 @@ The scope is narrow on purpose. It covers the start of an instance of ADR-0076 d
 - If the record makes a code slice possible, a later code task. It must wait for a start component (⑰'s first part, OD-23).
 
 ## Result
+- DONE. ADR-0109 (number free on origin/main and every remote branch) landed on main as 99ef08e (document mode, reviewer agent 7 rounds, Approve; trailers checked with `git interpret-trailers --parse`). Task branch deleted locally and on origin.
+- Decision: within the scope (ADR-0076 decision 1 instance, `run_id` built by the start by ADR-0027), a taken `instance.json` name makes the start stop: it reads, compares and removes nothing, builds no other id, and reports the id in use apart from an ADR-0076 refusal and from a file-system failure. A second start under an id in use means no run. No "equal content" is defined. ① and ㉔ are not decided.
+- Finding handed to ⑩: if ⑩'s order lets the start write the first `STATE.json` before `instance.json`, the stop protects `instance.json` only.
+- Edits: OD-8 register row (one link; `㉓ (가)` → `㉓ (가)의 나머지`), OD-8 section (adopted line; ㉓ tail → 부분 답), StandardScenarios recent re-check (no verdict change, no gap). Register rows 30 → 30.
+- §9 owner notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6253272646 (window until 2026-10-26).
+- Left for the driver: the OD-8 status cell still reads "잔여의 여러 부분 2026-10-07~18". AC 9 kept it unchanged; reviewers suggested "~19" in a later doc task.
+- Follow-up: a code task for the caller of `hilclaw.instance_file` that answers `NameTakenError`. It waits for a start component (⑰ first part, OD-23). Runtime acceptance items: none.
