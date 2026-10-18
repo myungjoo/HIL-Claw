@@ -2,7 +2,7 @@
 id: T-0318
 title: Record an ADR on the distribution of injected and system hypotheses across rounds and candidates (OD-30, "주입 가설과 시스템이 세운 가설의 배분")
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: doc
 coversReq: [FR-15, FR-17, FR-11, OD-30, S11]
 dependsOn: []
@@ -12,7 +12,7 @@ touchesFiles:
   - ARCHITECTURE/OpenDecisionProposals.md
   - ARCHITECTURE/StandardScenarios.md
 estimatedSize: {loc: 190, files: 4}
-hq: []
+hq: [HQ-0031]
 ---
 ## Why
 
@@ -113,3 +113,14 @@ Unresolved HQs this task must not depend on: HQ-0023 (the S6 metric, T-0231) and
 
 ## Result
 
+**Outcome: BLOCKED (`owner-only-decision`)** — HQ-0031. Nothing landed on `main`. Two reviewer rounds (context-isolated `dev-reviewer`), both Request changes.
+
+- **Branch** `claude/T-0318-od30-injected-system-distribution` is pushed to origin and kept for resume; head f550244 (on 1d713e2, 4ac270d). All commits carry `Task: T-0318`.
+- **Files changed** are exactly the touchesFiles: new `ARCHITECTURE/decisions/ADR-0112-od30-injected-system-distribution.md` (ADR-0112 was free on `origin/main` and every remote branch); `ARCHITECTURE/Requirements.md` OD-30 row only (one `**확정분**` link; `**잔여**` rewritten as "주입 가설의 배분(시작 뒤 주입)"; status cell unchanged); `ARCHITECTURE/OpenDecisionProposals.md` OD-30 section only (adopted-record line after ADR-0075; the bullet "주입 가설과 시스템이 세운 가설의 배분" marked "(일부 답함)" with a partial-answer tail; "배분" → "배분(시작 뒤 주입)"); `ARCHITECTURE/StandardScenarios.md` "최근 재검사" line only (S0, S1, S8, S11 re-checked; no verdict change, no gap).
+- **Checks**: `git diff --check` clean; all 28 added relative links resolve; OD register has 30 rows before and after.
+- **Owner-sentence search**: 38 non-driver #5 comments (of 178), #5 body, #4 body and its 6 comments. No sentence reserves this choice to the owner; the addendum says the sharing (order, ratio) is open in OD-30.
+- **Why blocked**: point 4 of https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6136462569 ("An injected hypothesis goes through the same experiment, verification and verdict as the runtime's own") and FR-15 fix point (iii), coverage, under one reading (a duty to test every injected hypothesis) and leave it open under another (a rule of sameness only). The task's second BLOCKED condition says to stop in that case. Round 1 rejected a pace rule as widening the sources (FR-15's "참고사항(탐색 우선순위 힌트)으로만" allows putting an input off); round 2 rejected the sameness reading as a choice between readings (ADR-0075 decision 4 leaves coverage open). No single rule meets both readings.
+- **Kept on the branch for resume**: decision 2 (iv) — every round from round 1 tests at least one `system` hypothesis (a selection-role behaviour rule, not a file-validity rule; cost: at N = 1 an injected test shares the one candidate with a system hypothesis); decision 4 (i)(ii) — no fixed order, mixing allowed within a round and on one candidate; decision 5 — no fixed ratio, FR-11 identification as in ADR-0075 decision 4; decision 6 — decision 2 checkable from one `hypotheses.json`, enforcement with OD-18, roster with OD-23. Decision 3 (iii) is drafted as "no coverage rule" and must be rewritten to the owner's answer (with Alternatives rows (b2)/(b3) and the Status readings if (b) or (c)).
+- Review findings addressed: round 1 (Major on widening the sources, two Minors on costs, one Nit on the register residue); round 2 Minors 2–4 and the Nit.
+- No data-plane, code, test, CI, prompt or settings change. No compiler, container or `claude` process was started (D16).
+- **On resume**: rewrite decision 3 and its Status reading per HQ-0031; re-review with a fresh reviewer from round 3 of 7; rebase onto `origin/main`, squash with `Reviewed-by: reviewer agent (N rounds, Approve)` and `Task: T-0318`, push to `main`; post the §9 notice on #5. The unlanded T-0231 branch also edits the OD-30 row and section — resolve on T-0231's later rebase.

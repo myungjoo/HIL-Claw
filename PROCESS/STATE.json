@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0318",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:8fbb645d-1",
-    "acquiredAt": "2026-10-18T21:21:53Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -276,19 +272,27 @@
       "question": "ADR-0103 (how a measurement or a run is found to be taken in an imprecise timing environment, OD-13 sub-question 11 (ga); T-0302, main 274fed8) has two grounds, either one sufficient: a measured ground (`not_converged`, or clock resolution above `resolution_share_max` = 1 % of the shortest interval) and a class ground (the timing run executed as a VM guest). Its Limit 2 rests on facts that only a run on a machine of C-7 can confirm; under D16 they are runtime acceptance items, closed by your check by hand or by the runtime's own self-check, not by a driver task: (1) whether and how a process in the Docker Desktop VM on macOS or Windows, or under WSL 2, can tell that it is a VM guest; (2) what CV and resolution timing runs show there and in a container on native Linux; (3) that WSL 2 runs its kernel in a VM; (4) that VM distortion shows mainly as additive overhead or drift, not in the CV of one measurement. Nothing was tried; no task is blocked on this notice.",
       "askedAt": "2026-10-18T09:46:05Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6248397499"
+    },
+    {
+      "id": "HQ-0031",
+      "taskId": "T-0318",
+      "reason": "owner-only-decision",
+      "question": "Must every hypothesis injected at instance start be tested during the run? Owner point 4 of #5 issuecomment-6136462569 and FR-15 read either as sameness only or as a duty to test. Options: (a) sameness only - testing each injected input is the selection's judgement; (b) test each written hypothesis once during the run at a round the selection chooses, untested-at-end is a shortfall the files show, not a fault; (c) as (b) with a pace - each round from round 1 tests at least one untested one. Draft ADR-0112 on branch claude/T-0318-od30-injected-system-distribution decides the rest (a system hypothesis every round, no fixed order/ratio, mixing allowed).",
+      "askedAt": "2026-10-18T21:40:28Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 331,
+    "iterations": 332,
     "tasksDone": 307,
-    "tasksBlocked": 24,
-    "reviewRoundsTotal": 1084
+    "tasksBlocked": 25,
+    "reviewRoundsTotal": 1086
   },
   "lastIteration": {
-    "at": "2026-10-18T20:45:58Z",
-    "owner": "AKIHA:cb7af31f-1",
-    "taskId": "T-0317",
-    "outcome": "DONE"
+    "at": "2026-10-18T21:40:28Z",
+    "owner": "AKIHA:8fbb645d-1",
+    "taskId": "T-0318",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
