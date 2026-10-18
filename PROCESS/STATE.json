@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0285",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:d75452cb-1",
+    "acquiredAt": "2026-10-18T00:23:20Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -255,7 +259,7 @@
       "reason": "requirement-unclear",
       "question": "T-0284 (code: `clang_build.build` refuses, on POSIX and before the start, an empty `env` key or one with `=` anywhere, `ValueError` with `parameter` \"env\"; closes part of ADR-0094 decision 3) stopped on its own criterion 5: its premise does not hold on every supported Python. The task assumed each such key is refused by one of the two POSIX start paths of `subprocess`, so `build` would only refuse earlier what the start refuses anyway. CI (run 39079246945) shows that on Python 3.11 the empty key (`{\"\": \"x\"}`, `{b\"\": b\"x\"}`) is accepted by both start calls (3.11 uses fork/exec with the default `close_fds=True`; the `posix_spawn` path that refuses it is taken by default only from 3.13), while the leading-`=` keys are refused as assumed; on 3.14 all cases hold. `pyproject.toml` requires Python >= 3.11. The change is on Draft PR #179 (DONOTMERGE, branch `claude/T-0284-clang-build-refuses-posix-env-keys`, `e1a40c9`, 1 review round, Request changes); nothing was merged. Should the driver (a) keep the empty key in scope, so `build` refuses it on POSIX even where `subprocess` does not (stricter than `subprocess`, with the docstring saying so), and re-run T-0284 on that basis; (b) narrow T-0284 to keys with `=` (which held on 3.11 and 3.14) and leave the empty key to `subprocess`; or (c) drop T-0284 and close PR #179?",
       "askedAt": "2026-10-17T23:37:02Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6243170181"
     }
   ],
   "counters": {
