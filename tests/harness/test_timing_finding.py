@@ -3,7 +3,7 @@ from fractions import Fraction
 
 import pytest
 
-from hilclaw import events, journal, run_result
+from hilclaw import check_identity, events, journal, run_result
 from hilclaw.harness.timing_finding import (
     RESOLUTION_SHARE_MAX,
     line_finding,
@@ -267,7 +267,7 @@ def test_start_line_of_a_run_tool_gives_none():
 
 
 @pytest.mark.parametrize(
-    "step", ["correctness_check_sim", "correctness_check_board", "made_up_step"]
+    "step", [check_identity.STEP_SIM, check_identity.STEP_BOARD, "made_up_step"]
 )
 def test_end_line_under_another_step_gives_none(step):
     assert line_finding(ended(COARSE, step)) is None
@@ -348,7 +348,7 @@ def test_log_with_only_clean_results_gives_none():
         ended(CLEAN, STEP_BOARD_RUN),
         failed(),
         ended(BROKEN, attempt=2),
-        ended(COARSE, "correctness_check_sim", attempt=3),
+        ended(COARSE, check_identity.STEP_SIM, attempt=3),
     ]
     assert run_found_at(log) is None
 
@@ -412,13 +412,13 @@ def test_damaged_line_after_a_finding_is_still_checked():
 
 
 def test_start_line_under_another_step_is_checked():
-    bad = line("step_started", {"step": "correctness_check_sim", "execution": 0})
+    bad = line("step_started", {"step": check_identity.STEP_SIM, "execution": 0})
     with pytest.raises(journal.JournalError, match="^line 1: data.execution"):
         run_found_at([bad, ended(COARSE)])
 
 
 def test_end_line_under_another_step_is_checked():
-    bad = ended(CLEAN, "correctness_check_sim")
+    bad = ended(CLEAN, check_identity.STEP_SIM)
     del bad["data"]["spend"]
     with pytest.raises(journal.JournalError, match="^line 1: "):
         run_found_at([bad])

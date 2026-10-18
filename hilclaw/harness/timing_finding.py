@@ -50,7 +50,9 @@ absolute-target judgement (⑪ (다)), and it does not establish the class input
 of ADR-0103 decision 4 or OD-14 sub-question ①. It does not replay the
 stopping rule: ``outcome`` is believed as stored (ADR-0104 decision 3; ADR-0063
 Limit 2), and no other member of a result is checked against the table of
-ADR-0063 decision 9.
+ADR-0063 decision 9. It changes nothing of :mod:`hilclaw.harness.measurement`,
+:mod:`hilclaw.run_result`, :mod:`hilclaw.run_identity` or
+:mod:`hilclaw.journal`.
 """
 
 from fractions import Fraction
@@ -135,14 +137,9 @@ def line_finding(event):
     modified.
     """
     events.validate(event)
-    if event["kind"] != journal.STEP_ENDED:
-        return None
-    if event["data"].get("step") not in run_identity.STEPS:
-        return None
-    journal.check_step(event)
-    if "result" not in event["data"]:
-        return False
-    return measurement_found(event["data"]["result"])
+    if _is_run_end(event):
+        journal.check_step(event)
+    return _finding(event)
 
 
 def run_found_at(lines):
@@ -165,14 +162,17 @@ def run_found_at(lines):
 
     Every line is read and checked, also after the first finding, as
     :func:`hilclaw.journal.fold` checks lines: :func:`hilclaw.events.validate`,
-    and :func:`hilclaw.journal.check_step` for a step line, and then
-    :func:`line_finding`. The first line that fails raises its error with
-    ``line <number>:`` in front, and nothing is returned.
+    and :func:`hilclaw.journal.check_step` for a step line, and then the
+    result as :func:`line_finding` reads it. The first line that fails raises
+    its error with ``line <number>:`` in front, and nothing is returned.
     """
     found = None
     for number, event in enumerate(lines, 1):
         try:
-            finding = _checked_finding(event)
+            events.validate(event)
+            if event["kind"] in _STEP_KINDS:
+                journal.check_step(event)
+            finding = _finding(event)
         except (TypeError, ValueError, events.UnsupportedVersionError) as error:
             raise type(error)(f"line {number}: {error}") from None
         if finding and found is None:
@@ -186,8 +186,14 @@ def _member(result, name):
     return result[name]
 
 
-def _checked_finding(event):
-    events.validate(event)
-    if event["kind"] in _STEP_KINDS:
-        journal.check_step(event)
-    return line_finding(event)
+def _is_run_end(event):
+    kind, data = event["kind"], event["data"]
+    return kind == journal.STEP_ENDED and data.get("step") in run_identity.STEPS
+
+
+def _finding(event):
+    if not _is_run_end(event):
+        return None
+    if "result" not in event["data"]:
+        return False
+    return measurement_found(event["data"]["result"])
