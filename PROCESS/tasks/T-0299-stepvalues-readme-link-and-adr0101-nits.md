@@ -2,7 +2,7 @@
 id: T-0299
 title: Link `ARCHITECTURE/StepValues.md` from the README repository table and apply two of ADR-0101's unapplied round-7 nits (follow-ups of T-0298); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, "#5 D6"]
 dependsOn: [T-0298]
@@ -70,3 +70,13 @@ This task adds the README link and applies nits 1 and 2. It leaves nit 3 unappli
 - Any other top-level `ARCHITECTURE/` document found missing under criterion 1.
 
 ## Result
+
+- **Outcome**: DONE. Landed on main as `34ec1e8` (document mode, fast-forward push, branch deleted locally and remotely; trailers `Reviewed-by`, `Task`, `Co-Authored-By` in one last paragraph).
+- **Edits**: `README.md` `ARCHITECTURE/` row gains `[StepValues.md](ARCHITECTURE/StepValues.md)(기록 단계의 step 값 목록)` after `EventKinds.md`, before `reviews/`. ADR-0101 decision 2: "every other failure kind under the accepted records". ADR-0101 Consequences "Not edited and now less exact": added ADR-0016 decision 3 ("as long as no tool's contract uses the name" — under decision 3 here, a name a contract uses now covers the name of a stored kind that is no longer raised). References already listed ADR-0016 decision 3; unchanged. ADR-0016 not edited.
+- **`ls ARCHITECTURE/`**: all six top-level documents (Requirements, UsageCases, StandardScenarios, OpenDecisionProposals, EventKinds, StepValues) are now in the README row; none missing.
+- **Nit 3 unapplied**: `StepValues.md` and `EventKinds.md` not edited; giving only one index a link column would break their shared form, and changing both is a separate question.
+- **No decision changes**; Requirements, OpenDecisionProposals and StandardScenarios not edited; coverage re-check does not apply (neither README nor an ADR is Requirements/UsageCases/StandardScenarios).
+- **Review**: 2 rounds, Approve. Round 1 Approve with one nit (clarity of the ADR-0016 entry), applied; round 2 Approve with no findings. No unapplied findings.
+- **#5 comment**: none (not required; the nit-2 entry is a wording touch-up, not material to the objection window).
+- **Follow-ups**: (doc, optional, not planned) a link column for `not written` / `not used` rows in both `EventKinds.md` and `StepValues.md`, together or neither.
+- No `claude` process was started; no code, test, compiler or container was run.
