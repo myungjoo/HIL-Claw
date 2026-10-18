@@ -2,7 +2,7 @@
 id: T-0310
 title: Record ADR-0107, the relation between the verification build and the timing build of one attempt (same settings or not, one executable or two) for the runs the existing contracts cover (OD-16 sub-question 6, with the sameness part of OD-18 sub-question 19 (ra))
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-10, OD-16, OD-18]
 dependsOn: [T-0308]
@@ -118,3 +118,10 @@ OD-16 is a design-level OD. It is not owner-only: DRIVER §9 reserves #5 A/B ite
 - If the record makes a code slice possible (e.g. one settings source shared by the `cpu_standin` check and run operations), a later code task.
 
 ## Result
+
+- DONE. ADR-0107 landed on main as 0ce8166 (document mode, `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0310`); branch deleted locally and on the remote.
+- Decision: two executables kept (ADR-0017 d2 / ADR-0009 not reopened); kernel sources built with one compiler, flags, trailing flags and environment, independent of tool, point and `execution`; a backend requirement nothing detects; no file or member added; remaining threat stays in the rest of OD-16, no new sub-question.
+- Edited: Requirements OD-16 row (확정분 link, ⑥ residual narrowed) and OD-18 row (link, ⑲ residual); OpenDecisionProposals (OD-16 채택분 line, status tails of ⑥ and ⑲); StandardScenarios (최근 재검사 line; S7 note narrowed; no verdict change, no gap).
+- Checks: relative links resolve; `git diff --stat origin/main` showed only the four touchesFiles; `git diff --check` clean; OD register rows 30 before and after; ADR-0107 free on origin/main and all remote branches.
+- Owner notice (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6251904712 (objection window 7 days).
+- Follow-ups: none now (no code slice follows; the rule binds the future `cpu_standin` operations of both tools to one settings source). Two round-7 nits left as is (S7 note wording; "decision 10 (Limits)" label) since fixing them would need an eighth review round.
