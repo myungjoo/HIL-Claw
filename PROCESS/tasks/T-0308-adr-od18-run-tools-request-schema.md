@@ -2,7 +2,7 @@
 id: T-0308
 title: Record ADR-0106, the member list of a request of sim.run and board.run, what their tool function does with a member no record names, and their input schemas and descriptions (OD-18)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0211]
@@ -90,3 +90,11 @@ OD-18 is a design-level OD, not owner-only (DRIVER §9: owner-only means #5 A/B 
 ## Follow-ups
 
 ## Result
+
+- **Outcome: DONE.** ADR-0106 landed on `main` as `28cd947` (document mode, one squashed commit with `Reviewed-by: reviewer agent (4 rounds, Approve)` and `Task: T-0308`); branch `claude/T-0308-adr-od18-run-tools-request-schema` deleted locally and on origin.
+- **Review**: 4 rounds with a fresh-context `dev-reviewer`, all Approve. Round 1 remarks (ADR-0070 Boundaries missing from the less-exact list; the list of answers after ① not marked as non-exhaustive), round 2 (⑳ pointer to decision 5; "as it is" attributed to ADR-0065 decision 3; ADR-0066 decision 3 (b) in Limits; the StandardScenarios re-check set S2/S5/S6 added) and round 3 (ADR-0066 decision 5 and ADR-0061 Limit 5 added to the less-exact list; "the cut" attributed to ADR-0021) were addressed. Round 4 had two informational remarks that needed no change.
+- **What ADR-0106 decides**: the member list of a request of either run tool is closed at the five members of ADR-0062 decision 4; any other member (`point` included) is refused as `invalid_request` in ①, with a message that shows nothing of the value; both tool definitions state the ADR-0069 schema without `point` (seven ADR-0077 keywords, ADR-0039 reduction rule); and the descriptions' minimum content. No sub-question answered or registered; no data-plane member changed; no earlier record edited.
+- **Document checks**: every relative link in the new and edited text resolves; `git diff --stat origin/main` before landing showed only the four `touchesFiles`; `git diff --check` clean; the OD register has 30 rows before and after. ADR-0106 was free on origin/main and every remote branch before the push. Name check: no new kind, member, `step` value or reserved kind.
+- **Coverage re-check**: S0, S1, S1-b, S2, S5, S6, S8, S9 and S10: no verdict change and no gap; only the "최근 재검사" line was updated.
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6250683790 (objection window until 2026-10-25).
+- **Follow-ups**: the code slice ADR-0106 Consequences names, in code mode: the refusal of a member no record names and the two input schemas and descriptions, with tests for each row of the Walk-through. The less-exact sentences of earlier records are listed in ADR-0106 Consequences for the integrator.
