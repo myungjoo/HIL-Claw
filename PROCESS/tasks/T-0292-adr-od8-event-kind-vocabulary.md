@@ -2,7 +2,7 @@
 id: T-0292
 title: Write ADR-0098 on the vocabulary of `kind` in `events.ndjson` — what list of event kinds exists, where it is kept and how a name enters it (the remaining part of OD-8 sub-question ⑧); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, FR-13, NFR-7, OD-11, OD-17]
 dependsOn: [T-0291]
@@ -58,3 +58,10 @@ ADR-0097's rule now depends on being able to tell which names have been used, so
 - Record any sub-question the record registers in `## Result`.
 
 ## Result
+
+- DONE. Landed on main as 9750cc8 (document mode, one squashed commit; `Reviewed-by: reviewer agent (2 rounds, Approve)`, `Task: T-0292`). Files: ADR-0098, new `ARCHITECTURE/EventKinds.md` (exactly `step_started` and `step_ended`, both `defined`, ADR-0011 decision 3; within the 5-file cap), Requirements OD-8 row, OpenDecisionProposals OD-8 (adopted line, ⑧ status now 답함), StandardScenarios "최근 재검사" (no verdict change, no gap).
+- Answer: the vocabulary of `kind` is the set of kinds whose defining record is accepted; one index `ARCHITECTURE/EventKinds.md` lists every taken name with its defining record and state (`defined` / `not written` / `reverted`), rows never removed; a defining record adds its row in its landing commit; nothing checks a line's `kind` against the list (ADR-0006 decision 3 kept). No code changes. With ADR-0097, ⑧ is answered.
+- Left open: ⑨, ㉟, every kind not yet named (OD-17, OD-23, OD-10), OD-11 (including what a reader does with lines of a reverted kind), ⑥. No sub-question registered.
+- Review: round 1 Request changes (blocking: reverted-kind reading was both decided and left to OD-11 — now OD-11 only; nits applied). Round 2 Approve. Unapplied: round-2 nit (ADR-0034's rejected-alternative `"kind": "person"` not listed among other `kind` vocabularies; not a vocabulary, list not claimed complete).
+- #5 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6245667137
+- Follow-ups: (doc) add `ARCHITECTURE/EventKinds.md` to the ARCHITECTURE document table of `README.md` (line 46) — reviewer round 1 finding 2, out of the 5-file cap. No code follow-up.
