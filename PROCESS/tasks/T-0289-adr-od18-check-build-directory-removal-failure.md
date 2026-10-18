@@ -2,7 +2,7 @@
 id: T-0289
 title: Write ADR-0096 on what the `cpu_standin` operation of `correctness.check` does when removing its build directory fails (first part of OD-18 sub-question 17 part (da))
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-10, NFR-2, NFR-4, OD-18, OD-14, OD-16]
 dependsOn: [T-0285]
@@ -123,3 +123,10 @@ One owner decision bears on it and must be read. On 2026-10-15 the owner decided
 - Record any new open point the record registers in `## Result`.
 
 ## Result
+
+- **Landed**: commit b53d3b9 on `main` (document mode, no PR), trailers `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0289`. Branch deleted. Files: `ARCHITECTURE/decisions/ADR-0096-od18-check-build-directory-removal-failure.md` (new), `ARCHITECTURE/Requirements.md` (OD-18 row), `ARCHITECTURE/OpenDecisionProposals.md`, `ARCHITECTURE/StandardScenarios.md` ("최근 재검사" line).
+- **Answer**: one point of OD-18 sub-question 17 part (da), for the host build directory of ADR-0056 decision 4: when the removal fails, in whole or in part, the call keeps the answer the build and the run established; no `Exception` of the removal leaves the operation; a request to end during the removal still passes; leftovers stay where they are. Code rules: a fresh directory per call, retries bounded by a constant of the code, no symbolic link followed. Rejected: a new backend kind, raising the removal error as well, leaving the point open.
+- **Left open**: the record of source bytes and settings (OD-6 ②, OD-14 ① (나)); keeping the executable (C-3, OD-10, OD-16); what clears a leftover (OD-8 ㉝ (나), OD-10, OD-17); whether anything records the finding (new, added to 17 (da)). The container case stays with OD-14 ① and ⑱ (da).
+- **Review rounds**: 7, ending with Approve. Not addressed (an 8th round would exceed the A-13 limit): R7 Low — decision 2's heading "The next call is not touched" says more than its stated costs (suggested: "The next call never uses a leftover"); R7 Nits — the objection windows of ADR-0047 and ADR-0079 are not in Status; ADR-0004 and ADR-0078 are missing from References.
+- **#5 notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6244972784 — the 7-day objection window starts there.
+- **Follow-ups**: a small document-mode touch-up for the R7 items above; the code task for the `cpu_standin` operation of `correctness.check` applies ADR-0096 decisions 2 and 3 (still waits for T-0243 / HQ-0026). No new HQ. No `claude` was started (D16).
