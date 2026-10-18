@@ -2,7 +2,7 @@
 id: T-0294
 title: Write ADR-0099 on the time form of moments in data-plane files other than `events.ndjson` (`gc_at` of `artifacts.json`, `STATE.json`, `instance.json`) — OD-8 sub-question ⑨; no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, FR-13, NFR-2, C-3, "#5 D6"]
 dependsOn: [T-0292]
@@ -61,3 +61,12 @@ ADR-0006 decision 3 fixed the form `YYYY-MM-DDThh:mm:ssZ` "for this file only". 
 - Record any sub-question the record registers in `## Result`.
 
 ## Result
+
+- **Outcome**: DONE. Landed as `e85e4f2` on `main` (document mode, one squashed commit with `Reviewed-by: reviewer agent (6 rounds, Approve)` and `Task: T-0294`); branch `claude/T-0294-adr-od8-moment-form-of-other-files` deleted locally and on origin. Landed check before start: no `Task: T-0294` commit and no PR existed.
+- **Answer (ADR-0099)**: every member of a data-plane file that records a moment takes the form of ADR-0006 decision 3 (`YYYY-MM-DDThh:mm:ssZ`, UTC) — one form for the data plane. `gc_at` takes it, within ADR-0005's *string*, with no `schema_version` raise (ADR-0005 decision 9); the GC's behaviour stays with the GC design. `STATE.json` and `instance.json` hold no moment member and get none. The `run_id` time part (a name) and amounts (durations, budgets) are not covered. Alternatives (a)-(f) weighed; (a) adopted.
+- **Left open**: the GC itself, retention, OD-25; any new moment member (e.g. an instance start time, ㉚); clocks and their correctness; OD-8 ⑥, ⑦, ㉟. No sub-question registered.
+- **Edits**: new `ARCHITECTURE/decisions/ADR-0099-od8-moment-form-of-other-files.md`; OpenDecisionProposals OD-8 adopted line + ⑨ status and bullet head word rewritten (`답함`); Requirements OD-8 row `**확정분**:` link; StandardScenarios "최근 재검사" line (S0·S1·S2·S3·S5·S6·S8·S9·S10·S11, no verdict change, no gap). Places not edited and now less exact (ADR-0005/0006/0012/0018/0023/0027/0028/0031/0032/0033/0097/0098, the `gc_at` Boundaries of ADR-0004/0014/0039/0095/0096, the OD-8 ⑥·⑦ parenthesis and "시각 멤버: ⑨" entries, the `artifacts.validate` docstring) are listed in the ADR's Consequences.
+- **Review**: 6 rounds (dev-reviewer, opus, context-isolated). Rounds 1-5 Approve with minor/nit findings, all applied; round 6 Approve with no findings. No unapplied findings.
+- **#5 notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6246248481
+- **Follow-up (code)**: narrow the `gc_at` check in `hilclaw/artifacts.py` `validate` (and its docstring) to the ADR-0006 form, with tests; edit only the `tests/test_artifacts.py` cases ADR-0099 Consequences names (`EXAMPLE` and its two users, the `gc_at` cases of `test_validate_accepts`, the three `SYNTHETIC-TIME` tests, and `BAD_GC_AT` gaining non-form strings including ADR-0005's placeholder).
+- No `claude` process started; no code, test, compiler or container run. This Result edit is left uncommitted for the driver.
