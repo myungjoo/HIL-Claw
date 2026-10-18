@@ -2,7 +2,7 @@
 id: T-0321
 title: Make ADR-0113's remaining sentences that state a best's comparison role as a fact conditional on the choice rule (follow-up of T-0320)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [NFR-3, OD-13, OD-1]
 dependsOn: [T-0320]
@@ -64,3 +64,12 @@ The executor checks it under the same rule. The record's decisions do not change
 - None expected. If the reviewer finds a further slip in ADR-0113 outside these sentences, list it here and do not widen the task.
 
 ## Result
+- **Landed**: 1dfed57 on main (document mode), `Reviewed-by: reviewer agent (2 rounds, Approve)`, `Task: T-0321`; `git interpret-trailers --parse` lists both. `git diff --stat origin/main` showed only ADR-0113 (4+/4-); `git diff --check` clean; LF kept.
+- **Line 37 (AC1)**: decision 2, first "Why" bullet now reads "So where a candidate is compared against an incumbent best (whether it is belongs to the choice rule, decision 3), a noisy candidate seldom displaces the incumbent, …"; the point of the bullet, the NFR-3 citation and the reading are unchanged.
+- **Line 42 (AC4)**: the parenthetical is shortened to "(whether it is belongs to the choice rule, decision 3)". Every conditional this task adds uses the same wording.
+- **Line 60 (AC2)**: Limits 1 now reads "Where a candidate is compared against a noisy best (…), the two are seldom called different, so a run can keep a noisy best …". The persistence of a noisy best, O1's acceptance of it and the open ① are kept.
+- **Line 61 (AC3)**: split: "a noisy measurement can be called different by chance" stays a fact, and "Where a candidate is compared against the best (…), such a verdict can make that measurement a best" is conditional.
+- **Search (AC5)**: left as they are: line 49 (applies only if ① is adopted), lines 9, 93, 102 (ADR-0071's `against`), lines 68, 73 (other senses of "against"), line 30 (a definition), line 54 (inherits decision 2's conditional). Baseline clauses unchanged.
+- **No decision changes (AC6/AC7)**: no other file was edited, no coverage re-check was owed, no #5 notice was needed, and nothing was run (D16).
+- **Review**: round 1 Approve with two wording nits on Limits 1 and 2, both applied; round 2 Approve. One optional nit not applied: the Limits 1 heading "A not-converged best is sticky." stays unconditional, because its body states the condition.
+- **Follow-ups**: none.
