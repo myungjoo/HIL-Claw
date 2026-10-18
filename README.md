@@ -43,7 +43,7 @@
 | 경로 | 내용 |
 |---|---|
 | [CLAUDE.md](CLAUDE.md) | 모든 Claude Code 세션이 따르는 개발 규칙(정본) |
-| [ARCHITECTURE/](ARCHITECTURE/) | 설계 문서: [Requirements.md](ARCHITECTURE/Requirements.md)(요구사항·Open Decisions), [UsageCases.md](ARCHITECTURE/UsageCases.md)(유스케이스), [StandardScenarios.md](ARCHITECTURE/StandardScenarios.md)(표준 시나리오·커버리지 검사), [OpenDecisionProposals.md](ARCHITECTURE/OpenDecisionProposals.md)(OD 제안 본문), [reviews/](ARCHITECTURE/reviews/)(검토 기록) |
+| [ARCHITECTURE/](ARCHITECTURE/) | 설계 문서: [Requirements.md](ARCHITECTURE/Requirements.md)(요구사항·Open Decisions), [UsageCases.md](ARCHITECTURE/UsageCases.md)(유스케이스), [StandardScenarios.md](ARCHITECTURE/StandardScenarios.md)(표준 시나리오·커버리지 검사), [OpenDecisionProposals.md](ARCHITECTURE/OpenDecisionProposals.md)(OD 제안 본문), [EventKinds.md](ARCHITECTURE/EventKinds.md)(events.ndjson 이벤트 종류 목록), [reviews/](ARCHITECTURE/reviews/)(검토 기록) |
 | [ARCHITECTURE/decisions/](ARCHITECTURE/decisions/) | 결정 기록(ADR). 설계 수준 Open Decision은 [PROCESS/DRIVER.md §9](PROCESS/DRIVER.md#9-od-종결-권한-d6-확정-2026-10-05)의 경로로 여기에서 종결된다 |
 | [PROCESS/](PROCESS/) | 개발 드라이버: [DRIVER.md](PROCESS/DRIVER.md)(절차), [PLAN.md](PROCESS/PLAN.md)(phase별 체크리스트), [STATE.json](PROCESS/STATE.json)(드라이버 상태)과 [STATE.schema.json](PROCESS/STATE.schema.json)(그 스키마), [tasks/](PROCESS/tasks/)(task 파일), [journal/](PROCESS/journal/)(iteration 기록), [proposals/](PROCESS/proposals/)(결정 요청의 제안 본문) |
 | [.claude/skills/](.claude/skills/) | 개발 절차 스킬 `dev-item-address`·`dev-code-review` |
