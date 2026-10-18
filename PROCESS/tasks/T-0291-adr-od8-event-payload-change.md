@@ -2,7 +2,7 @@
 id: T-0291
 title: Write ADR-0097 on how a change in the `data` of an event kind of `events.ndjson` is told apart, given that `schema_version` covers the envelope only (the payload-change part of OD-8 sub-question ⑧); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, FR-13, NFR-7, OD-11, OD-17]
 dependsOn: []
@@ -57,3 +57,11 @@ This task writes one design record (DRIVER §9) that answers the payload-change 
 - Record any sub-question the record registers in `## Result`.
 
 ## Result
+
+- **Landed**: commit 2c9e8c9 on `main` (document mode, no PR), trailers `Reviewed-by: reviewer agent (5 rounds, Approve)` and `Task: T-0291`. Branch deleted (remote and local). Files: `ARCHITECTURE/decisions/ADR-0097-od8-event-payload-change.md` (new), `ARCHITECTURE/Requirements.md` (OD-8 row: one link after `**확정분**:`, `**잔여**:` rewritten in place, status date range to 2026-10-18, status word `확정` kept), `ARCHITECTURE/OpenDecisionProposals.md` (OD-8: adopted line, ⑧ tail and bullet head rewritten in place, new sub-question ㉟, range ①~㉟), `ARCHITECTURE/StandardScenarios.md` ("최근 재검사" line).
+- **Answer**: the definition of a kind (envelope numbers and `data` members with type, form and meaning) is fixed once its record is accepted and never changes; a changed payload is a new kind under a name never used (also not the name of a reverted record's kind); a line is told apart by `kind` alone. Every change of a definition counts, with no distinction between kinds of change (today's journal rejects even an added member; a change of meaning is undetectable; compatibility is OD-11's). A change in the members of a `step_ended` `result`, or in an axis of `spend`, is not a change of `step_ended`'s data. Rejected: marker in `data`, raising `schema_version`, distinguishing compatible changes, leaving it open.
+- **Left open**: vocabulary of `kind` (first part of ⑧); ⑨; new OD-8 sub-question ㉟ — (가) how a change of a tool's `result` members is told apart and what the repeated call finds across it (OD-18, OD-11), (나) how a change in the unit or meaning of a `spend` axis is told apart (FR-3, OD-19, #5 A-8); OD-11 (two definitions in one file, read guarantees, migration).
+- **Confirmations**: `schema_version` stays 1, envelope and the exact members of `step_started`/`step_ended` unchanged, no new kind named — no data-plane schema change. Observations read from `hilclaw/events.py` and `hilclaw/journal.py` at `0b59b16` as files; no code changes follow. No `claude` process started (D16); no code, test, compiler or container run. Coverage re-check: S0·S1·S1-b·S2·S3·S5·S6·S8·S9·S10·S11, no verdict change, no gap.
+- **Review rounds**: 5, ending with Approve. Unapplied: R5 nit — the OD-8 "제안으로 남는 부분" bullet still tags event kinds and payloads with ⑧ only (not ㉟); left as is since the 기록 규칙 does not require editing the open proposal text and the reviewer called it optional.
+- **#5 notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6245404801 — the 7-day objection window starts there.
+- **Follow-ups**: none in code (criterion 4: no code task). Sub-question ㉟ registered under OD-8. No new HQ.
