@@ -2,7 +2,7 @@
 id: T-0293
 title: Add `ARCHITECTURE/EventKinds.md` to the ARCHITECTURE row of the repository table in `README.md` (follow-up of T-0292)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8]
 dependsOn: [T-0292]
@@ -47,3 +47,10 @@ T-0292 landed ADR-0098 (main 9750cc8), which created a new top-level design docu
 - Any other unlisted `ARCHITECTURE/` document found under criterion 3.
 
 ## Result
+
+- DONE. Landed on main as b5a9111 (document mode, one squashed commit, fast-forward; `Reviewed-by: reviewer agent (1 rounds, Approve)`, `Task: T-0293`). Only `README.md` line 46 changed: `[EventKinds.md](ARCHITECTURE/EventKinds.md)(events.ndjson 이벤트 종류 목록)` added between `OpenDecisionProposals.md` and `reviews/`.
+- Criterion 3: `ls ARCHITECTURE/` shows EventKinds, OpenDecisionProposals, Requirements, StandardScenarios, UsageCases (+ `decisions/`, `reviews/`); all are now listed. No other missing document.
+- Coverage re-check not applicable (README.md is not Requirements/UsageCases/StandardScenarios); `ARCHITECTURE/StandardScenarios.md` untouched.
+- Review: round 1 Approve. Unapplied: none (the one nit, adding the `Reviewed-by` trailer at squash time, was applied).
+- No #5 notice (no OD decided). Task branch deleted (remote and local).
+- Follow-ups: none.
