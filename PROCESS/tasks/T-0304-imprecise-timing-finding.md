@@ -75,3 +75,10 @@ ADR-0103 decides when a measurement of `sim.run`/`board.run` counts as taken in 
 - (later) Use of these functions where the warning is shown, once ⑪ (라) / OD-27 is answered.
 
 ## Result
+
+- PR #183 (squash-merged; merge commit: see `git log origin/main --grep='^Task: T-0304'`). Reviewer rounds: 2 (round 1 Approve with nits, all addressed; round 2 Approve).
+- Added `hilclaw/harness/timing_finding.py` (`RESOLUTION_SHARE_MAX = Fraction(1, 100)`, `measurement_found`, `line_finding`, `run_found_at`) and `tests/harness/test_timing_finding.py` (100 tests; module coverage 100 %). Full `pytest`, `ruff check` and `ruff format --check` pass locally.
+- Language: Python, the language of `hilclaw/harness/measurement.py` and of the parsed lines that `hilclaw.events.read` returns.
+- Executor choices stated in the module docstring: `run_found_at` reads and checks every line, also after the first finding (as `journal.fold`); `resolution_ns` and `intervals_ns` are checked for `not_converged` as well; refusal messages show nothing of the value; the three `outcome` values are spelled locally because `tests/test_run_result.py` forbids any other package module to import `hilclaw.run_result`.
+- Runtime-acceptance items: none.
+- Follow-ups: none new.
