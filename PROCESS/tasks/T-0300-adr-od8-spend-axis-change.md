@@ -2,7 +2,7 @@
 id: T-0300
 title: Write ADR-0102 on how a change in the unit or meaning of a `spend` axis is told apart across the lines of one run — OD-8 sub-question ㉟ (나); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-8, OD-17, FR-3, FR-13, NFR-1, NFR-2, "#5 D6"]
 dependsOn: [T-0296, T-0298]
@@ -67,4 +67,13 @@ The `spend` of a `step_ended` line is an object from an axis *name* to a non-neg
 
 ## Result
 
-- (filled by the executor: commit hash, review rounds, follow-ups left)
+- DONE. Landed on main as 7b0a22d. Document mode, one squashed commit with the trailers `Reviewed-by: reviewer agent (6 rounds, Approve)`, `Task: T-0300` and the attribution line. The branch `claude/T-0300-adr-od8-spend-axis-change` was deleted locally and on the remote.
+- Files touched (as planned): ARCHITECTURE/decisions/ADR-0102-od8-spend-axis-change.md (new), ARCHITECTURE/Requirements.md (OD-8 row only), ARCHITECTURE/OpenDecisionProposals.md (OD-8 section only), ARCHITECTURE/StandardScenarios.md (the "최근 재검사" line only).
+- Decision: a change in the unit or meaning of a spend axis is a new axis under a name never used before; an axis name's definition never changes and a name is never reused, even after its record is reverted; an amount is told apart by its axis name alone; the fold and `budget_spent` keep the totals apart by name. Comparing a budget across such a change stays with OD-19.
+- Axis names will be listed in one index, `ARCHITECTURE/SpendAxes.md` (same states as StepValues.md); no file was created.
+- Names no axis, unit, measuring party or token scope; decides nothing of FR-3, #5 A-8, OD-2, OD-19 or ADR-0011 decision 7. Criterion 3 did not trigger.
+- Sub-question ㉟ is now 답함; no new sub-question; OD-8 status word unchanged; no StandardScenarios judgement changed.
+- #5 notice (7-day objection window): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6247929173
+- Follow-up (doc): create `ARCHITECTURE/SpendAxes.md` with no rows and link it from the README document table (ADR-0102 decision 6).
+- Not edited and now less exact: ADR-0097 decision 4 and its Boundaries, the Boundaries of ADR-0100 and ADR-0101 (㉟ (나)), ADR-0011 decision 7.
+- No `claude` process was started; nothing was run.
