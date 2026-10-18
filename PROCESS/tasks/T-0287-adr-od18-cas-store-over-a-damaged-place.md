@@ -2,7 +2,7 @@
 id: T-0287
 title: Write ADR-0095 on what the store step of `hilclaw.cas` does when the place of a hash already holds a file whose content is not its name, or something that is no regular file (first part of OD-18 sub-question 13); no code
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, C-3, NFR-2, OD-18, "#5 A-2", "#5 D6"]
 dependsOn: []
@@ -112,3 +112,25 @@ The executor may find that (a) conflicts with a cited sentence. For example, C-3
 - (code, if the record changes behaviour) Apply ADR-0095 in `hilclaw/cas.py` with tests in `tests/test_cas.py`, editing only the existing tests the record names.
 
 ## Result
+- 2026-10-18 — DONE (document mode). Landed on `main` as `d174de3` ("ADR-0095: CAS store step over a damaged or occupied place (OD-18 sub-question 13, first part)"), with the trailers `Reviewed-by: reviewer agent (5 rounds, Approve)` and `Task: T-0287`. Rebased on `origin/main` `7a1611c` with no conflict. The remote and local branch `claude/T-0287-adr-od18-cas-store-over-a-damaged-place` were deleted afterwards.
+- Files: the new `ARCHITECTURE/decisions/ADR-0095-od18-cas-store-over-a-damaged-place.md` (105 lines). `Requirements.md` OD-18 row: one link after `**확정분**:`, and `⑪~⑭` → `⑪, ⑫, ⑬(저장 단계 밖), ⑭` in `**잔여**:`; the status word is unchanged. `OpenDecisionProposals.md`: a `채택분` line after ADR-0094, and the ⑬ bullet changed from `미결` to `일부 답함` with `→ 부분 답:` / `남음:`. `StandardScenarios.md`: the "최근 재검사" line was updated in place. S10 and S0, S1-b, S2, S5, S6 (the scenarios citing OD-18) were re-checked: no judgement changed and no gap was found, so there is no history entry.
+- Entry check: the only open PR is #179 (T-0284), which does not overlap. No owner comment on #4, #5, #7 or #8 after ADR-0039 speaks to ⑬, `hilclaw.cas`, retention or GC. ADR-0095 was free on `main` and on every remote branch.
+- Answer for each kind of occupied place. These are not yet code; see the follow-up below.
+  - Nothing at the place: the move, as today.
+  - A regular file at the place itself, intact: kept as it is, mtime included, as today.
+  - A regular file not intact: replaced by the new, verified content in the existing atomic `os.replace`. Nothing but the store's own temporary file is ever unlinked. Option (a) was chosen; (b) and (c), moving the file always without a re-hash, quarantine, and replacing through a link were rejected, with reasons in the ADR.
+  - Anything else at the place: a directory, a symbolic link (except one that leads to an intact regular file, which is kept), a FIFO, a socket, a device node, or a `<hh>` that is no directory. The entry is left untouched and the store step raises `FileExistsError`.
+  - Other look failures, and a failed read during the re-hash, propagate as their `OSError`.
+  - Observed, not tested: today POSIX `rename` would replace a non-directory entry that is no regular file, such as a dangling link or a FIFO.
+- Left open of ⑬: removing a damaged file outside a store of the same content; clearing an occupied place; recording the finding; whether `blob.push` / `blob.fetch` show an occupied place (ADR-0039 is unchanged); all of retention, GC and `gc_at`.
+- Review: 5 rounds by fresh-context `dev-reviewer` agents, each returning Approve.
+  - Round 1 (Low ×3, Nit ×2): the `<hh>`-is-no-directory case was missing; ADR-0039 point-4 links row and Context sentence were missing from the less-exact list; a failed read during the re-hash was not covered; the ADR-0005 decision numbers in Status were wrong; a platform caveat for link tests was missing. All fixed.
+  - Round 2 (Low ×1, Nit ×3): the re-hash cost claim was too strong; how a look under a non-directory `<hh>` is read was unclear; T-0008's follow-up and constraint were not cited; the `put_*` docstrings were missing from the follow-up. All fixed.
+  - Round 3 (Nit ×2): the citation for "a link to a regular file counts as one" was wrong; a direct test for the "Nothing" row was not cited. Both fixed.
+  - Round 4 (Nit ×1): the observation table did not say that it follows links. Fixed.
+  - Round 5 (Nit ×1, optional, "no re-review needed"): move that note from a table cell into the sentence before the table. Not applied.
+- #5 notice (DRIVER §9, with the driver tail): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6244351320. The 7-day window runs to 2026-10-25.
+- Nothing was run: no code, tests, compiler, container or `claude`. This `## Result` is left uncommitted for the driver.
+- Follow-ups:
+  - (code) Apply ADR-0095 in `hilclaw/cas.py`. Change `_store`: replace `if not target.is_file()` with `os.lstat` of the place, a re-hash of a regular file, `FileExistsError` otherwise, and the intact-link exception. Also update the module docstring and the `put_bytes` / `put_file` docstrings.
+  - (tests) Edit `test_a_repeated_put_keeps_the_stored_file`: a non-intact file is now replaced; an intact one keeps its mtime. Optionally narrow `test_a_blob_path_occupied_by_a_directory_is_an_error` to `FileExistsError`. Add tests, where the platform allows, for the link rows, a FIFO and a `<hh>` that is a regular file.
