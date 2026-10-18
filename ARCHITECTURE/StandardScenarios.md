@@ -169,7 +169,7 @@
 
 기록 규약: 재검사마다 아래 "최근 재검사" 줄을 그 자리에서 갱신한다(날짜·계기·결과). 판정이 바뀌었거나 갭이 발견·해소된 재검사만 "판정 변화 이력"에 한 항목(1~3줄)으로 남긴다. 판정 변화가 없는 재검사의 서술과 ADR 요약은 쓰지 않는다 — 근거는 git 이력과 각 ADR이다. 판정표 비고에는 근거 FR과 아직 열린 OD(필요하면 하위 질문 번호)만 쓴다.
 
-**최근 재검사**: 2026-10-18 — [ADR-0101](decisions/ADR-0101-od8-failure-kind-change-and-step-values.md) 채택(OD-8 하위 질문 ㊱; 실패 종류 변경의 구분과 `step` 값 목록 [StepValues](StepValues.md), T-0298) — OD-8·OD-18·OD-11·`events.ndjson`·NFR-2·NFR-7·FR-6을 인용하는 S0·S1·S1-b·S2·S3·S5·S6·S7·S8·S10·S11과 board 실패의 S9(OD-10) 재검사, 판정 변화 없음, 갭 없음.
+**최근 재검사**: 2026-10-18 — [ADR-0102](decisions/ADR-0102-od8-spend-axis-change.md) 채택(OD-8 하위 질문 ㉟ (나); `spend` 축의 단위·뜻 변경의 구분과 축 이름 목록의 자리, T-0300) — FR-3·budget·OD-8·OD-17·OD-19·NFR-5를 인용하는 S0·S1·S2·S3·S5·S6·S8·S10·S11과 S1의 budget을 따르는 S1-b 재검사, 판정 변화 없음, 갭 없음.
 
 ## 판정 변화 이력
 
