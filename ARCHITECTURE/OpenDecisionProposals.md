@@ -295,6 +295,7 @@
 - **채택분** [ADR-0065](decisions/ADR-0065-od18-run-tools-operation-form.md) — `sim.run`·`board.run`의 도구 함수와 동작 사이의 형식과 두 형식 어느 것도 아닌 답 — 그 계약의 다섯째 기록
 - **채택분** [ADR-0066](decisions/ADR-0066-od18-run-tools-mock-script.md) — `sim.run`·`board.run`의 mock 쪽 — 그 계약의 여섯째 기록
 - **채택분** [ADR-0067](decisions/ADR-0067-od18-run-tools-admission-kinds.md) — `sim.run`·`board.run`의 ④에서 op_signature·`n_max`에 관한 답과 ④의 답 전부의 순서 — 그 계약의 일곱째 기록 (답함: 하위 질문 ⑲ (가))
+- **채택분** [ADR-0106](decisions/ADR-0106-od18-run-tools-request-schema.md) — `sim.run`·`board.run` 요청의 멤버 목록·어느 기록도 이름하지 않은 멤버의 처리·입력 스키마와 설명 — 그 계약의 여덟째 기록
 - **채택분** [ADR-0069](decisions/ADR-0069-od18-correctness-check-request-schema.md) — `correctness.check` 요청의 멤버 목록·어느 기록도 이름하지 않은 멤버의 처리·입력 스키마와 설명
 - **채택분** [ADR-0070](decisions/ADR-0070-od18-correctness-check-registration.md) — `correctness.check`의 기본 등록표 등록 — 기본 백엔드 표·시드 출처·술어 "covered"의 결합
 - **채택분** [ADR-0077](decisions/ADR-0077-od18-schema-function-agreement-check.md) — 도구가 밝힌 입력 스키마와 도구 함수의 검사가 일치하는지를 무엇이 확인하는지 (부분 답: 하위 질문 ⑤의 앞 절반)
