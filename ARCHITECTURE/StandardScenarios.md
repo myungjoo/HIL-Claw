@@ -169,7 +169,7 @@
 
 기록 규약: 재검사마다 아래 "최근 재검사" 줄을 그 자리에서 갱신한다(날짜·계기·결과). 판정이 바뀌었거나 갭이 발견·해소된 재검사만 "판정 변화 이력"에 한 항목(1~3줄)으로 남긴다. 판정 변화가 없는 재검사의 서술과 ADR 요약은 쓰지 않는다 — 근거는 git 이력과 각 ADR이다. 판정표 비고에는 근거 FR과 아직 열린 OD(필요하면 하위 질문 번호)만 쓴다.
 
-**최근 재검사**: 2026-10-18 — [ADR-0098](decisions/ADR-0098-od8-event-kind-vocabulary.md)(OD-8 하위 질문 ⑧의 어휘 부분, 이벤트 종류 목록 [EventKinds](EventKinds.md) 신설, T-0292) — OD-8·`events.ndjson`·NFR-7·FR-13을 인용하는 S0·S1·S1-b·S2·S3·S5·S6·S8·S9·S10·S11 재검사, 판정 변화 없음, 갭 없음.
+**최근 재검사**: 2026-10-18 — [ADR-0099](decisions/ADR-0099-od8-moment-form-of-other-files.md)(OD-8 하위 질문 ⑨, 데이터 plane 파일의 시각 표기, T-0294) — OD-8·`artifacts.json`·`events.ndjson`·C-3·NFR-2·FR-13을 인용하는 S0·S1·S2·S3·S5·S6·S8·S9·S10·S11 재검사, 판정 변화 없음, 갭 없음.
 
 ## 판정 변화 이력
 
