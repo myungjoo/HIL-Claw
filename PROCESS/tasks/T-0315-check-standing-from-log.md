@@ -2,7 +2,7 @@
 id: T-0315
 title: Add a pure function that reads an attempt's standing at one execution point from the step lines of correctness.check (code slice of ADR-0110)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-1, FR-10, OD-18]
 dependsOn: [T-0314]
@@ -86,3 +86,10 @@ This task writes that function as a new module, in the way T-0309 landed the cod
 - Doc task: apply T-0314's two round-7 citation nits to ADR-0110 (Status builds-on list; the decision 3 bullet on `end_line_failed`).
 
 ## Result
+
+- Outcome: DONE. PR #185 (https://github.com/myungjoo/HIL-Claw/pull/185), squash-merged as 5b2393eac0cd061d6e9cf2f96ef1e0af718f4153; branch claude/T-0315-check-standing-from-log deleted. The squash commit message ends with `Task: T-0315`.
+- Change: new module hilclaw/check_standing.py (code slice of ADR-0110 decisions 2, 3 and 5). It exposes `Standing` (NOT_VERIFIED, VERIFIED, UNDETERMINED), `UNSTARTED_KINDS` (the seven class (i) kinds, built from hilclaw.check_failure constants) and `standing(lines, step, round, candidate, attempt)`. Every line is checked (events.validate, plus journal.identity_of for step lines), and the first error gets `line <n>:` in front. The result is computed from the set of matching lines, so line order does not matter. A fail or broken result gives not verified. Otherwise a pass with no open identity and no class (ii) failure gives verified, and everything else is undetermined. A matching result whose `outcome` is missing, not a str or unknown is refused with JournalError (module's own choice). journal.step_state is not used. New tests/test_check_standing.py: 98 tests. Nothing calls the function yet. No new dependency, no data-plane change, no other file touched.
+- Language: Python, the language of the rest of hilclaw/.
+- Review: 2 rounds, both Approve (dev-reviewer, context-isolated). Round 1 nits 2 and 3 were addressed in e87ceea: the too-long-value wording now matches journal, and the docstring says only the point's lines "count". Nit 1 (step-line envelope validated twice) was left as is; both reviewers said no action was needed.
+- Tests: local pytest 23333 passed, 495 skipped; ruff check and ruff format --check clean. Coverage of hilclaw/ is 99%, and check_standing.py is 100%. CI on e87ceea: all green (Python gate 3.11/3.14, Coverage gate, Test presence, sh gate, C gate).
+- Follow-ups: none new. The doc task already listed in the task's Follow-ups (T-0314's two citation nits on ADR-0110) still stands.
