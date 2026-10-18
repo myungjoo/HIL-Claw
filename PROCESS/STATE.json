@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0303",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:492e8d3a-1",
+    "acquiredAt": "2026-10-18T10:21:31Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -271,7 +275,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0103 (how a measurement or a run is found to be taken in an imprecise timing environment, OD-13 sub-question 11 (ga); T-0302, main 274fed8) has two grounds, either one sufficient: a measured ground (`not_converged`, or clock resolution above `resolution_share_max` = 1 % of the shortest interval) and a class ground (the timing run executed as a VM guest). Its Limit 2 rests on facts that only a run on a machine of C-7 can confirm; under D16 they are runtime acceptance items, closed by your check by hand or by the runtime's own self-check, not by a driver task: (1) whether and how a process in the Docker Desktop VM on macOS or Windows, or under WSL 2, can tell that it is a VM guest; (2) what CV and resolution timing runs show there and in a container on native Linux; (3) that WSL 2 runs its kernel in a VM; (4) that VM distortion shows mainly as additive overhead or drift, not in the CV of one measurement. Nothing was tried; no task is blocked on this notice.",
       "askedAt": "2026-10-18T09:46:05Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6248397499"
     }
   ],
   "counters": {
