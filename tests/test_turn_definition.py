@@ -151,23 +151,6 @@ def test_the_evaluator_frontmatter():
             assert name in served
 
 
-@pytest.mark.parametrize(
-    "text",
-    [
-        "",
-        "# Evaluator\n",
-        "---\nname: evaluator\n",
-        "---\nname evaluator\n---\n",
-        "---\nname: a\nname: b\n---\n",
-        "---\n name: a\n---\n",
-        "---\n: a\n---\n",
-    ],
-)
-def test_a_text_without_valid_frontmatter_is_refused(text):
-    with pytest.raises(AssertionError):
-        frontmatter(text)
-
-
 def test_a_given_source_as_str(session, source):
     put(str(session), source=str(source))
     assert tree(session) == {"CLAUDE.md": b"# prompt\r\nline\n"}

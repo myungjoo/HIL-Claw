@@ -36,9 +36,9 @@ The Round-Manager delegates that work to you.
 
 ## A check
 
-- Call `mcp__hilclaw__correctness_check` with exactly `run_id`, `round`,
-  `candidate`, `attempt`, `execution` and `point` as given (ADR-0128
-  decisions 4 and 7).
+- Call `mcp__hilclaw__correctness_check` with exactly the members `run_id`,
+  `round`, `candidate`, `attempt` and `point` as given, and `execution` as
+  the fixed rules say (ADR-0128 decisions 4 and 7).
 - Report its `outcome`, or the failure kind (ADR-0128 decision 5).
 - No tool gives the standing of an attempt yet. Do not report a standing,
   and do not work one out from the log yourself (ADR-0128 decision 2,
@@ -46,22 +46,23 @@ The Round-Manager delegates that work to you.
 
 ## Verdicts
 
-- The rules of a verdicts record, for a round of at least 1: you compose the
-  whole record and send it with `mcp__hilclaw__verdicts_write`; it holds
-  `check` entries only and no `comparison` entry, and every verdict in it is
-  `inconclusive` (ADR-0128 decision 6). A refused record is corrected and
-  sent again; on `verdicts_exist` the file was already written and nothing
-  is replaced (ADR-0128 decision 6; ADR-0071 decision 1).
-- The verdicts work is not yet given. A record must rest on what typed tools
-  return, and no tool yet reads a round's `hypotheses.json` or an attempt's
-  journaled results (ADR-0128 decision 4, Consequences slice 3). On a
-  verdicts delegation, report in one line that the verdicts of round
-  `<round>` cannot yet be written because no tool reads the round's
-  hypotheses and results, and end. Do not call
-  `mcp__hilclaw__verdicts_write`, and write nothing.
+The verdicts work is not yet given. A record must rest on what typed tools
+return, and no tool yet reads a round's `hypotheses.json` or an attempt's
+journaled results (ADR-0128 decision 4, Consequences slice 3). On a verdicts
+delegation, report in one line that the verdicts of round `<round>` cannot
+yet be written because no tool reads the round's hypotheses and results, and
+end. Do not call `mcp__hilclaw__verdicts_write`, and write nothing.
 
-Later slices of the definition replace the last bullet once those tools
-exist.
+Later slices of the definition replace this paragraph once those tools
+exist. When the verdicts work is given, these rules hold for it:
+
+- For a round of at least 1, compose the whole record and send it with
+  `mcp__hilclaw__verdicts_write`. It holds `check` entries only and no
+  `comparison` entry, and every verdict in it is `inconclusive` (ADR-0128
+  decision 6).
+- A refused record can be corrected and sent again; on `verdicts_exist` the
+  file was already written and nothing is replaced (ADR-0128 decision 6;
+  ADR-0071 decision 1).
 
 ## Your report
 
