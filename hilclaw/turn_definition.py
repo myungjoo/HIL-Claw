@@ -53,10 +53,10 @@ unchanged, what reading, removing or copying raises.
 The roster: ``orchestration/agents/`` holds the evaluator's definition
 (ADR-0128 decision 7), and the rest of the roster stays open (OD-23).
 
-Not done here: no skills, no settings, hooks or permissions (PLAN P2-4; ADR-0118 decision 4,
-"Workspace trust"), no round steps (later P2-1 slices), no ``--add-dir`` or
-other way for the session to reach the run's files (decision 4), no caller
-and no command-line entry.
+Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
+ADR-0118 decision 4, "Workspace trust"), no round steps (later P2-1 slices),
+no ``--add-dir`` or other way for the session to reach the run's files
+(decision 4), no caller and no command-line entry.
 
 Runtime acceptance items it depends on (ADR-0118 Consequences): (i) a
 session started in the session directory loads its ``CLAUDE.md``,
