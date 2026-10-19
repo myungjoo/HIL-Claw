@@ -21,6 +21,7 @@ from hilclaw import (
 )
 from hilclaw.instance_file import write
 from hilclaw.journal import EMPTY
+from hilclaw.layout import InvalidPathValueError
 from hilclaw.run_state import dump
 from hilclaw.run_state_file import replace
 from hilclaw.turn_start import (
@@ -37,11 +38,11 @@ from hilclaw.turn_start import (
     NO_CLAUDE,
     NO_DATA_ROOT,
     OPEN_STATE,
-    PROMPT,
     RUN_OVER,
     UNCHANGED_TURN,
     UNKNOWN_RUN_STATUS,
     main,
+    prompt,
 )
 
 RUN = "run-a"
@@ -56,6 +57,16 @@ PROFILE = {
 }
 STATE = f"runs/{RUN}/STATE.json"
 INSTANCE = f"runs/{RUN}/instance.json"
+LEAD = "Carry out the next turn of your run as your instructions say. Your run id is "
+EDGE_IDS = [
+    "a",
+    "7",
+    "a" * 64,
+    "a-b_c",
+    "run-",
+    "x_-",
+    "20261009t012331z-9f3a6c1e0b7d4a52",
+]
 
 STUB = r"""
 import json, os, sys
@@ -261,6 +272,12 @@ def go(root, parent, stub):
     return go
 
 
+def named(text):
+    head, found, rest = text.partition(LEAD)
+    assert head == "" and found and LEAD not in rest and rest.endswith(".")
+    return rest[:-1]
+
+
 def told_once(found, status, told):
     assert found.status == status
     assert found.told == told
@@ -293,11 +310,11 @@ def test_public_names():
         "NO_CLAUDE",
         "NO_DATA_ROOT",
         "OPEN_STATE",
-        "PROMPT",
         "RUN_OVER",
         "UNCHANGED_TURN",
         "UNKNOWN_RUN_STATUS",
         "main",
+        "prompt",
     ]
     statuses = [
         EXIT_RUN_OVER,
@@ -312,8 +329,7 @@ def test_public_names():
     assert not {1, 2} & set(statuses)
     kinds = {RUN_OVER, UNKNOWN_RUN_STATUS, FAILED_TURN, UNCHANGED_TURN, OPEN_STATE}
     assert len(kinds | {ERROR}) == 6
-    assert turn_loop._PROMPT.fullmatch(PROMPT)
-    assert RUN not in PROMPT
+    assert prompt(RUN) == f"{LEAD}{RUN}."
     assert turn_start.__doc__
     names = tools.default_registry(lambda: None).names()
     assert not [name for name in names if "turn" in name]
@@ -333,8 +349,43 @@ def test_a_fresh_run_goes_from_round_zero_to_over(root, go, stub):
     calls = stub.calls()
     assert len(calls) == 3
     for call in calls:
-        assert call["argv"][:2] == [turn_loop.OPT_PRINT, PROMPT]
+        assert call["argv"][:2] == [turn_loop.OPT_PRINT, prompt(RUN)]
+        assert named(call["argv"][1]) == RUN
+        assert call["argv"][1].count(RUN) == 1
         assert "CLAUDE.md" in call["listing"]
+
+
+def test_every_start_on_a_run_gives_the_same_prompt(root, go, stub):
+    started(root)
+    for _ in range(2):
+        told_once(go((0, [])), EXIT_UNCHANGED_TURN, {"outcome": UNCHANGED_TURN})
+    first, second = stub.calls()
+    assert first["argv"] == second["argv"]
+    assert first["argv"][1] == prompt(RUN)
+
+
+@pytest.mark.parametrize("run_id", EDGE_IDS)
+def test_the_prompt_names_any_valid_run_id(run_id):
+    text = prompt(run_id)
+    turn_loop._check_prompt(text)
+    assert not text.startswith("-")
+    assert named(text) == run_id
+    assert text == f"{LEAD}{run_id}."
+
+
+def test_a_built_run_id_is_in_the_prompt_once():
+    run_id = EDGE_IDS[-1]
+    assert prompt(run_id).count(run_id) == 1
+
+
+@pytest.mark.parametrize("run_id", ["run-", "x_-", EDGE_IDS[-1]])
+def test_a_run_id_with_a_hyphen_reaches_the_stub_unchanged(root, go, stub, run_id):
+    write(root, run_id, instance_bytes())
+    found = go((0, []), args=(run_id,))
+    told_once(found, EXIT_UNCHANGED_TURN, {"outcome": UNCHANGED_TURN})
+    (call,) = stub.calls()
+    assert call["argv"][1] == prompt(run_id)
+    assert named(call["argv"][1]) == run_id
 
 
 def test_over_at_once_starts_no_turn(root, go, stub):
@@ -710,6 +761,14 @@ def test_standard_error_that_cannot_be_written(root, parent, stub, monkeypatch):
     monkeypatch.setattr(sys, "stderr", object())
     assert main([], stdout=io.BytesIO()) == EXIT_ERROR
     assert main([], stdout=io.BytesIO(), stderr=io.StringIO()) == EXIT_ERROR
+
+
+@pytest.mark.parametrize(
+    "run_id", ["", "-a", "Run-a", "a" * 65, "a.b", "a b", "../x", None, 1]
+)
+def test_no_prompt_for_an_invalid_run_id(run_id):
+    with pytest.raises(InvalidPathValueError):
+        prompt(run_id)
 
 
 def test_one_line_on_standard_error(root, go, stub):

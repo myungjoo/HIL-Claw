@@ -9,9 +9,9 @@ tests write, never against a real one (D16).
 **One start** asks :func:`hilclaw.data_root_source.obtain` of the data-root
 source once (by default :func:`hilclaw.data_root_source.configured`, so
 ``hilclaw.config``), then calls :func:`hilclaw.turn_loop.run` once with
-:func:`hilclaw.turn_definition.put` (its default ``SOURCE``), the fixed
-prompt :data:`PROMPT`, that data root and the given ``parent``. It returns when
-the loop returns and tells the starter why.
+:func:`hilclaw.turn_definition.put` (its default ``SOURCE``), the prompt
+:func:`prompt` builds from the run id, that data root and the given
+``parent``. It returns when the loop returns and tells the starter why.
 
 **Step 1** (each call of the loop's ``further_turn``) makes exactly one
 :func:`hilclaw.further_turn.classify` call on the run and answers from that
@@ -76,11 +76,12 @@ the lock of two loops on one run exists (rest of OD-17), no starter may start
 this entry on a run where a loop may still be running, so no schedule may
 start it yet.
 
-**Open**: how a turn session learns which run it carries. No record decides
-it, so the prompt does not name the run and nothing else hands it over.
+**The run of a turn** (ADR-0123): the prompt of every turn names the run by
+its id and nothing else hands over a place of the run. This is no access
+control; no tool, front or loop checks what a session does with it.
 
 Runtime acceptance items it depends on: those of :mod:`hilclaw.turn_loop`,
-and ADR-0118 items (v) and (vi) as ADR-0122 uses them.
+ADR-0118 items (v) and (vi) as ADR-0122 uses them, and ADR-0123 item (ix).
 """
 
 import contextlib
@@ -95,7 +96,7 @@ from hilclaw import (
     turn_loop,
 )
 
-PROMPT = "Carry out the next turn of your run as your instructions say."
+_LEAD = "Carry out the next turn of your run as your instructions say. Your run id is "
 
 RUN_OVER = "run_over"
 UNKNOWN_RUN_STATUS = "unknown_run_status"
@@ -124,6 +125,17 @@ _STATUS = {
     OPEN_STATE: EXIT_OPEN_STATE,
     ERROR: EXIT_ERROR,
 }
+
+
+def prompt(run_id):
+    """Return the prompt of every turn of the run ``run_id``.
+
+    The prompt is the fixed text ``Carry out the next turn of your run as your
+    instructions say. Your run id is``, one space, the run id unchanged and a
+    final ``.``. ``run_id`` is checked by :func:`hilclaw.layout.check_run_id`,
+    whose :class:`hilclaw.layout.InvalidPathValueError` is raised unchanged.
+    """
+    return f"{_LEAD}{layout.check_run_id(run_id)}."
 
 
 def _outcome(before, after, previous):
@@ -189,7 +201,7 @@ def _start(args, source, parent, stdout):
         turn_loop.run(
             further_turn=step,
             put_definition=turn_definition.put,
-            prompt=PROMPT,
+            prompt=prompt(run_id),
             data_root=root,
             parent=parent,
         )

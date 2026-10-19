@@ -327,7 +327,23 @@ def test_not_callable(stub, data_root, parent, name, value):
 
 @pytest.mark.parametrize(
     "prompt",
-    ["", "two\nlines", "line\r", "a;b", 'quote"', "100%", "café", "a&b", "x|y", "\t"],
+    [
+        "",
+        "two\nlines",
+        "line\r",
+        "a;b",
+        'quote"',
+        "100%",
+        "café",
+        "a&b",
+        "x|y",
+        "\t",
+        "-",
+        "-p",
+        "--x y",
+        "-run-a",
+        "a-b\n",
+    ],
 )
 def test_bad_prompt_value(stub, data_root, parent, prompt):
     stub.install()
@@ -343,9 +359,20 @@ def test_bad_prompt_type(stub, data_root, parent, prompt):
         go(data_root, parent, prompt=prompt)
 
 
-def test_allowed_prompt_characters(stub, data_root, parent):
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Az09 .,_",
+        "Your run id is 20261009t012331z-9f3a6c1e0b7d4a52.",
+        "run-a",
+        "ends in -",
+        "run-",
+        "a--b - c",
+        " -x",
+    ],
+)
+def test_allowed_prompt_characters(stub, data_root, parent, prompt):
     stub.install()
-    prompt = "Az09 .,_"
     go(data_root, parent, prompt=prompt)
     (call,) = stub.calls()
     assert call["argv"][1] == prompt
