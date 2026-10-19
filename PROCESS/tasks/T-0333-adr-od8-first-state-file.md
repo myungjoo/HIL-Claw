@@ -2,7 +2,7 @@
 id: T-0333
 title: Write ADR-0120 — who writes the first runtime STATE.json of a first-case run, in which order against instance.json, and what a run directory with instance.json and no STATE.json means (OD-8 sub-question 10, for the runs of ADR-0076 decision 1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, OD-8, OD-23, S0, S1, S2]
 dependsOn: [T-0329, T-0332]
@@ -128,7 +128,7 @@ OD-8 is a design-level OD and not on the owner-only list of DRIVER §9, so this 
 
 ## Result
 
-**DONE.** Landed on `main` as one document-mode commit (subject `T-0333: add ADR-0120 ...`, trailers `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0333`); the branch `claude/T-0333-adr-od8-first-state-file` is deleted.
+**DONE.** Landed on `main` as 1386ace, one document-mode commit (subject `T-0333: add ADR-0120 ...`, trailers `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0333`); the branch `claude/T-0333-adr-od8-first-state-file` is deleted (local and remote). OD-8 notice on #5 (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6262794405
 
 - **Session entry check**: open PRs = #186 only (`hilclaw/`, `tests/`), none of this task's files. `ADR-0120` was free on `origin/main` and every remote branch; no rename.
 - **Owner-sentence search**: #4 body and 6 comments, #5 body and the 38 of 190 comments without the driver marker, #7 (2) and #8 (6). No owner sentence decides the writer, the order or the meaning. The "Round-Manager only" writer of ADR-0004 comes from the #4 §3a revision, condition 2 (owner account, "[합의]"); ADR-0120 treats it as an owner sentence and its answer holds under both readings of it, so no BLOCKED. UC-1 step 2 ("STATE를 초기화한다" before round 0) is kept.
