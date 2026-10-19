@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0353",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:5e00749a-1",
+    "acquiredAt": "2026-10-19T22:21:19Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -391,7 +395,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0128 (the evaluator of a first-case turn, part of OD-23 and OD-16; T-0352, main 3cb52c6) adds turn-session runtime acceptance items (xviii)-(xx): (xviii) a sub-agent of a -p turn session defined in .claude/agents/evaluator.md gets exactly the tools its tools list names, the hilclaw tools given by --mcp-config among them, and no Write, Edit, Bash or other unlisted tool; (xix) the Round-Manager's delegation message reaches the evaluator whole, and the evaluator's final message reaches the Round-Manager whole; (xx) a correctness.check called from a sub-agent through MCP returns within the MCP idle window (about 30 minutes) for the largest first-case check ADR-0117's limits allow, and a call cut off there leaves no check running. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
       "askedAt": "2026-10-19T21:48:54Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6278149061"
     }
   ],
   "counters": {
