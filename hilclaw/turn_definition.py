@@ -50,9 +50,10 @@ not a ``str`` or path object; :class:`FileNotFoundError` for a missing
 :class:`ValueError` for a ``session_dir`` that is no existing directory; and,
 unchanged, what reading, removing or copying raises.
 
-Not done here: ``orchestration/agents/`` holds the evaluator's definition
-(ADR-0128 decision 7), and the rest of the roster stays open (OD-23); no
-skills, no settings, hooks or permissions (PLAN P2-4; ADR-0118 decision 4,
+The roster: ``orchestration/agents/`` holds the evaluator's definition
+(ADR-0128 decision 7), and the rest of the roster stays open (OD-23).
+
+Not done here: no skills, no settings, hooks or permissions (PLAN P2-4; ADR-0118 decision 4,
 "Workspace trust"), no round steps (later P2-1 slices), no ``--add-dir`` or
 other way for the session to reach the run's files (decision 4), no caller
 and no command-line entry.
