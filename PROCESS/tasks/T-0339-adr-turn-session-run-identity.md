@@ -2,7 +2,7 @@
 id: T-0339
 title: Write ADR-0123 — how a turn session of a first-case run learns which run it carries (its run id, and the place of the run if the session needs it), so that the round-0 part of the Round-Manager prompt can be written (OD-18 round boundary, one point of OD-23, for the runs of ADR-0120 decision 1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-13, NFR-1, NFR-7, OD-18, OD-23, OD-8, S0, S1]
 dependsOn: [T-0329, T-0331, T-0338]

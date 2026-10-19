@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0339",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:6a5041d6-1",
-    "acquiredAt": "2026-10-19T11:23:05Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -324,18 +320,26 @@
       "question": "ADR-0122 (what the turn loop of a first-case run does where its step 1 is open: it returns instead of starting another turn after a failed turn, after a turn with no progress, and in ADR-0121's open states; part of OD-19 and the OD-17 remainder; T-0337, main 8ea7115) adds one runtime acceptance item to ADR-0118's (i)-(vii) of HQ-0035. Under D16 it is closed by your check by hand or by the runtime's own self-check, not by a driver task: (viii) how a `-p` turn session that reaches the plan's usage limit ends - its exit status, and whether anything in its output tells it from another failure. ADR-0122 does not rely on it; a later record that defines the usage-limit pause would. Nothing was tried; no task is blocked on this notice.",
       "askedAt": "2026-10-19T10:07:10Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6264739892"
+    },
+    {
+      "id": "HQ-0037",
+      "taskId": "T-0339",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0123 (how a first-case turn session learns which run it carries: the command-line entry hilclaw.turn_start puts the run id into the prompt of every turn and hands the session no place of the run; part of OD-18 and OD-23; T-0339, main 2f49767) adds one runtime acceptance item to ADR-0118's (i)-(vii) of HQ-0035 and ADR-0122's (viii) of HQ-0036. Under D16 it is closed by your check by hand or by the runtime's own self-check, not by a driver task: (ix) a `-p` turn session started by the loop with the prompt the entry builds receives that text unchanged as its first user message - on Windows also where the `claude` found is a command script - and its Round-Manager takes the run id from it as the definition says. Nothing was tried; no task is blocked on this notice.",
+      "askedAt": "2026-10-19T11:38:04Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 352,
-    "tasksDone": 326,
+    "iterations": 353,
+    "tasksDone": 327,
     "tasksBlocked": 26,
-    "reviewRoundsTotal": 1165
+    "reviewRoundsTotal": 1169
   },
   "lastIteration": {
-    "at": "2026-10-19T10:47:35Z",
-    "owner": "AKIHA:d864770e-1",
-    "taskId": "T-0338",
+    "at": "2026-10-19T11:38:04Z",
+    "owner": "AKIHA:6a5041d6-1",
+    "taskId": "T-0339",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
