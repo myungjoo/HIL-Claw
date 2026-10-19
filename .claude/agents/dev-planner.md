@@ -20,9 +20,10 @@ When a task edits `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionProp
 ## Output
 
 - Exactly one new file `PROCESS/tasks/T-NNNN-<slug>.md` in the DRIVER §5 format, with `status: TODO` and an English body.
+- If the priority rule of DRIVER §6 (D18) sets aside everything you would plan, create no task file and return only the deferred lines.
 - If the next item needs an owner-only decision (DRIVER §9), create no task file and return the question for the driver to record as an HQ (DRIVER §8).
 - If the next item needs something only the HIL-Claw runtime has (a live Claude Code session, a logged-in `claude`, a board or accelerator the development machine lacks, an API key), create no task file: return it to the driver as a runtime acceptance item — the driver notifies the owner through the HQ path of DRIVER §8 with the reason `runtime-acceptance` — and name a runtime self-check code task as the alternative where the plan allows one (DRIVER §6, D16).
-- Return to the driver: the task file path, its `touchesFiles`, any BLOCKED concerns, and optionally the id of a candidate for the task after this one.
+- Return to the driver: the task file path, its `touchesFiles`, any BLOCKED concerns, optionally the id of a candidate for the task after this one, and one line for each piece of work the priority rule of DRIVER §6 (D18) sets aside. The driver writes those lines into the deferred section of `PROCESS/PLAN.md`; you do not.
 
 ## Boundary
 

@@ -24,4 +24,4 @@
 
 - **CI 미구축**: 프로세스의 CI 단계는 CI 구축 전까지 로컬 테스트 재수행으로 대체한다.
 - **바이너리 금지**: 바이너리·대용량 산출물은 git에 넣지 않는다(확정 결정 A-2: CAS `blobs/` + 해시 참조; 데이터는 별도 `HIL-Claw-data` repo — 확정 결정 A-1).
-- **MVP 범위**: 방법 B(Claude Code Orchestrator), 단일 compute-kernel 최적화, Phase 1은 Git tree가 DB를 대신. 자세한 것은 [ARCHITECTURE/](ARCHITECTURE/) 문서와 GitHub Issue #2·#4·#5 참조.
+- **MVP 범위**: 방법 B(Claude Code Orchestrator), instance 단위는 단일 compute-kernel 최적화, 개발의 도달 목표는 Llama 3.2 1B를 연산별 커널로 bf16/fp16 end-to-end 실행(오너 2026-10-19 — Requirements C-6 개정·OD-31; 이 목표를 MVP 범위 안에 둔 것은 통합자 독해), Phase 1은 Git tree가 DB를 대신. 자세한 것은 [ARCHITECTURE/](ARCHITECTURE/) 문서와 GitHub Issue #2·#4·#5 참조.
