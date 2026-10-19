@@ -2,7 +2,7 @@
 id: T-0335
 title: Write ADR-0121 — the STATE.json member that says a first-case run is over, its writer and moment, and when a run that states a round budget is over on it (rest of OD-8, part of OD-19, OD-8 sub-question 29 (ga) for the runs of ADR-0120)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-3, OD-8, OD-19, S0, S1, S2]
 dependsOn: [T-0333, T-0334]
@@ -197,3 +197,4 @@ The ADR is a document; the code that follows from it (the reader of the member a
 - **Follow-ups** (integrator, not edited here): less-exact sentences in ADR-0011 (stays exact), ADR-0012, ADR-0032, ADR-0033, ADR-0117, ADR-0118, ADR-0119, ADR-0120 (listed in ADR-0121 Consequences); the OD-28 register row (잔여) and § OD-28 "round budget 계상 — ADR-0032·OD-8 ㉙" in its 남음 list, since ADR-0121 answers the round-0 counting question for its scope; the `hilclaw/turn_loop.py` docstring. Code slice: reader of `run_status`, step-1 predicate P1-P4 with `fresh_run.is_fresh`, loop CLI entry (stub `claude` only).
 - **Review**: context-isolated `dev-reviewer`, 3 rounds, Approve (round 1: OD-28 trace, citations, register wording; round 2: Approve with minors on ADR-0118 decision 2 (ii) and the read-only fallback alternative; round 3: Approve, no findings).
 - **Landing note**: the squash step failed (the rebase refused an unstaged Result edit) and the following push sent the three reviewed branch commits `dc93d57`, `a7c9471`, `7f94143` to `main` as a fast-forward, unsquashed and without the `Reviewed-by` trailer. Their content is exactly the approved round-3 tree. No force push was used to rewrite them; the review record is carried by the follow-up commit that adds this note, with `Reviewed-by: reviewer agent (3 rounds, Approve)` and `Task: T-0335`.
+- **#5 notice** (DRIVER §9, OD-8 and OD-19): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6263430627
