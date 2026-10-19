@@ -2,7 +2,7 @@
 id: T-0331
 title: Create orchestration/ with a first Round-Manager prompt and add hilclaw.turn_definition.put, which copies that definition into a turn session directory under the names Claude Code reads (ADR-0118 decisions 4 and 5, code slices (2) and (3))
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, NFR-7, OD-18, OD-23]
 dependsOn: [T-0329, T-0330]
@@ -161,3 +161,4 @@ Nothing calls `put` from a command line yet. The loop's entry waits on an OD-8 m
 - Added `orchestration/round-manager.md` (placeholder prompt: turn contract of ADR-0118 decision 2, no round steps) and `hilclaw/turn_definition.py` (`put`, `LAYOUT`, `SOURCE`, `PROMPT`, `DIRECTORIES`) with `tests/test_turn_definition.py`.
 - Choices beyond the AC, all refusals before any write: an entry that is neither a file nor a directory, a junction (treated as a link), any entry (not only a directory) named as in `turn_loop.MARKERS`, and in the session directory a `.claude` that is no plain directory or a link at a target (so nothing is written outside `session_dir`).
 - The optional stub-`claude` run of AC 6 was not added; the callable check is tested directly, and a no-turn `turn_loop.run` with `put` is tested where no marker lies above the temporary directory.
+- Landed: PR #190, squash-merged as ad947cb; review 2 rounds (round 1 Approve with two Low findings addressed: prompt wording on rounds vs turns, junction tests; round 2 Approve); CI green (Python 3.11/3.14, coverage, test presence, C, sh).
