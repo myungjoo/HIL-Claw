@@ -143,7 +143,9 @@ class ClaudeNotFoundError(LookupError):
 class Turn(NamedTuple):
     """One turn session that :func:`run` started.
 
-    - ``exit_status``: the exit status of its process (``int``).
+    - ``exit_status``: the exit status of its process (``int``), as
+      :attr:`subprocess.Popen.returncode` gives it: negative on POSIX for a
+      process ended by a signal.
     - ``removed``: its session directory is gone.
     """
 
