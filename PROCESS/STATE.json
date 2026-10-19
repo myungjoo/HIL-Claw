@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0326",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:c44be20c-1",
+    "acquiredAt": "2026-10-19T03:21:55Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -295,7 +299,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0116 (source and first values of the cpu_standin build settings, OD-18 sub-questions 18 (ra) and 19 (ra); T-0325, main 2ca335c) fixes flags `-std=gnu11 -O2 -ffp-contract=off` and trailing flags `-lm`. Under D16 it is a runtime acceptance item, closed by your check by hand or by the runtime's own self-check, not by a driver task: that the clang of each C-7 system the development machine and CI do not have (macOS with its default clang among them) accepts these flags with the outcomes ADR-0116 decision 3 and Limit 4 describe. Nothing was tried; no task is blocked on this notice.",
       "askedAt": "2026-10-19T03:04:57Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6258750066"
     },
     {
       "id": "HQ-0034",
@@ -303,7 +307,7 @@
       "reason": "owner-only-decision",
       "question": "ADR-0116 leaves OpenMP open for `cpu_standin` because macOS's default clang refuses `-fopenmp` and has no OpenMP runtime, and some Linux distributions ship clang's runtime as a separate package (#5 A-7 allows OpenMP in stand-in kernels). Must OpenMP be usable by a stand-in kernel, and where? (a) On every C-7 system: the set gains the OpenMP flag and runtime, and where the runtime is missing the runtime asks the user to install it under the 2026-10-15 approval rule (with the container, in its image). (b) Only where the toolchain already has it: the set differs by system, against the derived reading of C-7. (c) Not in the first case: the set stays as it is and a kernel that uses the OpenMP runtime is a broken result (`build_exit_status`). No task is blocked on this question; the first case runs without OpenMP.",
       "askedAt": "2026-10-19T03:04:57Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6258750315"
     }
   ],
   "counters": {
