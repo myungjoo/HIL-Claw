@@ -15,6 +15,7 @@ from hilclaw import (
     data_root_source,
     further_turn,
     keys,
+    run_commit,
     selfcheck,
     selfcheck_login,
     selfcheck_outcome,
@@ -51,6 +52,7 @@ from hilclaw.turn_start import (
 )
 
 RUN = "run-a"
+GIT = shutil.which("git")
 REPOSITORY = Path(__file__).resolve().parent.parent
 PROFILE = {
     "schema_version": 1,
@@ -60,6 +62,31 @@ PROFILE = {
     "host": {"cpu": "cpu x", "os": "os y"},
     "hw_source": "external",
 }
+OP = {
+    "schema_version": 1,
+    "kind": "gemm",
+    "shape": {"m": 4, "k": 4, "n": 4},
+    "dtype": "fp32",
+    "layout": "row_major",
+}
+IDENTITY = {
+    "GIT_AUTHOR_NAME": "Test Author",
+    "GIT_AUTHOR_EMAIL": "author@example.invalid",
+    "GIT_COMMITTER_NAME": "Test Committer",
+    "GIT_COMMITTER_EMAIL": "committer@example.invalid",
+}
+LOCATING = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "EMAIL",
+)
 STATE = f"runs/{RUN}/STATE.json"
 INSTANCE = f"runs/{RUN}/instance.json"
 LEAD = "Carry out the next turn of your run as your instructions say. Your run id is "
@@ -73,6 +100,7 @@ EDGE_IDS = [
     "20261009t012331z-9f3a6c1e0b7d4a52",
 ]
 
+COMMIT = "commit"
 LOGGED_IN = json.dumps({"loggedIn": True, "authMethod": "claude.ai"})
 NOT_LOGGED_IN = json.dumps({"loggedIn": False, "authMethod": "none"})
 PLANTED = "[Errno 13] Permission denied: '/home/alice-the-user/.claude/x'"
@@ -162,6 +190,9 @@ for name, text in step["writes"]:
     path = Path(scenario["root"], name)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(text.encode("utf-8"))
+if step["commit"]:
+    for args in (["add", "-A"], ["commit", "-q", "-m", "turn"]):
+        subprocess.run([scenario["git"], "-C", scenario["root"], *args], check=True)
 sys.exit(step["status"])
 """
 
@@ -183,7 +214,10 @@ class Stub:
         self.steps = []
 
     def install(self, *steps, check="passed"):
-        self.steps = [{"status": status, "writes": writes} for status, writes in steps]
+        self.steps = [
+            {"status": status, "writes": writes, "commit": COMMIT in rest}
+            for status, writes, *rest in steps
+        ]
         script = self.directory / "stub.py"
         script.write_text(STUB, encoding="utf-8")
         checked = {
@@ -195,7 +229,12 @@ class Stub:
             "exit": 0,
             **CHECKED[check],
         }
-        scenario = {"root": str(self.root), "steps": self.steps, "check": checked}
+        scenario = {
+            "root": str(self.root),
+            "git": GIT,
+            "steps": self.steps,
+            "check": checked,
+        }
         (self.directory / "scenario.json").write_text(
             json.dumps(scenario), encoding="utf-8"
         )
@@ -244,10 +283,39 @@ def markers_above(path):
     )
 
 
+@pytest.fixture(autouse=True)
+def isolated_git(monkeypatch, tmp_path_factory):
+    assert GIT is not None, "these tests need git on PATH"
+    config = tmp_path_factory.mktemp("git-config") / "global"
+    config.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for name in LOCATING:
+        monkeypatch.delenv(name, raising=False)
+    for name, value in IDENTITY.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(run_commit, "GIT", GIT)
+
+
+def git(root, *args):
+    subprocess.run(
+        [GIT, "-C", str(root), *args],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=True,
+    )
+
+
+def settle(root):
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "by hand")
+
+
 @pytest.fixture
-def root(tmp_path):
+def root(tmp_path, isolated_git):
     directory = tmp_path / "data"
     directory.mkdir()
+    git(directory, "init", "-q", "-b", "main")
     return directory
 
 
@@ -289,6 +357,7 @@ def instance_bytes(budget=5):
     document = {
         "schema_version": 1,
         "hw_profile": {"key": keys.hw_profile_key(PROFILE).name, "record": PROFILE},
+        "op_signature": {"key": keys.op_signature_key(OP).name, "record": OP},
     }
     if budget is not None:
         document["round_budget"] = budget
@@ -314,7 +383,19 @@ def snapshot(directory):
             None if path.is_dir() else path.read_bytes()
         )
         for path in directory.rglob("*")
+        if ".git" not in path.relative_to(directory).parts
     }
+
+
+def over(root, round=5):
+    stated(root, round, {"run_status": "over"})
+    settle(root)
+
+
+def owed(root):
+    stated(root, 4)
+    settle(root)
+    replace(root, RUN, 5, EMPTY, {"run_status": "over"})
 
 
 def report(outcome=selfcheck_outcome.PASSED):
@@ -479,7 +560,7 @@ def test_a_fresh_run_goes_from_round_zero_to_over(root, go, stub):
     found = go(
         (0, [(STATE, state_text(1))]),
         (0, [(STATE, state_text(2))]),
-        (0, [(STATE, state_text(3, {"run_status": "over"}))]),
+        (0, [(STATE, state_text(3, {"run_status": "over"}))], COMMIT),
     )
     told_once(found, EXIT_RUN_OVER, {"outcome": RUN_OVER})
     calls = stub.calls()
@@ -525,14 +606,14 @@ def test_a_run_id_with_a_hyphen_reaches_the_stub_unchanged(root, go, stub, run_i
 
 
 def test_over_at_once_starts_no_turn(root, go, stub):
-    stated(root, 5, {"run_status": "over"})
+    over(root)
     found = go((0, []))
     told_once(found, EXIT_RUN_OVER, {"outcome": RUN_OVER})
     assert stub.calls() == []
 
 
 def test_a_str_data_root(root, parent, stub):
-    stated(root, 5, {"run_status": "over"})
+    over(root)
     found = start(parent, root=str(root))
     told_once(found, EXIT_RUN_OVER, {"outcome": RUN_OVER})
 
@@ -699,10 +780,17 @@ def test_an_open_state_after_a_turn_that_exited_with_zero(root, go, stub):
 # --- precedence and P3 ---
 
 
-def test_over_written_by_a_failed_turn_is_run_over(root, go, stub):
+def test_over_committed_by_a_failed_turn_is_run_over(root, go, stub):
+    started(root)
+    found = go((5, [(STATE, state_text(1, {"run_status": "over"}))], COMMIT))
+    told_once(found, EXIT_RUN_OVER, {"outcome": RUN_OVER})
+    assert len(stub.calls()) == 1
+
+
+def test_over_written_by_a_failed_turn_without_a_commit(root, go, stub):
     started(root)
     found = go((5, [(STATE, state_text(1, {"run_status": "over"}))]))
-    told_once(found, EXIT_RUN_OVER, {"outcome": RUN_OVER})
+    told_once(found, EXIT_FAILED_TURN, {"outcome": FAILED_TURN, "exit_status": 5})
     assert len(stub.calls()) == 1
 
 
@@ -721,6 +809,121 @@ def test_p3_reports_the_value(root, go, stub, value):
     told_once(found, EXIT_UNKNOWN_RUN_STATUS, told)
     assert type(found.told["run_status"]) is type(value)
     assert stub.calls() == []
+
+
+# --- owed P2 (ADR-0127 decision 6) ---
+
+
+def test_owed_p2_checks_and_its_turn_commits(root, go, stub):
+    owed(root)
+    standin = Standin()
+    found = go((0, [], COMMIT), check=standin)
+    told_once(found, EXIT_RUN_OVER, {"outcome": RUN_OVER})
+    assert len(standin.calls) == 1 and stub.kinds() == ["turn"]
+    assert found.told["check"] == standin.report
+
+
+def test_owed_p2_left_owed_is_an_unchanged_turn(root, go, stub):
+    owed(root)
+    standin = Standin()
+    found = go((0, []), check=standin)
+    told_once(found, EXIT_UNCHANGED_TURN, {"outcome": UNCHANGED_TURN})
+    assert len(standin.calls) == 1 and len(stub.calls()) == 1
+
+
+def test_owed_p2_left_owed_with_another_round_is_unchanged(root, go, stub):
+    owed(root)
+    found = go((0, [(STATE, state_text(6, {"run_status": "over"}))]))
+    told_once(found, EXIT_UNCHANGED_TURN, {"outcome": UNCHANGED_TURN})
+    assert len(stub.calls()) == 1
+
+
+@pytest.mark.parametrize("status", [1, 9])
+def test_a_failed_turn_in_owed_p2(root, go, stub, status):
+    owed(root)
+    found = go((status, []))
+    told = {"outcome": FAILED_TURN, "exit_status": status}
+    told_once(found, EXIT_FAILED_TURN, told)
+    assert len(stub.calls()) == 1
+
+
+def test_p4_to_owed_p2_gives_one_more_turn_without_a_check(root, go, stub):
+    stated(root, 4)
+    settle(root)
+    standin = Standin()
+    found = go(
+        (0, [(STATE, state_text(5, {"run_status": "over"}))]),
+        (0, [], COMMIT),
+        check=standin,
+    )
+    told_once(found, EXIT_RUN_OVER, {"outcome": RUN_OVER})
+    assert len(standin.calls) == 1 and len(stub.calls()) == 2
+
+
+@pytest.mark.parametrize(
+    "outcome", [selfcheck_login.NOT_LOGGED_IN, selfcheck_outcome.SESSION_FAILED]
+)
+def test_owed_p2_with_a_check_that_does_not_pass(root, go, stub, outcome):
+    owed(root)
+    standin = Standin(outcome)
+    found = go((0, [], COMMIT), check=standin)
+    told_once(found, EXIT_STOPPED_AT_CHECK, {"outcome": STOPPED_AT_CHECK})
+    assert len(standin.calls) == 1 and stub.calls() == []
+
+
+def test_p2_without_a_repository(parent, stub, tmp_path):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    stated(plain, 5, {"run_status": "over"})
+    stub.install((0, [], COMMIT))
+    standin = Standin()
+    found = start(parent, root=plain, check=standin)
+    told = {"outcome": OPEN_STATE, "reason": further_turn.NO_REPOSITORY}
+    told_once(found, EXIT_OPEN_STATE, told)
+    assert standin.calls == [] and stub.kinds() == []
+
+
+def test_p2_when_git_cannot_be_started(root, go, stub, tmp_path, monkeypatch):
+    over(root)
+    monkeypatch.setattr(run_commit, "GIT", str(tmp_path / "no-such-git"))
+    standin = Standin()
+    found = go((0, []), check=standin)
+    told = {"outcome": OPEN_STATE, "reason": further_turn.NO_REPOSITORY}
+    told_once(found, EXIT_OPEN_STATE, told)
+    assert standin.calls == [] and stub.kinds() == []
+
+
+def test_p2_with_a_round_below_head_is_commit_refused(root, go, stub):
+    over(root)
+    replace(root, RUN, 4, EMPTY, {"run_status": "over"})
+    standin = Standin()
+    found = go((0, []), check=standin)
+    told = {"outcome": OPEN_STATE, "reason": further_turn.COMMIT_REFUSED}
+    told_once(found, EXIT_OPEN_STATE, told)
+    assert standin.calls == [] and stub.kinds() == []
+
+
+def test_commit_refused_after_a_failed_turn(root, go, stub):
+    stated(root, 3)
+    settle(root)
+    found = go((4, [(STATE, state_text(2, {"run_status": "over"}))]))
+    told = {
+        "outcome": OPEN_STATE,
+        "reason": further_turn.COMMIT_REFUSED,
+        "exit_status": 4,
+    }
+    told_once(found, EXIT_OPEN_STATE, told)
+    assert len(stub.calls()) == 1
+
+
+def test_no_repository_after_a_turn_that_exited_with_zero(root, go, stub, monkeypatch):
+    stated(root, 4)
+    settle(root)
+    monkeypatch.setattr(run_commit, "GIT", "no-such-git")
+    found = go((0, [(STATE, state_text(5, {"run_status": "over"}))]))
+    told = {"outcome": OPEN_STATE, "reason": further_turn.NO_REPOSITORY}
+    told_once(found, EXIT_OPEN_STATE, told)
+    assert len(stub.calls()) == 1
 
 
 # --- errors and negative cases ---
@@ -764,7 +967,7 @@ def test_a_data_root_source_that_is_not_callable(root, go, stub):
 
 
 def test_the_default_data_root_source(root, parent, stub, monkeypatch):
-    stated(root, 5, {"run_status": "over"})
+    over(root)
     repo = config.DataRepo("url", root)
     monkeypatch.setattr(config, "load_data_repo", lambda: repo)
     stdout, stderr = io.BytesIO(), io.BytesIO()
@@ -868,7 +1071,7 @@ class Failing(io.BytesIO):
 
 @pytest.mark.parametrize("short", [False, True])
 def test_standard_output_that_cannot_be_written(root, parent, stub, short):
-    stated(root, 5, {"run_status": "over"})
+    over(root)
     stderr = io.BytesIO()
     status = main(
         [RUN], source=lambda: root, parent=parent, stdout=Failing(short), stderr=stderr
@@ -917,7 +1120,7 @@ def test_one_line_on_standard_error(root, go, stub):
 
 
 def test_the_default_arguments(root, stub, monkeypatch, tmp_path):
-    stated(root, 5, {"run_status": "over"})
+    over(root)
     sessions = tmp_path / "default"
     sessions.mkdir()
     monkeypatch.setattr(tempfile, "tempdir", str(sessions))
@@ -973,7 +1176,7 @@ def test_a_passed_check_runs_once_before_the_first_turn(root, go, stub, checks):
     started(root)
     found = go(
         (0, [(STATE, state_text(1))]),
-        (0, [(STATE, state_text(2, {"run_status": "over"}))]),
+        (0, [(STATE, state_text(2, {"run_status": "over"}))], COMMIT),
         check=selfcheck.check,
     )
     assert found.status == EXIT_RUN_OVER and found.stderr == ""
@@ -1079,7 +1282,7 @@ def test_a_report_without_an_outcome_word_stops(root, go, stub, answer):
 @pytest.mark.parametrize(
     "arrange",
     [
-        lambda root: stated(root, 5, {"run_status": "over"}),
+        over,
         lambda root: stated(root, 1, {"run_status": "stopped"}),
         open_missing_state,
     ],
@@ -1125,7 +1328,9 @@ def test_a_later_start_checks_again(root, go, stub):
     standin = Standin()
     found = go((3, [(STATE, state_text(1))]), check=standin)
     told_once(found, EXIT_FAILED_TURN, {"outcome": FAILED_TURN, "exit_status": 3})
-    found = go((0, [(STATE, state_text(2, {"run_status": "over"}))]), check=standin)
+    found = go(
+        (0, [(STATE, state_text(2, {"run_status": "over"}))], COMMIT), check=standin
+    )
     told_once(found, EXIT_RUN_OVER, {"outcome": RUN_OVER})
     assert len(standin.calls) == 2 and len(stub.calls()) == 2
 

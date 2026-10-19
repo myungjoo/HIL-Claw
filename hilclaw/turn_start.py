@@ -18,36 +18,38 @@ first turn.
 
 **The self-check** (ADR-0125): :func:`hilclaw.selfcheck.check` runs in this
 process, at most once per start, with the start's data root as its
-``data_root``, after the first step 1 answered a further turn (P1 or P4) and
-before the loop makes the session directory of the first turn; never after a
-first step 1 that answers no turn, never in a start that ends with an error
-before it, never between two turns. ``passed`` and ``no_call`` let the first
-turn start. Every other outcome word, a report that is no ``dict`` or names
-none, and an :class:`Exception` of the check start no turn and end the start
-:data:`STOPPED_AT_CHECK`. Nothing is retried and nothing skips the check.
+``data_root``, after the first step 1 answered a further turn (P1, P4 or owed
+P2) and before the loop makes the session directory of the first turn; never
+after a first step 1 that answers no turn, never in a start that ends with an
+error before it, never between two turns. ``passed`` and ``no_call`` let the
+first turn start. Every other outcome word, a report that is no ``dict`` or
+names none, and an :class:`Exception` of the check start no turn and end the
+start :data:`STOPPED_AT_CHECK`. Nothing is retried and nothing skips the
+check.
 
 **Step 1** (each call of the loop's ``further_turn``) makes exactly one
 :func:`hilclaw.further_turn.classify` call on the run and answers from that
 finding, from the finding of the step 1 before (kept for this start only) and
 from the exit status of the last turn. In this order (ADR-0122 decision 5):
 
-1. P2, ``run_status`` ``"over"``: no further turn, :data:`RUN_OVER`, whatever
-   the exit status was;
+1. P2, ``run_status`` ``"over"``, with no round end owed: no further turn,
+   :data:`RUN_OVER`, whatever the exit status was;
 2. P3, any other ``run_status`` value: no further turn,
    :data:`UNKNOWN_RUN_STATUS` with the value;
 3. an open state (decision 4), before the first turn as after any turn: no
    turn, :data:`OPEN_STATE` with the reason constant of
    :mod:`hilclaw.further_turn`, and with the exit status after a failed turn;
-4. after a turn whose exit status is not 0, in P1 or P4: no further turn,
-   :data:`FAILED_TURN` with that status (decision 2);
-5. after a turn whose exit status is 0, P1 both before and after it, or P4
-   both before and after it with the same ``round``: no further turn,
-   :data:`UNCHANGED_TURN` (decision 3). ``round`` is compared for equality
-   only, never with ``round_budget``.
+4. after a turn whose exit status is not 0, in P1, P4 or owed P2 (ADR-0127
+   decision 6): no further turn, :data:`FAILED_TURN` with that status
+   (decision 2);
+5. after a turn whose exit status is 0, P1 both before and after it, P4
+   both before and after it with the same ``round``, or owed P2 both before
+   and after it: no further turn, :data:`UNCHANGED_TURN` (decision 3).
+   ``round`` is compared for equality only, never with ``round_budget``.
 
-Otherwise P1 and P4 answer a further turn: before the first turn of a start,
-after the self-check let it start (above), and after an exit-0 turn that
-moved P1 to P4 or changed ``round``.
+Otherwise P1, P4 and owed P2 answer a further turn: before the first turn of
+a start, after the self-check let it start (above), and after an exit-0 turn
+that moved P1 to P4, changed ``round`` or reached owed P2.
 
 **What the starter is told**, through the process only. Standard output gets
 exactly one line, a compact JSON object in ASCII ended by one LF, whose member
