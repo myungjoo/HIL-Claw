@@ -2,7 +2,7 @@
 id: T-0336
 title: Add the turn loop's step-1 predicate of ADR-0121 decision 5 (states P1 to P4 of a first-case run, reading run_status), falling back to the caller's predicate in every other state
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-3, NFR-1, OD-8, OD-19, S0, S1]
 dependsOn: [T-0330, T-0334, T-0335]
