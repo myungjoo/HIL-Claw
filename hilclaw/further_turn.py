@@ -30,14 +30,19 @@ usage. P2 and P3 answer no further turn whatever ``previous`` is.
 
 It writes, creates, removes and lists nothing, keeps nothing between calls,
 compares no number, interprets no member besides ``run_status`` and
-``round_budget``, is no FR-10 tool and has no command-line entry.
+``round_budget``, and is no FR-10 tool. It passes on ``round`` in the finding
+of P4 without interpreting it.
 
-**Open**, each asked of the caller's predicate where it is a state: a run whose
-``instance.json`` states no ``round_budget`` (OD-8 ㉙ (나)); a ``STATE.json``
-or ``instance.json`` that is missing beyond P1, invalid or of another version
-(OD-8); what follows a failed turn (OD-10, OD-17, OD-19, OD-27); the lock of
-two loops on one run (rest of OD-17); a run that is over and whose commit is
-still owed (OD-8 ⑪); and the loop's command-line entry (a later slice).
+**Open** for ADR-0121, each asked of the caller's predicate where it is a
+state: a run whose ``instance.json`` states no ``round_budget`` (OD-8 ㉙ (나));
+a ``STATE.json`` or ``instance.json`` that is missing beyond P1, invalid or of
+another version (OD-8). For the runs of ADR-0120 decision 1, ADR-0122 answers
+what the loop does in these states and after a failed turn or an exit-0 turn
+that left the run as it found it, and :mod:`hilclaw.turn_start`, the loop's
+command-line entry, applies it on :func:`classify` directly; :func:`predicate`
+keeps the answers above, so it alone still does not catch such an exit-0
+turn. Still open: the lock of two loops on one run (rest of OD-17) and a run
+that is over and whose commit is still owed (OD-8 ⑪).
 """
 
 from typing import NamedTuple
@@ -53,9 +58,23 @@ UNKNOWN_STATUS = "unknown_status"
 DUE = "due"
 OPEN = "open"
 
+STATE_MISSING = "state_missing"
+STATE_INVALID = "state_invalid"
+STATE_VERSION = "state_version"
+INSTANCE_MISSING = "instance_missing"
+INSTANCE_INVALID = "instance_invalid"
+INSTANCE_VERSION = "instance_version"
+NO_ROUND_BUDGET = "no_round_budget"
+
 
 class Finding(NamedTuple):
-    """Result of :func:`classify`: the ``case``, and the ``run_status`` value for :data:`UNKNOWN_STATUS`, else ``None``."""
+    """Result of :func:`classify`: the ``case`` and its ``value``.
+
+    ``value`` is the ``run_status`` value for :data:`UNKNOWN_STATUS`, the
+    ``round`` of ``STATE.json`` for :data:`DUE`, one of the seven reason
+    constants (:data:`STATE_MISSING` to :data:`NO_ROUND_BUDGET`) for
+    :data:`OPEN`, and ``None`` for :data:`FRESH` and :data:`OVER_CASE`.
+    """
 
     case: str
     value: object
@@ -65,14 +84,18 @@ def classify(data_root, run_id):
     """Return the :class:`Finding` of the run ``run_id`` below ``data_root``.
 
     In this order: :data:`FRESH` when :func:`hilclaw.fresh_run.is_fresh` is
-    true (P1); :data:`OPEN` when :func:`hilclaw.run_journal.read_state` finds
+    true (P1); :data:`OPEN` with :data:`STATE_MISSING`, :data:`STATE_INVALID`
+    or :data:`STATE_VERSION` when :func:`hilclaw.run_journal.read_state` finds
     no ``STATE.json``, an invalid one or another version; :data:`OVER_CASE`
     when its ``run_status`` is exactly the ``str`` ``"over"`` (P2);
     :data:`UNKNOWN_STATUS` with the value as parsed when ``run_status`` holds
-    any other value (P3); without ``run_status``, :data:`OPEN` when
-    :func:`hilclaw.instance.read` finds no ``instance.json``, an invalid one or
-    another version, or one without ``round_budget``, and :data:`DUE` when it
-    states one (P4).
+    any other value (P3); without ``run_status``, :data:`OPEN` with
+    :data:`INSTANCE_MISSING`, :data:`INSTANCE_INVALID` or
+    :data:`INSTANCE_VERSION` when :func:`hilclaw.instance.read` finds no
+    ``instance.json``, an invalid one or another version, :data:`OPEN` with
+    :data:`NO_ROUND_BUDGET` for one without ``round_budget``, and :data:`DUE`
+    with the ``round`` of that same ``STATE.json`` read when it states one
+    (P4).
 
     Raises :class:`hilclaw.layout.InvalidPathValueError` for an invalid
     ``run_id`` before anything is checked, :class:`FileNotFoundError` or
@@ -83,12 +106,12 @@ def classify(data_root, run_id):
         return Finding(FRESH, None)
     try:
         state = run_journal.read_state(data_root, run_id)
-    except (
-        run_journal.MissingStateError,
-        run_state.InvalidStateError,
-        run_state.UnsupportedVersionError,
-    ):
-        return Finding(OPEN, None)
+    except run_journal.MissingStateError:
+        return Finding(OPEN, STATE_MISSING)
+    except run_state.InvalidStateError:
+        return Finding(OPEN, STATE_INVALID)
+    except run_state.UnsupportedVersionError:
+        return Finding(OPEN, STATE_VERSION)
     if RUN_STATUS in state.others:
         value = state.others[RUN_STATUS]
         if type(value) is str and value == OVER:
@@ -96,15 +119,15 @@ def classify(data_root, run_id):
         return Finding(UNKNOWN_STATUS, value)
     try:
         stated = instance.read(data_root, run_id)
-    except (
-        instance.MissingInstanceError,
-        instance.InvalidInstanceError,
-        instance.UnsupportedVersionError,
-    ):
-        return Finding(OPEN, None)
+    except instance.MissingInstanceError:
+        return Finding(OPEN, INSTANCE_MISSING)
+    except instance.InvalidInstanceError:
+        return Finding(OPEN, INSTANCE_INVALID)
+    except instance.UnsupportedVersionError:
+        return Finding(OPEN, INSTANCE_VERSION)
     if stated.round_budget is None:
-        return Finding(OPEN, None)
-    return Finding(DUE, None)
+        return Finding(OPEN, NO_ROUND_BUDGET)
+    return Finding(DUE, state.round)
 
 
 def predicate(data_root, run_id, *, fallback, report):

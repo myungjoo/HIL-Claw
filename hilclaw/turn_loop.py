@@ -84,13 +84,12 @@ directory was made comes after its removal, and the :class:`Turn` records of
 the turns already run are lost to the caller then.
 
 Not done here: no lock against two loops on one run (#4 §2e, OD-17); no
-command-line entry, which waits on the OD-8 member that says a run is over,
-stopped or waiting (until then the caller's predicate stands for it); no
-layout of the definition, which is the caller's ``put_definition``; no
-permissions; no round-0 step and no self-check before a turn (OD-18 ⑯ (가));
-no policy after a failed turn (retry, stop, wait, notify: OD-10, OD-17, OD-19,
-OD-27), only the exit status passed on; no data-plane write; no caller.
-Nothing calls the module yet.
+command-line entry, which is :mod:`hilclaw.turn_start`, the caller of this
+module; no layout of the definition, which is the caller's
+``put_definition``; no permissions; no round-0 step and no self-check before
+a turn (OD-18 ⑯ (가)); no policy after a failed turn, only the exit status
+passed on to ``further_turn`` (for a first-case run that policy is the
+entry's, by ADR-0122); no data-plane write.
 
 Runtime acceptance items it depends on (ADR-0118 Consequences): (i) the
 session loads the session directory's files and none of this repository;

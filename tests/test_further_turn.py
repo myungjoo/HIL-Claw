@@ -11,8 +11,15 @@ from hilclaw import further_turn, keys, turn_loop
 from hilclaw.further_turn import (
     DUE,
     FRESH,
+    INSTANCE_INVALID,
+    INSTANCE_MISSING,
+    INSTANCE_VERSION,
+    NO_ROUND_BUDGET,
     OPEN,
     OVER_CASE,
+    STATE_INVALID,
+    STATE_MISSING,
+    STATE_VERSION,
     UNKNOWN_STATUS,
     Finding,
     classify,
@@ -24,6 +31,15 @@ from hilclaw.layout import InvalidPathValueError
 from hilclaw.run_state_file import replace
 
 RUN = "run-a"
+REASONS = [
+    STATE_MISSING,
+    STATE_INVALID,
+    STATE_VERSION,
+    INSTANCE_MISSING,
+    INSTANCE_INVALID,
+    INSTANCE_VERSION,
+    NO_ROUND_BUDGET,
+]
 PROFILE = {
     "schema_version": 1,
     "accelerator": "acc_a",
@@ -108,10 +124,17 @@ def test_the_public_names():
         "DUE",
         "FRESH",
         "Finding",
+        "INSTANCE_INVALID",
+        "INSTANCE_MISSING",
+        "INSTANCE_VERSION",
+        "NO_ROUND_BUDGET",
         "OPEN",
         "OVER",
         "OVER_CASE",
         "RUN_STATUS",
+        "STATE_INVALID",
+        "STATE_MISSING",
+        "STATE_VERSION",
         "UNKNOWN_STATUS",
         "classify",
         "predicate",
@@ -119,6 +142,8 @@ def test_the_public_names():
     assert further_turn.RUN_STATUS == "run_status"
     assert further_turn.OVER == "over"
     assert len({FRESH, OVER_CASE, UNKNOWN_STATUS, DUE, OPEN}) == 5
+    assert len(set(REASONS)) == 7
+    assert all(type(reason) is str for reason in REASONS)
     assert list(inspect.signature(predicate).parameters) == [
         "data_root",
         "run_id",
@@ -156,7 +181,7 @@ def test_p2_over_is_no_further_turn(root, previous):
 @pytest.mark.parametrize("previous", [None, 0])
 def test_p4_a_stated_budget_is_a_further_turn_whatever_round_is(root, round, previous):
     stated(root, round)
-    assert classify(root, RUN) == Finding(DUE, None)
+    assert classify(root, RUN) == Finding(DUE, round)
     further, fallback, report = make(root)
     assert further(previous) is True
     assert fallback.seen == [] and report.seen == []
@@ -164,7 +189,7 @@ def test_p4_a_stated_budget_is_a_further_turn_whatever_round_is(root, round, pre
 
 def test_p4_ignores_other_members(root):
     stated(root, 2, {"example_member": "over"})
-    assert classify(root, RUN) == Finding(DUE, None)
+    assert classify(root, RUN) == Finding(DUE, 2)
 
 
 # --- branch ---
@@ -233,23 +258,23 @@ def open_no_budget(root):
 
 
 OPEN_STATES = [
-    open_missing_state,
-    open_bad_json,
-    open_directory_state,
-    open_state_version_2,
-    open_missing_instance,
-    open_invalid_instance,
-    open_instance_directory,
-    open_instance_version_2,
-    open_no_budget,
+    (open_missing_state, STATE_MISSING),
+    (open_bad_json, STATE_INVALID),
+    (open_directory_state, STATE_INVALID),
+    (open_state_version_2, STATE_VERSION),
+    (open_missing_instance, INSTANCE_MISSING),
+    (open_invalid_instance, INSTANCE_INVALID),
+    (open_instance_directory, INSTANCE_INVALID),
+    (open_instance_version_2, INSTANCE_VERSION),
+    (open_no_budget, NO_ROUND_BUDGET),
 ]
 
 
 @pytest.mark.parametrize("answer", [True, False])
-@pytest.mark.parametrize("arrange", OPEN_STATES)
-def test_open_asks_the_fallback(root, arrange, answer):
+@pytest.mark.parametrize(("arrange", "reason"), OPEN_STATES)
+def test_open_asks_the_fallback(root, arrange, reason, answer):
     arrange(root)
-    assert classify(root, RUN) == Finding(OPEN, None)
+    assert classify(root, RUN) == Finding(OPEN, reason)
     further, fallback, report = make(root, fallback=Recorder(answer))
     assert further(None) is answer
     assert further(0) is answer
@@ -258,7 +283,7 @@ def test_open_asks_the_fallback(root, arrange, answer):
 
 
 def test_a_run_without_any_file_is_open(root):
-    assert classify(root, RUN) == Finding(OPEN, None)
+    assert classify(root, RUN) == Finding(OPEN, STATE_MISSING)
 
 
 @pytest.mark.parametrize("answer", [True, False])
