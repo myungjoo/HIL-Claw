@@ -40,6 +40,7 @@ ACCEPTED = {
         "point": "sim",
     },
     "instance.read": {"run_id": "r1"},
+    "run.commit": {"run_id": "r1"},
     "run.fresh": {"run_id": "r1"},
     "state.read": {"run_id": "r1"},
     "state.write": {

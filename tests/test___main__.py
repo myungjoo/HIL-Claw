@@ -23,6 +23,7 @@ FIXED_NAMES = [
     "instance.read",
     "run.fresh",
     "state.write",
+    "run.commit",
 ]
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
 
@@ -209,7 +210,7 @@ def test_an_interrupt_is_not_answered():
 def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_tools(
     name,
 ):
-    """The C-3 pair (ADR-0039), correctness.check (ADR-0070) and the run-file tools (ADR-0124)."""
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124) and run.commit (ADR-0127)."""
     stdout, stderr = io.BytesIO(), io.BytesIO()
     status = main([name], stdin=io.BytesIO(b"{}"), stdout=stdout, stderr=stderr)
     if name not in FIXED_NAMES[:3]:

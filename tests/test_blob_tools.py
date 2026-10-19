@@ -179,6 +179,7 @@ def test_the_default_registry_holds_the_definitions(root):
         *NAMES,
         "correctness.check",
         "instance.read",
+        "run.commit",
         "run.fresh",
         "state.read",
         "state.write",
@@ -699,6 +700,7 @@ def test_the_mcp_front_lists_the_blob_tools_among_the_fixed_set(configured):
     assert check["name"] == "correctness_check"
     assert [tool["name"] for tool in listed["result"]["tools"][3:]] == [
         "instance_read",
+        "run_commit",
         "run_fresh",
         "state_read",
         "state_write",

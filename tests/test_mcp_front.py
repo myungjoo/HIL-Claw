@@ -25,6 +25,7 @@ FIXED_NAMES = {
     "instance.read": "instance_read",
     "run.fresh": "run_fresh",
     "state.write": "state_write",
+    "run.commit": "run_commit",
 }
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
 INITIALIZE = {
@@ -454,12 +455,13 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 
 
 def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_tools():
-    """The C-3 pair (ADR-0039), correctness.check (ADR-0070) and the run-file tools (ADR-0124)."""
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124) and run.commit (ADR-0127)."""
     held = {
         "blob_fetch": "blob.fetch",
         "blob_push": "blob.push",
         "correctness_check": "correctness.check",
         "instance_read": "instance.read",
+        "run_commit": "run.commit",
         "run_fresh": "run.fresh",
         "state_read": "state.read",
         "state_write": "state.write",
@@ -506,6 +508,7 @@ def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
         "blob_push",
         "correctness_check",
         "instance_read",
+        "run_commit",
         "run_fresh",
         "state_read",
         "state_write",
@@ -947,6 +950,7 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
             "blob_push",
             "correctness_check",
             "instance_read",
+            "run_commit",
             "run_fresh",
             "state_read",
             "state_write",
@@ -1044,6 +1048,7 @@ def test_process_handshake_and_tool_list():
             "blob_push",
             "correctness_check",
             "instance_read",
+            "run_commit",
             "run_fresh",
             "state_read",
             "state_write",
