@@ -3,8 +3,21 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import turn_definition, turn_loop
+from hilclaw import mcp_front, turn_definition, turn_loop
+from hilclaw import tools as tools_module
 from hilclaw.turn_definition import DIRECTORIES, LAYOUT, PROMPT, SOURCE, put
+
+EVALUATOR = "evaluator.md"
+EVALUATOR_TOOLS = {
+    "Read",
+    "Grep",
+    "Glob",
+    "mcp__hilclaw__correctness_check",
+    "mcp__hilclaw__state_read",
+    "mcp__hilclaw__instance_read",
+    "mcp__hilclaw__run_fresh",
+    "mcp__hilclaw__verdicts_write",
+}
 
 UNKNOWN = "the definition holds an entry that is not in the layout"
 WRONG_KIND = "an entry of the definition is of the wrong kind"
@@ -93,12 +106,66 @@ def test_public_names():
 
 def test_the_repository_definition_by_default(session):
     assert put(session) is None
-    assert tree(session) == {"CLAUDE.md": (SOURCE / PROMPT).read_bytes()}
-    assert os.listdir(session) == ["CLAUDE.md"]
+    assert tree(session) == {
+        "CLAUDE.md": (SOURCE / PROMPT).read_bytes(),
+        ".claude/agents/evaluator.md": (SOURCE / "agents" / EVALUATOR).read_bytes(),
+    }
+    assert sorted(os.listdir(session)) == [".claude", "CLAUDE.md"]
+    assert os.listdir(session / ".claude") == ["agents"]
 
 
-def test_the_repository_definition_holds_only_the_prompt():
-    assert os.listdir(SOURCE) == [PROMPT]
+def test_the_repository_definition_holds_the_prompt_and_the_evaluator():
+    assert sorted(os.listdir(SOURCE)) == ["agents", PROMPT]
+    assert (SOURCE / "agents").is_dir()
+    assert os.listdir(SOURCE / "agents") == [EVALUATOR]
+
+
+def frontmatter(text):
+    lines = text.splitlines()
+    assert lines and lines[0] == "---", "the text holds no frontmatter"
+    assert "---" in lines[1:], "the frontmatter is not closed"
+    found = {}
+    for line in lines[1 : lines.index("---", 1)]:
+        key, separator, value = line.partition(":")
+        assert separator and key == key.strip() and key, f"not a key: {line!r}"
+        assert key not in found, f"a key twice: {key!r}"
+        found[key] = value.strip()
+    return found
+
+
+def test_the_evaluator_frontmatter():
+    text = (SOURCE / "agents" / EVALUATOR).read_text(encoding="utf-8")
+    found = frontmatter(text)
+    assert set(found) == {"name", "description", "tools"}
+    assert found["name"] == "evaluator"
+    assert "model" not in found
+    assert found["description"]
+    tools = [name.strip() for name in found["tools"].split(",")]
+    assert len(tools) == len(set(tools))
+    assert set(tools) == EVALUATOR_TOOLS
+    registered = tools_module.default_registry(lambda: None).names()
+    prefix = f"mcp__{mcp_front.SERVER_NAME}__"
+    served = {prefix + mcp_front.mcp_name(name) for name in registered}
+    for name in tools:
+        if name.startswith("mcp__hilclaw__"):
+            assert name in served
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "# Evaluator\n",
+        "---\nname: evaluator\n",
+        "---\nname evaluator\n---\n",
+        "---\nname: a\nname: b\n---\n",
+        "---\n name: a\n---\n",
+        "---\n: a\n---\n",
+    ],
+)
+def test_a_text_without_valid_frontmatter_is_refused(text):
+    with pytest.raises(AssertionError):
+        frontmatter(text)
 
 
 def test_a_given_source_as_str(session, source):
