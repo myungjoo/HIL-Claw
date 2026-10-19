@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0330",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:ce18f1eb-1",
+    "acquiredAt": "2026-10-19T05:53:28Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -311,7 +315,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0118 (round boundary of a first-case run, OD-18 round boundary, #8 M4, one point of OD-23; T-0329, main a2d9e96) decides that one turn is one Claude Code session process started by a layer-2 turn loop, running in a session directory outside both checkouts, with the runtime definition copied in from `orchestration/` at every turn and the server given by `--mcp-config` + `--strict-mcp-config`. Under D16 these are runtime acceptance items, closed by your check by hand or by the runtime's own self-check, not by a driver task: (i) what a `-p` session in the session directory loads, and that it loads nothing of this repo; (ii) what it loads from the runtime user's `~/.claude/`, and what the chosen flags exclude; (iii) a sub-agent in the session directory's `.claude/agents/` is found and used; (iv) `--mcp-config`/`--strict-mcp-config` gives the server to every turn's main session, the server finds the package, sub-agents inherit its tools, and whether inline `mcpServers` survives `--strict-mcp-config` in a trusted directory; (v) a `-p` turn session exits after its last reply; (vi) the exit status separates success from failure; (vii) the later permission/allowlist means work under workspace trust. Nothing was tried; no task is blocked on this notice.",
       "askedAt": "2026-10-19T05:47:48Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6260601350"
     }
   ],
   "counters": {
