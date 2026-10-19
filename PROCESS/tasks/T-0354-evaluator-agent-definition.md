@@ -2,7 +2,7 @@
 id: T-0354
 title: Add the evaluator sub-agent definition orchestration/agents/evaluator.md of ADR-0128 decision 7, with a test that LAYOUT copies it (ADR-0128 Consequences slice 2; PLAN P2-3)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-17, OD-23, OD-16, S0, S1]
 dependsOn: [T-0352, T-0353]
@@ -67,3 +67,14 @@ Nothing here needs an owner answer. ADR-0128 says the definition names no model,
 - Next slice for the planner (ADR-0128 Consequences slice 3): each of the read of a round's `hypotheses.json`, the read of an attempt's journaled results, the standing tool and the comparison tool needs its own record before code. Planning the first of these records belongs to P2-3 and P2-6.
 
 ## Result
+
+- Outcome: DONE. PR #203 (https://github.com/myungjoo/HIL-Claw/pull/203), squash-merged as 71a57d5ef273943821cab145714363c38f1da7ac; branch claude/T-0354-evaluator-agent-definition deleted.
+- Changes: new orchestration/agents/evaluator.md. Its frontmatter has name `evaluator`, a description of the delegation, and `tools` exactly Read, Grep, Glob, mcp__hilclaw__correctness_check, state_read, instance_read, run_fresh and verdicts_write. It has no `model` key. The body states the fixed rules of ADR-0128 decision 7, what the evaluator is given (decision 4), that it copies no computation (decision 2), that it reports no standing while no standing tool exists, and the report form of decision 5. Every rule cites its source.
+- Verdicts: no tool reads a round's hypotheses.json or an attempt's journaled results yet (slice 3). On a verdicts delegation the evaluator therefore reports in one line that the round's verdicts cannot yet be written, does not call verdicts_write, and writes nothing. This follows the precedent of "The round steps" in round-manager.md. The record rules of decision 6 are written down for when that work is given. Nothing ADR-0128 leaves open was decided.
+- hilclaw/turn_definition.py: docstring only (roster sentence; runtime acceptance item (xviii) named). LAYOUT and put are unchanged.
+- tests/test_turn_definition.py: put() copies CLAUDE.md and .claude/agents/evaluator.md byte for byte; SOURCE holds exactly round-manager.md and agents/evaluator.md; frontmatter test checks name, no model key, the exact tool set, and that every mcp__hilclaw__ entry matches a default_registry tool.
+- Language: Markdown for the definition (layer 1, read by Claude Code); Python for the tests (the package's test language).
+- Tests: local ruff check, ruff format --check and full pytest (24103 passed, 724 skipped); CI green (Python 3.11/3.14, coverage, C, shellcheck, test presence).
+- Review: 3 rounds (round 1 Request changes; rounds 2 and 3 Approve, the round-2 nit addressed).
+- No data-plane, tool or registry change. No claude process started. ADR-0128 runtime acceptance items (xviii) to (xx) (HQ-0045) are not closed.
+- Follow-ups: when slice 3 enables the verdicts work, narrow "can be corrected and sent again" to the refusals caused by the record itself (invalid_request, verdicts_mismatch, comparison_not_given) (reviewer note). The slice-3 records (hypotheses read, journaled-results read, standing tool, comparison tool) are as listed in the task's Follow-ups.
