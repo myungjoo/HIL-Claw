@@ -1,7 +1,9 @@
-"""Tests of the cpu_standin build settings (ADR-0116 decisions 3 to 6)."""
+"""Tests of the cpu_standin build settings and time limits (ADR-0116, ADR-0117)."""
 
+import math
 import os
 import shutil
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -11,7 +13,15 @@ from hilclaw.harness.timing import run_timing
 from hilclaw.harness.timing_build import build_timing_executable
 from hilclaw.harness.verification import Verdict, run_verification
 from hilclaw.harness.verification_build import build_verification_executable
-from hilclaw.standin_settings import ENV, FLAGS, TRAILING_FLAGS
+from hilclaw.standin_settings import (
+    BUILD_TIME_LIMIT_S,
+    ENV,
+    FLAGS,
+    PROCESS_TIME_LIMIT_CAP_S,
+    TRAILING_FLAGS,
+    timing_process_time_limit_s,
+    verification_process_time_limit_s,
+)
 
 KERNELS = Path(__file__).parent / "harness" / "calibration"
 BUILD_TIMEOUT = 120
@@ -45,9 +55,17 @@ def test_the_values_are_those_of_the_record():
     assert ENV is None
 
 
-def test_the_module_exposes_only_the_three_settings():
+def test_the_module_exposes_only_the_settings_and_the_time_limits():
     public = {name for name in vars(standin_settings) if not name.startswith("_")}
-    assert public == {"FLAGS", "TRAILING_FLAGS", "ENV"}
+    assert public == {
+        "FLAGS",
+        "TRAILING_FLAGS",
+        "ENV",
+        "BUILD_TIME_LIMIT_S",
+        "PROCESS_TIME_LIMIT_CAP_S",
+        "verification_process_time_limit_s",
+        "timing_process_time_limit_s",
+    }
 
 
 @pytest.mark.parametrize(
@@ -71,6 +89,126 @@ def test_no_flag_is_a_setting_the_record_leaves_out(prefix):
 @pytest.mark.parametrize("runtime", ["-lomp", "-lgomp"])
 def test_no_openmp_runtime_is_linked(runtime):
     assert runtime not in TRAILING_FLAGS
+
+
+GATE_UP_512 = {"m": 512, "k": 2048, "n": 8192}
+O_1 = {"m": 1, "k": 2048, "n": 2048}
+LIMIT_FUNCTIONS = [
+    (verification_process_time_limit_s, "draws"),
+    (timing_process_time_limit_s, "n_max"),
+]
+CLANG_BUILD_MAX_TIMEOUT_S = (2**31 - 1) / 1000
+
+
+def expected(m, k, n, calls):
+    rule = 10 + calls * (1 + Fraction(2 * m * k * n, 2 * 10**8))
+    return float(min(rule, Fraction(1500)))
+
+
+def test_the_time_limit_constants_are_those_of_the_record():
+    assert type(BUILD_TIME_LIMIT_S) is int
+    assert BUILD_TIME_LIMIT_S == 60
+    assert type(PROCESS_TIME_LIMIT_CAP_S) is int
+    assert PROCESS_TIME_LIMIT_CAP_S == 1500
+
+
+@pytest.mark.parametrize(
+    "shape", [GATE_UP_512, O_1, {"m": 1, "k": 1, "n": 1}, {"m": 3, "k": 4, "n": 5}]
+)
+@pytest.mark.parametrize("count", [1, 2, 10, 17, 18, 40])
+def test_the_rule_is_exact(shape, count):
+    verification = verification_process_time_limit_s(**shape, draws=count)
+    timing = timing_process_time_limit_s(**shape, n_max=count)
+    assert type(verification) is float
+    assert type(timing) is float
+    assert verification == expected(**shape, calls=count)
+    assert timing == expected(**shape, calls=count + 1)
+
+
+def test_the_figures_of_the_record():
+    assert timing_process_time_limit_s(**GATE_UP_512, n_max=10) == pytest.approx(
+        966, abs=0.5
+    )
+    assert timing_process_time_limit_s(**O_1, n_max=10) == pytest.approx(21.5, abs=0.05)
+    assert verification_process_time_limit_s(**O_1, draws=1) == pytest.approx(
+        11, abs=0.05
+    )
+
+
+def test_the_smallest_inputs_give_just_over_eleven_seconds():
+    assert verification_process_time_limit_s(1, 1, 1, 1) == float(
+        11 + Fraction(1, 10**8)
+    )
+    assert timing_process_time_limit_s(1, 1, 1, 1) == float(12 + Fraction(2, 10**8))
+
+
+@pytest.mark.parametrize("shape", [GATE_UP_512, O_1, {"m": 7, "k": 1, "n": 300}])
+@pytest.mark.parametrize("n_max", [1, 5, 10, 16, 17, 1000])
+def test_the_timing_run_counts_one_call_more_than_n_max(shape, n_max):
+    assert timing_process_time_limit_s(
+        **shape, n_max=n_max
+    ) == verification_process_time_limit_s(**shape, draws=n_max + 1)
+
+
+def test_the_cap_at_the_largest_work_of_the_record():
+    assert verification_process_time_limit_s(**GATE_UP_512, draws=17) < 1500
+    assert verification_process_time_limit_s(**GATE_UP_512, draws=18) == 1500.0
+    assert timing_process_time_limit_s(**GATE_UP_512, n_max=16) < 1500
+    assert timing_process_time_limit_s(**GATE_UP_512, n_max=17) == 1500.0
+
+
+BIG = 2**53 - 1
+HUGE = 2**4000
+
+
+@pytest.mark.parametrize(
+    ("args", "capped"),
+    [
+        ((1, 1, 1, 1), False),
+        ((BIG, BIG, BIG, BIG), True),
+        ((HUGE, HUGE, HUGE, HUGE), True),
+        ((1, 1, 1, BIG), True),
+        ((1, 1, 1, HUGE), True),
+        ((BIG, 1, 1, 1), True),
+        ((1, 1, HUGE, 1), True),
+    ],
+)
+@pytest.mark.parametrize(("function", "_"), LIMIT_FUNCTIONS)
+def test_the_rule_never_gives_a_value_the_functions_refuse(function, _, args, capped):
+    value = function(*args)
+    assert type(value) is float
+    assert math.isfinite(value)
+    assert 0 < value <= PROCESS_TIME_LIMIT_CAP_S
+    assert value <= CLANG_BUILD_MAX_TIMEOUT_S
+    assert (value == 1500.0) is capped
+
+
+def test_the_build_limit_is_a_value_the_functions_accept():
+    assert math.isfinite(BUILD_TIME_LIMIT_S)
+    assert 0 < BUILD_TIME_LIMIT_S <= PROCESS_TIME_LIMIT_CAP_S
+    assert BUILD_TIME_LIMIT_S <= CLANG_BUILD_MAX_TIMEOUT_S
+
+
+@pytest.mark.parametrize("bad", [True, False, 1.0, "1", None, Fraction(1)])
+@pytest.mark.parametrize("position", ["m", "k", "n", "count"])
+@pytest.mark.parametrize(("function", "count_name"), LIMIT_FUNCTIONS)
+def test_an_argument_that_is_not_an_int_is_refused(function, count_name, position, bad):
+    args = {"m": 1, "k": 1, "n": 1, count_name: 1}
+    name = count_name if position == "count" else position
+    args[name] = bad
+    with pytest.raises(TypeError, match=rf"^{name} must"):
+        function(**args)
+
+
+@pytest.mark.parametrize("bad", [0, -1, -(2**4000)])
+@pytest.mark.parametrize("position", ["m", "k", "n", "count"])
+@pytest.mark.parametrize(("function", "count_name"), LIMIT_FUNCTIONS)
+def test_an_argument_below_one_is_refused(function, count_name, position, bad):
+    args = {"m": 1, "k": 1, "n": 1, count_name: 1}
+    name = count_name if position == "count" else position
+    args[name] = bad
+    with pytest.raises(ValueError, match=rf"^{name} must"):
+        function(**args)
 
 
 @pytest.fixture(scope="module")
