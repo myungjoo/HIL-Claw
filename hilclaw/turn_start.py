@@ -61,7 +61,7 @@ exactly one line, a compact JSON object in ASCII ended by one LF, whose member
 ``failed_turn``            11      ``exit_status``
 ``unchanged_turn``         12      none
 ``open_state``             13      ``reason``, and ``exit_status`` as above
-``stopped_at_check``       14      ``check``, or ``check_fault`` (below)
+``stopped_at_check``       14      ``check``, ``check_fault`` or neither (below)
 ``error``                  20      ``error``: the error kind (below)
 =========================  ======  =========================================
 
