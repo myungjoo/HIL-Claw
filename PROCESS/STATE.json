@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0346",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:e77e970b-2",
-    "acquiredAt": "2026-10-19T16:51:42Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -348,18 +344,42 @@
       "question": "ADR-0125 (where the runtime self-check runs for a first-case run: hilclaw.turn_start runs hilclaw.selfcheck.check() once per start, after the first step 1 finds a turn due and before the first turn session; passed and no_call let the turn start, every other result and a fault of the check stop the start; part of OD-18 sub-question 16 (ga); T-0343, main 393bcd8) adds one runtime acceptance item to the self-check series. Under D16 it is closed by your check by hand or by the runtime's own self-check, not by a driver task: (xvi) what `claude auth status` reports for a stored login that has expired and cannot be refreshed: exit status 1 (`not_logged_in`), or 0 with an `authMethod` (the session then ends `session_failed`). Best checked after the code slice of ADR-0125 lands.",
       "askedAt": "2026-10-19T14:52:45Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6270160894"
+    },
+    {
+      "id": "HQ-0040",
+      "taskId": "T-0346",
+      "reason": "requirement-unclear",
+      "question": "ADR-0126 (who issues a first-case coder call, part of OD-23; T-0346, main a5de4f6) leaves one point to you. Condition 1 of the #4 §3a revision (https://github.com/myungjoo/HIL-Claw/issues/4#issuecomment-5138366881) has the coder-driver call `claude -p` through Bash. The later #4 comment of the same day (https://github.com/myungjoo/HIL-Claw/issues/4#issuecomment-5139876430) says a prompt-only write zone is too weak and discusses a typed `coder.run`. Should the coder-driver reach the coder-call function (B) through its Bash tool, as a command-line entry outside the registry, or (T) as the registry tool `coder.run` through the MCP front? Under (B) it has a shell, a hook sees only a command string, and the answer also settles OD-18 sub-question 2 for it and reopens ADR-0010 decision 3. Under (T) it needs no shell, and a hook and an allowlist see the tool. The function and its contract are the same either way. Not blocking T-0346 (landed); the front, orchestration/agents/coder-driver.md and the delegation step of round-manager.md wait for this answer.",
+      "askedAt": "2026-10-19T17:22:30Z",
+      "issueComment": null
+    },
+    {
+      "id": "HQ-0041",
+      "taskId": "T-0346",
+      "reason": "owner-only-decision",
+      "question": "For the first-case coder call of ADR-0126 (T-0346, main a5de4f6; #5 A-8, owner-only): (1) which model the coder's `claude -p` runs with, and whether a default applies when none is named (NFR-5 requires that one can be named); (2) whether the coder's tokens count toward the run's budget, summed with the orchestrator's or as a separate limit, and so whether the call must read and report the coder's token usage. Not blocking T-0346 (landed); ADR-0049 slice (d) waits for this answer.",
+      "askedAt": "2026-10-19T17:22:30Z",
+      "issueComment": null
+    },
+    {
+      "id": "HQ-0042",
+      "taskId": "T-0346",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0126 (main a5de4f6; part of OD-23; T-0346) adds runtime acceptance items (xii)-(xiv) to the turn-session series. Under D16 they are closed by your check by hand or by the runtime's own self-check, not by a driver task. (xii) A `coder-driver` sub-agent of a `-p` turn session can request the coder call in the form HQ-0040 gives (the entry through Bash, found from the session directory, or `mcp__hilclaw__coder_run`) without a permission prompt. (xiii) How long a first-case coder call takes, against that form's limit (foreground Bash: 2 min by default, 10 min ceiling; MCP idle window about 30 min) and the session's own limits, and whether a cut-off request leaves the function, the container or the coder running. (xiv) The exit status of the coder's `claude -p` inside the container tells a normal end from an abnormal one. Best checked after the code slices land. Nothing was tried.",
+      "askedAt": "2026-10-19T17:22:30Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 359,
-    "tasksDone": 333,
+    "iterations": 360,
+    "tasksDone": 334,
     "tasksBlocked": 26,
-    "reviewRoundsTotal": 1191
+    "reviewRoundsTotal": 1195
   },
   "lastIteration": {
-    "at": "2026-10-19T16:47:00Z",
-    "owner": "AKIHA:e77e970b-1",
-    "taskId": "T-0345",
+    "at": "2026-10-19T17:22:30Z",
+    "owner": "AKIHA:e77e970b-2",
+    "taskId": "T-0346",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

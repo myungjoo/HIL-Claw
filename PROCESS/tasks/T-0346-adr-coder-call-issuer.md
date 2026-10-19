@@ -2,7 +2,7 @@
 id: T-0346
 title: Write ADR-0126 — which actor of a first-case turn session issues a coder call, by what means, and how the coder process is pointed at its spec copy (part of OD-23, PLAN P2-2; for the runs of ADR-0120 decision 1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-5, FR-10, NFR-4, NFR-6, C-7, OD-23, OD-8, OD-18, S0, S1]
 dependsOn: [T-0121, T-0155, T-0171, T-0341, T-0345]
@@ -182,3 +182,10 @@ Each file states its own recording rule. Apply that rule as written, not the wor
 - Alternatively next: an ADR on OD-8 sub-question ⑪ (which step commits a round, and how a fresh turn learns that a commit is owed).
 
 ## Result
+
+- DONE. ADR-0126 (`ARCHITECTURE/decisions/ADR-0126-od23-coder-call-issuer.md`) landed on main as a5de4f6 (document mode, squashed, `Reviewed-by: reviewer agent (4 rounds, Approve)`); branch deleted. Registers: OD-23 row and § OD-23 narrowed in place (status unchanged); StandardScenarios recheck line (S0, S1, S8: no verdict change, no gap).
+- Decided (first case only): the `coder-driver` sub-agent issues the call and holds `coder/`; one deterministic layer-2 function performs the whole ADR-0049 call with a fixed request/result/kinds; the coder works in the scratch, and its prompt names `spec.json` and `output` by relative name only; not journaled; no data-plane change.
+- Not decided: Bash entry (B) vs registry tool `coder.run` (T). Condition 1 of #4 §3a names Bash; the later #4 owner premises point away from a shell. Left to the owner (HQ-0040); neither front is added.
+- Owner notice posted on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6273032697
+- HQs opened by the driver: HQ-0040 (the Bash/`coder.run` reading; must be in `hq` of the front/definition slices before they are planned), HQ-0041 (#5 A-8 coder model and token axis; needed before ADR-0049 slice (d) is planned), HQ-0042 (runtime-acceptance items (xii)-(xiv), non-blocking).
+- Follow-ups: code slice `hilclaw/coder_call.py` + `tests/test_coder_call.py` (function only, container start behind a seam, stub runtime; plannable now); after HQ-0040: the front, `orchestration/agents/coder-driver.md`, the delegation step in `orchestration/round-manager.md`; after HQ-0041: slice (d).
