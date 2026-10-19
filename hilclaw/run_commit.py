@@ -162,7 +162,7 @@ def commit(data_root, run_id):
     index lock of the repository is held from before ``HEAD`` moves until the
     index is replaced; should that replacement fail, the commit stands and the
     entries are set once more by ``git reset`` on the index, as ``git`` locks
-    it.
+    it; should that fail too, the index is as it was and nothing reports it.
 
     Raises what :func:`owed_rounds` raises, with nothing removed or committed,
     and :class:`CommitNotMadeError` when the removal fails with an
