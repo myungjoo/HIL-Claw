@@ -2,7 +2,7 @@
 id: T-0345
 title: Define the turn-entry steps of the Round-Manager (first STATE.json, the over states, the round-budget end) in orchestration/round-manager.md
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-3, NFR-7, OD-8, OD-19, OD-23, OD-28, S0, S1]
 dependsOn: [T-0331, T-0340, T-0342]
@@ -92,3 +92,12 @@ Language: no new layer-2 code. The change is Markdown in layer 1 plus one docstr
 - Alternatively: an ADR on OD-8 sub-question ⑪ (which step commits a round and how a fresh turn learns a commit is owed).
 
 ## Result
+
+- DONE. PR #197 (Draft -> ready), squash-merged as a4f5004; branch deleted.
+- Review: 2 rounds by a context-isolated dev-reviewer. Round 1 Approve with one optional nit (name the run id as `run_id` for the entry steps), applied in 84995c9. Round 2 Approve, no findings.
+- CI: all six checks green on 84995c9 (C gate, Coverage gate, Python gate 3.11/3.14, Test presence, sh gate).
+- Local: `python -m pytest -q` 23806 passed, 709 skipped; `python -m ruff check .` and `ruff format --check .` clean.
+- Change: `orchestration/round-manager.md` replaces the placeholder section with "The entry of a turn": state_read, then run_fresh and the first STATE.json, the over and unknown run_status cases, and the round_budget end (write "over" only when the state holds just the three ADR-0012 members, so OD-8 sub-question 12 stays open). A short section "The round steps" says those steps are not yet defined. The `hilclaw/turn_definition.py` docstring bullet is renamed "*The prompt*" and corrected.
+- Language: no new layer-2 code; Markdown in layer 1 plus one docstring bullet in an existing Python module.
+- No new tests (rules 1-5); no real `claude` started (D16). No runtime acceptance item added or closed.
+- Follow-ups: as listed in the task (an ADR on the round-0 coder call for OD-23 / P2-2, or one on OD-8 sub-question 11).
