@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0324",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:41a4ee76-1",
-    "acquiredAt": "2026-10-19T01:47:56Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -284,19 +280,27 @@
       "question": "Must every hypothesis injected at instance start be tested during the run? Owner point 4 of #5 issuecomment-6136462569 and FR-15 read either as sameness only or as a duty to test. Options: (a) sameness only - testing each injected input is the selection's judgement; (b) test each written hypothesis once during the run at a round the selection chooses, untested-at-end is a shortfall the files show, not a fault; (c) as (b) with a pace - each round from round 1 tests at least one untested one. Draft ADR-0112 on branch claude/T-0318-od30-injected-system-distribution decides the rest (a system hypothesis every round, no fixed order/ratio, mixing allowed).",
       "askedAt": "2026-10-18T21:40:28Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6255484182"
+    },
+    {
+      "id": "HQ-0032",
+      "taskId": "T-0324",
+      "reason": "requirement-unclear",
+      "question": "How does the ADR-0115 start function learn of a 'given id' (ADR-0111: refuse a given run_id)? Draft PR #186 reads a top-level `run_id` member of the instance.json document as a given id and refuses it; the reviewer found this reserves an undefined member name (ADR-0018 decision 2 keeps the top level open; ADR-0006 rejected a run_id member), close to a schema decision. Options: (a) confirm that reading (refused by the start only, no validity rule added) - the branch can land after minor fixes; (b) a separate input with an explicit place for a given id, apart from the document; (c) `run_id` is an ordinary undefined member that is kept.",
+      "askedAt": "2026-10-19T02:06:14Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 337,
+    "iterations": 338,
     "tasksDone": 312,
-    "tasksBlocked": 25,
-    "reviewRoundsTotal": 1109
+    "tasksBlocked": 26,
+    "reviewRoundsTotal": 1110
   },
   "lastIteration": {
-    "at": "2026-10-19T01:42:24Z",
-    "owner": "AKIHA:e78bf822-2",
-    "taskId": "T-0323",
-    "outcome": "DONE"
+    "at": "2026-10-19T02:06:14Z",
+    "owner": "AKIHA:41a4ee76-1",
+    "taskId": "T-0324",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
