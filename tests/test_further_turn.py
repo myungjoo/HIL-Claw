@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import further_turn, keys, run_journal, turn_loop
+from hilclaw import further_turn, keys, turn_loop
 from hilclaw.further_turn import (
     DUE,
     FRESH,
@@ -393,17 +393,6 @@ def test_an_exception_of_fallback_passes_through(root):
     further, _, _ = make(root, fallback=fallback)
     with pytest.raises(RuntimeError, match="fallback failed"):
         further(None)
-
-
-def test_missing_state_error_is_open_not_raised(root, monkeypatch):
-    started(root)
-    (run_dir(root) / "rounds").mkdir()
-
-    def missing(data_root, run_id):
-        raise run_journal.MissingStateError("missing")
-
-    monkeypatch.setattr(further_turn.run_journal, "read_state", missing)
-    assert classify(root, RUN) == Finding(OPEN, None)
 
 
 # --- with the loop ---

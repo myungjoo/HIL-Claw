@@ -23,8 +23,10 @@ failing one is retried. So they answer a further turn only before the first
 turn (``previous`` is ``None``) or after a turn session whose exit status was
 0; after any other exit status the caller's predicate answers. Otherwise a
 round-0 turn that keeps failing would leave the directory fresh and the loop
-would start turns without end, spending plan usage. P2 and P3 answer no
-further turn whatever ``previous`` is.
+would start turns without end, spending plan usage. A turn that exits with 0
+and leaves the run as it found it is not caught: P1 and P4 answer a further
+turn again, as ADR-0121 decision 5 has it, so this predicate alone bounds no
+usage. P2 and P3 answer no further turn whatever ``previous`` is.
 
 It writes, creates, removes and lists nothing, keeps nothing between calls,
 compares no number, interprets no member besides ``run_status`` and
