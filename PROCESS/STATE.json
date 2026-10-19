@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0340",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:989944d1-1",
+    "acquiredAt": "2026-10-19T12:21:19Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -327,7 +331,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0123 (how a first-case turn session learns which run it carries: the command-line entry hilclaw.turn_start puts the run id into the prompt of every turn and hands the session no place of the run; part of OD-18 and OD-23; T-0339, main 2f49767) adds one runtime acceptance item to ADR-0118's (i)-(vii) of HQ-0035 and ADR-0122's (viii) of HQ-0036. Under D16 it is closed by your check by hand or by the runtime's own self-check, not by a driver task: (ix) a `-p` turn session started by the loop with the prompt the entry builds receives that text unchanged as its first user message - on Windows also where the `claude` found is a command script - and its Round-Manager takes the run id from it as the definition says. Nothing was tried; no task is blocked on this notice.",
       "askedAt": "2026-10-19T11:38:04Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6266315890"
     }
   ],
   "counters": {

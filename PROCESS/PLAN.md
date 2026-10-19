@@ -72,3 +72,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0333 follow-up — ADR-0120 7라운드 지적(decision 3의 "a check of existence is all" 범위 문구, Status의 builds-on에 ADR-0019·ADR-0025 추가)과 Consequences에 적힌 이전 ADR·docstring의 덜 정확해진 문장, ADR 문구 정리.
 - T-0335 follow-up — ADR-0121 Consequences에 적힌 덜 정확해진 문장(ADR-0012·ADR-0032·ADR-0033·ADR-0117·ADR-0118·ADR-0119·ADR-0120)과 Requirements OD-28 행(잔여)·OpenDecisionProposals § OD-28 남음의 "round budget 계상", ADR·등록부 문구 정리.
 - T-0337 follow-up — ADR-0122 Consequences에 적힌 덜 정확해진 문장(ADR-0118 decision 3·Consequences (1)·Walk-through·Boundaries, ADR-0120 decision 4·Consequences (3)·Walk-through·Boundaries, ADR-0121 decision 5·Consequences·Boundaries), ADR 문구 정리.
+- T-0339 follow-up — ADR-0123 Consequences에 적힌 덜 정확해진 문장(ADR-0122 Context의 "fixed prompt", ADR-0118 decision 3의 "Given one run"), ADR 문구 정리.
