@@ -2,7 +2,7 @@
 id: T-0348
 title: Write ADR-0127 — which step of a first-case run commits the data repository, when, what it takes in, and how a fresh turn learns that a commit is owed (OD-8 sub-question ⑪, PLAN P2-1; for the runs of ADR-0120 decision 1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-4, FR-13, NFR-1, NFR-2, OD-8, OD-17, OD-23, S0, S1, S2]
 dependsOn: [T-0042, T-0333, T-0335, T-0337, T-0341, T-0346]

@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0348",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:9f14a08d-1",
-    "acquiredAt": "2026-10-19T18:21:34Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -372,18 +368,34 @@
       "question": "ADR-0126 (main a5de4f6; part of OD-23; T-0346) adds runtime acceptance items (xii)-(xiv) to the turn-session series. Under D16 they are closed by your check by hand or by the runtime's own self-check, not by a driver task. (xii) A `coder-driver` sub-agent of a `-p` turn session can request the coder call in the form HQ-0040 gives (the entry through Bash, found from the session directory, or `mcp__hilclaw__coder_run`) without a permission prompt. (xiii) How long a first-case coder call takes, against that form's limit (foreground Bash: 2 min by default, 10 min ceiling; MCP idle window about 30 min) and the session's own limits, and whether a cut-off request leaves the function, the container or the coder running. (xiv) The exit status of the coder's `claude -p` inside the container tells a normal end from an abnormal one. Best checked after the code slices land. Nothing was tried.",
       "askedAt": "2026-10-19T17:22:30Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6273055239"
+    },
+    {
+      "id": "HQ-0043",
+      "taskId": "T-0348",
+      "reason": "owner-only-decision",
+      "question": "Does #5 A-3's local commit at '매 턴(=Round) 종료 시' apply to a turn that ends before its round ends (process death or stop, a session that ends while the run waits for the owner, at a gate, on an error or a usage limit; ADR-0121's own 'over' write)? (a) every turn end commits what the run directory then holds, and the next turn's entry commits what a dead turn left; (b) round ends only — a cut-short turn's work is committed with its round; (c) something else. ADR-0127 (T-0348, main e9f16a0) commits nothing in that case until answered. Not blocking T-0348 (landed) nor the listed code slices.",
+      "askedAt": "2026-10-19T19:15:36Z",
+      "issueComment": null
+    },
+    {
+      "id": "HQ-0044",
+      "taskId": "T-0348",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0127 (part of OD-8 sub-question 11; T-0348, main e9f16a0) adds turn-session runtime acceptance items (xv)-(xvii): (xv) the main session of a -p turn session sees mcp__hilclaw__run_commit and may call it under the permission means of item (vii); (xvi) the MCP server process of a turn session finds git and an author identity to commit in the data checkout; (xvii) a live Round-Manager calls run.commit as the first step of its entry and right after the write that ends its round. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
+      "askedAt": "2026-10-19T19:15:36Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 361,
-    "tasksDone": 335,
+    "iterations": 362,
+    "tasksDone": 336,
     "tasksBlocked": 26,
-    "reviewRoundsTotal": 1197
+    "reviewRoundsTotal": 1204
   },
   "lastIteration": {
-    "at": "2026-10-19T17:48:17Z",
-    "owner": "AKIHA:cdc441cc-1",
-    "taskId": "T-0347",
+    "at": "2026-10-19T19:15:36Z",
+    "owner": "AKIHA:9f14a08d-1",
+    "taskId": "T-0348",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
