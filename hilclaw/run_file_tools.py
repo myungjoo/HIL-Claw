@@ -236,9 +236,10 @@ def _write(source, request):
     try:
         run_state_file.replace(data_root, run_id, state["round"], view, others)
     except OSError as e:
+        file = run_files.relative(run_id, "STATE.json")
         raise tools.ToolFailure(
             KIND_STATE_NOT_WRITTEN,
-            f"{run_files.relative(run_id, 'STATE.json')}: was not written: {_reported(e, data_root)}",
+            f"{file}: was not written: {_reported(e, data_root)}",
         ) from e
     return {}
 
