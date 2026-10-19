@@ -2,7 +2,7 @@
 id: T-0347
 title: Add hilclaw/coder_call.py, the coder-call function of ADR-0126 decision 3 (no front; container start behind a seam that tests replace)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-5, NFR-4, C-7, OD-23, OD-8, S0, S1]
 dependsOn: [T-0346]
@@ -157,3 +157,27 @@ The open HQs do not block this slice:
 - Alternatively next: an ADR on OD-8 sub-question ⑪ (which step commits a round, and how a fresh turn learns that a commit is owed).
 
 ## Result
+
+- **DONE.** PR #198 squash-merged as `c9466e4`; branch deleted. Reviewer cycle: 2 rounds. Round 1 asked for changes: (1) the docstring wrongly said the runtime composes the prompt; it now says, as ADR-0126 decision 5 does, that the function composes it and its text is slice (d)'s; (2) step 3 had an unassigned `attempt_directory_unlistable`, which was removed, so that `OSError` now propagates; (3) a wrap nit. Round 2: Approve. CI green on `808578b`: Python 3.11 and 3.14, coverage, test presence, sh and C gates.
+- **Language:** Python, because the function wires together existing Python modules of the layer-2 package (`scratch`, `bring_in`, `spec_file`, `layout`).
+- **Module:** `hilclaw/coder_call.py`.
+  - API: `call(request, *, source, runtime)`, `CoderNotStartedError`, `FAILURE_KINDS` (in check order) and seven new `KIND_*` constants, none reserved.
+  - The seam: `runtime.available()` and `runtime.run(scratch_root) -> int`. There is no default runtime, prompt, front or journaling, and no `subprocess`.
+  - Coverage of the new module: 100 % lines.
+  - Local run: 23889 passed, 710 skipped on Windows. The symbolic-link test is skipped there and runs in CI.
+- **Errors that propagate unchanged** (ADR-0126 assigns them no kind):
+  - `TypeError` for a `source` that is not callable;
+  - the `OSError` of listing an attempt directory that exists (step 3);
+  - any exception of `runtime.available()`;
+  - `scratch.InvalidScratchArgumentError` and the `OSError` of `scratch.create` or `scratch.remove`;
+  - any exception of `runtime.run` other than `CoderNotStartedError`;
+  - a `TypeError` when the status is not an `int`;
+  - `bring_in.InvalidBringInArgumentError`.
+
+  Each one raised after the scratch was made comes after the removal was tried.
+- **Readings of the module**, marked in the docstring:
+  - `bring_in`'s `OutputExistsError` gives `output_exists`.
+  - At step 4, a spec file whose `fstat` identity differs from its `lstat` identity gives `spec_unreadable`.
+- **Follow-ups**, beyond those listed above:
+  - (a) Possibly a kind for an attempt directory that cannot be listed at step 3. Today its `OSError` propagates, and the text may name a path of the data root.
+  - (b) The function validates the bytes it read itself. `scratch.create` then copies the file in a second read, and nothing checks that the copy is the same bytes. A later record could ask for a compare, which would give `spec_changed`.
