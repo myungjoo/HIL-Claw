@@ -2,7 +2,7 @@
 id: T-0352
 title: Write ADR-0128 — who holds the evaluation role of a first-case turn, which tools it may use, what it is given and what it returns, and what writes the evaluation role's files (part of OD-23 and OD-16, PLAN P2-3; for the runs of ADR-0120 decision 1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-9, FR-17, NFR-4, NFR-6, OD-23, OD-16, OD-30, OD-18, S0, S1, S7]
 dependsOn: [T-0329, T-0341, T-0343, T-0346, T-0348]
