@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0343",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:e58dd173-1",
-    "acquiredAt": "2026-10-19T14:22:32Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -340,18 +336,26 @@
       "question": "ADR-0124 (how the Round-Manager of a first-case turn reads its run's STATE.json and instance.json and reaches hilclaw.run_state_file.replace: four registry tools state.read, instance.read, run.fresh and state.write of the hilclaw MCP server, called with run_id; part of OD-23 and OD-18; T-0341, main 6de1c68) adds two runtime acceptance items after ADR-0123's (ix) of HQ-0037. Under D16 they are closed by your check by hand or by the runtime's own self-check, not by a driver task: (x) the main session of a `-p` turn session started by the turn loop sees the four tools under the MCP names `mcp__hilclaw__state_read`, `mcp__hilclaw__instance_read`, `mcp__hilclaw__run_fresh` and `mcp__hilclaw__state_write` (whether it may call them without a prompt stays ADR-0118 item (vii)); (xi) the results of `state.read` and `instance.read` reach the Round-Manager whole, within the limit Claude Code puts on the output of an MCP tool. Best checked after the code slice of ADR-0124 lands.",
       "askedAt": "2026-10-19T13:01:39Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6267838692"
+    },
+    {
+      "id": "HQ-0039",
+      "taskId": "T-0343",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0125 (where the runtime self-check runs for a first-case run: hilclaw.turn_start runs hilclaw.selfcheck.check() once per start, after the first step 1 finds a turn due and before the first turn session; passed and no_call let the turn start, every other result and a fault of the check stop the start; part of OD-18 sub-question 16 (ga); T-0343, main 393bcd8) adds one runtime acceptance item to the self-check series. Under D16 it is closed by your check by hand or by the runtime's own self-check, not by a driver task: (xvi) what `claude auth status` reports for a stored login that has expired and cannot be refreshed: exit status 1 (`not_logged_in`), or 0 with an `authMethod` (the session then ends `session_failed`). Best checked after the code slice of ADR-0125 lands.",
+      "askedAt": "2026-10-19T14:52:45Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 356,
-    "tasksDone": 330,
+    "iterations": 357,
+    "tasksDone": 331,
     "tasksBlocked": 26,
-    "reviewRoundsTotal": 1179
+    "reviewRoundsTotal": 1186
   },
   "lastIteration": {
-    "at": "2026-10-19T14:08:01Z",
-    "owner": "AKIHA:9e3db6ab-1",
-    "taskId": "T-0342",
+    "at": "2026-10-19T14:52:45Z",
+    "owner": "AKIHA:e58dd173-1",
+    "taskId": "T-0343",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

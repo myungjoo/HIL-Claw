@@ -2,7 +2,7 @@
 id: T-0343
 title: Write ADR-0125 — where the runtime self-check runs in the bring-up of a first-case run, what follows each of its results, and whether it runs again when the turn loop is started again on the same run (OD-18 sub-question 16 (ga), for the runs of ADR-0120 decision 1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-10, C-7, OD-18, OD-23, OD-19, OD-10, UC-1, UC-4, S0, S1, D16]
 dependsOn: [T-0338, T-0341, T-0342]
@@ -95,3 +95,4 @@ The record decides the design. It writes no code. The code slice (the component 
 - **D16**: no `claude`, compiler, `hilclaw.selfcheck` or `hilclaw.turn_start` was started.
 - **Runtime acceptance item for the driver (DRIVER §8, reason `runtime-acceptance`; this task raised no HQ)**: (xvi) in the self-check series: what `claude auth status` reports for a stored login that has expired and cannot be refreshed — exit status 1 (`not_logged_in`) or 0 with an `authMethod` (the session then ends `session_failed`).
 - **Follow-ups**: the code slice of ADR-0125 decision 6 (code mode): in `hilclaw/turn_start.py`, call `check()` between the first step 1 and the first turn; add the outcome "stopped at the check" (exit status not 0) and the report member; tell the check's `no_claude` apart from the entry's error `no_claude`; correct the docstrings of `hilclaw/selfcheck.py`, `hilclaw/turn_start.py` and `hilclaw/turn_loop.py`; tests against a stub `claude` only.
+- **Driver record**: landed as 393bcd8; OD notice on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6270140945; runtime acceptance item (xvi) raised as HQ-0039 (non-blocking).
