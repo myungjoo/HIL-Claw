@@ -2,7 +2,7 @@
 id: T-0332
 title: Write ADR-0119 — the baseline of round 0 for a first-case run is a measurement of the run's own round-0 bring-up code, taken in the run's tree; a vendor-library baseline, an earlier run's best and the choice among several passing attempts stay open (OD-28 for the runs of ADR-0076 decision 1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, OD-28, S0, S1]
 dependsOn: [T-0329]
@@ -134,3 +134,23 @@ OD-28 is a design-level OD and is not on the owner-only list of DRIVER §9. #5 B
 - Then the round-0 part of the Round-Manager prompt.
 
 ## Result
+
+- **Outcome: DONE.** Landed on main as `1f04d63` (document mode; trailers `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0332`). Branch `claude/T-0332-adr-od28-first-case-baseline` deleted locally and on origin (non-force).
+- **Files:** new `ARCHITECTURE/decisions/ADR-0119-od28-first-case-baseline.md` (ADR-0119 was free); OD-28 row of `ARCHITECTURE/Requirements.md`; § OD-28 of `ARCHITECTURE/OpenDecisionProposals.md`; S0 and S1 rows and the "최근 재검사" line of `ARCHITECTURE/StandardScenarios.md` (S0, S1 and S8 re-checked: no verdict change, no gap, so no history entry). `git diff --stat` held only the touchesFiles.
+- **Session entry check:** the only open PR was #186 (T-0324, `hilclaw/` and `tests/` only). Issues #4, #5, #7 and #8 were read.
+- **Owner-sentence search** (#4 body and its 6 comments; #5 body and the 38 of its 189 comments without the driver marker; #7 with 2 comments; #8 with 6): no owner sentence decides the point or reads two ways about it. The B-4 "Consequences" candidate line is read as the integrator's derivation, because it sits outside "Decided (owner)" 1-5 and ends "To be reflected … in the next PR". ADR-0113 Context had filed the same line as an owner sentence; ADR-0119 names that difference and lists it as an integrator follow-up.
+- **Decision:**
+  - **Scope:** runs of ADR-0076 decision 1 that the run tools of ADR-0061 decision 1 cover (`cpu_standin` in the local configuration, or the mock) and that start from their own round 0.
+  - **Baseline:** a measurement of the run's own round-0 bring-up attempt, taken at the board point by `board.run`. Eligibility is ADR-0113's.
+  - **Case answered:** only a round 0 in which exactly one attempt can stand (P2-5, N = 1).
+  - **Left open:** OpenBLAS (a new external dependency) and a library figure; resumed or branched runs; the choice among several attempts (rest of OD-1, #5 A-4); a round 0 with no attempt that can stand; the baseline's record; round 0's spec, N, budget counting and injected input; re-measurement.
+  - No data-plane change and no new dependency.
+- **Review:** 7 rounds; rounds 1-6 Request changes, all addressed; round 7 Approve. Non-blocking findings of round 7 were not addressed, because a further round would have exceeded the 7-round limit. Integrator follow-ups:
+  - The StandardScenarios "최근 재검사" line and the S0/S1 row pointers could name "로컬 구성 밖 첫 사례 run" and the re-measurement, as the register row does.
+  - ADR-0029 (Context line 20, Boundaries line 127, "round 0 (OD-28)") is missing from ADR-0119's "now less exact" list.
+  - ADR-0119 files "round 0's use of cases" (ADR-0073 Boundaries) under OD-28, which ADR-0073 itself did not do.
+  - The ADR is 134 lines, below the "around 150-220" target; its lines are long.
+- **Other integrator follow-ups** (named in ADR-0119 Consequences): the accepted records whose OD-28 sentences are now less exact (ADR-0059, 0073, 0075, 0113, 0007, 0071, 0114, 0061, 0004, 0005, 0002, 0008, 0009, 0050, 0053, 0105, 0118); the UsageCases line 33 term entry; S1's order of steps 3 and 5 for a run of this scope in checkpoint mode.
+- **OD notice on #5 (DRIVER §9):** https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6261910420 (7-day objection period starts there).
+- **D16:** no `claude` was started; nothing needs a board, an accelerator or an API key. No runtime acceptance items.
+- **Next slice:** the round-0 part of `orchestration/round-manager.md`, which still waits on OD-18 ⑯ (가), OD-8 ⑩ and ⑪, and the baseline's record (OD-20, OD-8, OD-23).
