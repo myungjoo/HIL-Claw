@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0347",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:cdc441cc-1",
+    "acquiredAt": "2026-10-19T17:26:33Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -351,7 +355,7 @@
       "reason": "requirement-unclear",
       "question": "ADR-0126 (who issues a first-case coder call, part of OD-23; T-0346, main a5de4f6) leaves one point to you. Condition 1 of the #4 §3a revision (https://github.com/myungjoo/HIL-Claw/issues/4#issuecomment-5138366881) has the coder-driver call `claude -p` through Bash. The later #4 comment of the same day (https://github.com/myungjoo/HIL-Claw/issues/4#issuecomment-5139876430) says a prompt-only write zone is too weak and discusses a typed `coder.run`. Should the coder-driver reach the coder-call function (B) through its Bash tool, as a command-line entry outside the registry, or (T) as the registry tool `coder.run` through the MCP front? Under (B) it has a shell, a hook sees only a command string, and the answer also settles OD-18 sub-question 2 for it and reopens ADR-0010 decision 3. Under (T) it needs no shell, and a hook and an allowlist see the tool. The function and its contract are the same either way. Not blocking T-0346 (landed); the front, orchestration/agents/coder-driver.md and the delegation step of round-manager.md wait for this answer.",
       "askedAt": "2026-10-19T17:22:30Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6273054362"
     },
     {
       "id": "HQ-0041",
@@ -359,7 +363,7 @@
       "reason": "owner-only-decision",
       "question": "For the first-case coder call of ADR-0126 (T-0346, main a5de4f6; #5 A-8, owner-only): (1) which model the coder's `claude -p` runs with, and whether a default applies when none is named (NFR-5 requires that one can be named); (2) whether the coder's tokens count toward the run's budget, summed with the orchestrator's or as a separate limit, and so whether the call must read and report the coder's token usage. Not blocking T-0346 (landed); ADR-0049 slice (d) waits for this answer.",
       "askedAt": "2026-10-19T17:22:30Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6273054804"
     },
     {
       "id": "HQ-0042",
@@ -367,7 +371,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0126 (main a5de4f6; part of OD-23; T-0346) adds runtime acceptance items (xii)-(xiv) to the turn-session series. Under D16 they are closed by your check by hand or by the runtime's own self-check, not by a driver task. (xii) A `coder-driver` sub-agent of a `-p` turn session can request the coder call in the form HQ-0040 gives (the entry through Bash, found from the session directory, or `mcp__hilclaw__coder_run`) without a permission prompt. (xiii) How long a first-case coder call takes, against that form's limit (foreground Bash: 2 min by default, 10 min ceiling; MCP idle window about 30 min) and the session's own limits, and whether a cut-off request leaves the function, the container or the coder running. (xiv) The exit status of the coder's `claude -p` inside the container tells a normal end from an abnormal one. Best checked after the code slices land. Nothing was tried.",
       "askedAt": "2026-10-19T17:22:30Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6273055239"
     }
   ],
   "counters": {
