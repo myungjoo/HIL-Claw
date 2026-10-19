@@ -2,7 +2,7 @@
 id: T-0344
 title: Make hilclaw.turn_start run the runtime self-check once per start, after the first step 1 finds a turn due and before the first turn session (ADR-0125 decision 6)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-10, C-7, OD-18, S0, S1, D16]
 dependsOn: [T-0338, T-0343]
@@ -81,3 +81,10 @@ This is a slice of a PLAN checklist item, not a follow-up, so the D18 rule for w
 - (none planned; the executor lists any it finds)
 
 ## Result
+- PR #196 squash-merged as 835436e (branch `claude/T-0344-turn-start-runs-self-check`, deleted). 3 review rounds, each Approve; nits of rounds 1 and 2 fixed. GitHub CI green (six gates) on head a880aaa; local run 24001 passed, coverage 99% `turn_start.py`, 98% `selfcheck.py`.
+- `hilclaw.turn_start` calls `selfcheck.check()` in-process from its step-1 callable, once per start, only when the first step 1 answers P1 or P4, before the first session directory is made; never for P2, P3, an open state, an error before step 1, or between turns. `turn_loop.py`: docstring only.
+- New outcome `stopped_at_check` (exit status 14): `passed`/`no_call` start the first turn; the other five outcomes, a report that is not a dict or has no outcome word, and an `Exception` from the check stop the start (`KeyboardInterrupt`/`SystemExit` not caught).
+- Output: `check` carries the report unchanged on every line of a start whose check returned a dict; after a fault the line carries `check_fault` (class name) and stderr one line `hilclaw.turn_start: fault of the check: <class>`. The check's `no_claude` shows as `stopped_at_check` with `check.outcome` = `no_claude`, distinct from the entry's error `no_claude`.
+- `check(*, data_root=None)` keyword added; the entry passes its turns' data root (same data checkout kept out, config read once). With `None`, `python -m hilclaw.selfcheck` is unchanged. One test added to `tests/test_selfcheck.py` for it (outside `touchesFiles`, D12 ③).
+- Language: Python (the touched modules are Python). Size about 150 changed lines outside tests, 5 files. No data-plane change. D16: every `claude` the tests run is a stub written by the test.
+- Follow-ups: none. Incident: in review round 1 the reviewer sub-agent attempted `rm -rf` on a scratchpad directory; it was denied, nothing was deleted, no circumvention.
