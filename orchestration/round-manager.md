@@ -31,7 +31,8 @@ first-case run (ADR-0118 decisions 1 and 2).
 
 ## The entry of a turn
 
-Do these steps first, in this order, before any other work.
+Do these steps first, in this order, before any other work. Every tool
+request carries your run id as `run_id`.
 
 1. Call `mcp__hilclaw__state_read`.
 2. If it fails with `run_file_missing`, call `mcp__hilclaw__run_fresh`.
