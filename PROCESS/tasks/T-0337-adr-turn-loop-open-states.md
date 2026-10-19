@@ -2,7 +2,7 @@
 id: T-0337
 title: Write ADR-0122 — what the turn loop of a first-case run does where its step 1 is still open (after a failed turn, after a turn that leaves the run as it found it, and in the states ADR-0121 decision 5 leaves to the caller), so that its command-line entry can be built (part of OD-17 and OD-19, for the runs of ADR-0120 decision 1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-3, NFR-1, NFR-5, OD-17, OD-19, OD-8, S0, S1, S2]
 dependsOn: [T-0330, T-0335, T-0336]
@@ -100,7 +100,7 @@ Open Draft PR #186 (T-0324, BLOCKED on HQ-0032) touches `hilclaw/start_instance.
 **Outcome**: DONE (document mode). ADR number 0122 was free on `origin/main` and is used as planned.
 
 - **Review**: 4 rounds with a fresh-context dev-reviewer (round 1 and 2 Request changes, round 3 Approve with nits, round 4 Approve). Left as is: the round-4 nit on the "(OD-19)" tag of the § OD-17 채택분 line — it follows the cross-OD tag already used in that section ("[ADR-0012](…) (OD-8)").
-- **Landed**: one squashed commit on `main` (sha in the driver's record of this task; landed without a PR, document mode).
+- **Landed**: `8ea7115` on `main` (one squashed commit, no PR, document mode); branch deleted. Owner notice posted on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6264725673 (the text below, with `<landed sha>` = `8ea7115`).
 
 - **Record**: `ARCHITECTURE/decisions/ADR-0122-od19-turn-loop-open-states.md` — for the runs of ADR-0120 decision 1, the turn loop starts no further turn on its own after a turn whose exit status is not 0 (decision 2), after a turn that exited with 0 and made no progress (P1 still fresh, or P4 with the same `round`; decision 3), or in the states ADR-0121 decision 5 leaves open (decision 4); it returns and tells its starter one of five outcomes through exit status and standard streams (decision 5). The usage-limit pause stays open (decision 6). It narrows ADR-0121 decision 5 for the "exit 0, no progress" case (listed in Consequences; ADR-0121 not edited). It does **not** answer OD-8 ㉙ (나). No data-plane change.
 - **Owner-sentence search**: no owner sentence decides the points; the B-6 "pause-and-resume" sentence is an integrator reading, not an owner answer (ADR-0122 Status O3). FR-4 / UC-3 "무정지" is read as set against gate stops, stated as a reading with its cost (decision 2).
