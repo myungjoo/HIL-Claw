@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0349",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:ae57ce38-1",
+    "acquiredAt": "2026-10-19T19:22:16Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -375,7 +379,7 @@
       "reason": "owner-only-decision",
       "question": "Does #5 A-3's local commit at '매 턴(=Round) 종료 시' apply to a turn that ends before its round ends (process death or stop, a session that ends while the run waits for the owner, at a gate, on an error or a usage limit; ADR-0121's own 'over' write)? (a) every turn end commits what the run directory then holds, and the next turn's entry commits what a dead turn left; (b) round ends only — a cut-short turn's work is committed with its round; (c) something else. ADR-0127 (T-0348, main e9f16a0) commits nothing in that case until answered. Not blocking T-0348 (landed) nor the listed code slices.",
       "askedAt": "2026-10-19T19:15:36Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6275240209"
     },
     {
       "id": "HQ-0044",
@@ -383,7 +387,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0127 (part of OD-8 sub-question 11; T-0348, main e9f16a0) adds turn-session runtime acceptance items (xv)-(xvii): (xv) the main session of a -p turn session sees mcp__hilclaw__run_commit and may call it under the permission means of item (vii); (xvi) the MCP server process of a turn session finds git and an author identity to commit in the data checkout; (xvii) a live Round-Manager calls run.commit as the first step of its entry and right after the write that ends its round. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
       "askedAt": "2026-10-19T19:15:36Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6275240712"
     }
   ],
   "counters": {
