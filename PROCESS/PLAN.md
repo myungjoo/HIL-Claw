@@ -73,3 +73,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0335 follow-up — ADR-0121 Consequences에 적힌 덜 정확해진 문장(ADR-0012·ADR-0032·ADR-0033·ADR-0117·ADR-0118·ADR-0119·ADR-0120)과 Requirements OD-28 행(잔여)·OpenDecisionProposals § OD-28 남음의 "round budget 계상", ADR·등록부 문구 정리.
 - T-0337 follow-up — ADR-0122 Consequences에 적힌 덜 정확해진 문장(ADR-0118 decision 3·Consequences (1)·Walk-through·Boundaries, ADR-0120 decision 4·Consequences (3)·Walk-through·Boundaries, ADR-0121 decision 5·Consequences·Boundaries), ADR 문구 정리.
 - T-0339 follow-up — ADR-0123 Consequences에 적힌 덜 정확해진 문장(ADR-0122 Context의 "fixed prompt", ADR-0118 decision 3의 "Given one run"), ADR 문구 정리.
+- T-0341 follow-up — ADR-0124 Consequences의 "Less exact, not edited" 목록(ADR-0012·0013·0118·0119·0120·0121·0123의 문장, OpenDecisionProposals OD-8 ⑭), ADR·등록부 문구 정리.
