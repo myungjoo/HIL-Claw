@@ -15,6 +15,9 @@ from hilclaw import (
     data_root_source,
     further_turn,
     keys,
+    selfcheck,
+    selfcheck_login,
+    selfcheck_outcome,
     tools,
     turn_loop,
     turn_start,
@@ -31,6 +34,7 @@ from hilclaw.turn_start import (
     EXIT_FAILED_TURN,
     EXIT_OPEN_STATE,
     EXIT_RUN_OVER,
+    EXIT_STOPPED_AT_CHECK,
     EXIT_UNCHANGED_TURN,
     EXIT_UNKNOWN_RUN_STATUS,
     FAILED_TURN,
@@ -39,6 +43,7 @@ from hilclaw.turn_start import (
     NO_DATA_ROOT,
     OPEN_STATE,
     RUN_OVER,
+    STOPPED_AT_CHECK,
     UNCHANGED_TURN,
     UNKNOWN_RUN_STATUS,
     main,
@@ -68,16 +73,89 @@ EDGE_IDS = [
     "20261009t012331z-9f3a6c1e0b7d4a52",
 ]
 
+LOGGED_IN = json.dumps({"loggedIn": True, "authMethod": "claude.ai"})
+NOT_LOGGED_IN = json.dumps({"loggedIn": False, "authMethod": "none"})
+PLANTED = "[Errno 13] Permission denied: '/home/alice-the-user/.claude/x'"
+
 STUB = r"""
-import json, os, sys
+import json, os, subprocess, sys
 from pathlib import Path
 
 here = Path(__file__).parent
 scenario = json.loads((here / "scenario.json").read_text(encoding="utf-8"))
+argv = sys.argv[1:]
+kind = "turn"
+if argv == ["auth", "status"]:
+    kind = "login"
+elif "--allowedTools" in argv:
+    kind = "check"
 with (here / "started.ndjson").open("a", encoding="utf-8") as record:
-    entry = {"argv": sys.argv[1:], "listing": sorted(os.listdir("."))}
+    entry = {"argv": argv, "listing": sorted(os.listdir(".")), "kind": kind}
     record.write(json.dumps(entry) + "\n")
-started = len((here / "started.ndjson").read_text(encoding="utf-8").splitlines())
+check = scenario["check"]
+if kind == "login":
+    sys.stdout.write(check["auth_output"])
+    sys.exit(check["auth_exit"])
+if kind == "check":
+    sys.path.insert(0, check["repo"])
+    from hilclaw import selfcheck_stream as names
+
+    def option(name):
+        return argv[argv.index(name) + 1]
+
+    config = json.loads(Path(option("--mcp-config")).read_text(encoding="utf-8"))
+    entry = config["mcpServers"][names.SERVER_NAME]
+    allowed = option("--allowedTools").split(",")
+    tools, reply = [], []
+    server = subprocess.Popen(
+        [entry["command"], *entry["args"]],
+        env={**os.environ, **entry["env"]},
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+
+    def ask(method, params=None, request_id=None):
+        message = {"jsonrpc": "2.0", "method": method}
+        if request_id is not None:
+            message["id"] = request_id
+        if params is not None:
+            message["params"] = params
+        server.stdin.write(json.dumps(message).encode() + b"\n")
+        server.stdin.flush()
+        if request_id is None:
+            return None
+        return json.loads(server.stdout.readline())
+
+    client = {"name": "stub", "version": "0.0.0-stub"}
+    asked = {"protocolVersion": "2025-11-25", "capabilities": {}}
+    ask("initialize", {**asked, "clientInfo": client}, 1)
+    if check["upto"] in ("list", "call"):
+        ask("notifications/initialized")
+        for tool in ask("tools/list", None, 2)["result"]["tools"]:
+            tools.append(names.TOOL_PREFIX + tool["name"])
+    if check["upto"] == "call":
+        for number, tool in enumerate(tools, 3):
+            if tool in allowed:
+                answer = ask("tools/call", {"name": tool[len(names.TOOL_PREFIX):]}, number)
+                reply.extend(block["text"] for block in answer["result"]["content"])
+    server.stdin.close()
+    server.wait()
+    named = {names.SERVER_NAME_KEY: names.SERVER_NAME, names.SERVER_STATUS_KEY: check["status"]}
+    for event in (
+        {
+            names.EVENT_KIND_KEY: names.INIT_KIND,
+            names.EVENT_SUBKIND_KEY: names.INIT_SUBKIND,
+            names.SERVERS_KEY: [named],
+            names.TOOLS_KEY: tools,
+        },
+        {names.EVENT_KIND_KEY: names.RESULT_KIND, names.REPLY_KEY: " and ".join(reply)},
+    ):
+        sys.stdout.write(json.dumps(event) + "\n")
+    sys.stdout.flush()
+    sys.exit(check["exit"])
+lines = (here / "started.ndjson").read_text(encoding="utf-8").splitlines()
+started = sum(json.loads(line)["kind"] == "turn" for line in lines)
 steps = scenario["steps"]
 step = steps[min(started, len(steps)) - 1]
 for name, text in step["writes"]:
@@ -88,17 +166,36 @@ sys.exit(step["status"])
 """
 
 
+CHECKED = {
+    "passed": {},
+    "no_call": {"upto": "list"},
+    "not_logged_in": {"auth_exit": 1, "auth_output": NOT_LOGGED_IN},
+    "login_unreadable": {"auth_exit": 3},
+    "front_refused": {"upto": "initialize", "status": "failed"},
+    "session_failed": {"exit": 3},
+}
+
+
 class Stub:
     def __init__(self, directory, root):
         self.directory = directory
         self.root = root
         self.steps = []
 
-    def install(self, *steps):
+    def install(self, *steps, check="passed"):
         self.steps = [{"status": status, "writes": writes} for status, writes in steps]
         script = self.directory / "stub.py"
         script.write_text(STUB, encoding="utf-8")
-        scenario = {"root": str(self.root), "steps": self.steps}
+        checked = {
+            "repo": str(REPOSITORY),
+            "auth_output": LOGGED_IN,
+            "auth_exit": 0,
+            "upto": "call",
+            "status": "connected",
+            "exit": 0,
+            **CHECKED[check],
+        }
+        scenario = {"root": str(self.root), "steps": self.steps, "check": checked}
         (self.directory / "scenario.json").write_text(
             json.dumps(scenario), encoding="utf-8"
         )
@@ -116,12 +213,18 @@ class Stub:
             )
         assert os.path.samefile(shutil.which("claude"), launcher)
 
-    def calls(self):
+    def every_call(self):
         file = self.directory / "started.ndjson"
         if not file.exists():
             return []
         lines = file.read_text(encoding="utf-8").splitlines()
         return [json.loads(line) for line in lines]
+
+    def calls(self):
+        return [call for call in self.every_call() if call["kind"] == "turn"]
+
+    def kinds(self):
+        return [call["kind"] for call in self.every_call()]
 
     def written(self):
         made = {}
@@ -214,11 +317,35 @@ def snapshot(directory):
     }
 
 
+def report(outcome=selfcheck_outcome.PASSED):
+    return {
+        "outcome": outcome,
+        "refused_a": False,
+        "refused_b": False,
+        "login": {"auth_method": "claude.ai", "exit_status": 0, "timed_out": False},
+        "system": {"os_name": "os", "os_release": "1", "python_version": "3"},
+    }
+
+
+class Standin:
+    def __init__(self, outcome=selfcheck_outcome.PASSED, error=None):
+        self.report = report(outcome)
+        self.error = error
+        self.calls = []
+
+    def __call__(self, **options):
+        self.calls.append(options)
+        if self.error is not None:
+            raise self.error
+        return self.report
+
+
 class Started:
-    def __init__(self, status, stdout, stderr):
+    def __init__(self, status, stdout, stderr, check):
         self.status = status
         self.lines = stdout.getvalue().splitlines()
         self.stderr = stderr.getvalue().decode("utf-8")
+        self.check = check
 
     @property
     def told(self):
@@ -233,13 +360,14 @@ def start(parent, args=(RUN,), source=None, **changes):
         source = lambda: root
     arguments = {
         "source": source,
+        "check": Standin(),
         "parent": parent,
         "stdout": stdout,
         "stderr": stderr,
         **changes,
     }
     status = main(list(args), **arguments)
-    return Started(status, stdout, stderr)
+    return Started(status, stdout, stderr, arguments["check"])
 
 
 class Watched:
@@ -280,7 +408,12 @@ def named(text):
 
 def told_once(found, status, told):
     assert found.status == status
-    assert found.told == told
+    line = dict(found.told)
+    if isinstance(found.check, Standin):
+        if found.check.calls:
+            assert line.pop("check") == found.check.report
+        assert "check" not in line
+    assert line == told
     if status == EXIT_ERROR:
         assert len(found.stderr.splitlines()) == 1
     else:
@@ -303,6 +436,7 @@ def test_public_names():
         "EXIT_FAILED_TURN",
         "EXIT_OPEN_STATE",
         "EXIT_RUN_OVER",
+        "EXIT_STOPPED_AT_CHECK",
         "EXIT_UNCHANGED_TURN",
         "EXIT_UNKNOWN_RUN_STATUS",
         "FAILED_TURN",
@@ -311,6 +445,7 @@ def test_public_names():
         "NO_DATA_ROOT",
         "OPEN_STATE",
         "RUN_OVER",
+        "STOPPED_AT_CHECK",
         "UNCHANGED_TURN",
         "UNKNOWN_RUN_STATUS",
         "main",
@@ -322,13 +457,14 @@ def test_public_names():
         EXIT_FAILED_TURN,
         EXIT_UNCHANGED_TURN,
         EXIT_OPEN_STATE,
+        EXIT_STOPPED_AT_CHECK,
         EXIT_ERROR,
     ]
     assert EXIT_RUN_OVER == 0
-    assert len(set(statuses)) == 6
+    assert len(set(statuses)) == 7
     assert not {1, 2} & set(statuses)
     kinds = {RUN_OVER, UNKNOWN_RUN_STATUS, FAILED_TURN, UNCHANGED_TURN, OPEN_STATE}
-    assert len(kinds | {ERROR}) == 6
+    assert len(kinds | {STOPPED_AT_CHECK, ERROR}) == 7
     assert prompt(RUN) == f"{LEAD}{RUN}."
     assert turn_start.__doc__
     names = tools.default_registry(lambda: None).names()
@@ -634,9 +770,9 @@ def test_the_default_data_root_source(root, parent, stub, monkeypatch):
     stdout, stderr = io.BytesIO(), io.BytesIO()
     status = main([RUN], parent=parent, stdout=stdout, stderr=stderr)
     assert status == EXIT_RUN_OVER
-    assert inspect.signature(main).parameters["source"].default is (
-        data_root_source.configured
-    )
+    parameters = inspect.signature(main).parameters
+    assert parameters["source"].default is data_root_source.configured
+    assert parameters["check"].default is selfcheck.check
 
 
 def test_no_claude_on_the_path(root, go, stub):
@@ -747,7 +883,11 @@ def test_missing_standard_output_starts_no_turn(root, parent, stub, monkeypatch)
     stub.install((0, []))
     monkeypatch.setattr(sys, "stdout", object())
     stderr = io.BytesIO()
-    status = main([RUN], source=lambda: root, parent=parent, stderr=stderr)
+    standin = Standin()
+    status = main(
+        [RUN], source=lambda: root, check=standin, parent=parent, stderr=stderr
+    )
+    assert standin.calls == []
     assert status == EXIT_ERROR
     assert stub.calls() == []
     assert len(stderr.getvalue().splitlines()) == 1
@@ -788,7 +928,9 @@ def test_the_default_arguments(root, stub, monkeypatch, tmp_path):
     write(root, "run-b", instance_bytes())
     monkeypatch.setattr(sys, "argv", ["turn_start", "run-b"])
     stub.install((0, []))
-    status = main(source=lambda: root, stdout=io.BytesIO(), stderr=io.BytesIO())
+    status = main(
+        source=lambda: root, check=Standin(), stdout=io.BytesIO(), stderr=io.BytesIO()
+    )
     assert status == EXIT_UNCHANGED_TURN
     assert len(stub.calls()) == 1
     assert list(sessions.iterdir()) == []
@@ -806,3 +948,206 @@ def test_the_module_runs_as_a_program(tmp_path):
     assert done.returncode == EXIT_ERROR
     assert json.loads(done.stdout) == {"outcome": ERROR, "error": BAD_USAGE}
     assert len(done.stderr.splitlines()) == 1
+
+
+# --- the self-check (ADR-0125) ---
+
+
+@pytest.fixture
+def checks(tmp_path, monkeypatch):
+    directory = tmp_path / "checks"
+    directory.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(directory))
+    return directory
+
+
+def stopped(found, outcome):
+    assert found.status == EXIT_STOPPED_AT_CHECK
+    assert set(found.told) == {"outcome", "check"}
+    assert found.told["outcome"] == STOPPED_AT_CHECK
+    assert found.told["check"]["outcome"] == outcome
+    assert found.stderr == ""
+
+
+def test_a_passed_check_runs_once_before_the_first_turn(root, go, stub, checks):
+    started(root)
+    found = go(
+        (0, [(STATE, state_text(1))]),
+        (0, [(STATE, state_text(2, {"run_status": "over"}))]),
+        check=selfcheck.check,
+    )
+    assert found.status == EXIT_RUN_OVER and found.stderr == ""
+    assert set(found.told) == {"outcome", "check"}
+    assert found.told["outcome"] == RUN_OVER
+    assert found.told["check"]["outcome"] == selfcheck_outcome.PASSED
+    assert stub.kinds() == ["login", "check", "turn", "turn"]
+    assert list(checks.iterdir()) == []
+
+
+def test_not_logged_in_stops_before_any_session(root, go, stub, checks):
+    started(root)
+    stub.install((0, [(STATE, state_text(1))]), check="not_logged_in")
+    found = go(check=selfcheck.check)
+    stopped(found, selfcheck_login.NOT_LOGGED_IN)
+    assert found.told["check"]["instruction"] == selfcheck_login.LOGIN_INSTRUCTION
+    assert stub.kinds() == ["login"]
+
+
+@pytest.mark.parametrize(
+    "outcome", [selfcheck_outcome.FRONT_REFUSED, selfcheck_outcome.SESSION_FAILED]
+)
+def test_a_check_session_that_fails_starts_no_turn(root, go, stub, checks, outcome):
+    stated(root, 2)
+    stub.install((0, [(STATE, state_text(3))]), check=outcome)
+    found = go(check=selfcheck.check)
+    stopped(found, outcome)
+    assert stub.kinds() == ["login", "check"]
+    assert list(checks.iterdir()) == []
+
+
+def test_no_call_lets_the_turn_start(root, go, stub, checks):
+    started(root)
+    stub.install((0, []), check="no_call")
+    found = go(check=selfcheck.check)
+    assert found.status == EXIT_UNCHANGED_TURN
+    assert found.told["check"]["outcome"] == selfcheck_outcome.NO_CALL
+    assert stub.kinds() == ["login", "check", "turn"]
+
+
+def test_the_check_names_the_start_s_data_root(root, go, stub, checks, monkeypatch):
+    started(root)
+    handed, real = [], selfcheck.selfcheck_session.run
+
+    def run(**options):
+        handed.append(options["keep_out"])
+        return real(**options)
+
+    def configured():
+        raise AssertionError("asked")
+
+    monkeypatch.setattr(selfcheck.selfcheck_session, "run", run)
+    monkeypatch.setattr(data_root_source, "configured", configured)
+    found = go((0, []), check=selfcheck.check)
+    assert found.status == EXIT_UNCHANGED_TURN
+    assert handed == [(root,)]
+
+
+@pytest.mark.parametrize("outcome", selfcheck_outcome.OUTCOMES)
+def test_each_outcome_of_the_check(root, go, stub, outcome):
+    started(root)
+    standin = Standin(outcome)
+    found = go((0, []), check=standin)
+    turn = outcome in (selfcheck_outcome.PASSED, selfcheck_outcome.NO_CALL)
+    if turn:
+        told_once(found, EXIT_UNCHANGED_TURN, {"outcome": UNCHANGED_TURN})
+    else:
+        told_once(found, EXIT_STOPPED_AT_CHECK, {"outcome": STOPPED_AT_CHECK})
+    assert len(stub.calls()) == (1 if turn else 0)
+    assert standin.calls == [{"data_root": root}]
+
+
+def test_a_fault_of_the_check_says_the_class_only(root, go, stub):
+    started(root)
+    standin = Standin(error=PermissionError(PLANTED))
+    found = go((0, []), check=standin)
+    assert found.status == EXIT_STOPPED_AT_CHECK
+    assert found.told == {"outcome": STOPPED_AT_CHECK, "check_fault": "PermissionError"}
+    assert found.stderr == "hilclaw.turn_start: fault of the check: PermissionError\n"
+    assert "alice" not in found.lines[0].decode() + found.stderr
+    assert stub.calls() == []
+
+
+@pytest.mark.parametrize(
+    ("answer", "fault"),
+    [(None, "TypeError"), ({}, "KeyError"), ({"outcome": 7}, None)],
+)
+def test_a_report_without_an_outcome_word_stops(root, go, stub, answer, fault):
+    started(root)
+    standin = Standin()
+    standin.report = answer
+    found = go((0, []), check=standin)
+    assert found.status == EXIT_STOPPED_AT_CHECK
+    if fault is None:
+        assert found.told == {"outcome": STOPPED_AT_CHECK, "check": answer}
+    else:
+        assert found.told == {"outcome": STOPPED_AT_CHECK, "check_fault": fault}
+    assert stub.calls() == []
+
+
+@pytest.mark.parametrize(
+    "arrange",
+    [
+        lambda root: stated(root, 5, {"run_status": "over"}),
+        lambda root: stated(root, 1, {"run_status": "stopped"}),
+        open_missing_state,
+    ],
+)
+def test_no_check_when_the_first_step_answers_no_turn(root, go, stub, arrange):
+    arrange(root)
+    standin = Standin()
+    found = go((0, []), check=standin)
+    assert "check" not in found.told
+    assert standin.calls == [] and stub.kinds() == []
+
+
+def test_no_check_after_an_error_before_the_first_step(root, go, stub):
+    started(root)
+    standin = Standin()
+    found = go((0, []), args=(), check=standin)
+    assert found.told == {"outcome": ERROR, "error": BAD_USAGE}
+
+    def failing():
+        raise config.ConfigError("no configuration")
+
+    found = go((0, []), source=failing, check=standin)
+    assert found.told == {"outcome": ERROR, "error": NO_DATA_ROOT}
+    assert standin.calls == [] and stub.kinds() == []
+
+
+def test_no_check_between_turns(root, go, stub):
+    started(root)
+    standin = Standin()
+    found = go(
+        (0, [(STATE, state_text(1))]),
+        (0, [(STATE, state_text(2))]),
+        (0, [(STATE, state_text(3))]),
+        (0, []),
+        check=standin,
+    )
+    told_once(found, EXIT_UNCHANGED_TURN, {"outcome": UNCHANGED_TURN})
+    assert len(standin.calls) == 1 and len(stub.calls()) == 4
+
+
+def test_a_later_start_checks_again(root, go, stub):
+    started(root)
+    standin = Standin()
+    found = go((3, [(STATE, state_text(1))]), check=standin)
+    told_once(found, EXIT_FAILED_TURN, {"outcome": FAILED_TURN, "exit_status": 3})
+    found = go((0, [(STATE, state_text(2, {"run_status": "over"}))]), check=standin)
+    told_once(found, EXIT_RUN_OVER, {"outcome": RUN_OVER})
+    assert len(standin.calls) == 2 and len(stub.calls()) == 2
+
+
+def test_no_claude_for_a_turn_keeps_the_report(root, go, stub):
+    started(root)
+    standin = Standin()
+    found = go(check=standin)
+    told_once(found, EXIT_ERROR, {"outcome": ERROR, "error": NO_CLAUDE})
+    assert found.told["check"]["outcome"] == selfcheck_outcome.PASSED
+
+
+def test_no_claude_for_the_check_is_no_error(root, go, stub, checks):
+    started(root)
+    found = go(check=selfcheck.check)
+    stopped(found, selfcheck_login.NO_CLAUDE)
+    assert found.told["outcome"] != ERROR
+    assert stub.kinds() == []
+
+
+@pytest.mark.parametrize("error", [KeyboardInterrupt, SystemExit])
+def test_an_interrupt_of_the_check_is_not_caught(root, parent, stub, error):
+    started(root)
+    stub.install((0, []))
+    with pytest.raises(error):
+        start(parent, root=root, check=Standin(error=error()))
+    assert stub.calls() == []

@@ -88,10 +88,11 @@ the turns already run are lost to the caller then.
 Not done here: no lock against two loops on one run (#4 §2e, OD-17); no
 command-line entry, which is :mod:`hilclaw.turn_start`, the caller of this
 module; no layout of the definition, which is the caller's
-``put_definition``; no permissions; no round-0 step and no self-check before
-a turn (OD-18 ⑯ (가)); no policy after a failed turn, only the exit status
-passed on to ``further_turn`` (for a first-case run that policy is the
-entry's, by ADR-0122); no data-plane write.
+``put_definition``; no permissions; no round-0 step; no self-check, which
+for a first-case run the entry runs before the first turn (ADR-0125); no
+policy after a failed turn, only the exit status passed on to
+``further_turn`` (for a first-case run that policy is the entry's, by
+ADR-0122); no data-plane write.
 
 Runtime acceptance items it depends on (ADR-0118 Consequences): (i) the
 session loads the session directory's files and none of this repository;

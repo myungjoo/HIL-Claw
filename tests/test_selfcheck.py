@@ -496,6 +496,28 @@ def test_the_data_root_is_named_to_the_session(stub, data_root, monkeypatch):
     assert len(asked) == 1
 
 
+def test_a_data_root_handed_to_check_is_named_instead(stub, tmp_path, monkeypatch):
+    stub.install()
+    handed = []
+    real = selfcheck_session.run
+
+    def configured():
+        raise AssertionError("asked")
+
+    def run(**options):
+        handed.append(options)
+        return real(**options)
+
+    monkeypatch.setattr(data_root_source, "configured", configured)
+    monkeypatch.setattr(selfcheck_session, "run", run)
+    handed_root = tmp_path / "handed"
+    handed_root.mkdir()
+    report = check(data_root=handed_root)
+    assert report["outcome"] == "passed"
+    assert handed == [{"timeout_s": SESSION_TIMEOUT_S, "keep_out": (handed_root,)}]
+    assert inspect.signature(check).parameters["data_root"].default is None
+
+
 def test_no_data_root_configured_goes_on_with_nothing_kept_out(stub, monkeypatch):
     stub.install()
     handed = []
