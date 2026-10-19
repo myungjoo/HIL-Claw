@@ -2,7 +2,7 @@
 id: T-0353
 title: Add the registry tool verdicts.write of ADR-0128 decision 6 in a new module of hilclaw/, registered in the default registry (ADR-0128 Consequences slice 1; PLAN P2-3, P2-6)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-17, NFR-1, OD-23, OD-16, OD-30, S0, S1]
 dependsOn: [T-0352]
@@ -86,3 +86,13 @@ The record fixes the request, the result, the order of the checks and the failur
 - Next slice for the planner: `orchestration/agents/evaluator.md` (ADR-0128 decision 7, Consequences slice 2), whose `tools` list includes `mcp__hilclaw__verdicts_write`.
 
 ## Result
+
+- Outcome: DONE. PR #202 squash-merged as 9fbc00c; branch `claude/T-0353-verdicts-write-tool` deleted.
+- Review: reviewer agent, 2 rounds, Approve. Round 1 had one minor and three nits; the minor and two nits were addressed in 33456a2, and the `_reported` duplication was kept on purpose (see below). Round 2 had one nit, a duplicated assert, which is not in the file, so no change was made.
+- CI: all six gates green on head 33456a2. Locally: ruff check/format clean; full pytest 24095 passed, 724 skipped; coverage of `hilclaw/` 97 %, `hilclaw/verdicts_tool.py` 100 %.
+- Files: new `hilclaw/verdicts_tool.py` (name as planned) and `tests/test_verdicts_tool.py`. Also changed: `hilclaw/tools.py` (registration and docstring), and the docstrings of `hilclaw/verdicts_file.py` and `hilclaw/verdicts_hypotheses.py`; the listing tests in `tests/test___main__.py`, `test_blob_tools.py`, `test_check_definition.py`, `test_mcp_front.py` and `test_tools.py`; and the `ACCEPTED` entry in `tests/test_default_registry_schemas.py`. No file outside `touchesFiles` was changed.
+- Encoding rule (stated in the module docstring): `json.dumps(record, ensure_ascii=False, indent=2, allow_nan=False) + "\n"`, in UTF-8 with no BOM and members kept in the given order. A string UTF-8 cannot encode (a lone surrogate) is `invalid_request`.
+- Mapping of the `hypotheses.json` read: a directory at the file's place is `hypotheses_invalid` (not a regular file), so the tests reach `hypotheses_unreadable` through a `Path.read_bytes` seam.
+- The OSError message is composed like `run_file_tools._reported`. The five lines are copied rather than importing a private name, because ruff SLF001 is on for the package. Possible follow-up: move the helper to a public function of `run_files`.
+- Language: Python, because the tool is a function of the existing Python registry and reuses its Python parsers and writers.
+- No data-plane change. No `claude` was started. Runtime acceptance items (xviii) to (xx) of ADR-0128 stay open.
