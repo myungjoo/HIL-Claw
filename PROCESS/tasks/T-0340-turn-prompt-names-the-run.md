@@ -2,7 +2,7 @@
 id: T-0340
 title: Name the run in the prompt of every turn, applying ADR-0123 (the entry builds the prompt from the run id, the loop's prompt rule admits '-', the Round-Manager definition takes the id from its prompt)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, NFR-1, NFR-7, OD-18, OD-23, S0, S1]
 dependsOn: [T-0338, T-0339]
@@ -113,3 +113,14 @@ Language: Python, because the change is inside existing Python modules of the la
 - The remaining P2-1 slices: how the Round-Manager reads the run's files and reaches `replace` (OD-23, OD-18); OD-18 ⑯ (가); OD-8 ⑪; then the round-0 part of the Round-Manager prompt.
 
 ## Result
+
+- DONE. PR #194 (https://github.com/myungjoo/HIL-Claw/pull/194), squash-merged into main as 05005fd; branch `claude/T-0340-turn-prompt-names-the-run` deleted.
+- Review: 2 rounds, context-isolated dev-reviewer. Round 1 Approve with 2 nits: the wording of the run-id sentence in `orchestration/round-manager.md` was fixed in 556d2c5; the other nit was informational (exactly-once for short ids such as `a` is checked by parsing, not `str.count`). Round 2 Approve with no findings.
+- CI green on head 556d2c5: Python gate 3.11 and 3.14, Coverage gate, Test presence, sh gate, C gate. Locally: ruff check and ruff format --check clean; full pytest 23816 passed, 514 skipped; `hilclaw/` line coverage 99%, `turn_loop.py` 100%, `turn_start.py` 99%.
+- Language: Python, because the change is inside existing Python modules of the layer-2 package.
+- What changed:
+  - `hilclaw/turn_start.py`: the public builder `prompt(run_id)` replaces `PROMPT`. It returns "Carry out the next turn of your run as your instructions say. Your run id is <run_id>." and checks the id with `check_run_id`. `main` passes `prompt(run_id)` to `turn_loop.run` once; the order of checks, outcomes, statuses and error kinds is unchanged. The docstring's "Open" paragraph now states the ADR-0123 decision, and item (ix) is added to the runtime acceptance items.
+  - `hilclaw/turn_loop.py`: `_PROMPT` is now `[A-Za-z0-9 .,_][A-Za-z0-9 .,_-]*`, so `-` is admitted but never as the first character. The error text and docstring follow.
+  - `orchestration/round-manager.md`: new "Your run" section, placed before "The steps of a round". It says where the id is and what to do when it is missing, repeated or invalid (report in one line and end), and that the named run is the turn's own run. No round step is defined.
+  - Tests (stub `claude` only): in multi-turn runs and for ids holding or ending in `-`, the stub receives the built prompt unchanged as argv[1], through `claude.cmd` on Windows. Two starts on one run give the same prompt. Edge ids pass the loop's rule, and an invalid id raises `InvalidPathValueError`. In the loop, a prompt that starts with `-` (including `-` alone) is refused with no stub call.
+- Follow-ups: the remaining P2-1 slices: how the Round-Manager reads the run's files and reaches `replace` (OD-23, OD-18), OD-18 ⑯ (가), OD-8 ⑪, then the round-0 part of the Round-Manager prompt. Runtime acceptance item (ix) of ADR-0123 is still open as HQ-0037.
