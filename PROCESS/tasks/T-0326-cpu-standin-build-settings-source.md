@@ -2,7 +2,7 @@
 id: T-0326
 title: Add the one source of the `cpu_standin` build settings of ADR-0116 (flags, trailing flags, inherited environment) as package constants, with tests that build and run the harness programs under it
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, FR-9, OD-18, C-7, "#5 A-7"]
 dependsOn: [T-0325]
@@ -120,3 +120,12 @@ None of the open HQs is needed:
 
 ## Result
 
+
+- **Outcome:** DONE. Draft PR #187, squash-merged as a6df323 on main; branch deleted; merge body ends with `Task: T-0326`.
+- **Module:** `hilclaw/standin_settings.py` with `FLAGS = ("-std=gnu11", "-O2", "-ffp-contract=off")`, `TRAILING_FLAGS = ("-lm",)`, `ENV = None` (ADR-0116 decisions 3–5; decision 6 left open in the docstring). Not wired into any module.
+- **Tests:** `tests/test_standin_settings.py` — values and types, exposed names, forbidden flag prefixes (incl. `-ffast-math`, `-flto`), and on POSIX with clang: verification program PASS/FAIL, timing driver run, `-lm` link, OpenMP call link failure, syntax-error build failure, `-Werror` absence. The clang tests skip on the Windows driver machine and run in CI.
+- **Gates:** local ruff + pytest (23344 passed, 502 skipped; `hilclaw/` line coverage 99.0%); CI on the merged head: all six jobs green.
+- **Review rounds:** 2 (round 1 Approve with two optional nits, one fixed — the "build without `-lm`" comparison left out as platform-dependent; round 2 Approve).
+- **Language:** Python — the settings are plain constants read by the Python tool package.
+- **D16:** no `claude` started; C-7 checks stay with HQ-0033.
+- **Follow-ups:** the existing one (ADR on the two OD-14 time limits for the first case).
