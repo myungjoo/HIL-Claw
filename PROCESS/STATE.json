@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0338",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:d864770e-1",
+    "acquiredAt": "2026-10-19T10:23:59Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -319,7 +323,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0122 (what the turn loop of a first-case run does where its step 1 is open: it returns instead of starting another turn after a failed turn, after a turn with no progress, and in ADR-0121's open states; part of OD-19 and the OD-17 remainder; T-0337, main 8ea7115) adds one runtime acceptance item to ADR-0118's (i)-(vii) of HQ-0035. Under D16 it is closed by your check by hand or by the runtime's own self-check, not by a driver task: (viii) how a `-p` turn session that reaches the plan's usage limit ends - its exit status, and whether anything in its output tells it from another failure. ADR-0122 does not rely on it; a later record that defines the usage-limit pause would. Nothing was tried; no task is blocked on this notice.",
       "askedAt": "2026-10-19T10:07:10Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6264739892"
     }
   ],
   "counters": {
