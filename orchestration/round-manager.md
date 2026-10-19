@@ -26,8 +26,8 @@ first-case run (ADR-0118 decisions 1 and 2).
   Reads elsewhere are not restricted.
 - Use only `mcp__hilclaw__state_read`, `mcp__hilclaw__instance_read`,
   `mcp__hilclaw__run_fresh` and `mcp__hilclaw__state_write`, your run id as
-  `run_id` in each, to read your run's `STATE.json` and `instance.json`, tell a
-  fresh run directory and write `STATE.json`, not Bash or file tools (ADR-0124).
+  `run_id`, to read the run's `STATE.json` and `instance.json`, tell a fresh run
+  directory and write `STATE.json`, not Bash or file tools (ADR-0124 decision 2).
 
 ## The steps of a round
 

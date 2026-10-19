@@ -580,26 +580,28 @@ def test_a_number_beyond_the_float_range_is_no_result(root):
     assert refused.kind == tools.KIND_BAD_RESULT
 
 
-@pytest.mark.parametrize(
-    ("patched", "name", "kind"),
-    [
-        ("replace", "state.write", run_file_tools.KIND_STATE_NOT_WRITTEN),
-        ("is_fresh", "run.fresh", run_file_tools.KIND_RUN_DIR_UNREADABLE),
-    ],
-)
-def test_an_os_error_without_strerror_keeps_its_text(
-    root, monkeypatch, patched, name, kind
-):
-    def failing(*args):
-        raise FileNotFoundError("data root is not an existing directory: gone")
+def test_a_vanished_data_root_is_named_without_its_path(root, monkeypatch):
+    real = run_state_file.replace
 
-    module = run_state_file if patched == "replace" else fresh_run
-    monkeypatch.setattr(module, patched, failing)
-    request = (
-        {"run_id": RUN, "state": START} if name == "state.write" else {"run_id": RUN}
+    def vanishing(data_root, *args):
+        root.rmdir()
+        return real(data_root, *args)
+
+    monkeypatch.setattr(run_state_file, "replace", vanishing)
+    refused = failure(Source(root), "state.write", {"run_id": RUN, "state": START})
+    assert refused.kind == run_file_tools.KIND_STATE_NOT_WRITTEN
+    assert refused.message == (
+        f"{STATE_PATH}: was not written: FileNotFoundError: "
+        "the data root is not an existing directory"
     )
-    refused = failure(Source(root), name, request)
-    assert refused.kind == kind
-    assert refused.message.endswith(
-        ": FileNotFoundError: data root is not an existing directory: gone"
-    )
+    assert str(root) not in refused.message
+
+
+def test_a_failed_look_without_strerror_gives_no_text_of_the_error(root, monkeypatch):
+    def failing(data_root, run_id):
+        raise OSError(f"{data_root} could not be looked at")
+
+    monkeypatch.setattr(fresh_run, "is_fresh", failing)
+    refused = failure(Source(root), "run.fresh", {"run_id": RUN})
+    assert refused.kind == run_file_tools.KIND_RUN_DIR_UNREADABLE
+    assert refused.message == f"runs/{RUN}: could not be looked at: OSError"

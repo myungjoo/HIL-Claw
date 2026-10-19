@@ -216,7 +216,7 @@ def _fresh(source, request):
     except OSError as e:
         raise tools.ToolFailure(
             KIND_RUN_DIR_UNREADABLE,
-            f"runs/{run_id}: could not be looked at: {_reported(e)}",
+            f"runs/{run_id}: could not be looked at: {_reported(e, data_root)}",
         ) from e
 
 
@@ -238,11 +238,15 @@ def _write(source, request):
     except OSError as e:
         raise tools.ToolFailure(
             KIND_STATE_NOT_WRITTEN,
-            f"{run_files.relative(run_id, 'STATE.json')}: was not written: {_reported(e)}",
+            f"{run_files.relative(run_id, 'STATE.json')}: was not written: {_reported(e, data_root)}",
         ) from e
     return {}
 
 
-def _reported(error):
-    reason = error.strerror or str(error)
-    return ": ".join(filter(None, (type(error).__name__, reason)))
+def _reported(error, data_root):
+    reported = ": ".join(filter(None, (type(error).__name__, error.strerror)))
+    if isinstance(error, run_files.NOT_THERE) and not run_files.data_root_is_there(
+        data_root
+    ):
+        reported += ": the data root is not an existing directory"
+    return reported
