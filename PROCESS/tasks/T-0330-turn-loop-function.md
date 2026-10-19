@@ -2,7 +2,7 @@
 id: T-0330
 title: Add the turn loop of ADR-0118 decision 3 to hilclaw (one function that starts one Claude Code turn session per turn in a fresh session directory with the package's MCP front, until the caller's predicate says no further turn), tested only against a stub claude
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, NFR-1, NFR-7, OD-18, C-7]
 dependsOn: [T-0329]
@@ -167,3 +167,14 @@ Nothing calls the function yet. No `claude` is started by the driver or the exec
 - The loop's command-line entry, once an OD-8 record defines the `STATE.json` member that says a run is over, stopped or waiting (ADR-0118 decision 3). Until then a caller supplies the predicate.
 
 ## Result
+- Outcome: DONE. PR #189 squash-merged as fcc98b7 (branch `claude/T-0330-turn-loop-function` deleted). Review: 2 rounds, Approve in both. Round 1 had one nit, fixed in round 2: the docstring now says that `Turn.exit_status` is negative on POSIX for a session ended by a signal. CI green: Python 3.11/3.14, Coverage, C, sh and Test presence gates.
+- Language: Python. The loop joins existing Python modules of the package (`checkout_boundary`, `config`, `mcp_front`), and pytest tests it.
+- Files: `hilclaw/turn_loop.py` (301 lines), `tests/test_turn_loop.py` (631 lines). Line coverage of `turn_loop.py` is 100% locally. Ruff passes.
+- Choices made in the module:
+  - one session directory per turn;
+  - the data root reaches the server through `HILCLAW_DATA_REPO_LOCAL_PATH`;
+  - `CONFIG_FILE = "hilclaw-turn.mcp-config.json"`;
+  - `ClaudeNotFoundError(LookupError)`;
+  - a `parent` that is not an existing directory is refused with `ValueError` before the first turn.
+- Environment note: this machine's system temp directory holds a stray `claude.md`. On a case-insensitive file system it counts as `CLAUDE.md`, so the module refuses places under that directory, as designed. The test file therefore skips itself when a marker lies above pytest's temporary directory. It was run locally with `--basetemp` under `%LOCALAPPDATA%`, and CI (Linux) runs it unskipped. `test_own_claude_directory_accepted` also skips wherever the real `~/.claude` lies above the base temp.
+- Follow-ups: none new. The Follow-ups section above stands: the definition under `orchestration/` with its `put_definition`, the round-0 procedure, and the command-line entry once the OD-8 member exists.
