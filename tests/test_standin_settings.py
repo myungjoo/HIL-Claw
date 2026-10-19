@@ -51,7 +51,18 @@ def test_the_module_exposes_only_the_three_settings():
 
 
 @pytest.mark.parametrize(
-    "prefix", ["-o", "--output", "-march", "-mcpu", "-fopenmp", "-W", "-D"]
+    "prefix",
+    [
+        "-o",
+        "--output",
+        "-march",
+        "-mcpu",
+        "-fopenmp",
+        "-W",
+        "-D",
+        "-ffast-math",
+        "-flto",
+    ],
 )
 def test_no_flag_is_a_setting_the_record_leaves_out(prefix):
     assert not any(flag.startswith(prefix) for flag in FLAGS)
