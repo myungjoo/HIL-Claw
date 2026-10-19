@@ -25,6 +25,7 @@ FIXED_NAMES = {
     "instance.read": "instance_read",
     "run.fresh": "run_fresh",
     "state.write": "state_write",
+    "verdicts.write": "verdicts_write",
     "run.commit": "run_commit",
 }
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
@@ -455,7 +456,7 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 
 
 def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_tools():
-    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124) and run.commit (ADR-0127)."""
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124), run.commit (ADR-0127) and verdicts.write (ADR-0128)."""
     held = {
         "blob_fetch": "blob.fetch",
         "blob_push": "blob.push",
@@ -465,6 +466,7 @@ def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_too
         "run_fresh": "run.fresh",
         "state_read": "state.read",
         "state_write": "state.write",
+        "verdicts_write": "verdicts.write",
     }
     assert mcp_names(default_registry(lambda: REPO_ROOT)) == held
     unknown = [name for name in FIXED_NAMES.values() if name not in held]
@@ -512,6 +514,7 @@ def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
         "run_fresh",
         "state_read",
         "state_write",
+        "verdicts_write",
     ]
     assert error_of(refused, -32602, 2) == "unknown tool 'sim_run'"
     assert stderr.getvalue() == b""
@@ -954,6 +957,7 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
             "run_fresh",
             "state_read",
             "state_write",
+            "verdicts_write",
         ],
     )
     assert stderr.buffer.getvalue() == b""
@@ -1052,6 +1056,7 @@ def test_process_handshake_and_tool_list():
             "run_fresh",
             "state_read",
             "state_write",
+            "verdicts_write",
         ],
     )
     assert done.stderr == b""

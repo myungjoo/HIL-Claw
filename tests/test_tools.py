@@ -495,6 +495,7 @@ DEFAULT_SET = (
     "run.fresh",
     "state.read",
     "state.write",
+    "verdicts.write",
 )
 
 

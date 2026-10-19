@@ -51,6 +51,29 @@ ACCEPTED = {
             "budget_spent": {"totals": {}, "position": 0, "open_steps": []},
         },
     },
+    "verdicts.write": {
+        "run_id": "r1",
+        "record": {
+            "schema_version": 1,
+            "run_id": "r1",
+            "round": 1,
+            "verdicts": [
+                {
+                    "hypothesis": "h1",
+                    "verdict": "inconclusive",
+                    "cause": "not measured",
+                    "evidence": [
+                        {
+                            "kind": "check",
+                            "ref": {"round": 1, "candidate": 1, "attempt": 1},
+                            "point": "sim",
+                            "outcome": "pass",
+                        }
+                    ],
+                }
+            ],
+        },
+    },
 }
 
 TOP_LEVEL = ("type", "properties", "required", "additionalProperties")
