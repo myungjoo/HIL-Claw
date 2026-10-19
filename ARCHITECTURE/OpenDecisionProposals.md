@@ -424,10 +424,11 @@
 
 **baseline 선택** — reviews/2026-09-03 B7. 통합 전 main OD-14.
 
-- 질문: 라운드 0의 baseline을 bring-up 코드 / 벤더 라이브러리 커널 / 기존 best 중 instance 파라미터로 택할지. baseline에 따라 "개선율"의 의미가 달라진다(bring-up 대비는 쉽게 커 보이고, 벤더 라이브러리 대비는 KernelBench L1처럼 이기기 어렵다 — #8 M14).
+- **채택분** [ADR-0119](decisions/ADR-0119-od28-first-case-baseline.md) — 첫 사례(ADR-0076 결정 1) 가운데 ADR-0061 결정 1의 run으로서 자기 라운드 0에서 시작한 run의 baseline(baseline이 될 수 있는 시도가 하나인 라운드 0)
+- 질문(일부 답함): 라운드 0의 baseline을 bring-up 코드 / 벤더 라이브러리 커널 / 기존 best 중 instance 파라미터로 택할지. baseline에 따라 "개선율"의 의미가 달라진다(bring-up 대비는 쉽게 커 보이고, 벤더 라이브러리 대비는 KernelBench L1처럼 이기기 어렵다 — #8 M14). → 부분 답: [ADR-0119](decisions/ADR-0119-od28-first-case-baseline.md)(첫 사례의 로컬 구성·mock run, baseline이 될 수 있는 시도가 하나인 라운드 0). 남음: 첫 사례 밖의 run, 로컬 구성 밖 첫 사례 run, baseline 시도의 재측정(OD-13 ①·OD-11), 벤더 라이브러리 baseline(새 외부 의존성), 기존 best(재개·분기 run), 그런 시도가 여럿일 때의 선택(OD-1 잔여·#5 A-4, OD-18 ⑳)과 하나도 없을 때(OD-19·OD-10), baseline의 기록·참조(OD-20·OD-8·OD-23), 라운드 0이 FR-1 밖에서 하는 일(라운드 0 spec — ADR-0002, 주입 입력·사례 사용 — ADR-0075·ADR-0073, 후보 수 — ADR-0028·OD-29, round budget 계상 — ADR-0032·OD-8 ㉙).
 - `cpu_standin`(#5 A-7)에서의 후보(2026-10-02): ⒜ 라운드 0 bring-up 코드(코더가 처음 만든 동작하는 C 커널) ⒝ OpenBLAS `cblas_sgemm`(벤더 라이브러리 역할). **nntrainer 커널은 오너 결정으로 baseline에서 제외**(코드 참조만, #5 B-4 ④). (통합자 메모) SDPA에는 벤더 라이브러리 상당이 없어 ⒜ 또는 naive C 레퍼런스 구현이 후보.
 - 제안: baseline은 instance 파라미터로 두되 **두 값(bring-up 대비, 라이브러리 대비)을 모두 기록**해 개선율의 기준을 보고서에서 명시한다. 확정은 OD-1(objective)·A-4와 함께.
-- 하위 질문(UC-0 4단계, PR #10): 벤더 라이브러리 커널·참조 구현을 **온보딩 시(UC-0)** baseline 후보로 등록할지, instance 시작 시 지정할지.
+- 하위 질문(UC-0 4단계, PR #10; 미결): 벤더 라이브러리 커널·참조 구현을 **온보딩 시(UC-0)** baseline 후보로 등록할지, instance 시작 시 지정할지. → 미결.
 
 ## OD-29
 
