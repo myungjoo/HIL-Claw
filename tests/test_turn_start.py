@@ -285,6 +285,7 @@ def markers_above(path):
 
 @pytest.fixture(autouse=True)
 def isolated_git(monkeypatch, tmp_path_factory):
+    assert GIT is not None, "these tests need git on PATH"
     config = tmp_path_factory.mktemp("git-config") / "global"
     config.write_text("", encoding="utf-8")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))

@@ -25,15 +25,15 @@ In P2 alone the rule of ADR-0127 decision 4 is applied read-only through
 the caller's predicate.
 
 **A choice of this module**: P1, P4 and owed P2 say that a turn is due, not
-how often a failing one is retried. So they answer a further turn only before the first
-turn (``previous`` is ``None``) or after a turn session whose exit status was
-0; after any other exit status the caller's predicate answers. Otherwise a
-round-0 turn that keeps failing would leave the directory fresh and the loop
-would start turns without end, spending plan usage. A turn that exits with 0
-and leaves the run as it found it is not caught: P1, P4 and owed P2 answer a
-further turn again, as ADR-0121 decision 5 has it, so this predicate alone bounds no
-usage. P2 with nothing owed and P3 answer no further turn whatever
-``previous`` is.
+how often a failing one is retried. So they answer a further turn only before
+the first turn (``previous`` is ``None``) or after a turn session whose exit
+status was 0; after any other exit status the caller's predicate answers.
+Otherwise a round-0 turn that keeps failing would leave the directory fresh
+and the loop would start turns without end, spending plan usage. A turn that
+exits with 0 and leaves the run as it found it is not caught: P1, P4 and owed
+P2 answer a further turn again, as ADR-0121 decision 5 has it, so this
+predicate alone bounds no usage. P2 with nothing owed and P3 answer no further
+turn whatever ``previous`` is.
 
 It writes, creates, removes and lists nothing, keeps nothing between calls,
 compares no number and interprets no member besides ``run_status`` and
@@ -161,11 +161,11 @@ def predicate(data_root, run_id, *, fallback, report):
 
     Each call runs :func:`classify` afresh. :data:`OVER_CASE` answers
     ``False``. :data:`UNKNOWN_STATUS` calls ``report(value)`` once and answers
-    ``False``. :data:`FRESH`, :data:`DUE` and :data:`OWED` answer ``True`` when
-    ``previous`` is ``None`` or the ``int`` 0; for any other ``previous``, and for
-    :data:`OPEN`, the answer is ``fallback(previous)``, returned unchanged.
-    ``fallback`` and ``report`` are called in no other case, and what they or
-    :func:`classify` raise passes through.
+    ``False``. :data:`FRESH`, :data:`DUE` and :data:`OWED` answer ``True``
+    when ``previous`` is ``None`` or the ``int`` 0; for any other
+    ``previous``, and for :data:`OPEN`, the answer is ``fallback(previous)``,
+    returned unchanged. ``fallback`` and ``report`` are called in no other
+    case, and what they or :func:`classify` raise passes through.
 
     Raises :class:`TypeError` when ``fallback`` or ``report`` is not callable
     and :class:`hilclaw.layout.InvalidPathValueError` for an invalid

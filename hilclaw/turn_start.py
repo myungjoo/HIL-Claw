@@ -18,13 +18,14 @@ first turn.
 
 **The self-check** (ADR-0125): :func:`hilclaw.selfcheck.check` runs in this
 process, at most once per start, with the start's data root as its
-``data_root``, after the first step 1 answered a further turn (P1, P4 or
-owed P2) and before the loop makes the session directory of the first turn;
-never after a first step 1 that answers no turn, never in a start that ends with an error
-before it, never between two turns. ``passed`` and ``no_call`` let the first
-turn start. Every other outcome word, a report that is no ``dict`` or names
-none, and an :class:`Exception` of the check start no turn and end the start
-:data:`STOPPED_AT_CHECK`. Nothing is retried and nothing skips the check.
+``data_root``, after the first step 1 answered a further turn (P1, P4 or owed
+P2) and before the loop makes the session directory of the first turn; never
+after a first step 1 that answers no turn, never in a start that ends with an
+error before it, never between two turns. ``passed`` and ``no_call`` let the
+first turn start. Every other outcome word, a report that is no ``dict`` or
+names none, and an :class:`Exception` of the check start no turn and end the
+start :data:`STOPPED_AT_CHECK`. Nothing is retried and nothing skips the
+check.
 
 **Step 1** (each call of the loop's ``further_turn``) makes exactly one
 :func:`hilclaw.further_turn.classify` call on the run and answers from that
