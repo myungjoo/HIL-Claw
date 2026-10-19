@@ -491,6 +491,7 @@ DEFAULT_SET = (
     "blob.push",
     "correctness.check",
     "instance.read",
+    "run.commit",
     "run.fresh",
     "state.read",
     "state.write",

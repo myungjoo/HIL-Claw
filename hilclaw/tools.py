@@ -196,12 +196,13 @@ def default_registry(data_root_source):
     ADR-0041 decision 5. Beside these FR-10 tools it holds ``state.read``,
     ``instance.read``, ``run.fresh`` and ``state.write``
     (:mod:`hilclaw.run_file_tools`, ADR-0124), with which the Round-Manager
-    reads and writes its run's ``STATE.json`` and reads its ``instance.json``.
-    A tool is added here, in the source, and in no other way: no option,
+    reads and writes its run's ``STATE.json`` and reads its ``instance.json``,
+    and ``run.commit`` (:func:`hilclaw.run_commit.definition`, ADR-0127), with
+    which it commits an owed round end of its run. A tool is added here, in the source, and in no other way: no option,
     environment variable, entry point or plugin registers one or chooses what
     it is bound to.
     """
-    from hilclaw import blob_tools, check_definition, run_file_tools
+    from hilclaw import blob_tools, check_definition, run_commit, run_file_tools
 
     if not callable(data_root_source):
         raise TypeError("the data-root source must be callable")
@@ -211,6 +212,7 @@ def default_registry(data_root_source):
     registry.register(*check_definition.definition(data_root_source))
     for definition in run_file_tools.definitions(data_root_source):
         registry.register(*definition)
+    registry.register(*run_commit.definition(data_root_source))
     return registry
 
 
