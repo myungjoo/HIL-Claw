@@ -161,7 +161,8 @@ def commit(data_root, run_id):
     tree or the index is changed; a path staged elsewhere stays staged. The
     index lock of the repository is held from before ``HEAD`` moves until the
     index is replaced; should that replacement fail, the commit stands and the
-    index is as it was.
+    entries are set once more by ``git reset`` on the index, as ``git`` locks
+    it.
 
     Raises what :func:`owed_rounds` raises, with nothing removed or committed,
     and :class:`CommitNotMadeError` when the removal fails with an
@@ -217,31 +218,42 @@ def commit(data_root, run_id):
         named = _ok(done, CommitNotMadeError, "git rev-parse").strip().decode()
         real = os.path.join(data_root, named)
         following = os.path.join(scratch, "following")
-        with _locked(real) as lock:
+        replaced = False
+        lock = _take_lock(real + ".lock")
+        try:
             try:
-                if os.path.exists(real):
-                    shutil.copyfile(real, following)
-                if paths:
-                    done = _git(
-                        data_root,
-                        "reset",
-                        "-q",
-                        made,
-                        *_FROM_STDIN,
-                        index=following,
-                        input=listing,
-                    )
-                    _ok(done, CommitNotMadeError, "git reset")
-                lock.write(Path(following).read_bytes())
-                lock.close()
+                with lock:
+                    if os.path.exists(real):
+                        shutil.copyfile(real, following)
+                    if paths:
+                        done = _git(
+                            data_root,
+                            "reset",
+                            "-q",
+                            made,
+                            *_FROM_STDIN,
+                            index=following,
+                            input=listing,
+                        )
+                        _ok(done, CommitNotMadeError, "git reset")
+                    if os.path.exists(following):
+                        lock.write(Path(following).read_bytes())
             except OSError as e:
                 raise CommitNotMadeError(f"the next index was not written: {e}") from e
             done = _git(
                 data_root, "update-ref", "-m", MESSAGE, "HEAD", made, found.head or ""
             )
             _ok(done, CommitNotMadeError, "git update-ref")
-            with contextlib.suppress(OSError):
-                os.replace(real + ".lock", real)
+            if os.path.exists(following):
+                with contextlib.suppress(OSError):
+                    os.replace(real + ".lock", real)
+                    replaced = True
+        finally:
+            if not replaced:
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(real + ".lock")
+    if paths and not replaced:
+        _git(data_root, "reset", "-q", made, *_FROM_STDIN, input=listing)
     return True
 
 
@@ -312,6 +324,8 @@ def _assess(data_root, run_id):
     if _git(data_root, "rev-parse", "--verify", "-q", "HEAD").returncode == 0:
         done = _git(data_root, "rev-parse", "--verify", "-q", "HEAD^{commit}")
         head = _ok(done, HeadStateError, "HEAD: names no commit").strip().decode()
+    elif _git(data_root, "symbolic-ref", "-q", "HEAD").returncode:
+        raise HeadStateError("HEAD: names no commit and no unborn branch")
     held = ()
     if head is not None:
         listed = _git(data_root, "ls-tree", "-r", "-z", head, "--", prefix)
@@ -401,22 +415,14 @@ def _keys(data_root, run_id, prefix):
     return record.hw_profile_key, record.op_signature.key
 
 
-@contextlib.contextmanager
-def _locked(index):
-    name = index + ".lock"
+def _take_lock(name):
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
     try:
-        held = os.open(name, flags, 0o666)
+        return open(os.open(name, flags, 0o666), "wb")
     except FileExistsError:
         raise CommitNotMadeError("the index lock of the repository is held") from None
     except OSError as e:
         raise CommitNotMadeError(f"the index lock could not be taken: {e}") from e
-    try:
-        with open(held, "wb") as lock:
-            yield lock
-    finally:
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(name)
 
 
 def _git(data_root, *args, index=None, input=None):

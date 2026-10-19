@@ -689,11 +689,9 @@ def test_a_git_that_fails_a_step_is_commit_not_made(root, monkeypatch, failed):
     assert not (root / ".git" / "index.lock").exists()
 
 
-def test_a_failed_index_replacement_leaves_the_commit_and_the_old_index(
-    root, monkeypatch
-):
+def test_a_failed_index_replacement_sets_the_entries_through_git(root, monkeypatch):
     a_run(root, 1)
-    before = snapshot(root)
+    before = head(root)
 
     def refusing(source, target):
         raise PermissionError(13, "Permission denied")
@@ -701,22 +699,51 @@ def test_a_failed_index_replacement_leaves_the_commit_and_the_old_index(
     monkeypatch.setattr(run_commit.os, "replace", refusing)
     assert commit(root, RUN) is True
     monkeypatch.undo()
+    assert head(root) != before
+    assert not (root / ".git" / "index.lock").exists()
+    assert f"runs/{RUN}/STATE.json" in committed(root)
+    assert git(root, "status", "--porcelain").strip() == b""
+
+
+def test_a_failed_replacement_and_reset_leave_the_commit_and_the_old_index(
+    root, monkeypatch
+):
+    a_run(root, 1)
+    before = snapshot(root)
+    real = run_commit._git
+
+    def refusing(source, target):
+        raise PermissionError(13, "Permission denied")
+
+    def failing(data_root, *args, **kwargs):
+        if args[0] == "reset" and kwargs.get("index") is None:
+            args = ("reset", "--no-such-option")
+        return real(data_root, *args, **kwargs)
+
+    monkeypatch.setattr(run_commit.os, "replace", refusing)
+    monkeypatch.setattr(run_commit, "_git", failing)
+    assert commit(root, RUN) is True
+    monkeypatch.undo()
     assert head(root) != before[0]
     assert (root / ".git" / "index").read_bytes() == before[1]
     assert not (root / ".git" / "index.lock").exists()
-    assert f"runs/{RUN}/STATE.json" in committed(root)
 
 
-def test_a_head_that_names_no_commit_is_refused(root):
+@pytest.mark.parametrize(
+    "content", ["1234567890123456789012345678901234567890", "not a ref"]
+)
+def test_a_head_that_names_no_commit_is_refused(root, content):
     a_run(root, 1)
     ref = root / ".git" / "refs" / "heads" / "main"
-    ref.write_text("1234567890123456789012345678901234567890", encoding="ascii")
+    ref.write_bytes(content.encode())
+    before = snapshot(root)
     with pytest.raises(run_commit.HeadStateError, match="names no commit"):
         owed_rounds(root, RUN)
     function, _ = tool(root)
     with pytest.raises(tools.ToolFailure) as failed:
         function({"run_id": RUN})
     assert failed.value.kind == "commit_refused"
+    assert snapshot(root) == before
 
 
 # The read-only function
