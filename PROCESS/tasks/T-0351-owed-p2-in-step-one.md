@@ -2,7 +2,7 @@
 id: T-0351
 title: Tell owed P2 from P2 with nothing owed in step 1 of the turn loop (hilclaw/further_turn.py, hilclaw/turn_start.py; ADR-0127 slice (3); PLAN P2-1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-13, NFR-1, OD-8, OD-19, S0, S1, S2]
 dependsOn: [T-0336, T-0338, T-0344, T-0349, T-0350]
@@ -120,3 +120,12 @@ Language: Python. These are existing Python modules of the package. Say so in on
 - None planned by the planner. The next P2-1 work is the Round-Manager's round steps, which include the `run.commit` call after the round-ending write.
 
 ## Result
+
+- DONE. PR #201 (https://github.com/myungjoo/HIL-Claw/pull/201) squash-merged as `6d23bc7` with the PR body as the message (last line `Task: T-0351`); branch `claude/T-0351-owed-p2-in-step-one` deleted.
+- `hilclaw/further_turn.py`: new case `OWED = "owed"` and reasons `NO_REPOSITORY` / `COMMIT_REFUSED` (= `run_commit.KIND_NO_REPOSITORY` / `KIND_COMMIT_REFUSED`). `classify` calls `run_commit.owed_rounds` once, only when `run_status` is exactly "over": empty range -> `OVER_CASE`, non-empty -> `Finding(OWED, None)`, `NoRepositoryError` / `GitNotRunError` -> `OPEN`/`no_repository`, any `CommitRefusedError` -> `OPEN`/`commit_refused`; other exceptions pass through. P1/P3/P4 and the existing open states are unchanged and run no git; nothing writes, and `run_commit.commit` is not called. `predicate` answers `OWED` as `DUE`. Docstrings updated.
+- `hilclaw/turn_start.py`: docstring only (step-1 order list and self-check paragraph name owed P2); the existing `_outcome` order already gives every behaviour of criterion 6. No new outcome, member or exit status.
+- Tests: `tests/test_further_turn.py` and `tests/test_turn_start.py` use temporary git repositories with an isolated git configuration and identity; the stub `claude` can commit the data root to stand in for the entry's `run.commit`. Covered: nothing owed, owed P2 committed by one turn, owed P2 left owed (`unchanged_turn`), failed turn, P4 -> owed P2 without a second check, check not passing, no repository / git not startable, commit refused (three causes, also after a failed turn), P1/P3/P4 need no git, `predicate` on the new values. Existing P2 tests now commit the run first; `test_over_written_by_a_failed_turn_is_run_over` became two tests (committed "over" -> `run_over`; uncommitted -> `failed_turn`). Test `instance.json` fixtures gained `op_signature` (a key directory is needed once the owed range includes a round >= 1).
+- Local: the two test files passed (250) with `--basetemp` outside the marker-holding home directory (with the default temp root they skip on this machine); ruff check and format clean; coverage `further_turn.py` 100%, `turn_start.py` 99%. CI: all 6 checks green.
+- Review: dev-reviewer, 2 rounds — round 1 Approve with two nits (docstring wraps; unclear failure when git is missing), both fixed; round 2 Approve.
+- Language: Python, because both modules are existing Python modules of the layer-2 package.
+- No real `claude` started (D16). No data-plane change. Runtime acceptance items (xv)-(xvii) stay with HQ-0044. Follow-ups: none from this task; the next P2-1 work is the Round-Manager's "The round steps", including the `run.commit` call right after the round-ending write.
