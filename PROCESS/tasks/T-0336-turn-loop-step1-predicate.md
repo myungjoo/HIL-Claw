@@ -143,3 +143,7 @@ Open Draft PR #186 (T-0324, BLOCKED on HQ-0032) touches `hilclaw/start_instance.
 - The remaining P2-1 slices: OD-18 ⑯ (가), OD-8 ⑪, how the Round-Manager reaches `replace` (OD-23, OD-18), then the round-0 part of the Round-Manager prompt.
 
 ## Result
+
+- Language: Python, because the predicate composes the existing Python readers (`fresh_run`, `run_journal`, `instance`) and is called in-process by `hilclaw.turn_loop.run`.
+- Added `hilclaw/further_turn.py` (`classify`, `predicate`, `Finding`, the five case constants, `RUN_STATUS`, `OVER`) and `tests/test_further_turn.py`. Local: ruff check/format clean, full pytest green, `hilclaw/further_turn.py` 100 % line coverage, `hilclaw/` total 98 %.
+- The loop test is skipped where a marker (for example a stray `CLAUDE.md` in the system temporary directory, as on this machine) lies above the test's temporary directory, as `tests/test_turn_loop.py` does; it was run locally with a marker-free `--basetemp` and passed.
