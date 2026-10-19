@@ -111,3 +111,8 @@ Open Draft PR #186 (T-0324, BLOCKED on HQ-0032) touches `hilclaw/start_instance.
 - The full step-1 predicate and the loop's command-line entry, waiting on the run-status member (rest of OD-8, OD-19).
 
 ## Result
+
+- Added `hilclaw/fresh_run.py` with `is_fresh(data_root, run_id)` (ADR-0120 decision 4) and `tests/test_fresh_run.py`.
+- Language: Python, because the test sits beside `hilclaw.layout` and `hilclaw.run_files` in the Python package that its callers (the turn loop and the round-0 entry) use.
+- The `rounds/` path is taken as `layout.round_dir(data_root, run_id, 0).parent`, so no path text of `hilclaw.layout` is repeated.
+- Local: full pytest passed (symbolic-link cases skip on this Windows machine and run on CI's Linux), ruff check and format clean, `hilclaw/fresh_run.py` 100 % line coverage, package total 98 %.
