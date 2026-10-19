@@ -2,7 +2,7 @@
 id: T-0334
 title: Add hilclaw.fresh_run.is_fresh, the fresh-run-directory test of ADR-0120 decision 4 (instance.json and no other run-level file), for the turn loop's step-1 predicate and the round-0 entry
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, NFR-1, OD-8, S0, S1]
 dependsOn: [T-0330, T-0333]
@@ -116,3 +116,4 @@ Open Draft PR #186 (T-0324, BLOCKED on HQ-0032) touches `hilclaw/start_instance.
 - Language: Python, because the test sits beside `hilclaw.layout` and `hilclaw.run_files` in the Python package that its callers (the turn loop and the round-0 entry) use.
 - The `rounds/` path is taken as `layout.round_dir(data_root, run_id, 0).parent`, so no path text of `hilclaw.layout` is repeated.
 - Local: full pytest passed (symbolic-link cases skip on this Windows machine and run on CI's Linux), ruff check and format clean, `hilclaw/fresh_run.py` 100 % line coverage, package total 98 %.
+- PR #191, squash-merged as db7db29 after 1 review round (Approve; two nits judged no-change by the reviewer) and green CI.
