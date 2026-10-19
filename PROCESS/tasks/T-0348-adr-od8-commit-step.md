@@ -81,4 +81,49 @@ No open HQ covers this point. HQ-0013 to HQ-0042 were checked: HQ-0032 is the gi
 
 ## Follow-ups
 
+- **Proposed HQ (reason: owner-only, #5 A-3)** — the case ADR-0127 decision 8 leaves open. Proposed mirror text for #5:
+
+  > ### HQ-NNNN — T-0348: does #5 A-3's local commit at "매 턴(=Round) 종료 시" apply to a turn that ends before its round ends?
+  >
+  > Reason: owner-only (#5 A-3).
+  >
+  > ADR-0127 (part of OD-8 sub-question 11, first-case runs) has the Round-Manager commit the data repository right after the write that ends a round, and has every turn's entry first make a round-end commit that a death left owed. A turn can also end before its round ends (ADR-0118 decision 2 (ii)): the process dies or is stopped, or the session ends while the run waits for you, at a gate, on an error or on a usage limit. ADR-0121's own write of `run_status` "over" also ends no round. When a turn and a round do not end together, which do you mean by "매 턴(=Round) 종료 시"? (a) Every turn end: such a turn's end commits what the run directory then holds, and after a death the next turn's entry commits what the dead turn left, so a round that takes several turns gets several commits. (b) Round ends only: the work of a cut-short turn stays uncommitted until its round ends and is committed with it; a machine loss in between loses it. (c) Something else. Until you answer, ADR-0127 commits nothing in that case and forbids nothing.
+  >
+  > Answer with a comment that contains `HQ-NNNN`.
+  >
+  > — posted by driver
+
+  Only a later slice that commits a cut-short turn would need it in its `hq`; the code slices listed below do not.
+- **Runtime acceptance items (DRIVER §8, reason `runtime-acceptance`, non-blocking)** — ADR-0127 adds (xv) to (xvii) to the turn-session series. Proposed mirror text for #5:
+
+  > ### HQ-NNNN — T-0348: runtime-acceptance items (xv)-(xvii) of ADR-0127 (non-blocking)
+  >
+  > Reason: `runtime-acceptance`.
+  >
+  > ADR-0127 (part of OD-8 sub-question 11; T-0348) adds runtime acceptance items (xv)-(xvii) to the turn-session series. Under D16 they are closed by your check by hand or by the runtime's own self-check, not by a driver task. (xv) The main session of a `-p` turn session sees `mcp__hilclaw__run_commit` and may call it under the permission means of item (vii). (xvi) On a runtime machine, the MCP server process a turn session starts finds `git` and an author identity with which `git` makes a commit in the data checkout. (xvii) A live Round-Manager calls `run.commit` as the first step of its entry and right after the write that ends its round. Best checked after the code slices land. Nothing was tried.
+  >
+  > Answer with a comment that contains `HQ-NNNN`.
+  >
+  > — posted by driver
+- **Code slices** (code mode; each plannable now, tested with a temporary git repository and a stub `claude` only): (1) the commit function, its read-only owed rule and the registry tool `run.commit` with a test file; (2) step 0 of "The entry of a turn" in `orchestration/round-manager.md` and `mcp__hilclaw__run_commit` in its "Your run" tool list; (3) step 1 for owed P2 in `hilclaw/further_turn.py` and `hilclaw/turn_start.py`. The call after the round-end write goes with the slice that writes "The round steps". Slice (1) runs the `git` program and follows the reading of ADR-0127 decision 4: no package is added (the data repository is a git repository by #5 A-1 and D7).
+
 ## Result
+
+- DONE. ADR-0127 (`ARCHITECTURE/decisions/ADR-0127-od8-commit-step.md`) landed on main in document mode as one squashed commit with this Result (`Reviewed-by: reviewer agent (7 rounds, Approve)`); the task branch was deleted. Registers: OD-8 row of Requirements (one `확정분` link, `잔여` narrowed in place, status dates to 10-20), § OD-8 of OpenDecisionProposals (one `채택분` line, the status of ⑪ and the "쓰기와 작성자" phrase rewritten in place), StandardScenarios "최근 재검사" line (S0, S1, S2: no verdict change, no gap, no note changed). OD-17, OD-18 and OD-19 rows untouched.
+- Decided (runs of ADR-0120 decision 1 only): the Round-Manager makes every round-end commit through one new registry tool `run.commit` (MCP `mcp__hilclaw__run_commit`; request `run_id`; result `committed`; kinds `invalid_request`, `no_data_root`, `no_repository`, `commit_refused`, `commit_not_made`), right after the write that ends the round and as the first step of every turn's entry. A round end is owed when the working tree's `STATE.json` `round` is beyond that of `HEAD`. The commit removes a torn tail of `events.ndjson` first, takes only the run directory's new or changed files and the case files of the committed rounds, never a `.tmp` name, an ignored path or anything under `blobs/`; no commit message format. Step 1 of the loop splits P2: owed P2 is handled like P4 (self-check before the first turn of a start, stop after a failed or unchanged turn); "run over" only when nothing is owed. Declared revisions, not edits: ADR-0121 decisions 3 and 5, ADR-0122 decisions 2 to 5, ADR-0125 decision 2. No data-plane change; W1 holds under both readings.
+- Left open: the commit of a turn that ends before its round ends, and ADR-0121's own `"over"` write (#5 A-3 reading, owner-only); `best.json`, `technique_stats.json` and key record files in a round commit; the order of the promotion write (OD-23); push, Stop hook, lock, gates.
+- Review: 7 rounds (rounds 1, 2, 4 Request changes; 3, 5, 6, 7 Approve with Low/Nit, all addressed except two round-7 Nits: the OD-18 sub-question line of OpenDecisionProposals was left as is (still true; AC 5/6 give no reason to touch OD-18), and the HQ title below names the turn-session series).
+- **For the driver**:
+  - DRIVER §9 owner notice on #5 (proposed text):
+
+    > **OD closure notice (DRIVER §9): ADR-0127 — part of OD-8 sub-question 11 (the commit step), for the runs of ADR-0120 decision 1**
+    >
+    > ADR-0127 (`ARCHITECTURE/decisions/ADR-0127-od8-commit-step.md`, landed on `main` as <sha>) decides, for first-case runs: the Round-Manager makes every round-end commit of the data repository through one new typed registry tool, `run.commit`, over the MCP front — right after the write that ends its round, and as the first step of every turn's entry. A round end is owed when the `round` of the working tree's `STATE.json` is beyond that of `HEAD`; the tool then removes a torn tail of `events.ndjson`, commits only the run directory's new or changed files and the case files of the committed rounds, never a `.tmp` file or anything under `blobs/`, and otherwise makes no commit. The system never pushes. Step 1 of the turn loop now gives one turn to a run that is over while its last commit is owed. No data-plane change; W1 ("commit은 매니저 전담") holds under both readings.
+    >
+    > Left to you: whether #5 A-3's commit at "매 턴(=Round) 종료 시" also applies to a turn that ends before its round ends (asked as an HQ). Runtime acceptance items (xv)-(xvii) of the turn-session series are added. OD-8 keeps its status; its open part was narrowed in place.
+    >
+    > Accepted by a context-isolated reviewer (7 rounds); not confirmed by the owner. An objection within 7 days creates a task that reverts it.
+    >
+    > — posted by driver
+  - Two HQs, texts under Follow-ups: the owner-only A-3 question (non-blocking for the code slices listed there), and the runtime-acceptance items, titled `### HQ-NNNN — T-0348: runtime-acceptance turn-session items (xv)-(xvii) of ADR-0127 (non-blocking)` so that they are not mistaken for the self-check series' (xv)/(xvi).
+  - Follow-up code slices (Follow-ups): `run.commit` with its read-only owed rule; step 0 and the tool list in `orchestration/round-manager.md`; owed P2 in `hilclaw/further_turn.py` / `hilclaw/turn_start.py`.
