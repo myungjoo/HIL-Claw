@@ -156,3 +156,8 @@ Nothing calls `put` from a command line yet. The loop's entry waits on an OD-8 m
 - How the session reaches the run's files, decided by the definition (ADR-0118 decision 4).
 
 ## Result
+
+- Language: Python (layer 2; the module is the `put_definition` a Python caller passes to `hilclaw.turn_loop.run`).
+- Added `orchestration/round-manager.md` (placeholder prompt: turn contract of ADR-0118 decision 2, no round steps) and `hilclaw/turn_definition.py` (`put`, `LAYOUT`, `SOURCE`, `PROMPT`, `DIRECTORIES`) with `tests/test_turn_definition.py`.
+- Choices beyond the AC, all refusals before any write: an entry that is neither a file nor a directory, a junction (treated as a link), any entry (not only a directory) named as in `turn_loop.MARKERS`, and in the session directory a `.claude` that is no plain directory or a link at a target (so nothing is written outside `session_dir`).
+- The optional stub-`claude` run of AC 6 was not added; the callable check is tested directly, and a no-turn `turn_loop.run` with `put` is tested where no marker lies above the temporary directory.
