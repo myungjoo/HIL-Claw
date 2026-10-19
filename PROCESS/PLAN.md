@@ -66,3 +66,5 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0286 (HQ-0029) — `local_run.run`의 `items` 없는 `env` 사전 거부, 입력 경화.
 - T-0323 follow-up — ADR-0115 7라운드 지적 3건(결정 3·(a′)의 "에이전트를 caller로 고름" 문구, 결정 2의 "at its last step", 덜 정확해진 목록의 ADR-0111 Alternatives 2행 (c)), ADR 문구 정리.
 - T-0324 follow-up — `hilclaw/standin_profile.py` 모듈 docstring의 "is bound to no tool and to no …" 문장 수정(T-0324가 land될 때에만 틀려짐), docstring 문구 정리.
+- T-0325 follow-up — ADR-0116 7라운드 지적 1건(decision 2 표 (c) 열의 문구), ADR 문구 정리.
+- T-0327 follow-up — ADR-0117 7라운드 지적 2건(Consequences의 "every other hit stays exact"가 ADR-0116 decision 7과 ADR-0116 자신의 less-exact 항목을 이름하지 않음, Boundaries의 "sub-questions ㉙, ㉚"에 OD(OD-8) 미표기), ADR 문구 정리.
