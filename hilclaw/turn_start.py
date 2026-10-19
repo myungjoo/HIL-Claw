@@ -22,8 +22,8 @@ process, at most once per start, with the start's data root as its
 before the loop makes the session directory of the first turn; never after a
 first step 1 that answers no turn, never in a start that ends with an error
 before it, never between two turns. ``passed`` and ``no_call`` let the first
-turn start. Every other outcome, and an :class:`Exception` of the check or a
-report that names no outcome, start no turn and end the start
+turn start. Every other outcome word, a report that is no ``dict`` or names
+none, and an :class:`Exception` of the check start no turn and end the start
 :data:`STOPPED_AT_CHECK`. Nothing is retried and nothing skips the check.
 
 **Step 1** (each call of the loop's ``further_turn``) makes exactly one
@@ -46,7 +46,8 @@ from the exit status of the last turn. In this order (ADR-0122 decision 5):
    only, never with ``round_budget``.
 
 Otherwise P1 and P4 answer a further turn: before the first turn of a start,
-and after an exit-0 turn that moved P1 to P4 or changed ``round``.
+after the self-check let it start (above), and after an exit-0 turn that
+moved P1 to P4 or changed ``round``.
 
 **What the starter is told**, through the process only. Standard output gets
 exactly one line, a compact JSON object in ASCII ended by one LF, whose member
@@ -67,7 +68,7 @@ exactly one line, a compact JSON object in ASCII ended by one LF, whose member
 "Run over" alone has status 0. No status is 1 or 2, which the interpreter
 uses. **The member** ``check`` holds the report of the check unchanged (the
 ``dict`` of :func:`hilclaw.selfcheck_report.build`) on every line of a start
-in which a check ran and returned one: on ``stopped_at_check`` and on any
+in which a check ran and returned a ``dict``: on ``stopped_at_check`` and on any
 outcome or error that follows a check that let the turn start. A start
 without a check has no such member. After a fault of the check the line
 holds ``check_fault``, the name of the exception's class, and no ``check``.
@@ -79,7 +80,7 @@ of free text, which is never parsed. When the line cannot be written to
 standard output, the status is :data:`EXIT_ERROR` and standard error gets one
 line saying so.
 
-**The error** is told apart from the five outcomes, and no traceback reaches
+**The error** is told apart from the six outcomes, and no traceback reaches
 the starter: ``bad_usage`` for not exactly one argument or an invalid run id
 (:func:`hilclaw.layout.check_run_id`, checked before anything is read);
 ``no_data_root`` when the data-root source fails or names no existing
@@ -210,11 +211,13 @@ class _Step:
     def _checked(self):
         try:
             report = self.check(data_root=self.data_root)
-            outcome = report["outcome"]
         except Exception as e:  # noqa: BLE001
             self.fault = type(e).__name__
             return {"outcome": STOPPED_AT_CHECK, "check_fault": self.fault}
+        if type(report) is not dict:
+            return {"outcome": STOPPED_AT_CHECK}
         self.report = report
+        outcome = report.get("outcome")
         if type(outcome) is str and outcome in _TURN_AFTER:
             return None
         return {"outcome": STOPPED_AT_CHECK}

@@ -987,7 +987,9 @@ def test_a_passed_check_runs_once_before_the_first_turn(root, go, stub, checks):
 def test_not_logged_in_stops_before_any_session(root, go, stub, checks):
     started(root)
     stub.install((0, [(STATE, state_text(1))]), check="not_logged_in")
+    before = snapshot(root)
     found = go(check=selfcheck.check)
+    assert snapshot(root) == before
     stopped(found, selfcheck_login.NOT_LOGGED_IN)
     assert found.told["check"]["instruction"] == selfcheck_login.LOGIN_INSTRUCTION
     assert stub.kinds() == ["login"]
@@ -1058,19 +1060,19 @@ def test_a_fault_of_the_check_says_the_class_only(root, go, stub):
 
 
 @pytest.mark.parametrize(
-    ("answer", "fault"),
-    [(None, "TypeError"), ({}, "KeyError"), ({"outcome": 7}, None)],
+    "answer", [None, [], "passed", {}, {"outcome": 7}, {"outcome": "Passed"}]
 )
-def test_a_report_without_an_outcome_word_stops(root, go, stub, answer, fault):
+def test_a_report_without_an_outcome_word_stops(root, go, stub, answer):
     started(root)
     standin = Standin()
     standin.report = answer
     found = go((0, []), check=standin)
     assert found.status == EXIT_STOPPED_AT_CHECK
-    if fault is None:
-        assert found.told == {"outcome": STOPPED_AT_CHECK, "check": answer}
-    else:
-        assert found.told == {"outcome": STOPPED_AT_CHECK, "check_fault": fault}
+    told = {"outcome": STOPPED_AT_CHECK}
+    if type(answer) is dict:
+        told["check"] = answer
+    assert found.told == told
+    assert found.stderr == ""
     assert stub.calls() == []
 
 
