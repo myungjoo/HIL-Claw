@@ -57,6 +57,14 @@ def symlink(link, target, *, directory=False):
         pytest.skip("symbolic links cannot be created here")
 
 
+def junction(link, target):
+    try:
+        import _winapi
+    except ImportError:
+        pytest.skip("junctions exist only on Windows")
+    _winapi.CreateJunction(str(target), str(link))
+
+
 def refused(session, text, **arguments):
     before = tree(session)
     listing = sorted(os.listdir(session))
@@ -378,3 +386,21 @@ def test_a_session_prompt_target_that_is_a_link(session, source, tmp_path):
     symlink(session / "CLAUDE.md", outside)
     refused(session, SESSION_LINK, source=source)
     assert outside.read_bytes() == b"keep"
+
+
+def test_a_junction_at_depth(session, source, tmp_path):
+    full(source)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    junction(source / "skills" / "nested" / "joined", outside)
+    refused(session, LINK, source=source)
+
+
+def test_a_session_target_that_is_a_junction(session, source, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.md").write_bytes(b"keep")
+    (session / ".claude").mkdir()
+    junction(session / ".claude" / "skills", outside)
+    refused(session, SESSION_LINK, source=full(source))
+    assert tree(outside) == {"keep.md": b"keep"}

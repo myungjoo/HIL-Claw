@@ -9,8 +9,8 @@ first-case run (ADR-0118 decisions 1 and 2).
   (ADR-0118 decision 2 (i)).
 - The session ends after the write that ends its round (ADR-0118
   decision 2 (i); ADR-0012 decisions 3 and 6).
-- Do not use `/loop` or a scheduling tool to carry rounds; each round is
-  carried by a turn of its own (ADR-0118 Walk-through).
+- Do not use `/loop` or a scheduling tool to carry rounds; rounds are
+  carried by turns (ADR-0118 Walk-through).
 
 ## The steps of a round
 
