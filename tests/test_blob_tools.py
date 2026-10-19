@@ -692,7 +692,7 @@ def outcome(document, is_error=False):
     return json.loads(block["text"])
 
 
-def test_the_mcp_front_lists_the_two_tools_and_correctness_check(configured):
+def test_the_mcp_front_lists_the_blob_tools_among_the_fixed_set(configured):
     (listed,) = serve(message("tools/list", 1))
     fetch, push = blob_tools.definitions(lambda: configured)
     *blob, check = listed["result"]["tools"][:3]

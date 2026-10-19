@@ -28,8 +28,9 @@ decision 3).
   :func:`hilclaw.run_state_file.replace` and returns ``{}``. Nothing is read
   or carried over (ADR-0013 decision 7).
 
-Nothing but ``STATE.json`` and the temporary file of its replacement is
-created, and nothing is kept between calls.
+Only ``state.write`` creates anything: ``STATE.json``, the temporary file of
+its replacement and, when missing, ``runs/`` and the run directory. Nothing is
+kept between calls.
 """
 
 import json
@@ -243,4 +244,5 @@ def _write(source, request):
 
 
 def _reported(error):
-    return ": ".join(filter(None, (type(error).__name__, error.strerror)))
+    reason = error.strerror or str(error)
+    return ": ".join(filter(None, (type(error).__name__, reason)))

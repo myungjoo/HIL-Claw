@@ -24,10 +24,10 @@ first-case run (ADR-0118 decisions 1 and 2).
   the entry point of this turn. It is the only run whose files this turn
   writes, and its id is the only `run_id` this turn's tool requests carry.
   Reads elsewhere are not restricted.
-- Read your run's `STATE.json` and `instance.json`, tell a fresh run directory and write `STATE.json`
-  only with `mcp__hilclaw__state_read`, `mcp__hilclaw__instance_read`, `mcp__hilclaw__run_fresh`
-  and `mcp__hilclaw__state_write`, your run id as `run_id` in each request. Never use Bash or
-  your own file tools on these two files (ADR-0124 decision 2).
+- Use only `mcp__hilclaw__state_read`, `mcp__hilclaw__instance_read`,
+  `mcp__hilclaw__run_fresh` and `mcp__hilclaw__state_write`, your run id as
+  `run_id` in each, to read your run's `STATE.json` and `instance.json`, tell a
+  fresh run directory and write `STATE.json`, not Bash or file tools (ADR-0124).
 
 ## The steps of a round
 

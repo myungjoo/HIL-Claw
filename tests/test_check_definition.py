@@ -398,7 +398,7 @@ def test_the_default_registry_refuses_a_source_that_is_not_callable(source, part
     assert parties["table"].calls == []
 
 
-def test_tools_list_of_the_mcp_front_holds_the_three_tools():
+def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
     data = (
         json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode() + b"\n"
     )

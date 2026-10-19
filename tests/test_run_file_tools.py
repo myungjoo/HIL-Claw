@@ -15,6 +15,7 @@ from hilclaw import (
     run_file_tools,
     run_journal,
     run_state,
+    run_state_file,
     tools,
 )
 from hilclaw.tools import ToolDefinition, ToolFailure, default_registry
@@ -568,3 +569,37 @@ def test_the_mcp_front_serves_the_four_tools(root):
     assert texts[:4] == [{"fresh": True}, {}, {"state": START}, {"instance": INSTANCE}]
     assert errors == [False, False, False, False, True]
     assert texts[4]["error"]["kind"] == "invalid_request"
+
+
+def test_a_number_beyond_the_float_range_is_no_result(root):
+    with_state(root, START | {"note": 0})
+    path = run_dir(root) / "STATE.json"
+    path.write_bytes(path.read_bytes().replace(b'"note": 0', b'"note": 1e999'))
+    assert run_journal.read_state(root, RUN).others == {"note": float("inf")}
+    refused = failure(Source(root), "state.read", {"run_id": RUN})
+    assert refused.kind == tools.KIND_BAD_RESULT
+
+
+@pytest.mark.parametrize(
+    ("patched", "name", "kind"),
+    [
+        ("replace", "state.write", run_file_tools.KIND_STATE_NOT_WRITTEN),
+        ("is_fresh", "run.fresh", run_file_tools.KIND_RUN_DIR_UNREADABLE),
+    ],
+)
+def test_an_os_error_without_strerror_keeps_its_text(
+    root, monkeypatch, patched, name, kind
+):
+    def failing(*args):
+        raise FileNotFoundError("data root is not an existing directory: gone")
+
+    module = run_state_file if patched == "replace" else fresh_run
+    monkeypatch.setattr(module, patched, failing)
+    request = (
+        {"run_id": RUN, "state": START} if name == "state.write" else {"run_id": RUN}
+    )
+    refused = failure(Source(root), name, request)
+    assert refused.kind == kind
+    assert refused.message.endswith(
+        ": FileNotFoundError: data root is not an existing directory: gone"
+    )
