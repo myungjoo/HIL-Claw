@@ -36,9 +36,11 @@ name the data root is that module's.
   run on a runtime machine stands behind either (a runtime acceptance item,
   HQ-0016). A limit that is too short costs a pass, never a false one: the
   outcome is then ``login_unreadable`` or ``session_failed``.
-- *The data root* is asked of ``data_root_source.configured`` once, just
-  before the session, and only named to it: nothing in it is read or written
-  and it need not exist. **When the configuration names none**
+- *The data root* is the ``data_root`` handed to :func:`check`
+  (:mod:`hilclaw.turn_start` hands the one its turns use); when none is
+  handed, as by :func:`main`, it is asked of ``data_root_source.configured``
+  once, just before the session. It is only named to the session: nothing in
+  it is read or written and it need not exist. **When the configuration names none**
   (``hilclaw.config.ConfigError``: no file, one that cannot be read, a
   missing value) **the check goes on with an empty** ``keep_out``: the
   check needs no data root (decision 5), and a bring-up without a
@@ -75,9 +77,9 @@ is one observation (L2). Whoever controls the ``PATH`` or the environment
 decides what is seen (L6). ``system_facts()`` may start a system command of
 the interpreter's own on some platforms. A ``session_failed`` report says how
 far the session got and not why. The instance's log, how the report reaches
-it and where the record of the check is stored are not this module's (O7);
-what a bring-up does after each outcome is PLAN P2-1's. The limits of the
-steps are said in their modules. Nothing calls the module yet.
+it and where the record of the check is stored are not this module's (O7).
+The limits of the steps are said in their modules. :func:`check` is called by
+:mod:`hilclaw.turn_start`, which decides what follows each outcome (ADR-0125).
 """
 
 import contextlib
@@ -96,26 +98,31 @@ SESSION_TIMEOUT_S = 300
 EXIT_FAULT = 20
 
 
-def _keep_out():
+def _keep_out(data_root):
+    if data_root is not None:
+        return (data_root,)
     try:
         return (data_root_source.configured(),)
     except config.ConfigError:
         return ()
 
 
-def check():
+def check(*, data_root=None):
     """Run one check and return its report, the ``dict`` of ``selfcheck_report.build``.
 
     Step one is called once and step two at most once, as the module docstring
     orders them; nothing is written to a stream. Every outcome is a returned
-    report. What the steps, the report and the data-root source raise is
-    passed on (``hilclaw.config.ConfigError`` of the source excepted), with
-    their own text, which may name a path.
+    report. ``data_root`` (a ``str`` or path object) is the data root kept out
+    of the session's directory; ``None`` asks the configured source. What the
+    steps, the report and the data-root source raise is passed on
+    (``hilclaw.config.ConfigError`` of the source excepted), with their own
+    text, which may name a path.
     """
     login = selfcheck_login.read(timeout_s=LOGIN_TIMEOUT_S)
     run = None
     if login.outcome is None:
-        run = selfcheck_session.run(timeout_s=SESSION_TIMEOUT_S, keep_out=_keep_out())
+        keep_out = _keep_out(data_root)
+        run = selfcheck_session.run(timeout_s=SESSION_TIMEOUT_S, keep_out=keep_out)
     return selfcheck_report.build(login, run, system=selfcheck_report.system_facts())
 
 
