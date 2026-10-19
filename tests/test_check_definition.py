@@ -122,7 +122,15 @@ def test_a_registry_accepts_the_description_and_the_schema():
 
 def test_the_default_registry_holds_the_definition_of_the_tool():
     registry = tools.default_registry(lambda: None)
-    assert registry.names() == ("blob.fetch", "blob.push", TOOL)
+    assert registry.names() == (
+        "blob.fetch",
+        "blob.push",
+        TOOL,
+        "instance.read",
+        "run.fresh",
+        "state.read",
+        "state.write",
+    )
     held = registry.definition(TOOL)
     assert (held.name, held.description, held.input_schema) == (
         TOOL,
@@ -368,7 +376,15 @@ def test_definition_refuses_a_source_that_is_not_callable(source):
 def test_building_the_default_registry_calls_no_party(parties):
     source = CountingSource()
     registry = tools.default_registry(source)
-    assert registry.names() == ("blob.fetch", "blob.push", TOOL)
+    assert registry.names() == (
+        "blob.fetch",
+        "blob.push",
+        TOOL,
+        "instance.read",
+        "run.fresh",
+        "state.read",
+        "state.write",
+    )
     assert (source.calls, *counts(parties)) == (0, 0, 0, 0)
     assert tools.default_registry(source).get(TOOL) is not registry.get(TOOL)
     assert parties["table"].calls == []
@@ -382,7 +398,7 @@ def test_the_default_registry_refuses_a_source_that_is_not_callable(source, part
     assert parties["table"].calls == []
 
 
-def test_tools_list_of_the_mcp_front_holds_the_three_tools():
+def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
     data = (
         json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode() + b"\n"
     )
@@ -400,6 +416,10 @@ def test_tools_list_of_the_mcp_front_holds_the_three_tools():
         "blob_fetch",
         "blob_push",
         "correctness_check",
+        "instance_read",
+        "run_fresh",
+        "state_read",
+        "state_write",
     ]
     assert listed[2]["description"] == DESCRIPTION
     assert listed[2]["inputSchema"] == SCHEMA
@@ -625,7 +645,10 @@ def test_building_the_default_registry_imports_no_numpy(tmp_path):
 
 def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
     answers, loaded = heavy_modules_after(LIST_CHILD, tmp_path)
-    assert answers == ["0 blob_fetch blob_push correctness_check"]
+    assert answers == [
+        "0 blob_fetch blob_push correctness_check instance_read run_fresh"
+        + " state_read state_write"
+    ]
     assert loaded == ""
 
 

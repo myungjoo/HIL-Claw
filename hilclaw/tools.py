@@ -193,11 +193,15 @@ def default_registry(data_root_source):
     ADR-0070). The backend table of the latter holds the mock alone, offering
     that tool with the default script of ADR-0044. Its source of seeds is the
     generator of the operating system. Its predicate "covered" is that of
-    ADR-0041 decision 5. A tool is added here, in the source, and in no other
-    way: no option, environment variable, entry point or plugin registers one
-    or chooses what it is bound to.
+    ADR-0041 decision 5. Beside these FR-10 tools it holds ``state.read``,
+    ``instance.read``, ``run.fresh`` and ``state.write``
+    (:mod:`hilclaw.run_file_tools`, ADR-0124), with which the Round-Manager
+    reads and writes its run's ``STATE.json`` and reads its ``instance.json``.
+    A tool is added here, in the source, and in no other way: no option,
+    environment variable, entry point or plugin registers one or chooses what
+    it is bound to.
     """
-    from hilclaw import blob_tools, check_definition
+    from hilclaw import blob_tools, check_definition, run_file_tools
 
     if not callable(data_root_source):
         raise TypeError("the data-root source must be callable")
@@ -205,6 +209,8 @@ def default_registry(data_root_source):
     for definition in blob_tools.definitions(data_root_source):
         registry.register(*definition)
     registry.register(*check_definition.definition(data_root_source))
+    for definition in run_file_tools.definitions(data_root_source):
+        registry.register(*definition)
     return registry
 
 
