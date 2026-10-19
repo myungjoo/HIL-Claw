@@ -74,3 +74,6 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0337 follow-up — ADR-0122 Consequences에 적힌 덜 정확해진 문장(ADR-0118 decision 3·Consequences (1)·Walk-through·Boundaries, ADR-0120 decision 4·Consequences (3)·Walk-through·Boundaries, ADR-0121 decision 5·Consequences·Boundaries), ADR 문구 정리.
 - T-0339 follow-up — ADR-0123 Consequences에 적힌 덜 정확해진 문장(ADR-0122 Context의 "fixed prompt", ADR-0118 decision 3의 "Given one run"), ADR 문구 정리.
 - T-0341 follow-up — ADR-0124 Consequences의 "Less exact, not edited" 목록(ADR-0012·0013·0118·0119·0120·0121·0123의 문장, OpenDecisionProposals OD-8 ⑭), ADR·등록부 문구 정리.
+- T-0348 follow-up — ADR-0127 Consequences의 "Less exact, not edited" 목록(ADR-0004·0006·0011·0012·0013·0014·0015·0018·0025·0029·0049·0072·0078·0108·0115·0118·0119·0120·0121·0122·0123·0124·0125·0126의 문장과 `hilclaw/events.py` `remove_torn_tail` docstring; `further_turn.py`·`turn_start.py` docstring은 T-0351이 처리), ADR·docstring 문구 정리.
+- T-0349 follow-up — `run_commit.commit`에서 index 교체 실패 뒤 fallback reset까지 실패하면 지금은 조용히 넘어가는데 그것을 보고하게 하는 일(현재 동작은 문서화됨), 입력·실패 경로 경화.
+- T-0349 follow-up — 추적되지 않은 `runs/<run_id>/STATE.json`에 ignore 규칙이 걸리면 매 호출이 owed가 된다는 점의 ADR-0127 문구 보강, ADR 문구 정리.
