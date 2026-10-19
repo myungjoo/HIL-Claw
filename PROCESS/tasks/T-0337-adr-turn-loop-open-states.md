@@ -96,3 +96,32 @@ Open Draft PR #186 (T-0324, BLOCKED on HQ-0032) touches `hilclaw/start_instance.
 - The remaining P2-1 slices: OD-18 ⑯ (가), OD-8 ⑪, how the Round-Manager reaches `replace` (OD-23, OD-18), then the round-0 part of the Round-Manager prompt.
 
 ## Result
+
+**Outcome**: DONE (document mode). ADR number 0122 was free on `origin/main` and is used as planned.
+
+- **Review**: 4 rounds with a fresh-context dev-reviewer (round 1 and 2 Request changes, round 3 Approve with nits, round 4 Approve). Left as is: the round-4 nit on the "(OD-19)" tag of the § OD-17 채택분 line — it follows the cross-OD tag already used in that section ("[ADR-0012](…) (OD-8)").
+- **Landed**: one squashed commit on `main` (sha in the driver's record of this task; landed without a PR, document mode).
+
+- **Record**: `ARCHITECTURE/decisions/ADR-0122-od19-turn-loop-open-states.md` — for the runs of ADR-0120 decision 1, the turn loop starts no further turn on its own after a turn whose exit status is not 0 (decision 2), after a turn that exited with 0 and made no progress (P1 still fresh, or P4 with the same `round`; decision 3), or in the states ADR-0121 decision 5 leaves open (decision 4); it returns and tells its starter one of five outcomes through exit status and standard streams (decision 5). The usage-limit pause stays open (decision 6). It narrows ADR-0121 decision 5 for the "exit 0, no progress" case (listed in Consequences; ADR-0121 not edited). It does **not** answer OD-8 ㉙ (나). No data-plane change.
+- **Owner-sentence search**: no owner sentence decides the points; the B-6 "pause-and-resume" sentence is an integrator reading, not an owner answer (ADR-0122 Status O3). FR-4 / UC-3 "무정지" is read as set against gate stops, stated as a reading with its cost (decision 2).
+- **Register / proposals**: Requirements OD-17 and OD-19 rows gain one link each with `**잔여**` rewritten in place (status words unchanged); OpenDecisionProposals § OD-17 and § OD-19 gain one `채택분` line each and their open parts are rewritten in place. OD-8, OD-10 and OD-27 are not edited.
+- **Coverage re-check**: S0, S1, S2 re-checked — no verdict change, no gap; the "최근 재검사" line is rewritten and S2 step 3's OD pointer narrowed. No history entry (no verdict change).
+- **UsageCases**: no sentence became false (UC-3 step 1 and S2 step 3 read with decision 2); not edited.
+- **New runtime acceptance item** (for an HQ with reason `runtime-acceptance`): (viii) how a `-p` turn session that reaches the plan's usage limit ends — its exit status, and whether anything in its output tells it from another failure. ADR-0122 does not rely on it; a record defining the usage-limit pause would. ADR-0118 items (v) and (vi) are used, not changed.
+- **Follow-ups** (for the integrator / later tasks): the code slice — the command-line entry of the turn loop (Consequences), still waiting on the lock of two loops before any schedule may start it; the less-exact sentences listed in ADR-0122 Consequences (ADR-0118, ADR-0120, ADR-0121, `hilclaw/turn_loop.py`, `hilclaw/further_turn.py` docstrings).
+- **Owner notice for #5** (DRIVER §9, §8 footer):
+
+```
+### ADR-0122 accepted (D6 route) — turn loop of a first-case run: no further turn on its own after a failed or no-progress turn, or in an open state
+
+ADR-0122 (part of OD-19 and of the rest of OD-17, for the runs of ADR-0120 decision 1) was accepted by reviewer approval under PROCESS/DRIVER.md §9. It is not confirmed by the owner.
+
+- After a turn session whose exit status is not 0, after a turn that exited with 0 and made no progress (fresh directory still fresh, or `round` unchanged), and in the states ADR-0121 decision 5 leaves open, the turn loop starts no further turn on its own; it returns and tells its starter which of five outcomes ended the start (exit status and standard streams). No retry count, pause length or notification channel is chosen.
+- It reads FR-4 / UC-3 "무정지" as set against gate stops; the cost is that an unattended first-case run waits for its starter (a person, until the lock of two loops lets a schedule restart it) after each failed turn.
+- The usage-limit pause (OD-19 proposal) stays open; OD-8 sub-question ㉙ (나) is not answered. It narrows ADR-0121 decision 5 for the "exit 0, no progress" case. No data-plane change.
+- New runtime acceptance item (viii): how a `-p` turn session that reaches the plan's usage limit ends.
+
+Record: ARCHITECTURE/decisions/ADR-0122-od19-turn-loop-open-states.md (commit <landed sha>). You may object within 7 days of this notice; an objection creates a task that reverts the record and its edits.
+
+— posted by driver
+```
