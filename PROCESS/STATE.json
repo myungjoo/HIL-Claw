@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0327",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:c44be20c-2",
-    "acquiredAt": "2026-10-19T03:38:26Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -311,15 +307,15 @@
     }
   ],
   "counters": {
-    "iterations": 340,
-    "tasksDone": 314,
+    "iterations": 341,
+    "tasksDone": 315,
     "tasksBlocked": 26,
-    "reviewRoundsTotal": 1119
+    "reviewRoundsTotal": 1126
   },
   "lastIteration": {
-    "at": "2026-10-19T03:34:34Z",
-    "owner": "AKIHA:c44be20c-1",
-    "taskId": "T-0326",
+    "at": "2026-10-19T04:35:26Z",
+    "owner": "AKIHA:c44be20c-2",
+    "taskId": "T-0327",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

@@ -2,7 +2,7 @@
 id: T-0327
 title: Record an ADR on where the `cpu_standin` operations' time limits of the build and of the process come from and what their first values are, for the first case (OD-14, the call-level part of the timeout hierarchy)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [NFR-4, FR-10, FR-9, OD-14, OD-18, C-7]
 dependsOn: [T-0326]
@@ -143,4 +143,30 @@ D18: this is not a PLAN checklist item of its own. It is a stop of the `cpu_stan
 - Next candidate: the code slice of ADR-0117, which adds the four time limits (or their rule) to the one `cpu_standin` settings source, with tests.
 
 ## Result
+
+- **DONE.** Landed on `main` as `a4b07b5` (document mode, one commit, trailers `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0327`). The task branch was deleted on origin and locally.
+- **Session entry check (03:38Z).** Open PRs: only #186 (T-0324), which touches none of this task's files. No comment on #4, #5, #7 or #8 after 03:34Z touches OD-14 or time limits. `ADR-0117` was free on `origin/main` and on every remote branch, so no renumbering.
+- **Files.** `ARCHITECTURE/decisions/ADR-0117-od14-cpu-standin-time-limits.md` (new), `Requirements.md` (OD-14 row: one `**확정분**` link, `**잔여**` rewritten in place; OD-18 row: one link for the time-limit part of ⑲ (라)), `OpenDecisionProposals.md` (§OD-14: one `채택분` line; the ⑲ state marker rewritten in place) and `StandardScenarios.md` ("최근 재검사" line only). In all: 4 files, +148/−4.
+- **Decision.** For processes the limits come from one package rule applied to handed values (shape, `draws`, `n_max`). For builds they are fixed constants. Options (c), file of the run, and (d), config or environment, were rejected. The values:
+  - each build: 60 s;
+  - each process: `min(1500, 10 + c·(1 + 2mkn/2e8))` s, where `c = draws` for the verification run and `c = n_max + 1` for the timing run.
+  - **Fit:** the limits allow at most 1560 s, which fits the MCP idle window with 240 s to spare; checks above about 80 draws at the largest shape may not fit. The Bash default does not hold every call; what follows is stated, and OD-18 ③ is left open.
+- **OD-18 ⑲ (라).** The ADR also answers its time-limit part, because ADR-0061 decision 3 puts the time limits under ⑲ (라). ⑱ is not answered.
+- **Coverage recheck.** S0, S1, S7, S2 and S9: no verdict change and no gap, so no history entry.
+- **D16.** Nothing was built or run, and no `claude` process was started. The runtime acceptance items are stated in the ADR's Consequences and not claimed as checked.
+- **Review rounds (7).**
+  - R1: observation and quote fixes (merge_guard's 60 s, local_run's SIGKILL, generation vs. regeneration, the 4e8 figure, the wording of "met"), plus the less-exact list.
+  - R2: kill in a container, the build log kept for a killed compiler, a table cell, exact quotes of the §OD-14 sentences.
+  - R3: ADR-0043 classification, a quote ellipsis.
+  - R4: one blocking item. The MCP fit claim wrongly bounded draws at 17; it now says the tool function's own work grows with draws.
+  - R5: the ⑲ (라) grep term, the `n_max` replay, References.
+  - R6: one blocking item. An exhaustive reclassification of the grep hits.
+  - R7: Approve with two nits.
+- **Open nits, left unfixed** (fixing them after the round-7 Approve would have needed an eighth round):
+  - The "every other hit stays exact" rule in Consequences does not name ADR-0116 decision 7 (which states what ADR-0116 answers) or ADR-0116's own less-exact bullet. Both stay exact.
+  - Boundaries says "sub-questions ㉙, ㉚" without naming their OD (OD-8).
+- **Owner notice (DRIVER §9):** https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6259729110
+- **Follow-ups.**
+  - The code slice of ADR-0117: the constants and the rule beside `hilclaw/standin_settings.py`, with tests.
+  - Optionally, a doc touch-up for the two nits (D18: probably a hold line, as it changes no behaviour).
 
