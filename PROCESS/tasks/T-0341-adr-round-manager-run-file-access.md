@@ -2,7 +2,7 @@
 id: T-0341
 title: Write ADR-0124 — how the Round-Manager of a first-case turn reads its run's STATE.json and instance.json and reaches hilclaw.run_state_file.replace, and whether it then needs the place of the run (part of OD-23 and OD-18, for the runs of ADR-0120 decision 1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-10, FR-13, NFR-1, NFR-6, OD-23, OD-18, OD-8, S0, S1]
 dependsOn: [T-0333, T-0339, T-0340]
@@ -120,3 +120,11 @@ The record decides the means. It does not write code: the code slice (and the ro
 - The code slice of ADR-0124 (stub `claude` only); then OD-18 ⑯ (가) and OD-8 ⑪; then the round-0 part of the Round-Manager prompt (PLAN P2-1).
 
 ## Result
+
+- DONE. ADR-0124 landed on `main` in document mode (A-13) as 6de1c68 (one squashed commit, trailers `Reviewed-by: reviewer agent (4 rounds, Approve)` and `Task: T-0341`), after 4 reviewer rounds (dev-reviewer, context-isolated). Branch `claude/T-0341-adr-round-manager-run-file-access` deleted on the remote and locally. Session entry check: only PR #186 open, no overlap with touchesFiles.
+- Files: `ARCHITECTURE/decisions/ADR-0124-od23-round-manager-run-file-access.md` (new). `ARCHITECTURE/Requirements.md`: rows OD-23 and OD-18 each get one link after `**확정분**:`, and `**잔여**:` is rewritten in place. `ARCHITECTURE/OpenDecisionProposals.md`: one `채택분` line under OD-23 and one under OD-18, with OD-23's "제안으로 남는 부분" and OD-18's sentence on the means rewritten in place. `ARCHITECTURE/StandardScenarios.md`: the "최근 재검사" line (S0, S1 and S2 rechecked; no judgement change, no gap, no table note changed).
+- Decision: for the runs of ADR-0120 decision 1, the Round-Manager uses only four typed registry tools, called through the MCP front with `run_id` in the request, to read its run's `STATE.json` and `instance.json`, to tell a fresh run directory, and to write `STATE.json`: `state.read`, `instance.read`, `run.fresh` and `state.write`, over `run_journal.read_state`, `instance.read`, `fresh_run.is_fresh` and `run_state_file.replace`. None is journaled; they are registry tools, not FR-10 tools. Two new tool-layer kinds: `state_not_written` and `run_dir_unreadable`; the two reads reuse the `run_file_*` kinds, which widens ADR-0019 decision 2 for them. No data-plane change. The session needs no place of the run, so ADR-0123 decision 2 stands.
+- Owner-sentence search: no owner sentence decides the means (sentences found are listed in the ADR's Status, S1–S4).
+- OD-closure notice posted on #5 by the executor after the push: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6267815498
+- Runtime acceptance items (x) and (xi) of ADR-0124 recorded as HQ-0038 (`runtime-acceptance`, non-blocking).
+- Follow-ups: the code slice of ADR-0124 (code mode, stub `claude` only): a `hilclaw/` module for the four tools plus its test file, registration in `default_registry`, the docstrings of `run_state_file.py` and `fresh_run.py`, and optionally the "Your run" section of `orchestration/round-manager.md`. After that: OD-18 ⑯ (가), OD-8 ⑪, who folds the round-end spend view (OD-23), how a `-p` turn session is permitted to call the tools (ADR-0118 (vii)), then the round-0 part of the Round-Manager prompt (PLAN P2-1). The "Less exact, not edited" list in the ADR's Consequences is for the integrator.

@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0341",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:989944d1-2",
-    "acquiredAt": "2026-10-19T12:41:55Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -332,18 +328,26 @@
       "question": "ADR-0123 (how a first-case turn session learns which run it carries: the command-line entry hilclaw.turn_start puts the run id into the prompt of every turn and hands the session no place of the run; part of OD-18 and OD-23; T-0339, main 2f49767) adds one runtime acceptance item to ADR-0118's (i)-(vii) of HQ-0035 and ADR-0122's (viii) of HQ-0036. Under D16 it is closed by your check by hand or by the runtime's own self-check, not by a driver task: (ix) a `-p` turn session started by the loop with the prompt the entry builds receives that text unchanged as its first user message - on Windows also where the `claude` found is a command script - and its Round-Manager takes the run id from it as the definition says. Nothing was tried; no task is blocked on this notice.",
       "askedAt": "2026-10-19T11:38:04Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6266315890"
+    },
+    {
+      "id": "HQ-0038",
+      "taskId": "T-0341",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0124 (how the Round-Manager of a first-case turn reads its run's STATE.json and instance.json and reaches hilclaw.run_state_file.replace: four registry tools state.read, instance.read, run.fresh and state.write of the hilclaw MCP server, called with run_id; part of OD-23 and OD-18; T-0341, main 6de1c68) adds two runtime acceptance items after ADR-0123's (ix) of HQ-0037. Under D16 they are closed by your check by hand or by the runtime's own self-check, not by a driver task: (x) the main session of a `-p` turn session started by the turn loop sees the four tools under the MCP names `mcp__hilclaw__state_read`, `mcp__hilclaw__instance_read`, `mcp__hilclaw__run_fresh` and `mcp__hilclaw__state_write` (whether it may call them without a prompt stays ADR-0118 item (vii)); (xi) the results of `state.read` and `instance.read` reach the Round-Manager whole, within the limit Claude Code puts on the output of an MCP tool. Best checked after the code slice of ADR-0124 lands.",
+      "askedAt": "2026-10-19T13:01:39Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 354,
-    "tasksDone": 328,
+    "iterations": 355,
+    "tasksDone": 329,
     "tasksBlocked": 26,
-    "reviewRoundsTotal": 1171
+    "reviewRoundsTotal": 1175
   },
   "lastIteration": {
-    "at": "2026-10-19T12:38:24Z",
-    "owner": "AKIHA:989944d1-1",
-    "taskId": "T-0340",
+    "at": "2026-10-19T13:01:39Z",
+    "owner": "AKIHA:989944d1-2",
+    "taskId": "T-0341",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
