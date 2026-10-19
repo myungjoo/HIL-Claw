@@ -183,6 +183,7 @@ def test_the_default_registry_holds_the_definitions(root):
         "run.fresh",
         "state.read",
         "state.write",
+        "verdicts.write",
     )
     for held in blob_tools.definitions(lambda: root):
         assert registry.definition(held.name).description == held.description
@@ -704,6 +705,7 @@ def test_the_mcp_front_lists_the_blob_tools_among_the_fixed_set(configured):
         "run_fresh",
         "state_read",
         "state_write",
+        "verdicts_write",
     ]
     assert {"tools": blob} == {
         "tools": [
