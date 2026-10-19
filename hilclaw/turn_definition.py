@@ -30,9 +30,10 @@ outside the session directory.
   directory, so the copy is the definition as it now is. Nothing else in the
   session directory is touched, :data:`hilclaw.turn_loop.CONFIG_FILE`
   included. Content is copied byte for byte; modes and times do not matter.
-- *The placeholder prompt*: ``orchestration/round-manager.md`` states the
-  turn contract of decision 2 and that the steps of a round are not yet
-  defined; until they are, the turn ends without writing a file.
+- *The prompt*: ``orchestration/round-manager.md`` states the turn contract
+  of decision 2 and the entry of a turn (the first ``STATE.json``, the over
+  states and the round-budget end); the steps of a round are not yet defined,
+  and a turn that reaches them ends without a further write.
 - *Refusals*, each a :class:`ValueError` with a fixed text raised before
   anything is written: a top-level entry that is not a key of :data:`LAYOUT`;
   an entry of the wrong kind; a missing ``round-manager.md``; an entry at any
