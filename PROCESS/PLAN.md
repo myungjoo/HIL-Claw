@@ -64,3 +64,5 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0225 (HQ-0022) — JSON 텍스트 helper 공용화, 동작 변경 없는 리팩토링.
 - T-0284 (HQ-0028, PR #179 닫음 — 브랜치 `claude/T-0284-clang-build-refuses-posix-env-keys`는 남김) — `clang_build.build`의 POSIX `env` 키 사전 거부, 입력 경화.
 - T-0286 (HQ-0029) — `local_run.run`의 `items` 없는 `env` 사전 거부, 입력 경화.
+- T-0323 follow-up — ADR-0115 7라운드 지적 3건(결정 3·(a′)의 "에이전트를 caller로 고름" 문구, 결정 2의 "at its last step", 덜 정확해진 목록의 ADR-0111 Alternatives 2행 (c)), ADR 문구 정리.
+- T-0324 follow-up — `hilclaw/standin_profile.py` 모듈 docstring의 "is bound to no tool and to no …" 문장 수정(T-0324가 land될 때에만 틀려짐), docstring 문구 정리.

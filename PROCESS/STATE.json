@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0325",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:333900ea-1",
+    "acquiredAt": "2026-10-19T02:25:33Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -287,7 +291,7 @@
       "reason": "requirement-unclear",
       "question": "How does the ADR-0115 start function learn of a 'given id' (ADR-0111: refuse a given run_id)? Draft PR #186 reads a top-level `run_id` member of the instance.json document as a given id and refuses it; the reviewer found this reserves an undefined member name (ADR-0018 decision 2 keeps the top level open; ADR-0006 rejected a run_id member), close to a schema decision. Options: (a) confirm that reading (refused by the start only, no validity rule added) - the branch can land after minor fixes; (b) a separate input with an explicit place for a given id, apart from the document; (c) `run_id` is an ordinary undefined member that is kept.",
       "askedAt": "2026-10-19T02:06:14Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6258137429"
     }
   ],
   "counters": {
