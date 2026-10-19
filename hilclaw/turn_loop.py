@@ -63,9 +63,11 @@ OD-19's or OD-14's.
   ``-c``, a start text that puts the directory holding this package first on
   ``sys.path`` and runs :func:`hilclaw.mcp_front.main`, and that directory;
   so the server finds this package from the session directory.
-- *The prompt* is one line of ASCII letters, digits, spaces, ``.``, ``,`` and
-  ``_``: on Windows the ``claude`` found may be a command script, whose
-  arguments pass through the command interpreter.
+- *The prompt* is one line of ASCII letters, digits, spaces, ``.``, ``,``,
+  ``_`` and ``-``, not beginning with ``-``: on Windows the ``claude`` found
+  may be a command script, whose arguments pass through the command
+  interpreter. ``-`` is admitted because a built run id holds it (ADR-0123
+  decision 3), and never first, so the prompt cannot read as an option.
 - *The removal* is tried whatever happened, an exception included, and is
   tried again a few times within about two seconds (on Windows a process that
   outlives the session can keep a file open); one that still fails is
@@ -122,7 +124,7 @@ CONFIG_FILE = "hilclaw-turn.mcp-config.json"
 MARKERS = ("CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", ".claude")
 
 _PREFIX = "hilclaw-turn-"
-_PROMPT = re.compile(r"[A-Za-z0-9 .,_]+")
+_PROMPT = re.compile(r"[A-Za-z0-9 .,_][A-Za-z0-9 .,_-]*")
 _REMOVE_PAUSES_S = (0.0, 0.2, 0.6, 1.2)
 _START = (
     "import sys; sys.path.insert(0, sys.argv.pop(1)); "
@@ -170,7 +172,7 @@ def _check_prompt(prompt):
     if not _PROMPT.fullmatch(prompt):
         raise ValueError(
             "the prompt must be one non-empty line of ASCII letters, digits, "
-            "spaces, '.', ',' and '_'"
+            "spaces, '.', ',', '_' and '-', not beginning with '-'"
         )
 
 
