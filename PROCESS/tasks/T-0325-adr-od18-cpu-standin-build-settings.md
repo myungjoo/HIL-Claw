@@ -2,7 +2,7 @@
 id: T-0325
 title: Record an ADR on where the `cpu_standin` backend's own flags, trailing flags and environment come from and what their values are, for the first case (OD-18 sub-questions 18 (ra) and 19 (ra), source and values; OD-16 sub-question 6 and OD-6 sub-question 2 where they meet)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-10, FR-9, OD-18, OD-16, OD-6, C-7, "#5 A-7"]
 dependsOn: []
