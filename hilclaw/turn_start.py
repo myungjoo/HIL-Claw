@@ -205,7 +205,7 @@ def _standard(name):
 
 
 def _say(stderr, text):
-    with contextlib.suppress(OSError, ValueError):
+    with contextlib.suppress(Exception):
         if stderr is not None:
             line = f"hilclaw.turn_start: {text}".replace("\r", " ").replace("\n", " ")
             stderr.write((line + "\n").encode("utf-8", "backslashreplace"))

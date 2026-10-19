@@ -709,6 +709,7 @@ def test_standard_error_that_cannot_be_written(root, parent, stub, monkeypatch):
     assert json.loads(stdout.getvalue()) == {"outcome": ERROR, "error": BAD_USAGE}
     monkeypatch.setattr(sys, "stderr", object())
     assert main([], stdout=io.BytesIO()) == EXIT_ERROR
+    assert main([], stdout=io.BytesIO(), stderr=io.StringIO()) == EXIT_ERROR
 
 
 def test_one_line_on_standard_error(root, go, stub):
