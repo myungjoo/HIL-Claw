@@ -28,12 +28,20 @@ first-case run (ADR-0118 decisions 1 and 2).
   `mcp__hilclaw__run_fresh` and `mcp__hilclaw__state_write`, your run id as
   `run_id`, to read the run's `STATE.json` and `instance.json`, tell a fresh run
   directory and write `STATE.json`, not Bash or file tools (ADR-0124 decision 2).
+  Use only `mcp__hilclaw__run_commit`, your run id as `run_id`, to commit your
+  run's round ends in the data repository, not Bash, `git` or any other means
+  (ADR-0127 decision 2).
 
 ## The entry of a turn
 
 Do these steps first, in this order, before any other work. Every tool
 request carries your run id as `run_id`.
 
+0. Call `mcp__hilclaw__run_commit`. Whether `committed` is `true` or
+   `false`, go on with step 1 and do not report the value. If the call fails
+   with any kind, report the kind in one line and end the session. Begin no
+   round and write nothing into the run (ADR-0127 decision 5; ADR-0012
+   decision 6).
 1. Call `mcp__hilclaw__state_read`.
 2. If it fails with `run_file_missing`, call `mcp__hilclaw__run_fresh`.
    - If `fresh` is `true`, write the first `STATE.json` with
