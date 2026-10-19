@@ -9,7 +9,7 @@ later record's; P4 that its removal follows no symbolic link.
 ``ARCHITECTURE/decisions/ADR-0055-od23-coder-output-form.md`` decision 5 adds
 that what is copied in is never placed in the place (the entry ``output``
 directly below the scratch root). :func:`create` is slice (a) of ADR-0049 and
-:func:`remove` slice (c). Nothing calls them yet.
+:func:`remove` slice (c). :func:`hilclaw.coder_call.call` calls them.
 
 Conventions of this module, which are not rules of the records:
 
@@ -23,8 +23,9 @@ Conventions of this module, which are not rules of the records:
   gives, under ``parent`` (by default the temporary directory of the system),
   with the name prefix :data:`PREFIX`. Its path is returned as a ``str``.
 - The copy is the regular file :data:`SPEC_COPY_NAME` directly below the
-  scratch root. That name is a convention of this code, not of a record; how
-  the coder process is pointed at the copy is PLAN P2-2. The source is read
+  scratch root. That name is a convention of this code, not of a record; the
+  coder process is pointed at the copy by that relative name (ADR-0126
+  decision 5). The source is read
   whole, without following a link, before the scratch is made; its bytes are
   not parsed, checked or changed, and no mode bit or time is carried over.
 - A failure after the scratch was made removes the scratch, and the original

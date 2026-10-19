@@ -6,7 +6,7 @@ the rule; ``ARCHITECTURE/decisions/ADR-0049-od8-coder-call-isolation-means.md``
 decision 4 fixes that the bring-in reads regular files below the scratch only,
 follows no symbolic link, executes nothing and writes only below the
 ``output/`` of the attempt. :func:`bring_in` is that function, slice (b) of
-ADR-0049. Nothing calls it yet.
+ADR-0049. :func:`hilclaw.coder_call.call` calls it.
 
 Conventions of this module, which are not rules of the records:
 
