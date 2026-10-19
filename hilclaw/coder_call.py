@@ -20,9 +20,11 @@ slice (d), an object with two methods:
   :class:`CoderNotStartedError` when the container or the process could not be
   started.
 
-The runtime also composes the coder prompt, which names ``spec.json`` and
-``output`` relatively (ADR-0126 decision 5); this module writes no prompt text
-and no ``claude`` flag, and it starts no process itself.
+The seam composes no prompt: by ADR-0126 decision 5 this function composes a
+coder prompt naming ``spec.json`` and ``output`` relatively, but the rest of
+its text and how it is passed are open, so the prompt is slice (d)'s and
+``runtime.run`` takes none yet. This module writes no prompt text and no
+``claude`` flag, and it starts no process itself.
 
 What this module is not: slice (d), the real runtime with its image, flags and
 prompt; either front of ADR-0126 decision 3 (Q1); anything about a call that
@@ -95,9 +97,7 @@ def call(request, *, source, runtime):
     :data:`FAILURE_KINDS`, checked in that order: ``invalid_request`` before
     the source is asked; ``no_data_root`` as
     :func:`hilclaw.data_root_source.obtain` raises it; :data:`KIND_OUTPUT_EXISTS`
-    when the attempt directory lists an entry ``output``, or
-    ``attempt_directory_unlistable`` when it exists but cannot be listed (the
-    value ``bring_in`` gives then; this module's reading); ``spec_unreadable``
+    when the attempt directory lists an entry ``output``; ``spec_unreadable``
     (a missing spec file included) and ``spec_not_regular_file`` for the spec
     file read without following a link; :data:`KIND_SPEC_INVALID` when
     :func:`hilclaw.spec_file.parse` refuses it or its ``id`` is not the tuple
@@ -117,7 +117,8 @@ def call(request, *, source, runtime):
     added to the failure's text, and the kind stays.
 
     Propagated unchanged, with no kind of ADR-0126: :class:`TypeError` for a
-    ``source`` that is not callable; any exception of ``runtime.available``;
+    ``source`` that is not callable; the :class:`OSError` of listing an
+    attempt directory that exists; any exception of ``runtime.available``;
     :class:`hilclaw.scratch.InvalidScratchArgumentError` and the
     :class:`OSError` of :func:`hilclaw.scratch.create` or ``remove``; any
     exception of ``runtime.run`` but :class:`CoderNotStartedError`, and a
@@ -188,11 +189,6 @@ def _refuse_existing_output(output_path):
         listed = os.listdir(output_path.parent)
     except (FileNotFoundError, NotADirectoryError):
         return
-    except OSError as e:
-        raise _fail(
-            bring_in.ATTEMPT_DIRECTORY_UNLISTABLE,
-            "the attempt directory cannot be listed",
-        ) from e
     if OUTPUT_NAME in listed:
         raise _fail(KIND_OUTPUT_EXISTS, "the attempt already has an entry output")
 

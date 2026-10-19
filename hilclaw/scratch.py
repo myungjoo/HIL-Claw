@@ -25,9 +25,9 @@ Conventions of this module, which are not rules of the records:
 - The copy is the regular file :data:`SPEC_COPY_NAME` directly below the
   scratch root. That name is a convention of this code, not of a record; the
   coder process is pointed at the copy by that relative name (ADR-0126
-  decision 5). The source is read
-  whole, without following a link, before the scratch is made; its bytes are
-  not parsed, checked or changed, and no mode bit or time is carried over.
+  decision 5). The source is read whole, without following a link, before
+  the scratch is made; its bytes are not parsed, checked or changed, and no
+  mode bit or time is carried over.
 - A failure after the scratch was made removes the scratch, and the original
   exception arrives.
 - :func:`remove` removes the scratch and everything below it with

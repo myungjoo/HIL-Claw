@@ -295,7 +295,7 @@ def test_output_exists_wins_over_a_missing_spec(data_root, parent, source, outpu
     assert_nothing_started(parent, runtime)
 
 
-def test_an_attempt_directory_that_cannot_be_listed_is_refused(
+def test_an_attempt_directory_that_cannot_be_listed_propagates_its_error(
     data_root, parent, source, spec, output_path, monkeypatch
 ):
     listdir = os.listdir
@@ -307,8 +307,9 @@ def test_an_attempt_directory_that_cannot_be_listed_is_refused(
 
     monkeypatch.setattr(os, "listdir", refusing)
     runtime = FakeRuntime()
-    kind = bring_in.ATTEMPT_DIRECTORY_UNLISTABLE
-    failure(kind, data_root, request(), source, runtime)
+    with pytest.raises(PermissionError) as caught:
+        call(request(), source=source, runtime=runtime)
+    assert not isinstance(caught.value, tools.ToolFailure)
     assert_nothing_started(parent, runtime)
 
 
