@@ -21,6 +21,10 @@ FIXED_NAMES = {
     "correctness.check": "correctness_check",
     "blob.push": "blob_push",
     "blob.fetch": "blob_fetch",
+    "state.read": "state_read",
+    "instance.read": "instance_read",
+    "run.fresh": "run_fresh",
+    "state.write": "state_write",
 }
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
 INITIALIZE = {
@@ -449,12 +453,16 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 # The fixed tool set
 
 
-def test_the_fixed_tool_set_is_the_blob_tools_and_correctness_check():
-    """The C-3 pair (ADR-0039) and correctness.check (ADR-0070); no other FR-10 HW tool yet."""
+def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_tools():
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070) and the run-file tools (ADR-0124)."""
     held = {
         "blob_fetch": "blob.fetch",
         "blob_push": "blob.push",
         "correctness_check": "correctness.check",
+        "instance_read": "instance.read",
+        "run_fresh": "run.fresh",
+        "state_read": "state.read",
+        "state_write": "state.write",
     }
     assert mcp_names(default_registry(lambda: REPO_ROOT)) == held
     unknown = [name for name in FIXED_NAMES.values() if name not in held]
@@ -493,7 +501,15 @@ def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
     assert main([], stdin=io.BytesIO(data), stdout=stdout, stderr=stderr) == 0
     listed, refused = responses(stdout.getvalue())
     names = [tool["name"] for tool in listed["result"]["tools"]]
-    assert names == ["blob_fetch", "blob_push", "correctness_check"]
+    assert names == [
+        "blob_fetch",
+        "blob_push",
+        "correctness_check",
+        "instance_read",
+        "run_fresh",
+        "state_read",
+        "state_write",
+    ]
     assert error_of(refused, -32602, 2) == "unknown tool 'sim_run'"
     assert stderr.getvalue() == b""
 
@@ -926,7 +942,15 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
     names = [tool["name"] for tool in listed["result"]["tools"]]
     assert (listed["id"], names) == (
         1,
-        ["blob_fetch", "blob_push", "correctness_check"],
+        [
+            "blob_fetch",
+            "blob_push",
+            "correctness_check",
+            "instance_read",
+            "run_fresh",
+            "state_read",
+            "state_write",
+        ],
     )
     assert stderr.buffer.getvalue() == b""
     monkeypatch.setattr(sys, "argv", ["python -m hilclaw.mcp_front", "sim_run"])
@@ -1015,7 +1039,15 @@ def test_process_handshake_and_tool_list():
     names = [tool["name"] for tool in listed["result"]["tools"]]
     assert (listed["id"], names) == (
         2,
-        ["blob_fetch", "blob_push", "correctness_check"],
+        [
+            "blob_fetch",
+            "blob_push",
+            "correctness_check",
+            "instance_read",
+            "run_fresh",
+            "state_read",
+            "state_write",
+        ],
     )
     assert done.stderr == b""
 

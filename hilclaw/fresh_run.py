@@ -13,14 +13,17 @@ Every name is checked at its known path of :mod:`hilclaw.layout`, so nothing
 is listed and a leftover of a write (ADR-0013 decision 4; ADR-0025 decision 6)
 does not change the answer. "Not there" is an :class:`OSError` in
 :data:`hilclaw.run_files.NOT_THERE`. The test opens, reads, writes, creates,
-lists and removes nothing, keeps nothing between calls and is no FR-10 tool.
+lists and removes nothing, keeps nothing between calls and is no FR-10 tool;
+the registry tool ``run.fresh`` of :mod:`hilclaw.run_file_tools` is a tool
+over it (ADR-0124).
 
 What it does not decide: what a directory with ``instance.json``, other files
 of the tree and no ``STATE.json`` means, and what a turn does in a run that is
 not fresh (ADR-0120 decision 4, open); the rest of the loop's predicate
-(OD-8, OD-19); what follows a failed turn (OD-10, OD-17, OD-19, OD-27); how
-the Round-Manager reaches ``replace`` (OD-23, OD-18); and the layout stamp of
-``instance.json``, whose content is not read (㉗ (가)).
+(OD-8, OD-19); what follows a failed turn (OD-10, OD-17, OD-19, OD-27); and
+the layout stamp of ``instance.json``, whose content is not read (㉗ (가)).
+The Round-Manager reaches ``replace`` through the tool ``state.write``
+(ADR-0124).
 """
 
 import os

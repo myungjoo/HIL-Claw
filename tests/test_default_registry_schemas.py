@@ -39,6 +39,17 @@ ACCEPTED = {
         "execution": 1,
         "point": "sim",
     },
+    "instance.read": {"run_id": "r1"},
+    "run.fresh": {"run_id": "r1"},
+    "state.read": {"run_id": "r1"},
+    "state.write": {
+        "run_id": "r1",
+        "state": {
+            "schema_version": 1,
+            "round": 0,
+            "budget_spent": {"totals": {}, "position": 0, "open_steps": []},
+        },
+    },
 }
 
 TOP_LEVEL = ("type", "properties", "required", "additionalProperties")
