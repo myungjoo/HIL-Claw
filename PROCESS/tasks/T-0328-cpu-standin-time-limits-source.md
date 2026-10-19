@@ -2,7 +2,7 @@
 id: T-0328
 title: Add the `cpu_standin` time limits of ADR-0117 (60 s per build; the per-process rule over the handed shape and `draws` or `n_max`, capped at 1500 s) to the one settings source `hilclaw/standin_settings.py`, with tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [NFR-4, FR-10, FR-9, OD-14, OD-18, C-7]
 dependsOn: [T-0326, T-0327]
@@ -96,3 +96,9 @@ No open HQ is needed:
 - The next stop on the path of the `cpu_standin` operations is not plannable from here: the operations wait on HQ-0021, HQ-0026 and the compiler installation (OD-14 ①). The planner should next look at the other open stops of P1-1 or P1-8, or at P2-1.
 
 ## Result
+- Landed: PR #188, squash-merged as 87f8f544de7ad39866f7f98b78cef9c55d5ceed2; branch claude/T-0328-cpu-standin-time-limits-source deleted.
+- Review: 2 rounds (dev-reviewer). Round 1 Approve with one Low and one Nit, both fixed (refusal tests match `^<name> must`; public-set test renamed). Round 2 Approve.
+- CI green on f024d84 (Python 3.11/3.14, coverage, C, sh, test presence). Local: 23479 passed; hilclaw/ line coverage 99%, standin_settings.py 100%.
+- Added: BUILD_TIME_LIMIT_S=60, PROCESS_TIME_LIMIT_CAP_S=1500, verification_process_time_limit_s(m,k,n,draws), timing_process_time_limit_s(m,k,n,n_max); exact integer arithmetic scaled by 2e8, capped, one final division. Nothing wired into any operation.
+- Language: Python, because the module belongs to the Python tool package that the Python operations read.
+- ADR-0117 runtime acceptance items are not claimed. No follow-ups.
