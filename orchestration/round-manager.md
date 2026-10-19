@@ -14,8 +14,8 @@ first-case run (ADR-0118 decisions 1 and 2).
 
 ## Your run
 
-- Your prompt names your run (ADR-0123 decision 3). It ends with the text
-  `Your run id is `, then the run id, then a final `.`: the run id is
+- Your prompt names your run (ADR-0123 decision 3). Its last part is the
+  text `Your run id is `, the run id and a final `.`. The run id is
   everything between that text and the final `.`.
 - If your prompt holds no run id, more than one, or one that does not match
   `[a-z0-9][a-z0-9_-]{0,63}`, report that in one line and end the session.
