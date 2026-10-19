@@ -55,7 +55,7 @@ def test_the_values_are_those_of_the_record():
     assert ENV is None
 
 
-def test_the_module_exposes_only_the_three_settings():
+def test_the_module_exposes_only_the_settings_and_the_time_limits():
     public = {name for name in vars(standin_settings) if not name.startswith("_")}
     assert public == {
         "FLAGS",
@@ -196,7 +196,7 @@ def test_an_argument_that_is_not_an_int_is_refused(function, count_name, positio
     args = {"m": 1, "k": 1, "n": 1, count_name: 1}
     name = count_name if position == "count" else position
     args[name] = bad
-    with pytest.raises(TypeError, match=name):
+    with pytest.raises(TypeError, match=rf"^{name} must"):
         function(**args)
 
 
@@ -207,7 +207,7 @@ def test_an_argument_below_one_is_refused(function, count_name, position, bad):
     args = {"m": 1, "k": 1, "n": 1, count_name: 1}
     name = count_name if position == "count" else position
     args[name] = bad
-    with pytest.raises(ValueError, match=name):
+    with pytest.raises(ValueError, match=rf"^{name} must"):
         function(**args)
 
 
