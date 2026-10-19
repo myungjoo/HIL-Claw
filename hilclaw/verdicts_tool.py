@@ -79,7 +79,8 @@ _DESCRIPTION = (
     "request; the tool knows it. A refused record leaves nothing written and "
     "can be corrected and sent again. It fails with invalid_request for a "
     "record that is not valid, of round 0 or of another schema_version, or "
-    "whose run_id is not run_id; hypotheses_missing, hypotheses_invalid, "
+    "whose run_id is not run_id; no_data_root when the data root cannot be "
+    "obtained; hypotheses_missing, hypotheses_invalid, "
     "hypotheses_unsupported or hypotheses_unreadable when the round's "
     "hypotheses.json is not there, is invalid or no regular file, has another "
     "schema_version or cannot be read; verdicts_mismatch when the record "
@@ -217,8 +218,8 @@ def _write(source, request):
                     f"record.verdicts[{index}].evidence[{at}]: a comparison is "
                     "refused until a tool gives it; write check entries only",
                 )
-    file = layout.verdict_record(data_root, run_id, document["round"])
-    file = file.relative_to(data_root).as_posix()
+    path = layout.verdict_record(data_root, run_id, document["round"])
+    file = path.relative_to(data_root).as_posix()
     try:
         verdicts_file.write(data_root, content)
     except verdicts_file.NameTakenError as e:

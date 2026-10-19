@@ -59,6 +59,7 @@ HYPOTHESES_PATH = f"runs/{RUN}/rounds/0001/decision/hypotheses.json"
 VERDICTS_PATH = f"runs/{RUN}/rounds/0001/eval/verdicts.json"
 KINDS = (
     "invalid_request",
+    "no_data_root",
     "hypotheses_missing",
     "hypotheses_invalid",
     "hypotheses_unsupported",
@@ -200,7 +201,7 @@ def test_no_kind_of_the_module_is_reserved():
     kinds = {
         value for name, value in vars(verdicts_tool).items() if name.startswith("KIND_")
     }
-    assert kinds == set(KINDS[1:])
+    assert kinds == set(KINDS[2:])
     assert not kinds & tools.RESERVED_KINDS
 
 
@@ -322,6 +323,7 @@ def test_a_failing_source_is_no_data_root(root):
     refused = failure(source, {"run_id": RUN, "record": record()})
     assert refused.kind == tools.KIND_NO_DATA_ROOT
     assert source.calls == 1
+    assert not eval_dir(root).exists()
 
 
 def test_missing_hypotheses_are_hypotheses_missing(root):
@@ -444,6 +446,7 @@ def test_hypotheses_of_another_run_id_are_verdicts_mismatch(root):
     refused = failure(Source(root), {"run_id": RUN, "record": record()})
     assert refused.kind == verdicts_tool.KIND_VERDICTS_MISMATCH
     assert refused.message.startswith("record: run_id: ")
+    assert not eval_dir(root).exists()
 
 
 def test_a_comparison_entry_is_comparison_not_given(root):
