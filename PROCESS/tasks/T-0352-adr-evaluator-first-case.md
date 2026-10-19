@@ -85,4 +85,23 @@ This is a record, not code. No `claude` process is started, and nothing requires
 
 ## Follow-ups
 
+- **Runtime-acceptance HQ (DRIVER §8, reason `runtime-acceptance`, non-blocking), proposed text:**
+  > ### HQ-NNNN — T-0352: runtime acceptance items (xviii)-(xx) of ADR-0128
+  > ADR-0128 (the evaluator of a first-case turn, part of OD-23 and OD-16; T-0352) adds three turn-session runtime acceptance items. Under D16 they are closed by your check on a runtime machine or by the runtime's own self-check, never by a driver task: (xviii) a sub-agent of a `-p` turn session defined in `.claude/agents/evaluator.md` gets exactly the tools its `tools` list names, the `hilclaw` tools given by `--mcp-config` among them, and no `Write`, `Edit`, `Bash` or other unlisted tool; (xix) the Round-Manager's delegation message reaches the evaluator whole, and the evaluator's final message reaches the Round-Manager whole; (xx) a `correctness.check` called from a sub-agent through MCP returns within the MCP idle window (about 30 minutes) for the largest first-case check ADR-0117's limits allow, and a call cut off there leaves no check running. Please reply with `HQ-NNNN` and what you observed when you have checked them.
+  >
+  > — posted by driver
+- **No owner-only HQ.** Nothing of ADR-0128 turns on #5 A-4, A-8, OD-1, OD-3, OD-25, C-6 or the K2/K4 reading of HQ-0040.
+- **Later slices (for the planner):** (1) the registry tool `verdicts.write` of ADR-0128 decision 6 (code, can be planned now); (2) `orchestration/agents/evaluator.md` (code, can be planned now); (3) records for the read, standing and comparison tools (ADR-0128 Consequences slice 3); (4) the delegation steps of the round steps, with HQ-0040/HQ-0041.
+
 ## Result
+
+- **Outcome**: DONE. ADR-0128 (`ARCHITECTURE/decisions/ADR-0128-od23-first-case-evaluator.md`, slug kept) landed on main in document mode with the edits of `ARCHITECTURE/Requirements.md` (rows OD-23, OD-16, OD-30), `ARCHITECTURE/OpenDecisionProposals.md` (OD-23, OD-16, OD-30) and `ARCHITECTURE/StandardScenarios.md` (S0 step 6 note, recent re-check line; no judgement change). The landed commit is the one whose trailer is `Task: T-0352`.
+- **Decided (first-case runs of ADR-0120 decision 1)**: the `evaluator` sub-agent issued by the Round-Manager holds `eval/`; tools `mcp__hilclaw__correctness_check` (its one HW tool), the three registered read tools and Read/Grep/Glob, no Write/Edit/Bash; it gets the run id and tuple in the delegation, no place; returns a text report; `verdicts.json` is written by a new registry tool `verdicts.write` that checks ADR-0071's file rules and the rules against `hypotheses.json`, and refuses any comparison entry until a comparison tool exists; no `eval.json` while OD-20 is open; definition `orchestration/agents/evaluator.md`.
+- **Data plane**: unchanged. **OD status words**: unchanged.
+- **Review**: see the `Reviewed-by` trailer of the landed commit.
+- **Proposed DRIVER §9 owner notice for #5:**
+  > ### OD-23 / OD-16 (part) — ADR-0128: the evaluator of a first-case turn (T-0352)
+  > ADR-0128 was accepted under DRIVER §9 for the runs of ADR-0120 decision 1. It decides that the `evaluator` sub-agent, issued by the Round-Manager, holds the evaluation role (`eval/`); its only HW tool is `correctness.check`, it has no Write, Edit or Bash, and reading is not restricted; it receives the run id and the attempt tuple or round in the delegation message and returns a text report; the round's `verdicts.json` is written for it by a new registry tool `verdicts.write`, which refuses a record that fails ADR-0071's rules or its rules against `hypotheses.json`, and, until a comparison tool exists, any comparison entry (so verdicts are `inconclusive` for now); no `eval.json` is written while OD-20 is open. Owner-only points (#5 A-4, A-8, OD-1, OD-3) and HQ-0040 are untouched. Objections within 7 days create a task that reverts the record and its edits.
+  >
+  > — posted by driver
+
