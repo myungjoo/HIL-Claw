@@ -6,7 +6,8 @@ the turn loop of ADR-0118 decision 3 answers by itself, and only these:
 
 - P1, a fresh run directory (ADR-0120 decision 4): a further turn;
 - P2, ``STATE.json`` valid, version 1, with ``run_status`` ``"over"``: no
-  further turn;
+  further turn when no round end is owed;
+- owed P2, P2 with a round end owed (ADR-0127 decision 6): a further turn;
 - P3, ``STATE.json`` valid, version 1, with ``run_status`` holding any other
   value, a non-string included (ADR-0121 decision 2): no further turn, and the
   value is reported;
@@ -18,20 +19,26 @@ In every other state the code asks its caller's predicate (ADR-0121 decision
 5, last bullet). :func:`classify` tells the state; :func:`predicate` makes the
 ``further_turn`` that :func:`hilclaw.turn_loop.run` takes.
 
-**A choice of this module**: P1 and P4 say that a turn is due, not how often a
-failing one is retried. So they answer a further turn only before the first
+In P2 alone the rule of ADR-0127 decision 4 is applied read-only through
+:func:`hilclaw.run_commit.owed_rounds`, which compares the working tree's
+``round`` with that of ``HEAD``; P2 where it cannot be applied is a state of
+the caller's predicate.
+
+**A choice of this module**: P1, P4 and owed P2 say that a turn is due, not
+how often a failing one is retried. So they answer a further turn only before the first
 turn (``previous`` is ``None``) or after a turn session whose exit status was
 0; after any other exit status the caller's predicate answers. Otherwise a
 round-0 turn that keeps failing would leave the directory fresh and the loop
 would start turns without end, spending plan usage. A turn that exits with 0
-and leaves the run as it found it is not caught: P1 and P4 answer a further
-turn again, as ADR-0121 decision 5 has it, so this predicate alone bounds no
-usage. P2 and P3 answer no further turn whatever ``previous`` is.
+and leaves the run as it found it is not caught: P1, P4 and owed P2 answer a
+further turn again, as ADR-0121 decision 5 has it, so this predicate alone bounds no
+usage. P2 with nothing owed and P3 answer no further turn whatever
+``previous`` is.
 
 It writes, creates, removes and lists nothing, keeps nothing between calls,
-compares no number, interprets no member besides ``run_status`` and
-``round_budget``, and is no FR-10 tool. It passes on ``round`` in the finding
-of P4 without interpreting it.
+compares no number and interprets no member besides ``run_status`` and
+``round_budget`` outside P2, and is no FR-10 tool. It passes on ``round`` in
+the finding of P4 without interpreting it.
 
 **Open** for ADR-0121, each asked of the caller's predicate where it is a
 state: a run whose ``instance.json`` states no ``round_budget`` (OD-8 ㉙ (나));
@@ -41,13 +48,12 @@ what the loop does in these states and after a failed turn or an exit-0 turn
 that left the run as it found it, and :mod:`hilclaw.turn_start`, the loop's
 command-line entry, applies it on :func:`classify` directly; :func:`predicate`
 keeps the answers above, so it alone still does not catch such an exit-0
-turn. Still open: the lock of two loops on one run (rest of OD-17) and a run
-that is over and whose commit is still owed (OD-8 ⑪).
+turn. Still open: the lock of two loops on one run (rest of OD-17).
 """
 
 from typing import NamedTuple
 
-from hilclaw import fresh_run, instance, layout, run_journal, run_state
+from hilclaw import fresh_run, instance, layout, run_commit, run_journal, run_state
 
 RUN_STATUS = "run_status"
 OVER = "over"
@@ -56,6 +62,7 @@ FRESH = "fresh"
 OVER_CASE = "over"
 UNKNOWN_STATUS = "unknown_status"
 DUE = "due"
+OWED = "owed"
 OPEN = "open"
 
 STATE_MISSING = "state_missing"
@@ -65,15 +72,18 @@ INSTANCE_MISSING = "instance_missing"
 INSTANCE_INVALID = "instance_invalid"
 INSTANCE_VERSION = "instance_version"
 NO_ROUND_BUDGET = "no_round_budget"
+NO_REPOSITORY = run_commit.KIND_NO_REPOSITORY
+COMMIT_REFUSED = run_commit.KIND_COMMIT_REFUSED
 
 
 class Finding(NamedTuple):
     """Result of :func:`classify`: the ``case`` and its ``value``.
 
     ``value`` is the ``run_status`` value for :data:`UNKNOWN_STATUS`, the
-    ``round`` of ``STATE.json`` for :data:`DUE`, one of the seven reason
-    constants (:data:`STATE_MISSING` to :data:`NO_ROUND_BUDGET`) for
-    :data:`OPEN`, and ``None`` for :data:`FRESH` and :data:`OVER_CASE`.
+    ``round`` of ``STATE.json`` for :data:`DUE`, one of the nine reason
+    constants (:data:`STATE_MISSING` to :data:`COMMIT_REFUSED`) for
+    :data:`OPEN`, and ``None`` for :data:`FRESH`, :data:`OVER_CASE` and
+    :data:`OWED`, so that owed P2 before and after a turn compares equal.
     """
 
     case: str
@@ -86,8 +96,13 @@ def classify(data_root, run_id):
     In this order: :data:`FRESH` when :func:`hilclaw.fresh_run.is_fresh` is
     true (P1); :data:`OPEN` with :data:`STATE_MISSING`, :data:`STATE_INVALID`
     or :data:`STATE_VERSION` when :func:`hilclaw.run_journal.read_state` finds
-    no ``STATE.json``, an invalid one or another version; :data:`OVER_CASE`
-    when its ``run_status`` is exactly the ``str`` ``"over"`` (P2);
+    no ``STATE.json``, an invalid one or another version; when its
+    ``run_status`` is exactly the ``str`` ``"over"`` (P2), after one
+    :func:`hilclaw.run_commit.owed_rounds` call, :data:`OVER_CASE` for an
+    empty range, :data:`OWED` for another, and :data:`OPEN` with
+    :data:`NO_REPOSITORY` for :class:`hilclaw.run_commit.NoRepositoryError` or
+    :class:`hilclaw.run_commit.GitNotRunError` and with
+    :data:`COMMIT_REFUSED` for :class:`hilclaw.run_commit.CommitRefusedError`;
     :data:`UNKNOWN_STATUS` with the value as parsed when ``run_status`` holds
     any other value (P3); without ``run_status``, :data:`OPEN` with
     :data:`INSTANCE_MISSING`, :data:`INSTANCE_INVALID` or
@@ -100,7 +115,8 @@ def classify(data_root, run_id):
     Raises :class:`hilclaw.layout.InvalidPathValueError` for an invalid
     ``run_id`` before anything is checked, :class:`FileNotFoundError` or
     :class:`NotADirectoryError` for a ``data_root`` that is no existing
-    directory, and any other :class:`OSError` unchanged.
+    directory (so before P2, and no reason tells it), and any other
+    exception unchanged.
     """
     if fresh_run.is_fresh(data_root, run_id):
         return Finding(FRESH, None)
@@ -115,7 +131,7 @@ def classify(data_root, run_id):
     if RUN_STATUS in state.others:
         value = state.others[RUN_STATUS]
         if type(value) is str and value == OVER:
-            return Finding(OVER_CASE, None)
+            return _p2(data_root, run_id)
         return Finding(UNKNOWN_STATUS, value)
     try:
         stated = instance.read(data_root, run_id)
@@ -130,13 +146,23 @@ def classify(data_root, run_id):
     return Finding(DUE, state.round)
 
 
+def _p2(data_root, run_id):
+    try:
+        owed = run_commit.owed_rounds(data_root, run_id)
+    except (run_commit.NoRepositoryError, run_commit.GitNotRunError):
+        return Finding(OPEN, NO_REPOSITORY)
+    except run_commit.CommitRefusedError:
+        return Finding(OPEN, COMMIT_REFUSED)
+    return Finding(OWED if owed else OVER_CASE, None)
+
+
 def predicate(data_root, run_id, *, fallback, report):
     """Return ``further_turn(previous)`` for :func:`hilclaw.turn_loop.run` on the run ``run_id``.
 
     Each call runs :func:`classify` afresh. :data:`OVER_CASE` answers
     ``False``. :data:`UNKNOWN_STATUS` calls ``report(value)`` once and answers
-    ``False``. :data:`FRESH` and :data:`DUE` answer ``True`` when ``previous``
-    is ``None`` or the ``int`` 0; for any other ``previous``, and for
+    ``False``. :data:`FRESH`, :data:`DUE` and :data:`OWED` answer ``True`` when
+    ``previous`` is ``None`` or the ``int`` 0; for any other ``previous``, and for
     :data:`OPEN`, the answer is ``fallback(previous)``, returned unchanged.
     ``fallback`` and ``report`` are called in no other case, and what they or
     :func:`classify` raise passes through.
@@ -157,7 +183,7 @@ def predicate(data_root, run_id, *, fallback, report):
         if finding.case == UNKNOWN_STATUS:
             report(finding.value)
             return False
-        if finding.case in (FRESH, DUE) and (
+        if finding.case in (FRESH, DUE, OWED) and (
             previous is None or (type(previous) is int and previous == 0)
         ):
             return True
