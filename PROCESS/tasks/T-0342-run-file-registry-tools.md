@@ -2,7 +2,7 @@
 id: T-0342
 title: Add the four registry tools of ADR-0124 (state.read, instance.read, run.fresh, state.write) and register them in the default registry
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-10, FR-13, NFR-1, NFR-6, OD-23, OD-18, S0, S1]
 dependsOn: [T-0341]
@@ -94,3 +94,12 @@ Open PR #186 (T-0324) touches only `hilclaw/start_instance.py` and three test fi
 - Next for P2-1: the record of OD-18 ⑯ (가) (whether the self-check runs again at a resume), then OD-8 ⑪ (the commit step), then who folds the round-end spend view (OD-23), then the round-0 steps of the Round-Manager definition.
 
 ## Result
+
+- Landed: PR #195 (Draft, DONOTMERGE removed), squash-merged as a08ec70; branch claude/T-0342-run-file-registry-tools deleted.
+- Review: 4 rounds by the context-isolated dev-reviewer, all Approve. Fixed in the PR: docstring precision (state.write may create runs/ and the run directory); no absolute data-root path in state_not_written / run_dir_unreadable messages; a test pinning bad_result for a number beyond the float range; two renamed front tests; round-manager.md rewrap; one long line.
+- New hilclaw/run_file_tools.py defines state.read, instance.read, run.fresh and state.write (ADR-0124), registered in default_registry. The reads read the file once, validate it with run_state.parse / instance.parse and return json.loads of those bytes (read_state / instance.read not reused: they return package values, not the stored object). New unreserved kinds: run_dir_unreadable, state_not_written.
+- Docstrings of run_state_file.py / fresh_run.py updated. orchestration/round-manager.md "Your run" gains the 4-line rule of ADR-0124 decision 2.
+- Tests: new tests/test_run_file_tools.py (71 tests); the seven names are in every registry-enumerating test. tests/test_blob_tools.py and tests/test_tools.py were outside touchesFiles but had to change because they also list the default registry.
+- Local: full pytest 23805 passed, ruff check/format clean, hilclaw/ line coverage 97% (run_file_tools.py 100%). CI green on ff3f934. No real claude started (D16).
+- Language: Python, the language of the hilclaw package the tools extend.
+- Follow-up (not needed for P2-5/P2-14, no task): a state file holding a number beyond the float range in a member neither validator defines makes state.read fail with bad_result (documented and tested). Runtime acceptance items (x) and (xi) remain with HQ-0038.
