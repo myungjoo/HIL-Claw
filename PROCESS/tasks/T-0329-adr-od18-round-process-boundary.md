@@ -2,7 +2,7 @@
 id: T-0329
 title: Record an ADR on the round boundary of a first-case run - whether one round's turn is one OS process, what starts each turn, and the working directory and definition place of the Round-Manager session (OD-18 round boundary, #8 M4; one point of OD-23)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, NFR-1, NFR-7, OD-18, OD-23, C-7]
 dependsOn: []
@@ -160,3 +160,9 @@ OD-18 and OD-23 are design-level ODs, not owner-only (DRIVER §9). This task clo
 - Integrator: #8 M4 for the first case, and the NFR-7 ① / UC-3 wording if the ADR lists them as less exact.
 
 ## Result
+- Landed: a2d9e96 on main (document mode, branch claude/T-0329-adr-od18-round-process-boundary deleted); review: 7 rounds, Approve (`Reviewed-by` trailer).
+- ADR-0118 (first-case runs): one turn = one Claude Code session process; a layer-2 turn loop starts each turn (cron/a person restarts the loop, not a turn; `/loop` rejected); the turn session runs in a session directory outside both checkouts; the runtime definition lives under `orchestration/` and is copied in at every turn; the main session gets the server by `--mcp-config` + `--strict-mcp-config`.
+- Synced: OD-18/OD-23 register rows and proposal sections, UC-3 step 1, StandardScenarios latest re-check (no verdict change, no gap).
+- Owner notice (§9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6260591063
+- Runtime acceptance items (i)-(vii) notified as HQ-0035 (`runtime-acceptance`, non-blocking).
+- Follow-ups: integrator — #8 M4 (first case), NFR-7 ① wording, S2 steps 1/3, CLAUDE.md "세 층 모델" and the #4 §2 agent-memory row; nit: OD-18 ⑯ (마) status is less exact. Next P2-1 slices: turn loop code (stub `claude` only), session-dir preparation, the definition under `orchestration/`, round-0 procedure. Note: `orchestration/` is not in the A-13 document-mode list, so edits there run in code mode.
