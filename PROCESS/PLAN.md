@@ -70,3 +70,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0327 follow-up — ADR-0117 7라운드 지적 2건(Consequences의 "every other hit stays exact"가 ADR-0116 decision 7과 ADR-0116 자신의 less-exact 항목을 이름하지 않음, Boundaries의 "sub-questions ㉙, ㉚"에 OD(OD-8) 미표기), ADR 문구 정리.
 - T-0332 follow-up — ADR-0119 7라운드 지적(StandardScenarios "최근 재검사" 줄과 S0/S1 포인터 문구, "less exact" 목록에 ADR-0029 누락, ADR-0073 귀속 문구)과 Consequences에 적힌 이전 ADR들의 덜 정확해진 문장, ADR 문구 정리.
 - T-0333 follow-up — ADR-0120 7라운드 지적(decision 3의 "a check of existence is all" 범위 문구, Status의 builds-on에 ADR-0019·ADR-0025 추가)과 Consequences에 적힌 이전 ADR·docstring의 덜 정확해진 문장, ADR 문구 정리.
+- T-0335 follow-up — ADR-0121 Consequences에 적힌 덜 정확해진 문장(ADR-0012·ADR-0032·ADR-0033·ADR-0117·ADR-0118·ADR-0119·ADR-0120)과 Requirements OD-28 행(잔여)·OpenDecisionProposals § OD-28 남음의 "round budget 계상", ADR·등록부 문구 정리.
