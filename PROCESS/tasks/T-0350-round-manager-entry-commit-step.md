@@ -2,7 +2,7 @@
 id: T-0350
 title: Add run.commit as step 0 of the Round-Manager's turn entry and to the "Your run" tool list in orchestration/round-manager.md (ADR-0127 slice (2); PLAN P2-1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-13, NFR-1, OD-8, OD-23, S0, S1, S2]
 dependsOn: [T-0345, T-0348, T-0349]
@@ -85,3 +85,12 @@ Language: no new layer-2 code. The change is Markdown in layer 1 plus one docstr
 - Next slice (planner's candidate; code mode; stub `claude` and a temporary git repository only): ADR-0127 slice (3). Step 1 of the turn loop tells owed P2 from P2 with nothing owed, through `hilclaw.run_commit.owed_rounds`, in `hilclaw/further_turn.py` and `hilclaw/turn_start.py`. Owed P2 is treated as P4. A P2 in which the rule cannot be applied is an open state. The self-check runs before the first turn of a start in owed P2 (ADR-0127 decision 6).
 
 ## Result
+
+- Landed by PR #200 (https://github.com/myungjoo/HIL-Claw/pull/200), squash-merged as `83b4eac`; branch `claude/T-0350-round-manager-entry-commit-step` deleted. The squash message is the PR body, ending in `Task: T-0350`.
+- `orchestration/round-manager.md`: "Your run" names `mcp__hilclaw__run_commit` as the only means to commit the run's round ends, not Bash or `git` (ADR-0127 decision 2). "The entry of a turn" has a new step 0 before `state_read`: it calls `run.commit`; with `committed` true or false the entry goes on to step 1; any failure kind is reported in one line and ends the session with no round begun and nothing written (ADR-0127 decision 5; ADR-0012 decision 6). Steps 1-7 and "The round steps" are unchanged; no call was added after the round-budget `"over"` write (decision 8, HQ-0043) or after any other `state_write`.
+- `hilclaw/turn_definition.py`: the "*The prompt*" docstring bullet names the commit of an owed round end as the first entry step. No code change.
+- Language: no new layer-2 code; Markdown in layer 1 plus one docstring bullet in an existing Python module.
+- Tests: no new test (D12; no test pins the prompt wording). Local full suite passed (23976 passed, 710 skipped), `ruff check` and `ruff format --check` clean; CI green on the final head (Python 3.11/3.14, Coverage, Test presence, shellcheck, clang). No real `claude` was started (D16).
+- Review: dev-reviewer, 2 rounds — round 1 Approve with one nit (docstring rewrap, fixed), round 2 Approve.
+- Runtime acceptance items: none added or closed; (xv)-(xvii) stay with HQ-0044.
+- Follow-up: ADR-0127 slice (3) (owed P2 in step 1 of `hilclaw/further_turn.py` / `hilclaw/turn_start.py`), as above. The `run.commit` call right after the round-ending write stays with the P2-1 slice that writes "The round steps".
