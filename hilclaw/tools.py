@@ -198,9 +198,9 @@ def default_registry(data_root_source):
     (:mod:`hilclaw.run_file_tools`, ADR-0124), with which the Round-Manager
     reads and writes its run's ``STATE.json`` and reads its ``instance.json``,
     and ``run.commit`` (:func:`hilclaw.run_commit.definition`, ADR-0127), with
-    which it commits an owed round end of its run. A tool is added here, in the source, and in no other way: no option,
-    environment variable, entry point or plugin registers one or chooses what
-    it is bound to.
+    which it commits an owed round end of its run. A tool is added here, in
+    the source, and in no other way: no option, environment variable, entry
+    point or plugin registers one or chooses what it is bound to.
     """
     from hilclaw import blob_tools, check_definition, run_commit, run_file_tools
 

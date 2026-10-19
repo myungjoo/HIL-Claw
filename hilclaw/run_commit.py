@@ -21,7 +21,9 @@ not journaled, appends nothing to ``events.ndjson`` and selects no backend
 (ADR-0127 decision 4, as ADR-0124 decision 3 reads its tools).
 """
 
+import contextlib
 import os
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -55,6 +57,7 @@ _LOCATING = frozenset(
     }
 )
 _REGULAR_MODES = ("100644", "100755")
+_FROM_STDIN = ("--pathspec-from-file=-", "--pathspec-file-nul")
 _RUN_ID_SCHEMA = {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"}
 _DESCRIPTION = (
     "Commit the round end of the run run_id when one is owed: when the round of "
@@ -91,7 +94,7 @@ class WorkingStateError(CommitRefusedError):
 
 
 class HeadStateError(CommitRefusedError):
-    """The ``STATE.json`` that ``HEAD`` holds for the run is not valid at version 1, or cannot be read."""
+    """The ``STATE.json`` that ``HEAD`` holds for the run is not valid at version 1 or cannot be read, or ``HEAD`` names no commit."""
 
 
 class RoundBehindError(CommitRefusedError):
@@ -155,7 +158,10 @@ def commit(data_root, run_id):
     paths of the module docstring is made on ``HEAD`` (the repository's first
     when there is no ``HEAD``), the index entries of exactly those paths are
     set to the commit, and the result is ``True``. Nothing else of the working
-    tree or the index is changed; a path staged elsewhere stays staged.
+    tree or the index is changed; a path staged elsewhere stays staged. The
+    index lock of the repository is held from before ``HEAD`` moves until the
+    index is replaced; should that replacement fail, the commit stands and the
+    index is as it was.
 
     Raises what :func:`owed_rounds` raises, with nothing removed or committed,
     and :class:`CommitNotMadeError` when the removal fails with an
@@ -203,29 +209,39 @@ def commit(data_root, run_id):
             raise CommitNotMadeError(f"the torn tail was not removed: {e}") from e
         listing = b"\0".join(os.fsencode(path) for path in paths)
         if paths:
-            step("add", "--pathspec-from-file=-", "--pathspec-file-nul", input=listing)
+            step("add", *_FROM_STDIN, input=listing)
         tree = step("write-tree").strip().decode()
         parents = ("-p", found.head) if found.head else ()
         made = step("commit-tree", tree, *parents, "-m", MESSAGE).strip().decode()
-    lock = _ok(
-        _git(data_root, "rev-parse", "--git-path", "index.lock"),
-        CommitNotMadeError,
-        "git rev-parse",
-    )
-    if os.path.lexists(os.path.join(data_root, lock.strip().decode())):
-        raise CommitNotMadeError("the index lock of the repository is held")
-    done = _git(data_root, "update-ref", "-m", MESSAGE, "HEAD", made, found.head or "")
-    _ok(done, CommitNotMadeError, "git update-ref")
-    if paths:
-        _git(
-            data_root,
-            "reset",
-            "-q",
-            made,
-            "--pathspec-from-file=-",
-            "--pathspec-file-nul",
-            input=listing,
-        )
+        done = _git(data_root, "rev-parse", "--git-path", "index")
+        named = _ok(done, CommitNotMadeError, "git rev-parse").strip().decode()
+        real = os.path.join(data_root, named)
+        following = os.path.join(scratch, "following")
+        with _locked(real) as lock:
+            try:
+                if os.path.exists(real):
+                    shutil.copyfile(real, following)
+                if paths:
+                    done = _git(
+                        data_root,
+                        "reset",
+                        "-q",
+                        made,
+                        *_FROM_STDIN,
+                        index=following,
+                        input=listing,
+                    )
+                    _ok(done, CommitNotMadeError, "git reset")
+                lock.write(Path(following).read_bytes())
+                lock.close()
+            except OSError as e:
+                raise CommitNotMadeError(f"the next index was not written: {e}") from e
+            done = _git(
+                data_root, "update-ref", "-m", MESSAGE, "HEAD", made, found.head or ""
+            )
+            _ok(done, CommitNotMadeError, "git update-ref")
+            with contextlib.suppress(OSError):
+                os.replace(real + ".lock", real)
     return True
 
 
@@ -292,8 +308,10 @@ def _assess(data_root, run_id):
         raise NoRepositoryError(
             f"the data root is not the top directory of a git working tree: {data_root}"
         )
-    done = _git(data_root, "rev-parse", "--verify", "-q", "HEAD^{commit}")
-    head = done.stdout.strip().decode() if done.returncode == 0 else None
+    head = None
+    if _git(data_root, "rev-parse", "--verify", "-q", "HEAD").returncode == 0:
+        done = _git(data_root, "rev-parse", "--verify", "-q", "HEAD^{commit}")
+        head = _ok(done, HeadStateError, "HEAD: names no commit").strip().decode()
     held = ()
     if head is not None:
         listed = _git(data_root, "ls-tree", "-r", "-z", head, "--", prefix)
@@ -381,6 +399,24 @@ def _keys(data_root, run_id, prefix):
             f"no key directory for the case files: {prefix}instance.json states no op_signature"
         )
     return record.hw_profile_key, record.op_signature.key
+
+
+@contextlib.contextmanager
+def _locked(index):
+    name = index + ".lock"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    try:
+        held = os.open(name, flags, 0o666)
+    except FileExistsError:
+        raise CommitNotMadeError("the index lock of the repository is held") from None
+    except OSError as e:
+        raise CommitNotMadeError(f"the index lock could not be taken: {e}") from e
+    try:
+        with open(held, "wb") as lock:
+            yield lock
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(name)
 
 
 def _git(data_root, *args, index=None, input=None):
