@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0344",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:af9799dd-1",
+    "acquiredAt": "2026-10-19T15:21:44Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -343,7 +347,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0125 (where the runtime self-check runs for a first-case run: hilclaw.turn_start runs hilclaw.selfcheck.check() once per start, after the first step 1 finds a turn due and before the first turn session; passed and no_call let the turn start, every other result and a fault of the check stop the start; part of OD-18 sub-question 16 (ga); T-0343, main 393bcd8) adds one runtime acceptance item to the self-check series. Under D16 it is closed by your check by hand or by the runtime's own self-check, not by a driver task: (xvi) what `claude auth status` reports for a stored login that has expired and cannot be refreshed: exit status 1 (`not_logged_in`), or 0 with an `authMethod` (the session then ends `session_failed`). Best checked after the code slice of ADR-0125 lands.",
       "askedAt": "2026-10-19T14:52:45Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6270160894"
     }
   ],
   "counters": {
