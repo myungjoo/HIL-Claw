@@ -2,7 +2,7 @@
 id: T-0349
 title: Add hilclaw/run_commit.py — the read-only owed rule and the registry tool run.commit of ADR-0127 decision 4, in the default registry (ADR-0127 slice (1); PLAN P2-1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-13, NFR-1, OD-8, S0, S1, S2]
 dependsOn: [T-0348, T-0342]
@@ -94,3 +94,9 @@ ADR-0127 decision 4 says "an owed commit needs the key directory and `instance.j
 - Next slices (candidates; code mode; stub `claude` only): ADR-0127 slice (2), `orchestration/round-manager.md` step 0 and `mcp__hilclaw__run_commit` in "Your run"; then slice (3), owed P2 in `hilclaw/further_turn.py` and `hilclaw/turn_start.py` over the read-only function of this task.
 
 ## Result
+
+- DONE. PR #199 (Draft → ready), squash-merged as 5507f98; branch claude/T-0349-run-commit-tool deleted. Review: 4 rounds by a context-isolated dev-reviewer, Approve (R1–R3 findings addressed in the PR; R4 no new findings). CI green on head d075f01 (Python 3.11/3.14, Coverage, Test presence, sh, C).
+- Language: Python — the tool runs in-process in the package's Python registry and MCP front; git is driven through subprocess with an argument list, no new dependency.
+- Added hilclaw/run_commit.py: owed_rounds(data_root, run_id) (read-only rule of ADR-0127 decision 4, returns range(H, W); distinct errors NoRepositoryError, GitNotRunError and one CommitRefusedError subclass per condition: WorkingStateError, HeadStateError, RoundBehindError, StateMissingError at every call; FileMissingError, EventsNotRegularError, NoKeyDirectoryError only when owed; key directory needed only for W >= 2), commit(data_root, run_id) (temporary index from HEAD, run paths and range case files via ls-files --cached --others --exclude-standard, *.tmp dropped, torn tail removed, write-tree/commit-tree, index lock held across a compare-and-swap update-ref, only committed index entries replaced, fallback git reset if the rename fails), and definition(source) for run.commit (mcp__hilclaw__run_commit; kinds invalid_request, no_data_root, no_repository, commit_refused, commit_not_made). A HEAD that resolves to no commit, or a broken branch ref, is HeadStateError; only an unborn branch counts as no HEAD. Fixed message, no author set; variables that point git at another repository are removed from git's environment.
+- hilclaw/tools.py default_registry registers run.commit; the listing tests in six files and ACCEPTED in test_default_registry_schemas updated. tests/test_run_commit.py: 68 tests on temporary repositories with GIT_CONFIG_GLOBAL/GIT_CONFIG_NOSYSTEM isolated; coverage of run_commit.py 97 %. No claude started; no data-plane change. Runtime acceptance (xv), (xvi) stay with HQ-0044.
+- Follow-ups: ADR-0127 slice (2) (round-manager.md step 0 and the tool list); slice (3) (owed P2 in further_turn/turn_start over owed_rounds); report a failed index replacement plus failed fallback reset (now silent, documented); ADR wording (D18 hold candidate): an ignore rule matching an untracked runs/<run_id>/STATE.json makes every call owed.
