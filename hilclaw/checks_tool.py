@@ -52,6 +52,9 @@ Choices left to the code slice (ADR-0131 decision 3), made here:
   kinds of its last check are told apart by the check that refuses, and in
   line order across attempts; :func:`hilclaw.check_standing.standing` is then
   asked for the standing of each attempt, over lines it no longer refuses.
+* The read of the log and the scoped pass are public, as :func:`log_lines`
+  and :func:`checks_of`, so that ``verdicts.write`` (ADR-0131 decision 5)
+  raises the same kinds with the same messages for the same log.
 * A number beyond the float range in a stored ``result`` or ``failure`` is
   read as an infinity, which no result can hold: a call whose result holds
   one fails with ``bad_result``, as ``state.read`` and ``hypotheses.read``
@@ -211,7 +214,21 @@ def _checked(request):
     return run_id, _STEP_OF[point], numbers
 
 
-def _lines(data_root, run_id):
+def log_lines(data_root, run_id):
+    """Return the events of ``runs/<run_id>/events.ndjson`` from its first line, read as ADR-0131 decision 3 reads them.
+
+    The read of :func:`hilclaw.events.read`, every complete line parsed in
+    line order and a torn tail no line, with its failures answered by the
+    kinds of ADR-0019 for the log, the situations of the file first:
+    ``run_file_missing`` for a data root no longer an existing directory,
+    ``run_file_unreadable`` for another failing read, ``run_file_invalid`` for
+    a path that is no regular file or a damaged complete line and
+    ``run_file_unsupported`` for a complete line of another version, each a
+    :class:`hilclaw.tools.ToolFailure` whose message starts with the relative
+    path of the log. A missing log, or a missing run directory below an
+    existing data root, holds no line: the result is then empty. Shared by
+    ``checks.read`` and ``verdicts.write`` (ADR-0131 decisions 3 and 5).
+    """
     with run_files.reading(data_root, run_id, _LOG, _LOG_KINDS):
         try:
             return events.read(data_root, run_id).events
@@ -234,8 +251,29 @@ def _outcome(file, number, result):
     )
 
 
-def _scoped(file, lines, step, numbers):
-    round, candidate, attempt = numbers
+def checks_of(run_id, lines, inside):
+    """Return the checks of the attempts and points that ``inside`` admits, by the step-line pass of ADR-0131 decision 3.
+
+    ``lines`` are the events of the run ``run_id`` as :func:`log_lines`
+    returns them. ``inside`` is called with the tuple ``(step, round,
+    candidate, attempt)`` of a step line whose envelope names an attempt, and
+    admits it when it returns true. The step lines are looked at in line
+    order, the first that fails deciding: a step line about any attempt that
+    :func:`hilclaw.journal.identity_of` refuses is ``run_file_invalid``, and an
+    admitted end line whose ``result`` has no ``outcome`` of ``"pass"``,
+    ``"fail"`` or ``"broken"`` is :data:`KIND_CHECK_RESULT_INVALID`, each a
+    :class:`hilclaw.tools.ToolFailure` whose message starts with
+    ``runs/<run_id>/events.ndjson: line <n>``. An end line that ``inside``
+    does not admit is not looked at further.
+
+    The result maps each admitted tuple that has a line to its checks, in the
+    order of the lines: ``{"execution": n, "state": "ended", "result" |
+    "failure": ...}`` per end line, the member as the line holds it, and
+    ``{"execution": n, "state": "open"}`` per identity with a start line and
+    no end line, at its first start line. Shared by ``checks.read`` and
+    ``verdicts.write`` (ADR-0131 decisions 3 and 5).
+    """
+    file = run_files.relative(run_id, _LOG)
     found, ended = {}, set()
     for number, event in enumerate(lines, 1):
         if event["kind"] not in _STEP_KINDS:
@@ -245,14 +283,10 @@ def _scoped(file, lines, step, numbers):
         except journal.JournalError as e:
             message = f"{file}: line {number}: {e}"
             raise tools.ToolFailure(tools.KIND_RUN_FILE_INVALID, message) from e
-        if (
-            identity.step != step
-            or identity[2:4] != (round, candidate)
-            or identity.attempt is None
-            or attempt not in (None, identity.attempt)
-        ):
+        key = (identity.step, *identity[2:5])
+        if identity.attempt is None or not inside(key):
             continue
-        held = found.setdefault(identity.attempt, [])
+        held = found.setdefault(key, [])
         execution = {"execution": identity.execution}
         if event["kind"] == journal.STEP_STARTED:
             if all(seen != identity for seen, _ in held):
@@ -265,18 +299,21 @@ def _scoped(file, lines, step, numbers):
         ended.add(identity)
         held.append((None, execution | {"state": "ended", member: data[member]}))
     return {
-        n: [element for identity, element in held if identity not in ended]
-        for n, held in found.items()
+        key: [element for identity, element in held if identity not in ended]
+        for key, held in found.items()
     }
 
 
 def _read(source, request):
     run_id, step, numbers = _checked(request)
     data_root = data_root_source.obtain(source)
-    lines = _lines(data_root, run_id)
-    file = run_files.relative(run_id, _LOG)
-    found = _scoped(file, lines, step, numbers)
+    lines = log_lines(data_root, run_id)
     round, candidate, attempt = numbers
+
+    def inside(key):
+        return key[:3] == (step, round, candidate) and attempt in (None, key[3])
+
+    found = {key[3]: held for key, held in checks_of(run_id, lines, inside).items()}
     entries = []
     for n in sorted(found) if attempt is None else [attempt]:
         standing = check_standing.standing(lines, step, round, candidate, n)
