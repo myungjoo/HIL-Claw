@@ -116,3 +116,4 @@ DONE (code mode). Language: no new layer-2 code; the change is layer-1 Markdown 
 - `hilclaw/turn_definition.py`: the "*The prompt*" bullet and the "Not done here" sentence corrected; no code change.
 - Tests: no new test (no `hilclaw/` code change; rule ⑤). Local `pytest` 24707 passed, 725 skipped; `ruff check` and `ruff format --check` clean. No real `claude` started (D16).
 - No runtime acceptance item added or closed; (xxv)/(xxvi) stay with HQ-0049, (xxix)/(xxx) with HQ-0051.
+- Review: 2 rounds, Approve (round 1 Approve with two nits, both fixed: the docstring's comma splice and the round-0 case, and a line wrap). Observation left for a later slice (criterion 2 kept it out): "One round at most" says the session ends after the round-end write, while `run.commit` now follows it.
