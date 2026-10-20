@@ -2,13 +2,13 @@
 id: T-0375
 title: Write ADR-0137 - how the container and the coder's `claude -p` of a first-case coder call are started (the design points of ADR-0049 slice (d) left by ADR-0126 Consequences, except the time limit and the output stream)
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: doc
 coversReq: [FR-5, NFR-4, NFR-5, C-7, OD-23, OD-8, OD-14, "#5 A-8"]
 dependsOn: [T-0346, T-0371, T-0374]
 touchesFiles: [ARCHITECTURE/decisions/ADR-0137-od23-first-case-coder-process-start.md, ARCHITECTURE/Requirements.md, ARCHITECTURE/OpenDecisionProposals.md, ARCHITECTURE/StandardScenarios.md]
 estimatedSize: {loc: 220, files: 4}
-hq: []
+hq: [HQ-0053]
 ---
 ## Why
 
@@ -118,3 +118,14 @@ Do not invent: every value or flag the record adopts is either cited from docume
 - If the image needs an owner decision (A-13 new external dependency), the HQ the executor names in `## Result`.
 
 ## Result
+
+**BLOCKED** (2026-10-21) — reason: requirement unclear / owner-only decision (CLAUDE.md A-13 "미결 발명 의심"; DRIVER §3 BLOCKED 사유). Nothing landed on `main`.
+
+- **What blocks.** Item 4 of the record (how the sign-in reaches the coder inside the container) has, under C-7 ② (no API key), only one coherent means found in the documentation: a subscription OAuth token the user creates with `claude setup-token`, passed into the container as `CLAUDE_CODE_OAUTH_TOKEN` by environment (the alternatives — mounting or copying the host's `~/.claude`/`.credentials.json`, a persistent login volume, a login per call, an API key — each break P2, fail on macOS's Keychain, or cost API money). But "the credential form for unattended runs (a login or a `setup-token`)" is left open by the owner (HQ-0006 answer, "Not decided here") and registered as **오너 미결** in OpenDecisionProposals OD-18 sub-question ⑯ (다). The reviewer (round 1, Request changes, blocker 1) found that the draft narrowed that owner point without support; I agree, so the record is not landed.
+- **State.** Branch `claude/T-0375-adr-first-case-coder-process-start` (pushed; head `6eda4bb`, 2 commits): new `ARCHITECTURE/decisions/ADR-0137-od23-first-case-coder-process-start.md` with decisions 1-7 (available() check; `docker run` options; image requirements and `HILCLAW_CODER_IMAGE`, no image adopted; sign-in by `HILCLAW_CODER_OAUTH_TOKEN` -> `CLAUDE_CODE_OAUTH_TOKEN`; `claude -p` command with `--model`, `--permission-mode dontAsk`, `--allowedTools Bash,Read,Edit,Write`, `--setting-sources project`, `--no-session-persistence`, no bypass flag, no `--bare`; exit mapping 125/126/127 -> `coder_not_started`), runtime acceptance items (xxxiii)-(xxxviii); register edits in Requirements (OD-23 row), OpenDecisionProposals (§ OD-23 채택분 line and "제안으로 남는 부분") and StandardScenarios ("최근 재검사" line; no verdict change, no history entry). Review round 1: Request changes; findings 2-9 addressed in `6eda4bb`, not yet re-reviewed. Decision 5 carries a "Pending the owner" bullet to be replaced by the answer.
+- **On resume after the answer**: replace the pending bullet in decision 5 with the owner's answer (quoted as owner input), adjust decision 5/7, Alternatives and the §9 notice accordingly, update OD-18 ⑯ (다)'s end status if the answer settles it for coder calls, then re-run the reviewer cycle (round 2 onward) and land in document mode.
+- HQ-0040 is not answered; nothing in the record depends on it. No owner objection to ADR-0049/0126/0136 and nothing on the image, sign-in or permission mode on #5 after the ADR-0136 notice. Wall clock used: about 1 h 15 min.
+
+**HQ question (reason: requirement-unclear / owner-only; English, for #5):**
+
+> T-0375 (ADR-0137, the start of a first-case coder call, ADR-0049 slice (d)) needs to decide how the Claude Code sign-in reaches the coder's `claude -p` inside the Docker container. Under C-7 ② (Max subscription, no API key) the only coherent means found in the official documentation is a subscription token that **you create once with `claude setup-token`** (a one-year OAuth token that "can only make model requests", https://code.claude.com/docs/en/authentication, read 2026-10-21) and give to the runtime in an environment variable (proposed name `HILCLAW_CODER_OAUTH_TOKEN`); the runtime passes it into each coder container as `CLAUDE_CODE_OAUTH_TOKEN` and never writes it to a file, an argument or a log. Nothing of the host login (`~/.claude`, the macOS Keychain) enters the container. Cost: the coder, which has a shell and the network, can read that token and send it anywhere (ADR-0049 L5), and it stays valid for up to a year unless revoked (whether it can be revoked is not verified). Alternatives rejected: mounting or copying the host's `~/.claude/.credentials.json` (a second host path, impossible on macOS where the login is in the Keychain, exposes the whole login), a persistent login volume (a second writable mount shared across calls), a login per call (a browser step every call), an API key (C-7 ②). Your HQ-0006 answer left "the credential form for unattended runs (a login or a `setup-token`)" undecided, and OD-18 sub-question ⑯ (다) records it as yours. **Question:** (a) may coder calls use a `setup-token` token that you create and provide to the runtime as above (the host turn session keeps its `/login` login), or (b) do you want another means (please name it), or (c) should coder calls wait until you decide the credential form of unattended runs as a whole? Reply with `HQ-NNNN` in the comment.
