@@ -2,7 +2,7 @@
 id: T-0369
 title: Add the registry tool round.end of ADR-0135 decision 2, which folds the stored spend view over the log's tail, compares the next round with round_budget and replaces STATE.json (ADR-0135 slice 1; PLAN P2-1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-3, NFR-1, OD-23, OD-8, OD-17, S0, S1]
 dependsOn: [T-0368]
