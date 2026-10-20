@@ -2,7 +2,7 @@
 id: T-0357
 title: Write ADR-0131 — how the evaluator of a first-case turn reads an attempt's journaled check results through a typed registry tool, and whether that read is enough to give it the verdicts work (ADR-0128 Consequences slice 3, second record; ADR-0129 decision 5; part of OD-23 and OD-18; PLAN P2-3, P2-6)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-11, FR-17, OD-23, OD-18, OD-16, OD-30, S0, S1]
 dependsOn: [T-0352, T-0355, T-0356]
