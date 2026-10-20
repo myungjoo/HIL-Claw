@@ -26,7 +26,7 @@ the request (``invalid_request``); the bytes by
 ``schema_version`` among its refusals, and the record's ``run_id`` against the
 request's (``invalid_request``); the data root (``no_data_root``); the read of
 the round's ``decision/hypotheses.json`` by
-:func:`hilclaw.hypotheses_file.parse` (the four ``hypotheses_*`` kinds); the
+:func:`hilclaw.hypotheses_tool.read` (the four ``hypotheses_*`` kinds); the
 rules of :func:`hilclaw.verdicts_hypotheses.check` (``verdicts_mismatch``);
 no evidence entry of ``kind`` ``comparison`` (``comparison_not_given``, until
 a tool gives a comparison); the write (``verdicts_exist`` for a taken name,
@@ -38,12 +38,10 @@ between calls. The kinds are names of the tool layer and none is reserved.
 """
 
 import json
-import os
-import stat
 
 from hilclaw import (
     data_root_source,
-    hypotheses_file,
+    hypotheses_tool,
     layout,
     run_files,
     tools,
@@ -51,14 +49,11 @@ from hilclaw import (
     verdicts_hypotheses,
 )
 
-#: The round's ``decision/hypotheses.json`` is not there.
-KIND_HYPOTHESES_MISSING = "hypotheses_missing"
-#: The round's ``decision/hypotheses.json`` is invalid, or its place holds no regular file.
-KIND_HYPOTHESES_INVALID = "hypotheses_invalid"
-#: The round's ``decision/hypotheses.json`` has another schema_version; nothing of it was interpreted.
-KIND_HYPOTHESES_UNSUPPORTED = "hypotheses_unsupported"
-#: The read of the round's ``decision/hypotheses.json`` failed for a reason other than its not being there.
-KIND_HYPOTHESES_UNREADABLE = "hypotheses_unreadable"
+#: The kinds of the read of the round's ``decision/hypotheses.json``, those of :mod:`hilclaw.hypotheses_tool`.
+KIND_HYPOTHESES_MISSING = hypotheses_tool.KIND_HYPOTHESES_MISSING
+KIND_HYPOTHESES_INVALID = hypotheses_tool.KIND_HYPOTHESES_INVALID
+KIND_HYPOTHESES_UNSUPPORTED = hypotheses_tool.KIND_HYPOTHESES_UNSUPPORTED
+KIND_HYPOTHESES_UNREADABLE = hypotheses_tool.KIND_HYPOTHESES_UNREADABLE
 #: The record breaks a rule between it and the round's hypothesis record; nothing was written.
 KIND_VERDICTS_MISMATCH = "verdicts_mismatch"
 #: The record holds an evidence entry of kind comparison, which no tool gives yet; nothing was written.
@@ -92,10 +87,6 @@ _DESCRIPTION = (
     "a step of the write fails."
 )
 _MEMBERS = ("run_id", "record")
-_HYPOTHESES_KINDS = {
-    hypotheses_file.InvalidHypothesisFileError: KIND_HYPOTHESES_INVALID,
-    hypotheses_file.UnsupportedVersionError: KIND_HYPOTHESES_UNSUPPORTED,
-}
 
 
 def definition(source):
@@ -176,36 +167,10 @@ def _checked(request):
     return run_id, document, content
 
 
-def _hypotheses(data_root, run_id, round):
-    path = layout.hypothesis_record(data_root, run_id, round)
-    file = path.relative_to(data_root).as_posix()
-    try:
-        if not stat.S_ISREG(os.lstat(path).st_mode):
-            raise tools.ToolFailure(
-                KIND_HYPOTHESES_INVALID, f"{file}: is not a regular file"
-            )
-        content = path.read_bytes()
-    except run_files.NOT_THERE as e:
-        found = "is missing"
-        if not run_files.data_root_is_there(data_root):
-            found += ": the data root is not an existing directory"
-        raise tools.ToolFailure(KIND_HYPOTHESES_MISSING, f"{file}: {found}") from e
-    except OSError as e:
-        raise tools.ToolFailure(
-            KIND_HYPOTHESES_UNREADABLE,
-            f"{file}: could not be read: {_reported(e, data_root)}",
-        ) from e
-    try:
-        return hypotheses_file.parse(content)
-    except tuple(_HYPOTHESES_KINDS) as e:
-        kind = next(_HYPOTHESES_KINDS[k] for k in _HYPOTHESES_KINDS if isinstance(e, k))
-        raise tools.ToolFailure(kind, f"{file}: {e}") from e
-
-
 def _write(source, request):
     run_id, document, content = _checked(request)
     data_root = data_root_source.obtain(source)
-    hypotheses = _hypotheses(data_root, run_id, document["round"])
+    hypotheses = hypotheses_tool.read(data_root, run_id, document["round"])
     try:
         verdicts_hypotheses.check(document, hypotheses)
     except verdicts_hypotheses.MismatchError as e:

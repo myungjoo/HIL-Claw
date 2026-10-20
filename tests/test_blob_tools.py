@@ -178,6 +178,7 @@ def test_the_default_registry_holds_the_definitions(root):
     assert registry.names() == (
         *NAMES,
         "correctness.check",
+        "hypotheses.read",
         "instance.read",
         "run.commit",
         "run.fresh",
@@ -700,6 +701,7 @@ def test_the_mcp_front_lists_the_blob_tools_among_the_fixed_set(configured):
     *blob, check = listed["result"]["tools"][:3]
     assert check["name"] == "correctness_check"
     assert [tool["name"] for tool in listed["result"]["tools"][3:]] == [
+        "hypotheses_read",
         "instance_read",
         "run_commit",
         "run_fresh",

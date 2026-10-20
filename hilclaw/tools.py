@@ -200,14 +200,17 @@ def default_registry(data_root_source):
     and ``run.commit`` (:func:`hilclaw.run_commit.definition`, ADR-0127), with
     which it commits an owed round end of its run; and ``verdicts.write``
     (:func:`hilclaw.verdicts_tool.definition`, ADR-0128 decision 6), with
-    which the evaluator writes a round's ``eval/verdicts.json``. A tool is
-    added here, in the source, and in no other way: no option, environment
-    variable, entry point or plugin registers one or chooses what it is bound
-    to.
+    which the evaluator writes a round's ``eval/verdicts.json``, and
+    ``hypotheses.read`` (:func:`hilclaw.hypotheses_tool.definition`, ADR-0129
+    decision 3), with which it reads a round's ``decision/hypotheses.json``.
+    A tool is added here, in the source, and in no other way: no option,
+    environment variable, entry point or plugin registers one or chooses what
+    it is bound to.
     """
     from hilclaw import (
         blob_tools,
         check_definition,
+        hypotheses_tool,
         run_commit,
         run_file_tools,
         verdicts_tool,
@@ -223,6 +226,7 @@ def default_registry(data_root_source):
         registry.register(*definition)
     registry.register(*run_commit.definition(data_root_source))
     registry.register(*verdicts_tool.definition(data_root_source))
+    registry.register(*hypotheses_tool.definition(data_root_source))
     return registry
 
 
