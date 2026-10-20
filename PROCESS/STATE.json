@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0362",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:fd05f3d2-1",
+    "acquiredAt": "2026-10-20T06:32:59Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -417,7 +421,7 @@
       "reason": "review-rounds-exceeded",
       "question": "T-0361: ADR-0132 (first-case selection role held by a technique-selector sub-agent, and the registry tool hypotheses.write that writes the round's decision/hypotheses.json; part of OD-23 and OD-30) reached the 7-round review limit (CLAUDE.md A-13). Rounds 2, 3, 5 and 6 approved; round 7 asked for one change: the selector's resend rule should resend only on invalid_request and cases_mismatch. That change is commit e9eaa9f on branch claude/T-0361-adr-first-case-selection-hypotheses-write and has not been re-reviewed. Should the driver (a) run one more context-isolated review round on e9eaa9f and land the record on Approve, (b) land as is, or (c) drop the branch?",
       "askedAt": "2026-10-20T06:26:57Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6284855632"
     }
   ],
   "counters": {
