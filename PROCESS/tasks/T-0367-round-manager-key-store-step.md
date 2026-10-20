@@ -2,7 +2,7 @@
 id: T-0367
 title: Write the key.store step of ADR-0134 decision 5 as the first round step in orchestration/round-manager.md (ADR-0134 slice 2; PLAN P2-1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-13, FR-18, OD-26, OD-23, S0, S1]
 dependsOn: [T-0364, T-0365, T-0366]
