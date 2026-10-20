@@ -118,5 +118,5 @@ Open HQs checked (HQ-0013 to HQ-0047): none is crossed. The tool is a registry r
 - **Other choices of the slice**: a step line of the candidate without `attempt` is no attempt's line and is ignored, as `check_standing.standing` ignores it; a log that vanishes between its look and its read below an existing data root holds no line; the messages of the step-line kinds start with `runs/<run_id>/events.ndjson: line N:`.
 - **Language**: Python. The registry and every module the tool reuses (`events`, `journal`, `run_files`, `check_standing`) are Python.
 - **Tests**: full local suite green on Windows (Python 3.14), ruff check and format clean; line coverage of `hilclaw/` 97 %, `checks_tool.py` 98 % (the uncovered `ValueError` guard of a value too long to show runs on Python 3.11 only).
-- **Review**: see the PR; round count in the squash message.
+- **Review**: 2 rounds with the dev-reviewer agent in a fresh context; round 1 Approve with two Low nits (an explicit point-to-step map, the outcome message in the form of `check_standing`), both fixed; round 2 Approve with no finding.
 - **Follow-ups**: none new. ADR-0131 slices 2 and 3 stay as listed under Follow-ups.
