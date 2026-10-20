@@ -2,7 +2,7 @@
 id: T-0366
 title: Widen run.commit by ADR-0134 decision 7 so that a run's commit also takes in the two key record files of its key that HEAD does not hold (ADR-0134 slice 1, commit half; PLAN P2-7)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-13, FR-18, NFR-1, OD-26, OD-8, S0, S1]
 dependsOn: [T-0364, T-0365]
