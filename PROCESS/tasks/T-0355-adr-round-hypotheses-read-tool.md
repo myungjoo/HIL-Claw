@@ -2,7 +2,7 @@
 id: T-0355
 title: Write ADR-0129 — how the evaluator of a first-case turn reads a round's hypothesis record through a typed registry tool (ADR-0128 Consequences slice 3, first record; part of OD-23, OD-30 and OD-18; PLAN P2-3, P2-6)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-11, FR-17, OD-23, OD-30, OD-18, OD-16, S0, S1]
 dependsOn: [T-0352, T-0353, T-0354]
@@ -70,3 +70,11 @@ This is a record, not code. No `claude` process is started, and nothing requires
 - Next for the planner, if the record chooses a tool: the code slice (tool module, test file, `default_registry`, `evaluator.md` `tools` list and its test). After that, the record for an attempt's journaled-results read (ADR-0128 slice 3).
 
 ## Result
+
+- Outcome: DONE. `ARCHITECTURE/decisions/ADR-0129-od23-round-hypotheses-read.md` landed on main as fdc9664 in document mode (reviewer agent, 7 rounds, Approve), one squashed commit with trailers `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0355`. Rounds 3-6 were Approve with nits only; round 7 reviewed the rebased result.
+- Rebase: commit 9db2701 (owner session, #5 link of the 2026-10-19 decision) landed during the task and also edited the StandardScenarios "최근 재검사" line. The conflict was resolved by keeping this task's rewritten line (AC 8 and the 기록 규약: a re-check with no verdict change is kept only in git history); 9db2701's edits to Requirements.md, OpenDecisionProposals.md and DRIVER.md are intact.
+- Decision: the evaluator reads a round's `decision/hypotheses.json` through a new typed registry tool `hypotheses.read` (`mcp__hilclaw__hypotheses_read`) via the MCP front. Request exactly `run_id` and `round` (round 0 refused as `invalid_request`); result `{"record": ...}`, the whole valid document; failures reuse the `hypotheses_*` kinds of `verdicts.write`, and a file whose `run_id` or `round` differs from the request is `hypotheses_invalid`; no journaling. A later code slice adds it to the evaluator's `tools`; the Round-Manager's use is left to P2-1. The evaluator's one-line "cannot yet" report for a verdicts delegation stays at least until the journaled-results read exists.
+- Register: OD-23 and OD-18 rows and proposals sections cite ADR-0129, status words unchanged; OD-30 not edited. StandardScenarios S0 and S1 re-checked: no verdict change, no gap, no note change. Data plane unchanged.
+- §9 owner notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6280154011
+- New HQ-0046 (runtime-acceptance, non-blocking): runtime acceptance item (xxi) of ADR-0129.
+- Follow-ups: ADR-0129 Consequences slice 1 (tool module + test, registered in default_registry) and slice 2 (evaluator.md `tools` list and test, "Verdicts" reason narrowed) can be planned now; after both, the record for an attempt's journaled-results read (ADR-0128 slice 3).

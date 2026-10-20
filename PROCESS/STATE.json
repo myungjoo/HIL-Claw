@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0355",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:beef2b04-2",
-    "acquiredAt": "2026-10-19T23:42:07Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -396,18 +392,26 @@
       "question": "ADR-0128 (the evaluator of a first-case turn, part of OD-23 and OD-16; T-0352, main 3cb52c6) adds turn-session runtime acceptance items (xviii)-(xx): (xviii) a sub-agent of a -p turn session defined in .claude/agents/evaluator.md gets exactly the tools its tools list names, the hilclaw tools given by --mcp-config among them, and no Write, Edit, Bash or other unlisted tool; (xix) the Round-Manager's delegation message reaches the evaluator whole, and the evaluator's final message reaches the Round-Manager whole; (xx) a correctness.check called from a sub-agent through MCP returns within the MCP idle window (about 30 minutes) for the largest first-case check ADR-0117's limits allow, and a call cut off there leaves no check running. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
       "askedAt": "2026-10-19T21:48:54Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6278149061"
+    },
+    {
+      "id": "HQ-0046",
+      "taskId": "T-0355",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0129 (the evaluator reads a round's hypotheses.json through the registry tool hypotheses.read, part of OD-23 and OD-18; T-0355, main fdc9664) adds turn-session runtime acceptance item (xxi): the result of hypotheses.read reaches the evaluator sub-agent of a -p turn session whole, within the limit Claude Code puts on the output of an MCP tool, for the largest hypothesis record a first-case round can hold. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
+      "askedAt": "2026-10-20T00:10:20Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 368,
-    "tasksDone": 342,
+    "iterations": 369,
+    "tasksDone": 343,
     "tasksBlocked": 26,
-    "reviewRoundsTotal": 1221
+    "reviewRoundsTotal": 1228
   },
   "lastIteration": {
-    "at": "2026-10-19T23:39:13Z",
-    "owner": "AKIHA:beef2b04-1",
-    "taskId": "T-0354",
+    "at": "2026-10-20T00:10:20Z",
+    "owner": "AKIHA:beef2b04-2",
+    "taskId": "T-0355",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
