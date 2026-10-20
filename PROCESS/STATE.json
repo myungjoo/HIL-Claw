@@ -475,7 +475,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0139 (the permissions of a first-case `-p` turn session: `--permission-mode dontAsk`, an exact `--allowedTools` list derived from the Round-Manager's fixed list and the agent files, `--tools` closed to `Agent` plus `Read`/`Grep`/`Glob`, `--setting-sources project`, no bypass flag; part of OD-18 and OD-23; T-0378, main 930e7eb) gives ADR-0118 item (vii) its means and adds runtime acceptance items (xxxiv)-(xl): the flags take effect in a never-trusted session directory; pre-approved `mcp__hilclaw__` calls run without a prompt and unlisted ones are denied without a wait; `--tools` leaves no other command-running or file-writing built-in and `hilclaw` tools stay reachable; a sub-agent with no `permissionMode` runs in `dontAsk` with its listed tools; `Agent(evaluator)` allows the delegation and the list survives a Windows command script; bare `Read`/`Grep`/`Glob` read outside the working directories without a prompt; under `--setting-sources project` nothing of `~/.claude/settings.json` acts on the session while the session directory's `.claude/settings.json` is read. Under D16 they are closed by your check by hand or by the runtime's own self-check, not by a driver task; nothing is blocked. Note: the unlanded T-0375 draft (HQ-0053) uses numbers from (xxxiii); whichever lands later renumbers.",
       "askedAt": "2026-10-20T22:56:12Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6303635446"
     }
   ],
   "counters": {
