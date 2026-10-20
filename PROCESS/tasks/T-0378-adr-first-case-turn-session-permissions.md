@@ -2,7 +2,7 @@
 id: T-0378
 title: Write ADR-0139 - how a first-case turn session is given its permissions (permission mode, the pre-approved tools of the main session and of the evaluator, what narrows the built-in tools, and which settings sources it reads), so that the turn loop can pass them (part of OD-18 and OD-23; ADR-0118 item (vii); PLAN P2-1/P2-4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [OD-18, OD-23, FR-1, NFR-4, C-7]
 dependsOn: []
@@ -173,3 +173,12 @@ What this task does not depend on:
 - Planner's view of what follows: the code slice of this record in `hilclaw/turn_loop.py` (pass the chosen options; update the docstring; tests with a stub `claude` that check the exact command line).
 
 ## Result
+
+DONE. ADR-0139 (`ARCHITECTURE/decisions/ADR-0139-od18-first-case-turn-session-permissions.md`) landed on `main` as 930e7eb (document mode, rebased onto 98b8fab, `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0378`); branch deleted (remote and local). No `claude` was started (D16).
+
+- Files: new ADR-0139; `ARCHITECTURE/Requirements.md` (OD-18 and OD-23 rows: one `확정분` link each, `잔여` rewritten in place); `ARCHITECTURE/OpenDecisionProposals.md` (§ OD-18, § OD-23: one `채택분` line each, related sentences rewritten in place); `ARCHITECTURE/StandardScenarios.md` ("최근 재검사" line: S0, S1, S2 rechecked, no verdict change, no gap). No OD status cell changed.
+- Record (runs of ADR-0118 decision 1, `-p` turn sessions, main session and the agents under `orchestration/agents/`): `--permission-mode dontAsk`; an exact `--allowedTools` list (the Round-Manager's fixed list in layer-2 code plus, per agent file, `Agent(<name>)` and its `tools` entries; no `mcp__hilclaw` or wildcard entry); refusals for an agent file with no `tools` list, a `tools` entry outside exact `mcp__hilclaw__<name>` / `Read` / `Grep` / `Glob`, or a `permissionMode` in the frontmatter; `--tools` closed to `Agent` plus the agents' built-ins; bare `Read`/`Grep`/`Glob` pre-approved (evaluator's unrestricted reading; credentials readable, stated as a cost under the owner premise "읽기 제한은 채택하지 않는다"); `--setting-sources project`; no permission rule in the session directory's settings, no trust record, no write into the user's configuration, no bypass flag. Coder-driver rule stated under both HQ-0040 (B) and (T); neither answer chosen. Stated limit: the main session shares its sub-agents' MCP tools; per-agent separation left to the P2-4 hooks.
+- Review: 7 rounds, last Approve. Deferred round-7 nit (not applied, to stay within 7 rounds): the Status "It builds on" list names ADR-0128 decisions 3, 4, 7 while the body also cites decision 2, and ADR-0054 O8 is cited in Boundaries/References but not listed there.
+- The reviewer had no web access; the Claude Code documentation quotes P1-P10 were read on 2026-10-21 by a research sub-agent of the executor (sub-agents page: first 100,000 characters only; settings-reference page not read). The record says so and makes every unverified point a runtime acceptance item.
+- Runtime acceptance: new items (xxxiv)-(xl) (driver HQ, reason `runtime-acceptance`). Possible number clash: the unlanded T-0375 draft (ADR-0137) also uses numbers from (xxxiii); whichever lands second renumbers.
+- Follow-up for the planner (code mode, stub `claude` only, D4 cap): build the command line of `hilclaw/turn_loop.py` per ADR-0139 decisions 2-4, 7, 8 with the derived list and refusals of decision 3; rewrite the docstring sentences it makes false ("No permission, model, turn-limit, setting-source or bypass option is passed: ...", "and nothing else", "no permissions" under "Not done here"). The coder-driver part waits on HQ-0040 (decision 9).
