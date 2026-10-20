@@ -115,7 +115,7 @@ argv = sys.argv[1:]
 kind = "turn"
 if argv == ["auth", "status"]:
     kind = "login"
-elif "--allowedTools" in argv:
+elif "--no-session-persistence" in argv:
     kind = "check"
 with (here / "started.ndjson").open("a", encoding="utf-8") as record:
     entry = {"argv": argv, "listing": sorted(os.listdir(".")), "kind": kind}
@@ -568,6 +568,11 @@ def test_a_fresh_run_goes_from_round_zero_to_over(root, go, stub):
     for call in calls:
         assert call["argv"][:2] == [turn_loop.OPT_PRINT, prompt(RUN)]
         assert named(call["argv"][1]) == RUN
+        assert "--no-session-persistence" not in call["argv"]
+        mode = call["argv"].index("--permission-mode")
+        assert call["argv"][mode + 1] == "dontAsk"
+        allowed = call["argv"][call["argv"].index("--allowedTools") + 1]
+        assert "Agent(evaluator)" in allowed.split(",")
         assert call["argv"][1].count(RUN) == 1
         assert "CLAUDE.md" in call["listing"]
 

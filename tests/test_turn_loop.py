@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import checkout_boundary, config, mcp_front, turn_loop
+from hilclaw import checkout_boundary, config, mcp_front, turn_loop, turn_permissions
 from hilclaw.turn_loop import (
     CONFIG_FILE,
     MARKERS,
@@ -26,6 +26,14 @@ PROMPT = "Run the next turn of the run, then stop."
 DEFINITION = "definition.md"
 MEETS = "the session directory would meet a checkout"
 MARKER = "an instruction file or a foreign .claude lies above the session directory"
+FIXED = ",".join(sorted(turn_permissions.ROUND_MANAGER_TOOLS))
+BYPASS = (
+    "--dangerously-skip-permissions",
+    "--allow-dangerously-skip-permissions",
+    "bypassPermissions",
+    "acceptEdits",
+    "auto",
+)
 
 STUB = r"""
 import json, os, sys
@@ -170,8 +178,35 @@ def go(data_root, parent, **changes):
     return run(**arguments)
 
 
-def expected_argv():
-    return [OPT_PRINT, PROMPT, OPT_MCP_CONFIG, CONFIG_FILE, OPT_STRICT_MCP_CONFIG]
+def expected_argv(tools="", allowed=FIXED):
+    return [
+        OPT_PRINT,
+        PROMPT,
+        OPT_MCP_CONFIG,
+        CONFIG_FILE,
+        OPT_STRICT_MCP_CONFIG,
+        "--setting-sources",
+        "project",
+        "--tools",
+        tools,
+        "--permission-mode",
+        "dontAsk",
+        "--allowedTools",
+        allowed,
+    ]
+
+
+def put_agent(text):
+    made = []
+
+    def put_definition(directory):
+        agents = directory / ".claude" / "agents"
+        agents.mkdir(parents=True)
+        (agents / "helper.md").write_text(text, encoding="utf-8")
+        made.append(directory)
+
+    put_definition.made = made
+    return put_definition
 
 
 def markers_above(path, *, own=None):
@@ -656,3 +691,34 @@ def test_server_entry_starts_the_front_from_elsewhere(
     )
     assert done.returncode == mcp_front.EXIT_END_OF_INPUT == 0
     assert done.stdout == b""
+
+
+def test_an_agent_reaches_the_permission_options(stub, data_root, parent):
+    stub.install()
+    text = "---\nname: helper\ntools: Grep, mcp__hilclaw__blob_fetch\n---\nbody\n"
+    go(data_root, parent, put_definition=put_agent(text))
+    (call,) = stub.calls()
+    allowed = sorted(
+        {
+            *turn_permissions.ROUND_MANAGER_TOOLS,
+            "Agent(helper)",
+            "Grep",
+            "mcp__hilclaw__blob_fetch",
+        }
+    )
+    assert call["argv"] == expected_argv("Agent,Grep", ",".join(allowed))
+    for argument in call["argv"]:
+        for word in BYPASS:
+            assert word not in argument
+
+
+def test_a_refused_agent_stops_the_turn(stub, data_root, parent):
+    stub.install()
+    put_definition = put_agent("---\nname: helper\ntools: Bash\n---\n")
+    further = Predicate(1)
+    with pytest.raises(ValueError, match="not admitted"):
+        go(data_root, parent, further_turn=further, put_definition=put_definition)
+    assert further.seen == [None]
+    assert stub.calls() == []
+    assert not put_definition.made[0].exists()
+    assert list(parent.iterdir()) == []
