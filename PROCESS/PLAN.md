@@ -80,3 +80,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0359 follow-up — `hilclaw/check_identity.py`의 private `_STEP_OF`와 `checks_tool.STEP_OF`가 같은 매핑을 따로 두고 있어 하나로 합치는 일(리뷰 2라운드 nit), 동작 변경 없는 리팩토링.
 - T-0362 follow-up — ADR-0133 리뷰 6라운드 nit(step ⑤ 옆에 `key_records.lookup`과 함께 `hilclaw/case_lookup.py`를 인용), ADR 문구 정리.
 - T-0362 follow-up — ADR-0133 Consequences의 "Less exact, not edited" 목록(ADR-0072 decision 1·Boundaries "Promotion", ADR-0127 decision 4·Boundaries, ADR-0128 Boundaries, ADR-0124·ADR-0126 Boundaries, ADR-0019 decision 2; `cases.py`·`cases_file.py`·`tools.py` docstring은 T-0363이 처리), ADR 문구 정리.
+- T-0368 follow-up — ADR-0135 리뷰 7라운드 Low·Nit(decision 5 "Why not go on"의 ADR-0133 decision 4 기각 사유 인용을 ADR-0133의 사유(OD-17 재진입 라운드·반복되는 거부)대로 고치기, "The cost, plainly"에 손상된 로그 줄이 `run_file_invalid`까지 매 turn 라운드 작업을 되풀이하게 한다는 점 보강, 검사 ③·④의 순서 메모), ADR 문구 정리.

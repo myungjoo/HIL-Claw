@@ -2,7 +2,7 @@
 id: T-0368
 title: Record ADR-0135, the write that ends a first-case round - who folds the spend view, how the result reaches STATE.json, and what that one write holds (part of OD-23; PLAN P2-1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-3, NFR-1, OD-23, OD-8, OD-17, S0, S1]
 dependsOn: [T-0366, T-0367]
@@ -144,3 +144,33 @@ All verification is by reading and review. No `claude` is started (D16).
 - Planner's view: after this record, a code slice adds the chosen tool, and a further slice writes the round-end step into `orchestration/round-manager.md`. That step can be written only once the steps before it (round 0's bring-up and baseline) are defined, or with an explicit stop in front of it.
 
 ## Result
+
+- **Outcome**: DONE. Doc mode. One squashed commit `0d5a3ba` was pushed to `main` with trailers `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0368`. The task branch `claude/T-0368-adr-first-case-round-end-write` is deleted locally and on origin.
+- **Files**:
+  - new `ARCHITECTURE/decisions/ADR-0135-od23-first-case-round-end-write.md` (147 lines);
+  - `ARCHITECTURE/Requirements.md`: the OD-23 row gains one `확정분` link, and the `잔여` "who folds" item is narrowed to runs outside the first case;
+  - `ARCHITECTURE/OpenDecisionProposals.md`: § OD-23 gains one 채택분 line, and its 제안으로 남는 부분 is narrowed in the same way; in § OD-8 the "누가 fold하는지" phrase is narrowed in the same way;
+  - `ARCHITECTURE/StandardScenarios.md`: the 최근 재검사 line now reads "S0·S1·S2, no verdict change, no gap".
+- **Decision in brief**: a new registry tool `round.end` with request `{run_id, round}`. It folds the stored view over the tail, compares `round` + 1 with `round_budget` and writes `run_status` `"over"` when the budget is reached. It refuses a `STATE.json` that has any top-level member other than the three, using a new kind `state_member_extra`. It replaces `STATE.json` through `run_state_file.replace`. On a failure the Round-Manager reports the kind and ends the session, and the round stays open. No data-plane change. The number ADR-0135 was free on `origin/main` and on every remote branch before the push.
+- **Review**: 7 rounds.
+  - Rounds 1 and 3 were Request changes.
+  - Rounds 2 and 4 to 7 were Approve with Low/Nit findings. Each finding through round 6 was fixed and sent back for review.
+- **Follow-ups (not fixed: fixing would need an 8th review round)**: the Low and Nit findings of round 7, all in ADR-0135. The driver may file these in the PLAN "보류" section (D18: citation and wording clean-ups).
+  - (1) Decision 5, "Why not go on": the reason given for ADR-0133 decision 4's rejection is loose. ADR-0133 gives as its reason the undecided re-entered round (OD-17) and a refusal that repeats.
+  - (2) "The cost, plainly" should also say that a damaged log line makes every turn redo the round's work before `round.end` refuses with `run_file_invalid`, until the log is restored.
+  - (3) Nit: checks ③ and ④ may come in either order in code built on `run_journal.current`. A code slice may meet the stated order or note it.
+- **Later slices (from Consequences)**:
+  - (1) code: the tool `round.end`, its test file, and its registration and docstring in `default_registry`;
+  - (2) the step in "The round steps" and its tool sentence in "Your run" of `orchestration/round-manager.md`, written with P2-1's round steps or behind an explicit stop.
+- **Runtime acceptance items**: new items (xxix) and (xxx), in the turn-session series. The HQ (`runtime-acceptance`) is the driver's to raise.
+- **Overlap with unlanded branches**:
+  - `claude/T-0361-adr-first-case-selection-hypotheses-write` (ADR-0132) edits the same OD-23 register row (`확정분` and `잔여`), the same § OD-23 bullets (채택분 lines and 제안으로 남는 부분), and the StandardScenarios 최근 재검사 line. If it is ever landed it must be rebased onto `0d5a3ba`.
+  - None of its content was taken.
+  - The other unlanded branches named in Required Reading were not compared.
+- **Session entry check**: open PR #186 does not overlap this task. #5 has no owner answer to HQ-0031, HQ-0041, HQ-0043 or HQ-0048, and none of them is answered by ADR-0135.
+- **§9 notice for #5 (for the driver to post)**:
+
+  ### ADR-0135 accepted — T-0368: the write that ends a first-case round (part of OD-23)
+  Under PROCESS/DRIVER.md §9 the driver accepted [ADR-0135](https://github.com/myungjoo/HIL-Claw/blob/main/ARCHITECTURE/decisions/ADR-0135-od23-first-case-round-end-write.md) (main 0d5a3ba; context-isolated review, 7 rounds, Approve). For first-case runs (ADR-0120 decision 1), the Round-Manager ends a round only by calling a new registry tool, `round.end` (`run_id`, `round`). The tool folds the stored spend view over the log's tail and compares the next round with the run's `round_budget`. In the same write it puts `run_status` `"over"` when the budget is reached, and it replaces `STATE.json` itself, so the model supplies no number. It refuses a `STATE.json` that holds any top-level member other than `schema_version`, `round` and `budget_spent` (OD-8 ⑫ stays open). On any failure the Round-Manager reports the kind and ends the session, and the round stays open. No data-plane member, value or version changes; HQ-0041 and HQ-0043 are not answered, and OD-23 stays open. You may object within 7 days of this notice; an objection creates a task that reverts the record and its edits.
+
+  — posted by driver
