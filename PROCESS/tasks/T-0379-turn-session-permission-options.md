@@ -2,7 +2,7 @@
 id: T-0379
 title: Start every first-case turn session with the permission options of ADR-0139 — dontAsk, --tools, --allowedTools derived from the Round-Manager's fixed list and the agent files, --setting-sources project (ADR-0139 slice 1; PLAN P2-1/P2-4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, NFR-4, C-7, OD-18, OD-23, S0]
 dependsOn: [T-0378]
@@ -96,3 +96,14 @@ The code is tested only with the stub `claude` the tests already write. No real 
 - After HQ-0040 is answered: the coder-driver agent file, and under answer (B) the record and code that admit a `Bash(<entry command> *)` pattern (ADR-0139 decision 9).
 
 ## Result
+
+- **PR**: #218 (https://github.com/myungjoo/HIL-Claw/pull/218), squash-merged as `e76e6854499f8ca1d8deb9136052e11fae855f5c`; branch `claude/T-0379-turn-session-permission-options` deleted. The squash message ends with `Task: T-0379`.
+- **Review rounds**: 3, all Approve (context-isolated `dev-reviewer`). Round 1: two minor `hilclaw/turn_loop.py` docstring points (rewrap; "decisions 2-4, 6 and 7") fixed; round 2: rewrap finished; round 3: no blocking finding — optional point (two agent files with the same `name` are not refused) not taken, outside the acceptance criteria.
+- **CI**: all gates green (Python 3.11/3.14, coverage, test presence, C, sh). Local: full `pytest` 25413 passed, 520 skipped; `ruff check`/`ruff format --check` clean; `hilclaw/turn_permissions.py` and `hilclaw/turn_loop.py` 100% line, `hilclaw/` 99%.
+- **Language**: Python — the language of the turn loop it extends and of `mcp_front`, which it uses for the server name.
+- **Change**: new `hilclaw/turn_permissions.py` (`ROUND_MANAGER_TOOLS`, option constants, `options(session_dir)` → `--setting-sources project --tools <built-in set> --permission-mode dontAsk --allowedTools <pre-approved list>`), reading the frontmatter of `<session>/.claude/agents/**/*.md` without a YAML library and refusing with fixed-text `ValueError` non-UTF-8 files, missing frontmatter, non `key: value` lines, repeated keys, bad `name`, missing/empty `tools`, entries other than exact `mcp__hilclaw__<name>` or `Read`/`Grep`/`Glob`, a `permissionMode` key, and a `.claude/agents` that is not a directory (the last one is not in the acceptance criteria). `hilclaw/turn_loop.py` appends the options after `--strict-mcp-config`, built after `put_definition` and before the process starts; a refusal still removes the session directory. Tests: new `tests/test_turn_permissions.py`; `tests/test_turn_loop.py` and `tests/test_turn_start.py` updated (the stub now identifies the self-check by `--no-session-persistence`).
+- **Size**: non-test change 2 files, ~220 lines (within D4). `turn_start.py` not edited.
+- **Less exact, not edited**: `hilclaw/turn_definition.py` docstring "Not done here: … no settings, hooks or permissions" — still true of the module, but turn sessions now get permissions from `turn_permissions`.
+- **Local test note**: `C:\Users\myung\AppData\Local\Temp\CLAUDE.md` makes the turn tests skip under the default temp directory; local runs used `--basetemp` outside it.
+- **Runtime acceptance**: ADR-0139 items (xxxiv)-(xl) (HQ-0055) stay open. No real `claude` was started (D16). No new HQ.
+- **Follow-ups**: none new; the task file's one stands (after HQ-0040: the coder-driver agent file and, under answer (B), the `Bash(<entry command> *)` admission — ADR-0139 decision 9).
