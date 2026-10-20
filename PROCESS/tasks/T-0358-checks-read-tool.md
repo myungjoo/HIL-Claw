@@ -2,7 +2,7 @@
 id: T-0358
 title: Add the registry tool checks.read of ADR-0131 decision 3, with the standing of ADR-0110 folded in, and register it in the default registry (ADR-0131 Consequences slice 1; PLAN P2-3, P2-6)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-11, FR-17, NFR-1, OD-23, OD-18, OD-16, S0, S1]
 dependsOn: [T-0356, T-0357]
