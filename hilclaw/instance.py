@@ -1,4 +1,4 @@
-"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046, ADR-0053).
+"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046, ADR-0053, ADR-0136).
 
 ``ARCHITECTURE/decisions/ADR-0018-od8-instance-record-hw-profile.md`` fixes the
 file as a whole (decision 2), the member ``hw_profile`` in which a run states
@@ -65,23 +65,28 @@ member ``objective``, in which a run states its objectives and its
 constraints in the form of the ``task.objective`` of a version-2 spec
 (decision 4), says that a valid file may lack it, that a present one must be
 valid and that nothing stands in for an absent one (decision 5), and says how
-the member is read (decision 7). This
+the member is read (decision 7).
+``ARCHITECTURE/decisions/ADR-0136-od8-first-case-coder-model.md`` adds the
+member ``coder_model``, in which a run states the full name of the Claude
+model its coder calls request (decisions 2 and 3), and says that a valid file
+may lack it, that a present one must be valid and that nothing stands in for
+an absent one (decision 4). This
 module is those rules: :func:`parse` and :func:`validate` are pure functions of
 the bytes of a content and of a parsed document, and :func:`read`,
 :func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
 :func:`n_max_of`, :func:`candidates_per_round_of`, :func:`op_signature_of`,
 :func:`round_budget_of`, :func:`wall_clock_budget_s_of`, :func:`owner_of`,
-:func:`project_of`, :func:`draws_of`, :func:`objective_of` and
-:func:`layout_version_of` read the file of a run.
+:func:`project_of`, :func:`draws_of`, :func:`objective_of`,
+:func:`coder_model_of` and :func:`layout_version_of` read the file of a run.
 :func:`hw_profile_of` has the call form of the parameter ``hw_profile_of`` of
 :func:`hilclaw.hw_tool.tool_function`; nothing here binds it,
 :func:`tolerance_of`, :func:`source_commit_of`, :func:`n_max_of`,
 :func:`candidates_per_round_of`, :func:`op_signature_of`,
 :func:`round_budget_of`, :func:`wall_clock_budget_s_of`, :func:`owner_of`,
-:func:`project_of`, :func:`draws_of`, :func:`objective_of` or
-:func:`layout_version_of` to a tool.
+:func:`project_of`, :func:`draws_of`, :func:`objective_of`,
+:func:`coder_model_of` or :func:`layout_version_of` to a tool.
 
-Conventions of this module, which the twelve records do not fix:
+Conventions of this module, which the thirteen records do not fix:
 
 - A content is exactly ``bytes`` (:class:`TypeError` otherwise: the encoding is
   part of validity). Values are as :func:`json.loads` returns them, an integer
@@ -97,8 +102,9 @@ Conventions of this module, which the twelve records do not fix:
   ``round_budget`` when the document holds it, then ``wall_clock_budget_s``
   when the document holds it, then ``owner`` when the document holds it, then
   ``project`` when the document holds it, then ``draws`` when the document
-  holds it, then ``objective`` when the document holds it: the order in which
-  the records defined them, and for the two of ADR-0034 the order in which it
+  holds it, then ``objective`` when the document holds it, then
+  ``coder_model`` when the document holds it: the order in which the records
+  defined them, and for the two of ADR-0034 the order in which it
   names them. A content this interpreter cannot read (an integer too long for
   it anywhere in the text, nesting too deep) raises :class:`InvalidInstanceError` too,
   though it is a limit of this reader and not damage; the limits stay as the
@@ -249,6 +255,21 @@ Conventions of this module, which the twelve records do not fix:
   and that this is no error of the content, is ADR-0053 decision 5 and not a
   convention; the convention is that it has ``None`` in that place, which no
   present member is equal to.
+- What is a value of ``coder_model`` is ADR-0136 decision 3 and not a
+  convention: a full Claude model name, a string of at most 64 characters
+  that begins with ``claude-``, continues with one or more ASCII lowercase
+  letters, digits and ``-`` and does not end with ``-``, so an alias
+  (``opus``, ``best``), ``default``, ``claude-`` alone, a name with a context
+  suffix (``[1m]``), an inference-profile ARN, the empty string and
+  everything that is no string are none. The conventions are that a value
+  built in memory must be exactly a ``str`` (a subclass is none), that the
+  characters are compared with the ASCII ones, so a lowercase letter of
+  another script is none, that the one rule is reported as a whole, that a
+  ``str`` that breaks it is shown as every ``str`` is, a long one shortened,
+  and that the member is handed out as the ``str`` of the file, unchanged.
+  That a content without the member states no coder model, and that this is
+  no error of the content, is ADR-0136 decision 4 and not a convention; the
+  convention is that it has ``None`` in that place.
 - Which layout version a schema version states is ADR-0024 decision 3 and not
   a convention: schema version 1 states layout version 1. The conventions are
   that the pairing is a mapping keyed by the schema version with the number
@@ -267,10 +288,11 @@ Conventions of this module, which the twelve records do not fix:
   the read is an :class:`OSError`, as every other failure of the file system.
 
 It writes, creates and removes no file and composes no content. It defines no
-member besides the thirteen (``schema_version``, ``hw_profile``,
+member besides the fourteen (``schema_version``, ``hw_profile``,
 ``tolerance``, ``source_commit``, ``n_max``, ``candidates_per_round``,
 ``op_signature``, ``round_budget``, ``wall_clock_budget_s``, ``owner``,
-``project``, ``draws`` and ``objective``) and interprets no other: a file
+``project``, ``draws``, ``objective`` and ``coder_model``) and interprets no
+other: a file
 it accepts is not thereby a complete instance record, and not enough to start a
 run (ADR-0018 decisions 1 and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
@@ -517,6 +539,22 @@ OD-13 sub-question 10); "not stated" is no error of the content here either,
 this module gives it no tool-failure kind, and
 :func:`objective_of` is bound to no tool, to no spec and to nothing that
 judges a candidate.
+Of the coder model it gives what the file states and nothing else (ADR-0136
+decisions 3 and 4): it holds no default and substitutes nothing for a member
+that is absent, no model name, no alias, no constant of this module and
+nothing taken from another member or from another run. The default of Opus
+is applied by the start of an instance, which records it in the file
+(ADR-0136 decision 4, a later code slice), and never by a reader here. It
+checks the form of the member only, not whether a model of that name is
+offered: it holds no list of models, so a misspelt name of the right form is
+a value (ADR-0136 decision 3, "The cost"). The member states the model the
+coder calls of the run request, not the one that ran, which may differ
+(ADR-0136 decision 3). It folds no case and resolves no name. A top-level
+member of a nearby name (``model``, ``coderModel``, ``coder``) is passed
+over (ADR-0136 decision 2). "Not stated" is no error of the content here
+either, this module gives it no tool-failure kind, and :func:`coder_model_of`
+is bound to no tool and starts nothing: the read of the member at a coder
+call and its failure kinds are ADR-0136 decision 5 and are not done here.
 Of the layout version it gives what the ``schema_version`` of a valid file
 states by the pairing of ADR-0024 decision 3 and nothing else (decisions 4
 and 5). It defines no member for the layout version and interprets none: a
@@ -583,6 +621,7 @@ _DEFINED = (
     "project",
     "draws",
     "objective",
+    "coder_model",
 )
 _SECTION = ("key", "record")
 _TOLERANCE = ("rtol", "atol")
@@ -598,8 +637,8 @@ class InvalidInstanceError(ValueError):
     """A content, a document or a path breaks a rule; the message names it.
 
     The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
-    ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046 and ADR-0053 and the
-    conventions of this module.
+    ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046, ADR-0053 and ADR-0136
+    and the conventions of this module.
     """
 
 
@@ -660,7 +699,11 @@ class Instance(NamedTuple):
     (ADR-0053 decision 4), or ``None`` for a content without that member:
     ``None`` says that the content states no objective and no set of
     constraints, and is not an empty set of constraints (ADR-0053 decision 5).
-    No field has a default. ``others`` is the last field.
+    ``coder_model`` is the ``str`` of the member ``coder_model``, the full
+    name of the Claude model the run's coder calls request, unchanged, or
+    ``None`` for a content without that member: ``None`` says that the
+    content states no coder model, and no model stands in (ADR-0136 decision
+    4). No field has a default. ``others`` is the last field.
     """
 
     hw_profile_key: str
@@ -676,6 +719,7 @@ class Instance(NamedTuple):
     project: str | None
     draws: int | None
     objective: dict | None
+    coder_model: str | None
     others: dict
 
 
@@ -727,18 +771,23 @@ def parse(content):
     not completed, reordered or replaced, or ``None`` when the content has no
     such member, and nothing is substituted then either: ``None`` is no
     default, not ``latency_minimisation`` and not an empty set of
-    constraints (ADR-0053 decision 5);
+    constraints (ADR-0053 decision 5); ``coder_model`` is the string of the
+    member ``coder_model`` as the content states it (ADR-0136 decision 3),
+    not lower-cased, stripped, resolved or replaced, or ``None`` when the
+    content has no such member, and nothing is substituted then either:
+    ``None`` is no default, no alias and no model name (ADR-0136 decision 4);
     ``others`` holds every top-level member that is none of
     ``schema_version``, ``hw_profile``, ``tolerance``, ``source_commit``,
     ``n_max``, ``candidates_per_round``, ``op_signature``, ``round_budget``,
-    ``wall_clock_budget_s``, ``owner``, ``project``, ``draws`` and
-    ``objective``, as parsed and not interpreted, whatever its name and value
-    (``tolerence``, a top-level ``rtol``, ``source-commit``, ``nmax``,
-    ``candidates``, ``op``, ``task``, ``rounds``, ``budget``,
-    ``wall_clock_budget``, ``time_budget``, ``Owner``, ``user``,
-    ``username``, ``projectname``, ``n_draws``, ``Draws``, ``check_draws``,
-    ``objectives``, a top-level ``constraints``, ``target``, ``Objective``
-    or ``goal`` among them).
+    ``wall_clock_budget_s``, ``owner``, ``project``, ``draws``,
+    ``objective`` and ``coder_model``, as parsed and not interpreted,
+    whatever its name and value (``tolerence``, a top-level ``rtol``,
+    ``source-commit``, ``nmax``, ``candidates``, ``op``, ``task``,
+    ``rounds``, ``budget``, ``wall_clock_budget``, ``time_budget``,
+    ``Owner``, ``user``, ``username``, ``projectname``, ``n_draws``,
+    ``Draws``, ``check_draws``, ``objectives``, a top-level ``constraints``,
+    ``target``, ``Objective``, ``goal``, ``model``, ``coderModel``,
+    ``coder_models`` or ``coder`` among them).
     Any order of members and any white space of JSON are accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
@@ -764,7 +813,7 @@ def parse(content):
 
 
 def validate(document):
-    """Check ``document``, a parsed ``instance.json``, against the eleven records.
+    """Check ``document``, a parsed ``instance.json``, against the twelve records.
 
     ``document`` must be a ``dict`` with ``schema_version`` (an ``int`` from 0
     to :data:`hilclaw.keys.MAX_INTEGER`) and, at version 1, ``hw_profile``: a
@@ -827,18 +876,24 @@ def validate(document):
     ``list`` or of ``str`` and a ``tuple`` are none. Only that form is
     checked: the member is compared with no spec, with no other member and
     with no other file, and that the quantity of the type can be measured is
-    not checked. Its other members are not looked at. The rules for the text
-    (the encoding, a member name twice) cannot be checked on a parsed value.
-    The eleven records are ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
-    ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046 and ADR-0053; ADR-0024
-    adds no rule of validity.
+    not checked. It may hold ``coder_model``, which is then exactly a ``str``
+    of at most 64 characters, ``claude-`` followed by one or more ASCII
+    lowercase letters, digits and ``-``, not ending with ``-`` (ADR-0136
+    decisions 3 and 4): for a value built in memory, a subclass of ``str``
+    and a ``bytes`` are none. Only that form is checked: the name is
+    compared with no list of offered models. Its other members are not
+    looked at. The rules for the text (the encoding, a member name twice)
+    cannot be checked on a parsed value. The twelve records are ADR-0018,
+    ADR-0020, ADR-0022, ADR-0023, ADR-0028, ADR-0031, ADR-0032, ADR-0033,
+    ADR-0034, ADR-0046, ADR-0053 and ADR-0136; ADR-0024 adds no rule of
+    validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
     ``tolerance.rtol``, ``source_commit``, ``n_max``,
     ``candidates_per_round``, ``op_signature.key``, ``round_budget``,
-    ``wall_clock_budget_s``, ``owner``, ``project``, ``draws`` or
-    ``objective.objectives[0].type``). The
+    ``wall_clock_budget_s``, ``owner``, ``project``, ``draws``,
+    ``objective.objectives[0].type`` or ``coder_model``). The
     version comes first: an integer other than :data:`SCHEMA_VERSION` raises
     :class:`UnsupportedVersionError` before any other member is looked at.
     """
@@ -893,11 +948,11 @@ def hw_profile_of(data_root, run_id):
     :class:`InvalidInstanceError` also for a file whose ``tolerance``,
     ``source_commit``, ``n_max``, ``candidates_per_round``,
     ``op_signature``, ``round_budget``, ``wall_clock_budget_s``, ``owner``,
-    ``project``, ``draws`` or ``objective`` is invalid: no member of an
-    invalid file is used (ADR-0020 decision 3, ADR-0022 decision 5,
-    ADR-0023 decision 4, ADR-0028 decision 4, ADR-0031 decision 5, ADR-0032
-    decision 4, ADR-0033 decision 4, ADR-0034 decision 4, ADR-0046 decision
-    3, ADR-0053 decision 5).
+    ``project``, ``draws``, ``objective`` or ``coder_model`` is invalid: no
+    member of an invalid file is used (ADR-0020 decision 3, ADR-0022
+    decision 5, ADR-0023 decision 4, ADR-0028 decision 4, ADR-0031 decision
+    5, ADR-0032 decision 4, ADR-0033 decision 4, ADR-0034 decision 4,
+    ADR-0046 decision 3, ADR-0053 decision 5, ADR-0136 decision 3).
     """
     return read(data_root, run_id).hw_profile
 
@@ -1153,6 +1208,29 @@ def objective_of(data_root, run_id):
     return read(data_root, run_id).objective
 
 
+def coder_model_of(data_root, run_id):
+    """Return the coder model the run ``run_id`` states, a full name, or ``None``.
+
+    It is the ``coder_model`` of what :func:`read` returns: the string of the
+    member ``coder_model`` of ``runs/<run_id>/instance.json``, a full Claude
+    model name of at most 64 characters (ADR-0136 decision 3), as the file
+    states it at this call, unchanged, or ``None`` for a valid file without
+    that member. The member states the model the coder calls of the run
+    request, not the one that ran (ADR-0136 decisions 3 and 7). ``None`` says
+    that the file states no coder model: no value stands in for it (ADR-0136
+    decision 4), not the default the start applies, not an alias, no
+    constant of this module, nothing taken from another member and not the
+    model of another run. Only the instance file is read; that a model of
+    that name is offered is not checked, and the name is resolved, compared
+    and handed to nothing. Raises what :func:`read` raises, so no model is
+    returned, and none is inferred, for a missing, unreadable or invalid
+    file or one of another version. It raises no tool failure and gives
+    "not stated" no kind: the read of the member at a coder call is ADR-0136
+    decision 5 and is not done here.
+    """
+    return read(data_root, run_id).coder_model
+
+
 def layout_version_of(data_root, run_id):
     """Return the layout version the run ``run_id`` states (ADR-0024 decisions 3 to 5).
 
@@ -1222,6 +1300,9 @@ def _checked(document):
     objective = None
     if "objective" in document:
         objective = _objective(document["objective"])
+    model = None
+    if "coder_model" in document:
+        model = _coder_model(document["coder_model"])
     others = {name: value for name, value in document.items() if name not in _DEFINED}
     return Instance(
         key,
@@ -1237,6 +1318,7 @@ def _checked(document):
         project,
         draws,
         objective,
+        model,
         others,
     )
 
@@ -1361,6 +1443,22 @@ def _string(place, value):
         or not all(" " <= character <= "~" for character in value)
     ):
         _fail(place, "a str of 1 to 255 printable ASCII characters", value)
+    return value
+
+
+def _coder_model(value):
+    if (
+        type(value) is not str
+        or not 8 <= len(value) <= 64
+        or not value.startswith("claude-")
+        or value.endswith("-")
+        or not all("a" <= c <= "z" or "0" <= c <= "9" or c == "-" for c in value)
+    ):
+        rule = (
+            'a str of at most 64 characters, "claude-" followed by lowercase ASCII'
+            ' letters, digits and "-", not ending with "-"'
+        )
+        _fail("coder_model", rule, value)
     return value
 
 
