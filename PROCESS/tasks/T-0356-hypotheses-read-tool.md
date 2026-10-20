@@ -2,7 +2,7 @@
 id: T-0356
 title: Add the registry tool hypotheses.read of ADR-0129 decision 3, register it in the default registry, and give it to the evaluator (ADR-0129 Consequences slices 1 and 2; PLAN P2-3, P2-6)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-11, FR-17, NFR-1, OD-23, OD-18, OD-30, S0, S1]
 dependsOn: [T-0353, T-0354, T-0355]
@@ -88,3 +88,12 @@ Priority (DRIVER §6, D18): this is work on the checklist items PLAN P2-3 (evalu
 - Next for the planner: the record for the read of an attempt's journaled results (ADR-0128 Consequences slice 3, ADR-0129 decision 5), which decides whether that read is enough to give the verdicts work to the evaluator.
 
 ## Result
+
+- **DONE.** PR #204, squash-merged as 1644e7b; branch `claude/T-0356-hypotheses-read-tool` deleted. Review: 2 rounds, Approve (round-1 nit addressed: the file's path is computed once in `_read`). CI green on 845f391 (Python 3.11/3.14, coverage, test presence, sh, C gates).
+- Module name as planned: `hilclaw/hypotheses_tool.py`; `touchesFiles` unchanged.
+- Shared read (AC 2): the read moved into the new module as the public `hypotheses_tool.read(data_root, run_id, round)`; `verdicts_tool` calls it and its four `KIND_HYPOTHESES_*` constants are now those of `hypotheses_tool`. `verdicts.write` behaviour, kinds and messages are unchanged and `tests/test_verdicts_tool.py` passes unchanged. Moving rather than importing the private `_hypotheses` keeps ruff SLF001 clean.
+- Number-range choice (AC 2): a number beyond the float range in an open top-level member is parsed as an infinity, so the call through the registry fails with `bad_result`, as `state.read` does; stated in the module docstring and tested (a large integer there is returned as stored).
+- Language: Python, because the tool joins the Python registry and reuses `hypotheses_file`, `layout` and `data_root_source`.
+- Local: ruff check/format clean; `coverage run -m pytest`: 24175 passed, 724 skipped; `hilclaw/` 97 %, `hypotheses_tool.py` 100 %.
+- No data-plane change; no `claude` started; runtime acceptance item (xxi) of ADR-0129 (HQ-0046) not closed.
+- Follow-ups: none beyond the task's own (the results-read record).
