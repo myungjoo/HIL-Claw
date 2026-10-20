@@ -2,7 +2,7 @@
 id: T-0361
 title: Record ADR-0132, the selection role of a first-case turn and what writes a round's decision/hypotheses.json (part of OD-23 and OD-30)
 phase: P1
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: doc
 coversReq: [FR-11, FR-17, OD-23, OD-30, OD-18, OD-8]
 dependsOn: [T-0352, T-0355, T-0357]
@@ -12,7 +12,7 @@ touchesFiles:
   - ARCHITECTURE/OpenDecisionProposals.md
   - ARCHITECTURE/StandardScenarios.md
 estimatedSize: {loc: 260, files: 4}
-hq: []
+hq: [HQ-0048]
 ---
 ## Why
 
@@ -72,5 +72,15 @@ OD-23 and OD-30 are design-level ODs, not owner-only (DRIVER §9: owner-only mea
 ## Follow-ups
 
 - Expected next for the planner if the record chooses a tool: the code slice (tool module, test file, `default_registry`), then the definition slice (round steps or a selector definition, with its `tools` test).
+- After landing (per ADR-0132 Consequences): slice 1, the `hypotheses.write` module and its test file, registered in `default_registry`, plus the docstrings of `hypotheses_file.py` and `hypotheses_cases.py`; slice 2, `orchestration/agents/technique-selector.md` with a `tools`-set test and a `LAYOUT` copy test; slice 3, with P2-1, the round-≥1 selection steps in `orchestration/round-manager.md`, `mcp__hilclaw__hypotheses_read` among the tools it names; slice 4, after the P2-7 record, the case-lookup read tool for the selector and the `case_lookup.py` docstring.
+- Integrator note: OD-8 sub-question ⑩ is cited by ADR-0059 Boundaries for "when hypotheses.json is written", but ⑩'s text asks about the first `STATE.json`. ADR-0132 answers that point of ADR-0059 for first-case runs and leaves OD-8 unedited.
+- For the driver after landing: post the DRIVER §9 notice on #5 for ADR-0132, then the runtime-acceptance HQ notices for the new items (xxiii) and (xxiv).
 
 ## Result
+
+- **Outcome**: BLOCKED (`review-rounds-exceeded`, CLAUDE.md A-13; HQ-0048). Branch `claude/T-0361-adr-first-case-selection-hypotheses-write` (HEAD e9eaa9f) holds `ARCHITECTURE/decisions/ADR-0132-od23-first-case-selection.md` and edits `ARCHITECTURE/Requirements.md` (rows OD-18, OD-23, OD-30), `ARCHITECTURE/OpenDecisionProposals.md` (sections OD-18, OD-23, OD-30) and `ARCHITECTURE/StandardScenarios.md` (re-check line). Not landed: nothing pushed to `main`, no #5 OD notice. Reviewed content is up to 1cd77bb; e9eaa9f addresses the round-7 Major and was not re-reviewed.
+- **Decisions** (runs of ADR-0120 decision 1, rounds ≥ 1): (a) a `technique-selector` sub-agent holds the selection role; (b) it has no Write/Edit/Bash, and a new registry tool `hypotheses.write` (`run_id`, `record` → `{}`, not journaled; kinds `invalid_request`, `no_data_root`, reserved `run_file_*`, `cases_unreadable`, `cases_mismatch`, `hypotheses_exist`, `hypotheses_not_written`) writes the record; (c)/(e) the record is written before the round's first spec write and coder call, and the Round-Manager goes on only when `hypotheses.read` returns it; (d) lookup output waits for a later typed read tool (P2-7); (f) definition at `orchestration/agents/technique-selector.md`. `decision.md` gets no writer. New runtime acceptance items (xxiii), (xxiv). No data-plane change; HQ-0031, HQ-0040, HQ-0041 and the T-0318 distribution left open.
+- **Review**: 7 rounds — R1 Request changes; R2, R3 Approve (fixed nits); R4 Request changes; R5, R6 Approve (fixed nits); R7 Request changes with one Major (selector resend rule covered failures a corrected record cannot answer), narrowed to `invalid_request` and `cases_mismatch` in e9eaa9f, not re-reviewed.
+- **Coverage re-check**: S0, S1, S6, S8, S11 — no verdict change, no gap; only the "최근 재검사" line changed.
+- **Overlap**: unlanded branches `claude/T-0318-*` and `claude/T-0231-*` also edit the OD-30 row and section; none of their content was taken. Open PR #186 does not overlap.
+- No `claude` process was started (D16).
