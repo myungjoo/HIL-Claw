@@ -2,7 +2,7 @@
 id: T-0377
 title: Add the registry tool spec.write of ADR-0138 decision 3, which composes and writes the spec of the first round-0 coder call of a first-case run (ADR-0138 slice 1; PLAN P2-1/P2-2)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-5, OD-6, OD-23, OD-28, S0]
 dependsOn: [T-0376]
@@ -128,7 +128,7 @@ Slice 2 (the `coder-driver` definition and the Round-Manager delegation step) wa
 
 ## Result
 
-- **Outcome**: DONE. PR #217 (`claude/T-0377-spec-write-tool`), squash-merged; the merge commit is the one whose last line is `Task: T-0377`. Reviewer rounds: see the PR comments (round 1 Approve with three minor notes, all answered here). CI green: Python gate 3.11/3.14, Coverage gate, Test presence, sh gate, C gate.
+- **Outcome**: DONE. PR #217 (`claude/T-0377-spec-write-tool`), squash-merged; the merge commit is the one whose last line is `Task: T-0377`. Reviewer rounds: 2 (both Approve; round 1 had three minor notes, all answered). Merge commit 47afe97. CI green: Python gate 3.11/3.14, Coverage gate, Test presence, sh gate, C gate.
 - **Language**: Python, because the registry and every reused module are Python.
 - **What landed**:
   - New module `hilclaw/spec_tool.py`, the tool `spec.write` (MCP `spec_write`) with the eight checks of ADR-0138 decision 3 in order. The request check takes exactly the four members, refuses a non-`int` (a `bool` included) number and any tuple other than 0, 1, 1; the input schema states each number with `minimum` = `maximum`. ⑦ maps a failing encoding, a content out of the written form, `spec_file.parse` refusals (`InvalidSpecFileError`, `UnsupportedVersionError`) and `final_name` refusals to `spec_invalid`; ⑧ maps `NameTakenError` to `spec_exists` and any `OSError` to `spec_not_written` (class and `strerror` only, plus "the data root is not an existing directory" when it is gone). An error of `gemm_contract.covers` is not mapped (`tool_crashed` through `tools.call`).
