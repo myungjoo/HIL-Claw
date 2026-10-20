@@ -28,10 +28,10 @@ first-case run (ADR-0118 decisions 1 and 2).
   `mcp__hilclaw__run_fresh` and `mcp__hilclaw__state_write`, your run id as
   `run_id`, to read the run's `STATE.json` and `instance.json`, tell a fresh run
   directory, and write the first `STATE.json` of entry step 2 and the
-  `"over"` of entry step 6, not Bash or file tools (ADR-0124 decision 2; ADR-0135
-  decision 1). Use only `mcp__hilclaw__run_commit`, your run id as `run_id`, to commit your
-  run's round ends in the data repository, not Bash, `git` or any other means
-  (ADR-0127 decision 2).
+  `"over"` of entry step 6, not Bash or file tools (ADR-0124 decision 2;
+  ADR-0135 decision 1). Use only `mcp__hilclaw__run_commit`, your run id as
+  `run_id`, to commit your run's round ends in the data repository, not Bash,
+  `git` or any other means (ADR-0127 decision 2).
 - Use only `mcp__hilclaw__key_store`, your run id as `run_id`, to store your
   run's two key record files, not Bash, file tools or any other means
   (ADR-0134 decisions 2 and 3).

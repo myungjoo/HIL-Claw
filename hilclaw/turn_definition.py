@@ -34,9 +34,9 @@ outside the session directory.
   of decision 2 and the entry of a turn (first the commit of an owed round
   end, then the first ``STATE.json``, the over states and the round-budget
   end); a round begins with the store of the run's key record files and
-  ends with the case, the round-end write and the commit, the steps between
-  are not yet defined, and so a turn ends after the key store without a
-  further write.
+  ends with the case (in a round >= 1), the round-end write and the commit;
+  the steps between are not yet defined, so a turn ends after the key store
+  without a further write.
 - *Refusals*, each a :class:`ValueError` with a fixed text raised before
   anything is written: a top-level entry that is not a key of :data:`LAYOUT`;
   an entry of the wrong kind; a missing ``round-manager.md``; an entry at any
