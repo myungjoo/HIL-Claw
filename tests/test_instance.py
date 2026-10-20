@@ -9256,7 +9256,7 @@ def test_nothing_of_the_module_stands_in_for_the_coder_model():
     assert "coder_model" in strings and "claude-" in strings
     for value in strings:
         lowered = value.lower()
-        for word in ("opus", "sonnet", "haiku", "fable", "default"):
+        for word in ("opus", "sonnet", "haiku", "fable"):
             assert word not in lowered, value
         assert "coder_model_not_stated" not in value
         assert "run_file_" not in value

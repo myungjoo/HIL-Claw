@@ -551,10 +551,11 @@ a value (ADR-0136 decision 3, "The cost"). The member states the model the
 coder calls of the run request, not the one that ran, which may differ
 (ADR-0136 decision 3). It folds no case and resolves no name. A top-level
 member of a nearby name (``model``, ``coderModel``, ``coder``) is passed
-over (ADR-0136 decision 2). "Not stated" is no error of the content here
-either, this module gives it no tool-failure kind, and :func:`coder_model_of`
-is bound to no tool and starts nothing: the read of the member at a coder
-call and its failure kinds are ADR-0136 decision 5 and are not done here.
+over (ADR-0018 decision 2, ADR-0136 decision 2). "Not stated" is no error of
+the content here either, this module gives it no tool-failure kind, and
+:func:`coder_model_of` is bound to no tool and starts nothing: the read of
+the member at a coder call and its failure kinds are ADR-0136 decision 5 and
+are not done here.
 Of the layout version it gives what the ``schema_version`` of a valid file
 states by the pairing of ADR-0024 decision 3 and nothing else (decisions 4
 and 5). It defines no member for the layout version and interprets none: a
@@ -1449,7 +1450,7 @@ def _string(place, value):
 def _coder_model(value):
     if (
         type(value) is not str
-        or not 8 <= len(value) <= 64
+        or len(value) > 64
         or not value.startswith("claude-")
         or value.endswith("-")
         or not all("a" <= c <= "z" or "0" <= c <= "9" or c == "-" for c in value)
