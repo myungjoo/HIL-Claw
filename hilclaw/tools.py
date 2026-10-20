@@ -205,9 +205,9 @@ def default_registry(data_root_source):
     decision 3), with which it reads a round's ``decision/hypotheses.json``,
     and ``checks.read`` (:func:`hilclaw.checks_tool.definition`, ADR-0131
     decision 3), with which it reads the ``correctness.check`` lines of an
-    attempt or a candidate at one point and their standing; and
+    attempt or a candidate at one point and their standing. It holds
     ``case.write`` (:func:`hilclaw.case_tool.definition`, ADR-0133 decision
-    3), with which the Round-Manager writes a round's case; and ``key.store``
+    3), with which the Round-Manager writes a round's case, and ``key.store``
     (:func:`hilclaw.key_store_tool.definition`, ADR-0134 decision 3), with
     which the Round-Manager stores its run's two key record files.
     A tool is added here, in the source, and in no other way: no option,
