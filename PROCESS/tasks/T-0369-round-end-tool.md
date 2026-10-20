@@ -173,7 +173,6 @@ The tool reads `STATE.json`, `events.ndjson` and `instance.json` as files. A tes
 
 ## Result
 
-
 - **Outcome**: DONE. PR #212 (`claude/T-0369-round-end-tool`), squash-merged; the merge commit is the one whose last line is `Task: T-0369`. The reviewer approved in round 1 and again in round 2 of 2. Round 1 had one non-blocking nit: `_reported` is a third copy of `run_file_tools._reported`. It was kept, because merging it into a public helper of `hilclaw/run_files.py` would touch a module outside this task. Round 1 also had two procedural notes: wait for CI, and record the re-grep here. CI was green: Python gate 3.11 and 3.14, Coverage gate, Test presence, sh gate and C gate.
 - **Language**: Python, because the registry and every reused module are Python.
 - **What landed**:
