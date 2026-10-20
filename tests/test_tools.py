@@ -489,6 +489,7 @@ class CountingSource:
 DEFAULT_SET = (
     "blob.fetch",
     "blob.push",
+    "case.write",
     "checks.read",
     "correctness.check",
     "hypotheses.read",

@@ -77,11 +77,16 @@ takes no lock and makes no commit. Nothing here checks that the key directory
 is that of the run's instance, that the copies equal the source files in
 ``runs/``, that a *ref* names an attempt that exists, or the rules between
 files of ADR-0073 decisions 2 and 3 for the hypothesis copy. It reads no other
-version (OD-11) and is no tool, no hook and no command. Promotion (whether,
-when and by whom a round is promoted, whether a round without verdicts is,
-what a second case write after a taken name means: OD-29, OD-23, OD-25,
-NFR-1, OD-17) is open (ADR-0072 Boundaries). The lookup of the cases of a key
-directory (ADR-0073 decision 1) is :mod:`hilclaw.case_lookup`.
+version (OD-11) and is no tool, no hook and no command. For the runs of
+ADR-0120 decision 1, :func:`write` is called by the tool ``case.write``
+(:mod:`hilclaw.case_tool`, ADR-0133), which reads the source files and the
+key records, composes the bytes and decides which rounds are promoted and
+when (a round without verdicts is; a taken name is ``case_exists``). Still
+open (ADR-0072 Boundaries): ``best.json`` and ``technique_stats.json``
+(OD-20, OD-7), OD-29, OD-25, NFR-1, OD-17 beyond ADR-0133 decision 5, the
+creation of the key directory (OD-26) and promotion in runs outside ADR-0120
+decision 1. The lookup of the cases of a key directory (ADR-0073 decision 1)
+is :mod:`hilclaw.case_lookup`.
 """
 
 import codecs

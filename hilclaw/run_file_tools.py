@@ -20,7 +20,8 @@ decision 3).
   file is the ``run_file_*`` kind of ADR-0019 decision 3, as widened by
   ADR-0124 decision 3. A number beyond the float range in a member neither
   validator defines is read as an infinity, which no result can hold: the call
-  then fails with ``bad_result``.
+  then fails with ``bad_result``. Their read is :func:`read`, which is also
+  the read of these two files by ``case.write`` (:mod:`hilclaw.case_tool`).
 - ``run.fresh`` returns ``{"fresh": bool}`` of :func:`hilclaw.fresh_run.is_fresh`
   and reads no file.
 - ``state.write`` refuses a ``state`` that is not valid at version 1 before
@@ -117,10 +118,10 @@ def definitions(source):
         raise TypeError("the data-root source must be callable")
 
     def read_state(request):
-        return {"state": _read(source, request, "STATE.json", _STATE_FILE)}
+        return {"state": _read(source, request, "STATE.json")}
 
     def read_instance(request):
-        return {"instance": _read(source, request, "instance.json", _INSTANCE_FILE)}
+        return {"instance": _read(source, request, "instance.json")}
 
     def fresh(request):
         return _fresh(source, request)
@@ -190,10 +191,31 @@ _INSTANCE_FILE = (
 )
 
 
-def _read(source, request, name, parsing):
-    run_id = _run_id(request, ("run_id",))
-    data_root = data_root_source.obtain(source)
-    parse, kinds = parsing
+_PARSING = {"STATE.json": _STATE_FILE, "instance.json": _INSTANCE_FILE}
+
+
+def read(data_root, run_id, name):
+    """Read the frame file ``name`` of the run ``run_id`` below ``data_root`` once, as ``state.read`` and ``instance.read`` do.
+
+    ``name`` is ``"STATE.json"`` or ``"instance.json"``; ``data_root`` is a
+    path and ``run_id`` is checked by :func:`hilclaw.layout.run_file`. The
+    result is the pair of what :func:`hilclaw.run_state.parse` or
+    :func:`hilclaw.instance.parse` returned for the bytes and the bytes
+    themselves. Nothing is created or kept.
+
+    Raises :class:`ValueError` for another ``name`` and
+    :class:`hilclaw.layout.InvalidPathValueError` for a ``run_id`` that is
+    none, before the file system is touched; then
+    :class:`hilclaw.tools.ToolFailure` of the four ``run_file_*`` kinds, each
+    message starting with the file's path relative to ``data_root``: the
+    place holding no regular file or bytes the parser refuses
+    ``run_file_invalid``, another ``schema_version``
+    ``run_file_unsupported``, and an :class:`OSError` as
+    :func:`hilclaw.run_files.read_failure` answers it.
+    """
+    if name not in _PARSING:
+        raise ValueError(f"name must be one of {', '.join(_PARSING)}, got {name!r}")
+    parse, kinds = _PARSING[name]
     invalid = next(iter(kinds))
     path = layout.run_file(data_root, run_id, name)
     file = run_files.relative(run_id, name)
@@ -202,10 +224,16 @@ def _read(source, request, name, parsing):
             raise invalid(f"{file}: is not a regular file")
         content = path.read_bytes()
         try:
-            parse(content)
+            parsed = parse(content)
         except tuple(kinds) as error:
             raise type(error)(f"{file}: {error}") from None
-    return json.loads(content)
+    return parsed, content
+
+
+def _read(source, request, name):
+    run_id = _run_id(request, ("run_id",))
+    data_root = data_root_source.obtain(source)
+    return json.loads(read(data_root, run_id, name)[1])
 
 
 def _fresh(source, request):

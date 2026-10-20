@@ -23,10 +23,15 @@ decisions 2, 4, 6 and 7). The hypothesis copy is checked by
 :func:`hilclaw.hypotheses.validate`, which admits the ``basis`` kind ``case``
 and ``cases_read`` by the in-file rules of ADR-0073 decisions 2 and 3; the
 rules between files of those decisions are not checked here. Nothing of the
-lookup (ADR-0073 decision 1), promotion (whether, when and by whom a round is
-promoted: OD-29, OD-23, OD-25, NFR-1, OD-17), ``best.json``,
-``technique_stats.json`` or injection is done here. This module reads, writes
-and logs nothing; it is no tool, no hook and no command.
+lookup (ADR-0073 decision 1), promotion, ``best.json``,
+``technique_stats.json`` or injection is done here. For the runs of ADR-0120
+decision 1 a round's case is built here and written by the tool
+``case.write`` (:mod:`hilclaw.case_tool`, ADR-0133), whose record decides
+which rounds are promoted and when. Still open: ``best.json`` and
+``technique_stats.json`` (OD-20, OD-7), OD-29, OD-25, NFR-1, OD-17 beyond
+ADR-0133 decision 5, the creation of the key directory (OD-26) and promotion
+in runs outside ADR-0120 decision 1. This module reads, writes and logs
+nothing; it is no tool, no hook and no command.
 """
 
 import copy

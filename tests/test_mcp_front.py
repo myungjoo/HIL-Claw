@@ -29,6 +29,7 @@ FIXED_NAMES = {
     "hypotheses.read": "hypotheses_read",
     "checks.read": "checks_read",
     "run.commit": "run_commit",
+    "case.write": "case_write",
 }
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
 INITIALIZE = {
@@ -458,10 +459,11 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 
 
 def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_tools():
-    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129) and checks.read (ADR-0131)."""
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), checks.read (ADR-0131) and case.write (ADR-0133)."""
     held = {
         "blob_fetch": "blob.fetch",
         "blob_push": "blob.push",
+        "case_write": "case.write",
         "checks_read": "checks.read",
         "correctness_check": "correctness.check",
         "hypotheses_read": "hypotheses.read",
@@ -512,6 +514,7 @@ def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
     assert names == [
         "blob_fetch",
         "blob_push",
+        "case_write",
         "checks_read",
         "correctness_check",
         "hypotheses_read",
@@ -957,6 +960,7 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
         [
             "blob_fetch",
             "blob_push",
+            "case_write",
             "checks_read",
             "correctness_check",
             "hypotheses_read",
@@ -1058,6 +1062,7 @@ def test_process_handshake_and_tool_list():
         [
             "blob_fetch",
             "blob_push",
+            "case_write",
             "checks_read",
             "correctness_check",
             "hypotheses_read",
