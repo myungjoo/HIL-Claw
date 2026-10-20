@@ -2,7 +2,7 @@
 id: T-0372
 title: Carry the member `coder_model` of ADR-0136 into `hilclaw/instance.py` (ADR-0136 code slice 1) - check the form of the top-level member (a full Claude model name, may be absent) and add the reader `coder_model_of`; no default, nothing stands in, bound to no tool
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [NFR-5, FR-5, FR-13, OD-8, OD-23, "#5 A-8"]
 dependsOn: [T-0371]
