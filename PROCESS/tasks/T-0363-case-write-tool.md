@@ -2,7 +2,7 @@
 id: T-0363
 title: Add the registry tool case.write of ADR-0133 decision 3, which builds a round's case from its two files and stores it in the run's stored key directory (ADR-0133 slice 1; PLAN P2-7)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-18, FR-11, FR-10, OD-23, OD-30, S0, S1]
 dependsOn: [T-0362]
