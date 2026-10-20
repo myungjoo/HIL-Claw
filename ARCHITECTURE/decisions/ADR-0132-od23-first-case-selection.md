@@ -138,7 +138,7 @@ A sentence is **cited** when a source is named with it. Every other sentence is 
 
 ## Boundaries (not decided here)
 
-- **Owner-only**: whether injected hypotheses must be tested (HQ-0031); the models of any agent and whether their tokens count against a budget (#5 A-8, HQ-0041, NFR-5); C-6, OD-25, OD-3. Whether any agent has a shell (HQ-0040) is untouched.
+- **Owner-only**: whether injected hypotheses must be tested (HQ-0031); the models of any agent and whether their tokens count against a budget (#5 A-8, HQ-0041, NFR-5); C-6, OD-25, OD-3. Whether the coder-driver reaches its function through a shell (HQ-0040) is untouched.
 - **The order and share of injected and system hypotheses** (T-0318; ADR-0075 Boundaries), and so what a selection does with the run's `injections`.
 - **The lookup read tool** and its contract (decision 5; P2-7); a selection rule for many cases (OD-30).
 - **The reads of earlier verdicts and measurements** a selection needs (FR-17 "앞선 판정을 입력으로"): a verdicts read, the results of `sim.run` and `board.run` (T-0210, HQ-0021), profiles (ADR-0130); the comparison and `eval.json` (OD-20).
