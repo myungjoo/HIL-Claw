@@ -2,7 +2,7 @@
 id: T-0376
 title: Write ADR-0138 - the spec of a first-case round-0 bring-up coder call, what composes it from the run's own files and by what means it is written before the call (rest of OD-6, part of OD-23)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-5, OD-6, OD-23, OD-28, "#5 B-4"]
 dependsOn: [T-0346, T-0374]
@@ -111,3 +111,13 @@ Do not invent: every value the record fixes is cited from a record or the run's 
 - Planner's view of what follows: the code slice the record names (the spec composer/writer and its registry entry), tested with fixtures; the Round-Manager round-0 steps after HQ-0040 is answered.
 
 ## Result
+
+DONE. ADR-0138 (`ARCHITECTURE/decisions/ADR-0138-od6-first-case-round-zero-spec.md`; number 0138 was free on main and on every `origin/claude/*` branch) landed on `main` as acb6801 (document mode, `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0376`); branch deleted. §9 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6301641619 .
+
+- Record: every member of the round-0 first-call spec gets a cited source (hw_profile, op_signature, objective copied whole from `instance.json`; contract from ADR-0008; `id.candidates` 1 / `single` as this record's reading of FR-1 with ADR-0119 decision 4; empty feedback; no repair, `task.build` or `ext`); `guidance.techniques` empty on ADR-0059 decision 5, G1 and FR-1. Means: new registry tool `spec.write` (MCP front, called by the coder-driver before the call; checks ① to ⑧; reused kinds plus new tool-layer kinds `candidates_per_round_not_stated`, `candidates_per_round_not_covered`, `spec_exists`, `spec_not_written`; not journaled). What follows `spec_exists` is left open (OD-8 ㉖ (가)).
+- HQ-0040 is not answered (checked 2026-10-21); the means works under either answer (decision 4). HQ-0053, HQ-0031, HQ-0048 untouched; ADR-0132/0137 not relied on.
+- Runtime acceptance: new item **(xxxiii)** (coder-driver sub-agent calls `mcp__hilclaw__spec_write` without a prompt) — the driver should raise an HQ with reason `runtime-acceptance`. Possible number clash: the unlanded T-0375 draft (ADR-0137) also uses (xxxiii)-(xxxviii); whichever lands second renumbers.
+- Registers: OD-6, OD-23, OD-28 rows and sections as asked; also the OD-8 row and § OD-8 (adopted line; in-place partial answers of ⑱, ㉕ (나), ㉘ (나), ㉞ (나)), because the record partly answers those sub-questions and the "기록 규칙" requires the in-place status. No status cell changed. T-0375's branch edits the same OD-23 row and § OD-23; expect a rebase conflict there.
+- StandardScenarios: S0, S1, S8 rechecked, no verdict change; only the "최근 재검사" line was updated, as that file's own recording rule requires on every recheck (no history entry).
+- Deferred nits from review round 7 (not applied, to stay within 7 rounds): the Walk-through row "The file was changed after the start" should cite ADR-0018 decision 6 beside ADR-0004 decision 10; the OD-6/OD-8/OD-28 status-cell date ranges were left as they were.
+- Follow-up for the planner: code slice 1 of the record (`hilclaw/spec_tool.py` + `tests/test_spec_tool.py` + `default_registry` entry), which does not wait on HQ-0040.

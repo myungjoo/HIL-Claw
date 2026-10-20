@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0376",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:7bf41317-1",
-    "acquiredAt": "2026-10-20T20:23:31Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -464,19 +460,27 @@
       "question": "T-0375 (ADR-0137, the start of a first-case coder call, ADR-0049 slice (d)) needs to decide how the Claude Code sign-in reaches the coder's `claude -p` inside the Docker container. Under C-7 ② (Max subscription, no API key) the only coherent means found in the official documentation is a subscription token that you create once with `claude setup-token` (a one-year OAuth token that \"can only make model requests\", https://code.claude.com/docs/en/authentication, read 2026-10-21) and give to the runtime in an environment variable (proposed name `HILCLAW_CODER_OAUTH_TOKEN`); the runtime passes it into each coder container as `CLAUDE_CODE_OAUTH_TOKEN` and never writes it to a file, an argument or a log. Nothing of the host login (`~/.claude`, the macOS Keychain) enters the container. Cost: the coder, which has a shell and the network, can read that token and send it anywhere (ADR-0049 L5), and it stays valid for up to a year unless revoked (whether it can be revoked is not verified). Alternatives rejected: mounting or copying the host's `~/.claude/.credentials.json` (a second host path, impossible on macOS where the login is in the Keychain, exposes the whole login), a persistent login volume (a second writable mount shared across calls), a login per call (a browser step every call), an API key (C-7 ②). Your HQ-0006 answer left \"the credential form for unattended runs (a login or a `setup-token`)\" undecided, and OD-18 sub-question ⑯ (다) records it as yours. Question: (a) may coder calls use a `setup-token` token that you create and provide to the runtime as above (the host turn session keeps its `/login` login), or (b) do you want another means (please name it), or (c) should coder calls wait until you decide the credential form of unattended runs as a whole? The draft ADR-0137 is on branch `claude/T-0375-adr-first-case-coder-process-start` (6eda4bb; review round 1 requested changes on this point, other findings fixed).",
       "askedAt": "2026-10-20T19:42:53Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6299825230"
+    },
+    {
+      "id": "HQ-0054",
+      "taskId": "T-0376",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0138 (the spec of a first-case round-0 bring-up coder call, written before the call through the new registry tool `spec.write`; rest of OD-6, part of OD-23; T-0376, main acb6801) adds runtime acceptance item (xxxiii): a `coder-driver` sub-agent of a `-p` turn session can call `mcp__hilclaw__spec_write` without a permission prompt, under whatever permission means item (vii) gets, whichever form HQ-0040 gives the call. Under D16 it is closed by your check by hand or by the runtime's own self-check, not by a driver task; nothing is blocked. Note: the unlanded T-0375 draft (HQ-0053) also numbers its first item (xxxiii); whichever lands later renumbers.",
+      "askedAt": "2026-10-20T21:16:13Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 390,
-    "tasksDone": 362,
+    "iterations": 391,
+    "tasksDone": 363,
     "tasksBlocked": 28,
-    "reviewRoundsTotal": 1294
+    "reviewRoundsTotal": 1301
   },
   "lastIteration": {
-    "at": "2026-10-20T19:42:53Z",
-    "owner": "AKIHA:3c653706-1",
-    "taskId": "T-0375",
-    "outcome": "BLOCKED"
+    "at": "2026-10-20T21:16:13Z",
+    "owner": "AKIHA:7bf41317-1",
+    "taskId": "T-0376",
+    "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
