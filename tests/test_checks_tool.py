@@ -646,10 +646,19 @@ def test_a_broken_step_line_of_another_step_is_run_file_invalid(root):
 @pytest.mark.parametrize(
     ("result", "problem"),
     [
-        ({"no": "outcome"}, "lacks the member outcome"),
-        ({"outcome": "PASS"}, "must be one of pass, fail, broken, got str 'PASS'"),
-        ({"outcome": 1}, "must be one of pass, fail, broken, got int 1"),
-        ({"outcome": None}, "must be one of pass, fail, broken, got NoneType None"),
+        ({"no": "outcome"}, "data.result: lacks the member outcome"),
+        (
+            {"outcome": "PASS"},
+            "data.result.outcome: must be one of pass, fail, broken, got str 'PASS'",
+        ),
+        (
+            {"outcome": 1},
+            "data.result.outcome: must be one of pass, fail, broken, got int 1",
+        ),
+        (
+            {"outcome": None},
+            "data.result.outcome: must be one of pass, fail, broken, got NoneType None",
+        ),
     ],
 )
 @pytest.mark.parametrize("attempt", [1, None])
@@ -658,7 +667,7 @@ def test_a_bad_result_in_scope_is_check_result_invalid(root, result, problem, at
     check(root, 2, result=result)
     refused = failure(root, request(attempt))
     assert refused.kind == checks_tool.KIND_CHECK_RESULT_INVALID
-    assert refused.message == f"{LOG}: line 4: data.result.outcome: {problem}"
+    assert refused.message == f"{LOG}: line 4: {problem}"
 
 
 def test_a_bad_result_of_another_attempt_is_in_scope_without_attempt(root):

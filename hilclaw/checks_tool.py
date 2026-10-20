@@ -113,7 +113,10 @@ _MEMBERS = ("run_id", "round", "candidate", "attempt", "point")
 _OPTIONAL = ("attempt",)
 _LEAST = {"round": 0, "candidate": 1, "attempt": 1}
 _POINTS = (check_identity.SIM, check_identity.BOARD)
-_STEP_OF = dict(zip(_POINTS, check_identity.STEPS))
+_STEP_OF = {
+    check_identity.SIM: check_identity.STEP_SIM,
+    check_identity.BOARD: check_identity.STEP_BOARD,
+}
 _OUTCOMES = (check_result.PASS, check_result.FAIL, check_result.BROKEN)
 _STANDINGS = {
     check_standing.Standing.VERIFIED: "verified",
@@ -220,16 +223,14 @@ def _lines(data_root, run_id):
 
 def _outcome(file, number, result):
     if "outcome" not in result:
-        problem = "lacks the member outcome"
+        problem = "data.result: lacks the member outcome"
     elif type(result["outcome"]) is not str or result["outcome"] not in _OUTCOMES:
-        problem = (
-            f"must be one of {', '.join(_OUTCOMES)}, got {_shown(result['outcome'])}"
-        )
+        rule = f"must be one of {', '.join(_OUTCOMES)}"
+        problem = f"data.result.outcome: {rule}, got {_shown(result['outcome'])}"
     else:
         return
     raise tools.ToolFailure(
-        KIND_CHECK_RESULT_INVALID,
-        f"{file}: line {number}: data.result.outcome: {problem}",
+        KIND_CHECK_RESULT_INVALID, f"{file}: line {number}: {problem}"
     )
 
 
