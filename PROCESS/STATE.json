@@ -467,7 +467,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0138 (the spec of a first-case round-0 bring-up coder call, written before the call through the new registry tool `spec.write`; rest of OD-6, part of OD-23; T-0376, main acb6801) adds runtime acceptance item (xxxiii): a `coder-driver` sub-agent of a `-p` turn session can call `mcp__hilclaw__spec_write` without a permission prompt, under whatever permission means item (vii) gets, whichever form HQ-0040 gives the call. Under D16 it is closed by your check by hand or by the runtime's own self-check, not by a driver task; nothing is blocked. Note: the unlanded T-0375 draft (HQ-0053) also numbers its first item (xxxiii); whichever lands later renumbers.",
       "askedAt": "2026-10-20T21:16:13Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6301665057"
     }
   ],
   "counters": {
