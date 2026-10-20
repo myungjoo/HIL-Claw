@@ -119,7 +119,10 @@ def read(data_root, run_id, round):
     starts with the file's path relative to ``data_root``.
     """
     path = layout.hypothesis_record(data_root, run_id, round)
-    file = path.relative_to(data_root).as_posix()
+    return _parsed(data_root, path, path.relative_to(data_root).as_posix())
+
+
+def _parsed(data_root, path, file):
     try:
         if not stat.S_ISREG(os.lstat(path).st_mode):
             raise tools.ToolFailure(
@@ -185,9 +188,9 @@ def _checked(request):
 def _read(source, request):
     run_id, round = _checked(request)
     data_root = data_root_source.obtain(source)
-    document = read(data_root, run_id, round)
-    file = layout.hypothesis_record(data_root, run_id, round)
-    file = file.relative_to(data_root).as_posix()
+    path = layout.hypothesis_record(data_root, run_id, round)
+    file = path.relative_to(data_root).as_posix()
+    document = _parsed(data_root, path, file)
     for name, wanted in (("run_id", run_id), ("round", round)):
         if document[name] != wanted:
             raise tools.ToolFailure(
