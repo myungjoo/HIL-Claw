@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0365",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:05463526-1",
+    "acquiredAt": "2026-10-20T09:21:03Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -433,7 +437,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0134 (who stores the two key record files of a first-case run, part of OD-26 and OD-23; T-0364, main 961dbfd) adds turn-session runtime acceptance items (xxvii) the main session of a -p turn session sees mcp__hilclaw__key_store and may call it under the permission means of item (vii), and (xxviii) a live Round-Manager calls key.store as the first round step of each turn that carries a round, before any other step of it, and goes on after a failure. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
       "askedAt": "2026-10-20T08:48:32Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6287157613"
     }
   ],
   "counters": {
