@@ -2,7 +2,7 @@
 id: T-0365
 title: Add the registry tool key.store of ADR-0134 decision 3, which stores the two key record files a run's instance.json states (ADR-0134 slice 1, tool half; PLAN P2-7)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-13, FR-14, FR-18, NFR-1, OD-26, OD-23, S0, S1]
 dependsOn: [T-0364]
