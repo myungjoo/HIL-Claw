@@ -2,7 +2,7 @@
 id: T-0373
 title: Fill in the Opus default of ADR-0136 in `hilclaw/instance_start.prepare` (ADR-0136 code slice 2) - when a document states no `coder_model`, the start's check puts in the full Opus name cited from F2; a given value is never replaced
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [NFR-5, FR-5, FR-13, OD-8, OD-23, "#5 A-8"]
 dependsOn: [T-0371, T-0372]
@@ -139,3 +139,18 @@ These follow CLAUDE.md 테스트 규칙.
 - Carried from T-0370, for the `orchestration/round-manager.md` slice that replaces the explicit stop (not this task): "One round at most" still says the session ends after the write that ends its round, while the closing steps now put `run.commit` after it.
 
 ## Result
+
+- **Outcome**: DONE. PR #215 squash-merged as `cf73e1c` (branch `claude/T-0373-instance-start-coder-model-default`, deleted). Code mode; context-isolated reviewer (dev-reviewer) 2 rounds: round 1 Approve with 2 Nits, both addressed; round 2 Approve with no findings. CI run 39475320243 on head `5f4bfac`: all 6 jobs green (Python 3.11/3.14, Coverage gate, Test presence, C, sh).
+- **Language**: Python, because the module exists in Python.
+- **Choices**:
+  - Constant `CODER_MODEL_DEFAULT = "claude-opus-5-5"` in `hilclaw/instance_start.py`, parallel to `N_MAX_DEFAULT`; only the start applies the default and no reader substitutes one (ADR-0136 decision 4). Its single `#:` line cites F2 (https://docs.claude.com/en/docs/claude-code/model-config, read 2026-10-21) and ADR-0136 decision 4.
+  - Fill-in: one `prepared.setdefault("coder_model", CODER_MODEL_DEFAULT)` beside the `n_max` one, after validity and scope and before the required set. `REPORT_ORDER`, both errors, every message and the signature are unchanged.
+  - Docstrings follow the `n_max` wording; the module docstring names what the module does not do (no alias, no list of offered models, no service call; how the start learns of a given value stays open, HQ-0032).
+  - Tests: the `document` helper gains `coder_model=TEST_CODER_MODEL` (`"claude-test-model-1"`), so every existing equality assertion stays true unedited.
+- **Edited existing assertions**: only `test_public_names_of_the_module`, which gains `"CODER_MODEL_DEFAULT"`. No assertion was weakened.
+- **New tests**: the constant's type and value; the fill-in per accelerator with an `instance.parse` round trip; both fill-ins together; valid given values returned unchanged (5 values); 9 invalid given values x 3 missing-member sets raising `InvalidInstanceError` naming `coder_model`; out of scope and another version fill nothing; the missing-members report never names `coder_model` or a `claude-` name; an AST scan that the constant is the only `claude-` string in the module code outside docstrings.
+- **Local verification**: `python -m pytest` 24983 passed, 727 skipped; `ruff check` and `ruff format --check` clean; `hilclaw/instance_start.py` coverage 100%.
+- **PR #186**: none of its files touched; after a rebase its prepared documents gain `coder_model` (its concern when HQ-0032 is answered).
+- **Objection window**: ADR-0136 was still inside its 7-day window with no owner comment on #5; an objection reverts this change with the record (stated in the commit body).
+- **D16**: no `claude` started; no model name tried against any service.
+- **Follow-ups**: ADR-0136 slice 3 (`hilclaw/coder_call.py`: the read, `run_file_*` kinds and `coder_model_not_stated` in `FAILURE_KINDS`, hand-over to the seam). The T-0370 carry-over for `orchestration/round-manager.md` is unchanged.
