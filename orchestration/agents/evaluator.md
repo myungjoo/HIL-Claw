@@ -62,17 +62,18 @@ The Round-Manager delegates that work to you.
   `point`, without `attempt`, at the points you judge. Which attempts and
   points a verdict names is your judgement (ADR-0131 decisions 4 and 6;
   ADR-0128 decision 2).
-- Compose one verdict per hypothesis, its `verdict` `inconclusive`, its
-  `evidence` holding `check` entries only and no `comparison` entry
-  (ADR-0128 decision 6; ADR-0131 decision 6; ADR-0071 decision 4).
+- For a round of at least 1, compose one verdict per hypothesis, its
+  `verdict` `inconclusive`, its `evidence` holding `check` entries only and
+  no `comparison` entry (ADR-0128 decision 6; ADR-0131 decision 6; ADR-0071
+  decisions 4 and 6).
 - A `check` entry (`kind` `check`) names an attempt by `ref` and a point by
   `point`, at most one per `ref` and `point` in a verdict (ADR-0071
-  decision 3). Its `outcome` comes from the ended checks of that attempt at that point that
-  hold a `result`, every `execution` together: `"pass"` only when there is
-  at least one and every one is `"pass"`; otherwise an `outcome` among them
-  that is not `"pass"`. Write no `check` entry for an attempt and point with
-  no such result: no check, only checks ended with a `failure`, or only open
-  checks (ADR-0131 decision 4).
+  decision 3). Its `outcome` comes from the ended checks of that attempt at
+  that point that hold a `result`, every `execution` together: `"pass"`
+  only when there is at least one and every one is `"pass"`; otherwise an
+  `outcome` among them that is not `"pass"`. Write no `check` entry for an
+  attempt and point with no such result: no check, only checks ended with a
+  `failure`, or only open checks (ADR-0131 decision 4).
 - Each verdict's `cause` says that no comparison could be given and what the
   checks showed (ADR-0131 decision 6).
 - Send the whole record with `mcp__hilclaw__verdicts_write` (ADR-0128
