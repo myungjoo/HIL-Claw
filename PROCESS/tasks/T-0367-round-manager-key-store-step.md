@@ -90,3 +90,4 @@ Language: no new layer-2 code. The change is Markdown in layer 1 plus a docstrin
 - `hilclaw/turn_definition.py` docstring: the "*The prompt*" bullet and the "Not done here" sentence now say a round begins with the key store and its remaining steps are later P2-1 slices. No code change, so no new test (rules ①–⑤).
 - Local checks: `pytest` (24593 passed, 725 skipped), `ruff check`, `ruff format --check` all pass. No real `claude` started.
 - No runtime acceptance item added or closed; (xxvii) and (xxviii) stay with HQ-0050.
+- PR #211; reviewer (context-isolated dev-reviewer) round 1: Approve, two optional line-length nits left as is; CI green.
