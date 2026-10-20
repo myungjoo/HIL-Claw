@@ -27,13 +27,20 @@ first-case run (ADR-0118 decisions 1 and 2).
 - Use only `mcp__hilclaw__state_read`, `mcp__hilclaw__instance_read`,
   `mcp__hilclaw__run_fresh` and `mcp__hilclaw__state_write`, your run id as
   `run_id`, to read the run's `STATE.json` and `instance.json`, tell a fresh run
-  directory and write `STATE.json`, not Bash or file tools (ADR-0124 decision 2).
-  Use only `mcp__hilclaw__run_commit`, your run id as `run_id`, to commit your
-  run's round ends in the data repository, not Bash, `git` or any other means
-  (ADR-0127 decision 2).
+  directory, and write the first `STATE.json` of entry step 2 and the
+  `"over"` of entry step 6, not Bash or file tools (ADR-0124 decision 2;
+  ADR-0135 decision 1). Use only `mcp__hilclaw__run_commit`, your run id as
+  `run_id`, to commit your run's round ends in the data repository, not Bash,
+  `git` or any other means (ADR-0127 decision 2).
 - Use only `mcp__hilclaw__key_store`, your run id as `run_id`, to store your
   run's two key record files, not Bash, file tools or any other means
   (ADR-0134 decisions 2 and 3).
+- Use only `mcp__hilclaw__case_write`, your run id as `run_id`, to write your
+  run's case of a round, not Bash, file tools or any other means (ADR-0133
+  decision 6).
+- Use only `mcp__hilclaw__round_end`, your run id as `run_id`, to make the
+  write that ends a round, not `mcp__hilclaw__state_write`, Bash, file tools
+  or any other means (ADR-0135 decisions 2 and 6).
 
 ## The entry of a turn
 
@@ -88,10 +95,39 @@ before any other step of it:
    the kind in one line and go on: do not end the session, do not call it
    again in this turn and do not store the files another way (ADR-0134 decisions 5 and 6).
 
-The remaining steps of a round (the bring-up and baseline of round 0, the
-work of later rounds) are not yet defined. After step 1, report in one line
-that the remaining steps of round `<round>` are not yet defined, and end the
-session. Write nothing further.
+The steps between step 1 and the closing steps of a round (the bring-up
+and baseline of round 0, the work of later rounds) are not yet defined.
+After step 1, report in one line that the steps between step 1 and the
+closing steps of round `<round>` are not yet defined, and end the session.
+Write nothing further. No turn goes past this stop, so no turn reaches the
+closing steps below.
 
-Later slices of the definition replace the rest of this section with the
-remaining steps of a round.
+Later slices of the definition replace this stop with the remaining steps
+of a round.
+
+### The closing steps of a round
+
+These steps follow the round's last other step and are reached only once
+later slices define the steps before them. Do them in this order, your run
+id as `run_id` and the round's number as `round`:
+
+1. **`case.write`, only in a round ≥ 1.** Call `mcp__hilclaw__case_write`.
+   Whether `with_verdicts` is `true` or `false`, go on and do not report the
+   value. If the call fails with any kind, report the kind in one line and
+   go on to `round.end`: do not end the session, do not call it again in this
+   turn and do not write the case another way. In round 0, skip this step
+   (ADR-0133 decisions 1, 4 and 5).
+2. **`round.end`.** Call `mcp__hilclaw__round_end`. Supply no total,
+   position, open step, next round or run status.
+   - Whether `over` is `true` or `false`, go on to `run.commit`.
+   - If `reported_lines` is not empty, report the line numbers in one line
+     and go on.
+   - If the call fails with any kind, report the kind in one line and end
+     the session. Do not call `mcp__hilclaw__round_end` again in this turn,
+     do not write `STATE.json` with `mcp__hilclaw__state_write` or any other
+     way, and do not call `mcp__hilclaw__run_commit` (ADR-0135 decisions 3
+     and 5).
+3. **`run.commit`.** Call `mcp__hilclaw__run_commit`. Whether `committed` is
+   `true` or `false`, do not report the value. If the call fails with any
+   kind, report the kind in one line. In either case end the session
+   (ADR-0127 decisions 3 and 5; ADR-0118 decision 2 (i)).
