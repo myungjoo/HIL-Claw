@@ -494,6 +494,7 @@ DEFAULT_SET = (
     "correctness.check",
     "hypotheses.read",
     "instance.read",
+    "key.store",
     "run.commit",
     "run.fresh",
     "state.read",

@@ -30,6 +30,7 @@ FIXED_NAMES = {
     "checks.read": "checks_read",
     "run.commit": "run_commit",
     "case.write": "case_write",
+    "key.store": "key_store",
 }
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
 INITIALIZE = {
@@ -459,7 +460,7 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 
 
 def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_tools():
-    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), checks.read (ADR-0131) and case.write (ADR-0133)."""
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), checks.read (ADR-0131), case.write (ADR-0133) and key.store (ADR-0134)."""
     held = {
         "blob_fetch": "blob.fetch",
         "blob_push": "blob.push",
@@ -468,6 +469,7 @@ def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_too
         "correctness_check": "correctness.check",
         "hypotheses_read": "hypotheses.read",
         "instance_read": "instance.read",
+        "key_store": "key.store",
         "run_commit": "run.commit",
         "run_fresh": "run.fresh",
         "state_read": "state.read",
@@ -519,6 +521,7 @@ def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
         "correctness_check",
         "hypotheses_read",
         "instance_read",
+        "key_store",
         "run_commit",
         "run_fresh",
         "state_read",
@@ -965,6 +968,7 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
             "correctness_check",
             "hypotheses_read",
             "instance_read",
+            "key_store",
             "run_commit",
             "run_fresh",
             "state_read",
@@ -1067,6 +1071,7 @@ def test_process_handshake_and_tool_list():
             "correctness_check",
             "hypotheses_read",
             "instance_read",
+            "key_store",
             "run_commit",
             "run_fresh",
             "state_read",
