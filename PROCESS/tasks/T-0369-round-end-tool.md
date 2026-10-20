@@ -173,3 +173,21 @@ The tool reads `STATE.json`, `events.ndjson` and `instance.json` as files. A tes
 
 ## Result
 
+- **Outcome**: DONE. PR #212 (`claude/T-0369-round-end-tool`), squash-merged; the merge commit is the one whose last line is `Task: T-0369`. The reviewer approved in round 1 and again in round 2 of 2. Round 1 had one non-blocking nit: `_reported` is a third copy of `run_file_tools._reported`. It was kept, because merging it into a public helper of `hilclaw/run_files.py` would touch a module outside this task. Round 1 also had two procedural notes: wait for CI, and record the re-grep here. CI was green: Python gate 3.11 and 3.14, Coverage gate, Test presence, sh gate and C gate.
+- **Language**: Python, because the registry and every reused module are Python.
+- **What landed**:
+  - New module `hilclaw/round_end_tool.py` (`touchesFiles` unchanged), the tool `round.end` (MCP `round_end`), with the six checks of ADR-0135 decision 2 in order.
+  - `run_journal.current` is not used and not widened. ③ reads `STATE.json` once by `run_file_tools.read`, and ④ calls `events.read` at the stored position and `journal.fold` from that same view.
+  - Log errors map as ADR-0019 decision 3's table does, through `run_files.reading`: `CorruptEventsError`, `PositionBeyondLogError` and fold's line-check `ValueError`/`JournalError` give `run_file_invalid`, prefixed with `runs/<run_id>/events.ndjson`; `UnsupportedVersionError` gives `run_file_unsupported`; an `OSError` goes through `read_failure`.
+  - `round_not_current` is `case_tool.KIND_ROUND_NOT_CURRENT`, `state_not_written` is `run_file_tools.KIND_STATE_NOT_WRITTEN`, and `state_member_extra` is new.
+  - `default_registry` registers the tool and its docstring names it. The tool-name lists of the five test files gain `round.end`/`round_end`; the `[:5]`/`[5:]` slices of `test_blob_tools.py` needed no change.
+- **Data root gone at ④**: `events.read` calls `_root` before anything else, so a gone data root raises `FileNotFoundError` both at position 0 and above 0. That answers `run_file_missing` at ④, never an empty tail; the docstring says so, and the tests cover positions 0 and 2.
+- **Report lines**: `journal.fold` numbers lines from `view.position + 1`, so `Report.line` counts from the file's first line. The docstring says so, and a test with a stored position of 1 checks it.
+- **Unmapped error (AC 6)**: an `InvalidStateError` of `run_state.dump` at ⑥ passes out, and `tools.call` answers it with `tool_crashed`. One test uses a `journal.fold` seam that returns a position above `keys.MAX_INTEGER`.
+- **Re-grep (AC 5)**: before the PR, `round.end`, `round_end`, `mcp__hilclaw__round_end` and `state_member_extra` (fixed strings) were searched in `hilclaw/`, `tests/`, `orchestration/` and `ARCHITECTURE/`. They occur only in ADR-0135 and its entries in `ARCHITECTURE/Requirements.md` and `ARCHITECTURE/OpenDecisionProposals.md`, which name this same tool. Elsewhere `round_end` appears only inside the two longer test function names of `tests/test_run_commit.py`, as ADR-0135 found. No name has another meaning.
+- **Tests**: `tests/test_round_end_tool.py`, 87 tests: the Walk-through rows; every kind in order for `STATE.json`, the log and `instance.json`; `round_not_current`; `state_member_extra` for two `run_status` values and unknown members; `state_not_written` through `os.replace` and `run_state_file.replace` seams; a data root removed at ③, ④ (positions 0 and 2), ⑤ and ⑥; `no_data_root`; six order pairs; negative requests; the file tree byte-identical, with no temporary file, after every refusal; the unmapped error; one source call and only the three frame files read per call.
+  - `hilclaw/round_end_tool.py` has 100 % line coverage. The full local suite passed (24707 passed, 725 skipped), and `hilclaw/` line coverage is 97 %.
+- **Size**: about 260 non-test lines changed (module 255, `tools.py` 6), most of the module the docstring and the model-facing description.
+- **Data plane**: no member, file, path, value, version, event kind or validator changed.
+- **D16**: no `claude` was started and no stub of it was used. The runtime acceptance items of this slice are ADR-0135's (xxix) and (xxx) (HQ-0051); none is new.
+- **Follow-ups**: ADR-0135 slice 2 (the `round.end` step and tool sentence in `orchestration/round-manager.md`) stands. No new follow-up.

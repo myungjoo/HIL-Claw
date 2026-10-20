@@ -44,6 +44,7 @@ ACCEPTED = {
     "hypotheses.read": {"run_id": "r1", "round": 1},
     "instance.read": {"run_id": "r1"},
     "key.store": {"run_id": "r1"},
+    "round.end": {"run_id": "r1", "round": 0},
     "run.commit": {"run_id": "r1"},
     "run.fresh": {"run_id": "r1"},
     "state.read": {"run_id": "r1"},
