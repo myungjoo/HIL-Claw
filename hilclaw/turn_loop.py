@@ -27,18 +27,25 @@ here.
   with ``--mcp-config`` together with ``--strict-mcp-config``, and no
   ``.mcp.json`` is used (decision 6).
 
+**Decided by ADR-0139** and only applied here: every turn session gets the
+permission options of decisions 2-4, 6 and 7, built by
+:func:`hilclaw.turn_permissions.options` from the session directory after the
+definition was put into it.
+
 **The command line** is :data:`PROGRAM`, :data:`OPT_PRINT` with the caller's
 prompt, :data:`OPT_MCP_CONFIG` with :data:`CONFIG_FILE` and
-:data:`OPT_STRICT_MCP_CONFIG`, and nothing else. The program is looked up on
-the ``PATH`` at every turn. The configuration file is named by its file name
-alone, so no path is in an argument. No permission, model, turn-limit,
-setting-source or bypass option is passed: how a turn session is given its
-permissions is not decided (ADR-0118 decision 4, "Workspace trust"). The
-session's working directory is the session directory, its standard input is
-closed, and it gets the environment of the calling process unchanged; its
-standard output and standard error are those of the calling process and are
-not read here. The wait has no time limit of its own: a limit on a turn is
-OD-19's or OD-14's.
+:data:`OPT_STRICT_MCP_CONFIG`, followed by the arguments that
+:func:`hilclaw.turn_permissions.options` returns for the session directory.
+The program is looked up on the ``PATH`` at every turn. The configuration
+file is named by its file name alone, so no path is in an argument. The
+options passed besides are ``--setting-sources project``, ``--tools`` with
+the built-in set, ``--permission-mode dontAsk`` and ``--allowedTools`` with
+the pre-approved list; no model, turn-limit or bypass option is passed
+(ADR-0139 decision 10). The session's working directory is the session
+directory, its standard input is closed, and it gets the environment of the
+calling process unchanged; its standard output and standard error are those
+of the calling process and are not read here. The wait has no time limit of
+its own: a limit on a turn is OD-19's or OD-14's.
 
 **Choices of this module** (ADR-0118 leaves them to the code):
 
@@ -79,6 +86,9 @@ OD-19's or OD-14's.
 turn; :class:`RuntimeError` when the interpreter does not know its own path;
 :class:`TypeError` for an answer of ``further_turn`` that is not a ``bool``;
 :class:`ValueError` when ``put_definition`` made :data:`CONFIG_FILE`;
+:class:`ValueError` with a fixed text when the definition put into the
+session directory holds an agent file that
+:func:`hilclaw.turn_permissions.options` refuses, before the process starts;
 :class:`ClaudeNotFoundError` when no ``claude`` is found at a turn; and,
 unchanged, what ``further_turn``, ``put_definition``, making the directory,
 writing the file or starting the process raise. Whatever is raised after a
@@ -88,7 +98,7 @@ the turns already run are lost to the caller then.
 Not done here: no lock against two loops on one run (#4 §2e, OD-17); no
 command-line entry, which is :mod:`hilclaw.turn_start`, the caller of this
 module; no layout of the definition, which is the caller's
-``put_definition``; no permissions; no round-0 step; no self-check, which
+``put_definition``; no round-0 step; no self-check, which
 for a first-case run the entry runs before the first turn (ADR-0125); no
 policy after a failed turn, only the exit status passed on to
 ``further_turn`` (for a first-case run that policy is the entry's, by
@@ -99,7 +109,9 @@ session loads the session directory's files and none of this repository;
 (iv) ``--mcp-config`` with ``--strict-mcp-config`` gives the ``hilclaw``
 server to every turn and the server started from the session directory finds
 the package; (v) a ``-p`` turn session exits after its last reply, so the wait
-ends; (vi) the exit status tells a session that ended well from a failed one.
+ends; (vi) the exit status tells a session that ended well from a failed one;
+and (ADR-0139 Consequences) (xxxiv)-(xl), listed in
+:mod:`hilclaw.turn_permissions`.
 """
 
 import json
@@ -114,7 +126,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from hilclaw import checkout_boundary as _checkout_boundary
-from hilclaw import config, mcp_front
+from hilclaw import config, mcp_front, turn_permissions
 
 PROGRAM = "claude"
 OPT_PRINT = "-p"
@@ -241,6 +253,7 @@ def _turn(directory, put_definition, prompt, text):
         raise ValueError(_CONFIG_TAKEN)
     with open(place, "x", encoding="utf-8") as file:
         file.write(text)
+    permissions = turn_permissions.options(directory)
     found = shutil.which(PROGRAM)
     if found is None:
         raise ClaudeNotFoundError(f"program not found or not executable: {PROGRAM!r}")
@@ -251,6 +264,7 @@ def _turn(directory, put_definition, prompt, text):
         OPT_MCP_CONFIG,
         CONFIG_FILE,
         OPT_STRICT_MCP_CONFIG,
+        *permissions,
     )
     done = subprocess.run(command, cwd=directory, stdin=subprocess.DEVNULL, check=False)
     return done.returncode
