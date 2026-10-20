@@ -351,6 +351,6 @@ def _reported(error, data_root, key_dir=None):
     if isinstance(error, run_files.NOT_THERE):
         if not run_files.data_root_is_there(data_root):
             reported += ": the data root is not an existing directory"
-        elif key_dir is not None and not key_dir.is_dir():
+        elif key_dir is not None and not os.path.isdir(key_dir):
             reported += ": the key directory is not an existing directory"
     return reported

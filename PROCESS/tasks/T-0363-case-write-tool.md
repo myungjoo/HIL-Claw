@@ -164,3 +164,30 @@ Until an OD-26 record exists, nothing in a real run creates the key directory an
 - The encoding edge of AC 5, if the executor confirms it can occur: a point for a later record. It is not decided here.
 
 ## Result
+
+- **Outcome**: DONE. PR #208 (`claude/T-0363-case-write-tool`), squash-merged; the merge commit is the one whose last line is `Task: T-0363`. The reviewer approved in round 3 of 3. CI was green: Python gate 3.11/3.14, Coverage gate, Test presence, sh gate and C gate.
+- **Language**: Python, because the registry and every reused module are Python.
+- **What landed**:
+  - New module `hilclaw/case_tool.py`, the tool `case.write` (MCP `case_write`). It runs the nine checks of ADR-0133 decision 3 in order, and its kinds carry the record's exact strings.
+  - `hilclaw/run_file_tools.py`: the `STATE.json` / `instance.json` read is factored into the public `read(data_root, run_id, name)`, so `state.read` and `instance.read` share it with `case.write`. Their answers and messages are unchanged, and their existing tests pass unchanged.
+  - `default_registry` registers the tool, and its docstring names it.
+  - `hilclaw/cases.py` and `hilclaw/cases_file.py`: only their docstrings change. The promotion sentences now point to `case.write` / ADR-0133, and the open points stay named: `best.json`/`technique_stats.json` (OD-20, OD-7), OD-29, OD-25, NFR-1, OD-17 beyond ADR-0133 decision 5, OD-26, and runs outside ADR-0120 decision 1.
+  - The `run_id`/`round` comparison of `hypotheses_tool._read` is duplicated (`case_tool._same`) and not factored out, so `hilclaw/hypotheses_tool.py` is untouched (AC 7, 5-file cap).
+- **Messages beyond the AC minimum**:
+  - `key_not_stored` from a lookup miss names the key directory (`db/<hw>/<op>`), because `key_records.lookup` does not say which record file is missing.
+  - `case_not_written` adds "the key directory is not an existing directory" when the key directory vanished after ⑤ (review round 1).
+- **Kind re-grep (AC 4)**: searched `hilclaw/`, `tests/` and `orchestration/` before the PR. `round_not_current`, `key_not_stored`, `key_record_invalid`, `key_record_unreadable`, `verdicts_invalid`, `verdicts_unsupported`, `verdicts_unreadable`, `case_exists` and `case_not_written` occur only in `hilclaw/case_tool.py` and `tests/test_case_tool.py`. The one other hit is `case_exists`, which the new `hilclaw/cases_file.py` docstring sentence uses with the same meaning. No string was in use with another meaning.
+- **Files outside `touchesFiles`** (tests only):
+  - `tests/test_blob_tools.py` and `tests/test_check_definition.py` pin the full default-registry name list, so they had to change.
+  - The new public `run_file_tools.read` is tested in `tests/test_case_tool.py`.
+- **Size**:
+  - Non-test change is about 430 lines, over the 300 LOC cap and the 260 estimate. `hilclaw/case_tool.py` alone is about 355 lines, most of it the module docstring, the `#:` lines and the model-facing description that AC 1 requires.
+  - It was not split. The tool, its registration and its tests form one unit, and a partial tool cannot be registered (DRIVER §5).
+- **Tests**:
+  - `tests/test_case_tool.py` has 86 tests. They cover every kind in order, the order pairs of AC 10 plus two more, the negative requests, and the nothing-created and byte-identical properties. They also cover no `events.ndjson`, the encoding edge (`1e999` and a lone `\ud800` in an undefined top-level member of `hypotheses.json` give `tool_crashed` through `tools.call`, with nothing written), and an unmapped `InvalidCaseError`.
+  - `hilclaw/case_tool.py` and `hilclaw/run_file_tools.py` have 100 % line coverage. The full suite (24509 passed) gives 97 % total line coverage for `hilclaw/`.
+  - No `claude` and no stub of it are used.
+- **AC 5 finding**: the encoding edge does occur. `hypotheses_file.parse` and `verdicts_file.parse` accept a float-overflowing number or a lone-surrogate escape in an undefined top-level member, and `cases.build` / `cases.validate` pass it on. The tool then answers `tool_crashed` and writes nothing. No `InvalidCaseError` not chained to a `MismatchError`, and no `cases_file` refusal after a successful build, was found reachable; both are left unmapped.
+- **Follow-ups**:
+  - The three Follow-ups of this task stand: ADR-0133 slice 2 in `orchestration/round-manager.md`; an OD-26 record for the key directory, until which every real `case.write` answers `key_not_stored`; and the encoding edge as an open point for a later record, now confirmed to occur.
+  - No new follow-up.
