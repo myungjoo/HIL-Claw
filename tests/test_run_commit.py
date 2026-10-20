@@ -5,7 +5,16 @@ import subprocess
 
 import pytest
 
-from hilclaw import events, keys, layout, mcp_front, run_commit, run_state, tools
+from hilclaw import (
+    events,
+    key_records,
+    keys,
+    layout,
+    mcp_front,
+    run_commit,
+    run_state,
+    tools,
+)
 from hilclaw.run_commit import commit, definition, owed_rounds
 
 RUN = "run-a"
@@ -46,6 +55,16 @@ OP = {
 }
 HW_KEY = keys.hw_profile_key(HW).name
 OP_KEY = keys.op_signature_key(OP).name
+HW_RECORD = layout.hw_profile_record(pathlib.Path(), HW_KEY).as_posix()
+OP_RECORD = layout.op_signature_file(
+    pathlib.Path(), HW_KEY, OP_KEY, "op_signature.json"
+).as_posix()
+OTHER_HW_KEY = keys.hw_profile_key({**HW, "revision": "rev 2"}).name
+RUN_FILES = {
+    f"runs/{RUN}/instance.json",
+    f"runs/{RUN}/STATE.json",
+    f"runs/{RUN}/events.ndjson",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -151,6 +170,12 @@ def a_run(root, round=0, run_id=RUN, op=True):
     write_state(root, round, run_id)
     write_events(root, b'{"line": 1}\n', run_id)
     return root
+
+
+def store_keys(root, op=True):
+    key_records.store_hw_profile(root, HW)
+    if op:
+        key_records.store_op_signature(root, HW_KEY, OP)
 
 
 def commit_by_hand(root, *paths):
@@ -370,6 +395,8 @@ def test_temporary_ignored_blob_and_foreign_paths_stay_out_and_unchanged(root):
     write(root, "blobs/loose.bin", b"\x00loose")
     write_state(root, 1, OTHER)
     write(root, f"db/{HW_KEY}/{OP_KEY}/best.json", b'{"best": 1}\n')
+    write(root, f"db/{OTHER_HW_KEY}/hw_profile.json", b'{"other": 1}\n')
+    write(root, f"db/{OTHER_HW_KEY}/{OP_KEY}/op_signature.json", b'{"other": 2}\n')
     write(root, case(5), b'{"case": 5}\n')
     write(root, "notes.txt", b"new\n")
     git(root, "add", "notes.txt")
@@ -396,6 +423,8 @@ def test_temporary_ignored_blob_and_foreign_paths_stay_out_and_unchanged(root):
             f" M db/{HW_KEY}/{OP_KEY}/best.json",
             f" M runs/{OTHER}/STATE.json",
             f"?? {case(5)}",
+            f"?? db/{OTHER_HW_KEY}/hw_profile.json",
+            f"?? db/{OTHER_HW_KEY}/{OP_KEY}/op_signature.json",
             "?? blobs/loose.bin",
             "?? loose.txt",
         ]
@@ -424,6 +453,164 @@ def test_an_entry_staged_below_the_run_is_committed_as_the_working_tree_holds_it
     assert commit(root, RUN) is True
     assert blob(root, f"runs/{RUN}/rounds/0000/a.json") == b"working\n"
     assert git(root, "status", "--porcelain").strip() == b""
+
+
+# The key record files (ADR-0134 decision 7)
+
+
+def test_the_round_zero_commit_of_a_fresh_key_holds_both_record_files(root):
+    a_run(root, 0)
+    store_keys(root)
+    write_state(root, 1)
+    assert commit(root, RUN) is True
+    assert changed(root) == RUN_FILES | {HW_RECORD, OP_RECORD}
+    assert blob(root, HW_RECORD) == (root / HW_RECORD).read_bytes()
+    assert git(root, "status", "--porcelain").strip() == b""
+
+
+def test_record_files_created_after_the_last_commit_join_the_next_one(root):
+    a_run(root, 0)
+    write_state(root, 1)
+    assert commit(root, RUN) is True
+    assert changed(root) == RUN_FILES
+    store_keys(root)
+    write_state(root, 2)
+    write(root, case(1), b'{"case": 1}\n')
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/STATE.json", case(1), HW_RECORD, OP_RECORD}
+    assert git(root, "status", "--porcelain").strip() == b""
+
+
+def test_each_record_file_is_taken_by_the_first_commit_after_it_exists(root):
+    a_run(root, 0)
+    store_keys(root, op=False)
+    write_state(root, 1)
+    assert commit(root, RUN) is True
+    assert changed(root) == RUN_FILES | {HW_RECORD}
+    key_records.store_op_signature(root, HW_KEY, OP)
+    write_state(root, 2)
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/STATE.json", OP_RECORD}
+    assert git(root, "status", "--porcelain").strip() == b""
+
+
+def test_record_files_another_run_of_the_key_created_join_this_runs_commit(root):
+    a_run(root, 0, OTHER)
+    store_keys(root)
+    a_run(root, 1)
+    assert commit(root, RUN) is True
+    assert changed(root) == RUN_FILES | {HW_RECORD, OP_RECORD}
+    lines = git(root, "status", "--porcelain").decode().splitlines()
+    assert lines == [f"?? runs/{OTHER}/"]
+
+
+def test_a_record_file_head_holds_is_never_taken_in_again(root):
+    a_run(root, 0)
+    store_keys(root)
+    write_state(root, 1)
+    assert commit(root, RUN) is True
+    stored = blob(root, HW_RECORD)
+    write(root, HW_RECORD, b'{"changed": "by hand"}\n')
+    write_state(root, 2)
+    write(root, case(1), b'{"case": 1}\n')
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/STATE.json", case(1)}
+    assert blob(root, HW_RECORD) == stored
+    assert staged(root) == set()
+    lines = git(root, "status", "--porcelain").decode().splitlines()
+    assert lines == [f" M {HW_RECORD}"]
+
+
+def test_with_nothing_owed_no_record_file_is_staged_or_committed(root):
+    a_run(root, 1)
+    commit_by_hand(root, "runs")
+    store_keys(root)
+    before = snapshot(root)
+    assert owed_rounds(root, RUN) == range(1, 1)
+    assert commit(root, RUN) is False
+    assert snapshot(root) == before
+    assert staged(root) == set()
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        None,
+        b"{}",
+        b'{"schema_version": 9, "hw_profile": {}}',
+        instance_document(op=False),
+    ],
+)
+def test_an_instance_that_gives_no_key_takes_in_no_record_file(root, content):
+    write_state(root, 1)
+    write_events(root, b'{"line": 1}\n')
+    if content is not None:
+        write(root, f"runs/{RUN}/instance.json", content)
+    write(root, HW_RECORD, b'{"hw": 1}\n')
+    write(root, OP_RECORD, b'{"op": 1}\n')
+    assert commit(root, RUN) is True
+    assert f"runs/{RUN}/STATE.json" in changed(root)
+    assert not changed(root) & {HW_RECORD, OP_RECORD}
+    lines = git(root, "status", "--porcelain", "-uall").decode().splitlines()
+    assert sorted(lines) == sorted([f"?? {HW_RECORD}", f"?? {OP_RECORD}"])
+
+
+def test_the_refusal_without_a_key_stands_with_record_files_present(root):
+    a_run(root, 1, op=False)
+    assert commit(root, RUN) is True
+    write(root, HW_RECORD, b'{"hw": 1}\n')
+    write(root, OP_RECORD, b'{"op": 1}\n')
+    write_state(root, 2)
+    write_events(root, TORN)
+    refused_unchanged(root, run_commit.NoKeyDirectoryError, "no op_signature")
+    assert staged(root) == set()
+
+
+def test_a_record_path_that_is_a_directory_is_not_taken_in(root):
+    a_run(root, 0)
+    write(root, f"{HW_RECORD}/inner", b"x")
+    write(root, f"{OP_RECORD}/inner", b"y")
+    write_state(root, 1)
+    assert commit(root, RUN) is True
+    assert changed(root) == RUN_FILES
+
+
+def test_a_record_path_that_is_a_symbolic_link_is_not_taken_in(root):
+    a_run(root, 0)
+    store_keys(root, op=False)
+    target = write(root, "elsewhere.json", b"{}\n")
+    linked = root / OP_RECORD
+    linked.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.symlink(target, linked)
+    except (OSError, NotImplementedError):
+        pytest.skip("no symbolic link can be created here")
+    write_state(root, 1)
+    assert commit(root, RUN) is True
+    assert changed(root) == RUN_FILES | {HW_RECORD}
+    assert linked.is_symlink()
+
+
+def test_an_ignored_record_path_is_not_taken_in(root):
+    (root / ".gitignore").write_bytes(b"blobs/sha256/\n*.tmp\nhw_profile.json\n")
+    commit_by_hand(root, ".gitignore")
+    a_run(root, 0)
+    store_keys(root)
+    write_state(root, 1)
+    assert commit(root, RUN) is True
+    assert changed(root) == RUN_FILES | {OP_RECORD}
+    assert (root / HW_RECORD).is_file()
+
+
+def test_the_content_of_a_record_file_is_not_read(root):
+    a_run(root, 0)
+    write(root, HW_RECORD, b"\x00not a record{")
+    write(root, OP_RECORD, b"")
+    write_state(root, 1)
+    assert commit(root, RUN) is True
+    assert changed(root) == RUN_FILES | {HW_RECORD, OP_RECORD}
+    assert blob(root, HW_RECORD) == b"\x00not a record{"
+    assert blob(root, OP_RECORD) == b""
 
 
 # Failures: no_repository

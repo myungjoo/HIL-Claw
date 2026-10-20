@@ -9,10 +9,17 @@ decision 4). Only ``round`` is read for this; no commit message or author is.
 commit; :func:`definition` is the registry tool ``run.commit`` over it.
 
 The commit holds, against ``HEAD``, every new or changed file below
-``runs/<run_id>/`` and the existing case files of the rounds *H* to *W* - 1
-from round 1 (ADR-0072 decisions 1 and 3), and nothing else. A path whose name
-ends with ``.tmp``, a path the repository ignores and anything below
-``blobs/`` is never taken in; no content is inspected.
+``runs/<run_id>/``, the existing case files of the rounds *H* to *W* - 1 from
+round 1 (ADR-0072 decisions 1 and 3), and each of the two key record files
+``db/<hw_profile_key>/hw_profile.json`` and
+``db/<hw_profile_key>/<op_signature>/op_signature.json`` of the keys the run's
+``instance.json`` states that is a regular file in the working tree and that
+``HEAD`` does not hold (ADR-0134 decision 7), and nothing else. A record file
+``HEAD`` holds is never taken in again, whatever the working tree holds, and
+an ``instance.json`` that gives no key gives no record file and refuses
+nothing on this account; the record files are looked for only when a commit
+is made. A path whose name ends with ``.tmp``, a path the repository ignores
+and anything below ``blobs/`` is never taken in; no content is inspected.
 
 The module runs the ``git`` program of the machine (:data:`GIT`) with an
 argument list and no shell, with the variables that point ``git`` at another
@@ -57,6 +64,12 @@ _LOCATING = frozenset(
     }
 )
 _REGULAR_MODES = ("100644", "100755")
+_NO_INSTANCE = (
+    instance.MissingInstanceError,
+    instance.InvalidInstanceError,
+    instance.UnsupportedVersionError,
+    OSError,
+)
 _FROM_STDIN = ("--pathspec-from-file=-", "--pathspec-file-nul")
 _RUN_ID_SCHEMA = {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"}
 _DESCRIPTION = (
@@ -64,8 +77,10 @@ _DESCRIPTION = (
     "the run's STATE.json in the data repository's working tree is beyond the "
     "round of the STATE.json of the last commit (HEAD), a torn tail of "
     "events.ndjson is removed and one commit is made that holds every new or "
-    "changed file below runs/<run_id>/ and the case files of the rounds that "
-    "ended. Files named *.tmp, ignored paths and anything below blobs/ are never "
+    "changed file below runs/<run_id>/, the case files of the rounds that "
+    "ended, and the run's two key record files (hw_profile.json and "
+    "op_signature.json) when they exist and the last commit does not hold them. "
+    "Files named *.tmp, ignored paths and anything below blobs/ are never "
     "committed, and nothing else of the working tree or the index changes. When "
     "nothing is owed, nothing is written, so the call is safe at every entry. "
     'The result is {"committed": true or false}. The data root is never part of '
@@ -181,6 +196,7 @@ def commit(data_root, run_id):
         )
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as scratch:
         index = os.path.join(scratch, "index")
+        records = _records(found.keys or _stated_keys(data_root, run_id))
 
         def step(*args, input=None):
             done = _git(data_root, *args, index=index, input=input)
@@ -202,6 +218,12 @@ def commit(data_root, run_id):
             for path in set(_paths(listed))
             if not path.endswith((".tmp", "/")) and _is_file(data_root, path)
         )
+        if records:
+            new = step(
+                "ls-files", "-z", "--others", "--exclude-standard", "--", *records
+            )
+            taken = (p for p in _paths(new) if p in records)
+            paths = sorted({*paths, *(p for p in taken if _is_regular(data_root, p))})
         try:
             events.remove_torn_tail(data_root, run_id)
         except events.CorruptEventsError as e:
@@ -401,18 +423,35 @@ def _head_round(data_root, prefix, held):
 def _keys(data_root, run_id, prefix):
     try:
         record = instance.read(data_root, run_id)
-    except (
-        instance.MissingInstanceError,
-        instance.InvalidInstanceError,
-        instance.UnsupportedVersionError,
-        OSError,
-    ) as e:
+    except _NO_INSTANCE as e:
         raise NoKeyDirectoryError(f"no key directory for the case files: {e}") from e
     if record.op_signature is None:
         raise NoKeyDirectoryError(
             f"no key directory for the case files: {prefix}instance.json states no op_signature"
         )
     return record.hw_profile_key, record.op_signature.key
+
+
+def _stated_keys(data_root, run_id):
+    try:
+        record = instance.read(data_root, run_id)
+    except _NO_INSTANCE:
+        return None
+    if record.op_signature is None:
+        return None
+    return record.hw_profile_key, record.op_signature.key
+
+
+def _records(keys):
+    if keys is None:
+        return ()
+    hw_profile_key, op_signature = keys
+    return (
+        layout.hw_profile_record(Path(), hw_profile_key).as_posix(),
+        layout.op_signature_file(
+            Path(), hw_profile_key, op_signature, "op_signature.json"
+        ).as_posix(),
+    )
 
 
 def _take_lock(name):
@@ -462,5 +501,12 @@ def _entries(output):
 def _is_file(data_root, path):
     try:
         return not stat.S_ISDIR(os.lstat(Path(data_root) / path).st_mode)
+    except OSError:
+        return False
+
+
+def _is_regular(data_root, path):
+    try:
+        return stat.S_ISREG(os.lstat(Path(data_root) / path).st_mode)
     except OSError:
         return False

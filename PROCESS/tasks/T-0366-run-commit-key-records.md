@@ -92,3 +92,10 @@ The change touches landed behaviour that `tests/test_run_commit.py` pins. It doe
 - ADR-0134 slice 2: the `key.store` step in `orchestration/round-manager.md`, with P2-1.
 
 ## Result
+
+- **Outcome**: DONE. PR #210 (`claude/T-0366-run-commit-key-records`), squash-merged by the executor after reviewer Approve and CI green.
+- **Review**: 1 round (dev-reviewer, Approve; https://github.com/myungjoo/HIL-Claw/pull/210#issuecomment-6288834354). Two nits left as they are, as the reviewer allowed: `_is_regular`'s `OSError` branch is reached only when a listed path vanishes before `lstat`, and `_stated_keys` mirrors `_keys` because the two fail differently (none vs. `NoKeyDirectoryError`).
+- **Change** (`hilclaw/run_commit.py`): when a commit is owed, the two record paths are formed through `layout` from the keys of `instance.json` (the keys `_assess` already read, else a tolerant read that gives none for a missing, invalid, unsupported or op_signature-less file) and listed with `git ls-files --others --exclude-standard` against the scratch index read from `HEAD`; an exact match that is a regular file (`lstat`) joins the commit's paths and their index entries. A path `HEAD` holds is never listed, so never taken in again; ignored paths stay out; no content is read. `owed_rounds`, the refusals (including `NoKeyDirectoryError`, whose exception tuple is now the shared `_NO_INSTANCE`), the kinds, `MESSAGE` and the index handling are unchanged. Module docstring and `_DESCRIPTION` name the two files.
+- **Tests** (`tests/test_run_commit.py`): 12 new tests (15 cases) for every item of AC 6; the symbolic-link case skips where none can be made (it skipped on the Windows development machine and runs on Linux CI). The existing foreign-paths test was extended with another key's two record files, which stay untracked; no existing assertion pinned the old "nothing else" behaviour for record files, so none changed.
+- **Language**: Python, because the module and its tests are Python.
+- **Follow-ups**: none new (ADR-0134 slice 2 stays with P2-1, as the task says).
