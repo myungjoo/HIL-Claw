@@ -701,6 +701,94 @@ def test_the_first_failing_step_line_in_line_order_decides(root):
     assert failure(root, request(1)).kind == tools.KIND_RUN_FILE_INVALID
 
 
+# The shared read: log_lines and checks_of
+
+
+def test_the_shared_names_are_the_log_and_the_steps_of_the_points():
+    assert checks_tool.LOG == "events.ndjson"
+    assert f"runs/{RUN}/{checks_tool.LOG}" == LOG
+    assert checks_tool.STEP_OF == {"sim": SIM, "board": BOARD}
+
+
+def test_log_lines_returns_every_complete_line_in_order(root):
+    check(root, result=PASS)
+    raw(root, b'{"torn')
+    lines = checks_tool.log_lines(root, RUN)
+    assert [event["kind"] for event in lines] == [
+        journal.STEP_STARTED,
+        journal.STEP_ENDED,
+    ]
+    assert lines == events.read(root, RUN).events
+
+
+@pytest.mark.parametrize("make", [False, True], ids=["no run", "run directory"])
+def test_log_lines_of_a_missing_log_is_empty(root, make):
+    if make:
+        layout.run_file(root, RUN, "events.ndjson").parent.mkdir(parents=True)
+    assert checks_tool.log_lines(root, RUN) == []
+
+
+def test_log_lines_answers_a_damaged_line_with_run_file_invalid(root):
+    check(root, result=PASS)
+    raw(root, b"[]\n")
+    with pytest.raises(ToolFailure) as refused:
+        checks_tool.log_lines(root, RUN)
+    assert refused.value.kind == tools.KIND_RUN_FILE_INVALID
+    assert refused.value.message.startswith(f"{LOG}: line 3: ")
+
+
+def test_log_lines_answers_a_vanished_data_root_with_run_file_missing(tmp_path):
+    with pytest.raises(ToolFailure) as refused:
+        checks_tool.log_lines(tmp_path / "gone", RUN)
+    assert refused.value.kind == tools.KIND_RUN_FILE_MISSING
+
+
+def test_checks_of_groups_the_admitted_checks_by_step_and_attempt(root):
+    check(root, 1, result=FAIL)
+    start(root, 2)
+    check(root, step=SIM, result=PASS)
+    check(root, attempt=2, failure=UNSTARTED)
+    check(root, candidate=2, result=PASS)
+    events.append(root, RUN, journal.STEP_STARTED, {"step": "build", "execution": 1})
+    asked = []
+
+    def inside(key):
+        asked.append(key)
+        return key[2] == 1
+
+    found = checks_tool.checks_of(RUN, checks_tool.log_lines(root, RUN), inside)
+    assert found == {
+        (BOARD, 1, 1, 1): [ended(1, result=FAIL), {"execution": 2, "state": "open"}],
+        (SIM, 1, 1, 1): [ended(1, result=PASS)],
+        (BOARD, 1, 1, 2): [ended(1, failure=UNSTARTED)],
+    }
+    assert (BOARD, 1, 2, 1) in asked
+    assert all(key[3] is not None for key in asked)
+
+
+def test_checks_of_refuses_only_an_admitted_bad_result(root):
+    check(root, attempt=2, result={"no": "outcome"})
+    check(root, result=PASS)
+    lines = checks_tool.log_lines(root, RUN)
+    found = checks_tool.checks_of(RUN, lines, lambda key: key[3] == 1)
+    assert found == {(BOARD, 1, 1, 1): [ended(result=PASS)]}
+    with pytest.raises(ToolFailure) as refused:
+        checks_tool.checks_of(RUN, lines, lambda key: True)
+    assert refused.value.kind == checks_tool.KIND_CHECK_RESULT_INVALID
+    assert refused.value.message == (
+        f"{LOG}: line 2: data.result: lacks the member outcome"
+    )
+
+
+def test_checks_of_refuses_a_broken_step_line_whatever_it_admits(root):
+    unspent(root, 3)
+    lines = checks_tool.log_lines(root, RUN)
+    with pytest.raises(ToolFailure) as refused:
+        checks_tool.checks_of(RUN, lines, lambda key: False)
+    assert refused.value.kind == tools.KIND_RUN_FILE_INVALID
+    assert refused.value.message == f"{LOG}: line 1: data: lacks the member spend"
+
+
 # The registry
 
 
