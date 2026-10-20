@@ -18,6 +18,7 @@ EVALUATOR_TOOLS = {
     "mcp__hilclaw__run_fresh",
     "mcp__hilclaw__verdicts_write",
     "mcp__hilclaw__hypotheses_read",
+    "mcp__hilclaw__checks_read",
 }
 
 UNKNOWN = "the definition holds an entry that is not in the layout"
