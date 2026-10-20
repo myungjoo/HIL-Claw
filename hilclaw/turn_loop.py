@@ -44,8 +44,8 @@ the pre-approved list; no model, turn-limit or bypass option is passed
 (ADR-0139 decision 10). The session's working directory is the session
 directory, its standard input is closed, and it gets the environment of the
 calling process unchanged; its standard output and standard error are those
-of the calling process and are not read here. The wait has no time limit of its own: a limit on a turn is
-OD-19's or OD-14's.
+of the calling process and are not read here. The wait has no time limit of
+its own: a limit on a turn is OD-19's or OD-14's.
 
 **Choices of this module** (ADR-0118 leaves them to the code):
 
