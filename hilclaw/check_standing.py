@@ -43,7 +43,9 @@ Choices that are this module's own and no rule of the record:
 
 What the module does not do: it decides nothing of the second part of OD-18
 sub-question ⑭ (what keeps a caller from asking for a further check). It
-appends no line, reads no file and names no consumer. It merges no two
+appends no line and reads no file. Its consumer is the tool ``checks.read``
+(:mod:`hilclaw.checks_tool`, ADR-0131 decision 3), which folds the standing
+into its read of a run's log. It merges no two
 points, judges no result again and sorts no result by cause. It does not
 check that the run is one of the first case or one whose hw_profile names the
 mock: that scope is the caller's (decision 1).

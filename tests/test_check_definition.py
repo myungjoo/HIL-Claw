@@ -125,6 +125,7 @@ def test_the_default_registry_holds_the_definition_of_the_tool():
     assert registry.names() == (
         "blob.fetch",
         "blob.push",
+        "checks.read",
         TOOL,
         "hypotheses.read",
         "instance.read",
@@ -382,6 +383,7 @@ def test_building_the_default_registry_calls_no_party(parties):
     assert registry.names() == (
         "blob.fetch",
         "blob.push",
+        "checks.read",
         TOOL,
         "hypotheses.read",
         "instance.read",
@@ -421,6 +423,7 @@ def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
     assert [tool["name"] for tool in listed] == [
         "blob_fetch",
         "blob_push",
+        "checks_read",
         "correctness_check",
         "hypotheses_read",
         "instance_read",
@@ -430,8 +433,8 @@ def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
         "state_write",
         "verdicts_write",
     ]
-    assert listed[2]["description"] == DESCRIPTION
-    assert listed[2]["inputSchema"] == SCHEMA
+    assert listed[3]["description"] == DESCRIPTION
+    assert listed[3]["inputSchema"] == SCHEMA
 
 
 def test_a_call_about_a_run_at_the_mock_passes(root, parties):
@@ -655,8 +658,9 @@ def test_building_the_default_registry_imports_no_numpy(tmp_path):
 def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
     answers, loaded = heavy_modules_after(LIST_CHILD, tmp_path)
     assert answers == [
-        "0 blob_fetch blob_push correctness_check hypotheses_read instance_read"
-        + " run_commit run_fresh state_read state_write verdicts_write"
+        "0 blob_fetch blob_push checks_read correctness_check hypotheses_read"
+        + " instance_read run_commit run_fresh state_read state_write"
+        + " verdicts_write"
     ]
     assert loaded == ""
 

@@ -31,6 +31,7 @@ class CountingSource:
 ACCEPTED = {
     "blob.fetch": {"sha256": "0123456789abcdef" * 4},
     "blob.push": {"sha256": "0123456789abcdef" * 4},
+    "checks.read": {"run_id": "r1", "round": 0, "candidate": 2, "point": "board"},
     "correctness.check": {
         "run_id": "r1",
         "round": 3,
