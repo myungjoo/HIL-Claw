@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0371",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:09f2757b-2",
-    "acquiredAt": "2026-10-20T16:39:03Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -448,18 +444,26 @@
       "question": "ADR-0135 (the write that ends a first-case round, part of OD-23; T-0368, main 0d5a3ba) adds turn-session runtime acceptance items (xxix) the main session of a -p turn session sees mcp__hilclaw__round_end and may call it under the means item (vii) gets, and (xxx) a live Round-Manager calls round.end once per round, as the round's last write before run.commit, and after a failure reports the kind and ends the session without another write. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
       "askedAt": "2026-10-20T12:04:52Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6290432080"
+    },
+    {
+      "id": "HQ-0052",
+      "taskId": "T-0371",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0136 (the model of a first-case coder call, owner answer HQ-0041 part 1; part of OD-8 and OD-23; T-0371, main 4423c35) adds runtime acceptance items (xxxi) the coder's `claude -p` inside the container, given the recorded full model name (`coder_model`, default `claude-opus-5-5`), runs on that model under the user's Max plan, and the model it actually ran on (after any remapping or content-based fallback) can be read back, e.g. from `modelUsage`; and (xxxii) what the coder's `claude -p` does when the recorded full name is no longer offered under the plan or is remapped: exits non-zero, runs another model, or warns, and whether its output tells which. Under D16 they are closed by your check by hand or by the runtime's own self-check, not by a driver task; nothing is blocked.",
+      "askedAt": "2026-10-20T16:53:14Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 385,
-    "tasksDone": 358,
+    "iterations": 386,
+    "tasksDone": 359,
     "tasksBlocked": 27,
-    "reviewRoundsTotal": 1284
+    "reviewRoundsTotal": 1287
   },
   "lastIteration": {
-    "at": "2026-10-20T16:34:07Z",
-    "owner": "AKIHA:09f2757b-1",
-    "taskId": "T-0370",
+    "at": "2026-10-20T16:53:14Z",
+    "owner": "AKIHA:09f2757b-2",
+    "taskId": "T-0371",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

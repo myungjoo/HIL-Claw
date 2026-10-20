@@ -2,7 +2,7 @@
 id: T-0371
 title: Record ADR-0136, the model of a first-case coder call - the instance.json member, the default the start applies, the form of the value and how the call reads it (owner answer HQ-0041 part 1; part of OD-8 and OD-23; PLAN P2-2)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [NFR-5, FR-5, FR-13, OD-8, OD-23, "#5 A-8", S0, S1]
 dependsOn: [T-0346, T-0347]
@@ -184,3 +184,13 @@ All verification is by reading and review. No `claude` is started (D16).
 - Carried from T-0370, for the `orchestration/round-manager.md` slice that replaces the explicit stop (not this task): "One round at most" still says the session ends after the write that ends its round, while the closing steps now put `run.commit` after it. P2-5 needs the two to agree once turns reach the closing steps.
 
 ## Result
+
+- **Outcome**: DONE. Landed on main as `4423c35` (doc mode, one squashed commit with `Reviewed-by: reviewer agent (3 rounds, Approve)` and `Task: T-0371`); branch `claude/T-0371-adr-first-case-coder-model` deleted. ADR-0136 was free on `origin/main` and every remote branch.
+- **Files**: `ARCHITECTURE/decisions/ADR-0136-od8-first-case-coder-model.md` (new, 165 lines); `ARCHITECTURE/Requirements.md` (OD-8 and OD-23 rows: one `**확정분**` link each with `**오너 결정(2026-10-20, HQ-0041)**`; OD-23 `**잔여**` rewritten in place; OD-19 row and NFR-5 untouched; no status change); `ARCHITECTURE/OpenDecisionProposals.md` (§ OD-8 and § OD-23: one `**채택분**` line each; the "제안으로 남는 부분" bullets narrowed in place); `ARCHITECTURE/StandardScenarios.md` ("최근 재검사" line only: S0, S1, S2, S10 rechecked, no verdict change, no gap, no history entry).
+- **Decisions (record's own, subject to the 7-day window)**: top-level member `coder_model`, a full Claude model name (form check only, `claude-` + `[a-z0-9-]`, ≤ 64 chars; aliases, `default` and `[1m]` suffixes are not values), stating the model the call *requests*; the start (ADR-0076 scope) fills in `claude-opus-5-5` (F2, read 2026-10-21) at the `n_max` fill-in step and never replaces a given value; the member may be absent, `schema_version` stays 1; the coder call reads `instance.json` after `no_data_root` and before `output_exists`, with the reserved `run_file_*` kinds (ADR-0019 widened as ADR-0124 did) and one new kind `coder_model_not_stated`; the request of ADR-0126 is unchanged.
+- **Review**: round 1 Request changes (requested vs actually-run model given F2's remapping and content-based fallback; form-(B) reading of the ADR-0019 kinds; OD-8 remainder for runs outside the first case; why passing over the member is harmless; Max `default` row); round 2 Approve with minors (fixed); round 3 Approve, no findings.
+- **Overlap with unlanded branches**: none taken. `claude/T-0361-*` edits the OD-23 row and section; a later rebase of T-0361 may conflict textually on the OD-23 `**확정분**`, `**채택분**` and `**잔여**` lines.
+- **Runtime acceptance items (new; driver raises the HQ, reason `runtime-acceptance`)**: (xxxi) the coder's `claude -p` inside the container, given the recorded full name in the form slice (d) chooses, runs on that model under the user's Max plan, and the model it actually ran on (after any remapping or content-based fallback) can be read back, e.g. from `modelUsage`; (xxxii) what the coder's `claude -p` does when the recorded full name is no longer offered under the plan or is remapped: exits non-zero, runs another model, or warns, and whether its output tells which.
+- **§9 notice**: posted on #5 by the driver.
+- **Follow-ups (code slices, P2-2, each within the D4 cap)**: (1) `hilclaw/instance.py` member + `coder_model_of` + tests; (2) `hilclaw/instance_start.py` default fill-in with the F2-cited constant + tests, after (1), not overlapping open PR #186; (3) `hilclaw/coder_call.py` read + kinds + hand-over to the seam + tests, after (1); slice (d) after (3). Next record: the token axis of HQ-0041 part (2). Less-exact sentences of earlier records are listed in ADR-0136 Consequences and stay unedited (D18 hold).
+- (Result recorded by the driver from the executor's report.)
