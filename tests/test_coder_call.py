@@ -803,7 +803,10 @@ def test_an_instance_link_gives_run_file_invalid(
     target.write_bytes(instance_content())
     instance_path(data_root).unlink()
     symlink(instance_path(data_root), target)
-    refused(tools.KIND_RUN_FILE_INVALID, data_root, parent, source, output_path)
+    caught = refused(
+        tools.KIND_RUN_FILE_INVALID, data_root, parent, source, output_path
+    )
+    assert caught.message.startswith(f"runs/{RUN_ID}/instance.json: ")
 
 
 @pytest.mark.parametrize(
@@ -832,7 +835,10 @@ def test_an_instance_file_of_another_version_gives_run_file_unsupported(
     data_root, parent, source, spec, output_path
 ):
     put_instance(data_root, instance_content(schema_version=2))
-    refused(tools.KIND_RUN_FILE_UNSUPPORTED, data_root, parent, source, output_path)
+    caught = refused(
+        tools.KIND_RUN_FILE_UNSUPPORTED, data_root, parent, source, output_path
+    )
+    assert caught.message.startswith(f"runs/{RUN_ID}/instance.json: ")
 
 
 def test_an_instance_file_whose_read_fails_gives_run_file_unreadable(
@@ -850,6 +856,7 @@ def test_an_instance_file_whose_read_fails_gives_run_file_unreadable(
     caught = refused(
         tools.KIND_RUN_FILE_UNREADABLE, data_root, parent, source, output_path
     )
+    assert caught.message.startswith(f"runs/{RUN_ID}/instance.json: ")
     assert "PermissionError" in caught.message
 
 
