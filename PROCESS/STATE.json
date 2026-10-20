@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0239",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:3b1be8a0-1",
+    "acquiredAt": "2026-10-20T00:18:40Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -231,7 +235,9 @@
       "reason": "owner-only-decision",
       "question": "The rest of PLAN P1-1 needs the owner's reading of #5 A-7 for `profiler.collect` (FR-10), for the first backend `cpu_standin` only (OD-18 sub-question 7, rest). HQ-0005 settled that `cpu_standin` offers `sim.run`, `board.run` and `correctness.check`, and did not ask about `profiler.collect` (ADR-0038 decision 2: \"was not asked and stays open\"). FR-1's loop has a `profile` step after the board point; A-7 fixes C + clang with OpenMP/SIMD on the owner's local PC; C-7 has the system behave alike on Linux, macOS and Windows with WSL; a spec's `feedback.attempts[].profile` has a place for \"the measured result and the profile summary of an attempt\" whose members are not defined (ADR-0002 decision 4). (1) Does `cpu_standin` offer `profiler.collect` in the MVP: (a) no - on `cpu_standin` the round's profile is what `sim.run` / `board.run` already return (the timing samples and the memory figure), and a call of `profiler.collect` there answers the reserved kind `not_offered`; (b) yes, with a profile taken from the local run by means the package already has, needing no new external dependency and the same on every machine of C-7 (name what it should hold, or leave it to the record); (c) yes, with a hardware-counter or sampling profiler (for example Linux `perf`) - a new external dependency (CLAUDE.md A-13) that is not available alike on macOS and WSL 1 (C-7); (d) something else (name it)? (2) If (1) is (a): may the record of the round loop treat the `profile` step of FR-1 on `cpu_standin` as carried out by the run tools' results, with no further step, until a target that offers `profiler.collect` exists: (a) yes; (b) no (say what the loop does)? Not asked here: the profile of any other backend or of a real simulator or board (#5 B-2, B-3), the structure of a profile summary in a spec beyond what (1) needs, the mock's script for `profiler.collect` (the record's design), the rule for a target that lacks a point (OD-26), and budgets and spend (OD-2, OD-19).",
       "askedAt": "2026-10-16T16:38:43Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6220178853"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6220178853",
+      "resolvedAt": "2026-10-19T23:59:59Z",
+      "decision": "Owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6280027094: (1) (a) no - on `cpu_standin` the round's profile is what `sim.run` / `board.run` already return (timing samples and memory figure), and `profiler.collect` there answers the reserved kind `not_offered`; (2) (a) yes - the round-loop record may treat FR-1's `profile` step on `cpu_standin` as carried out by the run tools' results, with no further step, until a target that offers `profiler.collect` exists. Owner's note: MVP starting point, not permanent; the owner may reopen whether `cpu_standin` offers `profiler.collect` once the round loop has run end to end on it (the record lists that under Boundaries and decides nothing about it). Resume T-0239."
     },
     {
       "id": "HQ-0026",
@@ -399,7 +405,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0129 (the evaluator reads a round's hypotheses.json through the registry tool hypotheses.read, part of OD-23 and OD-18; T-0355, main fdc9664) adds turn-session runtime acceptance item (xxi): the result of hypotheses.read reaches the evaluator sub-agent of a -p turn session whole, within the limit Claude Code puts on the output of an MCP tool, for the largest hypothesis record a first-case round can hold. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
       "askedAt": "2026-10-20T00:10:20Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6280171707"
     }
   ],
   "counters": {
