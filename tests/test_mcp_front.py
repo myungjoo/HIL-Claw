@@ -32,6 +32,7 @@ FIXED_NAMES = {
     "case.write": "case_write",
     "key.store": "key_store",
     "round.end": "round_end",
+    "spec.write": "spec_write",
 }
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
 INITIALIZE = {
@@ -461,7 +462,7 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 
 
 def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_tools():
-    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), checks.read (ADR-0131), case.write (ADR-0133), key.store (ADR-0134) and round.end (ADR-0135)."""
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), checks.read (ADR-0131), case.write (ADR-0133), key.store (ADR-0134), round.end (ADR-0135) and spec.write (ADR-0138)."""
     held = {
         "blob_fetch": "blob.fetch",
         "blob_push": "blob.push",
@@ -474,6 +475,7 @@ def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_too
         "round_end": "round.end",
         "run_commit": "run.commit",
         "run_fresh": "run.fresh",
+        "spec_write": "spec.write",
         "state_read": "state.read",
         "state_write": "state.write",
         "verdicts_write": "verdicts.write",
@@ -527,6 +529,7 @@ def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
         "round_end",
         "run_commit",
         "run_fresh",
+        "spec_write",
         "state_read",
         "state_write",
         "verdicts_write",
@@ -975,6 +978,7 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
             "round_end",
             "run_commit",
             "run_fresh",
+            "spec_write",
             "state_read",
             "state_write",
             "verdicts_write",
@@ -1079,6 +1083,7 @@ def test_process_handshake_and_tool_list():
             "round_end",
             "run_commit",
             "run_fresh",
+            "spec_write",
             "state_read",
             "state_write",
             "verdicts_write",

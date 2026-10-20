@@ -47,6 +47,7 @@ ACCEPTED = {
     "round.end": {"run_id": "r1", "round": 0},
     "run.commit": {"run_id": "r1"},
     "run.fresh": {"run_id": "r1"},
+    "spec.write": {"run_id": "r1", "round": 0, "candidate": 1, "attempt": 1},
     "state.read": {"run_id": "r1"},
     "state.write": {
         "run_id": "r1",

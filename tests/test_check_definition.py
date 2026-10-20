@@ -134,6 +134,7 @@ def test_the_default_registry_holds_the_definition_of_the_tool():
         "round.end",
         "run.commit",
         "run.fresh",
+        "spec.write",
         "state.read",
         "state.write",
         "verdicts.write",
@@ -395,6 +396,7 @@ def test_building_the_default_registry_calls_no_party(parties):
         "round.end",
         "run.commit",
         "run.fresh",
+        "spec.write",
         "state.read",
         "state.write",
         "verdicts.write",
@@ -438,6 +440,7 @@ def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
         "round_end",
         "run_commit",
         "run_fresh",
+        "spec_write",
         "state_read",
         "state_write",
         "verdicts_write",
@@ -668,7 +671,7 @@ def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
     answers, loaded = heavy_modules_after(LIST_CHILD, tmp_path)
     assert answers == [
         "0 blob_fetch blob_push case_write checks_read correctness_check"
-        + " hypotheses_read instance_read key_store round_end run_commit run_fresh state_read"
+        + " hypotheses_read instance_read key_store round_end run_commit run_fresh spec_write state_read"
         + " state_write verdicts_write"
     ]
     assert loaded == ""
