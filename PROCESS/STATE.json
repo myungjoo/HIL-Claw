@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0358",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:f00dd84c-1",
+    "acquiredAt": "2026-10-20T03:21:27Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -409,7 +413,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0131 (the evaluator reads an attempt's journaled check results through the registry tool checks.read, and is given the verdicts work with every verdict inconclusive until the comparison exists; part of OD-23 and OD-18; T-0357, main 9e29340) adds turn-session runtime acceptance item (xxii): the result of checks.read reaches the evaluator sub-agent of a -p turn session whole, within the limit Claude Code puts on the output of an MCP tool, for the largest set of checks of one candidate at one point that a first-case run can hold. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
       "askedAt": "2026-10-20T02:50:01Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6282186768"
     }
   ],
   "counters": {
