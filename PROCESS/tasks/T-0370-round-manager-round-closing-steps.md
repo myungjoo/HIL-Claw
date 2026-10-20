@@ -2,7 +2,7 @@
 id: T-0370
 title: Write the closing steps of a round (case.write in a round >= 1, round.end, run.commit) into "The round steps" of orchestration/round-manager.md behind the explicit stop (ADR-0135 slice 2 and ADR-0133 slice 2; PLAN P2-1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-13, FR-18, OD-23, OD-30, OD-8, S0, S1]
 dependsOn: [T-0363, T-0367, T-0368, T-0369]
