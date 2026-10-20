@@ -2,7 +2,7 @@
 id: T-0359
 title: Make verdicts.write hold each check entry against the run's journal, with check_result_invalid and check_unfounded (ADR-0131 decision 5, Consequences slice 2; PLAN P2-3, P2-6)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-11, FR-17, NFR-1, OD-23, OD-16, OD-30, S0, S1]
 dependsOn: [T-0357, T-0358]
@@ -134,3 +134,11 @@ Open HQs checked (HQ-0013 to HQ-0047): none is crossed. This is a check inside a
 - Next for the planner: ADR-0131 Consequences slice 3. It changes `orchestration/agents/evaluator.md` as decision 6 says ("A check" and "Verdicts" sections, `mcp__hilclaw__checks_read` in `tools`) and updates that file's `tools`-set test.
 
 ## Result
+
+- **Outcome**: DONE. PR #206 squash-merged as 11ca25f (branch `claude/T-0359-verdicts-write-log-check` deleted). Review: 2 rounds, Approve in both (round 1 nit addressed in 3972f20). CI green on the final head (Python 3.11/3.14, coverage, test presence, sh, C gates).
+- **Language**: Python. Both modules are Python modules of the 2-layer package and the change shares code between them.
+- **Sharing with `checks_tool` (AC 4)**: the private `_lines` and `_scoped` of `hilclaw/checks_tool.py` became the public `log_lines(data_root, run_id)` and `checks_of(run_id, lines, inside)`. The scope is now a predicate over `(step, round, candidate, attempt)`, and the result is keyed by that tuple. `_LOG` and `_STEP_OF` became the public `LOG` and `STEP_OF` (review round 1), so `verdicts.write` takes the same log name and point-to-step map. `checks.read` keeps its behaviour; the existing tests in `tests/test_checks_tool.py` are unchanged and pass. New tests cover `log_lines`, `checks_of`, `LOG` and `STEP_OF`. `touchesFiles` is as planned (all four files touched).
+- **verdicts.write**: after `comparison_not_given`, the log is read for every record. The step-line pass runs over the keys of the record's `check` entries (`run_file_invalid`, `check_result_invalid`). Then each entry is founded by ADR-0131 decision 4; the first unfounded entry in record order gives `check_unfounded`, and its message names the entry's path and the outcomes the log holds. `KIND_CHECK_RESULT_INVALID` is the one from `checks_tool`. `KIND_CHECK_UNFOUNDED` is new. Neither is reserved.
+- **Tests**: full local `pytest` passed (24395 passed, 724 skipped); ruff is clean. Coverage of `hilclaw/` is 97 % (`verdicts_tool` 100 %, `checks_tool` 98 %). No new module, no data-plane change, no `claude` started.
+- **Not addressed** (review round 2 nit, optional): `hilclaw/check_identity.py` has its own private `_STEP_OF` with the same mapping as `checks_tool.STEP_OF`. Merging the two would touch `check_identity.py`, which is outside `touchesFiles`. It is left for a later cleanup if wanted.
+- **Follow-ups**: none new beyond the planned slice 3 (`orchestration/agents/evaluator.md`).
