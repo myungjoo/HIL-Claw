@@ -9,16 +9,27 @@ process (slice (d)), the bring-in (:func:`hilclaw.bring_in.bring_in`, slice
 (c)); it also fixes the request, the result and the failure kinds in the order
 of their checks. :func:`call` is that function. Nothing calls it yet.
 
+``ARCHITECTURE/decisions/ADR-0136-od8-first-case-coder-model.md`` decision 5
+adds a read to that order: at each call, right after the data root is
+obtained, :func:`call` reads the run's ``instance.json`` as a whole and refuses
+a run whose file states no ``coder_model`` (decision 4). The four
+``run_file_*`` kinds and ``coder_model_not_stated`` stand between
+``no_data_root`` and ``output_exists`` in :data:`FAILURE_KINDS`; nothing is
+kept between calls.
+
 The container and the coder process stand behind *the runtime*, the seam of
 slice (d), an object with two methods:
 
 - ``runtime.available()`` returns whether a container runtime is there;
-- ``runtime.run(scratch_root)`` starts the container with the scratch as the
-  coder's working directory (ADR-0126 decision 5), waits for the coder process
-  to end, removes the container before it returns (ADR-0049 P4) and returns
-  the exit status of the coder process as an ``int``; it raises
-  :class:`CoderNotStartedError` when the container or the process could not be
-  started.
+- ``runtime.run(scratch_root, coder_model=...)`` starts the container with the
+  scratch as the coder's working directory (ADR-0126 decision 5), waits for
+  the coder process to end, removes the container before it returns (ADR-0049
+  P4) and returns the exit status of the coder process as an ``int``; it
+  raises :class:`CoderNotStartedError` when the container or the process could
+  not be started. ``coder_model`` is the full model name the run's
+  ``instance.json`` states at this call, unchanged: the model the coder's
+  ``claude -p`` is asked to run with. How it reaches that process is slice
+  (d)'s (ADR-0136 decision 7).
 
 The seam composes no prompt: by ADR-0126 decision 5 this function composes a
 coder prompt naming ``spec.json`` and ``output`` relatively, but the rest of
@@ -30,6 +41,9 @@ What this module is not: slice (d), the real runtime with its image, flags and
 prompt; either front of ADR-0126 decision 3 (Q1); anything about a call that
 does not end normally beyond the interim rule of decision 3, which is OD-19;
 time limits (OD-14); more than one call or candidate (OD-23 ① (가), OD-29).
+It applies no default coder model and resolves no alias (ADR-0136 decisions 4
+and 6); whether the model that actually ran differs from the requested one is
+not seen here (ADR-0136 Boundaries).
 The call is not journaled and writes nothing of the data plane but what
 ``bring_in`` writes below ``output/`` (ADR-0126 decision 7).
 """
@@ -38,9 +52,19 @@ import os
 import stat
 from pathlib import Path
 
-from hilclaw import bring_in, data_root_source, layout, scratch, spec_file, tools
+from hilclaw import (
+    bring_in,
+    data_root_source,
+    layout,
+    run_file_tools,
+    run_files,
+    scratch,
+    spec_file,
+    tools,
+)
 from hilclaw.kernel_source import OUTPUT_NAME
 
+KIND_CODER_MODEL_NOT_STATED = "coder_model_not_stated"
 KIND_OUTPUT_EXISTS = "output_exists"
 KIND_SPEC_INVALID = "spec_invalid"
 KIND_SPEC_UNSUPPORTED = "spec_unsupported"
@@ -48,10 +72,15 @@ KIND_NO_CONTAINER_RUNTIME = "no_container_runtime"
 KIND_CODER_NOT_STARTED = "coder_not_started"
 KIND_CODER_NOT_ENDED = "coder_not_ended"
 KIND_OUTPUT_NOT_WRITTEN = "output_not_written"
-#: Every kind :func:`call` raises, in the order of its checks (ADR-0126 decision 3).
+#: Every kind :func:`call` raises, in the order of its checks (ADR-0126 decision 3, ADR-0136 decision 5).
 FAILURE_KINDS = (
     tools.KIND_INVALID_REQUEST,
     tools.KIND_NO_DATA_ROOT,
+    tools.KIND_RUN_FILE_MISSING,
+    tools.KIND_RUN_FILE_UNREADABLE,
+    tools.KIND_RUN_FILE_INVALID,
+    tools.KIND_RUN_FILE_UNSUPPORTED,
+    KIND_CODER_MODEL_NOT_STATED,
     KIND_OUTPUT_EXISTS,
     scratch.SPEC_UNREADABLE,
     scratch.SPEC_NOT_REGULAR_FILE,
@@ -66,6 +95,7 @@ FAILURE_KINDS = (
 )
 
 _MEMBERS = ("run_id", "round", "candidate", "attempt")
+_INSTANCE_NAME = "instance.json"
 _READ_FLAGS = (
     os.O_RDONLY
     | getattr(os, "O_NOFOLLOW", 0)
@@ -96,14 +126,22 @@ def call(request, *, source, runtime):
     Raises :class:`hilclaw.tools.ToolFailure` with one kind of
     :data:`FAILURE_KINDS`, checked in that order: ``invalid_request`` before
     the source is asked; ``no_data_root`` as
-    :func:`hilclaw.data_root_source.obtain` raises it; :data:`KIND_OUTPUT_EXISTS`
-    when the attempt directory lists an entry ``output``; ``spec_unreadable``
+    :func:`hilclaw.data_root_source.obtain` raises it; ``run_file_missing``,
+    ``run_file_unreadable``, ``run_file_invalid`` and ``run_file_unsupported``
+    for the run's ``instance.json``, as :func:`hilclaw.run_file_tools.read`
+    raises them (a missing run directory and a ``coder_model`` that is no
+    valid full name included; ADR-0136 decisions 3 and 5);
+    :data:`KIND_CODER_MODEL_NOT_STATED` for a valid file without
+    ``coder_model``, for which no default stands in (ADR-0136 decision 4);
+    :data:`KIND_OUTPUT_EXISTS` when the attempt directory lists an entry
+    ``output``; ``spec_unreadable``
     (a missing spec file included) and ``spec_not_regular_file`` for the spec
     file read without following a link; :data:`KIND_SPEC_INVALID` when
     :func:`hilclaw.spec_file.parse` refuses it or its ``id`` is not the tuple
     (``final_name`` is not the path read); :data:`KIND_SPEC_UNSUPPORTED` for
     another version; :data:`KIND_NO_CONTAINER_RUNTIME`. Nothing is created and
-    the runtime is not run before this point. Then the value of a
+    the runtime is not run before this point; the read of ``instance.json``
+    creates nothing either. Then the value of a
     :class:`hilclaw.scratch.ScratchError`; :data:`KIND_CODER_NOT_STARTED`;
     :data:`KIND_CODER_NOT_ENDED` for a status other than 0, with no bring-in;
     the value of a :class:`hilclaw.bring_in.BringInError`;
@@ -111,6 +149,11 @@ def call(request, *, source, runtime):
     (the name taken during the call: this module's reading of "what
     ``bring_in`` would refuse after it"); :data:`KIND_OUTPUT_NOT_WRITTEN` for
     its :class:`OSError`. No text holds a path of the data root.
+
+    ``runtime.run`` is called with the scratch and the keyword argument
+    ``coder_model``, the ``str`` this call read from ``instance.json``,
+    unchanged: no fallback, no alias and no second value (ADR-0136 decision 6).
+    The file is read again at every call.
 
     Once the scratch is made it is removed whatever follows, once and with no
     later retry (ADR-0049 ㉝ (나)); a removal that fails on a failure path is
@@ -128,6 +171,7 @@ def call(request, *, source, runtime):
     """
     run_id, numbers = _checked(request)
     data_root = data_root_source.obtain(source)
+    coder_model = _stated_coder_model(data_root, run_id)
     spec_path = layout.attempt_artefact(data_root, run_id, *numbers, "spec.json")
     output_path = layout.attempt_artefact(data_root, run_id, *numbers, "output")
     _refuse_existing_output(output_path)
@@ -141,7 +185,7 @@ def call(request, *, source, runtime):
     except scratch.ScratchError as e:
         raise _fail(e.failure, "the spec file could not be copied") from e
     try:
-        taken = _run_and_bring_in(runtime, scratch_root, output_path)
+        taken = _run_and_bring_in(runtime, scratch_root, coder_model, output_path)
     except tools.ToolFailure as e:
         if scratch.remove(scratch_root, keep_out=(data_root,)):
             raise
@@ -182,6 +226,16 @@ def _checked(request):
     except layout.InvalidPathValueError as e:
         raise _fail(tools.KIND_INVALID_REQUEST, f"the request's {e}") from e
     return run_id, numbers
+
+
+def _stated_coder_model(data_root, run_id):
+    stated, _ = run_file_tools.read(data_root, run_id, _INSTANCE_NAME)
+    if stated.coder_model is None:
+        raise _fail(
+            KIND_CODER_MODEL_NOT_STATED,
+            f"{run_files.relative(run_id, _INSTANCE_NAME)}: states no coder_model",
+        )
+    return stated.coder_model
 
 
 def _refuse_existing_output(output_path):
@@ -240,9 +294,9 @@ def _check_spec(data_root, spec_path, content):
         )
 
 
-def _run_and_bring_in(runtime, scratch_root, output_path):
+def _run_and_bring_in(runtime, scratch_root, coder_model, output_path):
     try:
-        status = runtime.run(scratch_root)
+        status = runtime.run(scratch_root, coder_model=coder_model)
     except CoderNotStartedError as e:
         raise _fail(KIND_CODER_NOT_STARTED, "the coder could not be started") from e
     if type(status) is not int:
