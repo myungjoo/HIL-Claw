@@ -83,3 +83,11 @@ Language: no new layer-2 code. The change is Markdown in layer 1 plus a docstrin
 - Next P2-1 work (planner's view): the round's end for first-case runs — what ends a round and its write, with ADR-0133 slice 2 (`case.write`) and the `run.commit` after it — needs a record of the round steps before code. The planner decides whether a design-level OD record (OD-23/OD-8) can cover it without an unanswered HQ.
 
 ## Result
+
+- Language: no new layer-2 code; the change is layer-1 Markdown (`orchestration/round-manager.md`) plus a docstring correction in `hilclaw/turn_definition.py`.
+- "Your run" gains one tool bullet: `mcp__hilclaw__key_store`, with the run id as `run_id`, is the only means of storing the run's two key record files (ADR-0134 decisions 2 and 3). The other bullets, "One round at most" and "The entry of a turn" are unchanged.
+- "The round steps" now opens with step 1, the first step of every round a turn carries (begun or gone on with): call `key.store`; go on whatever the two flags, without reporting them; on any failure kind report it in one line and go on, without ending the session, calling again in the turn or storing another way (ADR-0134 decisions 5 and 6). After step 1 the section keeps the "remaining steps are not yet defined" stop; no `run.commit`, `case.write` or `state.write` was added.
+- `hilclaw/turn_definition.py` docstring: the "*The prompt*" bullet and the "Not done here" sentence now say a round begins with the key store and its remaining steps are later P2-1 slices. No code change, so no new test (rules ①–⑤).
+- Local checks: `pytest` (24593 passed, 725 skipped), `ruff check`, `ruff format --check` all pass. No real `claude` started.
+- No runtime acceptance item added or closed; (xxvii) and (xxviii) stay with HQ-0050.
+- PR #211; reviewer (context-isolated dev-reviewer) round 1: Approve, two optional line-length nits left as is; CI green.

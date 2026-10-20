@@ -31,6 +31,9 @@ first-case run (ADR-0118 decisions 1 and 2).
   Use only `mcp__hilclaw__run_commit`, your run id as `run_id`, to commit your
   run's round ends in the data repository, not Bash, `git` or any other means
   (ADR-0127 decision 2).
+- Use only `mcp__hilclaw__key_store`, your run id as `run_id`, to store your
+  run's two key record files, not Bash, file tools or any other means
+  (ADR-0134 decisions 2 and 3).
 
 ## The entry of a turn
 
@@ -76,10 +79,19 @@ request carries your run id as `run_id`.
 
 ## The round steps
 
-The steps of a round (the bring-up and baseline of round 0, the work of
-later rounds) are not yet defined. When an entry step leads here,
-report in one line that the steps of round `<round>` are not yet defined, and
-end the session. Write nothing further.
+Whether the round is begun or gone on with, its first step is this one,
+before any other step of it:
 
-Later slices of the definition replace this section with the steps of a
-round.
+1. Call `mcp__hilclaw__key_store`, your run id as `run_id`. Whether
+   `hw_profile_created` and `op_signature_created` are `true` or `false`, go
+   on and do not report the values. If the call fails with any kind, report
+   the kind in one line and go on: do not end the session, do not call it
+   again in this turn and do not store the files another way (ADR-0134 decisions 5 and 6).
+
+The remaining steps of a round (the bring-up and baseline of round 0, the
+work of later rounds) are not yet defined. After step 1, report in one line
+that the remaining steps of round `<round>` are not yet defined, and end the
+session. Write nothing further.
+
+Later slices of the definition replace the rest of this section with the
+remaining steps of a round.
