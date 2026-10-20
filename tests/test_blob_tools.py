@@ -182,6 +182,7 @@ def test_the_default_registry_holds_the_definitions(root):
         "correctness.check",
         "hypotheses.read",
         "instance.read",
+        "key.store",
         "run.commit",
         "run.fresh",
         "state.read",
@@ -707,6 +708,7 @@ def test_the_mcp_front_lists_the_blob_tools_among_the_fixed_set(configured):
     assert [tool["name"] for tool in listed["result"]["tools"][5:]] == [
         "hypotheses_read",
         "instance_read",
+        "key_store",
         "run_commit",
         "run_fresh",
         "state_read",
