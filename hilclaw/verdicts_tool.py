@@ -66,7 +66,6 @@ decision 3.
 import json
 
 from hilclaw import (
-    check_identity,
     check_result,
     checks_tool,
     data_root_source,
@@ -131,10 +130,6 @@ _DESCRIPTION = (
     "the write fails. A run without a log holds no result."
 )
 _MEMBERS = ("run_id", "record")
-_STEP_OF = {
-    check_identity.SIM: check_identity.STEP_SIM,
-    check_identity.BOARD: check_identity.STEP_BOARD,
-}
 
 
 def definition(source):
@@ -239,7 +234,9 @@ def _write(source, request):
                 )
             ref = entry["ref"]
             numbers = (ref["round"], ref["candidate"], ref["attempt"])
-            named.append((place, (_STEP_OF[entry["point"]], *numbers), entry))
+            named.append(
+                (place, (checks_tool.STEP_OF[entry["point"]], *numbers), entry)
+            )
     lines = checks_tool.log_lines(data_root, run_id)
     scope = {key for _, key, _ in named}
     found = checks_tool.checks_of(run_id, lines, scope.__contains__)
@@ -275,7 +272,7 @@ def _founded(run_id, place, entry, checks):
         f"round {ref['round']}, candidate {ref['candidate']}, "
         f"attempt {ref['attempt']} at {entry['point']}"
     )
-    file = run_files.relative(run_id, "events.ndjson")
+    file = run_files.relative(run_id, checks_tool.LOG)
     held = ", ".join(dict.fromkeys(outcomes))
     if not outcomes:
         problem = f"{file} holds no result of {named}, so it can have no check entry"

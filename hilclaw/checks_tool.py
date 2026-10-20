@@ -84,6 +84,13 @@ from hilclaw import (
 
 #: An end line in the request's scope holds a ``result`` without an admitted ``outcome``.
 KIND_CHECK_RESULT_INVALID = "check_result_invalid"
+#: The name of the run's log, the frame file every read of this module reads.
+LOG = "events.ndjson"
+#: The ``step`` of the lines of each ``point``, as ADR-0040 decision 3 names them.
+STEP_OF = {
+    check_identity.SIM: check_identity.STEP_SIM,
+    check_identity.BOARD: check_identity.STEP_BOARD,
+}
 
 NAME = "checks.read"
 
@@ -116,17 +123,12 @@ _MEMBERS = ("run_id", "round", "candidate", "attempt", "point")
 _OPTIONAL = ("attempt",)
 _LEAST = {"round": 0, "candidate": 1, "attempt": 1}
 _POINTS = (check_identity.SIM, check_identity.BOARD)
-_STEP_OF = {
-    check_identity.SIM: check_identity.STEP_SIM,
-    check_identity.BOARD: check_identity.STEP_BOARD,
-}
 _OUTCOMES = (check_result.PASS, check_result.FAIL, check_result.BROKEN)
 _STANDINGS = {
     check_standing.Standing.VERIFIED: "verified",
     check_standing.Standing.NOT_VERIFIED: "not_verified",
     check_standing.Standing.UNDETERMINED: "undetermined",
 }
-_LOG = "events.ndjson"
 _LOG_KINDS = {
     events.CorruptEventsError: tools.KIND_RUN_FILE_INVALID,
     events.UnsupportedVersionError: tools.KIND_RUN_FILE_UNSUPPORTED,
@@ -211,7 +213,7 @@ def _checked(request):
     if type(point) is not str or point not in _POINTS:
         raise _invalid(f'point: must be "{_POINTS[0]}" or "{_POINTS[1]}"')
     numbers = (request["round"], request["candidate"], request.get("attempt"))
-    return run_id, _STEP_OF[point], numbers
+    return run_id, STEP_OF[point], numbers
 
 
 def log_lines(data_root, run_id):
@@ -229,7 +231,7 @@ def log_lines(data_root, run_id):
     existing data root, holds no line: the result is then empty. Shared by
     ``checks.read`` and ``verdicts.write`` (ADR-0131 decisions 3 and 5).
     """
-    with run_files.reading(data_root, run_id, _LOG, _LOG_KINDS):
+    with run_files.reading(data_root, run_id, LOG, _LOG_KINDS):
         try:
             return events.read(data_root, run_id).events
         except run_files.NOT_THERE:
@@ -273,7 +275,7 @@ def checks_of(run_id, lines, inside):
     no end line, at its first start line. Shared by ``checks.read`` and
     ``verdicts.write`` (ADR-0131 decisions 3 and 5).
     """
-    file = run_files.relative(run_id, _LOG)
+    file = run_files.relative(run_id, LOG)
     found, ended = {}, set()
     for number, event in enumerate(lines, 1):
         if event["kind"] not in _STEP_KINDS:

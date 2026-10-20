@@ -704,6 +704,12 @@ def test_the_first_failing_step_line_in_line_order_decides(root):
 # The shared read: log_lines and checks_of
 
 
+def test_the_shared_names_are_the_log_and_the_steps_of_the_points():
+    assert checks_tool.LOG == "events.ndjson"
+    assert f"runs/{RUN}/{checks_tool.LOG}" == LOG
+    assert checks_tool.STEP_OF == {"sim": SIM, "board": BOARD}
+
+
 def test_log_lines_returns_every_complete_line_in_order(root):
     check(root, result=PASS)
     raw(root, b'{"torn')
