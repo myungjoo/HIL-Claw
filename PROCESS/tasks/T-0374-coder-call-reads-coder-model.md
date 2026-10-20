@@ -2,7 +2,7 @@
 id: T-0374
 title: Read `coder_model` at the coder call in `hilclaw/coder_call.py` (ADR-0136 code slice 3) - the run's `instance.json` is read after `no_data_root` and before `output_exists`, the four `run_file_*` kinds and the new kind `coder_model_not_stated` join `FAILURE_KINDS`, and the value is handed to the seam `runtime.run`
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [NFR-5, FR-5, FR-13, OD-8, OD-23, "#5 A-8"]
 dependsOn: [T-0371, T-0372, T-0373]
@@ -233,3 +233,19 @@ These follow CLAUDE.md 테스트 규칙.
 - Carried from T-0370, for the `orchestration/round-manager.md` slice that replaces the explicit stop (not this task): "One round at most" still says the session ends after the write that ends its round, while the closing steps now put `run.commit` after it.
 
 ## Result
+
+- **Status**: DONE. PR #216 (https://github.com/myungjoo/HIL-Claw/pull/216) squash-merged as `91fec46`; branch `claude/T-0374-coder-call-reads-coder-model` deleted.
+- **Review**: 2 rounds with the context-isolated `dev-reviewer`; Approve in both. Round 1 re-checked the planner's judgements (no ADR needed, no data-plane schema change, no open HQ crossed, no overlap with PR #186, seam signature change allowed) and raised two optional nits: three failure tests did not check the `runs/<run_id>/instance.json: ` prefix (fixed in `5cb84be`); the long `#:` line above `FAILURE_KINDS` (not changed, ruff clean). Round 2 raised one optional nit on `FakeRuntime(available=False)` in an order test (not changed; the order is still shown and another test checks the runtime is never asked).
+- **Language**: Python, because the module exists in Python.
+- **Choices**:
+  - The read uses `run_file_tools.read(data_root, run_id, "instance.json")`, which already raises the four `run_file_*` kinds with relative-path messages.
+  - Constant `KIND_CODER_MODEL_NOT_STATED = "coder_model_not_stated"`, not reserved; `tools.py` unchanged. Message `runs/<run_id>/instance.json: states no coder_model`, built with `run_files.relative`.
+  - Hand-over by keyword `runtime.run(scratch_root, coder_model=value)`; a seam that does not take it fails with `TypeError` after the scratch removal was tried. `runtime.available()` unchanged.
+  - `_stated_coder_model` runs right after `data_root_source.obtain`, before `_refuse_existing_output`. `FAILURE_KINDS` gains the four `run_file_*` kinds and `KIND_CODER_MODEL_NOT_STATED` at positions 2 to 6; the rest is unchanged.
+  - Docstrings cite ADR-0136 decision 5 beside ADR-0126 decision 3; no default, no alias; how the value reaches `claude -p` is slice (d)'s (decision 7). The commit body states the change is reverted with ADR-0136 on an owner objection within the 7-day window.
+- **Files**: only `hilclaw/coder_call.py` and `tests/test_coder_call.py`.
+- **Edited existing tests** (none weakened): the `data_root` fixture writes a valid synthetic `instance.json` with `coder_model` `"claude-test-model-1"`; `document()` takes its hw record from a new module constant `HW`; `FakeRuntime.run` takes and records `coder_model`; `test_a_spec_whose_id_names_another_tuple_is_invalid` writes `instance.json` for its run id; `test_the_kinds_are_names_and_only_two_are_reserved` renamed `..._only_two_and_the_run_file_four_are_reserved` with the four `run_file_*` kinds added to its reserved set.
+- **New tests**: happy path with four model names; re-read at every call; `run_file_missing` (file and run directory); `run_file_invalid` (directory, symlink, empty, non-JSON, `[]`, six bad `coder_model` values); `run_file_unsupported`; `run_file_unreadable`; `coder_model_not_stated` with the runtime never asked; the failure order against bad request, failing source, existing `output`, missing/invalid spec and no container runtime; the seam `TypeError`; kind positions, the constant, and an AST scan (no `instance_start` import, no model-name string constants).
+- **Verification**: `python -m pytest` 25015 passed, 728 skipped; `ruff check` and `ruff format --check` clean; coverage 97 % for `hilclaw/`, 100 % for `hilclaw/coder_call.py`. CI on `5cb84be`: all 6 checks green. No `claude` started; no model name tried against any service (D16).
+- **Owner answers on #5**: none after the ADR-0136 notice; no objection and no HQ-0040 answer.
+- **Follow-ups**: ADR-0049 slice (d), the real runtime behind `runtime.available()` / `runtime.run(scratch_root, coder_model=...)` (the planner checks whether an ADR task must come first). Less-exact sentences in earlier records stay in the D18 hold line from T-0371 (notably ADR-0126 decision 3's table now lacks the five kinds).
