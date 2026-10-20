@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0369",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:64c97775-1",
+    "acquiredAt": "2026-10-20T12:22:26Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -361,7 +365,9 @@
       "reason": "owner-only-decision",
       "question": "For the first-case coder call of ADR-0126 (T-0346, main a5de4f6; #5 A-8, owner-only): (1) which model the coder's `claude -p` runs with, and whether a default applies when none is named (NFR-5 requires that one can be named); (2) whether the coder's tokens count toward the run's budget, summed with the orchestrator's or as a separate limit, and so whether the call must read and report the coder's token usage. Not blocking T-0346 (landed); ADR-0049 slice (d) waits for this answer.",
       "askedAt": "2026-10-19T17:22:30Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6273054804"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6273054804",
+      "resolvedAt": "2026-10-20T12:15:14Z",
+      "decision": "Owner (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6290608368): (1) coder model is an instance parameter; when none is named the start applies Opus and records it in instance.json. (2) one token axis summing orchestrator and coder tokens, so the coder call reads and reports the coder's token usage. Left to the record: form of the recorded model value (alias or full name) and which usage counts as tokens (input/output/cache). T-0346 stays DONE; unblocks planning of ADR-0049 slice (d)."
     },
     {
       "id": "HQ-0042",
@@ -441,7 +447,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0135 (the write that ends a first-case round, part of OD-23; T-0368, main 0d5a3ba) adds turn-session runtime acceptance items (xxix) the main session of a -p turn session sees mcp__hilclaw__round_end and may call it under the means item (vii) gets, and (xxx) a live Round-Manager calls round.end once per round, as the round's last write before run.commit, and after a failure reports the kind and ends the session without another write. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
       "askedAt": "2026-10-20T12:04:52Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6290432080"
     }
   ],
   "counters": {
