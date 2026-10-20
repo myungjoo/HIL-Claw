@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0363",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:0813c446-1",
+    "acquiredAt": "2026-10-20T07:21:56Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -425,7 +429,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0133 (the case write of a first-case round's promotion step, part of OD-23 and OD-30; T-0362, main 67b6d6a) adds turn-session runtime acceptance items (xxv) the main session of a -p turn session sees mcp__hilclaw__case_write and may call it under the permission means of item (vii), and (xxvi) a live Round-Manager calls case.write once per round >= 1, after the round's verdicts work and before the write that ends the round, and goes on to that write after a failure. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
       "askedAt": "2026-10-20T07:03:29Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6285364638"
     }
   ],
   "counters": {

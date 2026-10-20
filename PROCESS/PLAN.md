@@ -78,3 +78,5 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0349 follow-up — `run_commit.commit`에서 index 교체 실패 뒤 fallback reset까지 실패하면 지금은 조용히 넘어가는데 그것을 보고하게 하는 일(현재 동작은 문서화됨), 입력·실패 경로 경화.
 - T-0349 follow-up — 추적되지 않은 `runs/<run_id>/STATE.json`에 ignore 규칙이 걸리면 매 호출이 owed가 된다는 점의 ADR-0127 문구 보강, ADR 문구 정리.
 - T-0359 follow-up — `hilclaw/check_identity.py`의 private `_STEP_OF`와 `checks_tool.STEP_OF`가 같은 매핑을 따로 두고 있어 하나로 합치는 일(리뷰 2라운드 nit), 동작 변경 없는 리팩토링.
+- T-0362 follow-up — ADR-0133 리뷰 6라운드 nit(step ⑤ 옆에 `key_records.lookup`과 함께 `hilclaw/case_lookup.py`를 인용), ADR 문구 정리.
+- T-0362 follow-up — ADR-0133 Consequences의 "Less exact, not edited" 목록(ADR-0072 decision 1·Boundaries "Promotion", ADR-0127 decision 4·Boundaries, ADR-0128 Boundaries, ADR-0124·ADR-0126 Boundaries, ADR-0019 decision 2; `cases.py`·`cases_file.py`·`tools.py` docstring은 T-0363이 처리), ADR 문구 정리.
