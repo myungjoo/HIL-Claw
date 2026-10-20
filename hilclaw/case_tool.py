@@ -50,7 +50,8 @@ and every check before the write creates nothing (ADR-0133 decision 3, table):
 Each message starts with the path of the file concerned relative to the data
 root, where there is one; for a refusal of the key it is the key directory.
 An :class:`OSError` is reported by its class and the text of the system,
-without the absolute path, and says so when the data root is gone.
+without the absolute path, and says so when the data root is gone, or for
+the write when the key directory is.
 
 The case is encoded into the bytes the write takes by one fixed rule, that of
 ``verdicts.write``: ``json.dumps(case, ensure_ascii=False, indent=2,
@@ -248,9 +249,8 @@ def _write(source, request):
     case = cases.build(hypotheses, verdicts)
     text = json.dumps(case, ensure_ascii=False, indent=2, allow_nan=False)
     content = (text + "\n").encode("utf-8")
-    file = _relative(
-        layout.case_record(data_root, hw.name, op.name, run_id, round), data_root
-    )
+    path = layout.case_record(data_root, hw.name, op.name, run_id, round)
+    file = _relative(path, data_root)
     try:
         cases_file.write(data_root, hw.name, op.name, content)
     except cases_file.NameTakenError as e:
@@ -260,7 +260,7 @@ def _write(source, request):
     except OSError as e:
         raise tools.ToolFailure(
             KIND_CASE_NOT_WRITTEN,
-            f"{file}: was not written: {_reported(e, data_root)}",
+            f"{file}: was not written: {_reported(e, data_root, path.parent)}",
         ) from e
     return {"with_verdicts": verdicts is not None}
 
@@ -333,9 +333,8 @@ def _same(kind, file, document, run_id, round):
 
 
 def _unreadable(file, error):
-    reported = ": ".join(filter(None, (type(error).__name__, error.strerror)))
     return tools.ToolFailure(
-        KIND_VERDICTS_UNREADABLE, f"{file}: could not be read: {reported}"
+        KIND_VERDICTS_UNREADABLE, f"{file}: could not be read: {_system(error)}"
     )
 
 
@@ -343,10 +342,15 @@ def _relative(path, data_root):
     return path.relative_to(data_root).as_posix()
 
 
-def _reported(error, data_root):
-    reported = ": ".join(filter(None, (type(error).__name__, error.strerror)))
-    if isinstance(error, run_files.NOT_THERE) and not run_files.data_root_is_there(
-        data_root
-    ):
-        reported += ": the data root is not an existing directory"
+def _system(error):
+    return ": ".join(filter(None, (type(error).__name__, error.strerror)))
+
+
+def _reported(error, data_root, key_dir=None):
+    reported = _system(error)
+    if isinstance(error, run_files.NOT_THERE):
+        if not run_files.data_root_is_there(data_root):
+            reported += ": the data root is not an existing directory"
+        elif key_dir is not None and not key_dir.is_dir():
+            reported += ": the key directory is not an existing directory"
     return reported

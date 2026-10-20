@@ -855,7 +855,10 @@ def test_a_key_directory_gone_since_the_lookup_is_case_not_written(root, monkeyp
     with pytest.raises(ToolFailure) as failure:
         write(Source(root), request())
     assert failure.value.kind == "case_not_written"
-    assert failure.value.message.endswith("was not written: FileNotFoundError")
+    assert failure.value.message.endswith(
+        "was not written: FileNotFoundError: "
+        "the key directory is not an existing directory"
+    )
     assert not (root / KEY_DIR).exists()
 
 
