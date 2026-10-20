@@ -39,6 +39,7 @@ from hilclaw.instance import (
     Tolerance,
     UnsupportedVersionError,
     candidates_per_round_of,
+    coder_model_of,
     draws_of,
     hw_profile_of,
     layout_version_of,
@@ -223,6 +224,7 @@ def test_the_public_names():
         "Tolerance",
         "UnsupportedVersionError",
         "candidates_per_round_of",
+        "coder_model_of",
         "draws_of",
         "hw_profile_of",
         "layout_version_of",
@@ -254,6 +256,7 @@ def test_the_public_names():
         "project",
         "draws",
         "objective",
+        "coder_model",
         "others",
     )
     assert Tolerance._fields == ("rtol", "atol")
@@ -280,6 +283,7 @@ def test_the_public_names():
         project_of,
         draws_of,
         objective_of,
+        coder_model_of,
         layout_version_of,
     ):
         parameters = inspect.signature(function).parameters
@@ -308,6 +312,7 @@ def test_a_minimal_content_gives_the_key_and_the_record():
         None,
         None,
         None,
+        None,
         {},
     )
     assert type(result.hw_profile) is dict
@@ -323,6 +328,7 @@ def test_a_record_with_its_optional_fields():
     assert result == Instance(
         key_of(profile),
         profile,
+        None,
         None,
         None,
         None,
@@ -379,7 +385,7 @@ OTHERS = {
 def test_members_not_defined_are_returned_as_parsed_and_not_interpreted():
     result = parse(raw(doc(**OTHERS)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, OTHERS)
+    assert result == Instance(KEY, record(), *[None] * 12, OTHERS)
     assert list(result.others) == list(OTHERS)
     assert validate(doc(**OTHERS)) is None
 
@@ -804,6 +810,7 @@ def test_a_content_with_the_member_states_the_two_values():
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.tolerance) is Tolerance
@@ -891,6 +898,7 @@ def test_any_order_of_the_members_of_a_tolerance(content):
         None,
         None,
         None,
+        None,
         {},
     )
 
@@ -934,7 +942,7 @@ def test_another_version_is_reported_before_a_tolerance_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_tolerance(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(tolerance=TOLERANCE, **others)))
@@ -1201,6 +1209,7 @@ def test_a_content_with_the_member_states_that_string(commit):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.source_commit) is str
@@ -1250,6 +1259,7 @@ def test_any_order_of_the_three_members_and_the_version(order):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
         None,
         None,
         None,
@@ -1349,7 +1359,7 @@ def test_another_version_is_reported_before_a_source_commit_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_source_commit(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert validate(doc(**others)) is None
 
     result = parse(raw(doc(source_commit=OTHER_COMMIT, **others)))
@@ -1675,6 +1685,7 @@ def test_a_content_with_the_member_states_that_bound(bound):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.n_max) is int
@@ -1726,6 +1737,7 @@ def test_any_order_of_the_four_members_and_the_version(order):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
         None,
         None,
         None,
@@ -1815,7 +1827,7 @@ def test_another_version_is_reported_before_a_bound_is_looked_at(version, bound)
 def test_a_top_level_member_of_another_name_states_no_bound(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.n_max is None
     assert validate(doc(**others)) is None
 
@@ -1911,6 +1923,7 @@ def test_what_is_no_value_of_the_bound(literal):
         record(),
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
+        None,
         None,
         None,
         None,
@@ -2142,6 +2155,7 @@ def test_a_content_with_the_member_states_that_number(count):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.candidates_per_round) is int
@@ -2195,6 +2209,7 @@ def test_any_order_of_the_five_members_and_the_version(order):
         COMMIT,
         BOUND,
         COUNT,
+        None,
         None,
         None,
         None,
@@ -2309,7 +2324,7 @@ def test_another_version_is_reported_before_the_number_of_candidates_is_looked_a
 def test_a_top_level_member_of_another_name_states_no_number(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.candidates_per_round is None
     assert validate(doc(**others)) is None
 
@@ -2414,6 +2429,7 @@ def test_what_is_no_value_of_the_number_of_candidates(literal):
         Tolerance(TEST_RTOL, TEST_ATOL),
         COMMIT,
         BOUND,
+        None,
         None,
         None,
         None,
@@ -2702,6 +2718,7 @@ def test_a_content_with_the_member_states_that_key_and_that_record(case):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.op_signature) is OpSignature
@@ -2751,6 +2768,7 @@ def test_any_order_of_the_six_members_and_the_version():
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
         None,
         None,
         None,
@@ -2946,7 +2964,7 @@ def test_another_version_is_reported_before_the_op_signature_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_op_signature(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.op_signature is None
     assert validate(doc(**others)) is None
 
@@ -3465,6 +3483,7 @@ def test_the_reader_returns_the_record_the_file_embeds(tmp_path, root):
         == Instance(
             KEY,
             record(),
+            None,
             None,
             None,
             None,
@@ -4027,7 +4046,7 @@ def test_no_member_of_a_file_with_an_invalid_candidates_per_round_is_used(
     assert candidates_per_round_of(root, RUN) == COUNT
 
     place(root, counted(literal, *more))
-    assert candidates_per_round_of in READERS and len(READERS) == 14
+    assert candidates_per_round_of in READERS and len(READERS) == 15
     for call in READERS:
         invalid(f"{FILE}: {NO_COUNT}", call, root, RUN)
 
@@ -4186,7 +4205,7 @@ def test_no_member_of_a_file_with_an_invalid_op_signature_is_used(root, value):
 
     document["op_signature"] = value
     place(root, raw(document))
-    assert op_signature_of in READERS and len(READERS) == 14
+    assert op_signature_of in READERS and len(READERS) == 15
     for call in READERS:
         invalid(f"{FILE}: op_signature", call, root, RUN)
 
@@ -4416,6 +4435,7 @@ READERS = [
     project_of,
     draws_of,
     objective_of,
+    coder_model_of,
     layout_version_of,
 ]
 
@@ -4551,6 +4571,24 @@ INVALID_FILES = {
             )
         ),
         "objective.constraints: must be",
+    ),
+    "a coder_model that is an alias": (
+        raw(doc(coder_model="opus")),
+        "coder_model: must be a str of at most 64 characters",
+    ),
+    "a coder_model with a context suffix": (
+        raw(
+            doc(
+                **OP_MEMBERS,
+                draws=2,
+                objective={
+                    "objectives": [{"type": "latency_minimisation"}],
+                    "constraints": [],
+                },
+                coder_model="claude-opus-5-5[1m]",
+            )
+        ),
+        "coder_model: must be a str of at most 64 characters",
     ),
 }
 
@@ -5128,6 +5166,7 @@ def test_a_content_with_the_member_states_that_round_budget(budget):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.round_budget) is int
@@ -5182,6 +5221,7 @@ def test_any_place_of_the_round_budget_among_the_other_members(index):
         COUNT,
         OpSignature(OP_KEY, op_record()),
         BUDGET,
+        None,
         None,
         None,
         None,
@@ -5332,7 +5372,7 @@ def test_another_version_is_reported_before_the_round_budget_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_round_budget(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.round_budget is None
     assert validate(doc(**others)) is None
 
@@ -5424,6 +5464,7 @@ def test_what_is_no_value_of_the_round_budget(literal):
         BOUND,
         COUNT,
         OpSignature(OP_KEY, op_record()),
+        None,
         None,
         None,
         None,
@@ -5723,7 +5764,7 @@ def test_no_member_of_a_file_with_an_invalid_round_budget_is_used(root, literal)
     assert_the_other_members_are_stated(root)
 
     place(root, budgeted(literal, *EVERY_MEMBER_TEXT))
-    assert round_budget_of in READERS and len(READERS) == 14
+    assert round_budget_of in READERS and len(READERS) == 15
     for call in READERS:
         invalid(f"{FILE}: {NO_BUDGET}", call, root, RUN)
 
@@ -5859,6 +5900,7 @@ def test_a_content_with_the_member_states_that_wall_clock_budget(seconds):
         None,
         None,
         None,
+        None,
         {"example": [1]},
     )
     assert type(result.wall_clock_budget_s) is int
@@ -5898,7 +5940,7 @@ def test_a_content_without_the_member_states_no_wall_clock_budget(members):
 
 @pytest.mark.parametrize("index", range(9))
 def test_any_place_of_the_wall_clock_budget_among_the_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_SECONDS, SECONDS, *[None] * 4, {})
+    expected = Instance(*STATED_BESIDE_THE_SECONDS, SECONDS, *[None] * 5, {})
 
     for others in (
         [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER],
@@ -6054,7 +6096,7 @@ def test_another_version_is_reported_before_the_wall_clock_budget_is_looked_at(
 def test_a_top_level_member_of_another_name_states_no_wall_clock_budget(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.wall_clock_budget_s is None
     assert validate(doc(**others)) is None
 
@@ -6146,7 +6188,7 @@ def test_what_is_no_value_of_the_wall_clock_budget(literal):
     assert invalid(NO_SECONDS, parse, content) == expected
     invalid(NO_SECONDS, validate, json.loads(content))
     kept = parse(text(VERSION, SECTION, *ALL_BUT_SECONDS_TEXT, '"example": [1]'))
-    assert kept == Instance(*STATED_BESIDE_THE_SECONDS, *[None] * 5, {"example": [1]})
+    assert kept == Instance(*STATED_BESIDE_THE_SECONDS, *[None] * 6, {"example": [1]})
 
 
 WALK_THROUGH_OF_ADR_0033 = [
@@ -6475,7 +6517,7 @@ def test_no_member_of_a_file_with_an_invalid_wall_clock_budget_is_used(root, lit
     assert_the_members_beside_the_seconds_are_stated(root)
 
     place(root, timed(literal, *ALL_BUT_SECONDS_TEXT))
-    assert wall_clock_budget_s_of in READERS and len(READERS) == 14
+    assert wall_clock_budget_s_of in READERS and len(READERS) == 15
     for call in READERS:
         invalid(f"{FILE}: {NO_SECONDS}", call, root, RUN)
 
@@ -6631,7 +6673,14 @@ def test_a_content_with_the_member_states_that_name(member, name):
     result = parse(raw(document))
 
     assert result == Instance(
-        KEY, record(), *[None] * 7, *pair(member, name), None, None, {"example": [1]}
+        KEY,
+        record(),
+        *[None] * 7,
+        *pair(member, name),
+        None,
+        None,
+        None,
+        {"example": [1]},
     )
     assert type(getattr(result, member)) is str
     assert member not in result.others
@@ -6693,7 +6742,7 @@ def test_a_content_without_a_member_states_none_for_it(member, members):
 
 @pytest.mark.parametrize("index", range(10))
 def test_any_place_of_the_names_among_the_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_NAMES, OWNER, PROJECT, None, None, {})
+    expected = Instance(*STATED_BESIDE_THE_NAMES, OWNER, PROJECT, None, None, None, {})
     others = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
 
     for first, second in (
@@ -6873,7 +6922,7 @@ def test_another_version_is_reported_before_the_names_are_looked_at(
 def test_a_top_level_member_of_another_name_states_no_owner_and_no_project(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert (result.owner, result.project) == (None, None)
     assert validate(doc(**others)) is None
 
@@ -6976,7 +7025,7 @@ def test_what_is_no_value_of_the_names(root, member, literal):
     assert invalid(FILE, NAMED[member], root, RUN) == f"{FILE}: {expected}"
     kept = parse(text(VERSION, SECTION, *ALL_BUT_THE_NAMES_TEXT, '"example": [1]'))
     assert kept == Instance(
-        *STATED_BESIDE_THE_NAMES, None, None, None, None, {"example": [1]}
+        *STATED_BESIDE_THE_NAMES, None, None, None, None, None, {"example": [1]}
     )
 
 
@@ -7272,7 +7321,7 @@ def test_no_member_of_a_file_with_an_invalid_name_is_used(root, member, literal)
     assert_the_members_beside_the_names_are_stated(root)
 
     place(root, named(member, literal, *stated))
-    assert owner_of in READERS and project_of in READERS and len(READERS) == 14
+    assert owner_of in READERS and project_of in READERS and len(READERS) == 15
     for call in READERS:
         invalid(f"{FILE}: {member}{NO_NAME}", call, root, RUN)
 
@@ -7403,7 +7452,9 @@ def test_a_content_with_the_member_states_that_number_of_draws(draws):
 
     result = parse(raw(document))
 
-    assert result == Instance(KEY, record(), *[None] * 9, draws, None, {"example": [1]})
+    assert result == Instance(
+        KEY, record(), *[None] * 9, draws, None, None, {"example": [1]}
+    )
     assert type(result.draws) is int
     assert "draws" not in result.others
     assert validate(document) is None
@@ -7439,7 +7490,7 @@ def test_a_content_without_the_member_states_no_number_of_draws(members):
 
 @pytest.mark.parametrize("index", range(12))
 def test_any_place_of_the_draws_among_the_eleven_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_DRAWS, DRAWS, None, {})
+    expected = Instance(*STATED_BESIDE_THE_DRAWS, DRAWS, None, None, {})
     stated = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
     assert None not in expected[:12]
 
@@ -7597,7 +7648,7 @@ def test_another_version_is_reported_before_the_draws_are_looked_at(version, dra
 def test_a_top_level_member_of_another_name_states_no_number_of_draws(others):
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.draws is None
     assert validate(doc(**others)) is None
 
@@ -7693,7 +7744,9 @@ def test_what_is_no_value_of_the_draws(root, literal):
     assert invalid(FILE, draws_of, root, RUN) == f"{FILE}: {expected}"
     assert invalid(FILE, read, root, RUN) == f"{FILE}: {expected}"
     kept = parse(text(VERSION, SECTION, *ALL_BUT_DRAWS_TEXT, '"example": [1]'))
-    assert kept == Instance(*STATED_BESIDE_THE_DRAWS, None, None, {"example": [1]})
+    assert kept == Instance(
+        *STATED_BESIDE_THE_DRAWS, None, None, None, {"example": [1]}
+    )
 
 
 def test_minus_zero_is_refused_as_the_integer_0_below_the_lower_end_of_the_draws():
@@ -7981,7 +8034,7 @@ def test_no_member_of_a_file_with_an_invalid_number_of_draws_is_used(root, liter
     assert_the_members_beside_the_draws_are_stated(root)
 
     place(root, drawn(literal, *ALL_BUT_DRAWS_TEXT))
-    assert draws_of in READERS and len(READERS) == 14
+    assert draws_of in READERS and len(READERS) == 15
     for call in READERS:
         invalid(f"{FILE}: {NO_DRAWS}", call, root, RUN)
 
@@ -8113,7 +8166,9 @@ def test_a_content_with_the_member_states_its_objectives_and_its_constraints():
 
     result = parse(raw(document))
 
-    assert result == Instance(KEY, record(), *[None] * 10, OBJECTIVE, {"example": [1]})
+    assert result == Instance(
+        KEY, record(), *[None] * 10, OBJECTIVE, None, {"example": [1]}
+    )
     assert type(result.objective) is dict
     assert type(result.objective["objectives"]) is list
     assert type(result.objective["constraints"]) is list
@@ -8157,9 +8212,9 @@ def test_a_content_without_the_member_states_no_objective(members):
 
 @pytest.mark.parametrize("index", range(13))
 def test_any_place_of_the_objective_among_the_twelve_other_members(index):
-    expected = Instance(*STATED_BESIDE_THE_OBJECTIVE, OBJECTIVE, {})
+    expected = Instance(*STATED_BESIDE_THE_OBJECTIVE, OBJECTIVE, None, {})
     stated = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
-    assert None not in expected
+    assert None not in expected[:13]
 
     for others in (
         [*stated, OWNER_MEMBER, PROJECT_MEMBER, DRAWS_MEMBER],
@@ -8229,7 +8284,7 @@ def test_a_top_level_member_of_a_nearby_name_states_no_objective(root, name, val
 
     result = parse(raw(doc(**others)))
 
-    assert result == Instance(KEY, record(), *[None] * 11, others)
+    assert result == Instance(KEY, record(), *[None] * 12, others)
     assert result.objective is None
     assert validate(doc(**others)) is None
     place(root, raw(doc(**others)))
@@ -8473,7 +8528,7 @@ def test_what_is_no_value_of_the_objective(root, case):
     assert invalid(FILE, objective_of, root, RUN) == f"{FILE}: {expected}"
     assert invalid(FILE, read, root, RUN) == f"{FILE}: {expected}"
     kept = parse(text(VERSION, SECTION, *ALL_BUT_THE_OBJECTIVE_TEXT))
-    assert kept == Instance(*STATED_BESIDE_THE_OBJECTIVE, None, {})
+    assert kept == Instance(*STATED_BESIDE_THE_OBJECTIVE, None, None, {})
 
 
 @pytest.mark.parametrize("others, expected", NO_LONGER_OPEN, ids=repr)
@@ -8788,7 +8843,7 @@ def test_no_member_of_a_file_with_an_invalid_objective_is_used(root, case):
     assert_the_members_beside_the_objective_are_stated(root)
 
     place(root, objective_text(json.dumps(value), *ALL_BUT_THE_OBJECTIVE_TEXT))
-    assert objective_of in READERS and len(READERS) == 14
+    assert objective_of in READERS and len(READERS) == 15
     for call in READERS:
         invalid(f"{FILE}: {expected}", call, root, RUN)
 
@@ -8862,6 +8917,539 @@ def test_a_file_invalid_by_its_objective_alone_is_run_file_invalid(
 
     assert_no_step_started(
         tool, root, "run_file_invalid", InvalidInstanceError, "objective"
+    )
+    assert kinds(root) == []
+
+    place(root, raw(repaired))
+    assert tool.function(dict(REQUEST)) == {"example_member": 1}
+    assert kinds(root) == ["step_started", "step_ended"]
+    assert (len(tool.asked), tool.performed) == (1, 1)
+    assert [seen for _, _, seen in tool.asked] == [record()]
+
+
+# --- happy: the member coder_model (ADR-0136) ---
+
+# Names of the form of ADR-0136 decision 3: they stand here because a file states them; none is a default, and none is claimed to be offered.
+CODER_MODEL = "claude-opus-5-5"
+OTHER_CODER_MODEL = "claude-sonnet-4-5-20250929"
+LONGEST_MODEL = "claude-" + "a1-" * 18 + "z0x"
+CODER_MODEL_MEMBER = f'"coder_model": "{CODER_MODEL}"'
+ALL_BUT_THE_CODER_MODEL = {**ALL_BUT_THE_OBJECTIVE, "objective": OBJECTIVE}
+ALL_BUT_THE_CODER_MODEL_TEXT = (*ALL_BUT_THE_OBJECTIVE_TEXT, OBJECTIVE_MEMBER)
+STATED_BESIDE_THE_CODER_MODEL = (*STATED_BESIDE_THE_OBJECTIVE, OBJECTIVE)
+NO_MODEL = (
+    'coder_model: must be a str of at most 64 characters, "claude-" followed by '
+    'lowercase ASCII letters, digits and "-", not ending with "-", got '
+)
+VALID_MODELS = [
+    CODER_MODEL,
+    OTHER_CODER_MODEL,
+    "claude-x",
+    "claude-0",
+    "claude--x",
+    "claude-opsu-5-5",
+    "claude-haiku-4-5",
+    LONGEST_MODEL,
+]
+NEARBY_MODEL = {
+    "model": CODER_MODEL,
+    "coderModel": CODER_MODEL,
+    "Coder_Model": CODER_MODEL,
+    "coder_models": [CODER_MODEL],
+    "coder": {"model": CODER_MODEL},
+    "CODER_MODEL": "opus",
+}
+
+
+def modelled(literal, *more):
+    return text(VERSION, SECTION, f'"coder_model": {literal}', *more)
+
+
+def assert_the_members_beside_the_coder_model_are_stated(root, run=RUN):
+    assert_the_members_beside_the_objective_are_stated(root, run)
+    assert objective_of(root, run) == OBJECTIVE
+
+
+def test_the_longest_name_has_64_characters():
+    assert len(LONGEST_MODEL) == 64
+    assert len("claude-" + "a" * 58) == 65
+
+
+@pytest.mark.parametrize("model", VALID_MODELS)
+def test_a_content_with_the_member_states_that_coder_model(model):
+    document = doc(coder_model=model, example=[1])
+
+    result = parse(raw(document))
+
+    assert result == Instance(KEY, record(), *[None] * 11, model, {"example": [1]})
+    assert type(result.coder_model) is str
+    assert "coder_model" not in result.others
+    assert validate(document) is None
+    assert parse(modelled(json.dumps(model))).coder_model == model
+
+
+def test_the_coder_model_is_handed_out_as_the_file_states_it():
+    escaped = modelled('"\\u0063laude-opus-5-5"')
+
+    assert parse(escaped).coder_model == CODER_MODEL
+    for literal in ('"claude-opus-5-5"', '"claude-sonnet-4-5-20250929"'):
+        assert parse(modelled(literal)).coder_model == json.loads(literal)
+    assert parse(modelled('"claude-opsu-5-5"')).coder_model == "claude-opsu-5-5"
+
+
+@pytest.mark.parametrize(
+    "members", [{}, EVERY_MEMBER, ALL_BUT_THE_CODER_MODEL, {"draws": DRAWS}], ids=repr
+)
+def test_a_content_without_the_member_states_no_coder_model(members):
+    without = parse(raw(doc(**members)))
+    stated = parse(raw(doc(**members, coder_model=CODER_MODEL)))
+
+    assert without.coder_model is None
+    assert stated.coder_model == CODER_MODEL
+    assert without[:13] == stated[:13]
+    assert without.others == stated.others == {}
+    assert without != stated
+    assert validate(doc(**members)) is None
+
+
+@pytest.mark.parametrize("index", range(14))
+def test_any_place_of_the_coder_model_among_the_thirteen_other_members(index):
+    expected = Instance(*STATED_BESIDE_THE_CODER_MODEL, CODER_MODEL, {})
+    stated = [*COUNTED_MEMBERS, OP_SECTION, BUDGET_MEMBER, SECONDS_MEMBER]
+    assert None not in expected
+
+    for others in (
+        [*stated, OWNER_MEMBER, PROJECT_MEMBER, DRAWS_MEMBER, OBJECTIVE_MEMBER],
+        [OBJECTIVE_MEMBER, DRAWS_MEMBER, PROJECT_MEMBER, OWNER_MEMBER, *stated[::-1]],
+    ):
+        members = [*others[:index], CODER_MODEL_MEMBER, *others[index:]]
+        assert len(members) == 14
+        assert parse(text(*members)) == expected
+        assert validate(json.loads(text(*members))) is None
+
+
+# --- branch: the member coder_model ---
+
+
+@pytest.mark.parametrize("version", [0, 2, MAX])
+@pytest.mark.parametrize(
+    "model", [CODER_MODEL, None, "opus", "", 5, [CODER_MODEL]], ids=repr
+)
+def test_another_version_is_reported_before_the_coder_model_is_looked_at(
+    version, model
+):
+    document = doc(schema_version=version, coder_model=model)
+
+    for function, argument in ((parse, raw(document)), (validate, document)):
+        with pytest.raises(UnsupportedVersionError) as caught:
+            function(argument)
+        assert str(caught.value) == f"schema_version: {version} is not supported"
+
+
+@pytest.mark.parametrize("name", NEARBY_MODEL)
+def test_a_top_level_member_of_a_nearby_name_states_no_coder_model(root, name):
+    others = {name: NEARBY_MODEL[name]}
+
+    result = parse(raw(doc(**others)))
+
+    assert result == Instance(KEY, record(), *[None] * 12, others)
+    assert result.coder_model is None
+    assert validate(doc(**others)) is None
+    place(root, raw(doc(**others)))
+    assert coder_model_of(root, RUN) is None
+    stated = parse(raw(doc(coder_model=OTHER_CODER_MODEL, **others)))
+    assert (stated.coder_model, stated.others) == (OTHER_CODER_MODEL, others)
+
+
+@pytest.mark.parametrize(
+    "place, changes",
+    [
+        ("hw_profile: must be", {"hw_profile": None, "coder_model": None}),
+        (
+            "document: lacks the member hw_profile",
+            {"hw_profile": REMOVE, "coder_model": "opus"},
+        ),
+        ("tolerance: must be", {"tolerance": None, "coder_model": ""}),
+        (NO_BOUND + "int", {"n_max": 4, "coder_model": 5}),
+        ("project" + NO_NAME + "str ''", {"project": "", "coder_model": None}),
+        (NO_DRAWS + "int", {"draws": 0, "coder_model": "default"}),
+        (NOT_AN_OBJECT + "NoneType", {"objective": None, "coder_model": "best"}),
+        (
+            NOT_AN_OBJECT + "NoneType",
+            {**ALL_BUT_THE_OBJECTIVE, "objective": None, "coder_model": []},
+        ),
+        (NO_MODEL + "NoneType", {**ALL_BUT_THE_CODER_MODEL, "coder_model": None}),
+    ],
+)
+def test_the_first_broken_rule_is_reported_with_the_coder_model(place, changes):
+    document = doc(**changes)
+
+    invalid(place, parse, raw(document))
+    invalid(place, validate, document)
+
+
+# --- error / negative: the member coder_model ---
+
+ARN = (
+    "arn:aws:bedrock:us-east-1:123456789012:"
+    "application-inference-profile/claude-opus-5-5"
+)
+NOT_MODELS = {
+    "the alias opus": "opus",
+    "the alias sonnet": "sonnet",
+    "best": "best",
+    "default": "default",
+    "claude": "claude",
+    "claude- alone": "claude-",
+    "a trailing -": "claude-opus-5-5-",
+    "two trailing -": "claude--",
+    "a context suffix": "claude-opus-5-5[1m]",
+    "Claude": "Claude-opus-5-5",
+    "CLAUDE": "CLAUDE-OPUS-5-5",
+    "an upper-case letter after the prefix": "claude-Opus-5-5",
+    "a space inside": "claude-opus 5-5",
+    "a leading space": " claude-opus-5-5",
+    "a trailing space": "claude-opus-5-5 ",
+    "a line feed": "claude-opus-5-5\n",
+    "a dot": "claude-opus-5.5",
+    "an underscore": "claude-opus_5_5",
+    "an underscore in the prefix": "claude_opus-5-5",
+    "a slash": "claude-opus/5-5",
+    "a colon": "claude-opus-5-5:0",
+    "an at sign": "claude-opus-5-5@20990101",
+    "a non-ASCII lowercase letter": "claude-opüs",
+    "a digit of another script": "claude-opus-٥",
+    "a full-width letter": "claude-ｏpus",
+    "65 characters": "claude-" + "a" * 58,
+    "a long name of another form": "claude-" + "A" * 200,
+    "a prefix that is not at the start": "anthropic.claude-opus-5-5",
+    "an inference-profile ARN": ARN,
+    "the empty string": "",
+}
+INVALID_MODELS = {
+    **{
+        case: (value, f"{NO_MODEL}str {reprlib.repr(value)}")
+        for case, value in NOT_MODELS.items()
+    },
+    "5": (5, NO_MODEL + "int"),
+    "5.5": (5.5, NO_MODEL + "float"),
+    "true": (True, NO_MODEL + "bool"),
+    "false": (False, NO_MODEL + "bool"),
+    "null": (None, NO_MODEL + "NoneType"),
+    "an array of the name": ([CODER_MODEL], NO_MODEL + "list"),
+    "an empty array": ([], NO_MODEL + "list"),
+    "an object": ({"model": CODER_MODEL}, NO_MODEL + "dict"),
+    "an empty object": ({}, NO_MODEL + "dict"),
+}
+# The invalid rows of the Walk-through of ADR-0136 (decision 6).
+WALK_THROUGH_OF_ADR_0136 = [
+    "the alias opus",
+    "a context suffix",
+    "the empty string",
+    "5",
+]
+
+
+@pytest.mark.parametrize("case", INVALID_MODELS)
+def test_what_is_no_value_of_the_coder_model(root, case):
+    value, expected = INVALID_MODELS[case]
+    content = modelled(json.dumps(value), *ALL_BUT_THE_CODER_MODEL_TEXT)
+
+    assert set(WALK_THROUGH_OF_ADR_0136) < set(INVALID_MODELS)
+    assert invalid("coder_model", parse, content) == expected
+    assert invalid("coder_model", validate, json.loads(content)) == expected
+    assert invalid("coder_model", validate, doc(coder_model=value)) == expected
+    place(root, content)
+    assert invalid(FILE, coder_model_of, root, RUN) == f"{FILE}: {expected}"
+    assert invalid(FILE, read, root, RUN) == f"{FILE}: {expected}"
+    kept = parse(text(VERSION, SECTION, *ALL_BUT_THE_CODER_MODEL_TEXT))
+    assert kept == Instance(*STATED_BESIDE_THE_CODER_MODEL, None, {})
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (Text(CODER_MODEL), NO_MODEL + "Text"),
+        (Text("opus"), NO_MODEL + "Text"),
+        (CODER_MODEL.encode(), NO_MODEL + "bytes"),
+        (bytearray(CODER_MODEL.encode()), NO_MODEL + "bytearray"),
+        ((CODER_MODEL,), NO_MODEL + "tuple"),
+        (1j, NO_MODEL + "complex"),
+    ],
+    ids=shown,
+)
+def test_validate_refuses_a_coder_model_built_in_memory(value, expected):
+    assert invalid("coder_model", validate, doc(coder_model=value)) == expected
+
+
+def test_the_member_name_coder_model_twice_at_the_top_level():
+    for second in (CODER_MODEL_MEMBER, '"coder_model": "opus"'):
+        message = invalid(
+            "content: cannot be read as one JSON text",
+            parse,
+            text(VERSION, SECTION, CODER_MODEL_MEMBER, second),
+        )
+        assert "a JSON object repeats a member name" in message
+
+
+def test_an_integer_too_long_for_the_interpreter_as_the_coder_model_is_a_text_error():
+    message = invalid(
+        "content: cannot be read as one JSON text", parse, modelled(TOO_LONG_TEXT)
+    )
+    assert "coder_model" not in message
+
+
+# --- no substitute: nothing of the module stands in for the coder model ---
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        doc(),
+        doc(**EVERY_MEMBER),
+        doc(**ALL_BUT_THE_CODER_MODEL),
+        doc(**NEARBY_MODEL),
+    ],
+    ids=repr,
+)
+def test_a_content_without_the_member_states_no_coder_model_and_nothing_stands_in(
+    document,
+):
+    result = parse(raw(document))
+
+    assert result.coder_model is None
+    assert result._asdict()["coder_model"] is None
+    for stand_in in (CODER_MODEL, "opus", "default", ""):
+        assert result.coder_model != stand_in
+    assert validate(document) is None
+
+
+def module_strings():
+    tree = ast.parse(inspect.getsource(instance))
+    documented = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef)):
+            body = node.body
+            if body and isinstance(body[0], ast.Expr):
+                documented.add(id(body[0].value))
+    return [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and type(node.value) is str
+        and id(node) not in documented
+    ]
+
+
+def test_nothing_of_the_module_stands_in_for_the_coder_model():
+    functions = [
+        value
+        for value in vars(instance).values()
+        if inspect.isfunction(value) and value.__module__ == instance.__name__
+    ]
+    assert coder_model_of in functions
+    for function in functions:
+        assert function.__defaults__ is None and function.__kwdefaults__ is None
+    assert Instance._field_defaults == {}
+
+    strings = module_strings()
+    assert "coder_model" in strings and "claude-" in strings
+    for value in strings:
+        lowered = value.lower()
+        for word in ("opus", "sonnet", "haiku", "fable"):
+            assert word not in lowered, value
+        assert "coder_model_not_stated" not in value
+        assert "run_file_" not in value
+        assert "ToolFailure" not in value
+        assert value == "claude-" or not value.startswith("claude-"), value
+    names = set(vars(instance))
+    assert not {"ToolFailure", "CODER_MODEL", "DEFAULT_MODEL", "MODELS"} & names
+
+
+def test_the_module_imports_what_it_imported_before_and_nothing_more():
+    tree = ast.parse(inspect.getsource(instance))
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+
+    assert imported == {
+        "codecs",
+        "json",
+        "math",
+        "os",
+        "reprlib",
+        "stat",
+        "pathlib.Path",
+        "typing.NamedTuple",
+        "hilclaw.keys",
+        "hilclaw.layout",
+    }
+
+
+def test_the_reader_of_the_coder_model_is_called_from_nowhere_in_the_package():
+    package = Path(instance.__file__).parent
+    callers = []
+    for path in sorted(package.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            name = None
+            if isinstance(node, ast.Name):
+                name = node.id
+            elif isinstance(node, ast.Attribute):
+                name = node.attr
+            elif isinstance(node, ast.alias):
+                name = node.name
+            if name == "coder_model_of":
+                callers.append(path.relative_to(package).as_posix())
+
+    assert callers == []
+
+
+# --- the reader of the coder model (ADR-0136) ---
+
+
+def test_the_reader_returns_the_coder_model_the_file_states(tmp_path, root):
+    place(
+        root,
+        raw(doc(**ALL_BUT_THE_CODER_MODEL, coder_model=CODER_MODEL, example=[1])),
+    )
+    before = snapshot(tmp_path)
+
+    found = coder_model_of(root, RUN)
+
+    assert found == CODER_MODEL and type(found) is str
+    assert found == read(root, RUN).coder_model
+    assert coder_model_of(str(root), RUN) == found
+    assert_the_members_beside_the_coder_model_are_stated(root)
+    assert snapshot(tmp_path) == before
+
+
+def test_a_run_without_the_member_states_no_coder_model(tmp_path, root, monkeypatch):
+    place(root, raw(doc(**ALL_BUT_THE_CODER_MODEL, **NEARBY_MODEL)))
+    place(root, raw(doc(coder_model=OTHER_CODER_MODEL)), OTHER_FILE)
+    place(root, run_state.dump(12, EMPTY), STATE_FILE)
+    for name in ("ANTHROPIC_MODEL", "CLAUDE_MODEL", "HILCLAW_CODER_MODEL"):
+        monkeypatch.setenv(name, CODER_MODEL)
+    before = snapshot(tmp_path)
+
+    found = coder_model_of(root, RUN)
+
+    assert found is None
+    assert read(root, RUN).coder_model is None
+    assert read(root, RUN).others == NEARBY_MODEL
+    assert_the_members_beside_the_coder_model_are_stated(root)
+    assert coder_model_of(root, OTHER_RUN) == OTHER_CODER_MODEL
+    assert coder_model_of(root, RUN) is None
+    assert snapshot(tmp_path) == before
+
+    place(root, raw(doc()))
+    assert coder_model_of(root, RUN) is None
+
+
+def test_a_coder_model_replaced_between_two_calls_is_seen_at_the_second(root):
+    place(root, raw(doc(coder_model=CODER_MODEL)))
+    assert coder_model_of(root, RUN) == CODER_MODEL
+
+    place(root, raw(doc(coder_model=OTHER_CODER_MODEL)))
+    assert coder_model_of(root, RUN) == OTHER_CODER_MODEL
+
+    place(root, raw(doc()))
+    assert coder_model_of(root, RUN) is None
+
+    place(root, raw(doc(coder_model="opus")))
+    invalid(f"{FILE}: {NO_MODEL}str 'opus'", coder_model_of, root, RUN)
+
+    place(root, raw(doc(schema_version=2, coder_model=CODER_MODEL)))
+    with pytest.raises(UnsupportedVersionError):
+        coder_model_of(root, RUN)
+
+    (root / FILE).unlink()
+    with pytest.raises(MissingInstanceError):
+        coder_model_of(root, RUN)
+
+    place(root, raw(doc(coder_model=CODER_MODEL)))
+    assert coder_model_of(root, RUN) == CODER_MODEL
+
+
+@pytest.mark.parametrize(
+    "case",
+    [*WALK_THROUGH_OF_ADR_0136, "null", "Claude", "65 characters", "a trailing -"],
+)
+def test_no_member_of_a_file_with_an_invalid_coder_model_is_used(root, case):
+    value, expected = INVALID_MODELS[case]
+    place(root, modelled(json.dumps(CODER_MODEL), *ALL_BUT_THE_CODER_MODEL_TEXT))
+    assert coder_model_of(root, RUN) == CODER_MODEL
+    assert_the_members_beside_the_coder_model_are_stated(root)
+
+    place(root, modelled(json.dumps(value), *ALL_BUT_THE_CODER_MODEL_TEXT))
+    assert coder_model_of in READERS and len(READERS) == 15
+    for call in READERS:
+        invalid(f"{FILE}: {expected}", call, root, RUN)
+
+    place(root, text(VERSION, SECTION, *ALL_BUT_THE_CODER_MODEL_TEXT))
+    assert coder_model_of(root, RUN) is None
+    assert_the_members_beside_the_coder_model_are_stated(root)
+
+
+def test_two_runs_state_their_own_coder_models(root):
+    place(root, raw(doc(coder_model=CODER_MODEL)))
+    place(root, raw(doc(draws=DRAWS)), OTHER_FILE)
+    place(root, raw(doc(coder_model="opus")), "runs/run-c/instance.json")
+
+    assert coder_model_of(root, RUN) == CODER_MODEL
+    assert coder_model_of(root, OTHER_RUN) is None
+    invalid(f"runs/run-c/instance.json: {NO_MODEL}", coder_model_of, root, "run-c")
+    assert coder_model_of(root, RUN) == CODER_MODEL
+
+
+def test_only_the_instance_file_is_opened_for_the_coder_model(root, monkeypatch):
+    place(root, raw(doc(coder_model=CODER_MODEL, tolerance=TOLERANCE)))
+    place(root, run_state.dump(12, EMPTY), STATE_FILE)
+    place(root, b'{"seq": 1, "coder_model": "claude-x"}\n', EVENTS_FILE)
+    place(root, raw(doc(coder_model=OTHER_CODER_MODEL)), OTHER_FILE)
+    place(root, b'{"coder_model": "claude-x"}', f"db/{KEY}/example.json")
+    before = snapshot(root)
+    opened, real = [], Path.read_bytes
+
+    def read_bytes(path):
+        opened.append(path.relative_to(root).as_posix())
+        return real(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setenv("HILCLAW_DATA_ROOT", "elsewhere")
+
+    assert coder_model_of(root, RUN) == CODER_MODEL
+    assert opened == [FILE]
+    assert coder_model_of(root, RUN) == CODER_MODEL
+    assert opened == [FILE, FILE]
+    monkeypatch.setattr(Path, "read_bytes", real)
+    assert snapshot(root) == before
+
+
+# --- with hilclaw.hw_tool: a file invalid by its coder_model alone ---
+
+
+@pytest.mark.parametrize(
+    "repaired",
+    [doc(), doc(coder_model=CODER_MODEL)],
+    ids=["removed", "valid"],
+)
+@pytest.mark.parametrize(
+    "broken",
+    [None, "opus", "", 5, "claude-opus-5-5[1m]", "Claude-opus-5-5", [CODER_MODEL]],
+    ids=repr,
+)
+def test_a_file_invalid_by_its_coder_model_alone_is_run_file_invalid(
+    root, broken, repaired
+):
+    place(started(root), raw(doc(**ALL_BUT_THE_CODER_MODEL, coder_model=broken)))
+    tool = Tool(root)
+
+    assert_no_step_started(
+        tool, root, "run_file_invalid", InvalidInstanceError, NO_MODEL
     )
     assert kinds(root) == []
 

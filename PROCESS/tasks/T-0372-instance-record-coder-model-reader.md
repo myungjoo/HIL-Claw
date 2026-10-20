@@ -255,3 +255,55 @@ These follow CLAUDE.md 테스트 규칙 and use the `objective` and `owner` bloc
 - Carried from T-0370, for the `orchestration/round-manager.md` slice that replaces the explicit stop (not this task): "One round at most" still says the session ends after the write that ends its round, while the closing steps now put `run.commit` after it.
 
 ## Result
+- **DONE.** PR #214 (`T-0372: Read the member coder_model of instance.json (ADR-0136 slice 1)`) was squash-merged with the PR body, whose last line is `Task: T-0372`. The driver records the merge commit. The branch was deleted. Not BLOCKED.
+- **Review**: 2 rounds with a fresh-context `dev-reviewer`. Both rounds gave Approve, and neither found a required change.
+  - Round 1 had three optional findings, all taken in `b2ce96e`:
+    - the lower length bound 8 was dropped, because the record states none and shorter strings already fail the prefix or trailing-dash rule;
+    - ADR-0018 decision 2 is now cited beside ADR-0136 decision 2 for passing over nearby names;
+    - the module-string scan no longer forbids the word `default`.
+  - Round 2 had one optional note: the first commit's body says "8 to 64". The squash body is the PR body, which says "at most 64".
+- **CI**: run 39467522595 on `b2ce96e` was green in all six jobs. Coverage of `hilclaw/`: lines 8022/8058 = 99.55 %, functions 781/781 = 100.00 %. Locally, `python -m pytest` gave 24940 passed and 727 skipped (Windows), `hilclaw/instance.py` was at 100 %, and `ruff check` and `ruff format --check` were clean.
+- **Language**: Python, because the module exists in Python.
+- **Choices**, each with its reason:
+  - **Rule**: a present member is valid when it is exactly a `str` of at most 64 characters that starts with `claude-`, holds only ASCII `a-z`, `0-9` and `-`, and does not end with `-`. This is the record's form, written as one rule. `claude-` alone fails the trailing-`-` rule. `claude--x` is valid, because the record's form admits it.
+  - **Check order**: after `objective`, the order in which the records defined the members. Another version is still reported before the member is looked at.
+  - **Message**: `coder_model: must be a str of at most 64 characters, "claude-" followed by lowercase ASCII letters, digits and "-", not ending with "-", got <type>`. A `str` is shown by `reprlib`, in the manner of `_string`.
+  - **Field**: `Instance.coder_model: str | None`, after `objective` and before `others`, which stays last.
+  - **Values built in memory**: a `str` subclass, `bytes` and `bytearray` are refused. This is the module's convention for `str` members.
+  - **Private check**: `_coder_model`, with 64 as a literal.
+    - No module-level constant is added and no import changes, so `test_nothing_of_the_module_holds_a_tolerance_value` is unedited.
+    - The module's code holds no model name, alias, default, `ToolFailure` name, `run_file_` kind or `coder_model_not_stated`.
+  - **Reader**: `coder_model_of(data_root, run_id)` returns `read(...).coder_model`, unchanged. It has no default, keeps nothing between calls, and is called from nowhere in the package.
+- **Record vs criteria**: no disagreement found.
+- **Existing assertions edited** (all forced by the new field, reader or member):
+  - in `tests/test_instance.py`:
+    - the import list gains `coder_model_of`;
+    - in `test_the_public_names`: the sorted names, `Instance._fields` and the signature loop;
+    - `READERS`, and the seven `len(READERS) == 14` assertions, now 15;
+    - every positional `Instance(...)` comparison (41) has one more `None` before `others`;
+    - two new rows of `INVALID_FILES`;
+    - in `test_any_place_of_the_objective_among_the_twelve_other_members`, `assert None not in expected` became `expected[:13]`. The expected `Instance` now holds `None` in `coder_model`, and the slice covers the same thirteen fields as before. This is the same kind of edit as T-0168's `expected[:12]`.
+  - in `tests/test_instance_file.py`: `FULL` gains `coder_model`, and `REFUSED` gains the row `coder_model`.
+- **New tests**:
+  - in `tests/test_instance.py`, the `coder_model` block:
+    - valid values and their hand-out unchanged;
+    - absence and any place among the members;
+    - version first, nearby names and first broken rule;
+    - 39 invalid values through `parse`, `validate`, `read` and `coder_model_of`, and values built in memory;
+    - the member name twice, and an integer too long for the interpreter;
+    - no stand-in, the AST scan of module strings, and the exact import set;
+    - no caller in the package, and the reader's properties;
+    - every reader raising for an invalid `coder_model`;
+    - `hw_tool` giving `run_file_invalid`.
+  - in `tests/test_instance_file.py`: `test_a_content_with_an_invalid_coder_model_is_not_written`.
+- **Line counts** (`git diff --numstat origin/main...b2ce96e`):
+  - non-test: `hilclaw/instance.py` +135/-36 and `hilclaw/instance_file.py` +4/-4 (one docstring clause);
+  - tests: `tests/test_instance.py` +618/-30 and `tests/test_instance_file.py` +12/-0.
+- **Session checks**:
+  - Issue #5 has no comment after the ADR-0136 notice, so there is no objection and no owner word on the value's form.
+  - The unlanded branch `claude/T-0233-admit-injections-and-injected-origin` also edits `hilclaw/instance.py` and `tests/test_instance.py`. None of its content was taken; it will conflict with this change when it is revisited.
+  - PR #186 was not touched.
+  - No `claude` process was started (D16).
+- **Commit body line**: ADR-0136 is inside its 7-day objection window. An objection creates a reverting task, and this change is reverted with it.
+- **Less exact, not edited** (D18 hold): none found beyond those ADR-0136 Consequences lists.
+- **Follow-ups**: the planner's follow-ups above stand (slice 2 in `hilclaw/instance_start.py`, slice 3 in `hilclaw/coder_call.py`).

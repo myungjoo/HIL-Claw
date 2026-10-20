@@ -85,6 +85,7 @@ FULL = written(
         project="example-project",
         draws=9,
         objective={"objectives": [{"type": "latency_minimisation"}], "constraints": []},
+        coder_model="claude-example-1-2",
         example_member={"b": [1, None, "x"], "a": 2.5},
     )
 )
@@ -146,6 +147,7 @@ REFUSED = {
         written(doc(objective={"objectives": [], "constraints": []})),
         InvalidInstanceError,
     ),
+    "coder_model": (written(doc(coder_model="opus")), InvalidInstanceError),
     "no final line feed": (MINIMAL[:-1], WrittenFormError),
     "CRLF line ends": (MINIMAL.replace(b"\n", b"\r\n"), WrittenFormError),
     "one carriage return": (b"\r" + MINIMAL, WrittenFormError),
@@ -737,3 +739,13 @@ def test_the_module_holds_no_value_of_a_content():
         inspect.ismodule(value) or inspect.isclass(value) or inspect.isfunction(value)
         for value in own
     )
+
+
+@pytest.mark.parametrize("model", ["opus", "claude-opus-5-5[1m]", "", None, 5])
+def test_a_content_with_an_invalid_coder_model_is_not_written(root, model):
+    with pytest.raises(InvalidInstanceError, match="^coder_model: must be"):
+        write(root, RUN, written(doc(coder_model=model)))
+
+    assert snapshot(root) == {}
+    write(root, RUN, written(doc(coder_model="claude-example-1-2")))
+    assert instance.read(root, RUN).coder_model == "claude-example-1-2"
