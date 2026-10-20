@@ -28,7 +28,7 @@ here.
   ``.mcp.json`` is used (decision 6).
 
 **Decided by ADR-0139** and only applied here: every turn session gets the
-permission options of decisions 2, 3, 4 and 7, built by
+permission options of decisions 2-4, 6 and 7, built by
 :func:`hilclaw.turn_permissions.options` from the session directory after the
 definition was put into it.
 
@@ -41,10 +41,10 @@ file is named by its file name alone, so no path is in an argument. The
 options passed besides are ``--setting-sources project``, ``--tools`` with
 the built-in set, ``--permission-mode dontAsk`` and ``--allowedTools`` with
 the pre-approved list; no model, turn-limit or bypass option is passed
-(ADR-0139 decision 10). The session's working directory is the session directory, its standard input is
-closed, and it gets the environment of the calling process unchanged; its
-standard output and standard error are those of the calling process and are
-not read here. The wait has no time limit of its own: a limit on a turn is
+(ADR-0139 decision 10). The session's working directory is the session
+directory, its standard input is closed, and it gets the environment of the
+calling process unchanged; its standard output and standard error are those
+of the calling process and are not read here. The wait has no time limit of its own: a limit on a turn is
 OD-19's or OD-14's.
 
 **Choices of this module** (ADR-0118 leaves them to the code):
