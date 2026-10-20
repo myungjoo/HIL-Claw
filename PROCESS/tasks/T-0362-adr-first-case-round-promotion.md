@@ -2,7 +2,7 @@
 id: T-0362
 title: Record ADR-0133, the promotion step of a first-case round - what writes the round's case file into the key directory, and when against the write that ends the round (part of OD-23 and OD-30; PLAN P2-7)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-11, FR-17, FR-18, NFR-1, OD-23, OD-30, OD-29, OD-17, S0, S1, S6]
 dependsOn: [T-0348, T-0352]
@@ -73,3 +73,25 @@ This record does not depend on T-0361 (ADR-0132, BLOCKED on HQ-0048): the promot
 - If the record finds the key directory's creation (OD-26) is needed before a first-case run can store a case: an OD-26 record for first-case runs.
 
 ## Result
+
+- **Outcome**: DONE. Document mode. ADR-0133 (`ARCHITECTURE/decisions/ADR-0133-od23-first-case-round-promotion.md`, 134 lines) landed on `main` as one squashed commit, 67b6d6a (`Reviewed-by: reviewer agent (6 rounds, Approve)`, `Task: T-0362`). The task branch was deleted locally and remotely. ADR-0133 was confirmed free on `origin/main` and every remote branch before the push.
+- **Review**: 6 context-isolated rounds (dev-reviewer, dev-code-review).
+  - Rounds 1, 2, 3, 5 and 6: Approve, with minor findings and nits; each one was addressed except the last.
+  - Round 4: Request changes, because the record claimed the whole `promoter` role. It was narrowed to the case write; the writer of `best.json` and `technique_stats.json` stays open in the record and in the register.
+  - Round 6's optional nit was not applied, to stay clear of the 7-round limit. It suggested citing `hilclaw/case_lookup.py` beside `key_records.lookup`. That is a hint for the code slice: `case_lookup.find` folds a collision into a report and also lists cases, so step ⑤ cannot reuse it as is.
+- **What the record decides** (first-case runs only): the Round-Manager holds the case write inline and calls a new registry tool `case.write`.
+  - Request and result: the request is `run_id` and `round`; the result is `with_verdicts`.
+  - Checks, in order: request; data root; `STATE.json` `round` (`round_not_current`); `instance.json`; key stored (`key_not_stored`, `key_record_invalid`, `key_record_unreadable`); hypotheses (`hypotheses_*`); verdicts (`verdicts_invalid`, `verdicts_unsupported`, `verdicts_unreadable`; a missing file is no failure); pair rules (`verdicts_mismatch`); write (`case_exists`, `case_not_written`).
+  - The tool is not journaled, and it widens ADR-0019 decision 2 the way ADR-0124 did.
+  - Order: the case write comes right before the write that ends the round. A round with a valid hypothesis record is promoted with or without a verdicts file. A refusal does not stop the round from ending. HQ-0043 is not answered.
+- **Register**:
+  - `Requirements.md`: rows OD-23 and OD-30 (확정분 link and 잔여 rewritten).
+  - `OpenDecisionProposals.md`: OD-23 and OD-30 (채택분 lines; the `promoter` inline question and 파일 자리 ③ states rewritten).
+  - `StandardScenarios.md`: S0, S1, S6 and S8 re-checked with no verdict change. The 최근 재검사 line was updated, and the notes of S0 step 6 and S6 step 4 now name OD-26. OD-17, OD-26 and OD-29 rows were not edited (the record answers no part of them).
+- **Runtime acceptance items (new)**: (xxv) and (xxvi). They are numbered after (xxii) on `main` and after (xxiii) and (xxiv) on the unlanded `claude/T-0361-*`. HQ text for the driver: "ADR-0133 (T-0362, main 67b6d6a) adds turn-session runtime acceptance items **(xxv)** the main session of a `-p` turn session sees `mcp__hilclaw__case_write` and may call it under the means item (vii) gets, and **(xxvi)** a live Round-Manager calls `case.write` once per round >= 1, after the round's verdicts work and before the write that ends the round, and goes on to that write after a failure. Under D16 these are closed by the owner's check by hand or the runtime's self-check; non-blocking."
+- **DRIVER §9 owner notice**: not posted by the executor, per the driver's instruction not to post to #5. Text for the driver to post, ending with the `— posted by driver` footer: "### ADR-0133 accepted — T-0362: the case write of a first-case round's promotion step (part of OD-23 and OD-30) / Under PROCESS/DRIVER.md §9 the driver accepted ADR-0133 (main 67b6d6a; context-isolated review, 6 rounds, Approve). For first-case runs, the Round-Manager writes the round's case inline through a new registry tool `case.write`. It writes right before the write that ends the round, and only into a stored key directory. Rounds without a verdicts file are promoted; an invalid verdicts file gives no case. OD-23 and OD-30 stay 논의중/제안됨. Note: nothing creates a key directory for these runs yet, so no case is stored until an OD-26 record. You may object within 7 days."
+- **Overlap**: the unlanded branch `claude/T-0361-adr-first-case-selection-hypotheses-write` (ADR-0132, HQ-0048) edits the same rows OD-23 and OD-30 in `Requirements.md` and the same sections in `OpenDecisionProposals.md`. Whichever of the two lands later will need a rebase there. `claude/T-0318-*` and `claude/T-0231-*` (OD-30) overlap the same way. None of their content was taken.
+- **Follow-ups**:
+  1. Code slice: the tool `case.write` with its test file, registered in `default_registry`, plus the `cases.py` and `cases_file.py` docstrings.
+  2. Definition slice: the promotion step in "The round steps" of `orchestration/round-manager.md`, written with P2-1.
+  3. **An OD-26 record for first-case runs**: who stores the two key record files (`key_records.store_*` has no caller), when, and how they enter a commit. Without it every `case.write` answers `key_not_stored`, so P2-7's storing half cannot store a case.

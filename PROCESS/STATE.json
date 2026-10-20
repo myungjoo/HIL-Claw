@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0362",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:fd05f3d2-1",
-    "acquiredAt": "2026-10-20T06:32:59Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -422,19 +418,27 @@
       "question": "T-0361: ADR-0132 (first-case selection role held by a technique-selector sub-agent, and the registry tool hypotheses.write that writes the round's decision/hypotheses.json; part of OD-23 and OD-30) reached the 7-round review limit (CLAUDE.md A-13). Rounds 2, 3, 5 and 6 approved; round 7 asked for one change: the selector's resend rule should resend only on invalid_request and cases_mismatch. That change is commit e9eaa9f on branch claude/T-0361-adr-first-case-selection-hypotheses-write and has not been re-reviewed. Should the driver (a) run one more context-isolated review round on e9eaa9f and land the record on Approve, (b) land as is, or (c) drop the branch?",
       "askedAt": "2026-10-20T06:26:57Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6284855632"
+    },
+    {
+      "id": "HQ-0049",
+      "taskId": "T-0362",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0133 (the case write of a first-case round's promotion step, part of OD-23 and OD-30; T-0362, main 67b6d6a) adds turn-session runtime acceptance items (xxv) the main session of a -p turn session sees mcp__hilclaw__case_write and may call it under the permission means of item (vii), and (xxvi) a live Round-Manager calls case.write once per round >= 1, after the round's verdicts work and before the write that ends the round, and goes on to that write after a failure. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
+      "askedAt": "2026-10-20T07:03:29Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 376,
-    "tasksDone": 349,
+    "iterations": 377,
+    "tasksDone": 350,
     "tasksBlocked": 27,
-    "reviewRoundsTotal": 1254
+    "reviewRoundsTotal": 1260
   },
   "lastIteration": {
-    "at": "2026-10-20T06:26:57Z",
-    "owner": "AKIHA:bff727e9-2",
-    "taskId": "T-0361",
-    "outcome": "BLOCKED"
+    "at": "2026-10-20T07:03:29Z",
+    "owner": "AKIHA:fd05f3d2-1",
+    "taskId": "T-0362",
+    "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
