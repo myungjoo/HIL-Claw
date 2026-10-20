@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0372",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:70578d25-1",
+    "acquiredAt": "2026-10-20T17:20:58Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -451,7 +455,7 @@
       "reason": "runtime-acceptance",
       "question": "ADR-0136 (the model of a first-case coder call, owner answer HQ-0041 part 1; part of OD-8 and OD-23; T-0371, main 4423c35) adds runtime acceptance items (xxxi) the coder's `claude -p` inside the container, given the recorded full model name (`coder_model`, default `claude-opus-5-5`), runs on that model under the user's Max plan, and the model it actually ran on (after any remapping or content-based fallback) can be read back, e.g. from `modelUsage`; and (xxxii) what the coder's `claude -p` does when the recorded full name is no longer offered under the plan or is remapped: exits non-zero, runs another model, or warns, and whether its output tells which. Under D16 they are closed by your check by hand or by the runtime's own self-check, not by a driver task; nothing is blocked.",
       "askedAt": "2026-10-20T16:53:14Z",
-      "issueComment": null
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6296309336"
     }
   ],
   "counters": {
