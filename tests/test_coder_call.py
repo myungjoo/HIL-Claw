@@ -7,9 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import bring_in, coder_call, keys, layout, scratch, tools
+from hilclaw import bring_in, coder_call, instance, keys, layout, scratch, tools
 from hilclaw.coder_call import (
     FAILURE_KINDS,
+    KIND_CODER_MODEL_NOT_STATED,
     KIND_CODER_NOT_ENDED,
     KIND_CODER_NOT_STARTED,
     KIND_NO_CONTAINER_RUNTIME,
@@ -25,6 +26,16 @@ from hilclaw.coder_call import (
 RUN_ID = "synthetic-run-1"
 TUPLE = (1, 1, 1)
 KERNEL = b"/* synthetic kernel */\n"
+MODEL = "claude-test-model-1"
+HW = {
+    "schema_version": 1,
+    "accelerator": "synthetic_accel",
+    "revision": "synthetic-rev-A",
+    "toolchain": {"synthetic_cc": "0.0.1-synthetic"},
+    "host": {"cpu": "synthetic cpu", "os": "synthetic os"},
+    "hw_source": "in_house",
+}
+UNSTATED = object()
 
 
 def request(**members):
@@ -33,15 +44,35 @@ def request(**members):
     return made
 
 
-def document(run_id=RUN_ID, round=1, candidate=1, attempt=1):
-    hw = {
+def instance_document(coder_model=MODEL, **changes):
+    made = {
         "schema_version": 1,
-        "accelerator": "synthetic_accel",
-        "revision": "synthetic-rev-A",
-        "toolchain": {"synthetic_cc": "0.0.1-synthetic"},
-        "host": {"cpu": "synthetic cpu", "os": "synthetic os"},
-        "hw_source": "in_house",
+        "hw_profile": {"key": keys.hw_profile_key(HW).name, "record": HW},
+        "coder_model": coder_model,
+        **changes,
     }
+    if coder_model is UNSTATED:
+        del made["coder_model"]
+    return made
+
+
+def instance_content(coder_model=MODEL, **changes):
+    return (json.dumps(instance_document(coder_model, **changes)) + "\n").encode()
+
+
+def instance_path(data_root, run_id=RUN_ID):
+    return layout.run_file(data_root, run_id, "instance.json")
+
+
+def put_instance(data_root, content=None, run_id=RUN_ID):
+    path = instance_path(data_root, run_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(instance_content() if content is None else content)
+    return path
+
+
+def document(run_id=RUN_ID, round=1, candidate=1, attempt=1):
+    hw = HW
     op = {
         "schema_version": 1,
         "kind": "gemm",
@@ -91,13 +122,15 @@ class FakeRuntime:
         self.error = error
         self.act = act
         self.runs = []
+        self.models = []
         self.spec_copies = []
 
     def available(self):
         return self._available
 
-    def run(self, scratch_root):
+    def run(self, scratch_root, *, coder_model):
         self.runs.append(scratch_root)
+        self.models.append(coder_model)
         root = Path(scratch_root)
         self.spec_copies.append((root / scratch.SPEC_COPY_NAME).read_bytes())
         if self.error is not None:
@@ -115,6 +148,7 @@ class FakeRuntime:
 def data_root(tmp_path):
     root = tmp_path / "data"
     root.mkdir()
+    put_instance(root)
     return root
 
 
@@ -423,6 +457,7 @@ def test_a_spec_whose_id_names_another_tuple_is_invalid(
 ):
     req = request(**members)
     numbers = req["round"], req["candidate"], req["attempt"]
+    put_instance(data_root, run_id=req["run_id"])
     put_spec(layout.attempt_artefact(data_root, req["run_id"], *numbers, "spec.json"))
     runtime = FakeRuntime()
     caught = failure(KIND_SPEC_INVALID, data_root, req, source, runtime)
@@ -652,12 +687,19 @@ def test_a_removed_scratch_leaves_the_failure_text_alone(
     assert "not removed" not in caught.message
 
 
-def test_the_kinds_are_names_and_only_two_are_reserved():
+def test_the_kinds_are_names_and_only_two_and_the_run_file_four_are_reserved():
     assert len(set(FAILURE_KINDS)) == len(FAILURE_KINDS)
     for kind in FAILURE_KINDS:
         tools.ToolFailure(kind, "")
     reserved = {k for k in FAILURE_KINDS if k in tools.RESERVED_KINDS}
-    assert reserved == {tools.KIND_INVALID_REQUEST, tools.KIND_NO_DATA_ROOT}
+    assert reserved == {
+        tools.KIND_INVALID_REQUEST,
+        tools.KIND_NO_DATA_ROOT,
+        tools.KIND_RUN_FILE_MISSING,
+        tools.KIND_RUN_FILE_UNREADABLE,
+        tools.KIND_RUN_FILE_INVALID,
+        tools.KIND_RUN_FILE_UNSUPPORTED,
+    }
     assert FAILURE_KINDS[:2] == (tools.KIND_INVALID_REQUEST, tools.KIND_NO_DATA_ROOT)
     assert FAILURE_KINDS[-1] == KIND_OUTPUT_NOT_WRITTEN
 
@@ -675,3 +717,269 @@ def test_the_module_starts_no_process_and_has_no_front():
     assert not any(
         "coder" in name for name in tools.default_registry(lambda: None).names()
     )
+
+
+def test_the_synthetic_instance_file_is_valid():
+    assert instance.parse(instance_content()).coder_model == MODEL
+    assert instance.parse(instance_content(UNSTATED)).coder_model is None
+
+
+@pytest.mark.parametrize(
+    "model", [MODEL, "claude-opus-5-5", "claude-sonnet-4-5-20250929", "claude-x"]
+)
+def test_the_runtime_gets_the_model_the_file_states(
+    data_root, parent, source, spec, output_path, model
+):
+    put_instance(data_root, instance_content(model))
+    runtime = FakeRuntime(files={"kernel.c": KERNEL})
+    assert call(request(), source=source, runtime=runtime) == {
+        "taken": ["kernel.c"],
+        "scratch_removed": True,
+    }
+    assert runtime.models == [model]
+    assert type(runtime.models[0]) is str
+
+
+def test_the_file_is_read_again_at_every_call(
+    data_root, parent, source, spec, output_path
+):
+    runtime = FakeRuntime()
+    call(request(), source=source, runtime=runtime)
+    put_instance(data_root, instance_content("claude-test-model-2"))
+    call(request(), source=source, runtime=runtime)
+    assert runtime.models == [MODEL, "claude-test-model-2"]
+
+
+class Unasked(FakeRuntime):
+    def available(self):
+        raise AssertionError("the runtime was asked")
+
+
+def refused(kind, data_root, parent, source, output_path):
+    runtime = Unasked(files={"kernel.c": KERNEL})
+    caught = failure(kind, data_root, request(), source, runtime)
+    assert_nothing_started(parent, runtime)
+    assert runtime.models == []
+    assert not os.path.lexists(output_path)
+    return caught
+
+
+def test_a_missing_instance_file_gives_run_file_missing(
+    data_root, parent, source, spec, output_path
+):
+    instance_path(data_root).unlink()
+    caught = refused(
+        tools.KIND_RUN_FILE_MISSING, data_root, parent, source, output_path
+    )
+    assert caught.message.startswith(f"runs/{RUN_ID}/instance.json: ")
+
+
+def test_a_missing_run_directory_gives_run_file_missing(
+    data_root, parent, source, output_path
+):
+    instance_path(data_root).unlink()
+    instance_path(data_root).parent.rmdir()
+    caught = refused(
+        tools.KIND_RUN_FILE_MISSING, data_root, parent, source, output_path
+    )
+    assert caught.message.startswith(f"runs/{RUN_ID}/instance.json: ")
+
+
+def test_an_instance_directory_gives_run_file_invalid(
+    data_root, parent, source, spec, output_path
+):
+    instance_path(data_root).unlink()
+    instance_path(data_root).mkdir()
+    caught = refused(
+        tools.KIND_RUN_FILE_INVALID, data_root, parent, source, output_path
+    )
+    assert caught.message.startswith(f"runs/{RUN_ID}/instance.json: ")
+
+
+def test_an_instance_link_gives_run_file_invalid(
+    data_root, parent, source, spec, output_path, tmp_path
+):
+    target = tmp_path / "elsewhere.json"
+    target.write_bytes(instance_content())
+    instance_path(data_root).unlink()
+    symlink(instance_path(data_root), target)
+    refused(tools.KIND_RUN_FILE_INVALID, data_root, parent, source, output_path)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"",
+        b"not json",
+        b"[]",
+        *(
+            instance_content(value)
+            for value in ("opus", "default", "claude-opus-5-5[1m]", "", 5, None)
+        ),
+    ],
+)
+def test_an_instance_file_that_parse_refuses_gives_run_file_invalid(
+    data_root, parent, source, spec, output_path, content
+):
+    put_instance(data_root, content)
+    caught = refused(
+        tools.KIND_RUN_FILE_INVALID, data_root, parent, source, output_path
+    )
+    assert caught.message.startswith(f"runs/{RUN_ID}/instance.json: ")
+
+
+def test_an_instance_file_of_another_version_gives_run_file_unsupported(
+    data_root, parent, source, spec, output_path
+):
+    put_instance(data_root, instance_content(schema_version=2))
+    refused(tools.KIND_RUN_FILE_UNSUPPORTED, data_root, parent, source, output_path)
+
+
+def test_an_instance_file_whose_read_fails_gives_run_file_unreadable(
+    data_root, parent, source, spec, output_path, monkeypatch
+):
+    reading = Path.read_bytes
+    target = instance_path(data_root)
+
+    def refusing(path):
+        if path == target:
+            raise PermissionError(13, "denied", str(path))
+        return reading(path)
+
+    monkeypatch.setattr(Path, "read_bytes", refusing)
+    caught = refused(
+        tools.KIND_RUN_FILE_UNREADABLE, data_root, parent, source, output_path
+    )
+    assert "PermissionError" in caught.message
+
+
+def test_a_file_without_coder_model_gives_coder_model_not_stated(
+    data_root, parent, source, spec, output_path
+):
+    put_instance(data_root, instance_content(UNSTATED))
+    caught = refused(
+        KIND_CODER_MODEL_NOT_STATED, data_root, parent, source, output_path
+    )
+    assert caught.message == f"runs/{RUN_ID}/instance.json: states no coder_model"
+
+
+def test_a_bad_request_wins_over_a_missing_instance_file(data_root, parent):
+    instance_path(data_root).unlink()
+    asked = []
+
+    def source():
+        asked.append(True)
+        return data_root
+
+    runtime = Unasked()
+    failure(tools.KIND_INVALID_REQUEST, data_root, request(round=-1), source, runtime)
+    assert asked == []
+    assert_nothing_started(parent, runtime)
+
+
+def test_a_failing_source_wins_and_the_file_is_not_read(data_root, parent, monkeypatch):
+    read = []
+    monkeypatch.setattr(coder_call.run_file_tools, "read", lambda *a: read.append(a))
+
+    def source():
+        raise RuntimeError("no configuration")
+
+    runtime = Unasked()
+    failure(tools.KIND_NO_DATA_ROOT, data_root, request(), source, runtime)
+    assert read == []
+    assert_nothing_started(parent, runtime)
+
+
+@pytest.mark.parametrize("spec_content", [None, b"not json"])
+@pytest.mark.parametrize("with_output", [False, True])
+def test_a_missing_instance_file_wins_over_output_and_spec(
+    data_root, parent, source, spec_path, output_path, spec_content, with_output
+):
+    if spec_content is not None:
+        put_spec(spec_path, spec_content)
+    if with_output:
+        output_path.mkdir(parents=True)
+    instance_path(data_root).unlink()
+    runtime = Unasked()
+    failure(tools.KIND_RUN_FILE_MISSING, data_root, request(), source, runtime)
+    assert_nothing_started(parent, runtime)
+
+
+@pytest.mark.parametrize("with_output", [False, True])
+def test_coder_model_not_stated_wins_over_output_spec_and_runtime(
+    data_root, parent, source, output_path, with_output
+):
+    if with_output:
+        output_path.mkdir(parents=True)
+    put_instance(data_root, instance_content(UNSTATED))
+    runtime = FakeRuntime(available=False)
+    failure(KIND_CODER_MODEL_NOT_STATED, data_root, request(), source, runtime)
+    assert_nothing_started(parent, runtime)
+
+
+def test_a_run_that_takes_no_model_raises_type_error_after_removal(
+    data_root, parent, source, spec, output_path, monkeypatch
+):
+    class Old(FakeRuntime):
+        def run(self, scratch_root):
+            raise AssertionError("run was entered")
+
+    removed = []
+    remove = scratch.remove
+
+    def removing(path, **kwargs):
+        removed.append(path)
+        return remove(path, **kwargs)
+
+    monkeypatch.setattr(scratch, "remove", removing)
+    with pytest.raises(TypeError):
+        call(request(), source=source, runtime=Old())
+    assert len(removed) == 1
+    assert list(parent.iterdir()) == []
+    assert not os.path.lexists(output_path)
+
+
+def test_the_new_kinds_stand_between_no_data_root_and_output_exists():
+    assert FAILURE_KINDS[2:8] == (
+        tools.KIND_RUN_FILE_MISSING,
+        tools.KIND_RUN_FILE_UNREADABLE,
+        tools.KIND_RUN_FILE_INVALID,
+        tools.KIND_RUN_FILE_UNSUPPORTED,
+        KIND_CODER_MODEL_NOT_STATED,
+        KIND_OUTPUT_EXISTS,
+    )
+    assert KIND_CODER_MODEL_NOT_STATED == "coder_model_not_stated"
+    assert KIND_CODER_MODEL_NOT_STATED not in tools.RESERVED_KINDS
+
+
+def test_the_module_names_no_model_and_imports_no_default():
+    tree = ast.parse(inspect.getsource(coder_call))
+    imported = set()
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.add(node.module)
+            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+        if (
+            isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef))
+            and node.body
+            and isinstance(node.body[0], ast.Expr)
+        ):
+            docstrings.add(id(node.body[0].value))
+    assert "hilclaw.instance_start" not in imported
+    assert "hilclaw.run_file_tools" in imported
+    constants = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and type(node.value) is str
+        and id(node) not in docstrings
+    ]
+    assert "coder_model_not_stated" in constants
+    assert not [
+        text
+        for text in constants
+        if text.startswith("claude-") or text in {"opus", "sonnet", "default"}
+    ]
