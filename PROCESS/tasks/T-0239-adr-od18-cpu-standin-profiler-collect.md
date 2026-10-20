@@ -2,7 +2,7 @@
 id: T-0239
 title: Write the ADR that closes the rest of OD-18 sub-question 7 for `cpu_standin` - whether the backend offers `profiler.collect`, and whether the `profile` step of FR-1 on `cpu_standin` is carried by the results of the run tools - as the owner answers HQ-0025, and reflect it in the ARCHITECTURE documents
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-10, OD-18, "#5 A-7"]
 dependsOn: [T-0088]
