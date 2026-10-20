@@ -33,9 +33,10 @@ outside the session directory.
 - *The prompt*: ``orchestration/round-manager.md`` states the turn contract
   of decision 2 and the entry of a turn (first the commit of an owed round
   end, then the first ``STATE.json``, the over states and the round-budget
-  end); a round begins with the store of the run's key record files, its
-  remaining steps are not yet defined, and a turn that reaches them ends
-  without a further write.
+  end); a round begins with the store of the run's key record files and
+  ends with the case, the round-end write and the commit, the steps between
+  are not yet defined, and so a turn ends after the key store without a
+  further write.
 - *Refusals*, each a :class:`ValueError` with a fixed text raised before
   anything is written: a top-level entry that is not a key of :data:`LAYOUT`;
   an entry of the wrong kind; a missing ``round-manager.md``; an entry at any
@@ -55,9 +56,10 @@ The roster: ``orchestration/agents/`` holds the evaluator's definition
 (ADR-0128 decision 7), and the rest of the roster stays open (OD-23).
 
 Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
-ADR-0118 decision 4, "Workspace trust"), no round steps after the key store (later P2-1 slices),
-no ``--add-dir`` or other way for the session to reach the run's files
-(decision 4), no caller and no command-line entry.
+ADR-0118 decision 4, "Workspace trust"), no round steps between the key
+store and the closing steps (later P2-1 slices), no ``--add-dir`` or other
+way for the session to reach the run's files (decision 4), no caller and no
+command-line entry.
 
 Runtime acceptance items it depends on (ADR-0118 Consequences): (i) a
 session started in the session directory loads its ``CLAUDE.md``,
