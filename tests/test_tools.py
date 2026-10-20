@@ -498,6 +498,7 @@ DEFAULT_SET = (
     "round.end",
     "run.commit",
     "run.fresh",
+    "spec.write",
     "state.read",
     "state.write",
     "verdicts.write",
