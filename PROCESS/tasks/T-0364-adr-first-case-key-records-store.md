@@ -2,7 +2,7 @@
 id: T-0364
 title: Record ADR-0134, who stores the two key record files of a first-case run, when, and how they enter a commit (part of OD-26 and OD-23; PLAN P2-7)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-13, FR-14, FR-18, NFR-1, OD-26, OD-23, OD-8, OD-4, OD-30, S0, S1, S6]
 dependsOn: [T-0362, T-0363]
@@ -195,3 +195,55 @@ OD-26, OD-23 and OD-8 are design-level ODs, not owner-only (DRIVER §9: owner-on
 - Expected next for the planner: the code slice or slices the record names (for example a store step or tool and its test file, `default_registry`, and a `run_commit` change if (e) chooses it). After that comes ADR-0133 slice 2, with P2-1's round steps.
 
 ## Result
+
+- **Outcome**: DONE. Document mode. ADR-0134 (`ARCHITECTURE/decisions/ADR-0134-od26-first-case-key-records-store.md`, 136 lines) landed on `main` as one squashed commit, 961dbfd (`Reviewed-by: reviewer agent (6 rounds, Approve)`, `Task: T-0364`), fast-forward from 302e435. The task branch was deleted locally and remotely. Before the push, ADR-0134 was confirmed free on `origin/main` and on every remote branch; ADR-0132 is only on `claude/T-0361-*`.
+- **Review**: 6 context-isolated rounds (dev-reviewer, dev-code-review). Every round returned Approve, with Minor findings and nits.
+  - Rounds 1 to 5: each finding was addressed. The fixes:
+    - the walk-through row of another run's uncommitted files now names an earlier run that died;
+    - ADR-0025 and ADR-0115 decision 2 are cited for the order;
+    - the record now settles that `key.store` checks no scope, and the scope of a call outside ADR-0120 decision 1 is under Boundaries;
+    - the builds-on list is complete (ADR-0010, ADR-0025, ADR-0115, ADR-0120 decision 3, ADR-0133 decision 2);
+    - the "key is the pair" sentence is marked as this record's reading of FR-13 and ADR-0004 decision 5;
+    - `key_not_written` now names the failing read of a stored record, and the case of a name taken during the write;
+    - the record states that an uncommitted colliding record is committed as it is (no content inspected);
+    - the OD-26 `**잔여**:` was completed.
+  - Round 6: its two nits were not applied, to stay clear of the 7-round limit. One is that ADR-0025 sits out of number order in the builds-on list and References. The other is a test hint for the code slice (Follow-ups below).
+- **What the record decides** (runs of ADR-0120 decision 1 only):
+  - (a) Who and how: the Round-Manager stores the files inline, through a new registry tool `key.store` (`mcp__hilclaw__key_store`).
+    - The request is exactly `run_id`. The result is `hw_profile_created` and `op_signature_created`.
+    - Checks, in order: request; data root; `instance.json` (the four `run_file_*` kinds, widening ADR-0019 decision 2 as ADR-0124 did); `op_signature` stated (`op_signature_not_stated`, reused from ADR-0041 on purpose); `store_hw_profile`; then `store_op_signature`.
+    - Failure kinds of the two stores: `key_record_invalid` (reused from ADR-0133) for a collision or a corrupt stored record, and the new kind `key_not_written` for any other failure.
+    - It is not journaled and checks neither `STATE.json` nor the scope.
+  - (b) From what: exactly the two records `instance.json` states. OD-8 ⑱ is not answered.
+  - (c) When: as the first round step of every turn that carries a round, after the entry steps. A failure does not stop the round.
+  - (d) Each non-simple outcome is answered and cited to `key_records`. A stored key with other attributes writes nothing and reports nothing; updating an attribute stays OD-26.
+  - (e) The commit: `run.commit` takes in each record file that exists and that `HEAD` does not hold, with the run's next commit. This widens ADR-0127 decision 4; HQ-0043 is not answered.
+- **Grep on 2026-10-20**: `key.store`, `key_store` and `key_not_written` occur nowhere in `hilclaw/`, `tests/`, `orchestration/` or `ARCHITECTURE/`. `op_signature_not_stated` (ADR-0041, `run_admission.py`, `check_admission.py`) and `key_record_invalid` (ADR-0133, `case_tool.py`) are reused with their meanings, on purpose.
+- **Register**:
+  - `Requirements.md`:
+    - Row OD-26 now has the 행 형식 in place. ADR-0016 and ADR-0035 moved into `**확정분**:` and ADR-0134 was added. The open points became `**잔여**:`.
+    - The OD-26 status changed from `미착수` to `논의중 (부분 답 2026-10-20 — PROCESS/DRIVER.md §9, 오너 통지 후 7일 이의 기간)`, the form of the OD-19 row.
+    - Row OD-23: one `**확정분**` link was added.
+    - OD-4 and OD-8 were not edited: the record answers no part of them.
+  - `OpenDecisionProposals.md`:
+    - OD-26 gained a `**채택분**` line. The open point "누가 언제 등록하는지와 …" now ends with `→ 부분 답: … 남음: …`, and "(상태 `미착수`)" was dropped.
+    - OD-23 gained a `**채택분**` line.
+  - `StandardScenarios.md`: S0, S1, S1-b and S6 were re-checked, with no verdict change and no gap. Only the 최근 재검사 line was rewritten. The OD-26 notes of S0 step 6 and S6 step 4 were narrowed to runs outside the first case.
+- **Runtime acceptance items (new)**: (xxvii) and (xxviii). They are numbered after (xxvi) on `origin/main` (ADR-0133). The branch `claude/T-0361-*` uses (xxiii) and (xxiv), and no branch uses (xxvii).
+  - HQ text for the driver (reason `runtime-acceptance`): "ADR-0134 (T-0364, main 961dbfd) adds two turn-session runtime acceptance items. **(xxvii)**: the main session of a `-p` turn session sees `mcp__hilclaw__key_store` and may call it under the means item (vii) gets. **(xxviii)**: a live Round-Manager calls `key.store` as the first round step of each turn that carries a round, before any other step of it, and goes on after a failure. Under D16 these are closed by the owner's check by hand or by the runtime's self-check; non-blocking."
+- **DRIVER §9 owner notice**: not posted by the executor (AC 8). Text for the driver to post on #5:
+  ```
+  ### ADR-0134 accepted — T-0364: who stores the two key record files of a first-case run (part of OD-26 and OD-23)
+  Under PROCESS/DRIVER.md §9 the driver accepted ADR-0134 (main 961dbfd; context-isolated review, 6 rounds, Approve). For first-case runs (ADR-0120 decision 1), the Round-Manager stores `db/<hw_profile_key>/hw_profile.json` and `.../<op_signature>/op_signature.json` itself through a new registry tool `key.store`. It stores exactly the two records the run's `instance.json` states, as the first round step of every turn that carries a round. `run.commit` takes the files into the run's next round-end commit where `HEAD` does not hold them. A stored key is never changed; whether a stored attribute (`hw_source`, `label`) may be updated stays open. This does not decide the onboarding registry (#5 B-2), the `hw_source` of `cpu_standin`, HQ-0032 or HQ-0043. OD-26 is now 논의중 (partial answer); OD-23 keeps its status. You may object within 7 days.
+  — posted by driver
+  ```
+- **Overlap with unlanded branches** (none of their content was taken):
+  - `claude/T-0361-*` (ADR-0132) edits the OD-23 row and the OD-23 section, and the 최근 재검사 line.
+  - `claude/T-0231-*` edits the S6 row and the 최근 재검사 line.
+  - `claude/T-0318-*` and `claude/T-0264-*` edit the 최근 재검사 line.
+  - `claude/T-0210-*` edits only the OD-18 row.
+  - None edits the OD-26 row or section. Whichever branch lands later needs a rebase on those lines.
+- **Follow-ups**:
+  1. Code slice: the tool `key.store` in a new `hilclaw/` module with its test file, registered in `default_registry`.
+  2. Code slice (it may share a task with 1): the widening of `hilclaw/run_commit.py` by decision 7, with its docstring and tool description. This changes landed behaviour pinned by `tests/test_run_commit.py`. Reviewer hint: test that nothing owed means no record file is committed either, and that a record file `HEAD` holds is never taken again.
+  3. Definition slice, with P2-1's round steps: the `key.store` step in "The round steps" of `orchestration/round-manager.md`.

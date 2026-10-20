@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0364",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:b9102f47-1",
-    "acquiredAt": "2026-10-20T08:21:36Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -430,18 +426,26 @@
       "question": "ADR-0133 (the case write of a first-case round's promotion step, part of OD-23 and OD-30; T-0362, main 67b6d6a) adds turn-session runtime acceptance items (xxv) the main session of a -p turn session sees mcp__hilclaw__case_write and may call it under the permission means of item (vii), and (xxvi) a live Round-Manager calls case.write once per round >= 1, after the round's verdicts work and before the write that ends the round, and goes on to that write after a failure. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
       "askedAt": "2026-10-20T07:03:29Z",
       "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6285364638"
+    },
+    {
+      "id": "HQ-0050",
+      "taskId": "T-0364",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0134 (who stores the two key record files of a first-case run, part of OD-26 and OD-23; T-0364, main 961dbfd) adds turn-session runtime acceptance items (xxvii) the main session of a -p turn session sees mcp__hilclaw__key_store and may call it under the permission means of item (vii), and (xxviii) a live Round-Manager calls key.store as the first round step of each turn that carries a round, before any other step of it, and goes on after a failure. Under D16 closed by the owner's check by hand or the runtime's own self-check. Non-blocking.",
+      "askedAt": "2026-10-20T08:48:32Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 378,
-    "tasksDone": 351,
+    "iterations": 379,
+    "tasksDone": 352,
     "tasksBlocked": 27,
-    "reviewRoundsTotal": 1263
+    "reviewRoundsTotal": 1269
   },
   "lastIteration": {
-    "at": "2026-10-20T07:53:05Z",
-    "owner": "AKIHA:0813c446-1",
-    "taskId": "T-0363",
+    "at": "2026-10-20T08:48:32Z",
+    "owner": "AKIHA:b9102f47-1",
+    "taskId": "T-0364",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
