@@ -490,6 +490,7 @@ DEFAULT_SET = (
     "blob.fetch",
     "blob.push",
     "correctness.check",
+    "hypotheses.read",
     "instance.read",
     "run.commit",
     "run.fresh",

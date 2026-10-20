@@ -39,6 +39,7 @@ ACCEPTED = {
         "execution": 1,
         "point": "sim",
     },
+    "hypotheses.read": {"run_id": "r1", "round": 1},
     "instance.read": {"run_id": "r1"},
     "run.commit": {"run_id": "r1"},
     "run.fresh": {"run_id": "r1"},
