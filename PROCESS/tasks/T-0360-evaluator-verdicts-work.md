@@ -2,7 +2,7 @@
 id: T-0360
 title: Give the evaluator definition checks.read and the verdicts work of ADR-0131 decision 6 (ADR-0131 Consequences slice 3; PLAN P2-3, P2-6)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-11, FR-17, OD-23, OD-16, OD-30, S0, S1]
 dependsOn: [T-0357, T-0358, T-0359]
@@ -53,33 +53,23 @@ Open HQs checked: none is crossed. The definition names no model or budget (HQ-0
    - it sends the whole record with `mcp__hilclaw__verdicts_write`;
    - it still requests no check on a verdicts delegation (ADR-0128 decision 7; the fixed rule "Request a check only for the tuple and the point you were given" covers it, and the executor makes sure the text does not read otherwise);
    - it reports as ADR-0128 decision 5 says: one line per tool request, and for a written record one line per hypothesis `id` with its `verdict`.
-4. **Refusals of `verdicts.write`**. ADR-0131 decision 6 says "correcting and sending again on a refusal", and ADR-0128 decision 6 says a refused record "can be corrected and sent again". The text keeps this. Following the T-0354 reviewer note, it says which refusals a corrected record can answer, by what the kinds mean and no further: the kinds about the record itself (`invalid_request`, `verdicts_mismatch`, `comparison_not_given`, `check_unfounded`). For any other kind (`no_data_root`, the `hypotheses_*` kinds, the `run_file_*` kinds, `check_result_invalid`, `verdicts_not_written`) the evaluator reports the kind and ends, since no change of the record answers it. On `verdicts_exist` the file was already written and nothing is replaced (ADR-0071 decision 1). The definition adds **no retry count, budget or other rule** that no record gives. If the executor or the reviewer finds that this split cannot be stated without a choice the records leave open, the executor keeps only the cited sentences ("a refused record can be corrected and sent again"; `verdicts_exist`) and records the point under `## Follow-ups`; it does not invent the choice.
-5. **Style and limits**:
-   - Every rule cites its source in parentheses, in the manner of the existing file. Nothing is added beyond ADR-0128, ADR-0129, ADR-0131 and the records they cite, except the wording of the reports.
-   - The "Fixed rules", "What you are given" and "Your report" sections stay in substance. A citation may gain ADR-0131 where the rule now rests on it.
-   - The file name and every name below `orchestration/` keep the naming rule of ADR-0118 decision 5.
-   - English, Markdown.
-6. **Tests** in `tests/test_turn_definition.py`:
-   - `EVALUATOR_TOOLS` gains `mcp__hilclaw__checks_read`. `test_the_evaluator_frontmatter` then checks the new exact set and, through its existing loop, that `checks_read` is served by `tools.default_registry` through the MCP front.
-   - No other test changes are expected. The existing test that `put` copies `.claude/agents/evaluator.md` byte for byte keeps passing.
-   - No `claude` is started, stub or real. The tests pass on Linux CI and on the local Windows machine.
-7. **D12 test rules**: ① line and function coverage of `hilclaw/` stays at 80 % or more (no `hilclaw/` code changes); ② the changed test keeps its negative path (a tool outside the expected set, or one not served, fails the assertion); ③ no public function of `hilclaw/` changes; ④ no new module is added; ⑤ no test is added that targets test code, CI, hooks or driver helper scripts.
-8. **No change** to any tool, registry entry, kind, description, validator or `hilclaw/` module, and **no data-plane change**. If the work turns out to need one, the executor stops and returns BLOCKED (CLAUDE.md "데이터 plane 스키마 변경").
-9. **Language**: the definition is Markdown (layer 1), the test change is Python. Record this and one reason in the commit body and in `## Result`.
-10. **Code mode (A-13)**: a Draft PR whose title contains `T-0360`, the reviewer cycle ending in Approve, CI green, then squash-merge with the PR body ending in `Task: T-0360`, and the branch `claude/T-0360-evaluator-verdicts-work` deleted.
-11. No `claude` process is started, and nothing runtime-only is required (D16). Runtime acceptance items (xviii) to (xx) and (xxii) are not closed by this task.
+4. **Refusals of `verdicts.write`**. ADR-0131 decision 6 says "correcting and sending again on a refusal", and ADR-0128 decision 6 says a refused record "can be corrected and sent again". The text keeps this. Following the T-0354 reviewer note, it says which refusals a corrected record can answer, by what the kinds mean and no further: the kinds about the record itself (`invalid_request`, `verdicts_mismatch`, `comparison_not_given`, `check_unfounded`). For any other kind (`no_data_root`, the `hypotheses_*` kinds, the `run_file_*` kinds, `check_result_invalid`, `verdicts_not_written`) the evaluator reports the kind and ends, since no change of the record answers it. On `verdicts_exist` the file was already written and nothing is replaced (ADR-0071 decision 1). The definition adds **no retry count, budget or other rule** that no record gives. If the executor or the reviewer finds that this split cannot be stated without a choice the records leave open, the executor keeps only the cited sentences ("a refused record can be corrected and sent again"; `verdicts_exist`) and records the point under `## Follow-ups
 
-## Out of Scope
-
-- Any edit of `ARCHITECTURE/`, including the "Less exact, not edited" lists of ADR-0131 and ADR-0128, and ADR-0129 decision 5's "cannot yet" sentences. They stay unedited.
-- `orchestration/round-manager.md` and its delegation steps (HQ-0040, HQ-0041); the Round-Manager's use of `checks.read` (ADR-0131 decision 7).
-- The comparison tool, `sim.run`, `board.run` (HQ-0021), `eval.json`, a re-judgement of `inconclusive` verdicts, and a bound on a result or a paged read (item (xxii)).
-- Any change to `hilclaw/` code or docstrings, including `hilclaw/turn_definition.py`, `hilclaw/checks_tool.py` and `hilclaw/verdicts_tool.py`.
-- Merging `hilclaw/check_identity.py`'s private `_STEP_OF` with `checks_tool.STEP_OF` (T-0359 review nit; set aside under D18).
-- The files of open PR #186.
-
-## Follow-ups
-
-- After this, ADR-0131's slices are done. The next evaluator work, the comparison of ADR-0007 decision 7 for two attempts, needs its own record (ADR-0131 Consequences slice 4) and depends on `sim.run`/`board.run` (T-0210, HQ-0021).
+- The definition does not say what the evaluator does when `hypotheses_read` or `checks_read` fails during the verdicts work, beyond reporting the failure kind under "Your report". No record decides it, so nothing was added (reviewer observation, rounds 1 and 2).
+- `check_result_invalid` is put among the kinds a corrected record cannot answer, as the task specified (it names a fault in the log). `verdicts.write` raises it only for an attempt and point that a check entry names, so a record that drops that entry would avoid it. If an owner reading prefers otherwise, the refusal sentence can be narrowed.
+- ADR-0131's code slices are done. The next evaluator work, the comparison of ADR-0007 decision 7 (ADR-0131 Consequences slice 4), needs its own record and depends on `sim.run`/`board.run` (T-0210, HQ-0021).
 
 ## Result
+
+- DONE. PR #207 (https://github.com/myungjoo/HIL-Claw/pull/207), squash-merged as 3354ddc; branch `claude/T-0360-evaluator-verdicts-work` deleted.
+- `orchestration/agents/evaluator.md` (ADR-0131 decisions 6 and 7):
+  - frontmatter `tools` adds exactly `mcp__hilclaw__checks_read`; still no model key, Write, Edit, NotebookEdit, Bash or delegating tool.
+  - "What you are given" gains one clause: the journaled results and the standing are what `checks_read` returns (ADR-0131 decisions 2 and 3).
+  - "A check": after `correctness_check` answers (result or failure), call `checks_read` with the same run_id/round/candidate/attempt/point; report the outcome or failure kind together with `checks_read`'s standing or failure kind. "Do not work out a standing from the log yourself" stays (ADR-0128 decision 2; ADR-0131 decision 3).
+  - "Verdicts": the "cannot yet" paragraph is gone. The work is now: request no check; read the hypotheses with `hypotheses_read`; call `checks_read` without attempt for each candidate of each `tested_by`, at the points judged; for a round of at least 1, compose one `inconclusive` verdict per hypothesis with check entries only, each stated by ADR-0131 decision 4; write a cause saying no comparison could be given and what the checks showed; send the record with `verdicts_write`.
+  - Refusals: the kinds about the record itself (`invalid_request`, `verdicts_mismatch`, `comparison_not_given`, `check_unfounded`) are named as the ones a corrected record answers; any other kind is reported and ends the work; on `verdicts_exist` nothing is replaced (ADR-0071 decision 1). No retry count or budget was added (takes up the T-0354 reviewer note).
+- `tests/test_turn_definition.py`: `EVALUATOR_TOOLS` gains `mcp__hilclaw__checks_read`; the existing loop checks it is served by `default_registry` through the MCP front. Negative path kept.
+- Language: Markdown for the definition (layer 1, read by Claude Code); Python for the test (the package's test language).
+- Tests: local ruff check / ruff format --check clean; full local pytest exit 0. CI green on head 306619a (Python 3.11/3.14, coverage, C, shellcheck, test presence).
+- Review: 2 rounds (round 1 Approve with two nits, both fixed; round 2 Approve, no findings).
+- No `hilclaw/` code, tool, kind or data-plane change. No `claude` process was started (D16). Runtime acceptance items (xviii)-(xx) (HQ-0045) and (xxii) (HQ-0047) are not closed.
