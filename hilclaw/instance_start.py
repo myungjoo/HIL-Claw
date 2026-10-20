@@ -82,7 +82,7 @@ from hilclaw.harness import measurement
 #: Full name F2 (https://docs.claude.com/en/docs/claude-code/model-config, read 2026-10-21) gives for ``opus``; ADR-0136 decision 4.
 CODER_MODEL_DEFAULT = "claude-opus-5-5"
 
-#: The members a refusal reports, in the order of ADR-0076 decision 3. ``n_max`` is never missing.
+#: The members a refusal reports, in the order of ADR-0076 decision 3. ``n_max`` and ``coder_model`` are never missing.
 REPORT_ORDER = (
     "op_signature",
     "objective",
