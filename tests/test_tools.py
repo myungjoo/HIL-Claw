@@ -495,6 +495,7 @@ DEFAULT_SET = (
     "hypotheses.read",
     "instance.read",
     "key.store",
+    "round.end",
     "run.commit",
     "run.fresh",
     "state.read",
