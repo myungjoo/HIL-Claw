@@ -32,7 +32,7 @@ check.
 finding, from the finding of the step 1 before (kept for this start only) and
 from the exit status of the last turn. In this order (ADR-0122 decision 5):
 
-1. P2, ``run_status`` ``"over"``, with no round end owed: no further turn,
+1. P2, ``run_status`` ``"over"``, with no commit owed: no further turn,
    :data:`RUN_OVER`, whatever the exit status was;
 2. P3, any other ``run_status`` value: no further turn,
    :data:`UNKNOWN_RUN_STATUS` with the value;
