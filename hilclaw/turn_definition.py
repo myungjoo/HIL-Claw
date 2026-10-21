@@ -31,16 +31,18 @@ outside the session directory.
   session directory is touched, :data:`hilclaw.turn_loop.CONFIG_FILE`
   included. Content is copied byte for byte; modes and times do not matter.
 - *The prompt*: ``orchestration/round-manager.md`` states the turn contract
-  of decision 2 and the entry of a turn (first the commit of an owed round
-  end, then the first ``STATE.json``, the over states and the round-budget
-  end); a round begins with the store of the run's key record files and
-  ends with the case (in a round >= 1), the round-end write and the commit;
-  in round 0 a turn delegates the coder call to the coder-driver after the
-  key store and, when the call brought something in, the sim-point and then
-  the board-point check to the evaluator, and it ends without a further
-  write after the board-point check at the latest. In other rounds the
-  later steps are not yet defined, so a turn ends after the key store,
-  again without a further write.
+  of decision 2 and the entry of a turn (first the commit of whatever is
+  owed, then the first ``STATE.json``, the over states and the round-budget
+  end); every end of the session after a successful entry commit calls
+  ``run.commit`` as its last act (ADR-0143 decision 2); a round begins with
+  the store of the run's key record files and ends with the case (in a
+  round >= 1), the round-end write and the commit; in round 0 a turn
+  delegates the coder call to the coder-driver after the key store and,
+  when the call brought something in, the sim-point and then the
+  board-point check to the evaluator, and it stops after the board-point
+  check at the latest. In other rounds the later steps are not yet defined,
+  so a turn stops after the key store. The stop writes nothing else and ends
+  no round.
 - *Refusals*, each a :class:`ValueError` with a fixed text raised before
   anything is written: a top-level entry that is not a key of :data:`LAYOUT`;
   an entry of the wrong kind; a missing ``round-manager.md``; an entry at any

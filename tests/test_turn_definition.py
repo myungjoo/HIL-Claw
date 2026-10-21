@@ -550,3 +550,126 @@ def test_the_prompt_reaches_no_closing_steps_yet():
     assert heading in text
     closing = text.split(heading, 1)[1]
     assert "reached only once later slices" in closing
+
+
+def between(text, start, end):
+    assert start in text
+    part = text.split(start, 1)[1]
+    assert end in part
+    return part.split(end, 1)[0]
+
+
+def end_rule():
+    return between(prompt_text(), "## The end of a session", "## The entry of a turn")
+
+
+def entry_steps():
+    section = between(prompt_text(), "## The entry of a turn", "## The round steps")
+    parts = re.split(r" (\d)\. (?=[A-Z])", section)
+    return dict(zip(map(int, parts[1::2]), parts[2::2]))
+
+
+def the_stop():
+    return between(prompt_text(), "The stop:", "Later slices")
+
+
+def closing_step(number):
+    closing = prompt_text().split("### The closing steps of a round", 1)[1]
+    following = f" {number + 1}. **" if number < 3 else None
+    part = closing.split(f" {number}. **", 1)[1]
+    return part.split(following, 1)[0] if following else part
+
+
+def test_the_prompt_uses_run_commit_for_every_commit():
+    text = prompt_text()
+    naming = [
+        s
+        for s in re.split(r"(?<=\.) ", text)
+        if s.startswith("Use only `mcp__hilclaw__run_commit`")
+    ]
+    assert len(naming) == 1
+    assert "every commit of your run" in naming[0]
+    assert "round ends" not in naming[0]
+    assert "ADR-0143 decision 2" in naming[0]
+
+
+def test_the_stop_commits_and_leaves_round_0_open():
+    stop = the_stop()
+    assert "call `mcp__hilclaw__run_commit`" in stop
+    assert "Round 0 is not ended: no `round.end`" in stop
+    assert "no `run.commit`" not in stop
+    assert "No turn goes past this stop" in stop
+    assert "ADR-0143 decisions 2 and 7" in stop
+    assert stop.index("once the report") < stop.index("mcp__hilclaw__run_commit")
+    assert stop.index("mcp__hilclaw__run_commit") < stop.index("end the session")
+    assert "Later slices of the definition replace this stop" in prompt_text()
+
+
+def test_the_end_rule_covers_entry_steps_2_to_7():
+    rule = end_rule()
+    assert "Once entry step 0 has succeeded, call `mcp__hilclaw__run_commit`" in rule
+    assert "the ends of entry steps 2, 3, 4, 5, 6 and 7" in rule
+    assert "the stop" in rule
+    assert "a failed `round.end` in closing step 2" in rule
+    assert "ADR-0143 decision 2" in rule
+    assert "do not report the value" in rule
+    assert "This call is not a write into the run" in rule
+    steps = entry_steps()
+    assert sorted(steps) == list(range(8))
+    ending = sorted(n for n, step in steps.items() if "end the session" in step)
+    assert ending == [0, 2, 3, 4, 5, 6, 7]
+    assert 'ends it as "The end of a session" says' in between(
+        prompt_text(), "## The entry of a turn", " 0. "
+    )
+
+
+def test_the_step_0_failure_still_ends_the_session():
+    step = entry_steps()[0]
+    assert (
+        "If the call fails with any kind, report the kind in one line and end the session"
+        in step
+    )
+    assert "only a commit that ends no round" in step
+    assert "write nothing into the run" in step
+
+
+def test_a_failed_run_commit_is_not_called_again():
+    rule = end_rule()
+    assert "at entry step 0 or at an end, do not call it again in this turn" in rule
+    assert "ADR-0127 decision 5" in rule
+
+
+def test_the_closing_steps_commit_after_a_failed_round_end():
+    step = closing_step(2)
+    failure = step.split("If the call fails with any kind", 1)[1]
+    assert failure.index("call `mcp__hilclaw__run_commit`") < failure.index(
+        "end the session"
+    )
+    assert "Do not call `mcp__hilclaw__round_end` again in this turn" in failure
+    assert "do not write `STATE.json` with `mcp__hilclaw__state_write`" in failure
+    assert "ADR-0143 decision 2, revising ADR-0135 decision 5" in failure
+    assert closing_step(3) == (
+        "`run.commit`.** Call `mcp__hilclaw__run_commit`. Whether `committed` is "
+        "`true` or `false`, do not report the value. If the call fails with any "
+        "kind, report the kind in one line. In either case end the session "
+        "(ADR-0127 decisions 3 and 5; ADR-0118 decision 2 (i))."
+    )
+
+
+def test_the_prompt_forbids_run_commit_nowhere_else():
+    text = prompt_text()
+    lowered = text.lower()
+    assert "no `run.commit`" not in lowered
+    assert "do not call `mcp__hilclaw__run_commit`" not in lowered
+    assert "HQ-0043" not in text
+    for word in ("retry", "push", "index.lock"):
+        assert word not in lowered
+
+
+def test_an_invalid_run_id_makes_no_request():
+    bullet = between(
+        prompt_text(), "If your prompt holds no run id", "Otherwise that run"
+    )
+    assert "report that in one line and end the session" in bullet
+    assert "make no tool request that names a run" in bullet
+    assert "run_commit" not in bullet

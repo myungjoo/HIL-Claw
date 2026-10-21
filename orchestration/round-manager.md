@@ -30,8 +30,8 @@ first-case run (ADR-0118 decisions 1 and 2).
   directory, and write the first `STATE.json` of entry step 2 and the
   `"over"` of entry step 6, not Bash or file tools (ADR-0124 decision 2;
   ADR-0135 decision 1). Use only `mcp__hilclaw__run_commit`, your run id as
-  `run_id`, to commit your run's round ends in the data repository, not Bash,
-  `git` or any other means (ADR-0127 decision 2).
+  `run_id`, to make every commit of your run in the data repository, not
+  Bash, `git` or any other means (ADR-0127 decision 2; ADR-0143 decision 2).
 - Use only `mcp__hilclaw__key_store`, your run id as `run_id`, to store your
   run's two key record files, not Bash, file tools or any other means
   (ADR-0134 decisions 2 and 3).
@@ -49,16 +49,35 @@ first-case run (ADR-0118 decisions 1 and 2).
   `mcp__hilclaw__checks_read` yourself (ADR-0128 decision 2; ADR-0142
   decision 3).
 
+## The end of a session
+
+- Once entry step 0 has succeeded, call `mcp__hilclaw__run_commit`, your run
+  id as `run_id`, as your last act before every end of the session: the ends
+  of entry steps 2, 3, 4, 5, 6 and 7, the stop, and a failed `round.end` in
+  closing step 2. Closing step 3 is that call (ADR-0143 decision 2; ADR-0127
+  decision 3). Write nothing into the run after it. Whether `committed` is
+  `true` or `false`, do not report the value. If it fails with any kind,
+  report the kind in one line and end the session.
+- This call is not a write into the run. Where a step says to write
+  nothing, it means the run's work: the call adds to the data repository's
+  history and changes no file of the run but a removed torn tail of
+  `events.ndjson` (ADR-0143 decision 2 and Consequences).
+- After a prompt with no valid run id there is no such call (ADR-0123
+  decision 4). After the call has failed, at entry step 0 or at an end, do
+  not call it again in this turn (ADR-0143 decision 2; ADR-0127 decision 5).
+
 ## The entry of a turn
 
 Do these steps first, in this order, before any other work. Every tool
-request carries your run id as `run_id`.
+request carries your run id as `run_id`. Every step from step 2 on that ends
+the session ends it as "The end of a session" says.
 
 0. Call `mcp__hilclaw__run_commit`. Whether `committed` is `true` or
    `false`, go on with step 1 and do not report the value. If the call fails
-   with any kind, report the kind in one line and end the session. Begin no
-   round and write nothing into the run (ADR-0127 decision 5; ADR-0012
-   decision 6).
+   with any kind, report the kind in one line and end the session, also when
+   what was owed was only a commit that ends no round. Begin no round and
+   write nothing into the run (ADR-0127 decision 5; ADR-0012 decision 6;
+   ADR-0143 decision 2).
 1. Call `mcp__hilclaw__state_read`.
 2. If it fails with `run_file_missing`, call `mcp__hilclaw__run_fresh`.
    - If `fresh` is `true`, write the first `STATE.json` with
@@ -128,13 +147,14 @@ before any other step of it:
    board measurement of round 0 waits on `board.run`, and come to the stop
    (ADR-0142 decision 7). On any other report come to the stop.
 
-The stop: in round 0 it follows step 2, 3 or 4 as they say. In other rounds
-it follows step 1: the steps after it, up to the closing steps of a round,
-are not yet defined, so report in one line that the following steps of
-round `<round>` are not yet defined. In every case end the session and write
-nothing further. Round 0 is not ended: no `round.end` and no `run.commit`
-(ADR-0142 decisions 1 and 2). No turn goes past this stop, so no turn
-reaches the closing steps below.
+The stop: in round 0 it follows step 2, 3 or 4 as they say, once the report
+that step waits for has come. In other rounds it follows step 1: the steps
+after it, up to the closing steps of a round, are not yet defined, so report
+in one line that the following steps of round `<round>` are not yet defined.
+In every case write nothing further, call `mcp__hilclaw__run_commit` as "The
+end of a session" says, and end the session (ADR-0143 decisions 2 and 7).
+Round 0 is not ended: no `round.end` (ADR-0142 decisions 1 and 2). No turn
+goes past this stop, so no turn reaches the closing steps below.
 
 Later slices of the definition replace this stop with the remaining steps
 of a round.
@@ -156,11 +176,12 @@ id as `run_id` and the round's number as `round`:
    - Whether `over` is `true` or `false`, go on to `run.commit`.
    - If `reported_lines` is not empty, report the line numbers in one line
      and go on.
-   - If the call fails with any kind, report the kind in one line and end
-     the session. Do not call `mcp__hilclaw__round_end` again in this turn,
+   - If the call fails with any kind, report the kind in one line, call
+     `mcp__hilclaw__run_commit` as "The end of a session" says, and end the
+     session. Do not call `mcp__hilclaw__round_end` again in this turn, and
      do not write `STATE.json` with `mcp__hilclaw__state_write` or any other
-     way, and do not call `mcp__hilclaw__run_commit` (ADR-0135 decisions 3
-     and 5).
+     way (ADR-0135 decisions 3 and 5; ADR-0143 decision 2, revising ADR-0135
+     decision 5).
 3. **`run.commit`.** Call `mcp__hilclaw__run_commit`. Whether `committed` is
    `true` or `false`, do not report the value. If the call fails with any
    kind, report the kind in one line. In either case end the session
