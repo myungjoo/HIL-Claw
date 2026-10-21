@@ -32,6 +32,11 @@ permission options of decisions 2-4, 6 and 7, built by
 :func:`hilclaw.turn_permissions.options` from the session directory after the
 definition was put into it.
 
+**Decided by ADR-0141** and only applied here: every turn session gets the
+environment of decision 4, in which ``CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`` is
+``0`` and ``CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`` is ``1``, each replacing
+any value the caller had, and ``CLAUDE_AUTO_BACKGROUND_TASKS`` is removed.
+
 **The command line** is :data:`PROGRAM`, :data:`OPT_PRINT` with the caller's
 prompt, :data:`OPT_MCP_CONFIG` with :data:`CONFIG_FILE` and
 :data:`OPT_STRICT_MCP_CONFIG`, followed by the arguments that
@@ -43,9 +48,11 @@ the built-in set, ``--permission-mode dontAsk`` and ``--allowedTools`` with
 the pre-approved list; no model, turn-limit or bypass option is passed
 (ADR-0139 decision 10). The session's working directory is the session
 directory, its standard input is closed, and it gets the environment of the
-calling process unchanged; its standard output and standard error are those
-of the calling process and are not read here. The wait has no time limit of
-its own: a limit on a turn is OD-19's or OD-14's.
+calling process as read at that turn, with only the three changes of ADR-0141
+decision 4, the calling process's own environment left as it is; its
+standard output and standard error are those of the calling process and are
+not read here. The wait has no time limit of its own: a limit on a turn is
+OD-19's or OD-14's.
 
 **Choices of this module** (ADR-0118 leaves them to the code):
 
@@ -110,8 +117,10 @@ session loads the session directory's files and none of this repository;
 server to every turn and the server started from the session directory finds
 the package; (v) a ``-p`` turn session exits after its last reply, so the wait
 ends; (vi) the exit status tells a session that ended well from a failed one;
-and (ADR-0139 Consequences) (xxxiv)-(xl), listed in
-:mod:`hilclaw.turn_permissions`.
+(ADR-0139 Consequences) (xxxiv)-(xl), listed in
+:mod:`hilclaw.turn_permissions`; and (ADR-0141 Consequences) (xli) and
+(xlii). The stub shows nothing of a real session's reading of the
+environment.
 """
 
 import json
@@ -135,6 +144,12 @@ OPT_STRICT_MCP_CONFIG = "--strict-mcp-config"
 SERVERS_MEMBER = "mcpServers"
 CONFIG_FILE = "hilclaw-turn.mcp-config.json"
 MARKERS = ("CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", ".claude")
+
+_ENV_SET = (
+    ("CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT", "0"),
+    ("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1"),
+)
+_ENV_REMOVED = ("CLAUDE_AUTO_BACKGROUND_TASKS",)
 
 _PREFIX = "hilclaw-turn-"
 _PROMPT = re.compile(r"[A-Za-z0-9 .,_][A-Za-z0-9 .,_-]*")
@@ -246,6 +261,14 @@ def _remove(directory):
     return False
 
 
+def _environment():
+    environment = dict(os.environ)
+    environment.update(_ENV_SET)
+    for name in _ENV_REMOVED:
+        environment.pop(name, None)
+    return environment
+
+
 def _turn(directory, put_definition, prompt, text):
     put_definition(Path(directory))
     place = os.path.join(directory, CONFIG_FILE)
@@ -266,7 +289,13 @@ def _turn(directory, put_definition, prompt, text):
         OPT_STRICT_MCP_CONFIG,
         *permissions,
     )
-    done = subprocess.run(command, cwd=directory, stdin=subprocess.DEVNULL, check=False)
+    done = subprocess.run(
+        command,
+        cwd=directory,
+        stdin=subprocess.DEVNULL,
+        env=_environment(),
+        check=False,
+    )
     return done.returncode
 
 
