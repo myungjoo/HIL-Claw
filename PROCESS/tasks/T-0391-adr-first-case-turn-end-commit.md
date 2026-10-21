@@ -2,7 +2,7 @@
 id: T-0391
 title: Write ADR-0143, the commit at the end of a first-case turn that ends no round, carrying out the owner's answer to HQ-0043 (a) (part of OD-8 sub-question ⑪; PLAN P2-1/P2-5)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-13, NFR-1, OD-8, OD-23, "#5 A-3", S0, S1, S2]
 dependsOn: [T-0348, T-0390]
@@ -147,4 +147,9 @@ Open PR #186 (T-0324) touches `hilclaw/start_instance.py`, `tests/test_gemm_cont
 
 ## Result
 
-(to be filled by the executor)
+- **DONE.** ADR-0143 landed on `main` as a3eb31c (doc mode, pushed directly; trailer `Reviewed-by: reviewer agent (7 rounds, Approve)`). Files: the new ADR, `ARCHITECTURE/Requirements.md` (OD-8 row), `ARCHITECTURE/OpenDecisionProposals.md` (OD-8 채택분, sub-question ⑪ status, the "제안으로 남는 부분" commit phrase, the OD-18 NFR-7 ① bullet), `ARCHITECTURE/StandardScenarios.md` ("최근 재검사" line; S0-S2 re-checked, no verdict change, no gap). UsageCases unchanged. Branch deleted (local and remote).
+- **Review**: 7 rounds of a context-isolated `dev-reviewer`; round 1 Request changes (wrong decision cross-references), rounds 2-7 Approve with nits, each addressed. Round 7's one nit (add ADR-0123 decision 4 to the Status "builds on" list; it is already in References) was not applied, since a change would need an 8th round.
+- **Decisions**: the Round-Manager calls `run.commit` before every session end after a successful entry step 0; with no round end owed the tool commits the run directory (key record files `HEAD` lacks included; no case file; a torn tail alone owes nothing); a dead turn's work is committed at the next entry; owed P2 covers every owed commit. Revises ADR-0127 decisions 1-4, 6, 8 and ADR-0135 decision 5. No data-plane change. Nothing of decision (e) left open.
+- **§9 notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6310357486
+- **Runtime acceptance**: new item (xlvii) — needs an HQ (`runtime-acceptance`, non-blocking).
+- **Follow-ups**: code slices of ADR-0143 Consequences, in order: (1) `hilclaw/run_commit.py` (owed-commit rule, commit that ends no round, checks, docstring, `MESSAGE`); (2) `orchestration/round-manager.md` ("Your run", the call before every end, "The stop", failed `round.end`); (3) `hilclaw/further_turn.py` and `hilclaw/turn_start.py` (owed P2 widened). The ADR-0123 Status nit above can ride with slice (1)'s or any later doc task.

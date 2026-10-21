@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0391",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:8dd19e0a-0",
-    "acquiredAt": "2026-10-21T06:41:38Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -500,18 +496,26 @@
       "question": "ADR-0142(라운드 0의 coder 호출 뒤 단계; OD-23 일부; T-0389, main cd4879b)가 런타임 인수 항목 (xliv)~(xlvi)을 더했다. (xliv) `-p` 턴 세션에서 `.claude/agents/experiment-runner.md`로 정의되고 `tools`가 정확히 `mcp__hilclaw__board_run`인 sub-agent가 그 도구만 받고, 파생 목록의 사전 승인으로 `dontAsk`에서 prompt 없이 호출되는가. (xlv) 한 라운드 0 턴 세션에서 네 번의 foreground 위임(coder-driver, evaluator 두 번, experiment-runner)이 같은 턴에서 순서대로 보고를 돌려주고, 세션 자체의 한계로 끝나기 전에 `round.end`와 `run.commit`에 이르는가. (xlvi) ADR-0117의 한계가 허용하는 가장 큰 first-case timing run의 `board.run` 호출이 ADR-0141 결정 4의 환경에서 idle 점검이나 sub-agent stall 타이머로 중단되지 않고, 세션이 끝날 때 남아 돌지 않는가. 선택지: (a) 오너가 수동 확인 (b) 런타임 자체 점검 코드(P1-9 계열)로 확인 (c) 보류. D16에 따라 드라이버 task로는 닫지 않는다. 막히는 것: 없음(T-0389는 DONE; 코드 slice는 계속 진행). 막히지 않는 것: ADR-0142 코드 slice 1(round-manager.md step 3·4). 실패로 드러나면 ADR-0142 결정 4(experiment-runner의 단일 호출)와 (xlv)의 위임 순서를 다시 정해야 한다.",
       "askedAt": "2026-10-21T06:11:41Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0058",
+      "taskId": "T-0391",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0143(라운드를 끝내지 않는 첫 사례 턴 끝의 commit; OD-8 ⑪ 일부; T-0391, main a3eb31c)이 런타임 인수 항목 (xlvii)을 더했다. (xlvii) 살아 있는 Round-Manager가 진입 0단계가 성공한 뒤의 모든 세션 종료 직전(stop, 세션을 끝내는 진입 단계, 실패한 `round.end`)에 마지막 행동으로 `run.commit`을 부르고, 그 호출이 실패한 뒤에는 다시 부르지 않는가. 선택지: (a) 오너가 수동 확인 (b) 런타임 자체 점검 코드(P1-9 계열)로 확인 (c) 보류. D16에 따라 드라이버 task로는 닫지 않는다. 막히는 것: 없음(T-0391은 DONE). 막히지 않는 것: ADR-0143 코드 slice (1)~(3). 실패로 드러나면 결정 2(모든 종료 전 호출)를 다시 정해야 한다.",
+      "askedAt": "2026-10-21T07:17:48Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 405,
-    "tasksDone": 377,
+    "iterations": 406,
+    "tasksDone": 378,
     "tasksBlocked": 28,
-    "reviewRoundsTotal": 1347
+    "reviewRoundsTotal": 1354
   },
   "lastIteration": {
-    "at": "2026-10-21T06:36:40Z",
+    "at": "2026-10-21T07:17:48Z",
     "owner": "AKIHA:8dd19e0a-0",
-    "taskId": "T-0390",
+    "taskId": "T-0391",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
