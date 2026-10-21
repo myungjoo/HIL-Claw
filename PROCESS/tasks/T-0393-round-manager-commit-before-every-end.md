@@ -2,7 +2,7 @@
 id: T-0393
 title: Have the Round-Manager call run.commit before every end of its session after a successful entry step 0 (ADR-0143 Consequences slice (2); PLAN P2-1/P2-4)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-13, FR-18, NFR-1, OD-8, S0, S1, S2]
 dependsOn: [T-0391, T-0392]
