@@ -53,7 +53,8 @@ not a ``str`` or path object; :class:`FileNotFoundError` for a missing
 unchanged, what reading, removing or copying raises.
 
 The roster: ``orchestration/agents/`` holds the evaluator's definition
-(ADR-0128 decision 7), and the rest of the roster stays open (OD-23).
+(ADR-0128 decision 7) and the coder-driver's (ADR-0126 decision 6; ADR-0141
+decision 5), and the rest of the roster stays open (OD-23).
 
 Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
 ADR-0118 decision 4, "Workspace trust"), no round steps between the key

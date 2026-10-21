@@ -54,9 +54,13 @@ name, ``Bash``, ``Write``, ``Edit``, ``Agent`` and every other built-in tool
 among them) and one with a ``permissionMode`` key. Reading errors are raised
 unchanged.
 
-Not done here: the coder-driver's entry (ADR-0139 decision 9, HQ-0040) — a
-``Bash`` entry is refused; no check of a ``tools`` entry against the
-registry, only of its form; no hook, no deny rule, no settings file.
+The coder-driver's entry is derived with no change here (ADR-0141
+decision 5; ADR-0139 decision 9, form (T)): its two ``mcp__hilclaw__`` names
+are pre-approved beside ``Agent(coder-driver)``, and it adds no built-in
+tool; a ``Bash`` entry is still refused.
+
+Not done here: no check of a ``tools`` entry against the registry, only of
+its form; no hook, no deny rule, no settings file.
 
 Runtime acceptance items it depends on (ADR-0139 Consequences): (xxxiv) the
 options take effect in a never-trusted session directory; (xxxv) the
