@@ -19,6 +19,7 @@ EVALUATOR_TOOLS = {
     "mcp__hilclaw__verdicts_write",
     "mcp__hilclaw__hypotheses_read",
     "mcp__hilclaw__checks_read",
+    "mcp__hilclaw__timings_compare",
 }
 
 UNKNOWN = "the definition holds an entry that is not in the layout"
@@ -151,6 +152,12 @@ def test_the_evaluator_frontmatter():
     for name in tools:
         if name.startswith("mcp__hilclaw__"):
             assert name in served
+
+
+def test_the_evaluator_names_no_removed_kind():
+    text = (SOURCE / "agents" / EVALUATOR).read_text(encoding="utf-8")
+    assert "comparison_not_given" not in text
+    assert "comparison_unverified" in text
 
 
 def test_a_given_source_as_str(session, source):

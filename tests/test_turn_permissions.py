@@ -36,7 +36,8 @@ EVALUATOR = (
     "tools: Read, Grep, Glob, mcp__hilclaw__correctness_check, "
     "mcp__hilclaw__state_read, mcp__hilclaw__instance_read, "
     "mcp__hilclaw__run_fresh, mcp__hilclaw__verdicts_write, "
-    "mcp__hilclaw__hypotheses_read, mcp__hilclaw__checks_read\n"
+    "mcp__hilclaw__hypotheses_read, mcp__hilclaw__checks_read, "
+    "mcp__hilclaw__timings_compare\n"
     "---\n"
     "# Evaluator\n"
 )
@@ -51,6 +52,7 @@ EVALUATOR_TOOLS = {
     "mcp__hilclaw__verdicts_write",
     "mcp__hilclaw__hypotheses_read",
     "mcp__hilclaw__checks_read",
+    "mcp__hilclaw__timings_compare",
 }
 BYPASS = (
     "--dangerously-skip-permissions",
@@ -238,6 +240,7 @@ def test_the_real_definition(tmp_path):
     built_in, allowed = split(options(tmp_path))
     assert "Agent(evaluator)" in allowed
     assert EVALUATOR_TOOLS <= set(allowed)
+    assert "mcp__hilclaw__timings_compare" in allowed
     assert set(FIXED) <= set(allowed)
     assert built_in == "Agent,Glob,Grep,Read"
 
