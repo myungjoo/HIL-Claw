@@ -2,7 +2,7 @@
 id: T-0388
 title: Add the round-0 delegation step to the coder-driver and the moved stop to orchestration/round-manager.md (ADR-0141 decision 6, Consequences slice 4; PLAN P2-2)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-5, OD-23, OD-18, S0, S1]
 dependsOn: [T-0384, T-0385, T-0386, T-0387]
@@ -130,3 +130,11 @@ Language: no new layer-2 code. The change is layer-1 Markdown, a docstring corre
 - Next for the planner: with the four slices of ADR-0141 done, see what PLAN P2-1/P2-2 need next for round 0 after the coder call, beginning with the checks of the attempt and the baseline. Check first whether the existing records already decide that step, or whether it waits on an HQ (for example T-0210/HQ-0021, the holder of `sim.run`/`board.run`).
 
 ## Result
+
+- **Status:** DONE. PR #225 (https://github.com/myungjoo/HIL-Claw/pull/225) squash-merged as 68da2ef; branch `claude/T-0388-round-manager-coder-delegation-step` deleted locally and remotely. The squash message is the PR body, ending in `Task: T-0388`.
+- **Review:** 3 rounds by a context-isolated `dev-reviewer`, Approve each round. Round 1: two nits fixed (a hard-to-read "Not done here" docstring phrase; a test assertion pinning the stop sentence "No turn goes past this stop", which criterion 11 does not allow — dropped). Round 2: one nit fixed (an unclear "that" in the "*The prompt*" bullet). Round 3: none.
+- **CI:** green on final head 9e5aea4 (run 39546153352): Python gate 3.11/3.14, Coverage gate (hilclaw), Test presence, sh gate, C gate. Locally: full pytest 25584 passed / 736 skipped; ruff check and format clean.
+- **Changes** (3 files, +39/-11): `orchestration/round-manager.md` — "Your run" gains the rule to delegate to `coder-driver` via `Agent` only as step 2 says and never call `mcp__hilclaw__spec_write`/`mcp__hilclaw__coder_run` itself (ADR-0126 d2; ADR-0141 d5, d6); new round-0-only step 2 delegates with run id and tuple 0/1/1 (no place), reports the result in one line with no second delegation, own call, other write or repair; the stop now follows step 2 in round 0 and step 1 otherwise. `hilclaw/turn_definition.py` — docstring only. `tests/test_turn_definition.py` — new test: prompt names `coder-driver` and its definition exists in `SOURCE`; the stop's "are not yet defined" sentence remains; `mcp__hilclaw__coder_run` appears only in a "Do not call" sentence.
+- **Language:** no new layer-2 code (layer-1 Markdown, a docstring in an existing Python module, one Python test).
+- **D16:** no `claude` process or container started; runtime acceptance items (xli)-(xliii) stay with HQ-0056, (xii)-(xiii) with HQ-0042.
+- **Follow-ups:** all four ADR-0141 slices are done; next for the planner is what PLAN P2-1/P2-2 need for round 0 after the coder call, starting with the attempt checks and the baseline — first check whether existing records decide that step or it waits on an HQ (e.g. T-0210/HQ-0021, the holder of `sim.run`/`board.run`). The new test pins the stop's "not yet defined" sentence; the slice that replaces the stop must update it.
