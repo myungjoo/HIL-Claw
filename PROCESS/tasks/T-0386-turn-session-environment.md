@@ -2,7 +2,7 @@
 id: T-0386
 title: Give every turn session of hilclaw.turn_loop the environment of ADR-0141 decision 4 (MCP idle check off, background tasks off, auto-backgrounding removed) (ADR-0141 Consequences slice 2; PLAN P2-2)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-5, OD-23, OD-18, S0, S1]
 dependsOn: [T-0384, T-0385]
@@ -64,3 +64,11 @@ Open HQs checked: HQ-0053 (slice (d), the coder's container sign-in) is not cros
 - Next for the planner: ADR-0141 Consequences slice 3 (`orchestration/agents/coder-driver.md` with its test, and the `hilclaw/turn_permissions.py` docstring), then slice 4 (step 2 of "The round steps" in `orchestration/round-manager.md` and the moved stop, with its test).
 
 ## Result
+
+DONE. PR #223 squash-merged as 1d83884 after 2 review rounds (round 1 Approve with one docstring-reflow nit, fixed; round 2 Approve). Local tests (full suite 25795 passed, 520 skipped, run with `--basetemp` under `%LOCALAPPDATA%` because a marker lies above the default temp dir) and all PR CI checks green, coverage gate included.
+
+- `hilclaw/turn_loop.py`: private constants `_ENV_SET` (`CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` `"0"`, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` `"1"`) and `_ENV_REMOVED` (`CLAUDE_AUTO_BACKGROUND_TASKS`); `_environment()` copies `os.environ` at every turn, applies them and is passed as `env=` to the session. `os.environ`, the server entry, the command line, cwd and the standard streams are unchanged; no settings file; no limit variable touched. Docstring: "Decided by ADR-0141" paragraph, the environment sentence made accurate, acceptance items (xli) and (xlii) added with the note that the stub shows nothing of a real session. The constants are private, so they are not named in the docstring; the tests use the literal variable names.
+- `tests/test_turn_loop.py`: the stub records the three variables, an unrelated one and the three left-alone limit variables; tests for happy (two turns), replacement, read at each turn, the caller's environment after a later turn raises `ClaudeNotFoundError`, no settings file, and lower-case names on Windows.
+- Windows case: name comparison is exact. CPython's `os.environ` on Windows stores keys upper-cased, so a caller's lower-case spelling (for example `claude_auto_background_tasks`) is already the upper-case key in the copy and is replaced or removed; no extra handling is needed. `test_lower_case_names_on_windows` checks this and runs on Windows only (skipped elsewhere).
+- Language: Python, because the turn loop is an existing Python module of the tool layer and the change is confined to it.
+- Runtime acceptance items (xli) and (xlii) (HQ-0056) are not closed by this task.
