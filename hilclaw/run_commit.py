@@ -1,12 +1,19 @@
-"""The commit of a round end and the tool ``run.commit`` (ADR-0127, slice (1)).
+"""The commits of a run and the tool ``run.commit`` (ADR-0127 and ADR-0143, slice (1) of each).
 
 A round end of the run ``run_id`` is *owed* when the working tree's
 ``runs/<run_id>/STATE.json`` is valid at version 1 with ``round`` *W* and
 either the commit ``HEAD`` holds no ``STATE.json`` for the run and *W* >= 1,
 or holds one, valid at version 1, with ``round`` *H* < *W* (ADR-0127
 decision 4). Only ``round`` is read for this; no commit message or author is.
-:func:`owed_rounds` answers the rule read-only; :func:`commit` makes the owed
-commit; :func:`definition` is the registry tool ``run.commit`` over it.
+A *commit* is owed when a round end is, or, with none owed, when a file below
+``runs/<run_id>/`` that the commit would take in is new against ``HEAD`` or
+differs from ``HEAD``'s entry as ``git`` would record it, or a file ``HEAD``
+holds there is missing from the working tree (ADR-0143 decision 3).
+``events.ndjson`` is compared only up to and including its last line feed, one
+that ``HEAD`` lacks counting as empty, so a torn tail alone owes nothing; the
+key record files alone owe nothing either. :func:`owed_rounds` and
+:func:`commit_owed` answer the two rules read-only; :func:`commit` makes the
+owed commit; :func:`definition` is the registry tool ``run.commit`` over it.
 
 The commit holds, against ``HEAD``, every new or changed file below
 ``runs/<run_id>/``, the existing case files of the rounds *H* to *W* - 1 from
@@ -18,8 +25,18 @@ round 1 (ADR-0072 decisions 1 and 3), and each of the two key record files
 ``HEAD`` holds is never taken in again, whatever the working tree holds, and
 an ``instance.json`` that gives no key gives no record file and refuses
 nothing on this account; the record files are looked for only when a commit
-is made. A path whose name ends with ``.tmp``, a path the repository ignores
-and anything below ``blobs/`` is never taken in; no content is inspected.
+is made. A commit that ends no round has an empty range of rounds and so takes
+in no case file: the case file of the round in progress waits for the commit
+of its round's end (ADR-0143 decision 3, O2). A path whose name ends with
+``.tmp``, a path the repository ignores and anything below ``blobs/`` is never
+taken in; no content is inspected beyond the line feeds of ``events.ndjson``.
+
+The refusals of the working tree's and ``HEAD``'s ``STATE.json``, of a working
+``round`` below ``HEAD``'s and of a ``STATE.json`` that ``HEAD`` holds and the
+working tree lacks are checked at every call; a missing file and an
+``events.ndjson`` that is no regular file whenever a commit is owed, round end
+or not (a missing file owes one, so it is always refused); a missing key
+directory only when a round end from round 1 is owed (ADR-0143 decision 3).
 
 The module runs the ``git`` program of the machine (:data:`GIT`) with an
 argument list and no shell, with the variables that point ``git`` at another
@@ -49,7 +66,7 @@ KIND_COMMIT_NOT_MADE = "commit_not_made"
 #: The program run as ``git``: a name looked up on ``PATH``, or a path.
 GIT = "git"
 #: The message of every commit this module makes; nothing reads it.
-MESSAGE = "Commit an owed round end (run.commit)"
+MESSAGE = "Commit the owed files of a run (run.commit)"
 
 _LOCATING = frozenset(
     {
@@ -71,18 +88,24 @@ _NO_INSTANCE = (
     OSError,
 )
 _FROM_STDIN = ("--pathspec-from-file=-", "--pathspec-file-nul")
+_COMPARING = ("-c", "core.splitIndex=false", "-c", "diff.autoRefreshIndex=true")
+_RAW = ("--raw", "-z", "--no-renames", "--no-ext-diff", "--ignore-submodules=all")
 _RUN_ID_SCHEMA = {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"}
 _DESCRIPTION = (
-    "Commit the round end of the run run_id when one is owed: when the round of "
-    "the run's STATE.json in the data repository's working tree is beyond the "
-    "round of the STATE.json of the last commit (HEAD), a torn tail of "
+    "Commit the run run_id when a commit is owed: whenever runs/<run_id>/ in the "
+    "data repository's working tree holds new or changed files since the last "
+    "commit (HEAD), or a round end is owed (the round of the run's STATE.json is "
+    "beyond the round of the STATE.json of HEAD). Then a torn tail of "
     "events.ndjson is removed and one commit is made that holds every new or "
     "changed file below runs/<run_id>/, the case files of the rounds that "
     "ended, and the run's two key record files (hw_profile.json and "
     "op_signature.json) when they exist and the last commit does not hold them. "
+    "The case file of the round in progress is not taken in until its round "
+    "ends. A torn tail alone, or the key record files alone, owe no commit. "
     "Files named *.tmp, ignored paths and anything below blobs/ are never "
     "committed, and nothing else of the working tree or the index changes. When "
-    "nothing is owed, nothing is written, so the call is safe at every entry. "
+    "nothing is owed, nothing is written, so the call is safe at every entry and "
+    "before every end. "
     'The result is {"committed": true or false}. The data root is never part of '
     "the request; the tool knows it. It fails with no_repository when the data "
     "root is not the top directory of a git working tree or git cannot be run, "
@@ -133,7 +156,7 @@ class NoKeyDirectoryError(CommitRefusedError):
 
 
 class CommitNotMadeError(Exception):
-    """The torn tail could not be removed or ``git`` did not make the commit; ``HEAD`` is unchanged."""
+    """The run could not be compared with ``HEAD``, the torn tail could not be removed or ``git`` did not make the commit; ``HEAD`` is unchanged."""
 
 
 class _Found(NamedTuple):
@@ -141,6 +164,7 @@ class _Found(NamedTuple):
     head: str | None
     held: tuple
     keys: tuple | None
+    owed: bool
 
 
 def owed_rounds(data_root, run_id):
@@ -161,17 +185,43 @@ def owed_rounds(data_root, run_id):
     :class:`NoKeyDirectoryError`. All of the latter seven are
     :class:`CommitRefusedError`.
     """
-    return _assess(data_root, run_id).rounds
+    return _assess(data_root, run_id, False).rounds
+
+
+def commit_owed(data_root, run_id):
+    """Return whether a commit is owed for the run ``run_id`` (ADR-0143 decision 3).
+
+    True when :func:`owed_rounds` is not empty, or, with no round end owed,
+    when a file below ``runs/<run_id>/`` that :func:`commit` would take in is
+    new against ``HEAD`` or differs from ``HEAD``'s entry, in content or mode,
+    as ``git`` would record it (its filters and ``core.fileMode`` applied), or
+    a file ``HEAD`` holds there is missing. ``events.ndjson`` is compared up to
+    and including its last line feed, one that ``HEAD`` lacks counting as
+    empty; the key record files are not compared. Nothing is written to the
+    working tree, the index, ``HEAD`` or the object store and no optional lock
+    of ``git`` is taken: ``HEAD``'s entries of the run are read into a
+    temporary index outside the repository and content is hashed without
+    ``-w``.
+
+    Raises what :func:`owed_rounds` raises, in the same order, except that
+    :class:`FileMissingError` and :class:`EventsNotRegularError` are raised
+    whenever a commit is owed, round end or not (a missing file owes one, so
+    it is always refused); and :class:`CommitNotMadeError` when, with no round
+    end owed, ``git`` fails a step of the comparison or ``events.ndjson``
+    cannot be read.
+    """
+    return _assess(data_root, run_id, True).owed
 
 
 def commit(data_root, run_id):
     """Make the owed commit of the run ``run_id``; return whether a commit was made.
 
-    With nothing owed (:func:`owed_rounds` empty) nothing is written and the
+    With nothing owed (:func:`commit_owed` false) nothing is written and the
     result is ``False``. Otherwise the torn tail of ``events.ndjson`` is
     removed (:func:`hilclaw.events.remove_torn_tail`), one commit holding the
     paths of the module docstring is made on ``HEAD`` (the repository's first
-    when there is no ``HEAD``), the index entries of exactly those paths are
+    when there is no ``HEAD``; with no round end owed, no case file is among
+    them), the index entries of exactly those paths are
     set to the commit, and the result is ``True``. Nothing else of the working
     tree or the index is changed; a path staged elsewhere stays staged. The
     index lock of the repository is held from before ``HEAD`` moves until the
@@ -179,13 +229,13 @@ def commit(data_root, run_id):
     entries are set once more by ``git reset`` on the index, as ``git`` locks
     it; should that fail too, the index is as it was and nothing reports it.
 
-    Raises what :func:`owed_rounds` raises, with nothing removed or committed,
+    Raises what :func:`commit_owed` raises, with nothing removed or committed,
     and :class:`CommitNotMadeError` when the removal fails with an
     :class:`OSError`, ``git`` fails a step of the commit, or the index lock is
     held; ``HEAD`` is then as it was, and a removed torn tail stays removed.
     """
-    found = _assess(data_root, run_id)
-    if not found.rounds:
+    found = _assess(data_root, run_id, True)
+    if not found.owed:
         return False
     cases = ()
     if found.keys is not None:
@@ -335,7 +385,7 @@ def _run_id(request):
         raise tools.ToolFailure(tools.KIND_INVALID_REQUEST, f"the request's {e}") from e
 
 
-def _assess(data_root, run_id):
+def _assess(data_root, run_id, wide):
     prefix = f"runs/{layout.check_run_id(run_id)}/"
     done = _git(data_root, "rev-parse", "--is-inside-work-tree", "--show-prefix")
     if done.returncode or done.stdout.splitlines()[:2] != [b"true", b""]:
@@ -354,25 +404,28 @@ def _assess(data_root, run_id):
         held = tuple(_entries(_ok(listed, HeadStateError, f"{prefix} in HEAD")))
     working = _working_round(data_root, run_id, prefix)
     committed = _head_round(data_root, prefix, held)
+    rounds = range(0)
     if working is None:
         if committed is not None:
             raise StateMissingError(
                 f"{prefix}STATE.json: HEAD holds it and the working tree does not"
             )
-        return _Found(range(0), head, held, None)
-    start = 0 if committed is None else committed
-    if working < start:
-        raise RoundBehindError(
-            f"{prefix}STATE.json: round {working} is below round {start} of HEAD"
-        )
-    rounds = range(start, working)
-    if not rounds:
-        return _Found(rounds, head, held, None)
+    else:
+        start = 0 if committed is None else committed
+        if working < start:
+            raise RoundBehindError(
+                f"{prefix}STATE.json: round {working} is below round {start} of HEAD"
+            )
+        rounds = range(start, working)
+    if not rounds and not wide:
+        return _Found(rounds, head, held, None, False)
     for path, _, kind, _ in held:
         if kind == "blob" and not _is_file(data_root, path):
             raise FileMissingError(
                 f"{path}: HEAD holds it and the working tree does not"
             )
+    if not rounds and not _changed(data_root, prefix, held):
+        return _Found(rounds, head, held, None, False)
     log = layout.run_file(data_root, run_id, "events.ndjson")
     try:
         regular = stat.S_ISREG(os.lstat(log).st_mode)
@@ -381,9 +434,63 @@ def _assess(data_root, run_id):
     if not regular:
         raise EventsNotRegularError(f"{prefix}events.ndjson: is not a regular file")
     keys = None
-    if working >= 2:
+    if rounds and working >= 2:
         keys = _keys(data_root, run_id, prefix)
-    return _Found(rounds, head, held, keys)
+    return _Found(rounds, head, held, keys, True)
+
+
+def _changed(data_root, prefix, held):
+    log = f"{prefix}events.ndjson"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as scratch:
+        index = os.path.join(scratch, "index")
+
+        def look(*args, input=None):
+            done = _git(data_root, *_COMPARING, *args, index=index, input=input)
+            return _ok(done, CommitNotMadeError, f"git {args[0]}")
+
+        if held:
+            info = b"".join(
+                f"{mode} {oid}\t".encode() + os.fsencode(path) + b"\0"
+                for path, mode, _, oid in held
+            )
+            look("update-index", "-z", "--index-info", input=info)
+            raw = look("diff", *_RAW, "--", prefix).split(b"\0")
+            oids = {path: oid for path, _, _, oid in held}
+            for status, name in zip(raw[::2], raw[1::2]):
+                path = os.fsdecode(name)
+                if path.endswith(".tmp"):
+                    continue
+                modes = status[1:].split(b" ")[:2]
+                if (
+                    path != log
+                    or modes[0] != modes[1]
+                    or not _is_regular(data_root, log)
+                ):
+                    return True
+                if _hashed(data_root, log, look) != oids[log]:
+                    return True
+        listed = look("ls-files", "-z", "--others", "--exclude-standard", "--", prefix)
+        for path in _paths(listed):
+            if path.endswith((".tmp", "/")) or not _is_file(data_root, path):
+                continue
+            if path != log or not _is_regular(data_root, log) or _lines(data_root, log):
+                return True
+    return False
+
+
+def _lines(data_root, path):
+    try:
+        content = (Path(data_root) / path).read_bytes()
+    except OSError as e:
+        raise CommitNotMadeError(f"{path}: could not be read: {e}") from e
+    return content[: content.rfind(b"\n") + 1]
+
+
+def _hashed(data_root, path, look):
+    content = _lines(data_root, path)
+    return (
+        look("hash-object", "--stdin", f"--path={path}", input=content).strip().decode()
+    )
 
 
 def _working_round(data_root, run_id, prefix):

@@ -15,7 +15,7 @@ from hilclaw import (
     run_state,
     tools,
 )
-from hilclaw.run_commit import commit, definition, owed_rounds
+from hilclaw.run_commit import commit, commit_owed, definition, owed_rounds
 
 RUN = "run-a"
 OTHER = "run-b"
@@ -183,6 +183,14 @@ def commit_by_hand(root, *paths):
     git(root, "commit", "-q", "-m", "by hand")
 
 
+def objects(root):
+    return git(root, "count-objects", "-v")
+
+
+def round_in_head(root, run_id=RUN):
+    return run_state.parse(blob(root, f"runs/{run_id}/STATE.json")).round
+
+
 def snapshot(root):
     files = {}
     for path in sorted(root.rglob("*")):
@@ -214,28 +222,58 @@ def tool(root):
 
 def test_round_zero_end_of_a_fresh_run_is_committed(root):
     write_instance(root)
-    before = head(root)
+    start = head(root)
     assert owed_rounds(root, RUN) == range(0)
+    assert commit_owed(root, RUN) is True
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/instance.json"}
     assert commit(root, RUN) is False
     write_state(root, 0)
-    assert commit(root, RUN) is False
-    assert head(root) == before
     write_events(root, b'{"line": 1}\n')
+    assert owed_rounds(root, RUN) == range(0)
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/STATE.json", f"runs/{RUN}/events.ndjson"}
+    assert round_in_head(root) == 0
+    before = head(root)
     write_state(root, 1)
     assert owed_rounds(root, RUN) == range(1)
     assert commit(root, RUN) is True
     after = head(root)
     assert git(root, "rev-parse", "HEAD~1").strip().decode() == before
-    assert changed(root) == {
-        f"runs/{RUN}/instance.json",
-        f"runs/{RUN}/STATE.json",
-        f"runs/{RUN}/events.ndjson",
-    }
+    assert git(root, "rev-parse", "HEAD~3").strip().decode() == start
+    assert changed(root) == {f"runs/{RUN}/STATE.json"}
     assert git(root, "log", "-1", "--format=%s").strip().decode() == run_commit.MESSAGE
     assert git(root, "status", "--porcelain").strip() == b""
     assert commit(root, RUN) is False
+    assert commit_owed(root, RUN) is False
     assert head(root) == after
     assert owed_rounds(root, RUN) == range(1, 1)
+
+
+def test_a_round_zero_stop_commits_the_run_files_and_the_new_record_files(root):
+    write_instance(root)
+    assert commit(root, RUN) is True
+    write_state(root, 0)
+    write_events(root, b'{"line": 1}\n{"line": 2}\n')
+    write(root, f"runs/{RUN}/rounds/0000/spec.json", b"{}\n")
+    store_keys(root)
+    assert commit_owed(root, RUN) is True
+    assert commit(root, RUN) is True
+    assert changed(root) == {
+        f"runs/{RUN}/STATE.json",
+        f"runs/{RUN}/events.ndjson",
+        f"runs/{RUN}/rounds/0000/spec.json",
+        HW_RECORD,
+        OP_RECORD,
+    }
+    assert round_in_head(root) == 0
+    assert git(root, "status", "--porcelain").strip() == b""
+    assert commit(root, RUN) is False
+    write_state(root, 1)
+    assert owed_rounds(root, RUN) == range(1)
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/STATE.json"}
+    assert round_in_head(root) == 1
 
 
 def test_a_later_round_end_commits_the_changed_files_and_the_cases_of_its_range(root):
@@ -278,22 +316,27 @@ def test_the_first_commit_of_a_repository_without_head(tmp_path):
 
 
 @pytest.mark.parametrize("round", [None, 0])
-def test_a_repository_without_head_owes_nothing_at_round_zero_or_without_a_state(
+def test_a_repository_without_head_commits_the_run_at_round_zero_or_without_a_state(
     tmp_path, round
 ):
     data = new_repository(tmp_path / "data")
     write_instance(data)
+    expected = {f"runs/{RUN}/instance.json"}
     if round is not None:
         write_state(data, round)
-    before = snapshot(data)
+        expected.add(f"runs/{RUN}/STATE.json")
     assert owed_rounds(data, RUN) == range(0)
+    assert commit_owed(data, RUN) is True
+    assert commit(data, RUN) is True
+    assert git(data, "rev-list", "--count", "HEAD").strip() == b"1"
+    assert committed(data) == expected
     assert commit(data, RUN) is False
-    assert snapshot(data) == before
 
 
 def test_no_run_directory_owes_nothing(root):
     before = snapshot(root)
     assert owed_rounds(root, RUN) == range(0)
+    assert commit_owed(root, RUN) is False
     assert commit(root, RUN) is False
     assert snapshot(root) == before
 
@@ -301,18 +344,154 @@ def test_no_run_directory_owes_nothing(root):
 # Branches
 
 
-def test_inside_a_round_nothing_is_committed_even_with_changed_files(root):
+def test_inside_a_round_the_changed_files_are_committed_with_the_round_unchanged(root):
     a_run(root, 0)
     write_state(root, 2)
     assert commit(root, RUN) is True
     after = head(root)
     write_events(root, b'{"line": 1}\n{"line": 2}\n{"torn"')
     write(root, f"runs/{RUN}/rounds/0002/decision/log.json", b"{}\n")
-    before = snapshot(root)
     assert owed_rounds(root, RUN) == range(2, 2)
+    assert commit_owed(root, RUN) is True
+    assert commit(root, RUN) is True
+    assert git(root, "rev-parse", "HEAD~1").strip().decode() == after
+    assert changed(root) == {
+        f"runs/{RUN}/events.ndjson",
+        f"runs/{RUN}/rounds/0002/decision/log.json",
+    }
+    assert round_in_head(root) == 2
+    stored = blob(root, f"runs/{RUN}/events.ndjson")
+    assert stored == b'{"line": 1}\n{"line": 2}\n'
+    assert (root / f"runs/{RUN}/events.ndjson").read_bytes() == stored
+    assert git(root, "status", "--porcelain").strip() == b""
+    again = head(root)
+    assert commit(root, RUN) is False
+    assert head(root) == again
+    write_state(root, 3)
+    write(root, case(2), b'{"case": 2}\n')
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/STATE.json", case(2)}
+
+
+def test_a_torn_tail_alone_owes_nothing_and_is_not_removed(root):
+    a_run(root, 2)
+    assert commit(root, RUN) is True
+    write_events(root, b'{"line": 1}\n{"to')
+    write(root, f"runs/{RUN}/scratch.tmp", b"partial")
+    (root / f"runs/{RUN}/empty").mkdir()
+    before = snapshot(root)
+    assert commit_owed(root, RUN) is False
     assert commit(root, RUN) is False
     assert snapshot(root) == before
-    assert head(root) == after
+
+
+def test_a_new_log_of_a_torn_tail_alone_owes_nothing(root):
+    write_instance(root)
+    assert commit(root, RUN) is True
+    write_events(root, b'{"to')
+    before = snapshot(root)
+    assert commit_owed(root, RUN) is False
+    assert commit(root, RUN) is False
+    assert snapshot(root) == before
+    write_events(root, b'{"line": 1}\n{"to')
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/events.ndjson"}
+    assert blob(root, f"runs/{RUN}/events.ndjson") == b'{"line": 1}\n'
+
+
+def test_a_case_of_the_round_in_progress_waits_for_its_round_end(root):
+    a_run(root, 3)
+    assert commit(root, RUN) is True
+    write(root, case(3), b'{"case": 3}\n')
+    before = snapshot(root)
+    assert commit_owed(root, RUN) is False
+    assert commit(root, RUN) is False
+    assert snapshot(root) == before
+    write_events(root, b'{"line": 1}\n{"line": 2}\n')
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/events.ndjson"}
+    lines = git(root, "status", "--porcelain", "-uall").decode().splitlines()
+    assert lines == [f"?? {case(3)}"]
+    write_state(root, 4)
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/STATE.json", case(3)}
+
+
+def test_a_changed_tracked_file_alone_is_committed(root):
+    a_run(root, 1)
+    write(root, f"runs/{RUN}/rounds/0000/a.json", b"old\n")
+    commit_by_hand(root, f"runs/{RUN}")
+    write(root, f"runs/{RUN}/rounds/0000/a.json", b"new\n")
+    assert commit_owed(root, RUN) is True
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/rounds/0000/a.json"}
+    assert commit_owed(root, RUN) is False
+
+
+def test_a_new_tmp_name_owes_nothing_whatever_the_ignore_file_says(tmp_path):
+    data = new_repository(tmp_path / "data", ignore=None)
+    a_run(data, 1)
+    assert commit(data, RUN) is True
+    write(data, f"runs/{RUN}/rounds/0001/note.tmp", b"partial")
+    assert commit_owed(data, RUN) is False
+    assert commit(data, RUN) is False
+
+
+def test_a_changed_tracked_tmp_name_owes_nothing(root):
+    a_run(root, 1)
+    write(root, f"runs/{RUN}/old.tmp", b"one")
+    commit_by_hand(root, f"runs/{RUN}")
+    write(root, f"runs/{RUN}/old.tmp", b"two")
+    assert commit_owed(root, RUN) is False
+    assert commit(root, RUN) is False
+
+
+def test_a_mode_change_is_judged_as_git_records_it(root):
+    a_run(root, 1)
+    script = write(root, f"runs/{RUN}/rounds/0000/run.sh", b"echo\n")
+    commit_by_hand(root, f"runs/{RUN}")
+    os.chmod(script, 0o755)
+    trusted = git(root, "config", "--bool", "core.filemode").strip() == b"true"
+    if trusted and not os.access(script, os.X_OK):
+        pytest.skip("no executable bit can be set here")
+    assert commit_owed(root, RUN) is trusted
+    assert commit(root, RUN) is trusted
+    if trusted:
+        assert changed(root) == {f"runs/{RUN}/rounds/0000/run.sh"}
+        entry = git(root, "ls-tree", "HEAD", "--", f"runs/{RUN}/rounds/0000/run.sh")
+        assert entry.startswith(b"100755 ")
+    assert commit(root, RUN) is False
+
+
+def test_a_log_changed_by_more_than_a_torn_tail_is_compared_by_its_lines(root):
+    a_run(root, 1)
+    assert commit(root, RUN) is True
+    write_events(root, b'{"line": 9}\n{"to')
+    assert commit_owed(root, RUN) is True
+    assert commit(root, RUN) is True
+    assert blob(root, f"runs/{RUN}/events.ndjson") == b'{"line": 9}\n'
+
+
+@pytest.mark.parametrize("tracked", [True, False])
+def test_a_log_that_is_a_symbolic_link_owes_a_commit_and_is_refused(root, tracked):
+    write_instance(root)
+    write_state(root, 1)
+    if tracked:
+        write_events(root, b'{"line": 1}\n')
+    commit_by_hand(root, f"runs/{RUN}")
+    target = write(root, "elsewhere.ndjson", b'{"line": 1}\n')
+    log = root / f"runs/{RUN}/events.ndjson"
+    log.unlink(missing_ok=True)
+    try:
+        os.symlink(target, log)
+    except (OSError, NotImplementedError):
+        pytest.skip("no symbolic link can be created here")
+    assert owed_rounds(root, RUN) == range(1, 1)
+    before = snapshot(root)
+    for call in (commit_owed, commit):
+        with pytest.raises(run_commit.EventsNotRegularError):
+            call(root, RUN)
+    assert snapshot(root) == before
 
 
 def test_a_case_of_the_range_is_taken_when_it_exists_and_skipped_when_not(root):
@@ -527,9 +706,30 @@ def test_with_nothing_owed_no_record_file_is_staged_or_committed(root):
     store_keys(root)
     before = snapshot(root)
     assert owed_rounds(root, RUN) == range(1, 1)
+    assert commit_owed(root, RUN) is False
     assert commit(root, RUN) is False
     assert snapshot(root) == before
     assert staged(root) == set()
+
+
+def test_a_changed_record_file_alone_owes_nothing(root):
+    a_run(root, 1)
+    store_keys(root)
+    assert commit(root, RUN) is True
+    write(root, HW_RECORD, b'{"changed": "by hand"}\n')
+    before = snapshot(root)
+    assert commit_owed(root, RUN) is False
+    assert commit(root, RUN) is False
+    assert snapshot(root) == before
+
+
+def test_no_key_directory_is_asked_for_when_no_round_end_is_owed(root):
+    a_run(root, 2, op=False)
+    commit_by_hand(root, f"runs/{RUN}")
+    write_events(root, b'{"line": 1}\n{"line": 2}\n')
+    write(root, HW_RECORD, b'{"hw": 1}\n')
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/events.ndjson"}
 
 
 @pytest.mark.parametrize(
@@ -665,10 +865,15 @@ def test_a_variable_that_points_git_elsewhere_is_not_followed(root, monkeypatch)
 # Failures: commit_refused
 
 
-def refused_unchanged(root, error, match=None):
+def refused_unchanged(root, error, match=None, rounds=None):
     before = snapshot(root)
+    if rounds is None:
+        with pytest.raises(error, match=match):
+            owed_rounds(root, RUN)
+    else:
+        assert owed_rounds(root, RUN) == rounds
     with pytest.raises(error, match=match):
-        owed_rounds(root, RUN)
+        commit_owed(root, RUN)
     with pytest.raises(error, match=match):
         commit(root, RUN)
     assert snapshot(root) == before
@@ -758,28 +963,57 @@ def test_a_state_head_holds_and_the_working_tree_lacks_is_refused(root):
     refused_unchanged(root, run_commit.StateMissingError, "HEAD holds it")
 
 
-def test_a_missing_file_is_refused_only_when_a_round_end_is_owed(root):
+def test_a_missing_file_is_refused_inside_a_round_and_at_its_end(root):
     a_run(root, 1)
     write(root, f"runs/{RUN}/rounds/0000/a.json", b"{}\n")
     commit_by_hand(root, f"runs/{RUN}")
     (root / f"runs/{RUN}/rounds/0000/a.json").unlink()
     write_events(root, TORN)
-    assert owed_rounds(root, RUN) == range(1, 1)
-    assert commit(root, RUN) is False
+    refused_unchanged(
+        root, run_commit.FileMissingError, "rounds/0000/a.json", range(1, 1)
+    )
     write_state(root, 2)
     write(root, case(1), b"{}\n")
     refused_unchanged(root, run_commit.FileMissingError, "rounds/0000/a.json")
 
 
-def test_events_that_are_no_regular_file_are_refused_only_when_owed(root):
+def test_events_that_are_no_regular_file_are_refused_whenever_owed(root):
     write_instance(root)
     write_state(root, 1)
     commit_by_hand(root, f"runs/{RUN}")
     (root / f"runs/{RUN}/events.ndjson").mkdir()
-    write(root, f"runs/{RUN}/events.ndjson/inner", b"x")
+    assert commit_owed(root, RUN) is False
     assert commit(root, RUN) is False
+    write(root, f"runs/{RUN}/events.ndjson/inner", b"x")
+    refused_unchanged(
+        root, run_commit.EventsNotRegularError, "events.ndjson", range(1, 1)
+    )
     write_state(root, 2)
     refused_unchanged(root, run_commit.EventsNotRegularError, "events.ndjson")
+
+
+@pytest.mark.parametrize("state", ["invalid", "behind", "missing"])
+def test_the_checks_of_every_call_refuse_before_anything_is_compared(
+    root, monkeypatch, state
+):
+    a_run(root, 2)
+    commit_by_hand(root, f"runs/{RUN}")
+    write_events(root, b'{"line": 1}\n{"line": 2}\n')
+    if state == "invalid":
+        write(root, f"runs/{RUN}/STATE.json", b"{}")
+        error = run_commit.WorkingStateError
+    elif state == "behind":
+        write_state(root, 1)
+        error = run_commit.RoundBehindError
+    else:
+        (root / f"runs/{RUN}/STATE.json").unlink()
+        error = run_commit.StateMissingError
+
+    def compared(*args):
+        raise AssertionError("compared")
+
+    monkeypatch.setattr(run_commit, "_changed", compared)
+    refused_unchanged(root, error)
 
 
 @pytest.mark.parametrize(
@@ -829,6 +1063,71 @@ def test_no_author_identity_is_commit_not_made(root, monkeypatch):
         function({"run_id": RUN})
     assert failed.value.kind == run_commit.KIND_COMMIT_NOT_MADE == "commit_not_made"
     assert head(root) == before[0]
+
+
+def test_a_held_lock_inside_a_round_is_commit_not_made_and_the_next_call_commits(
+    root,
+):
+    a_run(root, 1)
+    assert commit(root, RUN) is True
+    write(root, f"runs/{RUN}/rounds/0001/a.json", b"{}\n")
+    lock = root / ".git" / "index.lock"
+    lock.write_bytes(b"")
+    before = snapshot(root)
+    with pytest.raises(run_commit.CommitNotMadeError, match="index lock"):
+        commit(root, RUN)
+    function, _ = tool(root)
+    with pytest.raises(tools.ToolFailure) as failed:
+        function({"run_id": RUN})
+    assert failed.value.kind == "commit_not_made"
+    assert snapshot(root) == before
+    lock.unlink()
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/rounds/0001/a.json"}
+
+
+@pytest.mark.parametrize("failed", ["update-index", "diff", "ls-files", "hash-object"])
+def test_a_git_that_fails_a_step_of_the_comparison_is_commit_not_made(
+    root, monkeypatch, failed
+):
+    a_run(root, 1)
+    assert commit(root, RUN) is True
+    write_events(root, b'{"line": 1}\n{"to')
+    before = snapshot(root)
+    real = run_commit._git
+
+    def failing(data_root, *args, **kwargs):
+        if failed in args:
+            at = args.index(failed)
+            args = (*args[:at], failed, "--no-such-option")
+        return real(data_root, *args, **kwargs)
+
+    monkeypatch.setattr(run_commit, "_git", failing)
+    for call in (commit_owed, commit):
+        with pytest.raises(run_commit.CommitNotMadeError, match=f"git {failed}"):
+            call(root, RUN)
+    assert snapshot(root) == before
+
+
+def test_a_log_that_cannot_be_read_for_the_comparison_is_commit_not_made(
+    root, monkeypatch
+):
+    a_run(root, 1)
+    assert commit(root, RUN) is True
+    write_events(root, b'{"line": 1}\n{"to')
+    original = pathlib.Path.read_bytes
+
+    def read_bytes(self):
+        if self.name == "events.ndjson":
+            raise PermissionError(13, "Permission denied")
+        return original(self)
+
+    before = head(root)
+    monkeypatch.setattr(pathlib.Path, "read_bytes", read_bytes)
+    with pytest.raises(run_commit.CommitNotMadeError, match="could not be read"):
+        commit_owed(root, RUN)
+    monkeypatch.undo()
+    assert head(root) == before
 
 
 def test_a_held_index_lock_is_commit_not_made_and_the_next_call_commits(root):
@@ -938,6 +1237,18 @@ def test_a_head_that_names_no_commit_is_refused(root, content):
 
 STATES = {
     "fresh": lambda root: write_instance(root),
+    "nothing": lambda root: (a_run(root, 1), commit_by_hand(root, "runs")),
+    "inside changed": lambda root: (
+        a_run(root, 1),
+        commit_by_hand(root, "runs"),
+        write_events(root, b'{"line": 1}\n{"line": 2}\n{"to'),
+        write(root, f"runs/{RUN}/rounds/0001/a.json", b"{}\n"),
+        write(root, f"runs/{RUN}/instance.json", b"{}"),
+        write(root, case(1), b"{}\n"),
+        store_keys(root),
+        write(root, "staged.txt", b"s"),
+        git(root, "add", "staged.txt"),
+    ),
     "owed": lambda root: a_run(root, 2),
     "inside": lambda root: (
         a_run(root, 0),
@@ -960,31 +1271,36 @@ STATES = {
     ),
 }
 ANSWERS = {
-    "fresh": range(0),
-    "owed": range(2),
-    "inside": range(0),
-    "behind": run_commit.RoundBehindError,
-    "torn and owed": range(1),
+    "fresh": (range(0), True),
+    "nothing": (range(1, 1), False),
+    "inside changed": (range(1, 1), True),
+    "owed": (range(2), True),
+    "inside": (range(0), False),
+    "behind": (run_commit.RoundBehindError, run_commit.RoundBehindError),
+    "torn and owed": (range(1), True),
 }
 
 
 @pytest.mark.parametrize("state", list(STATES))
-def test_the_read_only_answer_writes_nothing(root, state):
+def test_the_read_only_answers_write_nothing(root, state):
     STATES[state](root)
     before = snapshot(root)
-    answer = ANSWERS[state]
-    if isinstance(answer, range):
-        assert owed_rounds(root, RUN) == answer
-        assert owed_rounds(root, RUN) == answer
-    else:
-        with pytest.raises(answer):
-            owed_rounds(root, RUN)
+    count = objects(root)
+    for function, answer in zip((owed_rounds, commit_owed), ANSWERS[state]):
+        for _ in range(2):
+            if isinstance(answer, type):
+                with pytest.raises(answer):
+                    function(root, RUN)
+            else:
+                assert function(root, RUN) == answer
     assert snapshot(root) == before
+    assert objects(root) == count
 
 
-def test_the_read_only_answer_refuses_a_bad_run_id(root):
+@pytest.mark.parametrize("function", [owed_rounds, commit_owed])
+def test_the_read_only_answers_refuse_a_bad_run_id(root, function):
     with pytest.raises(layout.InvalidPathValueError):
-        owed_rounds(root, "Bad Id")
+        function(root, "Bad Id")
 
 
 def test_every_refusal_is_a_commit_refused_error():
