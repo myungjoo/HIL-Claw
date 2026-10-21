@@ -2,7 +2,7 @@
 id: T-0380
 title: Write the ADR that gives a first-case verdict its comparison of two attempts — how the `difference` of a `comparison` entry of `eval/verdicts.json` is given by a function of the package over the journaled `sim.run`/`board.run` results, which of them enter, and how `verdicts.write` holds such an entry (ADR-0128 Consequences slice 3, ADR-0131 Consequences slice 4; OD-16/OD-23 part, PLAN P2-3)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-17, OD-16, OD-23, OD-18, OD-13, OD-30, S1]
 dependsOn: [T-0360]
