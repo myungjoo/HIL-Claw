@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0384",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:5c23ec11-e",
+    "acquiredAt": "2026-10-21T02:21:51Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -353,7 +357,9 @@
       "reason": "requirement-unclear",
       "question": "ADR-0126 (who issues a first-case coder call, part of OD-23; T-0346, main a5de4f6) leaves one point to you. Condition 1 of the #4 §3a revision (https://github.com/myungjoo/HIL-Claw/issues/4#issuecomment-5138366881) has the coder-driver call `claude -p` through Bash. The later #4 comment of the same day (https://github.com/myungjoo/HIL-Claw/issues/4#issuecomment-5139876430) says a prompt-only write zone is too weak and discusses a typed `coder.run`. Should the coder-driver reach the coder-call function (B) through its Bash tool, as a command-line entry outside the registry, or (T) as the registry tool `coder.run` through the MCP front? Under (B) it has a shell, a hook sees only a command string, and the answer also settles OD-18 sub-question 2 for it and reopens ADR-0010 decision 3. Under (T) it needs no shell, and a hook and an allowlist see the tool. The function and its contract are the same either way. Not blocking T-0346 (landed); the front, orchestration/agents/coder-driver.md and the delegation step of round-manager.md wait for this answer.",
       "askedAt": "2026-10-19T17:22:30Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6273054362"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6273054362",
+      "resolvedAt": "2026-10-21T02:06:36Z",
+      "decision": "(T) - owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6306222689: the coder-driver reaches the coder-call function as the registry tool `coder.run` through the MCP front and has no Bash; an over-long call is a design point of the record that adds `coder.run`. T-0346 stays DONE."
     },
     {
       "id": "HQ-0041",
@@ -379,7 +385,9 @@
       "reason": "owner-only-decision",
       "question": "Does #5 A-3's local commit at '매 턴(=Round) 종료 시' apply to a turn that ends before its round ends (process death or stop, a session that ends while the run waits for the owner, at a gate, on an error or a usage limit; ADR-0121's own 'over' write)? (a) every turn end commits what the run directory then holds, and the next turn's entry commits what a dead turn left; (b) round ends only — a cut-short turn's work is committed with its round; (c) something else. ADR-0127 (T-0348, main e9f16a0) commits nothing in that case until answered. Not blocking T-0348 (landed) nor the listed code slices.",
       "askedAt": "2026-10-19T19:15:36Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6275240209"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6275240209",
+      "resolvedAt": "2026-10-21T02:18:14Z",
+      "decision": "(a) every turn end - owner reply https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6306369119: every turn end commits the run directory (after a death the next turn's entry commits what the dead turn left); the in-progress round's case file is committed only with its round's end. T-0348 stays DONE."
     },
     {
       "id": "HQ-0044",
