@@ -2,7 +2,7 @@
 id: T-0384
 title: Write the ADR that records the owner's answer to HQ-0040 (form (T)) and designs the registry tool `coder.run` of a first-case turn - its request, result and kinds over `hilclaw.coder_call.call`, its place in `default_registry` while the coder's container start (slice (d)) is still open, how a call longer than the MCP idle window is kept alive or bounded, and what the coder-driver definition and the Round-Manager's delegation step become (part of OD-23, PLAN P2-2)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-5, OD-23, OD-18, OD-14, NFR-4, S0, S1]
 dependsOn: [T-0346]
@@ -114,3 +114,30 @@ The owner chose the form. The design of the tool is a design-level part of OD-23
 - The record that widens ADR-0127 decision 8 and `run.commit` by the owner's HQ-0043 answer (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6306369119), PLAN P2-4 / P1-8 area (planner).
 
 ## Result
+
+DONE (2026-10-21). Document mode: landed on `main` as 3815c42 (rebased on decc5bd, pushed fast-forward; branch deleted), `Reviewed-by: reviewer agent (7 rounds, Approve)`.
+
+- **Record**: `ARCHITECTURE/decisions/ADR-0141-od23-first-case-coder-run-tool.md`. It cites the owner's form (T) as O1, apart from its own design. The tool `coder.run` adds nothing to the contract of ADR-0126 and ADR-0136. It is registered now, bound to a package runtime that reports no container runtime until slice (d) replaces that binding; tests bind a stub runtime through `mcp_front.main(registry=...)`. The turn session's environment gets `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=0` and `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, and loses `CLAUDE_AUTO_BACKGROUND_TASKS`. The record weighed and rejected progress notifications, a per-server `timeout`, a settings-file `env` and a prompt-only wait. No time limit is chosen (OD-14). The coder-driver's `tools` are exactly `mcp__hilclaw__spec_write` and `mcp__hilclaw__coder_run`: no Bash, no read tools, no `background`. On `spec_exists` the interim rule is: no call. The Round-Manager gets a round-0 step 2 (delegate 0/1/1, wait, report) that ends at the present stop.
+- **Registers**: Requirements OD-23 and OD-18 rows; OpenDecisionProposals § OD-23 and § OD-18 (sub-question ③ partly answered, bullet head "일부 답함"); StandardScenarios rechecked for S0 and S1, with no verdict change and no gap.
+- **Runtime acceptance items added** (notify by the HQ path, reason `runtime-acceptance`):
+  - (xli) A `coder.run` call from the coder-driver in a `-p` turn session with `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=0` is not aborted after 30+ silent minutes. This assumes managed settings do not set the variable and item (xl) holds.
+  - (xlii) With `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (and `CLAUDE_AUTO_BACKGROUND_TASKS` removed), the delegation to the coder-driver runs in the foreground and reports in the same turn. The sub-agent stall timer (`CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS`) does not abort the coder-driver while its call is pending.
+  - (xliii) While the single-threaded front serves a long call, the session neither aborts it nor marks the server failed because of other requests it sends, such as `ping`.
+  - Narrowed: ADR-0126 (xii) now covers the MCP form only. (xiii) now covers the MCP limits only; its idle part is (xli).
+- **Less exact, not edited**:
+  - ADR-0126: decision 3, decision 6, Consequences Q1, slice 2, "How long…", items (xii) and (xiii), "The cost, plainly", Boundaries, and the Walk-through row "No container runtime".
+  - ADR-0139: decision 9 (B branch), decision 3 ("`spec.write` until a coder-driver exists"), slice 2, Boundaries.
+  - ADR-0138: decision 4 and "in the form HQ-0040 gives".
+  - ADR-0136: decision 5's (B) reading and its Boundaries.
+  - ADR-0118: decision 6, R7 and item (v), and the `hilclaw/turn_loop.py` docstring ("environment … unchanged").
+  - ADR-0010: decision 8.
+  - ADR-0128: slice 4.
+  - `hilclaw/coder_call.py` docstring: "Nothing calls it yet", "(Q1)", and the `available()` sentence.
+  - `hilclaw/turn_permissions.py` docstring: "Not done here: the coder-driver's entry".
+- **Code slices, in the planner's order** (each code mode, stub runtimes and stub `claude` only):
+  1. The `coder.run` definition, registered in `default_registry` with the no-container runtime, plus tests and docstrings.
+  2. The three environment changes in `hilclaw/turn_loop.py`, plus a test.
+  3. `orchestration/agents/coder-driver.md`, plus a test (no `background` member).
+  4. Round-Manager step 2 in `orchestration/round-manager.md` and the moved stop, plus a test.
+- **Cost stated in the record**: a run whose round 0 runs before slice (d) never gets a round-0 coder call (rule 4) until OD-23 ① (가) and OD-8 ㉖ (가) are answered.
+- No BLOCKED reason; the runtime acceptance items above are recorded by the driver as HQ-0056 (runtime-acceptance, non-blocking).
