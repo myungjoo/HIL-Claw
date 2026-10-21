@@ -60,8 +60,8 @@ decision 5), and the rest of the roster stays open (OD-23).
 
 Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
 ADR-0118 decision 4, "Workspace trust"), no round steps between the
-coder-driver's delegation of round 0, or the key store of other rounds, and
-the closing steps (later P2-1 slices), no ``--add-dir`` or other
+last defined step (the delegation in round 0, the key store in other rounds)
+and the closing steps (later P2-1 slices), no ``--add-dir`` or other
 way for the session to reach the run's files (decision 4), no caller and no
 command-line entry.
 

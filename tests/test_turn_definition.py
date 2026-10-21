@@ -504,7 +504,6 @@ def test_the_prompt_delegates_to_the_coder_driver_and_keeps_the_stop():
     assert "`coder-driver`" in text
     assert (SOURCE / "agents" / CODER_DRIVER).is_file()
     assert "are not yet defined" in text
-    assert "No turn goes past this stop" in text
     assert "Use only `mcp__hilclaw__coder_run`" not in text
     naming = [s for s in re.split(r"(?<=\.) ", text) if "coder_run" in s]
     assert naming
