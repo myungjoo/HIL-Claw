@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0395",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:cdcb40e1-0",
-    "acquiredAt": "2026-10-21T10:24:17Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -508,18 +504,26 @@
       "question": "ADR-0143(라운드를 끝내지 않는 첫 사례 턴 끝의 commit; OD-8 ⑪ 일부; T-0391, main a3eb31c)이 런타임 인수 항목 (xlvii)을 더했다. (xlvii) 살아 있는 Round-Manager가 진입 0단계가 성공한 뒤의 모든 세션 종료 직전(stop, 세션을 끝내는 진입 단계, 실패한 `round.end`)에 마지막 행동으로 `run.commit`을 부르고, 그 호출이 실패한 뒤에는 다시 부르지 않는가. 선택지: (a) 오너가 수동 확인 (b) 런타임 자체 점검 코드(P1-9 계열)로 확인 (c) 보류. D16에 따라 드라이버 task로는 닫지 않는다. 막히는 것: 없음(T-0391은 DONE). 막히지 않는 것: ADR-0143 코드 slice (1)~(3). 실패로 드러나면 결정 2(모든 종료 전 호출)를 다시 정해야 한다.",
       "askedAt": "2026-10-21T07:17:48Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0059",
+      "taskId": "T-0395",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0144(첫 사례의 cpu_standin 빌드·프로세스를 담는 컨테이너; OD-14 하위 질문 ① 일부; T-0395, main bba593f)가 런타임 인수 항목 (xlviii)~(lii)를 남겼다 — C-7의 각 머신 종류에서 Docker로, 코드 slice가 착지한 뒤 확인한다. (xlviii) 클라이언트가 닿는 daemon이 그 operation을 돌리는 머신의 것인가, 빌드 디렉토리를 컨테이너에 줄 수 있는가(Docker Desktop은 VM 경유), 그것이 컨테이너 안에서 쓸 수 있는 유일한 호스트 경로이고 어느 checkout의 경로도 보이지 않는가. (xlix) 안의 프로세스가 호스트·LAN·인터넷의 어떤 주소에도 닿지 않는가. (l) 안의 프로세스가 빌드 디렉토리에 다른 사용자·그룹 소유 파일, 그런 소유자의 setuid/setgid 파일, device node를 만들 수 없는가; 시간 상한에서 강제 제거한 뒤 그 빌드·프로세스의 프로세스가 남지 않고 컨테이너가 뒤늦게 만들어지지 않는가; 그 뒤 instance를 돌리는 사용자가 빌드 디렉토리를 지울 수 있는가. (li) 컨테이너 시작·제거가 빌드·프로세스에 수 초 이하만 더하는가, pull policy `never`가 없는 이미지를 pull 없이 오류로 만드는가. (lii) 클라이언트가 컴파일러·프로그램의 exit status와 출력 바이트를 바꾸지 않고 넘기는가, 클라이언트가 스스로 더하는 status와 텍스트는 무엇인가. 선택지: (a) 오너가 수동 확인 (b) 런타임 자체 점검 코드(P1-9 계열)로 확인 (c) 보류. D16에 따라 드라이버 task로는 닫지 않는다. 막히는 것: 없음(T-0395는 DONE; 코드 slice도 막히지 않음). 막히지 않는 것: ADR-0144 코드 slice (1)~(4). 실패로 드러나면 ADR-0144 결정 2·3(호스트 경로 하나, 클라이언트 경유 시작)을 다시 봐야 한다.",
+      "askedAt": "2026-10-21T11:28:06Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 409,
-    "tasksDone": 381,
+    "iterations": 410,
+    "tasksDone": 382,
     "tasksBlocked": 28,
-    "reviewRoundsTotal": 1362
+    "reviewRoundsTotal": 1369
   },
   "lastIteration": {
-    "at": "2026-10-21T09:48:34Z",
-    "owner": "AKIHA:96eed2ae-0",
-    "taskId": "T-0394",
+    "at": "2026-10-21T11:28:06Z",
+    "owner": "AKIHA:cdcb40e1-0",
+    "taskId": "T-0395",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

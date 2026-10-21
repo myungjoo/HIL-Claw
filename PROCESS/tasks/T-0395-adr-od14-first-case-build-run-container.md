@@ -2,7 +2,7 @@
 id: T-0395
 title: Write ADR-0144 - the container in which the cpu_standin builds and processes of a first-case run are carried out (OD-14 sub-question 1, parts (ga) and (da), with the frame of (ra) and the requirements on the image; no tool answer, kind or data-plane member)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [NFR-4, C-7, FR-9, FR-10, OD-14, OD-18, OD-16, "#5 A-7"]
 dependsOn: [T-0156, T-0325, T-0327]
@@ -95,3 +95,10 @@ All work is documents and documentation reading. No container runtime, compiler,
 - After this lands: the first code slice its Consequences names (planner, code mode, stub container runtime only — D16).
 
 ## Result
+
+- **DONE.** ADR-0144 landed on `main` as bba593f (doc mode, pushed directly; trailers `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0395`). Files: the new ADR; `ARCHITECTURE/Requirements.md` (OD-14 row: one link under the decided part, remainder rewritten, status word unchanged); `ARCHITECTURE/OpenDecisionProposals.md` (OD-14: one adopted line, the integrator note, sub-question 1 marked partly answered); `ARCHITECTURE/StandardScenarios.md` ("last re-check" line; S0, S1, S2, S7, S10 re-checked, no verdict change, no gap; S10 remark gains open item OD-14 1 (na), recording the image's identity). Branch deleted.
+- **Review**: 7 rounds of a context-isolated `dev-reviewer`; rounds 1-6 requested changes (less-exact sentences listed; image named by an environment variable since `hilclaw.config.json` is tracked; kernel copies in their own sub-directory; unique container names; capabilities dropped, no new privileges, entrypoint overridden; which daemon the client reaches; client statuses 125-127 vs ADR-0060 rows S6/S10; memory-figure code would measure the client). Round 7 approved with three nits, not applied.
+- **Decisions**: each of the four first-case builds and processes runs in a new Docker container; the build directory is the only host path, filled by copy; no network, no pull, the user's numeric id, no capability; force-removed at the ADR-0117 limit; no host fallback. One image for all four (clang + a POSIX C library), named by the user in an environment variable, so no concrete image is adopted. No data-plane change, no tool answer or kind added.
+- **Section 9 notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6314771249
+- **Runtime acceptance**: items (xlviii)-(lii) recorded as HQ-0059 (`runtime-acceptance`, non-blocking).
+- **Follow-ups**: code slices of ADR-0144 Consequences, tested with a stub runtime only: (1) start/end of a build or process container behind a seam; (2) copies into the build directory; (3) reading the image environment variable; (4) the `cpu_standin` operations (still waiting on OD-18 18/19, HQ-0021, HQ-0026, and OD-14 1 (ma) for the memory figure). Round-7 nits to ride with slice (1)/(3) or a later doc task: (a) how the image variable reaches the turn's MCP server process (`turn_loop.py` sets its `env`) plus an acceptance item; (b) a bind form that does not create a missing source; (c) the variable check must refuse a value `docker run` would read as an option.
