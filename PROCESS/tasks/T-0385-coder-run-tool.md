@@ -2,7 +2,7 @@
 id: T-0385
 title: Add the registry tool coder.run of ADR-0141 decisions 2 and 3 over hilclaw.coder_call.call, bound in default_registry to a package runtime that reports no container runtime (ADR-0141 Consequences slice 1; PLAN P2-2)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-5, OD-23, OD-18, NFR-4, S0, S1]
 dependsOn: [T-0384]
@@ -80,3 +80,11 @@ Open HQs checked: HQ-0053 (how the sign-in reaches the coder's container, slice 
 - Next for the planner: ADR-0141 Consequences slice 2 (the three environment changes in `hilclaw/turn_loop.py`), then slice 3 (`orchestration/agents/coder-driver.md`), then slice 4 (the Round-Manager's step 2).
 
 ## Result
+
+DONE. PR #222 squash-merged as 90935b1 after 1 review round (Approve, context-isolated dev-reviewer); CI green (Python 3.11/3.14, Coverage, C, sh, Test presence).
+
+- `hilclaw/coder_tool.py` (new, name kept): `NAME = "coder.run"`; `definition(source, runtime)` whose tool function returns `coder_call.call(request, source=source, runtime=runtime)` with nothing added; a non-callable `source` and a `runtime` without a callable `available` and `run` raise `TypeError` at definition time, neither being called; `NoContainerRuntime` (class, no option) answers `available()` `False` and its `run` starts nothing and raises `coder_call.CoderNotStartedError`. The description lists the request members and forms, the result and every kind of `FAILURE_KINDS` in order, and asks for no installation; the input schema states the `layout.attempt_artefact` forms with maximum `keys.MAX_INTEGER`.
+- `hilclaw/tools.py`: `default_registry` registers `coder.run` bound to its source and `NoContainerRuntime()`; docstring extended. `hilclaw/coder_call.py`: the three docstring sentences of AC 5 only.
+- Tests: new `tests/test_coder_tool.py`; listing tests updated; `ACCEPTED` entry added. **touchesFiles addition**: `tests/test_coder_call.py`, whose assertion that no registry tool names a coder now asserts `coder.run` is the only one.
+- Language: Python, because the tool layer, `coder_call` and the registry are Python modules of `hilclaw`.
+- Local: full suite 25579 passed, 730 skipped; coverage of `hilclaw/` 97 %, `coder_tool.py` 100 %. No data-plane change; no `claude` or container started.
