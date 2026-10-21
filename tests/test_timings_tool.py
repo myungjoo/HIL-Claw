@@ -816,6 +816,32 @@ def test_an_invalid_timing_result_of_a_named_side_is_timing_result_invalid(
     assert refused.message.startswith(f"{LOG}: line 5: {problem}")
 
 
+@pytest.mark.parametrize(("result", "problem"), INVALID)
+def test_timing_problem_names_what_an_invalid_result_lacks(root, result, problem):
+    given = json.loads(json.dumps(result))
+    named = timings_tool.timing_problem(given)
+    assert named.startswith(problem)
+    assert given == result
+    both(root)
+    end(root, MEASURED, 2, result=result)
+    assert failure(root).message == f"{LOG}: line 5: {named}"
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        timing(),
+        timing("not_converged", FAST),
+        broken(),
+        {"outcome": "broken"},
+        {"outcome": "converged", "intervals_ns": SLOW, "shape": SHAPE, "x": None},
+    ],
+    ids=["converged", "not converged", "broken", "bare broken", "other member"],
+)
+def test_timing_problem_admits_an_admitted_result(result):
+    assert timings_tool.timing_problem(result) is None
+
+
 def test_a_broken_result_needs_no_samples_or_shape(root):
     both(root)
     end(root, MEASURED, 2, result={"outcome": "broken"})

@@ -60,7 +60,8 @@ never exchanged and no parameter is added.
 Choices left to the code slice (ADR-0140 decision 3), made here:
 
 * The read of the log is :func:`hilclaw.checks_tool.log_lines`; the work
-  after it is public, as :func:`compare`, so that ``verdicts.write``
+  after it is public, as :func:`compare`, and so is the rule of an admitted
+  timing result, as :func:`timing_problem`, so that ``verdicts.write``
   (ADR-0140 decision 5) gives the same ``difference`` and kinds for the same
   lines.
 * The three ``outcome`` values are written here as ADR-0063 decision 2
@@ -283,6 +284,20 @@ def _problem(result):
     ):
         return ".shape: must be an object of exactly m, k and n, each an int from 1"
     return None
+
+
+def timing_problem(result):
+    """Return ``None`` when ``result``, the ``result`` of an end line, is an admitted timing result (ADR-0140 decision 3), else what is wrong.
+
+    ``result`` is a ``dict``, as :func:`hilclaw.journal.identity_of` admits
+    it. The rule is that of the module docstring, the one :func:`compare`
+    holds the end lines of its two sides to. What is wrong is a ``str``
+    starting with ``data.result``, as the messages of
+    :data:`KIND_TIMING_RESULT_INVALID` give it after ``line <n>: ``. Shared
+    with ``verdicts.write`` (ADR-0140 decision 5).
+    """
+    problem = _problem(result)
+    return None if problem is None else f"data.result{problem}"
 
 
 def _numbers(ref):
