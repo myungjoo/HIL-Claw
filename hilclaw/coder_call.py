@@ -7,7 +7,10 @@ order of ADR-0049: the checks, the scratch with the copy of the spec
 process (slice (d)), the bring-in (:func:`hilclaw.bring_in.bring_in`, slice
 (b)) and the removal of the scratch (:func:`hilclaw.scratch.remove`, slice
 (c)); it also fixes the request, the result and the failure kinds in the order
-of their checks. :func:`call` is that function. Nothing calls it yet.
+of their checks. :func:`call` is that function. The registry tool
+``coder.run`` (:mod:`hilclaw.coder_tool`), the front of
+``ARCHITECTURE/decisions/ADR-0141-od23-first-case-coder-run-tool.md`` (form
+(T)), calls it and adds nothing to its contract.
 
 ``ARCHITECTURE/decisions/ADR-0136-od8-first-case-coder-model.md`` decision 5
 adds a read to that order: at each call, right after the data root is
@@ -20,7 +23,10 @@ kept between calls.
 The container and the coder process stand behind *the runtime*, the seam of
 slice (d), an object with two methods:
 
-- ``runtime.available()`` returns whether a container runtime is there;
+- ``runtime.available()`` returns whether a container runtime is there that
+  the runtime can use; the package's runtime
+  (:class:`hilclaw.coder_tool.NoContainerRuntime`, ADR-0141 decision 3)
+  answers false wherever one is there until slice (d) replaces it;
 - ``runtime.run(scratch_root, coder_model=...)`` starts the container with the
   scratch as the coder's working directory (ADR-0126 decision 5), waits for
   the coder process to end, removes the container before it returns (ADR-0049
@@ -38,9 +44,9 @@ its text and how it is passed are open, so the prompt is slice (d)'s and
 ``claude`` flag, and it starts no process itself.
 
 What this module is not: slice (d), the real runtime with its image, flags and
-prompt; either front of ADR-0126 decision 3 (Q1); anything about a call that
-does not end normally beyond the interim rule of decision 3, which is OD-19;
-time limits (OD-14); more than one call or candidate (OD-23 ① (가), OD-29).
+prompt; anything about a call that does not end normally beyond the interim
+rule of decision 3, which is OD-19; time limits (OD-14); more than one call
+or candidate (OD-23 ① (가), OD-29).
 It applies no default coder model and resolves no alias (ADR-0136 decisions 4
 and 6); whether the model that actually ran differs from the requested one is
 not seen here (ADR-0136 Boundaries).

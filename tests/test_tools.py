@@ -491,6 +491,7 @@ DEFAULT_SET = (
     "blob.push",
     "case.write",
     "checks.read",
+    "coder.run",
     "correctness.check",
     "hypotheses.read",
     "instance.read",

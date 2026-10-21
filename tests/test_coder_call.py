@@ -704,7 +704,7 @@ def test_the_kinds_are_names_and_only_two_and_the_run_file_four_are_reserved():
     assert FAILURE_KINDS[-1] == KIND_OUTPUT_NOT_WRITTEN
 
 
-def test_the_module_starts_no_process_and_has_no_front():
+def test_the_module_starts_no_process_and_its_only_front_is_coder_run():
     tree = ast.parse(inspect.getsource(coder_call))
     imported = set()
     for node in ast.walk(tree):
@@ -714,9 +714,8 @@ def test_the_module_starts_no_process_and_has_no_front():
             imported.add(node.module)
     assert not {"subprocess", "multiprocessing", "asyncio"} & imported
     assert "__main__" not in inspect.getsource(coder_call)
-    assert not any(
-        "coder" in name for name in tools.default_registry(lambda: None).names()
-    )
+    names = tools.default_registry(lambda: None).names()
+    assert [name for name in names if "coder" in name] == ["coder.run"]
 
 
 def test_the_synthetic_instance_file_is_valid():
