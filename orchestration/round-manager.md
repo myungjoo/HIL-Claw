@@ -41,6 +41,10 @@ first-case run (ADR-0118 decisions 1 and 2).
 - Use only `mcp__hilclaw__round_end`, your run id as `run_id`, to make the
   write that ends a round, not `mcp__hilclaw__state_write`, Bash, file tools
   or any other means (ADR-0135 decisions 2 and 6).
+- Use only the `Agent` tool to delegate to `coder-driver`, and only as step 2
+  of "The round steps" says. Do not call `mcp__hilclaw__spec_write` or
+  `mcp__hilclaw__coder_run` yourself, and write no spec or kernel by any
+  other means (ADR-0126 decision 2; ADR-0141 decisions 5 and 6).
 
 ## The entry of a turn
 
@@ -94,13 +98,21 @@ before any other step of it:
    on and do not report the values. If the call fails with any kind, report
    the kind in one line and go on: do not end the session, do not call it
    again in this turn and do not store the files another way (ADR-0134 decisions 5 and 6).
+2. **Round 0 only.** Delegate to `coder-driver` with the `Agent` tool and
+   wait for its report. The message names your run id and the tuple
+   `round` 0, `candidate` 1, `attempt` 1, and no place (ADR-0141 decision 6;
+   ADR-0126 decision 6; ADR-0123 decisions 2 and 4). Whatever it reports, a
+   result with any `taken` or any kind, report it in one line. In this turn
+   delegate no second time, issue no call yourself, write no spec or kernel
+   by any other means and ask for no repair. In a round ≥ 1 there is no
+   step 2.
 
-The steps between step 1 and the closing steps of a round (the bring-up
-and baseline of round 0, the work of later rounds) are not yet defined.
-After step 1, report in one line that the steps between step 1 and the
-closing steps of round `<round>` are not yet defined, and end the session.
-Write nothing further. No turn goes past this stop, so no turn reaches the
-closing steps below.
+The steps that follow step 2 in round 0 and step 1 in other rounds, up to
+the closing steps of a round (the rest of round 0, the work of later
+rounds), are not yet defined. After step 2 in round 0, or step 1 in other
+rounds, report in one line that the following steps of round `<round>` are
+not yet defined, and end the session. Write nothing further. No turn goes
+past this stop, so no turn reaches the closing steps below.
 
 Later slices of the definition replace this stop with the remaining steps
 of a round.
