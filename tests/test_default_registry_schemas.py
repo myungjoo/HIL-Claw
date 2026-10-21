@@ -57,6 +57,13 @@ ACCEPTED = {
             "budget_spent": {"totals": {}, "position": 0, "open_steps": []},
         },
     },
+    "timings.compare": {
+        "run_id": "r1",
+        "metric": "latency_minimisation",
+        "point": "board",
+        "measured": {"round": 1, "candidate": 1, "attempt": 1},
+        "against": {"round": 0, "candidate": 1, "attempt": 1},
+    },
     "verdicts.write": {
         "run_id": "r1",
         "record": {

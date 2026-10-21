@@ -38,7 +38,10 @@ refused are ADR-0106's (decisions 2 and 3) and live in
 :mod:`hilclaw.run_definition`. It builds no identity. It does not say which
 builder the tool functions use (ADR-0062 Consequences). It says nothing of who
 may raise ``execution`` or which of several executions counts (OD-10, OD-17,
-OD-18 sub-question ⑳). It gives no rule for the ``step`` values of another
+OD-18 sub-question ⑳), except that for the comparisons of a verdict in the
+runs of ADR-0120 decision 1 ADR-0140 decision 3 says which result enters:
+exactly one, the comparison being refused otherwise
+(:mod:`hilclaw.timings_tool`). It gives no rule for the ``step`` values of another
 tool: decision 3 "says how these two values were formed and is no rule for the
 ``step`` values of another tool". It keeps nothing between calls, reads no
 file and imports nothing.

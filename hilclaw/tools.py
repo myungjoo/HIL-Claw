@@ -213,7 +213,10 @@ def default_registry(data_root_source):
     (:func:`hilclaw.round_end_tool.definition`, ADR-0135 decision 2), with
     which it makes the write that ends its round. It holds ``spec.write``
     (:func:`hilclaw.spec_tool.definition`, ADR-0138 decision 3), with which
-    the coder-driver has the spec of the first coder call of round 0 written.
+    the coder-driver has the spec of the first coder call of round 0 written,
+    and ``timings.compare`` (:func:`hilclaw.timings_tool.definition`,
+    ADR-0140 decision 3), with which the evaluator gets the ``difference`` of
+    a comparison of two attempts at one point.
     A tool is added here, in the source, and in no other way: no option,
     environment variable, entry point or plugin registers one or chooses what
     it is bound to.
@@ -229,6 +232,7 @@ def default_registry(data_root_source):
         run_commit,
         run_file_tools,
         spec_tool,
+        timings_tool,
         verdicts_tool,
     )
 
@@ -248,6 +252,7 @@ def default_registry(data_root_source):
     registry.register(*key_store_tool.definition(data_root_source))
     registry.register(*round_end_tool.definition(data_root_source))
     registry.register(*spec_tool.definition(data_root_source))
+    registry.register(*timings_tool.definition(data_root_source))
     return registry
 
 
