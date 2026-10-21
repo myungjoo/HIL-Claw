@@ -318,9 +318,9 @@ def compare(run_id, lines, metric, point, measured, against):
     :func:`hilclaw.checks_tool.log_lines` returns them. ``metric`` and
     ``point`` are as the request names them, and ``measured`` and ``against``
     are each a mapping of ``round``, ``candidate`` and ``attempt`` in the
-    request's forms, naming two different attempts; nothing of them is checked but that ``metric`` is
-    :data:`METRIC` and ``point`` a key of :data:`STEP_OF`, a :class:`ValueError`
-    otherwise. Shared by ``timings.compare`` and ``verdicts.write``
+    request's forms, naming two different attempts. Nothing of them is
+    checked but that ``metric`` is :data:`METRIC` and ``point`` a key of
+    :data:`STEP_OF`, a :class:`ValueError` otherwise. Shared by ``timings.compare`` and ``verdicts.write``
     (ADR-0140 decision 5).
 
     Returns ``{"difference": d, "measured": {"execution": n, "outcome": o},

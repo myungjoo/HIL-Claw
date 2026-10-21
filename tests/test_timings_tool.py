@@ -557,6 +557,17 @@ def test_a_number_beyond_the_float_range_in_the_samples_is_timing_result_invalid
     assert "data.result.intervals_ns" in refused.message
 
 
+def test_a_number_beyond_the_float_range_in_the_shape_is_timing_result_invalid(root):
+    data = line(
+        {"step": BOARD, "execution": 1, "spend": {}, "result": timing(intervals=FAST)}
+    ).replace(b'"m": 4', b'"m": 1e999')
+    raw(root, data)
+    run(root, AGAINST, result=timing())
+    refused = failure(root)
+    assert refused.kind == timings_tool.KIND_TIMING_RESULT_INVALID
+    assert refused.message.startswith(f"{LOG}: line 1: data.result.shape: ")
+
+
 def test_a_number_beyond_the_float_range_elsewhere_changes_nothing(root):
     samples = json.dumps(FAST)
     raw(root, infinite({"intervals_ns": samples, "memory_bytes": "1e999"}))
