@@ -2,7 +2,7 @@
 id: T-0382
 title: Make verdicts.write hold comparison entries by ADR-0140 decision 5 — remove comparison_not_given, add timing_result_invalid to the step pass, comparison_unfounded and comparison_unverified (ADR-0140 Consequences slice 2; PLAN P2-3)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-17, OD-16, OD-23, OD-18, OD-30, S0, S1]
 dependsOn: [T-0381]
@@ -168,3 +168,13 @@ Open HQs checked: none is crossed.
 - Next for the planner: ADR-0140 Consequences slice 3. That is `orchestration/agents/evaluator.md` by decision 6: `mcp__hilclaw__timings_compare` added to `tools`, "Verdicts" rewritten, and the correctable kinds updated to `comparison_unfounded` and `comparison_unverified` in place of `comparison_not_given`. The test of the evaluator file's `tools` set changes with it.
 
 ## Result
+
+- **DONE.** PR #220, squash-merged as 300d880 after 2 review rounds (round 1: Request changes, round 2: Approve); CI green on eca934f (Python 3.11 and 3.14, Coverage, Test presence, shellcheck, clang). Branch `claude/T-0382-verdicts-write-holds-comparisons` deleted.
+- **touchesFiles (actual):** `hilclaw/verdicts_tool.py`, `hilclaw/timings_tool.py`, `tests/test_verdicts_tool.py`, `tests/test_timings_tool.py` (added: it tests the new public `timings_tool.timing_problem`). Non-test change: about 195 lines added in 2 files, within the D4 cap.
+- **Language:** Python, the language of the changed module and of the `timings_tool` functions it shares (commit body).
+- **The step pass (AC 3):** `timings_tool` gains the public `timing_problem(result)`, the admitted-timing-result rule `compare` already applies, giving the same `data.result...` text. `compare` and `timings.compare` are unchanged. `verdicts_tool._timing_results` finds the first invalid timing result in the comparison scope, then runs `checks_tool.checks_of` over the lines up to it, so an earlier `check_result_invalid` or refused step line still decides. When it meets a step line that `identity_of` refuses, it stops and lets the full `checks_of` pass raise it. The scopes are disjoint by step name.
+- **AC 4:** only the five `compare` kinds become `comparison_unfounded`; any other `ToolFailure` propagates unchanged (tested with a stubbed `compare`); `ValueError` is not caught.
+- **AC 5, `standing` and `JournalError`:** confirmed that it cannot arise for a record that reaches check 10, so it is not mapped. `standing`'s line checks are `events.validate`, which `events.read` ran in check 6, and `journal.identity_of` on every step line, which check 7 ran. The outcomes it reads are those of board-check end lines of the two attempts, and these are in the check scope of the two `"pass"` entries, so check 7 already held them to the same rule. Their numbers are bounded by `verdicts_file.parse`. The module docstring states this.
+- **AC 1:** no code or test under `hilclaw/` or `tests/` names `comparison_not_given`; `orchestration/agents/evaluator.md` still does (slice 3).
+- **Local:** `ruff check` and `ruff format --check` clean; full `pytest` passed (25493 passed, 730 skipped); `hilclaw/` coverage 97 %, `verdicts_tool.py` 100 %, `timings_tool.py` 100 %. No `claude` process was started.
+- **Follow-up:** unchanged, ADR-0140 Consequences slice 3 (`orchestration/agents/evaluator.md` and its `tools` test).
