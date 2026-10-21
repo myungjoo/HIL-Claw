@@ -2,7 +2,7 @@
 id: T-0389
 title: Write ADR-0142, the round-0 steps of a first-case turn after the coder call and the holder of the board-point measurement (part of OD-23; PLAN P2-1/P2-2)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-9, FR-10, OD-23, OD-28, OD-18, S0, S1]
 dependsOn: [T-0384, T-0388]
@@ -112,3 +112,19 @@ Open HQs the record must not cross:
 - For the driver: the new runtime acceptance items, if any, become one HQ with the reason `runtime-acceptance`. The §9 notice goes to #5.
 
 ## Result
+
+DONE. Landed on main as cd4879b (document mode, no PR); Reviewed-by: reviewer agent (7 rounds, Approve); branch deleted.
+ADR-0142 (part of OD-23, DRIVER §9 path) for round-0 turns of ADR-0119 decision 1 runs (ADR-0120 decision 1, candidates_per_round 1):
+(a) go on only from a coder.run result with non-empty `taken`; every other path stops with round 0 not ended (no round.end; ADR-0119 decision 5); a stopping turn's commit follows the owner's HQ-0043 (a) answer once its record lands.
+(b) step 3/4: evaluator checks 0000/01/01 at sim, then board; go on only on standing "verified" from the report.
+(c) step 5: new sub-agent `experiment-runner`, tools exactly mcp__hilclaw__board_run, one call with execution 1 (K2 §5, ADR-0128 decision 2); ADR-0139 lists change by derivation only.
+(d) no sim.run in round 0. (e) on converged/not_converged: closing steps (no case.write, round.end, run.commit), no verdicts.
+(f) until board.run is registered, the stop sits after the board check.
+New runtime acceptance items (xliv)-(xlvi) → HQ-0057 (runtime-acceptance, non-blocking). Requirements OD-23 row, OpenDecisionProposals § OD-23 and the StandardScenarios recheck line updated; S0/S1 rechecked, no verdict change, no gap.
+§9 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6309370256
+
+Follow-ups (code slices, in order):
+1. Now: `orchestration/round-manager.md` steps 3 and 4, their go-on conditions and the stop after step 4; with the "Your run" `Agent` bullet, the `hilclaw/turn_definition.py` docstring and `tests/test_turn_definition.py::test_the_prompt_delegates_to_the_coder_driver_and_keeps_the_stop`.
+2. After P1-1 registers `board.run` (T-0210/HQ-0021): `orchestration/agents/experiment-runner.md`, step 5 and the go-on to the closing steps; with the first sentence of "The closing steps of a round".
+- A separate record executing the HQ-0043 (a) answer (widening ADR-0127 decision 8 and `run.commit`).
+- Two Nits left after the round-7 Approve (fixing them would need round 8): decision 1/7 `no_backend`/`not_offered` grounds should read "ADR-0016 decision 3; ADR-0019 decision 4" with ADR-0016 added to builds-on and References; builds-on ADR-0062 should read "decisions 2, 3" and References ADR-0063 "(decisions 1 to 3; Limits 4)".

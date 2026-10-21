@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0389",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:494367e1-b",
-    "acquiredAt": "2026-10-21T05:22:02Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -492,18 +488,26 @@
       "question": "ADR-0141(첫 사례 턴의 등록표 도구 `coder.run`; OD-23·OD-18 일부; T-0384, main 3815c42)이 런타임 인수 항목 (xli)~(xliii)을 더했다. (xli) `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=0`인 `-p` 턴 세션에서 coder-driver의 `coder.run` 호출이 30분 넘게 조용해도 중단되지 않는가(관리 설정이 이 변수를 정하지 않고 (xl)이 성립한다는 전제). (xlii) `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`(그리고 `CLAUDE_AUTO_BACKGROUND_TASKS` 제거)에서 coder-driver 위임이 전경에서 돌아 같은 턴에 보고하고, sub-agent stall 타이머(`CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS`)가 호출 대기 중인 coder-driver를 중단하지 않는가. (xliii) 단일 스레드 front가 긴 호출을 처리하는 동안 세션이 `ping` 같은 다른 요청 때문에 그 호출을 중단하거나 서버를 실패로 보지 않는가. ADR-0126 (xii)·(xiii)은 좁혀졌다. 선택지: (a) 오너가 손으로 확인 (b) 런타임 자체 점검 코드(P1-9 계열)로 확인 (c) 보류. D16에 따라 드라이버 task로는 닫지 않는다. 막히는 것: 없음(T-0384는 DONE; 코드 slice 1~4는 스텁으로 진행 가능). 실패로 드러나면 ADR-0141의 결정 3(긴 호출 유지 방법)을 다시 정해야 한다.",
       "askedAt": "2026-10-21T02:57:09Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0057",
+      "taskId": "T-0389",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0142(라운드 0의 coder 호출 뒤 단계; OD-23 일부; T-0389, main cd4879b)가 런타임 인수 항목 (xliv)~(xlvi)을 더했다. (xliv) `-p` 턴 세션에서 `.claude/agents/experiment-runner.md`로 정의되고 `tools`가 정확히 `mcp__hilclaw__board_run`인 sub-agent가 그 도구만 받고, 파생 목록의 사전 승인으로 `dontAsk`에서 prompt 없이 호출되는가. (xlv) 한 라운드 0 턴 세션에서 네 번의 foreground 위임(coder-driver, evaluator 두 번, experiment-runner)이 같은 턴에서 순서대로 보고를 돌려주고, 세션 자체의 한계로 끝나기 전에 `round.end`와 `run.commit`에 이르는가. (xlvi) ADR-0117의 한계가 허용하는 가장 큰 first-case timing run의 `board.run` 호출이 ADR-0141 결정 4의 환경에서 idle 점검이나 sub-agent stall 타이머로 중단되지 않고, 세션이 끝날 때 남아 돌지 않는가. 선택지: (a) 오너가 수동 확인 (b) 런타임 자체 점검 코드(P1-9 계열)로 확인 (c) 보류. D16에 따라 드라이버 task로는 닫지 않는다. 막히는 것: 없음(T-0389는 DONE; 코드 slice는 계속 진행). 막히지 않는 것: ADR-0142 코드 slice 1(round-manager.md step 3·4). 실패로 드러나면 ADR-0142 결정 4(experiment-runner의 단일 호출)와 (xlv)의 위임 순서를 다시 정해야 한다.",
+      "askedAt": "2026-10-21T06:11:41Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 403,
-    "tasksDone": 375,
+    "iterations": 404,
+    "tasksDone": 376,
     "tasksBlocked": 28,
-    "reviewRoundsTotal": 1337
+    "reviewRoundsTotal": 1344
   },
   "lastIteration": {
-    "at": "2026-10-21T04:55:57Z",
-    "owner": "AKIHA:750d83b9-c",
-    "taskId": "T-0388",
+    "at": "2026-10-21T06:11:41Z",
+    "owner": "AKIHA:494367e1-b",
+    "taskId": "T-0389",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
