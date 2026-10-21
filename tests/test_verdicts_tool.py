@@ -262,7 +262,6 @@ def test_the_description_names_every_kind_and_what_it_tells():
     assert "recomputed from the log as timings.compare computes it" in description
     assert "both attempts must be verified at board" in description
     assert "a comparison that does not count is still written" in description
-    assert "comparison_not_given" not in description
     assert "refused for now" not in description
 
 
@@ -279,7 +278,6 @@ def test_no_kind_of_the_module_is_reserved():
     assert verdicts_tool.KIND_TIMING_RESULT_INVALID == (
         timings_tool.KIND_TIMING_RESULT_INVALID
     )
-    assert not hasattr(verdicts_tool, "KIND_COMPARISON_NOT_GIVEN")
 
 
 def test_a_valid_record_is_written_and_parses_back(root):
@@ -1201,6 +1199,29 @@ def test_another_difference_than_the_log_gives_is_comparison_unfounded(root):
     )
 
 
+def test_lines_of_other_kinds_are_not_held_to_the_timing_rule(root):
+    with_hypotheses(root)
+    data = {"step": T_BOARD, "result": {"outcome": "x"}}
+    events.append(root, RUN, "round_started", data, **numbers(*MEASURED))
+    timed(root)
+    written(root, pair([comparison()]))
+
+
+@pytest.mark.parametrize(
+    "kind", [tools.KIND_RUN_FILE_INVALID, verdicts_tool.KIND_TIMING_RESULT_INVALID]
+)
+def test_another_kind_of_compare_propagates_as_it_is(root, monkeypatch, kind):
+    with_hypotheses(root)
+    timed(root)
+
+    def failing(*arguments):
+        raise ToolFailure(kind, "from compare")
+
+    monkeypatch.setattr(timings_tool, "compare", failing)
+    error = refused(root, pair([comparison()]))
+    assert (error.kind, error.message) == (kind, "from compare")
+
+
 def test_a_refused_comparison_corrected_is_then_written(root):
     with_hypotheses(root)
     timed(root)
@@ -1282,20 +1303,32 @@ def test_measured_is_reported_before_against(root):
     assert "its measured (round 1, candidate 1, attempt 1)" in error.message
 
 
-def test_the_first_unverified_comparison_in_record_order_decides(root):
+def unverified_pair(root, first_counted):
     counted_log(root)
     start(root, 2, at=AGAINST)
     check(root, at=(1, 2, 1), step=T_BOARD, result=timing(intervals=FAST))
     second = comparison() | {"measured": ref(1, 2, 1)}
-    given = record(
-        verdict("h1", [check_entry(), comparison()]),
+    first = [check_entry(), comparison()]
+    if first_counted:
+        first.insert(1, check_entry(AGAINST))
+    return record(
+        verdict("h1", first, value="supported" if first_counted else "inconclusive"),
         verdict(
             "h2",
             [check_entry((1, 2, 1)), check_entry(AGAINST), second],
             value="supported",
         ),
     )
-    error = refused(root, given)
+
+
+def test_the_first_unverified_comparison_in_record_order_decides(root):
+    error = refused(root, unverified_pair(root, first_counted=True))
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNVERIFIED
+    assert error.message.startswith("record.verdicts[0].evidence[2]: ")
+
+
+def test_a_comparison_that_does_not_count_is_not_held_to_the_standing(root):
+    error = refused(root, unverified_pair(root, first_counted=False))
     assert error.kind == verdicts_tool.KIND_COMPARISON_UNVERIFIED
     assert error.message.startswith("record.verdicts[1].evidence[2]: ")
 
