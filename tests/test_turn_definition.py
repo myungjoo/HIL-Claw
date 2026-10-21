@@ -499,13 +499,54 @@ def test_the_coder_driver_names_the_kind_and_the_result():
         assert word in text
 
 
-def test_the_prompt_delegates_to_the_coder_driver_and_keeps_the_stop():
-    text = " ".join((SOURCE / PROMPT).read_text(encoding="utf-8").split())
-    assert "`coder-driver`" in text
-    assert (SOURCE / "agents" / CODER_DRIVER).is_file()
-    assert "are not yet defined" in text
-    assert "Use only `mcp__hilclaw__coder_run`" not in text
-    naming = [s for s in re.split(r"(?<=\.) ", text) if "coder_run" in s]
-    assert naming
+def prompt_text():
+    return " ".join((SOURCE / PROMPT).read_text(encoding="utf-8").split())
+
+
+def only_forbidden(text, word):
+    naming = [s for s in re.split(r"(?<=\.) ", text) if word in s]
     for sentence in naming:
         assert sentence.startswith("Do not call ")
+    return naming
+
+
+def test_the_prompt_delegates_to_the_coder_driver():
+    text = prompt_text()
+    assert "`coder-driver`" in text
+    assert (SOURCE / "agents" / CODER_DRIVER).is_file()
+    assert "Use only `mcp__hilclaw__coder_run`" not in text
+    assert only_forbidden(text, "coder_run")
+
+
+def test_the_prompt_delegates_both_checks_to_the_evaluator():
+    text = prompt_text()
+    assert "`evaluator`" in text
+    assert (SOURCE / "agents" / EVALUATOR).is_file()
+    assert "`sim`" in text
+    assert "`board`" in text
+
+
+def test_the_prompt_keeps_the_stop_in_later_rounds():
+    assert "not yet defined" in prompt_text()
+
+
+def test_the_prompt_names_no_measurement_step():
+    text = prompt_text()
+    for word in ("board_run", "sim_run", "experiment-runner"):
+        assert word not in text
+
+
+def test_the_prompt_makes_no_check_of_its_own():
+    text = prompt_text()
+    assert "Use only `mcp__hilclaw__correctness_check`" not in text
+    assert "Use only `mcp__hilclaw__checks_read`" not in text
+    only_forbidden(text, "correctness_check")
+    only_forbidden(text, "checks_read")
+
+
+def test_the_prompt_reaches_no_closing_steps_yet():
+    heading = "### The closing steps of a round"
+    text = prompt_text()
+    assert heading in text
+    closing = text.split(heading, 1)[1]
+    assert "reached only once later slices" in closing

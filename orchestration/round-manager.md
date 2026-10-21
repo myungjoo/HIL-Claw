@@ -41,10 +41,13 @@ first-case run (ADR-0118 decisions 1 and 2).
 - Use only `mcp__hilclaw__round_end`, your run id as `run_id`, to make the
   write that ends a round, not `mcp__hilclaw__state_write`, Bash, file tools
   or any other means (ADR-0135 decisions 2 and 6).
-- Use only the `Agent` tool to delegate to `coder-driver`, and only as step 2
-  of "The round steps" says. Do not call `mcp__hilclaw__spec_write` or
-  `mcp__hilclaw__coder_run` yourself, and write no spec or kernel by any
-  other means (ADR-0126 decision 2; ADR-0141 decisions 5 and 6).
+- Use only the `Agent` tool to delegate to `coder-driver` and to `evaluator`,
+  and only as steps 2, 3 and 4 of "The round steps" say. Do not call
+  `mcp__hilclaw__spec_write` or `mcp__hilclaw__coder_run` yourself, and write
+  no spec or kernel by any other means (ADR-0126 decision 2; ADR-0141
+  decisions 5 and 6). Do not call `mcp__hilclaw__correctness_check` or
+  `mcp__hilclaw__checks_read` yourself (ADR-0128 decision 2; ADR-0142
+  decision 3).
 
 ## The entry of a turn
 
@@ -104,15 +107,34 @@ before any other step of it:
    ADR-0126 decision 6; ADR-0123 decisions 2 and 4). Whatever it reports, a
    result with any `taken` or any kind, report it in one line. In this turn
    delegate no second time, issue no call yourself, write no spec or kernel
-   by any other means and ask for no repair. In a round ≥ 1 there is no
-   step 2.
+   by any other means and ask for no repair. Go on to step 3 only when the
+   report is a result of `coder.run` whose `taken` holds at least one name.
+   On any other report (any failure kind, `spec_exists` and
+   `no_container_runtime` among them, an empty `taken`, or no report you can
+   read) come to the stop, and read nothing more into the kind or the names
+   (ADR-0142 decision 2). In a round ≥ 1 there is no step 2.
+3. **Round 0 only.** Delegate to `evaluator` with the `Agent` tool and wait
+   for its report. The message names your run id, the tuple `round` 0,
+   `candidate` 1, `attempt` 1, the point `sim`, and no place and no
+   `execution` (ADR-0142 decision 3; ADR-0128 decisions 4 and 7). Whatever
+   it reports, report it in one line. Take the standing from the report
+   (ADR-0131 decision 7). Go on to step 4 only when it gives the standing
+   `"verified"` at `sim`. On any other report (`"not_verified"`,
+   `"undetermined"`, a failure kind without a standing, or no report you can
+   read) come to the stop.
+4. **Round 0 only.** Delegate to `evaluator`, wait and report as in step 3,
+   the message naming the point `board` in place of `sim`. When the report
+   gives the standing `"verified"` at `board`, report in one line that the
+   board measurement of round 0 waits on `board.run`, and come to the stop
+   (ADR-0142 decision 7). On any other report come to the stop.
 
-The steps that follow step 2 in round 0 and step 1 in other rounds, up to
-the closing steps of a round (the rest of round 0, the work of later
-rounds), are not yet defined. After step 2 in round 0, or step 1 in other
-rounds, report in one line that the following steps of round `<round>` are
-not yet defined, and end the session. Write nothing further. No turn goes
-past this stop, so no turn reaches the closing steps below.
+The stop: in round 0 it follows step 2, 3 or 4 as they say. In other rounds
+it follows step 1: the steps after it, up to the closing steps of a round,
+are not yet defined, so report in one line that the following steps of
+round `<round>` are not yet defined. In every case end the session and write
+nothing further. Round 0 is not ended: no `round.end` and no `run.commit`
+(ADR-0142 decisions 1 and 2). No turn goes past this stop, so no turn
+reaches the closing steps below.
 
 Later slices of the definition replace this stop with the remaining steps
 of a round.

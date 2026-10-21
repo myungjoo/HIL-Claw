@@ -36,9 +36,11 @@ outside the session directory.
   end); a round begins with the store of the run's key record files and
   ends with the case (in a round >= 1), the round-end write and the commit;
   in round 0 a turn delegates the coder call to the coder-driver after the
-  key store; the later steps are not yet defined, so a turn ends without
-  a further write after the delegation in round 0, or after the key store
-  in other rounds.
+  key store and, when the call brought something in, the sim-point and then
+  the board-point check to the evaluator, and it ends without a further
+  write after the board-point check at the latest. In other rounds the
+  later steps are not yet defined, so a turn ends after the key store,
+  again without a further write.
 - *Refusals*, each a :class:`ValueError` with a fixed text raised before
   anything is written: a top-level entry that is not a key of :data:`LAYOUT`;
   an entry of the wrong kind; a missing ``round-manager.md``; an entry at any
@@ -60,8 +62,8 @@ decision 5), and the rest of the roster stays open (OD-23).
 
 Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
 ADR-0118 decision 4, "Workspace trust"), no round steps between the
-last defined step (the delegation in round 0, the key store in other rounds)
-and the closing steps (later P2-1 slices), no ``--add-dir`` or other
+last defined step (the board-point check in round 0, the key store in other
+rounds) and the closing steps (later P2-1 slices), no ``--add-dir`` or other
 way for the session to reach the run's files (decision 4), no caller and no
 command-line entry.
 
