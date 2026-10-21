@@ -2,7 +2,7 @@
 id: T-0390
 title: Add the round-0 checks (steps 3 and 4) and the stop after the board-point check to orchestration/round-manager.md (ADR-0142 Consequences slice 1; PLAN P2-1/P2-2)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-9, OD-23, OD-16, S0, S1]
 dependsOn: [T-0388, T-0389]
@@ -128,3 +128,11 @@ Language: no new layer-2 code. The change is layer-1 Markdown, a docstring corre
 - For the slice that lands step 5: the tests of criterion 15 that guard against `board_run`/`experiment-runner` must then be changed with it.
 
 ## Result
+
+- Outcome: DONE. PR #226 squash-merged as 653c7a7 after 3 review rounds (round 1 Request changes: no one-line report at the step-3/4 stops, docstring typo; round 2 Approve with a nit, addressed; round 3 Approve). CI green on head 93fbdd4; local full suite 25589 passed, 736 skipped; ruff check/format clean; `hilclaw/` coverage 97 % line.
+- `orchestration/round-manager.md`: "Your run" `Agent` bullet widened to `coder-driver` and `evaluator` (steps 2-4), plus "Do not call `mcp__hilclaw__correctness_check` or `mcp__hilclaw__checks_read` yourself"; step 2 go-on condition (ADR-0142 decision 2); steps 3 and 4 (decision 3), each reporting the evaluator's report in one line; the stop of decision 7 after "verified" at `board`; the stop sentence rewritten (round 0 after steps 2/3/4, rounds >= 1 after step 1 with "not yet defined"; no `round.end`, no `run.commit`). No `board_run`, `sim_run` or `experiment-runner`; closing steps, "One round at most" and the entry unchanged.
+- `hilclaw/turn_definition.py`: docstring "*The prompt*" and "Not done here" corrected; runtime acceptance paragraph unchanged; no code change.
+- `tests/test_turn_definition.py`: `test_the_prompt_delegates_to_the_coder_driver_and_keeps_the_stop` renamed to `test_the_prompt_delegates_to_the_coder_driver` (coder-driver guards kept, stop wording dropped); new tests for the evaluator delegation and both points, the later-round stop, no slice-2 names, the "Do not call" form for the check tools, and the closing-steps qualifier.
+- Language: no new layer-2 code; layer-1 Markdown, a docstring correction in an existing Python module, and Python tests.
+- D16: no `claude` process or container started; no runtime acceptance item added or closed.
+- Follow-up: as in the task's Follow-ups (slice 2 waits on `board.run` registration, T-0210/HQ-0021; its slice must change `test_the_prompt_names_no_measurement_step`).
