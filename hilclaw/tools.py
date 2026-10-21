@@ -216,7 +216,12 @@ def default_registry(data_root_source):
     the coder-driver has the spec of the first coder call of round 0 written,
     and ``timings.compare`` (:func:`hilclaw.timings_tool.definition`,
     ADR-0140 decision 3), with which the evaluator gets the ``difference`` of
-    a comparison of two attempts at one point.
+    a comparison of two attempts at one point. It holds ``coder.run``
+    (:func:`hilclaw.coder_tool.definition`, ADR-0141 decisions 2 and 3), with
+    which the coder-driver performs the round-0 coder call, bound to
+    :class:`hilclaw.coder_tool.NoContainerRuntime`: until slice (d) replaces
+    that binding, every call that passes the checks before
+    ``no_container_runtime`` fails with that kind.
     A tool is added here, in the source, and in no other way: no option,
     environment variable, entry point or plugin registers one or chooses what
     it is bound to.
@@ -226,6 +231,7 @@ def default_registry(data_root_source):
         case_tool,
         check_definition,
         checks_tool,
+        coder_tool,
         hypotheses_tool,
         key_store_tool,
         round_end_tool,
@@ -253,6 +259,9 @@ def default_registry(data_root_source):
     registry.register(*round_end_tool.definition(data_root_source))
     registry.register(*spec_tool.definition(data_root_source))
     registry.register(*timings_tool.definition(data_root_source))
+    registry.register(
+        *coder_tool.definition(data_root_source, coder_tool.NoContainerRuntime())
+    )
     return registry
 
 

@@ -33,6 +33,7 @@ ACCEPTED = {
     "blob.push": {"sha256": "0123456789abcdef" * 4},
     "case.write": {"run_id": "r1", "round": 1},
     "checks.read": {"run_id": "r1", "round": 0, "candidate": 2, "point": "board"},
+    "coder.run": {"run_id": "r1", "round": 0, "candidate": 1, "attempt": 1},
     "correctness.check": {
         "run_id": "r1",
         "round": 3,
