@@ -80,7 +80,7 @@ Language: no new layer-2 code; layer-1 Markdown, a docstring correction and Pyth
 
 ## Result
 
-- **PR**: #228 (branch `claude/T-0393-round-manager-commit-before-every-end`), squash-merged after the reviewer cycle after 3 review rounds (all Approve; nits of rounds 1 and 2 addressed).
+- **PR**: #228 (branch `claude/T-0393-round-manager-commit-before-every-end`), squash-merged after 3 review rounds (all Approve; nits of rounds 1 and 2 addressed).
 - **Language**: no new layer-2 code; layer-1 Markdown, a docstring correction and Python tests.
 - **`orchestration/round-manager.md`**: new section "The end of a session" states once that, after a successful entry step 0, `mcp__hilclaw__run_commit` is the last act before every end of the session, naming entry steps 2, 3, 4, 5, 6 and 7, the stop and a failed `round.end` of closing step 2 (closing step 3 is that call); `committed` is not reported; the call is not a write of the run's work; no call after an invalid run id and no second call after a failed one (ADR-0143 decision 2; ADR-0127 decision 5). The entry intro refers to that section; step 0 keeps ending the session on any failure, also when only a commit that ends no round was owed. "Your run": `run_commit` makes every commit of the run. "The stop": reached once the awaited report has come (ADR-0143 decision 7), "no `round.end`" and a `run_commit` call; round 0 is not ended. Closing step 2: a failed `round.end` reports, calls `run_commit`, ends (ADR-0143 decision 2, revising ADR-0135 decision 5). Closing step 3 unchanged. No retry, lock removal or push is stated.
 - **`hilclaw/turn_definition.py`**: "The prompt" docstring bullet only; no code change.
