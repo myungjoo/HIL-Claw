@@ -2,7 +2,7 @@
 id: T-0381
 title: Add the registry tool timings.compare of ADR-0140 decisions 3 and 4 and register it in the default registry (ADR-0140 Consequences slice 1; PLAN P2-3)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-17, OD-16, OD-23, OD-18, OD-30, S0, S1]
 dependsOn: [T-0380]
