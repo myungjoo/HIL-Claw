@@ -501,6 +501,7 @@ DEFAULT_SET = (
     "spec.write",
     "state.read",
     "state.write",
+    "timings.compare",
     "verdicts.write",
 )
 
