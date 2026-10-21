@@ -2,7 +2,7 @@
 id: T-0387
 title: Add the coder-driver definition orchestration/agents/coder-driver.md of ADR-0141 decision 5, with its tests and the turn_permissions/turn_definition docstrings (ADR-0141 Consequences slice 3; PLAN P2-2)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-5, OD-23, OD-18, NFR-4, S0, S1]
 dependsOn: [T-0384, T-0385, T-0386]
@@ -74,3 +74,11 @@ This is a PLAN P2-2 checklist item (OD-23 closed by ADR path), so the D18 priori
 - Next for the planner: ADR-0141 Consequences slice 4 (step 2 of "The round steps" in `orchestration/round-manager.md` and the moved stop, decision 6, with its test).
 
 ## Result
+
+- **Status:** DONE. PR #224 (https://github.com/myungjoo/HIL-Claw/pull/224) squash-merged as 72bc967; branch `claude/T-0387-coder-driver-definition` deleted.
+- **Review:** 2 rounds, ending in Approve. Round 1 approved with one Minor finding (the "Your report" section cited ADR-0126 decision 6 and ADR-0141 decision 5 for the one-message, one-line-per-request form, which those ADRs do not decide); fixed in 9739195 so the citations sit only on reporting the result or the kind. Round 2: no new findings.
+- **CI:** all gates green on the PR head (Python 3.11/3.14, coverage on hilclaw/, test presence, shellcheck, clang); ruff check/format clean locally.
+- **Changes** (5 files, all in touchesFiles; ~58 non-test lines): new `orchestration/agents/coder-driver.md` (tools exactly `mcp__hilclaw__spec_write, mcp__hilclaw__coder_run`; no Bash/file/read/Agent tools, no `background`/`permissionMode`; fixed rule items 1-5 of ADR-0141 decision 5, rule 4 `spec_exists` marked interim, not an answer to OD-8 (26)(a) or OD-23 (1)(a); report carries `taken`/`scratch_removed` or the kind, no round judgement (OD-19)); docstring-only edits in `hilclaw/turn_permissions.py` and `hilclaw/turn_definition.py`; tests in `tests/test_turn_definition.py` (frontmatter, tree, text guards) and `tests/test_turn_permissions.py` (fixture derivation, Bash refused with `BAD_TOOL`, real definition asserts `Agent(coder-driver)`).
+- **Language:** the agent file is Markdown (layer 1); the Python edits are docstrings of existing modules, so no layer-2 language choice was made (recorded in the commit body).
+- **D16:** no `claude` process or container was started; runtime acceptance items (xii), (xiii), (xli)-(xliii) stay open.
+- **Follow-ups:** ADR-0141 Consequences slice 4: step 2 of "The round steps" in `orchestration/round-manager.md` and the moved stop (decision 6), with its test.
