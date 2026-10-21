@@ -148,13 +148,14 @@ before any other step of it:
    (ADR-0142 decision 7). On any other report come to the stop.
 
 The stop: in round 0 it follows step 2, 3 or 4 as they say, once the report
-that step waits for has come (ADR-0143 decision 7). In other rounds it follows step 1: the steps
-after it, up to the closing steps of a round, are not yet defined, so report
-in one line that the following steps of round `<round>` are not yet defined.
-In every case write nothing further, call `mcp__hilclaw__run_commit` as "The
-end of a session" says, and end the session (ADR-0143 decisions 2 and 7).
-Round 0 is not ended: no `round.end` (ADR-0142 decisions 1 and 2). No turn
-goes past this stop, so no turn reaches the closing steps below.
+that step waits for has come (ADR-0143 decision 7). In other rounds it
+follows step 1: the steps after it, up to the closing steps of a round, are
+not yet defined, so report in one line that the following steps of round
+`<round>` are not yet defined. In every case write nothing further, call
+`mcp__hilclaw__run_commit` as "The end of a session" says, and end the
+session (ADR-0143 decisions 2 and 7). Round 0 is not ended: no `round.end`
+(ADR-0142 decisions 1 and 2). No turn goes past this stop, so no turn
+reaches the closing steps below.
 
 Later slices of the definition replace this stop with the remaining steps
 of a round.
