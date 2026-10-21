@@ -51,8 +51,8 @@ directory, its standard input is closed, and it gets the environment of the
 calling process as read at that turn, with only the three changes of ADR-0141
 decision 4, the calling process's own environment left as it is; its
 standard output and standard error are those of the calling process and are
-not read here. The wait has no time limit of
-its own: a limit on a turn is OD-19's or OD-14's.
+not read here. The wait has no time limit of its own: a limit on a turn is
+OD-19's or OD-14's.
 
 **Choices of this module** (ADR-0118 leaves them to the code):
 
