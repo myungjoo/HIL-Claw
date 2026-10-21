@@ -20,8 +20,8 @@ without a byte order mark. ``json.dumps`` escapes every control character of
 a string, so the bytes hold no carriage return; a string that UTF-8 cannot
 encode (a lone surrogate) is refused with ``invalid_request``.
 
-The checks, in this order, each with its kind (ADR-0128 decision 6, table,
-as ADR-0131 decision 5 extends it):
+The checks, in this order, each with its kind (ADR-0140 decision 5, after
+ADR-0128 decision 6 and ADR-0131 decision 5):
 the request (``invalid_request``); the bytes by
 :func:`hilclaw.verdicts_file.parse`, a round-0 record and another
 ``schema_version`` among its refusals, and the record's ``run_id`` against the
@@ -29,21 +29,44 @@ request's (``invalid_request``); the data root (``no_data_root``); the read of
 the round's ``decision/hypotheses.json`` by
 :func:`hilclaw.hypotheses_tool.read` (the four ``hypotheses_*`` kinds); the
 rules of :func:`hilclaw.verdicts_hypotheses.check` (``verdicts_mismatch``);
-no evidence entry of ``kind`` ``comparison`` (``comparison_not_given``, until
-a tool gives a comparison); the read of the run's ``events.ndjson`` from its
-first line by :func:`hilclaw.checks_tool.log_lines`, for every record, one
-without a ``check`` entry included (a data root gone since it was obtained
+the read of the run's ``events.ndjson`` from its first line by
+:func:`hilclaw.checks_tool.log_lines`, for every record, one without an
+evidence entry included (a data root gone since it was obtained
 ``run_file_missing``, another failing read ``run_file_unreadable``, a path that
 is no regular file or a damaged complete line ``run_file_invalid``, a complete
 line of another version ``run_file_unsupported``); the step lines in line
-order by :func:`hilclaw.checks_tool.checks_of`, the first that fails deciding
-(a step line about any attempt that :func:`hilclaw.journal.identity_of` refuses
-``run_file_invalid``, an end line of an attempt and point that a ``check``
-entry names whose ``result`` has no admitted ``outcome``
-:data:`KIND_CHECK_RESULT_INVALID`); every ``check`` entry founded by ADR-0131
-decision 4, the first unfounded one in record order deciding
-(:data:`KIND_CHECK_UNFOUNDED`); the write (``verdicts_exist`` for a taken
-name, ``verdicts_not_written`` for any other failure of the file system).
+order, the first that fails deciding (a step line about any attempt that
+:func:`hilclaw.journal.identity_of` refuses ``run_file_invalid``, an end line
+of an attempt and point that a ``check`` entry names whose ``result`` has no
+admitted ``outcome`` :data:`KIND_CHECK_RESULT_INVALID`, an end line of an
+attempt that a ``comparison`` entry names as ``measured`` or ``against``, at
+the ``step`` of its ``point``, whose ``result`` is no admitted timing result
+by :func:`hilclaw.timings_tool.timing_problem`
+:data:`KIND_TIMING_RESULT_INVALID`); every ``check`` entry founded by ADR-0131
+decision 4 (:data:`KIND_CHECK_UNFOUNDED`); every ``comparison`` entry founded
+(:data:`KIND_COMPARISON_UNFOUNDED`); every counted comparison verified
+(:data:`KIND_COMPARISON_UNVERIFIED`); the write (``verdicts_exist`` for a
+taken name, ``verdicts_not_written`` for any other failure of the file
+system). Within each of the last three entry checks the first failing entry
+in record order decides. The two scopes of the step pass are disjoint: a
+``check`` entry names a ``correctness_check_*`` step and a ``comparison``
+entry a ``*_run_timing`` step, so no end line is held to both rules.
+
+A ``comparison`` entry, counted or not, is founded when
+:func:`hilclaw.timings_tool.compare` over the lines read, for its ``metric``,
+``point``, ``measured`` and ``against``, returns its ``difference``. It is
+unfounded when ``compare`` gives ``measurement_several``,
+``measurement_unknown``, ``measurement_missing``, ``shapes_differ`` or
+``samples_out_of_domain`` (the message then names that kind and its message)
+or another ``difference``. A comparison is counted when its ``point`` is
+``board`` and the same verdict holds ``check`` entries at ``board`` with
+``outcome`` ``"pass"`` for both its ``measured`` and its ``against``; each of
+its two attempts, ``measured`` first, must then have the standing verified at
+``board`` by :func:`hilclaw.check_standing.standing` over the same lines. A
+comparison that is not counted needs no ``check`` entry and is not held to
+the standing. ``standing`` raises nothing for such a record: its line checks
+are those the read and the step pass already made, and the end lines it reads
+an ``outcome`` of are in the scope of the two ``"pass"`` entries.
 
 A ``check`` entry is founded when, O being the outcomes of the end lines of
 its ``ref`` at the ``step`` of its ``point`` that hold a ``result``, every
@@ -54,6 +77,10 @@ identities) is never founded. A missing log, or a missing run directory below
 an existing data root, holds no line: a record without a ``check`` entry is
 then written. What the evidence names, and a ``"pass"`` entry against the
 standing, are not held (ADR-0131 decision 5).
+
+:func:`hilclaw.verdicts_file.validate` is unchanged: a file that breaks
+ADR-0140 decision 5 is still a valid file by ADR-0071, and the kinds of that
+decision are names of the tool layer, not of the data plane.
 
 Nothing is created before the write; a refused record can be corrected and
 sent again. The only files read are ``hypotheses.json`` and the run's
@@ -66,12 +93,16 @@ decision 3.
 import json
 
 from hilclaw import (
+    check_identity,
     check_result,
+    check_standing,
     checks_tool,
     data_root_source,
     hypotheses_tool,
+    journal,
     layout,
     run_files,
+    timings_tool,
     tools,
     verdicts_file,
     verdicts_hypotheses,
@@ -84,12 +115,16 @@ KIND_HYPOTHESES_UNSUPPORTED = hypotheses_tool.KIND_HYPOTHESES_UNSUPPORTED
 KIND_HYPOTHESES_UNREADABLE = hypotheses_tool.KIND_HYPOTHESES_UNREADABLE
 #: The record breaks a rule between it and the round's hypothesis record; nothing was written.
 KIND_VERDICTS_MISMATCH = "verdicts_mismatch"
-#: The record holds an evidence entry of kind comparison, which no tool gives yet; nothing was written.
-KIND_COMPARISON_NOT_GIVEN = "comparison_not_given"
 #: An end line of an attempt and point a check entry names holds a result without an admitted outcome, as in :mod:`hilclaw.checks_tool`.
 KIND_CHECK_RESULT_INVALID = checks_tool.KIND_CHECK_RESULT_INVALID
+#: An end line of an attempt a comparison entry names, at the step of its point, holds no admitted timing result, as in :mod:`hilclaw.timings_tool`.
+KIND_TIMING_RESULT_INVALID = timings_tool.KIND_TIMING_RESULT_INVALID
 #: A check entry's outcome is not founded on the run's log by ADR-0131 decision 4; nothing was written.
 KIND_CHECK_UNFOUNDED = "check_unfounded"
+#: The log gives a comparison entry no difference, or another one (ADR-0140 decision 5); nothing was written.
+KIND_COMPARISON_UNFOUNDED = "comparison_unfounded"
+#: A side of a counted comparison is not verified at board (ADR-0140 decision 5); nothing was written.
+KIND_COMPARISON_UNVERIFIED = "comparison_unverified"
 #: The round's ``eval/verdicts.json`` is already there; nothing was replaced.
 KIND_VERDICTS_EXIST = "verdicts_exist"
 #: A step of the write failed in the file system; nothing was put under the final name.
@@ -112,24 +147,43 @@ _DESCRIPTION = (
     "hypotheses.json is not there, is invalid or no regular file, has another "
     "schema_version or cannot be read; verdicts_mismatch when the record "
     "breaks a rule against it (a verdict for each hypothesis id and none for "
-    "another, measured within tested_by, each verdict value by its rule); "
-    "comparison_not_given for any evidence entry of kind comparison, which is "
-    "refused for now: write check entries only. The run's events.ndjson is "
-    "read for every record, and each check entry must be founded on it: its "
-    'outcome is "pass" only when every recorded result of that attempt at '
-    "that point passed, otherwise an outcome the log holds for it, and an "
-    "attempt and point without a recorded result can have no check entry. It "
-    "fails with run_file_missing when the data root is gone; "
+    "another, measured within tested_by, each verdict value by its rule). The "
+    "run's events.ndjson is read for every record, and each check entry must "
+    'be founded on it: its outcome is "pass" only when every recorded result '
+    "of that attempt at that point passed, otherwise an outcome the log holds "
+    "for it, and an attempt and point without a recorded result can have no "
+    "check entry. Each comparison entry, counted or not, is recomputed from "
+    "the log as timings.compare computes it, and its difference must be the "
+    "one that tool gives. A comparison at board counts only when the same "
+    'verdict holds check entries at board with outcome "pass" for both its '
+    "measured and its against, and then both attempts must be verified at "
+    "board; a comparison that does not count is still written and needs no "
+    "check entry. It fails with run_file_missing when the data root is gone; "
     "run_file_unreadable when the log cannot be read; run_file_invalid when "
     "the log is no regular file or holds a damaged line or step line, "
     "anywhere; run_file_unsupported when a line has another schema_version; "
     "check_result_invalid when a result of an attempt and point a check entry "
-    "names has no outcome pass, fail or broken; check_unfounded for a check "
-    "entry the log does not found; verdicts_exist when the round's "
-    "verdicts.json is already there; and verdicts_not_written when a step of "
-    "the write fails. A run without a log holds no result."
+    "names has no outcome pass, fail or broken; timing_result_invalid when a "
+    "timing result of an attempt a comparison entry names, at its point, is "
+    "malformed; check_unfounded for a check entry the log does not found; "
+    "comparison_unfounded for a comparison entry for which timings.compare "
+    "gives no difference or another one; comparison_unverified for a counted "
+    "comparison whose measured or against is not verified at board, which "
+    'is corrected by dropping the two "pass" entries or the comparison; '
+    "verdicts_exist when the round's verdicts.json is already there; and "
+    "verdicts_not_written when a step of the write fails. A run without a log "
+    "holds no result."
 )
 _MEMBERS = ("run_id", "record")
+_SIDES = ("measured", "against")
+_STEP_KINDS = (journal.STEP_STARTED, journal.STEP_ENDED)
+_UNFOUNDED_KINDS = (
+    timings_tool.KIND_MEASUREMENT_SEVERAL,
+    timings_tool.KIND_MEASUREMENT_UNKNOWN,
+    timings_tool.KIND_MEASUREMENT_MISSING,
+    timings_tool.KIND_SHAPES_DIFFER,
+    timings_tool.KIND_SAMPLES_OUT_OF_DOMAIN,
+)
 
 
 def definition(source):
@@ -149,7 +203,9 @@ def definition(source):
     four ``run_file_*`` kinds for the read of the run's log and its step
     lines, as :func:`hilclaw.checks_tool.log_lines` and
     :func:`hilclaw.checks_tool.checks_of` raise them; and the kinds of this
-    module, :data:`KIND_CHECK_RESULT_INVALID` and :data:`KIND_CHECK_UNFOUNDED`
+    module, :data:`KIND_CHECK_RESULT_INVALID`,
+    :data:`KIND_TIMING_RESULT_INVALID`, :data:`KIND_CHECK_UNFOUNDED`,
+    :data:`KIND_COMPARISON_UNFOUNDED` and :data:`KIND_COMPARISON_UNVERIFIED`
     among them, in the order of the module docstring.
     """
     if not callable(source):
@@ -222,26 +278,41 @@ def _write(source, request):
         verdicts_hypotheses.check(document, hypotheses)
     except verdicts_hypotheses.MismatchError as e:
         raise tools.ToolFailure(KIND_VERDICTS_MISMATCH, f"record: {e}") from e
-    named = []
+    named, compared = [], []
     for index, verdict in enumerate(document["verdicts"]):
+        passed = {
+            _numbers(entry["ref"])
+            for entry in verdict["evidence"]
+            if entry["kind"] == "check"
+            and entry["point"] == check_identity.BOARD
+            and entry["outcome"] == check_result.PASS
+        }
         for at, entry in enumerate(verdict["evidence"]):
             place = f"record.verdicts[{index}].evidence[{at}]"
-            if entry["kind"] == "comparison":
-                raise tools.ToolFailure(
-                    KIND_COMPARISON_NOT_GIVEN,
-                    f"{place}: a comparison is refused until a tool gives it; "
-                    "write check entries only",
-                )
-            ref = entry["ref"]
-            numbers = (ref["round"], ref["candidate"], ref["attempt"])
-            named.append(
-                (place, (checks_tool.STEP_OF[entry["point"]], *numbers), entry)
+            if entry["kind"] == "check":
+                key = (checks_tool.STEP_OF[entry["point"]], *_numbers(entry["ref"]))
+                named.append((place, key, entry))
+                continue
+            counted = entry["point"] == check_identity.BOARD and all(
+                _numbers(entry[side]) in passed for side in _SIDES
             )
+            compared.append((place, entry, counted))
     lines = checks_tool.log_lines(data_root, run_id)
     scope = {key for _, key, _ in named}
+    timed = {
+        (timings_tool.STEP_OF[entry["point"]], *_numbers(entry[side]))
+        for _, entry, _ in compared
+        for side in _SIDES
+    }
+    _timing_results(run_id, lines, scope, timed)
     found = checks_tool.checks_of(run_id, lines, scope.__contains__)
     for place, key, entry in named:
         _founded(run_id, place, entry, found.get(key, []))
+    for place, entry, _ in compared:
+        _given(run_id, lines, place, entry)
+    for place, entry, counted in compared:
+        if counted:
+            _verified(lines, place, entry)
     path = layout.verdict_record(data_root, run_id, document["round"])
     file = path.relative_to(data_root).as_posix()
     try:
@@ -257,6 +328,74 @@ def _write(source, request):
             f"{file}: was not written: {_reported(e, data_root)}",
         ) from e
     return {}
+
+
+def _numbers(ref):
+    return ref["round"], ref["candidate"], ref["attempt"]
+
+
+def _named(numbers):
+    return "round {}, candidate {}, attempt {}".format(*numbers)
+
+
+def _timing_results(run_id, lines, checked, timed):
+    """Raise for the first invalid timing result in ``timed`` unless an earlier line fails the check pass; stop silently at a refused step line, which that pass then raises."""
+    for number, event in enumerate(lines, 1):
+        if event["kind"] not in _STEP_KINDS:
+            continue
+        try:
+            identity = journal.identity_of(event)
+        except journal.JournalError:
+            return
+        data = event["data"]
+        if "result" not in data or (identity.step, *identity[2:5]) not in timed:
+            continue
+        problem = timings_tool.timing_problem(data["result"])
+        if problem is not None:
+            checks_tool.checks_of(run_id, lines[:number], checked.__contains__)
+            file = run_files.relative(run_id, checks_tool.LOG)
+            raise tools.ToolFailure(
+                KIND_TIMING_RESULT_INVALID, f"{file}: line {number}: {problem}"
+            )
+
+
+def _given(run_id, lines, place, entry):
+    try:
+        result = timings_tool.compare(
+            run_id,
+            lines,
+            entry["metric"],
+            entry["point"],
+            entry["measured"],
+            entry["against"],
+        )
+    except tools.ToolFailure as e:
+        if e.kind not in _UNFOUNDED_KINDS:
+            raise
+        raise tools.ToolFailure(
+            KIND_COMPARISON_UNFOUNDED, f"{place}: {e.kind}: {e.message}"
+        ) from e
+    if result["difference"] != entry["difference"]:
+        file = run_files.relative(run_id, checks_tool.LOG)
+        raise tools.ToolFailure(
+            KIND_COMPARISON_UNFOUNDED,
+            f"{place}: difference {entry['difference']} is not founded: {file} "
+            f"gives {result['difference']}",
+        )
+
+
+def _verified(lines, place, entry):
+    step = checks_tool.STEP_OF[check_identity.BOARD]
+    for side in _SIDES:
+        numbers = _numbers(entry[side])
+        standing = check_standing.standing(lines, step, *numbers)
+        if standing is not check_standing.Standing.VERIFIED:
+            raise tools.ToolFailure(
+                KIND_COMPARISON_UNVERIFIED,
+                f"{place}: the comparison counts, but its {side} "
+                f"({_named(numbers)}) is {standing.value} at board, where both must be "
+                "verified",
+            )
 
 
 def _founded(run_id, place, entry, checks):

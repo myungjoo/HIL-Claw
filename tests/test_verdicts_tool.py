@@ -16,6 +16,8 @@ from hilclaw import (
     layout,
     mcp_front,
     once_write,
+    run_result,
+    timings_tool,
     tools,
     verdicts_file,
     verdicts_tool,
@@ -76,9 +78,11 @@ KINDS = (
     "hypotheses_unsupported",
     "hypotheses_unreadable",
     "verdicts_mismatch",
-    "comparison_not_given",
     "check_result_invalid",
+    "timing_result_invalid",
     "check_unfounded",
+    "comparison_unfounded",
+    "comparison_unverified",
     "verdicts_exist",
     "verdicts_not_written",
 )
@@ -255,7 +259,10 @@ def test_the_description_names_every_kind_and_what_it_tells():
     assert "can have no check entry" in description
     assert "never part of the request" in description
     assert "corrected and sent again" in description
-    assert "refused for now" in description
+    assert "recomputed from the log as timings.compare computes it" in description
+    assert "both attempts must be verified at board" in description
+    assert "a comparison that does not count is still written" in description
+    assert "refused for now" not in description
 
 
 def test_no_kind_of_the_module_is_reserved():
@@ -268,6 +275,9 @@ def test_no_kind_of_the_module_is_reserved():
         checks_tool.KIND_CHECK_RESULT_INVALID
     )
     assert verdicts_tool.KIND_CHECK_UNFOUNDED == "check_unfounded"
+    assert verdicts_tool.KIND_TIMING_RESULT_INVALID == (
+        timings_tool.KIND_TIMING_RESULT_INVALID
+    )
 
 
 def test_a_valid_record_is_written_and_parses_back(root):
@@ -511,24 +521,6 @@ def test_hypotheses_of_another_run_id_are_verdicts_mismatch(root):
     refused = failure(Source(root), {"run_id": RUN, "record": record()})
     assert refused.kind == verdicts_tool.KIND_VERDICTS_MISMATCH
     assert refused.message.startswith("record: run_id: ")
-    assert not eval_dir(root).exists()
-
-
-def test_a_comparison_entry_is_comparison_not_given(root):
-    with_hypotheses(root)
-    given = record(
-        verdict("h1", [check_entry()]),
-        verdict(
-            "h2",
-            [
-                check_entry((1, 2, 1)),
-                comparison(point="sim") | {"measured": ref(1, 2, 1)},
-            ],
-        ),
-    )
-    refused = failure(Source(root), {"run_id": RUN, "record": given})
-    assert refused.kind == verdicts_tool.KIND_COMPARISON_NOT_GIVEN
-    assert refused.message.startswith("record.verdicts[1].evidence[1]: ")
     assert not eval_dir(root).exists()
 
 
@@ -938,11 +930,11 @@ def damaged(root):
         (record(schema_version=2), tools.KIND_INVALID_REQUEST),
         (record(verdict("h1", [check_entry()])), verdicts_tool.KIND_VERDICTS_MISMATCH),
         (
-            pair([check_entry(), comparison(point="sim")]),
-            verdicts_tool.KIND_COMPARISON_NOT_GIVEN,
+            record(verdict("h1", [check_entry(), comparison(point="sim")])),
+            verdicts_tool.KIND_VERDICTS_MISMATCH,
         ),
     ],
-    ids=["invalid_request", "verdicts_mismatch", "comparison_not_given"],
+    ids=["invalid_request", "verdicts_mismatch", "verdicts_mismatch with comparison"],
 )
 def test_an_earlier_check_wins_over_a_damaged_log(root, given, kind):
     with_hypotheses(root)
@@ -954,12 +946,6 @@ def test_missing_hypotheses_win_over_a_damaged_log(root):
     damaged(root)
     error = refused(root, record())
     assert error.kind == verdicts_tool.KIND_HYPOTHESES_MISSING
-
-
-def test_a_comparison_wins_over_an_unfounded_entry(root):
-    with_hypotheses(root, log=False)
-    given = pair([check_entry(), comparison(point="sim")])
-    assert refused(root, given).kind == verdicts_tool.KIND_COMPARISON_NOT_GIVEN
 
 
 def test_the_default_registry_holds_verdicts_write(root):
@@ -1021,3 +1007,508 @@ def test_the_mcp_front_lists_and_serves_verdicts_write(root):
     assert taken["result"]["isError"] is True
     error = json.loads(taken["result"]["content"][0]["text"])["error"]
     assert error["kind"] == "verdicts_exist"
+
+
+# The comparison checks of ADR-0140 decision 5
+
+T_SIM = "sim_run_timing"
+T_BOARD = "board_run_timing"
+SLOW = [1000, 1001, 999, 1000, 1002]
+FAST = [500, 501, 499, 500, 502]
+CLOSE = [1000, 1002, 1001, 999, 1000]
+CLASS_II = {"kind": "operation_failure_invalid", "message": "no answer"}
+MEASURED = (1, 1, 1)
+AGAINST = (0, 1, 1)
+
+
+def timing(outcome="converged", intervals=SLOW, m=4, k=4, n=4):
+    return run_result.completed(
+        outcome,
+        intervals_ns=intervals,
+        resolution_ns=1,
+        memory_bytes=None,
+        m=m,
+        k=k,
+        n=n,
+        n_max=10,
+        sample_form="interval",
+        bound=None,
+    )
+
+
+def broken_timing():
+    return run_result.broken(
+        "time_limit", m=4, k=4, n=4, n_max=10, sample_form="interval", bound=None
+    )
+
+
+def timed(root, measured=FAST, against=SLOW, step=T_BOARD):
+    check(root, at=MEASURED, step=step, result=timing(intervals=measured))
+    check(root, at=AGAINST, step=step, result=timing(intervals=against))
+
+
+def counted_log(root, measured=FAST, against=SLOW):
+    with_hypotheses(root)
+    check(root, at=AGAINST, result=PASS)
+    timed(root, measured, against)
+
+
+def counted(difference="lower", value="supported", extra=()):
+    return record(
+        verdict(
+            "h1",
+            [check_entry(), check_entry(AGAINST), comparison(difference=difference)]
+            + list(extra),
+            value=value,
+            cause="the comparison at board",
+        ),
+        verdict("h2", [check_entry((1, 2, 1))]),
+    )
+
+
+def encoded(given):
+    return (json.dumps(given, ensure_ascii=False, indent=2) + "\n").encode()
+
+
+def test_a_counted_lower_comparison_is_written_as_supported(root):
+    counted_log(root)
+    given = counted()
+    written(root, given)
+    assert verdicts_path(root).read_bytes() == encoded(given)
+
+
+def test_a_not_converged_against_enters_and_counts(root):
+    with_hypotheses(root)
+    check(root, at=AGAINST, result=PASS)
+    check(root, at=MEASURED, step=T_BOARD, result=timing(intervals=FAST))
+    check(root, at=AGAINST, step=T_BOARD, result=timing("not_converged", SLOW))
+    written(root, counted())
+
+
+def test_a_counted_higher_comparison_is_written_as_refuted(root):
+    counted_log(root, measured=SLOW, against=FAST)
+    written(root, counted("higher", "refuted"))
+
+
+def test_a_counted_not_different_comparison_is_written_as_inconclusive(root):
+    counted_log(root, measured=CLOSE, against=SLOW)
+    written(root, counted("not_different", "inconclusive"))
+
+
+def test_a_sim_comparison_without_a_check_entry_is_written_uncounted(root):
+    with_hypotheses(root)
+    timed(root, step=T_SIM)
+    written(root, pair([comparison(point="sim")]))
+
+
+@pytest.mark.parametrize("entries", [[], [check_entry()]], ids=["none", "one"])
+def test_a_board_comparison_without_both_pass_entries_is_written_unverified(
+    root, entries
+):
+    with_hypotheses(root)
+    start(root, 2)
+    check(root, at=AGAINST, result=FAIL)
+    timed(root)
+    written(root, pair([*entries, comparison()]))
+
+
+def test_a_comparison_of_the_second_hypothesis_is_founded(root):
+    with_hypotheses(root)
+    check(root, at=(1, 2, 1), step=T_BOARD, result=timing(intervals=FAST))
+    check(root, at=AGAINST, step=T_BOARD, result=timing(intervals=SLOW))
+    entry = comparison() | {"measured": ref(1, 2, 1)}
+    written(root, pair([], [entry]))
+
+
+def several(root):
+    timed(root)
+    check(root, 2, at=MEASURED, step=T_BOARD, result=timing(intervals=FAST))
+
+
+def open_identity(root):
+    timed(root)
+    start(root, 2, at=AGAINST, step=T_BOARD)
+
+
+def a_failure(root):
+    timed(root)
+    check(root, 2, at=AGAINST, step=T_BOARD, failure=CLASS_II)
+
+
+def only_against(root):
+    check(root, at=AGAINST, step=T_BOARD, result=timing())
+
+
+def only_broken(root):
+    check(root, at=MEASURED, step=T_BOARD, result=broken_timing())
+    check(root, at=AGAINST, step=T_BOARD, result=timing())
+
+
+def other_shape(root):
+    check(root, at=MEASURED, step=T_BOARD, result=timing(intervals=FAST, m=8))
+    check(root, at=AGAINST, step=T_BOARD, result=timing())
+
+
+def out_of_domain(root):
+    check(root, at=MEASURED, step=T_BOARD, result=timing(intervals=[10**310] * 5))
+    check(root, at=AGAINST, step=T_BOARD, result=timing())
+
+
+@pytest.mark.parametrize(
+    ("lines", "kind"),
+    [
+        (several, timings_tool.KIND_MEASUREMENT_SEVERAL),
+        (open_identity, timings_tool.KIND_MEASUREMENT_UNKNOWN),
+        (a_failure, timings_tool.KIND_MEASUREMENT_UNKNOWN),
+        (only_against, timings_tool.KIND_MEASUREMENT_MISSING),
+        (only_broken, timings_tool.KIND_MEASUREMENT_MISSING),
+        (other_shape, timings_tool.KIND_SHAPES_DIFFER),
+        (out_of_domain, timings_tool.KIND_SAMPLES_OUT_OF_DOMAIN),
+    ],
+)
+def test_every_kind_of_compare_is_comparison_unfounded(root, lines, kind):
+    with_hypotheses(root)
+    lines(root)
+    error = refused(root, pair([comparison()]))
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNFOUNDED
+    assert error.message.startswith(f"record.verdicts[0].evidence[0]: {kind}: {LOG}: ")
+    assert isinstance(error.__cause__, ToolFailure)
+    assert error.__cause__.kind == kind
+
+
+def test_a_comparison_with_a_missing_log_is_comparison_unfounded(root):
+    with_hypotheses(root, log=False)
+    error = refused(root, pair([comparison(point="sim")]))
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNFOUNDED
+    assert error.message == (
+        "record.verdicts[0].evidence[0]: measurement_missing: "
+        f"{LOG}: measured (round 1, candidate 1, attempt 1) at sim_run_timing: "
+        "has no measurement"
+    )
+    assert not log_path(root).exists()
+
+
+def test_another_difference_than_the_log_gives_is_comparison_unfounded(root):
+    with_hypotheses(root)
+    timed(root)
+    error = refused(root, pair([comparison(difference="higher")]))
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNFOUNDED
+    assert error.message == (
+        "record.verdicts[0].evidence[0]: difference higher is not founded: "
+        f"{LOG} gives lower"
+    )
+
+
+def test_lines_of_other_kinds_are_not_held_to_the_timing_rule(root):
+    with_hypotheses(root)
+    data = {"step": T_BOARD, "result": {"outcome": "x"}}
+    events.append(root, RUN, "round_started", data, **numbers(*MEASURED))
+    timed(root)
+    written(root, pair([comparison()]))
+
+
+@pytest.mark.parametrize(
+    "kind", [tools.KIND_RUN_FILE_INVALID, verdicts_tool.KIND_TIMING_RESULT_INVALID]
+)
+def test_another_kind_of_compare_propagates_as_it_is(root, monkeypatch, kind):
+    with_hypotheses(root)
+    timed(root)
+
+    def failing(*arguments):
+        raise ToolFailure(kind, "from compare")
+
+    monkeypatch.setattr(timings_tool, "compare", failing)
+    error = refused(root, pair([comparison()]))
+    assert (error.kind, error.message) == (kind, "from compare")
+
+
+def test_a_refused_comparison_corrected_is_then_written(root):
+    with_hypotheses(root)
+    timed(root)
+    refused(root, pair([comparison(difference="not_different")]))
+    written(root, pair([comparison()]))
+
+
+def test_a_broken_timing_line_beside_a_converged_one_is_founded(root):
+    counted_log(root)
+    check(root, 2, at=MEASURED, step=T_BOARD, result=broken_timing())
+    written(root, counted())
+
+
+def test_the_first_unfounded_comparison_in_record_order_decides(root):
+    with_hypotheses(root)
+    timed(root)
+    missing = comparison() | {"measured": ref(1, 2, 1)}
+    given = pair([comparison(), comparison(point="sim")], [missing])
+    error = refused(root, given)
+    assert error.message.startswith("record.verdicts[0].evidence[1]: ")
+    later = pair([comparison()], [missing, missing | {"point": "sim"}])
+    error = refused(root, later)
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNFOUNDED
+    assert error.message.startswith("record.verdicts[1].evidence[0]: ")
+
+
+def test_an_unfounded_check_entry_wins_over_an_earlier_unfounded_comparison(root):
+    with_hypotheses(root)
+    given = pair([comparison(difference="higher"), check_entry((1, 1, 2))])
+    error = refused(root, given)
+    assert error.kind == verdicts_tool.KIND_CHECK_UNFOUNDED
+    assert error.message.startswith("record.verdicts[0].evidence[1]: ")
+
+
+def test_an_unfounded_comparison_wins_over_an_earlier_unverified_one(root):
+    counted_log(root)
+    start(root, 2)
+    error = refused(root, counted(extra=[comparison(point="sim")]))
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNFOUNDED
+    assert error.message.startswith("record.verdicts[0].evidence[3]: ")
+
+
+def test_a_measured_with_an_open_board_check_is_comparison_unverified(root):
+    counted_log(root)
+    start(root, 2)
+    error = refused(root, counted())
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNVERIFIED
+    assert error.message == (
+        "record.verdicts[0].evidence[2]: the comparison counts, but its measured "
+        "(round 1, candidate 1, attempt 1) is undetermined at board, where both "
+        "must be verified"
+    )
+
+
+def test_an_against_with_a_class_ii_failure_is_comparison_unverified(root):
+    counted_log(root)
+    check(root, 2, at=AGAINST, failure=CLASS_II)
+    error = refused(root, counted())
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNVERIFIED
+    assert error.message == (
+        "record.verdicts[0].evidence[2]: the comparison counts, but its against "
+        "(round 0, candidate 1, attempt 1) is undetermined at board, where both "
+        "must be verified"
+    )
+
+
+def test_an_against_with_a_class_i_failure_beside_a_pass_is_verified(root):
+    counted_log(root)
+    check(root, 2, at=AGAINST, failure=UNSTARTED)
+    written(root, counted())
+
+
+def test_measured_is_reported_before_against(root):
+    counted_log(root)
+    start(root, 2)
+    start(root, 2, at=AGAINST)
+    error = refused(root, counted())
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNVERIFIED
+    assert "its measured (round 1, candidate 1, attempt 1)" in error.message
+
+
+def unverified_pair(root, first_counted):
+    counted_log(root)
+    start(root, 2, at=AGAINST)
+    check(root, at=(1, 2, 1), step=T_BOARD, result=timing(intervals=FAST))
+    second = comparison() | {"measured": ref(1, 2, 1)}
+    first = [check_entry(), comparison()]
+    if first_counted:
+        first.insert(1, check_entry(AGAINST))
+    return record(
+        verdict("h1", first, value="supported" if first_counted else "inconclusive"),
+        verdict(
+            "h2",
+            [check_entry((1, 2, 1)), check_entry(AGAINST), second],
+            value="supported",
+        ),
+    )
+
+
+def test_the_first_unverified_comparison_in_record_order_decides(root):
+    error = refused(root, unverified_pair(root, first_counted=True))
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNVERIFIED
+    assert error.message.startswith("record.verdicts[0].evidence[2]: ")
+
+
+def test_a_comparison_that_does_not_count_is_not_held_to_the_standing(root):
+    error = refused(root, unverified_pair(root, first_counted=False))
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNVERIFIED
+    assert error.message.startswith("record.verdicts[1].evidence[2]: ")
+
+
+SHAPE = {"m": 4, "k": 4, "n": 4}
+INVALID_TIMINGS = [
+    (
+        {"outcome": "pass", "shape": SHAPE, "intervals_ns": SLOW},
+        "data.result.outcome: must be one of converged, not_converged, broken",
+    ),
+    ({"no": "outcome"}, "data.result: lacks the member outcome"),
+    (
+        {"outcome": "converged", "shape": SHAPE, "intervals_ns": SLOW[:4]},
+        "data.result.intervals_ns: must be a list of at least 5 ints",
+    ),
+    (
+        {"outcome": "not_converged", "shape": SHAPE | {"k": 0}, "intervals_ns": SLOW},
+        "data.result.shape: must be an object of exactly m, k and n",
+    ),
+]
+
+
+@pytest.mark.parametrize(("result", "problem"), INVALID_TIMINGS)
+@pytest.mark.parametrize("side", [MEASURED, AGAINST], ids=["measured", "against"])
+def test_an_invalid_timing_result_of_a_named_side_is_timing_result_invalid(
+    root, result, problem, side
+):
+    with_hypotheses(root)
+    timed(root)
+    end(root, 2, at=side, step=T_BOARD, result=result)
+    error = refused(root, pair([comparison()]))
+    assert error.kind == verdicts_tool.KIND_TIMING_RESULT_INVALID
+    assert error.message.startswith(f"{LOG}: line 11: {problem}")
+
+
+def test_an_invalid_timing_result_at_the_sim_point_is_timing_result_invalid(root):
+    with_hypotheses(root)
+    timed(root, step=T_SIM)
+    end(root, 2, at=MEASURED, step=T_SIM, result={"outcome": "converged"})
+    error = refused(root, pair([comparison(point="sim")]))
+    assert error.kind == verdicts_tool.KIND_TIMING_RESULT_INVALID
+    assert (
+        error.message == f"{LOG}: line 11: data.result: lacks the member intervals_ns"
+    )
+
+
+@pytest.mark.parametrize(
+    ("at", "step"),
+    [((1, 1, 2), T_BOARD), ((1, 2, 1), T_BOARD), (MEASURED, T_SIM)],
+    ids=["other attempt", "other candidate", "other point"],
+)
+def test_an_invalid_timing_result_no_comparison_names_is_no_failure(root, at, step):
+    with_hypotheses(root)
+    timed(root)
+    check(root, at=at, step=step, result={"outcome": "converged", "intervals_ns": [1]})
+    written(root, pair([comparison()]))
+
+
+def test_a_check_line_of_a_compared_attempt_is_not_held_to_the_timing_rule(root):
+    with_hypotheses(root)
+    timed(root)
+    written(root, pair([comparison()]))
+
+
+def test_a_timing_line_of_a_checked_attempt_is_not_held_to_the_check_rule(root):
+    with_hypotheses(root)
+    timed(root)
+    written(root, pair([check_entry()]))
+
+
+def bad_check(root):
+    end(root, 2, at=MEASURED, result={"no": "outcome"})
+
+
+def bad_timing(root):
+    end(root, 2, at=MEASURED, step=T_BOARD, result={"outcome": "converged"})
+
+
+def bad_step(root):
+    unspent(root, (1, 1, 3))
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "kind"),
+    [
+        (bad_timing, bad_check, verdicts_tool.KIND_TIMING_RESULT_INVALID),
+        (bad_check, bad_timing, verdicts_tool.KIND_CHECK_RESULT_INVALID),
+        (bad_step, bad_timing, tools.KIND_RUN_FILE_INVALID),
+        (bad_step, bad_check, tools.KIND_RUN_FILE_INVALID),
+        (bad_timing, bad_step, verdicts_tool.KIND_TIMING_RESULT_INVALID),
+    ],
+    ids=[
+        "timing then check",
+        "check then timing",
+        "step then timing",
+        "step then check",
+        "timing then step",
+    ],
+)
+def test_the_first_failing_step_line_decides(root, first, second, kind):
+    with_hypotheses(root)
+    timed(root)
+    first(root)
+    second(root)
+    error = refused(root, pair([check_entry(), comparison()]))
+    assert error.kind == kind
+    assert error.message.startswith(f"{LOG}: line 11: ")
+
+
+def test_an_invalid_timing_result_wins_over_an_unfounded_check_entry(root):
+    with_hypotheses(root)
+    timed(root)
+    bad_timing(root)
+    error = refused(root, pair([check_entry((1, 1, 2)), comparison()]))
+    assert error.kind == verdicts_tool.KIND_TIMING_RESULT_INVALID
+
+
+@pytest.mark.parametrize(
+    ("given", "kind"),
+    [
+        (
+            record(verdict("h1", [comparison()])),
+            verdicts_tool.KIND_VERDICTS_MISMATCH,
+        ),
+        (record(schema_version=2), tools.KIND_INVALID_REQUEST),
+    ],
+    ids=["verdicts_mismatch", "invalid_request"],
+)
+def test_an_earlier_check_wins_over_an_invalid_timing_result(root, given, kind):
+    with_hypotheses(root)
+    timed(root)
+    bad_timing(root)
+    assert refused(root, given).kind == kind
+
+
+def test_missing_hypotheses_win_over_an_invalid_timing_result(root):
+    timed(root)
+    bad_timing(root)
+    error = refused(root, pair([comparison()]))
+    assert error.kind == verdicts_tool.KIND_HYPOTHESES_MISSING
+
+
+@pytest.mark.parametrize("where", ["first", "last"])
+def test_a_damaged_log_with_a_comparison_is_run_file_invalid(root, where):
+    with_hypotheses(root, log=False)
+    if where == "first":
+        damaged(root)
+    founding(root)
+    timed(root)
+    if where == "last":
+        damaged(root)
+    error = refused(root, pair([comparison()]))
+    assert error.kind == tools.KIND_RUN_FILE_INVALID
+    number = 1 if where == "first" else 11
+    assert error.message.startswith(f"{LOG}: line {number}: is damaged")
+
+
+def test_the_default_registry_writes_a_counted_comparison(root):
+    counted_log(root)
+    registry = default_registry(lambda: root)
+    given = counted()
+    request = {"run_id": RUN, "record": given}
+    assert tools.call(registry, "verdicts.write", request) == {}
+    assert verdicts_path(root).read_bytes() == encoded(given)
+
+
+def test_the_mcp_front_writes_a_counted_comparison(root):
+    counted_log(root)
+    given = counted()
+    arguments = {"run_id": RUN, "record": given}
+    data = _mcp(1, "tools/call", {"name": "verdicts_write", "arguments": arguments})
+    stdout, stderr = io.BytesIO(), io.BytesIO()
+    status = mcp_front.main(
+        [],
+        registry=default_registry(lambda: root),
+        stdin=io.BytesIO(data),
+        stdout=stdout,
+        stderr=stderr,
+    )
+    assert (status, stderr.getvalue()) == (0, b"")
+    answer = json.loads(stdout.getvalue())
+    assert answer["result"]["isError"] is False
+    assert verdicts_path(root).read_bytes() == encoded(given)
