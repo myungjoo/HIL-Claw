@@ -2,7 +2,7 @@
 id: T-0394
 title: Tell owed P2 in step 1 of the turn loop by run_commit.commit_owed (ADR-0143 Consequences slice (3); PLAN P2-1/P2-4)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-13, NFR-1, OD-8, OD-19, S0, S1, S2]
 dependsOn: [T-0391, T-0392, T-0393]
