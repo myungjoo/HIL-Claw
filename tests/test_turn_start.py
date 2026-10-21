@@ -398,6 +398,12 @@ def owed(root):
     replace(root, RUN, 5, EMPTY, {"run_status": "over"})
 
 
+def over_uncommitted(root):
+    stated(root, 5)
+    settle(root)
+    replace(root, RUN, 5, EMPTY, {"run_status": "over"})
+
+
 def report(outcome=selfcheck_outcome.PASSED):
     return {
         "outcome": outcome,
@@ -874,6 +880,42 @@ def test_owed_p2_with_a_check_that_does_not_pass(root, go, stub, outcome):
     found = go((0, [], COMMIT), check=standin)
     told_once(found, EXIT_STOPPED_AT_CHECK, {"outcome": STOPPED_AT_CHECK})
     assert len(standin.calls) == 1 and stub.calls() == []
+
+
+def test_over_left_uncommitted_by_a_death_checks_and_its_turn_commits(root, go, stub):
+    over_uncommitted(root)
+    standin = Standin()
+    found = go((0, [], COMMIT), check=standin)
+    told_once(found, EXIT_RUN_OVER, {"outcome": RUN_OVER})
+    assert len(standin.calls) == 1 and stub.kinds() == ["turn"]
+
+
+def test_over_left_uncommitted_and_left_owed_is_an_unchanged_turn(root, go, stub):
+    over_uncommitted(root)
+    found = go((0, []))
+    told_once(found, EXIT_UNCHANGED_TURN, {"outcome": UNCHANGED_TURN})
+    assert len(stub.calls()) == 1
+
+
+def test_over_left_uncommitted_with_a_failed_turn(root, go, stub):
+    over_uncommitted(root)
+    found = go((3, []))
+    told_once(found, EXIT_FAILED_TURN, {"outcome": FAILED_TURN, "exit_status": 3})
+    assert len(stub.calls()) == 1
+
+
+def test_p2_where_the_commit_cannot_be_compared(root, go, stub, monkeypatch):
+    over_uncommitted(root)
+
+    def failing(data_root, run_id):
+        raise run_commit.CommitNotMadeError("x")
+
+    monkeypatch.setattr(run_commit, "commit_owed", failing)
+    standin = Standin()
+    found = go((0, [], COMMIT), check=standin)
+    told = {"outcome": OPEN_STATE, "reason": "commit_not_made"}
+    told_once(found, EXIT_OPEN_STATE, told)
+    assert standin.calls == [] and stub.kinds() == []
 
 
 def test_p2_without_a_repository(parent, stub, tmp_path):

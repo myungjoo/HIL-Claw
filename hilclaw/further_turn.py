@@ -6,8 +6,8 @@ the turn loop of ADR-0118 decision 3 answers by itself, and only these:
 
 - P1, a fresh run directory (ADR-0120 decision 4): a further turn;
 - P2, ``STATE.json`` valid, version 1, with ``run_status`` ``"over"``: no
-  further turn when no round end is owed;
-- owed P2, P2 with a round end owed (ADR-0127 decision 6): a further turn;
+  further turn when no commit is owed;
+- owed P2, P2 with a commit owed (ADR-0143 decision 6): a further turn;
 - P3, ``STATE.json`` valid, version 1, with ``run_status`` holding any other
   value, a non-string included (ADR-0121 decision 2): no further turn, and the
   value is reported;
@@ -19,10 +19,10 @@ In every other state the code asks its caller's predicate (ADR-0121 decision
 5, last bullet). :func:`classify` tells the state; :func:`predicate` makes the
 ``further_turn`` that :func:`hilclaw.turn_loop.run` takes.
 
-In P2 alone the rule of ADR-0127 decision 4 is applied read-only through
-:func:`hilclaw.run_commit.owed_rounds`, which compares the working tree's
-``round`` with that of ``HEAD``; P2 where it cannot be applied is a state of
-the caller's predicate.
+In P2 alone the rule of ADR-0143 decision 3 is applied read-only through
+:func:`hilclaw.run_commit.commit_owed`, which compares the run directory of
+the working tree, its ``round`` included, with that of ``HEAD``; P2 where it
+cannot be applied is a state of the caller's predicate.
 
 **A choice of this module**: P1, P4 and owed P2 say that a turn is due, not
 how often a failing one is retried. So they answer a further turn only before
@@ -74,14 +74,15 @@ INSTANCE_VERSION = "instance_version"
 NO_ROUND_BUDGET = "no_round_budget"
 NO_REPOSITORY = run_commit.KIND_NO_REPOSITORY
 COMMIT_REFUSED = run_commit.KIND_COMMIT_REFUSED
+COMMIT_NOT_MADE = run_commit.KIND_COMMIT_NOT_MADE
 
 
 class Finding(NamedTuple):
     """Result of :func:`classify`: the ``case`` and its ``value``.
 
     ``value`` is the ``run_status`` value for :data:`UNKNOWN_STATUS`, the
-    ``round`` of ``STATE.json`` for :data:`DUE`, one of the nine reason
-    constants (:data:`STATE_MISSING` to :data:`COMMIT_REFUSED`) for
+    ``round`` of ``STATE.json`` for :data:`DUE`, one of the ten reason
+    constants (:data:`STATE_MISSING` to :data:`COMMIT_NOT_MADE`) for
     :data:`OPEN`, and ``None`` for :data:`FRESH`, :data:`OVER_CASE` and
     :data:`OWED`, so that owed P2 before and after a turn compares equal.
     """
@@ -98,11 +99,12 @@ def classify(data_root, run_id):
     or :data:`STATE_VERSION` when :func:`hilclaw.run_journal.read_state` finds
     no ``STATE.json``, an invalid one or another version; when its
     ``run_status`` is exactly the ``str`` ``"over"`` (P2), after one
-    :func:`hilclaw.run_commit.owed_rounds` call, :data:`OVER_CASE` for an
-    empty range, :data:`OWED` for another, and :data:`OPEN` with
+    :func:`hilclaw.run_commit.commit_owed` call, :data:`OVER_CASE` when it
+    answers false, :data:`OWED` when true, and :data:`OPEN` with
     :data:`NO_REPOSITORY` for :class:`hilclaw.run_commit.NoRepositoryError` or
-    :class:`hilclaw.run_commit.GitNotRunError` and with
-    :data:`COMMIT_REFUSED` for :class:`hilclaw.run_commit.CommitRefusedError`;
+    :class:`hilclaw.run_commit.GitNotRunError`, with :data:`COMMIT_REFUSED`
+    for :class:`hilclaw.run_commit.CommitRefusedError` and with
+    :data:`COMMIT_NOT_MADE` for :class:`hilclaw.run_commit.CommitNotMadeError`;
     :data:`UNKNOWN_STATUS` with the value as parsed when ``run_status`` holds
     any other value (P3); without ``run_status``, :data:`OPEN` with
     :data:`INSTANCE_MISSING`, :data:`INSTANCE_INVALID` or
@@ -148,11 +150,13 @@ def classify(data_root, run_id):
 
 def _p2(data_root, run_id):
     try:
-        owed = run_commit.owed_rounds(data_root, run_id)
+        owed = run_commit.commit_owed(data_root, run_id)
     except (run_commit.NoRepositoryError, run_commit.GitNotRunError):
         return Finding(OPEN, NO_REPOSITORY)
     except run_commit.CommitRefusedError:
         return Finding(OPEN, COMMIT_REFUSED)
+    except run_commit.CommitNotMadeError:
+        return Finding(OPEN, COMMIT_NOT_MADE)
     return Finding(OWED if owed else OVER_CASE, None)
 
 
