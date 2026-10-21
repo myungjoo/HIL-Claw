@@ -86,3 +86,5 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0377 follow-up — `hilclaw/gemm_contract.py` 모듈 docstring의 "It is bound to one tool: `covers` is the predicate of the `correctness.check` …" 문장이 `spec.write`도 `covers`·`task_contract`를 부르게 되어 덜 정확해짐, docstring 문구 정리.
 - T-0378 follow-up — ADR-0139 리뷰 7라운드 Nit(Status "It builds on" 목록에 ADR-0128 decision 2와 ADR-0054 O8 누락), ADR 문구 정리.
 - T-0378 follow-up — ADR-0139 Consequences의 "Less exact, not edited" 목록(ADR-0118 decision 4·6·Boundaries·item (vii), ADR-0123·0124·0126·0127·0128·0129·0131·0133·0134 Boundaries, ADR-0128 item (xviii)·ADR-0138 item (xxxiii), `turn_definition.py` docstring, `orchestration/round-manager.md` "not Bash or file tools"), ADR·docstring 문구 정리.
+- T-0379 follow-up — `turn_permissions.options`가 같은 `name`의 agent 파일 두 개를 거부하지 않는 점(리뷰 3라운드 optional), 입력 경화.
+- T-0370 follow-up — `orchestration/round-manager.md` "One round at most"가 round-end 기록 뒤 세션이 끝난다고 적지만 지금은 `run.commit`이 뒤따르는 점, 프롬프트 문구 정리.
