@@ -39,7 +39,8 @@ outside the session directory.
   key store and, when the call brought something in, the sim-point and then
   the board-point check to the evaluator, and it ends without a further
   write after the board-point check at the latest. In other rounds the
-  later steps are not yet defined, so a turn ends so after the key store.
+  later steps are not yet defined, so a turn ends after the key store,
+  again without a further write.
 - *Refusals*, each a :class:`ValueError` with a fixed text raised before
   anything is written: a top-level entry that is not a key of :data:`LAYOUT`;
   an entry of the wrong kind; a missing ``round-manager.md``; an entry at any

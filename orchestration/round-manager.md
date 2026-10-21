@@ -116,11 +116,12 @@ before any other step of it:
 3. **Round 0 only.** Delegate to `evaluator` with the `Agent` tool and wait
    for its report. The message names your run id, the tuple `round` 0,
    `candidate` 1, `attempt` 1, the point `sim`, and no place and no
-   `execution` (ADR-0142 decision 3; ADR-0128 decisions 4 and 7). Take the
-   standing from the report (ADR-0131 decision 7). Go on to step 4 only when
-   it gives the standing `"verified"` at `sim`. On any other report
-   (`"not_verified"`, `"undetermined"`, a failure kind without a standing, or
-   no report you can read) come to the stop.
+   `execution` (ADR-0142 decision 3; ADR-0128 decisions 4 and 7). Whatever
+   it reports, report it in one line. Take the standing from the report
+   (ADR-0131 decision 7). Go on to step 4 only when it gives the standing
+   `"verified"` at `sim`. On any other report (`"not_verified"`,
+   `"undetermined"`, a failure kind without a standing, or no report you can
+   read) come to the stop.
 4. **Round 0 only.** Delegate to `evaluator` and wait as in step 3, the
    message naming the point `board` in place of `sim`. When the report
    gives the standing `"verified"` at `board`, report in one line that the
