@@ -54,6 +54,15 @@ EVALUATOR_TOOLS = {
     "mcp__hilclaw__checks_read",
     "mcp__hilclaw__timings_compare",
 }
+CODER_DRIVER = (
+    "---\n"
+    "name: coder-driver\n"
+    'description: "Coder-driver of a first-case turn: it calls the coder."\n'
+    "tools: mcp__hilclaw__spec_write, mcp__hilclaw__coder_run\n"
+    "---\n"
+    "# Coder-driver\n"
+)
+CODER_DRIVER_TOOLS = {"mcp__hilclaw__spec_write", "mcp__hilclaw__coder_run"}
 BYPASS = (
     "--dangerously-skip-permissions",
     "--allow-dangerously-skip-permissions",
@@ -155,6 +164,19 @@ def test_the_evaluator(tmp_path):
     assert not any("*" in entry for entry in allowed)
 
 
+def test_the_coder_driver(tmp_path):
+    (agents(tmp_path) / "coder-driver.md").write_text(CODER_DRIVER, encoding="utf-8")
+    built_in, allowed = split(options(tmp_path))
+    assert built_in == "Agent"
+    assert allowed == sorted({*FIXED, *CODER_DRIVER_TOOLS, "Agent(coder-driver)"})
+
+
+def test_the_coder_driver_keeps_no_shell(tmp_path):
+    text = CODER_DRIVER.replace("coder_run\n", "coder_run, Bash\n")
+    assert text != CODER_DRIVER
+    refused(tmp_path, text.encode("utf-8"), BAD_TOOL)
+
+
 def test_no_bypass_option(tmp_path):
     (agents(tmp_path) / "evaluator.md").write_text(EVALUATOR, encoding="utf-8")
     for argument in options(tmp_path):
@@ -241,6 +263,8 @@ def test_the_real_definition(tmp_path):
     assert "Agent(evaluator)" in allowed
     assert EVALUATOR_TOOLS <= set(allowed)
     assert "mcp__hilclaw__timings_compare" in allowed
+    assert "Agent(coder-driver)" in allowed
+    assert CODER_DRIVER_TOOLS <= set(allowed)
     assert set(FIXED) <= set(allowed)
     assert built_in == "Agent,Glob,Grep,Read"
 

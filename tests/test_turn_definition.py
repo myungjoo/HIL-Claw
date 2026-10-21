@@ -21,6 +21,8 @@ EVALUATOR_TOOLS = {
     "mcp__hilclaw__checks_read",
     "mcp__hilclaw__timings_compare",
 }
+CODER_DRIVER = "coder-driver.md"
+CODER_DRIVER_TOOLS = {"mcp__hilclaw__spec_write", "mcp__hilclaw__coder_run"}
 
 UNKNOWN = "the definition holds an entry that is not in the layout"
 WRONG_KIND = "an entry of the definition is of the wrong kind"
@@ -112,15 +114,18 @@ def test_the_repository_definition_by_default(session):
     assert tree(session) == {
         "CLAUDE.md": (SOURCE / PROMPT).read_bytes(),
         ".claude/agents/evaluator.md": (SOURCE / "agents" / EVALUATOR).read_bytes(),
+        ".claude/agents/coder-driver.md": (
+            SOURCE / "agents" / CODER_DRIVER
+        ).read_bytes(),
     }
     assert sorted(os.listdir(session)) == [".claude", "CLAUDE.md"]
     assert os.listdir(session / ".claude") == ["agents"]
 
 
-def test_the_repository_definition_holds_the_prompt_and_the_evaluator():
+def test_the_repository_definition_holds_the_prompt_and_the_two_agents():
     assert sorted(os.listdir(SOURCE)) == ["agents", PROMPT]
     assert (SOURCE / "agents").is_dir()
-    assert os.listdir(SOURCE / "agents") == [EVALUATOR]
+    assert sorted(os.listdir(SOURCE / "agents")) == sorted([EVALUATOR, CODER_DRIVER])
 
 
 def frontmatter(text):
@@ -136,6 +141,12 @@ def frontmatter(text):
     return found
 
 
+def served_names():
+    registered = tools_module.default_registry(lambda: None).names()
+    prefix = f"mcp__{mcp_front.SERVER_NAME}__"
+    return {prefix + mcp_front.mcp_name(name) for name in registered}
+
+
 def test_the_evaluator_frontmatter():
     text = (SOURCE / "agents" / EVALUATOR).read_text(encoding="utf-8")
     found = frontmatter(text)
@@ -146,9 +157,7 @@ def test_the_evaluator_frontmatter():
     tools = [name.strip() for name in found["tools"].split(",")]
     assert len(tools) == len(set(tools))
     assert set(tools) == EVALUATOR_TOOLS
-    registered = tools_module.default_registry(lambda: None).names()
-    prefix = f"mcp__{mcp_front.SERVER_NAME}__"
-    served = {prefix + mcp_front.mcp_name(name) for name in registered}
+    served = served_names()
     for name in tools:
         if name.startswith("mcp__hilclaw__"):
             assert name in served
@@ -463,3 +472,27 @@ def test_a_session_target_that_is_a_junction(session, source, tmp_path):
     junction(session / ".claude" / "skills", outside)
     refused(session, SESSION_LINK, source=full(source))
     assert tree(outside) == {"keep.md": b"keep"}
+
+
+def test_the_coder_driver_frontmatter():
+    data = (SOURCE / "agents" / CODER_DRIVER).read_bytes()
+    assert b"\r" not in data
+    found = frontmatter(data.decode("utf-8"))
+    assert set(found) == {"name", "description", "tools"}
+    assert found["name"] == "coder-driver"
+    assert found["description"]
+    tools = [name.strip() for name in found["tools"].split(",")]
+    assert len(tools) == len(set(tools))
+    assert set(tools) == CODER_DRIVER_TOOLS
+    served = served_names()
+    for name in tools:
+        if name.startswith("mcp__hilclaw__"):
+            assert name in served
+    for name in ("Bash", "Read", "Grep", "Glob", "Write", "Edit", "Agent"):
+        assert name not in tools
+
+
+def test_the_coder_driver_names_the_kind_and_the_result():
+    text = (SOURCE / "agents" / CODER_DRIVER).read_text(encoding="utf-8")
+    for word in ("spec_exists", "taken", "scratch_removed"):
+        assert word in text
