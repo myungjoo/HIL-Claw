@@ -2,7 +2,7 @@
 id: T-0383
 title: Give the evaluator definition timings.compare and the comparison work of ADR-0140 decision 6 (ADR-0140 Consequences slice 3; PLAN P2-3, P2-6)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-9, FR-17, OD-16, OD-23, OD-18, OD-30, S0, S1]
 dependsOn: [T-0381, T-0382]
@@ -77,4 +77,16 @@ Open HQs checked: none is crossed. The definition names no model or budget (HQ-0
 
 ## Follow-ups
 
+- The bullet that lets the two board `"pass"` entries stand beside a board comparison only when both sides are verified narrows, for such a pair, what the `check` entry rule of ADR-0131 decision 4 alone admits; ADR-0140 decision 6 words it the same way, and a mixed record is caught by `comparison_unverified` (reviewer Nit, round 1; no change).
+- `timing_result_invalid` was placed beside `check_result_invalid` as the task specified. Like that kind, it is raised only for attempts that an entry names, so dropping the entry avoids it (the T-0360 follow-up applies to it unchanged).
+
 ## Result
+
+- DONE. PR #221 (https://github.com/myungjoo/HIL-Claw/pull/221), squash-merged as 6b01718; branch `claude/T-0383-evaluator-timings-compare` deleted. Review: 1 round, Approve (one Nit, needing no change; see Follow-ups). CI green (Python 3.11/3.14, coverage, test presence, sh, C).
+- `orchestration/agents/evaluator.md` (ADR-0140 decision 6):
+  - `tools` adds exactly `mcp__hilclaw__timings_compare`. No other frontmatter change.
+  - "What you are given": the `difference` of a pair is what `timings_compare` returns. "Request no measurement" stays, and now says the tool is a read.
+  - "Verdicts": the inconclusive-only, no-comparison and no-comparison-cause sentences are gone. The evaluator chooses its pairs for each `latency_minimisation` hypothesis, calls `timings_compare`, and either copies the `difference` into a `comparison` entry or writes no entry and names the failure kind in the `cause`. Board `"pass"` entries go beside a board comparison only when both sides are verified, and each value is composed by ADR-0071 decision 4. The definition names no base and no required set of comparisons.
+  - Refusals: `comparison_not_given` is gone. A corrected record can answer `invalid_request`, `verdicts_mismatch`, `check_unfounded`, `comparison_unfounded` and `comparison_unverified`. The correction for `comparison_unverified` is stated. `check_result_invalid` and `timing_result_invalid` end the work. "Your report" names the pair for each `timings_compare` line.
+- Tests: `EVALUATOR_TOOLS` in both test files and the synthetic `EVALUATOR` fixture gain the tool. `test_the_real_definition` asserts that the tool is pre-approved. The new test `test_the_evaluator_names_no_removed_kind` is the negative check.
+- Language: Markdown for the definition, Python for the tests. Local checks: ruff check, ruff format --check and full pytest (25498 passed, 730 skipped). No change under `hilclaw/` (coverage unchanged; CI coverage gate green). No `claude` process was started.
