@@ -21,8 +21,8 @@ In every other state the code asks its caller's predicate (ADR-0121 decision
 
 In P2 alone the rule of ADR-0143 decision 3 is applied read-only through
 :func:`hilclaw.run_commit.commit_owed`, which compares the run directory of
-the working tree with that of ``HEAD``; P2 where it cannot be applied is a
-state of the caller's predicate.
+the working tree, its ``round`` included, with that of ``HEAD``; P2 where it
+cannot be applied is a state of the caller's predicate.
 
 **A choice of this module**: P1, P4 and owed P2 say that a turn is due, not
 how often a failing one is retried. So they answer a further turn only before
