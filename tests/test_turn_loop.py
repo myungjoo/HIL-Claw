@@ -27,6 +27,17 @@ DEFINITION = "definition.md"
 MEETS = "the session directory would meet a checkout"
 MARKER = "an instruction file or a foreign .claude lies above the session directory"
 FIXED = ",".join(sorted(turn_permissions.ROUND_MANAGER_TOOLS))
+IDLE = "CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT"
+NO_BACKGROUND = "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"
+AUTO_BACKGROUND = "CLAUDE_AUTO_BACKGROUND_TASKS"
+UNRELATED = "HILCLAW_TEST_UNRELATED"
+LEFT_ALONE = (
+    "MCP_TOOL_TIMEOUT",
+    "CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS",
+    "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS",
+)
+SESSION = {IDLE: "0", NO_BACKGROUND: "1", AUTO_BACKGROUND: None}
+RECORDED = [IDLE, NO_BACKGROUND, AUTO_BACKGROUND, UNRELATED, *LEFT_ALONE]
 BYPASS = (
     "--dangerously-skip-permissions",
     "--allow-dangerously-skip-permissions",
@@ -61,6 +72,7 @@ with (here / "started.ndjson").open("a", encoding="utf-8") as record:
         "listing": listing,
         "contents": contents,
         "config": config,
+        "env": {name: os.environ.get(name) for name in scenario["names"]},
     }
     record.write(json.dumps(entry) + "\n")
 started = len((here / "started.ndjson").read_text(encoding="utf-8").splitlines())
@@ -77,7 +89,8 @@ class Stub:
         script = self.directory / "stub.py"
         script.write_text(STUB, encoding="utf-8")
         (self.directory / "scenario.json").write_text(
-            json.dumps({"statuses": list(statuses)}), encoding="utf-8"
+            json.dumps({"statuses": list(statuses), "names": RECORDED}),
+            encoding="utf-8",
         )
         if os.name == "posix":
             launcher = self.directory / "claude"
@@ -722,3 +735,123 @@ def test_a_refused_agent_stops_the_turn(stub, data_root, parent):
     assert stub.calls() == []
     assert not put_definition.made[0].exists()
     assert list(parent.iterdir()) == []
+
+
+def clear_session_variables(monkeypatch):
+    for name in (*SESSION, UNRELATED, *LEFT_ALONE):
+        monkeypatch.delenv(name, raising=False)
+
+
+def session_part(call):
+    return {name: call["env"][name] for name in SESSION}
+
+
+def test_session_environment_with_nothing_set(stub, data_root, parent, monkeypatch):
+    clear_session_variables(monkeypatch)
+    monkeypatch.setenv(UNRELATED, "kept as it is")
+    stub.install(statuses=(0, 0))
+    assert go(data_root, parent, further_turn=Predicate(2)) == (
+        Turn(0, True),
+        Turn(0, True),
+    )
+    calls = stub.calls()
+    assert len(calls) == 2
+    for call in calls:
+        assert session_part(call) == SESSION
+        assert call["env"][UNRELATED] == "kept as it is"
+        for name in LEFT_ALONE:
+            assert call["env"][name] is None
+    for name in SESSION:
+        assert name not in os.environ
+
+
+def test_session_environment_replaces_the_callers_values(
+    stub, data_root, parent, monkeypatch
+):
+    clear_session_variables(monkeypatch)
+    monkeypatch.setenv(IDLE, "60000")
+    monkeypatch.setenv(NO_BACKGROUND, "0")
+    monkeypatch.setenv(AUTO_BACKGROUND, "1")
+    for name, value in zip(LEFT_ALONE, ("1000", "2000", "3000")):
+        monkeypatch.setenv(name, value)
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert session_part(call) == SESSION
+    assert [call["env"][name] for name in LEFT_ALONE] == ["1000", "2000", "3000"]
+    assert os.environ[IDLE] == "60000"
+    assert os.environ[NO_BACKGROUND] == "0"
+    assert os.environ[AUTO_BACKGROUND] == "1"
+
+
+def test_session_environment_read_at_each_turn(stub, data_root, parent, monkeypatch):
+    clear_session_variables(monkeypatch)
+    monkeypatch.setenv(UNRELATED, "first")
+    stub.install(statuses=(0, 0))
+    seen = []
+
+    def further_turn(previous):
+        seen.append(previous)
+        if len(seen) == 2:
+            os.environ[UNRELATED] = "second"
+            os.environ[IDLE] = "5"
+            os.environ[NO_BACKGROUND] = "false"
+            os.environ[AUTO_BACKGROUND] = "1"
+        return len(seen) <= 2
+
+    go(data_root, parent, further_turn=further_turn)
+    first, second = stub.calls()
+    assert first["env"][UNRELATED] == "first"
+    assert second["env"][UNRELATED] == "second"
+    assert session_part(first) == session_part(second) == SESSION
+    assert os.environ[IDLE] == "5"
+    assert os.environ[NO_BACKGROUND] == "false"
+    assert os.environ[AUTO_BACKGROUND] == "1"
+
+
+def test_callers_environment_unchanged_when_a_later_turn_raises(
+    stub, data_root, parent, monkeypatch
+):
+    clear_session_variables(monkeypatch)
+    monkeypatch.setenv(IDLE, "60000")
+    monkeypatch.setenv(AUTO_BACKGROUND, "1")
+    stub.install()
+    before = dict(os.environ)
+    seen = []
+
+    def further_turn(previous):
+        seen.append(previous)
+        if len(seen) == 2:
+            for launcher in stub.directory.glob("claude*"):
+                launcher.unlink()
+        return True
+
+    with pytest.raises(ClaudeNotFoundError):
+        go(data_root, parent, further_turn=further_turn)
+    (call,) = stub.calls()
+    assert session_part(call) == SESSION
+    assert dict(os.environ) == before
+    assert NO_BACKGROUND not in os.environ
+
+
+def test_no_settings_file_is_written(stub, data_root, parent, monkeypatch):
+    clear_session_variables(monkeypatch)
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert call["listing"] == sorted([CONFIG_FILE, DEFINITION])
+    entry = call["config"][SERVERS_MEMBER][mcp_front.SERVER_NAME]
+    assert entry["env"] == {config.ENV_LOCAL_PATH: os.path.realpath(data_root)}
+    assert list(parent.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name != "nt", reason="names fold to one case on Windows only")
+def test_lower_case_names_on_windows(stub, data_root, parent, monkeypatch):
+    clear_session_variables(monkeypatch)
+    monkeypatch.setenv(AUTO_BACKGROUND.lower(), "1")
+    monkeypatch.setenv(IDLE.lower(), "60000")
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert session_part(call) == SESSION
+    assert os.environ[AUTO_BACKGROUND] == "1"
