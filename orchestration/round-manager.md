@@ -70,7 +70,7 @@ first-case run (ADR-0118 decisions 1 and 2).
 
 Do these steps first, in this order, before any other work. Every tool
 request carries your run id as `run_id`. Every step from step 2 on that ends
-the session ends it as "The end of a session" says.
+the session ends it as "The end of a session" says (ADR-0143 decision 2).
 
 0. Call `mcp__hilclaw__run_commit`. Whether `committed` is `true` or
    `false`, go on with step 1 and do not report the value. If the call fails
@@ -148,7 +148,7 @@ before any other step of it:
    (ADR-0142 decision 7). On any other report come to the stop.
 
 The stop: in round 0 it follows step 2, 3 or 4 as they say, once the report
-that step waits for has come. In other rounds it follows step 1: the steps
+that step waits for has come (ADR-0143 decision 7). In other rounds it follows step 1: the steps
 after it, up to the closing steps of a round, are not yet defined, so report
 in one line that the following steps of round `<round>` are not yet defined.
 In every case write nothing further, call `mcp__hilclaw__run_commit` as "The

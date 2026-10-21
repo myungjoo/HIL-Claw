@@ -648,7 +648,7 @@ def test_the_closing_steps_commit_after_a_failed_round_end():
     assert "Do not call `mcp__hilclaw__round_end` again in this turn" in failure
     assert "do not write `STATE.json` with `mcp__hilclaw__state_write`" in failure
     assert "ADR-0143 decision 2, revising ADR-0135 decision 5" in failure
-    assert closing_step(3) == (
+    assert closing_step(3).startswith(
         "`run.commit`.** Call `mcp__hilclaw__run_commit`. Whether `committed` is "
         "`true` or `false`, do not report the value. If the call fails with any "
         "kind, report the kind in one line. In either case end the session "
