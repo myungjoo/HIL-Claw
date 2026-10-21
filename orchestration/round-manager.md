@@ -122,8 +122,8 @@ before any other step of it:
    `"verified"` at `sim`. On any other report (`"not_verified"`,
    `"undetermined"`, a failure kind without a standing, or no report you can
    read) come to the stop.
-4. **Round 0 only.** Delegate to `evaluator` and wait as in step 3, the
-   message naming the point `board` in place of `sim`. When the report
+4. **Round 0 only.** Delegate to `evaluator`, wait and report as in step 3,
+   the message naming the point `board` in place of `sim`. When the report
    gives the standing `"verified"` at `board`, report in one line that the
    board measurement of round 0 waits on `board.run`, and come to the stop
    (ADR-0142 decision 7). On any other report come to the stop.
