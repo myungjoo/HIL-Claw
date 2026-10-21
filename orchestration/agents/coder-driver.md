@@ -35,11 +35,11 @@ The Round-Manager delegates that call to you.
 
 ## Your report
 
-- End with one final text message to the Round-Manager (ADR-0126
-  decision 6).
-- In it, one line per tool request you made, naming the tool, the run id
-  and the tuple, and the result or the failure kind as the tool returned it
-  (ADR-0141 decision 5).
+- Report to the Round-Manager the result or the failure kind of each tool
+  you called, as the tool returned it (ADR-0126 decision 6; ADR-0141
+  decision 5).
+- End with one final text message to the Round-Manager, with one line per
+  tool request you made, naming the tool, the run id and the tuple.
 - Say nothing of what a kind or an empty `taken` means for the round; that
   is open (OD-19) and not yours to judge (ADR-0126 decision 2; ADR-0141
   decision 6).
