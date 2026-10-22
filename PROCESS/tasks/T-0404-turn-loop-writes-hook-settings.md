@@ -2,7 +2,7 @@
 id: T-0404
 title: Have the turn loop write the session directory's .claude/settings.json with the caller check hook of ADR-0146, refusing a definition's own settings.json (ADR-0146 code slice 2; PLAN P2-4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-4, FR-9, FR-10, FR-11, OD-18, PLAN P2-4]
 dependsOn: [T-0402, T-0403]
@@ -68,7 +68,7 @@ Test rule: `hilclaw/turn_loop.py` is a module of the layer-2 package, so rules â
 
 ## Result
 
-- PR #236 (branch `claude/T-0404-turn-loop-writes-hook-settings`), squash-merged; review rounds: see the merge commit and the PR comments (round 1 Approve with two nits, both fixed in the PR, then re-reviewed).
+- PR #236 (branch `claude/T-0404-turn-loop-writes-hook-settings`), squash-merged as d9205a6 after 2 review rounds (round 1 Approve with two nits, both fixed in the PR; round 2 Approve with no findings). CI green on head 8e13f40 (Python 3.11/3.14, Coverage, Test presence, sh, C); the symlink tests ran there.
 - Language: Python, the language of the module being extended (`hilclaw/turn_loop.py`).
 - Timeout: `HOOK_TIMEOUT_S = 30` seconds, as the planner proposed. One interpreter start and one read of the session's agent files take well under a second or two even on a slow Windows machine, so 30 s leaves a wide margin. With `onFailure: "block"`, a hook that hangs blocks the call within 30 s instead of the 600 s default. It is also the default Claude Code itself uses for the shorter-lived hook events.
 - Field placement: checked against https://code.claude.com/docs/en/hooks (read with `curl`; no `claude` was run). `timeout` is a "Common field" of a hook handler, and `onFailure` is a "Command hook field". Both sit inside the command hook object, as criterion 1 has them; the page's own `onFailure` example uses the same shape. The page's "Matcher patterns" table confirms that a matcher with a character outside letters, digits, `_`, `-`, spaces, `,` and `|` is read as an unanchored JavaScript regular expression, so `^mcp__hilclaw__` is both regular and anchored.
