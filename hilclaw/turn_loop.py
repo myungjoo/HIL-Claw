@@ -69,10 +69,18 @@ OD-19's or OD-14's.
   above it holds an entry named as in :data:`MARKERS`. The one entry allowed
   is ``Path.home() / ".claude"``, compared by real path. A file placed there
   between two turns stops the next one.
-- *The data root reaches the server through the environment*: the entry's
-  ``env`` is exactly :data:`hilclaw.config.ENV_LOCAL_PATH` with the real
-  absolute path of ``data_root``, so the server names the same data root
-  whatever its working directory is.
+- *The data root and the image reach the server through the environment*:
+  the entry's ``env`` holds :data:`hilclaw.config.ENV_LOCAL_PATH` with the
+  real absolute path of ``data_root``, so the server names the same data root
+  whatever its working directory is, and, only when the calling process's
+  environment holds :data:`hilclaw.standin_image.ENV_IMAGE` with a non-empty
+  value, that variable with that value unchanged and unchecked (ADR-0144
+  decision 5: the process that runs the operation; the server's
+  :func:`hilclaw.standin_image.read_image` refuses a bad one). Nothing else
+  of the environment is copied there. The value is read once, when
+  :func:`run` builds the configuration, so every turn of one loop names the
+  same image. That the ``env`` member reaches the server process is what a
+  passed self-check of ADR-0054 shows, whose tokens travel the same way.
 - *The server entry* is ``command`` :data:`sys.executable`, ``args`` ``-I``,
   ``-c``, a start text that puts the directory holding this package first on
   ``sys.path`` and runs :func:`hilclaw.mcp_front.main`, and that directory;
@@ -135,7 +143,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from hilclaw import checkout_boundary as _checkout_boundary
-from hilclaw import config, mcp_front, turn_permissions
+from hilclaw import config, mcp_front, standin_image, turn_permissions
 
 PROGRAM = "claude"
 OPT_PRINT = "-p"
@@ -219,6 +227,9 @@ def _config_text(root):
         "args": ["-I", "-c", _START, _checkout_boundary.PACKAGE_DIRECTORY],
         "env": {config.ENV_LOCAL_PATH: root},
     }
+    image = os.environ.get(standin_image.ENV_IMAGE)
+    if image:
+        entry["env"][standin_image.ENV_IMAGE] = image
     return json.dumps({SERVERS_MEMBER: {mcp_front.SERVER_NAME: entry}})
 
 

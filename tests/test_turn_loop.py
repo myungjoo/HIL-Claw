@@ -8,7 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import checkout_boundary, config, mcp_front, turn_loop, turn_permissions
+from hilclaw import (
+    checkout_boundary,
+    config,
+    mcp_front,
+    standin_image,
+    turn_loop,
+    turn_permissions,
+)
 from hilclaw.turn_loop import (
     CONFIG_FILE,
     MARKERS,
@@ -269,7 +276,8 @@ def test_fresh_directory_per_turn(stub, data_root, parent):
     assert list(parent.iterdir()) == []
 
 
-def test_configuration_content(stub, data_root, parent):
+def test_configuration_content(stub, data_root, parent, monkeypatch):
+    monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
     stub.install()
     go(data_root, parent)
     (call,) = stub.calls()
@@ -294,6 +302,80 @@ def test_configuration_names_the_real_data_root(stub, tmp_path, parent):
     (call,) = stub.calls()
     entry = call["config"][SERVERS_MEMBER][mcp_front.SERVER_NAME]
     assert entry["env"][config.ENV_LOCAL_PATH] == os.path.realpath(real)
+
+
+def server_env(call):
+    return call["config"][SERVERS_MEMBER][mcp_front.SERVER_NAME]["env"]
+
+
+def test_configuration_forwards_the_image(stub, data_root, parent, monkeypatch):
+    image = "Example/standin@sha256:" + "ab" * 32
+    monkeypatch.setenv(standin_image.ENV_IMAGE, image)
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert server_env(call) == {
+        config.ENV_LOCAL_PATH: os.path.realpath(data_root),
+        standin_image.ENV_IMAGE: image,
+    }
+
+
+def test_configuration_forwards_the_image_unchecked(
+    stub, data_root, parent, monkeypatch
+):
+    monkeypatch.setenv(standin_image.ENV_IMAGE, "--privileged")
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert server_env(call)[standin_image.ENV_IMAGE] == "--privileged"
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_configuration_without_an_image(stub, data_root, parent, monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+    else:
+        monkeypatch.setenv(standin_image.ENV_IMAGE, value)
+    monkeypatch.setenv(UNRELATED, "kept out")
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert server_env(call) == {config.ENV_LOCAL_PATH: os.path.realpath(data_root)}
+
+
+@pytest.mark.parametrize("later", [None, "example/standin:2"])
+def test_image_read_once_per_loop(stub, data_root, parent, monkeypatch, later):
+    monkeypatch.setenv(standin_image.ENV_IMAGE, "example/standin:1")
+
+    def further_turn(previous):
+        if previous is not None:
+            if later is None:
+                monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+            else:
+                monkeypatch.setenv(standin_image.ENV_IMAGE, later)
+        return len(stub.calls()) < 3
+
+    stub.install(statuses=(0, 0, 0))
+    go(data_root, parent, further_turn=further_turn)
+    calls = stub.calls()
+    assert len(calls) == 3
+    for call in calls:
+        assert server_env(call)[standin_image.ENV_IMAGE] == "example/standin:1"
+
+
+def test_image_not_set_at_start_stays_out(stub, data_root, parent, monkeypatch):
+    monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+
+    def further_turn(previous):
+        monkeypatch.setenv(standin_image.ENV_IMAGE, "example/standin:3")
+        return len(stub.calls()) < 2
+
+    stub.install(statuses=(0, 0))
+    go(data_root, parent, further_turn=further_turn)
+    calls = stub.calls()
+    assert len(calls) == 2
+    for call in calls:
+        assert standin_image.ENV_IMAGE not in server_env(call)
 
 
 def test_no_turn_at_once(stub, data_root, parent):

@@ -229,7 +229,7 @@ def _remove(client, name, removal_timeout_s):
 
 def _check(image, build_dir, program, arguments, timeout_s, removal_timeout_s, client):
     with _parameter("image"):
-        _check_image(image)
+        check_image(image)
     with _parameter("build_dir"):
         source = _check_build_dir(build_dir)
     with _parameter("program"):
@@ -254,7 +254,16 @@ def _parameter(name):
         raise
 
 
-def _check_image(image):
+def check_image(image):
+    """Refuse an image reference the client could not take as one argument.
+
+    Raises :class:`TypeError` when ``image`` is not ``str`` and
+    :class:`ValueError` when it is empty, begins with ``-`` (the client would
+    read it as an option) or holds whitespace or NUL; the text of the last
+    two quotes the value. Returns ``None`` otherwise. No grammar of image
+    references is parsed. :func:`run_in_container` applies this to its
+    ``image``.
+    """
     if not isinstance(image, str):
         raise TypeError(f"image must be str, not {type(image).__name__}")
     if not image:
