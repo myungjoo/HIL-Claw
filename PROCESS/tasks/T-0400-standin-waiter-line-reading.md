@@ -2,7 +2,7 @@
 id: T-0400
 title: Add the operation's reading of a timing process container's output - the waiter's last line, the report before it, the figure by the Linux rule (ADR-0145 code slice 6; bound to no tool)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, NFR-3, NFR-4, OD-14, OD-13, "#5 A-7"]
 dependsOn: [T-0399]
@@ -121,3 +121,13 @@ Planner's judgements (from `main` `7c82b14`; **the reviewer is asked to re-check
 - After this lands: ADR-0145 slice (5), the waiter (C, W0-W6), written against this module's spellings. It is tested only inside a new Linux PID namespace on a CI runner allowed to make one. That task should first weigh T-0399 follow-ups (a) (`prlimit` against W5; no allocation in W3-W5) and (b) (the build order within B_t), because both bear on the waiter and on slice (4).
 
 ## Result
+
+- **Outcome**: DONE. PR #233 squash-merged as `80e0b8b` (trailer `Task: T-0400`), branch deleted. CI green on all 6 jobs including the coverage gate.
+- **Language**: Python — the reading is a pure function on the Python side of the cut and reuses `memory_ceiling.figure`.
+- **Module**: `hilclaw/standin_waiter_line.py` — `read(stdout)` (exactly `bytes`, else `TypeError`), `WaiterRead(report, memory_bytes)`, `VALUE_KEYWORD`, `NONE_LINE`.
+- **Spellings** (ASCII, each ended by one LF): value line `waiter_max_rss_kib <v>` (`<v>` as `printf("%ld")` writes it, at most 19 digits, within a 64-bit long, KiB); none line `waiter_max_rss none`. The value line gives `memory_ceiling.figure(v, "linux")`; `sys.platform` is never read.
+- **No waiter's line** (`read` returns `None`): empty stream, no final LF, empty last line, no LF before the last line, or a last line of neither spelling.
+- **Tests**: `tests/test_standin_waiter_line.py` (new), 74 tests, module coverage 100 %; full local pytest passed, ruff clean.
+- **Review**: 2 rounds. Round 1 Approve + one Low (the `int()` `ValueError` branch depended on `int_max_str_digits`; now only values of at most 19 digits within -2**63..2**63-1 are taken). Round 2 Approve. The planner's reading (a last line of neither spelling is "no waiter's line") was confirmed against ADR-0145 decisions 3, 5 and 6.
+- **Size**: 320 lines (102 module, 218 tests) against the 90 LOC estimate; the excess is mostly parametrized tests, which the cap does not count.
+- **Follow-ups**: (a) for the ADR-0144 slice (4) task text: the spelling alone does not prove the waiter wrote the line — slice (4) must apply the client status of W6 (0 only when W3-W5 succeeded) before using the figure. (b) ADR-0145 slice (5), the C waiter, written against these two spellings.
