@@ -111,8 +111,8 @@ def run_in_container(
     (``--rm``) and nothing else is started. After a timeout exactly one
     ``<client> rm --force <name>`` is run through
     :func:`hilclaw.local_run.run` with ``removal_timeout_s``; its outcome is
-    :attr:`ContainerResult.removal`, and an exception of its start is passed
-    on.
+    :attr:`ContainerResult.removal`, and an exception it raises is passed on
+    with an attribute ``container_name``.
 
     Raised before anything is started, each :class:`TypeError` and
     :class:`ValueError` with an attribute ``parameter`` naming the argument:
@@ -130,9 +130,10 @@ def run_in_container(
     :func:`os.stat` on ``build_dir``, or :class:`NotADirectoryError`.
 
     :class:`hilclaw.local_run.ProgramNotFoundError` (no client on ``PATH``),
-    an :class:`OSError` of the client's start and the other
-    :class:`TypeError` or :class:`ValueError` :func:`hilclaw.local_run.run`
-    raises before its start are passed on unchanged with no removal. Any
+    an :class:`OSError` (which :func:`hilclaw.local_run.run` raises for the
+    start) and a :class:`TypeError` or :class:`ValueError` with the
+    ``parameter`` of its checks before the start are passed on unchanged with
+    no removal. Any
     other exception of the client run (for example :class:`OverflowError`
     for a limit the platform cannot wait for, or :class:`KeyboardInterrupt`)
     may leave the container running, so before it is passed on one forced
@@ -176,9 +177,9 @@ def run_in_container(
     ]
     try:
         ran = local_run.run(command, timeout_s=timeout_s, env=None)
-    except (local_run.ProgramNotFoundError, OSError, TypeError, ValueError):
-        raise
     except BaseException as error:
+        if _before_start(error):
+            raise
         error.container_name = name
         error.removal = None
         try:
@@ -186,7 +187,13 @@ def run_in_container(
         except (OSError, LookupError, ArithmeticError) as failed:
             error.add_note(f"the forced removal of {name} raised {failed!r}")
         raise
-    removal = _remove(client, name, removal_timeout_s) if ran.timed_out else None
+    removal = None
+    if ran.timed_out:
+        try:
+            removal = _remove(client, name, removal_timeout_s)
+        except BaseException as error:
+            error.container_name = name
+            raise
     return ContainerResult(
         returncode=ran.returncode,
         timed_out=ran.timed_out,
@@ -197,6 +204,12 @@ def run_in_container(
         name=name,
         removal=removal,
     )
+
+
+def _before_start(error):
+    if isinstance(error, (local_run.ProgramNotFoundError, OSError)):
+        return True
+    return isinstance(error, (TypeError, ValueError)) and hasattr(error, "parameter")
 
 
 def _remove(client, name, removal_timeout_s):

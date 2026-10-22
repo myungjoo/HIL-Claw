@@ -238,6 +238,7 @@ def test_an_exception_of_the_removal_is_passed_on(starts, build_dir):
     with pytest.raises(OSError) as raised:
         call(build_dir)
     assert raised.value is error
+    assert error.container_name == option(starts.calls[0][0], "--name")
     assert len(starts.calls) == 2
 
 
@@ -421,6 +422,7 @@ def test_client_refusals(starts, build_dir, client, kind):
 def test_pre_start_refusals_of_local_run_are_passed_on_without_removal(
     starts, build_dir, error
 ):
+    error.parameter = "command"
     starts.answers.append(error)
     with pytest.raises(type(error)) as raised:
         call(build_dir)
@@ -430,7 +432,13 @@ def test_pre_start_refusals_of_local_run_are_passed_on_without_removal(
 
 
 @pytest.mark.parametrize(
-    "error", [OverflowError("too long"), KeyboardInterrupt(), RuntimeError("x")]
+    "error",
+    [
+        OverflowError("too long"),
+        KeyboardInterrupt(),
+        RuntimeError("x"),
+        TypeError("no parameter"),
+    ],
 )
 def test_an_exception_after_the_start_force_removes_the_container(
     starts, build_dir, error
