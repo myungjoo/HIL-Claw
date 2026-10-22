@@ -113,3 +113,20 @@ All work is documents and documentation reading. **No `claude` process is starte
 - (planner) If ADR-0149 adopts a hook, its code slices are the next tasks (P2-4). If not, P2-4's only open part is the gate half, which is owner-only (OD-3); the next planner then moves on in PLAN P2 order (P2-1, P2-2, P2-3, P2-6, P2-7 open parts not held by HQ-0021, HQ-0026, HQ-0048, HQ-0053).
 
 ## Result
+
+- **Outcome**: DONE (document mode). `ARCHITECTURE/decisions/ADR-0149-od18-first-case-post-tool-use.md` landed on `main` with the register edits, pushed directly per CLAUDE.md A-13 with `Reviewed-by: reviewer agent (6 rounds, Approve)` and `Task: T-0411`.
+- **Conclusion**: alternative (iv). For the turn sessions of the runs of ADR-0120 decision 1 no `PostToolUse`, `PostToolUseFailure` or `PostToolBatch` hook is added. What a call leaves stays with the tool layer: the two step lines of the one journaled tool (`correctness.check`, ADR-0015 decision 5) and each writing tool's own file. No hook verifies the lines. Option (i), appending further events, would need a new `events.ndjson` kind (a data-plane schema change) and a second concurrent appender (ADR-0006 decision 10). It is weighed, not adopted, and left open in Boundaries. Options (ii) and (iii) are rejected. The existing hook settings (two `PreToolUse` entries and one `Stop` entry, ADR-0148 decision 4) are unchanged.
+- **Facts**: H23 to H28 come from https://code.claude.com/docs/en/hooks and https://code.claude.com/docs/en/headless, read 2026-10-23. The documentation does not settle three points, which are marked not verified: what `tool_response` holds for an MCP tool, whether a call a `PreToolUse` hook stopped fires either event, and whether `PostToolUseFailure` fires for a sub-agent. No `claude` process was started.
+- **Register edits**:
+  - `Requirements.md` OD-18 row: one link after `**확정분**:`; `**잔여**:` rewritten in place; the status stays `제안됨`.
+  - `OpenDecisionProposals.md` § OD-18: one `채택분` line after ADR-0148's; "제안으로 남는 부분" rewritten in place for the `PostToolUse` hook and for who appends events beyond the two lines.
+  - `StandardScenarios.md`: "최근 재검사" line only. S0, S1 and S2 were rechecked; no verdict changed and no gap was found.
+- **Review**: 6 rounds with a fresh-context `dev-reviewer` (opus).
+  - Rounds 1 and 2 (Request changes): the scope of which failed calls fire `PostToolUseFailure`; the stderr wording; a truncated docstring quote; the P2-4 reading against the Boundaries heading; the callers of `events.append` and `run.commit`'s torn-tail removal; the source of `step_open`.
+  - Rounds 3 to 5: Approve with nits, each fixed.
+  - Round 6: Approve with no findings.
+  - There was no `SECURITY` finding.
+- **Follow-ups**:
+  - No code slice and no runtime acceptance item; the next item number stays (lxvii).
+  - For these sessions, P2-4's open part is now only the gate half of "예산·gate", which is owner-only (OD-3). Whether P2-4 can be checked is the driver's and the next planner's reading.
+  - The next planner moves on in PLAN P2 order (P2-1, P2-2, P2-3, P2-6, P2-7, taking only open parts not held by HQ-0021, HQ-0026, HQ-0048 or HQ-0053).
