@@ -2,7 +2,7 @@
 id: T-0397
 title: Add the copies of Q3 into a cpu_standin build directory, refusing links, beside the reader of ADR-0055 (ADR-0144 code slice 2; bound to no tool)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [NFR-4, C-7, FR-10, OD-14]
 dependsOn: [T-0396]
@@ -102,3 +102,10 @@ Planner's judgements (from `main` `46eb2af`; **the reviewer is asked to re-check
 - After this lands: ADR-0144 slice (3), the image environment variable (its name, its reference check, refusing a value `docker run` would read as an option, and how it reaches a turn's MCP server process: T-0395 round-7 nits (a) and (c)). Then slice (4), which still waits on OD-18 ⑱/⑲ answers (HQ-0021, HQ-0026) and ① (마) for the memory figure.
 
 ## Result
+- **DONE.** PR #231 squash-merged as bcd04ef (`Task: T-0397` is the last line of the squash message); branch deleted. New: `hilclaw/standin_copies.py`, `tests/test_standin_copies.py`; edited: `hilclaw/kernel_source.py`, `tests/test_kernel_source.py`.
+- **What it does**: `place_copies(output_path, harness_program, build_dir)` returns `Copies`; kernel files go to the `kernel/` subdirectory (`KERNEL_DIR`), the harness copy sits beside it under its own name. All sources are read before any write; links are neither followed nor made (`lstat`, `O_NOFOLLOW`, `fstat` identity check); copies are created with `O_CREAT|O_EXCL`. Failures raise `CopyError` with one of the 7 values in `COPY_FAILURES`; a non-directory `build_dir` raises `NotADirectoryError`, a missing one passes on the `os.lstat` `OSError`. A harness named `kernel` (any case), `.` or `..` is refused (executor's choice, wider than the task asked).
+- **Reader change**: `KernelSource` gained `headers` (default `()`), filled from the same listing and `lstat` results, empty when `missing` is set.
+- **Review**: 2 rounds (dev-reviewer), Approve. R1 Low x2: on Windows a directory at a copy name gives `PermissionError` -> `COPY_UNWRITABLE` instead of `ENTRY_EXISTS` (documented in the module docstring); a read-error test depended on `os.read` call order (now fails by descriptor path). R2 nothing left.
+- **Tests and CI**: ruff and full pytest green locally (25781 passed, 748 skipped; symlink tests skip on Windows and run on Linux CI); CI green (Python 3.11/3.14, Coverage, C, sh, Test presence). Both touched modules 100% line coverage. No `docker`, `clang` or `claude` was started (D16).
+- **Language**: Python, because the reader it builds on and slice (1) beside it are Python modules.
+- **Follow-ups**: ADR-0144 slice (3) (the image environment variable, with T-0395 round-7 nits (a) and (c)); then slice (4), which waits on OD-18 ⑱/⑲ (HQ-0021, HQ-0026) and ① (마) — its failure-to-kind mapping should note the Windows `PermissionError` -> `COPY_UNWRITABLE` case.
