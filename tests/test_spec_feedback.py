@@ -157,6 +157,12 @@ def refused(root, kind, round=1, place=None):
     return message
 
 
+def compiled(report, techniques=()):
+    failure = {"stage": "compile", "report": report}
+    entry = {"round": 0, "candidate": 1, "attempt": 1, "techniques": list(techniques)}
+    return [entry | {"failure": failure}]
+
+
 def tree(root):
     return sorted(
         (path.relative_to(root).as_posix(), path.stat().st_mtime_ns)
@@ -202,8 +208,7 @@ def test_a_build_failure_without_a_log_or_with_an_empty_one_is_the_sentence(
     if content is not None:
         build_log(root, 0, content=content)
     got = attempts(root, RUN, 1)
-    report = sentence("compile", "sim", "broken", BUILD_EXIT)
-    assert got[0]["failure"] == {"stage": "compile", "report": report}
+    assert got == compiled(sentence("compile", "sim", "broken", BUILD_EXIT))
     valid_in_a_spec(got, 1)
 
 
@@ -264,14 +269,19 @@ def test_the_first_failing_line_decides_and_names_the_log(root):
     build_log(root, 0, SIM, 4, content=b"wrong")
     build_log(root, 0, SIM, 7, content=b"right")
     got = attempts(root, RUN, 1)
-    assert got[0]["failure"]["report"].endswith("\nCompiler log:\nright")
+    report = sentence("compile", "sim", "broken", BUILD_EXIT)
+    assert got == compiled(report + "\nCompiler log:\nright")
+    valid_in_a_spec(got, 1)
 
 
 def test_an_execution_of_three_digits_is_written_in_full(root):
     put_spec(root, 0)
     check(root, 0, SIM, execution=123, result=broken("build_exit_status"))
     assert build_log(root, 0, SIM, 123, content=b"long").name.endswith("-123.txt")
-    assert attempts(root, RUN, 1)[0]["failure"]["report"].endswith("long")
+    got = attempts(root, RUN, 1)
+    report = sentence("compile", "sim", "broken", BUILD_EXIT)
+    assert got == compiled(report + "\nCompiler log:\nlong")
+    valid_in_a_spec(got, 1)
 
 
 def test_several_attempts_of_a_round_are_in_ascending_order(root):
