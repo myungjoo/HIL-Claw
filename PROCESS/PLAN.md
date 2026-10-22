@@ -89,3 +89,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0379 follow-up — `turn_permissions.options`가 같은 `name`의 agent 파일 두 개를 거부하지 않는 점(리뷰 3라운드 optional), 입력 경화.
 - T-0370 follow-up — `orchestration/round-manager.md` "One round at most"가 round-end 기록 뒤 세션이 끝난다고 적지만 지금은 `run.commit`이 뒤따르는 점, 프롬프트 문구 정리.
 - T-0391 follow-up — ADR-0143 리뷰 7라운드 Nit(Status "It builds on" 목록에 ADR-0123 decision 4 누락; References에는 있음), ADR 문구 정리.
+- T-0399 follow-up — ADR-0145 Context F3의 runmetrics 요약이 컨테이너 정지 시 통계 수집 방법을 빠뜨린 점(결론 영향 없음, 리뷰 7라운드 Low), ADR 문구 정리.
