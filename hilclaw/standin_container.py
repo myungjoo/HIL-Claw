@@ -135,16 +135,15 @@ def run_in_container(
     with no removal. :func:`hilclaw.local_run.run` raises an
     :class:`OSError` for the start, but a rare one from reading the client's
     output after the start is passed on the same way and can leave the
-    container running. Any
-    other exception of the client run (for example :class:`OverflowError`
-    for a limit the platform cannot wait for, or :class:`KeyboardInterrupt`)
-    may leave the container running, so before it is passed on one forced
-    removal is run as after a timeout, and the exception gets the attributes
-    ``container_name`` and ``removal`` (the :class:`Removal`, or ``None``
-    with a note added when the removal raised an :class:`OSError`,
-    :class:`LookupError` or :class:`ArithmeticError`). What a tool answers
-    for any of these, for a status of 125 to 127 or for a failed removal is
-    ADR-0144 decision 7's open question.
+    container running. Any other exception of the client run (for example
+    :class:`OverflowError` for a limit the platform cannot wait for, or
+    :class:`KeyboardInterrupt`) may leave the container running, so before it
+    is passed on one forced removal is run as after a timeout, and the
+    exception gets the attributes ``container_name`` and ``removal`` (the
+    :class:`Removal`, or ``None`` with a note added when the removal raised
+    an :class:`OSError`, :class:`LookupError` or :class:`ArithmeticError`).
+    What a tool answers for any of these, for a status of 125 to 127 or for a
+    failed removal is ADR-0144 decision 7's open question.
     """
     source, arguments = _check(
         image, build_dir, program, arguments, timeout_s, removal_timeout_s, client
