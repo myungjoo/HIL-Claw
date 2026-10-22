@@ -22,7 +22,7 @@ removed, and it gives a spec exactly ``{"id": <id>, "text": <text>}``
 - the accelerator's directory is a plain directory holding plain files only:
   no symbolic link, junction or subdirectory;
 - a file does not start with a byte order mark;
-- a heading is a line that starts with ``#`` or ``##`` once leading spaces,
+- a heading is a line that starts with ``#`` or ``##`` once leading blanks,
   ``>`` and list markers are removed, or that holds an ``<h1`` or ``<h2`` tag,
   inside a fenced code block too; below a non-blank line, a line of ``=`` or
   ``-`` signs is refused, with any leading spaces, tabs or ``>`` and any

@@ -256,6 +256,13 @@ def test_subdirectory(root):
     refused(root, "the catalog holds an entry that is not a file")
 
 
+def test_entry_that_is_neither_file_nor_directory(root):
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("named pipes cannot be made here")
+    os.mkfifo(root / "cpu_standin" / "beta.md")
+    refused(root, "the catalog holds an entry that is not a file")
+
+
 def test_subdirectory_named_like_an_entry(root):
     (root / "cpu_standin" / "beta.md").mkdir()
     refused(root, "the catalog holds an entry that is not a file")
