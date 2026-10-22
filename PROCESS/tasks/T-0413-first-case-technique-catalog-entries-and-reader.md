@@ -2,7 +2,7 @@
 id: T-0413
 title: Add the four first-case technique catalog entries under catalog/cpu_standin/ and their reader hilclaw/catalog.py with its test file (ADR-0150 code slice 1; part of OD-22, FR-8; for PLAN P2-5)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-7, FR-8, OD-22, "PLAN P2-5"]
 dependsOn: [T-0412]
@@ -125,7 +125,16 @@ ADR-0150 Consequences names **one code slice**: the four entry files and a reade
 
 ## Follow-ups
 
-- (executor fills)
+- DONE. PR #241 squash-merged as 8c0d3f2 (branch claude/T-0413-first-case-technique-catalog deleted). 6 reviewer rounds: R1/R2 Request changes (a "- " setext underline and a fence that CommonMark does not open could each hide a level-2 heading; fixed, with fenced code no longer exempt), R3-R6 Approve; nits fixed in the PR.
+- Files: catalog/cpu_standin/{loop_order_ikj,cache_blocking,register_blocking,simd_baseline_intrinsics}.md, hilclaw/catalog.py (check(accelerator, *, source=None) -> sorted ids; technique(accelerator, entry_id, *, source=None) -> {"id","text"}), tests/test_catalog.py. Non-test diff 290 lines in 5 files (cap 300/5).
+- Language: Python, the language of the hilclaw package; standard library only, no new dependency.
+- Choices: a non-str accelerator or id raises TypeError; a str not of the name form raises InvalidCatalogError(ValueError); a missing directory raises FileNotFoundError; an unknown well-formed id raises KeyError. BOM, CR and non-UTF-8 are refused. A heading is a #/## line after leading blanks, > and list markers are removed, or any <h1/<h2 tag, fenced code included; a =/- underline below a non-blank line is refused. Applies to must hold the four lines in order, with blank lines only before and after them. A blank When or Guidance is refused. An empty directory passes and gives no entry. All of these err on the strict side.
+- Criterion 5 reading: the guidance texts are prose with short inline fragments only and hand over no finished kernel.
+- Forbidden-word test: omp is matched as a whole word (plus openmp), because "compute" and "compiler" contain it; \bthreads?\b was added.
+- pytest (Windows clone): origin/main 26278 passed / 853 skipped; final head 26412 passed / 856 skipped. ruff check and ruff format --check are clean.
+- CI on the final head 1ad308f (run https://github.com/myungjoo/HIL-Claw/actions/runs/39843805972): Python gate (3.11), Python gate (3.14), Coverage gate (hilclaw), Test presence (hilclaw), sh gate (shellcheck) and C gate (clang) all pass. Coverage: lines 9111/9147 = 99.60%, functions 879/879 = 100%; hilclaw/catalog.py 100%.
+- Diff check: only touchesFiles changed; .claude, .github, orchestration, ARCHITECTURE and pyproject.toml are untouched; all new files are LF.
+- Follow-ups: none.
 
 ## Result
 
