@@ -1074,7 +1074,7 @@ OP = {
 }
 
 
-def stated(root, round=0, others=None, budget=5):
+def stated(root, at=0, others=None, budget=5):
     document = {
         "schema_version": 1,
         "hw_profile": {
@@ -1085,7 +1085,7 @@ def stated(root, round=0, others=None, budget=5):
         "round_budget": budget,
     }
     write_instance(root, RUN, json.dumps(document).encode() + b"\n")
-    replace_state(root, RUN, round, EMPTY, others)
+    replace_state(root, RUN, at, EMPTY, others)
 
 
 SPENDER = f"---\nname: spender\ntools: Grep, {CODER}, {CHECK}\n---\n"
@@ -1261,7 +1261,7 @@ def test_hook_runs_as_written_for_a_sub_agent(stub, data_root, parent):
 
 
 def test_spending_call_within_budget_passes_both(stub, data_root, parent):
-    stated(data_root, round=0, budget=5)
+    stated(data_root, at=0, budget=5)
     for ran in hooks_run(stub, data_root, parent, spending(CHECK), spending(CODER)):
         first, second = ran
         assert (first["entry"], first["status"], first["stdout"]) == (0, 0, "")
@@ -1278,13 +1278,13 @@ def refused_by_the_budget(ran, tool):
 
 
 def test_spending_call_on_a_run_over_refused(stub, data_root, parent):
-    stated(data_root, round=1, others={"run_status": "over"}, budget=5)
+    stated(data_root, at=1, others={"run_status": "over"}, budget=5)
     (ran,) = hooks_run(stub, data_root, parent, spending(CHECK))
     refused_by_the_budget(ran, CHECK)
 
 
 def test_spending_call_at_the_round_budget_refused(stub, data_root, parent):
-    stated(data_root, round=5, budget=5)
+    stated(data_root, at=5, budget=5)
     found = hooks_run(stub, data_root, parent, spending(CHECK), spending(CODER))
     for ran, tool in zip(found, (CHECK, CODER), strict=True):
         refused_by_the_budget(ran, tool)
@@ -1302,19 +1302,19 @@ def test_spending_call_without_a_run_id_refused(stub, data_root, parent):
 
 
 def test_coder_run_of_a_sub_agent_on_a_run_over_refused(stub, data_root, parent):
-    stated(data_root, round=2, others={"run_status": "over"}, budget=5)
+    stated(data_root, at=2, others={"run_status": "over"}, budget=5)
     (ran,) = hooks_run(stub, data_root, parent, spending(CODER))
     refused_by_the_budget(ran, CODER)
 
 
 def test_main_session_spending_call_meets_both_checks(stub, data_root, parent):
-    stated(data_root, round=0, budget=5)
+    stated(data_root, at=0, budget=5)
     (ran,) = hooks_run(stub, data_root, parent, spending(CHECK, agent=None))
     assert statuses(ran) == [(0, caller_check.EXIT_REFUSE), (1, budget_check.EXIT_PASS)]
 
 
 def test_non_spending_call_runs_the_caller_check_only(stub, data_root, parent):
-    stated(data_root, round=2, others={"run_status": "over"}, budget=5)
+    stated(data_root, at=2, others={"run_status": "over"}, budget=5)
     read = hook_input("mcp__hilclaw__state_read", tool_input={"run_id": RUN})
     (ran,) = hooks_run(stub, data_root, parent, read)
     assert statuses(ran) == [(0, caller_check.EXIT_PASS)]
