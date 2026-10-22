@@ -2,7 +2,7 @@
 id: T-0411
 title: Write ADR-0149, whether a hook journals or verifies anything after a tool call in a first-case turn session, beyond the two step lines the tool layer writes (part of OD-18; PLAN P2-4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-11, NFR-1, OD-18, OD-17, "PLAN P2-4"]
 dependsOn: [T-0408, T-0410]
@@ -130,3 +130,5 @@ All work is documents and documentation reading. **No `claude` process is starte
   - No code slice and no runtime acceptance item; the next item number stays (lxvii).
   - For these sessions, P2-4's open part is now only the gate half of "예산·gate", which is owner-only (OD-3). Whether P2-4 can be checked is the driver's and the next planner's reading.
   - The next planner moves on in PLAN P2 order (P2-1, P2-2, P2-3, P2-6, P2-7, taking only open parts not held by HQ-0021, HQ-0026, HQ-0048 or HQ-0053).
+- **Landed commit**: `159fa69` on `main`. The task branch was deleted locally and remotely.
+- **DRIVER §9 notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6344973408 (7-day objection window).
