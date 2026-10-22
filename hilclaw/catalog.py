@@ -24,8 +24,9 @@ removed, and it gives a spec exactly ``{"id": <id>, "text": <text>}``
 - a file does not start with a byte order mark;
 - a heading is a line that starts with ``#`` or ``##`` once leading spaces,
   ``>`` and list markers are removed, or that holds an ``<h1`` or ``<h2`` tag,
-  inside a fenced code block too; a line of only ``=`` or ``-`` below a
-  non-blank line is refused;
+  inside a fenced code block too; below a non-blank line, a line of ``=`` or
+  ``-`` signs is refused, with any leading spaces, tabs or ``>`` and any
+  trailing white space;
 - the lines of :data:`APPLIES_TO` come in that order, with only blank lines
   before and after them; ``## When`` and the ``text`` are not blank.
 
