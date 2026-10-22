@@ -405,6 +405,7 @@
 - FR-8의 "P1에서는 기법 후보 = repo 내 문서로 시작"(손으로 쓴 문서)보다 나은 검증된 방법 2가지: **optimization rewind**(대상 HW의 known-good 전문가 커널을 체계적으로 **역최적화**해 bad→good 궤적에서 전이 가능한 모티프를 채굴, retrievable experience bank로) · **git 이력 채굴**(기존 커널 라이브러리의 개발 이력에서 최적화 아이디어를 형식화). 둘 다 UC-5 큐레이터 흐름에 그대로 들어감.
 - 제외(오너 결정 2026-10-02, #5 B-4 ④): nntrainer는 커널 코드 참조로만 쓰며 그 git 이력을 카탈로그 채굴 대상으로 삼지 않는다. git 이력 채굴 제안은 다른 커널 라이브러리를 대상으로 할 때만 유효.
 - 커밋되는 GEMM spec 예시([ADR-0058](decisions/ADR-0058-od6-committed-gemm-spec-example.md), OD-6 절)의 `guidance.techniques`는 빈 배열이다 — 카탈로그 항목을 이름하지 않으며 본 항목을 바꾸지 않는다.
+- **채택분** [ADR-0150](decisions/ADR-0150-od22-first-case-technique-catalog.md) — 첫 사례(`cpu_standin`·`gemm` fp32 `row_major`·C)의 손으로 쓴 첫 카탈로그 — 코드 저장소 안의 자리, 항목의 형식과 id 규칙, 항목이 spec에 주는 것, 첫 항목(콜드스타트 방법은 답하지 않음)
 
 ## OD-23
 
