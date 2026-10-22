@@ -241,8 +241,9 @@ def test_a_board_failure_after_a_sim_pass_is_stage_board(root):
     check(root, 0, SIM, result=PASS)
     check(root, 0, BOARD, result=FAIL)
     got = attempts(root, RUN, 1)
-    report = sentence("board", "board", "fail")
-    assert got[0]["failure"] == {"stage": "board", "report": report}
+    failure = {"stage": "board", "report": sentence("board", "board", "fail")}
+    entry = {"round": 0, "candidate": 1, "attempt": 1, "techniques": []}
+    assert got == [entry | {"failure": failure}]
     valid_in_a_spec(got, 1)
 
 
@@ -256,7 +257,7 @@ def test_a_board_build_past_its_limit_reads_the_board_log(root):
     report = (
         sentence("compile", "board", "broken", BUILD_TIME) + "\nCompiler log:\nkilled"
     )
-    assert got[0]["failure"] == {"stage": "compile", "report": report}
+    assert got == compiled(report)
     valid_in_a_spec(got, 1)
 
 
@@ -291,13 +292,22 @@ def test_several_attempts_of_a_round_are_in_ascending_order(root):
     put_spec(root, 1, 1)
     check(root, 1, SIM, 1, result=FAIL)
     got = attempts(root, RUN, 2)
-    assert [(e["round"], e["attempt"]) for e in got] == [
-        (0, 1),
-        (0, 2),
-        (0, 10),
-        (1, 1),
+    failure = {"stage": "sim", "report": sentence("sim", "sim", "fail")}
+    assert got == [
+        {
+            "round": round,
+            "candidate": 1,
+            "attempt": attempt,
+            "techniques": techniques,
+            "failure": failure,
+        }
+        for round, attempt, techniques in (
+            (0, 1, ["t1"]),
+            (0, 2, ["t2"]),
+            (0, 10, ["t10"]),
+            (1, 1, []),
+        )
     ]
-    assert [e["techniques"] for e in got][:3] == [["t1"], ["t2"], ["t10"]]
     valid_in_a_spec(got, 2)
 
 
