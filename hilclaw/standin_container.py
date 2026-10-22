@@ -130,10 +130,12 @@ def run_in_container(
     :func:`os.stat` on ``build_dir``, or :class:`NotADirectoryError`.
 
     :class:`hilclaw.local_run.ProgramNotFoundError` (no client on ``PATH``),
-    an :class:`OSError` (which :func:`hilclaw.local_run.run` raises for the
-    start) and a :class:`TypeError` or :class:`ValueError` with the
-    ``parameter`` of its checks before the start are passed on unchanged with
-    no removal. Any
+    any :class:`OSError` and a :class:`TypeError` or :class:`ValueError` with
+    the ``parameter`` of its checks before the start are passed on unchanged
+    with no removal. :func:`hilclaw.local_run.run` raises an
+    :class:`OSError` for the start, but a rare one from reading the client's
+    output after the start is passed on the same way and can leave the
+    container running. Any
     other exception of the client run (for example :class:`OverflowError`
     for a limit the platform cannot wait for, or :class:`KeyboardInterrupt`)
     may leave the container running, so before it is passed on one forced

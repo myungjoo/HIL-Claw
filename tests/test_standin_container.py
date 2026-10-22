@@ -243,10 +243,14 @@ def test_an_exception_of_the_removal_is_passed_on(starts, build_dir):
 
 
 @pytest.mark.parametrize(
-    "error",
-    [local_run.ProgramNotFoundError("docker"), OSError(errno.ENOEXEC, "bad")],
+    "make",
+    [
+        lambda: local_run.ProgramNotFoundError("docker"),
+        lambda: OSError(errno.ENOEXEC, "bad"),
+    ],
 )
-def test_client_start_errors_are_passed_on_without_removal(starts, build_dir, error):
+def test_client_start_errors_are_passed_on_without_removal(starts, build_dir, make):
+    error = make()
     starts.answers.append(error)
     with pytest.raises(type(error)) as raised:
         call(build_dir)
@@ -418,10 +422,11 @@ def test_client_refusals(starts, build_dir, client, kind):
     assert starts.calls == []
 
 
-@pytest.mark.parametrize("error", [TypeError("x"), ValueError("y")])
+@pytest.mark.parametrize("make", [lambda: TypeError("x"), lambda: ValueError("y")])
 def test_pre_start_refusals_of_local_run_are_passed_on_without_removal(
-    starts, build_dir, error
+    starts, build_dir, make
 ):
+    error = make()
     error.parameter = "command"
     starts.answers.append(error)
     with pytest.raises(type(error)) as raised:
@@ -432,17 +437,18 @@ def test_pre_start_refusals_of_local_run_are_passed_on_without_removal(
 
 
 @pytest.mark.parametrize(
-    "error",
+    "make",
     [
-        OverflowError("too long"),
-        KeyboardInterrupt(),
-        RuntimeError("x"),
-        TypeError("no parameter"),
+        lambda: OverflowError("too long"),
+        lambda: KeyboardInterrupt(),
+        lambda: RuntimeError("x"),
+        lambda: TypeError("no parameter"),
     ],
 )
 def test_an_exception_after_the_start_force_removes_the_container(
-    starts, build_dir, error
+    starts, build_dir, make
 ):
+    error = make()
     starts.answers += [error, result(1, stdout=b"", stderr=b"gone")]
     with pytest.raises(type(error)) as raised:
         call(build_dir, removal_timeout_s=3)
@@ -465,10 +471,14 @@ def test_an_exception_after_the_start_force_removes_the_container(
 
 
 @pytest.mark.parametrize(
-    "failure",
-    [OSError(errno.EACCES, "denied"), local_run.ProgramNotFoundError("docker")],
+    "make",
+    [
+        lambda: OSError(errno.EACCES, "denied"),
+        lambda: local_run.ProgramNotFoundError("docker"),
+    ],
 )
-def test_a_failed_removal_after_an_exception_is_noted(starts, build_dir, failure):
+def test_a_failed_removal_after_an_exception_is_noted(starts, build_dir, make):
+    failure = make()
     error = OverflowError("too long")
     starts.answers += [error, failure]
     with pytest.raises(OverflowError) as raised:
