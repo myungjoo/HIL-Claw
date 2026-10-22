@@ -2,7 +2,7 @@
 id: T-0402
 title: Write ADR-0146 - whether and how a first-case turn session refuses a call of a hilclaw tool by a caller that is not meant to hold it (a PreToolUse hook that checks the calling agent against the tool, or another place), how the hook settings reach the session, and what the check does when it cannot tell (first part of PLAN P2-4; part of OD-18)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-9, FR-10, FR-11, NFR-4, OD-18, OD-23, "#5 A-12"]
 dependsOn: [T-0378, T-0379, T-0387, T-0354]
@@ -89,3 +89,5 @@ All work is documents and documentation reading. No `claude` process is started 
 ## Follow-ups
 
 ## Result
+
+Landed on `main` as a368b11 (doc mode, `Reviewed-by: reviewer agent (7 rounds, Approve)`). ADR-0146 (`ARCHITECTURE/decisions/ADR-0146-od18-first-case-caller-check-hook.md`) with Requirements, OpenDecisionProposals and StandardScenarios updates; owner notice on #5 (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6334911216). Follow-ups: ADR-0146 code slices 1 (hook program; test-rule ⑤ vs ①-④ question left to its planner) and 2 (settings write). Runtime acceptance items (lvi)-(lx) recorded by the driver as HQ-0061 (non-blocking).
