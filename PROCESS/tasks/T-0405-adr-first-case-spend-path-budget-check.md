@@ -2,7 +2,7 @@
 id: T-0405
 title: Write ADR-0147 - whether a first-case turn session checks the run's round budget on the path of the next spend, which calls that path holds, where the check sits (a PreToolUse hook beside the caller check of ADR-0146, the tool layer, or nothing beyond today's turn loop and prompt), and what it does when it cannot tell (budget-check part of PLAN P2-4; part of OD-19)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-3, FR-4, NFR-5, OD-19, OD-18, "PLAN P2-4"]
 dependsOn: [T-0402, T-0403, T-0404]
@@ -145,3 +145,6 @@ All work is documents and documentation reading. No `claude` process is started 
 - **Follow-ups (planner)**: code slice 1, the budget hook program (new `hilclaw/` module + test file; the test-rule ⑤ question named in ADR-0147 Consequences); code slice 2, `hilclaw/turn_loop.py` writes the second `PreToolUse` entry with the data-root argument (stub `claude` only). When HQ-0021/HQ-0026 lead to a slice that registers `board.run` or `sim.run` for these sessions, that task's Why must cite ADR-0147 decision 2: the slice also adds the tool to the budget check's list. Slice 2 may weigh refusing a data root whose path holds a hook placeholder such as `${CLAUDE_PLUGIN_ROOT}` (exec form substitutes them in `args`; reviewer Info, not decided).
 - **Runtime acceptance items (D16) for the driver to record as an HQ (reason `runtime-acceptance`)**: ADR-0147 items (lxi) and (lxii). Suggested question text (Korean):
   > ADR-0147(첫 사례 턴 세션의 지출 도구 앞 라운드 budget 검사 hook; OD-19·OD-18 일부; T-0405)의 런타임 인수 항목 (lxi)·(lxii)를 런타임 머신에서 확인해 주세요. (lxi) `mcp__hilclaw__coder_run`·`mcp__hilclaw__correctness_check` 호출의 `PreToolUse` 입력 `tool_input`이 서버가 받는 인자 객체(그 `run_id` 포함)와 같은지. (lxii) 한 `.claude/settings.json`의 두 `PreToolUse` 항목이 같은 호출에 모두 걸릴 때 — 두 hook의 `command`가 같고 `args`만 달라도 — 둘 다 실행되고, 하나가 exit 2·다른 하나가 exit 0(출력 없음)이면 호출이 막히는지. 선택지: (a) 오너가 수동으로 확인해 결과를 답한다 (b) 런타임 자체 점검 코드 task로 돌린다(예: hook 입력과 서버 요청을 기록해 비교, 시험 도구에 건 두 hook이 각각 흔적을 남기는지) (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 이 검사가 실제 세션에서 지출 호출을 막는다는 확신(실패 시 모든 지출 호출이 거절되거나 검사가 효력이 없음). 막히지 않는 것: ADR-0147의 두 코드 slice(픽스처·스텁 `claude`로만 검증)와 그 밖의 드라이버 task.
+- **Landed**: `main` `afa64a2` (document mode, pushed directly; trailers `Task: T-0405`, `Reviewed-by: reviewer agent (7 rounds, Approve)`); branch `claude/T-0405-spend-path-budget-check` deleted (remote and local). Review rounds: 7 (R1 request changes: data root via hook argument; R2/R3 approve with nits; R4 request changes: no-budget runs let through, not refused (OD-8 ㉙ (나)); R5/R6 approve with minor/nits; R7 approve).
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6338098298
+- **Unaddressed R7 Nit** (left so as not to exceed 7 review rounds): ADR-0147 decision 4 cites ADR-0012 decision 2 for passing over an unknown top-level member of both `STATE.json` and `instance.json`; for `instance.json` the rule is ADR-0018 decision 2. Citation precision only; a later ADR or slice may fix it.
