@@ -96,3 +96,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0405 follow-up — ADR-0147 리뷰 7라운드 Nit(decision 4가 `instance.json`의 미지 최상위 멤버 처리를 ADR-0012 decision 2로 인용; `instance.json`은 ADR-0018 decision 2), ADR 문구 정리.
 - T-0406 follow-up — `hilclaw/caller_check.py`가 입력의 `NaN`/`Infinity` 상수를 받아들이는 점(리뷰 1라운드 Info), 입력 경화.
 - T-0406 follow-up — `caller_check.START`·`budget_check.START`에서 `main` 진입 전 실패(패키지 디렉토리 인수 없음, import 실패)가 exit 1(non-blocking error)로 끝나는 점을 ADR-0146 (lix)와 함께 따져 보는 일(리뷰 1라운드 Info), 실패 경로 경화.
+- T-0407 follow-up — hook 경로 placeholder(`${CLAUDE_PROJECT_DIR}` 등) 거부가 data root에만 있고 `PACKAGE_DIRECTORY`·`sys.executable`에는 없는 점(리뷰 Info; T-0407 이전부터), 입력 경화.

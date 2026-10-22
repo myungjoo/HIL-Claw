@@ -2,7 +2,7 @@
 id: T-0407
 title: Have the turn loop write the second PreToolUse entry of ADR-0147 (the round-budget check on the two spending tools, with the data-root argument) into the session's .claude/settings.json (ADR-0147 code slice 2; PLAN P2-4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-3, FR-4, NFR-5, OD-19, OD-18, "PLAN P2-4"]
 dependsOn: [T-0405, T-0406, T-0404]
@@ -136,3 +136,18 @@ D16: nothing here starts `claude`. Every test uses the stub `claude` that the te
 - (planner) After this lands, both code slices of ADR-0147 are done. The rest of PLAN P2-4 (gate checks, PostToolUse journaling, the Stop hook; the remainder of OD-18 and OD-19) is for later planning.
 
 ## Result
+
+- PR #238 (https://github.com/myungjoo/HIL-Claw/pull/238), squash-merged as 8def068; branch deleted.
+- Review: 2 rounds (round 1 Approve with 2 Info + 2 Nits; round 2 Approve). No SECURITY finding.
+- Language: Python, the language of the existing module and of the package's hook programs; standard library only, no new dependency.
+- Settings: hooks.PreToolUse = [caller-check entry (byte-identical), {"matcher": "|".join(budget_check.SPENDING_TOOLS), one exec-form command hook: abspath(sys.executable), args ["-I","-c",budget_check.START, PACKAGE_DIRECTORY, R], timeout HOOK_TIMEOUT_S, onFailure "block"}]. R is the root that _data_root returns, the same value _config_text puts in the server env. No permissions, no env.
+- Timeout: HOOK_TIMEOUT_S = 30 s (well below 600); with onFailure "block", a hung hook blocks the call within 30 s.
+- Criterion 3: a data_root whose real path holds ${CLAUDE_PROJECT_DIR}, ${CLAUDE_PLUGIN_ROOT} or ${CLAUDE_PLUGIN_DATA} is refused before the first turn (ValueError "data_root holds a hook path placeholder"); near-miss names are accepted (tested).
+- Deviation: the task's happy and run-over cases assumed a main-session spending call passes the caller check, but ROUND_MANAGER_TOOLS holds no spending tool. Those cases use a sub-agent whose tools hold both spending tools; test_main_session_spending_call_meets_both_checks pins the main-session behaviour (entry 1 exit 2, entry 2 exit 0). The reviewer accepted it.
+- Stub: runs every matching PreToolUse entry and records entry index, status, stdout and stderr.
+- pytest (Windows, --basetemp=C:/Users/myung/t0407-pt, because a claude.md in %TEMP% skips test_turn_loop): origin/main 26411 passed / 564 skipped; branch 26426 passed / 565 skipped. ruff check and ruff format --check: clean.
+- CI run https://github.com/myungjoo/HIL-Claw/actions/runs/39773323692 (head 6211f8d), all green. Coverage gate: lines 99.59%, functions 100.00%.
+- Diff: hilclaw/turn_loop.py, hilclaw/budget_check.py, tests/test_turn_loop.py only; non-test diff 86 lines, 2 files (within the D4 cap).
+- Follow-ups:
+  - (planner, Info from review; held, D18) The placeholder refusal covers only the data root; the same substitution could hit PACKAGE_DIRECTORY and sys.executable (predates this task).
+  - (planner) Both ADR-0147 code slices are done; the rest of PLAN P2-4 is for later planning.
