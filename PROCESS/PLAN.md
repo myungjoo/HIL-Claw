@@ -92,3 +92,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0399 follow-up — ADR-0145 Context F3의 runmetrics 요약이 컨테이너 정지 시 통계 수집 방법을 빠뜨린 점(결론 영향 없음, 리뷰 7라운드 Low), ADR 문구 정리.
 - T-0399 follow-up — ADR-0145 decision 5의 "no way is known for a kernel to make W5 fail"에 같은 uid 프로세스의 `prlimit(2)`(RLIMIT_AS·RLIMIT_STACK 낮추기) 경로를 적고 런타임 인수 항목 (liii)에 더하는 일(리뷰 7라운드 Low; W3~W5 무할당은 T-0401 코드가 지킴), ADR 문구 정리.
 - T-0399 follow-up — ADR-0145 decision 3에서 waiter 빌드가 타이밍 빌드 뒤에 와서 B_t를 나눠 쓰므로, 컴파일이 느린 커널이 호출을 열린 OD-18 ⑲ 상황으로 밀 수 있다는 점: waiter를 먼저 빌드하거나, 순서의 이유를 적고 decision 5의 주의를 그 경우로 넓히는 일(리뷰 7라운드 Low), ADR 설계 보강.
+- T-0404 follow-up — `turn_loop`이 정의가 가져온 `.claude/settings.local.json`을 거부하지 않는 점(리뷰 info; 실제 `put_definition`은 `LAYOUT`만 복사하고 턴은 `--setting-sources project`로 돈다), 입력 경화.
