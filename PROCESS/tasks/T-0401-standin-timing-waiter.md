@@ -2,7 +2,7 @@
 id: T-0401
 title: Add the waiter, the C program of the harness that is process 1 of a timing process container and reports the child's ru_maxrss on its last line (ADR-0145 code slice 5; bound to no tool)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, NFR-3, NFR-4, OD-14, OD-13, "#5 A-7", "#9"]
 dependsOn: [T-0399, T-0400]
@@ -150,3 +150,24 @@ Planner's judgements (from `main` `7ed103c`). **The reviewer is asked to re-chec
 - After this lands, ADR-0144 slice (4) (the `cpu_standin` operations) is code-ready for the memory figure. It still waits on HQ-0021 and HQ-0026.
 
 ## Result
+
+- **Outcome**: DONE. PR #234 squash-merged as `7826700` after 3 review rounds (dev-reviewer, Approve in rounds 1, 2 and 3; rounds 2 and 3 followed fixes of round 1 and 2 nits). CI green on the last commit (6 jobs); `tests/harness/test_timing_waiter.py` ran 34 cases (17 x 2 builds), 0 skipped, on the runner.
+- **Language**: C. Reason: ADR-0145 decision 3 makes the waiter a C program of the harness that must be process 1 of the container with nothing but the image's compiler and C library.
+- **File**: `hilclaw/harness/timing_waiter.c` (the proposed name, beside `timing_driver.c`). Feature macro `_DEFAULT_SOURCE`; builds with an empty log under the C gate's `-std=c99 -Wall -Wextra -Wpedantic -Werror -O2` and under ADR-0116's `-std=gnu11 -O2 -ffp-contract=off`.
+- **W2 and statuses**: `fork` + `execv`. An executable that cannot be started is a started child ending with 127, so its line is written and the waiter ends with 1. Exit statuses: 0 completed; 1 child ended otherwise, line written; 2 no executable path; 3 not process 1 (W0); 4 a system call of W1 to W5 failed (no line or part of one). Statuses 2 to 4 come with one line on standard error.
+- **Beyond the task text**: W1 also sets SIGCHLD back to `SIG_DFL` (no handler is established). An ignored disposition survives `execve` and would make W3's `wait4` fail with status 4. As a result the child starts with SIGCHLD at its default. No memory is allocated and no stdio is used from W3 to W5; `LONG_MIN` is formatted by hand.
+- **Off Linux**: the none line. W0 is only the pid check and W1 only resets SIGCHLD (a reading, marked as such in the head comment). That branch is neither built nor run by the Linux CI. Off Linux a system's real init is in practice the only process 1, so W0 refuses there.
+- **Namespace means**: util-linux `unshare --user --pid --fork --mount-proc --kill-child`. No uid is mapped, so every process inside holds no capability after `execve`, and the namespace has its own `/proc`. Every start of the waiter is inside it, the W0 refusal (waiter as process 2 under `sh`) included. No container runtime and no `claude` is started.
+- **CI step**: added to the `python` and `coverage` jobs, the only ones that collect these tests. The runner reports `kernel.apparmor_restrict_unprivileged_userns: 1`. Where it is 1, the step loads an AppArmor profile (`flags=(unconfined)`, `userns,`) that lets `/usr/bin/unshare` alone create user namespaces. This is narrower than the sysctl. The test suite never runs as root, so the security BLOCKED case did not arise.
+- **(liii) properties tested here** (in a capability-less user + PID namespace, not under Docker):
+  - `SIGKILL`/`SIGTERM` sent to process 1 from inside do not end the waiter;
+  - `/proc/1/environ` and `/proc/1/fd/1` are unreadable once the waiter is not dumpable, with a dumpable `sh` as control;
+  - no process is left after W4 (plain and `setsid` background writers, the waiter held in W5 on a full pipe, inherited-pipe EOF);
+  - removing each of W0, W1, W4, the O_NONBLOCK clearing and the SIGCHLD reset was checked to fail at least one case (local WSL).
+- **Left to runtime acceptance item (liii)** (HQ-0060):
+  - the waiter as process 1 under the options of ADR-0144 decision 6, with no runtime init before it;
+  - the same signal and `/proc` properties inside a real container with dropped capabilities;
+  - the client handing on the waiter's last line.
+- **Follow-ups**:
+  - For ADR-0144 slice (4): W3 waits without `WUNTRACED`, so a child that stops itself (`raise(SIGSTOP)`) holds the waiter in W3 until the call's own time limit ends the container. No wrong figure results; this is a situation of ADR-0145 decision 6 / OD-18 ⑲ (review round 3 nit, no change made).
+  - Slice (4) must also apply the W6 status before using the figure (T-0400 follow-up (a), unchanged).
