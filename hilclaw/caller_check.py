@@ -31,8 +31,7 @@ repeated key is refused; the line names the tool only when ``tool_name`` has
 the form the shared reader admits for a ``tools`` entry; :data:`START` is
 the start text for the turn loop's settings.
 
-Not registered here: no settings file names this program; slice 2 of
-ADR-0146 writes the settings.
+The settings that name this program are written by :mod:`hilclaw.turn_loop`.
 
 Runtime acceptance items it depends on (ADR-0146 Consequences):
 

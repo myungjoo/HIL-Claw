@@ -67,3 +67,12 @@ Test rule: `hilclaw/turn_loop.py` is a module of the layer-2 package, so rules â
 - (planner) None planned from this slice. After it lands, ADR-0146's two code slices are done. The rest of PLAN P2-4 (budget and gate checks, PostToolUse journaling, Stop commit; OD-18 and OD-19 remainder) is for later planning.
 
 ## Result
+
+- PR #236 (branch `claude/T-0404-turn-loop-writes-hook-settings`), squash-merged; review rounds: see the merge commit and the PR comments (round 1 Approve with two nits, both fixed in the PR, then re-reviewed).
+- Language: Python, the language of the module being extended (`hilclaw/turn_loop.py`).
+- Timeout: `HOOK_TIMEOUT_S = 30` seconds, as the planner proposed. One interpreter start and one read of the session's agent files take well under a second or two even on a slow Windows machine, so 30 s leaves a wide margin. With `onFailure: "block"`, a hook that hangs blocks the call within 30 s instead of the 600 s default. It is also the default Claude Code itself uses for the shorter-lived hook events.
+- Field placement: checked against https://code.claude.com/docs/en/hooks (read with `curl`; no `claude` was run). `timeout` is a "Common field" of a hook handler, and `onFailure` is a "Command hook field". Both sit inside the command hook object, as criterion 1 has them; the page's own `onFailure` example uses the same shape. The page's "Matcher patterns" table confirms that a matcher with a character outside letters, digits, `_`, `-`, spaces, `,` and `|` is read as an unanchored JavaScript regular expression, so `^mcp__hilclaw__` is both regular and anchored.
+- Junction check: a `.claude` is refused when it is a link, no directory, or when its real path differs from `<real session>/.claude`; the last catches a Windows junction (tested on Windows with `_winapi.CreateJunction`).
+- Local: full `pytest` 26273 passed, 564 skipped, with a marker-free `--basetemp` (this machine's system temp holds a stray `claude.md`, see T-0338). The two symlink tests skip here (no link privilege) and run on Linux CI. `ruff check` and `ruff format --check` are clean. Coverage: `turn_loop.py` 100 %, `caller_check.py` 100 %, `hilclaw/` 99 %.
+- Runtime acceptance: ADR-0146 items (lvi)-(lx) stay open as HQ-0061; nothing new.
+- Follow-ups: none from this slice. Reviewer note (info only): a definition-brought `.claude/settings.local.json` is not refused. It is out of this slice's scope, because the real `put_definition` copies only `LAYOUT`, and the turn uses `--setting-sources project`. Later P2-4 planning may consider it.

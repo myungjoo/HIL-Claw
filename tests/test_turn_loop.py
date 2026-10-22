@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from hilclaw import (
+    caller_check,
     checkout_boundary,
     config,
     mcp_front,
@@ -71,6 +72,28 @@ contents = {
     for name in listing
     if os.path.isfile(name)
 }
+settings_file = Path(".claude", "settings.json")
+settings = (
+    settings_file.read_text(encoding="utf-8") if settings_file.is_file() else None
+)
+claude_listing = sorted(os.listdir(".claude")) if os.path.isdir(".claude") else None
+hooks = None
+if scenario["hook_inputs"] and settings is not None:
+    import subprocess
+
+    handler = json.loads(settings)["hooks"]["PreToolUse"][0]["hooks"][0]
+    hook_env = {**os.environ, "CLAUDE_PROJECT_DIR": os.getcwd()}
+    hooks = []
+    for hook_input in scenario["hook_inputs"]:
+        done = subprocess.run(
+            [handler["command"], *handler["args"]],
+            input=json.dumps(hook_input).encode("utf-8"),
+            env=hook_env,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        hooks.append({"status": done.returncode, "stdout": done.stdout.decode()})
 with (here / "started.ndjson").open("a", encoding="utf-8") as record:
     entry = {
         "argv": argv,
@@ -79,6 +102,9 @@ with (here / "started.ndjson").open("a", encoding="utf-8") as record:
         "listing": listing,
         "contents": contents,
         "config": config,
+        "settings": settings,
+        "claude_listing": claude_listing,
+        "hooks": hooks,
         "env": {name: os.environ.get(name) for name in scenario["names"]},
     }
     record.write(json.dumps(entry) + "\n")
@@ -92,12 +118,16 @@ class Stub:
     def __init__(self, directory):
         self.directory = directory
 
-    def install(self, statuses=(0,)):
+    def install(self, statuses=(0,), hook_inputs=()):
         script = self.directory / "stub.py"
         script.write_text(STUB, encoding="utf-8")
+        scenario = {
+            "statuses": list(statuses),
+            "names": RECORDED,
+            "hook_inputs": list(hook_inputs),
+        }
         (self.directory / "scenario.json").write_text(
-            json.dumps({"statuses": list(statuses), "names": RECORDED}),
-            encoding="utf-8",
+            json.dumps(scenario), encoding="utf-8"
         )
         if os.name == "posix":
             launcher = self.directory / "claude"
@@ -270,8 +300,9 @@ def test_fresh_directory_per_turn(stub, data_root, parent):
     assert cwds[0] != cwds[1]
     for call, cwd in zip(calls, cwds):
         assert cwd.parent == parent.resolve()
-        assert call["listing"] == sorted([CONFIG_FILE, DEFINITION])
+        assert call["listing"] == sorted([CONFIG_FILE, DEFINITION, ".claude"])
         assert call["contents"][DEFINITION] == "round manager"
+        assert call["settings"] == settings_text()
         assert not cwd.exists()
     assert list(parent.iterdir()) == []
 
@@ -916,12 +947,13 @@ def test_callers_environment_unchanged_when_a_later_turn_raises(
     assert NO_BACKGROUND not in os.environ
 
 
-def test_no_settings_file_is_written(stub, data_root, parent, monkeypatch):
+def test_settings_file_beside_the_configuration(stub, data_root, parent, monkeypatch):
     clear_session_variables(monkeypatch)
     stub.install()
     go(data_root, parent)
     (call,) = stub.calls()
-    assert call["listing"] == sorted([CONFIG_FILE, DEFINITION])
+    assert call["listing"] == sorted([CONFIG_FILE, DEFINITION, ".claude"])
+    assert call["claude_listing"] == [turn_loop.SETTINGS_FILE]
     entry = call["config"][SERVERS_MEMBER][mcp_front.SERVER_NAME]
     assert entry["env"] == {config.ENV_LOCAL_PATH: os.path.realpath(data_root)}
     assert list(parent.iterdir()) == []
@@ -937,3 +969,232 @@ def test_lower_case_names_on_windows(stub, data_root, parent, monkeypatch):
     (call,) = stub.calls()
     assert session_part(call) == SESSION
     assert os.environ[AUTO_BACKGROUND] == "1"
+
+
+SETTINGS_TAKEN = "the definition holds the hook settings file"
+NOT_PLAIN = "the session directory's .claude is no plain directory"
+EXACT_MATCH = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- ,|")
+
+
+def expected_settings():
+    hook = {
+        "type": "command",
+        "command": os.path.abspath(sys.executable),
+        "args": [
+            "-I",
+            "-c",
+            caller_check.START,
+            checkout_boundary.PACKAGE_DIRECTORY,
+        ],
+        "timeout": turn_loop.HOOK_TIMEOUT_S,
+        "onFailure": "block",
+    }
+    matcher = "^" + caller_check.TOOL_PREFIX
+    return {"hooks": {"PreToolUse": [{"matcher": matcher, "hooks": [hook]}]}}
+
+
+def settings_text():
+    return json.dumps(expected_settings())
+
+
+def hook_input(tool, agent=None):
+    payload = {
+        "session_id": "session",
+        "transcript_path": "transcript.jsonl",
+        "cwd": ".",
+        "permission_mode": "dontAsk",
+        "hook_event_name": "PreToolUse",
+        "tool_name": tool,
+        "tool_input": {},
+        "tool_use_id": "use",
+    }
+    if agent is not None:
+        payload["agent_id"] = "agent-1"
+        payload["agent_type"] = agent
+    return payload
+
+
+def make_link(target, link):
+    try:
+        os.symlink(target, link, target_is_directory=os.path.isdir(target))
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links cannot be made here")
+
+
+def test_settings_names():
+    assert turn_loop.SETTINGS_DIRECTORY == ".claude"
+    assert turn_loop.SETTINGS_FILE == "settings.json"
+    assert type(turn_loop.HOOK_TIMEOUT_S) is int
+    assert 0 < turn_loop.HOOK_TIMEOUT_S < 600
+
+
+def test_settings_content(stub, data_root, parent):
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    settings = json.loads(call["settings"])
+    assert settings == expected_settings()
+    assert set(settings) == {"hooks"}
+    (group,) = settings["hooks"]["PreToolUse"]
+    (hook,) = group["hooks"]
+    assert hook["command"] == os.path.abspath(sys.executable)
+    assert os.path.isabs(hook["command"])
+    server = call["config"][SERVERS_MEMBER][mcp_front.SERVER_NAME]
+    assert os.path.samefile(hook["command"], server["command"])
+    assert hook["args"][:2] == server["args"][:2]
+    assert hook["args"][2] == caller_check.START
+    assert hook["args"][3:] == server["args"][3:]
+    assert group["matcher"].startswith("^")
+    assert not set(group["matcher"]) <= EXACT_MATCH
+
+
+def test_settings_written_in_every_turn(stub, data_root, parent):
+    stub.install(statuses=(0, 0))
+    go(data_root, parent, further_turn=Predicate(2))
+    calls = stub.calls()
+    assert len(calls) == 2
+    assert [call["settings"] for call in calls] == [settings_text()] * 2
+    assert list(parent.iterdir()) == []
+
+
+def test_hook_runs_as_written_for_the_main_session(stub, data_root, parent):
+    stub.install(
+        hook_inputs=(
+            hook_input("mcp__hilclaw__state_write"),
+            hook_input("mcp__hilclaw__verdicts_write"),
+        )
+    )
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert [hook["status"] for hook in call["hooks"]] == [
+        caller_check.EXIT_PASS,
+        caller_check.EXIT_REFUSE,
+    ]
+    assert [hook["stdout"] for hook in call["hooks"]] == ["", ""]
+
+
+def test_hook_runs_as_written_for_a_sub_agent(stub, data_root, parent):
+    stub.install(
+        hook_inputs=(
+            hook_input("mcp__hilclaw__verdicts_write", agent="helper"),
+            hook_input("mcp__hilclaw__state_write", agent="helper"),
+        )
+    )
+    text = "---\nname: helper\ntools: Grep, mcp__hilclaw__verdicts_write\n---\n"
+    go(data_root, parent, put_definition=put_agent(text))
+    (call,) = stub.calls()
+    assert [hook["status"] for hook in call["hooks"]] == [
+        caller_check.EXIT_PASS,
+        caller_check.EXIT_REFUSE,
+    ]
+
+
+def test_settings_beside_the_agents(stub, data_root, parent):
+    stub.install()
+    put_definition = put_agent("---\nname: helper\ntools: Grep\n---\nbody\n")
+    go(data_root, parent, put_definition=put_definition)
+    (call,) = stub.calls()
+    assert call["claude_listing"] == ["agents", turn_loop.SETTINGS_FILE]
+    assert call["settings"] == settings_text()
+    assert "Agent(helper)" in call["argv"][-1].split(",")
+    assert not put_definition.made[0].exists()
+
+
+def test_claude_directory_made_when_absent(stub, data_root, parent):
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert ".claude" in call["listing"]
+    assert call["claude_listing"] == [turn_loop.SETTINGS_FILE]
+
+
+def test_claude_directory_made_by_the_definition_kept(stub, data_root, parent):
+    stub.install()
+
+    def put_definition(session):
+        (session / ".claude").mkdir()
+        (session / ".claude" / "note.txt").write_text("kept", encoding="utf-8")
+
+    go(data_root, parent, put_definition=put_definition)
+    (call,) = stub.calls()
+    assert call["claude_listing"] == ["note.txt", turn_loop.SETTINGS_FILE]
+
+
+def refused(stub, data_root, parent, make, message):
+    stub.install()
+    made = []
+
+    def put_definition(session):
+        made.append(session)
+        make(session)
+
+    further = Predicate(1)
+    with pytest.raises(ValueError) as caught:
+        go(data_root, parent, further_turn=further, put_definition=put_definition)
+    assert str(caught.value) == message
+    assert further.seen == [None]
+    assert stub.calls() == []
+    assert not made[0].exists()
+    assert list(parent.iterdir()) == []
+
+
+def test_definition_settings_file_refused(stub, data_root, parent):
+    def make(session):
+        (session / ".claude").mkdir()
+        (session / ".claude" / "settings.json").write_text("{}", encoding="utf-8")
+
+    refused(stub, data_root, parent, make, SETTINGS_TAKEN)
+
+
+def test_definition_settings_directory_refused(stub, data_root, parent):
+    def make(session):
+        (session / ".claude" / "settings.json").mkdir(parents=True)
+
+    refused(stub, data_root, parent, make, SETTINGS_TAKEN)
+
+
+def test_definition_settings_dangling_link_refused(stub, tmp_path, data_root, parent):
+    missing = tmp_path / "missing.json"
+
+    def make(session):
+        (session / ".claude").mkdir()
+        make_link(missing, session / ".claude" / "settings.json")
+
+    refused(stub, data_root, parent, make, SETTINGS_TAKEN)
+    assert not os.path.lexists(missing)
+
+
+def test_claude_a_file_refused(stub, data_root, parent):
+    def make(session):
+        (session / ".claude").write_text("not a directory", encoding="utf-8")
+
+    refused(stub, data_root, parent, make, NOT_PLAIN)
+
+
+def test_claude_a_link_refused(stub, tmp_path, data_root, parent):
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (target / "kept.txt").write_text("unchanged", encoding="utf-8")
+
+    def make(session):
+        make_link(target, session / ".claude")
+
+    refused(stub, data_root, parent, make, NOT_PLAIN)
+    assert [path.name for path in target.iterdir()] == ["kept.txt"]
+    assert (target / "kept.txt").read_text(encoding="utf-8") == "unchanged"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="junctions exist on Windows only")
+def test_claude_a_junction_refused(stub, tmp_path, data_root, parent):
+    import _winapi
+
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (target / "kept.txt").write_text("unchanged", encoding="utf-8")
+
+    def make(session):
+        _winapi.CreateJunction(str(target), str(session / ".claude"))
+
+    refused(stub, data_root, parent, make, NOT_PLAIN)
+    assert [path.name for path in target.iterdir()] == ["kept.txt"]
+    assert (target / "kept.txt").read_text(encoding="utf-8") == "unchanged"

@@ -3,7 +3,8 @@
 :func:`run` starts the turn sessions of one run, one after another. Before
 every turn it asks its caller whether a further turn is to run; if so it makes
 a session directory, has the caller put the definition into it, writes the
-server configuration file, starts exactly one ``claude -p`` there, waits until
+server configuration file and the hook settings file
+``.claude/settings.json``, starts exactly one ``claude -p`` there, waits until
 that process has ended, removes the directory and asks again. It returns one
 :class:`Turn` per session started. This is runtime code: on a runtime machine
 each turn starts the real ``claude`` and spends plan usage. It is built and
@@ -36,6 +37,18 @@ definition was put into it.
 environment of decision 4, in which ``CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`` is
 ``0`` and ``CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`` is ``1``, each replacing
 any value the caller had, and ``CLAUDE_AUTO_BACKGROUND_TASKS`` is removed.
+
+**Decided by ADR-0146** and only applied here: after the definition is put,
+every turn writes the session directory's ``.claude/settings.json`` with one
+``hooks`` member and nothing else, no ``permissions`` and no ``env``
+(decision 4; ADR-0139 decision 8). It holds one ``PreToolUse`` entry whose
+matcher is a regular expression anchored to
+:data:`hilclaw.caller_check.TOOL_PREFIX` and whose one hook is a ``command``
+hook in exec form: ``command`` the absolute path of :data:`sys.executable`,
+``args`` ``-I``, ``-c``, :data:`hilclaw.caller_check.START` and the directory
+holding this package, ``"onFailure": "block"`` and a ``timeout`` well below
+the default. A definition that brings its own ``.claude/settings.json`` is
+refused rather than merged or overwritten.
 
 **The command line** is :data:`PROGRAM`, :data:`OPT_PRINT` with the caller's
 prompt, :data:`OPT_MCP_CONFIG` with :data:`CONFIG_FILE` and
@@ -85,6 +98,15 @@ OD-19's or OD-14's.
   ``-c``, a start text that puts the directory holding this package first on
   ``sys.path`` and runs :func:`hilclaw.mcp_front.main`, and that directory;
   so the server finds this package from the session directory.
+- *The hook settings*: the matcher is ``^`` followed by
+  :data:`hilclaw.caller_check.TOOL_PREFIX`; the ``^`` both anchors it and
+  holds it outside the exact-match set, so it is read as a regular
+  expression. The timeout is :data:`HOOK_TIMEOUT_S`, 30 seconds: an
+  interpreter start and one read of the agent files take well under that,
+  and with ``onFailure`` a hook that hangs blocks the call within it. The
+  text is built once per loop, as the server configuration is, and written
+  with exclusive creation in every turn. A missing ``.claude`` is made as a
+  plain directory.
 - *The prompt* is one line of ASCII letters, digits, spaces, ``.``, ``,``,
   ``_`` and ``-``, not beginning with ``-``: on Windows the ``claude`` found
   may be a command script, whose arguments pass through the command
@@ -101,12 +123,16 @@ OD-19's or OD-14's.
 turn; :class:`RuntimeError` when the interpreter does not know its own path;
 :class:`TypeError` for an answer of ``further_turn`` that is not a ``bool``;
 :class:`ValueError` when ``put_definition`` made :data:`CONFIG_FILE`;
+:class:`ValueError` with a fixed text when the session directory's
+``.claude`` is a symbolic link, a junction or no directory, and when
+``.claude/settings.json`` exists after ``put_definition``, each before the
+settings file is written and the process starts;
 :class:`ValueError` with a fixed text when the definition put into the
 session directory holds an agent file that
 :func:`hilclaw.turn_permissions.options` refuses, before the process starts;
 :class:`ClaudeNotFoundError` when no ``claude`` is found at a turn; and,
 unchanged, what ``further_turn``, ``put_definition``, making the directory,
-writing the file or starting the process raise. Whatever is raised after a
+writing the files or starting the process raise. Whatever is raised after a
 directory was made comes after its removal, and the :class:`Turn` records of
 the turns already run are lost to the caller then.
 
@@ -126,9 +152,10 @@ server to every turn and the server started from the session directory finds
 the package; (v) a ``-p`` turn session exits after its last reply, so the wait
 ends; (vi) the exit status tells a session that ended well from a failed one;
 (ADR-0139 Consequences) (xxxiv)-(xl), listed in
-:mod:`hilclaw.turn_permissions`; and (ADR-0141 Consequences) (xli) and
-(xlii). The stub shows nothing of a real session's reading of the
-environment.
+:mod:`hilclaw.turn_permissions`; (ADR-0141 Consequences) (xli) and
+(xlii); and (ADR-0146 Consequences) (lvi)-(lx), listed in
+:mod:`hilclaw.caller_check`. The stub shows nothing of a real session's
+reading of the environment.
 """
 
 import json
@@ -142,8 +169,8 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
+from hilclaw import caller_check, config, mcp_front, standin_image, turn_permissions
 from hilclaw import checkout_boundary as _checkout_boundary
-from hilclaw import config, mcp_front, standin_image, turn_permissions
 
 PROGRAM = "claude"
 OPT_PRINT = "-p"
@@ -152,6 +179,9 @@ OPT_STRICT_MCP_CONFIG = "--strict-mcp-config"
 SERVERS_MEMBER = "mcpServers"
 CONFIG_FILE = "hilclaw-turn.mcp-config.json"
 MARKERS = ("CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", ".claude")
+SETTINGS_DIRECTORY = ".claude"
+SETTINGS_FILE = "settings.json"
+HOOK_TIMEOUT_S = 30
 
 _ENV_SET = (
     ("CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT", "0"),
@@ -171,6 +201,8 @@ _MARKER_ABOVE = (
     "an instruction file or a foreign .claude lies above the session directory"
 )
 _CONFIG_TAKEN = "the definition holds the name of the server configuration file"
+_SETTINGS_TAKEN = "the definition holds the hook settings file"
+_NOT_PLAIN = "the session directory's .claude is no plain directory"
 
 
 class ClaudeNotFoundError(LookupError):
@@ -233,6 +265,39 @@ def _config_text(root):
     return json.dumps({SERVERS_MEMBER: {mcp_front.SERVER_NAME: entry}})
 
 
+def _settings_text():
+    hook = {
+        "type": "command",
+        "command": os.path.abspath(sys.executable),
+        "args": [
+            "-I",
+            "-c",
+            caller_check.START,
+            _checkout_boundary.PACKAGE_DIRECTORY,
+        ],
+        "timeout": HOOK_TIMEOUT_S,
+        "onFailure": "block",
+    }
+    entry = {"matcher": "^" + caller_check.TOOL_PREFIX, "hooks": [hook]}
+    return json.dumps({"hooks": {caller_check.EVENT: [entry]}})
+
+
+def _write_settings(directory, text):
+    folder = os.path.join(directory, SETTINGS_DIRECTORY)
+    if not os.path.lexists(folder):
+        os.mkdir(folder)
+    plain = os.path.normcase(
+        os.path.join(os.path.realpath(directory), SETTINGS_DIRECTORY)
+    )
+    if os.path.islink(folder) or not os.path.isdir(folder) or _folded(folder) != plain:
+        raise ValueError(_NOT_PLAIN)
+    place = os.path.join(folder, SETTINGS_FILE)
+    if os.path.lexists(place):
+        raise ValueError(_SETTINGS_TAKEN)
+    with open(place, "x", encoding="utf-8") as file:
+        file.write(text)
+
+
 def _own_configuration():
     try:
         return _folded(Path.home() / ".claude")
@@ -280,11 +345,12 @@ def _environment():
     return environment
 
 
-def _turn(directory, put_definition, prompt, text):
+def _turn(directory, put_definition, prompt, text, settings):
     put_definition(Path(directory))
     place = os.path.join(directory, CONFIG_FILE)
     if os.path.lexists(place):
         raise ValueError(_CONFIG_TAKEN)
+    _write_settings(directory, settings)
     with open(place, "x", encoding="utf-8") as file:
         file.write(text)
     permissions = turn_permissions.options(directory)
@@ -316,8 +382,9 @@ def run(*, further_turn, put_definition, prompt, data_root, parent=None, keep_ou
     ``further_turn`` is called with ``None`` before the first turn and with
     the exit status of the last turn session after each, and must answer a
     ``bool``. ``put_definition`` is called with the session directory, a
-    :class:`pathlib.Path`, before the configuration file is written; what it
-    returns is ignored. ``prompt`` is the one-line prompt of every turn.
+    :class:`pathlib.Path`, before the configuration and settings files are
+    written; what it returns is ignored. ``prompt`` is the one-line prompt of
+    every turn.
     ``data_root`` (a ``str`` or path object) names the existing directory of
     the data checkout. ``parent`` is the directory the session directories
     are made in (``None``: the temporary directory of the system) and
@@ -336,6 +403,7 @@ def run(*, further_turn, put_definition, prompt, data_root, parent=None, keep_ou
     _checkout_boundary.refuse_one_path(keep_out)
     roots = (root, *(_real(path, "a directory of keep_out") for path in keep_out))
     text = _config_text(root)
+    settings = _settings_text()
     place = _real(tempfile.gettempdir() if parent is None else parent, "the parent")
     if not os.path.isdir(place):
         raise ValueError("the parent must be an existing directory")
@@ -351,7 +419,7 @@ def run(*, further_turn, put_definition, prompt, data_root, parent=None, keep_ou
         _check_place(place, roots)
         directory = tempfile.mkdtemp(prefix=_PREFIX, dir=place)
         try:
-            previous = _turn(directory, put_definition, prompt, text)
+            previous = _turn(directory, put_definition, prompt, text, settings)
         finally:
             removed = _remove(directory)
         turns.append(Turn(previous, removed))
