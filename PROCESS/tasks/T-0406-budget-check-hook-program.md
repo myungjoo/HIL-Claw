@@ -129,3 +129,22 @@ D16: nothing here starts `claude`. The hook is not registered in any settings fi
 - (planner) ADR-0147 code slice 2 comes after this lands. `hilclaw/turn_loop.py` writes the two `PreToolUse` entries, the second from this module's start-text constant and spending-tool constant, with the real absolute data root as the last `args` element. Its tests check the written file against a stub `claude`, and the `turn_loop` docstring "It holds one ``PreToolUse`` entry" is rewritten. T-0405 Result notes that slice 2 may weigh refusing a data root whose path holds a hook placeholder such as `${CLAUDE_PLUGIN_ROOT}` (reviewer Info, not decided).
 
 ## Result
+
+- **Outcome**: DONE. PR #237 (`claude/T-0406-budget-check-hook-program`), squash-merged after review round 2 (Approve). Commits on the branch: `a7d4523` (module and tests), `c8064c0` (round 1 fix), then this `Result`.
+- **Language**: Python, standard library only — the hook uses the tool layer's reader `hilclaw.run_file_tools.read` (ADR-0147 decision 4). No new dependency.
+- **Module**: `hilclaw/budget_check.py` (147 lines, non-test; cap 300 LOC / 5 files). Public names: `SPENDING_TOOLS` (tuple `("mcp__hilclaw__coder_run", "mcp__hilclaw__correctness_check")`, built from `caller_check.TOOL_PREFIX`), `START` (pops the package directory from `sys.argv` and calls `main(args=sys.argv[1:])`), `REFUSAL` (the fixed line, `{}` filled with ` of <tool>` only for a spending tool), `EXIT_PASS`, `EXIT_REFUSE`, `RUN_STATUS`, and `main(data=None, stderr=None, args=None)` (defaults: stdin bytes, `sys.stderr`, `sys.argv[1:]`).
+- **Provisional choices (criterion 7)**, all accepted by the reviewer:
+  - an input with a repeated JSON key at any depth is refused, as in `caller_check`;
+  - a `NaN`, `Infinity` or `-Infinity` constant anywhere in the input is refused (round 1 finding: not strict JSON; `parse_constant`, as `mcp_front`, `run_state` and `instance` do). `1e999` is valid JSON grammar and is parsed as a float; no such member is interpreted (reviewer Info);
+  - an argument list with other than exactly one element is refused; an element that is not a `str` or names no directory is refused;
+  - a relative data-root argument is used as given (resolved against the hook's working directory); no refusal beyond decision 5's table is added;
+  - the line names the tool only when `tool_name` is one of the two spending tools.
+- **Test rule**: rules ① to ④ applied, rule ⑤ not (reading in Why); the reviewer accepted it as Info in both rounds. `tests/test_budget_check.py`: 138 tests covering every row of decision 5, the guard (reader, `check_run_id`, stdin and stderr failures), the line (path-like `run_id`, distinctive data-root path, exception text), the defaults, the environment not being read, the decidable Walk-through rows, and two subprocess runs under `START` (pass below budget, refuse when over, refuse without the data-root argument).
+- **Local tests** (Windows clone): `origin/main` 26034 passed, 803 skipped (derived: the branch only adds `tests/test_budget_check.py`); final code head `c8064c0` 26172 passed, 803 skipped. `ruff check .` and `ruff format --check .` clean.
+- **CI** on `c8064c0` (run https://github.com/myungjoo/HIL-Claw/actions/runs/39765046313): Python gate (3.11), Python gate (3.14), C gate (clang), sh gate (shellcheck), Test presence (hilclaw), Coverage gate (hilclaw) all pass. Coverage: lines 8948/8984 = 99.59 %, functions 865/865 = 100.00 %; `hilclaw/budget_check.py` 100 %. The final head adds only this `Result` and was checked green again before the merge.
+- **Diff checks**: `git diff origin/main --stat` lists `hilclaw/budget_check.py` and `tests/test_budget_check.py` (plus this task file's `Result`); nothing under `.claude`, `.github`, `orchestration`, `ARCHITECTURE`; both new files `i/lf`.
+- **Review**: 2 rounds (round 1 Request changes: NaN/Infinity accepted; round 2 Approve). No SECURITY finding.
+- **Follow-ups**:
+  - (planner) ADR-0147 slice 2 as listed above.
+  - (Info, reviewer round 1) `hilclaw/caller_check.py` also accepts `NaN`/`Infinity` constants in its input; a one-line `parse_constant` fix there is a candidate small code task.
+  - (Info, reviewer round 1) a failure before `main` runs (`sys.argv.pop(1)` with no package directory, an import failure) exits 1, which Claude Code treats as a non-blocking error; same structure as `caller_check.START`, to be weighed in slice 2 / ADR-0146 (lix).
