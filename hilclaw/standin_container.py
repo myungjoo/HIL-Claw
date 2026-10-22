@@ -259,8 +259,8 @@ def check_image(image):
 
     Raises :class:`TypeError` when ``image`` is not ``str`` and
     :class:`ValueError` when it is empty, begins with ``-`` (the client would
-    read it as an option) or holds whitespace or NUL; the text of either
-    quotes the value. Returns ``None`` otherwise. No grammar of image
+    read it as an option) or holds whitespace or NUL; the text of the last
+    two quotes the value. Returns ``None`` otherwise. No grammar of image
     references is parsed. :func:`run_in_container` applies this to its
     ``image``.
     """
