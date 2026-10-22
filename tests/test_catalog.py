@@ -379,6 +379,9 @@ HEADINGS = "an entry file has other headings than ADR-0150's"
         body("alpha", guidance="Do.\n\n- ```\n## Extra\n- ```"),
         body("alpha", guidance="Do.\n\n> ```\n## Extra\n> ```"),
         body("alpha", guidance="Do.\n\n```a`b\n## Extra\n```"),
+        body("alpha", guidance="Do.\n\n<h2>Extra</h2>"),
+        body("alpha", guidance="Do.\n\n> <H1 class=x>Extra</H1>"),
+        body("alpha", guidance="Do.\n\n<h1>"),
     ],
 )
 def test_wrong_headings(root, content):
@@ -386,7 +389,9 @@ def test_wrong_headings(root, content):
     refused(root, HEADINGS)
 
 
-@pytest.mark.parametrize("underline", ["===", "---", "-", "= "])
+@pytest.mark.parametrize(
+    "underline", ["===", "---", "-", "= ", "- ", "-\t", "> ---", "  =="]
+)
 def test_setext_underline(root, underline):
     put(root, "alpha.md", body("alpha", guidance=f"Do.\nTitle\n{underline}\nMore."))
     refused(root, "an entry file underlines a line as a heading")
