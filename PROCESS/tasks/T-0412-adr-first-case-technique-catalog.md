@@ -2,7 +2,7 @@
 id: T-0412
 title: Write ADR-0150 - the first technique catalog of a first-case run (cpu_standin, gemm fp32 row_major, C): where its entries live, the form of an entry and of its id, what an entry gives a spec's guidance.techniques, and its first entries (part of OD-22 with FR-8; needed for rounds >= 1 of PLAN P2-5)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-8, OD-22, OD-6, OD-7, OD-23, "PLAN P2-5", "PLAN P2-6"]
 dependsOn: []
@@ -203,3 +203,10 @@ Read them with a web fetch or `curl`. Quote each fact with its URL and the date 
 - (planner, for the driver) P2-4's gate half is owner-only (OD-3, #5 A-5). There is no HQ for it in `PROCESS/STATE.json`: A-5 predates D19. Whether to raise one is the driver's call (DRIVER §8).
 
 ## Result
+
+- **Outcome**: DONE (document mode). `ARCHITECTURE/decisions/ADR-0150-od22-first-case-technique-catalog.md` landed on `main` as `ec3dc28` with `Task: T-0412` and `Reviewed-by: reviewer agent (7 rounds, Approve)`. The task branch is deleted.
+- **Register edits**: `Requirements.md` OD-22 row gets `**확정분**:` (link to ADR-0150) and `**잔여**:`, status stays `제안됨`; `OpenDecisionProposals.md` § OD-22 gets one `채택분` line; `StandardScenarios.md` "최근 재검사" line (S0, S1, S4 with G1; no verdict change, no gap).
+- **Decision in brief** (runs of ADR-0120 decision 1 only): entries live in a top-level `catalog/` of the code repository, the stand-in's directory `catalog/cpu_standin/`, one `<id>.md` per entry; entry form `# <id>`, `## Applies to` (four values), `## When`, `## Guidance` (becomes `text`); the id is an ADR-0001 name never reused; an entry gives a spec exactly `{id, text}`; first entries `loop_order_ikj`, `cache_blocking`, `register_blocking`, `simd_baseline_intrinsics` (no OpenMP, threads or target flag; no measured-effect claim; full texts left to the code slice). Not decided: the selection side (HQ-0048), round >= 1 spec composition, cold-start methods, OD-7. No data-plane change, no new dependency, no runtime acceptance item.
+- **Review**: 7 rounds with a fresh-context `dev-reviewer` (opus). Rounds 1-2 Request changes (ADR-0134 O2's reading of the same A-7 sentence, an over-reading of A-7, the three-layer placement); rounds 3-7 Approve with Low/Nit findings, each fixed. One optional round-7 Nit left: the title says "one directory per accelerator" while decision 2 decides only the stand-in's directory.
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6347766684
+- **Follow-ups**: (planner) the ADR-0150 code slice in code mode: the four `catalog/cpu_standin/*.md` entries, the reader `hilclaw/catalog.py` and `tests/test_catalog.py` (split module first, entries second if over the D4 cap). (optional, D18 judgement) narrow the ADR-0150 title wording to the stand-in's directory.
