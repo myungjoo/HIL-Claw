@@ -104,3 +104,18 @@ D16: nothing here starts `claude`. The hook is not registered in any settings fi
 - (planner) The PLAN "보류" line "T-0379 follow-up — `turn_permissions.options`가 같은 `name`의 agent 파일 두 개를 거부하지 않는 점" is carried out by criterion 2(a) of this task, as ADR-0146 decision 3 requires. Whether that line is removed is not decided (PLAN 보류 절); the driver/owner may note it.
 
 ## Result
+
+- **PR**: #235 (`claude/T-0403-caller-check-hook-program`), squash-merged into `main`. Branch commits: `1ddda5c` (implementation), `3200307` (round-1 nit: a test keeps `caller_check._NAMED` equal to the reader's `_MCP_TOOL` form), then this `Result` commit.
+- **Review**: 2 rounds with a fresh-context `dev-reviewer` (opus, dev-code-review). Round 1 Approve with one Nit (fixed) and one Info; round 2 Approve, two Info items, no change asked. No `SECURITY` finding. The reviewer accepted the test-rule reading of Why (rules ① to ④ apply, ⑤ does not) and noted, as Info only, that the "hook 스크립트" wording of rule ⑤ could be read more widely; the owner may narrow it.
+- **Language**: Python, standard library only — the hook uses the shared reader of `hilclaw/turn_permissions.py` itself (ADR-0146 decision 4), and the package is Python.
+- **Choices recorded for the reviewer** (all accepted):
+  - New function: `turn_permissions.holder_lists(session_dir)` returns `(main, agents)`: `main` is the tuple `ROUND_MANAGER_TOOLS`, `agents` a new `dict` mapping each agent `name` to a tuple of its `mcp__hilclaw__` entries in written order (built-ins left out). The new refusal texts are "two agent files have the same name" and "an agent file has the name of a built-in agent".
+  - `agent_id` counts only as "present and a non-empty `str`"; presence of either field is by key (a `null` value is present).
+  - `mcp_server` is not read; the prefix `mcp__hilclaw__` is relied on (decision 2).
+  - An input with a repeated JSON key at any depth is refused (so a later duplicate cannot replace `tool_name` or the agent fields).
+  - The line is `REFUSAL` ("caller check: the call[ of <tool>] was refused because the calling agent does not hold the tool or could not be checked"); the tool is named only when it fully matches `mcp__hilclaw__[a-z][a-z0-9_]*`.
+  - The module defines the public start-text constant `caller_check.START`; the subprocess test (`test_started_as_the_turn_loop_will`) uses it with `sys.executable -I -c START <checkout_boundary.PACKAGE_DIRECTORY>`. No `__main__` block.
+- **Tests**: `python -m pytest` on `origin/main` `9b32468`: 25894 passed, 789 skipped; on the final code head `3200307`: 26034 passed, 789 skipped (Windows). `ruff check .` and `ruff format --check .` clean. Changed files `i/lf`.
+- **CI** on `3200307` (run https://github.com/myungjoo/HIL-Claw/actions/runs/39741695329): C gate (clang), Coverage gate (hilclaw), Python gate (3.11), Python gate (3.14), Test presence (hilclaw), sh gate (shellcheck) — all pass. Coverage gate: lines 8864/8900 = 99.59 %, functions 857/857 = 100.00 %.
+- **Size**: non-test diff 205 lines in 2 files (`hilclaw/caller_check.py` +141, `hilclaw/turn_permissions.py` +51/−13), within the D4 cap. Code diff touches only `touchesFiles`; the one `PROCESS/` change is this `Result` section, written on the PR branch as the driver's executor prompt asked.
+- **Follow-ups**: none new. Those in the task's Follow-ups stand (slice 2; the PLAN 보류 line on two files of one `name` is now carried out by criterion 2(a)).

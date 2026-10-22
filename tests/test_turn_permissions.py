@@ -385,3 +385,159 @@ def test_a_refused_file_among_good_ones(tmp_path):
     (directory / "z.md").write_text(agent("z", "Bash"), encoding="utf-8")
     with pytest.raises(ValueError, match=BAD_TOOL):
         options(tmp_path)
+
+
+NAME_TWICE = "two agent files have the same name"
+BUILT_IN_AGENT = "an agent file has the name of a built-in agent"
+
+
+def test_holder_lists_no_agents_directory(tmp_path):
+    main, found = turn_permissions.holder_lists(tmp_path)
+    assert main == FIXED
+    assert type(main) is tuple
+    assert found == {}
+
+
+def test_holder_lists_the_real_definition(tmp_path):
+    turn_definition.put(tmp_path)
+    main, found = turn_permissions.holder_lists(str(tmp_path))
+    assert main == ROUND_MANAGER_TOOLS
+    assert set(found) == {"evaluator", "coder-driver"}
+    assert found["evaluator"] == (
+        "mcp__hilclaw__correctness_check",
+        "mcp__hilclaw__state_read",
+        "mcp__hilclaw__instance_read",
+        "mcp__hilclaw__run_fresh",
+        "mcp__hilclaw__verdicts_write",
+        "mcp__hilclaw__hypotheses_read",
+        "mcp__hilclaw__checks_read",
+        "mcp__hilclaw__timings_compare",
+    )
+    assert found["coder-driver"] == (
+        "mcp__hilclaw__spec_write",
+        "mcp__hilclaw__coder_run",
+    )
+    for tools in found.values():
+        assert "mcp__hilclaw__blob_push" not in tools
+        assert "mcp__hilclaw__blob_fetch" not in tools
+    assert "mcp__hilclaw__blob_push" not in main
+    assert "mcp__hilclaw__blob_fetch" not in main
+
+
+def test_holder_lists_built_in_only_and_mcp_only(tmp_path):
+    directory = agents(tmp_path)
+    (directory / "a.md").write_text(agent("reader", "Read, Grep, Glob"), "utf-8")
+    (directory / "b.md").write_text(
+        agent("writer", "mcp__hilclaw__blob_fetch,mcp__hilclaw__state_read"), "utf-8"
+    )
+    main, found = turn_permissions.holder_lists(Path(tmp_path))
+    assert main == FIXED
+    assert found == {
+        "reader": (),
+        "writer": ("mcp__hilclaw__blob_fetch", "mcp__hilclaw__state_read"),
+    }
+
+
+def test_holder_lists_is_fresh_each_call(tmp_path):
+    (agents(tmp_path) / "a.md").write_text(
+        agent("a", "mcp__hilclaw__key_store"), "utf-8"
+    )
+    first = turn_permissions.holder_lists(tmp_path)
+    first[1]["b"] = ("x",)
+    (agents(tmp_path) / "a.md").write_text(
+        agent("a", "mcp__hilclaw__case_write"), "utf-8"
+    )
+    assert turn_permissions.holder_lists(tmp_path)[1] == {
+        "a": ("mcp__hilclaw__case_write",)
+    }
+
+
+@pytest.mark.parametrize("value", [None, 1, b"/tmp", ["x"], BytesPath()])
+def test_holder_lists_wrong_type(value):
+    with pytest.raises(TypeError, match="session directory"):
+        turn_permissions.holder_lists(value)
+
+
+def holder_refused(tmp_path, data, text):
+    (agents(tmp_path) / "agent.md").write_bytes(data)
+    with pytest.raises(ValueError) as caught:
+        turn_permissions.holder_lists(tmp_path)
+    assert str(caught.value) == text
+
+
+@pytest.mark.parametrize(
+    ("data", "text"),
+    [
+        (b"---\nname: a\xff\ntools: Read\n---\n", NOT_UTF8),
+        (b"name: a\ntools: Read\n", NO_FRONTMATTER),
+        (b"---\nname: a\nno separator\ntools: Read\n---\n", NOT_A_KEY),
+        (b"---\nname: a\ntools: Read\nname: b\n---\n", KEY_TWICE),
+        (b"---\nname: Eval\ntools: Read\n---\n", BAD_NAME),
+        (b"---\nname: a\n---\n", NO_TOOLS),
+        (b"---\nname: a\ntools: Bash\n---\n", BAD_TOOL),
+        (b"---\nname: a\npermissionMode: x\ntools: Read\n---\n", PERMISSION),
+        (b"---\nname: general-purpose\ntools: Read\n---\n", BUILT_IN_AGENT),
+    ],
+)
+def test_holder_lists_refusals(tmp_path, data, text):
+    holder_refused(tmp_path, data, text)
+
+
+def test_holder_lists_agents_entry_is_a_file(tmp_path):
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "agents").write_text("x", encoding="utf-8")
+    with pytest.raises(ValueError) as caught:
+        turn_permissions.holder_lists(tmp_path)
+    assert str(caught.value) == NO_DIRECTORY
+
+
+def two_of_one_name(tmp_path):
+    directory = agents(tmp_path)
+    (directory / "a.md").write_text(EVALUATOR, encoding="utf-8")
+    nested = directory / "more"
+    nested.mkdir()
+    (nested / "b.md").write_text(
+        agent("evaluator", "mcp__hilclaw__coder_run"), encoding="utf-8"
+    )
+
+
+def test_two_files_of_one_name_options(tmp_path):
+    two_of_one_name(tmp_path)
+    with pytest.raises(ValueError) as caught:
+        options(tmp_path)
+    assert str(caught.value) == NAME_TWICE
+
+
+def test_two_files_of_one_name_holder_lists(tmp_path):
+    two_of_one_name(tmp_path)
+    with pytest.raises(ValueError) as caught:
+        turn_permissions.holder_lists(tmp_path)
+    assert str(caught.value) == NAME_TWICE
+
+
+def test_general_purpose_options(tmp_path):
+    refused(tmp_path, agent("general-purpose", "Read").encode(), BUILT_IN_AGENT)
+
+
+def test_general_purpose_among_good_ones(tmp_path):
+    directory = agents(tmp_path)
+    (directory / "a.md").write_text(EVALUATOR, encoding="utf-8")
+    (directory / "z.md").write_text(
+        agent("general-purpose", "mcp__hilclaw__state_read"), encoding="utf-8"
+    )
+    for call in (options, turn_permissions.holder_lists):
+        with pytest.raises(ValueError) as caught:
+            call(tmp_path)
+        assert str(caught.value) == BUILT_IN_AGENT
+
+
+@pytest.mark.parametrize("name", ["general-purpose-x", "general", "purpose"])
+def test_names_near_general_purpose_are_accepted(tmp_path, name):
+    (agents(tmp_path) / "a.md").write_text(agent(name, "Read"), encoding="utf-8")
+    assert f"Agent({name})" in split(options(tmp_path))[1]
+    assert turn_permissions.holder_lists(tmp_path)[1] == {name: ()}
+
+
+@pytest.mark.parametrize("name", ["Explore", "Plan"])
+def test_explore_and_plan_are_no_valid_name(tmp_path, name):
+    holder_refused(tmp_path, agent(name, "Read").encode(), BAD_NAME)

@@ -1,7 +1,9 @@
-"""The permission options of a first-case turn session (ADR-0139).
+"""The permission options and holder lists of a first-case turn session (ADR-0139, ADR-0146).
 
 :func:`options` returns the arguments that :mod:`hilclaw.turn_loop` appends
-to the command line of a turn after ``--strict-mcp-config``. It reads the
+to the command line of a turn after ``--strict-mcp-config``;
+:func:`holder_lists` returns the lists the caller check of ADR-0146
+(:mod:`hilclaw.caller_check`) reads, from the same files. It reads the
 agent files of the definition that was put into the session directory and
 joins them with the Round-Manager's fixed list. It makes no judgement, calls
 no model, starts no process and writes nothing. This is runtime code: it is
@@ -51,8 +53,10 @@ a missing or malformed ``name``, one with no ``tools`` key or an empty value
 (an omitted list inherits every tool, ADR-0139 P8), one with a ``tools``
 entry of any other form (a wildcard, ``mcp__hilclaw`` alone, another server's
 name, ``Bash``, ``Write``, ``Edit``, ``Agent`` and every other built-in tool
-among them) and one with a ``permissionMode`` key. Reading errors are raised
-unchanged.
+among them) and one with a ``permissionMode`` key; and, added by ADR-0146
+decision 3, two or more agent files with the same ``name`` and an agent file
+whose ``name`` is ``general-purpose`` (the ``name`` form already excludes
+``Explore`` and ``Plan``). Reading errors are raised unchanged.
 
 The coder-driver's entry is derived with no change here (ADR-0141
 decision 5; ADR-0139 decision 9, form (T)): its two ``mcp__hilclaw__`` names
@@ -60,7 +64,8 @@ are pre-approved beside ``Agent(coder-driver)``, and it adds no built-in
 tool; a ``Bash`` entry is still refused.
 
 Not done here: no check of a ``tools`` entry against the registry, only of
-its form; no hook, no deny rule, no settings file.
+its form. The module gives the holder lists that the caller check hook of
+ADR-0146 reads; it writes no settings file and sets no deny rule.
 
 Runtime acceptance items it depends on (ADR-0139 Consequences): (xxxiv) the
 options take effect in a never-trusted session directory; (xxxv) the
@@ -112,6 +117,9 @@ _BAD_NAME = "an agent file has no valid name"
 _NO_TOOLS = "an agent file has no tools list"
 _BAD_TOOL = "an agent file names a tool that is not admitted"
 _PERMISSION_MODE = "an agent file sets permissionMode"
+_NAME_TWICE = "two agent files have the same name"
+_BUILT_IN_AGENT = "an agent file has the name of a built-in agent"
+_BUILT_IN_AGENT_NAME = "general-purpose"
 
 
 def _frontmatter(data):
@@ -140,6 +148,8 @@ def _agent(data):
     name = found.get("name")
     if name is None or not _NAME.fullmatch(name):
         raise ValueError(_BAD_NAME)
+    if name == _BUILT_IN_AGENT_NAME:
+        raise ValueError(_BUILT_IN_AGENT)
     if not found.get("tools"):
         raise ValueError(_NO_TOOLS)
     tools = [entry.strip() for entry in found["tools"].split(TOOLS_SEPARATOR)]
@@ -164,6 +174,41 @@ def _agent_files(session):
     return [os.path.join(top, relative) for relative in sorted(found)]
 
 
+def _agents(session_dir):
+    if isinstance(session_dir, os.PathLike):
+        session_dir = os.fspath(session_dir)
+    if type(session_dir) is not str:
+        raise TypeError("the session directory must be a str or a path")
+    agents = []
+    for path in _agent_files(session_dir):
+        with open(path, "rb") as file:
+            agents.append(_agent(file.read()))
+    names = [name for name, _ in agents]
+    if len(set(names)) != len(names):
+        raise ValueError(_NAME_TWICE)
+    return agents
+
+
+def holder_lists(session_dir):
+    """Return the holder lists of the callers of a turn session in ``session_dir``.
+
+    ``session_dir`` (a ``str`` or path object) is the session directory after
+    the definition was put into it; its agent files are read at each call,
+    with the reader and the refusals of :func:`options` (ADR-0146 decision 3).
+    The result is a pair ``(main, agents)``: ``main`` is the main session's
+    list, the tuple :data:`ROUND_MANAGER_TOOLS`; ``agents`` is a new ``dict``
+    that maps the ``name`` of each agent file to a tuple of the
+    ``mcp__hilclaw__`` entries of its ``tools`` list, in the order written;
+    built-in entries are left out. Raises as the module docstring lists under
+    "What is raised".
+    """
+    agents = {
+        name: tuple(entry for entry in tools if entry not in BUILT_IN_TOOLS)
+        for name, tools in _agents(session_dir)
+    }
+    return ROUND_MANAGER_TOOLS, agents
+
+
 def options(session_dir):
     """Return the permission options of a turn session in ``session_dir`` as a tuple of ``str``.
 
@@ -173,14 +218,7 @@ def options(session_dir):
     ``--strict-mcp-config``. Raises as the module docstring lists under
     "What is raised".
     """
-    if isinstance(session_dir, os.PathLike):
-        session_dir = os.fspath(session_dir)
-    if type(session_dir) is not str:
-        raise TypeError("the session directory must be a str or a path")
-    agents = []
-    for path in _agent_files(session_dir):
-        with open(path, "rb") as file:
-            agents.append(_agent(file.read()))
+    agents = _agents(session_dir)
     built_in = set()
     allowed = set(ROUND_MANAGER_TOOLS)
     for name, tools in agents:
