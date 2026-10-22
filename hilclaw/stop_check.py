@@ -135,7 +135,7 @@ def main(data=None, stderr=None, args=None):
             data = sys.stdin.buffer.read()
         if _owed(data, sys.argv[1:] if args is None else args):
             stream = sys.stderr if stderr is None else stderr
-            print(REFUSAL, file=stream)
+            stream.write(REFUSAL + "\n")
             stream.flush()
             return EXIT_REFUSE
     return EXIT_PASS

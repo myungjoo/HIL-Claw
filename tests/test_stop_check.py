@@ -9,6 +9,7 @@ import pytest
 from hilclaw import (
     caller_check,
     checkout_boundary,
+    config,
     key_records,
     keys,
     layout,
@@ -538,7 +539,8 @@ def test_nothing_is_read_from_the_environment(root, monkeypatch, tmp_path):
     owed_run(root)
     other = new_repository(tmp_path / "other")
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(other))
-    monkeypatch.setenv("HILCLAW_DATA_ROOT", str(other))
+    monkeypatch.setenv(config.ENV_LOCAL_PATH, str(other))
+    monkeypatch.setenv(config.ENV_URL, "https://example.invalid/data.git")
     refuses(payload(), [RUN, str(root)])
     passes(payload(), [RUN, str(other)])
 
@@ -597,6 +599,13 @@ class Failing(io.StringIO):
 def test_a_line_that_cannot_be_written_lets_the_stop_through(root, capsys, fail_on):
     owed_run(root)
     assert main(payload(), Failing(fail_on), [RUN, str(root)]) == EXIT_PASS
+    assert capsys.readouterr() == ("", "")
+
+
+def test_a_closed_standard_error_lets_the_stop_through(root, monkeypatch, capsys):
+    owed_run(root)
+    monkeypatch.setattr(sys, "stderr", None)
+    assert main(payload(), None, [RUN, str(root)]) == EXIT_PASS
     assert capsys.readouterr() == ("", "")
 
 
