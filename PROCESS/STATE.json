@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0408",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:0109987c-1",
-    "acquiredAt": "2026-10-22T12:23:30Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -540,18 +536,26 @@
       "question": "ADR-0147(첫 사례 턴 세션의 지출 도구 앞 라운드 budget 검사 hook; OD-19·OD-18 일부; T-0405)의 런타임 인수 항목 (lxi)·(lxii)를 런타임 머신에서 확인해 주세요. (lxi) `mcp__hilclaw__coder_run`·`mcp__hilclaw__correctness_check` 호출의 `PreToolUse` 입력 `tool_input`이 서버가 받는 인자 객체(그 `run_id` 포함)와 같은지. (lxii) 한 `.claude/settings.json`의 두 `PreToolUse` 항목이 같은 호출에 모두 걸릴 때 — 두 hook의 `command`가 같고 `args`만 달라도 — 둘 다 실행되고, 하나가 exit 2·다른 하나가 exit 0(출력 없음)이면 호출이 막히는지. 선택지: (a) 오너가 수동으로 확인해 결과를 답한다 (b) 런타임 자체 점검 코드 task로 돌린다(예: hook 입력과 서버 요청을 기록해 비교, 시험 도구에 건 두 hook이 각각 흔적을 남기는지) (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 이 검사가 실제 세션에서 지출 호출을 막는다는 확신(실패 시 모든 지출 호출이 거절되거나 검사가 효력이 없음). 막히지 않는 것: ADR-0147의 두 코드 slice(픽스처·스텁 `claude`로만 검증)와 그 밖의 드라이버 task.",
       "askedAt": "2026-10-22T10:04:42Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0063",
+      "taskId": "T-0408",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0148(첫 사례 턴 세션의 끝 commit을 붙드는 `Stop` hook; OD-18 일부; T-0408, main 4dbe250)의 런타임 인수 항목 (lxiii)~(lxvi)을 런타임 머신에서 확인해 주세요. (lxiii) 루프가 쓴 `.claude/settings.json`의 `Stop` 항목이 `-p` 턴 세션 메인 세션의 응답이 끝날 때, 프로세스가 끝나기 전에 실행되고 sub-agent의 끝에서는 실행되지 않는지. (lxiv) 그 hook이 stderr 한 줄과 함께 exit 2로 끝나면 `-p` 메인 세션이 그 줄을 지시로 받아 계속하고, 그 뒤의 `Stop`에는 `stop_hook_active`가 `true`로 오는지(그 사이에 도구 호출이 있어도). (lxv) 런타임 머신에서 hook 프로세스가 서버와 같은 `git`을 찾고 `commit_owed`가 hook의 timeout 안에 끝나는지; timeout에 걸린 `Stop` hook은 멈춤을 통과시키는지. (lxvi) 이 줄을 받은 Round-Manager가 `run_commit`을 한 번 부르고 끝내며, 호출하지 않는 두 끝(유효한 run id 없음, 실패한 호출 뒤)에서는 바로 끝내는지. 선택지: (a) 오너가 수동으로 확인해 결과를 답한다 (b) 런타임 자체 점검에 `Stop` hook 표식 검사를 넣는 task로 돌린다 (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 이 hook이 실제 세션에서 끝 commit을 붙든다는 확신. 막히지 않는 것: ADR-0148의 코드 slice 1·2(스텁 `claude`와 임시 git 저장소로 검증)와 그 밖의 드라이버 task.",
+      "askedAt": "2026-10-22T12:44:53Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 422,
-    "tasksDone": 394,
+    "iterations": 423,
+    "tasksDone": 395,
     "tasksBlocked": 28,
-    "reviewRoundsTotal": 1412
+    "reviewRoundsTotal": 1414
   },
   "lastIteration": {
-    "at": "2026-10-22T11:55:58Z",
-    "owner": "AKIHA:f87d32b9-1",
-    "taskId": "T-0407",
+    "at": "2026-10-22T12:44:53Z",
+    "owner": "AKIHA:0109987c-1",
+    "taskId": "T-0408",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

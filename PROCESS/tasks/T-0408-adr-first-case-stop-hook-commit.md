@@ -2,7 +2,7 @@
 id: T-0408
 title: Write ADR-0148 - whether a first-case turn session gets a Stop hook that holds the commit at the end of a turn (ADR-0143 decision 2), in which form (refuse the stop while a commit is owed, commit in the hook, or nothing beyond the prompt and the next entry), how such a hook learns its run, and what it does when it cannot tell (Stop-commit part of PLAN P2-4; part of OD-18)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-11, NFR-1, OD-18, OD-8, "PLAN P2-4"]
 dependsOn: [T-0405, T-0406, T-0407]
