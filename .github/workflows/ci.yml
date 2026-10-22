@@ -41,6 +41,16 @@ jobs:
         run: python -m ruff check .
       - name: ruff format --check
         run: python -m ruff format --check .
+      - name: Allow unshare to make user namespaces (tests/harness/test_timing_waiter.py)
+        shell: bash
+        run: |
+          if [[ $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null) == 1 ]]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+              'profile hilclaw-unshare /usr/bin/unshare flags=(unconfined) {' '  userns,' '}' \
+              | sudo tee /etc/apparmor.d/hilclaw-unshare > /dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/hilclaw-unshare
+          fi
+          unshare --user --pid --fork --mount-proc --kill-child /bin/sh -c 'test "$$" -eq 1'
       - name: pytest
         run: python -m pytest
 
@@ -153,6 +163,16 @@ jobs:
         run: |
           python -c "import tomllib; print(*tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies'], sep='\n')" > "$RUNNER_TEMP/runtime-requirements.txt"
           python -m pip install --only-binary=:all: -r "$RUNNER_TEMP/runtime-requirements.txt"
+      - name: Allow unshare to make user namespaces (tests/harness/test_timing_waiter.py)
+        shell: bash
+        run: |
+          if [[ $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null) == 1 ]]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+              'profile hilclaw-unshare /usr/bin/unshare flags=(unconfined) {' '  userns,' '}' \
+              | sudo tee /etc/apparmor.d/hilclaw-unshare > /dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/hilclaw-unshare
+          fi
+          unshare --user --pid --fork --mount-proc --kill-child /bin/sh -c 'test "$$" -eq 1'
       - name: Line and function coverage of hilclaw/
         shell: bash
         run: |
