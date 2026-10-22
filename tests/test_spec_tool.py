@@ -9,8 +9,11 @@ from pathlib import Path
 import pytest
 
 from hilclaw import (
+    catalog,
     coder_call,
+    events,
     gemm_contract,
+    journal,
     keys,
     layout,
     mcp_front,
@@ -18,6 +21,8 @@ from hilclaw import (
     run_admission,
     run_file_tools,
     run_objective,
+    spec,
+    spec_feedback,
     spec_file,
     spec_tool,
     tools,
@@ -162,9 +167,10 @@ def test_the_definition_is_bound_to_the_source_and_does_not_call_it(root):
         "type": "object",
         "properties": {
             "run_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"},
-            "round": {"type": "integer", "minimum": 0, "maximum": 0},
+            "round": {"type": "integer", "minimum": 0, "maximum": keys.MAX_INTEGER},
             "candidate": {"type": "integer", "minimum": 1, "maximum": 1},
             "attempt": {"type": "integer", "minimum": 1, "maximum": 1},
+            "techniques": {"type": "array"},
         },
         "required": ["run_id", "round", "candidate", "attempt"],
         "additionalProperties": False,
@@ -191,6 +197,11 @@ KINDS = (
     "op_signature_not_stated",
     "op_signature_not_covered",
     "objective_not_stated",
+    "catalog_unusable",
+    "technique_unknown",
+    "technique_not_applicable",
+    "feedback_unreadable",
+    "check_result_invalid",
     "spec_invalid",
     "spec_exists",
     "spec_not_written",
@@ -204,7 +215,8 @@ def test_the_description_names_every_kind_in_order():
     assert places == sorted(places)
     assert "The result is {}." in description
     assert "never part of the request" in description
-    assert SPEC_PATH.replace(RUN, "<run_id>") in description
+    assert SPEC_PATH.replace(RUN, "<run_id>").replace("0000", "<RRRR>") in description
+    assert "exactly when round is 1 or more, techniques" in description
 
 
 def test_the_kinds_are_those_of_the_record():
@@ -228,9 +240,17 @@ def test_the_kinds_are_those_of_the_record():
         spec_tool.KIND_OBJECTIVE_NOT_STATED is run_objective.KIND_OBJECTIVE_NOT_STATED
     )
     assert spec_tool.KIND_SPEC_INVALID is coder_call.KIND_SPEC_INVALID
+    assert spec_tool.KIND_CATALOG_UNUSABLE == "catalog_unusable"
+    assert spec_tool.KIND_TECHNIQUE_UNKNOWN == "technique_unknown"
+    assert spec_tool.KIND_TECHNIQUE_NOT_APPLICABLE == "technique_not_applicable"
+    assert spec_tool.KIND_FEEDBACK_UNREADABLE is spec_feedback.KIND_FEEDBACK_UNREADABLE
     new = (
         spec_tool.KIND_CANDIDATES_PER_ROUND_NOT_STATED,
         spec_tool.KIND_CANDIDATES_PER_ROUND_NOT_COVERED,
+        spec_tool.KIND_CATALOG_UNUSABLE,
+        spec_tool.KIND_TECHNIQUE_UNKNOWN,
+        spec_tool.KIND_TECHNIQUE_NOT_APPLICABLE,
+        spec_tool.KIND_FEEDBACK_UNREADABLE,
         spec_tool.KIND_SPEC_EXISTS,
         spec_tool.KIND_SPEC_NOT_WRITTEN,
     )
@@ -386,6 +406,8 @@ def test_a_refusal_reaches_the_mcp_front_as_an_error(root):
     "body",
     [
         request(round=1),
+        request(round=7),
+        request(round=0, techniques=[]),
         request(candidate=2),
         request(attempt=2),
         request(round=-1),
@@ -753,3 +775,406 @@ def test_each_call_asks_the_source_once_and_reads_the_instance_only(root, monkey
     assert names == ["instance.json", "instance.json"]
     assert not layout.run_file(root, RUN, "STATE.json").exists()
     assert not (root / "db").exists()
+
+
+# Rounds >= 1 (ADR-0151)
+
+ACCELERATOR = "synthetic_hw"
+SIM = "correctness_check_sim"
+BOARD = "correctness_check_board"
+PASS = {"outcome": "pass", "max_abs_error": 0.0}
+
+
+def entry(entry_id, applies=None):
+    lines = "\n".join(catalog.APPLIES_TO if applies is None else applies)
+    return (
+        f"# {entry_id}\n\n## Applies to\n\n{lines}\n\n## When\n\nWorth trying.\n\n"
+        f"## Guidance\n\nUse {entry_id}.\n"
+    ).encode()
+
+
+@pytest.fixture
+def shelf(tmp_path, monkeypatch):
+    source = tmp_path / "catalog"
+    directory = source / ACCELERATOR
+    directory.mkdir(parents=True)
+    for entry_id in ("loop_order", "tiling", "unrolling"):
+        (directory / f"{entry_id}.md").write_bytes(entry(entry_id))
+    monkeypatch.setattr(catalog, "SOURCE", source)
+    return directory
+
+
+@pytest.fixture
+def logged(tmp_path):
+    directory = tmp_path / "logged"
+    directory.mkdir()
+    return directory
+
+
+def technique(entry_id):
+    return {"id": entry_id, "text": f"Use {entry_id}."}
+
+
+def later(round=1, techniques=None, **changes):
+    listed = [] if techniques is None else techniques
+    return request(round=round, **changes) | {"techniques": listed}
+
+
+def later_path(root, round=1):
+    return layout.attempt_artefact(root, RUN, round, 1, 1, "spec.json")
+
+
+def expected_later(document, round=1, techniques=(), attempts=()):
+    made = expected_spec(document)
+    made["id"]["round"] = round
+    made["guidance"]["techniques"] = [technique(t) for t in techniques]
+    made["feedback"]["attempts"] = list(attempts)
+    return made
+
+
+def check(root, round, step, **outcome):
+    numbers = {"round": round, "candidate": 1, "attempt": 1}
+    data = {"step": step, "execution": 1}
+    events.append(root, RUN, journal.STEP_STARTED, data, **numbers)
+    ended = data | {"spend": {}, **outcome}
+    events.append(root, RUN, journal.STEP_ENDED, ended, **numbers)
+
+
+def passed_round_0(root):
+    write(Source(root))
+    check(root, 0, SIM, result=PASS)
+    check(root, 0, BOARD, result=PASS)
+
+
+def no_path_in(message, root):
+    for path in (root.parent, catalog.SOURCE):
+        assert str(path) not in message
+        assert Path(path).as_posix() not in message
+
+
+def refused_later(root, body, source=None):
+    before = tree(root)
+    with pytest.raises(ToolFailure) as failure:
+        write(source or Source(root), body)
+    assert tree(root) == before
+    no_path_in(failure.value.message, root)
+    return failure.value
+
+
+def written(root, round=1):
+    content = later_path(root, round).read_bytes()
+    document = json.loads(content)
+    spec.validate(document)
+    final = spec_file.final_name(root, spec_file.parse(content))
+    assert final == later_path(root, round)
+    assert content == (json.dumps(document, indent=2) + "\n").encode()
+    return document
+
+
+def test_round_1_after_a_round_0_that_passed_carries_the_ids_and_the_attempt(
+    logged, shelf
+):
+    document = instance_document()
+    run(logged, document)
+    passed_round_0(logged)
+    log = layout.run_file(logged, RUN, "events.ndjson").read_bytes()
+    round_0 = spec_path(logged).read_bytes()
+    source = Source(logged)
+    body = later(techniques=["tiling", "loop_order"])
+    assert spec_tool.definition(source).function(body) == {}
+    assert source.calls == 1
+    relative = later_path(logged).relative_to(logged).as_posix()
+    assert relative == SPEC_PATH.replace("rounds/0000", "rounds/0001")
+    attempt = {"round": 0, "candidate": 1, "attempt": 1, "techniques": []}
+    assert written(logged) == expected_later(
+        document, 1, ["tiling", "loop_order"], [attempt]
+    )
+    assert layout.run_file(logged, RUN, "events.ndjson").read_bytes() == log
+    assert spec_path(logged).read_bytes() == round_0
+
+
+def test_round_1_with_no_ids_and_no_earlier_attempt_reads_no_catalog(
+    root, tmp_path, monkeypatch
+):
+    document = instance_document()
+    run(root, document)
+    monkeypatch.setattr(catalog, "SOURCE", tmp_path / "missing")
+    calls = []
+    monkeypatch.setattr(catalog, "technique", lambda *a, **k: calls.append(a))
+    assert write(Source(root), later()) == {}
+    assert written(root) == expected_later(document)
+    assert calls == []
+
+
+def test_a_round_1_request_answers_through_the_registry_and_the_mcp_name(root, shelf):
+    run(root)
+    registry = default_registry(Source(root))
+    assert tools.call(registry, "spec.write", later(techniques=["tiling"])) == {}
+    assert written(root)["guidance"]["techniques"] == [technique("tiling")]
+    params = {"name": "spec_write", "arguments": later(2, ["unrolling"])}
+    message = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params}
+    stdout = io.BytesIO()
+    status = mcp_front.main(
+        [],
+        registry=registry,
+        stdin=io.BytesIO((json.dumps(message) + "\n").encode()),
+        stdout=stdout,
+        stderr=io.BytesIO(),
+    )
+    assert status == 0
+    result = json.loads(stdout.getvalue())["result"]
+    assert result["isError"] is False
+    assert written(root, 2)["guidance"]["techniques"] == [technique("unrolling")]
+
+
+def test_a_run_whose_accelerator_has_no_catalog_takes_only_an_empty_list(
+    root, tmp_path, monkeypatch
+):
+    document = instance_document()
+    run(root, document)
+    (tmp_path / "empty").mkdir()
+    monkeypatch.setattr(catalog, "SOURCE", tmp_path / "empty")
+    failure = refused_later(root, later(techniques=["tiling"]))
+    assert failure.kind == "catalog_unusable"
+    assert failure.message == (
+        f"catalog/{ACCELERATOR}: the catalog directory is not there; "
+        "nothing was written"
+    )
+    assert write(Source(root), later()) == {}
+    assert written(root) == expected_later(document)
+
+
+def test_a_large_round_with_no_earlier_rounds_has_empty_feedback(root):
+    document = instance_document()
+    run(root, document)
+    assert write(Source(root), later(9999)) == {}
+    assert "rounds/9999/" in later_path(root, 9999).as_posix()
+    assert written(root, 9999) == expected_later(document, 9999)
+    assert write(Source(root), later(keys.MAX_INTEGER)) == {}
+    assert written(root, keys.MAX_INTEGER)["id"]["round"] == keys.MAX_INTEGER
+
+
+def test_the_order_of_the_ids_is_the_requests(root, shelf):
+    run(root)
+    ids = ["unrolling", "loop_order", "tiling"]
+    write(Source(root), later(techniques=ids))
+    assert [t["id"] for t in written(root)["guidance"]["techniques"]] == ids
+
+
+@pytest.mark.parametrize(
+    ("body", "named"),
+    [
+        (request(techniques=[]), "techniques"),
+        (request(techniques=["tiling"]), "techniques"),
+        (request(round=1), "techniques"),
+        (later(techniques="tiling"), "techniques"),
+        (later(techniques={"tiling": 1}), "techniques"),
+        (later() | {"techniques": None}, "techniques"),
+        (later(techniques=[3]), "techniques[0]"),
+        (later(techniques=["tiling", None]), "techniques[1]"),
+        (later(techniques=["A"]), "techniques[0]"),
+        (later(techniques=[""]), "techniques[0]"),
+        (later(techniques=["a" * 33]), "techniques[0]"),
+        (later(techniques=["x-y"]), "techniques[0]"),
+        (later(techniques=["tiling", "unrolling", "tiling"]), "techniques[2]"),
+        (later(round=True), "round"),
+        (later(round=-1), "round"),
+        (later(round=2**53), "round"),
+        (later(round=1.0), "round"),
+        (later(candidate=2), "candidate"),
+        (later(attempt=2), "attempt"),
+        (later(extra=1), "'extra'"),
+    ],
+)
+def test_a_later_round_request_breaking_the_rule_is_invalid(root, body, named):
+    run(root)
+    source = Source(root)
+    failure = refused_later(root, body, source)
+    assert failure.kind == "invalid_request"
+    assert named in failure.message
+    assert source.calls == 0
+    assert not (root / "runs" / RUN / "rounds").exists()
+
+
+def test_the_messages_of_the_techniques_member(root):
+    assert refused_later(root, request(techniques=[])).message == (
+        "techniques: is taken only with a round of 1 or more"
+    )
+    assert refused_later(root, request(round=1)).message == (
+        "the request lacks the member techniques, which a round of 1 or more requires"
+    )
+    assert refused_later(root, later(techniques="x")).message == (
+        "techniques: must be an array, got str"
+    )
+    assert refused_later(root, later(techniques=["x", "x"])).message == (
+        "techniques[1]: 'x' is given twice"
+    )
+    assert refused_later(root, later(extra=1)).message == (
+        "the request takes the members run_id, round, candidate, attempt, "
+        "techniques only, not 'extra'"
+    )
+    assert refused_later(root, later(round=-1)).message == (
+        f"round: must be from 0 to {keys.MAX_INTEGER}, got -1"
+    )
+
+
+def test_a_catalog_refused_by_its_rules_is_catalog_unusable(root, shelf):
+    run(root)
+    (shelf / "notes.txt").write_bytes(b"x")
+    failure = refused_later(root, later(techniques=["tiling"]))
+    assert failure.kind == "catalog_unusable"
+    assert failure.message == (
+        f"catalog/{ACCELERATOR}: the catalog directory is refused: the catalog "
+        "holds a file not named '<name>.md'; nothing was written"
+    )
+
+
+def test_a_catalog_that_cannot_be_read_is_catalog_unusable(root, shelf, monkeypatch):
+    run(root)
+    original = Path.read_bytes
+
+    def read_bytes(path):
+        if path.suffix == ".md":
+            raise PermissionError(errno.EACCES, "Permission denied", str(path))
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    failure = refused_later(root, later(techniques=["tiling"]))
+    assert failure.kind == "catalog_unusable"
+    assert failure.message == (
+        f"catalog/{ACCELERATOR}: the catalog directory cannot be read: "
+        "PermissionError: Permission denied; nothing was written"
+    )
+
+
+def test_an_id_with_no_entry_is_technique_unknown(root, shelf):
+    run(root)
+    failure = refused_later(root, later(techniques=["tiling", "fusion", "vectors"]))
+    assert failure.kind == "technique_unknown"
+    assert failure.message == (
+        f"catalog/{ACCELERATOR}: holds no entry fusion: the accelerator "
+        f"{ACCELERATOR} has no such technique; nothing was written"
+    )
+
+
+def test_an_entry_for_another_dtype_is_technique_not_applicable(
+    root, shelf, monkeypatch
+):
+    run(root)
+    applies = ("- kind: gemm", "- dtype: fp16", "- layout: row_major", "- language: c")
+    monkeypatch.setattr(catalog, "APPLIES_TO", applies)
+    for path in shelf.iterdir():
+        path.write_bytes(entry(path.stem, applies))
+    failure = refused_later(root, later(techniques=["tiling"]))
+    assert failure.kind == "technique_not_applicable"
+    assert failure.message == (
+        f"catalog/{ACCELERATOR}/tiling.md: applies to the dtype fp16, not the "
+        "spec's fp32; nothing was written"
+    )
+
+
+def test_an_earlier_spec_that_is_not_json_is_feedback_unreadable(root):
+    run(root)
+    place(spec_path(root), b"not json")
+    failure = refused_later(root, later())
+    assert failure.kind == "feedback_unreadable"
+    assert failure.message.startswith(SPEC_PATH)
+
+
+def test_a_damaged_log_line_is_run_file_invalid(logged):
+    run(logged)
+    write(Source(logged))
+    place(layout.run_file(logged, RUN, "events.ndjson"), b"{\n")
+    failure = refused_later(logged, later())
+    assert failure.kind == "run_file_invalid"
+    assert failure.message.startswith(f"runs/{RUN}/events.ndjson")
+
+
+def test_a_check_result_without_an_admitted_outcome_is_check_result_invalid(logged):
+    run(logged)
+    write(Source(logged))
+    check(logged, 0, SIM, result={"outcome": "maybe"})
+    assert refused_later(logged, later()).kind == "check_result_invalid"
+
+
+def test_a_second_round_1_call_is_spec_exists_and_changes_nothing(root, shelf):
+    run(root)
+    write(Source(root), later(techniques=["tiling"]))
+    first = later_path(root).read_bytes()
+    failure = refused_later(root, later(techniques=["unrolling"]))
+    assert failure.kind == "spec_exists"
+    assert failure.message.startswith(SPEC_PATH.replace("0000", "0001"))
+    assert later_path(root).read_bytes() == first
+
+
+def test_invalid_request_of_a_later_round_comes_before_no_data_root(root):
+    source = FailingSource()
+    assert refused_later(root, request(round=2), source).kind == "invalid_request"
+    body = request(techniques=[])
+    assert refused_later(root, body, source).kind == "invalid_request"
+    assert source.calls == 0
+
+
+def test_objective_comes_before_catalog_unusable(root, tmp_path, monkeypatch):
+    run(root, instance_document(objective=None))
+    monkeypatch.setattr(catalog, "SOURCE", tmp_path / "missing")
+    body = later(techniques=["tiling"])
+    assert refused_later(root, body).kind == "objective_not_stated"
+
+
+def test_technique_unknown_comes_before_feedback_unreadable(root, shelf):
+    run(root)
+    place(spec_path(root), b"not json")
+    body = later(techniques=["fusion"])
+    assert refused_later(root, body).kind == "technique_unknown"
+
+
+def test_feedback_unreadable_comes_before_spec_invalid(root, monkeypatch):
+    run(root)
+    place(spec_path(root), b"not json")
+    original = spec_tool._compose
+
+    def compose(run_id, stated):
+        return original(run_id, stated) | {"schema_version": 3}
+
+    monkeypatch.setattr(spec_tool, "_compose", compose)
+    assert refused_later(root, later()).kind == "feedback_unreadable"
+    spec_path(root).unlink()
+    failure = refused_later(root, later())
+    assert failure.kind == "spec_invalid"
+    assert failure.message.startswith(SPEC_PATH.replace("0000", "0001"))
+
+
+def test_spec_invalid_of_a_later_round_comes_before_spec_exists(root, monkeypatch):
+    run(root)
+    write(Source(root), later())
+    monkeypatch.setattr(spec_tool, "_encoded", lambda document: b"{")
+    assert refused_later(root, later()).kind == "spec_invalid"
+
+
+def test_a_later_round_reads_no_state_or_selection_file(logged, shelf, monkeypatch):
+    run(logged)
+    passed_round_0(logged)
+    place(layout.run_file(logged, RUN, "STATE.json"), b"not json")
+    hypotheses = layout.hypothesis_record(logged, RUN, 1)
+    place(hypotheses, b"not json")
+    place(hypotheses.parent / "decision.md", b"not markdown")
+    opened = []
+    for module, name in ((io, "open"), (os, "open")):
+        original = getattr(module, name)
+
+        def spy(path, *args, original=original, **kwargs):
+            opened.append(Path(os.fsdecode(path)).name)
+            return original(path, *args, **kwargs)
+
+        monkeypatch.setattr(module, name, spy)
+    source = Source(logged)
+    assert write(source, later(techniques=["tiling"])) == {}
+    monkeypatch.undo()
+    assert source.calls == 1
+    assert "instance.json" in opened
+    assert "events.ndjson" in opened
+    assert "tiling.md" in opened
+    for name in ("STATE.json", "hypotheses.json", "decision.md"):
+        assert name not in opened
+    assert written(logged)["id"]["round"] == 1

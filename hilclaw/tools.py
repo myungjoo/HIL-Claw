@@ -214,6 +214,7 @@ def default_registry(data_root_source):
     which it makes the write that ends its round. It holds ``spec.write``
     (:func:`hilclaw.spec_tool.definition`, ADR-0138 decision 3), with which
     the coder-driver has the spec of the first coder call of round 0 written,
+    and that of the first coder call of a round >= 1 (ADR-0151 decision 3),
     and ``timings.compare`` (:func:`hilclaw.timings_tool.definition`,
     ADR-0140 decision 3), with which the evaluator gets the ``difference`` of
     a comparison of two attempts at one point. It holds ``coder.run``
