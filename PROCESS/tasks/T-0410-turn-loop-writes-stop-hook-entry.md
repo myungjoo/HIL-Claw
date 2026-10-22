@@ -2,7 +2,7 @@
 id: T-0410
 title: Have the turn loop take the run id and write the Stop entry of ADR-0148 into the session's .claude/settings.json, and have turn_start pass its run id (ADR-0148 code slice 2; PLAN P2-4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-11, NFR-1, OD-18, "PLAN P2-4"]
 dependsOn: [T-0408, T-0409]
@@ -130,3 +130,12 @@ ADR-0148 (landed as `4dbe250`, T-0408) adopts a `Stop` command hook for the turn
 - (planner) With this slice, ADR-0148's code slices are done. The next P2-4 parts (`PostToolUse` journaling, the rest of OD-18) need their own ADR under DRIVER §9; gates need OD-3, which is owner-only.
 
 ## Result
+
+- **DONE.** PR #240 squash-merged as `2b05028` (branch `claude/T-0410-turn-loop-stop-hook-entry` deleted) after 2 review rounds (dev-reviewer, opus): round 1 Approve with 3 docstring Nits (fixed in `1b50955`) and 2 Info; round 2 Approve, no open findings.
+- **CI** on the final head `1b50955`: all green — `C gate (clang)`, `Python gate (3.11)`, `Python gate (3.14)`, `Test presence (hilclaw)`, `sh gate (shellcheck)`, `Coverage gate (hilclaw)`; run https://github.com/myungjoo/HIL-Claw/actions/runs/39798786971.
+- **Coverage** (`Coverage gate (hilclaw)`, final head): lines 99% (9044 statements, 36 missed); functions 871/871 = 100%. On `origin/main` (`cf1c594`, CI run 39791473431): 99% (9037/36), 870/870.
+- **pytest counts**: `origin/main` (CI, Linux): 27049 passed, 48 skipped; final head (CI, Linux): 27083 passed, 48 skipped. Local Windows on the branch: 26278 passed, 853 skipped (session-directory tests skip under the default temp dir because `C:\Users\myung\AppData\Local\Temp` holds a `claude.md`; the touched test files were also run with `--basetemp` outside it: 392 passed, 4 skipped, the skips being symbolic-link and one marker case). `ruff check .` and `ruff format --check .` clean.
+- **Diff**: only `touchesFiles`; nothing under `.claude`, `.github`, `orchestration`, `ARCHITECTURE`; all touched files `i/lf`. Non-test diff: 3 files, 114 lines changed (+79/-35 in `hilclaw/`), within the D4 cap.
+- **Provisional choices** (criterion 12): `STOP_HOOK_TIMEOUT_S = 60` (new public constant; the hook runs `git` a few times on the data checkout, item (lxv), and a timeout only lets the stop through, so it is longer than the 30 s `HOOK_TIMEOUT_S` and well below 600 s); the run id is checked with `layout.check_run_id` right after the two callable checks, before the prompt, data-root, keep-out and place checks; `_entry` split into `_hook(timeout, *args)` (type, command, args, timeout) and `_entry` (adds `onFailure`, wraps with `matcher`), so the `PreToolUse` entries are byte-identical; `hooks` member order is `PreToolUse`, then `Stop`.
+- **Language**: Python (standard library only), as the existing modules it changes.
+- **Follow-ups**: none new. The planner's follow-up stands: ADR-0148's code slices are done; further P2-4 parts (`PostToolUse` journaling, the rest of OD-18) need their own ADR (DRIVER §9), gates need OD-3 (owner-only).
