@@ -10,12 +10,12 @@ tests write, never against a real one (D16).
 source once (by default :func:`hilclaw.data_root_source.configured`, so
 ``hilclaw.config``), then calls :func:`hilclaw.turn_loop.run` once with
 :func:`hilclaw.turn_definition.put` (its default ``SOURCE``), the prompt
-:func:`prompt` builds from the run id, that data root, the same run id, which
-the loop writes into the ``Stop`` hook's arguments (ADR-0148 decision 4), and
-the given ``parent``. It returns when the loop returns and tells the starter
-why. Its order: the run id, standard output, the data root and the loop's
-checks; the first step 1; the self-check, only when that step answered a turn
-due; the first turn.
+:func:`prompt` builds from the run id, that data root, the given ``parent``
+and, as ``run_id``, the same run id, which the loop writes into the ``Stop``
+hook's arguments (ADR-0148 decision 4). It returns when the loop returns and
+tells the starter why. Its order: the run id, standard output, the data root
+and the loop's checks; the first step 1; the self-check, only when that step
+answered a turn due; the first turn.
 
 **The self-check** (ADR-0125): :func:`hilclaw.selfcheck.check` runs in this
 process, at most once per start, with the start's data root as its

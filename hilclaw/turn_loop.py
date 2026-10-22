@@ -123,21 +123,20 @@ OD-19's or OD-14's.
   :data:`hilclaw.caller_check.TOOL_PREFIX`; the ``^`` both anchors it and
   holds it outside the exact-match set, so it is read as a regular
   expression. The second matcher joins the spending tools with ``|``, all of
-  whose characters are in the exact-match set. Both timeouts are
-  :data:`HOOK_TIMEOUT_S`, 30 seconds: an interpreter start and a read of the
-  agent files or of two run files take well under that, and with
+  whose characters are in the exact-match set. Both ``PreToolUse`` timeouts
+  are :data:`HOOK_TIMEOUT_S`, 30 seconds: an interpreter start and a read of
+  the agent files or of two run files take well under that, and with
   ``onFailure`` a hook that hangs blocks the call within it. The ``Stop``
   timeout is :data:`STOP_HOOK_TIMEOUT_S`, 60 seconds: that hook runs ``git``
   a few times on the data checkout (ADR-0148 item (lxv)), and one that times
   out only lets the stop through. The members of ``hooks`` are written
-  ``PreToolUse`` first, then ``Stop``. A ``data_root``
-  whose real path holds one of the path placeholders that Claude Code
-  substitutes into exec-form ``args`` (``${CLAUDE_PROJECT_DIR}``,
-  ``${CLAUDE_PLUGIN_ROOT}``, ``${CLAUDE_PLUGIN_DATA}``) is refused, since the
-  hook would read another root than the server's. The
-  text is built once per loop, as the server configuration is, and written
-  with exclusive creation in every turn. A missing ``.claude`` is made as a
-  plain directory.
+  ``PreToolUse`` first, then ``Stop``. A ``data_root`` whose real path holds
+  one of the path placeholders that Claude Code substitutes into exec-form
+  ``args`` (``${CLAUDE_PROJECT_DIR}``, ``${CLAUDE_PLUGIN_ROOT}``,
+  ``${CLAUDE_PLUGIN_DATA}``) is refused, since the hooks would read another
+  root than the server's. The text is built once per loop, as the server
+  configuration is, and written with exclusive creation in every turn. A
+  missing ``.claude`` is made as a plain directory.
 - *The prompt* is one line of ASCII letters, digits, spaces, ``.``, ``,``,
   ``_`` and ``-``, not beginning with ``-``: on Windows the ``claude`` found
   may be a command script, whose arguments pass through the command
@@ -470,8 +469,7 @@ def run(
     session directories are made in (``None``: the temporary directory of the
     system) and ``keep_out`` a sequence of further directories it must not
     meet. Returns a tuple of :class:`Turn`, one per session started, in
-    order. Raises as
-    the module docstring lists under "What is raised".
+    order. Raises as the module docstring lists under "What is raised".
     """
     for name, value in (
         ("further_turn", further_turn),
