@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0399",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:79c8a87f-1",
-    "acquiredAt": "2026-10-22T02:22:16Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -516,18 +512,26 @@
       "question": "ADR-0144(첫 사례의 cpu_standin 빌드·프로세스를 담는 컨테이너; OD-14 하위 질문 ① 일부; T-0395, main bba593f)가 런타임 인수 항목 (xlviii)~(lii)를 남겼다 — C-7의 각 머신 종류에서 Docker로, 코드 slice가 착지한 뒤 확인한다. (xlviii) 클라이언트가 닿는 daemon이 그 operation을 돌리는 머신의 것인가, 빌드 디렉토리를 컨테이너에 줄 수 있는가(Docker Desktop은 VM 경유), 그것이 컨테이너 안에서 쓸 수 있는 유일한 호스트 경로이고 어느 checkout의 경로도 보이지 않는가. (xlix) 안의 프로세스가 호스트·LAN·인터넷의 어떤 주소에도 닿지 않는가. (l) 안의 프로세스가 빌드 디렉토리에 다른 사용자·그룹 소유 파일, 그런 소유자의 setuid/setgid 파일, device node를 만들 수 없는가; 시간 상한에서 강제 제거한 뒤 그 빌드·프로세스의 프로세스가 남지 않고 컨테이너가 뒤늦게 만들어지지 않는가; 그 뒤 instance를 돌리는 사용자가 빌드 디렉토리를 지울 수 있는가. (li) 컨테이너 시작·제거가 빌드·프로세스에 수 초 이하만 더하는가, pull policy `never`가 없는 이미지를 pull 없이 오류로 만드는가. (lii) 클라이언트가 컴파일러·프로그램의 exit status와 출력 바이트를 바꾸지 않고 넘기는가, 클라이언트가 스스로 더하는 status와 텍스트는 무엇인가. 선택지: (a) 오너가 수동 확인 (b) 런타임 자체 점검 코드(P1-9 계열)로 확인 (c) 보류. D16에 따라 드라이버 task로는 닫지 않는다. 막히는 것: 없음(T-0395는 DONE; 코드 slice도 막히지 않음). 막히지 않는 것: ADR-0144 코드 slice (1)~(4). 실패로 드러나면 ADR-0144 결정 2·3(호스트 경로 하나, 클라이언트 경유 시작)을 다시 봐야 한다.",
       "askedAt": "2026-10-21T11:28:06Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0060",
+      "taskId": "T-0399",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0145(ADR-0144 컨테이너 안에서 첫 사례 cpu_standin 타이밍 run의 타이밍·메모리 수치를 얻는 방법; OD-14 하위 질문 ① (마)의 측정 절반; T-0399, main a0601f4)가 런타임 인수 항목 (liii)~(lv)를 남겼다 — C-7의 각 머신 종류에서 Docker로, waiter 코드 slice가 착지한 뒤 확인한다. (liii) waiter가 init 없는 새 PID namespace의 PID 1인가; dumpable을 끈 뒤 같은 사용자의 프로세스가 시그널로 끝내거나 /proc의 디스크립터·메모리를 열 수 없는가; W4 뒤 다른 프로세스가 남지 않는가; 클라이언트가 타이밍 프로세스의 모든 바이트 뒤에 waiter의 마지막 줄을 넘기는가. (liv) native Linux, macOS·Windows의 Docker Desktop, WSL에서 waiter가 KiB 단위의 양수 ru_maxrss를 돌려주는가; 그곳의 바닥값과 하네스 몫의 크기. (lv) 타이밍 빌드와 waiter 빌드가 합쳐 수 초 안에 끝나 B_t(60 s)에 드는가. 선택지: (a) 오너가 수동 확인 (b) 런타임 자체 점검 코드(P1-9 계열)로 확인 (c) 보류. D16에 따라 드라이버 task로는 닫지 않는다. 막히는 것: 없음(T-0399는 DONE; 코드 slice (5)·(6)도 막히지 않음). 막히지 않는 것: ADR-0145 코드 slice. 실패로 드러나면 ADR-0145 결정(waiter를 PID 1로 두는 방식, ru_maxrss 단위 규칙, B_t 공유)을 다시 봐야 한다.",
+      "askedAt": "2026-10-22T03:21:01Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 413,
-    "tasksDone": 385,
+    "iterations": 414,
+    "tasksDone": 386,
     "tasksBlocked": 28,
-    "reviewRoundsTotal": 1378
+    "reviewRoundsTotal": 1385
   },
   "lastIteration": {
-    "at": "2026-10-22T02:04:54Z",
-    "owner": "AKIHA:bffd4cbe-2",
-    "taskId": "T-0398",
+    "at": "2026-10-22T03:21:01Z",
+    "owner": "AKIHA:79c8a87f-1",
+    "taskId": "T-0399",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

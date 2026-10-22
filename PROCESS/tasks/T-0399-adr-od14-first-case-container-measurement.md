@@ -2,7 +2,7 @@
 id: T-0399
 title: Write ADR-0145 - how the timings and the memory figure of a first-case cpu_standin timing run are taken inside the container of ADR-0144, and whether they are those of ADR-0009 and ADR-0052 (OD-14 sub-question 1 part (ma), measurement half; no tool answer, kind or data-plane member)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [NFR-4, NFR-3, C-7, FR-10, OD-14, OD-13, OD-18, "#5 A-7"]
 dependsOn: [T-0395, T-0396, T-0397, T-0398]
@@ -90,3 +90,14 @@ All work is documents and documentation reading. No container runtime, compiler,
 - After this lands: the code slice(s) its Consequences names (planner, code mode, stub container runtime only — D16), if any can be made before HQ-0021 and HQ-0026 are answered.
 
 ## Result
+
+- Landed: main a0601f4 (document mode, direct push), `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0399`. Branch claude/T-0399-od14-first-case-container-measurement deleted (local and remote).
+- Record: ARCHITECTURE/decisions/ADR-0145-od14-first-case-container-measurement.md — OD-14 sub-question 1 (ma), measurement half, for the runs of ADR-0144 decision 1. (i) The timing samples taken in the container are those of ADR-0009 unchanged. On Docker Desktop they are taken in a VM guest, which is the owner's case K3; the record does not produce the input of ADR-0103's class ground (OD-13 11 (ga) stays open). (ii) The memory figure is read by a C program of the harness (the "waiter", W0-W6). The waiter is process 1 of the timing process's container, refuses to run otherwise and makes itself not dumpable. It runs the timing executable, keeps the ru_maxrss of the wait, then kills and reaps every other process. Finally it writes a line feed and one last line. The operation takes the last line, returns the bytes before it as the report, and applies the Linux unit rule, not the host's sys.platform. The waiter's build shares B_t (60 s) with the timing build. The figure is ADR-0052 decision 3's.
+- Registers: Requirements OD-14 row (확정분 + 잔여); OpenDecisionProposals § OD-14 (채택분 line, sub-question 1 status) and the 1 (ma) pointer sentence in § OD-13 sub-question 10; OD-13 row unchanged. StandardScenarios re-check: S0, S1, S2, S7, S8, S9, no change, no gap. OD-14 and OD-13 keep their status words.
+- §9 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6331854598 (7-day objection window).
+- Runtime acceptance items (recorded as HQ-0060, reason runtime-acceptance): (liii) the waiter is PID 1 of a new PID namespace with no init before it; a same-user process can neither end it by a signal nor open its /proc descriptors or memory once it is not dumpable; after W4 no other process is left; the client hands on the waiter's last line after every byte of the timing process. (liv) the waiter returns a positive ru_maxrss in KiB on native Linux, Docker Desktop on macOS and Windows, and under WSL; the size of the floor and of the harness share there. (lv) the timing build and the waiter's build together take seconds and fit B_t.
+- Follow-ups (Low findings of review round 7, left because an 8th round is not allowed; a small doc-correction task):
+  (a) decision 5 says no way is known for a kernel to make W5 fail, but prlimit(2) lets a same-uid process lower the waiter's RLIMIT_AS/RLIMIT_STACK. Name that path; require W3-W5 to allocate no memory; add it to (liii).
+  (b) because the waiter's build comes after the timing build and they share B_t, a slow-compiling kernel can push the call into an open OD-18 sub-question 19 situation. Either build the waiter first (a slow kernel compile is then a plain build-time-limit broken result), or state the reason for the order and extend the decision 5 caution to that case.
+  (c) the F3 runmetrics summary drops the documented way to gather stats when a container stops (no effect on the conclusion).
+  Code slices for the planner: (5) the waiter, tested only inside a Linux PID namespace on CI; (6) the operation's reading of the last line; then ADR-0144 slice (4), which still waits on HQ-0021 and HQ-0026.
