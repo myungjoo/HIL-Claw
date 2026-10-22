@@ -41,14 +41,22 @@ any value the caller had, and ``CLAUDE_AUTO_BACKGROUND_TASKS`` is removed.
 **Decided by ADR-0146** and only applied here: after the definition is put,
 every turn writes the session directory's ``.claude/settings.json`` with one
 ``hooks`` member and nothing else, no ``permissions`` and no ``env``
-(decision 4; ADR-0139 decision 8). It holds one ``PreToolUse`` entry whose
-matcher is a regular expression anchored to
+(decision 4; ADR-0139 decision 8). The first of its two ``PreToolUse``
+entries is one whose matcher is a regular expression anchored to
 :data:`hilclaw.caller_check.TOOL_PREFIX` and whose one hook is a ``command``
 hook in exec form: ``command`` the absolute path of :data:`sys.executable`,
 ``args`` ``-I``, ``-c``, :data:`hilclaw.caller_check.START` and the directory
 holding this package, ``"onFailure": "block"`` and a ``timeout`` well below
 the default. A definition that brings its own ``.claude/settings.json`` is
 refused rather than merged or overwritten.
+
+**Decided by ADR-0147** and only applied here: the second ``PreToolUse``
+entry, in the same exec form with ``"onFailure": "block"``, has a matcher that
+is the exact list of :data:`hilclaw.budget_check.SPENDING_TOOLS` and runs
+:data:`hilclaw.budget_check.START` with the directory holding this package and,
+as the last ``args`` element, the same real absolute path of ``data_root``
+that the server entry's ``env`` holds (decision 4). The settings still hold
+no ``env``.
 
 **The command line** is :data:`PROGRAM`, :data:`OPT_PRINT` with the caller's
 prompt, :data:`OPT_MCP_CONFIG` with :data:`CONFIG_FILE` and
@@ -101,9 +109,15 @@ OD-19's or OD-14's.
 - *The hook settings*: the matcher is ``^`` followed by
   :data:`hilclaw.caller_check.TOOL_PREFIX`; the ``^`` both anchors it and
   holds it outside the exact-match set, so it is read as a regular
-  expression. The timeout is :data:`HOOK_TIMEOUT_S`, 30 seconds: an
-  interpreter start and one read of the agent files take well under that,
-  and with ``onFailure`` a hook that hangs blocks the call within it. The
+  expression. The second matcher joins the spending tools with ``|``, all of
+  whose characters are in the exact-match set. Both timeouts are
+  :data:`HOOK_TIMEOUT_S`, 30 seconds: an interpreter start and a read of the
+  agent files or of two run files take well under that, and with
+  ``onFailure`` a hook that hangs blocks the call within it. A ``data_root``
+  whose real path holds one of the path placeholders that Claude Code
+  substitutes into exec-form ``args`` (``${CLAUDE_PROJECT_DIR}``,
+  ``${CLAUDE_PLUGIN_ROOT}``, ``${CLAUDE_PLUGIN_DATA}``) is refused, since the
+  hook would read another root than the server's. The
   text is built once per loop, as the server configuration is, and written
   with exclusive creation in every turn. A missing ``.claude`` is made as a
   plain directory.
@@ -120,7 +134,9 @@ OD-19's or OD-14's.
 **What is raised**, each before the first turn unless said otherwise:
 :class:`TypeError` or :class:`ValueError` for a bad argument;
 :class:`ValueError` with a fixed text for a refused place, also before a later
-turn; :class:`RuntimeError` when the interpreter does not know its own path;
+turn; :class:`ValueError` with a fixed text for a ``data_root`` holding a path
+placeholder; :class:`RuntimeError` when the interpreter does not know its own
+path;
 :class:`TypeError` for an answer of ``further_turn`` that is not a ``bool``;
 :class:`ValueError` when ``put_definition`` made :data:`CONFIG_FILE`;
 :class:`ValueError` with a fixed text when the session directory's
@@ -153,9 +169,11 @@ the package; (v) a ``-p`` turn session exits after its last reply, so the wait
 ends; (vi) the exit status tells a session that ended well from a failed one;
 (ADR-0139 Consequences) (xxxiv)-(xl), listed in
 :mod:`hilclaw.turn_permissions`; (ADR-0141 Consequences) (xli) and
-(xlii); and (ADR-0146 Consequences) (lvi)-(lx), listed in
-:mod:`hilclaw.caller_check`. The stub shows nothing of a real session's
-reading of the environment.
+(xlii); (ADR-0146 Consequences) (lvi)-(lx), listed in
+:mod:`hilclaw.caller_check`, of which (lvi) and (lviii)-(lx) apply to the
+second entry too and (lix) to its data-root argument; and (ADR-0147
+Consequences) (lxi) and (lxii), listed in :mod:`hilclaw.budget_check`. The
+stub shows nothing of a real session's reading of the environment.
 """
 
 import json
@@ -169,7 +187,14 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
-from hilclaw import caller_check, config, mcp_front, standin_image, turn_permissions
+from hilclaw import (
+    budget_check,
+    caller_check,
+    config,
+    mcp_front,
+    standin_image,
+    turn_permissions,
+)
 from hilclaw import checkout_boundary as _checkout_boundary
 
 PROGRAM = "claude"
@@ -203,6 +228,12 @@ _MARKER_ABOVE = (
 _CONFIG_TAKEN = "the definition holds the name of the server configuration file"
 _SETTINGS_TAKEN = "the definition holds the hook settings file"
 _NOT_PLAIN = "the session directory's .claude is no plain directory"
+_PLACEHOLDERS = (
+    "${CLAUDE_PROJECT_DIR}",
+    "${CLAUDE_PLUGIN_ROOT}",
+    "${CLAUDE_PLUGIN_DATA}",
+)
+_PLACEHOLDER_HELD = "data_root holds a hook path placeholder"
 
 
 class ClaudeNotFoundError(LookupError):
@@ -265,21 +296,28 @@ def _config_text(root):
     return json.dumps({SERVERS_MEMBER: {mcp_front.SERVER_NAME: entry}})
 
 
-def _settings_text():
+def _entry(matcher, *args):
     hook = {
         "type": "command",
         "command": os.path.abspath(sys.executable),
-        "args": [
-            "-I",
-            "-c",
-            caller_check.START,
-            _checkout_boundary.PACKAGE_DIRECTORY,
-        ],
+        "args": ["-I", "-c", *args],
         "timeout": HOOK_TIMEOUT_S,
         "onFailure": "block",
     }
-    entry = {"matcher": "^" + caller_check.TOOL_PREFIX, "hooks": [hook]}
-    return json.dumps({"hooks": {caller_check.EVENT: [entry]}})
+    return {"matcher": matcher, "hooks": [hook]}
+
+
+def _settings_text(root):
+    if any(placeholder in root for placeholder in _PLACEHOLDERS):
+        raise ValueError(_PLACEHOLDER_HELD)
+    package = _checkout_boundary.PACKAGE_DIRECTORY
+    entries = [
+        _entry("^" + caller_check.TOOL_PREFIX, caller_check.START, package),
+        _entry(
+            "|".join(budget_check.SPENDING_TOOLS), budget_check.START, package, root
+        ),
+    ]
+    return json.dumps({"hooks": {caller_check.EVENT: entries}})
 
 
 def _write_settings(directory, text):
@@ -403,7 +441,7 @@ def run(*, further_turn, put_definition, prompt, data_root, parent=None, keep_ou
     _checkout_boundary.refuse_one_path(keep_out)
     roots = (root, *(_real(path, "a directory of keep_out") for path in keep_out))
     text = _config_text(root)
-    settings = _settings_text()
+    settings = _settings_text(root)
     place = _real(tempfile.gettempdir() if parent is None else parent, "the parent")
     if not os.path.isdir(place):
         raise ValueError("the parent must be an existing directory")

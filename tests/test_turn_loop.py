@@ -9,14 +9,19 @@ from pathlib import Path
 import pytest
 
 from hilclaw import (
+    budget_check,
     caller_check,
     checkout_boundary,
     config,
+    keys,
     mcp_front,
     standin_image,
     turn_loop,
     turn_permissions,
 )
+from hilclaw.instance_file import write as write_instance
+from hilclaw.journal import EMPTY
+from hilclaw.run_state_file import replace as replace_state
 from hilclaw.turn_loop import (
     CONFIG_FILE,
     MARKERS,
@@ -55,7 +60,7 @@ BYPASS = (
 )
 
 STUB = r"""
-import json, os, sys
+import json, os, re, sys
 from pathlib import Path
 
 here = Path(__file__).parent
@@ -77,23 +82,47 @@ settings = (
     settings_file.read_text(encoding="utf-8") if settings_file.is_file() else None
 )
 claude_listing = sorted(os.listdir(".claude")) if os.path.isdir(".claude") else None
+EXACT = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- ,|")
+
+
+def matches(matcher, name):
+    if matcher in ("", "*"):
+        return True
+    if set(matcher) <= EXACT:
+        return name in [part.strip() for part in re.split(r"[|,]", matcher)]
+    return re.search(matcher, name) is not None
+
+
 hooks = None
 if scenario["hook_inputs"] and settings is not None:
     import subprocess
 
-    handler = json.loads(settings)["hooks"]["PreToolUse"][0]["hooks"][0]
+    entries = json.loads(settings)["hooks"]["PreToolUse"]
     hook_env = {**os.environ, "CLAUDE_PROJECT_DIR": os.getcwd()}
     hooks = []
     for hook_input in scenario["hook_inputs"]:
-        done = subprocess.run(
-            [handler["command"], *handler["args"]],
-            input=json.dumps(hook_input).encode("utf-8"),
-            env=hook_env,
-            capture_output=True,
-            timeout=120,
-            check=False,
-        )
-        hooks.append({"status": done.returncode, "stdout": done.stdout.decode()})
+        ran = []
+        for index, entry in enumerate(entries):
+            if not matches(entry.get("matcher", ""), hook_input["tool_name"]):
+                continue
+            for handler in entry["hooks"]:
+                done = subprocess.run(
+                    [handler["command"], *handler["args"]],
+                    input=json.dumps(hook_input).encode("utf-8"),
+                    env=hook_env,
+                    capture_output=True,
+                    timeout=120,
+                    check=False,
+                )
+                ran.append(
+                    {
+                        "entry": index,
+                        "status": done.returncode,
+                        "stdout": done.stdout.decode(),
+                        "stderr": done.stderr.decode(),
+                    }
+                )
+        hooks.append(ran)
 with (here / "started.ndjson").open("a", encoding="utf-8") as record:
     entry = {
         "argv": argv,
@@ -302,7 +331,7 @@ def test_fresh_directory_per_turn(stub, data_root, parent):
         assert cwd.parent == parent.resolve()
         assert call["listing"] == sorted([CONFIG_FILE, DEFINITION, ".claude"])
         assert call["contents"][DEFINITION] == "round manager"
-        assert call["settings"] == settings_text()
+        assert call["settings"] == settings_text(data_root)
         assert not cwd.exists()
     assert list(parent.iterdir()) == []
 
@@ -976,28 +1005,39 @@ NOT_PLAIN = "the session directory's .claude is no plain directory"
 EXACT_MATCH = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- ,|")
 
 
-def expected_settings():
-    hook = {
-        "type": "command",
-        "command": os.path.abspath(sys.executable),
-        "args": [
-            "-I",
-            "-c",
-            caller_check.START,
-            checkout_boundary.PACKAGE_DIRECTORY,
-        ],
-        "timeout": turn_loop.HOOK_TIMEOUT_S,
-        "onFailure": "block",
+def expected_settings(root):
+    def entry(matcher, *args):
+        hook = {
+            "type": "command",
+            "command": os.path.abspath(sys.executable),
+            "args": ["-I", "-c", *args],
+            "timeout": turn_loop.HOOK_TIMEOUT_S,
+            "onFailure": "block",
+        }
+        return {"matcher": matcher, "hooks": [hook]}
+
+    package = checkout_boundary.PACKAGE_DIRECTORY
+    real = os.path.realpath(root)
+    return {
+        "hooks": {
+            "PreToolUse": [
+                entry("^" + caller_check.TOOL_PREFIX, caller_check.START, package),
+                entry(
+                    "|".join(budget_check.SPENDING_TOOLS),
+                    budget_check.START,
+                    package,
+                    real,
+                ),
+            ]
+        }
     }
-    matcher = "^" + caller_check.TOOL_PREFIX
-    return {"hooks": {"PreToolUse": [{"matcher": matcher, "hooks": [hook]}]}}
 
 
-def settings_text():
-    return json.dumps(expected_settings())
+def settings_text(root):
+    return json.dumps(expected_settings(root))
 
 
-def hook_input(tool, agent=None):
+def hook_input(tool, agent=None, tool_input=None):
     payload = {
         "session_id": "session",
         "transcript_path": "transcript.jsonl",
@@ -1005,13 +1045,65 @@ def hook_input(tool, agent=None):
         "permission_mode": "dontAsk",
         "hook_event_name": "PreToolUse",
         "tool_name": tool,
-        "tool_input": {},
+        "tool_input": {} if tool_input is None else tool_input,
         "tool_use_id": "use",
     }
     if agent is not None:
         payload["agent_id"] = "agent-1"
         payload["agent_type"] = agent
     return payload
+
+
+RUN = "run-a"
+CODER = "mcp__hilclaw__coder_run"
+CHECK = "mcp__hilclaw__correctness_check"
+HW_PROFILE = {
+    "schema_version": 1,
+    "accelerator": "acc_a",
+    "revision": "rev 1",
+    "toolchain": {"cc": "1.0"},
+    "host": {"cpu": "cpu x", "os": "os y"},
+    "hw_source": "external",
+}
+OP = {
+    "schema_version": 1,
+    "kind": "gemm",
+    "shape": {"m": 4, "k": 4, "n": 4},
+    "dtype": "fp32",
+    "layout": "row_major",
+}
+
+
+def stated(root, round=0, others=None, budget=5):
+    document = {
+        "schema_version": 1,
+        "hw_profile": {
+            "key": keys.hw_profile_key(HW_PROFILE).name,
+            "record": HW_PROFILE,
+        },
+        "op_signature": {"key": keys.op_signature_key(OP).name, "record": OP},
+        "round_budget": budget,
+    }
+    write_instance(root, RUN, json.dumps(document).encode() + b"\n")
+    replace_state(root, RUN, round, EMPTY, others)
+
+
+SPENDER = f"---\nname: spender\ntools: Grep, {CODER}, {CHECK}\n---\n"
+
+
+def spending(tool=CHECK, run_id=RUN, agent="spender"):
+    tool_input = {} if run_id is None else {"run_id": run_id}
+    return hook_input(tool, agent=agent, tool_input=tool_input)
+
+
+def hooks_run(stub, data_root, parent, *inputs):
+    stub.install(hook_inputs=inputs)
+    go(data_root, parent, put_definition=put_agent(SPENDER))
+    return stub.calls()[0]["hooks"]
+
+
+def refusal(tool):
+    return budget_check.REFUSAL.format(f" of {tool}")
 
 
 def make_link(target, link):
@@ -1033,10 +1125,11 @@ def test_settings_content(stub, data_root, parent):
     go(data_root, parent)
     (call,) = stub.calls()
     settings = json.loads(call["settings"])
-    assert settings == expected_settings()
+    assert settings == expected_settings(data_root)
     assert set(settings) == {"hooks"}
-    (group,) = settings["hooks"]["PreToolUse"]
-    (hook,) = group["hooks"]
+    assert set(settings["hooks"]) == {"PreToolUse"}
+    first, second = settings["hooks"]["PreToolUse"]
+    (hook,) = first["hooks"]
     assert hook["command"] == os.path.abspath(sys.executable)
     assert os.path.isabs(hook["command"])
     server = call["config"][SERVERS_MEMBER][mcp_front.SERVER_NAME]
@@ -1044,8 +1137,23 @@ def test_settings_content(stub, data_root, parent):
     assert hook["args"][:2] == server["args"][:2]
     assert hook["args"][2] == caller_check.START
     assert hook["args"][3:] == server["args"][3:]
-    assert group["matcher"].startswith("^")
-    assert not set(group["matcher"]) <= EXACT_MATCH
+    assert first["matcher"].startswith("^")
+    assert not set(first["matcher"]) <= EXACT_MATCH
+    (budget,) = second["hooks"]
+    assert set(budget) == set(hook)
+    assert budget["command"] == hook["command"]
+    assert budget["args"][:2] == ["-I", "-c"]
+    assert budget["args"][2] == budget_check.START
+    assert budget["args"][3] == checkout_boundary.PACKAGE_DIRECTORY
+    root = budget["args"][4]
+    assert root == os.path.realpath(data_root)
+    assert root == server["env"][config.ENV_LOCAL_PATH]
+    assert os.path.isabs(root)
+    assert budget["onFailure"] == "block"
+    assert 0 < budget["timeout"] < 600
+    assert set(second["matcher"]) <= EXACT_MATCH
+    assert "^" not in second["matcher"]
+    assert second["matcher"].split("|") == list(budget_check.SPENDING_TOOLS)
 
 
 def test_settings_written_in_every_turn(stub, data_root, parent):
@@ -1053,8 +1161,71 @@ def test_settings_written_in_every_turn(stub, data_root, parent):
     go(data_root, parent, further_turn=Predicate(2))
     calls = stub.calls()
     assert len(calls) == 2
-    assert [call["settings"] for call in calls] == [settings_text()] * 2
+    assert [call["settings"] for call in calls] == [settings_text(data_root)] * 2
     assert list(parent.iterdir()) == []
+
+
+def budget_root(call):
+    return json.loads(call["settings"])["hooks"]["PreToolUse"][1]["hooks"][0]["args"][
+        -1
+    ]
+
+
+def test_settings_name_the_real_data_root_given_relative(stub, tmp_path, parent):
+    stub.install()
+    real = tmp_path / "real-data"
+    real.mkdir()
+    go(os.path.relpath(real, Path.cwd()), parent)
+    (call,) = stub.calls()
+    assert budget_root(call) == os.path.realpath(real)
+    assert budget_root(call) == server_env(call)[config.ENV_LOCAL_PATH]
+    assert os.path.isabs(budget_root(call))
+
+
+def test_settings_name_the_real_data_root_given_a_link(stub, tmp_path, parent):
+    stub.install()
+    real = tmp_path / "real-data"
+    real.mkdir()
+    link = tmp_path / "linked-data"
+    make_link(real, link)
+    go(link, parent)
+    (call,) = stub.calls()
+    assert os.path.normcase(budget_root(call)) == os.path.normcase(
+        os.path.realpath(real)
+    )
+    assert budget_root(call) == server_env(call)[config.ENV_LOCAL_PATH]
+
+
+@pytest.mark.parametrize(
+    "placeholder",
+    ["${CLAUDE_PROJECT_DIR}", "${CLAUDE_PLUGIN_ROOT}", "${CLAUDE_PLUGIN_DATA}"],
+)
+def test_data_root_holding_a_placeholder_refused(stub, tmp_path, parent, placeholder):
+    stub.install()
+    root = tmp_path / placeholder / "data"
+    root.mkdir(parents=True)
+    further = Predicate(1)
+    with pytest.raises(ValueError) as caught:
+        go(root, parent, further_turn=further)
+    assert str(caught.value) == "data_root holds a hook path placeholder"
+    assert further.seen == []
+    assert stub.calls() == []
+
+
+@pytest.mark.parametrize(
+    "name", ["$CLAUDE_PROJECT_DIR", "${OTHER}", "{CLAUDE_PLUGIN_ROOT}"]
+)
+def test_data_root_with_other_dollar_names_accepted(stub, tmp_path, parent, name):
+    stub.install()
+    root = tmp_path / name
+    root.mkdir()
+    go(root, parent)
+    (call,) = stub.calls()
+    assert budget_root(call) == os.path.realpath(root)
+
+
+def statuses(ran):
+    return [(hook["entry"], hook["status"]) for hook in ran]
 
 
 def test_hook_runs_as_written_for_the_main_session(stub, data_root, parent):
@@ -1066,11 +1237,11 @@ def test_hook_runs_as_written_for_the_main_session(stub, data_root, parent):
     )
     go(data_root, parent)
     (call,) = stub.calls()
-    assert [hook["status"] for hook in call["hooks"]] == [
-        caller_check.EXIT_PASS,
-        caller_check.EXIT_REFUSE,
+    assert [statuses(ran) for ran in call["hooks"]] == [
+        [(0, caller_check.EXIT_PASS)],
+        [(0, caller_check.EXIT_REFUSE)],
     ]
-    assert [hook["stdout"] for hook in call["hooks"]] == ["", ""]
+    assert [[hook["stdout"] for hook in ran] for ran in call["hooks"]] == [[""], [""]]
 
 
 def test_hook_runs_as_written_for_a_sub_agent(stub, data_root, parent):
@@ -1083,10 +1254,70 @@ def test_hook_runs_as_written_for_a_sub_agent(stub, data_root, parent):
     text = "---\nname: helper\ntools: Grep, mcp__hilclaw__verdicts_write\n---\n"
     go(data_root, parent, put_definition=put_agent(text))
     (call,) = stub.calls()
-    assert [hook["status"] for hook in call["hooks"]] == [
-        caller_check.EXIT_PASS,
-        caller_check.EXIT_REFUSE,
+    assert [statuses(ran) for ran in call["hooks"]] == [
+        [(0, caller_check.EXIT_PASS)],
+        [(0, caller_check.EXIT_REFUSE)],
     ]
+
+
+def test_spending_call_within_budget_passes_both(stub, data_root, parent):
+    stated(data_root, round=0, budget=5)
+    for ran in hooks_run(stub, data_root, parent, spending(CHECK), spending(CODER)):
+        first, second = ran
+        assert (first["entry"], first["status"], first["stdout"]) == (0, 0, "")
+        assert (second["entry"], second["status"], second["stdout"]) == (1, 0, "")
+        assert second["stderr"] == ""
+
+
+def refused_by_the_budget(ran, tool):
+    first, second = ran
+    assert (first["entry"], first["status"]) == (0, caller_check.EXIT_PASS)
+    assert (second["entry"], second["status"]) == (1, budget_check.EXIT_REFUSE)
+    assert second["stdout"] == ""
+    assert second["stderr"].splitlines() == [refusal(tool)]
+
+
+def test_spending_call_on_a_run_over_refused(stub, data_root, parent):
+    stated(data_root, round=1, others={"run_status": "over"}, budget=5)
+    (ran,) = hooks_run(stub, data_root, parent, spending(CHECK))
+    refused_by_the_budget(ran, CHECK)
+
+
+def test_spending_call_at_the_round_budget_refused(stub, data_root, parent):
+    stated(data_root, round=5, budget=5)
+    found = hooks_run(stub, data_root, parent, spending(CHECK), spending(CODER))
+    for ran, tool in zip(found, (CHECK, CODER), strict=True):
+        refused_by_the_budget(ran, tool)
+
+
+def test_spending_call_on_an_unreadable_run_refused(stub, data_root, parent):
+    (ran,) = hooks_run(stub, data_root, parent, spending(CHECK, run_id="run-missing"))
+    refused_by_the_budget(ran, CHECK)
+
+
+def test_spending_call_without_a_run_id_refused(stub, data_root, parent):
+    stated(data_root)
+    (ran,) = hooks_run(stub, data_root, parent, spending(CODER, run_id=None))
+    refused_by_the_budget(ran, CODER)
+
+
+def test_coder_run_of_a_sub_agent_on_a_run_over_refused(stub, data_root, parent):
+    stated(data_root, round=2, others={"run_status": "over"}, budget=5)
+    (ran,) = hooks_run(stub, data_root, parent, spending(CODER))
+    refused_by_the_budget(ran, CODER)
+
+
+def test_main_session_spending_call_meets_both_checks(stub, data_root, parent):
+    stated(data_root, round=0, budget=5)
+    (ran,) = hooks_run(stub, data_root, parent, spending(CHECK, agent=None))
+    assert statuses(ran) == [(0, caller_check.EXIT_REFUSE), (1, budget_check.EXIT_PASS)]
+
+
+def test_non_spending_call_runs_the_caller_check_only(stub, data_root, parent):
+    stated(data_root, round=2, others={"run_status": "over"}, budget=5)
+    read = hook_input("mcp__hilclaw__state_read", tool_input={"run_id": RUN})
+    (ran,) = hooks_run(stub, data_root, parent, read)
+    assert statuses(ran) == [(0, caller_check.EXIT_PASS)]
 
 
 def test_settings_beside_the_agents(stub, data_root, parent):
@@ -1095,7 +1326,7 @@ def test_settings_beside_the_agents(stub, data_root, parent):
     go(data_root, parent, put_definition=put_definition)
     (call,) = stub.calls()
     assert call["claude_listing"] == ["agents", turn_loop.SETTINGS_FILE]
-    assert call["settings"] == settings_text()
+    assert call["settings"] == settings_text(data_root)
     assert "Agent(helper)" in call["argv"][-1].split(",")
     assert not put_definition.made[0].exists()
 
