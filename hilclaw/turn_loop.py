@@ -132,7 +132,7 @@ session directory holds an agent file that
 :func:`hilclaw.turn_permissions.options` refuses, before the process starts;
 :class:`ClaudeNotFoundError` when no ``claude`` is found at a turn; and,
 unchanged, what ``further_turn``, ``put_definition``, making the directory,
-writing the file or starting the process raise. Whatever is raised after a
+writing the files or starting the process raise. Whatever is raised after a
 directory was made comes after its removal, and the :class:`Turn` records of
 the turns already run are lost to the caller then.
 

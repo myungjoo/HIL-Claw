@@ -1190,9 +1190,11 @@ def test_claude_a_junction_refused(stub, tmp_path, data_root, parent):
 
     target = tmp_path / "elsewhere"
     target.mkdir()
+    (target / "kept.txt").write_text("unchanged", encoding="utf-8")
 
     def make(session):
         _winapi.CreateJunction(str(target), str(session / ".claude"))
 
     refused(stub, data_root, parent, make, NOT_PLAIN)
-    assert list(target.iterdir()) == []
+    assert [path.name for path in target.iterdir()] == ["kept.txt"]
+    assert (target / "kept.txt").read_text(encoding="utf-8") == "unchanged"
