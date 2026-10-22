@@ -173,8 +173,15 @@ Whatever the documentation cannot show becomes a runtime acceptance item.
 
 ## Follow-ups
 
-- (executor fills in)
+- Code slice 1 (code mode): the stop-check program, a new module of `hilclaw/` and its test file (ADR-0148 decisions 4, 5; `commit_owed`, `check_run_id`; fixtures and temporary git repositories). It settles the test-rule ⑤ question again or raises it.
+- Code slice 2 (code mode): `hilclaw/turn_loop.py` gains the required keyword-only `run_id` and writes the `Stop` entry beside the two `PreToolUse` entries; `hilclaw/turn_start.py` passes its run id; docstrings of both; stub `claude` only.
+- Both slices are PLAN P2-4 work (a checklist item), so the D18 hold rule does not apply to them.
 
 ## Result
 
-- (executor fills in: commit, review rounds, ADR outcome, new runtime acceptance items, follow-ups)
+- **DONE.** ADR-0148 landed on `main` in document mode, squashed into one commit with trailers `Reviewed-by: reviewer agent (2 rounds, Approve)` and `Task: T-0408`.
+- **Review**: 2 rounds with a context-isolated `dev-reviewer`. Round 1: Approve with 2 Minor (SIGINT end; a timed-out `Stop` hook marked verified), 2 Nit, 2 Info, all addressed. Round 2: Approve, Info only.
+- **ADR outcome**: for the turn sessions of the runs of ADR-0120 decision 1, a `Stop` command hook refuses one stop of the main session (exit 2, one fixed line) while `hilclaw.run_commit.commit_owed` answers true and `stop_hook_active` is exactly `false`. The line asks the Round-Manager to call `run.commit` as "The end of a session" says, or to end at once after a prompt with no valid run id or a failed call. The hook never commits (W1, ADR-0143 alternative (c)); it lets the stop through whenever it cannot tell (`onFailure` has no effect on `Stop`). `SessionEnd`, `StopFailure` and a committing hook are rejected; no `SubagentStop` entry. The run id reaches the hook as an argument through a new required keyword-only parameter of `turn_loop.run`, the data root as in ADR-0147. It revises, without editing, ADR-0146 decision 4 as revised by ADR-0147 decision 4 (settings: two `PreToolUse` entries and one `Stop` entry), ADR-0123 decision 3 ("knows no run") and ADR-0127 decision 2 (whether a hook does anything with commits). OD-18 keeps `제안됨`; the OD-8 row is untouched.
+- **Register edits**: Requirements OD-18 row (one link and the 잔여 rewritten in place), OpenDecisionProposals § OD-18 ("제안으로 남는 부분" bullet rewritten in place, one 채택분 line), StandardScenarios "최근 재검사" line (S0, S1, S2 rechecked; no verdict change, no gap).
+- **New runtime acceptance items** (for one HQ, reason `runtime-acceptance`, non-blocking): (lxiii) the `Stop` entry of the written settings runs when the main session of a `-p` turn session finishes its reply, before the process exits, and not for sub-agents; (lxiv) exit 2 with one stderr line makes the `-p` main session go on with the line, and the following `Stop` carries `stop_hook_active` `true`, also after a tool call; (lxv) the hook process finds the server's `git`, `commit_owed` finishes within the hook's timeout, and a timed-out `Stop` hook lets the stop through; (lxvi) a live Round-Manager told the line calls `run_commit` once and ends, and at the two no-call ends ends at once.
+- No `claude` process was started (D16). Claude Code facts were read on 2026-10-22 from the hooks, headless and env-vars pages.
