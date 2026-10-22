@@ -216,6 +216,11 @@ def test_unknown_members_are_passed_over(root):
         b"1",
         payload() + b"{}",
         "{}".encode("utf-16"),
+        payload()[:-1] + b', "x": NaN}',
+        payload()[:-1] + b', "x": Infinity}',
+        payload()[:-1] + b', "x": -Infinity}',
+        payload(tool_input={"run_id": RUN, "n": 1})[:-1].replace(b'"n": 1', b'"n": NaN')
+        + b"}",
     ],
 )
 def test_input_that_is_not_one_utf8_json_object_is_refused(root, data):

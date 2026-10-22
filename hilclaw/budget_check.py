@@ -30,7 +30,8 @@ and fixture run directories only, never against a real session (D16).
 :data:`SPENDING_TOOLS`, :data:`START` and :data:`REFUSAL`; an argument list
 of other than exactly one element is refused; a relative data root is used
 as given, with no refusal beyond the table; an input object with a repeated
-key is refused; the line names the tool only when it is a spending tool.
+key or a ``NaN`` or ``Infinity`` constant is refused; the line names the
+tool only when it is a spending tool.
 
 This module is registered in no settings file here: the second ``PreToolUse``
 entry, its matcher built from :data:`SPENDING_TOOLS` and the data-root
@@ -80,8 +81,13 @@ def _unique(pairs):
     return found
 
 
+def _constant(_):
+    raise _Refused
+
+
 def _payload(data):
-    payload = json.loads(data.decode("utf-8"), object_pairs_hook=_unique)
+    text = data.decode("utf-8")
+    payload = json.loads(text, object_pairs_hook=_unique, parse_constant=_constant)
     if not isinstance(payload, dict):
         raise _Refused
     return payload
