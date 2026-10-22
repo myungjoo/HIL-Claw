@@ -17,9 +17,10 @@ exactly one of:
 
 - the value line ``waiter_max_rss_kib <v>`` (:data:`VALUE_KEYWORD`, one space,
   then ``<v>``), where ``<v>`` is the raw ``ru_maxrss`` of the waited child as
-  ``printf("%ld")`` writes a ``long``: an optional ``-``, then ``0`` or digits
-  that do not start with ``0``. The waiter writes it only where it was compiled
-  for Linux, so ``<v>`` is in KiB;
+  ``printf("%ld")`` writes a ``long`` of at most 64 bits: an optional ``-``,
+  then ``0`` or digits that do not start with ``0``, from -2**63 to
+  2**63 - 1. The waiter writes it only where it was compiled for Linux, so
+  ``<v>`` is in KiB;
 - the none line ``waiter_max_rss none`` (:data:`NONE_LINE`), written where the
   waiter was compiled for another system.
 
@@ -58,7 +59,8 @@ from hilclaw.harness import memory_ceiling
 VALUE_KEYWORD = b"waiter_max_rss_kib"
 NONE_LINE = b"waiter_max_rss none"
 
-_VALUE = re.compile(rb"0|-?[1-9][0-9]*")
+_VALUE = re.compile(rb"0|-?[1-9][0-9]{0,18}")
+_LONG_MIN, _LONG_MAX = -(2**63), 2**63 - 1
 
 
 class WaiterRead(NamedTuple):
@@ -94,8 +96,7 @@ def read(stdout):
     keyword, space, value = line.partition(b" ")
     if keyword != VALUE_KEYWORD or not space or not _VALUE.fullmatch(value):
         return None
-    try:
-        max_rss = int(value)
-    except ValueError:
+    max_rss = int(value)
+    if not _LONG_MIN <= max_rss <= _LONG_MAX:
         return None
     return WaiterRead(report, memory_ceiling.figure(max_rss, "linux"))

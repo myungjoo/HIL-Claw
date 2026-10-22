@@ -75,13 +75,20 @@ def test_large_value_without_loss():
     big = 9223372036854775807
     result = read(REPORT + b"\n" + value_line(str(big).encode()))
     assert result.memory_bytes == big * 1024
-    huge = 10**60 + 1
-    assert read(b"\n" + value_line(str(huge).encode())).memory_bytes == huge * 1024
 
 
-def test_digits_the_interpreter_refuses():
-    line = value_line(b"1" * 5000)
-    assert read(b"\n" + line) is None
+@pytest.mark.parametrize(
+    "value",
+    [
+        b"9223372036854775808",
+        b"-9223372036854775809",
+        b"9999999999999999999",
+        b"10000000000000000000",
+        b"1" * 5000,
+    ],
+)
+def test_value_outside_a_long(value):
+    assert read(b"\n" + value_line(value)) is None
 
 
 def test_figure_only_from_last_line():
