@@ -2,7 +2,7 @@
 id: T-0416
 title: Widen spec.write in hilclaw/spec_tool.py to the first coder call of a first-case round >= 1 - the request member techniques, check 7 through hilclaw.catalog, checks 8 to 10 through hilclaw.spec_feedback (ADR-0151 code slice 2; for PLAN P2-5)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-5, FR-17, OD-6, OD-23, "PLAN P2-5"]
 dependsOn: [T-0414, T-0415]
@@ -161,3 +161,10 @@ No data-plane member, file, kind value or version changes. The new kinds `catalo
 - (planner) None planned from ADR-0151 after this slice. The coder-driver's round >= 1 use of `spec.write` belongs to PLAN P2-1 with HQ-0048 and HQ-0053.
 
 ## Result
+
+- PR #243, squash-merged as 86074b2 (branch claude/T-0416-spec-write-later-round, deleted). Review: 2 rounds, both Approve. Round 1 gave one Minor (the duplicate check of techniques copied a list prefix per element; now a set) and two Nits (an ADR citation added to the `#:` doc of KIND_TECHNIQUE_NOT_APPLICABLE; the changed round-0 message below, accepted as is). Round 2 found nothing. CI green (Python 3.11/3.14, coverage, C, sh, test presence).
+- Language: Python. The tool's module and the modules it calls (catalog, spec_feedback) are already Python.
+- Change: hilclaw/spec_tool.py widened (request with `techniques`, required exactly when round >= 1; check 7 through catalog.technique and the APPLIES_TO rule; checks 8 to 10 through one spec_feedback.attempts call; round >= 1 document under rounds/<RRRR>/). New kinds catalog_unusable, technique_unknown, technique_not_applicable; KIND_FEEDBACK_UNREADABLE re-exported. Input schema: techniques {"type": "array"}, round minimum 0 / maximum MAX_INTEGER. hilclaw/catalog.py and hilclaw/tools.py: docstring sentences only.
+- One deviation from AC 1: a round-0 refusal for candidate or attempt other than 1 has a new message tail, because the old one ("only the spec of round 0") would now be false. Every other round-0 check, document, kind and message is unchanged.
+- Size: non-test +259/-102 lines in 3 files. Tests: tests/test_spec_tool.py +427. spec_tool.py 100% line coverage; hilclaw/ 97%. Full local suite: 26540 passed, 856 skipped.
+- Follow-ups: the module docstring of hilclaw/spec_feedback.py still says "Nothing calls this module until spec.write ... is widened", which is now false. That file was out of scope here; fix it in a later task that touches it, docstring only.
