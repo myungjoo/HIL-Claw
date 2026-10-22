@@ -252,6 +252,7 @@ def test_passes_the_callable_check_of_the_turn_loop(tmp_path):
             put_definition=put,
             prompt="",
             data_root=tmp_path,
+            run_id="run-a",
         )
 
 
@@ -275,6 +276,7 @@ def test_accepted_as_put_definition_by_the_turn_loop(tmp_path, session):
         put_definition=put,
         prompt="Run the next turn.",
         data_root=data,
+        run_id="run-a",
         parent=session,
     )
     assert found == ()

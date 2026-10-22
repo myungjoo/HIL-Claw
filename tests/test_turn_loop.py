@@ -13,9 +13,13 @@ from hilclaw import (
     caller_check,
     checkout_boundary,
     config,
+    key_records,
     keys,
+    layout,
     mcp_front,
+    run_commit,
     standin_image,
+    stop_check,
     turn_loop,
     turn_permissions,
 )
@@ -36,6 +40,7 @@ from hilclaw.turn_loop import (
 )
 
 PROMPT = "Run the next turn of the run, then stop."
+LOOP_RUN = "loop-run-7"
 DEFINITION = "definition.md"
 MEETS = "the session directory would meet a checkout"
 MARKER = "an instruction file or a foreign .claude lies above the session directory"
@@ -123,6 +128,34 @@ if scenario["hook_inputs"] and settings is not None:
                     }
                 )
         hooks.append(ran)
+stops = None
+if scenario["stop_inputs"] and settings is not None:
+    import subprocess
+
+    stop_entries = json.loads(settings)["hooks"].get("Stop", [])
+    hook_env = {**os.environ, "CLAUDE_PROJECT_DIR": os.getcwd()}
+    stops = []
+    for stop_input in scenario["stop_inputs"]:
+        ran = []
+        for index, entry in enumerate(stop_entries):
+            for handler in entry["hooks"]:
+                done = subprocess.run(
+                    [handler["command"], *handler["args"]],
+                    input=json.dumps(stop_input).encode("utf-8"),
+                    env=hook_env,
+                    capture_output=True,
+                    timeout=120,
+                    check=False,
+                )
+                ran.append(
+                    {
+                        "entry": index,
+                        "status": done.returncode,
+                        "stdout": done.stdout.decode(),
+                        "stderr": done.stderr.decode(),
+                    }
+                )
+        stops.append(ran)
 with (here / "started.ndjson").open("a", encoding="utf-8") as record:
     entry = {
         "argv": argv,
@@ -134,6 +167,7 @@ with (here / "started.ndjson").open("a", encoding="utf-8") as record:
         "settings": settings,
         "claude_listing": claude_listing,
         "hooks": hooks,
+        "stops": stops,
         "env": {name: os.environ.get(name) for name in scenario["names"]},
     }
     record.write(json.dumps(entry) + "\n")
@@ -147,13 +181,14 @@ class Stub:
     def __init__(self, directory):
         self.directory = directory
 
-    def install(self, statuses=(0,), hook_inputs=()):
+    def install(self, statuses=(0,), hook_inputs=(), stop_inputs=()):
         script = self.directory / "stub.py"
         script.write_text(STUB, encoding="utf-8")
         scenario = {
             "statuses": list(statuses),
             "names": RECORDED,
             "hook_inputs": list(hook_inputs),
+            "stop_inputs": list(stop_inputs),
         }
         (self.directory / "scenario.json").write_text(
             json.dumps(scenario), encoding="utf-8"
@@ -251,6 +286,7 @@ def go(data_root, parent, **changes):
         "put_definition": put(),
         "prompt": PROMPT,
         "data_root": data_root,
+        "run_id": LOOP_RUN,
         "parent": parent,
     }
     arguments.update(changes)
@@ -1005,7 +1041,7 @@ NOT_PLAIN = "the session directory's .claude is no plain directory"
 EXACT_MATCH = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- ,|")
 
 
-def expected_settings(root):
+def expected_settings(root, run_id=LOOP_RUN):
     def entry(matcher, *args):
         hook = {
             "type": "command",
@@ -1028,13 +1064,32 @@ def expected_settings(root):
                     package,
                     real,
                 ),
-            ]
+            ],
+            "Stop": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": os.path.abspath(sys.executable),
+                            "args": [
+                                "-I",
+                                "-c",
+                                stop_check.START,
+                                package,
+                                run_id,
+                                real,
+                            ],
+                            "timeout": turn_loop.STOP_HOOK_TIMEOUT_S,
+                        }
+                    ]
+                }
+            ],
         }
     }
 
 
-def settings_text(root):
-    return json.dumps(expected_settings(root))
+def settings_text(root, run_id=LOOP_RUN):
+    return json.dumps(expected_settings(root, run_id))
 
 
 def hook_input(tool, agent=None, tool_input=None):
@@ -1118,6 +1173,8 @@ def test_settings_names():
     assert turn_loop.SETTINGS_FILE == "settings.json"
     assert type(turn_loop.HOOK_TIMEOUT_S) is int
     assert 0 < turn_loop.HOOK_TIMEOUT_S < 600
+    assert type(turn_loop.STOP_HOOK_TIMEOUT_S) is int
+    assert 0 < turn_loop.STOP_HOOK_TIMEOUT_S < 600
 
 
 def test_settings_content(stub, data_root, parent):
@@ -1127,7 +1184,7 @@ def test_settings_content(stub, data_root, parent):
     settings = json.loads(call["settings"])
     assert settings == expected_settings(data_root)
     assert set(settings) == {"hooks"}
-    assert set(settings["hooks"]) == {"PreToolUse"}
+    assert list(settings["hooks"]) == ["PreToolUse", "Stop"]
     first, second = settings["hooks"]["PreToolUse"]
     (hook,) = first["hooks"]
     assert hook["command"] == os.path.abspath(sys.executable)
@@ -1171,6 +1228,10 @@ def budget_root(call):
     ]
 
 
+def stop_args(call):
+    return json.loads(call["settings"])["hooks"]["Stop"][0]["hooks"][0]["args"]
+
+
 def test_settings_name_the_real_data_root_given_relative(stub, tmp_path, parent):
     stub.install()
     real = tmp_path / "real-data"
@@ -1180,6 +1241,7 @@ def test_settings_name_the_real_data_root_given_relative(stub, tmp_path, parent)
     assert budget_root(call) == os.path.realpath(real)
     assert budget_root(call) == server_env(call)[config.ENV_LOCAL_PATH]
     assert os.path.isabs(budget_root(call))
+    assert stop_args(call)[-1] == budget_root(call)
 
 
 def test_settings_name_the_real_data_root_given_a_link(stub, tmp_path, parent):
@@ -1194,6 +1256,7 @@ def test_settings_name_the_real_data_root_given_a_link(stub, tmp_path, parent):
         os.path.realpath(real)
     )
     assert budget_root(call) == server_env(call)[config.ENV_LOCAL_PATH]
+    assert stop_args(call)[-1] == budget_root(call)
 
 
 @pytest.mark.parametrize(
@@ -1429,3 +1492,272 @@ def test_claude_a_junction_refused(stub, tmp_path, data_root, parent):
     refused(stub, data_root, parent, make, NOT_PLAIN)
     assert [path.name for path in target.iterdir()] == ["kept.txt"]
     assert (target / "kept.txt").read_text(encoding="utf-8") == "unchanged"
+
+
+def stop_entry(call):
+    return json.loads(call["settings"])["hooks"]["Stop"]
+
+
+def test_stop_entry_has_no_matcher_and_no_on_failure(stub, data_root, parent):
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    (entry,) = stop_entry(call)
+    assert set(entry) == {"hooks"}
+    (hook,) = entry["hooks"]
+    assert set(hook) == {"type", "command", "args", "timeout"}
+    assert hook["type"] == "command"
+    assert hook["command"] == os.path.abspath(sys.executable)
+    assert hook["timeout"] == turn_loop.STOP_HOOK_TIMEOUT_S
+    assert hook["timeout"] < 600
+    assert hook["args"] == [
+        "-I",
+        "-c",
+        stop_check.START,
+        checkout_boundary.PACKAGE_DIRECTORY,
+        LOOP_RUN,
+        os.path.realpath(data_root),
+    ]
+    assert hook["args"][-1] == budget_root(call)
+    assert hook["args"][-1] == server_env(call)[config.ENV_LOCAL_PATH]
+
+
+EDGE_IDS = [
+    "a",
+    "7",
+    "a" * 64,
+    "a-b_c",
+    "run-",
+    "20261009t012331z-9f3a6c1e0b7d4a52",
+]
+
+
+@pytest.mark.parametrize("run_id", EDGE_IDS)
+def test_any_valid_run_id_reaches_the_stop_entry(stub, data_root, parent, run_id):
+    stub.install()
+    go(data_root, parent, run_id=run_id)
+    (call,) = stub.calls()
+    assert stop_args(call)[-2] == run_id
+    assert call["settings"] == settings_text(data_root, run_id)
+
+
+def test_run_id_not_compared_with_the_prompt(stub, data_root, parent):
+    stub.install()
+    run_id = "zz-not-in-the-prompt"
+    assert run_id not in PROMPT
+    go(data_root, parent, run_id=run_id)
+    (call,) = stub.calls()
+    assert call["argv"] == expected_argv()
+    assert stop_args(call)[-2] == run_id
+
+
+def test_run_id_appears_nowhere_but_the_stop_entry(stub, data_root, parent):
+    stub.install()
+    run_id = "zq-unique-run-id-41"
+    go(data_root, parent, run_id=run_id)
+    (call,) = stub.calls()
+    settings = json.loads(call["settings"])
+    assert settings["hooks"]["Stop"][0]["hooks"][0]["args"].pop(-2) == run_id
+    assert run_id not in json.dumps(settings)
+    assert run_id not in json.dumps(call["config"])
+    assert run_id not in json.dumps(call["argv"])
+    assert run_id not in json.dumps(call["env"])
+    assert run_id not in json.dumps(call["contents"])
+
+
+def test_missing_run_id_is_a_type_error(stub, data_root, parent):
+    stub.install()
+    further = Predicate(1)
+    with pytest.raises(TypeError):
+        run(
+            further_turn=further,
+            put_definition=put(),
+            prompt=PROMPT,
+            data_root=data_root,
+            parent=parent,
+        )
+    assert further.seen == []
+    assert stub.calls() == []
+    assert list(parent.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "run_id",
+    [None, 1, b"run-a", "", "Run-A", "-a", "a" * 65, "a/b", "..\\a", "a b", "a\n"],
+)
+def test_refused_run_id(stub, data_root, parent, monkeypatch, run_id):
+    stub.install()
+    made = []
+    real = tempfile.mkdtemp
+
+    def watched(*args, **options):
+        made.append(1)
+        return real(*args, **options)
+
+    monkeypatch.setattr(tempfile, "mkdtemp", watched)
+    further = Predicate(1)
+    definition = put()
+    with pytest.raises(layout.InvalidPathValueError):
+        go(
+            data_root,
+            parent,
+            further_turn=further,
+            put_definition=definition,
+            run_id=run_id,
+        )
+    assert issubclass(layout.InvalidPathValueError, ValueError)
+    assert made == []
+    assert further.seen == []
+    assert definition.made == []
+    assert stub.calls() == []
+    assert list(parent.iterdir()) == []
+
+
+def test_every_turn_writes_the_same_stop_entry(stub, data_root, parent):
+    stub.install(statuses=(0, 0))
+    go(data_root, parent, further_turn=Predicate(2))
+    first, second = stub.calls()
+    assert stop_entry(first) == stop_entry(second)
+    assert stop_args(first)[-2:] == [LOOP_RUN, os.path.realpath(data_root)]
+
+
+GIT = shutil.which("git")
+GIT_IDENTITY = {
+    "GIT_AUTHOR_NAME": "Test Author",
+    "GIT_AUTHOR_EMAIL": "author@example.invalid",
+    "GIT_COMMITTER_NAME": "Test Committer",
+    "GIT_COMMITTER_EMAIL": "committer@example.invalid",
+}
+GIT_LOCATING = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "EMAIL",
+)
+
+
+@pytest.fixture
+def isolated_git(stub, monkeypatch, tmp_path_factory):
+    if GIT is None:
+        pytest.skip("git is not on PATH, so the hook cannot read a data checkout")
+    config_file = tmp_path_factory.mktemp("git-config") / "global"
+    config_file.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config_file))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for name in GIT_LOCATING:
+        monkeypatch.delenv(name, raising=False)
+    for name, value in GIT_IDENTITY.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv(
+        "PATH", os.pathsep.join([str(stub.directory), os.path.dirname(GIT)])
+    )
+
+
+def git(root, *args):
+    subprocess.run(
+        [GIT, "-C", str(root), *args],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=True,
+    )
+
+
+@pytest.fixture
+def checkout(tmp_path, isolated_git):
+    root = tmp_path / "data-checkout"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    (root / ".gitignore").write_bytes(b"blobs/sha256/\n*.tmp\n")
+    git(root, "add", ".gitignore")
+    git(root, "commit", "-q", "-m", "start")
+    return root
+
+
+def committed(root):
+    stated(root, at=0)
+    (root / "runs" / RUN / "events.ndjson").write_bytes(b'{"line": 1}\n')
+    key_records.store_hw_profile(root, HW_PROFILE)
+    key_records.store_op_signature(root, keys.hw_profile_key(HW_PROFILE).name, OP)
+    git(root, "add", "-f", "--", "runs", "db")
+    git(root, "commit", "-q", "-m", "by hand")
+    assert run_commit.commit_owed(root, RUN) is False
+    return root
+
+
+def owing_a_new_file(root):
+    committed(root)
+    spec = root / "runs" / RUN / "rounds" / "0000" / "spec.json"
+    spec.parent.mkdir(parents=True)
+    spec.write_bytes(b"{}\n")
+    assert run_commit.commit_owed(root, RUN) is True
+
+
+def owing_a_changed_file(root):
+    committed(root)
+    (root / "runs" / RUN / "events.ndjson").write_bytes(b'{"line": 1}\n{"line": 2}\n')
+    assert run_commit.commit_owed(root, RUN) is True
+
+
+def stop_input(active=False):
+    return {
+        "session_id": "session",
+        "transcript_path": "transcript.jsonl",
+        "cwd": ".",
+        "permission_mode": "dontAsk",
+        "hook_event_name": "Stop",
+        "stop_hook_active": active,
+        "last_assistant_message": "done",
+    }
+
+
+def stops_run(stub, root, parent, *inputs, run_id=RUN):
+    stub.install(stop_inputs=inputs)
+    go(root, parent, run_id=run_id)
+    (call,) = stub.calls()
+    return call["stops"]
+
+
+def let_through(ran):
+    assert [(hook["entry"], hook["status"]) for hook in ran] == [
+        (0, stop_check.EXIT_PASS)
+    ]
+    assert (ran[0]["stdout"], ran[0]["stderr"]) == ("", "")
+
+
+@pytest.mark.parametrize("owing", [owing_a_new_file, owing_a_changed_file])
+def test_stop_hook_refuses_a_first_stop_owing_a_commit(stub, checkout, parent, owing):
+    owing(checkout)
+    first, continued = stops_run(
+        stub, checkout, parent, stop_input(False), stop_input(True)
+    )
+    (hook,) = first
+    assert (hook["entry"], hook["status"]) == (0, stop_check.EXIT_REFUSE)
+    assert hook["stdout"] == ""
+    assert hook["stderr"].replace("\r\n", "\n") == stop_check.REFUSAL + "\n"
+    let_through(continued)
+
+
+def test_stop_hook_lets_a_committed_run_through(stub, checkout, parent):
+    committed(checkout)
+    (ran,) = stops_run(stub, checkout, parent, stop_input(False))
+    let_through(ran)
+
+
+def test_stop_hook_lets_a_plain_directory_through(stub, tmp_path, parent, isolated_git):
+    plain = tmp_path / "plain-data"
+    plain.mkdir()
+    stated(plain, at=0)
+    (ran,) = stops_run(stub, plain, parent, stop_input(False))
+    let_through(ran)
+
+
+def test_stop_hook_asks_of_the_loop_run_only(stub, checkout, parent):
+    owing_a_new_file(checkout)
+    (ran,) = stops_run(stub, checkout, parent, stop_input(False), run_id="run-other")
+    let_through(ran)

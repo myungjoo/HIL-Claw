@@ -58,6 +58,19 @@ as the last ``args`` element, the same real absolute path of ``data_root``
 that the server entry's ``env`` holds (decision 4). The settings still hold
 no ``env``.
 
+**Decided by ADR-0148** and only applied here: :func:`run` takes the run id
+as a required argument, checks it as :func:`hilclaw.layout.check_run_id`
+does, reads nothing by it, compares it with nothing and puts it nowhere but
+into the ``Stop`` entry (decision 4). That entry, the second member of
+``hooks``, is an array of one entry with no ``matcher`` whose one hook is a
+``command`` hook in the same exec form: ``args`` ``-I``, ``-c``,
+:data:`hilclaw.stop_check.START`, the directory holding this package, the run
+id and, last, the same real absolute path of ``data_root`` as the second
+``PreToolUse`` entry; a ``timeout`` well below the default and no
+``onFailure``, which has no effect on ``Stop``. ADR-0148 so revises ADR-0146
+decision 4, as revised by ADR-0147 decision 4, to the two ``PreToolUse``
+entries and this one ``Stop`` entry, and nothing else.
+
 **The command line** is :data:`PROGRAM`, :data:`OPT_PRINT` with the caller's
 prompt, :data:`OPT_MCP_CONFIG` with :data:`CONFIG_FILE` and
 :data:`OPT_STRICT_MCP_CONFIG`, followed by the arguments that
@@ -110,17 +123,20 @@ OD-19's or OD-14's.
   :data:`hilclaw.caller_check.TOOL_PREFIX`; the ``^`` both anchors it and
   holds it outside the exact-match set, so it is read as a regular
   expression. The second matcher joins the spending tools with ``|``, all of
-  whose characters are in the exact-match set. Both timeouts are
-  :data:`HOOK_TIMEOUT_S`, 30 seconds: an interpreter start and a read of the
-  agent files or of two run files take well under that, and with
-  ``onFailure`` a hook that hangs blocks the call within it. A ``data_root``
-  whose real path holds one of the path placeholders that Claude Code
-  substitutes into exec-form ``args`` (``${CLAUDE_PROJECT_DIR}``,
-  ``${CLAUDE_PLUGIN_ROOT}``, ``${CLAUDE_PLUGIN_DATA}``) is refused, since the
-  hook would read another root than the server's. The
-  text is built once per loop, as the server configuration is, and written
-  with exclusive creation in every turn. A missing ``.claude`` is made as a
-  plain directory.
+  whose characters are in the exact-match set. Both ``PreToolUse`` timeouts
+  are :data:`HOOK_TIMEOUT_S`, 30 seconds: an interpreter start and a read of
+  the agent files or of two run files take well under that, and with
+  ``onFailure`` a hook that hangs blocks the call within it. The ``Stop``
+  timeout is :data:`STOP_HOOK_TIMEOUT_S`, 60 seconds: that hook runs ``git``
+  a few times on the data checkout (ADR-0148 item (lxv)), and one that times
+  out only lets the stop through. The members of ``hooks`` are written
+  ``PreToolUse`` first, then ``Stop``. A ``data_root`` whose real path holds
+  one of the path placeholders that Claude Code substitutes into exec-form
+  ``args`` (``${CLAUDE_PROJECT_DIR}``, ``${CLAUDE_PLUGIN_ROOT}``,
+  ``${CLAUDE_PLUGIN_DATA}``) is refused, since the hooks would read another
+  root than the server's. The text is built once per loop, as the server
+  configuration is, and written with exclusive creation in every turn. A
+  missing ``.claude`` is made as a plain directory.
 - *The prompt* is one line of ASCII letters, digits, spaces, ``.``, ``,``,
   ``_`` and ``-``, not beginning with ``-``: on Windows the ``claude`` found
   may be a command script, whose arguments pass through the command
@@ -132,7 +148,9 @@ OD-19's or OD-14's.
   carried as ``removed`` false and raises nothing.
 
 **What is raised**, each before the first turn unless said otherwise:
-:class:`TypeError` or :class:`ValueError` for a bad argument;
+:class:`TypeError` or :class:`ValueError` for a bad argument, among them
+:class:`hilclaw.layout.InvalidPathValueError` for a refused ``run_id``,
+raised before any other argument but the two callables is checked;
 :class:`ValueError` with a fixed text for a refused place, also before a later
 turn; :class:`ValueError` with a fixed text for a ``data_root`` holding a path
 placeholder; :class:`RuntimeError` when the interpreter does not know its own
@@ -172,8 +190,11 @@ ends; (vi) the exit status tells a session that ended well from a failed one;
 (xlii); (ADR-0146 Consequences) (lvi)-(lx), listed in
 :mod:`hilclaw.caller_check`, of which (lvi) and (lviii)-(lx) apply to the
 second entry too and (lix) to its data-root argument; and (ADR-0147
-Consequences) (lxi) and (lxii), listed in :mod:`hilclaw.budget_check`. The
-stub shows nothing of a real session's reading of the environment.
+Consequences) (lxi) and (lxii), listed in :mod:`hilclaw.budget_check`; and
+(ADR-0148 Consequences) (lxiii)-(lxvi), listed in :mod:`hilclaw.stop_check`,
+with ADR-0146 (lvi), (lix) and (lx) applying to the ``Stop`` entry too and
+(lix) to its run-id and data-root arguments. The stub shows nothing of a real
+session's reading of the environment.
 """
 
 import json
@@ -191,8 +212,10 @@ from hilclaw import (
     budget_check,
     caller_check,
     config,
+    layout,
     mcp_front,
     standin_image,
+    stop_check,
     turn_permissions,
 )
 from hilclaw import checkout_boundary as _checkout_boundary
@@ -207,6 +230,7 @@ MARKERS = ("CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", ".claude")
 SETTINGS_DIRECTORY = ".claude"
 SETTINGS_FILE = "settings.json"
 HOOK_TIMEOUT_S = 30
+STOP_HOOK_TIMEOUT_S = 60
 
 _ENV_SET = (
     ("CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT", "0"),
@@ -296,18 +320,22 @@ def _config_text(root):
     return json.dumps({SERVERS_MEMBER: {mcp_front.SERVER_NAME: entry}})
 
 
-def _entry(matcher, *args):
-    hook = {
+def _hook(timeout, *args):
+    return {
         "type": "command",
         "command": os.path.abspath(sys.executable),
         "args": ["-I", "-c", *args],
-        "timeout": HOOK_TIMEOUT_S,
-        "onFailure": "block",
+        "timeout": timeout,
     }
+
+
+def _entry(matcher, *args):
+    hook = _hook(HOOK_TIMEOUT_S, *args)
+    hook["onFailure"] = "block"
     return {"matcher": matcher, "hooks": [hook]}
 
 
-def _settings_text(root):
+def _settings_text(root, run_id):
     if any(placeholder in root for placeholder in _PLACEHOLDERS):
         raise ValueError(_PLACEHOLDER_HELD)
     package = _checkout_boundary.PACKAGE_DIRECTORY
@@ -317,7 +345,9 @@ def _settings_text(root):
             "|".join(budget_check.SPENDING_TOOLS), budget_check.START, package, root
         ),
     ]
-    return json.dumps({"hooks": {caller_check.EVENT: entries}})
+    stop = _hook(STOP_HOOK_TIMEOUT_S, stop_check.START, package, run_id, root)
+    hooks = {caller_check.EVENT: entries, stop_check.EVENT: [{"hooks": [stop]}]}
+    return json.dumps({"hooks": hooks})
 
 
 def _write_settings(directory, text):
@@ -414,7 +444,16 @@ def _turn(directory, put_definition, prompt, text, settings):
     return done.returncode
 
 
-def run(*, further_turn, put_definition, prompt, data_root, parent=None, keep_out=()):
+def run(
+    *,
+    further_turn,
+    put_definition,
+    prompt,
+    data_root,
+    run_id,
+    parent=None,
+    keep_out=(),
+):
     """Run the turns of one run until ``further_turn`` answers ``False``; return their :class:`Turn` records.
 
     ``further_turn`` is called with ``None`` before the first turn and with
@@ -424,11 +463,13 @@ def run(*, further_turn, put_definition, prompt, data_root, parent=None, keep_ou
     written; what it returns is ignored. ``prompt`` is the one-line prompt of
     every turn.
     ``data_root`` (a ``str`` or path object) names the existing directory of
-    the data checkout. ``parent`` is the directory the session directories
-    are made in (``None``: the temporary directory of the system) and
-    ``keep_out`` a sequence of further directories it must not meet. Returns
-    a tuple of :class:`Turn`, one per session started, in order. Raises as
-    the module docstring lists under "What is raised".
+    the data checkout. ``run_id`` is the run's id, checked as
+    :func:`hilclaw.layout.check_run_id` does and written only into the
+    ``Stop`` entry of the hook settings. ``parent`` is the directory the
+    session directories are made in (``None``: the temporary directory of the
+    system) and ``keep_out`` a sequence of further directories it must not
+    meet. Returns a tuple of :class:`Turn`, one per session started, in
+    order. Raises as the module docstring lists under "What is raised".
     """
     for name, value in (
         ("further_turn", further_turn),
@@ -436,12 +477,13 @@ def run(*, further_turn, put_definition, prompt, data_root, parent=None, keep_ou
     ):
         if not callable(value):
             raise TypeError(f"{name} must be callable")
+    layout.check_run_id(run_id)
     _check_prompt(prompt)
     root = _data_root(data_root)
     _checkout_boundary.refuse_one_path(keep_out)
     roots = (root, *(_real(path, "a directory of keep_out") for path in keep_out))
     text = _config_text(root)
-    settings = _settings_text(root)
+    settings = _settings_text(root, run_id)
     place = _real(tempfile.gettempdir() if parent is None else parent, "the parent")
     if not os.path.isdir(place):
         raise ValueError("the parent must be an existing directory")

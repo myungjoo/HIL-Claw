@@ -559,6 +559,7 @@ def test_the_loop_on_a_run_that_is_over_starts_nothing(root, tmp_path, monkeypat
         put_definition=made.append,
         prompt="go",
         data_root=root,
+        run_id="run-a",
         parent=sessions,
     )
     assert turns == ()
