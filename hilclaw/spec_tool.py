@@ -133,7 +133,7 @@ KIND_OBJECTIVE_NOT_STATED = run_objective.KIND_OBJECTIVE_NOT_STATED
 KIND_CATALOG_UNUSABLE = "catalog_unusable"
 #: A requested id names no entry of the accelerator's catalog; nothing was written (ADR-0151 decision 2 (b)).
 KIND_TECHNIQUE_UNKNOWN = "technique_unknown"
-#: A requested entry applies to another kind, dtype, layout or language than the spec's; nothing was written.
+#: A requested entry applies to another kind, dtype, layout or language than the spec's; nothing was written (ADR-0151 decision 2 (b)).
 KIND_TECHNIQUE_NOT_APPLICABLE = "technique_not_applicable"
 #: An earlier attempt's spec, a listing or a compiler log cannot be used; re-exported from :mod:`hilclaw.spec_feedback`.
 KIND_FEEDBACK_UNREADABLE = spec_feedback.KIND_FEEDBACK_UNREADABLE
@@ -288,6 +288,7 @@ def _checked(request):
 def _ids(value):
     if type(value) is not list:
         raise _invalid(f"techniques: must be an array, got {type(value).__name__}")
+    seen = set()
     for index, entry_id in enumerate(value):
         if type(entry_id) is not str:
             raise _invalid(
@@ -297,8 +298,9 @@ def _ids(value):
             raise _invalid(
                 f"techniques[{index}]: must be a name matching {_NAME.pattern}"
             )
-        if entry_id in value[:index]:
+        if entry_id in seen:
             raise _invalid(f"techniques[{index}]: {entry_id!r} is given twice")
+        seen.add(entry_id)
     return value
 
 
