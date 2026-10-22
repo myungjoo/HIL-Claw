@@ -22,10 +22,10 @@ removed, and it gives a spec exactly ``{"id": <id>, "text": <text>}``
 - the accelerator's directory is a plain directory holding plain files only:
   no symbolic link, junction or subdirectory;
 - a file does not start with a byte order mark;
-- a heading is a line that starts with ``#``, ``##``, ``<h1`` or ``<h2`` once
-  leading spaces, ``>`` and list markers are removed, outside fenced code
-  blocks, whose fences count only at the start of a line after at most three
-  spaces; a line of only ``=`` or ``-`` below a non-blank line is refused;
+- a heading is a line that starts with ``#`` or ``##`` once leading spaces,
+  ``>`` and list markers are removed, or that holds an ``<h1`` or ``<h2`` tag,
+  inside a fenced code block too; a line of only ``=`` or ``-`` below a
+  non-blank line is refused;
 - the lines of :data:`APPLIES_TO` come in that order, with only blank lines
   before and after them; ``## When`` and the ``text`` are not blank.
 
@@ -48,9 +48,9 @@ APPLIES_TO = ("- kind: gemm", "- dtype: fp32", "- layout: row_major", "- languag
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _FILE_NAME = re.compile(r"([a-z][a-z0-9_]{0,31})\.md")
 _PREFIX = re.compile(r"(?:[ \t]*(?:>|[-*+](?=[ \t])|[0-9]{1,9}[.)](?=[ \t])))*[ \t]*")
-_HEADING = re.compile(r"#{1,2}(?:[ \t]|$)|<h[12](?:[ \t/>]|$)", re.IGNORECASE)
+_HEADING = re.compile(r"#{1,2}(?:[ \t]|$)")
+_HTML_HEADING = re.compile(r"<h[12](?:[\s/>]|$)", re.IGNORECASE)
 _UNDERLINE = re.compile(r"(?:=+|-+)[ \t]*")
-_FENCE = re.compile(r" {0,3}(`{3,}|~{3,})")
 _BOM = b"\xef\xbb\xbf"
 _JUNCTION_TAG = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
 
@@ -88,21 +88,10 @@ def _kind(path):
 
 def _headings(lines):
     found = []
-    fence = None
     above = False
     for index, line in enumerate(lines):
-        if fence is not None:
-            if fence.fullmatch(line):
-                fence = None
-            continue
-        opening = _FENCE.match(line)
-        marks = opening and opening.group(1)
-        if marks and not (marks[0] == "`" and "`" in line[opening.end() :]):
-            fence = re.compile(rf" {{0,3}}{re.escape(marks[0])}{{{len(marks)},}}[ \t]*")
-            above = False
-            continue
         body = line[_PREFIX.match(line).end() :]
-        if _HEADING.match(body):
+        if _HEADING.match(body) or _HTML_HEADING.search(line):
             found.append(index)
             above = False
             continue

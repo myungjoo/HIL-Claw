@@ -163,10 +163,10 @@ def test_empty_directory_gives_no_entry(root):
         technique("cpu_standin", "alpha", source=root)
 
 
-def test_level_three_heading_and_fences_are_kept(root):
+def test_level_three_heading_and_inner_text_are_kept(root):
     guidance = (
-        "First.\n\n### Detail\n\nMore.\n\n```c\n# define X 1\n## not a heading\n```\n\n"
-        "~~~~\n# x\n~~~\n## still inside\n~~~~~\n\n> quoted `#x`\n\nLast line  "
+        "First.\n\n### Detail\n\nMore.\n\n```c\n#define X 1\n```\n\n"
+        "> quoted `#x` and `<h3>`\n\n- `##x`\n\nLast line  "
     )
     put(root, "alpha.md", body("alpha", guidance=guidance))
     assert technique("cpu_standin", "alpha", source=root)["text"] == guidance
@@ -371,10 +371,13 @@ HEADINGS = "an entry file has other headings than ADR-0150's"
         body("alpha").replace("## When\n", "##  When\n"),
         body("alpha").replace("## Guidance\n", "## guidance\n"),
         body("alpha").replace("## Applies to\n", "## Applies to:\n"),
-        body("alpha", when="```\nNow."),
-        body("alpha", when="```\nNow.\n~~~"),
-        body("alpha", when="````\nNow.\n```"),
-        body("alpha", when="```\nNow.\n``` x"),
+        body("alpha", guidance="```c\n# define X 1\n```"),
+        body("alpha", guidance="~~~\n## Extra\n~~~"),
+        body("alpha", guidance="Do.\n\n- a\n  ~~~\n## Extra\n  ~~~"),
+        body("alpha", guidance="Do.\n\n<div>\n~~~\n</div>\n\n## Extra\n\n~~~"),
+        body("alpha", guidance="Do.\n\n<!--\n~~~\n-->\n## Extra\n~~~"),
+        body("alpha", guidance="Do. text <h2>x</h2>"),
+        body("alpha", guidance="Do.\n\n<div><h1>x</h1></div>"),
         body("alpha", guidance="Do.\n\n    ```\n## Extra\n    ```"),
         body("alpha", guidance="Do.\n\n- ```\n## Extra\n- ```"),
         body("alpha", guidance="Do.\n\n> ```\n## Extra\n> ```"),
@@ -397,8 +400,13 @@ def test_setext_underline(root, underline):
     refused(root, "an entry file underlines a line as a heading")
 
 
+def test_setext_underline_inside_a_fence(root):
+    put(root, "alpha.md", body("alpha", guidance="```\ntext\n---\n```"))
+    refused(root, "an entry file underlines a line as a heading")
+
+
 def test_thematic_break_after_blank_line(root):
-    guidance = "Do.\n\n---\n\nMore.\n\n```\ntext\n---\n```"
+    guidance = "Do.\n\n---\n\nMore.\n\n***\n\n- a\n\n---"
     put(root, "alpha.md", body("alpha", guidance=guidance))
     assert technique("cpu_standin", "alpha", source=root)["text"] == guidance
 
