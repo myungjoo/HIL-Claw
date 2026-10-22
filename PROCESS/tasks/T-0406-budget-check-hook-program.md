@@ -2,7 +2,7 @@
 id: T-0406
 title: Add the round-budget check hook program of ADR-0147 as hilclaw/budget_check.py with its test file (ADR-0147 code slice 1; PLAN P2-4; not registered in any settings file)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-3, FR-4, NFR-5, OD-19, OD-18, "PLAN P2-4"]
 dependsOn: [T-0405, T-0403]
