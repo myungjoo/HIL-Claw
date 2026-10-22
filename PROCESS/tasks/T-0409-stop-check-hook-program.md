@@ -2,7 +2,7 @@
 id: T-0409
 title: Add the Stop check hook program of ADR-0148 as hilclaw/stop_check.py with its test file (ADR-0148 code slice 1; PLAN P2-4; not registered in any settings file)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-11, NFR-1, OD-18, "PLAN P2-4"]
 dependsOn: [T-0408]
@@ -190,3 +190,13 @@ The hook never commits. ADR-0148 Consequences name two code slices. This task is
   - the docstrings of both modules are rewritten (ADR-0148 Consequences slice 2).
 
 ## Result
+
+- **Outcome**: DONE. PR #239 (https://github.com/myungjoo/HIL-Claw/pull/239) squash-merged as `fed5f9a` with `--body` (last line `Task: T-0409`); branch `claude/T-0409-stop-check-hook-program` deleted.
+- **Review**: 2 rounds with a fresh-context `dev-reviewer`. Round 1 Request changes (Medium: `print(file=None)` fell back to stdout with no stderr, fixed with `stream.write` and a `sys.stderr = None` test; Low: partial-line write, same fix; Low: environment test set an unread variable, now sets `config.ENV_LOCAL_PATH`/`config.ENV_URL`). Round 2 Approve (Info only, no SECURITY). The Why reading of the test rules (① to ④ apply, ⑤ does not) was accepted as Info.
+- **CI** (head `c29600a`, run https://github.com/myungjoo/HIL-Claw/actions/runs/39788266358): all six checks green; coverage lines 99.60%, functions 100.00%; `hilclaw/stop_check.py` 100% lines.
+- **Local** (Windows): 26278 passed, 819 skipped on the final head; `ruff check .` and `ruff format --check .` clean.
+- **Diff**: `hilclaw/stop_check.py` (+141, the only non-test file) and `tests/test_stop_check.py` (+707, 106 tests).
+- **Language**: Python, standard library only; the hook calls `run_commit.commit_owed` and `layout.check_run_id` directly (ADR-0148 decision 4). No new dependency.
+- **Provisional choices**: constants `EXIT_PASS = 0`, `EXIT_REFUSE = 2`, `EVENT = "Stop"`, `COMMIT_TOOL`, `START`, `REFUSAL`; `main(data=None, stderr=None, args=None)`; strict parse (repeated key, NaN/Infinity constants or a UTF-8 BOM let the stop through); `stop_hook_active` must be `is False`; `commit_owed` must answer exactly `True`; a stderr write/flush failure lets the stop through.
+- No `claude` was started (D16).
+- **Follow-ups**: (planner) ADR-0148 code slice 2 as listed above. (candidate, reviewer Info) `hilclaw/budget_check.py` `main` still uses `print(..., file=stream)`, which would put its refusal line on stdout with no stderr; a small task could switch it to `stream.write`.
