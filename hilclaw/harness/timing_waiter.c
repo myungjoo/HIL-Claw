@@ -16,33 +16,32 @@
  * Steps, in order; a step that fails ends the waiter at once and no later
  * step is done, so a waiter's line always means that its child was started
  * and waited for:
- *   W0  its process id is not 1: it starts nothing and writes nothing on
- *       standard output.
- *   W1  prctl(PR_SET_DUMPABLE, 0); no signal handler is established anywhere.
- *   W2  fork and execv argv[1] with argv[1..]; the environment, the working
- *       directory, standard output and standard error are handed on as given.
- *       An executable that cannot be started is a started child that ends
- *       with status 127, so its line is written.
- *   W3  wait4 on that child's pid only (never -1: orphans are children of
- *       process 1 too), retried on EINTR; its ru_maxrss is kept.
- *   W4  kill(-1, SIGKILL) and waitpid(-1, ...), sending again after each
- *       reaped child, until ECHILD.
- *   W5  O_NONBLOCK is cleared on descriptor 1, then "\n" and the line are
- *       written with write(2) until every byte is written or a write fails.
- *       No memory is allocated and no stdio is used from W3 to W5.
- *   W6  the exit status below.
+ *   W0  not process 1 of its PID namespace: start nothing, write no output.
+ *   W1  prctl(PR_SET_DUMPABLE, 0) and SIGCHLD back to SIG_DFL; no handler.
+ *   W2  fork, then execv(argv[1], argv + 1) with all else handed on as given.
+ *   W3  wait4 on that child's pid only, retried on EINTR; keep ru_maxrss.
+ *   W4  kill(-1, SIGKILL) and waitpid(-1), again per reaped child, to ECHILD.
+ *   W5  clear O_NONBLOCK on descriptor 1, then write(2) "\n" and the line.
+ *   W6  end with the exit status below.
+ * W2 hands on the environment, the working directory, standard output and
+ * standard error. W3 never waits for -1, since orphans are children of
+ * process 1 too, and RUSAGE_CHILDREN is not used. SIGCHLD is reset because
+ * an ignored disposition survives execve and would make W3 fail. W5 writes
+ * until every byte is written or a write fails. No memory is allocated and
+ * no stdio is used from W3 to W5.
  *
  * The line, as hilclaw/standin_waiter_line.py reads it, ASCII and ended by
  * one LF: "waiter_max_rss_kib <v>", <v> being the raw ru_maxrss as
  * printf("%ld") writes it, where compiled for Linux; "waiter_max_rss none"
  * otherwise. Off Linux, by this file's reading of ADR-0145 decisions 3 to 5
- * (there is no figure to protect), W1 only establishes no signal handler and
- * W0 only checks that the process id is 1.
+ * (there is no figure to protect), W1 only resets SIGCHLD and establishes no
+ * handler, and W0 only checks that the process id is 1; this branch is not
+ * built by the Linux CI.
  *
  * Exit status:
  *   0  the child exited by itself with status 0 and the line was written
- *   1  the child ended otherwise (non-zero status, a signal, or an executable
- *      that could not be started) and the line was written
+ *   1  the child ended otherwise and the line was written; an executable
+ *      that cannot be started is a started child that ends with status 127
  *   2  the command line has no executable path; nothing was started
  *   3  W0: the waiter is not process 1; nothing was started
  *   4  a system call of W1 to W5 failed; no line, or part of one
@@ -145,6 +144,8 @@ int main(int argc, char **argv)
     if (prctl(PR_SET_DUMPABLE, 0L, 0L, 0L, 0L) != 0)
         fail(STATUS_SYSTEM, "W1: cannot make the waiter not dumpable");
 #endif
+    if (signal(SIGCHLD, SIG_DFL) == SIG_ERR)
+        fail(STATUS_SYSTEM, "W1: cannot reset SIGCHLD");
 
     child = fork();
     if (child < 0)

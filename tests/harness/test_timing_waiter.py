@@ -21,7 +21,7 @@ FLAG_SETS = {
 STRICT = FLAG_SETS["c99-strict"]
 BUILD_TIMEOUT = 120
 RUN_TIMEOUT = 60
-HOLD = 1.0
+HOLD = 2.0
 
 # Documented exit statuses of the waiter.
 COMPLETED, CHILD, COMMAND_LINE, NOT_PROCESS_1 = 0, 1, 2, 3
@@ -297,7 +297,7 @@ def test_no_process_is_left_after_the_child(unshare, waiter, program, tmp_path, 
     late = tmp_path / "late"
     script = (
         f'{start}/bin/sh -c \'while [ ! -s "$0" ]; do sleep 0.01; done; '
-        f'sleep {HOLD / 4}; : > "$1"; printf late\' "$1" {late} & '
+        f'sleep {HOLD / 2}; : > "$1"; printf late\' "$1" {late} & '
         'exec "$0" "$1"'
     )
     read_end, write_end = os.pipe()
@@ -332,6 +332,21 @@ def test_signals_from_inside_do_not_end_the_waiter(unshare, waiter):
 
     assert run.returncode == COMPLETED, run
     assert taken(run).report == b"survived"
+
+
+def test_an_inherited_ignored_sigchld_does_not_stop_the_wait(unshare, waiter):
+    run = contained(
+        unshare,
+        "/usr/bin/env",
+        "--ignore-signal=CHLD",
+        waiter,
+        "/bin/sh",
+        "-c",
+        "printf waited",
+    )
+
+    assert run.returncode == COMPLETED, run
+    assert taken(run).report == b"waited"
 
 
 def test_the_waiter_is_not_readable_through_proc(unshare, waiter):

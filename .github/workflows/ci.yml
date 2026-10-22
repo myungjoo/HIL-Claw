@@ -44,7 +44,9 @@ jobs:
       - name: Allow unshare to make user namespaces (tests/harness/test_timing_waiter.py)
         shell: bash
         run: |
-          if [[ $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null) == 1 ]]; then
+          restrict=$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo absent)
+          echo "kernel.apparmor_restrict_unprivileged_userns: $restrict"
+          if [[ $restrict == 1 ]]; then
             printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
               'profile hilclaw-unshare /usr/bin/unshare flags=(unconfined) {' '  userns,' '}' \
               | sudo tee /etc/apparmor.d/hilclaw-unshare > /dev/null
@@ -166,7 +168,9 @@ jobs:
       - name: Allow unshare to make user namespaces (tests/harness/test_timing_waiter.py)
         shell: bash
         run: |
-          if [[ $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null) == 1 ]]; then
+          restrict=$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo absent)
+          echo "kernel.apparmor_restrict_unprivileged_userns: $restrict"
+          if [[ $restrict == 1 ]]; then
             printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
               'profile hilclaw-unshare /usr/bin/unshare flags=(unconfined) {' '  userns,' '}' \
               | sudo tee /etc/apparmor.d/hilclaw-unshare > /dev/null
