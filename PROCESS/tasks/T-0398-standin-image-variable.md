@@ -2,7 +2,7 @@
 id: T-0398
 title: Add the reader of the environment variable that names the cpu_standin image, and hand that variable to each turn's MCP server (ADR-0144 code slice 3; bound to no tool)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [NFR-4, C-7, FR-10, OD-14]
 dependsOn: [T-0396, T-0397]
@@ -135,3 +135,10 @@ Planner's judgements (from `main` `ca79099`; **the reviewer is asked to re-check
 - After this lands, the remaining ADR-0144 slice is (4). It waits on OD-18 ⑱/⑲ answers (HQ-0021, HQ-0026) and on ① (마) for the memory figure. Its failure-to-kind mapping should also cover the Windows `PermissionError` -> `COPY_UNWRITABLE` case noted in T-0397.
 
 ## Result
+- **DONE.** PR #232 squash-merged as c52ba55 (`Task: T-0398` is the last line of the squash message); branch deleted. New: `hilclaw/standin_image.py`, `tests/test_standin_image.py`; edited: `hilclaw/standin_container.py`, `hilclaw/turn_loop.py`, `tests/test_turn_loop.py`.
+- **What it does**: `ENV_IMAGE = "HILCLAW_STANDIN_IMAGE"` (the proposed name, in the `HILCLAW_` family of `hilclaw/config.py`); `read_image(environ=None)` returns `None` when the variable is absent or empty and the value unchanged when it passes the check; a refused value raises `ImageRefusedError(ValueError)` with a fixed message that does not quote the value (raised outside the `except`, so no `__context__`); a non-mapping `environ` or non-`str` value raises `TypeError`. The check is the former `_check_image` of `standin_container`, now public `check_image`, shared with `run_in_container` (its behaviour, exception, message and `parameter` unchanged; T-0395 nit (c)). `turn_loop` passes the variable, when set and non-empty in the calling process, into each turn server entry's `env` unchecked, read once per `run` (T-0395 nit (a)); the self-check entry is untouched.
+- **Review**: 2 rounds (dev-reviewer), Approve. R1 one nit (inaccurate "quotes the value" in the `check_image` docstring), fixed; R2 nothing left.
+- **Tests and CI**: ruff clean; full pytest 25820 passed locally (98 `test_turn_loop` tests skip under this Windows host's default temp path and pass with `--basetemp` outside the repo); CI green (Python 3.11/3.14, sh, C, Test presence, Coverage). No `docker`, `clang` or `claude` was started (D16).
+- **Language**: Python, because the reader shares its check with, and is called from, Python package modules.
+- **Runtime acceptance (criterion 4)**: the planner's reading holds — `selfcheck_server.server_entry` passes its tokens through the same `env` member over the same `--mcp-config` + `--strict-mcp-config` path, so a passing self-check already shows an `env` value reaches the server process. No new runtime-acceptance item.
+- **Follow-ups**: ADR-0144 slice (4) only, waiting on OD-18 ⑱/⑲ (HQ-0021, HQ-0026) and ① (마); it should also cover the Windows `PermissionError` -> `COPY_UNWRITABLE` mapping noted by T-0397.
