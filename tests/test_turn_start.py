@@ -119,6 +119,9 @@ elif "--no-session-persistence" in argv:
     kind = "check"
 with (here / "started.ndjson").open("a", encoding="utf-8") as record:
     entry = {"argv": argv, "listing": sorted(os.listdir(".")), "kind": kind}
+    settings = Path(".claude", "settings.json")
+    if settings.is_file():
+        entry["settings"] = json.loads(settings.read_text(encoding="utf-8"))
     record.write(json.dumps(entry) + "\n")
 check = scenario["check"]
 if kind == "login":
@@ -616,6 +619,34 @@ def test_a_run_id_with_a_hyphen_reaches_the_stub_unchanged(root, go, stub, run_i
     assert named(call["argv"][1]) == run_id
 
 
+class Recorded:
+    def __init__(self, monkeypatch):
+        self.calls = []
+        self.real = turn_loop.run
+        monkeypatch.setattr(turn_loop, "run", self)
+
+    def __call__(self, **arguments):
+        self.calls.append(arguments)
+        return self.real(**arguments)
+
+
+@pytest.mark.parametrize("run_id", EDGE_IDS)
+def test_the_run_id_reaches_the_loop_and_its_stop_entry(
+    root, go, stub, monkeypatch, run_id
+):
+    write(root, run_id, instance_bytes())
+    recorded = Recorded(monkeypatch)
+    found = go((0, []), args=(run_id,))
+    told_once(found, EXIT_UNCHANGED_TURN, {"outcome": UNCHANGED_TURN})
+    (arguments,) = recorded.calls
+    assert arguments["run_id"] == run_id
+    assert arguments["prompt"] == prompt(run_id)
+    (call,) = stub.calls()
+    (entry,) = call["settings"]["hooks"]["Stop"]
+    (hook,) = entry["hooks"]
+    assert hook["args"][-2:] == [run_id, os.path.realpath(root)]
+
+
 def test_over_at_once_starts_no_turn(root, go, stub):
     over(root)
     found = go((0, []))
@@ -977,12 +1008,14 @@ def test_no_repository_after_a_turn_that_exited_with_zero(root, go, stub, monkey
 
 
 @pytest.mark.parametrize("args", [(), (RUN, RUN), ("Run-a",), ("",), ("../x",)])
-def test_a_bad_command_line(root, go, stub, args):
+def test_a_bad_command_line(root, go, stub, monkeypatch, args):
     started(root)
     called = []
+    recorded = Recorded(monkeypatch)
     found = go((0, []), args=args, source=lambda: called.append(1))
     told_once(found, EXIT_ERROR, {"outcome": ERROR, "error": BAD_USAGE})
     assert called == [] and stub.calls() == []
+    assert recorded.calls == []
 
 
 def test_a_data_root_source_that_raises(root, go, stub):

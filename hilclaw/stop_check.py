@@ -39,9 +39,9 @@ wording of the line; an input object with a repeated key or a ``NaN`` or
 root is used as given, with nothing let through beyond the table; a failure
 to write the line lets the stop through.
 
-This module is not registered here. The ``Stop`` entry of the session's
-settings, with the run id and the data root as its last two arguments, is
-written by :mod:`hilclaw.turn_loop` in ADR-0148's second code slice.
+:mod:`hilclaw.turn_loop` writes the ``Stop`` entry of the session's
+settings that names this program, with the run id and the data root as its
+last two arguments.
 
 Runtime acceptance items it depends on (ADR-0148 Consequences):
 
