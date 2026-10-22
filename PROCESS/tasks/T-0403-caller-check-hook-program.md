@@ -2,7 +2,7 @@
 id: T-0403
 title: Add the caller check hook program of ADR-0146 and the holder lists and two new refusals of the shared agent-file reader in hilclaw/turn_permissions.py (ADR-0146 code slice 1; PLAN P2-4; not registered in any settings file)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-4, FR-9, FR-10, FR-11, OD-18, PLAN P2-4]
 dependsOn: [T-0402]
