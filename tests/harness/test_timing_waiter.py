@@ -24,7 +24,7 @@ RUN_TIMEOUT = 60
 HOLD = 2.0
 
 # Documented exit statuses of the waiter.
-COMPLETED, CHILD, COMMAND_LINE, NOT_PROCESS_1 = 0, 1, 2, 3
+COMPLETED, CHILD, COMMAND_LINE, NOT_PROCESS_1, SYSTEM = 0, 1, 2, 3, 4
 
 # A new user and PID namespace with its own /proc. The user namespace maps no
 # uid, so every process the waiter starts holds no capability after execve.
@@ -397,3 +397,18 @@ def test_no_executable_path_starts_nothing(unshare, waiter):
     assert run.returncode == COMMAND_LINE, run
     assert run.stdout == b""
     assert b"usage" in run.stderr
+
+
+def test_a_failed_write_of_the_line_ends_the_waiter_with_status_4(unshare, waiter):
+    with open("/dev/full", "wb") as full:
+        run = subprocess.run(
+            [unshare, *NAMESPACE, waiter, "/bin/sh", "-c", "exit 0"],
+            stdin=subprocess.DEVNULL,
+            stdout=full,
+            stderr=subprocess.PIPE,
+            timeout=RUN_TIMEOUT,
+            check=False,
+        )
+
+    assert run.returncode == SYSTEM, run
+    assert b"W5" in run.stderr
