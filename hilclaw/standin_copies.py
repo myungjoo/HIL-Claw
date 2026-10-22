@@ -29,7 +29,10 @@ Conventions of this module, which are not rules of the record:
   writes nothing. A failure of making the sub-directory or of writing a copy
   (:data:`ENTRY_EXISTS`, :data:`COPY_UNWRITABLE`) leaves what was already
   written in place: the caller removes the whole build directory, as ADR-0056
-  decision 4 and ADR-0144 Q4 say.
+  decision 4 and ADR-0144 Q4 say. :data:`ENTRY_EXISTS` is the
+  :class:`FileExistsError` of the system; where the system reports a name
+  taken otherwise (on Windows, a directory at the name of a file copy usually
+  gives :class:`PermissionError`), the answer is :data:`COPY_UNWRITABLE`.
 
 What this module does not decide or do: the failure kinds and rows a tool
 answers for its failures and for "no kernel source" (ADR-0144 decision 7,

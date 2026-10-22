@@ -544,20 +544,27 @@ def test_a_read_error(monkeypatch, output, build_dir, harness):
 
 def test_a_read_error_of_a_kernel_file(monkeypatch, output, build_dir, harness):
     write(output, "a.c")
-    real_read = os.read
-    calls = []
+    real_open, real_read = os.open, os.read
+    kernel = os.fspath(output / "a.c")
+    opened = {}
     error = OSError(errno.EIO, "input/output error")
 
+    def recording(path, flags, *mode):
+        descriptor = real_open(path, flags, *mode)
+        opened[descriptor] = os.fspath(path)
+        return descriptor
+
     def failing(descriptor, size):
-        calls.append(descriptor)
-        if len(calls) == 3:
+        if opened.get(descriptor) == kernel:
             raise error
         return real_read(descriptor, size)
 
+    monkeypatch.setattr(standin_copies.os, "open", recording)
     monkeypatch.setattr(standin_copies.os, "read", failing)
     with pytest.raises(CopyError) as raised:
         place_copies(output, harness, build_dir)
     assert raised.value.failure == KERNEL_FILE_UNREADABLE
+    assert raised.value.__cause__ is error
     assert tree(build_dir) == []
 
 
