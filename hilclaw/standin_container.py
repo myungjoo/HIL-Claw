@@ -10,21 +10,14 @@ command-line program, waits for it and hands back what the program reported.
 It is bound to no tool and no backend operation; nothing calls it yet.
 
 The one program it starts is the client (default ``docker``), through
-:func:`hilclaw.local_run.run`, looked up at call time. The client's argument
-list carries the properties of ADR-0144 decision 6 in Docker's documented
-forms: ``run --rm`` (E4), a name made for this one call (``--name``, with a
-random part from :mod:`secrets`), the build directory as the one writable bind
-mount at :data:`CONTAINER_BUILD_DIR`, which is also the working directory
-(``--mount type=bind,...``, which unlike ``-v`` does not create a missing
-source, and ``--workdir``), ``--network none`` (E2), ``--pull never`` (E3),
-``--user <uid>:<gid>`` of the calling process (E6, Q6), ``--cap-drop ALL`` and
-``--security-opt no-new-privileges=true`` (E11), and ``--entrypoint=`` (E12,
-the image's entrypoint overridden with the empty value so that the program
-given after the image is the one started inside). Then come the image, the
-program and its arguments, unchanged and in order. No variable is handed into
-the container, no other host path is given, no privilege or capability is
-added and no resource is bounded (Q7). At the time limit the container is
-removed by its name, by force (``rm --force``, E5).
+:func:`hilclaw.local_run.run` looked up at call time, with the properties of
+ADR-0144 decision 6 as Docker options (E2 to E6, E11, E12). The build
+directory is the one writable mount, given with ``--mount type=bind``, which
+unlike ``-v`` does not create a missing source, at :data:`CONTAINER_BUILD_DIR`;
+``--entrypoint=`` empties the image's entrypoint so that the program after the
+image is the one started. No variable, other host path, privilege or resource
+bound is given. At the time limit the container is removed by its name, by
+force (``rm --force``, E5).
 
 What this module does not decide: what a tool answers where no container
 runtime, no image or no container can be had (ADR-0144 decision 7, OD-18
@@ -56,15 +49,9 @@ _MOUNT_UNSAFE = (",", '"', "\n", "\r", "\0")
 
 
 class Removal(NamedTuple):
-    """Outcome of the forced removal of a container after a timeout.
-
-    The fields are those of :class:`hilclaw.local_run.RunResult` for the
-    removal's client run, without a memory figure: ``returncode`` (``None``
-    when the removal itself timed out), ``timed_out``, the raw ``stdout`` and
-    ``stderr``, the exact ``command`` and ``duration_s``. None of it is
-    interpreted; in particular a removal that found no container of that name
-    is not told apart from one that removed it.
-    """
+    """The forced removal's client run: a :class:`hilclaw.local_run.RunResult`
+    without ``max_rss``, uninterpreted (a removal that found no container is
+    not told apart)."""
 
     returncode: int | None
     timed_out: bool
@@ -75,16 +62,12 @@ class Removal(NamedTuple):
 
 
 class ContainerResult(NamedTuple):
-    """Outcome of one :func:`run_in_container` call.
+    """Outcome of one :func:`run_in_container` call, uninterpreted.
 
-    ``returncode`` is the client's exit status, handed back unchanged
-    (125 to 127 included), and ``None`` when the client timed out.
-    ``stdout`` and ``stderr`` are the client's raw bytes, after a timeout what
-    was captured. ``command`` is the exact client argument list that was run,
-    ``duration_s`` the client's wall-clock time in seconds and ``name`` the
-    container's name. ``removal`` is the :class:`Removal` of the forced
-    removal after a timeout and ``None`` after a normal end. No memory figure
-    is carried.
+    The first six fields are the client run's (``returncode`` ``None`` on a
+    timeout; 125 to 127 handed back like any status), without ``max_rss``.
+    ``name`` is :data:`NAME_PREFIX` and 32 hexadecimal digits of
+    :func:`secrets.token_hex`; ``removal`` is ``None`` after a normal end.
     """
 
     returncode: int | None
@@ -123,40 +106,45 @@ def run_in_container(
     container runtime's command-line program, looked up by
     :func:`hilclaw.local_run.run` on ``PATH``.
 
-    The client runs with the environment of the calling process (``env`` and
-    ``cwd`` are not given). After a normal end, whatever the status, the
-    container was removed by the client (``--rm``) and nothing else is
-    started. After a timeout exactly one ``<client> rm --force <name>`` is
-    started through :func:`hilclaw.local_run.run` with ``removal_timeout_s``;
-    its outcome is returned in :attr:`ContainerResult.removal`, and an
-    exception raised by its start is passed on.
+    The client runs with the environment of the calling process. After a
+    normal end, whatever the status, the client removed the container
+    (``--rm``) and nothing else is started. After a timeout exactly one
+    ``<client> rm --force <name>`` is run through
+    :func:`hilclaw.local_run.run` with ``removal_timeout_s``; its outcome is
+    :attr:`ContainerResult.removal`, and an exception of its start is passed
+    on.
 
     Raised before anything is started, each :class:`TypeError` and
     :class:`ValueError` with an attribute ``parameter`` naming the argument:
-    for ``image`` one that is not ``str``, is empty, begins with ``-`` (the
-    client would read it as an option) or contains whitespace or a NUL
-    character; for ``build_dir`` one that is not ``str`` or a ``str``
-    :class:`os.PathLike`, is not absolute or contains ``,``, ``"``, a newline,
-    a carriage return or a NUL character (the mount option could not carry
-    it); for ``program`` one that is not ``str``, is empty or holds a NUL
-    character; for ``arguments`` one that is one ``str`` or ``bytes``, or
-    holds an item that is not ``str`` or holds a NUL character; for
-    ``timeout_s`` and ``removal_timeout_s`` a value that is not a number or is
-    not positive and finite. Then :class:`NoNumericUserError` where the
-    platform has no ``os.getuid`` or ``os.getgid``: a precondition of this
-    function for the POSIX machines of C-7 1, not an answer of any tool. Then
-    the :class:`OSError` of :func:`os.stat` on ``build_dir``, or
-    :class:`NotADirectoryError` for a path that is no directory.
+    an ``image`` that is not ``str``, is empty, begins with ``-`` (the client
+    would read it as an option) or holds whitespace or NUL; a ``build_dir``
+    that is not ``str`` or a ``str`` :class:`os.PathLike`, is not absolute or
+    holds ``,``, ``"``, a newline, a carriage return or NUL (the mount option
+    could not carry it); a ``program`` or ``client`` that is not ``str``, is
+    empty or holds NUL; ``arguments`` that are one ``str`` or ``bytes`` or
+    hold an item that is not ``str`` or holds NUL; a ``timeout_s`` or
+    ``removal_timeout_s`` that is not a number or not positive and finite.
+    Then :class:`NoNumericUserError` where the platform has no ``os.getuid``
+    or ``os.getgid``: a precondition of this function for the POSIX machines
+    of C-7 1, not an answer of any tool. Then the :class:`OSError` of
+    :func:`os.stat` on ``build_dir``, or :class:`NotADirectoryError`.
 
-    What :func:`hilclaw.local_run.run` raises for the client is passed on
-    unchanged, among it :class:`hilclaw.local_run.ProgramNotFoundError` when
-    the client is not on ``PATH`` and an :class:`OSError` of its start, and no
-    removal is attempted after it. What a tool answers for those, as for a
-    status of 125 to 127 or a failed removal, is ADR-0144 decision 7's open
-    question.
+    :class:`hilclaw.local_run.ProgramNotFoundError` (no client on ``PATH``),
+    an :class:`OSError` of the client's start and the other
+    :class:`TypeError` or :class:`ValueError` :func:`hilclaw.local_run.run`
+    raises before its start are passed on unchanged with no removal. Any
+    other exception of the client run (for example :class:`OverflowError`
+    for a limit the platform cannot wait for, or :class:`KeyboardInterrupt`)
+    may leave the container running, so before it is passed on one forced
+    removal is run as after a timeout, and the exception gets the attributes
+    ``container_name`` and ``removal`` (the :class:`Removal`, or ``None``
+    with a note added when the removal raised an :class:`OSError`,
+    :class:`LookupError` or :class:`ArithmeticError`). What a tool answers
+    for any of these, for a status of 125 to 127 or for a failed removal is
+    ADR-0144 decision 7's open question.
     """
     source, arguments = _check(
-        image, build_dir, program, arguments, timeout_s, removal_timeout_s
+        image, build_dir, program, arguments, timeout_s, removal_timeout_s, client
     )
     user = _numeric_user()
     _check_directory(source)
@@ -186,20 +174,19 @@ def run_in_container(
         program,
         *arguments,
     ]
-    ran = local_run.run(command, timeout_s=timeout_s, env=None)
-    removal = None
-    if ran.timed_out:
-        removed = local_run.run(
-            [client, "rm", "--force", name], timeout_s=removal_timeout_s, env=None
-        )
-        removal = Removal(
-            returncode=removed.returncode,
-            timed_out=removed.timed_out,
-            stdout=removed.stdout,
-            stderr=removed.stderr,
-            command=removed.command,
-            duration_s=removed.duration_s,
-        )
+    try:
+        ran = local_run.run(command, timeout_s=timeout_s, env=None)
+    except (local_run.ProgramNotFoundError, OSError, TypeError, ValueError):
+        raise
+    except BaseException as error:
+        error.container_name = name
+        error.removal = None
+        try:
+            error.removal = _remove(client, name, removal_timeout_s)
+        except (OSError, LookupError, ArithmeticError) as failed:
+            error.add_note(f"the forced removal of {name} raised {failed!r}")
+        raise
+    removal = _remove(client, name, removal_timeout_s) if ran.timed_out else None
     return ContainerResult(
         returncode=ran.returncode,
         timed_out=ran.timed_out,
@@ -212,7 +199,21 @@ def run_in_container(
     )
 
 
-def _check(image, build_dir, program, arguments, timeout_s, removal_timeout_s):
+def _remove(client, name, removal_timeout_s):
+    removed = local_run.run(
+        [client, "rm", "--force", name], timeout_s=removal_timeout_s, env=None
+    )
+    return Removal(
+        returncode=removed.returncode,
+        timed_out=removed.timed_out,
+        stdout=removed.stdout,
+        stderr=removed.stderr,
+        command=removed.command,
+        duration_s=removed.duration_s,
+    )
+
+
+def _check(image, build_dir, program, arguments, timeout_s, removal_timeout_s, client):
     with _parameter("image"):
         _check_image(image)
     with _parameter("build_dir"):
@@ -225,6 +226,8 @@ def _check(image, build_dir, program, arguments, timeout_s, removal_timeout_s):
         _check_limit(timeout_s, "timeout_s")
     with _parameter("removal_timeout_s"):
         _check_limit(removal_timeout_s, "removal_timeout_s")
+    with _parameter("client"):
+        _check_text(client, "client")
     return source, arguments
 
 

@@ -403,3 +403,70 @@ def test_no_numeric_user_comes_before_the_directory_test(starts, tmp_path, monke
     with pytest.raises(NoNumericUserError):
         call(tmp_path / "missing")
     assert starts.calls == []
+
+
+@pytest.mark.parametrize(
+    ("client", "kind"),
+    [(None, TypeError), (["docker"], TypeError), ("", ValueError), ("d\0", ValueError)],
+)
+def test_client_refusals(starts, build_dir, client, kind):
+    with pytest.raises(kind) as raised:
+        call(build_dir, client=client)
+    assert type(raised.value) is kind
+    assert raised.value.parameter == "client"
+    assert starts.calls == []
+
+
+@pytest.mark.parametrize("error", [TypeError("x"), ValueError("y")])
+def test_pre_start_refusals_of_local_run_are_passed_on_without_removal(
+    starts, build_dir, error
+):
+    starts.answers.append(error)
+    with pytest.raises(type(error)) as raised:
+        call(build_dir)
+    assert raised.value is error
+    assert not hasattr(error, "container_name")
+    assert len(starts.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "error", [OverflowError("too long"), KeyboardInterrupt(), RuntimeError("x")]
+)
+def test_an_exception_after_the_start_force_removes_the_container(
+    starts, build_dir, error
+):
+    starts.answers += [error, result(1, stdout=b"", stderr=b"gone")]
+    with pytest.raises(type(error)) as raised:
+        call(build_dir, removal_timeout_s=3)
+    assert raised.value is error
+    (run_call, remove_call) = starts.calls
+    name = option(run_call[0], "--name")
+    assert remove_call == (
+        ["docker", "rm", "--force", name],
+        {"timeout_s": 3, "env": None},
+    )
+    assert error.container_name == name
+    assert error.removal == Removal(
+        returncode=1,
+        timed_out=False,
+        stdout=b"",
+        stderr=b"gone",
+        command=("/usr/bin/docker", "rm", "--force", name),
+        duration_s=1.5,
+    )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [OSError(errno.EACCES, "denied"), local_run.ProgramNotFoundError("docker")],
+)
+def test_a_failed_removal_after_an_exception_is_noted(starts, build_dir, failure):
+    error = OverflowError("too long")
+    starts.answers += [error, failure]
+    with pytest.raises(OverflowError) as raised:
+        call(build_dir)
+    assert raised.value is error
+    assert error.removal is None
+    assert error.container_name in error.__notes__[0]
+    assert repr(failure) in error.__notes__[0]
+    assert len(starts.calls) == 2
