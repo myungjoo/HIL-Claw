@@ -2,7 +2,7 @@
 id: T-0396
 title: Add the start and end of one cpu_standin build or process container behind the local_run seam (ADR-0144 code slice 1; bound to no tool)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [NFR-4, C-7, FR-10, OD-14]
 dependsOn: [T-0395]
@@ -81,4 +81,12 @@ Planner's judgements (from `main` `714e08b`; **the reviewer is asked to re-check
 - After this lands: ADR-0144 slice (2) (the copies of Q3) and slice (3) (the image variable, with T-0395 round-7 nits (a) and (c)), each a small code task; then slice (4), which still waits on OD-18 ⑱/⑲ answers (HQ-0021, HQ-0026) and ① (마) for the memory figure.
 
 ## Result
-
+- **DONE.** PR #230 squash-merged as 265d570 (`Task: T-0396` is the last line of the squash message); branch deleted. New files: `hilclaw/standin_container.py`, `tests/test_standin_container.py` (76 tests). No existing module was edited.
+- **What it does**: `run_in_container(image, build_dir, program, arguments=(), *, timeout_s, removal_timeout_s, client="docker")` starts the client once through `local_run.run` with `run --rm`, a unique `--name hilclaw-standin-<32 hex>`, `--mount type=bind,source=…,target=/build` (does not create a missing source, T-0395 nit (b)), `--workdir /build`, `--network none`, `--pull never`, `--user uid:gid`, `--cap-drop ALL`, `--security-opt no-new-privileges=true`, `--entrypoint=`, then image, program, arguments. It returns `ContainerResult` (status 125-127 unchanged, raw streams, command, duration, name, no `max_rss`). On a timeout it runs exactly one `rm --force <name>` and returns it as `Removal`, uninterpreted.
+- **Refused before any start**: bad image (empty, leading `-` — nit (c) for this argument only — whitespace or NUL), bad or relative build_dir or one holding `,` `"` CR LF NUL, bad program/arguments, invalid limits; then `NoNumericUserError` without `os.getuid`/`os.getgid`; then the `os.stat` error or `NotADirectoryError`.
+- **Review**: 5 rounds (dev-reviewer), Approve. R1 (Medium): an exception after the client started left the container running — now one forced removal runs first and the exception carries `container_name` and `removal`. R2-R4 nits applied; R5 nothing left.
+- **Tests and CI**: ruff and full pytest green locally; CI green (Python 3.11/3.14, Coverage, C, sh, Test presence). `hilclaw/` coverage 97%, new module 100%. No `docker`, `clang` or `claude` was started (D16).
+- **Language**: Python, because the module wraps `hilclaw.local_run` and is called from the Python backend operations of slice (4).
+- **D4 note**: the module is 327 lines, over the 300 LOC cap, mostly docstrings the acceptance criteria require; the reviewer accepted it, no split.
+- **Known limit (documented)**: an `OSError` raised after the client started, from reading its output, is passed on with no removal (AC7).
+- **Follow-ups**: ADR-0144 slice (2) (the copies of Q3), slice (3) (the image environment variable, with T-0395 nits (a) and (c)), then slice (4), which waits on OD-18 ⑱/⑲ (HQ-0021, HQ-0026) and ① (마).
