@@ -2,7 +2,7 @@
 id: T-0414
 title: Write ADR-0151 - the spec of the first coder call of a round >= 1 in a first-case run with one candidate per round: the source of each member, how the writer turns catalog ids into guidance.techniques, which earlier attempts feedback shows and how, and the widening of spec.write (rest of OD-6, part of OD-23; PLAN P2-2, for P2-5)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-1, FR-5, FR-8, FR-17, OD-6, OD-22, OD-23, "PLAN P2-2", "PLAN P2-5"]
 dependsOn: [T-0412, T-0413]
@@ -209,4 +209,12 @@ hq: []
 
 ## Result
 
-- (executor fills)
+- DONE. Document mode. Landed on `main` as 3b0d3f5 ("ADR-0151: first-case round >= 1 spec and the spec.write widening"), one commit with `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0414` trailers. Branch `claude/T-0414-adr-first-case-later-round-spec` deleted (remote and local).
+- Files: ARCHITECTURE/decisions/ADR-0151-od6-first-case-later-round-spec.md (new, 141 lines, LF), ARCHITECTURE/Requirements.md (OD-6, OD-8, OD-23 rows), ARCHITECTURE/OpenDecisionProposals.md (§ OD-6, § OD-8 ⑱/㉕ (나)/㉘ (나)/㉞ (나), § OD-23), ARCHITECTURE/StandardScenarios.md ("최근 재검사" line; no verdict change, no gap). 153+/9- in 4 files, within the 300 LOC cap; no change outside touchesFiles.
+- Decisions: `spec.write` widened with a request member `techniques` (required exactly for round >= 1). The ids become {id, text} through hilclaw.catalog, with ADR-0150 decision 4's rule checked. A mock run can carry only an empty list. `feedback.attempts` shows every earlier attempt of candidate 1 whose sim-point standing is settled, in (round, attempt) order, with the ids of its own spec and a failure (stage from the deciding check result; report = fixed sentence + ADR-0078 compiler log for compile). New tool-layer kinds: catalog_unusable, technique_unknown, technique_not_applicable, feedback_unreadable. `id.round` is not held against STATE.json. The tool is still not journaled.
+- Narrowed in review: `profile` is left absent, because defined profile members raise the spec's schema_version (ADR-0002 decision 7; ADR-0050 decision 6), which is a data-plane change. `feedback.base` is left absent (lineage is OD-20). The contrastive top-k/bottom-k rule is not adopted for this scope.
+- HQs: HQ-0048, HQ-0053, HQ-0021, HQ-0026, HQ-0031 and HQ-0034 are cited, not answered. Nothing of draft ADR-0132 is relied on. Runtime acceptance items: none ((lxvii) unused).
+- #5 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6351545193
+- Round-7 nits left unaddressed (fixing them would need an 8th round): the § OD-6 objective partial-answer link sits inside the ADR-0138 parenthesis; References list unused decision numbers (ADR-0053 decision 4, ADR-0018 decision 3); the "path through `counts`" sentence in decision 2 (d) could be clearer.
+- Reviewers noted that this task's Why grounds D18 on P2-2 "spec 전달", a weak ground (K2 reads it as passing the spec, not composing it); the record relies on P2-5 only.
+- Follow-ups (planner): slice 1 — new module, e.g. `hilclaw/spec_feedback.py` + tests (`feedback.attempts` from the attempt directories, the log via check_standing, the compiler log path); slice 2 — `hilclaw/spec_tool.py` + tests (the request, checks ⑦–⑩, the kinds; docstrings of spec_tool and catalog). The coder-driver's and Round-Manager's round >= 1 steps wait on HQ-0048, HQ-0053 and P2-1.
