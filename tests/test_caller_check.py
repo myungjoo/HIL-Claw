@@ -411,6 +411,10 @@ def test_line_names_no_tool_of_another_form(session, tool):
     refuses(payload(tool), session)
 
 
+def test_named_form_is_the_readers_tool_form():
+    assert caller_check._NAMED.pattern == turn_permissions._MCP_TOOL.pattern
+
+
 def test_guard_turns_an_error_into_a_refusal(session, monkeypatch):
     def broken(session_dir):
         raise RuntimeError("boom at /very/secret")
