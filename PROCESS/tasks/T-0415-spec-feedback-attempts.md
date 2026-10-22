@@ -2,7 +2,7 @@
 id: T-0415
 title: Add hilclaw/spec_feedback.py - the feedback.attempts of a first-case round >= 1 spec, read from the earlier attempts' specs, the run's log and the compiler logs (ADR-0151 code slice 1; for PLAN P2-5)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-5, FR-17, OD-6, "PLAN P2-5"]
 dependsOn: [T-0414]
@@ -186,3 +186,12 @@ No data-plane member, file, kind value or version changes. The new kind `feedbac
 - (planner) Slice 2 of ADR-0151: `hilclaw/spec_tool.py` + `tests/test_spec_tool.py`. It adds the request member `techniques` (required exactly for round >= 1), check ⑦ through `hilclaw.catalog`, the kinds `catalog_unusable`, `technique_unknown` and `technique_not_applicable`, and the call of this module for ⑧ to ⑩. It updates the docstrings of `spec_tool.py` and `catalog.py`.
 
 ## Result
+
+- **Outcome**: DONE. PR #242 squash-merged into `main` as `e17b52e`; branch `claude/T-0415-spec-feedback-attempts` deleted; squash message ends with `Task: T-0415`.
+- **Review**: 3 rounds (dev-reviewer, Approve each round, no SECURITY). R1 Low: three compile-log tests compared only part of the result (fixed `d40345c`). R2 Low: two board tests and the order test likewise (fixed `f5f373d`). R3: two Nits left as they are (redundant `named and` in `_failure`; one duplicate `startswith` assertion in a test).
+- **CI**: green on `f5f373d` (Python gate 3.11/3.14, Coverage gate, Test presence, C gate, sh gate). Local: full suite passed, ruff check/format clean, `hilclaw/` coverage 97%, new module 100%.
+- **Language**: Python - the module reuses the Python readers already in `hilclaw/` (spec file, log, standing).
+- **Size**: 289 non-test LOC in one file; only the two `touchesFiles` changed.
+- **What landed**: `hilclaw/spec_feedback.py` with `attempts(data_root, run_id, round)` and `KIND_FEEDBACK_UNREADABLE` (ADR-0151 decision 2 (d), checks 8-10). Check 8 lists `rounds/` once and takes only exact `layout` names; each spec must pass `spec_file.parse` and `final_name`. Check 9 reuses `checks_tool.log_lines`, `checks_tool.checks_of`, `check_standing.standing`. Check 10 runs after all of 9, decodes the compiler log strictly as UTF-8 and refuses a BOM. The report is one fixed sentence (stage, point, `outcome`, a fixed phrase per `CONDITIONS` value; an unknown condition gets a generic phrase and is not echoed). No registry entry, no CLI front, no caller yet.
+- **Not decided**: nothing of HQ-0048, HQ-0053, HQ-0021, HQ-0026; no data-plane change (reviewer confirmed).
+- **Follow-up**: ADR-0151 slice 2 (already in Follow-ups): `hilclaw/spec_tool.py` + `tests/test_spec_tool.py` - request member `techniques`, check 7 via `hilclaw.catalog`, the three catalog kinds, calling `spec_feedback.attempts` for checks 8-10, docstring updates in `spec_tool.py` and `catalog.py`.
