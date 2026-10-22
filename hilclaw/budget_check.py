@@ -33,10 +33,9 @@ as given, with no refusal beyond the table; an input object with a repeated
 key or a ``NaN`` or ``Infinity`` constant is refused; the line names the
 tool only when it is a spending tool.
 
-This module is registered in no settings file here: the second ``PreToolUse``
-entry, its matcher built from :data:`SPENDING_TOOLS` and the data-root
-argument appended after the package directory are written by the turn loop
-(ADR-0147 code slice 2).
+:mod:`hilclaw.turn_loop` writes the second ``PreToolUse`` entry that names
+this program, its matcher built from :data:`SPENDING_TOOLS` and the data root
+as its last argument.
 
 Runtime acceptance items it depends on (ADR-0147 Consequences):
 
