@@ -1,10 +1,11 @@
 """The reader of the technique catalog (ADR-0150 decision 2 and Consequences slice 1).
 
 :func:`check` checks one accelerator's directory of the catalog and
-:func:`technique` returns what one entry gives a spec. Nothing calls this module
-yet: who reads the catalog and how an entry reaches a spec are the selection
-side's (HQ-0048) and the rest of OD-6's. It is no registry tool, calls no
-model, starts no process and writes nothing.
+:func:`technique` returns what one entry gives a spec. ``spec.write``
+(:mod:`hilclaw.spec_tool`) calls :func:`technique` for each id of its request
+and checks the rule of decision 4 against the spec it composes (ADR-0151
+decision 2 (b)); which ids a spec carries is the selection side's (HQ-0048).
+It is no registry tool, calls no model, starts no process and writes nothing.
 
 **Decided by ADR-0150** and only applied here: the catalog is ``catalog/``
 (:data:`SOURCE`), with one directory per ``accelerator`` value holding one file
@@ -30,8 +31,8 @@ removed, and it gives a spec exactly ``{"id": <id>, "text": <text>}``
 - the lines of :data:`APPLIES_TO` come in that order, with only blank lines
   before and after them; ``## When`` and the ``text`` are not blank.
 
-An empty directory gives no entry. The rule of decision 4 against a spec is the
-composition's and is not checked. **Also raised**: :class:`TypeError` for an
+An empty directory gives no entry. The rule of decision 4 against a spec is
+not checked here: ``spec.write`` checks it. **Also raised**: :class:`TypeError` for an
 ``accelerator`` or id that is not a ``str`` or a ``source`` that is not a
 ``str`` or path object; :class:`FileNotFoundError` for a missing directory;
 :class:`KeyError` for a well-formed id that names no entry; and, unchanged,
@@ -172,7 +173,8 @@ def technique(accelerator, entry_id, *, source=None):
     a ``str`` of the *name* form. After the whole directory has passed
     :func:`check`, returns a new ``dict`` ``{"id": entry_id, "text": text}``,
     the member of ``guidance.techniques`` of ADR-0150 decision 4; the rule of
-    that decision against a spec is not checked. Raises :class:`KeyError` when
+    that decision against a spec is checked by ``spec.write``
+    (:mod:`hilclaw.spec_tool`), not here. Raises :class:`KeyError` when
     no entry has the id, and otherwise as the module docstring lists.
     """
     _name(entry_id, "entry_id")
