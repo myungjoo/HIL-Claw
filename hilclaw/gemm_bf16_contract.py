@@ -37,9 +37,10 @@ reference belong to the P2-12 harness record (decision 9), and no tolerance is
 chosen. It knows no other contract: no other kind, dtype, layout, language or
 target.
 
-The rounding, accumulation and call obligations of decisions 3, 4, 7 and 8 are
-not represented in any value returned here, beyond what the prototype text
-itself states (``restrict`` states the no-overlap guarantee).
+The accumulation and rounding of decisions 3 and 4, the guarantees and
+obligations of a call (decision 7) and what the kernel source provides
+(decision 8) are not represented in any value returned here, beyond what the
+prototype text itself states (``restrict`` states the no-overlap guarantee).
 """
 
 import reprlib
