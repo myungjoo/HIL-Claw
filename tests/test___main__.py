@@ -19,6 +19,16 @@ FIXED_NAMES = [
     "correctness.check",
     "blob.push",
     "blob.fetch",
+    "state.read",
+    "instance.read",
+    "run.fresh",
+    "state.write",
+    "run.commit",
+    "verdicts.write",
+    "hypotheses.read",
+    "checks.read",
+    "coder.run",
+    "timings.compare",
 ]
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
 
@@ -202,11 +212,13 @@ def test_an_interrupt_is_not_answered():
 
 
 @pytest.mark.parametrize("name", FIXED_NAMES)
-def test_the_fixed_tool_set_is_the_blob_tools_and_correctness_check(name):
-    """The C-3 pair (ADR-0039) and correctness.check (ADR-0070); no other FR-10 HW tool yet."""
+def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_tools(
+    name,
+):
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), checks.read (ADR-0131), timings.compare (ADR-0140) and coder.run (ADR-0141)."""
     stdout, stderr = io.BytesIO(), io.BytesIO()
     status = main([name], stdin=io.BytesIO(b"{}"), stdout=stdout, stderr=stderr)
-    if name in ("blob.push", "blob.fetch", "correctness.check"):
+    if name not in FIXED_NAMES[:3]:
         assert status == front.EXIT_TOOL_FAILURE == 3
         assert error_of(stdout.getvalue(), "invalid_request")
     else:

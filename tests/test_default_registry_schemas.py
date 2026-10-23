@@ -31,6 +31,9 @@ class CountingSource:
 ACCEPTED = {
     "blob.fetch": {"sha256": "0123456789abcdef" * 4},
     "blob.push": {"sha256": "0123456789abcdef" * 4},
+    "case.write": {"run_id": "r1", "round": 1},
+    "checks.read": {"run_id": "r1", "round": 0, "candidate": 2, "point": "board"},
+    "coder.run": {"run_id": "r1", "round": 0, "candidate": 1, "attempt": 1},
     "correctness.check": {
         "run_id": "r1",
         "round": 3,
@@ -38,6 +41,52 @@ ACCEPTED = {
         "attempt": 1,
         "execution": 1,
         "point": "sim",
+    },
+    "hypotheses.read": {"run_id": "r1", "round": 1},
+    "instance.read": {"run_id": "r1"},
+    "key.store": {"run_id": "r1"},
+    "round.end": {"run_id": "r1", "round": 0},
+    "run.commit": {"run_id": "r1"},
+    "run.fresh": {"run_id": "r1"},
+    "spec.write": {"run_id": "r1", "round": 0, "candidate": 1, "attempt": 1},
+    "state.read": {"run_id": "r1"},
+    "state.write": {
+        "run_id": "r1",
+        "state": {
+            "schema_version": 1,
+            "round": 0,
+            "budget_spent": {"totals": {}, "position": 0, "open_steps": []},
+        },
+    },
+    "timings.compare": {
+        "run_id": "r1",
+        "metric": "latency_minimisation",
+        "point": "board",
+        "measured": {"round": 1, "candidate": 1, "attempt": 1},
+        "against": {"round": 0, "candidate": 1, "attempt": 1},
+    },
+    "verdicts.write": {
+        "run_id": "r1",
+        "record": {
+            "schema_version": 1,
+            "run_id": "r1",
+            "round": 1,
+            "verdicts": [
+                {
+                    "hypothesis": "h1",
+                    "verdict": "inconclusive",
+                    "cause": "not measured",
+                    "evidence": [
+                        {
+                            "kind": "check",
+                            "ref": {"round": 1, "candidate": 1, "attempt": 1},
+                            "point": "sim",
+                            "outcome": "pass",
+                        }
+                    ],
+                }
+            ],
+        },
     },
 }
 

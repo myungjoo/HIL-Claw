@@ -122,7 +122,25 @@ def test_a_registry_accepts_the_description_and_the_schema():
 
 def test_the_default_registry_holds_the_definition_of_the_tool():
     registry = tools.default_registry(lambda: None)
-    assert registry.names() == ("blob.fetch", "blob.push", TOOL)
+    assert registry.names() == (
+        "blob.fetch",
+        "blob.push",
+        "case.write",
+        "checks.read",
+        "coder.run",
+        TOOL,
+        "hypotheses.read",
+        "instance.read",
+        "key.store",
+        "round.end",
+        "run.commit",
+        "run.fresh",
+        "spec.write",
+        "state.read",
+        "state.write",
+        "timings.compare",
+        "verdicts.write",
+    )
     held = registry.definition(TOOL)
     assert (held.name, held.description, held.input_schema) == (
         TOOL,
@@ -368,7 +386,25 @@ def test_definition_refuses_a_source_that_is_not_callable(source):
 def test_building_the_default_registry_calls_no_party(parties):
     source = CountingSource()
     registry = tools.default_registry(source)
-    assert registry.names() == ("blob.fetch", "blob.push", TOOL)
+    assert registry.names() == (
+        "blob.fetch",
+        "blob.push",
+        "case.write",
+        "checks.read",
+        "coder.run",
+        TOOL,
+        "hypotheses.read",
+        "instance.read",
+        "key.store",
+        "round.end",
+        "run.commit",
+        "run.fresh",
+        "spec.write",
+        "state.read",
+        "state.write",
+        "timings.compare",
+        "verdicts.write",
+    )
     assert (source.calls, *counts(parties)) == (0, 0, 0, 0)
     assert tools.default_registry(source).get(TOOL) is not registry.get(TOOL)
     assert parties["table"].calls == []
@@ -382,7 +418,7 @@ def test_the_default_registry_refuses_a_source_that_is_not_callable(source, part
     assert parties["table"].calls == []
 
 
-def test_tools_list_of_the_mcp_front_holds_the_three_tools():
+def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
     data = (
         json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode() + b"\n"
     )
@@ -399,10 +435,24 @@ def test_tools_list_of_the_mcp_front_holds_the_three_tools():
     assert [tool["name"] for tool in listed] == [
         "blob_fetch",
         "blob_push",
+        "case_write",
+        "checks_read",
+        "coder_run",
         "correctness_check",
+        "hypotheses_read",
+        "instance_read",
+        "key_store",
+        "round_end",
+        "run_commit",
+        "run_fresh",
+        "spec_write",
+        "state_read",
+        "state_write",
+        "timings_compare",
+        "verdicts_write",
     ]
-    assert listed[2]["description"] == DESCRIPTION
-    assert listed[2]["inputSchema"] == SCHEMA
+    assert listed[5]["description"] == DESCRIPTION
+    assert listed[5]["inputSchema"] == SCHEMA
 
 
 def test_a_call_about_a_run_at_the_mock_passes(root, parties):
@@ -625,7 +675,11 @@ def test_building_the_default_registry_imports_no_numpy(tmp_path):
 
 def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
     answers, loaded = heavy_modules_after(LIST_CHILD, tmp_path)
-    assert answers == ["0 blob_fetch blob_push correctness_check"]
+    assert answers == [
+        "0 blob_fetch blob_push case_write checks_read coder_run correctness_check"
+        + " hypotheses_read instance_read key_store round_end run_commit run_fresh spec_write state_read"
+        + " state_write timings_compare verdicts_write"
+    ]
     assert loaded == ""
 
 

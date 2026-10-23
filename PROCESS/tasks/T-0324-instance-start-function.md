@@ -10,7 +10,7 @@ touchesFiles:
   - hilclaw/start_instance.py
   - tests/test_start_instance.py
 estimatedSize: {loc: 140, files: 1}
-hq: []
+hq: [HQ-0032]
 ---
 ## Why
 
@@ -82,3 +82,13 @@ Choices the records leave to this code task, fixed here so that the executor doe
 - Callers of the start, when OD-23 and UC-1 allow one to be chosen.
 
 ## Result
+
+**Outcome: BLOCKED (`requirement-unclear`, AC 9)** — HQ-0032. Nothing landed on `main`.
+
+- PR: #186 (Draft, label DONOTMERGE, not merged), branch `claude/T-0324-instance-start-function`, commit f5a64ca. Review rounds: 1 (Request changes). Review comment: https://github.com/myungjoo/HIL-Claw/pull/186#issuecomment-6258091615
+- Implemented on the branch: `hilclaw/start_instance.py` with `GivenRunIdError`, `RunIdInUseError` (raised `from None`) and `start(document, *, data_root)`, in the order of AC 4. The bytes are built before the id: indent 2, the document's member order, ASCII-escaped, `allow_nan=False`, UTF-8 without BOM, a final LF. `tests/test_start_instance.py` has 62 tests; the module has 100% coverage. Language: Python, because the function joins three existing Python modules of the layer-2 package.
+- Local gates: whole suite passed (23395 passed, 495 skipped); `ruff check .` and `ruff format --check .` clean. GitHub CI at stop: C, sh and test-presence gates passed; Python 3.11/3.14 and coverage gates still pending.
+- Reviewer finding that triggers AC 9 (round 1, Major, in substance): the module treats a top-level `run_id` member of the document as a given id and refuses it. ADR-0111 decision 2 leaves open whether an input form has a place for such a value; ADR-0115 decision 2 leaves the input form to the code task. The form chosen here is the `instance.json` document itself, a data-plane file; ADR-0018 decision 2 keeps the top level open ("A reader does not interpret a member it does not know"), no record defines a `run_id` member, and ADR-0006 Alternatives row 3 rejected a `run_id` member in the events log. The convention gives meaning to an undefined member name and in effect reserves it — close to a schema-level decision. Another reading fits equally: `run_id` as an ordinary undefined member, kept as given.
+- Owner decision needed (HQ-0032): (a) confirm the task's reading (a top-level `run_id` member is a given id, refused by the start only, no validity rule added); (b) another input form with an explicit place for a given id, separate from the document; (c) `run_id` is an ordinary undefined member that is kept. With (a) the branch can land as it is after the minor items below.
+- Other review findings (not acted on): Minor — files outside touchesFiles changed (AC 8 deviation): guard tests in `tests/test_gemm_contract.py` and `tests/test_standin_profile.py` now also allow `hilclaw/start_instance.py` (renamed to `test_module_is_bound_by_the_default_registry_and_the_start_only_and_imports_keys_only` and `test_module_is_bound_by_the_start_only_and_imports_no_store`); required by ADR-0115 Consequences, missed by the task file. Minor — the module docstring of `hilclaw/standin_profile.py` ("is bound to no tool and to no start of an instance") becomes wrong once the start binds `standin_profile.ACCELERATOR`; ADR-0115's less-exact list lacks it too; not edited (AC 5). Nit — NaN/infinity in an undefined member passes `validate` but `json.dumps` raises a bare `ValueError`, indistinguishable from `InvalidInstanceError`; mention it in the module docstring's list of reports.
+- Follow-ups: the HQ-0032 decision; a small task fixing the `standin_profile.py` docstring sentence and ADR-0115's less-exact list; on resume, take in the NaN docstring nit and keep the two guard-test changes.

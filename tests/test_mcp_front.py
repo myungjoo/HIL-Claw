@@ -21,6 +21,20 @@ FIXED_NAMES = {
     "correctness.check": "correctness_check",
     "blob.push": "blob_push",
     "blob.fetch": "blob_fetch",
+    "state.read": "state_read",
+    "instance.read": "instance_read",
+    "run.fresh": "run_fresh",
+    "state.write": "state_write",
+    "verdicts.write": "verdicts_write",
+    "hypotheses.read": "hypotheses_read",
+    "checks.read": "checks_read",
+    "coder.run": "coder_run",
+    "run.commit": "run_commit",
+    "case.write": "case_write",
+    "key.store": "key_store",
+    "round.end": "round_end",
+    "spec.write": "spec_write",
+    "timings.compare": "timings_compare",
 }
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
 INITIALIZE = {
@@ -449,12 +463,26 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 # The fixed tool set
 
 
-def test_the_fixed_tool_set_is_the_blob_tools_and_correctness_check():
-    """The C-3 pair (ADR-0039) and correctness.check (ADR-0070); no other FR-10 HW tool yet."""
+def test_the_fixed_tool_set_is_the_blob_tools_correctness_check_and_run_file_tools():
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), checks.read (ADR-0131), case.write (ADR-0133), key.store (ADR-0134), round.end (ADR-0135), spec.write (ADR-0138), timings.compare (ADR-0140) and coder.run (ADR-0141)."""
     held = {
         "blob_fetch": "blob.fetch",
         "blob_push": "blob.push",
+        "case_write": "case.write",
+        "checks_read": "checks.read",
+        "coder_run": "coder.run",
         "correctness_check": "correctness.check",
+        "hypotheses_read": "hypotheses.read",
+        "instance_read": "instance.read",
+        "key_store": "key.store",
+        "round_end": "round.end",
+        "run_commit": "run.commit",
+        "run_fresh": "run.fresh",
+        "spec_write": "spec.write",
+        "state_read": "state.read",
+        "state_write": "state.write",
+        "timings_compare": "timings.compare",
+        "verdicts_write": "verdicts.write",
     }
     assert mcp_names(default_registry(lambda: REPO_ROOT)) == held
     unknown = [name for name in FIXED_NAMES.values() if name not in held]
@@ -493,7 +521,25 @@ def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
     assert main([], stdin=io.BytesIO(data), stdout=stdout, stderr=stderr) == 0
     listed, refused = responses(stdout.getvalue())
     names = [tool["name"] for tool in listed["result"]["tools"]]
-    assert names == ["blob_fetch", "blob_push", "correctness_check"]
+    assert names == [
+        "blob_fetch",
+        "blob_push",
+        "case_write",
+        "checks_read",
+        "coder_run",
+        "correctness_check",
+        "hypotheses_read",
+        "instance_read",
+        "key_store",
+        "round_end",
+        "run_commit",
+        "run_fresh",
+        "spec_write",
+        "state_read",
+        "state_write",
+        "timings_compare",
+        "verdicts_write",
+    ]
     assert error_of(refused, -32602, 2) == "unknown tool 'sim_run'"
     assert stderr.getvalue() == b""
 
@@ -926,7 +972,25 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
     names = [tool["name"] for tool in listed["result"]["tools"]]
     assert (listed["id"], names) == (
         1,
-        ["blob_fetch", "blob_push", "correctness_check"],
+        [
+            "blob_fetch",
+            "blob_push",
+            "case_write",
+            "checks_read",
+            "coder_run",
+            "correctness_check",
+            "hypotheses_read",
+            "instance_read",
+            "key_store",
+            "round_end",
+            "run_commit",
+            "run_fresh",
+            "spec_write",
+            "state_read",
+            "state_write",
+            "timings_compare",
+            "verdicts_write",
+        ],
     )
     assert stderr.buffer.getvalue() == b""
     monkeypatch.setattr(sys, "argv", ["python -m hilclaw.mcp_front", "sim_run"])
@@ -1015,7 +1079,25 @@ def test_process_handshake_and_tool_list():
     names = [tool["name"] for tool in listed["result"]["tools"]]
     assert (listed["id"], names) == (
         2,
-        ["blob_fetch", "blob_push", "correctness_check"],
+        [
+            "blob_fetch",
+            "blob_push",
+            "case_write",
+            "checks_read",
+            "coder_run",
+            "correctness_check",
+            "hypotheses_read",
+            "instance_read",
+            "key_store",
+            "round_end",
+            "run_commit",
+            "run_fresh",
+            "spec_write",
+            "state_read",
+            "state_write",
+            "timings_compare",
+            "verdicts_write",
+        ],
     )
     assert done.stderr == b""
 

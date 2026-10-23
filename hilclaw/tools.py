@@ -193,11 +193,55 @@ def default_registry(data_root_source):
     ADR-0070). The backend table of the latter holds the mock alone, offering
     that tool with the default script of ADR-0044. Its source of seeds is the
     generator of the operating system. Its predicate "covered" is that of
-    ADR-0041 decision 5. A tool is added here, in the source, and in no other
-    way: no option, environment variable, entry point or plugin registers one
-    or chooses what it is bound to.
+    ADR-0041 decision 5. Beside these FR-10 tools it holds ``state.read``,
+    ``instance.read``, ``run.fresh`` and ``state.write``
+    (:mod:`hilclaw.run_file_tools`, ADR-0124), with which the Round-Manager
+    reads and writes its run's ``STATE.json`` and reads its ``instance.json``,
+    and ``run.commit`` (:func:`hilclaw.run_commit.definition`, ADR-0127), with
+    which it commits an owed round end of its run; and ``verdicts.write``
+    (:func:`hilclaw.verdicts_tool.definition`, ADR-0128 decision 6), with
+    which the evaluator writes a round's ``eval/verdicts.json``, and
+    ``hypotheses.read`` (:func:`hilclaw.hypotheses_tool.definition`, ADR-0129
+    decision 3), with which it reads a round's ``decision/hypotheses.json``,
+    and ``checks.read`` (:func:`hilclaw.checks_tool.definition`, ADR-0131
+    decision 3), with which it reads the ``correctness.check`` lines of an
+    attempt or a candidate at one point and their standing. It holds
+    ``case.write`` (:func:`hilclaw.case_tool.definition`, ADR-0133 decision
+    3), with which the Round-Manager writes a round's case, ``key.store``
+    (:func:`hilclaw.key_store_tool.definition`, ADR-0134 decision 3), with
+    which it stores its run's two key record files, and ``round.end``
+    (:func:`hilclaw.round_end_tool.definition`, ADR-0135 decision 2), with
+    which it makes the write that ends its round. It holds ``spec.write``
+    (:func:`hilclaw.spec_tool.definition`, ADR-0138 decision 3), with which
+    the coder-driver has the spec of the first coder call of round 0 written,
+    and that of the first coder call of a round >= 1 (ADR-0151 decision 3),
+    and ``timings.compare`` (:func:`hilclaw.timings_tool.definition`,
+    ADR-0140 decision 3), with which the evaluator gets the ``difference`` of
+    a comparison of two attempts at one point. It holds ``coder.run``
+    (:func:`hilclaw.coder_tool.definition`, ADR-0141 decisions 2 and 3), with
+    which the coder-driver performs the round-0 coder call, bound to
+    :class:`hilclaw.coder_tool.NoContainerRuntime`: until slice (d) replaces
+    that binding, every call that passes the checks before
+    ``no_container_runtime`` fails with that kind.
+    A tool is added here, in the source, and in no other way: no option,
+    environment variable, entry point or plugin registers one or chooses what
+    it is bound to.
     """
-    from hilclaw import blob_tools, check_definition
+    from hilclaw import (
+        blob_tools,
+        case_tool,
+        check_definition,
+        checks_tool,
+        coder_tool,
+        hypotheses_tool,
+        key_store_tool,
+        round_end_tool,
+        run_commit,
+        run_file_tools,
+        spec_tool,
+        timings_tool,
+        verdicts_tool,
+    )
 
     if not callable(data_root_source):
         raise TypeError("the data-root source must be callable")
@@ -205,6 +249,20 @@ def default_registry(data_root_source):
     for definition in blob_tools.definitions(data_root_source):
         registry.register(*definition)
     registry.register(*check_definition.definition(data_root_source))
+    for definition in run_file_tools.definitions(data_root_source):
+        registry.register(*definition)
+    registry.register(*run_commit.definition(data_root_source))
+    registry.register(*verdicts_tool.definition(data_root_source))
+    registry.register(*hypotheses_tool.definition(data_root_source))
+    registry.register(*checks_tool.definition(data_root_source))
+    registry.register(*case_tool.definition(data_root_source))
+    registry.register(*key_store_tool.definition(data_root_source))
+    registry.register(*round_end_tool.definition(data_root_source))
+    registry.register(*spec_tool.definition(data_root_source))
+    registry.register(*timings_tool.definition(data_root_source))
+    registry.register(
+        *coder_tool.definition(data_root_source, coder_tool.NoContainerRuntime())
+    )
     return registry
 
 

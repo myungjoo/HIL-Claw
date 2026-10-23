@@ -155,8 +155,11 @@ fills in no value; it takes no lock, makes no commit and writes no other
 file. The module builds no spec and no bytes; it does not say that a content is
 right beyond decisions 2 and 3, that a coder was or will be called with it or
 that the coder reads the file; it reads no other version; and it is no tool.
-What composes or writes a spec, when, in which order against any other file,
-what follows a taken name and what a second write for a tuple means are open
+The spec of the first coder call of round 0 of a first-case run with one
+candidate per round (ADR-0138 decision 1) is composed and written by the tool
+``spec.write`` (:mod:`hilclaw.spec_tool`) through :func:`write`. What composes
+or writes any other spec, when, in which order against any other file, what
+follows a taken name and what a second write for a tuple means are open
 (OD-23, sub-questions 10 and 26 of OD-8).
 """
 

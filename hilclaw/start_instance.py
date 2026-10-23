@@ -20,7 +20,7 @@ Conventions of this module, not rules of a record:
 * A document whose top level holds a member named ``run_id`` is a given id
   and is refused with :class:`GivenRunIdError`. This is a refusal of the
   start, not a rule of validity: :mod:`hilclaw.instance` still accepts such a
-  file.
+  file. The owner confirmed this reading (HQ-0032).
 * The bytes are built before the id and the id is built after every check
   has passed, immediately before the write, so a refusal builds no id. The
   bytes are the JSON text of the prepared document with an indent of two
@@ -30,8 +30,11 @@ Conventions of this module, not rules of a record:
 * The reports are exceptions told apart from each other:
   :class:`GivenRunIdError`, :class:`hilclaw.instance_start.MissingMembersError`
   (passed through), :class:`RunIdInUseError` (no :class:`OSError`) and the
-  :class:`OSError` of the file system (passed through). Their wording is this
-  module's; no form of a user interface is chosen.
+  :class:`OSError` of the file system (passed through). The
+  :class:`ValueError` of :func:`json.dumps` for NaN or an infinity, which
+  :func:`hilclaw.instance.validate` lets through in an undefined member, also
+  passes through; it is no :class:`hilclaw.instance.InvalidInstanceError`.
+  Their wording is this module's; no form of a user interface is chosen.
 
 What it does not do: it binds no caller (OD-23, UC-1); it is no FR-10 tool,
 is not registered in :mod:`hilclaw.tools` and has no command-line or MCP

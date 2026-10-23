@@ -175,7 +175,24 @@ def test_a_tool_function_can_be_called_without_a_registry(root):
 
 def test_the_default_registry_holds_the_definitions(root):
     registry = default_registry(lambda: root)
-    assert registry.names() == (*NAMES, "correctness.check")
+    assert registry.names() == (
+        *NAMES,
+        "case.write",
+        "checks.read",
+        "coder.run",
+        "correctness.check",
+        "hypotheses.read",
+        "instance.read",
+        "key.store",
+        "round.end",
+        "run.commit",
+        "run.fresh",
+        "spec.write",
+        "state.read",
+        "state.write",
+        "timings.compare",
+        "verdicts.write",
+    )
     for held in blob_tools.definitions(lambda: root):
         assert registry.definition(held.name).description == held.description
         assert registry.definition(held.name).input_schema == SCHEMA
@@ -685,11 +702,27 @@ def outcome(document, is_error=False):
     return json.loads(block["text"])
 
 
-def test_the_mcp_front_lists_the_two_tools_and_correctness_check(configured):
+def test_the_mcp_front_lists_the_blob_tools_among_the_fixed_set(configured):
     (listed,) = serve(message("tools/list", 1))
     fetch, push = blob_tools.definitions(lambda: configured)
-    *blob, check = listed["result"]["tools"]
-    assert check["name"] == "correctness_check"
+    *blob, case, check, coder, correctness = listed["result"]["tools"][:6]
+    assert case["name"] == "case_write"
+    assert check["name"] == "checks_read"
+    assert coder["name"] == "coder_run"
+    assert correctness["name"] == "correctness_check"
+    assert [tool["name"] for tool in listed["result"]["tools"][6:]] == [
+        "hypotheses_read",
+        "instance_read",
+        "key_store",
+        "round_end",
+        "run_commit",
+        "run_fresh",
+        "spec_write",
+        "state_read",
+        "state_write",
+        "timings_compare",
+        "verdicts_write",
+    ]
     assert {"tools": blob} == {
         "tools": [
             {

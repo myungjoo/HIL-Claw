@@ -21,7 +21,12 @@ from hilclaw import (
 )
 from hilclaw.harness import measurement
 from hilclaw.instance import InvalidInstanceError, UnsupportedVersionError
-from hilclaw.instance_start import REPORT_ORDER, MissingMembersError, OutOfScopeError
+from hilclaw.instance_start import (
+    CODER_MODEL_DEFAULT,
+    REPORT_ORDER,
+    MissingMembersError,
+    OutOfScopeError,
+)
 from hilclaw.start_instance import GivenRunIdError, RunIdInUseError, start
 
 ABSENT = object()
@@ -31,6 +36,7 @@ TEST_N_MAX = 12
 TEST_CANDIDATES = 2
 TEST_DRAWS = 3
 TEST_TOLERANCE = {"rtol": 0.25, "atol": 3.0}
+TEST_CODER_MODEL = "claude-test-model"
 OBJECTIVE = {"objectives": [{"type": "latency_minimisation"}], "constraints": []}
 RECORD = {
     "schema_version": 1,
@@ -157,8 +163,9 @@ def test_a_valid_document_is_written_under_the_built_id(
     assert read.n_max == TEST_N_MAX
     assert read.draws == TEST_DRAWS
     assert read.candidates_per_round == TEST_CANDIDATES
+    assert read.coder_model == CODER_MODEL_DEFAULT
     stored = json.loads((tmp_path / "runs" / built / "instance.json").read_bytes())
-    assert stored == given
+    assert stored == {**given, "coder_model": CODER_MODEL_DEFAULT}
 
 
 def test_the_returned_id_has_the_form_with_the_real_sources(tmp_path):
@@ -192,6 +199,20 @@ def test_a_given_n_max_is_kept(tmp_path, ids):
     assert instance.read(tmp_path, built).n_max == 7
 
 
+def test_coder_model_is_filled_in_with_the_default_when_absent(tmp_path, ids):
+    given = document()
+    built = start(given, data_root=tmp_path)
+    assert "coder_model" not in given
+    assert instance.coder_model_of(tmp_path, built) == CODER_MODEL_DEFAULT
+
+
+def test_a_given_coder_model_is_kept(tmp_path, ids):
+    built = start(document(coder_model=TEST_CODER_MODEL), data_root=tmp_path)
+    assert instance.coder_model_of(tmp_path, built) == TEST_CODER_MODEL
+    stored = json.loads((tmp_path / "runs" / built / "instance.json").read_bytes())
+    assert stored["coder_model"] == TEST_CODER_MODEL
+
+
 def test_the_bytes_are_in_the_written_form(tmp_path, ids):
     built = start(document(label="é"), data_root=tmp_path)
     content = (tmp_path / "runs" / built / "instance.json").read_bytes()
@@ -200,7 +221,8 @@ def test_the_bytes_are_in_the_written_form(tmp_path, ids):
     assert b"\r" not in content
     assert not content.startswith(b"\xef\xbb\xbf")
     assert content.isascii()
-    assert content == json.dumps(document(label="é"), indent=2).encode() + b"\n"
+    expected = {**document(label="é"), "coder_model": CODER_MODEL_DEFAULT}
+    assert content == json.dumps(expected, indent=2).encode() + b"\n"
     instance.parse(content)
 
 
@@ -216,7 +238,7 @@ def test_the_members_keep_the_order_of_the_document(tmp_path, ids):
     given = {"zz_first": 1, **document()}
     built = start(given, data_root=tmp_path)
     stored = json.loads((tmp_path / "runs" / built / "instance.json").read_bytes())
-    assert list(stored) == list(given)
+    assert list(stored) == [*given, "coder_model"]
 
 
 def test_one_id_is_built_per_start(tmp_path, ids):
@@ -468,7 +490,11 @@ def test_the_write_is_handed_the_built_id_and_the_bytes(tmp_path, monkeypatch, i
     ((root, built, content),) = seen
     assert root is tmp_path
     assert built == FIXED_ID
-    assert json.loads(content) == {**given, "n_max": measurement.N_MAX_DEFAULT}
+    assert json.loads(content) == {
+        **given,
+        "n_max": measurement.N_MAX_DEFAULT,
+        "coder_model": CODER_MODEL_DEFAULT,
+    }
 
 
 def test_a_value_json_cannot_write_without_nan_is_refused_before_an_id(tmp_path, ids):

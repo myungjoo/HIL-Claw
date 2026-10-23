@@ -38,8 +38,9 @@ are not prevented: each moves a whole content and the later move wins.
 
 It reads no file, the previous ``STATE.json`` included, and carries no member
 over (decision 7). It takes no lock, makes no commit, restores nothing from the
-history, writes no other file and is not a tool: who calls it is open (OD-23,
-the rest of OD-17, sub-questions 10, 12 and 15 of OD-8).
+history and writes no other file. The tool ``state.write`` of
+:mod:`hilclaw.run_file_tools` calls it (ADR-0124); the lock and the rest of
+OD-17 and sub-questions 10, 12 and 15 of OD-8 stay open.
 """
 
 import contextlib

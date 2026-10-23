@@ -486,7 +486,25 @@ class CountingSource:
         raise RuntimeError("no data root in this test")
 
 
-DEFAULT_SET = ("blob.fetch", "blob.push", "correctness.check")
+DEFAULT_SET = (
+    "blob.fetch",
+    "blob.push",
+    "case.write",
+    "checks.read",
+    "coder.run",
+    "correctness.check",
+    "hypotheses.read",
+    "instance.read",
+    "key.store",
+    "round.end",
+    "run.commit",
+    "run.fresh",
+    "spec.write",
+    "state.read",
+    "state.write",
+    "timings.compare",
+    "verdicts.write",
+)
 
 
 def test_default_registry_holds_the_fixed_set_and_is_not_shared():
