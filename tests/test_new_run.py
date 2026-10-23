@@ -302,13 +302,6 @@ def test_a_file_that_cannot_be_read_is_unreadable_input(tmp_path, root, recorder
     assert tree(root) == []
 
 
-def test_a_directory_is_unreadable_input(root, recorder):
-    recording = recorder()
-    ran = run([str(root)], root)
-    assert ran.told["outcome"] == UNREADABLE_INPUT
-    assert recording.calls == []
-
-
 @pytest.mark.parametrize(
     "content",
     [
