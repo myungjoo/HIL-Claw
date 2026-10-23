@@ -2,7 +2,7 @@
 id: T-0425
 title: Bind coder.run of hilclaw.tools.default_registry to coder_runtime.DockerRuntime in place of NoContainerRuntime, and have hilclaw/turn_loop.py put a non-empty HILCLAW_CODER_IMAGE and the reference ${HILCLAW_CODER_OAUTH_TOKEN} (never the value) into the server entry's env, updating the docstrings that call the runtime "slice (d)'s" (ADR-0137 code slice 2; for PLAN P2-2)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-5, NFR-4, C-7, OD-23, OD-8, "PLAN P2-2"]
 dependsOn: [T-0424]
@@ -104,3 +104,11 @@ hq: []
 - If the executor finds a test outside the listed files that reaches the default registry's runtime, it updates that test in this task (tests are outside the size cap) and names it in Result.
 
 ## Result
+
+- **PR/commit**: PR #249 squash-merged into `main` as `7468959`; branch `claude/T-0425-coder-runtime-binding` deleted. CI green (3.11, 3.14; coverage, C, sh and test-presence gates).
+- **Review**: 2 rounds. Round 1 requested changes (clear the two new variables before the exact `env` comparison in `test_settings_file_beside_the_configuration`; replace a hard-coded timeout with `VERSION_TIMEOUT_S`); both fixed. Round 2 approved with no findings.
+- **Change**: `default_registry` binds `coder.run` to `coder_runtime.DockerRuntime()`; `NoContainerRuntime` stays as a runtime that starts nothing. `turn_loop._config_text` copies a non-empty `HILCLAW_CODER_IMAGE` into the server entry's `env` and, when `HILCLAW_CODER_OAUTH_TOKEN` is non-empty, writes the reference `${HILCLAW_CODER_OAUTH_TOKEN}` (never the value). Seam docstrings in `coder_call`, `coder_tool`, `coder_runtime`, `tools`, `turn_loop` rewritten.
+- **Language**: Python, for the existing modules.
+- **No test starts `docker`**: an autouse guard in `tests/conftest.py` (all tests outside `tests/test_coder_runtime.py`) replaces `hilclaw.coder_runtime`'s `local_run` and `subprocess.Popen` with `pytest.fail`; default-registry tests in `tests/test_coder_tool.py` use a recorder. Full suite 27363 passed.
+- **Local checks**: ruff check/format clean; `hilclaw/` coverage 99%, touched modules 100%.
+- **Follow-ups**: none new. Runtime acceptance items (lxix)–(lxxiv) stay under HQ-0068.
