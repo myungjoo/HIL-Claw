@@ -2,7 +2,7 @@
 id: T-0426
 title: Record ADR-0155, the caller of the start of a first-case instance - a command-line entry of the package that hands a person's or a script's instance document to hilclaw.start_instance.start and tells the starter the run id or the refusal (part of OD-23 role assignment and of OD-8 sub-question 17 first part; for PLAN P2-5)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-13, OD-23, OD-8, "UC-1", "PLAN P2-5"]
 dependsOn: []
@@ -142,3 +142,4 @@ Criterion 4 says what to do if the reading cannot be made without the owner.
 - **Register/proposals**: Requirements OD-8 and OD-23 rows (one `확정분` link each, `잔여` narrowed to UI/agent/`claude -p` CI callers; OD-8 status date range to 2026-10-24, status words unchanged); OpenDecisionProposals OD-8 (채택분 line, ⑰ partial answer and remainder, "제안으로 남는 부분" clause) and OD-23 (채택분 line). StandardScenarios: S0, S1, S2 re-checked, no verdict change; only the "최근 재검사" line updated. UsageCases not edited (no sentence became false).
 - **Runtime acceptance items**: none; no HQ needed.
 - **Follow-ups (planner)**: the code slice of ADR-0155 Consequences — `hilclaw/new_run.py`, `tests/test_new_run.py` (fixtures and temporary data roots only, no `claude` or stub), and the docstring fix of `hilclaw/start_instance.py`; code mode, PLAN P2-5. Then the P2-13 joining task of ADR-0153 slice 1, as the task's Follow-ups say.
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6374311460 (7-day objection window from 2026-10-24).
