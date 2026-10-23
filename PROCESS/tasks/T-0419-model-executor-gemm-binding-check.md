@@ -2,7 +2,7 @@
 id: T-0419
 title: Add the host-side binding check of the model executor for the GEMM call sites - a new module hilclaw/model_binding.py that derives every GEMM call of a generation from the model dimensions and run settings, checks an explicit binding against them before anything is built, and returns the outcomes no kernel, kernel unfit and invalid input (ADR-0153 code slice 1, first half; for PLAN P2-13)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-13"]
 dependsOn: [T-0418]
@@ -98,6 +98,16 @@ Module `hilclaw/model_binding.py` (Python; the language-choice line goes in Resu
 - Next task (candidate T-0420, the second half of ADR-0153 code slice 1): build each bound fp32 `gemm` kernel into a shared library through `hilclaw.clang_build`, and add a fixed-source C model program that loads each library with `dlopen` and calls `hilclaw_gemm` through `dlsym` for the `calls` of this module's `BindingCheck`. Add the host side that builds, starts and reads the report, with the outcomes `build failed` and `run failed`. Test with hand-written kernels. That task asks runtime acceptance item (lxvii) of ADR-0153 once it lands (DRIVER §8, reason `runtime-acceptance`).
 
 ## Result
+
+**Outcome: DONE (resumed after HQ-0067 answered (a))** — PR #244 squash-merged as 99e4664; branch deleted; squash body ends with `Task: T-0419`.
+
+- Resume: origin/main was merged into the branch (eba65c4, no force push), without conflicts. 2944f20 adds `hilclaw/model_binding.py` to the binders list of `tests/test_gemm_contract.py` (authorized by HQ-0067 (a)), keeping the #186 entries; the test is renamed to match.
+- Review rounds: 2 after the resume (round 1 Approve, its Low and Nit fixed in 323a19a; round 2 Approve, one Nit: commit 2944f20 lacks a `Task:` line, the squash message carries it).
+- Language: Python — the host side of ADR-0153 decision 2 is Python and the check runs in memory with the standard library only.
+- Gates: local pytest 26979 passed / 910 skipped; `hilclaw/` line coverage 97%, `model_binding.py` 100%; ruff check and format clean; CI green (Python 3.11/3.14, Coverage, C, sh, Test presence).
+- Follow-up: token ids must be exact `int`; a later host side holding them in numpy arrays must convert them first, or the check must accept numpy integers (slice 2).
+
+### Earlier attempt (BLOCKED on HQ-0067)
 
 **BLOCKED** (reason: task requirement conflicts with an existing test whose file the task forbids editing and open PR #186 edits; CLAUDE.md A-13 "requirement unclear" and DRIVER §3 "open PR file conflict risk").
 
