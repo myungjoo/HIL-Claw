@@ -2,7 +2,7 @@
 id: T-0418
 title: Write ADR-0153 - the model executor of the Llama 3.2 1B end-to-end goal (place, language, how it binds and calls per-op kernels, work outside the kernels), with dtype, oracle, head count and the owner-only parts left open (OD-31 sub-question 4, for PLAN P2-13)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-9, FR-10, FR-13, OD-31, "PLAN P2-13"]
 dependsOn: [T-0417]
@@ -167,3 +167,15 @@ If the executor finds that some decision cannot be written without one of them, 
 - (executor fills) Any owner question the record raises, in DRIVER §8 form (Korean, options, what is blocked and what is not), for the driver to record as an HQ.
 
 ## Result
+
+- **DONE.** ADR-0153 (`ARCHITECTURE/decisions/ADR-0153-od31-model-executor.md`) with the OD-31 register row, OpenDecisionProposals § OD-31 (④ → 일부 답함) and the StandardScenarios re-check line (S0, S1: no verdict change, no gap) landed on `main` as **4498d50** (document mode, direct push, `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0418`). Branch `claude/T-0418-adr-od31-model-executor` deleted (local and remote).
+- **Review**: 7 rounds. Rounds 1-3 requested changes (ADR-0144 image citation narrowed and the two loading needs made this record's own; runtime item renumbered; OD-16 ① and OD-6 ④ limits; RoPE table, KV cache capacity left to the SDPA contract; listed-shape fit rule; invalid-input outcome; in-process tamper limit); rounds 4-7 approved with nits, each addressed through round 6. Round 7 approved with two non-blocking points not addressed (round limit), listed under Follow-ups below.
+- **DRIVER §9 notice** posted on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6355510786
+- **Decided** (part of OD-31 ④): Python host side in `hilclaw/` + a fixed-source C model program, one process per generation; explicit binding (call site → kernel source + `task.contract` + build settings), fit check, one shared library per kernel loaded with `dlopen`; embedding copy, contract-left copies, buffers and KV cache owned by the model program; pass and generation order; named outcomes (no kernel, kernel unfit, invalid input, build failed, run failed), no fallback; synthetic-model verification. **Open of ④**: binding from best (OD-20, OD-7), where token selection is applied (with ⑥), isolation of the model program (OD-14), exposure (⑩, OD-18, OD-23), targets other than `cpu_standin`.
+- **Runtime acceptance items for HQs** (reason `runtime-acceptance`, ADR-0153 Consequences): (lxvii) the model program builds with its kernels' shared libraries and loads them with `dlopen` in the isolated environment OD-14 gives it, with the user's image, on each kind of C-7 machine — ask once code slice 1 has landed; (lxviii) a generation at Llama 3.2 1B dimensions (any weights) fits that environment's memory limit — ask once code slice 2 has landed. Neither is to be raised now.
+- **Owner question**: none new.
+
+### Follow-ups (executor)
+
+- Code slice 1 (ADR-0153 Consequences): host-side binding checks and outcomes, build of fp32 `gemm` kernels as shared libraries, a model program calling them through ADR-0008's prototype, tested with hand-written kernels — possible before the HQ-0064/0065/0066 answers; the planner judges whether it is worth taking first (D18). Code slice 2 (full pass and generation loop on the synthetic model) waits on the P2-11 contract records.
+- Two non-blocking review-round-7 points, for a later edit of ADR-0153 if wanted: (1) Decision 2 could state that an array whose dtype `numpy` lacks (bf16) is held and passed as its raw 16-bit pattern and that the host side does no arithmetic on it, so "no new dependency" holds whatever ② answers; (2) the Boundaries item of sub-question 8 could say that the per-kernel loading and the build directory's lifetime are revisited if the executor's output is the whole-model binary. Under D18 these are wording touch-ups (보류 candidates) unless a code slice needs them.
