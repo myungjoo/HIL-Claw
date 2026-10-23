@@ -11,10 +11,12 @@ the kinds in their order are those of :func:`hilclaw.coder_call.call` and
 propagates passes out of the tool function unchanged. The tool is not
 journaled (ADR-0126 decision 7): it appends no line to ``events.ndjson``.
 
-Decision 3: while slice (d) is absent, the registry binds the tool to
-:class:`NoContainerRuntime`, whose ``available()`` returns false, so every
-call that passes the checks before ``no_container_runtime`` fails with that
-kind and the function's message, having created nothing.
+Decision 3 held while slice (d) was absent: the registry bound the tool to
+:class:`NoContainerRuntime`, whose ``available()`` returns false. ADR-0137
+code slice 2 replaced that binding with
+:class:`hilclaw.coder_runtime.DockerRuntime` in
+:func:`hilclaw.tools.default_registry`; :class:`NoContainerRuntime` stays as a
+runtime that starts nothing.
 
 The choices ADR-0141 decision 2 leaves to the code slice, as made here: the
 module is this one; the description and the input schema are
@@ -71,11 +73,13 @@ _MEMBERS = ("run_id", "round", "candidate", "attempt")
 
 
 class NoContainerRuntime:
-    """The runtime of the package while slice (d) is absent (ADR-0141 decision 3).
+    """A runtime that starts nothing (ADR-0141 decision 3).
 
     It starts no process and no container, reads no environment variable and
-    takes no option. Slice (d) replaces this binding in the source of
-    :func:`hilclaw.tools.default_registry` (ADR-0126 slice 3).
+    takes no option. It was the package's binding while slice (d) was absent;
+    ADR-0137 code slice 2 replaced it with
+    :class:`hilclaw.coder_runtime.DockerRuntime` in the source of
+    :func:`hilclaw.tools.default_registry`.
     """
 
     def available(self):

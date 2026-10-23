@@ -12,6 +12,7 @@ from hilclaw import (
     budget_check,
     caller_check,
     checkout_boundary,
+    coder_runtime,
     config,
     key_records,
     keys,
@@ -49,6 +50,10 @@ IDLE = "CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT"
 NO_BACKGROUND = "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"
 AUTO_BACKGROUND = "CLAUDE_AUTO_BACKGROUND_TASKS"
 UNRELATED = "HILCLAW_TEST_UNRELATED"
+CODER_IMAGE = coder_runtime.ENV_IMAGE
+CODER_TOKEN = coder_runtime.ENV_TOKEN
+REFERENCE = "${HILCLAW_CODER_OAUTH_TOKEN}"
+SENTINEL = "synthetic-coder-token-T0425-sentinel"
 LEFT_ALONE = (
     "MCP_TOOL_TIMEOUT",
     "CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS",
@@ -372,8 +377,14 @@ def test_fresh_directory_per_turn(stub, data_root, parent):
     assert list(parent.iterdir()) == []
 
 
+def clear_coder(monkeypatch):
+    monkeypatch.delenv(CODER_IMAGE, raising=False)
+    monkeypatch.delenv(CODER_TOKEN, raising=False)
+
+
 def test_configuration_content(stub, data_root, parent, monkeypatch):
     monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+    clear_coder(monkeypatch)
     stub.install()
     go(data_root, parent)
     (call,) = stub.calls()
@@ -407,6 +418,7 @@ def server_env(call):
 def test_configuration_forwards_the_image(stub, data_root, parent, monkeypatch):
     image = "Example/standin@sha256:" + "ab" * 32
     monkeypatch.setenv(standin_image.ENV_IMAGE, image)
+    clear_coder(monkeypatch)
     stub.install()
     go(data_root, parent)
     (call,) = stub.calls()
@@ -433,6 +445,7 @@ def test_configuration_without_an_image(stub, data_root, parent, monkeypatch, va
     else:
         monkeypatch.setenv(standin_image.ENV_IMAGE, value)
     monkeypatch.setenv(UNRELATED, "kept out")
+    clear_coder(monkeypatch)
     stub.install()
     go(data_root, parent)
     (call,) = stub.calls()
@@ -472,6 +485,154 @@ def test_image_not_set_at_start_stays_out(stub, data_root, parent, monkeypatch):
     assert len(calls) == 2
     for call in calls:
         assert standin_image.ENV_IMAGE not in server_env(call)
+
+
+def test_configuration_forwards_the_coder_image(stub, data_root, parent, monkeypatch):
+    image = "Example/coder@sha256:" + "cd" * 32
+    monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+    monkeypatch.delenv(CODER_TOKEN, raising=False)
+    monkeypatch.setenv(CODER_IMAGE, image)
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert server_env(call) == {
+        config.ENV_LOCAL_PATH: os.path.realpath(data_root),
+        CODER_IMAGE: image,
+    }
+
+
+def test_configuration_forwards_the_coder_image_unchecked(
+    stub, data_root, parent, monkeypatch
+):
+    monkeypatch.setenv(CODER_IMAGE, "--privileged")
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert server_env(call)[CODER_IMAGE] == "--privileged"
+
+
+@pytest.mark.parametrize("value", [None, ""])
+@pytest.mark.parametrize("name", [CODER_IMAGE, CODER_TOKEN])
+def test_configuration_without_a_coder_variable(
+    stub, data_root, parent, monkeypatch, name, value
+):
+    monkeypatch.setenv(CODER_IMAGE, "example/coder:1")
+    monkeypatch.setenv(CODER_TOKEN, SENTINEL)
+    if value is None:
+        monkeypatch.delenv(name)
+    else:
+        monkeypatch.setenv(name, value)
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert name not in server_env(call)
+    other = CODER_TOKEN if name == CODER_IMAGE else CODER_IMAGE
+    assert other in server_env(call)
+
+
+def written_texts(call):
+    return [*call["contents"].values(), call["settings"], *call["argv"]]
+
+
+def test_configuration_holds_the_token_reference_and_never_the_value(
+    stub, data_root, parent, monkeypatch
+):
+    monkeypatch.setenv(CODER_TOKEN, SENTINEL)
+    stub.install(statuses=(0, 0))
+    go(data_root, parent, further_turn=Predicate(2))
+    calls = stub.calls()
+    assert len(calls) == 2
+    for call in calls:
+        assert server_env(call)[CODER_TOKEN] == REFERENCE
+        assert REFERENCE in call["contents"][CONFIG_FILE]
+        for text in written_texts(call):
+            assert SENTINEL not in text
+    assert list(parent.iterdir()) == []
+
+
+def test_configuration_writes_the_reference_for_a_value_that_is_the_reference(
+    stub, data_root, parent, monkeypatch
+):
+    monkeypatch.setenv(CODER_TOKEN, REFERENCE)
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert server_env(call)[CODER_TOKEN] == REFERENCE
+    assert call["contents"][CONFIG_FILE].count("HILCLAW_CODER_OAUTH_TOKEN") == 2
+
+
+def test_configuration_copies_nothing_else_of_the_environment(
+    stub, data_root, parent, monkeypatch
+):
+    monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+    clear_coder(monkeypatch)
+    for name in ("CLAUDE_CODE_OAUTH_TOKEN", "DOCKER_HOST", "DOCKER_CONTEXT", UNRELATED):
+        monkeypatch.setenv(name, SENTINEL)
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert server_env(call) == {config.ENV_LOCAL_PATH: os.path.realpath(data_root)}
+    assert SENTINEL not in call["contents"][CONFIG_FILE]
+
+
+def test_configuration_with_every_variable(stub, data_root, parent, monkeypatch):
+    monkeypatch.setenv(standin_image.ENV_IMAGE, "example/standin:1")
+    monkeypatch.setenv(CODER_IMAGE, "example/coder:1")
+    monkeypatch.setenv(CODER_TOKEN, SENTINEL)
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", SENTINEL)
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert server_env(call) == {
+        config.ENV_LOCAL_PATH: os.path.realpath(data_root),
+        standin_image.ENV_IMAGE: "example/standin:1",
+        CODER_IMAGE: "example/coder:1",
+        CODER_TOKEN: REFERENCE,
+    }
+
+
+@pytest.mark.parametrize("later", [None, "changed"])
+def test_coder_variables_read_once_per_loop(
+    stub, data_root, parent, monkeypatch, later
+):
+    monkeypatch.setenv(CODER_IMAGE, "example/coder:1")
+    monkeypatch.setenv(CODER_TOKEN, SENTINEL)
+
+    def further_turn(previous):
+        if previous is not None:
+            for name in (CODER_IMAGE, CODER_TOKEN):
+                if later is None:
+                    monkeypatch.delenv(name, raising=False)
+                else:
+                    monkeypatch.setenv(name, later)
+        return len(stub.calls()) < 3
+
+    stub.install(statuses=(0, 0, 0))
+    go(data_root, parent, further_turn=further_turn)
+    calls = stub.calls()
+    assert len(calls) == 3
+    for call in calls:
+        assert server_env(call)[CODER_IMAGE] == "example/coder:1"
+        assert server_env(call)[CODER_TOKEN] == REFERENCE
+
+
+def test_coder_variables_not_set_at_start_stay_out(
+    stub, data_root, parent, monkeypatch
+):
+    clear_coder(monkeypatch)
+
+    def further_turn(previous):
+        monkeypatch.setenv(CODER_IMAGE, "example/coder:3")
+        monkeypatch.setenv(CODER_TOKEN, SENTINEL)
+        return len(stub.calls()) < 2
+
+    stub.install(statuses=(0, 0))
+    go(data_root, parent, further_turn=further_turn)
+    calls = stub.calls()
+    assert len(calls) == 2
+    for call in calls:
+        assert CODER_IMAGE not in server_env(call)
+        assert CODER_TOKEN not in server_env(call)
 
 
 def test_no_turn_at_once(stub, data_root, parent):
@@ -1014,6 +1175,8 @@ def test_callers_environment_unchanged_when_a_later_turn_raises(
 
 def test_settings_file_beside_the_configuration(stub, data_root, parent, monkeypatch):
     clear_session_variables(monkeypatch)
+    monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+    clear_coder(monkeypatch)
     stub.install()
     go(data_root, parent)
     (call,) = stub.calls()

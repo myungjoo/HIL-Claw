@@ -24,29 +24,29 @@ The container and the coder process stand behind *the runtime*, the seam of
 slice (d), an object with two methods:
 
 - ``runtime.available()`` returns whether a container runtime is there that
-  the runtime can use; the package's runtime
-  (:class:`hilclaw.coder_tool.NoContainerRuntime`, ADR-0141 decision 3)
-  answers false wherever one is there until slice (d) replaces it;
+  the runtime can use; the package binds
+  :class:`hilclaw.coder_runtime.DockerRuntime` (ADR-0137 code slice 2) in
+  :func:`hilclaw.tools.default_registry`;
 - ``runtime.run(scratch_root, coder_model=...)`` starts the container with the
   scratch as the coder's working directory (ADR-0126 decision 5), waits for
   the coder process to end, removes the container before it returns (ADR-0049
-  P4) and returns the exit status of the coder process as an ``int``; it
-  raises :class:`CoderNotStartedError` when the container or the process could
-  not be started. ``coder_model`` is the full model name the run's
+  P4) and returns the exit status of the coder process as an ``int``, or the
+  fixed non-zero :data:`hilclaw.coder_runtime.NOT_GONE_STATUS` when the
+  container cannot be shown gone (ADR-0137 decision 7); it raises
+  :class:`CoderNotStartedError` when the container or the process could not
+  be started. ``coder_model`` is the full model name the run's
   ``instance.json`` states at this call, unchanged: the model the coder's
-  ``claude -p`` is asked to run with. How it reaches that process is slice
-  (d)'s (ADR-0136 decision 7).
+  ``claude -p`` is asked to run with. How the runtime passes it to that
+  process is ADR-0137's.
 
-The seam composes no prompt: by ADR-0126 decision 5 this function composes a
-coder prompt naming ``spec.json`` and ``output`` relatively, but the rest of
-its text and how it is passed are open, so the prompt is slice (d)'s and
-``runtime.run`` takes none yet. This module writes no prompt text and no
-``claude`` flag, and it starts no process itself.
+The seam composes no prompt: ``runtime.run`` takes none, and the prompt and
+the ``claude`` flags are the runtime's (ADR-0137). This module writes no
+prompt text and no ``claude`` flag, and it starts no process itself.
 
-What this module is not: slice (d), the real runtime with its image, flags and
-prompt; anything about a call that does not end normally beyond the interim
-rule of decision 3, which is OD-19; time limits (OD-14); more than one call
-or candidate (OD-23 ① (가), OD-29).
+What this module is not: the runtime with its image, flags and prompt
+(:mod:`hilclaw.coder_runtime`); anything about a call that does not end
+normally beyond the interim rule of decision 3, which is OD-19; time limits
+(OD-14); more than one call or candidate (OD-23 ① (가), OD-29).
 It applies no default coder model and resolves no alias (ADR-0136 decisions 4
 and 6); whether the model that actually ran differs from the requested one is
 not seen here (ADR-0136 Boundaries).
