@@ -289,7 +289,9 @@
       "reason": "requirement-unclear",
       "question": "How does the ADR-0115 start function learn of a 'given id' (ADR-0111: refuse a given run_id)? Draft PR #186 reads a top-level `run_id` member of the instance.json document as a given id and refuses it; the reviewer found this reserves an undefined member name (ADR-0018 decision 2 keeps the top level open; ADR-0006 rejected a run_id member), close to a schema decision. Options: (a) confirm that reading (refused by the start only, no validity rule added) - the branch can land after minor fixes; (b) a separate input with an explicit place for a given id, apart from the document; (c) `run_id` is an ordinary undefined member that is kept.",
       "askedAt": "2026-10-19T02:06:14Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6258137429"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6258137429",
+      "resolvedAt": "2026-10-23T16:57:51Z",
+      "decision": "(a) - owner (chat, 2026-10-24): confirm that reading - the start refuses a top-level `run_id` member of the instance.json document as a given id; refused by the start only, no validity rule added. The branch of Draft PR #186 lands after minor fixes."
     },
     {
       "id": "HQ-0033",
@@ -553,7 +555,9 @@
       "reason": "owner-only-decision",
       "question": "#5 B-4 답변(2026-10-02, https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-5944412285)은 Llama 3.2 1B를 \"hidden 2048, intermediate 8192, 16 heads / 8 KV heads, head_dim 64\"로, attention 구성을 \"GQA 16/8\"로 적고, 같은 답변의 projection을 QKV 2048→3072, O 2048→2048로 적었습니다. hidden 2048 = head 수 × head_dim 64와 QKV 3072 = 2048 + 2 × 8 × 64는 query head가 32개일 때만 맞습니다(16개면 query 폭이 1024). Meta의 `meta-llama/llama-models`(commit 0e0b8c5) `models/sku_list.py`도 Llama 3.2 1B를 `dim` 2048, `n_heads` 32, `n_kv_heads` 8(head_dim 2048/32 = 64)로 둡니다. ADR-0152(OD-31 ①, 연산 목록과 shape)는 head 수를 정하지 않고 RoPE·SDPA의 shape를 query head 수 H와 head_dim d_h를 매개변수로 남겼습니다. 어느 쪽입니까? (a) query head 32개, KV head 8개, head_dim 64 — Meta 파라미터와 B-4의 나머지 값(hidden 2048, head_dim 64, QKV 2048→3072)이 함께 함의하는 값이며 \"16 heads\"·\"GQA 16/8\"을 32·32/8로 고칩니다. (b) 적힌 대로 16개 — 이때 head_dim(64 또는 128), KV head 수(8, 또는 head_dim 128이면 hidden 2048·QKV 3072·O 2048을 그대로 두는 4)와 hidden·QKV·O 가운데 어느 값이 바뀌는지도 알려 주십시오. (c) 그 밖(설명). 답이 없는 동안 막히는 것: RoPE와 SDPA(KV cache 포함)의 kind 계약과 shape 확정(PLAN P2-11의 attention 계열). 막히지 않는 것: GEMM(B-4의 projection shape, lm_head 포함)·RMSNorm·SwiGLU 활성·elementwise add의 계약 준비(이들도 OD-31 ②·③의 답을 먼저 기다리고, (b)·(c)의 답이 hidden·QKV·O를 바꾸면 그 shape도 다시 본다), P2-5와 그 밖의 진행 중 작업. (a)이면 ADR-0152는 H = 32, d_h = 64를 대입하는 것 말고 바뀌지 않고, (b)·(c)이면 답이 바꾸는 B-4 값과 함께 다시 봅니다.",
       "askedAt": "2026-10-23T00:46:51Z",
-      "issueComment": null
+      "issueComment": null,
+      "resolvedAt": "2026-10-23T16:57:51Z",
+      "decision": "(a) - 오너(채팅, 2026-10-24): query head 32개, KV head 8개, head_dim 64. #5 B-4의 \"16 heads\"·\"GQA 16/8\"은 32·32/8로 고친다. ADR-0152는 H = 32, d_h = 64를 대입한다."
     },
     {
       "id": "HQ-0065",
@@ -561,7 +565,9 @@
       "reason": "owner-only-decision",
       "question": "OD-31 하위 질문 ②(bf16/fp16, PLAN P2-12; C-6 개정 2026-10-19). 오너 결정은 정밀도를 'bf16/fp16'으로 적었고, ADR-0152(①)는 정밀도 단계를 ②로 남겼습니다. (1) dtype: (a) bf16만 (b) fp16만 (c) 둘 다 — kind마다 두 dtype을 각각 instance로 둔다(op_signature의 dtype 축) (d) kind마다 다르게(지정). (2) 누적·중간값: (a) 입출력은 bf16/fp16, 누적(GEMM 내적·RMSNorm 제곱합·softmax 합)은 fp32 (b) 누적도 같은 dtype (c) 커널 재량 — ③의 tolerance만 지킨다. (3) `cpu_standin`의 표현: (a) 커널 경계는 16비트 비트 패턴(`uint16_t`)으로 하고 변환은 커널이 한다 (b) clang 확장 타입(`_Float16`, `__bf16`)을 계약에 쓴다 (c) 그 밖. 막히는 것: P2-11의 kind별 계약(GEMM·RMSNorm·SwiGLU 활성·elementwise add; RoPE·SDPA는 HQ-0064에도 걸림)과 P2-12의 하네스. 막히지 않는 것: fp32 `gemm` 첫 사례와 P2-5, OD-31 ④(모델 실행기) ADR, HQ-0064.",
       "askedAt": "2026-10-23T01:23:35Z",
-      "issueComment": null
+      "issueComment": null,
+      "resolvedAt": "2026-10-23T16:57:51Z",
+      "decision": "오너(채팅, 2026-10-24): (1) (a) bf16만 - fp16은 Llama 3.2 1B end-to-end(P2-14) 뒤로 미룬다. (2) (a) 입출력은 bf16, 누적(GEMM 내적·RMSNorm 제곱합·softmax 합)은 fp32. (3) (a) 커널 경계는 16비트 비트 패턴(`uint16_t`)으로 하고 변환은 커널이 한다."
     },
     {
       "id": "HQ-0066",
@@ -569,7 +575,9 @@
       "reason": "owner-only-decision",
       "question": "OD-31 하위 질문 ③(연산별 oracle·tolerance, #5 B-7; PLAN P2-12). HQ-0004의 답(NumPy float64 reference, 원소별 rtol·atol, 기본값 없음, 유한 입력)은 fp32 `gemm`과 `cpu_standin`에만 해당합니다. ADR-0152의 나머지 kind(RMSNorm, RoPE, SDPA+KV cache, SwiGLU 활성, elementwise add)와 bf16/fp16에 대해: (1) reference: (a) 입력을 float64로 넓혀 NumPy float64로 계산(새 의존성 없음) (b) 목표 dtype의 반올림을 흉내 낸다 — NumPy에는 bfloat16이 없어 `ml_dtypes` 같은 새 외부 의존성이 필요(A-13) (c) PyTorch 등 다른 구현(새 의존성) (d) 그 밖. (2) 허용 오차: (a) 모든 kind에 원소별 rtol·atol, instance 파라미터, 기본값 없음 (b) dtype별 기본값을 둔다(값 지정) (c) 다른 형태(ULP 등). (3) 입력 분포: (a) kind마다 드라이버 ADR이 정한다(ADR-0017처럼 유한 입력만) (b) 오너가 지정. 막히는 것: P2-12 하네스, P2-11 계약의 검증 절. 막히지 않는 것: ②, HQ-0064, OD-31 ④, P2-5.",
       "askedAt": "2026-10-23T01:23:35Z",
-      "issueComment": null
+      "issueComment": null,
+      "resolvedAt": "2026-10-23T16:57:51Z",
+      "decision": "오너(채팅, 2026-10-24): (1) (a) 입력을 float64로 넓혀 NumPy float64로 계산(새 의존성 없음). (2) (a) 모든 kind에 원소별 rtol·atol, instance 파라미터, 기본값 없음. (3) (a) kind마다 드라이버 ADR이 정한다(유한 입력만)."
     },
     {
       "id": "HQ-0067",
@@ -577,7 +585,9 @@
       "reason": "requirement-unclear",
       "question": "T-0419(모델 실행기 GEMM binding 검사, ADR-0153 code slice 1 앞 절반, PR #244)이 막혔습니다. 기존 테스트 `tests/test_gemm_contract.py::test_module_is_bound_by_the_default_registry_only_and_imports_keys_only`는 `hilclaw/` 안에서 `gemm_contract` 참조를 `check_definition.py`와 `spec_tool.py`에만 허용합니다. T-0419의 수용 기준 6은 적합성 기준값을 `gemm_contract.task_contract`에서 가져오고 복사본을 금지하므로 이 테스트가 실패합니다. 그런데 task는 이 테스트 파일 수정을 금지했고, 열린 PR #186(T-0324, HQ-0032 대기)도 같은 줄을 고칩니다. 선택지: (a) T-0419에서 그 테스트의 허용 목록에 `hilclaw/model_binding.py`를 추가하도록 허용(이전에 `spec_tool.py`를 더할 때와 같은 방법; #186은 rebase 때 이 줄의 충돌을 풀어야 함) (b) #186이 merge되거나 닫힐 때까지 T-0419 보류 (c) 그 밖의 방법 지시. 답이 없는 동안 막히는 것: T-0419(PR #244 merge)와 그 뒤 절반(slice 1 후반, 빌드·dlopen·C model program). 막히지 않는 것: OD-31 ②·③(HQ-0065·HQ-0066)과 그 밖의 PLAN 항목.",
       "askedAt": "2026-10-23T02:33:15Z",
-      "issueComment": null
+      "issueComment": null,
+      "resolvedAt": "2026-10-23T16:57:51Z",
+      "decision": "(a) - 오너(채팅, 2026-10-24): T-0419에서 `tests/test_gemm_contract.py`의 허용 목록에 `hilclaw/model_binding.py`를 추가하도록 허용한다. #186은 rebase 때 이 줄의 충돌을 푼다."
     },
     {
       "id": "HQ-0068",
