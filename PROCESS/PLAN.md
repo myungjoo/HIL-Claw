@@ -99,3 +99,5 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0407 follow-up — hook 경로 placeholder(`${CLAUDE_PROJECT_DIR}` 등) 거부가 data root에만 있고 `PACKAGE_DIRECTORY`·`sys.executable`에는 없는 점(리뷰 Info; T-0407 이전부터), 입력 경화.
 - T-0412 follow-up — ADR-0150 제목의 문구를 stand-in 디렉토리(`catalog/cpu_standin/`)로 좁히는 일(선택, T-0413에서도 보류로 둠), ADR 문구 정리.
 - T-0416 follow-up — `hilclaw/spec_feedback.py` 모듈 docstring의 "Nothing calls this module until ``spec.write`` … is widened" 문장이 T-0416(ADR-0151 slice 2) 뒤로 틀려짐, docstring 문구 정리.
+- T-0418 follow-up — ADR-0153 리뷰 7라운드 비차단 지적 2건(decision 2에 `numpy`에 없는 dtype(bf16)은 원시 16비트 패턴으로 보관·전달하고 host side는 그 값으로 연산하지 않는다는 문장, Boundaries 하위 질문 8 항목에 실행기 산출물이 whole-model binary이면 커널별 로딩과 빌드 디렉토리 수명을 다시 본다는 문장), ADR 문구 정리.
+- T-0422 follow-up — `hilclaw/checkout_boundary.py` 모듈 docstring이 사용처로 `hilclaw.scratch`·`hilclaw.selfcheck_session`만 적고 `hilclaw.model_execute`를 빠뜨린 점, docstring 문구 정리.

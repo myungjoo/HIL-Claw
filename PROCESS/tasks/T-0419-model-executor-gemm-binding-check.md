@@ -8,7 +8,7 @@ coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-13"]
 dependsOn: [T-0418]
 touchesFiles: [hilclaw/model_binding.py, tests/test_model_binding.py]
 estimatedSize: {loc: 260, files: 1}
-hq: []
+hq: [HQ-0067]
 ---
 ## Why
 
@@ -98,3 +98,13 @@ Module `hilclaw/model_binding.py` (Python; the language-choice line goes in Resu
 - Next task (candidate T-0420, the second half of ADR-0153 code slice 1): build each bound fp32 `gemm` kernel into a shared library through `hilclaw.clang_build`, and add a fixed-source C model program that loads each library with `dlopen` and calls `hilclaw_gemm` through `dlsym` for the `calls` of this module's `BindingCheck`. Add the host side that builds, starts and reads the report, with the outcomes `build failed` and `run failed`. Test with hand-written kernels. That task asks runtime acceptance item (lxvii) of ADR-0153 once it lands (DRIVER §8, reason `runtime-acceptance`).
 
 ## Result
+
+**BLOCKED** (reason: task requirement conflicts with an existing test whose file the task forbids editing and open PR #186 edits; CLAUDE.md A-13 "requirement unclear" and DRIVER §3 "open PR file conflict risk").
+
+- Branch `claude/T-0419-model-executor-gemm-binding-check`, Draft PR #244 (DONOTMERGE kept), commits `26872fa` (module and tests) and `323a19a` (review round 1 nits). Not merged.
+- Implemented as specified: `hilclaw/model_binding.py` (names exactly as in the Acceptance Criteria, no rename; plus public constants `LM_HEAD_ROWS`, `INVALID_INPUT`, `NO_KERNEL`, `KERNEL_UNFIT`) and `tests/test_model_binding.py` (179 tests, module coverage 100%, ruff clean). About 280 code lines plus docstrings (453 lines in all).
+- Language: Python - the host side of ADR-0153 decision 2 is Python; pure in-memory checking with the standard library only.
+- Review: round 1 Approve (dev-reviewer), with one Low and one Nit, both fixed in `323a19a`; the fix has not been re-reviewed.
+- **Blocker**: the full local suite fails `tests/test_gemm_contract.py::test_module_is_bound_by_the_default_registry_only_and_imports_keys_only`. It allows the text `gemm_contract` in `hilclaw/` only in `check_definition.py` and `spec_tool.py`. Acceptance criterion 6 requires the fit reference from `gemm_contract.task_contract` and forbids copies. The fix used before (when `spec_tool.py` became a binder) is to add the new module to that test's binders. This task forbids editing `tests/test_gemm_contract.py`, and open PR #186 (T-0324) changes the same lines. Hiding the import from the text check would defeat the test, so it was not done.
+- Resume: after the owner's answer, add `hilclaw/model_binding.py` to the binders of that test (option a), re-review, wait for CI green, then squash-merge PR #244.
+- Follow-up (reviewer, Info): token ids are exact `int` only, as criterion 6 says. A later host side that holds ids in `numpy` arrays (ADR-0153 decision 2) must convert them first, or the check must accept `numpy` integers. Candidate for T-0420 or slice 2.

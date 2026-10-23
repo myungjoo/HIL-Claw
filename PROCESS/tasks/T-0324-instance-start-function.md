@@ -2,7 +2,7 @@
 id: T-0324
 title: Add the start function of ADR-0115 - one deterministic function in a new module `hilclaw/start_instance.py` that checks a first-case instance (ADR-0076), refuses a given `run_id` (ADR-0111), builds the id (ADR-0027), writes `instance.json` (ADR-0025), stops on a taken name (ADR-0109) and returns the id; no caller bound
 phase: P1
-status: BLOCKED
+status: DONE
 commitMode: code
 coversReq: [FR-13, NFR-1, OD-8, "#5 A-12", "#5 D12"]
 dependsOn: [T-0323]
@@ -82,6 +82,17 @@ Choices the records leave to this code task, fixed here so that the executor doe
 - Callers of the start, when OD-23 and UC-1 allow one to be chosen.
 
 ## Result
+
+**Outcome: DONE (resumed after HQ-0032 answered (a))** — PR #186 squash-merged as 5cd442a; branch deleted; squash body ends with `Task: T-0324`.
+
+- Review rounds: 2 in total (round 1 Request changes -> HQ-0032; round 2 Approve: https://github.com/myungjoo/HIL-Claw/pull/186#issuecomment-6370700971).
+- Resume: origin/main was merged into the branch (no force push). This brought the branch up to date: the gemm_contract guard test allows `check_definition.py`, `spec_tool.py` and `start_instance.py`; the tests expect the `coder_model` default of `prepare` (T-0373, ADR-0136 decision 4) with two new tests; the module docstring cites HQ-0032 and lists the `json.dumps` `ValueError` for NaN/infinity.
+- AC 8 deviation (accepted by the reviewer): `tests/test_gemm_contract.py` and `tests/test_standin_profile.py` changed outside touchesFiles, because ADR-0115 binds those modules.
+- Gates: local suite 26800 passed / 910 skipped; ruff check and format clean; hilclaw line coverage 97.02%, `start_instance.py` 100%; CI green (Python 3.11/3.14, coverage, C, sh, test presence).
+- Language: Python, because the function joins three existing Python modules of the layer-2 package.
+- Follow-ups: (1) `hilclaw/standin_profile.py` docstring ("bound ... to no start of an instance") is now false, with ADR-0115's list (already on the PLAN hold list); (2) a doc note recording the HQ-0032 reading on ADR-0111/ADR-0115 so the docstring can cite it; (3) the three round-7 ADR-0115 findings under Follow-ups.
+
+### Earlier attempt (BLOCKED on HQ-0032)
 
 **Outcome: BLOCKED (`requirement-unclear`, AC 9)** — HQ-0032. Nothing landed on `main`.
 
