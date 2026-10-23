@@ -383,10 +383,11 @@ def test_walk_through_shape_with_a_zero_has_a_key_and_is_not_covered(shape, name
         assert str(caught.value).startswith(f"shape.{first_zero}: ")
 
 
-def test_module_is_bound_by_the_default_registry_and_the_start_only_and_imports_keys_only():
+def test_module_is_bound_by_the_registry_the_start_and_the_model_binding_only_and_imports_keys_only():
     own = Path(gemm_contract.__file__)
     binders = (
         own.parent / "check_definition.py",
+        own.parent / "model_binding.py",
         own.parent / "spec_tool.py",
         own.parent / "start_instance.py",
     )
