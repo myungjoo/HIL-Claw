@@ -118,7 +118,8 @@ def execute(
     :class:`os.PathLike` of ``str``, a ``parent`` or ``keep_out`` entry of
     that kind, or a ``keep_out`` that is one path or no sequence;
     :class:`ValueError` for no kernels, a call index not below
-    ``len(kernels)`` or a ``parent`` inside a checkout; and what
+    ``len(kernels)``, a path of ``prefix``, ``parent`` or ``keep_out`` with a
+    NUL character, or a ``parent`` inside a checkout; and what
     :func:`hilclaw.model_run.output_shapes` raises for ``calls``, unchanged.
     The :class:`OSError` of making the directory (a missing ``parent``) is
     raised as it is. What a build, the input file's writing or the run raises
@@ -226,6 +227,8 @@ def _path(value, name):
     if isinstance(value, (str, os.PathLike)):
         path = os.fspath(value)
         if isinstance(path, str):
+            if "\0" in path:
+                raise ValueError(f"{name}: holds a NUL character")
             return path
     raise TypeError(
         f"{name}: must be str or os.PathLike of str, got {type(value).__name__}"

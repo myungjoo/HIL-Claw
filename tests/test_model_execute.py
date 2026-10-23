@@ -394,6 +394,8 @@ def test_refused_calls_pass_the_error_of_model_run(recorder, parent, calls, erro
         ({"keep_out": Path("/data")}, TypeError, "keep_out must be a sequence"),
         ({"keep_out": 5}, TypeError, "keep_out: must be a sequence"),
         ({"keep_out": ["/data", None]}, TypeError, "keep_out[1]: must be str"),
+        ({"prefix": ["pod\0man"]}, ValueError, "prefix[0]: holds a NUL"),
+        ({"keep_out": ["/da\0ta"]}, ValueError, "keep_out[0]: holds a NUL"),
     ],
 )
 def test_refused_prefix_and_keep_out(recorder, parent, options, error, text):
@@ -408,6 +410,13 @@ def test_refused_prefix_and_keep_out(recorder, parent, options, error, text):
 def test_refused_parent_type(recorder, parent, value):
     with pytest.raises(TypeError, match=r"^parent: must be str"):
         run_execute(value)
+    assert recorder.events == []
+    assert os.listdir(parent) == []
+
+
+def test_parent_with_a_nul_character_is_refused(recorder, parent):
+    with pytest.raises(ValueError, match=r"^parent: holds a NUL character"):
+        run_execute(str(parent) + "\0x")
     assert recorder.events == []
     assert os.listdir(parent) == []
 
