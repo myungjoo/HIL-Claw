@@ -2,7 +2,7 @@
 id: T-0430
 title: Add hilclaw/gemm_bf16_contract.py - the op-side values of the bf16 GEMM contract of ADR-0156 (constants, prototype, op_signature_record, task_contract, covers, the verification input bit patterns) with its test file (ADR-0156 code slice, first part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-5, FR-9, OD-31, OD-6, "PLAN P2-11", "PLAN P2-13"]
 dependsOn: [T-0429]
@@ -129,3 +129,9 @@ hq: []
   - then the P2-12 bf16 verification-run harness record and code, and the next kind's contract record.
 
 ## Result
+- **Outcome**: DONE. PR #252 squash-merged as `0a0b2b5` (merge commit `0a0b2b58da63a07a6b3bced6d6653a959704a01f`); branch `claude/T-0430-bf16-gemm-contract-values` deleted.
+- **Changes**: new `hilclaw/gemm_bf16_contract.py` (`KIND`, `DTYPE`, `LAYOUT`, `LANGUAGE`, `PROTOTYPE`, `SHAPES` (15), `INPUT_PATTERNS` (256), `op_signature_record`, `task_contract`, `covers`) and `tests/test_gemm_bf16_contract.py`. No other file changed; the module neither imports nor names the fp32 contract module, and no `hilclaw/` module names the new one.
+- **Review**: 2 rounds (dev-reviewer, fresh context). Round 1 Approve with one Nit (the module docstring grouped decisions 3, 4, 7 and 8 as "call obligations"); fixed in `ed209fd`. Round 2 Approve, no findings.
+- **Gates**: `ruff check` / `ruff format --check` clean; full local `pytest` 27342 passed, 927 skipped; `hilclaw/` coverage 97%, new module 100% line coverage; CI run 40040442355 green (Python 3.11/3.14, coverage, test presence, sh, C).
+- **Language**: Python - pure data and validation over `hilclaw.keys`, the same as its fp32 counterpart.
+- **Follow-ups**: none new beyond the planner's list above (bf16 fit and "every shape" binding in `hilclaw/model_binding.py`; model program over `uint16_t` with bf16 kernel fixtures; P2-12 bf16 verification-run harness).
