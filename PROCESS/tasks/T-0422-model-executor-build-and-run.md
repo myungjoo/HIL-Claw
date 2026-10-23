@@ -2,7 +2,7 @@
 id: T-0422
 title: Add the build-and-run function of the model executor - a module hilclaw/model_execute.py that makes a build directory outside both checkouts, builds each fp32 gemm kernel into a shared library and the model program, returns the named outcome build_failed for a failed build, else writes the input file and runs the program, and removes the directory (ADR-0153 code slice 1, build-and-run path; for PLAN P2-13)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-10, OD-31, "PLAN P2-13"]
 dependsOn: [T-0420, T-0421]
@@ -123,3 +123,10 @@ The names below are this task's. The executor may rename them only if the review
 - Runtime acceptance item (lxvii) of ADR-0153 (the program is built with its kernels' shared libraries and loads them with `dlopen` in the isolated environment of OD-14) is to be asked once code slice 1 has landed, that is, after the joining task above. It is not asked at the end of this task.
 
 ## Result
+
+- **Outcome**: DONE. PR #247 (branch `claude/T-0422-model-executor-build-and-run`), squash-merged by the executor as `1f66b3c` after 2 review rounds (round 1: Approve with one Low nit, addressed; round 2: Approve, no findings). CI green at the reviewed head `ba0a495` (C gate, Coverage gate, Python 3.11/3.14, Test presence, sh gate).
+- **Change**: `hilclaw/model_execute.py` (new, 275 lines) and `tests/test_model_execute.py` (new). No other file. Names are those of the task; no rename. `PREFIX` (`"hilclaw-model-"`) is the one public constant; the library, program and input file names are private.
+- **Language**: Python, because the host side joins the Python modules `hilclaw.model_build` and `hilclaw.model_run` and hands `numpy` arrays to the latter (ADR-0153 decision 2).
+- **Executor choices**: the removal reuses `hilclaw.scratch.remove(directory, keep_out=keep_out)`; its `InvalidScratchArgumentError` (for example a directory replaced by a link) is caught and shows as `removed` false, so the removal raises nothing. Checks run in the order kernels, calls (`output_shapes`), call index bound, prefix, keep_out, parent. `kernels`, `prefix` and `keep_out` must be `collections.abc.Sequence` (an iterator is refused with `TypeError`). Every path of `prefix`, `keep_out` and `parent` must be `str` or `os.PathLike` whose `os.fspath` is `str` (`TypeError`) and, after review round 1, hold no NUL character (`ValueError` naming the argument). A kernel's `flags` type is checked only by `build_kernel_library`, after the directory was made; the directory is still removed and the error passed on. A missing `parent` raises the `FileNotFoundError` of `tempfile.mkdtemp`, before anything is made.
+- **Local runs**: native Windows full `pytest`: 26733 passed, 910 skipped (clang tests skip); `hilclaw/` coverage 97%; `hilclaw/model_execute.py` 100% line and branch; `ruff check .` and `ruff format --check .` clean. Under WSL with clang and Python 3.12, `tests/test_model_execute.py`, `tests/test_model_run.py`, `tests/test_model_build.py` and `tests/test_model_program.py` passed (247).
+- **Follow-ups**: as listed (joining task after HQ-0067 and T-0419; runtime acceptance item (lxvii) after that). Less exact, not edited: the module docstring of `hilclaw/checkout_boundary.py` lists only `hilclaw.scratch` and `hilclaw.selfcheck_session` as its users; `hilclaw.model_execute` now uses it too.
