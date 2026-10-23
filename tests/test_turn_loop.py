@@ -1175,6 +1175,8 @@ def test_callers_environment_unchanged_when_a_later_turn_raises(
 
 def test_settings_file_beside_the_configuration(stub, data_root, parent, monkeypatch):
     clear_session_variables(monkeypatch)
+    monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+    clear_coder(monkeypatch)
     stub.install()
     go(data_root, parent)
     (call,) = stub.calls()

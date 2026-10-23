@@ -336,7 +336,9 @@ def test_the_default_registry_gives_no_container_runtime(
         "no_container_runtime",
         "no container runtime is available",
     )
-    assert client.ran == [(VERSION_COMMAND, {"timeout_s": 15, "env": None})]
+    assert client.ran == [
+        (VERSION_COMMAND, {"timeout_s": coder_runtime.VERSION_TIMEOUT_S, "env": None})
+    ]
     assert (client.started, client.looked_up) == ([], [])
     assert tree(data_root) == before
     assert list(parent.iterdir()) == []
