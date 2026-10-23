@@ -2,7 +2,7 @@
 id: T-0417
 title: Write ADR-0152 - the operation list and shapes of one Llama 3.2 1B forward pass, as single compute-kernel instances (OD-31 sub-question 1, for PLAN P2-11)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-5, OD-31, OD-6, "#5 B-4", "PLAN P2-11"]
 dependsOn: []
@@ -193,3 +193,19 @@ Sub-question 4 (the model executor) is the driver's, but it is **not** this task
 
 ## Result
 
+- **DONE.** Landed on `main` as `73ca12a` (document mode, one commit with `Task: T-0417` and `Reviewed-by: reviewer agent (5 rounds, Approve)`); branch `claude/T-0417-adr-od31-llama-forward-operations` deleted (remote and local).
+- Review: 5 rounds with a context-isolated `dev-reviewer`. Round 1 requested changes (Medium: the RoPE shape set contradicted the token-set rule; Low: two citation attributions). Rounds 2-4 approved with Low/Nit points, each fixed on the branch and re-reviewed (layer-count source, KV-head count in the owner question, option (a) premises). Round 5 approved with no findings.
+- DRIVER §9 notice on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6354636526 (7-day objection window; lists the record's readings of owner sentences for checking; ends with `— posted by driver`).
+- Size: 4 files, +172/-4, all non-test (ADR-0152 167 lines new; Requirements OD-31 row, OpenDecisionProposals § OD-31, StandardScenarios "최근 재검사" line). `git diff origin/main --stat` listed only `touchesFiles`.
+- Record: `ARCHITECTURE/decisions/ADR-0152-od31-llama-forward-operations.md`. Instance targets: GEMM (QKV, O, gate, up, down, lm_head), RMSNorm, RoPE, SDPA with KV cache (KV-cache write, GQA, mask and softmax inside), SwiGLU activation, elementwise add. Not targets: embedding lookup and leftover copies (executor, sub-question 4), QKV split and views (contract conventions), RoPE frequency table (RoPE contract), precision steps (sub-question 2), token selection (sub-questions 6 and 4). FFN 8192 derived from Meta's `model.py` and `arch_args` (commit `0e0b8c5`). Tied embeddings: not established.
+- OD-31: register status `미착수` -> `논의중 (부분 답 2026-10-23 — §9)`; sub-question 1 partly answered; remaining of it: the query-head count (owner) and each kind's contract and `op_signature`.
+- Open HQs checked, none crossed: HQ-0031, HQ-0034, HQ-0032, HQ-0048, HQ-0053, HQ-0021, HQ-0026, HQ-0054, HQ-0045.
+- Runtime acceptance items: none.
+- **Owner question for the driver to record as an HQ** (reason `owner-only-decision`, non-blocking for this task, `taskId` T-0417):
+
+  > #5 B-4 답변(2026-10-02, https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-5944412285)은 Llama 3.2 1B를 "hidden 2048, intermediate 8192, 16 heads / 8 KV heads, head_dim 64"로, attention 구성을 "GQA 16/8"로 적고, 같은 답변의 projection을 QKV 2048→3072, O 2048→2048로 적었습니다. hidden 2048 = head 수 × head_dim 64와 QKV 3072 = 2048 + 2 × 8 × 64는 query head가 32개일 때만 맞습니다(16개면 query 폭이 1024). Meta의 `meta-llama/llama-models`(commit 0e0b8c5) `models/sku_list.py`도 Llama 3.2 1B를 `dim` 2048, `n_heads` 32, `n_kv_heads` 8(head_dim 2048/32 = 64)로 둡니다. ADR-0152(OD-31 ①, 연산 목록과 shape)는 head 수를 정하지 않고 RoPE·SDPA의 shape를 query head 수 H와 head_dim d_h를 매개변수로 남겼습니다. 어느 쪽입니까? (a) query head 32개, KV head 8개, head_dim 64 — Meta 파라미터와 B-4의 나머지 값(hidden 2048, head_dim 64, QKV 2048→3072)이 함께 함의하는 값이며 "16 heads"·"GQA 16/8"을 32·32/8로 고칩니다. (b) 적힌 대로 16개 — 이때 head_dim(64 또는 128), KV head 수(8, 또는 head_dim 128이면 hidden 2048·QKV 3072·O 2048을 그대로 두는 4)와 hidden·QKV·O 가운데 어느 값이 바뀌는지도 알려 주십시오. (c) 그 밖(설명). 답이 없는 동안 막히는 것: RoPE와 SDPA(KV cache 포함)의 kind 계약과 shape 확정(PLAN P2-11의 attention 계열). 막히지 않는 것: GEMM(B-4의 projection shape, lm_head 포함)·RMSNorm·SwiGLU 활성·elementwise add의 계약 준비(이들도 OD-31 ②·③의 답을 먼저 기다리고, (b)·(c)의 답이 hidden·QKV·O를 바꾸면 그 shape도 다시 본다), P2-5와 그 밖의 진행 중 작업. (a)이면 ADR-0152는 H = 32, d_h = 64를 대입하는 것 말고 바뀌지 않고, (b)·(c)이면 답이 바꾸는 B-4 값과 함께 다시 봅니다.
+
+- **Follow-ups (planner)**:
+  - Before any P2-11 per-kind contract task, raise OD-31 sub-questions 2 (bf16/fp16, accumulation precision) and 3 (oracles, tolerances) as owner HQs (PLAN P2-12).
+  - Then one contract record per kind (GEMM in bf16/fp16, RMSNorm, elementwise add, SwiGLU activation, RoPE, SDPA with KV cache), each fixing its `kind` value, `op_signature` members, layout, prototype and operands as ADR-0008 did; RoPE and SDPA also wait on the head-count HQ.
+  - OD-31 sub-question 4 (model executor) is the driver's and can be planned as its own ADR task (P2-13); ADR-0152 decision 7 hands it the shapes outside the instance sets and lm_head's rows.

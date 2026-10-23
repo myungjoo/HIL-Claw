@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0417",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:902fb325-1",
-    "acquiredAt": "2026-10-23T00:24:05Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -548,18 +544,26 @@
       "question": "ADR-0148(첫 사례 턴 세션의 끝 commit을 붙드는 `Stop` hook; OD-18 일부; T-0408, main 4dbe250)의 런타임 인수 항목 (lxiii)~(lxvi)을 런타임 머신에서 확인해 주세요. (lxiii) 루프가 쓴 `.claude/settings.json`의 `Stop` 항목이 `-p` 턴 세션 메인 세션의 응답이 끝날 때, 프로세스가 끝나기 전에 실행되고 sub-agent의 끝에서는 실행되지 않는지. (lxiv) 그 hook이 stderr 한 줄과 함께 exit 2로 끝나면 `-p` 메인 세션이 그 줄을 지시로 받아 계속하고, 그 뒤의 `Stop`에는 `stop_hook_active`가 `true`로 오는지(그 사이에 도구 호출이 있어도). (lxv) 런타임 머신에서 hook 프로세스가 서버와 같은 `git`을 찾고 `commit_owed`가 hook의 timeout 안에 끝나는지; timeout에 걸린 `Stop` hook은 멈춤을 통과시키는지. (lxvi) 이 줄을 받은 Round-Manager가 `run_commit`을 한 번 부르고 끝내며, 호출하지 않는 두 끝(유효한 run id 없음, 실패한 호출 뒤)에서는 바로 끝내는지. 선택지: (a) 오너가 수동으로 확인해 결과를 답한다 (b) 런타임 자체 점검에 `Stop` hook 표식 검사를 넣는 task로 돌린다 (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 이 hook이 실제 세션에서 끝 commit을 붙든다는 확신. 막히지 않는 것: ADR-0148의 코드 slice 1·2(스텁 `claude`와 임시 git 저장소로 검증)와 그 밖의 드라이버 task.",
       "askedAt": "2026-10-22T12:44:53Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0064",
+      "taskId": "T-0417",
+      "reason": "owner-only-decision",
+      "question": "#5 B-4 답변(2026-10-02, https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-5944412285)은 Llama 3.2 1B를 \"hidden 2048, intermediate 8192, 16 heads / 8 KV heads, head_dim 64\"로, attention 구성을 \"GQA 16/8\"로 적고, 같은 답변의 projection을 QKV 2048→3072, O 2048→2048로 적었습니다. hidden 2048 = head 수 × head_dim 64와 QKV 3072 = 2048 + 2 × 8 × 64는 query head가 32개일 때만 맞습니다(16개면 query 폭이 1024). Meta의 `meta-llama/llama-models`(commit 0e0b8c5) `models/sku_list.py`도 Llama 3.2 1B를 `dim` 2048, `n_heads` 32, `n_kv_heads` 8(head_dim 2048/32 = 64)로 둡니다. ADR-0152(OD-31 ①, 연산 목록과 shape)는 head 수를 정하지 않고 RoPE·SDPA의 shape를 query head 수 H와 head_dim d_h를 매개변수로 남겼습니다. 어느 쪽입니까? (a) query head 32개, KV head 8개, head_dim 64 — Meta 파라미터와 B-4의 나머지 값(hidden 2048, head_dim 64, QKV 2048→3072)이 함께 함의하는 값이며 \"16 heads\"·\"GQA 16/8\"을 32·32/8로 고칩니다. (b) 적힌 대로 16개 — 이때 head_dim(64 또는 128), KV head 수(8, 또는 head_dim 128이면 hidden 2048·QKV 3072·O 2048을 그대로 두는 4)와 hidden·QKV·O 가운데 어느 값이 바뀌는지도 알려 주십시오. (c) 그 밖(설명). 답이 없는 동안 막히는 것: RoPE와 SDPA(KV cache 포함)의 kind 계약과 shape 확정(PLAN P2-11의 attention 계열). 막히지 않는 것: GEMM(B-4의 projection shape, lm_head 포함)·RMSNorm·SwiGLU 활성·elementwise add의 계약 준비(이들도 OD-31 ②·③의 답을 먼저 기다리고, (b)·(c)의 답이 hidden·QKV·O를 바꾸면 그 shape도 다시 본다), P2-5와 그 밖의 진행 중 작업. (a)이면 ADR-0152는 H = 32, d_h = 64를 대입하는 것 말고 바뀌지 않고, (b)·(c)이면 답이 바꾸는 B-4 값과 함께 다시 봅니다.",
+      "askedAt": "2026-10-23T00:46:51Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 431,
-    "tasksDone": 403,
+    "iterations": 432,
+    "tasksDone": 404,
     "tasksBlocked": 28,
-    "reviewRoundsTotal": 1449
+    "reviewRoundsTotal": 1454
   },
   "lastIteration": {
-    "at": "2026-10-22T23:50:08Z",
-    "owner": "AKIHA:eb849d5e-1",
-    "taskId": "T-0416",
+    "at": "2026-10-23T00:46:51Z",
+    "owner": "AKIHA:902fb325-1",
+    "taskId": "T-0417",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
