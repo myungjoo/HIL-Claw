@@ -113,8 +113,9 @@ def check_dimensions(dimensions):
     ``dimensions`` is a :class:`ModelDimensions` whose every field is exactly
     an ``int`` (``bool`` refused) from 1 to :data:`hilclaw.keys.MAX_INTEGER`,
     with ``heads`` a multiple of ``kv_heads`` (ADR-0153 decision 6; Meta's
-    assert, ADR-0152 Context), and with the widths ``(heads + 2 * kv_heads) *
-    head_dim`` and ``heads * head_dim`` no larger than that bound either.
+    assert, ADR-0152 Context), and with the QKV width ``(heads + 2 * kv_heads)
+    * head_dim`` no larger than that bound either (so ``heads * head_dim``,
+    the O width, is no larger as well).
     Raises :class:`TypeError` for a wrong type and :class:`ValueError`
     otherwise, with ``parameter`` ``"dimensions"``.
     """

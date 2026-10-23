@@ -550,10 +550,7 @@ def test_check_dimension_errors():
 
 
 def test_check_argument_order():
-    error = raises(
-        TypeError, "prompt", run, binding=None, prompt=None, generation_length=None
-    )
-    assert error.parameter == "prompt"
+    raises(TypeError, "prompt", run, binding=None, prompt=None, generation_length=None)
     raises(TypeError, "given", run, given=1, generation_length=None)
     raises(
         TypeError, "generation_length", run, generation_length=None, lm_head_rows=None
