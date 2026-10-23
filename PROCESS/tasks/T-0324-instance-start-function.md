@@ -2,7 +2,7 @@
 id: T-0324
 title: Add the start function of ADR-0115 - one deterministic function in a new module `hilclaw/start_instance.py` that checks a first-case instance (ADR-0076), refuses a given `run_id` (ADR-0111), builds the id (ADR-0027), writes `instance.json` (ADR-0025), stops on a taken name (ADR-0109) and returns the id; no caller bound
 phase: P1
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: code
 coversReq: [FR-13, NFR-1, OD-8, "#5 A-12", "#5 D12"]
 dependsOn: [T-0323]
