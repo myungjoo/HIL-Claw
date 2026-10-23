@@ -2,7 +2,7 @@
 id: T-0423
 title: Write ADR-0154 - record the owner's answers HQ-0064 (32 query heads, 8 KV heads, head_dim 64), HQ-0065 (bf16 only, fp32 accumulation, uint16_t bit patterns at the kernel boundary) and HQ-0066 (float64 reference on widened inputs, per-instance rtol/atol with no default, per-kind input distribution by driver record) as the frame of the Llama 3.2 1B kind contracts, and update the OD-31 register entries (OD-31 sub-questions 1, 2 and 3; for PLAN P2-11 and P2-12)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-9, OD-31, OD-6, "#5 B-4", "#5 B-7", "PLAN P2-11", "PLAN P2-12"]
 dependsOn: [T-0417, T-0418]
