@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0375",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:fc2a76da-1",
-    "acquiredAt": "2026-10-23T16:19:09Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -582,18 +578,26 @@
       "question": "T-0419(모델 실행기 GEMM binding 검사, ADR-0153 code slice 1 앞 절반, PR #244)이 막혔습니다. 기존 테스트 `tests/test_gemm_contract.py::test_module_is_bound_by_the_default_registry_only_and_imports_keys_only`는 `hilclaw/` 안에서 `gemm_contract` 참조를 `check_definition.py`와 `spec_tool.py`에만 허용합니다. T-0419의 수용 기준 6은 적합성 기준값을 `gemm_contract.task_contract`에서 가져오고 복사본을 금지하므로 이 테스트가 실패합니다. 그런데 task는 이 테스트 파일 수정을 금지했고, 열린 PR #186(T-0324, HQ-0032 대기)도 같은 줄을 고칩니다. 선택지: (a) T-0419에서 그 테스트의 허용 목록에 `hilclaw/model_binding.py`를 추가하도록 허용(이전에 `spec_tool.py`를 더할 때와 같은 방법; #186은 rebase 때 이 줄의 충돌을 풀어야 함) (b) #186이 merge되거나 닫힐 때까지 T-0419 보류 (c) 그 밖의 방법 지시. 답이 없는 동안 막히는 것: T-0419(PR #244 merge)와 그 뒤 절반(slice 1 후반, 빌드·dlopen·C model program). 막히지 않는 것: OD-31 ②·③(HQ-0065·HQ-0066)과 그 밖의 PLAN 항목.",
       "askedAt": "2026-10-23T02:33:15Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0068",
+      "taskId": "T-0375",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0137(첫 사례 코더 호출의 컨테이너와 코더 `claude -p` 시작 방법; OD-23 일부; T-0375, main a1e5c3f)이 런타임 인수 항목 (lxix)~(lxxiv)를 남겼다 — 코드 slice가 착지한 뒤 런타임 머신에서 확인해 주세요. (lxix) C-7의 각 머신에서 `docker version --format '{{.Server.Version}}'`이 daemon이 응답하면 exit 0과 버전을, 응답하지 않으면 시간 상한 안에 실패를 내는지. (lxx) 결정 3의 옵션(숫자 user, `HOME=/tmp`, `--entrypoint=`, `--cap-drop ALL`, `no-new-privileges`)으로 시작한 컨테이너 안에서 결정 6의 명령(`--permission-mode dontAsk --allowedTools Bash,Read,Edit,Write` 등)의 코더 `claude -p`가 `setup-token` 토큰(HQ-0053 (a))으로 Max 요금제 아래 인증되고, spec.json 읽기·output 아래 쓰기·clang 빌드와 실행(redirect 포함)이 거부 없이 되는지; 만료·폐기된 토큰에서 어떻게 되는지; 토큰을 폐기할 수 있는지와 방법. (lxxi) 그 세션이 이미지의 managed settings 외의 settings·hook·MCP·CLAUDE.md를 읽지 않고 토큰 위의 자격 증명 출처가 없으며 `DISABLE_UPDATES=1`이 버전을 고정하는지; 그리고 호스트에서 턴 세션 에이전트가 사전 승인된 `Read`·`Grep`으로 `/proc`의 프로세스 환경에서 `HILCLAW_CODER_OAUTH_TOKEN`을 읽을 수 있는지. (lxxii) 결정 3의 옵션으로 P2가 성립하는지 — scratch가 유일한 쓰기 가능 호스트 경로, 안의 `docker`·`sudo`가 호스트에 닿지 않음, 코더가 쓴 파일이 함수를 실행한 사용자 소유로 지울 수 있음(Linux, macOS Docker Desktop, Windows WSL). (lxxiii) `docker run`이 코더의 exit status를 그대로 돌려주는지; `--pull never`에서 이미지가 없으면 125인지; Claude Code가 125·126·127로 끝나는 일이 있는지; `--rm` 반환 시와 이름으로 `docker container rm --force` 뒤 컨테이너가 사라지는지; 없는 이름에 대한 `rm --force`의 exit·출력; `docker inspect`에 `CLAUDE_CODE_OAUTH_TOKEN`이 보이는지와 제거 뒤 daemon 저장소에 남는지. (lxxiv) 턴 루프가 시작한 턴 세션에서 `--mcp-config` 파일의 server entry `env`에 쓴 참조 `${HILCLAW_CODER_OAUTH_TOKEN}`이 세션 환경에서 펼쳐져 MCP front가 값을 받는지(파일에는 참조만); `HILCLAW_CODER_IMAGE`가 `HILCLAW_STANDIN_IMAGE`처럼 front에 닿는지. 선택지: (a) 오너가 수동으로 확인해 결과를 답한다 (b) 런타임 자체 점검 코드 task로 돌린다(예: docker 가용성·exit 매핑·참조 펼침을 점검하는 self-check 항목) (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 이 방법으로 실제 코더 호출이 시작·인증·격리된다는 확신(특히 (lxxiv)가 실패하면 수정 기록 전까지 코더 호출이 시작되지 않음). 막히지 않는 것: ADR-0137의 코드 slice 1·2(스텁 `docker`로만 검증)와 그 밖의 드라이버 task.",
+      "askedAt": "2026-10-23T16:34:08Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 437,
-    "tasksDone": 408,
+    "iterations": 438,
+    "tasksDone": 409,
     "tasksBlocked": 29,
-    "reviewRoundsTotal": 1468
+    "reviewRoundsTotal": 1471
   },
   "lastIteration": {
-    "at": "2026-10-23T05:03:59Z",
-    "owner": "AKIHA:544fbdc7-2",
-    "taskId": "T-0422",
+    "at": "2026-10-23T16:34:08Z",
+    "owner": "AKIHA:fc2a76da-1",
+    "taskId": "T-0375",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

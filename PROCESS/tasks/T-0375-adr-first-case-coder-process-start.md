@@ -2,7 +2,7 @@
 id: T-0375
 title: Write ADR-0137 - how the container and the coder's `claude -p` of a first-case coder call are started (the design points of ADR-0049 slice (d) left by ADR-0126 Consequences, except the time limit and the output stream)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-5, NFR-4, NFR-5, C-7, OD-23, OD-8, OD-14, "#5 A-8"]
 dependsOn: [T-0346, T-0371, T-0374]
@@ -127,5 +127,5 @@ Do not invent: every value or flag the record adopts is either cited from docume
 - **Review.** Round 1 (2026-10-21, earlier draft): Request changes (sign-in narrowed an owner point -> HQ-0053). Round 2: Request changes, 1 should-fix (token readable on the host through pre-approved `Read` of `/proc`) and 5 nits, all fixed. Round 3: Approve, no findings.
 - **Runtime acceptance items (new): (lxix)-(lxxiv)** — the driver should raise the HQ with reason `runtime-acceptance` (DRIVER §8).
 - **Follow-ups for the planner**: code slice 1 `hilclaw/coder_runtime.py` + `tests/test_coder_runtime.py` (stub `docker` only); slice 2 the `default_registry` binding and the turn-loop forwarding of `HILCLAW_CODER_IMAGE` and the token reference. Image provenance (who builds/pulls it) stays open (OD-14 ① (나), OD-8 ㉝ (가)); no new-external-dependency HQ is needed because no image is adopted.
-- **#5 §9 notice**: posted after landing (URL given to the driver in the executor's summary).
+- **#5 §9 notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6369754757 (landed commit `a1e5c3f`).
 - Wall clock: about 40 min this session.
