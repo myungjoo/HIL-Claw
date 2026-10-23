@@ -3,12 +3,22 @@ import json
 import os
 import re
 import tempfile
+import types
 from pathlib import Path
 
 import pytest
 
 from hilclaw import __main__ as cli_front
-from hilclaw import coder_call, coder_tool, keys, layout, mcp_front, scratch, tools
+from hilclaw import (
+    coder_call,
+    coder_runtime,
+    coder_tool,
+    keys,
+    layout,
+    mcp_front,
+    scratch,
+    tools,
+)
 from hilclaw.coder_call import CoderNotStartedError
 from hilclaw.coder_tool import NAME, NoContainerRuntime, definition
 
@@ -279,7 +289,45 @@ def test_the_tool_with_the_package_runtime_fails_and_creates_nothing(
     assert list(parent.iterdir()) == []
 
 
-def test_the_default_registry_gives_no_container_runtime(data_root, parent):
+VERSION_COMMAND = ["docker", "version", "--format", "{{.Server.Version}}"]
+
+
+class Client:
+    """Stands for the ``docker`` client as :mod:`hilclaw.coder_runtime` sees it."""
+
+    def __init__(self, monkeypatch, *, returncode=1, stdout=""):
+        self.ran = []
+        self.started = []
+        self.looked_up = []
+        self.answer = types.SimpleNamespace(returncode=returncode, stdout=stdout)
+        monkeypatch.setattr(
+            coder_runtime, "local_run", types.SimpleNamespace(run=self.run)
+        )
+        monkeypatch.setattr(
+            coder_runtime,
+            "subprocess",
+            types.SimpleNamespace(Popen=self.popen, DEVNULL=-3),
+        )
+        monkeypatch.setattr(
+            coder_runtime, "shutil", types.SimpleNamespace(which=self.which)
+        )
+
+    def run(self, command, **options):
+        self.ran.append((command, options))
+        return self.answer
+
+    def popen(self, command, **options):
+        self.started.append(command)
+        raise AssertionError("docker run must not be started")
+
+    def which(self, name):
+        self.looked_up.append(name)
+
+
+def test_the_default_registry_gives_no_container_runtime(
+    data_root, parent, monkeypatch
+):
+    client = Client(monkeypatch, returncode=1)
     before = tree(data_root)
     registry = tools.default_registry(lambda: data_root)
     with pytest.raises(tools.ToolFailure) as caught:
@@ -288,8 +336,65 @@ def test_the_default_registry_gives_no_container_runtime(data_root, parent):
         "no_container_runtime",
         "no container runtime is available",
     )
+    assert client.ran == [(VERSION_COMMAND, {"timeout_s": 15, "env": None})]
+    assert (client.started, client.looked_up) == ([], [])
     assert tree(data_root) == before
     assert list(parent.iterdir()) == []
+
+
+@pytest.mark.parametrize("image", [None, ""])
+def test_the_default_registry_starts_no_coder_without_an_image(
+    data_root, parent, monkeypatch, image
+):
+    sentinel = "synthetic-token-value-T0425"
+    if image is None:
+        monkeypatch.delenv(coder_runtime.ENV_IMAGE, raising=False)
+    else:
+        monkeypatch.setenv(coder_runtime.ENV_IMAGE, image)
+    monkeypatch.setenv(coder_runtime.ENV_TOKEN, sentinel)
+    client = Client(monkeypatch, returncode=0, stdout="27.0.0")
+    before = tree(data_root)
+    with pytest.raises(tools.ToolFailure) as caught:
+        tools.call(tools.default_registry(lambda: data_root), NAME, request())
+    assert caught.value.kind == coder_call.KIND_CODER_NOT_STARTED
+    assert str(caught.value.__cause__) == f"{coder_runtime.ENV_IMAGE} is not set"
+    assert sentinel not in str(caught.value)
+    assert [command for command, _ in client.ran] == [VERSION_COMMAND]
+    assert (client.started, client.looked_up) == ([], [])
+    assert tree(data_root) == before
+    assert list(parent.iterdir()) == []
+
+
+def test_the_default_registry_reads_the_environment_at_the_call(
+    data_root, parent, monkeypatch
+):
+    monkeypatch.delenv(coder_runtime.ENV_IMAGE, raising=False)
+    client = Client(monkeypatch, returncode=0, stdout="27.0.0")
+    registry = tools.default_registry(lambda: data_root)
+    monkeypatch.setenv(coder_runtime.ENV_IMAGE, "example/coder:1")
+    monkeypatch.delenv(coder_runtime.ENV_TOKEN, raising=False)
+    with pytest.raises(tools.ToolFailure) as caught:
+        tools.call(registry, NAME, request())
+    assert caught.value.kind == coder_call.KIND_CODER_NOT_STARTED
+    assert str(caught.value.__cause__) == f"{coder_runtime.ENV_TOKEN} is not set"
+    assert client.started == []
+    assert list(parent.iterdir()) == []
+
+
+def test_building_the_default_registry_starts_no_process(monkeypatch):
+    client = Client(monkeypatch)
+    made = []
+
+    class Recorded(coder_runtime.DockerRuntime):
+        def __init__(self, *args, **options):
+            made.append((args, options))
+            super().__init__(*args, **options)
+
+    monkeypatch.setattr(coder_runtime, "DockerRuntime", Recorded)
+    registry = tools.default_registry(lambda: pytest.fail("source called"))
+    assert NAME in registry.names()
+    assert made == [((), {})]
+    assert (client.ran, client.started, client.looked_up) == ([], [], [])
 
 
 # Pass-through of the function's kinds
@@ -445,20 +550,25 @@ def test_the_default_registry_holds_the_tool(data_root):
     registry = tools.default_registry(lambda: data_root)
     assert NAME in registry.names()
     held = registry.definition(NAME)
-    made = definition(lambda: data_root, NoContainerRuntime())
+    made = definition(lambda: data_root, coder_runtime.DockerRuntime())
     assert (held.description, held.input_schema) == (
         made.description,
         made.input_schema,
     )
 
 
-def test_the_mcp_front_lists_and_calls_coder_run_of_the_default_registry(data_root):
+def test_the_mcp_front_lists_and_calls_coder_run_of_the_default_registry(
+    data_root, monkeypatch
+):
+    client = Client(monkeypatch, returncode=1)
     listed, failed, answer = mcp_call(
         tools.default_registry(lambda: data_root), request()
     )
     assert "coder_run" in [tool["name"] for tool in listed]
     assert failed is True
     assert answer["error"]["kind"] == "no_container_runtime"
+    assert [command for command, _ in client.ran] == [VERSION_COMMAND]
+    assert client.started == []
 
 
 def test_the_command_line_front_answers_coder_run(source):

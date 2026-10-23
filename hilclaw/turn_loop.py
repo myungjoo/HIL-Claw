@@ -103,18 +103,27 @@ OD-19's or OD-14's.
   above it holds an entry named as in :data:`MARKERS`. The one entry allowed
   is ``Path.home() / ".claude"``, compared by real path. A file placed there
   between two turns stops the next one.
-- *The data root and the image reach the server through the environment*:
+- *The data root, the images and the token reference reach the server
+  through the environment*:
   the entry's ``env`` holds :data:`hilclaw.config.ENV_LOCAL_PATH` with the
   real absolute path of ``data_root``, so the server names the same data root
   whatever its working directory is, and, only when the calling process's
   environment holds :data:`hilclaw.standin_image.ENV_IMAGE` with a non-empty
   value, that variable with that value unchanged and unchecked (ADR-0144
   decision 5: the process that runs the operation; the server's
-  :func:`hilclaw.standin_image.read_image` refuses a bad one). Nothing else
-  of the environment is copied there. The value is read once, when
-  :func:`run` builds the configuration, so every turn of one loop names the
-  same image. That the ``env`` member reaches the server process is what a
-  passed self-check of ADR-0054 shows, whose tokens travel the same way.
+  :func:`hilclaw.standin_image.read_image` refuses a bad one). Likewise
+  :data:`hilclaw.coder_runtime.ENV_IMAGE`, the coder's image, with a
+  non-empty value is copied unchanged and unchecked (ADR-0137 decision 4;
+  the server's :class:`hilclaw.coder_runtime.DockerRuntime` refuses a bad
+  one). For :data:`hilclaw.coder_runtime.ENV_TOKEN` with a non-empty value
+  the member holds the reference ``${HILCLAW_CODER_OAUTH_TOKEN}``, never the
+  value (ADR-0137 decision 5); it relies on the session expanding ``${...}``
+  in the ``--mcp-config`` file from its own environment, which is runtime
+  acceptance item (lxxiv) of ADR-0137 and not verified. Nothing else of the
+  environment is copied there. The values are read once, when :func:`run`
+  builds the configuration, so every turn of one loop has the same entry.
+  That the ``env`` member reaches the server process is what a passed
+  self-check of ADR-0054 shows, whose tokens travel the same way.
 - *The server entry* is ``command`` :data:`sys.executable`, ``args`` ``-I``,
   ``-c``, a start text that puts the directory holding this package first on
   ``sys.path`` and runs :func:`hilclaw.mcp_front.main`, and that directory;
@@ -211,6 +220,7 @@ from typing import NamedTuple
 from hilclaw import (
     budget_check,
     caller_check,
+    coder_runtime,
     config,
     layout,
     mcp_front,
@@ -314,9 +324,12 @@ def _config_text(root):
         "args": ["-I", "-c", _START, _checkout_boundary.PACKAGE_DIRECTORY],
         "env": {config.ENV_LOCAL_PATH: root},
     }
-    image = os.environ.get(standin_image.ENV_IMAGE)
-    if image:
-        entry["env"][standin_image.ENV_IMAGE] = image
+    for name in (standin_image.ENV_IMAGE, coder_runtime.ENV_IMAGE):
+        image = os.environ.get(name)
+        if image:
+            entry["env"][name] = image
+    if os.environ.get(coder_runtime.ENV_TOKEN):
+        entry["env"][coder_runtime.ENV_TOKEN] = "${" + coder_runtime.ENV_TOKEN + "}"
     return json.dumps({SERVERS_MEMBER: {mcp_front.SERVER_NAME: entry}})
 
 

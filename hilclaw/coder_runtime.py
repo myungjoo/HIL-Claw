@@ -4,11 +4,10 @@
 decides how the container and the coder's ``claude -p`` of one first-case
 coder call are started. :class:`DockerRuntime` implements the seam of
 :mod:`hilclaw.coder_call`: ``available()`` (decision 2) and
-``run(scratch_root, coder_model=...)`` (decisions 3 to 7). Nothing binds it
-yet: ADR-0137 code slice 2 puts it in place of
-:class:`hilclaw.coder_tool.NoContainerRuntime` in
-:func:`hilclaw.tools.default_registry` and passes the two variables through
-the turn loop.
+``run(scratch_root, coder_model=...)`` (decisions 3 to 7).
+:func:`hilclaw.tools.default_registry` binds ``coder.run`` to it with its
+defaults, and :mod:`hilclaw.turn_loop` passes the two variables to the MCP
+front (ADR-0137 code slice 2).
 
 The user names the image in :data:`ENV_IMAGE` and gives the token of
 ``claude setup-token`` in :data:`ENV_TOKEN` (decisions 4 and 5). Both are read
