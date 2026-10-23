@@ -2,7 +2,7 @@
 id: T-0427
 title: Add the command-line entry python -m hilclaw.new_run <file> that hands a person's or a script's instance document to hilclaw.start_instance.start and reports the run id or why nothing was started (ADR-0155 code slice; PLAN P2-5)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-13, OD-23, OD-8, "UC-1", "PLAN P2-5"]
 dependsOn: [T-0426]
@@ -109,3 +109,11 @@ hq: []
 - (planner) After this lands, the P2-13 joining task of ADR-0153 slice 1 (T-0423 Follow-ups) is the candidate, unless an HQ answer reopens a round-loop item first.
 
 ## Result
+
+- PR #250, squash-merged as `29f710a` (branch deleted). Review: 2 rounds (round 1 Approve with a Minor docstring wrap and a duplicate-test Nit, both fixed; round 2 Approve, no findings). CI green on the final head (Python 3.11/3.14, coverage, C, shellcheck, test presence); local full pytest, ruff check and ruff format clean; `hilclaw/new_run.py` 99% line coverage (only the `__main__` line, run by a subprocess test).
+- Language: Python, because the entry calls the Python package function `hilclaw.start_instance.start` in-process and follows `hilclaw.turn_start`.
+- Choices left open by ADR-0155 decision 5 (stated in the module docstring table): outcome words and statuses `started` 0, `given_run_id` 10, `missing_members` 11, `invalid` 12, `out_of_scope` 13, `run_id_in_use` 14, `file_system` 15, `unwritable_value` 16, `bad_usage` 20, `unreadable_input` 21, `bad_input` 22, `no_data_root` 23, `fault` 24; no two kinds share a status. Members: `run_id` (started, run_id_in_use), `missing` (list in `REPORT_ORDER`), `reason` (free text), `fault` (class name). A line that cannot be written gives status 24 with one standard-error line, naming the run id after a start.
+- Order of checks: standard output, one argument, read and decode the file, data root (asked once), `start`.
+- Decoding rules (decision 3): strict UTF-8; a BOM, duplicate member names at any depth and the `NaN`/`Infinity`/`-Infinity` tokens are bad input; an overflowing number such as `1e400` reaches `start` (invalid in a defined member, unwritable_value elsewhere). `unwritable_value` is the exact `ValueError` class; a `ValueError` subclass is `fault`.
+- `hilclaw/start_instance.py`: docstring only. README lists no command-line entries, so no fourth file.
+- Follow-ups: none.
