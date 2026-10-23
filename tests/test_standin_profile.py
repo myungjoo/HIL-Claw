@@ -1041,7 +1041,7 @@ def imported_modules(path):
     return found
 
 
-def test_module_is_bound_nowhere_and_imports_no_store():
+def test_module_is_bound_by_the_start_only_and_imports_no_store():
     package = Path(standin_profile.__file__).parent
     own = Path(standin_profile.__file__)
     assert imported_modules(own) == {
@@ -1053,8 +1053,10 @@ def test_module_is_bound_nowhere_and_imports_no_store():
         "hilclaw.keys",
         "hilclaw.local_run",
     }
+    start = package / "start_instance.py"
+    assert "standin_profile" in start.read_text(encoding="utf-8")
     for path in sorted(package.rglob("*.py")):
-        if path != own:
+        if path not in (own, start):
             assert "standin_profile" not in path.read_text(encoding="utf-8"), path.name
     assert not hasattr(standin_profile, "main")
     assert "__main__" not in own.read_text(encoding="utf-8")
