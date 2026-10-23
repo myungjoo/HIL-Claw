@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0419",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:b3313872-1",
-    "acquiredAt": "2026-10-23T02:23:04Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -572,19 +568,27 @@
       "question": "OD-31 하위 질문 ③(연산별 oracle·tolerance, #5 B-7; PLAN P2-12). HQ-0004의 답(NumPy float64 reference, 원소별 rtol·atol, 기본값 없음, 유한 입력)은 fp32 `gemm`과 `cpu_standin`에만 해당합니다. ADR-0152의 나머지 kind(RMSNorm, RoPE, SDPA+KV cache, SwiGLU 활성, elementwise add)와 bf16/fp16에 대해: (1) reference: (a) 입력을 float64로 넓혀 NumPy float64로 계산(새 의존성 없음) (b) 목표 dtype의 반올림을 흉내 낸다 — NumPy에는 bfloat16이 없어 `ml_dtypes` 같은 새 외부 의존성이 필요(A-13) (c) PyTorch 등 다른 구현(새 의존성) (d) 그 밖. (2) 허용 오차: (a) 모든 kind에 원소별 rtol·atol, instance 파라미터, 기본값 없음 (b) dtype별 기본값을 둔다(값 지정) (c) 다른 형태(ULP 등). (3) 입력 분포: (a) kind마다 드라이버 ADR이 정한다(ADR-0017처럼 유한 입력만) (b) 오너가 지정. 막히는 것: P2-12 하네스, P2-11 계약의 검증 절. 막히지 않는 것: ②, HQ-0064, OD-31 ④, P2-5.",
       "askedAt": "2026-10-23T01:23:35Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0067",
+      "taskId": "T-0419",
+      "reason": "requirement-unclear",
+      "question": "T-0419(모델 실행기 GEMM binding 검사, ADR-0153 code slice 1 앞 절반, PR #244)이 막혔습니다. 기존 테스트 `tests/test_gemm_contract.py::test_module_is_bound_by_the_default_registry_only_and_imports_keys_only`는 `hilclaw/` 안에서 `gemm_contract` 참조를 `check_definition.py`와 `spec_tool.py`에만 허용합니다. T-0419의 수용 기준 6은 적합성 기준값을 `gemm_contract.task_contract`에서 가져오고 복사본을 금지하므로 이 테스트가 실패합니다. 그런데 task는 이 테스트 파일 수정을 금지했고, 열린 PR #186(T-0324, HQ-0032 대기)도 같은 줄을 고칩니다. 선택지: (a) T-0419에서 그 테스트의 허용 목록에 `hilclaw/model_binding.py`를 추가하도록 허용(이전에 `spec_tool.py`를 더할 때와 같은 방법; #186은 rebase 때 이 줄의 충돌을 풀어야 함) (b) #186이 merge되거나 닫힐 때까지 T-0419 보류 (c) 그 밖의 방법 지시. 답이 없는 동안 막히는 것: T-0419(PR #244 merge)와 그 뒤 절반(slice 1 후반, 빌드·dlopen·C model program). 막히지 않는 것: OD-31 ②·③(HQ-0065·HQ-0066)과 그 밖의 PLAN 항목.",
+      "askedAt": "2026-10-23T02:33:15Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 433,
+    "iterations": 434,
     "tasksDone": 405,
-    "tasksBlocked": 28,
-    "reviewRoundsTotal": 1461
+    "tasksBlocked": 29,
+    "reviewRoundsTotal": 1462
   },
   "lastIteration": {
-    "at": "2026-10-23T01:55:08Z",
-    "owner": "AKIHA:9f7643e8-1",
-    "taskId": "T-0418",
-    "outcome": "DONE"
+    "at": "2026-10-23T02:33:15Z",
+    "owner": "AKIHA:b3313872-1",
+    "taskId": "T-0419",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
