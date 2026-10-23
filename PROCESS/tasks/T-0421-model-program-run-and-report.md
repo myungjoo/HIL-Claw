@@ -2,7 +2,7 @@
 id: T-0421
 title: Add the host side's run of the model program - a module hilclaw/model_run.py that encodes a list of fp32 gemm calls into the program's input file, starts the program with its libraries under a time limit, and reads the report into one output array per call or the named outcome run_failed (ADR-0153 code slice 1, host-side run part; for PLAN P2-13)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-10, OD-31, "PLAN P2-13"]
 dependsOn: [T-0420]
@@ -128,3 +128,11 @@ The names below are this task's. The executor may rename them only if the review
 - Runtime acceptance item (lxvii) of ADR-0153 is to be asked "once code slice 1 has landed". It is not asked at the end of this task.
 
 ## Result
+
+- **Outcome**: DONE. PR #246 (branch `claude/T-0421-model-program-run-and-report`), squash-merged by the executor as `258731c` after 2 review rounds (round 1: Approve with one Minor finding, addressed; round 2: Approve, no findings). CI green at the reviewed head `387b0a5` (C gate, Coverage gate, Python 3.11/3.14, Test presence, sh gate).
+- **Change**: `hilclaw/model_run.py` (new, 294 lines) and `tests/test_model_run.py` (new). No other file. Names are those of the task; no rename. `END_MARK` is also public.
+- **Language**: Python, because the host side hands `numpy` arrays and one process to `hilclaw.local_run`, as the harness's Python side does (ADR-0153 decision 2).
+- **Executor choices**: one checking helper each for calls and for shapes, shared by `encode_input`/`output_shapes` and by `parse_report`/`run_model_program`. `calls`, `shapes`, `libraries` and a command-prefix `program` must be `collections.abc.Sequence` (an iterator is refused with `TypeError`). Every prefix element, the input file and every library go through one path check: `str` or `os.PathLike` whose `os.fspath` is `str`, else `TypeError`. A big-endian `float32` dtype on a little-endian host is refused as a wrong dtype. Checks run in the order shapes, program, input file, libraries; `parse_report` checks shapes before the report type.
+- **Review round 1 fix**: the test of a failed run with a complete report now pins the expected outcome per case and adds a timed-out run with a status.
+- **Local runs**: native Windows full `pytest`: 26693 passed, 907 skipped (clang tests skip); `ruff check .` and `ruff format --check .` clean; `hilclaw/model_run.py` 100% line and branch coverage from the platform-independent tests. Under WSL with clang and Python 3.12, `tests/test_model_run.py`, `tests/test_model_program.py` and `tests/test_model_build.py` passed (204).
+- **Follow-ups**: as listed (candidate T-0422, build-and-run function; runtime acceptance item (lxvii) after slice 1 lands).
