@@ -290,7 +290,8 @@ def test_build_failed_and_run_failed_are_returned_unchanged(recorder):
     recorder.result = ModelExecution(BuildFailed(2, build), None, True)
     result = recorded_run(every_binding())
     assert result.execution is recorder.result
-    assert [c for c in result.calls if c[2] == result.execution.build_failed.kernel]
+    failed = result.execution.build_failed.kernel
+    assert {site for site, _, index in result.calls if index == failed} == {"gate"}
     runner = RunResult(1, False, b"", b"", ("prog",), 0.2)
     recorder.result = ModelExecution(
         None, ModelProgramResult(RunFailed.EXIT_STATUS, None, runner), True
