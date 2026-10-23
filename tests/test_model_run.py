@@ -309,16 +309,23 @@ def test_run_failed_outcomes(recorder, returned, failed):
 
 
 @pytest.mark.parametrize(
-    "returned",
+    ("returned", "failed"),
     [
-        runner_result(returncode=None, timed_out=True, stdout=report_of([[1.0]])),
-        runner_result(returncode=5, stdout=report_of([[1.0]])),
+        (
+            runner_result(returncode=None, timed_out=True, stdout=report_of([[1.0]])),
+            RunFailed.TIMEOUT,
+        ),
+        (
+            runner_result(returncode=-9, timed_out=True, stdout=report_of([[1.0]])),
+            RunFailed.TIMEOUT,
+        ),
+        (runner_result(returncode=5, stdout=report_of([[1.0]])), RunFailed.EXIT_STATUS),
     ],
 )
-def test_complete_report_of_a_failed_run_gives_no_outputs(recorder, returned):
+def test_complete_report_of_a_failed_run_gives_no_outputs(recorder, returned, failed):
     recorder(returned)
     result = run_model_program("prog", "in", ["lib"], shapes=[(1, 1)], timeout_s=1)
-    assert result.failed in (RunFailed.TIMEOUT, RunFailed.EXIT_STATUS)
+    assert result.failed is failed
     assert result.outputs is None
     assert result.run.stdout == b""
 
