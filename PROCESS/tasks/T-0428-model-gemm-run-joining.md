@@ -2,7 +2,7 @@
 id: T-0428
 title: Join the model executor's binding check with its build-and-run path - a function that checks a GEMM binding against a generation and, when the check is ok, builds the bound kernels once each and runs one call per checked (call site, shape) with caller-given arrays (ADR-0153 code slice 1, joining; PLAN P2-13)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-13"]
 dependsOn: [T-0419, T-0422]
@@ -137,3 +137,11 @@ P2-10 comes after P2-5. The next stage is P2-11 to P2-14. Within it, the T-0427 
 - (planner) Next under P2-11 is the first contract record of a further kind, in fp32 or in bf16 per ADR-0154. Choose the order in that task's Why, unless an HQ answer reopens a round-loop item first.
 
 ## Result
+
+- **PR**: #251 (`claude/T-0428-model-gemm-run-joining`), squash-merged as `790a9c8` with the PR body (last line `Task: T-0428`); the branch was deleted.
+- **Review**: 2 rounds with the context-isolated `dev-reviewer`, both Approve. Round 1 raised two Info findings: the recorder test's build-failed reverse mapping was loose (fixed: the test now pins index 2 to `{"gate"}`); `GemmRun.calls` is annotated as a bare `tuple` (kept, the docstring states the element form). Round 2: Approve with no new findings.
+- **CI**: green on `c7509da` (C gate, Python gate 3.11 and 3.14, Coverage gate, Test presence, shellcheck); the real-build tests ran there unskipped. Coverage: `hilclaw/model_gemm.py` 100%, `hilclaw/` total 99%.
+- **Local gates**: on Windows, `ruff check`, `ruff format --check` and the full `pytest` suite passed (27144 passed, 927 skipped; the real-build tests skip there). The real-build tests of `tests/test_model_gemm.py` and `tests/test_model_execute.py` ran in WSL Ubuntu (clang, Python 3.12): 76 passed.
+- **Language**: Python, because the module joins the Python modules `model_binding` and `model_execute` and hands numpy arrays on (ADR-0153 decision 2).
+- **Choices left open by criterion 1**: `operands` is looked at only after an ok check (a not-ok check never looks at it). Refusal order: a non-mapping `operands` (`TypeError`); then per call in program order a missing key (`ValueError`), a value that is not a `tuple`/`list` of two items (`TypeError`), an `a` or `b` whose `shape` is a 2-tuple other than `(m, k)`/`(k, n)` (`ValueError`); then a key that is no call of the check (`ValueError`). Every message names the key; other shapes, non-`ndarray` values and other dtypes reach `execute`, whose error passes through unchanged. Kernel references that compare `==` are one kernel and one shared library, found by linear search (`KernelReference` holds a dict contract and is not hashable); distinct kernels are listed in order of first use in `check.calls`.
+- **Follow-ups**: none from the executor. The driver recorded runtime acceptance item (lxvii) of ADR-0153 as HQ-0069. The planner follow-up (next P2-11 contract record) stands.
