@@ -36,9 +36,10 @@ Conventions of this module, not rules of a record:
   passes through; it is no :class:`hilclaw.instance.InvalidInstanceError`.
   Their wording is this module's; no form of a user interface is chosen.
 
-What it does not do: it binds no caller (OD-23, UC-1); it is no FR-10 tool,
-is not registered in :mod:`hilclaw.tools` and has no command-line or MCP
-entry (ADR-0115 decision 3). It writes no ``STATE.json`` and no line of
+Its caller for the start by a person or a script is the command-line entry
+:mod:`hilclaw.new_run` (ADR-0155); other callers stay open. What it does not
+do: it is no FR-10 tool, is not registered in :mod:`hilclaw.tools` and has
+no command-line or MCP entry of its own (ADR-0115 decision 3). It writes no ``STATE.json`` and no line of
 ``events.ndjson``, looks at no ``runs/<run_id>/`` before the write, takes no
 lock and makes no commit. It reads no stored hw_profile record (⑱), checks no
 source commit (⑳) and fills in no ``owner`` or ``project`` (㉛). It says
