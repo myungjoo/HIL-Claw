@@ -152,3 +152,12 @@ hq: []
 - Then under P2-11: the first bf16 kind contract record, in an order the planner chooses and states in that task's Why.
 
 ## Result
+
+- DONE, document mode. Landed on `main` as one commit with `Reviewed-by: reviewer agent (5 rounds, Approve)` and `Task: T-0423` (the commit that carries this Result).
+- Files: new `ARCHITECTURE/decisions/ADR-0154-od31-owner-answers-heads-bf16-oracle.md`; the OD-31 row of `ARCHITECTURE/Requirements.md`; § OD-31 of `ARCHITECTURE/OpenDecisionProposals.md` (adopted line, sub-questions 1-3 statuses); `ARCHITECTURE/StandardScenarios.md` ("최근 재검사" line, S0 and S1 notes scoped to the Llama kinds on `cpu_standin`).
+- Review: 5 rounds (round 1 Approve with Low/Nit, round 2 Approve with Low/Nit, round 3 Request changes on one Medium (③ kept among the owner-only parts), rounds 4 and 5 Approve); every point addressed on the branch.
+- Owner-sentence search (#4, #5, #7, #8): no conflict touching an owner-only value; K1 "16 heads"/"GQA 16/8" and K2 "bf16/fp16" are followed as corrected or narrowed by HQ-0064 and HQ-0065.
+- StandardScenarios: S0 and S1 re-checked, verdicts unchanged, no gap.
+- Runtime acceptance items: none. New HQ: none.
+- The DRIVER §9 owner notice on issue #5 is posted by the executor after landing, at the driver's instruction; its URL is in the executor's summary.
+- Follow-ups: as listed above (the ADR-0153 slice 1 joining task; then the first bf16 kind contract record under P2-11).
