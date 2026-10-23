@@ -2,7 +2,7 @@
 id: T-0375
 title: Write ADR-0137 - how the container and the coder's `claude -p` of a first-case coder call are started (the design points of ADR-0049 slice (d) left by ADR-0126 Consequences, except the time limit and the output stream)
 phase: P1
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [FR-5, NFR-4, NFR-5, C-7, OD-23, OD-8, OD-14, "#5 A-8"]
 dependsOn: [T-0346, T-0371, T-0374]
