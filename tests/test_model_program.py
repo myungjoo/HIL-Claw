@@ -11,6 +11,7 @@ BUILD_TIMEOUT = 120
 RUN_TIMEOUT = 60
 END = b"end\n"
 NAN_BITS = 0x7FC00000
+KERNEL_FLAGS = ("-O2", "-fsemantic-interposition")
 
 PRODUCT = """\
     size_t i, j, p;
@@ -28,21 +29,49 @@ PRODUCT = """\
 KERNEL = """\
 #include <stddef.h>
 #include <stdio.h>
-
+#include <unistd.h>
+@GLOBALS@
 void hilclaw_gemm(size_t m, size_t k, size_t n, const float *restrict a, const float *restrict b, float *restrict c)
 {
 @BODY@}
 """
 
+OFFSET = """
+__attribute__((noinline)) float kernel_offset(void)
+{
+    return @VALUE@;
+}
+"""
+
+CONSTRUCTOR = r"""
+__attribute__((constructor)) static void announce(void)
+{
+    if (write(1, "loaded\n", 7) != 7)
+        _exit(99);
+}
+"""
+
 KERNELS = {
-    "plain": PRODUCT.replace("@START@", "0.0f"),
-    "plus_one": PRODUCT.replace("@START@", "1.0f"),
-    "printing": '    puts("kernel says hello");\n    fflush(stdout);\n'
-    + PRODUCT.replace("@START@", "0.0f"),
-    "unwritten": "    (void)m; (void)k; (void)n; (void)a; (void)b; (void)c;\n",
+    "plain": ("", PRODUCT.replace("@START@", "0.0f")),
+    "plus_one": ("", PRODUCT.replace("@START@", "1.0f")),
+    "printing": (
+        "",
+        '    puts("kernel says hello");\n    fflush(stdout);\n'
+        + PRODUCT.replace("@START@", "0.0f"),
+    ),
+    "unwritten": ("", "    (void)m; (void)k; (void)n; (void)a; (void)b; (void)c;\n"),
+    "offset_zero": (
+        OFFSET.replace("@VALUE@", "0.0f"),
+        PRODUCT.replace("@START@", "kernel_offset()"),
+    ),
+    "offset_two": (
+        OFFSET.replace("@VALUE@", "2.0f"),
+        PRODUCT.replace("@START@", "kernel_offset()"),
+    ),
+    "constructor": (CONSTRUCTOR, PRODUCT.replace("@START@", "0.0f")),
 }
 
-NO_ENTRY = "int hilclaw_other(int x)\n{\n    return x + 1;\n}\n"
+NO_ENTRY = "int other_entry(int x)\n{\n    return x + 1;\n}\n"
 
 
 @pytest.fixture(scope="session")
@@ -64,13 +93,15 @@ def built(tmp_path_factory):
             text = (
                 NO_ENTRY
                 if name == "no_entry"
-                else KERNEL.replace("@BODY@", KERNELS[name])
+                else KERNEL.replace("@GLOBALS@", KERNELS[name][0]).replace(
+                    "@BODY@", KERNELS[name][1]
+                )
             )
             source = directory / f"{name}.c"
             source.write_text(text, encoding="ascii", newline="\n")
             output = directory / f"lib{name}.so"
             result = build_kernel_library(
-                source, output, timeout_s=BUILD_TIMEOUT, flags=("-O2",)
+                source, output, timeout_s=BUILD_TIMEOUT, flags=KERNEL_FLAGS
             )
             assert result.ok, result.log
             libraries[name] = str(output)
@@ -138,6 +169,14 @@ def test_two_kernels_of_one_symbol_stay_apart(built, tmp_path):
     assert swapped.stdout == expected(a @ b + 1, a @ b)
 
 
+def test_each_library_resolves_its_own_helpers(built, tmp_path):
+    a, b = matrices(2, 3, 2, 16)
+    data = input_bytes([(0, a, b), (1, a, b), (0, a, b)])
+    result = start(built, tmp_path, data, ["offset_zero", "offset_two"])
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == expected(a @ b, a @ b + 2, a @ b)
+
+
 def test_several_calls_of_different_shapes_in_order(built, tmp_path):
     shapes = [(1, 1, 1), (1, 7, 3), (5, 2, 1), (4, 6, 8)]
     calls = [(i % 2, *matrices(*shape, 10 + i)) for i, shape in enumerate(shapes)]
@@ -167,6 +206,14 @@ def test_what_a_kernel_prints_is_not_part_of_the_report(built, tmp_path):
     assert result.returncode == 0, result.stderr
     assert result.stdout == expected(a @ b, a @ b)
     assert result.stderr == b"kernel says hello\n" * 2
+
+
+def test_what_a_library_prints_while_loaded_is_not_part_of_the_report(built, tmp_path):
+    a, b = matrices(1, 2, 3, 17)
+    result = start(built, tmp_path, input_bytes([(0, a, b)]), ["constructor"])
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == expected(a @ b)
+    assert result.stderr == b"loaded\n"
 
 
 def test_an_unwritten_output_shows_the_nan_fill(built, tmp_path):

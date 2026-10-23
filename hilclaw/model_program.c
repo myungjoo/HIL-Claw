@@ -44,8 +44,9 @@
  * have in memory, on the standard output the process was started with, and
  * nothing else goes there. After the last call comes the end mark, the 4 bytes
  * "end\n": a complete report has the sum of 4*m*n over the calls plus 4 bytes.
- * Descriptor 1 is pointed at standard error before the first call, so what a
- * kernel prints is not part of the report.
+ * Descriptor 1 is pointed at standard error before the first library is
+ * loaded, so what a kernel prints, also while it is loaded, is not part of the
+ * report.
  *
  * Exit status:
  *   0  the end mark was written; in no other case
@@ -265,15 +266,14 @@ int main(int argc, char **argv)
     entries = malloc(libraries * sizeof *entries);
     if (entries == NULL)
         return fail(STATUS_MEMORY, "malloc", "cannot allocate the table of entry points");
+    report_fd = dup(STDOUT_FILENO);
+    if (report_fd < 0 || dup2(STDERR_FILENO, STDOUT_FILENO) < 0)
+        return fail(STATUS_SYSTEM, "descriptors", "cannot keep the standard output apart");
     for (i = 0; i < libraries; i++)
         entries[i] = load(argv[i + 2], i);
 
     data = read_file(argv[1], &length);
     check_form(data, length, libraries);
-
-    report_fd = dup(STDOUT_FILENO);
-    if (report_fd < 0 || dup2(STDERR_FILENO, STDOUT_FILENO) < 0)
-        return fail(STATUS_SYSTEM, "descriptors", "cannot keep the standard output apart");
 
     calls = word_at(data, 0);
     offset = sizeof(uint64_t);
