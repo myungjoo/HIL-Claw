@@ -2,7 +2,7 @@
 id: T-0420
 title: Add the model program of the model executor and its build step - a fixed-source C program hilclaw/model_program.c that loads each fp32 gemm kernel from a shared library of its own with dlopen and calls hilclaw_gemm through dlsym for a list of calls read from an input file, and a module hilclaw/model_build.py that builds a kernel into a shared library and the program into an executable (ADR-0153 code slice 1, second half, build and load part; for PLAN P2-13)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-10, NFR-4, OD-31, "PLAN P2-13"]
 dependsOn: [T-0418]
