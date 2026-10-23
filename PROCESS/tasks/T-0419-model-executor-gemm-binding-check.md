@@ -2,7 +2,7 @@
 id: T-0419
 title: Add the host-side binding check of the model executor for the GEMM call sites - a new module hilclaw/model_binding.py that derives every GEMM call of a generation from the model dimensions and run settings, checks an explicit binding against them before anything is built, and returns the outcomes no kernel, kernel unfit and invalid input (ADR-0153 code slice 1, first half; for PLAN P2-13)
 phase: P1
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-13"]
 dependsOn: [T-0418]
