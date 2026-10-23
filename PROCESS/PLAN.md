@@ -98,3 +98,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0406 follow-up — `caller_check.START`·`budget_check.START`에서 `main` 진입 전 실패(패키지 디렉토리 인수 없음, import 실패)가 exit 1(non-blocking error)로 끝나는 점을 ADR-0146 (lix)와 함께 따져 보는 일(리뷰 1라운드 Info), 실패 경로 경화.
 - T-0407 follow-up — hook 경로 placeholder(`${CLAUDE_PROJECT_DIR}` 등) 거부가 data root에만 있고 `PACKAGE_DIRECTORY`·`sys.executable`에는 없는 점(리뷰 Info; T-0407 이전부터), 입력 경화.
 - T-0412 follow-up — ADR-0150 제목의 문구를 stand-in 디렉토리(`catalog/cpu_standin/`)로 좁히는 일(선택, T-0413에서도 보류로 둠), ADR 문구 정리.
+- T-0416 follow-up — `hilclaw/spec_feedback.py` 모듈 docstring의 "Nothing calls this module until ``spec.write`` … is widened" 문장이 T-0416(ADR-0151 slice 2) 뒤로 틀려짐, docstring 문구 정리.
