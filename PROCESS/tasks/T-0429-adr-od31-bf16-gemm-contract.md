@@ -2,7 +2,7 @@
 id: T-0429
 title: Write ADR-0156 - the operational contract of GEMM in bf16 for C kernels on cpu_standin (kind and dtype values, layout, the operation with fp32 accumulation and the rounding of the fp32 -> bf16 output conversion, the uint16_t prototype and its symbol, operand entries, call guarantees, the input distribution, and the op_signature records of the B-4 projections), and update the OD-6 and OD-31 register entries (first Llama kind contract of PLAN P2-11; extension of OD-6 sub-question 1, part of OD-31 sub-questions 1 to 3)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-5, FR-9, OD-31, OD-6, OD-16, "#5 B-4", "PLAN P2-11", "PLAN P2-12"]
 dependsOn: [T-0417, T-0418, T-0423, T-0428]
@@ -184,3 +184,14 @@ The record changes no member, file, version or validator of the data plane. A ne
 - (planner) Next under P2-13/P2-11: the code slice of this record. That is the bf16 counterpart of `hilclaw/gemm_contract.py`, with binding fit in `hilclaw/model_binding.py` and a hand-written bf16 kernel through the model program, split to the size cap. After that comes the next kind's contract record. Choose the order in that task's Why, unless an HQ answer reopens a round-loop item first.
 
 ## Result
+
+- **Landed** in document mode as `47062f3` on `main` (squashed from branch `claude/T-0429-adr-od31-bf16-gemm-contract`, then deleted locally and on origin). Trailers: `Reviewed-by: reviewer agent (7 rounds, Approve)`, `Task: T-0429`. ADR number 0156 was free on `origin/main` (`432de45`).
+- **Files** (4): new `ARCHITECTURE/decisions/ADR-0156-od31-bf16-gemm-contract.md`; `ARCHITECTURE/Requirements.md` (OD-6 and OD-31 rows only); `ARCHITECTURE/OpenDecisionProposals.md` (§ OD-6: one 채택분 line and sub-question ① status; § OD-31: one 채택분 line and the status of ①②③); `ARCHITECTURE/StandardScenarios.md` (the "최근 재검사" line only: S0 and S1 re-checked, no verdict change, no gap). No `hilclaw/`, PLAN, STATE, test or earlier ADR change.
+- **Decisions of ADR-0156**: kind `gemm`, new dtype value `bf16`, layout `row_major` (each element a `uint16_t` bf16 bit pattern), weights in `[in, out]` order; the plain product of ADR-0008 decision 3 (its third bullet replaced for this contract); fp32 accumulation (owner, HQ-0065) read as binary32 accumulators, neither narrower nor wider, with addition order, FMA, step rounding and bf16 dot instructions left to the kernel; round-to-nearest-even output conversion; prototype `void hilclaw_gemm_bf16(size_t m, size_t k, size_t n, const uint16_t *restrict a, const uint16_t *restrict b, uint16_t *restrict c);`; correct for every m, k, n >= 1 (so the ADR-0153 "every shape" binding is accepted); verification inputs drawn from the 256 bf16 values of magnitude in [0.5, 1), generator/seed/draws left to the P2-12 harness record; 15 op_signature names (4 B-4 projections plus lm_head at M in {1, 32, 512}; lm_head stays out of first runs).
+- **Not chosen**: no tolerance value, build flag or OpenMP setting (HQ-0033, HQ-0034 not crossed).
+- **Owner-sentence search** of #4, #5, #7, #8: no conflicting owner sentence.
+- **Directory names** computed with `hilclaw.keys.op_signature_key`; the fp32 control `gemm-485b9bc494d477eb` matches ADR-0008. The `task.contract` example passed `hilclaw.spec.validate`.
+- **Review**: round 1 Request changes (accumulation-step rounding with bf16 dot instructions undecided); round 2 Request changes (conflict with ADR-0008 decision 3 "evaluated in fp32" bullet); rounds 3-7 Approve with minor findings fixed before the next round; the round-7 optional nit left unfixed (follow-up).
+- **Runtime acceptance items**: none. **D16**: no `claude` started, no model file downloaded.
+- **DRIVER §9 owner notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6376447610
+- **Follow-ups**: (planner, P2-13/P2-11) the code slice of this record — bf16 counterpart of `hilclaw/gemm_contract.py`, fit and "every shape" binding in `hilclaw/model_binding.py`, the model program calling `hilclaw_gemm_bf16`, hand-written bf16 kernel fixtures; then the P2-12 bf16 verification-run harness record and code, then the next kind's contract record. Two wording-only items deferred to PLAN "보류" (D18).
