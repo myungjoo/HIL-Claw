@@ -105,3 +105,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0426 follow-up — ADR-0155 Consequences의 "Sentences that become less exact" 목록 가운데 코드 docstring(T-0427이 처리)을 뺀 나머지(ADR-0115 decision 1·2·Consequences·Boundaries, ADR-0118 decision 3, ADR-0120·ADR-0122·ADR-0123·ADR-0134 Boundaries, ADR-0125 Context·Alternatives (a)·Boundaries, ADR-0076 Context·Boundaries, ADR-0075 decision 2·Boundaries), ADR 문구 정리.
 - T-0429 follow-up — ADR-0156 decision 4의 "every sum is zero or at least 2^−16 in magnitude"에 이유(모든 곱이 2^−16의 배수)가 빠진 점, ADR 문구 정리.
 - T-0429 follow-up — OpenDecisionProposals § OD-6 하위 질문 ①이 기록 규칙의 "→ 부분 답: … 남음: …" 형식이 아니라 옛 "확정: … 미결 그대로: …" 형식인 점(task 이전부터), 문서 문구 정리.
+- T-0431 follow-up — ADR-0157 Status "It builds on"·References가 본문에 번호 인용 없는 ADR-0008 decision 1·ADR-0156 decision 1·ADR-0152 decision 5를 나열한 점, decision 4 Reasons의 "a binding that is right for the dtype"를 Alternatives 행처럼 "every bound entry, whatever its kernel"로 맞추는 점, ADR 문구 정리.

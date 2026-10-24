@@ -2,7 +2,7 @@
 id: T-0431
 title: Write ADR-0157 - how the model executor learns the dtype of its GEMM call sites, and what that dtype selects (the contract a fit is checked against, the "every shape" acceptance, the entry point and element type of the call) for fp32 and bf16 `gemm` (part of OD-31 sub-question 4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-10, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0430]
@@ -121,3 +121,13 @@ The T-0430 Follow-ups asked the planner to return this as a design question rath
 - (planner) After this ADR lands: the code slice it lists first (the call-site dtype and the bf16 fit in `hilclaw/model_binding.py`, with tests), then the model program over `uint16_t` with hand-written bf16 kernel fixtures, split to the size cap.
 
 ## Result
+
+- **Outcome**: DONE. Document mode; landed on `main` as `4fef3b8` (squashed, rebased on `821d4bf`, trailers `Task: T-0431` and `Reviewed-by: reviewer agent (7 rounds, Approve)`). Branch `claude/T-0431-executor-call-site-dtype` deleted (remote and local).
+- **Files**: new `ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md` (no other ADR-0157 existed on `main` or in an open PR); `ARCHITECTURE/OpenDecisionProposals.md` § OD-31 (one 채택분 line, sub-question ④ "→ 부분 답" rewritten in place); `ARCHITECTURE/Requirements.md` OD-31 row (one link in `**확정분**`, status cell unchanged); `ARCHITECTURE/StandardScenarios.md` "최근 재검사" line (S0, S1 re-checked, verdicts unchanged, no gap, no history entry).
+- **Decision in short**: the dtype is one model parameter per generation, no default; no mixed dtypes (a kernel of another dtype's contract is kernel unfit); for `gemm` it selects the contract (ADR-0008 / ADR-0156), "every shape" acceptance (both), the `dlsym` entry point (`hilclaw_gemm` / `hilclaw_gemm_bf16`) and the buffer element type (`float` / `uint16_t`); a dtype with no contract at every call site's kind (fp16 among them) or a weight of the wrong element type is invalid input; the fp32 path of ADR-0153 slice 1 stays, its binding check gains the dtype input. No owner-only point decided; no runtime acceptance item; no data-plane change.
+- **Review**: 7 rounds (dev-reviewer, fresh context each). Round 1 and 2 Request changes (blocking: weights' element type stated per model dtype instead of per receiving operand, crossing sub-question 2; embedding table placed under kind contracts); rounds 3-7 Approve with nits, all addressed through round 6. Round 7 Approve left two nits unaddressed because an 8th round is not allowed (below).
+- **#5 notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6377336741 (7-day objection window from 2026-10-24).
+- **Follow-ups**:
+  - (planner) The code slices of ADR-0157 Consequences: (1) the model's dtype and the bf16 fit in `hilclaw/model_binding.py` (contract selected by dtype, kernel unfit for another dtype, invalid input for a dtype out of range, fp32 callers pass `fp32`), with tests; (2) the bf16 model program and its host-side build and run steps over `uint16_t` buffers with hand-written bf16 kernel fixtures, split to the size cap. The weights' element-type check goes with ADR-0153 code slice 2.
+  - (wording, D18 candidate for 보류) Round-7 nits left open: ADR-0157 Status "It builds on" and References list ADR-0008 decision 1, ADR-0156 decision 1 and ADR-0152 decision 5 without a numbered citation in the body; decision 4 Reasons "a binding that is right for the dtype" could read "every bound entry, whatever its kernel" as in the Alternatives row.
+  - (driver note) ADR-0157 decision 1 states that the host side holds bf16 GEMM weights as 16-bit patterns and does no arithmetic on them, which overlaps the first point of the PLAN 보류 line "T-0418 follow-up" (ADR-0153 decision 2 wording); that line was not edited.
