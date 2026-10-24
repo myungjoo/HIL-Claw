@@ -8,7 +8,8 @@ ADR-0008 is built into a shared library of its own with
 The program loads each library with ``dlopen`` and calls its ``hilclaw_gemm``,
 or its ``hilclaw_gemm_bf16`` when the caller's flags hold
 ``-DHILCLAW_MODEL_BF16`` (its header comment states its command line, input
-file and report). Each function makes one call of
+file and report). The flags a dtype needs are :data:`PROGRAM_DTYPE_FLAGS`,
+which the caller puts in the program's flags. Each function makes one call of
 :func:`hilclaw.clang_build.build`, whose command is::
 
     <compiler...> <flags...> <sources...> <trailing_flags...> -o <temporary output>
@@ -19,14 +20,16 @@ The only flags this module adds are what a shared library needs,
 What this module does not do: it checks no binding of a kernel to a call; it
 places no directory and chooses no output path, compiler or time limit; it runs
 nothing that it built and writes no input file of the program; it chooses no
-flag beyond :data:`LIBRARY_FLAGS`, and in particular adds no ``-ldl`` to the
-program build (that is the caller's ``trailing_flags``); it does not retry,
+flag beyond :data:`LIBRARY_FLAGS`, adds no flag to the program build by
+itself (not even :data:`PROGRAM_DTYPE_FLAGS`), and in particular adds no
+``-ldl`` to it (that is the caller's ``trailing_flags``); it does not retry,
 repair or store a failed build; and it reads no configuration and no
 environment variable of its own.
 """
 
 import os
 from pathlib import Path
+from types import MappingProxyType
 
 from hilclaw import clang_build
 
@@ -35,6 +38,9 @@ PROGRAM_SOURCE = Path(__file__).with_name("model_program.c")
 
 LIBRARY_FLAGS = ("-shared", "-fPIC")
 """Flags that make a kernel build a shared library, after the caller's flags."""
+
+PROGRAM_DTYPE_FLAGS = MappingProxyType({"fp32": (), "bf16": ("-DHILCLAW_MODEL_BF16",)})
+"""Read-only map of each dtype to the flags that build the model program for it."""
 
 
 def build_kernel_library(

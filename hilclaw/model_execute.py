@@ -9,9 +9,10 @@ model program into it, and either returns the outcome **build failed** of
 decision 5 (:class:`BuildFailed`) for the first failed build or writes the
 input file and runs the program once; the directory is then removed on every
 path. A run that failed is the outcome **run failed**, carried by the
-:class:`hilclaw.model_run.ModelProgramResult` returned as it is. It runs the
-fp32 program, the one built without ``HILCLAW_MODEL_BF16``, and hands
-``dtype="fp32"`` to each function of :mod:`hilclaw.model_run` it calls.
+:class:`hilclaw.model_run.ModelProgramResult` returned as it is. It builds
+the program of the caller's ``dtype``, with that dtype's
+:data:`hilclaw.model_build.PROGRAM_DTYPE_FLAGS`, and hands the same ``dtype``
+to each function of :mod:`hilclaw.model_run` it calls.
 
 Conventions of this module (not rules of the record):
 
@@ -32,7 +33,8 @@ Conventions of this module (not rules of the record):
 
 What this module does not do: it makes no binding check and no fit check of a
 kernel to a call; it chooses no container or environment; it gives no time
-limit a default; it chooses no flag; it compares nothing and holds no
+limit a default; it chooses no flag beyond the dtype's
+:data:`hilclaw.model_build.PROGRAM_DTYPE_FLAGS`; it compares nothing and holds no
 reference or tolerance; it casts no array; it stores, keeps or retries
 nothing; and it writes nothing outside the build directory.
 """
@@ -49,6 +51,7 @@ PREFIX = "hilclaw-model-"
 
 _PROGRAM_NAME = "model_program"
 _INPUT_NAME = "input.bin"
+_DTYPE_MACRO = "HILCLAW_MODEL_BF16"
 
 
 class BuildFailed(NamedTuple):
@@ -82,6 +85,7 @@ def execute(
     kernels,
     calls,
     *,
+    dtype,
     build_timeout_s,
     run_timeout_s,
     program_flags=(),
@@ -94,11 +98,14 @@ def execute(
 ):
     """Build ``kernels`` and the model program, run ``calls`` once, return a :class:`ModelExecution`.
 
+    ``dtype`` is the generation's dtype, one of
+    :data:`hilclaw.model_run.DTYPES`, with no default (ADR-0157 decision 1).
     ``kernels`` is a non-empty sequence (not ``str`` or ``bytes``) of objects
     with the attributes ``sources`` and ``flags``. ``calls`` is the argument
-    of :func:`hilclaw.model_run.encode_input`; every call's index must be
-    below ``len(kernels)``. ``prefix`` is a sequence of paths put in front of
-    the built program's path; empty, the program is started by its path.
+    of :func:`hilclaw.model_run.encode_input` at ``dtype``; every call's
+    index must be below ``len(kernels)``. ``prefix`` is a sequence of paths
+    put in front of the built program's path; empty, the program is started
+    by its path.
     ``parent`` is the existing directory the build directory is made in
     (``None``: :func:`tempfile.gettempdir`); it must not be or lie inside the
     directory that holds this package or a directory of the sequence of paths
@@ -108,27 +115,36 @@ def execute(
     :func:`hilclaw.model_build.build_kernel_library` (their own ``sources``
     and ``flags``, ``build_timeout_s``, ``compiler``, ``env``), then the
     program with :func:`hilclaw.model_build.build_model_program`
-    (``program_flags``, ``program_trailing_flags``, ``build_timeout_s``,
-    ``compiler``, ``env``). The first build whose ``ok`` is false stops the
-    path: nothing after it is built or run. Otherwise the input file is
-    written and :func:`hilclaw.model_run.run_model_program` is called with the
-    libraries in index order, ``run_timeout_s`` and ``env``.
+    (``program_flags`` followed by
+    ``hilclaw.model_build.PROGRAM_DTYPE_FLAGS[dtype]``,
+    ``program_trailing_flags``, ``build_timeout_s``, ``compiler``, ``env``);
+    no dtype flag goes to a kernel build. The first build whose ``ok`` is
+    false stops the path: nothing after it is built or run. Otherwise the
+    input file is written and :func:`hilclaw.model_run.run_model_program` is
+    called with the libraries in index order, ``dtype``, ``run_timeout_s``
+    and ``env``.
 
-    Raised before anything is made: :class:`TypeError` for ``kernels`` that
-    is no sequence, an entry without ``sources`` or ``flags``, a ``prefix``
-    that is no sequence or holds an entry that is not ``str`` or
-    :class:`os.PathLike` of ``str``, a ``parent`` or ``keep_out`` entry of
-    that kind, or a ``keep_out`` that is one path or no sequence;
-    :class:`ValueError` for no kernels, a call index not below
-    ``len(kernels)``, a path of ``prefix``, ``parent`` or ``keep_out`` with a
-    NUL character, or a ``parent`` inside a checkout; and what
-    :func:`hilclaw.model_run.output_shapes` raises for ``calls``, unchanged.
-    The :class:`OSError` of making the directory (a missing ``parent``) is
-    raised as it is. What a build, the input file's writing or the run raises
+    Raised before anything is made, ``dtype`` first: :class:`TypeError` for
+    a ``dtype`` that is not a ``str`` and :class:`ValueError` for one outside
+    :data:`hilclaw.model_run.DTYPES`, each message starting with ``dtype:``.
+    Then :class:`TypeError` for ``kernels`` that is no sequence, an entry
+    without ``sources`` or ``flags``, a ``prefix`` that is no sequence or
+    holds an entry that is not ``str`` or :class:`os.PathLike` of ``str``, a
+    ``parent`` or ``keep_out`` entry of that kind, or a ``keep_out`` that is
+    one path or no sequence; :class:`ValueError` for no kernels, a call index
+    not below ``len(kernels)``, a path of ``prefix``, ``parent`` or
+    ``keep_out`` with a NUL character, or a ``parent`` inside a checkout; and
+    what :func:`hilclaw.model_run.output_shapes` raises for ``calls``,
+    unchanged. Last, :class:`TypeError` for ``program_flags`` that is not a
+    ``tuple`` or ``list`` of ``str``, and :class:`ValueError` for an item of
+    it that contains ``HILCLAW_MODEL_BF16``, naming its position: ``dtype``
+    alone selects the program's build. The :class:`OSError` of making the
+    directory (a missing ``parent``) is raised as it is. What a build, the input file's writing or the run raises
     is passed on unchanged after the directory was removed.
     """
+    _checked_dtype(dtype)
     kernels = _checked_kernels(kernels)
-    shapes = model_run.output_shapes(calls, dtype="fp32")
+    shapes = model_run.output_shapes(calls, dtype=dtype)
     for position, (index, _, _) in enumerate(calls):
         if index >= len(kernels):
             raise ValueError(
@@ -138,6 +154,10 @@ def execute(
     prefix = _checked_prefix(prefix)
     roots = _checked_keep_out(keep_out)
     place = _checked_parent(parent, roots)
+    program_flags = (
+        *_checked_program_flags(program_flags),
+        *model_build.PROGRAM_DTYPE_FLAGS[dtype],
+    )
     directory = tempfile.mkdtemp(prefix=PREFIX, dir=place)
     try:
         build_failed, run = _build_and_run(
@@ -146,6 +166,7 @@ def execute(
             calls,
             shapes,
             prefix,
+            dtype=dtype,
             build_timeout_s=build_timeout_s,
             run_timeout_s=run_timeout_s,
             program_flags=program_flags,
@@ -166,6 +187,7 @@ def _build_and_run(
     shapes,
     prefix,
     *,
+    dtype,
     build_timeout_s,
     run_timeout_s,
     program_flags,
@@ -200,12 +222,12 @@ def _build_and_run(
         return BuildFailed(None, build), None
     input_file = os.path.join(directory, _INPUT_NAME)
     with open(input_file, "xb") as stream:
-        stream.write(model_run.encode_input(calls, dtype="fp32"))
+        stream.write(model_run.encode_input(calls, dtype=dtype))
     run = model_run.run_model_program(
         (*prefix, program) if prefix else program,
         input_file,
         libraries,
-        dtype="fp32",
+        dtype=dtype,
         shapes=shapes,
         timeout_s=run_timeout_s,
         env=env,
@@ -236,6 +258,27 @@ def _path(value, name):
     raise TypeError(
         f"{name}: must be str or os.PathLike of str, got {type(value).__name__}"
     )
+
+
+def _checked_dtype(dtype):
+    if not isinstance(dtype, str):
+        raise TypeError(f"dtype: must be str, got {type(dtype).__name__}")
+    if dtype not in model_run.DTYPES:
+        raise ValueError(f"dtype: {dtype!r} is not one of {model_run.DTYPES}")
+
+
+def _checked_program_flags(program_flags):
+    if not isinstance(program_flags, (tuple, list)) or not all(
+        isinstance(flag, str) for flag in program_flags
+    ):
+        raise TypeError("program_flags: must be a tuple or list of str")
+    for position, flag in enumerate(program_flags):
+        if _DTYPE_MACRO in flag:
+            raise ValueError(
+                f"program_flags[{position}]: names {_DTYPE_MACRO}, which only "
+                "dtype selects"
+            )
+    return program_flags
 
 
 def _checked_kernels(kernels):

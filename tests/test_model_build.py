@@ -4,9 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import clang_build, model_build
+from hilclaw import clang_build, model_build, model_run
 from hilclaw.model_build import (
     LIBRARY_FLAGS,
+    PROGRAM_DTYPE_FLAGS,
     PROGRAM_SOURCE,
     build_kernel_library,
     build_model_program,
@@ -69,6 +70,33 @@ def test_program_source_is_next_to_the_module():
 
 def test_library_flags():
     assert LIBRARY_FLAGS == ("-shared", "-fPIC")
+
+
+def test_program_dtype_flags():
+    assert dict(PROGRAM_DTYPE_FLAGS) == {"fp32": (), "bf16": ("-DHILCLAW_MODEL_BF16",)}
+    assert tuple(PROGRAM_DTYPE_FLAGS) == model_run.DTYPES
+
+
+def test_program_dtype_flags_are_read_only():
+    with pytest.raises(TypeError):
+        PROGRAM_DTYPE_FLAGS["fp16"] = ()
+    with pytest.raises(TypeError):
+        PROGRAM_DTYPE_FLAGS["fp32"] = ("-O2",)
+    with pytest.raises(TypeError):
+        del PROGRAM_DTYPE_FLAGS["bf16"]
+    assert dict(PROGRAM_DTYPE_FLAGS) == {"fp32": (), "bf16": ("-DHILCLAW_MODEL_BF16",)}
+
+
+def test_public_names():
+    public = {name for name in vars(model_build) if not name.startswith("_")}
+    imported = {"os", "Path", "MappingProxyType", "clang_build"}
+    assert public - imported == {
+        "PROGRAM_SOURCE",
+        "LIBRARY_FLAGS",
+        "PROGRAM_DTYPE_FLAGS",
+        "build_kernel_library",
+        "build_model_program",
+    }
 
 
 def test_module_text_does_not_name_the_contract_module():
