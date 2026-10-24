@@ -601,6 +601,69 @@ def test_unknown_kind_is_rejected(kind):
         op_signature_key(changed(synthetic_op(), ["kind"], kind))
 
 
+def synthetic_rmsnorm_op():
+    return dict(synthetic_op(), kind="rmsnorm", shape={"m": 3, "n": 7})
+
+
+def test_rmsnorm_record_is_accepted():
+    key = op_signature_key(synthetic_rmsnorm_op())
+    assert key.name.startswith("rmsnorm-")
+    assert hashlib.sha256(key.canonical).hexdigest() == key.digest
+
+
+def test_rmsnorm_record_of_adr_0158_has_its_canonical_form_and_name():
+    record = {
+        "schema_version": 1,
+        "kind": "rmsnorm",
+        "shape": {"m": 1, "n": 2048},
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+    key = op_signature_key(record)
+    assert key.canonical == (
+        b'{"dtype":"bf16","kind":"rmsnorm","layout":"row_major",'
+        b'"schema_version":1,"shape":{"m":1,"n":2048}}'
+    )
+    assert key.digest == (
+        "57f1bdf44f626c31e71beef7ba688a245eca699394fdbc732d48fffe1b0de702"
+    )
+    assert key.name == "rmsnorm-57f1bdf44f626c31"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {},
+        {"m": 1},
+        {"n": 2},
+        {"m": 1, "n": 2, "k": 3},
+        {"m": 1, "k": 2, "n": 3},
+        {"m": 1, "o": 2},
+    ],
+)
+def test_rmsnorm_shape_members_are_exactly_m_n(shape):
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members m, n",
+    ):
+        op_signature_key(changed(synthetic_rmsnorm_op(), ["shape"], shape))
+
+
+def test_gemm_still_needs_k_beside_m_and_n():
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members k, m, n",
+    ):
+        op_signature_key(changed(synthetic_op(), ["shape"], {"m": 3, "n": 7}))
+
+
+def test_unknown_kind_message_lists_both_kinds():
+    with pytest.raises(
+        InvalidRecordError, match="^kind: must be a known kind: gemm, rmsnorm, got"
+    ):
+        op_signature_key(changed(synthetic_op(), ["kind"], "rope"))
+
+
 @pytest.mark.parametrize("canonical", ["{}", bytearray(b"{}"), None, {"a": 1}])
 def test_directory_name_needs_bytes(canonical):
     with pytest.raises(TypeError, match="canonical must be bytes"):
