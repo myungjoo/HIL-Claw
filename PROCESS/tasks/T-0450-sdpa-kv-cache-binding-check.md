@@ -2,7 +2,7 @@
 id: T-0450
 title: Add the SDPA call site sdpa to hilclaw/model_binding.py - its (m, l, h, h_kv, d) shapes over a generation (prefill (P, P), decode pass k (1, P + k)) and a binding check with fit against the bf16 sdpa_kv_cache contract and "every shape" accepted (ADR-0162 decisions 3, 10, 11 and 15), with the dtype range of ADR-0157 decision 4 - with tests (ADR-0162 code slice, second part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-11", "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0449]
@@ -138,3 +138,12 @@ hq: []
 - (planner) After this task every kind of ADR-0152 decision 2 has a binding check. The next steps toward P2-13 and P2-14 are the model program's cache buffers and V copy and the joined full-pass check (ADR-0153 code slice 2), the hand-written bf16 kernel fixtures, and the P2-12 harness records.
 
 ## Result
+
+- **Outcome**: DONE. PR #266 squash-merged as `c9f1205`; branch `claude/T-0450-sdpa-kv-cache-binding-check` deleted.
+- **Review**: 2 rounds, both Approve (issuecomment-6387575614, issuecomment-6387592067). Round 1 nit (`sdpa_generation_calls` collected shapes in a set; a list suffices) fixed in `7317939`.
+- **CI**: green on all six jobs (run 40118274851). Local: ruff clean; full pytest 29724 passed, 949 skipped; `hilclaw/model_binding.py` at 100% lines.
+- **Language**: Python - the host side of the executor is Python (ADR-0153 decision 2).
+- **Reading**: the largest `l` of a generation is `prompt_length + generation_length - 1`; above 2**53 - 1 the SDPA functions refuse it as `invalid_input` (ADR-0001, ADR-0153 decision 5). No capacity or longest sequence is set.
+- **Changes**: `hilclaw/model_binding.py` gains `SDPA_CALL_SITES`, `SDPA_DTYPES`, `sdpa_shape`, `sdpa_generation_calls`, `check_sdpa`, and an optional `bound` hook in `_check_rows`; tests in `tests/test_model_binding.py`; the import test in `tests/test_sdpa_kv_cache_bf16_contract.py` now allows `model_binding.py` as the one binder.
+- **Less exact, not edited**: ADR-0153 decision 3 ("future contract records"); ADR-0157 decision 4 (dtype range applied per check); ADR-0162 Consequences (binding check listed as future work).
+- **Follow-ups**: the model program's cache buffers and V copy, the joined full-pass check (ADR-0153 code slice 2; note `check_sdpa` cost grows with `generation_length`), hand-written bf16 kernel fixtures, P2-12 harness records.
