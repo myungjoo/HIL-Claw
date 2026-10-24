@@ -37,6 +37,7 @@ _SHAPE_MEMBERS = {
     "elementwise_add": frozenset({"m", "n"}),
     "gemm": frozenset({"m", "k", "n"}),
     "rmsnorm": frozenset({"m", "n"}),
+    "rope": frozenset({"m", "h", "d"}),
     "swiglu": frozenset({"m", "n"}),
 }
 _HW_REQUIRED = (
@@ -141,16 +142,16 @@ def op_signature_key(record):
     :data:`SCHEMA_VERSION`), ``kind``, ``dtype`` and ``layout`` (names),
     ``shape`` (map of name to integer whose member names are fixed by the kind:
     ``m`` and ``n`` for ``elementwise_add``, ``m``, ``k`` and ``n`` for
-    ``gemm``, ``m`` and ``n`` for ``rmsnorm``, ``m`` and ``n`` for
-    ``swiglu``) and optionally ``ext`` (non-empty map of name to string or
-    integer), and with the optional attribute ``label`` (string), which is
-    checked and then left out of the key. The name of the key starts with
-    ``kind``. ``record`` is not modified.
+    ``gemm``, ``m`` and ``n`` for ``rmsnorm``, ``m``, ``h`` and ``d`` for
+    ``rope``, ``m`` and ``n`` for ``swiglu``) and optionally ``ext``
+    (non-empty map of name to string or integer), and with the optional
+    attribute ``label`` (string), which is checked and then left out of the
+    key. The name of the key starts with ``kind``. ``record`` is not modified.
 
     Raises :class:`InvalidRecordError` for the first rule found broken, which
     includes an unknown field and a ``kind`` whose shape members this module
-    does not know (only ``elementwise_add``, ``gemm``, ``rmsnorm`` and
-    ``swiglu`` are known).
+    does not know (only ``elementwise_add``, ``gemm``, ``rmsnorm``, ``rope``
+    and ``swiglu`` are known).
     """
     _fields(record, _OP_REQUIRED)
     key = {
