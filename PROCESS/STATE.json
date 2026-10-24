@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0444",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:462effd7-1",
-    "acquiredAt": "2026-10-24T12:22:03Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -610,18 +606,26 @@
       "question": "ADR-0153(모델 실행기의 GEMM binding·빌드·실행; OD-31 일부, PLAN P2-13)의 code slice 1이 T-0428(PR #251, main 790a9c8)로 끝나 런타임 인수 항목 (lxvii)을 확인할 때가 되었습니다. (lxvii) C-7의 각 종류의 머신에서, OD-14가 모델 프로그램에 주는 격리 환경(사용자가 지정한 이미지) 안에서 모델 프로그램이 커널들의 공유 라이브러리와 함께 빌드되고 그것들을 `dlopen`으로 적재하는지. 선택지: (a) 오너가 수동으로 확인해 결과를 답한다 (b) 런타임 자체 점검 코드 task로 돌린다(예: 격리 환경에서 공유 라이브러리 빌드·`dlopen` 적재를 점검하는 self-check 항목) (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 그 격리 환경에서 모델 프로그램이 실제로 커널을 적재한다는 확신. 막히지 않는 것: ADR-0153 code slice 2, P2-11 계약 기록과 그 밖의 드라이버 task(드라이버 테스트는 POSIX의 clang으로 격리 환경 밖에서 빌드·적재를 검증함).",
       "askedAt": "2026-10-23T21:37:51Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0070",
+      "taskId": "T-0444",
+      "reason": "owner-only-decision",
+      "question": "ADR-0161(Llama 3.2 1B의 Q·K에 대한 bf16 RoPE 계약; OD-31 일부, PLAN P2-11)이 T-0444(main 7c8c5c6)로 반영되었습니다. Llama 3.2 1B의 RoPE scaling factor가 Meta `llama-models`(0e0b8c5) `apply_scaling`에서는 8, Hugging Face 변환기(f441076)에서는 32입니다. ADR-0161은 cos/sin 테이블을 커널 밖에서 모델 파라미터로 만들게 해 계약은 이 값과 무관합니다. 어느 값이 맞습니까? 선택지: (a) 쓸 가중치·reference(OD-31 ⑤·⑥)가 정해질 때 그 출처의 값 (b) Meta 코드의 8 (c) 32. 답이 없는 동안 막히는 것: 모델 수준 대조와 테이블 생성기의 Llama 상수(P2-14). 막히지 않는 것: RoPE 계약·코드 slice·하네스(P2-11·P2-12) 및 그 밖의 드라이버 task.",
+      "askedAt": "2026-10-24T13:16:19Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 462,
-    "tasksDone": 433,
+    "iterations": 463,
+    "tasksDone": 434,
     "tasksBlocked": 29,
-    "reviewRoundsTotal": 1541
+    "reviewRoundsTotal": 1544
   },
   "lastIteration": {
-    "at": "2026-10-24T11:44:30Z",
-    "owner": "AKIHA:7ed119de-1",
-    "taskId": "T-0443",
+    "at": "2026-10-24T13:16:19Z",
+    "owner": "AKIHA:462effd7-1",
+    "taskId": "T-0444",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

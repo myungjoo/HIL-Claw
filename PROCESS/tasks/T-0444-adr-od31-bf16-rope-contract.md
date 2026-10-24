@@ -2,7 +2,7 @@
 id: T-0444
 title: Write ADR-0161 - the operational contract of RoPE on Q and K of Llama 3.2 1B in bf16 for C kernels on cpu_standin (kind value and op_signature members including the position, dtype and layout, where the frequency table comes from and its Llama 3 scaling, the pairing convention, the precision of angles, sin/cos and rotation, the rounding of the output, one call or two, in place or not and the strides over the QKV output, the uint16_t prototype and its symbol, operand entries, call guarantees, the input value set, the op_signature records of the ADR-0152 row 5 calls and the name of its call site), and update the OD-6, OD-31 and StandardScenarios records (fifth Llama kind contract of PLAN P2-11; extension of OD-6 sub-question 1, part of OD-31 sub-questions 1 to 3)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-5, FR-9, OD-31, OD-6, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0441, T-0443]
@@ -251,3 +251,12 @@ P2-10 comes after P2-5. So work goes on with P2-11 to P2-14. This task is part o
   - The SDPA with KV cache contract record comes after that.
 
 ## Result
+
+- DONE. Landed on `main` as 7c8c5c6 (doc mode, single commit with `Reviewed-by: reviewer agent (3 rounds, Approve)` and `Task: T-0444`); task branch deleted locally and remotely.
+- Files: ARCHITECTURE/decisions/ADR-0161-od31-bf16-rope-contract.md (new), ARCHITECTURE/Requirements.md (OD-6, OD-31 rows), ARCHITECTURE/OpenDecisionProposals.md (§ OD-6, § OD-31), ARCHITECTURE/StandardScenarios.md (re-check line, S0 note) — 4 files, +226/−8.
+- Decisions: kind `rope` with members m, h and d; two calls per layer (`rope_q`, `rope_k`; 210 kernel calls per pass). The cos/sin table is built by the host side outside the kernels and passed as the fp32 operand `freqs_cis` with correctly rounded entries, so the position is neither a key member nor a parameter. Meta's adjacent pairing; a binary32-or-wider bound of 2^-22·(|x0·c|+|x1·s|); RNE output; contiguous Q/K copies by the model program; no in-place call; `hilclaw_rope_bf16`; six op_signature records.
+- Owner notice (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6384664343 (7-day objection window).
+- Review: round 1 corrected the cancellation count (83212 of 2^31), made the table precision an obligation, fixed the bf16 bound to 2^-8 and fixed a hash typo. Round 2 aligned the title, Status and owner readings. Round 3 Approved.
+- HQ-0070 recorded by the driver (owner-only-decision, non-blocking): the Llama 3.2 1B RoPE scale factor is 8 in Meta's `llama-models` (0e0b8c5) and 32 in Hugging Face's converter (f441076).
+- Follow-ups (planner): code slice in the pattern of T-0442/T-0443: kind `rope` in `hilclaw.keys` and a contract module; a host-side table builder with tests against the rule; then the binding check with `rope_q`/`rope_k` in `hilclaw/model_binding.py`. After that, the SDPA with KV cache contract record.
+- nextTask candidate: the `rope` code slice 1 (keys + contract module).
