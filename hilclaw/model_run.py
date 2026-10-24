@@ -12,9 +12,9 @@ report into one output array per call. A run that times out, ends with a
 status other than 0 or leaves no complete report is the outcome **run
 failed** of decision 5, named by :class:`RunFailed`.
 
-Every function takes the dtype of the generation, one of :data:`DTYPES`, as
-the required keyword argument ``dtype``, with no default: it is never assumed
-(ADR-0157 decision 1). The program comes in one build per dtype (the header
+Each of the four functions takes the dtype of the generation, one of
+:data:`DTYPES`, as the required keyword argument ``dtype``, with no default:
+it is never assumed (ADR-0157 decision 1). The program comes in one build per dtype (the header
 comment of ``model_program.c``), and the dtype selects the element type of
 the arrays, of the input file and of the report as in the table of ADR-0157
 decision 3: ``float32`` for ``fp32``, and ``uint16`` for ``bf16``, each
