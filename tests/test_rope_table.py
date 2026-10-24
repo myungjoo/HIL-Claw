@@ -1,6 +1,7 @@
 import ast
 import decimal
 import math
+import types
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
@@ -478,11 +479,19 @@ def test_bad_positions(value, error):
     assert raised.value.parameter == "positions"
 
 
+class Allocated(Exception):
+    pass
+
+
 def test_the_largest_positions_pass_the_check(monkeypatch):
-    monkeypatch.setattr(rope_table.numpy, "empty", lambda *args, **kwargs: None)
-    with pytest.raises(TypeError) as raised:
+    def empty(shape, dtype):
+        raise Allocated(shape, dtype)
+
+    stub = types.SimpleNamespace(empty=empty, float32=numpy.float32)
+    monkeypatch.setattr(rope_table, "numpy", stub)
+    with pytest.raises(Allocated) as raised:
         call(build, positions=MAX_INTEGER // 64)
-    assert not hasattr(raised.value, "parameter")
+    assert raised.value.args == ((MAX_INTEGER // 64, 64), numpy.float32)
 
 
 @pytest.mark.parametrize("function", [frequencies, build])
