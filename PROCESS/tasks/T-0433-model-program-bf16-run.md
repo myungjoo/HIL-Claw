@@ -2,7 +2,7 @@
 id: T-0433
 title: Let the model program and its host-side run carry a bf16 generation - hilclaw_gemm_bf16 over uint16_t in a bf16 build of model_program.c, and a required dtype in hilclaw/model_run (ADR-0157 code slice 2, part 1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-10, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0431, T-0432]
@@ -127,3 +127,13 @@ hq: []
 - (planner) After this lands: ADR-0157 code slice (2), second part. That is a `model_build` constant for `-DHILCLAW_MODEL_BF16`, a required `dtype` for `model_execute.execute` (which builds the matching program and passes the dtype to `model_run`), and a `dtype` for `model_gemm.run`. `model_gemm.run` passes its dtype to `model_binding.check` and builds and runs the bf16 path end to end with the hand-written bf16 kernel fixtures.
 
 ## Result
+
+- Outcome: DONE. PR #254 (branch claude/T-0433-model-program-bf16-run), squash-merged by the executor as ed44d16 after 3 review rounds (r1 Approve + docstring nit, fixed; r2 Approve + line-wrap nit, fixed; r3 Approve, no open items).
+- Program: hilclaw/model_program.c builds one program per dtype from one source. Without HILCLAW_MODEL_BF16 it is the fp32 program, behaviour unchanged. With -DHILCLAW_MODEL_BF16 it calls hilclaw_gemm_bf16 over uint16_t bf16 patterns, fills c with 0x7FC0, and uses 2-byte elements in input and report. A missing symbol is status 6 naming it. One #ifdef block; size checks use sizeof(element).
+- Design choice: one program per dtype at compile time, because the program loads libraries (and so needs the symbol) before reading the input file.
+- Host side: model_run.DTYPES = ("fp32", "bf16"). encode_input, output_shapes, parse_report and run_model_program take a required keyword-only dtype, checked first (TypeError/ValueError, "dtype:" prefix). Exact float32/uint16 arrays only, no casts. model_execute passes dtype="fp32" to all three model_run calls. model_build: docstring sentence only.
+- Tests: hand-written bf16 kernels (fp32 accumulation + RNE narrowing; +1; unwritten; printing) in test_model_program.py. test_model_run.py has dtype/bf16 unit tests and real bf16 runs: two kernels via run_model_program, an fp32 kernel refused with status 6, an fp32 input file refused with status 5. The real-run fixture builds the bf16 program the same way. test_model_execute.py asserts dtype="fp32" on every model_run call.
+- Gates: ruff check/format clean. Windows full pytest 27434 passed, 945 skipped. hilclaw/ coverage 97%; model_run, model_execute and model_build at 100%. POSIX/clang tests in WSL Ubuntu (clang, Python 3.12): 353 passed. model_program.c compiles with and without the macro under clang/gcc -std=c99 -Wpedantic -Werror. CI green on dfe2338 (Python 3.11/3.14, coverage, test presence, C, sh); a stuck sh-gate job status was re-run with `gh run rerun --job` before merge. No CI file changed.
+- Languages: C for the program (it dlopens kernels and passes raw uint16_t buffers through the C prototype); Python for the host side (extends the existing numpy-based model_run module).
+- No data-plane, schema or ARCHITECTURE/ change; no fp16, tolerance, reference or weight check.
+- Follow-ups: (planner) ADR-0157 code slice (2) part 2 (model_build constant for -DHILCLAW_MODEL_BF16, required dtype for model_execute.execute and model_gemm.run, bf16 build-and-execute path with the binding check at bf16). Reviewer nit carried, not needed: bf16 test helpers/kernel sources are duplicated across the two test files, as the existing fp32 helpers are.
