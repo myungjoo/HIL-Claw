@@ -2,7 +2,7 @@
 id: T-0454
 title: Add the bf16 verification programs for rmsnorm, elementwise_add and swiglu on the shared header, with clang tests that their inputs, check values and eps agree with bf16_verification_arrays (ADR-0163 code slice 3)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0453]
@@ -128,3 +128,10 @@ hq: []
 - (planner) Next slice: the build of a bf16 verification executable (the counterpart of `verification_build.py`, one program per kind chosen by kind). After that, the report reader and the verdict over an executable (the counterpart of `verification.py`, ADR-0163 decision 8), and then the calibration kernels (decision 9).
 
 ## Result
+DONE. PR #269 squash-merged as `d6a2a0f` after 1 review round (dev-reviewer, Approve, no findings); CI green (C gate, Python 3.11/3.14, coverage, test presence, shellcheck).
+
+- Added `hilclaw/harness/bf16_verification_rmsnorm.c`, `bf16_verification_elementwise_add.c` and `bf16_verification_swiglu.c` on the unchanged `bf16_verification.h`; updated the `hilclaw/harness/__init__.py` docstring to name the header and the four programs. 270 changed lines outside tests in 4 files.
+- `rmsnorm` forms `eps` by `memcpy` from `UINT32_C(0x3727C5AC)`, with a file-scope typedef that fails to compile where `float` is not 32 bits. Each program checks every array byte size and that the bytes of both operands of a draw fit in `size_t` (which bounds the draw's element count) before allocation.
+- Tests: `tests/harness/test_bf16_verification_programs.py`, 313 cases (~15 s with clang), including generator agreement per kind, the 10-bit gate width, the `eps` bit pattern, plain bf16 kernels against the float64 reference, a stub that defines the header's static names as external names, and the refusals with their subjects.
+- Language: C, because each program is linked with a C kernel into one executable and includes the C header (ADR-0163 decision 2).
+- Follow-ups: none new. The next slice is the planner's existing follow-up: building a bf16 verification executable (the counterpart of `verification_build.py`), then the report reader and verdict (ADR-0163 decision 8), then the calibration kernels (decision 9).
