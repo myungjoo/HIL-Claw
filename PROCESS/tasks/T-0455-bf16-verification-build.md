@@ -2,7 +2,7 @@
 id: T-0455
 title: Add hilclaw/harness/bf16_verification_build.py, which builds the bf16 verification program of one kind with one kernel into one executable (ADR-0163 code slice 4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0454]
@@ -116,3 +116,8 @@ The module mirrors `hilclaw/harness/verification_build.py` (93 lines). The one d
 - (planner) Next slice: the Python side of ADR-0163 decision 8 over a built executable. It has the counterpart of `verification.py`: program arguments per kind, the report form check with length draws · (4 + 2·m·n) + 4, the check-value comparison through `bf16_verification_arrays`, the counts and the verdict, and the run through `local_run.run`. If it goes over the size cap, split `judge_report` from the run. After that come the calibration kernels of decision 9.
 
 ## Result
+- DONE. PR #270 squash-merged as `93c49c2` (branch deleted) after 2 review rounds (round 1 Approve with one nit, fixed in `87481d3`; round 2 Approve, no findings). CI green on head `87481d3` (Python 3.11/3.14, coverage, C, sh, test presence).
+- Added `hilclaw/harness/bf16_verification_build.py` (`PROGRAM_SOURCES`, a `MappingProxyType` in `KINDS` order; `build_bf16_verification_executable`, which checks `kind` first with `ValueError` and `parameter == "kind"`, then `kernel_sources` as `verification_build` does, then makes one `clang_build.build` call with the program first and adds no flag), the `__init__.py` docstring line, and `tests/harness/test_bf16_verification_build.py` (75 tests, including the real clang build and run per kind and the cross-kind link failure).
+- Size: 122 lines outside tests in 2 files. Local runs: Windows 30295 passed and 1389 skipped; WSL with clang 31634 passed and 50 skipped; ruff clean; `hilclaw/` coverage 97% lines, new module 100%.
+- Language: Python, because the module wraps `clang_build.build` as `verification_build.py` does.
+- Follow-ups: none new. Next is the planner's listed slice, the decision 8 report reader and verdict over a built executable.
