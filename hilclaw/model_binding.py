@@ -1,4 +1,4 @@
-"""Host-side binding checks of the model executor for the GEMM, RMSNorm, elementwise add, SwiGLU and RoPE call sites (ADR-0153, ADR-0158 to ADR-0161).
+"""Host-side binding checks of the model executor for the GEMM, RMSNorm, elementwise add, SwiGLU, RoPE and SDPA call sites (ADR-0153, ADR-0158 to ADR-0162).
 
 ``ARCHITECTURE/decisions/ADR-0153-od31-model-executor.md`` is the rule. Before
 anything is built, the host side derives the shapes of every kernel call of a
@@ -7,8 +7,9 @@ binding against them (decision 5). This module does that for the six GEMM
 call sites of ADR-0152 decision 2 (:data:`CALL_SITES`) and, separately, for
 its three RMSNorm call sites (:data:`RMSNORM_CALL_SITES`), its two
 elementwise add call sites (:data:`ELEMENTWISE_ADD_CALL_SITES`), its
-SwiGLU call site (:data:`SWIGLU_CALL_SITES`) and its two RoPE call sites
-(:data:`ROPE_CALL_SITES`). The model's dtype
+SwiGLU call site (:data:`SWIGLU_CALL_SITES`), its two RoPE call sites
+(:data:`ROPE_CALL_SITES`) and its SDPA call site (:data:`SDPA_CALL_SITES`).
+The model's dtype
 (``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``,
 decisions 1 to 4) selects the contract every entry is fitted against: for the
 GEMM call sites ADR-0008's ``gemm`` contract (:mod:`hilclaw.gemm_contract`)
@@ -22,7 +23,10 @@ one (:data:`ELEMENTWISE_ADD_DTYPES`); for the SwiGLU call site ADR-0160's
 ``swiglu`` contract (:mod:`hilclaw.swiglu_bf16_contract`) for ``bf16``,
 likewise the only one (:data:`SWIGLU_DTYPES`); for the RoPE call sites
 ADR-0161's ``rope`` contract (:mod:`hilclaw.rope_bf16_contract`) for
-``bf16``, likewise the only one (:data:`ROPE_DTYPES`). Its parts:
+``bf16``, likewise the only one (:data:`ROPE_DTYPES`); for the SDPA call site
+ADR-0162's ``sdpa_kv_cache`` contract
+(:mod:`hilclaw.sdpa_kv_cache_bf16_contract`) for ``bf16``, likewise the only
+one (:data:`SDPA_DTYPES`). Its parts:
 
 * :class:`ModelDimensions` and :func:`check_dimensions`: the model parameters
   of ADR-0153 decision 3 (a) that the shapes use. No value is a default and
@@ -36,17 +40,25 @@ ADR-0161's ``rope`` contract (:mod:`hilclaw.rope_bf16_contract`) for
   decision 2), whose ``n`` is the intermediate width. :func:`rope_shape`:
   the ``(m, h, d)`` of one RoPE call site (ADR-0161 decisions 2 and 3),
   whose ``h`` is the query head count for ``rope_q`` and the KV head count
-  for ``rope_k`` and whose ``d`` is ``head_dim``.
+  for ``rope_k`` and whose ``d`` is ``head_dim``. :func:`sdpa_shape`: the
+  ``(m, l, h, h_kv, d)`` of the SDPA call site (ADR-0162 decision 3), ``m``
+  new rows attending ``l`` positions, with ``h`` the query head count,
+  ``h_kv`` the KV head count and ``d`` the ``head_dim``.
 * :func:`generation_calls`, :func:`rmsnorm_generation_calls`,
-  :func:`elementwise_add_generation_calls`, :func:`swiglu_generation_calls`
-  and :func:`rope_generation_calls`: the distinct shapes of each call site
-  over one generation (ADR-0153 decision 4).
+  :func:`elementwise_add_generation_calls`, :func:`swiglu_generation_calls`,
+  :func:`rope_generation_calls` and :func:`sdpa_generation_calls`: the
+  distinct shapes of each call site over one generation (ADR-0153 decision
+  4). The SDPA shape is the first whose ``l`` changes from one decode pass
+  to the next: the prefill gives ``(m, l)`` = (``prompt_length``,
+  ``prompt_length``) and decode pass k gives (1, ``prompt_length`` + k)
+  (ADR-0162 decision 15), so a generation of length G has G ``sdpa``
+  shapes.
 * :class:`KernelReference`, :class:`BindingEntry`: a binding entry (decision 3).
 * :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add`,
-  :func:`check_swiglu` and :func:`check_rope`: the outcomes
-  ``"invalid_input"``, ``"no_kernel"`` and ``"kernel_unfit"`` (decision 5,
-  whose spelling is left to the code slice), and the calls of the generation
-  with the kernel each one is bound to.
+  :func:`check_swiglu`, :func:`check_rope` and :func:`check_sdpa`: the
+  outcomes ``"invalid_input"``, ``"no_kernel"`` and ``"kernel_unfit"``
+  (decision 5, whose spelling is left to the code slice), and the calls of
+  the generation with the kernel each one is bound to.
 * :func:`rmsnorm_eps`: the binary32 value nearest to the model's ``eps``, the
   value the caller passes to an RMSNorm kernel (ADR-0158 decision 5).
 
@@ -61,39 +73,51 @@ Readings of this module:
   malformed, and an ``"every"`` entry overlaps every other entry of its call
   site: the executor never chooses between kernels (decision 3).
 * A listed shape other than the shape of the kernel's own spec, and an
-  ``"every"`` entry, are accepted for each of the six contracts: a kernel
+  ``"every"`` entry, are accepted for each of the seven contracts: a kernel
   of either ``gemm`` contract must compute the product for the values it is
   called with (ADR-0008 decision 6, ADR-0156 decision 7, ADR-0157 decision
   3), a kernel of the ``rmsnorm`` contract (ADR-0158 decision 7), of the
   ``elementwise_add`` contract (ADR-0159 decision 8) or of the ``swiglu``
   contract (ADR-0160 decision 8) must be correct for every ``m``, ``n`` of at
-  least 1, and a kernel of the ``rope`` contract for every ``m``, ``h`` of
-  at least 1 and every even ``d`` of at least 2 (ADR-0161 decision 11). So
-  the operand shapes of a ``task.contract`` are not compared.
+  least 1, a kernel of the ``rope`` contract for every ``m``, ``h`` of at
+  least 1 and every even ``d`` of at least 2 (ADR-0161 decision 11), and a
+  kernel of the ``sdpa_kv_cache`` contract for every set of dimensions the
+  caller guarantees (ADR-0162 decision 11). So the operand shapes of a
+  ``task.contract`` are not compared.
 * An odd ``head_dim`` is refused by the RoPE functions only, as
   :func:`check_dimensions` refuses other well-typed dimensions the contracts
   cannot run: the ``rope`` contract needs an even ``d`` (ADR-0161 decision
   11), and placing that refusal here is a convention of this module, not a
   rule of the record. :func:`check_dimensions` and the other checks accept an
   odd ``head_dim``.
+* The largest ``l`` of a generation is ``prompt_length + generation_length -
+  1``. A shape member above :data:`hilclaw.keys.MAX_INTEGER` cannot be a key
+  value (ADR-0001), so the SDPA functions refuse a generation whose largest
+  ``l`` exceeds 2**53 - 1 as a run setting outside its range, the
+  ``"invalid_input"`` of ADR-0153 decision 5. This refusal is a reading of
+  this module, not a rule of the records; it sets no capacity and no longest
+  sequence.
 
 What this module does not do: it builds, loads and starts nothing and runs no
 process; it reads and writes no file; it has no command-line entry, registry
-or MCP tool; it knows no call site of SDPA, no contract other than the fp32
-and bf16 ``gemm`` contracts and the bf16 ``rmsnorm``, ``elementwise_add``,
-``swiglu`` and ``rope`` contracts, and no dtype outside :data:`DTYPES` for a
+or MCP tool; it knows no contract other than the fp32 and bf16 ``gemm``
+contracts and the bf16 ``rmsnorm``, ``elementwise_add``, ``swiglu``, ``rope``
+and ``sdpa_kv_cache`` contracts, and no dtype outside :data:`DTYPES` for a
 GEMM call site, outside :data:`RMSNORM_DTYPES` for an RMSNorm call site,
 outside :data:`ELEMENTWISE_ADD_DTYPES` for an elementwise add call site,
-outside :data:`SWIGLU_DTYPES` for the SwiGLU call site or outside
-:data:`ROPE_DTYPES` for a RoPE call site; it does not join the GEMM, RMSNorm,
-elementwise add, SwiGLU and RoPE checks into one check of a generation (the
-full pass, ADR-0153 code slice 2), and it does not check which arrays a call
-passes as its operands (ADR-0159 decision 12, ADR-0160 decision 12, ADR-0161
-decision 15); it builds, holds and slices no RoPE frequency table, knows no
-position and no RoPE constant (the table is the host-side table builder's,
-ADR-0161 decision 4); it reads no weight, passes ``eps`` to nothing and adds
-no cast; it does not interpret the build flags of a kernel reference; and it
-derives no binding from a key's best (OD-20, OD-7).
+outside :data:`SWIGLU_DTYPES` for the SwiGLU call site, outside
+:data:`ROPE_DTYPES` for a RoPE call site or outside :data:`SDPA_DTYPES` for
+the SDPA call site; it does not join the six checks into one check of a
+generation (the full pass, ADR-0153 code slice 2), and it does not check
+which arrays a call passes as its operands (ADR-0159 decision 12, ADR-0160
+decision 12, ADR-0161 decision 15, ADR-0162 decision 15); it builds, holds
+and slices no RoPE frequency table, knows no position and no RoPE constant
+(the table is the host-side table builder's, ADR-0161 decision 4); it
+allocates, sizes and checks no KV cache buffer and knows no capacity
+(ADR-0162 decision 4; OD-31 sub-question 6), and it makes no V copy; it reads
+no weight, passes ``eps`` to nothing and adds no cast; it does not interpret
+the build flags of a kernel reference; and it derives no binding from a key's
+best (OD-20, OD-7).
 
 Every :class:`TypeError` or :class:`ValueError` raised here for an argument
 carries the attribute ``parameter``, the name of that argument. Arguments are
@@ -115,6 +139,7 @@ from hilclaw import (
     keys,
     rmsnorm_bf16_contract,
     rope_bf16_contract,
+    sdpa_kv_cache_bf16_contract,
     swiglu_bf16_contract,
 )
 
@@ -148,6 +173,12 @@ ROPE_CALL_SITES = ("rope_q", "rope_k")
 ROPE_DTYPES = (rope_bf16_contract.DTYPE,)
 """The dtypes at which the ``rope`` contract is known (ADR-0157 decision 4, ADR-0161 decision 1)."""
 
+SDPA_CALL_SITES = ("sdpa",)
+"""The SDPA call site, ADR-0152 decision 2 rows 6 and 7, named as ADR-0162 decision 15."""
+
+SDPA_DTYPES = (sdpa_kv_cache_bf16_contract.DTYPE,)
+"""The dtypes at which the ``sdpa_kv_cache`` contract is known (ADR-0157 decision 4, ADR-0162 decision 1)."""
+
 LM_HEAD_ROWS = ("all", "last")
 
 INVALID_INPUT = "invalid_input"
@@ -160,13 +191,16 @@ _GEMM_SHAPE = ("m", "k", "n")
 _ROW_SHAPE = ("m", "n")
 _ROPE_SHAPE = ("m", "h", "d")
 _ROPE_HEADS = {"rope_q": "heads", "rope_k": "kv_heads"}
+_SDPA_SHAPE = ("m", "l", "h", "h_kv", "d")
 
 
 class ModelDimensions(NamedTuple):
-    """The model parameters the GEMM, RMSNorm, elementwise add, SwiGLU and RoPE shapes depend on (ADR-0153 decision 3 (a)).
+    """The model parameters the GEMM, RMSNorm, elementwise add, SwiGLU, RoPE and SDPA shapes depend on (ADR-0153 decision 3 (a)).
 
     The RoPE shapes use ``heads`` (``rope_q``), ``kv_heads`` (``rope_k``) and
-    ``head_dim`` (ADR-0161 decisions 2 and 3).
+    ``head_dim`` (ADR-0161 decisions 2 and 3); the SDPA shape uses ``heads``,
+    ``kv_heads`` and ``head_dim`` as its ``h``, ``h_kv`` and ``d`` (ADR-0162
+    decision 3).
     """
 
     hidden: int
@@ -190,8 +224,8 @@ class BindingEntry(NamedTuple):
     """A kernel bound for ``shapes``: ``"every"`` or a non-empty tuple of shapes.
 
     A shape is ``(m, k, n)`` for a GEMM call site, ``(m, n)`` for an
-    RMSNorm, elementwise add or SwiGLU call site and ``(m, h, d)`` for a RoPE
-    call site.
+    RMSNorm, elementwise add or SwiGLU call site, ``(m, h, d)`` for a RoPE
+    call site and ``(m, l, h, h_kv, d)`` for the SDPA call site.
     """
 
     kernel: KernelReference
@@ -199,7 +233,7 @@ class BindingEntry(NamedTuple):
 
 
 class Outcome(NamedTuple):
-    """One outcome of :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add`, :func:`check_swiglu` or :func:`check_rope`; ``reason`` is always a ``str``."""
+    """One outcome of :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add`, :func:`check_swiglu`, :func:`check_rope` or :func:`check_sdpa`; ``reason`` is always a ``str``."""
 
     kind: str
     call_site: object
@@ -208,7 +242,7 @@ class Outcome(NamedTuple):
 
 
 class BindingCheck(NamedTuple):
-    """The result of :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add`, :func:`check_swiglu` or :func:`check_rope`: ``ok`` exactly when ``outcomes`` is empty."""
+    """The result of :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add`, :func:`check_swiglu`, :func:`check_rope` or :func:`check_sdpa`: ``ok`` exactly when ``outcomes`` is empty."""
 
     ok: bool
     outcomes: tuple
@@ -423,8 +457,8 @@ def check_rmsnorm(dimensions, binding, *, dtype, prompt_length, generation_lengt
     ``binding`` maps call sites of :data:`RMSNORM_CALL_SITES` to non-empty
     sequences of :class:`BindingEntry`. ``dtype`` is the model's dtype
     (ADR-0157 decision 1); it has no default. This check stands beside
-    :func:`check`, :func:`check_elementwise_add`, :func:`check_swiglu` and
-    :func:`check_rope` and is not joined with them.
+    :func:`check`, :func:`check_elementwise_add`, :func:`check_swiglu`,
+    :func:`check_rope` and :func:`check_sdpa` and is not joined with them.
 
     Arguments are first refused, in the order ``dimensions``, ``dtype``,
     ``prompt_length``, ``generation_length``, ``binding``, with
@@ -515,8 +549,8 @@ def check_elementwise_add(
     ``binding`` maps call sites of :data:`ELEMENTWISE_ADD_CALL_SITES` to
     non-empty sequences of :class:`BindingEntry`. ``dtype`` is the model's
     dtype (ADR-0157 decision 1); it has no default. This check stands beside
-    :func:`check`, :func:`check_rmsnorm`, :func:`check_swiglu` and
-    :func:`check_rope` and is not joined with them.
+    :func:`check`, :func:`check_rmsnorm`, :func:`check_swiglu`,
+    :func:`check_rope` and :func:`check_sdpa` and is not joined with them.
 
     Arguments are refused as by :func:`check_rmsnorm`, in the same order and
     with the same errors, with :data:`ELEMENTWISE_ADD_CALL_SITES` as the keys
@@ -600,8 +634,8 @@ def check_swiglu(dimensions, binding, *, dtype, prompt_length, generation_length
     ``binding`` maps call sites of :data:`SWIGLU_CALL_SITES` to non-empty
     sequences of :class:`BindingEntry`. ``dtype`` is the model's dtype
     (ADR-0157 decision 1); it has no default. This check stands beside
-    :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add` and
-    :func:`check_rope` and is not joined with them.
+    :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add`,
+    :func:`check_rope` and :func:`check_sdpa` and is not joined with them.
 
     Arguments are refused as by :func:`check_rmsnorm`, in the same order and
     with the same errors, with :data:`SWIGLU_CALL_SITES` as the keys of
@@ -696,8 +730,8 @@ def check_rope(dimensions, binding, *, dtype, prompt_length, generation_length):
     ``binding`` maps call sites of :data:`ROPE_CALL_SITES` to non-empty
     sequences of :class:`BindingEntry`. ``dtype`` is the model's dtype
     (ADR-0157 decision 1); it has no default. This check stands beside
-    :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add` and
-    :func:`check_swiglu` and is not joined with them.
+    :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add`,
+    :func:`check_swiglu` and :func:`check_sdpa` and is not joined with them.
 
     Arguments are refused as by :func:`check_rmsnorm`, in the same order and
     with the same errors, with :data:`ROPE_CALL_SITES` as the keys of
@@ -744,6 +778,119 @@ def check_rope(dimensions, binding, *, dtype, prompt_length, generation_length):
         rope_generation_calls,
         members=_ROPE_SHAPE,
         reference_shape=(1, 1, 2),
+    )
+
+
+def sdpa_shape(dimensions, call_site, rows, positions):
+    """Return the ``(m, l, h, h_kv, d)`` of the SDPA ``call_site`` for ``rows`` new rows attending ``positions`` positions.
+
+    The result is ``(rows, positions, heads, kv_heads, head_dim)``: ``m`` is
+    T, ``l`` is L, ``h`` the query heads, ``h_kv`` the KV heads and ``d`` the
+    ``head_dim`` (ADR-0162 decision 3). Raises as :func:`check_dimensions`
+    does, then :class:`ValueError` with ``parameter`` ``"call_site"`` for a
+    call site not in :data:`SDPA_CALL_SITES`, then :class:`TypeError` or
+    :class:`ValueError` with ``parameter`` ``"rows"`` for ``rows`` that is not
+    an ``int`` from 1 to 2**53 - 1, then the same with ``parameter``
+    ``"positions"`` for ``positions``, then :class:`ValueError` with
+    ``parameter`` ``"positions"`` when ``positions`` is less than ``rows``
+    (ADR-0162 decision 11, l at least m). An odd ``head_dim`` is accepted.
+    """
+    check_dimensions(dimensions)
+    with _parameter("call_site"):
+        if call_site not in SDPA_CALL_SITES:
+            raise ValueError(f"must be one of {SDPA_CALL_SITES}, got {call_site!r}")
+    with _parameter("rows"):
+        _integer(rows, "rows")
+    with _parameter("positions"):
+        _integer(positions, "positions")
+        if positions < rows:
+            raise ValueError(f"must be at least rows ({rows}), got {positions}")
+    return (rows, positions, dimensions.heads, dimensions.kv_heads, dimensions.head_dim)
+
+
+def sdpa_generation_calls(dimensions, *, prompt_length, generation_length):
+    """Return, for the call site of :data:`SDPA_CALL_SITES`, the sorted tuple of distinct shapes of a generation.
+
+    The passes are those of :func:`generation_calls`, with the positions each
+    one attends (ADR-0162 decision 15, ADR-0153 decision 4): the prefill
+    gives :func:`sdpa_shape` with ``prompt_length`` rows over
+    ``prompt_length`` positions and decode pass k, for k from 1 to
+    ``generation_length - 1``, one row over ``prompt_length + k`` positions.
+    So a generation of length G has G shapes. The result is ``(("sdpa",
+    shapes),)``. Raises as :func:`check_dimensions`, then as
+    :func:`rmsnorm_generation_calls` does for the lengths, then
+    :class:`ValueError` with ``parameter`` ``"generation_length"`` when
+    ``prompt_length + generation_length - 1``, the largest ``l``, exceeds
+    2**53 - 1 (this module's reading: no key holds a larger member).
+    """
+    check_dimensions(dimensions)
+    _lengths(prompt_length, generation_length)
+    with _parameter("generation_length"):
+        reason = _overlong(prompt_length, generation_length)
+        if reason is not None:
+            raise ValueError(reason)
+    tail = (dimensions.heads, dimensions.kv_heads, dimensions.head_dim)
+    shapes = {(prompt_length, prompt_length, *tail)}
+    shapes.update((1, prompt_length + k, *tail) for k in range(1, generation_length))
+    return ((SDPA_CALL_SITES[0], tuple(sorted(shapes))),)
+
+
+def check_sdpa(dimensions, binding, *, dtype, prompt_length, generation_length):
+    """Check ``binding`` against every SDPA call of a generation; return a :class:`BindingCheck`.
+
+    ``binding`` maps the call site of :data:`SDPA_CALL_SITES` to a non-empty
+    sequence of :class:`BindingEntry`. ``dtype`` is the model's dtype
+    (ADR-0157 decision 1); it has no default. This check stands beside
+    :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add`,
+    :func:`check_swiglu` and :func:`check_rope` and is not joined with them.
+
+    Arguments are refused as by :func:`check_rmsnorm`, in the same order and
+    with the same errors, with :data:`SDPA_CALL_SITES` as the keys of
+    ``binding`` and ``(m, l, h, h_kv, d)`` tuples as its shapes. An odd
+    ``head_dim`` is accepted.
+
+    The outcomes then come in this order:
+
+    1. ``"invalid_input"`` (``call_site`` and ``shape`` ``None``): a
+       ``dtype`` not in :data:`SDPA_DTYPES`, at which no ``sdpa_kv_cache``
+       contract is known (ADR-0157 decision 4, ADR-0162 decision 1);
+       ``prompt_length`` outside 1 to 2**53 - 1; ``generation_length``
+       outside 1 to 2**53 - 1; then, only when both are in that range,
+       ``prompt_length + generation_length - 1`` above 2**53 - 1 (this
+       module's reading, see the module docstring).
+    2. For the call site ``"sdpa"``: ``"kernel_unfit"`` (``shape`` ``None``)
+       for each entry, in order, whose ``contract`` is not the bf16
+       ``sdpa_kv_cache`` contract, compared on ``language``, ``prototype``
+       and the operands' ``(name, role, dtype)`` (ADR-0153 decision 3 "Fit",
+       ADR-0162 decision 10; reference values from
+       :func:`hilclaw.sdpa_kv_cache_bf16_contract.task_contract`, never from
+       the entry's own contract); then ``"no_kernel"`` for each shape of
+       :func:`sdpa_generation_calls`, in order, that no entry covers. The
+       ``"no_kernel"`` outcomes are not looked for when there is an
+       ``"invalid_input"``, and neither kind is when ``dtype`` is not in
+       :data:`SDPA_DTYPES`.
+
+    A listed shape other than the kernel's own spec shape, and an ``"every"``
+    entry, are accepted (ADR-0162 decision 11). ``calls`` holds
+    ``(call_site, shape, kernel)`` for every call of
+    :func:`sdpa_generation_calls`, in its order, only when ``ok``; it is
+    empty otherwise. Which arrays a call passes as its six operands (ADR-0162
+    decision 15), the cache buffers, their capacity and the V copy are not
+    checked. Nothing is built, started or read.
+    """
+    return _check_rows(
+        dimensions,
+        binding,
+        dtype,
+        prompt_length,
+        generation_length,
+        SDPA_CALL_SITES,
+        SDPA_DTYPES,
+        sdpa_kv_cache_bf16_contract,
+        sdpa_generation_calls,
+        members=_SDPA_SHAPE,
+        reference_shape=(1, 1, 1, 1, 1),
+        bound=_overlong,
     )
 
 
@@ -809,6 +956,7 @@ def _check_rows(
     site_calls,
     members=_ROW_SHAPE,
     reference_shape=(1, 1),
+    bound=None,
 ):
     check_dimensions(dimensions)
     with _parameter("dtype"):
@@ -825,11 +973,15 @@ def _check_rows(
 
     known = dtype in dtypes
     invalid = [] if known else [_no_contract(dtype, contract.KIND)]
-    invalid += [
+    out_of_range = [
         f"{name}: must be from 1 to 2**53 - 1, got {value}"
         for name, value in lengths
         if not 1 <= value <= keys.MAX_INTEGER
     ]
+    invalid += out_of_range
+    if bound is not None and not out_of_range:
+        reason = bound(prompt_length, generation_length)
+        invalid += [] if reason is None else [reason]
     outcomes = [Outcome(INVALID_INPUT, None, None, reason) for reason in invalid]
     shapes = {}
     if not invalid:
@@ -856,6 +1008,15 @@ def _check_rope_dimensions(dimensions):
             raise ValueError(
                 f"head_dim must be even for a rope call site, got {dimensions.head_dim}"
             )
+
+
+def _overlong(prompt_length, generation_length):
+    if prompt_length + generation_length - 1 <= keys.MAX_INTEGER:
+        return None
+    return (
+        "generation_length: prompt_length + generation_length - 1 must be at "
+        f"most 2**53 - 1, got {prompt_length} + {generation_length} - 1"
+    )
 
 
 def _bind(sites, binding, shapes, reference, label, outcomes, calls):
