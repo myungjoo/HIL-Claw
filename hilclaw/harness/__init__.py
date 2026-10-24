@@ -12,6 +12,8 @@ program of a verification run of ADR-0017 as a C source (``verification_program.
 the build of a verification executable from it
 (:mod:`hilclaw.harness.verification_build`), the array side of that run
 (:mod:`hilclaw.harness.verification_arrays`) and its Python side over an
-executable that is already built (:mod:`hilclaw.harness.verification`), these last
-two being the two modules that import ``numpy``, and nothing else of the harness.
+executable that is already built (:mod:`hilclaw.harness.verification`), and the
+array side of the bf16 verification run of ADR-0163
+(:mod:`hilclaw.harness.bf16_verification_arrays`), these last three being the
+three modules that import ``numpy``, and nothing else of the harness.
 """
