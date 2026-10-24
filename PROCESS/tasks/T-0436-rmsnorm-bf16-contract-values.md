@@ -2,7 +2,7 @@
 id: T-0436
 title: Teach hilclaw.keys the kind rmsnorm (members m, n) and add hilclaw/rmsnorm_bf16_contract.py - the op-side values of the bf16 RMSNorm contract of ADR-0158 (constants, prototype, shapes, input patterns, eps, op_signature_record, task_contract, covers) with tests (ADR-0158 code slice, first part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-5, FR-9, OD-31, OD-6, "PLAN P2-11", "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0435]
@@ -158,3 +158,10 @@ P2-10 comes after P2-5. So the work goes on with P2-11 to P2-14. This task is th
 - (planner) Next part of the ADR-0158 code slice: bf16 RMSNorm fit and "every shape" binding in `hilclaw/model_binding.py`, with the executor's `eps`. If ADR-0153 or ADR-0157 do not settle how an RMSNorm call site enters the binding check, return it as a design question rather than invent it. After that come the contract ADRs of elementwise add, SwiGLU activation, RoPE and SDPA with KV cache.
 
 ## Result
+
+- **Outcome**: DONE. PR #256 squash-merged as `7acfcaa` (branch deleted). Review: 2 rounds (round 1 Approve with 3 Info; Info 1 addressed by a test, Info 2 in the PR body; round 2 Approve). CI green on all six jobs (run 40063215612).
+- **Language**: Python - pure data and validation over `hilclaw.keys`, as its GEMM counterparts.
+- **Changes**: `hilclaw/keys.py` (`_SHAPE_MEMBERS` gains `rmsnorm` with `m`, `n`; `op_signature_key` docstring names both kinds); new `hilclaw/rmsnorm_bf16_contract.py` (`KIND`, `DTYPE`, `LAYOUT`, `LANGUAGE`, `PROTOTYPE`, `SHAPES`, `INPUT_PATTERNS`, `EPS` = binary32 `0x3727C5AC`, `op_signature_record`, `task_contract`, `covers`); tests in `tests/test_keys.py` and new `tests/test_rmsnorm_bf16_contract.py`. Local: 27631 passed, 949 skipped; `hilclaw/` coverage 97%, `keys.py` and the new module 100%.
+- **Criterion 7 (places whose answer for an `rmsnorm` record changes)**: `keys.op_signature_key` now accepts it, so `spec.validate`, `instance.json` parsing (`instance.py`), `key_records` (and `key_store_tool`) and `case_lookup` (and `case_tool`) treat it as valid instead of refusing it. `spec_tool`, `instance_start`, and `run_admission`/`check_admission` with the `gemm_contract.covers` their callers pass (e.g. `check_definition`) now refuse it as not covered (`KIND_OP_SIGNATURE_NOT_COVERED`) instead of as an invalid record; they read `shape["k"]` only after `covers` returns `True`. `gemm_contract.covers` and the bf16 GEMM `covers` return `False` instead of raising. Nothing treats an `rmsnorm` record as covered by a GEMM contract; no code change was needed.
+- **Less exact, not edited**: ADR-0031 ("`hilclaw.keys` knows `gemm` only", lines 21/98) and ADR-0158 Background ("knows `gemm` only and refuses another kind").
+- **Follow-ups**: none new beyond the task's planner follow-up (next part of the ADR-0158 code slice: fit and "every shape" binding in `hilclaw/model_binding.py` with the executor's `eps`).
