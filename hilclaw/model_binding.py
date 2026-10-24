@@ -1,4 +1,4 @@
-"""Host-side binding checks of the model executor for the GEMM, RMSNorm, elementwise add and SwiGLU call sites (ADR-0153, ADR-0158 to ADR-0160).
+"""Host-side binding checks of the model executor for the GEMM, RMSNorm, elementwise add, SwiGLU and RoPE call sites (ADR-0153, ADR-0158 to ADR-0161).
 
 ``ARCHITECTURE/decisions/ADR-0153-od31-model-executor.md`` is the rule. Before
 anything is built, the host side derives the shapes of every kernel call of a
@@ -6,8 +6,9 @@ generation from the model dimensions and the run settings and checks the
 binding against them (decision 5). This module does that for the six GEMM
 call sites of ADR-0152 decision 2 (:data:`CALL_SITES`) and, separately, for
 its three RMSNorm call sites (:data:`RMSNORM_CALL_SITES`), its two
-elementwise add call sites (:data:`ELEMENTWISE_ADD_CALL_SITES`) and its
-SwiGLU call site (:data:`SWIGLU_CALL_SITES`). The model's dtype
+elementwise add call sites (:data:`ELEMENTWISE_ADD_CALL_SITES`), its
+SwiGLU call site (:data:`SWIGLU_CALL_SITES`) and its two RoPE call sites
+(:data:`ROPE_CALL_SITES`). The model's dtype
 (``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``,
 decisions 1 to 4) selects the contract every entry is fitted against: for the
 GEMM call sites ADR-0008's ``gemm`` contract (:mod:`hilclaw.gemm_contract`)
@@ -19,7 +20,9 @@ ADR-0159's ``elementwise_add`` contract
 (:mod:`hilclaw.elementwise_add_bf16_contract`) for ``bf16``, likewise the only
 one (:data:`ELEMENTWISE_ADD_DTYPES`); for the SwiGLU call site ADR-0160's
 ``swiglu`` contract (:mod:`hilclaw.swiglu_bf16_contract`) for ``bf16``,
-likewise the only one (:data:`SWIGLU_DTYPES`). Its parts:
+likewise the only one (:data:`SWIGLU_DTYPES`); for the RoPE call sites
+ADR-0161's ``rope`` contract (:mod:`hilclaw.rope_bf16_contract`) for
+``bf16``, likewise the only one (:data:`ROPE_DTYPES`). Its parts:
 
 * :class:`ModelDimensions` and :func:`check_dimensions`: the model parameters
   of ADR-0153 decision 3 (a) that the shapes use. No value is a default and
@@ -30,16 +33,20 @@ likewise the only one (:data:`SWIGLU_DTYPES`). Its parts:
   :func:`swiglu_shape`: the ``(m, n)`` of one RMSNorm call site (ADR-0158
   decision 2) and of one elementwise add call site (ADR-0159 decision 2),
   whose ``n`` is the hidden width, and of the SwiGLU call site (ADR-0160
-  decision 2), whose ``n`` is the intermediate width.
+  decision 2), whose ``n`` is the intermediate width. :func:`rope_shape`:
+  the ``(m, h, d)`` of one RoPE call site (ADR-0161 decisions 2 and 3),
+  whose ``h`` is the query head count for ``rope_q`` and the KV head count
+  for ``rope_k`` and whose ``d`` is ``head_dim``.
 * :func:`generation_calls`, :func:`rmsnorm_generation_calls`,
-  :func:`elementwise_add_generation_calls` and
-  :func:`swiglu_generation_calls`: the distinct shapes of each call site over
-  one generation (ADR-0153 decision 4).
+  :func:`elementwise_add_generation_calls`, :func:`swiglu_generation_calls`
+  and :func:`rope_generation_calls`: the distinct shapes of each call site
+  over one generation (ADR-0153 decision 4).
 * :class:`KernelReference`, :class:`BindingEntry`: a binding entry (decision 3).
-* :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add` and
-  :func:`check_swiglu`: the outcomes ``"invalid_input"``, ``"no_kernel"`` and
-  ``"kernel_unfit"`` (decision 5, whose spelling is left to the code slice),
-  and the calls of the generation with the kernel each one is bound to.
+* :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add`,
+  :func:`check_swiglu` and :func:`check_rope`: the outcomes
+  ``"invalid_input"``, ``"no_kernel"`` and ``"kernel_unfit"`` (decision 5,
+  whose spelling is left to the code slice), and the calls of the generation
+  with the kernel each one is bound to.
 * :func:`rmsnorm_eps`: the binary32 value nearest to the model's ``eps``, the
   value the caller passes to an RMSNorm kernel (ADR-0158 decision 5).
 
@@ -54,26 +61,37 @@ Readings of this module:
   malformed, and an ``"every"`` entry overlaps every other entry of its call
   site: the executor never chooses between kernels (decision 3).
 * A listed shape other than the shape of the kernel's own spec, and an
-  ``"every"`` entry, are accepted for each of the five contracts: a kernel
+  ``"every"`` entry, are accepted for each of the six contracts: a kernel
   of either ``gemm`` contract must compute the product for the values it is
   called with (ADR-0008 decision 6, ADR-0156 decision 7, ADR-0157 decision
-  3), and a kernel of the ``rmsnorm`` contract (ADR-0158 decision 7), of the
+  3), a kernel of the ``rmsnorm`` contract (ADR-0158 decision 7), of the
   ``elementwise_add`` contract (ADR-0159 decision 8) or of the ``swiglu``
   contract (ADR-0160 decision 8) must be correct for every ``m``, ``n`` of at
-  least 1. So the operand shapes of a ``task.contract`` are not compared.
+  least 1, and a kernel of the ``rope`` contract for every ``m``, ``h`` of
+  at least 1 and every even ``d`` of at least 2 (ADR-0161 decision 11). So
+  the operand shapes of a ``task.contract`` are not compared.
+* An odd ``head_dim`` is refused by the RoPE functions only, as
+  :func:`check_dimensions` refuses other well-typed dimensions the contracts
+  cannot run: the ``rope`` contract needs an even ``d`` (ADR-0161 decision
+  11), and placing that refusal here is a convention of this module, not a
+  rule of the record. :func:`check_dimensions` and the other checks accept an
+  odd ``head_dim``.
 
 What this module does not do: it builds, loads and starts nothing and runs no
 process; it reads and writes no file; it has no command-line entry, registry
-or MCP tool; it knows no call site of RoPE or SDPA, no contract other than
-the fp32 and bf16 ``gemm`` contracts and the bf16 ``rmsnorm``,
-``elementwise_add`` and ``swiglu`` contracts, and no dtype outside
-:data:`DTYPES` for a GEMM call site, outside :data:`RMSNORM_DTYPES` for an
-RMSNorm call site, outside :data:`ELEMENTWISE_ADD_DTYPES` for an elementwise
-add call site or outside :data:`SWIGLU_DTYPES` for the SwiGLU call site; it
-does not join the GEMM, RMSNorm, elementwise add and SwiGLU checks into one
-check of a generation (the full pass, ADR-0153 code slice 2), and it does not
-check which arrays a call passes as its operands (ADR-0159 decision 12,
-ADR-0160 decision 12); it reads no weight, passes ``eps`` to nothing and adds
+or MCP tool; it knows no call site of SDPA, no contract other than the fp32
+and bf16 ``gemm`` contracts and the bf16 ``rmsnorm``, ``elementwise_add``,
+``swiglu`` and ``rope`` contracts, and no dtype outside :data:`DTYPES` for a
+GEMM call site, outside :data:`RMSNORM_DTYPES` for an RMSNorm call site,
+outside :data:`ELEMENTWISE_ADD_DTYPES` for an elementwise add call site,
+outside :data:`SWIGLU_DTYPES` for the SwiGLU call site or outside
+:data:`ROPE_DTYPES` for a RoPE call site; it does not join the GEMM, RMSNorm,
+elementwise add, SwiGLU and RoPE checks into one check of a generation (the
+full pass, ADR-0153 code slice 2), and it does not check which arrays a call
+passes as its operands (ADR-0159 decision 12, ADR-0160 decision 12, ADR-0161
+decision 15); it builds, holds and slices no RoPE frequency table, knows no
+position and no RoPE constant (the table is the host-side table builder's,
+ADR-0161 decision 4); it reads no weight, passes ``eps`` to nothing and adds
 no cast; it does not interpret the build flags of a kernel reference; and it
 derives no binding from a key's best (OD-20, OD-7).
 
@@ -96,6 +114,7 @@ from hilclaw import (
     gemm_contract,
     keys,
     rmsnorm_bf16_contract,
+    rope_bf16_contract,
     swiglu_bf16_contract,
 )
 
@@ -123,6 +142,12 @@ SWIGLU_CALL_SITES = ("ffn_activation",)
 SWIGLU_DTYPES = (swiglu_bf16_contract.DTYPE,)
 """The dtypes at which the ``swiglu`` contract is known (ADR-0157 decision 4, ADR-0160 decision 1)."""
 
+ROPE_CALL_SITES = ("rope_q", "rope_k")
+"""The RoPE call sites, ADR-0152 decision 2 row 5, named and ordered as ADR-0161 decision 15."""
+
+ROPE_DTYPES = (rope_bf16_contract.DTYPE,)
+"""The dtypes at which the ``rope`` contract is known (ADR-0157 decision 4, ADR-0161 decision 1)."""
+
 LM_HEAD_ROWS = ("all", "last")
 
 INVALID_INPUT = "invalid_input"
@@ -133,10 +158,16 @@ _CONTRACTS = dict(zip(DTYPES, (gemm_contract, gemm_bf16_contract)))
 _DTYPE_NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _GEMM_SHAPE = ("m", "k", "n")
 _ROW_SHAPE = ("m", "n")
+_ROPE_SHAPE = ("m", "h", "d")
+_ROPE_HEADS = {"rope_q": "heads", "rope_k": "kv_heads"}
 
 
 class ModelDimensions(NamedTuple):
-    """The model parameters the GEMM, RMSNorm, elementwise add and SwiGLU shapes depend on (ADR-0153 decision 3 (a))."""
+    """The model parameters the GEMM, RMSNorm, elementwise add, SwiGLU and RoPE shapes depend on (ADR-0153 decision 3 (a)).
+
+    The RoPE shapes use ``heads`` (``rope_q``), ``kv_heads`` (``rope_k``) and
+    ``head_dim`` (ADR-0161 decisions 2 and 3).
+    """
 
     hidden: int
     intermediate: int
@@ -158,8 +189,9 @@ class KernelReference(NamedTuple):
 class BindingEntry(NamedTuple):
     """A kernel bound for ``shapes``: ``"every"`` or a non-empty tuple of shapes.
 
-    A shape is ``(m, k, n)`` for a GEMM call site and ``(m, n)`` for an
-    RMSNorm, elementwise add or SwiGLU call site.
+    A shape is ``(m, k, n)`` for a GEMM call site, ``(m, n)`` for an
+    RMSNorm, elementwise add or SwiGLU call site and ``(m, h, d)`` for a RoPE
+    call site.
     """
 
     kernel: KernelReference
@@ -167,7 +199,7 @@ class BindingEntry(NamedTuple):
 
 
 class Outcome(NamedTuple):
-    """One outcome of :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add` or :func:`check_swiglu`; ``reason`` is always a ``str``."""
+    """One outcome of :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add`, :func:`check_swiglu` or :func:`check_rope`; ``reason`` is always a ``str``."""
 
     kind: str
     call_site: object
@@ -176,7 +208,7 @@ class Outcome(NamedTuple):
 
 
 class BindingCheck(NamedTuple):
-    """The result of :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add` or :func:`check_swiglu`: ``ok`` exactly when ``outcomes`` is empty."""
+    """The result of :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add`, :func:`check_swiglu` or :func:`check_rope`: ``ok`` exactly when ``outcomes`` is empty."""
 
     ok: bool
     outcomes: tuple
@@ -391,8 +423,8 @@ def check_rmsnorm(dimensions, binding, *, dtype, prompt_length, generation_lengt
     ``binding`` maps call sites of :data:`RMSNORM_CALL_SITES` to non-empty
     sequences of :class:`BindingEntry`. ``dtype`` is the model's dtype
     (ADR-0157 decision 1); it has no default. This check stands beside
-    :func:`check`, :func:`check_elementwise_add` and :func:`check_swiglu` and
-    is not joined with them.
+    :func:`check`, :func:`check_elementwise_add`, :func:`check_swiglu` and
+    :func:`check_rope` and is not joined with them.
 
     Arguments are first refused, in the order ``dimensions``, ``dtype``,
     ``prompt_length``, ``generation_length``, ``binding``, with
@@ -483,8 +515,8 @@ def check_elementwise_add(
     ``binding`` maps call sites of :data:`ELEMENTWISE_ADD_CALL_SITES` to
     non-empty sequences of :class:`BindingEntry`. ``dtype`` is the model's
     dtype (ADR-0157 decision 1); it has no default. This check stands beside
-    :func:`check`, :func:`check_rmsnorm` and :func:`check_swiglu` and is not
-    joined with them.
+    :func:`check`, :func:`check_rmsnorm`, :func:`check_swiglu` and
+    :func:`check_rope` and is not joined with them.
 
     Arguments are refused as by :func:`check_rmsnorm`, in the same order and
     with the same errors, with :data:`ELEMENTWISE_ADD_CALL_SITES` as the keys
@@ -568,8 +600,8 @@ def check_swiglu(dimensions, binding, *, dtype, prompt_length, generation_length
     ``binding`` maps call sites of :data:`SWIGLU_CALL_SITES` to non-empty
     sequences of :class:`BindingEntry`. ``dtype`` is the model's dtype
     (ADR-0157 decision 1); it has no default. This check stands beside
-    :func:`check`, :func:`check_rmsnorm` and :func:`check_elementwise_add`
-    and is not joined with them.
+    :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add` and
+    :func:`check_rope` and is not joined with them.
 
     Arguments are refused as by :func:`check_rmsnorm`, in the same order and
     with the same errors, with :data:`SWIGLU_CALL_SITES` as the keys of
@@ -611,6 +643,107 @@ def check_swiglu(dimensions, binding, *, dtype, prompt_length, generation_length
         SWIGLU_DTYPES,
         swiglu_bf16_contract,
         swiglu_generation_calls,
+    )
+
+
+def rope_shape(dimensions, call_site, rows):
+    """Return the ``(m, h, d)`` of the RoPE ``call_site`` in a pass of ``rows`` rows.
+
+    ``m`` is ``rows`` and ``d`` is ``head_dim``; ``h`` is ``heads`` for
+    ``"rope_q"`` and ``kv_heads`` for ``"rope_k"``: each call rotates T rows
+    of one tensor, Q then K (ADR-0152 decision 5, ADR-0161 decisions 2 and 3).
+    Raises as :func:`check_dimensions` does, then :class:`ValueError` with
+    ``parameter`` ``"dimensions"`` for an odd ``head_dim`` (ADR-0161 decision
+    11; refused here by this module's convention), then :class:`ValueError`
+    with ``parameter`` ``"call_site"`` for a call site not in
+    :data:`ROPE_CALL_SITES`, then :class:`TypeError` or :class:`ValueError`
+    with ``parameter`` ``"rows"`` for ``rows`` that is not an ``int`` from 1
+    to 2**53 - 1.
+    """
+    _check_rope_dimensions(dimensions)
+    with _parameter("call_site"):
+        if call_site not in ROPE_CALL_SITES:
+            raise ValueError(f"must be one of {ROPE_CALL_SITES}, got {call_site!r}")
+    with _parameter("rows"):
+        _integer(rows, "rows")
+    heads = getattr(dimensions, _ROPE_HEADS[call_site])
+    return (rows, heads, dimensions.head_dim)
+
+
+def rope_generation_calls(dimensions, *, prompt_length, generation_length):
+    """Return, per call site in :data:`ROPE_CALL_SITES` order, the sorted tuple of distinct shapes of a generation.
+
+    The passes are those of :func:`generation_calls`: one prefill pass of
+    ``prompt_length`` rows and then ``generation_length - 1`` decode passes of
+    one row. The result is a tuple of ``(call_site, shapes)`` pairs, each
+    shape an ``(m, h, d)`` of :func:`rope_shape`. Raises as
+    :func:`check_dimensions`, then :class:`ValueError` with ``parameter``
+    ``"dimensions"`` for an odd ``head_dim``, then as
+    :func:`rmsnorm_generation_calls` does for the lengths.
+    """
+    _check_rope_dimensions(dimensions)
+    _lengths(prompt_length, generation_length)
+    rows = _pass_rows(prompt_length, generation_length)
+    return tuple(
+        (site, tuple(sorted(rope_shape(dimensions, site, r) for r in rows)))
+        for site in ROPE_CALL_SITES
+    )
+
+
+def check_rope(dimensions, binding, *, dtype, prompt_length, generation_length):
+    """Check ``binding`` against every RoPE call of a generation; return a :class:`BindingCheck`.
+
+    ``binding`` maps call sites of :data:`ROPE_CALL_SITES` to non-empty
+    sequences of :class:`BindingEntry`. ``dtype`` is the model's dtype
+    (ADR-0157 decision 1); it has no default. This check stands beside
+    :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add` and
+    :func:`check_swiglu` and is not joined with them.
+
+    Arguments are refused as by :func:`check_rmsnorm`, in the same order and
+    with the same errors, with :data:`ROPE_CALL_SITES` as the keys of
+    ``binding`` and ``(m, h, d)`` triples as its shapes; ``dimensions`` with
+    an odd ``head_dim`` is refused too (:class:`ValueError`, ``parameter``
+    ``"dimensions"``; ADR-0161 decision 11, by this module's convention).
+
+    The outcomes then come in this order:
+
+    1. ``"invalid_input"`` (``call_site`` and ``shape`` ``None``): a
+       ``dtype`` not in :data:`ROPE_DTYPES`, at which no ``rope`` contract is
+       known (ADR-0157 decision 4, ADR-0161 decision 1); ``prompt_length``
+       outside 1 to 2**53 - 1; ``generation_length`` outside 1 to 2**53 - 1.
+    2. Per call site in :data:`ROPE_CALL_SITES` order: ``"kernel_unfit"``
+       (``shape`` ``None``) for each entry, in order, whose ``contract`` is
+       not the bf16 ``rope`` contract, compared on ``language``,
+       ``prototype`` and the operands' ``(name, role, dtype)`` (ADR-0153
+       decision 3 "Fit", ADR-0161 decision 10; reference values from
+       :func:`hilclaw.rope_bf16_contract.task_contract`, never from the
+       entry's own contract); then ``"no_kernel"`` for each shape of
+       :func:`rope_generation_calls`, in order, that no entry covers. The
+       ``"no_kernel"`` outcomes are not looked for when there is an
+       ``"invalid_input"``, and neither kind is when ``dtype`` is not in
+       :data:`ROPE_DTYPES`.
+
+    A listed shape other than the kernel's own spec shape, and an ``"every"``
+    entry, are accepted (ADR-0161 decision 11). ``calls`` holds
+    ``(call_site, shape, kernel)`` for every call of
+    :func:`rope_generation_calls`, in its order, only when ``ok``; it is
+    empty otherwise. Which arrays a call passes as ``x``, ``freqs_cis`` and
+    ``out`` (ADR-0161 decision 15), the frequency table and its rows for a
+    position are not checked. Nothing is built, started or read.
+    """
+    _check_rope_dimensions(dimensions)
+    return _check_rows(
+        dimensions,
+        binding,
+        dtype,
+        prompt_length,
+        generation_length,
+        ROPE_CALL_SITES,
+        ROPE_DTYPES,
+        rope_bf16_contract,
+        rope_generation_calls,
+        members=_ROPE_SHAPE,
+        reference_shape=(1, 1, 2),
     )
 
 
@@ -674,6 +807,8 @@ def _check_rows(
     dtypes,
     contract,
     site_calls,
+    members=_ROW_SHAPE,
+    reference_shape=(1, 1),
 ):
     check_dimensions(dimensions)
     with _parameter("dtype"):
@@ -686,7 +821,7 @@ def _check_rows(
         with _parameter(name):
             if type(value) is not int:
                 raise TypeError(f"must be an int, got {type(value).__name__}")
-    binding = _binding(binding, sites, _ROW_SHAPE)
+    binding = _binding(binding, sites, members)
 
     known = dtype in dtypes
     invalid = [] if known else [_no_contract(dtype, contract.KIND)]
@@ -707,11 +842,20 @@ def _check_rows(
         )
     calls = []
     if known:
-        reference = contract.task_contract(1, 1)
+        reference = contract.task_contract(*reference_shape)
         label = f"{dtype} {contract.KIND}"
         _bind(sites, binding, shapes, reference, label, outcomes, calls)
     ok = not outcomes
     return BindingCheck(ok, tuple(outcomes), tuple(calls) if ok else ())
+
+
+def _check_rope_dimensions(dimensions):
+    check_dimensions(dimensions)
+    with _parameter("dimensions"):
+        if dimensions.head_dim % 2:
+            raise ValueError(
+                f"head_dim must be even for a rope call site, got {dimensions.head_dim}"
+            )
 
 
 def _bind(sites, binding, shapes, reference, label, outcomes, calls):
