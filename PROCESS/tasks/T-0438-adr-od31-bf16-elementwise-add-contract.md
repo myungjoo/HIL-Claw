@@ -2,7 +2,7 @@
 id: T-0438
 title: Write ADR-0159 - the operational contract of the elementwise add of the Llama residual stream in bf16 for C kernels on cpu_standin (kind value and shape members, dtype and layout, the operation and its precision, the rounding of the output conversion, the uint16_t prototype and its symbol, operand entries, call guarantees including aliasing, "every shape", the input value set, the op_signature records of the ADR-0152 add calls and the names of its two call sites), and update the OD-6, OD-31 and StandardScenarios records (third Llama kind contract of PLAN P2-11; extension of OD-6 sub-question 1, part of OD-31 sub-questions 1 to 3)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-5, FR-9, OD-31, OD-6, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0435, T-0437]
@@ -171,3 +171,11 @@ So work goes on with P2-11 to P2-14. This task is part of the P2-11 checklist it
 - (planner) After this record, the next piece is its code slice, in the pattern of T-0436 and T-0437: the kind in `hilclaw.keys` and a contract module, then the binding check with the two named call sites in `hilclaw/model_binding.py`. The SwiGLU activation contract record comes next after that. RoPE and SDPA with KV cache follow; both now have their shapes (ADR-0154 decision 1).
 
 ## Result
+- **DONE.** Landed on `main` as `278cffcb` (doc mode, direct push; trailers `Task: T-0438` and `Reviewed-by: reviewer agent (5 rounds, Approve)`). Branch `claude/T-0438-adr-0159-bf16-elementwise-add` deleted locally and on origin.
+- Files: `ARCHITECTURE/decisions/ADR-0159-od31-bf16-elementwise-add-contract.md` (new), `ARCHITECTURE/Requirements.md` (OD-6 and OD-31 rows), `ARCHITECTURE/OpenDecisionProposals.md` (§ OD-6 and § OD-31), `ARCHITECTURE/StandardScenarios.md` (re-check line, S0 note); +220/-8 lines.
+- Decisions: kind `elementwise_add` with members `m`, `n`; the output must be the correctly rounded bf16 sum (a binary32 or wider add plus RNE suffices, proved in the record); prototype `void hilclaw_elementwise_add_bf16(size_t m, size_t n, const uint16_t *restrict a, const uint16_t *restrict b, uint16_t *restrict c);`; no in-place call; binding for every shape accepted; value set of ADR-0156 (the output rounding is not detectable with it); directory names `elementwise_add-1af54bf2a0744c69`, `-7ca4cdf06f7c3008`, `-dd63031857ec45cd`; call sites `attention_residual`, `ffn_residual`.
+- Coverage re-check: S0 and S1 re-checked, verdicts unchanged, no gap.
+- Review rounds: 5 (r1 and r2 Request changes; r3 to r5 Approve; non-blocking items addressed each round).
+- Owner notice (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6381155590
+- Runtime acceptance items: none. HQ: none.
+- Follow-ups: as listed above (code slice: kind in `hilclaw.keys`, contract module, binding check with the two call sites; then the SwiGLU activation contract record).
