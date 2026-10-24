@@ -159,7 +159,7 @@ hq: []
 - **Outcome**: DONE. PR #260 squash-merged as `3d50823` (branch `claude/T-0442-swiglu-bf16-contract-values` deleted).
 - **Review**: 1 round, Approve with one Info (CI pending at review time; then green). Reviewer judged the new kind not to be an A-13 data-plane schema change (`schema_version` stays 1, ADR-0001 decision 6).
 - **CI**: green on all six jobs (C gate, Coverage gate, Python gate 3.11/3.14, Test presence, sh gate; run 40086685083). CI full suite: 29208 passed, 50 skipped; `hilclaw/` line coverage 99%, `keys.py` and `swiglu_bf16_contract.py` 100%.
-- **Local gates**: `ruff check` and `ruff format --check` clean; the touched and neighbouring contract test files (1201 tests) pass locally. The full local coverage run was started on the branch and was still running at merge; CI ran the full suite green.
+- **Local gates**: `ruff check` and `ruff format --check` clean; full local `pytest` under coverage: 28309 passed, 949 skipped; `hilclaw/` line coverage 97%, `keys.py` and `swiglu_bf16_contract.py` 100%.
 - **Language**: Python - pure data and validation over `hilclaw.keys`, as its GEMM, RMSNorm and elementwise add counterparts.
 - **Changes**:
   - `hilclaw/keys.py`: `_SHAPE_MEMBERS` gains `swiglu` with `m`, `n`; the `op_signature_key` docstring names all four kinds; the unknown-kind message reads `kind: must be a known kind: elementwise_add, gemm, rmsnorm, swiglu, got ...`.
