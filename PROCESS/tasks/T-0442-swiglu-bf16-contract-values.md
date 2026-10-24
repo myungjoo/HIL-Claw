@@ -2,7 +2,7 @@
 id: T-0442
 title: Teach hilclaw.keys the kind swiglu (members m, n) and add hilclaw/swiglu_bf16_contract.py - the op-side values of the bf16 SwiGLU activation contract of ADR-0160 (constants, prototype, shapes, the gate and up value sets, op_signature_record, task_contract, covers) with tests (ADR-0160 code slice, first part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-5, FR-9, OD-31, OD-6, "PLAN P2-11", "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0441]
@@ -155,3 +155,17 @@ hq: []
 - (planner) Next part of the ADR-0160 code slice: the SwiGLU binding check in `hilclaw/model_binding.py` with the call site `ffn_activation` (ADR-0160 decision 12, including the operands it passes: `gate` from the GEMM call site `gate`, `up` from the GEMM call site `up`, `out` read by the GEMM call site `down`), its shape (rows x 8192) and the "every shape" binding, in the pattern of T-0440. After that, the RoPE contract record (doc), then SDPA with KV cache.
 
 ## Result
+
+- **Outcome**: DONE. PR #260 squash-merged as `3d50823` (branch `claude/T-0442-swiglu-bf16-contract-values` deleted).
+- **Review**: 1 round, Approve with one Info (CI pending at review time; then green). Reviewer judged the new kind not to be an A-13 data-plane schema change (`schema_version` stays 1, ADR-0001 decision 6).
+- **CI**: green on all six jobs (C gate, Coverage gate, Python gate 3.11/3.14, Test presence, sh gate; run 40086685083). CI full suite: 29208 passed, 50 skipped; `hilclaw/` line coverage 99%, `keys.py` and `swiglu_bf16_contract.py` 100%.
+- **Local gates**: `ruff check` and `ruff format --check` clean; the touched and neighbouring contract test files (1201 tests) pass locally. The full local coverage run was started on the branch and was still running at merge; CI ran the full suite green.
+- **Language**: Python - pure data and validation over `hilclaw.keys`, as its GEMM, RMSNorm and elementwise add counterparts.
+- **Changes**:
+  - `hilclaw/keys.py`: `_SHAPE_MEMBERS` gains `swiglu` with `m`, `n`; the `op_signature_key` docstring names all four kinds; the unknown-kind message reads `kind: must be a known kind: elementwise_add, gemm, rmsnorm, swiglu, got ...`.
+  - New `hilclaw/swiglu_bf16_contract.py`: `KIND`, `DTYPE`, `LAYOUT`, `LANGUAGE`, `PROTOTYPE`, `SHAPES`, `GATE_PATTERNS` (1024), `UP_PATTERNS` (256), `op_signature_record`, `task_contract`, `covers`. No tolerance, bound, domain, generator, seed or binding. Private helpers and the up set duplicate those of the elementwise add module on purpose (commit body says so).
+  - `tests/test_keys.py`: only the two expected unknown-kind messages changed; new `swiglu` cases (accepted record, ADR-0160 canonical line, sha256, name `swiglu-7b82bc7d69cda1e0`, member sets including the gemm set, other kinds unchanged).
+  - New `tests/test_swiglu_bf16_contract.py` (197 tests).
+- **Criterion 7**: `keys.op_signature_key` now accepts a `swiglu` record, so `spec.validate`, `instance.py`, `key_records`/`key_store_tool` and `case_lookup`/`case_tool` treat it as valid. `spec_tool`, `instance_start`, `run_admission`/`check_admission`/`check_definition` with `gemm_contract.covers` now refuse it as `op_signature_not_covered` instead of through the key check (they read `shape["k"]` only after `covers` returns True). The `covers` of the gemm, gemm_bf16, rmsnorm_bf16 and elementwise_add_bf16 contracts return False instead of raising. `model_binding.py` does not rely on the key check refusing the kind. No code change was needed.
+- **Less exact, not edited**: ADR-0031 lines 21 and 98; ADR-0160 Consequences "A-13 reading" ("`hilclaw/` is not touched"; teaching `hilclaw.keys` the kind "is a later code slice").
+- **Follow-ups**: none new beyond the planner follow-up (SwiGLU binding check in `hilclaw/model_binding.py`, call site `ffn_activation`; the next part will add `model_binding.py` as the one binder and adjust `test_module_imports_keys_only_and_is_named_by_no_other_module`).
