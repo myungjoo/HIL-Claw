@@ -2,7 +2,7 @@
 id: T-0448
 title: Write ADR-0162 - the operational contract of SDPA with KV cache of Llama 3.2 1B in bf16 for C kernels on cpu_standin (kind value and op_signature members, the cache operands with their capacity and layout and the write of the new K and V rows, GQA head sharing, score scale, causal mask, the precision of both dot products, the softmax and the cast between them, the output layout for the O projection, the rounding of the output, the uint16_t prototype and symbol, operand entries, call guarantees, the input value set, the op_signature records of the ADR-0154 SDPA row and the call site), and update the OD-6, OD-31 and StandardScenarios records (sixth and last Llama kind contract of PLAN P2-11; extension of OD-6 sub-question 1, part of OD-31 sub-questions 1 to 3)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-5, FR-9, OD-31, OD-6, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0444, T-0447]
@@ -284,3 +284,11 @@ P2-10 follows P2-5. So work continues on P2-11 to P2-14. This record is part of 
 - After that, P2-11's harness verification (P2-12) and the full pass of P2-13 remain.
 
 ## Result
+
+- **Outcome**: DONE. Landed on `main` as `632f02a` (document mode, pushed directly with `Reviewed-by: reviewer agent (3 rounds, Approve)` and `Task: T-0448`); branch `claude/T-0448-adr-od31-bf16-sdpa-kv-cache-contract` deleted locally and on `origin`.
+- **Record**: `ARCHITECTURE/decisions/ADR-0162-od31-bf16-sdpa-kv-cache-contract.md` (number and slug as planned). Kind `sdpa_kv_cache`, members `m`, `l`, `h`, `h_kv`, `d`; one kind for prefill and decode; P = l − m is neither member nor parameter; the scale 1/√d is a contract constant; two position-major bf16 cache operands (`inout`, shape `[l, h_kv, d]`, the first l rows of the model program's buffers), so the kernel is never told the capacity and no capacity value is chosen; new rows written as exact copies; `repeat_kv` mapping g = ⌊j / (h / h_kv)⌋; causal rule t ≤ P + i; binary32 softmax-sum accumulators (owner), no 16-bit scores or probabilities (departure from Meta's `type_as`), and an error bound ε(n, A, d) relative to Σ p·|V| over a stated domain, with its argument; RNE output read by the O GEMM without a copy; V copied contiguously by the model program; prototype `hilclaw_sdpa_kv_cache_bf16`; value sets ±[0.5, 1) for all inputs and pre-filled rows, with computed facts and detection shares; op_signatures `sdpa_kv_cache-3a4be50bca85d0dc`, `-9f8c153fbe19c8ee`, `-e9326c7e4ba5e1c7`, `-50b3bf3bcc1ad96d`; call site `sdpa`.
+- **Register edits**: Requirements OD-6 and OD-31 rows, OpenDecisionProposals § OD-6 and § OD-31 (adoption lines and sub-questions ① to ③ rewritten in place), StandardScenarios § 검사 결과 (S0 and S1 re-checked, no verdict change, no gap). Changed lines: 4 files, +251/−8.
+- **Review**: 3 rounds by a context-isolated reviewer (round 1 Approve with one non-blocking point and six nits, all addressed; round 2 Request changes for a wrong ulp conversion, fixed; round 3 Approve).
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6386983591 (7-day objection window).
+- **Runtime acceptance items**: none. **New HQ**: none.
+- **Follow-ups (planner)**: code slices in the pattern of T-0445 to T-0447 — (1) the kind `sdpa_kv_cache` in `hilclaw.keys` and a contract module (`task_contract`, `covers`, `op_signature_record`, value set); (2) the binding check for call site `sdpa` with its (m, l) shapes in `hilclaw/model_binding.py`; then the cache buffers and V copy in the model program, kernel fixtures and the P2-12 harness part (including the exact comparison of the written cache rows).
