@@ -2,7 +2,7 @@
 id: T-0434
 title: Let the model executor build and run a bf16 generation end to end - a dtype program flag in hilclaw/model_build, a required dtype for model_execute.execute and model_gemm.run (ADR-0157 code slice 2, part 2)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-10, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0432, T-0433]
@@ -148,3 +148,11 @@ hq: []
 
 ## Result
 
+- Outcome: DONE. PR #255 (branch claude/T-0434-model-execute-gemm-bf16-path), squash-merged by the executor as 7c1a271 after 2 review rounds (r1 Approve + docstring line-wrap nit, fixed in 4f838f5; r2 Approve, no findings). Branch deleted.
+- model_build: read-only PROGRAM_DTYPE_FLAGS (MappingProxyType; fp32 -> (), bf16 -> ("-DHILCLAW_MODEL_BF16",)), keys equal model_run.DTYPES (asserted by a test, no import). build_kernel_library/build_model_program unchanged; docstring updated in place.
+- model_execute.execute: required keyword-only dtype, checked first ("dtype:" messages). program_flags must be a tuple/list of str (TypeError); an item containing HILCLAW_MODEL_BF16 is refused with its position (ValueError). Program built with (*program_flags, *PROGRAM_DTYPE_FLAGS[dtype]); no dtype flag on kernels; dtype passed to output_shapes, encode_input, run_model_program.
+- model_gemm.run: required keyword-only dtype, passed to model_binding.check (all dtype decisions there) and to execute. No cast.
+- Tests: Windows full suite 27477 passed, 949 skipped; ruff check/format clean; hilclaw/ coverage 97%, model_build/model_execute/model_gemm 100%. Real-run tests in WSL Ubuntu (clang, Python 3.12): 400 passed, including real bf16 execute and real bf16 model_gemm.run. CI green on 4f838f5. No CI file changed.
+- Language: Python, which extends the existing numpy-based host-side modules.
+- No data-plane, schema or ARCHITECTURE/ change. No fp16 path, tolerance, reference or weight check.
+- Follow-ups: none new. The planner follow-up stands: ADR-0153 code slice 2, the forward pass, starting from the first missing bf16 contract record for the other five kinds.
