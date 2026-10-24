@@ -2,7 +2,7 @@
 id: T-0452
 title: Add hilclaw/harness/bf16_verification_arrays.py - the array side of ADR-0163's bf16 verification run for gemm, rmsnorm, elementwise_add and swiglu (generator over each value set, check value, widening, float64 reference per kind, failure counts), with its tests (ADR-0163 code slice 1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0451]
@@ -132,3 +132,11 @@ hq: []
 - (planner) Next slice: the shared C header (generator, CRC-32, report writer, all `static`) and the first kind's verification program under `hilclaw/harness/`. The program must reproduce this module's generator bit for bit. The slice also needs its build and a clang test that it agrees with `draw_inputs` and `check_value`. After that come the remaining kinds, the report reader and verdict, and the calibration kernels (ADR-0163 decisions 2, 3, 5, 8 and 9).
 
 ## Result
+
+- **Outcome**: DONE. PR #267 squash-merged into `main` as `cafb152` (branch `claude/T-0452-bf16-verification-arrays` deleted); squash message ends with `Task: T-0452`.
+- **Changes**: new `hilclaw/harness/bf16_verification_arrays.py` (237 lines: `KINDS`, `EPS_BITS`, `draw_inputs`, `check_value`, `widen`, `reference`, `count_failures`; module docstring states the generator for the later C programs), one sentence in `hilclaw/harness/__init__.py` (now three harness modules import `numpy`), new `tests/harness/test_bf16_verification_arrays.py` (497 tests; module coverage 100%). Nothing of the first case changed.
+- **Language**: Python, because the slice is NumPy array code next to `verification_arrays.py` and needs no process or compiler.
+- **Reuse**: imports the public `GOLDEN`, `SEED_LIMIT`, `Counts`, `VerificationArgumentError`, `check_tolerance` and the private `_mix` (permitted), plus `_integer`, `_fail` and `_shown` so the argument messages are the first case's code (stated in the commit body; the reviewer accepted it). `count_failures` delegates to `verification_arrays.count_failures` on the exactly widened float32 output after checking both arrays.
+- **Review**: 4 rounds (dev-reviewer, context-isolated). Round 1 Approve with 2 Minor + 3 Nit (swiglu test exact libm compare, `expected` checked after widening, inherited memory-peak sentence, index width named `b`, private imports); all fixed except the accepted private imports. Rounds 2 and 3 Approve with a docstring line-wrap nit each (fixed); round 4 Approve with no findings.
+- **CI**: run 40131211195 on `e77bcc6` green (Python 3.11/3.14, coverage gate, test presence, C gate, sh gate). Full local `pytest` (30221 passed, 949 skipped) and `ruff` green before the first push.
+- **Follow-ups**: none new beyond the task's own (the shared C header and the first kind's verification program, which must reproduce `draw_inputs` and `check_value` bit for bit).
