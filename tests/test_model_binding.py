@@ -6,11 +6,18 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import gemm_bf16_contract, gemm_contract, rmsnorm_bf16_contract
+from hilclaw import (
+    elementwise_add_bf16_contract,
+    gemm_bf16_contract,
+    gemm_contract,
+    rmsnorm_bf16_contract,
+)
 from hilclaw.keys import MAX_INTEGER
 from hilclaw.model_binding import (
     CALL_SITES,
     DTYPES,
+    ELEMENTWISE_ADD_CALL_SITES,
+    ELEMENTWISE_ADD_DTYPES,
     RMSNORM_CALL_SITES,
     RMSNORM_DTYPES,
     BindingCheck,
@@ -20,7 +27,10 @@ from hilclaw.model_binding import (
     Outcome,
     check,
     check_dimensions,
+    check_elementwise_add,
     check_rmsnorm,
+    elementwise_add_generation_calls,
+    elementwise_add_shape,
     gemm_shape,
     generation_calls,
     rmsnorm_eps,
@@ -1531,3 +1541,698 @@ def test_rmsnorm_eps_refuses_types(value):
 )
 def test_rmsnorm_eps_refuses_values(value):
     raises(ValueError, "eps", rmsnorm_eps, value)
+
+
+def test_elementwise_add_call_sites():
+    assert ELEMENTWISE_ADD_CALL_SITES == ("attention_residual", "ffn_residual")
+    assert not set(ELEMENTWISE_ADD_CALL_SITES) & set(CALL_SITES)
+    assert not set(ELEMENTWISE_ADD_CALL_SITES) & set(RMSNORM_CALL_SITES)
+
+
+def test_elementwise_add_dtypes():
+    assert ELEMENTWISE_ADD_DTYPES == ("bf16",)
+    assert ELEMENTWISE_ADD_DTYPES == (elementwise_add_bf16_contract.DTYPE,)
+
+
+@pytest.mark.parametrize("site", ELEMENTWISE_ADD_CALL_SITES)
+@pytest.mark.parametrize("rows", [1, 7, MAX_INTEGER])
+def test_elementwise_add_shape_small(site, rows):
+    assert elementwise_add_shape(SMALL, site, rows) == (rows, 8)
+
+
+def test_elementwise_add_shape_at_llama_values_is_the_contract_table():
+    llama = ModelDimensions(2048, 8192, 128256, 16, 32, 8, 64)
+    for site in ELEMENTWISE_ADD_CALL_SITES:
+        shapes = tuple(elementwise_add_shape(llama, site, m) for m in (1, 32, 512))
+        assert shapes == elementwise_add_bf16_contract.SHAPES
+
+
+@pytest.mark.parametrize(
+    "site",
+    ["o", "down", "attention_norm", "ffn_norm", "residual", "", None, 3],
+)
+def test_elementwise_add_shape_unknown_call_site(site):
+    error = raises(ValueError, "call_site", elementwise_add_shape, SMALL, site, 1)
+    assert str(ELEMENTWISE_ADD_CALL_SITES) in str(error)
+
+
+@pytest.mark.parametrize(
+    ("rows", "kind"),
+    [
+        (True, TypeError),
+        (1.0, TypeError),
+        (None, TypeError),
+        (0, ValueError),
+        (-1, ValueError),
+        (MAX_INTEGER + 1, ValueError),
+    ],
+)
+def test_elementwise_add_shape_bad_rows(rows, kind):
+    raises(kind, "rows", elementwise_add_shape, SMALL, "ffn_residual", rows)
+
+
+def test_elementwise_add_shape_argument_order():
+    raises(
+        ValueError, "dimensions", elementwise_add_shape, SMALL._replace(heads=3), "x", 0
+    )
+    raises(TypeError, "dimensions", elementwise_add_shape, None, "ffn_residual", 1)
+    raises(ValueError, "call_site", elementwise_add_shape, SMALL, "norm", 0)
+
+
+def add_shapes(rows):
+    return tuple((r, 8) for r in rows)
+
+
+def test_elementwise_add_generation_calls_prefill_and_decode():
+    calls = elementwise_add_generation_calls(
+        SMALL, prompt_length=5, generation_length=3
+    )
+    assert calls == tuple(
+        (site, add_shapes((1, 5))) for site in ELEMENTWISE_ADD_CALL_SITES
+    )
+
+
+def test_elementwise_add_generation_calls_one_token_has_no_decode():
+    calls = elementwise_add_generation_calls(
+        SMALL, prompt_length=5, generation_length=1
+    )
+    assert calls == tuple(
+        (site, add_shapes((5,))) for site in ELEMENTWISE_ADD_CALL_SITES
+    )
+
+
+def test_elementwise_add_generation_calls_prompt_of_one_row():
+    calls = elementwise_add_generation_calls(
+        SMALL, prompt_length=1, generation_length=4
+    )
+    assert calls == tuple(
+        (site, add_shapes((1,))) for site in ELEMENTWISE_ADD_CALL_SITES
+    )
+
+
+def test_elementwise_add_generation_calls_rows_match_the_rmsnorm_passes():
+    for prompt_length, generation_length in ((6, 2), (1, 1), (9, 1), (4, 7)):
+        lengths = {
+            "prompt_length": prompt_length,
+            "generation_length": generation_length,
+        }
+        norm = dict(rmsnorm_generation_calls(SMALL, **lengths))
+        add = dict(elementwise_add_generation_calls(SMALL, **lengths))
+        for site in ELEMENTWISE_ADD_CALL_SITES:
+            assert add[site] == norm["attention_norm"]
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "kind"),
+    [
+        ("prompt_length", 0, ValueError),
+        ("prompt_length", True, TypeError),
+        ("prompt_length", 2.0, TypeError),
+        ("generation_length", 0, ValueError),
+        ("generation_length", MAX_INTEGER + 1, ValueError),
+        ("generation_length", None, TypeError),
+    ],
+)
+def test_elementwise_add_generation_calls_refuses(name, value, kind):
+    arguments = {"prompt_length": 2, "generation_length": 2}
+    arguments[name] = value
+    raises(kind, name, elementwise_add_generation_calls, SMALL, **arguments)
+
+
+def test_elementwise_add_generation_calls_argument_order():
+    raises(
+        TypeError,
+        "dimensions",
+        elementwise_add_generation_calls,
+        None,
+        prompt_length=0,
+        generation_length=0,
+    )
+    raises(
+        ValueError,
+        "prompt_length",
+        elementwise_add_generation_calls,
+        SMALL,
+        prompt_length=0,
+        generation_length=None,
+    )
+
+
+def test_elementwise_add_generation_calls_lengths_are_keyword_only():
+    with pytest.raises(TypeError):
+        elementwise_add_generation_calls(SMALL, 2, 2)
+
+
+def add_kernel(name="r", contract=_DEFAULT):
+    if contract is _DEFAULT:
+        contract = elementwise_add_bf16_contract.task_contract(3, 5)
+    return KernelReference((f"{name}.c",), contract, ("-O2",))
+
+
+def add_binding():
+    return {
+        site: [BindingEntry(add_kernel(site), "every")]
+        for site in ELEMENTWISE_ADD_CALL_SITES
+    }
+
+
+def run_add(binding=None, **settings):
+    arguments = {"dtype": "bf16", "prompt_length": 3, "generation_length": 4}
+    arguments.update(settings)
+    binding = add_binding() if binding is None else binding
+    return check_elementwise_add(SMALL, binding, **arguments)
+
+
+def expected_add_calls(binding, rows):
+    return tuple(
+        (site, (r, 8), binding[site][0].kernel)
+        for site in ELEMENTWISE_ADD_CALL_SITES
+        for r in rows
+    )
+
+
+def test_check_elementwise_add_every_binding_is_ok():
+    binding = add_binding()
+    result = run_add(binding)
+    assert result == BindingCheck(True, (), expected_add_calls(binding, (1, 3)))
+    assert isinstance(result, BindingCheck)
+
+
+def test_check_elementwise_add_listed_shapes_cover_exactly():
+    binding = {
+        site: [BindingEntry(add_kernel(site), add_shapes((1, 3)))]
+        for site in ELEMENTWISE_ADD_CALL_SITES
+    }
+    result = run_add(binding)
+    assert result.ok
+    assert result.calls == expected_add_calls(binding, (1, 3))
+
+
+def test_check_elementwise_add_listed_shape_other_than_the_spec_own():
+    spec_own = elementwise_add_bf16_contract.task_contract(512, 2048)
+    binding = {
+        site: [BindingEntry(add_kernel(site, spec_own), add_shapes((1, 3, 7)))]
+        for site in ELEMENTWISE_ADD_CALL_SITES
+    }
+    result = run_add(binding)
+    assert result.ok
+    assert result.calls == expected_add_calls(binding, (1, 3))
+
+
+def test_check_elementwise_add_several_entries_disjoint_shapes():
+    binding = add_binding()
+    decode = add_kernel("decode")
+    prefill = add_kernel("prefill")
+    binding["attention_residual"] = (
+        BindingEntry(decode, add_shapes((1,))),
+        BindingEntry(prefill, add_shapes((3, 9))),
+    )
+    result = run_add(binding)
+    assert result.ok
+    assert [call[0] for call in result.calls] == [
+        "attention_residual",
+        "attention_residual",
+        "ffn_residual",
+        "ffn_residual",
+    ]
+    assert result.calls[:2] == (
+        ("attention_residual", (1, 8), decode),
+        ("attention_residual", (3, 8), prefill),
+    )
+
+
+def test_check_elementwise_add_generation_length_one():
+    result = run_add(generation_length=1)
+    assert result.ok
+    assert [call[1] for call in result.calls] == [(3, 8)] * len(
+        ELEMENTWISE_ADD_CALL_SITES
+    )
+
+
+def test_check_elementwise_add_accepts_path_sources():
+    binding = add_binding()
+    contract = elementwise_add_bf16_contract.task_contract(1, 1)
+    reference = KernelReference((Path("a.c"), "b.c"), contract, ())
+    binding["ffn_residual"] = [BindingEntry(reference, "every")]
+    assert run_add(binding).ok
+
+
+@pytest.mark.parametrize("unknown", ["fp32", "fp16", "int8"])
+def test_check_elementwise_add_unknown_dtype_is_invalid_input(unknown):
+    reason = f"dtype: no elementwise_add contract is known at the dtype {unknown!r}"
+    assert run_add(dtype=unknown) == BindingCheck(False, invalid(reason), ())
+    assert unknown in reason and "elementwise_add" in reason
+
+
+@pytest.mark.parametrize("unknown", ["fp32", "fp16"])
+def test_check_elementwise_add_unknown_dtype_gives_no_unfit_and_no_kernel(unknown):
+    reason = f"dtype: no elementwise_add contract is known at the dtype {unknown!r}"
+    binding = {
+        "attention_residual": [BindingEntry(add_kernel(contract={}), add_shapes((3,)))]
+    }
+    assert run_add(binding, dtype=unknown) == BindingCheck(False, invalid(reason), ())
+
+
+def test_check_elementwise_add_invalid_lengths():
+    assert run_add(prompt_length=0).outcomes == invalid(
+        "prompt_length: must be from 1 to 2**53 - 1, got 0"
+    )
+    assert run_add(generation_length=MAX_INTEGER + 1).outcomes == invalid(
+        f"generation_length: must be from 1 to 2**53 - 1, got {MAX_INTEGER + 1}"
+    )
+    assert run_add(prompt_length=-2).calls == ()
+
+
+def test_check_elementwise_add_invalid_input_order_and_no_shape_check():
+    binding = {"ffn_residual": [BindingEntry(add_kernel(contract=None), "every")]}
+    result = run_add(binding, prompt_length=0, generation_length=-1)
+    assert [(o.kind, o.call_site) for o in result.outcomes] == [
+        ("invalid_input", None),
+        ("invalid_input", None),
+        ("kernel_unfit", "ffn_residual"),
+    ]
+    assert result.outcomes[0].reason.startswith("prompt_length:")
+    assert result.outcomes[1].reason.startswith("generation_length:")
+    assert result.calls == ()
+    result = run_add(binding, dtype="fp32", prompt_length=0, generation_length=0)
+    assert [o.reason.split(":")[0] for o in result.outcomes] == [
+        "dtype",
+        "prompt_length",
+        "generation_length",
+    ]
+    assert {o.kind for o in result.outcomes} == {"invalid_input"}
+
+
+def test_check_elementwise_add_missing_call_site():
+    binding = add_binding()
+    del binding["ffn_residual"]
+    assert run_add(binding) == BindingCheck(
+        False,
+        tuple(
+            Outcome(
+                "no_kernel",
+                "ffn_residual",
+                shape,
+                "no entry of the binding covers the shape",
+            )
+            for shape in add_shapes((1, 3))
+        ),
+        (),
+    )
+
+
+def test_check_elementwise_add_unlisted_shape():
+    binding = add_binding()
+    binding["attention_residual"] = [BindingEntry(add_kernel(), add_shapes((1, 7)))]
+    result = run_add(binding)
+    assert [(o.kind, o.call_site, o.shape) for o in result.outcomes] == [
+        ("no_kernel", "attention_residual", (3, 8))
+    ]
+    assert run_add({}).outcomes == tuple(
+        Outcome("no_kernel", site, shape, "no entry of the binding covers the shape")
+        for site in ELEMENTWISE_ADD_CALL_SITES
+        for shape in add_shapes((1, 3))
+    )
+
+
+def add_unfit_reason(contract):
+    binding = add_binding()
+    binding["ffn_residual"] = [BindingEntry(add_kernel(contract=contract), "every")]
+    result = run_add(binding)
+    assert not result.ok and result.calls == ()
+    (outcome,) = result.outcomes
+    assert outcome.kind == "kernel_unfit"
+    assert outcome.call_site == "ffn_residual" and outcome.shape is None
+    assert outcome.reason.startswith("entry 0: ")
+    return outcome.reason
+
+
+def good_add_contract():
+    return elementwise_add_bf16_contract.task_contract(2, 4)
+
+
+ADD_PROTOTYPE_UNFIT = (
+    "entry 0: contract.prototype is not that of the bf16 elementwise_add contract"
+)
+
+
+def test_check_elementwise_add_rmsnorm_kernel_is_unfit():
+    contract = rmsnorm_bf16_contract.task_contract(2, 4)
+    assert add_unfit_reason(contract) == ADD_PROTOTYPE_UNFIT
+
+
+@pytest.mark.parametrize("dtype", ["bf16", "fp32"])
+def test_check_elementwise_add_gemm_kernel_is_unfit(dtype):
+    contract = CONTRACTS[dtype].task_contract(2, 4, 4)
+    assert add_unfit_reason(contract) == ADD_PROTOTYPE_UNFIT
+
+
+def test_check_elementwise_add_unfit_wrong_prototype():
+    contract = good_add_contract()
+    contract["prototype"] = contract["prototype"].replace("restrict c", "c")
+    assert add_unfit_reason(contract) == ADD_PROTOTYPE_UNFIT
+
+
+def test_check_elementwise_add_unfit_wrong_language():
+    contract = good_add_contract()
+    contract["language"] = "cpp"
+    assert add_unfit_reason(contract) == (
+        "entry 0: contract.language is not that of the bf16 elementwise_add contract"
+    )
+
+
+@pytest.mark.parametrize(
+    ("index", "member", "value"),
+    [
+        (0, "name", "b"),
+        (1, "name", "a"),
+        (2, "name", "out"),
+        (1, "role", "output"),
+        (2, "role", "input"),
+        (0, "dtype", "fp32"),
+        (2, "dtype", "fp16"),
+        (1, "dtype", None),
+    ],
+)
+def test_check_elementwise_add_unfit_wrong_operand(index, member, value):
+    contract = good_add_contract()
+    contract["operands"][index][member] = value
+    assert add_unfit_reason(contract) == (
+        f"entry 0: contract.operands[{index}].{member} is not that of the bf16 "
+        "elementwise_add contract"
+    )
+
+
+@pytest.mark.parametrize("contract", [None, "c", ["language"], 3])
+def test_check_elementwise_add_unfit_non_mapping(contract):
+    assert "not a mapping" in add_unfit_reason(contract)
+
+
+@pytest.mark.parametrize("member", ["language", "prototype", "operands"])
+def test_check_elementwise_add_unfit_missing_member(member):
+    contract = good_add_contract()
+    del contract[member]
+    assert repr(member) in add_unfit_reason(contract)
+
+
+def test_check_elementwise_add_unfit_operands_forms():
+    contract = good_add_contract()
+    contract["operands"] = "abc"
+    assert "not a sequence" in add_unfit_reason(contract)
+    contract["operands"] = good_add_contract()["operands"][:2]
+    assert "2 entries, not 3" in add_unfit_reason(contract)
+    contract["operands"] = [*good_add_contract()["operands"], {}]
+    assert "4 entries, not 3" in add_unfit_reason(contract)
+    contract["operands"] = [*good_add_contract()["operands"][:2], None]
+    assert "operands[2] is not a mapping" in add_unfit_reason(contract)
+    contract["operands"] = good_add_contract()["operands"]
+    del contract["operands"][0]["name"]
+    assert "operands[0] lacks the member 'name'" in add_unfit_reason(contract)
+
+
+def test_check_elementwise_add_fit_ignores_operand_shapes_and_extra_members():
+    contract = good_add_contract()
+    contract["operands"][0]["shape"] = [99, 99]
+    contract["operands"][2]["note"] = "x"
+    contract["note"] = "x"
+    binding = add_binding()
+    binding["ffn_residual"] = [BindingEntry(add_kernel(contract=contract), "every")]
+    assert run_add(binding).ok
+
+
+def test_check_elementwise_add_reference_comes_from_the_contract_module(monkeypatch):
+    binding = add_binding()
+    changed = good_add_contract()
+    changed["prototype"] = "void other(void);"
+    monkeypatch.setattr(
+        elementwise_add_bf16_contract,
+        "task_contract",
+        lambda m, n: copy.deepcopy(changed),
+    )
+    result = run_add(binding)
+    assert [(o.kind, o.call_site) for o in result.outcomes] == [
+        ("kernel_unfit", site) for site in ELEMENTWISE_ADD_CALL_SITES
+    ]
+    binding = {
+        site: [BindingEntry(add_kernel(contract=changed), "every")]
+        for site in ELEMENTWISE_ADD_CALL_SITES
+    }
+    assert run_add(binding).ok
+    assert run_norm().ok
+
+
+def test_check_elementwise_add_outcome_order():
+    binding = {
+        "attention_residual": [
+            BindingEntry(add_kernel(), add_shapes((3,))),
+            BindingEntry(add_kernel(contract={}), add_shapes((7,))),
+        ],
+        "ffn_residual": [BindingEntry(add_kernel(contract=None), add_shapes((1,)))],
+    }
+    result = run_add(binding)
+    assert [(o.kind, o.call_site, o.shape) for o in result.outcomes] == [
+        ("kernel_unfit", "attention_residual", None),
+        ("no_kernel", "attention_residual", (1, 8)),
+        ("kernel_unfit", "ffn_residual", None),
+        ("no_kernel", "ffn_residual", (3, 8)),
+    ]
+    assert result.outcomes[0].reason.startswith("entry 1: ")
+
+
+def test_check_elementwise_add_arguments_are_keyword_only_without_default():
+    parameters = inspect.signature(check_elementwise_add).parameters
+    assert list(parameters) == [
+        "dimensions",
+        "binding",
+        "dtype",
+        "prompt_length",
+        "generation_length",
+    ]
+    for name in ("dtype", "prompt_length", "generation_length"):
+        assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameters[name].default is inspect.Parameter.empty
+    with pytest.raises(TypeError, match="dtype"):
+        check_elementwise_add(
+            SMALL, add_binding(), prompt_length=1, generation_length=1
+        )
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "kind"),
+    [
+        ("dtype", None, TypeError),
+        ("dtype", b"bf16", TypeError),
+        ("dtype", True, TypeError),
+        ("dtype", "BF16", ValueError),
+        ("dtype", "", ValueError),
+        ("dtype", "a" * 33, ValueError),
+        ("prompt_length", True, TypeError),
+        ("prompt_length", 3.0, TypeError),
+        ("prompt_length", None, TypeError),
+        ("generation_length", False, TypeError),
+        ("generation_length", "4", TypeError),
+    ],
+)
+def test_check_elementwise_add_argument_errors(name, value, kind):
+    raises(kind, name, run_add, **{name: value})
+
+
+def test_check_elementwise_add_argument_order():
+    raises(
+        TypeError,
+        "dimensions",
+        check_elementwise_add,
+        tuple(SMALL),
+        None,
+        dtype=None,
+        prompt_length=None,
+        generation_length=None,
+    )
+    raises(
+        ValueError,
+        "dimensions",
+        check_elementwise_add,
+        SMALL._replace(kv_heads=3),
+        add_binding(),
+        dtype="bf16",
+        prompt_length=1,
+        generation_length=1,
+    )
+    raises(ValueError, "dtype", run_add, None, dtype="Bf16", prompt_length=None)
+    raises(
+        TypeError,
+        "prompt_length",
+        run_add,
+        [],
+        prompt_length=None,
+        generation_length=None,
+    )
+    raises(TypeError, "generation_length", run_add, [], generation_length=None)
+    raises(TypeError, "binding", run_add, [], prompt_length=0, dtype="fp32")
+
+
+def bad_add_binding(kind, binding):
+    return raises(kind, "binding", run_add, binding)
+
+
+def with_add_entry(site, *entries):
+    binding = add_binding()
+    binding[site] = list(entries)
+    return binding
+
+
+def test_check_elementwise_add_binding_not_mapping():
+    bad_add_binding(TypeError, [("ffn_residual", [])])
+    raises(
+        TypeError,
+        "binding",
+        check_elementwise_add,
+        SMALL,
+        None,
+        dtype="bf16",
+        prompt_length=1,
+        generation_length=1,
+    )
+
+
+@pytest.mark.parametrize(
+    "key", [*CALL_SITES, *RMSNORM_CALL_SITES, "residual", "FFN_RESIDUAL", 1, None]
+)
+def test_check_elementwise_add_binding_unknown_key(key):
+    binding = add_binding()
+    binding[key] = [BindingEntry(add_kernel(), "every")]
+    error = bad_add_binding(ValueError, binding)
+    assert str(ELEMENTWISE_ADD_CALL_SITES) in str(error)
+
+
+def test_check_elementwise_add_binding_entries_forms():
+    binding = add_binding()
+    for entries, kind in (
+        (BindingEntry(add_kernel(), "every"), TypeError),
+        ("every", TypeError),
+        ([], ValueError),
+        (None, TypeError),
+        ([(add_kernel(), "every")], TypeError),
+        ([BindingEntry(("r.c",), "every")], TypeError),
+    ):
+        binding["ffn_residual"] = entries
+        bad_add_binding(kind, binding)
+
+
+@pytest.mark.parametrize(
+    ("reference", "kind"),
+    [
+        (KernelReference([Path("r.c")], {}, ()), TypeError),
+        (KernelReference((), {}, ()), ValueError),
+        (KernelReference((b"r.c",), {}, ()), TypeError),
+        (KernelReference(("r.c",), {}, ["-O2"]), TypeError),
+        (KernelReference(("r.c",), {}, ("-O2", 3)), TypeError),
+    ],
+)
+def test_check_elementwise_add_binding_kernel_reference_refused(reference, kind):
+    binding = with_add_entry("attention_residual", BindingEntry(reference, "every"))
+    bad_add_binding(kind, binding)
+
+
+@pytest.mark.parametrize(
+    ("shapes", "kind"),
+    [
+        ("all", ValueError),
+        ([(1, 8)], TypeError),
+        ((), ValueError),
+        (None, TypeError),
+        (([1, 8],), TypeError),
+        (((1, 8, 8),), ValueError),
+        (((1,),), ValueError),
+        (((0, 8),), ValueError),
+        (((1, MAX_INTEGER + 1),), ValueError),
+        (((True, 8),), TypeError),
+        (((1, 8.0),), TypeError),
+    ],
+)
+def test_check_elementwise_add_binding_shapes_refused(shapes, kind):
+    binding = with_add_entry("ffn_residual", BindingEntry(add_kernel(), shapes))
+    bad_add_binding(kind, binding)
+
+
+def test_check_elementwise_add_binding_triple_shape_message():
+    error = bad_add_binding(
+        ValueError,
+        with_add_entry("ffn_residual", BindingEntry(add_kernel(), ((1, 8, 8),))),
+    )
+    assert str(error) == "ffn_residual: a shape has 3 members, not 2"
+    error = bad_add_binding(
+        TypeError,
+        with_add_entry("ffn_residual", BindingEntry(add_kernel(), ([1, 8],))),
+    )
+    assert str(error) == "ffn_residual: a shape is not a tuple (m, n)"
+
+
+def test_check_elementwise_add_binding_overlapping_entries():
+    error = bad_add_binding(
+        ValueError,
+        with_add_entry(
+            "attention_residual",
+            BindingEntry(add_kernel(), ((1, 8), (3, 8))),
+            BindingEntry(add_kernel(), ((3, 8),)),
+        ),
+    )
+    assert str(error) == "attention_residual: two entries cover the shape (3, 8)"
+
+
+def test_check_elementwise_add_binding_every_beside_another_entry():
+    for entries in (
+        (BindingEntry(add_kernel(), ((5, 8),)), BindingEntry(add_kernel(), "every")),
+        (BindingEntry(add_kernel(), "every"), BindingEntry(add_kernel(), "every")),
+    ):
+        error = bad_add_binding(ValueError, with_add_entry("ffn_residual", *entries))
+        assert "'every' entry overlaps" in str(error)
+
+
+def test_check_elementwise_add_malformed_binding_refused_even_with_invalid_input():
+    binding = with_add_entry(
+        "ffn_residual",
+        BindingEntry(add_kernel(), "every"),
+        BindingEntry(add_kernel(), "every"),
+    )
+    raises(ValueError, "binding", run_add, binding, prompt_length=0, dtype="fp32")
+
+
+def test_check_elementwise_add_does_not_modify_arguments():
+    binding = add_binding()
+    binding["attention_residual"] = [
+        BindingEntry(add_kernel(), add_shapes((1,))),
+        BindingEntry(add_kernel(), add_shapes((3,))),
+    ]
+    binding["ffn_residual"] = [
+        BindingEntry(add_kernel(contract={"language": "c"}), "every")
+    ]
+    before = copy.deepcopy(binding)
+    for dtype in ("bf16", "fp32"):
+        run_add(binding, dtype=dtype)
+    run_add(binding, prompt_length=0)
+    assert binding == before
+
+
+def test_check_and_check_rmsnorm_refuse_an_elementwise_add_call_site_key():
+    for site in ELEMENTWISE_ADD_CALL_SITES:
+        binding = every_binding()
+        binding[site] = [BindingEntry(add_kernel(), "every")]
+        error = bad_binding(ValueError, binding)
+        assert str(CALL_SITES) in str(error)
+        binding = norm_binding()
+        binding[site] = [BindingEntry(add_kernel(), "every")]
+        error = bad_norm_binding(ValueError, binding)
+        assert str(RMSNORM_CALL_SITES) in str(error)
+
+
+def test_check_rmsnorm_refuses_an_elementwise_add_kernel():
+    binding = norm_binding()
+    binding["norm"] = [BindingEntry(add_kernel(), "every")]
+    (outcome,) = run_norm(binding).outcomes
+    assert outcome == Outcome(
+        "kernel_unfit",
+        "norm",
+        None,
+        "entry 0: contract.prototype is not that of the bf16 rmsnorm contract",
+    )
