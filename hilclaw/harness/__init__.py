@@ -17,5 +17,7 @@ array side of the bf16 verification run of ADR-0163
 (:mod:`hilclaw.harness.bf16_verification_arrays`), these last three being the
 three modules that import ``numpy``, and nothing else of the harness. The C
 sources of that bf16 run are its shared header (``bf16_verification.h``) and
-its verification program for ``gemm`` (``bf16_verification_gemm.c``).
+its four verification programs, one per kind, which include it
+(``bf16_verification_gemm.c``, ``bf16_verification_rmsnorm.c``,
+``bf16_verification_elementwise_add.c`` and ``bf16_verification_swiglu.c``).
 """
