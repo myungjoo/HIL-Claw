@@ -20,17 +20,17 @@ Generator. With all arithmetic on unsigned 64-bit integers modulo 2**64, and
                  the result is x ^ (x >> 31)
     base(d)    = mix(seed + (d + 1) * G)
     word(d, e) = mix(base(d) + (e + 1) * G)    element e = 0 .. F + S - 1
-    r(d, e)    = word(d, e) >> (64 - b)
-    b = 8:  pattern = 0x3F00 | (r & 0x7F) | ((r >> 7) << 15)
-    b = 10: pattern = (0x3F00 + (r & 0x1FF)) | ((r >> 9) << 15)
+    r(d, e)    = word(d, e) >> (64 - bits)
+    bits = 8:  pattern = 0x3F00 | (r & 0x7F) | ((r >> 7) << 15)
+    bits = 10: pattern = (0x3F00 + (r & 0x1FF)) | ((r >> 9) << 15)
 
 The elements of draw ``d`` form one sequence: the F elements of the first
 operand in row-major order, then the S elements of the second (``gemm``:
 ``a`` (m, k) then ``b`` (k, n); ``rmsnorm``: ``x`` (m, n) then ``w`` (n);
 ``elementwise_add``: ``a`` then ``b``, both (m, n); ``swiglu``: ``gate`` then
-``up``, both (m, n)). ``b`` is 10 for ``gate`` and 8 for every other operand,
-and ``pattern`` is the ``uint16_t`` bf16 bit pattern of the element in the
-byte order of the host; the pattern of index ``r`` is element ``r`` of the
+``up``, both (m, n)). ``bits`` is 10 for ``gate`` and 8 for every other
+operand, and ``pattern`` is the ``uint16_t`` bf16 bit pattern of the
+element in the byte order of the host; the pattern of index ``r`` is element ``r`` of the
 contract module's tuple. Changing anything in this paragraph or the one above
 changes the contract of the verification programs, which must reproduce it
 bit for bit. The check value of a draw is ``zlib.crc32`` of the bytes of the
@@ -47,7 +47,9 @@ module reuses, with these differences:
 - An array argument is a ``uint16`` pattern array, except ``expected``, which
   is ``float64``; it has the number of dimensions the function names (``w``
   of ``rmsnorm`` has one), none of them 0, in the byte order of the host.
-- The two operands of a draw are views of one buffer and do not overlap.
+- :func:`draw_inputs` works on whole arrays without chunks: its peak is under
+  48 bytes for each element of the two operands, of which 2 are returned.
+  The two operands are views of one buffer and do not overlap.
 
 What this module does not do: it starts no process and builds nothing; it does
 not split or read a report, decide completed or broken, or give a verdict over
@@ -185,6 +187,10 @@ def count_failures(output, expected, *, rtol, atol):
     """
     check_tolerance(rtol, atol)
     _array("output", output, np.uint16, (2,))
+    _array("expected", expected, np.float64, (2,))
+    if output.shape != expected.shape:
+        rule = f"of the shape of expected, {expected.shape}"
+        _fail("output", rule, f"shape {output.shape}")
     return _count_failures(_widened(output), expected, rtol=rtol, atol=atol)
 
 

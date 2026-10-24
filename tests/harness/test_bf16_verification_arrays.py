@@ -464,9 +464,12 @@ def test_reference_of_swiglu_uses_float64_exp():
 
     result = reference("swiglu", gate, up)
 
-    for j, (g, u) in enumerate(((-7.5, 0.75), (0.5, -0.5), (7.96875, 0.99609375))):
-        assert result[0, j] == g / (1 + math.exp(-g)) * u
-    g32, u32 = widen(gate).astype(np.float32), widen(up).astype(np.float32)
+    pairs = ((-7.5, 0.75), (0.5, -0.5), (7.96875, 0.99609375))
+    g64, u64 = f64([[g for g, _ in pairs]]), f64([[u for _, u in pairs]])
+    assert result.tolist() == (g64 / (1 + np.exp(-g64)) * u64).tolist()
+    for j, (g, u) in enumerate(pairs):
+        assert result[0, j] == pytest.approx(g / (1 + math.exp(-g)) * u, rel=1e-15)
+    g32, u32 = g64.astype(np.float32), u64.astype(np.float32)
     assert (g32 / (1 + np.exp(-g32)) * u32).astype(
         np.float64
     ).tolist() != result.tolist()
