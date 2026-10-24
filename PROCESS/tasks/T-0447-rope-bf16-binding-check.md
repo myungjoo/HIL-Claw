@@ -136,3 +136,16 @@ hq: []
 
 ## Result
 
+- **Outcome**: DONE. PR #264 (squash-merged; the merge commit is the one with the trailer `Task: T-0447` on `main`). Review: 2 rounds, Approve (round 1 Approve with two nits and one note; round 2 on the added `## Result`).
+- **Language**: Python, the host side of the executor is Python (ADR-0153 decision 2).
+- **Changes**:
+  - `hilclaw/model_binding.py`: `ROPE_CALL_SITES`, `ROPE_DTYPES`, `rope_shape`, `rope_generation_calls`, `check_rope`; the private `_check_rope_dimensions` (an odd `head_dim` refused with `parameter` `"dimensions"`, in the RoPE functions only); `_check_rows` takes `members` (default `("m", "n")`) and `reference_shape` (default `(1, 1)`), RoPE passes `("m", "h", "d")` and `(1, 1, 2)`; `contract.task_contract` is still looked up at call time. Module docstring and the docstrings of `ModelDimensions`, `BindingEntry`, `Outcome`, `BindingCheck`, `check_rmsnorm`, `check_elementwise_add` and `check_swiglu` updated. The text holds no `rope_table`.
+  - `tests/test_model_binding.py`: imports and new tests only (no existing line changed): the criterion 6 cases, plus odd-`head_dim` regression guards for `check_dimensions`, `check`, `check_rmsnorm`, `check_elementwise_add` and `check_swiglu`, and the refusal of `rope_q`/`rope_k` keys and of a rope kernel by the other checks.
+  - `tests/test_rope_bf16_contract.py`: the binder test renamed to `test_module_imports_keys_only_and_is_bound_by_the_model_binding_only` in the SwiGLU form.
+- **Gates**: `ruff check` and `ruff format --check` clean; full `pytest` 29110 passed, 949 skipped; coverage of `hilclaw/` 97% lines, `hilclaw/model_binding.py` 100%. Size outside tests: about 220 changed lines in one file (under the D4 cap).
+- **Record sentences now less exact (not edited)**:
+  - ADR-0153 decision 3, "future contract records": the rope contract record now exists and is bound by this check.
+  - ADR-0157 decision 4: the range of the model's dtype per kind now also covers `rope` (`bf16` only); the decision's text names only the kinds known when it was written.
+  - ADR-0161 Consequences, the code slice list: the item "the binding check in `hilclaw/model_binding.py` with `rope_q`, `rope_k` ..." is now done.
+  - ADR-0160 Boundaries, "the other two kinds — RoPE and SDPA": only SDPA is now without a binding check (already listed by ADR-0161 as less exact).
+- **Follow-ups**: none from this task beyond the planner note above (the SDPA with KV cache contract record next). Reviewer nit kept as is: `check_rope` validates `dimensions` more than once (harmless, same pattern as the other checks).
