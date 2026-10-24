@@ -26,7 +26,8 @@
  *     bits = 10: pattern = (0x3F00 + (r & 0x1FF)) | ((r >> 9) << 15)
  *
  * The elements of a draw form one sequence: the first operand in its memory
- * order, then the second. pattern is the uint16_t bf16 bit pattern of the
+ * order, then the second. bits is 8 or 10 (the index width of the operand
+ * in ADR-0163 decision 4). pattern is the uint16_t bf16 bit pattern of the
  * element, in the byte order of the host.
  *
  * Check value of a draw: the CRC-32 that zlib.crc32 computes (reflected
@@ -55,7 +56,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
 #if SIZE_MAX > UINT64_MAX

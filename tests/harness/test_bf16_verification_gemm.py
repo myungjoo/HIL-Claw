@@ -372,6 +372,8 @@ def test_arguments_are_passed_and_output_is_filled_before_every_call(executable)
 def test_dimensions_reach_the_kernel(executable, shape):
     m, k, n = shape
     run = verify(executable("dimensions"), m, k, n, 2, 7)
+    assert run.timed_out is False
+    assert run.returncode == 0, run
     expected = [m, k, n] + [0] * (m * n - 3)
     for _, block in split(run.stdout, m, n, 2):
         assert block.tolist() == expected
