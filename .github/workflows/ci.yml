@@ -99,7 +99,7 @@ jobs:
         shell: bash
         run: |
           report="$RUNNER_TEMP/calibration.xml"
-          python -m pytest tests/harness/test_calibration.py -rs --junitxml="$report"
+          python -m pytest tests/harness/test_calibration.py tests/harness/test_bf16_calibration.py -rs --junitxml="$report"
           python - "$report" <<'EOF'
           import sys
           import xml.etree.ElementTree as ET
