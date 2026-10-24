@@ -2,7 +2,7 @@
 id: T-0318
 title: Record an ADR on the distribution of injected and system hypotheses across rounds and candidates (OD-30, "주입 가설과 시스템이 세운 가설의 배분")
 phase: P1
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [FR-15, FR-17, FR-11, OD-30, S11]
 dependsOn: []
