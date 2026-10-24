@@ -1,14 +1,18 @@
 import copy
 import inspect
+import math
+import struct
 from pathlib import Path
 
 import pytest
 
-from hilclaw import gemm_bf16_contract, gemm_contract
+from hilclaw import gemm_bf16_contract, gemm_contract, rmsnorm_bf16_contract
 from hilclaw.keys import MAX_INTEGER
 from hilclaw.model_binding import (
     CALL_SITES,
     DTYPES,
+    RMSNORM_CALL_SITES,
+    RMSNORM_DTYPES,
     BindingCheck,
     BindingEntry,
     KernelReference,
@@ -16,8 +20,12 @@ from hilclaw.model_binding import (
     Outcome,
     check,
     check_dimensions,
+    check_rmsnorm,
     gemm_shape,
     generation_calls,
+    rmsnorm_eps,
+    rmsnorm_generation_calls,
+    rmsnorm_shape,
 )
 
 SMALL = ModelDimensions(
@@ -837,3 +845,689 @@ def test_check_dtype_of_32_characters_is_a_name():
     name = "a" * 32
     reason = f"dtype: no gemm contract is known at the dtype {name!r}"
     assert run(dtype=name).outcomes == invalid(reason)
+
+
+def test_check_refuses_an_rmsnorm_call_site_key_and_a_pair_shape():
+    for site in RMSNORM_CALL_SITES:
+        binding = every_binding()
+        binding[site] = [BindingEntry(norm_kernel(), "every")]
+        bad_binding(ValueError, binding)
+    error = bad_binding(ValueError, with_entry("o", BindingEntry(kernel(), ((1, 8),))))
+    assert "not 3" in str(error)
+
+
+def test_rmsnorm_call_sites():
+    assert RMSNORM_CALL_SITES == ("attention_norm", "ffn_norm", "norm")
+    assert not set(RMSNORM_CALL_SITES) & set(CALL_SITES)
+
+
+def test_rmsnorm_dtypes():
+    assert RMSNORM_DTYPES == ("bf16",)
+    assert RMSNORM_DTYPES == (rmsnorm_bf16_contract.DTYPE,)
+
+
+@pytest.mark.parametrize("site", RMSNORM_CALL_SITES)
+@pytest.mark.parametrize("rows", [1, 7, MAX_INTEGER])
+def test_rmsnorm_shape_small(site, rows):
+    assert rmsnorm_shape(SMALL, site, rows) == (rows, 8)
+
+
+def test_rmsnorm_shape_at_llama_values_is_the_contract_table():
+    llama = ModelDimensions(2048, 8192, 128256, 16, 32, 8, 64)
+    for site in RMSNORM_CALL_SITES:
+        shapes = tuple(rmsnorm_shape(llama, site, m) for m in (1, 32, 512))
+        assert shapes == rmsnorm_bf16_contract.SHAPES
+
+
+@pytest.mark.parametrize("site", ["qkv", "lm_head", "rmsnorm", "Norm", "", None, 3])
+def test_rmsnorm_shape_unknown_call_site(site):
+    raises(ValueError, "call_site", rmsnorm_shape, SMALL, site, 1)
+
+
+@pytest.mark.parametrize(
+    ("rows", "kind"),
+    [
+        (True, TypeError),
+        (1.0, TypeError),
+        (None, TypeError),
+        (0, ValueError),
+        (-1, ValueError),
+        (MAX_INTEGER + 1, ValueError),
+    ],
+)
+def test_rmsnorm_shape_bad_rows(rows, kind):
+    raises(kind, "rows", rmsnorm_shape, SMALL, "norm", rows)
+
+
+def test_rmsnorm_shape_argument_order():
+    raises(ValueError, "dimensions", rmsnorm_shape, SMALL._replace(hidden=0), "x", 0)
+    raises(TypeError, "dimensions", rmsnorm_shape, None, "norm", 1)
+    raises(ValueError, "call_site", rmsnorm_shape, SMALL, "qkv", 0)
+
+
+def norm_shapes(rows):
+    return tuple((r, 8) for r in rows)
+
+
+def test_rmsnorm_generation_calls_prefill_and_decode():
+    calls = rmsnorm_generation_calls(SMALL, prompt_length=5, generation_length=3)
+    assert calls == tuple((site, norm_shapes((1, 5))) for site in RMSNORM_CALL_SITES)
+
+
+def test_rmsnorm_generation_calls_one_token_has_no_decode():
+    calls = rmsnorm_generation_calls(SMALL, prompt_length=5, generation_length=1)
+    assert calls == tuple((site, norm_shapes((5,))) for site in RMSNORM_CALL_SITES)
+
+
+def test_rmsnorm_generation_calls_prompt_of_one_row():
+    calls = rmsnorm_generation_calls(SMALL, prompt_length=1, generation_length=4)
+    assert calls == tuple((site, norm_shapes((1,))) for site in RMSNORM_CALL_SITES)
+
+
+def test_rmsnorm_generation_calls_rows_match_the_gemm_passes():
+    gemm = dict(
+        generation_calls(
+            SMALL, prompt_length=6, generation_length=2, lm_head_rows="all"
+        )
+    )
+    norm = dict(rmsnorm_generation_calls(SMALL, prompt_length=6, generation_length=2))
+    assert [s[0] for s in norm["attention_norm"]] == [s[0] for s in gemm["qkv"]]
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "kind"),
+    [
+        ("prompt_length", 0, ValueError),
+        ("prompt_length", True, TypeError),
+        ("prompt_length", 2.0, TypeError),
+        ("generation_length", 0, ValueError),
+        ("generation_length", MAX_INTEGER + 1, ValueError),
+        ("generation_length", None, TypeError),
+    ],
+)
+def test_rmsnorm_generation_calls_refuses(name, value, kind):
+    arguments = {"prompt_length": 2, "generation_length": 2}
+    arguments[name] = value
+    raises(kind, name, rmsnorm_generation_calls, SMALL, **arguments)
+
+
+def test_rmsnorm_generation_calls_argument_order():
+    raises(
+        TypeError,
+        "dimensions",
+        rmsnorm_generation_calls,
+        None,
+        prompt_length=0,
+        generation_length=0,
+    )
+    raises(
+        ValueError,
+        "prompt_length",
+        rmsnorm_generation_calls,
+        SMALL,
+        prompt_length=0,
+        generation_length=None,
+    )
+
+
+def test_rmsnorm_generation_calls_lengths_are_keyword_only():
+    with pytest.raises(TypeError):
+        rmsnorm_generation_calls(SMALL, 2, 2)
+
+
+def norm_kernel(name="n", contract=_DEFAULT):
+    if contract is _DEFAULT:
+        contract = rmsnorm_bf16_contract.task_contract(3, 5)
+    return KernelReference((f"{name}.c",), contract, ("-O2",))
+
+
+def norm_binding():
+    return {
+        site: [BindingEntry(norm_kernel(site), "every")] for site in RMSNORM_CALL_SITES
+    }
+
+
+def run_norm(binding=None, **settings):
+    arguments = {"dtype": "bf16", "prompt_length": 3, "generation_length": 4}
+    arguments.update(settings)
+    binding = norm_binding() if binding is None else binding
+    return check_rmsnorm(SMALL, binding, **arguments)
+
+
+def expected_norm_calls(binding, rows):
+    return tuple(
+        (site, (r, 8), binding[site][0].kernel)
+        for site in RMSNORM_CALL_SITES
+        for r in rows
+    )
+
+
+def test_check_rmsnorm_every_binding_is_ok():
+    binding = norm_binding()
+    result = run_norm(binding)
+    assert result == BindingCheck(True, (), expected_norm_calls(binding, (1, 3)))
+    assert isinstance(result, BindingCheck)
+
+
+def test_check_rmsnorm_listed_shapes_cover_exactly():
+    binding = {
+        site: [BindingEntry(norm_kernel(site), norm_shapes((1, 3)))]
+        for site in RMSNORM_CALL_SITES
+    }
+    result = run_norm(binding)
+    assert result.ok
+    assert result.calls == expected_norm_calls(binding, (1, 3))
+
+
+def test_check_rmsnorm_listed_shape_other_than_the_spec_own():
+    spec_own = rmsnorm_bf16_contract.task_contract(512, 2048)
+    binding = {
+        site: [BindingEntry(norm_kernel(site, spec_own), norm_shapes((1, 3, 7)))]
+        for site in RMSNORM_CALL_SITES
+    }
+    result = run_norm(binding)
+    assert result.ok
+    assert result.calls == expected_norm_calls(binding, (1, 3))
+
+
+def test_check_rmsnorm_several_entries_disjoint_shapes():
+    binding = norm_binding()
+    decode = norm_kernel("decode")
+    prefill = norm_kernel("prefill")
+    binding["ffn_norm"] = (
+        BindingEntry(decode, norm_shapes((1,))),
+        BindingEntry(prefill, norm_shapes((3, 9))),
+    )
+    result = run_norm(binding)
+    assert result.ok
+    assert [call[0] for call in result.calls] == [
+        site for site in RMSNORM_CALL_SITES for _ in (1, 3)
+    ]
+    ffn = [call for call in result.calls if call[0] == "ffn_norm"]
+    assert ffn == [("ffn_norm", (1, 8), decode), ("ffn_norm", (3, 8), prefill)]
+
+
+def test_check_rmsnorm_generation_length_one():
+    result = run_norm(generation_length=1)
+    assert result.ok
+    assert [call[1] for call in result.calls] == [(3, 8)] * len(RMSNORM_CALL_SITES)
+
+
+def test_check_rmsnorm_accepts_path_sources():
+    binding = norm_binding()
+    contract = rmsnorm_bf16_contract.task_contract(1, 1)
+    reference = KernelReference((Path("a.c"), "b.c"), contract, ())
+    binding["norm"] = [BindingEntry(reference, "every")]
+    assert run_norm(binding).ok
+
+
+@pytest.mark.parametrize("unknown", ["fp32", "fp16", "int8"])
+def test_check_rmsnorm_unknown_dtype_is_invalid_input(unknown):
+    reason = f"dtype: no rmsnorm contract is known at the dtype {unknown!r}"
+    assert run_norm(dtype=unknown) == BindingCheck(False, invalid(reason), ())
+    assert unknown in reason and "rmsnorm" in reason
+
+
+@pytest.mark.parametrize("unknown", ["fp32", "fp16"])
+def test_check_rmsnorm_unknown_dtype_gives_no_unfit_and_no_kernel(unknown):
+    reason = f"dtype: no rmsnorm contract is known at the dtype {unknown!r}"
+    binding = norm_binding()
+    binding["attention_norm"] = [BindingEntry(norm_kernel(contract={}), "every")]
+    del binding["ffn_norm"]
+    binding["norm"] = [BindingEntry(norm_kernel(), norm_shapes((3,)))]
+    assert run_norm(binding, dtype=unknown) == BindingCheck(False, invalid(reason), ())
+
+
+def test_check_rmsnorm_invalid_lengths():
+    assert run_norm(prompt_length=0).outcomes == invalid(
+        "prompt_length: must be from 1 to 2**53 - 1, got 0"
+    )
+    assert run_norm(generation_length=MAX_INTEGER + 1).outcomes == invalid(
+        f"generation_length: must be from 1 to 2**53 - 1, got {MAX_INTEGER + 1}"
+    )
+    assert run_norm(prompt_length=-2).calls == ()
+
+
+def test_check_rmsnorm_invalid_input_order_and_no_shape_check():
+    binding = norm_binding()
+    del binding["ffn_norm"]
+    binding["norm"] = [BindingEntry(norm_kernel(contract=None), "every")]
+    result = run_norm(binding, prompt_length=0, generation_length=-1)
+    assert [(o.kind, o.call_site) for o in result.outcomes] == [
+        ("invalid_input", None),
+        ("invalid_input", None),
+        ("kernel_unfit", "norm"),
+    ]
+    assert result.outcomes[0].reason.startswith("prompt_length:")
+    assert result.outcomes[1].reason.startswith("generation_length:")
+    assert result.calls == ()
+    result = run_norm(binding, dtype="fp16", prompt_length=0, generation_length=0)
+    assert [o.reason.split(":")[0] for o in result.outcomes] == [
+        "dtype",
+        "prompt_length",
+        "generation_length",
+    ]
+    assert {o.kind for o in result.outcomes} == {"invalid_input"}
+
+
+def test_check_rmsnorm_missing_call_site():
+    binding = norm_binding()
+    del binding["attention_norm"]
+    result = run_norm(binding)
+    assert result == BindingCheck(
+        False,
+        tuple(
+            Outcome(
+                "no_kernel",
+                "attention_norm",
+                shape,
+                "no entry of the binding covers the shape",
+            )
+            for shape in norm_shapes((1, 3))
+        ),
+        (),
+    )
+
+
+def test_check_rmsnorm_unlisted_shape():
+    binding = norm_binding()
+    binding["norm"] = [BindingEntry(norm_kernel(), norm_shapes((3,)))]
+    result = run_norm(binding)
+    assert [(o.kind, o.call_site, o.shape) for o in result.outcomes] == [
+        ("no_kernel", "norm", (1, 8))
+    ]
+    assert run_norm({}).outcomes == tuple(
+        Outcome("no_kernel", site, shape, "no entry of the binding covers the shape")
+        for site in RMSNORM_CALL_SITES
+        for shape in norm_shapes((1, 3))
+    )
+
+
+def norm_unfit_reason(contract):
+    binding = norm_binding()
+    binding["ffn_norm"] = [BindingEntry(norm_kernel(contract=contract), "every")]
+    result = run_norm(binding)
+    assert not result.ok and result.calls == ()
+    (outcome,) = result.outcomes
+    assert outcome.kind == "kernel_unfit"
+    assert outcome.call_site == "ffn_norm" and outcome.shape is None
+    assert outcome.reason.startswith("entry 0: ")
+    return outcome.reason
+
+
+def good_norm_contract():
+    return rmsnorm_bf16_contract.task_contract(2, 4)
+
+
+@pytest.mark.parametrize("dtype", ["bf16", "fp32"])
+def test_check_rmsnorm_gemm_kernel_is_unfit(dtype):
+    reason = norm_unfit_reason(CONTRACTS[dtype].task_contract(2, 4, 4))
+    assert reason == (
+        "entry 0: contract.prototype is not that of the bf16 rmsnorm contract"
+    )
+
+
+def test_check_rmsnorm_unfit_wrong_prototype():
+    contract = good_norm_contract()
+    contract["prototype"] = contract["prototype"].replace("float eps, ", "")
+    assert norm_unfit_reason(contract) == (
+        "entry 0: contract.prototype is not that of the bf16 rmsnorm contract"
+    )
+
+
+def test_check_rmsnorm_unfit_wrong_language():
+    contract = good_norm_contract()
+    contract["language"] = "cpp"
+    assert norm_unfit_reason(contract) == (
+        "entry 0: contract.language is not that of the bf16 rmsnorm contract"
+    )
+
+
+@pytest.mark.parametrize(
+    ("index", "member", "value"),
+    [
+        (0, "name", "a"),
+        (1, "name", "x"),
+        (1, "role", "output"),
+        (2, "role", "input"),
+        (0, "dtype", "fp32"),
+        (2, "dtype", "fp16"),
+        (1, "dtype", None),
+    ],
+)
+def test_check_rmsnorm_unfit_wrong_operand(index, member, value):
+    contract = good_norm_contract()
+    contract["operands"][index][member] = value
+    assert norm_unfit_reason(contract) == (
+        f"entry 0: contract.operands[{index}].{member} is not that of the bf16 "
+        "rmsnorm contract"
+    )
+
+
+@pytest.mark.parametrize("contract", [None, "c", ["language"], 3])
+def test_check_rmsnorm_unfit_non_mapping(contract):
+    assert "not a mapping" in norm_unfit_reason(contract)
+
+
+@pytest.mark.parametrize("member", ["language", "prototype", "operands"])
+def test_check_rmsnorm_unfit_missing_member(member):
+    contract = good_norm_contract()
+    del contract[member]
+    assert repr(member) in norm_unfit_reason(contract)
+
+
+def test_check_rmsnorm_unfit_operands_forms():
+    contract = good_norm_contract()
+    contract["operands"] = "xwy"
+    assert "not a sequence" in norm_unfit_reason(contract)
+    contract["operands"] = good_norm_contract()["operands"][:2]
+    assert "2 entries, not 3" in norm_unfit_reason(contract)
+    contract["operands"] = [*good_norm_contract()["operands"], {}]
+    assert "4 entries, not 3" in norm_unfit_reason(contract)
+    contract["operands"] = [*good_norm_contract()["operands"][:2], None]
+    assert "operands[2] is not a mapping" in norm_unfit_reason(contract)
+    contract["operands"] = good_norm_contract()["operands"]
+    del contract["operands"][1]["role"]
+    assert "operands[1] lacks the member 'role'" in norm_unfit_reason(contract)
+
+
+def test_check_rmsnorm_fit_ignores_operand_shapes_and_extra_members():
+    contract = good_norm_contract()
+    contract["operands"][1]["shape"] = [99, 99]
+    contract["operands"][2]["note"] = "x"
+    contract["note"] = "x"
+    binding = norm_binding()
+    binding["ffn_norm"] = [BindingEntry(norm_kernel(contract=contract), "every")]
+    assert run_norm(binding).ok
+
+
+def test_check_rmsnorm_reference_comes_from_the_contract_module(monkeypatch):
+    binding = norm_binding()
+    changed = good_norm_contract()
+    changed["prototype"] = "void other(void);"
+    monkeypatch.setattr(
+        rmsnorm_bf16_contract, "task_contract", lambda m, n: copy.deepcopy(changed)
+    )
+    result = run_norm(binding)
+    assert [(o.kind, o.call_site) for o in result.outcomes] == [
+        ("kernel_unfit", site) for site in RMSNORM_CALL_SITES
+    ]
+    binding = {
+        site: [BindingEntry(norm_kernel(contract=changed), "every")]
+        for site in RMSNORM_CALL_SITES
+    }
+    assert run_norm(binding).ok
+
+
+def test_check_rmsnorm_outcome_order():
+    binding = norm_binding()
+    binding["attention_norm"] = [
+        BindingEntry(norm_kernel(), norm_shapes((3,))),
+        BindingEntry(norm_kernel(contract={}), norm_shapes((7,))),
+    ]
+    del binding["ffn_norm"]
+    binding["norm"] = [BindingEntry(norm_kernel(contract=None), "every")]
+    result = run_norm(binding)
+    assert [(o.kind, o.call_site, o.shape) for o in result.outcomes] == [
+        ("kernel_unfit", "attention_norm", None),
+        ("no_kernel", "attention_norm", (1, 8)),
+        ("no_kernel", "ffn_norm", (1, 8)),
+        ("no_kernel", "ffn_norm", (3, 8)),
+        ("kernel_unfit", "norm", None),
+    ]
+    assert result.outcomes[0].reason.startswith("entry 1: ")
+
+
+def test_check_rmsnorm_arguments_are_keyword_only_without_default():
+    for name in ("dtype", "prompt_length", "generation_length"):
+        parameter = inspect.signature(check_rmsnorm).parameters[name]
+        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameter.default is inspect.Parameter.empty
+    with pytest.raises(TypeError, match="dtype"):
+        check_rmsnorm(SMALL, norm_binding(), prompt_length=1, generation_length=1)
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "kind"),
+    [
+        ("dtype", None, TypeError),
+        ("dtype", b"bf16", TypeError),
+        ("dtype", True, TypeError),
+        ("dtype", "BF16", ValueError),
+        ("dtype", "", ValueError),
+        ("dtype", "a" * 33, ValueError),
+        ("prompt_length", True, TypeError),
+        ("prompt_length", 3.0, TypeError),
+        ("prompt_length", None, TypeError),
+        ("generation_length", False, TypeError),
+        ("generation_length", "4", TypeError),
+    ],
+)
+def test_check_rmsnorm_argument_errors(name, value, kind):
+    raises(kind, name, run_norm, **{name: value})
+
+
+def test_check_rmsnorm_argument_order():
+    raises(
+        TypeError,
+        "dimensions",
+        check_rmsnorm,
+        tuple(SMALL),
+        None,
+        dtype=None,
+        prompt_length=None,
+        generation_length=None,
+    )
+    raises(
+        ValueError,
+        "dimensions",
+        check_rmsnorm,
+        SMALL._replace(hidden=0),
+        norm_binding(),
+        dtype="bf16",
+        prompt_length=1,
+        generation_length=1,
+    )
+    raises(ValueError, "dtype", run_norm, None, dtype="BF16", prompt_length=None)
+    raises(
+        TypeError,
+        "prompt_length",
+        run_norm,
+        [],
+        prompt_length=None,
+        generation_length=None,
+    )
+    raises(TypeError, "generation_length", run_norm, [], generation_length=None)
+    raises(TypeError, "binding", run_norm, [], prompt_length=0, dtype="fp32")
+
+
+def bad_norm_binding(kind, binding):
+    return raises(kind, "binding", run_norm, binding)
+
+
+def with_norm_entry(site, *entries):
+    binding = norm_binding()
+    binding[site] = list(entries)
+    return binding
+
+
+def test_check_rmsnorm_binding_not_mapping():
+    bad_norm_binding(TypeError, [("norm", [])])
+    raises(
+        TypeError,
+        "binding",
+        check_rmsnorm,
+        SMALL,
+        None,
+        dtype="bf16",
+        prompt_length=1,
+        generation_length=1,
+    )
+
+
+@pytest.mark.parametrize("key", [*CALL_SITES, "rmsnorm", "NORM", 1, None])
+def test_check_rmsnorm_binding_unknown_key(key):
+    binding = norm_binding()
+    binding[key] = [BindingEntry(norm_kernel(), "every")]
+    error = bad_norm_binding(ValueError, binding)
+    assert str(RMSNORM_CALL_SITES) in str(error)
+
+
+def test_check_rmsnorm_binding_entries_forms():
+    binding = norm_binding()
+    for entries, kind in (
+        (BindingEntry(norm_kernel(), "every"), TypeError),
+        ("every", TypeError),
+        ([], ValueError),
+        (None, TypeError),
+        ([(norm_kernel(), "every")], TypeError),
+        ([BindingEntry(("n.c",), "every")], TypeError),
+    ):
+        binding["norm"] = entries
+        bad_norm_binding(kind, binding)
+
+
+@pytest.mark.parametrize(
+    ("reference", "kind"),
+    [
+        (KernelReference([Path("n.c")], {}, ()), TypeError),
+        (KernelReference((), {}, ()), ValueError),
+        (KernelReference((b"n.c",), {}, ()), TypeError),
+        (KernelReference(("n.c",), {}, ["-O2"]), TypeError),
+        (KernelReference(("n.c",), {}, ("-O2", 3)), TypeError),
+    ],
+)
+def test_check_rmsnorm_binding_kernel_reference_refused(reference, kind):
+    bad_norm_binding(kind, with_norm_entry("norm", BindingEntry(reference, "every")))
+
+
+@pytest.mark.parametrize(
+    ("shapes", "kind"),
+    [
+        ("all", ValueError),
+        ([(1, 8)], TypeError),
+        ((), ValueError),
+        (None, TypeError),
+        (([1, 8],), TypeError),
+        (((1, 8, 8),), ValueError),
+        (((1,),), ValueError),
+        (((0, 8),), ValueError),
+        (((1, MAX_INTEGER + 1),), ValueError),
+        (((True, 8),), TypeError),
+        (((1, 8.0),), TypeError),
+    ],
+)
+def test_check_rmsnorm_binding_shapes_refused(shapes, kind):
+    bad_norm_binding(kind, with_norm_entry("norm", BindingEntry(norm_kernel(), shapes)))
+
+
+def test_check_rmsnorm_binding_triple_shape_message():
+    error = bad_norm_binding(
+        ValueError, with_norm_entry("norm", BindingEntry(norm_kernel(), ((1, 8, 8),)))
+    )
+    assert str(error) == "norm: a shape has 3 members, not 2"
+    error = bad_norm_binding(
+        TypeError, with_norm_entry("norm", BindingEntry(norm_kernel(), ([1, 8],)))
+    )
+    assert str(error) == "norm: a shape is not a tuple (m, n)"
+
+
+def test_check_rmsnorm_binding_overlapping_entries():
+    error = bad_norm_binding(
+        ValueError,
+        with_norm_entry(
+            "ffn_norm",
+            BindingEntry(norm_kernel(), ((1, 8), (3, 8))),
+            BindingEntry(norm_kernel(), ((3, 8),)),
+        ),
+    )
+    assert "(3, 8)" in str(error)
+
+
+def test_check_rmsnorm_binding_every_beside_another_entry():
+    for entries in (
+        (BindingEntry(norm_kernel(), ((5, 8),)), BindingEntry(norm_kernel(), "every")),
+        (BindingEntry(norm_kernel(), "every"), BindingEntry(norm_kernel(), "every")),
+    ):
+        bad_norm_binding(ValueError, with_norm_entry("norm", *entries))
+
+
+def test_check_rmsnorm_malformed_binding_refused_even_with_invalid_input():
+    binding = with_norm_entry(
+        "norm",
+        BindingEntry(norm_kernel(), "every"),
+        BindingEntry(norm_kernel(), "every"),
+    )
+    raises(ValueError, "binding", run_norm, binding, prompt_length=0, dtype="fp32")
+
+
+def test_check_rmsnorm_does_not_modify_arguments():
+    binding = norm_binding()
+    binding["ffn_norm"] = [
+        BindingEntry(norm_kernel(), norm_shapes((1,))),
+        BindingEntry(norm_kernel(), norm_shapes((3,))),
+    ]
+    binding["norm"] = [BindingEntry(norm_kernel(contract={"language": "c"}), "every")]
+    before = copy.deepcopy(binding)
+    for dtype in ("bf16", "fp32"):
+        run_norm(binding, dtype=dtype)
+    run_norm(binding, prompt_length=0)
+    assert binding == before
+
+
+def f32(bits):
+    return struct.unpack("<f", struct.pack("<I", bits))[0]
+
+
+def test_rmsnorm_eps_of_1e_05_is_the_contract_eps():
+    eps = rmsnorm_eps(1e-05)
+    assert eps == rmsnorm_bf16_contract.EPS
+    assert type(eps) is float
+    assert struct.unpack("<I", struct.pack("<f", eps))[0] == 0x3727C5AC
+
+
+@pytest.mark.parametrize(
+    "bits", [0x3727C5AC, 0x00000001, 0x00800000, 0x3F800000, 0x7F7FFFFF]
+)
+def test_rmsnorm_eps_of_a_binary32_value_is_unchanged(bits):
+    value = f32(bits)
+    assert rmsnorm_eps(value) == value
+
+
+def test_rmsnorm_eps_rounds_ties_to_even():
+    even, odd, next_even = f32(0x3727C5AC), f32(0x3727C5AD), f32(0x3727C5AE)
+    assert rmsnorm_eps((even + odd) / 2) == even
+    assert rmsnorm_eps((odd + next_even) / 2) == next_even
+    assert rmsnorm_eps(math.nextafter((even + odd) / 2, 1.0)) == odd
+
+
+def test_rmsnorm_eps_rounds_to_nearest_near_the_bounds():
+    smallest = f32(0x00000001)
+    assert rmsnorm_eps(smallest * 0.75) == smallest
+    largest = f32(0x7F7FFFFF)
+    assert rmsnorm_eps(math.nextafter(2.0**128 - 2.0**103, 0.0)) == largest
+
+
+@pytest.mark.parametrize("value", [True, False, 1, 0, "1e-05", None, [1e-05]])
+def test_rmsnorm_eps_refuses_types(value):
+    raises(TypeError, "eps", rmsnorm_eps, value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        0.0,
+        -0.0,
+        -1e-05,
+        math.inf,
+        -math.inf,
+        math.nan,
+        2.0**-150,
+        2.0**-151,
+        5e-324,
+        2.0**128 - 2.0**103,
+        1e300,
+    ],
+)
+def test_rmsnorm_eps_refuses_values(value):
+    raises(ValueError, "eps", rmsnorm_eps, value)
