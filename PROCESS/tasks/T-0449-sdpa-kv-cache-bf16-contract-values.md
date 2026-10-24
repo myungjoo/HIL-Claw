@@ -2,7 +2,7 @@
 id: T-0449
 title: Teach hilclaw.keys the kind sdpa_kv_cache (members m, l, h, h_kv, d) and add hilclaw/sdpa_kv_cache_bf16_contract.py - the op-side values of the bf16 SDPA with KV cache contract of ADR-0162 (constants, prototype, the four shapes, the input value set, op_signature_record, task_contract, covers) with tests (ADR-0162 code slice, first part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-5, FR-9, OD-31, OD-6, "PLAN P2-11", "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0448]
@@ -236,3 +236,11 @@ P2-10 comes after P2-5, so work goes on with P2-11 to P2-14. This task is the co
 
 ## Result
 
+- **Outcome**: DONE. PR #265 squash-merged as `6756d8c`; branch `claude/T-0449-sdpa-kv-cache-bf16-contract-values` deleted.
+- **Review**: 1 round, Approve, no findings (https://github.com/myungjoo/HIL-Claw/pull/265#issuecomment-6387299488).
+- **CI**: green on all six jobs (run 40116084446); `hilclaw/` coverage lines 99.65%, functions 100%; `keys.py` and the new module at 100% lines.
+- **Language**: Python - the module is pure data and validation over `hilclaw.keys`, like the other five bf16 contract modules.
+- **Changes**: `hilclaw/keys.py` learns kind `sdpa_kv_cache` (members m, l, h, h_kv, d; unknown-kind message updated); new `hilclaw/sdpa_kv_cache_bf16_contract.py` (constants, prototype, 4 shapes, 256 input patterns, `op_signature_record`, `task_contract` with `inout` caches `[l, h_kv, d]`, `covers`, cross rules `l >= m` and `h % h_kv == 0`); tests in `tests/test_keys.py` and new `tests/test_sdpa_kv_cache_bf16_contract.py`.
+- **Criterion 7**: no code change needed; existing consumers refuse the new kind via `covers` returning False (tested), no `KeyError` path.
+- **Less exact, not edited**: ADR-0031 lines 21 and 98 (list of known kinds); ADR-0162 Consequences "A-13 reading" ("`hilclaw/` is not touched").
+- **Follow-ups**: the `sdpa` binding check in `hilclaw/model_binding.py` (planner follow-up above).
