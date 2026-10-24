@@ -2,7 +2,7 @@
 id: T-0446
 title: Add hilclaw/rope_table.py - the host-side builder of the RoPE frequency table of ADR-0161 decision 4 (the scaled frequencies g(i) and the cos/sin table with correctly rounded binary32 entries, every constant an input with no default) with tests (ADR-0161 code slice, second part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, "PLAN P2-11", "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0444, T-0445]
@@ -154,3 +154,15 @@ hq: []
 - (planner) Next part of the ADR-0161 code slice: the bf16 RoPE binding check in `hilclaw/model_binding.py` with `rope_q` and `rope_k`, in the pattern of T-0443 (that part also adjusts `tests/test_rope_bf16_contract.py`'s "named by no other module" test for the binder). After that, the SDPA with KV cache contract record (doc).
 
 ## Result
+
+- **Outcome**: DONE. PR #263 squash-merged as `4c3dac5` (branch deleted). Adds `hilclaw/rope_table.py` and `tests/test_rope_table.py`; no other file changed.
+- **Review**: 2 rounds, both Approve; round 1 nit (a test patched `numpy.empty` globally) fixed by stubbing only the module's `numpy` reference.
+- **CI**: green; coverage gate reports `hilclaw/rope_table.py` 100% lines, `hilclaw/` 99%; test-presence check passes.
+- **Local gates**: `ruff check`/`ruff format` clean; full local suite 28958 passed, 949 skipped (round 1 test file; round 2 touched only that file, re-run alone and passed).
+- **Language**: Python - host-side array work with `numpy` and exact arithmetic with `decimal` and integers (ADR-0153 decision 2). No new dependency.
+- **Method**: `decimal` interval arithmetic up to the reduced angle (outward rounding, `ln`/`exp` widened by one ulp, pi from Machin's formula in integers); cos/sin from a series with error bound 100*M*10^(1-P); each value rounded once to binary32, ties to even; an undecided entry is recomputed at twice the precision.
+- **Known limit** (in the docstring): for the middle band no theorem rules out an exact rounding midpoint, so the recompute loop is not proven to terminate there.
+- **Fixed values**: all twelve bit patterns matched the module, an independent 70-digit reference and a float64 cross-check.
+- **Speed**: `build(positions=2048, head_dim=64, ...)` with Meta's constants ~2 s; the test file runs in ~7-21 s (module-scoped fixtures).
+- **Less exact, not edited**: ADR-0153 decision 3 (b) ("who computes it, and in what precision") is now answered in code by this module.
+- **Follow-ups**: none new. The next slice part (RoPE binding check in `hilclaw/model_binding.py` for `rope_q`/`rope_k`) must adjust `test_the_module_is_named_by_no_other_module` in `tests/test_rope_table.py` if it imports `rope_table`.
