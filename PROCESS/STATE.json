@@ -285,7 +285,9 @@
       "reason": "owner-only-decision",
       "question": "Must every hypothesis injected at instance start be tested during the run? Owner point 4 of #5 issuecomment-6136462569 and FR-15 read either as sameness only or as a duty to test. Options: (a) sameness only - testing each injected input is the selection's judgement; (b) test each written hypothesis once during the run at a round the selection chooses, untested-at-end is a shortfall the files show, not a fault; (c) as (b) with a pace - each round from round 1 tests at least one untested one. Draft ADR-0112 on branch claude/T-0318-od30-injected-system-distribution decides the rest (a system hypothesis every round, no fixed order/ratio, mixing allowed).",
       "askedAt": "2026-10-18T21:40:28Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6255484182"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6255484182",
+      "resolvedAt": "2026-10-24T09:51:44Z",
+      "decision": "(c) - 오너(채팅, 2026-10-24): 각 주입 가설을 run 중 한 번 시험하고, 라운드 1부터 매 라운드 아직 시험되지 않은 주입 가설을 하나 이상 시험한다. 끝까지 시험되지 않은 것은 결함이 아니라 파일이 보여 주는 부족분이다. 오너 주: 이 의무는 직접 쓴 가설(`injections`의 kind `hypothesis`)에만 적용하고, 자료(`material`)에서의 가설 도출은 의무 밖이다(OD-30 잔여)."
     },
     {
       "id": "HQ-0032",
