@@ -2,7 +2,7 @@
 id: T-0437
 title: Add the RMSNorm call sites to hilclaw/model_binding.py - their shapes over a generation, a binding check with fit against the bf16 RMSNorm contract and "every shape" accepted (ADR-0158 decision 7), the dtype range of ADR-0157 decision 4, and the model eps as its nearest binary32 value - with tests (ADR-0158 code slice, second part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-11", "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0436]
@@ -130,3 +130,10 @@ hq: []
 - (planner) After this task, the next pieces toward P2-13 and P2-14 are the contract ADRs of the remaining four kinds (elementwise add, SwiGLU activation, RoPE, SDPA with KV cache; one record each, ADR-0158 Boundaries), then their code slices; the hand-written bf16 RMSNorm kernel fixtures and the math-library link question (HQ-0033) come with the model program's RMSNorm call.
 
 ## Result
+
+- **Outcome**: DONE. PR #257 squash-merged as `37d63b7` (branch `claude/T-0437-rmsnorm-bf16-binding-check` deleted; squash message ends with `Task: T-0437`). Review: 1 round, Approve (three non-blocking notes, all answered here; no code change needed). CI green on all jobs (Python 3.11/3.14, Coverage, Test presence, C, sh).
+- **Language**: Python, as the host side of the executor is Python (ADR-0153 decision 2).
+- **Changes**: `hilclaw/model_binding.py` adds `RMSNORM_CALL_SITES`, `RMSNORM_DTYPES`, `rmsnorm_shape`, `rmsnorm_generation_calls`, `check_rmsnorm` and `rmsnorm_eps`; the fit comparison, per-call-site loop and entry validation became private helpers shared by both checks. `check`, `gemm_shape`, `generation_calls`, `CALL_SITES`, `DTYPES` and existing messages are unchanged; `hilclaw/model_gemm.py` not edited. Tests: new cases in `tests/test_model_binding.py` (happy/error/branch/negative for every new public name); `tests/test_rmsnorm_bf16_contract.py` binder test renamed. Local: 27789 passed, 949 skipped; `model_binding.py` 100%, `hilclaw/` 97%.
+- **Size**: `model_binding.py` diff +246/-55 = 301 lines, one over the D4 cap (mostly docstrings required by criterion 5); not split.
+- **Record sentences now less exact (not edited, criterion 9)**: ADR-0153 decision 3 ("through the prototypes of their future contract records" - the rmsnorm record and its check now exist); ADR-0157 decision 4 ("With the GEMM call sites only ... {fp32, bf16}" - RMSNorm call sites now have their own range {bf16}, checked separately until the full pass joins the checks).
+- **Follow-ups**: none new; the planner follow-up above stands.
