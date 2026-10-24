@@ -2,7 +2,7 @@
 id: T-0439
 title: Teach hilclaw.keys the kind elementwise_add (members m, n) and add hilclaw/elementwise_add_bf16_contract.py - the op-side values of the bf16 elementwise add contract of ADR-0159 (constants, prototype, shapes, input patterns, op_signature_record, task_contract, covers) with tests (ADR-0159 code slice, first part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-5, FR-9, OD-31, OD-6, "PLAN P2-11", "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0438]
@@ -157,3 +157,17 @@ P2-10 comes after P2-5. So the work goes on with P2-11 to P2-14. This task is th
 - (planner) Next part of the ADR-0159 code slice: the elementwise add binding check in `hilclaw/model_binding.py` with the call sites `attention_residual` and `ffn_residual` (ADR-0159 decision 12, including the operands each passes), their shapes (rows x hidden) and the "every shape" binding, in the pattern of T-0437. After that, the SwiGLU activation contract record (doc), then RoPE and SDPA with KV cache.
 
 ## Result
+
+- **Outcome**: DONE. PR #258 squash-merged as `03b64cb` (branch `claude/T-0439-elementwise-add-bf16-contract-values` deleted).
+- **Review**: 2 rounds. Round 1: Approve with 2 Info (criterion 9 "less exact ADR text" note added to the PR body; CI pending at review time, then green). Round 2: Approve, no findings.
+- **CI**: green on all six jobs (C gate, Coverage gate, Python gate 3.11/3.14, Test presence, sh gate; run 40074724675).
+- **Language**: Python - pure data and validation over `hilclaw.keys`, as its GEMM and RMSNorm counterparts.
+- **Changes**:
+  - `hilclaw/keys.py`: `_SHAPE_MEMBERS` gains `elementwise_add` with `m`, `n`; the `op_signature_key` docstring names all three kinds; the unknown-kind message reads `kind: must be a known kind: elementwise_add, gemm, rmsnorm, got ...`.
+  - New `hilclaw/elementwise_add_bf16_contract.py`: `KIND`, `DTYPE`, `LAYOUT`, `LANGUAGE`, `PROTOTYPE`, `SHAPES`, `INPUT_PATTERNS`, `op_signature_record`, `task_contract`, `covers`. No `EPS`, generator, seed, tolerance or binding. Private helpers and the 256 patterns duplicate those of the RMSNorm contract module on purpose (commit body says so).
+  - `tests/test_keys.py`: only the two expected unknown-kind messages changed (second test renamed `test_unknown_kind_message_lists_all_known_kinds`); new `elementwise_add` cases (accepted record, ADR-0159 canonical line, sha256 and name `elementwise_add-1af54bf2a0744c69`, member set, gemm/rmsnorm member sets unchanged).
+  - New `tests/test_elementwise_add_bf16_contract.py`.
+- **Local gates**: ruff check/format clean; full pytest 27977 passed, 949 skipped; `hilclaw/` line coverage 97% (`keys.py` and the new module 100%).
+- **Criterion 7**: `keys.op_signature_key` now accepts the record, so `spec.validate`, `instance.py`, `key_records`/`key_store_tool` and `case_lookup`/`case_tool` treat it as valid. `spec_tool`, `instance_start`/`start_instance`, `run_admission`/`check_admission` with `gemm_contract.covers` now refuse it as `KIND_OP_SIGNATURE_NOT_COVERED` (they read `shape["k"]` only after `covers` returns True). The `covers` of the gemm, gemm_bf16 and rmsnorm_bf16 contracts return False instead of raising. `model_binding.py` does not rely on the key check refusing the kind. No code change was needed.
+- **Less exact, not edited**: ADR-0031 lines 21 and 98 ("`hilclaw.keys` knows `gemm` only"); ADR-0159 Consequences ("`hilclaw/` is not touched"; teaching `hilclaw.keys` the kind "is a later code slice").
+- **Follow-ups**: none new beyond the planner follow-up: the elementwise add binding check in `hilclaw/model_binding.py` (call sites `attention_residual`, `ffn_residual`, their shapes, "every shape" binding) - ADR-0159 code slice 2.
