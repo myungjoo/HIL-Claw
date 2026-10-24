@@ -554,15 +554,17 @@ def test_timeout_has_no_default(stub, kernel, out):
 
 
 def test_the_module_imports_no_numpy():
+    root = Path(__file__).resolve().parents[2]
     code = (
-        "import sys, hilclaw.harness.bf16_verification_build; "
+        f"import sys; sys.path.insert(0, {str(root)!r}); "
+        "import hilclaw.harness.bf16_verification_build as module; "
+        f"assert module.__file__.startswith({str(root)!r}); "
         "print(sorted(name for name in ('numpy', "
         "'hilclaw.harness.bf16_verification_arrays', "
         "'hilclaw.harness.verification_arrays') if name in sys.modules))"
     )
-    root = Path(__file__).resolve().parents[2]
     result = subprocess.run(
-        [sys.executable, "-c", code],
+        [sys.executable, "-I", "-c", code],
         cwd=root,
         capture_output=True,
         text=True,
