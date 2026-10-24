@@ -2,7 +2,7 @@
 id: T-0456
 title: Add hilclaw/harness/bf16_verification.py, which judges the report of a bf16 verification executable and runs one (ADR-0163 decision 8, code slice 5)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0455]
@@ -101,3 +101,8 @@ hq: []
 - (planner) Next slice: the calibration of ADR-0163 decision 9 — conforming, failing and violating C kernels per kind (twelve in all; the bf16 `gemm` gets its own three beside the fp32 ones) with tests that build each with `build_bf16_verification_executable` and judge it with `run_bf16_verification` under the test's own seed, draws and tolerance. It will likely need splitting by kind (two kinds per task) to respect the 5-file cap.
 
 ## Result
+- PR #271, squash-merged as `4162276` after 1 review round (Approve, no change requested); CI green (Python 3.11/3.14, coverage, C, sh, test presence).
+- Added `hilclaw/harness/bf16_verification.py` (256 lines: `program_arguments`, `judge_report`, `run_bf16_verification`; `Broken`, `Verdict`, `Judgement`, `VerificationResult`, `END_MARK` imported from `verification`) and corrected the `hilclaw/harness/__init__.py` docstring (four `numpy` modules); 267 changed lines outside tests in 2 files. Tests: `tests/harness/test_bf16_verification.py`, the new module at 100% line coverage; `hilclaw/` lines 97%.
+- Language: Python, because the module judges reports with NumPy through the array side, as `hilclaw.harness.verification` does.
+- Reviewer note (Info, no change): the check value does not tell `gemm` `(m, k, n)` from `(n, k, m)`, nor `(m, n)` from `(n, m)` for `elementwise_add`/`swiglu`: the flat word sequence is the same, so such a report passes the form and check-value conditions and is judged on its counts. This follows from ADR-0163 decisions 4 and 6 and the array side, not from this slice; a test pins the behaviour.
+- Follow-ups: none beyond the calibration slice listed above.
