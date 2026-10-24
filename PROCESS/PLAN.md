@@ -108,3 +108,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0431 follow-up — ADR-0157 Status "It builds on"·References가 본문에 번호 인용 없는 ADR-0008 decision 1·ADR-0156 decision 1·ADR-0152 decision 5를 나열한 점, decision 4 Reasons의 "a binding that is right for the dtype"를 Alternatives 행처럼 "every bound entry, whatever its kernel"로 맞추는 점, ADR 문구 정리.
 - T-0435 follow-up — ADR-0158 리뷰 7라운드 Info(decision 9의 "no value set changes this much at that width"를 "for every square"로 좁히는 일), ADR 문구 정리.
 - HQ-0034 답(T-0325, 오너 2026-10-25 채팅 — (a)) — 모든 C-7 시스템에서 stand-in 커널이 OpenMP를 쓰도록 ADR-0116의 고정 빌드 설정에 OpenMP 플래그·런타임을 넣고 런타임이 없을 때의 설치 경로(2026-10-15 승인 규칙, 컨테이너는 그 이미지)를 반영하는 일(ADR·`cpu_standin` 빌드 설정·OD-18 등록부); 첫 사례와 P2-14의 커널은 OpenMP 없이 돌아 두 목표에 필요하지 않음, OD-18 하위 질문 18·19 (ra)의 반영.
+- T-0451 follow-up — ADR-0163 리뷰 7라운드 지적 2건(decision 7 "Every kind"의 바르게 반올림된 bf16 최대 상대 오차는 2^−8이 아니라 1/257; Alternatives 4행의 첫 case는 값 전체가 아니라 magnitude만 `word >> 41`에서 가져옴), ADR 문구 정리.
