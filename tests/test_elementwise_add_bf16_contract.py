@@ -504,16 +504,19 @@ def test_public_names_of_the_module():
         assert list(inspect.signature(function).parameters) == DIMENSIONS
 
 
-def test_module_imports_keys_only_and_is_named_by_no_other_module():
+def test_module_imports_keys_only_and_is_bound_by_the_model_binding_only():
     own = Path(elementwise_add_bf16_contract.__file__)
     text = own.read_text(encoding="utf-8")
+    binders = (own.parent / "model_binding.py",)
     assert imported_modules(own) == {"reprlib", "hilclaw", "hilclaw.keys"}
     for name in OTHER_MODULE_NAMES:
         assert name not in text
     assert "__main__" not in text
     assert not hasattr(elementwise_add_bf16_contract, "main")
+    for binder in binders:
+        assert "elementwise_add_bf16_contract" in binder.read_text(encoding="utf-8")
     for path in sorted(own.parent.rglob("*.py")):
-        if path != own:
+        if path != own and path not in binders:
             assert "elementwise_add_bf16_contract" not in path.read_text(
                 encoding="utf-8"
             ), path

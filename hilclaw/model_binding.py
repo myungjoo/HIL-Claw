@@ -1,33 +1,39 @@
-"""Host-side binding checks of the model executor for the GEMM and RMSNorm call sites (ADR-0153, ADR-0158).
+"""Host-side binding checks of the model executor for the GEMM, RMSNorm and elementwise add call sites (ADR-0153, ADR-0158, ADR-0159).
 
 ``ARCHITECTURE/decisions/ADR-0153-od31-model-executor.md`` is the rule. Before
 anything is built, the host side derives the shapes of every kernel call of a
 generation from the model dimensions and the run settings and checks the
 binding against them (decision 5). This module does that for the six GEMM
 call sites of ADR-0152 decision 2 (:data:`CALL_SITES`) and, separately, for
-its three RMSNorm call sites (:data:`RMSNORM_CALL_SITES`). The model's dtype
-(``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``,
+its three RMSNorm call sites (:data:`RMSNORM_CALL_SITES`) and its two
+elementwise add call sites (:data:`ELEMENTWISE_ADD_CALL_SITES`). The model's
+dtype (``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``,
 decisions 1 to 4) selects the contract every entry is fitted against: for the
 GEMM call sites ADR-0008's ``gemm`` contract (:mod:`hilclaw.gemm_contract`)
 for ``fp32`` and ADR-0156's (:mod:`hilclaw.gemm_bf16_contract`) for ``bf16``
 (:data:`DTYPES`); for the RMSNorm call sites ADR-0158's ``rmsnorm`` contract
 (:mod:`hilclaw.rmsnorm_bf16_contract`) for ``bf16``, the only dtype at which
-one is defined (:data:`RMSNORM_DTYPES`). Its parts:
+one is defined (:data:`RMSNORM_DTYPES`); for the elementwise add call sites
+ADR-0159's ``elementwise_add`` contract
+(:mod:`hilclaw.elementwise_add_bf16_contract`) for ``bf16``, likewise the only
+one (:data:`ELEMENTWISE_ADD_DTYPES`). Its parts:
 
 * :class:`ModelDimensions` and :func:`check_dimensions`: the model parameters
-  of ADR-0153 decision 3 (a) that the GEMM and RMSNorm shapes use. No value
-  is a default and none of Llama 3.2 1B is assumed (decision 6).
+  of ADR-0153 decision 3 (a) that the shapes use. No value is a default and
+  none of Llama 3.2 1B is assumed (decision 6).
 * :func:`gemm_shape`: the ``(m, k, n)`` of one GEMM call site in a pass of
   ``rows`` rows, from Meta's ``model.py`` as ADR-0152 (Context, decision 5)
-  reads it. :func:`rmsnorm_shape`: the ``(m, n)`` of one RMSNorm call site
-  (ADR-0158 decision 2).
-* :func:`generation_calls` and :func:`rmsnorm_generation_calls`: the distinct
-  shapes of each call site over one generation (ADR-0153 decision 4).
+  reads it. :func:`rmsnorm_shape` and :func:`elementwise_add_shape`: the
+  ``(m, n)`` of one RMSNorm call site (ADR-0158 decision 2) and of one
+  elementwise add call site (ADR-0159 decision 2).
+* :func:`generation_calls`, :func:`rmsnorm_generation_calls` and
+  :func:`elementwise_add_generation_calls`: the distinct shapes of each call
+  site over one generation (ADR-0153 decision 4).
 * :class:`KernelReference`, :class:`BindingEntry`: a binding entry (decision 3).
-* :func:`check` and :func:`check_rmsnorm`: the outcomes ``"invalid_input"``,
-  ``"no_kernel"`` and ``"kernel_unfit"`` (decision 5, whose spelling is left
-  to the code slice), and the calls of the generation with the kernel each
-  one is bound to.
+* :func:`check`, :func:`check_rmsnorm` and :func:`check_elementwise_add`: the
+  outcomes ``"invalid_input"``, ``"no_kernel"`` and ``"kernel_unfit"``
+  (decision 5, whose spelling is left to the code slice), and the calls of
+  the generation with the kernel each one is bound to.
 * :func:`rmsnorm_eps`: the binary32 value nearest to the model's ``eps``, the
   value the caller passes to an RMSNorm kernel (ADR-0158 decision 5).
 
@@ -42,23 +48,27 @@ Readings of this module:
   malformed, and an ``"every"`` entry overlaps every other entry of its call
   site: the executor never chooses between kernels (decision 3).
 * A listed shape other than the shape of the kernel's own spec, and an
-  ``"every"`` entry, are accepted for each of the three contracts: a kernel
+  ``"every"`` entry, are accepted for each of the four contracts: a kernel
   of either ``gemm`` contract must compute the product for the values it is
   called with (ADR-0008 decision 6, ADR-0156 decision 7, ADR-0157 decision
-  3), and a kernel of the ``rmsnorm`` contract must be correct for every
-  ``m``, ``n`` of at least 1 (ADR-0158 decision 7). So the operand shapes of
-  a ``task.contract`` are not compared.
+  3), and a kernel of the ``rmsnorm`` contract (ADR-0158 decision 7) or of
+  the ``elementwise_add`` contract (ADR-0159 decision 8) must be correct for
+  every ``m``, ``n`` of at least 1. So the operand shapes of a
+  ``task.contract`` are not compared.
 
 What this module does not do: it builds, loads and starts nothing and runs no
 process; it reads and writes no file; it has no command-line entry, registry
-or MCP tool; it knows no call site of RoPE, SDPA, SwiGLU or elementwise add,
-no contract other than the fp32 and bf16 ``gemm`` contracts and the bf16
-``rmsnorm`` contract, and no dtype outside :data:`DTYPES` for a GEMM call site
-or outside :data:`RMSNORM_DTYPES` for an RMSNorm call site; it does not join
-the GEMM and RMSNorm checks into one check of a generation (the full pass,
-ADR-0153 code slice 2); it reads no weight, passes ``eps`` to nothing and
-adds no cast; it does not interpret the build flags of a kernel reference;
-and it derives no binding from a key's best (OD-20, OD-7).
+or MCP tool; it knows no call site of RoPE, SDPA or SwiGLU, no contract other
+than the fp32 and bf16 ``gemm`` contracts, the bf16 ``rmsnorm`` contract and
+the bf16 ``elementwise_add`` contract, and no dtype outside :data:`DTYPES`
+for a GEMM call site, outside :data:`RMSNORM_DTYPES` for an RMSNorm call site
+or outside :data:`ELEMENTWISE_ADD_DTYPES` for an elementwise add call site; it
+does not join the GEMM, RMSNorm and elementwise add checks into one check of
+a generation (the full pass, ADR-0153 code slice 2), and it does not check
+which arrays a call passes as its operands (ADR-0159 decision 12); it reads
+no weight, passes ``eps`` to nothing and adds no cast; it does not interpret
+the build flags of a kernel reference; and it derives no binding from a key's
+best (OD-20, OD-7).
 
 Every :class:`TypeError` or :class:`ValueError` raised here for an argument
 carries the attribute ``parameter``, the name of that argument. Arguments are
@@ -73,7 +83,13 @@ import struct
 from collections.abc import Mapping, Sequence
 from typing import NamedTuple
 
-from hilclaw import gemm_bf16_contract, gemm_contract, keys, rmsnorm_bf16_contract
+from hilclaw import (
+    elementwise_add_bf16_contract,
+    gemm_bf16_contract,
+    gemm_contract,
+    keys,
+    rmsnorm_bf16_contract,
+)
 
 CALL_SITES = ("qkv", "o", "gate", "up", "down", "lm_head")
 """The GEMM call sites, ADR-0152 decision 2 rows 3, 8, 11 (gate and up), 13 and 16."""
@@ -87,6 +103,12 @@ RMSNORM_CALL_SITES = ("attention_norm", "ffn_norm", "norm")
 RMSNORM_DTYPES = (rmsnorm_bf16_contract.DTYPE,)
 """The dtypes at which the ``rmsnorm`` contract is known (ADR-0157 decision 4, ADR-0158 decision 1)."""
 
+ELEMENTWISE_ADD_CALL_SITES = ("attention_residual", "ffn_residual")
+"""The elementwise add call sites, ADR-0152 decision 2 rows 9 and 14, named and ordered as ADR-0159 decision 12."""
+
+ELEMENTWISE_ADD_DTYPES = (elementwise_add_bf16_contract.DTYPE,)
+"""The dtypes at which the ``elementwise_add`` contract is known (ADR-0157 decision 4, ADR-0159 decision 1)."""
+
 LM_HEAD_ROWS = ("all", "last")
 
 INVALID_INPUT = "invalid_input"
@@ -96,11 +118,11 @@ KERNEL_UNFIT = "kernel_unfit"
 _CONTRACTS = dict(zip(DTYPES, (gemm_contract, gemm_bf16_contract)))
 _DTYPE_NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _GEMM_SHAPE = ("m", "k", "n")
-_RMSNORM_SHAPE = ("m", "n")
+_ROW_SHAPE = ("m", "n")
 
 
 class ModelDimensions(NamedTuple):
-    """The model parameters the GEMM and RMSNorm shapes depend on (ADR-0153 decision 3 (a))."""
+    """The model parameters the GEMM, RMSNorm and elementwise add shapes depend on (ADR-0153 decision 3 (a))."""
 
     hidden: int
     intermediate: int
@@ -123,7 +145,7 @@ class BindingEntry(NamedTuple):
     """A kernel bound for ``shapes``: ``"every"`` or a non-empty tuple of shapes.
 
     A shape is ``(m, k, n)`` for a GEMM call site and ``(m, n)`` for an
-    RMSNorm call site.
+    RMSNorm or elementwise add call site.
     """
 
     kernel: KernelReference
@@ -131,7 +153,7 @@ class BindingEntry(NamedTuple):
 
 
 class Outcome(NamedTuple):
-    """One outcome of :func:`check` or :func:`check_rmsnorm`; ``reason`` is always a ``str``."""
+    """One outcome of :func:`check`, :func:`check_rmsnorm` or :func:`check_elementwise_add`; ``reason`` is always a ``str``."""
 
     kind: str
     call_site: object
@@ -140,7 +162,7 @@ class Outcome(NamedTuple):
 
 
 class BindingCheck(NamedTuple):
-    """The result of :func:`check` or :func:`check_rmsnorm`: ``ok`` exactly when ``outcomes`` is empty."""
+    """The result of :func:`check`, :func:`check_rmsnorm` or :func:`check_elementwise_add`: ``ok`` exactly when ``outcomes`` is empty."""
 
     ok: bool
     outcomes: tuple
@@ -330,13 +352,7 @@ def rmsnorm_shape(dimensions, call_site, rows):
     :class:`TypeError` or :class:`ValueError` with ``parameter`` ``"rows"``
     for ``rows`` that is not an ``int`` from 1 to 2**53 - 1.
     """
-    check_dimensions(dimensions)
-    with _parameter("call_site"):
-        if call_site not in RMSNORM_CALL_SITES:
-            raise ValueError(f"must be one of {RMSNORM_CALL_SITES}, got {call_site!r}")
-    with _parameter("rows"):
-        _integer(rows, "rows")
-    return (rows, dimensions.hidden)
+    return _row_shape(dimensions, call_site, rows, RMSNORM_CALL_SITES)
 
 
 def rmsnorm_generation_calls(dimensions, *, prompt_length, generation_length):
@@ -350,12 +366,8 @@ def rmsnorm_generation_calls(dimensions, *, prompt_length, generation_length):
     with the argument's name as ``parameter``: ``prompt_length`` and
     ``generation_length`` are ``int`` from 1 to 2**53 - 1.
     """
-    check_dimensions(dimensions)
-    _lengths(prompt_length, generation_length)
-    rows = _pass_rows(prompt_length, generation_length)
-    return tuple(
-        (site, tuple(sorted(rmsnorm_shape(dimensions, site, r) for r in rows)))
-        for site in RMSNORM_CALL_SITES
+    return _row_generation_calls(
+        dimensions, prompt_length, generation_length, RMSNORM_CALL_SITES
     )
 
 
@@ -402,43 +414,99 @@ def check_rmsnorm(dimensions, binding, *, dtype, prompt_length, generation_lengt
     its order, only when ``ok``; it is empty otherwise. Nothing is built,
     started or read.
     """
-    check_dimensions(dimensions)
-    with _parameter("dtype"):
-        _dtype(dtype)
-    lengths = (
-        ("prompt_length", prompt_length),
-        ("generation_length", generation_length),
+    return _check_rows(
+        dimensions,
+        binding,
+        dtype,
+        prompt_length,
+        generation_length,
+        RMSNORM_CALL_SITES,
+        RMSNORM_DTYPES,
+        rmsnorm_bf16_contract,
+        rmsnorm_generation_calls,
     )
-    for name, value in lengths:
-        with _parameter(name):
-            if type(value) is not int:
-                raise TypeError(f"must be an int, got {type(value).__name__}")
-    binding = _binding(binding, RMSNORM_CALL_SITES, _RMSNORM_SHAPE)
 
-    known = dtype in RMSNORM_DTYPES
-    invalid = [] if known else [_no_contract(dtype, rmsnorm_bf16_contract.KIND)]
-    invalid += [
-        f"{name}: must be from 1 to 2**53 - 1, got {value}"
-        for name, value in lengths
-        if not 1 <= value <= keys.MAX_INTEGER
-    ]
-    outcomes = [Outcome(INVALID_INPUT, None, None, reason) for reason in invalid]
-    shapes = {}
-    if not invalid:
-        shapes = dict(
-            rmsnorm_generation_calls(
-                dimensions,
-                prompt_length=prompt_length,
-                generation_length=generation_length,
-            )
-        )
-    calls = []
-    if known:
-        reference = rmsnorm_bf16_contract.task_contract(1, 1)
-        label = f"{dtype} {rmsnorm_bf16_contract.KIND}"
-        _bind(RMSNORM_CALL_SITES, binding, shapes, reference, label, outcomes, calls)
-    ok = not outcomes
-    return BindingCheck(ok, tuple(outcomes), tuple(calls) if ok else ())
+
+def elementwise_add_shape(dimensions, call_site, rows):
+    """Return the ``(m, n)`` of the elementwise add ``call_site`` in a pass of ``rows`` rows.
+
+    ``m`` is ``rows`` and ``n`` is ``hidden``, for both call sites: each adds
+    two arrays of T rows of the hidden width into a third of that shape
+    (ADR-0152 decisions 2 and 5, ADR-0159 decision 2). Raises as
+    :func:`check_dimensions` does, then :class:`ValueError` with
+    ``parameter`` ``"call_site"`` for a call site not in
+    :data:`ELEMENTWISE_ADD_CALL_SITES`, then :class:`TypeError` or
+    :class:`ValueError` with ``parameter`` ``"rows"`` for ``rows`` that is not
+    an ``int`` from 1 to 2**53 - 1.
+    """
+    return _row_shape(dimensions, call_site, rows, ELEMENTWISE_ADD_CALL_SITES)
+
+
+def elementwise_add_generation_calls(dimensions, *, prompt_length, generation_length):
+    """Return, per call site in :data:`ELEMENTWISE_ADD_CALL_SITES` order, the sorted tuple of distinct shapes of a generation.
+
+    The passes are those of :func:`generation_calls`: one prefill pass of
+    ``prompt_length`` rows and then ``generation_length - 1`` decode passes of
+    one row. The result is a tuple of ``(call_site, shapes)`` pairs, each
+    shape an ``(m, n)`` of :func:`elementwise_add_shape`. Raises as
+    :func:`rmsnorm_generation_calls` does.
+    """
+    return _row_generation_calls(
+        dimensions, prompt_length, generation_length, ELEMENTWISE_ADD_CALL_SITES
+    )
+
+
+def check_elementwise_add(
+    dimensions, binding, *, dtype, prompt_length, generation_length
+):
+    """Check ``binding`` against every elementwise add call of a generation; return a :class:`BindingCheck`.
+
+    ``binding`` maps call sites of :data:`ELEMENTWISE_ADD_CALL_SITES` to
+    non-empty sequences of :class:`BindingEntry`. ``dtype`` is the model's
+    dtype (ADR-0157 decision 1); it has no default. This check stands beside
+    :func:`check` and :func:`check_rmsnorm` and is not joined with them.
+
+    Arguments are refused as by :func:`check_rmsnorm`, in the same order and
+    with the same errors, with :data:`ELEMENTWISE_ADD_CALL_SITES` as the keys
+    of ``binding`` and ``(m, n)`` pairs as its shapes.
+
+    The outcomes then come in this order:
+
+    1. ``"invalid_input"`` (``call_site`` and ``shape`` ``None``): a
+       ``dtype`` not in :data:`ELEMENTWISE_ADD_DTYPES`, at which no
+       ``elementwise_add`` contract is known (ADR-0157 decision 4, ADR-0159
+       decision 1); ``prompt_length`` outside 1 to 2**53 - 1;
+       ``generation_length`` outside 1 to 2**53 - 1.
+    2. Per call site in :data:`ELEMENTWISE_ADD_CALL_SITES` order:
+       ``"kernel_unfit"`` (``shape`` ``None``) for each entry, in order,
+       whose ``contract`` is not the bf16 ``elementwise_add`` contract,
+       compared on ``language``, ``prototype`` and the operands' ``(name,
+       role, dtype)`` (ADR-0153 decision 3 "Fit"; reference values from
+       :func:`hilclaw.elementwise_add_bf16_contract.task_contract`, never
+       from the entry's own contract); then ``"no_kernel"`` for each shape
+       of :func:`elementwise_add_generation_calls`, in order, that no entry
+       covers. The ``"no_kernel"`` outcomes are not looked for when there is
+       an ``"invalid_input"``, and neither kind is when ``dtype`` is not in
+       :data:`ELEMENTWISE_ADD_DTYPES`.
+
+    A listed shape other than the kernel's own spec shape, and an ``"every"``
+    entry, are accepted (ADR-0159 decision 8). ``calls`` holds ``(call_site,
+    shape, kernel)`` for every call of :func:`elementwise_add_generation_calls`,
+    in its order, only when ``ok``; it is empty otherwise. Which arrays a call
+    passes as ``a``, ``b`` and ``c`` (ADR-0159 decision 12) is not checked.
+    Nothing is built, started or read.
+    """
+    return _check_rows(
+        dimensions,
+        binding,
+        dtype,
+        prompt_length,
+        generation_length,
+        ELEMENTWISE_ADD_CALL_SITES,
+        ELEMENTWISE_ADD_DTYPES,
+        elementwise_add_bf16_contract,
+        elementwise_add_generation_calls,
+    )
 
 
 def rmsnorm_eps(eps):
@@ -466,6 +534,76 @@ def rmsnorm_eps(eps):
         if nearest == 0:
             raise ValueError(f"its nearest binary32 value is 0, got {eps!r}")
         return nearest
+
+
+def _row_shape(dimensions, call_site, rows, sites):
+    check_dimensions(dimensions)
+    with _parameter("call_site"):
+        if call_site not in sites:
+            raise ValueError(f"must be one of {sites}, got {call_site!r}")
+    with _parameter("rows"):
+        _integer(rows, "rows")
+    return (rows, dimensions.hidden)
+
+
+def _row_generation_calls(dimensions, prompt_length, generation_length, sites):
+    check_dimensions(dimensions)
+    _lengths(prompt_length, generation_length)
+    rows = _pass_rows(prompt_length, generation_length)
+    return tuple(
+        (site, tuple(sorted(_row_shape(dimensions, site, r, sites) for r in rows)))
+        for site in sites
+    )
+
+
+def _check_rows(
+    dimensions,
+    binding,
+    dtype,
+    prompt_length,
+    generation_length,
+    sites,
+    dtypes,
+    contract,
+    site_calls,
+):
+    check_dimensions(dimensions)
+    with _parameter("dtype"):
+        _dtype(dtype)
+    lengths = (
+        ("prompt_length", prompt_length),
+        ("generation_length", generation_length),
+    )
+    for name, value in lengths:
+        with _parameter(name):
+            if type(value) is not int:
+                raise TypeError(f"must be an int, got {type(value).__name__}")
+    binding = _binding(binding, sites, _ROW_SHAPE)
+
+    known = dtype in dtypes
+    invalid = [] if known else [_no_contract(dtype, contract.KIND)]
+    invalid += [
+        f"{name}: must be from 1 to 2**53 - 1, got {value}"
+        for name, value in lengths
+        if not 1 <= value <= keys.MAX_INTEGER
+    ]
+    outcomes = [Outcome(INVALID_INPUT, None, None, reason) for reason in invalid]
+    shapes = {}
+    if not invalid:
+        shapes = dict(
+            site_calls(
+                dimensions,
+                prompt_length=prompt_length,
+                generation_length=generation_length,
+            )
+        )
+    calls = []
+    if known:
+        reference = contract.task_contract(1, 1)
+        label = f"{dtype} {contract.KIND}"
+        _bind(sites, binding, shapes, reference, label, outcomes, calls)
+    ok = not outcomes
+    return BindingCheck(ok, tuple(outcomes), tuple(calls) if ok else ())
 
 
 def _bind(sites, binding, shapes, reference, label, outcomes, calls):
