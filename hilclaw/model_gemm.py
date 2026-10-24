@@ -89,8 +89,9 @@ def run(
     caller's ``dtype``, the model's dtype with no default (ADR-0157 decisions
     1 and 3), and makes every check of ``dtype``: one outside
     :data:`hilclaw.model_binding.DTYPES` is the outcome ``"invalid_input"``;
-    what it raises is passed on unchanged. If the check is not ok, the result is ``GemmRun(check, (), None)``:
-    nothing is built, started or made, and ``operands`` is not looked at.
+    what it raises is passed on unchanged. If the check is not ok, the result
+    is ``GemmRun(check, (), None)``: nothing is built, started or made, and
+    ``operands`` is not looked at.
 
     If the check is ok, ``operands`` maps each ``(call_site, shape)`` of
     ``check.calls``, ``shape`` the ``(m, k, n)`` tuple, to a pair ``(a, b)``

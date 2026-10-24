@@ -139,8 +139,9 @@ def execute(
     ``tuple`` or ``list`` of ``str``, and :class:`ValueError` for an item of
     it that contains ``HILCLAW_MODEL_BF16``, naming its position: ``dtype``
     alone selects the program's build. The :class:`OSError` of making the
-    directory (a missing ``parent``) is raised as it is. What a build, the input file's writing or the run raises
-    is passed on unchanged after the directory was removed.
+    directory (a missing ``parent``) is raised as it is. What a build, the
+    input file's writing or the run raises is passed on unchanged after the
+    directory was removed.
     """
     _checked_dtype(dtype)
     kernels = _checked_kernels(kernels)
