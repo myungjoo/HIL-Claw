@@ -2,7 +2,7 @@
 id: T-0445
 title: Teach hilclaw.keys the kind rope (members m, h, d) and add hilclaw/rope_bf16_contract.py - the op-side values of the bf16 RoPE contract of ADR-0161 (constants, prototype, the six shapes, the x value set, op_signature_record, task_contract, covers) with tests (ADR-0161 code slice, first part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-5, FR-9, OD-31, OD-6, "PLAN P2-11", "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0444]
@@ -162,3 +162,17 @@ hq: []
 
 ## Result
 
+
+- **Outcome**: DONE. PR #262 squash-merged as `849fffa` (branch `claude/T-0445-rope-bf16-contract-values` deleted).
+- **Review**: 1 round, Approve; non-blocking notes: the input change in `test_unknown_kind_message_lists_all_known_kinds` (below) accepted; the less-exact ADR note belongs in this Result; merge only after CI green (done).
+- **CI**: green on all six jobs (C gate, Coverage gate, Python gate 3.11/3.14, Test presence, sh gate; run 40098895878).
+- **Local gates**: `ruff check` and `ruff format --check` clean; full local `pytest` under coverage: 28757 passed, 949 skipped; `hilclaw/` line coverage 97%, `keys.py` and `rope_bf16_contract.py` 100%.
+- **Language**: Python - pure data and validation over `hilclaw.keys`, as its GEMM, RMSNorm, elementwise add and SwiGLU counterparts.
+- **Changes**:
+  - `hilclaw/keys.py`: `_SHAPE_MEMBERS` gains `rope` with `m`, `h`, `d`; the `op_signature_key` docstring names all five kinds; the unknown-kind message reads `kind: must be a known kind: elementwise_add, gemm, rmsnorm, rope, swiglu, got ...`. No even-`d` rule, no version change.
+  - New `hilclaw/rope_bf16_contract.py`: `KIND`, `DTYPE`, `TABLE_DTYPE`, `LAYOUT`, `LANGUAGE`, `PROTOTYPE`, `SHAPES` (6), `X_PATTERNS` (256), `op_signature_record`, `task_contract`, `covers`; odd `d` refused with `shape.d: must be even, got ...`. No table, `rope_theta`, scaling constant, position, tolerance, generator or binding. Private helpers and the x set duplicate those of the other bf16 contract modules on purpose (commit body says so).
+  - `tests/test_keys.py`: the two expected unknown-kind messages now list `rope`. Deviation from criterion 5's letter: `test_unknown_kind_message_lists_all_known_kinds` used `"rope"` as its unknown kind, which is now known (the record would be refused by the shape check instead), so its input became `"sdpa"`; stated in the commit and PR body, accepted by the reviewer. New `rope` cases (ADR-0161 canonical line, sha256, name `rope-c797475e043d4156`, member sets incl. the gemm and swiglu sets, odd/zero `d` accepted by the keys, other kinds unchanged).
+  - New `tests/test_rope_bf16_contract.py`.
+- **Criterion 7**: `keys.op_signature_key` now accepts a `rope` record, so `spec.validate`, `instance.py`, `key_records`/`key_store_tool` and `case_lookup`/`case_tool` treat it as valid. `spec_tool`, `instance_start`/`start_instance`, `run_admission`/`check_admission`/`check_definition` (and `check_tool` through it) with `gemm_contract.covers` now refuse it as `op_signature_not_covered` instead of through the key check (they read `shape["k"]`/`shape["n"]` only after `covers` returns True, so no `KeyError`). The `covers` of the gemm, gemm_bf16, rmsnorm_bf16, elementwise_add_bf16 and swiglu_bf16 contracts return False instead of raising (tested). `model_binding.py` does not rely on the key check refusing the kind. No code change was needed. The other contract tests' `REFUSED` entries `dict(RECORD, kind="rope")` stay refused (shape-member mismatch) and pass unchanged.
+- **Less exact, not edited**: ADR-0031 lines 21 and 98 (the kinds `hilclaw.keys` knows); ADR-0161 Consequences "A-13 reading" ("`hilclaw/` is not touched").
+- **Follow-ups**: none new beyond the planner follow-up (host-side table builder, then the RoPE binding check in `hilclaw/model_binding.py` with `rope_q`/`rope_k`; that part will add `model_binding.py` as the binder and adjust `test_module_imports_keys_only_and_is_named_by_no_other_module`).
