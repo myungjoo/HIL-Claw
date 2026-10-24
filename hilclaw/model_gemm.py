@@ -28,9 +28,9 @@ Readings of this module (not rules of the record):
 - Slice 2's forward pass does not exist yet, so the caller supplies the
   operands of every call; this module chooses no array, weight, cast,
   reference or tolerance, compares nothing and has no fallback for a missing
-  kernel (decision 5). Its one dtype is ``fp32``, the fp32 path of
-  ``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``
-  (decision 5): the binding is checked at the dtype ``fp32``.
+  kernel (decision 5). The binding is checked at the dtype ``fp32``, the fp32
+  path of ``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``
+  decision 5.
 
 What this module does not do: no forward pass, embedding, KV cache or token
 selection; no file outside the build directory of
