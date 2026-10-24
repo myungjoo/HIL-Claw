@@ -99,6 +99,7 @@ def three_calls():
 
 
 def run_execute(parent, kernels=None, calls=None, **options):
+    options.setdefault("dtype", "fp32")
     options.setdefault("build_timeout_s", 30)
     options.setdefault("run_timeout_s", 7)
     return execute(
@@ -201,6 +202,201 @@ def test_every_model_run_function_gets_dtype_fp32(recorder, monkeypatch, parent)
     assert recorder.events[-1][4]["dtype"] == "fp32"
 
 
+def bf16_of(values):
+    exact = np.asarray(values, dtype=np.float32)
+    patterns = (exact.view(np.uint32) >> 16).astype(np.uint16)
+    assert np.array_equal(widened(patterns), exact), "not exact in bf16"
+    return patterns
+
+
+def bf16_matrices(m, k, n, seed):
+    a, b = matrices(m, k, n, seed)
+    return bf16_of(a), bf16_of(b)
+
+
+def widened(patterns):
+    return (patterns.astype(np.uint32) << 16).view(np.float32)
+
+
+def nearest_bf16(values):
+    words = np.asarray(values, dtype=np.float32).view(np.uint32).astype(np.uint64)
+    return ((words + 0x7FFF + ((words >> 16) & 1)) >> 16).astype(np.uint16)
+
+
+def bf16_three_calls():
+    return [
+        (0, *bf16_matrices(2, 3, 4, 1)),
+        (2, *bf16_matrices(1, 1, 1, 2)),
+        (1, *bf16_matrices(5, 2, 3, 3)),
+    ]
+
+
+def test_bf16_builds_the_bf16_program_and_hands_bf16_to_model_run(
+    recorder, monkeypatch, parent
+):
+    seen = []
+
+    def spy(name, original):
+        def recording(*args, **options):
+            seen.append((name, options["dtype"]))
+            return original(*args, **options)
+
+        return recording
+
+    monkeypatch.setattr(
+        model_run, "output_shapes", spy("output_shapes", model_run.output_shapes)
+    )
+    monkeypatch.setattr(
+        model_run, "encode_input", spy("encode_input", model_run.encode_input)
+    )
+    kernels = [kernel("k0", ("-O1",)), kernel("k1"), kernel("k2", ())]
+    calls = bf16_three_calls()
+    result = run_execute(
+        parent, kernels, calls, dtype="bf16", program_flags=("-O3", "-g")
+    )
+    assert result.build_failed is None
+    assert result.removed is True
+    assert [event[0] for event in recorder.events] == [
+        "kernel",
+        "kernel",
+        "kernel",
+        "program",
+        "run",
+    ]
+    for index, kernel_ in enumerate(kernels):
+        flags = recorder.events[index][3]["flags"]
+        assert flags is kernel_.flags
+        assert not any("HILCLAW_MODEL_BF16" in flag for flag in flags)
+    assert recorder.events[3][2]["flags"] == ("-O3", "-g", "-DHILCLAW_MODEL_BF16")
+    assert seen == [("output_shapes", "bf16"), ("encode_input", "bf16")]
+    assert recorder.events[4][4]["dtype"] == "bf16"
+    assert recorder.events[4][4]["shapes"] == output_shapes(calls, dtype="bf16")
+    assert recorder.input_bytes == encode_input(calls, dtype="bf16")
+
+
+@pytest.mark.parametrize(
+    ("dtype", "program_flags", "expected"),
+    [
+        ("fp32", (), ()),
+        ("fp32", ("-O2", "-Wall"), ("-O2", "-Wall")),
+        ("fp32", ["-O2"], ("-O2",)),
+        ("bf16", (), ("-DHILCLAW_MODEL_BF16",)),
+        ("bf16", ["-O2"], ("-O2", "-DHILCLAW_MODEL_BF16")),
+    ],
+)
+def test_program_flags_are_the_callers_then_the_dtypes(
+    recorder, parent, dtype, program_flags, expected
+):
+    make = bf16_matrices if dtype == "bf16" else matrices
+    result = run_execute(
+        parent,
+        [kernel("k0")],
+        [(0, *make(1, 2, 1, 4))],
+        dtype=dtype,
+        program_flags=program_flags,
+    )
+    assert result.build_failed is None
+    assert recorder.events[1][0] == "program"
+    assert recorder.events[1][2]["flags"] == expected
+
+
+def test_missing_dtype_is_refused(recorder, parent):
+    with pytest.raises(TypeError, match="dtype"):
+        execute(
+            [kernel("k0")],
+            [(0, *matrices(1, 1, 1, 1))],
+            build_timeout_s=1,
+            run_timeout_s=1,
+            parent=parent,
+        )
+    assert recorder.events == []
+    assert os.listdir(parent) == []
+
+
+@pytest.mark.parametrize(
+    ("dtype", "error"),
+    [
+        (None, TypeError),
+        (1, TypeError),
+        (b"bf16", TypeError),
+        ("", ValueError),
+        ("fp16", ValueError),
+        ("BF16", ValueError),
+    ],
+)
+def test_refused_dtype(recorder, parent, dtype, error):
+    with pytest.raises(error, match=r"^dtype: "):
+        run_execute(parent, dtype=dtype)
+    assert recorder.events == []
+    assert os.listdir(parent) == []
+
+
+def test_dtype_is_refused_before_kernels(recorder, parent):
+    with pytest.raises(ValueError, match=r"^dtype: "):
+        run_execute(parent, [], "calls", dtype="fp16", prefix=None)
+    with pytest.raises(TypeError, match=r"^dtype: "):
+        run_execute(parent, "k0", dtype=None)
+    assert recorder.events == []
+    assert os.listdir(parent) == []
+
+
+@pytest.mark.parametrize("dtype", ["fp32", "bf16"])
+@pytest.mark.parametrize(
+    ("program_flags", "position"),
+    [
+        (("-DHILCLAW_MODEL_BF16",), 0),
+        (("-O2", "-UHILCLAW_MODEL_BF16"), 1),
+        (["-O2", "-D", "HILCLAW_MODEL_BF16"], 2),
+        (("-DHILCLAW_MODEL_BF16=0",), 0),
+    ],
+)
+def test_program_flags_naming_the_dtype_macro_are_refused(
+    recorder, parent, dtype, program_flags, position
+):
+    make = bf16_matrices if dtype == "bf16" else matrices
+    with pytest.raises(ValueError) as caught:
+        run_execute(
+            parent,
+            [kernel("k0")],
+            [(0, *make(1, 1, 1, 1))],
+            dtype=dtype,
+            program_flags=program_flags,
+        )
+    message = str(caught.value)
+    assert message.startswith(f"program_flags[{position}]: ")
+    assert "HILCLAW_MODEL_BF16" in message
+    assert recorder.events == []
+    assert os.listdir(parent) == []
+
+
+@pytest.mark.parametrize(
+    "program_flags", ["-O2", None, ("-O2", 3), [b"-O2"], {"-O2"}, iter(["-O2"])]
+)
+def test_program_flags_of_the_wrong_type_are_refused(recorder, parent, program_flags):
+    with pytest.raises(TypeError, match=r"^program_flags: "):
+        run_execute(parent, program_flags=program_flags)
+    assert recorder.events == []
+    assert os.listdir(parent) == []
+
+
+def test_program_flags_are_checked_after_parent(recorder, parent):
+    with pytest.raises(ValueError, match=r"^parent: "):
+        run_execute(str(parent) + "\0x", program_flags="-O2")
+    assert recorder.events == []
+    assert os.listdir(parent) == []
+
+
+def test_float32_arrays_at_bf16_pass_the_error_of_model_run(recorder, parent):
+    calls = three_calls()
+    with pytest.raises(ValueError) as caught:
+        run_execute(parent, calls=calls, dtype="bf16")
+    with pytest.raises(ValueError) as expected:
+        output_shapes(calls, dtype="bf16")
+    assert str(caught.value) == str(expected.value)
+    assert recorder.events == []
+    assert os.listdir(parent) == []
+
+
 def test_defaults_hand_over_empty_flags_and_none(recorder, parent):
     result = run_execute(parent, [kernel("k0")], [(0, *matrices(1, 2, 1, 4))])
     assert result.build_failed is None
@@ -225,6 +421,7 @@ def test_parent_none_uses_the_system_temporary_directory(recorder, monkeypatch, 
     result = execute(
         [kernel("k0")],
         [(0, *matrices(1, 1, 1, 1))],
+        dtype="fp32",
         build_timeout_s=1,
         run_timeout_s=1,
     )
@@ -513,11 +710,51 @@ void hilclaw_gemm(size_t m, size_t k, size_t n, const float *restrict a, const f
 }
 """
 
+BF16_PRODUCT = """\
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+static float widen(uint16_t bits)
+{
+    uint32_t word = (uint32_t)bits << 16;
+    float value;
+
+    memcpy(&value, &word, sizeof value);
+    return value;
+}
+
+static uint16_t narrow(float value)
+{
+    uint32_t word;
+
+    memcpy(&word, &value, sizeof word);
+    word += UINT32_C(0x7FFF) + ((word >> 16) & 1u);
+    return (uint16_t)(word >> 16);
+}
+
+void hilclaw_gemm_bf16(size_t m, size_t k, size_t n, const uint16_t *restrict a, const uint16_t *restrict b, uint16_t *restrict c)
+{
+    size_t i, j, p;
+
+    for (i = 0; i < m; i++)
+        for (j = 0; j < n; j++) {
+            float sum = @START@;
+
+            for (p = 0; p < k; p++)
+                sum += widen(a[i * k + p]) * widen(b[p * n + j]);
+            c[i * n + j] = narrow(sum);
+        }
+}
+"""
+
 SOURCES = {
     "plain": PRODUCT.replace("@START@", "0.0f"),
     "plus_one": PRODUCT.replace("@START@", "1.0f"),
     "no_entry": "int other_entry(int x)\n{\n    return x + 1;\n}\n",
     "broken": "void hilclaw_gemm(\n",
+    "bf16_plain": BF16_PRODUCT.replace("@START@", "0.0f"),
+    "bf16_plus_one": BF16_PRODUCT.replace("@START@", "1.0f"),
 }
 
 
@@ -540,7 +777,7 @@ def real_kernels(directory, names):
     return kernels
 
 
-def real_execute(tmp_path, names, calls):
+def real_execute(tmp_path, names, calls, dtype="fp32"):
     sources = tmp_path / "sources"
     sources.mkdir()
     builds = tmp_path / "builds"
@@ -548,6 +785,7 @@ def real_execute(tmp_path, names, calls):
     result = execute(
         real_kernels(sources, names),
         calls,
+        dtype=dtype,
         build_timeout_s=BUILD_TIMEOUT,
         run_timeout_s=RUN_TIMEOUT,
         program_flags=("-O2",),
@@ -589,4 +827,30 @@ def test_real_run_failed_for_a_library_without_entry(clang, tmp_path):
     assert result.build_failed is None
     assert result.run.failed is RunFailed.EXIT_STATUS
     assert result.run.run.returncode == 6
+    assert result.run.outputs is None
+
+
+def test_real_bf16_two_kernels_several_shapes(clang, tmp_path):
+    shapes = [(2, 3, 4), (1, 1, 1), (5, 7, 3), (3, 8, 6)]
+    calls = [
+        (position % 2, *bf16_matrices(m, k, n, 40 + position))
+        for position, (m, k, n) in enumerate(shapes)
+    ]
+    result = real_execute(tmp_path, ["bf16_plain", "bf16_plus_one"], calls, "bf16")
+    assert result.build_failed is None
+    assert result.run.failed is None, result.run.run.stderr
+    assert len(result.run.outputs) == len(calls)
+    for (index, a, b), output in zip(calls, result.run.outputs, strict=True):
+        assert output.dtype == np.uint16
+        expected = nearest_bf16(widened(a) @ widened(b) + np.float32(index))
+        assert np.array_equal(output, expected)
+
+
+def test_real_bf16_run_failed_for_an_fp32_kernel(clang, tmp_path):
+    calls = [(0, *bf16_matrices(2, 2, 2, 1))]
+    result = real_execute(tmp_path, ["bf16_plain", "plain"], calls, "bf16")
+    assert result.build_failed is None
+    assert result.run.failed is RunFailed.EXIT_STATUS
+    assert result.run.run.returncode == 6
+    assert b"hilclaw_gemm_bf16" in result.run.run.stderr
     assert result.run.outputs is None

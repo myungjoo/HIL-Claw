@@ -28,6 +28,7 @@ TINY = ModelDimensions(
     hidden=3, intermediate=5, vocabulary=7, layers=1, heads=2, kv_heads=1, head_dim=1
 )
 OPTIONS = {
+    "dtype": "fp32",
     "build_timeout_s": 30,
     "run_timeout_s": 7,
     "program_flags": ("-O1",),
@@ -61,6 +62,27 @@ def matrices(m, k, n, seed):
     a = generator.integers(-4, 5, size=(m, k)).astype(np.float32)
     b = generator.integers(-4, 5, size=(k, n)).astype(np.float32)
     return a, b
+
+
+def widened(patterns):
+    return (patterns.astype(np.uint32) << 16).view(np.float32)
+
+
+def bf16_of(values):
+    exact = np.asarray(values, dtype=np.float32)
+    patterns = (exact.view(np.uint32) >> 16).astype(np.uint16)
+    assert np.array_equal(widened(patterns), exact), "not exact in bf16"
+    return patterns
+
+
+def bf16_matrices(m, k, n, seed):
+    a, b = matrices(m, k, n, seed)
+    return bf16_of(a), bf16_of(b)
+
+
+def nearest_bf16(values):
+    words = np.asarray(values, dtype=np.float32).view(np.uint32).astype(np.uint64)
+    return ((words + 0x7FFF + ((words >> 16) & 1)) >> 16).astype(np.uint16)
 
 
 def operands_for(dimensions, binding, **changes):
@@ -191,12 +213,86 @@ def test_kernel_unfit_builds_nothing(recorder):
     assert recorder.calls == []
 
 
-def test_binding_is_checked_at_fp32(recorder):
+def bf16_binding():
     contract = gemm_bf16_contract.task_contract(3, 4, 5)
-    binding = {
+    return {
         site: [BindingEntry(kernel(site, contract), "every")] for site in CALL_SITES
     }
-    result = run(SMALL, binding, object(), **settings(), **OPTIONS)
+
+
+def bf16_operands_for(dimensions, binding, **changes):
+    check = model_gemm.model_binding.check(
+        dimensions, binding, dtype="bf16", **settings(**changes)
+    )
+    assert check.ok
+    return {
+        (site, shape): bf16_matrices(*shape, seed)
+        for seed, (site, shape, _) in enumerate(check.calls)
+    }
+
+
+@pytest.mark.parametrize("dtype", ["fp32", "bf16"])
+def test_check_and_execute_get_the_callers_dtype(recorder, monkeypatch, dtype):
+    seen = []
+    original = model_gemm.model_binding.check
+
+    def spy(*args, **options):
+        seen.append(options["dtype"])
+        return original(*args, **options)
+
+    monkeypatch.setattr(model_gemm.model_binding, "check", spy)
+    binding = bf16_binding() if dtype == "bf16" else every_binding()
+    make = bf16_operands_for if dtype == "bf16" else operands_for
+    operands = make(SMALL, binding)
+    seen.clear()
+    result = run(SMALL, binding, operands, **settings(), **{**OPTIONS, "dtype": dtype})
+    assert seen == [dtype]
+    assert result.check.ok
+    [(_, _, options)] = recorder.calls
+    assert options == {**OPTIONS, "dtype": dtype}
+
+
+def test_missing_dtype_is_refused(recorder):
+    options = {key: value for key, value in OPTIONS.items() if key != "dtype"}
+    with pytest.raises(TypeError, match="dtype"):
+        run(SMALL, every_binding(), {}, **settings(), **options)
+    assert recorder.calls == []
+
+
+class _Untouchable:
+    def __getattr__(self, name):
+        raise AssertionError(f"operands looked at: {name}")
+
+
+def test_dtype_without_contract_is_invalid_input(recorder):
+    result = run(
+        SMALL,
+        every_binding(),
+        _Untouchable(),
+        **settings(),
+        **{**OPTIONS, "dtype": "fp16"},
+    )
+    assert not result.check.ok
+    assert [o.kind for o in result.check.outcomes] == ["invalid_input"]
+    assert "fp16" in result.check.outcomes[0].reason
+    assert result == GemmRun(result.check, (), None)
+    assert recorder.calls == []
+
+
+def test_fp32_kernels_at_bf16_are_unfit(recorder):
+    result = run(
+        SMALL, every_binding(), object(), **settings(), **{**OPTIONS, "dtype": "bf16"}
+    )
+    assert not result.check.ok
+    assert [(o.kind, o.call_site) for o in result.check.outcomes] == [
+        (KERNEL_UNFIT, site) for site in CALL_SITES
+    ]
+    assert result.calls == () and result.execution is None
+    assert recorder.calls == []
+
+
+def test_bf16_kernels_at_fp32_are_unfit(recorder):
+    result = run(SMALL, bf16_binding(), object(), **settings(), **OPTIONS)
     assert not result.check.ok
     assert [(o.kind, o.call_site) for o in result.check.outcomes] == [
         (KERNEL_UNFIT, site) for site in CALL_SITES
@@ -204,6 +300,32 @@ def test_binding_is_checked_at_fp32(recorder):
     assert all("fp32 gemm contract" in o.reason for o in result.check.outcomes)
     assert result.calls == () and result.execution is None
     assert recorder.calls == []
+
+
+@pytest.mark.parametrize("dtype", [1, None, b"bf16"])
+def test_malformed_dtype_passes_on_what_check_raises(recorder, dtype):
+    with pytest.raises(TypeError) as caught:
+        run(SMALL, every_binding(), {}, **settings(), **{**OPTIONS, "dtype": dtype})
+    with pytest.raises(TypeError) as expected:
+        model_gemm.model_binding.check(
+            SMALL, every_binding(), dtype=dtype, **settings()
+        )
+    assert str(caught.value) == str(expected.value)
+    assert caught.value.parameter == "dtype"
+    assert recorder.calls == []
+
+
+def test_float32_arrays_at_bf16_reach_execute_uncast(recorder):
+    binding = bf16_binding()
+    operands = operands_for(SMALL, every_binding())
+    run(SMALL, binding, operands, **settings(), **{**OPTIONS, "dtype": "bf16"})
+    [(_, program_calls, options)] = recorder.calls
+    assert options["dtype"] == "bf16"
+    for _, a, b in program_calls:
+        assert a.dtype == np.float32 and b.dtype == np.float32
+    assert {id(x) for _, a, b in program_calls for x in (a, b)} == {
+        id(x) for pair in operands.values() for x in pair
+    }
 
 
 def test_malformed_binding_is_passed_on(recorder):
@@ -294,11 +416,34 @@ def test_arrays_refused_by_model_run_reach_execute(tmp_path, replace, kind):
             every_binding(),
             operands,
             **settings(prompt=[1], generation_length=1),
+            dtype="fp32",
             build_timeout_s=30,
             run_timeout_s=7,
             parent=tmp_path,
         )
     assert "calls[0]" in str(info.value)
+    assert os.listdir(tmp_path) == []
+
+
+def test_float32_arrays_at_bf16_pass_the_error_of_model_run(tmp_path):
+    options = settings(prompt=[1], generation_length=1)
+    binding = bf16_binding()
+    operands = operands_for(TINY, every_binding(), prompt=[1], generation_length=1)
+    calls = [(index, *pair) for index, pair in enumerate(operands.values())]
+    with pytest.raises(ValueError) as caught:
+        run(
+            TINY,
+            binding,
+            operands,
+            **options,
+            dtype="bf16",
+            build_timeout_s=30,
+            run_timeout_s=7,
+            parent=tmp_path,
+        )
+    with pytest.raises(ValueError) as expected:
+        model_execute.model_run.output_shapes(calls, dtype="bf16")
+    assert str(caught.value) == str(expected.value)
     assert os.listdir(tmp_path) == []
 
 
@@ -376,10 +521,50 @@ void hilclaw_gemm(size_t m, size_t k, size_t n, const float *restrict a, const f
 }
 """
 
+BF16_PRODUCT = """\
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+static float widen(uint16_t bits)
+{
+    uint32_t word = (uint32_t)bits << 16;
+    float value;
+
+    memcpy(&value, &word, sizeof value);
+    return value;
+}
+
+static uint16_t narrow(float value)
+{
+    uint32_t word;
+
+    memcpy(&word, &value, sizeof word);
+    word += UINT32_C(0x7FFF) + ((word >> 16) & 1u);
+    return (uint16_t)(word >> 16);
+}
+
+void hilclaw_gemm_bf16(size_t m, size_t k, size_t n, const uint16_t *restrict a, const uint16_t *restrict b, uint16_t *restrict c)
+{
+    size_t i, j, p;
+
+    for (i = 0; i < m; i++)
+        for (j = 0; j < n; j++) {
+            float sum = @START@;
+
+            for (p = 0; p < k; p++)
+                sum += widen(a[i * k + p]) * widen(b[p * n + j]);
+            c[i * n + j] = narrow(sum);
+        }
+}
+"""
+
 SOURCES = {
     "plain": PRODUCT.replace("@START@", "0.0f"),
     "plus_one": PRODUCT.replace("@START@", "1.0f"),
     "broken": "void hilclaw_gemm(\n",
+    "bf16_plain": BF16_PRODUCT.replace("@START@", "0.0f"),
+    "bf16_plus_one": BF16_PRODUCT.replace("@START@", "1.0f"),
 }
 
 
@@ -396,20 +581,25 @@ def clang():
 def real_kernel(directory, name):
     source = directory / f"{name}.c"
     source.write_text(SOURCES[name], encoding="ascii", newline="\n")
-    return KernelReference(
-        (str(source),), gemm_contract.task_contract(3, 4, 5), ("-O2",)
+    contract = (
+        gemm_bf16_contract.task_contract(3, 4, 5)
+        if name.startswith("bf16_")
+        else gemm_contract.task_contract(3, 4, 5)
     )
+    return KernelReference((str(source),), contract, ("-O2",))
 
 
-def real_run(tmp_path, binding):
+def real_run(tmp_path, binding, dtype="fp32"):
     builds = tmp_path / "builds"
     builds.mkdir()
-    operands = operands_for(SMALL, binding)
+    make = bf16_operands_for if dtype == "bf16" else operands_for
+    operands = make(SMALL, binding)
     result = run(
         SMALL,
         binding,
         operands,
         **settings(),
+        dtype=dtype,
         build_timeout_s=120,
         run_timeout_s=60,
         program_flags=("-O2",),
@@ -474,3 +664,41 @@ def test_real_broken_kernel_gives_build_failed(clang, tmp_path):
     assert result.execution.build_failed.build.log
     assert result.execution.run is None
     assert {site for site, _, index in result.calls if index == 1} == {"up"}
+
+
+def test_real_bf16_every_binding_gives_the_rounded_products(clang, tmp_path):
+    plain = real_kernel(sources_dir(tmp_path), "bf16_plain")
+    binding = {site: [BindingEntry(plain, "every")] for site in CALL_SITES}
+    result, operands = real_run(tmp_path, binding, "bf16")
+    assert result.check.ok
+    assert result.execution.build_failed is None
+    assert result.execution.run.failed is None, result.execution.run.run.stderr
+    assert len(result.execution.run.outputs) == len(result.calls) == 12
+    for (site, shape, index), output in zip(
+        result.calls, result.execution.run.outputs, strict=True
+    ):
+        assert index == 0
+        a, b = operands[(site, shape)]
+        assert a.dtype == np.uint16 and b.dtype == np.uint16
+        assert output.dtype == np.uint16
+        assert np.array_equal(output, nearest_bf16(widened(a) @ widened(b)))
+
+
+def test_real_bf16_two_kernels_at_different_sites(clang, tmp_path):
+    directory = sources_dir(tmp_path)
+    plain = real_kernel(directory, "bf16_plain")
+    plus_one = real_kernel(directory, "bf16_plus_one")
+    binding = {
+        site: [BindingEntry(plus_one if site in ("o", "down") else plain, "every")]
+        for site in CALL_SITES
+    }
+    result, operands = real_run(tmp_path, binding, "bf16")
+    assert result.execution.run.failed is None, result.execution.run.run.stderr
+    for (site, shape, index), output in zip(
+        result.calls, result.execution.run.outputs, strict=True
+    ):
+        a, b = operands[(site, shape)]
+        added = np.float32(1 if site in ("o", "down") else 0)
+        assert index == (1 if site in ("o", "down") else 0)
+        assert output.dtype == np.uint16
+        assert np.array_equal(output, nearest_bf16(widened(a) @ widened(b) + added))

@@ -28,9 +28,10 @@ Readings of this module (not rules of the record):
 - Slice 2's forward pass does not exist yet, so the caller supplies the
   operands of every call; this module chooses no array, weight, cast,
   reference or tolerance, compares nothing and has no fallback for a missing
-  kernel (decision 5). The binding is checked at the dtype ``fp32``, the fp32
-  path of ``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``
-  decision 5.
+  kernel (decision 5). The binding is checked at the caller's ``dtype``, and
+  the program of that dtype is built and run
+  (``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``
+  decisions 1 and 3).
 
 What this module does not do: no forward pass, embedding, KV cache or token
 selection; no file outside the build directory of
@@ -69,6 +70,7 @@ def run(
     generation_length,
     lm_head_rows,
     given=None,
+    dtype,
     build_timeout_s,
     run_timeout_s,
     program_flags=(),
@@ -81,12 +83,15 @@ def run(
 ):
     """Check ``binding`` for one generation and, if ok, build and run its GEMM calls; return a :class:`GemmRun`.
 
-    ``dimensions``, ``binding``, ``prompt``, ``generation_length``,
+    ``dimensions``, ``binding``, ``dtype``, ``prompt``, ``generation_length``,
     ``lm_head_rows`` and ``given`` go to
-    :func:`hilclaw.model_binding.check`, which checks the binding at the dtype
-    ``fp32`` (ADR-0157 decision 5); what it raises is passed on unchanged.
-    If the check is not ok, the result is ``GemmRun(check, (), None)``:
-    nothing is built, started or made, and ``operands`` is not looked at.
+    :func:`hilclaw.model_binding.check`, which checks the binding at the
+    caller's ``dtype``, the model's dtype with no default (ADR-0157 decisions
+    1 and 3), and makes every check of ``dtype``: one outside
+    :data:`hilclaw.model_binding.DTYPES` is the outcome ``"invalid_input"``;
+    what it raises is passed on unchanged. If the check is not ok, the result
+    is ``GemmRun(check, (), None)``: nothing is built, started or made, and
+    ``operands`` is not looked at.
 
     If the check is ok, ``operands`` maps each ``(call_site, shape)`` of
     ``check.calls``, ``shape`` the ``(m, k, n)`` tuple, to a pair ``(a, b)``
@@ -97,18 +102,20 @@ def run(
     :class:`TypeError` for a value that is not a pair and :class:`ValueError`
     for an ``a`` or ``b`` whose ``shape`` is a pair other than ``(m, k)`` or
     ``(k, n)``; then :class:`ValueError` for a key that is no call of the
-    check. Each message names the key. An array of another dtype, of another
-    number of dimensions or that is no :class:`numpy.ndarray` reaches
-    :func:`hilclaw.model_execute.execute`, whose error is passed on unchanged.
+    check. Each message names the key. No array is cast: for ``bf16``, ``a``
+    and ``b`` are :class:`numpy.uint16` bit patterns. An array of another
+    dtype, of another number of dimensions or that is no
+    :class:`numpy.ndarray` reaches :func:`hilclaw.model_execute.execute`,
+    whose error is passed on unchanged.
 
     ``execute`` gets the kernel list, one ``(index, a, b)`` per entry of
-    ``check.calls`` in its order, and every remaining keyword unchanged; what
-    it raises is passed on unchanged.
+    ``check.calls`` in its order, ``dtype`` and every remaining keyword
+    unchanged; what it raises is passed on unchanged.
     """
     check = model_binding.check(
         dimensions,
         binding,
-        dtype="fp32",
+        dtype=dtype,
         prompt=prompt,
         generation_length=generation_length,
         lm_head_rows=lm_head_rows,
@@ -130,6 +137,7 @@ def run(
     execution = model_execute.execute(
         kernels,
         program_calls,
+        dtype=dtype,
         build_timeout_s=build_timeout_s,
         run_timeout_s=run_timeout_s,
         program_flags=program_flags,
