@@ -19,5 +19,7 @@ three modules that import ``numpy``, and nothing else of the harness. The C
 sources of that bf16 run are its shared header (``bf16_verification.h``) and
 its four verification programs, one per kind, which include it
 (``bf16_verification_gemm.c``, ``bf16_verification_rmsnorm.c``,
-``bf16_verification_elementwise_add.c`` and ``bf16_verification_swiglu.c``).
+``bf16_verification_elementwise_add.c`` and ``bf16_verification_swiglu.c``),
+and the build of a bf16 verification executable from one of them
+(:mod:`hilclaw.harness.bf16_verification_build`).
 """
