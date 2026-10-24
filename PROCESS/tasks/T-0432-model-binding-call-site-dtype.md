@@ -2,7 +2,7 @@
 id: T-0432
 title: Give hilclaw/model_binding.check the model's dtype - fit against the fp32 or bf16 gemm contract it selects, invalid input for a dtype with no contract (ADR-0157 code slice 1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-10, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0430, T-0431]
@@ -110,3 +110,10 @@ hq: []
 - (planner) After this lands: ADR-0157 code slice (2). It covers the bf16 model program and its host-side run over `uint16_t` buffers with hand-written bf16 kernel fixtures, and then `model_gemm.run`'s `dtype` with the build-and-execute path. Split it to the size cap as ADR-0157 Consequences suggest.
 
 ## Result
+
+- PR #253 (https://github.com/myungjoo/HIL-Claw/pull/253), squash-merged as 5a06be3 on main; branch claude/T-0432-model-binding-call-site-dtype deleted.
+- Review: 2 rounds (dev-reviewer, dev-code-review). Round 1 Approve with one Low (model_gemm module docstring stated the fp32 check twice), fixed in e74cd7c; round 2 Approve, no findings.
+- CI green on the final commit (Python gate 3.11/3.14, coverage, test presence, C, sh). Locally, ruff check, ruff format --check and full pytest pass (27381 passed, 927 skipped); model_binding.py and model_gemm.py at 100% line coverage.
+- Change: model_binding.check takes a required keyword-only `dtype` (refusal order dimensions, dtype, prompt, ...; TypeError for a non-str, ValueError for a name outside [a-z][a-z0-9_]{0,31}, parameter "dtype"). Public DTYPES = ("fp32", "bf16"). A dtype outside it is the first "invalid_input" outcome, and no kernel_unfit or no_kernel is produced then. A dtype in range fits each entry against the contract it selects (gemm_contract / gemm_bf16_contract), and reasons name that contract. model_gemm.run passes dtype="fp32". Docstrings of model_binding, model_gemm and gemm_bf16_contract updated. No data-plane or ARCHITECTURE/ change.
+- Language: Python. It extends the existing Python modules hilclaw/model_binding.py and model_gemm.py.
+- Follow-ups: none new. The planner follow-up already in the task file stands: ADR-0157 code slice (2), the bf16 model program and the `dtype` of model_gemm.run.
