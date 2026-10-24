@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import keys, rmsnorm_bf16_contract, spec
+from hilclaw import gemm_bf16_contract, gemm_contract, keys, rmsnorm_bf16_contract, spec
 from hilclaw.keys import MAX_INTEGER, InvalidRecordError, op_signature_key
 from hilclaw.rmsnorm_bf16_contract import (
     DTYPE,
@@ -408,6 +408,14 @@ def test_gemm_record_is_not_covered(dtype):
     record = dict(GEMM_RECORD, dtype=dtype)
     assert op_signature_key(record).name.startswith("gemm-")
     assert covers(record) is False
+
+
+@pytest.mark.parametrize("shape", [*SHAPES, (1, 1), (3, 7)])
+@pytest.mark.parametrize("dtype", ["bf16", "fp32"])
+def test_gemm_contracts_do_not_cover_a_record_of_this_kind(shape, dtype):
+    record = dict(op_signature_record(*shape), dtype=dtype)
+    assert gemm_contract.covers(record) is False
+    assert gemm_bf16_contract.covers(record) is False
 
 
 def test_record_of_another_kind_is_not_covered(monkeypatch):
