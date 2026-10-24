@@ -2,7 +2,7 @@
 id: T-0451
 title: Write ADR-0163 - the verification run of one built bf16 kernel on cpu_standin for the kinds gemm, rmsnorm, elementwise_add and swiglu (program and process, command line, generator over each contract's value set, independence of operands, seed and draws, output content before the call, widening and float64 reference per kind including the RMSNorm eps the reference uses, input check, report, comparison, verdict, calibration, parameters, limits), and update the OD-16, OD-31 and StandardScenarios records (P2-12 harness record, first part; part of OD-31 sub-question 3 and of OD-16)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0448]
@@ -221,6 +221,7 @@ If the executor finds a point that would change an owner answer, it leaves it in
 - **Decided** (driver design, §9 objection window): one verification program per kind; command lines; RMSNorm `eps` as the mechanism's binary32 constant `0x3727C5AC`; entry index = top b bits of a per-element word (b = 8 or 10) mapping onto the contract modules' tuples (checked for all 256 and 1024 indices); operands drawn independently; output filled with bf16 NaN `0x7FC0`; widening via the upper-half pattern; float64 reference per kind, the RMSNorm reference using the passed binary32 `eps`; 32-bit input check; report length draws·(4 + 2·m·n) + E; verdict as ADR-0017 decision 7; three calibration kernels per kind (bf16 `gemm` separate from fp32), with failing fixtures from each contract record's detection list.
 - **Reading that differs from the task file**: the task asked to cite HQ-0070 as one reason RoPE is outside the record. ADR-0161 decision 13 builds the verification table "with the constants of decision 4 (s = 8) whatever the answer on the scale factor", so the record states that HQ-0070 bears on the model's table only and rests RoPE's exclusion on the table operand and the open T = 1 row.
 - **Review**: 7 rounds (fresh-context `dev-reviewer`). Rounds 1, 2 and 6 requested changes (a wrong fixture share, the coverage rows, owner-search completeness, the `hilclaw_` linkage rule, HQ-0070, the check-value width, the reading of "as ADR-0017 decision n"); rounds 3, 4, 5 and 7 approved with nits that were addressed in rounds 3 to 6. Round 7 approved with one minor point and one nit left unfixed, because fixing them would need an eighth review round (see Follow-ups below).
+- **Landed commit**: `c004ccc` on `main`. **Owner notice** (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6388472665 (7-day objection window from 2026-10-25).
 - **Open HQs**: none created. No owner-only point was decided.
 - **Follow-ups** (2):
   1. ADR-0163 decision 7, "Every kind" bullet: the largest relative error of a correctly rounded bf16 value is 2^−8/(1 + 2^−8) = 1/257 (about 0.00389), not 2^−8. The inference "an `rtol` below that … can fail a conforming kernel" therefore holds for an `rtol` below 1/257, not for one in [1/257, 2^−8) (round 7 reviewer, minor).
