@@ -599,7 +599,7 @@ def test_gemm_shape_members_are_exactly_m_k_n(shape):
 def test_unknown_kind_is_rejected(kind):
     with pytest.raises(
         InvalidRecordError,
-        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm",
+        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm, swiglu",
     ):
         op_signature_key(changed(synthetic_op(), ["kind"], kind))
 
@@ -663,7 +663,7 @@ def test_gemm_still_needs_k_beside_m_and_n():
 def test_unknown_kind_message_lists_all_known_kinds():
     with pytest.raises(
         InvalidRecordError,
-        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm, got",
+        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm, swiglu, got",
     ):
         op_signature_key(changed(synthetic_op(), ["kind"], "rope"))
 
@@ -731,6 +731,70 @@ def test_other_kinds_keep_their_members_beside_elementwise_add():
         )
     assert op_signature_key(synthetic_op()).name.startswith("gemm-")
     assert op_signature_key(synthetic_rmsnorm_op()).name.startswith("rmsnorm-")
+
+
+def synthetic_swiglu_op():
+    return dict(synthetic_op(), kind="swiglu", shape={"m": 3, "n": 7})
+
+
+def test_swiglu_record_is_accepted():
+    key = op_signature_key(synthetic_swiglu_op())
+    assert key.name.startswith("swiglu-")
+    assert hashlib.sha256(key.canonical).hexdigest() == key.digest
+
+
+def test_swiglu_record_of_adr_0160_has_its_canonical_form_and_name():
+    record = {
+        "schema_version": 1,
+        "kind": "swiglu",
+        "shape": {"m": 1, "n": 8192},
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+    key = op_signature_key(record)
+    assert key.canonical == (
+        b'{"dtype":"bf16","kind":"swiglu","layout":"row_major",'
+        b'"schema_version":1,"shape":{"m":1,"n":8192}}'
+    )
+    assert key.digest == (
+        "7b82bc7d69cda1e0fd3794adbe3bce2274830ff1c53b3c20997ae095e352dc29"
+    )
+    assert key.name == "swiglu-7b82bc7d69cda1e0"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {},
+        {"m": 1},
+        {"n": 2},
+        {"m": 1, "n": 2, "k": 3},
+        {"m": 1, "k": 2, "n": 3},
+        {"m": 1, "o": 2},
+    ],
+)
+def test_swiglu_shape_members_are_exactly_m_n(shape):
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members m, n",
+    ):
+        op_signature_key(changed(synthetic_swiglu_op(), ["shape"], shape))
+
+
+def test_other_kinds_keep_their_members_beside_swiglu():
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members k, m, n",
+    ):
+        op_signature_key(changed(synthetic_op(), ["shape"], {"m": 3, "n": 7}))
+    for op in (synthetic_rmsnorm_op(), synthetic_elementwise_add_op()):
+        with pytest.raises(
+            InvalidRecordError,
+            match="^shape: must be a map with exactly the members m, n",
+        ):
+            op_signature_key(changed(op, ["shape"], {"m": 1, "k": 2, "n": 3}))
+        assert op_signature_key(op).name.startswith(op["kind"] + "-")
+    assert op_signature_key(synthetic_op()).name.startswith("gemm-")
 
 
 @pytest.mark.parametrize("canonical", ["{}", bytearray(b"{}"), None, {"a": 1}])
