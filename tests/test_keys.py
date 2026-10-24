@@ -599,7 +599,7 @@ def test_gemm_shape_members_are_exactly_m_k_n(shape):
 def test_unknown_kind_is_rejected(kind):
     with pytest.raises(
         InvalidRecordError,
-        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm, swiglu",
+        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm, rope, swiglu",
     ):
         op_signature_key(changed(synthetic_op(), ["kind"], kind))
 
@@ -663,9 +663,9 @@ def test_gemm_still_needs_k_beside_m_and_n():
 def test_unknown_kind_message_lists_all_known_kinds():
     with pytest.raises(
         InvalidRecordError,
-        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm, swiglu, got",
+        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm, rope, swiglu, got",
     ):
-        op_signature_key(changed(synthetic_op(), ["kind"], "rope"))
+        op_signature_key(changed(synthetic_op(), ["kind"], "sdpa"))
 
 
 def synthetic_elementwise_add_op():
@@ -793,6 +793,81 @@ def test_other_kinds_keep_their_members_beside_swiglu():
             match="^shape: must be a map with exactly the members m, n",
         ):
             op_signature_key(changed(op, ["shape"], {"m": 1, "k": 2, "n": 3}))
+        assert op_signature_key(op).name.startswith(op["kind"] + "-")
+    assert op_signature_key(synthetic_op()).name.startswith("gemm-")
+
+
+def synthetic_rope_op():
+    return dict(synthetic_op(), kind="rope", shape={"m": 3, "h": 5, "d": 2})
+
+
+def test_rope_record_is_accepted():
+    key = op_signature_key(synthetic_rope_op())
+    assert key.name.startswith("rope-")
+    assert hashlib.sha256(key.canonical).hexdigest() == key.digest
+
+
+def test_rope_record_of_adr_0161_has_its_canonical_form_and_name():
+    record = {
+        "schema_version": 1,
+        "kind": "rope",
+        "shape": {"m": 1, "h": 8, "d": 64},
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+    key = op_signature_key(record)
+    assert key.canonical == (
+        b'{"dtype":"bf16","kind":"rope","layout":"row_major",'
+        b'"schema_version":1,"shape":{"d":64,"h":8,"m":1}}'
+    )
+    assert key.digest == (
+        "c797475e043d41569f5a69878631c9c59bde735b28fc614aab427b1d9cd4006a"
+    )
+    assert key.name == "rope-c797475e043d4156"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {},
+        {"m": 1, "h": 2},
+        {"m": 1, "h": 2, "d": 4, "n": 5},
+        {"m": 1, "k": 2, "n": 3},
+        {"m": 1, "n": 2},
+        {"m": 1, "h": 2, "k": 4},
+    ],
+)
+def test_rope_shape_members_are_exactly_m_h_d(shape):
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members d, h, m",
+    ):
+        op_signature_key(changed(synthetic_rope_op(), ["shape"], shape))
+
+
+@pytest.mark.parametrize("d", [1, 3, 63, 0])
+def test_rope_record_with_an_odd_or_zero_d_is_accepted_by_the_keys(d):
+    record = changed(synthetic_rope_op(), ["shape"], {"m": 3, "h": 5, "d": d})
+    assert op_signature_key(record).name.startswith("rope-")
+
+
+def test_other_kinds_keep_their_members_beside_rope():
+    rope_shape = {"m": 1, "h": 2, "d": 4}
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members k, m, n",
+    ):
+        op_signature_key(changed(synthetic_op(), ["shape"], rope_shape))
+    for op in (
+        synthetic_rmsnorm_op(),
+        synthetic_elementwise_add_op(),
+        synthetic_swiglu_op(),
+    ):
+        with pytest.raises(
+            InvalidRecordError,
+            match="^shape: must be a map with exactly the members m, n",
+        ):
+            op_signature_key(changed(op, ["shape"], rope_shape))
         assert op_signature_key(op).name.startswith(op["kind"] + "-")
     assert op_signature_key(synthetic_op()).name.startswith("gemm-")
 
