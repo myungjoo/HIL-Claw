@@ -14,11 +14,11 @@ failed** of decision 5, named by :class:`RunFailed`.
 
 Each of the four functions takes the dtype of the generation, one of
 :data:`DTYPES`, as the required keyword argument ``dtype``, with no default:
-it is never assumed (ADR-0157 decision 1). The program comes in one build per dtype (the header
-comment of ``model_program.c``), and the dtype selects the element type of
-the arrays, of the input file and of the report as in the table of ADR-0157
-decision 3: ``float32`` for ``fp32``, and ``uint16`` for ``bf16``, each
-element the bit pattern of a bf16 value. :func:`run_model_program` does not
+it is never assumed (ADR-0157 decision 1). The program comes in one build
+per dtype (the header comment of ``model_program.c``), and the dtype selects
+the element type of the arrays, of the input file and of the report as in
+the table of ADR-0157 decision 3: ``float32`` for ``fp32``, and ``uint16``
+for ``bf16``, each element the bit pattern of a bf16 value. :func:`run_model_program` does not
 know which build of the program it starts; the caller passes the dtype that
 matches it.
 
