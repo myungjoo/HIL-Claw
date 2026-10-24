@@ -12,6 +12,7 @@ from hilclaw import (
     gemm_contract,
     rmsnorm_bf16_contract,
     rope_bf16_contract,
+    sdpa_kv_cache_bf16_contract,
     swiglu_bf16_contract,
 )
 from hilclaw.keys import MAX_INTEGER
@@ -24,6 +25,8 @@ from hilclaw.model_binding import (
     RMSNORM_DTYPES,
     ROPE_CALL_SITES,
     ROPE_DTYPES,
+    SDPA_CALL_SITES,
+    SDPA_DTYPES,
     SWIGLU_CALL_SITES,
     SWIGLU_DTYPES,
     BindingCheck,
@@ -36,6 +39,7 @@ from hilclaw.model_binding import (
     check_elementwise_add,
     check_rmsnorm,
     check_rope,
+    check_sdpa,
     check_swiglu,
     elementwise_add_generation_calls,
     elementwise_add_shape,
@@ -46,6 +50,8 @@ from hilclaw.model_binding import (
     rmsnorm_shape,
     rope_generation_calls,
     rope_shape,
+    sdpa_generation_calls,
+    sdpa_shape,
     swiglu_generation_calls,
     swiglu_shape,
 )
@@ -3918,3 +3924,1015 @@ def test_other_checks_refuse_a_rope_kernel():
     binding["ffn_residual"] = [BindingEntry(rope_kernel(), "every")]
     (outcome,) = run_add(binding).outcomes
     assert outcome.reason == ADD_PROTOTYPE_UNFIT
+
+
+LLAMA = ModelDimensions(2048, 8192, 128256, 16, 32, 8, 64)
+OTHER_CALL_SITES = (
+    *CALL_SITES,
+    *RMSNORM_CALL_SITES,
+    *ELEMENTWISE_ADD_CALL_SITES,
+    *SWIGLU_CALL_SITES,
+    *ROPE_CALL_SITES,
+)
+
+
+def test_sdpa_call_sites():
+    assert SDPA_CALL_SITES == ("sdpa",)
+    assert not set(SDPA_CALL_SITES) & set(OTHER_CALL_SITES)
+
+
+def test_sdpa_dtypes():
+    assert SDPA_DTYPES == ("bf16",)
+    assert SDPA_DTYPES == (sdpa_kv_cache_bf16_contract.DTYPE,)
+
+
+@pytest.mark.parametrize(
+    ("rows", "positions"),
+    [(1, 1), (1, 7), (7, 7), (3, 9), (1, MAX_INTEGER), (MAX_INTEGER, MAX_INTEGER)],
+)
+def test_sdpa_shape_small(rows, positions):
+    assert sdpa_shape(SMALL, "sdpa", rows, positions) == (rows, positions, 4, 2, 2)
+
+
+def test_sdpa_shape_each_member_follows_its_own_field():
+    dimensions = SMALL._replace(heads=12, kv_heads=3, head_dim=6)
+    assert sdpa_shape(dimensions, "sdpa", 5, 9) == (5, 9, 12, 3, 6)
+    same = SMALL._replace(heads=2, kv_heads=2)
+    assert sdpa_shape(same, "sdpa", 2, 3) == (2, 3, 2, 2, 2)
+    wide = SMALL._replace(hidden=MAX_INTEGER, intermediate=3, vocabulary=5)
+    assert sdpa_shape(wide, "sdpa", 2, 3) == (2, 3, 4, 2, 2)
+
+
+@pytest.mark.parametrize("head_dim", [1, 3, 63])
+def test_sdpa_shape_odd_head_dim_is_accepted(head_dim):
+    dimensions = SMALL._replace(head_dim=head_dim)
+    assert sdpa_shape(dimensions, "sdpa", 1, 2) == (1, 2, 4, 2, head_dim)
+
+
+def test_sdpa_shape_at_llama_values_is_the_contract_table():
+    pairs = ((128, 128), (1, 128), (2048, 2048), (1, 2048))
+    shapes = tuple(sdpa_shape(LLAMA, "sdpa", m, l) for m, l in pairs)
+    assert shapes == sdpa_kv_cache_bf16_contract.SHAPES
+
+
+def test_sdpa_shape_positions_below_rows_is_refused():
+    assert sdpa_shape(SMALL, "sdpa", 5, 5) == (5, 5, 4, 2, 2)
+    error = raises(ValueError, "positions", sdpa_shape, SMALL, "sdpa", 5, 4)
+    assert str(error) == "must be at least rows (5), got 4"
+    raises(ValueError, "positions", sdpa_shape, SMALL, "sdpa", MAX_INTEGER, 1)
+
+
+@pytest.mark.parametrize(
+    "site",
+    [
+        *OTHER_CALL_SITES,
+        "sdpa_kv_cache",
+        "SDPA",
+        "attention",
+        "sdpa ",
+        "",
+        None,
+        3,
+        ("sdpa",),
+    ],
+)
+def test_sdpa_shape_unknown_call_site(site):
+    error = raises(ValueError, "call_site", sdpa_shape, SMALL, site, 1, 1)
+    assert str(SDPA_CALL_SITES) in str(error)
+
+
+BAD_COUNTS = [
+    (True, TypeError),
+    (1.0, TypeError),
+    (None, TypeError),
+    ("1", TypeError),
+    (0, ValueError),
+    (-1, ValueError),
+    (MAX_INTEGER + 1, ValueError),
+]
+
+
+@pytest.mark.parametrize(("rows", "kind"), BAD_COUNTS)
+def test_sdpa_shape_bad_rows(rows, kind):
+    error = raises(kind, "rows", sdpa_shape, SMALL, "sdpa", rows, MAX_INTEGER)
+    assert str(error).startswith("rows: ")
+
+
+@pytest.mark.parametrize(("positions", "kind"), BAD_COUNTS)
+def test_sdpa_shape_bad_positions(positions, kind):
+    error = raises(kind, "positions", sdpa_shape, SMALL, "sdpa", 1, positions)
+    assert str(error).startswith("positions: ")
+
+
+def test_sdpa_shape_argument_order():
+    raises(TypeError, "dimensions", sdpa_shape, None, "x", 0, 0)
+    raises(ValueError, "dimensions", sdpa_shape, SMALL._replace(heads=3), "x", 0, 0)
+    raises(ValueError, "dimensions", sdpa_shape, SMALL._replace(head_dim=0), "x", 0, 0)
+    raises(ValueError, "call_site", sdpa_shape, SMALL, "rope_q", 0, None)
+    raises(ValueError, "rows", sdpa_shape, SMALL, "sdpa", 0, None)
+    raises(TypeError, "positions", sdpa_shape, SMALL, "sdpa", 5, 4.0)
+    error = raises(ValueError, "positions", sdpa_shape, SMALL, "sdpa", 5, 0)
+    assert str(error).startswith("positions: must be from 1")
+    assert list(inspect.signature(sdpa_shape).parameters) == [
+        "dimensions",
+        "call_site",
+        "rows",
+        "positions",
+    ]
+
+
+def sdpa_shapes(pairs, dimensions=SMALL):
+    return tuple(
+        (m, l, dimensions.heads, dimensions.kv_heads, dimensions.head_dim)
+        for m, l in pairs
+    )
+
+
+SDPA_PAIRS = ((1, 4), (1, 5), (1, 6), (3, 3))
+
+
+def test_sdpa_generation_calls_prefill_and_one_decode_shape_per_pass():
+    calls = sdpa_generation_calls(SMALL, prompt_length=3, generation_length=4)
+    assert calls == (("sdpa", sdpa_shapes(SDPA_PAIRS)),)
+    assert calls[0][1] == (
+        (1, 4, 4, 2, 2),
+        (1, 5, 4, 2, 2),
+        (1, 6, 4, 2, 2),
+        (3, 3, 4, 2, 2),
+    )
+
+
+def test_sdpa_generation_calls_one_token_has_no_decode():
+    calls = sdpa_generation_calls(SMALL, prompt_length=5, generation_length=1)
+    assert calls == (("sdpa", sdpa_shapes(((5, 5),))),)
+
+
+def test_sdpa_generation_calls_prompt_of_one_row():
+    calls = sdpa_generation_calls(SMALL, prompt_length=1, generation_length=4)
+    assert calls == (("sdpa", sdpa_shapes(((1, 1), (1, 2), (1, 3), (1, 4)))),)
+
+
+@pytest.mark.parametrize(
+    ("prompt_length", "generation_length"), [(1, 1), (2, 2), (4, 7), (9, 3)]
+)
+def test_sdpa_generation_calls_has_one_shape_per_pass(prompt_length, generation_length):
+    dimensions = SMALL._replace(heads=6, kv_heads=3, head_dim=5)
+    ((site, shapes),) = sdpa_generation_calls(
+        dimensions, prompt_length=prompt_length, generation_length=generation_length
+    )
+    assert site == "sdpa"
+    assert len(shapes) == generation_length
+    assert list(shapes) == sorted(shapes)
+    expected = {sdpa_shape(dimensions, "sdpa", prompt_length, prompt_length)}
+    expected |= {
+        sdpa_shape(dimensions, "sdpa", 1, prompt_length + k)
+        for k in range(1, generation_length)
+    }
+    assert set(shapes) == expected
+
+
+def test_sdpa_generation_calls_at_llama_values():
+    calls = sdpa_generation_calls(LLAMA, prompt_length=127, generation_length=2)
+    assert calls == (("sdpa", ((1, 128, 32, 8, 64), (127, 127, 32, 8, 64))),)
+
+
+def test_sdpa_generation_calls_largest_l_at_the_bound_is_accepted():
+    calls = sdpa_generation_calls(SMALL, prompt_length=MAX_INTEGER, generation_length=1)
+    assert calls == (("sdpa", sdpa_shapes(((MAX_INTEGER, MAX_INTEGER),))),)
+    calls = sdpa_generation_calls(
+        SMALL, prompt_length=MAX_INTEGER - 1, generation_length=2
+    )
+    assert calls == (
+        (
+            "sdpa",
+            sdpa_shapes(((1, MAX_INTEGER), (MAX_INTEGER - 1, MAX_INTEGER - 1))),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("prompt_length", "generation_length"),
+    [(MAX_INTEGER, 2), (2, MAX_INTEGER), (MAX_INTEGER, MAX_INTEGER)],
+)
+def test_sdpa_generation_calls_largest_l_above_the_bound_is_refused(
+    prompt_length, generation_length
+):
+    error = raises(
+        ValueError,
+        "generation_length",
+        sdpa_generation_calls,
+        SMALL,
+        prompt_length=prompt_length,
+        generation_length=generation_length,
+    )
+    assert str(error) == (
+        "generation_length: prompt_length + generation_length - 1 must be at most "
+        f"2**53 - 1, got {prompt_length} + {generation_length} - 1"
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "kind"),
+    [
+        ("prompt_length", 0, ValueError),
+        ("prompt_length", True, TypeError),
+        ("prompt_length", 2.0, TypeError),
+        ("prompt_length", MAX_INTEGER + 1, ValueError),
+        ("generation_length", 0, ValueError),
+        ("generation_length", -3, ValueError),
+        ("generation_length", MAX_INTEGER + 1, ValueError),
+        ("generation_length", None, TypeError),
+    ],
+)
+def test_sdpa_generation_calls_refuses(name, value, kind):
+    arguments = {"prompt_length": 2, "generation_length": 2}
+    arguments[name] = value
+    error = raises(kind, name, sdpa_generation_calls, SMALL, **arguments)
+    assert "prompt_length + generation_length" not in str(error)
+
+
+def test_sdpa_generation_calls_argument_order():
+    raises(
+        TypeError,
+        "dimensions",
+        sdpa_generation_calls,
+        None,
+        prompt_length=0,
+        generation_length=0,
+    )
+    raises(
+        ValueError,
+        "dimensions",
+        sdpa_generation_calls,
+        SMALL._replace(kv_heads=3),
+        prompt_length=0,
+        generation_length=None,
+    )
+    raises(
+        ValueError,
+        "prompt_length",
+        sdpa_generation_calls,
+        SMALL,
+        prompt_length=0,
+        generation_length=None,
+    )
+    raises(
+        TypeError,
+        "generation_length",
+        sdpa_generation_calls,
+        SMALL,
+        prompt_length=MAX_INTEGER,
+        generation_length=None,
+    )
+    error = raises(
+        ValueError,
+        "generation_length",
+        sdpa_generation_calls,
+        SMALL,
+        prompt_length=MAX_INTEGER,
+        generation_length=MAX_INTEGER + 1,
+    )
+    assert str(error).startswith("generation_length: must be from 1")
+
+
+def test_sdpa_generation_calls_lengths_are_keyword_only():
+    with pytest.raises(TypeError):
+        sdpa_generation_calls(SMALL, 2, 2)
+    parameters = inspect.signature(sdpa_generation_calls).parameters
+    assert list(parameters) == ["dimensions", "prompt_length", "generation_length"]
+    for name in ("prompt_length", "generation_length"):
+        assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+
+
+def sdpa_kernel(name="s", contract=_DEFAULT):
+    if contract is _DEFAULT:
+        contract = sdpa_kv_cache_bf16_contract.task_contract(1, 128, 32, 8, 64)
+    return KernelReference((f"{name}.c",), contract, ("-O2",))
+
+
+def sdpa_binding():
+    return {"sdpa": [BindingEntry(sdpa_kernel("sdpa"), "every")]}
+
+
+def run_sdpa(binding=None, dimensions=SMALL, **settings):
+    arguments = {"dtype": "bf16", "prompt_length": 3, "generation_length": 4}
+    arguments.update(settings)
+    binding = sdpa_binding() if binding is None else binding
+    return check_sdpa(dimensions, binding, **arguments)
+
+
+def expected_sdpa_calls(binding, pairs):
+    kernel = binding["sdpa"][0].kernel
+    return tuple(("sdpa", shape, kernel) for shape in sdpa_shapes(pairs))
+
+
+def sdpa_no_kernel(pairs):
+    return tuple(
+        Outcome("no_kernel", "sdpa", shape, "no entry of the binding covers the shape")
+        for shape in sdpa_shapes(pairs)
+    )
+
+
+def test_check_sdpa_every_binding_is_ok():
+    binding = sdpa_binding()
+    result = run_sdpa(binding)
+    assert result == BindingCheck(True, (), expected_sdpa_calls(binding, SDPA_PAIRS))
+    assert isinstance(result, BindingCheck)
+    assert [call[1][:2] for call in result.calls] == list(SDPA_PAIRS)
+
+
+def test_check_sdpa_listed_shapes_cover_exactly():
+    binding = {"sdpa": [BindingEntry(sdpa_kernel(), sdpa_shapes(SDPA_PAIRS))]}
+    result = run_sdpa(binding)
+    assert result.ok
+    assert result.calls == expected_sdpa_calls(binding, SDPA_PAIRS)
+
+
+def test_check_sdpa_listed_shape_other_than_the_spec_own():
+    spec_own = sdpa_kv_cache_bf16_contract.task_contract(2048, 2048, 32, 8, 64)
+    shapes = (*sdpa_shapes(((1, 7), *SDPA_PAIRS)), (2048, 2048, 32, 8, 64))
+    binding = {"sdpa": [BindingEntry(sdpa_kernel(contract=spec_own), shapes)]}
+    result = run_sdpa(binding)
+    assert result.ok
+    assert result.calls == expected_sdpa_calls(binding, SDPA_PAIRS)
+
+
+def test_check_sdpa_several_entries_disjoint_shapes():
+    prefill = sdpa_kernel("prefill")
+    decode = sdpa_kernel("decode")
+    binding = {
+        "sdpa": (
+            BindingEntry(prefill, sdpa_shapes(((3, 3), (9, 9)))),
+            BindingEntry(decode, sdpa_shapes(((1, 4), (1, 5), (1, 6)))),
+        )
+    }
+    assert run_sdpa(binding) == BindingCheck(
+        True,
+        (),
+        (
+            ("sdpa", (1, 4, 4, 2, 2), decode),
+            ("sdpa", (1, 5, 4, 2, 2), decode),
+            ("sdpa", (1, 6, 4, 2, 2), decode),
+            ("sdpa", (3, 3, 4, 2, 2), prefill),
+        ),
+    )
+
+
+def test_check_sdpa_generation_length_one():
+    result = run_sdpa(generation_length=1)
+    assert result.ok
+    assert [call[:2] for call in result.calls] == [("sdpa", (3, 3, 4, 2, 2))]
+
+
+def test_check_sdpa_accepts_path_sources():
+    contract = sdpa_kv_cache_bf16_contract.task_contract(1, 1, 1, 1, 1)
+    reference = KernelReference((Path("a.c"), "b.c"), contract, ())
+    assert run_sdpa({"sdpa": [BindingEntry(reference, "every")]}).ok
+
+
+@pytest.mark.parametrize("head_dim", [1, 3, 63])
+def test_check_sdpa_accepts_an_odd_head_dim(head_dim):
+    dimensions = SMALL._replace(head_dim=head_dim)
+    result = run_sdpa(dimensions=dimensions)
+    assert result.ok
+    assert [call[1] for call in result.calls] == list(
+        sdpa_shapes(SDPA_PAIRS, dimensions)
+    )
+
+
+def test_check_sdpa_decode_shapes_only_miss_the_prefill():
+    binding = {"sdpa": [BindingEntry(sdpa_kernel(), sdpa_shapes(SDPA_PAIRS[:3]))]}
+    assert run_sdpa(binding) == BindingCheck(False, sdpa_no_kernel(((3, 3),)), ())
+
+
+def test_check_sdpa_prefill_shape_only_misses_every_decode_pass():
+    binding = {"sdpa": [BindingEntry(sdpa_kernel(), sdpa_shapes(((3, 3),)))]}
+    assert run_sdpa(binding) == BindingCheck(False, sdpa_no_kernel(SDPA_PAIRS[:3]), ())
+
+
+def test_check_sdpa_shapes_of_one_pass_too_many_or_too_few_positions():
+    binding = {
+        "sdpa": [
+            BindingEntry(sdpa_kernel(), sdpa_shapes(((1, 3), (1, 4), (1, 5), (3, 3))))
+        ]
+    }
+    assert run_sdpa(binding).outcomes == sdpa_no_kernel(((1, 6),))
+
+
+@pytest.mark.parametrize("unknown", ["fp32", "fp16", "int8"])
+def test_check_sdpa_unknown_dtype_is_invalid_input(unknown):
+    reason = f"dtype: no sdpa_kv_cache contract is known at the dtype {unknown!r}"
+    assert run_sdpa(dtype=unknown) == BindingCheck(False, invalid(reason), ())
+    assert unknown in reason and "sdpa_kv_cache" in reason
+
+
+@pytest.mark.parametrize("unknown", ["fp32", "fp16"])
+def test_check_sdpa_unknown_dtype_gives_no_unfit_and_no_kernel(unknown):
+    reason = f"dtype: no sdpa_kv_cache contract is known at the dtype {unknown!r}"
+    binding = {"sdpa": [BindingEntry(sdpa_kernel(contract={}), ((3, 3, 99, 1, 2),))]}
+    assert run_sdpa(binding, dtype=unknown) == BindingCheck(False, invalid(reason), ())
+
+
+def test_check_sdpa_invalid_lengths():
+    assert run_sdpa(prompt_length=0).outcomes == invalid(
+        "prompt_length: must be from 1 to 2**53 - 1, got 0"
+    )
+    assert run_sdpa(generation_length=MAX_INTEGER + 1).outcomes == invalid(
+        f"generation_length: must be from 1 to 2**53 - 1, got {MAX_INTEGER + 1}"
+    )
+    assert run_sdpa(prompt_length=-2).calls == ()
+
+
+OVERLONG = (
+    "generation_length: prompt_length + generation_length - 1 must be at most "
+    f"2**53 - 1, got {MAX_INTEGER} + 2 - 1"
+)
+
+
+def test_check_sdpa_overlong_generation_is_invalid_input():
+    result = run_sdpa(prompt_length=MAX_INTEGER, generation_length=2)
+    assert result == BindingCheck(False, invalid(OVERLONG), ())
+    result = run_sdpa(prompt_length=2, generation_length=MAX_INTEGER)
+    assert result.outcomes == invalid(
+        "generation_length: prompt_length + generation_length - 1 must be at most "
+        f"2**53 - 1, got 2 + {MAX_INTEGER} - 1"
+    )
+
+
+def test_check_sdpa_largest_l_at_the_bound_is_ok():
+    result = run_sdpa(prompt_length=MAX_INTEGER, generation_length=1)
+    assert result.ok
+    assert [call[1] for call in result.calls] == [(MAX_INTEGER, MAX_INTEGER, 4, 2, 2)]
+    result = run_sdpa(prompt_length=MAX_INTEGER - 1, generation_length=2)
+    assert result.ok
+    assert [call[1][:2] for call in result.calls] == [
+        (1, MAX_INTEGER),
+        (MAX_INTEGER - 1, MAX_INTEGER - 1),
+    ]
+
+
+def test_check_sdpa_overlong_generation_is_not_looked_for_with_a_length_out_of_range():
+    assert run_sdpa(prompt_length=MAX_INTEGER + 1, generation_length=2).outcomes == (
+        invalid(f"prompt_length: must be from 1 to 2**53 - 1, got {MAX_INTEGER + 1}")
+    )
+    assert run_sdpa(
+        prompt_length=MAX_INTEGER, generation_length=MAX_INTEGER + 1
+    ).outcomes == invalid(
+        f"generation_length: must be from 1 to 2**53 - 1, got {MAX_INTEGER + 1}"
+    )
+    assert run_sdpa(prompt_length=MAX_INTEGER, generation_length=0).outcomes == (
+        invalid("generation_length: must be from 1 to 2**53 - 1, got 0")
+    )
+
+
+def test_check_sdpa_invalid_input_order_and_no_shape_check():
+    binding = {
+        "sdpa": [
+            BindingEntry(sdpa_kernel(contract=None), sdpa_shapes(((7, 7),))),
+            BindingEntry(sdpa_kernel(contract=[]), sdpa_shapes(((1, 9),))),
+        ]
+    }
+    result = run_sdpa(binding, prompt_length=0, generation_length=-1)
+    assert [(o.kind, o.call_site) for o in result.outcomes] == [
+        ("invalid_input", None),
+        ("invalid_input", None),
+        ("kernel_unfit", "sdpa"),
+        ("kernel_unfit", "sdpa"),
+    ]
+    assert result.outcomes[0].reason.startswith("prompt_length:")
+    assert result.outcomes[1].reason.startswith("generation_length:")
+    assert result.calls == ()
+    result = run_sdpa(binding, prompt_length=MAX_INTEGER, generation_length=2)
+    assert [(o.kind, o.reason[:8]) for o in result.outcomes] == [
+        ("invalid_input", "generati"),
+        ("kernel_unfit", "entry 0:"),
+        ("kernel_unfit", "entry 1:"),
+    ]
+    unlisted = {"sdpa": [BindingEntry(sdpa_kernel(), ((7, 7, 4, 2, 2),))]}
+    assert run_sdpa(unlisted, prompt_length=0).outcomes == invalid(
+        "prompt_length: must be from 1 to 2**53 - 1, got 0"
+    )
+    assert run_sdpa(
+        unlisted, prompt_length=MAX_INTEGER, generation_length=2
+    ).outcomes == invalid(OVERLONG)
+    result = run_sdpa(binding, dtype="fp32", prompt_length=0, generation_length=0)
+    assert [o.reason.split(":")[0] for o in result.outcomes] == [
+        "dtype",
+        "prompt_length",
+        "generation_length",
+    ]
+    result = run_sdpa(
+        binding, dtype="fp16", prompt_length=MAX_INTEGER, generation_length=2
+    )
+    assert [o.reason for o in result.outcomes] == [
+        "dtype: no sdpa_kv_cache contract is known at the dtype 'fp16'",
+        OVERLONG,
+    ]
+    assert {o.kind for o in result.outcomes} == {"invalid_input"}
+
+
+def test_check_sdpa_missing_call_site():
+    assert run_sdpa({}) == BindingCheck(False, sdpa_no_kernel(SDPA_PAIRS), ())
+
+
+def test_check_sdpa_unlisted_shape():
+    binding = {
+        "sdpa": [BindingEntry(sdpa_kernel(), sdpa_shapes(((1, 4), (1, 5), (3, 3))))]
+    }
+    result = run_sdpa(binding)
+    assert [(o.kind, o.call_site, o.shape) for o in result.outcomes] == [
+        ("no_kernel", "sdpa", (1, 6, 4, 2, 2))
+    ]
+    assert result.calls == ()
+
+
+def test_check_sdpa_shape_of_other_head_counts_gives_no_kernel():
+    shapes = tuple((m, l, 2, 2, 2) for m, l in SDPA_PAIRS)
+    binding = {"sdpa": [BindingEntry(sdpa_kernel(), shapes)]}
+    assert run_sdpa(binding).outcomes == sdpa_no_kernel(SDPA_PAIRS)
+
+
+def sdpa_unfit_reason(contract):
+    binding = {"sdpa": [BindingEntry(sdpa_kernel(contract=contract), "every")]}
+    result = run_sdpa(binding)
+    assert not result.ok and result.calls == ()
+    (outcome,) = result.outcomes
+    assert outcome.kind == "kernel_unfit"
+    assert outcome.call_site == "sdpa" and outcome.shape is None
+    assert outcome.reason.startswith("entry 0: ")
+    return outcome.reason
+
+
+def good_sdpa_contract():
+    return sdpa_kv_cache_bf16_contract.task_contract(2, 5, 4, 2, 6)
+
+
+SDPA_PROTOTYPE_UNFIT = (
+    "entry 0: contract.prototype is not that of the bf16 sdpa_kv_cache contract"
+)
+
+
+@pytest.mark.parametrize(
+    "contract",
+    [
+        rope_bf16_contract.task_contract(2, 4, 2),
+        swiglu_bf16_contract.task_contract(2, 4),
+        elementwise_add_bf16_contract.task_contract(2, 4),
+        rmsnorm_bf16_contract.task_contract(2, 4),
+        gemm_bf16_contract.task_contract(2, 4, 4),
+        gemm_contract.task_contract(2, 4, 4),
+    ],
+)
+def test_check_sdpa_kernel_of_another_contract_is_unfit(contract):
+    assert sdpa_unfit_reason(copy.deepcopy(contract)) == SDPA_PROTOTYPE_UNFIT
+
+
+def test_check_sdpa_unfit_wrong_prototype():
+    contract = good_sdpa_contract()
+    contract["prototype"] = contract["prototype"].replace("_bf16(", "(")
+    assert sdpa_unfit_reason(contract) == SDPA_PROTOTYPE_UNFIT
+    contract = good_sdpa_contract()
+    contract["prototype"] = contract["prototype"].replace(
+        "uint16_t *restrict cache_k", "const uint16_t *restrict cache_k"
+    )
+    assert sdpa_unfit_reason(contract) == SDPA_PROTOTYPE_UNFIT
+
+
+def test_check_sdpa_unfit_wrong_language():
+    contract = good_sdpa_contract()
+    contract["language"] = "cpp"
+    assert sdpa_unfit_reason(contract) == (
+        "entry 0: contract.language is not that of the bf16 sdpa_kv_cache contract"
+    )
+
+
+@pytest.mark.parametrize(
+    ("index", "member", "value"),
+    [
+        (0, "name", "xq"),
+        (1, "name", "k"),
+        (2, "name", "v"),
+        (3, "name", "cache"),
+        (4, "name", "cache_k"),
+        (5, "name", "o"),
+        (0, "role", "inout"),
+        (3, "role", "input"),
+        (3, "role", "output"),
+        (4, "role", "input"),
+        (4, "role", "output"),
+        (5, "role", "inout"),
+        (0, "dtype", "fp32"),
+        (3, "dtype", "fp16"),
+        (5, "dtype", None),
+    ],
+)
+def test_check_sdpa_unfit_wrong_operand(index, member, value):
+    contract = good_sdpa_contract()
+    contract["operands"][index][member] = value
+    assert sdpa_unfit_reason(contract) == (
+        f"entry 0: contract.operands[{index}].{member} is not that of the bf16 "
+        "sdpa_kv_cache contract"
+    )
+
+
+def test_check_sdpa_unfit_caches_are_inout():
+    contract = good_sdpa_contract()
+    assert [o["role"] for o in contract["operands"]] == [
+        "input",
+        "input",
+        "input",
+        "inout",
+        "inout",
+        "output",
+    ]
+    for role in ("input", "output"):
+        contract = good_sdpa_contract()
+        contract["operands"][3]["role"] = role
+        assert sdpa_unfit_reason(contract) == (
+            "entry 0: contract.operands[3].role is not that of the bf16 "
+            "sdpa_kv_cache contract"
+        )
+
+
+def test_check_sdpa_unfit_k_new_and_v_new_swapped():
+    contract = good_sdpa_contract()
+    operands = contract["operands"]
+    operands[1], operands[2] = operands[2], operands[1]
+    assert sdpa_unfit_reason(contract) == (
+        "entry 0: contract.operands[1].name is not that of the bf16 "
+        "sdpa_kv_cache contract"
+    )
+
+
+def test_check_sdpa_unfit_five_operands():
+    contract = good_sdpa_contract()
+    del contract["operands"][4]
+    assert sdpa_unfit_reason(contract) == (
+        "entry 0: contract.operands has 5 entries, not 6"
+    )
+
+
+@pytest.mark.parametrize("contract", [None, "c", ["language"], 3])
+def test_check_sdpa_unfit_non_mapping(contract):
+    assert "not a mapping" in sdpa_unfit_reason(contract)
+
+
+@pytest.mark.parametrize("member", ["language", "prototype", "operands"])
+def test_check_sdpa_unfit_missing_member(member):
+    contract = good_sdpa_contract()
+    del contract[member]
+    assert repr(member) in sdpa_unfit_reason(contract)
+
+
+def test_check_sdpa_unfit_operands_forms():
+    contract = good_sdpa_contract()
+    contract["operands"] = "abcdef"
+    assert "not a sequence" in sdpa_unfit_reason(contract)
+    contract["operands"] = [*good_sdpa_contract()["operands"], {}]
+    assert "7 entries, not 6" in sdpa_unfit_reason(contract)
+    contract["operands"] = [*good_sdpa_contract()["operands"][:5], None]
+    assert "operands[5] is not a mapping" in sdpa_unfit_reason(contract)
+    contract["operands"] = good_sdpa_contract()["operands"]
+    del contract["operands"][4]["dtype"]
+    assert "operands[4] lacks the member 'dtype'" in sdpa_unfit_reason(contract)
+
+
+def test_check_sdpa_fit_ignores_operand_shapes_and_extra_members():
+    contract = good_sdpa_contract()
+    contract["operands"][3]["shape"] = [256, 8, 64]
+    contract["operands"][4]["shape"] = [256, 8, 64]
+    contract["operands"][0]["shape"] = [99]
+    del contract["operands"][5]["shape"]
+    contract["operands"][1]["note"] = "x"
+    contract["note"] = "x"
+    binding = {"sdpa": [BindingEntry(sdpa_kernel(contract=contract), "every")]}
+    assert run_sdpa(binding).ok
+
+
+def test_check_sdpa_reference_comes_from_the_contract_module(monkeypatch):
+    binding = sdpa_binding()
+    changed = good_sdpa_contract()
+    changed["prototype"] = "void other(void);"
+    seen = []
+
+    def task_contract(m, l, h, h_kv, d):
+        seen.append((m, l, h, h_kv, d))
+        return copy.deepcopy(changed)
+
+    monkeypatch.setattr(sdpa_kv_cache_bf16_contract, "task_contract", task_contract)
+    result = run_sdpa(binding)
+    assert [(o.kind, o.call_site) for o in result.outcomes] == [
+        ("kernel_unfit", "sdpa")
+    ]
+    assert seen
+    binding = {"sdpa": [BindingEntry(sdpa_kernel(contract=changed), "every")]}
+    assert run_sdpa(binding).ok
+    assert run_rope().ok
+    assert run_swiglu().ok
+    assert run_add().ok
+    assert run_norm().ok
+
+
+def test_check_sdpa_outcome_order():
+    binding = {
+        "sdpa": [
+            BindingEntry(sdpa_kernel(), sdpa_shapes(((3, 3), (1, 5)))),
+            BindingEntry(sdpa_kernel(contract={}), sdpa_shapes(((1, 9),))),
+            BindingEntry(sdpa_kernel(contract=None), sdpa_shapes(((1, 6),))),
+        ]
+    }
+    result = run_sdpa(binding)
+    assert [(o.kind, o.call_site, o.shape) for o in result.outcomes] == [
+        ("kernel_unfit", "sdpa", None),
+        ("kernel_unfit", "sdpa", None),
+        ("no_kernel", "sdpa", (1, 4, 4, 2, 2)),
+    ]
+    assert result.outcomes[0].reason.startswith("entry 1: ")
+    assert result.outcomes[1].reason.startswith("entry 2: ")
+    assert result.calls == ()
+
+
+def test_check_sdpa_arguments_are_keyword_only_without_default():
+    parameters = inspect.signature(check_sdpa).parameters
+    assert list(parameters) == [
+        "dimensions",
+        "binding",
+        "dtype",
+        "prompt_length",
+        "generation_length",
+    ]
+    for name in ("dtype", "prompt_length", "generation_length"):
+        assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameters[name].default is inspect.Parameter.empty
+    with pytest.raises(TypeError, match="dtype"):
+        check_sdpa(SMALL, sdpa_binding(), prompt_length=1, generation_length=1)
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "kind"),
+    [
+        ("dtype", None, TypeError),
+        ("dtype", b"bf16", TypeError),
+        ("dtype", True, TypeError),
+        ("dtype", "BF16", ValueError),
+        ("dtype", "", ValueError),
+        ("dtype", "a" * 33, ValueError),
+        ("prompt_length", True, TypeError),
+        ("prompt_length", 3.0, TypeError),
+        ("prompt_length", None, TypeError),
+        ("generation_length", False, TypeError),
+        ("generation_length", "4", TypeError),
+    ],
+)
+def test_check_sdpa_argument_errors(name, value, kind):
+    raises(kind, name, run_sdpa, **{name: value})
+
+
+def test_check_sdpa_argument_order():
+    raises(
+        TypeError,
+        "dimensions",
+        check_sdpa,
+        tuple(SMALL),
+        None,
+        dtype=None,
+        prompt_length=None,
+        generation_length=None,
+    )
+    raises(
+        ValueError,
+        "dimensions",
+        check_sdpa,
+        SMALL._replace(kv_heads=3),
+        None,
+        dtype=None,
+        prompt_length=None,
+        generation_length=None,
+    )
+    raises(ValueError, "dtype", run_sdpa, None, dtype="Bf16", prompt_length=None)
+    raises(
+        TypeError,
+        "prompt_length",
+        run_sdpa,
+        [],
+        prompt_length=None,
+        generation_length=None,
+    )
+    raises(TypeError, "generation_length", run_sdpa, [], generation_length=None)
+    raises(TypeError, "binding", run_sdpa, [], prompt_length=0, dtype="fp32")
+    raises(
+        TypeError,
+        "binding",
+        run_sdpa,
+        [],
+        prompt_length=MAX_INTEGER,
+        generation_length=2,
+    )
+
+
+def bad_sdpa_binding(kind, binding):
+    return raises(kind, "binding", run_sdpa, binding)
+
+
+def with_sdpa_entry(*entries):
+    return {"sdpa": list(entries)}
+
+
+def test_check_sdpa_binding_not_mapping():
+    bad_sdpa_binding(TypeError, [("sdpa", [])])
+    raises(
+        TypeError,
+        "binding",
+        check_sdpa,
+        SMALL,
+        None,
+        dtype="bf16",
+        prompt_length=1,
+        generation_length=1,
+    )
+
+
+@pytest.mark.parametrize(
+    "key",
+    [*OTHER_CALL_SITES, "sdpa_kv_cache", "SDPA", "attention", 1, None],
+)
+def test_check_sdpa_binding_unknown_key(key):
+    binding = sdpa_binding()
+    binding[key] = [BindingEntry(sdpa_kernel(), "every")]
+    error = bad_sdpa_binding(ValueError, binding)
+    assert str(SDPA_CALL_SITES) in str(error)
+
+
+def test_check_sdpa_binding_entries_forms():
+    for entries, kind in (
+        (BindingEntry(sdpa_kernel(), "every"), TypeError),
+        ("every", TypeError),
+        ([], ValueError),
+        (None, TypeError),
+        ([(sdpa_kernel(), "every")], TypeError),
+        ([BindingEntry(("s.c",), "every")], TypeError),
+    ):
+        bad_sdpa_binding(kind, {"sdpa": entries})
+
+
+@pytest.mark.parametrize(
+    ("reference", "kind"),
+    [
+        (KernelReference([Path("s.c")], {}, ()), TypeError),
+        (KernelReference((), {}, ()), ValueError),
+        (KernelReference((b"s.c",), {}, ()), TypeError),
+        (KernelReference(("s.c",), {}, ["-O2"]), TypeError),
+        (KernelReference(("s.c",), {}, ("-O2", 3)), TypeError),
+    ],
+)
+def test_check_sdpa_binding_kernel_reference_refused(reference, kind):
+    bad_sdpa_binding(kind, with_sdpa_entry(BindingEntry(reference, "every")))
+
+
+@pytest.mark.parametrize(
+    ("shapes", "kind"),
+    [
+        ("all", ValueError),
+        ([(1, 4, 4, 2, 2)], TypeError),
+        ((), ValueError),
+        (None, TypeError),
+        (([1, 4, 4, 2, 2],), TypeError),
+        (((1, 4, 4),), ValueError),
+        (((1, 4, 4, 2),), ValueError),
+        (((1, 4, 4, 2, 2, 1),), ValueError),
+        (((0, 4, 4, 2, 2),), ValueError),
+        (((1, 0, 4, 2, 2),), ValueError),
+        (((1, 4, 4, 0, 2),), ValueError),
+        (((1, 4, 4, 2, MAX_INTEGER + 1),), ValueError),
+        (((True, 4, 4, 2, 2),), TypeError),
+        (((1, 4, 4, 2.0, 2),), TypeError),
+    ],
+)
+def test_check_sdpa_binding_shapes_refused(shapes, kind):
+    bad_sdpa_binding(kind, with_sdpa_entry(BindingEntry(sdpa_kernel(), shapes)))
+
+
+def test_check_sdpa_binding_shape_member_messages():
+    error = bad_sdpa_binding(
+        ValueError, with_sdpa_entry(BindingEntry(sdpa_kernel(), ((1, 4, 2),)))
+    )
+    assert str(error) == "sdpa: a shape has 3 members, not 5"
+    error = bad_sdpa_binding(
+        ValueError, with_sdpa_entry(BindingEntry(sdpa_kernel(), ((1, 4, 4, 2),)))
+    )
+    assert str(error) == "sdpa: a shape has 4 members, not 5"
+    error = bad_sdpa_binding(
+        TypeError, with_sdpa_entry(BindingEntry(sdpa_kernel(), ([1, 4, 4, 2, 2],)))
+    )
+    assert str(error) == "sdpa: a shape is not a tuple (m, l, h, h_kv, d)"
+
+
+def test_check_sdpa_binding_overlapping_entries():
+    error = bad_sdpa_binding(
+        ValueError,
+        with_sdpa_entry(
+            BindingEntry(sdpa_kernel(), ((1, 4, 4, 2, 2), (3, 3, 4, 2, 2))),
+            BindingEntry(sdpa_kernel(), ((3, 3, 4, 2, 2),)),
+        ),
+    )
+    assert str(error) == "sdpa: two entries cover the shape (3, 3, 4, 2, 2)"
+
+
+def test_check_sdpa_binding_every_beside_another_entry():
+    for entries in (
+        (
+            BindingEntry(sdpa_kernel(), ((5, 5, 4, 2, 2),)),
+            BindingEntry(sdpa_kernel(), "every"),
+        ),
+        (
+            BindingEntry(sdpa_kernel(), "every"),
+            BindingEntry(sdpa_kernel(), "every"),
+        ),
+    ):
+        error = bad_sdpa_binding(ValueError, with_sdpa_entry(*entries))
+        assert "'every' entry overlaps" in str(error)
+
+
+def test_check_sdpa_malformed_binding_refused_even_with_invalid_input():
+    binding = with_sdpa_entry(
+        BindingEntry(sdpa_kernel(), "every"),
+        BindingEntry(sdpa_kernel(), "every"),
+    )
+    raises(ValueError, "binding", run_sdpa, binding, prompt_length=0, dtype="fp32")
+    raises(
+        ValueError,
+        "binding",
+        run_sdpa,
+        binding,
+        prompt_length=MAX_INTEGER,
+        generation_length=2,
+    )
+
+
+def test_check_sdpa_does_not_modify_arguments():
+    binding = {
+        "sdpa": [
+            BindingEntry(sdpa_kernel(), ((1, 4, 4, 2, 2),)),
+            BindingEntry(sdpa_kernel(contract={"language": "c"}), ((3, 3, 4, 2, 2),)),
+        ]
+    }
+    dimensions = SMALL
+    before = copy.deepcopy(binding)
+    for dtype in ("bf16", "fp32"):
+        run_sdpa(binding, dtype=dtype)
+    run_sdpa(binding, prompt_length=0)
+    run_sdpa(binding, prompt_length=MAX_INTEGER, generation_length=2)
+    assert binding == before
+    assert dimensions == SMALL
+
+
+def test_other_checks_refuse_an_sdpa_call_site_key():
+    for site in SDPA_CALL_SITES:
+        binding = every_binding()
+        binding[site] = [BindingEntry(sdpa_kernel(), "every")]
+        error = bad_binding(ValueError, binding)
+        assert str(CALL_SITES) in str(error)
+        binding = norm_binding()
+        binding[site] = [BindingEntry(sdpa_kernel(), "every")]
+        error = bad_norm_binding(ValueError, binding)
+        assert str(RMSNORM_CALL_SITES) in str(error)
+        binding = add_binding()
+        binding[site] = [BindingEntry(sdpa_kernel(), "every")]
+        error = bad_add_binding(ValueError, binding)
+        assert str(ELEMENTWISE_ADD_CALL_SITES) in str(error)
+        binding = swiglu_binding()
+        binding[site] = [BindingEntry(sdpa_kernel(), "every")]
+        error = bad_swiglu_binding(ValueError, binding)
+        assert str(SWIGLU_CALL_SITES) in str(error)
+        binding = rope_binding()
+        binding[site] = [BindingEntry(sdpa_kernel(), "every")]
+        error = bad_rope_binding(ValueError, binding)
+        assert str(ROPE_CALL_SITES) in str(error)
+
+
+def test_other_checks_refuse_an_sdpa_kernel():
+    sdpa = BindingEntry(sdpa_kernel(), "every")
+    binding = every_binding("bf16")
+    binding["qkv"] = [sdpa]
+    (outcome,) = run(binding, dtype="bf16").outcomes
+    assert outcome.reason == (
+        "entry 0: contract.prototype is not that of the bf16 gemm contract"
+    )
+    binding = norm_binding()
+    binding["norm"] = [sdpa]
+    (outcome,) = run_norm(binding).outcomes
+    assert outcome.reason == (
+        "entry 0: contract.prototype is not that of the bf16 rmsnorm contract"
+    )
+    binding = add_binding()
+    binding["ffn_residual"] = [sdpa]
+    (outcome,) = run_add(binding).outcomes
+    assert outcome.reason == ADD_PROTOTYPE_UNFIT
+    binding = swiglu_binding()
+    binding["ffn_activation"] = [sdpa]
+    (outcome,) = run_swiglu(binding).outcomes
+    assert outcome.reason == SWIGLU_PROTOTYPE_UNFIT
+    binding = rope_binding()
+    binding["rope_k"] = [sdpa]
+    (outcome,) = run_rope(binding).outcomes
+    assert outcome.reason == ROPE_PROTOTYPE_UNFIT
