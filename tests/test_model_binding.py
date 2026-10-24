@@ -11,6 +11,7 @@ from hilclaw import (
     gemm_bf16_contract,
     gemm_contract,
     rmsnorm_bf16_contract,
+    swiglu_bf16_contract,
 )
 from hilclaw.keys import MAX_INTEGER
 from hilclaw.model_binding import (
@@ -20,6 +21,8 @@ from hilclaw.model_binding import (
     ELEMENTWISE_ADD_DTYPES,
     RMSNORM_CALL_SITES,
     RMSNORM_DTYPES,
+    SWIGLU_CALL_SITES,
+    SWIGLU_DTYPES,
     BindingCheck,
     BindingEntry,
     KernelReference,
@@ -29,6 +32,7 @@ from hilclaw.model_binding import (
     check_dimensions,
     check_elementwise_add,
     check_rmsnorm,
+    check_swiglu,
     elementwise_add_generation_calls,
     elementwise_add_shape,
     gemm_shape,
@@ -36,6 +40,8 @@ from hilclaw.model_binding import (
     rmsnorm_eps,
     rmsnorm_generation_calls,
     rmsnorm_shape,
+    swiglu_generation_calls,
+    swiglu_shape,
 )
 
 SMALL = ModelDimensions(
@@ -2235,4 +2241,747 @@ def test_check_rmsnorm_refuses_an_elementwise_add_kernel():
         "norm",
         None,
         "entry 0: contract.prototype is not that of the bf16 rmsnorm contract",
+    )
+
+
+def test_swiglu_call_sites():
+    assert SWIGLU_CALL_SITES == ("ffn_activation",)
+    assert not set(SWIGLU_CALL_SITES) & set(CALL_SITES)
+    assert not set(SWIGLU_CALL_SITES) & set(RMSNORM_CALL_SITES)
+    assert not set(SWIGLU_CALL_SITES) & set(ELEMENTWISE_ADD_CALL_SITES)
+
+
+def test_swiglu_dtypes():
+    assert SWIGLU_DTYPES == ("bf16",)
+    assert SWIGLU_DTYPES == (swiglu_bf16_contract.DTYPE,)
+
+
+@pytest.mark.parametrize("rows", [1, 7, MAX_INTEGER])
+def test_swiglu_shape_small_is_the_intermediate_width(rows):
+    assert swiglu_shape(SMALL, "ffn_activation", rows) == (rows, 16)
+    assert swiglu_shape(SMALL, "ffn_activation", rows) != (rows, SMALL.hidden)
+
+
+def test_swiglu_shape_follows_intermediate_only():
+    dimensions = SMALL._replace(intermediate=MAX_INTEGER, hidden=3)
+    assert swiglu_shape(dimensions, "ffn_activation", 5) == (5, MAX_INTEGER)
+    assert rmsnorm_shape(dimensions, "norm", 5) == (5, 3)
+    assert elementwise_add_shape(dimensions, "ffn_residual", 5) == (5, 3)
+
+
+def test_swiglu_shape_at_llama_values_is_the_contract_table():
+    llama = ModelDimensions(2048, 8192, 128256, 16, 32, 8, 64)
+    shapes = tuple(swiglu_shape(llama, "ffn_activation", m) for m in (1, 32, 512))
+    assert shapes == swiglu_bf16_contract.SHAPES
+
+
+@pytest.mark.parametrize(
+    "site",
+    [
+        "gate",
+        "up",
+        "down",
+        "ffn_norm",
+        "ffn_residual",
+        "attention_residual",
+        "activation",
+        "FFN_ACTIVATION",
+        "",
+        None,
+        3,
+    ],
+)
+def test_swiglu_shape_unknown_call_site(site):
+    error = raises(ValueError, "call_site", swiglu_shape, SMALL, site, 1)
+    assert str(SWIGLU_CALL_SITES) in str(error)
+
+
+@pytest.mark.parametrize(
+    ("rows", "kind"),
+    [
+        (True, TypeError),
+        (1.0, TypeError),
+        (None, TypeError),
+        ("1", TypeError),
+        (0, ValueError),
+        (-1, ValueError),
+        (MAX_INTEGER + 1, ValueError),
+    ],
+)
+def test_swiglu_shape_bad_rows(rows, kind):
+    raises(kind, "rows", swiglu_shape, SMALL, "ffn_activation", rows)
+
+
+def test_swiglu_shape_argument_order():
+    raises(ValueError, "dimensions", swiglu_shape, SMALL._replace(heads=3), "x", 0)
+    raises(TypeError, "dimensions", swiglu_shape, None, "ffn_activation", 1)
+    raises(
+        ValueError,
+        "dimensions",
+        swiglu_shape,
+        SMALL._replace(intermediate=0),
+        "ffn_activation",
+        1,
+    )
+    raises(ValueError, "call_site", swiglu_shape, SMALL, "gate", 0)
+
+
+def swiglu_shapes(rows):
+    return tuple((r, 16) for r in rows)
+
+
+def test_swiglu_generation_calls_prefill_and_decode():
+    calls = swiglu_generation_calls(SMALL, prompt_length=5, generation_length=3)
+    assert calls == (("ffn_activation", swiglu_shapes((1, 5))),)
+
+
+def test_swiglu_generation_calls_one_token_has_no_decode():
+    calls = swiglu_generation_calls(SMALL, prompt_length=5, generation_length=1)
+    assert calls == (("ffn_activation", swiglu_shapes((5,))),)
+
+
+def test_swiglu_generation_calls_prompt_of_one_row():
+    calls = swiglu_generation_calls(SMALL, prompt_length=1, generation_length=4)
+    assert calls == (("ffn_activation", swiglu_shapes((1,))),)
+
+
+def test_swiglu_generation_calls_rows_match_the_elementwise_add_passes():
+    for prompt_length, generation_length in ((6, 2), (1, 1), (9, 1), (4, 7)):
+        lengths = {
+            "prompt_length": prompt_length,
+            "generation_length": generation_length,
+        }
+        add = dict(elementwise_add_generation_calls(SMALL, **lengths))
+        swiglu = dict(swiglu_generation_calls(SMALL, **lengths))
+        assert [m for m, _ in swiglu["ffn_activation"]] == [
+            m for m, _ in add["ffn_residual"]
+        ]
+        assert {n for _, n in swiglu["ffn_activation"]} == {SMALL.intermediate}
+        assert {n for _, n in add["ffn_residual"]} == {SMALL.hidden}
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "kind"),
+    [
+        ("prompt_length", 0, ValueError),
+        ("prompt_length", True, TypeError),
+        ("prompt_length", 2.0, TypeError),
+        ("generation_length", 0, ValueError),
+        ("generation_length", MAX_INTEGER + 1, ValueError),
+        ("generation_length", None, TypeError),
+    ],
+)
+def test_swiglu_generation_calls_refuses(name, value, kind):
+    arguments = {"prompt_length": 2, "generation_length": 2}
+    arguments[name] = value
+    raises(kind, name, swiglu_generation_calls, SMALL, **arguments)
+
+
+def test_swiglu_generation_calls_argument_order():
+    raises(
+        TypeError,
+        "dimensions",
+        swiglu_generation_calls,
+        None,
+        prompt_length=0,
+        generation_length=0,
+    )
+    raises(
+        ValueError,
+        "prompt_length",
+        swiglu_generation_calls,
+        SMALL,
+        prompt_length=0,
+        generation_length=None,
+    )
+
+
+def test_swiglu_generation_calls_lengths_are_keyword_only():
+    with pytest.raises(TypeError):
+        swiglu_generation_calls(SMALL, 2, 2)
+
+
+def swiglu_kernel(name="s", contract=_DEFAULT):
+    if contract is _DEFAULT:
+        contract = swiglu_bf16_contract.task_contract(3, 5)
+    return KernelReference((f"{name}.c",), contract, ("-O2",))
+
+
+def swiglu_binding():
+    return {
+        site: [BindingEntry(swiglu_kernel(site), "every")] for site in SWIGLU_CALL_SITES
+    }
+
+
+def run_swiglu(binding=None, **settings):
+    arguments = {"dtype": "bf16", "prompt_length": 3, "generation_length": 4}
+    arguments.update(settings)
+    binding = swiglu_binding() if binding is None else binding
+    return check_swiglu(SMALL, binding, **arguments)
+
+
+def expected_swiglu_calls(binding, rows):
+    return tuple(
+        ("ffn_activation", (r, 16), binding["ffn_activation"][0].kernel) for r in rows
+    )
+
+
+def test_check_swiglu_every_binding_is_ok():
+    binding = swiglu_binding()
+    result = run_swiglu(binding)
+    assert result == BindingCheck(True, (), expected_swiglu_calls(binding, (1, 3)))
+    assert isinstance(result, BindingCheck)
+
+
+def test_check_swiglu_listed_shapes_cover_exactly():
+    binding = {"ffn_activation": [BindingEntry(swiglu_kernel(), swiglu_shapes((1, 3)))]}
+    result = run_swiglu(binding)
+    assert result.ok
+    assert result.calls == expected_swiglu_calls(binding, (1, 3))
+
+
+def test_check_swiglu_listed_shape_other_than_the_spec_own():
+    spec_own = swiglu_bf16_contract.task_contract(512, 8192)
+    binding = {
+        "ffn_activation": [
+            BindingEntry(swiglu_kernel(contract=spec_own), swiglu_shapes((1, 3, 7)))
+        ]
+    }
+    result = run_swiglu(binding)
+    assert result.ok
+    assert result.calls == expected_swiglu_calls(binding, (1, 3))
+
+
+def test_check_swiglu_several_entries_disjoint_shapes():
+    decode = swiglu_kernel("decode")
+    prefill = swiglu_kernel("prefill")
+    binding = {
+        "ffn_activation": (
+            BindingEntry(prefill, swiglu_shapes((3, 9))),
+            BindingEntry(decode, swiglu_shapes((1,))),
+        )
+    }
+    result = run_swiglu(binding)
+    assert result == BindingCheck(
+        True,
+        (),
+        (
+            ("ffn_activation", (1, 16), decode),
+            ("ffn_activation", (3, 16), prefill),
+        ),
+    )
+
+
+def test_check_swiglu_generation_length_one():
+    result = run_swiglu(generation_length=1)
+    assert result.ok
+    assert [call[1] for call in result.calls] == [(3, 16)]
+
+
+def test_check_swiglu_accepts_path_sources():
+    contract = swiglu_bf16_contract.task_contract(1, 1)
+    reference = KernelReference((Path("a.c"), "b.c"), contract, ())
+    assert run_swiglu({"ffn_activation": [BindingEntry(reference, "every")]}).ok
+
+
+def test_check_swiglu_hidden_width_shapes_give_no_kernel():
+    binding = {
+        "ffn_activation": [BindingEntry(swiglu_kernel(), tuple((r, 8) for r in (1, 3)))]
+    }
+    assert run_swiglu(binding) == BindingCheck(
+        False,
+        tuple(
+            Outcome(
+                "no_kernel",
+                "ffn_activation",
+                shape,
+                "no entry of the binding covers the shape",
+            )
+            for shape in swiglu_shapes((1, 3))
+        ),
+        (),
+    )
+
+
+@pytest.mark.parametrize("unknown", ["fp32", "fp16", "int8"])
+def test_check_swiglu_unknown_dtype_is_invalid_input(unknown):
+    reason = f"dtype: no swiglu contract is known at the dtype {unknown!r}"
+    assert run_swiglu(dtype=unknown) == BindingCheck(False, invalid(reason), ())
+    assert unknown in reason and "swiglu" in reason
+
+
+@pytest.mark.parametrize("unknown", ["fp32", "fp16"])
+def test_check_swiglu_unknown_dtype_gives_no_unfit_and_no_kernel(unknown):
+    reason = f"dtype: no swiglu contract is known at the dtype {unknown!r}"
+    binding = {"ffn_activation": [BindingEntry(swiglu_kernel(contract={}), ((3, 99),))]}
+    assert run_swiglu(binding, dtype=unknown) == BindingCheck(
+        False, invalid(reason), ()
+    )
+
+
+def test_check_swiglu_invalid_lengths():
+    assert run_swiglu(prompt_length=0).outcomes == invalid(
+        "prompt_length: must be from 1 to 2**53 - 1, got 0"
+    )
+    assert run_swiglu(generation_length=MAX_INTEGER + 1).outcomes == invalid(
+        f"generation_length: must be from 1 to 2**53 - 1, got {MAX_INTEGER + 1}"
+    )
+    assert run_swiglu(prompt_length=-2).calls == ()
+
+
+def test_check_swiglu_invalid_input_order_and_no_shape_check():
+    binding = {"ffn_activation": [BindingEntry(swiglu_kernel(contract=None), "every")]}
+    result = run_swiglu(binding, prompt_length=0, generation_length=-1)
+    assert [(o.kind, o.call_site) for o in result.outcomes] == [
+        ("invalid_input", None),
+        ("invalid_input", None),
+        ("kernel_unfit", "ffn_activation"),
+    ]
+    assert result.outcomes[0].reason.startswith("prompt_length:")
+    assert result.outcomes[1].reason.startswith("generation_length:")
+    assert result.calls == ()
+    unlisted = {"ffn_activation": [BindingEntry(swiglu_kernel(), ((7, 16),))]}
+    assert run_swiglu(unlisted, prompt_length=0).outcomes == invalid(
+        "prompt_length: must be from 1 to 2**53 - 1, got 0"
+    )
+    result = run_swiglu(binding, dtype="fp32", prompt_length=0, generation_length=0)
+    assert [o.reason.split(":")[0] for o in result.outcomes] == [
+        "dtype",
+        "prompt_length",
+        "generation_length",
+    ]
+    assert {o.kind for o in result.outcomes} == {"invalid_input"}
+
+
+def test_check_swiglu_missing_call_site():
+    assert run_swiglu({}) == BindingCheck(
+        False,
+        tuple(
+            Outcome(
+                "no_kernel",
+                "ffn_activation",
+                shape,
+                "no entry of the binding covers the shape",
+            )
+            for shape in swiglu_shapes((1, 3))
+        ),
+        (),
+    )
+
+
+def test_check_swiglu_unlisted_shape():
+    binding = {"ffn_activation": [BindingEntry(swiglu_kernel(), swiglu_shapes((1, 7)))]}
+    result = run_swiglu(binding)
+    assert [(o.kind, o.call_site, o.shape) for o in result.outcomes] == [
+        ("no_kernel", "ffn_activation", (3, 16))
+    ]
+    assert result.calls == ()
+
+
+def swiglu_unfit_reason(contract):
+    binding = {
+        "ffn_activation": [BindingEntry(swiglu_kernel(contract=contract), "every")]
+    }
+    result = run_swiglu(binding)
+    assert not result.ok and result.calls == ()
+    (outcome,) = result.outcomes
+    assert outcome.kind == "kernel_unfit"
+    assert outcome.call_site == "ffn_activation" and outcome.shape is None
+    assert outcome.reason.startswith("entry 0: ")
+    return outcome.reason
+
+
+def good_swiglu_contract():
+    return swiglu_bf16_contract.task_contract(2, 4)
+
+
+SWIGLU_PROTOTYPE_UNFIT = (
+    "entry 0: contract.prototype is not that of the bf16 swiglu contract"
+)
+
+
+def test_check_swiglu_elementwise_add_kernel_is_unfit():
+    contract = elementwise_add_bf16_contract.task_contract(2, 4)
+    assert [(o["role"], o["dtype"]) for o in contract["operands"]] == [
+        (o["role"], o["dtype"]) for o in good_swiglu_contract()["operands"]
+    ]
+    assert swiglu_unfit_reason(contract) == SWIGLU_PROTOTYPE_UNFIT
+
+
+def test_check_swiglu_rmsnorm_kernel_is_unfit():
+    contract = rmsnorm_bf16_contract.task_contract(2, 4)
+    assert swiglu_unfit_reason(contract) == SWIGLU_PROTOTYPE_UNFIT
+
+
+@pytest.mark.parametrize("dtype", ["bf16", "fp32"])
+def test_check_swiglu_gemm_kernel_is_unfit(dtype):
+    contract = CONTRACTS[dtype].task_contract(2, 4, 4)
+    assert swiglu_unfit_reason(contract) == SWIGLU_PROTOTYPE_UNFIT
+
+
+def test_check_swiglu_unfit_wrong_prototype():
+    contract = good_swiglu_contract()
+    contract["prototype"] = contract["prototype"].replace("restrict out", "out")
+    assert swiglu_unfit_reason(contract) == SWIGLU_PROTOTYPE_UNFIT
+
+
+def test_check_swiglu_unfit_wrong_language():
+    contract = good_swiglu_contract()
+    contract["language"] = "cpp"
+    assert swiglu_unfit_reason(contract) == (
+        "entry 0: contract.language is not that of the bf16 swiglu contract"
+    )
+
+
+@pytest.mark.parametrize(
+    ("index", "member", "value"),
+    [
+        (0, "name", "a"),
+        (1, "name", "gate"),
+        (2, "name", "c"),
+        (1, "role", "output"),
+        (2, "role", "input"),
+        (0, "dtype", "fp32"),
+        (2, "dtype", "fp16"),
+        (1, "dtype", None),
+    ],
+)
+def test_check_swiglu_unfit_wrong_operand(index, member, value):
+    contract = good_swiglu_contract()
+    contract["operands"][index][member] = value
+    assert swiglu_unfit_reason(contract) == (
+        f"entry 0: contract.operands[{index}].{member} is not that of the bf16 "
+        "swiglu contract"
+    )
+
+
+def test_check_swiglu_unfit_gate_and_up_swapped():
+    contract = good_swiglu_contract()
+    operands = contract["operands"]
+    operands[0], operands[1] = operands[1], operands[0]
+    assert swiglu_unfit_reason(contract) == (
+        "entry 0: contract.operands[0].name is not that of the bf16 swiglu contract"
+    )
+
+
+@pytest.mark.parametrize("contract", [None, "c", ["language"], 3])
+def test_check_swiglu_unfit_non_mapping(contract):
+    assert "not a mapping" in swiglu_unfit_reason(contract)
+
+
+@pytest.mark.parametrize("member", ["language", "prototype", "operands"])
+def test_check_swiglu_unfit_missing_member(member):
+    contract = good_swiglu_contract()
+    del contract[member]
+    assert repr(member) in swiglu_unfit_reason(contract)
+
+
+def test_check_swiglu_unfit_operands_forms():
+    contract = good_swiglu_contract()
+    contract["operands"] = "abc"
+    assert "not a sequence" in swiglu_unfit_reason(contract)
+    contract["operands"] = good_swiglu_contract()["operands"][:2]
+    assert "2 entries, not 3" in swiglu_unfit_reason(contract)
+    contract["operands"] = [*good_swiglu_contract()["operands"], {}]
+    assert "4 entries, not 3" in swiglu_unfit_reason(contract)
+    contract["operands"] = [*good_swiglu_contract()["operands"][:2], None]
+    assert "operands[2] is not a mapping" in swiglu_unfit_reason(contract)
+    contract["operands"] = good_swiglu_contract()["operands"]
+    del contract["operands"][1]["role"]
+    assert "operands[1] lacks the member 'role'" in swiglu_unfit_reason(contract)
+
+
+def test_check_swiglu_fit_ignores_operand_shapes_and_extra_members():
+    contract = good_swiglu_contract()
+    contract["operands"][0]["shape"] = [99, 99]
+    del contract["operands"][2]["shape"]
+    contract["operands"][1]["note"] = "x"
+    contract["note"] = "x"
+    binding = {
+        "ffn_activation": [BindingEntry(swiglu_kernel(contract=contract), "every")]
+    }
+    assert run_swiglu(binding).ok
+
+
+def test_check_swiglu_reference_comes_from_the_contract_module(monkeypatch):
+    binding = swiglu_binding()
+    changed = good_swiglu_contract()
+    changed["prototype"] = "void other(void);"
+    monkeypatch.setattr(
+        swiglu_bf16_contract,
+        "task_contract",
+        lambda m, n: copy.deepcopy(changed),
+    )
+    result = run_swiglu(binding)
+    assert [(o.kind, o.call_site) for o in result.outcomes] == [
+        ("kernel_unfit", "ffn_activation")
+    ]
+    binding = {
+        "ffn_activation": [BindingEntry(swiglu_kernel(contract=changed), "every")]
+    }
+    assert run_swiglu(binding).ok
+    assert run_add().ok
+    assert run_norm().ok
+
+
+def test_check_swiglu_outcome_order():
+    binding = {
+        "ffn_activation": [
+            BindingEntry(swiglu_kernel(), swiglu_shapes((3,))),
+            BindingEntry(swiglu_kernel(contract={}), swiglu_shapes((7,))),
+            BindingEntry(swiglu_kernel(contract=None), swiglu_shapes((9,))),
+        ],
+    }
+    result = run_swiglu(binding)
+    assert [(o.kind, o.call_site, o.shape) for o in result.outcomes] == [
+        ("kernel_unfit", "ffn_activation", None),
+        ("kernel_unfit", "ffn_activation", None),
+        ("no_kernel", "ffn_activation", (1, 16)),
+    ]
+    assert result.outcomes[0].reason.startswith("entry 1: ")
+    assert result.outcomes[1].reason.startswith("entry 2: ")
+
+
+def test_check_swiglu_arguments_are_keyword_only_without_default():
+    parameters = inspect.signature(check_swiglu).parameters
+    assert list(parameters) == [
+        "dimensions",
+        "binding",
+        "dtype",
+        "prompt_length",
+        "generation_length",
+    ]
+    for name in ("dtype", "prompt_length", "generation_length"):
+        assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameters[name].default is inspect.Parameter.empty
+    with pytest.raises(TypeError, match="dtype"):
+        check_swiglu(SMALL, swiglu_binding(), prompt_length=1, generation_length=1)
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "kind"),
+    [
+        ("dtype", None, TypeError),
+        ("dtype", b"bf16", TypeError),
+        ("dtype", True, TypeError),
+        ("dtype", "BF16", ValueError),
+        ("dtype", "", ValueError),
+        ("dtype", "a" * 33, ValueError),
+        ("prompt_length", True, TypeError),
+        ("prompt_length", 3.0, TypeError),
+        ("prompt_length", None, TypeError),
+        ("generation_length", False, TypeError),
+        ("generation_length", "4", TypeError),
+    ],
+)
+def test_check_swiglu_argument_errors(name, value, kind):
+    raises(kind, name, run_swiglu, **{name: value})
+
+
+def test_check_swiglu_argument_order():
+    raises(
+        TypeError,
+        "dimensions",
+        check_swiglu,
+        tuple(SMALL),
+        None,
+        dtype=None,
+        prompt_length=None,
+        generation_length=None,
+    )
+    raises(
+        ValueError,
+        "dimensions",
+        check_swiglu,
+        SMALL._replace(kv_heads=3),
+        swiglu_binding(),
+        dtype="bf16",
+        prompt_length=1,
+        generation_length=1,
+    )
+    raises(ValueError, "dtype", run_swiglu, None, dtype="Bf16", prompt_length=None)
+    raises(
+        TypeError,
+        "prompt_length",
+        run_swiglu,
+        [],
+        prompt_length=None,
+        generation_length=None,
+    )
+    raises(TypeError, "generation_length", run_swiglu, [], generation_length=None)
+    raises(TypeError, "binding", run_swiglu, [], prompt_length=0, dtype="fp32")
+
+
+def bad_swiglu_binding(kind, binding):
+    return raises(kind, "binding", run_swiglu, binding)
+
+
+def with_swiglu_entry(*entries):
+    return {"ffn_activation": list(entries)}
+
+
+def test_check_swiglu_binding_not_mapping():
+    bad_swiglu_binding(TypeError, [("ffn_activation", [])])
+    raises(
+        TypeError,
+        "binding",
+        check_swiglu,
+        SMALL,
+        None,
+        dtype="bf16",
+        prompt_length=1,
+        generation_length=1,
+    )
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        *CALL_SITES,
+        *RMSNORM_CALL_SITES,
+        *ELEMENTWISE_ADD_CALL_SITES,
+        "activation",
+        "FFN_ACTIVATION",
+        1,
+        None,
+    ],
+)
+def test_check_swiglu_binding_unknown_key(key):
+    binding = swiglu_binding()
+    binding[key] = [BindingEntry(swiglu_kernel(), "every")]
+    error = bad_swiglu_binding(ValueError, binding)
+    assert str(SWIGLU_CALL_SITES) in str(error)
+
+
+def test_check_swiglu_binding_entries_forms():
+    for entries, kind in (
+        (BindingEntry(swiglu_kernel(), "every"), TypeError),
+        ("every", TypeError),
+        ([], ValueError),
+        (None, TypeError),
+        ([(swiglu_kernel(), "every")], TypeError),
+        ([BindingEntry(("s.c",), "every")], TypeError),
+    ):
+        bad_swiglu_binding(kind, {"ffn_activation": entries})
+
+
+@pytest.mark.parametrize(
+    ("reference", "kind"),
+    [
+        (KernelReference([Path("s.c")], {}, ()), TypeError),
+        (KernelReference((), {}, ()), ValueError),
+        (KernelReference((b"s.c",), {}, ()), TypeError),
+        (KernelReference(("s.c",), {}, ["-O2"]), TypeError),
+        (KernelReference(("s.c",), {}, ("-O2", 3)), TypeError),
+    ],
+)
+def test_check_swiglu_binding_kernel_reference_refused(reference, kind):
+    bad_swiglu_binding(kind, with_swiglu_entry(BindingEntry(reference, "every")))
+
+
+@pytest.mark.parametrize(
+    ("shapes", "kind"),
+    [
+        ("all", ValueError),
+        ([(1, 16)], TypeError),
+        ((), ValueError),
+        (None, TypeError),
+        (([1, 16],), TypeError),
+        (((1, 8, 16),), ValueError),
+        (((1,),), ValueError),
+        (((0, 16),), ValueError),
+        (((1, MAX_INTEGER + 1),), ValueError),
+        (((True, 16),), TypeError),
+        (((1, 16.0),), TypeError),
+    ],
+)
+def test_check_swiglu_binding_shapes_refused(shapes, kind):
+    bad_swiglu_binding(kind, with_swiglu_entry(BindingEntry(swiglu_kernel(), shapes)))
+
+
+def test_check_swiglu_binding_triple_shape_message():
+    error = bad_swiglu_binding(
+        ValueError, with_swiglu_entry(BindingEntry(swiglu_kernel(), ((1, 8, 16),)))
+    )
+    assert str(error) == "ffn_activation: a shape has 3 members, not 2"
+    error = bad_swiglu_binding(
+        TypeError, with_swiglu_entry(BindingEntry(swiglu_kernel(), ([1, 16],)))
+    )
+    assert str(error) == "ffn_activation: a shape is not a tuple (m, n)"
+
+
+def test_check_swiglu_binding_overlapping_entries():
+    error = bad_swiglu_binding(
+        ValueError,
+        with_swiglu_entry(
+            BindingEntry(swiglu_kernel(), ((1, 16), (3, 16))),
+            BindingEntry(swiglu_kernel(), ((3, 16),)),
+        ),
+    )
+    assert str(error) == "ffn_activation: two entries cover the shape (3, 16)"
+
+
+def test_check_swiglu_binding_every_beside_another_entry():
+    for entries in (
+        (
+            BindingEntry(swiglu_kernel(), ((5, 16),)),
+            BindingEntry(swiglu_kernel(), "every"),
+        ),
+        (
+            BindingEntry(swiglu_kernel(), "every"),
+            BindingEntry(swiglu_kernel(), "every"),
+        ),
+    ):
+        error = bad_swiglu_binding(ValueError, with_swiglu_entry(*entries))
+        assert "'every' entry overlaps" in str(error)
+
+
+def test_check_swiglu_malformed_binding_refused_even_with_invalid_input():
+    binding = with_swiglu_entry(
+        BindingEntry(swiglu_kernel(), "every"),
+        BindingEntry(swiglu_kernel(), "every"),
+    )
+    raises(ValueError, "binding", run_swiglu, binding, prompt_length=0, dtype="fp32")
+
+
+def test_check_swiglu_does_not_modify_arguments():
+    binding = with_swiglu_entry(
+        BindingEntry(swiglu_kernel(), swiglu_shapes((1,))),
+        BindingEntry(swiglu_kernel(contract={"language": "c"}), swiglu_shapes((3,))),
+    )
+    dimensions = SMALL
+    before = copy.deepcopy(binding)
+    for dtype in ("bf16", "fp32"):
+        run_swiglu(binding, dtype=dtype)
+    run_swiglu(binding, prompt_length=0)
+    assert binding == before
+    assert dimensions == SMALL
+
+
+def test_check_check_rmsnorm_and_check_elementwise_add_refuse_an_ffn_activation_key():
+    for site in SWIGLU_CALL_SITES:
+        binding = every_binding()
+        binding[site] = [BindingEntry(swiglu_kernel(), "every")]
+        error = bad_binding(ValueError, binding)
+        assert str(CALL_SITES) in str(error)
+        binding = norm_binding()
+        binding[site] = [BindingEntry(swiglu_kernel(), "every")]
+        error = bad_norm_binding(ValueError, binding)
+        assert str(RMSNORM_CALL_SITES) in str(error)
+        binding = add_binding()
+        binding[site] = [BindingEntry(swiglu_kernel(), "every")]
+        error = bad_add_binding(ValueError, binding)
+        assert str(ELEMENTWISE_ADD_CALL_SITES) in str(error)
+
+
+def test_check_elementwise_add_and_check_rmsnorm_refuse_a_swiglu_kernel():
+    binding = add_binding()
+    binding["ffn_residual"] = [BindingEntry(swiglu_kernel(), "every")]
+    (outcome,) = run_add(binding).outcomes
+    assert outcome.reason == ADD_PROTOTYPE_UNFIT
+    binding = norm_binding()
+    binding["ffn_norm"] = [BindingEntry(swiglu_kernel(), "every")]
+    (outcome,) = run_norm(binding).outcomes
+    assert outcome.reason == (
+        "entry 0: contract.prototype is not that of the bf16 rmsnorm contract"
     )

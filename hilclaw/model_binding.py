@@ -1,13 +1,14 @@
-"""Host-side binding checks of the model executor for the GEMM, RMSNorm and elementwise add call sites (ADR-0153, ADR-0158, ADR-0159).
+"""Host-side binding checks of the model executor for the GEMM, RMSNorm, elementwise add and SwiGLU call sites (ADR-0153, ADR-0158 to ADR-0160).
 
 ``ARCHITECTURE/decisions/ADR-0153-od31-model-executor.md`` is the rule. Before
 anything is built, the host side derives the shapes of every kernel call of a
 generation from the model dimensions and the run settings and checks the
 binding against them (decision 5). This module does that for the six GEMM
 call sites of ADR-0152 decision 2 (:data:`CALL_SITES`) and, separately, for
-its three RMSNorm call sites (:data:`RMSNORM_CALL_SITES`) and its two
-elementwise add call sites (:data:`ELEMENTWISE_ADD_CALL_SITES`). The model's
-dtype (``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``,
+its three RMSNorm call sites (:data:`RMSNORM_CALL_SITES`), its two
+elementwise add call sites (:data:`ELEMENTWISE_ADD_CALL_SITES`) and its
+SwiGLU call site (:data:`SWIGLU_CALL_SITES`). The model's dtype
+(``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``,
 decisions 1 to 4) selects the contract every entry is fitted against: for the
 GEMM call sites ADR-0008's ``gemm`` contract (:mod:`hilclaw.gemm_contract`)
 for ``fp32`` and ADR-0156's (:mod:`hilclaw.gemm_bf16_contract`) for ``bf16``
@@ -16,24 +17,29 @@ for ``fp32`` and ADR-0156's (:mod:`hilclaw.gemm_bf16_contract`) for ``bf16``
 one is defined (:data:`RMSNORM_DTYPES`); for the elementwise add call sites
 ADR-0159's ``elementwise_add`` contract
 (:mod:`hilclaw.elementwise_add_bf16_contract`) for ``bf16``, likewise the only
-one (:data:`ELEMENTWISE_ADD_DTYPES`). Its parts:
+one (:data:`ELEMENTWISE_ADD_DTYPES`); for the SwiGLU call site ADR-0160's
+``swiglu`` contract (:mod:`hilclaw.swiglu_bf16_contract`) for ``bf16``,
+likewise the only one (:data:`SWIGLU_DTYPES`). Its parts:
 
 * :class:`ModelDimensions` and :func:`check_dimensions`: the model parameters
   of ADR-0153 decision 3 (a) that the shapes use. No value is a default and
   none of Llama 3.2 1B is assumed (decision 6).
 * :func:`gemm_shape`: the ``(m, k, n)`` of one GEMM call site in a pass of
   ``rows`` rows, from Meta's ``model.py`` as ADR-0152 (Context, decision 5)
-  reads it. :func:`rmsnorm_shape` and :func:`elementwise_add_shape`: the
-  ``(m, n)`` of one RMSNorm call site (ADR-0158 decision 2) and of one
-  elementwise add call site (ADR-0159 decision 2).
-* :func:`generation_calls`, :func:`rmsnorm_generation_calls` and
-  :func:`elementwise_add_generation_calls`: the distinct shapes of each call
-  site over one generation (ADR-0153 decision 4).
+  reads it. :func:`rmsnorm_shape`, :func:`elementwise_add_shape` and
+  :func:`swiglu_shape`: the ``(m, n)`` of one RMSNorm call site (ADR-0158
+  decision 2) and of one elementwise add call site (ADR-0159 decision 2),
+  whose ``n`` is the hidden width, and of the SwiGLU call site (ADR-0160
+  decision 2), whose ``n`` is the intermediate width.
+* :func:`generation_calls`, :func:`rmsnorm_generation_calls`,
+  :func:`elementwise_add_generation_calls` and
+  :func:`swiglu_generation_calls`: the distinct shapes of each call site over
+  one generation (ADR-0153 decision 4).
 * :class:`KernelReference`, :class:`BindingEntry`: a binding entry (decision 3).
-* :func:`check`, :func:`check_rmsnorm` and :func:`check_elementwise_add`: the
-  outcomes ``"invalid_input"``, ``"no_kernel"`` and ``"kernel_unfit"``
-  (decision 5, whose spelling is left to the code slice), and the calls of
-  the generation with the kernel each one is bound to.
+* :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add` and
+  :func:`check_swiglu`: the outcomes ``"invalid_input"``, ``"no_kernel"`` and
+  ``"kernel_unfit"`` (decision 5, whose spelling is left to the code slice),
+  and the calls of the generation with the kernel each one is bound to.
 * :func:`rmsnorm_eps`: the binary32 value nearest to the model's ``eps``, the
   value the caller passes to an RMSNorm kernel (ADR-0158 decision 5).
 
@@ -48,27 +54,28 @@ Readings of this module:
   malformed, and an ``"every"`` entry overlaps every other entry of its call
   site: the executor never chooses between kernels (decision 3).
 * A listed shape other than the shape of the kernel's own spec, and an
-  ``"every"`` entry, are accepted for each of the four contracts: a kernel
+  ``"every"`` entry, are accepted for each of the five contracts: a kernel
   of either ``gemm`` contract must compute the product for the values it is
   called with (ADR-0008 decision 6, ADR-0156 decision 7, ADR-0157 decision
-  3), and a kernel of the ``rmsnorm`` contract (ADR-0158 decision 7) or of
-  the ``elementwise_add`` contract (ADR-0159 decision 8) must be correct for
-  every ``m``, ``n`` of at least 1. So the operand shapes of a
-  ``task.contract`` are not compared.
+  3), and a kernel of the ``rmsnorm`` contract (ADR-0158 decision 7), of the
+  ``elementwise_add`` contract (ADR-0159 decision 8) or of the ``swiglu``
+  contract (ADR-0160 decision 8) must be correct for every ``m``, ``n`` of at
+  least 1. So the operand shapes of a ``task.contract`` are not compared.
 
 What this module does not do: it builds, loads and starts nothing and runs no
 process; it reads and writes no file; it has no command-line entry, registry
-or MCP tool; it knows no call site of RoPE, SDPA or SwiGLU, no contract other
-than the fp32 and bf16 ``gemm`` contracts, the bf16 ``rmsnorm`` contract and
-the bf16 ``elementwise_add`` contract, and no dtype outside :data:`DTYPES`
-for a GEMM call site, outside :data:`RMSNORM_DTYPES` for an RMSNorm call site
-or outside :data:`ELEMENTWISE_ADD_DTYPES` for an elementwise add call site; it
-does not join the GEMM, RMSNorm and elementwise add checks into one check of
-a generation (the full pass, ADR-0153 code slice 2), and it does not check
-which arrays a call passes as its operands (ADR-0159 decision 12); it reads
-no weight, passes ``eps`` to nothing and adds no cast; it does not interpret
-the build flags of a kernel reference; and it derives no binding from a key's
-best (OD-20, OD-7).
+or MCP tool; it knows no call site of RoPE or SDPA, no contract other than
+the fp32 and bf16 ``gemm`` contracts and the bf16 ``rmsnorm``,
+``elementwise_add`` and ``swiglu`` contracts, and no dtype outside
+:data:`DTYPES` for a GEMM call site, outside :data:`RMSNORM_DTYPES` for an
+RMSNorm call site, outside :data:`ELEMENTWISE_ADD_DTYPES` for an elementwise
+add call site or outside :data:`SWIGLU_DTYPES` for the SwiGLU call site; it
+does not join the GEMM, RMSNorm, elementwise add and SwiGLU checks into one
+check of a generation (the full pass, ADR-0153 code slice 2), and it does not
+check which arrays a call passes as its operands (ADR-0159 decision 12,
+ADR-0160 decision 12); it reads no weight, passes ``eps`` to nothing and adds
+no cast; it does not interpret the build flags of a kernel reference; and it
+derives no binding from a key's best (OD-20, OD-7).
 
 Every :class:`TypeError` or :class:`ValueError` raised here for an argument
 carries the attribute ``parameter``, the name of that argument. Arguments are
@@ -89,6 +96,7 @@ from hilclaw import (
     gemm_contract,
     keys,
     rmsnorm_bf16_contract,
+    swiglu_bf16_contract,
 )
 
 CALL_SITES = ("qkv", "o", "gate", "up", "down", "lm_head")
@@ -109,6 +117,12 @@ ELEMENTWISE_ADD_CALL_SITES = ("attention_residual", "ffn_residual")
 ELEMENTWISE_ADD_DTYPES = (elementwise_add_bf16_contract.DTYPE,)
 """The dtypes at which the ``elementwise_add`` contract is known (ADR-0157 decision 4, ADR-0159 decision 1)."""
 
+SWIGLU_CALL_SITES = ("ffn_activation",)
+"""The SwiGLU call site, ADR-0152 decision 2 row 12, named as ADR-0160 decision 12."""
+
+SWIGLU_DTYPES = (swiglu_bf16_contract.DTYPE,)
+"""The dtypes at which the ``swiglu`` contract is known (ADR-0157 decision 4, ADR-0160 decision 1)."""
+
 LM_HEAD_ROWS = ("all", "last")
 
 INVALID_INPUT = "invalid_input"
@@ -122,7 +136,7 @@ _ROW_SHAPE = ("m", "n")
 
 
 class ModelDimensions(NamedTuple):
-    """The model parameters the GEMM, RMSNorm and elementwise add shapes depend on (ADR-0153 decision 3 (a))."""
+    """The model parameters the GEMM, RMSNorm, elementwise add and SwiGLU shapes depend on (ADR-0153 decision 3 (a))."""
 
     hidden: int
     intermediate: int
@@ -145,7 +159,7 @@ class BindingEntry(NamedTuple):
     """A kernel bound for ``shapes``: ``"every"`` or a non-empty tuple of shapes.
 
     A shape is ``(m, k, n)`` for a GEMM call site and ``(m, n)`` for an
-    RMSNorm or elementwise add call site.
+    RMSNorm, elementwise add or SwiGLU call site.
     """
 
     kernel: KernelReference
@@ -153,7 +167,7 @@ class BindingEntry(NamedTuple):
 
 
 class Outcome(NamedTuple):
-    """One outcome of :func:`check`, :func:`check_rmsnorm` or :func:`check_elementwise_add`; ``reason`` is always a ``str``."""
+    """One outcome of :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add` or :func:`check_swiglu`; ``reason`` is always a ``str``."""
 
     kind: str
     call_site: object
@@ -162,7 +176,7 @@ class Outcome(NamedTuple):
 
 
 class BindingCheck(NamedTuple):
-    """The result of :func:`check`, :func:`check_rmsnorm` or :func:`check_elementwise_add`: ``ok`` exactly when ``outcomes`` is empty."""
+    """The result of :func:`check`, :func:`check_rmsnorm`, :func:`check_elementwise_add` or :func:`check_swiglu`: ``ok`` exactly when ``outcomes`` is empty."""
 
     ok: bool
     outcomes: tuple
@@ -352,7 +366,7 @@ def rmsnorm_shape(dimensions, call_site, rows):
     :class:`TypeError` or :class:`ValueError` with ``parameter`` ``"rows"``
     for ``rows`` that is not an ``int`` from 1 to 2**53 - 1.
     """
-    return _row_shape(dimensions, call_site, rows, RMSNORM_CALL_SITES)
+    return _row_shape(dimensions, call_site, rows, RMSNORM_CALL_SITES, "hidden")
 
 
 def rmsnorm_generation_calls(dimensions, *, prompt_length, generation_length):
@@ -367,7 +381,7 @@ def rmsnorm_generation_calls(dimensions, *, prompt_length, generation_length):
     ``generation_length`` are ``int`` from 1 to 2**53 - 1.
     """
     return _row_generation_calls(
-        dimensions, prompt_length, generation_length, RMSNORM_CALL_SITES
+        dimensions, prompt_length, generation_length, RMSNORM_CALL_SITES, "hidden"
     )
 
 
@@ -377,7 +391,8 @@ def check_rmsnorm(dimensions, binding, *, dtype, prompt_length, generation_lengt
     ``binding`` maps call sites of :data:`RMSNORM_CALL_SITES` to non-empty
     sequences of :class:`BindingEntry`. ``dtype`` is the model's dtype
     (ADR-0157 decision 1); it has no default. This check stands beside
-    :func:`check` and is not joined with it.
+    :func:`check`, :func:`check_elementwise_add` and :func:`check_swiglu` and
+    is not joined with them.
 
     Arguments are first refused, in the order ``dimensions``, ``dtype``,
     ``prompt_length``, ``generation_length``, ``binding``, with
@@ -439,7 +454,7 @@ def elementwise_add_shape(dimensions, call_site, rows):
     :class:`ValueError` with ``parameter`` ``"rows"`` for ``rows`` that is not
     an ``int`` from 1 to 2**53 - 1.
     """
-    return _row_shape(dimensions, call_site, rows, ELEMENTWISE_ADD_CALL_SITES)
+    return _row_shape(dimensions, call_site, rows, ELEMENTWISE_ADD_CALL_SITES, "hidden")
 
 
 def elementwise_add_generation_calls(dimensions, *, prompt_length, generation_length):
@@ -452,7 +467,11 @@ def elementwise_add_generation_calls(dimensions, *, prompt_length, generation_le
     :func:`rmsnorm_generation_calls` does.
     """
     return _row_generation_calls(
-        dimensions, prompt_length, generation_length, ELEMENTWISE_ADD_CALL_SITES
+        dimensions,
+        prompt_length,
+        generation_length,
+        ELEMENTWISE_ADD_CALL_SITES,
+        "hidden",
     )
 
 
@@ -464,7 +483,8 @@ def check_elementwise_add(
     ``binding`` maps call sites of :data:`ELEMENTWISE_ADD_CALL_SITES` to
     non-empty sequences of :class:`BindingEntry`. ``dtype`` is the model's
     dtype (ADR-0157 decision 1); it has no default. This check stands beside
-    :func:`check` and :func:`check_rmsnorm` and is not joined with them.
+    :func:`check`, :func:`check_rmsnorm` and :func:`check_swiglu` and is not
+    joined with them.
 
     Arguments are refused as by :func:`check_rmsnorm`, in the same order and
     with the same errors, with :data:`ELEMENTWISE_ADD_CALL_SITES` as the keys
@@ -509,6 +529,91 @@ def check_elementwise_add(
     )
 
 
+def swiglu_shape(dimensions, call_site, rows):
+    """Return the ``(m, n)`` of the SwiGLU ``call_site`` in a pass of ``rows`` rows.
+
+    ``m`` is ``rows`` and ``n`` is ``intermediate``, not ``hidden``: the call
+    takes two arrays of T rows of the intermediate width into a third of that
+    shape (ADR-0152 decisions 2 and 5, ADR-0160 decision 2). Raises as
+    :func:`check_dimensions` does, then :class:`ValueError` with
+    ``parameter`` ``"call_site"`` for a call site not in
+    :data:`SWIGLU_CALL_SITES`, then :class:`TypeError` or :class:`ValueError`
+    with ``parameter`` ``"rows"`` for ``rows`` that is not an ``int`` from 1
+    to 2**53 - 1.
+    """
+    return _row_shape(dimensions, call_site, rows, SWIGLU_CALL_SITES, "intermediate")
+
+
+def swiglu_generation_calls(dimensions, *, prompt_length, generation_length):
+    """Return, per call site in :data:`SWIGLU_CALL_SITES` order, the sorted tuple of distinct shapes of a generation.
+
+    The passes are those of :func:`generation_calls`: one prefill pass of
+    ``prompt_length`` rows and then ``generation_length - 1`` decode passes of
+    one row. The result is a tuple of ``(call_site, shapes)`` pairs, each
+    shape an ``(m, n)`` of :func:`swiglu_shape`. Raises as
+    :func:`rmsnorm_generation_calls` does.
+    """
+    return _row_generation_calls(
+        dimensions,
+        prompt_length,
+        generation_length,
+        SWIGLU_CALL_SITES,
+        "intermediate",
+    )
+
+
+def check_swiglu(dimensions, binding, *, dtype, prompt_length, generation_length):
+    """Check ``binding`` against every SwiGLU call of a generation; return a :class:`BindingCheck`.
+
+    ``binding`` maps call sites of :data:`SWIGLU_CALL_SITES` to non-empty
+    sequences of :class:`BindingEntry`. ``dtype`` is the model's dtype
+    (ADR-0157 decision 1); it has no default. This check stands beside
+    :func:`check`, :func:`check_rmsnorm` and :func:`check_elementwise_add`
+    and is not joined with them.
+
+    Arguments are refused as by :func:`check_rmsnorm`, in the same order and
+    with the same errors, with :data:`SWIGLU_CALL_SITES` as the keys of
+    ``binding`` and ``(m, n)`` pairs as its shapes.
+
+    The outcomes then come in this order:
+
+    1. ``"invalid_input"`` (``call_site`` and ``shape`` ``None``): a
+       ``dtype`` not in :data:`SWIGLU_DTYPES`, at which no ``swiglu``
+       contract is known (ADR-0157 decision 4, ADR-0160 decision 1);
+       ``prompt_length`` outside 1 to 2**53 - 1; ``generation_length``
+       outside 1 to 2**53 - 1.
+    2. Per call site in :data:`SWIGLU_CALL_SITES` order: ``"kernel_unfit"``
+       (``shape`` ``None``) for each entry, in order, whose ``contract`` is
+       not the bf16 ``swiglu`` contract, compared on ``language``,
+       ``prototype`` and the operands' ``(name, role, dtype)`` (ADR-0153
+       decision 3 "Fit"; reference values from
+       :func:`hilclaw.swiglu_bf16_contract.task_contract`, never from the
+       entry's own contract); then ``"no_kernel"`` for each shape of
+       :func:`swiglu_generation_calls`, in order, that no entry covers. The
+       ``"no_kernel"`` outcomes are not looked for when there is an
+       ``"invalid_input"``, and neither kind is when ``dtype`` is not in
+       :data:`SWIGLU_DTYPES`.
+
+    A listed shape other than the kernel's own spec shape, and an ``"every"``
+    entry, are accepted (ADR-0160 decision 8). ``calls`` holds ``(call_site,
+    shape, kernel)`` for every call of :func:`swiglu_generation_calls`, in
+    its order, only when ``ok``; it is empty otherwise. Which arrays a call
+    passes as ``gate``, ``up`` and ``out`` (ADR-0160 decision 12) is not
+    checked. Nothing is built, started or read.
+    """
+    return _check_rows(
+        dimensions,
+        binding,
+        dtype,
+        prompt_length,
+        generation_length,
+        SWIGLU_CALL_SITES,
+        SWIGLU_DTYPES,
+        swiglu_bf16_contract,
+        swiglu_generation_calls,
+    )
+
+
 def rmsnorm_eps(eps):
     """Return the binary32 value nearest to the model parameter ``eps``, as a ``float``.
 
@@ -536,22 +641,25 @@ def rmsnorm_eps(eps):
         return nearest
 
 
-def _row_shape(dimensions, call_site, rows, sites):
+def _row_shape(dimensions, call_site, rows, sites, width):
     check_dimensions(dimensions)
     with _parameter("call_site"):
         if call_site not in sites:
             raise ValueError(f"must be one of {sites}, got {call_site!r}")
     with _parameter("rows"):
         _integer(rows, "rows")
-    return (rows, dimensions.hidden)
+    return (rows, getattr(dimensions, width))
 
 
-def _row_generation_calls(dimensions, prompt_length, generation_length, sites):
+def _row_generation_calls(dimensions, prompt_length, generation_length, sites, width):
     check_dimensions(dimensions)
     _lengths(prompt_length, generation_length)
     rows = _pass_rows(prompt_length, generation_length)
     return tuple(
-        (site, tuple(sorted(_row_shape(dimensions, site, r, sites) for r in rows)))
+        (
+            site,
+            tuple(sorted(_row_shape(dimensions, site, r, sites, width) for r in rows)),
+        )
         for site in sites
     )
 
