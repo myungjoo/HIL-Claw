@@ -2,7 +2,7 @@
 id: T-0447
 title: Add the RoPE call sites rope_q and rope_k to hilclaw/model_binding.py - their shapes (rows x heads x head_dim and rows x kv_heads x head_dim) over a generation and a binding check with fit against the bf16 rope contract and "every shape" accepted (ADR-0161 decisions 2, 3, 10, 11 and 15), with the dtype range of ADR-0157 decision 4 - with tests (ADR-0161 code slice, third part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-11", "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0445]
@@ -137,6 +137,7 @@ hq: []
 ## Result
 
 - **Outcome**: DONE. PR #264 (squash-merged; the merge commit is the one with the trailer `Task: T-0447` on `main`). Review: 2 rounds, Approve (round 1 Approve with two nits and one note; round 2 on the added `## Result`).
+- **CI**: green (coverage gate, Python gates 3.11/3.14, test presence, shellcheck); merge commit `3f775dc`.
 - **Language**: Python, the host side of the executor is Python (ADR-0153 decision 2).
 - **Changes**:
   - `hilclaw/model_binding.py`: `ROPE_CALL_SITES`, `ROPE_DTYPES`, `rope_shape`, `rope_generation_calls`, `check_rope`; the private `_check_rope_dimensions` (an odd `head_dim` refused with `parameter` `"dimensions"`, in the RoPE functions only); `_check_rows` takes `members` (default `("m", "n")`) and `reference_shape` (default `(1, 1)`), RoPE passes `("m", "h", "d")` and `(1, 1, 2)`; `contract.task_contract` is still looked up at call time. Module docstring and the docstrings of `ModelDimensions`, `BindingEntry`, `Outcome`, `BindingCheck`, `check_rmsnorm`, `check_elementwise_add` and `check_swiglu` updated. The text holds no `rope_table`.
