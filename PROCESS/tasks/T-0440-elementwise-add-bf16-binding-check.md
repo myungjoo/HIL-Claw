@@ -2,7 +2,7 @@
 id: T-0440
 title: Add the elementwise add call sites attention_residual and ffn_residual to hilclaw/model_binding.py - their shapes over a generation and a binding check with fit against the bf16 elementwise add contract and "every shape" accepted (ADR-0159 decisions 8 and 12), with the dtype range of ADR-0157 decision 4 - with tests (ADR-0159 code slice, second part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-11", "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0439]
@@ -128,3 +128,10 @@ P2-10 comes after P2-5. So the work goes on with P2-11 to P2-14. This task is co
 - (planner) After this task, ADR-0159's binding part is done. The next pieces toward P2-13 and P2-14 are the contract record (doc, OD-31/OD-6) of the SwiGLU activation kind, then its code slices, then RoPE and SDPA with KV cache (ADR-0159 Boundaries). The hand-written bf16 RMSNorm and elementwise add kernel fixtures come with the model program's calls of those kinds.
 
 ## Result
+- Outcome: DONE. PR #259 squash-merged as de26fe2 (branch deleted). Review: 1 round, Approve (one Nit, no change needed: git's diff heuristic shows `rmsnorm_eps` as moved because the old `check_rmsnorm` body pairs with the new `_check_rows`; content unchanged).
+- Language: Python - the host side of the executor is Python (ADR-0153 decision 2).
+- Change: `hilclaw/model_binding.py` gains `ELEMENTWISE_ADD_CALL_SITES`, `ELEMENTWISE_ADD_DTYPES`, `elementwise_add_shape`, `elementwise_add_generation_calls`, `check_elementwise_add`; the RMSNorm check/shape/generation-calls bodies moved into private helpers `_check_rows`, `_row_shape`, `_row_generation_calls` shared with the new check (no message or behaviour change; all existing tests unchanged). Binder test in `tests/test_elementwise_add_bf16_contract.py` renamed to `test_module_imports_keys_only_and_is_bound_by_the_model_binding_only` and allows/requires `model_binding.py`.
+- Gates: ruff check/format clean; full pytest 28103 passed, 949 skipped; coverage hilclaw/ 97% lines, model_binding.py 100%; CI all green (Python 3.11/3.14, Coverage, C, sh, test presence).
+- Size: 296 changed lines outside tests (217+/79-), under the D4 cap.
+- Records now less exact (not edited): ADR-0153 decision 3 ("future contract records", "for every other kind, its contract record says"); ADR-0157 decision 4 (range stated "with the GEMM call sites only"); ADR-0159 Consequences (code slice list: the binding-check part is now landed); the `hilclaw/model_binding.py` mentions in ADR-0159 decision 12 remain accurate.
+- Follow-ups: none from this task. (planner) next toward P2-13/P2-14 is the SwiGLU activation contract record, as the task file's Follow-ups say.
