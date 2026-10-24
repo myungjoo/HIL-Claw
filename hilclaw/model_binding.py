@@ -830,8 +830,8 @@ def sdpa_generation_calls(dimensions, *, prompt_length, generation_length):
         if reason is not None:
             raise ValueError(reason)
     tail = (dimensions.heads, dimensions.kv_heads, dimensions.head_dim)
-    shapes = {(prompt_length, prompt_length, *tail)}
-    shapes.update((1, prompt_length + k, *tail) for k in range(1, generation_length))
+    shapes = [(1, prompt_length + k, *tail) for k in range(1, generation_length)]
+    shapes.append((prompt_length, prompt_length, *tail))
     return ((SDPA_CALL_SITES[0], tuple(sorted(shapes))),)
 
 
