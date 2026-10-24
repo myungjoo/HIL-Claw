@@ -2,7 +2,7 @@
 id: T-0435
 title: Write ADR-0158 - the operational contract of RMSNorm in bf16 for C kernels on cpu_standin (kind value and shape members, dtype and layout, the operation with fp32 sum of squares and its other intermediate precisions, eps, the rounding of the output conversion, the uint16_t prototype and its symbol, operand entries, call guarantees, the input value set, and the op_signature records of the ADR-0152 RMSNorm calls), and update the OD-6 and OD-31 register entries (second Llama kind contract of PLAN P2-11; extension of OD-6 sub-question 1, part of OD-31 sub-questions 1 to 3)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-5, FR-9, OD-31, OD-6, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0429, T-0431, T-0434]
@@ -143,3 +143,23 @@ hq: []
 - (planner) After this lands, the code slice of ADR-0158 (criterion 5) can be planned as a code task. The contract records of elementwise add, SwiGLU activation, RoPE and SDPA with KV cache follow, one ADR task each. Any part that touches owner-only sub-questions goes to an HQ instead.
 
 ## Result
+
+- **DONE.** Landed on `main` as `0792a9f` (document mode; squashed commit with trailers `Task: T-0435` and `Reviewed-by: reviewer agent (7 rounds, Approve)`). The task branch `claude/T-0435-adr-od31-bf16-rmsnorm-contract` was deleted remotely and locally.
+- **ADR number**: ADR-0158 was free on `origin/main` and is used.
+- **Files**: `ARCHITECTURE/decisions/ADR-0158-od31-bf16-rmsnorm-contract.md` (new); `ARCHITECTURE/Requirements.md` (OD-6 and OD-31 rows); `ARCHITECTURE/OpenDecisionProposals.md` (§ OD-6 and § OD-31: adopted lines, sub-questions ①②③); `ARCHITECTURE/StandardScenarios.md` (latest re-check line; the S0 note now names `rmsnorm`). 4 files, +197/−8.
+- **Key choices**: kind `rmsnorm` with members `m`, `n`; rank-1 `row_major`; the owner's fp32 sum of squares; other steps binary32 or wider, a correctly rounded mean, rsqrt within 2^-11 relative error; no bf16 rounding before the weight multiply (stated departure from Meta's `type_as`); `eps` as a `float` parameter; RNE output; `void hilclaw_rmsnorm_bf16(size_t m, size_t n, float eps, const uint16_t *restrict x, const uint16_t *restrict w, uint16_t *restrict y);`; no in-place call; value set ±[0.5, 1) for x and w, eps = binary32 nearest 1e-05; op_signatures `rmsnorm-57f1bdf44f626c31` / `rmsnorm-953c4d92b64130ba` / `rmsnorm-3aba1dcd072652b7` (T = 1, 32, 512).
+- **Verification**: the `task.contract` example was validated and the key names computed in a throwaway interpreter, with `rmsnorm` added to `hilclaw.keys._SHAPE_MEMBERS` in memory only. The control name `gemm-485b9bc494d477eb` was reproduced.
+- **Owner-sentence search**: only K1 (B-4) and K2 (C-6 revision) were found, with no conflict.
+- **Open HQs crossed**: none.
+- **Review**: 7 rounds.
+  - Round 1: Approve with nits (the eps bf16 error figure, the source of the output rounding).
+  - Round 2: Approve with Minors (rsqrt accuracy vs "never narrower"; overflow sentence vs ADR-0156).
+  - Round 3: Request changes (Medium: an unbounded rsqrt estimate, which is wrong for Arm `FRSQRTE`). Fixed with the 2^-11 bound, the S0 note, the builds-on list and libm in the code slice.
+  - Rounds 4 to 6: Approve with nits (the mean step, the reference eps, the multiplies, the division path, contraction outside the sum), all addressed.
+  - Round 7: Approve with one Info, which is not edited, to stay within the 7-round limit. It suggests narrowing "no value set changes this much at that width" to "for every square" in decision 9.
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6379572020. The 7-day objection window runs from this notice.
+- **Runtime acceptance items**: none.
+- **Follow-ups**
+  - (planner) The code slice of ADR-0158 Consequences: the kind in `hilclaw.keys`, a `rmsnorm` bf16 contract module, fit in `model_binding`, the executor's eps as nearest binary32, the libm linking question with HQ-0033, hand-written fixtures, and the P2-12 harness part.
+  - (planner) Contract ADRs for elementwise add, SwiGLU activation, RoPE and SDPA with KV cache.
+  - The round 7 Info wording (decision 9) can be folded into a later edit of ADR-0158. Under D18 it is not worth a task of its own.
