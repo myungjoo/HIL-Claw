@@ -14,11 +14,12 @@ the build of a verification executable from it
 (:mod:`hilclaw.harness.verification_arrays`) and its Python side over an
 executable that is already built (:mod:`hilclaw.harness.verification`), and the
 array side of the bf16 verification run of ADR-0163
-(:mod:`hilclaw.harness.bf16_verification_arrays`), these last three being the
-three modules that import ``numpy``, and nothing else of the harness. The C
-sources of that bf16 run are its shared header (``bf16_verification.h``) and
-its four verification programs, one per kind, which include it
-(``bf16_verification_gemm.c``, ``bf16_verification_rmsnorm.c``,
+(:mod:`hilclaw.harness.bf16_verification_arrays`) and its Python side over an
+executable that is already built (:mod:`hilclaw.harness.bf16_verification`),
+these last four being the four modules that import ``numpy``, and nothing else
+of the harness. The C sources of that bf16 run are its shared header
+(``bf16_verification.h``) and its four verification programs, one per kind,
+which include it (``bf16_verification_gemm.c``, ``bf16_verification_rmsnorm.c``,
 ``bf16_verification_elementwise_add.c`` and ``bf16_verification_swiglu.c``),
 and the build of a bf16 verification executable from one of them
 (:mod:`hilclaw.harness.bf16_verification_build`).
