@@ -26,9 +26,11 @@ Readings of this module (not rules of the record):
   list holds the distinct kernels of ``check.calls`` in order of first use,
   one library each, and the calls that use one share its index.
 - Slice 2's forward pass does not exist yet, so the caller supplies the
-  operands of every call; this module chooses no array, weight, dtype, cast,
+  operands of every call; this module chooses no array, weight, cast,
   reference or tolerance, compares nothing and has no fallback for a missing
-  kernel (decision 5).
+  kernel (decision 5). The binding is checked at the dtype ``fp32``, the fp32
+  path of ``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``
+  decision 5.
 
 What this module does not do: no forward pass, embedding, KV cache or token
 selection; no file outside the build directory of
@@ -81,10 +83,10 @@ def run(
 
     ``dimensions``, ``binding``, ``prompt``, ``generation_length``,
     ``lm_head_rows`` and ``given`` go to
-    :func:`hilclaw.model_binding.check`; what it raises is passed on
-    unchanged. If the check is not ok, the result is ``GemmRun(check, (),
-    None)``: nothing is built, started or made, and ``operands`` is not looked
-    at.
+    :func:`hilclaw.model_binding.check`, which checks the binding at the dtype
+    ``fp32`` (ADR-0157 decision 5); what it raises is passed on unchanged.
+    If the check is not ok, the result is ``GemmRun(check, (), None)``:
+    nothing is built, started or made, and ``operands`` is not looked at.
 
     If the check is ok, ``operands`` maps each ``(call_site, shape)`` of
     ``check.calls``, ``shape`` the ``(m, k, n)`` tuple, to a pair ``(a, b)``
@@ -106,6 +108,7 @@ def run(
     check = model_binding.check(
         dimensions,
         binding,
+        dtype="fp32",
         prompt=prompt,
         generation_length=generation_length,
         lm_head_rows=lm_head_rows,

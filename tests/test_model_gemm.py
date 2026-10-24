@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from hilclaw import gemm_contract, model_execute, model_gemm
+from hilclaw import gemm_bf16_contract, gemm_contract, model_execute, model_gemm
 from hilclaw.clang_build import BuildResult
 from hilclaw.local_run import RunResult
 from hilclaw.model_binding import (
@@ -64,7 +64,9 @@ def matrices(m, k, n, seed):
 
 
 def operands_for(dimensions, binding, **changes):
-    check = model_gemm.model_binding.check(dimensions, binding, **settings(**changes))
+    check = model_gemm.model_binding.check(
+        dimensions, binding, dtype="fp32", **settings(**changes)
+    )
     assert check.ok
     return {
         (site, shape): matrices(*shape, seed)
@@ -185,6 +187,21 @@ def test_kernel_unfit_builds_nothing(recorder):
     binding["o"] = [BindingEntry(kernel("o", contract), "every")]
     result = run(SMALL, binding, object(), **settings(), **OPTIONS)
     assert [o.kind for o in result.check.outcomes] == [KERNEL_UNFIT]
+    assert result.calls == () and result.execution is None
+    assert recorder.calls == []
+
+
+def test_binding_is_checked_at_fp32(recorder):
+    contract = gemm_bf16_contract.task_contract(3, 4, 5)
+    binding = {
+        site: [BindingEntry(kernel(site, contract), "every")] for site in CALL_SITES
+    }
+    result = run(SMALL, binding, object(), **settings(), **OPTIONS)
+    assert not result.check.ok
+    assert [(o.kind, o.call_site) for o in result.check.outcomes] == [
+        (KERNEL_UNFIT, site) for site in CALL_SITES
+    ]
+    assert all("fp32 gemm contract" in o.reason for o in result.check.outcomes)
     assert result.calls == () and result.execution is None
     assert recorder.calls == []
 

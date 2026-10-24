@@ -4,8 +4,12 @@
 anything is built, the host side derives the shapes of every kernel call of a
 generation from the model dimensions and the run settings and checks the
 binding against them (decision 5). This module does that for the six GEMM
-call sites of ADR-0152 decision 2 (:data:`CALL_SITES`) and the fp32 ``gemm``
-contract of ADR-0008:
+call sites of ADR-0152 decision 2 (:data:`CALL_SITES`). The model's dtype
+(``ARCHITECTURE/decisions/ADR-0157-od31-executor-call-site-dtype.md``,
+decisions 1 to 4) selects the ``gemm`` contract every entry is fitted
+against: ADR-0008's (:mod:`hilclaw.gemm_contract`) for ``fp32`` and
+ADR-0156's (:mod:`hilclaw.gemm_bf16_contract`) for ``bf16``
+(:data:`DTYPES`). Its parts:
 
 * :class:`ModelDimensions` and :func:`check_dimensions`: the model parameters
   of ADR-0153 decision 3 (a) that the GEMM shapes use. No value is a default
@@ -30,15 +34,17 @@ Readings of this module:
   malformed, and an ``"every"`` entry overlaps every other entry of its call
   site: the executor never chooses between kernels (decision 3).
 * A listed shape other than the shape of the kernel's own spec, and an
-  ``"every"`` entry, are accepted for fp32 ``gemm``: its kernel must compute
-  the product for the values it is called with (ADR-0008 decision 6). So the
+  ``"every"`` entry, are accepted at both dtypes: a kernel of either
+  ``gemm`` contract must compute the product for the values it is called with
+  (ADR-0008 decision 6, ADR-0156 decision 7, ADR-0157 decision 3). So the
   operand shapes of a ``task.contract`` are not compared.
 
 What this module does not do: it builds, loads and starts nothing and runs no
 process; it reads and writes no file; it has no command-line entry, registry
 or MCP tool; it knows no call site of RMSNorm, RoPE, SDPA, SwiGLU or
-elementwise add, no contract other than fp32 ``gemm`` and no dtype other than
-fp32; it does not interpret the build flags of a kernel reference; and it
+elementwise add, no contract other than the fp32 and bf16 ``gemm`` contracts
+and no dtype outside :data:`DTYPES`; it reads no weight and adds no cast; it
+does not interpret the build flags of a kernel reference; and it
 derives no binding from a key's best (OD-20, OD-7).
 
 Every :class:`TypeError` or :class:`ValueError` raised here for an argument
@@ -48,19 +54,26 @@ not modified.
 
 import contextlib
 import os
+import re
 from collections.abc import Mapping, Sequence
 from typing import NamedTuple
 
-from hilclaw import gemm_contract, keys
+from hilclaw import gemm_bf16_contract, gemm_contract, keys
 
 CALL_SITES = ("qkv", "o", "gate", "up", "down", "lm_head")
 """The GEMM call sites, ADR-0152 decision 2 rows 3, 8, 11 (gate and up), 13 and 16."""
+
+DTYPES = (gemm_contract.DTYPE, gemm_bf16_contract.DTYPE)
+"""The dtypes at which the ``gemm`` contract is known, the range of the model's dtype (ADR-0157 decision 4)."""
 
 LM_HEAD_ROWS = ("all", "last")
 
 INVALID_INPUT = "invalid_input"
 NO_KERNEL = "no_kernel"
 KERNEL_UNFIT = "kernel_unfit"
+
+_CONTRACTS = dict(zip(DTYPES, (gemm_contract, gemm_bf16_contract)))
+_DTYPE_NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 
 
 class ModelDimensions(NamedTuple):
@@ -196,18 +209,23 @@ def generation_calls(dimensions, *, prompt_length, generation_length, lm_head_ro
     return tuple(result)
 
 
-def check(dimensions, binding, *, prompt, generation_length, lm_head_rows, given=None):
+def check(
+    dimensions, binding, *, dtype, prompt, generation_length, lm_head_rows, given=None
+):
     """Check ``binding`` against every GEMM call of a generation; return a :class:`BindingCheck`.
 
     ``prompt`` is a sequence of token ids; ``given`` is ``None`` (generation
     mode) or a sequence of ``generation_length`` token ids (given-sequence
     mode). ``binding`` maps call sites of :data:`CALL_SITES` to non-empty
     sequences of :class:`BindingEntry`. A token id is exactly an ``int``.
+    ``dtype`` is the model's dtype (ADR-0157 decision 1); it has no default.
 
-    Arguments are first refused, in the order ``dimensions``, ``prompt``,
-    ``given``, ``generation_length``, ``lm_head_rows``, ``binding``, with
-    :class:`TypeError` for a wrong type (a ``str`` or ``bytes`` is no
-    sequence here) and, for ``dimensions`` and a malformed ``binding``,
+    Arguments are first refused, in the order ``dimensions``, ``dtype``,
+    ``prompt``, ``given``, ``generation_length``, ``lm_head_rows``,
+    ``binding``, with :class:`TypeError` for a wrong type (``dtype`` is
+    exactly a ``str``; a ``str`` or ``bytes`` is no sequence here) and, for
+    ``dimensions``, a ``dtype`` that is not a name of ADR-0001's ``dtype``
+    field (``[a-z][a-z0-9_]{0,31}``) and a malformed ``binding``,
     :class:`ValueError`; ``parameter`` is the argument's name. ``binding`` is
     malformed when a key is not in :data:`CALL_SITES`, a sequence of entries
     is empty, a kernel reference has no source or a source that is not a
@@ -217,26 +235,34 @@ def check(dimensions, binding, *, prompt, generation_length, lm_head_rows, given
 
     The outcomes then come in this order:
 
-    1. ``"invalid_input"`` (``call_site`` and ``shape`` ``None``): an empty
-       ``prompt``; each token id of ``prompt`` outside 0 to ``vocabulary - 1``,
-       in order; ``generation_length`` outside 1 to 2**53 - 1; ``lm_head_rows``
-       not ``"all"`` or ``"last"``; ``given`` of a length other than
-       ``generation_length`` (looked at only when that is valid); each token id
-       of ``given`` outside the vocabulary, in order.
+    1. ``"invalid_input"`` (``call_site`` and ``shape`` ``None``): a
+       ``dtype`` not in :data:`DTYPES`, at which no ``gemm`` contract is
+       known (ADR-0157 decision 4); an empty ``prompt``; each token id of
+       ``prompt`` outside 0 to ``vocabulary - 1``, in order;
+       ``generation_length`` outside 1 to 2**53 - 1; ``lm_head_rows`` not
+       ``"all"`` or ``"last"``; ``given`` of a length other than
+       ``generation_length`` (looked at only when that is valid); each token
+       id of ``given`` outside the vocabulary, in order.
     2. Per call site in :data:`CALL_SITES` order: ``"kernel_unfit"``
        (``shape`` ``None``) for each entry, in order, whose ``contract`` is
-       not the fp32 ``gemm`` contract on ``language``, ``prototype`` and the
-       operands' ``(name, role, dtype)`` (ADR-0153 decision 3 "Fit", ADR-0008
-       decision 8; reference values from :func:`hilclaw.gemm_contract.task_contract`);
-       then ``"no_kernel"`` for each shape of :func:`generation_calls`, in
-       order, that no entry covers. The ``"no_kernel"`` outcomes are not
-       looked for when there is an ``"invalid_input"``.
+       not the ``gemm`` contract ``dtype`` selects, compared on ``language``,
+       ``prototype`` and the operands' ``(name, role, dtype)`` (ADR-0153
+       decision 3 "Fit", ADR-0008 decision 8, ADR-0157 decisions 2 and 3;
+       reference values from :func:`hilclaw.gemm_contract.task_contract` for
+       ``fp32`` and :func:`hilclaw.gemm_bf16_contract.task_contract` for
+       ``bf16``, never from the entry's own contract); then ``"no_kernel"``
+       for each shape of :func:`generation_calls`, in order, that no entry
+       covers. The ``"no_kernel"`` outcomes are not looked for when there is
+       an ``"invalid_input"``, and neither kind is when ``dtype`` is not in
+       :data:`DTYPES`.
 
     ``calls`` holds ``(call_site, shape, kernel)`` for every call of
     :func:`generation_calls`, in its order, only when ``ok``; it is empty
     otherwise. Nothing is built, started or read.
     """
     check_dimensions(dimensions)
+    with _parameter("dtype"):
+        _dtype(dtype)
     prompt = _token_ids(prompt, "prompt")
     if given is not None:
         given = _token_ids(given, "given")
@@ -247,7 +273,9 @@ def check(dimensions, binding, *, prompt, generation_length, lm_head_rows, given
         _lm_head_rows(lm_head_rows)
     binding = _binding(binding)
 
-    invalid = _invalid_inputs(
+    known = dtype in DTYPES
+    invalid = [] if known else [_no_contract(dtype)]
+    invalid += _invalid_inputs(
         dimensions, prompt, generation_length, lm_head_rows, given
     )
     outcomes = [Outcome(INVALID_INPUT, None, None, reason) for reason in invalid]
@@ -262,10 +290,10 @@ def check(dimensions, binding, *, prompt, generation_length, lm_head_rows, given
             )
         )
     calls = []
-    for site in CALL_SITES:
+    for site in CALL_SITES if known else ():
         entries = binding.get(site, ())
         for index, entry in enumerate(entries):
-            reason = _unfit(entry.kernel.contract)
+            reason = _unfit(entry.kernel.contract, dtype)
             if reason is not None:
                 outcomes.append(
                     Outcome(KERNEL_UNFIT, site, None, f"entry {index}: {reason}")
@@ -320,8 +348,12 @@ def _out_of_vocabulary(token_ids, vocabulary, name):
     ]
 
 
-def _unfit(contract):
-    reference = gemm_contract.task_contract(1, 1, 1)
+def _no_contract(dtype):
+    return f"dtype: no gemm contract is known at the dtype {dtype!r}"
+
+
+def _unfit(contract, dtype):
+    reference = _CONTRACTS[dtype].task_contract(1, 1, 1)
     if not isinstance(contract, Mapping):
         return f"contract is not a mapping, got {type(contract).__name__}"
     for member in ("language", "prototype", "operands"):
@@ -329,7 +361,7 @@ def _unfit(contract):
             return f"contract lacks the member {member!r}"
     for member in ("language", "prototype"):
         if not _same_text(contract[member], reference[member]):
-            return f"contract.{member} is not that of the fp32 gemm contract"
+            return f"contract.{member} is not that of the {dtype} gemm contract"
     operands = contract["operands"]
     if not isinstance(operands, Sequence) or isinstance(operands, (str, bytes)):
         return "contract.operands is not a sequence"
@@ -342,7 +374,7 @@ def _unfit(contract):
             if member not in operand:
                 return f"contract.operands[{index}] lacks the member {member!r}"
             if not _same_text(operand[member], expected[member]):
-                return f"contract.operands[{index}].{member} is not that of the fp32 gemm contract"
+                return f"contract.operands[{index}].{member} is not that of the {dtype} gemm contract"
     return None
 
 
@@ -432,6 +464,13 @@ def _token_ids(token_ids, name):
             if type(token) is not int:
                 raise TypeError(f"a token id is not an int, got {type(token).__name__}")
         return token_ids
+
+
+def _dtype(value):
+    if type(value) is not str:
+        raise TypeError(f"must be a str, got {type(value).__name__}")
+    if not _DTYPE_NAME.fullmatch(value):
+        raise ValueError(f"must match {_DTYPE_NAME.pattern}, got {value!r}")
 
 
 def _lm_head_rows(value):
