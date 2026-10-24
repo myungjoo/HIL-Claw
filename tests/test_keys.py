@@ -597,7 +597,10 @@ def test_gemm_shape_members_are_exactly_m_k_n(shape):
 
 @pytest.mark.parametrize("kind", ["sdpa", "conv", "gemm2", "g"])
 def test_unknown_kind_is_rejected(kind):
-    with pytest.raises(InvalidRecordError, match="^kind: must be a known kind: gemm"):
+    with pytest.raises(
+        InvalidRecordError,
+        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm",
+    ):
         op_signature_key(changed(synthetic_op(), ["kind"], kind))
 
 
@@ -657,11 +660,77 @@ def test_gemm_still_needs_k_beside_m_and_n():
         op_signature_key(changed(synthetic_op(), ["shape"], {"m": 3, "n": 7}))
 
 
-def test_unknown_kind_message_lists_both_kinds():
+def test_unknown_kind_message_lists_all_known_kinds():
     with pytest.raises(
-        InvalidRecordError, match="^kind: must be a known kind: gemm, rmsnorm, got"
+        InvalidRecordError,
+        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm, got",
     ):
         op_signature_key(changed(synthetic_op(), ["kind"], "rope"))
+
+
+def synthetic_elementwise_add_op():
+    return dict(synthetic_op(), kind="elementwise_add", shape={"m": 3, "n": 7})
+
+
+def test_elementwise_add_record_is_accepted():
+    key = op_signature_key(synthetic_elementwise_add_op())
+    assert key.name.startswith("elementwise_add-")
+    assert hashlib.sha256(key.canonical).hexdigest() == key.digest
+
+
+def test_elementwise_add_record_of_adr_0159_has_its_canonical_form_and_name():
+    record = {
+        "schema_version": 1,
+        "kind": "elementwise_add",
+        "shape": {"m": 1, "n": 2048},
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+    key = op_signature_key(record)
+    assert key.canonical == (
+        b'{"dtype":"bf16","kind":"elementwise_add","layout":"row_major",'
+        b'"schema_version":1,"shape":{"m":1,"n":2048}}'
+    )
+    assert key.digest == (
+        "1af54bf2a0744c6977bb2d6411d15fb0a9cbdf0a997e159879d84bfe21708bce"
+    )
+    assert key.name == "elementwise_add-1af54bf2a0744c69"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {},
+        {"m": 1},
+        {"n": 2},
+        {"m": 1, "n": 2, "k": 3},
+        {"m": 1, "k": 2, "n": 3},
+        {"m": 1, "o": 2},
+    ],
+)
+def test_elementwise_add_shape_members_are_exactly_m_n(shape):
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members m, n",
+    ):
+        op_signature_key(changed(synthetic_elementwise_add_op(), ["shape"], shape))
+
+
+def test_other_kinds_keep_their_members_beside_elementwise_add():
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members k, m, n",
+    ):
+        op_signature_key(changed(synthetic_op(), ["shape"], {"m": 3, "n": 7}))
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members m, n",
+    ):
+        op_signature_key(
+            changed(synthetic_rmsnorm_op(), ["shape"], {"m": 1, "k": 2, "n": 3})
+        )
+    assert op_signature_key(synthetic_op()).name.startswith("gemm-")
+    assert op_signature_key(synthetic_rmsnorm_op()).name.startswith("rmsnorm-")
 
 
 @pytest.mark.parametrize("canonical", ["{}", bytearray(b"{}"), None, {"a": 1}])
