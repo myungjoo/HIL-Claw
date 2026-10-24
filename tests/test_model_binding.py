@@ -1,12 +1,14 @@
 import copy
+import inspect
 from pathlib import Path
 
 import pytest
 
-from hilclaw import gemm_contract
+from hilclaw import gemm_bf16_contract, gemm_contract
 from hilclaw.keys import MAX_INTEGER
 from hilclaw.model_binding import (
     CALL_SITES,
+    DTYPES,
     BindingCheck,
     BindingEntry,
     KernelReference,
@@ -32,20 +34,33 @@ SMALL_KN = {
 
 
 _DEFAULT = object()
+CONTRACTS = {"fp32": gemm_contract, "bf16": gemm_bf16_contract}
 
 
-def kernel(name="k", contract=_DEFAULT):
+def kernel(name="k", contract=_DEFAULT, dtype="fp32"):
     if contract is _DEFAULT:
-        contract = gemm_contract.task_contract(3, 4, 5)
+        contract = CONTRACTS[dtype].task_contract(3, 4, 5)
     return KernelReference((f"{name}.c",), contract, ("-O2",))
 
 
-def every_binding():
-    return {site: [BindingEntry(kernel(site), "every")] for site in CALL_SITES}
+def every_binding(dtype="fp32"):
+    return {
+        site: [BindingEntry(kernel(site, dtype=dtype), "every")] for site in CALL_SITES
+    }
+
+
+@pytest.fixture(params=["fp32", "bf16"])
+def dtype(request):
+    return request.param
 
 
 def run(binding=None, **settings):
-    arguments = {"prompt": [1, 2, 3], "generation_length": 4, "lm_head_rows": "all"}
+    arguments = {
+        "dtype": "fp32",
+        "prompt": [1, 2, 3],
+        "generation_length": 4,
+        "lm_head_rows": "all",
+    }
     arguments.update(settings)
     return check(SMALL, every_binding() if binding is None else binding, **arguments)
 
@@ -395,10 +410,10 @@ def test_check_unlisted_shape():
     ]
 
 
-def unfit_reason(contract):
-    binding = every_binding()
+def unfit_reason(contract, dtype="fp32"):
+    binding = every_binding(dtype)
     binding["qkv"] = [BindingEntry(kernel(contract=contract), "every")]
-    result = run(binding)
+    result = run(binding, dtype=dtype)
     assert not result.ok and result.calls == ()
     (outcome,) = result.outcomes
     assert outcome.kind == "kernel_unfit"
@@ -407,88 +422,97 @@ def unfit_reason(contract):
     return outcome.reason
 
 
-def good_contract():
-    return gemm_contract.task_contract(2, 3, 4)
+def good_contract(dtype="fp32"):
+    return CONTRACTS[dtype].task_contract(2, 3, 4)
 
 
-def test_unfit_wrong_prototype():
-    contract = good_contract()
+def test_unfit_wrong_prototype(dtype):
+    contract = good_contract(dtype)
     contract["prototype"] = contract["prototype"].replace("restrict a", "a")
-    assert "prototype" in unfit_reason(contract)
+    reason = unfit_reason(contract, dtype)
+    assert reason == (
+        f"entry 0: contract.prototype is not that of the {dtype} gemm contract"
+    )
 
 
-def test_unfit_wrong_language():
-    contract = good_contract()
+def test_unfit_wrong_language(dtype):
+    contract = good_contract(dtype)
     contract["language"] = "cpp"
-    assert "language" in unfit_reason(contract)
+    reason = unfit_reason(contract, dtype)
+    assert reason == (
+        f"entry 0: contract.language is not that of the {dtype} gemm contract"
+    )
 
 
-def test_unfit_wrong_role():
-    contract = good_contract()
+def test_unfit_wrong_role(dtype):
+    contract = good_contract(dtype)
     contract["operands"][1]["role"] = "output"
-    assert "operands[1].role" in unfit_reason(contract)
+    reason = unfit_reason(contract, dtype)
+    assert f"operands[1].role is not that of the {dtype} gemm contract" in reason
 
 
-def test_unfit_wrong_dtype():
-    contract = good_contract()
+def test_unfit_wrong_dtype(dtype):
+    contract = good_contract(dtype)
     contract["operands"][2]["dtype"] = "fp16"
-    assert "operands[2].dtype" in unfit_reason(contract)
+    reason = unfit_reason(contract, dtype)
+    assert f"operands[2].dtype is not that of the {dtype} gemm contract" in reason
 
 
-def test_unfit_wrong_name():
-    contract = good_contract()
+def test_unfit_wrong_name(dtype):
+    contract = good_contract(dtype)
     contract["operands"][0]["name"] = "x"
-    assert "operands[0].name" in unfit_reason(contract)
+    reason = unfit_reason(contract, dtype)
+    assert f"operands[0].name is not that of the {dtype} gemm contract" in reason
 
 
-def test_unfit_non_string_value():
-    contract = good_contract()
+def test_unfit_non_string_value(dtype):
+    contract = good_contract(dtype)
     contract["language"] = None
-    assert "language" in unfit_reason(contract)
+    assert "language" in unfit_reason(contract, dtype)
 
 
 @pytest.mark.parametrize("contract", [None, "c", ["language"], 3])
-def test_unfit_non_mapping(contract):
-    assert "not a mapping" in unfit_reason(contract)
+def test_unfit_non_mapping(contract, dtype):
+    assert "not a mapping" in unfit_reason(contract, dtype)
 
 
 @pytest.mark.parametrize("member", ["language", "prototype", "operands"])
-def test_unfit_missing_member(member):
-    contract = good_contract()
+def test_unfit_missing_member(member, dtype):
+    contract = good_contract(dtype)
     del contract[member]
-    assert repr(member) in unfit_reason(contract)
+    assert repr(member) in unfit_reason(contract, dtype)
 
 
-def test_unfit_operands_forms():
-    contract = good_contract()
+def test_unfit_operands_forms(dtype):
+    contract = good_contract(dtype)
     contract["operands"] = "abc"
-    assert "not a sequence" in unfit_reason(contract)
-    contract["operands"] = good_contract()["operands"][:2]
-    assert "2 entries" in unfit_reason(contract)
-    contract["operands"] = [None, *good_contract()["operands"][1:]]
-    assert "operands[0] is not a mapping" in unfit_reason(contract)
-    contract["operands"] = good_contract()["operands"]
+    assert "not a sequence" in unfit_reason(contract, dtype)
+    contract["operands"] = good_contract(dtype)["operands"][:2]
+    assert "2 entries" in unfit_reason(contract, dtype)
+    contract["operands"] = [None, *good_contract(dtype)["operands"][1:]]
+    assert "operands[0] is not a mapping" in unfit_reason(contract, dtype)
+    contract["operands"] = good_contract(dtype)["operands"]
     del contract["operands"][2]["dtype"]
-    assert "operands[2] lacks" in unfit_reason(contract)
+    assert "operands[2] lacks" in unfit_reason(contract, dtype)
 
 
-def test_fit_ignores_operand_shapes_and_extra_members():
-    contract = good_contract()
+def test_fit_ignores_operand_shapes_and_extra_members(dtype):
+    contract = good_contract(dtype)
     contract["operands"][0]["shape"] = [99, 99]
     contract["note"] = "x"
-    binding = every_binding()
+    binding = every_binding(dtype)
     binding["qkv"] = [BindingEntry(kernel(contract=contract), "every")]
-    assert run(binding).ok
+    assert run(binding, dtype=dtype).ok
 
 
-def test_fit_reference_comes_from_gemm_contract(monkeypatch):
-    binding = every_binding()
-    changed = good_contract()
+def test_fit_reference_comes_from_the_selected_contract(monkeypatch, dtype):
+    binding = every_binding(dtype)
+    changed = good_contract(dtype)
     changed["prototype"] = "void other(void);"
     monkeypatch.setattr(
-        gemm_contract, "task_contract", lambda m, k, n: copy.deepcopy(changed)
+        CONTRACTS[dtype], "task_contract", lambda m, k, n: copy.deepcopy(changed)
     )
-    result = run(binding)
+    result = run(binding, dtype=dtype)
     assert len(result.outcomes) == len(CALL_SITES)
     assert {o.kind for o in result.outcomes} == {"kernel_unfit"}
 
@@ -537,7 +561,12 @@ def test_check_type_errors(name, value):
 
 
 def test_check_dimension_errors():
-    arguments = {"prompt": [1], "generation_length": 1, "lm_head_rows": "all"}
+    arguments = {
+        "dtype": "fp32",
+        "prompt": [1],
+        "generation_length": 1,
+        "lm_head_rows": "all",
+    }
     raises(TypeError, "dimensions", check, tuple(SMALL), every_binding(), **arguments)
     raises(
         ValueError,
@@ -550,6 +579,19 @@ def test_check_dimension_errors():
 
 
 def test_check_argument_order():
+    raises(
+        TypeError,
+        "dimensions",
+        check,
+        tuple(SMALL),
+        None,
+        dtype=None,
+        prompt=None,
+        generation_length=None,
+        lm_head_rows=None,
+    )
+    raises(ValueError, "dtype", run, binding=None, dtype="FP32", prompt=None)
+    raises(TypeError, "dtype", run, dtype=b"fp32", prompt=None, given=1)
     raises(TypeError, "prompt", run, binding=None, prompt=None, generation_length=None)
     raises(TypeError, "given", run, given=1, generation_length=None)
     raises(
@@ -570,7 +612,12 @@ def bad_binding(kind, binding):
 
 def test_binding_not_mapping():
     bad_binding(TypeError, [("qkv", [])])
-    arguments = {"prompt": [1], "generation_length": 1, "lm_head_rows": "all"}
+    arguments = {
+        "dtype": "fp32",
+        "prompt": [1],
+        "generation_length": 1,
+        "lm_head_rows": "all",
+    }
     raises(TypeError, "binding", check, SMALL, None, **arguments)
 
 
@@ -678,3 +725,115 @@ def test_check_does_not_modify_arguments():
     before = copy.deepcopy((binding, prompt, given))
     run(binding, prompt=prompt, given=given)
     assert (binding, prompt, given) == before
+    binding["qkv"] = [BindingEntry(kernel(dtype="bf16"), "every")]
+    before = copy.deepcopy((binding, prompt, given))
+    run(binding, dtype="bf16", prompt=prompt, given=given)
+    run(binding, dtype="fp16", prompt=prompt, given=given)
+    assert (binding, prompt, given) == before
+
+
+def test_dtypes():
+    assert DTYPES == ("fp32", "bf16")
+    assert DTYPES == (gemm_contract.DTYPE, gemm_bf16_contract.DTYPE)
+
+
+def test_check_dtype_is_keyword_only_without_default():
+    parameter = inspect.signature(check).parameters["dtype"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty
+    with pytest.raises(TypeError, match="dtype"):
+        check(
+            SMALL, every_binding(), prompt=[1], generation_length=1, lm_head_rows="all"
+        )
+
+
+def test_check_bf16_every_binding_is_ok():
+    binding = every_binding("bf16")
+    result = run(binding, dtype="bf16")
+    assert result == BindingCheck(True, (), expected_calls(binding, (1, 3)))
+    fp32 = run(every_binding())
+    assert [call[:2] for call in result.calls] == [call[:2] for call in fp32.calls]
+
+
+def test_check_bf16_listed_shapes_other_than_the_spec_own():
+    binding = {
+        site: [BindingEntry(kernel(site, dtype="bf16"), shapes_of((1, 3, 7), site))]
+        for site in CALL_SITES
+    }
+    fp32 = {
+        site: [BindingEntry(kernel(site), shapes_of((1, 3, 7), site))]
+        for site in CALL_SITES
+    }
+    result = run(binding, dtype="bf16")
+    assert result.ok
+    assert result.calls == expected_calls(binding, (1, 3))
+    expected = run(fp32)
+    assert [call[:2] for call in result.calls] == [call[:2] for call in expected.calls]
+
+
+@pytest.mark.parametrize(("dtype", "other"), [("bf16", "fp32"), ("fp32", "bf16")])
+def test_kernel_of_the_other_dtype_is_unfit(dtype, other):
+    binding = every_binding(other)
+    binding["down"].append(BindingEntry(kernel(dtype=other), ((99, 16, 8),)))
+    binding["down"][0] = BindingEntry(
+        binding["down"][0].kernel, shapes_of((1, 3), "down")
+    )
+    result = run(binding, dtype=dtype)
+    reason = f"contract.prototype is not that of the {dtype} gemm contract"
+    assert result == BindingCheck(
+        False,
+        tuple(
+            Outcome("kernel_unfit", site, None, f"entry {index}: {reason}")
+            for site in CALL_SITES
+            for index in range(len(binding[site]))
+        ),
+        (),
+    )
+
+
+def test_mixed_binding_in_a_bf16_generation():
+    binding = every_binding("bf16")
+    for site in ("o", "down"):
+        binding[site] = [BindingEntry(kernel(site), "every")]
+    result = run(binding, dtype="bf16")
+    assert [(o.kind, o.call_site) for o in result.outcomes] == [
+        ("kernel_unfit", "o"),
+        ("kernel_unfit", "down"),
+    ]
+    assert result.calls == ()
+
+
+@pytest.mark.parametrize("unknown", ["fp16", "int8"])
+def test_unknown_dtype_is_invalid_input(unknown):
+    reason = f"dtype: no gemm contract is known at the dtype {unknown!r}"
+    assert run(dtype=unknown) == BindingCheck(False, invalid(reason), ())
+    result = run(dtype=unknown, prompt=[], lm_head_rows="x")
+    assert [o.reason for o in result.outcomes][:2] == [reason, "prompt: is empty"]
+    assert result.outcomes[2].reason.startswith("lm_head_rows:")
+    assert {o.kind for o in result.outcomes} == {"invalid_input"}
+
+
+@pytest.mark.parametrize("unknown", ["fp16", "int8"])
+def test_unknown_dtype_gives_no_unfit_and_no_kernel(unknown):
+    reason = f"dtype: no gemm contract is known at the dtype {unknown!r}"
+    for binding in (every_binding(), every_binding("bf16")):
+        binding["o"] = [BindingEntry(kernel(contract={}), "every")]
+        del binding["gate"]
+        binding["down"] = [BindingEntry(kernel(), shapes_of((3,), "down"))]
+        assert run(binding, dtype=unknown) == BindingCheck(False, invalid(reason), ())
+
+
+@pytest.mark.parametrize("value", [None, 1, b"fp32", True])
+def test_check_dtype_type_errors(value):
+    raises(TypeError, "dtype", run, dtype=value)
+
+
+@pytest.mark.parametrize("value", ["", "FP32", "bf-16", "1fp", "fp32 ", "a" * 33])
+def test_check_dtype_value_errors(value):
+    raises(ValueError, "dtype", run, dtype=value)
+
+
+def test_check_dtype_of_32_characters_is_a_name():
+    name = "a" * 32
+    reason = f"dtype: no gemm contract is known at the dtype {name!r}"
+    assert run(dtype=name).outcomes == invalid(reason)

@@ -31,7 +31,9 @@ What the module does not do: it builds no spec and no other part of one - no
 setting, no ``hw_profile``, no ``id``, no ``guidance`` and no ``feedback``. It
 binds no kernel to a call site, is bound to no tool or registry, reads and
 writes no file, starts no process, stores and registers nothing and has no
-command-line entry. For :data:`INPUT_PATTERNS` it holds the value set only:
+command-line entry. :mod:`hilclaw.model_binding` reads :func:`task_contract`
+as the reference of its fit check for a ``bf16`` generation (ADR-0157
+decision 3). For :data:`INPUT_PATTERNS` it holds the value set only:
 the generator, the seed, the number of draws and the widening for the
 reference belong to the P2-12 harness record (decision 9), and no tolerance is
 chosen. It knows no other contract: no other kind, dtype, layout, language or
