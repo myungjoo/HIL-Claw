@@ -1,13 +1,26 @@
 /*
  * Model program of the model executor (ADR-0153), first code slice.
  *
- * It loads each fp32 gemm kernel of ADR-0008 from a shared library of its own
- * and calls the kernels' entry points hilclaw_gemm, through the prototype of
- * ADR-0008 decision 4, for a list of calls read from an input file, and writes
- * each call's output to the report. It compares nothing and holds no
+ * It loads each gemm kernel from a shared library of its own and calls the
+ * kernels' entry points for a list of calls read from an input file, and
+ * writes each call's output to the report. It compares nothing and holds no
  * reference, tolerance or verdict. It reads no clock, no environment variable
  * and no standard input. It is not yet a forward pass (ADR-0153 code slice 2).
  * It needs the C library and POSIX.1-2008 only, <dlfcn.h> included.
+ *
+ * One source, two programs, one dtype each (ADR-0157 decision 3). The macro
+ * HILCLAW_MODEL_BF16 at compile time is the only way the program learns its
+ * dtype:
+ *
+ *     build                        entry point        element   NaN pattern
+ *     without HILCLAW_MODEL_BF16   hilclaw_gemm       float     0x7FC00000
+ *     -DHILCLAW_MODEL_BF16         hilclaw_gemm_bf16  uint16_t  0x7FC0
+ *
+ * The fp32 program calls the prototype of ADR-0008 decision 4 with fp32
+ * kernels of ADR-0008; the bf16 program calls that of ADR-0156 decision 5
+ * with bf16 kernels of ADR-0156, each element a bf16 bit pattern. Below, "the
+ * entry point" and "an element" are those of the build, and E is the size of
+ * an element in bytes: 4 for float, 2 for uint16_t.
  *
  * Command line, at least two arguments:
  *
@@ -15,13 +28,13 @@
  *
  * Library i (0-based, in command-line order) is the kernel of index i. Each is
  * opened with dlopen(path, RTLD_NOW | RTLD_LOCAL), so two kernels that define
- * the same symbol stay apart, and its hilclaw_gemm is found with dlsym; all
+ * the same symbol stay apart, and its entry point is found with dlsym; all
  * libraries are loaded before the input file is read. The path is handed to
  * dlopen as given: one without a slash is searched for by the dynamic loader
  * under its own rules.
  *
- * Input file, binary, every integer a uint64_t and every element a float, all
- * as they are in memory on the host (host byte order):
+ * Input file, binary, every integer a uint64_t and every element of E bytes,
+ * all as they are in memory on the host (host byte order):
  *
  *     N                                         the number of calls, >= 1
  *     then N times: index m k n a[m*k] b[k*n]   index < number of libraries,
@@ -37,13 +50,13 @@
  * in size_t is found by the same check (status 3).
  *
  * Execution and report. The calls run in file order, one at a time. Each call
- * gets its own a, b and c from malloc, which are distinct and aligned for
- * float; every element of c is set to the bit pattern 0x7FC00000 (a NaN)
- * before the call hilclaw_gemm(m, k, n, a, b, c). After it returns, the m*n
- * elements of c (c[i*n + j]) are written to the report as the 4*m*n bytes they
+ * gets its own a, b and c from malloc, which are distinct and aligned for an
+ * element; every element of c is set to the NaN pattern of the build before
+ * the call of the entry point (m, k, n, a, b, c). After it returns, the m*n
+ * elements of c (c[i*n + j]) are written to the report as the E*m*n bytes they
  * have in memory, on the standard output the process was started with, and
  * nothing else goes there. After the last call comes the end mark, the 4 bytes
- * "end\n": a complete report has the sum of 4*m*n over the calls plus 4 bytes.
+ * "end\n": a complete report has the sum of E*m*n over the calls plus 4 bytes.
  * Descriptor 1 is pointed at standard error before the first library is
  * loaded, so what a kernel prints, also while it is loaded, is not part of the
  * report.
@@ -54,8 +67,9 @@
  *   3  an array that cannot be held or allocated
  *   4  a descriptor or a write of the report
  *   5  the input file: open, read or form
- *   6  a library that cannot be loaded or has no hilclaw_gemm; the line names
- *      the library's index, and the text of dlerror() may follow
+ *   6  a library that cannot be loaded or has no entry point; the line names
+ *      the library's index and, for a missing entry point, its symbol, and
+ *      the text of dlerror() may follow
  * A status other than 0 comes with one line on standard error and without the
  * end mark.
  */
@@ -69,10 +83,24 @@
 #include <string.h>
 #include <unistd.h>
 
-typedef void (*gemm_entry)(size_t m, size_t k, size_t n, const float *restrict a, const float *restrict b,
-                           float *restrict c);
+#ifdef HILCLAW_MODEL_BF16
+typedef uint16_t element;
+typedef uint16_t element_bits;
+#define ENTRY_SYMBOL "hilclaw_gemm_bf16"
+#define NAN_BITS UINT16_C(0x7FC0)
+#else
+typedef float element;
+typedef uint32_t element_bits;
+#define ENTRY_SYMBOL "hilclaw_gemm"
+#define NAN_BITS UINT32_C(0x7FC00000)
+#endif
+
+typedef void (*gemm_entry)(size_t m, size_t k, size_t n, const element *restrict a, const element *restrict b,
+                           element *restrict c);
 
 typedef char float_is_32_bits[sizeof(float) == sizeof(uint32_t) ? 1 : -1];
+typedef char uint16_is_2_bytes[sizeof(uint16_t) == 2 ? 1 : -1];
+typedef char element_is_its_bits[sizeof(element) == sizeof(element_bits) ? 1 : -1];
 typedef char entry_fits_a_pointer[sizeof(gemm_entry) == sizeof(void *) ? 1 : -1];
 
 enum {
@@ -103,8 +131,8 @@ static gemm_entry load(const char *path, size_t index)
 
     if (handle != NULL) {
         dlerror();
-        symbol = dlsym(handle, "hilclaw_gemm");
-        problem = "has no hilclaw_gemm";
+        symbol = dlsym(handle, ENTRY_SYMBOL);
+        problem = "has no " ENTRY_SYMBOL;
     }
     if (symbol == NULL) {
         detail = dlerror();
@@ -160,9 +188,9 @@ static uint64_t word_at(const unsigned char *data, size_t offset)
 
 static int element_bytes(uint64_t rows, uint64_t columns, uint64_t *bytes)
 {
-    if (rows > UINT64_MAX / sizeof(float) / columns)
+    if (rows > UINT64_MAX / sizeof(element) / columns)
         return 0;
-    *bytes = rows * columns * sizeof(float);
+    *bytes = rows * columns * sizeof(element);
     return 1;
 }
 
@@ -194,7 +222,7 @@ static void check_form(const unsigned char *data, size_t length, size_t librarie
         if (!element_bytes(m, k, &a_bytes) || !element_bytes(k, n, &b_bytes) || a_bytes > length - offset ||
             b_bytes > length - offset - a_bytes)
             exit(fail(STATUS_INPUT, "input file", "too short for the matrices of a call"));
-        if (m > SIZE_MAX / sizeof(float) / n)
+        if (m > SIZE_MAX / sizeof(element) / n)
             exit(fail(STATUS_MEMORY, "input file", "the output of a call cannot be held"));
         offset += (size_t)(a_bytes + b_bytes);
     }
@@ -202,9 +230,9 @@ static void check_form(const unsigned char *data, size_t length, size_t librarie
         exit(fail(STATUS_INPUT, "input file", "bytes follow the last call"));
 }
 
-static void fill_nan(float *array, size_t count)
+static void fill_nan(element *array, size_t count)
 {
-    const uint32_t bits = UINT32_C(0x7FC00000);
+    const element_bits bits = NAN_BITS;
     size_t i;
 
     for (i = 0; i < count; i++)
@@ -233,8 +261,8 @@ static size_t run_call(const unsigned char *data, size_t offset, gemm_entry *ent
     size_t m = (size_t)word_at(data, offset + 8);
     size_t k = (size_t)word_at(data, offset + 16);
     size_t n = (size_t)word_at(data, offset + 24);
-    size_t a_bytes = m * k * sizeof(float), b_bytes = k * n * sizeof(float), c_bytes = m * n * sizeof(float);
-    float *a, *b, *c;
+    size_t a_bytes = m * k * sizeof(element), b_bytes = k * n * sizeof(element), c_bytes = m * n * sizeof(element);
+    element *a, *b, *c;
 
     offset += CALL_HEADER_WORDS * sizeof(uint64_t);
     a = malloc(a_bytes);

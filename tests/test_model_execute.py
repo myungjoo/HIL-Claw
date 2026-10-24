@@ -169,12 +169,36 @@ def test_happy_path_builds_in_order_runs_once_and_removes(recorder, parent):
     assert input_file not in libraries and input_file != program
     assert list(run_libraries) == libraries
     assert options == {
-        "shapes": output_shapes(calls),
+        "dtype": "fp32",
+        "shapes": output_shapes(calls, dtype="fp32"),
         "timeout_s": 7,
         "env": {"A": "1"},
     }
-    assert recorder.input_bytes == encode_input(calls)
+    assert recorder.input_bytes == encode_input(calls, dtype="fp32")
     assert len(recorder.directory_listing) == 5
+
+
+def test_every_model_run_function_gets_dtype_fp32(recorder, monkeypatch, parent):
+    seen = []
+
+    def spy(name, original):
+        def recording(*args, **options):
+            seen.append((name, options["dtype"]))
+            return original(*args, **options)
+
+        return recording
+
+    monkeypatch.setattr(
+        model_run, "output_shapes", spy("output_shapes", model_run.output_shapes)
+    )
+    monkeypatch.setattr(
+        model_run, "encode_input", spy("encode_input", model_run.encode_input)
+    )
+    result = run_execute(parent)
+    assert result.build_failed is None
+    assert seen == [("output_shapes", "fp32"), ("encode_input", "fp32")]
+    assert recorder.events[-1][0] == "run"
+    assert recorder.events[-1][4]["dtype"] == "fp32"
 
 
 def test_defaults_hand_over_empty_flags_and_none(recorder, parent):
@@ -376,7 +400,7 @@ def test_refused_calls_pass_the_error_of_model_run(recorder, parent, calls, erro
     with pytest.raises(error) as caught:
         run_execute(parent, calls=calls)
     with pytest.raises(error) as expected:
-        output_shapes(calls)
+        output_shapes(calls, dtype="fp32")
     assert str(caught.value) == str(expected.value)
     assert recorder.events == []
     assert os.listdir(parent) == []
