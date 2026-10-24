@@ -9,7 +9,9 @@ model program into it, and either returns the outcome **build failed** of
 decision 5 (:class:`BuildFailed`) for the first failed build or writes the
 input file and runs the program once; the directory is then removed on every
 path. A run that failed is the outcome **run failed**, carried by the
-:class:`hilclaw.model_run.ModelProgramResult` returned as it is.
+:class:`hilclaw.model_run.ModelProgramResult` returned as it is. It runs the
+fp32 program, the one built without ``HILCLAW_MODEL_BF16``, and hands
+``dtype="fp32"`` to each function of :mod:`hilclaw.model_run` it calls.
 
 Conventions of this module (not rules of the record):
 
@@ -126,7 +128,7 @@ def execute(
     is passed on unchanged after the directory was removed.
     """
     kernels = _checked_kernels(kernels)
-    shapes = model_run.output_shapes(calls)
+    shapes = model_run.output_shapes(calls, dtype="fp32")
     for position, (index, _, _) in enumerate(calls):
         if index >= len(kernels):
             raise ValueError(
@@ -198,11 +200,12 @@ def _build_and_run(
         return BuildFailed(None, build), None
     input_file = os.path.join(directory, _INPUT_NAME)
     with open(input_file, "xb") as stream:
-        stream.write(model_run.encode_input(calls))
+        stream.write(model_run.encode_input(calls, dtype="fp32"))
     run = model_run.run_model_program(
         (*prefix, program) if prefix else program,
         input_file,
         libraries,
+        dtype="fp32",
         shapes=shapes,
         timeout_s=run_timeout_s,
         env=env,

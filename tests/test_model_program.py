@@ -71,6 +71,61 @@ KERNELS = {
     "constructor": (CONSTRUCTOR, PRODUCT.replace("@START@", "0.0f")),
 }
 
+BF16_NAN_BITS = 0x7FC0
+
+BF16_PRODUCT = """\
+    size_t i, j, p;
+
+    for (i = 0; i < m; i++)
+        for (j = 0; j < n; j++) {
+            float sum = @START@;
+
+            for (p = 0; p < k; p++)
+                sum += widen(a[i * k + p]) * widen(b[p * n + j]);
+            c[i * n + j] = narrow(sum);
+        }
+"""
+
+BF16_KERNEL = """\
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+static float widen(uint16_t bits)
+{
+    uint32_t word = (uint32_t)bits << 16;
+    float value;
+
+    memcpy(&value, &word, sizeof value);
+    return value;
+}
+
+static uint16_t narrow(float value)
+{
+    uint32_t word;
+
+    memcpy(&word, &value, sizeof word);
+    word += UINT32_C(0x7FFF) + ((word >> 16) & 1u);
+    return (uint16_t)(word >> 16);
+}
+
+void hilclaw_gemm_bf16(size_t m, size_t k, size_t n, const uint16_t *restrict a, const uint16_t *restrict b, uint16_t *restrict c)
+{
+    (void)widen;
+    (void)narrow;
+@BODY@}
+"""
+
+BF16_KERNELS = {
+    "bf16_plain": BF16_PRODUCT.replace("@START@", "0.0f"),
+    "bf16_plus_one": BF16_PRODUCT.replace("@START@", "1.0f"),
+    "bf16_printing": '    puts("bf16 kernel says hello");\n    fflush(stdout);\n'
+    + BF16_PRODUCT.replace("@START@", "0.0f"),
+    "bf16_unwritten": "    (void)m; (void)k; (void)n; (void)a; (void)b; (void)c;\n",
+}
+
+
 NO_ENTRY = "int other_entry(int x)\n{\n    return x + 1;\n}\n"
 
 
@@ -90,13 +145,14 @@ def built(tmp_path_factory):
 
     def library(name):
         if name not in libraries:
-            text = (
-                NO_ENTRY
-                if name == "no_entry"
-                else KERNEL.replace("@GLOBALS@", KERNELS[name][0]).replace(
+            if name == "no_entry":
+                text = NO_ENTRY
+            elif name in BF16_KERNELS:
+                text = BF16_KERNEL.replace("@BODY@", BF16_KERNELS[name])
+            else:
+                text = KERNEL.replace("@GLOBALS@", KERNELS[name][0]).replace(
                     "@BODY@", KERNELS[name][1]
                 )
-            )
             source = directory / f"{name}.c"
             source.write_text(text, encoding="ascii", newline="\n")
             output = directory / f"lib{name}.so"
@@ -349,6 +405,149 @@ def test_library_without_the_entry_point(built, tmp_path):
     data = input_bytes([(0, *matrices(1, 1, 1, 13))])
     result = start(built, tmp_path, data, ["plain", "no_entry"])
     assert_failed(result, 6, b"library 1: has no hilclaw_gemm")
+
+
+@pytest.fixture(scope="session")
+def built_bf16(built, tmp_path_factory):
+    _, library = built
+    program = tmp_path_factory.mktemp("model_bf16") / "model_program_bf16"
+    result = build_model_program(
+        program, timeout_s=BUILD_TIMEOUT, flags=("-O2", "-DHILCLAW_MODEL_BF16")
+    )
+    assert result.ok, result.log
+    return program, library
+
+
+def bf16_of(values):
+    exact = np.asarray(values, dtype=np.float32)
+    patterns = (exact.view(np.uint32) >> 16).astype(np.uint16)
+    widened = (patterns.astype(np.uint32) << 16).view(np.float32)
+    assert np.array_equal(widened, exact), "not exact in bf16"
+    return patterns
+
+
+def bf16_matrices(m, k, n, seed):
+    a, b = matrices(m, k, n, seed)
+    return bf16_of(a), bf16_of(b)
+
+
+def widened(patterns):
+    return (np.asarray(patterns, dtype=np.uint16).astype(np.uint32) << 16).view(
+        np.float32
+    )
+
+
+def bf16_call_bytes(index, a, b):
+    m, k = a.shape
+    n = b.shape[1]
+    header = np.array([index, m, k, n], dtype=np.uint64).tobytes()
+    return header + a.astype(np.uint16).tobytes() + b.astype(np.uint16).tobytes()
+
+
+def bf16_input_bytes(calls):
+    body = b"".join(bf16_call_bytes(index, a, b) for index, a, b in calls)
+    return np.array([len(calls)], dtype=np.uint64).tobytes() + body
+
+
+def bf16_product(a, b, offset=0):
+    return bf16_of(widened(a) @ widened(b) + np.float32(offset))
+
+
+def bf16_expected(*outputs):
+    return b"".join(np.asarray(c, dtype=np.uint16).tobytes() for c in outputs) + END
+
+
+def test_bf16_one_kernel_one_call(built_bf16, tmp_path):
+    a, b = bf16_matrices(3, 4, 5, 21)
+    result = start(built_bf16, tmp_path, bf16_input_bytes([(0, a, b)]), ["bf16_plain"])
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == bf16_expected(bf16_product(a, b))
+    assert len(result.stdout) == 2 * 3 * 5 + 4
+    assert result.stderr == b""
+
+
+def test_bf16_several_calls_of_different_shapes_over_two_kernels(built_bf16, tmp_path):
+    shapes = [(1, 1, 1), (1, 7, 3), (5, 2, 1), (4, 8, 6)]
+    calls = [(i % 2, *bf16_matrices(*shape, 30 + i)) for i, shape in enumerate(shapes)]
+    data = bf16_input_bytes(calls)
+    result = start(built_bf16, tmp_path, data, ["bf16_plain", "bf16_plus_one"])
+    assert result.returncode == 0, result.stderr
+    outputs = [bf16_product(a, b, index) for index, a, b in calls]
+    assert result.stdout == bf16_expected(*outputs)
+    assert (
+        len(result.stdout) == sum(2 * a.shape[0] * b.shape[1] for _, a, b in calls) + 4
+    )
+
+
+def test_bf16_two_kernels_of_one_symbol_stay_apart(built_bf16, tmp_path):
+    a, b = bf16_matrices(2, 3, 4, 22)
+    data = bf16_input_bytes([(0, a, b), (1, a, b)])
+    result = start(built_bf16, tmp_path, data, ["bf16_plain", "bf16_plus_one"])
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == bf16_expected(bf16_product(a, b), bf16_product(a, b, 1))
+    swapped = start(built_bf16, tmp_path, data, ["bf16_plus_one", "bf16_plain"])
+    assert swapped.stdout == bf16_expected(bf16_product(a, b, 1), bf16_product(a, b))
+
+
+def test_bf16_an_unwritten_output_shows_the_nan_fill(built_bf16, tmp_path):
+    a, b = bf16_matrices(2, 3, 4, 23)
+    data = bf16_input_bytes([(0, a, b)])
+    result = start(built_bf16, tmp_path, data, ["bf16_unwritten"])
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == np.full(8, BF16_NAN_BITS, dtype=np.uint16).tobytes() + END
+
+
+def test_bf16_what_a_kernel_prints_is_not_part_of_the_report(built_bf16, tmp_path):
+    a, b = bf16_matrices(2, 3, 2, 24)
+    data = bf16_input_bytes([(0, a, b), (0, a, b)])
+    result = start(built_bf16, tmp_path, data, ["bf16_printing"])
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == bf16_expected(bf16_product(a, b), bf16_product(a, b))
+    assert result.stderr == b"bf16 kernel says hello\n" * 2
+
+
+def test_bf16_program_refuses_an_fp32_kernel(built_bf16, tmp_path):
+    data = bf16_input_bytes([(0, *bf16_matrices(1, 1, 1, 25))])
+    result = start(built_bf16, tmp_path, data, ["bf16_plain", "plain"])
+    assert_failed(result, 6, b"library 1: has no hilclaw_gemm_bf16")
+
+
+def test_fp32_program_refuses_a_bf16_kernel(built, tmp_path):
+    data = input_bytes([(0, *matrices(1, 1, 1, 26))])
+    result = start(built, tmp_path, data, ["plain", "bf16_plain"])
+    assert_failed(result, 6, b"library 1: has no hilclaw_gemm")
+    assert b"hilclaw_gemm_bf16" not in result.stderr
+
+
+def test_bf16_short_file_by_one_element(built_bf16, tmp_path):
+    data = bf16_input_bytes([(0, *bf16_matrices(2, 2, 1, 27))])
+    assert len(data) == 8 + 32 + 2 * 6
+    result = start(built_bf16, tmp_path, data[:-2], ["bf16_plain"])
+    assert_failed(result, 5, b"too short for the matrices")
+
+
+@pytest.mark.parametrize("extra", [b"\x00", b"\x00\x00", b"\x00" * 4])
+def test_bf16_trailing_bytes(built_bf16, tmp_path, extra):
+    data = bf16_input_bytes([(0, *bf16_matrices(1, 2, 1, 28))]) + extra
+    result = start(built_bf16, tmp_path, data, ["bf16_plain"])
+    assert_failed(result, 5, b"bytes follow the last call")
+
+
+def test_fp32_sized_input_is_refused_by_the_bf16_program(built_bf16, tmp_path):
+    data = input_bytes([(0, *matrices(1, 2, 1, 29))])
+    result = start(built_bf16, tmp_path, data, ["bf16_plain"])
+    assert_failed(result, 5, b"bytes follow the last call")
+
+
+@pytest.mark.parametrize("shape", [(2**62, 1, 1), (1, 1, 2**63), (2**32, 2**31, 1)])
+def test_bf16_size_that_cannot_be_in_the_file(built_bf16, tmp_path, shape):
+    data = (
+        np.array([1], dtype=np.uint64).tobytes()
+        + np.array([0, *shape], dtype=np.uint64).tobytes()
+        + np.ones(4, dtype=np.uint16).tobytes()
+    )
+    result = start(built_bf16, tmp_path, data, ["bf16_plain"])
+    assert_failed(result, 5, b"too short for the matrices")
 
 
 def shell(built, tmp_path, script, data):

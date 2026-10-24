@@ -5,10 +5,11 @@
 ADR-0008 is built into a shared library of its own with
 :func:`build_kernel_library`, and the model program of fixed source,
 :data:`PROGRAM_SOURCE`, into an executable with :func:`build_model_program`.
-The program loads each library with ``dlopen`` and calls its ``hilclaw_gemm``
-(its header comment states its command line, input file and report). Each
-function makes one call of :func:`hilclaw.clang_build.build`, whose command
-is::
+The program loads each library with ``dlopen`` and calls its ``hilclaw_gemm``,
+or its ``hilclaw_gemm_bf16`` when the caller's flags hold
+``-DHILCLAW_MODEL_BF16`` (its header comment states its command line, input
+file and report). Each function makes one call of
+:func:`hilclaw.clang_build.build`, whose command is::
 
     <compiler...> <flags...> <sources...> <trailing_flags...> -o <temporary output>
 

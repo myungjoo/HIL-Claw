@@ -4,13 +4,23 @@
 (decisions 1, 3 and 5). The header comment of ``model_program.c`` defines the
 program's command line, its input file, its report, the end mark and its exit
 statuses; this module speaks to exactly that. :func:`encode_input` turns a
-list of fp32 ``gemm`` calls, each ``(index, a, b)`` with in-memory arrays,
-into the bytes of the input file; :func:`output_shapes` gives the ``(m, n)``
+list of ``gemm`` calls, each ``(index, a, b)`` with in-memory arrays, into
+the bytes of the input file; :func:`output_shapes` gives the ``(m, n)``
 of each call; :func:`run_model_program` starts the program once with its
 libraries under a time limit; and :func:`parse_report` reads a complete
 report into one output array per call. A run that times out, ends with a
 status other than 0 or leaves no complete report is the outcome **run
 failed** of decision 5, named by :class:`RunFailed`.
+
+Each of the four functions takes the dtype of the generation, one of
+:data:`DTYPES`, as the required keyword argument ``dtype``, with no default:
+it is never assumed (ADR-0157 decision 1). The program comes in one build
+per dtype (the header comment of ``model_program.c``), and the dtype selects
+the element type of the arrays, of the input file and of the report as in
+the table of ADR-0157 decision 3: ``float32`` for ``fp32``, and ``uint16``
+for ``bf16``, each element the bit pattern of a bf16 value.
+:func:`run_model_program` does not know which build of the program it
+starts; the caller passes the dtype that matches it.
 
 The command is::
 
@@ -30,6 +40,9 @@ Conventions of this module (not rules of the record):
 - ``program`` is a path or a sequence used as a command prefix, as in
   :func:`hilclaw.harness.verification.run_verification`, so a caller can put
   the start of an isolated environment in front of the program.
+- ``dtype`` is checked first, before any other argument: a ``dtype`` that is
+  not a ``str`` raises :class:`TypeError` and one outside :data:`DTYPES`
+  :class:`ValueError`, with a message that starts with ``dtype:``.
 - Arguments outside what is stated raise :class:`TypeError` or
   :class:`ValueError` before anything is built or started, and the message
   names the position of the offending entry. What :func:`hilclaw.local_run.run`
@@ -54,8 +67,11 @@ from hilclaw import local_run
 END_MARK = b"end\n"
 """The 4 bytes that end a complete report."""
 
+DTYPES = ("fp32", "bf16")
+"""The dtypes the model program is built for, by their ``dtype`` names."""
+
 _UINT64_LIMIT = 2**64
-_FLOAT32 = np.dtype(np.float32)
+_ELEMENTS = {"fp32": np.dtype(np.float32), "bf16": np.dtype(np.uint16)}
 
 
 class RunFailed(enum.Enum):
@@ -70,8 +86,10 @@ class ModelProgramResult(NamedTuple):
     """Outcome of one :func:`run_model_program` call.
 
     For a run that did not time out, ended with status 0 and left a complete
-    report, ``failed`` is ``None`` and ``outputs`` holds one ``float32`` array
-    of shape ``(m, n)`` per entry of ``shapes``, in order. For any other run
+    report, ``failed`` is ``None`` and ``outputs`` holds one array of shape
+    ``(m, n)`` per entry of ``shapes``, in order, of the element dtype of the
+    run's ``dtype``: ``float32`` for ``fp32``, and ``uint16`` bf16 bit
+    patterns for ``bf16`` (ADR-0157 decision 3, the report). For any other run
     ``failed`` names the failed condition and ``outputs`` is ``None``,
     whatever the report holds. ``run`` is what the runner captured with an
     empty ``stdout``, in both cases.
@@ -82,26 +100,31 @@ class ModelProgramResult(NamedTuple):
     run: local_run.RunResult
 
 
-def encode_input(calls):
-    """Return the bytes of the program's input file for ``calls``.
+def encode_input(calls, *, dtype):
+    """Return the bytes of the program's input file for ``calls`` at ``dtype``.
 
-    ``calls`` is a non-empty sequence of ``(index, a, b)``, a tuple or a list
-    of three items each: ``index`` an ``int`` (not ``bool``) with
-    ``0 <= index < 2**64``, and ``a`` and ``b`` two-dimensional
-    :class:`numpy.ndarray` of dtype exactly ``float32``, every dimension at
-    least 1 and ``a.shape[1] == b.shape[0]``. The bytes are the number of
-    calls, then for each call ``index``, ``m``, ``k``, ``n`` and the elements
-    of ``a`` and ``b`` in row-major order whatever their memory order, as
-    ``uint64`` and ``float32`` in host byte order.
+    ``dtype`` is one of :data:`DTYPES`; its element dtype is ``float32`` for
+    ``fp32`` and ``uint16`` for ``bf16``. ``calls`` is a non-empty sequence
+    of ``(index, a, b)``, a tuple or a list of three items each: ``index`` an
+    ``int`` (not ``bool``) with ``0 <= index < 2**64``, and ``a`` and ``b``
+    two-dimensional :class:`numpy.ndarray` of exactly that element dtype,
+    every dimension at least 1 and ``a.shape[1] == b.shape[0]``; no array is
+    cast or reinterpreted. The bytes are the number of calls, then for each
+    call ``index``, ``m``, ``k``, ``n`` and the elements of ``a`` and ``b``
+    in row-major order whatever their memory order, as ``uint64`` and the
+    element dtype (4 or 2 bytes) in host byte order.
 
-    Raised before any byte is built: :class:`TypeError` for a ``calls`` that
-    is no sequence (a ``str`` or ``bytes`` included), an entry that is not a
-    tuple or list of three items, an ``index`` that is not an ``int`` or an
-    array that is not an ``ndarray``; :class:`ValueError` for no calls, an
-    ``index`` out of range, a dtype other than ``float32``, a number of
-    dimensions other than 2, a zero dimension or inner dimensions that differ.
+    Raised before any byte is built, ``dtype`` first: :class:`TypeError` for
+    a ``dtype`` that is not a ``str``, a ``calls`` that is no sequence (a
+    ``str`` or ``bytes`` included), an entry that is not a tuple or list of
+    three items, an ``index`` that is not an ``int`` or an array that is not
+    an ``ndarray``; :class:`ValueError` for a ``dtype`` outside
+    :data:`DTYPES`, no calls, an ``index`` out of range, an array dtype other
+    than the element dtype of ``dtype``, a number of dimensions other than 2,
+    a zero dimension or inner dimensions that differ.
     """
-    checked = _checked_calls(calls)
+    element = _checked_dtype(dtype)
+    checked = _checked_calls(calls, dtype, element)
     parts = [np.array([len(checked)], dtype=np.uint64).tobytes()]
     for index, a, b in checked:
         m, k = a.shape
@@ -112,33 +135,40 @@ def encode_input(calls):
     return b"".join(parts)
 
 
-def output_shapes(calls):
+def output_shapes(calls, *, dtype):
     """Return the tuple of ``(m, n)`` of each call, after the checks of :func:`encode_input`."""
-    return tuple((a.shape[0], b.shape[1]) for _, a, b in _checked_calls(calls))
+    element = _checked_dtype(dtype)
+    checked = _checked_calls(calls, dtype, element)
+    return tuple((a.shape[0], b.shape[1]) for _, a, b in checked)
 
 
-def parse_report(report, shapes):
-    """Return the outputs of a complete report for ``shapes``, or ``None``.
+def parse_report(report, shapes, *, dtype):
+    """Return the outputs of a complete report for ``shapes`` at ``dtype``, or ``None``.
 
+    ``dtype`` is one of :data:`DTYPES`; E is the size of its element dtype,
+    4 bytes for ``float32`` (``fp32``) and 2 for ``uint16`` (``bf16``).
     ``shapes`` is a non-empty sequence of ``(m, n)`` pairs of ``int`` of at
     least 1 (not ``bool``). A complete report is exactly the sum of
-    ``4*m*n`` bytes over ``shapes`` followed by :data:`END_MARK`; for it the
-    result is one fresh ``float32`` array of shape ``(m, n)`` per entry, in
-    order, and for any other report ``None``. Nothing is started or written.
+    ``E*m*n`` bytes over ``shapes`` followed by :data:`END_MARK`; for it the
+    result is one fresh array of the element dtype and of shape ``(m, n)``
+    per entry, in order, and for any other report ``None``. Nothing is
+    started or written.
 
     Raised before any byte of ``report`` is looked at: :class:`TypeError` or
-    :class:`ValueError` for ``shapes`` as in :func:`run_model_program`, and
-    :class:`TypeError` for a ``report`` that is not exactly ``bytes`` (a
-    ``bytearray``, a ``memoryview`` and a subclass included).
+    :class:`ValueError` for ``dtype`` and ``shapes`` as in
+    :func:`run_model_program`, and :class:`TypeError` for a ``report`` that
+    is not exactly ``bytes`` (a ``bytearray``, a ``memoryview`` and a
+    subclass included).
     """
+    element = _checked_dtype(dtype)
     checked = _checked_shapes(shapes)
     if type(report) is not bytes:
         raise TypeError(f"report: must be bytes, got {type(report).__name__}")
-    return _outputs(report, checked)
+    return _outputs(report, checked, element)
 
 
 def run_model_program(
-    program, input_file, libraries, *, shapes, timeout_s, cwd=None, env=None
+    program, input_file, libraries, *, dtype, shapes, timeout_s, cwd=None, env=None
 ):
     """Run the model program once and return a :class:`ModelProgramResult`.
 
@@ -150,14 +180,19 @@ def run_model_program(
     ``libraries`` is a non-empty sequence of ``str`` or :class:`os.PathLike`;
     library ``i`` is the kernel of index ``i``. ``shapes`` holds the
     ``(m, n)`` of each call of the input file, in order, as
-    :func:`output_shapes` gives them.
+    :func:`output_shapes` gives them. ``dtype``, one of :data:`DTYPES`, must
+    be the dtype of the program's build, which this function cannot see; it
+    gives the element dtype of the report and of the outputs, as in
+    :func:`parse_report`.
 
     The run failed with :attr:`RunFailed.TIMEOUT` if it timed out, else with
     :attr:`RunFailed.EXIT_STATUS` if its status is not 0, else with
     :attr:`RunFailed.REPORT_FORM` if :func:`parse_report` finds no complete
     report in its standard output.
 
-    Raised before anything is started: for ``shapes`` :class:`TypeError` for
+    Raised before anything is started, ``dtype`` first: for ``dtype``
+    :class:`TypeError` for a type other than ``str`` and :class:`ValueError`
+    for a name outside :data:`DTYPES`; for ``shapes`` :class:`TypeError` for
     a type other than stated and :class:`ValueError` for an empty sequence or
     a dimension below 1; for ``program``, ``input_file`` and ``libraries``
     :class:`TypeError` for a ``bytes`` path, a path that is neither ``str``
@@ -166,6 +201,7 @@ def run_model_program(
     :class:`ValueError` for an empty ``program`` sequence or no libraries.
     What :func:`hilclaw.local_run.run` raises is passed on unchanged.
     """
+    element = _checked_dtype(dtype)
     checked = _checked_shapes(shapes)
     if isinstance(program, (str, os.PathLike)):
         prefix = (_path(program, "program"),)
@@ -199,7 +235,7 @@ def run_model_program(
         return ModelProgramResult(RunFailed.TIMEOUT, None, run)
     if run.returncode != 0:
         return ModelProgramResult(RunFailed.EXIT_STATUS, None, run)
-    outputs = _outputs(report, checked)
+    outputs = _outputs(report, checked, element)
     if outputs is None:
         return ModelProgramResult(RunFailed.REPORT_FORM, None, run)
     return ModelProgramResult(None, outputs, run)
@@ -224,7 +260,15 @@ def _path(value, name):
     return path
 
 
-def _checked_calls(calls):
+def _checked_dtype(dtype):
+    if not isinstance(dtype, str):
+        raise TypeError(f"dtype: must be str, got {type(dtype).__name__}")
+    if dtype not in DTYPES:
+        raise ValueError(f"dtype: {dtype!r} is not one of {DTYPES}")
+    return _ELEMENTS[dtype]
+
+
+def _checked_calls(calls, dtype, element):
     if not _is_sequence(calls):
         raise TypeError(f"calls: must be a sequence, got {type(calls).__name__}")
     if not calls:
@@ -244,9 +288,10 @@ def _checked_calls(calls):
                 raise TypeError(
                     f"{name}: {label} must be numpy.ndarray, got {type(array).__name__}"
                 )
-            if array.dtype != _FLOAT32:
+            if array.dtype != element:
                 raise ValueError(
-                    f"{name}: {label} has dtype {array.dtype}, not float32"
+                    f"{name}: {label} has dtype {array.dtype}, not {element} "
+                    f"of dtype {dtype}"
                 )
             if array.ndim != 2:
                 raise ValueError(f"{name}: {label} has {array.ndim} dimensions, not 2")
@@ -281,14 +326,15 @@ def _checked_shapes(shapes):
     return tuple(checked)
 
 
-def _outputs(report, shapes):
-    expected = sum(4 * m * n for m, n in shapes) + len(END_MARK)
+def _outputs(report, shapes, element):
+    size = element.itemsize
+    expected = sum(size * m * n for m, n in shapes) + len(END_MARK)
     if len(report) != expected or not report.endswith(END_MARK):
         return None
     outputs = []
     offset = 0
     for m, n in shapes:
-        array = np.frombuffer(report, dtype=_FLOAT32, count=m * n, offset=offset)
+        array = np.frombuffer(report, dtype=element, count=m * n, offset=offset)
         outputs.append(array.reshape(m, n).copy())
-        offset += 4 * m * n
+        offset += size * m * n
     return tuple(outputs)
