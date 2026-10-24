@@ -2,7 +2,7 @@
 id: T-0443
 title: Add the SwiGLU call site ffn_activation to hilclaw/model_binding.py - its shape (rows x intermediate) over a generation and a binding check with fit against the bf16 swiglu contract and "every shape" accepted (ADR-0160 decisions 2, 8 and 12), with the dtype range of ADR-0157 decision 4 - with tests (ADR-0160 code slice, second part)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-11", "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0442]
@@ -126,3 +126,12 @@ hq: []
 - (planner) After this task, ADR-0160's binding part is done. The next piece toward P2-13 and P2-14 is the contract record (doc, OD-31/OD-6) of the RoPE kind, then its code slices, then SDPA with KV cache. The hand-written bf16 SwiGLU kernel fixtures come with the model program's calls of that kind.
 
 ## Result
+
+- Outcome: DONE. PR #261 squash-merged as 46bdaa6 (branch `claude/T-0443-swiglu-bf16-binding-check` deleted). Review: 1 round, Approve (context-isolated dev-reviewer). Two Nits, neither needing a code change: (a) list the less exact records in this Result (done below); (b) merge only after CI is green (done).
+- Language: Python - the host side of the executor is Python (ADR-0153 decision 2).
+- Change: `hilclaw/model_binding.py` gains `SWIGLU_CALL_SITES = ("ffn_activation",)`, `SWIGLU_DTYPES = ("bf16",)`, `swiglu_shape` (returns `(rows, intermediate)`), `swiglu_generation_calls` and `check_swiglu`. `check_swiglu` reuses `_check_rows`: the reference contract comes from `swiglu_bf16_contract.task_contract` at call time; the label is `bf16 swiglu`; an unknown dtype gives the reason `dtype: no swiglu contract is known at the dtype '<dtype>'`. The private helpers `_row_shape` and `_row_generation_calls` now take the `ModelDimensions` field name of the width: `"hidden"` for RMSNorm and elementwise add, `"intermediate"` for SwiGLU. No existing public name, message or behaviour changed, and `hilclaw/model_gemm.py` is untouched.
+- Tests: new SwiGLU tests in `tests/test_model_binding.py` (additions only). The binder test in `tests/test_swiglu_bf16_contract.py` is renamed to `test_module_imports_keys_only_and_is_bound_by_the_model_binding_only` and now requires `model_binding.py` as the only binder.
+- Gates: `ruff check` and `ruff format --check` clean. Full local pytest: 28442 passed, 949 skipped. Coverage: `hilclaw/` 97% of lines, `model_binding.py` 100%. CI all green: Python 3.11 and 3.14, Coverage, C (clang), sh (shellcheck), test presence.
+- Size: 198 changed lines outside tests (153+/45-), under the D4 cap of 300.
+- Records now less exact (not edited): ADR-0153 decision 3 ("future contract records"; "for every other kind, its contract record says"); ADR-0157 decision 4 (range stated "with the GEMM call sites only"); ADR-0160 Consequences (the binding-check part of the code slice list has now landed).
+- Follow-ups: none from this task. (planner) Next toward P2-13/P2-14: the RoPE contract record, then its code slices, then SDPA with KV cache.
