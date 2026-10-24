@@ -2,7 +2,7 @@
 id: T-0453
 title: Add the shared C header of ADR-0163's bf16 verification programs and the first program, for bf16 gemm, with a clang test that its inputs and check values agree with bf16_verification_arrays (ADR-0163 code slice 2)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0452]
@@ -117,3 +117,11 @@ hq: []
 - (planner) Next slice: the `rmsnorm` (with `eps` = `0x3727C5AC` passed as a binary32 formed from its bit pattern, ADR-0163 decision 3), `elementwise_add` and `swiglu` (`gate` with b = 10) programs on this header, each with a clang agreement test against `draw_inputs` and `check_value`. After that: the build module, the report reader and verdict, and the calibration kernels (ADR-0163 decisions 2, 8 and 9).
 
 ## Result
+
+- DONE. PR #268 squash-merged as `5e400982` after 2 review rounds (round 1 Approve with 3 nits fixed in the PR; round 2 Approve). CI green on the final head (C gate, Python 3.11/3.14, coverage, test presence, shellcheck).
+- Added `hilclaw/harness/bf16_verification.h` (185 lines) and `hilclaw/harness/bf16_verification_gemm.c` (87 lines), plus one docstring sentence in `hilclaw/harness/__init__.py`: 276 changed lines in 3 files outside tests.
+- Language: C, because the program is linked with the C kernel into one executable and the header is included by those C programs (ADR-0163 decision 2).
+- Header: digits, size check, error line and statuses 2/3/4; mix, GOLDEN, draw_base, one draw_patterns(array, count, base, first, bits) for b = 8 and 10; fill_output (0x7FC0); check_value (zlib CRC-32, table built per call); report_open and emit (descriptor passed as an argument). No file-scope variable.
+- Every header function is `static inline`, so a program that uses only part of the header gets no unused warning. Checked with clang 14 (CI flags and -Weverything) and gcc. The program defines `PROGRAM` before the include; the stderr prefix is "bf16_verification_gemm: ".
+- Tests: `tests/harness/test_bf16_verification_gemm.py` (126 cases, passing under clang in WSL and on CI) covers generator and check-value agreement with draw_inputs/check_value for seeds 0, 1, 2**63 and 2**64-1 and shapes with dimensions of 1, both ends of each operand, the fill, no stale element, one call per draw, the dimensions reaching the kernel, kernel stdout going to stderr, a plain bf16 kernel against reference within 2**-7, report length, refusals and abnormal kernels.
+- Follow-ups: (1) the next slice adds the rmsnorm (eps 0x3727C5AC from its bit pattern; it will need <string.h> again for memcpy), elementwise_add and swiglu (gate b = 10) programs on this header, and must update the sentence in `hilclaw/harness/__init__.py` that names exactly two C sources; (2) then the bf16 verification build module, the report reader and verdict, and the calibration kernels (ADR-0163 decisions 2, 8 and 9).
