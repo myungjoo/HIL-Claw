@@ -2,7 +2,7 @@
 id: T-0475
 title: Thread the compiler-log keeper of `hilclaw/build_log.py` through the call of a `correctness.check` operation, write a handed log before the answer is judged and end the step with `build_log_unwritable` when that write fails, and have the mock's operation and default script take the keeper (ADR-0078 decisions 6 and 7, code slices 2 and 3 of its Consequences), with tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, FR-6, FR-9, OD-18, "#5 D12"]
 dependsOn: []
@@ -91,3 +91,5 @@ Tests (D12):
 - (code, later) ADR-0108 slices for `sim.run` / `board.run`: the keeper as the fifth thing of `run_operation.ask` and the timing-build log file. Model them on the form this task chooses.
 
 ## Result
+
+DONE — PR #289 squash-merged as 77566a1b after 1 review round (Approve), CI green. Language: Python (existing `hilclaw/` package). Follow-up already listed above (ADR-0108 keeper for `sim.run`/`board.run`), left to the planner.
