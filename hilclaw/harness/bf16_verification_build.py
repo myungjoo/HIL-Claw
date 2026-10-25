@@ -1,8 +1,14 @@
 """Build step of a bf16 verification run of ADR-0163: the program of one kind and one kernel, one executable.
 
 ``ARCHITECTURE/decisions/ADR-0163-od31-bf16-verification-run.md`` is the rule
-(decisions 2 and 10). There is one verification program per kind, and
-:data:`PROGRAM_SOURCES` maps each kind to the C source of its program.
+(decisions 2 and 10), and for kind ``rope``
+``ARCHITECTURE/decisions/ADR-0164-od31-bf16-rope-verification-run.md``
+(decision 2). There is one verification program per kind, and
+:data:`PROGRAM_SOURCES` maps each kind to the C source of its program. The
+program of ``rope`` reads the ``freqs_cis`` rows of the run on its standard
+input (ADR-0164 decision 3); running it and that input are the caller's,
+through ``local_run.run(..., stdin_data=...)``, as running every other program
+is.
 :func:`build_bf16_verification_executable` hands the program of the kind the
 caller names and the source files of one kernel of that kind to one call of
 :func:`hilclaw.clang_build.build`. The command is that of ``clang_build``, with
@@ -35,8 +41,8 @@ What this module does not do: it chooses no flag, compiler, time limit or
 output path; it runs nothing that it built; it does not retry, repair or store
 a failed build; it reads no configuration and no environment variable of its
 own; it relates this build to no timing build; and it registers no kind with
-``correctness.check``, ``spec.write`` or the instance start (ADR-0163
-Boundaries).
+``correctness.check``, ``spec.write`` or the instance start (ADR-0163 and
+ADR-0164 Boundaries).
 """
 
 import os
@@ -50,7 +56,7 @@ _HERE = Path(__file__).parent
 PROGRAM_SOURCES = types.MappingProxyType(
     {
         kind: _HERE / f"bf16_verification_{kind}.c"
-        for kind in ("gemm", "rmsnorm", "elementwise_add", "swiglu")
+        for kind in ("gemm", "rmsnorm", "elementwise_add", "swiglu", "rope")
     }
 )
 """Read-only mapping from each kind to the path of its verification program, next to this module."""
