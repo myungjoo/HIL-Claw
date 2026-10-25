@@ -2,7 +2,7 @@
 id: T-0361
 title: Record ADR-0132, the selection role of a first-case turn and what writes a round's decision/hypotheses.json (part of OD-23 and OD-30)
 phase: P1
-status: TODO
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [FR-11, FR-17, OD-23, OD-30, OD-18, OD-8]
 dependsOn: [T-0352, T-0355, T-0357]
