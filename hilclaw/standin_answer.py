@@ -390,8 +390,8 @@ def build_dir_removable(outcome):
     out), or an exception without ``container_name`` that is no
     :class:`OSError` (nothing was started). ``False`` otherwise, an
     :class:`OSError` without ``container_name`` included, which may come
-    after the start and leave the container running (C14): the directory is left, and the answer of the call is
-    not changed by it. Raises :class:`TypeError` for any other ``outcome``.
+    after the start and leave the container running (C14): the directory is
+    left, and the answer of the call is not changed by it. Raises :class:`TypeError` for any other ``outcome``.
     """
     if type(outcome) is standin_container.ContainerResult:
         if not outcome.timed_out:
