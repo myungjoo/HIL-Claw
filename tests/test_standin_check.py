@@ -238,7 +238,14 @@ def test_the_operation_is_answered_by_ask(client, output, keeper, tmp_path):
 def test_the_log_is_both_streams_decoded_with_nothing_between(client, output, keeper):
     client.script = [built(stdout=b"a\xff", stderr=b"\xe2\x82b"), reported()]
     assert call(output, keeper) == REPORT
-    assert keeper.held() == "a��b"
+    assert keeper.held() == "a\ufffd\ufffdb"
+
+
+def test_each_stream_is_decoded_on_its_own(client, output, keeper):
+    client.script = [built(stdout=b"x\xe2\x82", stderr=b"\xacy"), reported()]
+    assert call(output, keeper) == REPORT
+    assert keeper.held() == "x\ufffd\ufffdy"
+    assert keeper.held() != (b"x\xe2\x82\xacy").decode()
 
 
 def test_an_empty_log_is_handed_over(client, output, keeper):

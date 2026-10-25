@@ -55,6 +55,9 @@ Choices that are this module's own and no rule of a record:
   directory that holds an entry ``.git``: the operation is not handed the
   data root (ADR-0056 decision 3), so "outside both checkouts and inside
   neither's ``.git/``" is kept as "inside no checkout of any repository".
+  The cost: a temporary directory below the work tree of any repository (a
+  home directory kept in git, for example) makes every call answer
+  ``build_directory_unusable``.
   An :class:`OSError` of making it is answered the same way (S3).
 * The executable is :data:`EXECUTABLE_NAME` directly in the build directory;
   every path handed to the compiler and the process is an absolute path
@@ -80,8 +83,10 @@ Choices that are this module's own and no rule of a record:
 
 It hands the compiler nothing derived from the seed (ADR-0078 decision 5),
 imports no NumPy (the judging is the tool function's, ADR-0021 decision 2),
-reads no environment variable but through
-:func:`hilclaw.standin_image.read_image`, and keeps nothing between calls.
+reads no environment variable of its own (the image's is read by
+:func:`hilclaw.standin_image.read_image`, and :mod:`tempfile` reads the
+variables that name the temporary directory of the system), and keeps
+nothing between calls.
 The process's standard error is read by nothing (OD-16 sub-question 5). The
 operation is bound to no backend table: the default table and the
 registry do not name it yet (ADR-0167 Boundaries).
@@ -253,8 +258,11 @@ def _placed_copies(output_path, build_dir):
         copies = standin_copies.place_copies(
             output_path, verification_build.PROGRAM_SOURCE, build_dir
         )
-    except Exception as error:  # noqa: BLE001
-        _place(error, standin_answer.COPIES)
+    except Exception as error:
+        answer = standin_answer.place_error(error, standin_answer.COPIES)
+        if type(answer) is not standin_answer.Failure:
+            raise
+        raise _Answered(answer) from None
     answer = standin_answer.read_copies(copies)
     if answer is not standin_answer.GO_ON:
         raise _Answered(answer)
