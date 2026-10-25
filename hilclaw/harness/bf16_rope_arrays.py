@@ -112,10 +112,7 @@ def table_rows(dims, *, start):
     before the table is built.
     """
     m, _, d = _dims(dims)
-    _integer("start", start, 0, math.inf, "an int of at least 0")
-    if (start + m) * d > keys.MAX_INTEGER:
-        rule = f"such that (start + m) * d <= 2**53 - 1 for dims {dims}"
-        _fail("start", rule, _shown(start))
+    _start(dims, start)
     table = rope_table.build(head_dim=d, positions=start + m, **TABLE_CONSTANTS)
     return table[start:].copy()
 
@@ -200,6 +197,14 @@ def _dims(dims):
     if dims[2] % 2:
         _fail("dims[2]", "even", _shown(dims[2]))
     return dims
+
+
+def _start(dims, start):
+    m, _, d = dims
+    _integer("start", start, 0, math.inf, "an int of at least 0")
+    if (start + m) * d > keys.MAX_INTEGER:
+        rule = f"such that (start + m) * d <= 2**53 - 1 for dims {dims}"
+        _fail("start", rule, _shown(start))
 
 
 def _operands(x, rows):
