@@ -2,7 +2,7 @@
 id: T-0457
 title: Add the three-state calibration of the bf16 verification run for gemm and elementwise_add (six C kernels and their tests, ADR-0163 decision 9, code slice 6)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0456]
@@ -104,3 +104,45 @@ hq: []
 - (planner) Next task: the `rmsnorm` and `swiglu` calibration kernels (six) as new rows of `tests/harness/test_bf16_calibration.py`. The failing kernels are the weight left out (y = x / rms) and σ(−g) in place of σ(g), per the decision 9 table. They link `-lm`.
 
 ## Result
+**DONE.** PR #272 https://github.com/myungjoo/HIL-Claw/pull/272, squash commit `20a21d9` on `main`; branch deleted (remote and local).
+
+**Review**: 1 round, Approve (fresh-context `dev-reviewer`, https://github.com/myungjoo/HIL-Claw/pull/272#issuecomment-6391139251). The reviewer regenerated both violating tables bit for bit, built the branch with WSL clang 14 and ran all 12 cases. It also measured the conforming and failing deviations over 3000 random seeds. No blocking finding. Two notes, neither needing a change: (1) AC 3's "the violating kernel's elements on a random seed lie outside" cannot hold for every element by construction (at most 2 of 15 inside over 3000 seeds); the test asserts the FAIL verdict only, as ADR-0003 decision 4 asks; (2) `## Result` was empty on the branch, by design (filled here after the merge).
+
+**CI**: 1 run, 0 failures, https://github.com/myungjoo/HIL-Claw/actions/runs/40144679649. Six checks green on head `1cc3a54`. C gate "harness pass": `calibration: 18 case(s) selected, 0 skipped` (6 fp32 + 12 bf16). Both Python gates: `tests/harness/test_bf16_calibration.py ............` and `32337 passed, 50 skipped`. Coverage gate: lines 10852/10889 = 99.66%, functions 1055/1055 = 100.00%.
+
+**Local** (Windows, venv of T-0060 unchanged): `pytest` 30983 passed, 1404 skipped (the 12 new cases skip: no POSIX). `ruff check .` and `ruff format --check .` are clean. The new files are ASCII with `i/lf`. Each kernel compiles alone under the C gate's line with WSL clang 14.
+
+**Evidence of the states** (WSL clang 14, numpy 2.2.6, rtol 2**-7, atol 1e-3). Failing elements per draw, known seed 2026 (1 draw) / run-time seed 13853735323370704068 (3 draws):
+- gemm (3, 4, 5): conforming 0 / 0,0,0; failing 15 / 15,15,15; violating 0 / 15,15,15.
+- elementwise_add (3, 5): conforming 0 / 0,0,0; failing 15 / 15,15,15; violating 0 / 15,15,15.
+- Largest conforming |dev| / (atol + rtol |ref|) over 1000 random draws: gemm 0.458, elementwise_add 0.439. The reviewer measured 0.462 and 0.442 over 3000 seeds. The failing minimum ratios were 12.6 (gemm) and 79 (add).
+
+**Files** (7 new, 1 changed; all test code except one line of `ci.yml`):
+- `tests/harness/calibration/{gemm,elementwise_add}_bf16_conforming.c`: widen through `memcpy`, accumulate or add in `float`, then RNE on the float bit pattern.
+- `..._failing.c`: gemm leaves out the term p = 0; add computes a - b.
+- `..._violating.c`: a 15-entry table of bf16 patterns, indexed by e mod 15.
+- `tests/harness/test_bf16_calibration.py`: tables `KINDS` (dims, known seed, tolerance) and `STATES`, with 12 cases.
+- `.github/workflows/ci.yml`: the new file added to the "harness pass" pytest line.
+
+**Violating constants**, produced in a throwaway interpreter:
+```python
+a, b = va.draw_inputs(kind, dims, seed=2026, draw=0); ref = va.reference(kind, a, b)
+f = np.asarray(ref, np.float32); assert (f.astype(np.float64) == ref).all()   # exact
+bits = f.view(np.uint32).astype(np.uint64); out = (bits + 0x7FFF + ((bits >> 16) & 1)) >> 16
+```
+
+**Test choices** (provisional, test values only):
+- Real `.c` files: the C gate compiles them, as for the fp32 fixtures.
+- Session fixture with the C gate's flags: skip without POSIX or clang, fail on CI without clang, as `test_calibration.py`.
+- gemm at (3, 4, 5): |c| < 4, so a left-out term (>= 0.25) misses by > 0.23 against a bound < 0.033.
+- elementwise_add at (3, 5): small, with 15 elements like the gemm table.
+- Known seed 2026 per kind, one draw for the functional test: the violating kernel holds one draw.
+- Run-time seed from `secrets.randbits(64)`, never the known seed, shown in the message; draws 1 and 3.
+- rtol 2**-7, atol 1e-3 for both kinds: twice the 2**-8 relative error of a correctly rounded output, plus atol for gemm elements near zero. a - b misses by >= 1 - 2**-8 against a bound < 0.017.
+- `trailing_flags=("-lm",)` for every kind: harmless here, and the next task's kinds need it, so that task adds rows only.
+
+**Decision 9 list**: no test requires a fault from it to fail. The only required faults are the two from the table.
+
+**Language**: C for the kernels, the kernel language of `cpu_standin` (#5 A-7 (2), ADR-0003 decision 5); Python for the tests. No layer-2 code changed.
+
+**Follow-ups**: none new. The planner's `rmsnorm`/`swiglu` follow-up stands. No HQ.
