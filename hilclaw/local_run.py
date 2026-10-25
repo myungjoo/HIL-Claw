@@ -173,8 +173,7 @@ def run(command, *, timeout_s, cwd=None, env=None, stdin_data=None):
     from anywhere else, including what :mod:`subprocess` raises,
     :class:`ProgramNotFoundError`, an :class:`OSError` of the program lookup
     and the :class:`OSError` of the ``cwd`` test, carries no ``parameter``;
-    read it as
-    ``getattr(error, "parameter", None)``.
+    read it as ``getattr(error, "parameter", None)``.
 
     Where :func:`os.wait4` is used and it finds the process already reaped by
     someone else (for example with ``SIGCHLD`` ignored), the exit status is
