@@ -33,8 +33,7 @@ GOLDEN = 0x9E3779B97F4A7C15
 NAN = 0x7FC0
 SEEDS = [0, 1, 2**63, 2**64 - 1]
 DRAWS = [0, 1, 2**64 - 2]
-# (m, l, h, h_kv, d): m = l = 1 with d = 1; P = 0 with h = h_kv; P = 3 with m = 1
-# and h = 4*h_kv; P = 3 with m = 2; d = 1 with P = 1; P = 0 with h = 4*h_kv.
+# (m, l, h, h_kv, d), covering P = 0, P > 0 with m = 1 and m > 1, h = 4*h_kv, d = 1.
 SHAPES = [
     (1, 1, 1, 1, 1),
     (2, 2, 2, 2, 3),
@@ -318,8 +317,7 @@ def test_check_value_matches_program_expectation(shape):
     assert value == packed
 
 
-# GOOD has m = 2 and l = 5: allocation rows 0 and 8 are guard rows, row 2 is operand
-# row 0 (drawn) and row 5 is operand row P (filled).
+# Allocation rows of GOOD: 0 and 8 guard, 2 operand row 0, 5 operand row P.
 @pytest.mark.parametrize(
     ("position", "row"),
     [(0, 0), (0, -1), (1, 0), (1, -1), (2, 0), (2, -1)]
