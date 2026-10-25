@@ -2,7 +2,7 @@
 id: T-0478
 title: Record the registration of `sim.run` and `board.run` in the default registry (backend table, source of seeds, predicate "covered", definitions; one more part of OD-18) as a new ADR, and register both tools with the mock entry, with tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0477]
@@ -68,3 +68,12 @@ Line numbers are those of `main` at `e375a388`; the text wins. Read Korean files
 - (later; planner) The `cpu_standin` operation of `sim.run` and `board.run`, and the `cpu_standin` entry of the default table for the three HW tools, which P1-1's completion criterion needs. Before planning it, re-read ADR-0068 decision 8, ADR-0144 decision 7 and ADR-0107/0116/0117 Consequences for what still stops it.
 
 ## Result
+
+- **DONE.** PR #292 squash-merged as `e8263290` (branch deleted). Reviewer agent (dev-reviewer, fresh context): 1 round, Approve with 4 Nits; Nits 2 and 3 (docstring wrapping, A-13 reading sentence) fixed after Approve without re-review (D20 exception); Nit 1 (`hilclaw/run_tool.py` docstring "left to a later task") left as listed in ADR-0167 Consequences (file cap). CI: one failed run (two tool-set tests in `tests/test_blob_tools.py` and the binder list of `tests/test_gemm_contract.py`), fixed in the PR; the next run green on all six gates.
+- **ADR**: `ARCHITECTURE/decisions/ADR-0167-od18-run-tools-registration.md`: register now (alternatives (a)/(b)/(c) of ADR-0070 decision 2); one default table for the three HW tools, whose mock entry offers `correctness.check`, `sim.run` and `board.run` with the default scripts of ADR-0044/ADR-0066; no `cpu_standin` entry (`no_backend`); the OS generator as the source of seeds; ADR-0041 decision 5 as "covered"; the ADR-0106 definitions; the spend check lists both tools (ADR-0147 decision 2); a reading of ADR-0142 decision 7 (the round-0 stop after step 4 stays until step 5 lands). No data-plane schema change; no runtime acceptance item beyond ADR-0077 decision 6.
+- **Code**: `check_definition.default_table` (three tools), `run_definition.definitions` (lazy binding), `tools.default_registry`, `budget_check.SPENDING_TOOLS` (+`sim_run`, `board_run`), docstrings of `mock_run` and `mock_backend`. Files outside `touchesFiles`: `hilclaw/budget_check.py` (ADR-0147 decision 2), `hilclaw/mock_run.py` and `hilclaw/mock_backend.py` (docstrings that became false), and the tests `test___main__`, `test_blob_tools`, `test_budget_check`, `test_check_definition`, `test_gemm_contract`, `test_run_tool` (they pinned the old tool set). Non-test change: 10 files, about 260 added lines.
+- **Registers**: OD-18 row `**확정분**` link; OpenDecisionProposals OD-18 adopted line; StandardScenarios "최근 재검사" (S0, S1, S1-b, S2, S8: no verdict change, no gap).
+- **Language**: Python, the language of the `hilclaw` package these modules belong to.
+- **Local**: full `python -m pytest` under coverage: 33352 passed, 3 failed, 1858 skipped. The 3 failures were the same as the first CI run's; after the fix both files pass locally and CI is green on the full suite. `ruff check .` and `ruff format --check .` clean; `hilclaw/` coverage: lines 97.2%, functions 97.7%.
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6403845143 (objection window until 2026-11-02).
+- **Follow-ups**: none new beyond the task's own (the `cpu_standin` operation and entry for the three HW tools; step 5 of ADR-0142 with the experiment-runner, PLAN P2).
