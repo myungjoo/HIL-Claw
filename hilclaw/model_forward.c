@@ -70,9 +70,10 @@
  * the one the header gives, a library index not below the number of
  * libraries and a token id not below V are errors of the input file
  * (status 5). The byte size of any buffer, weight, cache, the RoPE table,
- * the token ids, the library table or the file itself that does not fit in
- * size_t (and, for the file, in a uint64_t) is found after the header and
- * before anything is allocated (status 3), as is a failed allocation. A
+ * the token ids or the library table that does not fit in size_t, and a
+ * length of the file that does not fit in a uint64_t, are found after the
+ * header and before anything is allocated (status 3), as is a failed
+ * allocation. A
  * library bound in the table that lacks the entry point of its call site's
  * kind (hilclaw_gemm_bf16, hilclaw_rmsnorm_bf16,
  * hilclaw_elementwise_add_bf16, hilclaw_swiglu_bf16, hilclaw_rope_bf16 or

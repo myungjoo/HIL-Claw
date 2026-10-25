@@ -1,5 +1,6 @@
 import os
 import shutil
+import threading
 
 import numpy as np
 import pytest
@@ -534,7 +535,24 @@ def test_missing_input_file(built, tmp_path):
 def test_input_that_is_a_directory(built, tmp_path):
     program, library = built
     result = run([program, str(tmp_path), library("all")], timeout_s=RUN_TIMEOUT)
-    assert_failed(result, 5, b"input file")
+    assert_failed(result, 5, b"too short for the header and eps")
+
+
+def test_input_that_is_not_a_regular_file(built, tmp_path):
+    program, library = built
+    fifo = tmp_path / "input.fifo"
+    os.mkfifo(fifo)
+    data = encode(make_model(1), [0] * 15)
+
+    def feed():
+        with open(fifo, "wb") as writer:
+            writer.write(data)
+
+    writer = threading.Thread(target=feed, daemon=True)
+    writer.start()
+    result = run([program, str(fifo), library("all")], timeout_s=RUN_TIMEOUT)
+    writer.join(RUN_TIMEOUT)
+    assert_failed(result, 5, b"is not a regular file")
 
 
 @pytest.mark.parametrize(
