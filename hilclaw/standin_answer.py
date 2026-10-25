@@ -25,7 +25,7 @@ functions over what the slices return or raise:
   other status, ``"exit_status"``; no line and 0, not placed (open under
   OD-18 sub-question 19 (na)); past the limit, ``"time_limit"``.
 * :func:`place_error`: what one of the four steps raised, by the step:
-  :data:`IMAGE` (C2), :data:`COPIES` (C12, C13, C15, C16), :data:`BUILD` or
+  :data:`IMAGE` (C2), :data:`COPIES` (C12 to C16), :data:`BUILD` or
   :data:`PROCESS` (C2 to C4, C10, C11, C13, C14, C16, C17); a request to end
   is never placed (C18).
 * :func:`build_dir_removable`: whether the operation may remove the build
@@ -316,7 +316,7 @@ def _place_copies_error(error):
         return None
     if isinstance(error, kernel_source.KernelSourceReadError):
         return _READER_FAILED
-    if isinstance(error, OSError):
+    if isinstance(error, NotADirectoryError):
         return _DIRECTORY_UNUSABLE
     return None
 
@@ -338,10 +338,11 @@ def place_error(error, step):
        failure, ``build_input_missing`` (C12), of a writing failure,
        ``build_directory_unusable`` (C13), of any other ``failure``, ``None``;
        :class:`hilclaw.kernel_source.KernelSourceReadError`,
-       ``kernel_source_unreadable`` (C15); any other :class:`OSError` (the
-       build directory's ``lstat``), ``build_directory_unusable`` (C13);
-       anything else, :class:`hilclaw.kernel_source.InvalidOutputPathError`
-       and the checks with ``parameter`` included, ``None`` (C16);
+       ``kernel_source_unreadable`` (C15); :class:`NotADirectoryError`,
+       ``build_directory_unusable`` (C13); anything else, any other
+       :class:`OSError` included (C14, open),
+       :class:`hilclaw.kernel_source.InvalidOutputPathError` and the checks
+       with ``parameter`` (C16), ``None``;
     4. :data:`BUILD` or :data:`PROCESS`: an error with ``container_name`` and
        no ``removal`` (raised by the forced removal after a timeout), the time
        limit, ``"build_time_limit"`` for a build and ``"time_limit"`` for a
@@ -386,8 +387,10 @@ def build_dir_removable(outcome):
     still run: a result that did not time out (the container was removed with
     its end), a forced removal shown to have succeeded (a
     :class:`hilclaw.standin_container.Removal` with status 0 that did not time
-    out), or an exception without ``container_name`` (nothing was started).
-    ``False`` otherwise: the directory is left, and the answer of the call is
+    out), or an exception without ``container_name`` that is no
+    :class:`OSError` (nothing was started). ``False`` otherwise, an
+    :class:`OSError` without ``container_name`` included, which may come
+    after the start and leave the container running (C14): the directory is left, and the answer of the call is
     not changed by it. Raises :class:`TypeError` for any other ``outcome``.
     """
     if type(outcome) is standin_container.ContainerResult:
@@ -396,7 +399,7 @@ def build_dir_removable(outcome):
         return _removed(outcome.removal)
     if isinstance(outcome, BaseException):
         if getattr(outcome, "container_name", _ABSENT) is _ABSENT:
-            return True
+            return not isinstance(outcome, OSError)
         return _removed(getattr(outcome, "removal", None))
     raise TypeError(
         "outcome must be a standin_container.ContainerResult or an exception, "

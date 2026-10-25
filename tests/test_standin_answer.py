@@ -342,17 +342,22 @@ def test_copy_error_of_an_unknown_failure_is_not_placed():
     assert place_error(standin_copies.CopyError("example_failure"), COPIES) is None
 
 
+def test_not_a_directory_of_the_copies_is_build_directory_unusable():
+    error = NotADirectoryError(errno.ENOTDIR, "not a directory")
+    answer = place_error(error, COPIES)
+    assert failure(check_failure.KIND_BUILD_DIRECTORY_UNUSABLE)(answer)
+
+
 @pytest.mark.parametrize(
     "error",
     [
         PermissionError(errno.EACCES, "denied", SECRET),
         FileNotFoundError(errno.ENOENT, "missing", SECRET),
-        NotADirectoryError(errno.ENOTDIR, "not a directory"),
+        OSError(errno.EIO, "io"),
     ],
 )
-def test_build_directory_error_of_the_copies(error):
-    answer = place_error(error, COPIES)
-    assert failure(check_failure.KIND_BUILD_DIRECTORY_UNUSABLE)(answer)
+def test_other_os_error_of_the_copies_is_open(error):
+    assert place_error(error, COPIES) is None
 
 
 def test_reader_failure_is_kernel_source_unreadable():
@@ -530,6 +535,9 @@ def test_build_dir_removable_after_a_timeout(gone, removable):
         (local_run.ProgramNotFoundError("x"), True),
         (standin_container.NoNumericUserError("x"), True),
         (KeyboardInterrupt(), True),
+        (with_attributes(ValueError(), parameter="image"), True),
+        (OSError(errno.EIO, "io"), False),
+        (PermissionError(errno.EACCES, "denied"), False),
         (with_attributes(OSError(), container_name="n"), False),
         (with_attributes(OverflowError(), container_name="n", removal=None), False),
         (
