@@ -38,9 +38,10 @@ Choices that are this module's own and no rule of a record:
   ``tuple`` holding the one report object.
 
 What the module does not do: it builds no backend and no backend table and
-is bound to no registry; when the default registry holds these operations is
-not decided (decision 5). It injects no fault (OD-18 sub-question 8, open).
-It has no tool function and registers nothing (OD-18 sub-question 19). It
+is bound to no registry; the default registry holds these operations with
+the default script through :func:`hilclaw.check_definition.default_table`
+(ADR-0167 decision 3). It injects no fault (OD-18 sub-question 8, open).
+It has no tool function and registers nothing. It
 judges nothing, builds no result, appends no line and records no spend. It
 looks at nothing at the output path, writes no file and hands no log over of
 its own. It reads no clock, random source, counter, file or environment

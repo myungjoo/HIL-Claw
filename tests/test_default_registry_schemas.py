@@ -31,6 +31,13 @@ class CountingSource:
 ACCEPTED = {
     "blob.fetch": {"sha256": "0123456789abcdef" * 4},
     "blob.push": {"sha256": "0123456789abcdef" * 4},
+    "board.run": {
+        "run_id": "r1",
+        "round": 3,
+        "candidate": 2,
+        "attempt": 1,
+        "execution": 1,
+    },
     "case.write": {"run_id": "r1", "round": 1},
     "checks.read": {"run_id": "r1", "round": 0, "candidate": 2, "point": "board"},
     "coder.run": {"run_id": "r1", "round": 0, "candidate": 1, "attempt": 1},
@@ -48,6 +55,13 @@ ACCEPTED = {
     "round.end": {"run_id": "r1", "round": 0},
     "run.commit": {"run_id": "r1"},
     "run.fresh": {"run_id": "r1"},
+    "sim.run": {
+        "run_id": "r1",
+        "round": 0,
+        "candidate": 1,
+        "attempt": 1,
+        "execution": 2,
+    },
     "spec.write": {"run_id": "r1", "round": 0, "candidate": 1, "attempt": 1},
     "state.read": {"run_id": "r1"},
     "state.write": {

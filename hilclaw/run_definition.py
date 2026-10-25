@@ -1,4 +1,4 @@
-"""The member list, the input schema and the descriptions of ``sim.run`` and ``board.run`` (ADR-0106).
+"""The member list, the input schema, the descriptions and the tool definitions of ``sim.run`` and ``board.run`` (ADR-0106, ADR-0167).
 
 ``ARCHITECTURE/decisions/ADR-0106-od18-run-tools-request-schema.md`` is the
 rule; a decision cited by its number alone is one of that record. The module
@@ -26,6 +26,15 @@ renders, ahead of the tool functions, what its decisions 2 to 5 fix:
   refused although the schema admits it (decision 4). They differ in the
   point and state no dimension, ``n_max``, bound, seed or setting as a value
   and no rule of who may raise ``execution`` or which execution counts.
+* :func:`definitions`: the two tool definitions
+  :func:`hilclaw.tools.default_registry` registers
+  (``ARCHITECTURE/decisions/ADR-0167-od18-run-tools-registration.md``
+  decisions 3 to 5): each tool function is
+  :func:`hilclaw.run_tool.tool_function` of its tool bound to the data-root
+  source, to a new :func:`hilclaw.check_definition.default_table`, the one
+  default table of the three HW tools, to
+  :func:`hilclaw.harness.seed_source.system` and to
+  :func:`hilclaw.gemm_contract.covers`.
 
 Choices that are this module's own and no rule of a record:
 
@@ -52,21 +61,32 @@ Choices that are this module's own and no rule of a record:
   long and shows nothing of the value of the member, not even its type.
   Nothing may depend on its wording beyond the name at its start.
 
-What the module does not do: it is no tool and no step and is bound to none.
-It registers nothing, builds no tool definition and binds no backend, source
-of seeds or tool function; registration is open (ADR-0106 Boundaries). It
-checks none of the values of the five members: the frame does
-(:mod:`hilclaw.journaled_tool`). The schema is a statement to the caller and
-checks nothing (ADR-0015 decision 2). Whether Claude Code accepts its
-keywords is not verified (OD-18 sub-question ⑤), and no reduced schema is
-given. It reads no file and keeps nothing between calls. It imports
-:mod:`re` and :mod:`hilclaw.keys`, :mod:`hilclaw.run_identity` and
-:mod:`hilclaw.tools` and nothing else.
+* :func:`definitions` binds a tool function at the first call of the
+  definition's function, which then imports :mod:`hilclaw.run_tool` and
+  :mod:`hilclaw.check_definition` and builds the table (and so imports
+  NumPy, through :mod:`hilclaw.mock_check`), and keeps that one bound
+  function for its later calls. A first call whose import or binding raises
+  keeps nothing, and the next call binds again. This is the manner of
+  :func:`hilclaw.check_definition.definition`; importing this module or
+  building a definition imports neither module and no NumPy.
+
+What the module does not do: it is no tool and no step. It registers
+nothing; the registration is :func:`hilclaw.tools.default_registry`'s. No
+request, option or environment variable chooses the table, the source of
+seeds or the predicate. It checks none of the values of the five members:
+the frame does (:mod:`hilclaw.journaled_tool`). The schema is a statement to
+the caller and checks nothing (ADR-0015 decision 2). Whether Claude Code
+accepts its keywords is not verified (OD-18 sub-question ⑤), and no reduced
+schema is given. It reads no file and keeps nothing between calls but the
+bound function of a definition; building a definition calls neither the
+data-root source, the source of seeds, the predicate nor
+:func:`hilclaw.check_definition.default_table`.
 """
 
 import re
 
-from hilclaw import keys, run_identity, tools
+from hilclaw import gemm_contract, keys, run_identity, tools
+from hilclaw.harness import seed_source
 
 #: The members of a request of ``sim.run`` and ``board.run``; no other is taken (ADR-0106 decision 2).
 MEMBERS = ("run_id", *run_identity.NUMBERS, "execution")
@@ -157,3 +177,47 @@ def input_schema():
         "required": list(MEMBERS),
         "additionalProperties": False,
     }
+
+
+def definitions(source):
+    """Return the :class:`hilclaw.tools.ToolDefinition` of ``sim.run`` and of ``board.run`` bound to ``source``.
+
+    ``source`` is the data-root source (ADR-0015 decision 3), asked at each
+    call and not here. The result is a ``tuple`` of the two definitions, in
+    that order. Each has the name of its tool, the description
+    :data:`SIM_DESCRIPTION` or :data:`BOARD_DESCRIPTION`, a new
+    :func:`input_schema`, and a function that binds, at its first call,
+    :func:`hilclaw.run_tool.tool_function` of its tool to ``source``, a new
+    :func:`hilclaw.check_definition.default_table`,
+    :func:`hilclaw.harness.seed_source.system` and
+    :func:`hilclaw.gemm_contract.covers` (ADR-0167 decisions 3 and 4), and
+    keeps it for its later calls. Raises :class:`TypeError` when ``source``
+    is not callable.
+    """
+    if not callable(source):
+        raise TypeError("the data-root source must be callable")
+    return (
+        _definition("sim.run", SIM_DESCRIPTION, source),
+        _definition("board.run", BOARD_DESCRIPTION, source),
+    )
+
+
+def _definition(tool, description, source):
+    bound = []
+
+    def function(request):
+        if not bound:
+            from hilclaw import check_definition, run_tool
+
+            bound.append(
+                run_tool.tool_function(
+                    tool,
+                    source=source,
+                    table=check_definition.default_table(),
+                    seeds=seed_source.system,
+                    covers=gemm_contract.covers,
+                )
+            )
+        return bound[0](request)
+
+    return tools.ToolDefinition(tool, function, description, input_schema())

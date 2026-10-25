@@ -32,6 +32,8 @@ RUN = "run-a"
 OTHER = "run-b"
 CODER = "mcp__hilclaw__coder_run"
 CHECK = "mcp__hilclaw__correctness_check"
+SIM = "mcp__hilclaw__sim_run"
+BOARD = "mcp__hilclaw__board_run"
 GENERIC = (
     "budget check: the call was refused because the run is over, "
     "is at its round budget, or could not be checked"
@@ -56,8 +58,7 @@ OTHER_TOOLS = [
     "mcp__hilclaw__state_read",
     "mcp__hilclaw__round_end",
     "mcp__hilclaw__run_commit",
-    "mcp__hilclaw__board_run",
-    "mcp__hilclaw__sim_run",
+    "mcp__hilclaw__profiler_collect",
     "mcp__hilclaw__coder_run_",
     "mcp__hilclaw__Coder_run",
     "mcp__other__coder_run",
@@ -134,9 +135,10 @@ def refused(data, args, line=None):
     return text
 
 
-def test_spending_tools_are_the_mcp_names_of_coder_run_and_correctness_check():
+def test_spending_tools_are_the_mcp_names_of_coder_run_correctness_check_and_the_run_tools():
+    """ADR-0147 decision 2, with sim.run and board.run added by the slice that registers them (ADR-0167 decision 5)."""
     assert isinstance(SPENDING_TOOLS, tuple)
-    assert len(SPENDING_TOOLS) == len(set(SPENDING_TOOLS)) == 2
+    assert len(SPENDING_TOOLS) == len(set(SPENDING_TOOLS)) == 4
     registered = tools.default_registry(lambda: ".").names()
     by_mcp = {
         caller_check.TOOL_PREFIX + mcp_front.mcp_name(name): name for name in registered
@@ -145,8 +147,10 @@ def test_spending_tools_are_the_mcp_names_of_coder_run_and_correctness_check():
     assert {by_mcp[tool] for tool in SPENDING_TOOLS} == {
         "coder.run",
         "correctness.check",
+        "sim.run",
+        "board.run",
     }
-    assert SPENDING_TOOLS == (CODER, CHECK)
+    assert SPENDING_TOOLS == (CODER, CHECK, SIM, BOARD)
 
 
 @pytest.mark.parametrize("tool", SPENDING_TOOLS)

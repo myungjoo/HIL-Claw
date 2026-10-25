@@ -3,7 +3,9 @@
 ``ARCHITECTURE/decisions/ADR-0069-od18-correctness-check-request-schema.md``
 is the rule; a decision cited by its number alone is one of that record.
 ``ARCHITECTURE/decisions/ADR-0070-od18-correctness-check-registration.md``
-is the rule of :func:`default_table` and :func:`definition`.
+is the rule of :func:`default_table` and :func:`definition`, with
+``ARCHITECTURE/decisions/ADR-0167-od18-run-tools-registration.md`` for the
+run tools' operations of the table.
 
 * :func:`input_schema`: the schema of decision 4, as a Python value. The
   bound of the numbers is :data:`hilclaw.keys.MAX_INTEGER` (ADR-0001
@@ -20,7 +22,9 @@ is the rule of :func:`default_table` and :func:`definition`.
   ``execution`` or when.
 * :func:`default_table`: the backend table of the default registry, whose
   one entry is the mock under :data:`hilclaw.mock_backend.NAME` offering
-  this tool alone with the default script (ADR-0070 decision 3).
+  this tool with its default script (ADR-0070 decision 3) and ``sim.run``
+  and ``board.run`` with theirs (ADR-0167 decision 3: one table for the
+  three HW tools of the registry).
 * :func:`definition`: the tool definition :func:`hilclaw.tools.default_registry`
   registers, the tool function bound to that table, to
   :func:`hilclaw.harness.seed_source.system` and to
@@ -34,10 +38,11 @@ change the next.
 When the modules are imported is this module's own choice too: it imports
 :mod:`hilclaw.check_tool` and :mod:`hilclaw.mock_check`, and through them
 NumPy, only inside functions, so that importing it or building a definition
-imports neither. :func:`default_table` imports :mod:`hilclaw.mock_check` when
-it is called; the tool function of a definition imports
-:mod:`hilclaw.check_tool`, builds the table and binds the tool function at
-its first call, and keeps that one bound function for its later calls. A
+imports neither. :func:`default_table` imports :mod:`hilclaw.mock_check` and
+:mod:`hilclaw.mock_run` when it is called; the tool function of a definition
+imports :mod:`hilclaw.check_tool`, builds the table and binds the tool
+function at its first call, and keeps that one bound function for its later
+calls. A
 first call whose import or binding raises keeps nothing, and the next call
 binds again; what it raises reaches the front as anything a tool function
 raises does.
@@ -58,6 +63,7 @@ from hilclaw import backends, check_identity, gemm_contract, keys, mock_backend,
 from hilclaw.harness import seed_source
 
 _TOOL = "correctness.check"
+_RUN_TOOLS = ("sim.run", "board.run")
 
 #: What a caller of ``correctness.check`` is told of the tool (ADR-0069 decision 5).
 DESCRIPTION = (
@@ -105,24 +111,28 @@ def input_schema():
 
 
 def default_table():
-    """Return a new backend table of the default registry (ADR-0070 decision 3).
+    """Return a new backend table of the default registry (ADR-0070 decision 3, ADR-0167 decision 3).
 
     It holds one :class:`hilclaw.backends.Backend` named
-    :data:`hilclaw.mock_backend.NAME` that offers ``correctness.check`` alone,
-    with :func:`hilclaw.mock_check.operation` bound to
-    :func:`hilclaw.mock_check.default_script`; that operation takes five
-    arguments, the log keeper of ADR-0078 decision 6 the last, and the
-    default script hands it no log, so a call answered by it leaves no file
-    of a compiler's log. It holds no ``cpu_standin``
-    entry, so a call about any other ``accelerator`` is ``no_backend``.
-    It imports :mod:`hilclaw.mock_check`, and so NumPy.
+    :data:`hilclaw.mock_backend.NAME` that offers the three HW tools of the
+    default registry: ``correctness.check``, with
+    :func:`hilclaw.mock_check.operation` bound to
+    :func:`hilclaw.mock_check.default_script`, and ``sim.run`` and
+    ``board.run``, each with :func:`hilclaw.mock_run.operation` of that tool
+    bound to :func:`hilclaw.mock_run.default_script`. Each operation takes
+    five arguments, the log keeper (ADR-0078 decision 6, ADR-0108
+    decision 5) the last, and neither default script hands it a log, so a
+    call answered by one leaves no file of a compiler's log. It holds no
+    ``cpu_standin`` entry, so a call about any other ``accelerator`` is
+    ``no_backend``. It imports :mod:`hilclaw.mock_check`, and so NumPy, and
+    :mod:`hilclaw.mock_run`.
     """
-    from hilclaw import mock_check
+    from hilclaw import mock_check, mock_run
 
-    operation = mock_check.operation(mock_check.default_script)
-    return backends.BackendTable(
-        [backends.Backend(mock_backend.NAME, {_TOOL: operation})]
-    )
+    operations = {_TOOL: mock_check.operation(mock_check.default_script)}
+    for tool in _RUN_TOOLS:
+        operations[tool] = mock_run.operation(tool, mock_run.default_script)
+    return backends.BackendTable([backends.Backend(mock_backend.NAME, operations)])
 
 
 def definition(source):

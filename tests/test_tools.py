@@ -489,6 +489,7 @@ class CountingSource:
 DEFAULT_SET = (
     "blob.fetch",
     "blob.push",
+    "board.run",
     "case.write",
     "checks.read",
     "coder.run",
@@ -499,6 +500,7 @@ DEFAULT_SET = (
     "round.end",
     "run.commit",
     "run.fresh",
+    "sim.run",
     "spec.write",
     "state.read",
     "state.write",
@@ -512,7 +514,7 @@ def test_default_registry_holds_the_fixed_set_and_is_not_shared():
     first = default_registry(source)
     assert isinstance(first, Registry)
     assert first.names() == DEFAULT_SET
-    first.register("sim.run", Recorder(), DESCRIPTION, SCHEMA)
+    first.register("profiler.collect", Recorder(), DESCRIPTION, SCHEMA)
     assert default_registry(source).names() == DEFAULT_SET
     assert default_registry(data_root_source=source).names() == DEFAULT_SET
 
@@ -523,9 +525,9 @@ def test_default_registry_does_not_call_the_source():
     assert registry.names() == DEFAULT_SET
     for read in (registry.get, registry.definition):
         with pytest.raises(UnknownToolError):
-            read("sim.run")
+            read("profiler.collect")
     with pytest.raises(UnknownToolError):
-        call(registry, "sim.run", {})
+        call(registry, "profiler.collect", {})
     assert source.calls == 0
 
 

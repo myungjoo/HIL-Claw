@@ -388,6 +388,7 @@ def test_module_is_bound_by_the_registry_the_start_and_the_model_binding_only_an
     binders = (
         own.parent / "check_definition.py",
         own.parent / "model_binding.py",
+        own.parent / "run_definition.py",
         own.parent / "spec_tool.py",
         own.parent / "start_instance.py",
     )
