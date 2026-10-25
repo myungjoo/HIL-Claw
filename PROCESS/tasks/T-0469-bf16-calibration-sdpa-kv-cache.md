@@ -2,7 +2,7 @@
 id: T-0469
 title: Add the calibration of the bf16 SDPA-with-KV-cache verification run (four C kernels and an sdpa_kv_cache table in test_bf16_calibration.py, ADR-0165 decision 10, code slice 4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0466, T-0467, T-0468]
@@ -124,7 +124,11 @@ hq: []
 - (planner) After this task, ADR-0165 has all its code slices and its calibration. Its "Later work" is the record of the bf16 timing run. The planner then picks the next P2-11 to P2-14 work in PLAN order, for example the remaining P2-13 executor slices.
 
 ## Result
-**Status**: in review (filled in at merge).
+**DONE.** PR #282 https://github.com/myungjoo/HIL-Claw/pull/282, squash commit `6a002fa7` on `main` (body ends with `Task: T-0469`); branch deleted (remote and local).
+
+**Review**: 1 round, Approve (fresh-context `dev-reviewer`, https://github.com/myungjoo/HIL-Claw/pull/282#issuecomment-6396590422). The reviewer regenerated the 16 violating constants, compiled each file alone under the C gate's line, checked the failing kernel changes only `g = j % h_kv` and the failing_cache kernel writes no cache element, accepted the V1 reading (ADR-0003 decision 3 defines V1 by observable behaviour; 2^-128 is a negligible exception under decision 4; the constant wrong output satisfies decision 7; ADR-0165 decision 10 prescribes no table), and ran the 44 calibration cases under WSL. One minor, non-blocking note, not acted on (it is about this task file's Why, which the executor does not edit): the Why cites ADR-0003 decision 7's "where expected outputs come from" as support for the violating form, but that sentence concerns the functional test's expected outputs; the reading stands on decision 3 and ADR-0165 decision 10 alone.
+
+**CI**: 1 run, all six checks green, https://github.com/myungjoo/HIL-Claw/actions/runs/40185400397. C gate "harness pass": `calibration: 44 case(s) selected, 0 skipped` (6 fp32 + 38 bf16). Python gates and coverage gate: `33875 passed, 50 skipped`; lines 11236/11277 = 99.63%, functions 1088/1088 = 100.00%.
 
 **Changes**: four kernels under `tests/harness/calibration/` (`sdpa_kv_cache_bf16_{conforming,failing,failing_cache,violating}.c`) and, in `test_bf16_calibration.py`, an import of `run_bf16_sdpa_kv_cache_verification`, an `SDPA_KV_CACHE` row with a margin comment, `SDPA_KV_CACHE_STATES` (`STATES` plus `failing_cache`), a `sdpa_kv_cache_executables` session fixture (same `FLAGS`, `TRAILING_FLAGS`, `BUILD_TIMEOUT`, skip-or-fail rules), a `sdpa_kv_cache_run` helper and a test over the four states x draws {1, 3}. No existing line changed. The optional decode-shape test was not added (T-0468 already runs the conforming kernel at P = 127).
 
@@ -149,3 +153,5 @@ hq: []
 - Windows (Python 3.14.4): full `pytest` 32162 passed, 1763 skipped (the new cases skip: no POSIX); `ruff check .` and `ruff format --check .` clean.
 
 **Language**: C for the kernels (kernel language of `cpu_standin`, ADR-0003 decision 5); Python for the test. No layer-2 code changed.
+
+**Follow-ups**: none new. The planner's follow-up stands (ADR-0165 has all its code slices and its calibration; next P2-11 to P2-14 work in PLAN order). No HQ.
