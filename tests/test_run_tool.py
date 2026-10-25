@@ -808,10 +808,10 @@ def test_the_module_imports_and_names():
     assert not hasattr(run_tool, "main")
 
 
-def test_the_tool_is_registered_nowhere():
+def test_the_tool_is_registered_in_the_default_registry():
     registry = tools.default_registry(lambda: None)
     for tool in TOOLS:
-        assert tool not in registry.names()
+        assert tool in registry.names()
 
 
 def test_importing_the_run_tool_modules_imports_no_numpy():

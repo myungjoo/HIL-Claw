@@ -25,6 +25,7 @@ from hilclaw import (
     mcp_front,
     mock_backend,
     mock_check,
+    mock_run,
     run_state,
     tools,
 )
@@ -126,6 +127,7 @@ def test_the_default_registry_holds_the_definition_of_the_tool():
     assert registry.names() == (
         "blob.fetch",
         "blob.push",
+        "board.run",
         "case.write",
         "checks.read",
         "coder.run",
@@ -136,6 +138,7 @@ def test_the_default_registry_holds_the_definition_of_the_tool():
         "round.end",
         "run.commit",
         "run.fresh",
+        "sim.run",
         "spec.write",
         "state.read",
         "state.write",
@@ -196,7 +199,7 @@ def test_the_module_imports_what_it_names_and_has_its_public_names_only():
             "tools",
             "seed_source",
         },
-        "default_table": {"mock_check"},
+        "default_table": {"mock_check", "mock_run"},
         "function": {"check_tool"},
     }
     public = {
@@ -336,21 +339,35 @@ def mcp_document(name, arguments):
     return json.dumps(document).encode() + b"\n"
 
 
-def test_default_table_holds_the_mock_offering_this_tool_alone():
+def test_default_table_holds_the_mock_offering_the_three_hw_tools_of_the_registry():
+    """ADR-0070 decision 3 with ADR-0167 decision 3: one table, one mock entry."""
     table = default_table()
     assert type(table) is BackendTable
     assert table.names() == (mock_backend.NAME,)
-    assert callable(backends.select(table, profile(), TOOL))
-    for tool in backends.HW_TOOLS:
-        if tool != TOOL:
+    for tool in (TOOL, "sim.run", "board.run"):
+        assert callable(backends.select(table, profile(), tool))
+    with pytest.raises(tools.ToolFailure) as caught:
+        backends.select(table, profile(), "profiler.collect")
+    assert caught.value.kind == tools.KIND_NOT_OFFERED
+    for tool in (TOOL, "sim.run", "board.run"):
+        for accelerator in ("cpu_standin", "acc_b"):
             with pytest.raises(tools.ToolFailure) as caught:
-                backends.select(table, profile(), tool)
-            assert caught.value.kind == tools.KIND_NOT_OFFERED
-    for accelerator in ("cpu_standin", "acc_b"):
-        with pytest.raises(tools.ToolFailure) as caught:
-            backends.select(table, profile(accelerator), TOOL)
-        assert caught.value.kind == tools.KIND_NO_BACKEND
+                backends.select(table, profile(accelerator), tool)
+            assert caught.value.kind == tools.KIND_NO_BACKEND
     assert default_table() is not table
+
+
+@pytest.mark.parametrize("tool", ["sim.run", "board.run"])
+def test_default_table_run_operation_answers_with_the_default_script(tool, monkeypatch):
+    script = Recorder(mock_run.default_script)
+    monkeypatch.setattr(mock_run, "default_script", script)
+    operation = backends.select(default_table(), profile(), tool)
+    keeper = LogKeeper()
+    answer = operation(REQUEST, profile(), "parameters", Path("output"), keeper)
+    assert script.calls == [
+        (tool, REQUEST, profile(), "parameters", Path("output"), keeper)
+    ]
+    assert answer == script.answers[0]
 
 
 def test_default_table_operation_answers_with_the_default_script(parties):
@@ -391,6 +408,7 @@ def test_building_the_default_registry_calls_no_party(parties):
     assert registry.names() == (
         "blob.fetch",
         "blob.push",
+        "board.run",
         "case.write",
         "checks.read",
         "coder.run",
@@ -401,6 +419,7 @@ def test_building_the_default_registry_calls_no_party(parties):
         "round.end",
         "run.commit",
         "run.fresh",
+        "sim.run",
         "spec.write",
         "state.read",
         "state.write",
@@ -437,6 +456,7 @@ def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
     assert [tool["name"] for tool in listed] == [
         "blob_fetch",
         "blob_push",
+        "board_run",
         "case_write",
         "checks_read",
         "coder_run",
@@ -447,14 +467,15 @@ def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
         "round_end",
         "run_commit",
         "run_fresh",
+        "sim_run",
         "spec_write",
         "state_read",
         "state_write",
         "timings_compare",
         "verdicts_write",
     ]
-    assert listed[5]["description"] == DESCRIPTION
-    assert listed[5]["inputSchema"] == SCHEMA
+    assert listed[6]["description"] == DESCRIPTION
+    assert listed[6]["inputSchema"] == SCHEMA
 
 
 def test_a_call_about_a_run_at_the_mock_passes(root, parties):
@@ -680,8 +701,8 @@ def test_building_the_default_registry_imports_no_numpy(tmp_path):
 def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
     answers, loaded = heavy_modules_after(LIST_CHILD, tmp_path)
     assert answers == [
-        "0 blob_fetch blob_push case_write checks_read coder_run correctness_check"
-        + " hypotheses_read instance_read key_store round_end run_commit run_fresh spec_write state_read"
+        "0 blob_fetch blob_push board_run case_write checks_read coder_run correctness_check"
+        + " hypotheses_read instance_read key_store round_end run_commit run_fresh sim_run spec_write state_read"
         + " state_write timings_compare verdicts_write"
     ]
     assert loaded == ""
@@ -693,8 +714,8 @@ def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
         ("blob.push", '0 {"sha256":"' + ABSENT + '","present":false}'),
         ("blob.fetch", '0 {"sha256":"' + ABSENT + '","present":false}'),
         (
-            "sim.run",
-            '4 {"error":{"kind":"unknown_tool","message":"unknown tool \'sim.run\'"}}',
+            "profiler.collect",
+            '4 {"error":{"kind":"unknown_tool","message":"unknown tool \'profiler.collect\'"}}',
         ),
     ],
 )

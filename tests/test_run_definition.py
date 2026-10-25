@@ -1,23 +1,36 @@
 import ast
 import copy
 import inspect
+import io
 import json
 import math
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from hilclaw import (
+    __main__,
+    check_definition,
+    data_root_source,
     events,
+    gemm_contract,
     journaled_tool,
     keys,
     layout,
+    mcp_front,
+    mock_backend,
+    mock_run,
     run_definition,
     run_identity,
     run_state,
+    run_tool,
     tools,
 )
+from hilclaw.harness import seed_source
+from hilclaw.harness.measurement import N_MIN
 from hilclaw.journal import EMPTY
 from hilclaw.run_definition import (
     BOARD_DESCRIPTION,
@@ -588,9 +601,13 @@ def test_the_module_imports_what_it_names_and_has_its_public_names_only():
     own = Path(run_definition.__file__)
     assert imports_of(own) == {
         "re",
+        "hilclaw.gemm_contract",
         "hilclaw.keys",
         "hilclaw.run_identity",
         "hilclaw.tools",
+        "hilclaw.harness.seed_source",
+        "hilclaw.check_definition",
+        "hilclaw.run_tool",
     }
     public = {
         name
@@ -600,6 +617,7 @@ def test_the_module_imports_what_it_names_and_has_its_public_names_only():
     assert public == {
         "MEMBERS",
         "check",
+        "definitions",
         "input_schema",
         "SIM_DESCRIPTION",
         "BOARD_DESCRIPTION",
@@ -609,15 +627,402 @@ def test_the_module_imports_what_it_names_and_has_its_public_names_only():
         assert word not in code
 
 
-def test_the_default_registry_holds_neither_run_tool():
-    names = tools.default_registry(lambda: None).names()
-    assert "sim.run" not in names
-    assert "board.run" not in names
-
-
 def test_a_call_writes_no_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert input_schema() == SCHEMA
     assert check(dict(REQUEST)) is None
     refusal(REQUEST | {"seed": 7}, "seed")
     assert list(tmp_path.iterdir()) == []
+
+
+# The two definitions and the default registry (ADR-0167); test values only.
+
+RUN = "run-a"
+ROUND = 3
+SHAPE = {"m": 2, "k": 3, "n": 4}
+N_MAX = 10
+OP = {
+    "schema_version": 1,
+    "kind": "gemm",
+    "shape": SHAPE,
+    "dtype": "fp32",
+    "layout": "row_major",
+}
+OBJECTIVE = {"objectives": [{"type": "latency_minimisation"}], "constraints": []}
+DRAWS = 2
+TOLERANCE = {"rtol": 0.25, "atol": 3.0}
+CALL = {"run_id": RUN, "round": ROUND, "candidate": 2, "attempt": 1, "execution": 1}
+NUMBERS = {"round": ROUND, "candidate": 2, "attempt": 1}
+CONVERGED = {
+    "outcome": "converged",
+    "shape": SHAPE,
+    "n_max": N_MAX,
+    "sample_form": "interval",
+    "resolution_ns": 1,
+    "intervals_ns": [1000000] * N_MIN,
+    "ceiling": "not_stated",
+}
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def hw_profile(accelerator):
+    return {
+        "schema_version": 1,
+        "accelerator": accelerator,
+        "revision": "test-revision",
+        "toolchain": {"cc": "test"},
+        "host": {"cpu": "test", "os": "test"},
+        "hw_source": "external",
+    }
+
+
+def a_run(root, run_id=RUN, accelerator=mock_backend.NAME):
+    record = hw_profile(accelerator)
+    document = {
+        "schema_version": 1,
+        "hw_profile": {"key": keys.hw_profile_key(record).name, "record": record},
+        "op_signature": {"key": keys.op_signature_key(OP).name, "record": OP},
+        "n_max": N_MAX,
+        "objective": OBJECTIVE,
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+    }
+    run = root / "runs" / run_id
+    run.mkdir(parents=True)
+    (run / "instance.json").write_text(json.dumps(document), encoding="utf-8")
+    (run / "STATE.json").write_bytes(run_state.dump(ROUND, EMPTY))
+    return root
+
+
+def step_lines(root, run_id=RUN):
+    found = events.read(root, run_id).events
+    return [{name: line[name] for name in line if name != "time"} for line in found]
+
+
+def no_log(root, run_id=RUN):
+    return not (root / "runs" / run_id / "events.ndjson").exists()
+
+
+class Recorder:
+    def __init__(self, real):
+        self.real, self.calls, self.answers = real, [], []
+
+    def __call__(self, *args):
+        self.calls.append(args)
+        self.answers.append(self.real(*args))
+        return self.answers[-1]
+
+
+class AnsweringSource:
+    def __init__(self, root=None):
+        self.root, self.calls = root, 0
+
+    def __call__(self):
+        self.calls += 1
+        return self.root
+
+
+@pytest.fixture
+def data(tmp_path):
+    return a_run(tmp_path / "data")
+
+
+@pytest.fixture
+def parties(monkeypatch):
+    """Record the source of seeds, the predicate, the run script and the table the source binds."""
+    recorded = {
+        "seeds": Recorder(seed_source.system),
+        "covers": Recorder(gemm_contract.covers),
+        "script": Recorder(mock_run.default_script),
+        "table": Recorder(check_definition.default_table),
+    }
+    monkeypatch.setattr(seed_source, "system", recorded["seeds"])
+    monkeypatch.setattr(gemm_contract, "covers", recorded["covers"])
+    monkeypatch.setattr(mock_run, "default_script", recorded["script"])
+    monkeypatch.setattr(check_definition, "default_table", recorded["table"])
+    return recorded
+
+
+def counts(parties):
+    return tuple(len(parties[name].calls) for name in ("seeds", "covers", "script"))
+
+
+def refused_call(registry, tool, request, kind):
+    with pytest.raises(tools.ToolFailure) as caught:
+        tools.call(registry, tool, request)
+    assert caught.value.kind == kind
+    return caught.value
+
+
+def timed(tool, result=CONVERGED):
+    step = {"step": TOOLS[tool][0], "execution": 1}
+    return [
+        {"schema_version": 1, "kind": "step_started", **NUMBERS, "data": step},
+        {
+            "schema_version": 1,
+            "kind": "step_ended",
+            **NUMBERS,
+            "data": {**step, "spend": {}, "result": result},
+        },
+    ]
+
+
+def test_definitions_are_the_two_tools_of_the_record(parties):
+    source = AnsweringSource()
+    held = run_definition.definitions(source)
+    assert type(held) is tuple
+    assert [(one.name, one.description) for one in held] == [
+        ("sim.run", SIM_DESCRIPTION),
+        ("board.run", BOARD_DESCRIPTION),
+    ]
+    for one in held:
+        assert type(one) is tools.ToolDefinition
+        assert one.input_schema == SCHEMA
+        assert callable(one.function)
+    assert held[0].input_schema is not held[1].input_schema
+    assert (source.calls, *counts(parties)) == (0, 0, 0, 0)
+    assert parties["table"].calls == []
+
+
+@pytest.mark.parametrize("source", [None, "data", 3, {}, Path(".")])
+def test_definitions_refuse_a_source_that_is_not_callable(source):
+    with pytest.raises(TypeError, match="callable"):
+        run_definition.definitions(source)
+
+
+def test_the_default_registry_holds_both_run_tools(parties):
+    source = AnsweringSource()
+    registry = tools.default_registry(source)
+    for tool, (_, description) in TOOLS.items():
+        held = registry.definition(tool)
+        assert (held.name, held.description, held.input_schema) == (
+            tool,
+            description,
+            SCHEMA,
+        )
+    assert "profiler.collect" not in registry.names()
+    assert (source.calls, *counts(parties)) == (0, 0, 0, 0)
+    assert parties["table"].calls == []
+
+
+@pytest.mark.parametrize("source", [None, "data", 3])
+def test_the_default_registry_refuses_a_source_that_is_not_callable(source, parties):
+    with pytest.raises(TypeError, match="must be callable"):
+        tools.default_registry(source)
+    assert (*counts(parties), len(parties["table"].calls)) == (0, 0, 0, 0)
+
+
+@each_tool
+def test_a_call_about_a_run_at_the_mock_is_completed(tool, data, parties):
+    registry = tools.default_registry(lambda: data)
+    assert tools.call(registry, tool, dict(CALL)) == CONVERGED
+    assert step_lines(data) == timed(tool)
+    assert counts(parties) == (1, 1, 1)
+    ((called, asked, _, parameters, _, _),) = parties["script"].calls
+    assert (called, asked) == (tool, CALL)
+    assert parameters.seed == parties["seeds"].answers[0]
+
+
+@each_tool
+def test_the_same_request_again_returns_the_stored_result(tool, data, parties):
+    first = tools.call(tools.default_registry(lambda: data), tool, dict(CALL))
+    again = tools.call(tools.default_registry(lambda: data), tool, dict(CALL))
+    assert again == first == CONVERGED
+    assert counts(parties) == (1, 1, 1)
+    assert len(step_lines(data)) == 2
+
+
+@each_tool
+@pytest.mark.parametrize("accelerator", ["cpu_standin", "acc_b"])
+def test_a_run_at_another_accelerator_is_no_backend(
+    tool, tmp_path, parties, accelerator
+):
+    root = a_run(tmp_path / "data", accelerator=accelerator)
+    registry = tools.default_registry(lambda: root)
+    refused_call(registry, tool, dict(CALL), tools.KIND_NO_BACKEND)
+    refused_call(registry, tool, dict(CALL), tools.KIND_NO_BACKEND)
+    assert no_log(root)
+    assert counts(parties) == (0, 0, 0)
+
+
+@each_tool
+@pytest.mark.parametrize(
+    "asked",
+    [
+        CALL | {"point": "sim"},
+        CALL | {"seed": 7},
+        CALL | {"n_max": 1000},
+        {name: CALL[name] for name in CALL if name != "execution"},
+    ],
+)
+def test_a_request_the_record_refuses_is_invalid_request(tool, data, parties, asked):
+    registry = tools.default_registry(lambda: data)
+    refused_call(registry, tool, asked, tools.KIND_INVALID_REQUEST)
+    assert no_log(data)
+    assert counts(parties) == (0, 0, 0)
+
+
+def test_correctness_check_still_answers_through_the_same_registry(data, parties):
+    registry = tools.default_registry(lambda: data)
+    asked = CALL | {"point": "sim"}
+    checked = tools.call(registry, "correctness.check", asked)
+    assert checked["outcome"] == "pass"
+    assert tools.call(registry, "sim.run", dict(CALL)) == CONVERGED
+    assert tools.call(registry, "correctness.check", asked) == checked
+    assert counts(parties) == (2, 2, 1)
+    assert len(parties["table"].calls) == 2
+
+
+def test_no_environment_variable_chooses_the_table_or_the_seeds(
+    tmp_path, parties, monkeypatch
+):
+    monkeypatch.setenv("HILCLAW_BACKEND", "cpu_standin")
+    monkeypatch.setenv("HILCLAW_SEED", "7")
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    registry = tools.default_registry(lambda: root)
+    assert tools.call(registry, "board.run", dict(CALL)) == CONVERGED
+    refused_call(
+        registry, "board.run", CALL | {"run_id": "run-b"}, tools.KIND_NO_BACKEND
+    )
+    assert parties["script"].calls[0][3].seed == parties["seeds"].answers[0]
+
+
+def test_the_first_call_binds_the_tool_function_of_the_record(
+    data, parties, monkeypatch
+):
+    bound = []
+    real = run_tool.tool_function
+
+    def binding(tool, **parts):
+        bound.append((tool, parts))
+        return real(tool, **parts)
+
+    monkeypatch.setattr(run_tool, "tool_function", binding)
+    source = AnsweringSource(data)
+    registry = tools.default_registry(source)
+    assert bound == []
+    assert tools.call(registry, "sim.run", dict(CALL)) == CONVERGED
+    assert tools.call(registry, "sim.run", CALL | {"execution": 2}) == CONVERGED
+    assert bound == [
+        (
+            "sim.run",
+            {
+                "source": source,
+                "table": parties["table"].answers[0],
+                "seeds": parties["seeds"],
+                "covers": parties["covers"],
+            },
+        )
+    ]
+    assert len(parties["table"].calls) == 1
+
+
+def test_a_first_call_whose_binding_fails_keeps_nothing(data, parties, monkeypatch):
+    broken = RuntimeError("no table")
+    failures = [broken]
+
+    def fails_once():
+        if failures:
+            raise failures.pop()
+        return parties["table"]()
+
+    monkeypatch.setattr(check_definition, "default_table", fails_once)
+    registry = tools.default_registry(lambda: data)
+    failure = refused_call(registry, "board.run", dict(CALL), tools.KIND_TOOL_CRASHED)
+    assert failure.__cause__ is broken
+    assert no_log(data)
+    assert tools.call(registry, "board.run", dict(CALL)) == CONVERGED
+    assert tools.call(registry, "board.run", dict(CALL)) == CONVERGED
+    assert len(parties["table"].calls) == 1
+    assert counts(parties) == (1, 1, 1)
+
+
+@pytest.fixture
+def configured(tmp_path, monkeypatch):
+    """A data root with a run at the mock and one at cpu_standin, as the fronts' source."""
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    monkeypatch.setattr(data_root_source, "configured", lambda: root)
+    return root
+
+
+def mcp_exchange(document):
+    stdin = io.BytesIO(json.dumps(document).encode() + b"\n")
+    stdout, stderr = io.BytesIO(), io.BytesIO()
+    status = mcp_front.main([], stdin=stdin, stdout=stdout, stderr=stderr)
+    assert (status, stderr.getvalue()) == (0, b"")
+    return json.loads(stdout.getvalue())
+
+
+def mcp_tool_call(name, arguments):
+    params = {"name": name, "arguments": arguments}
+    answer = mcp_exchange(
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params}
+    )
+    result = answer["result"]
+    return result["isError"], json.loads(result["content"][0]["text"])
+
+
+def test_tools_list_of_the_mcp_front_lists_both_run_tools(configured):
+    answer = mcp_exchange({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    listed = {tool["name"]: tool for tool in answer["result"]["tools"]}
+    for name, description in (
+        ("sim_run", SIM_DESCRIPTION),
+        ("board_run", BOARD_DESCRIPTION),
+    ):
+        assert listed[name]["description"] == description
+        assert listed[name]["inputSchema"] == SCHEMA
+    assert "profiler_collect" not in listed
+
+
+@pytest.mark.parametrize(
+    ("tool", "name"), [("sim.run", "sim_run"), ("board.run", "board_run")]
+)
+def test_the_mcp_front_serves_both_run_tools(configured, parties, tool, name):
+    assert mcp_tool_call(name, CALL) == (False, CONVERGED)
+    assert mcp_tool_call(name, CALL) == (False, CONVERGED)
+    assert step_lines(configured) == timed(tool)
+    failed, answer = mcp_tool_call(name, CALL | {"run_id": "run-b"})
+    assert failed is True
+    assert answer["error"]["kind"] == tools.KIND_NO_BACKEND
+    assert no_log(configured, "run-b")
+    failed, answer = mcp_tool_call(name, CALL | {"point": "board"})
+    assert failed is True
+    assert answer["error"]["kind"] == tools.KIND_INVALID_REQUEST
+    assert counts(parties) == (1, 1, 1)
+
+
+def test_the_command_line_front_serves_a_run_tool(configured, parties):
+    stdout = io.BytesIO()
+    status = __main__.main(
+        ["board.run"],
+        stdin=io.BytesIO(json.dumps(CALL).encode()),
+        stdout=stdout,
+        stderr=io.BytesIO(),
+    )
+    assert (status, json.loads(stdout.getvalue())) == (__main__.EXIT_RESULT, CONVERGED)
+    assert counts(parties) == (1, 1, 1)
+
+
+HEAVY = ("numpy", "hilclaw.run_tool", "hilclaw.mock_check", "hilclaw.mock_run")
+BUILD_CHILD = """
+import sys
+from hilclaw import run_definition, tools
+calls = []
+def source():
+    calls.append(1)
+run_definition.definitions(source)
+tools.default_registry(source)
+print(len(calls), ",".join(name for name in {heavy!r} if name in sys.modules))
+"""
+
+
+def test_building_the_definitions_and_the_registry_imports_no_numpy():
+    done = subprocess.run(
+        [sys.executable, "-c", BUILD_CHILD.format(heavy=HEAVY)],
+        capture_output=True,
+        cwd=REPO_ROOT,
+        timeout=60,
+        check=False,
+    )
+    assert (done.returncode, done.stderr) == (0, b"")
+    assert done.stdout.decode().split() == ["0"]

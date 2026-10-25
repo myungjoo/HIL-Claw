@@ -1,6 +1,6 @@
 """The round-budget check hook of a first-case turn session (ADR-0147).
 
-:func:`main` is a ``PreToolUse`` command hook program for the two tools that
+:func:`main` is a ``PreToolUse`` command hook program for the tools that
 spend, :data:`SPENDING_TOOLS`. It reads one hook input from standard input,
 takes the run that the request's ``run_id`` names below the data root given
 as its one argument, and returns the exit status: :data:`EXIT_PASS` with
@@ -12,7 +12,9 @@ and fixture run directories only, never against a real session (D16).
 
 **Decided by ADR-0147** and only applied here:
 
-- the spending tools are ``coder.run`` and ``correctness.check`` (decision 2);
+- the spending tools are ``coder.run`` and ``correctness.check`` (decision 2),
+  and ``sim.run`` and ``board.run``, which the slice that registers them adds
+  (decision 2; ADR-0167 decision 5);
 - a pass gives no decision: exit 0 and no output, never ``"allow"``, nothing
   on standard output and so no ``updatedInput`` (decision 3);
 - the run is the ``run_id`` of ``tool_input``, not compared with the
@@ -58,7 +60,12 @@ from hilclaw.caller_check import EVENT, TOOL_PREFIX
 EXIT_PASS = 0
 EXIT_REFUSE = 2
 RUN_STATUS = "run_status"
-SPENDING_TOOLS = (f"{TOOL_PREFIX}coder_run", f"{TOOL_PREFIX}correctness_check")
+SPENDING_TOOLS = (
+    f"{TOOL_PREFIX}coder_run",
+    f"{TOOL_PREFIX}correctness_check",
+    f"{TOOL_PREFIX}sim_run",
+    f"{TOOL_PREFIX}board_run",
+)
 START = (
     "import sys; sys.path.insert(0, sys.argv.pop(1)); "
     "from hilclaw.budget_check import main; raise SystemExit(main(args=sys.argv[1:]))"
