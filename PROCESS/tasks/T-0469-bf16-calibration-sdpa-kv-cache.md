@@ -124,3 +124,28 @@ hq: []
 - (planner) After this task, ADR-0165 has all its code slices and its calibration. Its "Later work" is the record of the bf16 timing run. The planner then picks the next P2-11 to P2-14 work in PLAN order, for example the remaining P2-13 executor slices.
 
 ## Result
+**Status**: in review (filled in at merge).
+
+**Changes**: four kernels under `tests/harness/calibration/` (`sdpa_kv_cache_bf16_{conforming,failing,failing_cache,violating}.c`) and, in `test_bf16_calibration.py`, an import of `run_bf16_sdpa_kv_cache_verification`, an `SDPA_KV_CACHE` row with a margin comment, `SDPA_KV_CACHE_STATES` (`STATES` plus `failing_cache`), a `sdpa_kv_cache_executables` session fixture (same `FLAGS`, `TRAILING_FLAGS`, `BUILD_TIMEOUT`, skip-or-fail rules), a `sdpa_kv_cache_run` helper and a test over the four states x draws {1, 3}. No existing line changed. The optional decode-shape test was not added (T-0468 already runs the conforming kernel at P = 127).
+
+**Violating form**: a table of the 262,144 output patterns would be about 1.6 MB of source, so the V1 kernel recognises the known draw by the first 16 elements of `q` (draw 0, seed 2026, shape (128, 128, 32, 8, 64)) and otherwise writes the cache correctly and 0x3F00 (0.5) to every element of `out`. The 16 constants were computed in a throwaway interpreter from `draw_inputs(dims, seed=2026, draw=0).q`; a run-time seed matches them with probability 2^-128.
+
+**Test choices** (test values only):
+- Shape (128, 128, 32, 8, 64), as ADR-0165 decision 10 requires; P = 0 for both runs.
+- Tolerance rtol = 0, atol = 2**-8 (3.906e-3): about 1.8 times the conforming bound 2.154e-3 of decision 9 (no rtol with atol = 0, since y cancels), far below the miss of >= 1 at row 0 for the failing and violating kernels.
+- Known seed 2026, as for the other rows.
+- Only the verdict is asserted (ADR-0003 decision 4); for `failing_cache` also `failed == 0` in every draw of the contract run (decision 10). No count of cache differences is asserted.
+
+**Evidence of the states** (WSL clang 14, venv outside the repository, rtol 0, atol 2**-8). `DrawCounts` (failed, non_finite, cache_differences), known seed 2026 (1 draw) / run-time seed 11219411663970703364 (3 draws):
+- conforming (0, 0, 0) / (0, 0, 0) x3: PASS / PASS;
+- failing (225118, 0, 0) / (225168, 0, 0), (225304, 0, 0), (225105, 0, 0): FAIL / FAIL;
+- failing_cache (0, 0, 131072) / (0, 0, 131072) x3: FAIL / FAIL;
+- violating (0, 0, 0) / (262035, 0, 0), (262013, 0, 0), (262057, 0, 0): PASS / FAIL.
+- Over 200 draws of seed 13284484401230342356: conforming largest |dev| 1.9532e-3 = 0.500 of atol and 0.907 of the bound 2.154e-3; failing 45,017,956 of 52,428,800 elements outside, every draw FAIL, smallest |dev| among the failing elements 3.90625e-3 + 1e-16 (just past atol, as expected of a count near the threshold; the verdict rests on the row-0 misses of >= 1); failing_cache `failed == 0`, `non_finite == 0` and `cache_differences == 131072 > 0` in every draw.
+
+**Local**:
+- WSL: `test_calibration.py` + `test_bf16_calibration.py` 44 passed (6 fp32 + 38 bf16). Each new `.c` compiles alone under `clang -std=c99 -Wall -Wextra -Wpedantic -Werror -O2 -c`; `nm` shows only `hilclaw_sdpa_kv_cache_bf16` as a defined global. The new files are ASCII with LF.
+
+- Windows (Python 3.14.4): full `pytest` 32162 passed, 1763 skipped (the new cases skip: no POSIX); `ruff check .` and `ruff format --check .` clean.
+
+**Language**: C for the kernels (kernel language of `cpu_standin`, ADR-0003 decision 5); Python for the test. No layer-2 code changed.
