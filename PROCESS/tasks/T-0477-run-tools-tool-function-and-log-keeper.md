@@ -2,7 +2,7 @@
 id: T-0477
 title: Add the tool function of `sim.run` and `board.run` that joins the landed `run_*` modules, with the timing build's log keeper as the fifth thing of an operation and the mock's sixth (ADR-0108 code slices; ADR-0062 decision 6 order), with tests over the mock; register nothing
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, "#5 D12"]
 dependsOn: []
@@ -76,3 +76,9 @@ Line numbers are those of `main` at `e375a388`; the text wins. Read Korean files
 - (later; planner) The `cpu_standin` operation of `sim.run` and `board.run`, which P1-1's completion criterion also needs; before planning it, re-read ADR-0068 decision 8 and Consequences, ADR-0144 decision 7 and ADR-0107/0116/0117 Consequences for what still stops it.
 
 ## Result
+
+- PR #291 (https://github.com/myungjoo/HIL-Claw/pull/291), squash-merged as 2596c724 after 1 review round (Approve; the wording/rewrap nit fixed afterwards per D20, the commit-body nit not taken). CI green on the final head (Python 3.11/3.14, Coverage, C, sh, Test presence); local `pytest` 33212 passed, 1858 skipped; `ruff check .` and `ruff format --check .` clean; `hilclaw/` line coverage 97%.
+- New `hilclaw/run_tool.py`: `tool_function(tool, *, source, table, seeds, covers)` for `sim.run`/`board.run`, built over `hw_tool.stepped_tool_function` with the tool's one step. It follows ADR-0062 decision 6 / ADR-0067 decision 5 and ends with the result or `operation_answer_invalid`, `run_failure.ended_with`'s pair, or `KIND_BUILD_LOG_UNWRITABLE` (held equal to `build_log`'s by a test). It is one module, not two like check_tool/check_ending, because `run_operation.ask` already writes the log and tells the forms apart.
+- ADR-0108 slices: `layout.BUILD_LOG_STEPS` gains `sim_run_timing` and `board_run_timing`; `run_operation.ask` takes five things plus `log_path`, closes the keeper and writes a handed-over log before telling the forms apart (the reason is in its docstring); the `mock_run` operation takes five things and asks its script with six, and the default script hands over no log. Stale docstring lines in `run_failure.py` and `run_operation.py`, and `tests/test_run_result.py` (`run_result` now has an importer), were updated (both outside `touchesFiles`, needed by the change).
+- Language: Python, as the rest of the hilclaw tool layer the module joins.
+- Follow-ups: T-0478 (registration, default table, seed source and predicate); the cpu_standin operation of both run tools (planner).
