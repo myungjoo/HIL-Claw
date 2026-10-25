@@ -2,7 +2,7 @@
 id: T-0472
 title: Add hilclaw/model_forward.c, the bf16 forward-pass model program with its input form, library table, six entry points, every buffer and per-layer caches, the prefill pass and the report; generations with G = 1 only (ADR-0166 code slice 2)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0471]
@@ -91,3 +91,13 @@ hq: []
 - Next in the batch: T-0473 (ADR-0166 code slices 3 and 4).
 
 ## Result
+
+- **DONE.** PR #284 (`claude/T-0472-model-forward-prefill`), squash-merged as `932e742e` on `main`; branch deleted.
+- **Review**: 2 rounds (dev-reviewer, fresh context). Round 1 Approve with three Nits: (1) the directory-input test did not reach the `!S_ISREG` branch — fixed by pinning it to the short-header message and adding a FIFO test of the not-a-regular-file refusal; (2) the header comment said the file length was checked against `size_t` — corrected to `uint64_t` for the file and `size_t` for the arrays; (3) a noreturn mark on `library_failure` — not applied, because `_Noreturn` is C11 and the gate compiles C99. Round 2 re-reviewed the added test and approved; its one Nit (a short line in the header comment) was fixed as a formatting-only change (D20).
+- **CI**: C gate, sh gate, Test presence, Python gate 3.11 and 3.14, and Coverage gate all green on the last head `cdb22831`. Locally: full `pytest` on WSL Ubuntu with clang, 34183 passed; `ruff check` and `ruff format --check` clean; the CI C gate command passes on the new source.
+- **Language**: C, because the program loads C kernels and runs in one process with them (ADR-0153 decision 2); stated in the commit body.
+- **What landed**: `hilclaw/model_forward.c` (582 lines, header comment included) and `tests/test_model_forward.py` (66 tests). No other file changed; no dependency added.
+- **Binary form for T-0473**: the header comment is the authority. In short: 10 uint64 header words `D F V N H H_kv d S G lm_head_rows` (0 = "all", 1 = "last"); `eps` as a binary32; a library table of 15·G uint64 values, entry s·G + p being the library of call site s at pass p, sites in `model_binding` order; the RoPE table of (S+G−1)·d floats; S+G uint64 token ids; the weights in ADR-0166 decision 4 order. The report is the S+G token ids, then the logits rows of the pass, then `end
+`.
+- **Choices this task made**: the file length is compared with the length the header gives, through `fstat`, before any allocation (so an input that is not a regular file is refused, status 5); `eps` is checked on its bit pattern (no floating-point arithmetic in the program); `run_pass(m, entries, T, P)` emits the logits of each pass, so slice 3 can call it once per pass; G > 1 is refused with status 5 ("G is above 1; decode passes are not supported by this build").
+- **Follow-ups**: none new. Next in the batch: T-0473 (ADR-0166 code slices 3 and 4).
