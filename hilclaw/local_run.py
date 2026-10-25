@@ -28,8 +28,8 @@ standard input open while input is still unwritten does the same on POSIX; on
 native Windows it makes the call wait until standard input is closed, and the
 run is reported with the exit status of the started process. The output and
 the input are held in memory without a size limit. The process is not
-sandboxed and its environment is not scrubbed. On Windows the program lookup also searches the
-current directory.
+sandboxed and its environment is not scrubbed. On Windows the program lookup
+also searches the current directory.
 """
 
 import contextlib
@@ -170,9 +170,10 @@ def run(command, *, timeout_s, cwd=None, env=None, stdin_data=None):
     :class:`memoryview` included). The time limit is checked first, then the
     command (so :class:`ProgramNotFoundError` comes before an ``env`` or
     ``cwd`` error), then ``env``, then ``cwd``, then ``stdin_data``. An error
-    from anywhere else, including what :mod:`subprocess` raises, :class:`ProgramNotFoundError`, an
-    :class:`OSError` of the program lookup and the :class:`OSError` of the
-    ``cwd`` test, carries no ``parameter``; read it as
+    from anywhere else, including what :mod:`subprocess` raises,
+    :class:`ProgramNotFoundError`, an :class:`OSError` of the program lookup
+    and the :class:`OSError` of the ``cwd`` test, carries no ``parameter``;
+    read it as
     ``getattr(error, "parameter", None)``.
 
     Where :func:`os.wait4` is used and it finds the process already reaped by
