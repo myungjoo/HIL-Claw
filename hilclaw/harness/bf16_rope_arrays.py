@@ -117,7 +117,7 @@ def table_rows(dims, *, start):
         rule = f"such that (start + m) * d <= 2**53 - 1 for dims {dims}"
         _fail("start", rule, _shown(start))
     table = rope_table.build(head_dim=d, positions=start + m, **TABLE_CONSTANTS)
-    return np.ascontiguousarray(table[start:]).copy()
+    return table[start:].copy()
 
 
 def draw_x(dims, *, seed, draw):
