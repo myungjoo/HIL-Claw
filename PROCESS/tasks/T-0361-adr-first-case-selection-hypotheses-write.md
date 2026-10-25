@@ -2,7 +2,7 @@
 id: T-0361
 title: Record ADR-0132, the selection role of a first-case turn and what writes a round's decision/hypotheses.json (part of OD-23 and OD-30)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-11, FR-17, OD-23, OD-30, OD-18, OD-8]
 dependsOn: [T-0352, T-0355, T-0357]
@@ -94,3 +94,4 @@ OD-23 and OD-30 are design-level ODs, not owner-only (DRIVER §9: owner-only mea
 - **Registers**: `Requirements.md` rows OD-18, OD-23, OD-30 (one link each; OD-18 and OD-23 `**잔여**` rewritten in place); `OpenDecisionProposals.md` one `채택분` line in OD-18, OD-23, OD-30, and in-place states (OD-18 open bullet, OD-23 roster bullet and remainder, OD-30 "파일 자리" ①); `StandardScenarios.md` S0, S1, S6, S8, S11 re-checked, no verdict change (only the "최근 재검사" line).
 - **Overlap noted**: unlanded `claude/T-0231-*` (held per HQ-0023) and `claude/T-0264-*` also edit register files; nothing of them was taken. T-0318 has landed as ADR-0112. No open PR.
 - **Follow-ups for the planner** (D20: one ADR's code slices may share a task): slice 1 `hypotheses.write` (module, test, `default_registry`, docstrings); slice 2 `orchestration/agents/technique-selector.md` with its `tools` test; slice 3 the round ≥ 1 selection steps in `round-manager.md` with `ROUND_MANAGER_TOOLS` (with P2-1); slice 4 after the P2-7 lookup tool.
+- **Owner notice** (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6401620972
