@@ -2,7 +2,7 @@
 id: T-0465
 title: Write ADR-0165, the verification run of one built bf16 SDPA-with-KV-cache kernel (kind `sdpa_kv_cache`) on `cpu_standin` (P2-12 harness record, third part; part of OD-31 sub-question 3 and of OD-16)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0459, T-0464]
@@ -152,3 +152,35 @@ So work continues on P2-11 to P2-14, as it has since T-0451.
 - (planner) After this record lands, plan its code slices in the order its Consequences give, as ADR-0164 was followed by T-0460 to T-0464.
 
 ## Result
+
+- **Outcome**: DONE. ADR number 0165 was free and is used.
+- **Landed**: `24d4e0a4` on `main` (document mode, direct push after rebase on `origin/main` `fabf8784`; trailers `Reviewed-by: reviewer agent (7 rounds, Approve)` and `Task: T-0465`). Branch `claude/T-0465-adr-bf16-sdpa-kv-cache-verification-run` deleted locally and on origin.
+- **Files**: new `ARCHITECTURE/decisions/ADR-0165-od31-bf16-sdpa-kv-cache-verification-run.md`; `ARCHITECTURE/Requirements.md` (OD-16 and OD-31 rows: one link each, remainders rewritten in place); `ARCHITECTURE/OpenDecisionProposals.md` (one adopted line each in § OD-16 and § OD-31; OD-16 ② and OD-31 ③ end statuses rewritten in place); `ARCHITECTURE/StandardScenarios.md` ("최근 재검사" line; S0, S1, S7, S8 re-checked, verdicts unchanged, no gap).
+- **Review**: 7 rounds with the `dev-reviewer` agent; every round's verdict was Approve, and every round raised only non-blocking findings or nits, each addressed in the next round. Round 4 claimed that ADR-0163's K1 to K4 do not contain A-6; that is wrong (ADR-0163 Status K3 quotes A-6), so it was not applied. Round 7 approved, its five findings all marked optional. They were not applied, because an eighth round would exceed the A-13 limit.
+- **#5 owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6394467110
+- **What the record decides** (for the planner):
+  - **Program, command line and inputs.**
+    - The sixth program keeps ADR-0017 decision 9: it reads no standard input.
+    - Its command line is `<m> <l> <h> <h_kv> <d> <draws> <seed>`, with l >= m and h a multiple of h_kv; P = l - m is derived.
+    - The ADR-0163 generator draws q, k_new, v_new, then cache rows 0..P-1 of `cache_k` and `cache_v`.
+  - **Allocations and fills.** Each cache is one allocation of l + 2m rows: m guard rows, the operand, m guard rows. Before each call, rows P..l-1, the guard rows and `out` are set to `0x7FC0`.
+  - **Reference.** float64 NumPy, evaluated per query head.
+  - **Input check and report.**
+    - The CRC-32 covers q, k_new, v_new and both whole allocations.
+    - The report holds, per draw, the check value, then `out` and both allocations after the call: draws * (4 + 2*m*h*d + 4*(l + 2m)*h_kv*d) + E bytes.
+  - **Cache comparison and verdict.** The cache is compared bit for bit; a difference is a fail. A defect that the check value covers is broken.
+  - **Calibration**, at (128, 128, 32, 8, 64) with P = 0: conforming, V1, failing (KV head j mod h_kv), and a second failing kernel that writes no cache row.
+- **Code slices** (ADR-0165 Consequences, landing order, each within 300 LOC / 5 files excluding tests):
+  1. The program `hilclaw/harness/bf16_verification_sdpa_kv_cache.c`, with a check value over more than two byte ranges (a change of `bf16_verification.h` or a function of the program), and `sdpa_kv_cache` in `bf16_verification_build.PROGRAM_SOURCES`.
+  2. The array side: the draw of the five ranges, the allocations with their fills, the check value, the reference per head, and the expected allocations with the count of differing elements.
+  3. The runner and judge: arguments, report length, cache comparison and verdict. Its tests construct reports that show each region compared.
+  4. The four calibration kernels with their tests, plus a conforming run at a P > 0 decode shape.
+- **Proposed first slice for the planner**: slice 1, the program and build entry, as T-0460 opened ADR-0164.
+- **Runtime acceptance items**: none.
+- **Follow-ups**: wording only. Neither P2-5 nor P2-14 needs them, so they are deferrable under D18. They are round 7's optional nits:
+  - "Open HQs checked" also lists the answered HQ-0034;
+  - decision 8's phrase "show absent the defects";
+  - decision 5's dash clause on `out`;
+  - decision 5 could name ADR-0162 Boundaries' "content of cache rows the kernels did not write" (rows the operation reads);
+  - decision 10 could call the 2^-448 share "the analogue of" ADR-0003 decision 4's negligible exception.
+- **Figures**: computed in a throwaway interpreter in the session scratchpad. No repository file was changed by computation, and no `claude` was started (D16).
