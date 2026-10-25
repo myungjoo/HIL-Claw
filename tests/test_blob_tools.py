@@ -177,6 +177,7 @@ def test_the_default_registry_holds_the_definitions(root):
     registry = default_registry(lambda: root)
     assert registry.names() == (
         *NAMES,
+        "board.run",
         "case.write",
         "checks.read",
         "coder.run",
@@ -187,6 +188,7 @@ def test_the_default_registry_holds_the_definitions(root):
         "round.end",
         "run.commit",
         "run.fresh",
+        "sim.run",
         "spec.write",
         "state.read",
         "state.write",
@@ -705,18 +707,20 @@ def outcome(document, is_error=False):
 def test_the_mcp_front_lists_the_blob_tools_among_the_fixed_set(configured):
     (listed,) = serve(message("tools/list", 1))
     fetch, push = blob_tools.definitions(lambda: configured)
-    *blob, case, check, coder, correctness = listed["result"]["tools"][:6]
+    *blob, board, case, check, coder, correctness = listed["result"]["tools"][:7]
+    assert board["name"] == "board_run"
     assert case["name"] == "case_write"
     assert check["name"] == "checks_read"
     assert coder["name"] == "coder_run"
     assert correctness["name"] == "correctness_check"
-    assert [tool["name"] for tool in listed["result"]["tools"][6:]] == [
+    assert [tool["name"] for tool in listed["result"]["tools"][7:]] == [
         "hypotheses_read",
         "instance_read",
         "key_store",
         "round_end",
         "run_commit",
         "run_fresh",
+        "sim_run",
         "spec_write",
         "state_read",
         "state_write",
