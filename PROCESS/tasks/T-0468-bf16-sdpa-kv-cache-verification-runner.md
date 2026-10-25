@@ -2,7 +2,7 @@
 id: T-0468
 title: Add the runner and judge of the bf16 SDPA-with-KV-cache verification run, hilclaw/harness/bf16_sdpa_kv_cache_verification.py (arguments, report length and splitting, cache comparison, verdict, starting the executable; ADR-0165 code slice 3)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0466, T-0467]
