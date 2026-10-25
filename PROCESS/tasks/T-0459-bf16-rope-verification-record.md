@@ -74,8 +74,12 @@ This is a design-level part of OD-31 sub-question 3 and of OD-16, so it is close
 
 ## Follow-ups
 
-(executor fills)
+- Code slices of ADR-0164 Consequences (for the planner): (1) optional standard-input argument of `local_run.run`; (2) `bf16_verification_rope.c` and `rope` in `PROGRAM_SOURCES`; (3) the Python side (draw of `x`, rows from `rope_table.build`, check value over `x` and the rows, reference, judging with P); (4) three calibration kernels and tests.
+- Next harness record: SDPA with KV cache (cache rows, guard rows, cache comparison — ADR-0162 decision 13).
 
 ## Result
 
-(executor fills: commit, review rounds, owner-notice URL, follow-ups)
+- **DONE.** ADR-0164 (`ARCHITECTURE/decisions/ADR-0164-od31-bf16-rope-verification-run.md`) landed on `main` in document mode with the OD-16 and OD-31 register rows, the OpenDecisionProposals § OD-16 (②, remainder of ⑤) and § OD-31 (③) status, and the StandardScenarios re-check line (S0, S1, S7, S8; no verdict change, no gap). Landed commit: the `main` commit with trailer `Task: T-0459` (this file is part of it).
+- **Review**: 3 rounds, Approve (round 1 Approve with 1 non-blocking and 3 nits, round 2 Approve with 2 nits, round 3 Approve with nothing left); all findings addressed.
+- **Decisions in short**: fifth program as ADR-0163 decision 2; `freqs_cis` rows on standard input (departure from ADR-0017 decision 9 for `rope` only); start position P a run parameter held by the Python side; table from `rope_table.build` with θ = 500000, s = 8, a = 1, b = 4, L = 8192 for any even d (HQ-0070 not crossed); `x` as ADR-0163 decision 4; fill `0x7FC0`; float64 reference; CRC-32 check over `x` then the rows; report draws · (4 + 2·m·h·d) + E; failing calibration kernel = cos/sin swapped with P = 0.
+- **Owner-sentence search**: no conflict (K1 B-4; K2 as ADR-0163's K1-K4). Open HQs checked and listed in the record's Status. No runtime acceptance item, no new HQ. Figures computed in a throwaway interpreter (D16).
