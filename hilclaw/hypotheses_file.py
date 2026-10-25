@@ -73,19 +73,19 @@ prevented: one is given the name and the other finds it taken. Nothing here
 prevents a process from writing, replacing or removing the file by other
 means.
 
-What this module does not do: :func:`parse` and :func:`final_name` read,
-create and list no file or directory. :func:`write` reads no file, the one
-under the final name included, lists no directory, knows no "same content",
-composes no content, takes no lock and makes no commit. Nothing here checks
-what one content does not show: ``candidates`` against the ``id.candidates``
-of the round's specs, a ``ref`` naming an attempt that exists, a ``metric``
-against the run's ``instance.json``, the rules between files of ADR-0073
-decisions 2 and 3 (a ``case`` entry or a ``cases_read`` entry against the
-cases of the key directory) and of ADR-0075 decision 3 (an ``injection``
-against the ``injections`` of the run's ``instance.json``). It reads no other
-version (OD-11) and is no tool. Which agent writes the file and when, what follows a taken name and
-what a second write for a round means are open (ADR-0059 Boundaries; OD-23,
-OD-18, OD-17).
+What this module does not do: :func:`parse` and :func:`final_name` read, create
+and list no file or directory. :func:`write` reads no file, the one under the
+final name included, lists no directory, knows no "same content", composes no
+content, takes no lock and makes no commit. Nothing here checks what one
+content does not show: ``candidates`` against the ``id.candidates`` of the
+round's specs, a ``ref`` naming an attempt that exists, a ``metric`` against
+the run's ``instance.json``, the rules between files of ADR-0073 decisions 2
+and 3 (a ``case`` entry or a ``cases_read`` entry against the cases of the key
+directory) and of ADR-0075 decision 3 (an ``injection`` against the
+``injections`` of the run's ``instance.json``). It reads no other version
+(OD-11) and is no tool. Which agent writes the file and when, what follows a
+taken name and what a second write for a round means are open (ADR-0059
+Boundaries; OD-23, OD-18, OD-17).
 """
 
 import codecs

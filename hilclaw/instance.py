@@ -107,12 +107,12 @@ Conventions of this module, which the fourteen records do not fix:
   ``round_budget`` when the document holds it, then ``wall_clock_budget_s``
   when the document holds it, then ``owner`` when the document holds it, then
   ``project`` when the document holds it, then ``draws`` when the document
-  holds it, then ``objective`` when the document holds it, then
-  ``injections`` when the document holds it, then ``coder_model`` when the
-  document holds it: the order in which the records
-  defined them, and for the two of ADR-0034 the order in which it
-  names them. A content this interpreter cannot read (an integer too long for
-  it anywhere in the text, nesting too deep) raises :class:`InvalidInstanceError` too,
+  holds it, then ``objective`` when the document holds it, then ``injections``
+  when the document holds it, then ``coder_model`` when the document holds it:
+  the order in which the records defined them, and for the two of ADR-0034 the
+  order in which it names them. A content this interpreter cannot read (an
+  integer too long for it anywhere in the text, nesting too deep) raises
+  :class:`InvalidInstanceError` too,
   though it is a limit of this reader and not damage; the limits stay as the
   interpreter has them. A number beyond the float range in a member not
   defined here is read as an infinity and is no error, as
@@ -675,8 +675,7 @@ class InvalidInstanceError(ValueError):
 
     The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
     ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046, ADR-0053, ADR-0075 and
-    ADR-0136
-    and the conventions of this module.
+    ADR-0136 and the conventions of this module.
     """
 
 
@@ -828,14 +827,13 @@ def parse(content):
     ``n_max``, ``candidates_per_round``, ``op_signature``, ``round_budget``,
     ``wall_clock_budget_s``, ``owner``, ``project``, ``draws``,
     ``objective``, ``injections`` and ``coder_model``, as parsed and not
-    interpreted,
-    whatever its name and value (``tolerence``, a top-level ``rtol``,
-    ``source-commit``, ``nmax``, ``candidates``, ``op``, ``task``,
-    ``rounds``, ``budget``, ``wall_clock_budget``, ``time_budget``,
-    ``Owner``, ``user``, ``username``, ``projectname``, ``n_draws``,
-    ``Draws``, ``check_draws``, ``objectives``, a top-level ``constraints``,
-    ``target``, ``Objective``, ``goal``, ``model``, ``coderModel``,
-    ``coder_models`` or ``coder`` among them).
+    interpreted, whatever its name and value (``tolerence``, a top-level
+    ``rtol``, ``source-commit``, ``nmax``, ``candidates``, ``op``, ``task``,
+    ``rounds``, ``budget``, ``wall_clock_budget``, ``time_budget``, ``Owner``,
+    ``user``, ``username``, ``projectname``, ``n_draws``, ``Draws``,
+    ``check_draws``, ``objectives``, a top-level ``constraints``, ``target``,
+    ``Objective``, ``goal``, ``model``, ``coderModel``, ``coder_models`` or
+    ``coder`` among them).
     Any order of members and any white space of JSON are accepted.
 
     Raises :class:`InvalidInstanceError` when ``content`` is not UTF-8 without
@@ -928,21 +926,20 @@ def validate(document):
     least one entry, each a ``dict`` whose ``kind`` is ``hypothesis``, with
     exactly ``id``, ``kind`` and ``statement``, or ``material``, with exactly
     ``id``, ``kind`` and ``source``; ``id`` is a name unique in the member,
-    ``statement`` a ``str`` of at least one character and ``source`` a
-    string of 1 to 255 printable ASCII characters (ADR-0075 decisions 1 and
-    2). Only that is checked: no ``hypotheses.json`` is read and no rule
-    between files is checked (ADR-0075 decision 3). It may hold
-    ``coder_model``, which is then exactly a ``str``
-    of at most 64 characters, ``claude-`` followed by one or more ASCII
-    lowercase letters, digits and ``-``, not ending with ``-`` (ADR-0136
-    decisions 3 and 4): for a value built in memory, a subclass of ``str``
-    and a ``bytes`` are none. Only that form is checked: the name is
-    compared with no list of offered models. Its other members are not
-    looked at. The rules for the text (the encoding, a member name twice)
-    cannot be checked on a parsed value. The thirteen records are ADR-0018,
-    ADR-0020, ADR-0022, ADR-0023, ADR-0028, ADR-0031, ADR-0032, ADR-0033,
-    ADR-0034, ADR-0046, ADR-0053, ADR-0075 and ADR-0136; ADR-0024 adds no
-    rule of validity.
+    ``statement`` a ``str`` of at least one character and ``source`` a string
+    of 1 to 255 printable ASCII characters (ADR-0075 decisions 1 and 2). Only
+    that is checked: no ``hypotheses.json`` is read and no rule between files
+    is checked (ADR-0075 decision 3). It may hold ``coder_model``, which is
+    then exactly a ``str`` of at most 64 characters, ``claude-`` followed by
+    one or more ASCII lowercase letters, digits and ``-``, not ending with
+    ``-`` (ADR-0136 decisions 3 and 4): for a value built in memory, a subclass
+    of ``str`` and a ``bytes`` are none. Only that form is checked: the name is
+    compared with no list of offered models. Its other members are not looked
+    at. The rules for the text (the encoding, a member name twice) cannot be
+    checked on a parsed value. The thirteen records are ADR-0018, ADR-0020,
+    ADR-0022, ADR-0023, ADR-0028, ADR-0031, ADR-0032, ADR-0033, ADR-0034,
+    ADR-0046, ADR-0053, ADR-0075 and ADR-0136; ADR-0024 adds no rule of
+    validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,

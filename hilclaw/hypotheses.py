@@ -105,11 +105,11 @@ def validate(document):
     hypothesis has exactly ``id``, ``statement``, ``basis``, ``expected``,
     ``origin`` (``system`` or ``injected``) and ``tested_by``, and an entry
     whose ``origin`` is ``injected`` also ``injection``, a name; its ``id`` is
-    unique in the document. The
-    ``case.run_id`` and ``case.round`` of a basis entry of kind ``case`` are
-    a pair of ``cases_read``, and that ``run_id`` is not the record's. Every
-    value of a ``tested_by`` is at most ``candidates``, and every integer from
-    1 to ``candidates`` is in the ``tested_by`` of at least one hypothesis.
+    unique in the document. The ``case.run_id`` and ``case.round`` of a basis
+    entry of kind ``case`` are a pair of ``cases_read``, and that ``run_id`` is
+    not the record's. Every value of a ``tested_by`` is at most ``candidates``,
+    and every integer from 1 to ``candidates`` is in the ``tested_by`` of at
+    least one hypothesis.
     ``document`` is not modified.
 
     Raises :class:`InvalidHypothesisRecordError` for the first rule found
