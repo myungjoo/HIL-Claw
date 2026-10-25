@@ -2,7 +2,7 @@
 id: T-0458
 title: Add the three-state calibration of the bf16 verification run for rmsnorm and swiglu (six C kernels and two table rows, ADR-0163 decision 9, code slice 7)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0457]
@@ -92,3 +92,38 @@ hq: []
 - (planner) After this task, ADR-0163 has all its code slices and calibration. The next P2-11/P2-12 work is the verification of the remaining kinds (`rope`, `sdpa_kv_cache`, ADR-0161 and ADR-0162), which needs its own record first, or the model program of P2-13 (ADR-0153). The planner chooses from PLAN order.
 
 ## Result
+**DONE.** PR #273 https://github.com/myungjoo/HIL-Claw/pull/273, squash commit `bd72a0f` on `main`; branch deleted (remote and local).
+
+**Review**: 1 round, Approve (fresh-context `dev-reviewer`, https://github.com/myungjoo/HIL-Claw/pull/273#issuecomment-6391493312). The reviewer regenerated all 30 violating patterns bit for bit, compiled each file alone under the C gate's line, checked with `nm` that each defines only the contract symbol, and ran the 24 cases under WSL. Over 2000 draws of a fresh seed, the conforming kernels also passed at half the test tolerance. No finding.
+
+**CI**: 1 run, 0 failures, https://github.com/myungjoo/HIL-Claw/actions/runs/40147261889. All six checks green. C gate "harness pass": `calibration: 30 case(s) selected, 0 skipped` (6 fp32 + 24 bf16). Coverage gate: `32349 passed, 50 skipped`; lines 10852/10889 = 99.66%, functions 1055/1055 = 100.00%.
+
+**Local**:
+- Windows, venv of T-0060 (numpy 2.4.6): `pytest` 30983 passed, 1416 skipped (the 24 bf16 calibration cases skip: no POSIX). `ruff check .` and `ruff format --check .` are clean.
+- WSL (clang 14, venv `/tmp/t0458venv` outside the repository, numpy 2.4.6, pytest 9.1.1): `test_bf16_calibration.py` and `test_calibration.py` 30 passed. Each of the 12 `*_bf16_*.c` compiles alone under the C gate's line.
+- The new files are ASCII with `i/lf`.
+
+**Evidence of the states** (WSL clang 14, rtol 2**-7, atol 1e-3). Failing elements per draw, known seed 2026 (1 draw) / run-time seed 2878734870937994324 (3 draws):
+- rmsnorm (3, 5): conforming 0 / 0,0,0; failing 15 / 15,15,15; violating 0 / 15,15,15.
+- swiglu (3, 5): conforming 0 / 0,0,0; failing 15 / 15,15,15; violating 0 / 15,15,15.
+- Largest conforming |dev| / (atol + rtol |ref|) over 1000 random draws: rmsnorm 0.438, swiglu 0.475.
+- Failing kernels over 1000 random draws:
+  - rmsnorm: 14921 of 15000 elements outside, at least 12 per draw, no draw with all inside, smallest ratio among the failing 1.0095;
+  - swiglu: 15000 of 15000 outside, smallest ratio 28.3.
+- The known draw 0 gives FAIL for the failing rmsnorm kernel with 15 of 15 outside.
+
+**Violating constants**: computed in a throwaway interpreter in the scratchpad from `draw_inputs(kind, (3, 5), seed=2026, draw=0)` and `reference` (rmsnorm with the binary32 `eps` of `EPS_BITS`). The float64 reference was rounded to bf16 directly, with RNE in exact rational arithmetic. No element is a near tie: the closest is 0.102 (rmsnorm) and 0.099 (swiglu) of a bf16 unit from the midpoint, far beyond a binary32 step (2^-16 of a bf16 unit). Rounding through binary32 gives the same 30 patterns, which confirms this.
+
+**Test choices** (provisional, test values only; the two rows only, no other line of the file changed):
+- Shape (3, 5) for both kinds: small, 15 elements like the other tables.
+- Known seed 2026 per kind, as for the existing rows.
+- rmsnorm rtol 2**-7, atol 1e-3: |ref| lies in [0.25, 2] (ADR-0158 decision 9), so twice the 2**-8 of a correctly rounded output covers the fp32 steps.
+- swiglu rtol 2**-7, atol 1e-3: a conforming output is within 0.00437 |ref| (ADR-0160 decision 5); atol covers |ref| >= 0.00138; sigma(-g) misses by >= 0.39 |ref|.
+- The verdict only is asserted. A left-out weight near 1 can leave an element inside (decision 9); 79 of 15000 were inside.
+- The fixture already passed `-lm` for every kind (T-0457), so no other edit was needed.
+
+**Decision 9 list**: no test requires a fault from it to fail. The only required faults are the two from the table. The conforming rmsnorm kernel uses the passed `eps` and keeps every intermediate in `float`; nothing tests an ignored `eps`, a single square left out, Meta's intermediate rounding or truncation.
+
+**Language**: C for the kernels, the kernel language of `cpu_standin` (#5 A-7 (2), ADR-0003 decision 5); Python for the test rows. No layer-2 code changed.
+
+**Follow-ups**: none new. The planner's follow-up stands (`rope`/`sdpa_kv_cache` verification after their record, or P2-13). No HQ.
