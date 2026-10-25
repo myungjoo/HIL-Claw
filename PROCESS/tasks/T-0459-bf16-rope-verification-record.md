@@ -2,7 +2,7 @@
 id: T-0459
 title: Write ADR-0164 - the verification run of one built bf16 RoPE kernel (kind rope) on cpu_standin (program, command line, how the frequency table rows reach the program, which rows a draw uses, generator for x, output fill, float64 reference, input check, report, comparison, verdict, calibration, parameters, limits), and update the OD-16, OD-31 and StandardScenarios records (P2-12 harness record, second part; part of OD-31 sub-question 3 and of OD-16)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0444, T-0446, T-0451]
@@ -83,3 +83,4 @@ This is a design-level part of OD-31 sub-question 3 and of OD-16, so it is close
 - **Review**: 3 rounds, Approve (round 1 Approve with 1 non-blocking and 3 nits, round 2 Approve with 2 nits, round 3 Approve with nothing left); all findings addressed.
 - **Decisions in short**: fifth program as ADR-0163 decision 2; `freqs_cis` rows on standard input (departure from ADR-0017 decision 9 for `rope` only); start position P a run parameter held by the Python side; table from `rope_table.build` with θ = 500000, s = 8, a = 1, b = 4, L = 8192 for any even d (HQ-0070 not crossed); `x` as ADR-0163 decision 4; fill `0x7FC0`; float64 reference; CRC-32 check over `x` then the rows; report draws · (4 + 2·m·h·d) + E; failing calibration kernel = cos/sin swapped with P = 0.
 - **Owner-sentence search**: no conflict (K1 B-4; K2 as ADR-0163's K1-K4). Open HQs checked and listed in the record's Status. No runtime acceptance item, no new HQ. Figures computed in a throwaway interpreter (D16).
+- **Landed commit**: `f9b8096` on `main`. **Owner notice** (#5, DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6392049269
