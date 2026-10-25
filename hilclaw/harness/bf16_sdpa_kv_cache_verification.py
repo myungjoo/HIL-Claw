@@ -266,12 +266,12 @@ def _counts(report, offset, dims, seed, draw, rtol, atol):
     )
     offset += 2 * m * h * d
     shape = (l + 2 * m, h_kv, d)
+    size = math.prod(shape)
     differences = 0
     for cached, new in (
         (inputs.cached_k, inputs.k_new),
         (inputs.cached_v, inputs.v_new),
     ):
-        size = math.prod(shape)
         reported_cache = np.frombuffer(
             report, dtype=np.uint16, count=size, offset=offset
         ).reshape(shape)
