@@ -3,8 +3,7 @@
 ``ARCHITECTURE/decisions/ADR-0068-od18-run-tools-operation-tool-failure.md``
 is the rule for a tool failure an operation of these two tools raises; a
 decision cited by its number alone is one of that record. The module renders,
-ahead of the tool function, the part of its decisions 3 to 6 that needs no
-log:
+for the tool function, the part of its decisions 3 to 6 that needs no log:
 
 * :func:`ended_with`: from a tool failure an operation raised to the kind and
   the message the ``failure`` of the end line holds. For a backend kind it is
@@ -65,9 +64,9 @@ Choices that are this module's own and no rule of a record:
   imported.
 
 What the module does not do: it is no tool and no step, is bound to none and
-is called by :func:`hilclaw.run_tool.tool_function`. It calls no operation and catches nothing
-an operation raises; whoever calls says that an operation raised the tool
-failure. It appends no line and states no spend. It writes no compiler log:
+is called by :func:`hilclaw.run_tool.tool_function`. It calls no operation
+and catches nothing an operation raises; whoever calls says that an
+operation raised the tool failure. It appends no line and states no spend. It writes no compiler log:
 where the operation handed a log over, ADR-0108 decision 7 comes first in the
 tool function, and that is not this module's. It raises no backend kind,
 composes no message of one and maps no situation to one. It keeps nothing of

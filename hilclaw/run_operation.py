@@ -5,9 +5,9 @@ rule for the form between the tool function and an operation of either run
 tool; a decision cited by its number alone is one of that record.
 ``ARCHITECTURE/decisions/ADR-0108-od18-run-tools-timing-build-compiler-log.md``
 adds the log keeper as a fifth thing (its decision 5) and the write of the
-log (its decision 7). The module renders, ahead of the tool functions,
-decisions 4, 6 and 7 and the part of ADR-0108 decisions 5 and 7 that lies
-between the operation and the judging:
+log (its decision 7). The module renders, for the tool function, decisions
+4, 6 and 7 and the part of ADR-0108 decisions 5 and 7 that lies between the
+operation and the judging:
 
 * :func:`ask`: calls an operation once with the four things of decision 2
   and the log keeper of ADR-0108 decision 5, closes the keeper when the
