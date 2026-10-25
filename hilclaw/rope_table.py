@@ -9,12 +9,14 @@ it to the model program as one more array (ADR-0153 decision 3 (b)). Pair i of
 a head takes table columns 2i and 2i + 1 (decision 5); the operand
 ``freqs_cis`` of a call is ``fp32`` and its row i is the table row of position
 P + i (decision 6); the verification value sets are rows of this table built
-with Meta's constants (decision 13). This module has two functions:
+with Meta's constants (decision 13). This module has three functions:
 
 * :func:`frequencies`: the scaled frequencies g(i), each the binary64 value
   nearest to the exact one.
 * :func:`build`: the table, a ``float32`` array with rows for positions 0 to
   ``positions`` - 1.
+* :func:`constant_refusals`: the values of the five constants that the two
+  functions above refuse, all of them, without computing a frequency.
 
 **The rule** (decision 4), with d = ``head_dim``, θ = ``theta``,
 s = ``scale_factor``, a = ``low_freq_factor``, b = ``high_freq_factor`` and
@@ -187,6 +189,45 @@ def build(
     return table
 
 
+def constant_refusals(
+    *,
+    theta,
+    scale_factor,
+    low_freq_factor,
+    high_freq_factor,
+    old_context_len,
+):
+    """Return the refusals of the values of the five RoPE constants, as a ``tuple`` of ``(name, reason)`` pairs.
+
+    The constants are those of :func:`frequencies`, refused by the same rules,
+    but every one is looked at and nothing is computed. First each constant,
+    in the order of the signature, must be exactly an ``int`` or a ``float``
+    (``bool`` refused); the first that is not raises :class:`TypeError` with
+    ``parameter`` set to its name. Then the result holds, in signature order,
+    one pair for each constant that is not finite or not greater than 0, and
+    one for ``high_freq_factor`` when it is not greater than a
+    ``low_freq_factor`` that is itself not refused. ``reason`` is the text the
+    :class:`ValueError` of :func:`frequencies` carries. An empty result means
+    :func:`frequencies` and :func:`build` accept the constants.
+    """
+    constants = (
+        theta,
+        scale_factor,
+        low_freq_factor,
+        high_freq_factor,
+        old_context_len,
+    )
+    for name, value in zip(_CONSTANTS, constants):
+        with _parameter(name):
+            _constant_type(value)
+    refusals = []
+    for name, value in zip(_CONSTANTS, constants):
+        reason = _constant_value(name, value, constants[2])
+        if reason is not None:
+            refusals.append((name, reason))
+    return tuple(refusals)
+
+
 class _Arithmetic:
     def __init__(self, digits):
         self.digits = digits
@@ -350,15 +391,28 @@ def _checked(head_dim, constants):
             raise ValueError(f"must be even, got {head_dim}")
     for name, value in zip(_CONSTANTS, constants):
         with _parameter(name):
-            if type(value) not in (int, float):
-                raise TypeError(
-                    f"must be an int or a float, got {type(value).__name__}"
-                )
-            if not (value > 0 and (type(value) is int or math.isfinite(value))):
-                raise ValueError(f"must be finite and greater than 0, got {value!r}")
-            if name == "high_freq_factor" and value <= constants[2]:
-                raise ValueError("must be greater than low_freq_factor")
+            _constant_type(value)
+            reason = _constant_value(name, value, constants[2])
+            if reason is not None:
+                raise ValueError(reason)
     return tuple(Decimal(value) for value in constants)
+
+
+def _constant_type(value):
+    if type(value) not in (int, float):
+        raise TypeError(f"must be an int or a float, got {type(value).__name__}")
+
+
+def _constant_value(name, value, low):
+    if not _positive(value):
+        return f"must be finite and greater than 0, got {value!r}"
+    if name == "high_freq_factor" and _positive(low) and value <= low:
+        return "must be greater than low_freq_factor"
+    return None
+
+
+def _positive(value):
+    return value > 0 and (type(value) is int or math.isfinite(value))
 
 
 def _integer(value, least):

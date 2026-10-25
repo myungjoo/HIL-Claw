@@ -11,7 +11,7 @@ import pytest
 
 from hilclaw import rope_table
 from hilclaw.keys import MAX_INTEGER
-from hilclaw.rope_table import build, frequencies
+from hilclaw.rope_table import build, constant_refusals, frequencies
 
 META = {
     "head_dim": 64,
@@ -553,10 +553,11 @@ def test_the_public_names_and_signatures():
         "numpy",
         "keys",
     }
-    assert public - imported == {"frequencies", "build"}
+    assert public - imported == {"frequencies", "build", "constant_refusals"}
     for function, names in (
         (frequencies, SIGNATURE),
         (build, SIGNATURE + ("positions",)),
+        (constant_refusals, CONSTANTS),
     ):
         parameters = inspect.signature(function).parameters
         assert tuple(parameters) == names
@@ -590,7 +591,7 @@ def test_the_module_is_named_only_by_the_bf16_rope_verification_arrays():
         for path in own.parent.rglob("*.py")
         if path != own and "rope_table" in path.read_text(encoding="utf-8")
     }
-    assert naming == {"harness/bf16_rope_arrays.py"}
+    assert naming == {"harness/bf16_rope_arrays.py", "model_forward_check.py"}
 
 
 def test_a_call_writes_no_file(tmp_path, monkeypatch):
@@ -600,3 +601,75 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         build(positions=0, **META)
     assert list(tmp_path.iterdir()) == []
+
+
+def refusals(**changes):
+    arguments = {name: META[name] for name in CONSTANTS}
+    arguments.update(changes)
+    return constant_refusals(**arguments)
+
+
+def test_constant_refusals_accepts_what_build_accepts():
+    assert refusals() == ()
+    for small in SMALL:
+        assert refusals(**{name: small[name] for name in CONSTANTS}) == ()
+    assert refusals(low_freq_factor=10**400, high_freq_factor=10**400 + 1) == ()
+
+
+@pytest.mark.parametrize("name", CONSTANTS)
+@pytest.mark.parametrize(
+    ("value", "error"), [(v, e) for v, e in BAD_REALS if e is ValueError]
+)
+def test_constant_refusals_gives_the_value_error_of_frequencies(name, value, error):
+    with pytest.raises(error) as raised:
+        call(frequencies, **{name: value})
+    assert ((name, str(raised.value)),) == refusals(**{name: value})
+
+
+@pytest.mark.parametrize("name", CONSTANTS)
+@pytest.mark.parametrize("value", [v for v, e in BAD_REALS if e is TypeError])
+def test_constant_refusals_raises_a_wrong_type(name, value):
+    with pytest.raises(TypeError) as raised:
+        refusals(**{name: value})
+    assert raised.value.parameter == name
+
+
+def test_constant_refusals_gives_every_bad_constant():
+    assert refusals(theta=0, scale_factor=-1, old_context_len=math.inf) == (
+        ("theta", "must be finite and greater than 0, got 0"),
+        ("scale_factor", "must be finite and greater than 0, got -1"),
+        ("old_context_len", "must be finite and greater than 0, got inf"),
+    )
+
+
+@pytest.mark.parametrize("high", [1, 1.0, 0.5])
+def test_constant_refusals_high_not_above_low(high):
+    assert refusals(high_freq_factor=high) == (
+        ("high_freq_factor", "must be greater than low_freq_factor"),
+    )
+
+
+def test_constant_refusals_compares_high_only_with_a_valid_low():
+    assert refusals(low_freq_factor=math.inf, high_freq_factor=2) == (
+        ("low_freq_factor", "must be finite and greater than 0, got inf"),
+    )
+    assert refusals(low_freq_factor=-1, high_freq_factor=-2) == (
+        ("low_freq_factor", "must be finite and greater than 0, got -1"),
+        ("high_freq_factor", "must be finite and greater than 0, got -2"),
+    )
+
+
+def test_constant_refusals_looks_at_every_type_before_any_value():
+    with pytest.raises(TypeError) as raised:
+        refusals(theta=0, old_context_len=None)
+    assert raised.value.parameter == "old_context_len"
+
+
+def test_constant_refusals_computes_nothing(monkeypatch):
+    def fail(*args):
+        raise AssertionError("computed")
+
+    monkeypatch.setattr(rope_table, "_frequency", fail)
+    monkeypatch.setattr(rope_table, "_Arithmetic", fail)
+    assert refusals() == ()
+    assert refusals(theta=0) == (("theta", "must be finite and greater than 0, got 0"),)
