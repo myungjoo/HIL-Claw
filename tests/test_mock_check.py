@@ -9,6 +9,7 @@ import pytest
 
 from hilclaw import mock_backend, mock_check
 from hilclaw.backends import Backend, BackendTable, select
+from hilclaw.build_log import LogKeeper
 from hilclaw.check_answer import from_answer
 from hilclaw.check_parameters import CheckParameters
 from hilclaw.harness import verification_arrays
@@ -51,8 +52,8 @@ class Asked:
         self.answer = answer
         self.calls = []
 
-    def __call__(self, tool, request, hw_profile, parameters, output_path):
-        self.calls.append((tool, request, hw_profile, parameters, output_path))
+    def __call__(self, tool, request, hw_profile, parameters, output_path, keeper):
+        self.calls.append((tool, request, hw_profile, parameters, output_path, keeper))
         return self.answer
 
 
@@ -68,14 +69,14 @@ def record(accelerator=mock_backend.NAME):
 
 
 def raising(error):
-    def script(tool, request, hw_profile, parameters, output_path):
+    def script(tool, request, hw_profile, parameters, output_path, keeper):
         raise error
 
     return script
 
 
 def answer_for(parameters, output_path=OUTPUT_PATH):
-    return default_script(TOOL, REQUEST, record(), parameters, output_path)
+    return default_script(TOOL, REQUEST, record(), parameters, output_path, LogKeeper())
 
 
 def judged(report, parameters, tolerance):
@@ -116,15 +117,24 @@ def test_the_script_is_asked_once_with_the_tool_and_the_very_four_objects():
     script = Asked(b"an answer of the tests")
     request, hw_profile = dict(REQUEST), record()
     output_path = Path(OUTPUT_PATH)
-    operation(script)(request, hw_profile, PARAMETERS, output_path)
-    ((tool, asked_request, asked_hw_profile, asked_parameters, asked_path),) = (
-        script.calls
-    )
+    keeper = LogKeeper()
+    operation(script)(request, hw_profile, PARAMETERS, output_path, keeper)
+    (
+        (
+            tool,
+            asked_request,
+            asked_hw_profile,
+            asked_parameters,
+            asked_path,
+            asked_keeper,
+        ),
+    ) = script.calls
     assert tool == TOOL
     assert asked_request is request
     assert asked_hw_profile is hw_profile
     assert asked_parameters is PARAMETERS
     assert asked_path is output_path
+    assert asked_keeper is keeper
     assert output_path == OUTPUT_PATH
 
 
@@ -135,7 +145,8 @@ def test_the_script_is_asked_once_with_the_tool_and_the_very_four_objects():
 )
 def test_a_fourth_thing_that_is_no_path_reaches_the_script(fourth):
     script = Asked(b"an answer of the tests")
-    assert operation(script)(REQUEST, record(), PARAMETERS, fourth) is script.answer
+    made = operation(script)
+    assert made(REQUEST, record(), PARAMETERS, fourth, LogKeeper()) is script.answer
     assert script.calls[0][4] is fourth
 
 
@@ -157,7 +168,10 @@ def test_a_fourth_thing_that_is_no_path_reaches_the_script(fourth):
 )
 def test_the_operation_returns_the_very_object_the_script_returned(answer):
     assert (
-        operation(Asked(answer))(REQUEST, record(), PARAMETERS, OUTPUT_PATH) is answer
+        operation(Asked(answer))(
+            REQUEST, record(), PARAMETERS, OUTPUT_PATH, LogKeeper()
+        )
+        is answer
     )
 
 
@@ -165,8 +179,8 @@ def test_building_asks_nothing_and_each_call_asks_once():
     script = Asked()
     made = operation(script)
     assert script.calls == []
-    made(REQUEST, record(), PARAMETERS, OUTPUT_PATH)
-    made(REQUEST, record(), PARAMETERS, OUTPUT_PATH)
+    made(REQUEST, record(), PARAMETERS, OUTPUT_PATH, LogKeeper())
+    made(REQUEST, record(), PARAMETERS, OUTPUT_PATH, LogKeeper())
     assert len(script.calls) == 2
 
 
@@ -174,9 +188,10 @@ def test_two_operations_over_two_scripts_stay_apart():
     a, b = Asked("answered by a"), Asked("answered by b")
     one, other = operation(a), operation(b)
     assert one is not other
-    assert one(REQUEST, record(), PARAMETERS, OUTPUT_PATH) == "answered by a"
-    assert other(REQUEST, record(), PARAMETERS, OUTPUT_PATH) == "answered by b"
-    assert one(REQUEST, record(), PARAMETERS, OUTPUT_PATH) == "answered by a"
+    keeper = LogKeeper()
+    assert one(REQUEST, record(), PARAMETERS, OUTPUT_PATH, keeper) == "answered by a"
+    assert other(REQUEST, record(), PARAMETERS, OUTPUT_PATH, keeper) == "answered by b"
+    assert one(REQUEST, record(), PARAMETERS, OUTPUT_PATH, keeper) == "answered by a"
     assert (len(a.calls), len(b.calls)) == (2, 1)
 
 
@@ -191,7 +206,9 @@ def test_the_operation_is_selected_through_a_backend_of_the_mock():
     assert select(table, record(), TOOL) is made
     assert script.calls == []
     assert (
-        select(table, record(), TOOL)(REQUEST, record(), PARAMETERS, OUTPUT_PATH)
+        select(table, record(), TOOL)(
+            REQUEST, record(), PARAMETERS, OUTPUT_PATH, LogKeeper()
+        )
         is script.answer
     )
     assert len(script.calls) == 1
@@ -211,14 +228,14 @@ def test_a_record_of_another_accelerator_does_not_reach_the_script():
 )
 def test_a_third_thing_that_is_no_check_parameters_reaches_the_script(third):
     script = Asked()
-    operation(script)(REQUEST, record(), third, OUTPUT_PATH)
+    operation(script)(REQUEST, record(), third, OUTPUT_PATH, LogKeeper())
     assert script.calls[0][3] is third
 
 
 def test_a_call_leaves_its_four_objects_as_they_are():
     request, hw_profile = copy.deepcopy(REQUEST), record()
     output_path = Path(OUTPUT_PATH)
-    operation(Asked())(request, hw_profile, PARAMETERS, output_path)
+    operation(Asked())(request, hw_profile, PARAMETERS, output_path, LogKeeper())
     assert (request, hw_profile) == (REQUEST, record())
     assert PARAMETERS == CheckParameters(SEED, DRAWS, 3, 4, 5)
     assert output_path == OUTPUT_PATH
@@ -229,18 +246,29 @@ def test_a_call_leaves_its_four_objects_as_they_are():
     [
         lambda made: made(REQUEST, record()),
         lambda made: made(REQUEST, record(), PARAMETERS),
-        lambda made: made(REQUEST, record(), PARAMETERS, OUTPUT_PATH, "more"),
+        lambda made: made(
+            REQUEST, record(), PARAMETERS, OUTPUT_PATH, LogKeeper(), "more"
+        ),
         lambda made: made(),
         lambda made: made(
             hw_profile=record(),
             parameters=PARAMETERS,
             request=REQUEST,
             output_path=OUTPUT_PATH,
+            keeper=LogKeeper(),
         ),
         lambda made: made(REQUEST, PARAMETERS, OUTPUT_PATH, hw_profile=record()),
         lambda made: made(REQUEST, record(), OUTPUT_PATH, parameters=PARAMETERS),
-        lambda made: made(REQUEST, record(), PARAMETERS, output_path=OUTPUT_PATH),
-        lambda made: made(REQUEST, record(), PARAMETERS, OUTPUT_PATH, data_root="x"),
+        lambda made: made(
+            REQUEST,
+            record(),
+            PARAMETERS,
+            output_path=OUTPUT_PATH,
+            keeper=LogKeeper(),
+        ),
+        lambda made: made(
+            REQUEST, record(), PARAMETERS, OUTPUT_PATH, LogKeeper(), data_root="x"
+        ),
     ],
     ids=[
         "two arguments",
@@ -276,7 +304,9 @@ def test_an_operation_takes_four_positional_things_and_nothing_else(call):
 )
 def test_what_the_script_raises_passes_through_as_the_same_object(error):
     with pytest.raises(BaseException) as raised:
-        operation(raising(error))(REQUEST, record(), PARAMETERS, OUTPUT_PATH)
+        operation(raising(error))(
+            REQUEST, record(), PARAMETERS, OUTPUT_PATH, LogKeeper()
+        )
     assert raised.value is error
     assert raised.value.__cause__ is None
 
@@ -349,7 +379,9 @@ def test_the_answer_reads_nothing_but_the_check_parameters():
     ]
     before = copy.deepcopy(asked)
     for tool, request, hw_profile, output_path in asked:
-        answer = default_script(tool, request, hw_profile, PARAMETERS, output_path)
+        answer = default_script(
+            tool, request, hw_profile, PARAMETERS, output_path, LogKeeper()
+        )
         assert answer == expected
     assert asked == before
     assert PARAMETERS == CheckParameters(SEED, DRAWS, 3, 4, 5)
@@ -380,7 +412,9 @@ def test_what_is_raised_and_its_order_do_not_depend_on_the_output_path(
 ):
     monkeypatch.setattr(verification_arrays, "draw_inputs", never_drawn)
     with pytest.raises(TypeError) as of_type:
-        default_script(TOOL, REQUEST, record(), (-1, 0, 0, 0, 0), output_path)
+        default_script(
+            TOOL, REQUEST, record(), (-1, 0, 0, 0, 0), output_path, LogKeeper()
+        )
     assert type(of_type.value) is TypeError
     assert PATH_MARKER not in str(of_type.value)
     with pytest.raises(VerificationArgumentError) as of_value:
@@ -396,7 +430,9 @@ def test_the_same_report_fails_under_a_tolerance_that_admits_no_rounding():
 
 
 def test_the_report_through_the_operation_is_that_of_a_direct_call():
-    through = operation(default_script)(REQUEST, record(), PARAMETERS, OUTPUT_PATH)
+    through = operation(default_script)(
+        REQUEST, record(), PARAMETERS, OUTPUT_PATH, LogKeeper()
+    )
     assert type(through) is bytes
     assert through == answer_for(PARAMETERS)
 
@@ -457,7 +493,7 @@ def test_the_type_is_looked_at_before_the_values():
 def test_a_call_writes_no_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     answer_for(PARAMETERS)
-    operation(default_script)(REQUEST, record(), SMALLEST, OUTPUT_PATH)
+    operation(default_script)(REQUEST, record(), SMALLEST, OUTPUT_PATH, LogKeeper())
     refused(None, TypeError)
     refused(PARAMETERS._replace(draws=0), VerificationArgumentError)
     assert list(tmp_path.iterdir()) == []
@@ -507,6 +543,7 @@ def test_public_names_of_the_module_and_no_default():
         "hw_profile",
         "parameters",
         "output_path",
+        "keeper",
     ]
     for parameter in parameters.values():
         assert parameter.default is inspect.Parameter.empty, parameter

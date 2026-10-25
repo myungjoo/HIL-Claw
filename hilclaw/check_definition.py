@@ -110,7 +110,10 @@ def default_table():
     It holds one :class:`hilclaw.backends.Backend` named
     :data:`hilclaw.mock_backend.NAME` that offers ``correctness.check`` alone,
     with :func:`hilclaw.mock_check.operation` bound to
-    :func:`hilclaw.mock_check.default_script`. It holds no ``cpu_standin``
+    :func:`hilclaw.mock_check.default_script`; that operation takes five
+    arguments, the log keeper of ADR-0078 decision 6 the last, and the
+    default script hands it no log, so a call answered by it leaves no file
+    of a compiler's log. It holds no ``cpu_standin``
     entry, so a call about any other ``accelerator`` is ``no_backend``.
     It imports :mod:`hilclaw.mock_check`, and so NumPy.
     """

@@ -22,6 +22,7 @@ from hilclaw import (
     mock_check,
     tools,
 )
+from hilclaw.build_log import LogKeeper
 from hilclaw.check_admission import Admitted
 from hilclaw.check_ending import EndedWithoutOutcome
 from hilclaw.check_parameters import CheckParameters
@@ -42,6 +43,8 @@ MARKER = "zq7_marker_zq7"
 PATH_MARKER = "zq7_path_zq7"
 # A test value: nothing lies there, and no test makes it.
 OUTPUT_PATH = Path(PATH_MARKER) / "runs" / "r1" / "output"
+# A test value: nothing lies there, no test makes it, and no test hands over a log.
+LOG_PATH = Path(PATH_MARKER) / "runs" / "r1" / "build-log.txt"
 MESSAGE_LIMIT = 200
 # A stand-in of this file: no record gives the name a meaning.
 EXAMPLE_KIND = "example_kind"
@@ -90,7 +93,12 @@ def parameters_of(admitted=ADMITTED, seed=SEED):
 
 def good_report(admitted=ADMITTED, seed=SEED):
     return mock_check.default_script(
-        "correctness.check", None, None, parameters_of(admitted, seed), None
+        "correctness.check",
+        None,
+        None,
+        parameters_of(admitted, seed),
+        None,
+        LogKeeper(),
     )
 
 
@@ -102,7 +110,16 @@ def off_by_a_quarter():
 
 
 def checked(operation, admitted=ADMITTED, seed=SEED, output_path=OUTPUT_PATH):
-    return check(operation, REQUEST, HW_PROFILE, admitted, seed, output_path)
+    return check(
+        operation,
+        REQUEST,
+        HW_PROFILE,
+        admitted,
+        seed,
+        output_path,
+        LogKeeper(),
+        log_path=LOG_PATH,
+    )
 
 
 def carried(operation, admitted=ADMITTED, seed=SEED):
@@ -112,6 +129,8 @@ def carried(operation, admitted=ADMITTED, seed=SEED):
         HW_PROFILE,
         parameters_of(admitted, seed),
         OUTPUT_PATH,
+        LogKeeper(),
+        log_path=LOG_PATH,
         rtol=admitted.rtol,
         atol=admitted.atol,
     )
@@ -380,14 +399,25 @@ def test_the_operation_is_called_once_with_the_four_and_the_five():
     admitted = Admitted(m=3, k=4, n=5, draws=3, rtol=0.5, atol=3.0)
     output_path = Path(OUTPUT_PATH)
     operation = Recording(answer=good_report(admitted, seed))
-    result = check(operation, request, hw_profile, admitted, seed, output_path)
+    keeper = LogKeeper()
+    result = check(
+        operation,
+        request,
+        hw_profile,
+        admitted,
+        seed,
+        output_path,
+        keeper,
+        log_path=LOG_PATH,
+    )
     assert type(result) is dict
     assert result["outcome"] == "pass"
     assert len(operation.calls) == 1
     args, kwargs = operation.calls[0]
     assert kwargs == {}
-    assert len(args) == 4
+    assert len(args) == 5
     assert args[3] is output_path
+    assert args[4] is keeper
     assert output_path == OUTPUT_PATH
     assert args[0] is request
     assert args[1] is hw_profile
@@ -411,19 +441,34 @@ def test_the_six_values_and_the_seed_reach_carry_out_and_its_object_is_returned(
     operation = Recording()
     seed = LAST - 12345
     output_path = Path(OUTPUT_PATH)
-    assert check(operation, REQUEST, HW_PROFILE, ADMITTED, seed, output_path) is made
+    keeper = LogKeeper()
+    assert (
+        check(
+            operation,
+            REQUEST,
+            HW_PROFILE,
+            ADMITTED,
+            seed,
+            output_path,
+            keeper,
+            log_path=LOG_PATH,
+        )
+        is made
+    )
     assert operation.calls == []
     assert len(stand_in.calls) == 1
     args, kwargs = stand_in.calls[0]
-    assert len(args) == 5
+    assert len(args) == 6
     assert args[4] is output_path
+    assert args[5] is keeper
     assert args[0] is operation
     assert args[1] is REQUEST
     assert args[2] is HW_PROFILE
     assert type(args[3]) is CheckParameters
     assert args[3].seed is seed
     assert args[3] == parameters_of(ADMITTED, seed)
-    assert set(kwargs) == {"rtol", "atol"}
+    assert set(kwargs) == {"log_path", "rtol", "atol"}
+    assert kwargs["log_path"] is LOG_PATH
     assert kwargs["rtol"] is ADMITTED.rtol
     assert kwargs["atol"] is ADMITTED.atol
 
@@ -441,8 +486,9 @@ def test_the_output_path_is_handed_on_whatever_it_is_and_changes_nothing(output_
         )
         ((args, kwargs),) = operation.calls
         assert kwargs == {}
-        assert len(args) == 4
+        assert len(args) == 5
         assert args[3] is output_path
+        assert type(args[4]) is LogKeeper
     for make in (
         lambda: Recording(answer=None),
         lambda: Recording(error=ValueError(MARKER)),
@@ -607,9 +653,12 @@ def test_the_call_of_check_is_checked_by_python():
     for args, kwargs in (
         (four, {}),
         ((*four, SEED), {}),
-        ((*four, SEED, OUTPUT_PATH, OUTPUT_PATH), {}),
-        ((*four, SEED, OUTPUT_PATH), {"rtol": 0.5}),
-        ((*four, SEED, OUTPUT_PATH), {"output_path": OUTPUT_PATH}),
+        ((*four, SEED, OUTPUT_PATH, LogKeeper(), OUTPUT_PATH), {"log_path": LOG_PATH}),
+        ((*four, SEED, OUTPUT_PATH, LogKeeper()), {"rtol": 0.5, "log_path": LOG_PATH}),
+        (
+            (*four, SEED, OUTPUT_PATH, LogKeeper()),
+            {"output_path": OUTPUT_PATH, "log_path": LOG_PATH},
+        ),
         ((), {}),
     ):
         with pytest.raises(TypeError) as caught:
@@ -623,9 +672,14 @@ def test_the_arguments_are_left_as_they_were():
     hw_profile = copy.deepcopy(HW_PROFILE)
     admitted = Admitted(*ADMITTED)
     checked_with = (request, hw_profile, admitted, SEED, OUTPUT_PATH)
-    check(Recording(answer="time_limit"), *checked_with)
+    check(Recording(answer="time_limit"), *checked_with, LogKeeper(), log_path=LOG_PATH)
     with pytest.raises(EndedWithoutOutcome):
-        check(Recording(error=ValueError(MARKER)), *checked_with)
+        check(
+            Recording(error=ValueError(MARKER)),
+            *checked_with,
+            LogKeeper(),
+            log_path=LOG_PATH,
+        )
     assert request == REQUEST
     assert hw_profile == HW_PROFILE
     assert admitted == ADMITTED
@@ -637,7 +691,16 @@ def test_admit_then_draw_then_check_ends_in_a_result():
     source = Source(SEED)
     seed = draw(source)
     operation = mock_check.operation(mock_check.default_script)
-    result = check(operation, REQUEST, HW_PROFILE, admitted, seed, OUTPUT_PATH)
+    result = check(
+        operation,
+        REQUEST,
+        HW_PROFILE,
+        admitted,
+        seed,
+        OUTPUT_PATH,
+        LogKeeper(),
+        log_path=LOG_PATH,
+    )
     assert result["outcome"] == "pass"
     assert len(source.calls) == 1
 
@@ -648,7 +711,16 @@ def test_when_the_source_fails_the_operation_is_never_called():
     source = Source(OSError(5, MARKER))
     with pytest.raises(tools.ToolFailure) as caught:
         seed = draw(source)
-        check(operation, REQUEST, HW_PROFILE, admitted, seed, OUTPUT_PATH)
+        check(
+            operation,
+            REQUEST,
+            HW_PROFILE,
+            admitted,
+            seed,
+            OUTPUT_PATH,
+            LogKeeper(),
+            log_path=LOG_PATH,
+        )
     assert caught.value.kind == KIND_SEED_NOT_DRAWN
     assert operation.calls == []
     assert len(source.calls) == 1
@@ -734,11 +806,23 @@ def test_public_names_of_the_module_and_no_default():
         (draw, ["source"]),
         (
             check,
-            ["operation", "request", "hw_profile", "admitted", "seed", "output_path"],
+            [
+                "operation",
+                "request",
+                "hw_profile",
+                "admitted",
+                "seed",
+                "output_path",
+                "keeper",
+                "log_path",
+            ],
         ),
     ):
         parameters = list(inspect.signature(function).parameters.values())
         assert [parameter.name for parameter in parameters] == names
         for parameter in parameters:
             assert parameter.default is inspect.Parameter.empty, parameter
-            assert parameter.kind is positional, parameter
+            if parameter.name == "log_path":
+                assert parameter.kind is inspect.Parameter.KEYWORD_ONLY, parameter
+            else:
+                assert parameter.kind is positional, parameter
