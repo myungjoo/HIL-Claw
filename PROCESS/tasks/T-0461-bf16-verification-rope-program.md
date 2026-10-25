@@ -2,7 +2,7 @@
 id: T-0461
 title: Add the bf16 RoPE verification program bf16_verification_rope.c, which takes the freqs_cis rows on standard input, and register rope in bf16_verification_build.PROGRAM_SOURCES (ADR-0164 code slice 2)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0460]
@@ -187,3 +187,12 @@ hq: []
 - Next slice (planner candidate): ADR-0164 code slice 3, the Python side of the rope verification run.
 
 ## Result
+
+- **Outcome**: DONE. PR #275 (https://github.com/myungjoo/HIL-Claw/pull/275), squash-merged as `4043e70a` with `--delete-branch`; the squash message is the PR body, ending with `Task: T-0461`. Branch commits: `17b6022d` (implementation and tests), `10858360` (round 1 docstring nits).
+- **Review**: 2 rounds with a context-isolated dev-reviewer. Round 1: Approve with two docstring nits (doubled "and" in `hilclaw/harness/__init__.py`; summary line of `bf16_verification_build.py` named only ADR-0163), both fixed. Round 2: Approve, no findings.
+- **CI**: all six gates green on head `10858360` (run 40155826829): C gate (clang), Python 3.11 and 3.14, Coverage, Test presence, shellcheck.
+- **Local checks**: full `pytest` under coverage 31029 passed, 1575 skipped, line coverage 97 %; ruff check/format clean; the clang tests (skipped on Windows) ran under WSL: 550 passed across the three bf16 test files.
+- **Changes**: new `hilclaw/harness/bf16_verification_rope.c` (command line `<m> <h> <d> <draws> <seed>`; odd d gives status 2; reads exactly 4·m·d bytes of freqs_cis rows from standard input, a short, longer or unreadable input gives the new status 5 with nothing written and no kernel call; per draw: draw x, copy the rows into `freqs_cis`, CRC-32 over x then `freqs_cis`, fill `out` with 0x7FC0, call the kernel, write `out`; `end\n` after the last draw). `rope` is the last key of `PROGRAM_SOURCES`; module and package docstrings updated. About 165 changed lines outside tests in 3 files; `bf16_verification.h` and the ADR-0163 programs unchanged.
+- **Tests**: new `tests/harness/test_bf16_verification_rope.py` (criterion 10); `tests/harness/test_bf16_verification_build.py` expects `KINDS + ("rope",)`, uses `sdpa` as the unknown kind, adds one real-clang rope build fed through `stdin_data`.
+- **Language**: C, because the program is linked with a C kernel into one executable and includes the C header `bf16_verification.h` (ADR-0163 decision 2, as ADR-0164 decision 2 applies it).
+- **Follow-ups**: none new. Next: ADR-0164 code slice 3, the Python side of the rope verification run.
