@@ -17,6 +17,7 @@ from hilclaw import (
     local_run,
     rmsnorm_bf16_contract,
     rope_bf16_contract,
+    sdpa_kv_cache_bf16_contract,
     swiglu_bf16_contract,
 )
 from hilclaw.clang_build import BuildResult
@@ -43,8 +44,8 @@ SLEEP = "print('before sleep', flush=True); time.sleep(30)"
 TIMEOUT = 60
 DIRECTORY = Path(hilclaw.harness.__file__).parent
 STRICT = ("-std=c99", "-Wall", "-Wextra", "-Wpedantic", "-Werror")
-# The array module learns rope with the Python side of ADR-0164 (code slice 3).
-PROGRAM_KINDS = (*KINDS, "rope")
+# The array modules learn rope (ADR-0164) and sdpa_kv_cache (ADR-0165 code slice 2) apart.
+PROGRAM_KINDS = (*KINDS, "rope", "sdpa_kv_cache")
 
 # kind: (contract, parameters to void, copy of the first operand to the output)
 STUBS = {
@@ -636,6 +637,60 @@ def test_real_clang_builds_a_rope_executable_that_reads_the_rows(clang, kernel, 
     assert run.timed_out is False
     assert run.returncode == 0, run
     assert len(run.stdout) == draws * (4 + 2 * m * h * d) + 4
+    assert run.stdout.endswith(b"end\n")
+
+
+SDPA_KV_CACHE_KERNEL = """#include <math.h>
+#include <stddef.h>
+#include <stdint.h>
+
+@PROTOTYPE@
+
+@SIGNATURE@
+{
+    volatile float e = expf((float)l);
+    (void)e;
+    (void)k_new;
+    (void)v_new;
+    (void)cache_k;
+    (void)cache_v;
+    (void)h_kv;
+    for (size_t i = 0; i < m * h * d; i++)
+        out[i] = q[i];
+}
+"""
+
+
+def test_real_clang_builds_an_sdpa_kv_cache_executable_that_writes_a_complete_report(
+    clang, kernel, out
+):
+    contract = sdpa_kv_cache_bf16_contract
+    text = SDPA_KV_CACHE_KERNEL.replace("@PROTOTYPE@", contract.PROTOTYPE)
+    text = text.replace("@SIGNATURE@", contract.PROTOTYPE.removesuffix(";"))
+    source = kernel("sdpa_kv_cache.c", text)
+    result = build_bf16_verification_executable(
+        "sdpa_kv_cache",
+        source,
+        out,
+        timeout_s=120,
+        flags=STRICT,
+        trailing_flags=("-lm",),
+    )
+    assert result.ok, result.log
+    assert result.command[1:-2] == (
+        *STRICT,
+        str(PROGRAM_SOURCES["sdpa_kv_cache"]),
+        str(source),
+        "-lm",
+    )
+    m, l, h, h_kv, d, draws = 2, 5, 4, 2, 3, 2
+    arguments = [str(value) for value in (m, l, h, h_kv, d, draws, 20261025)]
+    run = local_run.run((out, *arguments), timeout_s=TIMEOUT)
+    assert run.timed_out is False
+    assert run.returncode == 0, run
+    assert (
+        len(run.stdout) == draws * (4 + 2 * m * h * d + 4 * (l + 2 * m) * h_kv * d) + 4
+    )
     assert run.stdout.endswith(b"end\n")
 
 

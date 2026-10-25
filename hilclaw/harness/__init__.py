@@ -22,10 +22,11 @@ executable that is already built
 (:mod:`hilclaw.harness.bf16_rope_verification`), these last six being the six
 modules that import ``numpy``, and nothing else of the harness. The C sources
 of the bf16 verification runs are their shared header
-(``bf16_verification.h``) and their five verification programs, one per kind,
+(``bf16_verification.h``) and their six verification programs, one per kind,
 which include it (``bf16_verification_gemm.c``, ``bf16_verification_rmsnorm.c``,
-``bf16_verification_elementwise_add.c``, ``bf16_verification_swiglu.c`` and
+``bf16_verification_elementwise_add.c``, ``bf16_verification_swiglu.c``,
 ``bf16_verification_rope.c`` of ADR-0164, which reads the ``freqs_cis`` rows
-on its standard input), and the build of a bf16 verification executable from one of them
+on its standard input, and ``bf16_verification_sdpa_kv_cache.c`` of ADR-0165),
+and the build of a bf16 verification executable from one of them
 (:mod:`hilclaw.harness.bf16_verification_build`).
 """
