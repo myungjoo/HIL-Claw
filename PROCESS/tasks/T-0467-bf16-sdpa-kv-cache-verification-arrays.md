@@ -2,7 +2,7 @@
 id: T-0467
 title: Add the array side of the bf16 SDPA-with-KV-cache verification run, hilclaw/harness/bf16_sdpa_kv_cache_arrays.py (draw of the five ranges, allocations with their fills, check value, per-head reference, expected allocations and counts; ADR-0165 code slice 2)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0466]
@@ -168,3 +168,12 @@ hq: []
 - Next task (planner candidate): ADR-0165 code slice 3, the runner and judge of the SDPA-with-KV-cache verification run, built on this module's `draw_inputs`, `allocation_before`, `allocation_after`, `check_value`, `reference`, `count_failures` and `count_cache_differences`, with the result types of `hilclaw.harness.verification`.
 
 ## Result
+
+- PR #280 (https://github.com/myungjoo/HIL-Claw/pull/280), squash-merged as 35b860bb49df8bfa36269dbfea851d92781d6483; branch claude/T-0467-bf16-sdpa-kv-cache-arrays deleted.
+- Review: 2 rounds (dev-reviewer, fresh context). Round 1 Approve with two non-blocking nits: two two-line test comments, shortened to one line each in d4f1e2f3; packed_check rebuilt locally instead of imported from the program test, noted only. Round 2 Approve.
+- CI green on head d4f1e2f3: C gate, Python gate 3.11 and 3.14, Coverage gate, Test presence, shellcheck.
+- Local: full pytest 31826 passed, 1747 skipped; hilclaw/ coverage 97 %, new module 100 %; ruff check and ruff format --check clean.
+- Changes: new hilclaw/harness/bf16_sdpa_kv_cache_arrays.py (281 lines), with FILL, Inputs, draw_inputs, allocation_before, allocation_after, check_value, reference (one query head at a time), count_failures and count_cache_differences; dims checked in the private _dims for reuse by slice 3. hilclaw/harness/__init__.py docstring names the module and counts seven numpy importers. New tests/harness/test_bf16_sdpa_kv_cache_arrays.py (325 cases, no clang). Outside tests: 286 lines added and 3 deleted in 2 files.
+- The module does not contain the text sdpa_kv_cache_bf16_contract; the contract module's binding test passes.
+- Language: Python, because the module computes on NumPy arrays next to bf16_verification_arrays.py and reuses its generator, widening and counts.
+- Follow-ups: ADR-0165 code slice 3 (runner and judge), as planned in the task's Follow-ups. No new follow-up.
