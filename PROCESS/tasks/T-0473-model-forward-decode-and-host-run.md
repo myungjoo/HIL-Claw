@@ -2,7 +2,7 @@
 id: T-0473
 title: Add the decode passes to hilclaw/model_forward.c (cache kept across passes, given tokens) and the host side's input encoding, run and report parsing in hilclaw/model_forward_run.py (ADR-0166 code slices 3 and 4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0471, T-0472]
@@ -82,3 +82,10 @@ hq: []
 - Next (planner): ADR-0166 code slices 5 and 6 (build-and-run path and the synthetic-model test), after which ADR-0153's runtime acceptance item (lxviii) is to be asked (ADR-0166 Consequences, line 176).
 
 ## Result
+
+- **DONE.** PR #285 (`claude/T-0473-model-forward-decode-and-host-run`), squash-merged as `f04da8e5` on `main`; branch deleted.
+- **Review**: 1 round (dev-reviewer, fresh context), Approve with two Nits: the header comment rewrap was fixed without re-review (D20); the other (`model_forward_run` imports `model_run`'s private `_is_sequence`/`_path`) was left.
+- **CI**: Python gate 3.11 and 3.14, Coverage gate and C gate green. Locally, the clang tests and the C gate command ran on WSL Ubuntu (they skip on Windows).
+- **Language**: Python for the host-side module (ADR-0153 decision 2; `model_run.py` is its model); C unchanged for the program.
+- **What landed**: decode passes in `hilclaw/model_forward.c` (cache kept across passes, given tokens; bit-exact with the tests' NumPy recomputation for G >= 3 and both `lm_head_rows` values); new `hilclaw/model_forward_run.py` (`encode_input`, `parse_report`, `run_forward_program`; arguments checked through T-0471's `model_forward_check.check` without a binding). The library table of `encode_input` is per pass (call site -> one index per pass); turning a per-shape binding into it is left to slice 5. `tests/test_rope_table.py`'s caller guard now lists `model_forward_run.py` (required by ADR-0166 decision 4).
+- **Follow-ups**: none new beyond the task's (slices 5 and 6).
