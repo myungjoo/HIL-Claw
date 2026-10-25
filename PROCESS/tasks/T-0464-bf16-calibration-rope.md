@@ -135,7 +135,7 @@ hq: []
 
 **Local**:
 - WSL (clang 14, venv `/tmp/t0461venv` outside the repository): `test_calibration.py` + `test_bf16_calibration.py` 36 passed. Each `rope_bf16_*.c` compiles alone under `clang -std=c99 -Wall -Wextra -Wpedantic -Werror -O2 -c`; `nm` shows only `hilclaw_rope_bf16`.
-- Windows (Python 3.14.4, numpy 2.5.2): `test_bf16_calibration.py` 30 skipped (no POSIX); `ruff check .` and `ruff format --check .` clean.
+- Windows (Python 3.14.4, numpy 2.5.2): full `pytest` 31496 passed, 1585 skipped (the 30 bf16 calibration cases skip: no POSIX); `ruff check .` and `ruff format --check .` clean.
 - The new files are ASCII with LF.
 
 **Changes**: three kernels under `tests/harness/calibration/` and, in `test_bf16_calibration.py`, an import of `run_bf16_rope_verification`, a `ROPE` row with a margin comment, a `rope_executables` session fixture (same `FLAGS`, `BUILD_TIMEOUT`, skip-or-fail rules; no `-lm`, the rope program and kernels need none), a `rope_verdict` helper and a test over `STATES` x draws {1, 3}. No existing line changed.
