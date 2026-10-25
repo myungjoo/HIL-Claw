@@ -50,8 +50,9 @@ Conventions of this module (readings of decision 6, not rules of the record):
   shape and then, at the dtype ``"bf16"`` only, its element type.
 * A weight is a :class:`numpy.ndarray`; a per-layer weight is a sequence
   (not an array) of them, one per layer. Its shape is compared with the one
-  ADR-0166 decision 4 gives from the dimensions; at ``"bf16"`` its element
-  type must be ``numpy.uint16`` (a bf16 pattern). At any other dtype the
+  ADR-0166 decision 4 gives from the dimensions, which the six checks have
+  already found valid; at ``"bf16"`` its element type must be
+  ``numpy.uint16`` in native byte order (a bf16 pattern). At any other dtype the
   element types are not checked, since no operand gives one to compare with.
 
 What this module does not do: it builds, loads and starts nothing, runs no
