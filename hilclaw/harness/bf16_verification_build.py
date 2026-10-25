@@ -1,4 +1,4 @@
-"""Build step of a bf16 verification run of ADR-0163: the program of one kind and one kernel, one executable.
+"""Build step of a bf16 verification run of ADR-0163 or ADR-0164: the program of one kind and one kernel, one executable.
 
 ``ARCHITECTURE/decisions/ADR-0163-od31-bf16-verification-run.md`` is the rule
 (decisions 2 and 10), and for kind ``rope``
