@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from hilclaw.harness.bf16_rope_verification import run_bf16_rope_verification
 from hilclaw.harness.bf16_verification import Verdict, run_bf16_verification
 from hilclaw.harness.bf16_verification_build import build_bf16_verification_executable
 
@@ -28,6 +29,11 @@ KINDS = {
     # conforming within 0.00437 |ref| (ADR-0160 d5), atol for |ref| >= 0.00138; sigma(-g) misses by >= 0.39 |ref|.
     "swiglu": ((3, 5), 2026, {"rtol": 2**-7, "atol": 1e-3}),
 }
+
+# rope: (dims (m, h, d), known seed, start position P, tolerance). The violating
+# kernel holds draw 0 of the known seed at these dims and P. Test values.
+# conforming within 2**-8 + 2**-21 (ADR-0164 d10, half the bound); at row 0 swapped cos and sin miss by >= 1.
+ROPE = ((3, 2, 4), 2026, 0, {"rtol": 0.0, "atol": 2**-7})
 
 # state: (verdict of the functional test, verdict of the contract run)
 STATES = {
@@ -97,4 +103,57 @@ def test_functional_test_and_contract_run_give_the_verdicts_of_the_state(
     given, shown = verdict(executable, kind, 1, known)
     assert given is functional, shown
     given, shown = verdict(executable, kind, draws, seed_taken_at_run_time(known))
+    assert given is contract, shown
+
+
+@pytest.fixture(scope="session")
+def rope_executables(tmp_path_factory):
+    if os.name != "posix":
+        pytest.skip("a verification executable needs a POSIX system")
+    if shutil.which("clang") is None:
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            pytest.fail("clang is not on PATH of the CI runner")
+        pytest.skip("clang is not on PATH")
+    directory = tmp_path_factory.mktemp("bf16_rope_calibration")
+    built = {}
+    for state in STATES:
+        built[state] = directory / f"rope_{state}"
+        result = build_bf16_verification_executable(
+            "rope",
+            KERNELS / f"rope_bf16_{state}.c",
+            built[state],
+            timeout_s=BUILD_TIMEOUT,
+            flags=FLAGS,
+        )
+        assert result.ok, result.log
+    return built
+
+
+def rope_verdict(executable, draws, seed):
+    dims, _, start, tolerance = ROPE
+    result = run_bf16_rope_verification(
+        executable,
+        dims,
+        start=start,
+        draws=draws,
+        seed=seed,
+        **tolerance,
+        timeout_s=RUN_TIMEOUT,
+    )
+    shown = (seed, result.broken, result.run.returncode, result.run.stderr)
+    assert result.broken is None, shown
+    return result.verdict, f"seed {seed}, counts {result.counts}"
+
+
+@pytest.mark.parametrize("draws", [1, 3])
+@pytest.mark.parametrize("state", STATES)
+def test_rope_functional_test_and_contract_run_give_the_verdicts_of_the_state(
+    rope_executables, state, draws
+):
+    functional, contract = STATES[state]
+    executable = rope_executables[state]
+    known = ROPE[1]
+    given, shown = rope_verdict(executable, 1, known)
+    assert given is functional, shown
+    given, shown = rope_verdict(executable, draws, seed_taken_at_run_time(known))
     assert given is contract, shown
