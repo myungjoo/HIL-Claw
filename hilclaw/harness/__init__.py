@@ -21,8 +21,11 @@ the array side of the bf16 RoPE verification run of ADR-0164
 executable that is already built
 (:mod:`hilclaw.harness.bf16_rope_verification`), and the array side of the
 bf16 SDPA-with-KV-cache verification run of ADR-0165
-(:mod:`hilclaw.harness.bf16_sdpa_kv_cache_arrays`), these last seven being the
-seven modules that import ``numpy``, and nothing else of the harness. The C sources
+(:mod:`hilclaw.harness.bf16_sdpa_kv_cache_arrays`) and its Python side over an
+executable that is already built
+(:mod:`hilclaw.harness.bf16_sdpa_kv_cache_verification`), these last eight
+being the eight modules that import ``numpy``, and nothing else of the
+harness. The C sources
 of the bf16 verification runs are their shared header
 (``bf16_verification.h``) and their six verification programs, one per kind,
 which include it (``bf16_verification_gemm.c``, ``bf16_verification_rmsnorm.c``,

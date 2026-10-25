@@ -135,3 +135,10 @@ After this task the harness can verify a built `sdpa_kv_cache` kernel end to end
 - Next task (planner candidate): ADR-0165 code slice 4, the four calibration kernels of decision 10 (functional test at `(128, 128, 32, 8, 64)`, P = 0; failing kernel with query head j served by KV head j mod h_kv; second failing kernel that writes no cache row), tested through `run_bf16_sdpa_kv_cache_verification`.
 
 ## Result
+
+- **DONE.** PR #281 (`T-0468: Add the runner and judge of the bf16 SDPA-with-KV-cache verification run (ADR-0165 slice 3)`), squash-merged with the PR body as the message; branch `claude/T-0468-bf16-sdpa-kv-cache-verification-runner` deleted.
+- Review: 2 rounds by a context-isolated `dev-reviewer` (round 1 Approve with two nits, one fixed — the allocation size computed once per draw — and one declined as not required by AC 8; round 2 Approve, no findings).
+- CI green on `0920c7c5`: Python gate 3.11/3.14 (including the real-`clang` tests), Coverage gate, C gate, Test presence, shellcheck. Local: full `pytest` 32162 passed, coverage 97 % total, new module 100 %; `ruff check` / `ruff format --check` clean.
+- Language: Python — the runner next to `bf16_rope_verification.py`, reusing its result types and `local_run.run`.
+- Size: about 290 changed lines outside tests in 2 files (new module, `hilclaw/harness/__init__.py`), plus the new test file `tests/harness/test_bf16_sdpa_kv_cache_verification.py`.
+- Follow-ups: none new. Next task candidate as above: ADR-0165 code slice 4, the four calibration kernels of decision 10, tested through `run_bf16_sdpa_kv_cache_verification`.
