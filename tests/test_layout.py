@@ -611,11 +611,37 @@ def test_build_log_file_of_the_adr_0078_walk_through():
     assert rel(board) == ADR_0078_BOARD
 
 
-def test_build_log_steps_are_those_of_correctness_check():
-    from hilclaw import check_identity
+def test_build_log_steps_are_those_of_correctness_check_and_the_run_tools():
+    from hilclaw import check_identity, run_identity
 
-    assert BUILD_LOG_STEPS == check_identity.STEPS
-    assert BUILD_LOG_STEPS == ("correctness_check_sim", "correctness_check_board")
+    assert BUILD_LOG_STEPS == check_identity.STEPS + run_identity.STEPS
+    assert BUILD_LOG_STEPS == (
+        "correctness_check_sim",
+        "correctness_check_board",
+        "sim_run_timing",
+        "board_run_timing",
+    )
+
+
+# Expected paths copied from the Walk-through of ADR-0108 (decision 3).
+ADR_0108_SIM = (
+    "runs/r1/rounds/0003/measure/candidates/02/attempts/01/"
+    "build-log-sim_run_timing-01.txt"
+)
+ADR_0108_BOARD = (
+    "runs/r1/rounds/0003/measure/candidates/02/attempts/01/"
+    "build-log-board_run_timing-01.txt"
+)
+
+
+def test_build_log_file_of_the_adr_0108_walk_through():
+    sim = build_log_file(ROOT, "r1", 3, 2, 1, "sim_run_timing", 1)
+    board = build_log_file(ROOT, "r1", 3, 2, 1, "board_run_timing", 1)
+    assert rel(sim) == ADR_0108_SIM
+    assert rel(board) == ADR_0108_BOARD
+    assert build_log_file(ROOT, "r1", 3, 2, 1, "sim_run_timing", 12).name == (
+        "build-log-sim_run_timing-12.txt"
+    )
 
 
 @pytest.mark.parametrize(
@@ -653,6 +679,12 @@ def test_build_log_name_is_no_artefact_and_has_only_allowed_characters(step):
     [
         "correctness_check",
         "sim_run",
+        "board_run",
+        "sim.run",
+        "board.run",
+        "sim_run_timing ",
+        "SIM_RUN_TIMING",
+        "timing",
         "coder_generate",
         "",
         "correctness_check_sim/..",

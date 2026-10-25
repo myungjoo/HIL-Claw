@@ -65,7 +65,7 @@ Choices that are this module's own and no rule of a record:
   imported.
 
 What the module does not do: it is no tool and no step, is bound to none and
-is called by no tool function yet. It calls no operation and catches nothing
+is called by :func:`hilclaw.run_tool.tool_function`. It calls no operation and catches nothing
 an operation raises; whoever calls says that an operation raised the tool
 failure. It appends no line and states no spend. It writes no compiler log:
 where the operation handed a log over, ADR-0108 decision 7 comes first in the

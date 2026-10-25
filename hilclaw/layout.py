@@ -7,7 +7,8 @@ writer roles, candidates and attempts (decisions 1 to 4) and the knowledge tree
 tuple (``run_id``, ``round``, ``candidate``, ``attempt``) of ADR-0002 and the
 two key directory names of ADR-0001 into those paths by formatting alone.
 :func:`build_log_file` adds the file of a compiler's log of ADR-0078
-decision 3, which is not one of :data:`ATTEMPT_ARTEFACTS`.
+decision 3, and of ADR-0108 decision 3 for the timing build of ``sim.run``
+and ``board.run``, which is not one of :data:`ATTEMPT_ARTEFACTS`.
 
 Every function is pure and returns a :class:`pathlib.Path` below
 ``Path(data_root)``, as :func:`hilclaw.cas.blob_path` does for
@@ -50,7 +51,12 @@ _ARTEFACT_ROLE = {
     "eval.json": "eval",
 }
 ATTEMPT_ARTEFACTS = tuple(_ARTEFACT_ROLE)
-BUILD_LOG_STEPS = ("correctness_check_sim", "correctness_check_board")
+BUILD_LOG_STEPS = (
+    "correctness_check_sim",
+    "correctness_check_board",
+    "sim_run_timing",
+    "board_run_timing",
+)
 
 _RUN_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 _KEY_NAME = re.compile(rf"[a-z][a-z0-9_]{{0,31}}-[0-9a-f]{{{keys.NAME_DIGEST_LENGTH}}}")
@@ -162,9 +168,13 @@ def build_log_file(data_root, run_id, round, candidate, attempt, step, execution
     """Return ``<measure attempt_dir>/build-log-<step>-<EE>.txt``, the file of a compiler's log.
 
     The file keeps the log of the build of one check of ``correctness.check``
-    (ADR-0078 decision 3). It is not one of :data:`ATTEMPT_ARTEFACTS`: it is
-    no record of a result. ``step`` is one of :data:`BUILD_LOG_STEPS`, the
-    ``step`` values of that tool (ADR-0040 decision 3). ``execution`` is an
+    (ADR-0078 decision 3) or of the timing build of one call of ``sim.run``
+    or ``board.run`` (ADR-0108 decision 3). It is not one of
+    :data:`ATTEMPT_ARTEFACTS`: it is no record of a result. ``step`` is one
+    of :data:`BUILD_LOG_STEPS`: the two ``step`` values of
+    ``correctness.check`` (ADR-0040 decision 3), then ``sim_run_timing`` and
+    ``board_run_timing``, the one of each run tool (ADR-0062 decision 3).
+    ``execution`` is an
     integer from 1 to :data:`hilclaw.keys.MAX_INTEGER`, written in decimal and
     zero-padded to at least two digits, never truncated. ``run_id``,
     ``round``, ``candidate`` and ``attempt`` are checked as

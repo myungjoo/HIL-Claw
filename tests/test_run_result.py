@@ -750,10 +750,10 @@ def test_module_imports_and_has_no_entry():
     assert "standin_profile" not in text
 
 
-def test_no_other_module_of_the_package_imports_it():
+def test_no_other_module_of_the_package_but_the_tool_function_imports_it():
     package = Path(run_result.__file__).parent
     for path in package.rglob("*.py"):
-        if path.name == "run_result.py" and path.parent == package:
+        if path.parent == package and path.name in ("run_result.py", "run_tool.py"):
             continue
         assert not any(name.endswith("run_result") for name in imported_modules(path))
 
