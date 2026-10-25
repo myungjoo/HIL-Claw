@@ -141,11 +141,11 @@ def tool_function(*, source, table, seeds, covers):
     :func:`hilclaw.hw_tool.stepped_tool_function` does, ``invalid_request``
     for the member ``point`` included; of one of
     :data:`hilclaw.check_admission.KINDS` and then of
-    :data:`hilclaw.check_seed.KIND_SEED_NOT_DRAWN`, each with no line
-    appended and no operation called, so that the same request can be
-    repeated; and of the kind of the ``failure`` an end line holds, for a
-    check that made no result, ``build_log_unwritable`` among them. For none of the answers before the draw is
-    ``seeds`` called.
+    :data:`hilclaw.check_seed.KIND_SEED_NOT_DRAWN`, each with no line appended
+    and no operation called, so that the same request can be repeated; and of
+    the kind of the ``failure`` an end line holds, for a check that made no
+    result, ``build_log_unwritable`` among them. For none of the answers
+    before the draw is ``seeds`` called.
 
     Everything else passes through unchanged, whatever it is: what
     ``covers`` raises and what ``seeds`` raises that is no

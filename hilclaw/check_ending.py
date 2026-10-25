@@ -69,23 +69,24 @@ Choices that are this module's own and no rule of a record:
   the log; this module keeps nothing.
 * ``operation`` is checked to be callable here, since ``ask`` is handed the
   callable of this module and no longer sees the object.
-* The output path is the fifth positional argument of :func:`carry_out`,
-  as it is of ``ask``, and the fourth of an operation. It is handed on as
-  the same object and not checked, read or converted, and this module puts
-  it in no ``EndedWithoutOutcome``. The keeper is the sixth positional
-  argument and the path of the log file the keyword ``log_path``, both
-  handed to ``ask`` as the same objects; this module makes no keeper,
-  forms no path and writes nothing itself. The message of a backend kind is that of
-  the operation, as raised, whatever it shows.
+* The output path is the fifth positional argument of :func:`carry_out`, as
+  it is of ``ask``, and the fourth of an operation. It is handed on as the
+  same object and not checked, read or converted, and this module puts it in
+  no ``EndedWithoutOutcome``. The keeper is the sixth positional argument and
+  the path of the log file the keyword ``log_path``, both handed to ``ask`` as
+  the same objects; this module makes no keeper, forms no path and writes
+  nothing itself. The message of a backend kind is that of the operation, as
+  raised, whatever it shows.
 
 What the module does not do: it is no tool and no step and is bound to none.
 It appends no line and states no spend. It selects no backend, draws no seed,
 reads no tolerance and no file of a run, and looks at nothing at the output
-path. It names no kind and no backend kind, and composes no message: both
-come from the two modules it joins. It is this tool's and gives no rule for
-another tool. It keeps nothing between calls. It says nothing of what
-anybody does after the answer. It imports :mod:`hilclaw.build_log`, :mod:`hilclaw.check_failure`,
-:mod:`hilclaw.check_operation` and :mod:`hilclaw.tools` and nothing else.
+path. It names no kind and no backend kind, and composes no message: both come
+from the two modules it joins. It is this tool's and gives no rule for another
+tool. It keeps nothing between calls. It says nothing of what anybody does
+after the answer. It imports :mod:`hilclaw.build_log`,
+:mod:`hilclaw.check_failure`, :mod:`hilclaw.check_operation` and
+:mod:`hilclaw.tools` and nothing else.
 """
 
 from hilclaw import build_log, check_failure, check_operation, tools

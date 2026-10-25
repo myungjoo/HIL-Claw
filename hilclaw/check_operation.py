@@ -88,10 +88,11 @@ Choices that are this module's own and no rule of a record:
 What the module does not do: it is no tool and no step and is bound to none.
 It appends no line and states no spend. It selects no backend, draws no seed,
 reads no tolerance and no file of a run, and looks at nothing at the output
-path. It writes no file but the log's, and forms no path. It validates no check parameter and gives no default of any value. It
-keeps nothing between calls. It says nothing of what anybody does after the
-answer, and it does not render what a tool function does with a tool
-failure an operation raises. It imports :mod:`hilclaw.build_log`, :mod:`hilclaw.check_answer`,
+path. It writes no file but the log's, and forms no path. It validates no
+check parameter and gives no default of any value. It keeps nothing between
+calls. It says nothing of what anybody does after the answer, and it does not
+render what a tool function does with a tool failure an operation raises. It
+imports :mod:`hilclaw.build_log`, :mod:`hilclaw.check_answer`,
 :mod:`hilclaw.check_parameters` and :mod:`hilclaw.tools` and nothing else.
 """
 
@@ -211,7 +212,8 @@ def ask(
     - ``output_path``: the output path of the call (ADR-0056 decision 3). It
       is handed on as it is and not read, whatever its type is.
     - ``keeper``: the log keeper of the call (ADR-0078 decision 6), exactly a
-      new :class:`hilclaw.build_log.LogKeeper`.
+      :class:`hilclaw.build_log.LogKeeper`. That it is new for the call is
+      the caller's to keep: a log it holds already is written as handed.
     - ``log_path``: the file of the compiler's log of the call, keyword-only,
       as :func:`hilclaw.layout.build_log_file` forms it (ADR-0078
       decision 3). It is handed to :func:`hilclaw.build_log.write` as it is,
