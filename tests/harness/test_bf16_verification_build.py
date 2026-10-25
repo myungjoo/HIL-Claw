@@ -16,6 +16,7 @@ from hilclaw import (
     gemm_bf16_contract,
     local_run,
     rmsnorm_bf16_contract,
+    rope_bf16_contract,
     swiglu_bf16_contract,
 )
 from hilclaw.clang_build import BuildResult
@@ -42,6 +43,8 @@ SLEEP = "print('before sleep', flush=True); time.sleep(30)"
 TIMEOUT = 60
 DIRECTORY = Path(hilclaw.harness.__file__).parent
 STRICT = ("-std=c99", "-Wall", "-Wextra", "-Wpedantic", "-Werror")
+# The array module learns rope with the Python side of ADR-0164 (code slice 3).
+PROGRAM_KINDS = (*KINDS, "rope")
 
 # kind: (contract, parameters to void, copy of the first operand to the output)
 STUBS = {
@@ -153,7 +156,7 @@ def no_build(monkeypatch):
 
 
 def test_program_sources_are_the_c_files_of_the_kinds_next_to_the_package():
-    assert tuple(PROGRAM_SOURCES) == KINDS
+    assert tuple(PROGRAM_SOURCES) == PROGRAM_KINDS
     for kind, path in PROGRAM_SOURCES.items():
         assert isinstance(path, Path)
         assert path.is_absolute()
@@ -161,7 +164,7 @@ def test_program_sources_are_the_c_files_of_the_kinds_next_to_the_package():
         assert path.name == f"bf16_verification_{kind}.c"
         assert path.parent == DIRECTORY
     assert (DIRECTORY / "bf16_verification.h").is_file()
-    assert len(set(PROGRAM_SOURCES.values())) == len(KINDS)
+    assert len(set(PROGRAM_SOURCES.values())) == len(PROGRAM_KINDS)
     assert verification_build.PROGRAM_SOURCE not in PROGRAM_SOURCES.values()
 
 
@@ -172,11 +175,11 @@ def test_program_sources_cannot_be_assigned_to():
     with pytest.raises(TypeError):
         del PROGRAM_SOURCES["gemm"]
     with pytest.raises(TypeError):
-        PROGRAM_SOURCES["rope"] = Path("rope.c")
-    assert tuple(PROGRAM_SOURCES) == KINDS
+        PROGRAM_SOURCES["sdpa"] = Path("sdpa.c")
+    assert tuple(PROGRAM_SOURCES) == PROGRAM_KINDS
 
 
-@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("kind", PROGRAM_KINDS)
 def test_arguments_are_handed_over_unchanged_in_one_call(monkeypatch, kind):
     calls = []
     outcome = object()
@@ -208,7 +211,7 @@ def test_arguments_are_handed_over_unchanged_in_one_call(monkeypatch, kind):
     assert all(keywords[name] is given[name] for name in given)
 
 
-@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("kind", PROGRAM_KINDS)
 def test_defaults_are_those_of_clang_build(monkeypatch, kind):
     calls = []
     monkeypatch.setattr(clang_build, "build", lambda *a, **k: calls.append((a, k)))
@@ -228,7 +231,7 @@ def test_defaults_are_those_of_clang_build(monkeypatch, kind):
     ]
 
 
-@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("kind", PROGRAM_KINDS)
 def test_stub_build_succeeds_and_adds_nothing(stub, kernel, out, kind):
     source = kernel()
     result = build_bf16_verification_executable(
@@ -247,7 +250,7 @@ def test_stub_build_succeeds_and_adds_nothing(stub, kernel, out, kind):
     assert sorted(p.name for p in out.parent.iterdir()) == ["verification"]
 
 
-@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("kind", PROGRAM_KINDS)
 def test_flags_surround_the_sources_in_the_order_given(stub, kernel, out, kind):
     first, second = kernel("a.c"), kernel("b.c")
     flags = ("-O3", "-fopenmp", "-DX=1", "-O0")
@@ -359,7 +362,7 @@ class Name(str):
     pass
 
 
-BAD_KINDS = ["rope", "GEMM", "", " gemm", Name("gemm"), b"gemm", None, 7, ["gemm"]]
+BAD_KINDS = ["sdpa", "GEMM", "", " gemm", Name("gemm"), b"gemm", None, 7, ["gemm"]]
 
 
 @pytest.mark.parametrize("kind", BAD_KINDS, ids=repr)
@@ -372,7 +375,7 @@ def test_kind_that_is_not_a_key_is_refused_before_anything_starts(
         )
     assert type(caught.value) is ValueError
     assert caught.value.parameter == "kind"
-    for name in KINDS:
+    for name in PROGRAM_KINDS:
         assert repr(name) in str(caught.value)
     assert not stub.started
     assert list(out.parent.iterdir()) == []
@@ -600,6 +603,39 @@ def test_real_clang_builds_an_executable_that_writes_a_complete_report(
     assert run.timed_out is False
     assert run.returncode == 0, run
     assert len(run.stdout) == report_length(draws, m, n)
+    assert run.stdout.endswith(b"end\n")
+
+
+ROPE_KERNEL = """#include <stddef.h>
+#include <stdint.h>
+
+@PROTOTYPE@
+
+@SIGNATURE@
+{
+    (void)freqs_cis;
+    for (size_t i = 0; i < m * h * d; i++)
+        out[i] = x[i];
+}
+"""
+
+
+def test_real_clang_builds_a_rope_executable_that_reads_the_rows(clang, kernel, out):
+    text = ROPE_KERNEL.replace("@PROTOTYPE@", rope_bf16_contract.PROTOTYPE)
+    text = text.replace("@SIGNATURE@", rope_bf16_contract.PROTOTYPE.removesuffix(";"))
+    source = kernel("rope.c", text)
+    result = build_bf16_verification_executable(
+        "rope", source, out, timeout_s=120, flags=STRICT
+    )
+    assert result.ok, result.log
+    assert result.command[1:-2] == (*STRICT, str(PROGRAM_SOURCES["rope"]), str(source))
+    m, h, d, draws = 3, 2, 4, 2
+    rows = bytes(range(4 * m * d))
+    arguments = [str(value) for value in (m, h, d, draws, 20261025)]
+    run = local_run.run((out, *arguments), timeout_s=TIMEOUT, stdin_data=rows)
+    assert run.timed_out is False
+    assert run.returncode == 0, run
+    assert len(run.stdout) == draws * (4 + 2 * m * h * d) + 4
     assert run.stdout.endswith(b"end\n")
 
 
