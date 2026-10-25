@@ -39,9 +39,10 @@ When the modules are imported is this module's own choice too: it imports
 :mod:`hilclaw.check_tool` and :mod:`hilclaw.mock_check`, and through them
 NumPy, only inside functions, so that importing it or building a definition
 imports neither. :func:`default_table` imports :mod:`hilclaw.mock_check` and
-:mod:`hilclaw.mock_run` when it is called; the tool function of a definition imports
-:mod:`hilclaw.check_tool`, builds the table and binds the tool function at
-its first call, and keeps that one bound function for its later calls. A
+:mod:`hilclaw.mock_run` when it is called; the tool function of a definition
+imports :mod:`hilclaw.check_tool`, builds the table and binds the tool
+function at its first call, and keeps that one bound function for its later
+calls. A
 first call whose import or binding raises keeps nothing, and the next call
 binds again; what it raises reaches the front as anything a tool function
 raises does.
