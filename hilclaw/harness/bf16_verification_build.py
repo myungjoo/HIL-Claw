@@ -1,14 +1,17 @@
-"""Build step of a bf16 verification run of ADR-0163 or ADR-0164: the program of one kind and one kernel, one executable.
+"""Build step of a bf16 verification run of ADR-0163, ADR-0164 or ADR-0165: the program of one kind and one kernel, one executable.
 
 ``ARCHITECTURE/decisions/ADR-0163-od31-bf16-verification-run.md`` is the rule
-(decisions 2 and 10), and for kind ``rope``
+(decisions 2 and 10), for kind ``rope``
 ``ARCHITECTURE/decisions/ADR-0164-od31-bf16-rope-verification-run.md``
+(decision 2), and for kind ``sdpa_kv_cache``
+``ARCHITECTURE/decisions/ADR-0165-od31-bf16-sdpa-kv-cache-verification-run.md``
 (decision 2). There is one verification program per kind, and
 :data:`PROGRAM_SOURCES` maps each kind to the C source of its program. The
 program of ``rope`` reads the ``freqs_cis`` rows of the run on its standard
 input (ADR-0164 decision 3); running it and that input are the caller's,
 through ``local_run.run(..., stdin_data=...)``, as running every other program
-is.
+is. The program of ``sdpa_kv_cache``, like those of ADR-0163, reads no
+standard input (ADR-0165 decision 2).
 :func:`build_bf16_verification_executable` hands the program of the kind the
 caller names and the source files of one kernel of that kind to one call of
 :func:`hilclaw.clang_build.build`. The command is that of ``clang_build``, with
@@ -21,8 +24,8 @@ The harness adds no flag: no define, no ``-I`` and no library. Flags, trailing
 flags, the compiler, the time limit of the build, the path of the executable,
 the environment and the working directory are the caller's, and they apply to
 the program source as well. The programs need no math library, but a kernel
-may: a SwiGLU kernel that calls ``expf`` or an RMSNorm kernel that uses
-``<math.h>`` needs the caller's ``-lm`` among the ``trailing_flags``. Each
+may: a SwiGLU or SDPA kernel that calls ``expf`` or an RMSNorm kernel that
+uses ``<math.h>`` needs the caller's ``-lm`` among the ``trailing_flags``. Each
 program includes the shared header ``bf16_verification.h`` with quotes, and
 the compiler finds it next to the program sources, so no include directory is
 needed. Flags that do not produce an executable (an object, a shared library)
@@ -42,7 +45,7 @@ output path; it runs nothing that it built; it does not retry, repair or store
 a failed build; it reads no configuration and no environment variable of its
 own; it relates this build to no timing build; and it registers no kind with
 ``correctness.check``, ``spec.write`` or the instance start (ADR-0163 and
-ADR-0164 Boundaries).
+ADR-0164 and ADR-0165 Boundaries).
 """
 
 import os
@@ -56,7 +59,14 @@ _HERE = Path(__file__).parent
 PROGRAM_SOURCES = types.MappingProxyType(
     {
         kind: _HERE / f"bf16_verification_{kind}.c"
-        for kind in ("gemm", "rmsnorm", "elementwise_add", "swiglu", "rope")
+        for kind in (
+            "gemm",
+            "rmsnorm",
+            "elementwise_add",
+            "swiglu",
+            "rope",
+            "sdpa_kv_cache",
+        )
     }
 )
 """Read-only mapping from each kind to the path of its verification program, next to this module."""
