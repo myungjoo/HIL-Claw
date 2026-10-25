@@ -8,6 +8,9 @@ from pathlib import Path
 import pytest
 
 from hilclaw.harness.bf16_rope_verification import run_bf16_rope_verification
+from hilclaw.harness.bf16_sdpa_kv_cache_verification import (
+    run_bf16_sdpa_kv_cache_verification,
+)
 from hilclaw.harness.bf16_verification import Verdict, run_bf16_verification
 from hilclaw.harness.bf16_verification_build import build_bf16_verification_executable
 
@@ -35,12 +38,19 @@ KINDS = {
 # conforming within 2**-8 + 2**-21 (ADR-0164 d10, half the bound); at row 0 swapped cos and sin miss by >= 1.
 ROPE = ((3, 2, 4), 2026, 0, {"rtol": 0.0, "atol": 2**-7})
 
+# sdpa_kv_cache: (dims (m, l, h, h_kv, d), known seed, tolerance), P = l - m = 0
+# (ADR-0165 d10). The violating kernel recognises draw 0 of the known seed at these dims.
+# conforming within 2.154e-3 (ADR-0165 d9, 0.55 of atol); at row 0 j mod h_kv and 0.5 miss by >= 1.
+SDPA_KV_CACHE = ((128, 128, 32, 8, 64), 2026, {"rtol": 0.0, "atol": 2**-8})
+
 # state: (verdict of the functional test, verdict of the contract run)
 STATES = {
     "conforming": (Verdict.PASS, Verdict.PASS),
     "failing": (Verdict.FAIL, Verdict.FAIL),
     "violating": (Verdict.PASS, Verdict.FAIL),
 }
+
+SDPA_KV_CACHE_STATES = {**STATES, "failing_cache": (Verdict.FAIL, Verdict.FAIL)}
 
 
 @pytest.fixture(scope="session")
@@ -157,3 +167,58 @@ def test_rope_functional_test_and_contract_run_give_the_verdicts_of_the_state(
     assert given is functional, shown
     given, shown = rope_verdict(executable, draws, seed_taken_at_run_time(known))
     assert given is contract, shown
+
+
+@pytest.fixture(scope="session")
+def sdpa_kv_cache_executables(tmp_path_factory):
+    if os.name != "posix":
+        pytest.skip("a verification executable needs a POSIX system")
+    if shutil.which("clang") is None:
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            pytest.fail("clang is not on PATH of the CI runner")
+        pytest.skip("clang is not on PATH")
+    directory = tmp_path_factory.mktemp("bf16_sdpa_kv_cache_calibration")
+    built = {}
+    for state in SDPA_KV_CACHE_STATES:
+        built[state] = directory / f"sdpa_kv_cache_{state}"
+        result = build_bf16_verification_executable(
+            "sdpa_kv_cache",
+            KERNELS / f"sdpa_kv_cache_bf16_{state}.c",
+            built[state],
+            timeout_s=BUILD_TIMEOUT,
+            flags=FLAGS,
+            trailing_flags=TRAILING_FLAGS,
+        )
+        assert result.ok, result.log
+    return built
+
+
+def sdpa_kv_cache_run(executable, draws, seed):
+    dims, _, tolerance = SDPA_KV_CACHE
+    result = run_bf16_sdpa_kv_cache_verification(
+        executable,
+        dims,
+        draws=draws,
+        seed=seed,
+        **tolerance,
+        timeout_s=RUN_TIMEOUT,
+    )
+    shown = (seed, result.broken, result.run.returncode, result.run.stderr)
+    assert result.broken is None, shown
+    return result, f"seed {seed}, counts {result.counts}"
+
+
+@pytest.mark.parametrize("draws", [1, 3])
+@pytest.mark.parametrize("state", SDPA_KV_CACHE_STATES)
+def test_sdpa_kv_cache_functional_test_and_contract_run_give_the_verdicts_of_the_state(
+    sdpa_kv_cache_executables, state, draws
+):
+    functional, contract = SDPA_KV_CACHE_STATES[state]
+    executable = sdpa_kv_cache_executables[state]
+    known = SDPA_KV_CACHE[1]
+    result, shown = sdpa_kv_cache_run(executable, 1, known)
+    assert result.verdict is functional, shown
+    result, shown = sdpa_kv_cache_run(executable, draws, seed_taken_at_run_time(known))
+    assert result.verdict is contract, shown
+    if state == "failing_cache":
+        assert all(counts.failed == 0 for counts in result.counts), shown
