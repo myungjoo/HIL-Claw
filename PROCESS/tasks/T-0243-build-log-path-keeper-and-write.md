@@ -2,7 +2,7 @@
 id: T-0243
 title: Add the path of the compiler's log file to `hilclaw/layout.py` and a new module `hilclaw/build_log.py` holding the log keeper, the kind `build_log_unwritable` and the once-only write of the file (ADR-0078 decisions 2-4, 6, 7, code slice 1 of its Consequences), with tests; no change to `check_operation`, `check_ending`, `check_seed`, `check_tool`, `mock_check` or `clang_build`
 phase: P1
-status: BLOCKED
+status: TODO
 commitMode: code
 coversReq: [FR-10, FR-6, FR-9, OD-18, "#5 D12"]
 dependsOn: [T-0242]

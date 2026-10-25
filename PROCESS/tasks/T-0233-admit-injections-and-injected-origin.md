@@ -2,7 +2,7 @@
 id: T-0233
 title: Validate the optional `instance.json` member `injections` (ADR-0075 decisions 1 and 2) in `hilclaw/instance.py` and admit `origin` `injected` with its member `injection` (ADR-0075 decision 3, in-file rules) in `hilclaw/hypotheses.py`; no cross-file check
 phase: P1
-status: BLOCKED
+status: TODO
 commitMode: code
 coversReq: [FR-15, FR-17, FR-11, OD-30, "ADR-0075", "ADR-0059", "ADR-0018"]
 dependsOn: [T-0232, T-0227]

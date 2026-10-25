@@ -2,7 +2,7 @@
 id: T-0210
 title: Record ADR-0068, the kinds of the situations in which sim.run / board.run have no timing executable other than a failed build, and what the tool function does with a tool failure an operation raises (OD-18 sub-question 19 part (na))
 phase: P1
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [FR-10, OD-18, OD-14]
 dependsOn: [T-0191, T-0195, T-0199, T-0201, T-0203, T-0205, T-0208]

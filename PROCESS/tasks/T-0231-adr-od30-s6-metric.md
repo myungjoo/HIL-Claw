@@ -2,7 +2,7 @@
 id: T-0231
 title: Write the ADR that settles the S6 metric part of OD-30 for one pair of runs - what "the first run's best", "reached" and "a case reference" mean, the boundary cases, and how drift between runs is treated - and reflect it in the ARCHITECTURE registers by their recording rules; no number of pairs, no control run, no cost limit, no code
 phase: P1
-status: BLOCKED
+status: TODO
 commitMode: doc
 coversReq: [S6, FR-18, FR-11, FR-17, NFR-3, NFR-5, OD-30, OD-1, OD-13, OD-11, OD-20, OD-28, "#5 D6"]
 dependsOn: [T-0218, T-0226, T-0230]
