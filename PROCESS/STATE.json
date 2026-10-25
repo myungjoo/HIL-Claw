@@ -211,7 +211,9 @@
       "reason": "requirement-unclear",
       "question": "T-0225 (code: move the JSON text helpers repeated in `hilclaw/spec_file.py`, `hypotheses_file.py`, `verdicts_file.py` and `cases_file.py` into one module `hilclaw/json_text.py`, no behaviour change) cannot land as planned. The task forbids editing any existing test, but four existing tests pin the callers' import surface rather than behaviour: `tests/test_spec_file.py::test_the_module_imports_only_what_it_needs` (exact import set including `json`) and `test_the_public_names` in `tests/test_hypotheses_file.py`, `tests/test_verdicts_file.py`, `tests/test_cases_file.py` (exact public-name list including `json`). After the move the callers no longer import `json` (an unused import fails ruff F401) and do import `hilclaw.json_text`, so those four assertions fail; all behaviour tests pass (1116 passed, 4 failed). The work is saved on branch `claude/T-0225-shared-json-text-helper` (`42f345b`, no PR). Which do you want: (a) T-0225 may update exactly those four import/public-name assertions (swap `json` for `json_text` / `hilclaw.json_text`) and no other test, then it resumes from that branch; (b) drop T-0225 and keep the four copies; (c) something else (name it)?",
       "askedAt": "2026-10-16T06:25:19Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6209496883"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6209496883",
+      "resolvedAt": "2026-10-25T15:29:44Z",
+      "decision": "(a) - 오너(채팅, 2026-10-25): T-0225는 그 네 import·public-name 단언에서 바뀐 이름만 바꾸는 것을 허용한다. 오너 주: 보류(D18)에서 꺼낼 때는 브랜치 `claude/T-0225-shared-json-text-helper`를 버리고 현재 main에서 같은 helper를 반복하는 모든 모듈(2026-10-25 기준 9개)을 대상으로 다시 계획하며, 그 모듈들의 같은 종류 단언에도 같은 허용을 적용한다."
     },
     {
       "id": "HQ-0023",
@@ -227,7 +229,9 @@
       "reason": "requirement-unclear",
       "question": "T-0233 (code: validate the optional instance.json member `injections` and admit `origin` `injected` in hilclaw/hypotheses.py, ADR-0075) cannot land within its acceptance criterion 12, which lists the existing tests it may edit. Adding the `injections` field to `Instance` makes 13 more existing tests fail: `tests/test_instance.py::test_any_place_of_the_objective_among_the_twelve_other_members[0-12]` (about line 8163) builds the expected Instance and asserts `None not in expected`, which now fails because `injections` is None for a content without the member (criterion 3). May criterion 12 also allow limiting that assertion to the fields before `injections` (`assert None not in expected[:13]`, the same form already used at about line 7445), which keeps the check that every stated member is not None? If yes, the driver resumes T-0233 on branch `claude/T-0233-admit-injections-and-injected-origin` (WIP commit 5a3d147, no PR yet).",
       "askedAt": "2026-10-16T12:33:48Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6215598943"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6215598943",
+      "resolvedAt": "2026-10-25T15:29:45Z",
+      "decision": "허용 - 오너(채팅, 2026-10-25): 수용 기준 12에 더해, `injections`를 더해 실패하는 기존 `None not in expected` 단언을 `injections` 앞의 필드로 한정하는 것(예: `expected[:14]`)을 허용한다. 오너 주: 브랜치가 낡아(그 사이 `coder_model`이 더해짐) 현재 main에서 다시 시작한다; 지금 실패할 단언은 `test_any_place_of_the_coder_model_among_the_thirteen_other_members`다."
     },
     {
       "id": "HQ-0025",
@@ -245,7 +249,9 @@
       "reason": "requirement-unclear",
       "question": "T-0243 (code: ADR-0078 slice 1, the path function of the compiler's log file in `hilclaw/layout.py` and a new module `hilclaw/build_log.py` with the log keeper, the kind `build_log_unwritable` and the once-only write) cannot start within its acceptance criteria. Criterion 1 adds a public function to `hilclaw/layout.py`, but the existing test `tests/test_layout.py::test_module_defines_no_reader_writer_or_entry_point` (about line 565) asserts that the set of public names defined in `hilclaw.layout` equals a literal set, so any new public function fails it. Criterion 3 permits edits only to the import block and the `every_path` helper (\"No existing assertion is edited or removed\"), and criterion 14 says to stop rather than edit a failing existing test. May the task also permit adding the new function's name to that literal set (nothing else in that test changes; precedent T-0129, and T-0242's Follow-ups asked for it)? If yes, the driver re-runs T-0243 from the start (no branch, commit or PR was made).",
       "askedAt": "2026-10-16T20:27:37Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6224083902"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6224083902",
+      "resolvedAt": "2026-10-25T15:29:45Z",
+      "decision": "허용 - 오너(채팅, 2026-10-25): T-0243은 `tests/test_layout.py::test_module_defines_no_reader_writer_or_entry_point`의 literal 집합에 새 함수 이름을 더하는 것을 허용한다(그 테스트의 다른 것은 바꾸지 않는다). T-0243은 처음부터 다시 수행한다."
     },
     {
       "id": "HQ-0027",
@@ -261,7 +267,9 @@
       "reason": "requirement-unclear",
       "question": "T-0284 (code: `clang_build.build` refuses, on POSIX and before the start, an empty `env` key or one with `=` anywhere, `ValueError` with `parameter` \"env\"; closes part of ADR-0094 decision 3) stopped on its own criterion 5: its premise does not hold on every supported Python. The task assumed each such key is refused by one of the two POSIX start paths of `subprocess`, so `build` would only refuse earlier what the start refuses anyway. CI (run 39079246945) shows that on Python 3.11 the empty key (`{\"\": \"x\"}`, `{b\"\": b\"x\"}`) is accepted by both start calls (3.11 uses fork/exec with the default `close_fds=True`; the `posix_spawn` path that refuses it is taken by default only from 3.13), while the leading-`=` keys are refused as assumed; on 3.14 all cases hold. `pyproject.toml` requires Python >= 3.11. The change is on Draft PR #179 (DONOTMERGE, branch `claude/T-0284-clang-build-refuses-posix-env-keys`, `e1a40c9`, 1 review round, Request changes); nothing was merged. Should the driver (a) keep the empty key in scope, so `build` refuses it on POSIX even where `subprocess` does not (stricter than `subprocess`, with the docstring saying so), and re-run T-0284 on that basis; (b) narrow T-0284 to keys with `=` (which held on 3.11 and 3.14) and leave the empty key to `subprocess`; or (c) drop T-0284 and close PR #179?",
       "askedAt": "2026-10-17T23:37:02Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6243170181"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6243170181",
+      "resolvedAt": "2026-10-25T15:29:44Z",
+      "decision": "(a) - 오너(채팅, 2026-10-25): 빈 `env` 키를 범위에 두어, `subprocess`가 받아들이는 Python에서도 `build`가 POSIX에서 거부한다(`subprocess`보다 엄격함을 docstring에 적는다). 보류(D18)에서 꺼낼 때 이 기준으로 T-0284를 다시 수행한다."
     },
     {
       "id": "HQ-0029",
@@ -269,7 +277,9 @@
       "reason": "requirement-unclear",
       "question": "T-0286 (code: `local_run.run` refuses, before the start, an `env` that is not `None` and has no `items` method with a `TypeError` carrying `parameter` \"env\", as T-0282 did for `clang_build.build`) stopped on its own criterion 3: some `subprocess` start path accepts such an `env`. On native Windows (Python 3.14.4, seen on the driver machine) `subprocess.run` with an `env` object that has only `keys`, `values`, `__getitem__` and `__len__` starts the child and passes the variables on; `local_run.run` takes that path on Windows (no `os.wait4`). By the CPython source the POSIX `posix_spawn` path, which `run` meets the conditions for, also reads `env` through `keys`/`values`; only fork/exec calls `env.items()`. Refusing every such `env` would make the docstring sentence 'The check refuses nothing that one of the ways subprocess starts a process accepts' false. Nothing was committed and no PR was opened. Should `local_run.run` (a) refuse every non-`None` `env` without `items` with `TypeError` (`parameter` \"env\") as `clang_build.build` does, dropping that sentence for this case; (b) refuse only an `env` that no start path accepts (for example one with neither `items` nor `keys`/`values`/`__getitem__`), keeping the sentence true; or (c) stay unchanged? And should `clang_build.build` (T-0282, 4e05627, already stricter than Windows `subprocess`) be aligned with the answer?",
       "askedAt": "2026-10-18T00:46:24Z",
-      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6243877948"
+      "issueComment": "https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6243877948",
+      "resolvedAt": "2026-10-25T15:29:44Z",
+      "decision": "(a) - 오너(채팅, 2026-10-25): `local_run.run`은 `items`가 없는 `None` 아닌 `env`를 모두 `TypeError`(`parameter` \"env\")로 거부하고, 이 경우에 대해 'The check refuses nothing that one of the ways subprocess starts a process accepts' 문장을 뺀다. `clang_build.build`(T-0282)는 이미 그렇게 거부하므로 그대로 둔다."
     },
     {
       "id": "HQ-0030",
