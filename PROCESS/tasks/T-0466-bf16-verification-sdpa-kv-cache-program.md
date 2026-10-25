@@ -2,7 +2,7 @@
 id: T-0466
 title: Add the bf16 SDPA-with-KV-cache verification program bf16_verification_sdpa_kv_cache.c, with guarded cache allocations and a check value over five ranges, and register sdpa_kv_cache in bf16_verification_build.PROGRAM_SOURCES (ADR-0165 code slice 1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0465]
@@ -216,3 +216,12 @@ hq: []
 - Next slice (planner candidate): ADR-0165 code slice 2, the array side of the SDPA-with-KV-cache verification run.
 
 ## Result
+
+- **Landed**: PR #279 squash-merged as d53b898e; 2 review rounds (Approve); CI green on all 6 jobs (C gate, Python 3.11 and 3.14, coverage gate, test presence, shellcheck).
+- **Language**: C, because the program is linked with a C kernel into one executable and includes the shared C header (ADR-0163 decision 2 as ADR-0165 decision 2 applies it).
+- **Changes outside tests**: 3 files, about 210 lines.
+  - New program `hilclaw/harness/bf16_verification_sdpa_kv_cache.c`: cross-dimension rules (l >= m, h a multiple of h_kv) exit with status 2, size overflows (including l + 2m and the draw's element count) with status 3; the five ranges are drawn as one sequence per draw; each cache is its own allocation of l + 2m rows, with guard rows and rows P .. l - 1 refilled with `0x7FC0` on every draw; the check value is a static CRC-32 of the program (`check_ranges`) over the five ranges, so `bf16_verification.h` is unchanged.
+  - `sdpa_kv_cache` is the last key of `PROGRAM_SOURCES`; docstrings of `bf16_verification_build` and `hilclaw.harness` updated.
+- **Tests**: new `tests/harness/test_bf16_verification_sdpa_kv_cache.py` (expected values computed in the test; a small compiled driver checks the program's CRC against the header's `check_value` over two ranges and against `zlib.crc32` over five); `tests/harness/test_bf16_verification_build.py` gains `sdpa_kv_cache` in `PROGRAM_KINDS` plus one real-clang case. Local: ruff green; full pytest on Windows 31501 passed, 1747 skipped (no clang); WSL clang 14 run of the two touched test files 247 passed.
+- **Review**: round 1 raised two Low nits; the helper `times` was renamed to `multiplied` (POSIX `times()` clash); the unreachable `new_count` overflow check stays because criterion 4 names it (reviewer agreed).
+- **Follow-ups**: ADR-0165 code slice 2, the array side (planner candidate).
