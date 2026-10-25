@@ -16,13 +16,16 @@ priority and no resource limit, repeats nothing, computes no statistic and
 interprets neither the output nor the exit status. It reads no configuration
 and no environment variable of its own and writes no file.
 
-The process is started without a shell, with no standard input.
+The process is started without a shell. Its standard input is the null
+device, or, when the caller gives bytes, a pipe through which exactly those
+bytes are written before it is closed.
 
 Known limits. On a timeout only the process that was started is killed, not
-that process's children. A survivor that keeps an output pipe open makes the
-run count as timed out at the limit even where the started process ended, and
-on native Windows can make the call last longer than the limit. The output is
-held in memory without a size limit. The process is not sandboxed and its
+that process's children. A survivor that keeps an output pipe open, or keeps
+standard input open while input is still unwritten, makes the run count as
+timed out at the limit even where the started process ended, and on native
+Windows can make the call last longer than the limit. The output and the
+input are held in memory without a size limit. The process is not sandboxed and its
 environment is not scrubbed. On Windows the program lookup also searches the
 current directory.
 """
@@ -36,6 +39,7 @@ import shutil
 import signal
 import stat
 import subprocess
+import threading
 import time
 from typing import NamedTuple
 
@@ -76,7 +80,7 @@ class ProgramNotFoundError(LookupError):
     """The program to run could not be found; nothing was started."""
 
 
-def run(command, *, timeout_s, cwd=None, env=None):
+def run(command, *, timeout_s, cwd=None, env=None, stdin_data=None):
     """Run ``command`` as one local process and return a :class:`RunResult`.
 
     ``command`` is a non-empty sequence: the program (``str`` or
@@ -87,6 +91,18 @@ def run(command, *, timeout_s, cwd=None, env=None):
     ``cwd``. ``cwd`` and ``env`` are handed to the process unchanged (``None``
     inherits). ``timeout_s`` is the limit in seconds; when it is reached the
     process is killed.
+
+    ``stdin_data`` is what the process reads on its standard input. With
+    ``None``, the default, standard input is the null device. With a
+    :class:`bytes` object, standard input is a pipe: the runner writes all the
+    bytes while it collects the output, then closes the pipe, so the process
+    reads exactly those bytes followed by end of input (``b""`` closes the
+    pipe at once). Writing counts against ``timeout_s``: a limit reached while
+    input is still unwritten is a timeout like any other. A process that
+    exits or closes its standard input before reading everything is not an
+    error: the runner stops writing and reports the run as usual, and no
+    error from writing the input is raised. Whether the input was read in
+    full is not reported.
 
     A non-zero exit, a signal or a timeout is a result, not an exception.
     Raised before anything is started: :class:`TypeError` for a ``command``
@@ -146,10 +162,12 @@ def run(command, *, timeout_s, cwd=None, env=None):
     ``"timeout_s"`` for the time limit, ``"command"`` for the command, the
     program or an argument (including a NUL character in an argument and,
     on POSIX, an argument :func:`os.fsencode` cannot convert),
-    ``"env"`` for the environment and ``"cwd"`` for the working directory.
-    The time limit is checked first, then the command (so
-    :class:`ProgramNotFoundError` comes before an ``env`` or ``cwd`` error),
-    then ``env``, then ``cwd``. An error from anywhere else, including what
+    ``"env"`` for the environment, ``"cwd"`` for the working directory and
+    ``"stdin_data"`` for the input, which raises :class:`TypeError` when it is
+    neither ``None`` nor :class:`bytes` (``str``, :class:`bytearray` and
+    :class:`memoryview` included). The time limit is checked first, then the
+    command (so :class:`ProgramNotFoundError` comes before an ``env`` or
+    ``cwd`` error), then ``env``, then ``cwd``, then ``stdin_data``. An error from anywhere else, including what
     :mod:`subprocess` raises, :class:`ProgramNotFoundError`, an
     :class:`OSError` of the program lookup and the :class:`OSError` of the
     ``cwd`` test, carries no ``parameter``; read it as
@@ -167,9 +185,13 @@ def run(command, *, timeout_s, cwd=None, env=None):
     with _parameter("env"):
         _check_env(env)
     _check_cwd(cwd)
+    with _parameter("stdin_data"):
+        _check_stdin_data(stdin_data)
     wait = _run_with_usage if hasattr(os, "wait4") else _run_without_usage
     started = time.monotonic()
-    returncode, stdout, stderr, max_rss = wait(resolved, timeout_s, cwd, env)
+    returncode, stdout, stderr, max_rss = wait(
+        resolved, timeout_s, cwd, env, stdin_data
+    )
     duration_s = time.monotonic() - started
     return RunResult(
         returncode=returncode,
@@ -182,7 +204,9 @@ def run(command, *, timeout_s, cwd=None, env=None):
     )
 
 
-def _run_without_usage(command, timeout_s, cwd, env):
+def _run_without_usage(command, timeout_s, cwd, env, stdin_data):
+    if stdin_data is not None:
+        return _run_without_usage_fed(command, timeout_s, cwd, env, stdin_data)
     try:
         done = subprocess.run(
             command,
@@ -198,10 +222,46 @@ def _run_without_usage(command, timeout_s, cwd, env):
     return done.returncode, done.stdout, done.stderr, None
 
 
-def _run_with_usage(command, timeout_s, cwd, env):
+def _run_without_usage_fed(command, timeout_s, cwd, env, stdin_data):
     with subprocess.Popen(
         command,
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=cwd,
+        env=env,
+    ) as process:
+        pipe, process.stdin = process.stdin, None
+        feeder = threading.Thread(target=_feed, args=(pipe, stdin_data), daemon=True)
+        feeder.start()
+        try:
+            stdout, stderr = process.communicate(timeout=timeout_s)
+            returncode = process.returncode
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            returncode = None
+        except BaseException:
+            process.kill()
+            raise
+        finally:
+            feeder.join()
+    return returncode, stdout, stderr, None
+
+
+def _feed(pipe, data):
+    try:
+        with contextlib.suppress(OSError):
+            pipe.write(data)
+    finally:
+        with contextlib.suppress(OSError):
+            pipe.close()
+
+
+def _run_with_usage(command, timeout_s, cwd, env, stdin_data):
+    with subprocess.Popen(
+        command,
+        stdin=subprocess.DEVNULL if stdin_data is None else subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         cwd=cwd,
@@ -209,7 +269,7 @@ def _run_with_usage(command, timeout_s, cwd, env):
     ) as process:
         try:
             deadline = time.monotonic() + timeout_s
-            stdout, stderr, drained = _drain(process, deadline)
+            stdout, stderr, drained = _drain(process, deadline, stdin_data)
             ended = _reap(process.pid, deadline) if drained else None
             timed_out = ended is None
             status, usage = _kill_and_reap(process.pid) if timed_out else ended
@@ -221,23 +281,49 @@ def _run_with_usage(command, timeout_s, cwd, env):
     return None if timed_out else process.returncode, stdout, stderr, max_rss
 
 
-def _drain(process, deadline):
+def _drain(process, deadline, stdin_data):
     chunks = {process.stdout: [], process.stderr: []}
-    with _Selector() as selector:
-        for pipe in chunks:
-            selector.register(pipe, selectors.EVENT_READ)
-        while selector.get_map():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            for key, _ in selector.select(remaining):
-                data = os.read(key.fd, _READ_SIZE)
-                if data:
-                    chunks[key.fileobj].append(data)
-                else:
-                    selector.unregister(key.fileobj)
-        drained = not selector.get_map()
+    pending = memoryview(stdin_data or b"")
+    try:
+        with _Selector() as selector:
+            for pipe in chunks:
+                selector.register(pipe, selectors.EVENT_READ)
+            if pending:
+                os.set_blocking(process.stdin.fileno(), False)
+                selector.register(process.stdin, selectors.EVENT_WRITE)
+            elif process.stdin is not None:
+                process.stdin.close()
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                for key, _ in selector.select(remaining):
+                    if key.fileobj is process.stdin:
+                        pending = _write_some(key.fd, pending)
+                        if not pending:
+                            selector.unregister(process.stdin)
+                            process.stdin.close()
+                        continue
+                    data = os.read(key.fd, _READ_SIZE)
+                    if data:
+                        chunks[key.fileobj].append(data)
+                    else:
+                        selector.unregister(key.fileobj)
+            drained = not selector.get_map()
+    finally:
+        if process.stdin is not None:
+            process.stdin.close()
     return b"".join(chunks[process.stdout]), b"".join(chunks[process.stderr]), drained
+
+
+def _write_some(fd, pending):
+    try:
+        written = os.write(fd, pending[:_READ_SIZE])
+    except BlockingIOError:
+        return pending
+    except OSError:
+        return pending[:0]
+    return pending[written:]
 
 
 def _reap(pid, deadline):
@@ -353,6 +439,13 @@ def _check_cwd(cwd):
     except OSError as error:
         error.path_role = "cwd"
         raise
+
+
+def _check_stdin_data(stdin_data):
+    if stdin_data is not None and not isinstance(stdin_data, bytes):
+        raise TypeError(
+            f"stdin_data must be bytes or None, not {type(stdin_data).__name__}"
+        )
 
 
 def _not_a_directory(cwd):
