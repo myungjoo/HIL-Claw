@@ -2,7 +2,7 @@
 id: T-0476
 title: Add the module that maps a tool failure raised by an operation of `sim.run` or `board.run` to the `failure` of the step's end line (the eight backend kinds as raised, `operation_failure_invalid` for every other kind; ADR-0068 decisions 3 to 6), with tests; wire it into nothing
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0475]
@@ -72,3 +72,6 @@ Line numbers are those of `main` at `f9fc4abd`; the text wins. Read Korean files
 - (code, later; planner) The run tools' tool function joining the landed `run_*` modules with this module and the keeper of ADR-0108, then binding and registration. Before planning it, re-read ADR-0106 and ADR-0108 Consequences for what still stands.
 
 ## Result
+- DONE. PR #290 squash-merged as 9fb6177c after 1 review round (Approve; two Nits, both "no change required", not addressed). CI green (all six gates).
+- New `hilclaw/run_failure.py` (`ended_with`, `BACKEND_KINDS`, nine kind constants imported from `hilclaw.check_failure`; message names a reserved kind only) and `tests/test_run_failure.py` (189 tests; module coverage 100%).
+- Follow-ups: none new; the task's planned follow-up (run tools' tool function, binding and registration) stands.
