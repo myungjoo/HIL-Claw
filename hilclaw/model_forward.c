@@ -4,11 +4,10 @@
  * It loads kernels of the six bf16 kinds from shared libraries, reads the
  * weights, the RoPE table, eps, the token ids and the library table from an
  * input file, runs the calls of a generation in the order of ADR-0166
- * decisions 1 and 3 and writes the token ids and the logits to the report.
- * This build runs the prefill pass only, so a generation of one pass (G = 1);
- * the decode passes are ADR-0166 code slice 3. It compares nothing, holds no
- * reference, tolerance, verdict or token selection rule and builds no RoPE
- * table. It does no floating-point arithmetic: eps and the RoPE table are
+ * decisions 1 and 3 and writes the token ids and the logits to the report:
+ * the prefill, then the G - 1 decode passes of the given-sequence mode
+ * (ADR-0166 decision 7). It compares nothing, holds no reference, tolerance,
+ * verdict or token selection rule and builds no RoPE table. It does no floating-point arithmetic: eps and the RoPE table are
  * passed through to the kernels, and every other element is a uint16_t bf16
  * pattern that is only copied, never cast. It reads no clock, no environment
  * variable and no standard input. It needs the C library and POSIX.1-2008
@@ -64,20 +63,20 @@
  *
  * The file ends exactly after w_lm_head. Checks, all before the first call:
  * a file shorter than the header and eps, a dimension, S or G of 0, H not a
- * multiple of H_kv, an odd d, lm_head_rows other than 0 or 1, G above 1 in
- * this build, an eps that is not finite or not above 0 (checked on its bit
- * pattern), an input file that is not a regular file or whose length is not
+ * multiple of H_kv, an odd d, lm_head_rows other than 0 or 1, an eps that
+ * is not finite or not above 0 (checked on its bit pattern), an input file that is not a regular file or whose length is not
  * the one the header gives, a library index not below the number of
  * libraries and a token id not below V are errors of the input file
  * (status 5). The byte size of any buffer, weight, cache, the RoPE table,
- * the token ids or the library table that does not fit in size_t, and a
+ * the token ids, the library table or the entry points of the G passes that
+ * does not fit in size_t, and a
  * length of the file that does not fit in a uint64_t, are found after the
  * header and before anything is allocated (status 3), as is a failed
  * allocation. A library bound in the table that lacks the entry point of its
  * call site's kind (hilclaw_gemm_bf16, hilclaw_rmsnorm_bf16,
  * hilclaw_elementwise_add_bf16, hilclaw_swiglu_bf16, hilclaw_rope_bf16 or
- * hilclaw_sdpa_kv_cache_bf16) is status 6, found before the first call; a
- * library bound to no call site is not searched.
+ * hilclaw_sdpa_kv_cache_bf16) at any pass is status 6, found before the
+ * first call; a library bound to no call site is not searched.
  *
  * Buffers, ADR-0166 decision 2: each weight, the RoPE table and the token ids
  * are read into arrays of their own; the activations x, h, normed, qkv_out,
@@ -94,15 +93,21 @@
  * row P), sdpa (m = T, l = P + T, the layer's caches from their starts), o,
  * attention_residual, ffn_norm, gate, up, ffn_activation, down,
  * ffn_residual; then norm and lm_head, (T, D, V) on normed for "all" and
- * (1, D, V) on row T - 1 of normed for "last". Each call uses the library
- * the table names for its call site at pass 0.
+ * (1, D, V) on row T - 1 of normed for "last". Decode pass k (k = 1 ...
+ * G - 1) makes the same calls with T = 1 and P = S + k - 1 on the first row
+ * of each activation: its one token is token id P, given token k - 1, so the
+ * last given token is fed to no pass; freqs_cis is row P of the table, and
+ * sdpa has m = 1, l = P + 1 and the same cache buffers, which keep what the
+ * earlier passes wrote. Each call of pass p uses the library the table names
+ * for its call site at pass p.
  *
  * Report, on the standard output the process was started with: the S + G
- * token ids as read (uint64_t), then the logits rows of the pass as bf16
- * patterns (S rows of V for "all", one row of V for "last"), then the end
- * mark "end\n": 8*(S + G) + 2*rows*V + 4 bytes. Descriptor 1 is pointed at
- * standard error before the first library is loaded, so what a kernel prints
- * is not part of the report.
+ * token ids as read (uint64_t), then the logits rows as bf16 patterns, V
+ * elements each, pass by pass in pass order: for "all" the T rows of each
+ * pass (S + G - 1 rows), for "last" the last row of each pass (G rows); then
+ * the end mark "end\n": 8*(S + G) + 2*rows*V + 4 bytes. Descriptor 1 is
+ * pointed at standard error before the first library is loaded, so what a
+ * kernel prints is not part of the report.
  *
  * Exit status:
  *   0  the end mark was written; in no other case
@@ -287,8 +292,6 @@ static void check_header(const uint64_t *word, uint32_t eps_bits)
         exit(fail(STATUS_INPUT, "input file", "d is odd"));
     if (word[9] > 1)
         exit(fail(STATUS_INPUT, "input file", "lm_head_rows is neither 0 nor 1"));
-    if (word[8] > 1)
-        exit(fail(STATUS_INPUT, "input file", "G is above 1; decode passes are not supported by this build"));
     if ((eps_bits & UINT32_C(0x80000000)) != 0 || (eps_bits & UINT32_C(0x7F800000)) == UINT32_C(0x7F800000) ||
         eps_bits == 0)
         exit(fail(STATUS_INPUT, "input file", "eps is not finite or not above 0"));
@@ -309,6 +312,7 @@ static uint64_t check_sizes(const uint64_t *word)
     bytes(times(C, times(H_kv, d, "cache"), "cache"), 2, "cache");
     bytes(times(rows, V, "logits"), 2, "logits");
     bytes(N, sizeof(struct layer), "layers");
+    bytes(G, sizeof(struct pass_entries), "entry points");
     layer = bytes(times(D, W, "w_qkv"), 2, "w_qkv");
     layer = plus(layer, bytes(times(times(H, d, "w_o"), D, "w_o"), 2, "w_o"), "a layer");
     layer = plus(layer, times(3, bytes(times(D, F, "w_gate"), 2, "w_gate"), "a layer"), "a layer");
@@ -545,7 +549,7 @@ static void release(struct model *m)
 int main(int argc, char **argv)
 {
     struct model m;
-    struct pass_entries prefill;
+    struct pass_entries *passes;
     size_t libraries, i;
     void **handles;
     FILE *file;
@@ -568,14 +572,19 @@ int main(int argc, char **argv)
     memset(&m, 0, sizeof m);
     file = open_input(argv[1], &m);
     read_inputs(file, &m, libraries);
-    bind(handles, &m, 0, &prefill);
+    passes = allocate(m.G * sizeof *passes);
+    for (i = 0; i < m.G; i++)
+        bind(handles, &m, i, &passes[i]);
     read_weights(file, &m);
     allocate_activations(&m);
 
     emit(m.tokens, (m.S + m.G) * sizeof *m.tokens);
-    run_pass(&m, &prefill, m.S, 0);
+    run_pass(&m, &passes[0], m.S, 0);
+    for (i = 1; i < m.G; i++)
+        run_pass(&m, &passes[i], 1, m.S + i - 1);
     emit("end\n", 4);
     release(&m);
+    free(passes);
     free(handles);
     return 0;
 }
