@@ -2,7 +2,7 @@
 id: T-0470
 title: Write ADR-0166, the bf16 forward pass and generation of the model executor on `cpu_standin` (design of ADR-0153 code slice 2; part of OD-31 sub-question 4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-9, FR-10, FR-13, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0428, T-0434, T-0437, T-0443, T-0447, T-0450]
@@ -145,3 +145,74 @@ Leaving all of this to code tasks would make each code task invent design. A rec
 - The record of how `correctness.check`, `spec.write` and the instance start reach the six bf16 kinds (P2-14).
 
 ## Result
+
+- **Outcome**: DONE. Document mode. `ARCHITECTURE/decisions/ADR-0166-od31-bf16-forward-pass.md` is landed on `main` as `d25a61e4`, together with the register edits in `Requirements.md` (OD-31 row), `OpenDecisionProposals.md` (§ OD-31: an adopted line, ② and ④ status) and `StandardScenarios.md` ("최근 재검사" line). The commit has `Reviewed-by: reviewer agent (4 rounds, Approve)`. The branch `claude/T-0470-od31-bf16-forward-pass` was deleted locally and on the remote.
+- **Review**: 4 rounds with a context-isolated `dev-reviewer`.
+  - R1: Approve with non-blocking findings and nits: HQ-0034 is answered, an over-reading of HQ-0065 (3), the Status did not name its part of sub-question ②, and some less-exact sentences were missing.
+  - R2: Request changes. The slice plan cited the pre-D20 cap of 300 LOC / 5 files; the cache-capacity citation did not match its source; ADR-0153 decision 6's fixture sentence had become less exact; the prefill slice lacked the cache.
+  - R3: Request changes (Should-fix). The slice cut points had been lost.
+  - R4: Approve, with 3 nits. They were fixed without another review, under D20.
+- **AC 5: (a)**, the reading. The table holds bf16 patterns and the row copy makes no cast. The derivation, in decision 5:
+  - HQ-0065 (1) to (3) give the dtype bf16 and the representation `uint16_t`.
+  - The copied rows are the bf16 operands `x` of `attention_norm` and `a` of `attention_residual`.
+  - ADR-0157 decision 1 holds weights in their receiving operand's element type, with no arithmetic on them.
+  - Any other table type would therefore need a conversion outside every kernel, which no answer gives.
+  - No new value is introduced. The reading is listed under "Readings for the owner to check".
+  - All 4 review rounds accepted this reading, so no AC 9 (b) question is needed.
+- **Size cap**: AC 8's 300 LOC / 5 files predates D20 (`49a19866`, landed on `main` during this task). The record follows DRIVER §5 (600 LOC / 10 files) and §6 "task 단위" ③. It lists six slices with fixed cut points, which the planner groups into tasks:
+  1. the whole-generation check;
+  2. the program, prefill only;
+  3. the decode passes;
+  4. the host-side input and report;
+  5. the build-and-run path;
+  6. the synthetic test.
+  D20 §6 ① (the ADR and its first code slice in one task) postdates this task's planning, so this record is a document-only task.
+- **Runtime acceptance**: no new item. ADR-0153's (lxviii) is to be asked once slices 1 to 5 have landed. The highest existing item is ADR-0137's (lxxiv).
+- **§9 notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6397327917
+- **HQ draft for the driver** (AC 9 (a); reason `owner-only-decision`; `taskId` T-0470; the task is DONE and does not wait for the answer):
+
+  > OD-31 하위 질문 ⑥(모델 수준 정확도의 판정; PLAN P2-13·P2-14·P2-15). ADR-0166(T-0470, main d25a61e4)이 모델 실행기의 bf16 forward pass와 생성 루프를 설계했습니다.
+  >
+  > 생성 모드는 다음 토큰을 마지막 logits 행에서 고르는 모드입니다. 그 토큰 선택 규칙과, P2-14의 "reference와 맞는다"가 무엇을 비교하는지는 ⑥(오너)으로 남겼습니다. 드라이버 코드는 주어진 시퀀스 모드만 만들고, 생성 모드는 invalid input으로 거부합니다.
+  >
+  > (1) 토큰 선택 규칙:
+  > (a) greedy — bf16 logits 마지막 행의 argmax. 같은 값이면 가장 작은 token id를 고릅니다.
+  > (b) 샘플링 — temperature·top-p 등의 값과 seed를 지정해 주십시오.
+  > (c) 생성 모드는 두지 않습니다. 주어진 시퀀스 모드만 쓰고, 모델 수준 비교도 teacher forcing으로 합니다.
+  > (d) 그 밖.
+  >
+  > (2) "reference와 맞는다"의 비교 지표. P2-14 합성 run과 P2-15 실제 가중치 run에 각각 답해도 됩니다.
+  > (a) 토큰 일치 — 같은 프롬프트에서 reference가 같은 규칙으로 낸 토큰열과 처음 N개 토큰이 같다(N 지정).
+  > (b) logit 오차 — 주어진 시퀀스에서 행마다 reference logits와 원소별 rtol·atol로 비교한다(값은 instance처럼 사용자가 지정, 기본값 없음).
+  > (c) (a)와 (b) 둘 다.
+  > (d) 그 밖(top-k 일치 등).
+  >
+  > (3) reference 구현:
+  > (a) 같은 연산을 NumPy float64로 계산하는 구현 — HQ-0066 (1)의 연장이고 새 의존성이 없습니다.
+  > (b) Meta `llama-models`의 PyTorch 구현 — 새 외부 의존성(⑦)입니다.
+  > (c) Hugging Face transformers — 새 의존성입니다.
+  > (d) 그 밖.
+  > 비교가 읽는 lm_head 행("모든 행"/"마지막 행")과 프롬프트·생성 길이는 이 답에 따라 정해집니다. 오너가 지정하지 않으면 드라이버 ADR이 정합니다.
+  >
+  > 막히는 것:
+  > - 실행기의 생성 모드
+  > - P2-14의 "reference와 맞는다" 판정과 P2-15의 대조 방법
+  > - 모델 수준 run 기록(⑧·OD-8과 함께)
+  >
+  > 막히지 않는 것:
+  > - ADR-0166의 code slice 1~6(주어진 시퀀스 모드와 합성 모델 테스트 — fixture 커널의 Python 재계산과 비트 단위로 비교)
+  > - P2-11·P2-12의 그 밖 task
+  > - HQ-0070(RoPE scale factor는 (3)의 reference 출처와 함께 정해질 수 있음)
+
+- **Less exact, not edited** (AC 11): the list is in ADR-0166 Consequences, with its search terms. It covers:
+  - the header of `hilclaw/model_program.c`;
+  - ADR-0153: decision 4 (casts), decision 6 (the pre-answer test and its "to each kind's contract") and the first Boundaries bullet;
+  - ADR-0157: decision 1, Context and Boundaries;
+  - ADR-0161 decision 6 (the QKV column order);
+  - ADR-0159 decision 8 (the example buffers);
+  - ADR-0162 and ADR-0165 Boundaries (cache capacity);
+  - the docstring of `hilclaw/model_binding.py`.
+- **Follow-ups**:
+  - the six code slices of ADR-0166 Consequences, grouped by the planner under DRIVER §6 "task 단위";
+  - the HQ above;
+  - the record registering the bf16 kinds with `correctness.check`, `spec.write` and the instance start (P2-14).
