@@ -18,6 +18,7 @@ from hilclaw import (
     mock_check,
     tools,
 )
+from hilclaw.build_log import LogKeeper
 from hilclaw.check_operation import (
     KIND_OPERATION_ANSWER_INVALID,
     OperationAnswerInvalid,
@@ -45,6 +46,8 @@ MARKER = "zq7-marker-zq7"
 PATH_MARKER = "zq7-path-zq7"
 # A test value: nothing lies there, and no test makes it.
 OUTPUT_PATH = Path(PATH_MARKER) / "runs" / "r1" / "output"
+# A test value: nothing lies there, no test makes it, and no test hands over a log.
+LOG_PATH = Path(PATH_MARKER) / "runs" / "r1" / "build-log.txt"
 MESSAGE_LIMIT = 120
 
 
@@ -97,7 +100,16 @@ def asked(
     tolerance=EXAMPLE_TOLERANCE,
     output_path=OUTPUT_PATH,
 ):
-    return ask(operation, REQUEST, HW_PROFILE, parameters, output_path, **tolerance)
+    return ask(
+        operation,
+        REQUEST,
+        HW_PROFILE,
+        parameters,
+        output_path,
+        LogKeeper(),
+        log_path=LOG_PATH,
+        **tolerance,
+    )
 
 
 def invalid(
@@ -311,8 +323,16 @@ def test_a_good_report_passes_and_the_operation_is_called_once_with_the_four():
     hw_profile = dict(HW_PROFILE)
     parameters = CheckParameters(seed=SEED, draws=DRAWS, **SHAPE)
     output_path = Path(OUTPUT_PATH)
+    keeper = LogKeeper()
     result = ask(
-        operation, request, hw_profile, parameters, output_path, **EXAMPLE_TOLERANCE
+        operation,
+        request,
+        hw_profile,
+        parameters,
+        output_path,
+        keeper,
+        log_path=LOG_PATH,
+        **EXAMPLE_TOLERANCE,
     )
     assert result["outcome"] == "pass"
     assert result == expected(GOOD)
@@ -320,11 +340,12 @@ def test_a_good_report_passes_and_the_operation_is_called_once_with_the_four():
     assert len(operation.calls) == 1
     args, kwargs = operation.calls[0]
     assert kwargs == {}
-    assert len(args) == 4
+    assert len(args) == 5
     assert args[0] is request
     assert args[1] is hw_profile
     assert args[2] is parameters
     assert args[3] is output_path
+    assert args[4] is keeper
     assert request == REQUEST
     assert hw_profile == HW_PROFILE
     assert parameters == PARAMETERS
@@ -345,8 +366,9 @@ def test_the_output_path_is_handed_on_whatever_it_is_and_changes_no_result(
     assert result == expected(answer)
     ((args, kwargs),) = operation.calls
     assert kwargs == {}
-    assert len(args) == 4
+    assert len(args) == 5
     assert args[3] is output_path
+    assert type(args[4]) is LogKeeper
 
 
 def test_an_output_path_that_cannot_be_read_is_handed_on_unread():
@@ -589,16 +611,17 @@ def test_an_operation_that_is_not_callable_is_refused(operation):
 def test_the_call_itself_is_checked_by_python():
     operation = Recording(answer=GOOD)
     four = (operation, REQUEST, HW_PROFILE, PARAMETERS)
-    five = (*four, OUTPUT_PATH)
+    five = (*four, OUTPUT_PATH, LogKeeper())
+    tolerance = {**EXAMPLE_TOLERANCE, "log_path": LOG_PATH}
     cases = [
-        ((operation, REQUEST, HW_PROFILE), EXAMPLE_TOLERANCE),
-        (four, EXAMPLE_TOLERANCE),
-        (five, {"rtol": 1e-5}),
-        (five, {"atol": 1e-6}),
-        ((*five, 1e-5, 1e-6), {}),
-        ((*five, 1e-5), {"atol": 1e-6}),
-        (five, {**EXAMPLE_TOLERANCE, "draws": 3}),
-        (five, {**EXAMPLE_TOLERANCE, "output_path": OUTPUT_PATH}),
+        ((operation, REQUEST, HW_PROFILE), tolerance),
+        (four, tolerance),
+        (five, {"rtol": 1e-5, "log_path": LOG_PATH}),
+        (five, {"atol": 1e-6, "log_path": LOG_PATH}),
+        ((*five, 1e-5, 1e-6), {"log_path": LOG_PATH}),
+        ((*five, 1e-5), {"atol": 1e-6, "log_path": LOG_PATH}),
+        (five, {**tolerance, "draws": 3}),
+        (five, {**tolerance, "output_path": OUTPUT_PATH}),
     ]
     for args, kwargs in cases:
         with pytest.raises(TypeError) as caught:
@@ -734,6 +757,7 @@ def test_module_imports_the_three_only_and_has_no_entry():
     imported = imported_modules(own)
     assert imported == {
         "hilclaw",
+        "hilclaw.build_log",
         "hilclaw.check_answer",
         "hilclaw.check_parameters",
         "hilclaw.tools",
@@ -770,12 +794,14 @@ def test_public_names_of_the_module_and_no_default():
         "hw_profile",
         "parameters",
         "output_path",
+        "keeper",
+        "log_path",
         "rtol",
         "atol",
     ]
     for parameter in parameters:
         assert parameter.default is inspect.Parameter.empty, parameter
     positional = inspect.Parameter.POSITIONAL_OR_KEYWORD
-    assert all(parameter.kind is positional for parameter in parameters[:5])
+    assert all(parameter.kind is positional for parameter in parameters[:6])
     keyword_only = inspect.Parameter.KEYWORD_ONLY
-    assert all(parameter.kind is keyword_only for parameter in parameters[5:])
+    assert all(parameter.kind is keyword_only for parameter in parameters[6:])

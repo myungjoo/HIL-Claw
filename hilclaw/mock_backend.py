@@ -22,8 +22,9 @@ the mock, and from a mock built without the operation of the called tool.
 The mock of the default registry is not built here: it offers
 ``correctness.check`` with the operation and default script of
 :mod:`hilclaw.mock_check` (:func:`hilclaw.check_definition.default_table`,
-ADR-0070), whose operation takes four arguments. Fault injection in a live
-session is not here either (OD-18 sub-question 8, open). The module defines
+ADR-0070), whose operation takes five arguments, the log keeper of ADR-0078
+decision 6 the last. Fault injection in a live session is not here either
+(OD-18 sub-question 8, open). The module defines
 no script, no table and no tool, and holds no backend.
 """
 

@@ -29,6 +29,7 @@ from hilclaw import (
     tools,
 )
 from hilclaw.backends import Backend, BackendTable
+from hilclaw.build_log import LogKeeper
 from hilclaw.check_definition import (
     DESCRIPTION,
     default_table,
@@ -355,9 +356,10 @@ def test_default_table_holds_the_mock_offering_this_tool_alone():
 def test_default_table_operation_answers_with_the_default_script(parties):
     operation = backends.select(default_table(), profile(), TOOL)
     asked = CheckParameters(7, 1, 1, 1, 1)
-    answer = operation(REQUEST, profile(), asked, Path("output"))
+    keeper = LogKeeper()
+    answer = operation(REQUEST, profile(), asked, Path("output"), keeper)
     assert parties["script"].calls == [
-        (TOOL, REQUEST, profile(), asked, Path("output"))
+        (TOOL, REQUEST, profile(), asked, Path("output"), keeper)
     ]
     assert answer == parties["script"].answers[0]
 
@@ -468,7 +470,7 @@ def test_a_call_about_a_run_at_the_mock_passes(root, parties):
         },
     ]
     assert counts(parties) == (1, 1, 1)
-    ((_, _, _, parameters, _),) = parties["script"].calls
+    ((_, _, _, parameters, _, _),) = parties["script"].calls
     assert parameters.seed == parties["seeds"].answers[0]
 
 
@@ -531,9 +533,11 @@ def test_no_environment_variable_chooses_the_table_or_the_seeds(
     assert parties["script"].calls[0][3].seed == parties["seeds"].answers[0]
 
 
-def wrong_product(tool, asked, hw_profile, parameters, output_path):
+def wrong_product(tool, asked, hw_profile, parameters, output_path, keeper):
     report = bytearray(
-        mock_check.default_script(tool, asked, hw_profile, parameters, output_path)
+        mock_check.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
     )
     (element,) = struct.unpack_from("=f", report, 4)
     struct.pack_into("=f", report, 4, element + 1000.0)
@@ -563,7 +567,7 @@ def test_a_registry_of_the_test_answers_what_its_script_answers(root, parties):
     result = json.loads(stdout.getvalue())
     assert result["outcome"] == "fail"
     assert result["counts"][0]["failed"] >= 1
-    ((_, _, _, parameters, _),) = script.calls
+    ((_, _, _, parameters, _, _),) = script.calls
     assert parameters.seed == 7
     stdout = io.BytesIO()
     data = io.BytesIO(mcp_document("correctness_check", REQUEST))

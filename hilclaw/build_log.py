@@ -4,8 +4,12 @@
 keeps the log of every build whose compiler ended in a text file of the
 attempt (decisions 2 and 3), handed over by the operation to a fifth thing it
 is called with, the log keeper, and written by the tool function after the
-operation came back (decisions 6 and 7). This module is the part of that
-record that wires nothing:
+operation came back (decisions 6 and 7). This module holds the keeper, the
+kind and the write; :func:`hilclaw.check_tool.tool_function` makes one keeper
+for each call that reaches the operation, and
+:func:`hilclaw.check_operation.ask` hands it to the operation, closes it when
+the operation came back and writes what it holds with :func:`write`, before
+the answer is judged:
 
 * :class:`LogKeeper`: the keeper of decision 6. An operation hands the log
   over with :meth:`LogKeeper.hand_over`; the tool function closes the keeper
@@ -40,8 +44,8 @@ Choices that are this module's own and no rule of a record:
   handler of the error it replaces has been left, so neither its
   ``__cause__`` nor its ``__context__`` holds that error.
 
-What the module does not do: it wires nothing into ``correctness.check`` and
-is called by no tool yet. It forms no path, reads no file, appends no end
+What the module does not do: it makes no keeper of its own for a call and
+calls no operation. It forms no path, reads no file, appends no end
 line, states no spend, judges no answer and composes no message that holds a
 path, the text of an error or a byte of a log. It bounds no size of a log
 (open under ADR-0078 decision 4) and commits nothing (OD-17). It imports

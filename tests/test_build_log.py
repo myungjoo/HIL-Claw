@@ -1,4 +1,5 @@
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -139,13 +140,22 @@ def test_hand_over_after_close_is_refused_and_changes_nothing():
 
 
 def test_refusal_passed_by_an_operation_is_answered_operation_answer_invalid():
-    def operation(request, hw_profile, parameters, output_path):
+    def operation(request, hw_profile, parameters, output_path, keeper):
         keeper.hand_over(b"no text")
 
-    keeper = LogKeeper()
     parameters = CheckParameters(seed=1, draws=1, m=1, k=1, n=1)
     with pytest.raises(check_operation.OperationAnswerInvalid) as caught:
-        check_operation.ask(operation, {}, {}, parameters, None, rtol=0.0, atol=0.0)
+        check_operation.ask(
+            operation,
+            {},
+            {},
+            parameters,
+            None,
+            LogKeeper(),
+            log_path=Path("zq7-log-zq7") / "build-log.txt",
+            rtol=0.0,
+            atol=0.0,
+        )
     assert caught.value.kind == "operation_answer_invalid"
 
 

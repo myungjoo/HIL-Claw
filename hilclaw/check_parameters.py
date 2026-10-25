@@ -3,7 +3,8 @@
 ``ARCHITECTURE/decisions/ADR-0043-od18-correctness-check-operation-form.md``
 decision 2 has an operation of this tool called with the request, the
 hw_profile of the call and the check parameters; since ADR-0056 decision 3
-it is called with four things, the fourth being the output path, which is no
+it is called with four things, the fourth being the output path, and since
+ADR-0078 decision 6 with five, the fifth being the log keeper; neither is a
 value of the check parameters. The check parameters are "one value that holds
 exactly these five values and nothing else": the seed of the call, the number
 of draws and the dimensions ``m``, ``k`` and ``n``. :class:`CheckParameters`

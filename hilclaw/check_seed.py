@@ -24,8 +24,10 @@ call that lie around the start line and need no log:
   decision 3), the number of draws (ADR-0046 decision 2) and the dimensions
   (ADR-0041 decision 2); the tolerance is that of ADR-0021 decision 4. The
   output path is handed on beside them, as the fourth thing of ADR-0056
-  decision 3. The call of the operation and what becomes of its answer are
-  those of :func:`hilclaw.check_ending.carry_out`.
+  decision 3, and the log keeper as the fifth of ADR-0078 decision 6, with
+  the path of the file of the compiler's log (ADR-0078 decision 3). The
+  call of the operation, the write of the log and what becomes of the
+  answer are those of :func:`hilclaw.check_ending.carry_out`.
 
 Choices that are this module's own and no rule of a record:
 
@@ -59,8 +61,10 @@ Choices that are this module's own and no rule of a record:
   traceback holds none of them.
 * ``admitted`` is checked to be exactly a
   :class:`hilclaw.check_admission.Admitted`, before anything is called.
-* The output path is the last parameter of :func:`check`. It is handed to
-  ``carry_out`` as the same object and not checked, read or converted.
+* The output path is the last positional parameter of :func:`check` but
+  one, the keeper the last, and the path of the log file the keyword
+  ``log_path``. Each is handed to ``carry_out`` as the same object and not
+  checked, read or converted.
 
 What the module does not do: it is no tool and no step and is bound to none.
 It appends no line, so it does not by itself make the draw lie before a start
@@ -77,7 +81,7 @@ caller. By the records such a message has no content that holds the seed
 (ADR-0047 decision 4, citing ADR-0021 decision 3); nothing detects a message
 that breaks this. :func:`check` validates no seed, no number of draws, no
 dimension, no tolerance and no output path, and the module gives none a
-default. It says nothing of what anybody does after an answer, of a repeated
+default. It makes no keeper and forms no path. It says nothing of what anybody does after an answer, of a repeated
 call or of a retry. It is this tool's and gives no rule for another HW tool.
 It reserves no kind. It keeps nothing between calls. It imports
 :mod:`hilclaw.check_admission`, :mod:`hilclaw.check_ending`,
@@ -144,7 +148,9 @@ def draw(source):
     raise tools.ToolFailure(KIND_SEED_NOT_DRAWN, message)
 
 
-def check(operation, request, hw_profile, admitted, seed, output_path):
+def check(
+    operation, request, hw_profile, admitted, seed, output_path, keeper, *, log_path
+):
     """Call ``operation`` once for an admitted check and a drawn seed and return the result, or raise what its step ends with.
 
     - ``operation``: an operation of ``correctness.check``, a callable.
@@ -156,6 +162,10 @@ def check(operation, request, hw_profile, admitted, seed, output_path):
     - ``seed``: the seed of the call, as :func:`draw` returned it.
     - ``output_path``: the output path of the call (ADR-0056 decision 3). It
       is handed on as it is and not read, whatever its type is.
+    - ``keeper``: the log keeper of the call (ADR-0078 decision 6), handed on
+      as it is.
+    - ``log_path``: the file of the compiler's log of the call, keyword-only
+      (ADR-0078 decision 3), handed on as it is.
 
     No parameter has a default. :class:`TypeError` is raised before
     anything is called when ``admitted`` is of another type; this is the
@@ -165,14 +175,16 @@ def check(operation, request, hw_profile, admitted, seed, output_path):
     was handed in, and what
     :func:`hilclaw.check_ending.carry_out` returns for ``operation``,
     ``request``, ``hw_profile``, these parameters, ``output_path``,
-    ``admitted.rtol`` and ``admitted.atol`` is returned as it is.
+    ``keeper``, ``log_path``, ``admitted.rtol`` and ``admitted.atol`` is
+    returned as it is; ``carry_out`` writes the log the operation handed
+    over before the answer is judged (ADR-0078 decision 7).
     ``carry_out`` is called once.
 
     Everything ``carry_out`` raises passes through as the same object:
     :class:`hilclaw.check_ending.EndedWithoutOutcome`, a
     :class:`hilclaw.tools.ToolFailure` that the call of the operation did
     not raise, the :class:`TypeError` for an operation that is not
-    callable, what the judging raises for a value it refuses, and a
+    callable or a keeper of another type, what the judging raises for a value it refuses, and a
     :class:`BaseException` that is no ``Exception``.
 
     No value is validated, derived, bounded or replaced here, the seed
@@ -184,7 +196,8 @@ def check(operation, request, hw_profile, admitted, seed, output_path):
     neither form its ending without the seed being looked at. None of that
     is a rule of this function. No source is asked.
 
-    No argument is modified or kept, and no file is read or written.
+    No argument is modified or kept but the keeper, which is closed; no
+    file is read, and none is written but the log's.
     """
     if type(admitted) is not check_admission.Admitted:
         raise TypeError("admitted: must be exactly a hilclaw.check_admission.Admitted")
@@ -197,6 +210,8 @@ def check(operation, request, hw_profile, admitted, seed, output_path):
         hw_profile,
         parameters,
         output_path,
+        keeper,
+        log_path=log_path,
         rtol=admitted.rtol,
         atol=admitted.atol,
     )

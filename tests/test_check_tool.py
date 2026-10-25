@@ -12,6 +12,7 @@ import pytest
 
 from hilclaw import (
     backends,
+    build_log,
     check_admission,
     check_definition,
     check_seed,
@@ -126,9 +127,11 @@ def output_of(root, asked):
     return FORM(root, *numbers, "output")
 
 
-def wrong_product(tool, asked, hw_profile, parameters, output_path):
+def wrong_product(tool, asked, hw_profile, parameters, output_path, keeper):
     report = bytearray(
-        mock_check.default_script(tool, asked, hw_profile, parameters, output_path)
+        mock_check.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
     )
     (element,) = struct.unpack_from("=f", report, 4)
     struct.pack_into("=f", report, 4, element + 1000.0)
@@ -149,6 +152,7 @@ class Bench:
     ):
         self.root, self.script_answer, self.covered = root, script, covers
         self.order, self.asked, self.sources = [], [], 0
+        self.keepers = []
         self.answers = list(seeds)
         operations = {TOOL: mock_check.operation(self.script)} if offered else {}
         self.backend = Backend(mock_backend.NAME, operations)
@@ -174,13 +178,16 @@ class Bench:
         self.order.append("covers")
         return self.covered(record)
 
-    def script(self, tool, asked, hw_profile, parameters, output_path):
+    def script(self, tool, asked, hw_profile, parameters, output_path, keeper):
         self.order.append("operation")
         self.asked.append((tool, asked, hw_profile, parameters, output_path))
+        self.keepers.append(keeper)
         if isinstance(self.script_answer, BaseException):
             raise self.script_answer
         if callable(self.script_answer):
-            return self.script_answer(tool, asked, hw_profile, parameters, output_path)
+            return self.script_answer(
+                tool, asked, hw_profile, parameters, output_path, keeper
+            )
         return self.script_answer
 
     def count(self, name):
@@ -264,6 +271,8 @@ def test_a_check_of_a_right_product_reports_pass_and_writes_two_lines(root):
         "candidates/02/attempts/01/output"
     )
     assert (bench.sources, bench.count("seeds"), bench.count("covers")) == (1, 1, 1)
+    (keeper,) = bench.keepers
+    assert type(keeper) is build_log.LogKeeper
 
 
 NUMBERS = [
@@ -780,15 +789,15 @@ def test_a_request_to_end_out_of_the_seed_source_passes_through_with_no_line(roo
     assert bench.function(request())["outcome"] == "pass"
 
 
-def a_path_in_a_tool_failure(tool, asked, hw_profile, parameters, output_path):
+def a_path_in_a_tool_failure(tool, asked, hw_profile, parameters, output_path, keeper):
     raise ToolFailure("example_kind", f"nothing lies at {output_path}")
 
 
-def a_path_in_an_error(tool, asked, hw_profile, parameters, output_path):
+def a_path_in_an_error(tool, asked, hw_profile, parameters, output_path, keeper):
     raise FileNotFoundError(2, "No such file or directory", str(output_path))
 
 
-def a_path_in_a_backend_kind(tool, asked, hw_profile, parameters, output_path):
+def a_path_in_a_backend_kind(tool, asked, hw_profile, parameters, output_path, keeper):
     raise ToolFailure("no_kernel_source", f"nothing lies at {output_path}")
 
 
@@ -991,9 +1000,20 @@ def test_what_the_step_is_handed_shows_no_seed(root, monkeypatch):
     seen = []
     check = check_seed.check
 
-    def looking(operation, asked, hw_profile, admitted, seed, output_path):
+    def looking(
+        operation, asked, hw_profile, admitted, seed, output_path, keeper, *, log_path
+    ):
         seen.append(seed)
-        return check(operation, asked, hw_profile, admitted, seed, output_path)
+        return check(
+            operation,
+            asked,
+            hw_profile,
+            admitted,
+            seed,
+            output_path,
+            keeper,
+            log_path=log_path,
+        )
 
     def perform_spy(data_root, asked, hw_profile, operation, drawn):
         seen.append(repr(drawn))
@@ -1096,6 +1116,7 @@ def test_the_module_holds_what_it_joins_and_nothing_of_its_own():
             assert node.module == "hilclaw"
             imported.update(alias.name for alias in node.names)
     assert imported == {
+        "build_log",
         "check_admission",
         "check_ending",
         "check_identity",
