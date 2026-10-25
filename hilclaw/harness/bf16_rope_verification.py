@@ -41,8 +41,10 @@ comment of the program).
 Conventions of this module (not rules of the record): those of
 :mod:`hilclaw.harness.bf16_verification`, with ``dims`` and ``start`` in
 place of ``kind`` and ``dims``. ``start`` is checked after ``dims``,
-``draws`` and ``seed`` and before the tolerance, and every argument is
-refused before the rows are built and before anything is started.
+``draws`` and ``seed`` and before the tolerance, and every argument this
+module checks is refused before the rows are built and before anything is
+started; what :func:`hilclaw.local_run.run` refuses is refused after the
+build and before the start.
 
 What this module does not do: it builds nothing and holds no path of a
 program; it holds no tolerance, seed, number of draws, dimension, start
@@ -187,8 +189,9 @@ def run_bf16_rope_verification(
     what :func:`judge_report` raises for its arguments,
     :class:`TypeError` for an ``executable`` that is neither a path nor
     iterable and :class:`ValueError` for an empty ``executable`` sequence;
-    then what :func:`hilclaw.local_run.run` raises for the command and the
-    time limit. Its other errors are passed on as well.
+    then, after the rows are built and before anything is started, what
+    :func:`hilclaw.local_run.run` raises for the command, the time limit,
+    ``env`` and ``cwd``. Its other errors are passed on as well.
     """
     arguments = program_arguments(dims, draws=draws, seed=seed)
     _start(dims, start)
