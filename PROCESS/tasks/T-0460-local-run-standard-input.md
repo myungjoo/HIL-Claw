@@ -2,7 +2,7 @@
 id: T-0460
 title: Give local_run.run an optional standard-input argument (ADR-0164 code slice 1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0459]
@@ -79,3 +79,10 @@ hq: []
 - The harness record of SDPA with KV cache (ADR-0162 decision 13; ADR-0164 "Later work").
 
 ## Result
+
+- **Outcome**: DONE. PR #274 squash-merged as `48f1d05` (branch deleted) after 4 review rounds (all Approve; rounds 2-4 addressed round 1's two Minor findings and docstring Nits). CI green on head `73bf905` (Python 3.11/3.14, coverage, C, sh, test presence).
+- **Language**: Python, because the module and its callers are Python.
+- **Change**: `hilclaw.local_run.run(..., stdin_data=None)`. `None` keeps `stdin=DEVNULL` (the native Windows `subprocess.run` call is unchanged byte for byte); `bytes` (including `b""`) opens a stdin pipe; any other type raises `TypeError` with `parameter == "stdin_data"`, checked after `cwd`. POSIX path: the stdin pipe is non-blocking and written in the same selector loop as the output drain, under the same deadline, closed after the last byte (at once for `b""`) and in a `finally`. Native Windows path: a feeder thread owns the detached stdin pipe while `communicate(timeout=)` drains; on timeout the process is killed, ending a blocked write. `subprocess.run(input=)` was not used because older Windows `communicate()` writes the input in the calling thread and would ignore the time limit. Any `OSError` from writing (EPIPE, EINVAL) stops writing and the run is reported as usual. Module and `run` docstrings updated, including the Known limits: on native Windows a survivor holding stdin makes the call wait and the run carries the started process's exit status (POSIX: timeout at the limit).
+- **Tests** (`tests/test_local_run.py`, both wait paths via `platform_wait`): byte-for-byte echo of all byte values and of 3 MiB; no deadlock with 2 MiB on stdout and stderr before reading; `b""`; stdin is a character device for no input and `None`, a FIFO for `b""`; early exit (status 3) and early close of stdin as results; timeout while writing; no `ResourceWarning`; `max_rss` and reaping with input (POSIX); refused types start nothing; order of the checks (cwd TypeError and missing cwd before `stdin_data`, program not found before it); pickling keeps `parameter`. `Child.__call__` gained a `prelude` keyword so stdin tests use a prelude that does not consume stdin.
+- **Local**: full suite on Windows 31018 passed; a POSIX smoke run of the new paths under WSL (Python 3.10) passed; ruff check/format clean. `hilclaw/local_run.py` 163 changed lines.
+- **Follow-ups**: none new (ADR-0164 slices 2-4 as listed).
