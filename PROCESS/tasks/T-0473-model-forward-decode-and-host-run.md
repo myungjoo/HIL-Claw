@@ -2,7 +2,7 @@
 id: T-0473
 title: Add the decode passes to hilclaw/model_forward.c (cache kept across passes, given tokens) and the host side's input encoding, run and report parsing in hilclaw/model_forward_run.py (ADR-0166 code slices 3 and 4)
 phase: P1
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0471, T-0472]
