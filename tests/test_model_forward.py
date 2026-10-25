@@ -386,31 +386,49 @@ def encode(model, table, last=False, eps=EPS, **changes):
     return b"".join(parts)
 
 
-def prefill(model, last=False, lm_start=0.0):
-    prompt = model["S"]
-    positions = prompt + model["G"] - 1
-    x = model["embedding"][model["tokens"][:prompt].astype(np.intp)]
+def generate(model, last=False, lm_start=0.0, keep_cache=True):
+    prompt, passes = model["S"], model["G"]
+    positions = prompt + passes - 1
+    starts = lm_start if isinstance(lm_start, list) else [lm_start] * passes
     hd, kvd = H * HEAD, H_KV * HEAD
-    for layer in model["layers"]:
-        cache_k = np.full((positions, H_KV, HEAD), NAN_BITS, dtype=np.uint16)
-        cache_v = cache_k.copy()
-        normed = rmsnorm(x, layer["attention_norm"], EPS)
-        qkv = gemm(normed, layer["qkv"])
-        q_in = qkv[:, :hd].reshape(prompt, H, HEAD)
-        k_in = qkv[:, hd : hd + kvd].reshape(prompt, H_KV, HEAD)
-        v_in = qkv[:, hd + kvd :].reshape(prompt, H_KV, HEAD)
-        q_rot = rope(q_in, model["rope"][:prompt])
-        k_rot = rope(k_in, model["rope"][:prompt])
-        attn = sdpa(q_rot, k_rot, v_in, cache_k, cache_v, 0)
-        o_out = gemm(attn.reshape(prompt, hd), layer["o"])
-        h = add(x, o_out)
-        normed = rmsnorm(h, layer["ffn_norm"], EPS)
-        act = swiglu(gemm(normed, layer["gate"]), gemm(normed, layer["up"]))
-        x = add(h, gemm(act, layer["down"]))
-    normed = rmsnorm(x, model["norm"], EPS)
-    if last:
-        normed = normed[-1:]
-    return gemm(normed, model["lm_head"], lm_start)
+    shape = (positions, H_KV, HEAD)
+    caches = [
+        (np.full(shape, NAN_BITS, np.uint16), np.full(shape, NAN_BITS, np.uint16))
+        for _ in model["layers"]
+    ]
+    rows = []
+    for p in range(passes):
+        rows_of_pass, position = (prompt, 0) if p == 0 else (1, prompt + p - 1)
+        if not keep_cache:
+            for cache_k, cache_v in caches:
+                cache_k[:] = NAN_BITS
+                cache_v[:] = NAN_BITS
+        tokens = model["tokens"][position : position + rows_of_pass]
+        x = model["embedding"][tokens.astype(np.intp)]
+        table = model["rope"][position : position + rows_of_pass]
+        for layer, (cache_k, cache_v) in zip(model["layers"], caches):
+            normed = rmsnorm(x, layer["attention_norm"], EPS)
+            qkv = gemm(normed, layer["qkv"])
+            q_in = qkv[:, :hd].reshape(rows_of_pass, H, HEAD)
+            k_in = qkv[:, hd : hd + kvd].reshape(rows_of_pass, H_KV, HEAD)
+            v_in = qkv[:, hd + kvd :].reshape(rows_of_pass, H_KV, HEAD)
+            q_rot = rope(q_in, table)
+            k_rot = rope(k_in, table)
+            attn = sdpa(q_rot, k_rot, v_in, cache_k, cache_v, position)
+            o_out = gemm(attn.reshape(rows_of_pass, hd), layer["o"])
+            h = add(x, o_out)
+            normed = rmsnorm(h, layer["ffn_norm"], EPS)
+            act = swiglu(gemm(normed, layer["gate"]), gemm(normed, layer["up"]))
+            x = add(h, gemm(act, layer["down"]))
+        normed = rmsnorm(x, model["norm"], EPS)
+        if last:
+            normed = normed[-1:]
+        rows.append(gemm(normed, model["lm_head"], starts[p]))
+    return np.concatenate(rows)
+
+
+def per_pass(table, passes):
+    return [index for index in table for _ in range(passes)]
 
 
 def report(model, logits):
@@ -440,7 +458,7 @@ def test_prefill_equals_the_recomputation_bit_for_bit(built, tmp_path, last, see
     model = make_model(seed)
     result = start(built, tmp_path, encode(model, SEPARATE_TABLE, last), SEPARATE)
     assert result.returncode == 0, result.stderr
-    logits = prefill(model, last)
+    logits = generate(model, last)
     assert logits.shape == ((1 if last else model["S"]), V)
     assert not np.any(logits == NAN_BITS)
     assert result.stdout == report(model, logits)
@@ -454,14 +472,14 @@ def test_a_longer_prompt_and_a_given_token(built, tmp_path):
     model["tokens"][-1] = V - 1
     result = start(built, tmp_path, encode(model, SEPARATE_TABLE), SEPARATE)
     assert result.returncode == 0, result.stderr
-    assert result.stdout == report(model, prefill(model))
+    assert result.stdout == report(model, generate(model))
 
 
 def test_one_library_with_every_kind(built, tmp_path):
     model = make_model(3)
     result = start(built, tmp_path, encode(model, [0] * 15, True), ["all"])
     assert result.returncode == 0, result.stderr
-    assert result.stdout == report(model, prefill(model, True))
+    assert result.stdout == report(model, generate(model, True))
 
 
 def test_the_table_chooses_the_library_of_each_call_site(built, tmp_path):
@@ -471,8 +489,8 @@ def test_the_table_chooses_the_library_of_each_call_site(built, tmp_path):
     names = [*SEPARATE, "gemm_offset"]
     result = start(built, tmp_path, encode(model, table), names)
     assert result.returncode == 0, result.stderr
-    assert result.stdout == report(model, prefill(model, lm_start=0.25))
-    assert result.stdout != report(model, prefill(model))
+    assert result.stdout == report(model, generate(model, lm_start=0.25))
+    assert result.stdout != report(model, generate(model))
 
 
 def test_a_library_bound_to_no_call_site_is_not_searched(built, tmp_path):
@@ -480,7 +498,7 @@ def test_a_library_bound_to_no_call_site_is_not_searched(built, tmp_path):
     names = [*SEPARATE, "no_entry"]
     result = start(built, tmp_path, encode(model, SEPARATE_TABLE), names)
     assert result.returncode == 0, result.stderr
-    assert result.stdout == report(model, prefill(model))
+    assert result.stdout == report(model, generate(model))
 
 
 def test_logits_left_unwritten_keep_the_fill(built, tmp_path):
@@ -489,7 +507,7 @@ def test_logits_left_unwritten_keep_the_fill(built, tmp_path):
     table[SITES.index("lm_head")] = len(SEPARATE)
     result = start(built, tmp_path, encode(model, table), [*SEPARATE, "gemm_partial"])
     assert result.returncode == 0, result.stderr
-    logits = prefill(model)
+    logits = generate(model)
     logits[:, -1] = NAN_BITS
     assert result.stdout == report(model, logits)
 
@@ -502,7 +520,7 @@ def test_kernel_output_goes_to_standard_error(built, tmp_path):
     names = [*SEPARATE, "add_printing"]
     result = start(built, tmp_path, encode(model, table), names)
     assert result.returncode == 0, result.stderr
-    assert result.stdout == report(model, prefill(model))
+    assert result.stdout == report(model, generate(model))
     assert result.stderr == b"kernel says hello\n" * (2 * N)
 
 
@@ -514,6 +532,98 @@ def test_a_kernel_that_aborts_leaves_no_end_mark(built, tmp_path):
     result = start(built, tmp_path, encode(model, table), names)
     assert result.returncode != 0
     assert not result.stdout.endswith(END)
+
+
+@pytest.mark.parametrize("last", [False, True])
+@pytest.mark.parametrize(("seed", "prompt", "given"), [(11, 3, 3), (12, 2, 4)])
+def test_generation_equals_the_recomputation_bit_for_bit(
+    built, tmp_path, last, seed, prompt, given
+):
+    model = make_model(seed, prompt=prompt, given=given)
+    table = per_pass(SEPARATE_TABLE, given)
+    result = start(built, tmp_path, encode(model, table, last), SEPARATE)
+    assert result.returncode == 0, result.stderr
+    logits = generate(model, last)
+    rows = given if last else prompt + given - 1
+    assert logits.shape == (rows, V)
+    assert not np.any(logits == NAN_BITS)
+    assert result.stdout == report(model, logits)
+    assert len(result.stdout) == 8 * (prompt + given) + 2 * rows * V + 4
+    assert result.stderr == b""
+
+
+@pytest.mark.parametrize("last", [False, True])
+def test_the_cache_is_kept_across_passes(built, tmp_path, last):
+    model = make_model(13, given=3)
+    data = encode(model, per_pass(SEPARATE_TABLE, 3), last)
+    result = start(built, tmp_path, data, SEPARATE)
+    assert result.returncode == 0, result.stderr
+    kept = generate(model, last)
+    cleared = generate(model, last, keep_cache=False)
+    prefill_rows = 1 if last else model["S"]
+    assert np.array_equal(kept[:prefill_rows], cleared[:prefill_rows])
+    assert not np.array_equal(kept[prefill_rows:], cleared[prefill_rows:])
+    assert result.stdout == report(model, kept)
+
+
+def test_decode_pass_k_takes_given_token_k_minus_1(built, tmp_path):
+    model = make_model(14, given=3)
+    changed = {**model, "tokens": model["tokens"].copy()}
+    changed["tokens"][model["S"]] = (model["tokens"][model["S"]] + 1) % V
+    unfed = {**model, "tokens": model["tokens"].copy()}
+    unfed["tokens"][-1] = (model["tokens"][-1] + 1) % V
+    table = per_pass(SEPARATE_TABLE, 3)
+    outputs = {}
+    for name, case in (("model", model), ("changed", changed), ("unfed", unfed)):
+        result = start(built, tmp_path, encode(case, table), SEPARATE)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == report(case, generate(case))
+        outputs[name] = result.stdout[8 * (model["S"] + 3) :]
+    assert outputs["changed"] != outputs["model"]
+    assert outputs["unfed"] == outputs["model"]
+
+
+@pytest.mark.parametrize("decode_pass", [1, 2])
+def test_the_table_chooses_the_library_at_each_pass(built, tmp_path, decode_pass):
+    model = make_model(15, given=3)
+    rows = [[index] * 3 for index in SEPARATE_TABLE]
+    rows[SITES.index("lm_head")][decode_pass] = len(SEPARATE)
+    table = [index for row in rows for index in row]
+    names = [*SEPARATE, "gemm_offset"]
+    result = start(built, tmp_path, encode(model, table, True), names)
+    assert result.returncode == 0, result.stderr
+    starts = [0.0, 0.0, 0.0]
+    starts[decode_pass] = 0.25
+    assert result.stdout == report(model, generate(model, True, lm_start=starts))
+    assert result.stdout != report(model, generate(model, True))
+
+
+def test_kernel_output_of_every_pass_goes_to_standard_error(built, tmp_path):
+    model = make_model(16, given=2)
+    table = per_pass(SEPARATE_TABLE, 2)
+    for site in ("attention_residual", "ffn_residual"):
+        for p in range(2):
+            table[SITES.index(site) * 2 + p] = len(SEPARATE)
+    names = [*SEPARATE, "add_printing"]
+    result = start(built, tmp_path, encode(model, table), names)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == report(model, generate(model))
+    assert result.stderr == b"kernel says hello\n" * (2 * N * 2)
+
+
+def test_a_decode_pass_library_without_the_entry_point(built, tmp_path):
+    table = per_pass([1] * 15, 3)
+    table[SITES.index("sdpa") * 3 + 2] = 0
+    data = encode(make_model(1, given=3), table)
+    result = start(built, tmp_path, data, ["gemm", "all"])
+    assert_failed(result, 6, b"library 0: has no hilclaw_sdpa_kv_cache_bf16")
+
+
+def test_a_decode_pass_library_index_out_of_range(built, tmp_path):
+    table = [0] * 30
+    table[SITES.index("qkv") * 2 + 1] = 1
+    data = encode(make_model(1, given=2), table)
+    assert_failed(start(built, tmp_path, data, ["all"]), 5, b"library index")
 
 
 @pytest.mark.parametrize("count", [0, 1])
@@ -590,7 +700,6 @@ def test_zero_dimension(built, tmp_path, name):
         ({"H": 3}, b"H is not a multiple of H_kv"),
         ({"d": 3}, b"d is odd"),
         ({"lm_head_rows": 2}, b"lm_head_rows"),
-        ({"G": 2}, b"decode passes are not supported"),
     ],
 )
 def test_header_refusals(built, tmp_path, changes, text):
