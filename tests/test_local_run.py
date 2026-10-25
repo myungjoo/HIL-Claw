@@ -1479,6 +1479,10 @@ LOUD_FIRST = LOUD + "; out.flush(); err.flush(); " + DIGEST
 EMPTY = "sys.exit(0 if inp.read() == b'' else 5)"
 EXIT_AT_ONCE = "out.write(b'gone'); sys.exit(3)"
 CLOSE_EARLY = "head = os.read(0, 4); os.close(0); out.write(b'read ' + head)"
+STDIN_KIND = (
+    "import stat; mode = os.fstat(0).st_mode; "
+    "out.write(b'char' if stat.S_ISCHR(mode) else b'fifo' if stat.S_ISFIFO(mode) else b'?')"
+)
 NEVER_READ = "out.write(b'waiting'); out.flush(); time.sleep(30)"
 ALL_BYTES = bytes(range(256)) * 4
 BIG = bytes(range(256)) * (3 * MIB // 256)
@@ -1531,6 +1535,20 @@ def test_no_input_given_is_the_null_device(platform_wait, child, monkeypatch):
     result = run(child(QUIET), timeout_s=TIMEOUT, stdin_data=None)
     assert result.returncode == 0
     assert child.call()["stdin"] == ""
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+@pytest.mark.parametrize(
+    "settings, kind",
+    [({}, b"char"), ({"stdin_data": None}, b"char"), ({"stdin_data": b""}, b"fifo")],
+)
+def test_standard_input_is_the_null_device_unless_input_is_given(
+    settings, kind, platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    result = run(fed(child, STDIN_KIND), timeout_s=TIMEOUT, **settings)
+    assert result.returncode == 0
+    assert result.stdout == kind
 
 
 @pytest.mark.parametrize("platform_wait", [True, False])

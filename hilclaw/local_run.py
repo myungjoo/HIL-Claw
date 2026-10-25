@@ -21,12 +21,14 @@ device, or, when the caller gives bytes, a pipe through which exactly those
 bytes are written before it is closed.
 
 Known limits. On a timeout only the process that was started is killed, not
-that process's children. A survivor that keeps an output pipe open, or keeps
-standard input open while input is still unwritten, makes the run count as
-timed out at the limit even where the started process ended, and on native
-Windows can make the call last longer than the limit. The output and the
-input are held in memory without a size limit. The process is not sandboxed and its
-environment is not scrubbed. On Windows the program lookup also searches the
+that process's children. A survivor that keeps an output pipe open makes the
+run count as timed out at the limit even where the started process ended, and
+on native Windows can make the call last longer than the limit. One that keeps
+standard input open while input is still unwritten does the same on POSIX; on
+native Windows it makes the call wait until standard input is closed, and the
+run is reported with the exit status of the started process. The output and
+the input are held in memory without a size limit. The process is not
+sandboxed and its environment is not scrubbed. On Windows the program lookup also searches the
 current directory.
 """
 
@@ -167,8 +169,8 @@ def run(command, *, timeout_s, cwd=None, env=None, stdin_data=None):
     neither ``None`` nor :class:`bytes` (``str``, :class:`bytearray` and
     :class:`memoryview` included). The time limit is checked first, then the
     command (so :class:`ProgramNotFoundError` comes before an ``env`` or
-    ``cwd`` error), then ``env``, then ``cwd``, then ``stdin_data``. An error from anywhere else, including what
-    :mod:`subprocess` raises, :class:`ProgramNotFoundError`, an
+    ``cwd`` error), then ``env``, then ``cwd``, then ``stdin_data``. An error
+    from anywhere else, including what :mod:`subprocess` raises, :class:`ProgramNotFoundError`, an
     :class:`OSError` of the program lookup and the :class:`OSError` of the
     ``cwd`` test, carries no ``parameter``; read it as
     ``getattr(error, "parameter", None)``.
