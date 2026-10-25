@@ -2,7 +2,7 @@
 id: T-0463
 title: Add the runner side of the bf16 RoPE verification run, hilclaw/harness/bf16_rope_verification.py (arguments, judging a report with P, starting the executable with the rows on standard input; ADR-0164 code slice 3, second half)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0460, T-0461, T-0462]
@@ -203,3 +203,10 @@ After this task the harness can verify a built `rope` kernel end to end. Slice 4
 - Next task (planner candidate): ADR-0164 code slice 4. The three calibration kernels of decision 11, with their tests through `run_bf16_rope_verification`. The functional test uses P = 0, and the failing kernel swaps cos and sin.
 
 ## Result
+
+- **Outcome**: DONE. PR #277 (https://github.com/myungjoo/HIL-Claw/pull/277), squash-merged as `e4b2ec12`; branch `claude/T-0463-bf16-rope-verification-runner` deleted.
+- **Review**: 2 rounds with a context-isolated dev-reviewer (round 1 Approve with one Low and one Nit; round 2 Approve). Low: the refusals inside `local_run.run` (time limit, command, `env`, `cwd`) come after the rows are built; documented in the module and function docstrings (`6adccd12`), code unchanged. Nit (left as is): the stand-in that exits without reading stdin does not reach the broken-pipe path on Linux since the input fits the pipe buffer; that path is tested in `local_run` (T-0460).
+- **CI**: green on the final head (Python 3.11/3.14, Coverage, C (clang), sh, Test presence). Local full suite on Windows: 31496 passed, 1579 skipped (the 4 new skips are real-`clang` and signal tests that need POSIX; CI ran them). Total coverage 97 %; both touched modules 100 %.
+- **Language**: Python, because the module is the runner next to `bf16_verification.py` and reuses its result types and `local_run.run`.
+- **Changes**: new `hilclaw/harness/bf16_rope_verification.py` (`program_arguments`, `judge_report`, `run_bf16_rope_verification`); `bf16_rope_arrays.py` start check moved into a private `_start` helper with `table_rows` behaviour unchanged; package docstring updated (six modules import numpy); new `tests/harness/test_bf16_rope_verification.py`. 262 changed lines outside tests in 3 files. The text `rope_table` does not appear in the new module; no dependency added.
+- **Follow-ups**: ADR-0164 code slice 4, the three calibration kernels of decision 11 tested through `run_bf16_rope_verification` (P = 0; the failing kernel swaps cos and sin).
