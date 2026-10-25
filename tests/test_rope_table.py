@@ -583,11 +583,14 @@ def test_the_module_imports_and_text():
     assert "__main__" not in text
 
 
-def test_the_module_is_named_by_no_other_module():
+def test_the_module_is_named_only_by_the_bf16_rope_verification_arrays():
     own = Path(rope_table.__file__)
-    for path in sorted(own.parent.rglob("*.py")):
-        if path != own:
-            assert "rope_table" not in path.read_text(encoding="utf-8"), path
+    naming = {
+        path.relative_to(own.parent).as_posix()
+        for path in own.parent.rglob("*.py")
+        if path != own and "rope_table" in path.read_text(encoding="utf-8")
+    }
+    assert naming == {"harness/bf16_rope_arrays.py"}
 
 
 def test_a_call_writes_no_file(tmp_path, monkeypatch):
