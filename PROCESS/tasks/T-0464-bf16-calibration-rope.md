@@ -2,7 +2,7 @@
 id: T-0464
 title: Add the three-state calibration of the bf16 RoPE verification run (three C kernels and a rope table in test_bf16_calibration.py, ADR-0164 decision 11, code slice 4)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0461, T-0463]
@@ -127,3 +127,36 @@ hq: []
 - (planner) After this task, ADR-0164 has all its code slices and its calibration. The next P2-11/P2-12 work in PLAN order is the harness record of SDPA with KV cache (ADR-0162 decision 13; ADR-0164 "Later work"), a document task that writes the record before any code.
 
 ## Result
+**DONE.** PR #278 https://github.com/myungjoo/HIL-Claw/pull/278, squash commit `4ffe5ea0` on `main` (body ends with `Task: T-0464`); branch deleted (remote and local).
+
+**Review**: 1 round, Approve, no finding (fresh-context `dev-reviewer`, https://github.com/myungjoo/HIL-Claw/pull/278#issuecomment-6393904653). The reviewer regenerated the 24 violating patterns bit for bit (exact rational RNE), compiled each file alone under the C gate's line with one exported symbol, checked the failing kernel differs only in the two output expressions, re-measured the tolerance margins over 1000 draws on two seeds, and ran the 36 calibration cases under WSL.
+
+**CI**: 1 run, all six checks green, https://github.com/myungjoo/HIL-Claw/actions/runs/40165420767. C gate "harness pass": `calibration: 36 case(s) selected, 0 skipped` (6 fp32 + 30 bf16). Python gates and coverage gate: `33031 passed, 50 skipped`; lines 11047/11088 = 99.63%, functions 1073/1073 = 100.00%.
+
+**Local**:
+- WSL (clang 14, venv `/tmp/t0461venv` outside the repository): `test_calibration.py` + `test_bf16_calibration.py` 36 passed. Each `rope_bf16_*.c` compiles alone under `clang -std=c99 -Wall -Wextra -Wpedantic -Werror -O2 -c`; `nm` shows only `hilclaw_rope_bf16`.
+- Windows (Python 3.14.4, numpy 2.5.2): `test_bf16_calibration.py` 30 skipped (no POSIX); `ruff check .` and `ruff format --check .` clean.
+- The new files are ASCII with LF.
+
+**Changes**: three kernels under `tests/harness/calibration/` and, in `test_bf16_calibration.py`, an import of `run_bf16_rope_verification`, a `ROPE` row with a margin comment, a `rope_executables` session fixture (same `FLAGS`, `BUILD_TIMEOUT`, skip-or-fail rules; no `-lm`, the rope program and kernels need none), a `rope_verdict` helper and a test over `STATES` x draws {1, 3}. No existing line changed.
+
+**Test choices** (test values only):
+- Shape (3, 2, 4): small, 24 elements, rows 0 to 2, so row 0 (c = 1, s = +0) is included.
+- P = 0 for both runs (decision 11); the failing kernel is outside at row 0 on every seed.
+- Tolerance rtol = 0, atol = 2**-7: twice the conforming bound 2**-8 + 2**-21 of decision 10 (no rtol with atol = 0, since outputs may cancel), far below the miss of >= 1 at row 0.
+- Known seed 2026, as for the other rows.
+- Only the verdict is asserted (ADR-0003 decision 4).
+
+**Violating constants**: computed in a throwaway scratchpad interpreter from `draw_x((3, 2, 4), seed=2026, draw=0)`, `table_rows((3, 2, 4), start=0)` and `reference`; the float64 reference was rounded to bf16 directly with RNE in exact rational arithmetic. No near tie: the closest element is 0.189 of a bf16 unit from a midpoint, far beyond a binary32 step; rounding through binary32 gives the same 24 patterns.
+
+**Evidence of the states** (WSL clang 14, rtol 0, atol 2**-7). Failing elements per draw, known seed 2026 (1 draw) / run-time seed 6852932820192447698 (3 draws):
+- conforming 0 / 0,0,0 (PASS / PASS);
+- failing 24 / 24,23,24 (FAIL / FAIL);
+- violating 0 / 24,23,22 (PASS / FAIL).
+- Over 1000 draws of seed 2350309344540026136: conforming largest |dev| / atol = 0.4996, i.e. 0.9991 of the bound 2**-8 + 2**-21, no element outside; failing 23463 of 24000 elements outside, every draw FAIL, smallest |dev| / atol among the failing elements 1.011.
+
+**Decision 11 list**: no test requires a fault from it to fail; the only required faults are swapped cos and sin and the V1 table.
+
+**Language**: C for the kernels (kernel language of `cpu_standin`, ADR-0003 decision 5); Python for the test. No layer-2 code changed.
+
+**Follow-ups**: none new. The planner's follow-up stands (harness record of SDPA with KV cache, ADR-0162 decision 13). No HQ.
