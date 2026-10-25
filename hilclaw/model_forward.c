@@ -7,11 +7,12 @@
  * decisions 1 and 3 and writes the token ids and the logits to the report:
  * the prefill, then the G - 1 decode passes of the given-sequence mode
  * (ADR-0166 decision 7). It compares nothing, holds no reference, tolerance,
- * verdict or token selection rule and builds no RoPE table. It does no floating-point arithmetic: eps and the RoPE table are
- * passed through to the kernels, and every other element is a uint16_t bf16
- * pattern that is only copied, never cast. It reads no clock, no environment
- * variable and no standard input. It needs the C library and POSIX.1-2008
- * only, <dlfcn.h> included. The rules behind the buffers, the operands of each
+ * verdict or token selection rule and builds no RoPE table. It does no
+ * floating-point arithmetic: eps and the RoPE table are passed through to the
+ * kernels, and every other element is a uint16_t bf16 pattern that is only
+ * copied, never cast. It reads no clock, no environment variable and no
+ * standard input. It needs the C library and POSIX.1-2008 only, <dlfcn.h>
+ * included. The rules behind the buffers, the operands of each
  * call, the copies and the cache are ADR-0166's and are not restated here.
  *
  * Command line, at least two arguments:
@@ -61,22 +62,22 @@
  *     w_norm                               D bf16
  *     w_lm_head                            D*V bf16, [D, V]
  *
- * The file ends exactly after w_lm_head. Checks, all before the first call:
- * a file shorter than the header and eps, a dimension, S or G of 0, H not a
- * multiple of H_kv, an odd d, lm_head_rows other than 0 or 1, an eps that
- * is not finite or not above 0 (checked on its bit pattern), an input file that is not a regular file or whose length is not
- * the one the header gives, a library index not below the number of
- * libraries and a token id not below V are errors of the input file
- * (status 5). The byte size of any buffer, weight, cache, the RoPE table,
- * the token ids, the library table or the entry points of the G passes that
- * does not fit in size_t, and a
- * length of the file that does not fit in a uint64_t, are found after the
- * header and before anything is allocated (status 3), as is a failed
- * allocation. A library bound in the table that lacks the entry point of its
- * call site's kind (hilclaw_gemm_bf16, hilclaw_rmsnorm_bf16,
+ * The file ends exactly after w_lm_head. Checks, all before the first call: a
+ * file shorter than the header and eps, a dimension, S or G of 0, H not a
+ * multiple of H_kv, an odd d, lm_head_rows other than 0 or 1, an eps that is
+ * not finite or not above 0 (checked on its bit pattern), an input file that
+ * is not a regular file or whose length is not the one the header gives, a
+ * library index not below the number of libraries and a token id not below V
+ * are errors of the input file (status 5). The byte size of any buffer,
+ * weight, cache, the RoPE table, the token ids, the library table or the
+ * entry points of the G passes that does not fit in size_t, and a length of
+ * the file that does not fit in a uint64_t, are found after the header and
+ * before anything is allocated (status 3), as is a failed allocation. A
+ * library bound in the table that lacks the entry point of its call site's
+ * kind (hilclaw_gemm_bf16, hilclaw_rmsnorm_bf16,
  * hilclaw_elementwise_add_bf16, hilclaw_swiglu_bf16, hilclaw_rope_bf16 or
- * hilclaw_sdpa_kv_cache_bf16) at any pass is status 6, found before the
- * first call; a library bound to no call site is not searched.
+ * hilclaw_sdpa_kv_cache_bf16) at any pass is status 6, found before the first
+ * call; a library bound to no call site is not searched.
  *
  * Buffers, ADR-0166 decision 2: each weight, the RoPE table and the token ids
  * are read into arrays of their own; the activations x, h, normed, qkv_out,
