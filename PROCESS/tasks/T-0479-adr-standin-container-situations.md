@@ -1,0 +1,85 @@
+---
+id: T-0479
+title: Record what `correctness.check`, `sim.run` and `board.run` answer at `cpu_standin` where no container runtime, image or container can be had, how the client's statuses 125 to 127 and the waiter's failures are read, and whether ADR-0096 holds there (OD-18 ⑱ (다) and the container part of ⑲ (나); ADR-0144 decision 7, ADR-0145 decision 6) as one new ADR, and add its first code slice, a pure reading module bound to nothing, with tests
+phase: P1
+status: IN_PROGRESS
+commitMode: code
+coversReq: [FR-10, OD-18, OD-14, "#5 D12"]
+dependsOn: []
+touchesFiles: [ARCHITECTURE/decisions/ADR-0168-od18-standin-container-situations.md, ARCHITECTURE/Requirements.md, ARCHITECTURE/OpenDecisionProposals.md, ARCHITECTURE/StandardScenarios.md, hilclaw/standin_answer.py, tests/test_standin_answer.py]
+estimatedSize: {loc: 470, files: 5}   # tests excluded from the cap; the ADR's lines count (DRIVER §5, D4)
+hq: []
+---
+## Why
+
+PLAN P1-1 is open. Its completion criterion (D18) needs `sim.run`, `board.run` and `correctness.check` to work on `cpu_standin` as well as on the mock. After T-0478 (ADR-0167) all three are registered, but the default table has no `cpu_standin` entry, because no `cpu_standin` operation of any of the three exists (ADR-0167 decision 3 and Boundaries). PLAN P2-5 (the first run, `cpu_standin` x GEMM) needs the same operations, so this is checklist work, not a D18 deferral.
+
+The operations are slice (4) of ADR-0144, built on slices (1) to (3), which have landed (`hilclaw/standin_container.py`, `hilclaw/standin_copies.py`, `hilclaw/standin_image.py`), with ADR-0145's waiter (`hilclaw/harness/timing_waiter.c`) and its line reader (`hilclaw/standin_waiter_line.py`). ADR-0144 Consequences and ADR-0145 Consequences both say slice (4) "still waits on ADR-0144 decision 7's open answers". ADR-0144 decision 7 decides nothing about what a call answers where no container runtime is available, no image is named, the image is not in the store, a container cannot be started or cannot be removed. ADR-0145 decision 6 adds the waiter's own situations (the waiter ends non-zero without a child that did, the waiter's build fails or passes the limit, the client's stream has no waiter's line) and leaves them to ⑲. ADR-0144 Boundaries leave how the client's statuses 125 to 127 are read against rows S6, S7 and S10 of ADR-0060 decision 4. ADR-0068 decision 8 leaves the same for the run tools under ⑲ (나). OD-18 sub-question ⑱ (다) asks the same for the check, and also whether the answer of ADR-0096 (build directory removal failure) still holds there. The two HQs ADR-0144 decision 7 said were "not crossed" (HQ-0021, HQ-0026) are now answered.
+
+All of this is one question asked of three tools, so by D20 ② it is one ADR, and by D20 ① the ADR goes with its first code slice in one task (code mode; the ADR file is part of the PR). The operations themselves are not in this task: their content depends on this ADR, which has not landed (D20 ④). The planner plans them after it lands.
+
+This is a design part of OD-18 (and of OD-14 sub-question ①) that the driver may close (DRIVER §9, D6). No owner-only part is known: the #5 A/B items, C-6, OD-3 and OD-25 are not touched, and HQ-0034 (OpenMP) is out of scope. **Two stop conditions, which the executor must check, not assume away:**
+- If the record finds that some situation needs a new value of `error.kind` that is in no contract yet (none of the check's eight backend kinds, none of the run tools' kinds, and not the spelling and meaning already in the data plane through another tool, such as `no_container_runtime` of `coder.run`), that is "A new value of `error.kind` is a data-plane change (CLAUDE.md A-13)" (ADR-0101 Consequences). Stop and return BLOCKED with a Korean question for the owner (DRIVER §8): the situation, the options (place it under an existing kind, with what that costs; or add the new kind), and what stays unblocked.
+- If writing the record shows an owner-only decision (for example a value judgment about a kernel that fakes an infrastructure failure, beyond what OD-16 and the landed records already decide), stop and return BLOCKED with the question.
+
+## Required Reading
+
+Line numbers are those of `main` at `077db338`; the text wins. Read Korean files and Python with `PYTHONIOENCODING=utf-8`.
+
+- **PROCESS/DRIVER.md §3-5** (line 72: executor procedure, landed check, resume rule, time limit), **§5** (lines 86-115: task format, naming, size cap D4/D20, trailers, the test rules D12), **§8** (lines 142-149: HQ form, the `— posted by driver` footer) and **§9** (lines 150-158: which ODs the driver may close, the owner notice on #5 and the 7-day objection window).
+- CLAUDE.md, the whole file. Above all: "미결은 발명하지 않는다", "문서 커버리지 재검사", "세션 진입 점검", "개발 드라이버와 런타임의 구분" (no container runtime on this machine; tests use stubs), "테스트 규칙", "브랜치·merge 절차" (code mode and the BLOCKED reasons), "코멘트 최소화".
+- .claude/skills/dev-item-address/SKILL.md (code mode); .claude/skills/dev-code-review/SKILL.md.
+- Before you edit `ARCHITECTURE/`, run `gh pr list` and read issues #4, #5, #7 and #8 (CLAUDE.md 세션 진입 점검). If an open PR touches the same rows or sections, stop and return BLOCKED.
+- **The model record** for form: ARCHITECTURE/decisions/ADR-0068-od18-run-tools-operation-tool-failure.md, whole (its decision 2 table of situations, its decision 3 kinds, its decision 8 "What of ⑲ (나) stays open", Consequences with the "less exact" list and the A-13 reading). Its format follows ADR-0001's "Record format" section.
+- **What is open and why**:
+  - ARCHITECTURE/decisions/ADR-0144-od14-first-case-build-run-container.md: decisions 3, 4, 5, 6 and 7 (lines 65-116), the Walk-through (117-125), Consequences (141-148: slice (4), runtime acceptance items (xlviii)-(lii)) and Boundaries (149-161).
+  - ARCHITECTURE/decisions/ADR-0145-od14-first-case-container-measurement.md: decision 3 (W0-W6 and the waiter's build, lines 48-61) and decision 6 (lines 73-78); Consequences slices (5), (6) (line 103).
+  - ARCHITECTURE/decisions/ADR-0056-od18-correctness-check-verification-executable.md decisions 5 and 6 (lines 95-131: S1-S10 and how a backend kind is answered).
+  - ARCHITECTURE/decisions/ADR-0060-od18-correctness-check-build-answers-and-settings.md decision 4 (lines 69-104: the class of each of S3-S10, rows S6, S7, S10).
+  - ARCHITECTURE/decisions/ADR-0068-od18-run-tools-operation-tool-failure.md decisions 2, 3 and 8 (lines 35-68, 105-110) — the run tools' reading of the same list.
+  - ARCHITECTURE/decisions/ADR-0096-od18-check-build-directory-removal-failure.md decision 4 (lines 56-60: "the container").
+  - ARCHITECTURE/decisions/ADR-0047-od18-correctness-check-operation-tool-failure.md decisions 4 and 5 (lines 67-97: which kinds a backend may raise; a kind raised for a situation it does not mean "is taken as it is").
+  - ARCHITECTURE/decisions/ADR-0110-od18-check-executions-hard-floor.md decision 2 (lines 31-45): a kind a later record adds is of class (ii) unless that record places its situations in class (i). Say where each placed situation falls.
+  - ARCHITECTURE/decisions/ADR-0101-od8-failure-kind-change-and-step-values.md, the paragraph near line 104 ("For a record that names or changes a failure kind").
+  - The kinds of `coder.run` for the same facts: `hilclaw/coder_call.py` (line 77, `no_container_runtime`, `coder_not_started`) and `hilclaw/coder_runtime.py` (`DockerRuntime.available`, lines 105-122), with ADR-0141 decision 3 (lines 53-59) — for the record to weigh reuse, not to copy.
+- **Where the record is entered** (read their own rules; do not copy the wording of earlier task files):
+  - ARCHITECTURE/Requirements.md: the "행 형식" paragraph (line 84); the OD-18 row (line 109) and the OD-14 row (line 105).
+  - ARCHITECTURE/OpenDecisionProposals.md: the "기록 규칙" in its header (line 8); § OD-18 (from line 293; sub-questions ⑱ at line 384 and ⑲ at line 385); § OD-14 (from line 232).
+  - ARCHITECTURE/StandardScenarios.md: its check rules and the first paragraph of § 검사 결과 (from line 168).
+- **Code (whole)**: `hilclaw/standin_container.py` (`run_in_container`, `ContainerResult`, `Removal`, `NoNumericUserError`, `check_image`), `hilclaw/standin_copies.py` (`CopyError`), `hilclaw/standin_image.py` (`read_image`, `ImageRefusedError`), `hilclaw/standin_waiter_line.py` (`read`, `WaiterRead`), `hilclaw/check_build.py` (the model of a pure reading module: `read_build`, `place_error`), `hilclaw/check_failure.py` and `hilclaw/run_failure.py` (the backend kinds), `hilclaw/local_run.py` (`ProgramNotFoundError`). Tests: `tests/test_check_build.py` (the model of the tests).
+
+## Acceptance Criteria
+
+1. **The ADR.** A new `ARCHITECTURE/decisions/ADR-0168-od18-standin-container-situations.md` (use the next free number if 0168 is taken; check `ARCHITECTURE/decisions/` and the remote branches). In the format of ADR-0068, for the runs of ADR-0144 decision 1 (the four builds and processes of the first case, plus the waiter's build of ADR-0145), it decides at least:
+   - **The list of situations a container adds**, read against the landed code of slices (1) to (3) and (6) (what each function returns or raises), at least: no container runtime (client not found, daemon not reachable), no image named or a refused name, the named image not in the store (no pull, E3), a container that cannot be started, a numeric user that cannot be had, a copy that fails, a forced removal that fails or finds nothing, and the waiter's situations of ADR-0145 decision 6. For each: when it is found (before or after the start line; before or after any process of the kernel was started), its answer for `correctness.check` and for `sim.run`/`board.run` (a backend kind, a value of `condition`, or "stays open" with a reason), and its class under ADR-0110 decision 2 for the check. Weigh at least two alternatives for the hardest rows.
+   - **How the client's statuses 125 to 127 are read** against rows S6, S7 and S10 of ADR-0060 decision 4 and ADR-0068 decision 2, and against a broken or failing process. Weigh the case where the compiler or the kernel's own process itself exits with one of those statuses (a kernel that makes a verdict look like an infrastructure failure, OD-16): state what the chosen reading lets a kernel do and why that is acceptable or how the reading prevents it. For the timing process, say how the waiter's line is consulted before the status (ADR-0145 decision 6's rule).
+   - **Whether ADR-0096's answer holds** for the build directory given to a container (⑱ (다), last part).
+   - **The answer to the stop conditions** in Why: if every situation is placed under an existing kind (or `condition`) with its spelling and meaning, the Consequences give the A-13 reading as ADR-0068 and ADR-0108 do; if one needs a new kind, stop (Why).
+   Every sentence is marked owner, cited, or the record's own. Consequences list the sentences of earlier records (ADR-0144 decision 7 and Boundaries, ADR-0145 decision 6, ADR-0068 decision 8, ADR-0060, ADR-0096 at least) and code docstrings (`standin_container.py`, `standin_image.py`) that become less exact, without editing them; name the code slices for the planner (the `cpu_standin` operations of the three tools and the `cpu_standin` entry of the default table, ADR-0144 slice (4)); and name runtime acceptance items for facts only a real Docker can show (for example which status and stderr the client gives for each situation), numbered after the last item in use (check the records for the highest roman numeral). Boundaries keep open: the two other pieces of ⑲ (나) (the row of an error of two rows; the sorting of kinds for ADR-0140), ⑱ (마)'s rest, ⑲ (다)'s size bound, ⑱ (라)/⑲ (라)'s rest and OpenMP (HQ-0034), ① (나), (라), (마)'s rest of OD-14, leftovers of a dead operation, and `profiler.collect`.
+2. **Register entries** follow the recording rules written in those files, not the wording of earlier task files:
+   - Requirements.md OD-18 row (and the OD-14 row only if the record answers part of OD-14 sub-question ①): the "행 형식" paragraph (line 84) — one ADR link added after `**확정분**:`, `**잔여**:` rewritten in place where it changes (⑱ (다) and the container part of ⑲ (나)), no restatement of the ADR, no dated paragraph.
+   - OpenDecisionProposals.md § OD-18 (and § OD-14 if touched): its header's "기록 규칙" (line 8) — one `- **채택분** [ADR-NNNN](…) — …` line per section; the status of ⑱ and ⑲ rewritten in place (their "→ 부분 답: … 남음: …" parts), not appended as a dated paragraph.
+   - StandardScenarios.md: re-check coverage under its check rules (CLAUDE.md "문서 커버리지 재검사") and update § 검사 결과 as its first paragraph says (a history entry only if a verdict changes).
+3. **Code: the first slice**, one new module `hilclaw/standin_answer.py` (or a name you give and justify in the commit body), bound to no tool, no operation and no backend, and imported by nothing else yet. It renders the record's table as pure functions in the manner of `hilclaw/check_build.py`: given what slices (1) to (3) and (6) return or raise for one build or process container (a `ContainerResult`, a `WaiterRead`, or the raised error), it gives the answer of the record for the check and for the run tools (a backend kind with its message, a value of `condition`, a marker that the program's own result is to be read on, or "not placed" for a request to end). It starts no process, imports no NumPy and reads no environment variable. Its module docstring names the record and states which choices are the module's own. Where the record says "stays open", the function does not invent an answer: it hands the fact back as the landed slices do and says so in the docstring.
+4. **Tests** (D12), in `tests/test_standin_answer.py`, with constructed `ContainerResult`/`WaiterRead` values and raised errors only (no container runtime, no compiler, no `claude` — D16):
+   - Happy: an ok build container and an ok process container are read to "go on"; a timing container with a waiter's value line is read as the record says.
+   - Every row of the record's table has at least one test; statuses 125, 126 and 127 each for a build and a process container, and a non-zero status with and without a waiter's line.
+   - Branch: a timed-out container with a removal that succeeded and one that failed; the check's answer and the run tools' answer for the same situation where the record makes them differ.
+   - Negative: a value that is not one of the expected types is refused with `TypeError`; a request to end (`KeyboardInterrupt`) is not placed; an error class the record does not list is answered as the record says for an unlisted error (or passed on).
+   - Every public function of the module is tested.
+5. `python -m pytest`, `ruff check .` and `ruff format --check .` pass. The `hilclaw/` coverage gate (line and function >= 80%) and the test-presence check hold.
+6. The commit body names the language (Python) and the reason in one line. The PR body ends with `Task: T-0479`. After landing, post the owner notice of DRIVER §9 on issue #5 in English: what the new ADR decides, the landed commit, the objection window (7 days from the notice); last line `— posted by driver` (DRIVER §8). Record the comment URL in `## Result`, and list any new runtime acceptance items there so the driver can record them as HQs with reason `runtime-acceptance` (DRIVER §8).
+
+## Out of Scope
+
+- The `cpu_standin` operations of `correctness.check`, `sim.run` and `board.run`, the `cpu_standin` entry of the default table, and any change to `hilclaw/check_definition.py`, `hilclaw/run_definition.py` or `hilclaw/tools.py` (next tasks, after this ADR lands).
+- Any change to `hilclaw/standin_container.py`, `standin_copies.py`, `standin_image.py`, `standin_waiter_line.py` or `harness/timing_waiter.c` beyond a docstring sentence that this record makes false (list the rest in Consequences).
+- The row of an error of two rows (⑱ (마)'s rest, ⑲ (나)'s counterpart), the sorting of kinds for ADR-0140, the size bound of the logs, the rest of ⑱ (라)/⑲ (라), OpenMP (HQ-0034, held in PLAN "보류"), the rest of OD-14 ①, resource bounds, `profiler.collect`.
+- Editing earlier ADRs or the less-exact sentences listed in Consequences (D18: wording clean-up).
+- Starting `claude`, a container runtime, or requiring Docker on this machine (D16).
+
+## Follow-ups
+
+- (later; planner) ADR-0144 slice (4): the `cpu_standin` operation of `correctness.check` built on slices (1) to (3) and this record's module, then those of `sim.run` and `board.run` with the waiter's build and process (ADR-0145), and the `cpu_standin` entry of the default table (ADR-0167 Boundaries). Group them under D20 ③ within the size cap.
+
+## Result

@@ -114,3 +114,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0231 (HQ-0023 답의 단서, 브랜치 `claude/T-0231-adr-od30-s6-metric`는 남김) — OD-30의 S6 지표(첫 run의 best·도달·사례 참조, run 간 drift)를 정하는 ADR, P2-8(S6 계산 도구, P2 순서의 맨 뒤) 쪽 일로 P2-5·P2-14에 필요하지 않음.
 - T-0243 follow-up — ADR-0078 code slice 4: `hilclaw/clang_build.py`가 산출물 이동이나 임시 파일 제거의 `OSError`에서 컴파일러 로그를 잃는 경우를 고치거나 그 경우를 등록하는 일, 실패 경로 경화.
 - T-0243 follow-up — `hilclaw/spec_feedback.py`가 build-log 파일 이름을 직접 만드는 것을 `layout.build_log_file`로 바꾸는 일, 동작 변경 없는 리팩토링.
+- T-0479 planning — OD-18 ⑲ (나)의 나머지 두 부분(한 클래스로 두 행에 걸치는 타이밍 빌드 오류의 행, ADR-0140 비교에서 무시할 수 있는 타이밍 실행 전 `failure` 종류 분류)과 ⑱ (마)의 나머지, 지금 규칙(ADR-0047 Limits, ADR-0065 decision 7)으로 동작이 도는 오류 분류의 정밀화.
