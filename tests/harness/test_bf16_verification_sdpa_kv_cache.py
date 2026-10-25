@@ -165,7 +165,7 @@ DIMENSIONS = """\
 # External names a kernel may define; each is the name of a static of the program.
 COLLIDING = """\
 int fail, digits, byte_size, mix, draw_base, draw_patterns, fill_output;
-int check_value, report_open, emit, check_ranges, times;
+int check_value, report_open, emit, check_ranges, multiplied;
 """
 
 # name: (file-scope text, body of the kernel)

@@ -85,7 +85,7 @@ static uint32_t check_ranges(const struct byte_range *ranges, size_t count)
     return crc ^ UINT32_C(0xFFFFFFFF);
 }
 
-static int times(size_t a, size_t b, size_t *product)
+static int multiplied(size_t a, size_t b, size_t *product)
 {
     if (a > SIZE_MAX / b)
         return 0;
@@ -118,11 +118,11 @@ int main(int argc, char **argv)
         return fail(STATUS_COMMAND_LINE, "h", "must be a multiple of h_kv");
     cached = l - m;
 
-    if (!times(h, d, &q_count) || !times(m, q_count, &q_count) ||
-        !byte_size(q_count, 1, sizeof(uint16_t), &q_bytes) || !times(h_kv, d, &row) ||
-        !times(m, row, &new_count) || !byte_size(new_count, 1, sizeof(uint16_t), &new_bytes) ||
-        m > (SIZE_MAX - l) / 2 || !times(l + 2 * m, row, &cache_count) ||
-        !byte_size(cache_count, 1, sizeof(uint16_t), &cache_bytes) || !times(cached, row, &drawn) ||
+    if (!multiplied(h, d, &q_count) || !multiplied(m, q_count, &q_count) ||
+        !byte_size(q_count, 1, sizeof(uint16_t), &q_bytes) || !multiplied(h_kv, d, &row) ||
+        !multiplied(m, row, &new_count) || !byte_size(new_count, 1, sizeof(uint16_t), &new_bytes) ||
+        m > (SIZE_MAX - l) / 2 || !multiplied(l + 2 * m, row, &cache_count) ||
+        !byte_size(cache_count, 1, sizeof(uint16_t), &cache_bytes) || !multiplied(cached, row, &drawn) ||
         new_count > (SIZE_MAX - q_count) / 2 || drawn > (SIZE_MAX - q_count - 2 * new_count) / 2)
         return fail(STATUS_MEMORY, "sizes", "an array of these dimensions does not fit in size_t");
     q = malloc(q_bytes);
