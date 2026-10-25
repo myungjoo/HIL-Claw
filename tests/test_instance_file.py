@@ -95,7 +95,16 @@ UNUSUAL = (
     + SECTION.encode()
     + b',"schema_version"\t:1 }\n\n'
 )
-CONTENTS = {"required members only": MINIMAL, "every member": FULL}
+INJECTIONS = [
+    {"id": "u1", "kind": "hypothesis", "statement": "SYNTHETIC: a written hypothesis"},
+    {"id": "u2", "kind": "material", "source": "https://example.org/synthetic-paper"},
+]
+WITH_INJECTIONS = written(doc(injections=INJECTIONS, coder_model="claude-example-1-2"))
+CONTENTS = {
+    "required members only": MINIMAL,
+    "every member": FULL,
+    "injections": WITH_INJECTIONS,
+}
 PREVIOUS = {"free": None, "taken": OTHER}
 TAKEN = {
     "other bytes": OTHER,
@@ -148,6 +157,11 @@ REFUSED = {
         InvalidInstanceError,
     ),
     "coder_model": (written(doc(coder_model="opus")), InvalidInstanceError),
+    "injections empty": (written(doc(injections=[])), InvalidInstanceError),
+    "injections duplicate id": (
+        written(doc(injections=[INJECTIONS[0], {**INJECTIONS[1], "id": "u1"}])),
+        InvalidInstanceError,
+    ),
     "no final line feed": (MINIMAL[:-1], WrittenFormError),
     "CRLF line ends": (MINIMAL.replace(b"\n", b"\r\n"), WrittenFormError),
     "one carriage return": (b"\r" + MINIMAL, WrittenFormError),
