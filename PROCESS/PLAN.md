@@ -112,3 +112,5 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0470 follow-up — ADR-0166 Consequences의 "Less exact, not edited" 목록(`hilclaw/model_program.c` 헤더의 "It is not yet a forward pass", ADR-0153 decision 4 "Casts … none is decided"·decision 6·Boundaries 첫 항목, ADR-0157 Context·decision 1·Boundaries, ADR-0162·ADR-0165 Boundaries의 cache capacity, ADR-0161 decision 6의 QKV 열 순서, ADR-0159 decision 8의 "an example for the code slice"), ADR·docstring 문구 정리.
 - T-0264 (HQ-0027, 브랜치 `claude/T-0264-adr-od18-local-run-parameter`는 남김) — `local_run.run`의 사전 `TypeError`·`ValueError`의 `parameter`로 `correctness.check`의 어느 행을 둘지 정하는 ADR-0088, 이미 동작하는 오류 분류의 정밀화(OD-18 ⑱ (마)의 잔여)로 P2-5·P2-14에 필요하지 않음.
 - T-0231 (HQ-0023 답의 단서, 브랜치 `claude/T-0231-adr-od30-s6-metric`는 남김) — OD-30의 S6 지표(첫 run의 best·도달·사례 참조, run 간 drift)를 정하는 ADR, P2-8(S6 계산 도구, P2 순서의 맨 뒤) 쪽 일로 P2-5·P2-14에 필요하지 않음.
+- T-0243 follow-up — ADR-0078 code slice 4: `hilclaw/clang_build.py`가 산출물 이동이나 임시 파일 제거의 `OSError`에서 컴파일러 로그를 잃는 경우를 고치거나 그 경우를 등록하는 일, 실패 경로 경화.
+- T-0243 follow-up — `hilclaw/spec_feedback.py`가 build-log 파일 이름을 직접 만드는 것을 `layout.build_log_file`로 바꾸는 일, 동작 변경 없는 리팩토링.
