@@ -2,7 +2,7 @@
 id: T-0478
 title: Record the registration of `sim.run` and `board.run` in the default registry (backend table, source of seeds, predicate "covered", definitions; one more part of OD-18) as a new ADR, and register both tools with the mock entry, with tests
 phase: P1
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0477]
