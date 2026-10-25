@@ -2,7 +2,7 @@
 id: T-0472
 title: Add hilclaw/model_forward.c, the bf16 forward-pass model program with its input form, library table, six entry points, every buffer and per-layer caches, the prefill pass and the report; generations with G = 1 only (ADR-0166 code slice 2)
 phase: P1
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0471]
