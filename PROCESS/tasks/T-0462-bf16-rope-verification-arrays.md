@@ -2,7 +2,7 @@
 id: T-0462
 title: Add the array side of the bf16 RoPE verification run, hilclaw/harness/bf16_rope_arrays.py (draw of x, table rows, check value, reference, counts; ADR-0164 code slice 3, first half)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, OD-31, OD-16, "PLAN P2-11", "PLAN P2-12", "PLAN P2-14"]
 dependsOn: [T-0461]
@@ -171,3 +171,11 @@ hq: []
 - Next task (planner candidate): ADR-0164 code slice 3, second half. A new module `hilclaw/harness/bf16_rope_verification.py` holding `program_arguments`, `judge_report(report, dims, *, start, draws, seed, rtol, atol)` and `run_bf16_rope_verification(executable, dims, *, start, draws, seed, rtol, atol, timeout_s, cwd=None, env=None)`. It builds the rows once with `table_rows`, sends `rows.tobytes()` through `local_run.run(..., stdin_data=...)` and judges with the result types of `hilclaw.harness.verification`.
 
 ## Result
+
+- **Outcome**: DONE. PR #276 (https://github.com/myungjoo/HIL-Claw/pull/276), squash-merged as `6297bf58`; branch `claude/T-0462-bf16-rope-verification-arrays` deleted.
+- **Review**: 2 rounds with a context-isolated dev-reviewer (round 1 Approve with one nit, fixed in `437aed0`; round 2 Approve).
+- **CI**: green on `437aed0` (Python 3.11/3.14, Coverage, C gate, Test presence, shellcheck).
+- **Language**: Python, because the module computes on NumPy arrays next to `bf16_verification_arrays.py` and reuses its helpers.
+- **Changes**: new `hilclaw/harness/bf16_rope_arrays.py` (`TABLE_CONSTANTS`, `table_rows`, `draw_x`, `check_value`, `reference`, `count_failures`; shared helpers imported), package docstring updated; new `tests/harness/test_bf16_rope_arrays.py` (154 cases, 100 % line coverage of the module). 231 changed lines outside tests in 2 files.
+- **Deviation from AC 12**: `tests/test_rope_table.py::test_the_module_is_named_by_no_other_module` conflicted with AC 4 (call `rope_table.build`); it is now `test_the_module_is_named_only_by_the_bf16_rope_verification_arrays`. Stated in the PR body; reviewer accepted as Low.
+- **Follow-ups**: the runner half `hilclaw/harness/bf16_rope_verification.py` (planner candidate T-0463). If it names `rope_table` directly it must be added to the allowed set in `tests/test_rope_table.py`; it can avoid this by getting the rows only through `table_rows`.
