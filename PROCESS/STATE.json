@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0474",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:b2d7a378-1",
-    "acquiredAt": "2026-10-25T15:21:14Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -638,18 +634,26 @@
       "question": "OD-31 하위 질문 ⑥(모델 수준 정확도의 판정; PLAN P2-13·P2-14·P2-15). ADR-0166(T-0470, main d25a61e4)이 모델 실행기의 bf16 forward pass와 생성 루프를 설계했습니다.\n생성 모드는 다음 토큰을 마지막 logits 행에서 고르는 모드입니다. 그 토큰 선택 규칙과, P2-14의 \"reference와 맞는다\"가 무엇을 비교하는지는 ⑥(오너)으로 남겼습니다. 드라이버 코드는 주어진 시퀀스 모드만 만들고, 생성 모드는 invalid input으로 거부합니다.\n(1) 토큰 선택 규칙:\n(a) greedy — bf16 logits 마지막 행의 argmax. 같은 값이면 가장 작은 token id를 고릅니다.\n(b) 샘플링 — temperature·top-p 등의 값과 seed를 지정해 주십시오.\n(c) 생성 모드는 두지 않습니다. 주어진 시퀀스 모드만 쓰고, 모델 수준 비교도 teacher forcing으로 합니다.\n(d) 그 밖.\n(2) \"reference와 맞는다\"의 비교 지표. P2-14 합성 run과 P2-15 실제 가중치 run에 각각 답해도 됩니다.\n(a) 토큰 일치 — 같은 프롬프트에서 reference가 같은 규칙으로 낸 토큰열과 처음 N개 토큰이 같다(N 지정).\n(b) logit 오차 — 주어진 시퀀스에서 행마다 reference logits와 원소별 rtol·atol로 비교한다(값은 instance처럼 사용자가 지정, 기본값 없음).\n(c) (a)와 (b) 둘 다.\n(d) 그 밖(top-k 일치 등).\n(3) reference 구현:\n(a) 같은 연산을 NumPy float64로 계산하는 구현 — HQ-0066 (1)의 연장이고 새 의존성이 없습니다.\n(b) Meta `llama-models`의 PyTorch 구현 — 새 외부 의존성(⑦)입니다.\n(c) Hugging Face transformers — 새 의존성입니다.\n(d) 그 밖.\n비교가 읽는 lm_head 행(\"모든 행\"/\"마지막 행\")과 프롬프트·생성 길이는 이 답에 따라 정해집니다. 오너가 지정하지 않으면 드라이버 ADR이 정합니다.\n막히는 것:\n- 실행기의 생성 모드\n- P2-14의 \"reference와 맞는다\" 판정과 P2-15의 대조 방법\n- 모델 수준 run 기록(⑧·OD-8과 함께)\n막히지 않는 것:\n- ADR-0166의 code slice 1~6(주어진 시퀀스 모드와 합성 모델 테스트 — fixture 커널의 Python 재계산과 비트 단위로 비교)\n- P2-11·P2-12의 그 밖 task\n- HQ-0070(RoPE scale factor는 (3)의 reference 출처와 함께 정해질 수 있음)",
       "askedAt": "2026-10-25T11:58:22Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0072",
+      "taskId": "T-0474",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0166(bf16 모델 forward program; OD-31 일부, PLAN P2-13)의 code slice 1~5(와 6)가 T-0474(PR #286, main 78b64f0d)로 모두 land되어 ADR-0153의 런타임 인수 항목 (lxviii)을 확인할 때가 되었습니다. (lxviii) Llama 3.2 1B 차원의 한 generation(ADR-0166 decision 2의 버퍼와 decision 4의 KV cache)이 OD-14가 모델 프로그램에 주는 격리 환경의 메모리 한도 안에 드는지. 선택지: (a) 오너가 런타임 머신에서 수동으로 확인해 결과를 답한다 (b) 런타임 자체 점검 코드 task로 돌린다(예: 실행 전 필요 메모리를 계산해 환경 한도와 비교하는 self-check) (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 실제 Llama 3.2 1B 크기에서 generation이 메모리 한도 안에서 돈다는 확신(P2-15). 막히지 않는 것: P2-13의 나머지·P2-14와 그 밖의 드라이버 task(드라이버 테스트는 합성 가중치로 검증함).",
+      "askedAt": "2026-10-25T15:52:23Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 492,
-    "tasksDone": 463,
+    "iterations": 493,
+    "tasksDone": 464,
     "tasksBlocked": 29,
-    "reviewRoundsTotal": 1610
+    "reviewRoundsTotal": 1611
   },
   "lastIteration": {
-    "at": "2026-10-25T14:51:13Z",
-    "owner": "AKIHA:15555bff-1",
-    "taskId": "T-0473",
+    "at": "2026-10-25T15:52:23Z",
+    "owner": "AKIHA:b2d7a378-1",
+    "taskId": "T-0474",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

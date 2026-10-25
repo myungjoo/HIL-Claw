@@ -2,7 +2,7 @@
 id: T-0474
 title: Add the forward program's build-and-run path (hilclaw/model_build.py forward source, new hilclaw/model_forward_execute.py) and the synthetic-model test of ADR-0166 decision 8 through it (ADR-0166 code slices 5 and 6)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: [T-0471, T-0472, T-0473]
@@ -92,3 +92,10 @@ hq: []
 - After this task: ADR-0166's code slices are all landed. The driver records ADR-0153's runtime acceptance item (lxviii) as an HQ (see item 11). The rest of P2-13 (the model-level comparison) waits on HQ-0071.
 
 ## Result
+
+- PR #286, squash-merged as `78b64f0d`; branch `claude/T-0474-forward-execute` deleted. 1 review round (Approve, one Nit fixed after approval: the test's expected check follows the module's `_is_sequence` rule). CI green (Python 3.11/3.14, Coverage, C, sh, test presence); the clang cases ran on CI (skipped locally: no clang on this Windows machine).
+- Language: Python, the host side's language of the model executor (ADR-0153 decision 2), as `model_execute` and `model_forward_run`.
+- Landed: `hilclaw/model_build.py` `FORWARD_PROGRAM_SOURCE` and `build_forward_program`; new `hilclaw/model_forward_execute.py` (`execute`, `ForwardExecution`, `PREFIX`; reuses `model_execute.BuildFailed` and its argument checks and removal); tests in `tests/test_model_forward_execute.py` (ADR-0166 decision 8 through `execute`, bit for bit) and `tests/test_model_build.py`. About 370 changed lines outside tests, 2 files.
+- Readings recorded in the module docstring: kernels are distinct by identity or equality (no hashing); `given` `None` or not a sequence goes to the check with `generation_length` 0; a `program_flags` item holding `HILCLAW_MODEL_BF16` is not refused since `model_forward.c` reads no macro; `removed` is `None` when the check is not ok (no directory made).
+- ADR-0166 code slices 1 to 5 (and 6) have now all landed, so the driver can record ADR-0153's runtime acceptance item (lxviii) (a generation at the dimensions of Llama 3.2 1B fits the environment's memory limit) as an HQ with the reason `runtime-acceptance` (ADR-0166 Consequences; DRIVER §8). Not recorded by the executor.
+- Follow-ups: none new. The rest of P2-13 (model-level comparison) waits on HQ-0071.
