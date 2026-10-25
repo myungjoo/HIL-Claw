@@ -2,7 +2,7 @@
 id: T-0471
 title: Add hilclaw/model_forward_check.py, the whole-generation check of the bf16 forward pass over the six kinds' binding checks, with the weights', eps, RoPE-constant and mode refusals (ADR-0166 code slice 1)
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: []
@@ -101,3 +101,14 @@ hq: []
 - Next in the batch: T-0472 (ADR-0166 code slice 2).
 
 ## Result
+
+**DONE.** PR #283, squash-merged as `16333cc4` (branch deleted). Review: 1 round, Approve (two Nits, both docstring-only, fixed after the Approve without re-review per D20). CI green on the final head `4930323a` (Python 3.11/3.14, coverage gate, C, sh, test presence).
+
+- **Language**: Python, because the check joins Python functions of the host side (ADR-0153 decision 2).
+- **`hilclaw/model_forward_check.py`** (new): `RopeConstants`, `Weights` (NamedTuples, no defaults) and `check(dimensions, binding, *, dtype, eps, rope, weights, prompt, given, generation_length, lm_head_rows)` returning a `model_binding.BindingCheck`. The binding is split by call site; each of the six checks gets the sub-mapping of its own keys (an empty mapping when none, so an absent call site is reported as `no_kernel`); a key outside the fifteen call sites raises `ValueError` (`parameter` `"binding"`). The six checks run first, so their argument errors propagate unchanged; then `eps`, `rope`, `weights` are refused by type in that order (`parameter` `"eps"`, `"rope"`/`"rope.<field>"`, `"weights"`/`"weights.<field>"`).
+- **Own outcomes, in order**: generation mode (`given is None`); `eps` refused by `rmsnorm_eps`; **one per refused RoPE constant** (field order); the table size (`(S + G - 1) * head_dim > 2**53 - 1`, looked at only with a non-empty prompt and G in range); the weights in field order (per-layer: count, then each array's shape and, at `"bf16"` only, element type `uint16` in native byte order).
+- **RoPE constant check choice**: a new public `rope_table.constant_refusals` (all types first, then every value refusal; no frequency computed). `_checked` was refactored onto the same helpers; `build`/`frequencies` behaviour unchanged.
+- **Tests**: `tests/test_model_forward_check.py` (new, 175 tests) and `constant_refusals` tests in `tests/test_rope_table.py` (public-name and "named only by" tests updated). Full local suite 32405 passed; coverage of both touched modules 100 %; ruff clean.
+- **Size**: about 390 changed lines outside tests, 4 files.
+- **Follow-ups**: none. No HQ.
+- This `## Result` edit is left uncommitted for the driver (DRIVER §3 step 6).
