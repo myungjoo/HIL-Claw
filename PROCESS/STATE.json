@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0479",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:4385f60d",
-    "acquiredAt": "2026-10-25T22:22:44Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -654,18 +650,26 @@
       "question": "ADR-0166(bf16 모델 forward program; OD-31 일부, PLAN P2-13)의 code slice 1~5(와 6)가 T-0474(PR #286, main 78b64f0d)로 모두 land되어 ADR-0153의 런타임 인수 항목 (lxviii)을 확인할 때가 되었습니다. (lxviii) Llama 3.2 1B 차원의 한 generation(ADR-0166 decision 2의 버퍼와 decision 4의 KV cache)이 OD-14가 모델 프로그램에 주는 격리 환경의 메모리 한도 안에 드는지. 선택지: (a) 오너가 런타임 머신에서 수동으로 확인해 결과를 답한다 (b) 런타임 자체 점검 코드 task로 돌린다(예: 실행 전 필요 메모리를 계산해 환경 한도와 비교하는 self-check) (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 실제 Llama 3.2 1B 크기에서 generation이 메모리 한도 안에서 돈다는 확신(P2-15). 막히지 않는 것: P2-13의 나머지·P2-14와 그 밖의 드라이버 task(드라이버 테스트는 합성 가중치로 검증함).",
       "askedAt": "2026-10-25T15:52:23Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0073",
+      "taskId": "T-0479",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0168(cpu_standin의 컨테이너 상황에서 세 HW 도구의 답; OD-18 ⑱ (다)·⑲ (나) 일부; T-0479, PR #293, main bc54bd01)이 런타임 인수 항목 (lxxv)~(lxxvii)를 남겼다. (lxxv) Docker client가 도달 불가 daemon, `--pull never`에서 store에 없는 image, 생성·시작할 수 없는 container, image에 없거나 실행할 수 없는 program의 각 경우에 build·process container를 125·126·127 중 하나(그 밖의 상태가 아님)로 끝내는지와 그때 쓰는 문구. (lxxvi) image의 `clang`이 compile·link 실패에서 125~127로 끝나지 않는지. (lxxvii) 정상 종료 뒤 `--rm` 제거가 실패할 때 client가 주는 상태, container가 없는 이름에 `rm --force`가 주는 상태. 선택지: (a) 오너가 런타임 머신에서 수동 확인해 결과를 답한다 (b) 런타임 자체 점검 코드 task로 만든다 (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 실제 Docker에서 ADR-0168의 상태 해석이 맞다는 확인. 막히지 않는 것: ADR-0144 slice (4) 등 이후 드라이버 task(테스트는 스텁으로 검증).",
+      "askedAt": "2026-10-25T23:03:44Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 501,
-    "tasksDone": 472,
+    "iterations": 502,
+    "tasksDone": 473,
     "tasksBlocked": 29,
-    "reviewRoundsTotal": 1621
+    "reviewRoundsTotal": 1623
   },
   "lastIteration": {
-    "at": "2026-10-25T21:54:34Z",
-    "owner": "AKIHA:e2ecc360",
-    "taskId": "T-0478",
+    "at": "2026-10-25T23:03:44Z",
+    "owner": "AKIHA:4385f60d",
+    "taskId": "T-0479",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

@@ -2,7 +2,7 @@
 id: T-0479
 title: Record what `correctness.check`, `sim.run` and `board.run` answer at `cpu_standin` where no container runtime, image or container can be had, how the client's statuses 125 to 127 and the waiter's failures are read, and whether ADR-0096 holds there (OD-18 ⑱ (다) and the container part of ⑲ (나); ADR-0144 decision 7, ADR-0145 decision 6) as one new ADR, and add its first code slice, a pure reading module bound to nothing, with tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, OD-14, "#5 D12"]
 dependsOn: []
@@ -68,18 +68,25 @@ Line numbers are those of `main` at `077db338`; the text wins. Read Korean files
    - Negative: a value that is not one of the expected types is refused with `TypeError`; a request to end (`KeyboardInterrupt`) is not placed; an error class the record does not list is answered as the record says for an unlisted error (or passed on).
    - Every public function of the module is tested.
 5. `python -m pytest`, `ruff check .` and `ruff format --check .` pass. The `hilclaw/` coverage gate (line and function >= 80%) and the test-presence check hold.
-6. The commit body names the language (Python) and the reason in one line. The PR body ends with `Task: T-0479`. After landing, post the owner notice of DRIVER §9 on issue #5 in English: what the new ADR decides, the landed commit, the objection window (7 days from the notice); last line `— posted by driver` (DRIVER §8). Record the comment URL in `## Result`, and list any new runtime acceptance items there so the driver can record them as HQs with reason `runtime-acceptance` (DRIVER §8).
+6. The commit body names the language (Python) and the reason in one line. The PR body ends with `Task: T-0479`. After landing, post the owner notice of DRIVER §9 on issue #5 in English: what the new ADR decides, the landed commit, the objection window (7 days from the notice); last line `— posted by driver` (DRIVER §8). Record the comment URL in `## Result
 
-## Out of Scope
-
-- The `cpu_standin` operations of `correctness.check`, `sim.run` and `board.run`, the `cpu_standin` entry of the default table, and any change to `hilclaw/check_definition.py`, `hilclaw/run_definition.py` or `hilclaw/tools.py` (next tasks, after this ADR lands).
-- Any change to `hilclaw/standin_container.py`, `standin_copies.py`, `standin_image.py`, `standin_waiter_line.py` or `harness/timing_waiter.c` beyond a docstring sentence that this record makes false (list the rest in Consequences).
-- The row of an error of two rows (⑱ (마)'s rest, ⑲ (나)'s counterpart), the sorting of kinds for ADR-0140, the size bound of the logs, the rest of ⑱ (라)/⑲ (라), OpenMP (HQ-0034, held in PLAN "보류"), the rest of OD-14 ①, resource bounds, `profiler.collect`.
-- Editing earlier ADRs or the less-exact sentences listed in Consequences (D18: wording clean-up).
-- Starting `claude`, a container runtime, or requiring Docker on this machine (D16).
-
-## Follow-ups
-
-- (later; planner) ADR-0144 slice (4): the `cpu_standin` operation of `correctness.check` built on slices (1) to (3) and this record's module, then those of `sim.run` and `board.run` with the waiter's build and process (ADR-0145), and the `cpu_standin` entry of the default table (ADR-0167 Boundaries). Group them under D20 ③ within the size cap.
-
-## Result
+- **Outcome**: DONE. PR #293 (https://github.com/myungjoo/HIL-Claw/pull/293), squash-merged as `bc54bd01` with `--delete-branch`. Branch `claude/T-0479-adr-standin-container-situations` is deleted.
+- **Review**: context-isolated `dev-reviewer`, 2 rounds, Approve.
+  - Round 1 asked for one blocking change and gave two Nits; all three were addressed:
+    - `build_dir_removable` now leaves the build directory after an `OSError` of `run_in_container`, which may come after the start.
+    - An `OSError` of `place_copies` other than `NotADirectoryError` (the `lstat` of the build directory, or closing a source) now stays open with C14.
+    - The register rows keep "(다)의 첫 사례 밖 run" in the remaining part of OD-18.
+  - Round 2 gave two Nits (decision 5 wording, docstring line length), fixed without another review (D20).
+- **CI**: all six jobs green on the final commit `5aa110dc` (Python 3.11/3.14, coverage, test presence, shellcheck, clang). Locally: `pytest` gave 33536 passed and 1858 skipped; `ruff check` and `ruff format --check` are clean; `hilclaw/standin_answer.py` has 100% coverage and `hilclaw/` has 97% in total.
+- **ADR**: ARCHITECTURE/decisions/ADR-0168-od18-standin-container-situations.md. It covers OD-18 ⑱ (다) and the isolated-environment piece of ⑲ (나), for the runs of ADR-0144 decision 1.
+  - Every situation a container adds is placed under one of the existing eight backend kinds or one of the four `condition` values; no new `error.kind` or `condition` value is needed (no data-plane schema change). No owner-only decision came up.
+  - Statuses 125 to 127 are read as the container runtime's for a build container (`compiler_unavailable`) and as the program's for a process container (`exit_status`). For a timing process, the waiter's line is checked before the status.
+  - ADR-0096 holds for the build directory given to a container.
+  - Two pieces stay open: the `OSError` that spans two rows (C14, goes to the rest of ⑱ (마) and its ⑲ (나) counterpart), and a timing process stream with status 0 and no waiter's line.
+  - It does not answer part of OD-14 ①; the OD-14 row is not touched.
+- **Registers**: Requirements.md OD-18 row; OpenDecisionProposals.md § OD-18; StandardScenarios.md recheck line (S0, S1, S2 and S8; no verdict change, no gap).
+- **Code**: `hilclaw/standin_answer.py`, pure functions bound to nothing and imported by nothing yet; tests in `tests/test_standin_answer.py`.
+- **Language**: Python. The slices it reads are Python, and its answers feed the Python operations of ADR-0144 slice (4).
+- **OD notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6404630959 (7-day objection window from 2026-10-26).
+- **Runtime acceptance items** (recorded as HQ-0073, reason `runtime-acceptance`): (lxxv) the Docker client's 125/126/127 statuses and texts for an unreachable daemon, a missing image under `--pull never`, a container that cannot be created or started, and a program not found or not invokable; (lxxvi) the image's `clang` never ends with 125 to 127 for a failed compile or link; (lxxvii) the client's status when the `--rm` removal after a normal end fails, and that of `rm --force` for a name with no container.
+- **Follow-ups (planner)**: ADR-0144 slice (4), which no longer waits on ADR-0144 decision 7: the `cpu_standin` operation of `correctness.check`, then those of `sim.run` and `board.run` with the waiter's build and process, and the `cpu_standin` entry of the default table (ADR-0167 Boundaries). Each builds on `hilclaw/standin_answer.py`.
