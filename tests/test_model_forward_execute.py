@@ -180,7 +180,7 @@ def expected_check(binding, model, **changes):
         DIMENSIONS,
         binding,
         dtype="bf16",
-        generation_length=len(given) if isinstance(given, list) else 0,
+        generation_length=len(given) if model_execute._is_sequence(given) else 0,
         **arguments,
     )
 
