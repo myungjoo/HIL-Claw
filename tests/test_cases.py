@@ -354,6 +354,36 @@ def test_hypothesis_copy_reading_its_own_run_is_invalid():
     assert type(raised.value.__cause__) is InvalidHypothesisRecordError
 
 
+def with_injected_entry():
+    case = example()
+    entry = case["hypothesis_record"]["hypotheses"][0]
+    entry["origin"] = "injected"
+    entry["injection"] = "u1"
+    return case
+
+
+def test_hypothesis_copy_with_an_injected_entry_is_valid():
+    assert validate(with_injected_entry()) is None
+
+
+def test_build_keeps_the_injected_entries_of_the_copy():
+    case = with_injected_entry()
+    built = build(case["hypothesis_record"], case["verdict_record"])
+    assert built == case
+
+
+def test_hypothesis_copy_with_an_injected_entry_without_injection_is_invalid():
+    case = with_injected_entry()
+    del case["hypothesis_record"]["hypotheses"][0]["injection"]
+    rule = "required member is missing"
+    error = invalid(
+        case,
+        f"hypothesis_record.hypotheses[0].injection: {rule}",
+        InvalidHypothesisRecordError,
+    )
+    assert str(error.__cause__) == f"hypotheses[0].injection: {rule}"
+
+
 @pytest.mark.parametrize("member", MEMBERS)
 def test_copy_of_schema_version_2(member):
     case = example()

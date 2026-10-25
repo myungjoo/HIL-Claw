@@ -1,4 +1,4 @@
-"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046, ADR-0053, ADR-0136).
+"""The instance record of one run, ``runs/<run_id>/instance.json`` (ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0024, ADR-0028, ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046, ADR-0053, ADR-0075, ADR-0136).
 
 ``ARCHITECTURE/decisions/ADR-0018-od8-instance-record-hw-profile.md`` fixes the
 file as a whole (decision 2), the member ``hw_profile`` in which a run states
@@ -66,6 +66,11 @@ constraints in the form of the ``task.objective`` of a version-2 spec
 (decision 4), says that a valid file may lack it, that a present one must be
 valid and that nothing stands in for an absent one (decision 5), and says how
 the member is read (decision 7).
+``ARCHITECTURE/decisions/ADR-0075-od30-injection-at-instance-start.md`` adds
+the member ``injections``, in which a run states the hypotheses and the
+material injected at its start (decision 1), and says that a valid file may
+lack it, that a present one must be valid and that its absence says only
+that no injected input is recorded (decision 2).
 ``ARCHITECTURE/decisions/ADR-0136-od8-first-case-coder-model.md`` adds the
 member ``coder_model``, in which a run states the full name of the Claude
 model its coder calls request (decisions 2 and 3), and says that a valid file
@@ -86,7 +91,7 @@ the bytes of a content and of a parsed document, and :func:`read`,
 :func:`project_of`, :func:`draws_of`, :func:`objective_of`,
 :func:`coder_model_of` or :func:`layout_version_of` to a tool.
 
-Conventions of this module, which the thirteen records do not fix:
+Conventions of this module, which the fourteen records do not fix:
 
 - A content is exactly ``bytes`` (:class:`TypeError` otherwise: the encoding is
   part of validity). Values are as :func:`json.loads` returns them, an integer
@@ -103,7 +108,8 @@ Conventions of this module, which the thirteen records do not fix:
   when the document holds it, then ``owner`` when the document holds it, then
   ``project`` when the document holds it, then ``draws`` when the document
   holds it, then ``objective`` when the document holds it, then
-  ``coder_model`` when the document holds it: the order in which the records
+  ``injections`` when the document holds it, then ``coder_model`` when the
+  document holds it: the order in which the records
   defined them, and for the two of ADR-0034 the order in which it
   names them. A content this interpreter cannot read (an integer too long for
   it anywhere in the text, nesting too deep) raises :class:`InvalidInstanceError` too,
@@ -255,6 +261,22 @@ Conventions of this module, which the thirteen records do not fix:
   and that this is no error of the content, is ADR-0053 decision 5 and not a
   convention; the convention is that it has ``None`` in that place, which no
   present member is equal to.
+- What is a value of ``injections`` is ADR-0075 decisions 1 and 2 and not a
+  convention: an array of at least one entry, each an object with exactly
+  the members of its ``kind`` (``id``, ``kind`` and ``statement`` for
+  ``hypothesis``, ``id``, ``kind`` and ``source`` for ``material``), ``id``
+  a *name* unique in the array, ``statement`` a ``str`` of at least one
+  character and ``source`` a *string*. The conventions are the order inside
+  the member (the array, then each entry in index order: an object, ``kind``
+  present, ``kind`` an admitted value, the members of that kind, ``id``,
+  then ``statement`` or ``source``; then the uniqueness of ``id``), the
+  first rule found broken being reported with its place below
+  ``injections``; that for a value built in memory the member must be
+  exactly a ``list``, an entry exactly a ``dict`` and every value exactly a
+  ``str``; and that the member is handed out as the ``list`` of the file,
+  unchanged. That a content without the member records no injected input,
+  and that this is no error of the content, is ADR-0075 decision 2 and not
+  a convention; the convention is that it has ``None`` in that place.
 - What is a value of ``coder_model`` is ADR-0136 decision 3 and not a
   convention: a full Claude model name, a string of at most 64 characters
   that begins with ``claude-``, continues with one or more ASCII lowercase
@@ -288,11 +310,11 @@ Conventions of this module, which the thirteen records do not fix:
   the read is an :class:`OSError`, as every other failure of the file system.
 
 It writes, creates and removes no file and composes no content. It defines no
-member besides the fourteen (``schema_version``, ``hw_profile``,
+member besides the fifteen (``schema_version``, ``hw_profile``,
 ``tolerance``, ``source_commit``, ``n_max``, ``candidates_per_round``,
 ``op_signature``, ``round_budget``, ``wall_clock_budget_s``, ``owner``,
-``project``, ``draws``, ``objective`` and ``coder_model``) and interprets no
-other: a file
+``project``, ``draws``, ``objective``, ``injections`` and ``coder_model``)
+and interprets no other: a file
 it accepts is not thereby a complete instance record, and not enough to start a
 run (ADR-0018 decisions 1 and 2).
 Of the tolerance it gives what the file states and nothing else: it holds no
@@ -539,6 +561,14 @@ OD-13 sub-question 10); "not stated" is no error of the content here either,
 this module gives it no tool-failure kind, and
 :func:`objective_of` is bound to no tool, to no spec and to nothing that
 judges a candidate.
+Of the injections it gives what the file states and nothing else (ADR-0075
+decision 2): it substitutes nothing for a member that is absent and does not
+conclude more from the absence than that no injected input is recorded. It
+checks the member by itself only: it reads no ``hypotheses.json`` of the run
+and checks none of the rules between that file and this one (ADR-0075
+decision 3), and it does not say who derives a hypothesis from material,
+when, or whether a round tests an input (decisions 1 and 4). It has no
+reader of its own for the member: :func:`read` hands it out with the rest.
 Of the coder model it gives what the file states and nothing else (ADR-0136
 decisions 3 and 4): it holds no default and substitutes nothing for a member
 that is absent, no model name, no alias, no constant of this module and
@@ -622,6 +652,7 @@ _DEFINED = (
     "project",
     "draws",
     "objective",
+    "injections",
     "coder_model",
 )
 _SECTION = ("key", "record")
@@ -632,13 +663,19 @@ _STATED_LAYOUT = {SCHEMA_VERSION: 1}
 _OBJECTIVE = ("objectives", "constraints")
 _OBJECTIVE_ENTRY = ("type",)
 _OBJECTIVE_TYPES = ("latency_minimisation",)
+_INJECTIONS = {
+    "hypothesis": ("id", "kind", "statement"),
+    "material": ("id", "kind", "source"),
+}
+_NAME_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_")
 
 
 class InvalidInstanceError(ValueError):
     """A content, a document or a path breaks a rule; the message names it.
 
     The rules are those of ADR-0018, ADR-0020, ADR-0022, ADR-0023, ADR-0028,
-    ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046, ADR-0053 and ADR-0136
+    ADR-0031, ADR-0032, ADR-0033, ADR-0034, ADR-0046, ADR-0053, ADR-0075 and
+    ADR-0136
     and the conventions of this module.
     """
 
@@ -704,7 +741,11 @@ class Instance(NamedTuple):
     name of the Claude model the run's coder calls request, unchanged, or
     ``None`` for a content without that member: ``None`` says that the
     content states no coder model, and no model stands in (ADR-0136 decision
-    4). No field has a default. ``others`` is the last field.
+    4). ``injections`` is the ``list`` of the member ``injections``, the
+    inputs injected at the start of the instance (ADR-0075 decision 1), or
+    ``None`` for a content without that member: ``None`` says only that the
+    content records no injected input (ADR-0075 decision 2). No field has a
+    default. ``others`` is the last field.
     """
 
     hw_profile_key: str
@@ -721,6 +762,7 @@ class Instance(NamedTuple):
     draws: int | None
     objective: dict | None
     coder_model: str | None
+    injections: list | None
     others: dict
 
 
@@ -777,11 +819,16 @@ def parse(content):
     not lower-cased, stripped, resolved or replaced, or ``None`` when the
     content has no such member, and nothing is substituted then either:
     ``None`` is no default, no alias and no model name (ADR-0136 decision 4);
+    ``injections`` is the ``list`` of the member ``injections`` as parsed
+    from this content (ADR-0075 decision 1), not reordered, completed or
+    replaced, or ``None`` when the content has no such member, and nothing
+    is substituted then either (ADR-0075 decision 2);
     ``others`` holds every top-level member that is none of
     ``schema_version``, ``hw_profile``, ``tolerance``, ``source_commit``,
     ``n_max``, ``candidates_per_round``, ``op_signature``, ``round_budget``,
     ``wall_clock_budget_s``, ``owner``, ``project``, ``draws``,
-    ``objective`` and ``coder_model``, as parsed and not interpreted,
+    ``objective``, ``injections`` and ``coder_model``, as parsed and not
+    interpreted,
     whatever its name and value (``tolerence``, a top-level ``rtol``,
     ``source-commit``, ``nmax``, ``candidates``, ``op``, ``task``,
     ``rounds``, ``budget``, ``wall_clock_budget``, ``time_budget``,
@@ -814,7 +861,7 @@ def parse(content):
 
 
 def validate(document):
-    """Check ``document``, a parsed ``instance.json``, against the twelve records.
+    """Check ``document``, a parsed ``instance.json``, against the thirteen records.
 
     ``document`` must be a ``dict`` with ``schema_version`` (an ``int`` from 0
     to :data:`hilclaw.keys.MAX_INTEGER`) and, at version 1, ``hw_profile``: a
@@ -877,24 +924,33 @@ def validate(document):
     ``list`` or of ``str`` and a ``tuple`` are none. Only that form is
     checked: the member is compared with no spec, with no other member and
     with no other file, and that the quantity of the type can be measured is
-    not checked. It may hold ``coder_model``, which is then exactly a ``str``
+    not checked. It may hold ``injections``, which is then a ``list`` of at
+    least one entry, each a ``dict`` whose ``kind`` is ``hypothesis``, with
+    exactly ``id``, ``kind`` and ``statement``, or ``material``, with exactly
+    ``id``, ``kind`` and ``source``; ``id`` is a name unique in the member,
+    ``statement`` a ``str`` of at least one character and ``source`` a
+    string of 1 to 255 printable ASCII characters (ADR-0075 decisions 1 and
+    2). Only that is checked: no ``hypotheses.json`` is read and no rule
+    between files is checked (ADR-0075 decision 3). It may hold
+    ``coder_model``, which is then exactly a ``str``
     of at most 64 characters, ``claude-`` followed by one or more ASCII
     lowercase letters, digits and ``-``, not ending with ``-`` (ADR-0136
     decisions 3 and 4): for a value built in memory, a subclass of ``str``
     and a ``bytes`` are none. Only that form is checked: the name is
     compared with no list of offered models. Its other members are not
     looked at. The rules for the text (the encoding, a member name twice)
-    cannot be checked on a parsed value. The twelve records are ADR-0018,
+    cannot be checked on a parsed value. The thirteen records are ADR-0018,
     ADR-0020, ADR-0022, ADR-0023, ADR-0028, ADR-0031, ADR-0032, ADR-0033,
-    ADR-0034, ADR-0046, ADR-0053 and ADR-0136; ADR-0024 adds no rule of
-    validity.
+    ADR-0034, ADR-0046, ADR-0053, ADR-0075 and ADR-0136; ADR-0024 adds no
+    rule of validity.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
     ``tolerance.rtol``, ``source_commit``, ``n_max``,
     ``candidates_per_round``, ``op_signature.key``, ``round_budget``,
     ``wall_clock_budget_s``, ``owner``, ``project``, ``draws``,
-    ``objective.objectives[0].type`` or ``coder_model``). The
+    ``objective.objectives[0].type``, ``injections[0].id`` or
+    ``coder_model``). The
     version comes first: an integer other than :data:`SCHEMA_VERSION` raises
     :class:`UnsupportedVersionError` before any other member is looked at.
     """
@@ -949,11 +1005,12 @@ def hw_profile_of(data_root, run_id):
     :class:`InvalidInstanceError` also for a file whose ``tolerance``,
     ``source_commit``, ``n_max``, ``candidates_per_round``,
     ``op_signature``, ``round_budget``, ``wall_clock_budget_s``, ``owner``,
-    ``project``, ``draws``, ``objective`` or ``coder_model`` is invalid: no
-    member of an invalid file is used (ADR-0020 decision 3, ADR-0022
-    decision 5, ADR-0023 decision 4, ADR-0028 decision 4, ADR-0031 decision
-    5, ADR-0032 decision 4, ADR-0033 decision 4, ADR-0034 decision 4,
-    ADR-0046 decision 3, ADR-0053 decision 5, ADR-0136 decision 3).
+    ``project``, ``draws``, ``objective``, ``injections`` or ``coder_model``
+    is invalid: no member of an invalid file is used (ADR-0020 decision 3,
+    ADR-0022 decision 5, ADR-0023 decision 4, ADR-0028 decision 4, ADR-0031
+    decision 5, ADR-0032 decision 4, ADR-0033 decision 4, ADR-0034 decision
+    4, ADR-0046 decision 3, ADR-0053 decision 5, ADR-0075 decision 2,
+    ADR-0136 decision 3).
     """
     return read(data_root, run_id).hw_profile
 
@@ -1301,6 +1358,9 @@ def _checked(document):
     objective = None
     if "objective" in document:
         objective = _objective(document["objective"])
+    injections = None
+    if "injections" in document:
+        injections = _injections(document["injections"])
     model = None
     if "coder_model" in document:
         model = _coder_model(document["coder_model"])
@@ -1320,6 +1380,7 @@ def _checked(document):
         draws,
         objective,
         model,
+        injections,
         others,
     )
 
@@ -1424,6 +1485,45 @@ def _objective(section):
         rule = "an empty array, as no constraint type is admitted"
         _fail("objective.constraints", rule, constraints)
     return section
+
+
+def _injections(value):
+    if type(value) is not list or not value:
+        _fail("injections", "an array of at least one entry", value)
+    for index, entry in enumerate(value):
+        place = f"injections[{index}]"
+        if type(entry) is not dict:
+            _fail(place, "an object", entry)
+        if "kind" not in entry:
+            raise InvalidInstanceError(f"{place}: lacks the member kind")
+        kind = entry["kind"]
+        if type(kind) is not str or kind not in _INJECTIONS:
+            _fail(f"{place}.kind", " or ".join(_INJECTIONS), kind)
+        _closed(place, entry, _INJECTIONS[kind])
+        _name(f"{place}.id", entry["id"])
+        if kind == "hypothesis":
+            statement = entry["statement"]
+            if type(statement) is not str or not statement:
+                rule = "a str of at least one character"
+                _fail(f"{place}.statement", rule, statement)
+        else:
+            _string(f"{place}.source", entry["source"])
+    seen = set()
+    for index, entry in enumerate(value):
+        if entry["id"] in seen:
+            _fail(f"injections[{index}].id", "unique in injections", entry["id"])
+        seen.add(entry["id"])
+    return value
+
+
+def _name(place, value):
+    if (
+        type(value) is not str
+        or not 1 <= len(value) <= 32
+        or not "a" <= value[0] <= "z"
+        or not _NAME_CHARACTERS.issuperset(value)
+    ):
+        _fail(place, "a name matching [a-z][a-z0-9_]{0,31}", value)
 
 
 def _closed(place, section, names):

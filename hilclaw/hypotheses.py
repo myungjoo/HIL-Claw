@@ -9,6 +9,9 @@ the hypotheses map to the candidates of the round (decision 4) and round 0
 ``ARCHITECTURE/decisions/ADR-0073-od30-case-lookup-and-case-basis.md`` admits
 the basis kind ``case`` (decision 2) and defines the optional top-level member
 ``cases_read`` (decision 3), neither of which raises the version.
+``ARCHITECTURE/decisions/ADR-0075-od30-injection-at-instance-start.md`` admits
+the origin ``injected`` together with the member ``injection``, a *name* that
+only entries of that origin carry (decision 3), which raises no version either.
 :func:`validate` checks an already-parsed document against the rules of those
 decisions that one document shows, and nothing else.
 
@@ -22,10 +25,12 @@ checked. A basis entry of kind ``case`` names a stored hypothesis by
 ``case.run_id``, ``case.round`` and ``case.hypothesis``; its ``run_id`` is not
 the record's and its pair is an entry of ``cases_read``, so a record without
 ``cases_read`` holds no such entry (ADR-0073 decisions 2 and 3, in-file
-rules). The value that ADR-0059 defines and does not admit, the origin
-``injected``, is refused as any other value, and so is every metric other than
-``latency_minimisation``, the constraint type ``memory_ceiling`` of ADR-0050
-among them (ADR-0059 decision 3).
+rules). An entry whose ``origin`` is ``injected`` holds ``injection`` beside
+the six members of ADR-0059 decision 3, and an entry whose ``origin`` is
+``system`` holds none; every other rule binds both alike, and several entries
+may carry the same ``injection`` (ADR-0075 decision 3, in-file rules). Every
+metric other than ``latency_minimisation`` is refused, the constraint type
+``memory_ceiling`` of ADR-0050 among them (ADR-0059 decision 3).
 
 *name*, *string* and *integer* are the types of ADR-0001 and are exactly ``str``
 and ``int`` as in :mod:`hilclaw.keys`; a *text* is a ``str`` of at least one
@@ -41,7 +46,12 @@ that ``candidates`` equals the ``id.candidates`` of the round's specs
 that a ``case`` entry names a valid case in the key directory of the run's
 instance whose ``hypothesis_record`` holds ``case.hypothesis``, and that
 ``cases_read`` names valid cases there and is what a lookup gave
-(:mod:`hilclaw.hypotheses_cases` checks all but the last). The
+(:mod:`hilclaw.hypotheses_cases` checks all but the last); nor the rules
+between files of ADR-0075 decision 3: that ``injection`` names an entry of
+the ``injections`` of the run's ``instance.json``, that an entry from an input
+of kind ``hypothesis`` has its ``statement`` and is the only entry of the file
+from it, and that an entry from an input of kind ``material`` has an
+``external`` basis entry with its ``source``. The
 recommendation on causal misattribution (decision 4) is a recommendation and
 is not enforced.
 
@@ -74,15 +84,16 @@ _CASE = ("run_id", "round", "hypothesis")
 _REF = ("round", "candidate", "attempt")
 _METRICS = ("latency_minimisation",)
 _DIRECTIONS = ("lower", "higher")
-_ORIGINS = ("system",)
+_ORIGINS = ("system", "injected")
+_INJECTED = (*_HYPOTHESIS, "injection")
 
 
 class InvalidHypothesisRecordError(ValueError):
-    """A hypothesis record breaks a rule of ADR-0059 or ADR-0073; the message names the field path and the rule."""
+    """A hypothesis record breaks a rule of ADR-0059, ADR-0073 or ADR-0075; the message names the field path and the rule."""
 
 
 def validate(document):
-    """Return when ``document`` is a valid version-1 hypothesis record (ADR-0059, ADR-0073).
+    """Return when ``document`` is a valid version-1 hypothesis record (ADR-0059, ADR-0073, ADR-0075).
 
     ``document`` is the parsed JSON document: a mapping with
     ``schema_version`` (the integer :data:`SCHEMA_VERSION`), ``run_id`` (a
@@ -92,7 +103,9 @@ def validate(document):
     string other than the record's, and ``round``, an integer of at least 1,
     with no pair twice); any other top-level member is passed over. Each
     hypothesis has exactly ``id``, ``statement``, ``basis``, ``expected``,
-    ``origin`` and ``tested_by``; its ``id`` is unique in the document. The
+    ``origin`` (``system`` or ``injected``) and ``tested_by``, and an entry
+    whose ``origin`` is ``injected`` also ``injection``, a name; its ``id`` is
+    unique in the document. The
     ``case.run_id`` and ``case.round`` of a basis entry of kind ``case`` are
     a pair of ``cases_read``, and that ``run_id`` is not the record's. Every
     value of a ``tested_by`` is at most ``candidates``, and every integer from
@@ -217,7 +230,9 @@ def _other_run(path, value, run_id):
 
 
 def _hypothesis(path, entry, *, run_id, round, candidates, read):
-    _object(path, entry, _HYPOTHESIS)
+    origin = entry.get("origin") if isinstance(entry, Mapping) else None
+    injected = type(origin) is str and origin == "injected"
+    _object(path, entry, _INJECTED if injected else _HYPOTHESIS)
     _name(f"{path}.id", entry["id"])
     _text(f"{path}.statement", entry["statement"])
     basis = partial(_basis, run_id=run_id, round=round, read=read)
@@ -227,6 +242,8 @@ def _hypothesis(path, entry, *, run_id, round, candidates, read):
         f"{path}.expected", [item["metric"] for item in entry["expected"]], "metric"
     )
     _one_of(f"{path}.origin", entry["origin"], _ORIGINS)
+    if injected:
+        _name(f"{path}.injection", entry["injection"])
     tested_by = entry["tested_by"]
     _array(f"{path}.tested_by", tested_by, partial(_candidate, candidates=candidates))
     _unique(f"{path}.tested_by", tested_by)
