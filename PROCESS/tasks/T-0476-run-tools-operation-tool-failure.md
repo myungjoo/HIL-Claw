@@ -2,7 +2,7 @@
 id: T-0476
 title: Add the module that maps a tool failure raised by an operation of `sim.run` or `board.run` to the `failure` of the step's end line (the eight backend kinds as raised, `operation_failure_invalid` for every other kind; ADR-0068 decisions 3 to 6), with tests; wire it into nothing
 phase: P1
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [FR-10, OD-18, "#5 D12"]
 dependsOn: [T-0475]
