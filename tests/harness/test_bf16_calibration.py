@@ -23,6 +23,10 @@ KINDS = {
     "gemm": ((3, 4, 5), 2026, {"rtol": 2**-7, "atol": 1e-3}),
     # conforming 0 or 2**-8 at |ref| >= 1 (half the bound); a - b misses by >= 1 - 2**-8, bound < 0.017.
     "elementwise_add": ((3, 5), 2026, {"rtol": 2**-7, "atol": 1e-3}),
+    # |ref| in [0.25, 2]: conforming within 2**-8 |ref| plus fp32 steps; a left-out w moves by |1/w - 1|, verdict only.
+    "rmsnorm": ((3, 5), 2026, {"rtol": 2**-7, "atol": 1e-3}),
+    # conforming within 0.00437 |ref| (ADR-0160 d5), atol for |ref| >= 0.00138; sigma(-g) misses by >= 0.39 |ref|.
+    "swiglu": ((3, 5), 2026, {"rtol": 2**-7, "atol": 1e-3}),
 }
 
 # state: (verdict of the functional test, verdict of the contract run)
