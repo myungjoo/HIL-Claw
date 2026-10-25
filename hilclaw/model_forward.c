@@ -73,9 +73,8 @@
  * the token ids or the library table that does not fit in size_t, and a
  * length of the file that does not fit in a uint64_t, are found after the
  * header and before anything is allocated (status 3), as is a failed
- * allocation. A
- * library bound in the table that lacks the entry point of its call site's
- * kind (hilclaw_gemm_bf16, hilclaw_rmsnorm_bf16,
+ * allocation. A library bound in the table that lacks the entry point of its
+ * call site's kind (hilclaw_gemm_bf16, hilclaw_rmsnorm_bf16,
  * hilclaw_elementwise_add_bf16, hilclaw_swiglu_bf16, hilclaw_rope_bf16 or
  * hilclaw_sdpa_kv_cache_bf16) is status 6, found before the first call; a
  * library bound to no call site is not searched.
