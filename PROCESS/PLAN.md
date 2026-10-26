@@ -22,7 +22,7 @@
 
 ## P1 — 2층 도구 패키지 (MVP 핵심 부품)
 
-- [ ] P1-1 FR-10 도구 계약(`sim.run`/`board.run`/`profiler.collect`/`correctness.check`, `blob.push/fetch`) 인터페이스 + **mock 백엔드** + 백엔드 적합성 테스트 — **완료 기준(D18, 통합자 적용)**: `sim.run`·`board.run`·`correctness.check`가 `cpu_standin`과 mock에서 동작하고, 이 셋과 `blob.push`·`blob.fetch`가 도구로 등록되어 MCP front로 호출된다; `profiler.collect`는 HQ-0025의 답이 제공한다고 하면 같은 기준을 따르고 제공하지 않는다고 하면 요구하지 않는다. HQ-0025가 답해지기 전에 나머지가 충족되면 이 항목은 BLOCKED(T-0239)로 보고 phase 전환 규칙대로 이월한다. 이 기준에서 항목을 체크하고 OD-18의 잔여는 열린 채 둔다 · coversReq: FR-10, C-3(A-2)
+- [x] P1-1 FR-10 도구 계약(`sim.run`/`board.run`/`profiler.collect`/`correctness.check`, `blob.push/fetch`) 인터페이스 + **mock 백엔드** + 백엔드 적합성 테스트 — **완료 기준(D18, 통합자 적용)**: `sim.run`·`board.run`·`correctness.check`가 `cpu_standin`과 mock에서 동작하고, 이 셋과 `blob.push`·`blob.fetch`가 도구로 등록되어 MCP front로 호출된다; `profiler.collect`는 HQ-0025의 답이 제공한다고 하면 같은 기준을 따르고 제공하지 않는다고 하면 요구하지 않는다. HQ-0025가 답해지기 전에 나머지가 충족되면 이 항목은 BLOCKED(T-0239)로 보고 phase 전환 규칙대로 이월한다. 이 기준에서 항목을 체크하고 OD-18의 잔여는 열린 채 둔다 · coversReq: FR-10, C-3(A-2)
 - [x] P1-2 `cpu_standin` 어댑터: clang 빌드 래퍼, 로컬 실행, 타이밍 수집(OpenMP/SIMD 허용) · coversReq: FR-10, #5 A-7, C-7
 - [x] P1-3 하네스 `harness/`: 무작위 입력(비파일 시드), f64 reference(NumPy float64는 #5 A-7 권고 — **오너 확정 필요**), tolerance 비교(instance 파라미터), 반복 타이밍 · coversReq: FR-9, OD-16 최소분(FR-9 조항), OD-13 초기값
 - [x] P1-4 하네스 3-상태 캘리브레이션 테스트(통과 커널 / 실패 커널 / 기능 통과·계약 위반 커널) — **OD-16 종결 필요(§9 ADR 경로)**(#7 S-2 N8의 제안이 OD-16에 흡수된 상태) · coversReq: OD-16

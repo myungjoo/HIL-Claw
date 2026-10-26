@@ -2,7 +2,7 @@
 id: T-0482
 title: Bind the `cpu_standin` entry of the default backend table, offering `correctness.check`, `sim.run` and `board.run` with their landed `cpu_standin` operations (ADR-0167 decision 3 and Boundaries; ADR-0070 decision 3; ADR-0130), and add a backend conformance test that runs the three tools through the registry over the mock and over `cpu_standin` with a stub container client
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, "#5 D12", "PLAN P1-1"]
 dependsOn: [T-0481]
