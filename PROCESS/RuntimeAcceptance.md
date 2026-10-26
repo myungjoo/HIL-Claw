@@ -356,3 +356,15 @@
   (lxxxvii) In a `-p` turn session, the technique-selector's call of `mcp__hilclaw__cases_lookup` runs under the derived pre-approval without a prompt, and the caller check lets it through for the selector and refuses it for the main session.
 
   (lxxxviii) The result of `cases.lookup` for the largest key directory a first-case data root holds reaches the selector whole, within any limit Claude Code puts on the result of an MCP tool call; and the selector writes the result's `cases_read` into the record unchanged and before the record, as ADR-0173 decision 5 says.
+
+### RA-0043
+
+- 상태: 미확인
+- 출처: task T-0489 (ADR-0174)의 Result (등록 2026-10-26)
+- 내용:
+
+  ADR-0174(technique-selector의 앞선 판정 읽기 도구 `verdicts.read`; OD-23·OD-18 일부; T-0489)의 런타임 인수 항목 (lxxxix)·(xc).
+
+  (lxxxix) In a `-p` turn session, the technique-selector's call of `mcp__hilclaw__verdicts_read` runs under the derived pre-approval without a prompt, and the caller check lets it through for the selector and refuses it for the main session.
+
+  (xc) In a round ≥ 2 of a first-case run, the technique-selector calls `mcp__hilclaw__verdicts_read` once for each earlier round, in ascending order and before `mcp__hilclaw__hypotheses_write`, as ADR-0174 decision 6 says. The result for the largest verdicts file a first-case round writes reaches it whole, within any limit Claude Code puts on the result of an MCP tool call.

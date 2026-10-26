@@ -2,7 +2,7 @@
 id: T-0489
 title: Record how the technique-selector of a first-case run reads the verdicts and measurements of earlier rounds (FR-17 "앞선 판정을 입력으로") as one new ADR (part of OD-23 and OD-30), and land the read tool and the selector's use of it, with tests
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-11, FR-17, NFR-2, OD-23, OD-30, OD-18, S1, S8, "PLAN P2-6"]
 dependsOn: []
@@ -211,7 +211,7 @@ Line numbers are those of `main` at `c3c89d1f`. Where the text and a line number
 
 ## Result
 
-**Outcome**: DONE. PR #303 was reviewed in 1 round: the dev-reviewer approved in round 1 with two nits. Both were fixed after the Approve without a further round (D20 nit exception): the decision numbers were aligned between the Status and References lists, and an ellipsis was added to the ADR-0140 decision 4 quote. Language: Python, because the package, its registry and the verdicts parser the tool builds on are Python. No measurement slice was split off. The PR stays within `touchesFiles` and did not touch `hilclaw/verdicts_file.py` or the OD-30 entries.
+**Outcome**: DONE. PR #303 was squash-merged as `fa56f86f` after 1 review round, with CI green on the head `05f8b756`. Owner notice (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6411916125 (objection window until 2026-11-02). Review: the dev-reviewer approved in round 1 with two nits. Both were fixed after the Approve without a further round (D20 nit exception): the decision numbers were aligned between the Status and References lists, and an ellipsis was added to the ADR-0140 decision 4 quote. Language: Python, because the package, its registry and the verdicts parser the tool builds on are Python. No measurement slice was split off. The PR stays within `touchesFiles` and did not touch `hilclaw/verdicts_file.py` or the OD-30 entries.
 
 **The ADR**: `ARCHITECTURE/decisions/ADR-0174-od23-first-case-earlier-verdicts-read.md`. It answers part of OD-23 and part of OD-18 for the first-case runs of ADR-0120 decision 1. It does not answer OD-30, since no member, basis kind or value changes. No OD status changed. It decides:
 - (a) A per-round registry read, `verdicts.read`. It returns the stored document whole, reads no `STATE.json` and refuses round 0.
@@ -270,7 +270,7 @@ Line numbers are those of `main` at `c3c89d1f`. Where the text and a line number
 - **Local results**:
   - `ruff check .` and `ruff format --check .` are clean.
   - The touched test files: 2054 passed, 17 skipped.
-  - The full suite also ran under coverage; the CI gates on the PR head decide the merge.
+  - The full suite under coverage: 34142 passed, 1858 skipped. Coverage of `hilclaw/`: lines 97%; `hilclaw/verdicts_read_tool.py` 100%.
 - Size: about 370 non-test lines in 8 non-test files; the ADR is 136 lines.
 
 **Record sentences made less exact, not edited**:
