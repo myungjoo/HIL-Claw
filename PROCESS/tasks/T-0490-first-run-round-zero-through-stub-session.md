@@ -2,7 +2,7 @@
 id: T-0490
 title: Build the stub `claude` and stub `docker` of PLAN P2-5's end-to-end verification and drive round 0 of a `cpu_standin` x GEMM, N=1 first-case run through the real command-line entries, with tests
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [S0, S1, S8, FR-1, FR-17, "PLAN P2-5", "PLAN P2-1", "PLAN P2-4", D16]
 dependsOn: []
@@ -107,5 +107,72 @@ State at planning (`main` `9b41f48f`): no open PR, no unresolved HQ, no `실패`
 ## Follow-ups
 
 - (planner) T-0491 extends this run to five rounds.
+- (executor T-0490, gap, not invented) `hilclaw/turn_loop.py` gives every turn session the calling process's standard output ("its standard output and standard error are those of the calling process"). A `-p` session writes its reply there, before the entry's one line, so the rule in `hilclaw/turn_start.py` that "standard output gets exactly one line" does not hold under a real session. No record says where a turn session's output should go instead (`DEVNULL`, the entry's standard error, or a file), so this is a design choice. It is marked `xfail(strict=True)` in `tests/test_first_run_end_to_end.py::test_the_entry_writes_one_line_on_standard_output`. Whatever task makes the choice removes that marker.
 
 ## Result
+
+**DONE.** PR #304 was squash-merged as `ee870edd` after 1 review round, with an Approve and three nits that concerned only this Result. CI was green on every job. Files: `tests/first_run_stubs.py` and `tests/test_first_run_end_to_end.py`, both new test code. Nothing in `hilclaw/` or `orchestration/` changed, no pinning list changed and no existing assertion changed. Language: Python, the language of the existing suite and of the stubs it already writes.
+
+**Stubs.**
+- **Form.** `tests/first_run_stubs.py` is a helper module, not a test file. `install()` writes three POSIX launchers into a `bin` directory that is the only entry on `PATH`:
+  - `claude` and `docker` exec this module as a program, together with the scenario file;
+  - `git` execs the machine's git.
+- **Stub `claude`, login and self-check.** It answers `auth status` and the self-check session the way the stub in `tests/test_turn_start.py` does. The check reports `passed`.
+- **Stub `claude`, turn session.**
+  - It starts the server in the `--mcp-config` file, expanding `${...}` from its own environment, and speaks MCP over stdio.
+  - It replays the requests of `orchestration/round-manager.md` and of `coder-driver`, `evaluator` and `experiment-runner` for round 0: the entry steps, the round-0 steps, the closing steps, the end of a session and the stops.
+  - Each delegation acts with its own `agent_id` and `agent_type`. The Round-Manager's own calls carry neither.
+  - Before every `mcp__hilclaw__*` request it runs each matching `PreToolUse` entry of the session's `.claude/settings.json`. An exact-list matcher is matched by name and any other matcher as a regular expression. The hook gets `CLAUDE_PROJECT_DIR` and the input the records describe. Exit 2, or a failure under `onFailure: block`, refuses the call, and a refused call is never sent to the server.
+  - At the end of the main session it runs `Stop` with `stop_hook_active` false. If that stop is refused it calls `run_commit` once and stops again with `true`.
+  - Every request, hook status, answer and report goes to an ndjson log.
+  - Like a real `-p` session, it writes its last reply to standard output.
+  - Rounds >= 1 are not replayed; that is T-0491.
+- **Stub `docker`.** It answers `version` and both forced removals.
+  - **Coder container** (`/scratch` mount): it writes the test's kernel into `output/`, and starts nothing. It also logs that `CLAUDE_CODE_OAUTH_TOKEN` reached it.
+  - **Build containers** (verification, timing and waiter builds): it runs the host `clang`, found before `PATH` was narrowed, with `/build` mapped to the bind-mounted host directory. These are real compiles.
+  - **Verification process container:** it runs the built executable on the host with the mapped arguments. The correctness check is therefore a real comparison against the reference at both points.
+  - **Timing process container:** where `unshare --user --pid --fork --mount-proc --kill-child` works, it runs the real waiter as PID 1 of a new namespace. That works on WSL2 and on CI's Linux runners, which already allow it for `tests/harness/test_timing_waiter.py`. Otherwise it runs the timing executable directly and writes the waiter's last line from the host's `RUSAGE_CHILDREN` figure. That fallback passed in a local run with `unshare` forced off, but no CI job takes it.
+  - It never runs the waiter on the host: W0 refuses that, and W4's `kill(-1, SIGKILL)` would be unsafe there.
+
+**Instance values (test values).**
+- `hw_profile`: `cpu_standin`, revision `stub-revision`.
+- `op_signature`: GEMM fp32 row_major, shape m=8, k=16, n=8.
+- `objective`: `latency_minimisation`.
+- `candidates_per_round` 1, `n_max` 6, `draws` 1, tolerance `rtol` 1e-4 / `atol` 1e-5, `round_budget` 1.
+- `coder_model`: the default that `new_run` adds.
+- Environment: the fake values `HILCLAW_CODER_IMAGE=stub.invalid/coder:fake`, `HILCLAW_CODER_OAUTH_TOKEN=fake-token-not-a-real-one` and `HILCLAW_STANDIN_IMAGE=stub.invalid/standin:fake`.
+- Setup: the data root is a fresh git repository named through the `HILCLAW_DATA_REPO_*` variables. `TMPDIR` is a session parent outside both checkouts.
+
+**What the tests assert.**
+- **Happy path.**
+  - `python -m hilclaw.turn_start` exits 0 and its last line has `outcome` `run_over`, with a `passed` check.
+  - `STATE.json` holds round 1 and `run_status` `"over"`, and parses with both `run_state.parse` and `run_file_tools.read`.
+  - The spec is at `rounds/0000/coder/candidates/01/attempts/01/spec.json` and passes `spec_file.parse` and `spec.validate`. `output/gemm.c` is the kernel.
+  - `events.ndjson` passes `events.read` and `events.validate`. It holds the step lines of `correctness_check_sim`, `correctness_check_board` and `board_run_timing` for `0000/01/01`.
+  - Both checks `pass`, by `checks_tool.checks_of`, and stand `verified`, by `check_standing.standing`.
+  - The board timing result is the baseline of ADR-0119 decision 2. `timings_tool.timing_problem` admits it, and its outcome is `converged` or `not_converged`.
+  - The three build logs are under `measure/`.
+  - The key records under `db/` load with `key_records`.
+  - Git history holds two `run.commit` commits, one from entry step 0 and one from closing step 3. The tree is clean and `commit_owed` is false.
+  - The stub log shows the exact request order of round 0, each sub-agent's requests under its own agent, both hook entries on every spending call and the caller entry on every other call, all exiting 0, and one passing `Stop`.
+  - The docker log shows the container sequence, the fake images and that the token reached the coder container.
+- **Not written by round 0**, asserted absent:
+  - `artifacts.json`: no round-0 step pushes a blob, and only `blob.push` writes the file (ADR-0005).
+  - `eval/` and `decision/`: round 0 writes no verdicts and no hypotheses (ADR-0142 decision 6).
+  - Check and timing result files: ADR-0011, ADR-0062 and ADR-0131 put those results in `events.ndjson`, not in result files.
+- **Branch and negative cases.**
+  - **No kernel / wrong kernel:** turn 1 stops after `coder_run` (empty `taken`) or after a `fail` sim check (`not_verified`), and calls `run_commit`. Turn 2 meets `spec_exists` and stops. The outcome is `unchanged_turn` (12), with STATE round 0, the spec kept and a clean tree.
+  - **Round-Manager calls `coder_run` itself:** the caller check exits 2 and the budget check exits 0. The call is never sent, only the coder-driver's container ever starts, and the run still ends `run_over`.
+  - **Turn exits 3 before progress:** `failed_turn` with `exit_status` 3. Only `instance.json` exists, and no request or container was made.
+  - **Round budget reached at entry:** the run goes over with no round begun. This state cannot be reached through the entries alone: `round_budget` is at least 1 (ADR-0032 decision 3), and `round.end` writes `run_status` in the same write that reaches the budget (ADR-0135 decision 4). The test therefore writes STATE round 1 with the package's `run_state_file.replace` after `new_run`. The turn then runs entry step 6, writing `"over"` with `state.write`, and the outcome is `run_over`, with no `key.store`, no `db/`, no `rounds/` and no container.
+
+**Defects and gaps.** No defect was fixed. One gap is marked xfail(strict): the turn session's standard output (see Follow-ups).
+
+**Run time.**
+- This module: about 16 s locally (WSL2 Ubuntu, Python 3.12; 6 passed, 1 xfailed).
+- On CI the module ran and was not skipped (the job's summary shows the 1 xfail). CI's Python gate (3.11) took 7 m 44 s for the whole suite.
+- Native Windows skips the module at import, since it has no `os.getuid`; the full Windows suite passed.
+
+**Runtime acceptance items:** none new. The hook behaviour the stub assumes is already covered by RA-0030 to RA-0032. A real `-p` session writing its reply to standard output is not an open runtime fact; it is the gap in Follow-ups.
+
+**nextTask candidate:** T-0491.
