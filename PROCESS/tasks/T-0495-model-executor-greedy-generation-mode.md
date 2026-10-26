@@ -2,7 +2,7 @@
 id: T-0495
 title: Build the greedy generation mode of the model executor (ADR-0176 code slices 2 and 3) — selection between passes in the forward program, the host side in place of the generation-mode refusal, and a generated run compared teacher-forced with the float64 reference
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-31, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: []
@@ -87,3 +87,23 @@ T-0494's Result names slice 2 then slice 3 as the planner's candidate. Each slic
 ## Follow-ups
 
 ## Result
+
+**DONE** — PR #308 squash-merged as `f0dbab88` (branch `claude/T-0495-greedy-generation-mode` deleted). Review: 1 round, Approve (dev-reviewer, PR comment 6416853651); its two Nits (docstring line widths; two `model_reference.py` docstring sentences that still described `generation_length` as derived from `given` in `encode_input` / the arguments of `execute`) were fixed after the Approve as docstring-only edits (D20 exception, no re-review). CI green on the head commit `c45d3d77` (C gate, Python 3.11/3.14, Coverage gate, Test presence, shellcheck). The full local suite under WSL (clang) passed: 36129 passed, 50 skipped.
+
+- **Language**: C for the program (`hilclaw/model_forward.c`, as ADR-0166); Python for the host side (the existing `model_forward_check` / `_run` / `_execute` modules).
+- **Mode word**: header word 9 is now `form` = `lm_head_rows` + 2·mode (`lm_head_rows` 0 "all", 1 "last"; mode 0 given-sequence, 1 generation). A form above 3 is input status 5. In the generation mode the input holds only the S prompt ids, and the file length follows from that. The given-sequence input bytes are unchanged.
+- **Report layout (generation mode)**: the S prompt ids (uint64), then the logits rows in ADR-0166 decision 7's order, then the G selected ids (uint64), then `end\n`. It has the same length as the given-sequence report, whose bytes are unchanged. Host side: `parse_report` and `run_forward_program` take a required `mode` (`"given"` | `"generation"`) and read both layouts into the same `ForwardReport`. In the generation mode `tokens` is the prompt followed by the selected tokens.
+- **NaN-stop status**: 7 ("a NaN in the selection row of the generation mode"). It comes with one stderr line, `model_forward: pass <p>: the selection row holds a NaN`, and no end mark. Status 7 is added to the header's status list.
+- **Selection**: tokens are ordered by the integer key +m / −m, where m is the low 15 bits and the sign is bit 15. The header's "does no floating-point arithmetic" still holds, and its "holds no … token selection rule" sentence was corrected.
+- **Python signatures**: `encode_input(..., given, generation_length, ...)` and `execute(..., given, generation_length, ...)` take a required `generation_length` with no default, in both modes. With a `given` sequence it must equal its length; the check reports a mismatch as invalid input.
+- **Tests edited under D21 / AC 3** (listed in the PR body):
+  - Replaced, because the behaviour changed: the refusal tests in `test_model_forward_check.py`, `test_model_forward_run.py` and `test_model_forward_execute.py`. Their `"mode"` case became the `"length"` and `"generated"` cases.
+  - Changed: `test_header_refusals` now uses `{"form": 4}` and `{"form": 2**63+2}`, because 2 is now a valid form. The regex of `test_encode_input_refuses_given_that_is_no_sequence` now matches "must be None or a sequence".
+  - Mechanical: `generation_length` and `mode` were added to the helper call arguments. `test_public_names_and_fields` is unchanged; no public name was added.
+- **PLAN P2-13**: in the executor's reading its text "토큰을 생성하며 모델 수준에서 reference와 대조한다" is now met for the synthetic run (O1 (2)'s P2-14 metric). The executor generates greedily, and the run is compared teacher-forced on its selected tokens with `model_reference.reference_logits` and `compare`; `tests/test_model_reference.py::test_a_greedy_generation_matches_the_reference_teacher_forced_on_its_tokens` shows this. Recommendation: tick P2-13.
+- **What remains for P2-14 (planner's candidates)**:
+  - deriving a binding from the instance's kernels or a key's best (OD-20, OD-7)
+  - registering the six bf16 kinds with `correctness.check`, `spec.write` and the instance start (OD-18, OD-6)
+  - P2-15's first-N token check against Hugging Face transformers on real weights, which is runtime only (D16; PLAN hands it to RuntimeAcceptance after P2-14)
+- **Runtime acceptance items**: none.
+- **Follow-ups**: none.
