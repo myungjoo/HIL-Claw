@@ -2,7 +2,7 @@
 id: T-0491
 title: Extend PLAN P2-5's stub end-to-end run to the five rounds of a `cpu_standin` x GEMM, N=1 first-case run (rounds >= 1 with selection, coder call, checks, timing, verdicts, cases and round end), with tests
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [S0, S1, S8, S11, FR-1, FR-11, FR-15, FR-17, FR-18, "PLAN P2-5", "PLAN P2-6", "PLAN P2-7", D16]
 dependsOn: [T-0490]
@@ -100,3 +100,11 @@ Start by reading T-0490's `## Result` and its landed test files. If T-0490 marke
 ## Follow-ups
 
 ## Result
+
+**DONE.** PR #305 was squash-merged as `b0ccfe18` after 2 review rounds (round 1 findings fixed, round 2 Approve). CI was green. Files: `tests/first_run_stubs.py` (+300 -19) and `tests/test_first_run_end_to_end.py` (+521 -1), both test code. Nothing in `hilclaw/` or `orchestration/` changed, no pinning list changed and no existing assertion changed. Language: Python, the language of the existing suite and stubs.
+
+- The stub `claude` now replays the Round-Manager's rounds >= 1 (`key.store`, the `technique-selector` delegation, `hypotheses.read`, the `coder-driver` delegation with `techniques:`, the evaluator checks, the experiment-runner, the verdicts delegation, `case.write`, `round.end`, `run.commit`); the stub `docker` writes the kernel of the round that the scratch's `spec.json` names.
+- Tests: five rounds of a `cpu_standin` x GEMM fp32, N=1 first run (`round_budget` 5) end in `run_over` with `STATE.json` round 5 and `"over"`, and per round 1-4 a hypothesis record, spec, kernel, both checks `verified`, board timing, verdicts and a case file; a second run of the same key reads the first run's case in round 1 (FR-18 / S11); a round with no kernel and one failing `sim` (verdicts `inconclusive`, round ended); a refused selector `verdicts_write`; verdicts not written (stop, `unchanged_turn`).
+- The module ran in about 71 s locally (12 passed, 1 xfailed — T-0490's strict xfail for the turn session's stdout is unchanged).
+- PLAN P2-5 is checked: its verification is this stub run and its completion does not depend on a real run (D16, D17).
+- No new HQ, no runtime-acceptance item. No `claude` was started (D16).
