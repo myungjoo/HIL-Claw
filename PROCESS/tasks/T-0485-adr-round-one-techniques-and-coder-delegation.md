@@ -223,3 +223,42 @@ Line numbers are those of `main` at `5e6a08fc`; the text wins. Read Korean files
 - (planner) The record of the round >= 1 steps after the coder call: the checks, the measurement, the comparison, the verdicts, `case.write` and the closing steps (ADR-0140, ADR-0128, ADR-0133, ADR-0135; PLAN P2-1). Then its code slice.
 
 ## Result
+
+**Outcome**: (B) landed: the ADR with its first code slice, the registry tool `catalog.read`. Branch `claude/T-0485-round-one-techniques-and-coder-delegation`; the PR number, review rounds, squash commit and the owner notice are recorded at the end of this section.
+
+**The ADR**: `ARCHITECTURE/decisions/ADR-0171-od23-first-case-round-techniques-and-coder-delegation.md` (part of OD-23, OD-22 and OD-6; runs of ADR-0120 decision 1 with `candidates_per_round` 1, rounds >= 1). It decides:
+- the **technique-selector** chooses a round >= 1 spec's technique ids once the round's hypothesis record exists, weighing the round's hypotheses first, then the entries' `## When`, then earlier attempts and records; hypotheses still name no technique (ADR-0059 decision 3); an empty list is allowed (on `catalog_unusable`, e.g. a mock run; on an empty result; or by the selector's judgement);
+- the criteria reach it through a **new registry read tool `catalog.read`** (request exactly `run_id`; result `{"entries": [{"id", "when"}]}` in id order; checks `invalid_request`, `no_data_root`, the four `run_file_*` kinds for `instance.json`, `catalog_unusable`; no new kind; not journaled), added to the selector's `tools` in slice 2. `Read` of `catalog/`, `catalog/` in `LAYOUT` and a `Skill` were weighed and not adopted. The FR-8 reading is marked as the record's own, and the Skill form stays open;
+- the ids travel as **one fixed report line** `techniques: <id>, ...` / `techniques: none` -> the Round-Manager's coder-driver delegation message -> the `techniques` of `spec.write`; the spec's `guidance.techniques` is the record (no data-plane change);
+- the **coder-driver's round >= 1 delegation**: tuple (`r`, 1, 1); the message adds the ids; `tools` unchanged; `techniques` passed for round >= 1 only; ADR-0141 decision 5's interim `spec_exists` rule kept;
+- the **Round-Manager's step 8** (round >= 1, after a read that returned the record): delegate to the coder-driver only when the selector's report holds exactly one `techniques:` line, otherwise stop; after the coder-driver's report, the stop ("the following steps of round `<round>` are not yet defined").
+
+**Why (B)**: the turn session holds a copy of `orchestration/` only (ADR-0118 decision 5) and a delegation names no place (ADR-0123 decision 2), so the selector cannot `Read` `catalog/`. The record's means needs a new registry tool before any definition can use it. The definitions are slice 2 (Follow-ups below).
+
+**Code (slice 1)**: Python (the package, its catalog reader and its registry are Python).
+- `hilclaw/catalog.py`: new public `criteria(accelerator, *, source=None)` returning `{id: when}` in id order; `_entry` now returns `(when, text)`; docstring brought up to date (it no longer says "which ids a spec carries is the selection side's (HQ-0048)").
+- `hilclaw/catalog_tool.py` (new): `catalog.read` of ADR-0171 decision 3; `KIND_CATALOG_UNUSABLE` re-exported from `spec_tool`.
+- `hilclaw/tools.py`: registered in `default_registry`, docstring sentence added.
+- touchesFiles beyond the task's list: `hilclaw/catalog.py`, `hilclaw/catalog_tool.py`, `hilclaw/tools.py`, `tests/test_catalog.py`, `tests/test_catalog_tool.py` and the registry-name test files below. Not touched (slice 2): `orchestration/*`, `hilclaw/turn_definition.py`, `hilclaw/turn_permissions.py`, `tests/test_turn_definition.py`, `tests/test_turn_permissions.py`, `tests/test_caller_check.py`.
+- Size: 349 changed lines in 7 non-test files, plus this task file.
+
+**Prompt sentences rewritten or added**: none in this task. Slice 2 carries them; the ADR fixes their content in decisions 4 to 6.
+
+**Tests**:
+- New `tests/test_catalog_tool.py`: definition and schema, non-callable source `TypeError`, result order and `when` text, empty directory, the committed `cpu_standin` catalog, the instance's accelerator choosing the directory, every kind in order (`invalid_request` variants, `no_data_root`, `run_file_missing`/`_invalid`/`_unsupported`/`_unreadable`, `catalog_unusable` for a missing directory, a mock run, a refused catalog, an empty `## When`, an unreadable directory), order checks, nothing created, `default_registry` and the MCP front.
+- `tests/test_catalog.py`: `criteria` (sorted, line-feed stripping only, empty directory, new dict, committed catalog, refusals as `check`); `test_public_names` imports `criteria` and checks its docstring.
+- Pinning-list assertions changed (DRIVER §5 D21), each only by `catalog.read` / `catalog_read`: `tests/test_tools.py` `DEFAULT_SET`; `tests/test_blob_tools.py` `test_the_default_registry_holds_the_definitions` and `test_the_mcp_front_lists_the_blob_tools_among_the_fixed_set` (unpacking of the first 8 names, slice `[8:]`); `tests/test_check_definition.py` two registry name lists, the MCP name list, the joined names string, and the index of `correctness_check` in the listed tools (`listed[6]` -> `listed[7]`, description and schema); `tests/test_mcp_front.py` `FIXED_NAMES`, the `held` map and docstring of `test_the_fixed_tool_set_is_the_blob_tools_hw_tools_and_run_file_tools`, and two listed-name lists; `tests/test___main__.py` `FIXED_NAMES` and its test docstring; `tests/test_default_registry_schemas.py` `ACCEPTED` (one accepted request).
+- No assertion pinning the old prompt text changed (no prompt changed).
+- Local: `python -m pytest` 33972 passed, 1858 skipped; `ruff check .` and `ruff format --check .` clean.
+
+**Register entries**: Requirements OD-23, OD-22 and OD-6 rows get one ADR-0171 link each after `**확정분**`. The OD-23 `**잔여**` is rewritten in place: the selection's tool for the catalog criteria and "라운드 spec의 기법 id를 누가 정해 coder-driver에 넘기는지" are removed, and "라운드 ≥ 1의 코더 호출" is narrowed to the steps after it and to other runs. The OD-6 `**잔여**` drops "라운드 ≥ 1 spec의 기법 id를 고르는 쪽(선택 쪽)". OpenDecisionProposals § OD-6, § OD-22 and § OD-23 get one `**채택분**` line each, and § OD-23 "제안으로 남는 부분" is rewritten in place. StandardScenarios: S0 and S1 re-checked, no verdict change; the "최근 재검사" line is updated.
+
+**Record sentences made less exact, not edited**: ADR-0132 decision 1 "Outside" and Boundaries second bullet (and decision 3's exact list once slice 2 lands); ADR-0151 decision 2 (c) and Boundaries first and second bullets; ADR-0150 decision 2 last bullet and decision 4 "Not decided here"; ADR-0141 decision 6 "Left open and named" and its Walk-through row "A round ≥ 1"; ADR-0126 decision 6. Observations until slice 2: `orchestration/round-manager.md` (step 7, the stop), `orchestration/agents/coder-driver.md` (description), the `hilclaw/turn_definition.py` docstring.
+
+**Runtime acceptance items** (for `PROCESS/RuntimeAcceptance.md`, DRIVER §8, D22; not HQs), from ADR-0171 Consequences, to be checked after slice 2 lands:
+- (lxxxiii) In a `-p` turn session, the technique-selector's call of `mcp__hilclaw__catalog_read` reaches the tool and its result reaches the selector whole, and the caller check lets it through for the selector and refuses it for the main session.
+- (lxxxiv) The selector's final message holds exactly one `techniques:` line, and the Round-Manager carries its ids, unchanged and in order, into the coder-driver's delegation message, from which the coder-driver puts them unchanged into the `techniques` of its `spec.write` request.
+
+**Next slices for the planner**:
+- ADR-0171 slice 2, the definitions (PLAN P2-1): `orchestration/agents/technique-selector.md` (`mcp__hilclaw__catalog_read` in `tools`; the choice of decision 2; the report line of decision 4); `orchestration/agents/coder-driver.md` (decision 5: round >= 1 `techniques` from the message; no list means no call); `orchestration/round-manager.md` (step 8 and the moved stop, decision 6; the "Your run" `Agent` bullet); the `hilclaw/turn_definition.py` docstring. Tests go in `tests/test_turn_definition.py` (including the old-prompt assertions this task file lists), `tests/test_turn_permissions.py` (the selector's tuple) and `tests/test_caller_check.py` (`catalog_read` for the selector only).
+- The record of the round >= 1 steps after the coder call (unchanged from Follow-ups above).

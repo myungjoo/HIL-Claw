@@ -12,6 +12,7 @@ from hilclaw.catalog import (
     SOURCE,
     InvalidCatalogError,
     check,
+    criteria,
     technique,
 )
 
@@ -89,7 +90,7 @@ def test_public_names():
         "- language: c",
     )
     assert issubclass(InvalidCatalogError, ValueError)
-    assert check.__doc__ and technique.__doc__
+    assert check.__doc__ and technique.__doc__ and criteria.__doc__
 
 
 def test_committed_catalog_holds_the_four_entries():
@@ -491,3 +492,53 @@ def test_technique_checks_the_whole_directory(root):
 def test_technique_missing_directory(root):
     with pytest.raises(FileNotFoundError):
         technique("mock", "alpha", source=root)
+
+
+def test_criteria_of_every_entry_sorted(root):
+    for name in ("zeta", "alpha"):
+        put(root, f"{name}.md", body(name, when=f"When {name}.\n\n### Sub\n\nMore."))
+    assert criteria("cpu_standin", source=str(root)) == {
+        "alpha": "When alpha.\n\n### Sub\n\nMore.",
+        "zeta": "When zeta.\n\n### Sub\n\nMore.",
+    }
+    assert list(criteria("cpu_standin", source=root)) == ["alpha", "zeta"]
+
+
+def test_criteria_strip_line_feeds_only(root):
+    content = (
+        "# alpha\n## Applies to\n" + APPLIES + "\n## When\n\n\n  Now.\t\n\n\n"
+        "## Guidance\nDo it.\n"
+    )
+    put(root, "alpha.md", content)
+    assert criteria("cpu_standin", source=root) == {"alpha": "  Now.\t"}
+
+
+def test_criteria_of_an_empty_directory(root):
+    assert criteria("cpu_standin", source=root) == {}
+
+
+def test_criteria_returns_a_new_dict(root):
+    put(root, "alpha.md", body("alpha"))
+    first = criteria("cpu_standin", source=root)
+    first["alpha"] = "changed"
+    assert criteria("cpu_standin", source=root) == {
+        "alpha": "Worth trying when n is above 1."
+    }
+
+
+def test_criteria_of_the_committed_catalog():
+    found = criteria("cpu_standin")
+    assert sorted(found) == list(COMMITTED)
+    assert all(text.strip() and "## " not in text for text in found.values())
+
+
+def test_criteria_refuse_as_check_does(root, tmp_path):
+    with pytest.raises(FileNotFoundError):
+        criteria("cpu_standin", source=tmp_path / "absent")
+    with pytest.raises(InvalidCatalogError):
+        criteria("CPU", source=root)
+    with pytest.raises(TypeError):
+        criteria(3, source=root)
+    put(root, "alpha.md", body("alpha", when=" "))
+    with pytest.raises(InvalidCatalogError, match="the When section is empty"):
+        criteria("cpu_standin", source=root)

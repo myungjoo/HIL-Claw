@@ -491,6 +491,7 @@ DEFAULT_SET = (
     "blob.push",
     "board.run",
     "case.write",
+    "catalog.read",
     "checks.read",
     "coder.run",
     "correctness.check",
