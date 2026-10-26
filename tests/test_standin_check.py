@@ -666,3 +666,77 @@ def test_a_second_call_makes_a_new_build_directory(client, output, temporary):
     first, _, second, _ = client.runs()
     assert mount_source(first) != mount_source(second)
     assert build_dirs(temporary) == []
+
+
+def test_in_container():
+    assert standin_check.in_container("kernel/a.c") == (
+        f"{standin_container.CONTAINER_BUILD_DIR}/kernel/a.c"
+    )
+
+
+def test_settled():
+    assert standin_check.settled("exit_status") == "exit_status"
+    failed = check_failure.KIND_BUILD_OUTPUT_MISSING
+    answer = standin_check.standin_answer.Failure(failed, "no executable")
+    with pytest.raises(standin_check.Answered) as raised:
+        standin_check.settled(answer)
+    assert raised.value.answer is answer
+    with pytest.raises(RuntimeError):
+        standin_check.settled(None)
+
+
+def test_carry_out_raises_an_answer_as_a_tool_failure(temporary):
+    directory = standin_check.make_build_dir("hilclaw-test-")
+    answer = standin_check.standin_answer.Failure("some_kind", "said")
+
+    def steps(outcomes):
+        assert outcomes == []
+        raise standin_check.Answered(answer)
+
+    with pytest.raises(tools.ToolFailure) as raised:
+        standin_check.carry_out(directory, steps)
+    assert (raised.value.kind, raised.value.message) == ("some_kind", "said")
+    assert not os.path.lexists(directory)
+
+
+def test_carry_out_leaves_the_directory_after_a_plain_oserror(temporary):
+    directory = standin_check.make_build_dir("hilclaw-test-")
+
+    def steps(outcomes):
+        outcomes.append(OSError("after the start"))
+        return "time_limit"
+
+    assert standin_check.carry_out(directory, steps) == "time_limit"
+    assert os.path.isdir(directory)
+
+
+def test_remove_build_dir(temporary):
+    directory = standin_check.make_build_dir("hilclaw-test-")
+    assert os.path.basename(directory).startswith("hilclaw-test-")
+    assert standin_check.remove_build_dir(directory) is True
+    assert standin_check.remove_build_dir(directory) is True
+
+
+def test_run_build_without_a_keeper_hands_over_nothing(client, temporary):
+    directory = standin_check.make_build_dir("hilclaw-test-")
+    client.script = [built()]
+    outcomes = []
+    answer = standin_check.run_build(
+        outcomes,
+        IMAGE,
+        directory,
+        ("x.c",),
+        5,
+        keeper=None,
+        executable=standin_check.EXECUTABLE_NAME,
+        missing=None,
+    )
+    assert answer is standin_check.standin_answer.GO_ON
+    assert len(outcomes) == 1
+
+
+def test_container_image(monkeypatch):
+    assert standin_check.container_image() == IMAGE
+    monkeypatch.delenv(standin_image.ENV_IMAGE)
+    with pytest.raises(tools.ToolFailure):
+        standin_check.container_image()

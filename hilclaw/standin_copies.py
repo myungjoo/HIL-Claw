@@ -9,7 +9,9 @@ and of the harness program of the build. The kernel's copies lie in a
 sub-directory of the build directory that holds nothing else, and the harness
 program's copy beside it, so that a kernel file named like the harness program
 is a second file and never a replacement of it. :func:`place_copies` is that
-slice. It is bound to no tool and no backend operation; nothing calls it yet.
+slice; :func:`place_harness_copy` copies one further harness program beside
+the first, as the waiter's source of ADR-0145 decision 3 is copied with the
+timing driver. It is bound to no tool and no backend operation; nothing calls it yet.
 
 Conventions of this module, which are not rules of the record:
 
@@ -168,6 +170,26 @@ def place_copies(output_path, harness_program, build_dir):
         harness_name,
         None,
     )
+
+
+def place_harness_copy(harness_program, build_dir):
+    """Copy one further ``harness_program`` directly into ``build_dir``; return its name.
+
+    For a build directory that :func:`place_copies` has filled. The copy is
+    made as that function makes the copy of its harness program, under the
+    basename of ``harness_program``, which is returned. Raises, as
+    :func:`place_copies` does: :class:`TypeError` or :class:`ValueError` with
+    ``parameter`` for the arguments; :class:`CopyError` with a reading
+    failure of a harness program before anything is written; and
+    :class:`CopyError` :data:`ENTRY_EXISTS` or :data:`COPY_UNWRITABLE` for the
+    write, an entry already at that name included. ``build_dir`` itself is
+    not examined again.
+    """
+    harness_program, harness_name, build_dir = _check(harness_program, build_dir)
+    harness = _read(harness_program, harness=True)
+    with _writing():
+        _write_new(os.path.join(build_dir, harness_name), harness)
+    return harness_name
 
 
 @contextlib.contextmanager
