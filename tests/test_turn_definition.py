@@ -24,6 +24,7 @@ EVALUATOR_TOOLS = {
 }
 CODER_DRIVER = "coder-driver.md"
 CODER_DRIVER_TOOLS = {"mcp__hilclaw__spec_write", "mcp__hilclaw__coder_run"}
+EXPERIMENT_RUNNER = "experiment-runner.md"
 
 UNKNOWN = "the definition holds an entry that is not in the layout"
 WRONG_KIND = "an entry of the definition is of the wrong kind"
@@ -118,15 +119,20 @@ def test_the_repository_definition_by_default(session):
         ".claude/agents/coder-driver.md": (
             SOURCE / "agents" / CODER_DRIVER
         ).read_bytes(),
+        ".claude/agents/experiment-runner.md": (
+            SOURCE / "agents" / EXPERIMENT_RUNNER
+        ).read_bytes(),
     }
     assert sorted(os.listdir(session)) == [".claude", "CLAUDE.md"]
     assert os.listdir(session / ".claude") == ["agents"]
 
 
-def test_the_repository_definition_holds_the_prompt_and_the_two_agents():
+def test_the_repository_definition_holds_the_prompt_and_the_three_agents():
     assert sorted(os.listdir(SOURCE)) == ["agents", PROMPT]
     assert (SOURCE / "agents").is_dir()
-    assert sorted(os.listdir(SOURCE / "agents")) == sorted([EVALUATOR, CODER_DRIVER])
+    assert sorted(os.listdir(SOURCE / "agents")) == sorted(
+        [EVALUATOR, CODER_DRIVER, EXPERIMENT_RUNNER]
+    )
 
 
 def frontmatter(text):
@@ -501,6 +507,48 @@ def test_the_coder_driver_names_the_kind_and_the_result():
         assert word in text
 
 
+def test_the_experiment_runner_frontmatter():
+    data = (SOURCE / "agents" / EXPERIMENT_RUNNER).read_bytes()
+    assert b"\r" not in data
+    found = frontmatter(data.decode("utf-8"))
+    assert set(found) == {"name", "description", "tools"}
+    assert found["name"] == "experiment-runner"
+    assert found["description"]
+    tools = [name.strip() for name in found["tools"].split(",")]
+    assert tools == ["mcp__hilclaw__board_run"]
+    served = served_names()
+    for name in tools:
+        if name.startswith("mcp__hilclaw__"):
+            assert name in served
+    for name in (
+        "Bash",
+        "Read",
+        "Grep",
+        "Glob",
+        "Write",
+        "Edit",
+        "Agent",
+        "mcp__hilclaw__sim_run",
+    ):
+        assert name not in tools
+
+
+def test_the_experiment_runner_body():
+    text = " ".join(
+        (SOURCE / "agents" / EXPERIMENT_RUNNER).read_text(encoding="utf-8").split()
+    )
+    body = text.split("---", 2)[2]
+    for word in ("`outcome`", "`condition`", "`execution` 1", '`"broken"`'):
+        assert word in body
+    assert "Call `mcp__hilclaw__board_run` once" in body
+    assert "Never call it twice in one delegation" in body
+    assert "never state another `execution`" in body
+    assert "Copy no interval or figure" in body
+    assert "Write nothing by any means" in body
+    assert "ADR-0142 decision 4" in body
+    assert "sim_run" not in text
+
+
 def prompt_text():
     return " ".join((SOURCE / PROMPT).read_text(encoding="utf-8").split())
 
@@ -529,13 +577,63 @@ def test_the_prompt_delegates_both_checks_to_the_evaluator():
 
 
 def test_the_prompt_keeps_the_stop_in_later_rounds():
-    assert "not yet defined" in prompt_text()
-
-
-def test_the_prompt_names_no_measurement_step():
     text = prompt_text()
-    for word in ("board_run", "sim_run", "experiment-runner"):
-        assert word not in text
+    assert "not yet defined" in text
+    assert "In other rounds it follows step 1" in the_stop()
+    assert "Later slices of the definition replace this stop in rounds ≥ 1" in text
+
+
+def test_the_prompt_names_board_run_only_in_the_prohibition():
+    text = prompt_text()
+    prohibition = (
+        "Do not call `mcp__hilclaw__board_run` yourself (ADR-0142 decision 4; "
+        "ADR-0139 decision 5)."
+    )
+    assert only_forbidden(text, "board_run") == [prohibition]
+    assert "sim_run" not in text
+    assert "sim.run" not in text
+    assert "waits on `board.run`" not in text
+    assert "ADR-0142 decision 7" not in text
+
+
+def round_step(number):
+    steps = between(prompt_text(), "## The round steps", "The stop:")
+    part = steps.split(f" {number}. **", 1)[1]
+    return part.split(f" {number + 1}. **", 1)[0]
+
+
+def test_the_prompt_delegates_the_measurement_to_the_experiment_runner():
+    text = prompt_text()
+    assert (SOURCE / "agents" / EXPERIMENT_RUNNER).is_file()
+    assert "to `experiment-runner`" in text
+    assert "steps 2, 3, 4 and 5" in text
+    step = round_step(5)
+    assert step.startswith("Round 0 only.** Delegate to `experiment-runner`")
+    assert "`round` 0, `candidate` 1, `attempt` 1, and no place" in step
+    assert "`execution`" not in step
+    for word in ('`"converged"`', '`"not_converged"`', '`"broken"`'):
+        assert word in step
+    going = step.split('When the report gives the `outcome` `"converged"`', 1)[1]
+    going = going.split("On any other report", 1)[0]
+    assert 'go to "The closing steps of a round"' in going
+    assert "no `case.write`, then `round.end`, then `run.commit`" in going
+    other = step.split("On any other report", 1)[1]
+    assert '`"broken"`' in other
+    assert "a failure kind" in other
+    assert "no report you can read" in other
+    assert "come to the stop" in other
+    for cited in ("ADR-0142 decision 4", "ADR-0142 decision 6", "ADR-0119 decisions 2"):
+        assert cited in step
+
+
+def test_step_4_goes_on_to_step_5_only_when_verified_at_board():
+    step = round_step(4)
+    assert (
+        'Go on to step 5 only when it gives the standing `"verified"` at `board`'
+        in (step)
+    )
+    assert "On any other report come to the stop" in step
+    assert "waits on" not in step
 
 
 def test_the_prompt_makes_no_check_of_its_own():
@@ -546,12 +644,14 @@ def test_the_prompt_makes_no_check_of_its_own():
     only_forbidden(text, "checks_read")
 
 
-def test_the_prompt_reaches_no_closing_steps_yet():
+def test_the_prompt_reaches_the_closing_steps_from_round_0_only():
     heading = "### The closing steps of a round"
     text = prompt_text()
     assert heading in text
     closing = text.split(heading, 1)[1]
-    assert "reached only once later slices" in closing
+    assert "Round 0 reaches them after step 5" in closing
+    assert "rounds ≥ 1 reach them only once later slices" in closing
+    assert "reached only once later slices define the steps before them" not in text
 
 
 def between(text, start, end):
@@ -600,7 +700,10 @@ def test_the_stop_commits_and_leaves_round_0_open():
     assert "call `mcp__hilclaw__run_commit`" in stop
     assert "Round 0 is not ended: no `round.end`" in stop
     assert "no `run.commit`" not in stop
-    assert "No turn goes past this stop" in stop
+    assert "No turn goes past this stop" not in stop
+    assert "it follows step 2, 3, 4 or 5 as they say" in stop
+    assert "reaches the closing steps below only through step 5" in stop
+    assert "no turn of a round ≥ 1 reaches them yet" in stop
     assert "ADR-0143 decisions 2 and 7" in stop
     assert stop.index("once the report") < stop.index("mcp__hilclaw__run_commit")
     assert stop.index("mcp__hilclaw__run_commit") < stop.index("end the session")

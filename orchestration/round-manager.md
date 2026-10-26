@@ -41,13 +41,15 @@ first-case run (ADR-0118 decisions 1 and 2).
 - Use only `mcp__hilclaw__round_end`, your run id as `run_id`, to make the
   write that ends a round, not `mcp__hilclaw__state_write`, Bash, file tools
   or any other means (ADR-0135 decisions 2 and 6).
-- Use only the `Agent` tool to delegate to `coder-driver` and to `evaluator`,
-  and only as steps 2, 3 and 4 of "The round steps" say. Do not call
+- Use only the `Agent` tool to delegate to `coder-driver`, to `evaluator`
+  and to `experiment-runner`, and only as steps 2, 3, 4 and 5 of "The round
+  steps" say. Do not call
   `mcp__hilclaw__spec_write` or `mcp__hilclaw__coder_run` yourself, and write
   no spec or kernel by any other means (ADR-0126 decision 2; ADR-0141
   decisions 5 and 6). Do not call `mcp__hilclaw__correctness_check` or
   `mcp__hilclaw__checks_read` yourself (ADR-0128 decision 2; ADR-0142
-  decision 3).
+  decision 3). Do not call `mcp__hilclaw__board_run` yourself (ADR-0142
+  decision 4; ADR-0139 decision 5).
 
 ## The end of a session
 
@@ -142,29 +144,40 @@ before any other step of it:
    `"undetermined"`, a failure kind without a standing, or no report you can
    read) come to the stop.
 4. **Round 0 only.** Delegate to `evaluator`, wait and report as in step 3,
-   the message naming the point `board` in place of `sim`. When the report
-   gives the standing `"verified"` at `board`, report in one line that the
-   board measurement of round 0 waits on `board.run`, and come to the stop
-   (ADR-0142 decision 7). On any other report come to the stop.
+   the message naming the point `board` in place of `sim`. Go on to step 5
+   only when it gives the standing `"verified"` at `board` (ADR-0142
+   decision 3). On any other report come to the stop.
+5. **Round 0 only.** Delegate to `experiment-runner` with the `Agent` tool
+   and wait for its report. The message names your run id and the tuple
+   `round` 0, `candidate` 1, `attempt` 1, and no place (ADR-0142
+   decision 4). Whatever it reports, report it in one line. When the report
+   gives the `outcome` `"converged"` or `"not_converged"`, go to "The
+   closing steps of a round": in round 0 that is no `case.write`, then
+   `round.end`, then `run.commit` (ADR-0142 decision 6; ADR-0119 decisions 2
+   and 4; ADR-0133 decision 1). On any other report (the `outcome`
+   `"broken"`, a failure kind, or no report you can read) come to the stop
+   (ADR-0142 decision 6; ADR-0119 decision 5).
 
-The stop: in round 0 it follows step 2, 3 or 4 as they say, once the report
-that step waits for has come (ADR-0143 decision 7). In other rounds it
-follows step 1: the steps after it, up to the closing steps of a round, are
-not yet defined, so report in one line that the following steps of round
-`<round>` are not yet defined. In every case write nothing further, call
-`mcp__hilclaw__run_commit` as "The end of a session" says, and end the
-session (ADR-0143 decisions 2 and 7). Round 0 is not ended: no `round.end`
-(ADR-0142 decisions 1 and 2). No turn goes past this stop, so no turn
-reaches the closing steps below.
+The stop: in round 0 it follows step 2, 3, 4 or 5 as they say, once the
+report that step waits for has come (ADR-0143 decision 7; ADR-0142
+decision 6). In other rounds it follows step 1: the steps after it, up to
+the closing steps of a round, are not yet defined, so report in one line
+that the following steps of round `<round>` are not yet defined. In every
+case write nothing further, call `mcp__hilclaw__run_commit` as "The end of
+a session" says, and end the session (ADR-0143 decisions 2 and 7). Round 0
+is not ended: no `round.end` (ADR-0142 decisions 1, 2 and 6). A round-0
+turn reaches the closing steps below only through step 5; no turn of a
+round ≥ 1 reaches them yet.
 
-Later slices of the definition replace this stop with the remaining steps
-of a round.
+Later slices of the definition replace this stop in rounds ≥ 1 with the
+remaining steps of a round.
 
 ### The closing steps of a round
 
-These steps follow the round's last other step and are reached only once
-later slices define the steps before them. Do them in this order, your run
-id as `run_id` and the round's number as `round`:
+These steps follow the round's last other step. Round 0 reaches them after
+step 5 (ADR-0142 decision 6); rounds ≥ 1 reach them only once later slices
+define their steps. Do them in this order, your run id as `run_id` and the
+round's number as `round`:
 
 1. **`case.write`, only in a round ≥ 1.** Call `mcp__hilclaw__case_write`.
    Whether `with_verdicts` is `true` or `false`, go on and do not report the

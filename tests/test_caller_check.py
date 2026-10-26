@@ -295,6 +295,21 @@ def test_a_new_agent_is_held_with_no_change(tmp_path):
     )
 
 
+def test_the_real_experiment_runner_holds_board_run(session):
+    tool = "mcp__hilclaw__board_run"
+    passes(payload(tool, agent_id="e5f6", agent_type="experiment-runner"), session)
+    refuses(payload(tool), session, named(tool))
+    refuses(payload(tool, **EVALUATOR_ID), session, named(tool))
+    refuses(payload(tool, **CODER_ID), session, named(tool))
+    refuses(
+        payload(
+            "mcp__hilclaw__sim_run", agent_id="e5f6", agent_type="experiment-runner"
+        ),
+        session,
+        named("mcp__hilclaw__sim_run"),
+    )
+
+
 @pytest.mark.parametrize("value", [None, ""])
 def test_project_dir_missing_or_empty(session, value):
     environ = {} if value is None else {ENV_PROJECT_DIR: value}

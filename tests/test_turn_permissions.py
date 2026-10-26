@@ -265,6 +265,8 @@ def test_the_real_definition(tmp_path):
     assert "mcp__hilclaw__timings_compare" in allowed
     assert "Agent(coder-driver)" in allowed
     assert CODER_DRIVER_TOOLS <= set(allowed)
+    assert "Agent(experiment-runner)" in allowed
+    assert "mcp__hilclaw__board_run" in allowed
     assert set(FIXED) <= set(allowed)
     assert built_in == "Agent,Glob,Grep,Read"
 
@@ -402,7 +404,7 @@ def test_holder_lists_the_real_definition(tmp_path):
     turn_definition.put(tmp_path)
     main, found = turn_permissions.holder_lists(str(tmp_path))
     assert main == ROUND_MANAGER_TOOLS
-    assert set(found) == {"evaluator", "coder-driver"}
+    assert set(found) == {"evaluator", "coder-driver", "experiment-runner"}
     assert found["evaluator"] == (
         "mcp__hilclaw__correctness_check",
         "mcp__hilclaw__state_read",
@@ -417,6 +419,7 @@ def test_holder_lists_the_real_definition(tmp_path):
         "mcp__hilclaw__spec_write",
         "mcp__hilclaw__coder_run",
     )
+    assert found["experiment-runner"] == ("mcp__hilclaw__board_run",)
     for tools in found.values():
         assert "mcp__hilclaw__blob_push" not in tools
         assert "mcp__hilclaw__blob_fetch" not in tools
