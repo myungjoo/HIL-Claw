@@ -2,7 +2,7 @@
 id: T-0497
 title: Read the kernel reference of the model executor from a named attempt of a run (ADR-0153 decision 3, ADR-0055, ADR-0029) and show a generation whose every kernel comes from attempt directories
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-6, FR-10, OD-31, "PLAN P2-14"]
 dependsOn: []
@@ -119,3 +119,22 @@ A new record edits `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionPro
 ## Follow-ups
 
 ## Result
+DONE. PR #310 squash-merged as `8647afd3` after 1 review round (Approve; its one Nit, a docstring sentence on when `no_attempt_directory` comes, was addressed under D20). CI green on the head commit (Python 3.11 and 3.14, coverage, test presence, C, sh). Local full suite on WSL Ubuntu with clang: 36202 passed, 50 skipped; package coverage 99 %.
+
+- **Language**: Python. It is the language of `layout`, `spec_file`, `kernel_source` and `model_binding`, the modules this reader joins.
+- **What was added**: `hilclaw/attempt_kernel.py` with `kernel_reference(data_root, run_id, round, candidate, attempt, *, flags)`. `hilclaw/kernel_source.py` has only its docstring sentence corrected. `tests/test_attempt_kernel.py` has 73 tests; one of them is the clang-backed greedy generation whose six kernels are all read from attempt directories.
+- **Outcome form**:
+  - A malformed argument raises `TypeError` or `ValueError` with `parameter`. `layout.InvalidPathValueError` passes through with `parameter` added.
+  - Every other outcome raises one class, `AttemptKernelError`, whose `reason` is one of the public tuple `REASONS`, in this order:
+    - the five spec outcomes: `no_spec_file`, `spec_unreadable`, `spec_invalid`, `spec_other_version`, `spec_other_attempt`;
+    - then `kernel_source.NO_KERNEL_SOURCE_CASES`;
+    - then `kernel_source.READER_FAILURES`.
+  - The original error is the `__cause__`.
+- **D21**: no existing assertion was edited.
+- **No record or OD was changed**, and no §9 notice is needed.
+- **What remains for P2-14**:
+  - ADR-0177's later slices, after HQ-0077 and PR #309: `correctness.check` for bf16 kinds.
+  - The bf16 timing run record (OD-13, OD-16 ⑥).
+  - A binding derived from a key's best (OD-20, OD-7; OD-1 / #5 A-4 owner-only).
+  - The exposure of the executor (OD-31 ⑩, OD-18, OD-23).
+- **Runtime acceptance items**: none.
