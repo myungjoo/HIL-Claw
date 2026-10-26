@@ -51,9 +51,10 @@ outside the session directory.
   and, when both verified, the board measurement to the experiment-runner;
   a call that was made and brought nothing in, a check that did not verify
   and every report of the measurement lead to the evaluator's verdicts of
-  the round, and the verdicts to the closing steps. A failed spec write,
-  ``spec_exists`` or a report it cannot read stops (ADR-0172 decisions 2
-  to 7). The stop writes nothing else and ends no round.
+  the round, and written verdicts to the closing steps. A failed spec
+  write, ``spec_exists``, a coder-driver report it cannot read or verdicts
+  not written stop (ADR-0172 decisions 2 to 7). The stop writes nothing
+  else and ends no round.
 - *Refusals*, each a :class:`ValueError` with a fixed text raised before
   anything is written: a top-level entry that is not a key of :data:`LAYOUT`;
   an entry of the wrong kind; a missing ``round-manager.md``; an entry at any
@@ -72,13 +73,15 @@ unchanged, what reading, removing or copying raises.
 The roster: ``orchestration/agents/`` holds the evaluator's definition
 (ADR-0128 decision 7), the coder-driver's (ADR-0126 decision 6; ADR-0141
 decision 5; ADR-0171 decision 5), the experiment-runner's (ADR-0142
-decision 4; ADR-0172 decision 4) and the technique-selector's (ADR-0132 decision 7; ADR-0171
-decisions 2 to 4), and the rest of the roster stays open (OD-23).
+decision 4; ADR-0172 decision 4) and the technique-selector's (ADR-0132
+decision 7; ADR-0171 decisions 2 to 4), and the rest of the roster stays
+open (OD-23).
 
 Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
-ADR-0118 decision 4, "Workspace trust"), no repair, retry or second coder
-call in a round (OD-19, OD-10, OD-17), no ``--add-dir`` or other way for the session to reach the run's files
-(decision 4), no caller and no command-line entry.
+ADR-0118 decision 4, "Workspace trust"), no repair (OD-19), retry
+(OD-10) or second coder call for a tuple (OD-23), no ``--add-dir`` or
+other way for the session to reach the run's files (decision 4), no
+caller and no command-line entry.
 
 Runtime acceptance items it depends on (ADR-0118 Consequences): (i) a
 session started in the session directory loads its ``CLAUDE.md``,

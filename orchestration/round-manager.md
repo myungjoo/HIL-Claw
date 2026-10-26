@@ -188,12 +188,13 @@ before any other step of it:
    decisions 2 and 4). Whatever it reports, a result with any `taken` or any
    kind, report it in one line. In this turn delegate to `coder-driver` no
    second time, issue no call yourself, write no spec or kernel by any other
-   means and ask for no repair (ADR-0171 decision 6). Go on to step 9 only when the report is
-   a result of `coder.run` whose `taken` holds at least one name. When it is
-   a result of `coder.run` with an empty `taken`, or a failure kind of
-   `coder.run`, go on to step 12. On any other report (a failure kind of
-   `spec.write`, `spec_exists` among them, the report that no list was given,
-   or no report you can read) come to the stop (ADR-0172 decision 2).
+   means and ask for no repair (ADR-0171 decision 6). Go on to step 9 only
+   when the report is a result of `coder.run` whose `taken` holds at least
+   one name. When it is a result of `coder.run` with an empty `taken`, or a
+   failure kind of `coder.run`, go on to step 12. On any other report (a
+   failure kind of `spec.write`, `spec_exists` among them, the report that
+   no list was given, or no report you can read) come to the stop (ADR-0172
+   decision 2).
    If the report of step 6 does not hold exactly one `techniques:` line,
    report in one line that no choice was given and come to the stop,
    delegating nothing (ADR-0171 decision 6).
@@ -221,15 +222,19 @@ before any other step of it:
     the verdicts of the round and wait for its report. The message names
     your run id and the round, and no tuple, no point and no place
     (ADR-0172 decision 5; ADR-0128 decisions 4 and 7). Whatever it reports,
-    report it in one line and go to "The closing steps of a round": in a
-    round ≥ 1 that is `case.write`, then `round.end`, then `run.commit`
-    (ADR-0172 decisions 5 and 6; ADR-0133 decisions 4 and 5).
+    report it in one line. When the report says that the verdicts file was
+    written, or that `verdicts.write` answered `verdicts_exist`, go to "The
+    closing steps of a round": in a round ≥ 1 that is `case.write`, then
+    `round.end`, then `run.commit` (ADR-0172 decisions 5 and 6; ADR-0133
+    decision 5). On any other report (another failure kind, or no report you
+    can read) come to the stop (ADR-0172 decision 5; FR-17).
 
 The stop: in round 0 it follows step 2, 3, 4 or 5 as they say, once the
 report that step waits for has come (ADR-0143 decision 7; ADR-0142
 decision 6). In other rounds it follows step 7 after a failed read, once
-its kind is reported (ADR-0132 decision 6), and step 8 as it says, once its
-one-line report is made (ADR-0171 decision 6; ADR-0172 decisions 2 and 7).
+its kind is reported (ADR-0132 decision 6), and step 8 or step 12 as they
+say, once the one-line report is made (ADR-0171 decision 6; ADR-0172
+decisions 2, 5 and 7).
 In every case write nothing further, call `mcp__hilclaw__run_commit` as "The
 end of a session" says, and end the session (ADR-0143 decisions 2 and 7).
 Round 0 is not ended: no `round.end` (ADR-0142 decisions 1, 2 and 6). Nor

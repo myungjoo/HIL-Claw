@@ -890,8 +890,8 @@ def test_the_stop_follows_the_read_in_later_rounds():
     stop = the_stop()
     later = stop.split("In other rounds it follows step 7", 1)[1]
     assert "after a failed read" in later
-    assert "and step 8 as it says" in later
-    assert "ADR-0172 decisions 2 and 7" in later
+    assert "and step 8 or step 12 as they say" in later
+    assert "ADR-0172 decisions 2, 5 and 7" in later
     assert "After a report of the coder-driver" not in later
     assert "not yet defined" not in stop
     assert "Nor is a round ≥ 1 (ADR-0171 decision 6; ADR-0172 decision 7)" in later
@@ -976,8 +976,8 @@ def test_step_8_delegates_the_coder_call_with_the_choice():
 
 def test_the_stop_names_step_8():
     stop = the_stop()
-    assert "step 8 as it says" in stop
-    assert stop.index("step 8 as it says") < stop.index("mcp__hilclaw__run_commit")
+    assert "step 8 or step 12 as they say" in stop
+    assert stop.index("step 8 or step 12") < stop.index("mcp__hilclaw__run_commit")
     assert "not yet defined" not in stop
 
 
@@ -1115,10 +1115,17 @@ def test_step_12_delegates_the_verdicts_and_goes_to_the_closing_steps():
     )
     assert "`candidate`" not in step
     assert "`sim`" not in step
-    assert "Whatever it reports, report it in one line and go to" in step
-    assert '"The closing steps of a round"' in step
-    assert "`case.write`, then `round.end`, then `run.commit`" in step
-    assert "come to the stop" not in step
+    assert "Whatever it reports, report it in one line." in step
+    written = step.split("When the report says that the verdicts file was written", 1)
+    going = written[1].split("On any other report", 1)[0]
+    assert "or that `verdicts.write` answered `verdicts_exist`" in going
+    assert 'go to "The closing steps of a round"' in going
+    assert "`case.write`, then `round.end`, then `run.commit`" in going
+    assert "come to the stop" not in going
+    other = step.split("On any other report", 1)[1]
+    assert "another failure kind, or no report you can read" in other
+    assert "come to the stop (ADR-0172 decision 5; FR-17)" in other
+    assert "closing steps" not in other
     for cited in ("ADR-0172 decision 5", "ADR-0128 decisions 4 and 7"):
         assert cited in step
 
