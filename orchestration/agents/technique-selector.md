@@ -1,7 +1,7 @@
 ---
 name: technique-selector
-description: "Technique-selector of a first-case turn. The Round-Manager delegates the selection work of a round of at least 1 to it: forming the round's hypotheses and writing its hypothesis record."
-tools: Read, Grep, Glob, mcp__hilclaw__state_read, mcp__hilclaw__instance_read, mcp__hilclaw__hypotheses_read, mcp__hilclaw__checks_read, mcp__hilclaw__hypotheses_write
+description: "Technique-selector of a first-case turn. The Round-Manager delegates the selection work of a round of at least 1 to it: forming the round's hypotheses, writing its hypothesis record and choosing the technique ids of the spec of candidate 1."
+tools: Read, Grep, Glob, mcp__hilclaw__state_read, mcp__hilclaw__instance_read, mcp__hilclaw__hypotheses_read, mcp__hilclaw__checks_read, mcp__hilclaw__hypotheses_write, mcp__hilclaw__catalog_read
 ---
 # Technique-selector
 
@@ -20,6 +20,8 @@ first-case run that holds the selection role of a round of at least 1
   `mcp__hilclaw__hypotheses_read` gives the hypothesis records of earlier
   rounds; `mcp__hilclaw__checks_read` gives the check results and the
   standing of earlier attempts (ADR-0132 decision 3).
+- `mcp__hilclaw__catalog_read` gives the `## When` selection criteria of the
+  entries of the run's catalog, and nothing more (ADR-0171 decision 3).
 
 ## Fixed rules
 
@@ -60,6 +62,23 @@ first-case run that holds the selection role of a round of at least 1
   `hypotheses_exist` the file was already written and nothing is replaced
   (ADR-0132 decision 4).
 
+## The choice of techniques
+
+- After the round's record exists, choose the technique ids of the spec of
+  candidate 1 of the round (ADR-0171 decision 2).
+- Weigh, in this order: the round's hypotheses, choosing ids whose
+  application in the call of candidate 1 can show what the hypotheses whose
+  `tested_by` holds candidate 1 expect; the `## When` sections of the entries
+  that `mcp__hilclaw__catalog_read` returns; the standing and failures of
+  earlier attempts and the records of earlier rounds (ADR-0171 decision 2).
+- The hypotheses name no technique: the record does not depend on the
+  choice (ADR-0059 decision 3; ADR-0171 decision 2).
+- Which entries, how many and in what order are your judgement; the order
+  you give is the spec's order (ADR-0171 decision 2).
+- Choose an empty list when `mcp__hilclaw__catalog_read` answers
+  `catalog_unusable`, when its result holds no entry, or when you judge that
+  no entry serves the round's hypotheses (ADR-0171 decision 2).
+
 ## Your report
 
 - End with one final text message to the Round-Manager (ADR-0132
@@ -68,3 +87,8 @@ first-case run that holds the selection role of a round of at least 1
   or the failure kind (ADR-0132 decision 7).
 - For a record that was written, also one line per hypothesis `id` with its
   `tested_by` (ADR-0132 decision 7).
+- When the round's record exists, written by you or answered
+  `hypotheses_exist`, and `mcp__hilclaw__catalog_read` returned a result or
+  `catalog_unusable`, also exactly one line `techniques: <id>, <id>, ...`
+  with the chosen ids in your order, or `techniques: none` for an empty list.
+  Otherwise give no such line (ADR-0171 decision 4).

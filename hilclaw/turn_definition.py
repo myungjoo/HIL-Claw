@@ -43,9 +43,11 @@ outside the session directory.
   measurement to the experiment-runner; on a completed measurement it goes
   to the closing steps, and otherwise it stops. In a round >= 1 a turn
   delegates the selection to the technique-selector after the key store,
-  then reads the round's hypothesis record with ``hypotheses.read``, and
-  stops: the later steps are not yet defined (ADR-0132 decision 6). The
-  stop writes nothing else and ends no round.
+  then reads the round's hypothesis record with ``hypotheses.read``
+  (ADR-0132 decision 6), then, when the selector reported its choice of
+  technique ids, delegates the coder call to the coder-driver with those
+  ids, and stops: the steps after the coder call are not yet defined
+  (ADR-0171 decision 6). The stop writes nothing else and ends no round.
 - *Refusals*, each a :class:`ValueError` with a fixed text raised before
   anything is written: a top-level entry that is not a key of :data:`LAYOUT`;
   an entry of the wrong kind; a missing ``round-manager.md``; an entry at any
@@ -63,15 +65,15 @@ unchanged, what reading, removing or copying raises.
 
 The roster: ``orchestration/agents/`` holds the evaluator's definition
 (ADR-0128 decision 7), the coder-driver's (ADR-0126 decision 6; ADR-0141
-decision 5), the experiment-runner's (ADR-0142 decision 4) and the
-technique-selector's (ADR-0132 decision 7), and the rest of the roster
-stays open (OD-23).
+decision 5; ADR-0171 decision 5), the experiment-runner's (ADR-0142
+decision 4) and the technique-selector's (ADR-0132 decision 7; ADR-0171
+decisions 2 to 4), and the rest of the roster stays open (OD-23).
 
 Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
 ADR-0118 decision 4, "Workspace trust"), no round steps of a round >= 1
-between the read of the round's hypothesis record and the closing steps
-(later P2-1 slices), no ``--add-dir`` or other way for the session to reach
-the run's files (decision 4), no caller and no command-line entry.
+between the coder call and the closing steps (later P2-1 slices), no
+``--add-dir`` or other way for the session to reach the run's files
+(decision 4), no caller and no command-line entry.
 
 Runtime acceptance items it depends on (ADR-0118 Consequences): (i) a
 session started in the session directory loads its ``CLAUDE.md``,
