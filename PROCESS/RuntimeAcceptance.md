@@ -316,3 +316,11 @@
 - 내용(HQ 원문 그대로):
 
   ADR-0170(첫 사례 대기자 빌드의 컴파일러 로그와 cpu_standin `sim.run`·`board.run` 동작; OD-18 ⑲ (다) 일부; T-0481, PR #295, main a3cab425)이 런타임 인수 항목 (lxxxi)·(lxxxii)를 남겼다. T-0482(기본 표의 cpu_standin 항목)가 착지한 뒤 C-7의 각 머신 종류에서 Docker로 확인할 것. (lxxxi) image의 `clang`이 ADR-0116 결정 3의 플래그로 build container 안에서 `timing_waiter.c`를 빌드할 때 상태 0으로 끝나고 두 스트림에 아무것도 쓰지 않으며 host 빌드 디렉토리의 대응 경로에 대기자 실행 파일을 일반 파일로 남기는지. (lxxxii) 두 build container가 ADR-0144 결정 6의 숫자 user로 빌드 디렉토리에 쓴 두 실행 파일을 같은 user가 timing process container에서 시작할 수 있는지(대기자는 container의 프로그램으로, 타이밍 실행 파일은 대기자의 `execv`로). 선택지: (a) 오너가 런타임 머신에서 수동 확인해 결과를 답한다 (b) 런타임 자체 점검 코드 task로 만든다 (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 실제 Docker에서 ADR-0170의 대기자 빌드·시작 해석이 맞다는 확인. 막히지 않는 것: T-0482 등 이후 드라이버 task(테스트는 스텁으로 검증).
+
+### RA-0039
+
+- 상태: 미확인
+- 출처: task T-0361 (ADR-0132)의 Result, planner가 T-0484 생성 시 반환 (등록 2026-10-26)
+- 내용:
+
+  ADR-0132(첫 사례 선택 역할 `technique-selector`와 등록표 도구 `hypotheses.write`; OD-23·OD-30·OD-18 일부; T-0361)의 런타임 인수 항목 (xxiii)·(xxiv). T-0484가 land한 뒤 런타임 머신에서 확인한다. (xxiii) `-p` 턴 세션에서 `.claude/agents/technique-selector.md`로 정의된 sub-agent가 그 `tools` 목록의 도구만 정확히 받는가, 위임 메시지와 최종 메시지가 온전히 전달되는가. (xxiv) 첫 사례 라운드가 가질 수 있는 가장 큰 가설 레코드에서도 `hypotheses.write` 요청의 `record`가 MCP 도구 호출 입력 한도 안에서 온전히 도구에 닿는가.
