@@ -192,9 +192,10 @@ def default_registry(data_root_source):
     ADR-0039), ``correctness.check`` (:func:`hilclaw.check_definition.definition`,
     ADR-0070) and ``sim.run`` and ``board.run``
     (:func:`hilclaw.run_definition.definitions`, ADR-0167). The three HW
-    tools are bound to one default table, whose one entry is the mock,
-    offering the three with the default scripts of ADR-0044 and ADR-0066;
-    it has no ``cpu_standin`` entry. Their source of seeds is the generator
+    tools are bound to one default table, whose entries are the mock,
+    offering the three with the default scripts of ADR-0044 and ADR-0066,
+    and ``cpu_standin``, offering the three with its operations
+    (:mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_run`). Their source of seeds is the generator
     of the operating system. Their predicate "covered" is that of ADR-0041
     decision 5. Beside these FR-10 tools it holds ``state.read``,
     ``instance.read``, ``run.fresh`` and ``state.write``

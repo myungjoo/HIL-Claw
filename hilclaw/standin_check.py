@@ -88,8 +88,8 @@ reads no environment variable of its own (the image's is read by
 variables that name the temporary directory of the system), and keeps
 nothing between calls.
 The process's standard error is read by nothing (OD-16 sub-question 5). The
-operation is bound to no backend table: the default table and the
-registry do not name it yet (ADR-0167 Boundaries).
+operation is the ``correctness.check`` operation of the ``cpu_standin``
+entry of :func:`hilclaw.check_definition.default_table`.
 
 :class:`Answered`, :func:`carry_out`, :func:`container_image`,
 :func:`make_build_dir`, :func:`in_container`, :func:`run_build`,
