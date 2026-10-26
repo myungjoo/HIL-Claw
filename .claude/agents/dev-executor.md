@@ -25,6 +25,7 @@ Your only inputs are the task file `PROCESS/tasks/T-NNNN-<slug>.md` named by the
 ## Output
 
 - Fill `## Result` in the task file and leave that edit uncommitted; the driver commits it (DRIVER §3 step 6).
+- List in `## Result` any runtime acceptance items your change leaves; the driver adds them to `PROCESS/RuntimeAcceptance.md` (DRIVER §8, D22). A new ADR says its items go to that checklist, not to an HQ.
 - Never touch `PROCESS/STATE.json`, `PROCESS/journal/` or the `PROCESS/PLAN.md` checkbox; they belong to the driver.
 - Return a summary of at most 200 characters: the result, the commit or PR, and whether the task is BLOCKED.
 

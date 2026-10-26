@@ -11,6 +11,7 @@ description: "HIL-Claw 표준 코드 리뷰 지침: 주어진 Pull Request(문�
 * 코드 크기가 주제에 비해 지나치게 크거나, 불필요하게 다른 모듈을 건드리지 않는지 검사하라.
 * 코드 내용을 검증하고, 미래에 문제가 발생하지 않도록 막기 위해 필요한 test case가 완비되었는지 검사하라.
 * 코드 모드 변경이면 CLAUDE.md "테스트 규칙"(#5 D12)을 점검하라: 2층 패키지 line·function coverage ≥ 80% 유지, negative case 포함, 건드린 모듈의 모든 public 함수 테스트, 2층 패키지 새 모듈의 대응 테스트 파일. 테스트 코드·CI 워크플로·hook·보조 스크립트를 대상으로 하는 테스트가 명시 예외 밖에서 추가되었거나, 테스트가 필수인 명시 예외 두 개(CLAUDE.md)에 테스트가 빠졌으면 지적하라.
+* 기존 테스트의 단언을 고쳤으면, 각 수정이 PROCESS/DRIVER.md §5의 목록 단언 허용(D21) 범위 안인지 확인하라. 허용 범위는 이름·import·필드·binder 목록을 그 변경만큼만 고친 것이다. 수정이 PR 본문(문서 모드는 커밋 본문)에 나열되었는지도 확인하라. 범위를 넘는 수정은 D21의 허용이 아니므로 task 기준과 테스트 규칙으로 판정하라.
 * 미래에 타 모듈의 기능 추가로 인해 검사 대상 코드의 기능과 성능에 영향을 받게 되었을 때에 그 영향을 바로 Detect할 수 있도록 Test Case가 있는지 검사하라.
 * Test Case로 찾아진 Issue가 있을 때에 CI가 Fail이 나서 해당 문제를 일으킨 코드가 Merge되지 않도록 막을 수 있는지 점검하라. (CI 미구축 동안에는 Local Test로 검출 가능한지를 점검한다.)
 * ARCHITECTURE 변경을 일으키거나 API 변경이 있는 경우 그와 관련한 문서 수정이 PR 내에서 함께 이뤄지거나, 문서 수정이 이미 되어 있는지 점검하라. 특히 ARCHITECTURE/ 문서(Requirements, UsageCases, StandardScenarios)에 영향이 있는 변경이면 [StandardScenarios.md](../../../ARCHITECTURE/StandardScenarios.md)의 검사 규칙(지원/미결/갭)에 따른 커버리지 재검사가 수행·갱신되었는지 확인하라.
