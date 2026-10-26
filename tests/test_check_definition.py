@@ -22,11 +22,16 @@ from hilclaw import (
     gemm_contract,
     keys,
     layout,
+    local_run,
     mcp_front,
     mock_backend,
     mock_check,
     mock_run,
     run_state,
+    standin_check,
+    standin_image,
+    standin_profile,
+    standin_run,
     tools,
 )
 from hilclaw.backends import Backend, BackendTable
@@ -199,7 +204,13 @@ def test_the_module_imports_what_it_names_and_has_its_public_names_only():
             "tools",
             "seed_source",
         },
-        "default_table": {"mock_check", "mock_run"},
+        "default_table": {
+            "mock_check",
+            "mock_run",
+            "standin_check",
+            "standin_profile",
+            "standin_run",
+        },
         "function": {"check_tool"},
     }
     public = {
@@ -339,22 +350,36 @@ def mcp_document(name, arguments):
     return json.dumps(document).encode() + b"\n"
 
 
-def test_default_table_holds_the_mock_offering_the_three_hw_tools_of_the_registry():
-    """ADR-0070 decision 3 with ADR-0167 decision 3: one table, one mock entry."""
+def test_default_table_holds_the_mock_and_cpu_standin_offering_the_three_hw_tools():
+    """ADR-0167 decision 3 and Boundaries: one table, the mock and cpu_standin."""
     table = default_table()
     assert type(table) is BackendTable
-    assert table.names() == (mock_backend.NAME,)
+    assert table.names() == ("cpu_standin", mock_backend.NAME)
+    assert standin_profile.ACCELERATOR == "cpu_standin"
     for tool in (TOOL, "sim.run", "board.run"):
         assert callable(backends.select(table, profile(), tool))
-    with pytest.raises(tools.ToolFailure) as caught:
-        backends.select(table, profile(), "profiler.collect")
-    assert caught.value.kind == tools.KIND_NOT_OFFERED
+    standin = profile(standin_profile.ACCELERATOR)
+    assert backends.select(table, standin, TOOL) is standin_check.operation
+    for tool in ("sim.run", "board.run"):
+        assert backends.select(table, standin, tool) is standin_run.operation
+    for accelerator in (mock_backend.NAME, standin_profile.ACCELERATOR):
+        with pytest.raises(tools.ToolFailure) as caught:
+            backends.select(table, profile(accelerator), "profiler.collect")
+        assert caught.value.kind == tools.KIND_NOT_OFFERED
     for tool in (TOOL, "sim.run", "board.run"):
-        for accelerator in ("cpu_standin", "acc_b"):
-            with pytest.raises(tools.ToolFailure) as caught:
-                backends.select(table, profile(accelerator), tool)
-            assert caught.value.kind == tools.KIND_NO_BACKEND
+        with pytest.raises(tools.ToolFailure) as caught:
+            backends.select(table, profile("acc_b"), tool)
+        assert caught.value.kind == tools.KIND_NO_BACKEND
     assert default_table() is not table
+
+
+def test_building_the_default_table_reads_no_image(monkeypatch):
+    def refused(*_):
+        raise AssertionError("the image was read when the table was built")
+
+    monkeypatch.setattr(standin_image, "read_image", refused)
+    monkeypatch.setenv(standin_image.ENV_IMAGE, "registry.example/image:1")
+    assert default_table().names() == ("cpu_standin", mock_backend.NAME)
 
 
 @pytest.mark.parametrize("tool", ["sim.run", "board.run"])
@@ -495,16 +520,44 @@ def test_a_call_about_a_run_at_the_mock_passes(root, parties):
     assert parameters.seed == parties["seeds"].answers[0]
 
 
-@pytest.mark.parametrize("accelerator", ["cpu_standin", "acc_b"])
-def test_a_call_about_a_run_at_another_accelerator_is_no_backend(
-    tmp_path, parties, accelerator
-):
-    root = a_run(tmp_path / "data", accelerator=accelerator)
+def test_a_call_about_a_run_at_another_accelerator_is_no_backend(tmp_path, parties):
+    root = a_run(tmp_path / "data", accelerator="acc_b")
     registry = tools.default_registry(lambda: root)
     refused(registry, REQUEST, tools.KIND_NO_BACKEND)
     refused(registry, REQUEST, tools.KIND_NO_BACKEND)
     assert no_log(root)
     assert counts(parties) == (0, 0, 0)
+
+
+@pytest.fixture
+def no_container(monkeypatch):
+    """No image is named, and starting any container fails the test."""
+    started = []
+
+    def client(command, **options):
+        started.append(command)
+        raise AssertionError("a container was started")
+
+    monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+    monkeypatch.setattr(local_run, "run", client)
+    return started
+
+
+def test_a_call_about_a_run_at_cpu_standin_reaches_its_operation(
+    tmp_path, parties, no_container, monkeypatch
+):
+    reached = Recorder(standin_check.operation)
+    monkeypatch.setattr(standin_check, "operation", reached)
+    root = a_run(tmp_path / "data", accelerator="cpu_standin")
+    registry = tools.default_registry(lambda: root)
+    failure = refused(registry, REQUEST, "compiler_unavailable")
+    again = refused(registry, REQUEST, "compiler_unavailable")
+    assert again.message == failure.message
+    assert len(reached.calls) == 1
+    assert no_container == []
+    assert counts(parties) == (1, 1, 0)
+    ended = {"kind": "compiler_unavailable", "message": failure.message}
+    assert [line["data"].get("failure") for line in lines(root)] == [None, ended]
 
 
 def test_the_same_request_again_returns_the_stored_result(root, parties):
@@ -546,7 +599,7 @@ def test_no_environment_variable_chooses_the_table_or_the_seeds(
     monkeypatch.setenv("HILCLAW_BACKEND", "cpu_standin")
     monkeypatch.setenv("HILCLAW_SEED", "7")
     monkeypatch.setenv("HILCLAW_SCRIPT", "fail")
-    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="acc_b")
     registry = tools.default_registry(lambda: root)
     assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
     refused(registry, {**REQUEST, "run_id": "run-b"}, tools.KIND_NO_BACKEND)
@@ -602,8 +655,8 @@ def test_a_registry_of_the_test_answers_what_its_script_answers(root, parties):
 
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
-    """A data root with a run at the mock and one at cpu_standin, as the fronts' source."""
-    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    """A data root with a run at the mock and one at acc_b, as the fronts' source."""
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="acc_b")
     monkeypatch.setattr(data_root_source, "configured", lambda: root)
     return root
 
@@ -655,6 +708,9 @@ HEAVY = (
     "hilclaw.check_tool",
     "hilclaw.mock_check",
     "hilclaw.harness.verification",
+    "hilclaw.standin_check",
+    "hilclaw.standin_profile",
+    "hilclaw.standin_run",
 )
 CHILD_END = """
 import sys
@@ -752,7 +808,7 @@ def test_the_first_call_binds_the_tool_function_of_the_record(
 
 
 def test_the_table_is_built_once_per_registry(tmp_path, parties):
-    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="acc_b")
     registry = tools.default_registry(lambda: root)
     assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
     refused(registry, {**REQUEST, "run_id": "run-b"}, tools.KIND_NO_BACKEND)

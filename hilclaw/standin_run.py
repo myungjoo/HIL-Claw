@@ -85,8 +85,8 @@ the seed is only among the timing process's arguments. It imports no NumPy
 (the judging is the tool function's, ADR-0061 decision 3), reads no
 environment variable of its own (the image's is read by
 :func:`hilclaw.standin_image.read_image`) and keeps nothing between calls.
-It is bound to no backend table: the default table and the registry do not
-name it yet (ADR-0167 Boundaries).
+It is the ``sim.run`` and ``board.run`` operation of the ``cpu_standin``
+entry of :func:`hilclaw.check_definition.default_table`.
 """
 
 from time import monotonic

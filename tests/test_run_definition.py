@@ -20,6 +20,7 @@ from hilclaw import (
     journaled_tool,
     keys,
     layout,
+    local_run,
     mcp_front,
     mock_backend,
     mock_run,
@@ -27,6 +28,8 @@ from hilclaw import (
     run_identity,
     run_state,
     run_tool,
+    standin_image,
+    standin_run,
     tools,
 )
 from hilclaw.harness import seed_source
@@ -833,16 +836,33 @@ def test_the_same_request_again_returns_the_stored_result(tool, data, parties):
 
 
 @each_tool
-@pytest.mark.parametrize("accelerator", ["cpu_standin", "acc_b"])
-def test_a_run_at_another_accelerator_is_no_backend(
-    tool, tmp_path, parties, accelerator
-):
-    root = a_run(tmp_path / "data", accelerator=accelerator)
+def test_a_run_at_another_accelerator_is_no_backend(tool, tmp_path, parties):
+    root = a_run(tmp_path / "data", accelerator="acc_b")
     registry = tools.default_registry(lambda: root)
     refused_call(registry, tool, dict(CALL), tools.KIND_NO_BACKEND)
     refused_call(registry, tool, dict(CALL), tools.KIND_NO_BACKEND)
     assert no_log(root)
     assert counts(parties) == (0, 0, 0)
+
+
+@each_tool
+def test_a_run_at_cpu_standin_reaches_its_operation(
+    tool, tmp_path, parties, monkeypatch
+):
+    started = []
+    reached = Recorder(standin_run.operation)
+    monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+    monkeypatch.setattr(local_run, "run", lambda command, **_: started.append(command))
+    monkeypatch.setattr(standin_run, "operation", reached)
+    root = a_run(tmp_path / "data", accelerator="cpu_standin")
+    registry = tools.default_registry(lambda: root)
+    failure = refused_call(registry, tool, dict(CALL), "compiler_unavailable")
+    again = refused_call(registry, tool, dict(CALL), "compiler_unavailable")
+    assert again.message == failure.message
+    assert (len(reached.calls), started) == (1, [])
+    assert counts(parties) == (1, 1, 0)
+    ended = {"kind": "compiler_unavailable", "message": failure.message}
+    assert [line["data"].get("failure") for line in step_lines(root)] == [None, ended]
 
 
 @each_tool
@@ -878,7 +898,7 @@ def test_no_environment_variable_chooses_the_table_or_the_seeds(
 ):
     monkeypatch.setenv("HILCLAW_BACKEND", "cpu_standin")
     monkeypatch.setenv("HILCLAW_SEED", "7")
-    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="acc_b")
     registry = tools.default_registry(lambda: root)
     assert tools.call(registry, "board.run", dict(CALL)) == CONVERGED
     refused_call(
@@ -939,8 +959,8 @@ def test_a_first_call_whose_binding_fails_keeps_nothing(data, parties, monkeypat
 
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
-    """A data root with a run at the mock and one at cpu_standin, as the fronts' source."""
-    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    """A data root with a run at the mock and one at acc_b, as the fronts' source."""
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="acc_b")
     monkeypatch.setattr(data_root_source, "configured", lambda: root)
     return root
 
@@ -1003,7 +1023,15 @@ def test_the_command_line_front_serves_a_run_tool(configured, parties):
     assert counts(parties) == (1, 1, 1)
 
 
-HEAVY = ("numpy", "hilclaw.run_tool", "hilclaw.mock_check", "hilclaw.mock_run")
+HEAVY = (
+    "numpy",
+    "hilclaw.run_tool",
+    "hilclaw.mock_check",
+    "hilclaw.mock_run",
+    "hilclaw.standin_check",
+    "hilclaw.standin_profile",
+    "hilclaw.standin_run",
+)
 BUILD_CHILD = """
 import sys
 from hilclaw import run_definition, tools
