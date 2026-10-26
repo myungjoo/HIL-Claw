@@ -44,9 +44,9 @@ Conventions of this module (readings of decision 6, not rules of the record):
 * This module's own ``"invalid_input"`` outcomes come in this order: ``eps``
   refused by :func:`hilclaw.model_binding.rmsnorm_eps`; one per RoPE
   constant whose value :func:`hilclaw.rope_table.constant_refusals`
-  refuses, in field order; the table size, ``positions * head_dim`` above 2**53 - 1 with
-  ``positions`` = S + G - 1 (looked at only when the prompt is not empty and
-  G is from 1 to 2**53 - 1); then the weights in field order, for a per-layer
+  refuses, in field order; the table size, ``positions * head_dim`` above
+  2**53 - 1 with ``positions`` = S + G - 1 (looked at only when the prompt
+  is not empty and G is from 1 to 2**53 - 1); then the weights in field order, for a per-layer
   weight its array count and then each array in layer order, each array's
   shape and then, at the dtype ``"bf16"`` only, its element type.
 * A weight is a :class:`numpy.ndarray`; a per-layer weight is a sequence

@@ -18,8 +18,8 @@ and converting ``eps`` with :func:`hilclaw.model_binding.rmsnorm_eps`;
 a time limit; and :func:`parse_report` reads a complete report of either
 mode into the token ids and the logits rows. A run that times out, ends with a
 status other than 0 or leaves no complete report is the outcome **run failed**
-of ADR-0153 decision 5, named by :class:`hilclaw.model_run.RunFailed`, which this module
-reuses.
+of ADR-0153 decision 5, named by :class:`hilclaw.model_run.RunFailed`, which
+this module reuses.
 
 The command is::
 
@@ -155,8 +155,9 @@ def encode_input(
     Raised before any byte is built: :class:`TypeError` for ``given`` that is
     neither ``None`` nor a sequence; then what
     :func:`hilclaw.model_forward_check.check` raises, and :class:`ValueError`
-    with its ``"invalid_input"`` reasons; then :class:`TypeError` or :class:`ValueError` for ``library_count`` and
-    for ``libraries``: not a mapping, a missing or unknown call site, a value
+    with its ``"invalid_input"`` reasons; then :class:`TypeError` or
+    :class:`ValueError` for ``library_count`` and for ``libraries``: not a
+    mapping, a missing or unknown call site, a value
     that is no sequence or not of G entries, an entry that is not an ``int``
     or out of range.
     """
