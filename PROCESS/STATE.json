@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": null,
+  "currentTask": "T-0492",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:d0f4d5d4",
+    "acquiredAt": "2026-10-26T10:55:19Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -754,6 +758,14 @@
       "issueComment": null,
       "resolvedAt": "2026-10-26T01:55:51Z",
       "decision": "D22 - 오너(채팅, 2026-10-26): 런타임 인수 체크리스트 `PROCESS/RuntimeAcceptance.md`의 RA-0038로 이관하고 HQ로는 닫는다."
+    },
+    {
+      "id": "HQ-0076",
+      "taskId": "T-0493",
+      "reason": "owner-only-decision",
+      "question": "PLAN P2-10 nightly end-to-end 루틴(DRIVER D17)의 task(T-0493)를 실행하기 전에, D17 행이 오너·운영자 값으로 남긴 (가)를 묻습니다. (1) nightly run의 구성: (a) P2-5 구성 그대로 — cpu_standin × GEMM fp32, N=1, 5라운드 (b) (a)에 더해 P2-14가 착지한 뒤 Llama 3.2 1B 합성 가중치 run (c) 그 밖(지정). (2) PLAN P2-15(실제 Llama 3.2 1B 가중치)를 nightly에서 돌릴지: (a) 돌리지 않음 — 오너 수동 확인만 (b) 돌림 — 가중치·토크나이저 파일 위치 지정. (3) 실행 시각: 지정(예: 매일 KST 03:00). (4) 사용량 상한: (a) run의 round_budget 외 별도 상한 없음 (b) 하루 turn 수나 시간의 상한(값 지정). (5) 루틴의 머신·작업 폴더·권한 모드: (a) 드라이버와 같은 머신, 별도 clone, Bypass permissions (b) 별도 머신(지정) (c) 그 밖. 그 머신에 로그인된 claude 외에 Docker, 코더·stand-in 이미지(HILCLAW_CODER_IMAGE·HILCLAW_STANDIN_IMAGE), 코더 토큰(HILCLAW_CODER_OAUTH_TOKEN)을 둘 수 있는지도 함께 답해 주십시오. (6) claude 자식 프로세스 가드(HQ-0007 ④; 아직 없음, P0.5-4 미완)와 nightly 루틴이 함께 서는 방법: (a) 가드는 드라이버 clone 설정에만 등록하고 nightly는 가드 없는 별도 clone에서 돈다 (b) 가드가 nightly 루틴의 표지(예: 환경변수)를 보면 허용 (c) 그 밖. 답이 없는 동안 막히는 것: T-0493(P2-10). 막히지 않는 것: T-0492, P2-11~P2-14의 task.",
+      "askedAt": "2026-10-26T10:55:19Z",
+      "issueComment": null
     }
   ],
   "counters": {
