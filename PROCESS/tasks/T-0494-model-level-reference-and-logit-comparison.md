@@ -2,7 +2,7 @@
 id: T-0494
 title: Record the owner's answer to HQ-0071 (OD-31 sub-question 6) and design the model-level reference, the teacher-forced logit comparison and the greedy generation mode of the model executor as one new ADR, and land its first code slice — a NumPy float64 reference forward pass and the logit comparison, with tests
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, FR-13, OD-31, OD-6, S0, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: []
@@ -97,3 +97,22 @@ No record carries this answer yet (no ADR, no register line; OpenDecisionProposa
 ## Follow-ups
 
 ## Result
+
+- Outcome: DONE. PR #307 (https://github.com/myungjoo/HIL-Claw/pull/307) squash-merged as c736ffecb49865c2e3b632307388157332c3c2cd; branch deleted. Review: 2 rounds (round 1 Request changes: CI failure on the rope_table caller-list assertion plus two Nits, all addressed; round 2 Approve, no findings). CI green on the final head a31d852a.
+- ADR-0176 (ARCHITECTURE/decisions/ADR-0176-od31-model-level-reference-and-comparison.md), filed under OD-31. It records the HQ-0071 answer as cited owner content: greedy selection; P2-14 teacher-forced element-wise rtol/atol; the P2-15 first-N token match; the NumPy float64 reference for P2-14; Hugging Face transformers as a runtime-machine optional dependency only. Its own design:
+  - the reference keeps every activation in float64, starts from the widened bf16 weights, rotates with the widened binary32 RoPE table and uses the binary32 eps;
+  - it computes one causal pass over the S+G-1 fed tokens;
+  - the comparison uses the ADR-0163 predicate, and a non-finite reference element fails;
+  - both lm_head_rows values are accepted, and the comparison is a pure function over a ForwardReport, not part of execute;
+  - greedy selection happens in model_forward.c between passes, with a NaN stop (slices 2 and 3, not built yet);
+  - prompt, lengths, N, rtol and atol are the caller's, with no default.
+  It closes parts of OD-31 sub-questions 4, 6 and 7.
+- Code slice 1: hilclaw/model_reference.py (reference_logits, compare, LogitComparison). The docstrings of model_forward_check, model_forward_run and model_forward_execute that pointed the reference to "OD-31 sub-question 6, HQ-0071" now name model_reference / ADR-0176. The generation-mode refusal is unchanged.
+- Registers: Requirements OD-31 row (owner phrase HQ-0071, ADR-0176 link); OpenDecisionProposals § OD-31 (adopted line; sub-questions 4, 6, 7 updated); StandardScenarios S0 re-checked, verdict unchanged.
+- Tests: tests/test_model_reference.py (new, 100% line coverage of the module): reference vs. an independent pass-by-pass float64 re-computation with an explicit cache, a hand-checked case, a run through execute with real-operation fixture kernels passing rtol=atol-scale 2^-5 and failing it under swapped RoPE cos/sin or a dropped cache row, plus predicate-bound, non-finite and negative cases.
+- D21: tests/test_rope_table.py::test_the_module_is_named_only_by_its_known_callers gained "model_reference.py" (listed in the PR body).
+- Language: Python. NumPy is already a runtime dependency (HQ-0004) and the reference is host-side array arithmetic.
+- §9 owner notice for OD-31: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6416041014
+- Next slice (planner candidate): ADR-0176 code slice 2, the greedy generation mode in hilclaw/model_forward.c (mode word in the input, selection between passes, NaN stop, selected tokens in the report); then slice 3, the host side in model_forward_check/run/execute replacing the generation-mode refusal, plus a generated-run test compared teacher-forced with the slice-1 reference.
+- Runtime acceptance items: none new (the P2-15 Hugging Face comparison goes to RuntimeAcceptance.md via PLAN P2-15 after P2-14 is checked).
+- Follow-ups: none.
