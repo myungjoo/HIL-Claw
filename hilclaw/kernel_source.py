@@ -8,8 +8,11 @@ the compiled set. :func:`is_admitted_name` is the first and
 path, is ADR-0056 decision 3: the operation of a backend that builds, to the
 path the tool function forms with :func:`hilclaw.layout.attempt_artefact`.
 No tool and no backend operation applies the reader yet; :mod:`hilclaw.bring_in`
-uses :func:`is_admitted_name`, and :func:`hilclaw.standin_copies.place_copies`
-(ADR-0144 slice (2)) applies the reader to copy the kernel files it answers.
+uses :func:`is_admitted_name`, :func:`hilclaw.standin_copies.place_copies`
+(ADR-0144 slice (2)) applies the reader to copy the kernel files it answers,
+and :func:`hilclaw.attempt_kernel.kernel_reference` applies it to the
+``output/`` of a named attempt for a kernel reference of the model executor
+(ADR-0153 decision 3).
 
 :func:`read_compiled_set` has three outcomes. It returns a
 :class:`KernelSource` whose ``compiled_set`` is not empty and whose ``missing``
