@@ -46,8 +46,9 @@ Conventions of this module (not rules of the record):
   passed on.
 
 What this module does not do: it checks no binding of a kernel to a call site
-and builds nothing; it has no generation mode, token selection rule,
-model-level reference or tolerance (OD-31 sub-question 6, HQ-0071); it gives no
+and builds nothing; it has no generation mode or token selection rule (ADR-0176
+decision 5, a later code slice) and no model-level reference or tolerance,
+which are :mod:`hilclaw.model_reference`'s (ADR-0176); it gives no
 RoPE constant, model parameter or time limit a default (HQ-0070); it places no
 directory and chooses no input path, container or environment; it casts no
 array; and it stores or retries nothing.

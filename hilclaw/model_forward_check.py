@@ -57,8 +57,9 @@ Conventions of this module (readings of decision 6, not rules of the record):
 
 What this module does not do: it builds, loads and starts nothing, runs no
 process and reads and writes no file; it builds no RoPE table and computes no
-frequency; it has no token selection rule, no model-level reference and no
-tolerance (OD-31 sub-question 6, HQ-0071); it gives no default to any model
+frequency; it has no token selection rule (ADR-0176 decision 5, a later
+code slice) and no model-level reference or tolerance, which are
+:mod:`hilclaw.model_reference`'s (ADR-0176); it gives no default to any model
 parameter or RoPE constant (HQ-0070) and sets no cache capacity; it adds no
 outcome kind to those of :mod:`hilclaw.model_binding`.
 
