@@ -25,6 +25,17 @@ EVALUATOR_TOOLS = {
 CODER_DRIVER = "coder-driver.md"
 CODER_DRIVER_TOOLS = {"mcp__hilclaw__spec_write", "mcp__hilclaw__coder_run"}
 EXPERIMENT_RUNNER = "experiment-runner.md"
+TECHNIQUE_SELECTOR = "technique-selector.md"
+TECHNIQUE_SELECTOR_TOOLS = {
+    "Read",
+    "Grep",
+    "Glob",
+    "mcp__hilclaw__state_read",
+    "mcp__hilclaw__instance_read",
+    "mcp__hilclaw__hypotheses_read",
+    "mcp__hilclaw__checks_read",
+    "mcp__hilclaw__hypotheses_write",
+}
 
 UNKNOWN = "the definition holds an entry that is not in the layout"
 WRONG_KIND = "an entry of the definition is of the wrong kind"
@@ -122,16 +133,19 @@ def test_the_repository_definition_by_default(session):
         ".claude/agents/experiment-runner.md": (
             SOURCE / "agents" / EXPERIMENT_RUNNER
         ).read_bytes(),
+        ".claude/agents/technique-selector.md": (
+            SOURCE / "agents" / TECHNIQUE_SELECTOR
+        ).read_bytes(),
     }
     assert sorted(os.listdir(session)) == [".claude", "CLAUDE.md"]
     assert os.listdir(session / ".claude") == ["agents"]
 
 
-def test_the_repository_definition_holds_the_prompt_and_the_three_agents():
+def test_the_repository_definition_holds_the_prompt_and_the_four_agents():
     assert sorted(os.listdir(SOURCE)) == ["agents", PROMPT]
     assert (SOURCE / "agents").is_dir()
     assert sorted(os.listdir(SOURCE / "agents")) == sorted(
-        [EVALUATOR, CODER_DRIVER, EXPERIMENT_RUNNER]
+        [EVALUATOR, CODER_DRIVER, EXPERIMENT_RUNNER, TECHNIQUE_SELECTOR]
     )
 
 
@@ -579,7 +593,7 @@ def test_the_prompt_delegates_both_checks_to_the_evaluator():
 def test_the_prompt_keeps_the_stop_in_later_rounds():
     text = prompt_text()
     assert "not yet defined" in text
-    assert "In other rounds it follows step 1" in the_stop()
+    assert "In other rounds it follows step 7" in the_stop()
     assert "Later slices of the definition replace this stop in rounds ≥ 1" in text
 
 
@@ -776,3 +790,115 @@ def test_an_invalid_run_id_makes_no_request():
     assert "report that in one line and end the session" in bullet
     assert "make no tool request that names a run" in bullet
     assert "run_commit" not in bullet
+
+
+def test_the_technique_selector_frontmatter():
+    data = (SOURCE / "agents" / TECHNIQUE_SELECTOR).read_bytes()
+    assert b"\r" not in data
+    found = frontmatter(data.decode("utf-8"))
+    assert set(found) == {"name", "description", "tools"}
+    assert found["name"] == "technique-selector"
+    assert found["description"]
+    tools = [name.strip() for name in found["tools"].split(",")]
+    assert len(tools) == len(set(tools))
+    assert set(tools) == TECHNIQUE_SELECTOR_TOOLS
+    served = served_names()
+    for name in tools:
+        if name.startswith("mcp__hilclaw__"):
+            assert name in served
+    for name in (
+        "Bash",
+        "Write",
+        "Edit",
+        "NotebookEdit",
+        "Agent",
+        "Skill",
+        "mcp__hilclaw__timings_compare",
+    ):
+        assert name not in tools
+
+
+def test_the_technique_selector_body():
+    text = " ".join(
+        (SOURCE / "agents" / TECHNIQUE_SELECTOR).read_text(encoding="utf-8").split()
+    )
+    body = text.split("---", 2)[2]
+    assert "names the run id and the round, and no place" in body
+    assert "Every tool request carries the run id given in the delegation" in body
+    assert "write nothing by any means but `mcp__hilclaw__hypotheses_write`" in body
+    on_record = between(body, "On `invalid_request` or `cases_mismatch`", "On any")
+    assert "correct the record and send it again" in on_record
+    assert "On any other kind, send nothing further, report the kind and end" in body
+    assert "Write no `cases_read` and no basis entry of kind `case`" in body
+    assert "tests at least one system hypothesis" in body
+    assert "at least one such input" in body
+    assert "Request no check, measurement, spec or coder call" in body
+    assert "`tested_by`" in body
+    for cited in ("ADR-0112 decision 2", "ADR-0112 decision 3", "ADR-0132 decision 7"):
+        assert cited in body
+
+
+def test_the_prompt_delegates_the_selection_in_later_rounds():
+    text = prompt_text()
+    assert (SOURCE / "agents" / TECHNIQUE_SELECTOR).is_file()
+    assert "to `technique-selector`, only as step 6 says" in text
+    assert "In a round ≥ 1 there are no steps 2 to 5: step 6 follows step 1" in (
+        round_step(2)
+    )
+    selection = round_step(6)
+    assert selection.startswith(
+        "Round ≥ 1 only.** Delegate to `technique-selector` with the `Agent`"
+    )
+    assert "names your run id and the round, and no place" in selection
+    assert "go on to step 7" in selection
+    read = round_step(7)
+    assert read.startswith("Round ≥ 1 only.** Call `mcp__hilclaw__hypotheses_read`")
+    assert "whatever the report of step 6 said" in read
+    failed = between(read, "If the call fails with any kind", "If it returns")
+    assert "report the kind in one line and come to the stop" in failed
+    returned = read.split("If it returns the round's record", 1)[1]
+    assert "come to the stop" in returned
+    assert "not yet defined" in returned
+    assert "ADR-0132 decision 6" in read
+
+
+def test_the_stop_follows_the_read_in_later_rounds():
+    stop = the_stop()
+    later = stop.split("In other rounds it follows step 7", 1)[1]
+    assert "after a failed read" in later
+    assert "the following steps of round `<round>` are not yet defined" in later
+    assert "Later slices of the definition replace this stop in rounds ≥ 1" in (
+        prompt_text()
+    )
+
+
+def test_the_prompt_names_hypotheses_write_only_in_the_prohibition():
+    text = prompt_text()
+    naming = only_forbidden(text, "hypotheses_write")
+    assert len(naming) == 1
+    assert "Do not call `mcp__hilclaw__hypotheses_write` yourself" in naming[0]
+    reading = [
+        s
+        for s in re.split(r"(?<=\.) ", text)
+        if "Use `mcp__hilclaw__hypotheses_read`" in s
+    ]
+    assert len(reading) == 1
+    assert "only to read the round's hypothesis record in step 7" in reading[0]
+
+
+def test_no_later_round_reaches_a_spec_write_or_a_coder_delegation():
+    for number in (2, 3, 4, 5):
+        assert round_step(number).startswith("Round 0 only.**")
+    for number in (6, 7):
+        step = round_step(number)
+        for word in (
+            "coder-driver",
+            "spec_write",
+            "coder_run",
+            "evaluator",
+            "experiment-runner",
+            "closing steps",
+            "go on to step 8",
+        ):
+            assert word not in step
+    assert " 8. **" not in between(prompt_text(), "## The round steps", "The stop:")

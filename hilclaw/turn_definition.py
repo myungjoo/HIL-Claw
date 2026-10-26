@@ -41,9 +41,11 @@ outside the session directory.
   when the call brought something in, the sim-point and then the
   board-point check to the evaluator and, when both verified, the board
   measurement to the experiment-runner; on a completed measurement it goes
-  to the closing steps, and otherwise it stops. In other rounds the later
-  steps are not yet defined, so a turn stops after the key store. The stop
-  writes nothing else and ends no round.
+  to the closing steps, and otherwise it stops. In a round >= 1 a turn
+  delegates the selection to the technique-selector after the key store,
+  then reads the round's hypothesis record with ``hypotheses.read``, and
+  stops: the later steps are not yet defined (ADR-0132 decision 6). The
+  stop writes nothing else and ends no round.
 - *Refusals*, each a :class:`ValueError` with a fixed text raised before
   anything is written: a top-level entry that is not a key of :data:`LAYOUT`;
   an entry of the wrong kind; a missing ``round-manager.md``; an entry at any
@@ -61,14 +63,15 @@ unchanged, what reading, removing or copying raises.
 
 The roster: ``orchestration/agents/`` holds the evaluator's definition
 (ADR-0128 decision 7), the coder-driver's (ADR-0126 decision 6; ADR-0141
-decision 5) and the experiment-runner's (ADR-0142 decision 4), and the rest
-of the roster stays open (OD-23).
+decision 5), the experiment-runner's (ADR-0142 decision 4) and the
+technique-selector's (ADR-0132 decision 7), and the rest of the roster
+stays open (OD-23).
 
 Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
 ADR-0118 decision 4, "Workspace trust"), no round steps of a round >= 1
-between the key store and the closing steps (later P2-1 slices), no
-``--add-dir`` or other way for the session to reach the run's files
-(decision 4), no caller and no command-line entry.
+between the read of the round's hypothesis record and the closing steps
+(later P2-1 slices), no ``--add-dir`` or other way for the session to reach
+the run's files (decision 4), no caller and no command-line entry.
 
 Runtime acceptance items it depends on (ADR-0118 Consequences): (i) a
 session started in the session directory loads its ``CLAUDE.md``,
@@ -76,7 +79,8 @@ session started in the session directory loads its ``CLAUDE.md``,
 file of this repository; (iii) a sub-agent defined in its ``.claude/agents/``
 is found and the main session of a ``-p`` run delegates to it; and
 (ADR-0128 Consequences) (xviii) the evaluator gets exactly the tools its
-``tools`` list names.
+``tools`` list names; and (ADR-0132 Consequences) (xxiii) so does the
+technique-selector.
 """
 
 import os

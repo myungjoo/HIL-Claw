@@ -25,11 +25,13 @@ which later promotions make uncheckable afterwards (decision 3), so a case of
 ``found.cases`` that ``cases_read`` does not name is no mismatch; anything of
 the verdict of a named case (decision 2); the *refs* inside a case; the copies
 against ``runs/``; the rules of a ``hypotheses.json`` copied inside a case;
-and cases of another key or version (OD-4, OD-11). It does not decide who
-calls it or when, whether a write is refused on a mismatch, how a report of
-the lookup is carried or what follows a mismatch (ADR-0073 Boundaries; OD-18,
-OD-23). It is no tool, no hook and no command; it writes, creates, removes
-and repairs nothing, takes no lock and logs nothing, and it reads only what
+and cases of another key or version (OD-4, OD-11). For the runs of ADR-0120
+decision 1 the tool ``hypotheses.write`` (:mod:`hilclaw.hypotheses_write_tool`)
+holds :func:`check` before the write for a record with ``cases_read`` and
+refuses a mismatch (ADR-0132 decision 4); how a report of the lookup is
+carried stays open (ADR-0073 Boundaries; OD-18, OD-23). It is no tool, no
+hook and no command itself; it writes, creates, removes and repairs nothing,
+takes no lock and logs nothing, and it reads only what
 :func:`hilclaw.case_lookup.lookup` reads.
 """
 

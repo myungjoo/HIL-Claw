@@ -43,13 +43,19 @@ first-case run (ADR-0118 decisions 1 and 2).
   or any other means (ADR-0135 decisions 2 and 6).
 - Use only the `Agent` tool to delegate to `coder-driver`, to `evaluator`
   and to `experiment-runner`, and only as steps 2, 3, 4 and 5 of "The round
-  steps" say. Do not call
+  steps" say, and to `technique-selector`, only as step 6 says (ADR-0132
+  decision 7). Do not call
   `mcp__hilclaw__spec_write` or `mcp__hilclaw__coder_run` yourself, and write
   no spec or kernel by any other means (ADR-0126 decision 2; ADR-0141
   decisions 5 and 6). Do not call `mcp__hilclaw__correctness_check` or
   `mcp__hilclaw__checks_read` yourself (ADR-0128 decision 2; ADR-0142
   decision 3). Do not call `mcp__hilclaw__board_run` yourself (ADR-0142
   decision 4; ADR-0139 decision 5).
+- Use `mcp__hilclaw__hypotheses_read`, your run id as `run_id`, only to read
+  the round's hypothesis record in step 7 of "The round steps" (ADR-0132
+  decision 6; ADR-0129 decision 3). Do not call
+  `mcp__hilclaw__hypotheses_write` yourself, and write no hypothesis record
+  by any other means (ADR-0132 decisions 3 and 6).
 
 ## The end of a session
 
@@ -133,7 +139,8 @@ before any other step of it:
    On any other report (any failure kind, `spec_exists` and
    `no_container_runtime` among them, an empty `taken`, or no report you can
    read) come to the stop, and read nothing more into the kind or the names
-   (ADR-0142 decision 2). In a round ≥ 1 there is no step 2.
+   (ADR-0142 decision 2). In a round ≥ 1 there are no steps 2 to 5: step 6
+   follows step 1.
 3. **Round 0 only.** Delegate to `evaluator` with the `Agent` tool and wait
    for its report. The message names your run id, the tuple `round` 0,
    `candidate` 1, `attempt` 1, the point `sim`, and no place and no
@@ -157,12 +164,25 @@ before any other step of it:
    and 4; ADR-0133 decision 1). On any other report (the `outcome`
    `"broken"`, a failure kind, or no report you can read) come to the stop
    (ADR-0142 decision 6; ADR-0119 decision 5).
+6. **Round ≥ 1 only.** Delegate to `technique-selector` with the `Agent`
+   tool and wait for its report. The message names your run id and the
+   round, and no place (ADR-0132 decisions 6 and 7; ADR-0123 decisions 2
+   and 4). Whatever it reports, report it in one line, and go on to step 7
+   (ADR-0132 decision 6).
+7. **Round ≥ 1 only.** Call `mcp__hilclaw__hypotheses_read`, your run id as
+   `run_id` and the round as `round`, whatever the report of step 6 said
+   (ADR-0132 decision 6). If the call fails with any kind, report the kind
+   in one line and come to the stop (ADR-0132 decision 6; ADR-0143
+   decisions 2 and 7). If it returns the round's record, come to the stop
+   as well: the steps after it are not yet defined.
 
 The stop: in round 0 it follows step 2, 3, 4 or 5 as they say, once the
 report that step waits for has come (ADR-0143 decision 7; ADR-0142
-decision 6). In other rounds it follows step 1: the steps after it, up to
-the closing steps of a round, are not yet defined, so report in one line
-that the following steps of round `<round>` are not yet defined. In every
+decision 6). In other rounds it follows step 7: after a failed read, once
+its kind is reported; after a read that returned the round's record, the
+steps after it, up to the closing steps of a round, are not yet defined, so
+report in one line that the following steps of round `<round>` are not yet
+defined (ADR-0132 decision 6). In every
 case write nothing further, call `mcp__hilclaw__run_commit` as "The end of
 a session" says, and end the session (ADR-0143 decisions 2 and 7). Round 0
 is not ended: no `round.end` (ADR-0142 decisions 1, 2 and 6). A round-0

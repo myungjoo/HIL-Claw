@@ -498,3 +498,47 @@ def test_started_as_the_turn_loop_will(session):
     assert refused.stdout == b""
     line = named("mcp__hilclaw__verdicts_write")
     assert refused.stderr.decode("utf-8").replace("\r\n", "\n") == line + "\n"
+
+
+SELECTOR_ID = {"agent_id": "f7a8", "agent_type": "technique-selector"}
+RUNNER_ID = {"agent_id": "e5f6", "agent_type": "experiment-runner"}
+
+
+def test_the_real_technique_selector_holds_hypotheses_write(session):
+    tool = "mcp__hilclaw__hypotheses_write"
+    passes(payload(tool, **SELECTOR_ID), session)
+    refuses(payload(tool), session, named(tool))
+    for ids in (EVALUATOR_ID, CODER_ID, RUNNER_ID):
+        refuses(payload(tool, **ids), session, named(tool))
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "mcp__hilclaw__state_read",
+        "mcp__hilclaw__instance_read",
+        "mcp__hilclaw__hypotheses_read",
+        "mcp__hilclaw__checks_read",
+    ],
+)
+def test_the_real_technique_selector_holds_its_reads(session, tool):
+    passes(payload(tool, **SELECTOR_ID), session)
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "mcp__hilclaw__timings_compare",
+        "mcp__hilclaw__verdicts_write",
+        "mcp__hilclaw__state_write",
+        "mcp__hilclaw__spec_write",
+        "mcp__hilclaw__coder_run",
+        "mcp__hilclaw__board_run",
+    ],
+)
+def test_the_real_technique_selector_is_refused_what_it_does_not_hold(session, tool):
+    refuses(payload(tool, **SELECTOR_ID), session, named(tool))
+
+
+def test_the_main_session_now_reads_hypotheses(session):
+    passes(payload("mcp__hilclaw__hypotheses_read"), session)

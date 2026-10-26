@@ -210,6 +210,9 @@ def default_registry(data_root_source):
     and ``checks.read`` (:func:`hilclaw.checks_tool.definition`, ADR-0131
     decision 3), with which it reads the ``correctness.check`` lines of an
     attempt or a candidate at one point and their standing. It holds
+    ``hypotheses.write`` (:func:`hilclaw.hypotheses_write_tool.definition`,
+    ADR-0132 decision 4), with which the technique-selector writes a round's
+    ``decision/hypotheses.json``. It holds
     ``case.write`` (:func:`hilclaw.case_tool.definition`, ADR-0133 decision
     3), with which the Round-Manager writes a round's case, ``key.store``
     (:func:`hilclaw.key_store_tool.definition`, ADR-0134 decision 3), with
@@ -242,6 +245,7 @@ def default_registry(data_root_source):
         coder_runtime,
         coder_tool,
         hypotheses_tool,
+        hypotheses_write_tool,
         key_store_tool,
         round_end_tool,
         run_commit,
@@ -265,6 +269,7 @@ def default_registry(data_root_source):
     registry.register(*run_commit.definition(data_root_source))
     registry.register(*verdicts_tool.definition(data_root_source))
     registry.register(*hypotheses_tool.definition(data_root_source))
+    registry.register(*hypotheses_write_tool.definition(data_root_source))
     registry.register(*checks_tool.definition(data_root_source))
     registry.register(*case_tool.definition(data_root_source))
     registry.register(*key_store_tool.definition(data_root_source))

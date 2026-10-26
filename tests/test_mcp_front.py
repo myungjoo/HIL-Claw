@@ -27,6 +27,7 @@ FIXED_NAMES = {
     "state.write": "state_write",
     "verdicts.write": "verdicts_write",
     "hypotheses.read": "hypotheses_read",
+    "hypotheses.write": "hypotheses_write",
     "checks.read": "checks_read",
     "coder.run": "coder_run",
     "run.commit": "run_commit",
@@ -464,7 +465,7 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 
 
 def test_the_fixed_tool_set_is_the_blob_tools_hw_tools_and_run_file_tools():
-    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), sim.run and board.run (ADR-0167), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), checks.read (ADR-0131), case.write (ADR-0133), key.store (ADR-0134), round.end (ADR-0135), spec.write (ADR-0138), timings.compare (ADR-0140) and coder.run (ADR-0141)."""
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), sim.run and board.run (ADR-0167), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), hypotheses.write (ADR-0132), checks.read (ADR-0131), case.write (ADR-0133), key.store (ADR-0134), round.end (ADR-0135), spec.write (ADR-0138), timings.compare (ADR-0140) and coder.run (ADR-0141)."""
     held = {
         "blob_fetch": "blob.fetch",
         "blob_push": "blob.push",
@@ -474,6 +475,7 @@ def test_the_fixed_tool_set_is_the_blob_tools_hw_tools_and_run_file_tools():
         "coder_run": "coder.run",
         "correctness_check": "correctness.check",
         "hypotheses_read": "hypotheses.read",
+        "hypotheses_write": "hypotheses.write",
         "instance_read": "instance.read",
         "key_store": "key.store",
         "round_end": "round.end",
@@ -533,6 +535,7 @@ def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
         "coder_run",
         "correctness_check",
         "hypotheses_read",
+        "hypotheses_write",
         "instance_read",
         "key_store",
         "round_end",
@@ -986,6 +989,7 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
             "coder_run",
             "correctness_check",
             "hypotheses_read",
+            "hypotheses_write",
             "instance_read",
             "key_store",
             "round_end",
@@ -1095,6 +1099,7 @@ def test_process_handshake_and_tool_list():
             "coder_run",
             "correctness_check",
             "hypotheses_read",
+            "hypotheses_write",
             "instance_read",
             "key_store",
             "round_end",
