@@ -665,6 +665,25 @@ def test_run_file_missing_of_state_comes_before_that_of_instance(root):
     assert error.message.startswith(STATE_PATH)
 
 
+def test_the_kind_of_instance_comes_before_the_lookup(root, monkeypatch):
+    run(root, instance=False)
+    store_case(root)
+    monkeypatch.setattr(case_lookup, "find", None)
+    assert refused(root, citing()).kind == "run_file_missing"
+
+
+def test_cases_unreadable_comes_before_hypotheses_exist(root, monkeypatch):
+    run(root)
+    store_case(root)
+    place(hypotheses_path(root), encoded(record()))
+
+    def denied(path):
+        raise PermissionError(errno.EACCES, "denied", str(path))
+
+    monkeypatch.setattr(os, "listdir", denied)
+    assert refused(root, citing()).kind == "cases_unreadable"
+
+
 def test_cases_mismatch_comes_before_hypotheses_exist(root):
     run(root)
     store_case(root)
