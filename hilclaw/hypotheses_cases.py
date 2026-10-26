@@ -28,8 +28,9 @@ against ``runs/``; the rules of a ``hypotheses.json`` copied inside a case;
 and cases of another key or version (OD-4, OD-11). For the runs of ADR-0120
 decision 1 the tool ``hypotheses.write`` (:mod:`hilclaw.hypotheses_write_tool`)
 holds :func:`check` before the write for a record with ``cases_read`` and
-refuses a mismatch (ADR-0132 decision 4); how a report of the lookup is
-carried stays open (ADR-0073 Boundaries; OD-18, OD-23). It is no tool, no
+refuses a mismatch (ADR-0132 decision 4), and the tool ``cases.lookup``
+(:mod:`hilclaw.cases_tool`) carries the reports of the lookup to the
+selection (ADR-0173 decision 3). It is no tool, no
 hook and no command itself; it writes, creates, removes and repairs nothing,
 takes no lock and logs nothing, and it reads only what
 :func:`hilclaw.case_lookup.lookup` reads.
