@@ -39,10 +39,11 @@ outside the session directory.
   round >= 1), the round-end write and the commit; in round 0 a turn
   delegates the coder call to the coder-driver after the key store and,
   when the call brought something in, the sim-point and then the
-  board-point check to the evaluator, and it stops after the board-point
-  check at the latest. In other rounds the later steps are not yet defined,
-  so a turn stops after the key store. The stop writes nothing else and ends
-  no round.
+  board-point check to the evaluator and, when both verified, the board
+  measurement to the experiment-runner; on a completed measurement it goes
+  to the closing steps, and otherwise it stops. In other rounds the later
+  steps are not yet defined, so a turn stops after the key store. The stop
+  writes nothing else and ends no round.
 - *Refusals*, each a :class:`ValueError` with a fixed text raised before
   anything is written: a top-level entry that is not a key of :data:`LAYOUT`;
   an entry of the wrong kind; a missing ``round-manager.md``; an entry at any
@@ -59,15 +60,15 @@ not a ``str`` or path object; :class:`FileNotFoundError` for a missing
 unchanged, what reading, removing or copying raises.
 
 The roster: ``orchestration/agents/`` holds the evaluator's definition
-(ADR-0128 decision 7) and the coder-driver's (ADR-0126 decision 6; ADR-0141
-decision 5), and the rest of the roster stays open (OD-23).
+(ADR-0128 decision 7), the coder-driver's (ADR-0126 decision 6; ADR-0141
+decision 5) and the experiment-runner's (ADR-0142 decision 4), and the rest
+of the roster stays open (OD-23).
 
 Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
-ADR-0118 decision 4, "Workspace trust"), no round steps between the
-last defined step (the board-point check in round 0, the key store in other
-rounds) and the closing steps (later P2-1 slices), no ``--add-dir`` or other
-way for the session to reach the run's files (decision 4), no caller and no
-command-line entry.
+ADR-0118 decision 4, "Workspace trust"), no round steps of a round >= 1
+between the key store and the closing steps (later P2-1 slices), no
+``--add-dir`` or other way for the session to reach the run's files
+(decision 4), no caller and no command-line entry.
 
 Runtime acceptance items it depends on (ADR-0118 Consequences): (i) a
 session started in the session directory loads its ``CLAUDE.md``,
