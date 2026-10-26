@@ -12,7 +12,7 @@ Its parts:
 
 * :func:`reference_logits`: the float64 logits rows of one teacher-forced
   generation, from the arguments :func:`hilclaw.model_forward_execute.execute`
-  takes. With S the prompt's length and G the number of given tokens, the
+  takes in the given-sequence mode, ``generation_length`` excepted. With S the prompt's length and G the number of given tokens, the
   S + G - 1 fed tokens are the prompt and the given tokens but the last; the
   pass over them is computed once, causally, which gives at each position
   what ADR-0166's prefill and decode passes give there through the cache
@@ -38,8 +38,7 @@ Conventions of this module (readings of ADR-0176, not rules of the record):
 * The arguments :func:`reference_logits` shares with
   :func:`hilclaw.model_forward_check.check` are checked by that function at
   the dtype ``"bf16"``, with ``generation_length`` the length of ``given``
-  and no binding, as :func:`hilclaw.model_forward_run.encode_input` checks
-  them: what it raises is passed on, and its ``"invalid_input"`` reasons,
+  and no binding: what it raises is passed on, and its ``"invalid_input"`` reasons,
   joined with ``"; "``, are raised as one :class:`ValueError`.
 * ``given`` ``None`` raises :class:`ValueError`: a teacher-forced reference
   needs every fed token.
@@ -48,8 +47,9 @@ Conventions of this module (readings of ADR-0176, not rules of the record):
   reference is not finite.
 
 What this module does not do: it builds, starts and runs nothing, and reads
-and writes no file; it has no token selection rule and no generation mode
-(ADR-0176 decision 5, a later code slice); it holds no tolerance value,
+and writes no file; it has no token selection rule and no generation mode,
+which the forward program has (ADR-0176 decision 5): a generated run is
+compared by passing its selected tokens as ``given``; it holds no tolerance value,
 prompt, length or model parameter and gives none a default (HQ-0070); it
 casts no array of its caller and keeps nothing between calls.
 """

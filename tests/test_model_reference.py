@@ -686,13 +686,14 @@ def real_binding(directory, miswired=None):
     return forward_execute.binding_of(kernels)
 
 
-def executed(tmp_path, model, rows, miswired=None):
+def executed(tmp_path, model, rows, miswired=None, **changes):
     builds = tmp_path / "builds"
     builds.mkdir()
     result = model_forward_execute.execute(
         DIMENSIONS,
         real_binding(tmp_path, miswired),
-        **arguments(model, lm_head_rows=rows),
+        **arguments(model, lm_head_rows=rows, **changes),
+        generation_length=model["G"],
         build_timeout_s=forward.BUILD_TIMEOUT,
         run_timeout_s=forward.RUN_TIMEOUT,
         program_flags=("-O2",),
@@ -748,6 +749,28 @@ def test_the_executor_with_real_kernels_matches_the_reference(
     rows = "last" if last else "all"
     report = executed(tmp_path, model, rows)
     expected = reference_logits(DIMENSIONS, **arguments(model, lm_head_rows=rows))
+    rtol, atol = tolerance(expected)
+    result = compare(report, expected, rtol=rtol, atol=atol)
+    assert result.ok, result
+    assert not np.array_equal(forward.widen(report.logits), expected)
+
+
+@pytest.mark.parametrize("last", [False, True])
+@pytest.mark.parametrize(("seed", "prompt", "passes"), [(73, 3, 3), (76, 2, 4)])
+def test_a_greedy_generation_matches_the_reference_teacher_forced_on_its_tokens(
+    clang, tmp_path, seed, prompt, passes, last
+):
+    model = sharp_model(seed, prompt, passes)
+    rows = "last" if last else "all"
+    report = executed(tmp_path, model, rows, given=None)
+    assert np.array_equal(report.tokens[:prompt], model["tokens"][:prompt])
+    selected = [int(token) for token in report.tokens[prompt:]]
+    assert len(set(selected)) > 1
+    selection_rows = range(passes) if last else range(prompt - 1, prompt + passes - 1)
+    assert selected == [forward.choose(report.logits[r]) for r in selection_rows]
+    expected = reference_logits(
+        DIMENSIONS, **arguments(model, given=selected, lm_head_rows=rows)
+    )
     rtol, atol = tolerance(expected)
     result = compare(report, expected, rtol=rtol, atol=atol)
     assert result.ok, result

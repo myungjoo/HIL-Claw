@@ -2,20 +2,24 @@
 
 ``ARCHITECTURE/decisions/ADR-0166-od31-bf16-forward-pass.md`` is the rule:
 decision 4 says what the host side hands over and who makes it, and decision 7
-fixes the given-sequence mode and the report. The header comment of
+fixes the given-sequence mode and the report;
+``ARCHITECTURE/decisions/ADR-0176-od31-model-level-reference-and-comparison.md``
+decision 5 adds the greedy generation mode, in which the program selects the
+tokens. The header comment of
 ``model_forward.c`` defines the program's command line, its input file, its
 library table, its report, the end mark and its exit statuses; this module
 speaks exactly that form. :func:`encode_input` turns the dimensions, ``eps``,
-the RoPE constants, the weights, the prompt, the given tokens, ``lm_head_rows``
-and the per-pass library table into the bytes of the input file, building the
+the RoPE constants, the weights, the prompt, the given tokens (or ``None``, the
+generation mode), the generation length, ``lm_head_rows`` and the per-pass
+library table into the bytes of the input file, building the
 RoPE table with :func:`hilclaw.rope_table.build` for positions 0 to S + G - 2
 and converting ``eps`` with :func:`hilclaw.model_binding.rmsnorm_eps`;
 :func:`run_forward_program` starts the program once with its libraries under
-a time limit; and :func:`parse_report` reads a complete report into the token
-ids and the logits rows. A run that times out, ends with a status other than 0
-or leaves no complete report is the outcome **run failed** of ADR-0153
-decision 5, named by :class:`hilclaw.model_run.RunFailed`, which this module
-reuses.
+a time limit; and :func:`parse_report` reads a complete report of either
+mode into the token ids and the logits rows. A run that times out, ends with a
+status other than 0 or leaves no complete report is the outcome **run failed**
+of ADR-0153 decision 5, named by :class:`hilclaw.model_run.RunFailed`, which
+this module reuses.
 
 The command is::
 
@@ -29,10 +33,15 @@ Conventions of this module (not rules of the record):
   Turning a binding into it is left to the caller.
 - The arguments :func:`encode_input` shares with
   :func:`hilclaw.model_forward_check.check` are checked by that function, at
-  the dtype ``"bf16"``, with ``generation_length`` the length of ``given``
-  and no binding: what it raises is passed on, and its ``"invalid_input"``
-  reasons, joined with ``"; "``, are raised as one :class:`ValueError`. Its
-  outcomes for the missing binding are not looked at.
+  the dtype ``"bf16"`` and with no binding: what it raises is passed on, and
+  its ``"invalid_input"`` reasons, joined with ``"; "``, are raised as one
+  :class:`ValueError`. Its outcomes for the missing binding are not looked
+  at.
+- ``mode`` of :func:`parse_report` and :func:`run_forward_program` is
+  ``"given"`` for an input encoded with given tokens and ``"generation"``
+  for one encoded with ``given`` ``None``; it says where the report holds
+  the tokens after the prompt. Either way :class:`ForwardReport` holds the
+  prompt and then the given or selected tokens.
 - The length of a complete report is computed from the arguments alone and
   compared before any byte is read; nothing is allocated from the report's
   length. Each array of a :class:`ForwardReport` is fresh and owns its memory.
@@ -46,9 +55,9 @@ Conventions of this module (not rules of the record):
   passed on.
 
 What this module does not do: it checks no binding of a kernel to a call site
-and builds nothing; it has no generation mode or token selection rule (ADR-0176
-decision 5, a later code slice) and no model-level reference or tolerance,
-which are :mod:`hilclaw.model_reference`'s (ADR-0176); it gives no
+and builds nothing; it selects no token, which the program does (ADR-0176
+decision 5), and has no model-level reference or tolerance, which are
+:mod:`hilclaw.model_reference`'s (ADR-0176); it gives no
 RoPE constant, model parameter or time limit a default (HQ-0070); it places no
 directory and chooses no input path, container or environment; it casts no
 array; and it stores or retries nothing.
@@ -73,6 +82,7 @@ CALL_SITES = (
 )
 """The fifteen call sites in the order of the library table of ``model_forward.c``."""
 
+_MODES = ("given", "generation")
 _UINT64_LIMIT = 2**64
 _PER_LAYER = ("attention_norm", "qkv", "o", "ffn_norm", "gate", "up", "down")
 
@@ -80,8 +90,9 @@ _PER_LAYER = ("attention_norm", "qkv", "o", "ffn_norm", "gate", "up", "down")
 class ForwardReport(NamedTuple):
     """A complete report: ``tokens``, the S + G token ids as ``numpy.uint64``, and ``logits``, a ``numpy.uint16`` array of bf16 patterns of shape (rows, V).
 
-    The rows are those of each pass in pass order: S + G - 1 for ``"all"``,
-    G for ``"last"``.
+    ``tokens`` is the prompt, then the given tokens or, in the generation
+    mode, the G selected tokens. The rows are those of each pass in pass
+    order: S + G - 1 for ``"all"``, G for ``"last"``.
     """
 
     tokens: np.ndarray
@@ -111,6 +122,7 @@ def encode_input(
     weights,
     prompt,
     given,
+    generation_length,
     lm_head_rows,
     libraries,
     library_count,
@@ -121,8 +133,10 @@ def encode_input(
     ``eps`` is exactly a ``float``; ``rope`` is a
     :class:`hilclaw.model_forward_check.RopeConstants`; ``weights`` is a
     :class:`hilclaw.model_forward_check.Weights` of ``numpy.uint16`` arrays;
-    ``prompt`` and ``given`` are sequences of ``int`` token ids, G the length
-    of ``given``; ``lm_head_rows`` is ``"all"`` or ``"last"``;
+    ``prompt`` is a sequence of ``int`` token ids; ``given`` is a sequence of
+    G ``int`` token ids (the given-sequence mode) or ``None`` (the generation
+    mode); G is ``generation_length``; ``lm_head_rows`` is ``"all"`` or
+    ``"last"``;
     ``library_count`` is the number of libraries the program will be given,
     an ``int`` from 1 to 2**64 - 1; ``libraries`` maps each name of
     :data:`CALL_SITES`, and no other key, to a sequence of G ``int`` library
@@ -130,29 +144,27 @@ def encode_input(
     has a default.
 
     The bytes are those of the header comment of ``model_forward.c``: the ten
-    header integers, ``rmsnorm_eps(eps)`` as binary32, the library table
-    (entry s*G + p for call site s at pass p), the RoPE table of
-    ``rope_table.build(head_dim=d, positions=S + G - 1, ...)``, the prompt and
-    the given tokens, then the weights in the order of that comment, each in
-    row-major order whatever its memory order.
+    header integers, the last ``lm_head_rows`` + 2*mode with ``"all"`` 0,
+    ``"last"`` 1, the given-sequence mode 0 and the generation mode 1;
+    ``rmsnorm_eps(eps)`` as binary32; the library table (entry s*G + p for
+    call site s at pass p); the RoPE table of
+    ``rope_table.build(head_dim=d, positions=S + G - 1, ...)``; the prompt
+    and, in the given-sequence mode, the given tokens; then the weights in the
+    order of that comment, each in row-major order whatever its memory order.
 
-    Raised before any byte is built: :class:`ValueError` for ``given`` that
-    is ``None`` (the generation mode) and :class:`TypeError` for ``given``
-    that is no sequence; then what :func:`hilclaw.model_forward_check.check`
-    raises, and :class:`ValueError` with its ``"invalid_input"`` reasons;
-    then :class:`TypeError` or :class:`ValueError` for ``library_count`` and
-    for ``libraries``: not a mapping, a missing or unknown call site, a value
+    Raised before any byte is built: :class:`TypeError` for ``given`` that is
+    neither ``None`` nor a sequence; then what
+    :func:`hilclaw.model_forward_check.check` raises, and :class:`ValueError`
+    with its ``"invalid_input"`` reasons; then :class:`TypeError` or
+    :class:`ValueError` for ``library_count`` and for ``libraries``: not a
+    mapping, a missing or unknown call site, a value
     that is no sequence or not of G entries, an entry that is not an ``int``
     or out of range.
     """
-    if given is None:
-        raise ValueError(
-            "given: is None; the generation mode has no token selection rule "
-            "(OD-31 sub-question 6)"
+    if given is not None and not _is_sequence(given):
+        raise TypeError(
+            f"given: must be None or a sequence, got {type(given).__name__}"
         )
-    if not _is_sequence(given):
-        raise TypeError(f"given: must be a sequence, got {type(given).__name__}")
-    passes = len(given)
     result = model_forward_check.check(
         dimensions,
         {},
@@ -162,7 +174,7 @@ def encode_input(
         weights=weights,
         prompt=prompt,
         given=given,
-        generation_length=passes,
+        generation_length=generation_length,
         lm_head_rows=lm_head_rows,
     )
     reasons = [
@@ -172,6 +184,7 @@ def encode_input(
     ]
     if reasons:
         raise ValueError("; ".join(reasons))
+    passes = generation_length
     table = _library_table(libraries, passes, library_count)
     d = dimensions
     header = (
@@ -184,7 +197,7 @@ def encode_input(
         d.head_dim,
         len(prompt),
         passes,
-        0 if lm_head_rows == "all" else 1,
+        (0 if lm_head_rows == "all" else 1) + (2 if given is None else 0),
     )
     table_of_rope = rope_table.build(
         head_dim=d.head_dim, positions=len(prompt) + passes - 1, **rope._asdict()
@@ -194,7 +207,9 @@ def encode_input(
         np.array([model_binding.rmsnorm_eps(eps)], dtype=np.float32).tobytes(),
         np.array(table, dtype=np.uint64).tobytes(),
         table_of_rope.tobytes(),
-        np.array([*prompt, *given], dtype=np.uint64).tobytes(),
+        np.array(
+            [*prompt, *(given if given is not None else ())], dtype=np.uint64
+        ).tobytes(),
         weights.embedding.tobytes(order="C"),
     ]
     for layer in range(d.layers):
@@ -204,24 +219,31 @@ def encode_input(
     return b"".join(parts)
 
 
-def parse_report(report, dimensions, *, prompt_length, generation_length, lm_head_rows):
+def parse_report(
+    report, dimensions, *, prompt_length, generation_length, lm_head_rows, mode
+):
     """Return the :class:`ForwardReport` of a complete report, or ``None``.
 
     With S = ``prompt_length``, G = ``generation_length``, V the vocabulary
     and rows S + G - 1 for ``lm_head_rows`` ``"all"`` and G for ``"last"``, a
     complete report is exactly 8*(S + G) + 2*rows*V bytes followed by
-    :data:`hilclaw.model_run.END_MARK`. Any other report gives ``None``.
+    :data:`hilclaw.model_run.END_MARK`: for ``mode`` ``"given"`` the S + G
+    token ids, then the rows; for ``mode`` ``"generation"`` the S prompt ids,
+    the rows, then the G selected ids. Any other report gives ``None``.
     Nothing is started or written.
 
     Raised before any byte of ``report`` is looked at: what
     :func:`hilclaw.model_binding.generation_calls` raises for ``dimensions``,
     ``prompt_length``, ``generation_length`` and ``lm_head_rows``, then
-    :class:`TypeError` for a ``report`` that is not exactly ``bytes``.
+    :class:`TypeError` for a ``mode`` that is not a ``str`` and
+    :class:`ValueError` for one that is neither ``"given"`` nor
+    ``"generation"``, then :class:`TypeError` for a ``report`` that is not
+    exactly ``bytes``.
     """
-    rows = _rows(dimensions, prompt_length, generation_length, lm_head_rows)
+    rows = _rows(dimensions, prompt_length, generation_length, lm_head_rows, mode)
     if type(report) is not bytes:
         raise TypeError(f"report: must be bytes, got {type(report).__name__}")
-    return _report(report, prompt_length + generation_length, rows, dimensions)
+    return _report(report, prompt_length, generation_length, rows, dimensions, mode)
 
 
 def run_forward_program(
@@ -233,6 +255,7 @@ def run_forward_program(
     prompt_length,
     generation_length,
     lm_head_rows,
+    mode,
     timeout_s,
     cwd=None,
     env=None,
@@ -247,9 +270,9 @@ def run_forward_program(
     ``libraries`` is a non-empty sequence of ``str`` or :class:`os.PathLike`;
     library ``i`` has index ``i`` in the input's library table. The input file
     is the caller's, placed before the call. ``dimensions``,
-    ``prompt_length``, ``generation_length`` and ``lm_head_rows`` are those
-    the input file was encoded with; they give the report's length as in
-    :func:`parse_report`.
+    ``prompt_length``, ``generation_length``, ``lm_head_rows`` and ``mode``
+    are those the input file was encoded with; they give the report's length
+    and form as in :func:`parse_report`.
 
     The run failed with :attr:`RunFailed.TIMEOUT` if it timed out, else with
     :attr:`RunFailed.EXIT_STATUS` if its status is not 0, else with
@@ -264,7 +287,7 @@ def run_forward_program(
     :class:`ValueError` for an empty ``program`` sequence or no libraries.
     What :func:`hilclaw.local_run.run` raises is passed on unchanged.
     """
-    rows = _rows(dimensions, prompt_length, generation_length, lm_head_rows)
+    rows = _rows(dimensions, prompt_length, generation_length, lm_head_rows, mode)
     if isinstance(program, (str, os.PathLike)):
         prefix = (_path(program, "program"),)
     else:
@@ -297,7 +320,7 @@ def run_forward_program(
         return ForwardProgramResult(RunFailed.TIMEOUT, None, run)
     if run.returncode != 0:
         return ForwardProgramResult(RunFailed.EXIT_STATUS, None, run)
-    report = _report(stdout, prompt_length + generation_length, rows, dimensions)
+    report = _report(stdout, prompt_length, generation_length, rows, dimensions, mode)
     if report is None:
         return ForwardProgramResult(RunFailed.REPORT_FORM, None, run)
     return ForwardProgramResult(None, report, run)
@@ -343,25 +366,39 @@ def _library_table(libraries, passes, library_count):
     return table
 
 
-def _rows(dimensions, prompt_length, generation_length, lm_head_rows):
+def _rows(dimensions, prompt_length, generation_length, lm_head_rows, mode):
     model_binding.generation_calls(
         dimensions,
         prompt_length=prompt_length,
         generation_length=generation_length,
         lm_head_rows=lm_head_rows,
     )
+    if type(mode) is not str:
+        raise TypeError(f"mode: must be a str, got {type(mode).__name__}")
+    if mode not in _MODES:
+        raise ValueError(f"mode: must be 'given' or 'generation', got {mode!r}")
     if lm_head_rows == "last":
         return generation_length
     return prompt_length + generation_length - 1
 
 
-def _report(report, token_count, rows, dimensions):
+def _report(report, prompt_length, generation_length, rows, dimensions, mode):
     vocabulary = dimensions.vocabulary
+    token_count = prompt_length + generation_length
     expected = 8 * token_count + 2 * rows * vocabulary + len(END_MARK)
     if len(report) != expected or not report.endswith(END_MARK):
         return None
-    tokens = np.frombuffer(report, dtype=np.uint64, count=token_count).copy()
+    head = token_count if mode == "given" else prompt_length
     logits = np.frombuffer(
-        report, dtype=np.uint16, count=rows * vocabulary, offset=8 * token_count
+        report, dtype=np.uint16, count=rows * vocabulary, offset=8 * head
     )
-    return ForwardReport(tokens, logits.reshape(rows, vocabulary).copy())
+    tokens = np.frombuffer(report, dtype=np.uint64, count=head)
+    if mode == "generation":
+        selected = np.frombuffer(
+            report,
+            dtype=np.uint64,
+            count=generation_length,
+            offset=8 * head + 2 * rows * vocabulary,
+        )
+        tokens = np.concatenate((tokens, selected))
+    return ForwardReport(tokens.copy(), logits.reshape(rows, vocabulary).copy())

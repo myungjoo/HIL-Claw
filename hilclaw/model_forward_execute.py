@@ -3,7 +3,9 @@
 ``ARCHITECTURE/decisions/ADR-0166-od31-bf16-forward-pass.md`` is the rule
 (decisions 4, 6 and 7, code slice 5), with
 ``ARCHITECTURE/decisions/ADR-0153-od31-model-executor.md`` (decision 3
-"Loading", decisions 5 and 6). This module joins
+"Loading", decisions 5 and 6) and, for the greedy generation mode,
+``ARCHITECTURE/decisions/ADR-0176-od31-model-level-reference-and-comparison.md``
+(decision 5). This module joins
 :mod:`hilclaw.model_forward_check`, :mod:`hilclaw.model_build` and
 :mod:`hilclaw.model_forward_run`. :func:`execute` takes these steps, in order:
 
@@ -42,9 +44,11 @@ Conventions of this module (readings of ADR-0166, not rules of the record):
   over l = P + T positions (S at pass 0, S + p at pass p). After an ``ok``
   check every such shape is among the ``calls``; one that is not raises
   :class:`KeyError`, an error of this module, not an outcome.
-- ``given`` ``None`` (the generation mode) or a ``given`` that is no sequence
-  is handed to the check with ``generation_length`` 0, since it gives no
-  length; the check reports or raises it.
+- ``generation_length`` is required in both modes, with no default: with
+  ``given`` ``None`` it is the number of tokens the program selects; with a
+  ``given`` sequence it must equal its length, which the check reports as
+  invalid input otherwise. It is handed to the check as it is, so a wrong
+  type is raised by the check.
 - A ``program_flags`` item that holds ``HILCLAW_MODEL_BF16`` is not refused:
   ``model_forward.c`` reads no macro, so it cannot select anything there.
 - The build directory, its removal and the argument checks of ``prefix``,
@@ -52,9 +56,9 @@ Conventions of this module (readings of ADR-0166, not rules of the record):
   reused: a removal that fails or is refused raises nothing and shows as
   ``removed`` false.
 
-What this module does not do: it has no generation mode or token selection rule
-(ADR-0176 decision 5, a later code slice) and no model-level reference or
-tolerance, which are :mod:`hilclaw.model_reference`'s (ADR-0176); it gives no
+What this module does not do: it selects no token, which the forward program
+does (ADR-0176 decision 5), and has no model-level reference or tolerance,
+which are :mod:`hilclaw.model_reference`'s (ADR-0176); it gives no
 default to any model parameter, RoPE constant (HQ-0070) or time limit, and sets
 no cache capacity; it chooses no flag of a kernel or of the program, no
 container and no environment; it casts no array; it has no fallback to another
@@ -72,7 +76,6 @@ from hilclaw.model_execute import (
     _checked_keep_out,
     _checked_parent,
     _checked_prefix,
-    _is_sequence,
     _remove,
 )
 
@@ -121,6 +124,7 @@ def execute(
     weights,
     prompt,
     given,
+    generation_length,
     lm_head_rows,
     build_timeout_s,
     run_timeout_s,
@@ -135,9 +139,11 @@ def execute(
     """Check, build and run one bf16 generation of the forward program; return a :class:`ForwardExecution`.
 
     ``dimensions``, ``binding``, ``eps``, ``rope``, ``weights``, ``prompt``,
-    ``given`` and ``lm_head_rows`` are the arguments of
+    ``given``, ``generation_length`` and ``lm_head_rows`` are the arguments of
     :func:`hilclaw.model_forward_check.check`, which gets them with the dtype
-    ``"bf16"`` and ``generation_length`` the length of ``given``. The
+    ``"bf16"``: ``given`` ``None`` runs the greedy generation mode of
+    ``generation_length`` passes, a ``given`` sequence of
+    ``generation_length`` tokens the given-sequence mode. The
     binding's kernels are :class:`hilclaw.model_binding.KernelReference`
     values, each built with its own ``sources`` and ``flags``,
     ``build_timeout_s``, ``compiler`` and ``env``; the forward program is
@@ -161,7 +167,6 @@ def execute(
     writing or the run raises is passed on unchanged after the directory was
     removed.
     """
-    generation_length = len(given) if _is_sequence(given) else 0
     check = model_forward_check.check(
         dimensions,
         binding,
@@ -209,6 +214,7 @@ def execute(
                 "weights": weights,
                 "prompt": prompt,
                 "given": given,
+                "generation_length": generation_length,
                 "lm_head_rows": lm_head_rows,
                 "libraries": libraries,
                 "library_count": len(kernels),
@@ -300,8 +306,9 @@ def _build_and_run(
         libraries,
         dimensions=dimensions,
         prompt_length=len(input_arguments["prompt"]),
-        generation_length=len(input_arguments["given"]),
+        generation_length=input_arguments["generation_length"],
         lm_head_rows=input_arguments["lm_head_rows"],
+        mode="generation" if input_arguments["given"] is None else "given",
         timeout_s=run_timeout_s,
         env=env,
     )

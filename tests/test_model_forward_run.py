@@ -77,6 +77,7 @@ def arguments(model, **changes):
         "weights": weights_of(model),
         "prompt": tokens[: model["S"]],
         "given": tokens[model["S"] :],
+        "generation_length": model["G"],
         "lm_head_rows": "all",
         "libraries": libraries_of(model["G"]),
         "library_count": len(forward.SEPARATE),
@@ -85,11 +86,12 @@ def arguments(model, **changes):
     return values
 
 
-def lengths(model, last=False):
+def lengths(model, last=False, mode="given"):
     return {
         "prompt_length": model["S"],
         "generation_length": model["G"],
         "lm_head_rows": "last" if last else "all",
+        "mode": mode,
     }
 
 
@@ -159,14 +161,41 @@ def test_encode_input_accepts_tuples_and_leaves_its_arguments_unchanged():
     assert libraries == before
 
 
-def test_encode_input_refuses_the_generation_mode():
-    with pytest.raises(ValueError, match="^given: is None"):
-        encode_input(DIMENSIONS, **arguments(model_of(1), given=None))
+@pytest.mark.parametrize("last", [False, True])
+@pytest.mark.parametrize("given", [1, 3])
+def test_encode_input_writes_the_generation_mode(last, given):
+    model = model_of(26, given=given)
+    rows = "last" if last else "all"
+    data = encode_input(DIMENSIONS, **arguments(model, given=None, lm_head_rows=rows))
+    table = forward.per_pass(forward.SEPARATE_TABLE, given)
+    assert data == forward.encode(model, table, last, generation=True)
+    form = np.frombuffer(data, dtype=np.uint64, count=1, offset=72)[0]
+    assert form == (3 if last else 2)
+    given_mode = encode_input(DIMENSIONS, **arguments(model, lm_head_rows=rows))
+    assert len(given_mode) - len(data) == 8 * given
+
+
+@pytest.mark.parametrize(
+    ("changes", "error", "text"),
+    [
+        ({"given": None, "generation_length": 0}, ValueError, "generation_length: "),
+        ({"generation_length": 2}, ValueError, "given: has 3 token ids"),
+        ({"generation_length": 4}, ValueError, "given: has 3 token ids"),
+        ({"given": None, "generation_length": "3"}, TypeError, "must be an int"),
+        ({"generation_length": 3.0}, TypeError, "must be an int"),
+        ({"given": None, "generation_length": None}, TypeError, "must be an int"),
+    ],
+)
+def test_encode_input_refuses_a_generation_length_that_does_not_fit(
+    changes, error, text
+):
+    with pytest.raises(error, match=text):
+        encode_input(DIMENSIONS, **arguments(model_of(1), **changes))
 
 
 @pytest.mark.parametrize("given", [7, "abc", b"ab", {1, 2}])
 def test_encode_input_refuses_given_that_is_no_sequence(given):
-    with pytest.raises(TypeError, match="^given: must be a sequence"):
+    with pytest.raises(TypeError, match="^given: must be None or a sequence"):
         encode_input(DIMENSIONS, **arguments(model_of(1), given=given))
 
 
@@ -336,6 +365,55 @@ def test_parse_report_reads_a_complete_report(last):
     assert result.tokens.flags.owndata and result.logits.flags.owndata
 
 
+@pytest.mark.parametrize("last", [False, True])
+def test_parse_report_reads_a_generation_mode_report(last):
+    model = model_of(34, prompt=2, given=4)
+    rows = 4 if last else 5
+    logits = np.arange(rows * V, dtype=np.uint16).reshape(rows, V)
+    tokens = model["tokens"].copy()
+    tokens[2:] = [9, 0, 2**64 - 1, 5]
+    report = forward.generated_report(tokens, 2, logits)
+    result = parse_report(report, DIMENSIONS, **lengths(model, last, "generation"))
+    assert result.tokens.dtype == np.uint64
+    assert np.array_equal(result.tokens, tokens)
+    assert np.array_equal(result.logits, logits)
+    assert result.tokens.flags.owndata and result.logits.flags.owndata
+    read_as_given = parse_report(report, DIMENSIONS, **lengths(model, last))
+    assert not np.array_equal(read_as_given.tokens, tokens)
+
+
+@pytest.mark.parametrize(
+    "cut",
+    [
+        lambda r: r[:-1],
+        lambda r: r[:-12] + END_MARK,
+        lambda r: r + b"\0",
+        lambda r: r[:-4] + b"end\0",
+        lambda r: b"",
+    ],
+)
+def test_parse_report_refuses_a_short_or_malformed_generation_mode_report(cut):
+    model = model_of(35)
+    good = forward.generated_report(model["tokens"], 3, np.zeros((3, V), np.uint16))
+    arguments = lengths(model, True, "generation")
+    assert parse_report(good, DIMENSIONS, **arguments) is not None
+    assert parse_report(cut(good), DIMENSIONS, **arguments) is None
+
+
+@pytest.mark.parametrize(
+    ("mode", "error", "text"),
+    [
+        (None, TypeError, "^mode: must be a str"),
+        (1, TypeError, "^mode: must be a str"),
+        ("Given", ValueError, "^mode: must be 'given' or 'generation'"),
+        ("generate", ValueError, "^mode: must be 'given' or 'generation'"),
+    ],
+)
+def test_parse_report_refuses_a_wrong_mode(mode, error, text):
+    with pytest.raises(error, match=text):
+        parse_report(b"end\n", DIMENSIONS, **lengths(model_of(1), mode=mode))
+
+
 @pytest.mark.parametrize(
     "cut", [lambda r: r[:-1], lambda r: r[:-5] + END_MARK, lambda r: r + b"\0"]
 )
@@ -487,12 +565,48 @@ def test_run_forward_program_checks_the_lengths_before_starting(recorder):
             prompt_length=0,
             generation_length=1,
             lm_head_rows="all",
+            mode="given",
+        )
+    with pytest.raises(ValueError, match="^mode: "):
+        run_forward_program(
+            "prog",
+            "in",
+            ["a"],
+            dimensions=DIMENSIONS,
+            timeout_s=1,
+            **lengths(model_of(1), mode="sample"),
         )
     assert calls == []
 
 
+def test_run_forward_program_parses_a_generation_mode_report(recorder):
+    model = model_of(42)
+    logits = np.ones((5, V), dtype=np.uint16)
+    tokens = model["tokens"].copy()
+    tokens[3:] = [4, 4, 1]
+    recorder(run_result(stdout=forward.generated_report(tokens, 3, logits)))
+    result = run_forward_program(
+        "prog",
+        "in.bin",
+        ["a.so"],
+        dimensions=DIMENSIONS,
+        timeout_s=1,
+        **lengths(model, mode="generation"),
+    )
+    assert result.failed is None
+    assert np.array_equal(result.report.tokens, tokens)
+    assert np.array_equal(result.report.logits, logits)
+
+
 def start(
-    built, tmp_path, data, names, model, last=False, timeout_s=forward.RUN_TIMEOUT
+    built,
+    tmp_path,
+    data,
+    names,
+    model,
+    last=False,
+    timeout_s=forward.RUN_TIMEOUT,
+    mode="given",
 ):
     program, library = built
     path = tmp_path / "input.bin"
@@ -503,7 +617,7 @@ def start(
         [library(name) for name in names],
         dimensions=DIMENSIONS,
         timeout_s=timeout_s,
-        **lengths(model, last),
+        **lengths(model, last, mode),
     )
 
 
@@ -522,6 +636,42 @@ def test_a_generation_equals_the_recomputation_bit_for_bit(
     assert np.array_equal(result.report.tokens, model["tokens"])
     assert np.array_equal(result.report.logits, expected)
     assert result.run.stderr == b""
+
+
+@pytest.mark.parametrize("last", [False, True])
+@pytest.mark.parametrize(("seed", "prompt", "given"), [(56, 3, 3), (57, 2, 5)])
+def test_a_greedy_generation_equals_the_recomputation_bit_for_bit(
+    built, tmp_path, last, seed, prompt, given
+):
+    model = model_of(seed, prompt=prompt, given=given)
+    rows = "last" if last else "all"
+    data = encode_input(DIMENSIONS, **arguments(model, given=None, lm_head_rows=rows))
+    result = start(
+        built, tmp_path, data, forward.SEPARATE, model, last, mode="generation"
+    )
+    assert result.failed is None, result.run.stderr
+    logits, tokens = forward.generate(model, last, select=True)
+    assert np.array_equal(result.report.tokens, tokens)
+    assert np.array_equal(result.report.logits, logits)
+    assert result.run.stderr == b""
+
+
+def test_a_nan_stop_is_run_failed(built, tmp_path):
+    model = model_of(58)
+    libraries = libraries_of(3)
+    libraries["lm_head"] = [6, 6, 6]
+    data = encode_input(
+        DIMENSIONS,
+        **arguments(model, given=None, libraries=libraries, library_count=7),
+    )
+    names = [*forward.SEPARATE, "scripted_nan_decode"]
+    result = start(built, tmp_path, data, names, model, mode="generation")
+    assert result.failed is RunFailed.EXIT_STATUS
+    assert result.run.returncode == 7
+    assert (
+        result.run.stderr == b"model_forward: pass 1: the selection row holds a NaN\n"
+    )
+    assert result.report is None
 
 
 def test_one_library_for_every_call_site_and_pass(built, tmp_path):

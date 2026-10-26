@@ -214,18 +214,48 @@ def test_own_outcomes_come_first_and_duplicates_are_dropped():
         weights=weights(norm=numpy.zeros((7,), dtype=numpy.uint16)),
     )
     assert reasons(result) == [
-        model_forward_check._GENERATION_MODE,
         "weights.norm: has the shape (7,), not (8,)",
         "generation_length: must be from 1 to 2**53 - 1, got 0",
     ]
 
 
-def test_the_generation_mode_is_refused():
-    result = run(given=None)
-    assert not result.ok
-    assert result.outcomes == (invalid(model_forward_check._GENERATION_MODE),)
-    assert "token selection rule" in result.outcomes[0].reason
+@pytest.mark.parametrize("lm_head_rows", ["all", "last"])
+def test_the_generation_mode_gives_the_calls_of_the_given_sequence_mode(lm_head_rows):
+    result = run(given=None, lm_head_rows=lm_head_rows)
+    assert result.ok is True
+    assert result.outcomes == ()
+    assert result.calls == run(lm_head_rows=lm_head_rows).calls
+    longer = run(given=None, generation_length=len(GIVEN) + 2)
+    assert longer.ok is True
+    assert len(longer.calls) > len(result.calls)
+
+
+@pytest.mark.parametrize(
+    ("generation_length", "reason"),
+    [
+        (0, "generation_length: must be from 1 to 2**53 - 1, got 0"),
+        (-1, "generation_length: must be from 1 to 2**53 - 1, got -1"),
+        (2**53, "generation_length: must be from 1 to 2**53 - 1, got 9007199254740992"),
+    ],
+)
+def test_the_generation_mode_still_reports_an_invalid_length(generation_length, reason):
+    result = run(given=None, generation_length=generation_length)
+    assert result.ok is False
+    assert reason in reasons(result)
     assert result.calls == ()
+
+
+def test_the_generation_mode_reports_a_prompt_token_outside_the_vocabulary():
+    result = run(given=None, prompt=(0, SMALL.vocabulary))
+    assert result.ok is False
+    assert any("prompt[1]" in reason for reason in reasons(result))
+
+
+@pytest.mark.parametrize("generation_length", [None, "4", 4.0, True])
+def test_the_generation_mode_refuses_a_length_of_another_type(generation_length):
+    with pytest.raises(TypeError) as caught:
+        run(given=None, generation_length=generation_length)
+    assert caught.value.parameter == "generation_length"
 
 
 def test_given_of_another_length_is_the_gemm_check_s():

@@ -1,3 +1,4 @@
+import inspect
 import os
 import shutil
 from pathlib import Path
@@ -77,6 +78,7 @@ def model_arguments(model, **changes):
         "weights": forward_run.weights_of(model),
         "prompt": tokens[: model["S"]],
         "given": tokens[model["S"] :],
+        "generation_length": model["G"],
         "lm_head_rows": "all",
     }
     values.update(changes)
@@ -175,14 +177,7 @@ def run_execute(parent, binding=None, model=None, **options):
 
 def expected_check(binding, model, **changes):
     arguments = model_arguments(model, **changes)
-    given = arguments["given"]
-    return model_forward_check.check(
-        DIMENSIONS,
-        binding,
-        dtype="bf16",
-        generation_length=len(given) if model_execute._is_sequence(given) else 0,
-        **arguments,
-    )
+    return model_forward_check.check(DIMENSIONS, binding, dtype="bf16", **arguments)
 
 
 def test_happy_path_checks_builds_each_kernel_runs_once_and_removes(recorder, parent):
@@ -245,6 +240,7 @@ def test_happy_path_checks_builds_each_kernel_runs_once_and_removes(recorder, pa
         "prompt_length": S,
         "generation_length": G,
         "lm_head_rows": "all",
+        "mode": "given",
         "timeout_s": 7,
         "env": env,
     }
@@ -257,6 +253,39 @@ def test_happy_path_checks_builds_each_kernel_runs_once_and_removes(recorder, pa
     )
     assert recorder.input_bytes == expected_input
     assert len(recorder.listing) == 8
+
+
+@pytest.mark.parametrize("last", [False, True])
+def test_the_generation_mode_is_encoded_and_run_with_its_mode(recorder, parent, last):
+    model = forward_run.model_of(44, prompt=S, given=4)
+    rows = "last" if last else "all"
+    result = run_execute(
+        parent, None, model, given=None, generation_length=4, lm_head_rows=rows
+    )
+    assert result.check == expected_check(
+        separate_binding(), model, given=None, generation_length=4, lm_head_rows=rows
+    )
+    assert result.check.ok is True
+    assert result.run is recorder.run
+    assert recorder.kinds() == ["kernel"] * 6 + ["program", "run"]
+    options = recorder.events[7][4]
+    assert options["generation_length"] == 4
+    assert options["lm_head_rows"] == rows
+    assert options["mode"] == "generation"
+    expected_input = encode_input(
+        DIMENSIONS,
+        **model_arguments(model, given=None, generation_length=4, lm_head_rows=rows),
+        libraries=forward_run.libraries_of(4),
+        library_count=6,
+    )
+    assert recorder.input_bytes == expected_input
+    assert recorder.table(4) == forward_run.libraries_of(4)
+
+
+def test_generation_length_has_no_default():
+    parameter = inspect.signature(execute).parameters["generation_length"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty
 
 
 def test_one_source_under_different_contracts_is_one_library_per_contract(
@@ -388,7 +417,8 @@ def wrong_weights(model, field, value):
         ("token", INVALID_INPUT, "given[1]: token id"),
         ("eps", INVALID_INPUT, "eps: "),
         ("rope", INVALID_INPUT, "rope.theta: "),
-        ("mode", INVALID_INPUT, "given: is None"),
+        ("length", INVALID_INPUT, "given: has 3 token ids, generation_length is 4"),
+        ("generated", INVALID_INPUT, "generation_length: must be from 1"),
     ],
 )
 def test_a_check_that_is_not_ok_builds_and_starts_nothing(
@@ -413,8 +443,11 @@ def test_a_check_that_is_not_ok_builds_and_starts_nothing(
         changes["eps"] = 0.0
     elif case == "rope":
         changes["rope"] = ROPE._replace(theta=-1.0)
+    elif case == "length":
+        changes["generation_length"] = G + 1
     else:
         changes["given"] = None
+        changes["generation_length"] = 0
     result = run_execute(parent, binding, model, **changes)
     check = expected_check(binding, model, **changes)
     assert result == ForwardExecution(check, None, None, None)
@@ -447,6 +480,12 @@ def test_what_the_check_raises_comes_first(recorder, parent):
     with pytest.raises(TypeError) as caught:
         run_execute(parent, given="abc")
     assert caught.value.parameter == "given"
+    with pytest.raises(TypeError) as caught:
+        run_execute(parent, given=None, generation_length="3")
+    assert caught.value.parameter == "generation_length"
+    with pytest.raises(TypeError) as caught:
+        run_execute(parent, generation_length=None)
+    assert caught.value.parameter == "generation_length"
     with pytest.raises(TypeError) as caught:
         run_execute(parent, eps=1)
     assert caught.value.parameter == "eps"
@@ -703,6 +742,22 @@ def test_a_generation_through_execute_equals_the_recomputation_bit_for_bit(
     assert logits.shape == ((given if last else prompt + given - 1), V)
     assert not np.any(logits == forward.NAN_BITS)
     assert np.array_equal(result.run.report.tokens, model["tokens"])
+    assert np.array_equal(result.run.report.logits, logits)
+    assert result.run.run.stderr == b""
+
+
+@pytest.mark.parametrize("last", [False, True])
+def test_a_greedy_generation_through_execute_equals_the_recomputation(
+    clang, tmp_path, last
+):
+    model = forward_run.model_of(57, prompt=3, given=4)
+    rows = "last" if last else "all"
+    result = real_execute(
+        tmp_path, fixture_binding(tmp_path), model, given=None, lm_head_rows=rows
+    )
+    assert result.run.failed is None, result.run.run.stderr
+    logits, tokens = forward.generate(model, last, select=True)
+    assert np.array_equal(result.run.report.tokens, tokens)
     assert np.array_equal(result.run.report.logits, logits)
     assert result.run.run.stderr == b""
 

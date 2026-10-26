@@ -184,6 +184,62 @@ void hilclaw_sdpa_kv_cache_bf16(size_t m, size_t l, size_t h, size_t h_kv, size_
 
 PRINT = '    puts("kernel says hello");\n    fflush(stdout);\n'
 
+SCRIPTED = """
+static const uint16_t scripted[][@V@] = {@ROWS@};
+static size_t call;
+
+void hilclaw_gemm_bf16(size_t m, size_t k, size_t n, const uint16_t *restrict a,
+                       const uint16_t *restrict b, uint16_t *restrict c)
+{
+    size_t i, j;
+
+    (void)k;
+    (void)a;
+    (void)b;
+    for (i = 0; i < m; i++)
+        for (j = 0; j < n; j++)
+            c[i * n + j] = i + 1 < m ? 0x7FC0 : scripted[call][j];
+    call++;
+}
+"""
+
+ZERO, MINUS_ZERO, ONE, TWO, HALF = 0x0000, 0x8000, 0x3F80, 0x4000, 0x3F00
+MINUS_ONE, MINUS_HALF, MINUS_TWO = 0xBF80, 0xBF00, 0xC000
+INF, MINUS_INF, MAX, MINUS_MAX = 0x7F80, 0xFF80, 0x7F7F, 0xFF7F
+NEGATIVE_NAN, SIGNALLING_NAN = 0xFFC1, 0x7F81
+
+
+def row_of(fill, **at):
+    row = [fill] * 10
+    for index, bits in at.items():
+        row[int(index[1:])] = bits
+    return row
+
+
+SCRIPTS = {
+    "ties": (
+        row_of(ONE, i2=TWO, i7=TWO),
+        row_of(MINUS_ONE, i3=MINUS_ZERO, i5=ZERO),
+        row_of(MINUS_HALF, i1=ZERO, i4=MINUS_ZERO, i9=MINUS_ZERO),
+    ),
+    "order": (
+        row_of(MINUS_TWO, i1=MINUS_ONE, i6=MINUS_HALF, i8=MINUS_MAX),
+        row_of(HALF, i0=MAX, i8=INF, i9=MINUS_INF),
+        row_of(MINUS_INF, i4=MINUS_MAX, i7=MINUS_INF),
+        row_of(MINUS_INF),
+    ),
+    "nan_prefill": (row_of(ONE, i9=NAN_BITS), row_of(ONE), row_of(ONE)),
+    "nan_decode": (row_of(ONE), row_of(TWO, i0=NEGATIVE_NAN), row_of(ONE)),
+    "nan_last": (row_of(ONE), row_of(ONE), row_of(MINUS_INF, i5=SIGNALLING_NAN)),
+}
+
+
+def scripted_source(rows):
+    text = ",".join(
+        "{" + ",".join(f"0x{bits:04X}" for bits in row) + "}" for row in rows
+    )
+    return SCRIPTED.replace("@V@", "10").replace("@ROWS@", text)
+
 
 def gemm_source(start="0.0f", columns="n"):
     return GEMM.replace("@START@", start).replace("@COLUMNS@", columns)
@@ -205,6 +261,7 @@ LIBRARIES = {
     "gemm_partial": (gemm_source(columns="n - 1"),),
     "add_printing": (ADD.replace("@EXTRA@", PRINT),),
     "swiglu_abort": (SWIGLU.replace("@EXTRA@", "    abort();\n"),),
+    **{f"scripted_{name}": (scripted_source(rows),) for name, rows in SCRIPTS.items()},
 }
 
 SEPARATE = list(KINDS)
@@ -353,7 +410,7 @@ def make_model(seed, prompt=3, given=1):
     }
 
 
-def header_words(model, last, **changes):
+def header_words(model, last, generation=False, **changes):
     words = {
         "D": D,
         "F": F,
@@ -364,19 +421,20 @@ def header_words(model, last, **changes):
         "d": HEAD,
         "S": model["S"],
         "G": model["G"],
-        "lm_head_rows": int(last),
+        "form": int(last) + 2 * int(generation),
     }
     words.update(changes)
     return np.array(list(words.values()), dtype=np.uint64).tobytes()
 
 
-def encode(model, table, last=False, eps=EPS, **changes):
+def encode(model, table, last=False, eps=EPS, generation=False, **changes):
+    tokens = model["tokens"][: model["S"]] if generation else model["tokens"]
     parts = [
-        header_words(model, last, **changes),
+        header_words(model, last, generation, **changes),
         np.array([eps], dtype=np.float32).tobytes(),
         np.array(table, dtype=np.uint64).tobytes(),
         model["rope"].tobytes(),
-        model["tokens"].tobytes(),
+        tokens.tobytes(),
         model["embedding"].tobytes(),
     ]
     for layer in model["layers"]:
@@ -386,8 +444,17 @@ def encode(model, table, last=False, eps=EPS, **changes):
     return b"".join(parts)
 
 
-def generate(model, last=False, lm_start=0.0, keep_cache=True):
+def choose(row):
+    values = widen(row).astype(np.float64)
+    if np.any(np.isnan(values)):
+        raise ValueError("a NaN in the selection row")
+    return int(np.flatnonzero(values == np.max(values))[0])
+
+
+def generate(model, last=False, lm_start=0.0, keep_cache=True, select=False):
+    """The logits of the given-sequence mode; with ``select``, ``(logits, tokens)`` of the greedy mode."""
     prompt, passes = model["S"], model["G"]
+    all_tokens = model["tokens"].copy()
     positions = prompt + passes - 1
     starts = lm_start if isinstance(lm_start, list) else [lm_start] * passes
     hd, kvd = H * HEAD, H_KV * HEAD
@@ -403,7 +470,7 @@ def generate(model, last=False, lm_start=0.0, keep_cache=True):
             for cache_k, cache_v in caches:
                 cache_k[:] = NAN_BITS
                 cache_v[:] = NAN_BITS
-        tokens = model["tokens"][position : position + rows_of_pass]
+        tokens = all_tokens[position : position + rows_of_pass]
         x = model["embedding"][tokens.astype(np.intp)]
         table = model["rope"][position : position + rows_of_pass]
         for layer, (cache_k, cache_v) in zip(model["layers"], caches):
@@ -424,6 +491,10 @@ def generate(model, last=False, lm_start=0.0, keep_cache=True):
         if last:
             normed = normed[-1:]
         rows.append(gemm(normed, model["lm_head"], starts[p]))
+        if select:
+            all_tokens[prompt + p] = choose(rows[-1][-1])
+    if select:
+        return np.concatenate(rows), all_tokens
     return np.concatenate(rows)
 
 
@@ -433,6 +504,15 @@ def per_pass(table, passes):
 
 def report(model, logits):
     return model["tokens"].tobytes() + logits.astype(np.uint16).tobytes() + END
+
+
+def generated_report(tokens, prompt, logits):
+    return (
+        tokens[:prompt].tobytes()
+        + logits.astype(np.uint16).tobytes()
+        + tokens[prompt:].tobytes()
+        + END
+    )
 
 
 def start(built, tmp_path, data, names):
@@ -699,7 +779,8 @@ def test_zero_dimension(built, tmp_path, name):
     [
         ({"H": 3}, b"H is not a multiple of H_kv"),
         ({"d": 3}, b"d is odd"),
-        ({"lm_head_rows": 2}, b"lm_head_rows"),
+        ({"form": 4}, b"the form of lm_head_rows and mode is above 3"),
+        ({"form": 2**63 + 2}, b"the form of lm_head_rows and mode is above 3"),
     ],
 )
 def test_header_refusals(built, tmp_path, changes, text):
@@ -786,3 +867,148 @@ def test_bound_library_without_the_entry_point(built, tmp_path, kind, symbol):
 def test_sizes_that_cannot_be_held(built, tmp_path, changes):
     data = header_words(make_model(1), False, **changes) + EPS.tobytes()
     assert_failed(start(built, tmp_path, data, ["all"]), 3, b"cannot be held")
+
+
+def run_generation(built, tmp_path, model, last, table=None, names=SEPARATE):
+    table = table if table is not None else per_pass(SEPARATE_TABLE, model["G"])
+    data = encode(model, table, last, generation=True)
+    return start(built, tmp_path, data, names)
+
+
+@pytest.mark.parametrize("last", [False, True])
+@pytest.mark.parametrize(("seed", "prompt", "passes"), [(21, 3, 3), (22, 2, 5)])
+def test_greedy_generation_equals_the_recomputation_bit_for_bit(
+    built, tmp_path, last, seed, prompt, passes
+):
+    model = make_model(seed, prompt=prompt, given=passes)
+    model["tokens"][prompt:] = 0
+    result = run_generation(built, tmp_path, model, last)
+    assert result.returncode == 0, result.stderr
+    logits, tokens = generate(model, last, select=True)
+    rows = passes if last else prompt + passes - 1
+    assert logits.shape == (rows, V)
+    assert not np.any(logits == NAN_BITS)
+    assert np.array_equal(tokens[:prompt], model["tokens"][:prompt])
+    assert len(set(tokens[prompt:].tolist())) > 1
+    assert result.stdout == generated_report(tokens, prompt, logits)
+    assert len(result.stdout) == 8 * (prompt + passes) + 2 * rows * V + 4
+    assert result.stderr == b""
+
+
+@pytest.mark.parametrize("last", [False, True])
+def test_each_decode_pass_takes_the_token_the_previous_pass_selected(
+    built, tmp_path, last
+):
+    model = make_model(23, prompt=3, given=4)
+    result = run_generation(built, tmp_path, model, last)
+    assert result.returncode == 0, result.stderr
+    logits, tokens = generate(model, last, select=True)
+    assert result.stdout == generated_report(tokens, 3, logits)
+    fed = {**model, "tokens": tokens}
+    given = start(
+        built, tmp_path, encode(fed, per_pass(SEPARATE_TABLE, 4), last), SEPARATE
+    )
+    assert given.returncode == 0, given.stderr
+    assert given.stdout == report(fed, logits)
+    for position in range(3, 6):
+        other = {**model, "tokens": tokens.copy()}
+        other["tokens"][position] = (tokens[position] + 1) % V
+        changed = generate(other, last)
+        first = position - 2 if last else position
+        assert np.array_equal(changed[:first], logits[:first])
+        assert not np.array_equal(changed[first], logits[first])
+
+
+def scripted_run(built, tmp_path, name, last, prompt=3):
+    rows = SCRIPTS[name]
+    model = make_model(31, prompt=prompt, given=len(rows))
+    table = per_pass(SEPARATE_TABLE, len(rows))
+    lm_head = SITES.index("lm_head") * len(rows)
+    table[lm_head : lm_head + len(rows)] = [len(SEPARATE)] * len(rows)
+    names = [*SEPARATE, f"scripted_{name}"]
+    return model, run_generation(built, tmp_path, model, last, table, names)
+
+
+def scripted_logits(rows, prompt, last, passes=None):
+    passes = len(rows) if passes is None else passes
+    out = []
+    for p in range(passes):
+        if p == 0 and not last:
+            out += [[NAN_BITS] * V] * (prompt - 1)
+        out.append(rows[p])
+    return np.array(out, dtype=np.uint16)
+
+
+@pytest.mark.parametrize("last", [False, True])
+@pytest.mark.parametrize(
+    ("name", "selected"), [("ties", [2, 3, 1]), ("order", [6, 8, 4, 0])]
+)
+def test_the_selection_orders_values_and_breaks_ties_by_the_smallest_id(
+    built, tmp_path, last, name, selected
+):
+    model, result = scripted_run(built, tmp_path, name, last)
+    assert result.returncode == 0, result.stderr
+    rows = SCRIPTS[name]
+    assert [choose(np.array(row, dtype=np.uint16)) for row in rows] == selected
+    tokens = np.concatenate([model["tokens"][:3], np.array(selected, dtype=np.uint64)])
+    logits = scripted_logits(rows, 3, last)
+    assert result.stdout == generated_report(tokens, 3, logits)
+    if not last:
+        assert np.all(logits[:2] == NAN_BITS)
+
+
+@pytest.mark.parametrize("last", [False, True])
+@pytest.mark.parametrize(
+    ("name", "stopped"), [("nan_prefill", 0), ("nan_decode", 1), ("nan_last", 2)]
+)
+def test_a_nan_in_the_selection_row_stops_the_generation(
+    built, tmp_path, last, name, stopped
+):
+    model, result = scripted_run(built, tmp_path, name, last)
+    assert result.returncode == 7, result.stderr
+    assert result.stderr == (
+        b"model_forward: pass %d: the selection row holds a NaN\n" % stopped
+    )
+    assert not result.stdout.endswith(END)
+    logits = scripted_logits(SCRIPTS[name], 3, last, stopped + 1)
+    assert result.stdout == model["tokens"][:3].tobytes() + logits.tobytes()
+
+
+def test_a_nan_outside_the_selection_row_does_not_stop(built, tmp_path):
+    _, result = scripted_run(built, tmp_path, "ties", False, prompt=4)
+    assert result.returncode == 0, result.stderr
+    logits = np.frombuffer(result.stdout, dtype=np.uint16, count=6 * V, offset=8 * 4)
+    assert np.all(logits[: 3 * V] == NAN_BITS)
+    assert result.stdout.endswith(END)
+
+
+def test_the_generation_mode_reads_only_the_prompt(built, tmp_path):
+    model = make_model(1, given=2)
+    table = per_pass([0] * 15, 2)
+    given_form = encode(model, table, generation=False, form=2)
+    assert_failed(start(built, tmp_path, given_form, ["all"]), 5, b"bytes follow")
+    generation_form = encode(model, table, generation=True, form=0)
+    result = start(built, tmp_path, generation_form, ["all"])
+    assert_failed(result, 5, b"too short for the length")
+
+
+@pytest.mark.parametrize("position", [0, 2])
+def test_a_prompt_token_id_not_below_vocabulary_in_the_generation_mode(
+    built, tmp_path, position
+):
+    model = make_model(1, given=2)
+    model["tokens"][position] = V
+    model["tokens"][3:] = V + 7
+    data = encode(model, per_pass([0] * 15, 2), generation=True)
+    assert_failed(start(built, tmp_path, data, ["all"]), 5, b"token id")
+
+
+def test_a_generation_mode_prompt_ignores_what_follows_it(built, tmp_path):
+    model = make_model(24, given=3)
+    data = encode(model, per_pass([0] * 15, 3), True, generation=True)
+    model["tokens"][3:] = V + 7
+    assert data == encode(model, per_pass([0] * 15, 3), True, generation=True)
+    result = start(built, tmp_path, data, ["all"])
+    assert result.returncode == 0, result.stderr
+    logits, tokens = generate(model, True, select=True)
+    assert result.stdout == generated_report(tokens, 3, logits)
