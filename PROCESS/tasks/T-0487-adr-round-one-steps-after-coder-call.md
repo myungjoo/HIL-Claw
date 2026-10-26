@@ -2,7 +2,7 @@
 id: T-0487
 title: Record the Round-Manager's round >= 1 steps after the coder-driver's report (which reports go on, the checks, the measurement, the verdicts delegation and the closing steps) as one new ADR (part of OD-23, with OD-16/OD-17/OD-30 where touched), and land its first code slice, with tests
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [FR-1, FR-9, FR-11, FR-17, FR-18, OD-23, OD-16, OD-17, OD-30, S0, S1, "PLAN P2-1"]
 dependsOn: [T-0486]
