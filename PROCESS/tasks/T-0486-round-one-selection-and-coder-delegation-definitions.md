@@ -2,7 +2,7 @@
 id: T-0486
 title: Land ADR-0171 code slice 2 - give the technique-selector `catalog.read`, the choice and its `techniques:` report line, extend the coder-driver to round >= 1, and add the Round-Manager's step 8 with the stop moved after the coder-driver's report, with tests
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-5, FR-8, FR-17, OD-23, OD-22, OD-6, S0, S1, "PLAN P2-1"]
 dependsOn: []
@@ -160,3 +160,17 @@ Line numbers are those of `main` at `a099ac5d`; the text wins. Read Korean files
 - (planner) T-0487: the record of the round >= 1 steps after the coder call and its first slice.
 
 ## Result
+
+DONE. PR #300 squash-merged as `681538c7` after 1 review round (Approve with 3 Nits). Two wording-only Nits were fixed in the PR without re-review (D20); the third (`hilclaw/tools.py` `default_registry` docstring, around line 231: "the coder-driver performs the round-0 coder call") is out of scope and listed below. CI green (Python 3.11/3.14, C, sh, Coverage, Test presence). Local full suite before the Nit fixes: 33979 passed, 1858 skipped; after them the three touched test files: 302 passed, 9 skipped; `ruff check .` and `ruff format --check .` pass.
+
+**Definitions changed**
+- `orchestration/agents/technique-selector.md`: `tools` gains `mcp__hilclaw__catalog_read` (ADR-0171 decision 3); new section "The choice of techniques" (decision 2: weigh the round's hypotheses testing candidate 1, the `## When` sections, earlier attempts and rounds; empty list on `catalog_unusable`, no entry, or no fitting entry); report gains exactly one `techniques: <id>, ...` / `techniques: none` line when the round's record exists and `catalog_read` answered (decision 4).
+- `orchestration/agents/coder-driver.md` (decision 5): delegation in round 0 and in rounds >= 1; a round >= 1 request carries `techniques` (the message's ids in order, or an empty array); round 0 carries no `techniques` member; a round >= 1 delegation without a list requests nothing.
+- `orchestration/round-manager.md` (decision 6): step 7 goes on to new step 8 after a successful read; step 8 (round >= 1 only) delegates once to `coder-driver` with run id, tuple (round, candidate 1, attempt 1) and the `techniques:` ids, reports in one line and comes to the stop; the stop now says the following steps of a round >= 1 are not yet defined and the round is not ended.
+- `hilclaw/turn_definition.py`: docstring only (prompt bullet, roster citing ADR-0171 decisions 2-5, "Not done here").
+
+**Test assertions changed**: D21 list pins (`TECHNIQUE_SELECTOR_TOOLS` and the selector tuple in `test_holder_lists_the_real_definition` gain `mcp__hilclaw__catalog_read`; `test_the_real_definition` gains a presence line); `test_the_prompt_delegates_the_selection_in_later_rounds` and `test_the_stop_follows_the_read_in_later_rounds` updated for step 8; `test_no_later_round_reaches_a_spec_write_or_a_coder_delegation` replaced by `test_only_step_8_of_a_later_round_delegates_the_coder_call`. New tests: `test_the_coder_driver_carries_the_techniques`, `test_step_8_delegates_the_coder_call_with_the_choice`, `test_the_stop_names_step_8`, `test_the_technique_selector_reads_the_catalog`, `test_the_technique_selector_chooses_the_techniques`, `test_the_technique_selector_reports_one_techniques_line`, `test_the_real_technique_selector_holds_catalog_read` (tests/test_caller_check.py).
+
+**Runtime acceptance**: ADR-0171 (lxxxiii)-(lxxxiv) (RA-0040) can now be checked; no new item. No `claude` was started (D16).
+
+**Earlier sentences made less exact (not edited)**: ADR-0132 decision 3 (selector `tools` list), decision 1 "Outside" and Boundaries second bullet; ADR-0126 decision 6; ADR-0141 decision 6 "Left open and named" and Walk-through row "A round >= 1"; ADR-0151 decision 2 (c) and Boundaries first/second bullets; ADR-0150 decision 2 last bullet and decision 4 "Not decided here"; `hilclaw/tools.py` `default_registry` docstring.
