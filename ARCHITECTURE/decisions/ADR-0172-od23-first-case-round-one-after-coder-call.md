@@ -56,7 +56,7 @@ The coder-driver's report names each tool it called with its result or kind (cit
 
 - **Step 9** (round ≥ 1 only, after decision 2's first row): the Round-Manager delegates to `evaluator` with the `Agent` tool and waits for its report, the message naming its run id, the tuple `round` the round, `candidate` 1, `attempt` 1, the point `sim`, and no place and no `execution` (cited for the form: ADR-0128 decisions 4 and 7; ADR-0142 decision 3). **Step 10**: the same with the point `board`. It takes the standing from the report (cited: ADR-0131 decision 7).
 - **Step 10 follows step 9 only on the standing `"verified"` at `sim`; step 11 follows step 10 only on `"verified"` at `board`** — the order and the reasons of ADR-0142 decision 3 (cited: C-4; no board run of an attempt that cannot stand).
-- **Every other report of step 9 or 10** — `"not_verified"`, `"undetermined"`, a failure kind without a standing, or no report it can read — **goes to step 12**, not to the stop. The attempt is settled for the same reason as in decision 2: no repair (OD-19), no further `execution` (who may ask is open: ADR-0062 decision 3; ADR-0110 decision 6, cited) and no second call. A verdict cannot count a comparison of an attempt that is not verified at `board` (cited: ADR-0071 decision 4; ADR-0140 decision 5), so the verdicts of such a round are `inconclusive` (cited: ADR-0071 decision 4). The verdicts rest on the log the evaluator reads through its tools, not on the reports of steps 9 and 10 (K1 condition 3, which ADR-0128 calls K2; cited: ADR-0128 decision 4). FR-1 ⑵, "board 실패 → 해당 후보 탈락" (cited), is met: the candidate is dropped and the round ends.
+- **Every other report of step 9 or 10** — `"not_verified"`, `"undetermined"`, a failure kind without a standing, or no report it can read — **goes to step 12**, not to the stop. The attempt is settled for the same reason as in decision 2: no repair (OD-19), no further `execution` (who may ask is open: ADR-0062 decision 3; ADR-0110 decision 6, cited) and no second call. A verdict cannot count a comparison of an attempt that is not verified at `board` (cited: ADR-0071 decision 4; ADR-0140 decision 5), so the verdicts of such a round are `inconclusive` (cited: ADR-0071 decision 4). The verdicts rest on the log the evaluator reads through its tools, not on the reports of steps 9 and 10 (K1 condition 3, which ADR-0128 calls K2; cited: ADR-0128 decision 4). FR-1 ⑵, "board 실패 → 해당 후보 탈락" (cited), is met: the candidate is dropped, and the round goes on to step 12 (decision 5).
 - **A sim pass followed by a board-check failure** leaves no board measurement, as in round 0 (cited: ADR-0142 decision 3), so the quarantine of FR-1 ⑶ has nothing to isolate; the triage stays OD-10.
 - **No profile step** (cited: ADR-0142 decision 3, the owner's answer to HQ-0025: on `cpu_standin` the profile is what the run tools return).
 
@@ -91,9 +91,9 @@ The coder-driver's report names each tool it called with its result or kind (cit
 | Situation | What follows |
 |---|---|
 | Round 1 of a `cpu_standin` run: the call brings in `kernel.c`; both checks verify; `board.run` returns `"converged"` | Steps 9, 10, 11, 12; the evaluator may compare (`1`/`1`/`1`, `0`/`1`/`1`) at `board` and writes the verdicts; `case.write` (`with_verdicts` true); `round.end` writes round 2; `run.commit` |
-| The call fails with `coder_not_ended`, or brings in nothing | No check; step 12: verdicts `inconclusive`, the `cause` says no attempt reached a check; the case; the round ends |
-| `taken` holds names but no `kernel.c` | Step 9: `no_kernel_source` (class (i)), `"undetermined"`; step 12; the round ends |
-| The sim check fails | `"not_verified"` at `sim`; no board check, no measurement; step 12; the round ends. A repair is OD-19 |
+| The call fails with `coder_not_ended`, or brings in nothing | No check; step 12: verdicts `inconclusive`, the `cause` says no attempt reached a check; once written, the case and the round end (decision 5) |
+| `taken` holds names but no `kernel.c` | Step 9: `no_kernel_source` (class (i)), `"undetermined"`; step 12 (decision 5) |
+| The sim check fails | `"not_verified"` at `sim`; no board check, no measurement; step 12 (decision 5). A repair is OD-19 |
 | The sim check passes, the board check fails | No `board.run`; step 12; `inconclusive`; triage is OD-10 |
 | `board.run` returns `"broken"` or a kind | Step 12; no founded comparison; `inconclusive` with the kind in the `cause` |
 | `verdicts.write` refuses with a kind no correction answers, or the evaluator's report cannot be read | Reported; the stop; the round not ended; a later turn meets `spec_exists` (OD-17) |
@@ -106,7 +106,7 @@ The coder-driver's report names each tool it called with its result or kind (cit
 
 | Point | Alternative | Weighing | Outcome |
 |---|---|---|---|
-| (a) | **Go on to the verdicts after a call that was made; stop after a failed write, `spec_exists` or no report** | The tuple is consumed exactly when the spec exists; the round ends with its case; nothing is decided of re-entry | **Adopted** |
+| (a) | **Go on to the verdicts after a call that was made; stop after a failed write, `spec_exists` or no report** | The tuple is consumed exactly when the spec exists; the round can end with its verdicts and case; nothing is decided of re-entry | **Adopted** |
 | (a) | The stop after every report but a non-empty `taken`, as in round 0 | Round 0's reason is ADR-0119 decision 5 (no baseline); here the round would stay open for good, every later turn stopping at `spec_exists` | Rejected |
 | (a) | Go on to the verdicts after `spec_exists` too | Ends the round without checking a kernel an earlier turn may have brought in; re-entry (OD-17) | Rejected |
 | (a) | Go on to the checks after any report | Journals a `no_kernel_source` line for the tuple (ADR-0142 Alternatives (a)) | Rejected |
