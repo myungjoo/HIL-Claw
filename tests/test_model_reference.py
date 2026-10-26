@@ -733,7 +733,7 @@ def tolerance(expected):
     dot product that can cancel, so its error is bounded relative to the
     magnitude of its row's terms, not to itself: ``atol`` is 2**-5 times the
     largest |reference| of the run. The largest deviation seen over these
-    seeds is below 2**-6 of that magnitude; each miswiring below gives more
+    seeds is below 2**-7 of that magnitude; each miswiring below gives more
     than 2**-3.
     """
     return 2**-5, 2**-5 * float(np.max(np.abs(expected)))
@@ -768,3 +768,5 @@ def test_a_miswired_kernel_fails_the_comparison(
     result = compare(report, expected, rtol=rtol, atol=atol)
     assert not result.ok
     assert result.non_finite == 0 and result.reference_non_finite == 0
+    deviation = np.abs(forward.widen(report.logits) - expected)
+    assert np.max(deviation) > 2**-3 * np.max(np.abs(expected))

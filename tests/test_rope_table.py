@@ -595,6 +595,7 @@ def test_the_module_is_named_only_by_its_known_callers():
         "harness/bf16_rope_arrays.py",
         "model_forward_check.py",
         "model_forward_run.py",
+        "model_reference.py",
     }
 
 
