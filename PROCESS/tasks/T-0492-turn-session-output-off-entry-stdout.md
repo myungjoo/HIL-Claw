@@ -2,7 +2,7 @@
 id: T-0492
 title: Record where the standard output and standard error of a first-case turn session go, so that `python -m hilclaw.turn_start` keeps writing exactly one line on its standard output under a real `-p` session, as one new ADR, and land it in `hilclaw/turn_loop.py` with tests (removes T-0490's strict xfail)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-4, NFR-1, OD-19, OD-17, OD-18, S0, S2, D17, "PLAN P2-10", "PLAN P2-14"]
 dependsOn: []
@@ -83,3 +83,36 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+**DONE.** PR #306 was squash-merged as `a4da0194` after 1 review round. The reviewer approved with 2 nits:
+- One nit was fixed: ADR-0175 decision 4 now notes that a closed descriptor 2 may later be reused by another open file.
+- One nit was left as is: the end-to-end test's exact standard-error assertion would also catch an interpreter warning from the stub's MCP server child.
+
+CI was green on every job. The full local suite on Windows passed (34452 passed, 1558 skipped). On WSL2, `tests/test_first_run_end_to_end.py` passed (13 passed).
+
+- **ADR**: `ARCHITECTURE/decisions/ADR-0175-od19-first-case-turn-session-output.md`, part of OD-19 and filed as ADR-0122 is.
+  - A turn session's standard output **and** standard error both go to the calling process's standard error (fd 2).
+  - When fd 2 is not open, standard output is discarded and the turn still runs.
+  - The loop reads, keeps and writes nothing of either stream, and adds no file, log, data-plane change or notification channel.
+  - The self-check session is untouched.
+  - `hilclaw/turn_start.py`'s "Standard error gets nothing for an outcome" is read as "the entry itself writes nothing there".
+- **Registers**:
+  - The OD-19 row in Requirements gets one link after `**확정분**:` and the status date 2026-10-26. `**잔여**` is unchanged.
+  - The OD-19 section in OpenDecisionProposals gets one `**채택분**` line.
+  - StandardScenarios was re-checked and no verdict changed, so it was not edited.
+- **Code**:
+  - `hilclaw/turn_loop.py`: `stdout=_session_output()`. The docstring paragraph "The command line" and the runtime-acceptance list are updated.
+  - `hilclaw/turn_start.py`: docstring only.
+- **Tests**:
+  - `tests/test_turn_loop.py`: fd-level `capfd` tests covering both streams, several turns, a reply with no line feed, a session that writes nothing, a closed fd 2 (negative case) and the `subprocess.run` options.
+  - `tests/test_turn_start.py`: a turn reply reaches only fd 2, for exit 0 and exit 3.
+  - `tests/test_first_run_end_to_end.py`: the strict xfail is removed, and the test now checks that standard error equals the turns' replies after `run_over`.
+  - No D21 list assertion was edited.
+- **Owner notice**: posted on #5 (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6414793568). The 7-day objection window runs until 2026-11-02.
+- **Language**: Python, the language of the modules changed.
+
+**Runtime acceptance item for `PROCESS/RuntimeAcceptance.md`** (ADR-0175 Consequences; first-case turn session output; OD-19; T-0492):
+
+(xci) A `-p` turn session started with its standard output on the entry's standard error writes its reply and every message about why it stopped, such as an expired login, a usage limit or an error, only to its standard output and standard error, and not to the terminal or another descriptor. Nothing of it then reaches the entry's standard output, and a person reading the entry's standard error after a failed turn finds there what the session said.
+
+**Follow-ups**: none.

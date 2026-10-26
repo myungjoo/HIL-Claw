@@ -368,3 +368,13 @@
   (lxxxix) In a `-p` turn session, the technique-selector's call of `mcp__hilclaw__verdicts_read` runs under the derived pre-approval without a prompt, and the caller check lets it through for the selector and refuses it for the main session.
 
   (xc) In a round ≥ 2 of a first-case run, the technique-selector calls `mcp__hilclaw__verdicts_read` once for each earlier round, in ascending order and before `mcp__hilclaw__hypotheses_write`, as ADR-0174 decision 6 says. The result for the largest verdicts file a first-case round writes reaches it whole, within any limit Claude Code puts on the result of an MCP tool call.
+
+### RA-0044
+
+- 상태: 미확인
+- 출처: task T-0492 (ADR-0175)의 Result (등록 2026-10-26)
+- 내용:
+
+  ADR-0175(첫 사례 turn 세션의 표준 출력·표준 오류의 행선; OD-19 일부; T-0492)의 런타임 인수 항목 (xci).
+
+  (xci) A `-p` turn session started with its standard output on the entry's standard error writes its reply and every message about why it stopped, such as an expired login, a usage limit or an error, only to its standard output and standard error, and not to the terminal or another descriptor. Nothing of it then reaches the entry's standard output, and a person reading the entry's standard error after a failed turn finds there what the session said.
