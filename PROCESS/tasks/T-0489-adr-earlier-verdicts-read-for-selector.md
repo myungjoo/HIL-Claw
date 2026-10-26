@@ -210,3 +210,90 @@ Line numbers are those of `main` at `c3c89d1f`. Where the text and a line number
 - (planner) A measurement read or other slice, if the size cap split it off (criterion 3).
 
 ## Result
+
+**Outcome**: DONE. PR #303 was reviewed in 1 round: the dev-reviewer approved in round 1 with two nits. Both were fixed after the Approve without a further round (D20 nit exception): the decision numbers were aligned between the Status and References lists, and an ellipsis was added to the ADR-0140 decision 4 quote. Language: Python, because the package, its registry and the verdicts parser the tool builds on are Python. No measurement slice was split off. The PR stays within `touchesFiles` and did not touch `hilclaw/verdicts_file.py` or the OD-30 entries.
+
+**The ADR**: `ARCHITECTURE/decisions/ADR-0174-od23-first-case-earlier-verdicts-read.md`. It answers part of OD-23 and part of OD-18 for the first-case runs of ADR-0120 decision 1. It does not answer OD-30, since no member, basis kind or value changes. No OD status changed. It decides:
+- (a) A per-round registry read, `verdicts.read`. It returns the stored document whole, reads no `STATE.json` and refuses round 0.
+- (b) It reuses the `case.write` kinds for this file and adds one new tool-layer kind, `verdicts_missing`. A missing file is a kind, not an empty result (ADR-0071 decision 2; ADR-0072 Alternatives row 3). The call is not journaled.
+- (c) It adds no measurement read. The verdicts' `comparison` entries and `checks.read` already give what an earlier round measured, and no record weighs a magnitude. `timings.compare` stays the evaluator's (ADR-0132 decision 3; ADR-0140 decision 2). Profiles and `eval.json` stay open.
+- (d) The technique-selector alone holds the tool. The caller check refuses it for the main session and for every other sub-agent.
+- (e) Before the record, the selector reads each earlier round from 1 to r-1 in ascending order. It goes on after `verdicts_missing`, `verdicts_invalid`, `verdicts_unsupported` or `bad_result`. After `no_data_root` or `verdicts_unreadable` it writes no record. An earlier verdict is a hint, not a target, and nothing of what was read is recorded.
+
+**The tool**:
+- Name: `verdicts.read` (`mcp__hilclaw__verdicts_read`), in `hilclaw/verdicts_read_tool.py`, registered in `default_registry`.
+- Request: exactly `run_id` and `round` (an int from 1 to 2^53-1).
+- Result: `{"record": <the round's eval/verdicts.json as stored>}`.
+- Kinds, in order:
+  - `invalid_request`;
+  - `no_data_root`;
+  - `verdicts_missing` (new);
+  - `verdicts_invalid` (a place holding no regular file, or a parse refusal);
+  - `verdicts_unsupported`;
+  - `verdicts_unreadable`;
+  - then `verdicts_invalid` again, for a document whose `run_id`, then `round`, differs from the request's;
+  - `bad_result`, from the registry, for a number beyond the float range.
+
+**Selector sentences** (`orchestration/agents/technique-selector.md`):
+- `tools` gains `mcp__hilclaw__verdicts_read` (decision 5).
+- New given line: "`mcp__hilclaw__verdicts_read` gives the verdicts of one earlier round of the run: its `eval/verdicts.json` whole, as stored" (decision 2).
+- New fixed rule: "Also before the record, call `mcp__hilclaw__verdicts_read` once for each earlier round from 1 to the round before yours, in ascending order; in round 1 there is none … On `verdicts_missing`, `verdicts_invalid`, `verdicts_unsupported` or `bad_result`, that round gives you no verdicts: go on … On any other kind of that call, send no record and no further request, report the kind and end" (decision 6).
+- New section "## The earlier verdicts" (decision 6):
+  - the verdicts are input to the round's hypotheses, and how they shape them is the selector's judgement (FR-17);
+  - "a `refuted` verdict forbids no retry and a `supported` one sets no target" (FR-15; FR-18).
+- Weighing line: "the records of earlier rounds, their verdicts among them" (ADR-0171 decision 2; decision 6).
+- New report line: "For each `mcp__hilclaw__verdicts_read` request, the round and the number of its verdicts or the failure kind" (decision 6).
+- Docstrings: `hilclaw/tools.py` `default_registry` and `hilclaw/turn_definition.py` (the roster citation).
+
+**Register entries**:
+- Requirements: the OD-23 and OD-18 rows each gain one ADR-0174 link.
+  - The OD-23 `**잔여**` replaces "선택 쪽이 앞선 판정·측정에 닿는 도구" with the profiles and with the measurement read for when a rule on magnitudes exists.
+  - The OD-18 `**잔여**` names `verdicts.json` (the technique-selector's) among the run files it reaches.
+- OpenDecisionProposals: § OD-23 and § OD-18 each gain one `**채택분**` line. The OD-23 "제안으로 남는 부분" item and the OD-18 run-file sentence were rewritten in place.
+- StandardScenarios: S1 and S8 were re-checked with no verdict change, and the "최근 재검사" line was updated.
+
+**Tests**:
+- New `tests/test_verdicts_read_tool.py` (52 tests): every public name, the happy and branch paths, every kind in order, the negative requests, and the registry and the MCP front.
+- `tests/test_turn_definition.py`: five new selector tests. One is negative: no `verdicts_write`, `timings_compare`, check, run, spec or coder tool.
+- `tests/test_caller_check.py`: new `test_the_real_technique_selector_alone_holds_verdicts_read`.
+- No assertion that pins old prompt text changed.
+- **D21 pinning lists changed**, by the new name only:
+  - `TECHNIQUE_SELECTOR_TOOLS`;
+  - the selector's tuple in `test_holder_lists_the_real_definition`;
+  - `tests/test_tools.py` `DEFAULT_SET`;
+  - `tests/test_blob_tools.py`: the registry name tuple and the `[9:]` list;
+  - `tests/test_check_definition.py`: two registry lists, the MCP list and the joined string; no index moved;
+  - `tests/test_mcp_front.py`: `FIXED_NAMES`, the `held` map and its docstring, and three listed-name lists;
+  - `tests/test___main__.py`: `FIXED_NAMES` and its docstring;
+  - `tests/test_default_registry_schemas.py`: `ACCEPTED`;
+  - the selector's list in `test_the_real_technique_selector_holds_its_reads`.
+- **Local results**:
+  - `ruff check .` and `ruff format --check .` are clean.
+  - The touched test files: 2054 passed, 17 skipped.
+  - The full suite also ran under coverage; the CI gates on the PR head decide the merge.
+- Size: about 370 non-test lines in 8 non-test files; the ADR is 136 lines.
+
+**Record sentences made less exact, not edited**:
+- ADR-0132:
+  - decision 3, the exact list;
+  - Consequences, "The cost, plainly" ("Until a verdicts read exists …");
+  - Boundaries, "The reads of earlier verdicts and measurements a selection needs".
+- ADR-0173:
+  - decision 5 and Consequences slice 2, the selector's `tools` as then listed;
+  - Boundaries, "the reads of earlier verdicts and measurements".
+
+**Runtime acceptance items** (for `PROCESS/RuntimeAcceptance.md`, DRIVER §8, D22; not HQs):
+- (lxxxix) In a `-p` turn session, the technique-selector's call of `mcp__hilclaw__verdicts_read` runs under the derived pre-approval without a prompt, and the caller check lets it through for the selector and refuses it for the main session.
+- (xc) In a round ≥ 2 of a first-case run, the technique-selector calls `mcp__hilclaw__verdicts_read` once for each earlier round, in ascending order and before `mcp__hilclaw__hypotheses_write`, as ADR-0174 decision 6 says. The result for the largest verdicts file a first-case round writes reaches it whole, within any limit Claude Code puts on the result of an MCP tool call.
+
+**P2 items before P2-5 (executor's reading, for the planner)**:
+- P2-6: the selection side of first-case runs now has every typed input its records name: the earlier hypothesis records, the check standing, the catalog criteria, the cases and the earlier verdicts.
+  - What stays open is outside P2-5's minimum: profiles (`cpu_standin` offers none), `eval.json` (OD-20), `decision.md`, and a selection rule for many rounds.
+  - In my reading P2-6 holds no work before P2-5.
+- P2-7: no further work before P2-5 (T-0488's reading stands).
+- P2-1, P2-2, P2-3 and P2-4: this task did not survey them.
+  - The first-case round steps for round 0 and round ≥ 1 are landed (ADR-0142, ADR-0171, ADR-0172).
+  - P2-4's hooks beyond the caller check stay open. They constrain no step P2-5 needs, since the caller check and the spend-path check exist.
+  - Whether P2-2 or P2-3 hold a remainder that P2-5 needs is for the planner to check against PLAN's completion criteria.
+
+**Follow-ups**: none.
