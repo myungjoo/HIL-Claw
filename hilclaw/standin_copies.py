@@ -9,9 +9,11 @@ and of the harness program of the build. The kernel's copies lie in a
 sub-directory of the build directory that holds nothing else, and the harness
 program's copy beside it, so that a kernel file named like the harness program
 is a second file and never a replacement of it. :func:`place_copies` is that
-slice; :func:`place_harness_copy` copies one further harness program beside
-the first, as the waiter's source of ADR-0145 decision 3 is copied with the
-timing driver. It is bound to no tool and no backend operation; nothing calls it yet.
+slice. It is bound to no tool and no backend operation; nothing calls it yet.
+
+:func:`place_harness_copy` copies one further harness program beside the
+first, as the waiter's source of ADR-0145 decision 3 is copied with the timing
+driver (ADR-0170).
 
 Conventions of this module, which are not rules of the record:
 
