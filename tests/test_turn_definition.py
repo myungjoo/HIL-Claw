@@ -614,11 +614,11 @@ def test_the_prompt_delegates_both_checks_to_the_evaluator():
     assert "`board`" in text
 
 
-def test_the_prompt_keeps_the_stop_in_later_rounds():
+def test_the_prompt_keeps_the_stop_in_later_rounds_after_steps_7_and_8_only():
     text = prompt_text()
-    assert "not yet defined" in text
+    assert "not yet defined" not in text
     assert "In other rounds it follows step 7" in the_stop()
-    assert "Later slices of the definition replace this stop in rounds ≥ 1" in text
+    assert "Later slices of the definition" not in text
 
 
 def test_the_prompt_names_board_run_only_in_the_prohibition():
@@ -680,14 +680,14 @@ def test_the_prompt_makes_no_check_of_its_own():
     only_forbidden(text, "checks_read")
 
 
-def test_the_prompt_reaches_the_closing_steps_from_round_0_only():
+def test_the_prompt_reaches_the_closing_steps_from_steps_5_and_12():
     heading = "### The closing steps of a round"
     text = prompt_text()
     assert heading in text
     closing = text.split(heading, 1)[1]
     assert "Round 0 reaches them after step 5" in closing
-    assert "rounds ≥ 1 reach them only once later slices" in closing
-    assert "reached only once later slices define the steps before them" not in text
+    assert "a round ≥ 1 after step 12 (ADR-0172 decision 6)" in closing
+    assert "only once later slices" not in text
 
 
 def between(text, start, end):
@@ -708,7 +708,7 @@ def entry_steps():
 
 
 def the_stop():
-    return between(prompt_text(), "The stop:", "Later slices")
+    return between(prompt_text(), "The stop:", "### The closing steps of a round")
 
 
 def closing_step(number):
@@ -739,11 +739,11 @@ def test_the_stop_commits_and_leaves_round_0_open():
     assert "No turn goes past this stop" not in stop
     assert "it follows step 2, 3, 4 or 5 as they say" in stop
     assert "reaches the closing steps below only through step 5" in stop
-    assert "no turn of a round ≥ 1 reaches them yet" in stop
+    assert "a turn of a round ≥ 1 only through step 12" in stop
     assert "ADR-0143 decisions 2 and 7" in stop
     assert stop.index("once the report") < stop.index("mcp__hilclaw__run_commit")
     assert stop.index("mcp__hilclaw__run_commit") < stop.index("end the session")
-    assert "Later slices of the definition replace this stop" in prompt_text()
+    assert "Later slices of the definition" not in prompt_text()
 
 
 def test_the_end_rule_covers_entry_steps_2_to_7():
@@ -890,13 +890,11 @@ def test_the_stop_follows_the_read_in_later_rounds():
     stop = the_stop()
     later = stop.split("In other rounds it follows step 7", 1)[1]
     assert "after a failed read" in later
-    assert "and step 8 otherwise" in later
-    after = later.split("After a report of the coder-driver", 1)[1]
-    assert "the following steps of round `<round>` are not yet defined" in after
-    assert "Nor is a round ≥ 1 (ADR-0171 decision 6)" in later
-    assert "Later slices of the definition replace this stop in rounds ≥ 1" in (
-        prompt_text()
-    )
+    assert "and step 8 or step 12 as they say" in later
+    assert "ADR-0172 decisions 2, 5 and 7" in later
+    assert "After a report of the coder-driver" not in later
+    assert "not yet defined" not in stop
+    assert "Nor is a round ≥ 1 (ADR-0171 decision 6; ADR-0172 decision 7)" in later
 
 
 def test_the_prompt_names_hypotheses_write_only_in_the_prohibition():
@@ -916,7 +914,7 @@ def test_the_prompt_names_hypotheses_write_only_in_the_prohibition():
 def test_only_step_8_of_a_later_round_delegates_the_coder_call():
     for number in (2, 3, 4, 5):
         assert round_step(number).startswith("Round 0 only.**")
-    for number in (6, 7):
+    for number in (6, 7, 9, 10, 11, 12):
         step = round_step(number)
         for word in ("coder-driver", "spec_write", "coder_run"):
             assert word not in step
@@ -932,9 +930,14 @@ def test_only_step_8_of_a_later_round_delegates_the_coder_call():
             "closing steps",
         ):
             assert word not in step
+    for number in (9, 10, 11):
+        step = round_step(number)
+        for word in ("case_write", "case.write", "round_end", "round.end"):
+            assert word not in step
+        assert "closing steps" not in step
     steps = between(prompt_text(), "## The round steps", "The stop:")
-    assert " 8. **" in steps
-    assert " 9. **" not in steps
+    assert " 12. **" in steps
+    assert " 13. **" not in steps
     read = round_step(7)
     failed = between(read, "If the call fails with any kind", "If it returns")
     assert "come to the stop" in failed
@@ -948,12 +951,16 @@ def test_step_8_delegates_the_coder_call_with_the_choice():
         "Round ≥ 1 only.** If the report of step 6 holds exactly one "
         "`techniques:` line, delegate to `coder-driver` with the `Agent` tool"
     )
-    chosen, other = step.split("Otherwise", 1)
+    chosen, other = step.split(
+        "If the report of step 6 does not hold exactly one `techniques:` line", 1
+    )
     assert "`round` the round, `candidate` 1, `attempt` 1" in chosen
     assert "the ids of that line in its order or that there are none" in chosen
     assert "and no place" in chosen
-    assert "report it in one line and come to the stop" in chosen
-    assert "delegate no second time, issue no call yourself" in chosen
+    assert "report it in one line" in chosen
+    assert "delegate to `coder-driver` no second time, issue no call yourself" in (
+        chosen
+    )
     assert "ask for no repair" in chosen
     assert "spec_write" not in step
     assert "coder_run" not in step
@@ -969,9 +976,9 @@ def test_step_8_delegates_the_coder_call_with_the_choice():
 
 def test_the_stop_names_step_8():
     stop = the_stop()
-    assert "step 8 otherwise" in stop
-    assert stop.index("step 8 otherwise") < stop.index("mcp__hilclaw__run_commit")
-    assert "not yet defined" in stop
+    assert "step 8 or step 12 as they say" in stop
+    assert stop.index("step 8 or step 12") < stop.index("mcp__hilclaw__run_commit")
+    assert "not yet defined" not in stop
 
 
 def selector_body():
@@ -1020,3 +1027,157 @@ def test_the_technique_selector_reports_one_techniques_line():
     assert "`techniques: none` for an empty list" in line
     assert "Otherwise give no such line (ADR-0171 decision 4)" in line
     assert "Request no check, measurement, spec or coder call" in body
+
+
+def test_step_8_goes_on_by_the_coder_driver_report():
+    chosen = round_step(8).split("If the report of step 6 does not hold exactly", 1)[0]
+    checks = chosen.split("Go on to step 9 only when", 1)[1]
+    checks = checks.split("When it is", 1)[0]
+    assert "a result of `coder.run` whose `taken` holds at least one name" in checks
+    verdicts = chosen.split("When it is", 1)[1].split("On any other report", 1)[0]
+    assert "a result of `coder.run` with an empty `taken`" in verdicts
+    assert "a failure kind of `coder.run`" in verdicts
+    assert "go on to step 12" in verdicts
+    assert "come to the stop" not in verdicts
+    other = chosen.split("On any other report", 1)[1]
+    for word in (
+        "a failure kind of `spec.write`",
+        "`spec_exists` among them",
+        "the report that no list was given",
+        "no report you can read",
+    ):
+        assert word in other
+    assert "come to the stop (ADR-0172 decision 2)" in other
+    assert "step 9" not in other
+    assert "step 12" not in other
+    assert chosen.index("step 9") < chosen.index("step 12")
+
+
+def test_steps_9_to_12_follow_in_order():
+    steps = between(prompt_text(), "## The round steps", "The stop:")
+    places = [steps.index(f" {number}. **Round ≥ 1 only.**") for number in range(6, 13)]
+    assert places == sorted(places)
+    assert round_step(9).startswith("Round ≥ 1 only.** Delegate to `evaluator`")
+    assert round_step(10).startswith("Round ≥ 1 only.** Delegate to `evaluator`")
+    assert round_step(11).startswith(
+        "Round ≥ 1 only.** Delegate to `experiment-runner` with the `Agent`"
+    )
+    assert round_step(12).startswith(
+        "Round ≥ 1 only.** Delegate to `evaluator` with the `Agent` tool for "
+        "the verdicts of the round"
+    )
+
+
+def test_step_9_checks_the_attempt_at_sim():
+    step = round_step(9)
+    assert (
+        "the tuple `round` the round, `candidate` 1, `attempt` 1, the point `sim`, "
+        "and no place and no `execution`" in step
+    )
+    assert "Take the standing from the report (ADR-0131 decision 7)" in step
+    going = 'Go on to step 10 only when it gives the standing `"verified"` at `sim`'
+    assert going in step
+    other = step.split("On any other report", 1)[1]
+    for word in ('`"not_verified"`', '`"undetermined"`', "no report you can read"):
+        assert word in other
+    assert "go on to step 12 (ADR-0172 decision 3)" in other
+    assert "come to the stop" not in step
+    assert "`board`" not in step
+
+
+def test_step_10_checks_the_attempt_at_board():
+    step = round_step(10)
+    assert "the message naming the point `board` in place of `sim`" in step
+    going = 'Go on to step 11 only when it gives the standing `"verified"` at `board`'
+    assert going in step
+    assert "On any other report go on to step 12 (ADR-0172 decision 3)" in step
+    assert "come to the stop" not in step
+
+
+def test_step_11_measures_and_always_goes_on_to_the_verdicts():
+    step = round_step(11)
+    assert (
+        "the tuple `round` the round, `candidate` 1, `attempt` 1, and no place" in step
+    )
+    assert "`execution`" not in step
+    for word in ('`"converged"`', '`"not_converged"`', '`"broken"`', "a failure kind"):
+        assert word in step
+    assert "no report you can read" in step
+    assert "go on to step 12 (ADR-0172 decision 4)" in step
+    assert "come to the stop" not in step
+    assert "ADR-0142 decision 4" in step
+
+
+def test_step_12_delegates_the_verdicts_and_goes_to_the_closing_steps():
+    step = round_step(12)
+    assert "names your run id and the round, and no tuple, no point and no place" in (
+        step
+    )
+    assert "`candidate`" not in step
+    assert "`sim`" not in step
+    assert "Whatever it reports, report it in one line." in step
+    written = step.split("When the report says that the verdicts file was written", 1)
+    going = written[1].split("On any other report", 1)[0]
+    assert "or that `verdicts.write` answered `verdicts_exist`" in going
+    assert 'go to "The closing steps of a round"' in going
+    assert "`case.write`, then `round.end`, then `run.commit`" in going
+    assert "come to the stop" not in going
+    other = step.split("On any other report", 1)[1]
+    assert "another failure kind, or no report you can read" in other
+    assert "come to the stop (ADR-0172 decision 5; FR-17)" in other
+    assert "closing steps" not in other
+    for cited in ("ADR-0172 decision 5", "ADR-0128 decisions 4 and 7"):
+        assert cited in step
+
+
+def test_round_0_still_skips_case_write():
+    assert "no `case.write`, then `round.end`, then `run.commit`" in round_step(5)
+    first = closing_step(1)
+    assert first.startswith("`case.write`, only in a round ≥ 1.**")
+    assert "In round 0, skip this step" in first
+
+
+def test_no_later_round_step_calls_a_held_tool_itself():
+    for number in range(6, 13):
+        step = round_step(number)
+        for word in (
+            "spec_write",
+            "coder_run",
+            "board_run",
+            "sim_run",
+            "correctness_check",
+            "checks_read",
+            "verdicts_write",
+            "timings_compare",
+        ):
+            assert word not in step
+    steps = between(prompt_text(), "## The round steps", "The stop:")
+    later = steps.split(" 6. **", 1)[1]
+    assert len(re.findall(r"[Dd]elegate to `coder-driver` with", later)) == 1
+    assert "delegate to `coder-driver` no second time" in later
+    assert later.count("to `experiment-runner` with") == 1
+    assert later.count("Delegate to `evaluator`") == 3
+
+
+def test_the_prompt_names_verdicts_write_only_in_the_prohibition():
+    prohibition = (
+        "Do not call `mcp__hilclaw__verdicts_write` yourself (ADR-0128 decision 6; "
+        "ADR-0172 decision 5)."
+    )
+    assert only_forbidden(prompt_text(), "verdicts_write") == [prohibition]
+
+
+def test_the_agent_bullet_names_the_later_round_delegations():
+    text = prompt_text()
+    assert (
+        "to `evaluator`, only as steps 9, 10 and 12 say, and to `experiment-runner`, "
+        "only as step 11 says (ADR-0172 decisions 3 to 5)" in text
+    )
+
+
+def test_the_experiment_runner_serves_every_round():
+    data = (SOURCE / "agents" / EXPERIMENT_RUNNER).read_text(encoding="utf-8")
+    description = frontmatter(data)["description"]
+    assert "round-0" not in description
+    assert "in round 0 and in a round of at least 1" in description
+    assert "ADR-0172 decision 4" in " ".join(data.split())
