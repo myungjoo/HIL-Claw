@@ -42,7 +42,7 @@ A sentence is **cited** when a source is named with it. Every other sentence is 
 ### 4. (c) The loop reads, keeps and writes nothing of either stream
 
 - The loop hands the descriptor to the session and does nothing else with it: it reads, copies, buffers, cuts, prefixes and interprets nothing (ADR-0122 decision 2), and owns no file and no pipe. So it has no failure of its own to handle, and a turn costs no more.
-- **A calling process without a standard error.** When descriptor 2 is not open at a turn, the session's standard output is discarded and its standard error is left as inherited, which reaches nothing, as today. The turn still starts and its exit status is passed on as before. **Why**: the one line does not need standard error, and a starter that closed it chose to see nothing there. Refusing the turn would stop a run for a stream no outcome uses.
+- **A calling process without a standard error.** When descriptor 2 is not open at a turn, the session's standard output is discarded and its standard error is left as inherited, which reaches nothing, as today. The turn still starts and its exit status is passed on as before. **Why**: the one line does not need standard error, and a starter that closed it chose to see nothing there. Refusing the turn would stop a run for a stream no outcome uses. A descriptor 2 that the process found closed and that a later open reused for another file is not told apart: the session's text then goes to that file, as its standard error already did before this record.
 - **Unchanged**: the exit status of a turn, the command line (ADR-0139 decision 8), the environment (ADR-0141 decision 4), the working directory and the closed standard input.
 
 ### 5. (d) What the starter sees, and the entry's standard error
