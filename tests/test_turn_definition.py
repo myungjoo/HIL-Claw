@@ -628,10 +628,8 @@ def test_the_prompt_delegates_the_measurement_to_the_experiment_runner():
 
 def test_step_4_goes_on_to_step_5_only_when_verified_at_board():
     step = round_step(4)
-    assert (
-        'Go on to step 5 only when it gives the standing `"verified"` at `board`'
-        in (step)
-    )
+    going = 'Go on to step 5 only when it gives the standing `"verified"` at `board`'
+    assert going in step
     assert "On any other report come to the stop" in step
     assert "waits on" not in step
 
