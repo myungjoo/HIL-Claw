@@ -52,8 +52,9 @@ Conventions of this module (readings of ADR-0166, not rules of the record):
   reused: a removal that fails or is refused raises nothing and shows as
   ``removed`` false.
 
-What this module does not do: it has no generation mode, token selection rule,
-model-level reference or tolerance (OD-31 sub-question 6, HQ-0071); it gives no
+What this module does not do: it has no generation mode or token selection rule
+(ADR-0176 decision 5, a later code slice) and no model-level reference or
+tolerance, which are :mod:`hilclaw.model_reference`'s (ADR-0176); it gives no
 default to any model parameter, RoPE constant (HQ-0070) or time limit, and sets
 no cache capacity; it chooses no flag of a kernel or of the program, no
 container and no environment; it casts no array; it has no fallback to another
