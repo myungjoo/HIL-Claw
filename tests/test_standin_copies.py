@@ -633,3 +633,77 @@ def test_no_link_or_shutil_copy_is_used(monkeypatch, output, build_dir, harness)
         "kernel/a.h",
         "verification_program.c",
     ]
+
+
+def test_a_further_harness_program_beside_the_first(output, build_dir):
+    write(output, "a.c")
+    place_copies(output, timing_build.DRIVER_SOURCE, build_dir)
+    waiter = timing_build.DRIVER_SOURCE.with_name("timing_waiter.c")
+    assert standin_copies.place_harness_copy(waiter, build_dir) == "timing_waiter.c"
+    assert_copy(build_dir, "timing_waiter.c", waiter)
+    assert tree(build_dir) == [
+        "kernel",
+        "kernel/a.c",
+        "timing_driver.c",
+        "timing_waiter.c",
+    ]
+
+
+def test_a_further_harness_program_named_like_an_entry(build_dir, harness):
+    (build_dir / harness.name).write_bytes(b"first")
+    with pytest.raises(CopyError) as raised:
+        standin_copies.place_harness_copy(harness, build_dir)
+    assert raised.value.failure == ENTRY_EXISTS
+    assert (build_dir / harness.name).read_bytes() == b"first"
+
+
+@pytest.mark.parametrize(
+    ("make", "failure"),
+    [
+        (lambda path: None, HARNESS_UNREADABLE),
+        (lambda path: path.mkdir(), HARNESS_NOT_REGULAR_FILE),
+    ],
+)
+def test_a_further_harness_program_that_cannot_be_read(
+    build_dir, tmp_path, make, failure
+):
+    source = tmp_path / "other" / "waiter.c"
+    source.parent.mkdir()
+    make(source)
+    with pytest.raises(CopyError) as raised:
+        standin_copies.place_harness_copy(source, build_dir)
+    assert raised.value.failure == failure
+    assert tree(build_dir) == []
+
+
+def test_a_further_harness_program_that_cannot_be_written(
+    monkeypatch, build_dir, harness
+):
+    def failing(descriptor, data):
+        raise OSError(errno.EIO, "input/output error")
+
+    monkeypatch.setattr(standin_copies.os, "write", failing)
+    with pytest.raises(CopyError) as raised:
+        standin_copies.place_harness_copy(harness, build_dir)
+    assert raised.value.failure == COPY_UNWRITABLE
+
+
+@pytest.mark.parametrize(
+    ("harness_program", "build_dir_value", "parameter", "error"),
+    [
+        (42, None, "harness_program", TypeError),
+        ("kernel", None, "harness_program", ValueError),
+        (None, "relative/build", "build_dir", ValueError),
+        (None, b"/bytes", "build_dir", TypeError),
+    ],
+)
+def test_a_further_harness_program_refused_before_anything(
+    build_dir, harness, harness_program, build_dir_value, parameter, error
+):
+    with pytest.raises(error) as raised:
+        standin_copies.place_harness_copy(
+            harness if harness_program is None else harness_program,
+            build_dir if build_dir_value is None else build_dir_value,
+        )
+    assert raised.value.parameter == parameter
+    assert tree(build_dir) == []

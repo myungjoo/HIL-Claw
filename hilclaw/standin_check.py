@@ -90,6 +90,12 @@ nothing between calls.
 The process's standard error is read by nothing (OD-16 sub-question 5). The
 operation is bound to no backend table: the default table and the
 registry do not name it yet (ADR-0167 Boundaries).
+
+:class:`Answered`, :func:`carry_out`, :func:`container_image`,
+:func:`make_build_dir`, :func:`in_container`, :func:`run_build`,
+:func:`run_container`, :func:`settled` and :func:`remove_build_dir` are the
+steps this operation shares with the ``cpu_standin`` operation of the run
+tools, :func:`hilclaw.standin_run.operation` (ADR-0170).
 """
 
 import contextlib
@@ -135,7 +141,9 @@ _NO_STATUS = "the container's client handed back no status"
 _EXECUTABLE = posixpath.join(standin_container.CONTAINER_BUILD_DIR, EXECUTABLE_NAME)
 
 
-class _Answered(Exception):
+class Answered(Exception):
+    """A :class:`hilclaw.standin_answer.Failure` met inside :func:`carry_out`, as ``answer``."""
+
     def __init__(self, answer):
         super().__init__()
         self.answer = answer
@@ -160,18 +168,35 @@ def operation(request, hw_profile, parameters, output_path, keeper, /):
     end. See the module docstring for the order and the module's own choices.
     """
     arguments, process_limit = _checked(parameters, keeper)
-    image = _image()
-    build_dir = _make_build_dir()
+    image = container_image()
+    build_dir = make_build_dir(BUILD_DIR_PREFIX)
+    return carry_out(
+        build_dir,
+        lambda outcomes: _carry_out(
+            image, build_dir, output_path, keeper, arguments, process_limit, outcomes
+        ),
+    )
+
+
+def carry_out(build_dir, steps):
+    """Return ``steps(outcomes)``, then remove ``build_dir`` where every outcome allows it.
+
+    ``outcomes`` is a new list that :func:`run_container` fills with what
+    each container gave. An :class:`Answered` that ``steps`` raises is raised
+    as :class:`hilclaw.tools.ToolFailure` with its kind and message, and
+    holds no chained error; anything else passes as it is. ``build_dir`` is
+    removed by :func:`remove_build_dir` before this returns or raises, only
+    where :func:`hilclaw.standin_answer.build_dir_removable` is true of every
+    outcome (ADR-0168 decision 5).
+    """
     outcomes = []
     try:
-        return _carry_out(
-            image, build_dir, output_path, keeper, arguments, process_limit, outcomes
-        )
-    except _Answered as answered:
+        return steps(outcomes)
+    except Answered as answered:
         answer = answered.answer
     finally:
         if all(standin_answer.build_dir_removable(outcome) for outcome in outcomes):
-            _remove_build_dir(build_dir)
+            remove_build_dir(build_dir)
     raise tools.ToolFailure(answer.kind, answer.message)
 
 
@@ -191,7 +216,12 @@ def _checked(parameters, keeper):
     return tuple(str(int(value)) for value in (m, k, n, draws, seed)), limit
 
 
-def _image():
+def container_image():
+    """Return the image reference :func:`hilclaw.standin_image.read_image` gives (C1, C2).
+
+    Raises :class:`hilclaw.tools.ToolFailure` ``compiler_unavailable`` where
+    no image is named or the value is refused; lets pass what no row places.
+    """
     try:
         value = standin_image.read_image()
     except Exception as error:
@@ -205,15 +235,22 @@ def _image():
     raise tools.ToolFailure(answer.kind, answer.message)
 
 
-def _make_build_dir():
+def make_build_dir(prefix):
+    """Make and return a new build directory with ``prefix`` outside every checkout (S3).
+
+    The directory is :func:`tempfile.mkdtemp` in the temporary directory of
+    the system; one that cannot be made, or whose real path lies inside a
+    checkout (the module docstring), is removed where it was made and
+    answered with :class:`hilclaw.tools.ToolFailure` ``build_directory_unusable``.
+    """
     try:
-        directory = tempfile.mkdtemp(prefix=BUILD_DIR_PREFIX)
+        directory = tempfile.mkdtemp(prefix=prefix)
     except OSError:
         directory = None
     if directory is not None and not _inside_checkout(directory):
         return directory
     if directory is not None:
-        _remove_build_dir(directory)
+        remove_build_dir(directory)
     raise tools.ToolFailure(_UNUSABLE.kind, _UNUSABLE.message)
 
 
@@ -236,7 +273,7 @@ def _carry_out(image, build_dir, output_path, keeper, arguments, limit, outcomes
     built = _build(image, build_dir, copies, keeper, outcomes)
     if built is not standin_answer.GO_ON:
         return built
-    ran = _run(
+    ran = run_container(
         outcomes,
         standin_answer.PROCESS,
         image,
@@ -250,7 +287,7 @@ def _carry_out(image, build_dir, output_path, keeper, arguments, limit, outcomes
     answer = standin_answer.read_process(ran)
     if answer is standin_answer.GO_ON:
         return ran.stdout
-    return _settled(answer)
+    return settled(answer)
 
 
 def _placed_copies(output_path, build_dir):
@@ -262,10 +299,10 @@ def _placed_copies(output_path, build_dir):
         answer = standin_answer.place_error(error, standin_answer.COPIES)
         if type(answer) is not standin_answer.Failure:
             raise
-        raise _Answered(answer) from None
+        raise Answered(answer) from None
     answer = standin_answer.read_copies(copies)
     if answer is not standin_answer.GO_ON:
-        raise _Answered(answer)
+        raise Answered(answer)
     return copies
 
 
@@ -273,37 +310,67 @@ def _build(image, build_dir, copies, keeper, outcomes):
     sources = (copies.harness, *copies.compiled_set)
     command = (
         *standin_settings.FLAGS,
-        *(_inside(source) for source in sources),
+        *(in_container(source) for source in sources),
         *standin_settings.TRAILING_FLAGS,
         "-o",
         _EXECUTABLE,
     )
-    result = _run(
+    return run_build(
         outcomes,
-        standin_answer.BUILD,
         image,
         build_dir,
-        COMPILER,
         command,
         standin_settings.BUILD_TIME_LIMIT_S,
+        keeper=keeper,
+        executable=EXECUTABLE_NAME,
+        missing=_NO_EXECUTABLE,
+    )
+
+
+def run_build(
+    outcomes, image, build_dir, command, timeout_s, *, keeper, executable, missing
+):
+    """Run :data:`COMPILER` with ``command`` in one build container and read it.
+
+    Returns :data:`hilclaw.standin_answer.GO_ON` when the build ended with
+    status 0 and left a regular file ``executable`` directly in
+    ``build_dir``, or a value of ``condition``. Where ``keeper`` is not
+    ``None`` it is handed the log when ADR-0169 decision 3 says so, before the
+    executable is looked for: the client's standard output then its standard
+    error, each decoded as UTF-8 with invalid bytes replaced (decision 2).
+    Raises :class:`Answered` with ``missing`` for a status 0 that left no
+    such file (S9), and as :func:`run_container` and :func:`settled` do.
+    """
+    result = run_container(
+        outcomes, standin_answer.BUILD, image, build_dir, COMPILER, command, timeout_s
     )
     if type(result) is str:
         return result
     answer = standin_answer.read_build(result)
-    if answer is standin_answer.GO_ON or type(answer) is str:
+    if keeper is not None and (answer is standin_answer.GO_ON or type(answer) is str):
         keeper.hand_over(_log(result))
     if answer is not standin_answer.GO_ON:
-        return _settled(answer)
-    if not _regular_file(os.path.join(build_dir, EXECUTABLE_NAME)):
-        raise _Answered(_NO_EXECUTABLE)
+        return settled(answer)
+    if not _regular_file(os.path.join(build_dir, executable)):
+        raise Answered(missing)
     return standin_answer.GO_ON
 
 
-def _inside(relative):
+def in_container(relative):
+    """Return the absolute path inside the container of ``relative`` to the build directory."""
     return posixpath.join(standin_container.CONTAINER_BUILD_DIR, relative)
 
 
-def _run(outcomes, step, image, build_dir, program, arguments, timeout_s):
+def run_container(outcomes, step, image, build_dir, program, arguments, timeout_s):
+    """Run ``program`` in one container, give its forced removal :data:`REMOVAL_TIMEOUT_S`, and place what it raised.
+
+    What :func:`hilclaw.standin_container.run_in_container` returned or raised
+    is appended to ``outcomes``. Returns its
+    :class:`hilclaw.standin_container.ContainerResult`, or the value of
+    ``condition`` :func:`hilclaw.standin_answer.place_error` gives at
+    ``step``; raises :class:`Answered` for a failure it gives, and lets pass
+    as it is what it does not place and every request to end.
+    """
     try:
         try:
             result = standin_container.run_in_container(
@@ -329,15 +396,19 @@ def _place(error, step):
         raise error
     if type(answer) is str:
         return answer
-    raise _Answered(answer)
+    raise Answered(answer)
 
 
-def _settled(answer):
+def settled(answer):
+    """Return a value of ``condition`` as it is; raise :class:`Answered` for a failure.
+
+    ``None``, an answer no row gives, raises :class:`RuntimeError`.
+    """
     if type(answer) is str:
         return answer
     if answer is None:
         raise RuntimeError(_NO_STATUS)
-    raise _Answered(answer)
+    raise Answered(answer)
 
 
 def _log(result):
@@ -353,7 +424,11 @@ def _regular_file(path):
         return False
 
 
-def _remove_build_dir(directory):
+def remove_build_dir(directory):
+    """Remove ``directory`` with retries after :data:`REMOVE_PAUSES_S`; return whether it is gone.
+
+    Raises nothing for a failed removal; a request to end passes.
+    """
     for pause in REMOVE_PAUSES_S:
         time.sleep(pause)
         with contextlib.suppress(Exception):
