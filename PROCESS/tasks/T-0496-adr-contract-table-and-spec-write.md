@@ -2,7 +2,7 @@
 id: T-0496
 title: Write the ADR on how the seven kernel contracts reach the instance start, spec.write, correctness.check, sim.run and board.run (OD-18, OD-6), and land its first code slice — one contract table and spec.write composing the spec of every contract in it
 phase: P2
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: code
 coversReq: [C-6, FR-5, FR-10, OD-6, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: []
@@ -29,7 +29,7 @@ touchesFiles:
   - tests/test_rope_bf16_contract.py
   - tests/test_sdpa_kv_cache_bf16_contract.py
 estimatedSize: {loc: 560, files: 9}   # non-test: ADR ~300 lines, hilclaw/contract_table.py ~150, spec_tool.py ~40 (check 5 and composition through the table, docstring), start_instance.py / check_definition.py / run_definition.py ~10 each (the predicate taken from the table, docstrings), Requirements/OpenDecisionProposals/StandardScenarios ~10. The module name `contract_table` is a suggestion; the executor may choose another and adjust touchesFiles in the PR body. Tests are outside the cap (DRIVER §5, D4/D20).
-hq: []
+hq: [HQ-0077]
 ---
 ## Why
 
@@ -96,8 +96,18 @@ hq: []
 
 ## Follow-ups
 
-(executor fills)
+- On the owner's answer to the HQ below: write the answer into ADR-0177 decision 3 (the result of a bf16 check) and its registers on the PR branch, take one more review round, then land PR #309. Slice 1 needs no code change for it.
 
 ## Result
 
-(executor fills)
+**BLOCKED** (CLAUDE.md A-13, data-plane schema change) — PR #309 (Draft, `DONOTMERGE`, branch `claude/T-0496-contract-table-spec-write`, head `90ce5ddb`), not merged.
+
+- **What is on the branch.** ADR-0177 (`ARCHITECTURE/decisions/ADR-0177-od18-od6-contract-table.md`): (a) one contract table `hilclaw/contract_table.py` keyed by (kind, dtype, layout, language) with the seven contract modules and two flags `checked` / `timed`; (b) per place and slice — `spec.write` admits all seven now; `correctness.check` / `sim.run` / `board.run` admit what their flag says; the instance start admits a contract only when it is both checked and timed (every round-0 tool serves it, ADR-0142); fp32 `gemm` only for those four after this slice; (c) what `correctness.check` takes for a bf16 kind (dimensions per kind, seed/draws/tolerance path, judges of ADR-0163/0164/0165, what the mock and `cpu_standin` operations are handed, ADR-0116 build settings read as holding for the bf16 verification builds); **the result form is left to the owner**; (d) open: bf16 timing run (OD-13, OD-16 ⑥), `rope` start position (OD-16 ⑤), catalog entries for bf16 contracts (OD-22), executor binding (OD-20, OD-7); no orchestration prompt names `gemm`/`fp32`; (e) slices in landing order. Code slice 1: `hilclaw/contract_table.py`, `spec.write` through the table, the four other places bound to `start_covers` / `check_covers` / `run_covers` (same answers as before). Registers: Requirements OD-6 / OD-18 rows, OpenDecisionProposals § OD-6 / § OD-18, StandardScenarios (S0 note, 최근 재검사; S0·S1 re-checked, no verdict change). Touched beyond `touchesFiles`: `hilclaw/instance_start.py`, `hilclaw/gemm_contract.py` (one docstring sentence each).
+- **Language**: Python — the layer-2 modules this slice joins (contract modules, `spec_tool`, tool definitions) are Python.
+- **Review**: round 1 (dev-reviewer, https://github.com/myungjoo/HIL-Claw/pull/309#issuecomment-6418215608) — Request changes: Blocker — decision 3 decided a check result whose `shape` holds each kind's members and an SDPA `counts` member `cache_differs`, which changes the closed result list of ADR-0042; ADR-0063's A-13 reading and ADR-0100 decisions 3–4 treat a change of a landed list as a data-plane schema change put to the owner (precedent HQ-0020). Two Nits (a register typo, a docstring). All addressed in `90ce5ddb`: the result form is no longer decided and is put to the owner (criterion 2 (f)); not yet re-reviewed.
+- **Edited list pins / binding tests** (D21): `tests/test_gemm_contract.py::test_module_is_bound_by_the_registry_the_start_and_the_model_binding_only_and_imports_keys_only` (renamed `..._bound_by_the_contract_table_and_the_model_binding_only_...`); the six `test_module_imports_keys_only_and_is_bound_by_the_model_binding_only` (renamed `..._contract_table_and_the_model_binding_only`, binder added); `tests/test_check_definition.py` and `tests/test_run_definition.py` `::test_the_module_imports_what_it_names_and_has_its_public_names_only`; `tests/test_start_instance.py::test_prepare_is_given_the_bound_accelerators_and_covers` and `::test_the_errors_of_prepare_are_the_same_objects`; `::test_the_first_call_binds_the_tool_function_of_the_record` in `tests/test_check_definition.py` and `tests/test_run_definition.py`.
+- **Local tests** (WSL, clang, at `c205cf9a`; the later commit changes docs and one docstring): 36228 passed, 50 skipped; `hilclaw/` line coverage 99.8 %, function coverage 100 %; ruff check and format clean. CI had not reported on the branch when this was written.
+- **Later slices** (ADR-0177 decision 5, planner's candidates after the answer): 2 — `correctness.check` for bf16 `gemm`, `rmsnorm`, `elementwise_add`, `swiglu`, `sdpa_kv_cache` (needs the HQ answer); 3 — `correctness.check` for `rope` (needs the start position's source, OD-16 ⑤); 4 — the bf16 timing run record (OD-13, OD-16 ⑥) and its code, after which the instance start admits the checked-and-timed contracts.
+- **Runtime acceptance items**: none new (the ADR-0116 build settings it extends are RA-0008's).
+- **§9 owner notice**: not posted (not merged).
+- **HQ (for `PROCESS/STATE.json`, reason: A-13 data-plane schema change)**: 쟁점 — bf16 여섯 계약의 `correctness.check` 결과(`events.ndjson`의 `step_ended` 줄 `result`)는 ADR-0042의 닫힌 목록에 맞지 않습니다: `shape`는 "정확히 `m`·`k`·`n`"인데 `gemm` 밖의 kind에는 `k`가 없고(`rmsnorm`·`elementwise_add`·`swiglu`는 `m`·`n`, `rope`는 `m`·`h`·`d`, `sdpa_kv_cache`는 `m`·`l`·`h`·`h_kv`·`d`), `counts` 항목은 `failed`·`non_finite`뿐인데 SDPA는 캐시 원소의 차이도 판정에 씁니다(ADR-0165 결정 8). ADR-0063의 A-13 읽기와 ADR-0100(결과 정의가 바뀌면 새 `step` 값)에 따라 이는 데이터 plane 스키마 변경입니다. 선택지 — (a) bf16 kind의 검사는 새 `step` 값 둘(sim·board 지점; ADR-0100 결정 3)을 쓰고, 그 결과 목록은 ADR-0042의 목록에서 `shape`를 "기록된 op_signature의 그 kind의 shape 멤버 전부"로, SDPA의 `counts` 항목에 캐시 차이 수 멤버(`cache_differs`)를 더한 것으로 한다(fp32 `gemm`의 기존 값·결과는 그대로); (b) `step` 값은 그대로 두고 ADR-0042의 목록 자체를 (a)처럼 넓힌다(ADR-0100의 예외); (c) SDPA의 캐시 차이를 `failed`에 합쳐 `counts`는 그대로 두고 `shape`만 (a)나 (b)처럼 바꾼다; (d) 그 밖. 막히는 것: ADR-0177 PR #309의 착지와 그 뒤의 bf16 `correctness.check` 슬라이스(P2-11·P2-14 경로). 막히지 않는 것: fp32 `gemm` 첫 사례 전부, 다른 PLAN 항목, PR #309의 슬라이스 1 코드(답과 무관 — 답을 ADR 결정 3에 적고 재리뷰 후 착지).
