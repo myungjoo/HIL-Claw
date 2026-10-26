@@ -231,7 +231,7 @@ def test_a_request_of_other_members_is_invalid(root, request_, message):
 
 
 @pytest.mark.parametrize("run_id", [3, None, "", "Run-A", "../x", "a" * 65, True])
-def test_a_run_id_that_is_none_is_invalid(root, run_id):
+def test_a_malformed_run_id_is_invalid(root, run_id):
     source = Source(root)
     failure = refused(root, {"run_id": run_id}, source=source)
     assert failure.kind == "invalid_request"
