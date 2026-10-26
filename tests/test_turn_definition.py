@@ -37,6 +37,7 @@ TECHNIQUE_SELECTOR_TOOLS = {
     "mcp__hilclaw__hypotheses_write",
     "mcp__hilclaw__catalog_read",
     "mcp__hilclaw__cases_lookup",
+    "mcp__hilclaw__verdicts_read",
 }
 
 UNKNOWN = "the definition holds an entry that is not in the layout"
@@ -1049,6 +1050,79 @@ def test_the_technique_selector_reports_the_lookup():
     assert "the number of cases or the failure kind" in line
     assert "one line per report with its `kind` and `path`" in line
     assert "(ADR-0173 decision 5)" in line
+
+
+def test_the_technique_selector_is_given_the_verdicts_read():
+    given = between(selector_body(), "## What you are given", "## Fixed rules")
+    assert "`mcp__hilclaw__verdicts_read` gives the verdicts of one earlier round" in (
+        given
+    )
+    assert "its `eval/verdicts.json` whole, as stored (ADR-0174 decision 2)" in given
+
+
+def test_the_technique_selector_reads_earlier_verdicts_before_the_record():
+    rules = between(selector_body(), "## Fixed rules", "## The record")
+    read = between(rules, "Also before the record", "Keep ADR-0112")
+    assert "call `mcp__hilclaw__verdicts_read` once for each earlier round" in read
+    assert "from 1 to the round before yours, in ascending order" in read
+    assert "in round 1 there is none (ADR-0174 decision 6)" in read
+    assert "On `invalid_request`, correct the request and send it again" in read
+    going_on = between(read, "On `verdicts_missing`", "On any other kind")
+    for kind in ("`verdicts_invalid`", "`verdicts_unsupported`", "`bad_result`"):
+        assert kind in going_on
+    assert "that round gives you no verdicts" in going_on
+    assert "go on with the other rounds and the record" in going_on
+    assert "`verdicts_unreadable`" not in going_on
+    assert "`no_data_root`" not in going_on
+    assert (
+        "On any other kind of that call, send no record and no further request, "
+        "report the kind and end (ADR-0174 decision 6)"
+    ) in read
+    assert rules.index("Before you send the record") < rules.index(
+        "Also before the record"
+    )
+
+
+def test_the_technique_selector_takes_earlier_verdicts_as_hints():
+    earlier = between(
+        selector_body(), "## The earlier verdicts", "## The choice of techniques"
+    )
+    assert "input to the round's hypotheses" in earlier
+    assert "is your judgement (FR-17; ADR-0174 decision 6)" in earlier
+    assert "a `refuted` verdict forbids no retry" in earlier
+    assert "a `supported` one sets no target" in earlier
+    assert "(FR-15; FR-18; ADR-0174 decision 6)" in earlier
+    for word in ("best", "rank", "better"):
+        assert word not in earlier.lower()
+    choice = between(selector_body(), "## The choice of techniques", "## Your report")
+    assert "the records of earlier rounds, their verdicts among them" in choice
+    assert "(ADR-0171 decision 2; ADR-0174 decision 6)" in choice
+
+
+def test_the_technique_selector_reports_each_verdicts_read():
+    report = selector_body().split("## Your report", 1)[1]
+    line = between(report, "For each `mcp__hilclaw__verdicts_read` request", "When")
+    assert "the round and the number of its verdicts or the failure kind" in line
+    assert "(ADR-0174 decision 6)" in line
+
+
+def test_the_technique_selector_still_judges_no_pair_and_writes_no_verdicts():
+    data = (SOURCE / "agents" / TECHNIQUE_SELECTOR).read_text(encoding="utf-8")
+    tools = [name.strip() for name in frontmatter(data)["tools"].split(",")]
+    for name in (
+        "mcp__hilclaw__verdicts_write",
+        "mcp__hilclaw__timings_compare",
+        "mcp__hilclaw__correctness_check",
+        "mcp__hilclaw__sim_run",
+        "mcp__hilclaw__board_run",
+        "mcp__hilclaw__spec_write",
+        "mcp__hilclaw__coder_run",
+    ):
+        assert name not in tools
+    body = selector_body()
+    assert "verdicts_write" not in body
+    assert "timings_compare" not in body
+    assert "Request no check, measurement, spec or coder call" in body
 
 
 def test_the_technique_selector_chooses_the_techniques():

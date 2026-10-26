@@ -336,6 +336,19 @@ def test_the_real_technique_selector_alone_holds_cases_lookup(session):
     )
 
 
+def test_the_real_technique_selector_alone_holds_verdicts_read(session):
+    tool = "mcp__hilclaw__verdicts_read"
+    passes(payload(tool, agent_id="g7h8", agent_type="technique-selector"), session)
+    refuses(payload(tool), session, named(tool))
+    refuses(payload(tool, **EVALUATOR_ID), session, named(tool))
+    refuses(payload(tool, **CODER_ID), session, named(tool))
+    refuses(
+        payload(tool, agent_id="e5f6", agent_type="experiment-runner"),
+        session,
+        named(tool),
+    )
+
+
 @pytest.mark.parametrize("value", [None, ""])
 def test_project_dir_missing_or_empty(session, value):
     environ = {} if value is None else {ENV_PROJECT_DIR: value}
@@ -545,6 +558,7 @@ def test_the_real_technique_selector_holds_hypotheses_write(session):
         "mcp__hilclaw__instance_read",
         "mcp__hilclaw__hypotheses_read",
         "mcp__hilclaw__checks_read",
+        "mcp__hilclaw__verdicts_read",
     ],
 )
 def test_the_real_technique_selector_holds_its_reads(session, tool):

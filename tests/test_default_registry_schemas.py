@@ -108,6 +108,7 @@ ACCEPTED = {
         "measured": {"round": 1, "candidate": 1, "attempt": 1},
         "against": {"round": 0, "candidate": 1, "attempt": 1},
     },
+    "verdicts.read": {"run_id": "r1", "round": 1},
     "verdicts.write": {
         "run_id": "r1",
         "record": {

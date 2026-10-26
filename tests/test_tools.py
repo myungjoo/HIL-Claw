@@ -508,6 +508,7 @@ DEFAULT_SET = (
     "state.read",
     "state.write",
     "timings.compare",
+    "verdicts.read",
     "verdicts.write",
 )
 
