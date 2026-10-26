@@ -217,7 +217,9 @@ def default_registry(data_root_source):
     it reads the selection criteria of its run's technique catalog, and
     ``cases.lookup`` (:func:`hilclaw.cases_tool.definition`, ADR-0173
     decision 2), with which it takes the lookup of the stored cases of its
-    run's key. It holds
+    run's key, and ``verdicts.read`` (:func:`hilclaw.verdicts_read_tool.definition`,
+    ADR-0174 decision 2), with which it reads the ``eval/verdicts.json`` of an
+    earlier round of its run. It holds
     ``case.write`` (:func:`hilclaw.case_tool.definition`, ADR-0133 decision
     3), with which the Round-Manager writes a round's case, ``key.store``
     (:func:`hilclaw.key_store_tool.definition`, ADR-0134 decision 3), with
@@ -260,6 +262,7 @@ def default_registry(data_root_source):
         run_file_tools,
         spec_tool,
         timings_tool,
+        verdicts_read_tool,
         verdicts_tool,
     )
 
@@ -279,6 +282,7 @@ def default_registry(data_root_source):
     registry.register(*hypotheses_write_tool.definition(data_root_source))
     registry.register(*catalog_tool.definition(data_root_source))
     registry.register(*cases_tool.definition(data_root_source))
+    registry.register(*verdicts_read_tool.definition(data_root_source))
     registry.register(*checks_tool.definition(data_root_source))
     registry.register(*case_tool.definition(data_root_source))
     registry.register(*key_store_tool.definition(data_root_source))

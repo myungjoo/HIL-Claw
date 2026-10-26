@@ -32,6 +32,7 @@ FIXED_NAMES = [
     "checks.read",
     "coder.run",
     "timings.compare",
+    "verdicts.read",
 ]
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
 
@@ -218,7 +219,7 @@ def test_an_interrupt_is_not_answered():
 def test_the_fixed_tool_set_is_the_blob_tools_hw_tools_and_run_file_tools(
     name,
 ):
-    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), sim.run and board.run (ADR-0167), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), hypotheses.write (ADR-0132), catalog.read (ADR-0171), cases.lookup (ADR-0173), checks.read (ADR-0131), timings.compare (ADR-0140) and coder.run (ADR-0141)."""
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), sim.run and board.run (ADR-0167), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), hypotheses.write (ADR-0132), catalog.read (ADR-0171), cases.lookup (ADR-0173), verdicts.read (ADR-0174), checks.read (ADR-0131), timings.compare (ADR-0140) and coder.run (ADR-0141)."""
     stdout, stderr = io.BytesIO(), io.BytesIO()
     status = main([name], stdin=io.BytesIO(b"{}"), stdout=stdout, stderr=stderr)
     if name not in FIXED_NAMES[:1]:

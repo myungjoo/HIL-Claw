@@ -196,6 +196,7 @@ def test_the_default_registry_holds_the_definitions(root):
         "state.read",
         "state.write",
         "timings.compare",
+        "verdicts.read",
         "verdicts.write",
     )
     for held in blob_tools.definitions(lambda: root):
@@ -733,6 +734,7 @@ def test_the_mcp_front_lists_the_blob_tools_among_the_fixed_set(configured):
         "state_read",
         "state_write",
         "timings_compare",
+        "verdicts_read",
         "verdicts_write",
     ]
     assert {"tools": blob} == {

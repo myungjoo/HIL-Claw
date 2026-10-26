@@ -151,6 +151,7 @@ def test_the_default_registry_holds_the_definition_of_the_tool():
         "state.read",
         "state.write",
         "timings.compare",
+        "verdicts.read",
         "verdicts.write",
     )
     held = registry.definition(TOOL)
@@ -455,6 +456,7 @@ def test_building_the_default_registry_calls_no_party(parties):
         "state.read",
         "state.write",
         "timings.compare",
+        "verdicts.read",
         "verdicts.write",
     )
     assert (source.calls, *counts(parties)) == (0, 0, 0, 0)
@@ -506,6 +508,7 @@ def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
         "state_read",
         "state_write",
         "timings_compare",
+        "verdicts_read",
         "verdicts_write",
     ]
     assert listed[8]["description"] == DESCRIPTION
@@ -768,7 +771,7 @@ def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
     assert answers == [
         "0 blob_fetch blob_push board_run case_write cases_lookup catalog_read checks_read coder_run correctness_check"
         + " hypotheses_read hypotheses_write instance_read key_store round_end run_commit run_fresh sim_run spec_write state_read"
-        + " state_write timings_compare verdicts_write"
+        + " state_write timings_compare verdicts_read verdicts_write"
     ]
     assert loaded == ""
 

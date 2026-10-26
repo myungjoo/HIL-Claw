@@ -437,6 +437,7 @@ def test_holder_lists_the_real_definition(tmp_path):
         "mcp__hilclaw__hypotheses_write",
         "mcp__hilclaw__catalog_read",
         "mcp__hilclaw__cases_lookup",
+        "mcp__hilclaw__verdicts_read",
     )
     for tools in found.values():
         assert "mcp__hilclaw__blob_push" not in tools
