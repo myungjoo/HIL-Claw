@@ -43,8 +43,9 @@ first-case run (ADR-0118 decisions 1 and 2).
   or any other means (ADR-0135 decisions 2 and 6).
 - Use only the `Agent` tool to delegate to `coder-driver`, to `evaluator`
   and to `experiment-runner`, and only as steps 2, 3, 4 and 5 of "The round
-  steps" say, and to `technique-selector`, only as step 6 says (ADR-0132
-  decision 7). Do not call
+  steps" say and, to `coder-driver`, as step 8 says (ADR-0171 decision 6),
+  and to `technique-selector`, only as step 6 says (ADR-0132 decision 7).
+  Do not call
   `mcp__hilclaw__spec_write` or `mcp__hilclaw__coder_run` yourself, and write
   no spec or kernel by any other means (ADR-0126 decision 2; ADR-0141
   decisions 5 and 6). Do not call `mcp__hilclaw__correctness_check` or
@@ -173,19 +174,32 @@ before any other step of it:
    `run_id` and the round as `round`, whatever the report of step 6 said
    (ADR-0132 decision 6). If the call fails with any kind, report the kind
    in one line and come to the stop (ADR-0132 decision 6; ADR-0143
-   decisions 2 and 7). If it returns the round's record, come to the stop
-   as well: the steps after it are not yet defined.
+   decisions 2 and 7). If it returns the round's record, go on to step 8
+   (ADR-0171 decision 6).
+8. **Round ≥ 1 only.** If the report of step 6 holds exactly one
+   `techniques:` line, delegate to `coder-driver` with the `Agent` tool and
+   wait for its report. The message names your run id, the tuple `round` the
+   round, `candidate` 1, `attempt` 1, the ids of that line in its order or
+   that there are none, and no place (ADR-0171 decisions 5 and 6; ADR-0123
+   decisions 2 and 4). Whatever it reports, a result with any `taken` or any
+   kind, report it in one line and come to the stop. In this turn delegate
+   no second time, issue no call yourself, write no spec or kernel by any
+   other means and ask for no repair (ADR-0171 decision 6). Otherwise report
+   in one line that no choice was given and come to the stop, delegating
+   nothing (ADR-0171 decision 6).
 
 The stop: in round 0 it follows step 2, 3, 4 or 5 as they say, once the
 report that step waits for has come (ADR-0143 decision 7; ADR-0142
-decision 6). In other rounds it follows step 7: after a failed read, once
-its kind is reported; after a read that returned the round's record, the
-steps after it, up to the closing steps of a round, are not yet defined, so
-report in one line that the following steps of round `<round>` are not yet
-defined (ADR-0132 decision 6). In every
-case write nothing further, call `mcp__hilclaw__run_commit` as "The end of
-a session" says, and end the session (ADR-0143 decisions 2 and 7). Round 0
-is not ended: no `round.end` (ADR-0142 decisions 1, 2 and 6). A round-0
+decision 6). In other rounds it follows step 7 after a failed read, once
+its kind is reported (ADR-0132 decision 6), and step 8 otherwise, once its
+one-line report is made (ADR-0171 decision 6). After a report of the
+coder-driver, the steps after it, up to the closing steps of a round, are
+not yet defined, so report in one line that the following steps of round
+`<round>` are not yet defined (ADR-0171 decision 6). In every case write
+nothing further, call `mcp__hilclaw__run_commit` as "The end of a session"
+says, and end the session (ADR-0143 decisions 2 and 7). Round 0 is not
+ended: no `round.end` (ADR-0142 decisions 1, 2 and 6). Nor is a round ≥ 1
+(ADR-0171 decision 6). A round-0
 turn reaches the closing steps below only through step 5; no turn of a
 round ≥ 1 reaches them yet.
 

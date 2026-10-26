@@ -270,6 +270,7 @@ def test_the_real_definition(tmp_path):
     assert "mcp__hilclaw__board_run" in allowed
     assert "Agent(technique-selector)" in allowed
     assert "mcp__hilclaw__hypotheses_write" in allowed
+    assert "mcp__hilclaw__catalog_read" in allowed
     assert set(FIXED) <= set(allowed)
     assert built_in == "Agent,Glob,Grep,Read"
 
@@ -434,6 +435,7 @@ def test_holder_lists_the_real_definition(tmp_path):
         "mcp__hilclaw__hypotheses_read",
         "mcp__hilclaw__checks_read",
         "mcp__hilclaw__hypotheses_write",
+        "mcp__hilclaw__catalog_read",
     )
     for tools in found.values():
         assert "mcp__hilclaw__blob_push" not in tools

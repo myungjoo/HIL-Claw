@@ -35,6 +35,7 @@ TECHNIQUE_SELECTOR_TOOLS = {
     "mcp__hilclaw__hypotheses_read",
     "mcp__hilclaw__checks_read",
     "mcp__hilclaw__hypotheses_write",
+    "mcp__hilclaw__catalog_read",
 }
 
 UNKNOWN = "the definition holds an entry that is not in the layout"
@@ -521,6 +522,29 @@ def test_the_coder_driver_names_the_kind_and_the_result():
         assert word in text
 
 
+def test_the_coder_driver_carries_the_techniques():
+    data = (SOURCE / "agents" / CODER_DRIVER).read_text(encoding="utf-8")
+    assert "round-0 coder call" not in frontmatter(data)["description"]
+    body = " ".join(data.split()).split("---", 2)[2]
+    given = between(body, "## What you are given", "## Fixed rule")
+    assert "For a round ≥ 1 the message also names the technique ids" in given
+    assert "in their order, or that there are none" in given
+    assert "judge nothing and compose nothing" in given
+    rule = between(body, "1. With the run id", " 2. If it succeeds")
+    assert (
+        "In a round ≥ 1 the request also carries `techniques`: the message's ids "
+        "in their order, or an empty array for none." in rule
+    )
+    assert "In round 0 it carries no `techniques` member" in rule
+    assert "ADR-0151 decision 3" in rule
+    assert (
+        "If a round ≥ 1 delegation gives no list, request nothing and report that"
+        in rule
+    )
+    assert "ADR-0171 decision 5" in rule
+    assert "is the interim rule of ADR-0141 decision 5" in body
+
+
 def test_the_experiment_runner_frontmatter():
     data = (SOURCE / "agents" / EXPERIMENT_RUNNER).read_bytes()
     assert b"\r" not in data
@@ -857,8 +881,8 @@ def test_the_prompt_delegates_the_selection_in_later_rounds():
     failed = between(read, "If the call fails with any kind", "If it returns")
     assert "report the kind in one line and come to the stop" in failed
     returned = read.split("If it returns the round's record", 1)[1]
-    assert "come to the stop" in returned
-    assert "not yet defined" in returned
+    assert "go on to step 8 (ADR-0171 decision 6)" in returned
+    assert "come to the stop" not in returned
     assert "ADR-0132 decision 6" in read
 
 
@@ -866,7 +890,10 @@ def test_the_stop_follows_the_read_in_later_rounds():
     stop = the_stop()
     later = stop.split("In other rounds it follows step 7", 1)[1]
     assert "after a failed read" in later
-    assert "the following steps of round `<round>` are not yet defined" in later
+    assert "and step 8 otherwise" in later
+    after = later.split("After a report of the coder-driver", 1)[1]
+    assert "the following steps of round `<round>` are not yet defined" in after
+    assert "Nor is a round ≥ 1 (ADR-0171 decision 6)" in later
     assert "Later slices of the definition replace this stop in rounds ≥ 1" in (
         prompt_text()
     )
@@ -886,19 +913,108 @@ def test_the_prompt_names_hypotheses_write_only_in_the_prohibition():
     assert "only to read the round's hypothesis record in step 7" in reading[0]
 
 
-def test_no_later_round_reaches_a_spec_write_or_a_coder_delegation():
+def test_only_step_8_of_a_later_round_delegates_the_coder_call():
     for number in (2, 3, 4, 5):
         assert round_step(number).startswith("Round 0 only.**")
     for number in (6, 7):
         step = round_step(number)
+        for word in ("coder-driver", "spec_write", "coder_run"):
+            assert word not in step
+    for number in (6, 7, 8):
+        step = round_step(number)
         for word in (
-            "coder-driver",
-            "spec_write",
-            "coder_run",
             "evaluator",
             "experiment-runner",
+            "case_write",
+            "case.write",
+            "round_end",
+            "round.end",
             "closing steps",
-            "go on to step 8",
         ):
             assert word not in step
-    assert " 8. **" not in between(prompt_text(), "## The round steps", "The stop:")
+    steps = between(prompt_text(), "## The round steps", "The stop:")
+    assert " 8. **" in steps
+    assert " 9. **" not in steps
+    read = round_step(7)
+    failed = between(read, "If the call fails with any kind", "If it returns")
+    assert "come to the stop" in failed
+    assert "step 8" not in failed
+    assert read.index("If the call fails") < read.index("go on to step 8")
+
+
+def test_step_8_delegates_the_coder_call_with_the_choice():
+    step = round_step(8)
+    assert step.startswith(
+        "Round ≥ 1 only.** If the report of step 6 holds exactly one "
+        "`techniques:` line, delegate to `coder-driver` with the `Agent` tool"
+    )
+    chosen, other = step.split("Otherwise", 1)
+    assert "`round` the round, `candidate` 1, `attempt` 1" in chosen
+    assert "the ids of that line in its order or that there are none" in chosen
+    assert "and no place" in chosen
+    assert "report it in one line and come to the stop" in chosen
+    assert "delegate no second time, issue no call yourself" in chosen
+    assert "ask for no repair" in chosen
+    assert "spec_write" not in step
+    assert "coder_run" not in step
+    assert "report in one line that no choice was given" in other
+    assert "come to the stop, delegating nothing" in other
+    assert "coder-driver" not in other
+    assert "ADR-0171 decisions 5 and 6" in chosen
+    assert "ADR-0171 decision 6" in other
+    assert "to `coder-driver`, as step 8 says (ADR-0171 decision 6)" in prompt_text()
+
+
+def test_the_stop_names_step_8():
+    stop = the_stop()
+    assert "step 8 otherwise" in stop
+    assert stop.index("step 8 otherwise") < stop.index("mcp__hilclaw__run_commit")
+    assert "not yet defined" in stop
+
+
+def selector_body():
+    text = " ".join(
+        (SOURCE / "agents" / TECHNIQUE_SELECTOR).read_text(encoding="utf-8").split()
+    )
+    return text.split("---", 2)[2]
+
+
+def test_the_technique_selector_reads_the_catalog():
+    given = between(selector_body(), "## What you are given", "## Fixed rules")
+    assert "`mcp__hilclaw__catalog_read` gives the `## When` selection criteria" in (
+        given
+    )
+    assert "and nothing more (ADR-0171 decision 3)" in given
+
+
+def test_the_technique_selector_chooses_the_techniques():
+    choice = between(selector_body(), "## The choice of techniques", "## Your report")
+    assert "After the round's record exists" in choice
+    assert "spec of candidate 1" in choice
+    weigh = choice.split("Weigh, in this order:", 1)[1]
+    first = weigh.index("the round's hypotheses")
+    second = weigh.index("the `## When` sections")
+    third = weigh.index("earlier attempts")
+    assert first < second < third
+    assert "`tested_by` holds candidate 1" in weigh
+    assert "The hypotheses name no technique" in choice
+    assert "ADR-0059 decision 3" in choice
+    assert "Which entries, how many and in what order are your judgement" in choice
+    empty = choice.split("Choose an empty list", 1)[1]
+    assert "answers `catalog_unusable`" in empty
+    assert "its result holds no entry" in empty
+    assert "no entry serves the round's hypotheses" in empty
+    assert "ADR-0171 decision 2" in choice
+
+
+def test_the_technique_selector_reports_one_techniques_line():
+    body = selector_body()
+    line = body.split("## Your report", 1)[1].split(
+        "When the round's record exists", 1
+    )[1]
+    assert "answered `hypotheses_exist`" in line
+    assert "returned a result or `catalog_unusable`" in line
+    assert "exactly one line `techniques: <id>, <id>, ...`" in line
+    assert "`techniques: none` for an empty list" in line
+    assert "Otherwise give no such line (ADR-0171 decision 4)" in line
+    assert "Request no check, measurement, spec or coder call" in body
