@@ -83,10 +83,14 @@ the pre-approved list; no model, turn-limit or bypass option is passed
 (ADR-0139 decision 10). The session's working directory is the session
 directory, its standard input is closed, and it gets the environment of the
 calling process as read at that turn, with only the three changes of ADR-0141
-decision 4, the calling process's own environment left as it is; its
-standard output and standard error are those of the calling process and are
-not read here. The wait has no time limit of its own: a limit on a turn is
-OD-19's or OD-14's.
+decision 4, the calling process's own environment left as it is. Its
+standard output and its standard error both go to the calling process's
+standard error, file descriptor 2, so that a session's reply never reaches
+the calling process's standard output (ADR-0175); when the calling process
+has no standard error at that turn, its standard output is discarded and its
+standard error is left as inherited. Neither stream is read, kept or changed
+here. The wait has no time limit of its own: a limit on a turn is OD-19's or
+OD-14's.
 
 **Choices of this module** (ADR-0118 leaves them to the code):
 
@@ -202,8 +206,9 @@ second entry too and (lix) to its data-root argument; and (ADR-0147
 Consequences) (lxi) and (lxii), listed in :mod:`hilclaw.budget_check`; and
 (ADR-0148 Consequences) (lxiii)-(lxvi), listed in :mod:`hilclaw.stop_check`,
 with ADR-0146 (lvi), (lix) and (lx) applying to the ``Stop`` entry too and
-(lix) to its run-id and data-root arguments. The stub shows nothing of a real
-session's reading of the environment.
+(lix) to its run-id and data-root arguments; and (ADR-0175 Consequences)
+(xci), that a session writes only to its two standard streams. The stub shows
+nothing of a real session's reading of the environment.
 """
 
 import json
@@ -248,6 +253,7 @@ _ENV_SET = (
 )
 _ENV_REMOVED = ("CLAUDE_AUTO_BACKGROUND_TASKS",)
 
+_STANDARD_ERROR = 2
 _PREFIX = "hilclaw-turn-"
 _PROMPT = re.compile(r"[A-Za-z0-9 .,_][A-Za-z0-9 .,_-]*")
 _REMOVE_PAUSES_S = (0.0, 0.2, 0.6, 1.2)
@@ -426,6 +432,14 @@ def _environment():
     return environment
 
 
+def _session_output():
+    try:
+        os.fstat(_STANDARD_ERROR)
+    except OSError:
+        return subprocess.DEVNULL
+    return _STANDARD_ERROR
+
+
 def _turn(directory, put_definition, prompt, text, settings):
     put_definition(Path(directory))
     place = os.path.join(directory, CONFIG_FILE)
@@ -451,6 +465,7 @@ def _turn(directory, put_definition, prompt, text, settings):
         command,
         cwd=directory,
         stdin=subprocess.DEVNULL,
+        stdout=_session_output(),
         env=_environment(),
         check=False,
     )

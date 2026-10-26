@@ -196,6 +196,9 @@ for name, text in step["writes"]:
 if step["commit"]:
     for args in (["add", "-A"], ["commit", "-q", "-m", "turn"]):
         subprocess.run([scenario["git"], "-C", scenario["root"], *args], check=True)
+if scenario["reply"]:
+    sys.stdout.buffer.write(scenario["reply"].encode("utf-8"))
+    sys.stdout.flush()
 sys.exit(step["status"])
 """
 
@@ -216,7 +219,7 @@ class Stub:
         self.root = root
         self.steps = []
 
-    def install(self, *steps, check="passed"):
+    def install(self, *steps, check="passed", reply=""):
         self.steps = [
             {"status": status, "writes": writes, "commit": COMMIT in rest}
             for status, writes, *rest in steps
@@ -237,6 +240,7 @@ class Stub:
             "git": GIT,
             "steps": self.steps,
             "check": checked,
+            "reply": reply,
         }
         (self.directory / "scenario.json").write_text(
             json.dumps(scenario), encoding="utf-8"
@@ -1192,6 +1196,30 @@ def test_standard_error_that_cannot_be_written(root, parent, stub, monkeypatch):
 def test_no_prompt_for_an_invalid_run_id(run_id):
     with pytest.raises(InvalidPathValueError):
         prompt(run_id)
+
+
+@pytest.mark.parametrize(
+    "status, reply, exit_status, told",
+    [
+        (0, "the reply\n", EXIT_UNCHANGED_TURN, {"outcome": UNCHANGED_TURN}),
+        (0, "no line feed", EXIT_UNCHANGED_TURN, {"outcome": UNCHANGED_TURN}),
+        (
+            3,
+            "the reply of a failed turn\n",
+            EXIT_FAILED_TURN,
+            {"outcome": FAILED_TURN, "exit_status": 3},
+        ),
+    ],
+)
+def test_a_turn_reply_reaches_only_the_process_standard_error(
+    root, go, stub, capfd, status, reply, exit_status, told
+):
+    started(root)
+    stub.install((status, []), reply=reply)
+    capfd.readouterr()
+    found = go()
+    told_once(found, exit_status, told)
+    assert capfd.readouterr() == ("", reply)
 
 
 def test_one_line_on_standard_error(root, go, stub):
