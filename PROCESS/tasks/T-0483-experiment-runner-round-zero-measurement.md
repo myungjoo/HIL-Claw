@@ -2,7 +2,7 @@
 id: T-0483
 title: Add the experiment-runner definition and round-0 step 5 (the board measurement by `board.run`) with the go-on to the closing steps to orchestration/round-manager.md (ADR-0142 Consequences slice 2; PLAN P2-1)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-10, OD-23, OD-28, S0, S1, "PLAN P2-1"]
 dependsOn: []
@@ -189,3 +189,39 @@ Line numbers are those of `main` at `c9bd27f1`; the text wins. Read Python with 
 - (planner) The next P2-1 work needs P2-6 first: ADR-0132 slices 1 and 2 (the tool `hypotheses.write` and `orchestration/agents/technique-selector.md`). After those, a record of the Round-Manager's round ≥ 1 steps can follow (ADR-0132 slice 3, ADR-0151, ADR-0140).
 
 ## Result
+
+- **Outcome**: DONE. PR #297 was squash-merged as `39f004ad` (branch deleted). Review: 1 round, Approve. The reviewer left two Nits. Nit 1 (redundant parentheses in a test) was fixed after the Approve; under the D20 Nit exception it was not re-reviewed. Nit 2 (optional docstring mention of RA item (xliv)) was not taken. CI was green on the final commit, and the local full `pytest`, `ruff check` and `ruff format --check` passed.
+- **Language**: Markdown for the layer-1 definition (`orchestration/agents/experiment-runner.md`, `orchestration/round-manager.md`). The `hilclaw/turn_definition.py` change is a Python docstring only; no code changed.
+- **Prompt sentences rewritten or added** (`orchestration/round-manager.md`):
+  - "Your run": "Use only the `Agent` tool to delegate to `coder-driver`, to `evaluator` and to `experiment-runner`, and only as steps 2, 3, 4 and 5 …" follows ADR-0142 decision 4. Added: "Do not call `mcp__hilclaw__board_run` yourself (ADR-0142 decision 4; ADR-0139 decision 5)." This is the only sentence that names `board_run`, and `sim_run` appears nowhere.
+  - Step 4: "Go on to step 5 only when it gives the standing `"verified"` at `board` (ADR-0142 decision 3)." It replaces "report … waits on `board.run` … (ADR-0142 decision 7)".
+  - Step 5 (new, round 0 only) delegates to `experiment-runner` with the tuple 0/1/1 and no place. It reports in one line.
+    - On `"converged"`/`"not_converged"` it goes to the closing steps: no `case.write`, then `round.end`, then `run.commit` (ADR-0142 decisions 4 and 6; ADR-0119 decisions 2 and 4; ADR-0133 decision 1).
+    - On `"broken"`, a failure kind or an unreadable report it comes to the stop (ADR-0142 decision 6; ADR-0119 decision 5).
+  - The stop:
+    - "in round 0 it follows step 2, 3, 4 or 5 … (ADR-0143 decision 7; ADR-0142 decision 6)";
+    - "Round 0 is not ended: no `round.end` (ADR-0142 decisions 1, 2 and 6)";
+    - "A round-0 turn reaches the closing steps below only through step 5; no turn of a round ≥ 1 reaches them yet." This replaces "No turn goes past this stop …";
+    - "Later slices of the definition replace this stop in rounds ≥ 1 …".
+  - Closing steps, first sentence: "These steps follow the round's last other step. Round 0 reaches them after step 5 (ADR-0142 decision 6); rounds ≥ 1 reach them only once later slices define their steps."
+  - The list in "The end of a session" was checked and is unchanged; it is still correct.
+- **Test assertions changed** (as listed in the PR body):
+  - D21 pinning lists:
+    - `test_the_repository_definition_by_default`: the copied tree gains `.claude/agents/experiment-runner.md`.
+    - `test_the_repository_definition_holds_the_prompt_and_the_three_agents`: renamed from `_two_agents`, and the agent list gains the new file.
+    - `test_holder_lists_the_real_definition`: `set(found)` gains `experiment-runner`, and an assertion of its tool tuple is added.
+    - `test_the_real_definition`: `Agent(experiment-runner)` and `mcp__hilclaw__board_run` are now asserted allowed; the built-in set is unchanged.
+  - Old-text assertions:
+    - `test_the_prompt_names_no_measurement_step` became `test_the_prompt_names_board_run_only_in_the_prohibition`.
+    - `test_the_prompt_reaches_no_closing_steps_yet` became `test_the_prompt_reaches_the_closing_steps_from_round_0_only`.
+    - `test_the_stop_commits_and_leaves_round_0_open`: "No turn goes past this stop" is now asserted absent, and the new wording is asserted.
+    - `test_the_prompt_keeps_the_stop_in_later_rounds`: assertions were added.
+  - New tests: the experiment-runner frontmatter and body, step 5, the step-4 go-on, and the caller check with the real definition (`test_the_real_experiment_runner_holds_board_run`).
+- **Records made less exact, not edited**:
+  - ADR-0142 decision 7 ("While `board.run` is not in `default_registry`, the round-0 steps end with step 4") and its Walk-through row "`board.run` is not registered (today)": the stop after step 4 is replaced by step 5.
+  - ADR-0143 decision 7 ("round steps 2 to 4") now reads as steps 2 to 5. Its Walk-through row "Round-0 turn that stops after step 4 (board standing, `board.run` not registered)" is affected too.
+  - ADR-0146: the Walk-through row "A future `orchestration/agents/experiment-runner.md`" (line 107) is no longer future. The "less exact" item on ADR-0142 decision 4 (line 149) now holds, since both slices have landed.
+  - ADR-0167 decision 5 ("the stop after step 4 stays until step 5 and the experiment-runner land") is now past.
+  - ADR-0141 decision 6 and Boundaries ("the steps after the call in round 0" left open), for round 0.
+- **Runtime acceptance**: none new. ADR-0142 (xliv) to (xlvi) are already in RA-0026.
+- **Follow-ups**: none beyond the task's own (the next P2-1 work needs P2-6 first).
