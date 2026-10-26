@@ -2,7 +2,7 @@
 id: T-0481
 title: Record what becomes of the compiler's log of the waiter's build (OD-18 ⑲ (다), the piece ADR-0169 left open) and anything else the `cpu_standin` operation of `sim.run` and `board.run` needs that no record decides, as one new ADR, and add that operation (ADR-0144 slice (4), the run tools' part, with ADR-0145's waiter build and process), bound to no backend table, with tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, OD-14, "#5 D12"]
 dependsOn: []
@@ -109,3 +109,21 @@ Line numbers are those of `main` at `f3c68add`; the text wins. Read Korean files
 - T-0482 (already planned, depends on this task): the `cpu_standin` entry of the default table binding `standin_check.operation` and this task's operation. It needs the module and callable names this task lands, so write them in `## Result`.
 
 ## Result
+
+- **Landed**: PR #295, squash-merged as `a3cab425` after 2 review rounds. Round 1 asked for changes: O2 was not addressed, plus three nits. Round 2 approved; its one nit (wording) was fixed after approval (D20). CI was green on the last head.
+- **ADR**: `ARCHITECTURE/decisions/ADR-0170-od18-standin-run-operation.md`, part of OD-18 ⑲ (다).
+  - The waiter's build log is not kept. The record's own reading of A-2 is "a build of an attempt" = a build that compiles the attempt's source. It also records that no owner sentence keeps this log (O2 through ADR-0061 decision 7 and ADR-0108 Status).
+  - The timing build's log is handed over right after the timing build (ADR-0169 decision 3), whatever the waiter's build gives.
+  - The waiter's build gets the flags of ADR-0116 decision 3 and no trailing flag.
+  - No new kind, condition, file, name or member. The OD-14 row is not touched.
+- **Registers**: one `**확정분**` link added to the Requirements.md OD-18 row, with `**잔여**` rewritten in place. One `채택분` line added to the OpenDecisionProposals.md § OD-18, with ⑲'s status rewritten in place. The StandardScenarios.md re-check line updated: S0, S1 and S8, no verdict change.
+- **Code**:
+  - `hilclaw/standin_run.py` gives `operation(request, hw_profile, parameters, output_path, keeper, /)`, one callable for both `sim.run` and `board.run` (ADR-0038 decision 2). T-0482 binds `hilclaw.standin_check.operation` for `correctness.check` and `hilclaw.standin_run.operation` under both run tools.
+  - Deviation from AC 3: the operation returns a plain `(report, memory_bytes)` tuple, not `run_operation.Reported`. `ask` counts no tuple subclass as a pair, so returning `Reported` would be answered `operation_answer_invalid`. A test through `ask` shows the plain tuple becomes `Reported`.
+  - `hilclaw/standin_check.py`: the shared steps are now public (`Answered`, `carry_out`, `container_image`, `make_build_dir`, `run_build`, `run_container`, `in_container`, `settled`, `remove_build_dir`). Its existing tests pass unchanged.
+  - `hilclaw/standin_copies.py`: `place_harness_copy` added for the waiter's source.
+- **Tests**: `tests/test_standin_run.py` is new. `tests/test_standin_copies.py` and `tests/test_standin_check.py` gained tests. Coverage of the three touched modules is 100%, and of `hilclaw/` 97%. ruff is clean.
+- **Language**: Python, the language of the sibling operation and of the modules it composes.
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6405936874 (window 7 days from 2026-10-26).
+- **Runtime acceptance items for an HQ (reason `runtime-acceptance`)**: (lxxxi) and (lxxxii) of ADR-0170, to be checked after T-0482 lands.
+- **Follow-ups**: none beyond T-0482.

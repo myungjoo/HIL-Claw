@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0481",
+  "currentTask": null,
   "nextTask": "T-0482",
-  "lock": {
-    "owner": "AKIHA:7c5413a7",
-    "acquiredAt": "2026-10-26T00:26:14Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -670,18 +666,26 @@
       "question": "ADR-0169(cpu_standin 빌드 컨테이너의 컴파일러 로그 추출과 강제 제거 시간 제한 60 s; OD-18 일부; T-0480, PR #294, main 5f3eee69)이 런타임 인수 항목 (lxxviii)~(lxxx)를 남겼다. (lxxviii) `-o` 빌드에서 client가 image의 `clang` 진단을 stderr로만 돌려주고 stdout에는 `clang`의 것을 쓰지 않는지, 그리고 build container가 프로그램의 상태로 끝날 때 client가 어느 스트림에 자기 문구(예: platform 경고)를 쓰는지. (lxxix) 실행 중인 build·process container의 `docker rm --force`가 Docker Desktop을 포함해 60 s 안에 끝나고 그 뒤 container의 프로세스가 없어지는지. (lxxx) client가 0을 돌려줄 때 `clang`이 container 안 경로에 쓴 실행 파일이 host 빌드 디렉토리의 대응 경로에 일반 파일로 있는지. 선택지: (a) 오너가 런타임 머신에서 수동 확인해 결과를 답한다 (b) 런타임 자체 점검 코드 task로 만든다 (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 실제 Docker에서 ADR-0169의 로그·제거 해석이 맞다는 확인. 막히지 않는 것: run 도구의 cpu_standin 동작 등 이후 드라이버 task(테스트는 스텁으로 검증).",
       "askedAt": "2026-10-26T00:02:06Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0075",
+      "taskId": "T-0481",
+      "reason": "runtime-acceptance",
+      "question": "ADR-0170(첫 사례 대기자 빌드의 컴파일러 로그와 cpu_standin `sim.run`·`board.run` 동작; OD-18 ⑲ (다) 일부; T-0481, PR #295, main a3cab425)이 런타임 인수 항목 (lxxxi)·(lxxxii)를 남겼다. T-0482(기본 표의 cpu_standin 항목)가 착지한 뒤 C-7의 각 머신 종류에서 Docker로 확인할 것. (lxxxi) image의 `clang`이 ADR-0116 결정 3의 플래그로 build container 안에서 `timing_waiter.c`를 빌드할 때 상태 0으로 끝나고 두 스트림에 아무것도 쓰지 않으며 host 빌드 디렉토리의 대응 경로에 대기자 실행 파일을 일반 파일로 남기는지. (lxxxii) 두 build container가 ADR-0144 결정 6의 숫자 user로 빌드 디렉토리에 쓴 두 실행 파일을 같은 user가 timing process container에서 시작할 수 있는지(대기자는 container의 프로그램으로, 타이밍 실행 파일은 대기자의 `execv`로). 선택지: (a) 오너가 런타임 머신에서 수동 확인해 결과를 답한다 (b) 런타임 자체 점검 코드 task로 만든다 (c) 확인 전까지 그대로 둔다. 답이 없는 동안 막히는 것: 실제 Docker에서 ADR-0170의 대기자 빌드·시작 해석이 맞다는 확인. 막히지 않는 것: T-0482 등 이후 드라이버 task(테스트는 스텁으로 검증).",
+      "askedAt": "2026-10-26T01:06:27Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 503,
-    "tasksDone": 474,
+    "iterations": 504,
+    "tasksDone": 475,
     "tasksBlocked": 29,
-    "reviewRoundsTotal": 1625
+    "reviewRoundsTotal": 1627
   },
   "lastIteration": {
-    "at": "2026-10-26T00:02:06Z",
-    "owner": "AKIHA:6ad2fb6a",
-    "taskId": "T-0480",
+    "at": "2026-10-26T01:06:27Z",
+    "owner": "AKIHA:7c5413a7",
+    "taskId": "T-0481",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
