@@ -185,25 +185,25 @@ CHOICES = {
     "1": {
         "techniques": ["loop_order_ikj"],
         "statement": "Running the loops in the order i, p, j lowers the board "
-        "latency against the round-0 baseline (catalog entry loop_order_ikj).",
+        "latency against the round-0 baseline.",
         "direction": "lower",
     },
     "2": {
         "techniques": ["cache_blocking"],
         "statement": "Splitting the i, p, j loops into blocks lowers the board "
-        "latency against the round-0 baseline (catalog entry cache_blocking).",
+        "latency against the round-0 baseline.",
         "direction": "lower",
     },
     "3": {
         "techniques": ["register_blocking"],
         "statement": "Keeping a 4 by 4 tile of c in registers lowers the board "
-        "latency against the round-0 baseline (catalog entry register_blocking).",
+        "latency against the round-0 baseline.",
         "direction": "lower",
     },
     "4": {
         "techniques": [],
-        "statement": "Unrolling the loop over k by four, which no catalog entry "
-        "covers, lowers the board latency against the round-0 baseline.",
+        "statement": "Unrolling the loop over k by four lowers the board "
+        "latency against the round-0 baseline.",
         "direction": "lower",
     },
 }
@@ -914,8 +914,7 @@ def test_five_rounds_of_a_first_run_end_the_run_over(world):
         (hypothesis,) = record["hypotheses"]
         assert hypothesis["statement"] == chosen["statement"]
         assert record["cases_read"] == []
-        cited = [b["source"] for b in hypothesis["basis"] if b["kind"] == "external"]
-        assert cited == [f"catalog/cpu_standin/{t}.md" for t in chosen["techniques"]]
+        assert [b["kind"] for b in hypothesis["basis"]] == ["attempt"] * min(round_, 2)
         ids = {h["id"] for h in record["hypotheses"]}
         assert [entry["hypothesis"] for entry in judged["verdicts"]] == sorted(ids)
         for entry in judged["verdicts"]:
@@ -999,10 +998,7 @@ def test_a_second_run_of_the_same_key_reads_the_first_runs_cases(world):
         "round": 1,
         "hypothesis": first_record["hypotheses"][0]["id"],
     }
-    assert [b["kind"] for b in first_record["hypotheses"][0]["basis"]] == [
-        "attempt",
-        "external",
-    ]
+    assert [b["kind"] for b in first_record["hypotheses"][0]["basis"]] == ["attempt"]
     for entry in judged["verdicts"]:
         assert_verdict_follows_its_comparison(entry, record)
     assert_hooks_ran_and_passed(requests(log))

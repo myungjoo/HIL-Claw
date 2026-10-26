@@ -21,15 +21,15 @@ to its standard output.
 
 The stub ``docker`` answers ``version`` and the forced removals, writes the
 test's kernel of the round the scratch's spec names into that scratch
-without starting anything, and runs a stand-in build or process container on this machine:
-the bind-mounted build directory is the container's ``/build``, ``clang`` is
-the host ``clang`` found before ``PATH`` was narrowed, and the waiter runs in
-a new user and PID namespace made by ``unshare`` where that works. Where it
-does not, the timing executable runs directly and the stub writes the
-waiter's last line from the host's figure for the child.
+without starting anything, and runs a stand-in build or process container on
+this machine: the bind-mounted build directory is the container's
+``/build``, ``clang`` is the host ``clang`` found before ``PATH`` was
+narrowed, and the waiter runs in a new user and PID namespace made by
+``unshare`` where that works. Where it does not, the timing executable runs
+directly and the stub writes the waiter's last line from the host's figure
+for the child.
 """
 
-import hashlib
 import json
 import os
 import re
@@ -236,7 +236,6 @@ class _Turn:
         self.replies = []
         self.main = _Agent(ROUND_MANAGER)
         self.choices = scenario.get("choices", {})
-        self.repo = scenario["repo"]
 
     def write(self, entry):
         _append(self.log, {"turn": self.number, **entry})
@@ -581,10 +580,7 @@ class _Turn:
         )
         standing = before.result["attempts"][0]["standing"] if before.ok else None
         chosen = self.choices.get(str(round_), self.choices.get("default"))
-        techniques = [entry for entry in chosen["techniques"] if entry in entries]
-        record = self.hypothesis_record(
-            agent.message, chosen, techniques, standing, lookup.result
-        )
+        record = self.hypothesis_record(agent.message, chosen, standing, lookup.result)
         written = self.call(agent, "hypotheses_write", run_id=run_id, record=record)
         found["hypotheses_write"] = written.kind or (
             "refused" if written.refused else "ok"
@@ -593,10 +589,10 @@ class _Turn:
             found["tested_by"] = {h["id"]: h["tested_by"] for h in record["hypotheses"]}
         exists = written.ok or written.kind == "hypotheses_exist"
         if exists and (catalog.ok or catalog.kind == "catalog_unusable"):
-            found["techniques"] = techniques
+            found["techniques"] = [t for t in chosen["techniques"] if t in entries]
         return found
 
-    def hypothesis_record(self, given, chosen, techniques, standing, looked):
+    def hypothesis_record(self, given, chosen, standing, looked):
         round_ = given["round"]
         basis = [
             {
@@ -611,17 +607,6 @@ class _Turn:
                     "kind": "attempt",
                     "ref": {"round": round_ - 1, "candidate": 1, "attempt": 1},
                     "text": f"the attempt of the round before, {standing} at board",
-                }
-            )
-        for entry in techniques:
-            source = f"catalog/cpu_standin/{entry}.md"
-            content = Path(self.repo, source).read_bytes()
-            basis.append(
-                {
-                    "kind": "external",
-                    "source": source,
-                    "version": "sha256:" + hashlib.sha256(content).hexdigest(),
-                    "text": f"the When section of the catalog entry {entry}",
                 }
             )
         if chosen.get("cite_case") and looked["cases"]:
@@ -708,10 +693,9 @@ class _Turn:
         against = {"round": 0, "candidate": 1, "attempt": 1}
         for candidate in hypothesis["tested_by"]:
             for point in ("sim", "board"):
-                _, outcomes = seen.get((round_, candidate, 1, point), (None, []))
-                if outcomes:
-                    failed = [outcome for outcome in outcomes if outcome != "pass"]
-                    outcome = failed[0] if failed else "pass"
+                ref = {"round": round_, "candidate": candidate, "attempt": 1}
+                outcome = _outcome(seen, ref, point)
+                if outcome is not None:
                     evidence.append(_check(round_, candidate, point, outcome))
         for wanted in hypothesis["expected"]:
             for candidate in hypothesis["tested_by"]:
@@ -745,7 +729,7 @@ class _Turn:
                         "difference": difference,
                     }
                 )
-                evidence.append(_check(0, 1, "board", "pass"))
+                evidence.append(_check(0, 1, "board", _outcome(seen, against)))
                 counted.append((wanted["direction"], difference))
                 causes.append(f"board latency against round 0: {difference}")
         expected = [want for want, difference in counted if difference == want]
@@ -766,6 +750,16 @@ class _Turn:
             "cause": "; ".join(causes) or "no ended check and no comparison",
             "evidence": evidence,
         }
+
+
+def _outcome(seen, ref, point="board"):
+    _, outcomes = seen.get(
+        (ref["round"], ref["candidate"], ref["attempt"], point), (None, [])
+    )
+    if not outcomes:
+        return None
+    failed = [outcome for outcome in outcomes if outcome != "pass"]
+    return failed[0] if failed else "pass"
 
 
 def _check(round_, candidate, point, outcome):
