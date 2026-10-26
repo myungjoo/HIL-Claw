@@ -962,7 +962,9 @@ def test_step_8_delegates_the_coder_call_with_the_choice():
     assert "coder-driver" not in other
     assert "ADR-0171 decisions 5 and 6" in chosen
     assert "ADR-0171 decision 6" in other
-    assert "to `coder-driver`, as step 8 says (ADR-0171 decision 6)" in prompt_text()
+    assert (
+        "to `coder-driver`, only as step 8 says (ADR-0171 decision 6)" in prompt_text()
+    )
 
 
 def test_the_stop_names_step_8():

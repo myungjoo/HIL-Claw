@@ -43,8 +43,9 @@ first-case run (ADR-0118 decisions 1 and 2).
   or any other means (ADR-0135 decisions 2 and 6).
 - Use only the `Agent` tool to delegate to `coder-driver`, to `evaluator`
   and to `experiment-runner`, and only as steps 2, 3, 4 and 5 of "The round
-  steps" say and, to `coder-driver`, as step 8 says (ADR-0171 decision 6),
-  and to `technique-selector`, only as step 6 says (ADR-0132 decision 7).
+  steps" say and, to `coder-driver`, only as step 8 says (ADR-0171
+  decision 6), and to `technique-selector`, only as step 6 says (ADR-0132
+  decision 7).
   Do not call
   `mcp__hilclaw__spec_write` or `mcp__hilclaw__coder_run` yourself, and write
   no spec or kernel by any other means (ADR-0126 decision 2; ADR-0141

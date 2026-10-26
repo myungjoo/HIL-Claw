@@ -71,8 +71,9 @@ decisions 2 to 4), and the rest of the roster stays open (OD-23).
 
 Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
 ADR-0118 decision 4, "Workspace trust"), no round steps of a round >= 1
-between the coder call and the closing steps (later P2-1 slices), no ``--add-dir`` or other way for the session to reach
-the run's files (decision 4), no caller and no command-line entry.
+between the coder call and the closing steps (later P2-1 slices), no
+``--add-dir`` or other way for the session to reach the run's files
+(decision 4), no caller and no command-line entry.
 
 Runtime acceptance items it depends on (ADR-0118 Consequences): (i) a
 session started in the session directory loads its ``CLAUDE.md``,
