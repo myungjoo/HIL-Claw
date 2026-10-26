@@ -2,7 +2,7 @@
 id: T-0487
 title: Record the Round-Manager's round >= 1 steps after the coder-driver's report (which reports go on, the checks, the measurement, the verdicts delegation and the closing steps) as one new ADR (part of OD-23, with OD-16/OD-17/OD-30 where touched), and land its first code slice, with tests
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-9, FR-11, FR-17, FR-18, OD-23, OD-16, OD-17, OD-30, S0, S1, "PLAN P2-1"]
 dependsOn: [T-0486]
@@ -178,4 +178,5 @@ Line numbers are those of `main` at `a099ac5d`, before T-0486; T-0486 changes `o
   - **(lxxxv)** In one round >= 1 turn session, the six foreground delegations of steps 6, 8, 9, 10, 11 and 12 (technique-selector, coder-driver, evaluator at `sim`, evaluator at `board`, experiment-runner, evaluator for the verdicts) each return their report in the same turn and in order, and the session reaches `case.write`, `round.end` and `run.commit` before any limit of the session itself ends it (as ADR-0142 (xlv) for round 0).
   - **(lxxxvi)** From the coder-driver's final message, the Round-Manager tells a result of `coder.run` with a non-empty `taken`, a result with an empty one or a kind of `coder.run`, and a kind of `spec.write`, and takes step 9, step 12 or the stop as ADR-0172 decision 2 says; and from the evaluator's final message of step 12 it tells written verdicts (the file written, or `verdicts_exist`) from any other report, and goes to the closing steps or the stop as decision 5 says.
 - **Next slices for the planner**: none required by ADR-0172 (its only slice landed here). A whole round >= 1 through a stub `claude` is PLAN P2-5's verification.
-- **Owner notice (DRIVER §9)**: see the URL below.
+- **Merge**: squash commit e4107adc4f591265eb266a7c1ba7a44e0359a666.
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6410031887
