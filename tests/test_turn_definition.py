@@ -36,6 +36,7 @@ TECHNIQUE_SELECTOR_TOOLS = {
     "mcp__hilclaw__checks_read",
     "mcp__hilclaw__hypotheses_write",
     "mcp__hilclaw__catalog_read",
+    "mcp__hilclaw__cases_lookup",
 }
 
 UNKNOWN = "the definition holds an entry that is not in the layout"
@@ -853,7 +854,8 @@ def test_the_technique_selector_body():
     on_record = between(body, "On `invalid_request` or `cases_mismatch`", "On any")
     assert "correct the record and send it again" in on_record
     assert "On any other kind, send nothing further, report the kind and end" in body
-    assert "Write no `cases_read` and no basis entry of kind `case`" in body
+    assert "Write no `cases_read` and no basis entry of kind `case`" not in body
+    assert "no lookup tool is in your list" not in body
     assert "tests at least one system hypothesis" in body
     assert "at least one such input" in body
     assert "Request no check, measurement, spec or coder call" in body
@@ -994,6 +996,59 @@ def test_the_technique_selector_reads_the_catalog():
         given
     )
     assert "and nothing more (ADR-0171 decision 3)" in given
+
+
+def test_the_technique_selector_is_given_the_case_lookup():
+    given = between(selector_body(), "## What you are given", "## Fixed rules")
+    assert "`mcp__hilclaw__cases_lookup` gives the lookup of the stored cases" in (
+        given
+    )
+    assert "their `cases_read` value and the lookup's reports" in given
+    assert "(ADR-0173 decisions 2 and 3)" in given
+
+
+def test_the_technique_selector_looks_up_the_cases_before_the_record():
+    rules = between(selector_body(), "## Fixed rules", "## The record")
+    lookup = between(rules, "Before you send the record", "After a result")
+    assert "call `mcp__hilclaw__cases_lookup` (ADR-0173 decision 5)" in lookup
+    assert "On `invalid_request`, correct the request and send it again" in lookup
+    assert (
+        "On any other kind of that call, send no record and no further request, "
+        "report the kind and end (ADR-0173 decision 4)"
+    ) in lookup
+    copy = rules.split("After a result", 1)[1].split("Keep ADR-0112", 1)[0]
+    assert "`cases_read` equal to the result's `cases_read`" in copy
+    assert "whole and in its order, also when it is empty" in copy
+    assert "reports or `key` is `null` does not change this" in copy
+    assert "(ADR-0173 decisions 3 and 4)" in copy
+    assert rules.index("Before you send the record") < rules.index(
+        "Keep ADR-0112 decisions 2 and 3"
+    )
+
+
+def test_the_technique_selector_names_only_cases_of_the_result():
+    cases = between(selector_body(), "## The cases", "## The choice of techniques")
+    named = "names a case of the result's `cases` by its `run_id` and `round`"
+    assert named in cases
+    assert "a hypothesis in its `hypothesis_record`" in cases
+    assert "A reported file is no case and is not named (ADR-0173 decision 3)" in (
+        cases
+    )
+    assert "a past rejection forbids no retry and past performance is no target" in (
+        cases
+    )
+    assert "(FR-15; FR-18; ADR-0173 decision 5)" in cases
+    assert "ADR-0073 decision 2" in cases
+    for word in ("best", "rank", "most recent"):
+        assert word not in cases.lower()
+
+
+def test_the_technique_selector_reports_the_lookup():
+    report = selector_body().split("## Your report", 1)[1]
+    line = between(report, "For the `mcp__hilclaw__cases_lookup` request", "When")
+    assert "the number of cases or the failure kind" in line
+    assert "one line per report with its `kind` and `path`" in line
+    assert "(ADR-0173 decision 5)" in line
 
 
 def test_the_technique_selector_chooses_the_techniques():

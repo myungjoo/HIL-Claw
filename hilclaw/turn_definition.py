@@ -74,8 +74,8 @@ The roster: ``orchestration/agents/`` holds the evaluator's definition
 (ADR-0128 decision 7), the coder-driver's (ADR-0126 decision 6; ADR-0141
 decision 5; ADR-0171 decision 5), the experiment-runner's (ADR-0142
 decision 4; ADR-0172 decision 4) and the technique-selector's (ADR-0132
-decision 7; ADR-0171 decisions 2 to 4), and the rest of the roster stays
-open (OD-23).
+decision 7; ADR-0171 decisions 2 to 4; ADR-0173 decisions 4 and 5), and the
+rest of the roster stays open (OD-23).
 
 Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
 ADR-0118 decision 4, "Workspace trust"), no repair (OD-19), retry
