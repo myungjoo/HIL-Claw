@@ -31,7 +31,9 @@ run tools' operations of the table.
 * :func:`definition`: the tool definition :func:`hilclaw.tools.default_registry`
   registers, the tool function bound to that table, to
   :func:`hilclaw.harness.seed_source.system` and to
-  :func:`hilclaw.gemm_contract.covers` (ADR-0070 decisions 4 and 5).
+  :func:`hilclaw.contract_table.check_covers`, which admits the fp32 ``gemm``
+  contract of ADR-0008 alone until the check slice of ADR-0177 lands
+  (ADR-0070 decisions 4 and 5; ADR-0177 decision 2).
 
 Choices that are this module's own and no rule of a record: the names, the
 text of :data:`DESCRIPTION`, and that the schema is returned by a function,
@@ -64,7 +66,7 @@ building a definition calls neither the data-root source, the source of
 seeds, the predicate, the script nor :func:`default_table`.
 """
 
-from hilclaw import backends, check_identity, gemm_contract, keys, mock_backend, tools
+from hilclaw import backends, check_identity, contract_table, keys, mock_backend, tools
 from hilclaw.harness import seed_source
 
 _TOOL = "correctness.check"
@@ -165,7 +167,8 @@ def definition(source):
     call and not here. The tool function is
     :func:`hilclaw.check_tool.tool_function` bound to a new
     :func:`default_table`, to :func:`hilclaw.harness.seed_source.system` and
-    to :func:`hilclaw.gemm_contract.covers` (ADR-0070 decisions 3 and 4); the
+    to :func:`hilclaw.contract_table.check_covers` (ADR-0070 decisions 3 and
+    4; ADR-0177 decision 2); the
     binding is made at the first call of the definition's function, which
     then imports :mod:`hilclaw.check_tool` and builds the table, and is kept
     for its later calls. The description is :data:`DESCRIPTION` and the
@@ -185,7 +188,7 @@ def definition(source):
                     source=source,
                     table=default_table(),
                     seeds=seed_source.system,
-                    covers=gemm_contract.covers,
+                    covers=contract_table.check_covers,
                 )
             )
         return bound[0](request)

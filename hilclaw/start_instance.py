@@ -9,7 +9,9 @@ given id (ADR-0111 decision 2), :func:`hilclaw.run_id.new` (ADR-0027),
 (ADR-0109), and returns the id it built (ADR-0111 decision 3). It binds the
 ``accelerators`` of ``prepare`` to :data:`hilclaw.mock_backend.NAME` and
 :data:`hilclaw.standin_profile.ACCELERATOR` and its ``covers`` to
-:func:`hilclaw.gemm_contract.covers`.
+:func:`hilclaw.contract_table.start_covers`, which admits a contract only when
+every tool round 0 calls admits it - today the fp32 ``gemm`` contract of
+ADR-0008 alone (ADR-0177 decision 2).
 
 Conventions of this module, not rules of a record:
 
@@ -50,7 +52,7 @@ without ``instance.json``. It keeps nothing between calls.
 import json
 
 from hilclaw import (
-    gemm_contract,
+    contract_table,
     instance_file,
     instance_start,
     mock_backend,
@@ -114,7 +116,7 @@ def start(document, *, data_root):
     """
     try:
         prepared = instance_start.prepare(
-            document, accelerators=_ACCELERATORS, covers=gemm_contract.covers
+            document, accelerators=_ACCELERATORS, covers=contract_table.start_covers
         )
     except instance_start.MissingMembersError:
         if "run_id" in document:
