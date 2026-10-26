@@ -76,12 +76,19 @@ outcome or error that follows a check that let the turn start. A start
 without a check has no such member. After a fault of the check the line
 holds ``check_fault``, the name of the exception's class, and no ``check``.
 The check's ``no_claude`` is ``check.outcome`` under ``stopped_at_check``,
-never the error kind ``no_claude``. Standard error gets nothing for an
-outcome, except after a fault of the check: one line naming the exception's
-class and **never its text**, which may name a path. The error gives one line
-of free text, which is never parsed. When the line cannot be written to
-standard output, the status is :data:`EXIT_ERROR` and standard error gets one
-line saying so.
+never the error kind ``no_claude``. The entry writes nothing to standard
+error for an outcome, except after a fault of the check: one line naming the
+exception's class and **never its text**, which may name a path. The error
+gives one line of free text, which is never parsed. When the line cannot be
+written to standard output, the status is :data:`EXIT_ERROR` and standard
+error gets one line saying so. **What the turn sessions write** to their
+standard output and standard error, a ``-p`` session's reply included, goes
+to the entry's standard error as :mod:`hilclaw.turn_loop` passes it on,
+unread, before the entry's own line if any (ADR-0175); it is not the entry's
+text, tells no outcome and is never parsed, and its last line may lack a line
+feed, so the entry's own line may follow it on the same line. Nothing of a
+turn session reaches standard output, unless the starter gave the entry
+one stream for both.
 
 **The error** is told apart from the six outcomes, and no traceback reaches
 the starter: ``bad_usage`` for not exactly one argument or an invalid run id
@@ -308,7 +315,9 @@ def main(
     is passed to :func:`hilclaw.turn_loop.run` unchanged (``None``: the
     temporary directory of the system). ``stdout`` and ``stderr`` are binary
     streams and default to the standard ones; a standard stream that the
-    process does not have, or that has no binary layer, is missing. Returns
+    process does not have, or that has no binary layer, is missing; the
+    turn sessions write to the process's file descriptor 2 whatever
+    ``stderr`` is (:mod:`hilclaw.turn_loop`). Returns
     the status of the module docstring's table; no :class:`Exception` leaves
     the call.
     """

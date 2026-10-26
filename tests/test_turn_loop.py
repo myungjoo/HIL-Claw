@@ -176,6 +176,10 @@ with (here / "started.ndjson").open("a", encoding="utf-8") as record:
         "env": {name: os.environ.get(name) for name in scenario["names"]},
     }
     record.write(json.dumps(entry) + "\n")
+for name, stream in (("out", sys.stdout), ("err", sys.stderr)):
+    if scenario[name]:
+        stream.buffer.write(scenario[name].encode("utf-8"))
+        stream.flush()
 started = len((here / "started.ndjson").read_text(encoding="utf-8").splitlines())
 statuses = scenario["statuses"]
 sys.exit(statuses[min(started, len(statuses)) - 1])
@@ -186,11 +190,13 @@ class Stub:
     def __init__(self, directory):
         self.directory = directory
 
-    def install(self, statuses=(0,), hook_inputs=(), stop_inputs=()):
+    def install(self, statuses=(0,), hook_inputs=(), stop_inputs=(), out="", err=""):
         script = self.directory / "stub.py"
         script.write_text(STUB, encoding="utf-8")
         scenario = {
             "statuses": list(statuses),
+            "out": out,
+            "err": err,
             "names": RECORDED,
             "hook_inputs": list(hook_inputs),
             "stop_inputs": list(stop_inputs),
@@ -1021,6 +1027,91 @@ def test_failed_removal_is_carried(stub, data_root, parent, monkeypatch):
     monkeypatch.setattr(turn_loop, "_REMOVE_PAUSES_S", (0.0,))
     monkeypatch.setattr(shutil, "rmtree", lambda path, ignore_errors: None)
     assert go(data_root, parent) == (Turn(0, False),)
+
+
+REPLY = "the reply of the session\n"
+DIAGNOSTIC = "a diagnostic of the session\n"
+
+
+def no_standard_error(monkeypatch):
+    real = os.fstat
+
+    def fstat(fd):
+        if fd == 2:
+            raise OSError(9, "Bad file descriptor")
+        return real(fd)
+
+    monkeypatch.setattr(os, "fstat", fstat)
+
+
+def test_session_streams_go_to_standard_error(stub, data_root, parent, capfd):
+    stub.install(out=REPLY, err=DIAGNOSTIC)
+    capfd.readouterr()
+    assert go(data_root, parent) == (Turn(0, True),)
+    found = capfd.readouterr()
+    assert found.out == ""
+    assert found.err == REPLY + DIAGNOSTIC
+
+
+def test_session_output_of_every_turn_in_order(stub, data_root, parent, capfd):
+    stub.install(statuses=(0, 4), out=REPLY, err=DIAGNOSTIC)
+    capfd.readouterr()
+    found = go(data_root, parent, further_turn=Predicate(2))
+    assert found == (Turn(0, True), Turn(4, True))
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    assert captured.err == (REPLY + DIAGNOSTIC) * 2
+
+
+def test_reply_without_a_line_feed(stub, data_root, parent, capfd):
+    stub.install(statuses=(3,), out="no line feed")
+    capfd.readouterr()
+    assert go(data_root, parent) == (Turn(3, True),)
+    found = capfd.readouterr()
+    assert found.out == ""
+    assert found.err == "no line feed"
+
+
+def test_session_that_writes_nothing(stub, data_root, parent, capfd):
+    stub.install()
+    capfd.readouterr()
+    assert go(data_root, parent) == (Turn(0, True),)
+    assert capfd.readouterr() == ("", "")
+
+
+def test_without_standard_error_the_reply_is_discarded(
+    stub, data_root, parent, capfd, monkeypatch
+):
+    stub.install(statuses=(5,), out=REPLY, err=DIAGNOSTIC)
+    no_standard_error(monkeypatch)
+    capfd.readouterr()
+    assert go(data_root, parent) == (Turn(5, True),)
+    found = capfd.readouterr()
+    assert found.out == ""
+    assert found.err == DIAGNOSTIC
+
+
+def test_session_streams_are_not_read(stub, data_root, parent, monkeypatch):
+    stub.install(out=REPLY)
+    real = subprocess.run
+    seen = []
+
+    def recorded(command, **options):
+        seen.append(options)
+        return real(command, **options)
+
+    monkeypatch.setattr(subprocess, "run", recorded)
+    go(data_root, parent)
+    (options,) = seen
+    assert options["stdout"] == 2
+    assert "stderr" not in options
+    assert "capture_output" not in options
+    no_standard_error(monkeypatch)
+    seen.clear()
+    go(data_root, parent)
+    (options,) = seen
+    assert options["stdout"] is subprocess.DEVNULL
+    assert "stderr" not in options
 
 
 def test_server_entry_starts_the_front_from_elsewhere(

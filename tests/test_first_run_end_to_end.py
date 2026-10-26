@@ -606,14 +606,16 @@ def test_round_zero_of_a_first_run_ends_the_run_over(world):
     assert list(world.sessions.iterdir()) == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "gap: turn_loop gives a turn session the entry's own standard output, so "
-        "the reply a -p session writes there comes before the entry's one line; "
-        "where a session's output should go instead is a choice no record makes"
-    ),
-)
+def last_replies(log):
+    replies = {}
+    for entry in log:
+        if entry.get("started"):
+            replies[entry["turn"]] = ""
+        elif "report" in entry:
+            replies[entry["turn"]] = entry["report"]
+    return [replies[turn] for turn in sorted(replies)]
+
+
 def test_the_entry_writes_one_line_on_standard_output(world):
     world.install()
     run_id = world.new_run(document())
@@ -622,6 +624,10 @@ def test_the_entry_writes_one_line_on_standard_output(world):
 
     assert done.returncode == 0
     assert len(done.stdout.decode("ascii").splitlines()) == 1
+    assert json.loads(done.stdout)["outcome"] == "run_over"
+    replies = last_replies(world.session_log())
+    assert replies and all(replies)
+    assert done.stderr.decode("utf-8") == "".join(f"{text}\n" for text in replies)
 
 
 @pytest.mark.parametrize("kernel", [None, WRONG_KERNEL], ids=["no_kernel", "wrong"])
