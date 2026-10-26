@@ -1029,6 +1029,7 @@ HEAVY = (
     "hilclaw.mock_check",
     "hilclaw.mock_run",
     "hilclaw.standin_check",
+    "hilclaw.standin_profile",
     "hilclaw.standin_run",
 )
 BUILD_CHILD = """

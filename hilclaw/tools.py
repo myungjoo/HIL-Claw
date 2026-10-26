@@ -195,9 +195,9 @@ def default_registry(data_root_source):
     tools are bound to one default table, whose entries are the mock,
     offering the three with the default scripts of ADR-0044 and ADR-0066,
     and ``cpu_standin``, offering the three with its operations
-    (:mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_run`). Their source of seeds is the generator
-    of the operating system. Their predicate "covered" is that of ADR-0041
-    decision 5. Beside these FR-10 tools it holds ``state.read``,
+    (:mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_run`). Their
+    source of seeds is the generator of the operating system. Their
+    predicate "covered" is that of ADR-0041 decision 5. Beside these FR-10 tools it holds ``state.read``,
     ``instance.read``, ``run.fresh`` and ``state.write``
     (:mod:`hilclaw.run_file_tools`, ADR-0124), with which the Round-Manager
     reads and writes its run's ``STATE.json`` and reads its ``instance.json``,
