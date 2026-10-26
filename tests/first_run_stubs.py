@@ -10,7 +10,9 @@ as the stub of ``tests/test_turn_start.py`` does. A turn session starts the
 server named in its ``--mcp-config`` file, speaks MCP to it over stdio and
 replays, in order, the tool requests that ``orchestration/round-manager.md``
 and the agent definitions prescribe for the run's state: a script of the
-definitions, round 0 only, with no judgement beyond the branches they state.
+definitions, round 0 and the rounds >= 1, with no judgement beyond the
+branches they state. Where a definition leaves a choice to the agent (the
+techniques, the hypothesis, the pairs of a verdict), the scenario fixes it.
 Before every request it runs the matching ``PreToolUse`` hooks of the
 session's ``.claude/settings.json`` with the hook input a session gives, and
 at the end of the session the ``Stop`` hook. Every request, hook and answer is
@@ -18,8 +20,8 @@ appended to the session log. Like a ``-p`` session it writes its last reply
 to its standard output.
 
 The stub ``docker`` answers ``version`` and the forced removals, writes the
-test's kernel into the scratch of the coder's container without starting
-anything, and runs a stand-in build or process container on this machine:
+test's kernel of the round the scratch's spec names into that scratch
+without starting anything, and runs a stand-in build or process container on this machine:
 the bind-mounted build directory is the container's ``/build``, ``clang`` is
 the host ``clang`` found before ``PATH`` was narrowed, and the waiter runs in
 a new user and PID namespace made by ``unshare`` where that works. Where it
@@ -27,6 +29,7 @@ does not, the timing executable runs directly and the stub writes the
 waiter's last line from the host's figure for the child.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -39,6 +42,13 @@ PREFIX = "mcp__hilclaw__"
 CONFIG = "stubs.json"
 NAMESPACE = ("--user", "--pid", "--fork", "--mount-proc", "--kill-child")
 ROUND_MANAGER = "round-manager"
+SELECTOR_SKIPS = (
+    "verdicts_missing",
+    "verdicts_invalid",
+    "verdicts_unsupported",
+    "bad_result",
+)
+WRITTEN = "written"
 FIRST_STATE = {
     "schema_version": 1,
     "round": 0,
@@ -46,6 +56,7 @@ FIRST_STATE = {
 }
 _RUN_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 _LEAD = "Your run id is "
+_TUPLE = ("run_id", "round", "candidate", "attempt")
 _EXACT = re.compile(r"[A-Za-z0-9_|]+")
 _REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -224,6 +235,8 @@ class _Turn:
         self.run_id = None
         self.replies = []
         self.main = _Agent(ROUND_MANAGER)
+        self.choices = scenario.get("choices", {})
+        self.repo = scenario["repo"]
 
     def write(self, entry):
         _append(self.log, {"turn": self.number, **entry})
@@ -427,28 +440,69 @@ class _Turn:
         stored = self.call(self.main, "key_store", run_id=run_id)
         if not stored.ok:
             self.report(f"key.store failed: {stored.kind}")
-        if round_ != 0:
-            self.end("rounds of at least 1 are not replayed by this stub")
-        tuple_ = {"run_id": run_id, "round": 0, "candidate": 1, "attempt": 1}
+        tuple_ = {"run_id": run_id, "round": round_, "candidate": 1, "attempt": 1}
         rogue = self.turn.get("rogue")
         if rogue:
             self.call(self.main, rogue, **tuple_)
+        if round_ == 0:
+            self.round_zero(tuple_)
+        else:
+            self.later_round(tuple_)
+        self.closing_steps(round_)
+
+    def round_zero(self, tuple_):
         coded = self.delegate("coder-driver", tuple_, self.coder_driver)
         self.report(f"coder-driver: {coded}")
         if not (coded.get("tool") == "coder_run" and coded.get("taken")):
             self.end()
+        if not self.checks_stand(tuple_):
+            self.end()
+        measured = self.delegate("experiment-runner", tuple_, self.experiment_runner)
+        self.report(f"experiment-runner: {measured}")
+        if measured.get("outcome") not in ("converged", "not_converged"):
+            self.end()
+
+    def checks_stand(self, tuple_):
         for point in ("sim", "board"):
             checked = self.delegate(
                 "evaluator", {**tuple_, "point": point}, self.evaluator_check
             )
             self.report(f"evaluator at {point}: {checked}")
             if checked.get("standing") != "verified":
-                self.end()
-        measured = self.delegate("experiment-runner", tuple_, self.experiment_runner)
-        self.report(f"experiment-runner: {measured}")
-        if measured.get("outcome") not in ("converged", "not_converged"):
+                return False
+        return True
+
+    def later_round(self, tuple_):
+        given = {name: tuple_[name] for name in ("run_id", "round")}
+        selected = self.delegate("technique-selector", given, self.technique_selector)
+        self.report(f"technique-selector: {selected}")
+        read = self.call(self.main, "hypotheses_read", **given)
+        if not read.ok:
+            self.end(f"hypotheses.read failed: {read.kind or 'refused'}")
+        if "techniques" not in selected:
+            self.end("no choice was given")
+        message = {**tuple_, "techniques": selected["techniques"]}
+        coded = self.delegate("coder-driver", message, self.coder_driver)
+        self.report(f"coder-driver: {coded}")
+        if coded.get("tool") != "coder_run":
             self.end()
-        ended = self.call(self.main, "round_end", run_id=run_id, round=0)
+        if coded.get("taken") and self.checks_stand(tuple_):
+            measured = self.delegate(
+                "experiment-runner", tuple_, self.experiment_runner
+            )
+            self.report(f"experiment-runner: {measured}")
+        judged = self.delegate("evaluator", given, self.evaluator_verdicts)
+        self.report(f"evaluator for the verdicts: {judged}")
+        if not (judged.get(WRITTEN) or judged.get("kind") == "verdicts_exist"):
+            self.end()
+
+    def closing_steps(self, round_):
+        run_id = self.run_id
+        if round_ != 0:
+            cased = self.call(self.main, "case_write", run_id=run_id, round=round_)
+            if not cased.ok:
+                self.report(f"case.write failed: {cased.kind or 'refused'}")
+        ended = self.call(self.main, "round_end", run_id=run_id, round=round_)
         if not ended.ok:
             self.end(f"round.end failed: {ended.kind}")
         if ended.result["reported_lines"]:
@@ -458,8 +512,8 @@ class _Turn:
     # The sub-agents' scripts.
 
     def coder_driver(self, agent):
-        tuple_ = agent.message
-        spec = self.call(agent, "spec_write", **tuple_)
+        spec = self.call(agent, "spec_write", **agent.message)
+        tuple_ = {name: agent.message[name] for name in _TUPLE}
         if not spec.ok:
             return {"tool": "spec_write", "kind": spec.kind or "refused"}
         coded = self.call(agent, "coder_run", **tuple_)
@@ -490,6 +544,237 @@ class _Turn:
         if found["outcome"] == "broken":
             found["condition"] = measured.result.get("condition")
         return found
+
+    def technique_selector(self, agent):
+        run_id, round_ = agent.message["run_id"], agent.message["round"]
+        found = {}
+        rogue = self.turn.get("selector_rogue")
+        if rogue:
+            refused = self.call(agent, rogue, run_id=run_id, record={})
+            found["rogue"] = "refused" if refused.refused else refused.kind
+        lookup = self.call(agent, "cases_lookup", run_id=run_id)
+        if not lookup.ok:
+            return {**found, "cases_lookup": lookup.kind or "refused"}
+        found["cases"] = len(lookup.result["cases"])
+        found["verdicts_read"] = []
+        for earlier in range(1, round_):
+            read = self.call(agent, "verdicts_read", run_id=run_id, round=earlier)
+            if read.ok:
+                counted = len(read.result["record"]["verdicts"])
+                found["verdicts_read"].append([earlier, counted])
+            elif read.kind in SELECTOR_SKIPS:
+                found["verdicts_read"].append([earlier, read.kind])
+            else:
+                return {**found, "verdicts_read_kind": read.kind or "refused"}
+        catalog = self.call(agent, "catalog_read", run_id=run_id)
+        entries = set()
+        if catalog.ok:
+            entries = {entry["id"] for entry in catalog.result["entries"]}
+        before = self.call(
+            agent,
+            "checks_read",
+            run_id=run_id,
+            round=round_ - 1,
+            candidate=1,
+            attempt=1,
+            point="board",
+        )
+        standing = before.result["attempts"][0]["standing"] if before.ok else None
+        chosen = self.choices.get(str(round_), self.choices.get("default"))
+        techniques = [entry for entry in chosen["techniques"] if entry in entries]
+        record = self.hypothesis_record(
+            agent.message, chosen, techniques, standing, lookup.result
+        )
+        written = self.call(agent, "hypotheses_write", run_id=run_id, record=record)
+        found["hypotheses_write"] = written.kind or (
+            "refused" if written.refused else "ok"
+        )
+        if written.ok:
+            found["tested_by"] = {h["id"]: h["tested_by"] for h in record["hypotheses"]}
+        exists = written.ok or written.kind == "hypotheses_exist"
+        if exists and (catalog.ok or catalog.kind == "catalog_unusable"):
+            found["techniques"] = techniques
+        return found
+
+    def hypothesis_record(self, given, chosen, techniques, standing, looked):
+        round_ = given["round"]
+        basis = [
+            {
+                "kind": "attempt",
+                "ref": {"round": 0, "candidate": 1, "attempt": 1},
+                "text": "the bring-up kernel of round 0, the baseline of the run",
+            }
+        ]
+        if round_ > 1:
+            basis.append(
+                {
+                    "kind": "attempt",
+                    "ref": {"round": round_ - 1, "candidate": 1, "attempt": 1},
+                    "text": f"the attempt of the round before, {standing} at board",
+                }
+            )
+        for entry in techniques:
+            source = f"catalog/cpu_standin/{entry}.md"
+            content = Path(self.repo, source).read_bytes()
+            basis.append(
+                {
+                    "kind": "external",
+                    "source": source,
+                    "version": "sha256:" + hashlib.sha256(content).hexdigest(),
+                    "text": f"the When section of the catalog entry {entry}",
+                }
+            )
+        if chosen.get("cite_case") and looked["cases"]:
+            case = looked["cases"][0]
+            hypothesis = case["hypothesis_record"]["hypotheses"][0]["id"]
+            basis.append(
+                {
+                    "kind": "case",
+                    "case": {
+                        "run_id": case["run_id"],
+                        "round": case["round"],
+                        "hypothesis": hypothesis,
+                    },
+                    "text": "a case of the same key: a hint, not a target",
+                }
+            )
+        expected = {"metric": "latency_minimisation", "direction": chosen["direction"]}
+        return {
+            "schema_version": 1,
+            "run_id": given["run_id"],
+            "round": round_,
+            "candidates": 1,
+            "cases_read": looked["cases_read"],
+            "hypotheses": [
+                {
+                    "id": f"h{round_}",
+                    "statement": chosen["statement"],
+                    "basis": basis,
+                    "expected": [expected],
+                    "origin": "system",
+                    "tested_by": [1],
+                }
+            ],
+        }
+
+    def evaluator_verdicts(self, agent):
+        run_id, round_ = agent.message["run_id"], agent.message["round"]
+        read = self.call(agent, "hypotheses_read", run_id=run_id, round=round_)
+        if not read.ok:
+            return {"hypotheses_read": read.kind or "refused"}
+        if self.turn.get("verdicts") == "unreadable":
+            return {}
+        seen = {}
+        for at, point in (
+            ((round_, 1), "sim"),
+            ((round_, 1), "board"),
+            ((0, 1), "board"),
+        ):
+            checked = self.call(
+                agent,
+                "checks_read",
+                run_id=run_id,
+                round=at[0],
+                candidate=at[1],
+                point=point,
+            )
+            for attempt in checked.result["attempts"] if checked.ok else []:
+                outcomes = [
+                    check["result"]["outcome"]
+                    for check in attempt["checks"]
+                    if check["state"] == "ended" and "result" in check
+                ]
+                seen[(*at, attempt["attempt"], point)] = (attempt["standing"], outcomes)
+        verdicts = [
+            self.verdict(agent, round_, hypothesis, seen)
+            for hypothesis in read.result["record"]["hypotheses"]
+        ]
+        document = {
+            "schema_version": 1,
+            "run_id": run_id,
+            "round": round_,
+            "verdicts": verdicts,
+        }
+        written = self.call(agent, "verdicts_write", run_id=run_id, record=document)
+        if not written.ok:
+            return {"kind": written.kind or "refused"}
+        return {
+            WRITTEN: True,
+            "verdicts": {v["hypothesis"]: v["verdict"] for v in verdicts},
+        }
+
+    def verdict(self, agent, round_, hypothesis, seen):
+        evidence, causes, counted = [], [], []
+        against = {"round": 0, "candidate": 1, "attempt": 1}
+        for candidate in hypothesis["tested_by"]:
+            for point in ("sim", "board"):
+                _, outcomes = seen.get((round_, candidate, 1, point), (None, []))
+                if outcomes:
+                    failed = [outcome for outcome in outcomes if outcome != "pass"]
+                    outcome = failed[0] if failed else "pass"
+                    evidence.append(_check(round_, candidate, point, outcome))
+        for wanted in hypothesis["expected"]:
+            for candidate in hypothesis["tested_by"]:
+                measured = {"round": round_, "candidate": candidate, "attempt": 1}
+                stood = [
+                    seen.get((ref["round"], ref["candidate"], 1, "board"), ("",))[0]
+                    for ref in (measured, against)
+                ]
+                if stood != ["verified", "verified"]:
+                    causes.append(f"no pair: standing at board {stood}")
+                    continue
+                pair = {"measured": measured, "against": against}
+                compared = self.call(
+                    agent,
+                    "timings_compare",
+                    run_id=agent.message["run_id"],
+                    metric=wanted["metric"],
+                    point="board",
+                    **pair,
+                )
+                if not compared.ok:
+                    causes.append(f"timings.compare: {compared.kind or 'refused'}")
+                    continue
+                difference = compared.result["difference"]
+                evidence.append(
+                    {
+                        "kind": "comparison",
+                        "metric": wanted["metric"],
+                        "point": "board",
+                        **pair,
+                        "difference": difference,
+                    }
+                )
+                evidence.append(_check(0, 1, "board", "pass"))
+                counted.append((wanted["direction"], difference))
+                causes.append(f"board latency against round 0: {difference}")
+        expected = [want for want, difference in counted if difference == want]
+        contrary = [
+            want
+            for want, difference in counted
+            if difference in ("lower", "higher") and difference != want
+        ]
+        if counted and len(expected) == len(counted):
+            value = "supported"
+        elif contrary and not expected:
+            value = "refuted"
+        else:
+            value = "inconclusive"
+        return {
+            "hypothesis": hypothesis["id"],
+            "verdict": value,
+            "cause": "; ".join(causes) or "no ended check and no comparison",
+            "evidence": evidence,
+        }
+
+
+def _check(round_, candidate, point, outcome):
+    return {
+        "kind": "check",
+        "ref": {"round": round_, "candidate": candidate, "attempt": 1},
+        "point": point,
+        "outcome": outcome,
+    }
 
 
 def _turn_session(argv, scenario):
@@ -562,7 +847,9 @@ def _coder(scenario, mount, program, entry):
     entry["container"] = "coder"
     entry["program"] = program
     entry["token_passed"] = bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"))
-    files = scenario["kernel"]
+    spec = json.loads(Path(mount["source"], "spec.json").read_text(encoding="utf-8"))
+    entry["round"] = spec["id"]["round"]
+    files = scenario["kernels"].get(str(entry["round"]), scenario["kernel"])
     if files is None:
         return 0
     output = Path(mount["source"], "output")
