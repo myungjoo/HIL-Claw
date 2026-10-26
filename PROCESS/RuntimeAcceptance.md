@@ -324,3 +324,11 @@
 - 내용:
 
   ADR-0132(첫 사례 선택 역할 `technique-selector`와 등록표 도구 `hypotheses.write`; OD-23·OD-30·OD-18 일부; T-0361)의 런타임 인수 항목 (xxiii)·(xxiv). T-0484가 land한 뒤 런타임 머신에서 확인한다. (xxiii) `-p` 턴 세션에서 `.claude/agents/technique-selector.md`로 정의된 sub-agent가 그 `tools` 목록의 도구만 정확히 받는가, 위임 메시지와 최종 메시지가 온전히 전달되는가. (xxiv) 첫 사례 라운드가 가질 수 있는 가장 큰 가설 레코드에서도 `hypotheses.write` 요청의 `record`가 MCP 도구 호출 입력 한도 안에서 온전히 도구에 닿는가.
+
+### RA-0040
+
+- 상태: 미확인
+- 출처: task T-0485 (ADR-0171)의 Result (등록 2026-10-26)
+- 내용:
+
+  ADR-0171(라운드 ≥ 1 spec의 기법 선택과 coder-driver 위임; 등록표 도구 `catalog.read`; OD-23·OD-22·OD-6 일부; T-0485)의 런타임 인수 항목 (lxxxiii)·(lxxxiv). ADR-0171 slice 2(정의 파일)가 land한 뒤 런타임 머신에서 확인한다. (lxxxiii) `-p` 턴 세션에서 technique-selector의 `mcp__hilclaw__catalog_read` 호출이 도구에 닿고 그 결과가 selector에 온전히 전달되며, caller 검사가 selector에는 통과시키고 main 세션에는 거부한다. (lxxxiv) selector의 마지막 메시지에 `techniques:` 줄이 정확히 하나 있고, Round-Manager가 그 id들을 바꾸지 않고 순서대로 coder-driver 위임 메시지에 옮기며, coder-driver가 그것을 바꾸지 않고 `spec.write` 요청의 `techniques`에 넣는다.

@@ -2,7 +2,7 @@
 id: T-0485
 title: Record who chooses the technique ids of a round >= 1 spec and how they reach the coder-driver, and the coder-driver's round >= 1 delegation, as one new ADR (rest of OD-23, with OD-22/OD-6 where touched), and land its first code slice (the layer-1 definitions, or the registry tool the record needs first), with tests
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-1, FR-5, FR-8, FR-17, OD-23, OD-22, OD-6, S0, S1, "PLAN P2-1"]
 dependsOn: []
@@ -264,3 +264,5 @@ Line numbers are those of `main` at `5e6a08fc`; the text wins. Read Korean files
 - The record of the round >= 1 steps after the coder call (unchanged from Follow-ups above).
 
 **PR and review**: PR #299 (Draft, DONOTMERGE until merge). Two review rounds by the dev-reviewer agent: round 1 Request changes (one blocking: the Skill form of the selection criteria was not registered as open; five nits), all addressed; round 2 Approve with two wording nits, fixed without a further round (D20 nit exception).
+
+**Landed**: CI green on head 97dc50b8 (C, coverage, Python 3.11/3.14, test presence, sh). PR #299 squash-merged as b8480143; branch deleted. Owner notice (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6408668243 (objection window 7 days from 2026-10-26).
