@@ -50,7 +50,9 @@ Outcomes of :func:`kernel_reference`, checked in this order:
     (:class:`hilclaw.layout.InvalidPathValueError` of
     :func:`hilclaw.spec_file.final_name`).
   - one of :data:`hilclaw.kernel_source.NO_KERNEL_SOURCE_CASES`: the attempt
-    has no kernel source (R1, R4).
+    has no kernel source (R1, R4). The spec is read first, so
+    :data:`hilclaw.kernel_source.NO_ATTEMPT_DIRECTORY` comes only when the
+    attempt directory is gone after the spec was read.
   - one of :data:`hilclaw.kernel_source.READER_FAILURES`: the reader of
     ADR-0055 failed (R8, :class:`hilclaw.kernel_source.KernelSourceReadError`).
 
