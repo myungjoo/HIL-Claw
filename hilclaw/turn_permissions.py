@@ -102,6 +102,7 @@ ROUND_MANAGER_TOOLS = (
     "mcp__hilclaw__key_store",
     "mcp__hilclaw__case_write",
     "mcp__hilclaw__round_end",
+    "mcp__hilclaw__hypotheses_read",
 )
 
 _MARKER = "---"

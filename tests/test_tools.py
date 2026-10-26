@@ -495,6 +495,7 @@ DEFAULT_SET = (
     "coder.run",
     "correctness.check",
     "hypotheses.read",
+    "hypotheses.write",
     "instance.read",
     "key.store",
     "round.end",

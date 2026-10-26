@@ -50,6 +50,33 @@ ACCEPTED = {
         "point": "sim",
     },
     "hypotheses.read": {"run_id": "r1", "round": 1},
+    "hypotheses.write": {
+        "run_id": "r1",
+        "record": {
+            "schema_version": 1,
+            "run_id": "r1",
+            "round": 1,
+            "candidates": 1,
+            "hypotheses": [
+                {
+                    "id": "h1",
+                    "statement": "unrolling lowers latency",
+                    "basis": [
+                        {
+                            "kind": "attempt",
+                            "ref": {"round": 0, "candidate": 1, "attempt": 1},
+                            "text": "the baseline",
+                        }
+                    ],
+                    "expected": [
+                        {"metric": "latency_minimisation", "direction": "lower"}
+                    ],
+                    "origin": "system",
+                    "tested_by": [1],
+                }
+            ],
+        },
+    },
     "instance.read": {"run_id": "r1"},
     "key.store": {"run_id": "r1"},
     "round.end": {"run_id": "r1", "round": 0},

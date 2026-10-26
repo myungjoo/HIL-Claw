@@ -83,9 +83,12 @@ the run's ``instance.json``, the rules between files of ADR-0073 decisions 2
 and 3 (a ``case`` entry or a ``cases_read`` entry against the cases of the key
 directory) and of ADR-0075 decision 3 (an ``injection`` against the
 ``injections`` of the run's ``instance.json``). It reads no other version
-(OD-11) and is no tool. Which agent writes the file and when, what follows a
-taken name and what a second write for a round means are open (ADR-0059
-Boundaries; OD-23, OD-18, OD-17).
+(OD-11) and is no tool itself: the tool ``hypotheses.write``
+(:mod:`hilclaw.hypotheses_write_tool`) calls :func:`write` for the
+technique-selector, which writes the record of a round of at least 1
+(ADR-0132 decisions 2 and 4), and answers a taken name with
+``hypotheses_exist``. What a second write for a round means stays open
+(OD-17).
 """
 
 import codecs
