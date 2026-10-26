@@ -344,3 +344,15 @@
   (lxxxv) In one round >= 1 turn session, the six foreground delegations of steps 6, 8, 9, 10, 11 and 12 (technique-selector, coder-driver, evaluator at `sim`, evaluator at `board`, experiment-runner, evaluator for the verdicts) each return their report in the same turn and in order, and the session reaches `case.write`, `round.end` and `run.commit` before any limit of the session itself ends it (as ADR-0142 (xlv) for round 0).
 
   (lxxxvi) From the coder-driver's final message, the Round-Manager tells a result of `coder.run` with a non-empty `taken`, a result with an empty one or a kind of `coder.run`, and a kind of `spec.write`, and takes step 9, step 12 or the stop as ADR-0172 decision 2 says; and from the evaluator's final message of step 12 it tells written verdicts (the file written, or `verdicts_exist`) from any other report, and goes to the closing steps or the stop as decision 5 says.
+
+### RA-0042
+
+- 상태: 미확인
+- 출처: task T-0488 (ADR-0173)의 Result (등록 2026-10-26)
+- 내용:
+
+  ADR-0173(technique-selector의 사례 조회 읽기 도구 `cases.lookup`; OD-30·OD-23 일부; T-0488)의 런타임 인수 항목 (lxxxvii)·(lxxxviii).
+
+  (lxxxvii) In a `-p` turn session, the technique-selector's call of `mcp__hilclaw__cases_lookup` runs under the derived pre-approval without a prompt, and the caller check lets it through for the selector and refuses it for the main session.
+
+  (lxxxviii) The result of `cases.lookup` for the largest key directory a first-case data root holds reaches the selector whole, within any limit Claude Code puts on the result of an MCP tool call; and the selector writes the result's `cases_read` into the record unchanged and before the record, as ADR-0173 decision 5 says.

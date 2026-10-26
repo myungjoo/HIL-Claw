@@ -2,7 +2,7 @@
 id: T-0488
 title: Record the case-lookup read tool the technique-selector uses (name, request, result, kinds, how the lookup's reports are carried, whether a selection goes on after one) as one new ADR (part of OD-30 and OD-23), and land the tool and the selector's use of it (ADR-0132 slice 4), with tests
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-11, FR-15, FR-17, FR-18, NFR-2, OD-30, OD-23, OD-18, S6, S11, "PLAN P2-7", "PLAN P2-6"]
 dependsOn: []
@@ -204,3 +204,82 @@ Line numbers are those of `main` at `73fc2d1c`. Where the text and a line number
 - (planner) The selector slice, if the size cap split it off (criterion 3).
 
 ## Result
+
+**Outcome**: DONE. PR #302 was squash-merged as `acb77465` after 1 review round: the dev-reviewer approved in round 1 with four nits. One nit was fixed after the Approve without a further round (D20 nit exception): a cost sentence on the re-entered round. CI was green on the head `ae23eb1b`. Owner notice (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6410912874 (objection window until 2026-11-02). Language: Python, because the package, its lookup and its registry are Python.
+
+**The ADR**: `ARCHITECTURE/decisions/ADR-0173-od30-first-case-case-lookup-read-tool.md` (part of OD-30 and OD-23; first-case runs of ADR-0120 decision 1, rounds >= 1; OD-18 is not answered, because no hook holds these rules; no OD status changed). It decides:
+- **The tool**: a registry read tool over `case_lookup.find`, which is the lookup of ADR-0073 decision 1 and no second one.
+- **The reports**: carried in the result, not as failures; they reach no file.
+- **The selection**: it goes on after any result and copies the result's `cases_read`, an empty array included. After a failure kind other than `invalid_request` it writes no record.
+- **The holder**: the technique-selector alone.
+- **The bound**: none, since no source gives one. It stays open under OD-30 and OD-18 ③, and the whole-result question becomes a runtime item.
+
+**The tool**:
+- Name: `cases.lookup` (`mcp__hilclaw__cases_lookup`), in `hilclaw/cases_tool.py`, registered in `default_registry`.
+- Request: exactly `run_id`.
+- Result: `{"key": {"hw_profile", "op_signature"} | null, "cases": [whole case documents in name order], "cases_read": [{"run_id", "round"}], "reports": [{"path", "kind", "reason"}]}`.
+- Kinds, in order: `invalid_request`, `no_data_root`, then `run_file_missing`, `run_file_invalid`, `run_file_unsupported` and `run_file_unreadable` for `instance.json`, then `cases_unreadable`. No new kind. Not journaled.
+
+**Selector sentences** (`orchestration/agents/technique-selector.md`):
+- `tools` gains `mcp__hilclaw__cases_lookup` (ADR-0173 decision 5).
+- New given line: "`mcp__hilclaw__cases_lookup` gives the lookup of the stored cases of the run's key: …" (decisions 2 and 3).
+- Fixed rules. "Write no `cases_read` and no basis entry of kind `case`: no lookup tool is in your list …" was replaced by:
+  - "Before you send the record, call `mcp__hilclaw__cases_lookup` … On `invalid_request`, correct the request … On any other kind of that call, send no record and no further request, report the kind and end" (decisions 4 and 5);
+  - "After a result, give the record `cases_read` equal to the result's `cases_read`, whole and in its order, also when it is empty …" (decisions 3 and 4).
+- New section "## The cases":
+  - a `case` basis entry names a case of the result's `cases` and a hypothesis id in its `hypothesis_record` (ADR-0073 decision 2; ADR-0173 decision 5);
+  - a reported file is not named (decision 3);
+  - "A case is a hint: a past rejection forbids no retry and past performance is no target" (FR-15; FR-18; decision 5).
+- New report line for the lookup: the number of cases or the kind, and one line per report (decision 5).
+
+**Other code docstrings**:
+- `hilclaw/case_lookup.py`: the carriage of reports, and "it is no tool".
+- `hilclaw/hypotheses_cases.py`: "how a report … stays open". This file is outside `touchesFiles`.
+- `hilclaw/tools.py` (`default_registry`).
+- `hilclaw/turn_definition.py` (the roster citation).
+
+**Register entries**:
+- Requirements: the OD-23 and OD-30 rows get one ADR-0173 link each after `**확정분**`. The OD-23 `**잔여**` no longer lists "사례 조회 결과".
+- OpenDecisionProposals: § OD-23 and § OD-30 get one `**채택분**` line each. The OD-23 "제안으로 남는 부분" and the OD-30 "조회해 싣는 사례의 선택과 양" `→ 부분 답` were rewritten in place.
+- StandardScenarios: S1, S6 and S11 were re-checked with no verdict change, and the "최근 재검사" line was updated.
+
+**Tests**:
+- New `tests/test_cases_tool.py` (41 tests): every public name, the happy, branch and report paths, every kind in order, and the registry and the MCP front.
+- `tests/test_turn_definition.py`: four new selector tests. In `test_the_technique_selector_body`, the old-prompt assertion `"Write no `cases_read` and no basis entry of kind `case`" in body` became `not in body`, and `"no lookup tool is in your list" not in body` was added. Only that replaced sentence changed.
+- `tests/test_caller_check.py`: the new test `test_the_real_technique_selector_alone_holds_cases_lookup`.
+- **D21 pinning lists changed**, by the new name only:
+  - `TECHNIQUE_SELECTOR_TOOLS`;
+  - the selector's tuple in `test_holder_lists_the_real_definition`;
+  - `tests/test_tools.py` `DEFAULT_SET`;
+  - `tests/test_blob_tools.py`: the two registry and MCP tests (unpacking `[:9]`, slice `[9:]`);
+  - `tests/test_check_definition.py`: two name lists, the MCP name list, the joined string, and `listed[7]` to `listed[8]`;
+  - `tests/test_mcp_front.py`: `FIXED_NAMES`, the `held` map and its docstring, and three listed-name lists;
+  - `tests/test___main__.py`: `FIXED_NAMES` and its docstring;
+  - `tests/test_default_registry_schemas.py`: `ACCEPTED`.
+- **Local results**:
+  - `ruff check .` and `ruff format --check .` are clean.
+  - The full suite under coverage gave 34054 passed and 1 failed. The failure came from a prompt-wording edit made while that run was in progress; the affected files were re-run (359 passed), and CI is green on the final head.
+  - Coverage of `hilclaw/`: lines 97.45%, functions 97.5%; `hilclaw/cases_tool.py` 100%.
+- Size: 369 added and 19 removed non-test lines in 10 non-test files, ADR 131 lines.
+
+**Record sentences made less exact, not edited**:
+- ADR-0132:
+  - decision 3, the exact list;
+  - decision 5, "Until that tool exists …";
+  - decision 7, "write no `cases_read` or `case` entry while no lookup tool is in its list";
+  - the Walk-through row "(once the lookup tool exists)";
+  - Consequences, "The cost, plainly" (the lookup tool sentence);
+  - Boundaries, "The lookup read tool".
+- ADR-0073: decision 1, "How it is enforced that a selection took the output is OD-18 and OD-23", and the Boundaries on how reports are carried and how a selection takes the output.
+- ADR-0171: Boundaries, "The lookup read tool", and decision 3's "The selector gets it" as the list it then gave.
+
+**Runtime acceptance items** (for `PROCESS/RuntimeAcceptance.md`, DRIVER §8, D22; not HQs):
+- (lxxxvii) In a `-p` turn session, the technique-selector's call of `mcp__hilclaw__cases_lookup` runs under the derived pre-approval without a prompt, and the caller check lets it through for the selector and refuses it for the main session.
+- (lxxxviii) The result of `cases.lookup` for the largest key directory a first-case data root holds reaches the selector whole, within any limit Claude Code puts on the result of an MCP tool call; and the selector writes the result's `cases_read` into the record unchanged and before the record, as ADR-0173 decision 5 says.
+
+**P2-6 / P2-7 before P2-5 (executor's reading, for the planner)**:
+- P2-7's third part, a selection that reads the cases of its key and records the reference, is now met for first-case runs. Its storage and injection parts already existed. P2-7 holds no further work before P2-5.
+- The selection rule and bound for many cases (OD-30) is not P2-5's minimum.
+- For P2-6, the selection side of first-case runs is complete: the holder, the record write, the catalog criteria and the case lookup. The one input ADR-0132 Boundaries still names is the reads of earlier verdicts and measurements. Without them the selector cannot take earlier verdicts as input through a typed tool (FR-17 "앞선 판정을 입력으로"). Whether P2-5 needs that before it starts is the planner's call; nothing else of P2-6 or P2-7 is needed first in my reading.
+
+**Follow-ups**: none. The selector slice was not split off.
