@@ -2,7 +2,7 @@
 id: T-0480
 title: Record how the compiler's log leaves a cpu_standin build container and the time limit of a forced container removal (OD-18 ⑱/⑲, OD-14 ①) as one new ADR, and add its first code slice, the cpu_standin operation of `correctness.check` (ADR-0144 slice (4), first part), with tests
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, OD-14, "#5 D12"]
 dependsOn: []
@@ -97,3 +97,18 @@ Line numbers are those of `main` at `8b7860e5`; the text wins. Read Korean files
 - Planner: after this lands, the `cpu_standin` operations of `sim.run` and `board.run` (ADR-0144 slice (4) rest, ADR-0145 waiter's build and process, `standin_answer.read_timing_process`), then the `cpu_standin` entry of the default table (ADR-0167 Boundaries), which together close the `cpu_standin` part of PLAN P1-1.
 
 ## Result
+
+- **Outcome**: DONE. PR #294 squash-merged as `5f3eee69` (branch `claude/T-0480-standin-check-operation` deleted). Review: 2 rounds (round 1 Request changes, 2 Should-fix + 4 Nit, all addressed; round 2 Approve with one harmless Nit left as is). CI green on head `1f2978f7` (Python 3.11/3.14, coverage, test presence, C, sh). Local: full `python -m pytest` 33611 passed / 1858 skipped; `ruff check .` and `ruff format --check .` clean; `hilclaw/standin_check.py` line coverage 100%.
+- **Record**: `ARCHITECTURE/decisions/ADR-0169-od18-standin-build-log-and-removal.md`. The log of a build container is the client's stdout then stderr, each decoded as UTF-8 with invalid bytes replaced, with nothing between. The client's own text is kept. A log is handed over exactly when the build container's answer is one ADR-0078 decision 2 keeps a log for (ok, S7, S8, S9) and the streams came back (rows L1-L8). Every forced container removal gets 60 s, after the build's or process's limit; the longest call is 1620 s. No new `error.kind`, `condition`, file, name or member.
+- **Left open**: the waiter's build log (ADR-0145) is left open in Boundaries for the run-tools task, as the task's stop condition allows. It was not escalated.
+- **Code**: `hilclaw/standin_check.py` (`operation`, `REMOVAL_TIMEOUT_S`, `COMPILER`, `EXECUTABLE_NAME`, `BUILD_DIR_PREFIX`, `REMOVE_PAUSES_S`), bound to no backend table. Tests: `tests/test_standin_check.py`.
+- **Language**: Python. The `standin_*` slices it composes and the tool function that calls it are Python.
+- **Registers**: Requirements OD-18 and OD-14 rows; OpenDecisionProposals §OD-18 (채택분 line, ⑱/⑲ status) and §OD-14 (채택분 line, ① status); StandardScenarios re-check line, no verdict change.
+- **Owner notice (DRIVER §9)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6405210723 (objection window 7 days from 2026-10-26).
+- **Runtime acceptance items for an HQ (reason `runtime-acceptance`)**, from ADR-0169 Consequences, each on every kind of C-7 machine with Docker after the operation is bound:
+  - (lxxviii) The client hands back the image's `clang` diagnostics on stderr and nothing of `clang`'s on stdout for a build with `-o`. Also record which text of its own the client writes on either stream when the build container ends with the program's status, for example a platform warning.
+  - (lxxix) `docker rm --force` of a running build or process container ends within 60 s, Docker Desktop included, and the container's processes are then gone.
+  - (lxxx) When the client returns 0, the executable `clang` writes at the in-container path is a regular file at the matching path of the host build directory.
+- **Follow-ups (planner)**:
+  1. The `cpu_standin` operations of `sim.run` and `board.run`, with the waiter's build and process. A record of the waiter's build log is needed first or with them.
+  2. Then the `cpu_standin` entry of the default table (ADR-0167 Boundaries).
