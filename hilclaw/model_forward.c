@@ -5,15 +5,17 @@
  * weights, the RoPE table, eps, the token ids and the library table from an
  * input file, runs the calls of a generation in the order of ADR-0166
  * decisions 1 and 3 and writes the token ids and the logits to the report:
- * the prefill, then the G - 1 decode passes of the given-sequence mode
- * (ADR-0166 decision 7). It compares nothing, holds no reference, tolerance,
- * verdict or token selection rule and builds no RoPE table. It does no
+ * the prefill, then the G - 1 decode passes, in the given-sequence mode of
+ * ADR-0166 decision 7 or in the greedy generation mode of ADR-0176 decision 5.
+ * Its one rule over values is that mode's token selection; it holds no
+ * reference, tolerance or verdict and builds no RoPE table. It does no
  * floating-point arithmetic: eps and the RoPE table are passed through to the
- * kernels, and every other element is a uint16_t bf16 pattern that is only
- * copied, never cast. It reads no clock, no environment variable and no
- * standard input. It needs the C library and POSIX.1-2008 only, <dlfcn.h>
- * included. The rules behind the buffers, the operands of each
- * call, the copies and the cache are ADR-0166's and are not restated here.
+ * kernels, every other element is a uint16_t bf16 pattern that is only
+ * copied, never cast, and the selection orders patterns by an integer key. It
+ * reads no clock, no environment variable and no standard input. It needs the
+ * C library and POSIX.1-2008 only, <dlfcn.h> included. The rules behind the
+ * buffers, the operands of each call, the copies and the cache are ADR-0166's
+ * and are not restated here.
  *
  * Command line, at least two arguments:
  *
@@ -38,8 +40,11 @@
  * Input file, binary, host byte order, with no padding: every integer a
  * uint64_t, every bf16 element a uint16_t pattern, every float binary32.
  *
- *     D F V N H H_kv d S G lm_head_rows    10 integers; lm_head_rows 0 is
- *                                          "all", 1 is "last"
+ *     D F V N H H_kv d S G form            10 integers; form is
+ *                                          lm_head_rows + 2*mode, with
+ *                                          lm_head_rows 0 "all" and 1
+ *                                          "last", mode 0 the given-sequence
+ *                                          mode and 1 the generation mode
  *     eps                                  1 float
  *     library table                        15*G integers: for call site s and
  *                                          pass p (pass 0 is the prefill),
@@ -48,8 +53,10 @@
  *                                          pass p
  *     RoPE table                           C*d floats, row-major
  *                                          [positions, d], row t position t
- *     token ids                            S + G integers: the prompt, then
- *                                          the given tokens
+ *     token ids                            the given-sequence mode: S + G
+ *                                          integers, the prompt, then the
+ *                                          given tokens; the generation
+ *                                          mode: the S integers of the prompt
  *     embedding                            V*D bf16, row t token t
  *     N times, for layer 0 ... N - 1:
  *       w_attention_norm                   D bf16
@@ -64,7 +71,7 @@
  *
  * The file ends exactly after w_lm_head. Checks, all before the first call: a
  * file shorter than the header and eps, a dimension, S or G of 0, H not a
- * multiple of H_kv, an odd d, lm_head_rows other than 0 or 1, an eps that is
+ * multiple of H_kv, an odd d, a form above 3, an eps that is
  * not finite or not above 0 (checked on its bit pattern), an input file that
  * is not a regular file or whose length is not the one the header gives, a
  * library index not below the number of libraries and a token id not below V
@@ -96,17 +103,32 @@
  * ffn_residual; then norm and lm_head, (T, D, V) on normed for "all" and
  * (1, D, V) on row T - 1 of normed for "last". Decode pass k (k = 1 ...
  * G - 1) makes the same calls with T = 1 and P = S + k - 1 on the first row
- * of each activation: its one token is token id P, given token k - 1, so the
- * last given token is fed to no pass; freqs_cis is row P of the table, and
- * sdpa has m = 1, l = P + 1 and the same cache buffers, which keep what the
+ * of each activation: its one token is token id P, given token k - 1 or the
+ * token selected after pass k - 1, so the last given or selected token is
+ * fed to no pass; freqs_cis is row P of the table, and sdpa has m = 1,
+ * l = P + 1 and the same cache buffers, which keep what the
  * earlier passes wrote. Each call of pass p uses the library the table names
  * for its call site at pass p.
  *
- * Report, on the standard output the process was started with: the S + G
- * token ids as read (uint64_t), then the logits rows as bf16 patterns, V
- * elements each, pass by pass in pass order: for "all" the T rows of each
- * pass (S + G - 1 rows), for "last" the last row of each pass (G rows); then
- * the end mark "end\n": 8*(S + G) + 2*rows*V + 4 bytes. Descriptor 1 is
+ * Selection, the generation mode only (ADR-0176 decision 5): after the
+ * lm_head call of pass p, the selection row is the last logits row of the
+ * pass (row T - 1 for "all", the one row for "last"). Its elements are
+ * ordered by the value they encode, through the integer key +m for a pattern
+ * with sign bit 0 and -m for one with sign bit 1, m the low 15 bits: -0
+ * equals +0 and the infinities order as values. The selected token is the
+ * smallest index of a greatest element; it becomes token id S + p, the
+ * token of pass p + 1, and the last pass selects the G-th token. A NaN
+ * pattern (exponent bits all 1, fraction not 0) anywhere in the selection
+ * row stops the run before the next pass with status 7.
+ *
+ * Report, on the standard output the process was started with, in the
+ * given-sequence mode: the S + G token ids as read (uint64_t), then the
+ * logits rows as bf16 patterns, V elements each, pass by pass in pass order:
+ * for "all" the T rows of each pass (S + G - 1 rows), for "last" the last row
+ * of each pass (G rows); then the end mark "end\n". In the generation mode:
+ * the S prompt ids as read, then the logits rows in the same order, then the
+ * G selected token ids (uint64_t), then the end mark. Both are
+ * 8*(S + G) + 2*rows*V + 4 bytes. Descriptor 1 is
  * pointed at standard error before the first library is loaded, so what a
  * kernel prints is not part of the report.
  *
@@ -119,6 +141,8 @@
  *   6  a library that cannot be loaded or lacks an entry point; the line
  *      names the library's index and, for a missing entry point, its symbol,
  *      and the text of dlerror() may follow
+ *   7  a NaN in the selection row of the generation mode; the line names the
+ *      pass (0 the prefill), whose logits rows the report already holds
  * A status other than 0 comes with one line on standard error and without the
  * end mark; a kernel that ends the process leaves the report without it.
  */
@@ -162,7 +186,8 @@ enum {
     STATUS_MEMORY = 3,
     STATUS_SYSTEM = 4,
     STATUS_INPUT = 5,
-    STATUS_LIBRARY = 6
+    STATUS_LIBRARY = 6,
+    STATUS_SELECTION = 7
 };
 
 enum { HEADER_WORDS = 10, SITES = 15, NAN_BITS = 0x7FC0 };
@@ -196,7 +221,7 @@ struct layer {
 
 struct model {
     size_t D, F, V, N, H, H_kv, d, S, G, W, C;
-    int last;
+    int last, generate;
     float eps;
     uint64_t *table, *tokens;
     float *rope;
@@ -291,8 +316,8 @@ static void check_header(const uint64_t *word, uint32_t eps_bits)
         exit(fail(STATUS_INPUT, "input file", "H is not a multiple of H_kv"));
     if (word[6] % 2 != 0)
         exit(fail(STATUS_INPUT, "input file", "d is odd"));
-    if (word[9] > 1)
-        exit(fail(STATUS_INPUT, "input file", "lm_head_rows is neither 0 nor 1"));
+    if (word[9] > 3)
+        exit(fail(STATUS_INPUT, "input file", "the form of lm_head_rows and mode is above 3"));
     if ((eps_bits & UINT32_C(0x80000000)) != 0 || (eps_bits & UINT32_C(0x7F800000)) == UINT32_C(0x7F800000) ||
         eps_bits == 0)
         exit(fail(STATUS_INPUT, "input file", "eps is not finite or not above 0"));
@@ -303,7 +328,8 @@ static uint64_t check_sizes(const uint64_t *word)
     const uint64_t D = word[0], F = word[1], V = word[2], N = word[3], H = word[4], H_kv = word[5], d = word[6],
                    S = word[7], G = word[8];
     const uint64_t W = times(plus(H, times(2, H_kv, "qkv_out"), "qkv_out"), d, "qkv_out");
-    const uint64_t C = plus(S, G, "token ids") - 1, rows = word[9] == 1 ? 1 : S;
+    const uint64_t C = plus(S, G, "token ids") - 1, rows = (word[9] & 1) == 1 ? 1 : S;
+    const uint64_t read_tokens = word[9] >> 1 == 1 ? S : S + G;
     uint64_t layer, total;
 
     bytes(times(S, D, "x"), 2, "x");
@@ -314,13 +340,14 @@ static uint64_t check_sizes(const uint64_t *word)
     bytes(times(rows, V, "logits"), 2, "logits");
     bytes(N, sizeof(struct layer), "layers");
     bytes(G, sizeof(struct pass_entries), "entry points");
+    bytes(S + G, 8, "token ids");
     layer = bytes(times(D, W, "w_qkv"), 2, "w_qkv");
     layer = plus(layer, bytes(times(times(H, d, "w_o"), D, "w_o"), 2, "w_o"), "a layer");
     layer = plus(layer, times(3, bytes(times(D, F, "w_gate"), 2, "w_gate"), "a layer"), "a layer");
     layer = plus(layer, times(4, D, "a layer"), "a layer");
     total = plus(HEADER_WORDS * 8 + 4, bytes(times(SITES, G, "library table"), 8, "library table"), "input file");
     total = plus(total, bytes(times(C, d, "RoPE table"), 4, "RoPE table"), "input file");
-    total = plus(total, bytes(S + G, 8, "token ids"), "input file");
+    total = plus(total, read_tokens * 8, "input file");
     total = plus(total, times(N, layer, "input file"), "input file");
     total = plus(total, times(2, bytes(times(V, D, "embedding"), 2, "embedding"), "input file"), "input file");
     return plus(total, times(2, D, "w_norm"), "input file");
@@ -354,7 +381,8 @@ static FILE *open_input(const char *path, struct model *m)
     m->d = (size_t)word[6];
     m->S = (size_t)word[7];
     m->G = (size_t)word[8];
-    m->last = word[9] == 1;
+    m->last = (word[9] & 1) == 1;
+    m->generate = word[9] >> 1 == 1;
     m->W = (m->H + 2 * m->H_kv) * m->d;
     m->C = m->S + m->G - 1;
     memcpy(&m->eps, &eps_bits, sizeof m->eps);
@@ -363,6 +391,7 @@ static FILE *open_input(const char *path, struct model *m)
 
 static void read_inputs(FILE *file, struct model *m, size_t libraries)
 {
+    const size_t read_tokens = m->generate ? m->S : m->S + m->G;
     size_t i;
 
     m->table = read_array(file, SITES * m->G * sizeof *m->table);
@@ -370,8 +399,9 @@ static void read_inputs(FILE *file, struct model *m, size_t libraries)
         if (m->table[i] >= libraries)
             exit(fail(STATUS_INPUT, "input file", "a library index is out of range"));
     m->rope = read_array(file, m->C * m->d * sizeof *m->rope);
-    m->tokens = read_array(file, (m->S + m->G) * sizeof *m->tokens);
-    for (i = 0; i < m->S + m->G; i++)
+    m->tokens = allocate((m->S + m->G) * sizeof *m->tokens);
+    read_exactly(file, m->tokens, read_tokens * sizeof *m->tokens);
+    for (i = 0; i < read_tokens; i++)
         if (m->tokens[i] >= m->V)
             exit(fail(STATUS_INPUT, "input file", "a token id is not below V"));
 }
@@ -518,6 +548,29 @@ static void run_pass(const struct model *m, const struct pass_entries *e, size_t
     }
 }
 
+static long key(uint16_t bits)
+{
+    long magnitude = bits & 0x7FFF;
+
+    return (bits & 0x8000) != 0 ? -magnitude : magnitude;
+}
+
+static void select_token(struct model *m, size_t pass, size_t T)
+{
+    const uint16_t *row = m->logits + (m->last ? 0 : T - 1) * m->V;
+    size_t best = 0, i;
+
+    for (i = 0; i < m->V; i++) {
+        if ((row[i] & 0x7F80) == 0x7F80 && (row[i] & 0x7F) != 0) {
+            fprintf(stderr, "model_forward: pass %lu: the selection row holds a NaN\n", (unsigned long)pass);
+            exit(STATUS_SELECTION);
+        }
+        if (key(row[i]) > key(row[best]))
+            best = i;
+    }
+    m->tokens[m->S + pass] = best;
+}
+
 static void release(struct model *m)
 {
     uint16_t **arrays[] = {&m->x,    &m->h,     &m->normed, &m->qkv_out,  &m->q_in,   &m->k_in,
@@ -579,10 +632,16 @@ int main(int argc, char **argv)
     read_weights(file, &m);
     allocate_activations(&m);
 
-    emit(m.tokens, (m.S + m.G) * sizeof *m.tokens);
-    run_pass(&m, &passes[0], m.S, 0);
-    for (i = 1; i < m.G; i++)
-        run_pass(&m, &passes[i], 1, m.S + i - 1);
+    emit(m.tokens, (m.generate ? m.S : m.S + m.G) * sizeof *m.tokens);
+    for (i = 0; i < m.G; i++) {
+        const size_t T = i == 0 ? m.S : 1;
+
+        run_pass(&m, &passes[i], T, i == 0 ? 0 : m.S + i - 1);
+        if (m.generate)
+            select_token(&m, i, T);
+    }
+    if (m.generate)
+        emit(m.tokens + m.S, m.G * sizeof *m.tokens);
     emit("end\n", 4);
     release(&m);
     free(passes);

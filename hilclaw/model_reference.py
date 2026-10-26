@@ -48,8 +48,9 @@ Conventions of this module (readings of ADR-0176, not rules of the record):
   reference is not finite.
 
 What this module does not do: it builds, starts and runs nothing, and reads
-and writes no file; it has no token selection rule and no generation mode
-(ADR-0176 decision 5, a later code slice); it holds no tolerance value,
+and writes no file; it has no token selection rule and no generation mode,
+which the forward program has (ADR-0176 decision 5): a generated run is
+compared by passing its selected tokens as ``given``; it holds no tolerance value,
 prompt, length or model parameter and gives none a default (HQ-0070); it
 casts no array of its caller and keeps nothing between calls.
 """

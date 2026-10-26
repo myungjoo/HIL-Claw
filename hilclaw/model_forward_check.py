@@ -38,12 +38,13 @@ Conventions of this module (readings of decision 6, not rules of the record):
   RoPE check included) are raised unchanged before this module looks at
   ``eps``, ``rope`` and ``weights``, which it then refuses by type in that
   order.
-* This module's own ``"invalid_input"`` outcomes come in this order: the
-  generation mode (``given`` is ``None``: it has no token selection rule,
-  ADR-0166 decision 7, OD-31 sub-question 6); ``eps`` refused by
-  :func:`hilclaw.model_binding.rmsnorm_eps`; one per RoPE constant whose
-  value :func:`hilclaw.rope_table.constant_refusals` refuses, in field
-  order; the table size, ``positions * head_dim`` above 2**53 - 1 with
+* ``given`` ``None`` is the generation mode of ADR-0176 decision 5, with
+  ``generation_length`` the number of tokens to select; it is checked as
+  :func:`hilclaw.model_binding.check` checks it.
+* This module's own ``"invalid_input"`` outcomes come in this order: ``eps``
+  refused by :func:`hilclaw.model_binding.rmsnorm_eps`; one per RoPE
+  constant whose value :func:`hilclaw.rope_table.constant_refusals`
+  refuses, in field order; the table size, ``positions * head_dim`` above 2**53 - 1 with
   ``positions`` = S + G - 1 (looked at only when the prompt is not empty and
   G is from 1 to 2**53 - 1); then the weights in field order, for a per-layer
   weight its array count and then each array in layer order, each array's
@@ -57,8 +58,8 @@ Conventions of this module (readings of decision 6, not rules of the record):
 
 What this module does not do: it builds, loads and starts nothing, runs no
 process and reads and writes no file; it builds no RoPE table and computes no
-frequency; it has no token selection rule (ADR-0176 decision 5, a later
-code slice) and no model-level reference or tolerance, which are
+frequency; it selects no token, which the forward program does (ADR-0176
+decision 5), and has no model-level reference or tolerance, which are
 :mod:`hilclaw.model_reference`'s (ADR-0176); it gives no default to any model
 parameter or RoPE constant (HQ-0070) and sets no cache capacity; it adds no
 outcome kind to those of :mod:`hilclaw.model_binding`.
@@ -147,9 +148,10 @@ def check(
     ``binding`` maps call sites of the six kinds to non-empty sequences of
     :class:`hilclaw.model_binding.BindingEntry`; ``dtype`` is the model's
     dtype; ``eps`` is exactly a ``float``; ``rope`` is a
-    :class:`RopeConstants`; ``weights`` is a :class:`Weights`; ``prompt`` and
-    ``given`` are sequences of token ids, ``given`` holding
-    ``generation_length`` ids; ``lm_head_rows`` is ``"all"`` or ``"last"``.
+    :class:`RopeConstants`; ``weights`` is a :class:`Weights`; ``prompt`` is
+    a sequence of token ids; ``given`` is a sequence of
+    ``generation_length`` token ids (the given-sequence mode) or ``None``
+    (the generation mode); ``lm_head_rows`` is ``"all"`` or ``"last"``.
     No argument has a default.
 
     Raised, in this order: :class:`TypeError` (``parameter`` ``"binding"``)
@@ -198,8 +200,7 @@ def check(
             )
         results.append(result)
 
-    reasons = [] if given is not None else [_GENERATION_MODE]
-    reasons += _eps(eps)
+    reasons = _eps(eps)
     reasons += _rope(rope, dimensions.head_dim, len(prompt), generation_length)
     reasons += _weights(weights, dimensions, dtype)
 
@@ -217,12 +218,6 @@ def check(
     ok = not outcomes
     calls = tuple(call for result in results for call in result.calls) if ok else ()
     return model_binding.BindingCheck(ok, tuple(outcomes), calls)
-
-
-_GENERATION_MODE = (
-    "given: is None; the generation mode has no token selection rule "
-    "(OD-31 sub-question 6)"
-)
 
 
 def _eps(eps):
