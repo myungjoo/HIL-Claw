@@ -79,8 +79,8 @@ def entry(record):
 
     The entries are asked in the order of :data:`TABLE`, each through its
     contract's ``covers``, and the first that answers ``True`` is returned;
-    ``None`` says that no entry covers the record. ``record`` is validated by
-    :func:`hilclaw.keys.op_signature_key` (through the first ``covers``), and
+    ``None`` says that no entry covers the record. ``record`` is first
+    validated by :func:`hilclaw.keys.op_signature_key`, and
     :class:`hilclaw.keys.InvalidRecordError` is raised as that function raises
     it, a ``kind`` it does not know included. ``record`` is not modified.
     """
