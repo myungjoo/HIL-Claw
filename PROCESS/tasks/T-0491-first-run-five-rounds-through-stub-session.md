@@ -2,7 +2,7 @@
 id: T-0491
 title: Extend PLAN P2-5's stub end-to-end run to the five rounds of a `cpu_standin` x GEMM, N=1 first-case run (rounds >= 1 with selection, coder call, checks, timing, verdicts, cases and round end), with tests
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [S0, S1, S8, S11, FR-1, FR-11, FR-15, FR-17, FR-18, "PLAN P2-5", "PLAN P2-6", "PLAN P2-7", D16]
 dependsOn: [T-0490]
