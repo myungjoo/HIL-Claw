@@ -2,7 +2,7 @@
 id: T-0484
 title: Add the tool `hypotheses.write`, the `technique-selector` definition and the round >= 1 selection steps of the Round-Manager (ADR-0132 Consequences slices 1 to 3; PLAN P2-6)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-11, FR-17, OD-23, OD-30, OD-18, S0, S1, "PLAN P2-6", "PLAN P2-1"]
 dependsOn: []
@@ -158,3 +158,12 @@ Line numbers are those of `main` at `769b2e9d`; the text wins. Read Python with 
 - (planner) The rest of P2-1 for rounds >= 1 (the coder-driver's round >= 1 delegation, the checks, the measurement and the verdicts before the closing steps) needs a record of those steps (ADR-0132 Boundaries; ADR-0151; ADR-0140).
 
 ## Result
+
+- **Outcome**: DONE. PR #298 squash-merged as `8230330d` after 2 review rounds (round 1 Approve with 3 nits, all addressed; round 2 Approve with no findings). CI green before merge (Python gate 3.11/3.14, Coverage gate, C, sh, test-presence gates). Local full suite: 33909 passed; `hilclaw/` line coverage 97%, new module 100%; `ruff check` and `ruff format --check` clean.
+- **Language**: Python for the tool, since the package and the validators it reuses (`hypotheses_file`, `hypotheses_cases`, `case_lookup`, `run_file_tools`) are Python. Markdown for the layer-1 definitions.
+- **Tool**: `hilclaw/hypotheses_write_tool.py`, encoding as `verdicts_tool` (`json.dumps(record, ensure_ascii=False, indent=2, allow_nan=False)` + LF, UTF-8 without BOM). `round_not_current` re-exported from `case_tool`; new kinds `cases_unreadable`, `cases_mismatch`, `hypotheses_exist`, `hypotheses_not_written`. Registered in `default_registry`.
+- **Layer 1**: new `orchestration/agents/technique-selector.md` (tools of ADR-0132 decision 3); `orchestration/round-manager.md` gains round >= 1 steps 6 (delegate to `technique-selector`) and 7 (`hypotheses_read`), then the stop; `ROUND_MANAGER_TOOLS` gains `mcp__hilclaw__hypotheses_read`.
+- **Pinning assertions changed (D21)**: registry name lists in `test_tools.py`, `test_blob_tools.py`, `test_check_definition.py`, `test_mcp_front.py`, `test___main__.py`; `ACCEPTED` in `test_default_registry_schemas.py`; `FIXED` and holder lists in `test_turn_permissions.py`; agent tree list in `test_turn_definition.py`. One prompt-text assertion moved from "follows step 1" to "follows step 7".
+- **Record sentences made less exact, not edited**: ADR-0059 and ADR-0073 Boundaries, ADR-0129 decision 4, ADR-0139 decisions 1/3, ADR-0146 decision 1, `case_lookup.py` docstring, and ADR-0132 Consequences ("until `board.run` is registered" is stale since ADR-0167).
+- **Runtime acceptance**: ADR-0132 (xxiii)-(xxiv) recorded as RA-0039 at lock time; none new.
+- **Follow-ups**: only those already listed (ADR-0132 slice 4 / P2-7; remaining round >= 1 steps of P2-1).
