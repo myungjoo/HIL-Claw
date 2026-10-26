@@ -1,11 +1,14 @@
 """The reader of the technique catalog (ADR-0150 decision 2 and Consequences slice 1).
 
-:func:`check` checks one accelerator's directory of the catalog and
-:func:`technique` returns what one entry gives a spec. ``spec.write``
+:func:`check` checks one accelerator's directory of the catalog,
+:func:`technique` returns what one entry gives a spec and :func:`criteria`
+returns the selection criteria of every entry. ``spec.write``
 (:mod:`hilclaw.spec_tool`) calls :func:`technique` for each id of its request
 and checks the rule of decision 4 against the spec it composes (ADR-0151
-decision 2 (b)); which ids a spec carries is the selection side's (HQ-0048).
-It is no registry tool, calls no model, starts no process and writes nothing.
+decision 2 (b)); ``catalog.read`` (:mod:`hilclaw.catalog_tool`) calls
+:func:`criteria` for the technique-selector, which chooses the ids a spec of a
+round >= 1 carries (ADR-0171 decisions 2 and 3). It is no registry tool, calls
+no model, starts no process and writes nothing.
 
 **Decided by ADR-0150** and only applied here: the catalog is ``catalog/``
 (:data:`SOURCE`), with one directory per ``accelerator`` value holding one file
@@ -15,7 +18,9 @@ heading of level 1 or 2, ``# <id>``, ``## Applies to`` with the lines of
 :data:`APPLIES_TO`, ``## When`` and ``## Guidance``; its ``text`` is the content
 of ``## Guidance`` to the end of the file with leading and trailing line feeds
 removed, and it gives a spec exactly ``{"id": <id>, "text": <text>}``
-(decisions 2 to 4).
+(decisions 2 to 4). An entry's selection criteria are the content of its
+``## When`` section with leading and trailing line feeds removed (ADR-0171
+decision 3).
 
 **Choices of this module**; a breach of them or of the rules above raises
 :class:`InvalidCatalogError`:
@@ -123,12 +128,13 @@ def _entry(path, entry_id):
     applies = [line.strip() and line for line in lines[found[1] + 1 : found[2]]]
     if "\n".join(applies).strip("\n").split("\n") != list(APPLIES_TO):
         raise InvalidCatalogError("Applies to is not the four lines of ADR-0150")
-    if not "\n".join(lines[found[2] + 1 : found[3]]).strip():
+    when = "\n".join(lines[found[2] + 1 : found[3]]).strip("\n")
+    if not when.strip():
         raise InvalidCatalogError("the When section is empty")
     text = "\n".join(lines[found[3] + 1 :]).strip("\n")
     if not text.strip():
         raise InvalidCatalogError("the Guidance section is empty")
-    return text
+    return when, text
 
 
 def _read(accelerator, source):
@@ -139,7 +145,7 @@ def _read(accelerator, source):
         raise FileNotFoundError(f"no catalog directory: {directory!r}")
     if _kind(directory) != "directory":
         raise InvalidCatalogError("the accelerator's catalog is not a plain directory")
-    texts = {}
+    entries = {}
     for entry in sorted(os.scandir(directory), key=lambda entry: entry.name):
         kind = _kind(entry.path)
         if kind == "link":
@@ -149,8 +155,8 @@ def _read(accelerator, source):
         matched = _FILE_NAME.fullmatch(entry.name)
         if not matched:
             raise InvalidCatalogError("the catalog holds a file not named '<name>.md'")
-        texts[matched.group(1)] = _entry(entry.path, matched.group(1))
-    return texts
+        entries[matched.group(1)] = _entry(entry.path, matched.group(1))
+    return entries
 
 
 def check(accelerator, *, source=None):
@@ -178,7 +184,21 @@ def technique(accelerator, entry_id, *, source=None):
     no entry has the id, and otherwise as the module docstring lists.
     """
     _name(entry_id, "entry_id")
-    texts = _read(accelerator, source)
-    if entry_id not in texts:
+    entries = _read(accelerator, source)
+    if entry_id not in entries:
         raise KeyError(entry_id)
-    return {"id": entry_id, "text": texts[entry_id]}
+    return {"id": entry_id, "text": entries[entry_id][1]}
+
+
+def criteria(accelerator, *, source=None):
+    """Return the selection criteria of every entry of ``accelerator``.
+
+    ``accelerator`` and ``source`` are as for :func:`check`. After the whole
+    directory has passed :func:`check`, returns a new ``dict`` mapping each id,
+    in sorted order, to the content of its ``## When`` section with leading
+    and trailing line feeds removed (ADR-0171 decision 3). Raises as the
+    module docstring lists.
+    """
+    return {
+        entry_id: when for entry_id, (when, _) in _read(accelerator, source).items()
+    }

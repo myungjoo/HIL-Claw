@@ -212,7 +212,9 @@ def default_registry(data_root_source):
     attempt or a candidate at one point and their standing. It holds
     ``hypotheses.write`` (:func:`hilclaw.hypotheses_write_tool.definition`,
     ADR-0132 decision 4), with which the technique-selector writes a round's
-    ``decision/hypotheses.json``. It holds
+    ``decision/hypotheses.json``, and ``catalog.read``
+    (:func:`hilclaw.catalog_tool.definition`, ADR-0171 decision 3), with which
+    it reads the selection criteria of its run's technique catalog. It holds
     ``case.write`` (:func:`hilclaw.case_tool.definition`, ADR-0133 decision
     3), with which the Round-Manager writes a round's case, ``key.store``
     (:func:`hilclaw.key_store_tool.definition`, ADR-0134 decision 3), with
@@ -240,6 +242,7 @@ def default_registry(data_root_source):
     from hilclaw import (
         blob_tools,
         case_tool,
+        catalog_tool,
         check_definition,
         checks_tool,
         coder_runtime,
@@ -270,6 +273,7 @@ def default_registry(data_root_source):
     registry.register(*verdicts_tool.definition(data_root_source))
     registry.register(*hypotheses_tool.definition(data_root_source))
     registry.register(*hypotheses_write_tool.definition(data_root_source))
+    registry.register(*catalog_tool.definition(data_root_source))
     registry.register(*checks_tool.definition(data_root_source))
     registry.register(*case_tool.definition(data_root_source))
     registry.register(*key_store_tool.definition(data_root_source))

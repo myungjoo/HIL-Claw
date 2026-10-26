@@ -134,6 +134,7 @@ def test_the_default_registry_holds_the_definition_of_the_tool():
         "blob.push",
         "board.run",
         "case.write",
+        "catalog.read",
         "checks.read",
         "coder.run",
         TOOL,
@@ -436,6 +437,7 @@ def test_building_the_default_registry_calls_no_party(parties):
         "blob.push",
         "board.run",
         "case.write",
+        "catalog.read",
         "checks.read",
         "coder.run",
         TOOL,
@@ -485,6 +487,7 @@ def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
         "blob_push",
         "board_run",
         "case_write",
+        "catalog_read",
         "checks_read",
         "coder_run",
         "correctness_check",
@@ -502,8 +505,8 @@ def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
         "timings_compare",
         "verdicts_write",
     ]
-    assert listed[6]["description"] == DESCRIPTION
-    assert listed[6]["inputSchema"] == SCHEMA
+    assert listed[7]["description"] == DESCRIPTION
+    assert listed[7]["inputSchema"] == SCHEMA
 
 
 def test_a_call_about_a_run_at_the_mock_passes(root, parties):
@@ -760,7 +763,7 @@ def test_building_the_default_registry_imports_no_numpy(tmp_path):
 def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
     answers, loaded = heavy_modules_after(LIST_CHILD, tmp_path)
     assert answers == [
-        "0 blob_fetch blob_push board_run case_write checks_read coder_run correctness_check"
+        "0 blob_fetch blob_push board_run case_write catalog_read checks_read coder_run correctness_check"
         + " hypotheses_read hypotheses_write instance_read key_store round_end run_commit run_fresh sim_run spec_write state_read"
         + " state_write timings_compare verdicts_write"
     ]
