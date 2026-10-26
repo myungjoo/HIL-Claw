@@ -1,0 +1,157 @@
+# ADR-0172: The round ≥ 1 steps of a first-case turn after the coder call — a call that brought something in goes to the evaluator's sim-point and then board-point check of (`r`, 1, 1) and, when both verified, to the experiment-runner's `board.run`; a call that was made and brought nothing in, a check that does not verify and every report of the measurement go to the evaluator's verdicts of the round, and the verdicts to the closing steps with `case.write`; a turn whose spec was not written by its own call, or whose report cannot be read, keeps the stop (part of OD-23, for the runs of ADR-0120 decision 1 with one candidate per round)
+
+## Status
+
+- **Accepted on 2026-10-26** under [PROCESS/DRIVER.md](../../PROCESS/DRIVER.md) §9 (owner decision D6): written by the development driver's executor and accepted by the approval of a context-isolated reviewer. **The owner has not confirmed it.**
+- **Two kinds of content.** What an owner answer, an agreement of #4, a requirement, an accepted record or a code docstring says is **cited**, with its source named. **Everything else is this record's own**: which report leads where, the order of the steps, when the verdicts are delegated, the readings marked as such, and every weighing.
+- **The owner-sentence search.** Searched on 2026-10-26: the bodies of #4, #5, #7 and #8, and the 62 of their 288 comments whose text holds no "posted by driver" marker. Terms: round ≥ 1, 라운드 ≥ 1, after the coder, failed attempt, 실패한 시도, round end, 라운드를 끝, evaluate에 이르, experiment-runner, verdicts, 다음 라운드. **No owner sentence says what a round ≥ 1 does after its coder call, or whether a round whose attempt failed ends.** The sentences found that touch it, each read for what it says and no further:
+  - **K1** — #4 comment of 2026-07-31, "[합의 — 본문 §3a 개정]" (https://github.com/myungjoo/HIL-Claw/issues/4#issuecomment-5138366881): the roster rows of experiment-runner ("sim/board 측정 (FR-10) | MCP sim.run / board.run") and evaluator; ADR-0142 Status treats them as binding (its K2), and **this record does the same**.
+  - **K2** — #4 comment of the same day (https://github.com/myungjoo/HIL-Claw/issues/4#issuecomment-5139876430): typed tools for privileged actions (cited: ADR-0142 Status, its K4).
+  - **O1** — the owner's answer to HQ-0043 (2026-10-21, https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6306369119), owner's note: "A measurement or a failed attempt in a turn that ends early is data (FR-18)". It is a reason for that answer's commits; it is read here as no rule about whether a round ends.
+  - **Requirements** (cited): FR-1 ⑴ "sim 실패 → 실패 리포트를 첨부해 코드 생성 단계로 복귀(repair; 복귀 횟수 상한 = OD-19)", ⑵ "board 실패 → 해당 후보 탈락", ⑶ the quarantine and triage of a sim pass followed by a board failure; FR-17 "evaluate에 이른 라운드는 판정 없이 끝나지 않는다" and "검증 실패로 측정에 이르지 못한 가설의 판정 값 = OD-30"; FR-18 "기각된 가설과 실패한 시도도 저장한다".
+- **Not an owner-only item.** Nothing here chooses among measurements or says what "better" is (#5 A-4, rest of OD-1): the comparison stays the evaluator's under ADR-0071 decision 4 and ADR-0140, cited, not extended. No gate is set or moved (OD-3), no model or token budget is named (#5 A-8), and C-6 and OD-25 are untouched. **Open HQs checked**: none is unresolved in `PROCESS/STATE.json` on 2026-10-26.
+- **Answers**, **for the runs of ADR-0120 decision 1 whose `instance.json` states `candidates_per_round` 1 and their rounds ≥ 1**, part of **OD-23**: the Round-Manager's steps from the coder-driver's report to the end of the turn, and the evaluator's and the experiment-runner's delegations in a round ≥ 1 (the "Boundaries" first bullet of [ADR-0171](ADR-0171-od23-first-case-round-techniques-and-coder-delegation.md); the "the rounds ≥ 1, their sim measurement, its holder" of [ADR-0142](ADR-0142-od23-first-case-round-zero-after-coder-call.md) Boundaries, for these runs). **OD-23 keeps its status.** No sub-question is registered or answered; OD-16, OD-17 and OD-30 are not answered further.
+- **No member, file, kind, value or version of the data plane is added or changed**, and no validator or tool changes. **It is a record with its first code slice**: no `claude` process, container, compiler or timing run was started for it, and nothing below was tried in a live session (D16).
+- It builds on ADR-0062 (decision 3), ADR-0071 (decisions 4, 6), ADR-0110 (decisions 3, 6), [ADR-0119](ADR-0119-od28-first-case-baseline.md) (decisions 2, 5), ADR-0122 (decision 3), [ADR-0128](ADR-0128-od23-first-case-evaluator.md) (decisions 2, 4 to 7), ADR-0129 (decision 5), ADR-0131 (decisions 4, 7), [ADR-0132](ADR-0132-od23-first-case-selection.md) (decision 6), [ADR-0133](ADR-0133-od23-first-case-round-promotion.md) (decisions 1, 4, 5), [ADR-0135](ADR-0135-od23-first-case-round-end-write.md) (decisions 2, 5, 6), [ADR-0140](ADR-0140-od16-first-case-attempt-comparison.md) (decisions 5, 6), ADR-0141 (decision 5), ADR-0142 (decisions 2 to 6), [ADR-0143](ADR-0143-od8-first-case-turn-end-commit.md) (decisions 2, 7), ADR-0146 (decision 6), ADR-0151 (decisions 1, 3) and ADR-0171 (decisions 5, 6). **If one of them is reverted, this record is revisited with it.**
+- The owner is notified on issue #5 and may object within 7 days of that notice; an objection creates a task that reverts this record and the edits made with it.
+- The format follows the "Record format" section of [ADR-0001](ADR-0001-od4-key-schema.md).
+
+## Context
+
+- **The stop** (code, as observation): in "The round steps" of `orchestration/round-manager.md`, step 8 of a round ≥ 1 delegates the coder call of the tuple (`r`, 1, 1) and, whatever the coder-driver reports, comes to the stop with the line "the following steps of round `<round>` are not yet defined"; "no turn of a round ≥ 1 reaches" the closing steps (cited: ADR-0171 decision 6). So no round ≥ 1 ends and no run passes round 1 (PLAN P2-5).
+- **The parts that exist** (code, as observation): the evaluator checks "the tuple and the point" it is given and reports the `outcome` and the `standing`, and for a verdicts delegation reads the round's hypotheses, the results and the comparisons and writes the record with `verdicts.write` (`orchestration/agents/evaluator.md`, "A check" and "Verdicts"); the experiment-runner calls `board.run` once for the tuple it is given (`orchestration/agents/experiment-runner.md`); `board.run`, `case.write` and `round.end` are in `default_registry`; `sim.run` is held by no agent.
+- **The tools take a round ≥ 1** (observation, from their module docstrings): `case.write` takes `round` "from 1" and requires it to equal `STATE.json`'s, and with no `verdicts.json` "nothing there is no failure and gives a case without verdicts" (`hilclaw/case_tool.py`); `round.end` takes any round from 0 (`hilclaw/round_end_tool.py`); `verdicts.write` refuses a round-0 record and writes "a record without a `check` entry" (`hilclaw/verdicts_tool.py`).
+- **The interim rule that consumes the tuple** (cited): on `spec_exists` the coder-driver makes no call (ADR-0141 decision 5, rule 4; kept for rounds ≥ 1 by ADR-0171 decision 5), so once the spec of (`r`, 1, 1) is written no later turn makes a call for it; "The `spec_exists` rule leaves a round ≥ 1 whose first call failed, or whose turn died after the write, with no later call" (ADR-0171 "The cost, plainly").
+- **What a round with no counted comparison gives** (cited): `inconclusive` "in particular when no candidate testing the hypothesis passed its board check or reached a measurement, the case FR-17 leaves to OD-30" (ADR-0071 decision 4).
+
+## Decision
+
+A sentence is **cited** when a source is named with it. Every other sentence is **this record's own**.
+
+### 1. Scope
+
+- **The round ≥ 1 turns of the runs of ADR-0151 decision 1** — runs of ADR-0120 decision 1 whose `instance.json` states `candidates_per_round` 1 —, from the coder-driver's report of step 8 to the end of the turn. The round's one attempt is (`r`, 1, 1) (cited: ADR-0151 decision 3; ADR-0171 decision 5).
+- **Outside**: round 0, whose steps stay as ADR-0142 gives them; every step before the coder-driver's report; everything under Boundaries.
+- **One prompt for every run** (cited: ADR-0142 decision 1): for a run outside this scope this record requires and allows nothing, and the tools' refusals stop it where they do not cover it.
+- **"The stop"** is the present one (cited: ADR-0171 decision 6; ADR-0143 decisions 2 and 7): the Round-Manager reports in one line what ended the step, writes nothing further, calls `run.commit` as "The end of a session" says and ends the session, the round not ended.
+
+### 2. (a) Which coder-driver reports go on
+
+The coder-driver's report names each tool it called with its result or kind (cited: `orchestration/agents/coder-driver.md`, "Your report"). Step 8 reads it so:
+
+| Report | What follows |
+|---|---|
+| A result of `coder.run` whose `taken` holds at least one name | The checks, step 9 (decision 3) |
+| A result of `coder.run` with an empty `taken`, or a failure kind of `coder.run` | No check; the verdicts, step 12 (decision 5) |
+| A failure kind of `spec.write` other than `spec_exists`, or the report that no list was given and nothing was requested | The stop, the round not ended |
+| `spec_exists`, or no report it can read | The stop, the round not ended |
+
+- **Why a call that was made and brought nothing in goes on.** The spec of (`r`, 1, 1) exists once `spec.write` succeeded, so no later turn makes a call for the tuple (Context, the interim rule, cited), and no step of these runs makes a repair (cited: ADR-0171 decision 6, "ask for no repair"). The round's one attempt is therefore settled: it failed. A stop would leave the round open, and every later turn of it would stop again at `spec_exists` (cited: ADR-0171 "The cost, plainly"), so the run would never pass that round. Going on gives the round its verdicts — `inconclusive`, with a `cause` that says what happened (cited: ADR-0071 decision 4; ADR-0140 decision 6) — and its case, which FR-18 asks for failed attempts (cited, "실패한 시도도 저장한다"; ADR-0133 decision 4). **The record's reading of O1** is only that it agrees: a failed attempt is data.
+- **Why the check is not requested then.** As in round 0 (cited: ADR-0142 decision 2 and Alternatives (a)), a check after a call that brought nothing in journals a `no_kernel_source` end line for `execution` 1 of the tuple; nothing is gained, since the verdicts read the log either way.
+- **Why a failed `spec.write` keeps the stop.** No spec was written, so the tuple is not consumed: the next turn delegates the selection and the call again, as ADR-0171's Walk-through has it for a miscopied id (cited, "The next turn chooses again"). Ending the round would give up an attempt that a later turn can still make.
+- **Why `spec_exists` and an unreadable report keep the stop.** The Round-Manager cannot tell whether an earlier call, or this one, brought a kernel in. Going on to the checks would be a later turn finishing a round an earlier turn began, the re-entry of OD-17 and OD-23 ① (가), which ADR-0142 Alternatives (a) left so for round 0 (cited); going on to the verdicts would end the round without checking a kernel that may be there. The cost stays as ADR-0171 names it (cited).
+- **Not decided**: a repair call and its bound (OD-19; FR-1 ⑴), a second call for one tuple (OD-23 ① (가), OD-8 ㉖ (가)), re-entry (OD-17). **A repair is not refused**: a record that defines one puts its steps between the failed attempt and step 12, and step 12 then follows the round's last attempt.
+
+### 3. (b) The checks: the sim point, then the board point
+
+- **Step 9** (round ≥ 1 only, after decision 2's first row): the Round-Manager delegates to `evaluator` with the `Agent` tool and waits for its report, the message naming its run id, the tuple `round` the round, `candidate` 1, `attempt` 1, the point `sim`, and no place and no `execution` (cited for the form: ADR-0128 decisions 4 and 7; ADR-0142 decision 3). **Step 10**: the same with the point `board`. It takes the standing from the report (cited: ADR-0131 decision 7).
+- **Step 10 follows step 9 only on the standing `"verified"` at `sim`; step 11 follows step 10 only on `"verified"` at `board`** — the order and the reasons of ADR-0142 decision 3 (cited: C-4; no board run of an attempt that cannot stand).
+- **Every other report of step 9 or 10** — `"not_verified"`, `"undetermined"`, a failure kind without a standing, or no report it can read — **goes to step 12**, not to the stop. The attempt is settled for the same reason as in decision 2: no repair (OD-19), no further `execution` (who may ask is open: ADR-0062 decision 3; ADR-0110 decision 6, cited) and no second call. A verdict cannot count a comparison of an attempt that is not verified at `board` (cited: ADR-0071 decision 4; ADR-0140 decision 5), so the verdicts of such a round are `inconclusive` (cited: ADR-0071 decision 4), and the go-on rests on the log the evaluator reads, not on the report (K1 condition 3, cited: ADR-0128 decision 4). FR-1 ⑵, "board 실패 → 해당 후보 탈락" (cited), is met: the candidate is dropped and the round ends.
+- **A sim pass followed by a board-check failure** leaves no board measurement, as in round 0 (cited: ADR-0142 decision 3), so the quarantine of FR-1 ⑶ has nothing to isolate; the triage stays OD-10.
+- **No profile step** (cited: ADR-0142 decision 3, the owner's answer to HQ-0025: on `cpu_standin` the profile is what the run tools return).
+
+### 4. (c) The measurement: the experiment-runner's `board.run`, and no `sim.run`
+
+- **Step 11** (round ≥ 1 only): the Round-Manager delegates to `experiment-runner` with the `Agent` tool and waits for its report, the message naming its run id and the tuple `round` the round, `candidate` 1, `attempt` 1, and no place. The experiment-runner's rule is unchanged (cited: ADR-0142 decision 4): one `board.run` with `execution` 1, the `outcome` or the kind reported, nothing written. **Its `tools` do not change**; only its `description`, which says "round-0", is widened.
+- **Every report of step 11 goes to step 12**: `"converged"` and `"not_converged"` give a measurement the comparison can use (cited: ADR-0113 decision 2 as ADR-0142 decision 6 cites it); `"broken"` gives none (cited: ADR-0063 decision 3) and a failure kind none, so no comparison of the attempt can be founded (cited: ADR-0140 decision 5) and its verdicts are `inconclusive` with a `cause` that says why (cited: ADR-0140 decision 6). Unlike round 0, no baseline hangs on the result (cited: ADR-0119 decision 5 is about round 0 only), so a broken run settles the attempt as in decision 3.
+- **No `sim.run` in a round ≥ 1.** A counted comparison is at `board` (cited: ADR-0071 decision 4), the baseline has a board figure only (cited: ADR-0142 decision 5), and with N = 1 no choice among attempts needs a sim figure; nothing would read one. So `mcp__hilclaw__sim_run` stays off every list (cited for the reason: ADR-0142 decision 4, "a record that gives a round ≥ 1 a sim measurement adds it"), and whether sim and board get one holder or two (K1 §6) stays open.
+
+### 5. (d) The verdicts: one delegation to the evaluator
+
+- **Step 12** (round ≥ 1 only): the Round-Manager delegates to `evaluator` with the `Agent` tool and waits for its report, **the message naming its run id and the round, and no tuple, no point and no place** (cited: ADR-0128 decisions 4 and 7; ADR-0129 decision 5: "A verdicts delegation names no tuple"). Whatever it reports, it reports it in one line and goes to the closing steps.
+- **When it is made**: after decision 2's second row, after any report of step 9 or 10 that does not go on, and after any report of step 11 — that is, **in every round ≥ 1 turn that its own call left with an attempt, whatever became of that attempt**. It is made once per turn.
+- **The evaluator's rules are cited, not extended**: it reads the hypotheses and the results, chooses the pairs it judges, writes `check` and `comparison` entries founded on the log, and composes each verdict by ADR-0071 decision 4 (cited: `orchestration/agents/evaluator.md`, "Verdicts"; ADR-0131 decision 4; ADR-0140 decision 6). **The base of the comparison stays its judgement** (cited: ADR-0140 Boundaries; ADR-0071 decision 4): this record names no `against`. Where the round's attempt was verified at both points and measured, the round-0 baseline attempt `0000/01/01` is one pair the evaluator *can* choose, verified at `board` with a board figure (cited: ADR-0142 decision 6); that it must is not said.
+- **Every report of step 12 goes to the closing steps.** A refused or failed `verdicts.write` leaves no `verdicts.json`, and `case.write` then stores the case without `verdict_record` (cited: ADR-0133 decision 4). Ending the session instead would leave the round open for a later turn that meets `spec_exists` (decision 2), the reason ADR-0133 decision 4 gave against stopping on a refusal (cited). FR-17's "evaluate에 이른 라운드는 판정 없이 끝나지 않는다" is kept as ADR-0128 decision 6 keeps it (cited): a refusal about the record is corrected and sent again by the evaluator; a refusal about the data root or a file of the run is not answered by any step, and its enforcement is OD-18's (cited: FR-17, "강제 수단 = OD-18").
+- **The Round-Manager calls `verdicts.write` nowhere**: the prompt says "Do not call `mcp__hilclaw__verdicts_write` yourself", and the caller check refuses it to the main session (cited: ADR-0146 decision 6).
+
+### 6. (e) The closing steps
+
+- **After step 12**, the Round-Manager goes to "The closing steps of a round" as they stand: **`case.write`** with the run id and the round, then **`round.end`**, then **`run.commit`**, then the session ends (cited: ADR-0133 decisions 1 and 5; ADR-0135 decisions 2 and 6; ADR-0127 decisions 3 and 5). Nothing else is written between `case.write` and `round.end` (cited: ADR-0133 decision 5).
+- **Only step 12 reaches them in a round ≥ 1.** The tools take the round (Context, observation).
+- **A refusal there** is handled as the closing steps say (cited): `case.write`'s kind is reported and the turn goes on to `round.end` (ADR-0133 decision 4); `round.end`'s kind is reported, `run.commit` is called and the session ends, the round not ended (ADR-0135 decision 5; ADR-0143 decision 2).
+- **What the run then does** is the turn loop's as it stands (cited: ADR-0122 decision 3): a turn that ended its round is progress; `round.end` writes `run_status` `"over"` when the next round reaches `round_budget` (cited: `hilclaw/round_end_tool.py`).
+
+### 7. What stays a stop
+
+- **In a round ≥ 1** the stop follows: a failed `hypotheses.read` in step 7 (cited: ADR-0132 decision 6); step 8 when the selector gave no `techniques:` line (cited: ADR-0171 decision 6); and step 8 on decision 2's third and fourth rows. **No other step of a round ≥ 1 comes to the stop.**
+- Every stop ends as "The end of a session" says: `run.commit` as the last act, the round not ended (cited: ADR-0143 decisions 2 and 7). The line "the following steps of round `<round>` are not yet defined" goes.
+
+### Walk-through
+
+| Situation | What follows |
+|---|---|
+| Round 1 of a `cpu_standin` run: the call brings in `kernel.c`; both checks verify; `board.run` returns `"converged"` | Steps 9, 10, 11, 12; the evaluator may compare (`1`/`1`/`1`, `0`/`1`/`1`) at `board` and writes the verdicts; `case.write` (`with_verdicts` true); `round.end` writes round 2; `run.commit` |
+| The call fails with `coder_not_ended`, or brings in nothing | No check; step 12: verdicts `inconclusive`, the `cause` says no attempt reached a check; the case; the round ends |
+| `taken` holds names but no `kernel.c` | Step 9: `no_kernel_source` (class (i)), `"undetermined"`; step 12; the round ends |
+| The sim check fails | `"not_verified"` at `sim`; no board check, no measurement; step 12; the round ends. A repair is OD-19 |
+| The sim check passes, the board check fails | No `board.run`; step 12; `inconclusive`; triage is OD-10 |
+| `board.run` returns `"broken"` or a kind | Step 12; no founded comparison; `inconclusive` with the kind in the `cause` |
+| `verdicts.write` refuses with a kind no correction answers | Reported; `case.write` stores a case without `verdict_record`; `round.end`; `run.commit` |
+| `spec.write` refuses a miscopied id (`technique_unknown`) | The stop; the round open; the next turn chooses again (ADR-0171 Walk-through) |
+| A later turn meets `spec_exists` | The stop, as before (ADR-0171 "The cost, plainly"; OD-17) |
+| A turn dies after `round.end` and before `run.commit` | The next entry commits the round end and the case (ADR-0133 decision 5) |
+| A test of a whole round ≥ 1 | A registry bound to stub runtimes and stub run operations, and a stub `claude`; no real `claude`, container or board (D16) |
+
+## Alternatives considered
+
+| Point | Alternative | Weighing | Outcome |
+|---|---|---|---|
+| (a) | **Go on to the verdicts after a call that was made; stop after a failed write, `spec_exists` or no report** | The tuple is consumed exactly when the spec exists; the round ends with its case; nothing is decided of re-entry | **Adopted** |
+| (a) | The stop after every report but a non-empty `taken`, as in round 0 | Round 0's reason is ADR-0119 decision 5 (no baseline); here the round would stay open for good, every later turn stopping at `spec_exists` | Rejected |
+| (a) | Go on to the verdicts after `spec_exists` too | Ends the round without checking a kernel an earlier turn may have brought in; re-entry (OD-17) | Rejected |
+| (a) | Go on to the checks after any report | Journals a `no_kernel_source` line for the tuple (ADR-0142 Alternatives (a)) | Rejected |
+| (b) | **A failed or undetermined check goes to the verdicts** | No repair or further `execution` exists; FR-1 ⑵ drops the candidate | **Adopted** |
+| (b) | The stop on a failed check | The round never ends (`spec_exists`); FR-17's verdict and FR-18's case of a failed attempt never come | Rejected |
+| (b) | `board.run` before the board check | ADR-0142 Alternatives (b) (C-4) | Rejected |
+| (c) | **The experiment-runner with `board.run` only; no `sim.run`** | No reader of a sim figure; K1 §5 | **Adopted** |
+| (c) | A `sim.run` as well | Nothing reads it; a sim comparison counts for nothing (ADR-0071 decision 4) | Rejected |
+| (d) | **One verdicts delegation per turn with an attempt, any report going on** | FR-17 for a round that reached evaluate; ADR-0133 decision 4 for a refusal | **Adopted** |
+| (d) | Verdicts only after a completed measurement | A failed attempt's round would end with no verdicts, or not end | Rejected |
+| (d) | Name the baseline as `against` in the delegation | The base is open (ADR-0140 Boundaries; OD-20, OD-28) and the delegation names no tuple (ADR-0129 decision 5) | Rejected |
+| (e) | **The closing steps after step 12, in the same turn** | The round's work is done (ADR-0118 decision 2 (i)) | **Adopted** |
+| (e) | A member that records why a round ended without an attempt | A data-plane change (CLAUDE.md A-13); the verdicts' `cause` and the log already hold it | Rejected |
+
+## Consequences
+
+- **A-13 reading.** Code mode for the slice (the ADR rides with it). **No data-plane change**: the steps call existing tools through existing agents; no member, file, kind, value or version is added, `decision/decision.md` gets no writer and `eval.json` none; no agent's `tools` and no registry tool change.
+- **Code slices for the planner**, in order (tests with fixture files only, no `claude`, D16):
+  1. **The definitions** (this task): in `orchestration/round-manager.md`, step 8's three outcomes (decision 2), steps 9 to 12 (decisions 3 to 5), the stop paragraph (decision 7), the closing steps' first sentence (decision 6), the "Your run" `Agent` bullet and a `verdicts_write` prohibition; the `description` of `orchestration/agents/experiment-runner.md`; the `hilclaw/turn_definition.py` docstring; and their tests.
+  - No further slice is required by this record. A whole round ≥ 1 through a stub `claude` is PLAN P2-5's verification.
+- **Less exact, not edited** (found by a search of `ARCHITECTURE/decisions/`, `orchestration/` and the `hilclaw/` docstrings for "not yet defined", "rounds ≥ 1", "round that never reaches evaluate", "what follows a standing", "round-0 board measurement"; not claimed complete):
+  - ADR-0171 decision 6 ("Whatever the coder-driver reports … comes to the stop"; "No round ≥ 1 reaches `case.write`, `round.end`, an evaluator or an experiment-runner delegation"), its Walk-through rows that end in "the stop" after a coder result, its Alternatives row (e) and its Boundaries first bullet; its "The cost, plainly" sentence on `spec_exists` now holds only for a turn that died after the write or whose report was lost.
+  - ADR-0142 decision 1 ("rounds ≥ 1, which keep the stop after step 1") and Boundaries ("the rounds ≥ 1, their sim measurement, its holder"), for these runs.
+  - ADR-0128 Consequences slice 4 and Boundaries ("a round that never reaches evaluate", "what follows a standing or a verdict (P2-1, OD-10)"): for these runs a round whose own call was made reaches evaluate and what follows is decisions 3 to 6; a round that dies first stays open.
+  - ADR-0059 and ADR-0071 Boundaries ("The hypotheses of a round that never reaches evaluate"), narrowed the same way; ADR-0143 decision 7 ("round steps 2 to 4"), an observation of its day.
+  - `orchestration/agents/experiment-runner.md` ("round-0 board measurement") and the `hilclaw/turn_definition.py` docstring, until the slice lands.
+- **UsageCases and StandardScenarios**: no sentence becomes false. S0 step 6 and S1 step 6 gain, for these runs, the evaluate of every round whose call was made; S8 is unchanged (N = 1 only). No verdict changes.
+- **Runtime acceptance items** (D16; nothing was tried, nothing is required of the development machine). They go to [PROCESS/RuntimeAcceptance.md](../../PROCESS/RuntimeAcceptance.md) (DRIVER §8, D22), not to an HQ. ADR-0128 (xviii) to (xx), ADR-0142 (xliv) and (xlvi), ADR-0135 (xxix) and ADR-0171 (lxxxiv) are used, not changed. **New**:
+  - **(lxxxv)** In one round ≥ 1 turn session, the six foreground delegations of steps 6, 8, 9, 10, 11 and 12 (technique-selector, coder-driver, evaluator at `sim`, evaluator at `board`, experiment-runner, evaluator for the verdicts) each return their report in the same turn and in order, and the session reaches `case.write`, `round.end` and `run.commit` before any limit of the session itself ends it (as ADR-0142 (xlv) for round 0).
+  - **(lxxxvi)** From the coder-driver's final message, the Round-Manager tells a result of `coder.run` with a non-empty `taken`, a result with an empty one or a kind of `coder.run`, and a kind of `spec.write`, and takes step 9, step 12 or the stop as decision 2 says.
+- **The cost, plainly.** A round whose call fails for a passing reason (for example a container runtime that was gone for a moment) ends with no attempt and uses a round of the budget; no retry is made (OD-10, OD-19). Until a repair record exists, FR-1 ⑴'s return to code generation after a sim failure is not made in these runs: the candidate is dropped as FR-1 ⑵ drops a board failure. A refused `verdicts.write` that no correction answers leaves a round ended without verdicts. A turn that dies after `spec.write` and before step 12 still leaves its round unfinished for good (ADR-0171; OD-17). A turn of a round ≥ 1 that gets through costs up to six sub-agent contexts.
+
+## Boundaries (not decided here)
+
+- **Owner-only**: the choice among measurements and "better than" (#5 A-4, the rest of OD-1); gates (OD-3); models and tokens of the agents (#5 A-8); OD-25; C-6.
+- **N > 1** (OD-29) and promotion beyond `case.write` — k, the sim→board rule, `best.json` (OD-15, OD-20).
+- **Repairs and their bound** (OD-19; FR-1 ⑴); **failure, triage and retry** (OD-10; FR-1 ⑶); **a further `execution`** and who may ask for one (ADR-0062 decision 3; ADR-0110 decision 6); **a second call for one tuple** (OD-23 ① (가), OD-8 ㉖ (가)); **re-entry of a round** by a later turn (OD-17).
+- **The base of the comparison** (OD-20, OD-28; ADR-0140 Boundaries) and which comparisons a verdict must include.
+- **Hooks** (PLAN P2-4), among them a check of the order of the steps; **the lookup tool** (P2-7) and the reads of earlier verdicts a selection needs; a sim measurement in a round ≥ 1 and whether sim and board get one holder or two (K1 §6).
+- Runs outside ADR-0151 decision 1; any edit of an earlier record, of FR or NFR text, UsageCases, `catalog/`, CI, `.claude/` or any settings file; any new external dependency.
+
+## References
+
+- [Requirements](../Requirements.md): FR-1, FR-9, FR-11, FR-17, FR-18, C-4; register rows OD-10, OD-16, OD-17, OD-19, OD-20, OD-23, OD-28, OD-29, OD-30. [OpenDecisionProposals](../OpenDecisionProposals.md) [OD-23](../OpenDecisionProposals.md#od-23). [StandardScenarios](../StandardScenarios.md) S0, S1, S8.
+- ADR-0001 (record format); ADR-0059 (Boundaries); ADR-0062 (decision 3); ADR-0063 (decision 3); ADR-0071 (decisions 4, 6; Boundaries); ADR-0110 (decisions 3, 6); ADR-0113 (decision 2); ADR-0118 (decision 2); ADR-0119 (decision 5); ADR-0122 (decision 3); ADR-0127 (decisions 3, 5); ADR-0128 (decisions 2, 4 to 7; Consequences; Boundaries; items (xviii) to (xx)); ADR-0129 (decision 5); ADR-0131 (decisions 4, 7); ADR-0132 (decision 6); ADR-0133 (decisions 1, 4, 5); ADR-0135 (decisions 2, 5, 6; item (xxix)); ADR-0140 (decisions 5, 6; Boundaries); ADR-0141 (decision 5); ADR-0142 (decisions 1 to 6; Alternatives; items (xliv) to (xlvi)); ADR-0143 (decisions 2, 7); ADR-0146 (decision 6); ADR-0151 (decisions 1, 3); ADR-0171 (decisions 5, 6; Walk-through; Boundaries; item (lxxxiv)).
+- #4 https://github.com/myungjoo/HIL-Claw/issues/4#issuecomment-5138366881 (K1) · https://github.com/myungjoo/HIL-Claw/issues/4#issuecomment-5139876430 (K2); #5 HQ-0043 answer https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6306369119 (O1) · D6 https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-5986348506 .
+- Code, as observation only: `orchestration/round-manager.md`, `orchestration/agents/`, `hilclaw/case_tool.py`, `hilclaw/round_end_tool.py`, `hilclaw/verdicts_tool.py`, `hilclaw/turn_definition.py`, `hilclaw/tools.py`.
+- [PROCESS/DRIVER.md](../../PROCESS/DRIVER.md) §8, §9; PROCESS/PLAN.md P2-1, P2-4, P2-5, P2-7; CLAUDE.md "개발 드라이버와 런타임의 구분"; tasks T-0485, T-0486.
