@@ -2,7 +2,7 @@
 id: T-0500
 title: Write the ADR on how checks.read, verdicts.write and the round >= 1 spec feedback find the lines of a bf16 correctness.check, and build it (ADR-0177 slice 2, readers)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-17, OD-18, OD-23, OD-6, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0498, T-0499]
@@ -64,3 +64,30 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+**DONE**: PR #313 squash-merged as `7fcc576e` (branch `claude/T-0500-bf16-check-lines-readers` deleted). Review: 1 round, Approve (dev-reviewer, PR comment 6460706704). The reviewer left three Nits, all docstring-only, and all were fixed after the Approve: a stale `check_standing.standing` mention in `checks_tool`, line wrapping in `checks_tool`/`spec_feedback`, and `checks_of` → `checks_in_order` in the `verdicts_tool` docstring. Under the D20 exception they needed no re-review. CI is green: C, Python 3.11/3.14, coverage, test presence and shellcheck all passed.
+
+- **ADR**: `ARCHITECTURE/decisions/ADR-0178-od23-bf16-check-lines-read.md`, part of OD-23, OD-18 ⑭ (first part) and OD-6.
+  - A point's lines are the lines of both its `step` values (the ADR-0040 value and the bf16 value), read together in log order. Only `events.ndjson` is read; `instance.json` is not.
+  - The ADR-0110 standing and floor are taken over both values.
+  - If one attempt holds lines of both values, every reader takes all of them, and nothing is refused.
+  - The request and result of `checks.read` and the `verdicts.json` entries are unchanged.
+  - A-13 reading: this is no data-plane schema change.
+- **Owner notice** (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6460854442
+- **Registers**:
+  - `Requirements.md`: one `확정분` link in each of the OD-6, OD-18 and OD-23 rows. OD-6's status date range now reads 10-07~28.
+  - `OpenDecisionProposals.md`: one `채택분` line in each of the OD-6, OD-18 and OD-23 sections, and ADR-0178 added to ⑭'s partial answer.
+  - `StandardScenarios.md`: the re-check line updated. S0 and S1 were re-checked with no change and no gap.
+- **Code**:
+  - `check_standing.STEPS_OF` and `point_standing`.
+  - `checks_tool.checks_in_order`; `checks.read` now reads both values, and `checks_tool.STEP_OF` is removed.
+  - `verdicts_tool`: a check entry is founded on both values, and a counted comparison is checked with `point_standing` at board.
+  - `spec_feedback`: the standing, the deciding check and the compiler log are taken over both values, and the log is named by the deciding line's `step`.
+- **Language**: Python. The four touched 2nd-layer modules are Python.
+- **Edited D21 list pins** (also listed in the PR body):
+  - `tests/test_check_standing.py::test_public_names` adds `STEPS_OF` and `point_standing`.
+  - In `tests/test_checks_tool.py::test_the_shared_names_are_the_log_and_the_steps_of_the_points`, the assertion on `checks_tool.STEP_OF` becomes one on `check_standing.STEPS_OF`, plus a check that `checks_tool` no longer has `STEP_OF`.
+- **Local tests** (WSL, clang): 36712 passed, 50 skipped. `hilclaw/` line coverage is 99% (13077 statements, 52 missed). The CI coverage gate (line and function) passed. `ruff check` and `ruff format` are clean.
+- **Size**: about 300 non-test lines (ADR 92, code about 200, registers 13) across 8 non-test files.
+- **Runtime acceptance items**: none.
+- **Next candidate for the planner**: the `cpu_standin` operation for bf16 `gemm`, `rmsnorm`, `elementwise_add` and `swiglu`. It needs the record of its bf16 verification build/process time limits (OD-14; ADR-0117 fixes them for fp32 `gemm` only) and the `checked` flags of those four entries in `hilclaw/contract_table.py`.
