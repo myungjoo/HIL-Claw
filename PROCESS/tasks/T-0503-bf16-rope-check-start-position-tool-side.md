@@ -2,7 +2,7 @@
 id: T-0503
 title: Write the ADR on the start position a correctness.check of bf16 rope uses, its cpu_standin time limits and how its rows reach the process in the container, and build the tool side and the mock for rope (ADR-0177 slice 3, first part)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-4, OD-16, OD-14, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: []
@@ -82,7 +82,9 @@ hq: []
 
 ## Result
 
-**DONE** (pending merge at the time of writing): PR #316, Draft with DONOTMERGE until review Approve and green CI.
+**DONE**: PR #316 was squash-merged as `1facabb6` after review Approve and green CI (run 40671060174, all six jobs, coverage gate included); the branch was deleted.
+
+**Owner notice** (criterion 10, DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6466632019
 
 **Review**: 2 rounds (dev-reviewer, context-isolated).
 - Round 1 (PR comment 6466310507): Request changes, one Should-fix (a quotation in ADR-0180 Consequences of text that ADR-0144 decision 6 and the `standin_container` docstring do not hold) and three Nits (builds-on list, `check_parameters.py` outside `touchesFiles`, no direct `from_bf16_answer` test for `rope`). All addressed in `7e44080c`.

@@ -398,3 +398,23 @@
   ADR-0179(cpu_standin의 bf16 검증 빌드·프로세스 시간 상한; OD-14·OD-18 일부; T-0502)의 런타임 인수 항목 2.
 
   Find the number of draws up to which the tool function's own work (regeneration and the float64 reference) stays inside the 240 s left in the MCP idle window. Do this for bf16 `gemm` at lm_head M = 512 and at the projections at M = 512.
+
+### RA-0047
+
+- 상태: 미확인
+- 출처: task T-0503 (ADR-0180)의 Result (등록 2026-10-28)
+- 내용:
+
+  ADR-0180(bf16 `rope` 검사의 시작 위치, cpu_standin 시간 상한, 표준 입력 행 전달; OD-16·OD-14·OD-18 일부; T-0503)의 런타임 인수 항목 1.
+
+  On each C-7 system, check that a container client started with `--interactive` and without `--tty` passes the 4·m·d bytes of the `rope` rows to the program's standard input unchanged and closes it at the end, including when the program ends before it has read them all.
+
+### RA-0048
+
+- 상태: 미확인
+- 출처: task T-0503 (ADR-0180)의 Result (등록 2026-10-28)
+- 내용:
+
+  ADR-0180(bf16 `rope` 검사의 시작 위치, cpu_standin 시간 상한, 표준 입력 행 전달; OD-16·OD-14·OD-18 일부; T-0503)의 런타임 인수 항목 2.
+
+  On each C-7 system, inside the container of ADR-0144, check that the ADR-0180 limits let a correct, untuned `rope` kernel complete at the shapes of ADR-0152 and end one that does not end, and that the tool function's two table builds (1.85 s each on the development machine) and its per-draw work (0.18 s) stay inside the 240 s left in the MCP idle window.
