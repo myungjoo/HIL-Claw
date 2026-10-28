@@ -211,7 +211,7 @@ def test_several_headers_keep_the_readers_order(tmp_path):
     ]
 
 
-def test_an_attempt_without_headers_answers_none(tmp_path):
+def test_an_attempt_without_headers_answers_no_header(tmp_path):
     make_attempt(tmp_path, names=("k.c",))
     answer = kernel_reference(tmp_path, RUN, 1, 1, 1, flags=FLAGS)
     assert answer.headers == () and type(answer.headers) is tuple
