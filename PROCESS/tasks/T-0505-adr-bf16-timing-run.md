@@ -1,0 +1,67 @@
+---
+id: T-0505
+title: Write the ADR on the bf16 timing run of sim.run and board.run for the six bf16 contracts at cpu_standin and the mock (OD-13, OD-16 sub-question 6, OD-14, OD-18), and list its code slices (ADR-0177 slice 4, the record)
+phase: P2
+status: TODO
+commitMode: doc
+coversReq: [C-6, FR-1, FR-9, FR-10, NFR-3, OD-13, OD-14, OD-16, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
+dependsOn: [T-0504]
+touchesFiles:
+  - ARCHITECTURE/decisions/ADR-0181-od13-bf16-timing-run.md
+  - ARCHITECTURE/Requirements.md
+  - ARCHITECTURE/OpenDecisionProposals.md
+  - ARCHITECTURE/StandardScenarios.md
+estimatedSize: {loc: 300, files: 4}   # ADR ~260 lines, registers ~20, StandardScenarios ~10. The ADR file name and number are a suggestion (next free number after ADR-0180; check `ARCHITECTURE/decisions/` at start).
+hq: []
+---
+## Why
+
+**State.** PLAN P2-14 (Llama 3.2 1B end-to-end, the D18 goal) needs an instance for every operation of P2-11, and the instance start admits a contract only when its table entry is both `checked` and `timed` (ADR-0177 decision 2). After T-0504 every bf16 entry is `checked`; **no bf16 entry is `timed`**, because "no record defines a bf16 timing run" (ADR-0177 decision 4; ADR-0163 decisions 1 and 2). ADR-0177 decision 5 item 4: "The bf16 timing run — first its record (OD-13, OD-16 ⑥), then its code: the `timed` flags of the contracts it covers. With slices 2 to 4 landed, the instance start admits those contracts with no change of its own (decision 2), and P2-14's instances can be started."
+
+**Why an ADR, and why this task holds only the ADR (D20 ①).** The timing run of a bf16 kernel at `cpu_standin` and on the mock is the counterpart of ADR-0009 (the fp32 timing run), ADR-0145 (its measurement in the container), ADR-0061/ADR-0063/ADR-0065 (the run tools' split, result members and operation form) and ADR-0107 (verification and timing build relation, OD-16 sub-question ⑥) — design-level parts of OD-13, OD-16, OD-14 and OD-18 that the driver closes under DRIVER §9. One ADR covers all six bf16 kinds (D20 ②), as ADR-0177 and ADR-0179 did. It is planned **without a code slice** because writing it is likely to reach an owner decision: the result of `sim.run` / `board.run` has a closed `shape` of exactly `m`, `k`, `n` (ADR-0063 decision 5), which no bf16 kind but `gemm` has, so the result of a bf16 timing run very likely needs a data-plane schema change (CLAUDE.md A-13; ADR-0100), exactly as the check's result did (HQ-0077). The code slices follow in tasks the planner creates after this record has landed (DRIVER §6 "task 단위" ④).
+
+**PLAN order and D18.** P2-11 and P2-14 are PLAN checklist items; D18 does not apply. P2-10 waits on HQ-0076 (T-0493). `PROCESS/RuntimeAcceptance.md` has no `실패` item as of `main` `23bdd31a`.
+
+**D16.** A record; nothing is built or run. Facts only a real container on a C-7 machine can establish (timings, memory figures, limits that fit) are runtime acceptance items for `PROCESS/RuntimeAcceptance.md`, not tasks.
+
+## Required Reading
+
+- `PROCESS/DRIVER.md` §3-5 (executor procedure, resume rule, time limit), §5 (task format, naming `claude/T-0505-<slug>`, `Task: T-0505` trailer, size cap), §8 (HQ format and runtime acceptance items, D22), §9 (OD closing: ADR + reviewer Approve + owner notice on #5).
+- `CLAUDE.md` (rules; "미결은 발명하지 않는다"; "세션 진입 점검"; A-13 doc mode and BLOCKED reasons, data-plane schema change).
+- `PROCESS/tasks/T-0496-*.md` (how an ADR that met a data-plane question stopped for HQ-0077 and resumed) and `PROCESS/STATE.json` HQ-0077 (question and owner answer — the model for the question this task may need).
+- `ARCHITECTURE/decisions/ADR-0177-od18-od6-contract-table.md` (decisions 1 to 5, Boundaries).
+- The fp32 timing run and its tools: `ADR-0007-od13-measurement-policy.md` (decisions 3, 4, 8), `ADR-0009-od13-cpu-standin-timing-run.md` (all), `ADR-0023-od8-instance-record-n-max.md` decisions 2–6, `ADR-0052-od13-memory-ceiling-measurement.md` decisions 4 and 7, `ADR-0061-od18-run-tools-split.md` (decisions 1–8), `ADR-0062-od18-run-tools-call-identity.md` decisions 2–4, `ADR-0063-od18-run-tools-result-members.md` (all; decision 5 `shape`, A-13 reading), `ADR-0064-od13-run-tools-timing-seed.md`, `ADR-0065-od18-run-tools-operation-form.md` decision 2 (the six timing parameters), `ADR-0066-od18-run-tools-mock-script.md` decisions 3, 4, 6, `ADR-0100-od8-tool-result-change.md` decisions 3 and 4, `ADR-0103-od13-imprecise-timing-detection.md`, `ADR-0107-od16-verification-and-timing-build-relation.md` (all), `ADR-0117-od14-cpu-standin-time-limits.md` decisions 2–8, `ADR-0144-od14-first-case-build-run-container.md` decisions 2–3, `ADR-0145-od14-first-case-container-measurement.md` (all), `ADR-0167-od18-run-tools-registration.md` decision 4, `ADR-0170-od18-standin-run-operation.md` (all).
+- The bf16 contracts and verification runs: `ADR-0152-od31-llama-forward-operations.md` (the shapes), `ADR-0154-od31-owner-answers-heads-bf16-oracle.md` decision 1 (owner answers), `ADR-0156` and `ADR-0158` to `ADR-0162` (the six contracts; their "timing" or "Boundaries" sentences), `ADR-0163-od31-bf16-verification-run.md` (decisions 1–3, Boundaries), `ADR-0164-od31-bf16-rope-verification-run.md` (rows on stdin, P), `ADR-0165-od31-bf16-sdpa-kv-cache-verification-run.md` (cache state), `ADR-0179-od14-bf16-standin-check-time-limits.md` (the work measure W = A + 10·E), `ADR-0180-od16-bf16-rope-check-start-position.md` (P rule, rows through the container).
+- Registers: `ARCHITECTURE/Requirements.md` the "행 형식" paragraph (line ~84) and the rows OD-13 (~104), OD-14 (~105), OD-16 (~107), OD-18 (~109); `ARCHITECTURE/OpenDecisionProposals.md` the header's "기록 규칙" (line ~8), § OD-13 (~213; sub-questions ⑦, ⑧, ⑩, ⑪), § OD-14 (~235), § OD-16 (~260; sub-question ⑥ at ~285), § OD-18 (~300; ⑩, ⑱); `ARCHITECTURE/StandardScenarios.md` the first paragraph of § 검사 결과 (line ~168) and rows S0 and S1.
+- Code, read only: `hilclaw/run_parameters.py`, `hilclaw/run_admission.py`, `hilclaw/run_result.py`, `hilclaw/run_operation.py`, `hilclaw/run_tool.py`, `hilclaw/run_definition.py`, `hilclaw/run_objective.py`, `hilclaw/mock_run.py`, `hilclaw/standin_run.py`, `hilclaw/standin_settings.py`, `hilclaw/contract_table.py`, `hilclaw/harness/timing.py`, `hilclaw/harness/timing_driver.c`, `hilclaw/harness/timing_waiter.c`, `hilclaw/harness/timing_build.py`, `hilclaw/harness/bf16_verification.h`, `hilclaw/harness/bf16_verification_*.c`, `hilclaw/harness/bf16_*verification.py`, `hilclaw/check_parameters.py` (how the check widened its parameters for bf16).
+
+## Acceptance Criteria
+
+1. **Session entry check** (CLAUDE.md): before editing `ARCHITECTURE/`, check open PRs, Issues #4/#5/#7/#8 and the unresolved `humanQuestions` of `PROCESS/STATE.json` (HQ-0076 concerns P2-10 and is not crossed). Name in the ADR's Status what was checked.
+2. **ADR** at `ARCHITECTURE/decisions/ADR-0181-<slug>.md` (next free number), in the form of recent ADRs (Status, Context, Decision, Alternatives considered, Consequences, Boundaries, References). For the six bf16 contracts of `contract_table` at `cpu_standin` and on the mock, it decides — as the counterpart of ADR-0009, ADR-0145, ADR-0061/ADR-0065 and ADR-0107 — at least:
+   - (a) **The timing program per kind** (part of OD-13): what one timed repeat calls, the operands and how they are made (seeded draws as ADR-0064, or another rule), the execution before the first timed repeat, the repeat loop and stopping rule of ADR-0007/ADR-0009 (kept or not), and what the program reports; with the kind-specific points: the `rope` rows (on standard input as ADR-0180 decision 3, and which start position a timing run uses — ADR-0180 Boundaries left it open) and the `sdpa_kv_cache` cache, whose append changes state between repeats (ADR-0165). Whether one program per kind or one shared driver.
+   - (b) **The verification and timing build relation** for these kinds (**OD-16 sub-question ⑥**): whether ADR-0107's rule (two executables, same settings) extends to them.
+   - (c) **What the run tools take for a bf16 run** (part of OD-18 ⑩): admission through `run_covers`, the dimensions of the kind in `task_contract` order (as ADR-0177 decision 3 did for the check), `n_max`, the sample form and the seed; the Python form of the timing parameters is left to the code slice provided the fp32 `gemm` operations keep receiving `TimingParameters` as today.
+   - (d) **The memory figure** (ADR-0052, ADR-0145 waiter) for a bf16 run: kept as for fp32 or not, and why.
+   - (e) **The `cpu_standin` time limits** of the bf16 timing build and process (part of OD-14), as ADR-0117 decision 4 and ADR-0179 did, with the estimates at ADR-0152's largest shapes and the MCP idle window (ADR-0179 decision 8).
+   - (f) **The mock's default script** for a bf16 run (ADR-0066), so that the contract tests can run a bf16 run on the mock.
+   - (g) **The result of a bf16 run** — see criterion 3.
+   - (h) **The code slices**, in landing order, each sized to DRIVER §5's cap (for the planner), ending with the `timed` flags.
+   Decide nothing owner-only (#5 A/B, C-6, OD-25, OD-3): `n_min`, `cv_max` and other constants stay where ADR-0007 puts them unless a reason specific to bf16 is shown and recorded as this record's design; tolerance, seed source and number of draws are not touched; fp16 is after P2-14 (owner, HQ-0065 (1)); OpenMP is PLAN "보류" (HQ-0034).
+3. **A-13 reading and the stop rule.** Say whether anything changes the form or meaning of a data-plane member, a line of `events.ndjson`, a request or a tool result an agent reads. If the result of a bf16 run cannot keep ADR-0063's list (for example its `shape` of exactly `m`, `k`, `n`), that is a data-plane schema change (ADR-0063 A-13 reading; ADR-0100; the precedent HQ-0077): **stop as BLOCKED** (reason `data-plane-schema-change`) with the question for the owner in Korean, options (a)/(b)/… modelled on HQ-0077 (for example: new `step` values for bf16 runs at the sim and board points with `shape` = the kind's shape members and the rest of ADR-0063's list unchanged; widening ADR-0063's list itself; another), what it blocks (the bf16 timing slices, the `timed` flags, P2-14's instance start) and what it does not (fp32 `gemm`, the rest of this ADR, other PLAN items). Before stopping, push the branch with the ADR draft so the resume can continue it; write the owner's answer into the ADR's decision when resumed (as T-0496 did for HQ-0077). Any other point the record finds to be owner-only (DRIVER §9) is handled the same way.
+4. **Register edits** follow the recording rules written in those files — not earlier task files: `Requirements.md` rows of the ODs the ADR answers part of (at least OD-13, OD-14, OD-16 and OD-18), per the register's "행 형식" (one link per new ADR in `**확정분**:`, `**잔여**:` rewritten in place, no restatement of the record, no dated paragraph); `OpenDecisionProposals.md` per its header's "기록 규칙" (one `채택분` line per section the ADR answers, the status at the end of each sub-question it answers — OD-16 ⑥ at least — rewritten in place, the bullet head's status word updated); `StandardScenarios.md` § 검사 결과 per its first paragraph (CLAUDE.md "문서 커버리지 재검사"), S0 and S1 at least.
+5. **Less exact sentences**: list in the ADR's Consequences the sentences of earlier ADRs and docstrings that become less exact (search at least for "no bf16 timing run", "timing run of a bf16", "a later record" in ADR-0163/0177/0179/0180 and the `hilclaw/` docstrings); do not edit them.
+6. **Runtime acceptance items**: say which estimates are unverified and hand them to `PROCESS/RuntimeAcceptance.md` (D22), at least that the limits fit on each C-7 system in the ADR-0144 container and, if the memory figure is kept, that the waiter reports it for these programs.
+7. **Review and landing** (doc mode, CLAUDE.md A-13): context-isolated reviewer cycle (dev-item-address steps 10–12), rebase on `origin/main`, direct push to `main` with the `Reviewed-by: reviewer agent (N rounds, Approve)` trailer and `Task: T-0505`.
+8. **Owner notice** (DRIVER §9): after landing, one comment on Issue #5 announcing the ADR, the OD rows it changes and the readings for the owner to check, ending with `— posted by driver`; record the URL in Result.
+9. **Result** names: the commit, review rounds, the decisions in one line each, the HQ raised if any, the runtime acceptance items worded for `PROCESS/RuntimeAcceptance.md`, and the planner's next candidates (the first code slices of criterion 2 (h)).
+
+## Out of Scope
+
+- Any code under `hilclaw/` or `tests/` (the slices follow in later tasks after this record lands).
+- The `correctness.check` path (done by T-0498 to T-0504); the executor binding (OD-20, OD-7); catalog entries for bf16 (OD-22); targets other than `cpu_standin` and the mock (#5 B-2, B-7); fp16; OpenMP.
+- Any change to an accepted ADR; any deferred line of PLAN "보류". Starting `claude`, a real Docker daemon, real weights, a board, an API key (D16).
+
+## Follow-ups
+
+## Result
