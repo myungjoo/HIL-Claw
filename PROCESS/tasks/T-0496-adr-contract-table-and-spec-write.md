@@ -2,7 +2,7 @@
 id: T-0496
 title: Write the ADR on how the seven kernel contracts reach the instance start, spec.write, correctness.check, sim.run and board.run (OD-18, OD-6), and land its first code slice — one contract table and spec.write composing the spec of every contract in it
 phase: P2
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, FR-5, FR-10, OD-6, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: []
