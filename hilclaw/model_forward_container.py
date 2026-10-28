@@ -38,13 +38,10 @@ order:
 
 Outcomes, after an ``ok`` check (decision 8):
 
-- **Container unavailable** (:class:`Unavailable`, one of :data:`REASONS`):
-  :data:`NO_IMAGE`, :data:`IMAGE_REFUSED`, :data:`NO_CLIENT` (the client is
-  not on ``PATH``), :data:`NO_NUMERIC_USER` (the platform has no
-  ``os.getuid``) at any container, and :data:`RUNTIME_STATUS`, a build
-  container that ended with 125, 126 or 127 — the container runtime's
-  statuses for a build, as ADR-0168 decision 3 reads them. Nothing after it is
-  started.
+- **Container unavailable** (:class:`Unavailable`): one of :data:`REASONS`;
+  :data:`RUNTIME_STATUS` is a build container that ended with 125, 126 or
+  127, the container runtime's statuses for a build as ADR-0168 decision 3
+  reads them. Nothing after it is started.
 - **Build failed** (:class:`hilclaw.model_execute.BuildFailed`): the first
   build container that timed out, ended with another non-zero status, or ended
   with 0 and left no regular file at its output. Its ``build`` is a
@@ -58,12 +55,10 @@ Outcomes, after an ``ok`` check (decision 8):
   as ADR-0168 decision 3 reads them — (``EXIT_STATUS``), or left no complete
   report (``REPORT_FORM``).
 
-The forced removal of a container at its limit is given
-:data:`hilclaw.standin_check.REMOVAL_TIMEOUT_S` (decision 5). The build
-directory is removed only where
+A forced removal is given :data:`hilclaw.standin_check.REMOVAL_TIMEOUT_S`
+(decision 5). The build directory is removed only where
 :func:`hilclaw.standin_answer.build_dir_removable` is true of every container
-of the call (ADR-0168 decision 5); otherwise it is left and ``removed`` is
-false.
+(ADR-0168 decision 5); otherwise it is left and ``removed`` is false.
 
 Raised before anything is made: first what the check raises, unchanged; then
 :class:`TypeError` or :class:`ValueError` for ``keep_out`` and ``parent`` as
@@ -117,7 +112,7 @@ from hilclaw.model_execute import (
     _remove,
 )
 from hilclaw.model_forward_execute import _distinct_kernels, _library_table
-from hilclaw.standin_check import _regular_file
+from hilclaw.standin_check import _log, _regular_file
 from hilclaw.standin_container import _check_limit
 from hilclaw.standin_copies import _read, _write_new, _writing
 
@@ -423,8 +418,7 @@ def _build(image, directory, outcomes, arguments, output, kernel, timeout_s):
             returncode=result.returncode,
             timed_out=result.timed_out,
             output=Path(host_output),
-            log=result.stdout.decode("utf-8", errors="replace")
-            + result.stderr.decode("utf-8", errors="replace"),
+            log=_log(result),
             command=result.command,
             duration_s=result.duration_s,
         )
