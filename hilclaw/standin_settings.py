@@ -26,6 +26,10 @@ commit of this repository.
 * :func:`verification_process_time_limit_s` and
   :func:`timing_process_time_limit_s` apply that rule to the shape and to
   ``draws`` or ``n_max`` an operation is handed (ADR-0117 decisions 2 and 4).
+* :func:`bf16_verification_process_time_limit_s` applies the same rule, with
+  the work measure of ADR-0179 decision 3, to the kind, the dimensions and
+  ``draws`` the operation of ``correctness.check`` is handed for a bf16 kind
+  (ADR-0179 decision 2); :data:`BF16_CHECK_KINDS` are the kinds it serves.
 
 The first three are handed as ``flags``, ``trailing_flags`` and ``env`` to
 :func:`hilclaw.harness.verification_build.build_verification_executable`,
@@ -84,6 +88,63 @@ def timing_process_time_limit_s(m, k, n, n_max):
     return _process_time_limit_s(m, k, n, n_max + 1)
 
 
+BF16_CHECK_KINDS = ("gemm", "rmsnorm", "elementwise_add", "swiglu", "sdpa_kv_cache")
+"""The bf16 kinds of :func:`bf16_verification_process_time_limit_s` (ADR-0179 decision 1)."""
+
+BF16_ELEMENT_WEIGHT = 10
+"""Operations counted per element of a bf16 verification program's arrays (ADR-0179 decision 3)."""
+
+_BF16_DIMENSIONS = {
+    "gemm": ("m", "k", "n"),
+    "rmsnorm": ("m", "n"),
+    "elementwise_add": ("m", "n"),
+    "swiglu": ("m", "n"),
+    "sdpa_kv_cache": ("m", "l", "h", "h_kv", "d"),
+}
+
+
+def bf16_verification_process_time_limit_s(kind, dims, draws):
+    """Return the time limit in seconds of the verification process of a bf16 ``kind``.
+
+    ``min(1500, 10 + draws * (1 + W / 2e8))`` (ADR-0117 decision 4 with
+    ``c = draws``), where W is the work measure of ADR-0179 decision 3: the
+    nominal operation count ``A`` of the kind (``2*m*k*n`` for ``gemm``,
+    ``4*m*l*h*d`` for ``sdpa_kv_cache``, 0 for the element-wise kinds) plus
+    :data:`BF16_ELEMENT_WEIGHT` times the number of elements of the program's
+    arrays. Computed exactly and returned as a positive finite ``float`` of
+    at most :data:`PROCESS_TIME_LIMIT_CAP_S`.
+
+    ``kind`` is exactly a ``str`` of :data:`BF16_CHECK_KINDS`; ``dims`` is
+    exactly a ``tuple`` of the kind's dimensions in the order of its
+    ``task_contract`` parameters. Raises :class:`ValueError` for another
+    ``kind`` or a ``dims`` of another length, :class:`TypeError` for a
+    ``dims`` that is not a ``tuple`` or a dimension or ``draws`` that is not
+    an ``int`` or is a ``bool``, and :class:`ValueError` for one below 1.
+    """
+    if type(kind) is not str or kind not in BF16_CHECK_KINDS:
+        raise ValueError(f"kind must be one of {', '.join(BF16_CHECK_KINDS)}")
+    names = _BF16_DIMENSIONS[kind]
+    if type(dims) is not tuple:
+        raise TypeError(f"dims must be a tuple, not {type(dims).__name__}")
+    if len(dims) != len(names):
+        raise ValueError(f"dims of {kind} must be {len(names)} values")
+    _check_counts(**dict(zip(names, dims)), draws=draws)
+    operations, elements = _bf16_work(kind, *dims)
+    return _limit_s(draws, operations + BF16_ELEMENT_WEIGHT * elements)
+
+
+def _bf16_work(kind, *dims):
+    if kind == "gemm":
+        m, k, n = dims
+        return 2 * m * k * n, m * k + k * n + m * n
+    if kind == "sdpa_kv_cache":
+        m, l, h, h_kv, d = dims
+        caches = 2 * (l + 2 * m) * h_kv * d
+        return 4 * m * l * h * d, 2 * m * h * d + 2 * m * h_kv * d + caches
+    m, n = dims
+    return 0, (2 * m * n + n) if kind == "rmsnorm" else 3 * m * n
+
+
 def _check_counts(**counts):
     for name, value in counts.items():
         if isinstance(value, bool) or not isinstance(value, int):
@@ -93,6 +154,10 @@ def _check_counts(**counts):
 
 
 def _process_time_limit_s(m, k, n, calls):
+    return _limit_s(calls, 2 * m * k * n)
+
+
+def _limit_s(calls, work):
     scale = 2 * 10**8
-    scaled = 10 * scale + calls * (scale + 2 * m * k * n)
+    scaled = 10 * scale + calls * (scale + work)
     return min(scaled, PROCESS_TIME_LIMIT_CAP_S * scale) / scale

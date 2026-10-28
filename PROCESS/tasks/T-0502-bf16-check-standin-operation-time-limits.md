@@ -70,3 +70,44 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+**DONE**: PR #315 was squash-merged after review and green CI. The merge commit is in the driver's wrap-up (the executor's summary).
+
+**Review**: 2 rounds, both Approve (dev-reviewer).
+- Round 1 (PR comment 6464946788): Approve with two Nits.
+  - Nit 1, a docstring sentence on the seed error of the bf16 path, was fixed.
+  - Nit 2, a named header constant in `bf16_verification_build` (outside `touchesFiles`), was optional and was not taken.
+- Round 2 (PR comment 6465204573): Approve. It was needed because the full local suite and CI run 1 found two `test_check_admission` assertions that pinned the old refusal; they were changed after the round-1 Approve.
+
+**Owner notice** (criterion 8, DRIVER §9): posted on issue #5 after the merge; the URL is in the executor's summary.
+
+- **ADR**: `ARCHITECTURE/decisions/ADR-0179-od14-bf16-standin-check-time-limits.md`, part of OD-14 and of OD-18 sub-question ⑱ (다).
+  - The process limit keeps ADR-0117's rule unchanged: `min(1500, 10 + draws * (1 + W / 2e8))`.
+  - W = A + 10 * E.
+    - A is `2mkn` for `gemm`, `4*m*l*h*d` for `sdpa_kv_cache` and 0 for the element-wise kinds.
+    - E is the number of elements of the program's arrays.
+  - The build limit is 60 s.
+  - The header `bf16_verification.h` is copied beside the kind's program and is not passed to the compiler as a source. Its failures get the answers of C12 and C13.
+  - Every situation of ADR-0168 and ADR-0169 is answered as for fp32 `gemm`.
+  - A-13 reading: this is no data-plane schema change.
+- **Registers**:
+  - `Requirements.md`: the OD-14 and OD-18 rows each gain one `확정분` link, and their `잔여` was rewritten in place.
+  - `OpenDecisionProposals.md`: one `채택분` line each in OD-14 and OD-18, and the status of OD-14 ① and OD-18 ⑱ was rewritten.
+  - `StandardScenarios.md`: the re-check line was updated. S0 and S1 show no change and no gap.
+- **Code**:
+  - `standin_settings` adds `bf16_verification_process_time_limit_s`, `BF16_CHECK_KINDS` and `BF16_ELEMENT_WEIGHT`.
+  - `standin_check.operation` takes `Bf16CheckParameters`. It copies the kind's program and `BF16_HEADER`, builds with ADR-0116's fixed set within 60 s, and runs the program with the kind's `program_arguments` within the ADR-0179 limit. The fp32 path is unchanged.
+  - `contract_table`: `checked=True` for bf16 `gemm`, `rmsnorm`, `elementwise_add`, `swiglu` and `sdpa_kv_cache`. `rope` stays `False`, and every `timed` flag is unchanged.
+  - `standin_copies` was not changed: its `place_harness_copy` serves the header.
+- **Language**: Python, because the touched 2nd-layer modules are Python.
+- **Edited assertions** (also listed in the PR body):
+  - `test_standin_settings::test_the_module_exposes_only_the_settings_and_the_time_limits` (D21 public names).
+  - In `test_contract_table`, `test_the_flags_of_this_slice` and `test_the_four_predicates_of_a_bf16_contract` now pin the five as checked. In `test_same_kind_other_dtype_goes_to_the_other_entry`, `check_covers(bf16)` is now true, and an added `start_covers` assertion keeps the entries told apart.
+  - `test_check_definition::test_a_bf16_record_is_not_covered_by_the_check` now covers `rope` only.
+  - In `test_check_admission`, `test_a_bf16_record_the_predicate_refuses_is_not_covered` now refuses with a test-bound `Recorder(False)` and asserts that `check_covers` admits at the bf16 step. In `test_an_sdpa_record_is_refused_by_the_registered_predicate_and_an_fp32_step`, renamed `..._admitted_..._not_an_fp32_step`, the refusal under `check_covers` became admission. Both were found by the full local suite and CI run 1 (outside `touchesFiles`).
+  - In `test_check_tool`, the `sdpa_kv_cache-checked` row of `test_a_bf16_record_with_no_check_is_not_covered_and_writes_no_line` was removed. The two default-registry refusal tests became admission tests, and a `rope` refusal test was added.
+- **Size**: about 330 non-test lines (ADR 117, code about 175, registers about 10) across 7 non-test files.
+- **Runtime acceptance items**, for `PROCESS/RuntimeAcceptance.md` (D22), from ADR-0179 (part of OD-14; T-0502):
+  1. Check that the ADR-0179 limits let a correct, untuned kernel of each of bf16 `gemm`, `rmsnorm`, `elementwise_add`, `swiglu` and `sdpa_kv_cache` complete at the shapes of ADR-0152, and end one that does not end. Check this on each C-7 system, inside the container of ADR-0144. In particular, check that 10 per element covers drawing, checking and reporting the 2.6e8 input elements of lm_head at M = 1, and the 131 MB report per draw at M = 512 through the container client.
+  2. Find the number of draws up to which the tool function's own work (regeneration and the float64 reference) stays inside the 240 s left in the MCP idle window. Do this for bf16 `gemm` at lm_head M = 512 and at the projections at M = 512.
+- **Next candidate for the planner**: the record of the bf16 timing run (ADR-0177 decision 5 item 4; OD-13 and OD-16 ⑥), which needs no owner answer. The alternative is the `rope` start-position record (item 3), which ADR-0177 decision 4 places with OD-16 ⑤ beside the seed source and the number of draws. The planner should first check whether that record needs an owner answer.

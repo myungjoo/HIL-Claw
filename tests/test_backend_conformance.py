@@ -25,7 +25,8 @@ from hilclaw import (
     standin_waiter_line,
     tools,
 )
-from hilclaw.check_parameters import CheckParameters
+from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
+from hilclaw.harness import bf16_verification_build
 from hilclaw.harness.measurement import N_MIN
 from hilclaw.journal import EMPTY
 
@@ -149,6 +150,7 @@ class Client:
         self.runs = []
         self.build_status = 0
         self.missing = False
+        self.kind = None
 
     def __call__(self, command, **options):
         command = list(command)
@@ -161,8 +163,13 @@ class Client:
         if program == standin_check.COMPILER:
             return self.build(command, arguments)
         if posixpath.basename(program) == standin_check.EXECUTABLE_NAME:
-            m, k, n, draws, seed = (int(value) for value in arguments)
-            parameters = CheckParameters(seed, draws, m, k, n)
+            *dims, draws, seed = (int(value) for value in arguments)
+            if self.kind is None:
+                parameters = CheckParameters(seed, draws, *dims)
+            else:
+                parameters = Bf16CheckParameters(
+                    seed, draws, self.kind, "bf16", tuple(dims)
+                )
             report = mock_check.default_script(None, None, None, parameters, None, None)
             return self.result(command, 0, report)
         report, _ = mock_run.default_script(None, None, None, None, None, None)
@@ -170,6 +177,15 @@ class Client:
         return self.result(command, 0, report + b"\n" + line + b"\n")
 
     def build(self, command, arguments):
+        names = {posixpath.basename(argument) for argument in arguments}
+        self.kind = next(
+            (
+                kind
+                for kind, source in bf16_verification_build.PROGRAM_SOURCES.items()
+                if source.name in names
+            ),
+            None,
+        )
         if self.build_status == 0:
             option = command[command.index("--mount") + 1]
             fields = dict(field.split("=", 1) for field in option.split(","))
@@ -389,3 +405,61 @@ def test_the_default_table_offers_the_three_tools_and_no_profiler_at_both_entrie
         with pytest.raises(tools.ToolFailure) as caught:
             backends.select(table, hw_profile(entry), "profiler.collect")
         assert caught.value.kind == tools.KIND_NOT_OFFERED
+
+
+# A check of a bf16 kind at both entries (ADR-0177 decisions 2 and 3; ADR-0179)
+
+BF16_SHAPES = {
+    "gemm": {"m": 2, "k": 3, "n": 4},
+    "rmsnorm": {"m": 2, "n": 8},
+    "elementwise_add": {"m": 3, "n": 5},
+    "swiglu": {"m": 2, "n": 6},
+    "sdpa_kv_cache": {"m": 2, "l": 3, "h": 4, "h_kv": 2, "d": 4},
+}
+
+
+def a_bf16_run(root, accelerator, kind):
+    record = hw_profile(accelerator)
+    op = {**OP, "kind": kind, "shape": BF16_SHAPES[kind], "dtype": "bf16"}
+    document = {
+        "schema_version": 1,
+        "hw_profile": {"key": keys.hw_profile_key(record).name, "record": record},
+        "op_signature": {"key": keys.op_signature_key(op).name, "record": op},
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+    }
+    run_id = f"bf16-{kind.replace('_', '-')}-{accelerator.replace('_', '-')}"
+    run = root / "runs" / run_id
+    run.mkdir(parents=True)
+    (run / "instance.json").write_text(json.dumps(document), encoding="utf-8")
+    (run / "STATE.json").write_bytes(run_state.dump(ROUND, EMPTY))
+    output = layout.attempt_artefact(root, run_id, ROUND, 2, 1, "output")
+    output.mkdir(parents=True)
+    (output / f"{kind}.c").write_bytes(b"void kernel(void) {}\n")
+    return run_id
+
+
+@each_front
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_passing_bf16_kernel_is_answered_alike_by_both_entries(
+    root, client, kind, call
+):
+    answers = []
+    for entry in ENTRIES:
+        run_id = a_bf16_run(root, entry, kind)
+        asked = {"run_id": run_id, **CALL, "point": "board"}
+        answers.append(call(root, "correctness.check", asked))
+        found = events.read(root, run_id).events
+        assert [line["data"]["step"] for line in found] == [
+            "correctness_check_bf16_board"
+        ] * 2
+    assert answers[0] == answers[1]
+    failed, result = answers[0]
+    assert failed is False
+    assert (result["outcome"], result["shape"]) == ("pass", BF16_SHAPES[kind])
+    assert len(client.runs) == 2
+    build, process = client.runs
+    program = bf16_verification_build.PROGRAM_SOURCES[kind].name
+    assert any(argument.endswith(f"/{program}") for argument in build)
+    dims = [str(value) for value in BF16_SHAPES[kind].values()]
+    assert process[process.index(IMAGE) + 2 :][: len(dims)] == dims

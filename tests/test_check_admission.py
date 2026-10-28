@@ -672,11 +672,18 @@ def test_an_fp32_record_under_a_bf16_step_is_not_covered():
 def test_a_bf16_record_the_predicate_refuses_is_not_covered():
     stated = content(op=bf16_record("rmsnorm"))
     for bf16_step in (True, False):
-        kind = refused_for_step(stated, bf16_step, contract_table.check_covers)
+        kind = refused_for_step(stated, bf16_step, Recorder(False))
         assert kind == KIND_OP_SIGNATURE_NOT_COVERED
     with pytest.raises(tools.ToolFailure) as caught:
-        admit(stated, covers=contract_table.check_covers)
+        admit(stated, covers=Recorder(False))
     assert caught.value.kind == KIND_OP_SIGNATURE_NOT_COVERED
+    assert refused_for_step(stated, False, contract_table.check_covers) == (
+        KIND_OP_SIGNATURE_NOT_COVERED
+    )
+    admitted = admit_for_step(
+        stated, covers=contract_table.check_covers, bf16_step=True
+    )
+    assert type(admitted) is Bf16Admitted
 
 
 @pytest.mark.parametrize("kind", list(BF16_SHAPES))
@@ -788,13 +795,14 @@ def test_a_covered_sdpa_record_is_admitted_in_the_order_of_task_contract(shape):
     assert len(recorder.calls) == 1
 
 
-def test_an_sdpa_record_is_refused_by_the_registered_predicate_and_an_fp32_step():
+def test_an_sdpa_record_is_admitted_by_the_registered_predicate_not_an_fp32_step():
     stated = content(
         op={**bf16_record("gemm"), "kind": "sdpa_kv_cache", "shape": SDPA_SHAPE}
     )
-    assert refused_for_step(stated, True, contract_table.check_covers) == (
-        KIND_OP_SIGNATURE_NOT_COVERED
+    admitted = admit_for_step(
+        stated, covers=contract_table.check_covers, bf16_step=True
     )
+    assert type(admitted) is Bf16Admitted
     assert refused_for_step(stated, False, Recorder(True)) == (
         KIND_OP_SIGNATURE_NOT_COVERED
     )
