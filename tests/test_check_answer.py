@@ -8,8 +8,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from hilclaw import check_answer, check_judging, check_result, tools
-from hilclaw.check_answer import NeitherFormError, from_answer
+from hilclaw import check_answer, check_judging, check_result, mock_check, tools
+from hilclaw.check_answer import NeitherFormError, from_answer, from_bf16_answer
+from hilclaw.check_parameters import Bf16CheckParameters
 from hilclaw.harness.verification import END_MARK, Broken
 from hilclaw.harness.verification_arrays import (
     VerificationArgumentError,
@@ -441,7 +442,7 @@ def test_public_names_of_the_module_and_no_default():
         for name, value in vars(check_answer).items()
         if not name.startswith("_") and not inspect.ismodule(value)
     }
-    assert public == {"from_answer", "NeitherFormError"}
+    assert public == {"from_answer", "from_bf16_answer", "NeitherFormError"}
     parameters = list(inspect.signature(from_answer).parameters.values())
     assert [parameter.name for parameter in parameters] == [
         "answer",
@@ -467,3 +468,87 @@ def test_the_exception_is_the_modules_own_and_no_tool_failure():
     assert NeitherFormError.__module__ == "hilclaw.check_answer"
     assert not hasattr(NeitherFormError, "kind")
     assert not hasattr(NeitherFormError, "spend")
+
+
+# A check of a bf16 kind (ADR-0177 decision 3)
+
+# Test values, not dimensions, draws, a seed or a tolerance of the package.
+BF16_SHAPES = {
+    "gemm": ((2, 3, 4), {"m": 2, "k": 3, "n": 4}),
+    "rmsnorm": ((2, 4), {"m": 2, "n": 4}),
+    "elementwise_add": ((2, 4), {"m": 2, "n": 4}),
+    "swiglu": ((2, 4), {"m": 2, "n": 4}),
+}
+BF16_CALL = {"draws": 2, "seed": SEED, "rtol": 2**-8, "atol": 0}
+
+
+def bf16_report(kind, dims):
+    parameters = Bf16CheckParameters(SEED, 2, kind, "bf16", dims)
+    return mock_check.default_script(None, None, None, parameters, None, None)
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_bf16_byte_string_is_judged_as_its_report(kind):
+    dims, shape = BF16_SHAPES[kind]
+    result = from_bf16_answer(bf16_report(kind, dims), kind, dims, **BF16_CALL)
+    assert result["outcome"] == "pass"
+    assert result["shape"] == shape
+    broken = from_bf16_answer(b"", kind, dims, **BF16_CALL)
+    assert broken["condition"] == "report_form"
+
+
+@pytest.mark.parametrize("condition", check_result.CONDITIONS[:4])
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_bf16_condition_becomes_a_broken_result_without_judging(
+    kind, condition, monkeypatch
+):
+    dims, shape = BF16_SHAPES[kind]
+    monkeypatch.setattr(check_judging, "from_bf16_report", None)
+    result = from_bf16_answer(condition, kind, dims, **{**BF16_CALL, "seed": None})
+    assert result == {
+        "outcome": "broken",
+        "condition": condition,
+        "shape": shape,
+        "draws": 2,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+    }
+
+
+@pytest.mark.parametrize(
+    "answer", ["report_form", "check_value", "", None, bytearray(b""), 0]
+)
+def test_a_bf16_answer_of_neither_form_raises_whatever_the_rest(answer):
+    with pytest.raises(NeitherFormError):
+        from_bf16_answer(answer, "conv", None, draws=0, seed=None, rtol=-1, atol=None)
+
+
+@pytest.mark.parametrize(
+    ("kind", "dims", "expected"),
+    [
+        ("rope", (1, 2), ValueError),
+        ("gemm", (1, 1), ValueError),
+        (1, (1, 1), TypeError),
+    ],
+)
+def test_a_bf16_condition_beside_parameters_the_builder_refuses_raises(
+    kind, dims, expected
+):
+    with pytest.raises(expected):
+        from_bf16_answer("time_limit", kind, dims, **BF16_CALL)
+
+
+def test_the_signature_of_the_bf16_answer_has_no_default():
+    parameters = list(inspect.signature(from_bf16_answer).parameters.values())
+    assert [parameter.name for parameter in parameters] == [
+        "answer",
+        "kind",
+        "dims",
+        "draws",
+        "seed",
+        "rtol",
+        "atol",
+    ]
+    for parameter in parameters:
+        assert parameter.default is inspect.Parameter.empty
+    keyword_only = inspect.Parameter.KEYWORD_ONLY
+    assert all(parameter.kind is keyword_only for parameter in parameters[3:])

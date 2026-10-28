@@ -16,6 +16,14 @@ other. This module renders that table as plain Python values:
 * :func:`broken`: the result of a broken run, from its condition. It has
   ``outcome``, ``condition``, ``shape``, ``draws`` and ``tolerance`` and no
   ``counts``.
+* :func:`bf16_completed` and :func:`bf16_broken`: the same two results of a
+  check of a bf16 kind of :data:`BF16_KINDS`, the list the owner gave
+  (``ARCHITECTURE/decisions/ADR-0177-od18-od6-contract-table.md``
+  decision 3, HQ-0077): ADR-0042's list with ``shape`` holding the shape
+  members of the kind, named and ordered as the parameters of the
+  contract's ``task_contract``, and ``failed`` at most the number of output
+  elements of the kind, ``m * n`` for each kind here. Such a result holds no
+  ``kind``, ``dtype`` or ``layout``. No caller of the tool builds one yet.
 
 A result is a new ``dict`` that is one JSON object in the strict sense
 (decision 1). No member holds ``None``: a member that does not apply is left
@@ -44,11 +52,17 @@ operation returns. It is no tool and is bound to none, and it checks no stored
 result against the table. It gives no default of any value: no number of
 draws, no tolerance and no dimension. It reads and writes no file, starts no
 process, keeps nothing between calls and has no command-line entry. It
-imports ``math`` and ``reprlib`` of the standard library and nothing else.
+imports ``inspect``, ``math`` and ``reprlib`` of the standard library and
+:mod:`hilclaw.contract_table`, whose entries' ``task_contract`` parameters
+name the shape members, and nothing else; it reads the table and changes
+nothing in it.
 """
 
+import inspect
 import math
 import reprlib
+
+from hilclaw import contract_table
 
 PASS = "pass"
 FAIL = "fail"
@@ -61,6 +75,14 @@ CONDITIONS = (
     "report_form",
     "check_value",
 )
+#: The kinds whose bf16 check results this module builds (those of ADR-0163).
+BF16_KINDS = ("gemm", "rmsnorm", "elementwise_add", "swiglu")
+_BF16_SHAPES = {
+    kind: tuple(inspect.signature(entry.contract.task_contract).parameters)
+    for kind in BF16_KINDS
+    for (key_kind, dtype, _, _), entry in contract_table.TABLE.items()
+    if (key_kind, dtype) == (kind, "bf16")
+}
 
 
 def completed(*, m, k, n, draws, rtol, atol, counts):
@@ -95,10 +117,7 @@ def completed(*, m, k, n, draws, rtol, atol, counts):
     entry (``counts[1].failed``). No argument is modified or kept, and the
     result shares no mutable object with ``counts``.
     """
-    common = _common(m, k, n, draws, rtol, atol)
-    entries = _counts(counts, draws, m * n)
-    outcome = FAIL if any(entry["failed"] for entry in entries) else PASS
-    return {"outcome": outcome, **common, "counts": entries}
+    return _completed(_common({"m": m, "k": k, "n": n}, draws, rtol, atol), counts)
 
 
 def broken(condition, *, m, k, n, draws, rtol, atol):
@@ -118,23 +137,83 @@ def broken(condition, *, m, k, n, draws, rtol, atol):
     Raises :class:`TypeError` and :class:`ValueError` as :func:`completed`
     does; a ``str`` that is none of the six values is a :class:`ValueError`.
     """
+    _condition(condition)
+    return _broken(condition, _common({"m": m, "k": k, "n": n}, draws, rtol, atol))
+
+
+def bf16_completed(kind, dims, *, draws, rtol, atol, counts):
+    """Return the result of a completed run of a bf16 check of ``kind``.
+
+    As :func:`completed`, with ``shape`` a new ``dict`` that pairs the
+    shape members of ``kind`` with ``dims`` in their order (``{"m": ...,
+    "k": ..., "n": ...}`` for ``gemm``, ``{"m": ..., "n": ...}`` for the
+    other three kinds), and each ``failed`` at most ``m * n``, the number of
+    output elements of each of the four kinds.
+
+    * ``kind`` is exactly a ``str`` of :data:`BF16_KINDS`.
+    * ``dims`` is exactly a ``tuple`` with one item per shape member of
+      ``kind``, each exactly an ``int`` of at least 1; a message about an
+      item names its member.
+    * ``draws``, ``rtol``, ``atol`` and ``counts`` (keyword-only, no default)
+      follow the rules of :func:`completed`.
+
+    Checked in the order ``kind``, ``dims``, ``draws``, ``rtol``, ``atol``,
+    ``counts``. Raises :class:`TypeError` and :class:`ValueError` as the
+    module docstring says.
+    """
+    return _completed(_common(_shape(kind, dims), draws, rtol, atol), counts)
+
+
+def bf16_broken(condition, kind, dims, *, draws, rtol, atol):
+    """Return the result of a broken run of a bf16 check of ``kind``.
+
+    As :func:`broken`, with ``shape`` as in :func:`bf16_completed`.
+    ``condition`` is checked first, then the other arguments in the order of
+    :func:`bf16_completed`.
+    """
+    _condition(condition)
+    return _broken(condition, _common(_shape(kind, dims), draws, rtol, atol))
+
+
+def _condition(condition):
     if type(condition) is not str:
         raise TypeError(f"condition: must be a str, got {type(condition).__name__}")
     if condition not in CONDITIONS:
         shown = reprlib.repr(condition)
         raise ValueError(f"condition: must be one of {CONDITIONS}, got {shown}")
-    return {
-        "outcome": BROKEN,
-        "condition": condition,
-        **_common(m, k, n, draws, rtol, atol),
-    }
 
 
-def _common(m, k, n, draws, rtol, atol):
-    for name, value in (("m", m), ("k", k), ("n", n), ("draws", draws)):
+def _broken(condition, common):
+    return {"outcome": BROKEN, "condition": condition, **common}
+
+
+def _completed(common, counts):
+    shape = common["shape"]
+    entries = _counts(counts, common["draws"], shape["m"] * shape["n"])
+    outcome = FAIL if any(entry["failed"] for entry in entries) else PASS
+    return {"outcome": outcome, **common, "counts": entries}
+
+
+def _shape(kind, dims):
+    if type(kind) is not str:
+        raise TypeError(f"kind: must be a str, got {type(kind).__name__}")
+    if kind not in _BF16_SHAPES:
+        raise ValueError(f"kind: must be one of {BF16_KINDS}, got {reprlib.repr(kind)}")
+    names = _BF16_SHAPES[kind]
+    if type(dims) is not tuple:
+        raise TypeError(f"dims: must be a tuple, got {type(dims).__name__}")
+    if len(dims) != len(names):
+        raise ValueError(
+            f"dims: must have {len(names)} items for {kind}, got {len(dims)}"
+        )
+    return dict(zip(names, dims, strict=True))
+
+
+def _common(shape, draws, rtol, atol):
+    for name, value in (*shape.items(), ("draws", draws)):
         _integer(name, value, 1)
     return {
-        "shape": {"m": m, "k": k, "n": n},
+        "shape": dict(shape),
         "draws": draws,
         "tolerance": {"rtol": _number("rtol", rtol), "atol": _number("atol", atol)},
     }

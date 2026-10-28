@@ -13,6 +13,12 @@ result" (ADR-0043 decision 5). This module renders the decisions:
   the four strings becomes a broken result by
   :func:`hilclaw.check_result.broken`, with the string as its ``condition``
   and without any judging.
+* :func:`from_bf16_answer`: the same for a check of a bf16 kind
+  (``ARCHITECTURE/decisions/ADR-0177-od18-od6-contract-table.md``
+  decision 3): a byte string is judged by
+  :func:`hilclaw.check_judging.from_bf16_report`, one of the four strings
+  becomes :func:`hilclaw.check_result.bf16_broken`. No caller of the tool
+  calls it yet.
 * :class:`NeitherFormError`: raised for an answer of neither form.
 
 Choices that are this module's own and no rule of a record:
@@ -108,11 +114,37 @@ def from_answer(answer, *, m, k, n, draws, seed, rtol, atol):
         return check_judging.from_report(
             answer, m=m, k=k, n=n, draws=draws, seed=seed, rtol=rtol, atol=atol
         )
+    _condition(answer)
+    return check_result.broken(answer, m=m, k=k, n=n, draws=draws, rtol=rtol, atol=atol)
+
+
+def from_bf16_answer(answer, kind, dims, *, draws, seed, rtol, atol):
+    """Return the result of a bf16 check of ``kind`` for ``answer``, as a new ``dict``.
+
+    As :func:`from_answer`, with the dimensions ``dims`` of ``kind`` in place
+    of ``m``, ``k`` and ``n``: exactly ``bytes`` is judged by
+    :func:`hilclaw.check_judging.from_bf16_report`; one of the four strings
+    becomes the result of :func:`hilclaw.check_result.bf16_broken` with
+    ``kind``, ``dims``, ``draws``, ``rtol`` and ``atol``, and ``seed`` is
+    neither used nor checked; anything else raises
+    :class:`NeitherFormError`, whatever the other arguments are. What those
+    functions raise is passed on unchanged. ``draws``, ``seed``, ``rtol`` and
+    ``atol`` are keyword-only and no parameter has a default.
+    """
+    if type(answer) is bytes:
+        return check_judging.from_bf16_report(
+            answer, kind, dims, draws=draws, seed=seed, rtol=rtol, atol=atol
+        )
+    _condition(answer)
+    return check_result.bf16_broken(
+        answer, kind, dims, draws=draws, rtol=rtol, atol=atol
+    )
+
+
+def _condition(answer):
     if type(answer) is str:
         if answer in _NO_REPORT:
-            return check_result.broken(
-                answer, m=m, k=k, n=n, draws=draws, rtol=rtol, atol=atol
-            )
+            return
         shown = f"the str {reprlib.repr(answer)}"
     else:
         shown = type(answer).__name__

@@ -9,8 +9,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from hilclaw import check_judging, check_result, tools
-from hilclaw.check_judging import condition_of, from_judgement, from_report
+from hilclaw import check_judging, check_result, mock_check, tools
+from hilclaw.check_judging import (
+    condition_of,
+    from_bf16_judgement,
+    from_bf16_report,
+    from_judgement,
+    from_report,
+)
+from hilclaw.check_parameters import Bf16CheckParameters
 from hilclaw.harness.verification import (
     END_MARK,
     Broken,
@@ -616,6 +623,7 @@ def test_module_imports_the_builder_and_the_judging_only_and_has_no_entry():
         "hilclaw.check_result",
         "hilclaw.harness",
         "hilclaw.harness.verification",
+        "hilclaw.harness.bf16_verification",
     }
     assert not imported & {"secrets", "random", "os", "time"}
     assert not hasattr(check_judging, "main")
@@ -628,7 +636,13 @@ def test_public_names_of_the_module_and_no_default():
         for name, value in vars(check_judging).items()
         if not name.startswith("_") and not inspect.ismodule(value)
     }
-    assert public == {"condition_of", "from_judgement", "from_report"}
+    assert public == {
+        "condition_of",
+        "from_judgement",
+        "from_report",
+        "from_bf16_judgement",
+        "from_bf16_report",
+    }
     for name in public:
         parameters = inspect.signature(getattr(check_judging, name)).parameters
         for parameter in parameters.values():
@@ -641,3 +655,123 @@ def test_public_names_of_the_module_and_no_default():
         parameters = list(inspect.signature(function).parameters.values())
         assert [parameter.name for parameter in parameters[1:]] == names
         assert all(parameter.kind is keyword_only for parameter in parameters[1:])
+
+
+# A check of a bf16 kind (ADR-0177 decision 3, "The judge")
+
+# Test values, not dimensions, draws, a seed or a tolerance of the package.
+BF16_SHAPES = {
+    "gemm": ((2, 3, 4), {"m": 2, "k": 3, "n": 4}),
+    "rmsnorm": ((2, 4), {"m": 2, "n": 4}),
+    "elementwise_add": ((2, 4), {"m": 2, "n": 4}),
+    "swiglu": ((2, 4), {"m": 2, "n": 4}),
+}
+BF16_CALL = {"draws": 2, "seed": SEED, "rtol": 2**-8, "atol": 0}
+BF16_BUILD = {"draws": 2, "rtol": 2**-8, "atol": 0}
+
+
+def bf16_report(kind, dims):
+    parameters = Bf16CheckParameters(SEED, 2, kind, "bf16", dims)
+    return mock_check.default_script(None, None, None, parameters, None, None)
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_conforming_bf16_report_is_judged_pass(kind):
+    dims, shape = BF16_SHAPES[kind]
+    result = from_bf16_report(bf16_report(kind, dims), kind, dims, **BF16_CALL)
+    assert result == {
+        "outcome": "pass",
+        "shape": shape,
+        "draws": 2,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+        "counts": [{"failed": 0, "non_finite": 0}] * 2,
+    }
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_bf16_report_with_a_wrong_element_is_judged_fail(kind):
+    dims, _ = BF16_SHAPES[kind]
+    report = bytearray(bf16_report(kind, dims))
+    struct.pack_into("=H", report, 4, 0x7F80)
+    result = from_bf16_report(bytes(report), kind, dims, **BF16_CALL)
+    assert result["outcome"] == "fail"
+    assert result["counts"][0] == {"failed": 1, "non_finite": 1}
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_bf16_report_of_the_wrong_form_or_check_value_is_broken(kind):
+    dims, shape = BF16_SHAPES[kind]
+    good = bf16_report(kind, dims)
+    short = from_bf16_report(good[:-4], kind, dims, **BF16_CALL)
+    assert short == {
+        "outcome": "broken",
+        "condition": "report_form",
+        "shape": shape,
+        "draws": 2,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+    }
+    mismatched = bytearray(good)
+    mismatched[1] ^= 0x10
+    result = from_bf16_report(bytes(mismatched), kind, dims, **BF16_CALL)
+    assert result["condition"] == "check_value"
+
+
+@pytest.mark.parametrize(
+    ("kind", "dims"),
+    [("rope", (1, 2)), ("conv", (1, 1)), ("gemm", (1, 1)), ("swiglu", (0, 1))],
+)
+def test_a_bf16_report_of_parameters_the_judge_refuses_raises(kind, dims):
+    with pytest.raises(VerificationArgumentError):
+        from_bf16_report(b"", kind, dims, **BF16_CALL)
+
+
+def test_a_bf16_report_that_is_no_bytes_raises_type_error():
+    dims, _ = BF16_SHAPES["rmsnorm"]
+    with pytest.raises(TypeError, match=r"^report: "):
+        from_bf16_report(bytearray(b"x"), "rmsnorm", dims, **BF16_CALL)
+
+
+@pytest.mark.parametrize("member", list(Broken))
+def test_a_broken_bf16_judgement_gives_its_condition(member):
+    dims, shape = BF16_SHAPES["swiglu"]
+    judgement = Judgement(member, None, None)
+    result = from_bf16_judgement(judgement, "swiglu", dims, **BF16_BUILD)
+    assert result["condition"] == condition_of(member)
+    assert result["shape"] == shape
+
+
+def test_a_completed_bf16_judgement_gives_its_counts_and_outcome():
+    dims, shape = BF16_SHAPES["gemm"]
+    judgement = Judgement(None, Verdict.FAIL, (Counts(0, 0), Counts(8, 2)))
+    result = from_bf16_judgement(judgement, "gemm", dims, **BF16_BUILD)
+    assert result["outcome"] == "fail"
+    assert result["shape"] == shape
+    assert result["counts"][1] == {"failed": 8, "non_finite": 2}
+    with pytest.raises(ValueError, match=r"^counts\[1\]\.failed: "):
+        from_bf16_judgement(
+            Judgement(None, Verdict.FAIL, (Counts(0, 0), Counts(9, 0))),
+            "gemm",
+            dims,
+            **BF16_BUILD,
+        )
+
+
+@pytest.mark.parametrize(
+    ("judgement", "expected"),
+    [
+        ((None, Verdict.PASS, ((0, 0), (0, 0))), TypeError),
+        (Judgement(None, None, ((0, 0), (0, 0))), ValueError),
+        (Judgement(Broken.REPORT_FORM, Verdict.PASS, None), ValueError),
+        (Judgement(None, Verdict.FAIL, ((0, 0), (0, 0))), ValueError),
+    ],
+)
+def test_a_bf16_judgement_that_does_not_agree_is_refused(judgement, expected):
+    dims, _ = BF16_SHAPES["elementwise_add"]
+    with pytest.raises(expected):
+        from_bf16_judgement(judgement, "elementwise_add", dims, **BF16_BUILD)
+
+
+def test_a_bf16_judgement_of_an_unknown_kind_is_refused():
+    judgement = Judgement(Broken.TIMEOUT, None, None)
+    with pytest.raises(ValueError, match=r"^kind: "):
+        from_bf16_judgement(judgement, "rope", (1, 2), **BF16_BUILD)

@@ -17,6 +17,17 @@ the two:
 * :func:`from_report`: the result for one report, which is ``judge_report``
   followed by :func:`from_judgement` with the same dimensions, number of draws
   and tolerance on both sides.
+* :func:`from_bf16_judgement` and :func:`from_bf16_report`: the same for a
+  check of a bf16 kind of :data:`hilclaw.check_result.BF16_KINDS`, whose
+  judge is :func:`hilclaw.harness.bf16_verification.judge_report` with the
+  kind and the dimensions
+  (``ARCHITECTURE/decisions/ADR-0177-od18-od6-contract-table.md``
+  decision 3), and whose result is built by
+  :func:`hilclaw.check_result.bf16_completed` or
+  :func:`hilclaw.check_result.bf16_broken`. The verdict classes and the
+  conditions are those of the first case: ADR-0163 decision 8 has them as
+  ADR-0017 decision 7, with the same types. No caller of the tool calls
+  them yet.
 
 Choices that are this module's own and no rule of a record:
 
@@ -49,12 +60,12 @@ reaches a caller. It draws no seed and reads no random source or clock. It
 reads no file of a run and writes none. It gives no default of any value: no
 number of draws, no tolerance, no dimension and no seed. It stores nothing,
 keeps nothing between calls and has no command-line entry. It imports
-:mod:`hilclaw.check_result` and :mod:`hilclaw.harness.verification` and
-nothing else.
+:mod:`hilclaw.check_result`, :mod:`hilclaw.harness.verification` and
+:mod:`hilclaw.harness.bf16_verification` and nothing else.
 """
 
 from hilclaw import check_result
-from hilclaw.harness import verification
+from hilclaw.harness import bf16_verification, verification
 
 _CONDITIONS = dict(zip(verification.Broken, check_result.CONDITIONS[-4:], strict=True))
 _OUTCOMES = {
@@ -121,36 +132,12 @@ def from_judgement(judgement, *, m, k, n, draws, rtol, atol):
     No argument is modified or kept, and the result shares no mutable object
     with ``judgement``.
     """
-    if type(judgement) is not verification.Judgement:
-        raise TypeError(_wrong_type("judgement", "a Judgement", judgement))
-    fields = tuple(judgement)
-    if len(fields) != 3:
-        raise ValueError(f"judgement: must have 3 fields, got {len(fields)}")
-    broken, verdict, counts = fields
-    if broken is not None and type(broken) is not verification.Broken:
-        rule = "None or a member of Broken"
-        raise TypeError(_wrong_type("judgement.broken", rule, broken))
-    if verdict is not None and type(verdict) is not verification.Verdict:
-        rule = "None or a member of Verdict"
-        raise TypeError(_wrong_type("judgement.verdict", rule, verdict))
     common = {"m": m, "k": k, "n": n, "draws": draws, "rtol": rtol, "atol": atol}
-    if broken is not None:
-        if verdict is not None:
-            raise ValueError("judgement.verdict: must be None when broken is set")
-        if counts is not None:
-            raise ValueError("judgement.counts: must be None when broken is set")
-        return check_result.broken(condition_of(broken), **common)
-    if verdict is None:
-        raise ValueError("judgement.verdict: must not be None when broken is None")
-    if counts is None:
-        raise ValueError("judgement.counts: must not be None when broken is None")
-    result = check_result.completed(**common, counts=counts)
-    if result["outcome"] != _OUTCOMES[verdict]:
-        raise ValueError(
-            f"judgement.verdict: {verdict.name} beside counts of the outcome "
-            f"{result['outcome']}"
-        )
-    return result
+    return _from_judgement(
+        judgement,
+        lambda condition: check_result.broken(condition, **common),
+        lambda counts: check_result.completed(**common, counts=counts),
+    )
 
 
 def from_report(report, *, m, k, n, draws, seed, rtol, atol):
@@ -183,3 +170,77 @@ def from_report(report, *, m, k, n, draws, seed, rtol, atol):
 
 def _wrong_type(name, rule, value):
     return f"{name}: must be {rule}, got {type(value).__name__}"
+
+
+def from_bf16_judgement(judgement, kind, dims, *, draws, rtol, atol):
+    """Return the result of a bf16 check of ``kind`` for ``judgement``, as a new ``dict``.
+
+    As :func:`from_judgement`, with the result built by
+    :func:`hilclaw.check_result.bf16_completed` or
+    :func:`hilclaw.check_result.bf16_broken` from ``kind``, ``dims``,
+    ``draws``, ``rtol`` and ``atol`` (``draws`` and the tolerance
+    keyword-only, none with a default). The checks and their order are those
+    of :func:`from_judgement`, step 4 being what those two builders raise.
+    """
+    common = {"draws": draws, "rtol": rtol, "atol": atol}
+    return _from_judgement(
+        judgement,
+        lambda condition: check_result.bf16_broken(condition, kind, dims, **common),
+        lambda counts: check_result.bf16_completed(kind, dims, **common, counts=counts),
+    )
+
+
+def from_bf16_report(report, kind, dims, *, draws, seed, rtol, atol):
+    """Judge one ``report`` of a bf16 check of ``kind`` and return its result, as a new ``dict``.
+
+    The report is judged by
+    :func:`hilclaw.harness.bf16_verification.judge_report` with ``kind``,
+    ``dims``, ``draws``, ``seed``, ``rtol`` and ``atol``, and its judgement is
+    handed to :func:`from_bf16_judgement` with the same values but ``seed``,
+    which is no member of the result (ADR-0042 decision 6). All but
+    ``report``, ``kind`` and ``dims`` are keyword-only and none has a default.
+
+    What each argument must be, the order of the checks and what is raised
+    are those of ``judge_report`` and are passed on unchanged:
+    :class:`hilclaw.harness.verification_arrays.VerificationArgumentError`
+    for a kind, dimensions, number of draws, seed or tolerance it refuses,
+    then :class:`TypeError` for a ``report`` that is not exactly ``bytes``,
+    and what NumPy raises for arrays it cannot allocate. Nothing is returned
+    then.
+    """
+    judgement = bf16_verification.judge_report(
+        report, kind, dims, draws=draws, seed=seed, rtol=rtol, atol=atol
+    )
+    return from_bf16_judgement(judgement, kind, dims, draws=draws, rtol=rtol, atol=atol)
+
+
+def _from_judgement(judgement, broken_result, completed_result):
+    if type(judgement) is not verification.Judgement:
+        raise TypeError(_wrong_type("judgement", "a Judgement", judgement))
+    fields = tuple(judgement)
+    if len(fields) != 3:
+        raise ValueError(f"judgement: must have 3 fields, got {len(fields)}")
+    broken, verdict, counts = fields
+    if broken is not None and type(broken) is not verification.Broken:
+        rule = "None or a member of Broken"
+        raise TypeError(_wrong_type("judgement.broken", rule, broken))
+    if verdict is not None and type(verdict) is not verification.Verdict:
+        rule = "None or a member of Verdict"
+        raise TypeError(_wrong_type("judgement.verdict", rule, verdict))
+    if broken is not None:
+        if verdict is not None:
+            raise ValueError("judgement.verdict: must be None when broken is set")
+        if counts is not None:
+            raise ValueError("judgement.counts: must be None when broken is set")
+        return broken_result(condition_of(broken))
+    if verdict is None:
+        raise ValueError("judgement.verdict: must not be None when broken is None")
+    if counts is None:
+        raise ValueError("judgement.counts: must not be None when broken is None")
+    result = completed_result(counts)
+    if result["outcome"] != _OUTCOMES[verdict]:
+        raise ValueError(
+            f"judgement.verdict: {verdict.name} beside counts of the outcome "
+            f"{result['outcome']}"
+        )
+    return result

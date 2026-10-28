@@ -10,7 +10,17 @@ from pathlib import Path
 import pytest
 
 from hilclaw import check_result, tools
-from hilclaw.check_result import BROKEN, CONDITIONS, FAIL, PASS, broken, completed
+from hilclaw.check_result import (
+    BF16_KINDS,
+    BROKEN,
+    CONDITIONS,
+    FAIL,
+    PASS,
+    bf16_broken,
+    bf16_completed,
+    broken,
+    completed,
+)
 from hilclaw.harness.verification_arrays import Counts
 
 EXAMPLE_DRAWS = 2
@@ -561,7 +571,13 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
 
 def test_module_imports_the_standard_library_only_and_has_no_entry():
     own = Path(check_result.__file__)
-    assert imported_modules(own) == {"math", "reprlib"}
+    assert imported_modules(own) == {
+        "inspect",
+        "math",
+        "reprlib",
+        "hilclaw",
+        "hilclaw.contract_table",
+    }
     assert not hasattr(check_result, "main")
     assert "__main__" not in own.read_text(encoding="utf-8")
 
@@ -572,4 +588,139 @@ def test_public_names_of_the_module():
         for name, value in vars(check_result).items()
         if not name.startswith("_") and not inspect.ismodule(value)
     }
-    assert public == {"PASS", "FAIL", "BROKEN", "CONDITIONS", "completed", "broken"}
+    assert public == {
+        "PASS",
+        "FAIL",
+        "BROKEN",
+        "CONDITIONS",
+        "BF16_KINDS",
+        "completed",
+        "broken",
+        "bf16_completed",
+        "bf16_broken",
+    }
+
+
+# Test values, not dimensions, draws or a tolerance of the package.
+BF16_SHAPES = {
+    "gemm": ((2, 3, 4), {"m": 2, "k": 3, "n": 4}),
+    "rmsnorm": ((2, 4), {"m": 2, "n": 4}),
+    "elementwise_add": ((2, 4), {"m": 2, "n": 4}),
+    "swiglu": ((2, 4), {"m": 2, "n": 4}),
+}
+BF16_COMMON = {"draws": 2, "rtol": 2**-8, "atol": 0}
+
+
+def test_the_bf16_kinds_are_the_four_of_the_harness_in_table_order():
+    assert BF16_KINDS == ("gemm", "rmsnorm", "elementwise_add", "swiglu")
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_completed_bf16_result_names_the_shape_members_of_its_kind(kind):
+    dims, shape = BF16_SHAPES[kind]
+    passed = bf16_completed(kind, dims, **BF16_COMMON, counts=[(0, 0), (0, 0)])
+    assert passed == {
+        "outcome": PASS,
+        "shape": shape,
+        "draws": 2,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+        "counts": [{"failed": 0, "non_finite": 0}, {"failed": 0, "non_finite": 0}],
+    }
+    assert list(passed["shape"]) == list(shape)
+    failed = bf16_completed(kind, dims, **BF16_COMMON, counts=[(0, 0), (8, 3)])
+    assert failed["outcome"] == FAIL
+    assert failed["counts"][1] == {"failed": 8, "non_finite": 3}
+    assert not {"kind", "dtype", "layout", "condition"} & set(failed)
+    json.dumps(failed, allow_nan=False)
+
+
+@pytest.mark.parametrize("condition", CONDITIONS)
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_broken_bf16_result_has_the_condition_and_the_shape(kind, condition):
+    dims, shape = BF16_SHAPES[kind]
+    assert bf16_broken(condition, kind, dims, **BF16_COMMON) == {
+        "outcome": BROKEN,
+        "condition": condition,
+        "shape": shape,
+        "draws": 2,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+    }
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_failed_is_bounded_by_the_output_elements_of_the_kind(kind):
+    dims, _ = BF16_SHAPES[kind]
+    at_bound = bf16_completed(kind, dims, draws=1, rtol=0, atol=0, counts=[(8, 0)])
+    assert at_bound["counts"] == [{"failed": 8, "non_finite": 0}]
+    with pytest.raises(ValueError, match=r"^counts\[0\]\.failed: "):
+        bf16_completed(kind, dims, draws=1, rtol=0, atol=0, counts=[(9, 0)])
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected"),
+    [
+        (None, TypeError),
+        (b"gemm", TypeError),
+        ("conv", ValueError),
+        ("rope", ValueError),
+        ("sdpa_kv_cache", ValueError),
+        ("GEMM", ValueError),
+    ],
+)
+def test_an_unknown_bf16_kind_is_refused(kind, expected):
+    with pytest.raises(expected, match=r"^kind: "):
+        bf16_completed(kind, (2, 4), **BF16_COMMON, counts=[(0, 0), (0, 0)])
+    with pytest.raises(expected, match=r"^kind: "):
+        bf16_broken("time_limit", kind, (2, 4), **BF16_COMMON)
+
+
+@pytest.mark.parametrize(
+    ("kind", "dims", "expected", "name"),
+    [
+        ("gemm", [2, 3, 4], TypeError, "dims"),
+        ("gemm", (2, 4), ValueError, "dims"),
+        ("rmsnorm", (2, 3, 4), ValueError, "dims"),
+        ("swiglu", (2,), ValueError, "dims"),
+        ("elementwise_add", (), ValueError, "dims"),
+        ("gemm", (2, True, 4), TypeError, "k"),
+        ("rmsnorm", (0, 4), ValueError, "m"),
+        ("swiglu", (2, 0), ValueError, "n"),
+        ("elementwise_add", (2, 4.0), TypeError, "n"),
+    ],
+)
+def test_bf16_dims_outside_the_rule_are_refused(kind, dims, expected, name):
+    with pytest.raises(expected, match=rf"^{name}: "):
+        bf16_completed(kind, dims, **BF16_COMMON, counts=[(0, 0), (0, 0)])
+    with pytest.raises(expected, match=rf"^{name}: "):
+        bf16_broken("exit_status", kind, dims, **BF16_COMMON)
+
+
+def test_the_bf16_condition_is_checked_before_the_kind():
+    with pytest.raises(ValueError, match=r"^condition: "):
+        bf16_broken("cache_differs", "conv", (2, 4), **BF16_COMMON)
+    with pytest.raises(TypeError, match=r"^condition: "):
+        bf16_broken(None, "gemm", (2, 3, 4), **BF16_COMMON)
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "expected"),
+    [
+        ("draws", 0, ValueError),
+        ("draws", True, TypeError),
+        ("rtol", -1, ValueError),
+        ("atol", "0", TypeError),
+    ],
+)
+def test_bf16_draws_and_tolerance_follow_the_rule_of_the_first_case(
+    name, value, expected
+):
+    given = {**BF16_COMMON, name: value}
+    with pytest.raises(expected, match=rf"^{name}: "):
+        bf16_broken("report_form", "rmsnorm", (2, 4), **given)
+
+
+def test_bf16_counts_follow_the_rule_of_the_first_case():
+    with pytest.raises(ValueError, match=r"^counts: "):
+        bf16_completed("swiglu", (2, 4), **BF16_COMMON, counts=[(0, 0)])
+    with pytest.raises(ValueError, match=r"^counts\[1\]\.non_finite: "):
+        bf16_completed("swiglu", (2, 4), **BF16_COMMON, counts=[(0, 0), (1, 2)])
