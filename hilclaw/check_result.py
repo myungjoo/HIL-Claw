@@ -22,8 +22,12 @@ other. This module renders that table as plain Python values:
   decision 3, HQ-0077): ADR-0042's list with ``shape`` holding the shape
   members of the kind, named and ordered as the parameters of the
   contract's ``task_contract``, and ``failed`` at most the number of output
-  elements of the kind, ``m * n`` for each kind here. Such a result holds no
-  ``kind``, ``dtype`` or ``layout``. No caller of the tool builds one yet.
+  elements of the kind (``m * n``, and ``m * h * d`` for ``sdpa_kv_cache``).
+  Each ``counts`` entry of an ``sdpa_kv_cache`` check also holds
+  ``cache_differs``, the number of cache elements over both allocations
+  that differ in that draw (ADR-0165 decision 8), and such a result is a
+  fail when some ``failed`` or some ``cache_differs`` is 1 or more. Such a
+  result holds no ``kind``, ``dtype`` or ``layout``.
 
 A result is a new ``dict`` that is one JSON object in the strict sense
 (decision 1). No member holds ``None``: a member that does not apply is left
@@ -75,8 +79,9 @@ CONDITIONS = (
     "report_form",
     "check_value",
 )
-#: The kinds whose bf16 check results this module builds (those of ADR-0163).
-BF16_KINDS = ("gemm", "rmsnorm", "elementwise_add", "swiglu")
+#: The kinds whose bf16 check results this module builds (those of ADR-0163 and ADR-0165).
+BF16_KINDS = ("gemm", "rmsnorm", "elementwise_add", "swiglu", "sdpa_kv_cache")
+_SDPA = "sdpa_kv_cache"
 _BF16_SHAPES = {
     kind: tuple(inspect.signature(entry.contract.task_contract).parameters)
     for kind in BF16_KINDS
@@ -146,22 +151,45 @@ def bf16_completed(kind, dims, *, draws, rtol, atol, counts):
 
     As :func:`completed`, with ``shape`` a new ``dict`` that pairs the
     shape members of ``kind`` with ``dims`` in their order (``{"m": ...,
-    "k": ..., "n": ...}`` for ``gemm``, ``{"m": ..., "n": ...}`` for the
-    other three kinds), and each ``failed`` at most ``m * n``, the number of
-    output elements of each of the four kinds.
+    "k": ..., "n": ...}`` for ``gemm``, ``{"m": ..., "l": ..., "h": ...,
+    "h_kv": ..., "d": ...}`` for ``sdpa_kv_cache``, ``{"m": ..., "n": ...}``
+    for the other three kinds), and each ``failed`` at most the number of
+    output elements of the kind: ``m * n``, or ``m * h * d`` for
+    ``sdpa_kv_cache``.
+
+    For ``sdpa_kv_cache`` (ADR-0177 decision 3, HQ-0077; ADR-0165
+    decision 8) each entry of ``counts`` is a ``tuple`` of three items,
+    ``(failed, non_finite, cache_differs)``, such as a
+    :class:`hilclaw.harness.bf16_sdpa_kv_cache_verification.DrawCounts`;
+    ``cache_differs`` is exactly an ``int`` of at least 0 and at most
+    ``2 * (l + 2 * m) * h_kv * d``, the number of elements of both cache
+    allocations. Each entry of the result is a new ``dict``
+    ``{"failed": ..., "non_finite": ..., "cache_differs": ...}``, and
+    ``outcome`` is :data:`FAIL` when at least one ``failed`` or one
+    ``cache_differs`` is 1 or more and :data:`PASS` otherwise. No relation
+    between the five dimensions is checked.
 
     * ``kind`` is exactly a ``str`` of :data:`BF16_KINDS`.
     * ``dims`` is exactly a ``tuple`` with one item per shape member of
       ``kind``, each exactly an ``int`` of at least 1; a message about an
       item names its member.
     * ``draws``, ``rtol``, ``atol`` and ``counts`` (keyword-only, no default)
-      follow the rules of :func:`completed`.
+      follow the rules of :func:`completed`, with the entries of
+      ``sdpa_kv_cache`` above.
 
     Checked in the order ``kind``, ``dims``, ``draws``, ``rtol``, ``atol``,
     ``counts``. Raises :class:`TypeError` and :class:`ValueError` as the
     module docstring says.
     """
-    return _completed(_common(_shape(kind, dims), draws, rtol, atol), counts)
+    common = _common(_shape(kind, dims), draws, rtol, atol)
+    if kind != _SDPA:
+        return _completed(common, counts)
+    m, l, h, h_kv, d = common["shape"].values()
+    bounds = (
+        ("m * h * d", m * h * d),
+        ("2 * (l + 2 * m) * h_kv * d", 2 * (l + 2 * m) * h_kv * d),
+    )
+    return _completed(common, counts, *bounds)
 
 
 def bf16_broken(condition, kind, dims, *, draws, rtol, atol):
@@ -187,11 +215,13 @@ def _broken(condition, common):
     return {"outcome": BROKEN, "condition": condition, **common}
 
 
-def _completed(common, counts):
-    shape = common["shape"]
-    entries = _counts(counts, common["draws"], shape["m"] * shape["n"])
-    outcome = FAIL if any(entry["failed"] for entry in entries) else PASS
-    return {"outcome": outcome, **common, "counts": entries}
+def _completed(common, counts, output=None, cache=None):
+    if output is None:
+        shape = common["shape"]
+        output = ("m * n", shape["m"] * shape["n"])
+    entries = _counts(counts, common["draws"], output, cache)
+    failing = any(entry["failed"] or entry.get("cache_differs") for entry in entries)
+    return {"outcome": FAIL if failing else PASS, **common, "counts": entries}
 
 
 def _shape(kind, dims):
@@ -249,7 +279,7 @@ def _number(name, value):
     return number
 
 
-def _counts(counts, draws, elements):
+def _counts(counts, draws, output, cache):
     if type(counts) not in (list, tuple):
         raise TypeError(
             f"counts: must be a list or a tuple, got {type(counts).__name__}"
@@ -261,19 +291,25 @@ def _counts(counts, draws, elements):
         if not isinstance(entry, tuple):
             raise TypeError(f"counts[{i}]: must be a tuple, got {type(entry).__name__}")
         items = tuple(tuple.__iter__(entry))
-        if len(items) != 2:
-            raise ValueError(f"counts[{i}]: must have 2 items, got {len(items)}")
-        failed, non_finite = items
+        width = 2 if cache is None else 3
+        if len(items) != width:
+            raise ValueError(f"counts[{i}]: must have {width} items, got {len(items)}")
+        failed, non_finite = items[:2]
         _integer(f"counts[{i}].failed", failed, 0)
         _integer(f"counts[{i}].non_finite", non_finite, 0)
-        if failed > elements:
-            raise ValueError(
-                f"counts[{i}].failed: must be at most m * n, got {reprlib.repr(failed)}"
-            )
-        if non_finite > failed:
-            shown = reprlib.repr(non_finite)
-            raise ValueError(
-                f"counts[{i}].non_finite: must be at most failed, got {shown}"
-            )
-        entries.append({"failed": failed, "non_finite": non_finite})
+        _at_most(f"counts[{i}].failed", failed, *output)
+        _at_most(f"counts[{i}].non_finite", non_finite, "failed", failed)
+        taken = {"failed": failed, "non_finite": non_finite}
+        if cache is not None:
+            _integer(f"counts[{i}].cache_differs", items[2], 0)
+            _at_most(f"counts[{i}].cache_differs", items[2], *cache)
+            taken["cache_differs"] = items[2]
+        entries.append(taken)
     return entries
+
+
+def _at_most(name, value, bound_name, bound):
+    if value > bound:
+        raise ValueError(
+            f"{name}: must be at most {bound_name}, got {reprlib.repr(value)}"
+        )

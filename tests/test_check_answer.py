@@ -552,3 +552,50 @@ def test_the_signature_of_the_bf16_answer_has_no_default():
         assert parameter.default is inspect.Parameter.empty
     keyword_only = inspect.Parameter.KEYWORD_ONLY
     assert all(parameter.kind is keyword_only for parameter in parameters[3:])
+
+
+# An sdpa_kv_cache check (ADR-0177 decision 3, HQ-0077; ADR-0165 decision 8)
+
+# Test values, not dimensions, draws, a seed or a tolerance of the package.
+SDPA_DIMS = (2, 3, 4, 2, 4)
+SDPA_SHAPE = {"m": 2, "l": 3, "h": 4, "h_kv": 2, "d": 4}
+SDPA_CALL = {"draws": 2, "seed": SEED, "rtol": 0, "atol": 2.154e-3}
+
+
+def test_an_sdpa_byte_string_is_judged_by_its_judge():
+    report = bf16_report("sdpa_kv_cache", SDPA_DIMS)
+    result = from_bf16_answer(report, "sdpa_kv_cache", SDPA_DIMS, **SDPA_CALL)
+    assert result == {
+        "outcome": "pass",
+        "shape": SDPA_SHAPE,
+        "draws": 2,
+        "tolerance": {"rtol": 0.0, "atol": 2.154e-3},
+        "counts": [{"failed": 0, "non_finite": 0, "cache_differs": 0}] * 2,
+    }
+    changed = bytearray(report)
+    struct.pack_into("=H", changed, 4 + 2 * 2 * 4 * 4, 0x0000)
+    failed = from_bf16_answer(bytes(changed), "sdpa_kv_cache", SDPA_DIMS, **SDPA_CALL)
+    assert failed["outcome"] == "fail"
+    assert failed["counts"][0] == {"failed": 0, "non_finite": 0, "cache_differs": 1}
+    broken = from_bf16_answer(b"", "sdpa_kv_cache", SDPA_DIMS, **SDPA_CALL)
+    assert broken["condition"] == "report_form"
+
+
+@pytest.mark.parametrize("condition", check_result.CONDITIONS[:4])
+def test_an_sdpa_condition_becomes_a_broken_result_without_judging(
+    condition, monkeypatch
+):
+    monkeypatch.setattr(check_judging, "from_bf16_report", None)
+    given = {**SDPA_CALL, "seed": None}
+    assert from_bf16_answer(condition, "sdpa_kv_cache", SDPA_DIMS, **given) == {
+        "outcome": "broken",
+        "condition": condition,
+        "shape": SDPA_SHAPE,
+        "draws": 2,
+        "tolerance": {"rtol": 0.0, "atol": 2.154e-3},
+    }
+
+
+def test_an_sdpa_answer_of_neither_form_raises():
+    with pytest.raises(NeitherFormError):
+        from_bf16_answer("cache_differs", "sdpa_kv_cache", SDPA_DIMS, **SDPA_CALL)

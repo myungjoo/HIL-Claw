@@ -15,6 +15,8 @@ from hilclaw.check_operation import ask
 from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.check_result import CONDITIONS
 from hilclaw.harness import (
+    bf16_sdpa_kv_cache_arrays,
+    bf16_sdpa_kv_cache_verification,
     bf16_verification,
     bf16_verification_arrays,
     verification_arrays,
@@ -518,6 +520,8 @@ def test_the_module_imports_the_harness_and_the_type_only_and_has_no_entry():
         "hilclaw.harness.verification_arrays",
         "hilclaw.harness.bf16_verification",
         "hilclaw.harness.bf16_verification_arrays",
+        "hilclaw.harness.bf16_sdpa_kv_cache_verification",
+        "hilclaw.harness.bf16_sdpa_kv_cache_arrays",
     }
     assert not imported & {
         "time",
@@ -734,7 +738,6 @@ def test_a_malformed_or_mismatched_bf16_report_is_broken(kind, answer, condition
     ("kind", "dims"),
     [
         ("rope", (1, 1, 2)),
-        ("sdpa_kv_cache", (1, 1, 1, 1, 1)),
         ("conv", (1, 1)),
         (None, (1, 1)),
         ("gemm", (1, 1)),
@@ -766,3 +769,148 @@ def test_a_bf16_type_of_another_dtype_is_refused(dtype, monkeypatch):
 def test_a_bf16_seed_or_draws_the_harness_refuses_is_refused(name, value):
     parameters = bf16_parameters("swiglu", (1, 1))._replace(**{name: value})
     refused(parameters, VerificationArgumentError)
+
+
+# An sdpa_kv_cache check (ADR-0177 decision 3, "The mock"; ADR-0165 decision 8)
+
+# Test values, not dimensions, draws, a seed or a tolerance of the package.
+SDPA = "sdpa_kv_cache"
+SDPA_CASES = [(1, 1, 1, 1, 1), (2, 3, 4, 2, 4), (1, 2, 3, 3, 2), (3, 5, 4, 1, 2)]
+# The absolute bound of ADR-0165 decision 9 at l = 128 and the smallest atol of
+# its calibration (decision 10); rtol 0.
+SDPA_TOLERANCE = {"rtol": 0, "atol": 2.154e-3}
+
+
+def sdpa_block(dims):
+    m, l, h, h_kv, d = dims
+    return 4 + 2 * m * h * d + 4 * (l + 2 * m) * h_kv * d
+
+
+@pytest.mark.parametrize("dims", SDPA_CASES)
+def test_the_sdpa_answer_is_a_complete_report_the_judge_passes(dims):
+    report = answer_for(bf16_parameters(SDPA, dims))
+    assert type(report) is bytes
+    assert len(report) == BF16_DRAWS * sdpa_block(dims) + 4
+    assert report.endswith(END_MARK)
+    judgement = bf16_sdpa_kv_cache_verification.judge_report(
+        report, dims, draws=BF16_DRAWS, seed=SEED, **SDPA_TOLERANCE
+    )
+    zeros = bf16_sdpa_kv_cache_verification.DrawCounts(0, 0, 0)
+    assert judgement == bf16_sdpa_kv_cache_verification.Judgement(
+        None, bf16_sdpa_kv_cache_verification.Verdict.PASS, (zeros,) * BF16_DRAWS
+    )
+
+
+@pytest.mark.parametrize("dims", SDPA_CASES)
+def test_each_sdpa_draw_holds_the_check_value_the_nearest_out_and_the_caches(dims):
+    report = answer_for(bf16_parameters(SDPA, dims))
+    arrays = bf16_sdpa_kv_cache_arrays
+    m, l, h, h_kv, d = dims
+    block = sdpa_block(dims)
+    cache_size = (l + 2 * m) * h_kv * d
+    for draw in range(BF16_DRAWS):
+        inputs = arrays.draw_inputs(dims, seed=SEED, draw=draw)
+        before_k = arrays.allocation_before(dims, inputs.cached_k)
+        before_v = arrays.allocation_before(dims, inputs.cached_v)
+        (value,) = struct.unpack_from("=I", report, draw * block)
+        expected_value = arrays.check_value(
+            dims, inputs.q, inputs.k_new, inputs.v_new, before_k, before_v
+        )
+        assert value == expected_value
+        offset = draw * block + 4
+        output = np.frombuffer(report, np.uint16, m * h * d, offset)
+        expected = arrays.reference(dims, *inputs).reshape(-1)
+        widened = bf16_verification_arrays.widen(output)
+        error = np.abs(widened - expected)
+        for step in (-1, 1):
+            moved = (output.astype(np.int32) + step).astype(np.uint16)
+            neighbour = bf16_verification_arrays.widen(moved)
+            assert np.all(error <= np.abs(neighbour - expected))
+        offset += 2 * m * h * d
+        for cached, new in (
+            (inputs.cached_k, inputs.k_new),
+            (inputs.cached_v, inputs.v_new),
+        ):
+            cache = np.frombuffer(report, np.uint16, cache_size, offset)
+            after = arrays.allocation_after(dims, cached, new)
+            assert np.array_equal(cache, after.reshape(-1))
+            offset += 2 * cache_size
+
+
+def test_the_sdpa_answer_passes_at_the_shape_of_the_functional_test():
+    dims = (128, 128, 32, 8, 64)
+    report = answer_for(bf16_parameters(SDPA, dims, draws=1))
+    judgement = bf16_sdpa_kv_cache_verification.judge_report(
+        report, dims, draws=1, seed=SEED, **SDPA_TOLERANCE
+    )
+    assert judgement.verdict is bf16_sdpa_kv_cache_verification.Verdict.PASS
+    assert judgement.counts == ((0, 0, 0),)
+
+
+def test_the_sdpa_report_through_the_operation_is_judged_pass():
+    dims = (2, 3, 4, 2, 4)
+    result = ask(
+        operation(default_script),
+        REQUEST,
+        record(),
+        bf16_parameters(SDPA, dims),
+        OUTPUT_PATH,
+        LogKeeper(),
+        log_path=LOG_PATH,
+        **SDPA_TOLERANCE,
+    )
+    assert result == {
+        "outcome": "pass",
+        "shape": {"m": 2, "l": 3, "h": 4, "h_kv": 2, "d": 4},
+        "draws": BF16_DRAWS,
+        "tolerance": {"rtol": 0.0, "atol": 2.154e-3},
+        "counts": [{"failed": 0, "non_finite": 0, "cache_differs": 0}] * BF16_DRAWS,
+    }
+
+
+def test_the_sdpa_answer_follows_from_the_parameters_alone():
+    parameters = bf16_parameters(SDPA, (2, 3, 4, 2, 4))
+    first = answer_for(parameters)
+    assert answer_for(parameters, output_path=None) == first
+    other = answer_for(parameters._replace(seed=SEED + 1))
+    assert other != first
+    assert len(other) == len(first)
+
+
+@pytest.mark.parametrize(
+    "dims",
+    [
+        (2, 1, 4, 2, 4),
+        (2, 3, 3, 2, 4),
+        (2, 3, 4, 0, 4),
+        (2, 3, 4, 2),
+        [2, 3, 4, 2, 4],
+        (2, 3, True, 2, 4),
+    ],
+)
+def test_sdpa_dims_the_harness_refuses_are_refused_before_a_draw(dims, monkeypatch):
+    monkeypatch.setattr(bf16_sdpa_kv_cache_arrays, "draw_inputs", never_drawn)
+    refused(bf16_parameters(SDPA, dims), VerificationArgumentError)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"), [("seed", -1), ("seed", 2**64), ("draws", 0), ("draws", True)]
+)
+def test_an_sdpa_seed_or_draws_the_harness_refuses_is_refused(name, value, monkeypatch):
+    monkeypatch.setattr(bf16_sdpa_kv_cache_arrays, "draw_inputs", never_drawn)
+    parameters = bf16_parameters(SDPA, (1, 1, 1, 1, 1))._replace(**{name: value})
+    refused(parameters, VerificationArgumentError)
+
+
+def test_an_sdpa_parameters_of_another_dtype_is_refused_first(monkeypatch):
+    monkeypatch.setattr(bf16_sdpa_kv_cache_arrays, "draw_inputs", never_drawn)
+    parameters = bf16_parameters(SDPA, (2, 1, 4, 2, 4), dtype="fp32")
+    error = refused(parameters, ValueError)
+    assert str(error).startswith("parameters.dtype: ")
+
+
+def test_a_kind_that_only_equals_sdpa_is_answered_by_the_other_harness():
+    class Kind(str):
+        pass
+
+    refused(bf16_parameters(Kind(SDPA), (1, 1, 1, 1, 1)), VerificationArgumentError)

@@ -877,3 +877,45 @@ def test_bf16_parameters_the_judge_refuses_pass_through_after_the_call(kind, dim
     assert len(operation.calls) == 1
     with pytest.raises(ValueError):
         asked(Recording("exit_status"), parameters, BF16_TOLERANCE)
+
+
+# An sdpa_kv_cache check (ADR-0177 decision 3, HQ-0077; ADR-0165 decision 8)
+
+# Test values, not dimensions, draws, a seed or a tolerance of the package.
+SDPA_PARAMETERS = Bf16CheckParameters(SEED, 2, "sdpa_kv_cache", "bf16", (1, 2, 3, 3, 2))
+SDPA_TOLERANCE = {"rtol": 0, "atol": 2.154e-3}
+SDPA_REPORT = mock_check.default_script(None, None, None, SDPA_PARAMETERS, None, None)
+
+
+def test_sdpa_parameters_reach_the_operation_and_are_judged_with_the_cache():
+    operation = Recording(SDPA_REPORT)
+    result = asked(operation, SDPA_PARAMETERS, SDPA_TOLERANCE)
+    assert operation.calls[0][0][2] is SDPA_PARAMETERS
+    assert result == {
+        "outcome": "pass",
+        "shape": {"m": 1, "l": 2, "h": 3, "h_kv": 3, "d": 2},
+        "draws": 2,
+        "tolerance": {"rtol": 0.0, "atol": 2.154e-3},
+        "counts": [{"failed": 0, "non_finite": 0, "cache_differs": 0}] * 2,
+    }
+    changed = bytearray(SDPA_REPORT)
+    struct.pack_into("=H", changed, 4 + 2 * 6, 0x1234)
+    failed = asked(Recording(bytes(changed)), SDPA_PARAMETERS, SDPA_TOLERANCE)
+    assert failed["outcome"] == "fail"
+    assert failed["counts"][0] == {"failed": 0, "non_finite": 0, "cache_differs": 1}
+
+
+def test_an_sdpa_condition_and_an_sdpa_answer_of_neither_form():
+    broken = asked(Recording("exit_status"), SDPA_PARAMETERS, SDPA_TOLERANCE)
+    assert broken["condition"] == "exit_status"
+    assert broken["shape"] == {"m": 1, "l": 2, "h": 3, "h_kv": 3, "d": 2}
+    with pytest.raises(OperationAnswerInvalid):
+        asked(Recording(bytearray(SDPA_REPORT)), SDPA_PARAMETERS, SDPA_TOLERANCE)
+
+
+def test_sdpa_dims_the_judge_refuses_pass_through_after_the_call():
+    operation = Recording(SDPA_REPORT)
+    parameters = SDPA_PARAMETERS._replace(dims=(2, 1, 3, 3, 2))
+    with pytest.raises(VerificationArgumentError):
+        asked(operation, parameters, SDPA_TOLERANCE)
+    assert len(operation.calls) == 1

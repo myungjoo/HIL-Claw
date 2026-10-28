@@ -18,6 +18,7 @@ from hilclaw.check_judging import (
     from_report,
 )
 from hilclaw.check_parameters import Bf16CheckParameters
+from hilclaw.harness.bf16_sdpa_kv_cache_verification import DrawCounts
 from hilclaw.harness.verification import (
     END_MARK,
     Broken,
@@ -624,6 +625,7 @@ def test_module_imports_the_builder_and_the_judging_only_and_has_no_entry():
         "hilclaw.harness",
         "hilclaw.harness.verification",
         "hilclaw.harness.bf16_verification",
+        "hilclaw.harness.bf16_sdpa_kv_cache_verification",
     }
     assert not imported & {"secrets", "random", "os", "time"}
     assert not hasattr(check_judging, "main")
@@ -775,3 +777,182 @@ def test_a_bf16_judgement_of_an_unknown_kind_is_refused():
     judgement = Judgement(Broken.TIMEOUT, None, None)
     with pytest.raises(ValueError, match=r"^kind: "):
         from_bf16_judgement(judgement, "rope", (1, 2), **BF16_BUILD)
+
+
+# An sdpa_kv_cache check (ADR-0177 decision 3, HQ-0077; ADR-0165 decision 8)
+
+# Test values, not dimensions, draws, a seed or a tolerance of the package.
+SDPA = "sdpa_kv_cache"
+SDPA_CASES = {
+    "h-multiple-of-h_kv": (
+        (2, 3, 4, 2, 4),
+        {"m": 2, "l": 3, "h": 4, "h_kv": 2, "d": 4},
+    ),
+    "h-equals-h_kv": ((1, 2, 3, 3, 2), {"m": 1, "l": 2, "h": 3, "h_kv": 3, "d": 2}),
+}
+SDPA_DIMS, SDPA_SHAPE = SDPA_CASES["h-multiple-of-h_kv"]
+SDPA_CALL = {"draws": 2, "seed": SEED, "rtol": 0, "atol": 2.154e-3}
+SDPA_BUILD = {"draws": 2, "rtol": 0, "atol": 2.154e-3}
+SDPA_ZEROS = [{"failed": 0, "non_finite": 0, "cache_differs": 0}] * 2
+
+
+def sdpa_offsets(dims, draw):
+    m, l, h, h_kv, d = dims
+    block = 4 + 2 * m * h * d + 4 * (l + 2 * m) * h_kv * d
+    out = draw * block + 4
+    return out, out + 2 * m * h * d
+
+
+def with_patterns(report, changes):
+    changed = bytearray(report)
+    for offset, pattern in changes:
+        struct.pack_into("=H", changed, offset, pattern)
+    return bytes(changed)
+
+
+@pytest.mark.parametrize("case", list(SDPA_CASES))
+def test_a_conforming_sdpa_report_is_judged_pass(case):
+    dims, shape = SDPA_CASES[case]
+    result = from_bf16_report(bf16_report(SDPA, dims), SDPA, dims, **SDPA_CALL)
+    assert result == {
+        "outcome": "pass",
+        "shape": shape,
+        "draws": 2,
+        "tolerance": {"rtol": 0.0, "atol": 2.154e-3},
+        "counts": SDPA_ZEROS,
+    }
+
+
+@pytest.mark.parametrize(
+    ("where", "expected"),
+    [
+        ("out", {"failed": 1, "non_finite": 0, "cache_differs": 0}),
+        ("cache", {"failed": 0, "non_finite": 0, "cache_differs": 1}),
+        ("both", {"failed": 1, "non_finite": 0, "cache_differs": 1}),
+    ],
+)
+def test_an_sdpa_report_fails_by_out_by_the_cache_or_by_both(where, expected):
+    out, cache = sdpa_offsets(SDPA_DIMS, 1)
+    changes = {"out": [(out, 0x4780)], "cache": [(cache, 0x0000)]}
+    changes["both"] = changes["out"] + changes["cache"]
+    report = with_patterns(bf16_report(SDPA, SDPA_DIMS), changes[where])
+    result = from_bf16_report(report, SDPA, SDPA_DIMS, **SDPA_CALL)
+    assert result["outcome"] == "fail"
+    assert result["counts"] == [SDPA_ZEROS[0], expected]
+
+
+def test_an_sdpa_report_of_the_wrong_form_or_check_value_is_broken():
+    good = bf16_report(SDPA, SDPA_DIMS)
+    short = from_bf16_report(good[:-4], SDPA, SDPA_DIMS, **SDPA_CALL)
+    assert short == {
+        "outcome": "broken",
+        "condition": "report_form",
+        "shape": SDPA_SHAPE,
+        "draws": 2,
+        "tolerance": {"rtol": 0.0, "atol": 2.154e-3},
+    }
+    longer = from_bf16_report(good + b"\0\0", SDPA, SDPA_DIMS, **SDPA_CALL)
+    assert longer["condition"] == "report_form"
+    mismatched = bytearray(good)
+    mismatched[1] ^= 0x10
+    result = from_bf16_report(bytes(mismatched), SDPA, SDPA_DIMS, **SDPA_CALL)
+    assert result["condition"] == "check_value"
+    other_seed = from_bf16_report(good, SDPA, SDPA_DIMS, **{**SDPA_CALL, "seed": 1})
+    assert other_seed["condition"] == "check_value"
+
+
+@pytest.mark.parametrize(
+    "dims",
+    [(2, 1, 4, 2, 4), (2, 3, 3, 2, 4), (2, 3, 4), (2, 3, 4, 2, 0), [2, 3, 4, 2, 4]],
+)
+def test_an_sdpa_report_of_dims_the_judge_refuses_raises(dims):
+    with pytest.raises(VerificationArgumentError):
+        from_bf16_report(b"", SDPA, dims, **SDPA_CALL)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"), [("draws", 0), ("seed", -1), ("rtol", -1.0), ("atol", None)]
+)
+def test_an_sdpa_report_of_values_the_judge_refuses_raises(name, value):
+    with pytest.raises(VerificationArgumentError):
+        from_bf16_report(b"", SDPA, SDPA_DIMS, **{**SDPA_CALL, name: value})
+
+
+def test_an_sdpa_report_that_is_no_bytes_raises_type_error():
+    with pytest.raises(TypeError, match=r"^report: "):
+        from_bf16_report(bytearray(b"x"), SDPA, SDPA_DIMS, **SDPA_CALL)
+
+
+def test_a_kind_that_only_equals_sdpa_is_judged_by_the_other_judge():
+    class Kind(str):
+        pass
+
+    with pytest.raises(VerificationArgumentError):
+        from_bf16_report(b"", Kind(SDPA), SDPA_DIMS, **SDPA_CALL)
+
+
+@pytest.mark.parametrize("member", list(Broken))
+def test_a_broken_sdpa_judgement_gives_its_condition(member):
+    result = from_bf16_judgement(
+        Judgement(member, None, None), SDPA, SDPA_DIMS, **SDPA_BUILD
+    )
+    assert result["condition"] == condition_of(member)
+    assert result["shape"] == SDPA_SHAPE
+    assert "counts" not in result
+
+
+@pytest.mark.parametrize(
+    ("counts", "verdict"),
+    [
+        ((DrawCounts(0, 0, 0), DrawCounts(0, 0, 0)), Verdict.PASS),
+        ((DrawCounts(0, 0, 0), DrawCounts(2, 1, 0)), Verdict.FAIL),
+        ((DrawCounts(0, 0, 3), DrawCounts(0, 0, 0)), Verdict.FAIL),
+        ((DrawCounts(1, 0, 1), DrawCounts(0, 0, 0)), Verdict.FAIL),
+    ],
+    ids=["pass", "failed-only", "cache-only", "both"],
+)
+def test_a_completed_sdpa_judgement_gives_its_counts_and_outcome(counts, verdict):
+    result = from_bf16_judgement(
+        Judgement(None, verdict, counts), SDPA, SDPA_DIMS, **SDPA_BUILD
+    )
+    assert result["outcome"] == {Verdict.PASS: "pass", Verdict.FAIL: "fail"}[verdict]
+    assert result["counts"] == [
+        dict(zip(("failed", "non_finite", "cache_differs"), entry, strict=True))
+        for entry in counts
+    ]
+
+
+@pytest.mark.parametrize(
+    ("judgement", "expected"),
+    [
+        (Judgement(None, Verdict.PASS, (DrawCounts(0, 0, 1),) * 2), ValueError),
+        (Judgement(None, Verdict.PASS, (DrawCounts(1, 0, 0),) * 2), ValueError),
+        (Judgement(None, Verdict.FAIL, (DrawCounts(0, 0, 0),) * 2), ValueError),
+        (Judgement(None, Verdict.PASS, ((0, 0), (0, 0))), ValueError),
+        (Judgement(None, Verdict.PASS, (DrawCounts(0, 0, -1),) * 2), ValueError),
+        (Judgement(None, Verdict.PASS, ((0, 0, 1.0),) * 2), TypeError),
+        (Judgement(Broken.CHECK_VALUE, Verdict.FAIL, None), ValueError),
+        (Judgement(None, None, (DrawCounts(0, 0, 0),) * 2), ValueError),
+        ((None, Verdict.PASS, (DrawCounts(0, 0, 0),) * 2), TypeError),
+    ],
+)
+def test_an_sdpa_judgement_that_does_not_agree_is_refused(judgement, expected):
+    with pytest.raises(expected):
+        from_bf16_judgement(judgement, SDPA, SDPA_DIMS, **SDPA_BUILD)
+
+
+def test_an_sdpa_judgement_beside_counts_of_the_other_outcome_names_the_verdict():
+    judgement = Judgement(
+        None, Verdict.PASS, (DrawCounts(0, 0, 0), DrawCounts(0, 0, 4))
+    )
+    with pytest.raises(ValueError, match=r"^judgement\.verdict: PASS beside .* fail"):
+        from_bf16_judgement(judgement, SDPA, SDPA_DIMS, **SDPA_BUILD)
+
+
+def test_rope_is_still_refused_by_the_judge_and_the_builder():
+    with pytest.raises(VerificationArgumentError):
+        from_bf16_report(b"", "rope", (1, 2, 2), **SDPA_CALL)
+    with pytest.raises(ValueError, match=r"^kind: "):
+        from_bf16_judgement(
+            Judgement(Broken.TIMEOUT, None, None), "rope", (1, 2, 2), **SDPA_BUILD
+        )

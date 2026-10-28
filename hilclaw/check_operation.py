@@ -225,8 +225,7 @@ def ask(
       :class:`hilclaw.check_parameters.CheckParameters` or, for a check of a
       bf16 kind (ADR-0177 decision 3), exactly a
       :class:`hilclaw.check_parameters.Bf16CheckParameters` whose ``dtype``
-      is :data:`hilclaw.check_parameters.BF16`. No caller of the tool hands
-      the second type yet.
+      is :data:`hilclaw.check_parameters.BF16`, ``sdpa_kv_cache`` included.
     - ``output_path``: the output path of the call (ADR-0056 decision 3). It
       is handed on as it is and not read, whatever its type is.
     - ``keeper``: the log keeper of the call (ADR-0078 decision 6), exactly a

@@ -29,8 +29,13 @@ contract, computed with :mod:`hilclaw.harness.bf16_verification_arrays`: per
 draw the check value of the drawn operands and each output element the bf16
 value nearest to the float64 reference of the kind, a tie going to the even
 one. Of all bf16 values it is the nearest, so a tolerance under which a
-conforming kernel passes (ADR-0163 decision 9) passes it as well. No caller
-of the tool hands such parameters yet.
+conforming kernel passes (ADR-0163 decision 9) passes it as well. For
+``sdpa_kv_cache`` it is the complete report of ADR-0165 decision 8, computed
+with :mod:`hilclaw.harness.bf16_sdpa_kv_cache_arrays` in the same way
+(ADR-0177 decision 3): per draw the check value of the drawn inputs and the
+two allocations before the call, ``out`` as the bf16 values nearest to the
+float64 reference, and the two allocations as a conforming kernel leaves
+them, so the cache comparison finds no difference.
 
 Choices that are this module's own and no rule of a record:
 
@@ -81,6 +86,8 @@ import numpy as np
 
 from hilclaw import check_parameters
 from hilclaw.harness import (
+    bf16_sdpa_kv_cache_arrays,
+    bf16_sdpa_kv_cache_verification,
     bf16_verification,
     bf16_verification_arrays,
     verification,
@@ -88,6 +95,7 @@ from hilclaw.harness import (
 )
 
 _TOOL = "correctness.check"
+_SDPA = "sdpa_kv_cache"
 
 
 class _Operation:
@@ -170,11 +178,24 @@ def default_script(tool, request, hw_profile, parameters, output_path, keeper):
     the elements of the float64 reference of the kind
     (:func:`hilclaw.harness.bf16_verification_arrays.reference`), a tie
     going to the value whose last significand bit is 0; then the end mark.
+    For the kind ``sdpa_kv_cache`` the answer is the complete report of
+    ADR-0165 decision 8 for its dims ``(m, l, h, h_kv, d)`` and draws,
+    ``draws * (4 + 2*m*h*d + 4*(l + 2*m)*h_kv*d) + 4`` bytes: for each draw
+    the check value of the inputs
+    :func:`hilclaw.harness.bf16_sdpa_kv_cache_arrays.draw_inputs` gives and
+    of the two allocations before the call, then the ``m*h*d`` patterns of
+    the bf16 values nearest to the elements of its float64 reference, a tie
+    going to the even one, then the ``cache_k`` and the ``cache_v``
+    allocation as
+    :func:`hilclaw.harness.bf16_sdpa_kv_cache_arrays.allocation_after`
+    gives them; then the end mark.
     Raised first for it: :class:`ValueError` for a ``dtype`` that is not
     :data:`hilclaw.check_parameters.BF16`, then, unchanged, the
     ``VerificationArgumentError`` of
-    :func:`hilclaw.harness.bf16_verification.program_arguments` for a kind,
-    dims, draws or seed it refuses.
+    :func:`hilclaw.harness.bf16_verification.program_arguments`, or for
+    ``sdpa_kv_cache`` of
+    :func:`hilclaw.harness.bf16_sdpa_kv_cache_verification.program_arguments`,
+    for a kind, dims, draws or seed it refuses.
 
     Raised, in this order and before any input is drawn: :class:`TypeError`
     for ``parameters`` that are neither exactly a ``CheckParameters`` nor
@@ -215,6 +236,8 @@ def _bf16_report(parameters):
     seed, draws, kind, dtype, dims = parameters
     if dtype != check_parameters.BF16:
         raise ValueError(f"parameters.dtype: must be {check_parameters.BF16!r}")
+    if type(kind) is str and kind == _SDPA:
+        return _sdpa_report(dims, draws, seed)
     bf16_verification.program_arguments(kind, dims, draws=draws, seed=seed)
     arrays = bf16_verification_arrays
     block = 4 + 2 * dims[0] * dims[-1]
@@ -225,6 +248,37 @@ def _bf16_report(parameters):
         struct.pack_into("=I", report, start, arrays.check_value(first, second))
         output = _nearest_bf16(arrays.reference(kind, first, second))
         report[start + 4 : start + block] = output.tobytes()
+    report[draws * block :] = bf16_verification.END_MARK
+    return bytes(report)
+
+
+def _sdpa_report(dims, draws, seed):
+    bf16_sdpa_kv_cache_verification.program_arguments(dims, draws=draws, seed=seed)
+    arrays = bf16_sdpa_kv_cache_arrays
+    m, l, h, h_kv, d = dims
+    output = 2 * m * h * d
+    block = 4 + output + 4 * (l + 2 * m) * h_kv * d
+    report = bytearray(draws * block + len(bf16_verification.END_MARK))
+    for draw in range(draws):
+        inputs = arrays.draw_inputs(dims, seed=seed, draw=draw)
+        before = [
+            arrays.allocation_before(dims, cached)
+            for cached in (inputs.cached_k, inputs.cached_v)
+        ]
+        value = arrays.check_value(dims, *inputs[:3], *before)
+        start = draw * block
+        struct.pack_into("=I", report, start, value)
+        out = _nearest_bf16(arrays.reference(dims, *inputs))
+        after = [
+            arrays.allocation_after(dims, cached, new)
+            for cached, new in (
+                (inputs.cached_k, inputs.k_new),
+                (inputs.cached_v, inputs.v_new),
+            )
+        ]
+        report[start + 4 : start + block] = b"".join(
+            part.tobytes() for part in (out, *after)
+        )
     report[draws * block :] = bf16_verification.END_MARK
     return bytes(report)
 

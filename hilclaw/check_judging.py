@@ -24,10 +24,12 @@ the two:
   (``ARCHITECTURE/decisions/ADR-0177-od18-od6-contract-table.md``
   decision 3), and whose result is built by
   :func:`hilclaw.check_result.bf16_completed` or
-  :func:`hilclaw.check_result.bf16_broken`. The verdict classes and the
-  conditions are those of the first case: ADR-0163 decision 8 has them as
-  ADR-0017 decision 7, with the same types. No caller of the tool calls
-  them yet.
+  :func:`hilclaw.check_result.bf16_broken`. For ``sdpa_kv_cache`` the
+  judge is :func:`hilclaw.harness.bf16_sdpa_kv_cache_verification.judge_report`
+  with the dimensions (ADR-0165 decision 8), whose counts per draw also hold
+  the number of cache elements that differ. The verdict classes and the
+  conditions are those of the first case: ADR-0163 and ADR-0165 decision 8
+  have them as ADR-0017 decision 7, with the same types.
 
 Choices that are this module's own and no rule of a record:
 
@@ -60,14 +62,20 @@ reaches a caller. It draws no seed and reads no random source or clock. It
 reads no file of a run and writes none. It gives no default of any value: no
 number of draws, no tolerance, no dimension and no seed. It stores nothing,
 keeps nothing between calls and has no command-line entry. It imports
-:mod:`hilclaw.check_result`, :mod:`hilclaw.harness.verification` and
-:mod:`hilclaw.harness.bf16_verification` and nothing else.
+:mod:`hilclaw.check_result`, :mod:`hilclaw.harness.verification`,
+:mod:`hilclaw.harness.bf16_verification` and
+:mod:`hilclaw.harness.bf16_sdpa_kv_cache_verification` and nothing else.
 """
 
 from hilclaw import check_result
-from hilclaw.harness import bf16_verification, verification
+from hilclaw.harness import (
+    bf16_sdpa_kv_cache_verification,
+    bf16_verification,
+    verification,
+)
 
 _CONDITIONS = dict(zip(verification.Broken, check_result.CONDITIONS[-4:], strict=True))
+_SDPA = "sdpa_kv_cache"
 _OUTCOMES = {
     verification.Verdict.PASS: check_result.PASS,
     verification.Verdict.FAIL: check_result.FAIL,
@@ -195,22 +203,27 @@ def from_bf16_report(report, kind, dims, *, draws, seed, rtol, atol):
 
     The report is judged by
     :func:`hilclaw.harness.bf16_verification.judge_report` with ``kind``,
-    ``dims``, ``draws``, ``seed``, ``rtol`` and ``atol``, and its judgement is
+    ``dims``, ``draws``, ``seed``, ``rtol`` and ``atol``, or, when ``kind``
+    is exactly the ``str`` ``"sdpa_kv_cache"``, by
+    :func:`hilclaw.harness.bf16_sdpa_kv_cache_verification.judge_report`
+    with all of them but ``kind`` (ADR-0165 decision 8); its judgement is
     handed to :func:`from_bf16_judgement` with the same values but ``seed``,
     which is no member of the result (ADR-0042 decision 6). All but
     ``report``, ``kind`` and ``dims`` are keyword-only and none has a default.
 
     What each argument must be, the order of the checks and what is raised
-    are those of ``judge_report`` and are passed on unchanged:
+    are those of the ``judge_report`` called and are passed on unchanged:
     :class:`hilclaw.harness.verification_arrays.VerificationArgumentError`
     for a kind, dimensions, number of draws, seed or tolerance it refuses,
     then :class:`TypeError` for a ``report`` that is not exactly ``bytes``,
     and what NumPy raises for arrays it cannot allocate. Nothing is returned
     then.
     """
-    judgement = bf16_verification.judge_report(
-        report, kind, dims, draws=draws, seed=seed, rtol=rtol, atol=atol
-    )
+    common = {"draws": draws, "seed": seed, "rtol": rtol, "atol": atol}
+    if type(kind) is str and kind == _SDPA:
+        judgement = bf16_sdpa_kv_cache_verification.judge_report(report, dims, **common)
+    else:
+        judgement = bf16_verification.judge_report(report, kind, dims, **common)
     return from_bf16_judgement(judgement, kind, dims, draws=draws, rtol=rtol, atol=atol)
 
 
