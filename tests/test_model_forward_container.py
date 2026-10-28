@@ -28,7 +28,7 @@ from hilclaw import (
     standin_image,
 )
 from hilclaw.clang_build import BuildResult
-from hilclaw.model_binding import KernelReference
+from hilclaw.model_binding import BindingEntry, KernelReference
 from hilclaw.model_execute import BuildFailed
 from hilclaw.model_forward_container import (
     IMAGE_REFUSED,
@@ -662,6 +662,100 @@ def test_a_kernel_with_several_sources_is_built_from_all_of_them(
     assert client.seen["kernel-0/helper.c"] == b"int helper;\n"
 
 
+def kernels_in(directory, flags=forward.KERNEL_FLAGS):
+    return {
+        kind: KernelReference(
+            (directory / f"{kind}.c",), forward_execute.CONTRACTS[kind], flags
+        )
+        for kind in KINDS
+    }
+
+
+def test_the_headers_lie_beside_the_sources_and_are_not_compiled(
+    client, parent, sources
+):
+    (sources / "gemm.h").write_bytes(b"#define GEMM 1\n")
+    (sources / "util.h").write_bytes(b"#define UTIL 2\n")
+    kernels = kernels_in(sources)
+    kernels["gemm"] = kernels["gemm"]._replace(
+        headers=(sources / "gemm.h", str(sources / "util.h"))
+    )
+    result = run(parent, forward_execute.binding_of(kernels))
+    assert result.run.failed is None
+    index = kernel_order(result.check).index("gemm")
+    assert client.seen[f"kernel-{index}/gemm.h"] == b"#define GEMM 1\n"
+    assert client.seen[f"kernel-{index}/util.h"] == b"#define UTIL 2\n"
+    assert client.seen[f"kernel-{index}/gemm.c"] == b"/* gemm */\n"
+    assert sorted(
+        name for name in client.seen if name.startswith(f"kernel-{index}/")
+    ) == [f"kernel-{index}/{name}" for name in ("gemm.c", "gemm.h", "util.h")]
+    assert started(client.runs()[index])[2] == [
+        *forward.KERNEL_FLAGS,
+        *model_build.LIBRARY_FLAGS,
+        f"{INSIDE}/kernel-{index}/gemm.c",
+        "-o",
+        f"{INSIDE}/kernel-{index}.so",
+    ]
+    for command in client.runs():
+        assert not any(argument.endswith(".h") for argument in command)
+    assert leftovers(parent) == []
+
+
+@pytest.mark.parametrize("clash", ["source", "header"])
+def test_a_header_of_a_taken_name_raises_entry_exists(client, parent, sources, clash):
+    other = sources / "other"
+    other.mkdir()
+    (other / "gemm.c").write_bytes(b"/* a header named as the source */\n")
+    (sources / "k.h").write_bytes(b"#define K 1\n")
+    (other / "k.h").write_bytes(b"#define K 2\n")
+    headers = {
+        "source": (other / "gemm.c",),
+        "header": (sources / "k.h", other / "k.h"),
+    }[clash]
+    kernels = kernels_in(sources)
+    kernels["gemm"] = kernels["gemm"]._replace(headers=headers)
+    with pytest.raises(standin_copies.CopyError) as raised:
+        run(parent, forward_execute.binding_of(kernels))
+    assert raised.value.failure == standin_copies.ENTRY_EXISTS
+    assert client.calls == []
+    assert leftovers(parent) == []
+
+
+@pytest.mark.parametrize("kind", ["missing", "directory"])
+def test_a_header_that_is_no_file_raises_and_leaves_nothing(
+    client, parent, sources, kind
+):
+    header = sources / "k.h"
+    expected = standin_copies.KERNEL_FILE_UNREADABLE
+    if kind == "directory":
+        header.mkdir()
+        expected = standin_copies.KERNEL_FILE_CHANGED
+    kernels = kernels_in(sources)
+    kernels["rope"] = kernels["rope"]._replace(headers=(header,))
+    with pytest.raises(standin_copies.CopyError) as raised:
+        run(parent, forward_execute.binding_of(kernels))
+    assert raised.value.failure == expected
+    assert client.calls == []
+    assert leftovers(parent) == []
+
+
+def test_kernels_equal_but_for_headers_are_built_as_two(client, parent, sources):
+    (sources / "k.h").write_bytes(b"#define K 1\n")
+    binding = binding_in(sources)
+    gemm = binding["qkv"][0].kernel
+    with_header = gemm._replace(headers=(sources / "k.h",))
+    binding["qkv"] = [BindingEntry(with_header, "every")]
+    result = run(parent, binding)
+    assert result.run.failed is None
+    assert len(client.runs()) == len(KINDS) + 3
+    kernels = model_forward_execute._distinct_kernels(result.check.calls)
+    assert len(kernels) == len(KINDS) + 1
+    assert with_header in kernels and gemm in kernels
+    index = kernels.index(with_header)
+    assert client.seen[f"kernel-{index}/k.h"] == b"#define K 1\n"
+    assert f"kernel-{kernels.index(gemm)}/k.h" not in client.seen
+
+
 def test_a_failed_input_encoding_passes_after_removal(
     client, monkeypatch, parent, sources
 ):
@@ -850,18 +944,23 @@ def real_client(clang_program, host_run):
     return act
 
 
+@pytest.mark.parametrize("header", [None, "fx.h"])
 @pytest.mark.parametrize("last", [False, True])
 def test_a_greedy_generation_from_attempts_through_a_stub_client(
     clang,  # noqa: F811
     monkeypatch,
     tmp_path,
     last,
+    header,
 ):
     monkeypatch.setattr(local_run, "run", real_client(shutil.which("clang"), HOST_RUN))
     root = tmp_path / "data"
     root.mkdir()
-    attempts.write_forward_attempts(root)
+    attempts.write_forward_attempts(root, header=header)
     binding = attempts.attempt_binding(root)
+    for entries in binding.values():
+        for entry in entries:
+            assert len(entry.kernel.headers) == (header is not None)
     seed, prompt, passes = 73, 3, 3
     model = reference.sharp_model(seed, prompt, passes)
     rows = "last" if last else "all"

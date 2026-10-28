@@ -213,11 +213,17 @@ class ModelDimensions(NamedTuple):
 
 
 class KernelReference(NamedTuple):
-    """A kernel: its source paths, the ``task.contract`` of its spec, and its build flags (not interpreted)."""
+    """A kernel: its source paths, the ``task.contract`` of its spec, its build flags (not interpreted) and its headers.
+
+    ``headers`` holds the paths of the kernel's own header files (ADR-0055
+    R5). Where a build copies the sources, it copies the headers beside them;
+    a header is never handed to the compiler. It defaults to ``()``.
+    """
 
     sources: tuple
     contract: object
     flags: tuple
+    headers: tuple = ()
 
 
 class BindingEntry(NamedTuple):
@@ -1141,10 +1147,14 @@ def _entry(entry, site, members):
         )
     if type(kernel.sources) is not tuple or type(kernel.flags) is not tuple:
         raise TypeError(f"{site}: kernel sources and flags must be tuples")
+    if type(kernel.headers) is not tuple:
+        raise TypeError(f"{site}: kernel headers must be a tuple")
     if not kernel.sources:
         raise ValueError(f"{site}: a kernel has no source")
     if not all(isinstance(path, (str, os.PathLike)) for path in kernel.sources):
         raise TypeError(f"{site}: a kernel source is not a str or os.PathLike")
+    if not all(isinstance(path, (str, os.PathLike)) for path in kernel.headers):
+        raise TypeError(f"{site}: a kernel header is not a str or os.PathLike")
     if not all(isinstance(flag, str) for flag in kernel.flags):
         raise TypeError(f"{site}: a kernel flag is not a str")
     shapes = entry.shapes

@@ -122,7 +122,7 @@ def test_named_tuples():
         "kv_heads",
         "head_dim",
     )
-    assert KernelReference._fields == ("sources", "contract", "flags")
+    assert KernelReference._fields == ("sources", "contract", "flags", "headers")
     assert BindingEntry._fields == ("kernel", "shapes")
     assert Outcome._fields == ("kind", "call_site", "shape", "reason")
     assert BindingCheck._fields == ("ok", "outcomes", "calls")
@@ -693,6 +693,58 @@ def test_binding_entry_types():
 )
 def test_binding_kernel_reference_refused(reference, kind):
     bad_binding(kind, with_entry("o", BindingEntry(reference, "every")))
+
+
+class _Headers(tuple):
+    pass
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        [Path("o.h")],
+        (b"o.h",),
+        ("o.h", 3),
+        (None,),
+        _Headers(("o.h",)),
+        "o.h",
+        None,
+    ],
+)
+def test_binding_kernel_headers_refused(headers):
+    reference = KernelReference(("o.c",), {}, (), headers)
+    error = bad_binding(TypeError, with_entry("o", BindingEntry(reference, "every")))
+    assert str(error).startswith("o: ")
+    assert "header" in str(error)
+
+
+def test_kernel_reference_headers_default_to_empty():
+    reference = KernelReference(("o.c",), {}, ())
+    assert reference.headers == ()
+    assert KernelReference._field_defaults == {"headers": ()}
+
+
+def test_check_accepts_kernel_headers():
+    binding = every_binding()
+    binding["o"] = (
+        BindingEntry(
+            KernelReference(
+                ("o.c",),
+                gemm_contract.task_contract(1, 1, 1),
+                (),
+                (Path("o.h"), "p.h"),
+            ),
+            "every",
+        ),
+    )
+    assert run(binding).ok
+    binding["o"] = (
+        BindingEntry(
+            KernelReference(("o.c",), gemm_contract.task_contract(1, 1, 1), (), ()),
+            "every",
+        ),
+    )
+    assert run(binding).ok
 
 
 @pytest.mark.parametrize(
