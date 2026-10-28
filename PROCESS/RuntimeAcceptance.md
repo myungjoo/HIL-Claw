@@ -378,3 +378,23 @@
   ADR-0175(첫 사례 turn 세션의 표준 출력·표준 오류의 행선; OD-19 일부; T-0492)의 런타임 인수 항목 (xci).
 
   (xci) A `-p` turn session started with its standard output on the entry's standard error writes its reply and every message about why it stopped, such as an expired login, a usage limit or an error, only to its standard output and standard error, and not to the terminal or another descriptor. Nothing of it then reaches the entry's standard output, and a person reading the entry's standard error after a failed turn finds there what the session said.
+
+### RA-0045
+
+- 상태: 미확인
+- 출처: task T-0502 (ADR-0179)의 Result (등록 2026-10-28)
+- 내용:
+
+  ADR-0179(cpu_standin의 bf16 검증 빌드·프로세스 시간 상한; OD-14·OD-18 일부; T-0502)의 런타임 인수 항목 1.
+
+  Check that the ADR-0179 limits let a correct, untuned kernel of each of bf16 `gemm`, `rmsnorm`, `elementwise_add`, `swiglu` and `sdpa_kv_cache` complete at the shapes of ADR-0152, and end one that does not end. Check this on each C-7 system, inside the container of ADR-0144. In particular, check that 10 per element covers drawing, checking and reporting the 2.6e8 input elements of lm_head at M = 1, and the 131 MB report per draw at M = 512 through the container client.
+
+### RA-0046
+
+- 상태: 미확인
+- 출처: task T-0502 (ADR-0179)의 Result (등록 2026-10-28)
+- 내용:
+
+  ADR-0179(cpu_standin의 bf16 검증 빌드·프로세스 시간 상한; OD-14·OD-18 일부; T-0502)의 런타임 인수 항목 2.
+
+  Find the number of draws up to which the tool function's own work (regeneration and the float64 reference) stays inside the 240 s left in the MCP idle window. Do this for bf16 `gemm` at lm_head M = 512 and at the projections at M = 512.

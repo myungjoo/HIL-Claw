@@ -2,7 +2,7 @@
 id: T-0502
 title: Write the ADR on the time limits of the bf16 verification builds and processes at cpu_standin, build the cpu_standin operation of correctness.check for the five bf16 kinds, and set their checked flags (ADR-0177 slice 2, last part)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-4, OD-14, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0501]
@@ -71,7 +71,7 @@ hq: []
 
 ## Result
 
-**DONE**: PR #315 was squash-merged after review and green CI. The merge commit is in the driver's wrap-up (the executor's summary).
+**DONE**: PR #315 was squash-merged as `8e0e84d3` after review and green CI.
 
 **Review**: 2 rounds, both Approve (dev-reviewer).
 - Round 1 (PR comment 6464946788): Approve with two Nits.
@@ -79,7 +79,7 @@ hq: []
   - Nit 2, a named header constant in `bf16_verification_build` (outside `touchesFiles`), was optional and was not taken.
 - Round 2 (PR comment 6465204573): Approve. It was needed because the full local suite and CI run 1 found two `test_check_admission` assertions that pinned the old refusal; they were changed after the round-1 Approve.
 
-**Owner notice** (criterion 8, DRIVER §9): posted on issue #5 after the merge; the URL is in the executor's summary.
+**Owner notice** (criterion 8, DRIVER §9): posted on issue #5 after the merge: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6465431312.
 
 - **ADR**: `ARCHITECTURE/decisions/ADR-0179-od14-bf16-standin-check-time-limits.md`, part of OD-14 and of OD-18 sub-question ⑱ (다).
   - The process limit keeps ADR-0117's rule unchanged: `min(1500, 10 + draws * (1 + W / 2e8))`.
@@ -107,7 +107,7 @@ hq: []
   - In `test_check_admission`, `test_a_bf16_record_the_predicate_refuses_is_not_covered` now refuses with a test-bound `Recorder(False)` and asserts that `check_covers` admits at the bf16 step. In `test_an_sdpa_record_is_refused_by_the_registered_predicate_and_an_fp32_step`, renamed `..._admitted_..._not_an_fp32_step`, the refusal under `check_covers` became admission. Both were found by the full local suite and CI run 1 (outside `touchesFiles`).
   - In `test_check_tool`, the `sdpa_kv_cache-checked` row of `test_a_bf16_record_with_no_check_is_not_covered_and_writes_no_line` was removed. The two default-registry refusal tests became admission tests, and a `rope` refusal test was added.
 - **Size**: about 330 non-test lines (ADR 117, code about 175, registers about 10) across 7 non-test files.
-- **Runtime acceptance items**, for `PROCESS/RuntimeAcceptance.md` (D22), from ADR-0179 (part of OD-14; T-0502):
+- **Runtime acceptance items** (recorded as RA-0045 and RA-0046 in `PROCESS/RuntimeAcceptance.md`, D22), from ADR-0179 (part of OD-14; T-0502):
   1. Check that the ADR-0179 limits let a correct, untuned kernel of each of bf16 `gemm`, `rmsnorm`, `elementwise_add`, `swiglu` and `sdpa_kv_cache` complete at the shapes of ADR-0152, and end one that does not end. Check this on each C-7 system, inside the container of ADR-0144. In particular, check that 10 per element covers drawing, checking and reporting the 2.6e8 input elements of lm_head at M = 1, and the 131 MB report per draw at M = 512 through the container client.
   2. Find the number of draws up to which the tool function's own work (regeneration and the float64 reference) stays inside the 240 s left in the MCP idle window. Do this for bf16 `gemm` at lm_head M = 512 and at the projections at M = 512.
 - **Next candidate for the planner**: the record of the bf16 timing run (ADR-0177 decision 5 item 4; OD-13 and OD-16 ⑥), which needs no owner answer. The alternative is the `rope` start-position record (item 3), which ADR-0177 decision 4 places with OD-16 ⑤ beside the seed source and the number of draws. The planner should first check whether that record needs an owner answer.
