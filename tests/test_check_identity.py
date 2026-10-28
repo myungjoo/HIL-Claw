@@ -2,24 +2,29 @@ import ast
 import copy
 import inspect
 import io
+import json
 import re
 import tokenize
 from pathlib import Path
 
 import pytest
 
-from hilclaw import check_identity, journal, journaled_tool, tools
+from hilclaw import check_identity, instance, journal, journaled_tool, keys, tools
 from hilclaw.check_identity import (
+    BF16_STEPS,
     BOARD,
     MEMBER,
     MEMBERS,
     NUMBERS,
     SIM,
+    STEP_BF16_BOARD,
+    STEP_BF16_SIM,
     STEP_BOARD,
     STEP_SIM,
     STEPS,
     check,
     step_of,
+    step_of_read,
 )
 
 MARKER = "zq7-marker-zq7"
@@ -216,7 +221,7 @@ def test_a_step_value_is_a_name_formed_from_its_point(step, literal, point):
 
 def test_the_step_values_the_numbers_and_the_members_are_tuples():
     assert type(STEPS) is tuple
-    assert STEPS == (STEP_SIM, STEP_BOARD)
+    assert STEPS == (STEP_SIM, STEP_BOARD, *BF16_STEPS)
     assert STEP_SIM != STEP_BOARD
     assert type(NUMBERS) is tuple
     assert NUMBERS == ("round", "candidate", "attempt")
@@ -443,7 +448,13 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
 
 def test_module_imports_re_and_the_tools_only_and_has_no_entry():
     own = Path(check_identity.__file__)
-    assert imported_modules(own) == {"re", "hilclaw", "hilclaw.tools"}
+    assert imported_modules(own) == {
+        "re",
+        "hilclaw",
+        "hilclaw.check_parameters",
+        "hilclaw.instance",
+        "hilclaw.tools",
+    }
     assert not hasattr(check_identity, "main")
     assert "__main__" not in own.read_text(encoding="utf-8")
 
@@ -491,14 +502,109 @@ def test_public_names_of_the_module_and_no_default():
         "BOARD",
         "STEP_SIM",
         "STEP_BOARD",
+        "STEP_BF16_SIM",
+        "STEP_BF16_BOARD",
+        "BF16_STEPS",
         "STEPS",
         "NUMBERS",
         "MEMBERS",
         "check",
         "step_of",
+        "step_of_read",
     }
     for function in (check, step_of):
         parameters = list(inspect.signature(function).parameters.values())
         assert [parameter.name for parameter in parameters] == ["request"]
         assert parameters[0].default is inspect.Parameter.empty
         assert parameters[0].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+
+
+# --- the bf16 values and the choice from the read of the stamp (ADR-0177 decision 3) ---
+
+
+def stamped(dtype=None, kind="gemm", shape=None):
+    profile = {
+        "schema_version": 1,
+        "accelerator": "cpu_standin",
+        "revision": "test-revision",
+        "toolchain": {"cc": "test"},
+        "host": {"cpu": "test", "os": "test"},
+        "hw_source": "external",
+    }
+    document = {
+        "schema_version": 1,
+        "hw_profile": {"key": keys.hw_profile_key(profile).name, "record": profile},
+    }
+    if dtype is not None:
+        record = {
+            "schema_version": 1,
+            "kind": kind,
+            "shape": shape or {"m": 2, "k": 3, "n": 4},
+            "dtype": dtype,
+            "layout": "row_major",
+        }
+        document["op_signature"] = {
+            "key": keys.op_signature_key(record).name,
+            "record": record,
+        }
+    return instance.parse(json.dumps(document).encode())
+
+
+@pytest.mark.parametrize(
+    ("step", "literal"),
+    [
+        (STEP_BF16_SIM, "correctness_check_bf16_sim"),
+        (STEP_BF16_BOARD, "correctness_check_bf16_board"),
+    ],
+)
+def test_the_bf16_step_values_are_names_of_their_own(step, literal):
+    assert step == literal
+    assert re.fullmatch(r"[a-z][a-z0-9_]{0,31}", step)
+    assert step not in tools.RESERVED_KINDS
+    assert journal.step_identity(step, 1, 0, 1, 1).step == step
+    assert BF16_STEPS == (STEP_BF16_SIM, STEP_BF16_BOARD)
+    assert len(set(STEPS)) == 4
+    assert STEP_SIM == "correctness_check_sim"
+    assert STEP_BOARD == "correctness_check_board"
+
+
+@pytest.mark.parametrize(
+    ("point", "bf16", "fp32"),
+    [(SIM, STEP_BF16_SIM, STEP_SIM), (BOARD, STEP_BF16_BOARD, STEP_BOARD)],
+)
+def test_step_of_read_takes_the_bf16_value_for_a_bf16_record(point, bf16, fp32):
+    request = FRAME | {"point": point}
+    before = copy.deepcopy(request)
+    shapes = {
+        "gemm": {"m": 2, "k": 3, "n": 4},
+        "rmsnorm": {"m": 2, "n": 4},
+        "rope": {"m": 2, "h": 2, "d": 4},
+    }
+    for kind, shape in shapes.items():
+        assert step_of_read(request, stamped("bf16", kind, shape)) == bf16
+    assert step_of_read(request, stamped("bf16", shape={"m": 0, "k": 3, "n": 4})) == (
+        bf16
+    )
+    for read in (stamped(), stamped("fp32"), stamped("fp16"), stamped("bf16x")):
+        assert step_of_read(request, read) == fp32 == step_of(request)
+    assert request == before
+
+
+@pytest.mark.parametrize("value", ANOTHER_VALUE[:6])
+def test_step_of_read_refuses_as_step_of_before_the_read_is_looked_at(value):
+    request = FRAME | {"point": value}
+    message = refusal(lambda given: step_of_read(given, None), request)
+    assert message == refused_alike(request)
+    assert refusal(lambda given: step_of_read(given, None), {}) == refused_alike({})
+
+
+@pytest.mark.parametrize("read", [None, {}, "instance", 1])
+def test_step_of_read_refuses_a_read_that_is_no_instance(read):
+    with pytest.raises(TypeError, match="^read: "):
+        step_of_read(FRAME | {"point": SIM}, read)
+
+
+def test_step_of_read_has_two_parameters_and_no_default():
+    parameters = list(inspect.signature(step_of_read).parameters.values())
+    assert [parameter.name for parameter in parameters] == ["request", "read"]
+    assert all(parameter.default is inspect.Parameter.empty for parameter in parameters)

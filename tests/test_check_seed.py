@@ -23,9 +23,9 @@ from hilclaw import (
     tools,
 )
 from hilclaw.build_log import LogKeeper
-from hilclaw.check_admission import Admitted
+from hilclaw.check_admission import Admitted, Bf16Admitted
 from hilclaw.check_ending import EndedWithoutOutcome
-from hilclaw.check_parameters import CheckParameters
+from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.check_seed import KIND_SEED_NOT_DRAWN, check, draw
 from hilclaw.harness import seed_source
 from hilclaw.harness.verification_arrays import VerificationArgumentError
@@ -826,3 +826,67 @@ def test_public_names_of_the_module_and_no_default():
                 assert parameter.kind is inspect.Parameter.KEYWORD_ONLY, parameter
             else:
                 assert parameter.kind is positional, parameter
+
+
+# --- a check of a bf16 kind (ADR-0177 decision 3) ---
+
+BF16_ADMITTED = {
+    "gemm": Bf16Admitted("gemm", "bf16", (2, 3, 4), 2, 0.5, 3.0),
+    "rmsnorm": Bf16Admitted("rmsnorm", "bf16", (2, 8), 2, 0.5, 3.0),
+    "elementwise_add": Bf16Admitted("elementwise_add", "bf16", (3, 5), 2, 0.5, 3.0),
+    "swiglu": Bf16Admitted("swiglu", "bf16", (2, 6), 2, 0.5, 3.0),
+}
+
+
+@pytest.mark.parametrize("kind", list(BF16_ADMITTED))
+def test_a_bf16_admitted_check_hands_the_bf16_parameters(kind):
+    admitted = BF16_ADMITTED[kind]
+    seed = LAST - 7
+    script = Recording()
+
+    def answer(tool, request, hw_profile, parameters, output_path, keeper):
+        script(parameters)
+        return mock_check.default_script(
+            tool, request, hw_profile, parameters, output_path, keeper
+        )
+
+    result = checked(mock_check.operation(answer), admitted, seed)
+    assert result["outcome"] == "pass"
+    assert result["draws"] == admitted.draws
+    ((parameters,), _) = script.calls[0]
+    assert type(parameters) is Bf16CheckParameters
+    assert parameters == Bf16CheckParameters(
+        seed, admitted.draws, kind, "bf16", admitted.dims
+    )
+    assert parameters.seed is seed
+    assert parameters.dims is admitted.dims
+    assert len(script.calls) == 1
+
+
+def test_a_bf16_admitted_check_reaches_carry_out_with_its_tolerance(monkeypatch):
+    made = {"outcome": "pass"}
+    stand_in = Recording(answer=made)
+    monkeypatch.setattr(check_ending, "carry_out", stand_in)
+    admitted = BF16_ADMITTED["rmsnorm"]
+    assert checked(Recording(), admitted) is made
+    ((_, _, _, parameters, _, _), kwargs) = stand_in.calls[0]
+    assert type(parameters) is Bf16CheckParameters
+    assert parameters == (SEED, 2, "rmsnorm", "bf16", (2, 8))
+    assert kwargs["rtol"] is admitted.rtol
+    assert kwargs["atol"] is admitted.atol
+
+
+@pytest.mark.parametrize(
+    "admitted",
+    [tuple(BF16_ADMITTED["swiglu"]), BF16_ADMITTED["swiglu"]._asdict()],
+    ids=["tuple", "dict"],
+)
+def test_a_bf16_admitted_of_another_type_is_refused_before_the_call(
+    admitted, monkeypatch
+):
+    stand_in = Recording(answer={})
+    monkeypatch.setattr(check_ending, "carry_out", stand_in)
+    operation = Recording(answer="time_limit")
+    with pytest.raises(TypeError, match="^admitted: "):
+        checked(operation, admitted)
+    assert operation.calls == stand_in.calls == []

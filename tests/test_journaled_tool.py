@@ -317,7 +317,12 @@ def test_the_public_names_and_the_signature():
     public = [name for name in vars(journaled_tool) if not name.startswith("_")]
     assert [
         name for name in public if not inspect.ismodule(vars(journaled_tool)[name])
-    ] == ["tool_function", "checked_function", "stepped_function"]
+    ] == [
+        "tool_function",
+        "checked_function",
+        "stepped_function",
+        "read_stepped_function",
+    ]
     parameters = inspect.signature(tool_function).parameters
     assert list(parameters) == ["step", "numbers", "source", "check", "perform"]
     for parameter in parameters.values():
@@ -2117,3 +2122,139 @@ def test_checked_function_still_takes_a_further_callable_of_any_name(root):
     shared = Shared(str(root), step_of=len, steps=len)
     assert shared.function(dict(REQUEST)) is None
     assert shared.seen[0][2] == ID
+
+
+read_stepped_function = journaled_tool.read_stepped_function
+
+
+# --- read_stepped_function: the step from the request and the read of the stamp ---
+
+
+class ReadSteppedShared(SteppedShared):
+    def __init__(self, *answers, steps=STEPS, step=FROM_WAY, refusal=None):
+        self.order, self.seen, self.values = [], [], []
+        self.step, self.refusal, self.outcome = step, refusal, None
+        self.source = Source(*answers, order=self.order)
+        self.function = read_stepped_function(
+            steps=steps,
+            step_of=self.read_step_of,
+            numbers=NUMBERS,
+            carry_out=self.carry_out,
+            source=self.source,
+            check=self.check,
+        )
+
+    def read_step_of(self, request, value):
+        self.values.append(value)
+        return self.step_of(request)
+
+
+def test_the_signature_of_read_stepped_function():
+    parameters = inspect.signature(read_stepped_function).parameters
+    named = ["steps", "step_of", "numbers", "carry_out", "source", "check"]
+    assert list(parameters) == [*named, "others"]
+    for name in named:
+        assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameters[name].default is inspect.Parameter.empty
+    assert parameters["others"].kind is inspect.Parameter.VAR_KEYWORD
+
+
+def test_read_stepped_function_takes_the_step_after_the_read_of_the_stamp(
+    root, monkeypatch
+):
+    made = []
+    read, stamped = instance.read, instance.layout_version_of
+
+    def reading(*arguments):
+        made.append("read")
+        return read(*arguments)
+
+    def stamping(*arguments):
+        made.append("stamp")
+        return stamped(*arguments)
+
+    monkeypatch.setattr(instance, "read", reading)
+    monkeypatch.setattr(instance, "layout_version_of", stamping)
+    shared = ReadSteppedShared(str(root))
+    first, second = way("a"), way("b")
+    before = copy.deepcopy(first)
+    assert shared.function(first) is None
+    assert shared.function(second) is None
+    assert made == ["read", "read"]
+    assert shared.order == ["check", "source", "step_of", "carry_out"] * 2
+    assert shared.seen == [
+        (root, RUN, Identity(STEP_A, 1, ROUND, 2, 1), first),
+        (root, RUN, Identity(STEP_B, 1, ROUND, 2, 1), second),
+    ]
+    assert [type(value) for value in shared.values] == [instance.Instance] * 2
+    assert shared.values[0].hw_profile == PROFILE
+    assert first == before
+
+
+@pytest.mark.parametrize("step", ["example_step_c", Text(STEP_A), None, 1])
+def test_read_stepped_function_refuses_a_step_that_is_none_of_steps(root, step):
+    shared = ReadSteppedShared(str(root), step=step)
+    with pytest.raises(RuntimeError, match="^step_of must return one of"):
+        shared.function(way("a"))
+    assert shared.order == ["check", "source", "step_of"]
+    assert shared.seen == []
+
+
+def test_read_stepped_function_passes_what_step_of_raises(root):
+    raised = KeyError("zq7")
+    shared = ReadSteppedShared(str(root), step=raised)
+    with pytest.raises(KeyError) as caught:
+        shared.function(way("a"))
+    assert caught.value is raised
+    assert shared.seen == []
+
+
+@pytest.mark.parametrize(
+    ("content", "kind"),
+    [(None, tools.KIND_RUN_FILE_MISSING), (b"{", tools.KIND_RUN_FILE_INVALID)],
+    ids=["missing", "invalid"],
+)
+def test_read_stepped_function_answers_the_stamp_before_step_of(
+    tmp_path, content, kind
+):
+    data = tmp_path / "data"
+    data.mkdir()
+    if content is not None:
+        place(data, content, STAMP)
+    shared = ReadSteppedShared(str(data))
+    with pytest.raises(tools.ToolFailure) as caught:
+        shared.function(way("a"))
+    assert caught.value.kind == kind
+    assert shared.order == ["check", "source"]
+    assert shared.values == shared.seen == []
+
+
+def test_read_stepped_function_refuses_a_request_before_the_source(root):
+    shared = ReadSteppedShared(str(root), refusal=tools.ToolFailure(INVALID, "zq7"))
+    with pytest.raises(tools.ToolFailure):
+        shared.function(way("a"))
+    assert shared.order == ["check"]
+    with pytest.raises(tools.ToolFailure) as caught:
+        shared.function({"run_id": RUN})
+    assert caught.value.kind == INVALID
+
+
+def test_read_stepped_function_checks_its_parts_when_built():
+    given, called = stepped_parts()
+    for steps, error in (
+        ([STEP_A], TypeError),
+        ((), ValueError),
+        ((STEP_A, STEP_A), ValueError),
+        (("Not a name",), ValueError),
+    ):
+        with pytest.raises(error):
+            read_stepped_function(**(given | {"steps": steps}))
+    with pytest.raises(ValueError, match="numbers must be a prefix"):
+        read_stepped_function(**(given | {"numbers": ("attempt",)}))
+    for name in ("step_of", "carry_out", "source", "check"):
+        with pytest.raises(TypeError, match=f"^{name} must be callable"):
+            read_stepped_function(**(given | {name: None}))
+    with pytest.raises(TypeError, match="^admit must be callable"):
+        read_stepped_function(**given, admit=None)
+    assert callable(read_stepped_function(**given, admit=len))
+    assert called == []
