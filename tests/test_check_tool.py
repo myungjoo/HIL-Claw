@@ -1307,17 +1307,21 @@ def test_a_file_that_stops_being_bf16_between_the_reads_is_not_covered(
 
 
 @pytest.mark.parametrize(
-    ("kind", "shape", "covers"),
-    [("rope", {"m": 2, "h": 2, "d": 4}, contract_table.check_covers)],
-    ids=["rope-checked"],
+    ("kind", "shape"),
+    [("rope", {"m": 2, "h": 2, "d": 4})],
+    ids=["rope-not-checked"],
 )
 def test_a_bf16_record_with_no_check_is_not_covered_and_writes_no_line(
-    root, monkeypatch, kind, shape, covers
+    root, monkeypatch, kind, shape
 ):
     record = {**bf16_op("gemm"), "kind": kind, "shape": shape}
     place(root, content(op=record))
+    table = dict(contract_table.TABLE)
+    key = (kind, "bf16", "row_major", "c")
+    table[key] = table[key]._replace(checked=False)
+    monkeypatch.setattr(contract_table, "TABLE", table)
     steps = steps_looked_up(monkeypatch)
-    bench = Bench(root, covers=covers)
+    bench = Bench(root, covers=contract_table.check_covers)
     failure = bench.failure(request(point="board"))
     assert failure.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
     assert steps == ["correctness_check_bf16_board"]
@@ -1435,16 +1439,25 @@ def test_a_rope_check_with_a_wrong_element_fails_in_its_draw(root):
     ]
 
 
-def test_the_default_registry_still_answers_rope_not_covered(root, monkeypatch):
-    record = {**bf16_op("gemm"), "kind": "rope", "shape": {"m": 2, "h": 2, "d": 4}}
-    place(root, content(op=record))
+@pytest.mark.parametrize(
+    "shape", [{"m": 2, "h": 2, "d": 4}, {"m": 1, "h": 2, "d": 4}], ids=["m2", "m1"]
+)
+def test_the_default_registry_checks_rope(root, monkeypatch, shape):
+    place(root, content(op=bf16_op("rope", shape)))
     steps = steps_looked_up(monkeypatch)
     registry = tools.default_registry(lambda: root)
-    with pytest.raises(ToolFailure) as caught:
-        tools.call(registry, TOOL, request(point="sim"))
-    assert caught.value.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
-    assert steps == [BF16_STEP["sim"]]
-    assert lines(root) == []
+    for point in ("sim", "board"):
+        result = tools.call(registry, TOOL, request(point=point))
+        assert result["outcome"] == "pass"
+        assert result["shape"] == shape
+        assert result["counts"] == [{"failed": 0, "non_finite": 0}] * DRAWS
+    assert steps == [BF16_STEP["sim"], BF16_STEP["board"]]
+    assert [line["data"]["step"] for line in lines(root)] == [
+        BF16_STEP["sim"],
+        BF16_STEP["sim"],
+        BF16_STEP["board"],
+        BF16_STEP["board"],
+    ]
 
 
 # --- a check of sdpa_kv_cache (ADR-0177 decision 3, HQ-0077; ADR-0165 decision 8) ---

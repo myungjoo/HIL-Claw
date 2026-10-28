@@ -17,7 +17,11 @@ of ADR-0168 it:
    ``program_arguments`` (ADR-0163 decision 3, ADR-0165 decision 3) and the
    limit of
    :func:`hilclaw.standin_settings.bf16_verification_process_time_limit_s`
-   (ADR-0179 decision 2);
+   (ADR-0179 decision 2); for ``rope`` also the start position of
+   :func:`hilclaw.harness.bf16_rope_verification.start_position` and the
+   bytes of its rows,
+   :func:`hilclaw.harness.bf16_rope_arrays.table_rows` (ADR-0180
+   decisions 1 and 2);
 2. reads the image (:func:`hilclaw.standin_image.read_image`; C1, C2);
 3. makes the build directory of the call (ADR-0056 decision 4; ADR-0096
    decision 3; S3);
@@ -40,7 +44,9 @@ of ADR-0168 it:
    :func:`hilclaw.standin_answer.read_build`; answers a status 0 that left no
    regular file at the executable's path ``build_output_missing`` (S9, C7);
 6. runs the executable in a second container with ``m k n draws seed`` (for a
-   bf16 kind the arguments of step 1), reads
+   bf16 kind the arguments of step 1; for ``rope`` with the rows of step 1
+   as its standard input, ADR-0180 decision 3; no build container is given
+   an input), reads
    it with :func:`hilclaw.standin_answer.read_process`, and returns its
    standard output, as ``bytes``, after status 0 (ADR-0017 decision 7);
 7. removes the build directory before it returns or raises, where
@@ -93,9 +99,10 @@ Choices that are this module's own and no rule of a record:
   is not an ``int`` from 0 to below ``2**64``; for a bf16 kind also
   :class:`ValueError` for a ``dtype`` other than
   :data:`hilclaw.check_parameters.BF16`, a kind the limit does not serve
-  (``rope`` among them) and what the kind's ``program_arguments`` refuses,
-  a seed of another type included, as its ``ValueError`` subclass
-  (C16: no row; the tool function admits these values before the call).
+  and what the kind's ``program_arguments`` (for ``rope`` also its
+  ``start_position``) refuses, a seed of another type included, as its
+  ``ValueError`` subclass (C16: no row; the tool function admits these
+  values before the call).
 
 It hands the compiler nothing derived from the seed (ADR-0078 decision 5),
 judges nothing (the judging is the tool function's, ADR-0021 decision 2; the
@@ -136,6 +143,8 @@ from hilclaw import (
     tools,
 )
 from hilclaw.harness import (
+    bf16_rope_arrays,
+    bf16_rope_verification,
     bf16_sdpa_kv_cache_verification,
     bf16_verification,
     bf16_verification_build,
@@ -245,7 +254,7 @@ def _checked(parameters, keeper):
     if not 0 <= seed < _SEED_LIMIT:
         raise ValueError("seed must be an int from 0 to below 2**64")
     arguments = tuple(str(int(value)) for value in (m, k, n, draws, seed))
-    return (verification_build.PROGRAM_SOURCE, None), arguments, limit
+    return (verification_build.PROGRAM_SOURCE, None), arguments, limit, None
 
 
 def _check_keeper(keeper):
@@ -258,7 +267,13 @@ def _bf16_checked(parameters):
     if type(dtype) is not str or dtype != check_parameters.BF16:
         raise ValueError(f"dtype must be {check_parameters.BF16!r}")
     limit = standin_settings.bf16_verification_process_time_limit_s(kind, dims, draws)
-    if kind == "sdpa_kv_cache":
+    rows = None
+    if kind == "rope":
+        rope = bf16_rope_verification
+        arguments = rope.program_arguments(dims, draws=draws, seed=seed)
+        start = rope.start_position(dims, seed=seed)
+        rows = bf16_rope_arrays.table_rows(dims, start=start).tobytes()
+    elif kind == "sdpa_kv_cache":
         arguments = bf16_sdpa_kv_cache_verification.program_arguments(
             dims, draws=draws, seed=seed
         )
@@ -267,7 +282,7 @@ def _bf16_checked(parameters):
             kind, dims, draws=draws, seed=seed
         )
     program = bf16_verification_build.PROGRAM_SOURCES[kind]
-    return (program, BF16_HEADER), arguments, limit
+    return (program, BF16_HEADER), arguments, limit, rows
 
 
 def container_image():
@@ -323,7 +338,7 @@ def _inside_checkout(directory):
 
 
 def _carry_out(image, build_dir, output_path, keeper, checked, outcomes):
-    (program, header), arguments, limit = checked
+    (program, header), arguments, limit, rows = checked
     copies = _placed_copies(output_path, build_dir, program, header)
     built = _build(image, build_dir, copies, keeper, outcomes)
     if built is not standin_answer.GO_ON:
@@ -336,6 +351,7 @@ def _carry_out(image, build_dir, output_path, keeper, checked, outcomes):
         _EXECUTABLE,
         arguments,
         limit,
+        stdin_data=rows,
     )
     if type(ran) is str:
         return ran
@@ -418,8 +434,14 @@ def in_container(relative):
     return posixpath.join(standin_container.CONTAINER_BUILD_DIR, relative)
 
 
-def run_container(outcomes, step, image, build_dir, program, arguments, timeout_s):
+def run_container(
+    outcomes, step, image, build_dir, program, arguments, timeout_s, *, stdin_data=None
+):
     """Run ``program`` in one container, give its forced removal :data:`REMOVAL_TIMEOUT_S`, and place what it raised.
+
+    ``stdin_data`` is handed to
+    :func:`hilclaw.standin_container.run_in_container` as it is: ``None``,
+    the default, leaves the container's standard input the null device.
 
     What :func:`hilclaw.standin_container.run_in_container` returned or raised
     is appended to ``outcomes``. Returns its
@@ -437,6 +459,7 @@ def run_container(outcomes, step, image, build_dir, program, arguments, timeout_
                 arguments,
                 timeout_s=timeout_s,
                 removal_timeout_s=REMOVAL_TIMEOUT_S,
+                stdin_data=stdin_data,
             )
         except BaseException as error:
             outcomes.append(error)

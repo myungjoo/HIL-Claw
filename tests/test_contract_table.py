@@ -83,8 +83,7 @@ def test_the_flags_of_this_slice():
         found = TABLE[
             (contract.KIND, contract.DTYPE, contract.LAYOUT, contract.LANGUAGE)
         ]
-        checked = contract is not rope_bf16_contract
-        assert (found.checked, found.timed) == (checked, False)
+        assert (found.checked, found.timed) == (True, False)
 
 
 def test_the_table_cannot_be_changed():
@@ -130,8 +129,7 @@ def test_the_four_predicates_of_fp32_gemm():
 def test_the_four_predicates_of_a_bf16_contract(contract):
     record = first(contract)
     answers = [predicate(record) for predicate in PREDICATES]
-    checked = contract is not rope_bf16_contract
-    assert answers == [True, checked, False, False]
+    assert answers == [True, True, False, False]
     for answer in answers:
         assert type(answer) is bool
 

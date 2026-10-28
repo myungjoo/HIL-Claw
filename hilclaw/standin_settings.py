@@ -29,7 +29,8 @@ commit of this repository.
 * :func:`bf16_verification_process_time_limit_s` applies the same rule, with
   the work measure of ADR-0179 decision 3, to the kind, the dimensions and
   ``draws`` the operation of ``correctness.check`` is handed for a bf16 kind
-  (ADR-0179 decision 2); :data:`BF16_CHECK_KINDS` are the kinds it serves.
+  (ADR-0179 decision 2; for ``rope`` ADR-0180 decision 2);
+  :data:`BF16_CHECK_KINDS` are the kinds it serves.
 
 The first three are handed as ``flags``, ``trailing_flags`` and ``env`` to
 :func:`hilclaw.harness.verification_build.build_verification_executable`,
@@ -88,8 +89,15 @@ def timing_process_time_limit_s(m, k, n, n_max):
     return _process_time_limit_s(m, k, n, n_max + 1)
 
 
-BF16_CHECK_KINDS = ("gemm", "rmsnorm", "elementwise_add", "swiglu", "sdpa_kv_cache")
-"""The bf16 kinds of :func:`bf16_verification_process_time_limit_s` (ADR-0179 decision 1)."""
+BF16_CHECK_KINDS = (
+    "gemm",
+    "rmsnorm",
+    "elementwise_add",
+    "swiglu",
+    "rope",
+    "sdpa_kv_cache",
+)
+"""The bf16 kinds of :func:`bf16_verification_process_time_limit_s` (ADR-0179 decision 1; ADR-0180 decision 2)."""
 
 BF16_ELEMENT_WEIGHT = 10
 """Operations counted per element of a bf16 verification program's arrays (ADR-0179 decision 3)."""
@@ -99,6 +107,7 @@ _BF16_DIMENSIONS = {
     "rmsnorm": ("m", "n"),
     "elementwise_add": ("m", "n"),
     "swiglu": ("m", "n"),
+    "rope": ("m", "h", "d"),
     "sdpa_kv_cache": ("m", "l", "h", "h_kv", "d"),
 }
 
@@ -109,9 +118,10 @@ def bf16_verification_process_time_limit_s(kind, dims, draws):
     ``min(1500, 10 + draws * (1 + W / 2e8))`` (ADR-0117 decision 4 with
     ``c = draws``), where W is the work measure of ADR-0179 decision 3: the
     nominal operation count ``A`` of the kind (``2*m*k*n`` for ``gemm``,
-    ``4*m*l*h*d`` for ``sdpa_kv_cache``, 0 for the element-wise kinds) plus
-    :data:`BF16_ELEMENT_WEIGHT` times the number of elements of the program's
-    arrays. Computed exactly and returned as a positive finite ``float`` of
+    ``4*m*l*h*d`` for ``sdpa_kv_cache``, 0 for the element-wise kinds and
+    ``rope``) plus :data:`BF16_ELEMENT_WEIGHT` times the number of elements
+    of the program's arrays (for ``rope`` ``2*m*h*d + 2*m*d``, ADR-0180
+    decision 2). Computed exactly and returned as a positive finite ``float`` of
     at most :data:`PROCESS_TIME_LIMIT_CAP_S`.
 
     ``kind`` is exactly a ``str`` of :data:`BF16_CHECK_KINDS`; ``dims`` is
@@ -141,6 +151,9 @@ def _bf16_work(kind, *dims):
         m, l, h, h_kv, d = dims
         caches = 2 * (l + 2 * m) * h_kv * d
         return 4 * m * l * h * d, 2 * m * h * d + 2 * m * h_kv * d + caches
+    if kind == "rope":
+        m, h, d = dims
+        return 0, 2 * m * h * d + 2 * m * d
     m, n = dims
     return 0, (2 * m * n + n) if kind == "rmsnorm" else 3 * m * n
 

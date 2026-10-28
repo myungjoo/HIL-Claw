@@ -61,7 +61,7 @@ _ENTRIES = (
     Entry(rmsnorm_bf16_contract, checked=True, timed=False),
     Entry(elementwise_add_bf16_contract, checked=True, timed=False),
     Entry(swiglu_bf16_contract, checked=True, timed=False),
-    Entry(rope_bf16_contract, checked=False, timed=False),
+    Entry(rope_bf16_contract, checked=True, timed=False),
     Entry(sdpa_kv_cache_bf16_contract, checked=True, timed=False),
 )
 

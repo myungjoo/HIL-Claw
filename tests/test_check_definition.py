@@ -875,12 +875,18 @@ BF16_RECORDS = (
     ),
 )
 BF16_IDS = [record["kind"] for record in BF16_RECORDS]
-CHECKED_BF16 = [record for record in BF16_RECORDS if record["kind"] != "rope"]
+CHECKED_BF16 = list(BF16_RECORDS)
 ROPE = [record for record in BF16_RECORDS if record["kind"] == "rope"]
 
 
 @pytest.mark.parametrize("record", ROPE, ids=["rope"])
-def test_a_bf16_record_is_not_covered_by_the_check(tmp_path, parties, record):
+def test_a_bf16_record_is_not_covered_by_the_check(
+    tmp_path, parties, record, monkeypatch
+):
+    table = dict(contract_table.TABLE)
+    key = ("rope", "bf16", "row_major", "c")
+    table[key] = table[key]._replace(checked=False)
+    monkeypatch.setattr(contract_table, "TABLE", table)
     root = a_run(tmp_path / "data", op=record)
     registry = tools.default_registry(lambda: root)
     refused(registry, REQUEST, "op_signature_not_covered")

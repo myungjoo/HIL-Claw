@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from hilclaw import local_run, standin_container
+from hilclaw import local_run, standin_answer, standin_container
 from hilclaw.standin_container import (
     CONTAINER_BUILD_DIR,
     NAME_PREFIX,
@@ -488,3 +488,74 @@ def test_a_failed_removal_after_an_exception_is_noted(starts, build_dir, make):
     assert error.container_name in error.__notes__[0]
     assert repr(failure) in error.__notes__[0]
     assert len(starts.calls) == 2
+
+
+# The standard input of a container (ADR-0180 decision 3)
+
+
+@pytest.mark.parametrize("data", [b"\x00\x01rows\xff", b""])
+def test_an_input_adds_interactive_and_is_handed_as_stdin_data(starts, build_dir, data):
+    done = call(build_dir, "/build/verification", ["1", "2"], stdin_data=data)
+    ((command, options),) = starts.calls
+    image_at = command.index("example/standin:1")
+    before = command[:image_at]
+    assert before.count("--interactive") == 1
+    assert before.index("--interactive") < before.index("--entrypoint=")
+    assert not {"--tty", "-t", "-i", "-it"} & set(command)
+    without = [item for item in command if item != "--interactive"]
+    assert_client_list(without, build_dir, "/build/verification", ["1", "2"])
+    assert command[image_at + 1 :] == ["/build/verification", "1", "2"]
+    assert options == {"timeout_s": 30, "env": None, "stdin_data": data}
+    assert options["stdin_data"] is data
+    assert done.removal is None
+
+
+def test_no_input_keeps_the_command_and_the_call_as_they_were(starts, build_dir):
+    call(build_dir, "/build/verification", ["1"])
+    call(build_dir, "/build/verification", ["1"], stdin_data=None)
+    for command, options in starts.calls:
+        assert "--interactive" not in command
+        assert_client_list(command, build_dir, "/build/verification", ["1"])
+        assert options == {"timeout_s": 30, "env": None}
+
+
+def test_an_input_past_the_limit_force_removes_the_container(starts, build_dir):
+    starts.answers += [result(timed_out=True), result(0)]
+    done = call(build_dir, stdin_data=b"rows", timeout_s=5, removal_timeout_s=2)
+    run_call, remove_call = starts.calls
+    assert run_call[1] == {"timeout_s": 5, "env": None, "stdin_data": b"rows"}
+    assert remove_call == (
+        ["docker", "rm", "--force", done.name],
+        {"timeout_s": 2, "env": None},
+    )
+    assert done.timed_out is True
+
+
+@pytest.mark.parametrize(
+    "data", ["rows", bytearray(b"rows"), memoryview(b"rows"), 0, [1, 2], True]
+)
+def test_an_input_that_is_not_bytes_is_refused_before_the_start(
+    starts, build_dir, data
+):
+    with pytest.raises(TypeError) as raised:
+        call(build_dir, stdin_data=data)
+    assert type(raised.value) is TypeError
+    assert raised.value.parameter == "stdin_data"
+    assert starts.calls == []
+
+
+def test_a_bytes_subclass_input_is_refused(starts, build_dir):
+    class Rows(bytes):
+        pass
+
+    with pytest.raises(TypeError) as raised:
+        call(build_dir, stdin_data=Rows(b"rows"))
+    assert raised.value.parameter == "stdin_data"
+    assert starts.calls == []
+
+
+def test_a_refused_input_is_c16_for_the_answer(starts, build_dir):
+    with pytest.raises(TypeError) as raised:
+        call(build_dir, stdin_data="rows")
+    for step in (standin_answer.BUILD, standin_answer.PROCESS):
+        assert standin_answer.place_error(raised.value, step) is None
