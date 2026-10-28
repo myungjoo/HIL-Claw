@@ -129,7 +129,7 @@ def tool_function(*, source, table, seeds, covers):
     """Return the tool function of ``correctness.check`` that these four state.
 
     - ``source``: the data-root source, as
-      :func:`hilclaw.hw_tool.stepped_tool_function` takes it.
+      :func:`hilclaw.hw_tool.read_stepped_tool_function` takes it.
     - ``table``: the :class:`hilclaw.backends.BackendTable` the tool is bound
       to.
     - ``seeds``: the source of seeds, a callable without arguments

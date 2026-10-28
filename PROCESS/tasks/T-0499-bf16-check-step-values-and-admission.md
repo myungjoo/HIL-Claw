@@ -64,4 +64,34 @@ hq: []
 
 ## Follow-ups
 
+- When `sdpa_kv_cache` or `rope` gets its check, widen `check_result.BF16_KINDS` (and its judge) too. `check_admission` answers a bf16 record of a kind outside that tuple `op_signature_not_covered`, whatever the predicate says (reviewer Nit 3, PR #312).
+
 ## Result
+
+**DONE**: PR #312 squash-merged (branch `claude/T-0499-bf16-check-step-values-and-admission` deleted). Review: 1 round, Approve (dev-reviewer, PR comment 6460109008). Nits 1 and 2 (two docstrings still named `check_admission.admit` and `hw_tool.stepped_tool_function`) were fixed after the Approve; both are docstring-only edits (D20 exception, no re-review). Nit 3 went to Follow-ups. Nit 4 (files outside `touchesFiles`) is covered below.
+
+- **Language**: Python. The touched modules are Python 2nd-layer modules.
+- **Step values**: `check_identity.STEP_BF16_SIM`, `STEP_BF16_BOARD` and `BF16_STEPS`. `STEPS` holds all four values. `layout.BUILD_LOG_STEPS` gains the two new values and still equals `check_identity.STEPS + run_identity.STEPS`.
+- **How the read of ⓢ reaches the choice**:
+  - `journaled_tool.read_stepped_function` reads the stamp through `instance.read`, the read `layout_version_of` makes, and keeps the `Instance`.
+  - It then calls `step_of(request, value)` after that read.
+  - `hw_tool.read_stepped_tool_function` builds on it and also hands the identity's `step` to `admit`.
+  - `check_identity.step_of_read(request, read)` makes the choice.
+  - No read is added, and `stepped_function`, `stepped_tool_function` and `run_tool` are unchanged.
+- **Admission**:
+  - `check_admission.Bf16Admitted(kind, dtype, dims, draws, rtol, atol)` is a second type, so the fp32 `Admitted` stays as it was. `dims` follows the parameter order of the contract's `task_contract`.
+  - `admit_for_step(instance, *, covers, bf16_step)` answers `op_signature_not_covered` in the "not covered" slot when the file's `dtype` changed between ⓢ and ④. That comes before draws/tolerance and before any seed is drawn.
+  - Two more cases are answered `op_signature_not_covered`, whatever the predicate says: a bf16 kind outside `check_result.BF16_KINDS` (`rope`, `sdpa_kv_cache`), and a kind/layout with no bf16 table entry. This is a choice of this module.
+  - `check_seed.check` builds `Bf16CheckParameters` from a `Bf16Admitted`.
+- **Files outside `touchesFiles`**: `hilclaw/journaled_tool.py` and `tests/test_journaled_tool.py`, because the read of the stamp lives in that module. Seven non-test files are changed, within the 10-file cap.
+- **Edited D21 pins**, all listed in the PR body:
+  - `test_check_identity::test_the_step_values_the_numbers_and_the_members_are_tuples`
+  - `test_check_identity::test_module_imports_re_and_the_tools_only_and_has_no_entry`
+  - `test_check_identity::test_public_names_of_the_module_and_no_default`
+  - `test_check_admission::test_module_imports_three_modules_and_has_no_entry`
+  - `test_check_admission::test_public_names_of_the_module_and_no_default`
+  - `test_hw_tool::test_the_public_names_and_the_signature`
+  - `test_journaled_tool::test_the_public_names_and_the_signature`
+  - `test_layout::test_build_log_steps_are_those_of_correctness_check_and_the_run_tools`
+- **Local tests** (WSL, clang): 36624 passed, 50 skipped. `hilclaw/` line coverage was 99.8 % (13034/13061) and function coverage 100 % (1248/1248). `ruff check` and `ruff format` are clean.
+- **Runtime acceptance items**: none.

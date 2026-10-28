@@ -38,7 +38,8 @@ Choices that are this module's own and no rule of a record:
   before the start line (decision 3) and the operation is called after it
   (ADR-0040 decision 7, cited by decision 2), so the start line lies
   between the two. The order, which is
-  :func:`hilclaw.check_admission.admit`, then :func:`draw`, then the start
+  :func:`hilclaw.check_admission.admit_for_step` (or
+  :func:`hilclaw.check_admission.admit`), then :func:`draw`, then the start
   line, then :func:`check`, is the caller's to keep.
 * How the two cases are told apart.
   :func:`hilclaw.harness.seed_source.draw` is handed a callable of this
