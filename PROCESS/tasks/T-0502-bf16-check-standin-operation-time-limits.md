@@ -98,6 +98,7 @@ hq: []
   - `test_standin_settings::test_the_module_exposes_only_the_settings_and_the_time_limits` (D21 public names).
   - In `test_contract_table`, `test_the_flags_of_this_slice` and `test_the_four_predicates_of_a_bf16_contract` now pin the five as checked. In `test_same_kind_other_dtype_goes_to_the_other_entry`, `check_covers(bf16)` is now true, and an added `start_covers` assertion keeps the entries told apart.
   - `test_check_definition::test_a_bf16_record_is_not_covered_by_the_check` now covers `rope` only.
+  - In `test_check_admission`, `test_a_bf16_record_the_predicate_refuses_is_not_covered` now refuses with a test-bound `Recorder(False)` and asserts that `check_covers` admits at the bf16 step. In `test_an_sdpa_record_is_refused_by_the_registered_predicate_and_an_fp32_step`, renamed `..._admitted_..._not_an_fp32_step`, the refusal under `check_covers` became admission. Both were found by the full local suite and CI run 1 (outside `touchesFiles`).
   - In `test_check_tool`, the `sdpa_kv_cache-checked` row of `test_a_bf16_record_with_no_check_is_not_covered_and_writes_no_line` was removed. The two default-registry refusal tests became admission tests, and a `rope` refusal test was added.
 - **Size**: about 330 non-test lines (ADR 117, code about 175, registers about 10) across 7 non-test files.
 - **Runtime acceptance items**, for `PROCESS/RuntimeAcceptance.md` (D22), from ADR-0179 (part of OD-14; T-0502):
