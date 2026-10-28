@@ -205,7 +205,7 @@ def definition(source):
     ``no_data_root`` as :func:`hilclaw.data_root_source.obtain` does; the
     four ``run_file_*`` kinds for the read of the run's log and its step
     lines, as :func:`hilclaw.checks_tool.log_lines` and
-    :func:`hilclaw.checks_tool.checks_of` raise them; and the kinds of this
+    :func:`hilclaw.checks_tool.checks_in_order` raise them; and the kinds of this
     module, :data:`KIND_CHECK_RESULT_INVALID`,
     :data:`KIND_TIMING_RESULT_INVALID`, :data:`KIND_CHECK_UNFOUNDED`,
     :data:`KIND_COMPARISON_UNFOUNDED` and :data:`KIND_COMPARISON_UNVERIFIED`

@@ -53,11 +53,13 @@ Choices left to the code slice (ADR-0131 decision 3), made here:
 
 * The scoped pass over the step lines is this module's own, so that the two
   kinds of its last check are told apart by the check that refuses, and in
-  line order across attempts; :func:`hilclaw.check_standing.standing` is then
-  asked for the standing of each attempt, over lines it no longer refuses.
+  line order across attempts; :func:`hilclaw.check_standing.point_standing`
+  is then asked for the standing of each attempt, over lines it no longer
+  refuses.
 * The read of the log and the scoped pass are public, as :func:`log_lines`,
-  :func:`checks_of` and :func:`checks_in_order`, so that ``verdicts.write`` (ADR-0131 decision 5)
-  raises the same kinds with the same messages for the same log.
+  :func:`checks_of` and :func:`checks_in_order`, so that ``verdicts.write``
+  (ADR-0131 decision 5) raises the same kinds with the same messages for the
+  same log.
 * A number beyond the float range in a stored ``result`` or ``failure`` is
   read as an infinity, which no result can hold: a call whose result holds
   one fails with ``bad_result``, as ``state.read`` and ``hypotheses.read``

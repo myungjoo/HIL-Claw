@@ -27,14 +27,14 @@ decision 3:
   the ids of its own spec's ``guidance.techniques`` in their order, and
   ``failure`` exactly when it is not verified at the sim point, or verified
   there and not verified at the board point. The deciding result is the first
-  ended check of that point, under either value, in line order, whose ``outcome`` is ``"fail"`` or
-  ``"broken"``; ``stage`` is ``"compile"`` for a broken one with ``condition``
-  ``build_exit_status`` or ``build_time_limit``, else the point's name. No
-  entry has ``profile``.
+  ended check of that point, under either value, in line order, whose
+  ``outcome`` is ``"fail"`` or ``"broken"``; ``stage`` is ``"compile"`` for a
+  broken one with ``condition`` ``build_exit_status`` or
+  ``build_time_limit``, else the point's name. No entry has ``profile``.
 * ⑩ after all of ⑨, for each ``compile`` failure, the compiler log of the
   deciding check (ADR-0078 decision 3), named by the ``step`` of its line, is
-  appended to the report when that file
-  exists and is not empty; a missing file is no failure.
+  appended to the report when that file exists and is not empty; a missing
+  file is no failure.
 
 Choices that are this module's own and no rule of the record:
 
