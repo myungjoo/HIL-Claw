@@ -71,9 +71,15 @@ hq: []
 
 ## Result
 
-**DONE**: PR #315, squash-merged once the reviewer approved and CI was green. Review: 1 round, Approve (dev-reviewer, PR comment 6464946788). The reviewer left two Nits:
-- Nit 1, a docstring sentence on the seed error of the bf16 path, was fixed after the Approve. It needed no re-review under D20.
-- Nit 2, a named header constant in `bf16_verification_build` (outside `touchesFiles`), was optional and was not taken.
+**DONE**: PR #315 was squash-merged after review and green CI. The merge commit is in the driver's wrap-up (the executor's summary).
+
+**Review**: 2 rounds, both Approve (dev-reviewer).
+- Round 1 (PR comment 6464946788): Approve with two Nits.
+  - Nit 1, a docstring sentence on the seed error of the bf16 path, was fixed.
+  - Nit 2, a named header constant in `bf16_verification_build` (outside `touchesFiles`), was optional and was not taken.
+- Round 2 (PR comment 6465204573): Approve. It was needed because the full local suite and CI run 1 found two `test_check_admission` assertions that pinned the old refusal; they were changed after the round-1 Approve.
+
+**Owner notice** (criterion 8, DRIVER §9): posted on issue #5 after the merge; the URL is in the executor's summary.
 
 - **ADR**: `ARCHITECTURE/decisions/ADR-0179-od14-bf16-standin-check-time-limits.md`, part of OD-14 and of OD-18 sub-question ⑱ (다).
   - The process limit keeps ADR-0117's rule unchanged: `min(1500, 10 + draws * (1 + W / 2e8))`.
