@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 import tempfile
 
 import pytest
@@ -16,8 +18,13 @@ from hilclaw import (
     standin_settings,
     tools,
 )
-from hilclaw.check_parameters import CheckParameters
-from hilclaw.harness import verification_build
+from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
+from hilclaw.harness import (
+    bf16_sdpa_kv_cache_verification,
+    bf16_verification,
+    bf16_verification_build,
+    verification_build,
+)
 from hilclaw.standin_check import operation
 
 IMAGE = "registry.example/hilclaw-clang:1"
@@ -740,3 +747,259 @@ def test_container_image(monkeypatch):
     monkeypatch.delenv(standin_image.ENV_IMAGE)
     with pytest.raises(tools.ToolFailure):
         standin_check.container_image()
+
+
+# A check of a bf16 kind (ADR-0177 decision 3; ADR-0179)
+
+BF16_DIMS = {
+    "gemm": (2, 5, 7),
+    "rmsnorm": (3, 4),
+    "elementwise_add": (3, 4),
+    "swiglu": (3, 4),
+    "sdpa_kv_cache": (2, 3, 4, 2, 4),
+}
+
+
+def bf16(kind="gemm", dims=None, *, seed=SEED, draws=3, dtype="bf16"):
+    dims = BF16_DIMS[kind] if dims is None else dims
+    return Bf16CheckParameters(seed, draws, kind, dtype, dims)
+
+
+def bf16_arguments(kind, dims, draws=3, seed=SEED):
+    if kind == "sdpa_kv_cache":
+        return bf16_sdpa_kv_cache_verification.program_arguments(
+            dims, draws=draws, seed=seed
+        )
+    return bf16_verification.program_arguments(kind, dims, draws=draws, seed=seed)
+
+
+def built_beside_the_header(seen):
+    make = built()
+
+    def act(command):
+        directory = mount_source(command)
+        seen["entries"] = sorted(os.listdir(directory))
+        with open(os.path.join(directory, "bf16_verification.h"), "rb") as file:
+            seen["header"] = file.read()
+        return make(command)
+
+    return act
+
+
+@pytest.mark.parametrize("kind", list(BF16_DIMS))
+def test_bf16_happy_builds_the_program_of_the_kind_beside_the_header(
+    client, output, keeper, temporary, kind
+):
+    seen = {}
+    client.script = [built_beside_the_header(seen), reported()]
+    assert call(output, keeper, bf16(kind)) == REPORT
+    assert keeper.held() == (BUILD_STDOUT + BUILD_STDERR).decode()
+    assert build_dirs(temporary) == []
+    program = bf16_verification_build.PROGRAM_SOURCES[kind]
+    assert seen["entries"] == sorted(["bf16_verification.h", program.name, "kernel"])
+    assert seen["header"] == standin_check.BF16_HEADER.read_bytes()
+    assert standin_check.BF16_HEADER.name == "bf16_verification.h"
+
+    build, process = client.runs()
+    inside = standin_container.CONTAINER_BUILD_DIR
+    command = build[build.index(IMAGE) + 1 :]
+    flags = list(standin_settings.FLAGS)
+    trailing = list(standin_settings.TRAILING_FLAGS)
+    assert command[: 1 + len(flags)] == ["clang", *flags]
+    assert command[1 + len(flags) : -len(trailing) - 2] == [
+        f"{inside}/{program.name}",
+        f"{inside}/kernel/a_util.c",
+        f"{inside}/kernel/gemm.c",
+    ]
+    assert command[-len(trailing) - 2 :] == [*trailing, "-o", f"{inside}/verification"]
+    assert str(SEED) not in " ".join(build)
+    assert process[process.index(IMAGE) + 1 :] == [
+        f"{inside}/verification",
+        *bf16_arguments(kind, BF16_DIMS[kind]),
+    ]
+    options = [options for _, options in client.calls]
+    assert options[0]["timeout_s"] == standin_settings.BUILD_TIME_LIMIT_S
+    assert options[1]["timeout_s"] == (
+        standin_settings.bf16_verification_process_time_limit_s(
+            kind, BF16_DIMS[kind], 3
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "dims", "capped"),
+    [
+        ("gemm", (512, 2048, 128256), True),
+        ("gemm", (512, 2048, 8192), False),
+        ("sdpa_kv_cache", (2048, 2048, 32, 8, 64), True),
+        ("swiglu", (512, 8192), False),
+    ],
+)
+def test_bf16_the_largest_shapes_hand_the_capped_limit_or_not(
+    client, output, keeper, kind, dims, capped
+):
+    client.script = [built(), reported()]
+    assert call(output, keeper, bf16(kind, dims, draws=9)) == REPORT
+    limit = client.calls[1][1]["timeout_s"]
+    assert (limit == 1500.0) is capped
+    assert limit == standin_settings.bf16_verification_process_time_limit_s(
+        kind, dims, 9
+    )
+
+
+def test_bf16_the_process_past_its_limit_is_time_limit(
+    client, output, keeper, temporary
+):
+    client.script = [built(), timed_out(), None]
+    assert call(output, keeper, bf16("swiglu")) == "time_limit"
+    assert build_dirs(temporary) == []
+
+
+def test_bf16_the_build_past_its_limit_is_build_time_limit(
+    client, output, keeper, temporary
+):
+    client.script = [timed_out(), None]
+    assert call(output, keeper, bf16("sdpa_kv_cache")) == "build_time_limit"
+    assert keeper.held() == "partial output"
+    assert len(client.runs()) == 1
+
+
+@pytest.mark.parametrize("status", [1, 2, 3, 139])
+def test_bf16_a_process_status_is_exit_status(client, output, keeper, status):
+    client.script = [built(), ended(status)]
+    assert call(output, keeper, bf16("rmsnorm")) == "exit_status"
+
+
+def test_bf16_the_header_missing_is_build_input_missing(
+    monkeypatch, client, output, keeper, tmp_path, temporary
+):
+    monkeypatch.setattr(standin_check, "BF16_HEADER", tmp_path / "gone.h")
+    with pytest.raises(tools.ToolFailure) as raised:
+        call(output, keeper, bf16("elementwise_add"))
+    assert raised.value.kind == check_failure.KIND_BUILD_INPUT_MISSING
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+def test_bf16_the_program_missing_is_build_input_missing(
+    monkeypatch, client, output, keeper, tmp_path, temporary
+):
+    sources = dict(bf16_verification_build.PROGRAM_SOURCES)
+    sources["gemm"] = tmp_path / "gone.c"
+    monkeypatch.setattr(bf16_verification_build, "PROGRAM_SOURCES", sources)
+    with pytest.raises(tools.ToolFailure) as raised:
+        call(output, keeper, bf16("gemm"))
+    assert raised.value.kind == check_failure.KIND_BUILD_INPUT_MISSING
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+def test_bf16_a_header_name_already_taken_is_build_directory_unusable(
+    monkeypatch, client, output, keeper, tmp_path, temporary
+):
+    taken = tmp_path / "header" / verification_build.PROGRAM_SOURCE.name
+    taken.parent.mkdir()
+    taken.write_bytes(b"/* a header named like the program */\n")
+    monkeypatch.setattr(standin_check, "BF16_HEADER", taken)
+    sources = dict(bf16_verification_build.PROGRAM_SOURCES)
+    sources["gemm"] = verification_build.PROGRAM_SOURCE
+    monkeypatch.setattr(bf16_verification_build, "PROGRAM_SOURCES", sources)
+    with pytest.raises(tools.ToolFailure) as raised:
+        call(output, keeper, bf16("gemm"))
+    assert raised.value.kind == check_failure.KIND_BUILD_DIRECTORY_UNUSABLE
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+def test_bf16_no_kernel_source_copies_no_header(
+    monkeypatch, client, tmp_path, keeper, temporary
+):
+    copied = []
+    monkeypatch.setattr(
+        standin_copies, "place_harness_copy", lambda *args: copied.append(args)
+    )
+    missing = tmp_path / "data" / "attempts" / "02" / "output"
+    with pytest.raises(tools.ToolFailure) as raised:
+        call(missing, keeper, bf16("swiglu"))
+    assert raised.value.kind == check_failure.KIND_NO_KERNEL_SOURCE
+    assert (copied, client.calls, build_dirs(temporary)) == ([], [], [])
+
+
+def test_bf16_a_plain_oserror_of_the_header_copy_passes(
+    monkeypatch, client, output, keeper, temporary
+):
+    error = OSError("plain")
+
+    def place(*args):
+        raise error
+
+    monkeypatch.setattr(standin_copies, "place_harness_copy", place)
+    with pytest.raises(OSError) as raised:
+        call(output, keeper, bf16("gemm"))
+    assert raised.value is error
+    assert build_dirs(temporary) == []
+
+
+@pytest.mark.parametrize(
+    ("parameters", "error"),
+    [
+        (bf16(dtype="fp32"), ValueError),
+        (bf16(dtype=None), ValueError),
+        (bf16("rope", (1, 2, 4)), ValueError),
+        (Bf16CheckParameters(SEED, 3, "softmax", "bf16", (1, 2)), ValueError),
+        (bf16("gemm", [2, 5, 7]), TypeError),
+        (bf16("gemm", (2, 5)), ValueError),
+        (bf16("rmsnorm", (0, 4)), ValueError),
+        (bf16("swiglu", (3, True)), TypeError),
+        (bf16("sdpa_kv_cache", (3, 2, 4, 2, 4)), ValueError),
+        (bf16("sdpa_kv_cache", (2, 3, 4, 3, 4)), ValueError),
+        (bf16(draws=0), ValueError),
+        (bf16(draws=2**64), ValueError),
+        (bf16(seed=-1), ValueError),
+        (bf16(seed=2**64), ValueError),
+        (bf16(seed=1.0), ValueError),
+        (bf16(seed=True), ValueError),
+        (tuple(bf16()), TypeError),
+    ],
+)
+def test_bf16_own_arguments_pass(client, output, keeper, temporary, parameters, error):
+    with pytest.raises(error):
+        call(output, keeper, parameters)
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+def test_bf16_keeper_that_is_no_log_keeper(client, output, temporary):
+    with pytest.raises(TypeError):
+        call(output, object(), bf16())
+    assert (client.calls, build_dirs(temporary)) == ([], [])
+
+
+@pytest.mark.parametrize("kind", list(BF16_DIMS))
+def test_bf16_the_copied_program_compiles_with_the_fixed_set(tmp_path, kind):
+    compiler = shutil.which("clang")
+    if compiler is None or os.name == "nt":
+        pytest.skip("clang on a POSIX system is needed")
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "kernel.c").write_text("int hilclaw_kernel_placeholder;\n")
+    build_dir = tmp_path / "build"
+    build_dir.mkdir()
+    program = bf16_verification_build.PROGRAM_SOURCES[kind]
+    copies = standin_copies.place_copies(output, program, build_dir)
+    standin_copies.place_harness_copy(standin_check.BF16_HEADER, build_dir)
+    result = subprocess.run(
+        [
+            compiler,
+            *standin_settings.FLAGS,
+            "-c",
+            str(build_dir / copies.harness),
+            "-o",
+            str(build_dir / "program.o"),
+        ],
+        capture_output=True,
+        cwd=tmp_path,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

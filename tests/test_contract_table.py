@@ -83,7 +83,8 @@ def test_the_flags_of_this_slice():
         found = TABLE[
             (contract.KIND, contract.DTYPE, contract.LAYOUT, contract.LANGUAGE)
         ]
-        assert (found.checked, found.timed) == (False, False)
+        checked = contract is not rope_bf16_contract
+        assert (found.checked, found.timed) == (checked, False)
 
 
 def test_the_table_cannot_be_changed():
@@ -129,7 +130,8 @@ def test_the_four_predicates_of_fp32_gemm():
 def test_the_four_predicates_of_a_bf16_contract(contract):
     record = first(contract)
     answers = [predicate(record) for predicate in PREDICATES]
-    assert answers == [True, False, False, False]
+    checked = contract is not rope_bf16_contract
+    assert answers == [True, checked, False, False]
     for answer in answers:
         assert type(answer) is bool
 
@@ -176,7 +178,8 @@ def test_same_kind_other_dtype_goes_to_the_other_entry():
     assert entry(bf16).contract is gemm_bf16_contract
     assert task_contract(fp32)["prototype"] == gemm_contract.PROTOTYPE
     assert task_contract(bf16)["prototype"] == gemm_bf16_contract.PROTOTYPE
-    assert check_covers(fp32) and not check_covers(bf16)
+    assert check_covers(fp32) and check_covers(bf16)
+    assert start_covers(fp32) and not start_covers(bf16)
 
 
 def test_same_dtype_other_kind_goes_to_the_other_entry():

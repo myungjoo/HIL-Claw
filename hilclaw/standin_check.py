@@ -13,11 +13,21 @@ of ADR-0168 it:
 1. checks its own arguments and computes the process's arguments
    (ADR-0017 decision 2) and time limit
    (:func:`hilclaw.standin_settings.verification_process_time_limit_s`);
+   for a bf16 kind (ADR-0177 decision 3) the arguments of the kind's
+   ``program_arguments`` (ADR-0163 decision 3, ADR-0165 decision 3) and the
+   limit of
+   :func:`hilclaw.standin_settings.bf16_verification_process_time_limit_s`
+   (ADR-0179 decision 2);
 2. reads the image (:func:`hilclaw.standin_image.read_image`; C1, C2);
 3. makes the build directory of the call (ADR-0056 decision 4; ADR-0096
    decision 3; S3);
 4. copies the kernel files and :data:`hilclaw.harness.verification_build.PROGRAM_SOURCE`
-   into it (:func:`hilclaw.standin_copies.place_copies`; C12, C13, C15);
+   into it (:func:`hilclaw.standin_copies.place_copies`; C12, C13, C15); for
+   a bf16 kind the kind's program of
+   :data:`hilclaw.harness.bf16_verification_build.PROGRAM_SOURCES` instead,
+   then :data:`BF16_HEADER` beside it
+   (:func:`hilclaw.standin_copies.place_harness_copy`; ADR-0179 decision 5),
+   which is handed to the compiler as no source;
 5. runs the verification build in one container (ADR-0144 decision 3):
    :data:`COMPILER` with :data:`hilclaw.standin_settings.FLAGS`, the program
    source first and the kernel's compiled set in the reader's order, the
@@ -29,7 +39,8 @@ of ADR-0168 it:
    replaced, nothing between them); reads the result with
    :func:`hilclaw.standin_answer.read_build`; answers a status 0 that left no
    regular file at the executable's path ``build_output_missing`` (S9, C7);
-6. runs the executable in a second container with ``m k n draws seed``, reads
+6. runs the executable in a second container with ``m k n draws seed`` (for a
+   bf16 kind the arguments of step 1), reads
    it with :func:`hilclaw.standin_answer.read_process`, and returns its
    standard output, as ``bytes``, after status 0 (ADR-0017 decision 7);
 7. removes the build directory before it returns or raises, where
@@ -75,14 +86,19 @@ Choices that are this module's own and no rule of a record:
   raises :class:`RuntimeError`, and no log is handed over for it.
 * Before anything is read or made, :class:`TypeError` is raised for check
   parameters that are not exactly a
-  :class:`hilclaw.check_parameters.CheckParameters` or a keeper that is not
-  exactly a :class:`hilclaw.build_log.LogKeeper`, and :class:`TypeError` or
-  :class:`ValueError` for a value the process limit refuses or a seed that is
-  not an ``int`` from 0 to below ``2**64`` (C16: no row; the tool function
-  admits these values before the call).
+  :class:`hilclaw.check_parameters.CheckParameters` or a
+  :class:`hilclaw.check_parameters.Bf16CheckParameters` or a keeper that is
+  not exactly a :class:`hilclaw.build_log.LogKeeper`, and :class:`TypeError`
+  or :class:`ValueError` for a value the process limit refuses or a seed that
+  is not an ``int`` from 0 to below ``2**64``; for a bf16 kind also
+  :class:`ValueError` for a ``dtype`` other than
+  :data:`hilclaw.check_parameters.BF16`, a kind the limit does not serve
+  (``rope`` among them) and what the kind's ``program_arguments`` refuses
+  (C16: no row; the tool function admits these values before the call).
 
 It hands the compiler nothing derived from the seed (ADR-0078 decision 5),
-imports no NumPy (the judging is the tool function's, ADR-0021 decision 2),
+judges nothing (the judging is the tool function's, ADR-0021 decision 2; the
+harness modules whose ``program_arguments`` it calls import NumPy),
 reads no environment variable of its own (the image's is read by
 :func:`hilclaw.standin_image.read_image`, and :mod:`tempfile` reads the
 variables that name the temporary directory of the system), and keeps
@@ -118,10 +134,20 @@ from hilclaw import (
     standin_settings,
     tools,
 )
-from hilclaw.harness import verification_build
+from hilclaw.harness import (
+    bf16_sdpa_kv_cache_verification,
+    bf16_verification,
+    bf16_verification_build,
+    verification_build,
+)
 
 #: Time limit in seconds of every forced removal of a container (ADR-0169 decision 5).
 REMOVAL_TIMEOUT_S = 60
+
+#: The header every bf16 verification program includes, copied beside it (ADR-0179 decision 5).
+BF16_HEADER = bf16_verification_build.PROGRAM_SOURCES["gemm"].with_name(
+    "bf16_verification.h"
+)
 
 COMPILER = "clang"
 EXECUTABLE_NAME = "verification"
@@ -153,7 +179,8 @@ def operation(request, hw_profile, parameters, output_path, keeper, /):
     """Carry out one check at ``cpu_standin`` in two containers; return the report or a condition.
 
     ``request`` and ``hw_profile`` are not read. ``parameters`` are the check
-    parameters, exactly a :class:`hilclaw.check_parameters.CheckParameters`;
+    parameters, exactly a :class:`hilclaw.check_parameters.CheckParameters`
+    or, for a bf16 kind, a :class:`hilclaw.check_parameters.Bf16CheckParameters`;
     ``output_path`` is handed to :func:`hilclaw.standin_copies.place_copies`
     as it is; ``keeper`` is the call's :class:`hilclaw.build_log.LogKeeper`,
     handed at most one log (ADR-0169 decision 3).
@@ -167,13 +194,13 @@ def operation(request, hw_profile, parameters, output_path, keeper, /):
     byte or error text. Lets pass what no row places and every request to
     end. See the module docstring for the order and the module's own choices.
     """
-    arguments, process_limit = _checked(parameters, keeper)
+    checked = _checked(parameters, keeper)
     image = container_image()
     build_dir = make_build_dir(BUILD_DIR_PREFIX)
     return carry_out(
         build_dir,
         lambda outcomes: _carry_out(
-            image, build_dir, output_path, keeper, arguments, process_limit, outcomes
+            image, build_dir, output_path, keeper, checked, outcomes
         ),
     )
 
@@ -201,19 +228,45 @@ def carry_out(build_dir, steps):
 
 
 def _checked(parameters, keeper):
+    if type(parameters) is check_parameters.Bf16CheckParameters:
+        _check_keeper(keeper)
+        return _bf16_checked(parameters)
     if type(parameters) is not check_parameters.CheckParameters:
         raise TypeError(
-            f"parameters must be CheckParameters, not {type(parameters).__name__}"
+            "parameters must be CheckParameters or Bf16CheckParameters, "
+            f"not {type(parameters).__name__}"
         )
-    if type(keeper) is not build_log.LogKeeper:
-        raise TypeError(f"keeper must be a LogKeeper, not {type(keeper).__name__}")
+    _check_keeper(keeper)
     seed, draws, m, k, n = parameters
     limit = standin_settings.verification_process_time_limit_s(m, k, n, draws)
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise TypeError(f"seed must be an int, not {type(seed).__name__}")
     if not 0 <= seed < _SEED_LIMIT:
         raise ValueError("seed must be an int from 0 to below 2**64")
-    return tuple(str(int(value)) for value in (m, k, n, draws, seed)), limit
+    arguments = tuple(str(int(value)) for value in (m, k, n, draws, seed))
+    return (verification_build.PROGRAM_SOURCE, None), arguments, limit
+
+
+def _check_keeper(keeper):
+    if type(keeper) is not build_log.LogKeeper:
+        raise TypeError(f"keeper must be a LogKeeper, not {type(keeper).__name__}")
+
+
+def _bf16_checked(parameters):
+    seed, draws, kind, dtype, dims = parameters
+    if type(dtype) is not str or dtype != check_parameters.BF16:
+        raise ValueError(f"dtype must be {check_parameters.BF16!r}")
+    limit = standin_settings.bf16_verification_process_time_limit_s(kind, dims, draws)
+    if kind == "sdpa_kv_cache":
+        arguments = bf16_sdpa_kv_cache_verification.program_arguments(
+            dims, draws=draws, seed=seed
+        )
+    else:
+        arguments = bf16_verification.program_arguments(
+            kind, dims, draws=draws, seed=seed
+        )
+    program = bf16_verification_build.PROGRAM_SOURCES[kind]
+    return (program, BF16_HEADER), arguments, limit
 
 
 def container_image():
@@ -268,8 +321,9 @@ def _inside_checkout(directory):
         current = parent
 
 
-def _carry_out(image, build_dir, output_path, keeper, arguments, limit, outcomes):
-    copies = _placed_copies(output_path, build_dir)
+def _carry_out(image, build_dir, output_path, keeper, checked, outcomes):
+    (program, header), arguments, limit = checked
+    copies = _placed_copies(output_path, build_dir, program, header)
     built = _build(image, build_dir, copies, keeper, outcomes)
     if built is not standin_answer.GO_ON:
         return built
@@ -290,19 +344,21 @@ def _carry_out(image, build_dir, output_path, keeper, arguments, limit, outcomes
     return settled(answer)
 
 
-def _placed_copies(output_path, build_dir):
+def _placed_copies(output_path, build_dir, program, header):
     try:
-        copies = standin_copies.place_copies(
-            output_path, verification_build.PROGRAM_SOURCE, build_dir
-        )
+        copies = standin_copies.place_copies(output_path, program, build_dir)
+        answer = standin_answer.read_copies(copies)
+        if answer is not standin_answer.GO_ON:
+            raise Answered(answer)
+        if header is not None:
+            standin_copies.place_harness_copy(header, build_dir)
+    except Answered:
+        raise
     except Exception as error:
         answer = standin_answer.place_error(error, standin_answer.COPIES)
         if type(answer) is not standin_answer.Failure:
             raise
         raise Answered(answer) from None
-    answer = standin_answer.read_copies(copies)
-    if answer is not standin_answer.GO_ON:
-        raise Answered(answer)
     return copies
 
 

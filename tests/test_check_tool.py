@@ -1310,13 +1310,8 @@ def test_a_file_that_stops_being_bf16_between_the_reads_is_not_covered(
     [
         ("rope", {"m": 2, "h": 2, "d": 4}, contract_table.covers),
         ("rope", {"m": 2, "h": 2, "d": 4}, contract_table.check_covers),
-        (
-            "sdpa_kv_cache",
-            {"m": 1, "l": 2, "h": 2, "h_kv": 1, "d": 4},
-            contract_table.check_covers,
-        ),
     ],
-    ids=["rope-any", "rope-checked", "sdpa_kv_cache-checked"],
+    ids=["rope-any", "rope-checked"],
 )
 def test_a_bf16_record_with_no_check_is_not_covered_and_writes_no_line(
     root, monkeypatch, kind, shape, covers
@@ -1362,17 +1357,34 @@ def test_a_point_that_is_neither_value_is_refused_before_any_read(
 
 
 @pytest.mark.parametrize("kind", list(BF16_SHAPES))
-def test_the_default_registry_answers_each_bf16_kind_not_covered_under_its_step(
+def test_the_default_registry_checks_each_bf16_kind_under_its_step(
     root, monkeypatch, kind
 ):
     bf16_run(root, kind)
     steps = steps_looked_up(monkeypatch)
     registry = tools.default_registry(lambda: root)
     for point in ("sim", "board"):
-        with pytest.raises(ToolFailure) as caught:
-            tools.call(registry, TOOL, request(point=point))
-        assert caught.value.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+        result = tools.call(registry, TOOL, request(point=point))
+        assert result["outcome"] == "pass"
+        assert result["shape"] == BF16_SHAPES[kind]
     assert steps == [BF16_STEP["sim"], BF16_STEP["board"]]
+    assert [line["data"]["step"] for line in lines(root)] == [
+        BF16_STEP["sim"],
+        BF16_STEP["sim"],
+        BF16_STEP["board"],
+        BF16_STEP["board"],
+    ]
+
+
+def test_the_default_registry_still_answers_rope_not_covered(root, monkeypatch):
+    record = {**bf16_op("gemm"), "kind": "rope", "shape": {"m": 2, "h": 2, "d": 4}}
+    place(root, content(op=record))
+    steps = steps_looked_up(monkeypatch)
+    registry = tools.default_registry(lambda: root)
+    with pytest.raises(ToolFailure) as caught:
+        tools.call(registry, TOOL, request(point="sim"))
+    assert caught.value.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert steps == [BF16_STEP["sim"]]
     assert lines(root) == []
 
 
@@ -1462,13 +1474,17 @@ def test_an_sdpa_check_reports_fail_and_broken(root, script, outcome):
     assert lines(root)[1]["data"]["step"] == BF16_STEP["board"]
 
 
-def test_the_default_registry_still_answers_sdpa_not_covered(root, monkeypatch):
+def test_the_default_registry_checks_sdpa(root, monkeypatch):
     sdpa_run(root)
     steps = steps_looked_up(monkeypatch)
     registry = tools.default_registry(lambda: root)
     for point in ("sim", "board"):
-        with pytest.raises(ToolFailure) as caught:
-            tools.call(registry, TOOL, request(point=point))
-        assert caught.value.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+        result = tools.call(registry, TOOL, request(point=point))
+        assert result["outcome"] == "pass"
+        assert result["shape"] == SDPA_SHAPE
+        assert (
+            result["counts"]
+            == [{"failed": 0, "non_finite": 0, "cache_differs": 0}] * DRAWS
+        )
     assert steps == [BF16_STEP["sim"], BF16_STEP["board"]]
-    assert lines(root) == []
+    assert len(lines(root)) == 4

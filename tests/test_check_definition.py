@@ -49,7 +49,7 @@ from hilclaw.check_definition import (
     definition,
     input_schema,
 )
-from hilclaw.check_parameters import CheckParameters
+from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.harness import seed_source
 from hilclaw.journal import EMPTY
 
@@ -875,12 +875,33 @@ BF16_RECORDS = (
     ),
 )
 BF16_IDS = [record["kind"] for record in BF16_RECORDS]
+CHECKED_BF16 = [record for record in BF16_RECORDS if record["kind"] != "rope"]
+ROPE = [record for record in BF16_RECORDS if record["kind"] == "rope"]
 
 
-@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
+@pytest.mark.parametrize("record", ROPE, ids=["rope"])
 def test_a_bf16_record_is_not_covered_by_the_check(tmp_path, parties, record):
     root = a_run(tmp_path / "data", op=record)
     registry = tools.default_registry(lambda: root)
     refused(registry, REQUEST, "op_signature_not_covered")
     assert no_log(root)
     assert counts(parties) == (0, 1, 0)
+
+
+@pytest.mark.parametrize(
+    "record", CHECKED_BF16, ids=[record["kind"] for record in CHECKED_BF16]
+)
+def test_a_checked_bf16_record_is_judged_by_the_default_registry(
+    tmp_path, parties, record
+):
+    root = a_run(tmp_path / "data", op=record)
+    registry = tools.default_registry(lambda: root)
+    result = tools.call(registry, TOOL, dict(REQUEST))
+    assert result["outcome"] == "pass"
+    assert result["shape"] == record["shape"]
+    assert len(result["counts"]) == DRAWS
+    assert not no_log(root)
+    assert counts(parties) == (1, 1, 1)
+    ((_, _, _, parameters, _, _),) = parties["script"].calls
+    assert type(parameters) is Bf16CheckParameters
+    assert (parameters.kind, parameters.dtype) == (record["kind"], "bf16")
