@@ -72,3 +72,24 @@ Later (next planner run): the `cpu_standin` operation for these kinds with the r
 ## Follow-ups
 
 ## Result
+**DONE** — PR #311 squash-merged (branch `claude/T-0498-bf16-check-module-level` deleted). Review: 1 round, Approve (dev-reviewer, PR comment 6459435178). Nit 1 (a docstring line of `mock_check.default_script` over-long after re-wrapping) was fixed after the Approve as a docstring-only edit (D20 exception, no re-review). Nit 2 (`check_result._BF16_SHAPES` spells `"bf16"` and keeps the last of two bf16 entries of one kind, which ADR-0177 decision 1's "at most one entry per kind, dtype and layout" rules out while only `row_major` exists) and Nit 3 (the name of a D21 pin test no longer matches its content; the name is not changed under D21) were not acted on.
+
+- **Language**: Python. The extended modules are Python, and the judge is the Python side of the harness.
+- **Parameter form**: a second type, `hilclaw.check_parameters.Bf16CheckParameters(seed, draws, kind, dtype, dims)`, with `dims` a tuple in `task_contract` order, plus the constant `BF16 = "bf16"`. `CheckParameters` is unchanged, so an fp32 `gemm` operation still receives `seed`, `draws`, `m`, `k`, `n`.
+- **New public functions**:
+  - `check_result`: `bf16_completed` and `bf16_broken`. The shape member names are read from the `task_contract` parameters of the bf16 entries of `contract_table.TABLE`, because a pin of the contract-module tests allows only `contract_table` and `model_binding` to name those modules. This module also adds `BF16_KINDS`.
+  - `check_judging`: `from_bf16_judgement` and `from_bf16_report`. The fp32 consistency checks are shared through a private `_from_judgement` and behave as before.
+  - `check_answer`: `from_bf16_answer`.
+  - `check_operation.ask`: takes either type, and raises `ValueError` for a bf16 type whose `dtype` is not `"bf16"` before calling the operation.
+- **Mock**: `mock_check.default_script` writes the ADR-0163 decision 8 report from `bf16_verification_arrays`, each element being the bf16 value nearest the float64 reference. Ties go to even, and there is no double rounding through float32. This is the reading of ADR-0177 decision 3 ("a conforming kernel … so that the judge passes it under any tolerance the calibration admits"), in the sense of ADR-0044 decision 4 (i): no other bf16 value is nearer.
+- **Not reachable from the tool**: `check_seed`, `check_admission`, `check_tool`, `check_identity`, `contract_table` and the registry are unchanged.
+- **Edited D21 pins**, all listed in the PR body:
+  - `test_check_parameters::test_the_module_has_the_type_and_imports_typing_only`
+  - `test_check_result::test_module_imports_the_standard_library_only_and_has_no_entry`
+  - `test_check_result::test_public_names_of_the_module`
+  - `test_check_judging::test_module_imports_the_builder_and_the_judging_only_and_has_no_entry`
+  - `test_check_judging::test_public_names_of_the_module_and_no_default`
+  - `test_check_answer::test_public_names_of_the_module_and_no_default`
+  - `test_mock_check::test_the_module_imports_the_harness_and_the_type_only_and_has_no_entry`
+- **Local tests** (WSL, clang, at `106477a7`; later commits change docstrings only): 36517 passed, 50 skipped. `hilclaw/` line coverage was 99.8 % and function coverage 100 % (1238/1238). `ruff check` and `ruff format` are clean.
+- **Runtime acceptance items**: none.

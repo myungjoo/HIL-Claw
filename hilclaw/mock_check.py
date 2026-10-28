@@ -149,12 +149,12 @@ def default_script(tool, request, hw_profile, parameters, output_path, keeper):
     For a ``CheckParameters`` the answer is a complete report for the
     ``m``, ``n`` and ``draws`` of ``parameters``, ``draws * (4 + 4*m*n) + 4``
     bytes. For each draw in order it holds the check value of the inputs
-    drawn for the seed, the draw and the dimensions, then the ``m*n`` fp32 elements of their product
-    in row-major order as the bytes they have on the host: each element is
-    the fp32 value nearest to the corresponding element of the float64
-    product of the inputs widened to float64, a tie going to the value whose
-    last significand bit is 0. After the last draw it holds the end mark, and
-    nothing else (decision 4).
+    drawn for the seed, the draw and the dimensions, then the ``m*n`` fp32
+    elements of their product in row-major order as the bytes they have on
+    the host: each element is the fp32 value nearest to the corresponding
+    element of the float64 product of the inputs widened to float64, a tie
+    going to the value whose last significand bit is 0. After the last draw
+    it holds the end mark, and nothing else (decision 4).
 
     The answer follows from ``parameters`` alone. It is never one of the four
     strings of the form (B) of ADR-0043 decision 4, as ADR-0060 decision 4
