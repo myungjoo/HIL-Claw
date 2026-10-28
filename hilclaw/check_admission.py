@@ -50,8 +50,7 @@ Choices that are this module's own and no rule of a record:
   an fp32 ``gemm`` record is what it was.
 * A bf16 record that ``covers`` answers ``True`` for is answered
   :data:`KIND_OP_SIGNATURE_NOT_COVERED` when its kind is none the check of a
-  bf16 kind is built for (:data:`hilclaw.check_result.BF16_KINDS`; ``rope``
-  is none of them), or when no bf16 entry of
+  bf16 kind is built for (:data:`hilclaw.check_result.BF16_KINDS`), or when no bf16 entry of
   :data:`hilclaw.contract_table.TABLE` has its kind and its ``layout``:
   there is no check for it, whatever the predicate handed over says.
   Through the predicate the registry binds, such a record is refused by
@@ -148,8 +147,8 @@ class Bf16Admitted(typing.NamedTuple):
     - ``dims``: the values of the record's ``shape`` members, a ``tuple`` in
       the order of the parameters of the contract's ``task_contract``
       (``(m, k, n)`` for ``gemm``, ``(m, n)`` for ``rmsnorm``,
-      ``elementwise_add`` and ``swiglu``, ``(m, l, h, h_kv, d)`` for
-      ``sdpa_kv_cache``).
+      ``elementwise_add`` and ``swiglu``, ``(m, h, d)`` for ``rope``,
+      ``(m, l, h, h_kv, d)`` for ``sdpa_kv_cache``).
     - ``draws``, ``rtol``, ``atol``: as in :class:`Admitted`.
 
     As :func:`admit` returns it, each value is the one the instance holds,

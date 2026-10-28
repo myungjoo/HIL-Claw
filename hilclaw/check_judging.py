@@ -27,9 +27,14 @@ the two:
   :func:`hilclaw.check_result.bf16_broken`. For ``sdpa_kv_cache`` the
   judge is :func:`hilclaw.harness.bf16_sdpa_kv_cache_verification.judge_report`
   with the dimensions (ADR-0165 decision 8), whose counts per draw also hold
-  the number of cache elements that differ. The verdict classes and the
-  conditions are those of the first case: ADR-0163 and ADR-0165 decision 8
-  have them as ADR-0017 decision 7, with the same types.
+  the number of cache elements that differ. For ``rope`` the judge is
+  :func:`hilclaw.harness.bf16_rope_verification.judge_report` with the
+  dimensions and the start position that
+  :func:`hilclaw.harness.bf16_rope_verification.start_position` gives for
+  the dimensions and the seed (ADR-0164 decision 10; ADR-0180 decision 1).
+  The verdict classes and the conditions are those of the first case:
+  ADR-0163 to ADR-0165 have them as ADR-0017 decision 7, with the same
+  types.
 
 Choices that are this module's own and no rule of a record:
 
@@ -63,12 +68,14 @@ reads no file of a run and writes none. It gives no default of any value: no
 number of draws, no tolerance, no dimension and no seed. It stores nothing,
 keeps nothing between calls and has no command-line entry. It imports
 :mod:`hilclaw.check_result`, :mod:`hilclaw.harness.verification`,
-:mod:`hilclaw.harness.bf16_verification` and
+:mod:`hilclaw.harness.bf16_verification`,
+:mod:`hilclaw.harness.bf16_rope_verification` and
 :mod:`hilclaw.harness.bf16_sdpa_kv_cache_verification` and nothing else.
 """
 
 from hilclaw import check_result
 from hilclaw.harness import (
+    bf16_rope_verification,
     bf16_sdpa_kv_cache_verification,
     bf16_verification,
     verification,
@@ -76,6 +83,7 @@ from hilclaw.harness import (
 
 _CONDITIONS = dict(zip(verification.Broken, check_result.CONDITIONS[-4:], strict=True))
 _SDPA = "sdpa_kv_cache"
+_ROPE = "rope"
 _OUTCOMES = {
     verification.Verdict.PASS: check_result.PASS,
     verification.Verdict.FAIL: check_result.FAIL,
@@ -206,7 +214,12 @@ def from_bf16_report(report, kind, dims, *, draws, seed, rtol, atol):
     ``dims``, ``draws``, ``seed``, ``rtol`` and ``atol``, or, when ``kind``
     is exactly the ``str`` ``"sdpa_kv_cache"``, by
     :func:`hilclaw.harness.bf16_sdpa_kv_cache_verification.judge_report`
-    with all of them but ``kind`` (ADR-0165 decision 8); its judgement is
+    with all of them but ``kind`` (ADR-0165 decision 8), and when it is
+    exactly the ``str`` ``"rope"``, by
+    :func:`hilclaw.harness.bf16_rope_verification.judge_report` with all of
+    them but ``kind`` and with ``start`` the value of
+    :func:`hilclaw.harness.bf16_rope_verification.start_position` for
+    ``dims`` and ``seed`` (ADR-0180 decision 1); its judgement is
     handed to :func:`from_bf16_judgement` with the same values but ``seed``,
     which is no member of the result (ADR-0042 decision 6). All but
     ``report``, ``kind`` and ``dims`` are keyword-only and none has a default.
@@ -214,14 +227,20 @@ def from_bf16_report(report, kind, dims, *, draws, seed, rtol, atol):
     What each argument must be, the order of the checks and what is raised
     are those of the ``judge_report`` called and are passed on unchanged:
     :class:`hilclaw.harness.verification_arrays.VerificationArgumentError`
-    for a kind, dimensions, number of draws, seed or tolerance it refuses,
-    then :class:`TypeError` for a ``report`` that is not exactly ``bytes``,
+    for a kind, dimensions, number of draws, seed or tolerance it refuses
+    (for ``rope``, first what ``start_position`` refuses of ``dims`` and
+    ``seed``), then :class:`TypeError` for a ``report`` that is not exactly
+    ``bytes``,
     and what NumPy raises for arrays it cannot allocate. Nothing is returned
     then.
     """
     common = {"draws": draws, "seed": seed, "rtol": rtol, "atol": atol}
     if type(kind) is str and kind == _SDPA:
         judgement = bf16_sdpa_kv_cache_verification.judge_report(report, dims, **common)
+    elif type(kind) is str and kind == _ROPE:
+        rope = bf16_rope_verification
+        start = rope.start_position(dims, seed=seed)
+        judgement = rope.judge_report(report, dims, start=start, **common)
     else:
         judgement = bf16_verification.judge_report(report, kind, dims, **common)
     return from_bf16_judgement(judgement, kind, dims, draws=draws, rtol=rtol, atol=atol)

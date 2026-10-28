@@ -612,12 +612,13 @@ BF16_SHAPES = {
 BF16_COMMON = {"draws": 2, "rtol": 2**-8, "atol": 0}
 
 
-def test_the_bf16_kinds_are_the_five_of_the_harnesses_in_table_order():
+def test_the_bf16_kinds_are_the_six_of_the_harnesses_in_table_order():
     assert BF16_KINDS == (
         "gemm",
         "rmsnorm",
         "elementwise_add",
         "swiglu",
+        "rope",
         "sdpa_kv_cache",
     )
 
@@ -669,7 +670,6 @@ def test_failed_is_bounded_by_the_output_elements_of_the_kind(kind):
         (None, TypeError),
         (b"gemm", TypeError),
         ("conv", ValueError),
-        ("rope", ValueError),
         ("GEMM", ValueError),
     ],
 )
@@ -730,6 +730,82 @@ def test_bf16_counts_follow_the_rule_of_the_first_case():
         bf16_completed("swiglu", (2, 4), **BF16_COMMON, counts=[(0, 0)])
     with pytest.raises(ValueError, match=r"^counts\[1\]\.non_finite: "):
         bf16_completed("swiglu", (2, 4), **BF16_COMMON, counts=[(0, 0), (1, 2)])
+
+
+# A rope check (ADR-0177 decision 3, HQ-0077; ADR-0180)
+
+# Test values, not dimensions, draws or a tolerance of the package.
+ROPE_DIMS = (2, 3, 4)
+ROPE_SHAPE = {"m": 2, "h": 3, "d": 4}
+ROPE_OUTPUT = 2 * 3 * 4
+
+
+def test_a_rope_result_names_m_h_and_d():
+    passed = bf16_completed("rope", ROPE_DIMS, **BF16_COMMON, counts=[(0, 0)] * 2)
+    assert passed == {
+        "outcome": PASS,
+        "shape": ROPE_SHAPE,
+        "draws": 2,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+        "counts": [{"failed": 0, "non_finite": 0}] * 2,
+    }
+    assert list(passed["shape"]) == ["m", "h", "d"]
+    failed = bf16_completed("rope", ROPE_DIMS, **BF16_COMMON, counts=[(0, 0), (1, 0)])
+    assert failed["outcome"] == FAIL
+    assert failed["counts"] == [
+        {"failed": 0, "non_finite": 0},
+        {"failed": 1, "non_finite": 0},
+    ]
+    json.dumps(failed, allow_nan=False)
+
+
+@pytest.mark.parametrize("condition", CONDITIONS)
+def test_a_broken_rope_result_has_the_condition_and_m_h_d(condition):
+    assert bf16_broken(condition, "rope", ROPE_DIMS, **BF16_COMMON) == {
+        "outcome": BROKEN,
+        "condition": condition,
+        "shape": ROPE_SHAPE,
+        "draws": 2,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+    }
+
+
+def test_rope_failed_is_bounded_by_m_h_d():
+    at_bound = bf16_completed(
+        "rope", ROPE_DIMS, draws=1, rtol=0, atol=0, counts=[(ROPE_OUTPUT, 3)]
+    )
+    assert at_bound["counts"] == [{"failed": ROPE_OUTPUT, "non_finite": 3}]
+    with pytest.raises(ValueError, match=r"^counts\[0\]\.failed: .*m \* h \* d"):
+        bf16_completed(
+            "rope", ROPE_DIMS, draws=1, rtol=0, atol=0, counts=[(ROPE_OUTPUT + 1, 0)]
+        )
+    with pytest.raises(ValueError, match=r"^counts\[0\]: must have 2 items"):
+        bf16_completed("rope", ROPE_DIMS, draws=1, rtol=0, atol=0, counts=[(0, 0, 0)])
+
+
+@pytest.mark.parametrize(
+    ("dims", "expected", "name"),
+    [
+        ((2, 4), ValueError, "dims"),
+        ((2, 3, 4, 5), ValueError, "dims"),
+        ([2, 3, 4], TypeError, "dims"),
+        ((True, 3, 4), TypeError, "m"),
+        ((2, 0, 4), ValueError, "h"),
+        ((2, 3, 0), ValueError, "d"),
+        ((2, 3, 5), ValueError, "d"),
+        ((2, 3, 4.0), TypeError, "d"),
+    ],
+)
+def test_rope_dims_outside_the_contract_are_refused(dims, expected, name):
+    with pytest.raises(expected, match=rf"^{name}: "):
+        bf16_completed("rope", dims, **BF16_COMMON, counts=[(0, 0), (0, 0)])
+    with pytest.raises(expected, match=rf"^{name}: "):
+        bf16_broken("time_limit", "rope", dims, **BF16_COMMON)
+
+
+def test_an_odd_d_is_refused_before_draws():
+    with pytest.raises(ValueError, match=r"^d: must be even, got 3$"):
+        bf16_broken("time_limit", "rope", (1, 1, 3), draws=0, rtol=0, atol=0)
 
 
 # An sdpa_kv_cache check (ADR-0177 decision 3, HQ-0077; ADR-0165 decision 8)

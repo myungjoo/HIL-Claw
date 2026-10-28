@@ -22,7 +22,9 @@ other. This module renders that table as plain Python values:
   decision 3, HQ-0077): ADR-0042's list with ``shape`` holding the shape
   members of the kind, named and ordered as the parameters of the
   contract's ``task_contract``, and ``failed`` at most the number of output
-  elements of the kind (``m * n``, and ``m * h * d`` for ``sdpa_kv_cache``).
+  elements of the kind (``m * n``, and ``m * h * d`` for ``rope`` and
+  ``sdpa_kv_cache``; for ``rope`` the shape is ``m``, ``h``, ``d`` with ``d``
+  even, the rule of ADR-0161 decision 11).
   Each ``counts`` entry of an ``sdpa_kv_cache`` check also holds
   ``cache_differs``, the number of cache elements over both allocations
   that differ in that draw (ADR-0165 decision 8), and such a result is a
@@ -79,9 +81,11 @@ CONDITIONS = (
     "report_form",
     "check_value",
 )
-#: The kinds whose bf16 check results this module builds (those of ADR-0163 and ADR-0165).
-BF16_KINDS = ("gemm", "rmsnorm", "elementwise_add", "swiglu", "sdpa_kv_cache")
+#: The kinds whose bf16 check results this module builds (those of ADR-0163 to ADR-0165), in table order.
+BF16_KINDS = ("gemm", "rmsnorm", "elementwise_add", "swiglu", "rope", "sdpa_kv_cache")
 _SDPA = "sdpa_kv_cache"
+_ROPE = "rope"
+_EVEN = {_ROPE: ("d",)}
 _BF16_SHAPES = {
     kind: tuple(inspect.signature(entry.contract.task_contract).parameters)
     for kind in BF16_KINDS
@@ -152,10 +156,12 @@ def bf16_completed(kind, dims, *, draws, rtol, atol, counts):
     As :func:`completed`, with ``shape`` a new ``dict`` that pairs the
     shape members of ``kind`` with ``dims`` in their order (``{"m": ...,
     "k": ..., "n": ...}`` for ``gemm``, ``{"m": ..., "l": ..., "h": ...,
-    "h_kv": ..., "d": ...}`` for ``sdpa_kv_cache``, ``{"m": ..., "n": ...}``
-    for the other three kinds), and each ``failed`` at most the number of
-    output elements of the kind: ``m * n``, or ``m * h * d`` for
-    ``sdpa_kv_cache``.
+    "h_kv": ..., "d": ...}`` for ``sdpa_kv_cache``, ``{"m": ..., "h": ...,
+    "d": ...}`` for ``rope``, ``{"m": ..., "n": ...}`` for the other three
+    kinds), and each ``failed`` at most the number of output elements of the
+    kind: ``m * n``, or ``m * h * d`` for ``rope`` and ``sdpa_kv_cache``.
+    For ``rope`` ``d`` must also be even (ADR-0161 decision 11), as in every
+    record the contract covers.
 
     For ``sdpa_kv_cache`` (ADR-0177 decision 3, HQ-0077; ADR-0165
     decision 8) each entry of ``counts`` is a ``tuple`` of three items,
@@ -181,7 +187,10 @@ def bf16_completed(kind, dims, *, draws, rtol, atol, counts):
     ``counts``. Raises :class:`TypeError` and :class:`ValueError` as the
     module docstring says.
     """
-    common = _common(_shape(kind, dims), draws, rtol, atol)
+    common = _common(_shape(kind, dims), draws, rtol, atol, _EVEN.get(kind, ()))
+    if kind == _ROPE:
+        m, h, d = common["shape"].values()
+        return _completed(common, counts, ("m * h * d", m * h * d))
     if kind != _SDPA:
         return _completed(common, counts)
     m, l, h, h_kv, d = common["shape"].values()
@@ -200,7 +209,8 @@ def bf16_broken(condition, kind, dims, *, draws, rtol, atol):
     :func:`bf16_completed`.
     """
     _condition(condition)
-    return _broken(condition, _common(_shape(kind, dims), draws, rtol, atol))
+    common = _common(_shape(kind, dims), draws, rtol, atol, _EVEN.get(kind, ()))
+    return _broken(condition, common)
 
 
 def _condition(condition):
@@ -239,9 +249,11 @@ def _shape(kind, dims):
     return dict(zip(names, dims, strict=True))
 
 
-def _common(shape, draws, rtol, atol):
+def _common(shape, draws, rtol, atol, even=()):
     for name, value in (*shape.items(), ("draws", draws)):
         _integer(name, value, 1)
+        if name in even and value % 2:
+            raise ValueError(f"{name}: must be even, got {reprlib.repr(value)}")
     return {
         "shape": dict(shape),
         "draws": draws,

@@ -18,6 +18,7 @@ from hilclaw.check_judging import (
     from_report,
 )
 from hilclaw.check_parameters import Bf16CheckParameters
+from hilclaw.harness import bf16_rope_verification
 from hilclaw.harness.bf16_sdpa_kv_cache_verification import DrawCounts
 from hilclaw.harness.verification import (
     END_MARK,
@@ -625,6 +626,7 @@ def test_module_imports_the_builder_and_the_judging_only_and_has_no_entry():
         "hilclaw.harness",
         "hilclaw.harness.verification",
         "hilclaw.harness.bf16_verification",
+        "hilclaw.harness.bf16_rope_verification",
         "hilclaw.harness.bf16_sdpa_kv_cache_verification",
     }
     assert not imported & {"secrets", "random", "os", "time"}
@@ -776,7 +778,7 @@ def test_a_bf16_judgement_that_does_not_agree_is_refused(judgement, expected):
 def test_a_bf16_judgement_of_an_unknown_kind_is_refused():
     judgement = Judgement(Broken.TIMEOUT, None, None)
     with pytest.raises(ValueError, match=r"^kind: "):
-        from_bf16_judgement(judgement, "rope", (1, 2), **BF16_BUILD)
+        from_bf16_judgement(judgement, "conv", (1, 2), **BF16_BUILD)
 
 
 # An sdpa_kv_cache check (ADR-0177 decision 3, HQ-0077; ADR-0165 decision 8)
@@ -949,10 +951,143 @@ def test_an_sdpa_judgement_beside_counts_of_the_other_outcome_names_the_verdict(
         from_bf16_judgement(judgement, SDPA, SDPA_DIMS, **SDPA_BUILD)
 
 
-def test_rope_is_still_refused_by_the_judge_and_the_builder():
-    with pytest.raises(VerificationArgumentError):
-        from_bf16_report(b"", "rope", (1, 2, 2), **SDPA_CALL)
-    with pytest.raises(ValueError, match=r"^kind: "):
-        from_bf16_judgement(
-            Judgement(Broken.TIMEOUT, None, None), "rope", (1, 2, 2), **SDPA_BUILD
+# A rope check (ADR-0177 decision 3, HQ-0077; ADR-0180 decision 1)
+
+# Test values, not dimensions, draws, a seed or a tolerance of the package.
+ROPE = "rope"
+ROPE_TOLERANCE = {"rtol": 0, "atol": 2**-8 + 2**-21}
+ROPE_CALL = {"draws": 2, "seed": SEED, **ROPE_TOLERANCE}
+ROPE_SMALLEST = (1, 1, 2)
+
+
+def rope_report(dims, seed=SEED):
+    parameters = Bf16CheckParameters(seed, 2, ROPE, "bf16", dims)
+    return mock_check.default_script(None, None, None, parameters, None, None)
+
+
+def rope_shape(dims):
+    return dict(zip(("m", "h", "d"), dims, strict=True))
+
+
+@pytest.mark.parametrize(
+    ("dims", "seed"),
+    [(ROPE_SMALLEST, SEED), ((1, 8, 64), 6), ((1, 8, 64), 7), ((128, 8, 64), SEED)],
+    ids=["smallest", "m1-even-seed", "m1-odd-seed", "m128"],
+)
+def test_a_conforming_rope_report_is_judged_pass_at_the_start_of_the_rule(
+    dims, seed, monkeypatch
+):
+    starts = []
+    judge = bf16_rope_verification.judge_report
+
+    def spy(report, judged, **named):
+        starts.append(named["start"])
+        return judge(report, judged, **named)
+
+    monkeypatch.setattr(bf16_rope_verification, "judge_report", spy)
+    call = {**ROPE_CALL, "seed": seed}
+    result = from_bf16_report(rope_report(dims, seed), ROPE, dims, **call)
+    assert result == {
+        "outcome": "pass",
+        "shape": rope_shape(dims),
+        "draws": 2,
+        "tolerance": {"rtol": 0.0, "atol": 2**-8 + 2**-21},
+        "counts": [{"failed": 0, "non_finite": 0}] * 2,
+    }
+    expected = 0 if dims[0] > 1 else (127 if seed % 2 == 0 else 2047)
+    assert starts == [expected]
+
+
+def test_a_rope_report_judged_at_another_start_has_another_check_value():
+    dims = (1, 8, 64)
+    report = rope_report(dims, seed=6)
+    judged = {
+        start: bf16_rope_verification.judge_report(
+            report, dims, start=start, draws=2, seed=6, **ROPE_TOLERANCE
         )
+        for start in (127, 2047)
+    }
+    assert judged[127].verdict is Verdict.PASS
+    assert judged[2047] == Judgement(Broken.CHECK_VALUE, None, None)
+
+
+@pytest.mark.parametrize(
+    ("pattern", "non_finite"), [(0x7F80, 1), (0x4000, 0)], ids=["inf", "two"]
+)
+def test_a_rope_report_with_a_wrong_element_is_judged_fail(pattern, non_finite):
+    dims = (2, 2, 4)
+    report = bytearray(rope_report(dims))
+    block = 4 + 2 * 2 * 2 * 4
+    struct.pack_into("=H", report, block + 4 + 2 * 5, pattern)
+    result = from_bf16_report(bytes(report), ROPE, dims, **ROPE_CALL)
+    assert result["outcome"] == "fail"
+    assert result["shape"] == rope_shape(dims)
+    assert result["counts"] == [
+        {"failed": 0, "non_finite": 0},
+        {"failed": 1, "non_finite": non_finite},
+    ]
+
+
+def test_a_rope_report_of_the_wrong_form_or_check_value_is_broken():
+    good = rope_report((2, 2, 4))
+    short = from_bf16_report(good[:-1], ROPE, (2, 2, 4), **ROPE_CALL)
+    assert short == {
+        "outcome": "broken",
+        "condition": "report_form",
+        "shape": {"m": 2, "h": 2, "d": 4},
+        "draws": 2,
+        "tolerance": {"rtol": 0.0, "atol": 2**-8 + 2**-21},
+    }
+    mismatched = bytearray(good)
+    mismatched[0] ^= 0x01
+    result = from_bf16_report(bytes(mismatched), ROPE, (2, 2, 4), **ROPE_CALL)
+    assert result["condition"] == "check_value"
+
+
+@pytest.mark.parametrize("member", list(Broken))
+def test_a_broken_rope_judgement_gives_its_condition_and_m_h_d(member):
+    judgement = Judgement(member, None, None)
+    result = from_bf16_judgement(judgement, ROPE, (2, 3, 4), draws=2, **ROPE_TOLERANCE)
+    assert result["condition"] == condition_of(member)
+    assert result["shape"] == {"m": 2, "h": 3, "d": 4}
+
+
+def test_a_completed_rope_judgement_is_bounded_by_m_h_d():
+    counts = (Counts(0, 0), Counts(24, 2))
+    judgement = Judgement(None, Verdict.FAIL, counts)
+    result = from_bf16_judgement(judgement, ROPE, (2, 3, 4), draws=2, **ROPE_TOLERANCE)
+    assert result["counts"][1] == {"failed": 24, "non_finite": 2}
+    with pytest.raises(ValueError, match=r"^counts\[1\]\.failed: "):
+        from_bf16_judgement(
+            Judgement(None, Verdict.FAIL, (Counts(0, 0), Counts(25, 0))),
+            ROPE,
+            (2, 3, 4),
+            draws=2,
+            **ROPE_TOLERANCE,
+        )
+
+
+@pytest.mark.parametrize(
+    ("dims", "seed"),
+    [
+        ((1, 2), SEED),
+        ((1, 2, 3), SEED),
+        ((0, 2, 2), SEED),
+        ((True, 2, 2), SEED),
+        ((1, 2, 2), -1),
+        ((1, 2, 2), True),
+        ((1, 1, 2**52), 1),
+    ],
+    ids=[
+        "two-dims",
+        "odd-d",
+        "zero-m",
+        "bool-m",
+        "negative-seed",
+        "bool-seed",
+        "rows-beyond-the-table",
+    ],
+)
+def test_a_rope_report_of_parameters_the_rule_refuses_raises(dims, seed):
+    with pytest.raises(VerificationArgumentError):
+        from_bf16_report(b"", ROPE, dims, **{**ROPE_CALL, "seed": seed})

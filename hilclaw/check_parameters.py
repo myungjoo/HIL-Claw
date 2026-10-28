@@ -82,7 +82,9 @@ class Bf16CheckParameters(typing.NamedTuple):
     - ``dims``: the dimensions, a ``tuple`` in the order of the parameters of
       the contract's ``task_contract`` (``(m, k, n)`` for ``gemm``,
       ``(m, n)`` for ``rmsnorm``, ``elementwise_add`` and ``swiglu``,
-      ``(m, l, h, h_kv, d)`` for ``sdpa_kv_cache``).
+      ``(m, h, d)`` for ``rope``, ``(m, l, h, h_kv, d)`` for
+      ``sdpa_kv_cache``). A check of ``rope`` is handed no start position:
+      each side derives it from ``dims`` and ``seed`` (ADR-0180 decision 1).
 
     All five are given, by position in this order or by name; none has a
     default. Nothing is checked when an instance is built.
