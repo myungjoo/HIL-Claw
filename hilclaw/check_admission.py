@@ -53,8 +53,9 @@ Choices that are this module's own and no rule of a record:
   bf16 kind is built for (:data:`hilclaw.check_result.BF16_KINDS`; ``rope``
   is none of them), or when no bf16 entry of
   :data:`hilclaw.contract_table.TABLE` has its kind and its ``layout``:
-  there is no check for it, whatever the predicate handed over says. Through the predicate the registry binds, such a record is refused
-  by the predicate first.
+  there is no check for it, whatever the predicate handed over says.
+  Through the predicate the registry binds, such a record is refused by
+  the predicate first.
 * The order of the dimensions of a :class:`Bf16Admitted` is that of the
   parameters of the ``task_contract`` of that entry (ADR-0177 decisions 1
   and 3), read when the module is imported.
