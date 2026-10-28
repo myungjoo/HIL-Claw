@@ -444,5 +444,101 @@ def test_public_names():
         "events",
         "journal",
     }
-    assert public - imported == {"Standing", "UNSTARTED_KINDS", "standing"}
+    assert public - imported == {
+        "STEPS_OF",
+        "Standing",
+        "UNSTARTED_KINDS",
+        "point_standing",
+        "standing",
+    }
     assert journal.JournalError.__mro__[1] is ValueError
+
+
+# point_standing: the lines of both step values of a point (ADR-0178 decision 1)
+
+BF16_SIM = "correctness_check_bf16_sim"
+BF16_BOARD = "correctness_check_bf16_board"
+
+
+def at_point(lines, point="sim", numbers=ARGS):
+    return check_standing.point_standing(lines, point, *numbers)
+
+
+def test_steps_of_names_both_values_of_each_point():
+    assert check_standing.STEPS_OF == {
+        "sim": (STEP_SIM, BF16_SIM),
+        "board": (STEP_BOARD, BF16_BOARD),
+    }
+    assert {
+        step for steps in check_standing.STEPS_OF.values() for step in steps
+    } == set(STEPS)
+
+
+@pytest.mark.parametrize(("lines", "expected"), WALK_THROUGH)
+@pytest.mark.parametrize("step", [STEP_SIM, BF16_SIM])
+def test_point_standing_of_one_value_is_its_standing(lines, expected, step):
+    moved = [copy.deepcopy(event) for event in lines]
+    for event in moved:
+        event["data"]["step"] = step
+    assert at_point(moved) is expected
+    assert at_point(moved) is at(moved, step)
+
+
+@pytest.mark.parametrize(
+    ("lines", "expected"),
+    [
+        (ended(1, PASS) + ended(1, PASS, step=BF16_SIM), VERIFIED),
+        (ended(1, PASS) + ended(1, FAIL, step=BF16_SIM), NOT_VERIFIED),
+        (ended(1, FAIL) + ended(2, PASS, step=BF16_SIM), NOT_VERIFIED),
+        (ended(1, PASS) + [start(1, step=BF16_SIM)], UNDETERMINED),
+        (failed(1, "compiler_unavailable", step=BF16_SIM) + ended(1, PASS), VERIFIED),
+        (
+            failed(1, "build_log_unwritable", step=BF16_SIM) + ended(1, PASS),
+            UNDETERMINED,
+        ),
+        ([start(1, step=BF16_SIM)] + ended(2, FAIL), NOT_VERIFIED),
+    ],
+)
+def test_point_standing_counts_the_lines_of_both_values_together(lines, expected):
+    assert at_point(lines) is expected
+
+
+def test_identities_of_the_two_values_are_apart():
+    lines = [start(1), end(1, step=BF16_SIM)]
+    assert at(lines, STEP_SIM) is UNDETERMINED
+    assert at(lines, BF16_SIM) is VERIFIED
+    assert at_point(lines) is UNDETERMINED
+
+
+def test_point_standing_ignores_the_other_point():
+    lines = ended(1, FAIL, step=BF16_BOARD) + ended(1, PASS, step=BF16_SIM)
+    assert at_point(lines, "sim") is VERIFIED
+    assert at_point(lines, "board") is NOT_VERIFIED
+    assert at_point(ended(1, PASS, step=STEP_BOARD), "sim") is UNDETERMINED
+
+
+@pytest.mark.parametrize(
+    "point", [STEP_SIM, BF16_SIM, "SIM", None, Text("sim"), 1, ["sim"]]
+)
+def test_point_outside_the_two_is_refused(point):
+    def lines():
+        raise AssertionError("read")
+        yield
+
+    with pytest.raises(JournalError, match=r"^point: must be one of sim, board, got "):
+        check_standing.point_standing(lines(), point, *ARGS)
+
+
+def test_point_standing_refuses_what_standing_refuses():
+    with pytest.raises(JournalError, match="^attempt: is required"):
+        at_point([], numbers=(3, 2, None))
+    with pytest.raises(events.InvalidEventError, match="^round:"):
+        at_point([], numbers=(True, 2, 1))
+    bad = [end(1, step=BF16_SIM, result={"max_abs_error": 0.0})]
+    with pytest.raises(
+        JournalError, match="^line 1: data.result: lacks the member outcome$"
+    ):
+        at_point(bad)
+    assert at_point(bad, "board") is UNDETERMINED
+    with pytest.raises(ValueError, match="^line 2: "):
+        at_point(ended(1, PASS, step=BF16_BOARD)[:1] + [{"kind": "x"}], "board")

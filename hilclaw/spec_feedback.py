@@ -16,20 +16,24 @@ decision 3:
   ascending ``(round, attempt)``, and the first failure decides.
 * ⑨ only when ⑧ found one, the run's log is read by
   :func:`hilclaw.checks_tool.log_lines` and its step lines passed by
-  :func:`hilclaw.checks_tool.checks_of` for the found attempts at the two
-  points, with the kinds of ADR-0131 decision 3; each attempt's standing at
-  each point is :func:`hilclaw.check_standing.standing`.
+  :func:`hilclaw.checks_tool.checks_in_order` for the found attempts at the
+  two points, with the kinds of ADR-0131 decision 3; each attempt's standing
+  at each point is :func:`hilclaw.check_standing.point_standing`. The lines of
+  a point are those of both its ``step`` values in
+  :data:`hilclaw.check_standing.STEPS_OF`, that of ADR-0040 decision 3 and the
+  bf16 one of ADR-0177 decision 3 (ADR-0178 decision 1).
 * An attempt undetermined at the sim point is not shown. Each other one gives
   ``{"round", "candidate": 1, "attempt", "techniques"}``, ``techniques`` being
   the ids of its own spec's ``guidance.techniques`` in their order, and
   ``failure`` exactly when it is not verified at the sim point, or verified
   there and not verified at the board point. The deciding result is the first
-  ended check of that point, in line order, whose ``outcome`` is ``"fail"`` or
+  ended check of that point, under either value, in line order, whose ``outcome`` is ``"fail"`` or
   ``"broken"``; ``stage`` is ``"compile"`` for a broken one with ``condition``
   ``build_exit_status`` or ``build_time_limit``, else the point's name. No
   entry has ``profile``.
 * ⑩ after all of ⑨, for each ``compile`` failure, the compiler log of the
-  deciding check (ADR-0078 decision 3) is appended to the report when that file
+  deciding check (ADR-0078 decision 3), named by the ``step`` of its line, is
+  appended to the report when that file
   exists and is not empty; a missing file is no failure.
 
 Choices that are this module's own and no rule of the record:
@@ -115,7 +119,7 @@ def attempts(data_root, run_id, round):
         ``run_file_unreadable``, ``run_file_invalid`` or
         ``run_file_unsupported`` as :func:`hilclaw.checks_tool.log_lines`
         raises them; of kind ``run_file_invalid`` or ``check_result_invalid``
-        as :func:`hilclaw.checks_tool.checks_of` raises them.
+        as :func:`hilclaw.checks_tool.checks_in_order` raises them.
     """
     if type(round) is not int:
         raise TypeError(f"round: must be an int, got {type(round).__name__}")
@@ -133,36 +137,39 @@ def attempts(data_root, run_id, round):
         step, q, candidate, a = key
         return step in check_identity.STEPS and candidate == 1 and (q, a) in numbers
 
-    checks = checks_tool.checks_of(run_id, lines, inside)
+    checks = checks_tool.checks_in_order(run_id, lines, inside)
     shown = []
     for q, a, techniques in found:
         entry = {"round": q, "candidate": 1, "attempt": a, "techniques": techniques}
-        sim = check_standing.standing(lines, check_identity.STEP_SIM, q, 1, a)
+        sim = check_standing.point_standing(lines, check_identity.SIM, q, 1, a)
         if sim is check_standing.Standing.UNDETERMINED:
             continue
         point = None
         if sim is check_standing.Standing.NOT_VERIFIED:
             point = check_identity.SIM
         else:
-            board = check_standing.standing(lines, check_identity.STEP_BOARD, q, 1, a)
+            board = check_standing.point_standing(lines, check_identity.BOARD, q, 1, a)
             if board is check_standing.Standing.NOT_VERIFIED:
                 point = check_identity.BOARD
         deciding = None
         if point is not None:
-            step = checks_tool.STEP_OF[point]
+            steps = check_standing.STEPS_OF[point]
             deciding = next(
-                element
-                for element in checks[(step, q, 1, a)]
-                if "result" in element and element["result"]["outcome"] in _FAILED
+                (key[0], element)
+                for key, element in checks
+                if key[0] in steps
+                and key[1:] == (q, 1, a)
+                and "result" in element
+                and element["result"]["outcome"] in _FAILED
             )
         shown.append((entry, point, deciding))
     for entry, point, deciding in shown:
         if deciding is not None:
-            entry["failure"] = _failure(root, run_id, entry, point, deciding)
+            entry["failure"] = _failure(root, run_id, entry, point, *deciding)
     return [entry for entry, _, _ in shown]
 
 
-def _failure(root, run_id, entry, point, deciding):
+def _failure(root, run_id, entry, point, step, deciding):
     result = deciding["result"]
     outcome = result["outcome"]
     condition = result.get("condition")
@@ -177,7 +184,6 @@ def _failure(root, run_id, entry, point, deciding):
         sentence += f": {_PHRASES[condition] if named else _GENERIC_PHRASE}"
     report = sentence + "."
     if stage == "compile":
-        step = checks_tool.STEP_OF[point]
         directory = layout.attempt_dir(
             root, run_id, entry["round"], "measure", 1, entry["attempt"]
         )

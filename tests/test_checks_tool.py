@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from hilclaw import (
+    check_result,
     check_standing,
     checks_tool,
     events,
@@ -21,6 +22,8 @@ RUN = "run-a"
 LOG = f"runs/{RUN}/events.ndjson"
 SIM = "correctness_check_sim"
 BOARD = "correctness_check_board"
+BF16_SIM = "correctness_check_bf16_sim"
+BF16_BOARD = "correctness_check_bf16_board"
 PASS = {"outcome": "pass", "max_abs_error": 0.0}
 FAIL = {"outcome": "fail", "max_abs_error": 2.5}
 BROKEN = {"outcome": "broken"}
@@ -707,7 +710,11 @@ def test_the_first_failing_step_line_in_line_order_decides(root):
 def test_the_shared_names_are_the_log_and_the_steps_of_the_points():
     assert checks_tool.LOG == "events.ndjson"
     assert f"runs/{RUN}/{checks_tool.LOG}" == LOG
-    assert checks_tool.STEP_OF == {"sim": SIM, "board": BOARD}
+    assert check_standing.STEPS_OF == {
+        "sim": (SIM, BF16_SIM),
+        "board": (BOARD, BF16_BOARD),
+    }
+    assert not hasattr(checks_tool, "STEP_OF")
 
 
 def test_log_lines_returns_every_complete_line_in_order(root):
@@ -787,6 +794,149 @@ def test_checks_of_refuses_a_broken_step_line_whatever_it_admits(root):
         checks_tool.checks_of(RUN, lines, lambda key: False)
     assert refused.value.kind == tools.KIND_RUN_FILE_INVALID
     assert refused.value.message == f"{LOG}: line 1: data: lacks the member spend"
+
+
+def bf16(kind="rmsnorm", failed=0):
+    dims = (4, 2, 8) if kind == "gemm" else (2, 8)
+    return check_result.bf16_completed(
+        kind, dims, draws=1, rtol=0.01, atol=0.001, counts=[(failed, 0)]
+    )
+
+
+def bf16_broken(condition="build_exit_status"):
+    return check_result.bf16_broken(
+        condition, "swiglu", (2, 8), draws=1, rtol=0.01, atol=0.001
+    )
+
+
+@pytest.mark.parametrize(("point", "step"), [("sim", BF16_SIM), ("board", BF16_BOARD)])
+@pytest.mark.parametrize("kind", check_result.BF16_KINDS)
+def test_a_bf16_run_is_read_as_an_fp32_run_is(root, point, step, kind):
+    check(root, 1, step=step, result=bf16(kind, failed=1))
+    check(root, 2, step=step, result=bf16(kind))
+    check(root, 1, attempt=2, step=step, result=bf16(kind))
+    expected = [
+        {
+            "attempt": 1,
+            "standing": "not_verified",
+            "checks": [ended(1, result=bf16(kind, 1)), ended(2, result=bf16(kind))],
+        },
+        {"attempt": 2, "standing": "verified", "checks": [ended(result=bf16(kind))]},
+    ]
+    assert read(root, request(point=point)) == {"attempts": expected}
+    assert read(root, request(2, point)) == {"attempts": expected[1:]}
+    other = "board" if point == "sim" else "sim"
+    assert read(root, request(point=other)) == {"attempts": []}
+
+
+def test_an_fp32_run_is_read_as_before_beside_a_bf16_run(root):
+    check(root, result=PASS)
+    check(root, attempt=2, step=BF16_BOARD, result=bf16())
+    assert only(read(root, request(1))) == {
+        "attempt": 1,
+        "standing": "verified",
+        "checks": [ended(result=PASS)],
+    }
+    assert [e["attempt"] for e in read(root, request())["attempts"]] == [1, 2]
+
+
+def test_an_open_bf16_identity_is_listed_and_undetermined(root):
+    check(root, 1, step=BF16_SIM, result=bf16())
+    start(root, 2, step=BF16_SIM)
+    assert only(read(root, request(1, "sim"))) == {
+        "attempt": 1,
+        "standing": "undetermined",
+        "checks": [ended(1, result=bf16()), {"execution": 2, "state": "open"}],
+    }
+
+
+def test_the_lines_of_both_values_of_a_point_are_read_together(root):
+    check(root, 1, result=PASS)
+    start(root, 1, step=BF16_BOARD)
+    end(root, 1, step=BF16_BOARD, result=bf16_broken())
+    start(root, 2)
+    check(root, 1, step=BF16_SIM, result=bf16())
+    assert only(read(root, request(1))) == {
+        "attempt": 1,
+        "standing": "not_verified",
+        "checks": [
+            ended(1, result=PASS),
+            ended(1, result=bf16_broken()),
+            {"execution": 2, "state": "open"},
+        ],
+    }
+    assert only(read(root, request(1, "sim")))["standing"] == "verified"
+
+
+def test_a_pass_under_each_value_is_verified_and_an_open_one_keeps_it_not(root):
+    check(root, 1, result=PASS)
+    check(root, 1, step=BF16_BOARD, result=bf16())
+    assert only(read(root, request(1)))["standing"] == "verified"
+    start(root, 2, step=BF16_BOARD)
+    assert only(read(root, request(1)))["standing"] == "undetermined"
+
+
+def test_a_damaged_bf16_end_line_is_run_file_invalid(root):
+    check(root, step=BF16_BOARD, result=bf16())
+    raw(root, line({"step": BF16_BOARD, "execution": 2, "result": bf16()}))
+    refused = failure(root, request(1))
+    assert refused.kind == tools.KIND_RUN_FILE_INVALID
+    assert refused.message == f"{LOG}: line 3: data: lacks the member spend"
+
+
+@pytest.mark.parametrize("attempt", [1, None])
+def test_a_bf16_result_without_an_outcome_is_check_result_invalid(root, attempt):
+    check(root, 1, step=BF16_SIM, result=bf16())
+    check(root, 2, step=BF16_SIM, result=bf16() | {"outcome": "passed"})
+    refused = failure(root, request(attempt, "sim"))
+    assert refused.kind == checks_tool.KIND_CHECK_RESULT_INVALID
+    assert refused.message == (
+        f"{LOG}: line 4: data.result.outcome: must be one of pass, fail, broken, "
+        "got str 'passed'"
+    )
+    assert only(read(root, request(1, "board")))["checks"] == []
+
+
+@pytest.mark.parametrize("point", [BF16_SIM, BF16_BOARD, "bf16_sim", "bf16"])
+def test_a_point_of_neither_value_is_invalid_request(root, point):
+    check(root, step=BF16_SIM, result=bf16())
+    refused = failure(root, request(1, point))
+    assert refused.kind == tools.KIND_INVALID_REQUEST
+    assert refused.message == 'point: must be "sim" or "board"'
+
+
+def test_checks_in_order_keeps_the_order_of_the_lines_across_steps(root):
+    check(root, 1, result=PASS)
+    start(root, 2, step=BF16_BOARD)
+    check(root, 1, step=BF16_BOARD, result=bf16())
+    check(root, 1, step=SIM, result=PASS)
+    end(root, 2, step=BF16_BOARD, failure=UNSTARTED)
+    lines = checks_tool.log_lines(root, RUN)
+
+    def inside(key):
+        return key[0] != SIM
+
+    assert checks_tool.checks_in_order(RUN, lines, inside) == [
+        ((BOARD, 1, 1, 1), ended(1, result=PASS)),
+        ((BF16_BOARD, 1, 1, 1), ended(1, result=bf16())),
+        ((BF16_BOARD, 1, 1, 1), ended(2, failure=UNSTARTED)),
+    ]
+    grouped = {}
+    for key, element in checks_tool.checks_in_order(RUN, lines, lambda key: True):
+        grouped.setdefault(key, []).append(element)
+    assert grouped == checks_tool.checks_of(RUN, lines, lambda key: True)
+
+
+def test_checks_in_order_raises_as_checks_of_does(root):
+    check(root, step=BF16_SIM, result={"no": "outcome"})
+    unspent(root, 2)
+    lines = checks_tool.log_lines(root, RUN)
+    with pytest.raises(ToolFailure) as refused:
+        checks_tool.checks_in_order(RUN, lines, lambda key: True)
+    assert refused.value.kind == checks_tool.KIND_CHECK_RESULT_INVALID
+    with pytest.raises(ToolFailure) as refused:
+        checks_tool.checks_in_order(RUN, lines, lambda key: False)
+    assert refused.value.kind == tools.KIND_RUN_FILE_INVALID
 
 
 # The registry
