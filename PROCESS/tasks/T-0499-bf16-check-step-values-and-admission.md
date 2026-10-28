@@ -2,7 +2,7 @@
 id: T-0499
 title: Wire bf16 gemm, rmsnorm, elementwise_add and swiglu checks into the correctness.check tool — the two bf16 step values chosen from the read of ⓢ, admission and parameters per kind, the ④ answer for a changed dtype, the compiler-log step list (ADR-0177 slice 2, tool level)
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0498]
