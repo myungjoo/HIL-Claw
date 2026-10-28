@@ -2,7 +2,7 @@
 id: T-0500
 title: Write the ADR on how checks.read, verdicts.write and the round >= 1 spec feedback find the lines of a bf16 correctness.check, and build it (ADR-0177 slice 2, readers)
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, FR-9, FR-17, OD-18, OD-23, OD-6, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0498, T-0499]
