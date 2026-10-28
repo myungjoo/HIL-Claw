@@ -16,9 +16,9 @@ result" (ADR-0043 decision 5). This module renders the decisions:
 * :func:`from_bf16_answer`: the same for a check of a bf16 kind
   (``ARCHITECTURE/decisions/ADR-0177-od18-od6-contract-table.md``
   decision 3): a byte string is judged by
-  :func:`hilclaw.check_judging.from_bf16_report`, one of the four strings
-  becomes :func:`hilclaw.check_result.bf16_broken`. No caller of the tool
-  calls it yet.
+  :func:`hilclaw.check_judging.from_bf16_report` (by the judge of
+  ADR-0165 for ``sdpa_kv_cache``), one of the four strings becomes
+  :func:`hilclaw.check_result.bf16_broken`.
 * :class:`NeitherFormError`: raised for an answer of neither form.
 
 Choices that are this module's own and no rule of a record:

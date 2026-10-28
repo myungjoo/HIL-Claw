@@ -18,7 +18,7 @@ key of the covering entry and the dimensions in the order of the contract's
 provided an operation of fp32 ``gemm`` keeps receiving what it receives.
 :class:`Bf16CheckParameters` is that form, a second type beside
 :class:`CheckParameters`, which is unchanged; :data:`BF16` is the one
-``dtype`` it is built for here. No caller of the tool builds it yet.
+``dtype`` it is built for here.
 
 The types have a module of their own so that the tool function and an
 operation of any backend build and read one type without importing a module
@@ -81,7 +81,8 @@ class Bf16CheckParameters(typing.NamedTuple):
       covering entry of :data:`hilclaw.contract_table.TABLE`.
     - ``dims``: the dimensions, a ``tuple`` in the order of the parameters of
       the contract's ``task_contract`` (``(m, k, n)`` for ``gemm``,
-      ``(m, n)`` for ``rmsnorm``, ``elementwise_add`` and ``swiglu``).
+      ``(m, n)`` for ``rmsnorm``, ``elementwise_add`` and ``swiglu``,
+      ``(m, l, h, h_kv, d)`` for ``sdpa_kv_cache``).
 
     All five are given, by position in this order or by name; none has a
     default. Nothing is checked when an instance is built.

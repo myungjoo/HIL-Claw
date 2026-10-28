@@ -686,13 +686,7 @@ def test_a_bf16_record_with_a_shape_outside_its_contract_is_not_covered(kind):
     assert refused_for_step(stated, True) == KIND_OP_SIGNATURE_NOT_COVERED
 
 
-@pytest.mark.parametrize(
-    ("kind", "shape"),
-    [
-        ("rope", {"m": 2, "h": 2, "d": 4}),
-        ("sdpa_kv_cache", {"m": 1, "l": 2, "h": 2, "h_kv": 1, "d": 4}),
-    ],
-)
+@pytest.mark.parametrize(("kind", "shape"), [("rope", {"m": 2, "h": 2, "d": 4})])
 def test_a_bf16_record_of_a_kind_with_no_check_is_not_covered(kind, shape):
     stated_record = {
         "schema_version": 1,
@@ -762,3 +756,53 @@ def test_admit_for_step_has_no_default_and_named_parameters():
         inspect.Parameter.KEYWORD_ONLY,
     ]
     assert all(parameter.default is inspect.Parameter.empty for parameter in parameters)
+
+
+# An sdpa_kv_cache record (ADR-0177 decision 3)
+
+SDPA_SHAPE = {"m": 1, "l": 2, "h": 4, "h_kv": 2, "d": 4}
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        SDPA_SHAPE,
+        {"d": 4, "h_kv": 2, "h": 4, "l": 2, "m": 1},
+        {"m": 2, "l": 3, "h": 3, "h_kv": 3, "d": 2},
+    ],
+    ids=["h-multiple-of-h_kv", "members-in-another-order", "h-equals-h_kv"],
+)
+def test_a_covered_sdpa_record_is_admitted_in_the_order_of_task_contract(shape):
+    stated = content(
+        op={**bf16_record("gemm"), "kind": "sdpa_kv_cache", "shape": shape}
+    )
+    dims = tuple(shape[name] for name in ("m", "l", "h", "h_kv", "d"))
+    expected = Bf16Admitted("sdpa_kv_cache", "bf16", dims, TEST_DRAWS, 0.25, 3.0)
+    recorder = Recorder(True)
+    for admitted in (
+        admit(stated, covers=contract_table.covers),
+        admit_for_step(stated, covers=recorder, bf16_step=True),
+    ):
+        assert type(admitted) is Bf16Admitted
+        assert admitted == expected
+    assert len(recorder.calls) == 1
+
+
+def test_an_sdpa_record_is_refused_by_the_registered_predicate_and_an_fp32_step():
+    stated = content(
+        op={**bf16_record("gemm"), "kind": "sdpa_kv_cache", "shape": SDPA_SHAPE}
+    )
+    assert refused_for_step(stated, True, contract_table.check_covers) == (
+        KIND_OP_SIGNATURE_NOT_COVERED
+    )
+    assert refused_for_step(stated, False, Recorder(True)) == (
+        KIND_OP_SIGNATURE_NOT_COVERED
+    )
+    assert refused_for_step(stated, True, Recorder(False)) == (
+        KIND_OP_SIGNATURE_NOT_COVERED
+    )
+    missing = content(
+        op={**bf16_record("gemm"), "kind": "sdpa_kv_cache", "shape": SDPA_SHAPE},
+        draws=ABSENT,
+    )
+    assert refused_for_step(missing, True, Recorder(True)) == KIND_DRAWS_NOT_STATED

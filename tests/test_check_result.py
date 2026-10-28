@@ -21,6 +21,7 @@ from hilclaw.check_result import (
     broken,
     completed,
 )
+from hilclaw.harness.bf16_sdpa_kv_cache_verification import DrawCounts
 from hilclaw.harness.verification_arrays import Counts
 
 EXAMPLE_DRAWS = 2
@@ -611,8 +612,14 @@ BF16_SHAPES = {
 BF16_COMMON = {"draws": 2, "rtol": 2**-8, "atol": 0}
 
 
-def test_the_bf16_kinds_are_the_four_of_the_harness_in_table_order():
-    assert BF16_KINDS == ("gemm", "rmsnorm", "elementwise_add", "swiglu")
+def test_the_bf16_kinds_are_the_five_of_the_harnesses_in_table_order():
+    assert BF16_KINDS == (
+        "gemm",
+        "rmsnorm",
+        "elementwise_add",
+        "swiglu",
+        "sdpa_kv_cache",
+    )
 
 
 @pytest.mark.parametrize("kind", list(BF16_SHAPES))
@@ -663,7 +670,6 @@ def test_failed_is_bounded_by_the_output_elements_of_the_kind(kind):
         (b"gemm", TypeError),
         ("conv", ValueError),
         ("rope", ValueError),
-        ("sdpa_kv_cache", ValueError),
         ("GEMM", ValueError),
     ],
 )
@@ -724,3 +730,174 @@ def test_bf16_counts_follow_the_rule_of_the_first_case():
         bf16_completed("swiglu", (2, 4), **BF16_COMMON, counts=[(0, 0)])
     with pytest.raises(ValueError, match=r"^counts\[1\]\.non_finite: "):
         bf16_completed("swiglu", (2, 4), **BF16_COMMON, counts=[(0, 0), (1, 2)])
+
+
+# An sdpa_kv_cache check (ADR-0177 decision 3, HQ-0077; ADR-0165 decision 8)
+
+# Test values, not dimensions, draws or a tolerance of the package.
+SDPA = "sdpa_kv_cache"
+SDPA_DIMS = (2, 3, 4, 2, 4)
+SDPA_SHAPE = {"m": 2, "l": 3, "h": 4, "h_kv": 2, "d": 4}
+SDPA_OUTPUT = 2 * 4 * 4
+SDPA_CACHE = 2 * (3 + 2 * 2) * 2 * 4
+SDPA_COMMON = {"draws": 2, "rtol": 0, "atol": 2**-9}
+
+
+def sdpa_completed(counts, dims=SDPA_DIMS):
+    return bf16_completed(SDPA, dims, **SDPA_COMMON, counts=counts)
+
+
+def test_a_passing_sdpa_result_has_the_five_members_and_cache_differs():
+    passed = sdpa_completed([(0, 0, 0), (0, 0, 0)])
+    assert passed == {
+        "outcome": PASS,
+        "shape": SDPA_SHAPE,
+        "draws": 2,
+        "tolerance": {"rtol": 0.0, "atol": 2**-9},
+        "counts": [{"failed": 0, "non_finite": 0, "cache_differs": 0}] * 2,
+    }
+    assert list(passed) == ["outcome", "shape", "draws", "tolerance", "counts"]
+    assert list(passed["shape"]) == ["m", "l", "h", "h_kv", "d"]
+    assert list(passed["counts"][0]) == ["failed", "non_finite", "cache_differs"]
+    assert not {"kind", "dtype", "layout", "condition"} & set(passed)
+    assert json.loads(json.dumps(passed, allow_nan=False)) == passed
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [(1, 0, 0), (0, 0, 1), (3, 1, 5), (SDPA_OUTPUT, SDPA_OUTPUT, SDPA_CACHE)],
+    ids=["failed-only", "cache-only", "both", "both-at-bounds"],
+)
+def test_an_sdpa_result_fails_by_failed_or_by_cache_differs(entry):
+    failed = sdpa_completed([(0, 0, 0), entry])
+    assert failed["outcome"] == FAIL
+    assert failed["counts"][1] == dict(
+        zip(("failed", "non_finite", "cache_differs"), entry, strict=True)
+    )
+
+
+def test_an_sdpa_entry_may_be_draw_counts_of_the_judge():
+    entries = (DrawCounts(0, 0, 0), DrawCounts(0, 0, 2))
+    failed = sdpa_completed(entries)
+    assert failed["outcome"] == FAIL
+    assert failed["counts"][1] == {"failed": 0, "non_finite": 0, "cache_differs": 2}
+    assert type(failed["counts"][1]) is dict
+
+
+@pytest.mark.parametrize(
+    ("dims", "output", "cache"),
+    [((2, 3, 4, 2, 4), 32, 112), ((1, 2, 3, 3, 2), 6, 48), ((3, 3, 2, 2, 1), 6, 36)],
+    ids=["h-multiple-of-h_kv", "h-equals-h_kv", "no-cached-row"],
+)
+def test_the_sdpa_bounds_are_the_output_and_the_cache_elements(dims, output, cache):
+    at = sdpa_completed([(output, 0, cache)] * 2, dims)
+    assert at["counts"][0] == {
+        "failed": output,
+        "non_finite": 0,
+        "cache_differs": cache,
+    }
+    with pytest.raises(ValueError, match=r"^counts\[0\]\.failed: .*m \* h \* d"):
+        sdpa_completed([(output + 1, 0, 0), (0, 0, 0)], dims)
+    with pytest.raises(
+        ValueError, match=r"^counts\[1\]\.cache_differs: .*2 \* \(l \+ 2 \* m\)"
+    ):
+        sdpa_completed([(0, 0, 0), (0, 0, cache + 1)], dims)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (-1, ValueError),
+        (1.0, TypeError),
+        (True, TypeError),
+        (False, TypeError),
+        ("0", TypeError),
+        (None, TypeError),
+        (2**70, ValueError),
+    ],
+)
+def test_a_cache_differs_outside_the_rule_is_refused(value, expected):
+    with pytest.raises(expected, match=r"^counts\[1\]\.cache_differs: "):
+        sdpa_completed([(0, 0, 0), (0, 0, value)])
+
+
+@pytest.mark.parametrize("entry", [(0, 0), (0, 0, 0, 0), ()])
+def test_an_sdpa_entry_of_another_length_is_refused(entry):
+    with pytest.raises(ValueError, match=r"^counts\[0\]: must have 3 items"):
+        sdpa_completed([entry, (0, 0, 0)])
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_an_entry_with_cache_differs_is_refused_for_the_other_kinds(kind):
+    dims, _ = BF16_SHAPES[kind]
+    with pytest.raises(ValueError, match=r"^counts\[0\]: must have 2 items"):
+        bf16_completed(kind, dims, **BF16_COMMON, counts=[(0, 0, 0), (0, 0)])
+    with pytest.raises(ValueError, match=r"^counts\[0\]: must have 2 items"):
+        completed(**SMALL, counts=[(0, 0, 0), (0, 0)])
+
+
+def test_the_sdpa_failed_and_non_finite_keep_the_rule_of_the_first_case():
+    with pytest.raises(ValueError, match=r"^counts\[0\]\.non_finite: "):
+        sdpa_completed([(1, 2, 0), (0, 0, 0)])
+    with pytest.raises(TypeError, match=r"^counts\[0\]\.failed: "):
+        sdpa_completed([(True, 0, 0), (0, 0, 0)])
+    with pytest.raises(ValueError, match=r"^counts\[0\]\.failed: "):
+        sdpa_completed([(-1, 0, 0), (0, 0, 0)])
+    with pytest.raises(ValueError, match=r"^counts: "):
+        sdpa_completed([(0, 0, 0)])
+
+
+def test_the_counts_of_an_sdpa_result_share_nothing_with_the_argument():
+    counts = [(0, 0, 1), (2, 0, 0)]
+    result = sdpa_completed(counts)
+    assert counts == [(0, 0, 1), (2, 0, 0)]
+    other = sdpa_completed(counts)
+    assert result == other
+    assert result["counts"][0] is not other["counts"][0]
+
+
+@pytest.mark.parametrize("condition", CONDITIONS)
+def test_a_broken_sdpa_result_has_the_condition_and_the_five_members(condition):
+    assert bf16_broken(condition, SDPA, SDPA_DIMS, **SDPA_COMMON) == {
+        "outcome": BROKEN,
+        "condition": condition,
+        "shape": SDPA_SHAPE,
+        "draws": 2,
+        "tolerance": {"rtol": 0.0, "atol": 2**-9},
+    }
+
+
+@pytest.mark.parametrize(
+    ("dims", "expected", "name"),
+    [
+        ((2, 4), ValueError, "dims"),
+        ((2, 3, 4, 2, 4, 1), ValueError, "dims"),
+        ([2, 3, 4, 2, 4], TypeError, "dims"),
+        ((2, 3, 4, 0, 4), ValueError, "h_kv"),
+        ((2, 3, True, 2, 4), TypeError, "h"),
+        ((2, 3.0, 4, 2, 4), TypeError, "l"),
+        ((2, 3, 4, 2, 0), ValueError, "d"),
+    ],
+)
+def test_sdpa_dims_outside_the_rule_are_refused(dims, expected, name):
+    with pytest.raises(expected, match=rf"^{name}: "):
+        sdpa_completed([(0, 0, 0), (0, 0, 0)], dims)
+    with pytest.raises(expected, match=rf"^{name}: "):
+        bf16_broken("check_value", SDPA, dims, **SDPA_COMMON)
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_the_four_kinds_and_fp32_gemm_give_the_results_they_gave(kind):
+    dims, _ = BF16_SHAPES[kind]
+    result = bf16_completed(kind, dims, **BF16_COMMON, counts=[(0, 0), (8, 3)])
+    assert result["counts"] == [
+        {"failed": 0, "non_finite": 0},
+        {"failed": 8, "non_finite": 3},
+    ]
+    assert result["outcome"] == FAIL
+    assert completed(**EXAMPLE, counts=ZEROS) == ADR_PASS
+    assert completed(**EXAMPLE, counts=((0, 0), (37, 2))) == ADR_FAIL
+    with pytest.raises(
+        ValueError, match=r"^counts\[0\]\.failed: must be at most m \* n"
+    ):
+        bf16_completed(kind, dims, draws=1, rtol=0, atol=0, counts=[(9, 0)])

@@ -129,3 +129,9 @@ def test_a_missing_bf16_value_is_refused(name):
     given = {key: value for key, value in BF16_FIVE.items() if key != name}
     with pytest.raises(TypeError):
         Bf16CheckParameters(**given)
+
+
+def test_the_bf16_type_holds_the_five_dims_of_sdpa_kv_cache():
+    made = Bf16CheckParameters(7, 3, "sdpa_kv_cache", "bf16", (1, 2, 4, 2, 4))
+    assert made.dims == (1, 2, 4, 2, 4)
+    assert made.kind == "sdpa_kv_cache"

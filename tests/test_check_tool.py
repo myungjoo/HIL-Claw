@@ -1306,16 +1306,17 @@ def test_a_file_that_stops_being_bf16_between_the_reads_is_not_covered(
 
 
 @pytest.mark.parametrize(
-    ("kind", "shape"),
+    ("kind", "shape", "covers"),
     [
-        ("rope", {"m": 2, "h": 2, "d": 4}),
-        ("sdpa_kv_cache", {"m": 1, "l": 2, "h": 2, "h_kv": 1, "d": 4}),
+        ("rope", {"m": 2, "h": 2, "d": 4}, contract_table.covers),
+        ("rope", {"m": 2, "h": 2, "d": 4}, contract_table.check_covers),
+        (
+            "sdpa_kv_cache",
+            {"m": 1, "l": 2, "h": 2, "h_kv": 1, "d": 4},
+            contract_table.check_covers,
+        ),
     ],
-)
-@pytest.mark.parametrize(
-    "covers",
-    [contract_table.covers, contract_table.check_covers],
-    ids=["any", "checked"],
+    ids=["rope-any", "rope-checked", "sdpa_kv_cache-checked"],
 )
 def test_a_bf16_record_with_no_check_is_not_covered_and_writes_no_line(
     root, monkeypatch, kind, shape, covers
@@ -1365,6 +1366,104 @@ def test_the_default_registry_answers_each_bf16_kind_not_covered_under_its_step(
     root, monkeypatch, kind
 ):
     bf16_run(root, kind)
+    steps = steps_looked_up(monkeypatch)
+    registry = tools.default_registry(lambda: root)
+    for point in ("sim", "board"):
+        with pytest.raises(ToolFailure) as caught:
+            tools.call(registry, TOOL, request(point=point))
+        assert caught.value.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert steps == [BF16_STEP["sim"], BF16_STEP["board"]]
+    assert lines(root) == []
+
+
+# --- a check of sdpa_kv_cache (ADR-0177 decision 3, HQ-0077; ADR-0165 decision 8) ---
+
+SDPA_SHAPE = {"m": 2, "l": 3, "h": 4, "h_kv": 2, "d": 4}
+SDPA_DIMS = (2, 3, 4, 2, 4)
+
+
+def sdpa_run(root, shape=SDPA_SHAPE, **changes):
+    record = {**bf16_op("gemm"), "kind": "sdpa_kv_cache", "shape": dict(shape)}
+    place(root, content(op=record, **changes))
+    return root
+
+
+def cache_failing(tool, asked, hw_profile, parameters, output_path, keeper):
+    report = bytearray(
+        mock_check.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
+    )
+    struct.pack_into("=H", report, 4 + 2 * 2 * 4 * 4, 0x0000)
+    return bytes(report)
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_an_sdpa_check_on_the_mock_passes_under_the_bf16_step(root, point):
+    sdpa_run(root)
+    bench = Bench(root, covers=contract_table.covers)
+    result = bench.function(request(point=point))
+    assert result == {
+        "outcome": "pass",
+        "shape": SDPA_SHAPE,
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+        "counts": [{"failed": 0, "non_finite": 0, "cache_differs": 0}] * DRAWS,
+    }
+    assert [line["data"]["step"] for line in lines(root)] == [BF16_STEP[point]] * 2
+    assert lines(root)[1]["data"]["result"] == result
+    ((_, _, _, parameters, _),) = bench.asked
+    assert parameters == Bf16CheckParameters(
+        SEED, DRAWS, "sdpa_kv_cache", "bf16", SDPA_DIMS
+    )
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {"d": 4, "h_kv": 2, "h": 4, "l": 3, "m": 2},
+        {"m": 1, "l": 1, "h": 2, "h_kv": 2, "d": 2},
+    ],
+    ids=["members-in-another-order", "h-equals-h_kv"],
+)
+def test_an_sdpa_check_takes_the_dims_in_the_order_of_task_contract(root, shape):
+    sdpa_run(root, shape)
+    bench = Bench(root, covers=contract_table.covers)
+    result = bench.function(request(point="sim"))
+    assert result["outcome"] == "pass"
+    assert list(result["shape"]) == ["m", "l", "h", "h_kv", "d"]
+    assert result["shape"] == shape
+    ((_, _, _, parameters, _),) = bench.asked
+    assert parameters.dims == tuple(result["shape"].values())
+
+
+@pytest.mark.parametrize(
+    ("script", "outcome"),
+    [(cache_failing, "fail"), (bf16_failing, "fail"), ("build_exit_status", "broken")],
+    ids=["cache", "out", "broken"],
+)
+def test_an_sdpa_check_reports_fail_and_broken(root, script, outcome):
+    sdpa_run(root)
+    bench = Bench(root, covers=contract_table.covers, script=script)
+    result = bench.function(request(point="board"))
+    assert result["outcome"] == outcome
+    assert result["shape"] == SDPA_SHAPE
+    if script is cache_failing:
+        assert result["counts"][0] == {
+            "failed": 0,
+            "non_finite": 0,
+            "cache_differs": 1,
+        }
+    elif script is bf16_failing:
+        assert result["counts"][0]["failed"] == 1
+        assert result["counts"][0]["cache_differs"] == 0
+    else:
+        assert result["condition"] == "build_exit_status"
+    assert lines(root)[1]["data"]["step"] == BF16_STEP["board"]
+
+
+def test_the_default_registry_still_answers_sdpa_not_covered(root, monkeypatch):
+    sdpa_run(root)
     steps = steps_looked_up(monkeypatch)
     registry = tools.default_registry(lambda: root)
     for point in ("sim", "board"):
