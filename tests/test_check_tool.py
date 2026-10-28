@@ -32,6 +32,7 @@ from hilclaw import (
 from hilclaw.backends import Backend, BackendTable
 from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.check_tool import tool_function
+from hilclaw.harness import bf16_rope_verification
 from hilclaw.journal import EMPTY
 from hilclaw.tools import Registry, ToolFailure
 
@@ -1307,11 +1308,8 @@ def test_a_file_that_stops_being_bf16_between_the_reads_is_not_covered(
 
 @pytest.mark.parametrize(
     ("kind", "shape", "covers"),
-    [
-        ("rope", {"m": 2, "h": 2, "d": 4}, contract_table.covers),
-        ("rope", {"m": 2, "h": 2, "d": 4}, contract_table.check_covers),
-    ],
-    ids=["rope-any", "rope-checked"],
+    [("rope", {"m": 2, "h": 2, "d": 4}, contract_table.check_covers)],
+    ids=["rope-checked"],
 )
 def test_a_bf16_record_with_no_check_is_not_covered_and_writes_no_line(
     root, monkeypatch, kind, shape, covers
@@ -1373,6 +1371,67 @@ def test_the_default_registry_checks_each_bf16_kind_under_its_step(
         BF16_STEP["sim"],
         BF16_STEP["board"],
         BF16_STEP["board"],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("shape", "seed", "start"),
+    [
+        ({"m": 1, "h": 1, "d": 2}, SEED, 2047),
+        ({"m": 1, "h": 8, "d": 64}, SEED - 1, 127),
+        ({"m": 3, "h": 2, "d": 4}, SEED, 0),
+    ],
+    ids=["smallest", "m1", "m3"],
+)
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_a_rope_check_on_the_mock_passes_under_a_predicate_that_covers_it(
+    root, monkeypatch, point, shape, seed, start
+):
+    starts = []
+    rule = bf16_rope_verification.start_position
+
+    def spy(dims, **named):
+        starts.append(rule(dims, **named))
+        return starts[-1]
+
+    monkeypatch.setattr(bf16_rope_verification, "start_position", spy)
+    place(root, content(op=bf16_op("rope", shape)))
+    bench = Bench(root, covers=contract_table.covers, seeds=(seed,))
+    result = bench.function(request(point=point))
+    assert result == {
+        "outcome": "pass",
+        "shape": shape,
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+        "counts": [{"failed": 0, "non_finite": 0}] * DRAWS,
+    }
+    ((_, _, _, parameters, _),) = bench.asked
+    assert parameters == Bf16CheckParameters(
+        seed, DRAWS, "rope", "bf16", tuple(shape.values())
+    )
+    assert starts == [start, start]
+    assert [line["data"]["step"] for line in lines(root)] == [BF16_STEP[point]] * 2
+    assert lines(root)[1]["data"]["result"] == result
+
+
+def test_a_rope_check_with_a_wrong_element_fails_in_its_draw(root):
+    place(root, content(op=bf16_op("rope", {"m": 2, "h": 2, "d": 4})))
+
+    def wrong(tool, asked, hw_profile, parameters, output_path, keeper):
+        report = bytearray(
+            mock_check.default_script(
+                tool, asked, hw_profile, parameters, output_path, keeper
+            )
+        )
+        struct.pack_into("=H", report, 4 + 2 * 3, 0x7F80)
+        return bytes(report)
+
+    bench = Bench(root, covers=contract_table.covers, script=wrong)
+    result = bench.function(request(point="board"))
+    assert result["outcome"] == "fail"
+    assert result["counts"] == [
+        {"failed": 1, "non_finite": 1},
+        {"failed": 0, "non_finite": 0},
     ]
 
 

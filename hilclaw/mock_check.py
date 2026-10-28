@@ -35,7 +35,13 @@ with :mod:`hilclaw.harness.bf16_sdpa_kv_cache_arrays` in the same way
 (ADR-0177 decision 3): per draw the check value of the drawn inputs and the
 two allocations before the call, ``out`` as the bf16 values nearest to the
 float64 reference, and the two allocations as a conforming kernel leaves
-them, so the cache comparison finds no difference.
+them, so the cache comparison finds no difference. For ``rope`` it is the
+complete report of ADR-0164 decision 10, computed with
+:mod:`hilclaw.harness.bf16_rope_arrays` at the start position
+:func:`hilclaw.harness.bf16_rope_verification.start_position` gives for the
+dims and the seed (ADR-0180 decision 1): per draw the check value of ``x``
+and those rows and ``out`` as the bf16 values nearest to the float64
+reference.
 
 Choices that are this module's own and no rule of a record:
 
@@ -86,6 +92,8 @@ import numpy as np
 
 from hilclaw import check_parameters
 from hilclaw.harness import (
+    bf16_rope_arrays,
+    bf16_rope_verification,
     bf16_sdpa_kv_cache_arrays,
     bf16_sdpa_kv_cache_verification,
     bf16_verification,
@@ -96,6 +104,7 @@ from hilclaw.harness import (
 
 _TOOL = "correctness.check"
 _SDPA = "sdpa_kv_cache"
+_ROPE = "rope"
 
 
 class _Operation:
@@ -188,14 +197,26 @@ def default_script(tool, request, hw_profile, parameters, output_path, keeper):
     going to the even one, then the ``cache_k`` and the ``cache_v``
     allocation as
     :func:`hilclaw.harness.bf16_sdpa_kv_cache_arrays.allocation_after`
-    gives them; then the end mark.
+    gives them; then the end mark. For the kind ``rope`` the answer is the
+    complete report of ADR-0164 decision 10 for its dims ``(m, h, d)`` and
+    draws, ``draws * (4 + 2*m*h*d) + 4`` bytes: the rows
+    :func:`hilclaw.harness.bf16_rope_arrays.table_rows` gives at the start
+    position of
+    :func:`hilclaw.harness.bf16_rope_verification.start_position` are built
+    once, and for each draw the answer holds the check value of the ``x``
+    :func:`hilclaw.harness.bf16_rope_arrays.draw_x` gives and of those
+    rows, then the ``m*h*d`` patterns of the bf16 values nearest to the
+    elements of their float64 reference, a tie going to the even one; then
+    the end mark.
     Raised first for it: :class:`ValueError` for a ``dtype`` that is not
     :data:`hilclaw.check_parameters.BF16`, then, unchanged, the
     ``VerificationArgumentError`` of
     :func:`hilclaw.harness.bf16_verification.program_arguments`, or for
     ``sdpa_kv_cache`` of
     :func:`hilclaw.harness.bf16_sdpa_kv_cache_verification.program_arguments`,
-    for a kind, dims, draws or seed it refuses.
+    or for ``rope`` of
+    :func:`hilclaw.harness.bf16_rope_verification.program_arguments` and
+    then of ``start_position``, for a kind, dims, draws or seed it refuses.
 
     Raised, in this order and before any input is drawn: :class:`TypeError`
     for ``parameters`` that are neither exactly a ``CheckParameters`` nor
@@ -238,6 +259,8 @@ def _bf16_report(parameters):
         raise ValueError(f"parameters.dtype: must be {check_parameters.BF16!r}")
     if type(kind) is str and kind == _SDPA:
         return _sdpa_report(dims, draws, seed)
+    if type(kind) is str and kind == _ROPE:
+        return _rope_report(dims, draws, seed)
     bf16_verification.program_arguments(kind, dims, draws=draws, seed=seed)
     arrays = bf16_verification_arrays
     block = 4 + 2 * dims[0] * dims[-1]
@@ -279,6 +302,24 @@ def _sdpa_report(dims, draws, seed):
         report[start + 4 : start + block] = b"".join(
             part.tobytes() for part in (out, *after)
         )
+    report[draws * block :] = bf16_verification.END_MARK
+    return bytes(report)
+
+
+def _rope_report(dims, draws, seed):
+    bf16_rope_verification.program_arguments(dims, draws=draws, seed=seed)
+    start = bf16_rope_verification.start_position(dims, seed=seed)
+    arrays = bf16_rope_arrays
+    rows = arrays.table_rows(dims, start=start)
+    m, h, d = dims
+    block = 4 + 2 * m * h * d
+    report = bytearray(draws * block + len(bf16_verification.END_MARK))
+    for draw in range(draws):
+        x = arrays.draw_x(dims, seed=seed, draw=draw)
+        start_of_draw = draw * block
+        struct.pack_into("=I", report, start_of_draw, arrays.check_value(x, rows))
+        output = _nearest_bf16(arrays.reference(x, rows))
+        report[start_of_draw + 4 : start_of_draw + block] = output.tobytes()
     report[draws * block :] = bf16_verification.END_MARK
     return bytes(report)
 

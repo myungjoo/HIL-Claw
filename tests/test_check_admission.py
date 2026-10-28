@@ -693,24 +693,59 @@ def test_a_bf16_record_with_a_shape_outside_its_contract_is_not_covered(kind):
     assert refused_for_step(stated, True) == KIND_OP_SIGNATURE_NOT_COVERED
 
 
-@pytest.mark.parametrize(("kind", "shape"), [("rope", {"m": 2, "h": 2, "d": 4})])
-def test_a_bf16_record_of_a_kind_with_no_check_is_not_covered(kind, shape):
-    stated_record = {
-        "schema_version": 1,
-        "kind": kind,
-        "shape": shape,
-        "dtype": "bf16",
-        "layout": "row_major",
-    }
-    assert contract_table.covers(stated_record)
-    stated = content(op=stated_record)
-    assert refused_for_step(stated, True) == KIND_OP_SIGNATURE_NOT_COVERED
-    assert refused_for_step(stated, True, Recorder(True)) == (
+ROPE_RECORD = {
+    "schema_version": 1,
+    "kind": "rope",
+    "shape": {"d": 4, "h": 3, "m": 2},
+    "dtype": "bf16",
+    "layout": "row_major",
+}
+
+
+@pytest.mark.parametrize(
+    "covers", [contract_table.covers, Recorder(True)], ids=["any-entry", "recorder"]
+)
+def test_a_rope_record_is_admitted_with_m_h_d_under_a_predicate_that_covers_it(
+    covers,
+):
+    stated = content(op=ROPE_RECORD)
+    admitted = admit_for_step(stated, covers=covers, bf16_step=True)
+    assert type(admitted) is Bf16Admitted
+    assert admitted == ("rope", "bf16", (2, 3, 4), TEST_DRAWS, 0.25, 3.0)
+    assert admit(stated, covers=covers) == admitted
+    assert refused_for_step(stated, False, covers) == KIND_OP_SIGNATURE_NOT_COVERED
+
+
+def test_a_rope_record_is_not_covered_by_the_registered_predicate():
+    stated = content(op=ROPE_RECORD)
+    assert contract_table.covers(ROPE_RECORD)
+    assert not contract_table.check_covers(ROPE_RECORD)
+    assert refused_for_step(stated, True, contract_table.check_covers) == (
         KIND_OP_SIGNATURE_NOT_COVERED
     )
-    with pytest.raises(tools.ToolFailure) as caught:
-        admit(stated, covers=contract_table.covers)
-    assert caught.value.kind == KIND_OP_SIGNATURE_NOT_COVERED
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [{"m": 2, "h": 3, "d": 5}, {"m": 0, "h": 3, "d": 4}, {"m": 2, "h": 0, "d": 4}],
+    ids=["odd-d", "zero-m", "zero-h"],
+)
+def test_a_rope_record_outside_its_contract_is_not_covered(shape):
+    stated = content(op={**ROPE_RECORD, "shape": shape})
+    assert refused_for_step(stated, True) == KIND_OP_SIGNATURE_NOT_COVERED
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [{"m": 2, "h": 3}, {"m": 2, "h": 3, "d": True}, {"m": 2, "h": 3, "d": 4, "n": 1}],
+    ids=["missing-d", "bool-d", "extra-n"],
+)
+def test_a_rope_record_of_the_wrong_members_is_refused_by_the_key_rules(shape):
+    stated_record = {**ROPE_RECORD, "shape": shape}
+    with pytest.raises(keys.InvalidRecordError):
+        contract_table.covers(stated_record)
+    with pytest.raises(keys.InvalidRecordError):
+        content(op=stated_record)
 
 
 def test_a_bf16_record_of_a_layout_no_entry_has_is_not_covered():

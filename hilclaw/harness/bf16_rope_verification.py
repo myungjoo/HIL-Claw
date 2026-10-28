@@ -24,6 +24,14 @@ decimal digits with no sign, no space and no leading zero::
 
 The start position P (``start``) is not on it (decision 4).
 
+Start position of a check (ADR-0180 decision 1): :func:`start_position`
+gives the P that ``correctness.check`` uses for a check of ``rope``, from
+the check's dimensions and seed alone: P = 0 when m is at least 2, and for
+m = 1 one of the two positions of ADR-0161 decision 13, P = 127 for an even
+seed and P = 2047 for an odd one. The mock, the ``cpu_standin`` operation and
+the judging of the report each call it with the same values, so all three use
+the same rows; no value of a request, an instance or a result holds P.
+
 Standard input (decision 3): the 4·m·d bytes of
 :func:`hilclaw.harness.bf16_rope_arrays.table_rows` for ``dims`` and
 ``start``, rows P … P+m−1, in memory order and the byte order of the host,
@@ -48,13 +56,16 @@ build and before the start.
 
 What this module does not do: it builds nothing and holds no path of a
 program; it holds no tolerance, seed, number of draws, dimension, start
-position or time limit and gives none of them a default (decision 12); it
+position or time limit and gives none of them a default (decision 12) -
+:func:`start_position` derives the P of a check and :func:`judge_report` and
+:func:`run_bf16_rope_verification` still take ``start`` with no default; it
 passes no tolerance and no P to the program (decisions 4 and 10); it sets no
 environment variable and parses no standard error; it does not retry, repair,
 store or cache anything and writes no file; it returns no element of the
 inputs, the rows, the reference or the output; and it registers ``rope`` with
 neither ``correctness.check``, ``spec.write`` nor the instance start
-(ADR-0164 Boundaries).
+(ADR-0164 Boundaries): :func:`start_position` is a rule those callers apply,
+not a binding.
 """
 
 import math
@@ -84,7 +95,10 @@ __all__ = [
     "judge_report",
     "program_arguments",
     "run_bf16_rope_verification",
+    "start_position",
 ]
+
+_SINGLE_TOKEN_STARTS = (127, 2047)
 
 
 def program_arguments(dims, *, draws, seed):
@@ -112,6 +126,27 @@ def program_arguments(dims, *, draws, seed):
         count,
         _digits("seed", seed, 0, last, "an int with 0 <= seed < 2**64"),
     )
+
+
+def start_position(dims, *, seed):
+    """Return the start position P of a check of ``rope`` with ``dims`` and ``seed`` (ADR-0180 decision 1).
+
+    ``dims`` and ``seed`` follow the rules of :func:`program_arguments`. The
+    result is an ``int``: 0 when m is at least 2; when m is 1, 127 for an
+    even ``seed`` and 2047 for an odd one. It depends on nothing else, so
+    equal arguments always give the same P.
+
+    Raises :class:`hilclaw.harness.verification_arrays.VerificationArgumentError`
+    for ``dims`` or a ``seed`` that :func:`program_arguments` refuses, in
+    that order, and for a P whose rows the table cannot have, (P + m)·d
+    above 2**53 - 1, as :func:`judge_report` refuses such a ``start``.
+    """
+    _dims(dims)
+    last = verification_arrays.SEED_LIMIT - 1
+    _digits("seed", seed, 0, last, "an int with 0 <= seed < 2**64")
+    start = _SINGLE_TOKEN_STARTS[seed % 2] if dims[0] == 1 else 0
+    _start(dims, start)
+    return start
 
 
 def judge_report(report, dims, *, start, draws, seed, rtol, atol):

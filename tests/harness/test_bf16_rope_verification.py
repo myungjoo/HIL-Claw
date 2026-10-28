@@ -26,6 +26,7 @@ from hilclaw.harness.bf16_rope_verification import (
     judge_report,
     program_arguments,
     run_bf16_rope_verification,
+    start_position,
 )
 from hilclaw.harness.bf16_verification_build import build_bf16_verification_executable
 from hilclaw.harness.verification_arrays import Counts, VerificationArgumentError
@@ -225,8 +226,73 @@ def test_public_names():
             "judge_report",
             "program_arguments",
             "run_bf16_rope_verification",
+            "start_position",
         ]
     )
+
+
+# --- start_position (ADR-0180 decision 1) ---
+
+
+@pytest.mark.parametrize(
+    ("dims", "seed", "expected"),
+    [
+        ((1, 1, 2), 0, 127),
+        ((1, 1, 2), 1, 2047),
+        ((1, 32, 64), LAST - 1, 127),
+        ((1, 32, 64), LAST, 2047),
+        ((1, 8, 64), 10, 127),
+        ((1, 8, 64), 11, 2047),
+        ((2, 1, 2), 1, 0),
+        ((128, 32, 64), 0, 0),
+        ((128, 8, 64), 1, 0),
+        ((2048, 32, 64), 1, 0),
+        ((2048, 8, 64), 0, 0),
+        ((5, 3, 6), 9, 0),
+    ],
+)
+def test_start_position_of_a_check(dims, seed, expected):
+    start = start_position(dims, seed=seed)
+    assert start == expected
+    assert type(start) is int
+    assert start_position(dims, seed=seed) == start
+
+
+def test_start_position_reaches_both_single_token_rows_and_one_row_otherwise():
+    single = {start_position((1, 8, 64), seed=seed) for seed in range(8)}
+    assert single == {127, 2047}
+    assert {start_position((128, 8, 64), seed=seed) for seed in range(8)} == {0}
+
+
+def test_start_position_at_the_edge_of_the_table():
+    limit = 2**53 - 1
+    assert start_position((1, 1, limit // 2048 // 2 * 2), seed=1) == 2047
+    with pytest.raises(VerificationArgumentError, match=r"^start: "):
+        start_position((1, 1, (limit // 2048 + 1) // 2 * 2 + 2), seed=1)
+    assert start_position((1, 1, (limit // 2048 + 1) // 2 * 2 + 2), seed=0) == 127
+    with pytest.raises(VerificationArgumentError, match=r"^start: "):
+        start_position((limit, 1, 2), seed=0)
+
+
+@pytest.mark.parametrize(
+    ("dims", "seed", "name"),
+    [
+        ([1, 1, 2], 0, "dims"),
+        ((1, 1), 0, "dims"),
+        ((True, 1, 2), 0, "dims[0]"),
+        ((0, 1, 2), 0, "dims[0]"),
+        ((1, 1, 3), 0, "dims[2]"),
+        ((1, 1, 2), -1, "seed"),
+        ((1, 1, 2), LAST + 1, "seed"),
+        ((1, 1, 2), True, "seed"),
+        ((1, 1, 2), 1.0, "seed"),
+        ((1, 1, 2), None, "seed"),
+    ],
+)
+def test_start_position_refuses_what_the_harness_refuses(dims, seed, name):
+    with pytest.raises(VerificationArgumentError) as refused:
+        start_position(dims, seed=seed)
+    assert str(refused.value).startswith(f"{name}: ")
 
 
 # --- program_arguments ---

@@ -797,7 +797,9 @@ def test_checks_of_refuses_a_broken_step_line_whatever_it_admits(root):
 
 
 def bf16(kind="rmsnorm", failed=0):
-    dims = {"gemm": (4, 2, 8), "sdpa_kv_cache": (2, 3, 4, 2, 8)}.get(kind, (2, 8))
+    dims = {"gemm": (4, 2, 8), "rope": (2, 3, 8), "sdpa_kv_cache": (2, 3, 4, 2, 8)}.get(
+        kind, (2, 8)
+    )
     entry = (failed, 0, 0) if kind == "sdpa_kv_cache" else (failed, 0)
     return check_result.bf16_completed(
         kind, dims, draws=1, rtol=0.01, atol=0.001, counts=[entry]

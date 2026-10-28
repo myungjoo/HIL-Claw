@@ -15,6 +15,8 @@ from hilclaw.check_operation import ask
 from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.check_result import CONDITIONS
 from hilclaw.harness import (
+    bf16_rope_arrays,
+    bf16_rope_verification,
     bf16_sdpa_kv_cache_arrays,
     bf16_sdpa_kv_cache_verification,
     bf16_verification,
@@ -520,6 +522,8 @@ def test_the_module_imports_the_harness_and_the_type_only_and_has_no_entry():
         "hilclaw.harness.verification_arrays",
         "hilclaw.harness.bf16_verification",
         "hilclaw.harness.bf16_verification_arrays",
+        "hilclaw.harness.bf16_rope_verification",
+        "hilclaw.harness.bf16_rope_arrays",
         "hilclaw.harness.bf16_sdpa_kv_cache_verification",
         "hilclaw.harness.bf16_sdpa_kv_cache_arrays",
     }
@@ -737,7 +741,6 @@ def test_a_malformed_or_mismatched_bf16_report_is_broken(kind, answer, condition
 @pytest.mark.parametrize(
     ("kind", "dims"),
     [
-        ("rope", (1, 1, 2)),
         ("conv", (1, 1)),
         (None, (1, 1)),
         ("gemm", (1, 1)),
@@ -914,3 +917,128 @@ def test_a_kind_that_only_equals_sdpa_is_answered_by_the_other_harness():
         pass
 
     refused(bf16_parameters(Kind(SDPA), (1, 1, 1, 1, 1)), VerificationArgumentError)
+
+
+# A rope check (ADR-0177 decision 3, "The mock"; ADR-0180 decision 1)
+
+# Test values, not dimensions, draws, a seed or a tolerance of the package.
+ROPE = "rope"
+ROPE_CASES = [(1, 1, 2), (1, 8, 64), (3, 2, 4), (128, 8, 64)]
+# The absolute bound every compliant output meets (ADR-0164 decision 10); rtol 0.
+ROPE_TOLERANCE = {"rtol": 0, "atol": 2**-8 + 2**-21}
+
+
+def rope_judged(report, dims, seed=SEED, draws=BF16_DRAWS):
+    start = bf16_rope_verification.start_position(dims, seed=seed)
+    return bf16_rope_verification.judge_report(
+        report, dims, start=start, draws=draws, seed=seed, **ROPE_TOLERANCE
+    )
+
+
+@pytest.mark.parametrize("dims", ROPE_CASES)
+def test_the_rope_answer_is_a_complete_report_the_judge_passes(dims):
+    report = answer_for(bf16_parameters(ROPE, dims))
+    m, h, d = dims
+    assert type(report) is bytes
+    assert len(report) == BF16_DRAWS * (4 + 2 * m * h * d) + 4
+    assert report.endswith(END_MARK)
+    assert rope_judged(report, dims) == bf16_rope_verification.Judgement(
+        None, bf16_rope_verification.Verdict.PASS, ((0, 0),) * BF16_DRAWS
+    )
+
+
+@pytest.mark.parametrize("seed", [6, 7])
+def test_each_rope_draw_holds_the_check_value_and_the_nearest_patterns(seed):
+    dims = (1, 2, 4)
+    parameters = bf16_parameters(ROPE, dims)._replace(seed=seed)
+    report = answer_for(parameters)
+    start = 127 if seed % 2 == 0 else 2047
+    rows = bf16_rope_arrays.table_rows(dims, start=start)
+    block = 4 + 2 * 2 * 4
+    for draw in range(BF16_DRAWS):
+        x = bf16_rope_arrays.draw_x(dims, seed=seed, draw=draw)
+        (value,) = struct.unpack_from("=I", report, draw * block)
+        assert value == bf16_rope_arrays.check_value(x, rows)
+        output = np.frombuffer(
+            report, dtype=np.uint16, count=x.size, offset=draw * block + 4
+        )
+        widened = (output.astype(np.uint32) << 16).view(np.float32)
+        expected = bf16_rope_arrays.reference(x, rows).reshape(-1)
+        assert np.all(np.abs(widened - expected) <= 2**-8 * np.abs(expected) + 2**-133)
+
+
+def test_the_rope_answer_at_another_start_is_broken_for_its_check_value():
+    dims = (1, 2, 4)
+    report = answer_for(bf16_parameters(ROPE, dims)._replace(seed=6))
+    judged = bf16_rope_verification.judge_report(
+        report, dims, start=2047, draws=BF16_DRAWS, seed=6, **ROPE_TOLERANCE
+    )
+    assert judged.broken is bf16_rope_verification.Broken.CHECK_VALUE
+
+
+def test_the_rope_report_through_the_operation_is_judged_pass():
+    dims = (2, 3, 4)
+    result = ask(
+        operation(default_script),
+        REQUEST,
+        record(),
+        bf16_parameters(ROPE, dims),
+        OUTPUT_PATH,
+        LogKeeper(),
+        log_path=LOG_PATH,
+        **ROPE_TOLERANCE,
+    )
+    assert result == {
+        "outcome": "pass",
+        "shape": {"m": 2, "h": 3, "d": 4},
+        "draws": BF16_DRAWS,
+        "tolerance": {"rtol": 0.0, "atol": 2**-8 + 2**-21},
+        "counts": [{"failed": 0, "non_finite": 0}] * BF16_DRAWS,
+    }
+
+
+def test_a_rope_answer_with_one_wrong_element_is_judged_fail_in_its_draw():
+    dims = (2, 3, 4)
+    good = answer_for(bf16_parameters(ROPE, dims))
+    changed = bytearray(good)
+    struct.pack_into("=H", changed, (4 + 2 * 24) + 4 + 2 * 7, FAR_PATTERN)
+    result = asked_through_the_mock(
+        standing_for(lambda parameters: bytes(changed)), bf16_parameters(ROPE, dims)
+    )
+    assert result["outcome"] == "fail"
+    assert result["counts"][1] == {"failed": 1, "non_finite": 0}
+
+
+def test_the_rope_answer_follows_from_the_parameters_alone():
+    parameters = bf16_parameters(ROPE, (2, 3, 4))
+    first = answer_for(parameters)
+    assert answer_for(parameters, output_path=None) == first
+    other = answer_for(parameters._replace(seed=SEED + 1))
+    assert other != first
+    assert len(other) == len(first)
+
+
+@pytest.mark.parametrize(
+    "dims",
+    [(1, 2), (1, 1, 3), (0, 1, 2), (1, True, 2), [1, 1, 2], (1, 1, 2**52)],
+    ids=["two-dims", "odd-d", "zero-m", "bool-h", "list", "rows-beyond-the-table"],
+)
+def test_rope_dims_the_harness_refuses_are_refused_before_a_draw(dims, monkeypatch):
+    monkeypatch.setattr(bf16_rope_arrays, "draw_x", never_drawn)
+    monkeypatch.setattr(bf16_rope_arrays, "table_rows", never_drawn)
+    refused(bf16_parameters(ROPE, dims)._replace(seed=1), VerificationArgumentError)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"), [("seed", -1), ("seed", 2**64), ("draws", 0), ("draws", True)]
+)
+def test_a_rope_seed_or_draws_the_harness_refuses_is_refused(name, value, monkeypatch):
+    monkeypatch.setattr(bf16_rope_arrays, "table_rows", never_drawn)
+    parameters = bf16_parameters(ROPE, (1, 1, 2))._replace(**{name: value})
+    refused(parameters, VerificationArgumentError)
+
+
+def test_a_rope_parameters_of_another_dtype_is_refused_first(monkeypatch):
+    monkeypatch.setattr(bf16_rope_arrays, "table_rows", never_drawn)
+    error = refused(bf16_parameters(ROPE, (1, 1, 3), dtype="fp32"), ValueError)
+    assert str(error).startswith("parameters.dtype: ")
