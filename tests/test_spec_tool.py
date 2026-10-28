@@ -11,20 +11,26 @@ import pytest
 from hilclaw import (
     catalog,
     coder_call,
+    elementwise_add_bf16_contract,
     events,
+    gemm_bf16_contract,
     gemm_contract,
     journal,
     keys,
     layout,
     mcp_front,
     once_write,
+    rmsnorm_bf16_contract,
+    rope_bf16_contract,
     run_admission,
     run_file_tools,
     run_objective,
+    sdpa_kv_cache_bf16_contract,
     spec,
     spec_feedback,
     spec_file,
     spec_tool,
+    swiglu_bf16_contract,
     tools,
 )
 from hilclaw.tools import ToolDefinition, ToolFailure, default_registry
@@ -1178,3 +1184,125 @@ def test_a_later_round_reads_no_state_or_selection_file(logged, shelf, monkeypat
     for name in ("STATE.json", "hypotheses.json", "decision.md"):
         assert name not in opened
     assert written(logged)["id"]["round"] == 1
+
+
+# The contracts of the contract table (ADR-0177 decision 2)
+
+CONTRACTS = (
+    (gemm_contract, gemm_contract.FIRST_SHAPES[0]),
+    (gemm_bf16_contract, gemm_bf16_contract.SHAPES[-1]),
+    (rmsnorm_bf16_contract, rmsnorm_bf16_contract.SHAPES[1]),
+    (elementwise_add_bf16_contract, elementwise_add_bf16_contract.SHAPES[2]),
+    (swiglu_bf16_contract, swiglu_bf16_contract.SHAPES[0]),
+    (rope_bf16_contract, rope_bf16_contract.SHAPES[0]),
+    (sdpa_kv_cache_bf16_contract, sdpa_kv_cache_bf16_contract.SHAPES[-1]),
+)
+BF16 = CONTRACTS[1:]
+
+
+def named(contract):
+    return contract.__name__.rsplit(".", 1)[1]
+
+
+def applies_to(contract):
+    return (
+        f"- kind: {contract.KIND}",
+        f"- dtype: {contract.DTYPE}",
+        f"- layout: {contract.LAYOUT}",
+        f"- language: {contract.LANGUAGE}",
+    )
+
+
+@pytest.mark.parametrize(
+    "contract, shape", CONTRACTS, ids=[named(c) for c, _ in CONTRACTS]
+)
+def test_round_0_composes_the_spec_of_each_contract(root, contract, shape):
+    record = contract.op_signature_record(*shape)
+    document = instance_document(record)
+    run(root, document)
+    assert write(Source(root)) == {}
+    content = spec_path(root).read_bytes()
+    composed = spec_file.parse(content)
+    assert composed["task"]["contract"] == contract.task_contract(*shape)
+    assert composed["task"]["op_signature"] == document["op_signature"]
+    expected = expected_spec(document) if contract is gemm_contract else None
+    if expected is not None:
+        assert composed == expected
+    else:
+        assert set(composed) == set(expected_spec(instance_document()))
+        assert composed["id"] == expected_spec(instance_document())["id"]
+        assert composed["hw_profile"] == document["hw_profile"]
+        assert composed["task"]["objective"] == OBJECTIVE
+        assert composed["guidance"] == {"techniques": []}
+        assert composed["feedback"] == {"attempts": []}
+
+
+@pytest.mark.parametrize("contract, shape", BF16, ids=[named(c) for c, _ in BF16])
+def test_a_later_round_of_a_bf16_contract_takes_entries_that_name_it(
+    root, shelf, monkeypatch, contract, shape
+):
+    applies = applies_to(contract)
+    monkeypatch.setattr(catalog, "APPLIES_TO", applies)
+    for path in shelf.iterdir():
+        path.write_bytes(entry(path.stem, applies))
+    record = contract.op_signature_record(*shape)
+    run(root, instance_document(record))
+    assert write(Source(root), later(techniques=["tiling", "loop_order"])) == {}
+    made = written(root)
+    assert made["guidance"]["techniques"] == [
+        technique("tiling"),
+        technique("loop_order"),
+    ]
+    assert made["task"]["contract"] == contract.task_contract(*shape)
+
+
+@pytest.mark.parametrize("contract, shape", BF16, ids=[named(c) for c, _ in BF16])
+def test_a_later_round_of_a_bf16_contract_refuses_an_fp32_entry(
+    root, shelf, contract, shape
+):
+    run(root, instance_document(contract.op_signature_record(*shape)))
+    failure = refused_later(root, later(techniques=["tiling"]))
+    assert failure.kind == "technique_not_applicable"
+    assert failure.message == (
+        f"catalog/{ACCELERATOR}/tiling.md: applies to the kind gemm, not the "
+        f"spec's {contract.KIND}; nothing was written"
+        if contract.KIND != "gemm"
+        else f"catalog/{ACCELERATOR}/tiling.md: applies to the dtype fp32, not the "
+        "spec's bf16; nothing was written"
+    )
+
+
+NOT_COVERED = {
+    "gemm_bf16_zero": gemm_bf16_contract.op_signature_record(1, 2048, 8192)
+    | {"shape": {"m": 0, "k": 2048, "n": 8192}},
+    "rope_odd_d": rope_bf16_contract.op_signature_record(1, 32, 64)
+    | {"shape": {"m": 1, "h": 32, "d": 63}},
+    "sdpa_l_below_m": sdpa_kv_cache_bf16_contract.op_signature_record(32, 32, 32, 8, 64)
+    | {"shape": {"m": 32, "l": 31, "h": 32, "h_kv": 8, "d": 64}},
+    "sdpa_h_not_a_multiple": sdpa_kv_cache_bf16_contract.op_signature_record(
+        1, 1, 32, 8, 64
+    )
+    | {"shape": {"m": 1, "l": 1, "h": 32, "h_kv": 7, "d": 64}},
+    "rmsnorm_unknown_dtype": rmsnorm_bf16_contract.op_signature_record(1, 2048)
+    | {"dtype": "bf8"},
+    "gemm_fp16": op(dtype="fp16"),
+    "swiglu_fp32": swiglu_bf16_contract.op_signature_record(1, 8192)
+    | {"dtype": "fp32"},
+    "elementwise_add_col_major": elementwise_add_bf16_contract.op_signature_record(
+        1, 2048
+    )
+    | {"layout": "col_major"},
+    "gemm_bf16_col_major": gemm_bf16_contract.op_signature_record(1, 2, 3)
+    | {"layout": "col_major"},
+}
+
+
+@pytest.mark.parametrize("record", NOT_COVERED.values(), ids=list(NOT_COVERED))
+def test_a_record_no_contract_covers_is_op_signature_not_covered(root, record):
+    run(root, instance_document(record))
+    failure = refused(root)
+    assert failure.kind == "op_signature_not_covered"
+    assert failure.message == (
+        f"{INSTANCE_PATH}: op_signature: the stated record is not covered by any "
+        "kernel contract of the package; nothing was written"
+    )

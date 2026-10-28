@@ -17,8 +17,11 @@ from hilclaw import (
     check_definition,
     check_identity,
     check_tool,
+    contract_table,
     data_root_source,
+    elementwise_add_bf16_contract,
     events,
+    gemm_bf16_contract,
     gemm_contract,
     keys,
     layout,
@@ -27,11 +30,15 @@ from hilclaw import (
     mock_backend,
     mock_check,
     mock_run,
+    rmsnorm_bf16_contract,
+    rope_bf16_contract,
     run_state,
+    sdpa_kv_cache_bf16_contract,
     standin_check,
     standin_image,
     standin_profile,
     standin_run,
+    swiglu_bf16_contract,
     tools,
 )
 from hilclaw.backends import Backend, BackendTable
@@ -202,7 +209,7 @@ def test_the_module_imports_what_it_names_and_has_its_public_names_only():
         None: {
             "backends",
             "check_identity",
-            "gemm_contract",
+            "contract_table",
             "keys",
             "mock_backend",
             "tools",
@@ -814,7 +821,7 @@ def test_the_first_call_binds_the_tool_function_of_the_record(
             "source": source,
             "table": parties["table"].answers[0],
             "seeds": parties["seeds"],
-            "covers": parties["covers"],
+            "covers": contract_table.check_covers,
         }
     ]
 
@@ -851,3 +858,29 @@ def test_a_first_call_whose_binding_fails_keeps_nothing(root, parties, monkeypat
     assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
     assert len(parties["table"].calls) == 1
     assert counts(parties) == (1, 1, 1)
+
+
+# A bf16 record in the slice of ADR-0177 decision 2
+
+BF16_RECORDS = (
+    gemm_bf16_contract.op_signature_record(*gemm_bf16_contract.SHAPES[0]),
+    rmsnorm_bf16_contract.op_signature_record(*rmsnorm_bf16_contract.SHAPES[0]),
+    elementwise_add_bf16_contract.op_signature_record(
+        *elementwise_add_bf16_contract.SHAPES[0]
+    ),
+    swiglu_bf16_contract.op_signature_record(*swiglu_bf16_contract.SHAPES[0]),
+    rope_bf16_contract.op_signature_record(*rope_bf16_contract.SHAPES[0]),
+    sdpa_kv_cache_bf16_contract.op_signature_record(
+        *sdpa_kv_cache_bf16_contract.SHAPES[0]
+    ),
+)
+BF16_IDS = [record["kind"] for record in BF16_RECORDS]
+
+
+@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
+def test_a_bf16_record_is_not_covered_by_the_check(tmp_path, parties, record):
+    root = a_run(tmp_path / "data", op=record)
+    registry = tools.default_registry(lambda: root)
+    refused(registry, REQUEST, "op_signature_not_covered")
+    assert no_log(root)
+    assert counts(parties) == (0, 1, 0)

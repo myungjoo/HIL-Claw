@@ -33,7 +33,9 @@ and nothing is created before 12 (ADR-0151 decision 3, table):
 4. ``candidates_per_round`` stated (:data:`KIND_CANDIDATES_PER_ROUND_NOT_STATED`)
    and equal to 1 (:data:`KIND_CANDIDATES_PER_ROUND_NOT_COVERED`);
 5. ``op_signature`` stated (:data:`KIND_OP_SIGNATURE_NOT_STATED`) and covered
-   by :func:`hilclaw.gemm_contract.covers` (:data:`KIND_OP_SIGNATURE_NOT_COVERED`);
+   by some contract of :mod:`hilclaw.contract_table`, the fp32 ``gemm`` one
+   and the six bf16 ones, through :func:`hilclaw.contract_table.covers`
+   (:data:`KIND_OP_SIGNATURE_NOT_COVERED`; ADR-0177 decision 2);
 6. ``objective`` stated (:data:`KIND_OBJECTIVE_NOT_STATED`);
 7. for ``round`` >= 1 and a non-empty ``techniques`` only, each id in the
    request's order looked up by :func:`hilclaw.catalog.technique` in the
@@ -43,9 +45,11 @@ and nothing is created before 12 (ADR-0151 decision 3, table):
    an id that names no entry (:data:`KIND_TECHNIQUE_UNKNOWN`), and an entry
    whose :data:`hilclaw.catalog.APPLIES_TO` values differ from the composed
    spec's ``task.op_signature.record`` ``kind``, ``dtype`` and ``layout`` or
-   its ``task.contract.language`` (:data:`KIND_TECHNIQUE_NOT_APPLICABLE`,
-   which no valid ``instance.json`` makes refuse today); the first id that
-   fails decides;
+   its ``task.contract.language`` (:data:`KIND_TECHNIQUE_NOT_APPLICABLE`;
+   since every entry applies to the fp32 ``gemm`` contract
+   (:data:`hilclaw.catalog.APPLIES_TO`), it refuses every id for a run of a
+   bf16 contract and none for a run of the fp32 one, ADR-0177 decision 4);
+   the first id that fails decides;
 8. to 10. for ``round`` >= 1, :func:`hilclaw.spec_feedback.attempts`, whose
    kinds pass out unchanged: :data:`KIND_FEEDBACK_UNREADABLE`, the four
    ``run_file_*`` kinds for the run's ``events.ndjson`` and
@@ -66,7 +70,9 @@ request's ``run_id``, ``round`` 0, ``candidate`` 1, ``attempt`` 1,
 ``hw_profile`` with the ``key`` and ``record`` of the instance's member
 ``hw_profile``; ``task`` with ``op_signature``, the ``key`` and the whole
 ``record`` of the instance's member, ``contract``,
-:func:`hilclaw.gemm_contract.task_contract` of that record's shape, and
+:func:`hilclaw.contract_table.task_contract` of that record, the
+``task.contract`` of its shape under the contract that covers it (ADR-0177
+decision 2), and
 ``objective``, the instance's member; ``guidance`` with an empty
 ``techniques``; and ``feedback`` with an empty ``attempts`` (ADR-0138
 decision 2). The document of a round ``r`` >= 1 is that document with
@@ -82,7 +88,7 @@ Each message starts with the path of the file concerned relative to the data
 root, or, for 7, the catalog directory as ``catalog/<accelerator>``. An
 :class:`OSError` is reported by its class and the text of the system,
 without the absolute path, and says so when the data root is gone. What
-:func:`hilclaw.gemm_contract.covers` or a refusal of
+:func:`hilclaw.contract_table.covers` or a refusal of
 :func:`hilclaw.spec_file.write` other than those of 12 raises, which a valid
 ``instance.json`` and check 11 do not leave room for, is mapped to no kind: it
 passes out of the tool function and :func:`hilclaw.tools.call` answers it with
@@ -106,8 +112,8 @@ import re
 from hilclaw import (
     catalog,
     coder_call,
+    contract_table,
     data_root_source,
-    gemm_contract,
     keys,
     layout,
     run_admission,
@@ -175,8 +181,8 @@ _DESCRIPTION = (
     "instance.json states no candidates_per_round; "
     "candidates_per_round_not_covered when it states one other than 1; "
     "op_signature_not_stated when it states no op_signature; "
-    "op_signature_not_covered when the op_signature is not covered by the "
-    "contract of the run tools; objective_not_stated when it states no "
+    "op_signature_not_covered when the op_signature is not covered by any "
+    "kernel contract of the package; objective_not_stated when it states no "
     "objective; for a round of 1 or more with ids only, catalog_unusable "
     "when the catalog of the run's accelerator is missing, invalid or cannot "
     "be read, technique_unknown when an id names no entry of it, and "
@@ -352,11 +358,11 @@ def _admitted(run_id, stated):
             KIND_OP_SIGNATURE_NOT_STATED,
             f"{file}: states no op_signature; nothing was written",
         )
-    if not gemm_contract.covers(stated.op_signature.record):
+    if not contract_table.covers(stated.op_signature.record):
         raise tools.ToolFailure(
             KIND_OP_SIGNATURE_NOT_COVERED,
-            f"{file}: op_signature: the stated record is not covered by the "
-            "contract of the run tools; nothing was written",
+            f"{file}: op_signature: the stated record is not covered by any "
+            "kernel contract of the package; nothing was written",
         )
     if stated.objective is None:
         raise tools.ToolFailure(
@@ -367,7 +373,6 @@ def _admitted(run_id, stated):
 
 def _compose(run_id, stated):
     record = stated.op_signature.record
-    shape = record["shape"]
     return {
         "schema_version": 2,
         "id": {
@@ -379,7 +384,7 @@ def _compose(run_id, stated):
         "hw_profile": {"key": stated.hw_profile_key, "record": stated.hw_profile},
         "task": {
             "op_signature": {"key": stated.op_signature.key, "record": record},
-            "contract": gemm_contract.task_contract(shape["m"], shape["k"], shape["n"]),
+            "contract": contract_table.task_contract(record),
             "objective": stated.objective,
         },
         "guidance": {"techniques": []},

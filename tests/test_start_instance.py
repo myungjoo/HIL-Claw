@@ -8,6 +8,9 @@ from pathlib import Path
 import pytest
 
 from hilclaw import (
+    contract_table,
+    elementwise_add_bf16_contract,
+    gemm_bf16_contract,
     gemm_contract,
     instance,
     instance_file,
@@ -16,8 +19,12 @@ from hilclaw import (
     layout,
     mock_backend,
     once_write,
+    rmsnorm_bf16_contract,
+    rope_bf16_contract,
     run_id,
+    sdpa_kv_cache_bf16_contract,
     standin_profile,
+    swiglu_bf16_contract,
 )
 from hilclaw.harness import measurement
 from hilclaw.instance import InvalidInstanceError, UnsupportedVersionError
@@ -375,7 +382,7 @@ def test_the_errors_of_prepare_are_the_same_objects(tmp_path, monkeypatch, ids):
 
     def prepare(document, *, accelerators, covers):
         assert accelerators == (mock_backend.NAME, standin_profile.ACCELERATOR)
-        assert covers is gemm_contract.covers
+        assert covers is contract_table.start_covers
         raise raised
 
     monkeypatch.setattr(instance_start, "prepare", prepare)
@@ -397,7 +404,7 @@ def test_prepare_is_given_the_bound_accelerators_and_covers(tmp_path, monkeypatc
     start(document(), data_root=tmp_path)
     assert type(seen["accelerators"]) is tuple
     assert set(seen["accelerators"]) == {mock_backend.NAME, standin_profile.ACCELERATOR}
-    assert seen["covers"] is gemm_contract.covers
+    assert seen["covers"] is contract_table.start_covers
 
 
 def test_a_taken_name_stops_the_start(tmp_path, fixed_sources, monkeypatch):
@@ -556,3 +563,27 @@ def test_the_module_is_no_registered_tool():
 
     source = Path(tools.__file__).read_text(encoding="utf-8")
     assert "start_instance" not in source
+
+
+# A bf16 record in the slice of ADR-0177 decision 2
+
+BF16_RECORDS = (
+    gemm_bf16_contract.op_signature_record(*gemm_bf16_contract.SHAPES[0]),
+    rmsnorm_bf16_contract.op_signature_record(*rmsnorm_bf16_contract.SHAPES[0]),
+    elementwise_add_bf16_contract.op_signature_record(
+        *elementwise_add_bf16_contract.SHAPES[0]
+    ),
+    swiglu_bf16_contract.op_signature_record(*swiglu_bf16_contract.SHAPES[0]),
+    rope_bf16_contract.op_signature_record(*rope_bf16_contract.SHAPES[0]),
+    sdpa_kv_cache_bf16_contract.op_signature_record(
+        *sdpa_kv_cache_bf16_contract.SHAPES[0]
+    ),
+)
+BF16_IDS = [record["kind"] for record in BF16_RECORDS]
+
+
+@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
+def test_a_bf16_record_is_out_of_scope_of_the_start(tmp_path, ids, record):
+    assert contract_table.covers(record)
+    assert not contract_table.start_covers(record)
+    assert_refused(document(op_signature=record), OutOfScopeError, tmp_path, ids)

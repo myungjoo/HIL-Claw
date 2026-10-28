@@ -43,10 +43,10 @@ Choices that are this module's own and no rule of a record:
   names of ADR-0016 decisions 4 and 5 are
   :data:`hilclaw.mock_backend.NAME` and the ``ACCELERATOR`` of the module that
   builds the ``cpu_standin`` record, and the reading of ADR-0041 decision 5 is
-  the ``covers`` of the contract module of the first case. Neither the
-  ``cpu_standin`` record module nor the contract module is bound to a start of
-  an instance, so this module imports neither and holds no accelerator name
-  and no reading of "covered" of its own; the caller binds them.
+  the start's predicate of the contract table (ADR-0177 decision 2). This
+  module imports neither the ``cpu_standin`` record module nor the contract
+  table and holds no accelerator name and no reading of "covered" of its
+  own; the caller binds them.
 * A ``covers`` that is not callable, an ``accelerators`` that is not exactly a
   ``tuple`` of exactly ``str`` items and an answer of ``covers`` whose type is
   not exactly ``bool`` are :class:`TypeError`; such an answer is never taken

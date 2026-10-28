@@ -34,7 +34,9 @@ renders, ahead of the tool functions, what its decisions 2 to 5 fix:
   source, to a new :func:`hilclaw.check_definition.default_table`, the one
   default table of the three HW tools, to
   :func:`hilclaw.harness.seed_source.system` and to
-  :func:`hilclaw.gemm_contract.covers`.
+  :func:`hilclaw.contract_table.run_covers`, which admits the fp32 ``gemm``
+  contract of ADR-0008 alone until a bf16 timing run exists (ADR-0177
+  decision 2).
 
 Choices that are this module's own and no rule of a record:
 
@@ -85,7 +87,7 @@ data-root source, the source of seeds, the predicate nor
 
 import re
 
-from hilclaw import gemm_contract, keys, run_identity, tools
+from hilclaw import contract_table, keys, run_identity, tools
 from hilclaw.harness import seed_source
 
 #: The members of a request of ``sim.run`` and ``board.run``; no other is taken (ADR-0106 decision 2).
@@ -190,7 +192,8 @@ def definitions(source):
     :func:`hilclaw.run_tool.tool_function` of its tool to ``source``, a new
     :func:`hilclaw.check_definition.default_table`,
     :func:`hilclaw.harness.seed_source.system` and
-    :func:`hilclaw.gemm_contract.covers` (ADR-0167 decisions 3 and 4), and
+    :func:`hilclaw.contract_table.run_covers` (ADR-0167 decisions 3 and 4;
+    ADR-0177 decision 2), and
     keeps it for its later calls. Raises :class:`TypeError` when ``source``
     is not callable.
     """
@@ -215,7 +218,7 @@ def _definition(tool, description, source):
                     source=source,
                     table=check_definition.default_table(),
                     seeds=seed_source.system,
-                    covers=gemm_contract.covers,
+                    covers=contract_table.run_covers,
                 )
             )
         return bound[0](request)

@@ -14,8 +14,11 @@ import pytest
 from hilclaw import (
     __main__,
     check_definition,
+    contract_table,
     data_root_source,
+    elementwise_add_bf16_contract,
     events,
+    gemm_bf16_contract,
     gemm_contract,
     journaled_tool,
     keys,
@@ -24,12 +27,16 @@ from hilclaw import (
     mcp_front,
     mock_backend,
     mock_run,
+    rmsnorm_bf16_contract,
+    rope_bf16_contract,
     run_definition,
     run_identity,
     run_state,
     run_tool,
+    sdpa_kv_cache_bf16_contract,
     standin_image,
     standin_run,
+    swiglu_bf16_contract,
     tools,
 )
 from hilclaw.harness import seed_source
@@ -604,7 +611,7 @@ def test_the_module_imports_what_it_names_and_has_its_public_names_only():
     own = Path(run_definition.__file__)
     assert imports_of(own) == {
         "re",
-        "hilclaw.gemm_contract",
+        "hilclaw.contract_table",
         "hilclaw.keys",
         "hilclaw.run_identity",
         "hilclaw.tools",
@@ -930,7 +937,7 @@ def test_the_first_call_binds_the_tool_function_of_the_record(
                 "source": source,
                 "table": parties["table"].answers[0],
                 "seeds": parties["seeds"],
-                "covers": parties["covers"],
+                "covers": contract_table.run_covers,
             },
         )
     ]
@@ -1054,3 +1061,37 @@ def test_building_the_definitions_and_the_registry_imports_no_numpy():
     )
     assert (done.returncode, done.stderr) == (0, b"")
     assert done.stdout.decode().split() == ["0"]
+
+
+# A bf16 record in the slice of ADR-0177 decision 2
+
+BF16_RECORDS = (
+    gemm_bf16_contract.op_signature_record(*gemm_bf16_contract.SHAPES[0]),
+    rmsnorm_bf16_contract.op_signature_record(*rmsnorm_bf16_contract.SHAPES[0]),
+    elementwise_add_bf16_contract.op_signature_record(
+        *elementwise_add_bf16_contract.SHAPES[0]
+    ),
+    swiglu_bf16_contract.op_signature_record(*swiglu_bf16_contract.SHAPES[0]),
+    rope_bf16_contract.op_signature_record(*rope_bf16_contract.SHAPES[0]),
+    sdpa_kv_cache_bf16_contract.op_signature_record(
+        *sdpa_kv_cache_bf16_contract.SHAPES[0]
+    ),
+)
+BF16_IDS = [record["kind"] for record in BF16_RECORDS]
+
+
+@pytest.mark.parametrize("tool", ["sim.run", "board.run"])
+@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
+def test_a_bf16_record_is_not_covered_by_the_run_tools(tmp_path, parties, tool, record):
+    root = a_run(tmp_path / "data")
+    path = root / "runs" / RUN / "instance.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["op_signature"] = {
+        "key": keys.op_signature_key(record).name,
+        "record": record,
+    }
+    path.write_text(json.dumps(document), encoding="utf-8")
+    registry = tools.default_registry(lambda: root)
+    refused_call(registry, tool, dict(CALL), "op_signature_not_covered")
+    assert no_log(root)
+    assert counts(parties) == (0, 1, 0)
