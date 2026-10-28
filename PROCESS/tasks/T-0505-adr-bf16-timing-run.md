@@ -2,7 +2,7 @@
 id: T-0505
 title: Write the ADR on the bf16 timing run of sim.run and board.run for the six bf16 contracts at cpu_standin and the mock (OD-13, OD-16 sub-question 6, OD-14, OD-18), and list its code slices (ADR-0177 slice 4, the record)
 phase: P2
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: doc
 coversReq: [C-6, FR-1, FR-9, FR-10, NFR-3, OD-13, OD-14, OD-16, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0504]
@@ -12,7 +12,7 @@ touchesFiles:
   - ARCHITECTURE/OpenDecisionProposals.md
   - ARCHITECTURE/StandardScenarios.md
 estimatedSize: {loc: 300, files: 4}   # ADR ~260 lines, registers ~20, StandardScenarios ~10. The ADR file name and number are a suggestion (next free number after ADR-0180; check `ARCHITECTURE/decisions/` at start).
-hq: []
+hq: [HQ-0078]
 ---
 ## Why
 
@@ -65,3 +65,15 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+**BLOCKED** — reason `data-plane-schema-change` (CLAUDE.md A-13). Nothing landed on `main`. Draft pushed on branch `claude/T-0505-bf16-timing-run` at `d1ad22e9` (`ARCHITECTURE/decisions/ADR-0181-od13-bf16-timing-run.md`, status DRAFT); no reviewer round yet (0 rounds), no register edit, no #5 notice.
+
+- **Why blocked.** ADR-0063 decisions 5 and 9 give a `sim.run` / `board.run` result a closed `shape` of exactly `m`, `k`, `n`; no bf16 kind but `gemm` has it. Every other member of ADR-0063's list fits a bf16 run unchanged. Changing the list is a data-plane schema change (ADR-0063 A-13 reading; ADR-0100 decisions 3–4), as the check's was (HQ-0077). The owner's HQ-0077 answer covers `correctness.check` only.
+- **Draft decisions (this record's own, do not depend on the answer):** (1) scope: six bf16 entries at `cpu_standin` and the mock; (2) one timing program per kind plus a shared header, ADR-0009's timer/one call per repeat/one untimed call/loop/stopping rule/report kept, `n_min`/`cv_max` unchanged; operands drawn once from the timing seed by the `bf16_verification.h` generator (draw 0, the contracts' input sets); `rope` rows on stdin at ADR-0180's P rule applied to the timing seed; `sdpa_kv_cache` caches of exactly l rows, nothing reset between repeats (every repeat starts from the state the untimed call leaves); (3) ADR-0107's rule extended (OD-16 ⑥): two executables, ADR-0116 fixed set in both builds; (4) run tools take `run_covers`, dims in `task_contract` order, `n_max`/sample form/seed unchanged, Python form left to the slice with fp32 keeping `TimingParameters`; (5) waiter memory figure kept; (6) limits: B = 60 s, P = min(1500, 10 + (n_max+1)(1 + W/R)) with ADR-0179/0180's W; lm_head M=512 completes only for a kernel ≥ ~1.1e9 op/s (cap not raised); (8) four code slices; (9) mock default script unchanged.
+- **HQ draft (Korean, for the driver to raise):**
+
+  > (A-13 data-plane schema change) 쟁점 — bf16 여섯 계약의 `sim.run`·`board.run` 결과(`events.ndjson`의 `step_ended` 줄 `result`)는 ADR-0063의 닫힌 목록에 맞지 않습니다: `shape`가 "정확히 `m`·`k`·`n`"인데 `gemm` 밖의 kind에는 `k`가 없습니다(`rmsnorm`·`elementwise_add`·`swiglu`는 `m`·`n`, `rope`는 `m`·`h`·`d`, `sdpa_kv_cache`는 `m`·`l`·`h`·`h_kv`·`d`). 그 밖의 멤버(`outcome`, `condition`의 일곱 값, `n_max`, `sample_form`, `resolution_ns`, `intervals_ns`, `memory_bytes`, `ceiling`, `bound`)는 그대로 맞습니다. ADR-0063의 A-13 읽기와 ADR-0100(결과 정의가 바뀌면 새 `step` 값)에 따라 데이터 plane 스키마 변경이고, HQ-0077의 답은 `correctness.check`에 대한 것이라 따로 묻습니다. 선택지 — (a) bf16 run은 새 `step` 값 둘(`sim.run`·`board.run` 각 하나; 철자는 ADR이 정함, 예: `sim_run_bf16_timing`·`board_run_bf16_timing`)을 쓰고, 그 결과 목록은 ADR-0063의 목록에서 `shape`를 기록된 op_signature의 그 kind의 shape 멤버 전부로 바꾼 것으로 한다(fp32 `gemm`의 `sim_run_timing`·`board_run_timing`과 결과는 그대로; HQ-0077 (a)와 같은 모양); (b) `step` 값은 그대로 두고 ADR-0063의 목록 자체를 (a)처럼 넓힌다(ADR-0100의 예외); (c) 그 밖. 막히는 것: ADR-0181의 결정 7·리뷰·착지, bf16 타이밍 코드 슬라이스 전부, `timed` 플래그, 그래서 P2-14 인스턴스의 시작. 막히지 않는 것: fp32 `gemm` 전부, ADR-0181의 나머지 결정(답과 무관하게 쓰임), 다른 PLAN 항목.
+
+- **Resume plan:** checkout `claude/T-0505-bf16-timing-run`, write the owner's answer into ADR-0181 decision 7 (and the `step` spelling if (a)), set Status to accepted wording, edit the registers (Requirements OD-13/14/16/18; OpenDecisionProposals § OD-13/14/16 ⑥/18 ⑩; StandardScenarios § 검사 결과, S0, S1), run the reviewer cycle, land with the trailer, post the #5 notice.
+- **Runtime acceptance items** (for `PROCESS/RuntimeAcceptance.md` once the record lands; unverified estimates): (1) the limits of ADR-0181 decision 6 let a correct, untuned bf16 kernel of each kind complete a timing run at ADR-0152's shapes and end one that does not end, on each C-7 system in the ADR-0144 container (lm_head M = 512 excepted as stated); (2) the waiter reports `waiter_max_rss_kib` for the bf16 timing executables as for the fp32 one, on each C-7 system; (3) the `rope` rows reach the timing program through the waiter's inherited descriptor 0 byte for byte.
+- **Next candidates (after the answer and landing):** slice 1 — timing programs of `gemm`, `rmsnorm`, `elementwise_add`, `swiglu` with the shared header and Python argument/report side; slice 2 — `rope` and `sdpa_kv_cache` programs.

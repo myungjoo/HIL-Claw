@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0505",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:3d05e95b",
-    "acquiredAt": "2026-10-28T11:18:54Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -776,19 +772,27 @@
       "issueComment": null,
       "resolvedAt": "2026-10-28T01:43:43Z",
       "decision": "(a) - 오너(채팅, 2026-10-28): bf16 kind의 검사는 새 `step` 값 둘(sim·board 지점)을 쓰고, 그 결과 목록은 ADR-0042의 목록에서 `shape`를 기록된 op_signature의 그 kind의 shape 멤버 전부로, SDPA의 `counts` 항목에 `cache_differs`를 더한 것으로 한다. fp32 `gemm`의 기존 값·결과는 그대로."
+    },
+    {
+      "id": "HQ-0078",
+      "taskId": "T-0505",
+      "reason": "data-plane-schema-change",
+      "question": "(A-13 데이터 plane 스키마 변경 — 초안 ADR-0181은 브랜치 claude/T-0505-bf16-timing-run의 d1ad22e9) 쟁점 — bf16 여섯 계약의 `sim.run`·`board.run` 결과(`events.ndjson`의 `step_ended` 줄 `result`)는 ADR-0063의 닫힌 목록에 맞지 않습니다: `shape`가 \"정확히 `m`·`k`·`n`\"인데 `gemm` 밖의 kind에는 `k`가 없습니다(`rmsnorm`·`elementwise_add`·`swiglu`는 `m`·`n`, `rope`는 `m`·`h`·`d`, `sdpa_kv_cache`는 `m`·`l`·`h`·`h_kv`·`d`). 그 밖의 멤버(`outcome`, `condition`의 일곱 값, `n_max`, `sample_form`, `resolution_ns`, `intervals_ns`, `memory_bytes`, `ceiling`, `bound`)는 그대로 맞습니다. ADR-0063의 A-13 읽기와 ADR-0100(결과 정의가 바뀌면 새 `step` 값)에 따라 데이터 plane 스키마 변경이고, HQ-0077의 답은 `correctness.check`에 대한 것이라 따로 묻습니다. 선택지 — (a) bf16 run은 새 `step` 값 둘(`sim.run`·`board.run` 각 하나; 철자는 ADR이 정함, 예: `sim_run_bf16_timing`·`board_run_bf16_timing`)을 쓰고, 그 결과 목록은 ADR-0063의 목록에서 `shape`를 기록된 op_signature의 그 kind의 shape 멤버 전부로 바꾼 것으로 한다(fp32 `gemm`의 `sim_run_timing`·`board_run_timing`과 결과는 그대로; HQ-0077 (a)와 같은 모양); (b) `step` 값은 그대로 두고 ADR-0063의 목록 자체를 (a)처럼 넓힌다(ADR-0100의 예외); (c) 그 밖. 막히는 것: ADR-0181의 결정 7·리뷰·착지, bf16 타이밍 코드 슬라이스 전부, `timed` 플래그, 그래서 P2-14 인스턴스의 시작. 막히지 않는 것: fp32 `gemm` 전부, ADR-0181의 나머지 결정(답과 무관하게 쓰임), 다른 PLAN 항목.",
+      "askedAt": "2026-10-28T11:26:00Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 527,
+    "iterations": 528,
     "tasksDone": 497,
-    "tasksBlocked": 31,
+    "tasksBlocked": 32,
     "reviewRoundsTotal": 1660
   },
   "lastIteration": {
-    "at": "2026-10-28T11:17:01Z",
-    "owner": "AKIHA:71703c6b",
-    "taskId": "T-0504",
-    "outcome": "DONE"
+    "at": "2026-10-28T11:26:00Z",
+    "owner": "AKIHA:3d05e95b",
+    "taskId": "T-0505",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
