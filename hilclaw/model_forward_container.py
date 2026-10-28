@@ -20,12 +20,16 @@ order:
 3. A build directory of its own, made and removed as
    :func:`hilclaw.model_execute.execute` makes and removes one, with the prefix
    :data:`PREFIX`. Into it, by copy (decision 4): the forward program's source
-   under its basename, and the source files of kernel ``i`` under their
-   basenames in the sub-directory ``kernel-<i>``, which holds nothing else.
+   under its basename, and the source files of kernel ``i`` then its own
+   headers (the reference's ``headers``, ADR-0144 Q3) under their basenames in
+   the sub-directory ``kernel-<i>``, which holds nothing else. Two of them of
+   one basename are a :class:`hilclaw.standin_copies.CopyError` of
+   :data:`hilclaw.standin_copies.ENTRY_EXISTS`.
 4. One build container per distinct kernel, in the order of the check's
    ``calls``: :data:`hilclaw.standin_check.COMPILER` with the kernel's
-   ``flags``, :data:`hilclaw.model_build.LIBRARY_FLAGS`, its copies and
-   ``-o`` the library ``kernel-<i>.so`` in the build directory; then one for
+   ``flags``, :data:`hilclaw.model_build.LIBRARY_FLAGS`, the copies of its
+   sources (none of its headers) and ``-o`` the library ``kernel-<i>.so`` in
+   the build directory; then one for
    the forward program: the compiler with ``program_flags``, the program's
    copy, ``program_trailing_flags`` and ``-o`` the executable
    ``model_forward``. Every path handed in is the absolute path inside the
@@ -79,8 +83,7 @@ What this module does not do: it never builds or starts anything on the host
 (ADR-0144 decision 4; decision 2); it names no image and pulls, installs or
 changes none; it gives no time limit a default and sets no resource bound
 (decisions 5, 6); it hands no variable of its own environment into a container;
-it copies no header of a kernel, since a
-:class:`hilclaw.model_binding.KernelReference` names none (decision 9); it
+it hands a kernel's headers to no compiler and passes no include flag; it
 selects no token, has no reference or tolerance, casts no array, has no
 fallback to another kernel, and stores, keeps or retries nothing.
 """
@@ -394,14 +397,14 @@ def _copy_kernel(directory, index, kernel):
             os.path.basename(os.fspath(source)),
             _read(source, harness=False),
         )
-        for source in kernel.sources
+        for source in kernel.sources + kernel.headers
     ]
     sub_directory = f"kernel-{index}"
     with _writing():
         os.mkdir(os.path.join(directory, sub_directory))
         for name, data in read:
             _write_new(os.path.join(directory, sub_directory, name), data)
-    return tuple(f"{sub_directory}/{name}" for name, _ in read)
+    return tuple(f"{sub_directory}/{name}" for name, _ in read[: len(kernel.sources)])
 
 
 def _build(image, directory, outcomes, arguments, output, kernel, timeout_s):

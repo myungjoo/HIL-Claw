@@ -8,7 +8,8 @@ attempt holds the first two:
 
 * the source files are the compiled set of the attempt's ``output/``
   (ADR-0055 decision 3, R1 to R8), read with
-  :func:`hilclaw.kernel_source.read_compiled_set`;
+  :func:`hilclaw.kernel_source.read_compiled_set`; the kernel's own headers
+  that the reader answers (R5) are in the reference's ``headers``;
 * the spec is the attempt's ``coder/.../spec.json`` (ADR-0029 decisions 2 and
   3 with ADR-0051 decisions 1 to 3), read with
   :func:`hilclaw.spec_file.parse`; the file belongs to the attempt at its path
@@ -111,9 +112,10 @@ def kernel_reference(data_root, run_id, round, candidate, attempt, *, flags):
     The attempt is ``round``, ``candidate`` and ``attempt`` of the run
     ``run_id`` below ``data_root`` (ADR-0004 decisions 2 and 3). The answer's
     ``sources`` is the compiled set of the attempt's ``output/`` in the order
-    of R3, without its headers; its ``contract`` is the ``task.contract`` of
-    the attempt's spec as :func:`hilclaw.spec_file.parse` returns it; its
-    ``flags`` is ``tuple(flags)``. ``flags`` is required: the caller passes
+    of R3; its ``contract`` is the ``task.contract`` of the attempt's spec as
+    :func:`hilclaw.spec_file.parse` returns it; its ``flags`` is
+    ``tuple(flags)``; its ``headers`` is the kernel's own headers of R5 in the
+    reader's order. ``flags`` is required: the caller passes
     the settings the attempt was built with, for example
     :data:`hilclaw.standin_settings.FLAGS` for a ``cpu_standin`` run.
 
@@ -148,7 +150,9 @@ def kernel_reference(data_root, run_id, round, candidate, attempt, *, flags):
         raise AttemptKernelError(error.failure) from error
     if source.missing is not None:
         raise AttemptKernelError(source.missing)
-    return KernelReference(tuple(source.compiled_set), contract, tuple(flags))
+    return KernelReference(
+        tuple(source.compiled_set), contract, tuple(flags), tuple(source.headers)
+    )
 
 
 def _check_data_root(value):

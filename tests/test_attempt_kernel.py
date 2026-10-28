@@ -180,7 +180,41 @@ def test_the_answer_is_what_the_reader_and_parse_give(tmp_path):
     answer = kernel_reference(tmp_path, RUN, 1, 1, 1, flags=FLAGS)
     source = kernel_source.read_compiled_set(output_path(tmp_path))
     parsed = spec_file.parse(spec_path(tmp_path).read_bytes())
-    assert answer == (source.compiled_set, parsed["task"]["contract"], FLAGS)
+    assert answer == (
+        source.compiled_set,
+        parsed["task"]["contract"],
+        FLAGS,
+        source.headers,
+    )
+
+
+def test_the_headers_are_the_readers(tmp_path):
+    make_attempt(tmp_path, names=("b.c", "a.c", "k.h"))
+    answer = kernel_reference(tmp_path, RUN, 1, 1, 1, flags=FLAGS)
+    output = output_path(tmp_path)
+    assert answer.headers == (output / "k.h",)
+    assert type(answer.headers) is tuple
+    assert answer.sources == (output / "a.c", output / "b.c")
+
+
+def test_several_headers_keep_the_readers_order(tmp_path):
+    make_attempt(tmp_path, names=("k.c", "z.h", "a_1.h", "a-1.h", "a.h", "m.h"))
+    answer = kernel_reference(tmp_path, RUN, 1, 1, 1, flags=FLAGS)
+    source = kernel_source.read_compiled_set(output_path(tmp_path))
+    assert answer.headers == source.headers
+    assert [path.name for path in answer.headers] == [
+        "a-1.h",
+        "a.h",
+        "a_1.h",
+        "m.h",
+        "z.h",
+    ]
+
+
+def test_an_attempt_without_headers_answers_no_header(tmp_path):
+    make_attempt(tmp_path, names=("k.c",))
+    answer = kernel_reference(tmp_path, RUN, 1, 1, 1, flags=FLAGS)
+    assert answer.headers == () and type(answer.headers) is tuple
 
 
 def test_the_flags_are_the_callers(tmp_path):
@@ -459,15 +493,19 @@ def test_flags_are_checked_before_anything_is_read(tmp_path, monkeypatch):
     assert raised.value.parameter == "flags"
 
 
-def write_forward_attempts(root):
+def write_forward_attempts(root, header=None):
     for number, kind in enumerate(forward.KINDS, start=1):
         made = document(1, 1, number, contract=FORWARD_CONTRACT[kind])
         assert made["task"]["contract"] == forward_execute.CONTRACTS[kind]
         spec_file.write(root, content_of(made))
         output = output_path(root, 1, 1, number)
         output.mkdir()
+        prelude = reference.REAL_PRELUDE
+        if header is not None:
+            (output / header).write_text(prelude, encoding="ascii", newline="\n")
+            prelude = f'#include "{header}"\n'
         (output / f"{kind}.c").write_text(
-            reference.REAL_PRELUDE + reference.REAL_SOURCES[kind],
+            prelude + reference.REAL_SOURCES[kind],
             encoding="ascii",
             newline="\n",
         )
