@@ -716,13 +716,16 @@ def test_a_rope_record_is_admitted_with_m_h_d_under_a_predicate_that_covers_it(
     assert refused_for_step(stated, False, covers) == KIND_OP_SIGNATURE_NOT_COVERED
 
 
-def test_a_rope_record_is_not_covered_by_the_registered_predicate():
+def test_a_rope_record_is_covered_by_the_registered_predicate():
     stated = content(op=ROPE_RECORD)
     assert contract_table.covers(ROPE_RECORD)
-    assert not contract_table.check_covers(ROPE_RECORD)
-    assert refused_for_step(stated, True, contract_table.check_covers) == (
-        KIND_OP_SIGNATURE_NOT_COVERED
+    assert contract_table.check_covers(ROPE_RECORD)
+    assert not contract_table.run_covers(ROPE_RECORD)
+    assert not contract_table.start_covers(ROPE_RECORD)
+    admitted = admit_for_step(
+        stated, covers=contract_table.check_covers, bf16_step=True
     )
+    assert admitted == ("rope", "bf16", (2, 3, 4), TEST_DRAWS, 0.25, 3.0)
 
 
 @pytest.mark.parametrize(

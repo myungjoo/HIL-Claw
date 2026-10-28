@@ -7,7 +7,9 @@ process of ``sim.run`` and ``board.run``) runs in a new Docker container, and
 names four code slices. :func:`run_in_container` is slice (1): it starts one
 container for one build or one process through the container runtime's
 command-line program, waits for it and hands back what the program reported.
-It is bound to no tool and no backend operation; nothing calls it yet.
+It is bound to no tool and no backend operation; the ``cpu_standin``
+operations of :mod:`hilclaw.standin_check` and :mod:`hilclaw.standin_run` call
+it through :func:`hilclaw.standin_check.run_container`.
 
 The one program it starts is the client (default ``docker``), through
 :func:`hilclaw.local_run.run` looked up at call time, with the properties of
@@ -16,7 +18,10 @@ directory is the one writable mount, given with ``--mount type=bind``, which
 unlike ``-v`` does not create a missing source, at :data:`CONTAINER_BUILD_DIR`;
 ``--entrypoint=`` empties the image's entrypoint so that the program after the
 image is the one started. No variable, other host path, privilege or resource
-bound is given. At the time limit the container is removed by its name, by
+bound is given. The program's standard input is the null device unless the
+caller hands bytes for it; then ``--interactive`` keeps it open for them and
+no ``--tty`` is given (ADR-0180 decision 3, for the rows of a bf16 ``rope``
+process). At the time limit the container is removed by its name, by
 force (``rm --force``, E5).
 
 What this module does not decide: what a tool answers where no container
@@ -93,6 +98,7 @@ def run_in_container(
     timeout_s,
     removal_timeout_s,
     client="docker",
+    stdin_data=None,
 ):
     """Run ``program`` with ``arguments`` in one new container of ``image``.
 
@@ -104,7 +110,14 @@ def run_in_container(
     time limit of the client run and ``removal_timeout_s`` that of the forced
     removal after a timeout; neither has a default. ``client`` is the
     container runtime's command-line program, looked up by
-    :func:`hilclaw.local_run.run` on ``PATH``.
+    :func:`hilclaw.local_run.run` on ``PATH``. ``stdin_data`` is ``None``,
+    the default, or exactly ``bytes``: with ``None`` the client's standard
+    input is the null device and no option is added; with ``bytes`` the
+    option ``--interactive`` (never ``--tty``) is given before the image and
+    the bytes are handed to :func:`hilclaw.local_run.run` as its
+    ``stdin_data``, written while the output is collected and then closed
+    (ADR-0180 decision 3). An empty ``bytes`` is admitted: the program reads
+    end of input at once.
 
     The client runs with the environment of the calling process. After a
     normal end, whatever the status, the client removed the container
@@ -123,7 +136,9 @@ def run_in_container(
     could not carry it); a ``program`` or ``client`` that is not ``str``, is
     empty or holds NUL; ``arguments`` that are one ``str`` or ``bytes`` or
     hold an item that is not ``str`` or holds NUL; a ``timeout_s`` or
-    ``removal_timeout_s`` that is not a number or not positive and finite.
+    ``removal_timeout_s`` that is not a number or not positive and finite;
+    a ``stdin_data`` that is neither ``None`` nor exactly ``bytes``
+    (:class:`TypeError`; a ``bytearray`` or ``memoryview`` included).
     Then :class:`NoNumericUserError` where the platform has no ``os.getuid``
     or ``os.getgid``: a precondition of this function for the POSIX machines
     of C-7 1, not an answer of any tool. Then the :class:`OSError` of
@@ -148,6 +163,8 @@ def run_in_container(
     source, arguments = _check(
         image, build_dir, program, arguments, timeout_s, removal_timeout_s, client
     )
+    with _parameter("stdin_data"):
+        _check_input(stdin_data)
     user = _numeric_user()
     _check_directory(source)
     name = NAME_PREFIX + secrets.token_hex(16)
@@ -171,13 +188,15 @@ def run_in_container(
         "ALL",
         "--security-opt",
         "no-new-privileges=true",
+        *(() if stdin_data is None else ("--interactive",)),
         "--entrypoint=",
         image,
         program,
         *arguments,
     ]
+    feed = {} if stdin_data is None else {"stdin_data": stdin_data}
     try:
-        ran = local_run.run(command, timeout_s=timeout_s, env=None)
+        ran = local_run.run(command, timeout_s=timeout_s, env=None, **feed)
     except BaseException as error:
         if _before_start(error):
             raise
@@ -312,6 +331,13 @@ def _check_arguments(arguments):
         if "\0" in argument:
             raise ValueError("an argument contains a NUL character")
     return arguments
+
+
+def _check_input(stdin_data):
+    if stdin_data is not None and type(stdin_data) is not bytes:
+        raise TypeError(
+            f"stdin_data must be None or bytes, not {type(stdin_data).__name__}"
+        )
 
 
 def _check_limit(value, what):

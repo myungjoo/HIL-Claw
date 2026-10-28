@@ -223,6 +223,7 @@ BF16_LARGEST = {
     "rmsnorm": (512, 2048),
     "elementwise_add": (512, 2048),
     "swiglu": (512, 8192),
+    "rope": (2048, 32, 64),
     "sdpa_kv_cache": (2048, 2048, 32, 8, 64),
 }
 
@@ -235,6 +236,9 @@ def bf16_work(kind, dims):
         m, l, h, h_kv, d = dims
         arrays = 2 * m * h * d + 2 * m * h_kv * d + 2 * (l + 2 * m) * h_kv * d
         return 4 * m * l * h * d + 10 * arrays
+    if kind == "rope":
+        m, h, d = dims
+        return 10 * (2 * m * h * d + 2 * m * d)
     m, n = dims
     return 10 * ((2 * m * n + n) if kind == "rmsnorm" else 3 * m * n)
 
@@ -250,6 +254,7 @@ def test_the_bf16_constants_are_those_of_the_record():
         "rmsnorm",
         "elementwise_add",
         "swiglu",
+        "rope",
         "sdpa_kv_cache",
     )
     assert type(standin_settings.BF16_ELEMENT_WEIGHT) is int
@@ -295,12 +300,55 @@ def test_the_bf16_figures_of_the_record():
         ("swiglu", 914, 915),
         ("rmsnorm", 1348, 1349),
         ("elementwise_add", 1287, 1288),
+        ("rope", 1040, 1041),
     ],
 )
 def test_the_largest_shape_of_each_kind_reaches_the_cap(kind, under, capped):
     dims = BF16_LARGEST[kind]
     assert bf16_verification_process_time_limit_s(kind, dims, under) < 1500
     assert bf16_verification_process_time_limit_s(kind, dims, capped) == 1500.0
+
+
+@pytest.mark.parametrize(
+    ("dims", "per_draw", "under"),
+    [
+        ((2048, 32, 64), 1.433, 1040),
+        ((2048, 8, 64), 1.118, 1332),
+        ((128, 32, 64), 1.027, 1450),
+        ((1, 32, 64), 1.000, 1489),
+    ],
+)
+def test_the_rope_figures_of_adr_0180(dims, per_draw, under):
+    limit = bf16_verification_process_time_limit_s
+    assert limit("rope", dims, 1) - 10 == pytest.approx(per_draw, abs=0.0005)
+    assert limit("rope", dims, 1) == pytest.approx(10 + per_draw, abs=0.0005)
+    assert limit("rope", dims, under) < 1500
+    assert limit("rope", dims, under + 1) == 1500.0
+
+
+def test_the_rope_measure_has_no_operation_term():
+    m, h, d = 3, 5, 8
+    elements = 2 * m * h * d + 2 * m * d
+    value = bf16_verification_process_time_limit_s("rope", (m, h, d), 7)
+    assert value == float(10 + 7 * (1 + Fraction(10 * elements, 2 * 10**8)))
+
+
+@pytest.mark.parametrize(
+    ("dims", "error", "match"),
+    [
+        ((0, 1, 2), ValueError, "^m must be at least 1"),
+        ((1, True, 2), TypeError, "^h must be an int"),
+        ((1, 1, 2.0), TypeError, "^d must be an int"),
+        ([1, 1, 2], TypeError, "^dims must be a tuple"),
+    ],
+)
+def test_rope_dims_the_bf16_rule_refuses(dims, error, match):
+    with pytest.raises(error, match=match):
+        bf16_verification_process_time_limit_s("rope", dims, 1)
+
+
+def test_the_build_limit_is_unchanged_for_rope():
+    assert standin_settings.BUILD_TIME_LIMIT_S == 60
 
 
 def test_the_bf16_gemm_measure_adds_the_element_term_to_the_fp32_one():
@@ -324,7 +372,7 @@ def test_the_bf16_rule_never_gives_a_value_the_functions_refuse(kind, dims):
     assert value <= CLANG_BUILD_MAX_TIMEOUT_S
 
 
-@pytest.mark.parametrize("kind", ["rope", "GEMM", "", None, b"gemm", 1])
+@pytest.mark.parametrize("kind", ["conv", "GEMM", "", None, b"gemm", 1])
 def test_a_kind_the_bf16_rule_does_not_serve_is_refused(kind):
     with pytest.raises(ValueError, match="^kind must be one of"):
         bf16_verification_process_time_limit_s(kind, (1, 1), 1)
@@ -343,6 +391,8 @@ def test_dims_that_are_no_tuple_are_refused(dims):
         ("rmsnorm", (1, 1, 1)),
         ("sdpa_kv_cache", (1, 1, 1, 1)),
         ("swiglu", ()),
+        ("rope", (1, 1)),
+        ("rope", (1, 1, 2, 1)),
     ],
 )
 def test_dims_of_another_length_are_refused(kind, dims):

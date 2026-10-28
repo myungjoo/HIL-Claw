@@ -1,16 +1,20 @@
 import os
 import shutil
+import struct
 import subprocess
 import tempfile
 
+import numpy as np
 import pytest
 
 from hilclaw import (
     build_log,
     check_failure,
+    check_judging,
     check_operation,
     kernel_source,
     local_run,
+    mock_check,
     standin_check,
     standin_container,
     standin_copies,
@@ -20,6 +24,8 @@ from hilclaw import (
 )
 from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.harness import (
+    bf16_rope_arrays,
+    bf16_rope_verification,
     bf16_sdpa_kv_cache_verification,
     bf16_verification,
     bf16_verification_build,
@@ -756,6 +762,7 @@ BF16_DIMS = {
     "rmsnorm": (3, 4),
     "elementwise_add": (3, 4),
     "swiglu": (3, 4),
+    "rope": (2, 3, 4),
     "sdpa_kv_cache": (2, 3, 4, 2, 4),
 }
 
@@ -770,6 +777,8 @@ def bf16_arguments(kind, dims, draws=3, seed=SEED):
         return bf16_sdpa_kv_cache_verification.program_arguments(
             dims, draws=draws, seed=seed
         )
+    if kind == "rope":
+        return bf16_rope_verification.program_arguments(dims, draws=draws, seed=seed)
     return bf16_verification.program_arguments(kind, dims, draws=draws, seed=seed)
 
 
@@ -945,7 +954,19 @@ def test_bf16_a_plain_oserror_of_the_header_copy_passes(
     [
         (bf16(dtype="fp32"), ValueError),
         (bf16(dtype=None), ValueError),
-        (bf16("rope", (1, 2, 4)), ValueError),
+        (bf16("rope", (1, 2, 3)), ValueError),
+        (bf16("rope", (0, 2, 4)), ValueError),
+        (bf16("rope", (1, 0, 4)), ValueError),
+        (bf16("rope", (1, True, 4)), TypeError),
+        (bf16("rope", (1, 2)), ValueError),
+        (bf16("rope", (1, 2, 4, 1)), ValueError),
+        (bf16("rope", [1, 2, 4]), TypeError),
+        (bf16("rope", draws=0), ValueError),
+        (bf16("rope", draws=2**64), ValueError),
+        (bf16("rope", seed=-1), ValueError),
+        (bf16("rope", seed=2**64), ValueError),
+        (bf16("rope", seed=True), ValueError),
+        (bf16("rope", (1, 2, 2**52)), ValueError),
         (Bf16CheckParameters(SEED, 3, "softmax", "bf16", (1, 2)), ValueError),
         (bf16("gemm", [2, 5, 7]), TypeError),
         (bf16("gemm", (2, 5)), ValueError),
@@ -1003,3 +1024,215 @@ def test_bf16_the_copied_program_compiles_with_the_fixed_set(tmp_path, kind):
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+# A check of bf16 rope: the rows on the process container's input (ADR-0180)
+
+
+def interactive(command):
+    before = command[: command.index(IMAGE)]
+    return before.count("--interactive") == 1 and "--tty" not in command
+
+
+@pytest.mark.parametrize(
+    ("dims", "seed", "start"),
+    [
+        ((1, 2, 4), 10, 127),
+        ((1, 2, 4), 11, 2047),
+        ((3, 2, 6), 11, 0),
+        ((2, 1, 2), 10, 0),
+    ],
+)
+def test_rope_sends_the_rows_of_its_start_position_to_the_process(
+    client, output, keeper, temporary, dims, seed, start
+):
+    client.script = [built(), reported()]
+    assert call(output, keeper, bf16("rope", dims, seed=seed, draws=2)) == REPORT
+    assert build_dirs(temporary) == []
+    (build, build_options), (process, options) = client.calls
+    assert "--interactive" not in build
+    assert "stdin_data" not in build_options
+    assert interactive(process)
+    assert not {"-t", "-i", "-it"} & set(process)
+    inside = standin_container.CONTAINER_BUILD_DIR
+    assert process[process.index(IMAGE) + 1 :] == [
+        f"{inside}/verification",
+        *bf16_rope_verification.program_arguments(dims, draws=2, seed=seed),
+    ]
+    assert bf16_rope_verification.start_position(dims, seed=seed) == start
+    rows = bf16_rope_arrays.table_rows(dims, start=start).tobytes()
+    assert type(options["stdin_data"]) is bytes
+    assert options["stdin_data"] == rows
+    assert len(rows) == 4 * dims[0] * dims[2]
+    assert options["timeout_s"] == (
+        standin_settings.bf16_verification_process_time_limit_s("rope", dims, 2)
+    )
+    assert build_options["timeout_s"] == standin_settings.BUILD_TIME_LIMIT_S
+
+
+def test_rope_builds_its_program_beside_the_header(client, output, keeper):
+    seen = {}
+    client.script = [built_beside_the_header(seen), reported()]
+    assert call(output, keeper, bf16("rope", (1, 2, 4))) == REPORT
+    program = bf16_verification_build.PROGRAM_SOURCES["rope"]
+    assert program.name == "bf16_verification_rope.c"
+    assert seen["entries"] == sorted(["bf16_verification.h", program.name, "kernel"])
+    build = client.runs()[0]
+    first = build.index(IMAGE) + 2 + len(standin_settings.FLAGS)
+    assert build[first] == f"{standin_container.CONTAINER_BUILD_DIR}/{program.name}"
+
+
+def conforming_report(dims, seed, draws, rows):
+    m, _, d = dims
+    received = np.frombuffer(rows, dtype=np.float32).reshape(m, d)
+    report = b""
+    for draw in range(draws):
+        x = bf16_rope_arrays.draw_x(dims, seed=seed, draw=draw)
+        report += struct.pack("=I", bf16_rope_arrays.check_value(x, received))
+        expected = bf16_rope_arrays.reference(x, received)
+        report += mock_check._nearest_bf16(expected).tobytes()
+    return report + b"end\n"
+
+
+def judged(report, dims, seed, draws):
+    return check_judging.from_bf16_report(
+        report, "rope", dims, draws=draws, seed=seed, rtol=0.0, atol=1.0
+    )
+
+
+@pytest.mark.parametrize(
+    ("dims", "seed"), [((1, 2, 4), 6), ((1, 2, 4), 7), ((3, 1, 4), 9)]
+)
+def test_the_operation_and_the_judge_use_the_same_start_position(
+    monkeypatch, client, output, keeper, dims, seed
+):
+    positions = []
+    real = bf16_rope_verification.start_position
+
+    def spy(dims, *, seed):
+        positions.append(real(dims, seed=seed))
+        return positions[-1]
+
+    monkeypatch.setattr(bf16_rope_verification, "start_position", spy)
+
+    def process(command):
+        rows = client.calls[-1][1]["stdin_data"]
+        report = conforming_report(dims, seed, 2, rows)
+        return run_result(command, 0, stdout=report)
+
+    client.script = [built(), process]
+    report = call(output, keeper, bf16("rope", dims, seed=seed, draws=2))
+    result = judged(report, dims, seed, 2)
+    assert positions == [real(dims, seed=seed)] * 2
+    assert result["outcome"] == "pass"
+
+
+def test_rows_of_another_start_position_are_a_broken_check_value(
+    client, output, keeper
+):
+    dims, seed = (1, 2, 4), 6
+    other = bf16_rope_arrays.table_rows(dims, start=2047).tobytes()
+    report = conforming_report(dims, seed, 1, other)
+    client.script = [built(), reported(report)]
+    assert call(output, keeper, bf16("rope", dims, seed=seed, draws=1)) == report
+    assert client.calls[1][1]["stdin_data"] != other
+    result = judged(report, dims, seed, 1)
+    assert result["outcome"] == "broken"
+    assert result["condition"] == "check_value"
+
+
+@pytest.mark.parametrize("status", [1, 5, 125, 139])
+def test_rope_a_process_status_is_exit_status(client, output, keeper, status):
+    client.script = [built(), ended(status)]
+    assert call(output, keeper, bf16("rope", (1, 2, 4))) == "exit_status"
+    assert interactive(client.runs()[1])
+
+
+def test_rope_the_process_past_its_limit_is_time_limit(
+    client, output, keeper, temporary
+):
+    client.script = [built(), timed_out(), None]
+    assert call(output, keeper, bf16("rope", (2, 2, 4))) == "time_limit"
+    assert build_dirs(temporary) == []
+    ((removal, removal_options),) = client.removals()
+    assert removal_options == {
+        "timeout_s": standin_check.REMOVAL_TIMEOUT_S,
+        "env": None,
+    }
+    assert "--interactive" not in removal
+    assert type(client.calls[1][1]["stdin_data"]) is bytes
+
+
+@pytest.mark.parametrize("status", [1, 2])
+def test_rope_a_failed_build_is_build_exit_status_and_gets_no_input(
+    client, output, keeper, status
+):
+    client.script = [ended(status, stderr=b"error")]
+    assert call(output, keeper, bf16("rope", (1, 2, 4))) == "build_exit_status"
+    ((build, options),) = client.calls
+    assert "--interactive" not in build
+    assert "stdin_data" not in options
+
+
+def test_rope_the_build_past_its_limit_gets_no_input(client, output, keeper):
+    client.script = [timed_out(), None]
+    assert call(output, keeper, bf16("rope", (1, 2, 4))) == "build_time_limit"
+    assert "stdin_data" not in client.calls[0][1]
+
+
+def test_rope_rows_are_built_before_anything_is_started(
+    monkeypatch, client, output, keeper, temporary
+):
+    def table_rows(dims, *, start):
+        raise MemoryError
+
+    monkeypatch.setattr(bf16_rope_arrays, "table_rows", table_rows)
+    with pytest.raises(MemoryError):
+        call(output, keeper, bf16("rope", (1, 2, 4)))
+    assert (client.calls, build_dirs(temporary)) == ([], [])
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [PARAMETERS, bf16("gemm"), bf16("rmsnorm"), bf16("sdpa_kv_cache")],
+)
+def test_other_checks_start_their_containers_with_no_input(
+    client, output, keeper, parameters
+):
+    client.script = [built(), reported()]
+    assert call(output, keeper, parameters) == REPORT
+    assert len(client.calls) == 2
+    for command, options in client.calls:
+        assert "--interactive" not in command
+        assert set(options) == {"timeout_s", "env"}
+
+
+def test_run_container_passes_the_input_on(client, temporary):
+    client.script = [ended(0, stdout=b"out")]
+    outcomes = []
+    ran = standin_check.run_container(
+        outcomes,
+        "process",
+        IMAGE,
+        str(temporary),
+        "/build/verification",
+        ("1",),
+        5,
+        stdin_data=b"rows",
+    )
+    assert ran.stdout == b"out"
+    assert outcomes == [ran]
+    ((command, options),) = client.calls
+    assert interactive(command)
+    assert options["stdin_data"] == b"rows"
+
+
+def test_run_container_lets_a_refused_input_pass(client, temporary):
+    outcomes = []
+    with pytest.raises(TypeError) as raised:
+        standin_check.run_container(
+            outcomes, "process", IMAGE, str(temporary), "/p", (), 5, stdin_data="rows"
+        )
+    assert raised.value.parameter == "stdin_data"
+    assert outcomes == [raised.value]
+    assert client.calls == []
