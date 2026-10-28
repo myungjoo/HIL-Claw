@@ -2,7 +2,7 @@
 id: T-0501
 title: Build correctness.check of bf16 sdpa_kv_cache up to the mock — the HQ-0077 result with cache_differs, the ADR-0165 judge, admission and parameters, and the mock's default script (ADR-0177 slice 2, second part, without cpu_standin)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: []
@@ -68,3 +68,22 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+**DONE** — PR #314 squash-merged as `f28deded` (2 review rounds: round 1 Request changes, round 2 Approve). Resumed after a stale lock: round 1's findings had already been addressed in `59bcb70e` before the previous driver died, so this run reviewed that commit and merged it.
+
+- **Language**: Python, because the 2nd-layer modules this task touches are Python.
+- **Form chosen in criterion 1**: `BF16_KINDS` gains `sdpa_kv_cache`, and `bf16_completed` / `bf16_broken` are widened rather than given a separate function.
+  - `shape` is `{m, l, h, h_kv, d}` in `task_contract` order.
+  - Each `counts` entry is `{failed, non_finite, cache_differs}`.
+  - Bounds: `failed <= m*h*d` and `cache_differs <= 2*(l+2m)*h_kv*d` (over both allocations).
+  - The outcome is `fail` iff some `failed` or some `cache_differs` is >= 1.
+- **Judge**: `check_judging.from_bf16_report` sends `sdpa_kv_cache` to `bf16_sdpa_kv_cache_verification.judge_report`. `check_answer` and `check_operation` changed in their docstrings only.
+- **Mock**: `mock_check.default_script` builds the ADR-0165 decision 8 report of a conforming kernel from `bf16_sdpa_kv_cache_arrays`.
+- **Edited assertions** (D21, all listed in the PR body):
+  - `test_check_result`: the `BF16_KINDS` pin was renamed and gains `sdpa_kv_cache`; the `sdpa_kv_cache` row was removed from the unknown-kind test.
+  - `test_check_judging` and `test_mock_check`: the import pins gain the harness modules; the `sdpa_kv_cache` row was removed from the refused-parameters test.
+  - `test_check_admission` and `test_check_tool`: the `sdpa_kv_cache` example rows were removed, and the `rope` rows stay.
+- **Files outside `touchesFiles`** (review round 1 Must-fix): `tests/test_checks_tool.py`, `tests/test_spec_feedback.py` and `tests/test_verdicts_tool.py`. Their `bf16()` helpers are parametrized over `BF16_KINDS`, so they now build `sdpa_kv_cache` with five dims and three-item counts. No assertion changed.
+  - The readers `checks.read`, `verdicts.write` and `spec_feedback` do not read `counts` members, so no follow-up is needed.
+- **Runtime acceptance items**: none.
+- **CI**: all gates green, coverage gate included.
