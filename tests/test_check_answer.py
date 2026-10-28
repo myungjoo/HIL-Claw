@@ -514,6 +514,41 @@ def test_a_bf16_condition_becomes_a_broken_result_without_judging(
     }
 
 
+ROPE_CALL = {"draws": 2, "seed": SEED, "rtol": 0, "atol": 2**-8 + 2**-21}
+
+
+def test_a_rope_byte_string_is_judged_as_its_report():
+    dims = (2, 3, 4)
+    result = from_bf16_answer(bf16_report("rope", dims), "rope", dims, **ROPE_CALL)
+    assert result["outcome"] == "pass"
+    assert result["shape"] == {"m": 2, "h": 3, "d": 4}
+    broken = from_bf16_answer(b"", "rope", dims, **ROPE_CALL)
+    assert broken["condition"] == "report_form"
+
+
+@pytest.mark.parametrize("condition", check_result.CONDITIONS[:4])
+def test_a_rope_condition_becomes_a_broken_result_without_judging(
+    condition, monkeypatch
+):
+    monkeypatch.setattr(check_judging, "from_bf16_report", None)
+    result = from_bf16_answer(
+        condition, "rope", (1, 2, 4), **{**ROPE_CALL, "seed": None}
+    )
+    assert result == {
+        "outcome": "broken",
+        "condition": condition,
+        "shape": {"m": 1, "h": 2, "d": 4},
+        "draws": 2,
+        "tolerance": {"rtol": 0.0, "atol": 2**-8 + 2**-21},
+    }
+
+
+@pytest.mark.parametrize("dims", [(1, 2, 3), (1, 0, 2), (1, 2)])
+def test_a_rope_condition_beside_dims_the_builder_refuses_raises(dims):
+    with pytest.raises(ValueError):
+        from_bf16_answer("exit_status", "rope", dims, **ROPE_CALL)
+
+
 @pytest.mark.parametrize(
     "answer", ["report_form", "check_value", "", None, bytearray(b""), 0]
 )
