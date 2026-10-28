@@ -2,7 +2,7 @@
 id: T-0498
 title: Build what a correctness.check of bf16 gemm, rmsnorm, elementwise_add and swiglu hands its operation and makes of the answer — check parameters per kind, the HQ-0077 result, the ADR-0163 judge and the mock's default script (ADR-0177 slice 2, module level)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: []
