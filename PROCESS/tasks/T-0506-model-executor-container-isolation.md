@@ -2,7 +2,7 @@
 id: T-0506
 title: Write the ADR on the isolation of the model executor's builds and process (OD-14, part of OD-31 sub-question 4) and land its first code slice — the bf16 forward program's kernel-library builds, program build and generation process each in an ADR-0144 container
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, NFR-4, FR-10, OD-14, OD-31, OD-18, "PLAN P2-13", "PLAN P2-14"]
 dependsOn: []
@@ -78,3 +78,23 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+- **Outcome**: DONE. PR #318, squash-merged as `a877d0ba` (branch deleted). Review rounds: 3 (round 1 Request changes: one citation of ADR-0117 decision 5, nits; round 2 Approve; round 3 Approve after a test-only CI fix). CI: one red run (the clang-backed test's stub client also caught the host path's runs), fixed in `cff9a1d8`; final run green (C, Coverage, Python 3.11/3.14, test presence, shellcheck). ADR number: ADR-0182 (ADR-0181 is T-0505's unlanded draft; not touched).
+- **Owner notice** (DRIVER §9): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6469754448
+- **Decisions of ADR-0182** (one line each):
+  - (a) Each kernel-library build, the program build and the generation process in a new ADR-0144 container; ADR-0144 Q1-Q7 / decision 6 unchanged; ADR-0144 decision 4 (no host build or process) applies to every executor generation of a kernel an instance or a coder wrote.
+  - (b) The image is `HILCLAW_STANDIN_IMAGE`'s; ADR-0153's two loading needs (shared-library link, `<dlfcn.h>`) are a requirement on it for the executor; nothing installed; no image adopted.
+  - (c) Kernel sources copied into `kernel-<i>/`, program source copied, input file written by the host into the build directory (the one mount); paths below `/build`; out = report on stdout, build log = stdout+stderr.
+  - (d) Build and run limits stay the caller's, required, no default (no tool window gives a cap); forced removal 60 s (ADR-0169 decision 5).
+  - (e) No memory bound and no figure; stays with OD-14 resource ceilings.
+  - (f) Host path `model_forward_execute.execute` kept only for kernels the caller wrote itself (driver tests); stated in its docstring, not enforced by code.
+  - (g) Slices: 1 = bf16 container path (landed); 2 = the kernel's own headers carried by `KernelReference`/`attempt_kernel` and copied; 3 = the fp32 `model_execute` path in containers.
+  - Outcomes: ADR-0153's five plus "container unavailable" (no image, image refused, no client, no numeric user, build-container status 125-127); process 125-127 = run failed (ADR-0168 decision 3).
+- **Language**: Python (executor host side, ADR-0153 decision 2; reused container helpers are Python).
+- **Edited list assertions (D21)**: none. No helper moved or made public; private helpers imported by name (`model_execute`, `model_forward_execute`, `standin_check._log/_regular_file`, `standin_container._check_limit`, `standin_copies._read/_write_new/_writing`).
+- **HQ raised**: none.
+- **Runtime acceptance items** (for `PROCESS/RuntimeAcceptance.md`, source T-0506 / ADR-0182; they narrow RA-0034 (ADR-0153 (lxvii)) and RA-0035 (lxviii), which stay open):
+  1. On each C-7 machine kind with Docker and the image the user names, in the containers of ADR-0182 decision 2: the image links each kernel into a shared library and the forward program (with `-ldl` where its C library needs it), and the program loads the libraries with `dlopen` by their paths below `/build` and finds each entry point with `dlsym`.
+  2. A generation at Llama 3.2 1B dimensions, whose multi-GB input file is written into the build directory on the host and read through the bind mount (on Docker Desktop through its VM's file sharing), completes in a container with no memory bound.
+  3. The k + 2 container starts of one generation add seconds each and nothing more.
+- **Planner's next candidates**: ADR-0182 slice 2 (kernel headers in `KernelReference` from `attempt_kernel`, copied into `kernel-<i>/`; touches `model_binding`/`attempt_kernel` field pins — D21) before running instance kernels that include their own header; slice 3 (fp32 `model_execute` in containers; not on the P2-14 path). PLAN P2-14 otherwise still needs the instance start of bf16 contracts, which waits on the HQ-0078 path (bf16 `timed`/timing run); a binding from a best (OD-20/OD-7) remains blocked on `best.json` content. P2-14 checkbox: not ticked by this task.

@@ -418,3 +418,33 @@
   ADR-0180(bf16 `rope` 검사의 시작 위치, cpu_standin 시간 상한, 표준 입력 행 전달; OD-16·OD-14·OD-18 일부; T-0503)의 런타임 인수 항목 2.
 
   On each C-7 system, inside the container of ADR-0144, check that the ADR-0180 limits let a correct, untuned `rope` kernel complete at the shapes of ADR-0152 and end one that does not end, and that the tool function's two table builds (1.85 s each on the development machine) and its per-draw work (0.18 s) stay inside the 240 s left in the MCP idle window.
+
+### RA-0049
+
+- 상태: 미확인
+- 출처: task T-0506 (ADR-0182)의 Result (등록 2026-10-28)
+- 내용:
+
+  ADR-0182(모델 실행기의 빌드·생성 프로세스 컨테이너 격리; OD-14·OD-31 ④ 일부; T-0506)의 런타임 인수 항목 1. RA-0034·RA-0035를 좁힌다(둘은 열린 채 둔다).
+
+  On each C-7 machine kind with Docker and the image the user names, in the containers of ADR-0182 decision 2: check that the image links each kernel into a shared library and the forward program (with `-ldl` where its C library needs it), and that the program loads the libraries with `dlopen` by their paths below `/build` and finds each entry point with `dlsym`.
+
+### RA-0050
+
+- 상태: 미확인
+- 출처: task T-0506 (ADR-0182)의 Result (등록 2026-10-28)
+- 내용:
+
+  ADR-0182(모델 실행기의 빌드·생성 프로세스 컨테이너 격리; OD-14·OD-31 ④ 일부; T-0506)의 런타임 인수 항목 2. RA-0034·RA-0035를 좁힌다(둘은 열린 채 둔다).
+
+  Check that a generation at Llama 3.2 1B dimensions, whose multi-GB input file is written into the build directory on the host and read through the bind mount (on Docker Desktop through its VM's file sharing), completes in a container with no memory bound.
+
+### RA-0051
+
+- 상태: 미확인
+- 출처: task T-0506 (ADR-0182)의 Result (등록 2026-10-28)
+- 내용:
+
+  ADR-0182(모델 실행기의 빌드·생성 프로세스 컨테이너 격리; OD-14·OD-31 ④ 일부; T-0506)의 런타임 인수 항목 3. RA-0034·RA-0035를 좁힌다(둘은 열린 채 둔다).
+
+  Check that the k + 2 container starts of one generation add seconds each and nothing more.
