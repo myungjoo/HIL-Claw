@@ -81,3 +81,32 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+**DONE** (pending merge at the time of writing): PR #316, Draft with DONOTMERGE until review Approve and green CI.
+
+**Review**: 2 rounds (dev-reviewer, context-isolated).
+- Round 1 (PR comment 6466310507): Request changes, one Should-fix (a quotation in ADR-0180 Consequences of text that ADR-0144 decision 6 and the `standin_container` docstring do not hold) and three Nits (builds-on list, `check_parameters.py` outside `touchesFiles`, no direct `from_bf16_answer` test for `rope`). All addressed in `7e44080c`.
+- Round 2 (PR comment 6466365119): Approve, two Nits: `check_parameters.py` to be named here (below), and a long docstring line in `check_admission.py`, rewrapped in `f5d64510` (formatting only, D20 exception).
+
+**Language**: Python, because every touched 2nd-layer module is Python.
+
+**ADR-0180** (`ARCHITECTURE/decisions/ADR-0180-od16-bf16-rope-check-start-position.md`; part of OD-16 ⑤, OD-14, OD-18 ⑱ (다)):
+- (a) **P rule**: P = 0 when m >= 2; when m = 1, P = 127 for an even seed and P = 2047 for an odd one, for every covered shape. It lives in `hilclaw.harness.bf16_rope_verification.start_position(dims, *, seed)`; the mock, the `cpu_standin` operation (next slice) and `check_judging` each compute it from the check's dimensions and seed. Nothing hands P on; `CheckParameters` and `Bf16CheckParameters` are unchanged; no data-plane member holds P. Weighed: (ii) both rows per check, (iii) a fixed P, (iv) P as an `instance.json`/request member, P from the point, a widened `Bf16CheckParameters`.
+- (b) **Limits**: ADR-0179's rule with A = 0, E = 2mhd + 2md (x, out, the program's row buffer, the kernel's `freqs_cis`); build 60 s; at (2048, 32, 64) 1.433 s per draw, 1040 draws under the cap. Table build measured 1.85 s at 2048 positions and 0.18 s per draw of Python-side judging; about 191 s at 1040 draws, inside the 240 s idle-window margin.
+- (c) **Rows into the container**: `run_in_container` gains an optional input, `--interactive` (no `--tty`) only when given, bytes passed as `local_run.run`'s `stdin_data`; failures are ADR-0168's C8 (`exit_status`), C10, C16; no new situation or kind.
+- A-13 reading: no data-plane schema change.
+
+**Registers**: `Requirements.md` OD-14, OD-16, OD-18 rows (one `확정분` link each, `잔여` rewritten in place); `OpenDecisionProposals.md` one `채택분` line in OD-14, OD-16, OD-18, the status of OD-14 ①, OD-16 ⑤ and OD-18 ⑱ rewritten; `StandardScenarios.md` re-check line, S0 note (the `rope` start position removed from its open parts), S1 unchanged, no verdict change, no gap.
+
+**Code**: `bf16_rope_verification.start_position`; `check_result` (`rope` in `BF16_KINDS` in table order, shape m/h/d, `failed` <= m*h*d, `d` even); `check_judging` (`rope` judged by `bf16_rope_verification.judge_report` at `start_position`); `check_admission` (docstrings; admission follows `BF16_KINDS`); `mock_check` (default script for `rope`). `hilclaw/check_parameters.py` changed in its docstring only (the `(m, h, d)` order of `rope` and that no start position is handed); it was not in `touchesFiles`. `contract_table`, `standin_check`, `standin_container`, `standin_settings` unchanged. Non-test files: 10 (ADR about 110 lines, registers about 15 lines, code about 150 lines).
+
+**Edited existing assertions** (also in the PR body): `test_check_result::test_the_bf16_kinds_are_the_five_...` (now `..._six_...`) and the `rope` row of `test_an_unknown_bf16_kind_is_refused`; `test_check_judging` import set, `test_a_bf16_judgement_of_an_unknown_kind_is_refused` (`rope` -> `conv`), `test_rope_is_still_refused_by_the_judge_and_the_builder` (replaced); `test_check_admission::test_a_bf16_record_of_a_kind_with_no_check_is_not_covered[rope]` (replaced); `test_mock_check` import set and the `rope` row of `test_bf16_parameters_the_harness_refuses_are_refused_before_a_draw`; the `rope-any` row of `test_check_tool::test_a_bf16_record_with_no_check_is_not_covered_and_writes_no_line`; `tests/harness/test_bf16_rope_verification.py::test_public_names`; the `bf16(...)` dims helper of `test_checks_tool`, `test_spec_feedback`, `test_verdicts_tool`. Kept unchanged: `test_the_default_registry_still_answers_rope_not_covered`, the `ROPE` cases of `test_check_definition`, the `rope` case of `test_standin_check`.
+
+**Local tests**: full suite on WSL (Ubuntu, clang) at `74c89a1f`: 37156 passed, 50 skipped; ruff check and format clean.
+
+**Runtime acceptance items** (for `PROCESS/RuntimeAcceptance.md`, D22; from ADR-0180, part of OD-14 and OD-18 ⑱ (다); T-0503):
+1. Check that the container client started with `--interactive` and no `--tty` passes the 4·m·d bytes of the `rope` rows to the program's standard input byte for byte and closes it at their end, on each C-7 system, also when the program ends before reading them all.
+2. Check that the ADR-0180 limits let a correct, untuned bf16 `rope` kernel complete at the shapes of ADR-0152 and end one that does not end, on each C-7 system inside the container of ADR-0144, and that the tool function's two table builds (1.85 s each on the development machine) and per-draw work (0.18 s at (2048, 32, 64)) stay within the 240 s left of the MCP idle window there.
+
+**Next candidate for the planner**: the `cpu_standin` operation for `rope` per ADR-0180 decisions 2 and 3 (`run_in_container` input with `--interactive`, `rope` in `standin_settings.BF16_CHECK_KINDS` with E = 2mhd + 2md, rows from `start_position`), and the `checked` flag of the `rope` entry (ADR-0177 decision 5 item 3, second part).
+
