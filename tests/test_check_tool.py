@@ -17,9 +17,11 @@ from hilclaw import (
     check_definition,
     check_seed,
     check_tool,
+    contract_table,
     events,
     gemm_contract,
     instance,
+    journaled_step,
     keys,
     layout,
     mock_backend,
@@ -28,7 +30,7 @@ from hilclaw import (
     tools,
 )
 from hilclaw.backends import Backend, BackendTable
-from hilclaw.check_parameters import CheckParameters
+from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.check_tool import tool_function
 from hilclaw.journal import EMPTY
 from hilclaw.tools import Registry, ToolFailure
@@ -1131,3 +1133,243 @@ def test_the_module_holds_what_it_joins_and_nothing_of_its_own():
         assert word not in text
     public = [name for name in vars(check_tool) if not name.startswith("_")]
     assert sorted(set(public) - imported) == ["tool_function"]
+
+
+# --- checks of the bf16 kinds (ADR-0177 decision 3) ---
+
+BF16_SHAPES = {
+    "gemm": {"m": 2, "k": 3, "n": 4},
+    "rmsnorm": {"m": 2, "n": 8},
+    "elementwise_add": {"m": 3, "n": 5},
+    "swiglu": {"m": 2, "n": 6},
+}
+BF16_STEP = {
+    "sim": "correctness_check_bf16_sim",
+    "board": "correctness_check_bf16_board",
+}
+FP32_STEP = {"sim": "correctness_check_sim", "board": "correctness_check_board"}
+A_LOG = "zq7 the log of a build zq7"
+
+
+def bf16_op(kind, shape=None):
+    return {
+        "schema_version": 1,
+        "kind": kind,
+        "shape": dict(BF16_SHAPES[kind] if shape is None else shape),
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+
+
+def bf16_run(root, kind="rmsnorm", **changes):
+    place(root, content(op=bf16_op(kind), **changes))
+    return root
+
+
+def bf16_failing(tool, asked, hw_profile, parameters, output_path, keeper):
+    report = bytearray(
+        mock_check.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
+    )
+    struct.pack_into("=H", report, 4, 0x7F00)
+    return bytes(report)
+
+
+def logging(tool, asked, hw_profile, parameters, output_path, keeper):
+    keeper.hand_over(A_LOG)
+    return mock_check.default_script(
+        tool, asked, hw_profile, parameters, output_path, keeper
+    )
+
+
+def changing_between_the_reads(monkeypatch, root, later):
+    reads = []
+    read = instance.read
+
+    def changing(data_root, run_id):
+        reads.append(run_id)
+        found = read(data_root, run_id)
+        if len(reads) == 1:
+            place(root, later)
+        return found
+
+    monkeypatch.setattr(instance, "read", changing)
+    return reads
+
+
+def steps_looked_up(monkeypatch):
+    steps = []
+    run_prepared = journaled_step.run_prepared
+
+    def spy(data_root, run_id, identity, *rest, **named):
+        steps.append(identity.step)
+        return run_prepared(data_root, run_id, identity, *rest, **named)
+
+    monkeypatch.setattr(journaled_step, "run_prepared", spy)
+    return steps
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_bf16_check_of_each_kind_at_each_point_passes_under_its_step(
+    root, kind, point
+):
+    bf16_run(root, kind)
+    bench = Bench(root, covers=contract_table.covers, script=logging)
+    asked = request(point=point)
+    result = bench.function(asked)
+    assert result == {
+        "outcome": "pass",
+        "shape": BF16_SHAPES[kind],
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+        "counts": [{"failed": 0, "non_finite": 0}] * DRAWS,
+    }
+    step = {"step": BF16_STEP[point], "execution": 1}
+    assert [line["kind"] for line in lines(root)] == ["step_started", "step_ended"]
+    assert [line["data"]["step"] for line in lines(root)] == [BF16_STEP[point]] * 2
+    assert lines(root)[1]["data"] == {**step, "spend": {}, "result": result}
+    ((_, _, _, parameters, _),) = bench.asked
+    assert type(parameters) is Bf16CheckParameters
+    assert parameters == Bf16CheckParameters(
+        SEED, DRAWS, kind, "bf16", tuple(BF16_SHAPES[kind].values())
+    )
+    log_file = layout.build_log_file(root, RUN, ROUND, 2, 1, BF16_STEP[point], 1)
+    assert log_file.name == f"build-log-{BF16_STEP[point]}-01.txt"
+    assert log_file.read_text(encoding="utf-8") == A_LOG
+    again = bench.function(asked)
+    assert again == result
+    assert (bench.count("seeds"), bench.count("operation")) == (1, 1)
+    assert len(lines(root)) == 2
+
+
+@pytest.mark.parametrize(
+    ("script", "outcome"),
+    [(bf16_failing, "fail"), ("time_limit", "broken")],
+    ids=["fail", "broken"],
+)
+def test_a_bf16_check_reports_fail_and_broken(root, script, outcome):
+    bf16_run(root, "swiglu")
+    bench = Bench(root, covers=contract_table.covers, script=script)
+    result = bench.function(request(point="board"))
+    assert result["outcome"] == outcome
+    assert result["shape"] == BF16_SHAPES["swiglu"]
+    if outcome == "fail":
+        assert result["counts"][0]["failed"] >= 1
+    else:
+        assert result["condition"] == "time_limit"
+    assert lines(root)[1]["data"]["step"] == "correctness_check_bf16_board"
+    assert lines(root)[1]["data"]["result"] == result
+
+
+def test_an_fp32_check_keeps_its_step_and_its_parameters(root):
+    bench = Bench(root, covers=contract_table.check_covers, seeds=(SEED, OTHER_SEED))
+    for point in ("sim", "board"):
+        assert bench.function(request(point=point))["shape"] == SHAPE
+    assert [line["data"]["step"] for line in lines(root)] == [
+        FP32_STEP["sim"],
+        FP32_STEP["sim"],
+        FP32_STEP["board"],
+        FP32_STEP["board"],
+    ]
+    assert [type(asked[3]) for asked in bench.asked] == [CheckParameters] * 2
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_a_file_that_becomes_bf16_between_the_reads_is_not_covered(
+    root, monkeypatch, point
+):
+    reads = changing_between_the_reads(monkeypatch, root, content(op=bf16_op("gemm")))
+    bench = Bench(root, covers=contract_table.covers)
+    failure = bench.failure(request(point=point))
+    assert failure.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert len(reads) == 2
+    assert (bench.count("seeds"), bench.count("operation")) == (0, 0)
+    assert lines(root) == []
+    assert bench.function(request(point=point))["shape"] == BF16_SHAPES["gemm"]
+    assert lines(root)[0]["data"]["step"] == BF16_STEP[point]
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_a_file_that_stops_being_bf16_between_the_reads_is_not_covered(
+    root, monkeypatch, point
+):
+    bf16_run(root, "elementwise_add", draws=ABSENT)
+    bench = Bench(root, covers=contract_table.covers)
+    changing_between_the_reads(monkeypatch, root, content(draws=ABSENT))
+    failure = bench.failure(request(point=point))
+    assert failure.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert (bench.count("covers"), bench.count("seeds")) == (1, 0)
+    assert lines(root) == []
+    assert bench.failure(request(point=point)).kind == "draws_not_stated"
+
+
+@pytest.mark.parametrize(
+    ("kind", "shape"),
+    [
+        ("rope", {"m": 2, "h": 2, "d": 4}),
+        ("sdpa_kv_cache", {"m": 1, "l": 2, "h": 2, "h_kv": 1, "d": 4}),
+    ],
+)
+@pytest.mark.parametrize(
+    "covers",
+    [contract_table.covers, contract_table.check_covers],
+    ids=["any", "checked"],
+)
+def test_a_bf16_record_with_no_check_is_not_covered_and_writes_no_line(
+    root, monkeypatch, kind, shape, covers
+):
+    record = {**bf16_op("gemm"), "kind": kind, "shape": shape}
+    place(root, content(op=record))
+    steps = steps_looked_up(monkeypatch)
+    bench = Bench(root, covers=covers)
+    failure = bench.failure(request(point="board"))
+    assert failure.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert steps == ["correctness_check_bf16_board"]
+    assert (bench.count("seeds"), bench.count("operation"), lines(root)) == (0, 0, [])
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_bf16_record_with_a_shape_outside_its_contract_is_not_covered(root, kind):
+    shape = dict.fromkeys(BF16_SHAPES[kind], 1) | {"n": 0}
+    place(root, content(op=bf16_op(kind, shape)))
+    bench = Bench(root, covers=contract_table.covers)
+    failure = bench.failure(request())
+    assert failure.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert (bench.count("seeds"), lines(root)) == (0, [])
+
+
+def test_an_invalid_file_is_answered_at_the_read_of_the_stamp(root, recorded):
+    place(root, b"{not json")
+    bench = Bench(root, covers=contract_table.covers)
+    for point in ("sim", "board"):
+        assert bench.failure(request(point=point)).kind == "run_file_invalid"
+    assert recorded == ["read", "read"]
+    assert (bench.count("covers"), bench.count("seeds"), lines(root)) == (0, 0, [])
+
+
+@pytest.mark.parametrize("point", ["cpu", "Sim", None])
+def test_a_point_that_is_neither_value_is_refused_before_any_read(
+    root, recorded, point
+):
+    bf16_run(root)
+    bench = Bench(root, covers=contract_table.covers)
+    failure = bench.failure(request(point=point))
+    assert failure.kind == "invalid_request"
+    assert (recorded, bench.sources, lines(root)) == ([], 0, [])
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_the_default_registry_answers_each_bf16_kind_not_covered_under_its_step(
+    root, monkeypatch, kind
+):
+    bf16_run(root, kind)
+    steps = steps_looked_up(monkeypatch)
+    registry = tools.default_registry(lambda: root)
+    for point in ("sim", "board"):
+        with pytest.raises(ToolFailure) as caught:
+            tools.call(registry, TOOL, request(point=point))
+        assert caught.value.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert steps == [BF16_STEP["sim"], BF16_STEP["board"]]
+    assert lines(root) == []

@@ -22,7 +22,7 @@ from hilclaw import (
     tools,
 )
 from hilclaw.backends import HW_TOOLS, Backend, BackendTable
-from hilclaw.hw_tool import tool_function
+from hilclaw.hw_tool import read_stepped_tool_function, tool_function
 from hilclaw.journal import EMPTY, Identity
 from hilclaw.journaled_step import StepFailed
 from hilclaw.keys import InvalidRecordError
@@ -316,6 +316,7 @@ def test_the_public_names_and_the_signature():
     assert [name for name in public if not inspect.ismodule(vars(hw_tool)[name])] == [
         "tool_function",
         "stepped_tool_function",
+        "read_stepped_tool_function",
     ]
     parameters = inspect.signature(tool_function).parameters
     assert list(parameters) == [
@@ -2256,3 +2257,159 @@ def test_a_stepped_tool_through_the_registry_gives_a_result_and_its_own_failure(
     for through in THROUGH_CALL.values():
         assert through(tool, way("b")) == (False, {"example_member": 1})
     assert lines(root) == both_lines("a") + both_lines("b")
+
+
+# --- read_stepped_tool_function: the step from the request and the read of the stamp ---
+
+
+class ReadStepped(Stepped):
+    """:class:`Stepped` over the builder whose step follows from the read of the stamp too."""
+
+    def __init__(self, answer, **named):
+        super().__init__(answer, **named)
+        self.values, self.steps = [], []
+        self.function = read_stepped_tool_function(
+            tool=TOOL,
+            steps=named.get("steps", STEPS),
+            step_of=self.read_step_of,
+            numbers=NUMBERS,
+            source=self.source,
+            table=self.table,
+            read=self.read,
+            hw_profile_in=self.hw_profile_in,
+            check=self.check,
+            admit=self.stepped_admit,
+            perform=self.perform,
+        )
+
+    def read_step_of(self, request, value):
+        self.values.append(value)
+        return self.step_of(request)
+
+    def stepped_admit(self, request, value, step):
+        self.steps.append(step)
+        return self.admit(request, value)
+
+
+def read_moments(monkeypatch, order):
+    selections(monkeypatch, order)
+    real_read, real_state = instance.read, run_journal.read_state
+    real_append = events.append
+
+    def append(data_root, run_id, kind, data, **numbers):
+        order.append(kind)
+        return real_append(data_root, run_id, kind, data, **numbers)
+
+    monkeypatch.setattr(instance, "read", recorded(order, "stamp", real_read))
+    monkeypatch.setattr(
+        run_journal, "read_state", recorded(order, "lookup", real_state)
+    )
+    monkeypatch.setattr(events, "append", append)
+
+
+def test_the_signature_of_read_stepped_tool_function():
+    parameters = inspect.signature(read_stepped_tool_function).parameters
+    assert list(parameters) == list(inspect.signature(stepped_tool_function).parameters)
+    for parameter in parameters.values():
+        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameter.default is inspect.Parameter.empty
+
+
+def test_the_order_of_a_call_whose_step_follows_from_the_read_of_the_stamp(
+    root, monkeypatch
+):
+    tool = ReadStepped(root)
+    read_moments(monkeypatch, tool.order)
+    assert tool.function(way("b")) == {"example_member": 1}
+    assert tool.order == [
+        "check",
+        "source",
+        "stamp",
+        "step_of",
+        "lookup",
+        "read",
+        "hw_profile_in",
+        "select",
+        "admit",
+        "step_started",
+        "perform",
+        "script",
+        "step_ended",
+    ]
+    assert lines(root) == both_lines("b")
+    assert [type(value) for value in tool.values] == [instance.Instance]
+    assert tool.values[0].hw_profile == record()
+    assert tool.steps == [STEP_B]
+    assert tool.admitted[0][1] is tool.file
+    assert tool.seen[0][4] is tool.token
+    del tool.order[:]
+    assert tool.function(way("b")) == {"example_member": 1}
+    assert tool.order == ["check", "source", "stamp", "step_of", "lookup"]
+    assert tool.steps == [STEP_B]
+
+
+def test_each_step_of_a_read_stepped_call_has_its_own_lines(root):
+    tool = ReadStepped(root)
+    assert tool.function(way("a")) == {"example_member": 1}
+    assert tool.function(way("b")) == {"example_member": 1}
+    assert lines(root) == both_lines("a") + both_lines("b")
+    assert tool.steps == [STEP_A, STEP_B]
+
+
+def test_a_read_stepped_call_refused_at_admit_appends_no_line(root):
+    refusal = ToolFailure(NOT_ADMITTED, "example: not admitted")
+    tool = ReadStepped(root, refusal=refusal)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(way("a"))
+    assert caught.value is refusal
+    assert tool.steps == [STEP_A]
+    assert "perform" not in tool.order
+    assert lines(root) == []
+
+
+def test_a_read_stepped_call_with_no_stamp_calls_no_step_of(tmp_path):
+    data = tmp_path / "data"
+    data.mkdir()
+    tool = ReadStepped(data)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(way("a"))
+    assert caught.value.kind == tools.KIND_RUN_FILE_MISSING
+    assert tool.order == ["check", "source"]
+    assert tool.values == []
+
+
+def test_a_read_stepped_step_that_is_none_of_steps_is_a_runtime_error(root):
+    tool = ReadStepped(root, step="example_step_c")
+    with pytest.raises(RuntimeError, match="^step_of must return one of"):
+        tool.function(way("a"))
+    assert tool.order == ["check", "source", "step_of"]
+    assert lines(root) == []
+
+
+def test_read_stepped_tool_function_checks_what_it_is_built_from(root):
+    tool = ReadStepped(root)
+    given = {
+        "tool": TOOL,
+        "steps": STEPS,
+        "step_of": tool.read_step_of,
+        "numbers": NUMBERS,
+        "source": tool.source,
+        "table": tool.table,
+        "read": tool.read,
+        "hw_profile_in": tool.hw_profile_in,
+        "check": tool.check,
+        "admit": tool.stepped_admit,
+        "perform": tool.perform,
+    }
+    with pytest.raises(TypeError):
+        read_stepped_tool_function(**(given | {"tool": 1}))
+    with pytest.raises(ValueError):
+        read_stepped_tool_function(**(given | {"tool": "example.tool"}))
+    with pytest.raises(TypeError, match="^table must be a BackendTable"):
+        read_stepped_tool_function(**(given | {"table": {}}))
+    with pytest.raises(TypeError, match="steps must be a tuple"):
+        read_stepped_tool_function(**(given | {"steps": [STEP_A]}))
+    for name in STEPPED_PARTS:
+        with pytest.raises(TypeError, match=f"^{name} must be callable"):
+            read_stepped_tool_function(**(given | {name: None}))
+    assert tool.order == []

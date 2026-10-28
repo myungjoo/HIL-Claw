@@ -15,6 +15,9 @@ contract with one ``step`` value states it when the function is built. A
 contract with several states them all then, with the callable that gives the
 ``step`` of a checked request from its other members (ADR-0040 decision 3 has
 such a tool): :func:`stepped_function` is the check of the request for it.
+:func:`read_stepped_function` is that check for a contract whose ``step``
+follows from the request and from the file read for the stamp (ADR-0177
+decision 3 has such a tool).
 
 A call, in this order:
 
@@ -67,9 +70,9 @@ Conventions of this module, which the records do not fix:
 - What the tool's own check raises passes through unchanged, whatever it is.
 - Nothing is kept between calls (ADR-0010 decision 7): the stamp is read at
   each call that has a data root.
-- The stamp is read in the one function :func:`checked_function` and
-  :func:`stepped_function` return, the part the builders share, so that they
-  cannot differ. It is therefore read for whatever ``carry_out`` they are
+- The stamp is read in the one function :func:`checked_function`,
+  :func:`stepped_function` and :func:`read_stepped_function` return, the
+  part the builders share, so that they cannot differ. It is therefore read for whatever ``carry_out`` they are
   handed; that is the placement of this module and no rule of the record for
   another user of them.
 - With several ``step`` values the ``step`` of a call is obtained last in the
@@ -79,7 +82,9 @@ Conventions of this module, which the records do not fix:
   it is a :class:`RuntimeError`, raised before the data root is asked.
 - The reader of the stamp is no parameter: ADR-0030 decision 3 names the file
   and ADR-0024 decision 4 the condition, and
-  :func:`hilclaw.instance.layout_version_of` is both.
+  :func:`hilclaw.instance.layout_version_of` is both. For
+  :func:`read_stepped_function` the read is the one that function makes,
+  :func:`hilclaw.instance.read`, so that what it returned can be kept.
 - What that function returns is compared with nothing (ADR-0030 decision 5).
 - Only the read of the stamp is answered this way here: the same classes out
   of the tool's own check or out of ``carry_out`` are not.
@@ -281,6 +286,50 @@ def stepped_function(*, steps, step_of, numbers, carry_out, source, check, **oth
     ``tool_crashed``. With one ``step`` in ``steps`` the function returned
     answers a caller as that of :func:`checked_function` with that ``step``.
     """
+    _check_steps(steps)
+    parts = {"step_of": step_of, "carry_out": carry_out, "source": source}
+    _check_parts(numbers, parts | {"check": check, **others})
+    return _function(steps, step_of, numbers, carry_out, source, check)
+
+
+def read_stepped_function(
+    *, steps, step_of, numbers, carry_out, source, check, **others
+):
+    """Return a function of one request whose ``step`` follows from that request and from the read of the stamp.
+
+    The function returned is that of :func:`stepped_function` but for when
+    and from what the ``step`` of the identity is obtained, and for the
+    function the read of the stamp is made by:
+
+    - The stamp is read by :func:`hilclaw.instance.read`, which
+      :func:`hilclaw.instance.layout_version_of` calls for it: the same read
+      of the same file, answered with the same four kinds for the same
+      classes, and a file it returns states layout version 1 (ADR-0024
+      decision 3). What it returned is kept for ``step_of``; the file is read
+      once there, as by the other builders.
+    - ``step_of`` is called as ``step_of(request, value)``, once in a call,
+      with the request as the caller gave it and the
+      :class:`hilclaw.instance.Instance` the read of the stamp returned,
+      after that read and before ``carry_out``. It is not called when the
+      stamp cannot be had. What it raises passes through unchanged; it is
+      not answered as a situation of ``instance.json``.
+
+    The arguments are those of :func:`stepped_function`, with ``step_of``
+    called as above, and the builder raises what that function raises for
+    them. The function returned raises what that of :func:`stepped_function`
+    raises, the :class:`RuntimeError` for a ``step`` that is none of
+    ``steps`` included, except that ``step_of`` and that error come after the
+    data root was asked and the stamp read; ``carry_out`` is then not called
+    and nothing was written. It does not modify the request or what the read
+    returned.
+    """
+    _check_steps(steps)
+    parts = {"step_of": step_of, "carry_out": carry_out, "source": source}
+    _check_parts(numbers, parts | {"check": check, **others})
+    return _function(steps, step_of, numbers, carry_out, source, check, read=True)
+
+
+def _check_steps(steps):
     if type(steps) is not tuple:
         raise TypeError(f"steps must be a tuple, got {type(steps).__name__}")
     if not steps:
@@ -289,9 +338,6 @@ def stepped_function(*, steps, step_of, numbers, carry_out, source, check, **oth
         journal.step_identity(step, 1)
     if len(set(steps)) != len(steps):
         raise ValueError(f"steps must be distinct, got {steps}")
-    parts = {"step_of": step_of, "carry_out": carry_out, "source": source}
-    _check_parts(numbers, parts | {"check": check, **others})
-    return _function(steps, step_of, numbers, carry_out, source, check)
 
 
 def _check_parts(numbers, parts):
@@ -304,21 +350,30 @@ def _check_parts(numbers, parts):
             raise TypeError(f"{name} must be callable, got {type(value).__name__}")
 
 
-def _function(steps, step_of, numbers, carry_out, source, check):
+def _function(steps, step_of, numbers, carry_out, source, check, read=False):
     def journaled(request):
         run_id, identity = _checked(steps[0], numbers, request)
         check(request)
-        step = step_of(request)
-        if type(step) is not str or step not in steps:
-            got = repr(step) if type(step) is str else type(step).__name__
-            raise RuntimeError(f"step_of must return one of {steps}, got {got}")
-        identity = identity._replace(step=step)
+        if not read:
+            identity = identity._replace(step=_step(steps, step_of(request)))
         data_root = data_root_source.obtain(source)
         with run_files.reading(data_root, run_id, "instance.json", _STAMP_KINDS):
-            instance.layout_version_of(data_root, run_id)
+            if read:
+                value = instance.read(data_root, run_id)
+            else:
+                instance.layout_version_of(data_root, run_id)
+        if read:
+            identity = identity._replace(step=_step(steps, step_of(request, value)))
         return carry_out(data_root, run_id, identity, request)
 
     return journaled
+
+
+def _step(steps, step):
+    if type(step) is not str or step not in steps:
+        got = repr(step) if type(step) is str else type(step).__name__
+        raise RuntimeError(f"step_of must return one of {steps}, got {got}")
+    return step
 
 
 def _refuse(message, cause=None):

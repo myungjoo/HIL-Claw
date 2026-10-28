@@ -618,6 +618,8 @@ def test_build_log_steps_are_those_of_correctness_check_and_the_run_tools():
     assert BUILD_LOG_STEPS == (
         "correctness_check_sim",
         "correctness_check_board",
+        "correctness_check_bf16_sim",
+        "correctness_check_bf16_board",
         "sim_run_timing",
         "board_run_timing",
     )

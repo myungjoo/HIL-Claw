@@ -22,7 +22,10 @@ call that lie around the start line and need no log:
   the result or to what the step ends with. The check parameters are the
   five values of ADR-0043 decision 2: the seed of the call (ADR-0021
   decision 3), the number of draws (ADR-0046 decision 2) and the dimensions
-  (ADR-0041 decision 2); the tolerance is that of ADR-0021 decision 4. The
+  (ADR-0041 decision 2); the tolerance is that of ADR-0021 decision 4. For
+  a check of a bf16 kind they are the values of ADR-0177 decision 3: the
+  seed, the number of draws, the ``kind`` and ``dtype`` of the covering entry
+  and the dimensions in the order of the contract's ``task_contract``. The
   output path is handed on beside them, as the fourth thing of ADR-0056
   decision 3, and the log keeper as the fifth of ADR-0078 decision 6, with
   the path of the file of the compiler's log (ADR-0078 decision 3). The
@@ -35,7 +38,8 @@ Choices that are this module's own and no rule of a record:
   before the start line (decision 3) and the operation is called after it
   (ADR-0040 decision 7, cited by decision 2), so the start line lies
   between the two. The order, which is
-  :func:`hilclaw.check_admission.admit`, then :func:`draw`, then the start
+  :func:`hilclaw.check_admission.admit_for_step` (or
+  :func:`hilclaw.check_admission.admit`), then :func:`draw`, then the start
   line, then :func:`check`, is the caller's to keep.
 * How the two cases are told apart.
   :func:`hilclaw.harness.seed_source.draw` is handed a callable of this
@@ -60,7 +64,11 @@ Choices that are this module's own and no rule of a record:
   ``__context__`` is one of them, and the frame of :func:`draw` in its
   traceback holds none of them.
 * ``admitted`` is checked to be exactly a
-  :class:`hilclaw.check_admission.Admitted`, before anything is called.
+  :class:`hilclaw.check_admission.Admitted` or exactly a
+  :class:`hilclaw.check_admission.Bf16Admitted`, before anything is called.
+  The type of the check parameters follows from it: a
+  :class:`hilclaw.check_parameters.CheckParameters` for the first, a
+  :class:`hilclaw.check_parameters.Bf16CheckParameters` for the second.
 * The output path is the last positional parameter of :func:`check` but
   one, the keeper the last, and the path of the log file the keyword
   ``log_path``. Each is handed to ``carry_out`` as the same object and not
@@ -158,7 +166,8 @@ def check(
       call. They are handed on as they are and not read.
     - ``admitted``: what the check takes from the content of
       ``instance.json``, exactly a
-      :class:`hilclaw.check_admission.Admitted`.
+      :class:`hilclaw.check_admission.Admitted` or exactly a
+      :class:`hilclaw.check_admission.Bf16Admitted`.
     - ``seed``: the seed of the call, as :func:`draw` returned it.
     - ``output_path``: the output path of the call (ADR-0056 decision 3). It
       is handed on as it is and not read, whatever its type is.
@@ -171,8 +180,11 @@ def check(
     anything is called when ``admitted`` is of another type; this is the
     module's own choice. The check parameters are then
     ``CheckParameters(seed, admitted.draws, admitted.m, admitted.k,
-    admitted.n)`` (ADR-0043 decision 2), each of the five the object that
-    was handed in, and what
+    admitted.n)`` (ADR-0043 decision 2) for an ``Admitted``, and
+    ``Bf16CheckParameters(seed, admitted.draws, admitted.kind,
+    admitted.dtype, admitted.dims)`` (ADR-0177 decision 3) for a
+    ``Bf16Admitted``, each of the five the object that was handed in, and
+    what
     :func:`hilclaw.check_ending.carry_out` returns for ``operation``,
     ``request``, ``hw_profile``, these parameters, ``output_path``,
     ``keeper``, ``log_path``, ``admitted.rtol`` and ``admitted.atol`` is
@@ -199,11 +211,19 @@ def check(
     No argument is modified or kept but the keeper, which is closed; no
     file is read, and none is written but the log's.
     """
-    if type(admitted) is not check_admission.Admitted:
-        raise TypeError("admitted: must be exactly a hilclaw.check_admission.Admitted")
-    parameters = check_parameters.CheckParameters(
-        seed, admitted.draws, admitted.m, admitted.k, admitted.n
-    )
+    if type(admitted) is check_admission.Admitted:
+        parameters = check_parameters.CheckParameters(
+            seed, admitted.draws, admitted.m, admitted.k, admitted.n
+        )
+    elif type(admitted) is check_admission.Bf16Admitted:
+        parameters = check_parameters.Bf16CheckParameters(
+            seed, admitted.draws, admitted.kind, admitted.dtype, admitted.dims
+        )
+    else:
+        raise TypeError(
+            "admitted: must be exactly a hilclaw.check_admission.Admitted"
+            " or Bf16Admitted"
+        )
     return check_ending.carry_out(
         operation,
         request,
