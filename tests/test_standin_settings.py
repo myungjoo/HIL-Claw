@@ -321,7 +321,6 @@ def test_the_largest_shape_of_each_kind_reaches_the_cap(kind, under, capped):
 def test_the_rope_figures_of_adr_0180(dims, per_draw, under):
     limit = bf16_verification_process_time_limit_s
     assert limit("rope", dims, 1) - 10 == pytest.approx(per_draw, abs=0.0005)
-    assert limit("rope", dims, 1) == pytest.approx(10 + per_draw, abs=0.0005)
     assert limit("rope", dims, under) < 1500
     assert limit("rope", dims, under + 1) == 1500.0
 

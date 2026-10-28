@@ -14,7 +14,6 @@ from hilclaw import (
     check_operation,
     kernel_source,
     local_run,
-    mock_check,
     standin_check,
     standin_container,
     standin_copies,
@@ -1090,7 +1089,11 @@ def conforming_report(dims, seed, draws, rows):
         x = bf16_rope_arrays.draw_x(dims, seed=seed, draw=draw)
         report += struct.pack("=I", bf16_rope_arrays.check_value(x, received))
         expected = bf16_rope_arrays.reference(x, received)
-        report += mock_check._nearest_bf16(expected).tobytes()
+        report += (
+            (expected.astype(np.float32).view(np.uint32) >> 16)
+            .astype(np.uint16)
+            .tobytes()
+        )
     return report + b"end\n"
 
 

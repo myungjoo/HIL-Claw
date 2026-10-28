@@ -1309,7 +1309,7 @@ def test_a_file_that_stops_being_bf16_between_the_reads_is_not_covered(
 @pytest.mark.parametrize(
     ("kind", "shape"),
     [("rope", {"m": 2, "h": 2, "d": 4})],
-    ids=["rope-checked"],
+    ids=["rope-not-checked"],
 )
 def test_a_bf16_record_with_no_check_is_not_covered_and_writes_no_line(
     root, monkeypatch, kind, shape
