@@ -93,7 +93,8 @@ Choices that are this module's own and no rule of a record:
   is not an ``int`` from 0 to below ``2**64``; for a bf16 kind also
   :class:`ValueError` for a ``dtype`` other than
   :data:`hilclaw.check_parameters.BF16`, a kind the limit does not serve
-  (``rope`` among them) and what the kind's ``program_arguments`` refuses
+  (``rope`` among them) and what the kind's ``program_arguments`` refuses,
+  a seed of another type included, as its ``ValueError`` subclass
   (C16: no row; the tool function admits these values before the call).
 
 It hands the compiler nothing derived from the seed (ADR-0078 decision 5),
