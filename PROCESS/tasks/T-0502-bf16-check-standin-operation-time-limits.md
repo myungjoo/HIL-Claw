@@ -2,7 +2,7 @@
 id: T-0502
 title: Write the ADR on the time limits of the bf16 verification builds and processes at cpu_standin, build the cpu_standin operation of correctness.check for the five bf16 kinds, and set their checked flags (ADR-0177 slice 2, last part)
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-4, OD-14, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0501]
