@@ -769,7 +769,9 @@
       "reason": "data-plane-schema-change",
       "question": "A-13 data-plane schema change)**: 쟁점 — bf16 여섯 계약의 `correctness.check` 결과(`events.ndjson`의 `step_ended` 줄 `result`)는 ADR-0042의 닫힌 목록에 맞지 않습니다: `shape`는 \"정확히 `m`·`k`·`n`\"인데 `gemm` 밖의 kind에는 `k`가 없고(`rmsnorm`·`elementwise_add`·`swiglu`는 `m`·`n`, `rope`는 `m`·`h`·`d`, `sdpa_kv_cache`는 `m`·`l`·`h`·`h_kv`·`d`), `counts` 항목은 `failed`·`non_finite`뿐인데 SDPA는 캐시 원소의 차이도 판정에 씁니다(ADR-0165 결정 8). ADR-0063의 A-13 읽기와 ADR-0100(결과 정의가 바뀌면 새 `step` 값)에 따라 이는 데이터 plane 스키마 변경입니다. 선택지 — (a) bf16 kind의 검사는 새 `step` 값 둘(sim·board 지점; ADR-0100 결정 3)을 쓰고, 그 결과 목록은 ADR-0042의 목록에서 `shape`를 \"기록된 op_signature의 그 kind의 shape 멤버 전부\"로, SDPA의 `counts` 항목에 캐시 차이 수 멤버(`cache_differs`)를 더한 것으로 한다(fp32 `gemm`의 기존 값·결과는 그대로); (b) `step` 값은 그대로 두고 ADR-0042의 목록 자체를 (a)처럼 넓힌다(ADR-0100의 예외); (c) SDPA의 캐시 차이를 `failed`에 합쳐 `counts`는 그대로 두고 `shape`만 (a)나 (b)처럼 바꾼다; (d) 그 밖. 막히는 것: ADR-0177 PR #309의 착지와 그 뒤의 bf16 `correctness.check` 슬라이스(P2-11·P2-14 경로). 막히지 않는 것: fp32 `gemm` 첫 사례 전부, 다른 PLAN 항목, PR #309의 슬라이스 1 코드(답과 무관 — 답을 ADR 결정 3에 적고 재리뷰 후 착지).",
       "askedAt": "2026-10-26T14:17:57Z",
-      "issueComment": null
+      "issueComment": null,
+      "resolvedAt": "2026-10-28T01:43:43Z",
+      "decision": "(a) - 오너(채팅, 2026-10-28): bf16 kind의 검사는 새 `step` 값 둘(sim·board 지점)을 쓰고, 그 결과 목록은 ADR-0042의 목록에서 `shape`를 기록된 op_signature의 그 kind의 shape 멤버 전부로, SDPA의 `counts` 항목에 `cache_differs`를 더한 것으로 한다. fp32 `gemm`의 기존 값·결과는 그대로."
     }
   ],
   "counters": {
