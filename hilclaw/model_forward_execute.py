@@ -64,6 +64,13 @@ no cache capacity; it chooses no flag of a kernel or of the program, no
 container and no environment; it casts no array; it has no fallback to another
 kernel; it stores, keeps or retries nothing; and it writes nothing outside its
 build directory.
+
+Where it may be used (``ARCHITECTURE/decisions/ADR-0182-od14-model-executor-container.md``
+decision 7): every build and the run of this module are host processes, so it
+is only for kernels the caller wrote itself, as the driver's tests write them.
+A kernel an instance or a coder wrote is built and run in containers by
+:func:`hilclaw.model_forward_container.execute`, never by this module; nothing
+here checks who wrote a kernel.
 """
 
 import os
