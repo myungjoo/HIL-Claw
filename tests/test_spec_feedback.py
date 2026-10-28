@@ -750,3 +750,123 @@ def test_a_bad_round_is_refused_by_the_caller_check(root, round, error):
 def test_a_bad_run_id_is_refused_by_the_layout(root, run_id):
     with pytest.raises(layout.InvalidPathValueError):
         attempts(root, run_id, 1)
+
+
+# The lines of a bf16 check (ADR-0178 decision 1)
+
+BF16_SIM = "correctness_check_bf16_sim"
+BF16_BOARD = "correctness_check_bf16_board"
+
+
+def bf16(failed=0, kind="swiglu"):
+    dims = (4, 2, 8) if kind == "gemm" else (2, 8)
+    return check_result.bf16_completed(
+        kind, dims, draws=1, rtol=0.01, atol=0.001, counts=[(failed, 0)]
+    )
+
+
+def bf16_broken(condition):
+    return check_result.bf16_broken(
+        condition, "swiglu", (2, 8), draws=1, rtol=0.01, atol=0.001
+    )
+
+
+def entry(failure=None, round=0, attempt=1):
+    made = {"round": round, "candidate": 1, "attempt": attempt, "techniques": []}
+    return made if failure is None else made | {"failure": failure}
+
+
+@pytest.mark.parametrize("kind", check_result.BF16_KINDS)
+def test_a_bf16_round_0_attempt_is_read_as_an_fp32_one(root, kind):
+    put_spec(root, 0, 1)
+    put_spec(root, 0, 2)
+    put_spec(root, 0, 3)
+    check(root, 0, BF16_SIM, 1, result=bf16(kind=kind))
+    check(root, 0, BF16_BOARD, 1, result=bf16(kind=kind))
+    check(root, 0, BF16_SIM, 2, result=bf16(1, kind))
+    check(root, 0, BF16_SIM, 3, result=bf16(kind=kind))
+    check(root, 0, BF16_BOARD, 3, result=bf16(2, kind))
+    got = attempts(root, RUN, 1)
+    assert got == [
+        entry(),
+        entry({"stage": "sim", "report": sentence("sim", "sim", "fail")}, attempt=2),
+        entry({"stage": "board", "report": sentence("board", "board", "fail")}, 0, 3),
+    ]
+    valid_in_a_spec(got, 1)
+
+
+def test_a_bf16_build_failure_shows_the_compiler_log_of_its_step(root):
+    put_spec(root, 0)
+    check(root, 0, BF16_SIM, result=bf16_broken("build_time_limit"))
+    build_log(root, 0, SIM, content=b"not this one")
+    build_log(root, 0, BF16_SIM, content=b"x.c:9: slow")
+    report = sentence("compile", "sim", "broken", BUILD_TIME)
+    report += "\nCompiler log:\nx.c:9: slow"
+    assert attempts(root, RUN, 1) == [entry({"stage": "compile", "report": report})]
+
+
+def test_an_open_bf16_sim_check_is_not_shown(root):
+    put_spec(root, 0)
+    check(root, 0, BF16_SIM, result=bf16())
+    events.append(
+        root,
+        RUN,
+        journal.STEP_STARTED,
+        {"step": BF16_SIM, "execution": 2},
+        round=0,
+        candidate=1,
+        attempt=1,
+    )
+    assert attempts(root, RUN, 1) == []
+
+
+def test_the_deciding_check_is_the_first_failed_line_under_either_value(root):
+    put_spec(root, 0)
+    put_spec(root, 0, 2)
+    check(root, 0, BF16_SIM, result=bf16_broken("build_exit_status"))
+    check(root, 0, SIM, execution=1, result=FAIL)
+    build_log(root, 0, BF16_SIM, content=b"bf16 log")
+    build_log(root, 0, SIM, content=b"fp32 log")
+    check(root, 0, SIM, 2, result=FAIL)
+    check(root, 0, BF16_SIM, 2, result=bf16_broken("build_exit_status"))
+    report = sentence("compile", "sim", "broken", BUILD_EXIT)
+    assert attempts(root, RUN, 1) == [
+        entry({"stage": "compile", "report": report + "\nCompiler log:\nbf16 log"}),
+        entry({"stage": "sim", "report": sentence("sim", "sim", "fail")}, attempt=2),
+    ]
+
+
+def test_a_pass_under_each_value_of_both_points_shows_no_failure(root):
+    put_spec(root, 0)
+    passed(root, 0)
+    check(root, 0, BF16_SIM, result=bf16())
+    check(root, 0, BF16_BOARD, result=bf16())
+    assert attempts(root, RUN, 1) == [entry()]
+
+
+def test_a_bf16_board_fail_beside_an_fp32_board_pass_is_a_board_failure(root):
+    put_spec(root, 0)
+    passed(root, 0)
+    check(root, 0, BF16_BOARD, result=bf16(3))
+    report = sentence("board", "board", "fail")
+    assert attempts(root, RUN, 1) == [entry({"stage": "board", "report": report})]
+
+
+def test_a_damaged_bf16_end_line_is_run_file_invalid(root):
+    put_spec(root, 0)
+    numbers = {"round": 0, "candidate": 1, "attempt": 1}
+    data = {"step": BF16_SIM, "execution": 1, "result": bf16()}
+    events.append(root, RUN, journal.STEP_ENDED, data, **numbers)
+    message = refused(root, "run_file_invalid")
+    assert message == f"runs/{RUN}/events.ndjson: line 1: data: lacks the member spend"
+
+
+def test_a_bf16_result_without_an_outcome_is_check_result_invalid(root):
+    put_spec(root, 0)
+    result = bf16()
+    del result["outcome"]
+    check(root, 0, BF16_BOARD, result=result)
+    message = refused(root, "check_result_invalid")
+    assert message == (
+        f"runs/{RUN}/events.ndjson: line 2: data.result: lacks the member outcome"
+    )

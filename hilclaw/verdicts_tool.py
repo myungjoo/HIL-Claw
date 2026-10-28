@@ -62,21 +62,24 @@ or another ``difference``. A comparison is counted when its ``point`` is
 ``board`` and the same verdict holds ``check`` entries at ``board`` with
 ``outcome`` ``"pass"`` for both its ``measured`` and its ``against``; each of
 its two attempts, ``measured`` first, must then have the standing verified at
-``board`` by :func:`hilclaw.check_standing.standing` over the same lines. A
+``board`` by :func:`hilclaw.check_standing.point_standing` over the same lines. A
 comparison that is not counted needs no ``check`` entry and is not held to
 the standing. ``standing`` raises nothing for such a record: its line checks
 are those the read and the step pass already made, and the end lines it reads
 an ``outcome`` of are in the scope of the two ``"pass"`` entries.
 
 A ``check`` entry is founded when, O being the outcomes of the end lines of
-its ``ref`` at the ``step`` of its ``point`` that hold a ``result``, every
-``execution`` together, its ``outcome`` is ``"pass"`` and O is not empty and
+its ``ref`` at its ``point`` that hold a ``result``, every ``execution``
+together, its ``outcome`` is ``"pass"`` and O is not empty and
 holds only ``"pass"``, or its ``outcome`` is another one that O holds. An
 entry whose O is empty (no line, only ``failure`` end lines, only open
 identities) is never founded. A missing log, or a missing run directory below
 an existing data root, holds no line: a record without a ``check`` entry is
 then written. What the evidence names, and a ``"pass"`` entry against the
-standing, are not held (ADR-0131 decision 5).
+standing, are not held (ADR-0131 decision 5). The lines of a ``point`` here
+are those of both its ``step`` values in
+:data:`hilclaw.check_standing.STEPS_OF`, that of ADR-0040 decision 3 and the
+bf16 one of ADR-0177 decision 3 (ADR-0178 decision 1).
 
 :func:`hilclaw.verdicts_file.validate` is unchanged: a file that breaks
 ADR-0140 decision 5 is still a valid file by ADR-0071, and the kinds of that
@@ -202,7 +205,7 @@ def definition(source):
     ``no_data_root`` as :func:`hilclaw.data_root_source.obtain` does; the
     four ``run_file_*`` kinds for the read of the run's log and its step
     lines, as :func:`hilclaw.checks_tool.log_lines` and
-    :func:`hilclaw.checks_tool.checks_of` raise them; and the kinds of this
+    :func:`hilclaw.checks_tool.checks_in_order` raise them; and the kinds of this
     module, :data:`KIND_CHECK_RESULT_INVALID`,
     :data:`KIND_TIMING_RESULT_INVALID`, :data:`KIND_CHECK_UNFOUNDED`,
     :data:`KIND_COMPARISON_UNFOUNDED` and :data:`KIND_COMPARISON_UNVERIFIED`
@@ -290,24 +293,26 @@ def _write(source, request):
         for at, entry in enumerate(verdict["evidence"]):
             place = f"record.verdicts[{index}].evidence[{at}]"
             if entry["kind"] == "check":
-                key = (checks_tool.STEP_OF[entry["point"]], *_numbers(entry["ref"]))
-                named.append((place, key, entry))
+                steps = check_standing.STEPS_OF[entry["point"]]
+                wanted = {(step, *_numbers(entry["ref"])) for step in steps}
+                named.append((place, wanted, entry))
                 continue
             counted = entry["point"] == check_identity.BOARD and all(
                 _numbers(entry[side]) in passed for side in _SIDES
             )
             compared.append((place, entry, counted))
     lines = checks_tool.log_lines(data_root, run_id)
-    scope = {key for _, key, _ in named}
+    scope = set().union(*(wanted for _, wanted, _ in named))
     timed = {
         (timings_tool.STEP_OF[entry["point"]], *_numbers(entry[side]))
         for _, entry, _ in compared
         for side in _SIDES
     }
     _timing_results(run_id, lines, scope, timed)
-    found = checks_tool.checks_of(run_id, lines, scope.__contains__)
-    for place, key, entry in named:
-        _founded(run_id, place, entry, found.get(key, []))
+    found = checks_tool.checks_in_order(run_id, lines, scope.__contains__)
+    for place, wanted, entry in named:
+        checks = [element for key, element in found if key in wanted]
+        _founded(run_id, place, entry, checks)
     for place, entry, _ in compared:
         _given(run_id, lines, place, entry)
     for place, entry, counted in compared:
@@ -385,10 +390,9 @@ def _given(run_id, lines, place, entry):
 
 
 def _verified(lines, place, entry):
-    step = checks_tool.STEP_OF[check_identity.BOARD]
     for side in _SIDES:
         numbers = _numbers(entry[side])
-        standing = check_standing.standing(lines, step, *numbers)
+        standing = check_standing.point_standing(lines, check_identity.BOARD, *numbers)
         if standing is not check_standing.Standing.VERIFIED:
             raise tools.ToolFailure(
                 KIND_COMPARISON_UNVERIFIED,

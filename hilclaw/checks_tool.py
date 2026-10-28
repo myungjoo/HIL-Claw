@@ -11,23 +11,26 @@ and ``attempt``, optional, and no other member. ``round`` is an ``int`` from
 0 to :data:`hilclaw.keys.MAX_INTEGER`, ``candidate`` and ``attempt`` are
 ``int`` values from 1, a ``bool`` being none; ``point`` is exactly
 :data:`hilclaw.check_identity.SIM` or :data:`~hilclaw.check_identity.BOARD`,
-compared as it is, and names the ``step`` whose lines are read. The data root
-comes from the data-root source, asked at each call after the request was
-checked, and never from the request (ADR-0015 decision 3).
+compared as it is, and names the point whose lines are read: the lines of
+both its ``step`` values in :data:`hilclaw.check_standing.STEPS_OF`, that of
+ADR-0040 decision 3 and the bf16 one of ADR-0177 decision 3 (ADR-0178
+decision 1). The data root comes from the data-root source, asked at each
+call after the request was checked, and never from the request (ADR-0015
+decision 3).
 
 The result is ``{"attempts": [...]}``, one entry per attempt in ascending
 ``attempt``, each exactly ``attempt``, ``standing`` and ``checks``. With
 ``attempt`` in the request there is exactly that entry, also when the log
 holds no line of it; without it there is one entry per attempt of the
-candidate for which the log holds a line of the point's ``step``, possibly
-none. ``checks`` holds, in the order of the lines, one element
-``{"execution": n, "state": "ended", "result" | "failure": ...}`` per end
-line of the attempt at the ``step``, the ``result`` or ``failure`` as the line
-holds it, and one element ``{"execution": n, "state": "open"}`` per identity
-with a start line and no end line, at its first start line. ``standing`` is
-what :func:`hilclaw.check_standing.standing` computes over the same lines, as
-``"verified"``, ``"not_verified"`` or ``"undetermined"``: names of the tool
-layer, stored nowhere.
+candidate for which the log holds a line of the point, possibly none.
+``checks`` holds, in the order of the lines, one element ``{"execution": n,
+"state": "ended", "result" | "failure": ...}`` per end line of the attempt
+at the point, the ``result`` or ``failure`` as the line holds it, and one
+element ``{"execution": n, "state": "open"}`` per identity with a start line
+and no end line, at its first start line. ``standing`` is what
+:func:`hilclaw.check_standing.point_standing` computes over the same lines,
+as ``"verified"``, ``"not_verified"`` or ``"undetermined"``: names of the
+tool layer, stored nowhere.
 
 The checks, in this order, each with its kind (ADR-0131 decision 3, table):
 the request (``invalid_request``); the data root (``no_data_root``); the read
@@ -41,8 +44,8 @@ lines in line order, the first that fails deciding: a step line about any
 attempt that :func:`hilclaw.journal.identity_of` refuses (``run_file_invalid``)
 and an end line in the request's scope whose ``result`` has no ``outcome`` of
 ``"pass"``, ``"fail"`` or ``"broken"`` (:data:`KIND_CHECK_RESULT_INVALID`).
-The scope is the named attempt at the ``step``, or every attempt of the
-candidate at the ``step`` when ``attempt`` is left out. A missing log, or a
+The scope is the named attempt at the point, or every attempt of the
+candidate at the point when ``attempt`` is left out. A missing log, or a
 missing run directory below an existing data root, holds no line and is no
 failure; a torn tail is no line.
 
@@ -50,11 +53,13 @@ Choices left to the code slice (ADR-0131 decision 3), made here:
 
 * The scoped pass over the step lines is this module's own, so that the two
   kinds of its last check are told apart by the check that refuses, and in
-  line order across attempts; :func:`hilclaw.check_standing.standing` is then
-  asked for the standing of each attempt, over lines it no longer refuses.
-* The read of the log and the scoped pass are public, as :func:`log_lines`
-  and :func:`checks_of`, so that ``verdicts.write`` (ADR-0131 decision 5)
-  raises the same kinds with the same messages for the same log.
+  line order across attempts; :func:`hilclaw.check_standing.point_standing`
+  is then asked for the standing of each attempt, over lines it no longer
+  refuses.
+* The read of the log and the scoped pass are public, as :func:`log_lines`,
+  :func:`checks_of` and :func:`checks_in_order`, so that ``verdicts.write``
+  (ADR-0131 decision 5) raises the same kinds with the same messages for the
+  same log.
 * A number beyond the float range in a stored ``result`` or ``failure`` is
   read as an infinity, which no result can hold: a call whose result holds
   one fails with ``bad_result``, as ``state.read`` and ``hypotheses.read``
@@ -86,11 +91,6 @@ from hilclaw import (
 KIND_CHECK_RESULT_INVALID = "check_result_invalid"
 #: The name of the run's log, the frame file every read of this module reads.
 LOG = "events.ndjson"
-#: The ``step`` of the lines of each ``point``, as ADR-0040 decision 3 names them.
-STEP_OF = {
-    check_identity.SIM: check_identity.STEP_SIM,
-    check_identity.BOARD: check_identity.STEP_BOARD,
-}
 
 NAME = "checks.read"
 
@@ -213,7 +213,7 @@ def _checked(request):
     if type(point) is not str or point not in _POINTS:
         raise _invalid(f'point: must be "{_POINTS[0]}" or "{_POINTS[1]}"')
     numbers = (request["round"], request["candidate"], request.get("attempt"))
-    return run_id, STEP_OF[point], numbers
+    return run_id, point, numbers
 
 
 def log_lines(data_root, run_id):
@@ -275,8 +275,24 @@ def checks_of(run_id, lines, inside):
     no end line, at its first start line. Shared by ``checks.read`` and
     ``verdicts.write`` (ADR-0131 decisions 3 and 5).
     """
+    found = {}
+    for key, element in checks_in_order(run_id, lines, inside):
+        found.setdefault(key, []).append(element)
+    return found
+
+
+def checks_in_order(run_id, lines, inside):
+    """Return the checks that :func:`checks_of` returns as one list of ``(key, element)`` pairs in the order of the lines.
+
+    The same pass with the same failures as :func:`checks_of`; each element
+    is paired with the tuple ``(step, round, candidate, attempt)`` it is
+    grouped under there, an open element at its first start line and an
+    ended one at its end line. A reader that takes the lines of both
+    ``step`` values of a point (ADR-0178 decision 1) keeps their order from
+    this list.
+    """
     file = run_files.relative(run_id, LOG)
-    found, ended = {}, set()
+    held, opened, ended = [], set(), set()
     for number, event in enumerate(lines, 1):
         if event["kind"] not in _STEP_KINDS:
             continue
@@ -288,37 +304,42 @@ def checks_of(run_id, lines, inside):
         key = (identity.step, *identity[2:5])
         if identity.attempt is None or not inside(key):
             continue
-        held = found.setdefault(key, [])
         execution = {"execution": identity.execution}
         if event["kind"] == journal.STEP_STARTED:
-            if all(seen != identity for seen, _ in held):
-                held.append((identity, execution | {"state": "open"}))
+            if identity not in opened:
+                opened.add(identity)
+                held.append((key, identity, execution | {"state": "open"}))
             continue
         data = event["data"]
         if "result" in data:
             _outcome(file, number, data["result"])
         member = "result" if "result" in data else "failure"
         ended.add(identity)
-        held.append((None, execution | {"state": "ended", member: data[member]}))
-    return {
-        key: [element for identity, element in held if identity not in ended]
-        for key, held in found.items()
-    }
+        element = execution | {"state": "ended", member: data[member]}
+        held.append((key, None, element))
+    return [(key, element) for key, identity, element in held if identity not in ended]
 
 
 def _read(source, request):
-    run_id, step, numbers = _checked(request)
+    run_id, point, numbers = _checked(request)
     data_root = data_root_source.obtain(source)
     lines = log_lines(data_root, run_id)
     round, candidate, attempt = numbers
+    steps = check_standing.STEPS_OF[point]
 
     def inside(key):
-        return key[:3] == (step, round, candidate) and attempt in (None, key[3])
+        return (
+            key[0] in steps
+            and key[1:3] == (round, candidate)
+            and attempt in (None, key[3])
+        )
 
-    found = {key[3]: held for key, held in checks_of(run_id, lines, inside).items()}
+    found = {}
+    for key, element in checks_in_order(run_id, lines, inside):
+        found.setdefault(key[3], []).append(element)
     entries = []
     for n in sorted(found) if attempt is None else [attempt]:
-        standing = check_standing.standing(lines, step, round, candidate, n)
+        standing = check_standing.point_standing(lines, point, round, candidate, n)
         entries.append(
             {"attempt": n, "standing": _STANDINGS[standing], "checks": found.get(n, [])}
         )

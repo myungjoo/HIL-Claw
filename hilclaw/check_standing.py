@@ -18,6 +18,13 @@ module renders its decisions 2, 3 and 5 as one pure function of parsed lines:
   line holds a ``failure`` of class (ii); else undetermined (decision 3). A
   ``failure`` of class (i) counts neither way. Only the lines of the point's
   ``step`` count (decision 5), and the order of the lines does not matter.
+* :data:`STEPS_OF` and :func:`point_standing`: the standing of the attempt
+  at a point whose lines are those of both its ``step`` values, the value of
+  ADR-0040 decision 3 and the bf16 value of ADR-0177 decision 3, as the
+  readers of a check take it (ADR-0178 decision 1). The rule of
+  :func:`standing` applies to the lines of both values together: every end
+  line of either counts, and an open identity of either keeps it from
+  verified.
 
 Choices that are this module's own and no rule of the record:
 
@@ -43,9 +50,10 @@ Choices that are this module's own and no rule of the record:
 
 What the module does not do: it decides nothing of the second part of OD-18
 sub-question ⑭ (what keeps a caller from asking for a further check). It
-appends no line and reads no file. Its consumer is the tool ``checks.read``
+appends no line and reads no file. Its consumers are the tool ``checks.read``
 (:mod:`hilclaw.checks_tool`, ADR-0131 decision 3), which folds the standing
-into its read of a run's log. It merges no two
+into its read of a run's log, ``verdicts.write`` and
+:mod:`hilclaw.spec_feedback`. It merges no two
 points, judges no result again and sorts no result by cause. It does not
 check that the run is one of the first case or one whose hw_profile names the
 mock: that scope is the caller's (decision 1).
@@ -78,6 +86,12 @@ UNSTARTED_KINDS = frozenset(
     }
 )
 
+#: The ``step`` values whose lines are those of each point, the ADR-0040 value first (ADR-0178 decision 1).
+STEPS_OF = {
+    check_identity.SIM: (check_identity.STEP_SIM, check_identity.STEP_BF16_SIM),
+    check_identity.BOARD: (check_identity.STEP_BOARD, check_identity.STEP_BF16_BOARD),
+}
+
 _OUTCOMES = (check_result.PASS, check_result.FAIL, check_result.BROKEN)
 _STEP_KINDS = (journal.STEP_STARTED, journal.STEP_ENDED)
 
@@ -102,16 +116,41 @@ def standing(lines, step, round, candidate, attempt):
     if type(step) is not str or step not in check_identity.STEPS:
         rule = f"one of {', '.join(check_identity.STEPS)}"
         raise journal.JournalError(_message("step", rule, step))
+    return _standing(lines, (step,), round, candidate, attempt)
+
+
+def point_standing(lines, point, round, candidate, attempt):
+    """Return the :class:`Standing` of the attempt ``(round, candidate, attempt)`` at ``point``, over both its ``step`` values.
+
+    ``point`` is :data:`hilclaw.check_identity.SIM` or
+    :data:`~hilclaw.check_identity.BOARD`, exactly a ``str``. A line matches
+    when it would match :func:`standing` for either value of
+    :data:`STEPS_OF` for ``point``, and the rule of :func:`standing` is
+    applied to all matching lines together (ADR-0178 decision 1). When the
+    lines hold only one of the two values the answer is that of
+    :func:`standing` for that value.
+
+    Raises :class:`hilclaw.journal.JournalError` naming ``point`` for a
+    ``point`` that is not one of the two, and otherwise what
+    :func:`standing` raises for the same arguments.
+    """
+    if type(point) is not str or point not in STEPS_OF:
+        rule = f"one of {', '.join(STEPS_OF)}"
+        raise journal.JournalError(_message("point", rule, point))
+    return _standing(lines, STEPS_OF[point], round, candidate, attempt)
+
+
+def _standing(lines, steps, round, candidate, attempt):
     numbers = (round, candidate, attempt)
     for name, value in zip(check_identity.NUMBERS, numbers):
         if value is None:
             raise journal.JournalError(f"{name}: is required")
-    journal.step_identity(step, 1, *numbers)
+    journal.step_identity(steps[0], 1, *numbers)
     started, ended = set(), set()
     failed = passed = blocked = False
     for number, event in enumerate(lines, 1):
         identity = _checked_line(number, event)
-        if identity is None or identity.step != step or identity[2:] != numbers:
+        if identity is None or identity.step not in steps or identity[2:] != numbers:
             continue
         if event["kind"] == journal.STEP_STARTED:
             started.add(identity)
