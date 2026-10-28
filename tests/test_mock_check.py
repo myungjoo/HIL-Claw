@@ -11,8 +11,14 @@ from hilclaw import mock_backend, mock_check
 from hilclaw.backends import Backend, BackendTable, select
 from hilclaw.build_log import LogKeeper
 from hilclaw.check_answer import from_answer
-from hilclaw.check_parameters import CheckParameters
-from hilclaw.harness import verification_arrays
+from hilclaw.check_operation import ask
+from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
+from hilclaw.check_result import CONDITIONS
+from hilclaw.harness import (
+    bf16_verification,
+    bf16_verification_arrays,
+    verification_arrays,
+)
 from hilclaw.harness.verification import END_MARK, judge_report
 from hilclaw.harness.verification_arrays import (
     VerificationArgumentError,
@@ -510,6 +516,8 @@ def test_the_module_imports_the_harness_and_the_type_only_and_has_no_entry():
         "hilclaw.harness",
         "hilclaw.harness.verification",
         "hilclaw.harness.verification_arrays",
+        "hilclaw.harness.bf16_verification",
+        "hilclaw.harness.bf16_verification_arrays",
     }
     assert not imported & {
         "time",
@@ -548,3 +556,213 @@ def test_public_names_of_the_module_and_no_default():
     for parameter in parameters.values():
         assert parameter.default is inspect.Parameter.empty, parameter
     assert list(inspect.signature(operation).parameters) == ["script"]
+
+
+# A check of a bf16 kind (ADR-0177 decision 3, "The mock")
+
+# Test values, not dimensions, draws, a seed or a tolerance of the package.
+BF16_SHAPES = {
+    "gemm": [(1, 1, 1), (3, 5, 4)],
+    "rmsnorm": [(1, 1), (3, 7)],
+    "elementwise_add": [(1, 1), (4, 6)],
+    "swiglu": [(1, 1), (5, 3)],
+}
+BF16_CASES = [(kind, dims) for kind, shapes in BF16_SHAPES.items() for dims in shapes]
+BF16_DRAWS = 2
+# Half a unit in the last place of bf16, relative (ADR-0163 decision 7).
+BF16_TOLERANCE = {"rtol": 2**-8, "atol": 0}
+FAR_PATTERN = 0x4780
+NAN_PATTERN = 0x7FC0
+LOG_PATH = Path(PATH_MARKER) / "runs" / "r1" / "build-log.txt"
+
+
+def bf16_parameters(kind, dims, draws=BF16_DRAWS, dtype="bf16"):
+    return Bf16CheckParameters(
+        seed=SEED, draws=draws, kind=kind, dtype=dtype, dims=dims
+    )
+
+
+def bf16_shape(kind, dims):
+    names = ("m", "k", "n") if kind == "gemm" else ("m", "n")
+    return dict(zip(names, dims, strict=True))
+
+
+def with_pattern(report, dims, draw, element, pattern):
+    changed = bytearray(report)
+    start = draw * (4 + 2 * dims[0] * dims[-1]) + 4 + 2 * element
+    struct.pack_into("=H", changed, start, pattern)
+    return bytes(changed)
+
+
+def asked_through_the_mock(script, parameters):
+    return ask(
+        operation(script),
+        REQUEST,
+        record(),
+        parameters,
+        OUTPUT_PATH,
+        LogKeeper(),
+        log_path=LOG_PATH,
+        **BF16_TOLERANCE,
+    )
+
+
+def standing_for(answer):
+    def script(tool, request, hw_profile, parameters, output_path, keeper):
+        return answer(parameters)
+
+    return script
+
+
+@pytest.mark.parametrize(("kind", "dims"), BF16_CASES)
+def test_the_bf16_answer_is_a_complete_report_the_judge_passes(kind, dims):
+    report = answer_for(bf16_parameters(kind, dims))
+    assert type(report) is bytes
+    assert len(report) == BF16_DRAWS * (4 + 2 * dims[0] * dims[-1]) + 4
+    assert report.endswith(END_MARK)
+    judgement = bf16_verification.judge_report(
+        report, kind, dims, draws=BF16_DRAWS, seed=SEED, **BF16_TOLERANCE
+    )
+    assert judgement == bf16_verification.Judgement(
+        None, bf16_verification.Verdict.PASS, ((0, 0),) * BF16_DRAWS
+    )
+
+
+@pytest.mark.parametrize(("kind", "dims"), BF16_CASES)
+def test_each_bf16_draw_holds_the_check_value_and_the_nearest_patterns(kind, dims):
+    report = answer_for(bf16_parameters(kind, dims))
+    arrays = bf16_verification_arrays
+    block = 4 + 2 * dims[0] * dims[-1]
+    for draw in range(BF16_DRAWS):
+        first, second = arrays.draw_inputs(kind, dims, seed=SEED, draw=draw)
+        (value,) = struct.unpack_from("=I", report, draw * block)
+        assert value == arrays.check_value(first, second)
+        output = np.frombuffer(
+            report, dtype=np.uint16, count=dims[0] * dims[-1], offset=draw * block + 4
+        )
+        widened = arrays.widen(output).reshape(dims[0], dims[-1])
+        expected = arrays.reference(kind, first, second)
+        error = np.abs(widened - expected)
+        for step in (-1, 1):
+            moved = (output.astype(np.int32) + step).astype(np.uint16)
+            neighbour = arrays.widen(moved).reshape(error.shape)
+            assert np.all(error <= np.abs(neighbour - expected))
+
+
+def test_a_bf16_tie_goes_to_the_even_pattern():
+    tied = np.array([[1 + 2**-8, 1 + 3 * 2**-8, -(1 + 2**-8)]])
+    assert mock_check._nearest_bf16(tied).tolist() == [[0x3F80, 0x3F82, 0xBF80]]
+
+
+@pytest.mark.parametrize(("kind", "dims"), BF16_CASES)
+def test_the_bf16_report_through_the_operation_is_judged_pass(kind, dims):
+    result = asked_through_the_mock(default_script, bf16_parameters(kind, dims))
+    assert result == {
+        "outcome": "pass",
+        "shape": bf16_shape(kind, dims),
+        "draws": BF16_DRAWS,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+        "counts": [{"failed": 0, "non_finite": 0}] * BF16_DRAWS,
+    }
+
+
+@pytest.mark.parametrize(("kind", "dims"), BF16_CASES)
+def test_a_script_for_a_kernel_with_one_wrong_element_fails_that_draw(kind, dims):
+    def wrong(parameters):
+        return with_pattern(answer_for(parameters), dims, 1, 0, FAR_PATTERN)
+
+    result = asked_through_the_mock(standing_for(wrong), bf16_parameters(kind, dims))
+    assert result["outcome"] == "fail"
+    assert result["counts"] == [
+        {"failed": 0, "non_finite": 0},
+        {"failed": 1, "non_finite": 0},
+    ]
+
+
+@pytest.mark.parametrize(("kind", "dims"), BF16_CASES)
+def test_a_script_for_a_kernel_with_a_non_finite_output_counts_it(kind, dims):
+    def not_finite(parameters):
+        return with_pattern(answer_for(parameters), dims, 0, 0, NAN_PATTERN)
+
+    result = asked_through_the_mock(
+        standing_for(not_finite), bf16_parameters(kind, dims)
+    )
+    assert result["outcome"] == "fail"
+    assert result["counts"][0] == {"failed": 1, "non_finite": 1}
+
+
+@pytest.mark.parametrize("condition", CONDITIONS[:4])
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_script_answering_a_condition_gives_a_broken_bf16_result(kind, condition):
+    dims = BF16_SHAPES[kind][1]
+    result = asked_through_the_mock(
+        standing_for(lambda parameters: condition), bf16_parameters(kind, dims)
+    )
+    assert result == {
+        "outcome": "broken",
+        "condition": condition,
+        "shape": bf16_shape(kind, dims),
+        "draws": BF16_DRAWS,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+    }
+
+
+def shortened(parameters):
+    return answer_for(parameters)[:-1]
+
+
+def mismatched(parameters):
+    report = bytearray(answer_for(parameters))
+    report[0] ^= 1
+    return bytes(report)
+
+
+@pytest.mark.parametrize(
+    ("answer", "condition"),
+    [(shortened, "report_form"), (mismatched, "check_value")],
+)
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_malformed_or_mismatched_bf16_report_is_broken(kind, answer, condition):
+    dims = BF16_SHAPES[kind][1]
+    result = asked_through_the_mock(standing_for(answer), bf16_parameters(kind, dims))
+    assert result["outcome"] == "broken"
+    assert result["condition"] == condition
+    assert result["shape"] == bf16_shape(kind, dims)
+
+
+@pytest.mark.parametrize(
+    ("kind", "dims"),
+    [
+        ("rope", (1, 1, 2)),
+        ("sdpa_kv_cache", (1, 1, 1, 1, 1)),
+        ("conv", (1, 1)),
+        (None, (1, 1)),
+        ("gemm", (1, 1)),
+        ("rmsnorm", (1, 1, 1)),
+        ("swiglu", (1,)),
+        ("elementwise_add", (True, 1)),
+        ("gemm", (1, 0, 1)),
+        ("rmsnorm", [1, 1]),
+    ],
+)
+def test_bf16_parameters_the_harness_refuses_are_refused_before_a_draw(
+    kind, dims, monkeypatch
+):
+    monkeypatch.setattr(bf16_verification_arrays, "draw_inputs", never_drawn)
+    error = refused(bf16_parameters(kind, dims), VerificationArgumentError)
+    assert type(error) is VerificationArgumentError
+
+
+@pytest.mark.parametrize("dtype", ["fp32", "fp16", "BF16", None])
+def test_a_bf16_type_of_another_dtype_is_refused(dtype, monkeypatch):
+    monkeypatch.setattr(bf16_verification_arrays, "draw_inputs", never_drawn)
+    error = refused(bf16_parameters("gemm", (1, 1, 1), dtype=dtype), ValueError)
+    assert str(error).startswith("parameters.dtype: ")
+
+
+@pytest.mark.parametrize(
+    ("name", "value"), [("seed", -1), ("draws", 0), ("draws", True)]
+)
+def test_a_bf16_seed_or_draws_the_harness_refuses_is_refused(name, value):
+    parameters = bf16_parameters("swiglu", (1, 1))._replace(**{name: value})
+    refused(parameters, VerificationArgumentError)

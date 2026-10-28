@@ -89,11 +89,12 @@ What the module does not do: it is no tool and no step and is bound to none.
 It appends no line and states no spend. It selects no backend, draws no seed,
 reads no tolerance and no file of a run, and looks at nothing at the output
 path. It writes no file but the log's, and forms no path. It validates no
-check parameter and gives no default of any value. It keeps nothing between
-calls. It says nothing of what anybody does after the answer, and it does not
-render what a tool function does with a tool failure an operation raises. It
-imports :mod:`hilclaw.build_log`, :mod:`hilclaw.check_answer`,
-:mod:`hilclaw.check_parameters` and :mod:`hilclaw.tools` and nothing else.
+check parameter but the ``dtype`` of a bf16 one and gives no default of any
+value. It keeps nothing between calls. It says nothing of what anybody
+does after the answer, and it does not render what a tool function does with
+a tool failure an operation raises. It imports :mod:`hilclaw.build_log`,
+:mod:`hilclaw.check_answer`, :mod:`hilclaw.check_parameters` and
+:mod:`hilclaw.tools` and nothing else.
 """
 
 from hilclaw import build_log, check_answer, check_parameters, tools
@@ -140,6 +141,7 @@ _ERRORS = tuple(
     )
 )
 _OTHER_ERROR = _RAISED.format("an error of another class")
+_PARAMETERS = (check_parameters.CheckParameters, check_parameters.Bf16CheckParameters)
 
 
 class OperationAnswerInvalid(Exception):
@@ -180,6 +182,18 @@ def _message(answer, known, other):
     return other
 
 
+def _result(answer, parameters, bf16, rtol, atol):
+    if bf16:
+        seed, draws, kind, _, dims = parameters
+        return check_answer.from_bf16_answer(
+            answer, kind, dims, draws=draws, seed=seed, rtol=rtol, atol=atol
+        )
+    seed, draws, m, k, n = parameters
+    return check_answer.from_answer(
+        answer, m=m, k=k, n=n, draws=draws, seed=seed, rtol=rtol, atol=atol
+    )
+
+
 def _unwritten(held, log_path):
     if held is None:
         return None
@@ -208,7 +222,11 @@ def ask(
     - ``request``, ``hw_profile``: the request and the hw_profile of the
       call. They are handed on as they are and not read.
     - ``parameters``: the check parameters, exactly a
-      :class:`hilclaw.check_parameters.CheckParameters`.
+      :class:`hilclaw.check_parameters.CheckParameters` or, for a check of a
+      bf16 kind (ADR-0177 decision 3), exactly a
+      :class:`hilclaw.check_parameters.Bf16CheckParameters` whose ``dtype``
+      is :data:`hilclaw.check_parameters.BF16`. No caller of the tool hands
+      the second type yet.
     - ``output_path``: the output path of the call (ADR-0056 decision 3). It
       is handed on as it is and not read, whatever its type is.
     - ``keeper``: the log keeper of the call (ADR-0078 decision 6), exactly a
@@ -222,9 +240,12 @@ def ask(
 
     No parameter has a default. Before the operation is called,
     :class:`TypeError` is raised when ``operation`` is not callable,
-    ``parameters`` are not exactly a ``CheckParameters`` or ``keeper`` is not
-    exactly a ``LogKeeper``. The five values, the log path and the tolerance
-    are not checked here: whoever calls checks them.
+    ``parameters`` are neither exactly a ``CheckParameters`` nor exactly a
+    ``Bf16CheckParameters`` or ``keeper`` is not exactly a ``LogKeeper``,
+    and then :class:`ValueError` for a ``Bf16CheckParameters`` whose
+    ``dtype`` is not :data:`hilclaw.check_parameters.BF16`. The other values
+    of the parameters, the log path and the tolerance are not checked here:
+    whoever calls checks them.
 
     The operation is called as
     ``operation(request, hw_profile, parameters, output_path, keeper)``, with
@@ -242,8 +263,10 @@ def ask(
 
     1. It returned exactly ``bytes`` or exactly a ``str``: the result is
        that of :func:`hilclaw.check_answer.from_answer` for the returned
-       value, the five values of ``parameters``, ``rtol`` and ``atol``,
-       returned as it is. A ``str`` of neither form raises
+       value, the five values of ``parameters``, ``rtol`` and ``atol``, or,
+       for a ``Bf16CheckParameters``, that of
+       :func:`hilclaw.check_answer.from_bf16_answer` with its seed, draws,
+       kind and dims, returned as it is. A ``str`` of neither form raises
        :class:`OperationAnswerInvalid`. Everything else that function
        raises, for a value of the five or of the tolerance it refuses,
        passes through unchanged. It returned anything else:
@@ -276,8 +299,11 @@ def ask(
     """
     if not callable(operation):
         raise TypeError("operation: must be callable")
-    if type(parameters) is not check_parameters.CheckParameters:
-        raise TypeError("parameters: must be CheckParameters")
+    if type(parameters) not in _PARAMETERS:
+        raise TypeError("parameters: must be CheckParameters or Bf16CheckParameters")
+    bf16 = type(parameters) is check_parameters.Bf16CheckParameters
+    if bf16 and parameters.dtype != check_parameters.BF16:
+        raise ValueError(f"parameters.dtype: must be {check_parameters.BF16!r}")
     if type(keeper) is not build_log.LogKeeper:
         raise TypeError("keeper: must be exactly a hilclaw.build_log.LogKeeper")
     failure = message = None
@@ -301,11 +327,8 @@ def ask(
     if message is None:
         message = _message(answer, _VALUES, _OTHER_VALUE)
         if type(answer) is bytes or type(answer) is str:
-            seed, draws, m, k, n = parameters
             try:
-                return check_answer.from_answer(
-                    answer, m=m, k=k, n=n, draws=draws, seed=seed, rtol=rtol, atol=atol
-                )
+                return _result(answer, parameters, bf16, rtol, atol)
             except check_answer.NeitherFormError:
                 pass
         del answer

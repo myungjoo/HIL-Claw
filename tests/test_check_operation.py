@@ -24,7 +24,7 @@ from hilclaw.check_operation import (
     OperationAnswerInvalid,
     ask,
 )
-from hilclaw.check_parameters import CheckParameters
+from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.harness.verification import END_MARK
 from hilclaw.harness.verification_arrays import (
     VerificationArgumentError,
@@ -805,3 +805,75 @@ def test_public_names_of_the_module_and_no_default():
     assert all(parameter.kind is positional for parameter in parameters[:6])
     keyword_only = inspect.Parameter.KEYWORD_ONLY
     assert all(parameter.kind is keyword_only for parameter in parameters[6:])
+
+
+# A check of a bf16 kind (ADR-0177 decision 3, "What the operations are handed")
+
+# Test values, not dimensions, draws, a seed or a tolerance of the package.
+BF16_PARAMETERS = Bf16CheckParameters(SEED, 2, "swiglu", "bf16", (3, 5))
+BF16_TOLERANCE = {"rtol": 2**-8, "atol": 0}
+BF16_REPORT = mock_check.default_script(None, None, None, BF16_PARAMETERS, None, None)
+
+
+def test_bf16_parameters_reach_the_operation_as_they_are_and_are_judged():
+    operation = Recording(BF16_REPORT)
+    result = asked(operation, BF16_PARAMETERS, BF16_TOLERANCE)
+    assert operation.calls[0][0][2] is BF16_PARAMETERS
+    assert result == {
+        "outcome": "pass",
+        "shape": {"m": 3, "n": 5},
+        "draws": 2,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+        "counts": [{"failed": 0, "non_finite": 0}] * 2,
+    }
+
+
+def test_a_bf16_report_that_fails_and_one_that_is_broken():
+    wrong = bytearray(BF16_REPORT)
+    struct.pack_into("=H", wrong, 4 + 2 * 15 + 4 + 2 * 7, 0x4780)
+    result = asked(Recording(bytes(wrong)), BF16_PARAMETERS, BF16_TOLERANCE)
+    assert result["counts"] == [
+        {"failed": 0, "non_finite": 0},
+        {"failed": 1, "non_finite": 0},
+    ]
+    short = asked(Recording(BF16_REPORT[:-1]), BF16_PARAMETERS, BF16_TOLERANCE)
+    assert short["condition"] == "report_form"
+
+
+@pytest.mark.parametrize("condition", check_result.CONDITIONS[:4])
+def test_a_bf16_condition_gives_a_broken_result_of_the_bf16_shape(condition):
+    result = asked(Recording(condition), BF16_PARAMETERS, BF16_TOLERANCE)
+    assert result == {
+        "outcome": "broken",
+        "condition": condition,
+        "shape": {"m": 3, "n": 5},
+        "draws": 2,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+    }
+
+
+@pytest.mark.parametrize("answer", ["report_form", None, bytearray(BF16_REPORT)])
+def test_a_bf16_answer_of_neither_form_is_invalid(answer):
+    with pytest.raises(OperationAnswerInvalid):
+        asked(Recording(answer), BF16_PARAMETERS, BF16_TOLERANCE)
+
+
+@pytest.mark.parametrize("dtype", ["fp32", "BF16", None])
+def test_bf16_parameters_of_another_dtype_are_refused_before_the_call(dtype):
+    operation = Recording(BF16_REPORT)
+    with pytest.raises(ValueError, match=r"^parameters\.dtype: "):
+        asked(operation, BF16_PARAMETERS._replace(dtype=dtype), BF16_TOLERANCE)
+    assert operation.calls == []
+
+
+@pytest.mark.parametrize(
+    ("kind", "dims"), [("rope", (3, 5)), ("swiglu", (3, 5, 1)), ("gemm", (3, 5))]
+)
+def test_bf16_parameters_the_judge_refuses_pass_through_after_the_call(kind, dims):
+    operation = Recording(BF16_REPORT)
+    parameters = BF16_PARAMETERS._replace(kind=kind, dims=dims)
+    with pytest.raises(VerificationArgumentError):
+        asked(operation, parameters, BF16_TOLERANCE)
+    assert len(operation.calls) == 1
+    with pytest.raises(ValueError):
+        asked(Recording("exit_status"), parameters, BF16_TOLERANCE)
