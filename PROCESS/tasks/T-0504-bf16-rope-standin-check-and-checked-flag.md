@@ -2,7 +2,7 @@
 id: T-0504
 title: Build the cpu_standin operation of correctness.check for bf16 rope (rows on the container's standard input, ADR-0180 limits) and set the checked flag of the rope entry (ADR-0177 slice 3, second part)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-4, OD-14, OD-16, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: []
@@ -70,3 +70,26 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+**DONE**: PR #317 was squash-merged as `32a51138` after review Approve and green CI (run 40677055597 on `8cb896a6`: Python gate 3.11 and 3.14, C gate, sh gate, test presence and coverage gate all pass); the branch was deleted.
+
+**Review**: 1 round (dev-reviewer, context-isolated; PR comment 6467308208): Approve, no Must-fix or Should-fix, three Nits (param id `rope-checked` → `rope-not-checked`; the test report no longer uses the private `mock_check._nearest_bf16`; a duplicate `pytest.approx` dropped). All three were fixed in `8cb896a6`; they are test-only and do not change meaning, so under D20 there was no re-review.
+
+**Language**: Python, because every touched 2nd-layer module is Python.
+
+**Code**:
+- `standin_container.run_in_container(..., stdin_data=None)`: exactly `bytes` adds `--interactive` before the image (never `--tty`) and passes the bytes to `local_run.run` as `stdin_data` (empty `bytes` admitted); `None` leaves the command and the call unchanged; any other type, a `bytes` subclass included, is refused with `TypeError` and `parameter="stdin_data"` before the client starts (no `place_error` row, C16).
+- `standin_settings`: `rope` is in `BF16_CHECK_KINDS` in table order, dims `(m, h, d)`, A = 0, E = 2mhd + 2md, matching ADR-0180's table; the build limit stays 60 s.
+- `standin_check`: for `rope` it computes `program_arguments`, `P = start_position(dims, seed=seed)` and the bytes of `table_rows(dims, start=P)` before the image is read or a directory is made; the rows go only to the process container; `run_container` gains a keyword `stdin_data=None` passed on unchanged, so other kinds start their containers exactly as before.
+- `contract_table`: `rope` is `checked=True, timed=False`.
+- Non-test files: 4, about 105 lines.
+
+**Edited existing assertions** (D21; also listed in the PR body): in `test_standin_settings`, `test_standin_check`, `test_contract_table`, `test_check_tool`, `test_check_definition` and `test_check_admission`, the kind lists and the `rope`-not-checked rows were updated to `rope` checked; no change in `test_backend_conformance.py`.
+
+**Local tests**: full suite on WSL (Ubuntu, clang) at `8cb896a6`: 37259 passed, 50 skipped; ruff check and format clean.
+
+**Runtime acceptance items**: none beyond RA-0047/RA-0048.
+
+**Less exact sentences outside the touched files (not edited)**: ADR-0179 decision 1 and Boundaries ("Not covered: `rope`"); ADR-0180 Context and Consequences on `run_in_container` standard input and `rope` refusal; ADR-0164 Boundaries on registration; `hilclaw/harness/bf16_rope_verification.py` module docstring.
+
+**Follow-ups**: none.
