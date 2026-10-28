@@ -48,6 +48,7 @@ from hilclaw.model_reference import compare, reference_logits
 from hilclaw.model_run import RunFailed
 
 IMAGE = "registry.example/hilclaw-clang:2"
+HOST_RUN = local_run.run
 DIMENSIONS = forward_run.DIMENSIONS
 S, G = 3, 3
 KINDS = forward.KINDS
@@ -812,9 +813,11 @@ def test_public_names_and_fields():
     assert model_forward_container.BuildFailed is model_execute.BuildFailed
 
 
-def real_client(clang_program):
+def real_client(clang_program, host_run):
     def act(command, *, timeout_s, env=None, **options):
         command = list(command)
+        if command[0] != "docker":
+            return host_run(command, timeout_s=timeout_s, env=env, **options)
         if command[1] == "rm":
             return run_result(command, 0)
         source = mount_source(command)
@@ -854,7 +857,7 @@ def test_a_greedy_generation_from_attempts_through_a_stub_client(
     tmp_path,
     last,
 ):
-    monkeypatch.setattr(local_run, "run", real_client(shutil.which("clang")))
+    monkeypatch.setattr(local_run, "run", real_client(shutil.which("clang"), HOST_RUN))
     root = tmp_path / "data"
     root.mkdir()
     attempts.write_forward_attempts(root)
