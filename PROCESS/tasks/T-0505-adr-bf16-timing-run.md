@@ -2,7 +2,7 @@
 id: T-0505
 title: Write the ADR on the bf16 timing run of sim.run and board.run for the six bf16 contracts at cpu_standin and the mock (OD-13, OD-16 sub-question 6, OD-14, OD-18), and list its code slices (ADR-0177 slice 4, the record)
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [C-6, FR-1, FR-9, FR-10, NFR-3, OD-13, OD-14, OD-16, OD-18, OD-31, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0504]
