@@ -2,7 +2,7 @@
 id: T-0507
 title: Land ADR-0182 code slice 2 — the kernel reference carries the kernel's own headers, read by attempt_kernel and copied by the container path of the forward pass beside the sources
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, NFR-4, OD-14, OD-31, "PLAN P2-14"]
 dependsOn: []
@@ -73,3 +73,13 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+**DONE.** PR #319 squash-merged as `c1acfe33` (branch `claude/T-0507-kernel-headers-in-container` deleted). Review: 1 round, Approve (fresh-context `dev-reviewer`); afterwards one nit fixed without re-review (D20: rename `test_an_attempt_without_headers_answers_none` → `..._answers_no_header`); the other nit (helper `kernels_in` duplicating an inline dict of an existing test) was left alone because AC7 forbids editing that test. CI green on the final head: Python 3.11/3.14, Coverage gate, C gate, sh gate, Test presence. Local: full pytest 35468 passed / 1930 skipped (Windows; clang tests skip), ruff check + format clean; the three touched modules have 100 % line coverage.
+
+- **Language**: Python, the language of the three touched layer-2 modules (`model_binding`, `attempt_kernel`, `model_forward_container`).
+- **Edited list assertions (D21)**: `tests/test_model_binding.py::test_named_tuples` (`KernelReference._fields` gains `"headers"`); `tests/test_attempt_kernel.py::test_the_answer_is_what_the_reader_and_parse_give` (the expected tuple gains `source.headers`). `test_model_forward_container.py::test_public_names_and_fields` needed no edit.
+- **Test helper change**: `tests/test_attempt_kernel.py::write_forward_attempts` gains an optional `header` (the prelude moved into a header that the source includes); the clang-backed `test_a_greedy_generation_from_attempts_through_a_stub_client` is parametrised with `header` in `[None, "fx.h"]` (it runs in CI on ubuntu).
+- **Host-path docstrings**: none of `model_forward_execute.py`, `model_execute.py` or `model_build.py` became false; none was edited.
+- **Records now less exact (not edited, AC8)**: ADR-0182 decision 4, "A kernel's own headers are not copied … Carrying the headers is slice 2"; ADR-0182 Consequences/Boundaries, "A kernel's own headers (slice 2)" listed as not yet done.
+- **Runtime acceptance items**: none added.
+- **Follow-ups**: none (ADR-0182 slice 3 was already deferred by the driver).
