@@ -50,9 +50,10 @@ Choices that are this module's own and no rule of a record:
   an fp32 ``gemm`` record is what it was.
 * A bf16 record that ``covers`` answers ``True`` for is answered
   :data:`KIND_OP_SIGNATURE_NOT_COVERED` when its kind is none the check of a
-  bf16 kind is built for (:data:`hilclaw.check_result.BF16_KINDS`), or when no bf16 entry of
-  :data:`hilclaw.contract_table.TABLE` has its kind and its ``layout``:
-  there is no check for it, whatever the predicate handed over says.
+  bf16 kind is built for (:data:`hilclaw.check_result.BF16_KINDS`), or
+  when no bf16 entry of :data:`hilclaw.contract_table.TABLE` has its kind
+  and its ``layout``: there is no check for it, whatever the predicate
+  handed over says.
   Through the predicate the registry binds, such a record is refused by
   the predicate first.
 * The order of the dimensions of a :class:`Bf16Admitted` is that of the
