@@ -23,7 +23,7 @@ firing: no timeout and no turn count (HQ-0076 (4)).
    ends): held by another firing -> ``prepare/overlap``; a host without
    ``fcntl`` -> ``prepare/no_posix_host``;
 2. the environment: ``HILCLAW_CODER_IMAGE``, ``HILCLAW_CODER_OAUTH_TOKEN`` and
-   ``HILCLAW_STANDIN_IMAGE`` non-empty, ``claude``, ``docker`` and ``git`` on
+   ``HILCLAW_STANDIN_IMAGE`` non-empty, ``claude``, ``clang``, ``docker`` and ``git`` on
    ``PATH`` -> ``prepare/missing:<names>``;
 3. the data root ``<firing>/data``, a new git repository of this firing only,
    never pushed (``prepare/data_root``), and the hw_profile record
@@ -106,7 +106,7 @@ REQUIRED_VARIABLES = (
     "HILCLAW_CODER_OAUTH_TOKEN",
     "HILCLAW_STANDIN_IMAGE",
 )
-REQUIRED_PROGRAMS = ("claude", "docker", "git")
+REQUIRED_PROGRAMS = ("claude", "clang", "docker", "git")
 HOST_SESSION_MARKS = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
 PROFILE_TIMEOUT_S = 60
 TAIL_LINES = 40

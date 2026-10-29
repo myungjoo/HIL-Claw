@@ -67,7 +67,7 @@ class World:
         self.base.mkdir()
         self.bin.mkdir()
         self.ran = tmp_path / "stub-ran"
-        for name in ("claude", "docker"):
+        for name in ("claude", "clang", "docker"):
             self.stub(name, f'#!/bin/sh\necho "$0" >> "{self.ran}"\nexit 99\n')
         self.log = tmp_path / "entries.ndjson"
         self.scenario = tmp_path / "scenario.json"
@@ -618,3 +618,37 @@ def test_the_module_runs_as_a_command():
     )
     assert done.returncode == nightly.EXIT_USAGE
     assert json.loads(done.stdout)["verdict"] == "bad_usage"
+
+
+def test_the_document_starts_a_run_through_the_real_new_run(tmp_path):
+    if GIT is None:
+        pytest.skip("needs git")
+    root = tmp_path / "data"
+    subprocess.run([GIT, "init", "-q", "-b", "main", str(root)], check=True)
+    given = tmp_path / "instance.json"
+    given.write_text(json.dumps(nightly.document(dict(PROFILE))), encoding="utf-8")
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("CLAUDE")
+    }
+    env.update(
+        HILCLAW_DATA_REPO_LOCAL_PATH=str(root),
+        HILCLAW_DATA_REPO_URL=nightly.DATA_REPO_URL,
+        PYTHONPATH=str(REPOSITORY),
+    )
+    done = subprocess.run(
+        [sys.executable, "-m", "hilclaw.new_run", str(given)],
+        cwd=tmp_path,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=False,
+    )
+    told = json.loads(done.stdout)
+    assert (done.returncode, told["outcome"]) == (0, "started"), done
+    stored = json.loads(
+        (root / "runs" / told["run_id"] / "instance.json").read_text(encoding="utf-8")
+    )
+    assert stored["round_budget"] == 5
+    assert stored["op_signature"]["record"] == nightly.OP
