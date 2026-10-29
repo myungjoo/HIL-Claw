@@ -2,7 +2,7 @@
 id: T-0509
 title: Land ADR-0183 code slice 1 — the v2 result builder of correctness.check for every contract of the table, and the sdpa judge's cache differences per allocation (no tool path changes)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-1, OD-8, OD-18, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: []
