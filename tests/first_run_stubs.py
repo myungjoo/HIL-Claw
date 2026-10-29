@@ -24,8 +24,9 @@ test's kernel of the round the scratch's spec names into that scratch
 without starting anything, and runs a stand-in build or process container on
 this machine: the bind-mounted build directory is the container's
 ``/build``, ``clang`` is the host ``clang`` found before ``PATH`` was
-narrowed, and the waiter runs in a new user and PID namespace made by
-``unshare`` where that works. Where it does not, the timing executable runs
+narrowed, builds and processes run with that earlier ``PATH`` as a container
+runs with its image's (clang 21 finds the linker on ``PATH``), and the waiter
+runs in a new user and PID namespace made by ``unshare`` where that works. Where it does not, the timing executable runs
 directly and the stub writes the waiter's last line from the host's figure
 for the child.
 """
@@ -64,6 +65,7 @@ _REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 def install(directory, scenario):
     """Write the launchers and the scenario into ``directory``; return the launchers' paths."""
     directory = Path(directory)
+    scenario = {**scenario, "image_path": os.environ.get("PATH", os.defpath)}
     (directory / CONFIG).write_text(json.dumps(scenario), encoding="utf-8")
     me = Path(__file__).resolve()
     config = (directory / CONFIG).resolve()
@@ -871,10 +873,16 @@ def _standin(scenario, mount, program, arguments, entry):
     else:
         entry["container"] = "process"
         command = [_host(program, source), *mapped]
-    done = subprocess.run(command, cwd=source, capture_output=True, check=False)
+    done = subprocess.run(
+        command, cwd=source, env=_image_env(scenario), capture_output=True, check=False
+    )
     sys.stdout.buffer.write(done.stdout)
     sys.stderr.buffer.write(done.stderr)
     return done.returncode
+
+
+def _image_env(scenario):
+    return {**os.environ, "PATH": scenario["image_path"]}
 
 
 def _timing(scenario, source, mapped, entry):
