@@ -36,9 +36,9 @@ The v2 result of ``correctness.check``
 (``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md``
 decisions 3 and 6), built for any entry of
 :data:`hilclaw.contract_table.TABLE`; every result of the tool is one
-(:mod:`hilclaw.check_answer`). The four builders above are called by no
-tool since ADR-0183 decision 9 item 2, and their removal follows in a
-later task:
+(:mod:`hilclaw.check_answer`). :func:`completed`, :func:`broken`,
+:func:`bf16_completed` and :func:`bf16_broken` are called by no tool since
+ADR-0183 decision 9 item 2, and their removal follows in a later task:
 
 * :data:`BIT_EXACT`: the output operands judged bit for bit, keyed by the
   ``(kind, dtype, layout)`` of their contract; every other output operand
