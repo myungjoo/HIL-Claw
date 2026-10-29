@@ -55,16 +55,17 @@ TOOLS = {
     "board.run": ("board_run", {}),
 }
 STEPS = {
-    "correctness.check": "correctness_check_sim",
+    "correctness.check": "correctness_check_sim_v2",
     "sim.run": "sim_run_timing",
     "board.run": "board_run_timing",
 }
 PASSED = {
     "outcome": "pass",
+    "contract_key": {"kind": "gemm", "dtype": "fp32", "layout": "row_major"},
     "shape": SHAPE,
     "draws": DRAWS,
     "tolerance": TOLERANCE,
-    "counts": [{"failed": 0, "non_finite": 0}] * DRAWS,
+    "counts": {"c": [{"failed": 0, "non_finite": 0}] * DRAWS},
 }
 CONVERGED = {
     "outcome": "converged",
@@ -451,12 +452,17 @@ def test_a_passing_bf16_kernel_is_answered_alike_by_both_entries(
         answers.append(call(root, "correctness.check", asked))
         found = events.read(root, run_id).events
         assert [line["data"]["step"] for line in found] == [
-            "correctness_check_bf16_board"
+            "correctness_check_board_v2"
         ] * 2
     assert answers[0] == answers[1]
     failed, result = answers[0]
     assert failed is False
     assert (result["outcome"], result["shape"]) == ("pass", BF16_SHAPES[kind])
+    assert result["contract_key"] == {
+        "kind": kind,
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
     assert len(client.runs) == 2
     build, process = client.runs
     program = bf16_verification_build.PROGRAM_SOURCES[kind].name

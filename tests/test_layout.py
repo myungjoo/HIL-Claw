@@ -593,20 +593,20 @@ def test_module_defines_no_reader_writer_or_entry_point():
     }
 
 
-# Expected paths copied from the Walk-through of ADR-0078.
+# The form of the Walk-through of ADR-0078 with the values of ADR-0183 decision 7.
 ADR_0078_SIM = (
     "runs/r1/rounds/0003/measure/candidates/02/attempts/01/"
-    "build-log-correctness_check_sim-01.txt"
+    "build-log-correctness_check_sim_v2-01.txt"
 )
 ADR_0078_BOARD = (
     "runs/r1/rounds/0003/measure/candidates/02/attempts/01/"
-    "build-log-correctness_check_board-01.txt"
+    "build-log-correctness_check_board_v2-01.txt"
 )
 
 
 def test_build_log_file_of_the_adr_0078_walk_through():
-    sim = build_log_file(ROOT, "r1", 3, 2, 1, "correctness_check_sim", 1)
-    board = build_log_file(ROOT, "r1", 3, 2, 1, "correctness_check_board", 1)
+    sim = build_log_file(ROOT, "r1", 3, 2, 1, "correctness_check_sim_v2", 1)
+    board = build_log_file(ROOT, "r1", 3, 2, 1, "correctness_check_board_v2", 1)
     assert rel(sim) == ADR_0078_SIM
     assert rel(board) == ADR_0078_BOARD
 
@@ -616,10 +616,8 @@ def test_build_log_steps_are_those_of_correctness_check_and_the_run_tools():
 
     assert BUILD_LOG_STEPS == check_identity.STEPS + run_identity.STEPS
     assert BUILD_LOG_STEPS == (
-        "correctness_check_sim",
-        "correctness_check_board",
-        "correctness_check_bf16_sim",
-        "correctness_check_bf16_board",
+        "correctness_check_sim_v2",
+        "correctness_check_board_v2",
         "sim_run_timing",
         "board_run_timing",
     )
@@ -656,8 +654,8 @@ def test_build_log_file_of_the_adr_0108_walk_through():
     ],
 )
 def test_build_log_execution_number_form(number, name):
-    path = build_log_file(ROOT, RUN, 7, 3, 2, "correctness_check_board", number)
-    assert path.name == f"build-log-correctness_check_board-{name}.txt"
+    path = build_log_file(ROOT, RUN, 7, 3, 2, "correctness_check_board_v2", number)
+    assert path.name == f"build-log-correctness_check_board_v2-{name}.txt"
 
 
 @pytest.mark.parametrize("step", BUILD_LOG_STEPS)
@@ -697,6 +695,8 @@ def test_build_log_name_is_no_artefact_and_has_only_allowed_characters(step):
         "correctness_check_sim ",
         StrSubclass("correctness_check_sim"),
         b"correctness_check_sim",
+        "correctness_check_sim_v2 ",
+        "correctness_check_v2",
         None,
         1,
     ],
@@ -707,17 +707,32 @@ def test_invalid_build_log_step_is_rejected(step):
 
 
 @pytest.mark.parametrize(
+    "step",
+    [
+        "correctness_check_sim",
+        "correctness_check_board",
+        "correctness_check_bf16_sim",
+        "correctness_check_bf16_board",
+    ],
+)
+def test_a_retired_check_step_is_rejected(step):
+    with pytest.raises(InvalidPathValueError, match=r"^step: must be one of "):
+        build_log_file(ROOT, RUN, 7, 3, 2, step, 1)
+    assert step not in BUILD_LOG_STEPS
+
+
+@pytest.mark.parametrize(
     "number", [0, -1, keys.MAX_INTEGER + 1, True, False, 1.0, "1", None, IntSubclass(1)]
 )
 def test_invalid_build_log_execution_is_rejected(number):
     with pytest.raises(
         InvalidPathValueError, match=r"^execution: must be an int from 1 "
     ):
-        build_log_file(ROOT, RUN, 7, 3, 2, "correctness_check_sim", number)
+        build_log_file(ROOT, RUN, 7, 3, 2, "correctness_check_sim_v2", number)
 
 
 def test_build_log_file_checks_the_attempt_as_attempt_dir_does():
-    step = "correctness_check_sim"
+    step = "correctness_check_sim_v2"
     with pytest.raises(InvalidPathValueError, match=r"^run_id: "):
         build_log_file(ROOT, "Bad", 7, 3, 2, step, 1)
     with pytest.raises(InvalidPathValueError, match=r"^round: "):

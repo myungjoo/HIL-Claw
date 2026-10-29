@@ -14,6 +14,7 @@ from hilclaw import (
     check_answer,
     check_operation,
     check_result,
+    contract_table,
     journaled_step,
     mock_check,
     tools,
@@ -38,6 +39,7 @@ SEED = 7
 DRAWS = 3
 SHAPE = {"m": 3, "k": 4, "n": 5}
 PARAMETERS = CheckParameters(seed=SEED, draws=DRAWS, **SHAPE)
+GEMM_ENTRY = contract_table.TABLE["gemm", "fp32", "row_major", "c"]
 EXAMPLE_TOLERANCE = {"rtol": 1e-5, "atol": 1e-6}
 OTHER_TOLERANCE = {"rtol": 0.5, "atol": 0.25}
 REQUEST = {"run_id": "r1", "execution": 1}
@@ -290,7 +292,7 @@ PASSED_ON = [
 ]
 
 BAD_PARAMETERS = [
-    ("m", 0, VerificationArgumentError),
+    ("m", 0, ValueError),
     ("draws", 0, VerificationArgumentError),
     ("seed", -1, VerificationArgumentError),
 ]
@@ -482,8 +484,8 @@ def test_the_five_values_reach_the_result():
     result = asked(Recording(answer="time_limit"), parameters)
     assert result["shape"] == {"m": 2, "k": 3, "n": 4}
     assert result["draws"] == 5
-    assert result == check_result.broken(
-        "time_limit", m=2, k=3, n=4, draws=5, **EXAMPLE_TOLERANCE
+    assert result == check_result.v2_broken(
+        "time_limit", GEMM_ENTRY, (2, 3, 4), draws=5, **EXAMPLE_TOLERANCE
     )
 
 
@@ -747,7 +749,7 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
         asked(Recording(error=SystemExit(3)))
     with pytest.raises(TypeError):
         asked(Recording(answer=GOOD), None)
-    with pytest.raises(VerificationArgumentError):
+    with pytest.raises(ValueError):
         asked(Recording(answer=GOOD), PARAMETERS._replace(m=0))
     assert list(tmp_path.iterdir()) == []
 
@@ -810,6 +812,7 @@ def test_public_names_of_the_module_and_no_default():
 # A check of a bf16 kind (ADR-0177 decision 3, "What the operations are handed")
 
 # Test values, not dimensions, draws, a seed or a tolerance of the package.
+SWIGLU_KEY = {"kind": "swiglu", "dtype": "bf16", "layout": "row_major"}
 BF16_PARAMETERS = Bf16CheckParameters(SEED, 2, "swiglu", "bf16", (3, 5))
 BF16_TOLERANCE = {"rtol": 2**-8, "atol": 0}
 BF16_REPORT = mock_check.default_script(None, None, None, BF16_PARAMETERS, None, None)
@@ -821,10 +824,11 @@ def test_bf16_parameters_reach_the_operation_as_they_are_and_are_judged():
     assert operation.calls[0][0][2] is BF16_PARAMETERS
     assert result == {
         "outcome": "pass",
+        "contract_key": SWIGLU_KEY,
         "shape": {"m": 3, "n": 5},
         "draws": 2,
         "tolerance": {"rtol": 2**-8, "atol": 0.0},
-        "counts": [{"failed": 0, "non_finite": 0}] * 2,
+        "counts": {"out": [{"failed": 0, "non_finite": 0}] * 2},
     }
 
 
@@ -832,10 +836,9 @@ def test_a_bf16_report_that_fails_and_one_that_is_broken():
     wrong = bytearray(BF16_REPORT)
     struct.pack_into("=H", wrong, 4 + 2 * 15 + 4 + 2 * 7, 0x4780)
     result = asked(Recording(bytes(wrong)), BF16_PARAMETERS, BF16_TOLERANCE)
-    assert result["counts"] == [
-        {"failed": 0, "non_finite": 0},
-        {"failed": 1, "non_finite": 0},
-    ]
+    assert result["counts"] == {
+        "out": [{"failed": 0, "non_finite": 0}, {"failed": 1, "non_finite": 0}]
+    }
     short = asked(Recording(BF16_REPORT[:-1]), BF16_PARAMETERS, BF16_TOLERANCE)
     assert short["condition"] == "report_form"
 
@@ -846,6 +849,7 @@ def test_a_bf16_condition_gives_a_broken_result_of_the_bf16_shape(condition):
     assert result == {
         "outcome": "broken",
         "condition": condition,
+        "contract_key": SWIGLU_KEY,
         "shape": {"m": 3, "n": 5},
         "draws": 2,
         "tolerance": {"rtol": 2**-8, "atol": 0.0},
@@ -872,7 +876,7 @@ def test_bf16_parameters_of_another_dtype_are_refused_before_the_call(dtype):
 def test_bf16_parameters_the_judge_refuses_pass_through_after_the_call(kind, dims):
     operation = Recording(BF16_REPORT)
     parameters = BF16_PARAMETERS._replace(kind=kind, dims=dims)
-    with pytest.raises(VerificationArgumentError):
+    with pytest.raises(ValueError, match=r"^dims: "):
         asked(operation, parameters, BF16_TOLERANCE)
     assert len(operation.calls) == 1
     with pytest.raises(ValueError):
@@ -893,16 +897,29 @@ def test_sdpa_parameters_reach_the_operation_and_are_judged_with_the_cache():
     assert operation.calls[0][0][2] is SDPA_PARAMETERS
     assert result == {
         "outcome": "pass",
+        "contract_key": {
+            "kind": "sdpa_kv_cache",
+            "dtype": "bf16",
+            "layout": "row_major",
+        },
         "shape": {"m": 1, "l": 2, "h": 3, "h_kv": 3, "d": 2},
         "draws": 2,
         "tolerance": {"rtol": 0.0, "atol": 2.154e-3},
-        "counts": [{"failed": 0, "non_finite": 0, "cache_differs": 0}] * 2,
+        "counts": {
+            "cache_k": [{"differs": 0}] * 2,
+            "cache_v": [{"differs": 0}] * 2,
+            "out": [{"failed": 0, "non_finite": 0}] * 2,
+        },
     }
     changed = bytearray(SDPA_REPORT)
     struct.pack_into("=H", changed, 4 + 2 * 6, 0x1234)
     failed = asked(Recording(bytes(changed)), SDPA_PARAMETERS, SDPA_TOLERANCE)
     assert failed["outcome"] == "fail"
-    assert failed["counts"][0] == {"failed": 0, "non_finite": 0, "cache_differs": 1}
+    assert [failed["counts"][name][0] for name in ("cache_k", "cache_v", "out")] == [
+        {"differs": 1},
+        {"differs": 0},
+        {"failed": 0, "non_finite": 0},
+    ]
 
 
 def test_an_sdpa_condition_and_an_sdpa_answer_of_neither_form():
@@ -916,6 +933,6 @@ def test_an_sdpa_condition_and_an_sdpa_answer_of_neither_form():
 def test_sdpa_dims_the_judge_refuses_pass_through_after_the_call():
     operation = Recording(SDPA_REPORT)
     parameters = SDPA_PARAMETERS._replace(dims=(2, 1, 3, 3, 2))
-    with pytest.raises(VerificationArgumentError):
+    with pytest.raises(ValueError, match=r"^dims: "):
         asked(operation, parameters, SDPA_TOLERANCE)
     assert len(operation.calls) == 1

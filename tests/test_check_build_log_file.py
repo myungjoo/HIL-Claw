@@ -52,7 +52,7 @@ REQUEST = {
     "point": "sim",
 }
 ATTEMPT = "runs/r1/rounds/0003/measure/candidates/02/attempts/01"
-WALK_THROUGH = f"{ATTEMPT}/build-log-correctness_check_sim-01.txt"
+WALK_THROUGH = f"{ATTEMPT}/build-log-correctness_check_sim_v2-01.txt"
 LOG = "gemm.c:3:5: warning: unused variable ‘x’ ünïcode\r\nline two without newline"
 UNWRITABLE = "build_log_unwritable"
 
@@ -183,7 +183,7 @@ def test_a_handed_log_is_written_at_its_path_and_changes_no_result(
     expected = function_of(other_root, silent(mock_check.default_script))(asked)
     assert result == expected
     assert result["outcome"] == "pass"
-    name = f"{ATTEMPT}/build-log-correctness_check_{point}-01.txt"
+    name = f"{ATTEMPT}/build-log-correctness_check_{point}_v2-01.txt"
     assert build_logs(root) == [name]
     assert (root / name).read_bytes() == LOG.encode("utf-8")
     assert build_logs(other_root) == []
@@ -215,7 +215,7 @@ def test_a_further_execution_writes_its_own_name(root):
     function_of(root, handing(mock_check.default_script, log="second"))(
         request(execution=2)
     )
-    second = f"{ATTEMPT}/build-log-correctness_check_sim-02.txt"
+    second = f"{ATTEMPT}/build-log-correctness_check_sim_v2-02.txt"
     assert build_logs(root) == [WALK_THROUGH, second]
     assert (root / second).read_bytes() == b"second"
     assert (root / WALK_THROUGH).read_bytes() == LOG.encode("utf-8")
@@ -283,7 +283,7 @@ def unwritable_call(root, script):
     assert started["kind"] == "step_started"
     assert ended["kind"] == "step_ended"
     assert ended["data"] == {
-        "step": "correctness_check_sim",
+        "step": "correctness_check_sim_v2",
         "execution": 1,
         "spend": {},
         "failure": {"kind": UNWRITABLE, "message": failure.message},

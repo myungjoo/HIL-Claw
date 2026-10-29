@@ -11,6 +11,7 @@ import pytest
 from hilclaw import (
     check_result,
     checks_tool,
+    contract_table,
     events,
     hypotheses_file,
     journal,
@@ -65,8 +66,8 @@ HYPOTHESES = {
 HYPOTHESES_PATH = f"runs/{RUN}/rounds/0001/decision/hypotheses.json"
 VERDICTS_PATH = f"runs/{RUN}/rounds/0001/eval/verdicts.json"
 LOG = f"runs/{RUN}/events.ndjson"
-SIM = "correctness_check_sim"
-BOARD = "correctness_check_board"
+SIM = "correctness_check_sim_v2"
+BOARD = "correctness_check_board_v2"
 PASS = {"outcome": "pass", "max_abs_error": 0.0}
 FAIL = {"outcome": "fail", "max_abs_error": 2.5}
 BROKEN = {"outcome": "broken"}
@@ -1515,40 +1516,46 @@ def test_the_mcp_front_writes_a_counted_comparison(root):
     assert verdicts_path(root).read_bytes() == encoded(given)
 
 
-# The lines of a bf16 check (ADR-0178 decision 1)
+# The lines of a bf16 check under the v2 value of the point (ADR-0183 decision 8)
 
-BF16_SIM = "correctness_check_bf16_sim"
-BF16_BOARD = "correctness_check_bf16_board"
+RETIRED_SIM = "correctness_check_bf16_sim"
+RETIRED_BOARD = "correctness_check_bf16_board"
+BF16_ENTRIES = {
+    key[0]: found for key, found in contract_table.TABLE.items() if key[1] == "bf16"
+}
 
 
 def bf16(failed=0, kind="rmsnorm"):
     dims = {"gemm": (4, 2, 8), "rope": (2, 3, 8), "sdpa_kv_cache": (2, 3, 4, 2, 8)}.get(
         kind, (2, 8)
     )
-    entry = (failed, 0, 0) if kind == "sdpa_kv_cache" else (failed, 0)
-    return check_result.bf16_completed(
-        kind, dims, draws=1, rtol=0.01, atol=0.001, counts=[entry]
+    table_entry = BF16_ENTRIES[kind]
+    names = check_result.output_operands(table_entry, dims)
+    exact = check_result.BIT_EXACT.get((kind, "bf16", "row_major"), ())
+    counts = {name: [0 if name in exact else (failed, 0)] for name in names}
+    return check_result.v2_completed(
+        table_entry, dims, draws=1, rtol=0.01, atol=0.001, counts=counts
     )
 
 
 def bf16_founding(root):
-    check(root, step=BF16_BOARD, result=bf16())
-    check(root, at=(1, 2, 1), step=BF16_SIM, result=bf16(1))
-    check(root, at=(1, 2, 1), step=BF16_BOARD, result=bf16())
+    check(root, step=BOARD, result=bf16())
+    check(root, at=(1, 2, 1), step=SIM, result=bf16(1))
+    check(root, at=(1, 2, 1), step=BOARD, result=bf16())
 
 
-@pytest.mark.parametrize("kind", check_result.BF16_KINDS)
+@pytest.mark.parametrize("kind", list(BF16_ENTRIES))
 def test_check_entries_of_a_bf16_run_are_founded_at_both_points(root, kind):
     with_hypotheses(root, log=False)
-    check(root, step=BF16_BOARD, result=bf16(kind=kind))
-    check(root, at=(1, 2, 1), step=BF16_SIM, result=bf16(1, kind))
+    check(root, step=BOARD, result=bf16(kind=kind))
+    check(root, at=(1, 2, 1), step=SIM, result=bf16(1, kind))
     written(root, record())
 
 
 def test_a_bf16_pass_against_a_bf16_fail_is_check_unfounded(root):
     with_hypotheses(root, log=False)
-    check(root, 1, step=BF16_BOARD, result=bf16(1))
-    check(root, 2, step=BF16_BOARD, result=bf16())
+    check(root, 1, step=BOARD, result=bf16(1))
+    check(root, 2, step=BOARD, result=bf16())
     error = refused(root, pair([check_entry()]))
     assert error.kind == verdicts_tool.KIND_CHECK_UNFOUNDED
     assert error.message == (
@@ -1560,7 +1567,7 @@ def test_a_bf16_pass_against_a_bf16_fail_is_check_unfounded(root):
 
 def test_a_bf16_line_of_the_other_point_founds_nothing(root):
     with_hypotheses(root, log=False)
-    check(root, step=BF16_SIM, result=bf16())
+    check(root, step=SIM, result=bf16())
     error = refused(root, pair([check_entry()]))
     assert error.kind == verdicts_tool.KIND_CHECK_UNFOUNDED
     assert error.message.endswith(
@@ -1569,27 +1576,34 @@ def test_a_bf16_line_of_the_other_point_founds_nothing(root):
     )
 
 
-def test_the_results_of_both_values_of_a_point_found_an_entry_together(root):
+def test_a_result_under_a_retired_value_is_passed_over_beside_a_v2_one(root):
     with_hypotheses(root, log=False)
     check(root, 1, result=PASS)
-    check(root, 1, step=BF16_BOARD, result=bf16(1))
+    check(root, 1, step=RETIRED_BOARD, result=bf16(1))
+    check(root, 2, step="correctness_check_board", result={"no": "outcome"})
+    error = refused(root, pair([check_entry(outcome="fail")]))
+    assert error.kind == verdicts_tool.KIND_CHECK_UNFOUNDED
+    assert "holds only the outcomes pass of round 1," in error.message
+    written(root, pair([check_entry()]))
+
+
+@pytest.mark.parametrize("step", [RETIRED_BOARD, "correctness_check_board"])
+def test_a_log_of_retired_lines_only_founds_no_check_entry(root, step):
+    with_hypotheses(root, log=False)
+    check(root, 1, step=step, result=bf16())
+    check(root, 2, step=step, result={"outcome": None})
     error = refused(root, pair([check_entry()]))
     assert error.kind == verdicts_tool.KIND_CHECK_UNFOUNDED
-    assert "holds the outcomes pass, fail of round 1" in error.message
-    written(root, pair([check_entry(outcome="fail")]))
-
-
-def test_both_values_passing_found_a_pass(root):
-    with_hypotheses(root, log=False)
-    check(root, 1, result=PASS)
-    check(root, 1, step=BF16_BOARD, result=bf16())
-    written(root, pair([check_entry()]))
+    assert error.message.endswith(
+        "holds no result of round 1, candidate 1, attempt 1 at board, so it can "
+        "have no check entry"
+    )
 
 
 def bf16_counted_log(root):
     with_hypotheses(root, log=False)
     bf16_founding(root)
-    check(root, at=AGAINST, step=BF16_BOARD, result=bf16())
+    check(root, at=AGAINST, step=BOARD, result=bf16())
     timed(root)
 
 
@@ -1602,7 +1616,7 @@ def test_a_counted_comparison_over_bf16_board_checks_is_written(root):
 
 def test_an_open_bf16_board_check_makes_a_counted_comparison_unverified(root):
     bf16_counted_log(root)
-    start(root, 2, step=BF16_BOARD)
+    start(root, 2, step=BOARD)
     error = refused(root, counted())
     assert error.kind == verdicts_tool.KIND_COMPARISON_UNVERIFIED
     assert error.message == (
@@ -1612,7 +1626,15 @@ def test_an_open_bf16_board_check_makes_a_counted_comparison_unverified(root):
     )
 
 
-def test_a_failure_under_the_other_value_makes_a_comparison_unverified(root):
+def test_a_failure_under_a_retired_value_leaves_a_comparison_verified(root):
+    bf16_counted_log(root)
+    check(root, 2, at=AGAINST, step=RETIRED_BOARD, failure=CLASS_II)
+    start(root, 3, step=RETIRED_BOARD)
+    check(root, 4, at=AGAINST, step=RETIRED_BOARD, result=FAIL)
+    written(root, counted())
+
+
+def test_a_failure_under_the_v2_value_makes_a_comparison_unverified(root):
     bf16_counted_log(root)
     check(root, 2, at=AGAINST, step=BOARD, failure=CLASS_II)
     error = refused(root, counted())
@@ -1624,7 +1646,7 @@ def test_a_failure_under_the_other_value_makes_a_comparison_unverified(root):
     )
 
 
-def test_a_fail_under_the_other_value_makes_a_pass_entry_unfounded(root):
+def test_a_fail_under_the_v2_value_makes_a_pass_entry_unfounded(root):
     bf16_counted_log(root)
     check(root, 2, at=AGAINST, step=BOARD, result=FAIL)
     error = refused(root, counted())
@@ -1633,7 +1655,7 @@ def test_a_fail_under_the_other_value_makes_a_pass_entry_unfounded(root):
 
 def test_a_bf16_result_without_an_outcome_is_check_result_invalid(root):
     with_hypotheses(root, log=False)
-    check(root, step=BF16_BOARD, result=bf16() | {"outcome": None})
+    check(root, step=BOARD, result=bf16() | {"outcome": None})
     error = refused(root, pair([check_entry()]))
     assert error.kind == verdicts_tool.KIND_CHECK_RESULT_INVALID
     assert error.message == (
@@ -1644,17 +1666,17 @@ def test_a_bf16_result_without_an_outcome_is_check_result_invalid(root):
 
 def test_a_damaged_bf16_end_line_is_run_file_invalid(root):
     with_hypotheses(root, log=False)
-    check(root, step=BF16_BOARD, result=bf16())
-    raw(root, line({"step": BF16_BOARD, "execution": 2, "result": bf16()}))
+    check(root, step=BOARD, result=bf16())
+    raw(root, line({"step": BOARD, "execution": 2, "result": bf16()}))
     error = refused(root, pair([check_entry()]))
     assert error.kind == tools.KIND_RUN_FILE_INVALID
     assert error.message == f"{LOG}: line 3: data: lacks the member spend"
 
 
-@pytest.mark.parametrize("point", [BF16_BOARD, "bf16"])
+@pytest.mark.parametrize("point", [BOARD, RETIRED_BOARD, "bf16"])
 def test_a_check_entry_at_a_point_of_neither_value_is_invalid_request(root, point):
     with_hypotheses(root, log=False)
-    check(root, step=BF16_BOARD, result=bf16())
+    check(root, step=BOARD, result=bf16())
     entry = check_entry() | {"point": point}
     error = refused(root, pair([entry]))
     assert error.kind == tools.KIND_INVALID_REQUEST

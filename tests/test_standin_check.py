@@ -12,6 +12,7 @@ from hilclaw import (
     check_failure,
     check_judging,
     check_operation,
+    contract_table,
     kernel_source,
     local_run,
     standin_check,
@@ -1098,8 +1099,9 @@ def conforming_report(dims, seed, draws, rows):
 
 
 def judged(report, dims, seed, draws):
-    return check_judging.from_bf16_report(
-        report, "rope", dims, draws=draws, seed=seed, rtol=0.0, atol=1.0
+    entry = contract_table.TABLE["rope", "bf16", "row_major", "c"]
+    return check_judging.from_v2_report(
+        report, entry, dims, draws=draws, seed=seed, rtol=0.0, atol=1.0
     )
 
 

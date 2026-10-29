@@ -52,10 +52,8 @@ _ARTEFACT_ROLE = {
 }
 ATTEMPT_ARTEFACTS = tuple(_ARTEFACT_ROLE)
 BUILD_LOG_STEPS = (
-    "correctness_check_sim",
-    "correctness_check_board",
-    "correctness_check_bf16_sim",
-    "correctness_check_bf16_board",
+    "correctness_check_sim_v2",
+    "correctness_check_board_v2",
     "sim_run_timing",
     "board_run_timing",
 )
@@ -173,11 +171,12 @@ def build_log_file(data_root, run_id, round, candidate, attempt, step, execution
     (ADR-0078 decision 3) or of the timing build of one call of ``sim.run``
     or ``board.run`` (ADR-0108 decision 3). It is not one of
     :data:`ATTEMPT_ARTEFACTS`: it is no record of a result. ``step`` is one
-    of :data:`BUILD_LOG_STEPS`: the four ``step`` values of
-    ``correctness.check`` (ADR-0040 decision 3, ADR-0177 decision 3), then
-    ``sim_run_timing`` and
-    ``board_run_timing``, the one of each run tool (ADR-0062 decision 3).
-    ``execution`` is an
+    of :data:`BUILD_LOG_STEPS`: ``correctness_check_sim_v2`` and
+    ``correctness_check_board_v2``, the two ``step`` values of
+    ``correctness.check`` (ADR-0183 decisions 2 and 7), then
+    ``sim_run_timing`` and ``board_run_timing``, the one of each run tool
+    (ADR-0062 decision 3). Any other value is refused, the four check values
+    ADR-0183 retired included. ``execution`` is an
     integer from 1 to :data:`hilclaw.keys.MAX_INTEGER`, written in decimal and
     zero-padded to at least two digits, never truncated. ``run_id``,
     ``round``, ``candidate`` and ``attempt`` are checked as

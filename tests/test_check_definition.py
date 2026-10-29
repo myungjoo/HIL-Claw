@@ -259,12 +259,13 @@ REQUEST = {
 }
 PASSED = {
     "outcome": "pass",
+    "contract_key": {"kind": "gemm", "dtype": "fp32", "layout": "row_major"},
     "shape": SHAPE,
     "draws": DRAWS,
     "tolerance": TOLERANCE,
-    "counts": [{"failed": 0, "non_finite": 0}] * DRAWS,
+    "counts": {"c": [{"failed": 0, "non_finite": 0}] * DRAWS},
 }
-STEP = {"step": "correctness_check_sim", "execution": 1}
+STEP = {"step": "correctness_check_sim_v2", "execution": 1}
 NUMBERS = {"round": ROUND, "candidate": 2, "attempt": 1}
 
 
@@ -659,7 +660,7 @@ def test_a_registry_of_the_test_answers_what_its_script_answers(root, parties):
     assert status == __main__.EXIT_RESULT
     result = json.loads(stdout.getvalue())
     assert result["outcome"] == "fail"
-    assert result["counts"][0]["failed"] >= 1
+    assert result["counts"]["c"][0]["failed"] >= 1
     ((_, _, _, parameters, _, _),) = script.calls
     assert parameters.seed == 7
     stdout = io.BytesIO()
@@ -905,7 +906,10 @@ def test_a_checked_bf16_record_is_judged_by_the_default_registry(
     result = tools.call(registry, TOOL, dict(REQUEST))
     assert result["outcome"] == "pass"
     assert result["shape"] == record["shape"]
-    assert len(result["counts"]) == DRAWS
+    assert result["contract_key"] == {
+        name: record[name] for name in ("kind", "dtype", "layout")
+    }
+    assert all(len(entries) == DRAWS for entries in result["counts"].values())
     assert not no_log(root)
     assert counts(parties) == (1, 1, 1)
     ((_, _, _, parameters, _, _),) = parties["script"].calls

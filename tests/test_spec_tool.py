@@ -786,8 +786,8 @@ def test_each_call_asks_the_source_once_and_reads_the_instance_only(root, monkey
 # Rounds >= 1 (ADR-0151)
 
 ACCELERATOR = "synthetic_hw"
-SIM = "correctness_check_sim"
-BOARD = "correctness_check_board"
+SIM = "correctness_check_sim_v2"
+BOARD = "correctness_check_board_v2"
 PASS = {"outcome": "pass", "max_abs_error": 0.0}
 
 

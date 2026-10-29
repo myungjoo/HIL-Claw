@@ -29,7 +29,6 @@ from hilclaw.check_admission import (
     Admitted,
     Bf16Admitted,
     admit,
-    admit_for_step,
 )
 
 MARKER = "zq7-marker-zq7"
@@ -521,7 +520,6 @@ def test_module_imports_three_modules_and_has_no_entry():
         "typing",
         "hilclaw",
         "hilclaw.check_parameters",
-        "hilclaw.check_result",
         "hilclaw.contract_table",
         "hilclaw.instance",
         "hilclaw.tools",
@@ -574,7 +572,6 @@ def test_public_names_of_the_module_and_no_default():
         "Admitted",
         "Bf16Admitted",
         "admit",
-        "admit_for_step",
     }
     parameters = list(inspect.signature(admit).parameters.values())
     assert [parameter.name for parameter in parameters] == ["instance", "covers"]
@@ -606,9 +603,9 @@ def bf16_record(kind, shape=None, **changes):
     return stated | changes
 
 
-def refused_for_step(stated, bf16_step, covers=contract_table.covers):
+def refused_kind(stated, covers=contract_table.covers):
     with pytest.raises(tools.ToolFailure) as caught:
-        admit_for_step(stated, covers=covers, bf16_step=bf16_step)
+        admit(stated, covers=covers)
     assert type(caught.value) is tools.ToolFailure
     return caught.value.kind
 
@@ -625,10 +622,8 @@ def test_bf16_admitted_has_six_fields_and_no_default():
 def test_a_bf16_record_is_admitted_with_the_members_of_its_kind(kind):
     stated = content(op=bf16_record(kind))
     expected = Bf16Admitted(kind, "bf16", BF16_SHAPES[kind][1], TEST_DRAWS, 0.25, 3.0)
-    for admitted in (
-        admit(stated, covers=contract_table.covers),
-        admit_for_step(stated, covers=contract_table.covers, bf16_step=True),
-    ):
+    for covers in (contract_table.covers, contract_table.check_covers):
+        admitted = admit(stated, covers=covers)
         assert type(admitted) is Bf16Admitted
         assert admitted == expected
         assert type(admitted.dims) is tuple
@@ -637,52 +632,43 @@ def test_a_bf16_record_is_admitted_with_the_members_of_its_kind(kind):
 def test_the_dims_follow_the_order_of_task_contract_not_of_the_record():
     shape = {"n": 4, "k": 3, "m": 2}
     stated = content(op=bf16_record("gemm", shape))
-    admitted = admit_for_step(stated, covers=contract_table.covers, bf16_step=True)
+    admitted = admit(stated, covers=contract_table.covers)
     assert admitted.dims == (2, 3, 4)
 
 
-def test_an_fp32_gemm_record_is_admitted_as_before_under_its_step():
+def test_an_fp32_gemm_record_is_admitted_as_before():
     stated = content()
     for covers in (gemm_contract.covers, contract_table.check_covers):
-        admitted = admit_for_step(stated, covers=covers, bf16_step=False)
+        admitted = admit(stated, covers=covers)
         assert type(admitted) is Admitted
-        assert admitted == admit(stated, covers=covers)
         assert admitted == (1, 2048, 8192, TEST_DRAWS, 0.25, 3.0)
 
 
 @pytest.mark.parametrize("kind", list(BF16_SHAPES))
-def test_a_bf16_record_under_an_fp32_step_is_not_covered(kind):
+def test_a_covered_bf16_record_is_admitted_with_no_rule_of_a_step(kind):
     recorder = Recorder(True)
-    stated = content(op=bf16_record(kind), draws=ABSENT, tolerance=ABSENT)
-    assert refused_for_step(stated, False, recorder) == KIND_OP_SIGNATURE_NOT_COVERED
+    stated = content(op=bf16_record(kind))
+    assert type(admit(stated, covers=recorder)) is Bf16Admitted
     assert len(recorder.calls) == 1
+    missing = content(op=bf16_record(kind), draws=ABSENT, tolerance=ABSENT)
+    assert refused_kind(missing, Recorder(True)) == KIND_DRAWS_NOT_STATED
 
 
-def test_an_fp32_record_under_a_bf16_step_is_not_covered():
+def test_an_fp32_or_fp16_record_is_answered_by_the_predicate_alone():
     recorder = Recorder(True)
     stated = content(draws=ABSENT)
-    assert refused_for_step(stated, True, recorder) == KIND_OP_SIGNATURE_NOT_COVERED
+    assert refused_kind(stated, recorder) == KIND_DRAWS_NOT_STATED
     assert len(recorder.calls) == 1
     other = content(op=record(dtype="fp16"))
-    assert refused_for_step(other, True, Recorder(True)) == (
+    assert refused_kind(other, contract_table.check_covers) == (
         KIND_OP_SIGNATURE_NOT_COVERED
     )
 
 
 def test_a_bf16_record_the_predicate_refuses_is_not_covered():
     stated = content(op=bf16_record("rmsnorm"))
-    for bf16_step in (True, False):
-        kind = refused_for_step(stated, bf16_step, Recorder(False))
-        assert kind == KIND_OP_SIGNATURE_NOT_COVERED
-    with pytest.raises(tools.ToolFailure) as caught:
-        admit(stated, covers=Recorder(False))
-    assert caught.value.kind == KIND_OP_SIGNATURE_NOT_COVERED
-    assert refused_for_step(stated, False, contract_table.check_covers) == (
-        KIND_OP_SIGNATURE_NOT_COVERED
-    )
-    admitted = admit_for_step(
-        stated, covers=contract_table.check_covers, bf16_step=True
-    )
+    assert refused_kind(stated, Recorder(False)) == KIND_OP_SIGNATURE_NOT_COVERED
+    admitted = admit(stated, covers=contract_table.check_covers)
     assert type(admitted) is Bf16Admitted
 
 
@@ -690,7 +676,7 @@ def test_a_bf16_record_the_predicate_refuses_is_not_covered():
 def test_a_bf16_record_with_a_shape_outside_its_contract_is_not_covered(kind):
     shape = dict.fromkeys(BF16_SHAPES[kind][0], 1) | {"m": 0}
     stated = content(op=bf16_record(kind, shape))
-    assert refused_for_step(stated, True) == KIND_OP_SIGNATURE_NOT_COVERED
+    assert refused_kind(stated) == KIND_OP_SIGNATURE_NOT_COVERED
 
 
 ROPE_RECORD = {
@@ -709,11 +695,9 @@ def test_a_rope_record_is_admitted_with_m_h_d_under_a_predicate_that_covers_it(
     covers,
 ):
     stated = content(op=ROPE_RECORD)
-    admitted = admit_for_step(stated, covers=covers, bf16_step=True)
+    admitted = admit(stated, covers=covers)
     assert type(admitted) is Bf16Admitted
     assert admitted == ("rope", "bf16", (2, 3, 4), TEST_DRAWS, 0.25, 3.0)
-    assert admit(stated, covers=covers) == admitted
-    assert refused_for_step(stated, False, covers) == KIND_OP_SIGNATURE_NOT_COVERED
 
 
 def test_a_rope_record_is_covered_by_the_registered_predicate():
@@ -722,9 +706,7 @@ def test_a_rope_record_is_covered_by_the_registered_predicate():
     assert contract_table.check_covers(ROPE_RECORD)
     assert not contract_table.run_covers(ROPE_RECORD)
     assert not contract_table.start_covers(ROPE_RECORD)
-    admitted = admit_for_step(
-        stated, covers=contract_table.check_covers, bf16_step=True
-    )
+    admitted = admit(stated, covers=contract_table.check_covers)
     assert admitted == ("rope", "bf16", (2, 3, 4), TEST_DRAWS, 0.25, 3.0)
 
 
@@ -735,7 +717,7 @@ def test_a_rope_record_is_covered_by_the_registered_predicate():
 )
 def test_a_rope_record_outside_its_contract_is_not_covered(shape):
     stated = content(op={**ROPE_RECORD, "shape": shape})
-    assert refused_for_step(stated, True) == KIND_OP_SIGNATURE_NOT_COVERED
+    assert refused_kind(stated) == KIND_OP_SIGNATURE_NOT_COVERED
 
 
 @pytest.mark.parametrize(
@@ -753,54 +735,23 @@ def test_a_rope_record_of_the_wrong_members_is_refused_by_the_key_rules(shape):
 
 def test_a_bf16_record_of_a_layout_no_entry_has_is_not_covered():
     stated = content(op=bf16_record("gemm", layout="col_major"))
-    assert refused_for_step(stated, True, Recorder(True)) == (
-        KIND_OP_SIGNATURE_NOT_COVERED
-    )
+    assert refused_kind(stated, Recorder(True)) == KIND_OP_SIGNATURE_NOT_COVERED
 
 
 def test_a_bf16_record_without_draws_or_tolerance_has_those_answers():
     no_draws = content(op=bf16_record("swiglu"), draws=ABSENT, tolerance=ABSENT)
-    assert refused_for_step(no_draws, True) == KIND_DRAWS_NOT_STATED
+    assert refused_kind(no_draws) == KIND_DRAWS_NOT_STATED
     no_tolerance = content(op=bf16_record("swiglu"), tolerance=ABSENT)
-    assert refused_for_step(no_tolerance, True) == KIND_TOLERANCE_NOT_STATED
-    unstated = content(op=ABSENT)
-    for bf16_step in (True, False):
-        recorder = Recorder(True)
-        kind = refused_for_step(unstated, bf16_step, recorder)
-        assert kind == KIND_OP_SIGNATURE_NOT_STATED
-        assert recorder.calls == []
-
-
-@pytest.mark.parametrize("given", [None, 1, 0, "True", [True]])
-def test_admit_for_step_refuses_a_bf16_step_that_is_no_bool(given):
+    assert refused_kind(no_tolerance) == KIND_TOLERANCE_NOT_STATED
     recorder = Recorder(True)
-    with pytest.raises(TypeError, match="^bf16_step: "):
-        admit_for_step(content(), covers=recorder, bf16_step=given)
+    assert refused_kind(content(op=ABSENT), recorder) == KIND_OP_SIGNATURE_NOT_STATED
     assert recorder.calls == []
 
 
-def test_admit_for_step_checks_the_instance_and_covers_first():
-    with pytest.raises(TypeError, match="^instance: "):
-        admit_for_step(None, covers=gemm_contract.covers, bf16_step=None)
-    with pytest.raises(TypeError, match="^covers: "):
-        admit_for_step(content(), covers=None, bf16_step=None)
-    with pytest.raises(TypeError, match="^covers: "):
-        admit_for_step(content(), covers=Recorder(None), bf16_step=False)
-
-
-def test_admit_for_step_has_no_default_and_named_parameters():
-    parameters = list(inspect.signature(admit_for_step).parameters.values())
-    assert [parameter.name for parameter in parameters] == [
-        "instance",
-        "covers",
-        "bf16_step",
-    ]
-    assert [parameter.kind for parameter in parameters] == [
-        inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        inspect.Parameter.KEYWORD_ONLY,
-        inspect.Parameter.KEYWORD_ONLY,
-    ]
-    assert all(parameter.default is inspect.Parameter.empty for parameter in parameters)
+def test_the_rule_of_a_step_taken_for_a_dtype_is_removed():
+    assert not hasattr(check_admission, "admit_for_step")
+    with pytest.raises(TypeError):
+        admit(content(), covers=gemm_contract.covers, bf16_step=False)
 
 
 # An sdpa_kv_cache record (ADR-0177 decision 3)
@@ -826,29 +777,22 @@ def test_a_covered_sdpa_record_is_admitted_in_the_order_of_task_contract(shape):
     recorder = Recorder(True)
     for admitted in (
         admit(stated, covers=contract_table.covers),
-        admit_for_step(stated, covers=recorder, bf16_step=True),
+        admit(stated, covers=recorder),
     ):
         assert type(admitted) is Bf16Admitted
         assert admitted == expected
     assert len(recorder.calls) == 1
 
 
-def test_an_sdpa_record_is_admitted_by_the_registered_predicate_not_an_fp32_step():
+def test_an_sdpa_record_is_admitted_by_the_registered_predicate():
     stated = content(
         op={**bf16_record("gemm"), "kind": "sdpa_kv_cache", "shape": SDPA_SHAPE}
     )
-    admitted = admit_for_step(
-        stated, covers=contract_table.check_covers, bf16_step=True
-    )
+    admitted = admit(stated, covers=contract_table.check_covers)
     assert type(admitted) is Bf16Admitted
-    assert refused_for_step(stated, False, Recorder(True)) == (
-        KIND_OP_SIGNATURE_NOT_COVERED
-    )
-    assert refused_for_step(stated, True, Recorder(False)) == (
-        KIND_OP_SIGNATURE_NOT_COVERED
-    )
+    assert refused_kind(stated, Recorder(False)) == KIND_OP_SIGNATURE_NOT_COVERED
     missing = content(
         op={**bf16_record("gemm"), "kind": "sdpa_kv_cache", "shape": SDPA_SHAPE},
         draws=ABSENT,
     )
-    assert refused_for_step(missing, True, Recorder(True)) == KIND_DRAWS_NOT_STATED
+    assert refused_kind(missing, Recorder(True)) == KIND_DRAWS_NOT_STATED

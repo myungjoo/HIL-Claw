@@ -22,7 +22,6 @@ from hilclaw.check_ending import EndedWithoutOutcome, carry_out
 from hilclaw.check_parameters import CheckParameters
 from hilclaw.harness.verification import END_MARK
 from hilclaw.harness.verification_arrays import (
-    VerificationArgumentError,
     check_value,
     draw_inputs,
     reference,
@@ -712,9 +711,9 @@ def test_the_call_itself_is_checked_by_python():
 def test_a_bad_value_beside_a_report_raises_what_ask_raises(changed, tolerance):
     parameters = PARAMETERS._replace(**changed)
     operation = Recording(answer=GOOD)
-    with pytest.raises(VerificationArgumentError) as caught:
+    with pytest.raises(ValueError) as caught:
         carried(operation, parameters, tolerance)
-    with pytest.raises(VerificationArgumentError) as direct:
+    with pytest.raises(ValueError) as direct:
         asked(Recording(answer=GOOD), parameters, tolerance)
     assert type(caught.value) is type(direct.value)
     assert str(caught.value) == str(direct.value)
@@ -798,7 +797,7 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
         carried(Recording(answer=GOOD), None)
     with pytest.raises(TypeError):
         carried(None)
-    with pytest.raises(VerificationArgumentError):
+    with pytest.raises(ValueError):
         carried(Recording(answer=GOOD), PARAMETERS._replace(m=0))
     assert list(tmp_path.iterdir()) == []
 

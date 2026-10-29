@@ -12,9 +12,11 @@ and ``attempt``, optional, and no other member. ``round`` is an ``int`` from
 ``int`` values from 1, a ``bool`` being none; ``point`` is exactly
 :data:`hilclaw.check_identity.SIM` or :data:`~hilclaw.check_identity.BOARD`,
 compared as it is, and names the point whose lines are read: the lines of
-both its ``step`` values in :data:`hilclaw.check_standing.STEPS_OF`, that of
-ADR-0040 decision 3 and the bf16 one of ADR-0177 decision 3 (ADR-0178
-decision 1). The data root comes from the data-root source, asked at each
+its one ``step`` value in :data:`hilclaw.check_standing.STEPS_OF`,
+``correctness_check_sim_v2`` or ``correctness_check_board_v2``, the value of
+every contract (``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md``
+decision 8, in place of the two values per point of ADR-0178 decision 1). A
+line under a value ADR-0183 retired is neither read nor refused. The data root comes from the data-root source, asked at each
 call after the request was checked, and never from the request (ADR-0015
 decision 3).
 
@@ -287,9 +289,8 @@ def checks_in_order(run_id, lines, inside):
     The same pass with the same failures as :func:`checks_of`; each element
     is paired with the tuple ``(step, round, candidate, attempt)`` it is
     grouped under there, an open element at its first start line and an
-    ended one at its end line. A reader that takes the lines of both
-    ``step`` values of a point (ADR-0178 decision 1) keeps their order from
-    this list.
+    ended one at its end line. A reader that takes the lines of several
+    ``step`` values keeps their order from this list.
     """
     file = run_files.relative(run_id, LOG)
     held, opened, ended = [], set(), set()

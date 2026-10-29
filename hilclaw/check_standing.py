@@ -19,12 +19,13 @@ module renders its decisions 2, 3 and 5 as one pure function of parsed lines:
   ``failure`` of class (i) counts neither way. Only the lines of the point's
   ``step`` count (decision 5), and the order of the lines does not matter.
 * :data:`STEPS_OF` and :func:`point_standing`: the standing of the attempt
-  at a point whose lines are those of both its ``step`` values, the value of
-  ADR-0040 decision 3 and the bf16 value of ADR-0177 decision 3, as the
-  readers of a check take it (ADR-0178 decision 1). The rule of
-  :func:`standing` applies to the lines of both values together: every end
-  line of either counts, and an open identity of either keeps it from
-  verified.
+  at a point whose lines are those of its one ``step`` value,
+  ``correctness_check_sim_v2`` or ``correctness_check_board_v2``, the value
+  of every contract, as the readers of a check take it
+  (``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md``
+  decisions 2 and 8, in place of the two values per point of ADR-0178
+  decision 1). A line under a value ADR-0183 retired is neither read nor
+  refused: it is a line of another step (ADR-0100 decision 5).
 
 Choices that are this module's own and no rule of the record:
 
@@ -86,10 +87,10 @@ UNSTARTED_KINDS = frozenset(
     }
 )
 
-#: The ``step`` values whose lines are those of each point, the ADR-0040 value first (ADR-0178 decision 1).
+#: The ``step`` values whose lines are those of each point, a one-item tuple of its v2 value (ADR-0183 decision 8).
 STEPS_OF = {
-    check_identity.SIM: (check_identity.STEP_SIM, check_identity.STEP_BF16_SIM),
-    check_identity.BOARD: (check_identity.STEP_BOARD, check_identity.STEP_BF16_BOARD),
+    check_identity.SIM: (check_identity.STEP_SIM,),
+    check_identity.BOARD: (check_identity.STEP_BOARD,),
 }
 
 _OUTCOMES = (check_result.PASS, check_result.FAIL, check_result.BROKEN)
@@ -120,15 +121,12 @@ def standing(lines, step, round, candidate, attempt):
 
 
 def point_standing(lines, point, round, candidate, attempt):
-    """Return the :class:`Standing` of the attempt ``(round, candidate, attempt)`` at ``point``, over both its ``step`` values.
+    """Return the :class:`Standing` of the attempt ``(round, candidate, attempt)`` at ``point``, over its ``step`` value.
 
     ``point`` is :data:`hilclaw.check_identity.SIM` or
-    :data:`~hilclaw.check_identity.BOARD`, exactly a ``str``. A line matches
-    when it would match :func:`standing` for either value of
-    :data:`STEPS_OF` for ``point``, and the rule of :func:`standing` is
-    applied to all matching lines together (ADR-0178 decision 1). When the
-    lines hold only one of the two values the answer is that of
-    :func:`standing` for that value.
+    :data:`~hilclaw.check_identity.BOARD`, exactly a ``str``. The answer is
+    that of :func:`standing` for the one value of :data:`STEPS_OF` for
+    ``point`` (ADR-0183 decision 8).
 
     Raises :class:`hilclaw.journal.JournalError` naming ``point`` for a
     ``point`` that is not one of the two, and otherwise what
