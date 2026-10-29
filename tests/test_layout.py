@@ -717,7 +717,7 @@ def test_invalid_build_log_step_is_rejected(step):
         "board_run_timing",
     ],
 )
-def test_a_retired_check_step_is_rejected(step):
+def test_a_retired_step_is_rejected(step):
     with pytest.raises(InvalidPathValueError, match=r"^step: must be one of "):
         build_log_file(ROOT, RUN, 7, 3, 2, step, 1)
     assert step not in BUILD_LOG_STEPS

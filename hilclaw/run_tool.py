@@ -148,7 +148,7 @@ _OUTCOMES = {
     measurement.State.CONVERGED: run_result.CONVERGED,
     measurement.State.NOT_CONVERGED: run_result.NOT_CONVERGED,
 }
-_UNIT = "ns"
+(_UNIT,) = run_result.UNITS
 _CONDITIONS = {
     timing.Broken.REPORT_FORM: "report_form",
     timing.Broken.ZERO_INTERVAL: "zero_interval",
