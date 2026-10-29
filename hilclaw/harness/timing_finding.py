@@ -20,9 +20,9 @@ finding of a measurement from the ``result`` of its run tools' end line
 Choices that are this module's own and no rule of a record:
 
 * :data:`RESOLUTION_SHARE_MAX` is the :class:`fractions.Fraction` ``1/100``,
-  and the coarse-clock test compares ``resolution_ns`` with it times the
+  and the coarse-clock test compares ``resolution`` with it times the
   smallest interval in exact rational arithmetic: for every admitted integer
-  it is 100 × ``resolution_ns`` > the smallest interval, with no float
+  it is 100 × ``resolution`` > the smallest interval, with no float
   rounding.
 * A result that the members read do not admit gives no finding and is
   refused (ADR-0104 decision 5 leaves open what a reader does with one):
@@ -30,7 +30,11 @@ Choices that are this module's own and no rule of a record:
   an accepted type with a value that is not admitted or for an absent member.
   The message starts with the name of the member and shows nothing of the
   value, so no code of the value is called.
-* ``resolution_ns`` and ``intervals_ns`` are read and checked for both
+* The members read are those of the v2 result (ADR-0183 decision 8):
+  ``resolution`` and ``intervals`` (ADR-0063 decision 4's ``resolution_ns``
+  and ``intervals_ns`` renamed). ``unit`` is not read: both are in the one
+  unit it states, so the coarse-clock test needs none.
+* ``resolution`` and ``intervals`` are read and checked for both
   ``"converged"`` and ``"not_converged"``, although the not-converged ground
   needs neither.
 * Every line given to :func:`line_finding` is checked as an envelope first;
@@ -50,7 +54,7 @@ absolute-target judgement (⑪ (다)), and it does not establish the class input
 of ADR-0103 decision 4 or OD-14 sub-question ①. It does not replay the
 stopping rule: ``outcome`` is believed as stored (ADR-0104 decision 3; ADR-0063
 Limit 2), and no other member of a result is checked against the table of
-ADR-0063 decision 9. It changes nothing of :mod:`hilclaw.harness.measurement`,
+ADR-0183 decision 4. It changes nothing of :mod:`hilclaw.harness.measurement`,
 :mod:`hilclaw.run_result`, :mod:`hilclaw.run_identity` or
 :mod:`hilclaw.journal`.
 """
@@ -72,23 +76,23 @@ def measurement_found(result):
     """Return whether the measurement of ``result`` is found imprecise on the measured ground.
 
     - ``result``: one result object of ``sim.run`` or ``board.run``, a parsed
-      ``dict`` (ADR-0063).
+      ``dict`` (ADR-0183 decision 4).
 
     ``True`` for ``outcome`` ``"not_converged"``; for ``"converged"``, ``True``
-    exactly when ``resolution_ns`` is greater than
-    :data:`RESOLUTION_SHARE_MAX` times the smallest entry of ``intervals_ns``,
-    so a ``resolution_ns`` of 0 never gives ``True``; ``False`` for
+    exactly when ``resolution`` is greater than
+    :data:`RESOLUTION_SHARE_MAX` times the smallest entry of ``intervals``,
+    so a ``resolution`` of 0 never gives ``True``; ``False`` for
     ``"broken"``, a broken run being no measurement (ADR-0103 decision 3).
 
-    Only ``outcome`` is read, and ``resolution_ns`` and ``intervals_ns`` when
+    Only ``outcome`` is read, and ``resolution`` and ``intervals`` when
     the outcome is not ``"broken"``. No other member is checked against the
-    table of ADR-0063 decision 9. Raises :class:`TypeError` when ``result`` is
+    table of ADR-0183 decision 4. Raises :class:`TypeError` when ``result`` is
     not exactly a ``dict``, ``outcome`` not exactly a ``str``,
-    ``resolution_ns`` or an entry of ``intervals_ns`` not exactly an ``int``,
-    or ``intervals_ns`` not exactly a ``list`` or a ``tuple``. Raises
+    ``resolution`` or an entry of ``intervals`` not exactly an ``int``,
+    or ``intervals`` not exactly a ``list`` or a ``tuple``. Raises
     :class:`ValueError` for another ``outcome``, an absent member read,
-    ``resolution_ns`` below 0, an entry below 1, and an empty
-    ``intervals_ns`` with ``"converged"``. The refusals are this module's
+    ``resolution`` below 0, an entry below 1, and an empty
+    ``intervals`` with ``"converged"``. The refusals are this module's
     choice (see the module docstring). ``result`` is not modified.
     """
     if type(result) is not dict:
@@ -100,23 +104,23 @@ def measurement_found(result):
         raise ValueError("outcome: must be converged, not_converged or broken")
     if outcome == _BROKEN:
         return False
-    resolution = _member(result, "resolution_ns")
+    resolution = _member(result, "resolution")
     if type(resolution) is not int:
-        raise TypeError("resolution_ns: must be exactly an int")
+        raise TypeError("resolution: must be exactly an int")
     if resolution < 0:
-        raise ValueError("resolution_ns: must be at least 0")
-    intervals = _member(result, "intervals_ns")
+        raise ValueError("resolution: must be at least 0")
+    intervals = _member(result, "intervals")
     if type(intervals) not in (list, tuple):
-        raise TypeError("intervals_ns: must be exactly a list or a tuple")
+        raise TypeError("intervals: must be exactly a list or a tuple")
     for interval in intervals:
         if type(interval) is not int:
-            raise TypeError("intervals_ns: every entry must be exactly an int")
+            raise TypeError("intervals: every entry must be exactly an int")
         if interval < 1:
-            raise ValueError("intervals_ns: every entry must be at least 1")
+            raise ValueError("intervals: every entry must be at least 1")
     if outcome == _NOT_CONVERGED:
         return True
     if not intervals:
-        raise ValueError("intervals_ns: must not be empty when outcome is converged")
+        raise ValueError("intervals: must not be empty when outcome is converged")
     return resolution > RESOLUTION_SHARE_MAX * min(intervals)
 
 

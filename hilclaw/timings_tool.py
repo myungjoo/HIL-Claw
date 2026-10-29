@@ -32,20 +32,24 @@ about any attempt that :func:`hilclaw.journal.identity_of` refuses
 (:data:`KIND_TIMING_RESULT_INVALID`); then ``measured`` and after it
 ``against`` by the measurement rule (:data:`KIND_MEASUREMENT_SEVERAL`,
 :data:`KIND_MEASUREMENT_UNKNOWN`, :data:`KIND_MEASUREMENT_MISSING`, in this
-order); the two results' ``shape`` (:data:`KIND_SHAPES_DIFFER`); the domain
-of :func:`hilclaw.harness.measurement.ratio_interval`
-(:data:`KIND_SAMPLES_OUT_OF_DOMAIN`). An admitted timing result has
-``outcome`` ``"converged"``, ``"not_converged"`` or ``"broken"`` and, for
-the first two, ``intervals_ns``, a list of at least ``N_MIN`` ``int`` values
-of at least 1, and ``shape``, an object of exactly ``m``, ``k`` and ``n``,
-each an ``int`` of at least 1; its other members are not looked at.
+order); the two results' ``contract_key`` and ``shape``
+(:data:`KIND_SHAPES_DIFFER`); the domain of
+:func:`hilclaw.harness.measurement.ratio_interval`
+(:data:`KIND_SAMPLES_OUT_OF_DOMAIN`). An admitted timing result (ADR-0183
+decision 8) has ``outcome`` ``"converged"``, ``"not_converged"`` or
+``"broken"`` and, for the first two, ``intervals``, a list of at least
+``N_MIN`` ``int`` values of at least 1; ``unit``, exactly ``"ns"``;
+``shape``, an object of at least one member, each an ``int`` of at least 1;
+and ``contract_key``, an object of exactly ``kind``, ``dtype`` and
+``layout``, each a ``str``; checked in that order. Its other members are not
+looked at.
 
 The measurement of one attempt at the point: M is its end lines at the
 ``step``, every ``execution`` together, whose ``result`` has ``outcome``
 ``"converged"`` or ``"not_converged"``; U is its end lines that hold a
 ``failure`` together with its identities that have a start line and no end
 line. It has a measurement exactly when M holds one line and U is empty:
-that result's ``intervals_ns``. Otherwise ``measurement_several`` when M
+that result's ``intervals``. Otherwise ``measurement_several`` when M
 holds more than one line, else ``measurement_unknown`` when U is not empty,
 else ``measurement_missing``. A ``"broken"`` result neither enters nor
 refuses; a ``"not_converged"`` one enters like a ``"converged"`` one.
@@ -55,7 +59,10 @@ samples of ``against`` and y those of ``measured``, the interval is
 ``ratio_interval(x, y)``; ``d`` is ``"lower"`` when it lies wholly and
 strictly below ``1 / (1 + DELTA)``, ``"higher"`` when it lies wholly and
 strictly above ``1 + DELTA``, and ``"not_different"`` otherwise. The pair is
-never exchanged and no parameter is added.
+never exchanged and no parameter is added. Two measurements are of the
+same quantity when their ``contract_key`` and their ``shape`` are equal
+(ADR-0183 decision 8): equal ``shape`` objects of two kinds that share the
+shape members ``m`` and ``n`` are not.
 
 Choices left to the code slice (ADR-0140 decision 3), made here:
 
@@ -68,10 +75,10 @@ Choices left to the code slice (ADR-0140 decision 3), made here:
   names them: :mod:`hilclaw.run_result` holds the same values and is imported
   by no other module of the package.
 * A number beyond the float range in a stored result is read as an infinity,
-  a ``float``: in ``intervals_ns`` or ``shape`` it is no ``int``, so
+  a ``float``: in ``intervals`` or ``shape`` it is no ``int``, so
   ``timing_result_invalid``; in any other member it is not looked at and
   changes nothing, since the result returns no stored member. An ``int`` too
-  large for the rule's float range in ``intervals_ns`` is admitted and then
+  large for the rule's float range in ``intervals`` is admitted and then
   ``samples_out_of_domain``.
 
 The only file read is the run's ``events.ndjson``; no ``STATE.json`` or
@@ -113,7 +120,7 @@ KIND_SHAPES_DIFFER = "shapes_differ"
 KIND_SAMPLES_OUT_OF_DOMAIN = "samples_out_of_domain"
 #: The one admitted metric (ADR-0059 decision 3).
 METRIC = "latency_minimisation"
-#: The ``step`` read at each ``point`` (ADR-0062 decision 3).
+#: The ``step`` read at each ``point`` (ADR-0062 decision 3, ADR-0183 decision 8).
 STEP_OF = {
     check_identity.SIM: run_identity.STEP_SIM_RUN,
     check_identity.BOARD: run_identity.STEP_BOARD_RUN,
@@ -150,8 +157,8 @@ _DESCRIPTION = (
     "measurement_unknown when a side has a failed or unfinished run; "
     "measurement_missing when a side has no result, also when the run has no "
     "log or does not exist; shapes_differ when the two results are of "
-    "different shapes; and samples_out_of_domain when the samples are too "
-    "large to compare."
+    "different contracts or shapes; and samples_out_of_domain when the "
+    "samples are too large to compare."
 )
 _MEMBERS = ("run_id", "metric", "point", "measured", "against")
 _SIDES = ("measured", "against")
@@ -159,7 +166,8 @@ _LEAST = {"round": 0, "candidate": 1, "attempt": 1}
 _BROKEN = "broken"
 _ENTERING = ("converged", "not_converged")
 _OUTCOMES = (*_ENTERING, _BROKEN)
-_SHAPE = ("m", "k", "n")
+_UNIT = "ns"
+_CONTRACT_KEY = ("kind", "dtype", "layout")
 _STEP_KINDS = (journal.STEP_STARTED, journal.STEP_ENDED)
 
 
@@ -263,26 +271,39 @@ def _problem(result):
         return f".outcome: must be one of {', '.join(_OUTCOMES)}, got {_shown(outcome)}"
     if outcome == _BROKEN:
         return None
-    for name in ("intervals_ns", "shape"):
+    for name in ("intervals", "unit", "shape", "contract_key"):
         if name not in result:
             return f": lacks the member {name}"
-    samples = result["intervals_ns"]
+    samples = result["intervals"]
     if (
         type(samples) is not list
         or len(samples) < measurement.N_MIN
         or any(type(s) is not int or s < 1 for s in samples)
     ):
         return (
-            f".intervals_ns: must be a list of at least {measurement.N_MIN} ints "
+            f".intervals: must be a list of at least {measurement.N_MIN} ints "
             "of at least 1"
         )
+    unit = result["unit"]
+    if type(unit) is not str or unit != _UNIT:
+        return f'.unit: must be "{_UNIT}", got {_shown(unit)}'
     shape = result["shape"]
     if (
         type(shape) is not dict
-        or set(shape) != set(_SHAPE)
-        or any(type(shape[d]) is not int or shape[d] < 1 for d in _SHAPE)
+        or not shape
+        or any(type(v) is not int or v < 1 for v in shape.values())
     ):
-        return ".shape: must be an object of exactly m, k and n, each an int from 1"
+        return ".shape: must be an object of at least one member, each an int from 1"
+    key = result["contract_key"]
+    if (
+        type(key) is not dict
+        or set(key) != set(_CONTRACT_KEY)
+        or any(type(v) is not str for v in key.values())
+    ):
+        return (
+            ".contract_key: must be an object of exactly kind, dtype and layout, "
+            "each a string"
+        )
     return None
 
 
@@ -298,6 +319,10 @@ def timing_problem(result):
     """
     problem = _problem(result)
     return None if problem is None else f"data.result{problem}"
+
+
+def _about(result):
+    return f"{result['contract_key']} and the shape {result['shape']}"
 
 
 def _numbers(ref):
@@ -392,13 +417,13 @@ def compare(run_id, lines, metric, point, measured, against):
         for side, ref in zip(_SIDES, (measured, against))
     }
     (_, y), (_, x) = chosen["measured"], chosen["against"]
-    if y["shape"] != x["shape"]:
+    if y["contract_key"] != x["contract_key"] or y["shape"] != x["shape"]:
         raise tools.ToolFailure(
             KIND_SHAPES_DIFFER,
-            f"{file}: measured has the shape {y['shape']}, against {x['shape']}",
+            f"{file}: measured has the contract {_about(y)}, against {_about(x)}",
         )
     try:
-        low, high = measurement.ratio_interval(x["intervals_ns"], y["intervals_ns"])
+        low, high = measurement.ratio_interval(x["intervals"], y["intervals"])
     except measurement.InvalidSamplesError as e:
         raise tools.ToolFailure(
             KIND_SAMPLES_OUT_OF_DOMAIN, f"{file}: the samples cannot be compared: {e}"

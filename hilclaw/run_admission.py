@@ -19,9 +19,11 @@ the tool function takes from the read of moment 4. The module renders steps
   content with several of these faults has one answer, the first whose
   condition holds (decision 5).
 * :func:`admit`: the answer for one content, or the :class:`Admitted` of a
-  content that has none of the five: the dimensions and ``n_max``
-  (ADR-0061 decision 3), the sample form (ADR-0061 decision 4) and the
-  ``bound`` (ADR-0061 decision 6), each as the content states it.
+  content that has none of the five: the covering entry of
+  :data:`hilclaw.contract_table.TABLE` (ADR-0183 decision 1), the dimensions
+  and ``n_max`` (ADR-0061 decision 3, the dimensions read per kind as
+  ADR-0183 decision 4 has them), the sample form (ADR-0061 decision 4) and
+  the ``bound`` (ADR-0061 decision 6), each as the content states it.
 
 Each of the three kinds is a tool failure of the run tools' contract and no
 reserved kind (decisions 2 to 4). The two op_signature kinds have the
@@ -43,6 +45,15 @@ Choices that are this module's own and no rule of a record:
   errors pass through unchanged.
 * The values of an ``Instance`` are taken as :func:`hilclaw.instance.read`
   returns them and are not validated again.
+* The covering entry is found after ``covers`` answered ``True``, as the
+  entry of :data:`hilclaw.contract_table.TABLE` whose contract has the
+  ``kind``, ``dtype`` and ``layout`` of the stated record: the table holds
+  at most one such entry (ADR-0177 decision 1), and no ``covers`` is asked a
+  second time. A record that no entry matches is answered
+  :data:`KIND_OP_SIGNATURE_NOT_COVERED` as well, since its result could hold
+  no ``contract_key`` (ADR-0183 decision 6). The dimensions are the members
+  of the record's ``shape`` named by the parameters of the entry's
+  ``task_contract``, in their order.
 * The answer for an admitted content is a :class:`typing.NamedTuple`, and
   the field names and their order are this module's. It holds no seed and
   is no :class:`hilclaw.run_parameters.TimingParameters`.
@@ -57,14 +68,16 @@ to keep before it. It draws no seed: the draw comes after its last answer
 and is the caller's. It appends no line; by the records no kind it answers
 is ever the ``failure`` of an end line (decision 6). It substitutes no bound
 and no dimensions. It keeps nothing between calls and reserves no kind. It
-imports :mod:`typing`, :mod:`hilclaw.instance`, :mod:`hilclaw.run_objective`
-and :mod:`hilclaw.tools` and nothing else.
+imports :mod:`inspect`, :mod:`typing`, :mod:`hilclaw.contract_table`,
+:mod:`hilclaw.instance`, :mod:`hilclaw.run_objective` and
+:mod:`hilclaw.tools` and nothing else.
 """
 
+import inspect
 import typing
 
+from hilclaw import contract_table, run_objective, tools
 from hilclaw import instance as instances
-from hilclaw import run_objective, tools
 
 #: The kind of decision 2: the content states no op_signature. The spelling of ``correctness.check``'s kind.
 KIND_OP_SIGNATURE_NOT_STATED = "op_signature_not_stated"
@@ -94,8 +107,11 @@ _MESSAGES = {
 class Admitted(typing.NamedTuple):
     """What a run tool takes from the content of ``instance.json`` of an admitted run.
 
-    - ``m``, ``k``, ``n``: the ``shape.m``, ``shape.k`` and ``shape.n`` of
-      the stated op_signature record (ADR-0061 decision 3).
+    - ``entry``: the :class:`hilclaw.contract_table.Entry` that covers the
+      stated op_signature record (ADR-0183 decision 1).
+    - ``dims``: a ``tuple`` of the members of the record's ``shape`` named
+      by the parameters of ``entry``'s ``task_contract``, in their order:
+      ``(m, k, n)`` for ``gemm`` (ADR-0061 decision 3).
     - ``n_max``: the stated bound of the repeats (ADR-0061 decision 3).
     - ``sample_form``, ``bound``: those of the
       :class:`hilclaw.run_objective.Admitted` of the stated objective
@@ -106,9 +122,8 @@ class Admitted(typing.NamedTuple):
     unchanged. No field has a default.
     """
 
-    m: int
-    k: int
-    n: int
+    entry: contract_table.Entry
+    dims: tuple
     n_max: int
     sample_form: str
     bound: int | None
@@ -134,8 +149,10 @@ def admit(instance, *, covers):
     3. ``instance.op_signature`` is ``None``: a
        :class:`hilclaw.tools.ToolFailure` of
        :data:`KIND_OP_SIGNATURE_NOT_STATED`. ``covers`` is not called.
-    4. ``covers`` returns ``False`` for the stated record: a ``ToolFailure``
-       of :data:`KIND_OP_SIGNATURE_NOT_COVERED`. ``covers`` is called once,
+    4. ``covers`` returns ``False`` for the stated record, or no entry of
+       :data:`hilclaw.contract_table.TABLE` has its ``kind``, ``dtype`` and
+       ``layout``: a ``ToolFailure`` of
+       :data:`KIND_OP_SIGNATURE_NOT_COVERED`. ``covers`` is called once,
        with the record object the instance holds. What it raises passes
        through unchanged, and :class:`TypeError` is raised when what it
        returns is not exactly a ``bool``.
@@ -159,20 +176,30 @@ def admit(instance, *, covers):
     covered = covers(stated.record)
     if type(covered) is not bool:
         raise TypeError("covers: must return exactly a bool")
-    if not covered:
+    found = _entry(stated.record) if covered else None
+    if found is None:
         raise _failure(KIND_OP_SIGNATURE_NOT_COVERED)
     objective = run_objective.admit(instance.objective)
     if instance.n_max is None:
         raise _failure(KIND_N_MAX_NOT_STATED)
     shape = stated.record["shape"]
+    names = inspect.signature(found.contract.task_contract).parameters
     return Admitted(
-        shape["m"],
-        shape["k"],
-        shape["n"],
+        found,
+        tuple(shape[name] for name in names),
         instance.n_max,
         objective.sample_form,
         objective.bound,
     )
+
+
+def _entry(record):
+    stated = (record["kind"], record["dtype"], record["layout"])
+    for candidate in contract_table.TABLE.values():
+        contract = candidate.contract
+        if (contract.KIND, contract.DTYPE, contract.LAYOUT) == stated:
+            return candidate
+    return None
 
 
 def _failure(kind):
