@@ -8,8 +8,9 @@ first-case run of the nightly configuration through the two runtime entries,
 ``python -m hilclaw.new_run`` and ``python -m hilclaw.turn_start``, each started
 once. This is runtime code: on the nightly machine the turn start starts the
 real ``claude``. It is tested only against a stub ``claude`` and fake entries
-that the tests write (D16); besides the nightly routine, only an executor's
-test run (DRIVER D25), on the owner's request, starts it for real.
+that the tests write (D16); besides the nightly routine, only the owner's
+manual run and an executor's test run on the owner's request (DRIVER D25)
+start it for real.
 
 **The configuration** (HQ-0076 (1), the P2-5 configuration as it is): the
 local ``cpu_standin`` (:func:`hilclaw.standin_profile.local_record`,

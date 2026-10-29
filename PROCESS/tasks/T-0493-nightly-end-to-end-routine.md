@@ -67,4 +67,6 @@ Outline only; to be refined within the range of the HQ-0076 answer before the ta
 
 ## Follow-ups
 
+- Persistent nightly data root (DRIVER §11 D25, owner 2026-10-29: case storage allowed until 2026-11-30, with cases accumulating across firings in a nightly-only data root; the entry-point change is "P2-10의 task나 그 뒤 task의 일"). Required by D25, so not subject to the D18 hold; time-bound, it lapses on 2026-12-01. Change `hilclaw.nightly` to reuse `<base>/data` instead of `<firing>/data` and update PROCESS/NIGHTLY.md §9. The return to D17 ② on 2026-12-01 and what happens to the accumulated cases stay undecided (D25 row).
+
 ## Result
