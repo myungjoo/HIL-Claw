@@ -54,7 +54,8 @@ and no record is returned. Nothing is substituted: no placeholder, no cut or
 transliterated text and no value from another source.
 
 What the module does not do: it registers and stores nothing, is bound to no
-tool and to no start of an instance, and has no command-line entry. It knows no
+tool and has no command-line entry; its one caller is the nightly entry
+:mod:`hilclaw.nightly`, which puts the record into its own instance. It knows no
 other accelerator and no other machine than the one the process runs on, adds
 no further member to ``toolchain`` or ``host``, does not tell WSL 1 from WSL 2
 and never compares a machine with a record again. The limits ADR-0035 names in

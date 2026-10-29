@@ -1059,7 +1059,12 @@ def test_module_is_bound_by_the_start_only_and_imports_no_store():
     assert "standin_profile.ACCELERATOR" in table
     assert "local_record" not in table
     for path in sorted(package.rglob("*.py")):
-        if path not in (own, start, package / "check_definition.py"):
+        if path not in (
+            own,
+            start,
+            package / "check_definition.py",
+            package / "nightly.py",
+        ):
             assert "standin_profile" not in path.read_text(encoding="utf-8"), path.name
     assert not hasattr(standin_profile, "main")
     assert "__main__" not in own.read_text(encoding="utf-8")
