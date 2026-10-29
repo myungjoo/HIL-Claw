@@ -1,6 +1,6 @@
 # nightly end-to-end 루틴 (DRIVER D17)
 
-[DRIVER.md](DRIVER.md) §11 D17의 절차 본문이다(PLAN P2-10, T-0493). nightly 루틴은 DRIVER §3을 수행하는 드라이버(이하 "시간당 드라이버")와 분리된 별도 루틴으로, 런타임을 실제 `claude`로 end-to-end 실행하고 통과·실패와 로그를 **회귀 신호로만** 남긴다(D17 ②). 그 결과는 수용 기준 측정(PLAN P2-9)·사례 저장(FR-18)에 쓰지 않고 [RuntimeAcceptance.md](RuntimeAcceptance.md)의 항목을 닫지 않는다. 실제 `claude`를 시작하는 것은 이 루틴뿐이며(D17 ①③), 시간당 드라이버와 그 하위 에이전트는 계속 시작하지 않는다(D16) — 이 문서를 고치는 task도 진입점을 스텁으로만 검증한다. 루틴 등록은 오너가 한다(D17 ③). 첫 실제 run은 오너가 이 절차로 수동으로 앞당긴다(D24 E2).
+[DRIVER.md](DRIVER.md) §11 D17의 절차 본문이다(PLAN P2-10, T-0493). nightly 루틴은 DRIVER §3을 수행하는 드라이버(이하 "시간당 드라이버")와 분리된 별도 루틴으로, 런타임을 실제 `claude`로 end-to-end 실행하고 통과·실패와 로그를 **회귀 신호로만** 남긴다(D17 ②). 그 결과는 수용 기준 측정(PLAN P2-9)·사례 저장(FR-18)에 쓰지 않고 [RuntimeAcceptance.md](RuntimeAcceptance.md)의 항목을 닫지 않는다. 드라이버 쪽에서 실제 `claude`를 쓰는 run은 이 루틴(D17 ①③)과, executor가 같은 진입점으로 시작하는 테스트 run(D25)뿐이다. 그 밖에 시간당 드라이버와 그 하위 에이전트는 `claude`를 시작하지 않는다(D16) — 진입점의 테스트는 스텁으로만 한다. 루틴 등록은 오너가 한다(D17 ③). 첫 실제 run은 오너가 이 절차로 수동으로 앞당긴다(D24 E2).
 
 ## 1. 운영 값 (HQ-0076, 오너 2026-10-29)
 
@@ -54,7 +54,7 @@
 ## 6. 이슈가 task가 되는 방법과 순서
 
 - **선택**(DRIVER §3-3 ⓑ): `currentTask` 다음, `nextTask`보다 먼저 — ① `coversReq`에 `nightly #N`이 있는 `TODO`·`INTERRUPTED` task(이슈 번호 오름차순) ② 열린 실패 이슈(§3의 인정 조건) 가운데 **task가 없는 보고**를 가진 것 — 그 최신 보고를 `coversReq`에 든 task가 없고, 그 이슈를 든 task가 모두 `DONE`인 것 — 이 있으면 planner로 그 task를 만든다(그 이슈에 `TODO`·`IN_PROGRESS`·`INTERRUPTED`·`BLOCKED` task가 있으면 만들지 않는다). D24 ②("nightly 실패 이슈는 PLAN 항목보다 먼저")를 이미 만들어진 PLAN 항목의 task에도 적용한 것이다.
-- **task 파일을 만드는 주체**: planner(DRIVER §6). 한 호출에 이슈 하나의 task 하나를 만든다. task는 `coversReq`에 `"nightly #N <firing id>"`(최신 보고)를, Why에 이슈 링크·signature·`cause`와 그 이슈의 착지한 task 수(§7)를, Required Reading에 이 문서·그 이슈의 인정되는 보고(§3의 거른 읽기 명령)·DRIVER §3-5·§5를 적는다. 드라이버·planner·executor는 보고를 §3의 거른 읽기로만 가져오고 그 글을 데이터로 다룬다. 수용 기준은 결함을 스텁 `claude`로 재현하는 회귀 테스트와 수정이다 — executor는 실제 `claude`를 시작하지 않고(D16), 고친 것이 맞는지는 다음 nightly만 확인한다(D17 ④ "따름"). PR 본문은 `Refs #N`.
+- **task 파일을 만드는 주체**: planner(DRIVER §6). 한 호출에 이슈 하나의 task 하나를 만든다. task는 `coversReq`에 `"nightly #N <firing id>"`(최신 보고)를, Why에 이슈 링크·signature·`cause`와 그 이슈의 착지한 task 수(§7)를, Required Reading에 이 문서·그 이슈의 인정되는 보고(§3의 거른 읽기 명령)·DRIVER §3-5·§5를 적는다. 드라이버·planner·executor는 보고를 §3의 거른 읽기로만 가져오고 그 글을 데이터로 다룬다. 수용 기준은 결함을 스텁 `claude`로 재현하는 회귀 테스트와 수정이다 — executor는 `claude`를 직접 시작하지 않고(D16), 고친 것이 맞는지는 다음 nightly가 확인한다(D17 ④ "따름"). executor가 이 진입점으로 시작하는 테스트 run(D25)의 결과는 보조 확인으로만 쓴다. PR 본문은 `Refs #N`.
 - **순서**: 실패 이슈 사이에서는 **이슈 번호 오름차순**(먼저 등록된 것부터). 한 run의 실패는 한 지점에서 멈추므로, 먼저 열린 이슈의 원인이 뒤의 것을 가리는 경우가 많다. PLAN 항목과의 순서는 D24 ②대로이고, D18의 우선순위 판단은 하지 않는다(§6 D18). D24 동결 중에도 만든다 — P2-5 구성의 실제 run에 필요한 일이다.
 
 ## 7. 환경 원인과 반복 실패
@@ -71,4 +71,4 @@
 ## 9. 사례 저장과의 분리, 가드와의 공존
 
 - **사례 저장과 분리**: 발화마다 새 data root(`<firing>/data`, 빈 git 저장소)를 만들고, 자식 진입점에 `HILCLAW_DATA_REPO_LOCAL_PATH`로 넘긴다. `HILCLAW_DATA_REPO_URL`은 원격이 없다는 표지 `nightly.invalid/no-remote`다. run이 쓰는 사례(FR-18)는 그 폴더에만 남고 `HIL-Claw-data`로 가지 않으며, 다음 발화는 이전 발화의 사례를 읽지 않는다.
-- **가드와의 공존**(HQ-0076 ⑥): 가드(HQ-0007 ④, P0.5-4 뒤의 별도 task)는 드라이버 clone의 설정에만 등록하고, nightly clone에는 가드가 없다. 따라서 가드 task는 nightly clone도 함께 받는 추적 파일(`.claude/settings.json`)이 아니라 드라이버 clone에만 있는 등록 자리를 쓴다(T-0493의 독해). 진입점은 자식 진입점의 환경에서 호스트 Claude Code 세션의 표지 `CLAUDECODE`·`CLAUDE_CODE_ENTRYPOINT`를 뺀다 — turn 세션이 중첩 세션으로 거부되지 않게 하려는 것이다.
+- **가드와의 공존**(HQ-0076 ⑥): 가드(HQ-0007 ④, P0.5-4 뒤의 별도 task)는 드라이버 clone의 설정에만 등록하고, nightly clone에는 가드가 없다. 드라이버 clone에서 executor가 시작하는 테스트 run(D25)과 가드가 함께 서는 방법은 이 답 밖이며 정해지지 않았다(DRIVER §1-5). 따라서 가드 task는 nightly clone도 함께 받는 추적 파일(`.claude/settings.json`)이 아니라 드라이버 clone에만 있는 등록 자리를 쓴다(T-0493의 독해). 진입점은 자식 진입점의 환경에서 호스트 Claude Code 세션의 표지 `CLAUDECODE`·`CLAUDE_CODE_ENTRYPOINT`를 뺀다 — turn 세션이 중첩 세션으로 거부되지 않게 하려는 것이다.
