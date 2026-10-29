@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0511",
-  "nextTask": "T-0511",
-  "lock": {
-    "owner": "AKIHA:4ee9eac1",
-    "acquiredAt": "2026-10-29T05:17:51Z",
-    "ttlMinutes": 180
-  },
+  "currentTask": null,
+  "nextTask": null,
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -788,19 +784,27 @@
       "issueComment": null,
       "resolvedAt": "2026-10-29T02:18:47Z",
       "decision": "(c) 그 밖 — 결과 형식 v2 - 오너(채팅, 2026-10-29): `correctness.check`와 `sim.run`·`board.run`의 결과를 하나의 v2 형식으로 일반화한다. ① 두 도구 모두 적용하고 fp32 `gemm`도 v2로 옮긴다 — 기존 `step` 값(`correctness_check_sim`·`correctness_check_board`, `correctness_check_bf16_sim`·`correctness_check_bf16_board`, `sim_run_timing`·`board_run_timing`)은 폐기하고 재사용하지 않으며, 도구·지점마다 새 `step` 값 하나를 쓴다(저장된 run 데이터는 아직 없다). ② 결과에 커널 계약 표의 키(kind·dtype·layout)를 담는 멤버를 둔다. ③ `shape`는 그 kind의 shape 멤버 전부다(계약이 정하는 값). ④ `counts`는 계약의 출력·inout operand 이름별 항목으로 하고, 허용오차로 판정하는 operand는 `failed`·`non_finite`, bit-exact로 판정하는 operand는 `differs`를 갖는다 — HQ-0077 답의 `cache_differs` 부분을 대체한다. ⑤ `sim.run`·`board.run`의 측정값에 단위 멤버를 두고, 값은 당분간 `ns` 하나다(단위 값 목록을 열린 목록으로 지정하는 것은 HW 대상 설계 때 오너가 정한다). 그 밖의 멤버는 그대로 옮기고, 멤버 이름·철자와 세부는 ADR이 정한다. 순서: v2의 ADR과 두 도구의 코드를 먼저 착지하고 T-0505의 bf16 타이밍 슬라이스는 그 위에 쌓는다 — bf16 타이밍을 기존 형식으로 먼저 만들지 않는다."
+    },
+    {
+      "id": "HQ-0079",
+      "taskId": "T-0511",
+      "reason": "ci-failure",
+      "question": "[쟁점] T-0511의 PR #322는 리뷰 2라운드에서 Approve되었으나 CI가 빨강이라 A-13에 따라 merge하지 못했다. executor 보고: GitHub 러너 이미지가 ubuntu-24.04에서 ubuntu-26.04(clang 21)로 바뀐 뒤 main에서도 tests/test_first_run_end_to_end.py 10건이 실패한다(sim 체크 결과 broken); 이전에 green이던 커밋을 재실행해도 같다(드라이버 확인: 05:18 이후 main CI run 연속 failure). [선택지] (a) e2e 실패를 새 러너 이미지에 맞게 고치는 수정 task를 먼저 두고, CI green 뒤 #322를 merge한다(executor 권장). (b) CI 워크플로의 runs-on을 ubuntu-24.04로 고정한다. (c) 실패가 #322와 무관하다는 근거로 지금 #322를 merge한다. [막히는 것] #322 merge와 그 뒤 ADR-0183/ADR-0181 slice, 그리고 CI green을 요구하는 모든 코드 모드 task. [막히지 않는 것] T-0511의 코드·리뷰는 끝났고 PR 브랜치 claude/T-0511-run-tools-v2에 남아 있다; 문서 모드 task.",
+      "askedAt": "2026-10-29T06:40:00Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 534,
+    "iterations": 535,
     "tasksDone": 503,
-    "tasksBlocked": 32,
-    "reviewRoundsTotal": 1670
+    "tasksBlocked": 33,
+    "reviewRoundsTotal": 1672
   },
   "lastIteration": {
-    "at": "2026-10-29T05:09:06Z",
-    "owner": "AKIHA:053b18aa",
-    "taskId": "T-0510",
-    "outcome": "DONE"
+    "at": "2026-10-29T06:40:00Z",
+    "owner": "AKIHA:4ee9eac1",
+    "taskId": "T-0511",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }

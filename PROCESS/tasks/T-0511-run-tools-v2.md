@@ -2,7 +2,7 @@
 id: T-0511
 title: Land ADR-0183 code slice 3 — sim.run / board.run write v2 results under sim_run_timing_v2 / board_run_timing_v2 (contract_key, kind shape, unit "ns", resolution, intervals), run-line readers on the new values
 phase: P2
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-1, OD-8, OD-13, OD-16, OD-18, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0509, T-0510]
@@ -17,7 +17,7 @@ touchesFiles:
   - hilclaw/harness/timing_finding.py
   - tests/
 estimatedSize: {loc: 380, files: 8}   # ADR-0183 decision 9 item 3: "About 350 lines, 8 files"; plus the check-part docstrings of verdicts_tool.py moved here from T-0510; tests excluded from the cap
-hq: []
+hq: [HQ-0079]
 ---
 ## Why
 
