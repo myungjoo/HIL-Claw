@@ -2,7 +2,7 @@
 id: T-0493
 title: Add the nightly end-to-end routine of DRIVER D17 - its procedure document and the entry point it calls to start a runtime run with a real `claude` and leave a pass/fail regression signal with logs - and record the D17 (나) design (PLAN P2-10)
 phase: P2
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: code
 coversReq: [S0, S1, D17, FR-1, FR-4, "PLAN P2-10"]
 dependsOn: []
