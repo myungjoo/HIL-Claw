@@ -448,3 +448,33 @@
   ADR-0182(모델 실행기의 빌드·생성 프로세스 컨테이너 격리; OD-14·OD-31 ④ 일부; T-0506)의 런타임 인수 항목 3. RA-0034·RA-0035를 좁힌다(둘은 열린 채 둔다).
 
   Check that the k + 2 container starts of one generation add seconds each and nothing more.
+
+### RA-0052
+
+- 상태: 미확인
+- 출처: task T-0505 (ADR-0181)의 Result (등록 2026-10-29)
+- 내용:
+
+  ADR-0181(sim.run·board.run의 bf16 타이밍 run; OD-13·OD-14·OD-16 ⑥·OD-18 일부; T-0505)의 런타임 인수 항목 1.
+
+  Check that the limits of ADR-0181 decision 6 let a correct, untuned bf16 kernel of each kind complete a timing run at ADR-0152's shapes and end one that does not end, on each C-7 system in the ADR-0144 container (lm_head M = 512 excepted as stated in decision 6).
+
+### RA-0053
+
+- 상태: 미확인
+- 출처: task T-0505 (ADR-0181)의 Result (등록 2026-10-29)
+- 내용:
+
+  ADR-0181(sim.run·board.run의 bf16 타이밍 run; OD-13·OD-14·OD-16 ⑥·OD-18 일부; T-0505)의 런타임 인수 항목 2.
+
+  Check that the waiter reports `waiter_max_rss_kib` for the bf16 timing executables as for the fp32 one, on each C-7 system.
+
+### RA-0054
+
+- 상태: 미확인
+- 출처: task T-0505 (ADR-0181)의 Result (등록 2026-10-29)
+- 내용:
+
+  ADR-0181(sim.run·board.run의 bf16 타이밍 run; OD-13·OD-14·OD-16 ⑥·OD-18 일부; T-0505)의 런타임 인수 항목 3.
+
+  Check that the `rope` rows reach the timing program through the waiter's inherited descriptor 0 byte for byte.
