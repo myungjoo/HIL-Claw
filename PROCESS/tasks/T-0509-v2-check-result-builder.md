@@ -77,3 +77,19 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+- **DONE.** PR #320 (squash-merged into `main`; the driver records the merge commit), branch `claude/T-0509-v2-check-result-builder`. Review: 1 round, Approve (Nits only; Nits 1 and 2 fixed as docstring edits without re-review per D20, Nits 3 and 4 not taken). CI: the PR's gates; locally the whole suite passed (35644 passed, 1930 skipped) with `hilclaw/` coverage 98 % (the three touched modules at 100 %).
+- **Language**: Python — the language of the three touched layer-2 modules; no new module.
+- **New public names (T-0510 calls them)**:
+  - `hilclaw.check_result.BIT_EXACT` — read-only mapping `{("sdpa_kv_cache", "bf16", "row_major"): ("cache_k", "cache_v")}`.
+  - `hilclaw.check_result.output_operands(entry, dims)` → tuple of output/inout operand names in contract order.
+  - `hilclaw.check_result.v2_completed(entry, dims, *, draws, rtol, atol, counts)` — `entry` a `contract_table.Entry` of `TABLE`, `dims` a tuple in `task_contract` parameter order, `counts` a `dict` operand name → list/tuple of `draws` entries (`int` differs for a `BIT_EXACT` operand, `(failed, non_finite)` tuple otherwise).
+  - `hilclaw.check_result.v2_broken(condition, entry, dims, *, draws, rtol, atol)`.
+  - `hilclaw.check_judging.operand_counts(entry, dims, counts)` — a judge's per-draw counts (`Counts`, or `DrawCounts(failed, non_finite, cache_k_differences, cache_v_differences)`) to the per-operand `counts` of `v2_completed`.
+  - `hilclaw.check_judging.from_v2_judgement(judgement, entry, dims, *, draws, rtol, atol)` and `hilclaw.check_judging.from_v2_report(report, entry, dims, *, draws, seed, rtol, atol)` (fp32 `gemm` judged by `verification.judge_report`, every other kind as `from_bf16_report` judges it). No tool path calls them yet.
+  - `hilclaw.harness.bf16_sdpa_kv_cache_verification.DrawCounts` fields are now `failed`, `non_finite`, `cache_k_differences`, `cache_v_differences`; the property `cache_differences` is their sum (slice 2 may drop it with today's builders).
+- **Where the sdpa sum is formed**: in `check_result.bf16_completed`, which takes an entry whose type has exactly the four `DrawCounts` fields, checks each difference (int, 0 to (l + 2m)·h_kv·d) and sums them into `cache_differs`; plain three-item entries are taken as before and a plain four-item tuple is still refused. `check_judging.from_bf16_judgement` is unchanged.
+- **Edited existing assertions** (all listed in the PR body): D21 list assertions — `tests/test_check_result.py::test_public_names_of_the_module`, `::test_module_imports_the_standard_library_only_and_has_no_entry` (`types`), `tests/test_check_judging.py::test_public_names_of_the_module_and_no_default`, `tests/harness/test_bf16_sdpa_kv_cache_verification.py::test_draw_counts_fields`. `DrawCounts` arity, asserted values unchanged — `tests/test_check_judging.py` sdpa parametrizations (three tests), `tests/test_check_result.py::test_an_sdpa_entry_may_be_draw_counts_of_the_judge`, two tests of `tests/test_mock_check.py` (outside `touchesFiles`), and the harness test helpers `assert_judged` / `assert_completed`, which compare the summed form.
+- **Size**: about 456 changed non-test lines in 3 files (planner estimate 250; under the 600-line cap).
+- **Sentences of records that are now less exact** (not edited): ADR-0183 Context "Observations" — "the sdpa judge returns per draw `DrawCounts(failed, non_finite, cache_differences)`, the last over both allocations"; ADR-0165 decision 8 last bullet — "The Python side returns, per draw, … the number of cache elements, over both allocations, that differ" (now one count per allocation, their sum kept as a property; ADR-0183 decision 3 already makes this split).
+- **Runtime acceptance items**: none.

@@ -82,8 +82,7 @@ result against the table. It gives no default of any value: no number of
 draws, no tolerance and no dimension. It reads and writes no file, starts no
 process, keeps nothing between calls and has no command-line entry. It
 imports ``inspect``, ``math``, ``reprlib`` and ``types`` of the standard
-library and
-:mod:`hilclaw.contract_table`, whose entries' ``task_contract`` parameters
+library and :mod:`hilclaw.contract_table`, whose entries' ``task_contract`` parameters
 name the shape members, and nothing else; it reads the table and changes
 nothing in it.
 """
@@ -112,7 +111,7 @@ _SDPA = "sdpa_kv_cache"
 _ROPE = "rope"
 _EVEN = {_ROPE: ("d",)}
 _SDPA_KEY = (_SDPA, "bf16", "row_major")
-#: The output operands judged bit for bit, by ``(kind, dtype, layout)`` (ADR-0183 decision 3; ADR-0165 decision 8).
+#: Output operands judged bit for bit, by ``(kind, dtype, layout)`` (ADR-0183 decision 3).
 BIT_EXACT = types.MappingProxyType({_SDPA_KEY: ("cache_k", "cache_v")})
 _ALLOCATION = {
     _SDPA_KEY: (
@@ -382,9 +381,10 @@ def _summed(i, differences, size):
 def output_operands(entry, dims):
     """Return the names of the output and inout operands of ``entry``'s contract for ``dims``.
 
-    ``entry`` is exactly a :class:`hilclaw.contract_table.Entry` equal to an
-    entry of :data:`hilclaw.contract_table.TABLE`; anything else is refused,
-    a plain ``tuple`` and an ``Entry`` of other flags included. ``dims`` is
+    ``entry`` is exactly a :class:`hilclaw.contract_table.Entry` that equals,
+    as a tuple, an entry of :data:`hilclaw.contract_table.TABLE`; anything
+    else is refused, a plain ``tuple`` and an ``Entry`` of another contract
+    or of other flag values included. ``dims`` is
     exactly a ``tuple`` with one item per parameter of the contract's
     ``task_contract``, in their order, each exactly an ``int`` of at least 1
     (a message about an item names its parameter) and ``d`` even for

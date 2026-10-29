@@ -273,7 +273,7 @@ def _bf16_judge(report, kind, dims, common):
 
 
 def operand_counts(entry, dims, counts):
-    """Return the counts of a judge, per draw, as the per-operand ``counts`` of a v2 result.
+    """Return a judge's per-draw ``counts`` as the per-operand counts of a v2 result.
 
     ``entry`` and ``dims`` are those of
     :func:`hilclaw.check_result.output_operands`, checked first and as it

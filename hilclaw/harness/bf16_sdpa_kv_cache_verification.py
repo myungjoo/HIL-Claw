@@ -117,7 +117,7 @@ class DrawCounts(NamedTuple):
 
     @property
     def cache_differences(self):
-        """The number of elements that differ over both allocations together."""
+        """The number of differing elements over both allocations."""
         return self.cache_k_differences + self.cache_v_differences
 
 
