@@ -8,7 +8,13 @@ The one list of the values that records have fixed for `step` in the `data` of `
 
 | `step` | Tool | Fixed by | State |
 |---|---|---|---|
-| `correctness_check_sim` | `correctness.check` | [ADR-0040](decisions/ADR-0040-od18-correctness-check-call-identity.md) decision 3 | `defined` |
-| `correctness_check_board` | `correctness.check` | [ADR-0040](decisions/ADR-0040-od18-correctness-check-call-identity.md) decision 3 | `defined` |
-| `sim_run_timing` | `sim.run` | [ADR-0062](decisions/ADR-0062-od18-run-tools-call-identity.md) decision 3 | `defined` |
-| `board_run_timing` | `board.run` | [ADR-0062](decisions/ADR-0062-od18-run-tools-call-identity.md) decision 3 | `defined` |
+| `correctness_check_sim` | `correctness.check` | [ADR-0040](decisions/ADR-0040-od18-correctness-check-call-identity.md) decision 3 | `not used` ([ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2) |
+| `correctness_check_board` | `correctness.check` | [ADR-0040](decisions/ADR-0040-od18-correctness-check-call-identity.md) decision 3 | `not used` ([ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2) |
+| `sim_run_timing` | `sim.run` | [ADR-0062](decisions/ADR-0062-od18-run-tools-call-identity.md) decision 3 | `not used` ([ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2) |
+| `board_run_timing` | `board.run` | [ADR-0062](decisions/ADR-0062-od18-run-tools-call-identity.md) decision 3 | `not used` ([ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2) |
+| `correctness_check_bf16_sim` | `correctness.check` | [ADR-0177](decisions/ADR-0177-od18-od6-contract-table.md) decision 3 | `not used` ([ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2) |
+| `correctness_check_bf16_board` | `correctness.check` | [ADR-0177](decisions/ADR-0177-od18-od6-contract-table.md) decision 3 | `not used` ([ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2) |
+| `correctness_check_sim_v2` | `correctness.check` | [ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2 | `defined` |
+| `correctness_check_board_v2` | `correctness.check` | [ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2 | `defined` |
+| `sim_run_timing_v2` | `sim.run` | [ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2 | `defined` |
+| `board_run_timing_v2` | `board.run` | [ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2 | `defined` |

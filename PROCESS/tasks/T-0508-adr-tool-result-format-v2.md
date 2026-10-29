@@ -70,3 +70,20 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+- **DONE.** ADR-0183 (`ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md`) landed on `main` in doc mode as the commit with trailer `Task: T-0508` (`git log origin/main --grep='^Task: T-0508'`); reviewer: 1 round, Approve (5 nits fixed after Approve, wording and slice-list only, D20).
+- **Decisions, one line each**:
+  - (a) step values `correctness_check_sim_v2`, `correctness_check_board_v2` (from `point` alone), `sim_run_timing_v2`, `board_run_timing_v2` (from the tool alone); the six of today retired; ADR-0177's choice from the read of the stamp and its dtype-mismatch rule not applied.
+  - (b) check v2: `outcome`, `condition` (six), `contract_key` {`kind`, `dtype`, `layout`}, `shape` (the kind's members), `draws`, `tolerance`, `counts` = object keyed by output/inout operand name, each a per-draw array of {`failed`, `non_finite`} or {`differs`}; bit-exact today only `sdpa_kv_cache` `cache_k`/`cache_v` (per allocation, guard rows included); pass iff every count is 0.
+  - (b) run v2: ADR-0063's list with `contract_key`, kind `shape`, and the measurement renamed `intervals`/`resolution` with `unit` `"ns"` (present with the measurement; does not reach `memory_bytes`).
+  - (c) every result has a known contract and shape; broken results hold no counts/measurement/unit; tool failures stay results-free.
+  - (d) build-log names `build-log-<new step>-<EE>.txt`; retired names not admitted.
+  - (e) readers read only the new values: `checks.read`, `check_standing`, `verdicts.write`, `spec_feedback` (names only), `timings.compare` (admitted timing result on v2 names; `shapes_differ` also on `contract_key`), `timing_finding` (names only); prompts unchanged.
+  - (f) slices below; then ADR-0181 decision 8 items 1-4.
+- **HQ raised**: none. **Runtime acceptance items**: none.
+- **Readings for the owner to check** (owner notice): the renames `resolution_ns`/`intervals_ns` -> `resolution`/`intervals` under ⑤ and "멤버 이름·철자는 ADR이 정한다"; `unit` not applying to `memory_bytes`; `counts` keyed by operand name (not per-draw first); the `_v2` suffix spelling.
+- **Planner's next candidates** (ADR-0183 decision 9):
+  1. Code: v2 check result builder + sdpa per-allocation cache counts — `hilclaw/check_result.py`, `hilclaw/harness/bf16_sdpa_kv_cache_verification.py` (+ tests); no tool path change.
+  2. Code: `correctness.check` v2 switch — `check_identity.py`, `check_tool.py`, `check_admission.py`, `check_judging.py`, `check_answer.py`, `check_result.py`, `layout.py`, `check_standing.py`, `checks_tool.py`, `spec_feedback.py`, `verdicts_tool.py` (check part), maybe `hw_tool.py`; may need cutting along the cap.
+  3. Code: `sim.run`/`board.run` v2 — `run_identity.py`, `run_result.py`, `run_tool.py`, `run_admission.py` (if needed), `layout.py`, `timings_tool.py`, `verdicts_tool.py`, `harness/timing_finding.py`.
+- **Owner notice (#5)**: see below.
