@@ -2,7 +2,7 @@
 id: T-0510
 title: Land ADR-0183 code slice 2 — correctness.check writes v2 results under correctness_check_sim_v2 / correctness_check_board_v2, step from point alone, fp32 gemm and the bf16 checks migrated, check-line readers on the new values
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-1, OD-8, OD-18, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0509]
