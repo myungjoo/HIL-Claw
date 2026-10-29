@@ -2,7 +2,7 @@
 id: T-0510
 title: Land ADR-0183 code slice 2 — correctness.check writes v2 results under correctness_check_sim_v2 / correctness_check_board_v2, step from point alone, fp32 gemm and the bf16 checks migrated, check-line readers on the new values
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-1, OD-8, OD-18, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0509]
@@ -72,4 +72,34 @@ hq: []
 
 ## Follow-ups
 
+- Remove today's builders, which no tool calls any more: `check_result.completed`, `broken`, `bf16_completed`, `bf16_broken`, `BF16_KINDS`, and `check_judging.from_judgement`, `from_report`, `from_bf16_judgement`, `from_bf16_report`, together with their tests. This also covers criterion 4's "module docstrings describe v2 only" for those two modules, and possibly `DrawCounts.cache_differences`. Removing them here took the slice to 967 changed non-test lines (review round 1), so they were deferred along the split path that ADR-0183 decision 9 item 2 names ("may follow in a third task").
+- `hilclaw/check_seed.py` docstring (line 41) still names the removed `check_admission.admit_for_step`. The file is outside `touchesFiles`; this is a docstring fix only.
+
 ## Result
+
+- **DONE.** PR #321, squash-merged into `main` as `0c73026c`; branch `claude/T-0510-correctness-check-v2`, deleted.
+- **Review**: 2 rounds.
+  - Round 1: Request changes. The must-fix was the size cap: removing today's builders took the change to 967 changed non-test lines. Those builders were then kept (Follow-ups).
+  - Round 2: Approve with three Nits. Nit 1 was answered by a PR comment with the local numbers. Nit 2 (docstrings) was fixed without re-review (D20). Nit 3 (`_BF16` duplicating `check_parameters.BF16`) was not taken.
+- **Tests**: all six CI jobs green on the head (run 40820517334). Locally the whole suite passed: 35689 passed, 1930 skipped (clang, `getuid` and containers are unavailable on this Windows machine). Line coverage of `hilclaw/` is 98 %.
+- **Language**: Python, the language of every touched layer-2 module. No new module.
+- **Files changed (10 non-test)**, 189 insertions and 225 deletions: `check_identity.py`, `check_tool.py`, `check_admission.py`, `check_answer.py`, `check_judging.py` and `check_result.py` (docstring notes only), `layout.py`, `check_standing.py`, `checks_tool.py`, `spec_feedback.py`.
+- **Untouched**: `check_operation.py`. `check_answer.from_answer` / `from_bf16_answer` keep their signatures and return v2 results. The covering entry is found from the kind and dtype the check parameters carry. There is one checked entry per pair today, and a table with two is refused at import.
+- **Not done**: today's builders were **not** removed (criterion 4 partly deferred, see Follow-ups).
+- **Module choices**:
+  - `STEPS_OF` is a one-item tuple per point.
+  - `STEP_SIM` / `STEP_BOARD` keep their names and now hold the v2 values.
+  - Bad dimensions beside a report are now refused by `check_result.output_operands` (`ValueError`) before the judge runs, where the judge's `VerificationArgumentError` came first before.
+- **Edited list assertions (D21)**:
+  - `tests/test_check_identity.py`: `STEPS`, public names, imports, spelt-once strings.
+  - `tests/test_check_answer.py`: public names, imports.
+  - `tests/test_check_admission.py`: public names, imports.
+  - `tests/test_layout.py`: `BUILD_LOG_STEPS == ...`.
+  - `tests/test_check_standing.py`: public names, `STEPS_OF`.
+  - `tests/test_checks_tool.py`: `STEPS_OF`.
+  - The other edited assertions (v2 form, retired values, two-value reading) are listed in the PR body.
+- **Records now less exact** (not edited):
+  - ADR-0177 decision 3 and ADR-0178 decisions 1 and 2 describe the bf16 step choice and the two-value reading that the code no longer has. ADR-0183 replaces them, and its Consequences already say so.
+  - The docstrings of `hilclaw/verdicts_tool.py` still describe two values per point (T-0511).
+- **Runtime acceptance items**: none.
+- **Next candidate**: T-0511 (ADR-0183 slice 3, `sim.run` / `board.run` v2). Then a task for the Follow-ups' builder removal.
