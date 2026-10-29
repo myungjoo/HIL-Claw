@@ -12,8 +12,8 @@ form of a complete report, whether the check value of each draw is the one of
 the inputs and allocations regenerated from the seed (decision 7, a
 disagreement being broken and never a fail), and, if both hold, the count of
 the elements of ``out`` outside the tolerance against the float64 reference
-(decisions 6 and 9) and the count of the cache elements that differ (decision
-8), with :mod:`hilclaw.harness.bf16_sdpa_kv_cache_arrays`.
+(decisions 6 and 9) and the count of the elements that differ in each cache
+allocation (decision 8, split per allocation by ADR-0183 decision 3), with :mod:`hilclaw.harness.bf16_sdpa_kv_cache_arrays`.
 :func:`run_bf16_sdpa_kv_cache_verification` starts that process for an
 executable that is already built, decides whether it timed out or failed and
 judges its report in the same way. The result types and the end mark are the
@@ -44,7 +44,8 @@ reference is taken from the report.
 
 Verdict (decision 8): a completed run passes iff in every draw no element of
 ``out`` fails the tolerance and no element of either allocation differs, and
-fails otherwise. Its counts are one :class:`DrawCounts` per draw.
+fails otherwise. Its counts are one :class:`DrawCounts` per draw, which
+holds the differences of each allocation apart.
 
 Conventions of this module (not rules of the record): those of
 :mod:`hilclaw.harness.bf16_rope_verification`, with ``dims`` the five
@@ -95,18 +96,29 @@ __all__ = [
 
 
 class DrawCounts(NamedTuple):
-    """The counts of one draw (ADR-0165 decision 8).
+    """The counts of one draw (ADR-0165 decision 8; ADR-0183 decision 3).
 
     ``failed`` and ``non_finite`` are the
     :class:`hilclaw.harness.verification_arrays.Counts` of ``out``;
-    ``cache_differences`` is the number of elements of the ``cache_k`` and the
-    ``cache_v`` allocation together whose patterns differ from the expected
-    ones. No index, element or region is returned.
+    ``cache_k_differences`` and ``cache_v_differences`` are the numbers of
+    elements of the ``cache_k`` and of the ``cache_v`` allocation whose
+    patterns differ from the expected ones, each counted over its whole
+    allocation of l + 2m rows, guard rows included.
+    :attr:`cache_differences` is their sum, the one count over both
+    allocations of ADR-0165 decision 8; it is a property and no field. The
+    verdict is unchanged: a draw fails when ``failed`` or either difference
+    is 1 or more. No index, element or region is returned.
     """
 
     failed: int
     non_finite: int
-    cache_differences: int
+    cache_k_differences: int
+    cache_v_differences: int
+
+    @property
+    def cache_differences(self):
+        """The number of differing elements over both allocations."""
+        return self.cache_k_differences + self.cache_v_differences
 
 
 def program_arguments(dims, *, draws, seed):
@@ -267,7 +279,7 @@ def _counts(report, offset, dims, seed, draw, rtol, atol):
     offset += 2 * m * h * d
     shape = (l + 2 * m, h_kv, d)
     size = math.prod(shape)
-    differences = 0
+    differences = []
     for cached, new in (
         (inputs.cached_k, inputs.k_new),
         (inputs.cached_v, inputs.v_new),
@@ -276,8 +288,8 @@ def _counts(report, offset, dims, seed, draw, rtol, atol):
             report, dtype=np.uint16, count=size, offset=offset
         ).reshape(shape)
         expected_cache = arrays.allocation_after(dims, cached, new)
-        differences += arrays.count_cache_differences(
-            dims, reported_cache, expected_cache
+        differences.append(
+            arrays.count_cache_differences(dims, reported_cache, expected_cache)
         )
         offset += 2 * size
-    return DrawCounts(counts.failed, counts.non_finite, differences)
+    return DrawCounts(counts.failed, counts.non_finite, *differences)
