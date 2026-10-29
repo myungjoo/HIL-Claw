@@ -1,6 +1,6 @@
 # 개발 PLAN
 
-[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D18은 모두 답변되어(2026-10-03~19) 본 PLAN에 ⚑ 항목은 없다. **우선순위(D18, 오너 2026-10-19, 채팅)**: 도달 목표는 P2-14(Llama 3.2 1B end-to-end, C-6 개정)이고, 가까운 목표는 P2-5다. P1-1·P1-8은 아래 완료 기준까지만 하고, 체크리스트 밖의 일(follow-up·OD 하위 질문) 가운데 두 목표에 필요하지 않은 것은 맨 아래 "보류" 절에 한 줄로 적어 둔다(DRIVER §6). *(런타임 인수 항목)* 으로 표시된 줄은 체크리스트 항목이 아니며 planner가 task로 만들지 않는다(DRIVER §6, D16). D15(드라이버 병렬 실행)의 전환은 PLAN 항목이 아니며 planner는 그것을 task로 만들지 않는다 — 루틴을 멈춘 통합자 세션이 P0-3 완료와 P0.5-4의 hook 등록 뒤에 수행한다(D15-3·D15-4, [proposals/D15-parallel-drivers.md](proposals/D15-parallel-drivers.md) §8).
+[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D18은 모두 답변되어(2026-10-03~19) 본 PLAN에 ⚑ 항목은 없다. **우선순위(D18, 오너 2026-10-19, 채팅)**: 도달 목표는 P2-14(Llama 3.2 1B end-to-end, C-6 개정)이고, 가까운 목표는 P2-5다. P1-1·P1-8은 아래 완료 기준까지만 하고, 체크리스트 밖의 일(follow-up·OD 하위 질문) 가운데 두 목표에 필요하지 않은 것은 맨 아래 "보류" 절에 한 줄로 적어 둔다(DRIVER §6). P2-5 구성의 첫 실제 run 전까지는 이 우선순위가 DRIVER §6 D24의 동결로 좁혀진다(D24, 오너 2026-10-29) — 그 동안의 `(D24 동결)` 보류 줄은 P2-14가 아니라 동결 해제 때 다시 판단한다. *(런타임 인수 항목)* 으로 표시된 줄은 체크리스트 항목이 아니며 planner가 task로 만들지 않는다(DRIVER §6, D16). D15(드라이버 병렬 실행)의 전환은 PLAN 항목이 아니며 planner는 그것을 task로 만들지 않는다 — 루틴을 멈춘 통합자 세션이 P0-3 완료와 P0.5-4의 hook 등록 뒤에 수행한다(D15-3·D15-4, [proposals/D15-parallel-drivers.md](proposals/D15-parallel-drivers.md) §8).
 
 현재 phase: `PROCESS/STATE.json`의 `phase`가 정본.
 
@@ -34,7 +34,7 @@
 
 ## P2 — 1층 런타임 오케스트레이션 (프롬프트·에이전트 정의)
 
-수행 순서는 나열 순서다(D18): 라운드 루프(P2-1~P2-4·P2-6·P2-7) → 첫 run(P2-5) → nightly(P2-10) → LLM end-to-end(P2-11~P2-14) → S6(P2-8).
+수행 순서는 나열 순서다(D18): 라운드 루프(P2-1~P2-4·P2-6·P2-7) → 첫 run(P2-5) → nightly(P2-10) → LLM end-to-end(P2-11~P2-14) → S6(P2-8). **실제 run 우선(D24, 오너 2026-10-29, 채팅)**: P2-10이 여는 P2-5 구성의 첫 실제 run이 관문이다 — DRIVER §6 D24의 해제 전까지 그 run에 필요하지 않은 항목(P2-11~P2-14·P2-8 등)은 task로 만들지 않고, nightly 실패 이슈는 (해제 뒤에도) PLAN 항목보다 먼저다. 해제 뒤에는 최소 연산 세트로 먼저 실제 run을 한다(D24 ⑤).
 
 - [ ] P2-1 Round-Manager 프롬프트·라운드 0(bring-up+baseline) 절차 · coversReq: FR-1
 - [ ] P2-2 coder-driver(`claude -p` 호출, spec 전달, 출력 캡처) — **OD-23 종결 필요(§9 ADR 경로)**(로스터·입출력 계약, 논의중) · coversReq: FR-5, OD-23
@@ -59,7 +59,7 @@
 
 ## 보류 (P2-14 이후 — D18)
 
-DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 되돌리지 않은 일을 한 줄씩 적는다(근거 task·ADR 또는 follow-up의 출처, 무엇). 줄은 체크박스가 아니며 phase 전환 조건에 들지 않는다. 줄을 더하는 것은 드라이버 상태 커밋이다(DRIVER §2). P2-14가 체크된 뒤 planner가 줄마다 판단한다 — task 파일이 없는 줄은 task로 만들지 버릴지, 이미 BLOCKED task가 있는 줄은 `TODO`로 되돌릴지 결과 없이 닫을지. 줄을 지우는 것, task의 status를 바꾸는 주체, 결과 없이 닫는 권한은 정하지 않았다 — 그때 오너에게 확인한다(D16의 T-0106은 오너 세션이 닫았다). 여기 든 BLOCKED task는 그 HQ가 답해져도 `TODO`로 돌아가지 않는다(DRIVER §3-2) — 답은 기록되고 P2-14 뒤에 쓰인다. 그 task의 열린 PR은 닫고 브랜치는 남긴다(DRIVER §3-2; 통합자 적용, D18).
+DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 되돌리지 않은 일을 한 줄씩 적는다(근거 task·ADR 또는 follow-up의 출처, 무엇). 줄은 체크박스가 아니며 phase 전환 조건에 들지 않는다. 줄을 더하는 것은 드라이버 상태 커밋이다(DRIVER §2). P2-14가 체크된 뒤 planner가 줄마다 판단한다(`(D24 동결)`을 붙인 줄은 동결 해제 때 — DRIVER §6 D24 ①) — task 파일이 없는 줄은 task로 만들지 버릴지, 이미 BLOCKED task가 있는 줄은 `TODO`로 되돌릴지 결과 없이 닫을지. 줄을 지우는 것, task의 status를 바꾸는 주체, 결과 없이 닫는 권한은 정하지 않았다 — 그때 오너에게 확인한다(D16의 T-0106은 오너 세션이 닫았다). 여기 든 BLOCKED task는 그 HQ가 답해져도 `TODO`로 돌아가지 않는다(DRIVER §3-2) — 답은 기록되고 P2-14 뒤에(`(D24 동결)` 줄의 일은 동결 해제 때) 쓰인다. 그 task의 열린 PR은 닫고 브랜치는 남긴다(DRIVER §3-2; 통합자 적용, D18).
 
 - T-0225 (HQ-0022) — JSON 텍스트 helper 공용화, 동작 변경 없는 리팩토링.
 - T-0284 (HQ-0028, PR #179 닫음 — 브랜치 `claude/T-0284-clang-build-refuses-posix-env-keys`는 남김) — `clang_build.build`의 POSIX `env` 키 사전 거부, 입력 경화.
