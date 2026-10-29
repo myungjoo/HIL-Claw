@@ -795,7 +795,9 @@
       "reason": "ci-failure",
       "question": "[쟁점] T-0511의 PR #322는 리뷰 2라운드에서 Approve되었으나 CI가 빨강이라 A-13에 따라 merge하지 못했다. executor 보고: GitHub 러너 이미지가 ubuntu-24.04에서 ubuntu-26.04(clang 21)로 바뀐 뒤 main에서도 tests/test_first_run_end_to_end.py 10건이 실패한다(sim 체크 결과 broken); 이전에 green이던 커밋을 재실행해도 같다(드라이버 확인: 05:18 이후 main CI run 연속 failure). [선택지] (a) e2e 실패를 새 러너 이미지에 맞게 고치는 수정 task를 먼저 두고, CI green 뒤 #322를 merge한다(executor 권장). (b) CI 워크플로의 runs-on을 ubuntu-24.04로 고정한다. (c) 실패가 #322와 무관하다는 근거로 지금 #322를 merge한다. [막히는 것] #322 merge와 그 뒤 ADR-0183/ADR-0181 slice, 그리고 CI green을 요구하는 모든 코드 모드 task. [막히지 않는 것] T-0511의 코드·리뷰는 끝났고 PR 브랜치 claude/T-0511-run-tools-v2에 남아 있다; 문서 모드 task.",
       "askedAt": "2026-10-29T06:40:00Z",
-      "issueComment": null
+      "issueComment": null,
+      "resolvedAt": "2026-10-29T06:56:19Z",
+      "decision": "(a) e2e 실패를 새 러너 이미지에 맞게 고치는 수정 task를 먼저 두고, CI green 뒤 #322를 merge한다. Owner's note: 오너 2026-10-29 채팅 \"(a) 수정 task 먼저\". 통합자 독해: 수정 task는 D24 ①의 동결 대상이 아니다 — 깨진 테스트가 P2-5 구성의 스텁 end-to-end이고, T-0493(코드 모드)의 merge에도 CI green이 필요하다. T-0511은 수정 task가 착지해 main CI가 green이 된 뒤 재개한다."
     }
   ],
   "counters": {
