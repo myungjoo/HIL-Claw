@@ -798,7 +798,7 @@ def test_the_sdpa_answer_is_a_complete_report_the_judge_passes(dims):
     judgement = bf16_sdpa_kv_cache_verification.judge_report(
         report, dims, draws=BF16_DRAWS, seed=SEED, **SDPA_TOLERANCE
     )
-    zeros = bf16_sdpa_kv_cache_verification.DrawCounts(0, 0, 0)
+    zeros = bf16_sdpa_kv_cache_verification.DrawCounts(0, 0, 0, 0)
     assert judgement == bf16_sdpa_kv_cache_verification.Judgement(
         None, bf16_sdpa_kv_cache_verification.Verdict.PASS, (zeros,) * BF16_DRAWS
     )
@@ -847,7 +847,7 @@ def test_the_sdpa_answer_passes_at_the_shape_of_the_functional_test():
         report, dims, draws=1, seed=SEED, **SDPA_TOLERANCE
     )
     assert judgement.verdict is bf16_sdpa_kv_cache_verification.Verdict.PASS
-    assert judgement.counts == ((0, 0, 0),)
+    assert judgement.counts == ((0, 0, 0, 0),)
 
 
 def test_the_sdpa_report_through_the_operation_is_judged_pass():

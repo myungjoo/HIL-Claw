@@ -185,6 +185,12 @@ def judge(report, dims=DIMS, draws=3, seed=SEED, **changes):
     return judge_report(report, dims, **{**arguments, **changes})
 
 
+def summed(counts):
+    return tuple(
+        (count.failed, count.non_finite, count.cache_differences) for count in counts
+    )
+
+
 def assert_judged(judgement, verdict, counts):
     assert type(judgement) is Judgement
     assert judgement.broken is None
@@ -192,7 +198,7 @@ def assert_judged(judgement, verdict, counts):
     assert type(judgement.counts) is tuple
     assert all(type(count) is DrawCounts for count in judgement.counts)
     assert all(type(value) is int for count in judgement.counts for value in count)
-    assert judgement.counts == tuple(counts)
+    assert summed(judgement.counts) == tuple(counts)
 
 
 def assert_judged_broken(judgement, condition):
@@ -206,7 +212,7 @@ def assert_completed(result, verdict, counts):
     assert isinstance(result, VerificationResult)
     assert result.broken is None
     assert result.verdict is verdict
-    assert result.counts == tuple(counts)
+    assert summed(result.counts) == tuple(counts)
     assert all(type(count) is DrawCounts for count in result.counts)
     assert isinstance(result.run, RunResult)
     assert result.run.returncode == 0
@@ -251,9 +257,16 @@ def test_public_names():
 
 
 def test_draw_counts_fields():
-    assert DrawCounts._fields == ("failed", "non_finite", "cache_differences")
-    assert DrawCounts(1, 2, 3) == (1, 2, 3)
-    assert DrawCounts(1, 2, 3).cache_differences == 3
+    assert DrawCounts._fields == (
+        "failed",
+        "non_finite",
+        "cache_k_differences",
+        "cache_v_differences",
+    )
+    assert DrawCounts(1, 2, 3, 4) == (1, 2, 3, 4)
+    assert DrawCounts(1, 2, 3, 4).cache_k_differences == 3
+    assert DrawCounts(1, 2, 3, 4).cache_v_differences == 4
+    assert DrawCounts(1, 2, 3, 4).cache_differences == 7
 
 
 # --- program_arguments ---
@@ -1037,3 +1050,41 @@ def test_real_clang_plain_kernel_passes_at_the_s128_shapes(built, dims, draws):
 def test_real_clang_kernel_writing_a_trailing_guard_fails(built, dims):
     result = verify(built["guard-write"], dims, draws=2)
     assert_completed(result, Verdict.FAIL, [(0, 0, 1)] * 2)
+
+
+# --- per-allocation differences (ADR-0183 decisions 3 and 9 item 1) ---
+
+
+@pytest.mark.parametrize(
+    ("k", "v"), [(0, 0), (3, 0), (0, 2), (3, 2)], ids=["none", "k", "v", "both"]
+)
+def test_the_differences_of_each_allocation_are_counted_apart(k, v):
+    blocks = all_parts(DIMS, 2, SEED)
+    rows = DIMS[1] + 2 * DIMS[0]
+    for count, cache in ((k, "cache_k"), (v, "cache_v")):
+        for row in range(count):
+            blocks[1][cache][row % rows, row // rows, 0] ^= 1
+    judgement = judge(pack(blocks), draws=2)
+    assert judgement.counts == (DrawCounts(0, 0, 0, 0), DrawCounts(0, 0, k, v))
+    assert judgement.counts[1].cache_k_differences == k
+    assert judgement.counts[1].cache_v_differences == v
+    assert judgement.counts[1].cache_differences == k + v
+    assert judgement.verdict is (Verdict.FAIL if k + v else Verdict.PASS)
+
+
+def test_the_guard_rows_of_each_allocation_are_counted_in_its_field():
+    m, l, _, h_kv, d = DIMS
+    blocks = all_parts(DIMS, 1, SEED)
+    blocks[0]["cache_k"][0] = MARK
+    blocks[0]["cache_v"][m + l :] = MARK
+    judgement = judge(pack(blocks), draws=1)
+    assert judgement.counts == (DrawCounts(0, 0, h_kv * d, m * h_kv * d),)
+    assert judgement.verdict is Verdict.FAIL
+
+
+def test_each_allocation_at_the_fill_counts_its_operand_rows():
+    _, l, _, h_kv, d = DIMS
+    blocks = all_parts(DIMS, 1, SEED)
+    blocks[0]["cache_v"][...] = FILL
+    judgement = judge(pack(blocks), draws=1)
+    assert judgement.counts == (DrawCounts(0, 0, 0, l * h_kv * d),)
