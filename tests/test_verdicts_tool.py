@@ -1013,8 +1013,9 @@ def test_the_mcp_front_lists_and_serves_verdicts_write(root):
 
 # The comparison checks of ADR-0140 decision 5
 
-T_SIM = "sim_run_timing"
-T_BOARD = "board_run_timing"
+T_SIM = "sim_run_timing_v2"
+T_BOARD = "board_run_timing_v2"
+GEMM = next(e for e in contract_table.TABLE.values() if e.contract.KIND == "gemm")
 SLOW = [1000, 1001, 999, 1000, 1002]
 FAST = [500, 501, 499, 500, 502]
 CLOSE = [1000, 1002, 1001, 999, 1000]
@@ -1026,12 +1027,12 @@ AGAINST = (0, 1, 1)
 def timing(outcome="converged", intervals=SLOW, m=4, k=4, n=4):
     return run_result.completed(
         outcome,
-        intervals_ns=intervals,
-        resolution_ns=1,
+        GEMM,
+        (m, k, n),
+        unit="ns",
+        resolution=1,
+        intervals=intervals,
         memory_bytes=None,
-        m=m,
-        k=k,
-        n=n,
         n_max=10,
         sample_form="interval",
         bound=None,
@@ -1040,7 +1041,7 @@ def timing(outcome="converged", intervals=SLOW, m=4, k=4, n=4):
 
 def broken_timing():
     return run_result.broken(
-        "time_limit", m=4, k=4, n=4, n_max=10, sample_form="interval", bound=None
+        "time_limit", GEMM, (4, 4, 4), n_max=10, sample_form="interval", bound=None
     )
 
 
@@ -1184,7 +1185,7 @@ def test_a_comparison_with_a_missing_log_is_comparison_unfounded(root):
     assert error.kind == verdicts_tool.KIND_COMPARISON_UNFOUNDED
     assert error.message == (
         "record.verdicts[0].evidence[0]: measurement_missing: "
-        f"{LOG}: measured (round 1, candidate 1, attempt 1) at sim_run_timing: "
+        f"{LOG}: measured (round 1, candidate 1, attempt 1) at sim_run_timing_v2: "
         "has no measurement"
     )
     assert not log_path(root).exists()
@@ -1336,19 +1337,29 @@ def test_a_comparison_that_does_not_count_is_not_held_to_the_standing(root):
 
 
 SHAPE = {"m": 4, "k": 4, "n": 4}
+KEY = {"kind": "gemm", "dtype": "fp32", "layout": "row_major"}
+V2 = {"contract_key": KEY, "shape": SHAPE, "unit": "ns", "intervals": SLOW}
 INVALID_TIMINGS = [
     (
-        {"outcome": "pass", "shape": SHAPE, "intervals_ns": SLOW},
+        {"outcome": "pass", **V2},
         "data.result.outcome: must be one of converged, not_converged, broken",
     ),
     ({"no": "outcome"}, "data.result: lacks the member outcome"),
     (
-        {"outcome": "converged", "shape": SHAPE, "intervals_ns": SLOW[:4]},
-        "data.result.intervals_ns: must be a list of at least 5 ints",
+        {"outcome": "converged", **V2, "intervals": SLOW[:4]},
+        "data.result.intervals: must be a list of at least 5 ints",
     ),
     (
-        {"outcome": "not_converged", "shape": SHAPE | {"k": 0}, "intervals_ns": SLOW},
-        "data.result.shape: must be an object of exactly m, k and n",
+        {"outcome": "not_converged", **V2, "shape": SHAPE | {"k": 0}},
+        "data.result.shape: must be an object of at least one member",
+    ),
+    (
+        {"outcome": "converged", **V2, "unit": "ms"},
+        'data.result.unit: must be "ns"',
+    ),
+    (
+        {"outcome": "converged", **V2, "contract_key": KEY | {"language": "c"}},
+        "data.result.contract_key: must be an object of exactly kind, dtype and layout",
     ),
 ]
 
@@ -1372,9 +1383,7 @@ def test_an_invalid_timing_result_at_the_sim_point_is_timing_result_invalid(root
     end(root, 2, at=MEASURED, step=T_SIM, result={"outcome": "converged"})
     error = refused(root, pair([comparison(point="sim")]))
     assert error.kind == verdicts_tool.KIND_TIMING_RESULT_INVALID
-    assert (
-        error.message == f"{LOG}: line 11: data.result: lacks the member intervals_ns"
-    )
+    assert error.message == f"{LOG}: line 11: data.result: lacks the member intervals"
 
 
 @pytest.mark.parametrize(
@@ -1385,7 +1394,7 @@ def test_an_invalid_timing_result_at_the_sim_point_is_timing_result_invalid(root
 def test_an_invalid_timing_result_no_comparison_names_is_no_failure(root, at, step):
     with_hypotheses(root)
     timed(root)
-    check(root, at=at, step=step, result={"outcome": "converged", "intervals_ns": [1]})
+    check(root, at=at, step=step, result={"outcome": "converged", "intervals": [1]})
     written(root, pair([comparison()]))
 
 
@@ -1680,3 +1689,18 @@ def test_a_check_entry_at_a_point_of_neither_value_is_invalid_request(root, poin
     entry = check_entry() | {"point": point}
     error = refused(root, pair([entry]))
     assert error.kind == tools.KIND_INVALID_REQUEST
+
+
+@pytest.mark.parametrize(
+    ("retired", "point"), [("board_run_timing", "board"), ("sim_run_timing", "sim")]
+)
+def test_timing_lines_under_a_retired_run_value_are_not_read(root, retired, point):
+    with_hypotheses(root)
+    timed(root, step=retired)
+    check(root, 2, at=MEASURED, step=retired, result={"outcome": "converged"})
+    error = refused(root, pair([comparison(point=point)]))
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNFOUNDED
+    assert error.message.startswith(
+        "record.verdicts[0].evidence[0]: measurement_missing: "
+    )
+    assert error.message.endswith(f"at {retired}_v2: has no measurement")

@@ -19,11 +19,13 @@ SMALLEST = min(INTERVALS)
 def converged(resolution, intervals=INTERVALS):
     return {
         "outcome": "converged",
+        "contract_key": {"kind": "gemm", "dtype": "fp32", "layout": "row_major"},
         "shape": {"m": 1, "k": 2048, "n": 8192},
         "n_max": 10,
         "sample_form": "interval",
-        "resolution_ns": resolution,
-        "intervals_ns": list(intervals),
+        "unit": "ns",
+        "resolution": resolution,
+        "intervals": list(intervals),
         "ceiling": "not_stated",
     }
 
@@ -35,6 +37,7 @@ def not_converged(resolution=1, intervals=INTERVALS * 2):
 BROKEN = {
     "outcome": "broken",
     "condition": "exit_status",
+    "contract_key": {"kind": "gemm", "dtype": "fp32", "layout": "row_major"},
     "shape": {"m": 1, "k": 2048, "n": 8192},
     "n_max": 10,
     "sample_form": "interval",
@@ -133,7 +136,7 @@ def test_broken_is_not_found():
 
 
 def test_broken_with_stray_members_is_not_found():
-    stray = BROKEN | {"resolution_ns": "x", "intervals_ns": None, "extra": [1]}
+    stray = BROKEN | {"resolution": "x", "intervals": None, "extra": [1]}
     assert measurement_found(stray) is False
     assert measurement_found({"outcome": "broken"}) is False
 
@@ -141,7 +144,7 @@ def test_broken_with_stray_members_is_not_found():
 def test_other_members_are_not_checked():
     assert (
         measurement_found(
-            {"outcome": "converged", "resolution_ns": 1, "intervals_ns": [1000]}
+            {"outcome": "converged", "resolution": 1, "intervals": [1000]}
         )
         is False
     )
@@ -192,7 +195,7 @@ def test_unknown_outcome_is_refused(outcome):
 
 
 @pytest.mark.parametrize("make", [converged, not_converged])
-@pytest.mark.parametrize("name", ["resolution_ns", "intervals_ns"])
+@pytest.mark.parametrize("name", ["resolution", "intervals"])
 def test_absent_measurement_member_is_refused(make, name):
     result = make(1)
     del result[name]
@@ -203,45 +206,41 @@ def test_absent_measurement_member_is_refused(make, name):
 @pytest.mark.parametrize("make", [converged, not_converged])
 @pytest.mark.parametrize("resolution", [True, False, 1.0, 0.0, "1", None])
 def test_resolution_of_another_type_is_refused(make, resolution):
-    with pytest.raises(TypeError, match="^resolution_ns: "):
+    with pytest.raises(TypeError, match="^resolution: "):
         measurement_found(make(resolution))
 
 
 @pytest.mark.parametrize("make", [converged, not_converged])
 def test_negative_resolution_is_refused(make):
-    with pytest.raises(ValueError, match="^resolution_ns: must be at least 0"):
+    with pytest.raises(ValueError, match="^resolution: must be at least 0"):
         measurement_found(make(-1))
 
 
 @pytest.mark.parametrize("intervals", [None, "100", {100: 1}, {100}, range(1, 5), 100])
 def test_intervals_of_another_type_are_refused(intervals):
-    result = converged(1) | {"intervals_ns": intervals}
-    with pytest.raises(TypeError, match="^intervals_ns: must be exactly a list"):
+    result = converged(1) | {"intervals": intervals}
+    with pytest.raises(TypeError, match="^intervals: must be exactly a list"):
         measurement_found(result)
 
 
 @pytest.mark.parametrize("entry", [True, 100.0, "100", None])
 def test_interval_entry_of_another_type_is_refused(entry):
-    with pytest.raises(TypeError, match="^intervals_ns: every entry"):
+    with pytest.raises(TypeError, match="^intervals: every entry"):
         measurement_found(converged(1, [100, entry]))
-    with pytest.raises(TypeError, match="^intervals_ns: every entry"):
+    with pytest.raises(TypeError, match="^intervals: every entry"):
         measurement_found(not_converged(1, [entry]))
 
 
 @pytest.mark.parametrize("entry", [0, -1])
 def test_interval_below_one_is_refused(entry):
-    with pytest.raises(
-        ValueError, match="^intervals_ns: every entry must be at least 1"
-    ):
+    with pytest.raises(ValueError, match="^intervals: every entry must be at least 1"):
         measurement_found(converged(1, [100, entry]))
-    with pytest.raises(
-        ValueError, match="^intervals_ns: every entry must be at least 1"
-    ):
+    with pytest.raises(ValueError, match="^intervals: every entry must be at least 1"):
         measurement_found(not_converged(1, [entry]))
 
 
 def test_empty_intervals_when_converged_are_refused():
-    with pytest.raises(ValueError, match="^intervals_ns: must not be empty"):
+    with pytest.raises(ValueError, match="^intervals: must not be empty"):
         measurement_found(converged(1, []))
 
 
@@ -425,7 +424,7 @@ def test_end_line_under_another_step_is_checked():
 
 
 def test_refused_result_raises_with_its_line_number():
-    with pytest.raises(TypeError, match="^line 2: resolution_ns: "):
+    with pytest.raises(TypeError, match="^line 2: resolution: "):
         run_found_at([ended(CLEAN), ended(converged(1.0), attempt=2)])
 
 
@@ -439,3 +438,28 @@ def test_lines_are_not_modified():
     before = copy.deepcopy(log)
     run_found_at(log)
     assert log == before
+
+
+@pytest.mark.parametrize("unit", ["ns", "ms", None])
+def test_the_unit_is_not_read(unit):
+    for result in (CLEAN, COARSE, not_converged()):
+        changed = copy.deepcopy(result)
+        if unit is None:
+            del changed["unit"]
+        else:
+            changed["unit"] = unit
+        assert measurement_found(changed) is measurement_found(result)
+
+
+@pytest.mark.parametrize("name", ["resolution_ns", "intervals_ns"])
+def test_the_members_of_the_retired_definition_are_not_read(name):
+    result = copy.deepcopy(CLEAN)
+    result[name] = result.pop(name.removesuffix("_ns"))
+    with pytest.raises(ValueError, match=f"^{name.removesuffix('_ns')}: is absent"):
+        measurement_found(result)
+
+
+@pytest.mark.parametrize("retired", ["sim_run_timing", "board_run_timing"])
+def test_an_end_line_under_a_retired_run_value_gives_no_finding(retired):
+    assert line_finding(ended(COARSE, step=retired)) is None
+    assert run_found_at([started(retired), ended(COARSE, step=retired)]) is None

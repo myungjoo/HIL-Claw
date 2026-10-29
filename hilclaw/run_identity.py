@@ -3,11 +3,13 @@
 ``ARCHITECTURE/decisions/ADR-0062-od18-run-tools-call-identity.md`` is the
 rule; a decision cited by its number alone is one of that record. The module
 renders, ahead of the tool functions, what its decisions 3 and 4 fix of a
-call:
+call, with the values of ADR-0183 decision 2:
 
-* :data:`STEP_SIM_RUN`, :data:`STEP_BOARD_RUN`, :data:`STEPS`: "Each tool has
-  exactly one ``step`` value: ``sim_run_timing`` for ``sim.run`` and
-  ``board_run_timing`` for ``board.run``" (decision 3).
+* :data:`STEP_SIM_RUN`, :data:`STEP_BOARD_RUN`, :data:`STEPS`: each tool has
+  exactly one ``step`` value, ``sim_run_timing_v2`` for ``sim.run`` and
+  ``board_run_timing_v2`` for ``board.run`` (ADR-0183 decision 2, which
+  retires the values of decision 3 and keeps its rule), the same for every
+  contract.
 * :data:`NUMBERS`: "All three numbers are required" (decision 4).
 * :func:`step_of`: the ``step`` value "follows from the tool and not from
   anything a request says" (decision 1, as decision 3 fixes it); "the tool
@@ -47,10 +49,10 @@ rule for the ``step`` values of another tool". It keeps nothing between
 calls, reads no file and imports nothing.
 """
 
-#: The one ``step`` of ``sim.run`` (ADR-0062 decision 3).
-STEP_SIM_RUN = "sim_run_timing"
-#: The one ``step`` of ``board.run`` (ADR-0062 decision 3).
-STEP_BOARD_RUN = "board_run_timing"
+#: The one ``step`` of ``sim.run`` (ADR-0062 decision 3, ADR-0183 decision 2).
+STEP_SIM_RUN = "sim_run_timing_v2"
+#: The one ``step`` of ``board.run`` (ADR-0062 decision 3, ADR-0183 decision 2).
+STEP_BOARD_RUN = "board_run_timing_v2"
 #: The ``step`` values of the two tools, each once; the order means nothing.
 STEPS = (STEP_SIM_RUN, STEP_BOARD_RUN)
 
@@ -66,7 +68,7 @@ _OTHER = _ACCEPTED + "got another string"
 
 
 def step_of(tool):
-    """Return the one ``step`` value of the run tool named ``tool`` (ADR-0062 decision 3).
+    """Return the one ``step`` value of the run tool named ``tool`` (ADR-0062 decision 3, ADR-0183 decision 2).
 
     - ``tool``: the name of the tool, ``"sim.run"`` or ``"board.run"``.
 

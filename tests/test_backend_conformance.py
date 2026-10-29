@@ -56,8 +56,8 @@ TOOLS = {
 }
 STEPS = {
     "correctness.check": "correctness_check_sim_v2",
-    "sim.run": "sim_run_timing",
-    "board.run": "board_run_timing",
+    "sim.run": "sim_run_timing_v2",
+    "board.run": "board_run_timing_v2",
 }
 PASSED = {
     "outcome": "pass",
@@ -69,11 +69,13 @@ PASSED = {
 }
 CONVERGED = {
     "outcome": "converged",
+    "contract_key": {"kind": "gemm", "dtype": "fp32", "layout": "row_major"},
     "shape": SHAPE,
     "n_max": N_MAX,
     "sample_form": "interval",
-    "resolution_ns": 1,
-    "intervals_ns": [1000000] * N_MIN,
+    "unit": "ns",
+    "resolution": 1,
+    "intervals": [1000000] * N_MIN,
     "ceiling": "not_stated",
 }
 CONTAINERS = {"correctness.check": 2, "sim.run": 3, "board.run": 3}

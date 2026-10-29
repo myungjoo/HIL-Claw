@@ -37,7 +37,7 @@ from hilclaw.tools import ToolFailure
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOLS = ("sim.run", "board.run")
-STEP = {"sim.run": "sim_run_timing", "board.run": "board_run_timing"}
+STEP = {"sim.run": "sim_run_timing_v2", "board.run": "board_run_timing_v2"}
 
 # Test values only: the package defaults to none of them and recommends none.
 RUN = "run-a"
@@ -45,6 +45,7 @@ ROUND = 3
 SEED = 987654321987654321
 OTHER_SEED = 123456789123456789
 SHAPE = {"m": 2, "k": 3, "n": 4}
+CONTRACT_KEY = {"kind": "gemm", "dtype": "fp32", "layout": "row_major"}
 N_MAX = 10
 FIGURE = 4096
 OP = {
@@ -65,11 +66,13 @@ DEFAULT_REPORT = (
 )
 CONVERGED = {
     "outcome": "converged",
+    "contract_key": CONTRACT_KEY,
     "shape": SHAPE,
     "n_max": N_MAX,
     "sample_form": "interval",
-    "resolution_ns": 1,
-    "intervals_ns": [1000000] * N_MIN,
+    "unit": "ns",
+    "resolution": 1,
+    "intervals": [1000000] * N_MIN,
     "ceiling": "not_stated",
 }
 
@@ -286,10 +289,10 @@ def test_board_run_with_the_same_request_is_another_identity(root):
     assert sim.function(request()) == CONVERGED
     assert board.function(request()) == CONVERGED
     assert [line["data"]["step"] for line in lines(root)] == [
-        "sim_run_timing",
-        "sim_run_timing",
-        "board_run_timing",
-        "board_run_timing",
+        "sim_run_timing_v2",
+        "sim_run_timing_v2",
+        "board_run_timing_v2",
+        "board_run_timing_v2",
     ]
     assert (sim.count("operation"), board.count("operation")) == (1, 1)
 
@@ -329,8 +332,8 @@ def test_a_report_that_does_not_converge_is_not_converged(root):
     assert bench.function(request()) == {
         **CONVERGED,
         "outcome": "not_converged",
-        "resolution_ns": 7,
-        "intervals_ns": [1, 1000] * (N_MAX // 2),
+        "resolution": 7,
+        "intervals": [1, 1000] * (N_MAX // 2),
     }
 
 
@@ -342,6 +345,7 @@ def test_each_condition_of_the_form_b_gives_a_broken_result(root, tool, conditio
     assert result == {
         "outcome": "broken",
         "condition": condition,
+        "contract_key": CONTRACT_KEY,
         "shape": SHAPE,
         "n_max": N_MAX,
         "sample_form": "interval",
@@ -369,8 +373,10 @@ def test_a_broken_report_gives_the_condition_of_its_judgement(
     result = bench.function(request())
     assert result["outcome"] == "broken"
     assert result["condition"] == condition
-    assert "memory_bytes" not in result
-    assert "intervals_ns" not in result
+    assert result["contract_key"] == CONTRACT_KEY
+    assert result["shape"] == SHAPE
+    for name in ("unit", "resolution", "intervals", "memory_bytes"):
+        assert name not in result
 
 
 def test_a_figure_of_a_completed_run_without_a_bound_is_kept_not_stated(root):
@@ -446,8 +452,8 @@ def test_a_further_execution_writes_its_own_file(root):
     bench.function(request())
     bench.function(request(execution=2))
     assert sorted(path.name for path in attempt_dir(root).iterdir()) == [
-        "build-log-sim_run_timing-01.txt",
-        "build-log-sim_run_timing-02.txt",
+        "build-log-sim_run_timing_v2-01.txt",
+        "build-log-sim_run_timing_v2-02.txt",
     ]
 
 

@@ -618,29 +618,29 @@ def test_build_log_steps_are_those_of_correctness_check_and_the_run_tools():
     assert BUILD_LOG_STEPS == (
         "correctness_check_sim_v2",
         "correctness_check_board_v2",
-        "sim_run_timing",
-        "board_run_timing",
+        "sim_run_timing_v2",
+        "board_run_timing_v2",
     )
 
 
-# Expected paths copied from the Walk-through of ADR-0108 (decision 3).
+# The paths of the Walk-through of ADR-0108 (decision 3) under the v2 values (ADR-0183 decision 7).
 ADR_0108_SIM = (
     "runs/r1/rounds/0003/measure/candidates/02/attempts/01/"
-    "build-log-sim_run_timing-01.txt"
+    "build-log-sim_run_timing_v2-01.txt"
 )
 ADR_0108_BOARD = (
     "runs/r1/rounds/0003/measure/candidates/02/attempts/01/"
-    "build-log-board_run_timing-01.txt"
+    "build-log-board_run_timing_v2-01.txt"
 )
 
 
 def test_build_log_file_of_the_adr_0108_walk_through():
-    sim = build_log_file(ROOT, "r1", 3, 2, 1, "sim_run_timing", 1)
-    board = build_log_file(ROOT, "r1", 3, 2, 1, "board_run_timing", 1)
+    sim = build_log_file(ROOT, "r1", 3, 2, 1, "sim_run_timing_v2", 1)
+    board = build_log_file(ROOT, "r1", 3, 2, 1, "board_run_timing_v2", 1)
     assert rel(sim) == ADR_0108_SIM
     assert rel(board) == ADR_0108_BOARD
-    assert build_log_file(ROOT, "r1", 3, 2, 1, "sim_run_timing", 12).name == (
-        "build-log-sim_run_timing-12.txt"
+    assert build_log_file(ROOT, "r1", 3, 2, 1, "sim_run_timing_v2", 12).name == (
+        "build-log-sim_run_timing_v2-12.txt"
     )
 
 
@@ -713,6 +713,8 @@ def test_invalid_build_log_step_is_rejected(step):
         "correctness_check_board",
         "correctness_check_bf16_sim",
         "correctness_check_bf16_board",
+        "sim_run_timing",
+        "board_run_timing",
     ],
 )
 def test_a_retired_check_step_is_rejected(step):

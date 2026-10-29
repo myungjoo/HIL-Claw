@@ -7,6 +7,7 @@ import pytest
 
 from hilclaw import (
     checks_tool,
+    contract_table,
     events,
     journal,
     keys,
@@ -22,8 +23,13 @@ from hilclaw.tools import ToolDefinition, ToolFailure, default_registry
 
 RUN = "run-a"
 LOG = f"runs/{RUN}/events.ndjson"
-SIM = "sim_run_timing"
-BOARD = "board_run_timing"
+SIM = "sim_run_timing_v2"
+BOARD = "board_run_timing_v2"
+GEMM = next(e for e in contract_table.TABLE.values() if e.contract.KIND == "gemm")
+RMSNORM = next(e for e in contract_table.TABLE.values() if e.contract.KIND == "rmsnorm")
+ADD = next(
+    e for e in contract_table.TABLE.values() if e.contract.KIND == "elementwise_add"
+)
 MEASURED = {"round": 1, "candidate": 1, "attempt": 1}
 AGAINST = {"round": 0, "candidate": 1, "attempt": 1}
 SLOW = [1000, 1001, 999, 1000, 1002]
@@ -75,15 +81,15 @@ def root(tmp_path):
     return data_root
 
 
-def timing(outcome="converged", intervals=SLOW, m=4, k=4, n=4):
+def timing(outcome="converged", intervals=SLOW, m=4, k=4, n=4, entry=None, dims=None):
     return run_result.completed(
         outcome,
-        intervals_ns=intervals,
-        resolution_ns=1,
+        entry or GEMM,
+        dims or (m, k, n),
+        unit="ns",
+        resolution=1,
+        intervals=intervals,
         memory_bytes=None,
-        m=m,
-        k=k,
-        n=n,
         n_max=10,
         sample_form="interval",
         bound=None,
@@ -92,7 +98,7 @@ def timing(outcome="converged", intervals=SLOW, m=4, k=4, n=4):
 
 def broken():
     return run_result.broken(
-        "time_limit", m=4, k=4, n=4, n_max=10, sample_form="interval", bound=None
+        "time_limit", GEMM, (4, 4, 4), n_max=10, sample_form="interval", bound=None
     )
 
 
@@ -505,10 +511,49 @@ def test_different_shapes_are_shapes_differ(root):
     run(root, AGAINST, result=timing())
     refused = failure(root)
     assert refused.kind == timings_tool.KIND_SHAPES_DIFFER
+    key = "{'kind': 'gemm', 'dtype': 'fp32', 'layout': 'row_major'}"
     assert refused.message == (
-        f"{LOG}: measured has the shape {{'m': 8, 'k': 4, 'n': 4}}, "
-        "against {'m': 4, 'k': 4, 'n': 4}"
+        f"{LOG}: measured has the contract {key} and the shape "
+        f"{{'m': 8, 'k': 4, 'n': 4}}, against {key} and the shape "
+        "{'m': 4, 'k': 4, 'n': 4}"
     )
+
+
+def test_equal_shapes_of_different_contracts_are_shapes_differ(root):
+    run(root, MEASURED, result=timing(intervals=FAST, entry=RMSNORM, dims=(4, 8)))
+    run(root, AGAINST, result=timing(entry=ADD, dims=(4, 8)))
+    refused = failure(root)
+    assert refused.kind == timings_tool.KIND_SHAPES_DIFFER
+    assert refused.message == (
+        f"{LOG}: measured has the contract {{'kind': 'rmsnorm', 'dtype': 'bf16', "
+        "'layout': 'row_major'} and the shape {'m': 4, 'n': 8}, against "
+        "{'kind': 'elementwise_add', 'dtype': 'bf16', 'layout': 'row_major'} "
+        "and the shape {'m': 4, 'n': 8}"
+    )
+
+
+def test_a_contract_key_differing_in_one_member_is_shapes_differ(root):
+    other = timing()
+    other["contract_key"]["dtype"] = "bf16"
+    run(root, MEASURED, result=timing(intervals=FAST))
+    run(root, AGAINST, result=other)
+    assert failure(root).kind == timings_tool.KIND_SHAPES_DIFFER
+
+
+def test_two_results_of_another_kind_with_equal_contract_and_shape_compare(root):
+    run(root, MEASURED, result=timing(intervals=FAST, entry=RMSNORM, dims=(4, 8)))
+    run(root, AGAINST, result=timing(entry=RMSNORM, dims=(4, 8)))
+    assert compared(root) == answer("lower")
+
+
+@pytest.mark.parametrize("retired", ["board_run_timing", "sim_run_timing"])
+def test_lines_under_a_retired_run_value_are_not_read(root, retired):
+    run(root, MEASURED, step=retired, result={"outcome": "converged"})
+    run(root, AGAINST, step=retired, result=timing())
+    refused = failure(root)
+    assert refused.kind == timings_tool.KIND_MEASUREMENT_MISSING
+    both(root)
+    assert compared(root) == answer("lower")
 
 
 def test_samples_beyond_the_float_range_are_samples_out_of_domain(root):
@@ -534,9 +579,10 @@ def test_a_refusal_of_the_rule_is_samples_out_of_domain(root, monkeypatch):
 
 def infinite(member, ref=MEASURED):
     data = (
-        '{"step": "board_run_timing", "execution": 1, "spend": {}, "result": '
-        '{"outcome": "converged", "shape": {"m": 4, "k": 4, "n": 4}, '
-        f'"intervals_ns": {member["intervals_ns"]}, "memory_bytes": '
+        '{"step": "board_run_timing_v2", "execution": 1, "spend": {}, "result": '
+        '{"outcome": "converged", "contract_key": {"kind": "gemm", "dtype": "fp32", '
+        '"layout": "row_major"}, "shape": {"m": 4, "k": 4, "n": 4}, "unit": "ns", '
+        f'"intervals": {member["intervals"]}, "memory_bytes": '
         f"{member['memory_bytes']}}}}}"
     )
     envelope = (
@@ -550,11 +596,11 @@ def infinite(member, ref=MEASURED):
 def test_a_number_beyond_the_float_range_in_the_samples_is_timing_result_invalid(
     root,
 ):
-    raw(root, infinite({"intervals_ns": "[1, 1, 1, 1, 1e999]", "memory_bytes": 1}))
+    raw(root, infinite({"intervals": "[1, 1, 1, 1, 1e999]", "memory_bytes": 1}))
     run(root, AGAINST, result=timing())
     refused = failure(root)
     assert refused.kind == timings_tool.KIND_TIMING_RESULT_INVALID
-    assert "data.result.intervals_ns" in refused.message
+    assert "data.result.intervals" in refused.message
 
 
 def test_a_number_beyond_the_float_range_in_the_shape_is_timing_result_invalid(root):
@@ -570,7 +616,7 @@ def test_a_number_beyond_the_float_range_in_the_shape_is_timing_result_invalid(r
 
 def test_a_number_beyond_the_float_range_elsewhere_changes_nothing(root):
     samples = json.dumps(FAST)
-    raw(root, infinite({"intervals_ns": samples, "memory_bytes": "1e999"}))
+    raw(root, infinite({"intervals": samples, "memory_bytes": "1e999"}))
     run(root, AGAINST, result=timing())
     assert compared(root) == answer("lower")
     registry = default_registry(Source(root))
@@ -753,6 +799,21 @@ def test_a_broken_step_line_of_another_attempt_is_run_file_invalid(root):
 
 
 SHAPE = {"m": 4, "k": 4, "n": 4}
+KEY = {"kind": "gemm", "dtype": "fp32", "layout": "row_major"}
+V2 = {"intervals": SLOW, "unit": "ns", "shape": SHAPE, "contract_key": KEY}
+
+
+def without(*names):
+    return {
+        "outcome": "converged",
+        **{name: value for name, value in V2.items() if name not in names},
+    }
+
+
+def with_member(name, value):
+    return {"outcome": "converged", **V2, name: value}
+
+
 INVALID = [
     ({"no": "outcome"}, "data.result: lacks the member outcome"),
     (
@@ -763,19 +824,35 @@ INVALID = [
         ),
     ),
     ({"outcome": None}, "data.result.outcome: must be one of"),
+    (without("intervals"), "data.result: lacks the member intervals"),
     (
-        {"outcome": "converged", "shape": SHAPE},
-        "data.result: lacks the member intervals_ns",
-    ),
-    (
-        {"outcome": "not_converged", "intervals_ns": SLOW},
+        {**without("shape"), "outcome": "not_converged"},
         "data.result: lacks the member shape",
     ),
+    (without("unit"), "data.result: lacks the member unit"),
+    (without("contract_key"), "data.result: lacks the member contract_key"),
+    (
+        {"outcome": "converged", "shape": SHAPE, "intervals": SLOW},
+        "data.result: lacks the member unit",
+    ),
     *[
-        (
-            {"outcome": "converged", "shape": SHAPE, "intervals_ns": samples},
-            "data.result.intervals_ns: ",
+        (with_member("unit", unit), "data.result.unit: ")
+        for unit in ("ms", "us", "NS", "", None, 1, ["ns"])
+    ],
+    *[
+        (with_member("contract_key", key), "data.result.contract_key: ")
+        for key in (
+            KEY | {"language": "c"},
+            {"kind": "gemm", "dtype": "fp32"},
+            {},
+            KEY | {"kind": 1},
+            KEY | {"layout": None},
+            ["gemm", "fp32", "row_major"],
+            "gemm",
         )
+    ],
+    *[
+        (with_member("intervals", samples), "data.result.intervals: ")
         for samples in (
             SLOW[:4],
             [],
@@ -788,13 +865,10 @@ INVALID = [
         )
     ],
     *[
-        (
-            {"outcome": "converged", "intervals_ns": SLOW, "shape": shape},
-            "data.result.shape: ",
-        )
+        (with_member("shape", shape), "data.result.shape: ")
         for shape in (
-            SHAPE | {"x": 1},
-            {"m": 4, "k": 4},
+            {},
+            SHAPE | {"x": 0},
             SHAPE | {"k": 0},
             SHAPE | {"n": 4.0},
             SHAPE | {"m": True},
@@ -834,9 +908,21 @@ def test_timing_problem_names_what_an_invalid_result_lacks(root, result, problem
         timing("not_converged", FAST),
         broken(),
         {"outcome": "broken"},
-        {"outcome": "converged", "intervals_ns": SLOW, "shape": SHAPE, "x": None},
+        {"outcome": "converged", **V2, "x": None},
+        {"outcome": "converged", **V2, "shape": {"m": 1}},
+        {"outcome": "converged", **V2, "shape": SHAPE | {"x": 1}},
+        timing(entry=RMSNORM, dims=(4, 8)),
     ],
-    ids=["converged", "not converged", "broken", "bare broken", "other member"],
+    ids=[
+        "converged",
+        "not converged",
+        "broken",
+        "bare broken",
+        "other member",
+        "one shape member",
+        "other shape member",
+        "another kind",
+    ],
 )
 def test_timing_problem_admits_an_admitted_result(result):
     assert timings_tool.timing_problem(result) is None
@@ -856,7 +942,7 @@ def test_a_broken_result_needs_no_samples_or_shape(root):
     ],
 )
 def test_an_invalid_result_of_an_unnamed_attempt_or_step_is_no_failure(root, ref, step):
-    end(root, ref, step=step, result={"outcome": "converged", "intervals_ns": [1]})
+    end(root, ref, step=step, result={"outcome": "converged", "intervals": [1]})
     both(root)
     assert compared(root) == answer("lower")
 
