@@ -9,10 +9,10 @@ dependsOn: []
 touchesFiles:
   - PROCESS/NIGHTLY.md
   - PROCESS/DRIVER.md
-  - ARCHITECTURE/decisions/
+  - .claude/agents/dev-planner.md
   - hilclaw/nightly.py
   - tests/test_nightly.py
-estimatedSize: {loc: 500, files: 6}   # provisional: procedure document ~150, DRIVER §3/§6 text for the D17 (나) issue-to-task flow ~60, entry point ~200, ADR (if the entry is a 2nd-layer module) ~120. Paths are provisional and are fixed when the criteria are refined after HQ-0076; split if the refined scope exceeds the cap (DRIVER §5).
+estimatedSize: {loc: 560, files: 5}   # refined after HQ-0076 (executor): entry point ~470 (formatted, docstring included), procedure document ~75, DRIVER/planner text ~12; no ADR (nothing touches ARCHITECTURE/ or the data-plane schema); tests outside the cap.
 hq: [HQ-0076]
 ---
 ## Why
@@ -51,6 +51,11 @@ Outline only; to be refined within the range of the HQ-0076 answer before the ta
 5. **Tests** per CLAUDE.md test rules: a 2nd-layer module gets its test file with happy/error/branch/negative cases against a stub `claude` written by the tests and fake run outcomes; a script that is a driver helper or CI/hook script gets no tests (rule ⑤). Coverage gates hold.
 6. **No real `claude`** is started by this task, its tests or its executor (D16; only the registered nightly routine does, D17 ③). Nothing requires a logged-in `claude`, Docker, an image, a token or weights on the development machine.
 7. **Procedure**: branch `claude/T-0493-<slug>`, Draft PR with `T-0493` in the title and `Task: T-0493` as the body's last line, review cycle (≤ 7 rounds), CI green, squash-merge (DRIVER §5); DRIVER §9 owner notice if an OD is closed by an ADR.
+
+**Refinement within the HQ-0076 answer** (executor, 2026-10-29; the outline above stands, read with these values):
+- Configuration: the P2-5 configuration as it is (`cpu_standin` x GEMM fp32 row_major m=8 k=16 n=8, N=1, `round_budget` 5, the P2-5 test's tolerance and parameters); no real Llama 3.2 1B weights; daily KST 03:00; no cap beyond `round_budget` (no timeout, no turn count in the entry); same machine as the driver, separate clone, Bypass permissions, with Docker, images and the coder token prepared by the owner; the guard only in the driver clone's settings, the nightly clone without it.
+- Paths: procedure document `PROCESS/NIGHTLY.md`; entry point `hilclaw/nightly.py` (`python -m hilclaw.nightly <base>`) with `tests/test_nightly.py`; DRIVER §1-5, §2, §3-3, §3 BLOCKED reasons, §6, §11 head and D17 row; `.claude/agents/dev-planner.md` one line. No ADR: the entry writes no data-plane record beyond what `hilclaw.new_run` and the run already write, into a per-firing data root.
+- Repeated starts: the entry starts `turn_start` once per firing on the run it just created (ADR-0122's lock limit); anything but `run_over` is a failure.
 
 ## Out of Scope
 
