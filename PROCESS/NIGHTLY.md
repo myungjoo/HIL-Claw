@@ -71,4 +71,4 @@
 ## 9. 사례 저장과의 분리, 가드와의 공존
 
 - **사례 저장과 분리**: 발화마다 새 data root(`<firing>/data`, 빈 git 저장소)를 만들고, 자식 진입점에 `HILCLAW_DATA_REPO_LOCAL_PATH`로 넘긴다. `HILCLAW_DATA_REPO_URL`은 원격이 없다는 표지 `nightly.invalid/no-remote`다. run이 쓰는 사례(FR-18)는 그 폴더에만 남고 `HIL-Claw-data`로 가지 않으며, 다음 발화는 이전 발화의 사례를 읽지 않는다.
-- **가드와의 공존**(HQ-0076 ⑥): 가드(HQ-0007 ④, P0.5-4 뒤의 별도 task)는 드라이버 clone의 설정에만 등록하고, nightly clone에는 가드가 없다. 드라이버 clone에서 executor가 시작하는 테스트 run(D25)과 가드가 함께 서는 방법은 이 답 밖이며 정해지지 않았다(DRIVER §1-5). 따라서 가드 task는 nightly clone도 함께 받는 추적 파일(`.claude/settings.json`)이 아니라 드라이버 clone에만 있는 등록 자리를 쓴다(T-0493의 독해). 진입점은 자식 진입점의 환경에서 호스트 Claude Code 세션의 표지 `CLAUDECODE`·`CLAUDE_CODE_ENTRYPOINT`를 뺀다 — turn 세션이 중첩 세션으로 거부되지 않게 하려는 것이다.
+- **가드와의 공존**(HQ-0076 ⑥): 가드(HQ-0007 ④, P0.5-4 뒤의 별도 task)는 드라이버 clone의 설정에만 등록하고, nightly clone에는 가드가 없다. 따라서 가드 task는 nightly clone도 함께 받는 추적 파일(`.claude/settings.json`)이 아니라 드라이버 clone에만 있는 등록 자리를 쓴다(T-0493의 독해). 드라이버 clone에서 executor가 시작하는 테스트 run(D25)과 가드가 함께 서는 방법은 이 답 밖이며 정해지지 않았다(DRIVER §1-5). 진입점은 자식 진입점의 환경에서 호스트 Claude Code 세션의 표지 `CLAUDECODE`·`CLAUDE_CODE_ENTRYPOINT`를 뺀다 — turn 세션이 중첩 세션으로 거부되지 않게 하려는 것이다.
