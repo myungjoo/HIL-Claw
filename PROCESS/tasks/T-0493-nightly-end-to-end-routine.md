@@ -2,7 +2,7 @@
 id: T-0493
 title: Add the nightly end-to-end routine of DRIVER D17 - its procedure document and the entry point it calls to start a runtime run with a real `claude` and leave a pass/fail regression signal with logs - and record the D17 (나) design (PLAN P2-10)
 phase: P2
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: code
 coversReq: [S0, S1, D17, FR-1, FR-4, "PLAN P2-10"]
 dependsOn: []
@@ -21,7 +21,7 @@ PLAN P2-10 is the next checklist item in PLAN P2's order (round loop -> first ru
 
 D17 leaves two groups undecided:
 - **(가) owner/operator values**, which PLAN P2-10 says must be asked as a DRIVER §8 HQ before the task is made: the nightly run's configuration (starting candidate: the P2-5 configuration), the time it runs, the usage cap, the routine's permission mode, work folder and machine, and how the `claude` child-process guard (HQ-0007 answer ④; not built yet, PLAN P0.5-4) and the nightly routine stand together. PLAN P2-15 adds: whether the nightly routine runs the real Llama 3.2 1B weights. These are asked in **HQ-0076**. This task is BLOCKED until HQ-0076 is answered; the acceptance criteria below are an outline and are refined (by the planner or the integrator, per DRIVER §3-2 when HQ-0076 resolves) within the answer's range.
-- **(나) design the task decides through review**: where the result is recorded and how the §3 driver reads it; who registers a failure issue, its form, de-duplication, and the label/criteria by which the driver accepts an issue as a task; the rule that tells a code defect from an environment cause; the HQ reason and `taskId` for an environment cause and what happens to its issue; how an issue becomes a task (who writes the task file, which text of DRIVER §3-3/§6 changes) and its order against PLAN items; when a failure issue is closed; what happens when the nightly fails again after a fix (reopen or new issue, repeat bound and how the owner is told); exclusion against the §3 driver and measurement interference; and keeping the nightly run's records apart from case storage. Parts that touch the data plane or `ARCHITECTURE/` follow CLAUDE.md A-13 BLOCKED reasons and DRIVER §9.
+- **(나) design the task decides through review**: where the result is recorded and how the §3 driver reads it; who registers a failure issue, its form, de-duplication, and the label/criteria by which the driver accepts an issue as a task; the rule that tells a code defect from an environment cause; the HQ reason and `taskId` for an environment cause and what happens to its issue; how an issue becomes a task (who writes the task file, which text of DRIVER §3-3/§6 changes) and its order against PLAN items (DRIVER §6 D24 ② fixes it: failure issues come before PLAN items; this task decides only the order among failure issues, and changing D24 ② needs an HQ to the owner under DRIVER §8); when a failure issue is closed; what happens when the nightly fails again after a fix (reopen or new issue, repeat bound and how the owner is told); exclusion against the §3 driver and measurement interference; and keeping the nightly run's records apart from case storage. Parts that touch the data plane or `ARCHITECTURE/` follow CLAUDE.md A-13 BLOCKED reasons and DRIVER §9.
 
 Related readiness: T-0492 makes `python -m hilclaw.turn_start` keep exactly one outcome line on standard output under a real `-p` session, which an unattended nightly starter needs to read the outcome. If T-0492 is not `DONE` when this task is refined, add it to `dependsOn`.
 

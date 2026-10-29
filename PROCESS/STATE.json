@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "phase": "P1",
-  "currentTask": "T-0511",
-  "nextTask": "T-0511",
+  "currentTask": "T-0493",
+  "nextTask": null,
   "lock": {
-    "owner": "AKIHA:4ee9eac1",
-    "acquiredAt": "2026-10-29T05:17:51Z",
+    "owner": "AKIHA:7dab11b3",
+    "acquiredAt": "2026-10-29T06:47:53Z",
     "ttlMinutes": 180
   },
   "humanQuestions": [
@@ -765,7 +765,9 @@
       "reason": "owner-only-decision",
       "question": "PLAN P2-10 nightly end-to-end 루틴(DRIVER D17)의 task(T-0493)를 실행하기 전에, D17 행이 오너·운영자 값으로 남긴 (가)를 묻습니다. (1) nightly run의 구성: (a) P2-5 구성 그대로 — cpu_standin × GEMM fp32, N=1, 5라운드 (b) (a)에 더해 P2-14가 착지한 뒤 Llama 3.2 1B 합성 가중치 run (c) 그 밖(지정). (2) PLAN P2-15(실제 Llama 3.2 1B 가중치)를 nightly에서 돌릴지: (a) 돌리지 않음 — 오너 수동 확인만 (b) 돌림 — 가중치·토크나이저 파일 위치 지정. (3) 실행 시각: 지정(예: 매일 KST 03:00). (4) 사용량 상한: (a) run의 round_budget 외 별도 상한 없음 (b) 하루 turn 수나 시간의 상한(값 지정). (5) 루틴의 머신·작업 폴더·권한 모드: (a) 드라이버와 같은 머신, 별도 clone, Bypass permissions (b) 별도 머신(지정) (c) 그 밖. 그 머신에 로그인된 claude 외에 Docker, 코더·stand-in 이미지(HILCLAW_CODER_IMAGE·HILCLAW_STANDIN_IMAGE), 코더 토큰(HILCLAW_CODER_OAUTH_TOKEN)을 둘 수 있는지도 함께 답해 주십시오. (6) claude 자식 프로세스 가드(HQ-0007 ④; 아직 없음, P0.5-4 미완)와 nightly 루틴이 함께 서는 방법: (a) 가드는 드라이버 clone 설정에만 등록하고 nightly는 가드 없는 별도 clone에서 돈다 (b) 가드가 nightly 루틴의 표지(예: 환경변수)를 보면 허용 (c) 그 밖. 답이 없는 동안 막히는 것: T-0493(P2-10). 막히지 않는 것: T-0492, P2-11~P2-14의 task.",
       "askedAt": "2026-10-26T10:55:19Z",
-      "issueComment": null
+      "issueComment": null,
+      "resolvedAt": "2026-10-29T06:24:39Z",
+      "decision": "(1) (a) P2-5 구성 그대로 — cpu_standin × GEMM fp32, N=1, 5라운드. (2) (a) 돌리지 않음 — 오너 수동 확인만. (3) 매일 KST 03:00. (4) (a) run의 round_budget 외 별도 상한 없음. (5) (a) 드라이버와 같은 머신, 별도 clone, Bypass permissions — Docker·코더·stand-in 이미지·코더 토큰은 오너가 그 머신에 준비한다(준비 여부는 아직 확인되지 않음). (6) (a) 가드는 드라이버 clone 설정에만 등록하고 nightly는 가드 없는 별도 clone에서 돈다. Owner's note: 오너 2026-10-29 채팅 \"문제가 생기면 나중에 수정하고, 일단은 권고안대로 출발\" — 통합자 권고를 그대로 채택했다. 첫 run은 D24 E2 (a)대로 T-0493이 착지한 뒤 오너가 수동으로 앞당긴다."
     },
     {
       "id": "HQ-0077",
@@ -786,19 +788,29 @@
       "issueComment": null,
       "resolvedAt": "2026-10-29T02:18:47Z",
       "decision": "(c) 그 밖 — 결과 형식 v2 - 오너(채팅, 2026-10-29): `correctness.check`와 `sim.run`·`board.run`의 결과를 하나의 v2 형식으로 일반화한다. ① 두 도구 모두 적용하고 fp32 `gemm`도 v2로 옮긴다 — 기존 `step` 값(`correctness_check_sim`·`correctness_check_board`, `correctness_check_bf16_sim`·`correctness_check_bf16_board`, `sim_run_timing`·`board_run_timing`)은 폐기하고 재사용하지 않으며, 도구·지점마다 새 `step` 값 하나를 쓴다(저장된 run 데이터는 아직 없다). ② 결과에 커널 계약 표의 키(kind·dtype·layout)를 담는 멤버를 둔다. ③ `shape`는 그 kind의 shape 멤버 전부다(계약이 정하는 값). ④ `counts`는 계약의 출력·inout operand 이름별 항목으로 하고, 허용오차로 판정하는 operand는 `failed`·`non_finite`, bit-exact로 판정하는 operand는 `differs`를 갖는다 — HQ-0077 답의 `cache_differs` 부분을 대체한다. ⑤ `sim.run`·`board.run`의 측정값에 단위 멤버를 두고, 값은 당분간 `ns` 하나다(단위 값 목록을 열린 목록으로 지정하는 것은 HW 대상 설계 때 오너가 정한다). 그 밖의 멤버는 그대로 옮기고, 멤버 이름·철자와 세부는 ADR이 정한다. 순서: v2의 ADR과 두 도구의 코드를 먼저 착지하고 T-0505의 bf16 타이밍 슬라이스는 그 위에 쌓는다 — bf16 타이밍을 기존 형식으로 먼저 만들지 않는다."
+    },
+    {
+      "id": "HQ-0079",
+      "taskId": "T-0511",
+      "reason": "ci-failure",
+      "question": "[쟁점] T-0511의 PR #322는 리뷰 2라운드에서 Approve되었으나 CI가 빨강이라 A-13에 따라 merge하지 못했다. executor 보고: GitHub 러너 이미지가 ubuntu-24.04에서 ubuntu-26.04(clang 21)로 바뀐 뒤 main에서도 tests/test_first_run_end_to_end.py 10건이 실패한다(sim 체크 결과 broken); 이전에 green이던 커밋을 재실행해도 같다(드라이버 확인: 05:18 이후 main CI run 연속 failure). [선택지] (a) e2e 실패를 새 러너 이미지에 맞게 고치는 수정 task를 먼저 두고, CI green 뒤 #322를 merge한다(executor 권장). (b) CI 워크플로의 runs-on을 ubuntu-24.04로 고정한다. (c) 실패가 #322와 무관하다는 근거로 지금 #322를 merge한다. [막히는 것] #322 merge와 그 뒤 ADR-0183/ADR-0181 slice, 그리고 CI green을 요구하는 모든 코드 모드 task. [막히지 않는 것] T-0511의 코드·리뷰는 끝났고 PR 브랜치 claude/T-0511-run-tools-v2에 남아 있다; 문서 모드 task.",
+      "askedAt": "2026-10-29T06:40:00Z",
+      "issueComment": null,
+      "resolvedAt": "2026-10-29T06:56:19Z",
+      "decision": "(a) e2e 실패를 새 러너 이미지에 맞게 고치는 수정 task를 먼저 두고, CI green 뒤 #322를 merge한다. Owner's note: 오너 2026-10-29 채팅 \"(a) 수정 task 먼저\". 통합자 독해: 수정 task는 D24 ①의 동결 대상이 아니다 — 깨진 테스트가 P2-5 구성의 스텁 end-to-end이고, T-0493(코드 모드)의 merge에도 CI green이 필요하다. T-0511은 수정 task가 착지해 main CI가 green이 된 뒤 재개한다."
     }
   ],
   "counters": {
-    "iterations": 534,
+    "iterations": 535,
     "tasksDone": 503,
-    "tasksBlocked": 32,
-    "reviewRoundsTotal": 1670
+    "tasksBlocked": 33,
+    "reviewRoundsTotal": 1672
   },
   "lastIteration": {
-    "at": "2026-10-29T05:09:06Z",
-    "owner": "AKIHA:053b18aa",
-    "taskId": "T-0510",
-    "outcome": "DONE"
+    "at": "2026-10-29T06:40:00Z",
+    "owner": "AKIHA:4ee9eac1",
+    "taskId": "T-0511",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }
