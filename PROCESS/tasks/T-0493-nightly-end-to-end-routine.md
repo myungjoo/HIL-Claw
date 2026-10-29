@@ -2,7 +2,7 @@
 id: T-0493
 title: Add the nightly end-to-end routine of DRIVER D17 - its procedure document and the entry point it calls to start a runtime run with a real `claude` and leave a pass/fail regression signal with logs - and record the D17 (나) design (PLAN P2-10)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [S0, S1, D17, FR-1, FR-4, "PLAN P2-10"]
 dependsOn: []
@@ -70,3 +70,12 @@ Outline only; to be refined within the range of the HQ-0076 answer before the ta
 - Persistent nightly data root (DRIVER §11 D25, owner 2026-10-29: case storage allowed until 2026-11-30, with cases accumulating across firings in a nightly-only data root; the entry-point change is "P2-10의 task나 그 뒤 task의 일"). Required by D25, so not subject to the D18 hold; time-bound, it lapses on 2026-12-01. Change `hilclaw.nightly` to reuse `<base>/data` instead of `<firing>/data` and update PROCESS/NIGHTLY.md §9. The return to D17 ② on 2026-12-01 and what happens to the accumulated cases stay undecided (D25 row).
 
 ## Result
+
+**DONE.** PR #323 (https://github.com/myungjoo/HIL-Claw/pull/323) squash-merged as `00fa1622` (code mode), branch deleted, final CI green. Review: 7 rounds, all needed; rounds 1-2 Request changes (owner-only report reads through an owner-filtered `gh --jq` command, task-generation condition, repeat bound over landed fixes, a real `new_run` test), rounds 3-7 Approve. The PR first stopped on the pre-existing main CI failure of HQ-0079 (10 tests in `tests/test_first_run_end_to_end.py` under the ubuntu-26.04 runner); after the owner's #324 (`e91779ff`) turned main green, origin/main was merged into the branch three times without force push (two conflicts in `PROCESS/DRIVER.md` with the D25 commits, resolved by re-applying the T-0493 edits on main's text) and the wording was aligned with D25 (full-loop test runs only on nightly or owner request; the case-storage exception until 2026-11-30).
+- Landed: `PROCESS/NIGHTLY.md` (procedure, HQ-0076 operating values, the D17 (나) design), `hilclaw/nightly.py` (`python -m hilclaw.nightly <base>`; Python, the language of the runtime entries it drives), `tests/test_nightly.py` (stub `claude`/`clang`/`docker`, never executed; one test runs the real `hilclaw.new_run`), DRIVER.md §1-5, §2, §3-3, BLOCKED reasons, §6, §11 head and D17 row, one line in `.claude/agents/dev-planner.md`, a docstring in `hilclaw/standin_profile.py`. No ADR, no OD closed, no `ARCHITECTURE/` change.
+- D21 list-assertion edit: `tests/test_standin_profile.py::test_module_is_bound_by_the_start_only_and_imports_no_store` (allowed binders gain `nightly.py`).
+- Local: WSL2 full suite at the first commit 37628 passed / 50 skipped (the one failure fixed by the D21 edit); `hilclaw/nightly.py` line coverage 97%; ruff clean.
+- Open in the routine-vs-guard question: how D25 test runs and the `claude` child-process guard stand together is left undecided in DRIVER §1-5, to be asked by HQ before the guard task is made.
+- Runtime acceptance item: recorded as RA-0055 in `PROCESS/RuntimeAcceptance.md`.
+- Follow-up: persistent nightly data root (above; D25, due 2026-11-30).
+- No real `claude` was started (D16).
