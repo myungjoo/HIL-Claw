@@ -69,4 +69,44 @@ hq: []
 
 ## Follow-ups
 
+- ADR-0181 decision 8 item 3 (run tools for the bf16 kinds): `run_tool._perform` unpacks `m, k, n = admitted.dims` into `TimingParameters`. That holds only while `contract_table.run_covers` admits fp32 `gemm` alone, so that slice must give the timing parameters per kind (review round 2, Nit 5).
+- CI on `main` (not this task's change): since the runner image moved from `ubuntu-24.04` to `ubuntu-26.04` (Ubuntu clang 21.1.8), 10 tests of `tests/test_first_run_end_to_end.py` fail. The correctness check at `sim` comes back `broken`. The same commit that was green on 2026-10-29 at 05:18 UTC (run 40822609980, attempt 1) fails on attempt 2. The tests pass under WSL Ubuntu with an older clang.
+
 ## Result
+
+- **BLOCKED, not merged.**
+  - The code is done and the reviewer approved it.
+  - CI is not green, and the cause is the `main` failure under Follow-ups, not this change. A-13 requires CI green to merge.
+- **PR**: #322, Draft, with the DONOTMERGE label. Branch `claude/T-0511-run-tools-v2`, head commit `a2fbfcb3` plus this Result commit.
+- **Review**: 2 rounds.
+  - Round 1: Request changes, because the PR body lacked the A-13 reading. The reading was added, and Nits 3 and 5 were fixed.
+  - Round 2: Approve with Nits only. Nits 1 and 2 (PR body) were fixed without re-review (D20). Nits 3 and 4 were not taken, with the reasons in the PR comment, and Nit 5 is in Follow-ups.
+- **Tests**:
+  - Windows, full suite: 35834 passed, 1930 skipped. The skips are the clang, `getuid` and container tests.
+  - `hilclaw/` line coverage is 97 %, and the eight touched modules are at 100 %.
+  - WSL Ubuntu (clang, Python 3.12), `tests/harness` plus the test files up to and including `test_first_run_end_to_end.py`: 13212 passed.
+  - CI: the shellcheck, C and test-presence gates pass. The Python 3.11 and 3.14 gates and the coverage gate fail on the 10 end-to-end tests, as `main` does.
+- **Language**: Python, the language of every touched layer-2 module. No new module.
+- **Files changed (8 non-test)**, 317 insertions and 190 deletions: `run_identity.py`, `run_result.py`, `run_admission.py`, `run_tool.py`, `layout.py`, `timings_tool.py`, `verdicts_tool.py` (docstrings only) and `harness/timing_finding.py`.
+- **`Admitted` fields changed**: `(m, k, n, n_max, sample_form, bound)` is now `(entry, dims, n_max, sample_form, bound)`.
+  - The entry is the table entry with the record's `kind`, `dtype` and `layout`, looked up after `covers` answered `True`, so `covers` is still asked once.
+  - A record that no entry matches is answered `op_signature_not_covered`.
+- **Builders**:
+  - `run_result.completed(outcome, entry, dims, *, unit, resolution, intervals, memory_bytes, n_max, sample_form, bound)`.
+  - `run_result.broken(condition, entry, dims, *, n_max, sample_form, bound)`.
+  - New constant `UNITS = ("ns",)`.
+  - They take any entry of `contract_table.TABLE`.
+- **Edited list assertions (D21)**:
+  - `tests/test_run_identity.py`: step literals, spelt-once strings.
+  - `tests/test_run_result.py`: public names, imports, parameter list.
+  - `tests/test_run_admission.py`: `Admitted._fields` (the test is renamed `..._five_fields_...`), imports, expected tuples.
+  - `tests/test_layout.py`: `BUILD_LOG_STEPS`, and the retired-step list. That test is renamed `test_a_retired_step_is_rejected`.
+  - The v2 rewrites of the other test files are listed in the PR body.
+- **Records now less exact** (not edited):
+  - ADR-0062 decision 3 names `sim_run_timing` / `board_run_timing`, and ADR-0063 decisions 4 and 9 name the old members. ADR-0183 decisions 2 and 4 replace them, as its Consequences say.
+  - ADR-0108's walk-through file names (`build-log-sim_run_timing-01.txt`) are now formed with the v2 values (ADR-0183 decision 7).
+  - ADR-0140 decision 3's admitted timing result (`intervals_ns`, a `shape` of exactly `m`, `k`, `n`) is replaced by ADR-0183 decision 8.
+- **Runtime acceptance items**: none.
+- **Next candidate**:
+  - First, the CI fix under Follow-ups. Then merge PR #322 once CI is green.
+  - Then ADR-0181 decision 8 item 1, with item 3 reduced as ADR-0183 decision 9 item 4 says.
