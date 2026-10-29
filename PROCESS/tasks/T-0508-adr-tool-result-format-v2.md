@@ -2,7 +2,7 @@
 id: T-0508
 title: Write the v2 record — one result format for correctness.check, sim.run and board.run (owner HQ-0078), its step values and the code slices that migrate fp32 gemm and the bf16 checks (part of OD-18 sub-question ⑩ and OD-8)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [C-6, FR-9, FR-10, NFR-1, OD-8, OD-18, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: []
@@ -86,4 +86,5 @@ hq: []
   1. Code: v2 check result builder + sdpa per-allocation cache counts — `hilclaw/check_result.py`, `hilclaw/harness/bf16_sdpa_kv_cache_verification.py` (+ tests); no tool path change.
   2. Code: `correctness.check` v2 switch — `check_identity.py`, `check_tool.py`, `check_admission.py`, `check_judging.py`, `check_answer.py`, `check_result.py`, `layout.py`, `check_standing.py`, `checks_tool.py`, `spec_feedback.py`, `verdicts_tool.py` (check part), maybe `hw_tool.py`; may need cutting along the cap.
   3. Code: `sim.run`/`board.run` v2 — `run_identity.py`, `run_result.py`, `run_tool.py`, `run_admission.py` (if needed), `layout.py`, `timings_tool.py`, `verdicts_tool.py`, `harness/timing_finding.py`.
-- **Owner notice (#5)**: see below.
+- **Landed commit**: `8b6c7318` on `main`; branch `claude/T-0508-tool-result-format-v2` deleted (local and remote).
+- **Owner notice (#5)**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6486802374
