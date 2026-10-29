@@ -2,7 +2,7 @@
 id: T-0511
 title: Land ADR-0183 code slice 3 — sim.run / board.run write v2 results under sim_run_timing_v2 / board_run_timing_v2 (contract_key, kind shape, unit "ns", resolution, intervals), run-line readers on the new values
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-1, OD-8, OD-13, OD-16, OD-18, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0509, T-0510]
