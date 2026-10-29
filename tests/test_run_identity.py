@@ -32,6 +32,8 @@ OTHER_STRINGS = [
     "",
     "sim_run_timing",
     "board_run_timing",
+    "sim_run_timing_v2",
+    "board_run_timing_v2",
 ]
 
 
@@ -119,7 +121,7 @@ def code_strings(text):
 
 @pytest.mark.parametrize(
     ("step", "literal"),
-    [(STEP_SIM_RUN, "sim_run_timing"), (STEP_BOARD_RUN, "board_run_timing")],
+    [(STEP_SIM_RUN, "sim_run_timing_v2"), (STEP_BOARD_RUN, "board_run_timing_v2")],
 )
 def test_a_step_value_is_a_name_of_its_own(step, literal):
     assert step == literal
@@ -281,9 +283,11 @@ def test_the_text_and_the_code_hold_none_of_the_kept_out_strings():
         "execution",
     ):
         assert not [string for string in code if kept_out in string], kept_out
-    for spelt_once in ("sim_run_timing", "board_run_timing"):
+    for spelt_once in ("sim_run_timing_v2", "board_run_timing_v2"):
         spelt = [string for string in code if spelt_once in string]
         assert spelt == [f'"{spelt_once}"']
+    for retired in ('"sim_run_timing"', '"board_run_timing"'):
+        assert retired not in code
 
 
 def test_public_names_of_the_module_and_no_default():

@@ -665,11 +665,13 @@ CALL = {"run_id": RUN, "round": ROUND, "candidate": 2, "attempt": 1, "execution"
 NUMBERS = {"round": ROUND, "candidate": 2, "attempt": 1}
 CONVERGED = {
     "outcome": "converged",
+    "contract_key": {"kind": "gemm", "dtype": "fp32", "layout": "row_major"},
     "shape": SHAPE,
     "n_max": N_MAX,
     "sample_form": "interval",
-    "resolution_ns": 1,
-    "intervals_ns": [1000000] * N_MIN,
+    "unit": "ns",
+    "resolution": 1,
+    "intervals": [1000000] * N_MIN,
     "ceiling": "not_stated",
 }
 REPO_ROOT = Path(__file__).resolve().parent.parent

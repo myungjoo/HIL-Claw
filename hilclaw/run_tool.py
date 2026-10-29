@@ -5,9 +5,10 @@ decision 6 is the order of a call, with
 ``ARCHITECTURE/decisions/ADR-0067-od18-run-tools-admission-kinds.md``
 decision 5 for the order of moment ④ and the place of the draw (ADR-0064
 decisions 2 and 3). ADR-0061 decisions 3, 4 and 6 are the split between the
-tool function and the operation, ADR-0063 the result, ADR-0065 the form of
-an answer, ADR-0068 a tool failure an operation raises and ADR-0108 the
-compiler's log of the timing build. :func:`tool_function` joins the modules
+tool function and the operation, ADR-0183 decision 4 the result (the v2
+result of ADR-0063's members), ADR-0065 the form of an answer, ADR-0068 a
+tool failure an operation raises and ADR-0108 the compiler's log of the
+timing build. :func:`tool_function` joins the modules
 that render them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
 
 1. ① The request is checked: the frame, then the member list
@@ -37,8 +38,11 @@ that render them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
    converged, or broken with the condition of ADR-0063 decision 3 for the
    judgement. An answer of the form (B) is broken with that condition. The
    verdict is computed where a ``bound`` is stated (ADR-0063 decision 7), by
-   :mod:`hilclaw.run_result`. A raised request to end passes through, and
-   nothing is written.
+   :mod:`hilclaw.run_result`, which is handed the covering entry and the
+   dimensions of the admitted run and, for a completed run, the unit
+   ``"ns"`` and the judgement's resolution and intervals (ADR-0183
+   decision 4). A raised request to end passes through, and nothing is
+   written.
 7. ⑦ The end line is appended with the result, or with the ``failure`` of a
    call that made none: ``operation_answer_invalid`` for an answer of
    neither form (ADR-0065 decision 7), the pair
@@ -95,6 +99,9 @@ Choices that are this module's own and no rule of a record:
   message.
 * :mod:`hilclaw.harness.timing` is imported with the module: it imports no
   NumPy, and a test pins that.
+* The timing parameters take ``m``, ``k`` and ``n`` from the admitted
+  dimensions: :func:`hilclaw.contract_table.run_covers` admits fp32 ``gemm``
+  alone, whose dimensions are those three.
 
 What the module does not do: it registers nothing and defines no tool
 definition; the input schema and the descriptions are those of
@@ -141,6 +148,7 @@ _OUTCOMES = {
     measurement.State.CONVERGED: run_result.CONVERGED,
     measurement.State.NOT_CONVERGED: run_result.NOT_CONVERGED,
 }
+(_UNIT,) = run_result.UNITS
 _CONDITIONS = {
     timing.Broken.REPORT_FORM: "report_form",
     timing.Broken.ZERO_INTERVAL: "zero_interval",
@@ -179,8 +187,8 @@ def tool_function(tool, *, source, table, seeds, covers):
     table nothing.
 
     The function returned takes one request and returns the result of the
-    call, a ``dict`` (ADR-0063). The module docstring has the order of a
-    call. It raises :class:`hilclaw.tools.ToolFailure` as the function of
+    call, a ``dict`` (ADR-0183 decision 4). The module docstring has the
+    order of a call. It raises :class:`hilclaw.tools.ToolFailure` as the function of
     :func:`hilclaw.hw_tool.stepped_tool_function` does, ``invalid_request``
     for a member no record names included; of one of
     :data:`hilclaw.run_admission.KINDS` and then of
@@ -242,10 +250,11 @@ def _perform(step, data_root, request, hw_profile, operation, drawn):
     output_path = layout.attempt_artefact(*attempt, "output")
     log_path = layout.build_log_file(*attempt, step, request["execution"])
     admitted = drawn.admitted
+    m, k, n = admitted.dims
     parameters = run_parameters.TimingParameters(
-        admitted.m,
-        admitted.k,
-        admitted.n,
+        m,
+        k,
+        n,
         admitted.n_max,
         admitted.sample_form,
         drawn.seed,
@@ -272,25 +281,25 @@ def _perform(step, data_root, request, hw_profile, operation, drawn):
 
 
 def _result(answer, admitted):
+    contract = (admitted.entry, admitted.dims)
     common = {
-        "m": admitted.m,
-        "k": admitted.k,
-        "n": admitted.n,
         "n_max": admitted.n_max,
         "sample_form": admitted.sample_form,
         "bound": admitted.bound,
     }
     if type(answer) is str:
-        return run_result.broken(answer, **common)
+        return run_result.broken(answer, *contract, **common)
     judgement = timing.judge_report(
         answer.report, sample_form=admitted.sample_form, n_max=admitted.n_max
     )
     if judgement.broken is not None:
-        return run_result.broken(_CONDITIONS[judgement.broken], **common)
+        return run_result.broken(_CONDITIONS[judgement.broken], *contract, **common)
     return run_result.completed(
         _OUTCOMES[judgement.state],
-        intervals_ns=judgement.intervals_ns,
-        resolution_ns=judgement.resolution_ns,
+        *contract,
+        unit=_UNIT,
+        resolution=judgement.resolution_ns,
+        intervals=judgement.intervals_ns,
         memory_bytes=answer.memory_bytes,
         **common,
     )

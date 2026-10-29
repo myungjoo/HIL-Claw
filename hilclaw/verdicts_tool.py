@@ -49,8 +49,8 @@ decision 4 (:data:`KIND_CHECK_UNFOUNDED`); every ``comparison`` entry founded
 taken name, ``verdicts_not_written`` for any other failure of the file
 system). Within each of the last three entry checks the first failing entry
 in record order decides. The two scopes of the step pass are disjoint: a
-``check`` entry names a ``correctness_check_*`` step and a ``comparison``
-entry a ``*_run_timing`` step, so no end line is held to both rules.
+``check`` entry names a ``correctness_check_*_v2`` step and a ``comparison``
+entry a ``*_run_timing_v2`` step, so no end line is held to both rules.
 
 A ``comparison`` entry, counted or not, is founded when
 :func:`hilclaw.timings_tool.compare` over the lines read, for its ``metric``,
@@ -77,9 +77,12 @@ identities) is never founded. A missing log, or a missing run directory below
 an existing data root, holds no line: a record without a ``check`` entry is
 then written. What the evidence names, and a ``"pass"`` entry against the
 standing, are not held (ADR-0131 decision 5). The lines of a ``point`` here
-are those of both its ``step`` values in
-:data:`hilclaw.check_standing.STEPS_OF`, that of ADR-0040 decision 3 and the
-bf16 one of ADR-0177 decision 3 (ADR-0178 decision 1).
+are those of its one ``step`` value in
+:data:`hilclaw.check_standing.STEPS_OF`, ``correctness_check_sim_v2`` or
+``correctness_check_board_v2``, and those of a ``comparison`` entry those of
+:data:`hilclaw.timings_tool.STEP_OF`, ``sim_run_timing_v2`` or
+``board_run_timing_v2`` (ADR-0183 decision 8). A line under a value
+ADR-0183 retired is neither read nor refused.
 
 :func:`hilclaw.verdicts_file.validate` is unchanged: a file that breaks
 ADR-0140 decision 5 is still a valid file by ADR-0071, and the kinds of that
