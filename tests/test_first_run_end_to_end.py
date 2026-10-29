@@ -530,8 +530,8 @@ def test_round_zero_of_a_first_run_ends_the_run_over(world):
         events.validate(line)
     assert [line["kind"] for line in lines] == ["step_started", "step_ended"] * 3
     assert [line["data"]["step"] for line in lines[1::2]] == [
-        "correctness_check_sim",
-        "correctness_check_board",
+        "correctness_check_sim_v2",
+        "correctness_check_board_v2",
         "board_run_timing",
     ]
     assert {(line["round"], line["candidate"], line["attempt"]) for line in lines} == {
@@ -542,10 +542,15 @@ def test_round_zero_of_a_first_run_ends_the_run_over(world):
         checks_tool.log_lines(world.root, run_id),
         lambda key: key[0].startswith("correctness_check"),
     )
-    for name in ("correctness_check_sim", "correctness_check_board"):
+    for name in ("correctness_check_sim_v2", "correctness_check_board_v2"):
         (ended,) = checks[(name, 0, 1, 1)]
         assert ended["result"]["outcome"] == "pass"
-        assert ended["result"]["counts"] == [{"failed": 0, "non_finite": 0}]
+        assert ended["result"]["counts"] == {"c": [{"failed": 0, "non_finite": 0}]}
+        assert ended["result"]["contract_key"] == {
+            "kind": "gemm",
+            "dtype": "fp32",
+            "layout": "row_major",
+        }
         assert (
             check_standing.standing(lines, name, 0, 1, 1)
             is check_standing.Standing.VERIFIED
@@ -556,8 +561,8 @@ def test_round_zero_of_a_first_run_ends_the_run_over(world):
     assert baseline["shape"] == SHAPE
     assert sorted(path.name for path in (run / MEASURE).iterdir()) == [
         "build-log-board_run_timing-01.txt",
-        "build-log-correctness_check_board-01.txt",
-        "build-log-correctness_check_sim-01.txt",
+        "build-log-correctness_check_board_v2-01.txt",
+        "build-log-correctness_check_sim_v2-01.txt",
     ]
     for absent in ("artifacts.json", "rounds/0000/eval", "rounds/0000/decision"):
         assert not (run / absent).exists()
@@ -654,9 +659,11 @@ def test_round_zero_stops_without_an_attempt_that_stands(world, kernel):
     else:
         assert steps(log, 1) == ROUND_ZERO[:11] + stop
         assert (run / ATTEMPT / "output/gemm.c").is_file()
-        assert [line["data"]["step"] for line in lines] == ["correctness_check_sim"] * 2
+        assert [line["data"]["step"] for line in lines] == [
+            "correctness_check_sim_v2"
+        ] * 2
         assert lines[-1]["data"]["result"]["outcome"] == "fail"
-        found = check_standing.standing(lines, "correctness_check_sim", 0, 1, 1)
+        found = check_standing.standing(lines, "correctness_check_sim_v2", 0, 1, 1)
         assert found is check_standing.Standing.NOT_VERIFIED
     assert steps(log, 2) == [
         ("round-manager", "run_commit"),
@@ -931,12 +938,12 @@ def test_five_rounds_of_a_first_run_end_the_run_over(world):
             if (line["round"], line["candidate"], line["attempt"]) == (round_, 1, 1)
         ]
         assert [line["data"]["step"] for line in mine[1::2]] == [
-            "correctness_check_sim",
-            "correctness_check_board",
+            "correctness_check_sim_v2",
+            "correctness_check_board_v2",
             "board_run_timing",
         ]
         for name, line in zip(
-            ("correctness_check_sim", "correctness_check_board"), mine[1:4:2]
+            ("correctness_check_sim_v2", "correctness_check_board_v2"), mine[1:4:2]
         ):
             assert line["data"]["result"]["outcome"] == "pass"
             found = check_standing.standing(lines, name, round_, 1, 1)
@@ -1045,8 +1052,10 @@ def test_a_round_whose_attempt_does_not_stand_still_gets_its_verdicts(world, ker
         assert lines == []
         evidence = []
     else:
-        assert [line["data"]["step"] for line in lines] == ["correctness_check_sim"] * 2
-        found = check_standing.standing(lines, "correctness_check_sim", 1, 1, 1)
+        assert [line["data"]["step"] for line in lines] == [
+            "correctness_check_sim_v2"
+        ] * 2
+        found = check_standing.standing(lines, "correctness_check_sim_v2", 1, 1, 1)
         assert found is check_standing.Standing.NOT_VERIFIED
         ref = {"round": 1, "candidate": 1, "attempt": 1}
         evidence = [{"kind": "check", "ref": ref, "point": "sim", "outcome": "fail"}]

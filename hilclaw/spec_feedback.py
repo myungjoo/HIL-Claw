@@ -19,20 +19,25 @@ decision 3:
   :func:`hilclaw.checks_tool.checks_in_order` for the found attempts at the
   two points, with the kinds of ADR-0131 decision 3; each attempt's standing
   at each point is :func:`hilclaw.check_standing.point_standing`. The lines of
-  a point are those of both its ``step`` values in
-  :data:`hilclaw.check_standing.STEPS_OF`, that of ADR-0040 decision 3 and the
-  bf16 one of ADR-0177 decision 3 (ADR-0178 decision 1).
+  a point are those of its one ``step`` value in
+  :data:`hilclaw.check_standing.STEPS_OF`, ``correctness_check_sim_v2`` or
+  ``correctness_check_board_v2``, the value of every contract
+  (``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md``
+  decision 8, in place of the two values per point of ADR-0178 decision 1);
+  a line under a value ADR-0183 retired is neither read nor refused.
 * An attempt undetermined at the sim point is not shown. Each other one gives
   ``{"round", "candidate": 1, "attempt", "techniques"}``, ``techniques`` being
   the ids of its own spec's ``guidance.techniques`` in their order, and
   ``failure`` exactly when it is not verified at the sim point, or verified
   there and not verified at the board point. The deciding result is the first
-  ended check of that point, under either value, in line order, whose
+  ended check of that point, in line order, whose
   ``outcome`` is ``"fail"`` or ``"broken"``; ``stage`` is ``"compile"`` for a
   broken one with ``condition`` ``build_exit_status`` or
   ``build_time_limit``, else the point's name. No entry has ``profile``.
 * ⑩ after all of ⑨, for each ``compile`` failure, the compiler log of the
-  deciding check (ADR-0078 decision 3), named by the ``step`` of its line, is
+  deciding check (ADR-0078 decision 3), named by the ``step`` of its line
+  (ADR-0183 decision 7: ``build-log-correctness_check_sim_v2-<EE>.txt`` at
+  the sim point), is
   appended to the report when that file exists and is not empty; a missing
   file is no failure.
 

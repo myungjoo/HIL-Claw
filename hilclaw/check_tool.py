@@ -5,23 +5,23 @@ decision 10 is the order of a call; ADR-0021 and ADR-0040 to ADR-0047 are the
 rules of its moments, ADR-0056 decision 3 is the rule of the output path,
 and ADR-0078 decisions 6 and 7 are the rules of the compiler's log.
 :func:`tool_function` joins the modules that render them, over
-:func:`hilclaw.hw_tool.read_stepped_tool_function`:
+:func:`hilclaw.hw_tool.stepped_tool_function`:
 
 1. The request is checked: the frame, then the member list and ``point``
    (:func:`hilclaw.check_identity.check`; ADR-0040 decisions 4 and 5,
-   ADR-0069 decisions 2 and 3).
+   ADR-0069 decisions 2 and 3). The ``step`` follows from ``point`` alone
+   (:func:`hilclaw.check_identity.step_of`; ADR-0183 decision 2), whatever
+   contract the run states.
 2. The data root and the layout version stamp, as :mod:`hilclaw.hw_tool`
-   has them. The ``step`` follows from ``point`` and from what that read of
-   ``instance.json`` returned (:func:`hilclaw.check_identity.step_of_read`;
-   ADR-0040 decision 3, ADR-0177 decision 3), and the lookup is under it.
-3. For an identity with no line ``instance.json`` is read once more, by
+   has them, and the lookup under the ``step``. An identity open under a
+   value ADR-0183 retired is a line of another step and is not taken as
+   open (ADR-0100 decision 5).
+3. For an identity with no line ``instance.json`` is read, by
    :func:`hilclaw.instance.read`, and the backend is selected for the
-   hw_profile of that read. Then
-   :func:`hilclaw.check_admission.admit_for_step` gives one of its four
-   answers or what the check takes from the same read (ADR-0046 decision 8),
-   told whether the ``step`` is one of a bf16 kind, so that a record whose
-   ``dtype`` changed since the read of the stamp is answered
-   ``op_signature_not_covered`` (ADR-0177 decision 3).
+   hw_profile of that read. Then :func:`hilclaw.check_admission.admit`
+   gives one of its four answers or what the check takes from the same
+   read (ADR-0046 decision 8): a record ``covers`` answers ``True`` for is
+   admitted whatever its ``dtype`` (ADR-0183 decision 2).
 4. The source of seeds is asked once, by :func:`hilclaw.check_seed.draw`
    (ADR-0048 decisions 3 to 5).
 5. The start line is appended.
@@ -37,7 +37,8 @@ and ADR-0078 decisions 6 and 7 are the rules of the compiler's log.
    check that made none (ADR-0045 decision 3, ADR-0047 decision 3), that of
    ``build_log_unwritable`` included when the write of the log failed
    (ADR-0078 decision 7), and in all cases with the empty ``spend``
-   (ADR-0040 decision 6).
+   (ADR-0040 decision 6). The result is the v2 result of ADR-0183
+   decision 3 for every contract (:mod:`hilclaw.check_answer`).
 
 Choices that are this module's own and no rule of a record:
 
@@ -129,13 +130,13 @@ def tool_function(*, source, table, seeds, covers):
     """Return the tool function of ``correctness.check`` that these four state.
 
     - ``source``: the data-root source, as
-      :func:`hilclaw.hw_tool.read_stepped_tool_function` takes it.
+      :func:`hilclaw.hw_tool.stepped_tool_function` takes it.
     - ``table``: the :class:`hilclaw.backends.BackendTable` the tool is bound
       to.
     - ``seeds``: the source of seeds, a callable without arguments
       (:mod:`hilclaw.harness.seed_source`).
     - ``covers``: the predicate of ADR-0041 decision 5, handed to
-      :func:`hilclaw.check_admission.admit_for_step` as it is.
+      :func:`hilclaw.check_admission.admit` as it is.
 
     No parameter has a default. Raises :class:`TypeError`, in this order: when
     ``table`` is no ``BackendTable``; when ``source`` is not callable; when
@@ -143,9 +144,9 @@ def tool_function(*, source, table, seeds, covers):
     none of the three, reads no file and asks the table nothing.
 
     The function returned takes one request and returns the result of the
-    check, a ``dict`` (ADR-0042). The module docstring has the order of a
+    check, a ``dict`` (ADR-0183 decision 3). The module docstring has the order of a
     call. It raises :class:`hilclaw.tools.ToolFailure` as the function of
-    :func:`hilclaw.hw_tool.read_stepped_tool_function` does, ``invalid_request``
+    :func:`hilclaw.hw_tool.stepped_tool_function` does, ``invalid_request``
     for the member ``point`` included; of one of
     :data:`hilclaw.check_admission.KINDS` and then of
     :data:`hilclaw.check_seed.KIND_SEED_NOT_DRAWN`, each with no line appended
@@ -167,16 +168,14 @@ def tool_function(*, source, table, seeds, covers):
     between calls.
     """
 
-    def admit(request, read, step):
-        admitted = check_admission.admit_for_step(
-            read, covers=covers, bf16_step=step in check_identity.BF16_STEPS
-        )
-        return _Drawn(admitted, check_seed.draw(seeds), step)
+    def admit(request, read):
+        admitted = check_admission.admit(read, covers=covers)
+        return _Drawn(admitted, check_seed.draw(seeds), check_identity.step_of(request))
 
-    function = hw_tool.read_stepped_tool_function(
+    function = hw_tool.stepped_tool_function(
         tool=_TOOL,
         steps=check_identity.STEPS,
-        step_of=check_identity.step_of_read,
+        step_of=check_identity.step_of,
         numbers=check_identity.NUMBERS,
         source=source,
         table=table,

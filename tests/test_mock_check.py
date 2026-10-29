@@ -341,7 +341,7 @@ def test_the_answer_is_a_complete_report_that_passes(parameters):
     assert judgement.broken is None
     result = judged(report, parameters, EXAMPLE_TOLERANCE)
     assert result["outcome"] == "pass"
-    assert result["counts"] == [{"failed": 0, "non_finite": 0}] * draws
+    assert result["counts"] == {"c": [{"failed": 0, "non_finite": 0}] * draws}
 
 
 @pytest.mark.parametrize("parameters", [PARAMETERS, SMALLEST], ids=["3x4x5", "1x1x1"])
@@ -595,6 +595,13 @@ def bf16_shape(kind, dims):
     return dict(zip(names, dims, strict=True))
 
 
+OUTPUT_OF = {"gemm": "c", "rmsnorm": "y", "elementwise_add": "c", "swiglu": "out"}
+
+
+def bf16_key(kind):
+    return {"kind": kind, "dtype": "bf16", "layout": "row_major"}
+
+
 def with_pattern(report, dims, draw, element, pattern):
     changed = bytearray(report)
     start = draw * (4 + 2 * dims[0] * dims[-1]) + 4 + 2 * element
@@ -667,10 +674,11 @@ def test_the_bf16_report_through_the_operation_is_judged_pass(kind, dims):
     result = asked_through_the_mock(default_script, bf16_parameters(kind, dims))
     assert result == {
         "outcome": "pass",
+        "contract_key": bf16_key(kind),
         "shape": bf16_shape(kind, dims),
         "draws": BF16_DRAWS,
         "tolerance": {"rtol": 2**-8, "atol": 0.0},
-        "counts": [{"failed": 0, "non_finite": 0}] * BF16_DRAWS,
+        "counts": {OUTPUT_OF[kind]: [{"failed": 0, "non_finite": 0}] * BF16_DRAWS},
     }
 
 
@@ -681,10 +689,12 @@ def test_a_script_for_a_kernel_with_one_wrong_element_fails_that_draw(kind, dims
 
     result = asked_through_the_mock(standing_for(wrong), bf16_parameters(kind, dims))
     assert result["outcome"] == "fail"
-    assert result["counts"] == [
-        {"failed": 0, "non_finite": 0},
-        {"failed": 1, "non_finite": 0},
-    ]
+    assert result["counts"] == {
+        OUTPUT_OF[kind]: [
+            {"failed": 0, "non_finite": 0},
+            {"failed": 1, "non_finite": 0},
+        ]
+    }
 
 
 @pytest.mark.parametrize(("kind", "dims"), BF16_CASES)
@@ -696,7 +706,7 @@ def test_a_script_for_a_kernel_with_a_non_finite_output_counts_it(kind, dims):
         standing_for(not_finite), bf16_parameters(kind, dims)
     )
     assert result["outcome"] == "fail"
-    assert result["counts"][0] == {"failed": 1, "non_finite": 1}
+    assert result["counts"][OUTPUT_OF[kind]][0] == {"failed": 1, "non_finite": 1}
 
 
 @pytest.mark.parametrize("condition", CONDITIONS[:4])
@@ -709,6 +719,7 @@ def test_a_script_answering_a_condition_gives_a_broken_bf16_result(kind, conditi
     assert result == {
         "outcome": "broken",
         "condition": condition,
+        "contract_key": bf16_key(kind),
         "shape": bf16_shape(kind, dims),
         "draws": BF16_DRAWS,
         "tolerance": {"rtol": 2**-8, "atol": 0.0},
@@ -864,10 +875,15 @@ def test_the_sdpa_report_through_the_operation_is_judged_pass():
     )
     assert result == {
         "outcome": "pass",
+        "contract_key": bf16_key(SDPA),
         "shape": {"m": 2, "l": 3, "h": 4, "h_kv": 2, "d": 4},
         "draws": BF16_DRAWS,
         "tolerance": {"rtol": 0.0, "atol": 2.154e-3},
-        "counts": [{"failed": 0, "non_finite": 0, "cache_differs": 0}] * BF16_DRAWS,
+        "counts": {
+            "cache_k": [{"differs": 0}] * BF16_DRAWS,
+            "cache_v": [{"differs": 0}] * BF16_DRAWS,
+            "out": [{"failed": 0, "non_finite": 0}] * BF16_DRAWS,
+        },
     }
 
 
@@ -990,10 +1006,11 @@ def test_the_rope_report_through_the_operation_is_judged_pass():
     )
     assert result == {
         "outcome": "pass",
+        "contract_key": bf16_key(ROPE),
         "shape": {"m": 2, "h": 3, "d": 4},
         "draws": BF16_DRAWS,
         "tolerance": {"rtol": 0.0, "atol": 2**-8 + 2**-21},
-        "counts": [{"failed": 0, "non_finite": 0}] * BF16_DRAWS,
+        "counts": {"out": [{"failed": 0, "non_finite": 0}] * BF16_DRAWS},
     }
 
 
@@ -1006,7 +1023,7 @@ def test_a_rope_answer_with_one_wrong_element_is_judged_fail_in_its_draw():
         standing_for(lambda parameters: bytes(changed)), bf16_parameters(ROPE, dims)
     )
     assert result["outcome"] == "fail"
-    assert result["counts"][1] == {"failed": 1, "non_finite": 0}
+    assert result["counts"]["out"][1] == {"failed": 1, "non_finite": 0}
 
 
 def test_the_rope_answer_follows_from_the_parameters_alone():

@@ -14,7 +14,7 @@ from hilclaw.build_log import (
 from hilclaw.check_parameters import CheckParameters
 
 # Synthetic values only: no log of a real compiler.
-SIM = "correctness_check_sim"
+SIM = "correctness_check_sim_v2"
 LOGS = [
     "x.c:1:1: error: synthetic\n",
     "x.c:2: warning: é ü 漢字 \U0001f600",

@@ -10,14 +10,13 @@ fix of a request:
 * :data:`MEMBER`, :data:`SIM`, :data:`BOARD`: "The member is named ``point``,
   and its two values are the strings ``"sim"``, for the sim point, and
   ``"board"``, for the board point" (decision 4).
-* :data:`STEP_SIM`, :data:`STEP_BOARD`: "The values are
-  ``correctness_check_sim`` for the check at the sim point and
-  ``correctness_check_board`` for the check at the board point" (decision 3).
-* :data:`STEP_BF16_SIM`, :data:`STEP_BF16_BOARD`, :data:`BF16_STEPS`:
-  "``correctness_check_bf16_sim`` for the sim point and
-  ``correctness_check_bf16_board`` for the board point, shared by the six
-  bf16 kinds" (ADR-0177 decision 3).
-* :data:`STEPS`: the four ``step`` values of the tool.
+* :data:`STEP_SIM`, :data:`STEP_BOARD`: ``correctness_check_sim_v2`` at the
+  sim point and ``correctness_check_board_v2`` at the board point, one value
+  per point for every contract, fp32 ``gemm`` and the six bf16 kinds alike
+  (``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md``
+  decision 2). They replace the four values of ADR-0040 decision 3 and
+  ADR-0177 decision 3, which ADR-0183 retired and no call takes.
+* :data:`STEPS`: the two ``step`` values of the tool.
 * :data:`NUMBERS`: "All three numbers are required" (decision 5).
 * :data:`MEMBERS`: "A request of this tool has exactly the six members
   ``run_id``, ``round``, ``candidate``, ``attempt``, ``execution`` and
@@ -28,18 +27,14 @@ fix of a request:
   request", for every value it carries, ``null`` included (ADR-0069
   decision 3).
 * :func:`step_of`: "the tool function takes the ``step`` of a call from the
-  checked value of the member of decision 4" (decision 3).
-* :func:`step_of_read`: "The value therefore follows from ``point`` and from
-  the read of ⓢ: when the file read whole in ⓢ states an ``op_signature``
-  whose record's ``dtype`` is ``bf16``, the call takes the bf16 value of its
-  point; in every other case [...] the value of ADR-0040 decision 3 that
-  ``point`` gives" (ADR-0177 decision 3).
+  checked value of the member of decision 4" (decision 3): the value follows
+  from ``point`` alone, and no dtype, kind or read of ``instance.json``
+  chooses it (ADR-0183 decision 2).
 
 Choices that are this module's own and no rule of a record:
 
-* :data:`STEPS` is a ``tuple`` in the order sim, board, bf16 sim, bf16
-  board, and :data:`BF16_STEPS` one in the order sim, board. The order
-  means nothing. :data:`MEMBERS` is a ``tuple`` in the order of ADR-0040
+* :data:`STEPS` is a ``tuple`` in the order sim, board. The order means
+  nothing. :data:`MEMBERS` is a ``tuple`` in the order of ADR-0040
   decision 5; its order means nothing either.
 * A ``request`` whose type is not exactly ``dict`` is refused with the same
   kind. In a tool function the check of the frame refuses it first; the
@@ -73,19 +68,16 @@ What the module does not do: it is no tool and no step and is bound to none.
 It builds no identity and checks none of ``run_id``, ``execution`` and the
 numbers: the frame does. The input schema and the description of the tool
 (ADR-0069 decisions 4 and 5) are :mod:`hilclaw.check_definition`'s. It reads
-no file and no log: what :func:`step_of_read` is handed is the caller's read.
-It does not say at which point an attempt is checked, in
+no file and no log. It does not say at which point an attempt is checked, in
 which order, or who may raise ``execution``. Whether an operation is handed
 the point is another record's (ADR-0043). It is this tool's and gives no rule
 for the ``step`` values of another tool (decision 3). It keeps nothing between
-calls. It imports :mod:`re`, :mod:`hilclaw.check_parameters`,
-:mod:`hilclaw.instance` and :mod:`hilclaw.tools` and nothing else.
+calls. It imports :mod:`re` and :mod:`hilclaw.tools` and nothing else.
 """
 
 import re
 
-from hilclaw import check_parameters, tools
-from hilclaw import instance as instances
+from hilclaw import tools
 
 #: The name of the request member that states the execution point (ADR-0040 decision 4).
 MEMBER = "point"
@@ -94,18 +86,12 @@ SIM = "sim"
 #: The value of :data:`MEMBER` for the board point (ADR-0040 decision 4).
 BOARD = "board"
 
-#: The ``step`` of a check at the sim point (ADR-0040 decision 3).
-STEP_SIM = "correctness_check_sim"
-#: The ``step`` of a check at the board point (ADR-0040 decision 3).
-STEP_BOARD = "correctness_check_board"
-#: The ``step`` of a check of a bf16 kind at the sim point (ADR-0177 decision 3).
-STEP_BF16_SIM = "correctness_check_bf16_sim"
-#: The ``step`` of a check of a bf16 kind at the board point (ADR-0177 decision 3).
-STEP_BF16_BOARD = "correctness_check_bf16_board"
-#: The ``step`` values of a check of a bf16 kind, each once.
-BF16_STEPS = (STEP_BF16_SIM, STEP_BF16_BOARD)
+#: The ``step`` of a check at the sim point, for every contract (ADR-0183 decision 2).
+STEP_SIM = "correctness_check_sim_v2"
+#: The ``step`` of a check at the board point, for every contract (ADR-0183 decision 2).
+STEP_BOARD = "correctness_check_board_v2"
 #: The ``step`` values of this tool, each once.
-STEPS = (STEP_SIM, STEP_BOARD, *BF16_STEPS)
+STEPS = (STEP_SIM, STEP_BOARD)
 
 #: The numbers a request of this tool requires (ADR-0040 decision 5), as a builder of :mod:`hilclaw.journaled_tool` takes them.
 NUMBERS = ("round", "candidate", "attempt")
@@ -113,7 +99,6 @@ NUMBERS = ("round", "candidate", "attempt")
 MEMBERS = ("run_id", *NUMBERS, "execution", MEMBER)
 
 _STEP_OF = {SIM: STEP_SIM, BOARD: STEP_BOARD}
-_BF16_OF = {STEP_SIM: STEP_BF16_SIM, STEP_BOARD: STEP_BF16_BOARD}
 _ACCEPTED = f'{MEMBER}: must be "{SIM}" or "{BOARD}", '
 _NO_OBJECT = f"{MEMBER}: cannot be read, the request is no object"
 _MISSING = f"{MEMBER}: is required"
@@ -160,7 +145,7 @@ def check(request):
 
 
 def step_of(request):
-    """Return the ``step`` of the call ``request`` asks for (ADR-0040 decision 3).
+    """Return the ``step`` of the call ``request`` asks for (ADR-0040 decision 3, ADR-0183 decision 2).
 
     - ``request``: the request of a call of ``correctness.check``.
 
@@ -175,39 +160,6 @@ def step_of(request):
     call is formed by the builder and not here. The request is not modified.
     """
     return _step(request)
-
-
-def step_of_read(request, read):
-    """Return the ``step`` of the call ``request`` asks for, given the read of ⓢ (ADR-0177 decision 3).
-
-    - ``request``: the request of a call of ``correctness.check``.
-    - ``read``: the :class:`hilclaw.instance.Instance` that the read of the
-      layout version stamp of the call returned for the run, the read of ⓢ
-      (ADR-0030 decision 3). Which read that is is the caller's statement and
-      is not checked.
-
-    No parameter has a default. For every request :func:`check` refuses it
-    raises the same ``ToolFailure``, with the same kind and message, before
-    ``read`` is looked at. Then :class:`TypeError` is raised when the type of
-    ``read`` is not exactly ``Instance``.
-
-    When ``read`` states an op_signature whose record's ``dtype`` is
-    :data:`hilclaw.check_parameters.BF16`, compared as it is, the value is
-    :data:`STEP_BF16_SIM` for the point :data:`SIM` and
-    :data:`STEP_BF16_BOARD` for :data:`BOARD`; otherwise, with no
-    op_signature stated or any other ``dtype``, it is what :func:`step_of`
-    returns. Nothing else of ``read`` is looked at, the ``kind`` and the
-    ``shape`` of the record included: whether the record is covered is
-    answered later, from another read (ADR-0177 decision 3). Neither
-    argument is modified.
-    """
-    step = _step(request)
-    if type(read) is not instances.Instance:
-        raise TypeError("read: must be exactly a hilclaw.instance.Instance")
-    stated = read.op_signature
-    if stated is not None and stated.record["dtype"] == check_parameters.BF16:
-        return _BF16_OF[step]
-    return step
 
 
 def _step(request):

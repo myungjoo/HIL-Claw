@@ -8,6 +8,7 @@ import pytest
 from hilclaw import (
     check_result,
     checks_tool,
+    contract_table,
     events,
     journal,
     keys,
@@ -19,8 +20,8 @@ from hilclaw.spec_feedback import KIND_FEEDBACK_UNREADABLE, attempts
 from hilclaw.tools import ToolFailure
 
 RUN = "run-a"
-SIM = "correctness_check_sim"
-BOARD = "correctness_check_board"
+SIM = "correctness_check_sim_v2"
+BOARD = "correctness_check_board_v2"
 SECRET = 987654.321
 PASS = {"outcome": "pass", "max_abs_error": 0.0}
 FAIL = {
@@ -752,25 +753,37 @@ def test_a_bad_run_id_is_refused_by_the_layout(root, run_id):
         attempts(root, run_id, 1)
 
 
-# The lines of a bf16 check (ADR-0178 decision 1)
+# The lines of a bf16 check under the v2 value of the point (ADR-0183 decision 8)
 
-BF16_SIM = "correctness_check_bf16_sim"
-BF16_BOARD = "correctness_check_bf16_board"
+RETIRED = (
+    "correctness_check_sim",
+    "correctness_check_board",
+    "correctness_check_bf16_sim",
+    "correctness_check_bf16_board",
+)
+RETIRED_SIM = "correctness_check_bf16_sim"
+RETIRED_BOARD = "correctness_check_bf16_board"
+BF16_ENTRIES = {
+    key[0]: found for key, found in contract_table.TABLE.items() if key[1] == "bf16"
+}
 
 
 def bf16(failed=0, kind="swiglu"):
     dims = {"gemm": (4, 2, 8), "rope": (2, 3, 8), "sdpa_kv_cache": (2, 3, 4, 2, 8)}.get(
         kind, (2, 8)
     )
-    entry = (failed, 0, 0) if kind == "sdpa_kv_cache" else (failed, 0)
-    return check_result.bf16_completed(
-        kind, dims, draws=1, rtol=0.01, atol=0.001, counts=[entry]
+    table_entry = BF16_ENTRIES[kind]
+    names = check_result.output_operands(table_entry, dims)
+    exact = check_result.BIT_EXACT.get((kind, "bf16", "row_major"), ())
+    counts = {name: [0 if name in exact else (failed, 0)] for name in names}
+    return check_result.v2_completed(
+        table_entry, dims, draws=1, rtol=0.01, atol=0.001, counts=counts
     )
 
 
 def bf16_broken(condition):
-    return check_result.bf16_broken(
-        condition, "swiglu", (2, 8), draws=1, rtol=0.01, atol=0.001
+    return check_result.v2_broken(
+        condition, BF16_ENTRIES["swiglu"], (2, 8), draws=1, rtol=0.01, atol=0.001
     )
 
 
@@ -779,16 +792,16 @@ def entry(failure=None, round=0, attempt=1):
     return made if failure is None else made | {"failure": failure}
 
 
-@pytest.mark.parametrize("kind", check_result.BF16_KINDS)
+@pytest.mark.parametrize("kind", list(BF16_ENTRIES))
 def test_a_bf16_round_0_attempt_is_read_as_an_fp32_one(root, kind):
     put_spec(root, 0, 1)
     put_spec(root, 0, 2)
     put_spec(root, 0, 3)
-    check(root, 0, BF16_SIM, 1, result=bf16(kind=kind))
-    check(root, 0, BF16_BOARD, 1, result=bf16(kind=kind))
-    check(root, 0, BF16_SIM, 2, result=bf16(1, kind))
-    check(root, 0, BF16_SIM, 3, result=bf16(kind=kind))
-    check(root, 0, BF16_BOARD, 3, result=bf16(2, kind))
+    check(root, 0, SIM, 1, result=bf16(kind=kind))
+    check(root, 0, BOARD, 1, result=bf16(kind=kind))
+    check(root, 0, SIM, 2, result=bf16(1, kind))
+    check(root, 0, SIM, 3, result=bf16(kind=kind))
+    check(root, 0, BOARD, 3, result=bf16(2, kind))
     got = attempts(root, RUN, 1)
     assert got == [
         entry(),
@@ -798,24 +811,29 @@ def test_a_bf16_round_0_attempt_is_read_as_an_fp32_one(root, kind):
     valid_in_a_spec(got, 1)
 
 
-def test_a_bf16_build_failure_shows_the_compiler_log_of_its_step(root):
+@pytest.mark.parametrize(("point", "step"), [("sim", SIM), ("board", BOARD)])
+def test_a_bf16_build_failure_shows_the_compiler_log_of_its_v2_step(root, point, step):
     put_spec(root, 0)
-    check(root, 0, BF16_SIM, result=bf16_broken("build_time_limit"))
-    build_log(root, 0, SIM, content=b"not this one")
-    build_log(root, 0, BF16_SIM, content=b"x.c:9: slow")
-    report = sentence("compile", "sim", "broken", BUILD_TIME)
+    if point == "board":
+        check(root, 0, SIM, result=bf16())
+    check(root, 0, step, execution=2, result=bf16_broken("build_time_limit"))
+    for retired in RETIRED:
+        build_log(root, 0, retired, 2, content=b"not this one")
+    path = build_log(root, 0, step, 2, content=b"x.c:9: slow")
+    assert path.name == f"build-log-correctness_check_{point}_v2-02.txt"
+    report = sentence("compile", point, "broken", BUILD_TIME)
     report += "\nCompiler log:\nx.c:9: slow"
     assert attempts(root, RUN, 1) == [entry({"stage": "compile", "report": report})]
 
 
 def test_an_open_bf16_sim_check_is_not_shown(root):
     put_spec(root, 0)
-    check(root, 0, BF16_SIM, result=bf16())
+    check(root, 0, SIM, result=bf16())
     events.append(
         root,
         RUN,
         journal.STEP_STARTED,
-        {"step": BF16_SIM, "execution": 2},
+        {"step": SIM, "execution": 2},
         round=0,
         candidate=1,
         attempt=1,
@@ -823,34 +841,49 @@ def test_an_open_bf16_sim_check_is_not_shown(root):
     assert attempts(root, RUN, 1) == []
 
 
-def test_the_deciding_check_is_the_first_failed_line_under_either_value(root):
+def test_the_deciding_check_passes_over_the_lines_of_a_retired_value(root):
     put_spec(root, 0)
     put_spec(root, 0, 2)
-    check(root, 0, BF16_SIM, result=bf16_broken("build_exit_status"))
+    check(root, 0, RETIRED_SIM, result=bf16_broken("build_exit_status"))
     check(root, 0, SIM, execution=1, result=FAIL)
-    build_log(root, 0, BF16_SIM, content=b"bf16 log")
-    build_log(root, 0, SIM, content=b"fp32 log")
-    check(root, 0, SIM, 2, result=FAIL)
-    check(root, 0, BF16_SIM, 2, result=bf16_broken("build_exit_status"))
+    build_log(root, 0, RETIRED_SIM, content=b"retired log")
+    check(root, 0, SIM, 2, result=bf16_broken("build_exit_status"))
+    check(root, 0, "correctness_check_sim", 2, result=FAIL)
+    build_log(root, 0, SIM, attempt=2, content=b"v2 log")
     report = sentence("compile", "sim", "broken", BUILD_EXIT)
     assert attempts(root, RUN, 1) == [
-        entry({"stage": "compile", "report": report + "\nCompiler log:\nbf16 log"}),
-        entry({"stage": "sim", "report": sentence("sim", "sim", "fail")}, attempt=2),
+        entry({"stage": "sim", "report": sentence("sim", "sim", "fail")}),
+        entry(
+            {"stage": "compile", "report": report + "\nCompiler log:\nv2 log"},
+            attempt=2,
+        ),
     ]
 
 
-def test_a_pass_under_each_value_of_both_points_shows_no_failure(root):
+@pytest.mark.parametrize("step", RETIRED)
+def test_a_log_of_retired_lines_only_gives_no_entry(root, step):
     put_spec(root, 0)
-    passed(root, 0)
-    check(root, 0, BF16_SIM, result=bf16())
-    check(root, 0, BF16_BOARD, result=bf16())
+    put_spec(root, 0, 2)
+    check(root, 0, step, 1, result=FAIL)
+    check(root, 0, step, 2, result=bf16_broken("build_exit_status"))
+    check(root, 0, step, 2, execution=2, result={"no": "outcome"})
+    build_log(root, 0, step, attempt=2, content=b"retired log")
+    assert attempts(root, RUN, 1) == []
+
+
+def test_a_retired_fail_beside_a_v2_pass_of_both_points_shows_no_failure(root):
+    put_spec(root, 0)
+    check(root, 0, SIM, result=bf16())
+    check(root, 0, BOARD, result=bf16())
+    check(root, 0, RETIRED_SIM, result=bf16(3))
+    check(root, 0, RETIRED_BOARD, result=bf16_broken("exit_status"))
     assert attempts(root, RUN, 1) == [entry()]
 
 
 def test_a_bf16_board_fail_beside_an_fp32_board_pass_is_a_board_failure(root):
     put_spec(root, 0)
     passed(root, 0)
-    check(root, 0, BF16_BOARD, result=bf16(3))
+    check(root, 0, BOARD, execution=2, result=bf16(3))
     report = sentence("board", "board", "fail")
     assert attempts(root, RUN, 1) == [entry({"stage": "board", "report": report})]
 
@@ -858,7 +891,7 @@ def test_a_bf16_board_fail_beside_an_fp32_board_pass_is_a_board_failure(root):
 def test_a_damaged_bf16_end_line_is_run_file_invalid(root):
     put_spec(root, 0)
     numbers = {"round": 0, "candidate": 1, "attempt": 1}
-    data = {"step": BF16_SIM, "execution": 1, "result": bf16()}
+    data = {"step": SIM, "execution": 1, "result": bf16()}
     events.append(root, RUN, journal.STEP_ENDED, data, **numbers)
     message = refused(root, "run_file_invalid")
     assert message == f"runs/{RUN}/events.ndjson: line 1: data: lacks the member spend"
@@ -868,7 +901,7 @@ def test_a_bf16_result_without_an_outcome_is_check_result_invalid(root):
     put_spec(root, 0)
     result = bf16()
     del result["outcome"]
-    check(root, 0, BF16_BOARD, result=result)
+    check(root, 0, BOARD, result=result)
     message = refused(root, "check_result_invalid")
     assert message == (
         f"runs/{RUN}/events.ndjson: line 2: data.result: lacks the member outcome"

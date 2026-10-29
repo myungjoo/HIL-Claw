@@ -9,6 +9,7 @@ from hilclaw import (
     check_result,
     check_standing,
     checks_tool,
+    contract_table,
     events,
     journal,
     keys,
@@ -20,10 +21,16 @@ from hilclaw.tools import ToolDefinition, ToolFailure, default_registry
 
 RUN = "run-a"
 LOG = f"runs/{RUN}/events.ndjson"
-SIM = "correctness_check_sim"
-BOARD = "correctness_check_board"
-BF16_SIM = "correctness_check_bf16_sim"
-BF16_BOARD = "correctness_check_bf16_board"
+SIM = "correctness_check_sim_v2"
+BOARD = "correctness_check_board_v2"
+RETIRED = (
+    "correctness_check_sim",
+    "correctness_check_board",
+    "correctness_check_bf16_sim",
+    "correctness_check_bf16_board",
+)
+RETIRED_SIM = "correctness_check_bf16_sim"
+RETIRED_BOARD = "correctness_check_bf16_board"
 PASS = {"outcome": "pass", "max_abs_error": 0.0}
 FAIL = {"outcome": "fail", "max_abs_error": 2.5}
 BROKEN = {"outcome": "broken"}
@@ -446,7 +453,7 @@ def test_the_standing_agrees_with_check_standing(root, name):
 
 def infinite(attempt):
     data = (
-        '{"step": "correctness_check_board", "execution": 1, "spend": {}, '
+        '{"step": "correctness_check_board_v2", "execution": 1, "spend": {}, '
         '"result": {"outcome": "pass", "e": 1e999}}'
     )
     envelope = (
@@ -710,10 +717,7 @@ def test_the_first_failing_step_line_in_line_order_decides(root):
 def test_the_shared_names_are_the_log_and_the_steps_of_the_points():
     assert checks_tool.LOG == "events.ndjson"
     assert f"runs/{RUN}/{checks_tool.LOG}" == LOG
-    assert check_standing.STEPS_OF == {
-        "sim": (SIM, BF16_SIM),
-        "board": (BOARD, BF16_BOARD),
-    }
+    assert check_standing.STEPS_OF == {"sim": (SIM,), "board": (BOARD,)}
     assert not hasattr(checks_tool, "STEP_OF")
 
 
@@ -796,25 +800,38 @@ def test_checks_of_refuses_a_broken_step_line_whatever_it_admits(root):
     assert refused.value.message == f"{LOG}: line 1: data: lacks the member spend"
 
 
+DIMS_OF = {
+    "gemm": (4, 2, 8),
+    "rope": (2, 3, 8),
+    "sdpa_kv_cache": (2, 3, 4, 2, 8),
+}
+BF16_ENTRIES = {
+    key[0]: entry for key, entry in contract_table.TABLE.items() if key[1] == "bf16"
+}
+
+
 def bf16(kind="rmsnorm", failed=0):
-    dims = {"gemm": (4, 2, 8), "rope": (2, 3, 8), "sdpa_kv_cache": (2, 3, 4, 2, 8)}.get(
-        kind, (2, 8)
-    )
-    entry = (failed, 0, 0) if kind == "sdpa_kv_cache" else (failed, 0)
-    return check_result.bf16_completed(
-        kind, dims, draws=1, rtol=0.01, atol=0.001, counts=[entry]
+    entry = BF16_ENTRIES[kind]
+    dims = DIMS_OF.get(kind, (2, 8))
+    names = check_result.output_operands(entry, dims)
+    exact = check_result.BIT_EXACT.get((kind, "bf16", "row_major"), ())
+    counts = {name: [0 if name in exact else (failed, 0)] for name in names}
+    if exact:
+        counts["out"] = [(failed, 0)]
+    return check_result.v2_completed(
+        entry, dims, draws=1, rtol=0.01, atol=0.001, counts=counts
     )
 
 
 def bf16_broken(condition="build_exit_status"):
-    return check_result.bf16_broken(
-        condition, "swiglu", (2, 8), draws=1, rtol=0.01, atol=0.001
+    return check_result.v2_broken(
+        condition, BF16_ENTRIES["swiglu"], (2, 8), draws=1, rtol=0.01, atol=0.001
     )
 
 
-@pytest.mark.parametrize(("point", "step"), [("sim", BF16_SIM), ("board", BF16_BOARD)])
-@pytest.mark.parametrize("kind", check_result.BF16_KINDS)
-def test_a_bf16_run_is_read_as_an_fp32_run_is(root, point, step, kind):
+@pytest.mark.parametrize(("point", "step"), [("sim", SIM), ("board", BOARD)])
+@pytest.mark.parametrize("kind", list(BF16_ENTRIES))
+def test_a_v2_bf16_run_is_read_as_an_fp32_run_is(root, point, step, kind):
     check(root, 1, step=step, result=bf16(kind, failed=1))
     check(root, 2, step=step, result=bf16(kind))
     check(root, 1, attempt=2, step=step, result=bf16(kind))
@@ -832,9 +849,32 @@ def test_a_bf16_run_is_read_as_an_fp32_run_is(root, point, step, kind):
     assert read(root, request(point=other)) == {"attempts": []}
 
 
-def test_an_fp32_run_is_read_as_before_beside_a_bf16_run(root):
+def test_v2_lines_pass_fail_and_broken_of_each_point(root):
+    check(root, 1, step=SIM, result=bf16())
+    check(root, 1, attempt=2, step=SIM, result=bf16(failed=1))
+    check(root, 1, attempt=3, step=SIM, result=bf16_broken())
+    check(root, 1, step=BOARD, result=bf16())
+    assert read(root, request(point="sim")) == {
+        "attempts": [
+            {"attempt": 1, "standing": "verified", "checks": [ended(result=bf16())]},
+            {
+                "attempt": 2,
+                "standing": "not_verified",
+                "checks": [ended(result=bf16(failed=1))],
+            },
+            {
+                "attempt": 3,
+                "standing": "not_verified",
+                "checks": [ended(result=bf16_broken())],
+            },
+        ]
+    }
+    assert only(read(root, request(1)))["standing"] == "verified"
+
+
+def test_an_fp32_run_is_read_beside_a_bf16_run(root):
     check(root, result=PASS)
-    check(root, attempt=2, step=BF16_BOARD, result=bf16())
+    check(root, attempt=2, step=BOARD, result=bf16())
     assert only(read(root, request(1))) == {
         "attempt": 1,
         "standing": "verified",
@@ -844,8 +884,8 @@ def test_an_fp32_run_is_read_as_before_beside_a_bf16_run(root):
 
 
 def test_an_open_bf16_identity_is_listed_and_undetermined(root):
-    check(root, 1, step=BF16_SIM, result=bf16())
-    start(root, 2, step=BF16_SIM)
+    check(root, 1, step=SIM, result=bf16())
+    start(root, 2, step=SIM)
     assert only(read(root, request(1, "sim"))) == {
         "attempt": 1,
         "standing": "undetermined",
@@ -853,35 +893,39 @@ def test_an_open_bf16_identity_is_listed_and_undetermined(root):
     }
 
 
-def test_the_lines_of_both_values_of_a_point_are_read_together(root):
+def test_the_lines_of_a_retired_value_are_neither_read_nor_refused(root):
     check(root, 1, result=PASS)
-    start(root, 1, step=BF16_BOARD)
-    end(root, 1, step=BF16_BOARD, result=bf16_broken())
-    start(root, 2)
-    check(root, 1, step=BF16_SIM, result=bf16())
+    start(root, 1, step=RETIRED_BOARD)
+    end(root, 1, step=RETIRED_BOARD, result=bf16_broken())
+    start(root, 2, step=RETIRED_BOARD)
+    check(root, 3, step=RETIRED_BOARD, result={"no": "outcome"})
+    check(root, 1, step=RETIRED_SIM, result=bf16(failed=1))
     assert only(read(root, request(1))) == {
         "attempt": 1,
-        "standing": "not_verified",
-        "checks": [
-            ended(1, result=PASS),
-            ended(1, result=bf16_broken()),
-            {"execution": 2, "state": "open"},
-        ],
+        "standing": "verified",
+        "checks": [ended(1, result=PASS)],
     }
-    assert only(read(root, request(1, "sim")))["standing"] == "verified"
+    assert read(root, request(point="sim")) == {"attempts": []}
 
 
-def test_a_pass_under_each_value_is_verified_and_an_open_one_keeps_it_not(root):
-    check(root, 1, result=PASS)
-    check(root, 1, step=BF16_BOARD, result=bf16())
-    assert only(read(root, request(1)))["standing"] == "verified"
-    start(root, 2, step=BF16_BOARD)
-    assert only(read(root, request(1)))["standing"] == "undetermined"
+@pytest.mark.parametrize("step", RETIRED)
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_a_log_of_retired_lines_only_reads_no_check(root, step, point):
+    check(root, 1, step=step, result=PASS)
+    check(root, 2, step=step, result=FAIL)
+    check(root, 1, attempt=2, step=step, result={"outcome": "passed"})
+    start(root, 1, attempt=3, step=step)
+    assert read(root, request(point=point)) == {"attempts": []}
+    assert only(read(root, request(1, point))) == {
+        "attempt": 1,
+        "standing": "undetermined",
+        "checks": [],
+    }
 
 
 def test_a_damaged_bf16_end_line_is_run_file_invalid(root):
-    check(root, step=BF16_BOARD, result=bf16())
-    raw(root, line({"step": BF16_BOARD, "execution": 2, "result": bf16()}))
+    check(root, step=BOARD, result=bf16())
+    raw(root, line({"step": BOARD, "execution": 2, "result": bf16()}))
     refused = failure(root, request(1))
     assert refused.kind == tools.KIND_RUN_FILE_INVALID
     assert refused.message == f"{LOG}: line 3: data: lacks the member spend"
@@ -889,8 +933,8 @@ def test_a_damaged_bf16_end_line_is_run_file_invalid(root):
 
 @pytest.mark.parametrize("attempt", [1, None])
 def test_a_bf16_result_without_an_outcome_is_check_result_invalid(root, attempt):
-    check(root, 1, step=BF16_SIM, result=bf16())
-    check(root, 2, step=BF16_SIM, result=bf16() | {"outcome": "passed"})
+    check(root, 1, step=SIM, result=bf16())
+    check(root, 2, step=SIM, result=bf16() | {"outcome": "passed"})
     refused = failure(root, request(attempt, "sim"))
     assert refused.kind == checks_tool.KIND_CHECK_RESULT_INVALID
     assert refused.message == (
@@ -900,9 +944,9 @@ def test_a_bf16_result_without_an_outcome_is_check_result_invalid(root, attempt)
     assert only(read(root, request(1, "board")))["checks"] == []
 
 
-@pytest.mark.parametrize("point", [BF16_SIM, BF16_BOARD, "bf16_sim", "bf16"])
-def test_a_point_of_neither_value_is_invalid_request(root, point):
-    check(root, step=BF16_SIM, result=bf16())
+@pytest.mark.parametrize("point", [SIM, BOARD, *RETIRED, "bf16_sim", "bf16"])
+def test_a_point_that_is_a_step_value_is_invalid_request(root, point):
+    check(root, step=SIM, result=bf16())
     refused = failure(root, request(1, point))
     assert refused.kind == tools.KIND_INVALID_REQUEST
     assert refused.message == 'point: must be "sim" or "board"'
@@ -910,10 +954,10 @@ def test_a_point_of_neither_value_is_invalid_request(root, point):
 
 def test_checks_in_order_keeps_the_order_of_the_lines_across_steps(root):
     check(root, 1, result=PASS)
-    start(root, 2, step=BF16_BOARD)
-    check(root, 1, step=BF16_BOARD, result=bf16())
+    start(root, 2, step=RETIRED_BOARD)
+    check(root, 1, step=RETIRED_BOARD, result=bf16())
     check(root, 1, step=SIM, result=PASS)
-    end(root, 2, step=BF16_BOARD, failure=UNSTARTED)
+    end(root, 2, step=RETIRED_BOARD, failure=UNSTARTED)
     lines = checks_tool.log_lines(root, RUN)
 
     def inside(key):
@@ -921,8 +965,8 @@ def test_checks_in_order_keeps_the_order_of_the_lines_across_steps(root):
 
     assert checks_tool.checks_in_order(RUN, lines, inside) == [
         ((BOARD, 1, 1, 1), ended(1, result=PASS)),
-        ((BF16_BOARD, 1, 1, 1), ended(1, result=bf16())),
-        ((BF16_BOARD, 1, 1, 1), ended(2, failure=UNSTARTED)),
+        ((RETIRED_BOARD, 1, 1, 1), ended(1, result=bf16())),
+        ((RETIRED_BOARD, 1, 1, 1), ended(2, failure=UNSTARTED)),
     ]
     grouped = {}
     for key, element in checks_tool.checks_in_order(RUN, lines, lambda key: True):
@@ -931,7 +975,7 @@ def test_checks_in_order_keeps_the_order_of_the_lines_across_steps(root):
 
 
 def test_checks_in_order_raises_as_checks_of_does(root):
-    check(root, step=BF16_SIM, result={"no": "outcome"})
+    check(root, step=RETIRED_SIM, result={"no": "outcome"})
     unspent(root, 2)
     lines = checks_tool.log_lines(root, RUN)
     with pytest.raises(ToolFailure) as refused:

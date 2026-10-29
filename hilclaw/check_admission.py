@@ -23,10 +23,10 @@ tool function:
   decision 4), each as the content states it. For a record whose ``dtype``
   is ``bf16`` it is a :class:`Bf16Admitted`, with the shape members of the
   record's kind (ADR-0041 decision 2 read per kind, ADR-0177 decision 3).
-* :func:`admit_for_step`: the same for a call whose ``step`` was taken for
-  a ``dtype`` (ADR-0177 decision 3): a record covered here whose ``dtype``
-  is not the one the ``step`` was taken for is answered
-  :data:`KIND_OP_SIGNATURE_NOT_COVERED`.
+  A covered record is admitted whatever its ``dtype``: the ``step`` of a
+  call follows from its point alone, and the rule of ADR-0177 decision 3
+  that refused a record whose ``dtype`` was not the one the ``step`` was
+  taken for has no object (ADR-0183 decision 2).
 
 Each kind is a tool failure of this tool's own kind and no reserved kind
 (ADR-0021 decision 4; ADR-0041 decisions 4 and 5; ADR-0046 decision 5).
@@ -49,11 +49,9 @@ Choices that are this module's own and no rule of a record:
   type of its own, :class:`Bf16Admitted`, so that the :class:`Admitted` of
   an fp32 ``gemm`` record is what it was.
 * A bf16 record that ``covers`` answers ``True`` for is answered
-  :data:`KIND_OP_SIGNATURE_NOT_COVERED` when its kind is none the check of a
-  bf16 kind is built for (:data:`hilclaw.check_result.BF16_KINDS`), or
-  when no bf16 entry of :data:`hilclaw.contract_table.TABLE` has its kind
-  and its ``layout``: there is no check for it, whatever the predicate
-  handed over says.
+  :data:`KIND_OP_SIGNATURE_NOT_COVERED` when no bf16 entry of
+  :data:`hilclaw.contract_table.TABLE` has its kind and its ``layout``:
+  there is no check for it, whatever the predicate handed over says.
   Through the predicate the registry binds, such a record is refused by
   the predicate first.
 * The order of the dimensions of a :class:`Bf16Admitted` is that of the
@@ -79,7 +77,7 @@ ADR-0041 decisions 4 and 5; ADR-0046 decision 5). It says nothing of what
 anybody does after an answer, of whether the start of an instance checks
 these members, or of which number of draws or which tolerance is enough for
 anything. It keeps nothing between calls. It imports :mod:`inspect`,
-:mod:`typing`, :mod:`hilclaw.check_parameters`, :mod:`hilclaw.check_result`,
+:mod:`typing`, :mod:`hilclaw.check_parameters`,
 :mod:`hilclaw.contract_table`, :mod:`hilclaw.instance` and
 :mod:`hilclaw.tools` and nothing else.
 """
@@ -87,7 +85,7 @@ anything. It keeps nothing between calls. It imports :mod:`inspect`,
 import inspect
 import typing
 
-from hilclaw import check_parameters, check_result, contract_table, tools
+from hilclaw import check_parameters, contract_table, tools
 from hilclaw import instance as instances
 
 #: The kind of ADR-0041 decision 4: the content states no op_signature.
@@ -207,45 +205,14 @@ def admit(instance, *, covers):
 
     ``instance`` is not modified or kept, and no file is read or written.
     """
-    _check(instance, covers)
-    return _admit(instance, covers, None)
-
-
-def admit_for_step(instance, *, covers, bf16_step):
-    """Return what :func:`admit` returns for a call whose ``step`` was taken for a ``dtype``, or raise the one answer it has.
-
-    - ``instance``, ``covers``: as in :func:`admit`.
-    - ``bf16_step``: exactly ``True`` when the ``step`` of the call is one of
-      a check of a bf16 kind, and exactly ``False`` when it is one of
-      ADR-0040 decision 3 (ADR-0177 decision 3).
-
-    No parameter has a default, and ``covers`` and ``bf16_step`` are given
-    by name. :class:`TypeError` is raised as :func:`admit` raises it, and
-    then when ``bf16_step`` is not exactly a ``bool``.
-
-    The answers are those of :func:`admit`, in its order, with one more
-    condition in its second place: after ``covers`` answered ``True``, a
-    record whose ``dtype`` is ``bf16`` when ``bf16_step`` is ``False``, or
-    whose ``dtype`` is not ``bf16`` when it is ``True``, is answered
-    :data:`KIND_OP_SIGNATURE_NOT_COVERED` (ADR-0177 decision 3: the file
-    changed between the read of the stamp and this read). The ``dtype`` is
-    compared as it is. ``instance`` is not modified or kept, and no file is
-    read or written.
-    """
-    _check(instance, covers)
-    if type(bf16_step) is not bool:
-        raise TypeError("bf16_step: must be exactly a bool")
-    return _admit(instance, covers, bf16_step)
-
-
-def _check(instance, covers):
     if type(instance) is not instances.Instance:
         raise TypeError("instance: must be exactly a hilclaw.instance.Instance")
     if not callable(covers):
         raise TypeError("covers: must be callable")
+    return _admit(instance, covers)
 
 
-def _admit(instance, covers, bf16_step):
+def _admit(instance, covers):
     stated = instance.op_signature
     if stated is None:
         raise _failure(KIND_OP_SIGNATURE_NOT_STATED)
@@ -256,8 +223,6 @@ def _admit(instance, covers, bf16_step):
     if not covered:
         raise _failure(KIND_OP_SIGNATURE_NOT_COVERED)
     bf16 = record["dtype"] == check_parameters.BF16
-    if bf16_step is not None and bf16 is not bf16_step:
-        raise _failure(KIND_OP_SIGNATURE_NOT_COVERED)
     names = _BF16_NAMES.get((record["kind"], record["layout"])) if bf16 else None
     if bf16 and names is None:
         raise _failure(KIND_OP_SIGNATURE_NOT_COVERED)
@@ -292,7 +257,6 @@ _BF16_NAMES = {
     )
     for contract in (entry.contract for entry in contract_table.TABLE.values())
     if contract.DTYPE == check_parameters.BF16
-    and contract.KIND in check_result.BF16_KINDS
 }
 
 

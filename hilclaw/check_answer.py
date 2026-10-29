@@ -6,26 +6,29 @@ report, or a string that says that there is no report and which condition
 failed. ADR-0060 decision 4 amends the second form to one of the four
 strings ``"time_limit"``, ``"exit_status"``, ``"build_time_limit"`` and
 ``"build_exit_status"``. An answer of neither form "is never made into a
-result" (ADR-0043 decision 5). This module renders the decisions:
+result" (ADR-0043 decision 5). Every result is the v2 result of
+``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md``
+(decisions 3 and 6), with the ``contract_key`` of the entry of
+:data:`hilclaw.contract_table.TABLE` that covers the checked record. This
+module renders the decisions:
 
-* :func:`from_answer`: the result for one answer. A byte string is judged by
-  :func:`hilclaw.check_judging.from_report`, whatever its bytes are; one of
-  the four strings becomes a broken result by
-  :func:`hilclaw.check_result.broken`, with the string as its ``condition``
-  and without any judging.
+* :func:`from_answer`: the result for one answer of a check of fp32
+  ``gemm``. A byte string is judged by
+  :func:`hilclaw.check_judging.from_v2_report`, whatever its bytes are; one
+  of the four strings becomes a broken result by
+  :func:`hilclaw.check_result.v2_broken`, with the string as its
+  ``condition`` and without any judging.
 * :func:`from_bf16_answer`: the same for a check of a bf16 kind
   (``ARCHITECTURE/decisions/ADR-0177-od18-od6-contract-table.md``
-  decision 3): a byte string is judged by
-  :func:`hilclaw.check_judging.from_bf16_report` (by the judge of
-  ADR-0165 for ``sdpa_kv_cache``), one of the four strings becomes
-  :func:`hilclaw.check_result.bf16_broken`.
+  decision 3), judged by the judge of the kind's contract (that of
+  ADR-0165 for ``sdpa_kv_cache``).
 * :class:`NeitherFormError`: raised for an answer of neither form.
 
 Choices that are this module's own and no rule of a record:
 
 * A byte string is exactly ``bytes``, which is what
   :func:`hilclaw.harness.verification.judge_report` takes, and a string is
-  exactly ``str``, as :func:`hilclaw.check_result.broken` takes its
+  exactly ``str``, as :func:`hilclaw.check_result.v2_broken` takes its
   condition. A ``bytearray``, a ``memoryview`` and an instance of a subclass
   of ``bytes`` or of ``str`` are neither form.
 * The four strings are the first four items of
@@ -44,6 +47,13 @@ Choices that are this module's own and no rule of a record:
   function called and are made in its order.
 * Beside one of the four strings ``seed`` is neither used nor checked: nothing
   is judged, and no result holds a seed (ADR-0042 decision 6).
+* The entry is found from the ``kind`` and the ``dtype`` of the check, which
+  is all the check parameters say of the contract
+  (:mod:`hilclaw.check_parameters`): among the entries of the table marked
+  ``checked``, the one with that kind and that dtype. The table holds one
+  such entry for each kind and dtype; a table with two is refused with
+  :class:`RuntimeError` when the module is imported, so that no result
+  names a layout the check was not of.
 
 The form is established, not the truth (ADR-0043 decision 5 and Limits): an
 answer of the right form is taken as it is.
@@ -55,15 +65,33 @@ clock. It reads no file of a run and writes none. It gives no default of any
 value: no number of draws, no tolerance, no dimension and no seed. It stores
 nothing, keeps nothing between calls and has no command-line entry. It says
 nothing of what a call answers for an answer of neither form. It imports
-:mod:`hilclaw.check_judging`, :mod:`hilclaw.check_result` and ``reprlib`` of
-the standard library and nothing else.
+:mod:`hilclaw.check_judging`, :mod:`hilclaw.check_result`,
+:mod:`hilclaw.contract_table` and ``reprlib`` of the standard library and
+nothing else.
 """
 
 import reprlib
 
-from hilclaw import check_judging, check_result
+from hilclaw import check_judging, check_result, contract_table
 
 _NO_REPORT = check_result.CONDITIONS[:4]
+_BF16 = "bf16"
+
+
+def _checked_entries(table):
+    entries = {}
+    for entry in table.values():
+        if entry.checked:
+            pair = (entry.contract.KIND, entry.contract.DTYPE)
+            if pair in entries:
+                raise RuntimeError(f"contract_table: two checked entries of {pair}")
+            entries[pair] = entry
+    return entries
+
+
+_ENTRIES = _checked_entries(contract_table.TABLE)
+_FP32_GEMM = _ENTRIES["gemm", "fp32"]
+_BF16_KINDS = tuple(kind for kind, dtype in _ENTRIES if dtype == _BF16)
 
 
 class NeitherFormError(Exception):
@@ -80,25 +108,27 @@ class NeitherFormError(Exception):
 
 
 def from_answer(answer, *, m, k, n, draws, seed, rtol, atol):
-    """Return the result of a check for ``answer``, as a new ``dict``.
+    """Return the v2 result of a check of fp32 ``gemm`` for ``answer``, as a new ``dict``.
 
     ``answer`` is what an operation returned. ``m``, ``k``, ``n``, ``draws``
     and ``seed`` are the dimensions, the number of draws and the seed of the
     check, and ``rtol`` and ``atol`` its tolerance. All but ``answer`` are
-    keyword-only and none has a default.
+    keyword-only and none has a default. The result's ``contract_key`` is
+    that of the fp32 ``gemm`` entry of the table, and its ``shape`` is
+    ``m``, ``k``, ``n``.
 
     The form of ``answer`` is established first:
 
     1. Exactly ``bytes``: the answer is a report, also when it is empty,
        short, long or malformed, or spells one of the four strings. The result
-       is that of :func:`hilclaw.check_judging.from_report` with all eight
-       arguments. What each of the other arguments must be, the order of
-       their checks and what is raised are those of that function and are
-       passed on unchanged.
+       is that of :func:`hilclaw.check_judging.from_v2_report` with the
+       entry, ``(m, k, n)`` and the other five arguments. What each of the
+       other arguments must be, the order of their checks and what is raised
+       are those of that function and are passed on unchanged.
     2. Exactly a ``str`` that is ``"time_limit"``, ``"exit_status"``,
        ``"build_time_limit"`` or ``"build_exit_status"``: the result is
-       that of :func:`hilclaw.check_result.broken` with the answer
-       as its condition and ``m``, ``k``, ``n``, ``draws``, ``rtol`` and
+       that of :func:`hilclaw.check_result.v2_broken` with the answer
+       as its condition, the entry, ``(m, k, n)``, ``draws``, ``rtol`` and
        ``atol``. Nothing is judged, and ``seed`` is neither used nor checked.
        What that function raises for the six is passed on unchanged.
     3. Anything else: :class:`NeitherFormError`, whatever the other arguments
@@ -110,38 +140,48 @@ def from_answer(answer, *, m, k, n, draws, seed, rtol, atol):
     kept. Apart from what the judging of a report computes the function is
     pure: equal arguments give equal results.
     """
-    if type(answer) is bytes:
-        return check_judging.from_report(
-            answer, m=m, k=k, n=n, draws=draws, seed=seed, rtol=rtol, atol=atol
-        )
-    _condition(answer)
-    return check_result.broken(answer, m=m, k=k, n=n, draws=draws, rtol=rtol, atol=atol)
+    return _result(answer, _FP32_GEMM, (m, k, n), draws, seed, rtol, atol)
 
 
 def from_bf16_answer(answer, kind, dims, *, draws, seed, rtol, atol):
-    """Return the result of a bf16 check of ``kind`` for ``answer``, as a new ``dict``.
+    """Return the v2 result of a bf16 check of ``kind`` for ``answer``, as a new ``dict``.
 
-    As :func:`from_answer`, with the dimensions ``dims`` of ``kind`` in place
-    of ``m``, ``k`` and ``n``: exactly ``bytes`` is judged by
-    :func:`hilclaw.check_judging.from_bf16_report`; one of the four strings
-    becomes the result of :func:`hilclaw.check_result.bf16_broken` with
-    ``kind``, ``dims``, ``draws``, ``rtol`` and ``atol``, and ``seed`` is
-    neither used nor checked; anything else raises
-    :class:`NeitherFormError`, whatever the other arguments are. What those
-    functions raise is passed on unchanged. ``draws``, ``seed``, ``rtol`` and
+    As :func:`from_answer`, with the bf16 entry of ``kind`` in place of the
+    fp32 ``gemm`` entry and the dimensions ``dims`` of ``kind`` in place of
+    ``m``, ``k`` and ``n``: exactly ``bytes`` is judged by
+    :func:`hilclaw.check_judging.from_v2_report`; one of the four strings
+    becomes the result of :func:`hilclaw.check_result.v2_broken`, and
+    ``seed`` is neither used nor checked; anything else raises
+    :class:`NeitherFormError`, whatever the other arguments are. Then
+    :class:`TypeError` is raised for a ``kind`` that is not exactly a
+    ``str`` and :class:`ValueError` for one with no checked bf16 entry in
+    the table; the message starts with ``kind: ``. What those functions
+    raise is passed on unchanged. ``draws``, ``seed``, ``rtol`` and
     ``atol`` are keyword-only and no parameter has a default.
     """
-    if type(answer) is bytes:
-        return check_judging.from_bf16_report(
-            answer, kind, dims, draws=draws, seed=seed, rtol=rtol, atol=atol
-        )
     _condition(answer)
-    return check_result.bf16_broken(
-        answer, kind, dims, draws=draws, rtol=rtol, atol=atol
+    if type(kind) is not str:
+        raise TypeError(f"kind: must be a str, got {type(kind).__name__}")
+    if kind not in _BF16_KINDS:
+        shown = reprlib.repr(kind)
+        raise ValueError(f"kind: must be one of {_BF16_KINDS}, got {shown}")
+    return _result(answer, _ENTRIES[kind, _BF16], dims, draws, seed, rtol, atol)
+
+
+def _result(answer, entry, dims, draws, seed, rtol, atol):
+    _condition(answer)
+    if type(answer) is bytes:
+        return check_judging.from_v2_report(
+            answer, entry, dims, draws=draws, seed=seed, rtol=rtol, atol=atol
+        )
+    return check_result.v2_broken(
+        answer, entry, dims, draws=draws, rtol=rtol, atol=atol
     )
 
 
 def _condition(answer):
+    if type(answer) is bytes:
+        return
     if type(answer) is str:
         if answer in _NO_REPORT:
             return

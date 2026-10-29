@@ -44,8 +44,11 @@ the two:
   :data:`hilclaw.contract_table.TABLE`, built by
   :func:`hilclaw.check_result.v2_completed` or
   :func:`hilclaw.check_result.v2_broken`, with the counts of each draw
-  split per output operand by :func:`operand_counts`. No tool calls them
-  yet (ADR-0183 decision 9 item 1).
+  split per output operand by :func:`operand_counts`. Every result of the
+  tool is judged by :func:`from_v2_report` (:mod:`hilclaw.check_answer`);
+  :func:`from_judgement`, :func:`from_report`, :func:`from_bf16_judgement`
+  and :func:`from_bf16_report` are called by no tool since ADR-0183
+  decision 9 item 2, and their removal follows in a later task.
 
 Choices that are this module's own and no rule of a record:
 
