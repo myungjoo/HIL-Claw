@@ -25,8 +25,8 @@ without starting anything, and runs a stand-in build or process container on
 this machine: the bind-mounted build directory is the container's
 ``/build``, ``clang`` is the host ``clang`` found before ``PATH`` was
 narrowed, builds and processes run with that earlier ``PATH`` as a container
-runs with its image's (clang 21 finds the linker on ``PATH``), and the waiter runs in a new user and PID namespace made by
-``unshare`` where that works. Where it does not, the timing executable runs
+runs with its image's (clang 21 finds the linker on ``PATH``), and the waiter
+runs in a new user and PID namespace made by ``unshare`` where that works. Where it does not, the timing executable runs
 directly and the stub writes the waiter's last line from the host's figure
 for the child.
 """
