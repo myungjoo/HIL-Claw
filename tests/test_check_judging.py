@@ -12,6 +12,10 @@ import pytest
 from hilclaw import check_judging, check_result, contract_table, mock_check, tools
 from hilclaw.check_judging import (
     condition_of,
+    from_bf16_judgement,
+    from_bf16_report,
+    from_judgement,
+    from_report,
     from_v2_judgement,
     from_v2_report,
     operand_counts,
@@ -45,25 +49,22 @@ EXAMPLE = {
     "rtol": 1e-4,
     "atol": 0.01,
 }
-GEMM_KEY = {"kind": "gemm", "dtype": "fp32", "layout": "row_major"}
 ADR_FAIL = {
     "outcome": "fail",
-    "contract_key": GEMM_KEY,
     "shape": {"m": 1, "k": 2048, "n": 8192},
     "draws": 2,
     "tolerance": {"rtol": 1e-4, "atol": 0.01},
-    "counts": {"c": [{"failed": 0, "non_finite": 0}, {"failed": 37, "non_finite": 2}]},
+    "counts": [{"failed": 0, "non_finite": 0}, {"failed": 37, "non_finite": 2}],
 }
 ADR_BROKEN = {
     "outcome": "broken",
     "condition": "time_limit",
-    "contract_key": GEMM_KEY,
     "shape": {"m": 1, "k": 2048, "n": 8192},
     "draws": 2,
     "tolerance": {"rtol": 1e-4, "atol": 0.01},
 }
-COMPLETED_MEMBERS = {"outcome", "contract_key", "shape", "draws", "tolerance", "counts"}
-BROKEN_MEMBERS = {"outcome", "condition", "contract_key", "shape", "draws", "tolerance"}
+COMPLETED_MEMBERS = {"outcome", "shape", "draws", "tolerance", "counts"}
+BROKEN_MEMBERS = {"outcome", "condition", "shape", "draws", "tolerance"}
 
 # Test values, not tolerances, dimensions, draws or a seed of the package.
 SHAPE = (3, 4, 5)
@@ -90,49 +91,6 @@ BAD_PARAMETERS = [
     for name in ("rtol", "atol")
     for value, expected in BAD_NUMBERS
 ]
-
-
-def table_entry(kind, dtype):
-    (found,) = (
-        entry for key, entry in contract_table.TABLE.items() if key[:2] == (kind, dtype)
-    )
-    return found
-
-
-GEMM_ENTRY = table_entry("gemm", "fp32")
-
-
-def gemm_judged(judgement, *, m, k, n, draws, rtol, atol):
-    dims = (m, k, n)
-    return from_v2_judgement(
-        judgement, GEMM_ENTRY, dims, draws=draws, rtol=rtol, atol=atol
-    )
-
-
-def gemm_report(report, *, m, k, n, draws, seed, rtol, atol):
-    dims = (m, k, n)
-    named = {"draws": draws, "seed": seed, "rtol": rtol, "atol": atol}
-    return from_v2_report(report, GEMM_ENTRY, dims, **named)
-
-
-def gemm_completed(*, m, k, n, draws, rtol, atol, counts):
-    dims = (m, k, n)
-    named = {"draws": draws, "rtol": rtol, "atol": atol}
-    return check_result.v2_completed(GEMM_ENTRY, dims, **named, counts={"c": counts})
-
-
-def gemm_broken(condition, *, m, k, n, draws, rtol, atol):
-    dims = (m, k, n)
-    named = {"draws": draws, "rtol": rtol, "atol": atol}
-    return check_result.v2_broken(condition, GEMM_ENTRY, dims, **named)
-
-
-def bf16_report_judged(report, kind, dims, **named):
-    return from_v2_report(report, table_entry(kind, "bf16"), dims, **named)
-
-
-def bf16_judged(judgement, kind, dims, **named):
-    return from_v2_judgement(judgement, table_entry(kind, "bf16"), dims, **named)
 
 
 class Other(enum.Enum):
@@ -229,67 +187,59 @@ def test_condition_of_refuses_what_is_no_member_of_broken(value):
 
 
 def test_a_pass_judgement_gives_the_completed_result():
-    result = gemm_judged(PASSED, **SMALL)
+    result = from_judgement(PASSED, **SMALL)
     assert result == {
         "outcome": "pass",
-        "contract_key": GEMM_KEY,
         "shape": {"m": 3, "k": 4, "n": 5},
         "draws": 3,
         "tolerance": {"rtol": 1e-5, "atol": 1e-6},
-        "counts": {"c": [{"failed": 0, "non_finite": 0}] * 3},
+        "counts": [{"failed": 0, "non_finite": 0}] * 3,
     }
-    assert result == gemm_completed(**SMALL, counts=((0, 0),) * 3)
+    assert result == check_result.completed(**SMALL, counts=((0, 0),) * 3)
     assert_sound(result, COMPLETED_MEMBERS)
 
 
 def test_a_fail_judgement_gives_the_second_example_of_the_record():
     judgement = Judgement(None, Verdict.FAIL, (Counts(0, 0), Counts(37, 2)))
-    result = gemm_judged(judgement, **EXAMPLE)
+    result = from_judgement(judgement, **EXAMPLE)
     assert result == ADR_FAIL
-    assert result == gemm_completed(**EXAMPLE, counts=((0, 0), (37, 2)))
+    assert result == check_result.completed(**EXAMPLE, counts=((0, 0), (37, 2)))
     assert_sound(result, COMPLETED_MEMBERS)
 
 
 @pytest.mark.parametrize("member", list(Broken), ids=lambda member: member.name)
 def test_a_broken_judgement_gives_the_broken_result(member):
-    result = gemm_judged(Judgement(member, None, None), **EXAMPLE)
+    result = from_judgement(Judgement(member, None, None), **EXAMPLE)
     assert result == {**ADR_BROKEN, "condition": condition_of(member)}
-    assert result == gemm_broken(condition_of(member), **EXAMPLE)
+    assert result == check_result.broken(condition_of(member), **EXAMPLE)
     assert_sound(result, BROKEN_MEMBERS)
 
 
 def test_a_timeout_judgement_gives_the_third_example_of_the_record():
-    result = gemm_judged(Judgement(Broken.TIMEOUT, None, None), **EXAMPLE)
+    result = from_judgement(Judgement(Broken.TIMEOUT, None, None), **EXAMPLE)
     assert result == ADR_BROKEN
-    assert list(result) == [
-        "outcome",
-        "condition",
-        "contract_key",
-        "shape",
-        "draws",
-        "tolerance",
-    ]
+    assert list(result) == ["outcome", "condition", "shape", "draws", "tolerance"]
 
 
 def test_from_judgement_takes_the_counts_as_a_list_too():
     judgement = Judgement(None, Verdict.FAIL, list(ONE_FAILED))
-    assert gemm_judged(judgement, **SMALL) == gemm_judged(FAILED, **SMALL)
+    assert from_judgement(judgement, **SMALL) == from_judgement(FAILED, **SMALL)
 
 
 def test_from_report_passes_a_report_of_rounded_references():
-    result = gemm_report(GOOD, **CALL)
+    result = from_report(GOOD, **CALL)
     assert result["outcome"] == "pass"
-    assert result["counts"] == {"c": [{"failed": 0, "non_finite": 0}] * DRAWS}
-    assert result == gemm_judged(PASSED, **SMALL)
+    assert result["counts"] == [{"failed": 0, "non_finite": 0}] * DRAWS
+    assert result == from_judgement(PASSED, **SMALL)
     assert_sound(result, COMPLETED_MEMBERS)
     assert "seed" not in result
 
 
 def test_from_report_fails_one_element_outside_the_tolerance():
-    result = gemm_report(failing_report(), **CALL)
-    assert result == gemm_judged(FAILED, **SMALL)
+    result = from_report(failing_report(), **CALL)
+    assert result == from_judgement(FAILED, **SMALL)
     assert result["outcome"] == "fail"
-    assert [entry["failed"] for entry in result["counts"]["c"]] == [0, 1, 0]
+    assert [entry["failed"] for entry in result["counts"]] == [0, 1, 0]
     assert_sound(result, COMPLETED_MEMBERS)
 
 
@@ -298,9 +248,9 @@ def test_from_report_counts_a_non_finite_output_in_both_counts():
     outputs[0][1, 1] = np.nan
     outputs[0][0, 0] = 70.0
     outputs[2][0, 3] = -np.inf
-    result = gemm_report(report_of(*SHAPE, SEED, outputs), **CALL)
+    result = from_report(report_of(*SHAPE, SEED, outputs), **CALL)
     assert result["outcome"] == "fail"
-    assert result["counts"]["c"] == [
+    assert result["counts"] == [
         {"failed": 2, "non_finite": 1},
         {"failed": 0, "non_finite": 0},
         {"failed": 1, "non_finite": 1},
@@ -314,8 +264,8 @@ def test_from_report_counts_a_non_finite_output_in_both_counts():
     ids=["short", "long", "no-end-mark", "cut-before-the-mark", "empty"],
 )
 def test_from_report_of_a_wrong_form_is_broken(report):
-    result = gemm_report(report, **CALL)
-    assert result == gemm_broken("report_form", **SMALL)
+    result = from_report(report, **CALL)
+    assert result == check_result.broken("report_form", **SMALL)
     assert_sound(result, BROKEN_MEMBERS)
 
 
@@ -323,8 +273,8 @@ def test_from_report_of_a_wrong_form_is_broken(report):
 def test_from_report_with_a_wrong_check_value_is_broken(draw):
     outputs = rounded_references(*SHAPE, DRAWS, SEED)
     report = report_of(*SHAPE, SEED, outputs, wrong_check={draw})
-    result = gemm_report(report, **CALL)
-    assert result == gemm_broken("check_value", **SMALL)
+    result = from_report(report, **CALL)
+    assert result == check_result.broken("check_value", **SMALL)
     assert "counts" not in result
     assert_sound(result, BROKEN_MEMBERS)
 
@@ -333,21 +283,21 @@ def test_from_report_drops_the_counts_before_a_wrong_check_value():
     outputs = rounded_references(*SHAPE, DRAWS, SEED)
     outputs[0][0, :] = 9.0
     report = report_of(*SHAPE, SEED, outputs, wrong_check={2})
-    result = gemm_report(report, **CALL)
-    assert result == gemm_broken("check_value", **SMALL)
+    result = from_report(report, **CALL)
+    assert result == check_result.broken("check_value", **SMALL)
     assert set(result) == BROKEN_MEMBERS
 
 
 def test_from_report_of_a_report_made_for_another_seed_is_broken():
     report = passing_report(*SHAPE, DRAWS, SEED + 1)
-    assert gemm_report(report, **CALL)["condition"] == "check_value"
-    assert gemm_report(report, **{**CALL, "seed": SEED + 1})["outcome"] == "pass"
+    assert from_report(report, **CALL)["condition"] == "check_value"
+    assert from_report(report, **{**CALL, "seed": SEED + 1})["outcome"] == "pass"
 
 
 @pytest.mark.parametrize("seed", [0, LAST])
 def test_from_report_takes_the_whole_range_of_seeds(seed):
     arguments = {**CALL, "draws": 2, "seed": seed}
-    result = gemm_report(passing_report(*SHAPE, 2, seed), **arguments)
+    result = from_report(passing_report(*SHAPE, 2, seed), **arguments)
     assert result["outcome"] == "pass"
     assert result["draws"] == 2
 
@@ -355,18 +305,17 @@ def test_from_report_takes_the_whole_range_of_seeds(seed):
 def test_from_report_of_the_smallest_check():
     unit = {"m": 1, "k": 1, "n": 1, "draws": 1}
     report = passing_report(1, 1, 1, 1, SEED)
-    result = gemm_report(report, **unit, seed=SEED, rtol=1e-5, atol=1e-6)
+    result = from_report(report, **unit, seed=SEED, rtol=1e-5, atol=1e-6)
     assert result == {
         "outcome": "pass",
-        "contract_key": GEMM_KEY,
         "shape": {"m": 1, "k": 1, "n": 1},
         "draws": 1,
         "tolerance": {"rtol": 1e-5, "atol": 1e-6},
-        "counts": {"c": [{"failed": 0, "non_finite": 0}]},
+        "counts": [{"failed": 0, "non_finite": 0}],
     }
     off = report_of(1, 1, 1, SEED, [np.full((1, 1), np.inf, dtype=np.float32)])
-    result = gemm_report(off, **unit, seed=SEED, rtol=1e-5, atol=1e-6)
-    assert result["counts"] == {"c": [{"failed": 1, "non_finite": 1}]}
+    result = from_report(off, **unit, seed=SEED, rtol=1e-5, atol=1e-6)
+    assert result["counts"] == [{"failed": 1, "non_finite": 1}]
 
 
 @pytest.mark.parametrize("zero", [0.0, 0])
@@ -374,38 +323,38 @@ def test_from_report_with_a_zero_tolerance(zero):
     unit = {"m": 1, "k": 1, "n": 1, "draws": 1, "seed": EXACT_SEED}
     a, b = draw_inputs(1, 1, 1, seed=EXACT_SEED, draw=0)
     output = reference(a, b).astype(np.float32)
-    result = gemm_report(
+    result = from_report(
         report_of(1, 1, 1, EXACT_SEED, [output]), **unit, rtol=zero, atol=zero
     )
     assert result["outcome"] == "pass"
     assert result["tolerance"] == {"rtol": 0.0, "atol": 0.0}
     assert type(result["tolerance"]["rtol"]) is float
     off = np.nextafter(output, np.float32(2.0))
-    result = gemm_report(
+    result = from_report(
         report_of(1, 1, 1, EXACT_SEED, [off]), **unit, rtol=zero, atol=zero
     )
     assert result["outcome"] == "fail"
-    assert result["counts"] == {"c": [{"failed": 1, "non_finite": 0}]}
+    assert result["counts"] == [{"failed": 1, "non_finite": 0}]
 
 
 def test_from_report_with_integer_tolerances():
     report = report_of(*SHAPE, SEED, [np.zeros((3, 5), dtype=np.float32)] * DRAWS)
-    passed = gemm_report(report, **{**CALL, "rtol": 1, "atol": 0})
+    passed = from_report(report, **{**CALL, "rtol": 1, "atol": 0})
     assert passed["outcome"] == "pass"
     assert passed["tolerance"] == {"rtol": 1.0, "atol": 0.0}
-    failed = gemm_report(report, **{**CALL, "rtol": 0, "atol": 0})
-    assert failed["counts"] == {"c": [{"failed": 15, "non_finite": 0}] * DRAWS}
+    failed = from_report(report, **{**CALL, "rtol": 0, "atol": 0})
+    assert failed["counts"] == [{"failed": 15, "non_finite": 0}] * DRAWS
     assert_sound(failed, COMPLETED_MEMBERS)
 
 
 def test_from_report_of_a_wrong_form_for_many_draws_builds_no_counts():
     many = {**CALL, "draws": 2**63}
-    result = gemm_report(GOOD, **many)
-    assert result == gemm_broken("report_form", **{**SMALL, "draws": 2**63})
+    result = from_report(GOOD, **many)
+    assert result == check_result.broken("report_form", **{**SMALL, "draws": 2**63})
     assert_sound(result, BROKEN_MEMBERS)
 
 
-def test_from_report_is_the_judging_followed_by_gemm_judged():
+def test_from_report_is_the_judging_followed_by_from_judgement():
     outputs = rounded_references(*SHAPE, DRAWS, SEED)
     reports = {
         "pass": GOOD,
@@ -416,12 +365,12 @@ def test_from_report_is_the_judging_followed_by_gemm_judged():
     seen = set()
     for report in reports.values():
         judgement = judge_report(report, **CALL)
-        result = gemm_report(report, **CALL)
-        assert result == gemm_judged(judgement, **SMALL)
-        assert result == gemm_report(report, **CALL)
+        result = from_report(report, **CALL)
+        assert result == from_judgement(judgement, **SMALL)
+        assert result == from_report(report, **CALL)
         if judgement.broken is None:
             assert result["outcome"] == judgement.verdict.name.lower()
-            assert len(result["counts"]["c"]) == len(judgement.counts)
+            assert len(result["counts"]) == len(judgement.counts)
             seen.add(result["outcome"])
         else:
             assert result["outcome"] == "broken"
@@ -444,13 +393,13 @@ def test_from_report_is_the_judging_followed_by_gemm_judged():
     ids=["none", "tuple", "dict", "verification-result", "list", "str", "class"],
 )
 def test_from_judgement_refuses_what_is_not_exactly_a_judgement(judgement):
-    refused(TypeError, "judgement", gemm_judged, judgement, **SMALL)
+    refused(TypeError, "judgement", from_judgement, judgement, **SMALL)
 
 
 @pytest.mark.parametrize("fields", [(), (None,), (None, Verdict.PASS, ZEROS, None)])
 def test_from_judgement_refuses_a_judgement_without_its_three_fields(fields):
     judgement = tuple.__new__(Judgement, fields)
-    refused(ValueError, "judgement", gemm_judged, judgement, **SMALL)
+    refused(ValueError, "judgement", from_judgement, judgement, **SMALL)
 
 
 @pytest.mark.parametrize(
@@ -489,41 +438,42 @@ def test_from_judgement_refuses_a_judgement_without_its_three_fields(fields):
     ids=str,
 )
 def test_from_judgement_refuses_fields_that_do_not_agree(judgement, expected, name):
-    refused(expected, name, gemm_judged, judgement, **SMALL)
+    refused(expected, name, from_judgement, judgement, **SMALL)
 
 
 @pytest.mark.parametrize(
     ("counts", "expected", "name"),
     [
-        (ZEROS[:2], ValueError, "counts.c"),
-        (ZEROS + ZEROS, ValueError, "counts.c"),
-        ((), ValueError, "counts.c"),
+        (ZEROS[:2], ValueError, "counts"),
+        (ZEROS + ZEROS, ValueError, "counts"),
+        ((), ValueError, "counts"),
         (
             (Counts(0, 0), Counts(1, 2), Counts(0, 0)),
             ValueError,
-            "counts.c[1].non_finite",
+            "counts[1].non_finite",
         ),
-        (
-            (Counts(0, 0), Counts(0, 0), Counts(16, 0)),
-            ValueError,
-            "counts.c[2].failed",
-        ),
-        ((Counts(-1, 0),) * 3, ValueError, "counts.c[0].failed"),
-        ((Counts(True, 0),) * 3, TypeError, "counts.c[0].failed"),
-        (([0, 0],) * 3, TypeError, "judgement.counts[0]"),
-        (((0, 0, 0),) * 3, ValueError, "judgement.counts[0]"),
-        (0, TypeError, "judgement.counts"),
-        ("000", TypeError, "judgement.counts"),
-        ({0: 0}, TypeError, "judgement.counts"),
+        ((Counts(0, 0), Counts(0, 0), Counts(16, 0)), ValueError, "counts[2].failed"),
+        ((Counts(-1, 0),) * 3, ValueError, "counts[0].failed"),
+        ((Counts(True, 0),) * 3, TypeError, "counts[0].failed"),
+        (([0, 0],) * 3, TypeError, "counts[0]"),
+        (((0, 0, 0),) * 3, ValueError, "counts[0]"),
+        (0, TypeError, "counts"),
+        ("000", TypeError, "counts"),
+        ({0: 0}, TypeError, "counts"),
     ],
     ids=str,
 )
 @pytest.mark.parametrize("verdict", list(Verdict), ids=lambda verdict: verdict.name)
-def test_from_judgement_passes_on_what_the_split_and_the_builder_refuse_of_counts(
+def test_from_judgement_passes_on_what_the_builder_refuses_of_counts(
     verdict, counts, expected, name
 ):
     judgement = Judgement(None, verdict, counts)
-    refused(expected, name, gemm_judged, judgement, **SMALL)
+    refused(expected, name, from_judgement, judgement, **SMALL)
+    with pytest.raises(expected) as caught:
+        check_result.completed(**SMALL, counts=counts)
+    with pytest.raises(expected) as passed_on:
+        from_judgement(judgement, **SMALL)
+    assert str(passed_on.value) == str(caught.value)
 
 
 @pytest.mark.parametrize(("name", "value", "expected"), BAD_PARAMETERS, ids=str)
@@ -535,35 +485,36 @@ def test_from_judgement_passes_on_what_the_split_and_the_builder_refuse_of_count
 def test_from_judgement_passes_on_what_the_builder_refuses_of_a_parameter(
     judgement, name, value, expected
 ):
-    refused(expected, name, gemm_judged, judgement, **{**SMALL, name: value})
+    refused(expected, name, from_judgement, judgement, **{**SMALL, name: value})
 
 
 def test_from_judgement_checks_the_judgement_before_the_parameters():
     bad = {**SMALL, "m": 0}
-    refused(TypeError, "judgement", gemm_judged, None, **bad)
+    refused(TypeError, "judgement", from_judgement, None, **bad)
     refused(
-        TypeError, "judgement.verdict", gemm_judged, Judgement(None, 1, ZEROS), **bad
+        TypeError, "judgement.verdict", from_judgement, Judgement(None, 1, ZEROS), **bad
     )
     broken = Judgement(Broken.TIMEOUT, Verdict.PASS, None)
-    refused(ValueError, "judgement.verdict", gemm_judged, broken, **bad)
-    refused(ValueError, "m", gemm_judged, Judgement(None, Verdict.FAIL, ZEROS), **bad)
+    refused(ValueError, "judgement.verdict", from_judgement, broken, **bad)
+    refused(
+        ValueError, "m", from_judgement, Judgement(None, Verdict.FAIL, ZEROS), **bad
+    )
 
 
 @pytest.mark.parametrize("judgement", [PASSED, Judgement(Broken.TIMEOUT, None, None)])
-def test_from_v2_judgement_takes_exactly_its_keyword_arguments(judgement):
-    named = {"draws": DRAWS, "rtol": 1e-5, "atol": 1e-6}
-    for name in named:
-        arguments = {key: value for key, value in named.items() if key != name}
+def test_from_judgement_takes_exactly_its_keyword_arguments(judgement):
+    for name in SMALL:
+        arguments = {key: value for key, value in SMALL.items() if key != name}
         with pytest.raises(TypeError, match=name):
-            from_v2_judgement(judgement, GEMM_ENTRY, SHAPE, **arguments)
+            from_judgement(judgement, **arguments)
     with pytest.raises(TypeError, match="seed"):
-        from_v2_judgement(judgement, GEMM_ENTRY, SHAPE, **named, seed=SEED)
+        from_judgement(judgement, **SMALL, seed=SEED)
     with pytest.raises(TypeError, match="counts"):
-        from_v2_judgement(judgement, GEMM_ENTRY, SHAPE, **named, counts=ZEROS)
+        from_judgement(judgement, **SMALL, counts=ZEROS)
     with pytest.raises(TypeError):
-        from_v2_judgement(judgement, GEMM_ENTRY, SHAPE, *named.values())
+        from_judgement(judgement, *SMALL.values())
     with pytest.raises(TypeError, match="judgement"):
-        from_v2_judgement(entry=GEMM_ENTRY, dims=SHAPE, **named)
+        from_judgement(**SMALL)
 
 
 @pytest.mark.parametrize(
@@ -572,7 +523,7 @@ def test_from_v2_judgement_takes_exactly_its_keyword_arguments(judgement):
     ids=["bytearray", "str", "none", "memoryview", "list"],
 )
 def test_from_report_refuses_a_report_that_is_not_bytes(report):
-    refused(TypeError, "report", gemm_report, report, **CALL)
+    refused(TypeError, "report", from_report, report, **CALL)
 
 
 @pytest.mark.parametrize(
@@ -582,6 +533,9 @@ def test_from_report_refuses_a_report_that_is_not_bytes(report):
         ("seed", 2**64),
         ("seed", True),
         ("seed", None),
+        ("m", 0),
+        ("k", True),
+        ("n", 1.0),
         ("draws", 0),
         ("draws", 2**64),
         ("draws", True),
@@ -593,32 +547,21 @@ def test_from_report_refuses_a_report_that_is_not_bytes(report):
     ids=str,
 )
 def test_from_report_passes_on_what_the_judging_refuses(name, value):
-    refused(VerificationArgumentError, name, gemm_report, GOOD, **{**CALL, name: value})
-    refused(VerificationArgumentError, name, gemm_report, None, **{**CALL, name: value})
+    refused(VerificationArgumentError, name, from_report, GOOD, **{**CALL, name: value})
+    refused(VerificationArgumentError, name, from_report, None, **{**CALL, name: value})
 
 
-@pytest.mark.parametrize(
-    ("name", "value", "expected"),
-    [("m", 0, ValueError), ("k", True, TypeError), ("n", 1.0, TypeError)],
-    ids=str,
-)
-def test_from_report_refuses_dimensions_before_the_judging(name, value, expected):
-    refused(expected, name, gemm_report, GOOD, **{**CALL, name: value})
-    refused(expected, name, gemm_report, None, **{**CALL, name: value})
-
-
-def test_from_v2_report_takes_exactly_its_keyword_arguments():
-    named = {"draws": DRAWS, "seed": SEED, "rtol": 1e-5, "atol": 1e-6}
-    for name in named:
-        arguments = {key: value for key, value in named.items() if key != name}
+def test_from_report_takes_exactly_its_keyword_arguments():
+    for name in CALL:
+        arguments = {key: value for key, value in CALL.items() if key != name}
         with pytest.raises(TypeError, match=name):
-            from_v2_report(GOOD, GEMM_ENTRY, SHAPE, **arguments)
+            from_report(GOOD, **arguments)
     with pytest.raises(TypeError, match="counts"):
-        from_v2_report(GOOD, GEMM_ENTRY, SHAPE, **named, counts=ZEROS)
+        from_report(GOOD, **CALL, counts=ZEROS)
     with pytest.raises(TypeError):
-        from_v2_report(GOOD, GEMM_ENTRY, SHAPE, *named.values())
+        from_report(GOOD, *CALL.values())
     with pytest.raises(TypeError, match="report"):
-        from_v2_report(entry=GEMM_ENTRY, dims=SHAPE, **named)
+        from_report(**CALL)
 
 
 def test_from_judgement_leaves_its_arguments_and_shares_nothing():
@@ -626,13 +569,13 @@ def test_from_judgement_leaves_its_arguments_and_shares_nothing():
     judgement = Judgement(None, Verdict.FAIL, counts)
     before = copy.deepcopy(judgement)
     arguments = dict(SMALL)
-    first = gemm_judged(judgement, **arguments)
-    second = gemm_judged(judgement, **arguments)
+    first = from_judgement(judgement, **arguments)
+    second = from_judgement(judgement, **arguments)
     expected = copy.deepcopy(second)
     assert first == second
     assert first is not second
-    first["counts"]["c"][1]["failed"] = 9
-    first["counts"]["c"].append({"failed": 0, "non_finite": 0})
+    first["counts"][1]["failed"] = 9
+    first["counts"].append({"failed": 0, "non_finite": 0})
     first["shape"]["m"] = 99
     first["tolerance"]["rtol"] = 9.0
     first["outcome"] = "pass"
@@ -640,41 +583,40 @@ def test_from_judgement_leaves_its_arguments_and_shares_nothing():
     assert counts == before.counts
     assert arguments == SMALL
     assert second == expected
-    assert gemm_judged(judgement, **arguments) == expected
+    assert from_judgement(judgement, **arguments) == expected
 
     broken = Judgement(Broken.CHECK_VALUE, None, None)
-    one = gemm_judged(broken, **SMALL)
-    other = gemm_judged(broken, **SMALL)
+    one = from_judgement(broken, **SMALL)
+    other = from_judgement(broken, **SMALL)
     one["shape"]["k"] = 99
     one["condition"] = "time_limit"
     assert broken == Judgement(Broken.CHECK_VALUE, None, None)
-    assert other == gemm_broken("check_value", **SMALL)
+    assert other == check_result.broken("check_value", **SMALL)
 
 
 def test_from_report_gives_equal_results_for_equal_arguments():
     report = failing_report()
     kept = bytes(report)
-    first = gemm_report(report, **CALL)
-    first["counts"]["c"][1]["failed"] = 0
-    assert gemm_report(report, **CALL) == gemm_report(kept, **CALL)
-    second = gemm_report(report, **CALL)
-    assert second["counts"]["c"][1] == {"failed": 1, "non_finite": 0}
+    first = from_report(report, **CALL)
+    first["counts"][1]["failed"] = 0
+    assert from_report(report, **CALL) == from_report(kept, **CALL)
+    assert from_report(report, **CALL)["counts"][1] == {"failed": 1, "non_finite": 0}
     assert report == kept
 
 
 def test_a_call_writes_no_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     condition_of(Broken.TIMEOUT)
-    gemm_judged(PASSED, **SMALL)
-    gemm_judged(Judgement(Broken.EXIT_STATUS, None, None), **SMALL)
-    gemm_report(GOOD, **CALL)
-    gemm_report(GOOD[:-1], **CALL)
+    from_judgement(PASSED, **SMALL)
+    from_judgement(Judgement(Broken.EXIT_STATUS, None, None), **SMALL)
+    from_report(GOOD, **CALL)
+    from_report(GOOD[:-1], **CALL)
     with pytest.raises(TypeError):
         condition_of("time_limit")
     with pytest.raises(ValueError):
-        gemm_judged(Judgement(None, None, None), **SMALL)
+        from_judgement(Judgement(None, None, None), **SMALL)
     with pytest.raises(TypeError):
-        gemm_report(None, **CALL)
+        from_report(None, **CALL)
     assert list(tmp_path.iterdir()) == []
 
 
@@ -703,6 +645,10 @@ def test_public_names_of_the_module_and_no_default():
     }
     assert public == {
         "condition_of",
+        "from_judgement",
+        "from_report",
+        "from_bf16_judgement",
+        "from_bf16_report",
         "operand_counts",
         "from_v2_judgement",
         "from_v2_report",
@@ -711,16 +657,17 @@ def test_public_names_of_the_module_and_no_default():
         parameters = inspect.signature(getattr(check_judging, name)).parameters
         for parameter in parameters.values():
             assert parameter.default is inspect.Parameter.empty, (name, parameter)
-    for name in (
-        "from_judgement",
-        "from_report",
-        "from_bf16_judgement",
-        "from_bf16_report",
+    keyword_only = inspect.Parameter.KEYWORD_ONLY
+    for function, names in (
+        (from_judgement, ["m", "k", "n", "draws", "rtol", "atol"]),
+        (from_report, ["m", "k", "n", "draws", "seed", "rtol", "atol"]),
     ):
-        assert not hasattr(check_judging, name), name
+        parameters = list(inspect.signature(function).parameters.values())
+        assert [parameter.name for parameter in parameters[1:]] == names
+        assert all(parameter.kind is keyword_only for parameter in parameters[1:])
 
 
-# A check of a bf16 kind (ADR-0177 decision 3, "The judge"; ADR-0183 decision 3)
+# A check of a bf16 kind (ADR-0177 decision 3, "The judge")
 
 # Test values, not dimensions, draws, a seed or a tolerance of the package.
 BF16_SHAPES = {
@@ -738,83 +685,80 @@ def bf16_report(kind, dims):
     return mock_check.default_script(None, None, None, parameters, None, None)
 
 
-def bf16_key(kind):
-    return {"kind": kind, "dtype": "bf16", "layout": "row_major"}
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_conforming_bf16_report_is_judged_pass(kind):
+    dims, shape = BF16_SHAPES[kind]
+    result = from_bf16_report(bf16_report(kind, dims), kind, dims, **BF16_CALL)
+    assert result == {
+        "outcome": "pass",
+        "shape": shape,
+        "draws": 2,
+        "tolerance": {"rtol": 2**-8, "atol": 0.0},
+        "counts": [{"failed": 0, "non_finite": 0}] * 2,
+    }
 
 
-def operand_of(kind, dims):
-    (name,) = check_result.output_operands(table_entry(kind, "bf16"), dims)
-    return name
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_bf16_report_with_a_wrong_element_is_judged_fail(kind):
+    dims, _ = BF16_SHAPES[kind]
+    report = bytearray(bf16_report(kind, dims))
+    struct.pack_into("=H", report, 4, 0x7F80)
+    result = from_bf16_report(bytes(report), kind, dims, **BF16_CALL)
+    assert result["outcome"] == "fail"
+    assert result["counts"][0] == {"failed": 1, "non_finite": 1}
 
 
 @pytest.mark.parametrize("kind", list(BF16_SHAPES))
 def test_a_bf16_report_of_the_wrong_form_or_check_value_is_broken(kind):
     dims, shape = BF16_SHAPES[kind]
     good = bf16_report(kind, dims)
-    short = bf16_report_judged(good[:-4], kind, dims, **BF16_CALL)
+    short = from_bf16_report(good[:-4], kind, dims, **BF16_CALL)
     assert short == {
         "outcome": "broken",
         "condition": "report_form",
-        "contract_key": bf16_key(kind),
         "shape": shape,
         "draws": 2,
         "tolerance": {"rtol": 2**-8, "atol": 0.0},
     }
     mismatched = bytearray(good)
     mismatched[1] ^= 0x10
-    result = bf16_report_judged(bytes(mismatched), kind, dims, **BF16_CALL)
+    result = from_bf16_report(bytes(mismatched), kind, dims, **BF16_CALL)
     assert result["condition"] == "check_value"
-    assert "counts" not in result
 
 
 @pytest.mark.parametrize(
-    ("kind", "dims", "expected"),
-    [
-        ("rope", (1, 2), ValueError),
-        ("gemm", (1, 1), ValueError),
-        ("swiglu", (0, 1), ValueError),
-        ("swiglu", [1, 1], TypeError),
-    ],
+    ("kind", "dims"),
+    [("rope", (1, 2)), ("conv", (1, 1)), ("gemm", (1, 1)), ("swiglu", (0, 1))],
 )
-def test_a_bf16_report_of_dims_outside_the_contract_is_refused(kind, dims, expected):
-    with pytest.raises(expected):
-        bf16_report_judged(b"", kind, dims, **BF16_CALL)
-
-
-@pytest.mark.parametrize(
-    ("name", "value"), [("draws", 0), ("seed", -1), ("rtol", -1.0), ("atol", None)]
-)
-def test_a_bf16_report_of_values_the_judge_refuses_raises(name, value):
-    dims, _ = BF16_SHAPES["rmsnorm"]
+def test_a_bf16_report_of_parameters_the_judge_refuses_raises(kind, dims):
     with pytest.raises(VerificationArgumentError):
-        bf16_report_judged(b"", "rmsnorm", dims, **{**BF16_CALL, name: value})
+        from_bf16_report(b"", kind, dims, **BF16_CALL)
 
 
 def test_a_bf16_report_that_is_no_bytes_raises_type_error():
     dims, _ = BF16_SHAPES["rmsnorm"]
     with pytest.raises(TypeError, match=r"^report: "):
-        bf16_report_judged(bytearray(b"x"), "rmsnorm", dims, **BF16_CALL)
+        from_bf16_report(bytearray(b"x"), "rmsnorm", dims, **BF16_CALL)
 
 
 @pytest.mark.parametrize("member", list(Broken))
 def test_a_broken_bf16_judgement_gives_its_condition(member):
     dims, shape = BF16_SHAPES["swiglu"]
     judgement = Judgement(member, None, None)
-    result = bf16_judged(judgement, "swiglu", dims, **BF16_BUILD)
+    result = from_bf16_judgement(judgement, "swiglu", dims, **BF16_BUILD)
     assert result["condition"] == condition_of(member)
-    assert result["contract_key"] == bf16_key("swiglu")
     assert result["shape"] == shape
 
 
 def test_a_completed_bf16_judgement_gives_its_counts_and_outcome():
     dims, shape = BF16_SHAPES["gemm"]
     judgement = Judgement(None, Verdict.FAIL, (Counts(0, 0), Counts(8, 2)))
-    result = bf16_judged(judgement, "gemm", dims, **BF16_BUILD)
+    result = from_bf16_judgement(judgement, "gemm", dims, **BF16_BUILD)
     assert result["outcome"] == "fail"
     assert result["shape"] == shape
-    assert result["counts"]["c"][1] == {"failed": 8, "non_finite": 2}
-    with pytest.raises(ValueError, match=r"^counts\.c\[1\]\.failed: "):
-        bf16_judged(
+    assert result["counts"][1] == {"failed": 8, "non_finite": 2}
+    with pytest.raises(ValueError, match=r"^counts\[1\]\.failed: "):
+        from_bf16_judgement(
             Judgement(None, Verdict.FAIL, (Counts(0, 0), Counts(9, 0))),
             "gemm",
             dims,
@@ -834,10 +778,16 @@ def test_a_completed_bf16_judgement_gives_its_counts_and_outcome():
 def test_a_bf16_judgement_that_does_not_agree_is_refused(judgement, expected):
     dims, _ = BF16_SHAPES["elementwise_add"]
     with pytest.raises(expected):
-        bf16_judged(judgement, "elementwise_add", dims, **BF16_BUILD)
+        from_bf16_judgement(judgement, "elementwise_add", dims, **BF16_BUILD)
 
 
-# An sdpa_kv_cache check (ADR-0165 decision 8; ADR-0183 decision 3)
+def test_a_bf16_judgement_of_an_unknown_kind_is_refused():
+    judgement = Judgement(Broken.TIMEOUT, None, None)
+    with pytest.raises(ValueError, match=r"^kind: "):
+        from_bf16_judgement(judgement, "conv", (1, 2), **BF16_BUILD)
+
+
+# An sdpa_kv_cache check (ADR-0177 decision 3, HQ-0077; ADR-0165 decision 8)
 
 # Test values, not dimensions, draws, a seed or a tolerance of the package.
 SDPA = "sdpa_kv_cache"
@@ -851,11 +801,7 @@ SDPA_CASES = {
 SDPA_DIMS, SDPA_SHAPE = SDPA_CASES["h-multiple-of-h_kv"]
 SDPA_CALL = {"draws": 2, "seed": SEED, "rtol": 0, "atol": 2.154e-3}
 SDPA_BUILD = {"draws": 2, "rtol": 0, "atol": 2.154e-3}
-SDPA_ZEROS = {
-    "cache_k": [{"differs": 0}] * 2,
-    "cache_v": [{"differs": 0}] * 2,
-    "out": [{"failed": 0, "non_finite": 0}] * 2,
-}
+SDPA_ZEROS = [{"failed": 0, "non_finite": 0, "cache_differs": 0}] * 2
 
 
 def sdpa_offsets(dims, draw):
@@ -875,10 +821,9 @@ def with_patterns(report, changes):
 @pytest.mark.parametrize("case", list(SDPA_CASES))
 def test_a_conforming_sdpa_report_is_judged_pass(case):
     dims, shape = SDPA_CASES[case]
-    result = bf16_report_judged(bf16_report(SDPA, dims), SDPA, dims, **SDPA_CALL)
+    result = from_bf16_report(bf16_report(SDPA, dims), SDPA, dims, **SDPA_CALL)
     assert result == {
         "outcome": "pass",
-        "contract_key": bf16_key(SDPA),
         "shape": shape,
         "draws": 2,
         "tolerance": {"rtol": 0.0, "atol": 2.154e-3},
@@ -887,61 +832,50 @@ def test_a_conforming_sdpa_report_is_judged_pass(case):
 
 
 @pytest.mark.parametrize(
-    ("where", "out", "cache_k"),
+    ("where", "expected"),
     [
-        ("out", {"failed": 1, "non_finite": 0}, {"differs": 0}),
-        ("cache", {"failed": 0, "non_finite": 0}, {"differs": 1}),
-        ("both", {"failed": 1, "non_finite": 0}, {"differs": 1}),
+        ("out", {"failed": 1, "non_finite": 0, "cache_differs": 0}),
+        ("cache", {"failed": 0, "non_finite": 0, "cache_differs": 1}),
+        ("both", {"failed": 1, "non_finite": 0, "cache_differs": 1}),
     ],
 )
-def test_an_sdpa_report_fails_by_out_by_the_cache_or_by_both(where, out, cache_k):
-    out_at, cache_at = sdpa_offsets(SDPA_DIMS, 1)
-    changes = {"out": [(out_at, 0x4780)], "cache": [(cache_at, 0x0000)]}
+def test_an_sdpa_report_fails_by_out_by_the_cache_or_by_both(where, expected):
+    out, cache = sdpa_offsets(SDPA_DIMS, 1)
+    changes = {"out": [(out, 0x4780)], "cache": [(cache, 0x0000)]}
     changes["both"] = changes["out"] + changes["cache"]
     report = with_patterns(bf16_report(SDPA, SDPA_DIMS), changes[where])
-    result = bf16_report_judged(report, SDPA, SDPA_DIMS, **SDPA_CALL)
+    result = from_bf16_report(report, SDPA, SDPA_DIMS, **SDPA_CALL)
     assert result["outcome"] == "fail"
-    assert result["counts"] == {
-        "cache_k": [{"differs": 0}, cache_k],
-        "cache_v": [{"differs": 0}] * 2,
-        "out": [{"failed": 0, "non_finite": 0}, out],
-    }
+    assert result["counts"] == [SDPA_ZEROS[0], expected]
 
 
 def test_an_sdpa_report_of_the_wrong_form_or_check_value_is_broken():
     good = bf16_report(SDPA, SDPA_DIMS)
-    short = bf16_report_judged(good[:-4], SDPA, SDPA_DIMS, **SDPA_CALL)
+    short = from_bf16_report(good[:-4], SDPA, SDPA_DIMS, **SDPA_CALL)
     assert short == {
         "outcome": "broken",
         "condition": "report_form",
-        "contract_key": bf16_key(SDPA),
         "shape": SDPA_SHAPE,
         "draws": 2,
         "tolerance": {"rtol": 0.0, "atol": 2.154e-3},
     }
-    longer = bf16_report_judged(good + b"\0\0", SDPA, SDPA_DIMS, **SDPA_CALL)
+    longer = from_bf16_report(good + b"\0\0", SDPA, SDPA_DIMS, **SDPA_CALL)
     assert longer["condition"] == "report_form"
     mismatched = bytearray(good)
     mismatched[1] ^= 0x10
-    result = bf16_report_judged(bytes(mismatched), SDPA, SDPA_DIMS, **SDPA_CALL)
+    result = from_bf16_report(bytes(mismatched), SDPA, SDPA_DIMS, **SDPA_CALL)
     assert result["condition"] == "check_value"
-    other_seed = bf16_report_judged(good, SDPA, SDPA_DIMS, **{**SDPA_CALL, "seed": 1})
+    other_seed = from_bf16_report(good, SDPA, SDPA_DIMS, **{**SDPA_CALL, "seed": 1})
     assert other_seed["condition"] == "check_value"
 
 
 @pytest.mark.parametrize(
-    ("dims", "expected"),
-    [
-        ((2, 1, 4, 2, 4), ValueError),
-        ((2, 3, 3, 2, 4), ValueError),
-        ((2, 3, 4), ValueError),
-        ((2, 3, 4, 2, 0), ValueError),
-        ([2, 3, 4, 2, 4], TypeError),
-    ],
+    "dims",
+    [(2, 1, 4, 2, 4), (2, 3, 3, 2, 4), (2, 3, 4), (2, 3, 4, 2, 0), [2, 3, 4, 2, 4]],
 )
-def test_an_sdpa_report_of_dims_outside_the_contract_is_refused(dims, expected):
-    with pytest.raises(expected):
-        bf16_report_judged(b"", SDPA, dims, **SDPA_CALL)
+def test_an_sdpa_report_of_dims_the_judge_refuses_raises(dims):
+    with pytest.raises(VerificationArgumentError):
+        from_bf16_report(b"", SDPA, dims, **SDPA_CALL)
 
 
 @pytest.mark.parametrize(
@@ -949,32 +883,66 @@ def test_an_sdpa_report_of_dims_outside_the_contract_is_refused(dims, expected):
 )
 def test_an_sdpa_report_of_values_the_judge_refuses_raises(name, value):
     with pytest.raises(VerificationArgumentError):
-        bf16_report_judged(b"", SDPA, SDPA_DIMS, **{**SDPA_CALL, name: value})
+        from_bf16_report(b"", SDPA, SDPA_DIMS, **{**SDPA_CALL, name: value})
 
 
 def test_an_sdpa_report_that_is_no_bytes_raises_type_error():
     with pytest.raises(TypeError, match=r"^report: "):
-        bf16_report_judged(bytearray(b"x"), SDPA, SDPA_DIMS, **SDPA_CALL)
+        from_bf16_report(bytearray(b"x"), SDPA, SDPA_DIMS, **SDPA_CALL)
+
+
+def test_a_kind_that_only_equals_sdpa_is_judged_by_the_other_judge():
+    class Kind(str):
+        pass
+
+    with pytest.raises(VerificationArgumentError):
+        from_bf16_report(b"", Kind(SDPA), SDPA_DIMS, **SDPA_CALL)
 
 
 @pytest.mark.parametrize("member", list(Broken))
 def test_a_broken_sdpa_judgement_gives_its_condition(member):
-    result = bf16_judged(Judgement(member, None, None), SDPA, SDPA_DIMS, **SDPA_BUILD)
+    result = from_bf16_judgement(
+        Judgement(member, None, None), SDPA, SDPA_DIMS, **SDPA_BUILD
+    )
     assert result["condition"] == condition_of(member)
     assert result["shape"] == SDPA_SHAPE
     assert "counts" not in result
 
 
 @pytest.mark.parametrize(
+    ("counts", "verdict"),
+    [
+        ((DrawCounts(0, 0, 0, 0), DrawCounts(0, 0, 0, 0)), Verdict.PASS),
+        ((DrawCounts(0, 0, 0, 0), DrawCounts(2, 1, 0, 0)), Verdict.FAIL),
+        ((DrawCounts(0, 0, 1, 2), DrawCounts(0, 0, 0, 0)), Verdict.FAIL),
+        ((DrawCounts(1, 0, 1, 0), DrawCounts(0, 0, 0, 0)), Verdict.FAIL),
+    ],
+    ids=["pass", "failed-only", "cache-only", "both"],
+)
+def test_a_completed_sdpa_judgement_gives_its_counts_and_outcome(counts, verdict):
+    result = from_bf16_judgement(
+        Judgement(None, verdict, counts), SDPA, SDPA_DIMS, **SDPA_BUILD
+    )
+    assert result["outcome"] == {Verdict.PASS: "pass", Verdict.FAIL: "fail"}[verdict]
+    assert result["counts"] == [
+        {
+            "failed": entry.failed,
+            "non_finite": entry.non_finite,
+            "cache_differs": entry.cache_differences,
+        }
+        for entry in counts
+    ]
+
+
+@pytest.mark.parametrize(
     ("judgement", "expected"),
     [
         (Judgement(None, Verdict.PASS, (DrawCounts(0, 0, 1, 0),) * 2), ValueError),
-        (Judgement(None, Verdict.PASS, (DrawCounts(0, 0, 0, 1),) * 2), ValueError),
         (Judgement(None, Verdict.PASS, (DrawCounts(1, 0, 0, 0),) * 2), ValueError),
         (Judgement(None, Verdict.FAIL, (DrawCounts(0, 0, 0, 0),) * 2), ValueError),
         (Judgement(None, Verdict.PASS, ((0, 0), (0, 0))), ValueError),
         (Judgement(None, Verdict.PASS, (DrawCounts(0, 0, -1, 0),) * 2), ValueError),
-        (Judgement(None, Verdict.PASS, ((0, 0, 1.0, 0),) * 2), TypeError),
+        (Judgement(None, Verdict.PASS, ((0, 0, 1.0),) * 2), TypeError),
         (Judgement(Broken.CHECK_VALUE, Verdict.FAIL, None), ValueError),
         (Judgement(None, None, (DrawCounts(0, 0, 0, 0),) * 2), ValueError),
         ((None, Verdict.PASS, (DrawCounts(0, 0, 0, 0),) * 2), TypeError),
@@ -982,7 +950,7 @@ def test_a_broken_sdpa_judgement_gives_its_condition(member):
 )
 def test_an_sdpa_judgement_that_does_not_agree_is_refused(judgement, expected):
     with pytest.raises(expected):
-        bf16_judged(judgement, SDPA, SDPA_DIMS, **SDPA_BUILD)
+        from_bf16_judgement(judgement, SDPA, SDPA_DIMS, **SDPA_BUILD)
 
 
 def test_an_sdpa_judgement_beside_counts_of_the_other_outcome_names_the_verdict():
@@ -990,10 +958,10 @@ def test_an_sdpa_judgement_beside_counts_of_the_other_outcome_names_the_verdict(
         None, Verdict.PASS, (DrawCounts(0, 0, 0, 0), DrawCounts(0, 0, 4, 0))
     )
     with pytest.raises(ValueError, match=r"^judgement\.verdict: PASS beside .* fail"):
-        bf16_judged(judgement, SDPA, SDPA_DIMS, **SDPA_BUILD)
+        from_bf16_judgement(judgement, SDPA, SDPA_DIMS, **SDPA_BUILD)
 
 
-# A rope check (ADR-0180 decision 1; ADR-0183 decision 3)
+# A rope check (ADR-0177 decision 3, HQ-0077; ADR-0180 decision 1)
 
 # Test values, not dimensions, draws, a seed or a tolerance of the package.
 ROPE = "rope"
@@ -1028,14 +996,13 @@ def test_a_conforming_rope_report_is_judged_pass_at_the_start_of_the_rule(
 
     monkeypatch.setattr(bf16_rope_verification, "judge_report", spy)
     call = {**ROPE_CALL, "seed": seed}
-    result = bf16_report_judged(rope_report(dims, seed), ROPE, dims, **call)
+    result = from_bf16_report(rope_report(dims, seed), ROPE, dims, **call)
     assert result == {
         "outcome": "pass",
-        "contract_key": bf16_key(ROPE),
         "shape": rope_shape(dims),
         "draws": 2,
         "tolerance": {"rtol": 0.0, "atol": 2**-8 + 2**-21},
-        "counts": {"out": [{"failed": 0, "non_finite": 0}] * 2},
+        "counts": [{"failed": 0, "non_finite": 0}] * 2,
     }
     expected = 0 if dims[0] > 1 else (127 if seed % 2 == 0 else 2047)
     assert starts == [expected]
@@ -1062,38 +1029,35 @@ def test_a_rope_report_with_a_wrong_element_is_judged_fail(pattern, non_finite):
     report = bytearray(rope_report(dims))
     block = 4 + 2 * 2 * 2 * 4
     struct.pack_into("=H", report, block + 4 + 2 * 5, pattern)
-    result = bf16_report_judged(bytes(report), ROPE, dims, **ROPE_CALL)
+    result = from_bf16_report(bytes(report), ROPE, dims, **ROPE_CALL)
     assert result["outcome"] == "fail"
     assert result["shape"] == rope_shape(dims)
-    assert result["counts"] == {
-        "out": [
-            {"failed": 0, "non_finite": 0},
-            {"failed": 1, "non_finite": non_finite},
-        ]
-    }
+    assert result["counts"] == [
+        {"failed": 0, "non_finite": 0},
+        {"failed": 1, "non_finite": non_finite},
+    ]
 
 
 def test_a_rope_report_of_the_wrong_form_or_check_value_is_broken():
     good = rope_report((2, 2, 4))
-    short = bf16_report_judged(good[:-1], ROPE, (2, 2, 4), **ROPE_CALL)
+    short = from_bf16_report(good[:-1], ROPE, (2, 2, 4), **ROPE_CALL)
     assert short == {
         "outcome": "broken",
         "condition": "report_form",
-        "contract_key": bf16_key(ROPE),
         "shape": {"m": 2, "h": 2, "d": 4},
         "draws": 2,
         "tolerance": {"rtol": 0.0, "atol": 2**-8 + 2**-21},
     }
     mismatched = bytearray(good)
     mismatched[0] ^= 0x01
-    result = bf16_report_judged(bytes(mismatched), ROPE, (2, 2, 4), **ROPE_CALL)
+    result = from_bf16_report(bytes(mismatched), ROPE, (2, 2, 4), **ROPE_CALL)
     assert result["condition"] == "check_value"
 
 
 @pytest.mark.parametrize("member", list(Broken))
 def test_a_broken_rope_judgement_gives_its_condition_and_m_h_d(member):
     judgement = Judgement(member, None, None)
-    result = bf16_judged(judgement, ROPE, (2, 3, 4), draws=2, **ROPE_TOLERANCE)
+    result = from_bf16_judgement(judgement, ROPE, (2, 3, 4), draws=2, **ROPE_TOLERANCE)
     assert result["condition"] == condition_of(member)
     assert result["shape"] == {"m": 2, "h": 3, "d": 4}
 
@@ -1101,10 +1065,10 @@ def test_a_broken_rope_judgement_gives_its_condition_and_m_h_d(member):
 def test_a_completed_rope_judgement_is_bounded_by_m_h_d():
     counts = (Counts(0, 0), Counts(24, 2))
     judgement = Judgement(None, Verdict.FAIL, counts)
-    result = bf16_judged(judgement, ROPE, (2, 3, 4), draws=2, **ROPE_TOLERANCE)
-    assert result["counts"]["out"][1] == {"failed": 24, "non_finite": 2}
-    with pytest.raises(ValueError, match=r"^counts\.out\[1\]\.failed: "):
-        bf16_judged(
+    result = from_bf16_judgement(judgement, ROPE, (2, 3, 4), draws=2, **ROPE_TOLERANCE)
+    assert result["counts"][1] == {"failed": 24, "non_finite": 2}
+    with pytest.raises(ValueError, match=r"^counts\[1\]\.failed: "):
+        from_bf16_judgement(
             Judgement(None, Verdict.FAIL, (Counts(0, 0), Counts(25, 0))),
             ROPE,
             (2, 3, 4),
@@ -1114,15 +1078,15 @@ def test_a_completed_rope_judgement_is_bounded_by_m_h_d():
 
 
 @pytest.mark.parametrize(
-    ("dims", "seed", "expected"),
+    ("dims", "seed"),
     [
-        ((1, 2), SEED, ValueError),
-        ((1, 2, 3), SEED, ValueError),
-        ((0, 2, 2), SEED, ValueError),
-        ((True, 2, 2), SEED, TypeError),
-        ((1, 2, 2), -1, VerificationArgumentError),
-        ((1, 2, 2), True, VerificationArgumentError),
-        ((1, 1, 2**52), 1, VerificationArgumentError),
+        ((1, 2), SEED),
+        ((1, 2, 3), SEED),
+        ((0, 2, 2), SEED),
+        ((True, 2, 2), SEED),
+        ((1, 2, 2), -1),
+        ((1, 2, 2), True),
+        ((1, 1, 2**52), 1),
     ],
     ids=[
         "two-dims",
@@ -1134,14 +1098,22 @@ def test_a_completed_rope_judgement_is_bounded_by_m_h_d():
         "rows-beyond-the-table",
     ],
 )
-def test_a_rope_report_of_parameters_the_rule_refuses_raises(dims, seed, expected):
-    with pytest.raises(expected):
-        bf16_report_judged(b"", ROPE, dims, **{**ROPE_CALL, "seed": seed})
+def test_a_rope_report_of_parameters_the_rule_refuses_raises(dims, seed):
+    with pytest.raises(VerificationArgumentError):
+        from_bf16_report(b"", ROPE, dims, **{**ROPE_CALL, "seed": seed})
 
 
 # The v2 result (ADR-0183 decisions 3 and 9 item 1)
 
 
+def table_entry(kind, dtype):
+    (found,) = (
+        entry for key, entry in contract_table.TABLE.items() if key[:2] == (kind, dtype)
+    )
+    return found
+
+
+GEMM_ENTRY = table_entry("gemm", "fp32")
 SDPA_ENTRY = table_entry(SDPA, "bf16")
 ROPE_ENTRY = table_entry(ROPE, "bf16")
 SMALL_V2 = {"draws": DRAWS, "rtol": 1e-5, "atol": 1e-6}
@@ -1332,7 +1304,7 @@ def test_a_rope_report_gives_its_v2_result_at_the_start_of_the_rule():
     assert other["condition"] == "check_value"
 
 
-def test_an_sdpa_report_gives_per_allocation_v2_counts():
+def test_an_sdpa_report_gives_per_allocation_v2_counts_and_the_sum_of_today():
     cache_k = sdpa_offsets(SDPA_DIMS, 1)[1]
     cache_v = cache_v_offset(SDPA_DIMS, 1)
     changes = [(cache_k, 0x0000), (cache_v, 0x0000), (cache_v + 2, 0x0000)]
@@ -1344,6 +1316,11 @@ def test_an_sdpa_report_gives_per_allocation_v2_counts():
         "cache_v": [{"differs": 0}, {"differs": 2}],
         "out": [{"failed": 0, "non_finite": 0}] * 2,
     }
+    today = from_bf16_report(report, SDPA, SDPA_DIMS, **SDPA_CALL)
+    assert today["counts"] == [
+        SDPA_ZEROS[0],
+        {"failed": 0, "non_finite": 0, "cache_differs": 3},
+    ]
     passing = bf16_report(SDPA, SDPA_DIMS)
     zeros = from_v2_report(passing, SDPA_ENTRY, SDPA_DIMS, **SDPA_CALL)
     assert zeros["outcome"] == "pass"

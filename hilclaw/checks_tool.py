@@ -13,12 +13,13 @@ and ``attempt``, optional, and no other member. ``round`` is an ``int`` from
 :data:`hilclaw.check_identity.SIM` or :data:`~hilclaw.check_identity.BOARD`,
 compared as it is, and names the point whose lines are read: the lines of
 its one ``step`` value in :data:`hilclaw.check_standing.STEPS_OF`,
-``correctness_check_sim_v2`` or ``correctness_check_board_v2``, the value of
-every contract (``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md``
-decision 8, in place of the two values per point of ADR-0178 decision 1). A
-line under a value ADR-0183 retired is neither read nor refused. The data root comes from the data-root source, asked at each
-call after the request was checked, and never from the request (ADR-0015
-decision 3).
+``correctness_check_sim_v2`` or ``correctness_check_board_v2``, the value
+of every contract
+(``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md``
+decision 8, in place of the two values per point of ADR-0178 decision 1).
+A line under a value ADR-0183 retired is neither read nor refused. The data
+root comes from the data-root source, asked at each call after the request
+was checked, and never from the request (ADR-0015 decision 3).
 
 The result is ``{"attempts": [...]}``, one entry per attempt in ascending
 ``attempt``, each exactly ``attempt``, ``standing`` and ``checks``. With
