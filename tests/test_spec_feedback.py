@@ -1055,3 +1055,12 @@ def test_feedback_checks_its_round_like_attempts(root):
         spec_feedback.feedback(root, RUN, True)
     with pytest.raises(ValueError):
         spec_feedback.feedback(root, RUN, 0)
+
+
+def test_an_attempt_undetermined_at_the_board_point_is_no_incumbent(root):
+    for q in (0, 1):
+        put_spec(root, q)
+    timed(root, 0, [50] * 5)
+    check(root, 1, SIM, result=PASS)
+    check(root, 1, TIMING, result=timing([1] * 5))
+    assert base_of(root, 2) == ref(0)

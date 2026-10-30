@@ -1028,3 +1028,11 @@ def test_a_spec_without_base_makes_no_base_directory(data_root, parent, source, 
     runtime = FakeRuntime(act=lambda root: seen.append(sorted(os.listdir(root))))
     call(request(), source=source, runtime=runtime)
     assert seen == [[scratch.SPEC_COPY_NAME]]
+
+
+def test_no_container_runtime_comes_before_base_unreadable(
+    data_root, parent, source, spec_path
+):
+    base_spec(spec_path)
+    runtime = FakeRuntime(available=False)
+    failure(KIND_NO_CONTAINER_RUNTIME, data_root, request(), source, runtime)

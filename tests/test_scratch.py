@@ -630,3 +630,20 @@ def test_create_refuses_a_base_holding_a_directory(spec, parent, base):
 def test_create_refuses_a_bad_base_path(spec, parent):
     with pytest.raises(InvalidScratchArgumentError):
         create(spec, parent=parent, base="a\0b")
+
+
+def test_create_refuses_a_base_that_is_a_symbolic_link(spec, parent, base, tmp_path):
+    link = tmp_path / "linked"
+    symlink(link, base, directory=True)
+    with pytest.raises(ScratchError) as caught:
+        create(spec, parent=parent, base=link)
+    assert caught.value.failure == BASE_UNREADABLE
+    assert os.listdir(parent) == []
+
+
+def test_create_refuses_a_base_entry_that_is_a_symbolic_link(spec, parent, base):
+    symlink(base / "other.c", base / "kernel.c")
+    with pytest.raises(ScratchError) as caught:
+        create(spec, parent=parent, base=base)
+    assert caught.value.failure == BASE_UNREADABLE
+    assert os.listdir(parent) == []

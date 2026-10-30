@@ -50,10 +50,12 @@ An attempt has a measurement by the rule of ``timings.compare``
 (:mod:`hilclaw.timings_tool`): exactly one end line at that step whose
 ``result`` is an admitted timing result with the ``outcome`` ``"converged"``
 or ``"not_converged"``, and no end line holding a ``failure`` and no start
-line without an end line. A step line of that step that
-:func:`hilclaw.journal.identity_of` refuses, or an end line whose ``result``
-is not admitted, makes its attempt no incumbent and fails nothing. With no
-incumbent there is no ``base``.
+line without an end line. An end line whose ``result`` is not admitted makes
+its attempt no incumbent and fails nothing. A step line the journal refuses
+has already failed the read of the checks (``run_file_invalid``). All
+attempts of one run share its ``op_signature``, so the medians are compared
+without comparing ``contract_key`` and ``shape``. With no incumbent there is
+no ``base``.
 
 Choices that are this module's own and no rule of the record:
 
@@ -176,13 +178,13 @@ def feedback(data_root, run_id, round):
         return step in check_identity.STEPS and candidate == 1 and (q, a) in numbers
 
     checks = checks_tool.checks_in_order(run_id, lines, inside)
-    shown = []
+    shown, verified = [], []
     for q, a, techniques in found:
         entry = {"round": q, "candidate": 1, "attempt": a, "techniques": techniques}
         sim = check_standing.point_standing(lines, check_identity.SIM, q, 1, a)
         if sim is check_standing.Standing.UNDETERMINED:
             continue
-        point = None
+        point, board = None, None
         if sim is check_standing.Standing.NOT_VERIFIED:
             point = check_identity.SIM
         else:
@@ -201,16 +203,17 @@ def feedback(data_root, run_id, round):
                 and element["result"]["outcome"] in _FAILED
             )
         shown.append((entry, point, deciding))
+        if board is check_standing.Standing.VERIFIED:
+            verified.append(entry)
     for entry, point, deciding in shown:
         if deciding is not None:
             entry["failure"] = _failure(root, run_id, entry, point, *deciding)
     made = {"attempts": [entry for entry, _, _ in shown]}
     timed = []
-    for entry, point, _ in shown:
-        if point is None:
-            median = _board_median(lines, entry["round"], entry["attempt"])
-            if median is not None:
-                timed.append((median, entry["round"], entry["attempt"]))
+    for entry in verified:
+        median = _board_median(lines, entry["round"], entry["attempt"])
+        if median is not None:
+            timed.append((median, entry["round"], entry["attempt"]))
     if timed:
         _, q, a = min(timed)
         made["base"] = {"round": q, "candidate": 1, "attempt": a}
@@ -222,10 +225,7 @@ def _board_median(lines, q, a):
     for event in lines:
         if event["kind"] not in _STEP_KINDS:
             continue
-        try:
-            identity = journal.identity_of(event)
-        except journal.JournalError:
-            return None
+        identity = journal.identity_of(event)
         if identity.step != run_identity.STEP_BOARD_RUN or (
             identity.round,
             identity.candidate,
