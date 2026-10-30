@@ -64,8 +64,8 @@ _DESCRIPTION = (
     "section, which says when the technique is worth trying. The result is "
     '{"entries": [{"id": ..., "when": ...}, ...]} in ascending id order, with '
     "no element when no entry applies; an id is what spec.write takes in "
-    "techniques. The "
-    "request is exactly run_id. The data root is never part of the request; "
+    "techniques. The request is exactly run_id. The data root is never part "
+    "of the request; "
     "the tool knows it. Nothing is written. It fails, checked in this order, "
     "with invalid_request for a request that is not exactly run_id; "
     "no_data_root when the data root cannot be obtained; run_file_missing, "

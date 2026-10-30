@@ -101,9 +101,6 @@ No file, member, value or version of the data plane changes. The spec's bytes do
 - **Less exact, not edited**: ADR-0171 decision 3 "Every entry is returned, unfiltered" and its Result row, now for the entries that apply; ADR-0137 decision 6's list of the prompt's contents, which gains this sentence as it gained ADR-0184's. `orchestration/agents/technique-selector.md` says the tool gives the criteria "of the entries of the run's catalog", which stays true of the ones it returns.
 - **UsageCases and StandardScenarios** (S0 and S1 rechecked): no step changes, no verdict changes, no gap.
 - **The cost, plainly.** A bf16 round's only guidance is its hypotheses and feedback until OD-22 gives it entries. The prompt tells the coder a duty and nothing enforces it: a coder that ignores it still passes its run (cited: ADR-0189 decision 5).
-- **Runtime acceptance items** (D16; nothing was tried). They go to [PROCESS/RuntimeAcceptance.md](../../PROCESS/RuntimeAcceptance.md) (DRIVER §8, D22), not to an HQ:
-  - A real technique-selector whose `catalog.read` result on a bf16 run holds no entry reports `techniques: none`, and the round goes on to a spec with an empty `guidance.techniques`.
-  - A real coder given the prompt's every-shape sentence keeps its kernel correct at values of the size parameters other than its spec's. This shows in a generation at the other call shapes (RA-0056).
 
 ## Boundaries (not decided here)
 
@@ -112,6 +109,9 @@ No file, member, value or version of the data plane changes. The spec's bytes do
 - **The user-facing entry, real weights and the tokenizer** (OD-31 sub-questions 5, 7 and 10; HQ-0084).
 - **The Round-Manager's stop on a failure of `spec.write`** (ADR-0172 decision 2).
 - **The ranking of entries and statistics** (OD-7); **the Skill form of the selection criteria** (FR-8).
+- **Runtime acceptance items** (D16; nothing was tried). They go to [PROCESS/RuntimeAcceptance.md](../../PROCESS/RuntimeAcceptance.md) (DRIVER §8, D22), not to an HQ:
+  - A real technique-selector whose `catalog.read` result on a bf16 run holds no entry reports `techniques: none`, and the round goes on to a spec with an empty `guidance.techniques`.
+  - A real coder given the prompt's every-shape sentence keeps its kernel correct at values of the size parameters other than its spec's. This shows in a generation at the other call shapes (RA-0056).
 
 ## References
 
