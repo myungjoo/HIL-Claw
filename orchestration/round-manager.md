@@ -232,10 +232,11 @@ before any other step of it:
     can read) come to the stop (ADR-0172 decision 5; FR-17).
 
 The stop: in round 0 it follows step 2 as it says, once the report that
-step waits for has come (ADR-0143 decision 7; ADR-0185 decision 2). In other rounds it follows step 7 after a failed read, once
-its kind is reported (ADR-0132 decision 6), and step 8 or step 12 as they
-say, once the one-line report is made (ADR-0171 decision 6; ADR-0172
-decisions 2, 5 and 7).
+step waits for has come (ADR-0143 decision 7; ADR-0185 decision 2). In
+other rounds it follows step 7 after a failed read, once its kind is
+reported (ADR-0132 decision 6), and step 8 or step 12 as they say, once the
+one-line report is made (ADR-0171 decision 6; ADR-0172 decisions 2, 5
+and 7).
 In every case write nothing further, call `mcp__hilclaw__run_commit` as "The
 end of a session" says, and end the session (ADR-0143 decisions 2 and 7).
 Round 0 is not ended: no `round.end` (ADR-0142 decisions 1 and 2). Nor
@@ -247,8 +248,8 @@ round ≥ 1 only through step 12 (ADR-0172 decision 6; ADR-0185 decision 2).
 
 These steps follow the round's last other step. Round 0 reaches them after
 step 2, 3, 4 or 5 as they say (ADR-0142 decision 6; ADR-0185 decision 2),
-and a round ≥ 1 after step 12 (ADR-0172 decision 6). Do them in this order, your run id as `run_id` and the
-round's number as `round`:
+and a round ≥ 1 after step 12 (ADR-0172 decision 6). Do them in this
+order, your run id as `run_id` and the round's number as `round`:
 
 1. **`case.write`, only in a round ≥ 1.** Call `mcp__hilclaw__case_write`.
    Whether `with_verdicts` is `true` or `false`, go on and do not report the

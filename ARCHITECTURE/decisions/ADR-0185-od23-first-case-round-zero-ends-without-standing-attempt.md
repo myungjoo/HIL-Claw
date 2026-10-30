@@ -1,11 +1,12 @@
-# ADR-0185: A round 0 whose attempt does not stand ends its round in a first-case run with one candidate per round — after a `coder.run` result or failure, a check that does not verify, or any measurement report, the Round-Manager goes to the closing steps, so the next round retries with the failure as feedback and the round budget ends the run (part of OD-23, for the runs of ADR-0142)
+# ADR-0185: A round 0 whose attempt does not stand ends its round in a first-case run with one candidate per round — after a `coder.run` result with an empty `taken` or a `coder.run` failure, a check that does not verify, or any measurement report, the Round-Manager goes to the closing steps, so the next round retries with the failure as feedback and the round budget ends the run (part of OD-23 and of OD-28, for the runs of ADR-0142)
 
 ## Status
 
 - **Accepted on 2026-10-30 by owner decision**: the owner approved the direction "a failed round 0 ends its round like a round ≥ 1 does, so the next round retries with the failure as feedback; the round budget is the terminal state" on 2026-10-30 in chat (record: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6512287389, item 3). The owner's words: "그렇게 진행".
 - **Two kinds of content.** The owner decision and what an accepted record says are **cited**, with the source named. **Everything else is this record's own**: which reports still come to the stop, and the wording of the definition.
 - **Why now** (cited, the #5 record above, F3): an owner-run real run whose round 0 attempt failed its check came to the stop with no `round.end`. Every later turn then failed at `spec.write` with `spec_exists`, so the run could neither retry nor end.
-- **Revises** [ADR-0142](ADR-0142-od23-first-case-round-zero-after-coder-call.md) decisions 2, 3 and 6, for which reports come to the stop (decision 2 of this record). Its other decisions stand. Nothing of [ADR-0141](ADR-0141-od23-first-case-coder-run-tool.md) decision 5 changes: `spec_exists` still comes to the stop.
+- **Revises** [ADR-0142](ADR-0142-od23-first-case-round-zero-after-coder-call.md) decisions 2, 3 and 6, for which reports come to the stop (decision 2 of this record). Its other decisions stand.
+- **Answers**, for the runs of decision 1 only, the question [ADR-0119](ADR-0119-od28-first-case-baseline.md) decision 5 leaves open: when round 0 leaves no attempt that can stand, the run neither stops nor waits for the user. It retries in the next round, as decision 3 says, and goes on without a baseline until an attempt stands. ADR-0119 decision 5's sentence "This record does not say such a run has a baseline" stays true: no round of such a run has one until then. Nothing of [ADR-0141](ADR-0141-od23-first-case-coder-run-tool.md) decision 5 changes: `spec_exists` still comes to the stop.
 - **No member, file, kind, value or version of the data plane is added or changed.** `round.end`, `run.commit` and the files they write are unchanged (cited: ADR-0135, ADR-0143). No tool changes.
 - The format follows the "Record format" section of [ADR-0001](ADR-0001-od4-key-schema.md).
 
@@ -20,7 +21,7 @@ A sentence is **cited** when a source is named with it. Every other sentence is 
 
 ### 1. Scope
 
-Round 0 of the runs of ADR-0142 (a run of ADR-0120 decision 1 with `candidates_per_round` 1), in `orchestration/round-manager.md`.
+Round 0 of the runs of ADR-0142: a run of ADR-0120 decision 1 with `candidates_per_round` 1 that is also a run of ADR-0119 decision 1. The rule is in `orchestration/round-manager.md`.
 
 ### 2. Which round 0 reports end the round
 
@@ -38,7 +39,7 @@ Round 0 of the runs of ADR-0142 (a run of ADR-0120 decision 1 with `candidates_p
 - The next turn begins round 1. Its spec shows the failed round 0 attempt, when its check ran (cited: ADR-0151). Its coder gets no `feedback.base` and is asked for a plain, correct baseline (cited: [ADR-0184](ADR-0184-od20-first-case-incumbent-base.md) decision 4). That is the retry with the failure as feedback.
 - When the round budget is spent, `round.end` writes `run_status` `"over"` (cited: ADR-0135 decision 4). That is the terminal state of a run that never stands.
 
-**Why `spec.write` failures still stop.** A failure there means that nothing was asked of the coder: the run's files or the data root are wrong, or the spec of the round already exists. Ending the round would spend the budget on no attempt. `spec_exists` stays ADR-0141's interim rule.
+**Why `spec.write` failures still stop.** After such a failure the round has no spec of its own, so it has no attempt that a later round could show or name: the run's files or the data root are wrong, or the round's spec already exists from an earlier turn. A `coder.run` failure, `no_container_runtime` among them, comes after the spec was written, so the attempt exists, and the next round's spec can show it when it has a check. `spec_exists` stays ADR-0141's interim rule.
 
 **Why every step 5 report ends the round.** A round ≥ 1 does the same (cited: ADR-0172 decision 4). An attempt that stands at both points but has no measurement is no incumbent (ADR-0184 decision 2), so the next round still starts from a plain baseline.
 
@@ -61,9 +62,10 @@ Round 0 of the runs of ADR-0142 (a run of ADR-0120 decision 1 with `candidates_p
 - Repair attempts and the limits on coder calls (OD-19).
 - Whether a run should end early after several rounds with no verified attempt (OD-19).
 - `spec_exists` after an interrupted turn (OD-8 ㉖ (가), OD-23 ① (가)).
+- The baseline of a run whose round 0 left no attempt that can stand: which later attempt, if any, the verdicts compare against (ADR-0119 decision 5 for other runs; OD-28, OD-19, OD-10). Until an attempt stands, a comparison against round 0 has no measurement.
 
 ## References
 
 - Owner decision: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6512287389
-- [ADR-0133](ADR-0133-od23-first-case-round-promotion.md), [ADR-0135](ADR-0135-od23-first-case-round-end-write.md), [ADR-0141](ADR-0141-od23-first-case-coder-run-tool.md), [ADR-0142](ADR-0142-od23-first-case-round-zero-after-coder-call.md), [ADR-0143](ADR-0143-od8-first-case-turn-end-commit.md), [ADR-0151](ADR-0151-od6-first-case-later-round-spec.md), [ADR-0172](ADR-0172-od23-first-case-round-one-after-coder-call.md), [ADR-0184](ADR-0184-od20-first-case-incumbent-base.md)
+- [ADR-0119](ADR-0119-od28-first-case-baseline.md), [ADR-0133](ADR-0133-od23-first-case-round-promotion.md), [ADR-0135](ADR-0135-od23-first-case-round-end-write.md), [ADR-0141](ADR-0141-od23-first-case-coder-run-tool.md), [ADR-0142](ADR-0142-od23-first-case-round-zero-after-coder-call.md), [ADR-0143](ADR-0143-od8-first-case-turn-end-commit.md), [ADR-0151](ADR-0151-od6-first-case-later-round-spec.md), [ADR-0172](ADR-0172-od23-first-case-round-one-after-coder-call.md), [ADR-0184](ADR-0184-od20-first-case-incumbent-base.md)
 - Definition: `orchestration/round-manager.md` ("The round steps" 2 to 5, "The stop", "The closing steps of a round"); tests: `tests/test_turn_definition.py`, `tests/test_first_run_end_to_end.py`

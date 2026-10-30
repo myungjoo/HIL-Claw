@@ -686,11 +686,13 @@ def test_step_2_closes_the_round_after_coder_run_and_stops_after_spec_write():
     step = round_step(2)
     closing = step.split("When it is a result of `coder.run` with an empty", 1)[1]
     closing = closing.split("On any other report", 1)[0]
-    assert "a failure" in closing
+    assert "a failure kind of `coder.run`" in closing
     assert "`no_container_runtime` among them" in closing
     assert 'go to "The closing steps of a round" (ADR-0185 decision 2)' in closing
+    assert "come to the stop" not in closing
     other = step.split("On any other report", 1)[1]
     assert "failure kind of `spec.write`, `spec_exists` among them" in other
+    assert "no report you can read" in other
     assert "come to the stop" in other
 
 
@@ -702,7 +704,7 @@ def test_the_prompt_makes_no_check_of_its_own():
     only_forbidden(text, "checks_read")
 
 
-def test_the_prompt_reaches_the_closing_steps_from_steps_5_and_12():
+def test_the_prompt_reaches_the_closing_steps_from_steps_2_to_5_and_12():
     heading = "### The closing steps of a round"
     text = prompt_text()
     assert heading in text
