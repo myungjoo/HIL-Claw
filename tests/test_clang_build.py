@@ -2140,7 +2140,9 @@ def test_an_env_left_to_subprocess_names_no_parameter(
         assert expected is None
 
 
-POSIX_KEY_ENVS = [{"": "x"}, {b"": b"x"}, {"=A": "x"}, {b"=A": b"x"}, {"=": "x"}]
+POSIX_EMPTY_KEY_ENVS = [{"": "x"}, {b"": b"x"}]
+POSIX_EQUALS_KEY_ENVS = [{"=A": "x"}, {b"=A": b"x"}, {"=": "x"}]
+POSIX_KEY_ENVS = POSIX_EMPTY_KEY_ENVS + POSIX_EQUALS_KEY_ENVS
 
 
 @posix_only
@@ -2160,12 +2162,20 @@ def test_an_empty_or_equals_key_is_refused_on_posix(
 
 
 @posix_only
-@pytest.mark.parametrize("variable", POSIX_KEY_ENVS)
-def test_an_empty_or_equals_key_is_refused_by_a_popen_start_path(variable, tmp_path):
+@pytest.mark.parametrize("variable", POSIX_EQUALS_KEY_ENVS)
+def test_an_equals_key_is_refused_by_a_popen_start_path(variable, tmp_path):
     env = {**os.environ, **variable}
     outcomes = [directly(cwd, env) for cwd in (None, tmp_path)]
     assert all(outcome in (None, ValueError) for outcome in outcomes)
     assert ValueError in outcomes
+
+
+@posix_only
+@pytest.mark.parametrize("variable", POSIX_EMPTY_KEY_ENVS)
+def test_popen_raises_no_other_class_for_an_empty_key(variable, tmp_path):
+    env = {**os.environ, **variable}
+    outcomes = [directly(cwd, env) for cwd in (None, tmp_path)]
+    assert all(outcome in (None, ValueError) for outcome in outcomes)
 
 
 @posix_only
@@ -2236,6 +2246,19 @@ def test_an_empty_or_equals_key_error_keeps_its_parameter_through_pickling(
     assert str(loaded) == str(caught.value)
     assert loaded.args == caught.value.args
     assert loaded.parameter == "env"
+
+
+def test_the_windows_branch_refuses_equals_after_the_first_character(
+    stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    monkeypatch.setattr(clang_build, "_WINDOWS", True)
+    error = refused(compiler, src, out_dir, env={"A=B": "secret"})
+    assert type(error) is ValueError
+    assert error.parameter == "env"
+    assert "secret" not in str(error)
+    assert not stub.started
 
 
 class ItemsAttribute:
