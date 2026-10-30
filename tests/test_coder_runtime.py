@@ -25,6 +25,7 @@ from hilclaw.coder_runtime import (
 )
 
 TOKEN = "sk-ant-oat01-SENTINEL-TOKEN-7f3a"
+ENV_DATA = "HILCLAW_DATA_REPO_LOCAL_PATH"
 IMAGE = "registry.example/coder:1"
 MODEL = "claude-sentinel-model-9"
 CLIENT = "/usr/bin/docker"
@@ -97,6 +98,30 @@ class Process:
         self.killed += 1
 
 
+class Pipe:
+    def __init__(self, data, size, error_after):
+        self.data = data
+        self.size = size
+        self.error_after = error_after
+        self.reads = 0
+        self.closed = False
+        self.drained = False
+
+    def read1(self, limit):
+        if self.error_after is not None and self.reads == self.error_after:
+            raise KeyboardInterrupt
+        self.reads += 1
+        chunk, self.data = (
+            self.data[: min(self.size, limit)],
+            self.data[min(self.size, limit) :],
+        )
+        self.drained = not chunk
+        return chunk
+
+    def close(self):
+        self.closed = True
+
+
 class Popens:
     def __init__(self):
         self.calls = []
@@ -105,15 +130,16 @@ class Popens:
         self.wait_error = None
         self.start_error = None
         self.output = b""
+        self.read_size = 65536
+        self.read_error_after = None
 
     def __call__(self, command, **options):
         self.calls.append((list(command), options))
         if self.start_error is not None:
             raise self.start_error
-        if hasattr(options.get("stdout"), "write"):
-            options["stdout"].write(self.output)
-            options["stdout"].flush()
         process = Process(self.status, self.wait_error)
+        if options.get("stdout") is subprocess.PIPE:
+            process.stdout = Pipe(self.output, self.read_size, self.read_error_after)
         self.processes.append(process)
         return process
 
@@ -620,9 +646,14 @@ def logs_in(directory):
     return sorted(Path(directory).iterdir())
 
 
+def with_log(directory, **changes):
+    return environ(**{coder_runtime.ENV_LOG_DIR: str(directory)}, **changes)
+
+
 def test_log_dir_constants():
     assert coder_runtime.ENV_LOG_DIR == "HILCLAW_CODER_LOG_DIR"
     assert TOKEN.encode() not in coder_runtime.REDACTED
+    assert coder_runtime.READ_SIZE > len(TOKEN)
 
 
 @pytest.mark.parametrize("value", [None, ""])
@@ -633,14 +664,15 @@ def test_no_log_dir_keeps_nothing(popens, value):
     assert options["stderr"] is subprocess.DEVNULL
 
 
-def test_log_dir_keeps_the_output_with_the_token_replaced(popens, tmp_path):
+def test_log_dir_keeps_the_output_with_the_token_replaced(starts, popens, tmp_path):
     popens.output = b"error: " + TOKEN.encode() + b" expired; again " + TOKEN.encode()
     popens.status = 1
-    assert run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)})) == 1
+    assert run(with_log(tmp_path)) == 1
     [(command, options)] = popens.calls
     assert options["stdin"] is subprocess.DEVNULL
+    assert options["stdout"] is subprocess.PIPE
     assert options["stderr"] is subprocess.STDOUT
-    assert options["stdout"].closed
+    assert popens.processes[0].stdout.closed
     [log] = logs_in(tmp_path)
     assert re.fullmatch(r"\d{8}T\d{6}Z-" + re.escape(command[3]) + r"\.log", log.name)
     assert log.read_bytes() == (
@@ -651,19 +683,47 @@ def test_log_dir_keeps_the_output_with_the_token_replaced(popens, tmp_path):
     )
     if sys.platform != "win32":
         assert log.stat().st_mode & 0o777 == 0o600
+    assert starts.calls == [
+        (
+            removal(command[3]),
+            {"timeout_s": REMOVAL_TIMEOUT_S, "env": with_log(tmp_path)},
+        )
+    ]
+
+
+@pytest.mark.parametrize("size", [1, 2, 3, 7, len(TOKEN) - 1, len(TOKEN), 64])
+def test_a_token_split_across_reads_is_replaced(popens, tmp_path, size):
+    popens.output = (
+        b"a" + TOKEN.encode() + b"bc" + TOKEN.encode() + TOKEN.encode() + b"z"
+    )
+    popens.read_size = size
+    run(with_log(tmp_path))
+    [log] = logs_in(tmp_path)
+    redacted = coder_runtime.REDACTED
+    assert log.read_bytes() == b"a" + redacted + b"bc" + redacted + redacted + b"z"
+
+
+def test_a_one_character_token_is_replaced(popens, tmp_path):
+    popens.output = b"xQyQ"
+    popens.read_size = 1
+    run(with_log(tmp_path, **{ENV_TOKEN: "Q"}))
+    [log] = logs_in(tmp_path)
+    assert (
+        log.read_bytes()
+        == b"x" + coder_runtime.REDACTED + b"y" + coder_runtime.REDACTED
+    )
 
 
 def test_log_without_the_token_is_kept_as_written(popens, tmp_path):
     popens.output = b"plain output\n"
-    run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)}))
+    run(with_log(tmp_path))
     [log] = logs_in(tmp_path)
     assert log.read_bytes() == b"plain output\n"
 
 
 def test_each_call_gets_its_own_log(popens, tmp_path):
-    env = environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)})
-    run(env)
-    run(env)
+    run(with_log(tmp_path))
+    run(with_log(tmp_path))
     assert len(logs_in(tmp_path)) == 2
 
 
@@ -677,13 +737,37 @@ def test_log_dir_refused_before_any_process(starts, popens, tmp_path, value):
     assert popens.calls == [] and starts.calls == []
 
 
+@pytest.mark.parametrize("below", ["", "runs", "runs/r-1"])
+def test_log_dir_at_or_below_the_data_root_is_refused(starts, popens, tmp_path, below):
+    data = tmp_path / "data"
+    (data / "runs" / "r-1").mkdir(parents=True)
+    env = with_log(data / below if below else data, **{ENV_DATA: str(data)})
+    with pytest.raises(CoderNotStartedError) as caught:
+        run(env)
+    assert "data root" in str(caught.value)
+    assert (
+        popens.calls == []
+        and starts.calls == []
+        and logs_in(data / "runs" / "r-1") == []
+    )
+
+
+def test_log_dir_beside_the_data_root_is_taken(popens, tmp_path):
+    data = tmp_path / "data"
+    data.mkdir()
+    beside = tmp_path / "data-logs"
+    beside.mkdir()
+    run(with_log(beside, **{ENV_DATA: str(data)}))
+    assert len(logs_in(beside)) == 1
+
+
 def test_log_that_cannot_be_made_is_not_started(starts, popens, tmp_path, monkeypatch):
     def refuse(*args, **kwargs):
         raise PermissionError("denied")
 
     monkeypatch.setattr(os, "open", refuse)
     with pytest.raises(CoderNotStartedError) as caught:
-        run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)}))
+        run(with_log(tmp_path))
     assert "PermissionError" in str(caught.value)
     assert popens.calls == [] and starts.calls == []
 
@@ -691,26 +775,81 @@ def test_log_that_cannot_be_made_is_not_started(starts, popens, tmp_path, monkey
 def test_start_failure_closes_the_log(popens, tmp_path):
     popens.start_error = OSError("exec format error")
     with pytest.raises(CoderNotStartedError):
-        run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)}))
+        run(with_log(tmp_path))
     [log] = logs_in(tmp_path)
     assert log.read_bytes() == b""
 
 
-def test_cut_off_wait_still_replaces_the_token(starts, popens, tmp_path):
+@pytest.mark.parametrize("status", sorted(NOT_STARTED_STATUSES))
+def test_not_started_status_with_a_log_removes_and_redacts(
+    starts, popens, tmp_path, status
+):
+    popens.output = b"docker: " + TOKEN.encode()
+    popens.status = status
+    with pytest.raises(CoderNotStartedError):
+        run(with_log(tmp_path))
+    name = popens.calls[0][0][3]
+    assert [command for command, _ in starts.calls] == [removal(name)]
+    [log] = logs_in(tmp_path)
+    assert log.read_bytes() == b"docker: " + coder_runtime.REDACTED
+
+
+def test_cut_off_wait_removes_and_never_wrote_the_token(starts, popens, tmp_path):
     popens.output = TOKEN.encode()
     popens.wait_error = KeyboardInterrupt()
     with pytest.raises(KeyboardInterrupt):
-        run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)}))
+        run(with_log(tmp_path))
+    name = popens.calls[0][0][3]
+    assert [command for command, _ in starts.calls] == [removal(name)]
+    assert popens.processes[0].killed == 1
     [log] = logs_in(tmp_path)
     assert log.read_bytes() == coder_runtime.REDACTED
 
 
-def test_log_that_cannot_be_rewritten_is_removed(popens, tmp_path, monkeypatch):
-    popens.output = TOKEN.encode()
+def test_cut_off_read_removes_reaps_and_keeps_what_was_redacted(
+    starts, popens, tmp_path
+):
+    popens.output = b"x" * 60 + TOKEN.encode()
+    popens.read_size = 25
+    popens.read_error_after = 3
+    with pytest.raises(KeyboardInterrupt):
+        run(with_log(tmp_path))
+    name = popens.calls[0][0][3]
+    assert [command for command, _ in starts.calls] == [removal(name)]
+    assert popens.processes[0].killed == 1
+    assert popens.processes[0].stdout.closed
+    [log] = logs_in(tmp_path)
+    assert TOKEN.encode()[:5] not in log.read_bytes()
+    assert log.read_bytes() == b"x" * (75 - (len(TOKEN) - 1))
 
-    def refuse(*args, **kwargs):
-        raise OSError("read-only")
 
-    monkeypatch.setattr(coder_runtime, "open", refuse, raising=False)
-    run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)}))
-    assert logs_in(tmp_path) == []
+def test_a_failed_write_ends_the_log_not_the_call(
+    starts, popens, tmp_path, monkeypatch
+):
+    popens.output = b"first part " + b"y" * 100
+    popens.read_size = 8
+    real_fdopen = os.fdopen
+
+    class Full:
+        def __init__(self, handle):
+            self.handle = handle
+            self.writes = 0
+
+        def write(self, data):
+            self.writes += 1
+            if self.writes > 1:
+                raise OSError("no space left")
+            return self.handle.write(data)
+
+        def flush(self):
+            self.handle.flush()
+
+        def close(self):
+            self.handle.close()
+
+    monkeypatch.setattr(os, "fdopen", lambda fd, mode: Full(real_fdopen(fd, mode)))
+    popens.status = 3
+    assert run(with_log(tmp_path, **{ENV_TOKEN: "Q"})) == 3
+    assert popens.processes[0].stdout.drained
+    [log] = logs_in(tmp_path)
+    assert log.read_bytes() == b"first pa"

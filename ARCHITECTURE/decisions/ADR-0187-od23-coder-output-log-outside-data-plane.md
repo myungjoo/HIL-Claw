@@ -26,9 +26,10 @@ One first-case coder call through `hilclaw.coder_runtime.DockerRuntime` (cited: 
 
 ### 2. The log
 
-- **The runtime user names a directory in the variable `HILCLAW_CODER_LOG_DIR`** of the process that runs the call. It must be an existing absolute directory; a value set but not such a directory, and a log file that cannot be made, stop the call before any process starts, as the other variables of ADR-0137 do (the failure kind `coder_not_started` of `coder.run`). Unset or empty, nothing is kept.
-- **One new file per call**, `<UTC start, YYYYMMDDTHHMMSSZ>-<container name>.log`, made with mode 0600 and never over an existing file. The standard output and the standard error go into it together, in the order the client writes them. `--output-format` stays unset (ADR-0137): the file holds what the coder prints by default.
-- **The token.** After the client ends, however the wait ends, every occurrence of the token's value in the file is replaced by `<HILCLAW_CODER_OAUTH_TOKEN>`. When the file cannot be read back or rewritten it is removed. Its value goes nowhere else, as before (ADR-0137 decision 5).
+- **The runtime user names a directory in the variable `HILCLAW_CODER_LOG_DIR`** of the process that runs the call. It must be an existing absolute directory, and not the data root or a directory below it when the process names its data root (`HILCLAW_DATA_REPO_LOCAL_PATH`, which `turn_loop` always gives the MCP front), compared by real path: a log there would be committed with the run (`run.commit` takes every new file below `runs/<run_id>/`). A value set but not such a directory, and a log file that cannot be made, stop the call before any process starts, as the other variables of ADR-0137 do (the failure kind `coder_not_started` of `coder.run`). Unset or empty, nothing is kept.
+- **One new file per call**, `<UTC start, YYYYMMDDTHHMMSSZ>-<container name>.log`, made with mode 0600 and never over an existing file (`O_EXCL`, and `O_NOFOLLOW` where the platform has it). The standard output and the standard error of the client go together into one pipe, read by the process that runs the call, and from it into the file, in the order the client writes them. `--output-format` stays unset (ADR-0137): the file holds what the coder prints by default.
+- **The token.** Every occurrence of the token's exact value is replaced by `<HILCLAW_CODER_OAUTH_TOKEN>` as the pipe is read, before anything is written; the last bytes of each read that could begin a value split across two reads are held back until the next. The value is therefore never written to the file, however the call ends: an end that cuts off the read loses at most the bytes held back, and a client left without its reader writes into a pipe, not into the file. Its value goes nowhere else, as before (ADR-0137 decision 5).
+- **A write that fails ends the log, not the call.** The pipe is still read to its end so that the client is not blocked, and the call's status is returned as without a log.
 - **The variable reaches the MCP front** as the image variables do: `turn_loop` copies a non-empty value unchanged into the server entry's environment, as it does `HILCLAW_CODER_IMAGE` (cited: ADR-0137 decision 4).
 - **The nightly routine names a directory**: `<firing>/coder-output`, mode 0700, so that a failed coder call of a nightly run can be read after the firing. Its files are never put into the issue body.
 
@@ -47,7 +48,8 @@ One first-case coder call through `hilclaw.coder_runtime.DockerRuntime` (cited: 
 
 - A nightly firing whose coder call fails leaves the reason in `<firing>/coder-output/`, for example an expired login, next to the firing's other files.
 - A machine that names no directory behaves exactly as before.
-- Other secrets than the token, if a coder prints them, stay in the file; the file is the runtime user's, with mode 0600.
+- Other secrets than the token, if a coder prints them, stay in the file, and so does any form of the token that is not its exact value (a prefix, a masked or encoded form); the file is the runtime user's, with mode 0600.
+- The process that runs the call now reads the coder's output; a coder that prints without end grows the file without bound (no size bound, Boundaries).
 
 ## Boundaries (not decided here)
 
@@ -59,4 +61,4 @@ One first-case coder call through `hilclaw.coder_runtime.DockerRuntime` (cited: 
 ## References
 
 - Records: [ADR-0001](ADR-0001-od4-key-schema.md), [ADR-0055](ADR-0055-od23-coder-output-form.md) (L7), [ADR-0137](ADR-0137-od23-first-case-coder-process-start.md) (decisions 4 to 6), [ADR-0141](ADR-0141-od23-first-case-coder-run-tool.md).
-- Code: `hilclaw/coder_runtime.py` (`ENV_LOG_DIR`, `REDACTED`), `hilclaw/turn_loop.py`, `hilclaw/nightly.py`.
+- Code: `hilclaw/coder_runtime.py` (`ENV_LOG_DIR`, `REDACTED`, `READ_SIZE`), `hilclaw/turn_loop.py`, `hilclaw/nightly.py`.

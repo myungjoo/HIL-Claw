@@ -6,7 +6,7 @@ coder call are started. :class:`DockerRuntime` implements the seam of
 :mod:`hilclaw.coder_call`: ``available()`` (decision 2) and
 ``run(scratch_root, coder_model=...)`` (decisions 3 to 7).
 :func:`hilclaw.tools.default_registry` binds ``coder.run`` to it with its
-defaults, and :mod:`hilclaw.turn_loop` passes the two variables to the MCP
+defaults, and :mod:`hilclaw.turn_loop` passes the three variables to the MCP
 front (ADR-0137 code slice 2).
 
 The user names the image in :data:`ENV_IMAGE` and gives the token of
@@ -45,13 +45,15 @@ data-plane file written.
 
 **The coder's output** (ADR-0187,
 ``ARCHITECTURE/decisions/ADR-0187-od23-coder-output-log-outside-data-plane.md``):
-when :data:`ENV_LOG_DIR` names an existing absolute directory, the standard
-output and error of ``docker run`` go together into one new file
-``<UTC start>-<container name>.log`` there, made with mode 0600 and never
-over an existing one. After the client ends, every occurrence of the token's
-value in the file is replaced by :data:`REDACTED`; when that cannot be done
-the file is removed. Unset or empty, nothing is kept, as before. The
-directory is outside the data plane and nothing in a run's files names it.
+when :data:`ENV_LOG_DIR` names an existing absolute directory outside the
+data root that :data:`hilclaw.config.ENV_LOCAL_PATH` names, the standard
+output and error of ``docker run`` go together through a pipe into one new
+file ``<UTC start>-<container name>.log`` there, made with mode 0600 and never
+over an existing one. Every occurrence of the token's value is replaced by
+:data:`REDACTED` as the pipe is read, before anything is written, so the
+value never reaches the file; only the exact value is replaced. A write that
+fails ends the log, not the call: the pipe is still read to its end. Unset or
+empty, nothing is kept, as before. Nothing in a run's files names the file.
 """
 
 import contextlib
@@ -62,13 +64,14 @@ import subprocess
 import time
 from collections.abc import Mapping
 
-from hilclaw import bring_in, local_run, standin_container
+from hilclaw import bring_in, config, local_run, standin_container
 from hilclaw.coder_call import CoderNotStartedError
 
 ENV_IMAGE = "HILCLAW_CODER_IMAGE"
 ENV_TOKEN = "HILCLAW_CODER_OAUTH_TOKEN"
 ENV_LOG_DIR = "HILCLAW_CODER_LOG_DIR"
 REDACTED = b"<HILCLAW_CODER_OAUTH_TOKEN>"
+READ_SIZE = 65536
 TOKEN_NAME = "CLAUDE_CODE_OAUTH_TOKEN"
 NAME_PREFIX = "hilclaw-coder-"
 CONTAINER_SCRATCH = "/scratch"
@@ -110,7 +113,7 @@ _MOUNT_UNSAFE = (",", '"', "\n", "\r", "\0")
 class DockerRuntime:
     """The runtime of ADR-0137 behind the seam of :mod:`hilclaw.coder_call`.
 
-    ``environ`` is the mapping the two variables are read from and the
+    ``environ`` is the mapping the three variables are read from and the
     ``docker`` children get their environment from; ``None`` means
     :data:`os.environ`, read at each call. ``client`` is the program looked
     up on ``PATH``. Raises :class:`TypeError` for an ``environ`` that is not
@@ -162,15 +165,17 @@ class DockerRuntime:
         empty or refused by :func:`hilclaw.standin_container.check_image`;
         :data:`ENV_TOKEN` unset, empty, holding NUL or the unexpanded text
         ``${HILCLAW_CODER_OAUTH_TOKEN}``; :data:`ENV_LOG_DIR` set but not an
-        existing absolute directory; no numeric ids; the client not on
+        existing absolute directory, or one at or below the data root of
+        :data:`hilclaw.config.ENV_LOCAL_PATH`; no numeric ids; the client not on
         ``PATH``; the log file that cannot be made. Also raised when the
         start fails with an :class:`OSError` and, after the removal, when
         ``docker run`` exits 125, 126 or 127.
 
         Otherwise the container is removed by name and the status of
         ``docker run`` is returned, or :data:`NOT_GONE_STATUS` when the
-        container is not shown gone. No time limit is applied. When the wait
-        is cut off by any exception, the container is removed by name and the
+        container is not shown gone. No time limit is applied. When the wait,
+        or the read of the coder's output into the log, is cut off by any
+        exception, the container is removed by name and the
         client killed and reaped before the exception goes on; a failed
         removal is added to it as a note.
         """
@@ -190,11 +195,11 @@ class DockerRuntime:
         log = _open_log(log_dir, name)
         try:
             status = self._start_and_wait(
-                client, name, child_env, log, (source, user, image, coder_model)
+                client, name, child_env, log, token, (source, user, image, coder_model)
             )
+            gone = self._remove_quietly(client, name)
         finally:
-            _close_log(log, token)
-        gone = self._remove_quietly(client, name)
+            _close_log(log)
         if status in NOT_STARTED_STATUSES:
             failed = CoderNotStartedError(f"docker run exited with status {status}")
             if not gone:
@@ -202,13 +207,12 @@ class DockerRuntime:
             raise failed
         return status if gone else NOT_GONE_STATUS
 
-    def _start_and_wait(self, client, name, child_env, log, arguments):
-        output = subprocess.DEVNULL if log is None else log[1]
+    def _start_and_wait(self, client, name, child_env, log, token, arguments):
         try:
             process = subprocess.Popen(
                 _command(client, name, *arguments),
                 stdin=subprocess.DEVNULL,
-                stdout=output,
+                stdout=subprocess.DEVNULL if log is None else subprocess.PIPE,
                 stderr=subprocess.DEVNULL if log is None else subprocess.STDOUT,
                 env=child_env,
             )
@@ -217,6 +221,8 @@ class DockerRuntime:
                 f"docker run could not be started ({type(error).__name__})"
             ) from error
         try:
+            if log is not None:
+                _copy_redacted(process.stdout, log, token)
             return process.wait()
         except BaseException as error:
             try:
@@ -227,6 +233,10 @@ class DockerRuntime:
             finally:
                 _reap(process)
             raise
+        finally:
+            if log is not None:
+                with contextlib.suppress(OSError):
+                    process.stdout.close()
 
     def _client_env(self):
         return None if self._environ is None else dict(self._environ)
@@ -351,6 +361,13 @@ def _read_log_dir(environ):
         raise CoderNotStartedError(
             f"{ENV_LOG_DIR} must name an existing absolute directory"
         )
+    data_root = environ.get(config.ENV_LOCAL_PATH)
+    if isinstance(data_root, str) and data_root and "\0" not in data_root:
+        root = os.path.realpath(data_root)
+        if os.path.commonpath([os.path.realpath(value), root]) == root:
+            raise CoderNotStartedError(
+                f"{ENV_LOG_DIR} must not be at or below the data root"
+            )
     return value
 
 
@@ -361,29 +378,41 @@ def _open_log(log_dir, name):
     path = os.path.join(log_dir, f"{started}-{name}.log")
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     try:
-        return path, os.fdopen(os.open(path, flags, 0o600), "wb")
+        return os.fdopen(os.open(path, flags, 0o600), "wb")
     except OSError as error:
         raise CoderNotStartedError(
             f"the coder log could not be made in {ENV_LOG_DIR} ({type(error).__name__})"
         ) from None
 
 
-def _close_log(log, token):
-    if log is None:
-        return
-    path, handle = log
-    handle.close()
+def _copy_redacted(pipe, log, token):
     secret = token.encode("utf-8", "surrogateescape")
+    keep = len(secret) - 1
+    pending = b""
+    while chunk := pipe.read1(READ_SIZE):
+        pending = (pending + chunk).replace(secret, REDACTED)
+        cut = len(pending) - keep
+        if cut > 0:
+            log = _write(log, pending[:cut])
+            pending = pending[cut:]
+    _write(log, pending)
+
+
+def _write(log, data):
+    if log is None or not data:
+        return log
     try:
-        with open(path, "r+b") as kept:
-            data = kept.read()
-            if secret in data:
-                kept.seek(0)
-                kept.write(data.replace(secret, REDACTED))
-                kept.truncate()
+        log.write(data)
+        log.flush()
     except OSError:
+        return None
+    return log
+
+
+def _close_log(log):
+    if log is not None:
         with contextlib.suppress(OSError):
-            os.remove(path)
+            log.close()
 
 
 def _numeric_user():

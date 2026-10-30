@@ -120,7 +120,8 @@ OD-14's.
   non-empty value is copied unchanged and unchecked (ADR-0137 decision 4;
   the server's :class:`hilclaw.coder_runtime.DockerRuntime` refuses a bad
   one), and so is :data:`hilclaw.coder_runtime.ENV_LOG_DIR`, the directory of
-  the coder's output (ADR-0187). For :data:`hilclaw.coder_runtime.ENV_TOKEN` with a non-empty value
+  the coder's output (ADR-0187; the server refuses one at or below the data
+  root). For :data:`hilclaw.coder_runtime.ENV_TOKEN` with a non-empty value
   the member holds the reference ``${HILCLAW_CODER_OAUTH_TOKEN}``, never the
   value (ADR-0137 decision 5); it relies on the session expanding ``${...}``
   in the ``--mcp-config`` file from its own environment, which is runtime
