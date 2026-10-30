@@ -238,15 +238,23 @@ def build(
     is passed on, and a NUL character in it raises :class:`ValueError`.
     After the compiler is found, and still before anything is started, ``env``
     and ``cwd`` are checked as :mod:`subprocess` would refuse them, with the
-    class it would raise for the same single defect, with one exception: an
+    class it would raise for the same single defect, with two exceptions. An
     ``env`` that is not ``None`` and has no ``items`` method is refused with
     :class:`TypeError`, as :mod:`subprocess` has no single class for it (the
-    class differs by platform and start path). When ``env`` has an ``items``
-    method, each key and value must convert as on the platform
+    class differs by platform and start path). And on POSIX ``build`` is
+    stricter than :mod:`subprocess` for the two keys named below. When ``env``
+    has an ``items`` method, each key and value must convert as on the platform
     (:func:`os.fsencode` on POSIX, ``str`` only on Windows; else
     :class:`TypeError`), and :class:`ValueError` is raised for a NUL character
     in either or a ``=`` after the first character of a key, with a message
-    that may name the key but never the value. A ``cwd`` that is not ``None``
+    that may name the key but never the value. On POSIX, :class:`ValueError`
+    is also raised for a ``=`` as the first character of a key, which the
+    fork/exec start path of :mod:`subprocess` refuses with that class and its
+    :func:`os.posix_spawn` start path accepts, and for an empty key, which the
+    :func:`os.posix_spawn` path refuses with that class and the fork/exec path
+    accepts, so that :mod:`subprocess` accepts it outright wherever it does
+    not take the :func:`os.posix_spawn` path, as on Python 3.11. ``build``
+    refuses both on every Python and start path. A ``cwd`` that is not ``None``
     must convert as on the platform (:func:`os.fsdecode` on Windows,
     :func:`os.fsencode` on POSIX; else :class:`TypeError`, or a
     :class:`ValueError` such as :class:`UnicodeEncodeError`), and
@@ -495,10 +503,15 @@ def _check_env(env):
         nul, equals = ("\0", "=") if isinstance(key, str) else (b"\0", b"=")
         if nul in key or nul in value:
             raise ValueError(f"an env key or value contains a NUL character: {key!r}")
-        if equals in key[1:]:
-            raise ValueError(
-                f"an env key contains '=' after its first character: {key!r}"
-            )
+        if _WINDOWS:
+            if equals in key[1:]:
+                raise ValueError(
+                    f"an env key contains '=' after its first character: {key!r}"
+                )
+        elif not key:
+            raise ValueError("an env key is empty")
+        elif equals in key:
+            raise ValueError(f"an env key contains '=': {key!r}")
 
 
 def _env_text(item):

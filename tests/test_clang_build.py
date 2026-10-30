@@ -2106,10 +2106,7 @@ def test_env_and_cwd_are_handed_on_as_given(stub, src, out_dir, tmp_path, monkey
 
 
 UNCHANGED_ENVS = [
-    {"": "x"},
-    pytest.param({"=A": "x"}, marks=posix_only),
-    pytest.param({b"=A": b"x"}, marks=posix_only),
-    pytest.param({b"": b"x"}, marks=posix_only),
+    pytest.param({"": "x"}, marks=windows_only),
 ]
 
 
@@ -2141,6 +2138,127 @@ def test_an_env_left_to_subprocess_names_no_parameter(
         assert names(out_dir) == []
     else:
         assert expected is None
+
+
+POSIX_EMPTY_KEY_ENVS = [{"": "x"}, {b"": b"x"}]
+POSIX_EQUALS_KEY_ENVS = [{"=A": "x"}, {b"=A": b"x"}, {"=": "x"}]
+POSIX_KEY_ENVS = POSIX_EMPTY_KEY_ENVS + POSIX_EQUALS_KEY_ENVS
+
+
+@posix_only
+@pytest.mark.parametrize("variable", POSIX_KEY_ENVS)
+@pytest.mark.parametrize("in_cwd", [False, True])
+def test_an_empty_or_equals_key_is_refused_on_posix(
+    variable, in_cwd, stub, src, out_dir, tmp_path, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    cwd = tmp_path if in_cwd else None
+    error = refused(compiler, src, out_dir, cwd=cwd, env={**os.environ, **variable})
+    assert type(error) is ValueError
+    assert error.parameter == "env"
+    assert not hasattr(error, "path_role")
+    assert not stub.started
+
+
+@posix_only
+@pytest.mark.parametrize("variable", POSIX_EQUALS_KEY_ENVS)
+def test_an_equals_key_is_refused_by_a_popen_start_path(variable, tmp_path):
+    env = {**os.environ, **variable}
+    outcomes = [directly(cwd, env) for cwd in (None, tmp_path)]
+    assert all(outcome in (None, ValueError) for outcome in outcomes)
+    assert ValueError in outcomes
+
+
+@posix_only
+@pytest.mark.parametrize("variable", POSIX_EMPTY_KEY_ENVS)
+def test_popen_raises_no_other_class_for_an_empty_key(variable, tmp_path):
+    env = {**os.environ, **variable}
+    outcomes = [directly(cwd, env) for cwd in (None, tmp_path)]
+    assert all(outcome in (None, ValueError) for outcome in outcomes)
+
+
+@posix_only
+def test_an_equals_key_error_message_does_not_name_the_value(
+    stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env={**os.environ, "=A": "secret"})
+    assert type(error) is ValueError
+    assert "secret" not in str(error)
+
+
+@posix_only
+@pytest.mark.parametrize(
+    "env", [{"": "x", "A": "y\0"}, {"A": "y\0", "": "x"}], ids=["empty", "nul"]
+)
+def test_an_empty_key_with_a_nul_value_is_refused_as_env(
+    env, stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env=env)
+    assert type(error) is ValueError
+    assert error.parameter == "env"
+
+
+@posix_only
+def test_an_empty_key_is_named_before_the_cwd(stub, src, out_dir, monkeypatch):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    error = refused(compiler, src, out_dir, env={"": "x"}, cwd=3)
+    assert type(error) is ValueError
+    assert error.parameter == "env"
+
+
+@posix_only
+def test_an_earlier_defect_comes_before_an_empty_key(stub, src, out_dir, monkeypatch):
+    forbid_start(monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=0,
+            compiler=stub(WRITE),
+            env={"": "x"},
+        )
+    assert caught.value.parameter == "timeout_s"
+    assert names(out_dir) == []
+    assert not stub.started
+
+
+@posix_only
+@pytest.mark.parametrize("env", [{"": "x"}, {"=A": "x"}])
+def test_an_empty_or_equals_key_error_keeps_its_parameter_through_pickling(
+    env, stub, src, out_dir
+):
+    with pytest.raises(ValueError) as caught:
+        build(
+            src,
+            out_dir / "kernel.o",
+            timeout_s=TIMEOUT,
+            compiler=stub(WRITE),
+            env=env,
+        )
+    loaded = pickle.loads(pickle.dumps(caught.value))
+    assert type(loaded) is ValueError
+    assert str(loaded) == str(caught.value)
+    assert loaded.args == caught.value.args
+    assert loaded.parameter == "env"
+
+
+def test_the_windows_branch_refuses_equals_after_the_first_character(
+    stub, src, out_dir, monkeypatch
+):
+    compiler = stub(WRITE)
+    forbid_start(monkeypatch)
+    monkeypatch.setattr(clang_build, "_WINDOWS", True)
+    error = refused(compiler, src, out_dir, env={"A=B": "secret"})
+    assert type(error) is ValueError
+    assert error.parameter == "env"
+    assert "secret" not in str(error)
+    assert not stub.started
 
 
 class ItemsAttribute:
