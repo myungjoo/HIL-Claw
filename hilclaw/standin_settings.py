@@ -1,7 +1,7 @@
 """The build settings and time limits of the local ``cpu_standin`` runs.
 
-Build settings: ADR-0116 decisions 2 to 5. Time limits: ADR-0117 decisions 2
-to 4.
+Build settings: ADR-0116 decisions 2 to 5, with OpenMP from ADR-0188 decisions
+1 and 2. Time limits: ADR-0117 decisions 2 to 4.
 
 ``ARCHITECTURE/decisions/ADR-0116-od18-cpu-standin-build-settings.md`` says
 that the flags, the trailing flags and the rule of the environment of the
@@ -12,13 +12,18 @@ fixed set in the package source (decision 2). This module is that source: the
 get the same settings (ADR-0107 decisions 3 and 4). The values change only by a
 commit of this repository.
 
-* :data:`FLAGS` are the flags of decision 3, given before the sources.
+* :data:`FLAGS` are the flags of decision 3 and the OpenMP flag of ADR-0188
+  decision 1, given before the sources. The compiler driver links the OpenMP
+  runtime for that flag, so no trailing flag names it.
+* :data:`WAITER_FLAGS` are the flags of decision 3 alone, for the waiter of
+  ADR-0145, which compiles no kernel source and links no OpenMP runtime
+  (ADR-0188 decision 2).
 * :data:`TRAILING_FLAGS` are the trailing flags of decision 4, given after the
   sources.
 * :data:`ENV` is the environment of decision 5: inherited, with no variable
   added, changed or removed. It is ``None`` in the meaning ``env=None`` has
   for :func:`hilclaw.clang_build.build` and :func:`hilclaw.local_run.run`.
-  No thread setting is made.
+  No thread setting is made (ADR-0188 decision 3).
 * :data:`BUILD_TIME_LIMIT_S` is the time limit of the verification build and
   of the timing build alike (ADR-0117 decision 3).
 * :data:`PROCESS_TIME_LIMIT_CAP_S` is the cap of the rule of the process time
@@ -40,8 +45,7 @@ The first three are handed as ``flags``, ``trailing_flags`` and ``env`` to
 :func:`hilclaw.harness.timing_build.build_timing_executable` and, for ``env``,
 to the runs of the executables they build.
 
-Open under decision 6, and so not in the set: OpenMP (its flag, its runtime
-and the thread settings that go with it), a target-specific flag such as
+Open under decision 6, and so not in the set: a target-specific flag such as
 ``-march`` or ``-mcpu``, and a list of inherited variables to remove or set.
 The set holds no compiler (OD-14). The time limits stand beside the set
 (ADR-0117 decision 2).
@@ -51,11 +55,14 @@ configuration and no hw_profile (ADR-0116 decision 2; ADR-0117 decision 2),
 and it starts no process.
 """
 
-FLAGS = ("-std=gnu11", "-O2", "-ffp-contract=off")
-"""Flags of every ``cpu_standin`` build, in this order (ADR-0116 decision 3)."""
+FLAGS = ("-std=gnu11", "-O2", "-ffp-contract=off", "-fopenmp")
+"""Flags of every ``cpu_standin`` kernel build, in this order (ADR-0116 decision 3; ADR-0188 decision 1)."""
+
+WAITER_FLAGS = ("-std=gnu11", "-O2", "-ffp-contract=off")
+"""Flags of the build of the waiter of ADR-0145 (ADR-0188 decision 2)."""
 
 TRAILING_FLAGS = ("-lm",)
-"""Trailing flags of every ``cpu_standin`` build (ADR-0116 decision 4)."""
+"""Trailing flags of every ``cpu_standin`` kernel build (ADR-0116 decision 4)."""
 
 ENV = None
 """Environment of every ``cpu_standin`` build and process: inherited (ADR-0116 decision 5)."""

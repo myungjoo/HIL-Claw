@@ -1,14 +1,17 @@
-"""Tests of the cpu_standin build settings and time limits (ADR-0116, ADR-0117)."""
+"""Tests of the cpu_standin build settings and time limits (ADR-0116, ADR-0117, ADR-0188)."""
 
+import array
+import ctypes
 import math
 import os
 import shutil
 from fractions import Fraction
 from pathlib import Path
 
+import openmp_clang
 import pytest
 
-from hilclaw import standin_settings
+from hilclaw import model_build, standin_settings
 from hilclaw.harness.timing import run_timing
 from hilclaw.harness.timing_build import build_timing_executable
 from hilclaw.harness.verification import Verdict, run_verification
@@ -20,6 +23,7 @@ from hilclaw.standin_settings import (
     FLAGS,
     PROCESS_TIME_LIMIT_CAP_S,
     TRAILING_FLAGS,
+    WAITER_FLAGS,
     bf16_timing_process_time_limit_s,
     bf16_verification_process_time_limit_s,
     timing_process_time_limit_s,
@@ -51,10 +55,12 @@ GEMM_LOOP = """    for (size_t i = 0; i < m; i++)
 
 def test_the_values_are_those_of_the_record():
     assert type(FLAGS) is tuple
-    assert FLAGS == ("-std=gnu11", "-O2", "-ffp-contract=off")
+    assert FLAGS == ("-std=gnu11", "-O2", "-ffp-contract=off", "-fopenmp")
+    assert type(WAITER_FLAGS) is tuple
+    assert WAITER_FLAGS == ("-std=gnu11", "-O2", "-ffp-contract=off")
     assert type(TRAILING_FLAGS) is tuple
     assert TRAILING_FLAGS == ("-lm",)
-    assert all(type(flag) is str for flag in (*FLAGS, *TRAILING_FLAGS))
+    assert all(type(flag) is str for flag in (*FLAGS, *WAITER_FLAGS, *TRAILING_FLAGS))
     assert ENV is None
 
 
@@ -62,6 +68,7 @@ def test_the_module_exposes_only_the_settings_and_the_time_limits():
     public = {name for name in vars(standin_settings) if not name.startswith("_")}
     assert public == {
         "FLAGS",
+        "WAITER_FLAGS",
         "TRAILING_FLAGS",
         "ENV",
         "BUILD_TIME_LIMIT_S",
@@ -82,7 +89,6 @@ def test_the_module_exposes_only_the_settings_and_the_time_limits():
         "--output",
         "-march",
         "-mcpu",
-        "-fopenmp",
         "-W",
         "-D",
         "-ffast-math",
@@ -93,8 +99,13 @@ def test_no_flag_is_a_setting_the_record_leaves_out(prefix):
     assert not any(flag.startswith(prefix) for flag in FLAGS)
 
 
+def test_the_waiters_flags_are_the_kernels_without_openmp():
+    assert FLAGS == (*WAITER_FLAGS, "-fopenmp")
+    assert not any("openmp" in flag or "omp" in flag for flag in WAITER_FLAGS)
+
+
 @pytest.mark.parametrize("runtime", ["-lomp", "-lgomp"])
-def test_no_openmp_runtime_is_linked(runtime):
+def test_no_trailing_flag_names_an_openmp_runtime(runtime):
     assert runtime not in TRAILING_FLAGS
 
 
@@ -475,6 +486,7 @@ def clang():
         if os.environ.get("GITHUB_ACTIONS") == "true":
             pytest.fail("clang is not on PATH of the CI runner")
         pytest.skip("clang is not on PATH")
+    openmp_clang.need()
 
 
 def build_verification(kernel, output, flags=FLAGS):
@@ -557,21 +569,98 @@ def test_a_kernel_that_calls_the_math_library_links(clang, tmp_path):
     assert verify(executable) is Verdict.PASS
 
 
+OPENMP_KERNEL = """#include <omp.h>
+#include <stddef.h>
+volatile int hilclaw_test_sink;
+void hilclaw_gemm(size_t m, size_t k, size_t n, const float *restrict a,
+                  const float *restrict b, float *restrict c)
+{
+    hilclaw_test_sink = omp_get_max_threads();
+#pragma omp parallel for
+    for (size_t i = 0; i < m; i++)
+        for (size_t j = 0; j < n; j++) {
+            float sum = 0.0f;
+            for (size_t p = 0; p < k; p++)
+                sum += a[i * k + p] * b[p * n + j];
+            c[i * n + j] = sum;
+        }
+}
+"""
+
+
 @pytest.mark.parametrize(
     "text",
-    [
-        "int omp_get_max_threads(void);\nvolatile int hilclaw_test_sink;\n"
-        + GEMM_HEAD
-        + "    hilclaw_test_sink = omp_get_max_threads();\n"
-        + GEMM_LOOP,
-        GEMM_HEAD + "    float sum = ;\n" + GEMM_LOOP,
-    ],
-    ids=["openmp-runtime-call", "syntax-error"],
+    [GEMM_HEAD + "    float sum = ;\n" + GEMM_LOOP],
+    ids=["syntax-error"],
 )
 def test_a_kernel_outside_the_set_is_a_failed_build(clang, tmp_path, text):
     result = build_verification(kernel_source(tmp_path, text), tmp_path / "exe")
     assert not result.ok
     assert not (tmp_path / "exe").exists()
+
+
+def test_a_kernel_using_openmp_builds_and_passes_verification(clang, tmp_path):
+    executable = tmp_path / "verification"
+    result = build_verification(kernel_source(tmp_path, OPENMP_KERNEL), executable)
+    assert result.ok, result.log
+    assert verify(executable) is Verdict.PASS
+
+
+def test_a_kernel_using_openmp_times_and_keeps_its_report(clang, tmp_path):
+    executable = tmp_path / "timing"
+    result = build_timing_executable(
+        kernel_source(tmp_path, OPENMP_KERNEL),
+        executable,
+        timeout_s=BUILD_TIMEOUT,
+        flags=FLAGS,
+        trailing_flags=TRAILING_FLAGS,
+        env=ENV,
+    )
+    assert result.ok, result.log
+    run = run_timing(
+        executable,
+        m=16,
+        k=16,
+        n=16,
+        sample_form="interval",
+        seed=SEED,
+        timeout_s=RUN_TIMEOUT,
+        env=ENV,
+    )
+    assert run.broken is None, (run.run.returncode, run.run.stderr)
+
+
+def test_a_kernel_library_using_openmp_loads_and_computes(clang, tmp_path):
+    library = tmp_path / "libkernel.so"
+    built = model_build.build_kernel_library(
+        kernel_source(tmp_path, OPENMP_KERNEL),
+        library,
+        timeout_s=BUILD_TIMEOUT,
+        flags=FLAGS,
+    )
+    assert built.ok, built.log
+    kernel = ctypes.CDLL(str(library)).hilclaw_gemm
+    kernel.restype = None
+    kernel.argtypes = (
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    )
+    a = array.array("f", [1, 2, 3, 4])
+    b = array.array("f", [5, 6, 7, 8])
+    c = array.array("f", [0, 0, 0, 0])
+    kernel(
+        2,
+        2,
+        2,
+        a.buffer_info()[0],
+        b.buffer_info()[0],
+        c.buffer_info()[0],
+    )
+    assert list(c) == [19, 22, 43, 50]
 
 
 def test_a_warning_does_not_fail_the_build(clang, tmp_path):

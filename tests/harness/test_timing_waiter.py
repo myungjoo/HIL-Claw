@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import hilclaw.harness
-from hilclaw import clang_build, standin_waiter_line
+from hilclaw import clang_build, standin_settings, standin_waiter_line
 
 WAITER = Path(hilclaw.harness.__file__).parent / "timing_waiter.c"
 
@@ -412,3 +412,8 @@ def test_a_failed_write_of_the_line_ends_the_waiter_with_status_4(unshare, waite
 
     assert run.returncode == SYSTEM, run
     assert b"W5" in run.stderr
+
+
+def test_the_second_flag_set_is_the_set_of_the_waiters_build():
+    assert FLAG_SETS["adr0116"] == standin_settings.WAITER_FLAGS
+    assert "-fopenmp" not in standin_settings.WAITER_FLAGS
