@@ -148,7 +148,7 @@ def world(tmp_path):
     return World(tmp_path)
 
 
-def test_document_is_the_p2_5_configuration():
+def test_document_is_the_nightly_configuration():
     given = nightly.document(dict(PROFILE))
     assert given == {
         "schema_version": 1,
@@ -158,7 +158,7 @@ def test_document_is_the_p2_5_configuration():
             "record": {
                 "schema_version": 1,
                 "kind": "gemm",
-                "shape": {"m": 8, "k": 16, "n": 8},
+                "shape": {"m": 1, "k": 2048, "n": 8192},
                 "dtype": "fp32",
                 "layout": "row_major",
             },
@@ -168,9 +168,9 @@ def test_document_is_the_p2_5_configuration():
             "constraints": [],
         },
         "candidates_per_round": 1,
-        "n_max": 6,
+        "n_max": 10,
         "draws": 1,
-        "tolerance": {"rtol": 1e-4, "atol": 1e-5},
+        "tolerance": {"rtol": 1e-4, "atol": 5e-7 * 2048},
         "round_budget": 5,
     }
 
@@ -316,7 +316,8 @@ def test_a_run_over_passes(world):
     assert not (world.firing / "issue-title.txt").exists()
     given = json.loads((world.firing / "instance.json").read_text(encoding="utf-8"))
     assert given == nightly.document(PROFILE)
-    assert (world.firing / "data" / ".git").is_dir()
+    assert (world.base / "data" / ".git").is_dir()
+    assert not (world.firing / "data").exists()
     first, second = world.entries()
     instance_path = str(world.firing / "instance.json")
     assert first["argv"] == ["-m", "hilclaw.new_run", instance_path]
@@ -324,7 +325,7 @@ def test_a_run_over_passes(world):
     for entry in (first, second):
         assert Path(entry["cwd"]).resolve() == world.firing.resolve()
         env = entry["env"]
-        assert env["HILCLAW_DATA_REPO_LOCAL_PATH"] == str(world.firing / "data")
+        assert env["HILCLAW_DATA_REPO_LOCAL_PATH"] == str(world.base / "data")
         assert env["HILCLAW_DATA_REPO_URL"] == nightly.DATA_REPO_URL
         assert env["PYTHONPATH"] == os.pathsep.join(
             [str(REPOSITORY), "/somewhere/else"]
@@ -652,3 +653,56 @@ def test_the_document_starts_a_run_through_the_real_new_run(tmp_path):
     )
     assert stored["round_budget"] == 5
     assert stored["op_signature"]["record"] == nightly.OP
+
+
+def test_the_data_root_is_kept_until_the_last_day_of_case_storage(tmp_path):
+    firing = tmp_path / "f"
+    last = datetime.datetime(2026, 11, 30, 23, 59, 59, tzinfo=datetime.UTC)
+    after = datetime.datetime(2026, 12, 1, tzinfo=datetime.UTC)
+    assert nightly.data_root(tmp_path, firing, NOW) == tmp_path / "data"
+    assert nightly.data_root(tmp_path, firing, last) == tmp_path / "data"
+    assert nightly.data_root(tmp_path, firing, after) == firing / "data"
+
+
+def test_the_data_root_follows_the_utc_date():
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+    started = datetime.datetime(2026, 12, 1, 3, 0, tzinfo=kst)
+    assert nightly.data_root(Path("b"), Path("f"), started) == Path("b/data")
+
+
+@posix
+def test_a_second_firing_reuses_the_kept_data_root(world):
+    world.fire()
+    marker = world.base / "data" / "case-of-the-first-firing"
+    marker.write_text("kept", encoding="utf-8")
+    world.stub("git", "#!/bin/sh\nexit 7\n")
+    world.env["PATH"] = str(world.bin)
+    record = nightly.fire(
+        world.base,
+        environ=world.env,
+        python=(sys.executable, str(world.fake)),
+        profile=lambda hw_source, *, timeout_s: dict(PROFILE),
+        now=lambda: NOW + datetime.timedelta(days=1),
+    )
+    assert record["verdict"] == "pass"
+    assert marker.read_text(encoding="utf-8") == "kept"
+    third = world.entries()[2]
+    assert third["env"]["HILCLAW_DATA_REPO_LOCAL_PATH"] == str(world.base / "data")
+
+
+@posix
+def test_a_firing_after_case_storage_makes_its_own_data_root(world):
+    later = datetime.datetime(2026, 12, 1, 3, 0, tzinfo=datetime.UTC)
+    record = nightly.fire(
+        world.base,
+        environ=world.env,
+        python=(sys.executable, str(world.fake)),
+        profile=lambda hw_source, *, timeout_s: dict(PROFILE),
+        now=lambda: later,
+    )
+    assert record["verdict"] == "pass"
+    firing = world.base / record["firing"]
+    assert (firing / "data" / ".git").is_dir()
+    assert not (world.base / "data").exists()
+    (entry, _) = world.entries()
+    assert entry["env"]["HILCLAW_DATA_REPO_LOCAL_PATH"] == str(firing / "data")
