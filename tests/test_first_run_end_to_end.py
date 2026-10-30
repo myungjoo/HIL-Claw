@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import first_run_stubs as stubs
+import openmp_clang
 import pytest
 
 from hilclaw import (
@@ -395,6 +396,7 @@ def world(tmp_path, monkeypatch):
                 pytest.skip(
                     "a directory above the test's temporary directory holds a marker"
                 )
+    openmp_clang.need()
     made = World(tmp_path)
     real = subprocess.run
 

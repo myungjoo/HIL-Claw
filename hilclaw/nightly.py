@@ -39,7 +39,9 @@ count (HQ-0076 (4)).
    repository kept across firings so that the cases of earlier firings are
    read (DRIVER D25), made when it is not there; later ``<firing>/data``, a
    new repository of this firing only (D17 ②); then the hw_profile record
-   (``prepare/hw_profile``);
+   (``prepare/hw_profile``) and the check that the stand-in image builds and
+   starts an OpenMP program (``prepare/no_openmp``, ADR-0188 decision 4;
+   :func:`hilclaw.standin_openmp.check`), which installs and changes nothing;
 4. ``new_run`` on ``<firing>/instance.json``; anything but ``started`` fails;
 5. ``turn_start`` on the run id of the ``started`` line; ``run_over`` passes,
    anything else fails.
@@ -100,6 +102,7 @@ from hilclaw import (
     selfcheck_login,
     selfcheck_outcome,
     standin_image,
+    standin_openmp,
     standin_profile,
     turn_start,
 )
@@ -237,20 +240,23 @@ def classify(stage, told):
     return CODE, _signature(stage, outcome)
 
 
-def fire(base, *, environ=None, python=None, profile=None, now=None):
+def fire(base, *, environ=None, python=None, profile=None, openmp=None, now=None):
     """Carry out one firing under the existing directory ``base`` and return its record.
 
     ``environ`` (default ``os.environ``) is the environment the children start
     from; ``python`` the command prefix that runs a module (default
     ``(sys.executable,)``); ``profile`` the hw_profile reader, called with
     ``hw_source``, ``timeout_s`` and ``image`` (default
-    :func:`hilclaw.standin_profile.local_record`); ``now`` a callable that
-    returns the aware UTC start time. Writes the files the module docstring
+    :func:`hilclaw.standin_profile.local_record`); ``openmp`` the check of the
+    image, called with the image reference (default
+    :func:`hilclaw.standin_openmp.check`); ``now`` a callable that returns the
+    aware UTC start time. Writes the files the module docstring
     lists and returns the ``result.json`` record.
     """
     environ = dict(os.environ if environ is None else environ)
     python = tuple(python or (sys.executable,))
     profile = profile or standin_profile.local_record
+    openmp = openmp or standin_openmp.check
     started = (now or _utc_now)()
     firing = Path(base) / started.strftime("%Y%m%dT%H%M%SZ")
     firing.mkdir()
@@ -280,12 +286,12 @@ def fire(base, *, environ=None, python=None, profile=None, now=None):
             env[coder_runtime.ENV_LOG_DIR] = _coder_output(firing)
             _check_environment(env)
             _make_data_root(env, data)
+            image = env[standin_image.ENV_IMAGE]
+            hw_profile = _profile(profile, image)
+            _check_openmp(openmp, image)
             given = firing / "instance.json"
             given.write_text(
-                json.dumps(
-                    document(_profile(profile, env[standin_image.ENV_IMAGE])), indent=2
-                ),
-                encoding="utf-8",
+                json.dumps(document(hw_profile), indent=2), encoding="utf-8"
             )
             tail_of = firing / "new_run.stderr"
             told = _entry(record, "new_run", python, given, env, firing, tail_of)
@@ -457,6 +463,12 @@ def _profile(profile, image):
         return profile("external", timeout_s=PROFILE_TIMEOUT_S, image=image)
     except (standin_profile.UnreadableFactError, OSError, ValueError) as e:
         raise _Stop(ENVIRONMENT, "prepare/hw_profile", type(e).__name__) from e
+
+
+def _check_openmp(openmp, image):
+    failure = openmp(image)
+    if failure is not None:
+        raise _Stop(ENVIRONMENT, "prepare/no_openmp", standin_openmp.message(failure))
 
 
 def _entry(record, stage, python, argument, env, firing, errors):

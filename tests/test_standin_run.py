@@ -256,11 +256,13 @@ def test_happy_returns_the_report_and_the_figure(
 
     assert program(waiter_build) == [
         "clang",
-        *flags,
+        *standin_settings.WAITER_FLAGS,
         f"{INSIDE}/timing_waiter.c",
         "-o",
         f"{INSIDE}/waiter",
     ]
+    assert "-fopenmp" in flags
+    assert "-fopenmp" not in program(waiter_build)
 
     driver = timing.driver_arguments(
         m=2, k=5, n=7, n_max=40, sample_form="interval", seed=SEED
@@ -946,11 +948,13 @@ def test_a_bf16_call_builds_twice_and_runs_under_the_waiter(
     ]
     assert program(waiter_build) == [
         "clang",
-        *flags,
+        *standin_settings.WAITER_FLAGS,
         f"{INSIDE}/timing_waiter.c",
         "-o",
         f"{INSIDE}/waiter",
     ]
+    assert "-fopenmp" in flags
+    assert "-fopenmp" not in program(waiter_build)
     arguments = bf16_timing.program_arguments(
         kind, BF16_DIMS[kind], n_max=40, sample_form="interval", seed=SEED
     )

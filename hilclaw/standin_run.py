@@ -38,8 +38,9 @@ decision 3 and decision 3 it:
    log by ADR-0169 decisions 2 and 3, before anything else is looked at
    (decision 3); answers a status 0 that left no executable
    ``build_output_missing`` (S9);
-5. runs the waiter's build in a second container: the flags, the waiter's
-   source and ``-o`` :data:`WAITER_EXECUTABLE_NAME`, no trailing flag
+5. runs the waiter's build in a second container:
+   :data:`hilclaw.standin_settings.WAITER_FLAGS`, the waiter's source and
+   ``-o`` :data:`WAITER_EXECUTABLE_NAME`, no trailing flag
    (decision 4), within what is left of the build limit; hands the keeper
    nothing for it (decision 2); answers it by C19, with
    ``"build_time_limit"`` and no container where nothing is left;
@@ -254,7 +255,6 @@ def _placed_copies(output_path, build_dir, program, headers):
 
 
 def _build(image, build_dir, copies, waiter, keeper, outcomes):
-    flags = standin_settings.FLAGS
     sources = (copies.harness, *copies.compiled_set)
     started = monotonic()
     built = standin_check.run_build(
@@ -262,7 +262,7 @@ def _build(image, build_dir, copies, waiter, keeper, outcomes):
         image,
         build_dir,
         (
-            *flags,
+            *standin_settings.FLAGS,
             *(standin_check.in_container(source) for source in sources),
             *standin_settings.TRAILING_FLAGS,
             "-o",
@@ -282,7 +282,12 @@ def _build(image, build_dir, copies, waiter, keeper, outcomes):
         outcomes,
         image,
         build_dir,
-        (*flags, standin_check.in_container(waiter), "-o", _WAITER_EXECUTABLE),
+        (
+            *standin_settings.WAITER_FLAGS,
+            standin_check.in_container(waiter),
+            "-o",
+            _WAITER_EXECUTABLE,
+        ),
         left,
         keeper=None,
         executable=WAITER_EXECUTABLE_NAME,

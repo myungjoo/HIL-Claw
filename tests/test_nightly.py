@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import keys, nightly, standin_profile
+from hilclaw import keys, nightly, standin_openmp, standin_profile
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 GIT = shutil.which("git")
@@ -113,12 +113,13 @@ class World:
             encoding="utf-8",
         )
 
-    def fire(self, profile=None):
+    def fire(self, profile=None, openmp=None):
         return nightly.fire(
             self.base,
             environ=self.env,
             python=(sys.executable, str(self.fake)),
             profile=profile or (lambda hw_source, *, timeout_s, image: dict(PROFILE)),
+            openmp=openmp or (lambda image: None),
             now=lambda: NOW,
         )
 
@@ -735,6 +736,7 @@ def test_a_second_firing_reuses_the_kept_data_root(world):
         environ=world.env,
         python=(sys.executable, str(world.fake)),
         profile=lambda hw_source, *, timeout_s, image: dict(PROFILE),
+        openmp=lambda image: None,
         now=lambda: NOW + datetime.timedelta(days=1),
     )
     assert record["verdict"] == "pass"
@@ -751,6 +753,7 @@ def test_a_firing_after_case_storage_makes_its_own_data_root(world):
         environ=world.env,
         python=(sys.executable, str(world.fake)),
         profile=lambda hw_source, *, timeout_s, image: dict(PROFILE),
+        openmp=lambda image: None,
         now=lambda: later,
     )
     assert record["verdict"] == "pass"
@@ -767,3 +770,80 @@ def test_a_kept_data_root_without_a_repository_is_made_one(world):
     record = world.fire()
     assert record["verdict"] == "pass"
     assert (world.base / "data" / ".git").is_dir()
+
+
+@posix
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "build ended with status 1",
+        "build could not be started (OSError)",
+        "start did not finish within 60 s",
+    ],
+)
+def test_an_image_without_openmp_is_an_environment_cause_and_starts_no_run(
+    world, failure
+):
+    asked = []
+
+    def probe(image):
+        asked.append(image)
+        return failure
+
+    record = world.fire(openmp=probe)
+    assert asked == [world.env["HILCLAW_STANDIN_IMAGE"]]
+    assert (record["verdict"], record["cause"], record["signature"]) == (
+        "fail",
+        "environment",
+        "prepare/no_openmp",
+    )
+    assert record["detail"] == standin_openmp.message(failure)
+    assert "Nothing was installed or changed" in record["detail"]
+    assert record["run_id"] is None and record["steps"] == []
+    assert world.entries() == []
+    assert not (world.firing / "instance.json").exists()
+    title, body = world.issue()
+    assert title == "nightly: prepare/no_openmp\n"
+    assert failure in body and "cause: environment" in body
+
+
+@posix
+def test_a_usable_image_goes_on_to_the_run(world):
+    asked = []
+    record = world.fire(openmp=lambda image: asked.append(image))
+    assert record["verdict"] == "pass"
+    assert len(asked) == 1
+    assert [entry["argv"][1] for entry in world.entries()] == [
+        "hilclaw.new_run",
+        "hilclaw.turn_start",
+    ]
+
+
+@posix
+def test_the_profile_is_read_before_the_image_is_probed(world):
+    def unreadable(hw_source, *, timeout_s, image):
+        raise standin_profile.UnreadableFactError("toolchain.clang: no")
+
+    record = world.fire(
+        profile=unreadable, openmp=lambda image: pytest.fail("probed the image")
+    )
+    assert record["signature"] == "prepare/hw_profile"
+
+
+@posix
+def test_the_default_check_is_the_stub_images_answer(world, monkeypatch):
+    world.stub(
+        "docker",
+        '#!/bin/sh\ncase "$*" in\n*" clang "*) exit 1 ;;\nesac\nexit 0\n',
+    )
+    monkeypatch.setenv("PATH", f"{world.bin}{os.pathsep}{os.environ['PATH']}")
+    record = nightly.fire(
+        world.base,
+        environ=world.env,
+        python=(sys.executable, str(world.fake)),
+        profile=lambda hw_source, *, timeout_s, image: dict(PROFILE),
+        now=lambda: NOW,
+    )
+    assert record["signature"] == "prepare/no_openmp"
+    assert "build ended with status 1" in record["detail"]
+    assert world.entries() == []

@@ -4,6 +4,7 @@ import shutil
 import subprocess
 
 import first_run_stubs as stubs
+import openmp_clang
 import pytest
 
 from hilclaw import (
@@ -39,6 +40,11 @@ if not hasattr(os, "getuid"):
     pytest.skip("the stand-in containers need os.getuid", allow_module_level=True)
 if CLANG is None:
     pytest.skip("this test needs a host clang", allow_module_level=True)
+
+
+@pytest.fixture(autouse=True)
+def usable_clang():
+    openmp_clang.need()
 
 
 def working_unshare():

@@ -13,7 +13,7 @@
 | 머신·작업 폴더·권한 | 드라이버와 같은 머신, 드라이버 clone·오너 작업 트리와 다른 **nightly 전용 clone**, Bypass permissions |
 | `claude` 자식 프로세스 가드 | 드라이버 clone의 설정에만 등록하고, nightly는 가드가 없는 별도 clone에서 돈다(§9) |
 
-**머신 준비**(오너; 준비 여부는 첫 수동 run에서 확인된다): 로그인된 `claude`, Docker, 코더·stand-in 이미지와 그 이름(`HILCLAW_CODER_IMAGE`·`HILCLAW_STANDIN_IMAGE`), 코더 토큰(`HILCLAW_CODER_OAUTH_TOKEN`), `git`(커밋 identity 포함; host `clang`은 필요 없다 — hw_profile의 `toolchain`은 stand-in 이미지에서 읽는다, ADR-0186), Python ≥ 3.11과 `pyproject.toml`의 의존성, 저장소 소유자 계정으로 로그인된 `gh`(§3의 보고 인정 조건). 런타임은 POSIX 호스트를 요구하므로(`os.getuid`, `fcntl`; C-7) Windows 머신에서는 clone·작업 폴더·위의 도구를 WSL 2 안에 두고 진입점을 그 안에서 실행한다. 작업 폴더(아래 `<base>`)는 clone 밖의 디렉토리다.
+**머신 준비**(오너; 준비 여부는 첫 수동 run에서 확인된다): 로그인된 `claude`, Docker, 코더·stand-in 이미지와 그 이름(`HILCLAW_CODER_IMAGE`·`HILCLAW_STANDIN_IMAGE`) — stand-in 이미지에는 `clang`이 `-fopenmp`로 빌드·링크할 수 있는 `<omp.h>`와 OpenMP 런타임이 있어야 한다(없으면 발화가 `prepare/no_openmp`로 끝나고 런타임은 아무것도 설치하지 않는다, [ADR-0188](../ARCHITECTURE/decisions/ADR-0188-od18-standin-openmp-in-the-build-set.md)) —, 코더 토큰(`HILCLAW_CODER_OAUTH_TOKEN`), `git`(커밋 identity 포함; host `clang`은 필요 없다 — hw_profile의 `toolchain`은 stand-in 이미지에서 읽는다, ADR-0186), Python ≥ 3.11과 `pyproject.toml`의 의존성, 저장소 소유자 계정으로 로그인된 `gh`(§3의 보고 인정 조건). 런타임은 POSIX 호스트를 요구하므로(`os.getuid`, `fcntl`; C-7) Windows 머신에서는 clone·작업 폴더·위의 도구를 WSL 2 안에 두고 진입점을 그 안에서 실행한다. 작업 폴더(아래 `<base>`)는 clone 밖의 디렉토리다.
 
 ## 2. 발화마다의 절차 (루틴 세션이 따른다)
 
@@ -45,7 +45,7 @@
 
 진입점은 결과 줄로 `cause` 힌트를 붙인다.
 
-- `environment` — 머신에 run에 필요한 것이 없다: `prepare/*`(겹친 발화, POSIX 아님, 빠진 변수·프로그램, data root, hw_profile 사실), `new_run`의 `no_data_root`·`file_system`, `turn_start`의 오류 `no_claude`·`no_data_root`, 점검 outcome `no_claude`·`not_logged_in`·`login_unreadable`.
+- `environment` — 머신에 run에 필요한 것이 없다: `prepare/*`(겹친 발화, POSIX 아님, 빠진 변수·프로그램, data root, hw_profile 사실, stand-in 이미지의 OpenMP), `new_run`의 `no_data_root`·`file_system`, `turn_start`의 오류 `no_claude`·`no_data_root`, 점검 outcome `no_claude`·`not_logged_in`·`login_unreadable`.
 - `undetermined` — `failed_turn`과 점검 outcome `session_failed`: 사용량 소진·로그인 만료·네트워크와 코드 결함이 결과 줄로는 구별되지 않는다.
 - `code` — 그 밖의 모든 것(`unchanged_turn`, `open_state`, `unknown_run_status`, `fault`, 읽을 수 없는 결과 줄 등).
 
