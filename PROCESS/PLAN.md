@@ -123,3 +123,5 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0506 follow-up — ADR-0182 code slice 3: fp32 `hilclaw/model_execute.py` 경로의 빌드·프로세스를 ADR-0144 컨테이너로 옮기는 일(ADR-0182 decision 9가 "P2-14 does not run it"이라 적음; 지금은 instance 커널을 이 경로로 돌리는 호출자가 없음), 격리 경화.
 - OD-31 ⑤·⑦ (PLAN P2-15 준비) — 실제 Llama 3.2 1B 가중치 읽기와 토크나이저(모델 파일의 출처·포맷·변형·저장 위치와 필요한 패키지 — 오너 전용이라 착수 전에 DRIVER §8의 HQ로 묻는다), P2-14는 합성 가중치·토크나이저로 검증하므로(PLAN P2-14, ADR-0176) 그 완료에 필요하지 않음.
 - T-0510 planning — ADR-0183 decision 9 item 2가 언급한 정리: T-0510 뒤로 호출자가 없어지는 `hilclaw.hw_tool.read_stepped_tool_function`과 그 아래 `hilclaw.journaled_tool.read_stepped_function`의 제거(자체 테스트가 계속 커버함), 동작 변경 없는 리팩토링.
+- T-0510 follow-up — ADR-0183 decision 9 item 2가 "may follow in a third task"로 남긴, 호출하는 도구가 없어진 옛 check 결과 builder(`check_result.completed`·`broken`·`bf16_completed`·`bf16_broken`·`BF16_KINDS`, `check_judging.from_judgement`·`from_report`·`from_bf16_judgement`·`from_bf16_report`, 필요하면 `DrawCounts.cache_differences`)와 그 테스트의 제거, 동작 변경 없는 리팩토링.
+- T-0510 follow-up — `hilclaw/check_seed.py` docstring(41행)이 제거된 `check_admission.admit_for_step`을 여전히 이름하는 점, docstring 문구 정리.
