@@ -100,9 +100,9 @@ Choices that are this module's own and no rule of a record:
 * :mod:`hilclaw.harness.timing` is imported with the module: it imports no
   NumPy, and a test pins that.
 * The type of the timing parameters is chosen from the covering entry: a
-  :class:`hilclaw.run_parameters.TimingParameters` for the entry of
-  :mod:`hilclaw.gemm_contract`, a
-  :class:`hilclaw.run_parameters.Bf16TimingParameters` for any other. Which
+  :class:`hilclaw.run_parameters.TimingParameters` for the fp32 ``gemm``
+  entry, a :class:`hilclaw.run_parameters.Bf16TimingParameters` for any
+  other, by the ``KIND`` and ``DTYPE`` of its contract. Which
   entries reach the operation is the ``covers`` handed in:
   :func:`hilclaw.contract_table.run_covers` admits an entry only once it is
   ``timed``.
@@ -129,7 +129,6 @@ nothing between calls.
 
 from hilclaw import (
     build_log,
-    gemm_contract,
     hw_tool,
     instance,
     journaled_step,
@@ -154,6 +153,7 @@ _OUTCOMES = {
     measurement.State.NOT_CONVERGED: run_result.NOT_CONVERGED,
 }
 (_UNIT,) = run_result.UNITS
+_FP32_GEMM = ("gemm", "fp32")
 _CONDITIONS = {
     timing.Broken.REPORT_FORM: "report_form",
     timing.Broken.ZERO_INTERVAL: "zero_interval",
@@ -280,7 +280,7 @@ def _perform(step, data_root, request, hw_profile, operation, drawn):
 def _parameters(admitted, seed):
     contract = admitted.entry.contract
     common = (admitted.n_max, admitted.sample_form, seed)
-    if contract is gemm_contract:
+    if (contract.KIND, contract.DTYPE) == _FP32_GEMM:
         return run_parameters.TimingParameters(*admitted.dims, *common)
     return run_parameters.Bf16TimingParameters(
         contract.KIND, contract.DTYPE, admitted.dims, *common

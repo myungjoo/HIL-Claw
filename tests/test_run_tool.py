@@ -906,7 +906,6 @@ def test_the_module_imports_and_names():
         f"hilclaw.{name}"
         for name in (
             "build_log",
-            "gemm_contract",
             "hw_tool",
             "instance",
             "journaled_step",

@@ -44,8 +44,8 @@ import typing
 
 
 class TimingParameters(typing.NamedTuple):
-    """The six values an operation of ``sim.run`` or ``board.run`` is handed beside
-    the request, the hw_profile and the output path (ADR-0065 decision 2).
+    """The six values an operation of a fp32 ``gemm`` run of ``sim.run`` or ``board.run``
+    is handed beside the request, the hw_profile and the output path (ADR-0065 decision 2).
 
     - ``m``, ``k``, ``n``: the dimensions of the run.
     - ``n_max``: the run's bound of the repeats of one measurement.
