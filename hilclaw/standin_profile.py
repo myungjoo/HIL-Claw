@@ -68,14 +68,16 @@ machine. Nothing checks that ``compiler``, or the image, is the compiler a
 later build uses (decision 3; ADR-0186 decision 3).
 
 The kernel name is read first, and for a name without a rule nothing is
-started. Otherwise the module starts at most three commands through
-:func:`hilclaw.local_run.run` (without a shell, found on ``PATH``, with the
-limits that module documents): ``<compiler> --version``, or with an image
-``clang --version`` through :func:`hilclaw.standin_container.run_in_container`
-in a new empty temporary directory, and, for the kernel name ``Darwin`` only,
-``sysctl -n machdep.cpu.brand_string`` and ``sw_vers -productVersion``. It reads the two files named above and no other,
-and writes none. Every fact is read at each call and nothing is kept between
-calls.
+started. Otherwise the module starts through :func:`hilclaw.local_run.run`
+(without a shell, found on ``PATH``, with the limits that module documents)
+``<compiler> --version``, or with an image the container client of
+:func:`hilclaw.standin_container.run_in_container` running ``clang
+--version`` (and that client's one forced removal after a timeout), and, for
+the kernel name ``Darwin`` only, ``sysctl -n machdep.cpu.brand_string`` and
+``sw_vers -productVersion``. It reads the two files named above and no other,
+and writes no file; with an image it makes one empty temporary directory for
+the container and removes it. Every fact is read at each call and nothing is
+kept between calls.
 """
 
 import functools
@@ -160,8 +162,13 @@ def local_record(hw_source, *, timeout_s, compiler=None, image=None):
     :func:`hilclaw.standin_container.check_image` refuses (:class:`TypeError`
     for one that is not ``str``). With an image, a container that cannot be
     started (:class:`hilclaw.standin_container.NoNumericUserError` among the
-    causes) or a status other than 0 (the client's 125 for a missing image
-    among them) is a fact that cannot be read.
+    causes), that fails after its start, or a status other than 0 (the
+    client's 125 for a missing image among them) is a fact that cannot be
+    read. With an image the :class:`TypeError` and :class:`ValueError` for
+    ``timeout_s`` come from the checks of
+    :func:`hilclaw.standin_container.run_in_container`, with its attribute
+    ``parameter``, and so does a :class:`ValueError` for a temporary
+    directory whose path a mount cannot carry (``parameter`` ``build_dir``).
     """
     if type(hw_source) is not str or hw_source not in keys.HW_SOURCES:
         rule = " or ".join(keys.HW_SOURCES)
@@ -176,7 +183,7 @@ def local_record(hw_source, *, timeout_s, compiler=None, image=None):
             raise ValueError("compiler and image cannot both be given")
         standin_container.check_image(image)
         start = functools.partial(_run_in_image, image, timeout_s)
-        shown = "clang --version in the image"
+        shown = "docker run <image> clang --version"
     name, release = _kernel()
     if name not in ("Darwin", "Linux"):
         raise UnreadableFactError("kernel name: this module has no rule for it")
@@ -284,6 +291,10 @@ def _output_line(fact, shown, timeout_s, start):
         ) from None
     except (OSError, standin_container.NoNumericUserError) as error:
         reason = type(error).__name__
+        if hasattr(error, "container_name"):
+            raise UnreadableFactError(
+                f"{fact}: `{shown}` failed after its start ({reason})"
+            ) from None
         raise UnreadableFactError(
             f"{fact}: `{shown}` could not be started ({reason})"
         ) from None

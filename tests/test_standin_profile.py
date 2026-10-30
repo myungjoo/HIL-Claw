@@ -1201,3 +1201,21 @@ def test_image_clang_runs_in_a_new_container_of_the_image(monkeypatch):
         {"timeout_s": 7, "removal_timeout_s": 7},
     )
     assert not os.path.exists(calls[1])
+
+
+def test_image_failure_after_the_start_is_not_called_a_failed_start(machine):
+    error = OSError("removal failed")
+    error.container_name = "hilclaw-standin-0"
+    machine.image_clang = error
+    with pytest.raises(UnreadableFactError) as caught:
+        local_record("external", timeout_s=TIMEOUT, image=IMAGE)
+    assert "failed after its start (OSError)" in str(caught.value)
+    assert "could not be started" not in str(caught.value)
+
+
+def test_image_client_that_is_missing_names_the_client_command(machine):
+    machine.image_clang = ProgramNotFoundError("docker")
+    with pytest.raises(UnreadableFactError) as caught:
+        local_record("external", timeout_s=TIMEOUT, image=IMAGE)
+    assert "`docker run <image> clang --version` was not found" in str(caught.value)
+    assert IMAGE not in str(caught.value)

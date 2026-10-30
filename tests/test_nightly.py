@@ -467,6 +467,17 @@ def test_the_profile_is_given_the_standin_image(world):
 
 
 @posix
+def test_a_firing_needs_no_host_clang(world, tmp_path):
+    only_git = tmp_path / "only-git"
+    only_git.mkdir()
+    (only_git / "git").symlink_to(GIT)
+    world.env["PATH"] = os.pathsep.join([str(world.bin), str(only_git)])
+    assert shutil.which("clang", path=world.env["PATH"]) is None
+    record = world.fire()
+    assert record["verdict"] == "pass"
+
+
+@posix
 def test_an_image_the_profile_refuses_is_the_environment(world):
     def refused(hw_source, *, timeout_s, image):
         raise ValueError("image must not begin with '-'")

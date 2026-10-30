@@ -6,7 +6,7 @@
 - **Two kinds of content.** What an accepted record says is **cited**, with its source named. **Everything else is this record's own**: the reading of ADR-0035 decision 3 for these runs, the way the line is read, and every weighing.
 - **Why now** (observation, the owner-run test runs of 2026-10-30 under DRIVER D25): the nightly entry `hilclaw.nightly` read `clang --version` on the host (`Ubuntu clang version 14.0.0-1ubuntu1.1`), while every kernel of those runs was built by the image's clang (`Ubuntu clang version 18.1.3 (1ubuntu1)`). The cases those runs wrote are keyed by a compiler that built none of their kernels.
 - **Answers** the `toolchain` part of OD-14 sub-question ① (마), "which machine the `cpu_standin` hw key values describe", for the runs of decision 1. The rest of ① (마) stays open (decision 3).
-- **No member, file, kind, value or version of the data plane is added or changed.** The record keeps the members of ADR-0035; only the source of one value changes, and with it the key of these runs.
+- **No member, file, kind or version of the data plane is added or changed, and no admitted value or meaning of a value changes.** The record keeps the members of ADR-0035 and the meaning of `toolchain.clang`; only where the stored line is read changes, and with it the line and the key of these runs.
 - The format follows the "Record format" section of [ADR-0001](ADR-0001-od4-key-schema.md).
 
 ## Context
@@ -26,7 +26,7 @@ hw_profile records with `accelerator` `cpu_standin` made for a run whose `cpu_st
 ### 2. `toolchain.clang` is read from the image
 
 - **The value is the first line of standard output of `clang --version`, run as the program of one new container of the image** with the container options of ADR-0144 (`standin_container.run_in_container`: no network, `--pull never`, the caller's numeric user, no capabilities, an empty entrypoint), a new empty temporary directory as its build directory, and the time limit and the forced-removal limit of the record's other commands. The spelling of ADR-0035 decision 6 applies unchanged.
-- **A container that cannot be started, a status other than 0 (the client's 125 for an image that is not there among them) or no end within the limit** is a fact that cannot be read (cited: ADR-0035 decision 6): no record is made. In `hilclaw.nightly` that ends the firing as `prepare/hw_profile`, an environment cause.
+- **A container that cannot be started or fails after its start, a status other than 0 (the client's 125 for an image that is not there among them) or no end within the limit** is a fact that cannot be read (cited: ADR-0035 decision 6): no record is made. In `hilclaw.nightly` that ends the firing as `prepare/hw_profile`, an environment cause.
 - **The host's `clang` is not read.** `hilclaw.nightly` no longer requires a host `clang` on `PATH`.
 - **Why.** ADR-0035 decision 3 names the clang that builds the kernels, and ADR-0144 makes that the image's `clang` under that name. Reading the line in the same image under the same name names that compiler, with no rule of its own about which compiler is meant.
 

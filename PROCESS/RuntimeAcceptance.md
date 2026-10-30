@@ -488,7 +488,7 @@
   PLAN P2-10 nightly 루틴의 런타임 인수 항목. #323이 land된 뒤 nightly 머신에서 확인한다(첫 확인은 오너의 수동 run — D24 E2).
 
   (nightly-1) On the driver's machine, a separate clone with the routine registered daily at KST 03:00 in Bypass permissions, with the prompt "`PROCESS/NIGHTLY.md` §2를 1회 수행":
-  - (1) Inside WSL 2, the routine session runs `python -m hilclaw.nightly <base>`. The pre-firing check finds `HILCLAW_CODER_IMAGE`, `HILCLAW_CODER_OAUTH_TOKEN`, `HILCLAW_STANDIN_IMAGE`, `claude`, `clang`, `docker` and `git`.
+  - (1) Inside WSL 2, the routine session runs `python -m hilclaw.nightly <base>`. The pre-firing check finds `HILCLAW_CODER_IMAGE`, `HILCLAW_CODER_OAUTH_TOKEN`, `HILCLAW_STANDIN_IMAGE`, `claude`, `docker` and `git` (a host `clang` is no longer checked: ADR-0186, 2026-10-30).
   - (2) The turn sessions start from the entry with `CLAUDECODE` and `CLAUDE_CODE_ENTRYPOINT` removed, and are not refused as nested sessions. A failure here would be reported as `turn_start/stopped_at_check/*` or `failed_turn`.
   - (3) The P2-5 configuration run ends `run_over` after 5 rounds.
   - (4) The machine's `gh` is logged in as the repository owner. It can create the `nightly-failure` label, create and comment on issues, and close them. The filtered `--jq` read returns that account's reports.
