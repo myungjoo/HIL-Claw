@@ -72,9 +72,9 @@ started. Otherwise the module starts through :func:`hilclaw.local_run.run`
 (without a shell, found on ``PATH``, with the limits that module documents)
 ``<compiler> --version``, or with an image the container client of
 :func:`hilclaw.standin_container.run_in_container` running ``clang
---version`` (and that client's one forced removal after a timeout), and, for
-the kernel name ``Darwin`` only, ``sysctl -n machdep.cpu.brand_string`` and
-``sw_vers -productVersion``. It reads the two files named above and no other,
+--version`` (and that client's one forced removal after a timeout or an
+interrupted run), and, for the kernel name ``Darwin`` only, ``sysctl -n
+machdep.cpu.brand_string`` and ``sw_vers -productVersion``. It reads the two files named above and no other,
 and writes no file; with an image it makes one empty temporary directory for
 the container and removes it. Every fact is read at each call and nothing is
 kept between calls.
