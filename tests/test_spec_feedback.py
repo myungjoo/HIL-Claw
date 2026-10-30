@@ -947,6 +947,36 @@ def test_the_incumbent_is_the_verified_attempt_with_the_lowest_median(root):
     assert [entry["round"] for entry in made["attempts"]] == [0, 1, 2]
 
 
+def test_incumbent_reads_every_round_the_last_included(root):
+    assert spec_feedback.incumbent(root, RUN) is None
+    for q in (0, 1):
+        put_spec(root, q)
+    timed(root, 0, [50] * 5)
+    assert spec_feedback.incumbent(root, RUN) == ref(0)
+    timed(root, 1, [20] * 5)
+    assert spec_feedback.incumbent(root, RUN) == ref(1)
+    assert spec_feedback.incumbent(str(root), RUN) == base_of(root, 2)
+
+
+def test_incumbent_reaches_the_largest_round(root):
+    largest = keys.MAX_INTEGER
+    put_spec(root, 0)
+    timed(root, 0, [50] * 5)
+    put_spec(root, largest)
+    timed(root, largest, [20] * 5)
+    assert spec_feedback.incumbent(root, RUN) == ref(largest)
+    assert base_of(root, largest) == ref(0)
+
+
+def test_incumbent_refuses_a_bad_run_id_and_a_bad_spec(root):
+    with pytest.raises(layout.InvalidPathValueError):
+        spec_feedback.incumbent(root, "../x")
+    put_spec(root, 0, content=b"{")
+    with pytest.raises(ToolFailure) as caught:
+        spec_feedback.incumbent(root, RUN)
+    assert caught.value.kind == KIND_FEEDBACK_UNREADABLE
+
+
 def test_a_not_converged_measurement_competes(root):
     for q in (0, 1):
         put_spec(root, q)

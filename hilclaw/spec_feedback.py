@@ -81,7 +81,10 @@ The files read are the listed directories, the found ``spec.json`` files,
 ``events.ndjson`` and the compiler logs; ``STATE.json``, ``instance.json``,
 ``decision/hypotheses.json`` and ``decision.md`` are not. Nothing is created,
 written or kept between calls. ``spec.write`` (:mod:`hilclaw.spec_tool`)
-calls :func:`feedback`.
+calls :func:`feedback`. :func:`incumbent` applies the same reading to every
+round of a run, for the binding of
+``ARCHITECTURE/decisions/ADR-0189-od31-binding-from-run-incumbents.md``
+(:mod:`hilclaw.model_run_binding`).
 :data:`KIND_FEEDBACK_UNREADABLE` is a name of the tool layer and not reserved.
 """
 
@@ -166,7 +169,28 @@ def feedback(data_root, run_id, round):
     if not 1 <= round <= keys.MAX_INTEGER:
         raise ValueError(f"round: must be from 1 to {keys.MAX_INTEGER}, got {round}")
     layout.check_run_id(run_id)
-    root = Path(data_root)
+    return _feedback(Path(data_root), run_id, round)
+
+
+def incumbent(data_root, run_id):
+    """Return the incumbent over every round of the run ``run_id``, or ``None``.
+
+    The ``base`` of :func:`feedback` with no round left out, the last one
+    included: the ``{"round", "candidate": 1, "attempt"}`` of the attempt
+    verified at both points with the lowest median (ADR-0184 decision 2), or
+    ``None`` when no attempt is one.
+
+    @param data_root the data root, used as ``Path(data_root)``.
+    @param run_id the run, a name :func:`hilclaw.layout.check_run_id` accepts.
+    @return a new ``dict``, or ``None``.
+    @throws hilclaw.layout.InvalidPathValueError for a bad ``run_id``.
+    @throws hilclaw.tools.ToolFailure as :func:`feedback` raises them.
+    """
+    layout.check_run_id(run_id)
+    return _feedback(Path(data_root), run_id, keys.MAX_INTEGER + 1).get("base")
+
+
+def _feedback(root, run_id, round):
     found = _found(root, run_id, round)
     if not found:
         return {"attempts": []}
