@@ -2,7 +2,7 @@
 id: T-0512
 title: Land ADR-0181 code slice 1 — bf16 timing programs of gemm, rmsnorm, elementwise_add and swiglu with their shared header, and the Python side that builds them, forms their command lines and judges their reports through hilclaw.harness.timing
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-2, NFR-3, OD-13, OD-16, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: []
@@ -96,3 +96,29 @@ hq: []
 ## Follow-ups
 
 ## Result
+- **Outcome**: DONE. PR #331 squash-merged as `3551c0ac` (branch deleted). Review: 2 rounds (round 1 Request changes: the size cap; round 2 Approve). CI green on head `882b29aa` (C gate, Python 3.11/3.14, coverage, test presence, shellcheck). Locally (WSL Ubuntu with clang) the full suite passed on the round-1 head (38269 passed, 50 skipped). On the round-2 head the three new test files passed (400 tests).
+- **Language**: C for the four programs and the header, because the kernel call is C and ADR-0009 decision 2 and ADR-0181 decision 2 put the program in C. Python for the build and run helpers, which make up the harness's Python side.
+- **New files**:
+  - `hilclaw/harness/bf16_timing.h`
+  - `hilclaw/harness/bf16_timing_{gemm,rmsnorm,elementwise_add,swiglu}.c`
+  - `hilclaw/harness/bf16_timing_build.py`
+  - `hilclaw/harness/bf16_timing.py`
+  - `tests/harness/test_bf16_timing.py`
+  - `tests/harness/test_bf16_timing_build.py`
+  - `tests/harness/test_bf16_timing_programs.py`
+  - `hilclaw/harness/__init__.py`: only its docstring changed.
+- **How the header is factored**: `bf16_timing.h` **includes `bf16_verification.h`**. It reuses that header's generator (`draw_base`, `draw_patterns`), `digits`, `byte_size`, `fail`, `report_open`, `emit` and statuses 2/3/4, and adds `STATUS_ZERO_INTERVAL` (5), `struct timing`, `timing_arguments`, `timing_open`, `timing_begin`, `timing_end` and `timing_close`. Those carry the clock, the loop, the stopping rule and the report of `timing_driver.c`. Each program runs `for (timing_open(&t); timing_begin(&t); timing_end(&t)) call(...); timing_close(&t);`, so it has one kernel call site. The kernel is read through a `volatile` pointer, as in `timing_driver.c`. The first pass is the untimed call. On later passes, only the kernel call lies between the two `CLOCK_MONOTONIC` readings.
+- **Slice 4 must copy both headers**, `bf16_timing.h` and `bf16_verification.h`, beside the program in the container build (ADR-0181 decision 3).
+- **Public Python names** (T-0513/T-0514 build on these):
+  - `hilclaw.harness.bf16_timing_build.PROGRAM_SOURCES` (a MappingProxyType over the four kinds)
+  - `hilclaw.harness.bf16_timing_build.build_bf16_timing_executable(kind, kernel_sources, output, *, timeout_s, flags=(), trailing_flags=(), compiler=None, cwd=None, env=None)`
+  - `hilclaw.harness.bf16_timing.KINDS`
+  - `hilclaw.harness.bf16_timing.program_arguments(kind, dims, *, n_max, sample_form, seed)`: raises `timing.TimingArgumentError`.
+  - `hilclaw.harness.bf16_timing.run_bf16_timing(executable, kind, dims, *, sample_form, seed, timeout_s, n_max=N_MAX_DEFAULT, cwd=None, env=None)`: returns `timing.TimingResult`.
+  - T-0513 extends `PROGRAM_SOURCES` and `KINDS` with `rope` and `sdpa_kv_cache`. It also adds those kinds' dimension rules to `program_arguments` and the stdin rows to the run function.
+- **Edited list assertions (D21)**: none. No existing test changed.
+- **Size**: 594 added and 1 deleted non-test lines in 8 files (cap 600). Round 1 shortened the comments and docstrings from 760.
+- **Less exact beyond ADR-0181's Consequences list**: none found. The `hilclaw/run_definition.py` docstring is already on that list.
+- **Runtime acceptance items**: none. RA-0052 to RA-0054 already cover ADR-0181.
+- **Follow-ups**: none.
+- **Next candidate**: T-0513 (ADR-0181 slice 2, the `rope` and `sdpa_kv_cache` timing programs).
