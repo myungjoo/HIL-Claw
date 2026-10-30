@@ -530,7 +530,7 @@ def test_a_record_no_entry_covers_is_not_covered_whatever_covers_answers(op):
     assert len(covers.calls) == 1
 
 
-def test_the_fp32_gemm_entry_is_the_one_run_covers_admits():
+def test_the_fp32_gemm_entry_is_admitted_by_run_covers():
     admitted = admit(content(), covers=contract_table.run_covers)
     assert admitted.entry is GEMM
     assert admitted.entry.timed

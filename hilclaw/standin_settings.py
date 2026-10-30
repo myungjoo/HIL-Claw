@@ -145,7 +145,8 @@ def bf16_timing_process_time_limit_s(kind, dims, n_max):
     untimed call and up to ``n_max`` repeats (ADR-0181 decision 6). Same return
     value and exceptions, with ``n_max`` in place of ``draws``.
     """
-    return _limit_s(n_max + 1, _checked_bf16_work(kind, dims, n_max=n_max))
+    work = _checked_bf16_work(kind, dims, n_max=n_max)
+    return _limit_s(n_max + 1, work)
 
 
 def _checked_bf16_work(kind, dims, **count):

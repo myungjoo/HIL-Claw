@@ -321,6 +321,9 @@ def test_the_bf16_timing_figures_of_adr_0181(kind, dims, figure):
         ("gemm", (1, 1, 1), 0, ValueError, "n_max"),
         ("gemm", (1, 1, 1), True, TypeError, "n_max"),
         ("gemm", (1, 1, 1), 2.0, TypeError, "n_max"),
+        ("gemm", (1, 1, 1), "x", TypeError, "n_max"),
+        ("gemm", (1, 1, 1), None, TypeError, "n_max"),
+        ("conv", (1, 1), "x", ValueError, "kind"),
     ],
 )
 def test_what_the_bf16_timing_rule_refuses(kind, dims, n_max, error, match):

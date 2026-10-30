@@ -44,7 +44,7 @@ decision 3 and decision 3 it:
    nothing for it (decision 2); answers it by C19, with
    ``"build_time_limit"`` and no container where nothing is left;
 6. runs the timing process in a third container, which starts the waiter with
-   the timing executable's path and the driver's eight arguments, within the
+   the timing executable's path and the arguments of step 1, within the
    process limit, reads it with
    :func:`hilclaw.standin_answer.read_timing_process` and returns the pair
    of the report and the figure, or a value of ``condition``; the rows of a
