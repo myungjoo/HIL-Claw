@@ -64,7 +64,7 @@ import subprocess
 import time
 from collections.abc import Mapping
 
-from hilclaw import bring_in, config, local_run, standin_container
+from hilclaw import bring_in, checkout_boundary, config, local_run, standin_container
 from hilclaw.coder_call import CoderNotStartedError
 
 ENV_IMAGE = "HILCLAW_CODER_IMAGE"
@@ -364,11 +364,7 @@ def _read_log_dir(environ):
     data_root = environ.get(config.ENV_LOCAL_PATH)
     if isinstance(data_root, str) and data_root and "\0" not in data_root:
         root = os.path.realpath(data_root)
-        try:
-            below = os.path.commonpath([os.path.realpath(value), root]) == root
-        except ValueError:
-            below = False
-        if below:
+        if checkout_boundary.within(os.path.realpath(value), root):
             raise CoderNotStartedError(
                 f"{ENV_LOG_DIR} must not be at or below the data root"
             )
