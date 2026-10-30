@@ -1,38 +1,18 @@
 /*
- * Shared code of the bf16 timing programs (ADR-0181 decision 2).
- *
- * Included by each bf16 timing program under hilclaw/harness/, one per kind,
- * after that program has defined _POSIX_C_SOURCE as 200809L and PROGRAM to the
- * name its error lines start with. It includes bf16_verification.h for the
- * generator of the inputs, the argument rules, the size check, the error line,
- * the report descriptor and its write loop, and adds what the timing programs
- * share: the five timing arguments, the clock, the loop, the stopping rule and
- * the report of timing_driver.c (ADR-0009 decisions 3 to 9), unchanged. Every
- * identifier is static (internal linkage), and every function is static inline.
- * It needs the C library and POSIX.1-2008 only (no -lm); its only
- * floating-point arithmetic is the stopping rule on the samples.
- *
- * A program reads its dimensions, hands argv from n_min on to
- * timing_arguments, allocates and fills its operands, and then runs
+ * Shared code of the bf16 timing programs (ADR-0181 decision 2), included after
+ * _POSIX_C_SOURCE and PROGRAM are defined. It takes the generator, the argument
+ * rules, the error line and the report descriptor from bf16_verification.h, and
+ * keeps the arguments, clock, loop, stopping rule, report and exit statuses of
+ * timing_driver.c (ADR-0009), status 5 being a timed interval of 0 ns. A program
+ * runs its one kernel call as
  *
  *     for (timing_open(&t); timing_begin(&t); timing_end(&t))
- *         <the one kernel call>;
+ *         <kernel call>;
  *     timing_close(&t);
  *
- * timing_open allocates the samples, points descriptor 1 at standard error and
- * writes the "resolution_ns" line. The first pass of the loop is the one
- * untimed call: timing_begin reads no clock before it, and the reading that
- * timing_end takes after it is dropped. On every later pass the last action of
- * timing_begin is the first reading and the first action of timing_end the
- * second, so only the kernel call lies between them. timing_end writes the
- * "interval_ns" line and evaluates the stopping rule; timing_close writes the
- * "stop" line.
- *
- * Exit statuses: those of bf16_verification.h (2 the command line, 3 memory,
- * 4 a descriptor, the clock or a write of the report) and
- *   5  a timed interval of 0 ns (its "interval_ns 0" line is written)
- * as timing_driver.c has them. A status other than 0 comes with one line on
- * standard error and without a "stop" line.
+ * The first pass is the untimed call: no reading precedes it and the one that
+ * follows it is dropped. On later passes only the call lies between the last
+ * action of timing_begin and the first of timing_end, the two clock readings.
  */
 #ifndef BF16_TIMING_H
 #define BF16_TIMING_H

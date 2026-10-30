@@ -1,26 +1,13 @@
 /*
- * Timing program of a bf16 timing run of gemm (ADR-0181 decision 2).
- *
- * Built with the source files of one kernel of ADR-0156 into one timing
- * executable, it draws the inputs once, calls the kernel once untimed and then
- * times one call per repeat until the stopping rule of ADR-0007 decision 4
- * ends the measurement, as timing_driver.c does for fp32 (ADR-0009). It does
- * no floating-point arithmetic on the operands and needs the C library and
- * POSIX.1-2008 only (no -lm).
- *
- * Command line, exactly eight arguments:
+ * Timing program of a bf16 timing run of gemm (ADR-0181 decision 2), built
+ * with one kernel of ADR-0156; loop, report and exit statuses: bf16_timing.h.
  *
  *     <m> <k> <n> <n_min> <n_max> <cv_max> <sample_form> <seed>
  *
- * with the spelling, bounds and refusals of timing_driver.c.
- *
- * Inputs: a (m*k) and b (k*n), one malloc each, filled once before the
- * untimed call by the generator of bf16_verification.h with the seed of the
- * command line, draw 0 and bits = 8 for both operands, exactly as
- * bf16_verification_gemm.c draws its draw 0. c (m*n) is not initialised.
- *
- * Report and exit statuses: those of bf16_timing.h, which are those of
- * timing_driver.c.
+ * Inputs, drawn once by the generator of bf16_verification.h as draw 0 of
+ * bf16_verification_gemm.c with the timing seed:
+ * a (m*k) then b (k*n), bits = 8 for both; c is not
+ * initialised.
  */
 #define _POSIX_C_SOURCE 200809L
 #define PROGRAM "bf16_timing_gemm"
