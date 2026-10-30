@@ -2,7 +2,7 @@
 id: T-0264
 title: Write ADR-0088 on which rows of `correctness.check` the `parameter` of a pre-start `TypeError` or `ValueError` of `local_run.run` (T-0263) lets an operation place (more of OD-18 sub-question 18 part (ma))
 phase: P1
-status: BLOCKED
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18]
 dependsOn: [T-0263]
@@ -119,3 +119,5 @@ This task writes the record that weighs what `parameter` of `run` makes true for
 - Question for the owner: "T-0264 (ADR-0088, OD-18 sub-question 18 (ma)) stopped after 7 review rounds. Round 7 asked for one change: list the pre-start `OSError` of `local_run.run`'s program lookup as still open in decision 8 and in the OpenDecisionProposals 'remaining' list. That change is on branch `claude/T-0264-adr-od18-local-run-parameter` (`f2f8318`) but was not reviewed. Do you allow (a) one more reviewer round and landing on Approve, (b) landing the branch as it is, or (c) dropping the branch and re-planning?"
 - Follow-ups: as in the task file; plus (code, later) the pre-start lookup `OSError` of `local_run.run` (`os.getcwd` inside `os.path.abspath`) needs a way to be told apart if it is to get a row.
 - No `claude` was started (D16).
+
+Closed without a result by the driver under HQ-0080 (1)(3) (owner, 2026-10-30). Nothing landed.

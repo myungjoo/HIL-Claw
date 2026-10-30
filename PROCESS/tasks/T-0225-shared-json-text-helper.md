@@ -2,7 +2,7 @@
 id: T-0225
 title: Move the JSON text helpers that `hilclaw/spec_file.py`, `hilclaw/hypotheses_file.py`, `hilclaw/verdicts_file.py` and `hilclaw/cases_file.py` repeat into one shared helper module `hilclaw/json_text.py`, with no change of behaviour of any public function
 phase: P1
-status: BLOCKED
+status: DONE
 commitMode: code
 coversReq: [FR-13, FR-11, FR-18, OD-8, OD-30, "ADR-0029", "ADR-0059", "ADR-0071", "ADR-0072"]
 dependsOn: [T-0224]
@@ -116,3 +116,5 @@ BLOCKED (task needs re-planning), 2026-10-16, executor. No PR was opened and not
 - **State of the work.** Local branch `claude/T-0225-shared-json-text-helper`, commit `42f345b` (not pushed): `hilclaw/json_text.py` (public names `MINUS_ZERO`, `object_pairs`, `no_constant`, `integer_literal`, `load(text)` -> `(document, spelling)`, `minus_zero(path, value, skip=None)` returning the path of the first `-0` or `None`), `tests/test_json_text.py`, and the four callers moved onto it, each keeping a three-line `_unsigned` that raises its own error class (spec_file passes `_FREE.fullmatch` as `skip`). Net change of the callers: -117 / +20 lines. Local result: ruff check and ruff format --check clean; the five test files run 1116 passed, 2 skipped, and 4 failed, which are exactly the four tests above. All the `-0`, repeated-name, NaN, nesting and long-literal tests of the four callers pass unchanged.
 - **Differences from `## Why`.** None in the helper code (line numbers and behaviour as described). The file names of ADR-0051, ADR-0071 and ADR-0072 are `ADR-0051-od6-spec-file-version-2.md`, `ADR-0071-od30-hypothesis-verdict-record.md` and `ADR-0072-od30-hypothesis-outcome-case-file.md`.
 - **For re-planning.** Either (a) allow these four import and public-name assertions to be updated (swap `json` for `json_text`, and `hilclaw.json_text` for `json` in the spec set): they pin the import list, not any behaviour of a public function. This is an exception to "no existing test is edited", so the planner or the owner decides it. Or (b) drop the task. Language: Python, as the callers.
+
+Closed without a result by the driver under HQ-0080 (1)(3) (owner, 2026-10-30). Nothing landed. Per HQ-0022, a replan discards the branch and starts from current main.

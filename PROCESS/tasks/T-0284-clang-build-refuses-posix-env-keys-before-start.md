@@ -2,7 +2,7 @@
 id: T-0284
 title: Make `clang_build.build` refuse, on POSIX and before the start, an empty `env` key or one with `=` anywhere, with a `ValueError` that carries `parameter` "env"
 phase: P1
-status: BLOCKED
+status: TODO
 commitMode: code
 coversReq: [FR-10, OD-18, C-7]
 dependsOn: [T-0283]
