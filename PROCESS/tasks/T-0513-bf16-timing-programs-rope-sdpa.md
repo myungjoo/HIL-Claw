@@ -2,7 +2,7 @@
 id: T-0513
 title: Land ADR-0181 code slice 2 — bf16 timing programs of rope (freqs_cis rows on standard input at ADR-0180's start position) and sdpa_kv_cache (one l-row allocation per cache, nothing reset between repeats), added to the T-0512 Python side
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-2, NFR-3, OD-13, OD-16, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0512]
