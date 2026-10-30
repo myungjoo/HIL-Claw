@@ -2,7 +2,7 @@
 id: T-0515
 title: Land ADR-0181 code slice 4 — the cpu_standin operation for bf16 runs of all six kinds, the limits of decision 6, then the timed flags
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-13, OD-14, OD-16, OD-18, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: []
@@ -129,3 +129,35 @@ The six timing programs (T-0512, T-0513) and the tool path on the mock (T-0514) 
 ## Follow-ups
 
 ## Result
+
+- **DONE.** PR #334 squash-merged as `dbc89189`; the branch is deleted.
+- **Review**: 2 rounds.
+  - Round 1: Request changes. A pin in `tests/test_run_result.py` not named in the task (`assert not entry.timed`) failed CI, and `bf16_timing_process_time_limit_s` computed `n_max + 1` before its checks, so a non-number raised the wrong error. Two Nits (a test name, a docstring). All fixed.
+  - Round 2: Approve, no findings.
+- **Tests**:
+  - CI on `79523b09`: all six gates pass. Python 3.11: 38765 passed, 50 skipped, with `tests/test_standin_run_clang.py` run. Coverage: lines 99.64 %, functions 99.92 %.
+  - Windows, full suite on the first commit: 36455 passed, 5 failed. Four were the `test_run_result` pin fixed in round 1; the fifth is the Windows-only `test_standard_error_is_captured_and_not_parsed` (T-0514 follow-up). After the fixes only the touched test files were rerun locally; CI ran the full suite. The clang-backed test skips on native Windows, so it has run in CI only.
+- **Language**: Python, the language of every touched layer-2 module. No new `hilclaw/` module.
+- **Choices**:
+  - `bf16_timing._rope_rows` became the public `rope_rows`, so the conversion of a refused position to `TimingArgumentError` stays in one place.
+  - The clang-backed test uses kind `rope`, whose rows must reach the program through standard input.
+  - A wrong `dtype` raises `ValueError`, as at the check.
+- **Files changed (6 non-test)**: `standin_run.py`, `standin_settings.py`, `contract_table.py`, `harness/bf16_timing.py`; docstrings only in `run_definition.py` and `start_instance.py`. `run_tool.py`'s docstring stayed true and was not touched. New test file: `tests/test_standin_run_clang.py`.
+- **Edited assertions (D21)**:
+  - `tests/test_contract_table.py`: `test_the_flags_of_this_slice`, `test_the_four_predicates_of_a_bf16_contract` (outside the task's list), `test_same_kind_other_dtype_goes_to_the_other_entry`.
+  - `tests/test_check_admission.py`: `test_a_rope_record_is_covered_by_the_registered_predicate`.
+  - `tests/test_run_admission.py`: `test_the_entry_and_dims_follow_the_covering_entry_in_task_contract_order`; `test_the_fp32_gemm_entry_is_the_one_run_covers_admits` renamed, assertions unchanged.
+  - `tests/test_run_definition.py`: `test_a_bf16_record_is_not_covered_by_the_run_tools` replaced by a served test on the mock, a served test at `cpu_standin` and an fp16 refusal.
+  - `tests/test_run_tool.py`: `test_a_bf16_kind_is_refused_where_the_predicate_is_run_covers` replaced by an admitted test and an fp16 refusal.
+  - `tests/test_run_result.py`: `test_any_covering_entry_gives_its_contract_key_and_shape` (outside the task's list).
+  - `tests/test_start_instance.py`: `test_a_bf16_record_is_out_of_scope_of_the_start` replaced by an admitted test and an fp16 refusal.
+  - `tests/test_standin_run.py`: `test_c16_bf16_parameters_are_refused_before_anything_starts` removed; bf16 tests added.
+  - Public-name pins: `tests/test_standin_settings.py`, `tests/harness/test_bf16_timing.py`.
+- **Sentences less exact (no record edited)**:
+  - ADR-0177 decision 4: "Until it lands, no bf16 contract is `timed` and the instance start admits none" has now passed.
+  - ADR-0177 decision 5 item 4: now done.
+  - ADR-0177 Boundaries: "The bf16 timing run ... and everything `sim.run` / `board.run` return for a bf16 kind" is no longer open.
+  - The decision 2 table's "After slice 4" column now holds, with all six bf16 contracts as "the contracts both checked and timed".
+- **Runtime acceptance items**: none new. RA-0052 to RA-0054 become checkable once this lands.
+- **PLAN P2-11**: complete in the executor's reading. All six kinds of ADR-0152 decision 2 have a contract, an op_signature and harness verification, and each entry is now `checked` and `timed`. The checkbox is the driver's.
+- **Next candidate**: T-0516, the end-to-end run of a bf16 instance through stub `claude` and the generation from its kernels.
