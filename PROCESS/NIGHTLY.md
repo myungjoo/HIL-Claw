@@ -13,7 +13,7 @@
 | 머신·작업 폴더·권한 | 드라이버와 같은 머신, 드라이버 clone·오너 작업 트리와 다른 **nightly 전용 clone**, Bypass permissions |
 | `claude` 자식 프로세스 가드 | 드라이버 clone의 설정에만 등록하고, nightly는 가드가 없는 별도 clone에서 돈다(§9) |
 
-**머신 준비**(오너; 준비 여부는 첫 수동 run에서 확인된다): 로그인된 `claude`, Docker, 코더·stand-in 이미지와 그 이름(`HILCLAW_CODER_IMAGE`·`HILCLAW_STANDIN_IMAGE`), 코더 토큰(`HILCLAW_CODER_OAUTH_TOKEN`), host `clang`과 `git`(커밋 identity 포함), Python ≥ 3.11과 `pyproject.toml`의 의존성, 저장소 소유자 계정으로 로그인된 `gh`(§3의 보고 인정 조건). 런타임은 POSIX 호스트를 요구하므로(`os.getuid`, `fcntl`; C-7) Windows 머신에서는 clone·작업 폴더·위의 도구를 WSL 2 안에 두고 진입점을 그 안에서 실행한다. 작업 폴더(아래 `<base>`)는 clone 밖의 디렉토리다.
+**머신 준비**(오너; 준비 여부는 첫 수동 run에서 확인된다): 로그인된 `claude`, Docker, 코더·stand-in 이미지와 그 이름(`HILCLAW_CODER_IMAGE`·`HILCLAW_STANDIN_IMAGE`), 코더 토큰(`HILCLAW_CODER_OAUTH_TOKEN`), `git`(커밋 identity 포함; host `clang`은 필요 없다 — hw_profile의 `toolchain`은 stand-in 이미지에서 읽는다, ADR-0186), Python ≥ 3.11과 `pyproject.toml`의 의존성, 저장소 소유자 계정으로 로그인된 `gh`(§3의 보고 인정 조건). 런타임은 POSIX 호스트를 요구하므로(`os.getuid`, `fcntl`; C-7) Windows 머신에서는 clone·작업 폴더·위의 도구를 WSL 2 안에 두고 진입점을 그 안에서 실행한다. 작업 폴더(아래 `<base>`)는 clone 밖의 디렉토리다.
 
 ## 2. 발화마다의 절차 (루틴 세션이 따른다)
 

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hilclaw import local_run, standin_profile
+from hilclaw import local_run, standin_container, standin_profile
 from hilclaw.keys import HW_SOURCES, SCHEMA_VERSION, InvalidRecordError, hw_profile_key
 from hilclaw.local_run import ProgramNotFoundError, RunResult
 from hilclaw.standin_profile import (
@@ -91,6 +91,7 @@ class Machine:
         self.kernel = LINUX
         self.files = {CPUINFO_PATH: CPUINFO, OS_RELEASE_PATH: OS_RELEASE}
         self.clang = CLANG_OUTPUT
+        self.image_clang = CLANG_OUTPUT
         self.sysctl = CPU_BYTES + b"\n"
         self.sw_vers = b"0.0\n"
         self.asked = []
@@ -112,6 +113,14 @@ class Machine:
         self.asked.append(command)
         self.timeouts.append(timeout_s)
         outcome = {SYSCTL: self.sysctl, SW_VERS: self.sw_vers}.get(command, self.clang)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return done(0, outcome) if isinstance(outcome, bytes) else outcome
+
+    def run_in_image(self, image, timeout_s):
+        self.asked.append(("image", image))
+        self.timeouts.append(timeout_s)
+        outcome = self.image_clang
         if isinstance(outcome, Exception):
             raise outcome
         return done(0, outcome) if isinstance(outcome, bytes) else outcome
@@ -142,6 +151,7 @@ def machine(monkeypatch):
     monkeypatch.setattr(standin_profile, "_kernel", fake.read_kernel)
     monkeypatch.setattr(standin_profile, "_read", fake.read)
     monkeypatch.setattr(standin_profile, "_run", fake.run)
+    monkeypatch.setattr(standin_profile, "_run_in_image", fake.run_in_image)
     monkeypatch.setattr(local_run, "run", beside_the_seam)
     return fake
 
@@ -859,12 +869,14 @@ def test_hw_source_and_timeout_are_required(machine):
 
 def test_signature_carries_no_machine_fact():
     parameters = inspect.signature(local_record).parameters
-    assert list(parameters) == ["hw_source", "timeout_s", "compiler"]
+    assert list(parameters) == ["hw_source", "timeout_s", "compiler", "image"]
     assert parameters["hw_source"].default is inspect.Parameter.empty
     assert parameters["timeout_s"].default is inspect.Parameter.empty
     assert parameters["timeout_s"].kind is inspect.Parameter.KEYWORD_ONLY
     assert parameters["compiler"].default is None
     assert parameters["compiler"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameters["image"].default is None
+    assert parameters["image"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 @pytest.mark.parametrize("timeout_s", BAD_TIMEOUT_VALUES)
@@ -1045,13 +1057,16 @@ def test_module_is_bound_by_the_start_only_and_imports_no_store():
     package = Path(standin_profile.__file__).parent
     own = Path(standin_profile.__file__)
     assert imported_modules(own) == {
+        "functools",
         "os",
         "re",
         "reprlib",
+        "tempfile",
         "hilclaw",
         "hilclaw.clang_build",
         "hilclaw.keys",
         "hilclaw.local_run",
+        "hilclaw.standin_container",
     }
     start = package / "start_instance.py"
     assert "standin_profile" in start.read_text(encoding="utf-8")
@@ -1112,3 +1127,95 @@ def test_live_record_of_this_machine_has_the_shapes_of_the_record():
     }
     broken = sorted(name for name, holds in shapes.items() if not holds)
     assert not broken
+
+
+IMAGE = "example.invalid/standin:0"
+
+
+def test_image_gives_the_line_of_the_image_clang(machine):
+    machine.clang = b"Host clang version 9.9.9\n"
+    assert local_record("external", timeout_s=7, image=IMAGE) == EXAMPLE
+    assert machine.asked == ["kernel", ("image", IMAGE), CPUINFO_PATH, OS_RELEASE_PATH]
+    assert machine.timeouts == [7]
+
+
+IMAGE_FAILURES = {
+    "client not found": ProgramNotFoundError("docker not found"),
+    "client cannot be started": PermissionError("denied"),
+    "no numeric user": standin_container.NoNumericUserError("no os.getuid"),
+    "image missing (status 125)": done(125),
+    "no clang in the image (status 127)": done(127, CLANG_OUTPUT),
+    "timeout": done(None, CLANG_OUTPUT),
+    "no output": b"",
+    "outside ASCII": b"caf\xc3\xa9\n",
+}
+
+
+@pytest.mark.parametrize("failure", IMAGE_FAILURES)
+def test_image_line_that_cannot_be_read(machine, failure):
+    machine.image_clang = IMAGE_FAILURES[failure]
+    with pytest.raises(UnreadableFactError) as caught:
+        local_record("external", timeout_s=TIMEOUT, image=IMAGE)
+    assert str(caught.value).startswith("toolchain.clang: ")
+    assert machine.asked == ["kernel", ("image", IMAGE)]
+
+
+def test_compiler_and_image_cannot_both_be_given(machine):
+    with pytest.raises(ValueError, match="both"):
+        local_record("external", timeout_s=TIMEOUT, compiler="clang", image=IMAGE)
+    assert machine.asked == []
+
+
+@pytest.mark.parametrize(
+    ("image", "error"),
+    [("", ValueError), ("-x", ValueError), ("a b", ValueError), (7, TypeError)],
+)
+def test_image_the_check_refuses(machine, image, error):
+    with pytest.raises(error):
+        local_record("external", timeout_s=TIMEOUT, image=image)
+    assert machine.asked == []
+
+
+def test_bad_hw_source_wins_over_a_bad_image(machine):
+    with pytest.raises(InvalidRecordError):
+        local_record("vendor", timeout_s=TIMEOUT, image="-x")
+
+
+def test_image_clang_runs_in_a_new_container_of_the_image(monkeypatch):
+    calls = []
+
+    def run_in_container(image, build_dir, program, arguments, **limits):
+        calls.append((image, program, tuple(arguments), limits))
+        assert os.path.isdir(build_dir)
+        assert os.listdir(build_dir) == []
+        calls.append(build_dir)
+        return done(0, CLANG_OUTPUT)
+
+    monkeypatch.setattr(standin_container, "run_in_container", run_in_container)
+    result = standin_profile._run_in_image(IMAGE, 7)
+    assert result.stdout == CLANG_OUTPUT
+    assert calls[0] == (
+        IMAGE,
+        "clang",
+        ("--version",),
+        {"timeout_s": 7, "removal_timeout_s": 7},
+    )
+    assert not os.path.exists(calls[1])
+
+
+def test_image_failure_after_the_start_is_not_called_a_failed_start(machine):
+    error = OSError("removal failed")
+    error.container_name = "hilclaw-standin-0"
+    machine.image_clang = error
+    with pytest.raises(UnreadableFactError) as caught:
+        local_record("external", timeout_s=TIMEOUT, image=IMAGE)
+    assert "failed after its start (OSError)" in str(caught.value)
+    assert "could not be started" not in str(caught.value)
+
+
+def test_image_client_that_is_missing_names_the_client_command(machine):
+    machine.image_clang = ProgramNotFoundError("docker")
+    with pytest.raises(UnreadableFactError) as caught:
+        local_record("external", timeout_s=TIMEOUT, image=IMAGE)
+    assert "`docker run <image> clang --version` was not found" in str(caught.value)
+    assert IMAGE not in str(caught.value)

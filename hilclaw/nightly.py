@@ -15,7 +15,8 @@ start it for real.
 **The configuration** (HQ-0076 (1), changed by the owner decision of
 2026-10-30 on #5, item 4, "a realistic shape, a k-scaled tolerance, n_max 10";
 the shape and the factor are the integrator's choice): the local ``cpu_standin``
-(:func:`hilclaw.standin_profile.local_record`, ``hw_source`` ``external``) x
+(:func:`hilclaw.standin_profile.local_record`, ``hw_source`` ``external``, its
+``toolchain`` read from the image of ``HILCLAW_STANDIN_IMAGE`` — ADR-0186) x
 GEMM fp32 ``row_major`` m=1 k=2048 n=8192 (a decode step of the Llama 3.2 1B
 MLP up projection), ``latency_minimisation``, one candidate per round,
 ``n_max`` 10, one draw, ``rtol`` 1e-4 and an ``atol`` that grows with k
@@ -30,7 +31,7 @@ count (HQ-0076 (4)).
    ends): held by another firing -> ``prepare/overlap``; a host without
    ``fcntl`` -> ``prepare/no_posix_host``;
 2. the environment: ``HILCLAW_CODER_IMAGE``, ``HILCLAW_CODER_OAUTH_TOKEN`` and
-   ``HILCLAW_STANDIN_IMAGE`` non-empty, ``claude``, ``clang``, ``docker`` and ``git`` on
+   ``HILCLAW_STANDIN_IMAGE`` non-empty, ``claude``, ``docker`` and ``git`` on
    ``PATH`` -> ``prepare/missing:<names>``;
 3. the data root, never pushed (``prepare/data_root``): up to
    :data:`CASE_STORAGE_UNTIL` (date of the start in KST, the owner's
@@ -94,6 +95,7 @@ from hilclaw import (
     new_run,
     selfcheck_login,
     selfcheck_outcome,
+    standin_image,
     standin_profile,
     turn_start,
 )
@@ -123,7 +125,7 @@ REQUIRED_VARIABLES = (
     "HILCLAW_CODER_OAUTH_TOKEN",
     "HILCLAW_STANDIN_IMAGE",
 )
-REQUIRED_PROGRAMS = ("claude", "clang", "docker", "git")
+REQUIRED_PROGRAMS = ("claude", "docker", "git")
 HOST_SESSION_MARKS = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
 PROFILE_TIMEOUT_S = 60
 TAIL_LINES = 40
@@ -236,7 +238,8 @@ def fire(base, *, environ=None, python=None, profile=None, now=None):
 
     ``environ`` (default ``os.environ``) is the environment the children start
     from; ``python`` the command prefix that runs a module (default
-    ``(sys.executable,)``); ``profile`` the hw_profile reader (default
+    ``(sys.executable,)``); ``profile`` the hw_profile reader, called with
+    ``hw_source``, ``timeout_s`` and ``image`` (default
     :func:`hilclaw.standin_profile.local_record`); ``now`` a callable that
     returns the aware UTC start time. Writes the files the module docstring
     lists and returns the ``result.json`` record.
@@ -274,7 +277,10 @@ def fire(base, *, environ=None, python=None, profile=None, now=None):
             _make_data_root(env, data)
             given = firing / "instance.json"
             given.write_text(
-                json.dumps(document(_profile(profile)), indent=2), encoding="utf-8"
+                json.dumps(
+                    document(_profile(profile, env[standin_image.ENV_IMAGE])), indent=2
+                ),
+                encoding="utf-8",
             )
             tail_of = firing / "new_run.stderr"
             told = _entry(record, "new_run", python, given, env, firing, tail_of)
@@ -435,10 +441,10 @@ def _make_data_root(env, data):
         )
 
 
-def _profile(profile):
+def _profile(profile, image):
     try:
-        return profile("external", timeout_s=PROFILE_TIMEOUT_S)
-    except (standin_profile.UnreadableFactError, OSError) as e:
+        return profile("external", timeout_s=PROFILE_TIMEOUT_S, image=image)
+    except (standin_profile.UnreadableFactError, OSError, ValueError) as e:
         raise _Stop(ENVIRONMENT, "prepare/hw_profile", type(e).__name__) from e
 
 
