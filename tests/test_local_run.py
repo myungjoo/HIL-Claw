@@ -1076,24 +1076,107 @@ def test_an_env_left_to_subprocess_names_no_parameter(
         assert expected is None
 
 
-@pytest.mark.parametrize("env", [[("A", "x")], 5, "A=x"])
+class ItemsIsNone:
+    items = None
+
+
+class ItemsIsNotCallable:
+    items = 3
+
+
+class KeysAndValuesOnly:
+    def keys(self):
+        return ["A"]
+
+    def values(self):
+        return ["x"]
+
+    def __getitem__(self, key):
+        return {"A": "x"}[key]
+
+    def __len__(self):
+        return 1
+
+
+NO_ITEMS_ENVS = [
+    [("A", "x")],
+    5,
+    "A=x",
+    b"A=x",
+    object(),
+    ItemsIsNone(),
+    KeysAndValuesOnly(),
+]
+
+
+def assert_no_items_refusal(error, env):
+    assert type(error) is TypeError
+    assert error.parameter == "env"
+    assert type(env).__name__ in str(error)
+    assert not hasattr(error, "path_role")
+
+
+@pytest.mark.parametrize("env", NO_ITEMS_ENVS)
 @pytest.mark.parametrize("platform_wait", [True, False])
-def test_an_env_that_is_not_a_mapping_keeps_its_class(
+def test_an_env_without_items_is_refused_and_names_env(
     env, platform_wait, child, monkeypatch
 ):
     wait_path(platform_wait, monkeypatch)
-    expected = directly(child(QUIET), None, env)
     error = raised(child(QUIET), env=env)
-    assert expected is not None
-    assert type(error) is expected
-    assert not hasattr(error, "parameter")
+    assert_no_items_refusal(error, env)
     assert not child.started
 
 
-def test_a_list_env_still_raises_attribute_error(child):
-    error = raised(child(QUIET), env=[("A", "x")])
-    assert type(error) is AttributeError
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_a_refused_env_without_items_does_not_name_its_value(
+    platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    error = raised(child(QUIET), env="SECRET=1")
+    assert "str" in str(error)
+    assert "SECRET" not in str(error)
+    assert not child.started
+
+
+def test_an_env_without_items_is_named_before_the_cwd(child):
+    error = raised(child(QUIET), env=5, cwd=3)
+    assert_no_items_refusal(error, 5)
+    assert not child.started
+
+
+def test_the_time_limit_is_named_before_an_env_without_items(child):
+    error = raised(child(QUIET), timeout_s=0, env=5)
+    assert type(error) is ValueError
+    assert error.parameter == "timeout_s"
+    assert not child.started
+
+
+def test_the_command_is_named_before_an_env_without_items():
+    error = raised([], env=5)
+    assert type(error) is ValueError
+    assert error.parameter == "command"
+
+
+def test_a_missing_program_comes_before_an_env_without_items():
+    error = raised(("hilclaw-no-such-program", "x"), env=5)
+    assert type(error) is ProgramNotFoundError
     assert not hasattr(error, "parameter")
+
+
+def test_an_items_that_is_not_callable_is_refused_by_calling_it(child):
+    error = raised(child(QUIET), env=ItemsIsNotCallable())
+    assert type(error) is TypeError
+    assert error.parameter == "env"
+    assert "not callable" in str(error)
+    assert not child.started
+
+
+def test_the_parameter_of_an_env_without_items_survives_pickling():
+    error = raised([sys.executable], env=5)
+    loaded = pickle.loads(pickle.dumps(error))
+    assert type(loaded) is TypeError
+    assert loaded.args == error.args
+    assert loaded.parameter == "env"
 
 
 class Items(dict):

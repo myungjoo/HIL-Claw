@@ -117,18 +117,22 @@ def run(command, *, timeout_s, cwd=None, env=None, stdin_data=None):
     that is not positive and finite; and :class:`ProgramNotFoundError`, which
     includes a file that exists but is not executable.
 
-    An ``env`` that is not ``None`` and has ``items`` is checked before the
-    start, by the rules :mod:`subprocess` hands an environment over with, and
-    refused with the class :mod:`subprocess` would raise: :class:`TypeError`
-    for a key or a value of a type the platform cannot hand over (on Windows
+    An ``env`` that is not ``None`` and has no ``items`` method is refused
+    before the start with :class:`TypeError`, as :mod:`subprocess` has no
+    single class for it (the class differs by platform and start path). This
+    holds even where a start path would accept it, such as an object with only
+    ``keys`` and ``values`` on native Windows or under ``os.posix_spawn``.
+
+    An ``env`` that has ``items`` is checked before the start, by the rules
+    :mod:`subprocess` hands an environment over with, and refused with the
+    class :mod:`subprocess` would raise: :class:`TypeError` for a key or a value of a type the platform cannot hand over (on Windows
     anything that is not ``str``; on POSIX anything :func:`os.fsencode`
     refuses, so ``str``, ``bytes`` and :class:`os.PathLike` pass), and
     :class:`ValueError` for a key with ``=`` after its first character or a
-    NUL character in a key or a value. The check refuses nothing that one of
-    the ways :mod:`subprocess` starts a process accepts: an empty key, a key
-    whose only ``=`` is its first character and an ``env`` that is not a
-    mapping are left to :mod:`subprocess`. ``env`` itself is handed on as
-    given.
+    NUL character in a key or a value. This check of an ``env`` with ``items``
+    refuses nothing that one of the ways :mod:`subprocess` starts a process
+    accepts: an empty key and a key whose only ``=`` is its first character
+    are left to :mod:`subprocess`. ``env`` itself is handed on as given.
 
     A ``cwd`` that is not ``None`` is checked after ``env``, before the start,
     and refused with the class :mod:`subprocess` would raise for it: it is
@@ -400,9 +404,13 @@ def _resolve(command):
 
 
 def _check_env(env):
+    if env is None:
+        return
     items = getattr(env, "items", None)
     if items is None:
-        return
+        raise TypeError(
+            f"env must be None or have an items method, not {type(env).__name__}"
+        )
     for key, value in items():
         key, value = _env_text(key), _env_text(value)
         nul, equals = ("\0", "=") if isinstance(key, str) else (b"\0", b"=")
