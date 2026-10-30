@@ -126,3 +126,8 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0510 follow-up — ADR-0183 decision 9 item 2가 "may follow in a third task"로 남긴, 호출하는 도구가 없어진 옛 check 결과 builder(`check_result.completed`·`broken`·`bf16_completed`·`bf16_broken`·`BF16_KINDS`, `check_judging.from_judgement`·`from_report`·`from_bf16_judgement`·`from_bf16_report`, 필요하면 `DrawCounts.cache_differences`)와 그 테스트의 제거, 동작 변경 없는 리팩토링.
 - T-0510 follow-up — `hilclaw/check_seed.py` docstring(41행)이 제거된 `check_admission.admit_for_step`을 여전히 이름하는 점, docstring 문구 정리.
 - T-0514 follow-up — `tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed`가 native Windows에서만 CRLF로 실패하는 점(CI 게이트 아님), 테스트 정리.
+- T-0517 follow-up — ADR-0188 later slice: nightly 진입점 밖의 instance 시작에서 stand-in 이미지의 OpenMP 런타임을 미리 검사하는 일(지금은 커널 빌드마다 `build_exit_status`로 답함), 실패 경로 경화.
+- T-0517 follow-up — ADR-0188 Boundaries: 런타임의 어느 부분이 사용자에게 설치 허락을 묻고 그 뒤 이미지를 어떻게 얻는지(OD-8 ㉝ (가), OD-14 ① (나); HQ-0034 답의 "사용자 승인을 받아" 쪽), 하위 질문.
+- T-0517 follow-up — ADR-0188 Consequences가 적은 덜 정확해진 문장(ADR-0116 decisions 3~6·Limits 4·Alternatives·Boundaries, ADR-0035 decision 3, ADR-0144 decisions 5·6·Boundaries 등), ADR 문구 정리.
+- T-0514·T-0515 follow-up — Result가 적은 덜 정확해진 문장(ADR-0065 decision 2 "exactly these six values", ADR-0177 decision 4·decision 5 item 4·Boundaries), ADR 문구 정리.
+- T-0516 follow-up — P2-15 준비: 실행기의 사용자 진입점(OD-31 ⑩, OD-18, OD-23)과 key의 best에서 binding을 얻는 방법(OD-31 ④, OD-20·OD-7·#5 A-4 — 오너 몫이 드러나면 착수 전에 HQ), 코더의 실제 커널은 `hilclaw/model_forward_container.py`로만 돌림(ADR-0182 decision 7); P2-14는 합성 가중치·스텁으로 체크되어 그 완료에 필요하지 않음.
