@@ -90,7 +90,7 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - HQ-0034 답(T-0325, 오너 2026-10-25 채팅 — (a)) (→ T-0517) — 모든 C-7 시스템에서 stand-in 커널이 OpenMP를 쓰도록 ADR-0116의 고정 빌드 설정에 OpenMP 플래그·런타임을 넣고 런타임이 없을 때의 설치 경로(2026-10-15 승인 규칙, 컨테이너는 그 이미지)를 반영하는 일(ADR·`cpu_standin` 빌드 설정·OD-18 등록부); 첫 사례와 P2-14의 커널은 OpenMP 없이 돌아 두 목표에 필요하지 않음, OD-18 하위 질문 18·19 (ra)의 반영.
 - T-0451 follow-up — ADR-0163 리뷰 7라운드 지적 2건(decision 7 "Every kind"의 바르게 반올림된 bf16 최대 상대 오차는 2^−8이 아니라 1/257; Alternatives 4행의 첫 case는 값 전체가 아니라 magnitude만 `word >> 41`에서 가져옴), ADR 문구 정리.
 - T-0470 follow-up — ADR-0166 Consequences의 "Less exact, not edited" 목록(`hilclaw/model_program.c` 헤더의 "It is not yet a forward pass", ADR-0153 decision 4 "Casts … none is decided"·decision 6·Boundaries 첫 항목, ADR-0157 Context·decision 1·Boundaries, ADR-0162·ADR-0165 Boundaries의 cache capacity, ADR-0161 decision 6의 QKV 열 순서, ADR-0159 decision 8의 "an example for the code slice"), ADR·docstring 문구 정리.
-- T-0231 (→ T-0231) (HQ-0023 답의 단서, 브랜치 `claude/T-0231-adr-od30-s6-metric`는 남김) — OD-30의 S6 지표(첫 run의 best·도달·사례 참조, run 간 drift)를 정하는 ADR, P2-8(S6 계산 도구, P2 순서의 맨 뒤) 쪽 일로 P2-5·P2-14에 필요하지 않음.
+- T-0231 (→ T-0231) (HQ-0023 답의 단서, ADR-0074 landed, 브랜치는 지움) — OD-30의 S6 지표(첫 run의 best·도달·사례 참조, run 간 drift)를 정하는 ADR, P2-8(S6 계산 도구, P2 순서의 맨 뒤) 쪽 일로 P2-5·P2-14에 필요하지 않음.
 - T-0243 follow-up — ADR-0078 code slice 4: `hilclaw/clang_build.py`가 산출물 이동이나 임시 파일 제거의 `OSError`에서 컴파일러 로그를 잃는 경우를 고치거나 그 경우를 등록하는 일, 실패 경로 경화.
 - T-0243 follow-up — `hilclaw/spec_feedback.py`가 build-log 파일 이름을 직접 만드는 것을 `layout.build_log_file`로 바꾸는 일, 동작 변경 없는 리팩토링.
 - T-0480 follow-up — ADR-0168·ADR-0169 Consequences가 덜 정확해졌다고 적은 `hilclaw/standin_answer.py`·`standin_container.py`·`standin_copies.py`·`standin_image.py`·`standin_waiter_line.py` 모듈 docstring의 "nothing calls it yet"/"bound to no tool" 문장 정리, docstring 문구 정리.
@@ -107,3 +107,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0517 follow-up — ADR-0188 Consequences가 적은 덜 정확해진 문장(ADR-0116 decisions 3~6·Limits 4·Alternatives·Boundaries, ADR-0035 decision 3, ADR-0144 decisions 5·6·Boundaries 등), ADR 문구 정리.
 - T-0514·T-0515 follow-up — Result가 적은 덜 정확해진 문장(ADR-0065 decision 2 "exactly these six values", ADR-0177 decision 4·decision 5 item 4·Boundaries), ADR 문구 정리.
 - T-0516 follow-up — P2-15 준비: 실행기의 사용자 진입점(OD-31 ⑩, OD-18, OD-23)과 key의 best에서 binding을 얻는 방법(OD-31 ④, OD-20·OD-7·#5 A-4 — 오너 몫이 드러나면 착수 전에 HQ), 코더의 실제 커널은 `hilclaw/model_forward_container.py`로만 돌림(ADR-0182 decision 7); P2-14는 합성 가중치·스텁으로 체크되어 그 완료에 필요하지 않음.
+- T-0231 follow-up — ADR-0184 결정 2의 "the median is the figure ADR-0140's comparison rests on"이 ADR-0007 결정 7의 T(trimmed mean)와 맞지 않아 보이는 점(executor 관찰, 미확인), ADR 문구 정리.
