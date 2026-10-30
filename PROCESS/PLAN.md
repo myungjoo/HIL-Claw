@@ -125,3 +125,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0510 planning — ADR-0183 decision 9 item 2가 언급한 정리: T-0510 뒤로 호출자가 없어지는 `hilclaw.hw_tool.read_stepped_tool_function`과 그 아래 `hilclaw.journaled_tool.read_stepped_function`의 제거(자체 테스트가 계속 커버함), 동작 변경 없는 리팩토링.
 - T-0510 follow-up — ADR-0183 decision 9 item 2가 "may follow in a third task"로 남긴, 호출하는 도구가 없어진 옛 check 결과 builder(`check_result.completed`·`broken`·`bf16_completed`·`bf16_broken`·`BF16_KINDS`, `check_judging.from_judgement`·`from_report`·`from_bf16_judgement`·`from_bf16_report`, 필요하면 `DrawCounts.cache_differences`)와 그 테스트의 제거, 동작 변경 없는 리팩토링.
 - T-0510 follow-up — `hilclaw/check_seed.py` docstring(41행)이 제거된 `check_admission.admit_for_step`을 여전히 이름하는 점, docstring 문구 정리.
+- T-0514 follow-up — `tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed`가 native Windows에서만 CRLF로 실패하는 점(CI 게이트 아님), 테스트 정리.
