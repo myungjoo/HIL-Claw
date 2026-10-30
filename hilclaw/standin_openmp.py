@@ -114,7 +114,7 @@ def message(failure):
     return (
         "the image named by HILCLAW_STANDIN_IMAGE was not shown to build and start "
         f"an OpenMP program: {failure}. Every cpu_standin kernel build takes -fopenmp "
-        "(ADR-0188), so no kernel of a run would build. Needed in that image: a "
+        "(ADR-0188), so without OpenMP no kernel of a run builds. Needed in that image: a "
         "clang that accepts -fopenmp, <omp.h> and an OpenMP runtime it links. "
         "Nothing was installed or changed; add them to the image, or name another "
         "image, and start again."
