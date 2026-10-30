@@ -62,7 +62,10 @@ de-duplication.
 
 **What it writes** into the firing directory: ``instance.json``, the standard
 error of each entry (``new_run.stderr``, ``turn_start.stderr``, the turn
-sessions' output included), ``result.json`` (the record below) and, after a
+sessions' output included), ``coder-output/`` (mode 0700), named to the
+coder runtime in ``HILCLAW_CODER_LOG_DIR`` so that each coder call leaves its
+output there with the token replaced (ADR-0187; never put into the issue
+body), ``result.json`` (the record below) and, after a
 failure, ``issue-title.txt`` (``nightly: <signature>``) and ``issue.md``, the
 issue body: the report marker, signature, cause, commit, steps and at most
 :data:`TAIL_LINES` last lines of the failing entry's standard error, with the
@@ -91,6 +94,7 @@ import sys
 from pathlib import Path
 
 from hilclaw import (
+    coder_runtime,
     keys,
     new_run,
     selfcheck_login,
@@ -273,6 +277,7 @@ def fire(base, *, environ=None, python=None, profile=None, now=None):
                 )
             data = data_root(Path(base), firing, started)
             env = _child_environment(environ, data)
+            env[coder_runtime.ENV_LOG_DIR] = _coder_output(firing)
             _check_environment(env)
             _make_data_root(env, data)
             given = firing / "instance.json"
@@ -400,6 +405,12 @@ def _locked(path):
         else:
             held = True
         yield held
+
+
+def _coder_output(firing):
+    directory = firing / "coder-output"
+    directory.mkdir(mode=0o700)
+    return str(directory)
 
 
 def _child_environment(environ, data):

@@ -46,6 +46,7 @@ WATCH = (
     "CLAUDECODE",
     "CLAUDE_CODE_ENTRYPOINT",
     "HILCLAW_CODER_OAUTH_TOKEN",
+    "HILCLAW_CODER_LOG_DIR",
 )
 STARTED = {"outcome": "started", "run_id": "r-20261030-0001"}
 RUN_OVER = {"outcome": "run_over"}
@@ -475,6 +476,17 @@ def test_a_firing_needs_no_host_clang(world, tmp_path):
     assert shutil.which("clang", path=world.env["PATH"]) is None
     record = world.fire()
     assert record["verdict"] == "pass"
+
+
+@posix
+def test_the_coder_output_directory_is_named_to_the_entries(world):
+    record = world.fire()
+    assert record["verdict"] == "pass"
+    directory = world.firing / "coder-output"
+    assert directory.is_dir()
+    assert directory.stat().st_mode & 0o777 == 0o700
+    for entry in world.entries():
+        assert entry["env"]["HILCLAW_CODER_LOG_DIR"] == str(directory)
 
 
 @posix

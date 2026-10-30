@@ -119,7 +119,9 @@ OD-14's.
   :data:`hilclaw.coder_runtime.ENV_IMAGE`, the coder's image, with a
   non-empty value is copied unchanged and unchecked (ADR-0137 decision 4;
   the server's :class:`hilclaw.coder_runtime.DockerRuntime` refuses a bad
-  one). For :data:`hilclaw.coder_runtime.ENV_TOKEN` with a non-empty value
+  one), and so is :data:`hilclaw.coder_runtime.ENV_LOG_DIR`, the directory of
+  the coder's output (ADR-0187; the server refuses one at or below the data
+  root). For :data:`hilclaw.coder_runtime.ENV_TOKEN` with a non-empty value
   the member holds the reference ``${HILCLAW_CODER_OAUTH_TOKEN}``, never the
   value (ADR-0137 decision 5); it relies on the session expanding ``${...}``
   in the ``--mcp-config`` file from its own environment, which is runtime
@@ -330,10 +332,14 @@ def _config_text(root):
         "args": ["-I", "-c", _START, _checkout_boundary.PACKAGE_DIRECTORY],
         "env": {config.ENV_LOCAL_PATH: root},
     }
-    for name in (standin_image.ENV_IMAGE, coder_runtime.ENV_IMAGE):
-        image = os.environ.get(name)
-        if image:
-            entry["env"][name] = image
+    for name in (
+        standin_image.ENV_IMAGE,
+        coder_runtime.ENV_IMAGE,
+        coder_runtime.ENV_LOG_DIR,
+    ):
+        value = os.environ.get(name)
+        if value:
+            entry["env"][name] = value
     if os.environ.get(coder_runtime.ENV_TOKEN):
         entry["env"][coder_runtime.ENV_TOKEN] = "${" + coder_runtime.ENV_TOKEN + "}"
     return json.dumps({SERVERS_MEMBER: {mcp_front.SERVER_NAME: entry}})
