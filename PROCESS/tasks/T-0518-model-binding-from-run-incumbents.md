@@ -2,7 +2,7 @@
 id: T-0518
 title: Derive the model executor's binding from the incumbents of named runs (ADR-0189, OD-31 sub-question 4, part of OD-20)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-31, OD-20, C-6, FR-10, "PLAN P2-15", D26]
 dependsOn: []
@@ -88,3 +88,32 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+**DONE.** PR #338, squash-merged as 4755248c. 1 review round (Approve). CI green on f62e5323, including the coverage gate. Commit f62e5323 came after the Approve and was not re-reviewed: three wording nits (D20), and the `standin_profile` import replaced by the local constant `TARGET`, with the same behaviour, because `tests/test_standin_profile.py` pins who may name that module.
+
+**Language:** Python. The module is host-side layer-2 code that reads run files and returns the executor's Python binding values.
+
+**Rule chosen (ADR-0189):** the caller names one run per call site. The entry is the run's incumbent by ADR-0184 decision 2 over all rounds: verified at both points, lowest median, earliest `(round, attempt)` on a tie. The trimmed mean of ADR-0074 was not chosen: it admits only converged measurements because `not_different` grants reaching there, while a binding grants nothing to a wide interval and would lose a kernel that never converges. A wrong pick costs speed, not correctness. Each outcome other than a binding is a named refusal, never a fallback to another attempt. Refusals beyond the task's list: `other_target`, `not_one_candidate`, `no_op_signature`, `attempt_without_spec`. A run in progress gives its incumbent so far and is not refused. `flags` come from the caller. No data-plane change.
+
+**Call site to `shapes`:**
+
+| Kind | Call sites | Obligation | `shapes` |
+|---|---|---|---|
+| `gemm` fp32, bf16 | `qkv`, `o`, `gate`, `up`, `down`, `lm_head` | ADR-0008 d6; ADR-0156 d7 | `"every"` |
+| `rmsnorm` | `attention_norm`, `ffn_norm`, `norm` | ADR-0158 d7 | `"every"` |
+| `elementwise_add` | `attention_residual`, `ffn_residual` | ADR-0159 d8 | `"every"` |
+| `swiglu` | `ffn_activation` | ADR-0160 d8 | `"every"` |
+| `rope` | `rope_q`, `rope_k` | ADR-0161 d11 | `"every"` |
+| `sdpa_kv_cache` | `sdpa` | ADR-0162 d11 | `"every"` |
+
+**Joined test:** six runs whose derived binding passes the whole-generation check and is accepted by `model_forward_container.execute` under the stub `docker` client, through a full generation with the stub's report. Kernels are test-written; the host path is not used.
+
+**Edited assertions (D21):** none.
+
+**Runtime acceptance items:** none new. RA-0056 (P2-15) exercises a derived binding at real dimensions.
+
+**§9:** the notice is posted on #5 (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6531737224); the 7-day objection window runs from it.
+
+**What the owner's P2-15 run still lacks:** the user-facing entry (OD-31 ⑩, OD-18, OD-23, HQ-0084 ④); real weights and tokenizer reading and the `transformers` comparison (OD-31 ⑤·⑦, HQ-0084); the instance runs themselves, including a bf16 `gemm` run to name for `lm_head` (B-4 excludes an lm_head instance from the first runs). "Every" rests on the contract, not on verification at other shapes (OD-16 ①), so a kernel correct only at its instance shape shows up as `run failed` or in the model-level comparison.
+
+**Follow-ups:** none.
