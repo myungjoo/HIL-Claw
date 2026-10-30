@@ -106,7 +106,7 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0517 follow-up — ADR-0188 Boundaries: 런타임의 어느 부분이 사용자에게 설치 허락을 묻고 그 뒤 이미지를 어떻게 얻는지(OD-8 ㉝ (가), OD-14 ① (나); HQ-0034 답의 "사용자 승인을 받아" 쪽), 하위 질문.
 - T-0517 follow-up — ADR-0188 Consequences가 적은 덜 정확해진 문장(ADR-0116 decisions 3~6·Limits 4·Alternatives·Boundaries, ADR-0035 decision 3, ADR-0144 decisions 5·6·Boundaries 등), ADR 문구 정리.
 - T-0514·T-0515 follow-up — Result가 적은 덜 정확해진 문장(ADR-0065 decision 2 "exactly these six values", ADR-0177 decision 4·decision 5 item 4·Boundaries), ADR 문구 정리.
-- T-0516 follow-up — P2-15 준비: 실행기의 사용자 진입점(OD-31 ⑩, OD-18, OD-23)과 key의 best에서 binding을 얻는 방법(OD-31 ④, OD-20·OD-7·#5 A-4 — 오너 몫이 드러나면 착수 전에 HQ), 코더의 실제 커널은 `hilclaw/model_forward_container.py`로만 돌림(ADR-0182 decision 7); P2-14는 합성 가중치·스텁으로 체크되어 그 완료에 필요하지 않음.
+- (→ T-0518은 binding(OD-31 ④)만; 진입점(OD-31 ⑩, HQ-0084 ④)은 열림) T-0516 follow-up — P2-15 준비: 실행기의 사용자 진입점(OD-31 ⑩, OD-18, OD-23)과 key의 best에서 binding을 얻는 방법(OD-31 ④, OD-20·OD-7·#5 A-4 — 오너 몫이 드러나면 착수 전에 HQ), 코더의 실제 커널은 `hilclaw/model_forward_container.py`로만 돌림(ADR-0182 decision 7); P2-14는 합성 가중치·스텁으로 체크되어 그 완료에 필요하지 않음.
 - T-0231 follow-up — ADR-0184 결정 2의 "the median is the figure ADR-0140's comparison rests on"이 ADR-0007 결정 7의 T(trimmed mean)와 맞지 않아 보이는 점(executor 관찰, 미확인), ADR 문구 정리.
 - T-0284 follow-up — ADR-0089 결정 2 아래 POSIX `env` 키 거부를 S4 `settings_refused`로 확인하고 ADR-0094 결정 3의 열린 항목을 좁히는 문서 task, ADR 문구 정리.
 - T-0284 follow-up — `tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed`가 Windows 로컬에서 stderr의 `\r\n`으로 실패(executor 관찰, CI는 통과, clean main에서 재확인 안 함), 개발 머신 테스트 정리.
