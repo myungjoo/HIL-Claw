@@ -14,7 +14,7 @@ from hilclaw import (
     rmsnorm_bf16_contract,
     swiglu_bf16_contract,
 )
-from hilclaw.harness.bf16_timing import KINDS, run_bf16_timing
+from hilclaw.harness.bf16_timing import run_bf16_timing
 from hilclaw.harness.bf16_timing_build import (
     PROGRAM_SOURCES,
     build_bf16_timing_executable,
@@ -40,6 +40,7 @@ KINDS_OF = {
     "elementwise_add": (elementwise_add_bf16_contract, "a", "b", "c", "m * n"),
     "swiglu": (swiglu_bf16_contract, "gate", "up", "out", "m * n"),
 }
+KINDS = tuple(KINDS_OF)
 DIMS = {
     "gemm": (3, 4, 5),
     "rmsnorm": (3, 5),

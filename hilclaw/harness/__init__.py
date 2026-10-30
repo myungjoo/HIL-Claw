@@ -35,10 +35,13 @@ on its standard input, and ``bf16_verification_sdpa_kv_cache.c`` of ADR-0165),
 and the build of a bf16 verification executable from one of them
 (:mod:`hilclaw.harness.bf16_verification_build`). The C sources of the bf16
 timing runs of ADR-0181 are their shared header (``bf16_timing.h``, which
-includes ``bf16_verification.h``) and four timing programs, one per kind of
-ADR-0163, which include it (``bf16_timing_gemm.c``, ``bf16_timing_rmsnorm.c``,
-``bf16_timing_elementwise_add.c`` and ``bf16_timing_swiglu.c``), with the build
+includes ``bf16_verification.h``) and six timing programs, one per kind, which
+include it (``bf16_timing_gemm.c``, ``bf16_timing_rmsnorm.c``,
+``bf16_timing_elementwise_add.c``, ``bf16_timing_swiglu.c``,
+``bf16_timing_rope.c``, which reads the ``freqs_cis`` rows on its standard
+input, and ``bf16_timing_sdpa_kv_cache.c``), with the build
 of a bf16 timing executable from one of them
 (:mod:`hilclaw.harness.bf16_timing_build`) and its Python side over an
-executable that is already built (:mod:`hilclaw.harness.bf16_timing`).
+executable that is already built (:mod:`hilclaw.harness.bf16_timing`), which
+imports the NumPy modules above only when a ``rope`` run starts.
 """
