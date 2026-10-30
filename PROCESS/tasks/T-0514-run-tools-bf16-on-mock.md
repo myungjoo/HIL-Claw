@@ -2,7 +2,7 @@
 id: T-0514
 title: Land ADR-0181 code slice 3 — sim.run / board.run take a bf16 run on the mock (per-kind timing parameters beside the unchanged TimingParameters, operations asked with either, v2 result of the kind), still with no timed flag
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-13, OD-18, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0512, T-0513]
@@ -98,4 +98,27 @@ hq: []
 
 ## Follow-ups
 
+- `tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed` fails on a native Windows run only: a CRLF in the captured standard error (`b'stop not_converged
+'`). The file is untouched by this task, and every CI gate passes. Not a blocker; no task proposed.
+
 ## Result
+
+- **DONE.** PR #333 squash-merged as `2a6c3000`; the branch is deleted.
+- **Review**: 2 rounds.
+  - Round 1: Request changes. `run_tool` named `gemm_contract`, which `tests/test_gemm_contract.py` forbids outside the contract table and the model binding, and a `TimingParameters` docstring was inexact. Both were fixed.
+  - Round 2: Approve with one Nit (a docstring in `run_parameters`), fixed without re-review (D20).
+- **Tests**:
+  - CI on `44e1671e`: all six gates pass, including Python 3.11 and 3.14 and the coverage gate (at least 80 %).
+  - Windows, full suite on the first commit: 36227 passed and 2 failed. One failure was the `test_gemm_contract` pin fixed in round 1; the other is the Windows-only test in Follow-ups. The suite was not rerun in full after that; the touched test files were, and CI ran it in full.
+- **Language**: Python, the language of every touched layer-2 module. No new module.
+- **New type**: `hilclaw.run_parameters.Bf16TimingParameters(kind, dtype, dims, n_max, sample_form, seed)`. `TimingParameters` is unchanged.
+- **Type choice**: `run_tool._parameters` gives `TimingParameters` when the contract's `(KIND, DTYPE)` is `("gemm", "fp32")`, and the new type otherwise. Nit 5's unpacking is gone.
+- **Files changed (6 non-test)**: `run_parameters.py`, `run_operation.py`, `run_tool.py`; docstrings only in `run_definition.py`, `mock_run.py` and `standin_run.py`. `run_admission.py` needed no change. Tests: `test_run_parameters.py`, `test_run_operation.py`, `test_run_tool.py`, `test_mock_run.py`, `test_standin_run.py`.
+- **Readers search**: `hilclaw/` was searched for reads of `m`, `k`, `n` and `shape`. No reader of run lines reads only those three, so no fix was needed.
+  - `timings_tool` admits any non-empty `shape` and compares `contract_key` and `shape` whole.
+  - `timing_finding`, `spec_feedback` and `verdicts_tool` do not read `shape`.
+  - The other reads by name belong to the check side (`check_admission`, `check_result`), the contracts, and `standin_settings`, which is no reader of a line.
+- **Edited assertions (D21)**: one, the public names in `tests/test_run_parameters.py::test_the_module_has_the_type_and_imports_typing_only`.
+- **Sentences less exact (no record edited)**: ADR-0065 decision 2's "exactly these six values" now holds for fp32 `gemm` only; ADR-0181 decision 4 is the bf16 counterpart.
+- **Runtime acceptance items**: none.
+- **Next candidate**: ADR-0181 decision 8 item 4: the `cpu_standin` bf16 operation, the limits, the `rope` rows through the container client, the header copies, then the `timed` flags. It may be split as that item allows.
