@@ -124,8 +124,8 @@ def run(command, *, timeout_s, cwd=None, env=None, stdin_data=None):
     ``keys`` and ``values`` on native Windows or under ``os.posix_spawn``.
 
     An ``env`` that has ``items`` is checked before the start, by the rules
-    :mod:`subprocess` hands an environment over with, and refused with the class :mod:`subprocess` would raise: :class:`TypeError`
-    for a key or a value of a type the platform cannot hand over (on Windows
+    :mod:`subprocess` hands an environment over with, and refused with the
+    class :mod:`subprocess` would raise: :class:`TypeError` for a key or a value of a type the platform cannot hand over (on Windows
     anything that is not ``str``; on POSIX anything :func:`os.fsencode`
     refuses, so ``str``, ``bytes`` and :class:`os.PathLike` pass), and
     :class:`ValueError` for a key with ``=`` after its first character or a
