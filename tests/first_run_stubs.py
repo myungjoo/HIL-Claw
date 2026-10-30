@@ -454,14 +454,13 @@ class _Turn:
     def round_zero(self, tuple_):
         coded = self.delegate("coder-driver", tuple_, self.coder_driver)
         self.report(f"coder-driver: {coded}")
-        if not (coded.get("tool") == "coder_run" and coded.get("taken")):
+        if coded.get("tool") != "coder_run":
             self.end()
-        if not self.checks_stand(tuple_):
-            self.end()
-        measured = self.delegate("experiment-runner", tuple_, self.experiment_runner)
-        self.report(f"experiment-runner: {measured}")
-        if measured.get("outcome") not in ("converged", "not_converged"):
-            self.end()
+        if coded.get("taken") and self.checks_stand(tuple_):
+            measured = self.delegate(
+                "experiment-runner", tuple_, self.experiment_runner
+            )
+            self.report(f"experiment-runner: {measured}")
 
     def checks_stand(self, tuple_):
         for point in ("sim", "board"):
