@@ -25,8 +25,8 @@ The runs of ADR-0151 decision 1: a run of ADR-0120 decision 1 whose `instance.js
 ### 2. `feedback.base`: the incumbent
 
 - **Candidates.** The entries that `feedback.attempts` shows (ADR-0151 decision 2 (d)) whose standing is `"verified"` at the sim point and at the board point.
-- **Measurement.** An attempt's measurement is the rule of `timings.compare` at the step `board_run_timing_v2` (cited: ADR-0140 decision 3, with ADR-0183 decision 8 for the step value). Its end lines at that step whose `result` is an admitted timing result with the `outcome` `"converged"` or `"not_converged"` must be exactly one. It must also have no end line holding a `failure`, and no start line without an end line. An attempt without a measurement is no candidate. A step line of that step that the journal refuses, or an end line whose `result` is not admitted, makes its attempt no candidate and fails nothing.
-- **Choice.** The candidate whose measurement has the lowest median of its `intervals`. On a tie, the earliest `(round, attempt)`.
+- **Measurement.** An attempt's measurement is the rule of `timings.compare` at the step `board_run_timing_v2` (cited: ADR-0140 decision 3, with ADR-0183 decision 8 for the step value). Its end lines at that step whose `result` is an admitted timing result with the `outcome` `"converged"` or `"not_converged"` must be exactly one. It must also have no end line holding a `failure`, and no start line without an end line. An attempt without a measurement is no candidate. An end line whose `result` is not admitted makes its attempt no candidate and fails nothing. A step line the journal refuses has already failed the read of the checks, as `run_file_invalid`.
+- **Choice.** The candidate whose measurement has the lowest median of its `intervals`. On a tie, the earliest `(round, attempt)`. The medians are compared without comparing `contract_key` and `shape`: every attempt of one run is of the run's one `op_signature` (the run's `instance.json` states one `op_signature`).
 - **Value.** `{"round", "candidate": 1, "attempt"}` of that attempt, the `ref` form of ADR-0002. With no candidate, the spec has no `feedback.base`.
 - **Why the median, and `"not_converged"` too**: the median is the figure ADR-0140's comparison rests on, and a run of a small kernel may never converge (the #5 record above, F1). An attempt left out for that would make the slower converged one the base.
 - **Why this is not ADR-0002 Alternative 4**: that alternative rejected a rule *implied* by an absent `base`. Here the rule is stated, and its result is written into the spec, where the lineage can be read.
@@ -35,7 +35,7 @@ The runs of ADR-0151 decision 1: a run of ADR-0120 decision 1 whose `instance.js
 
 - When the spec names a `feedback.base`, `coder.run` copies the bytes of each regular file directly below that attempt's `output` (`rounds/<RRRR>/coder/candidates/<CC>/attempts/<AA>/output`, cited: ADR-0004 decision 3) into the directory `base` directly below the scratch root. Each copy keeps its name. The files are read whole, without following a link, before the scratch is made, like the spec copy (cited: ADR-0049 decision 4).
 - `base` is not the place `output` (cited: ADR-0055 decision 5), so nothing of it is brought in unless the coder writes it into `output`.
-- A base `output` that cannot be listed, or an entry of it that is no regular file or cannot be read, fails the call with the new kind **`base_unreadable`**, after `spec_changed` in the order of ADR-0126 decision 3. Nothing is made and the runtime is not run then.
+- A base `output` that is no directory (a symbolic link or a junction among them) or cannot be listed, or an entry of it that is no regular file or cannot be read, fails the call with the new kind **`base_unreadable`**, after `spec_changed` in the order of ADR-0126 decision 3. Nothing is made and the runtime is not run then.
 
 ### 4. The coder prompt
 

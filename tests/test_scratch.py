@@ -630,3 +630,17 @@ def test_create_refuses_a_base_holding_a_directory(spec, parent, base):
 def test_create_refuses_a_bad_base_path(spec, parent):
     with pytest.raises(InvalidScratchArgumentError):
         create(spec, parent=parent, base="a\0b")
+
+
+def test_create_refuses_a_base_that_is_a_symbolic_link(spec, parent, base, tmp_path):
+    link = tmp_path / "linked"
+    try:
+        os.symlink(base, link, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            raise
+        pytest.skip("this machine refuses to create a symbolic link")
+    with pytest.raises(ScratchError) as caught:
+        create(spec, parent=parent, base=link)
+    assert caught.value.failure == BASE_UNREADABLE
+    assert os.listdir(parent) == []

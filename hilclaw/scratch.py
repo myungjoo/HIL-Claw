@@ -34,7 +34,8 @@ Conventions of this module, which are not rules of the records:
   under its own name, in the directory :data:`BASE_COPY_NAME` directly below
   the scratch root. Every file is read whole, without following a link,
   before the scratch is made; an entry that is no regular file, or a
-  ``base`` that cannot be listed, is :data:`BASE_UNREADABLE`.
+  ``base`` that is no directory (a link or a junction among them) or cannot
+  be listed, is :data:`BASE_UNREADABLE`.
 - A failure after the scratch was made removes the scratch, and the original
   exception arrives.
 - :func:`remove` removes the scratch and everything below it with
@@ -262,6 +263,8 @@ def _read_source(source):
 
 def _read_base(base):
     try:
+        if not _is_plain_directory(os.lstat(base)):
+            raise ScratchError(BASE_UNREADABLE)
         names = sorted(os.listdir(base))
     except OSError as error:
         raise ScratchError(BASE_UNREADABLE) from error
