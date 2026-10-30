@@ -98,7 +98,56 @@ This is a code change only:
 
    Nothing else in `test_an_env_left_to_subprocess_names_no_parameter` changes. Any other existing test that fails is a stop:
    - do not edit it;
-   - return BLOCKED, with the test's name and the failing assertion in `## Result
+   - return BLOCKED, with the test's name and the failing assertion in `## Result`.
+
+   `tests/test_local_run.py` is not touched.
+5. **Tests** in `tests/test_clang_build.py`, under CLAUDE.md test rules ①-④. Prove with `forbid_start` (or the stub's `started` flag) that no process was started, and that the output directory holds nothing new (the `refused` helper already checks this). The new cases are `posix_only`: they run in CI (Ubuntu) and not on the Windows development machine, so wait for CI before calling them passed.
+   - **error**: for each of `{"": "x"}`, `{b"": b"x"}`, `{"=A": "x"}`, `{b"=A": b"x"}` and `{"=": "x"}`, merged into `os.environ` as the existing tests do, `build` raises `ValueError` with `parameter == "env"` and no `path_role`, and nothing is started. Run it both with `cwd` `None` and with a `cwd`.
+   - **premise**: for each of those cases, call `directly` with `cwd` `None` and with `tmp_path`. Assert that every outcome is `None` or `ValueError`, and that at least one is `ValueError`. If CI shows otherwise for a case (both paths accept it, or one raises another class), stop. Do not weaken the assertion: return BLOCKED with the observed classes in `## Result`, because the premise of this task does not hold.
+   - **message (negative)**: for `{"=A": "secret"}`, the message does not contain `secret`.
+   - **branch / order**:
+     - an empty key together with a NUL in another key's value raises `ValueError` with `parameter` `"env"` (assert only class and `parameter`, because dict order decides which entry is met first);
+     - an empty-key `env` together with a refused `cwd` (for example `cwd=3`) carries `"env"`;
+     - an empty-key `env` together with an earlier defect (for example `timeout_s=0`) gives the earlier error first, with its own `parameter`.
+   - **negative / Windows**: `windows_only` tests that `{"": "x"}` and `{"=A": "x"}` are not refused by the check. The existing `UNCHANGED_ENVS` and `ACCEPTED_ENVS` already cover this, so add nothing new if they do.
+   - **pickling**: a new test, in the pattern of `test_env_and_cwd_errors_keep_their_parameter_through_pickling`, for one of the new errors. Leave the existing test unedited.
+   - **happy**: the existing tests of accepted envs and of `None` inheriting pass unchanged. Do not duplicate them.
+   - Do not add tests of test code, CI or hook scripts (rule ⑤).
+6. **Gates**:
+   - `pytest` and `ruff` (`ruff check`, `ruff format --check`) pass locally.
+   - The `hilclaw/` line and function coverage stays at or above 80%.
+   - CI is green before merge, which is where the `posix_only` tests run.
+7. **Code mode** (CLAUDE.md A-13):
+   - Work on branch `claude/T-0284-<slug>`.
+   - Open a Draft PR with `T-0284` in its title and `Task: T-0284` as the last line of its body.
+   - Run the reviewer cycle (dev-item-address steps 10-12) until Approve, within 7 rounds.
+   - Squash-merge with `gh pr merge --squash --body`, using the PR body.
+   - Delete the branch.
+8. **Size**: one non-test file changed, well under 300 changed lines excluding tests.
+9. **Result** records:
+   - the PR and the merge commit;
+   - the review rounds and their findings;
+   - the language line (Python, the existing module);
+   - the classes CI observed in the premise test, by case and start path;
+   - the follow-ups.
+
+   The executor starts no `claude` program, real compiler or container (D16).
+
+## Out of Scope
+
+- Any edit of `ARCHITECTURE/` (ADRs, Requirements, OpenDecisionProposals, StandardScenarios). The record of the newly named case is a follow-up.
+- Native Windows: the empty key (seen failing with `OSError` at the start), an object with `items` but no `keys`, `values` or `__getitem__`, and any other Windows-only refusal of `subprocess`.
+- `hilclaw/local_run.py` and `tests/test_local_run.py`. Their `env` check and its record wait on HQ-0027.
+- `hilclaw/harness/timing_build.py` (waits on HQ-0021) and `verification_build.py`.
+- `time.monotonic`, the draws of the pid and the random part, the command, and anything else `subprocess.Popen` raises.
+- The unlanded branches `claude/T-0210-*`, `claude/T-0231-*` and `claude/T-0264-*`.
+- Any new value of `error.kind` or `condition`, any data-plane member, and any owner-only item (DRIVER §9).
+
+## Follow-ups
+
+- A doc task (ADR-0095, if free) confirms, under ADR-0089 decision 2, that the new POSIX `ValueError`s with `parameter` `"env"` are S4 `settings_refused`. It narrows ADR-0094 decision 3's open entry to what is left there (the native Windows values) and records that entry's change in place. It writes the edits of `ARCHITECTURE/Requirements.md`, `ARCHITECTURE/OpenDecisionProposals.md` and `ARCHITECTURE/StandardScenarios.md` by the recording rules in those files ("행 형식", "기록 규칙", the first paragraph of §검사 결과), not by copying earlier task files.
+
+## Result
 
 - **DONE.** Resumed after the owner's HQ-0028 answer, option (a): `build` refuses the empty `env` key on POSIX even where `subprocess` accepts it, and the docstring says so.
 - PR: #179, reopened and merged. Merge commit: `69d79f15295a4a97fd11b68e9b40095a79130269`. Branch `claude/T-0284-clang-build-refuses-posix-env-keys` deleted. `origin/main` was merged into the branch rather than rebased, to avoid a force push.
@@ -106,7 +155,6 @@ This is a code change only:
 - Criterion 5 premise, as applied after HQ-0028 (executor's reading, accepted by the reviewer): `test_an_equals_key_is_refused_by_a_popen_start_path` keeps the original assertion for the three leading-`=` cases; `test_popen_raises_no_other_class_for_an_empty_key` requires only `None` or `ValueError` for the two empty-key cases.
 - Review: 2 rounds. Round 1 (Request changes, `e1a40c9`): HIGH 3.11 premise failure (resolved by HQ-0028 and the test split); MEDIUM docstring untrue on some supported Python (reworded); LOW Windows `raise` uncovered on CI (`test_the_windows_branch_refuses_equals_after_the_first_character`). Round 2 (Approve, no findings, `72464a88`); the Python and coverage gates finished green after the Approve, on the same head.
 - Language: Python, the existing module.
-- Gates: CI run 41099726854 on `72464a88` all pass (Python 3.11, 3.14, coverage, test presence, sh, C). Local (Windows): `ruff check`, `ruff format --check` pass; `pytest` 36473 passed, 2375 skipped, 1 failed: `tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed` (`
-` in stderr), not touched here and not re-run on a clean `main`.
+- Gates: CI run 41099726854 on `72464a88` all pass (Python 3.11, 3.14, coverage, test presence, sh, C). Local (Windows): `ruff check`, `ruff format --check` pass; `pytest` 36473 passed, 2375 skipped, 1 failed: `tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed` (`\r\n` in stderr), not touched here and not re-run on a clean `main`.
 - Classes CI observed: run 39079246945 (`e1a40c9`), Python 3.11, `cwd` None then `tmp_path`: `{"": "x"}` -> [None, None], `{b"": b"x"}` -> [None, None]. Run 41099726854 passed all five cases on 3.11 and 3.14, but passing tests print nothing, so criterion 9's by-case, by-path table cannot be filled further.
 - Follow-ups: the doc task in `## Follow-ups` is now due (ADR-0094 decision 3's open entry is out of date until it lands); new: the Windows-only failure above.
