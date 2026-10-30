@@ -34,9 +34,9 @@ renders, ahead of the tool functions, what its decisions 2 to 5 fix:
   source, to a new :func:`hilclaw.check_definition.default_table`, the one
   default table of the three HW tools, to
   :func:`hilclaw.harness.seed_source.system` and to
-  :func:`hilclaw.contract_table.run_covers`, which admits the fp32 ``gemm``
-  contract of ADR-0008 alone until a bf16 timing run exists (ADR-0177
-  decision 2).
+  :func:`hilclaw.contract_table.run_covers`, which admits an entry only once
+  it is ``timed`` (ADR-0177 decision 2), so a bf16 record is refused until
+  its entry is.
 
 Choices that are this module's own and no rule of a record:
 

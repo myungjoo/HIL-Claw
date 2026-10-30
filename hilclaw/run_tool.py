@@ -29,10 +29,10 @@ that render them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
 6. ⑥ The output path (ADR-0061 decision 3) and the path of the file of the
    compiler's log (ADR-0108 decision 3) are formed, a new log keeper is
    made, and :func:`hilclaw.run_operation.ask` calls the operation with the
-   request, the hw_profile, the timing parameters of the six values
-   (ADR-0065 decision 2), the output path and the keeper (ADR-0108
-   decision 5), and writes the log it handed over, if any (ADR-0108
-   decision 7). An answer of the form (A) is judged with
+   request, the hw_profile, the timing parameters (ADR-0065 decision 2 for
+   fp32 ``gemm``, ADR-0181 decision 4 for a bf16 kind), the output path and
+   the keeper (ADR-0108 decision 5), and writes the log it handed over, if
+   any (ADR-0108 decision 7). An answer of the form (A) is judged with
    :func:`hilclaw.harness.timing.judge_report` for the sample form and
    ``n_max`` handed over (ADR-0061 decision 3): completed, converged or not
    converged, or broken with the condition of ADR-0063 decision 3 for the
@@ -99,9 +99,13 @@ Choices that are this module's own and no rule of a record:
   message.
 * :mod:`hilclaw.harness.timing` is imported with the module: it imports no
   NumPy, and a test pins that.
-* The timing parameters take ``m``, ``k`` and ``n`` from the admitted
-  dimensions: :func:`hilclaw.contract_table.run_covers` admits fp32 ``gemm``
-  alone, whose dimensions are those three.
+* The type of the timing parameters is chosen from the covering entry: a
+  :class:`hilclaw.run_parameters.TimingParameters` for the fp32 ``gemm``
+  entry, a :class:`hilclaw.run_parameters.Bf16TimingParameters` for any
+  other, by the ``KIND`` and ``DTYPE`` of its contract. Which
+  entries reach the operation is the ``covers`` handed in:
+  :func:`hilclaw.contract_table.run_covers` admits an entry only once it is
+  ``timed``.
 
 What the module does not do: it registers nothing and defines no tool
 definition; the input schema and the descriptions are those of
@@ -149,6 +153,7 @@ _OUTCOMES = {
     measurement.State.NOT_CONVERGED: run_result.NOT_CONVERGED,
 }
 (_UNIT,) = run_result.UNITS
+_FP32_GEMM = ("gemm", "fp32")
 _CONDITIONS = {
     timing.Broken.REPORT_FORM: "report_form",
     timing.Broken.ZERO_INTERVAL: "zero_interval",
@@ -250,15 +255,7 @@ def _perform(step, data_root, request, hw_profile, operation, drawn):
     output_path = layout.attempt_artefact(*attempt, "output")
     log_path = layout.build_log_file(*attempt, step, request["execution"])
     admitted = drawn.admitted
-    m, k, n = admitted.dims
-    parameters = run_parameters.TimingParameters(
-        m,
-        k,
-        n,
-        admitted.n_max,
-        admitted.sample_form,
-        drawn.seed,
-    )
+    parameters = _parameters(admitted, drawn.seed)
     try:
         answer = run_operation.ask(
             operation,
@@ -278,6 +275,16 @@ def _perform(step, data_root, request, hw_profile, operation, drawn):
     else:
         return {}, _result(answer, admitted)
     raise journaled_step.StepFailed({}, kind, message)
+
+
+def _parameters(admitted, seed):
+    contract = admitted.entry.contract
+    common = (admitted.n_max, admitted.sample_form, seed)
+    if (contract.KIND, contract.DTYPE) == _FP32_GEMM:
+        return run_parameters.TimingParameters(*admitted.dims, *common)
+    return run_parameters.Bf16TimingParameters(
+        contract.KIND, contract.DTYPE, admitted.dims, *common
+    )
 
 
 def _result(answer, admitted):

@@ -15,7 +15,7 @@ from hilclaw import (
     tools,
 )
 from hilclaw.build_log import BuildLogUnwritable, HandOverRefused, LogKeeper
-from hilclaw.check_parameters import CheckParameters
+from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.run_operation import (
     CONDITIONS,
     KIND_OPERATION_ANSWER_INVALID,
@@ -23,7 +23,7 @@ from hilclaw.run_operation import (
     Reported,
     ask,
 )
-from hilclaw.run_parameters import TimingParameters
+from hilclaw.run_parameters import Bf16TimingParameters, TimingParameters
 
 # Test values, not dimensions, a bound, a seed or a figure of the package.
 SEED_MARKER = 918273645546372819
@@ -467,6 +467,32 @@ def test_check_parameters_are_refused_before_the_call():
     with pytest.raises(TypeError):
         asked(operation, CheckParameters(1, 2, 3, 4, 5))
     assert operation.calls == []
+
+
+BF16_PARAMETERS = Bf16TimingParameters("rmsnorm", "bf16", (2, 3), 40, "interval", 9)
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        Bf16CheckParameters(1, 2, "rmsnorm", "bf16", (2, 3)),
+        tuple(BF16_PARAMETERS),
+        BF16_PARAMETERS._asdict(),
+        type("DerivedBf16", (Bf16TimingParameters,), {})(*BF16_PARAMETERS),
+    ],
+)
+def test_bf16_lookalike_parameters_are_refused_before_the_call(parameters):
+    operation = Recording(answer="time_limit")
+    with pytest.raises(TypeError):
+        asked(operation, parameters)
+    assert operation.calls == []
+
+
+def test_bf16_parameters_are_handed_on_as_the_same_object():
+    operation = Recording(answer=(REPORT, None))
+    assert asked(operation, BF16_PARAMETERS) == Reported(REPORT, None)
+    ((args, _),) = operation.calls
+    assert args[2] is BF16_PARAMETERS
 
 
 @pytest.mark.parametrize("operation", [None, REPORT, "time_limit", 3, object()])

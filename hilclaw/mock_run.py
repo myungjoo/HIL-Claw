@@ -127,7 +127,8 @@ def default_script(tool, request, hw_profile, parameters, output_path, keeper):
     :data:`hilclaw.harness.measurement.N_MIN` lines
     ``interval_ns 1000000``, then ``stop converged``, each ended by one LF,
     and nothing else; ``None`` says that no figure was obtained (decision 4).
-    The answer is the same for every call and both tools. It is never one of
+    The answer is the same for every call and both tools, a bf16 call
+    included (ADR-0181 decision 9). It is never one of
     the strings of the form (B), and the function raises nothing.
     """
     return (_REPORT, None)

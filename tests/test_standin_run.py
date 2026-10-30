@@ -18,7 +18,7 @@ from hilclaw import (
     tools,
 )
 from hilclaw.harness import timing, timing_build
-from hilclaw.run_parameters import TimingParameters
+from hilclaw.run_parameters import Bf16TimingParameters, TimingParameters
 from hilclaw.standin_run import operation
 
 IMAGE = "registry.example/hilclaw-clang:1"
@@ -776,6 +776,17 @@ def test_c16_own_arguments_pass(client, output, keeper, temporary, parameters, e
         call(output, keeper, parameters)
     assert client.calls == []
     assert build_dirs(temporary) == []
+
+
+def test_c16_bf16_parameters_are_refused_before_anything_starts(
+    client, output, keeper, temporary
+):
+    parameters = Bf16TimingParameters("rmsnorm", "bf16", (2, 7), 40, "interval", SEED)
+    with pytest.raises(TypeError):
+        call(output, keeper, parameters)
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+    assert keeper.held() is None
 
 
 def test_c16_keeper_that_is_no_log_keeper(client, output, temporary):

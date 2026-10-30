@@ -13,7 +13,7 @@ from hilclaw.harness.measurement import N_MIN, State
 from hilclaw.harness.timing import SAMPLE_FORMS, judge_report, parse_report
 from hilclaw.mock_run import default_script, operation
 from hilclaw.run_operation import OperationAnswerInvalid, Reported, ask
-from hilclaw.run_parameters import TimingParameters
+from hilclaw.run_parameters import Bf16TimingParameters, TimingParameters
 from hilclaw.tools import ToolFailure
 
 TOOLS = ("sim.run", "board.run")
@@ -543,3 +543,12 @@ def test_a_script_of_a_test_hands_a_log_to_the_very_keeper(tool, tmp_path):
     assert answer == "build_exit_status"
     assert keeper.held() == f"log of {tool}"
     assert log_path.read_text(encoding="utf-8") == f"log of {tool}"
+
+
+@pytest.mark.parametrize("tool", ["sim.run", "board.run"])
+def test_a_bf16_call_is_answered_as_any_call(tool):
+    parameters = Bf16TimingParameters("rope", "bf16", (2, 3, 4), 9, "interval", 7)
+    answer = operation(tool, default_script)(
+        REQUEST, record(), parameters, OUTPUT_PATH, KEEPER
+    )
+    assert answer == (EXPECTED_REPORT, None)
