@@ -12,12 +12,17 @@ that the tests write (D16); besides the nightly routine, only the owner's
 manual run and an executor's test run on the owner's request (DRIVER D25)
 start it for real.
 
-**The configuration** (HQ-0076 (1), the P2-5 configuration as it is): the
-local ``cpu_standin`` (:func:`hilclaw.standin_profile.local_record`,
-``hw_source`` ``external``) x GEMM fp32 ``row_major`` m=8 k=16 n=8,
-``latency_minimisation``, one candidate per round, ``n_max`` 6, one draw,
-``rtol`` 1e-4 and ``atol`` 1e-5, ``round_budget`` 5. Nothing else bounds the
-firing: no timeout and no turn count (HQ-0076 (4)).
+**The configuration** (HQ-0076 (1), changed by the owner decision of
+2026-10-30 on #5, item 4, "a realistic shape, a k-scaled tolerance, n_max 10";
+the shape and the factor are the integrator's choice): the local ``cpu_standin``
+(:func:`hilclaw.standin_profile.local_record`, ``hw_source`` ``external``) x
+GEMM fp32 ``row_major`` m=1 k=2048 n=8192 (a decode step of the Llama 3.2 1B
+MLP up projection), ``latency_minimisation``, one candidate per round,
+``n_max`` 10, one draw, ``rtol`` 1e-4 and an ``atol`` that grows with k
+(:data:`ATOL_PER_K` x k: the rounding of a k-long fp32 dot product of the
+verification inputs of ADR-0017, whose magnitudes are below 1), and
+``round_budget`` 5. Nothing else bounds the firing: no timeout and no turn
+count (HQ-0076 (4)).
 
 **One firing**, in this order; the first step that fails ends it:
 
@@ -27,8 +32,12 @@ firing: no timeout and no turn count (HQ-0076 (4)).
 2. the environment: ``HILCLAW_CODER_IMAGE``, ``HILCLAW_CODER_OAUTH_TOKEN`` and
    ``HILCLAW_STANDIN_IMAGE`` non-empty, ``claude``, ``clang``, ``docker`` and ``git`` on
    ``PATH`` -> ``prepare/missing:<names>``;
-3. the data root ``<firing>/data``, a new git repository of this firing only,
-   never pushed (``prepare/data_root``), and the hw_profile record
+3. the data root, never pushed (``prepare/data_root``): up to
+   :data:`CASE_STORAGE_UNTIL` (date of the start in KST, the owner's
+   calendar) ``<base>/data``, one git
+   repository kept across firings so that the cases of earlier firings are
+   read (DRIVER D25), made when it is not there; later ``<firing>/data``, a
+   new repository of this firing only (D17 ②); then the hw_profile record
    (``prepare/hw_profile``);
 4. ``new_run`` on ``<firing>/instance.json``; anything but ``started`` fails;
 5. ``turn_start`` on the run id of the ``started`` line; ``run_over`` passes,
@@ -36,7 +45,7 @@ firing: no timeout and no turn count (HQ-0076 (4)).
 
 The children run with the caller's environment, without ``CLAUDECODE`` and
 ``CLAUDE_CODE_ENTRYPOINT`` (the marks of a host Claude Code session), with
-``HILCLAW_DATA_REPO_LOCAL_PATH`` set to the firing's data root,
+``HILCLAW_DATA_REPO_LOCAL_PATH`` set to the data root,
 ``HILCLAW_DATA_REPO_URL`` set to :data:`DATA_REPO_URL` and this checkout first
 on ``PYTHONPATH``; their working directory is the firing directory.
 
@@ -65,8 +74,9 @@ replaced. ``result.json`` holds ``firing``, ``commit``, ``verdict``
 object with ``verdict``, and for a firing also ``signature``, ``cause`` and
 ``firing`` (the directory). Status 0 for a pass, 10 for a failure, 20 for
 bad usage (not exactly one argument, or no existing directory), when nothing
-is written. It registers no issue, pushes nothing, writes nothing into this
-checkout and keeps no state between firings.
+is written. It registers no issue, pushes nothing and writes nothing into this
+checkout. Between firings it keeps only the data root ``<base>/data`` up to
+:data:`CASE_STORAGE_UNTIL`.
 """
 
 import contextlib
@@ -96,13 +106,18 @@ except ImportError:  # pragma: no cover
 REPOSITORY = Path(__file__).resolve().parent.parent
 DATA_REPO_URL = "nightly.invalid/no-remote"
 ROUND_BUDGET = 5
+N_MAX = 10
 OP = {
     "schema_version": 1,
     "kind": "gemm",
-    "shape": {"m": 8, "k": 16, "n": 8},
+    "shape": {"m": 1, "k": 2048, "n": 8192},
     "dtype": "fp32",
     "layout": "row_major",
 }
+RTOL = 1e-4
+ATOL_PER_K = 5e-7
+CASE_STORAGE_UNTIL = datetime.date(2026, 11, 30)
+KST = datetime.timezone(datetime.timedelta(hours=9))
 REQUIRED_VARIABLES = (
     "HILCLAW_CODER_IMAGE",
     "HILCLAW_CODER_OAUTH_TOKEN",
@@ -157,11 +172,22 @@ def document(hw_profile):
             "constraints": [],
         },
         "candidates_per_round": 1,
-        "n_max": 6,
+        "n_max": N_MAX,
         "draws": 1,
-        "tolerance": {"rtol": 1e-4, "atol": 1e-5},
+        "tolerance": {"rtol": RTOL, "atol": ATOL_PER_K * OP["shape"]["k"]},
         "round_budget": ROUND_BUDGET,
     }
+
+
+def data_root(base, firing, started):
+    """Return the data root of the firing ``firing`` under ``base`` that started at ``started``.
+
+    ``<base>/data`` while the date of ``started`` in :data:`KST` is at most
+    :data:`CASE_STORAGE_UNTIL`, else ``<firing>/data``.
+    """
+    if started.astimezone(KST).date() <= CASE_STORAGE_UNTIL:
+        return base / "data"
+    return firing / "data"
 
 
 def classify(stage, told):
@@ -242,9 +268,10 @@ def fire(base, *, environ=None, python=None, profile=None, now=None):
                 raise _Stop(
                     ENVIRONMENT, "prepare/overlap", "another firing holds the lock"
                 )
-            env = _child_environment(environ, firing / "data")
+            data = data_root(Path(base), firing, started)
+            env = _child_environment(environ, data)
             _check_environment(env)
-            _make_data_root(env, firing / "data")
+            _make_data_root(env, data)
             given = firing / "instance.json"
             given.write_text(
                 json.dumps(document(_profile(profile)), indent=2), encoding="utf-8"
@@ -392,6 +419,8 @@ def _check_environment(env):
 
 
 def _make_data_root(env, data):
+    if (data / ".git").is_dir():
+        return
     git = shutil.which("git", path=env.get("PATH"))
     done = subprocess.run(
         [git, "init", "-q", "-b", "main", str(data)],
