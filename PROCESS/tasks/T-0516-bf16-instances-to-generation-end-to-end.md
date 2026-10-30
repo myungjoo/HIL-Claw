@@ -2,7 +2,7 @@
 id: T-0516
 title: Prove PLAN P2-14 with stubs — a bf16 instance of each of the six kinds runs to run_over through stub claude, and the model executor generates tokens from their attempts that match the reference
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, S0, FR-1, FR-9, FR-10, OD-31, "PLAN P2-14"]
 dependsOn: [T-0515]
