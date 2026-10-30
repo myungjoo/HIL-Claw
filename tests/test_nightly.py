@@ -657,17 +657,19 @@ def test_the_document_starts_a_run_through_the_real_new_run(tmp_path):
 
 def test_the_data_root_is_kept_until_the_last_day_of_case_storage(tmp_path):
     firing = tmp_path / "f"
-    last = datetime.datetime(2026, 11, 30, 23, 59, 59, tzinfo=datetime.UTC)
-    after = datetime.datetime(2026, 12, 1, tzinfo=datetime.UTC)
+    last = datetime.datetime(2026, 11, 30, 14, 59, 59, tzinfo=datetime.UTC)
+    after = datetime.datetime(2026, 11, 30, 15, 0, tzinfo=datetime.UTC)
     assert nightly.data_root(tmp_path, firing, NOW) == tmp_path / "data"
     assert nightly.data_root(tmp_path, firing, last) == tmp_path / "data"
     assert nightly.data_root(tmp_path, firing, after) == firing / "data"
 
 
-def test_the_data_root_follows_the_utc_date():
+def test_the_data_root_follows_the_kst_date():
     kst = datetime.timezone(datetime.timedelta(hours=9))
-    started = datetime.datetime(2026, 12, 1, 3, 0, tzinfo=kst)
-    assert nightly.data_root(Path("b"), Path("f"), started) == Path("b/data")
+    first = datetime.datetime(2026, 12, 1, 3, 0, tzinfo=kst)
+    last = datetime.datetime(2026, 11, 30, 3, 0, tzinfo=kst)
+    assert nightly.data_root(Path("b"), Path("f"), first) == Path("f/data")
+    assert nightly.data_root(Path("b"), Path("f"), last) == Path("b/data")
 
 
 @posix
@@ -706,3 +708,11 @@ def test_a_firing_after_case_storage_makes_its_own_data_root(world):
     assert not (world.base / "data").exists()
     (entry, _) = world.entries()
     assert entry["env"]["HILCLAW_DATA_REPO_LOCAL_PATH"] == str(firing / "data")
+
+
+@posix
+def test_a_kept_data_root_without_a_repository_is_made_one(world):
+    (world.base / "data").mkdir()
+    record = world.fire()
+    assert record["verdict"] == "pass"
+    assert (world.base / "data" / ".git").is_dir()

@@ -13,12 +13,14 @@ manual run and an executor's test run on the owner's request (DRIVER D25)
 start it for real.
 
 **The configuration** (HQ-0076 (1), changed by the owner decision of
-2026-10-30 on #5, item 4): the local ``cpu_standin``
+2026-10-30 on #5, item 4, "a realistic shape, a k-scaled tolerance, n_max 10";
+the shape and the factor are the integrator's choice): the local ``cpu_standin``
 (:func:`hilclaw.standin_profile.local_record`, ``hw_source`` ``external``) x
 GEMM fp32 ``row_major`` m=1 k=2048 n=8192 (a decode step of the Llama 3.2 1B
 MLP up projection), ``latency_minimisation``, one candidate per round,
 ``n_max`` 10, one draw, ``rtol`` 1e-4 and an ``atol`` that grows with k
-(:data:`ATOL_PER_K` x k: the rounding of a k-long fp32 dot product), and
+(:data:`ATOL_PER_K` x k: the rounding of a k-long fp32 dot product of the
+verification inputs of ADR-0017, whose magnitudes are below 1), and
 ``round_budget`` 5. Nothing else bounds the firing: no timeout and no turn
 count (HQ-0076 (4)).
 
@@ -31,7 +33,8 @@ count (HQ-0076 (4)).
    ``HILCLAW_STANDIN_IMAGE`` non-empty, ``claude``, ``clang``, ``docker`` and ``git`` on
    ``PATH`` -> ``prepare/missing:<names>``;
 3. the data root, never pushed (``prepare/data_root``): up to
-   :data:`CASE_STORAGE_UNTIL` (UTC date of the start) ``<base>/data``, one git
+   :data:`CASE_STORAGE_UNTIL` (date of the start in KST, the owner's
+   calendar) ``<base>/data``, one git
    repository kept across firings so that the cases of earlier firings are
    read (DRIVER D25), made when it is not there; later ``<firing>/data``, a
    new repository of this firing only (D17 ②); then the hw_profile record
@@ -71,8 +74,9 @@ replaced. ``result.json`` holds ``firing``, ``commit``, ``verdict``
 object with ``verdict``, and for a firing also ``signature``, ``cause`` and
 ``firing`` (the directory). Status 0 for a pass, 10 for a failure, 20 for
 bad usage (not exactly one argument, or no existing directory), when nothing
-is written. It registers no issue, pushes nothing, writes nothing into this
-checkout and keeps no state between firings.
+is written. It registers no issue, pushes nothing and writes nothing into this
+checkout. Between firings it keeps only the data root ``<base>/data`` up to
+:data:`CASE_STORAGE_UNTIL`.
 """
 
 import contextlib
@@ -113,6 +117,7 @@ OP = {
 RTOL = 1e-4
 ATOL_PER_K = 5e-7
 CASE_STORAGE_UNTIL = datetime.date(2026, 11, 30)
+KST = datetime.timezone(datetime.timedelta(hours=9))
 REQUIRED_VARIABLES = (
     "HILCLAW_CODER_IMAGE",
     "HILCLAW_CODER_OAUTH_TOKEN",
@@ -177,10 +182,10 @@ def document(hw_profile):
 def data_root(base, firing, started):
     """Return the data root of the firing ``firing`` under ``base`` that started at ``started``.
 
-    ``<base>/data`` while the UTC date of ``started`` is at most
+    ``<base>/data`` while the date of ``started`` in :data:`KST` is at most
     :data:`CASE_STORAGE_UNTIL`, else ``<firing>/data``.
     """
-    if started.astimezone(datetime.UTC).date() <= CASE_STORAGE_UNTIL:
+    if started.astimezone(KST).date() <= CASE_STORAGE_UNTIL:
         return base / "data"
     return firing / "data"
 
