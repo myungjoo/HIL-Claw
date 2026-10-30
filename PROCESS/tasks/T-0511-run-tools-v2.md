@@ -2,7 +2,7 @@
 id: T-0511
 title: Land ADR-0183 code slice 3 — sim.run / board.run write v2 results under sim_run_timing_v2 / board_run_timing_v2 (contract_key, kind shape, unit "ns", resolution, intervals), run-line readers on the new values
 phase: P2
-status: BLOCKED
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-1, OD-8, OD-13, OD-16, OD-18, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0509, T-0510]
@@ -74,7 +74,8 @@ hq: [HQ-0079]
 
 ## Result
 
-- **BLOCKED, not merged.**
+- **DONE** (recorded 2026-10-30 by the owner's integrator session; no driver iteration recorded it). PR #322 was merged on 2026-10-29 at 07:53 UTC as `a9b9d81`, after HQ-0079 was answered (`resolvedAt` 2026-10-29T06:56:19Z). The bullets below are the state recorded at BLOCKED, before that merge.
+- **BLOCKED, not merged** (superseded by the line above).
   - The code is done and the reviewer approved it.
   - CI is not green, and the cause is the `main` failure under Follow-ups, not this change. A-13 requires CI green to merge.
 - **PR**: #322, Draft, with the DONOTMERGE label. Branch `claude/T-0511-run-tools-v2`, head commit `a2fbfcb3` plus this Result commit.
