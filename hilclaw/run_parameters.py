@@ -16,7 +16,7 @@ of fp32 ``gemm`` keeps receiving :class:`TimingParameters`.
 :class:`Bf16TimingParameters` is that form, a second type beside it.
 
 The types have a module of their own so that the tool functions and an
-operation of any backend build and read one type without importing a module
+operation of any backend build and read them without importing a module
 of a backend.
 
 Choices that are this module's own and no rule of a record:
