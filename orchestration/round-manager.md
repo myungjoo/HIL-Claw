@@ -141,11 +141,13 @@ before any other step of it:
    delegate no second time, issue no call yourself, write no spec or kernel
    by any other means and ask for no repair. Go on to step 3 only when the
    report is a result of `coder.run` whose `taken` holds at least one name.
-   On any other report (any failure kind, `spec_exists` and
-   `no_container_runtime` among them, an empty `taken`, or no report you can
-   read) come to the stop, and read nothing more into the kind or the names
-   (ADR-0142 decision 2). In a round ≥ 1 there are no steps 2 to 5: step 6
-   follows step 1.
+   When it is a result of `coder.run` with an empty `taken`, or a failure
+   kind of `coder.run` (`no_container_runtime` among them), go to "The
+   closing steps of a round" (ADR-0185 decision 2). On any other report (a
+   failure kind of `spec.write`, `spec_exists` among them, or no report you
+   can read) come to the stop, and read nothing more into the kind or the
+   names (ADR-0142 decision 2). In a round ≥ 1 there are no steps 2 to 5:
+   step 6 follows step 1.
 3. **Round 0 only.** Delegate to `evaluator` with the `Agent` tool and wait
    for its report. The message names your run id, the tuple `round` 0,
    `candidate` 1, `attempt` 1, the point `sim`, and no place and no
@@ -154,21 +156,21 @@ before any other step of it:
    (ADR-0131 decision 7). Go on to step 4 only when it gives the standing
    `"verified"` at `sim`. On any other report (`"not_verified"`,
    `"undetermined"`, a failure kind without a standing, or no report you can
-   read) come to the stop.
+   read) go to "The closing steps of a round" (ADR-0185 decision 2).
 4. **Round 0 only.** Delegate to `evaluator`, wait and report as in step 3,
    the message naming the point `board` in place of `sim`. Go on to step 5
    only when it gives the standing `"verified"` at `board` (ADR-0142
-   decision 3). On any other report come to the stop.
+   decision 3). On any other report go to "The closing steps of a round"
+   (ADR-0185 decision 2).
 5. **Round 0 only.** Delegate to `experiment-runner` with the `Agent` tool
    and wait for its report. The message names your run id and the tuple
    `round` 0, `candidate` 1, `attempt` 1, and no place (ADR-0142
-   decision 4). Whatever it reports, report it in one line. When the report
-   gives the `outcome` `"converged"` or `"not_converged"`, go to "The
-   closing steps of a round": in round 0 that is no `case.write`, then
-   `round.end`, then `run.commit` (ADR-0142 decision 6; ADR-0119 decisions 2
-   and 4; ADR-0133 decision 1). On any other report (the `outcome`
-   `"broken"`, a failure kind, or no report you can read) come to the stop
-   (ADR-0142 decision 6; ADR-0119 decision 5).
+   decision 4). Whatever it reports, the `outcome` `"converged"`,
+   `"not_converged"` or `"broken"`, a failure kind, or no report you can
+   read, report it in one line and go to "The closing steps of a round": in
+   round 0 that is no `case.write`, then `round.end`, then `run.commit`
+   (ADR-0142 decision 6; ADR-0119 decisions 2 and 4; ADR-0133 decision 1;
+   ADR-0185 decision 2).
 6. **Round ≥ 1 only.** Delegate to `technique-selector` with the `Agent`
    tool and wait for its report. The message names your run id and the
    round, and no place (ADR-0132 decisions 6 and 7; ADR-0123 decisions 2
@@ -229,25 +231,25 @@ before any other step of it:
     decision 5). On any other report (another failure kind, or no report you
     can read) come to the stop (ADR-0172 decision 5; FR-17).
 
-The stop: in round 0 it follows step 2, 3, 4 or 5 as they say, once the
-report that step waits for has come (ADR-0143 decision 7; ADR-0142
-decision 6). In other rounds it follows step 7 after a failed read, once
-its kind is reported (ADR-0132 decision 6), and step 8 or step 12 as they
-say, once the one-line report is made (ADR-0171 decision 6; ADR-0172
-decisions 2, 5 and 7).
+The stop: in round 0 it follows step 2 as it says, once the report that
+step waits for has come (ADR-0143 decision 7; ADR-0185 decision 2). In
+other rounds it follows step 7 after a failed read, once its kind is
+reported (ADR-0132 decision 6), and step 8 or step 12 as they say, once the
+one-line report is made (ADR-0171 decision 6; ADR-0172 decisions 2, 5
+and 7).
 In every case write nothing further, call `mcp__hilclaw__run_commit` as "The
 end of a session" says, and end the session (ADR-0143 decisions 2 and 7).
-Round 0 is not ended: no `round.end` (ADR-0142 decisions 1, 2 and 6). Nor
+Round 0 is not ended: no `round.end` (ADR-0142 decisions 1 and 2). Nor
 is a round ≥ 1 (ADR-0171 decision 6; ADR-0172 decision 7). A round-0 turn
-reaches the closing steps below only through step 5, and a turn of a
-round ≥ 1 only through step 12 (ADR-0172 decision 6).
+reaches the closing steps below only through steps 2 to 5, and a turn of a
+round ≥ 1 only through step 12 (ADR-0172 decision 6; ADR-0185 decision 2).
 
 ### The closing steps of a round
 
 These steps follow the round's last other step. Round 0 reaches them after
-step 5 (ADR-0142 decision 6), and a round ≥ 1 after step 12 (ADR-0172
-decision 6). Do them in this order, your run id as `run_id` and the
-round's number as `round`:
+step 2, 3, 4 or 5 as they say (ADR-0142 decision 6; ADR-0185 decision 2),
+and a round ≥ 1 after step 12 (ADR-0172 decision 6). Do them in this
+order, your run id as `run_id` and the round's number as `round`:
 
 1. **`case.write`, only in a round ≥ 1.** Call `mcp__hilclaw__case_write`.
    Whether `with_verdicts` is `true` or `false`, go on and do not report the

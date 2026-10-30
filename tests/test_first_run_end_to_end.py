@@ -642,28 +642,28 @@ def test_the_entry_writes_one_line_on_standard_output(world):
 
 
 @pytest.mark.parametrize("kernel", [None, WRONG_KERNEL], ids=["no_kernel", "wrong"])
-def test_round_zero_stops_without_an_attempt_that_stands(world, kernel):
+def test_round_zero_without_an_attempt_that_stands_ends_its_round(world, kernel):
     world.install(kernel=kernel)
     run_id = world.new_run(document())
     run = world.run_dir(run_id)
 
     done = world.turn_start(run_id)
 
-    told(done, "unchanged_turn", 12)
+    told(done, "run_over", 0)
     state = state_of(world, run_id)
-    assert (state.round, state.others) == (0, {})
+    assert (state.round, state.others) == (1, {"run_status": "over"})
     assert (run / ATTEMPT / "spec.json").is_file()
     lines = events.read(world.root, run_id).events
     log = world.session_log()
-    assert turns(log) == [1, 2]
-    stop = [("round-manager", "run_commit")]
+    assert turns(log) == [1]
+    closing = [("round-manager", "round_end"), ("round-manager", "run_commit")]
     if kernel is None:
-        assert steps(log, 1) == ROUND_ZERO[:8] + stop
+        assert steps(log, 1) == ROUND_ZERO[:8] + closing
         assert requests(log, 1)[7]["answer"]["taken"] == []
         assert not (run / ATTEMPT / "output").exists()
         assert lines == []
     else:
-        assert steps(log, 1) == ROUND_ZERO[:11] + stop
+        assert steps(log, 1) == ROUND_ZERO[:11] + closing
         assert (run / ATTEMPT / "output/gemm.c").is_file()
         assert [line["data"]["step"] for line in lines] == [
             "correctness_check_sim_v2"
@@ -671,25 +671,62 @@ def test_round_zero_stops_without_an_attempt_that_stands(world, kernel):
         assert lines[-1]["data"]["result"]["outcome"] == "fail"
         found = check_standing.standing(lines, "correctness_check_sim_v2", 0, 1, 1)
         assert found is check_standing.Standing.NOT_VERIFIED
-    assert steps(log, 2) == [
-        ("round-manager", "run_commit"),
-        ("round-manager", "state_read"),
-        ("round-manager", "instance_read"),
-        ("round-manager", "key_store"),
-        ("round-manager", "Agent", "coder-driver"),
-        ("coder-driver", "spec_write"),
-        *stop,
-    ]
-    assert requests(log, 2)[5]["answer"]["error"]["kind"] == "spec_exists"
     assert_hooks_ran_and_passed(requests(log))
     assert_stopped_once(log, 1)
-    assert_stopped_once(log, 2)
     assert not (run / "rounds/0000/eval").exists()
     assert not (run / MEASURE / "build-log-board_run_timing_v2-01.txt").exists()
     coders = [
         entry for entry in world.docker_runs() if entry.get("container") == "coder"
     ]
     assert len(coders) == 1
+    assert_committed_clean(world, run_id)
+
+
+def test_a_round_zero_spec_that_exists_comes_to_the_stop(world):
+    world.install()
+    run_id = world.new_run(document())
+    replace(world.root, run_id, 0, EMPTY)
+    run = world.run_dir(run_id)
+    taken = run / ATTEMPT / "spec.json"
+    taken.parent.mkdir(parents=True)
+    taken.write_bytes(b"{}\n")
+
+    done = world.turn_start(run_id)
+
+    told(done, "unchanged_turn", 12)
+    assert state_of(world, run_id).round == 0
+    log = world.session_log()
+    assert turns(log) == [1]
+    assert steps(log, 1) == [
+        ("round-manager", "run_commit"),
+        ("round-manager", "state_read"),
+        ("round-manager", "instance_read"),
+        ("round-manager", "key_store"),
+        ("round-manager", "Agent", "coder-driver"),
+        ("coder-driver", "spec_write"),
+        ("round-manager", "run_commit"),
+    ]
+    assert requests(log, 1)[5]["answer"]["error"]["kind"] == "spec_exists"
+    assert taken.read_bytes() == b"{}\n"
+    assert not [e for e in world.docker_runs() if e.get("container") == "coder"]
+
+
+def test_the_round_after_a_failed_round_zero_retries_with_its_failure(world):
+    world.install(kernel=WRONG_KERNEL)
+    run_id = world.new_run(document(budget=2))
+    run = world.run_dir(run_id)
+
+    done = world.turn_start(run_id)
+
+    told(done, "run_over", 0)
+    assert state_of(world, run_id).round == 2
+    later = run / ATTEMPT.replace("rounds/0000", "rounds/0001") / "spec.json"
+    content = spec_file.parse(later.read_bytes())
+    spec.validate(content)
+    (shown,) = content["feedback"]["attempts"]
+    assert (shown["round"], shown["failure"]["stage"]) == (0, "sim")
+    assert "base" not in content["feedback"]
+    assert turns(world.session_log()) == [1, 2]
     assert_committed_clean(world, run_id)
 
 

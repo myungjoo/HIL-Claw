@@ -653,16 +653,16 @@ def test_the_prompt_delegates_the_measurement_to_the_experiment_runner():
     assert "`execution`" not in step
     for word in ('`"converged"`', '`"not_converged"`', '`"broken"`'):
         assert word in step
-    going = step.split('When the report gives the `outcome` `"converged"`', 1)[1]
-    going = going.split("On any other report", 1)[0]
-    assert 'go to "The closing steps of a round"' in going
-    assert "no `case.write`, then `round.end`, then `run.commit`" in going
-    other = step.split("On any other report", 1)[1]
-    assert '`"broken"`' in other
-    assert "a failure kind" in other
-    assert "no report you can read" in other
-    assert "come to the stop" in other
-    for cited in ("ADR-0142 decision 4", "ADR-0142 decision 6", "ADR-0119 decisions 2"):
+    assert "a failure kind, or no report you can" in step
+    assert 'report it in one line and go to "The closing steps of a round"' in step
+    assert "no `case.write`, then `round.end`, then `run.commit`" in step
+    assert "come to the stop" not in step
+    for cited in (
+        "ADR-0142 decision 4",
+        "ADR-0142 decision 6",
+        "ADR-0119 decisions 2",
+        "ADR-0185 decision 2",
+    ):
         assert cited in step
 
 
@@ -670,8 +670,30 @@ def test_step_4_goes_on_to_step_5_only_when_verified_at_board():
     step = round_step(4)
     going = 'Go on to step 5 only when it gives the standing `"verified"` at `board`'
     assert going in step
-    assert "On any other report come to the stop" in step
+    assert 'On any other report go to "The closing steps of a round"' in step
+    assert "come to the stop" not in step
     assert "waits on" not in step
+
+
+def test_step_3_closes_the_round_on_any_other_report():
+    step = round_step(3)
+    assert '`"not_verified"`' in step
+    assert 'go to "The closing steps of a round" (ADR-0185 decision 2)' in step
+    assert "come to the stop" not in step
+
+
+def test_step_2_closes_the_round_after_coder_run_and_stops_after_spec_write():
+    step = round_step(2)
+    closing = step.split("When it is a result of `coder.run` with an empty", 1)[1]
+    closing = closing.split("On any other report", 1)[0]
+    assert "a failure kind of `coder.run`" in closing
+    assert "`no_container_runtime` among them" in closing
+    assert 'go to "The closing steps of a round" (ADR-0185 decision 2)' in closing
+    assert "come to the stop" not in closing
+    other = step.split("On any other report", 1)[1]
+    assert "failure kind of `spec.write`, `spec_exists` among them" in other
+    assert "no report you can read" in other
+    assert "come to the stop" in other
 
 
 def test_the_prompt_makes_no_check_of_its_own():
@@ -682,12 +704,12 @@ def test_the_prompt_makes_no_check_of_its_own():
     only_forbidden(text, "checks_read")
 
 
-def test_the_prompt_reaches_the_closing_steps_from_steps_5_and_12():
+def test_the_prompt_reaches_the_closing_steps_from_steps_2_to_5_and_12():
     heading = "### The closing steps of a round"
     text = prompt_text()
     assert heading in text
     closing = text.split(heading, 1)[1]
-    assert "Round 0 reaches them after step 5" in closing
+    assert "Round 0 reaches them after step 2, 3, 4 or 5 as they say" in closing
     assert "a round ≥ 1 after step 12 (ADR-0172 decision 6)" in closing
     assert "only once later slices" not in text
 
@@ -739,8 +761,8 @@ def test_the_stop_commits_and_leaves_round_0_open():
     assert "Round 0 is not ended: no `round.end`" in stop
     assert "no `run.commit`" not in stop
     assert "No turn goes past this stop" not in stop
-    assert "it follows step 2, 3, 4 or 5 as they say" in stop
-    assert "reaches the closing steps below only through step 5" in stop
+    assert "in round 0 it follows step 2 as it says" in stop
+    assert "reaches the closing steps below only through steps 2 to 5" in stop
     assert "a turn of a round ≥ 1 only through step 12" in stop
     assert "ADR-0143 decisions 2 and 7" in stop
     assert stop.index("once the report") < stop.index("mcp__hilclaw__run_commit")
