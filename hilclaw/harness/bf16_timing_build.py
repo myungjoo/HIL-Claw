@@ -22,7 +22,14 @@ _HERE = Path(__file__).parent
 PROGRAM_SOURCES = types.MappingProxyType(
     {
         kind: _HERE / f"bf16_timing_{kind}.c"
-        for kind in ("gemm", "rmsnorm", "elementwise_add", "swiglu")
+        for kind in (
+            "gemm",
+            "rmsnorm",
+            "elementwise_add",
+            "swiglu",
+            "rope",
+            "sdpa_kv_cache",
+        )
     }
 )
 

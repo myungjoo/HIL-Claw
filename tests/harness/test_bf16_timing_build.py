@@ -13,6 +13,8 @@ from hilclaw import (
     elementwise_add_bf16_contract,
     gemm_bf16_contract,
     rmsnorm_bf16_contract,
+    rope_bf16_contract,
+    sdpa_kv_cache_bf16_contract,
     swiglu_bf16_contract,
 )
 from hilclaw.clang_build import BuildResult
@@ -43,6 +45,8 @@ CONTRACTS = {
     "rmsnorm": rmsnorm_bf16_contract,
     "elementwise_add": elementwise_add_bf16_contract,
     "swiglu": swiglu_bf16_contract,
+    "rope": rope_bf16_contract,
+    "sdpa_kv_cache": sdpa_kv_cache_bf16_contract,
 }
 
 
@@ -151,7 +155,7 @@ def test_program_sources_cannot_be_assigned_to():
     with pytest.raises(TypeError):
         del PROGRAM_SOURCES["gemm"]
     with pytest.raises(TypeError):
-        PROGRAM_SOURCES["rope"] = Path("rope.c")
+        PROGRAM_SOURCES["other"] = Path("other.c")
     assert tuple(PROGRAM_SOURCES) == KINDS
 
 
@@ -278,7 +282,7 @@ def test_a_failed_build_is_a_result(stub, kernel, out):
 
 @pytest.mark.parametrize(
     "kind",
-    ["rope", "sdpa_kv_cache", "GEMM", "", "gemm ", b"gemm", None, 1, Count("gemm")],
+    ["fp16", "GEMM", "", "gemm ", b"gemm", None, 1, Count("gemm")],
 )
 def test_an_unknown_kind_is_refused_before_anything_starts(no_build, kind):
     with pytest.raises(ValueError, match="kind must be one of") as caught:
@@ -288,7 +292,7 @@ def test_an_unknown_kind_is_refused_before_anything_starts(no_build, kind):
 
 def test_the_kind_is_tested_before_the_kernel_sources(no_build):
     with pytest.raises(ValueError) as caught:
-        build_bf16_timing_executable("rope", (), "exe", timeout_s=TIMEOUT)
+        build_bf16_timing_executable("fp16", (), "exe", timeout_s=TIMEOUT)
     assert caught.value.parameter == "kind"
 
 

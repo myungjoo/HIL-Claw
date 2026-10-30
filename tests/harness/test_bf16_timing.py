@@ -1,13 +1,16 @@
 import json
 import os
 import signal
+import subprocess
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
+import hilclaw
 from hilclaw import local_run
-from hilclaw.harness import bf16_timing, timing
+from hilclaw.harness import bf16_rope_arrays, bf16_timing, timing
 from hilclaw.harness.bf16_timing import KINDS, program_arguments, run_bf16_timing
 from hilclaw.harness.measurement import CV_MAX, N_MAX_DEFAULT, N_MIN, State
 from hilclaw.harness.timing import (
@@ -44,6 +47,8 @@ DIMS = {
     "rmsnorm": (5, 6),
     "elementwise_add": (5, 6),
     "swiglu": (5, 6),
+    "rope": (2, 3, 4),
+    "sdpa_kv_cache": (3, 5, 4, 2, 6),
 }
 
 
@@ -137,8 +142,15 @@ def usage(monkeypatch, max_rss):
     monkeypatch.setattr(bf16_timing.local_run, "run", run)
 
 
-def test_kinds_are_the_four_of_adr_0163():
-    assert KINDS == ("gemm", "rmsnorm", "elementwise_add", "swiglu")
+def test_kinds_are_the_six_of_adr_0181():
+    assert KINDS == (
+        "gemm",
+        "rmsnorm",
+        "elementwise_add",
+        "swiglu",
+        "rope",
+        "sdpa_kv_cache",
+    )
     assert bf16_timing.__all__ == ["KINDS", "program_arguments", "run_bf16_timing"]
 
 
@@ -172,12 +184,12 @@ def test_program_arguments_take_large_dims_and_the_smallest_values():
     ) == ("1", "1" + "0" * 30, str(N_MIN), str(N_MIN), repr(CV_MAX), "interval", "0")
 
 
-BAD_KINDS = ["rope", "sdpa_kv_cache", "GEMM", "", "gemm ", b"gemm", None, 1]
+BAD_KINDS = ["fp16", "GEMM", "", "gemm ", b"gemm", None, 1]
 BAD_KINDS += [Word("gemm"), ("gemm",)]
 
 
 @pytest.mark.parametrize("kind", BAD_KINDS, ids=lambda value: repr(value))
-def test_program_arguments_refuse_a_kind_outside_the_four(kind):
+def test_program_arguments_refuse_a_kind_outside_the_six(kind):
     with pytest.raises(TimingArgumentError, match=r"^kind: must be one of"):
         program_arguments(kind, (2, 3), n_max=10, sample_form="interval", seed=7)
 
@@ -190,6 +202,15 @@ BAD_DIMS = [
     ("swiglu", [2, 3], "dims"),
     ("swiglu", None, "dims"),
     ("swiglu", "23", "dims"),
+    ("rope", (2, 4), "dims"),
+    ("rope", (2, 3, 4, 5), "dims"),
+    ("rope", (2, 3, 3), r"dims\[2\]"),
+    ("rope", (0, 3, 4), r"dims\[0\]"),
+    ("sdpa_kv_cache", (2, 3, 4), "dims"),
+    ("sdpa_kv_cache", (2, 3, 4, 2, 6, 7), "dims"),
+    ("sdpa_kv_cache", (3, 2, 4, 2, 6), r"dims\[1\]"),
+    ("sdpa_kv_cache", (2, 3, 5, 2, 6), r"dims\[2\]"),
+    ("sdpa_kv_cache", (2, 3, 4, 0, 6), r"dims\[3\]"),
     ("elementwise_add", (0, 3), r"dims\[0\]"),
     ("elementwise_add", (3, -1), r"dims\[1\]"),
     ("gemm", (1, 0, 1), r"dims\[1\]"),
@@ -233,7 +254,7 @@ def test_program_arguments_refuse_what_driver_arguments_refuses(name, value):
 
 def test_program_arguments_test_kind_then_dims_then_the_rest():
     with pytest.raises(TimingArgumentError, match="^kind"):
-        program_arguments("rope", None, n_max=0, sample_form=None, seed=-1)
+        program_arguments("fp16", None, n_max=0, sample_form=None, seed=-1)
     with pytest.raises(TimingArgumentError, match="^dims"):
         program_arguments("gemm", (1, 1), n_max=0, sample_form=None, seed=-1)
     with pytest.raises(TimingArgumentError, match="^n_max"):
@@ -361,7 +382,7 @@ def test_standard_error_is_captured_and_not_parsed(stand_in):
 def test_arguments_are_refused_before_anything_starts(stand_in):
     executable = stand_in(report(WORKED))
     with pytest.raises(TimingArgumentError, match="^kind"):
-        timed(executable, "rope", dims=(2, 3))
+        timed(executable, "fp16", dims=(2, 3))
     with pytest.raises(TimingArgumentError, match="^dims"):
         timed(executable, "gemm", dims=(2, 3))
     with pytest.raises(TimingArgumentError, match="^seed"):
@@ -391,3 +412,76 @@ def test_sample_form_seed_and_time_limit_have_no_default(stand_in):
     with pytest.raises(TypeError):
         run_bf16_timing(executable, "gemm", (2, 3, 4), sample_form="interval", seed=7)
     assert not stand_in.started
+
+
+def rows_seen(monkeypatch):
+    seen = []
+    original = local_run.run
+
+    def run(command, **keywords):
+        seen.append(keywords["stdin_data"])
+        return original(command, **keywords)
+
+    monkeypatch.setattr(bf16_timing.local_run, "run", run)
+    return seen
+
+
+@pytest.mark.parametrize(
+    "dims, seed, start",
+    [((1, 2, 4), 6, 127), ((1, 2, 4), 7, 2047), ((3, 2, 4), 7, 0), ((3, 2, 4), 6, 0)],
+)
+def test_a_rope_run_hands_the_rows_at_the_start_position_of_its_seed(
+    dims, seed, start, stand_in, monkeypatch
+):
+    seen = rows_seen(monkeypatch)
+    result = timed(stand_in(report(WORKED)), "rope", dims=dims, seed=seed)
+    assert_completed(result, State.CONVERGED, WORKED)
+    assert seen == [bf16_rope_arrays.table_rows(dims, start=start).tobytes()]
+    assert len(seen[0]) == 4 * dims[0] * dims[2]
+
+
+@pytest.mark.parametrize("kind", [kind for kind in KINDS if kind != "rope"])
+def test_no_other_kind_gets_standard_input(kind, stand_in, monkeypatch):
+    seen = rows_seen(monkeypatch)
+    assert timed(stand_in(report(WORKED)), kind).broken is None
+    assert seen == [None]
+
+
+def test_a_start_position_the_table_cannot_have_is_refused_before_anything_starts(
+    stand_in,
+):
+    executable = stand_in(report(WORKED))
+    with pytest.raises(TimingArgumentError, match="^start: must be"):
+        timed(executable, "rope", dims=(1, 1, 2**52), seed=1)
+    assert not stand_in.started
+
+
+def test_a_bad_executable_is_refused_before_the_rows_are_built(monkeypatch):
+    def refuse(*arguments, **keywords):
+        pytest.fail("the rows were built")
+
+    monkeypatch.setattr(bf16_rope_arrays, "table_rows", refuse)
+    with pytest.raises(ValueError, match="empty"):
+        timed((), "rope")
+
+
+def test_importing_the_module_and_running_another_kind_import_no_numpy():
+    code = (
+        "import sys\n"
+        "from hilclaw import local_run\n"
+        "from hilclaw.harness import bf16_timing, bf16_timing_build\n"
+        "bf16_timing.program_arguments('rope', (1, 1, 2), n_max=10,"
+        " sample_form='interval', seed=7)\n"
+        "bf16_timing.run_bf16_timing((sys.executable, '-c', 'pass'), 'gemm',"
+        " (1, 1, 1), sample_form='interval', seed=7, timeout_s=60)\n"
+        "print('numpy' in sys.modules)\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        cwd=Path(hilclaw.__file__).parent.parent,
+        timeout=60,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == b"False"
