@@ -2,7 +2,7 @@
 id: T-0519
 title: Keep real bf16 runs from stopping on inapplicable techniques and tell the coder its every-shape duty (ADR-0190)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-22, OD-23, OD-31, C-6, FR-5, "PLAN P2-15", D26]
 dependsOn: []

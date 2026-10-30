@@ -511,3 +511,11 @@
 - 내용:
 
   (i) the image's clang accepts `-std=gnu11 -O2 -ffp-contract=off -fopenmp` and `-lm` under each C-7 system's Docker: Linux, macOS Docker Desktop and WSL; (ii) a kernel using OpenMP completes a check and a timing run in the container under the options of ADR-0144 and the limits of ADR-0117; (iii) the thread count the runtime picks in that container, and whether it fits the processors the machine gives; (iv) the waiter still reports `waiter_max_rss_kib` for such a kernel in a container; (v) a kernel with no OpenMP is measured as before within noise.
+
+### RA-0058
+
+- 상태: 미확인
+- 출처: T-0519, ADR-0190 (등록 2026-10-30)
+- 내용:
+
+  (i) A real technique-selector whose `catalog.read` result on a bf16 run holds no entry reports `techniques: none`, and the round goes on to a spec with an empty `guidance.techniques`. (ii) A real coder given the prompt's every-shape sentence keeps its kernel correct at values of the size parameters other than its spec's. This shows in a generation at the other call shapes (RA-0056).
