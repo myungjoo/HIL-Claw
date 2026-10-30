@@ -2,7 +2,7 @@
 id: T-0514
 title: Land ADR-0181 code slice 3 — sim.run / board.run take a bf16 run on the mock (per-kind timing parameters beside the unchanged TimingParameters, operations asked with either, v2 result of the kind), still with no timed flag
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, OD-13, OD-18, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0512, T-0513]
