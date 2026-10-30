@@ -67,8 +67,8 @@ text of an :class:`AttemptKernelError` is its ``reason`` and nothing else.
 
 What this module does not do: it judges no attempt (no correctness or timing
 result, no ``events.ndjson``, no ``eval/``, no ``best.json``) and chooses no
-attempt for a call site (OD-20, OD-7); it checks no fit of the contract to a
-call site, which :mod:`hilclaw.model_binding` does when the executor runs; it
+attempt for a call site (:mod:`hilclaw.model_run_binding` does, ADR-0189); it
+checks no fit of the contract to a call site, which :mod:`hilclaw.model_binding` does when the executor runs; it
 reads no ``build.json`` or other record of build settings (OD-6); it writes
 and creates nothing, reads no file of the run but the spec, lists nothing but
 what the reader of ADR-0055 lists and walks no directory (ADR-0004 decision
@@ -136,10 +136,7 @@ def kernel_reference(data_root, run_id, round, candidate, attempt, *, flags):
             data_root, run_id, round, candidate, attempt, "spec.json"
         )
     with _parameter("flags"):
-        if not isinstance(flags, (tuple, list)) or not all(
-            isinstance(flag, str) for flag in flags
-        ):
-            raise TypeError("flags must be a tuple or list of str")
+        _check_flags(flags)
     contract = _contract(data_root, spec_path)
     output = layout.attempt_artefact(
         data_root, run_id, round, candidate, attempt, "output"
@@ -167,6 +164,13 @@ def _check_data_root(value):
         )
     if "\0" in text:
         raise ValueError("data_root holds a NUL character")
+
+
+def _check_flags(value):
+    if not isinstance(value, (tuple, list)) or not all(
+        isinstance(flag, str) for flag in value
+    ):
+        raise TypeError("flags must be a tuple or list of str")
 
 
 def _contract(data_root, path):
