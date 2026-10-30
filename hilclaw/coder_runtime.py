@@ -32,6 +32,8 @@ Choices ADR-0137 leaves to this slice, with their values:
 - the wording of the prompt is :data:`PROMPT`, with the sentences on
   ``feedback.base`` of
   ``ARCHITECTURE/decisions/ADR-0184-od20-first-case-incumbent-base.md``
+  decision 4 and the sentence on other shapes of
+  ``ARCHITECTURE/decisions/ADR-0190-od22-catalog-read-by-contract-and-coder-every-shape.md``
   decision 4;
 - a platform without ``os.getuid`` or ``os.getgid`` (native Windows) has no
   numeric user to pass, so ``run`` raises
@@ -97,7 +99,11 @@ PROMPT = (
     "names no feedback.base, no correct attempt exists yet: write a plain, "
     "correct, single-threaded kernel with no hand optimisation, the baseline "
     "later rounds improve on, and learn from the failures that "
-    "feedback.attempts reports. Write every "
+    "feedback.attempts reports. Either way, the operand shapes in spec.json "
+    "give one set of values of the size parameters of the prototype, and the "
+    "kernel may also be called with other valid values of them: it must be "
+    "correct at all of them, and may specialise for the shape of spec.json "
+    "only while staying correct at the others. Write every "
     "file whole, never a diff or a patch. Write at most "
     f"{bring_in.MAX_FILES} files, each of at most {bring_in.MAX_FILE_BYTES} "
     "bytes; if more files qualify, none is kept. You may build and try your "

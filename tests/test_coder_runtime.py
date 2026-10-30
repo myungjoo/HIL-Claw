@@ -642,6 +642,14 @@ def test_the_prompt_speaks_of_the_base_and_the_plain_baseline():
     assert "single-threaded" in coder_runtime.PROMPT
 
 
+def test_the_prompt_states_the_every_shape_duty():
+    prompt = coder_runtime.PROMPT
+    for words in ("size parameters", "other valid values", "must be correct"):
+        assert words in prompt
+    assert "specialise" in prompt and "staying correct" in prompt
+    assert prompt.index("feedback.attempts") < prompt.index("size parameters")
+
+
 def logs_in(directory):
     return sorted(Path(directory).iterdir())
 

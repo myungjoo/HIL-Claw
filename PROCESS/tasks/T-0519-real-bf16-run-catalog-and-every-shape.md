@@ -109,4 +109,21 @@ hq: []
 
 ## Follow-ups
 
+None.
+
 ## Result
+
+- **PR**: #339, squash-merged. Review: 1 round, Approve. The two Nits of that round were addressed without a new round (D20).
+- **Language**: Python, because the change is to existing Python layer-2 modules. No new language.
+- **Gap 1 held on reading.** `catalog.read` returned all four fp32 `gemm` entries to a bf16 run, `spec.write` refuses each of them, and `orchestration/round-manager.md` step 8 stops on that failure. The fix is in the tool.
+- **Gap 2 held on reading.** `PROMPT` did not mention other shapes. The duty holds for all seven contracts. The sentence says "may also be called" because ADR-0008 decision 6 leaves open whether a caller passes other values, and "valid" because `rope` and `sdpa_kv_cache` do not admit every positive value.
+- **The rule for an uncovered instance (ADR-0190 decision 3)**: no op_signature, or one no contract covers, gets `{"entries": []}` and no failure; `spec.write`'s check 5 names the cause. The catalog check still comes first.
+- **Predicate**: `hilclaw.catalog.applies`, built on `hilclaw.catalog.mismatch`, which `spec.write` needs for its message. So there are two public functions and one comparison.
+- **Edited assertions (D21)**: none. `run_instance` in `tests/test_bf16_end_to_end.py` gains a `choices` parameter whose default is the old value. `tests/first_run_stubs.py` is unchanged.
+- **Local tests**: the joined path needs `os.getuid`, so it runs only in CI, not on this Windows machine. `tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed` fails on this machine without the change too, and was deselected locally.
+- **Fp32 run with values differing from an entry**: the table has none, so the test uses a test catalog whose `Applies to` differs.
+- **Runtime acceptance items**, for the driver to add to `PROCESS/RuntimeAcceptance.md`:
+  - A real technique-selector whose `catalog.read` result on a bf16 run holds no entry reports `techniques: none`, and the round goes on to a spec with an empty `guidance.techniques`.
+  - A real coder given the prompt's every-shape sentence keeps its kernel correct at values of the size parameters other than its spec's. This shows in a generation at the other call shapes (RA-0056).
+- **§9 notice**: due on #5 for ADR-0190, with its 7-day objection window. Not posted by the executor.
+- **What the owner's P2-15 run still lacks after this task**: the user-facing entry, real weights, the tokenizer and the `transformers` comparison (HQ-0084, OD-31 sub-questions 5, 7 and 10). The real bf16 runs and the generation at real dimensions remain to be exercised (RA-0056). Verification still does not draw other shapes (OD-16 sub-question 1), and bf16 rounds have no catalog entries (OD-22).

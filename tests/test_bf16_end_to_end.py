@@ -12,6 +12,7 @@ from test_model_reference import clang  # noqa: F401
 
 from hilclaw import (
     attempt_kernel,
+    catalog,
     check_standing,
     elementwise_add_bf16_contract,
     events,
@@ -72,11 +73,11 @@ def kernel_of(kind):
     return reference.REAL_PRELUDE + reference.REAL_SOURCES[kind]
 
 
-def run_instance(world, kind):  # noqa: F811
+def run_instance(world, kind, choices=CHOICES):  # noqa: F811
     record = record_of(kind)
     module, shape = INSTANCES[kind]
     key = {name: record[name] for name in ("kind", "dtype", "layout")}
-    world.install(kernel=kernel_of(kind), name=f"{kind}.c", choices=CHOICES)
+    world.install(kernel=kernel_of(kind), name=f"{kind}.c", choices=choices)
     turns_before = len(first_run.turns(world.session_log()))
     docker_before = len(world.docker_runs())
 
@@ -156,6 +157,13 @@ def run_instance(world, kind):  # noqa: F811
 @pytest.mark.parametrize("kind", sorted(INSTANCES))
 def test_an_instance_of_each_kind_runs_to_run_over(world, kind):  # noqa: F811
     run_instance(world, kind)
+
+
+def test_a_selector_that_would_choose_a_catalog_id_sees_no_entry(world):  # noqa: F811
+    wanted = "loop_order_ikj"
+    assert wanted in catalog.criteria("cpu_standin")
+    choices = {"default": CHOICES["default"] | {"techniques": [wanted]}}
+    run_instance(world, "gemm", choices)
 
 
 def test_a_wrong_kernel_leaves_its_attempt_not_standing(world):  # noqa: F811

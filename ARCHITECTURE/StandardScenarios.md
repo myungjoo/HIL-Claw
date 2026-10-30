@@ -169,7 +169,7 @@
 
 기록 규약: 재검사마다 아래 "최근 재검사" 줄을 그 자리에서 갱신한다(날짜·계기·결과). 판정이 바뀌었거나 갭이 발견·해소된 재검사만 "판정 변화 이력"에 한 항목(1~3줄)으로 남긴다. 판정 변화가 없는 재검사의 서술과 ADR 요약은 쓰지 않는다 — 근거는 git 이력과 각 ADR이다. 판정표 비고에는 근거 FR과 아직 열린 OD(필요하면 하위 질문 번호)만 쓴다.
 
-**최근 재검사**: 2026-10-31 — [ADR-0189](decisions/ADR-0189-od31-binding-from-run-incumbents.md) 채택(T-0518; 첫 사례 N = 1 run의 incumbent에서 모델 실행기 binding 얻기) — S0·S1 재검사, 판정 변화 없음, 갭 없음.
+**최근 재검사**: 2026-10-31 — [ADR-0190](decisions/ADR-0190-od22-catalog-read-by-contract-and-coder-every-shape.md) 채택(T-0519; `catalog.read`가 run에 적용되는 항목만 돌려줌, 코더 프롬프트의 모든 shape 의무) — S0·S1 재검사, 판정 변화 없음, 갭 없음.
 
 ## 판정 변화 이력
 
