@@ -74,7 +74,7 @@ hq: [HQ-0079]
 
 ## Result
 
-- **DONE** (recorded 2026-10-30 by the owner's integrator session; no driver iteration recorded it). PR #322 was merged on 2026-10-29 at 07:53 UTC as `a9b9d81`, after HQ-0079 was answered (`resolvedAt` 2026-10-29T06:56:19Z). The bullets below are the state recorded at BLOCKED, before that merge.
+- **DONE** (recorded 2026-10-30 by the owner's integrator session; no driver iteration recorded it). PR #322 was merged on 2026-10-29 at 07:53 UTC as `a9b9d81`, after HQ-0079 was answered (`resolvedAt` 2026-10-29T06:56:19Z) and the CI fix PR #324 (`e91779f`) made `main` CI green. The bullets below are the state recorded at BLOCKED, before that merge. Next candidate: ADR-0181 decision 8 item 1 (unchanged).
 - **BLOCKED, not merged** (superseded by the line above).
   - The code is done and the reviewer approved it.
   - CI is not green, and the cause is the `main` failure under Follow-ups, not this change. A-13 requires CI green to merge.
