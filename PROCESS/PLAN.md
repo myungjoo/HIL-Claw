@@ -111,3 +111,5 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0284 follow-up — ADR-0089 결정 2 아래 POSIX `env` 키 거부를 S4 `settings_refused`로 확인하고 ADR-0094 결정 3의 열린 항목을 좁히는 문서 task, ADR 문구 정리.
 - T-0284 follow-up — `tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed`가 Windows 로컬에서 stderr의 `\r\n`으로 실패(executor 관찰, CI는 통과, clean main에서 재확인 안 함), 개발 머신 테스트 정리.
 - T-0286 follow-up — `local_run.run`의 이름 붙은 사전 오류 기록(OD-18 하위 질문 18 (ma), ADR-0088 계열)에 `env`의 `TypeError`를 포함하는 문서 정리.
+- T-0519 planning — bf16 계약의 카탈로그 항목과 그것을 받는 `## Applies to` 형식(OD-22, ADR-0177 Boundaries): T-0519 뒤 bf16 run의 라운드 ≥ 1은 빈 `techniques`로 돌아 기법 지침 없이 코더 판단에 맡겨짐; P2-15는 reference 일치를 확인하고 속도를 요구하지 않아 그 확인에 필요하지 않음.
+- T-0519 planning — 검증이 instance 밖의 shape도 뽑을지(OD-16 하위 질문 ①, ADR-0189 Boundaries): every-shape 의무를 어긴 커널은 P2-15의 `run failed`나 모델 수준 비교에서 드러나 그 확인에 필요하지 않음.
