@@ -151,7 +151,12 @@ def test_kinds_are_the_six_of_adr_0181():
         "rope",
         "sdpa_kv_cache",
     )
-    assert bf16_timing.__all__ == ["KINDS", "program_arguments", "run_bf16_timing"]
+    assert bf16_timing.__all__ == [
+        "KINDS",
+        "program_arguments",
+        "rope_rows",
+        "run_bf16_timing",
+    ]
 
 
 @pytest.mark.parametrize("kind", KINDS)
@@ -454,6 +459,21 @@ def test_a_start_position_the_table_cannot_have_is_refused_before_anything_start
     with pytest.raises(TimingArgumentError, match="^start: must be"):
         timed(executable, "rope", dims=(1, 1, 2**52), seed=1)
     assert not stand_in.started
+
+
+@pytest.mark.parametrize(
+    ("dims", "seed", "start"),
+    [((3, 2, 6), 11, 0), ((1, 2, 4), 10, 127), ((1, 2, 4), 11, 2047)],
+)
+def test_rope_rows_are_those_of_the_seeds_start_position(dims, seed, start):
+    rows = bf16_timing.rope_rows(dims, seed)
+    assert type(rows) is bytes
+    assert rows == bf16_rope_arrays.table_rows(dims, start=start).tobytes()
+
+
+def test_rope_rows_of_a_position_the_table_cannot_have_are_refused():
+    with pytest.raises(timing.TimingArgumentError):
+        bf16_timing.rope_rows((1, 1, 2**52), 1)
 
 
 def test_a_bad_executable_is_refused_before_the_rows_are_built(monkeypatch):

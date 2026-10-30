@@ -512,10 +512,12 @@ def test_the_entry_and_dims_follow_the_covering_entry_in_task_contract_order(
     op, kind, dims
 ):
     stated = content(op=op)
-    assert not contract_table.run_covers(op)
-    refused(stated, KIND_OP_SIGNATURE_NOT_COVERED, contract_table.run_covers)
-    admitted = admit(stated, covers=contract_table.covers)
+    assert contract_table.run_covers(op)
+    admitted = admit(stated, covers=contract_table.run_covers)
     assert admitted.entry is contract_table.entry(op)
+    fp16 = {**op, "dtype": "fp16"}
+    assert not contract_table.run_covers(fp16)
+    refused(content(op=fp16), KIND_OP_SIGNATURE_NOT_COVERED, contract_table.run_covers)
     assert admitted.entry.contract.DTYPE == op["dtype"]
     assert admitted.entry.contract.KIND == kind
     assert admitted.dims == dims

@@ -1,4 +1,4 @@
-"""The ``cpu_standin`` operation of ``sim.run`` and ``board.run`` in three containers (ADR-0144 slice (4), the run tools' part; ADR-0170).
+"""The ``cpu_standin`` operation of ``sim.run`` and ``board.run`` in three containers (ADR-0144 slice (4), the run tools' part; ADR-0170; ADR-0181).
 
 ``ARCHITECTURE/decisions/ADR-0170-od18-standin-run-operation.md`` decides
 that the compiler's log of the waiter's build is not kept and how the keeper
@@ -15,13 +15,21 @@ decision 3 and decision 3 it:
 1. checks its own arguments and computes the eight arguments of the timing
    driver (:func:`hilclaw.harness.timing.driver_arguments`) and the time
    limit of the timing process
-   (:func:`hilclaw.standin_settings.timing_process_time_limit_s`);
+   (:func:`hilclaw.standin_settings.timing_process_time_limit_s`); for a bf16
+   run (ADR-0181 decisions 2 and 6) the arguments of the kind's program
+   (:func:`hilclaw.harness.bf16_timing.program_arguments`), the limit
+   (:func:`hilclaw.standin_settings.bf16_timing_process_time_limit_s`) and,
+   for ``rope``, the rows of the seed's start position
+   (:func:`hilclaw.harness.bf16_timing.rope_rows`);
 2. reads the image (C1, C2) and makes the build directory of the call (S3),
    as :mod:`hilclaw.standin_check` does;
 3. copies the kernel files and :data:`hilclaw.harness.timing_build.DRIVER_SOURCE`
    (:func:`hilclaw.standin_copies.place_copies`), then :data:`WAITER_SOURCE`
    beside the driver (:func:`hilclaw.standin_copies.place_harness_copy`;
-   C12, C13, C15);
+   C12, C13, C15); for a bf16 run the kind's program of
+   :data:`hilclaw.harness.bf16_timing_build.PROGRAM_SOURCES` takes the driver's
+   place, and :data:`BF16_HEADERS` are copied beside it before the waiter and
+   handed to the compiler as no source (ADR-0181 decision 3);
 4. runs the timing build in one container: :data:`hilclaw.standin_check.COMPILER`
    with :data:`hilclaw.standin_settings.FLAGS`, the driver source first and
    the kernel's compiled set in the reader's order, the trailing flags and
@@ -39,7 +47,8 @@ decision 3 and decision 3 it:
    the timing executable's path and the driver's eight arguments, within the
    process limit, reads it with
    :func:`hilclaw.standin_answer.read_timing_process` and returns the pair
-   of the report and the figure, or a value of ``condition``;
+   of the report and the figure, or a value of ``condition``; the rows of a
+   ``rope`` run are its standard input, and no other container has one;
 7. removes the build directory before it returns or raises, where every
    container of the call allows it (ADR-0168 decision 5).
 
@@ -74,16 +83,19 @@ Choices that are this module's own and no rule of a record:
   own, which shows no path.
 * Before anything is read or made, :class:`TypeError` is raised for timing
   parameters that are not exactly a
-  :class:`hilclaw.run_parameters.TimingParameters` or a keeper that is not
-  exactly a :class:`hilclaw.build_log.LogKeeper`, and what
-  :func:`hilclaw.harness.timing.driver_arguments` and the process limit
-  raise for their values passes (C16: no row; the tool function admits these
-  values before the call).
+  :class:`hilclaw.run_parameters.TimingParameters` or a
+  :class:`hilclaw.run_parameters.Bf16TimingParameters` or a keeper that is not
+  exactly a :class:`hilclaw.build_log.LogKeeper`, :class:`ValueError` for a
+  ``dtype`` that is not ``bf16``, and what the functions of step 1 raise for
+  their values passes (C16: no row; the tool function admits these values
+  before the call).
 
 It hands the compiler nothing derived from the seed (ADR-0108 decision 4):
-the seed is only among the timing process's arguments. It imports no NumPy
-(the judging is the tool function's, ADR-0061 decision 3), reads no
-environment variable of its own (the image's is read by
+the seed is only among the timing process's arguments, and the ``rope`` rows
+derived from it reach only the timing process. It judges nothing (the judging
+is the tool function's, ADR-0061 decision 3; the harness modules it reaches for
+the ``rope`` rows and through :mod:`hilclaw.standin_check` import NumPy), reads
+no environment variable of its own (the image's is read by
 :func:`hilclaw.standin_image.read_image`) and keeps nothing between calls.
 It is the ``sim.run`` and ``board.run`` operation of the ``cpu_standin``
 entry of :func:`hilclaw.check_definition.default_table`.
@@ -93,6 +105,7 @@ from time import monotonic
 
 from hilclaw import (
     build_log,
+    check_parameters,
     run_failure,
     run_parameters,
     standin_answer,
@@ -101,10 +114,16 @@ from hilclaw import (
     standin_settings,
     standin_waiter_line,
 )
-from hilclaw.harness import timing, timing_build
+from hilclaw.harness import bf16_timing, bf16_timing_build, timing, timing_build
 
 #: The waiter's source in the installation (ADR-0145 decision 3).
 WAITER_SOURCE = timing_build.DRIVER_SOURCE.with_name("timing_waiter.c")
+
+#: What a bf16 timing program includes, copied beside it (ADR-0181 decision 3).
+BF16_HEADERS = (
+    bf16_timing_build.PROGRAM_SOURCES["gemm"].with_name("bf16_timing.h"),
+    standin_check.BF16_HEADER,
+)
 
 TIMING_EXECUTABLE_NAME = "timing"
 WAITER_EXECUTABLE_NAME = "waiter"
@@ -127,10 +146,9 @@ def operation(request, hw_profile, parameters, output_path, keeper, /):
     """Carry out one timing run at ``cpu_standin`` in three containers; return the report and figure or a condition.
 
     ``request`` and ``hw_profile`` are not read. ``parameters`` are the
-    timing parameters, exactly a :class:`hilclaw.run_parameters.TimingParameters`;
-    a :class:`hilclaw.run_parameters.Bf16TimingParameters` is refused with
-    :class:`TypeError` before anything is started, as every other type is
-    (the operation of a bf16 run is ADR-0181 decision 8 item 4);
+    timing parameters, exactly a :class:`hilclaw.run_parameters.TimingParameters`
+    or a :class:`hilclaw.run_parameters.Bf16TimingParameters`; every other type
+    is refused with :class:`TypeError` before anything is started;
     ``output_path`` is handed to :func:`hilclaw.standin_copies.place_copies`
     as it is; ``keeper`` is the call's :class:`hilclaw.build_log.LogKeeper`,
     handed at most the timing build's log (ADR-0170 decisions 2 and 3).
@@ -145,33 +163,54 @@ def operation(request, hw_profile, parameters, output_path, keeper, /):
     row places and every request to end. See the module docstring for the
     order and the module's own choices.
     """
-    arguments, process_limit = _checked(parameters, keeper)
+    checked = _checked(parameters, keeper)
     image = standin_check.container_image()
     build_dir = standin_check.make_build_dir(BUILD_DIR_PREFIX)
     return standin_check.carry_out(
         build_dir,
         lambda outcomes: _carry_out(
-            image, build_dir, output_path, keeper, arguments, process_limit, outcomes
+            image, build_dir, output_path, keeper, checked, outcomes
         ),
     )
 
 
 def _checked(parameters, keeper):
-    if type(parameters) is not run_parameters.TimingParameters:
+    if type(parameters) not in (
+        run_parameters.TimingParameters,
+        run_parameters.Bf16TimingParameters,
+    ):
         raise TypeError(
-            f"parameters must be TimingParameters, not {type(parameters).__name__}"
+            "parameters must be TimingParameters or Bf16TimingParameters, "
+            f"not {type(parameters).__name__}"
         )
     if type(keeper) is not build_log.LogKeeper:
         raise TypeError(f"keeper must be a LogKeeper, not {type(keeper).__name__}")
+    if type(parameters) is run_parameters.Bf16TimingParameters:
+        return _bf16_checked(parameters)
     m, k, n, n_max, sample_form, seed = parameters
     arguments = timing.driver_arguments(
         m=m, k=k, n=n, n_max=n_max, sample_form=sample_form, seed=seed
     )
-    return arguments, standin_settings.timing_process_time_limit_s(m, k, n, n_max)
+    limit = standin_settings.timing_process_time_limit_s(m, k, n, n_max)
+    return (timing_build.DRIVER_SOURCE, ()), arguments, limit, None
 
 
-def _carry_out(image, build_dir, output_path, keeper, arguments, limit, outcomes):
-    copies, waiter = _placed_copies(output_path, build_dir)
+def _bf16_checked(parameters):
+    kind, dtype, dims, n_max, sample_form, seed = parameters
+    if type(dtype) is not str or dtype != check_parameters.BF16:
+        raise ValueError(f"dtype must be {check_parameters.BF16!r}")
+    arguments = bf16_timing.program_arguments(
+        kind, dims, n_max=n_max, sample_form=sample_form, seed=seed
+    )
+    limit = standin_settings.bf16_timing_process_time_limit_s(kind, dims, n_max)
+    rows = bf16_timing.rope_rows(dims, seed) if kind == "rope" else None
+    program = bf16_timing_build.PROGRAM_SOURCES[kind]
+    return (program, BF16_HEADERS), arguments, limit, rows
+
+
+def _carry_out(image, build_dir, output_path, keeper, checked, outcomes):
+    (program, headers), arguments, limit, rows = checked
+    copies, waiter = _placed_copies(output_path, build_dir, program, headers)
     built = _build(image, build_dir, copies, waiter, keeper, outcomes)
     if built is not standin_answer.GO_ON:
         return built
@@ -183,6 +222,7 @@ def _carry_out(image, build_dir, output_path, keeper, arguments, limit, outcomes
         _WAITER_EXECUTABLE,
         (_TIMING_EXECUTABLE, *arguments),
         limit,
+        stdin_data=rows,
     )
     if type(ran) is str:
         return ran
@@ -194,14 +234,14 @@ def _carry_out(image, build_dir, output_path, keeper, arguments, limit, outcomes
     raise RuntimeError(_NOT_PLACED)
 
 
-def _placed_copies(output_path, build_dir):
+def _placed_copies(output_path, build_dir, program, headers):
     try:
-        copies = standin_copies.place_copies(
-            output_path, timing_build.DRIVER_SOURCE, build_dir
-        )
+        copies = standin_copies.place_copies(output_path, program, build_dir)
         answer = standin_answer.read_copies(copies)
         if answer is not standin_answer.GO_ON:
             raise standin_check.Answered(answer)
+        for header in headers:
+            standin_copies.place_harness_copy(header, build_dir)
         waiter = standin_copies.place_harness_copy(WAITER_SOURCE, build_dir)
     except standin_check.Answered:
         raise

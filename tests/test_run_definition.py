@@ -4,9 +4,11 @@ import inspect
 import io
 import json
 import math
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -39,7 +41,7 @@ from hilclaw import (
     swiglu_bf16_contract,
     tools,
 )
-from hilclaw.harness import seed_source
+from hilclaw.harness import bf16_timing_build, seed_source
 from hilclaw.harness.measurement import N_MIN
 from hilclaw.journal import EMPTY
 from hilclaw.run_definition import (
@@ -49,6 +51,7 @@ from hilclaw.run_definition import (
     check,
     input_schema,
 )
+from hilclaw.run_parameters import Bf16TimingParameters
 
 MARKER = "zq7-marker-zq7"
 UNNAMED_LIMIT = 160
@@ -1082,10 +1085,8 @@ BF16_RECORDS = (
 BF16_IDS = [record["kind"] for record in BF16_RECORDS]
 
 
-@pytest.mark.parametrize("tool", ["sim.run", "board.run"])
-@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
-def test_a_bf16_record_is_not_covered_by_the_run_tools(tmp_path, parties, tool, record):
-    root = a_run(tmp_path / "data")
+def a_run_of(root, record, accelerator=mock_backend.NAME):
+    a_run(root, accelerator=accelerator)
     path = root / "runs" / RUN / "instance.json"
     document = json.loads(path.read_text(encoding="utf-8"))
     document["op_signature"] = {
@@ -1093,7 +1094,93 @@ def test_a_bf16_record_is_not_covered_by_the_run_tools(tmp_path, parties, tool, 
         "record": record,
     }
     path.write_text(json.dumps(document), encoding="utf-8")
+    return root
+
+
+def bf16_result(record):
+    key = {name: record[name] for name in ("kind", "dtype", "layout")}
+    return {**CONVERGED, "contract_key": key, "shape": record["shape"]}
+
+
+@pytest.mark.parametrize("tool", ["sim.run", "board.run"])
+@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
+def test_a_bf16_record_is_served_by_the_run_tools_on_the_mock(
+    tmp_path, parties, tool, record
+):
+    root = a_run_of(tmp_path / "data", record)
+    registry = tools.default_registry(lambda: root)
+    expected = bf16_result(record)
+    assert tools.call(registry, tool, dict(CALL)) == expected
+    assert step_lines(root) == timed(tool, expected)
+    assert type(parties["script"].calls[0][3]) is Bf16TimingParameters
+    assert counts(parties) == (1, 1, 1)
+
+
+@pytest.mark.parametrize("tool", ["sim.run", "board.run"])
+@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
+def test_a_record_of_another_dtype_is_not_covered_by_the_run_tools(
+    tmp_path, parties, tool, record
+):
+    root = a_run_of(tmp_path / "data", {**record, "dtype": "fp16"})
     registry = tools.default_registry(lambda: root)
     refused_call(registry, tool, dict(CALL), "op_signature_not_covered")
     assert no_log(root)
     assert counts(parties) == (0, 1, 0)
+
+
+STANDIN_REPORT = (
+    b"resolution_ns 1\n" + b"interval_ns 1000000\n" * N_MIN + b"stop converged\n"
+)
+
+
+def standin_client(calls):
+    def client(command, **options):
+        command = list(command)
+        calls.append((command, options))
+        if "clang" in command:
+            option = command[command.index("--mount") + 1]
+            fields = dict(field.split("=", 1) for field in option.split(","))
+            name = command[-1].rsplit("/", 1)[-1]
+            Path(fields["source"], name).write_bytes(b"\x7fELF")
+            stdout = b""
+        else:
+            stdout = STANDIN_REPORT + b"\nwaiter_max_rss_kib 300\n"
+        return local_run.RunResult(
+            returncode=0,
+            timed_out=False,
+            stdout=stdout,
+            stderr=b"",
+            command=tuple(command),
+            duration_s=0.5,
+            max_rss=None,
+        )
+
+    return client
+
+
+@pytest.mark.parametrize("tool", ["sim.run", "board.run"])
+@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
+def test_a_bf16_record_is_served_by_the_run_tools_at_cpu_standin(
+    tmp_path, monkeypatch, tool, record
+):
+    calls = []
+    scratch = tmp_path / "tmp"
+    scratch.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+    monkeypatch.setenv(standin_image.ENV_IMAGE, "registry.example/hilclaw-clang:1")
+    monkeypatch.setattr(os, "getuid", lambda: 1234, raising=False)
+    monkeypatch.setattr(os, "getgid", lambda: 567, raising=False)
+    monkeypatch.setattr(local_run, "run", standin_client(calls))
+    root = a_run_of(tmp_path / "data", record, accelerator="cpu_standin")
+    output = layout.attempt_artefact(root, RUN, ROUND, 2, 1, "output")
+    output.mkdir(parents=True)
+    (output / "kernel.c").write_bytes(b"void kernel(void) {}\n")
+    registry = tools.default_registry(lambda: root)
+    expected = {**bf16_result(record), "memory_bytes": 300 * 1024}
+    assert tools.call(registry, tool, dict(CALL)) == expected
+    assert step_lines(root) == timed(tool, expected)
+    assert len(calls) == 3
+    program = bf16_timing_build.PROGRAM_SOURCES[record["kind"]].name
+    assert any(argument.endswith(program) for argument in calls[0][0])
+    assert ("stdin_data" in calls[2][1]) == (record["kind"] == "rope")
+    assert os.listdir(scratch) == []

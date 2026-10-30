@@ -14,8 +14,9 @@ rule. A timing program of :data:`KINDS`, built by
 
 A ``rope`` run also takes the ``freqs_cis`` rows on standard input, at the
 start position of ADR-0180 decision 1 for its seed; no other kind has standard
-input. Building them is what needs NumPy, so the imports that do are made when
-a ``rope`` run starts and importing this module imports no NumPy.
+input, which :func:`rope_rows` builds. Building them is what needs NumPy, so the
+imports that do are made when they are built and importing this module imports
+no NumPy.
 
 It builds nothing, gives no default to the sample form, the seed or the time
 limit, and registers no kind with a run tool (ADR-0181 decision 8).
@@ -41,7 +42,7 @@ _DIMENSIONS = {
 
 KINDS = tuple(_DIMENSIONS)
 
-__all__ = ["KINDS", "program_arguments", "run_bf16_timing"]
+__all__ = ["KINDS", "program_arguments", "rope_rows", "run_bf16_timing"]
 
 
 def program_arguments(kind, dims, *, n_max, sample_form, seed):
@@ -125,7 +126,7 @@ def run_bf16_timing(
         prefix = tuple(executable)
         if not prefix:
             raise ValueError("executable command prefix is empty")
-    stdin_data = _rope_rows(dims, seed) if kind == "rope" else None
+    stdin_data = rope_rows(dims, seed) if kind == "rope" else None
     run = local_run.run(
         (*prefix, *arguments),
         timeout_s=timeout_s,
@@ -144,7 +145,16 @@ def run_bf16_timing(
     return TimingResult(*judgement, run, memory)
 
 
-def _rope_rows(dims, seed):
+def rope_rows(dims, seed):
+    """Return the ``freqs_cis`` rows of a ``rope`` timing run as ``bytes``.
+
+    The rows of ``dims`` at
+    :func:`hilclaw.harness.bf16_rope_verification.start_position` for ``seed``
+    (ADR-0181 decision 2). A position whose rows the table cannot have raises
+    :class:`hilclaw.harness.timing.TimingArgumentError`, and rows that cannot
+    be allocated raise :class:`MemoryError`. The caller has checked ``dims``
+    and ``seed`` with :func:`program_arguments`.
+    """
     from hilclaw.harness import bf16_rope_arrays, bf16_rope_verification
     from hilclaw.harness.verification_arrays import VerificationArgumentError
 

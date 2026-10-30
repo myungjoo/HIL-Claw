@@ -17,7 +17,13 @@ from hilclaw import (
     standin_settings,
     tools,
 )
-from hilclaw.harness import timing, timing_build
+from hilclaw.harness import (
+    bf16_rope_verification,
+    bf16_timing,
+    bf16_timing_build,
+    timing,
+    timing_build,
+)
 from hilclaw.run_parameters import Bf16TimingParameters, TimingParameters
 from hilclaw.standin_run import operation
 
@@ -778,17 +784,6 @@ def test_c16_own_arguments_pass(client, output, keeper, temporary, parameters, e
     assert build_dirs(temporary) == []
 
 
-def test_c16_bf16_parameters_are_refused_before_anything_starts(
-    client, output, keeper, temporary
-):
-    parameters = Bf16TimingParameters("rmsnorm", "bf16", (2, 7), 40, "interval", SEED)
-    with pytest.raises(TypeError):
-        call(output, keeper, parameters)
-    assert client.calls == []
-    assert build_dirs(temporary) == []
-    assert keeper.held() is None
-
-
 def test_c16_keeper_that_is_no_log_keeper(client, output, temporary):
     with pytest.raises(TypeError):
         call(output, object())
@@ -872,3 +867,294 @@ def test_a_second_call_makes_a_new_build_directory(client, output, temporary):
     first, _, _, second, _, _ = client.runs()
     assert mount_source(first) != mount_source(second)
     assert build_dirs(temporary) == []
+
+
+# A bf16 run (ADR-0181 decisions 2, 3, 5 and 6)
+
+BF16_DIMS = {
+    "gemm": (2, 3, 4),
+    "rmsnorm": (2, 3),
+    "elementwise_add": (2, 3),
+    "swiglu": (2, 3),
+    "rope": (2, 3, 4),
+    "sdpa_kv_cache": (2, 5, 12, 3, 8),
+}
+BF16_KINDS = tuple(BF16_DIMS)
+
+
+def bf16(
+    kind="rmsnorm", dims=None, *, dtype="bf16", n_max=40, form="interval", seed=SEED
+):
+    dims = BF16_DIMS[kind] if dims is None else dims
+    return Bf16TimingParameters(kind, dtype, dims, n_max, form, seed)
+
+
+def test_the_headers_are_those_the_programs_include():
+    assert [path.name for path in standin_run.BF16_HEADERS] == [
+        "bf16_timing.h",
+        "bf16_verification.h",
+    ]
+    for path in standin_run.BF16_HEADERS:
+        assert path.is_file()
+    programs = bf16_timing_build.PROGRAM_SOURCES.values()
+    assert {path.parent for path in programs} == {standin_run.BF16_HEADERS[0].parent}
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+@pytest.mark.parametrize("kind", BF16_KINDS)
+def test_a_bf16_call_builds_twice_and_runs_under_the_waiter(
+    client, output, keeper, temporary, kind, tool
+):
+    seen = []
+
+    def look(command):
+        seen.append(sorted(os.listdir(mount_source(command))))
+        return timing_built()(command)
+
+    client.script = [look, waiter_built(), waited()]
+    parameters = bf16(kind)
+    answer = call(output, keeper, parameters, tool)
+    assert answer == (REPORT, 300 * 1024)
+    assert type(answer) is tuple
+    assert keeper.held() == timing_log()
+    assert build_dirs(temporary) == []
+
+    source = bf16_timing_build.PROGRAM_SOURCES[kind].name
+    assert seen == [
+        sorted(
+            [
+                source,
+                "bf16_timing.h",
+                "bf16_verification.h",
+                "kernel",
+                "timing_waiter.c",
+            ]
+        )
+    ]
+    timing_build_command, waiter_build, process = client.runs()
+    flags = list(standin_settings.FLAGS)
+    trailing = list(standin_settings.TRAILING_FLAGS)
+    assert program(timing_build_command) == [
+        "clang",
+        *flags,
+        f"{INSIDE}/{source}",
+        f"{INSIDE}/kernel/a_util.c",
+        f"{INSIDE}/kernel/gemm.c",
+        *trailing,
+        "-o",
+        f"{INSIDE}/timing",
+    ]
+    assert program(waiter_build) == [
+        "clang",
+        *flags,
+        f"{INSIDE}/timing_waiter.c",
+        "-o",
+        f"{INSIDE}/waiter",
+    ]
+    arguments = bf16_timing.program_arguments(
+        kind, BF16_DIMS[kind], n_max=40, sample_form="interval", seed=SEED
+    )
+    assert program(process) == [f"{INSIDE}/waiter", f"{INSIDE}/timing", *arguments]
+    assert str(SEED) in arguments
+    for command in (timing_build_command, waiter_build):
+        assert str(SEED) not in " ".join(command)
+
+    options = client.run_options()
+    assert options[0]["timeout_s"] == standin_settings.BUILD_TIME_LIMIT_S
+    assert 0 < options[1]["timeout_s"] <= standin_settings.BUILD_TIME_LIMIT_S
+    assert options[2]["timeout_s"] == (
+        standin_settings.bf16_timing_process_time_limit_s(kind, BF16_DIMS[kind], 40)
+    )
+
+
+@pytest.mark.parametrize(
+    ("dims", "seed", "start"),
+    [
+        ((2, 3, 4), SEED, 0),
+        ((3, 2, 6), 11, 0),
+        ((1, 2, 4), 10, 127),
+        ((1, 2, 4), 11, 2047),
+    ],
+)
+def test_rope_hands_the_rows_of_its_start_position_to_the_process_alone(
+    client, output, keeper, dims, seed, start
+):
+    client.script = happy()
+    assert call(output, keeper, bf16("rope", dims, seed=seed)) == (REPORT, 300 * 1024)
+    assert bf16_rope_verification.start_position(dims, seed=seed) == start
+    first, second, process = client.run_options()
+    assert "stdin_data" not in first
+    assert "stdin_data" not in second
+    assert process["stdin_data"] == bf16_timing.rope_rows(dims, seed)
+    assert len(process["stdin_data"]) == 4 * dims[0] * dims[2]
+    builds, ran = client.runs()[:2], client.runs()[2]
+    assert all("--interactive" not in command for command in builds)
+    assert "--interactive" in ran
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [PARAMETERS, *(bf16(kind) for kind in BF16_KINDS if kind != "rope")],
+)
+def test_no_other_run_hands_a_container_any_input(client, output, keeper, parameters):
+    client.script = happy()
+    call(output, keeper, parameters)
+    assert all("stdin_data" not in options for options in client.run_options())
+    assert all("--interactive" not in command for command in client.runs())
+
+
+@pytest.mark.parametrize(
+    ("parameters", "error"),
+    [
+        (bf16(dtype="fp32"), ValueError),
+        (bf16(dtype=None), ValueError),
+        (bf16("conv", (2, 3)), timing.TimingArgumentError),
+        (bf16(1, (2, 3)), timing.TimingArgumentError),
+        (bf16("gemm", (2, 3)), timing.TimingArgumentError),
+        (bf16("sdpa_kv_cache", (2, 5, 12, 3)), timing.TimingArgumentError),
+        (bf16("rmsnorm", [2, 3]), timing.TimingArgumentError),
+        (bf16("rmsnorm", (0, 3)), timing.TimingArgumentError),
+        (bf16("rmsnorm", (True, 3)), timing.TimingArgumentError),
+        (bf16("rope", (2, 3, 5)), timing.TimingArgumentError),
+        (bf16("rope", (1, 1, 2**52), seed=1), timing.TimingArgumentError),
+        (bf16("sdpa_kv_cache", (5, 2, 12, 3, 8)), timing.TimingArgumentError),
+        (bf16("sdpa_kv_cache", (2, 5, 12, 5, 8)), timing.TimingArgumentError),
+        (bf16(n_max=1), timing.TimingArgumentError),
+        (bf16(n_max=True), timing.TimingArgumentError),
+        (bf16(form="median"), timing.TimingArgumentError),
+        (bf16(seed=-1), timing.TimingArgumentError),
+        (bf16(seed=2**64), timing.TimingArgumentError),
+        (tuple(bf16()), TypeError),
+        (None, TypeError),
+    ],
+)
+def test_c16_a_bf16_call_refused_starts_nothing(
+    monkeypatch, client, output, keeper, temporary, parameters, error
+):
+    monkeypatch.delenv(standin_image.ENV_IMAGE)
+    with pytest.raises(error):
+        call(output, keeper, parameters)
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+    assert keeper.held() is None
+
+
+def test_c16_a_keeper_that_is_no_log_keeper_at_a_bf16_call(client, output, temporary):
+    with pytest.raises(TypeError):
+        call(output, object(), bf16())
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+def test_the_limit_refuses_what_the_arguments_do_not(
+    monkeypatch, client, output, keeper, temporary
+):
+    def limit(*args):
+        raise ValueError("refused")
+
+    monkeypatch.setattr(standin_settings, "bf16_timing_process_time_limit_s", limit)
+    with pytest.raises(ValueError, match="refused"):
+        call(output, keeper, bf16())
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+def test_rope_rows_are_built_before_anything_is_started(
+    monkeypatch, client, output, keeper, temporary
+):
+    def rows(*args):
+        raise MemoryError
+
+    monkeypatch.setattr(bf16_timing, "rope_rows", rows)
+    with pytest.raises(MemoryError):
+        call(output, keeper, bf16("rope"))
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+@pytest.mark.parametrize("kind", ["rmsnorm", "rope"])
+@pytest.mark.parametrize(
+    ("script", "answer", "log"),
+    [
+        ([timed_out(), None], "build_time_limit", "partial output"),
+        ([ended(1, stderr=b"gemm.c: error")], "build_exit_status", "gemm.c: error"),
+        ([timing_built(), ended(1, stderr=WAITER_STDERR)], "build_exit_status", None),
+        ([timing_built(), timed_out(), None], "build_time_limit", None),
+        ([timing_built(), waiter_built(), timed_out(), None], "time_limit", None),
+        ([timing_built(), waiter_built(), waited(status=3)], "exit_status", None),
+        ([timing_built(), waiter_built(), ended(5)], "exit_status", None),
+    ],
+)
+def test_a_failure_answer_at_a_bf16_call(
+    client, output, keeper, temporary, kind, script, answer, log
+):
+    client.script = list(script)
+    assert call(output, keeper, bf16(kind)) == answer
+    assert keeper.held() == (timing_log() if log is None else log)
+    assert build_dirs(temporary) == []
+
+
+@pytest.mark.parametrize(
+    ("script", "kind", "log"),
+    [
+        (
+            [timing_built(executable=False)],
+            run_failure.KIND_BUILD_OUTPUT_MISSING,
+            True,
+        ),
+        (
+            [timing_built(), waiter_built(executable=False)],
+            run_failure.KIND_BUILD_OUTPUT_MISSING,
+            True,
+        ),
+        ([ended(126)], run_failure.KIND_COMPILER_UNAVAILABLE, False),
+    ],
+)
+def test_a_tool_failure_at_a_bf16_call(
+    client, output, keeper, temporary, script, kind, log
+):
+    client.script = list(script)
+    with pytest.raises(tools.ToolFailure) as raised:
+        call(output, keeper, bf16())
+    assert raised.value.kind == kind
+    assert (keeper.held() == timing_log()) == log
+    assert build_dirs(temporary) == []
+
+
+@pytest.mark.parametrize("index", [0, 1])
+def test_c12_a_bf16_header_missing(
+    monkeypatch, client, output, keeper, tmp_path, temporary, index
+):
+    headers = list(standin_run.BF16_HEADERS)
+    headers[index] = tmp_path / "gone.h"
+    monkeypatch.setattr(standin_run, "BF16_HEADERS", tuple(headers))
+    with pytest.raises(tools.ToolFailure) as raised:
+        call(output, keeper, bf16())
+    assert raised.value.kind == run_failure.KIND_BUILD_INPUT_MISSING
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+def test_c15_no_kernel_source_at_a_bf16_call_copies_no_header(
+    monkeypatch, client, tmp_path, keeper, temporary
+):
+    copied = []
+    monkeypatch.setattr(
+        standin_copies, "place_harness_copy", lambda *args: copied.append(args)
+    )
+    missing = tmp_path / "data" / "attempts" / "02" / "output"
+    with pytest.raises(tools.ToolFailure) as raised:
+        call(missing, keeper, bf16())
+    assert raised.value.kind == run_failure.KIND_NO_KERNEL_SOURCE
+    assert copied == []
+    assert build_dirs(temporary) == []
+
+
+def test_a_bf16_call_is_answered_by_ask(client, output, keeper, tmp_path):
+    client.script = happy()
+    log_path = tmp_path / "build-log.txt"
+    answer = run_operation.ask(
+        operation, {}, {}, bf16("rope"), output, keeper, log_path=log_path
+    )
+    assert answer == run_operation.Reported(REPORT, 300 * 1024)
+    assert log_path.read_bytes() == BUILD_STDOUT + BUILD_STDERR

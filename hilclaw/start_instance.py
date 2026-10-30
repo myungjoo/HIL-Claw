@@ -11,7 +11,8 @@ given id (ADR-0111 decision 2), :func:`hilclaw.run_id.new` (ADR-0027),
 :data:`hilclaw.standin_profile.ACCELERATOR` and its ``covers`` to
 :func:`hilclaw.contract_table.start_covers`, which admits a contract only when
 every tool round 0 calls admits it - today the fp32 ``gemm`` contract of
-ADR-0008 alone (ADR-0177 decision 2).
+ADR-0008 and the six bf16 contracts (ADR-0177 decision 2; ADR-0181 decision 8
+item 4).
 
 Conventions of this module, not rules of a record:
 

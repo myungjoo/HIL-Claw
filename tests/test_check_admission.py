@@ -704,8 +704,11 @@ def test_a_rope_record_is_covered_by_the_registered_predicate():
     stated = content(op=ROPE_RECORD)
     assert contract_table.covers(ROPE_RECORD)
     assert contract_table.check_covers(ROPE_RECORD)
-    assert not contract_table.run_covers(ROPE_RECORD)
-    assert not contract_table.start_covers(ROPE_RECORD)
+    assert contract_table.run_covers(ROPE_RECORD)
+    assert contract_table.start_covers(ROPE_RECORD)
+    fp16 = {**ROPE_RECORD, "dtype": "fp16"}
+    assert not contract_table.run_covers(fp16)
+    assert not contract_table.start_covers(fp16)
     admitted = admit(stated, covers=contract_table.check_covers)
     assert admitted == ("rope", "bf16", (2, 3, 4), TEST_DRAWS, 0.25, 3.0)
 

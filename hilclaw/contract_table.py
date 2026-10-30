@@ -57,12 +57,12 @@ Entry = collections.namedtuple("Entry", ("contract", "checked", "timed"))
 
 _ENTRIES = (
     Entry(gemm_contract, checked=True, timed=True),
-    Entry(gemm_bf16_contract, checked=True, timed=False),
-    Entry(rmsnorm_bf16_contract, checked=True, timed=False),
-    Entry(elementwise_add_bf16_contract, checked=True, timed=False),
-    Entry(swiglu_bf16_contract, checked=True, timed=False),
-    Entry(rope_bf16_contract, checked=True, timed=False),
-    Entry(sdpa_kv_cache_bf16_contract, checked=True, timed=False),
+    Entry(gemm_bf16_contract, checked=True, timed=True),
+    Entry(rmsnorm_bf16_contract, checked=True, timed=True),
+    Entry(elementwise_add_bf16_contract, checked=True, timed=True),
+    Entry(swiglu_bf16_contract, checked=True, timed=True),
+    Entry(rope_bf16_contract, checked=True, timed=True),
+    Entry(sdpa_kv_cache_bf16_contract, checked=True, timed=True),
 )
 
 #: The table: ``(kind, dtype, layout, language)`` to :class:`Entry`, in the order of ADR-0177 decision 1.
