@@ -62,7 +62,7 @@
 DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 되돌리지 않은 일을 한 줄씩 적는다(근거 task·ADR 또는 follow-up의 출처, 무엇). 줄은 체크박스가 아니며 phase 전환 조건에 들지 않는다. 줄을 더하는 것은 드라이버 상태 커밋이다(DRIVER §2). P2-14 체크 뒤의 줄별 처리와 줄 삭제, status를 바꾸는 주체, 결과 없이 닫는 권한은 HQ-0080(오너 2026-10-30)이 그 승인 목록의 줄에 대해 정했다(드라이버가 상태 커밋으로 적용). 여기 든 BLOCKED task는 그 HQ가 답해져도 `TODO`로 돌아가지 않는다(DRIVER §3-2; 예외는 HQ-0080 ①~③의 적용) — 답은 기록되고 그 줄을 처리할 때 쓰인다. 그 task의 열린 PR은 닫고 브랜치는 남긴다(DRIVER §3-2; 통합자 적용, D18). 그 승인 목록에 없는 줄(DRIVER §6 D26이 이름한 T-0516 follow-up 줄 제외)과 D26 뒤에 든 줄을 언제 다시 보는지는 정하지 않았다(DRIVER §6 D26).
 
 - T-0225 (HQ-0022) (HQ-0080: T-0225 closed without a result; replan on current main) — JSON 텍스트 helper 공용화, 동작 변경 없는 리팩토링.
-- T-0284 (→ T-0284) (HQ-0028, PR #179 닫음 — 브랜치 `claude/T-0284-clang-build-refuses-posix-env-keys`는 남김) — `clang_build.build`의 POSIX `env` 키 사전 거부, 입력 경화.
+- T-0284 (→ T-0284) (HQ-0028, PR #179 merged, 브랜치는 지움) — `clang_build.build`의 POSIX `env` 키 사전 거부, 입력 경화.
 - T-0286 (→ T-0286) (HQ-0029) — `local_run.run`의 `items` 없는 `env` 사전 거부, 입력 경화.
 - T-0324 follow-up — `hilclaw/standin_profile.py` 모듈 docstring의 "is bound to no tool and to no …" 문장 수정(T-0324가 land될 때에만 틀려짐), docstring 문구 정리.
 - T-0335 follow-up — ADR-0121 Consequences에 적힌 덜 정확해진 문장(ADR-0012·ADR-0032·ADR-0033·ADR-0117·ADR-0118·ADR-0119·ADR-0120)과 Requirements OD-28 행(잔여)·OpenDecisionProposals § OD-28 남음의 "round budget 계상", ADR·등록부 문구 정리.
@@ -108,3 +108,6 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0514·T-0515 follow-up — Result가 적은 덜 정확해진 문장(ADR-0065 decision 2 "exactly these six values", ADR-0177 decision 4·decision 5 item 4·Boundaries), ADR 문구 정리.
 - T-0516 follow-up — P2-15 준비: 실행기의 사용자 진입점(OD-31 ⑩, OD-18, OD-23)과 key의 best에서 binding을 얻는 방법(OD-31 ④, OD-20·OD-7·#5 A-4 — 오너 몫이 드러나면 착수 전에 HQ), 코더의 실제 커널은 `hilclaw/model_forward_container.py`로만 돌림(ADR-0182 decision 7); P2-14는 합성 가중치·스텁으로 체크되어 그 완료에 필요하지 않음.
 - T-0231 follow-up — ADR-0184 결정 2의 "the median is the figure ADR-0140's comparison rests on"이 ADR-0007 결정 7의 T(trimmed mean)와 맞지 않아 보이는 점(executor 관찰, 미확인), ADR 문구 정리.
+- T-0284 follow-up — ADR-0089 결정 2 아래 POSIX `env` 키 거부를 S4 `settings_refused`로 확인하고 ADR-0094 결정 3의 열린 항목을 좁히는 문서 task, ADR 문구 정리.
+- T-0284 follow-up — `tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed`가 Windows 로컬에서 stderr의 `
+`으로 실패(executor 관찰, CI는 통과, clean main에서 재확인 안 함), 개발 머신 테스트 정리.
