@@ -2,7 +2,7 @@
 id: T-0516
 title: Prove PLAN P2-14 with stubs — a bf16 instance of each of the six kinds runs to run_over through stub claude, and the model executor generates tokens from their attempts that match the reference
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, S0, FR-1, FR-9, FR-10, OD-31, "PLAN P2-14"]
 dependsOn: [T-0515]
@@ -99,3 +99,42 @@ Nothing joins them, and no test has yet taken a bf16 kind through the round step
 ## Follow-ups
 
 ## Result
+
+- **DONE.** PR #335 squash-merged as `b72560ac`; the branch is deleted.
+- **Review**: 1 round, Approve with no findings.
+- **Tests**:
+  - CI on `b8ddca06`: the run concluded `success`. `tests/test_bf16_end_to_end.py` ran on Linux with all 8 tests passing, not skipped (the Python 3.11 and Coverage gate logs). Each suite: 38773 passed, 50 skipped.
+  - Coverage: line TOTAL 99 % as the reviewer read it from the log. No `hilclaw/` line changed.
+  - `gh pr checks` kept showing `sh gate (shellcheck)` as `pending`, while the jobs API gave status `in_progress` and conclusion `success`, and the run as `completed` / `success`. The PR changes no shell file, so the merge treated this as a stale display.
+  - WSL (Python 3.12, clang 14): the new file plus `test_first_run_end_to_end` and `test_attempt_kernel` passed, the new file again after the last edit. The WSL copy was temporary and is removed.
+  - Native Windows: the new file skips as a module (1 skipped). The full suite was not rerun on Windows, because only test files changed.
+- **Language**: none to record. No package module changed.
+- **Files changed**: `tests/test_bf16_end_to_end.py` (new), `tests/first_run_stubs.py`, `tests/test_first_run_end_to_end.py`.
+- **Kinds and shapes**, all call shapes of the synthetic model at prompt length 3, bound with `"every"` entries so the executor's call-site check does not compare them:
+  | Kind | Shape | Call site |
+  | --- | --- | --- |
+  | `gemm` | m=3, k=8, n=12 | `gate`, prefill |
+  | `rmsnorm` | m=3, n=8 | prefill |
+  | `elementwise_add` | m=3, n=8 | prefill |
+  | `swiglu` | m=3, n=12 | prefill |
+  | `rope` | m=3, h=4, d=4 | `rope_q`, prefill |
+  | `sdpa_kv_cache` | m=1, l=4, h=4, h_kv=2, d=4 | first decode pass |
+- **Fixture values**: instance tolerance `rtol` and `atol` 1e-2, a test input only (HQ-0066 (2)). Correct kernels passed at this value on the first try. The generation's comparison uses the existing `reference.tolerance`. The negative case is a wrong `elementwise_add` kernel.
+- **Findings in `hilclaw/` and `orchestration/`**: none, so no fixes.
+- **Fixture changes (no assertion edited, so D21 has nothing to list)**:
+  - `document` gained `op` and `tolerance`, `World.install` gained `name`, and `round_paths` and `stored_round` gained `op`, all defaulting to the old values.
+  - The stub `docker` now reads its standard input for an `--interactive` container, hands it to the process and logs it as `input`.
+  - The `rope` assertion rests on that log: rows of m·d·4 bytes reach the process and timing containers in both rounds, and no input reaches a build container.
+- **Host path used by the generation test**: `model_forward_execute.execute` runs builds on the host, as criterion 4 names. ADR-0182 decision 7 keeps this path for kernels a test wrote itself. Here the stub coder places those test-written kernels in the run's attempt directory, and the test asserts they are byte-equal to its source. The reviewer called this a slightly wider reading and raised no finding. The test calls `monkeypatch.undo()` to lift the `world` guard for the host clang.
+- **Runtime acceptance items**: none new from this change. P2-15's item follows from the PLAN rule below.
+- **PLAN P2-14**: complete in the executor's reading. Each of the six kinds' instances gives a kernel, and the executor generates tokens from those kernels that match the reference, on stub `claude` and synthetic weights as P2-14 states. The checkbox is the driver's.
+  - The P2-15 RA item (source `P2-15`, evidence task T-0516) is due at the first iteration in which the planner reads PLAN after the box is checked.
+  - P2-12 stays unchecked and this task does not change that; fp16 comes after P2-14 (HQ-0065 (1)).
+- **Open for the real run**:
+  - the executor's exposure: no user-facing entry (OD-31 ⑩, OD-18, OD-23);
+  - the binding from a key's best (OD-20, OD-7, #5 A-4);
+  - a coder's real kernels must go through `hilclaw/model_forward_container.py`, never the host path (ADR-0182 decision 7);
+  - real weights and tokenizer (OD-31 ⑤·⑦, P2-15);
+  - the nightly configuration (D17 (가)).
+- **Not exercised here**: five rounds per kind, lm_head instances, fp16 and bf16 catalog entries, all out of scope for this task. The empty `techniques` choice is why no bf16 catalog entry was needed.
+- **Follow-ups**: none.
