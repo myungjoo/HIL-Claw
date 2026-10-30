@@ -876,8 +876,28 @@ def test_an_invalid_answer_to_a_bf16_call_ends_the_step_with_the_failure(tmp_pat
 
 @pytest.mark.parametrize("tool", TOOLS)
 @pytest.mark.parametrize("kind", BF16_KINDS)
-def test_a_bf16_kind_is_refused_where_the_predicate_is_run_covers(tmp_path, tool, kind):
-    root, _, _ = bf16_run(tmp_path, kind)
+def test_a_bf16_kind_is_admitted_where_the_predicate_is_run_covers(
+    tmp_path, tool, kind
+):
+    root, shape, key = bf16_run(tmp_path, kind)
+    bench = Bench(root, tool, covers=contract_table.run_covers)
+    assert bench.function(request()) == {
+        **CONVERGED,
+        "contract_key": key,
+        "shape": shape,
+    }
+    ((_, _, _, parameters, _),) = bench.asked
+    assert type(parameters) is Bf16TimingParameters
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+@pytest.mark.parametrize("kind", BF16_KINDS)
+def test_a_bf16_kind_of_another_dtype_is_refused_where_the_predicate_is_run_covers(
+    tmp_path, tool, kind
+):
+    contract, names, dims = BF16_KINDS[kind]
+    op = contract.op_signature_record(**dict(zip(names, dims, strict=True)))
+    root = a_run(tmp_path / "data", content(op={**op, "dtype": "fp16"}))
     bench = Bench(root, tool, covers=contract_table.run_covers)
     assert bench.failure().kind == run_admission.KIND_OP_SIGNATURE_NOT_COVERED
     assert bench.asked == []

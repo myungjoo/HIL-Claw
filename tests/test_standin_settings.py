@@ -20,6 +20,7 @@ from hilclaw.standin_settings import (
     FLAGS,
     PROCESS_TIME_LIMIT_CAP_S,
     TRAILING_FLAGS,
+    bf16_timing_process_time_limit_s,
     bf16_verification_process_time_limit_s,
     timing_process_time_limit_s,
     verification_process_time_limit_s,
@@ -70,6 +71,7 @@ def test_the_module_exposes_only_the_settings_and_the_time_limits():
         "BF16_CHECK_KINDS",
         "BF16_ELEMENT_WEIGHT",
         "bf16_verification_process_time_limit_s",
+        "bf16_timing_process_time_limit_s",
     }
 
 
@@ -277,6 +279,56 @@ def test_the_bf16_rule_is_exact_at_every_shape_of_the_contracts(kind, dims, draw
     assert type(value) is float
     assert value == bf16_expected(kind, dims, draws)
     assert 0 < value <= PROCESS_TIME_LIMIT_CAP_S
+
+
+@pytest.mark.parametrize(("kind", "dims"), list(bf16_shapes()))
+@pytest.mark.parametrize("n_max", [2, 10, 100])
+def test_the_bf16_timing_rule_is_the_verification_rule_with_one_more_call(
+    kind, dims, n_max
+):
+    value = bf16_timing_process_time_limit_s(kind, dims, n_max)
+    assert type(value) is float
+    assert value == bf16_verification_process_time_limit_s(kind, dims, n_max + 1)
+
+
+@pytest.mark.parametrize(
+    ("kind", "dims", "figure"),
+    [
+        ("gemm", (512, 2048, 128256), 1500.0),
+        ("gemm", (512, 2048, 8192), 978.0),
+        ("gemm", (1, 2048, 128256), 194.4),
+        ("sdpa_kv_cache", (2048, 2048, 32, 8, 64), 1500.0),
+        ("rope", (2048, 32, 64), 25.8),
+        ("swiglu", (512, 8192), 27.9),
+        ("elementwise_add", (512, 2048), 22.7),
+        ("rmsnorm", (512, 2048), 22.2),
+    ],
+)
+def test_the_bf16_timing_figures_of_adr_0181(kind, dims, figure):
+    value = bf16_timing_process_time_limit_s(kind, dims, 10)
+    assert value == pytest.approx(figure, abs=0.05)
+
+
+@pytest.mark.parametrize(
+    ("kind", "dims", "n_max", "error", "match"),
+    [
+        ("conv", (1, 1), 2, ValueError, "kind"),
+        (1, (1, 1), 2, ValueError, "kind"),
+        ("gemm", (1, 1), 2, ValueError, "dims"),
+        ("gemm", [1, 1, 1], 2, TypeError, "dims"),
+        ("gemm", (0, 1, 1), 2, ValueError, "m "),
+        ("gemm", (True, 1, 1), 2, TypeError, "m "),
+        ("gemm", (1, 1, 1), 0, ValueError, "n_max"),
+        ("gemm", (1, 1, 1), True, TypeError, "n_max"),
+        ("gemm", (1, 1, 1), 2.0, TypeError, "n_max"),
+        ("gemm", (1, 1, 1), "x", TypeError, "n_max"),
+        ("gemm", (1, 1, 1), None, TypeError, "n_max"),
+        ("conv", (1, 1), "x", ValueError, "kind"),
+    ],
+)
+def test_what_the_bf16_timing_rule_refuses(kind, dims, n_max, error, match):
+    with pytest.raises(error, match=match):
+        bf16_timing_process_time_limit_s(kind, dims, n_max)
 
 
 def test_the_bf16_figures_of_the_record():

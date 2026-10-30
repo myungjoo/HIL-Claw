@@ -35,8 +35,8 @@ renders, ahead of the tool functions, what its decisions 2 to 5 fix:
   default table of the three HW tools, to
   :func:`hilclaw.harness.seed_source.system` and to
   :func:`hilclaw.contract_table.run_covers`, which admits an entry only once
-  it is ``timed`` (ADR-0177 decision 2), so a bf16 record is refused until
-  its entry is.
+  it is ``timed`` (ADR-0177 decision 2): today the fp32 ``gemm`` entry and
+  the six bf16 entries (ADR-0181 decision 8 item 4).
 
 Choices that are this module's own and no rule of a record:
 

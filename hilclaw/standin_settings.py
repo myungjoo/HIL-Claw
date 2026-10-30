@@ -31,6 +31,9 @@ commit of this repository.
   ``draws`` the operation of ``correctness.check`` is handed for a bf16 kind
   (ADR-0179 decision 2; for ``rope`` ADR-0180 decision 2);
   :data:`BF16_CHECK_KINDS` are the kinds it serves.
+* :func:`bf16_timing_process_time_limit_s` applies the same rule and measure
+  to the kind, the dimensions and ``n_max`` the operation of ``sim.run`` and
+  ``board.run`` is handed for a bf16 kind (ADR-0181 decision 6).
 
 The first three are handed as ``flags``, ``trailing_flags`` and ``env`` to
 :func:`hilclaw.harness.verification_build.build_verification_executable`,
@@ -97,7 +100,7 @@ BF16_CHECK_KINDS = (
     "rope",
     "sdpa_kv_cache",
 )
-"""The bf16 kinds of :func:`bf16_verification_process_time_limit_s` (ADR-0179 decision 1; ADR-0180 decision 2)."""
+"""The bf16 kinds of the two bf16 process time limits (ADR-0179 decision 1; ADR-0180 decision 2; ADR-0181 decision 6)."""
 
 BF16_ELEMENT_WEIGHT = 10
 """Operations counted per element of a bf16 verification program's arrays (ADR-0179 decision 3)."""
@@ -131,6 +134,22 @@ def bf16_verification_process_time_limit_s(kind, dims, draws):
     ``dims`` that is not a ``tuple`` or a dimension or ``draws`` that is not
     an ``int`` or is a ``bool``, and :class:`ValueError` for one below 1.
     """
+    return _limit_s(draws, _checked_bf16_work(kind, dims, draws=draws))
+
+
+def bf16_timing_process_time_limit_s(kind, dims, n_max):
+    """Return the time limit in seconds of the timing process of a bf16 ``kind``.
+
+    The rule and the work measure of
+    :func:`bf16_verification_process_time_limit_s` with ``c = n_max + 1``: one
+    untimed call and up to ``n_max`` repeats (ADR-0181 decision 6). Same return
+    value and exceptions, with ``n_max`` in place of ``draws``.
+    """
+    work = _checked_bf16_work(kind, dims, n_max=n_max)
+    return _limit_s(n_max + 1, work)
+
+
+def _checked_bf16_work(kind, dims, **count):
     if type(kind) is not str or kind not in BF16_CHECK_KINDS:
         raise ValueError(f"kind must be one of {', '.join(BF16_CHECK_KINDS)}")
     names = _BF16_DIMENSIONS[kind]
@@ -138,9 +157,9 @@ def bf16_verification_process_time_limit_s(kind, dims, draws):
         raise TypeError(f"dims must be a tuple, not {type(dims).__name__}")
     if len(dims) != len(names):
         raise ValueError(f"dims of {kind} must be {len(names)} values")
-    _check_counts(**dict(zip(names, dims)), draws=draws)
+    _check_counts(**dict(zip(names, dims)), **count)
     operations, elements = _bf16_work(kind, *dims)
-    return _limit_s(draws, operations + BF16_ELEMENT_WEIGHT * elements)
+    return operations + BF16_ELEMENT_WEIGHT * elements
 
 
 def _bf16_work(kind, *dims):

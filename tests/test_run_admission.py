@@ -512,10 +512,12 @@ def test_the_entry_and_dims_follow_the_covering_entry_in_task_contract_order(
     op, kind, dims
 ):
     stated = content(op=op)
-    assert not contract_table.run_covers(op)
-    refused(stated, KIND_OP_SIGNATURE_NOT_COVERED, contract_table.run_covers)
-    admitted = admit(stated, covers=contract_table.covers)
+    assert contract_table.run_covers(op)
+    admitted = admit(stated, covers=contract_table.run_covers)
     assert admitted.entry is contract_table.entry(op)
+    fp16 = {**op, "dtype": "fp16"}
+    assert not contract_table.run_covers(fp16)
+    refused(content(op=fp16), KIND_OP_SIGNATURE_NOT_COVERED, contract_table.run_covers)
     assert admitted.entry.contract.DTYPE == op["dtype"]
     assert admitted.entry.contract.KIND == kind
     assert admitted.dims == dims
@@ -528,7 +530,7 @@ def test_a_record_no_entry_covers_is_not_covered_whatever_covers_answers(op):
     assert len(covers.calls) == 1
 
 
-def test_the_fp32_gemm_entry_is_the_one_run_covers_admits():
+def test_the_fp32_gemm_entry_is_admitted_by_run_covers():
     admitted = admit(content(), covers=contract_table.run_covers)
     assert admitted.entry is GEMM
     assert admitted.entry.timed

@@ -583,7 +583,15 @@ BF16_IDS = [record["kind"] for record in BF16_RECORDS]
 
 
 @pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
-def test_a_bf16_record_is_out_of_scope_of_the_start(tmp_path, ids, record):
-    assert contract_table.covers(record)
-    assert not contract_table.start_covers(record)
-    assert_refused(document(op_signature=record), OutOfScopeError, tmp_path, ids)
+def test_a_bf16_record_is_admitted_by_the_start(tmp_path, ids, record):
+    assert contract_table.start_covers(record)
+    built = start(document(op_signature=record), data_root=tmp_path)
+    assert instance.read(tmp_path, built).op_signature.record == record
+
+
+@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
+def test_a_record_of_another_dtype_is_out_of_scope_of_the_start(tmp_path, ids, record):
+    other = {**record, "dtype": "fp16"}
+    assert not contract_table.covers(other)
+    assert not contract_table.start_covers(other)
+    assert_refused(document(op_signature=other), OutOfScopeError, tmp_path, ids)

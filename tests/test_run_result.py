@@ -920,7 +920,7 @@ def test_any_covering_entry_gives_its_contract_key_and_shape(
     assert result["contract_key"] == key
     assert result["shape"] == shape
     assert list(result["shape"]) == list(shape)
-    assert not entry.timed
+    assert entry.timed
 
 
 @pytest.mark.parametrize("entry", list(contract_table.TABLE.values()))
