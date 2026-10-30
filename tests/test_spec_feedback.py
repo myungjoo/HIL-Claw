@@ -906,3 +906,152 @@ def test_a_bf16_result_without_an_outcome_is_check_result_invalid(root):
     assert message == (
         f"runs/{RUN}/events.ndjson: line 2: data.result: lacks the member outcome"
     )
+
+
+TIMING = "board_run_timing_v2"
+
+
+def timing(intervals, outcome="converged", **more):
+    return {
+        "outcome": outcome,
+        "intervals": list(intervals),
+        "unit": "ns",
+        "shape": {"m": 3, "k": 5, "n": 7},
+        "contract_key": {"kind": "gemm", "dtype": "fp32", "layout": "row_major"},
+        **more,
+    }
+
+
+def timed(root, round, intervals, attempt=1, execution=1, **more):
+    passed(root, round, attempt)
+    check(root, round, TIMING, attempt, execution, result=timing(intervals, **more))
+
+
+def base_of(root, round):
+    return spec_feedback.feedback(root, RUN, round).get("base")
+
+
+def ref(round, attempt=1):
+    return {"round": round, "candidate": 1, "attempt": attempt}
+
+
+def test_the_incumbent_is_the_verified_attempt_with_the_lowest_median(root):
+    for q in (0, 1, 2):
+        put_spec(root, q)
+    timed(root, 0, [50, 50, 50, 50, 50])
+    timed(root, 1, [90, 10, 10, 10, 90])
+    timed(root, 2, [30, 30, 30, 30, 30], outcome="not_converged")
+    made = spec_feedback.feedback(root, RUN, 3)
+    assert made["base"] == ref(1)
+    assert made["attempts"] == attempts(root, RUN, 3)
+    assert [entry["round"] for entry in made["attempts"]] == [0, 1, 2]
+
+
+def test_a_not_converged_measurement_competes(root):
+    for q in (0, 1):
+        put_spec(root, q)
+    timed(root, 0, [50] * 5)
+    timed(root, 1, [20] * 5, outcome="not_converged")
+    assert base_of(root, 2) == ref(1)
+
+
+def test_a_tie_goes_to_the_earliest_attempt(root):
+    for q in (0, 1):
+        put_spec(root, q)
+    timed(root, 0, [40] * 5)
+    timed(root, 1, [40] * 5)
+    assert base_of(root, 2) == ref(0)
+
+
+def test_no_verified_attempt_gives_no_base(root):
+    put_spec(root, 0)
+    check(root, 0, SIM, result=FAIL)
+    assert spec_feedback.feedback(root, RUN, 1) == {"attempts": attempts(root, RUN, 1)}
+    assert "base" not in spec_feedback.feedback(root, RUN, 1)
+
+
+def test_no_earlier_spec_gives_no_base(root):
+    assert spec_feedback.feedback(root, RUN, 1) == {"attempts": []}
+
+
+def test_an_attempt_failed_at_the_board_point_is_no_incumbent(root):
+    for q in (0, 1):
+        put_spec(root, q)
+    timed(root, 0, [50] * 5)
+    check(root, 1, SIM, result=PASS)
+    check(root, 1, BOARD, result=FAIL)
+    check(root, 1, TIMING, result=timing([1] * 5))
+    assert base_of(root, 2) == ref(0)
+
+
+def test_a_verified_attempt_without_a_measurement_is_no_incumbent(root):
+    put_spec(root, 0)
+    passed(root, 0)
+    assert base_of(root, 1) is None
+
+
+@pytest.mark.parametrize(
+    "spoil",
+    [
+        lambda root: check(root, 1, TIMING, execution=2, result=timing([5] * 5)),
+        lambda root: check(root, 1, TIMING, execution=2, failure=UNSTARTED),
+        lambda root: events.append(
+            root,
+            RUN,
+            journal.STEP_STARTED,
+            {"step": TIMING, "execution": 2},
+            round=1,
+            candidate=1,
+            attempt=1,
+        ),
+    ],
+    ids=["two measurements", "a failed run", "an unfinished run"],
+)
+def test_an_attempt_without_exactly_one_clean_measurement_is_no_incumbent(root, spoil):
+    for q in (0, 1):
+        put_spec(root, q)
+    timed(root, 0, [50] * 5)
+    timed(root, 1, [10] * 5)
+    spoil(root)
+    assert base_of(root, 2) == ref(0)
+
+
+def test_a_broken_timing_result_alone_is_no_measurement(root):
+    put_spec(root, 0)
+    passed(root, 0)
+    check(root, 0, TIMING, result={"outcome": "broken", "condition": "time_limit"})
+    assert base_of(root, 1) is None
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"outcome": "converged"},
+        timing([1, 2]),
+        timing([10] * 5, unit="ms"),
+    ],
+    ids=["no intervals", "too few intervals", "another unit"],
+)
+def test_a_timing_result_that_is_not_admitted_makes_no_incumbent(root, result):
+    for q in (0, 1):
+        put_spec(root, q)
+    timed(root, 0, [50] * 5)
+    passed(root, 1)
+    check(root, 1, TIMING, result=result)
+    assert base_of(root, 2) == ref(0)
+
+
+def test_a_timing_line_of_another_attempt_is_not_read(root):
+    put_spec(root, 0)
+    put_spec(root, 1)
+    timed(root, 0, [50] * 5)
+    check(root, 1, BOARD, result=FAIL)
+    check(root, 1, TIMING, attempt=2, result=timing([1] * 5))
+    assert base_of(root, 2) == ref(0)
+
+
+def test_feedback_checks_its_round_like_attempts(root):
+    with pytest.raises(TypeError):
+        spec_feedback.feedback(root, RUN, True)
+    with pytest.raises(ValueError):
+        spec_feedback.feedback(root, RUN, 0)

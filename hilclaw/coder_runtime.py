@@ -28,7 +28,10 @@ Choices ADR-0137 leaves to this slice, with their values:
 - the standard input, output and error of ``docker run`` (so the coder's
   output) are :data:`subprocess.DEVNULL`; those of the calling process are the
   MCP front's protocol;
-- the wording of the prompt is :data:`PROMPT`;
+- the wording of the prompt is :data:`PROMPT`, with the sentences on
+  ``feedback.base`` of
+  ``ARCHITECTURE/decisions/ADR-0184-od20-first-case-incumbent-base.md``
+  decision 4;
 - a platform without ``os.getuid`` or ``os.getgid`` (native Windows) has no
   numeric user to pass, so ``run`` raises
   :class:`hilclaw.coder_call.CoderNotStartedError` there before any process.
@@ -68,7 +71,15 @@ PROMPT = (
     "letters, digits, underscores and hyphens, starting with a letter or a "
     "digit, then one dot and the suffix c or h, with no other dot. The part "
     "before the dot must not be con, prn, aux, nul, com1 to com9 or lpt1 to "
-    "lpt9. Put the files flat in output, with no subdirectories. Write every "
+    "lpt9. Put the files flat in output, with no subdirectories. When "
+    "spec.json names feedback.base, the directory base of your working "
+    "directory holds the source of that earlier attempt, the fastest correct "
+    "one so far: start from it, keep what makes it fast, and apply the "
+    "guidance techniques to it rather than starting over. When spec.json "
+    "names no feedback.base, no correct attempt exists yet: write a plain, "
+    "correct, single-threaded kernel with no hand optimisation, the baseline "
+    "later rounds improve on, and learn from the failures that "
+    "feedback.attempts reports. Write every "
     "file whole, never a diff or a patch. Write at most "
     f"{bring_in.MAX_FILES} files, each of at most {bring_in.MAX_FILE_BYTES} "
     "bytes; if more files qualify, none is kept. You may build and try your "

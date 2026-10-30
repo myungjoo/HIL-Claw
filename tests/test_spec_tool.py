@@ -1306,3 +1306,22 @@ def test_a_record_no_contract_covers_is_op_signature_not_covered(root, record):
         f"{INSTANCE_PATH}: op_signature: the stated record is not covered by any "
         "kernel contract of the package; nothing was written"
     )
+
+
+def test_round_1_after_a_measured_round_0_names_it_as_base(logged, shelf):
+    document = instance_document()
+    run(logged, document)
+    passed_round_0(logged)
+    timing = {
+        "outcome": "converged",
+        "intervals": [7, 7, 7, 7, 7],
+        "unit": "ns",
+        "shape": {"m": 3, "k": 5, "n": 7},
+        "contract_key": {"kind": "gemm", "dtype": "fp32", "layout": "row_major"},
+    }
+    check(logged, 0, "board_run_timing_v2", result=timing)
+    assert write(Source(logged), later()) == {}
+    attempt = {"round": 0, "candidate": 1, "attempt": 1, "techniques": []}
+    made = expected_later(document, 1, (), [attempt])
+    made["feedback"]["base"] = {"round": 0, "candidate": 1, "attempt": 1}
+    assert written(logged) == made
