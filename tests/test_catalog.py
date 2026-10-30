@@ -11,8 +11,10 @@ from hilclaw.catalog import (
     APPLIES_TO,
     SOURCE,
     InvalidCatalogError,
+    applies,
     check,
     criteria,
+    mismatch,
     technique,
 )
 
@@ -542,3 +544,52 @@ def test_criteria_refuse_as_check_does(root, tmp_path):
     put(root, "alpha.md", body("alpha", when=" "))
     with pytest.raises(InvalidCatalogError, match="the When section is empty"):
         criteria("cpu_standin", source=root)
+
+
+MATCHING = {"kind": "gemm", "dtype": "fp32", "layout": "row_major", "language": "c"}
+
+
+def test_the_values_of_applies_to_match():
+    assert applies(**MATCHING) is True
+    assert mismatch(**MATCHING) is None
+
+
+@pytest.mark.parametrize(
+    ("member", "other"),
+    [
+        ("kind", "rmsnorm"),
+        ("dtype", "bf16"),
+        ("layout", "column_major"),
+        ("language", "cpp"),
+        ("kind", ""),
+        ("dtype", "FP32"),
+        ("layout", "row_major "),
+    ],
+)
+def test_each_differing_member_does_not_apply(member, other):
+    given = MATCHING | {member: other}
+    assert applies(**given) is False
+    assert mismatch(**given) == (member, MATCHING[member])
+
+
+def test_the_first_difference_in_the_order_of_applies_to_is_named():
+    given = {"kind": "rope", "dtype": "bf16", "layout": "x", "language": "y"}
+    assert mismatch(**given) == ("kind", "gemm")
+    assert mismatch(**(given | {"kind": "gemm"})) == ("dtype", "fp32")
+
+
+@pytest.mark.parametrize("member", sorted(MATCHING))
+@pytest.mark.parametrize("value", [None, 3, b"gemm", ["gemm"]])
+def test_a_value_that_is_not_a_str_is_refused(member, value):
+    given = MATCHING | {member: value}
+    with pytest.raises(TypeError, match=f"{member} must be a str"):
+        applies(**given)
+    with pytest.raises(TypeError, match=f"{member} must be a str"):
+        mismatch(**given)
+
+
+def test_the_comparison_reads_applies_to_at_the_call(monkeypatch):
+    changed = ("- kind: gemm", "- dtype: bf16", "- layout: row_major", "- language: c")
+    monkeypatch.setattr(catalog, "APPLIES_TO", changed)
+    assert applies(**MATCHING) is False
+    assert applies(**(MATCHING | {"dtype": "bf16"})) is True

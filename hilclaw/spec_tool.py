@@ -43,7 +43,7 @@ and nothing is created before 12 (ADR-0151 decision 3, table):
    :data:`hilclaw.catalog.SOURCE`: a directory that is missing, is refused
    by the catalog's rules or cannot be read (:data:`KIND_CATALOG_UNUSABLE`),
    an id that names no entry (:data:`KIND_TECHNIQUE_UNKNOWN`), and an entry
-   whose :data:`hilclaw.catalog.APPLIES_TO` values differ from the composed
+   that :func:`hilclaw.catalog.mismatch` finds differing from the composed
    spec's ``task.op_signature.record`` ``kind``, ``dtype`` and ``layout`` or
    its ``task.contract.language`` (:data:`KIND_TECHNIQUE_NOT_APPLICABLE`;
    since every entry applies to the fp32 ``gemm`` contract
@@ -401,7 +401,6 @@ def _techniques(stated, document, ids):
     record = document["task"]["op_signature"]["record"]
     composed = {name: record[name] for name in ("kind", "dtype", "layout")}
     composed["language"] = document["task"]["contract"]["language"]
-    applies = [line.removeprefix("- ").split(": ", 1) for line in catalog.APPLIES_TO]
     entries = []
     for entry_id in ids:
         try:
@@ -418,13 +417,14 @@ def _techniques(stated, document, ids):
             raise _unusable(directory, f"is refused: {e}") from e
         except OSError as e:
             raise _unusable(directory, f"cannot be read: {_described(e)}") from e
-        for name, value in applies:
-            if composed[name] != value:
-                raise tools.ToolFailure(
-                    KIND_TECHNIQUE_NOT_APPLICABLE,
-                    f"{directory}/{entry_id}.md: applies to the {name} {value}, "
-                    f"not the spec's {composed[name]}; nothing was written",
-                )
+        different = catalog.mismatch(**composed)
+        if different is not None:
+            name, value = different
+            raise tools.ToolFailure(
+                KIND_TECHNIQUE_NOT_APPLICABLE,
+                f"{directory}/{entry_id}.md: applies to the {name} {value}, "
+                f"not the spec's {composed[name]}; nothing was written",
+            )
         entries.append(entry)
     return entries
 

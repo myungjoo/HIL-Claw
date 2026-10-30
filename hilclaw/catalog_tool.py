@@ -12,9 +12,15 @@ The request is exactly ``{"run_id": ...}``. The data root comes from the
 data-root source, asked at each call after the request was checked, and never
 from the request (ADR-0015 decision 3). The result is ``{"entries": [{"id":
 ..., "when": ...}, ...]}``: one element per entry of the catalog directory of
-the run's accelerator, in ascending id order, ``when`` being what
-:func:`hilclaw.catalog.criteria` returns for it. Every entry is returned:
-every entry the catalog's rules admit states :data:`hilclaw.catalog.APPLIES_TO`.
+the run's accelerator that applies to the run, in ascending id order, ``when``
+being what :func:`hilclaw.catalog.criteria` returns for it. An entry applies
+when :func:`hilclaw.catalog.applies` answers ``True`` for the ``kind``,
+``dtype`` and ``layout`` of the run's stated op_signature record and the
+``language`` of the contract that covers it (ADR-0190 decision 2), so that
+``spec.write`` refuses no id it returns with ``technique_not_applicable``. An
+instance that states no op_signature, or one no contract of
+:mod:`hilclaw.contract_table` covers, gets no entry and no failure: it is
+``spec.write``'s check 5 that names those (ADR-0190 decision 3).
 
 The checks, in this order, each with its kind (ADR-0171 decision 3, table):
 
@@ -27,7 +33,8 @@ The checks, in this order, each with its kind (ADR-0171 decision 3, table):
 4. the directory of the instance's ``hw_profile`` ``accelerator`` below
    :data:`hilclaw.catalog.SOURCE` read by :func:`hilclaw.catalog.criteria`:
    a directory that is missing, is refused by the catalog's rules or cannot
-   be read (:data:`KIND_CATALOG_UNUSABLE`, the kind of ``spec.write``).
+   be read (:data:`KIND_CATALOG_UNUSABLE`, the kind of ``spec.write``), for a
+   run with no applicable entry as for any other.
 
 Each message of 4 starts with the catalog directory as
 ``catalog/<accelerator>``; an :class:`OSError` is reported by its class and
@@ -37,6 +44,7 @@ directory; nothing is created. No kind is new.
 
 from hilclaw import (
     catalog,
+    contract_table,
     data_root_source,
     layout,
     run_file_tools,
@@ -51,10 +59,12 @@ NAME = "catalog.read"
 
 _DESCRIPTION = (
     "Read the selection criteria of the technique catalog of the run run_id: "
-    "for each entry of the catalog of the run's accelerator, its technique id "
-    "and the text of its When section, which says when the technique is worth "
-    'trying. The result is {"entries": [{"id": ..., "when": ...}, ...]} in '
-    "ascending id order; an id is what spec.write takes in techniques. The "
+    "for each entry of the catalog of the run's accelerator that applies to "
+    "the run's op_signature, its technique id and the text of its When "
+    "section, which says when the technique is worth trying. The result is "
+    '{"entries": [{"id": ..., "when": ...}, ...]} in ascending id order, with '
+    "no element when no entry applies; an id is what spec.write takes in "
+    "techniques. The "
     "request is exactly run_id. The data root is never part of the request; "
     "the tool knows it. Nothing is written. It fails, checked in this order, "
     "with invalid_request for a request that is not exactly run_id; "
@@ -135,9 +145,23 @@ def _read(source, request):
     except OSError as e:
         reported = ": ".join(filter(None, (type(e).__name__, e.strerror)))
         raise _unusable(directory, f"cannot be read: {reported}") from e
+    if not _applicable(stated):
+        return {"entries": []}
     return {
         "entries": [{"id": entry_id, "when": when} for entry_id, when in found.items()]
     }
+
+
+def _applicable(stated):
+    if stated.op_signature is None:
+        return False
+    record = stated.op_signature.record
+    covering = contract_table.entry(record)
+    if covering is None:
+        return False
+    return catalog.applies(
+        record["kind"], record["dtype"], record["layout"], covering.contract.LANGUAGE
+    )
 
 
 def _unusable(directory, problem):

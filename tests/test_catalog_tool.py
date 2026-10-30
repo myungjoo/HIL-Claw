@@ -6,7 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import catalog, catalog_tool, keys, layout, mcp_front, spec_tool, tools
+from hilclaw import (
+    catalog,
+    catalog_tool,
+    contract_table,
+    keys,
+    layout,
+    mcp_front,
+    spec_tool,
+    tools,
+)
 from hilclaw.tools import ToolDefinition, ToolFailure, default_registry
 
 RUN = "run-a"
@@ -413,3 +422,176 @@ def test_the_mcp_front_lists_and_serves_catalog_read(root, shelf):
     assert failed["result"]["isError"] is True
     error = json.loads(failed["result"]["content"][0]["text"])["error"]
     assert error["kind"] == "invalid_request"
+
+
+# Which entries apply to the run (ADR-0190)
+
+BF16_SHAPES = {
+    "gemm": (3, 8, 12),
+    "rmsnorm": (3, 8),
+    "elementwise_add": (3, 8),
+    "swiglu": (3, 12),
+    "rope": (3, 4, 4),
+    "sdpa_kv_cache": (1, 4, 4, 2, 4),
+}
+CONTRACTS = {
+    key: (e.contract, BF16_SHAPES[key[0]] if key[1] == "bf16" else (2, 3, 5))
+    for key, e in contract_table.TABLE.items()
+}
+BF16 = [key for key in CONTRACTS if key[1] == "bf16"]
+FP32_GEMM = ("gemm", "fp32", "row_major", "c")
+CHANGED_TO_BF16 = (
+    "- kind: gemm",
+    "- dtype: bf16",
+    "- layout: row_major",
+    "- language: c",
+)
+
+
+def record_of(key):
+    contract, shape = CONTRACTS[key]
+    return contract.op_signature_record(*shape)
+
+
+def signed(record, hw_record=None):
+    return instance_document(hw_record) | {
+        "op_signature": {"key": keys.op_signature_key(record).name, "record": record}
+    }
+
+
+def standin(record):
+    return signed(record, hw(accelerator="cpu_standin"))
+
+
+def uncovered_record():
+    record = {
+        "schema_version": 1,
+        "kind": "gemm",
+        "shape": {"m": 2, "k": 3, "n": 5},
+        "dtype": "fp32",
+        "layout": "column_major",
+    }
+    assert not contract_table.covers(record)
+    return record
+
+
+def unsigned(hw_record=None):
+    document = instance_document(hw_record)
+    del document["op_signature"]
+    return document
+
+
+def later_round(ids):
+    return {"run_id": RUN, "round": 1, "candidate": 1, "attempt": 1, "techniques": ids}
+
+
+def test_the_table_holds_the_six_bf16_contracts_and_one_fp32():
+    assert sorted(key[0] for key in BF16) == sorted(BF16_SHAPES)
+    assert len(CONTRACTS) == 7 and FP32_GEMM in CONTRACTS
+
+
+@pytest.mark.parametrize("key", BF16, ids=[key[0] for key in BF16])
+def test_a_bf16_run_gets_no_entry_of_the_committed_catalog(root, key):
+    run(root, standin(record_of(key)))
+    assert catalog.criteria("cpu_standin")
+    assert read(Source(root)) == {"entries": []}
+
+
+def test_an_fp32_gemm_run_gets_the_four_committed_entries(root):
+    run(root, standin(record_of(FP32_GEMM)))
+    assert [e["id"] for e in read(Source(root))["entries"]] == [
+        "cache_blocking",
+        "loop_order_ikj",
+        "register_blocking",
+        "simd_baseline_intrinsics",
+    ]
+
+
+def test_an_instance_with_no_op_signature_gets_no_entry(root, shelf):
+    place(shelf / "tiling.md", entry("tiling"))
+    run(root, unsigned())
+    assert read(Source(root)) == {"entries": []}
+
+
+def test_an_uncovered_op_signature_gets_no_entry(root, shelf):
+    place(shelf / "tiling.md", entry("tiling"))
+    run(root, signed(uncovered_record()))
+    assert read(Source(root)) == {"entries": []}
+
+
+def test_an_entry_for_another_dtype_is_not_given_to_a_covered_fp32_run(
+    root, shelf, monkeypatch
+):
+    monkeypatch.setattr(catalog, "APPLIES_TO", CHANGED_TO_BF16)
+    place(shelf / "tiling.md", entry("tiling"))
+    run(root)
+    assert read(Source(root)) == {"entries": []}
+
+
+def test_an_entry_that_names_a_bf16_contract_is_given_to_its_run(
+    root, shelf, monkeypatch
+):
+    monkeypatch.setattr(catalog, "APPLIES_TO", CHANGED_TO_BF16)
+    place(shelf / "tiling.md", entry("tiling"))
+    place(shelf / "fused.md", entry("fused", "When small."))
+    run(root, signed(record_of(("gemm", "bf16", "row_major", "c"))))
+    assert read(Source(root)) == {
+        "entries": [
+            {"id": "fused", "when": "When small."},
+            {"id": "tiling", "when": "Worth trying."},
+        ]
+    }
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        lambda: signed(record_of(BF16[0]), hw(accelerator="mock")),
+        lambda: unsigned(hw(accelerator="mock")),
+    ],
+    ids=["bf16", "no_op_signature"],
+)
+def test_a_mock_run_is_catalog_unusable_whatever_it_states(root, document):
+    run(root, document())
+    failure = refused(root)
+    assert failure.kind == "catalog_unusable"
+    assert failure.message == "catalog/mock: the catalog directory is not there"
+
+
+@pytest.mark.parametrize(
+    "document",
+    [lambda: signed(record_of(BF16[0])), unsigned],
+    ids=["bf16", "no_op_signature"],
+)
+def test_a_damaged_catalog_is_catalog_unusable_with_nothing_applicable(
+    root, shelf, document
+):
+    place(shelf / "bad.md", b"# bad\n")
+    run(root, document())
+    assert refused(root).kind == "catalog_unusable"
+
+
+@pytest.mark.parametrize("key", list(CONTRACTS), ids=lambda key: f"{key[0]}-{key[1]}")
+def test_every_id_returned_for_a_contract_passes_spec_write(root, key):
+    run(root, standin(record_of(key)))
+    ids = [e["id"] for e in read(Source(root))["entries"]]
+    assert bool(ids) == (key == FP32_GEMM)
+    assert spec_tool.definition(Source(root)).function(later_round(ids)) == {}
+    path = layout.attempt_artefact(root, RUN, 1, 1, 1, "spec.json")
+    made = json.loads(path.read_bytes())
+    assert [t["id"] for t in made["guidance"]["techniques"]] == ids
+
+
+@pytest.mark.parametrize("key", BF16, ids=[key[0] for key in BF16])
+def test_spec_write_still_refuses_a_catalog_id_for_a_bf16_run(root, key):
+    run(root, standin(record_of(key)))
+    with pytest.raises(ToolFailure) as caught:
+        spec_tool.definition(Source(root)).function(later_round(["loop_order_ikj"]))
+    assert caught.value.kind == "technique_not_applicable"
+    name, value, stated = (
+        ("kind", "gemm", key[0]) if key[0] != "gemm" else ("dtype", "fp32", "bf16")
+    )
+    assert caught.value.message == (
+        "catalog/cpu_standin/loop_order_ikj.md: applies to the "
+        f"{name} {value}, not the spec's {stated}; nothing was written"
+    )

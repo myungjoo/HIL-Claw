@@ -1,14 +1,16 @@
 """The reader of the technique catalog (ADR-0150 decision 2 and Consequences slice 1).
 
 :func:`check` checks one accelerator's directory of the catalog,
-:func:`technique` returns what one entry gives a spec and :func:`criteria`
-returns the selection criteria of every entry. ``spec.write``
-(:mod:`hilclaw.spec_tool`) calls :func:`technique` for each id of its request
-and checks the rule of decision 4 against the spec it composes (ADR-0151
-decision 2 (b)); ``catalog.read`` (:mod:`hilclaw.catalog_tool`) calls
-:func:`criteria` for the technique-selector, which chooses the ids a spec of a
-round >= 1 carries (ADR-0171 decisions 2 and 3). It is no registry tool, calls
-no model, starts no process and writes nothing.
+:func:`technique` returns what one entry gives a spec, :func:`criteria`
+returns the selection criteria of every entry, and :func:`applies` with
+:func:`mismatch` compare the values of :data:`APPLIES_TO` with a run's or a
+spec's (ADR-0190 decision 2). ``spec.write`` (:mod:`hilclaw.spec_tool`) calls
+:func:`technique` for each id of its request and checks the rule of decision 4
+against the spec it composes (ADR-0151 decision 2 (b)); ``catalog.read``
+(:mod:`hilclaw.catalog_tool`) calls :func:`criteria` for the technique-selector,
+which chooses the ids a spec of a round >= 1 carries (ADR-0171 decisions 2 and
+3), and gives it only the entries that apply to its run. It is no registry
+tool, calls no model, starts no process and writes nothing.
 
 **Decided by ADR-0150** and only applied here: the catalog is ``catalog/``
 (:data:`SOURCE`), with one directory per ``accelerator`` value holding one file
@@ -37,7 +39,8 @@ decision 3).
   before and after them; ``## When`` and the ``text`` are not blank.
 
 An empty directory gives no entry. The rule of decision 4 against a spec is
-not checked here: ``spec.write`` checks it. **Also raised**: :class:`TypeError` for an
+not enforced here: ``spec.write`` enforces it, through :func:`mismatch`.
+**Also raised**: :class:`TypeError` for an
 ``accelerator`` or id that is not a ``str`` or a ``source`` that is not a
 ``str`` or path object; :class:`FileNotFoundError` for a missing directory;
 :class:`KeyError` for a well-formed id that names no entry; and, unchanged,
@@ -202,3 +205,34 @@ def criteria(accelerator, *, source=None):
     return {
         entry_id: when for entry_id, (when, _) in _read(accelerator, source).items()
     }
+
+
+def mismatch(kind, dtype, layout, language):
+    """Return the first value of :data:`APPLIES_TO` that the given values differ from.
+
+    Every entry the catalog's rules admit states the lines of
+    :data:`APPLIES_TO` (ADR-0150 decision 2), so the answer holds for each of
+    them. ``kind``, ``dtype`` and ``layout`` are those of an op_signature
+    record and ``language`` is that of its contract (ADR-0150 decision 4).
+    Returns ``None`` when all four are equal, and otherwise the pair of the
+    member's name and the entry's value, in the order of :data:`APPLIES_TO`.
+    Raises :class:`TypeError` when one of the four is not a ``str``.
+    """
+    given = {"kind": kind, "dtype": dtype, "layout": layout, "language": language}
+    for name, value in given.items():
+        if type(value) is not str:
+            raise TypeError(f"{name} must be a str")
+    for line in APPLIES_TO:
+        name, value = line.removeprefix("- ").split(": ", 1)
+        if given[name] != value:
+            return name, value
+    return None
+
+
+def applies(kind, dtype, layout, language):
+    """Return whether an entry's ``Applies to`` matches the given values.
+
+    The predicate of ADR-0190 decision 2, exactly a ``bool``: :func:`mismatch`
+    finds no difference. Raises as :func:`mismatch` raises.
+    """
+    return mismatch(kind, dtype, layout, language) is None
