@@ -2,7 +2,7 @@
 id: T-0513
 title: Land ADR-0181 code slice 2 — bf16 timing programs of rope (freqs_cis rows on standard input at ADR-0180's start position) and sdpa_kv_cache (one l-row allocation per cache, nothing reset between repeats), added to the T-0512 Python side
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [C-6, FR-9, FR-10, NFR-2, NFR-3, OD-13, OD-16, OD-31, HQ-0078, "PLAN P2-11", "PLAN P2-14"]
 dependsOn: [T-0512]
@@ -94,3 +94,18 @@ hq: []
 ## Follow-ups
 
 ## Result
+- **Outcome**: DONE. PR #332 squash-merged as `230ccfde` (branch deleted). Review: 1 round (Approve; the one Nit, on the `run_bf16_timing` docstring, was fixed afterwards in `213cc993`, with no re-review under D20). CI green on head `213cc993` (C gate, Python 3.11/3.14, coverage, test presence, shellcheck). Locally (WSL Ubuntu with clang) the four timing test files passed on the round-1 head (592 tests). The full suite ran in CI only.
+- **Language**: C for the two programs, because the kernel call is C (ADR-0009 decision 2, ADR-0181 decision 2). Python for the harness's Python side.
+- **New files**: `hilclaw/harness/bf16_timing_rope.c`, `hilclaw/harness/bf16_timing_sdpa_kv_cache.c`, `tests/harness/test_bf16_timing_rope_sdpa_kv_cache.py`.
+- **Changed files**: `hilclaw/harness/bf16_timing.py`, `hilclaw/harness/bf16_timing_build.py`, `hilclaw/harness/__init__.py` (docstring only), `tests/harness/test_bf16_timing.py`, `tests/harness/test_bf16_timing_build.py`, `tests/harness/test_bf16_timing_programs.py`.
+- **`rope` input status**: 6, documented in the program header. It covers input that is short, longer or unreadable; nothing is written to the report and the kernel is not called. The rows are read straight into the kernel's `freqs_cis` array, so the one copy is that read and there is no second buffer.
+- **NumPy import**: `bf16_timing` imports no NumPy at module level. The NumPy-using imports (`bf16_rope_arrays`, `bf16_rope_verification`) sit inside the private `_rope_rows`, which only a `rope` run calls. A subprocess test pins that importing the module, forming `rope` arguments and running `gemm` do not load NumPy. `hilclaw.harness.timing` is unchanged, so `hilclaw.run_tool`'s pin stays true.
+- **Argument errors**: a P whose rows the table cannot have comes out of `start_position` as `VerificationArgumentError`, and `run_bf16_timing` raises it as `TimingArgumentError` before anything is started. Rows that cannot be allocated raise `MemoryError`, as for a check of `rope`.
+- **Edited assertions (D21)**: each reverses a pin on the kinds, or replaces `rope` / `sdpa_kv_cache` as the example of a refused kind.
+  - `tests/harness/test_bf16_timing.py`: `test_kinds_are_the_four_of_adr_0163` became `test_kinds_are_the_six_of_adr_0181`; `BAD_KINDS` drops the two kinds and takes `fp16`; `test_program_arguments_refuse_a_kind_outside_the_four` was renamed `..._the_six`; `test_program_arguments_test_kind_then_dims_then_the_rest` and `test_arguments_are_refused_before_anything_starts` use `fp16`.
+  - `tests/harness/test_bf16_timing_build.py`: `test_an_unknown_kind_is_refused_before_anything_starts` and `test_the_kind_is_tested_before_the_kernel_sources` use `fp16`; `test_program_sources_cannot_be_assigned_to` tries the key `other`.
+  - `tests/harness/test_bf16_timing_programs.py`: no assertion changed. Its parametrisation stays on the four kinds through a local `KINDS = tuple(KINDS_OF)`.
+- **Size**: 270 added and 10 deleted non-test lines in 5 files, by the commit's numstat before the one-line docstring net addition (cap 600).
+- **Runtime acceptance items**: none. RA-0054 already covers the `rope` rows through the waiter.
+- **Follow-ups**: none.
+- **Next candidate**: T-0514 (ADR-0181 slice 3, the run tools for bf16 on the mock).
