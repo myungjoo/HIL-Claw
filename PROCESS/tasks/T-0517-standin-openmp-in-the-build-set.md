@@ -2,7 +2,7 @@
 id: T-0517
 title: Let a cpu_standin kernel use OpenMP on every C-7 system, as the owner answered HQ-0034 (a) - an ADR and its first code slice
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-4, NFR-4, C-7, OD-18, "#5 A-7", HQ-0034]
 dependsOn: []
@@ -95,3 +95,20 @@ This task follows DRIVER §6 "task 단위" ①: the ADR and its first code slice
 ## Follow-ups
 
 ## Result
+
+DONE. PR #336, squash-merged as 4740de79 after 2 review rounds (round 2 Approve; a wording Nit fixed after it under D20). CI green on all gates at the last commit.
+
+**Owner must act.** The stand-in image (`HILCLAW_STANDIN_IMAGE`) must hold the OpenMP runtime and `<omp.h>` before the next nightly firing, or the firing ends as `prepare/no_openmp`, an environment cause. Observation: on the driver's machine `hilclaw-standin:2026-10-29` (clang 18.1.3, `libomp-dev`) holds it, and the new check returned `None` against it.
+
+**Landed.** ADR-0188; `FLAGS` with `-fopenmp`, new `WAITER_FLAGS`, `TRAILING_FLAGS` and `ENV` unchanged; `hilclaw/standin_openmp.py`; the check in `hilclaw/nightly.py`; `PROCESS/NIGHTLY.md`; `libomp-dev` in the Python and coverage gates; the registers.
+
+**Language.** `hilclaw/standin_openmp.py`: Python, because it only drives the container client from the nightly entry.
+
+**Readings and limits.**
+- The reviewer accepted the ADR's reading that HQ-0034 covers `libomp-dev` on the CI runner, on the condition that the §9 notice states it as the record's own and states that "install after approval" is not implemented. The notice on #5 does both.
+- `test_a_kernel_outside_the_set_is_a_failed_build` lost its `openmp-runtime-call` parameter, which criterion 7 does not name: criteria 3 and 6 reverse what it pinned. The reviewer accepted this; it is listed in the PR body.
+- Local tests ran on WSL with the runtime copied from the image to a temporary directory: full suite 38765 passed with 2 failures, both test helper calls then fixed and rerun. No test run (D25) with `claude` was started; the only real container use was `docker run` of the image for the check.
+
+**Runtime acceptance items for `PROCESS/RuntimeAcceptance.md`** (ADR-0188): (i) the image's clang accepts `-std=gnu11 -O2 -ffp-contract=off -fopenmp` and `-lm` under each C-7 system's Docker: Linux, macOS Docker Desktop and WSL; (ii) a kernel using OpenMP completes a check and a timing run in the container under the options of ADR-0144 and the limits of ADR-0117; (iii) the thread count the runtime picks in that container, and whether it fits the processors the machine gives; (iv) the waiter still reports `waiter_max_rss_kib` for such a kernel in a container; (v) a kernel with no OpenMP is measured as before within noise.
+
+**Follow-ups (not task files).** A check at instance starts outside the nightly entry (ADR-0188 decision 4, later slice); what asks the user for permission (OD-8 ㉝ (가)).

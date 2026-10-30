@@ -503,3 +503,11 @@
   PLAN P2-15. 실제 Llama 3.2 1B의 가중치·토크나이저로 P2-14의 end-to-end가 돌고 reference와 맞는지를, 런타임 사용자가 라이선스에 동의해 입수한 파일로 오너가 런타임 머신에서 확인한다. 맞는다는 것은 HQ-0071의 답대로 둘 다를 뜻한다: 행마다 teacher forcing logit을 Hugging Face transformers reference와 원소별 `rtol`·`atol`로 비교해 통과하고, 같은 프롬프트에서 처음 N개 greedy 토큰이 reference와 같다(`rtol`·`atol`·N은 사용자 지정).
 
   확인이 가능해지는 조건: 2026-10-30 현재 저장소에는 실제 가중치 읽기, 토크나이저, P2-15 비교의 구현이 없고(`hilclaw/`에 safetensors·tokenizer·transformers 언급 없음), OD-31 ⑤와 ⑦의 나머지(모델 파일의 출처·포맷·변형·저장 위치, 필요한 패키지)가 미결이다. best에서 binding을 얻는 방법과 실행기의 노출 형태(OD-31 ④)도 열려 있다. 이것들이 land된 뒤 확인한다. RA-0035·RA-0050(Llama 3.2 1B 차원의 메모리·입력 파일)과 함께 본다. nightly 루틴은 이것을 돌리지 않는다(HQ-0076 (2)의 답 (a)).
+
+### RA-0057
+
+- 상태: 미확인
+- 출처: T-0517, ADR-0188 (등록 2026-10-30)
+- 내용:
+
+  (i) the image's clang accepts `-std=gnu11 -O2 -ffp-contract=off -fopenmp` and `-lm` under each C-7 system's Docker: Linux, macOS Docker Desktop and WSL; (ii) a kernel using OpenMP completes a check and a timing run in the container under the options of ADR-0144 and the limits of ADR-0117; (iii) the thread count the runtime picks in that container, and whether it fits the processors the machine gives; (iv) the waiter still reports `waiter_max_rss_kib` for such a kernel in a container; (v) a kernel with no OpenMP is measured as before within noise.
