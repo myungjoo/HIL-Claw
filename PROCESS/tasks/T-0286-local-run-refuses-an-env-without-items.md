@@ -2,7 +2,7 @@
 id: T-0286
 title: Make `local_run.run` refuse, before the start, an `env` that is not `None` and has no `items` method, with a `TypeError` that carries `parameter` "env"
 phase: P1
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [FR-10, OD-18, C-7]
 dependsOn: [T-0282]

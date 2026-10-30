@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P2",
-  "currentTask": null,
+  "currentTask": "T-0286",
   "nextTask": null,
-  "lock": null,
+  "lock": {
+    "owner": "AKIHA:235627c7",
+    "acquiredAt": "2026-10-30T18:18:40Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
