@@ -6,7 +6,7 @@
 
 | 항목 | 값 |
 |---|---|
-| run 구성 | `cpu_standin` × GEMM fp32 `row_major` m=1 k=2048 n=8192(Llama 3.2 1B MLP up projection의 decode 한 step), N=1(후보 1), 5라운드(`round_budget` 5), `latency_minimisation`, `n_max` 10, draws 1, `rtol` 1e-4 · `atol` 5e-7 × k(= 1.024e-3; ADR-0017 검증 입력(절댓값 1 미만)의 k 길이 fp32 내적 반올림에 비례). 값은 진입점 `hilclaw/nightly.py`에 고정되어 있다. HQ-0076 (1)의 "P2-5 구성 그대로"(m=8 k=16 n=8, `n_max` 6, `atol` 1e-5)는 [오너 결정 2026-10-30](https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6512287389) ④("현실적인 shape, k에 비례하는 오차, `n_max` 10")로 바뀌었다 — 실제 run에서 그 shape는 호출당 약 60 ns라 측정이 수렴하지 않았고, k가 큰 shape에서는 고정 `atol`이 맞는 커널도 떨어뜨렸다. 구체 shape와 계수 5e-7은 통합자의 선택이며 오너가 바꿀 수 있다 |
+| run 구성 | `cpu_standin` × GEMM fp32 `row_major` m=1 k=2048 n=8192(Llama 3.2 1B MLP up projection의 decode 한 step), N=1(후보 1), 5라운드(`round_budget` 5), `latency_minimisation`, `n_max` 10, draws 1, `rtol` 1e-4 · `atol` 5e-7 × k(= 1.024e-3; ADR-0017 검증 입력(절댓값 1 미만)의 k 길이 fp32 내적 반올림에 비례). 값은 진입점 `hilclaw/nightly.py`에 고정되어 있다. HQ-0076 (1)의 "P2-5 구성 그대로"(m=8 k=16 n=8, `n_max` 6, `atol` 1e-5)는 [오너 결정 2026-10-30](https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6512287389) ④("a realistic shape, a k-scaled tolerance, `n_max` 10" — #5 기록의 항목을 오너가 "그렇게 진행"으로 승인)로 바뀌었다 — 실제 run에서 그 shape는 호출당 약 60 ns라 측정이 수렴하지 않았고, k가 큰 shape에서는 고정 `atol`이 맞는 커널도 떨어뜨렸다. 구체 shape와 계수 5e-7은 통합자의 선택이며 오너가 바꿀 수 있다 |
 | 실제 Llama 3.2 1B 가중치(P2-15) | nightly에서 돌리지 않는다 — 오너 수동 확인만 |
 | 실행 시각 | 매일 KST 03:00 |
 | 사용량 상한 | run의 `round_budget` 외에 없다 — 진입점에 시간 상한·turn 수 상한을 두지 않는다 |
