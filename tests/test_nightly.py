@@ -46,6 +46,7 @@ WATCH = (
     "CLAUDECODE",
     "CLAUDE_CODE_ENTRYPOINT",
     "HILCLAW_CODER_OAUTH_TOKEN",
+    "HILCLAW_CODER_LOG_DIR",
 )
 STARTED = {"outcome": "started", "run_id": "r-20261030-0001"}
 RUN_OVER = {"outcome": "run_over"}
