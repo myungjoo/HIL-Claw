@@ -364,7 +364,11 @@ def _read_log_dir(environ):
     data_root = environ.get(config.ENV_LOCAL_PATH)
     if isinstance(data_root, str) and data_root and "\0" not in data_root:
         root = os.path.realpath(data_root)
-        if os.path.commonpath([os.path.realpath(value), root]) == root:
+        try:
+            below = os.path.commonpath([os.path.realpath(value), root]) == root
+        except ValueError:
+            below = False
+        if below:
             raise CoderNotStartedError(
                 f"{ENV_LOG_DIR} must not be at or below the data root"
             )

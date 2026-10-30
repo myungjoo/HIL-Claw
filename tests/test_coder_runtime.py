@@ -853,3 +853,14 @@ def test_a_failed_write_ends_the_log_not_the_call(
     assert popens.processes[0].stdout.drained
     [log] = logs_in(tmp_path)
     assert log.read_bytes() == b"first pa"
+
+
+def test_log_dir_on_another_drive_than_the_data_root_is_taken(
+    popens, tmp_path, monkeypatch
+):
+    def other_drive(paths):
+        raise ValueError("Paths don't have the same drive")
+
+    monkeypatch.setattr(os.path, "commonpath", other_drive)
+    run(with_log(tmp_path, **{ENV_DATA: str(tmp_path / "data")}))
+    assert len(logs_in(tmp_path)) == 1
