@@ -8,7 +8,7 @@ coversReq: [S6, FR-18, FR-11, FR-17, NFR-3, NFR-5, OD-30, OD-1, OD-13, OD-11, OD
 dependsOn: [T-0218, T-0226, T-0230]
 touchesFiles: [ARCHITECTURE/decisions/, ARCHITECTURE/Requirements.md, ARCHITECTURE/OpenDecisionProposals.md, ARCHITECTURE/StandardScenarios.md]   # one new record under ARCHITECTURE/decisions/: ADR-0074 at planning time (ADR-0068 is held by the BLOCKED T-0210 branch - never take it); the next free number above ADR-0073 at execution time
 estimatedSize: {loc: 240, files: 4}   # one new record of about 170-210 lines; the register edits are a few in-place lines each
-hq: [HQ-0023]
+hq: [HQ-0023, HQ-0080, HQ-0081]
 ---
 ## Why
 
