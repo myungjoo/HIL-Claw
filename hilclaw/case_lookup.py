@@ -41,14 +41,18 @@ Conventions of this module, which ADR-0073 does not fix:
 - An entry's kind is taken by :func:`os.lstat`: a symbolic link is not
   followed and is reported as ``"invalid"``, as is a directory.
 - The reports are in ascending byte order of their ``path``.
-- **How a report is carried to the selection, and whether a selection may go
-  on after one, is not decided** (ADR-0073 Boundaries; OD-18, OD-23).
+- For the runs of ADR-0120 decision 1, the tool ``cases.lookup``
+  (:mod:`hilclaw.cases_tool`) carries the result, its reports among it, to
+  the technique-selector, which goes on after a report (ADR-0173 decisions 3
+  and 4); for other runs this stays open (ADR-0073 Boundaries; OD-18, OD-23).
 - A run that states no op_signature has no key: nothing is substituted, no
   file is read and its hw_profile record is not validated.
 
-What this module does not do: it is no tool, no hook and no command, and it
-does not decide which agent performs the lookup or how a selection is made to
-take its output and record ``cases_read`` (OD-18, OD-23). It has no selection
+What this module does not do: it is no tool itself (:mod:`hilclaw.cases_tool`
+is), no hook and no command, and it does not decide which agent performs the
+lookup or how a selection is made to take its output and record
+``cases_read`` (ADR-0173 decisions 4 and 5 for the runs of ADR-0120 decision
+1; OD-18, OD-23). It has no selection
 rule for many cases (OD-30), no similar-key lookup (OD-4) and no ranking
 (OD-7). It does not check the rules between files of ADR-0073 decisions 2 and
 3 (that the ``case`` entries and ``cases_read`` of a ``hypotheses.json`` name

@@ -2,13 +2,13 @@
 id: T-0231
 title: Write the ADR that settles the S6 metric part of OD-30 for one pair of runs - what "the first run's best", "reached" and "a case reference" mean, the boundary cases, and how drift between runs is treated - and reflect it in the ARCHITECTURE registers by their recording rules; no number of pairs, no control run, no cost limit, no code
 phase: P1
-status: BLOCKED
+status: DONE
 commitMode: doc
 coversReq: [S6, FR-18, FR-11, FR-17, NFR-3, NFR-5, OD-30, OD-1, OD-13, OD-11, OD-20, OD-28, "#5 D6"]
 dependsOn: [T-0218, T-0226, T-0230]
 touchesFiles: [ARCHITECTURE/decisions/, ARCHITECTURE/Requirements.md, ARCHITECTURE/OpenDecisionProposals.md, ARCHITECTURE/StandardScenarios.md]   # one new record under ARCHITECTURE/decisions/: ADR-0074 at planning time (ADR-0068 is held by the BLOCKED T-0210 branch - never take it); the next free number above ADR-0073 at execution time
 estimatedSize: {loc: 240, files: 4}   # one new record of about 170-210 lines; the register edits are a few in-place lines each
-hq: [HQ-0023]
+hq: [HQ-0023, HQ-0080]
 ---
 ## Why
 
@@ -137,3 +137,12 @@ Sections in the order of ADR-0001 "Record format", accepted under DRIVER §9 (ow
 - **Document checks**: relative links resolve; JSON parses; `git diff --check` clean; new file `i/lf`; 4 files within touchesFiles.
 - **Review findings by round**: R1 ADR-0050 decision 3 limits (order of >2, cross-session) → marked metric-only + Boundaries; pair key = `key` members; counts; quotes; `B1` name clash. R2 round-0 lookup claim, tie rationale, ADR-0035 decision number, example, absent members, promotion. R3 "not counted for or against" pre-empted ③; `r1`/`r2` name check; less-exact list; option labels; #5 A-8. R4 `r1`/`r2` clash with walk-through run names → renamed to "first-run round"/"second-run round". R5 Approve (nits: keyless runs, `schema_version`, (iii) alternative). R6 Approve (nits: example round-0 assumption, `draws`). R7 Request changes (OD-13 ⑪; unstated budgets) → fixed, unreviewed.
 - **Owner notice**: not posted (not landed). **D16**: nothing built or run; no `claude` process started by the executor or the reviewers.
+
+- **Landed**: commit `250b3df2` on `main` (doc mode, ADR-0074), `Reviewed-by: reviewer agent (4 rounds, Approve)`. Resumed under HQ-0023 (round count restarted) and HQ-0080. Redone on `claude/T-0231-s6-metric-one-pair` from `origin/main` because the old branch's rebase conflicted; both branches are deleted (the old head was `a1098129`).
+- **Points as landed**: first-run best = lowest trimmed mean among attempts `verified` at board with one `converged` measurement; reached = `not_different` or `lower` by ADR-0007 decision 7, recorded sets compared as they are; verdicts `met` / `not met` / `not applicable`; the case condition needs a `basis` entry of kind `case` citing the first run's `run_id`; token spend is not available (OD-19). No data-plane change; the verdict is not stored.
+- **Registers**: Requirements OD-30, OpenDecisionProposals OD-30, StandardScenarios S6. Coverage S0/S6/S11: no verdict change, no gap.
+- **Review**: R1-R3 Request changes, R4 Approve; two nits applied after it without re-review (D20).
+- **Less exact, not edited**: listed in ADR-0074 Consequences.
+- **Owner notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6528276281 (window until 2026-11-07).
+- **D16**: nothing built or run; no `claude` process started. The round-3 reviewer wrote three helper files to the session scratchpad against its "write no file" instruction; the repository was untouched.
+- **For the P2-8 task**: which point's `instance.json` values are compared (ADR-0023 decision 6); first-run best candidates whose `contract_key` or `shape` differ; timing result lines that are not admitted (`timing_result_invalid`); the output format of a verdict with no stored place.

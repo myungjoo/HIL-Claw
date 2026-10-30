@@ -12,6 +12,36 @@ program of a verification run of ADR-0017 as a C source (``verification_program.
 the build of a verification executable from it
 (:mod:`hilclaw.harness.verification_build`), the array side of that run
 (:mod:`hilclaw.harness.verification_arrays`) and its Python side over an
-executable that is already built (:mod:`hilclaw.harness.verification`), these last
-two being the two modules that import ``numpy``, and nothing else of the harness.
+executable that is already built (:mod:`hilclaw.harness.verification`), the
+array side of the bf16 verification run of ADR-0163
+(:mod:`hilclaw.harness.bf16_verification_arrays`) and its Python side over an
+executable that is already built (:mod:`hilclaw.harness.bf16_verification`),
+the array side of the bf16 RoPE verification run of ADR-0164
+(:mod:`hilclaw.harness.bf16_rope_arrays`) and its Python side over an
+executable that is already built
+(:mod:`hilclaw.harness.bf16_rope_verification`), and the array side of the
+bf16 SDPA-with-KV-cache verification run of ADR-0165
+(:mod:`hilclaw.harness.bf16_sdpa_kv_cache_arrays`) and its Python side over an
+executable that is already built
+(:mod:`hilclaw.harness.bf16_sdpa_kv_cache_verification`), these last eight
+being the eight modules that import ``numpy``, and nothing else of the
+harness. The C sources
+of the bf16 verification runs are their shared header
+(``bf16_verification.h``) and their six verification programs, one per kind,
+which include it (``bf16_verification_gemm.c``, ``bf16_verification_rmsnorm.c``,
+``bf16_verification_elementwise_add.c``, ``bf16_verification_swiglu.c``,
+``bf16_verification_rope.c`` of ADR-0164, which reads the ``freqs_cis`` rows
+on its standard input, and ``bf16_verification_sdpa_kv_cache.c`` of ADR-0165),
+and the build of a bf16 verification executable from one of them
+(:mod:`hilclaw.harness.bf16_verification_build`). The C sources of the bf16
+timing runs of ADR-0181 are their shared header (``bf16_timing.h``, which
+includes ``bf16_verification.h``) and six timing programs, one per kind, which
+include it (``bf16_timing_gemm.c``, ``bf16_timing_rmsnorm.c``,
+``bf16_timing_elementwise_add.c``, ``bf16_timing_swiglu.c``,
+``bf16_timing_rope.c``, which reads the ``freqs_cis`` rows on its standard
+input, and ``bf16_timing_sdpa_kv_cache.c``), with the build
+of a bf16 timing executable from one of them
+(:mod:`hilclaw.harness.bf16_timing_build`) and its Python side over an
+executable that is already built (:mod:`hilclaw.harness.bf16_timing`), which
+imports the NumPy modules above only when a ``rope`` run starts.
 """

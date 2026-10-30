@@ -41,6 +41,22 @@ jobs:
         run: python -m ruff check .
       - name: ruff format --check
         run: python -m ruff format --check .
+      - name: Install the OpenMP runtime of clang (ADR-0188)
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libomp-dev
+      - name: Allow unshare to make user namespaces (tests/harness/test_timing_waiter.py)
+        shell: bash
+        run: |
+          restrict=$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo absent)
+          echo "kernel.apparmor_restrict_unprivileged_userns: $restrict"
+          if [[ $restrict == 1 ]]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+              'profile hilclaw-unshare /usr/bin/unshare flags=(unconfined) {' '  userns,' '}' \
+              | sudo tee /etc/apparmor.d/hilclaw-unshare > /dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/hilclaw-unshare
+          fi
+          unshare --user --pid --fork --mount-proc --kill-child /bin/sh -c 'test "$$" -eq 1'
       - name: pytest
         run: python -m pytest
 
@@ -87,7 +103,7 @@ jobs:
         shell: bash
         run: |
           report="$RUNNER_TEMP/calibration.xml"
-          python -m pytest tests/harness/test_calibration.py -rs --junitxml="$report"
+          python -m pytest tests/harness/test_calibration.py tests/harness/test_bf16_calibration.py -rs --junitxml="$report"
           python - "$report" <<'EOF'
           import sys
           import xml.etree.ElementTree as ET
@@ -153,6 +169,22 @@ jobs:
         run: |
           python -c "import tomllib; print(*tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies'], sep='\n')" > "$RUNNER_TEMP/runtime-requirements.txt"
           python -m pip install --only-binary=:all: -r "$RUNNER_TEMP/runtime-requirements.txt"
+      - name: Install the OpenMP runtime of clang (ADR-0188)
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libomp-dev
+      - name: Allow unshare to make user namespaces (tests/harness/test_timing_waiter.py)
+        shell: bash
+        run: |
+          restrict=$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo absent)
+          echo "kernel.apparmor_restrict_unprivileged_userns: $restrict"
+          if [[ $restrict == 1 ]]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+              'profile hilclaw-unshare /usr/bin/unshare flags=(unconfined) {' '  userns,' '}' \
+              | sudo tee /etc/apparmor.d/hilclaw-unshare > /dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/hilclaw-unshare
+          fi
+          unshare --user --pid --fork --mount-proc --kill-child /bin/sh -c 'test "$$" -eq 1'
       - name: Line and function coverage of hilclaw/
         shell: bash
         run: |

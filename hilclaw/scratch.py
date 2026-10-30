@@ -9,7 +9,7 @@ later record's; P4 that its removal follows no symbolic link.
 ``ARCHITECTURE/decisions/ADR-0055-od23-coder-output-form.md`` decision 5 adds
 that what is copied in is never placed in the place (the entry ``output``
 directly below the scratch root). :func:`create` is slice (a) of ADR-0049 and
-:func:`remove` slice (c). Nothing calls them yet.
+:func:`remove` slice (c). :func:`hilclaw.coder_call.call` calls them.
 
 Conventions of this module, which are not rules of the records:
 
@@ -23,10 +23,19 @@ Conventions of this module, which are not rules of the records:
   gives, under ``parent`` (by default the temporary directory of the system),
   with the name prefix :data:`PREFIX`. Its path is returned as a ``str``.
 - The copy is the regular file :data:`SPEC_COPY_NAME` directly below the
-  scratch root. That name is a convention of this code, not of a record; how
-  the coder process is pointed at the copy is PLAN P2-2. The source is read
-  whole, without following a link, before the scratch is made; its bytes are
-  not parsed, checked or changed, and no mode bit or time is carried over.
+  scratch root. That name is a convention of this code, not of a record; the
+  coder process is pointed at the copy by that relative name (ADR-0126
+  decision 5). The source is read whole, without following a link, before
+  the scratch is made; its bytes are not parsed, checked or changed, and no
+  mode bit or time is carried over.
+- ``ARCHITECTURE/decisions/ADR-0184-od20-first-case-incumbent-base.md``
+  decision 3 adds one further kind of file: when the caller names ``base``,
+  a copy of the bytes of each regular file directly below that directory,
+  under its own name, in the directory :data:`BASE_COPY_NAME` directly below
+  the scratch root. Every file is read whole, without following a link,
+  before the scratch is made; an entry that is no regular file, or a
+  ``base`` that is no directory (a link or a junction among them) or cannot
+  be listed, is :data:`BASE_UNREADABLE`.
 - A failure after the scratch was made removes the scratch, and the original
   exception arrives.
 - :func:`remove` removes the scratch and everything below it with
@@ -70,12 +79,19 @@ import time
 from hilclaw import checkout_boundary as _checkout_boundary
 
 SPEC_COPY_NAME = "spec.json"
+BASE_COPY_NAME = "base"
 PREFIX = "hilclaw-coder-"
 
 SPEC_UNREADABLE = "spec_unreadable"
 SPEC_NOT_REGULAR_FILE = "spec_not_regular_file"
 SPEC_CHANGED = "spec_changed"
-SCRATCH_FAILURES = (SPEC_UNREADABLE, SPEC_NOT_REGULAR_FILE, SPEC_CHANGED)
+BASE_UNREADABLE = "base_unreadable"
+SCRATCH_FAILURES = (
+    SPEC_UNREADABLE,
+    SPEC_NOT_REGULAR_FILE,
+    SPEC_CHANGED,
+    BASE_UNREADABLE,
+)
 
 _JUNCTION_TAG = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
 _REMOVE_PAUSES_S = (0.0, 0.2, 0.6, 1.2)
@@ -109,7 +125,7 @@ class ScratchError(Exception):
         self.failure = failure
 
 
-def create(spec_path, *, parent=None, keep_out=()):
+def create(spec_path, *, parent=None, keep_out=(), base=None):
     """Make a new scratch holding a copy of the bytes of ``spec_path``; return its path.
 
     ``parent`` is the existing directory the scratch is made in (``None``: the
@@ -117,14 +133,16 @@ def create(spec_path, *, parent=None, keep_out=()):
     directory that holds this package or a directory of the sequence
     ``keep_out``. ``spec_path`` must be, per :func:`os.lstat`, a regular file;
     its bytes become the new file :data:`SPEC_COPY_NAME` directly below the
-    scratch root, and nothing else is placed.
+    scratch root. ``base`` (``None``: none) is a directory whose regular files
+    are copied into :data:`BASE_COPY_NAME`; nothing else is placed.
 
     Raises :class:`InvalidScratchArgumentError` for a path argument of the
     wrong type or with a NUL character, or a ``parent`` inside a checkout;
     :class:`TypeError` for a ``keep_out`` that is one path;
     :class:`ScratchError` with :data:`SPEC_UNREADABLE` (a missing or unreadable
-    source), :data:`SPEC_NOT_REGULAR_FILE` or :data:`SPEC_CHANGED` (the opened
-    file is not the one examined). Nothing is made then. The :class:`OSError`
+    source), :data:`SPEC_NOT_REGULAR_FILE`, :data:`SPEC_CHANGED` (the opened
+    file is not the one examined) or :data:`BASE_UNREADABLE`. Nothing is made
+    then. The :class:`OSError`
     of making the scratch or writing the copy is raised as it is, after the
     scratch was removed.
     """
@@ -136,9 +154,14 @@ def create(spec_path, *, parent=None, keep_out=()):
         containing=False,
     )
     data = _read_source(source)
+    copies = None if base is None else _read_base(_checked_path("base", base))
     directory = tempfile.mkdtemp(prefix=PREFIX, dir=place)
     try:
         _write_new(os.path.join(directory, SPEC_COPY_NAME), data)
+        if copies is not None:
+            os.mkdir(os.path.join(directory, BASE_COPY_NAME))
+            for name, content in copies:
+                _write_new(os.path.join(directory, BASE_COPY_NAME, name), content)
     except BaseException:
         _remove(directory)
         raise
@@ -236,6 +259,22 @@ def _read_source(source):
     finally:
         os.close(descriptor)
     return b"".join(chunks)
+
+
+def _read_base(base):
+    try:
+        if not _is_plain_directory(os.lstat(base)):
+            raise ScratchError(BASE_UNREADABLE)
+        names = sorted(os.listdir(base))
+    except OSError as error:
+        raise ScratchError(BASE_UNREADABLE) from error
+    copies = []
+    for name in names:
+        try:
+            copies.append((name, _read_source(os.path.join(base, name))))
+        except ScratchError as error:
+            raise ScratchError(BASE_UNREADABLE) from error
+    return copies
 
 
 def _write_new(path, data):

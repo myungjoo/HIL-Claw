@@ -2,7 +2,7 @@
 id: T-0243
 title: Add the path of the compiler's log file to `hilclaw/layout.py` and a new module `hilclaw/build_log.py` holding the log keeper, the kind `build_log_unwritable` and the once-only write of the file (ADR-0078 decisions 2-4, 6, 7, code slice 1 of its Consequences), with tests; no change to `check_operation`, `check_ending`, `check_seed`, `check_tool`, `mock_check` or `clang_build`
 phase: P1
-status: BLOCKED
+status: DONE
 commitMode: code
 coversReq: [FR-10, FR-6, FR-9, OD-18, "#5 D12"]
 dependsOn: [T-0242]
@@ -82,3 +82,10 @@ Tests (D12), `tests/test_build_log.py`:
 
 - Criterion 1 adds a public function to `hilclaw/layout.py`, but the existing test `tests/test_layout.py::test_module_defines_no_reader_writer_or_entry_point` (lines 565-586 at `91ca524`) asserts that the set of public names defined in `hilclaw.layout` equals a literal set, so any new public function fails it. Criterion 3 permits edits only to the import block and the `every_path` helper ("No existing assertion is edited or removed"), and criterion 14 says to stop with BLOCKED rather than edit a failing existing test. Hiding the function from the check (a non-`layout` `__module__`) would weaken the test's intent and was not done.
 - Fix proposed for re-planning: also permit adding the new function's name to the literal set of that test (precedent: T-0129; T-0242's Follow-ups asked to list the tests pinning the module's public names as editable). The rest of the task is unchanged.
+
+Resumed after HQ-0026 (owner allowed adding the new name to the literal set of `test_module_defines_no_reader_writer_or_entry_point`; nothing else in that test changed): **DONE**. PR #287 squash-merged as be5020d3 (CI green; local full suite 32630 passed / 1858 skipped, ruff clean; `hilclaw/build_log.py` and `hilclaw/layout.py` 100% line coverage, `hilclaw/` 97%).
+- Review: 1 round (Approve; two Nits left unapplied per D20: an in-function import of `check_identity` in a `test_layout` test, and `HandOverRefused` not type-checking its message).
+- Language: Python, as the rest of the `hilclaw/` tool package.
+- layout: `build_log_file(...)` and the closed list `BUILD_LOG_STEPS` (tested equal to `check_identity.STEPS`); `ATTEMPT_ARTEFACTS`, `_ARTEFACT_ROLE`, `LAYOUT_VERSION` unchanged.
+- build_log: `LogKeeper`, `HandOverRefused` (an `Exception`, no `ToolFailure`), `KIND_BUILD_LOG_UNWRITABLE` / `BuildLogUnwritable`, `write()` (creates missing directories of `path.parent`, uses `write_once`, constant messages, no `__cause__`/`__context__`).
+- Follow-ups: ADR-0078 code slices 2-3 (thread the keeper through `check_operation.ask`, `check_ending`, `check_seed`, `check_tool`, `mock_check`) and slice 4 (`clang_build` log on `OSError`); `hilclaw/spec_feedback.py` line 184 forms the build-log name itself and could use `layout.build_log_file`. No PLAN checkbox (P1-1 continues). No `claude` was started (D16).

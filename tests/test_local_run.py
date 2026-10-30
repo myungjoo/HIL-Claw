@@ -1,5 +1,6 @@
 import errno
 import gc
+import hashlib
 import json
 import os
 import pickle
@@ -1464,3 +1465,195 @@ def test_the_path_role_survives_pickling(tmp_path):
     assert loaded.errno == error.errno
     assert loaded.filename == error.filename
     assert loaded.path_role == "cwd"
+
+
+FED_PRELUDE = """\
+import hashlib, os, sys, time
+from pathlib import Path
+Path(__file__).with_name("started.json").write_text("{}", encoding="utf-8")
+out, err, inp = sys.stdout.buffer, sys.stderr.buffer, sys.stdin.buffer
+"""
+ECHO = "out.write(inp.read())"
+DIGEST = "out.write(hashlib.sha256(inp.read()).hexdigest().encode())"
+LOUD_FIRST = LOUD + "; out.flush(); err.flush(); " + DIGEST
+EMPTY = "sys.exit(0 if inp.read() == b'' else 5)"
+EXIT_AT_ONCE = "out.write(b'gone'); sys.exit(3)"
+CLOSE_EARLY = "head = os.read(0, 4); os.close(0); out.write(b'read ' + head)"
+STDIN_KIND = (
+    "import stat; mode = os.fstat(0).st_mode; "
+    "out.write(b'char' if stat.S_ISCHR(mode) else b'fifo' if stat.S_ISFIFO(mode) else b'?')"
+)
+NEVER_READ = "out.write(b'waiting'); out.flush(); time.sleep(30)"
+ALL_BYTES = bytes(range(256)) * 4
+BIG = bytes(range(256)) * (3 * MIB // 256)
+BAD_STDIN_DATA = ["text", bytearray(b"x"), memoryview(b"x"), 1, [b"x"]]
+
+
+def fed(child, body, *arguments):
+    script = child.directory / "child.py"
+    script.write_text(FED_PRELUDE + body + "\n", encoding="utf-8")
+    return (sys.executable, str(script), *arguments)
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+@pytest.mark.parametrize("data", [ALL_BYTES, BIG], ids=["all-bytes", "big"])
+def test_standard_input_reaches_the_process_byte_for_byte(
+    data, platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    result = run(fed(child, ECHO), timeout_s=TIMEOUT, stdin_data=data)
+    assert result.returncode == 0
+    assert result.timed_out is False
+    assert result.stdout == data
+    assert result.stderr == b""
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_input_read_after_loud_output_does_not_deadlock(
+    platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    result = run(fed(child, LOUD_FIRST), timeout_s=TIMEOUT, stdin_data=BIG)
+    assert result.returncode == 0
+    digest = hashlib.sha256(BIG).hexdigest().encode()
+    assert result.stdout == b"o" * (2 << 20) + digest
+    assert result.stderr == b"e" * (2 << 20)
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_empty_input_is_end_of_input_at_once(platform_wait, child, monkeypatch):
+    wait_path(platform_wait, monkeypatch)
+    result = run(fed(child, EMPTY), timeout_s=TIMEOUT, stdin_data=b"")
+    assert result.returncode == 0
+    assert result.timed_out is False
+    assert child.started
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_no_input_given_is_the_null_device(platform_wait, child, monkeypatch):
+    wait_path(platform_wait, monkeypatch)
+    result = run(child(QUIET), timeout_s=TIMEOUT, stdin_data=None)
+    assert result.returncode == 0
+    assert child.call()["stdin"] == ""
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+@pytest.mark.parametrize(
+    "settings, kind",
+    [({}, b"char"), ({"stdin_data": None}, b"char"), ({"stdin_data": b""}, b"fifo")],
+)
+def test_standard_input_is_the_null_device_unless_input_is_given(
+    settings, kind, platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    result = run(fed(child, STDIN_KIND), timeout_s=TIMEOUT, **settings)
+    assert result.returncode == 0
+    assert result.stdout == kind
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_a_process_that_exits_without_reading_is_a_result(
+    platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    result = run(fed(child, EXIT_AT_ONCE), timeout_s=TIMEOUT, stdin_data=BIG)
+    assert result.returncode == 3
+    assert result.timed_out is False
+    assert result.stdout == b"gone"
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_a_process_that_closes_its_input_early_is_a_result(
+    platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    result = run(fed(child, CLOSE_EARLY), timeout_s=TIMEOUT, stdin_data=BIG)
+    assert result.returncode == 0
+    assert result.timed_out is False
+    assert result.stdout == b"read " + BIG[:4]
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+def test_a_timeout_while_writing_kills_and_keeps_the_output(
+    platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    before = time.monotonic()
+    result = run(fed(child, NEVER_READ), timeout_s=3, stdin_data=BIG)
+    assert time.monotonic() - before < 20
+    assert result.timed_out is True
+    assert result.returncode is None
+    assert result.stdout == b"waiting"
+
+
+@pytest.mark.parametrize("platform_wait", [True, False])
+@pytest.mark.parametrize("body", [ECHO, EXIT_AT_ONCE, NEVER_READ])
+def test_no_resource_warning_is_left_behind_with_input(
+    body, platform_wait, child, monkeypatch
+):
+    wait_path(platform_wait, monkeypatch)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        run(fed(child, body), timeout_s=3, stdin_data=BIG)
+        gc.collect()
+    assert not [w for w in caught if issubclass(w.category, ResourceWarning)]
+
+
+@posix_only
+def test_the_usage_is_handed_on_with_input(child):
+    result = run(fed(child, ECHO), timeout_s=TIMEOUT, stdin_data=ALL_BYTES)
+    assert result.stdout == ALL_BYTES
+    assert type(result.max_rss) is int
+    assert result.max_rss > 0
+
+
+@posix_only
+def test_a_process_fed_input_is_reaped(child):
+    body = PID + "; " + DIGEST
+    result = run(fed(child, body), timeout_s=TIMEOUT, stdin_data=BIG)
+    assert result.returncode == 0
+    assert_reaped(int(result.stdout[: -len(hashlib.sha256().hexdigest())]))
+
+
+@pytest.mark.parametrize("data", BAD_STDIN_DATA, ids=lambda d: type(d).__name__)
+def test_input_of_another_type_is_refused_before_the_start(data, child):
+    error = raised(child(QUIET), stdin_data=data)
+    assert type(error) is TypeError
+    assert error.parameter == "stdin_data"
+    assert not hasattr(error, "path_role")
+    assert not child.started
+
+
+@pytest.mark.parametrize(
+    "command, settings, parameter",
+    [
+        (["x"], {"timeout_s": 0}, "timeout_s"),
+        ([], {}, "command"),
+        ([sys.executable, 3], {}, "command"),
+        ([sys.executable], {"env": {"A": 3}}, "env"),
+        ([sys.executable], {"cwd": 3}, "cwd"),
+    ],
+)
+def test_the_input_is_checked_last(command, settings, parameter):
+    error = raised(command, stdin_data="text", **settings)
+    assert error.parameter == parameter
+
+
+def test_a_missing_cwd_comes_before_the_input(child, tmp_path):
+    error = raised(child(QUIET), cwd=tmp_path / "absent", stdin_data="text")
+    assert isinstance(error, OSError)
+    assert error.path_role == "cwd"
+    assert not hasattr(error, "parameter")
+    assert not child.started
+
+
+def test_a_missing_program_comes_before_the_input():
+    error = raised(("hilclaw-no-such-program",), stdin_data="text")
+    assert type(error) is ProgramNotFoundError
+
+
+def test_the_input_parameter_survives_pickling():
+    error = raised([sys.executable], stdin_data="text")
+    loaded = pickle.loads(pickle.dumps(error))
+    assert type(loaded) is TypeError
+    assert loaded.parameter == "stdin_data"

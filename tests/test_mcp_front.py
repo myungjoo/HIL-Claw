@@ -21,6 +21,24 @@ FIXED_NAMES = {
     "correctness.check": "correctness_check",
     "blob.push": "blob_push",
     "blob.fetch": "blob_fetch",
+    "state.read": "state_read",
+    "instance.read": "instance_read",
+    "run.fresh": "run_fresh",
+    "state.write": "state_write",
+    "verdicts.write": "verdicts_write",
+    "hypotheses.read": "hypotheses_read",
+    "hypotheses.write": "hypotheses_write",
+    "checks.read": "checks_read",
+    "coder.run": "coder_run",
+    "run.commit": "run_commit",
+    "case.write": "case_write",
+    "cases.lookup": "cases_lookup",
+    "catalog.read": "catalog_read",
+    "key.store": "key_store",
+    "round.end": "round_end",
+    "spec.write": "spec_write",
+    "timings.compare": "timings_compare",
+    "verdicts.read": "verdicts_read",
 }
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
 INITIALIZE = {
@@ -449,12 +467,32 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 # The fixed tool set
 
 
-def test_the_fixed_tool_set_is_the_blob_tools_and_correctness_check():
-    """The C-3 pair (ADR-0039) and correctness.check (ADR-0070); no other FR-10 HW tool yet."""
+def test_the_fixed_tool_set_is_the_blob_tools_hw_tools_and_run_file_tools():
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), sim.run and board.run (ADR-0167), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), hypotheses.write (ADR-0132), catalog.read (ADR-0171), cases.lookup (ADR-0173), verdicts.read (ADR-0174), checks.read (ADR-0131), case.write (ADR-0133), key.store (ADR-0134), round.end (ADR-0135), spec.write (ADR-0138), timings.compare (ADR-0140) and coder.run (ADR-0141)."""
     held = {
         "blob_fetch": "blob.fetch",
         "blob_push": "blob.push",
+        "board_run": "board.run",
+        "case_write": "case.write",
+        "cases_lookup": "cases.lookup",
+        "catalog_read": "catalog.read",
+        "checks_read": "checks.read",
+        "coder_run": "coder.run",
         "correctness_check": "correctness.check",
+        "hypotheses_read": "hypotheses.read",
+        "hypotheses_write": "hypotheses.write",
+        "instance_read": "instance.read",
+        "key_store": "key.store",
+        "round_end": "round.end",
+        "run_commit": "run.commit",
+        "run_fresh": "run.fresh",
+        "sim_run": "sim.run",
+        "spec_write": "spec.write",
+        "state_read": "state.read",
+        "state_write": "state.write",
+        "timings_compare": "timings.compare",
+        "verdicts_read": "verdicts.read",
+        "verdicts_write": "verdicts.write",
     }
     assert mcp_names(default_registry(lambda: REPO_ROOT)) == held
     unknown = [name for name in FIXED_NAMES.values() if name not in held]
@@ -466,7 +504,8 @@ def test_the_fixed_tool_set_is_the_blob_tools_and_correctness_check():
     assert status == 0
     listed, *refused = responses(stdout.getvalue())
     assert [tool["name"] for tool in listed["result"]["tools"]] == list(held)
-    assert len(refused) == 3
+    assert unknown == ["profiler_collect"]
+    assert len(refused) == 1
     for i, (name, document) in enumerate(zip(unknown, refused), 1):
         assert error_of(document, -32602, i) == f"unknown tool {name!r}"
 
@@ -488,13 +527,37 @@ def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
     monkeypatch.setattr(config, "DEFAULT_CONFIG_PATH", tmp_path / "missing.json")
     with pytest.raises(config.ConfigError):
         config.load_data_repo()
-    data = message("tools/list", 1) + call(2, "sim_run", {})
+    data = message("tools/list", 1) + call(2, "profiler_collect", {})
     stdout, stderr = io.BytesIO(), io.BytesIO()
     assert main([], stdin=io.BytesIO(data), stdout=stdout, stderr=stderr) == 0
     listed, refused = responses(stdout.getvalue())
     names = [tool["name"] for tool in listed["result"]["tools"]]
-    assert names == ["blob_fetch", "blob_push", "correctness_check"]
-    assert error_of(refused, -32602, 2) == "unknown tool 'sim_run'"
+    assert names == [
+        "blob_fetch",
+        "blob_push",
+        "board_run",
+        "case_write",
+        "cases_lookup",
+        "catalog_read",
+        "checks_read",
+        "coder_run",
+        "correctness_check",
+        "hypotheses_read",
+        "hypotheses_write",
+        "instance_read",
+        "key_store",
+        "round_end",
+        "run_commit",
+        "run_fresh",
+        "sim_run",
+        "spec_write",
+        "state_read",
+        "state_write",
+        "timings_compare",
+        "verdicts_read",
+        "verdicts_write",
+    ]
+    assert error_of(refused, -32602, 2) == "unknown tool 'profiler_collect'"
     assert stderr.getvalue() == b""
 
 
@@ -926,7 +989,31 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
     names = [tool["name"] for tool in listed["result"]["tools"]]
     assert (listed["id"], names) == (
         1,
-        ["blob_fetch", "blob_push", "correctness_check"],
+        [
+            "blob_fetch",
+            "blob_push",
+            "board_run",
+            "case_write",
+            "cases_lookup",
+            "catalog_read",
+            "checks_read",
+            "coder_run",
+            "correctness_check",
+            "hypotheses_read",
+            "hypotheses_write",
+            "instance_read",
+            "key_store",
+            "round_end",
+            "run_commit",
+            "run_fresh",
+            "sim_run",
+            "spec_write",
+            "state_read",
+            "state_write",
+            "timings_compare",
+            "verdicts_read",
+            "verdicts_write",
+        ],
     )
     assert stderr.buffer.getvalue() == b""
     monkeypatch.setattr(sys, "argv", ["python -m hilclaw.mcp_front", "sim_run"])
@@ -1015,18 +1102,42 @@ def test_process_handshake_and_tool_list():
     names = [tool["name"] for tool in listed["result"]["tools"]]
     assert (listed["id"], names) == (
         2,
-        ["blob_fetch", "blob_push", "correctness_check"],
+        [
+            "blob_fetch",
+            "blob_push",
+            "board_run",
+            "case_write",
+            "cases_lookup",
+            "catalog_read",
+            "checks_read",
+            "coder_run",
+            "correctness_check",
+            "hypotheses_read",
+            "hypotheses_write",
+            "instance_read",
+            "key_store",
+            "round_end",
+            "run_commit",
+            "run_fresh",
+            "sim_run",
+            "spec_write",
+            "state_read",
+            "state_write",
+            "timings_compare",
+            "verdicts_read",
+            "verdicts_write",
+        ],
     )
     assert done.stderr == b""
 
 
 def test_process_malformed_line_and_unknown_tool():
-    done = run_module(b"{\r\n" + call(1, "sim_run", {}) + message("ping", "p"))
+    done = run_module(b"{\r\n" + call(1, "profiler_collect", {}) + message("ping", "p"))
     assert done.returncode == 0
     assert b"\r" not in done.stdout and done.stdout.endswith(b"\n")
     parse_error, refused, pinged = responses(done.stdout)
     error_of(parse_error, -32700, None)
-    assert error_of(refused, -32602, 1) == "unknown tool 'sim_run'"
+    assert error_of(refused, -32602, 1) == "unknown tool 'profiler_collect'"
     assert pinged == {"jsonrpc": "2.0", "id": "p", "result": {}}
     assert done.stderr == b""
 

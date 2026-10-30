@@ -205,13 +205,93 @@ def test_a_value_that_is_not_exactly_a_str_is_not_admitted(value):
 def test_the_walk_through_of_the_record(output):
     write(output, "pack.h", "pack.c", "gemm.c")
     answer = read_compiled_set(output)
-    assert answer == KernelSource((output / "gemm.c", output / "pack.c"), None)
-    assert all(type(path) is type(output) for path in answer.compiled_set)
+    assert answer == KernelSource(
+        (output / "gemm.c", output / "pack.c"), None, (output / "pack.h",)
+    )
+    assert all(
+        type(path) is type(output) for path in answer.compiled_set + answer.headers
+    )
 
 
 def test_one_file(output):
     write(output, "kernel.c")
-    assert read_compiled_set(output) == KernelSource((output / "kernel.c",), None)
+    answer = read_compiled_set(output)
+    assert answer == KernelSource((output / "kernel.c",), None)
+    assert answer.headers == ()
+
+
+def test_headers_field_defaults_to_empty():
+    assert KernelSource._fields == ("compiled_set", "missing", "headers")
+    assert KernelSource((), NO_COMPILED_FILE).headers == ()
+
+
+@pytest.mark.parametrize(
+    "listed",
+    [
+        ["z.h", "a.c", "a-b.h", "a_b.h", "a0.h"],
+        ["a0.h", "a_b.h", "a.c", "a-b.h", "z.h"],
+    ],
+)
+def test_headers_are_in_byte_order_whatever_the_listing(monkeypatch, output, listed):
+    write(output, *listed)
+    fake_listing(monkeypatch, {output: listed})
+    answer = read_compiled_set(output)
+    assert [path.name for path in answer.headers] == [
+        "a-b.h",
+        "a0.h",
+        "a_b.h",
+        "z.h",
+    ]
+    assert names_of(answer) == ["a.c"]
+
+
+def test_a_symbolic_link_named_like_a_header_is_no_header(output, tmp_path):
+    write(output, "a.c")
+    write(tmp_path, "real.h")
+    symlink(output / "b.h", tmp_path / "real.h")
+    assert read_compiled_set(output) == KernelSource((output / "a.c",), None, ())
+
+
+def test_a_header_under_a_name_that_is_not_admitted_is_no_header(monkeypatch, output):
+    names = ["a.c", "Pack.h", "_x.h", "aux.h", "a.hh", "b.h"]
+    kinds = {output / name: REGULAR for name in names}
+    fake_listing(monkeypatch, {output: names}, kinds)
+    assert read_compiled_set(output) == KernelSource(
+        (output / "a.c",), None, (output / "b.h",)
+    )
+
+
+def test_a_directory_named_like_a_header_is_no_header(output):
+    write(output, "a.c")
+    (output / "b.h").mkdir()
+    write(output / "b.h", "c.h")
+    assert read_compiled_set(output).headers == ()
+
+
+def test_headers_come_from_the_same_listing_and_kinds(monkeypatch, output):
+    write(output, "a.c", "a.h")
+    calls = []
+    real_listdir, real_lstat = os.listdir, os.lstat
+
+    def listdir(path):
+        calls.append(("listdir", os.fspath(path)))
+        return real_listdir(path)
+
+    def lstat(path):
+        calls.append(("lstat", os.fspath(path)))
+        return real_lstat(path)
+
+    monkeypatch.setattr(kernel_source.os, "listdir", listdir)
+    monkeypatch.setattr(kernel_source.os, "lstat", lstat)
+    answer = read_compiled_set(output)
+    assert answer.headers == (output / "a.h",)
+    assert [call for call in calls if call[0] == "listdir"] == [
+        ("listdir", os.fspath(output.parent)),
+        ("listdir", os.fspath(output)),
+    ]
+    assert sorted(path for kind, path in calls if kind == "lstat") == sorted(
+        [os.fspath(output), os.path.join(output, "a.c"), os.path.join(output, "a.h")]
+    )
 
 
 @pytest.mark.parametrize(
@@ -319,7 +399,23 @@ def test_empty_output(output):
 
 def test_only_a_header(output):
     write(output, "a.h")
-    assert read_compiled_set(output) == KernelSource((), NO_COMPILED_FILE)
+    answer = read_compiled_set(output)
+    assert answer == KernelSource((), NO_COMPILED_FILE)
+    assert answer.headers == ()
+
+
+def test_only_headers_and_other_entries(output):
+    write(output, "a.h", "b.h", "Notes.md")
+    assert read_compiled_set(output) == KernelSource((), NO_COMPILED_FILE, ())
+
+
+@pytest.mark.parametrize("make_output", [False, True])
+def test_no_kernel_source_reports_no_header(attempt, make_output):
+    write(attempt, "a.h")
+    if make_output:
+        write(attempt, "output")
+    answer = read_compiled_set(attempt / "output")
+    assert answer == KernelSource((), NO_OUTPUT_DIRECTORY, ())
 
 
 def test_only_names_that_are_not_admitted(output):
@@ -373,7 +469,9 @@ def test_mixed_entries_and_nothing_is_opened(monkeypatch, output):
         patch.setattr(os, "stat", refuse)
         patch.setattr(os, "scandir", refuse)
         answer = read_compiled_set(output)
-    assert answer == KernelSource((output / "gemm.c", output / "pack.c"), None)
+    assert answer == KernelSource(
+        (output / "gemm.c", output / "pack.c"), None, (output / "pack.h",)
+    )
 
 
 def test_an_attempt_directory_that_is_a_symbolic_link_counts(tmp_path):

@@ -597,8 +597,369 @@ def test_gemm_shape_members_are_exactly_m_k_n(shape):
 
 @pytest.mark.parametrize("kind", ["sdpa", "conv", "gemm2", "g"])
 def test_unknown_kind_is_rejected(kind):
-    with pytest.raises(InvalidRecordError, match="^kind: must be a known kind: gemm"):
+    with pytest.raises(
+        InvalidRecordError,
+        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm, rope, sdpa_kv_cache, swiglu",
+    ):
         op_signature_key(changed(synthetic_op(), ["kind"], kind))
+
+
+def synthetic_rmsnorm_op():
+    return dict(synthetic_op(), kind="rmsnorm", shape={"m": 3, "n": 7})
+
+
+def test_rmsnorm_record_is_accepted():
+    key = op_signature_key(synthetic_rmsnorm_op())
+    assert key.name.startswith("rmsnorm-")
+    assert hashlib.sha256(key.canonical).hexdigest() == key.digest
+
+
+def test_rmsnorm_record_of_adr_0158_has_its_canonical_form_and_name():
+    record = {
+        "schema_version": 1,
+        "kind": "rmsnorm",
+        "shape": {"m": 1, "n": 2048},
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+    key = op_signature_key(record)
+    assert key.canonical == (
+        b'{"dtype":"bf16","kind":"rmsnorm","layout":"row_major",'
+        b'"schema_version":1,"shape":{"m":1,"n":2048}}'
+    )
+    assert key.digest == (
+        "57f1bdf44f626c31e71beef7ba688a245eca699394fdbc732d48fffe1b0de702"
+    )
+    assert key.name == "rmsnorm-57f1bdf44f626c31"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {},
+        {"m": 1},
+        {"n": 2},
+        {"m": 1, "n": 2, "k": 3},
+        {"m": 1, "k": 2, "n": 3},
+        {"m": 1, "o": 2},
+    ],
+)
+def test_rmsnorm_shape_members_are_exactly_m_n(shape):
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members m, n",
+    ):
+        op_signature_key(changed(synthetic_rmsnorm_op(), ["shape"], shape))
+
+
+def test_gemm_still_needs_k_beside_m_and_n():
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members k, m, n",
+    ):
+        op_signature_key(changed(synthetic_op(), ["shape"], {"m": 3, "n": 7}))
+
+
+def test_unknown_kind_message_lists_all_known_kinds():
+    with pytest.raises(
+        InvalidRecordError,
+        match="^kind: must be a known kind: elementwise_add, gemm, rmsnorm, rope, sdpa_kv_cache, swiglu, got",
+    ):
+        op_signature_key(changed(synthetic_op(), ["kind"], "sdpa"))
+
+
+def synthetic_elementwise_add_op():
+    return dict(synthetic_op(), kind="elementwise_add", shape={"m": 3, "n": 7})
+
+
+def test_elementwise_add_record_is_accepted():
+    key = op_signature_key(synthetic_elementwise_add_op())
+    assert key.name.startswith("elementwise_add-")
+    assert hashlib.sha256(key.canonical).hexdigest() == key.digest
+
+
+def test_elementwise_add_record_of_adr_0159_has_its_canonical_form_and_name():
+    record = {
+        "schema_version": 1,
+        "kind": "elementwise_add",
+        "shape": {"m": 1, "n": 2048},
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+    key = op_signature_key(record)
+    assert key.canonical == (
+        b'{"dtype":"bf16","kind":"elementwise_add","layout":"row_major",'
+        b'"schema_version":1,"shape":{"m":1,"n":2048}}'
+    )
+    assert key.digest == (
+        "1af54bf2a0744c6977bb2d6411d15fb0a9cbdf0a997e159879d84bfe21708bce"
+    )
+    assert key.name == "elementwise_add-1af54bf2a0744c69"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {},
+        {"m": 1},
+        {"n": 2},
+        {"m": 1, "n": 2, "k": 3},
+        {"m": 1, "k": 2, "n": 3},
+        {"m": 1, "o": 2},
+    ],
+)
+def test_elementwise_add_shape_members_are_exactly_m_n(shape):
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members m, n",
+    ):
+        op_signature_key(changed(synthetic_elementwise_add_op(), ["shape"], shape))
+
+
+def test_other_kinds_keep_their_members_beside_elementwise_add():
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members k, m, n",
+    ):
+        op_signature_key(changed(synthetic_op(), ["shape"], {"m": 3, "n": 7}))
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members m, n",
+    ):
+        op_signature_key(
+            changed(synthetic_rmsnorm_op(), ["shape"], {"m": 1, "k": 2, "n": 3})
+        )
+    assert op_signature_key(synthetic_op()).name.startswith("gemm-")
+    assert op_signature_key(synthetic_rmsnorm_op()).name.startswith("rmsnorm-")
+
+
+def synthetic_swiglu_op():
+    return dict(synthetic_op(), kind="swiglu", shape={"m": 3, "n": 7})
+
+
+def test_swiglu_record_is_accepted():
+    key = op_signature_key(synthetic_swiglu_op())
+    assert key.name.startswith("swiglu-")
+    assert hashlib.sha256(key.canonical).hexdigest() == key.digest
+
+
+def test_swiglu_record_of_adr_0160_has_its_canonical_form_and_name():
+    record = {
+        "schema_version": 1,
+        "kind": "swiglu",
+        "shape": {"m": 1, "n": 8192},
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+    key = op_signature_key(record)
+    assert key.canonical == (
+        b'{"dtype":"bf16","kind":"swiglu","layout":"row_major",'
+        b'"schema_version":1,"shape":{"m":1,"n":8192}}'
+    )
+    assert key.digest == (
+        "7b82bc7d69cda1e0fd3794adbe3bce2274830ff1c53b3c20997ae095e352dc29"
+    )
+    assert key.name == "swiglu-7b82bc7d69cda1e0"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {},
+        {"m": 1},
+        {"n": 2},
+        {"m": 1, "n": 2, "k": 3},
+        {"m": 1, "k": 2, "n": 3},
+        {"m": 1, "o": 2},
+    ],
+)
+def test_swiglu_shape_members_are_exactly_m_n(shape):
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members m, n",
+    ):
+        op_signature_key(changed(synthetic_swiglu_op(), ["shape"], shape))
+
+
+def test_other_kinds_keep_their_members_beside_swiglu():
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members k, m, n",
+    ):
+        op_signature_key(changed(synthetic_op(), ["shape"], {"m": 3, "n": 7}))
+    for op in (synthetic_rmsnorm_op(), synthetic_elementwise_add_op()):
+        with pytest.raises(
+            InvalidRecordError,
+            match="^shape: must be a map with exactly the members m, n",
+        ):
+            op_signature_key(changed(op, ["shape"], {"m": 1, "k": 2, "n": 3}))
+        assert op_signature_key(op).name.startswith(op["kind"] + "-")
+    assert op_signature_key(synthetic_op()).name.startswith("gemm-")
+
+
+def synthetic_rope_op():
+    return dict(synthetic_op(), kind="rope", shape={"m": 3, "h": 5, "d": 2})
+
+
+def test_rope_record_is_accepted():
+    key = op_signature_key(synthetic_rope_op())
+    assert key.name.startswith("rope-")
+    assert hashlib.sha256(key.canonical).hexdigest() == key.digest
+
+
+def test_rope_record_of_adr_0161_has_its_canonical_form_and_name():
+    record = {
+        "schema_version": 1,
+        "kind": "rope",
+        "shape": {"m": 1, "h": 8, "d": 64},
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+    key = op_signature_key(record)
+    assert key.canonical == (
+        b'{"dtype":"bf16","kind":"rope","layout":"row_major",'
+        b'"schema_version":1,"shape":{"d":64,"h":8,"m":1}}'
+    )
+    assert key.digest == (
+        "c797475e043d41569f5a69878631c9c59bde735b28fc614aab427b1d9cd4006a"
+    )
+    assert key.name == "rope-c797475e043d4156"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {},
+        {"m": 1, "h": 2},
+        {"m": 1, "h": 2, "d": 4, "n": 5},
+        {"m": 1, "k": 2, "n": 3},
+        {"m": 1, "n": 2},
+        {"m": 1, "h": 2, "k": 4},
+    ],
+)
+def test_rope_shape_members_are_exactly_m_h_d(shape):
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members d, h, m",
+    ):
+        op_signature_key(changed(synthetic_rope_op(), ["shape"], shape))
+
+
+@pytest.mark.parametrize("d", [1, 3, 63, 0])
+def test_rope_record_with_an_odd_or_zero_d_is_accepted_by_the_keys(d):
+    record = changed(synthetic_rope_op(), ["shape"], {"m": 3, "h": 5, "d": d})
+    assert op_signature_key(record).name.startswith("rope-")
+
+
+def test_other_kinds_keep_their_members_beside_rope():
+    rope_shape = {"m": 1, "h": 2, "d": 4}
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members k, m, n",
+    ):
+        op_signature_key(changed(synthetic_op(), ["shape"], rope_shape))
+    for op in (
+        synthetic_rmsnorm_op(),
+        synthetic_elementwise_add_op(),
+        synthetic_swiglu_op(),
+    ):
+        with pytest.raises(
+            InvalidRecordError,
+            match="^shape: must be a map with exactly the members m, n",
+        ):
+            op_signature_key(changed(op, ["shape"], rope_shape))
+        assert op_signature_key(op).name.startswith(op["kind"] + "-")
+    assert op_signature_key(synthetic_op()).name.startswith("gemm-")
+
+
+def synthetic_sdpa_kv_cache_op():
+    return dict(
+        synthetic_op(),
+        kind="sdpa_kv_cache",
+        shape={"m": 2, "l": 3, "h": 4, "h_kv": 2, "d": 5},
+    )
+
+
+def test_sdpa_kv_cache_record_is_accepted():
+    key = op_signature_key(synthetic_sdpa_kv_cache_op())
+    assert key.name.startswith("sdpa_kv_cache-")
+    assert hashlib.sha256(key.canonical).hexdigest() == key.digest
+
+
+def test_sdpa_kv_cache_record_of_adr_0162_has_its_canonical_form_and_name():
+    record = {
+        "schema_version": 1,
+        "kind": "sdpa_kv_cache",
+        "shape": {"m": 1, "l": 128, "h": 32, "h_kv": 8, "d": 64},
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+    key = op_signature_key(record)
+    assert key.canonical == (
+        b'{"dtype":"bf16","kind":"sdpa_kv_cache","layout":"row_major",'
+        b'"schema_version":1,"shape":{"d":64,"h":32,"h_kv":8,"l":128,"m":1}}'
+    )
+    assert key.digest == (
+        "9f8c153fbe19c8ee934d21fd64dd8d20e788b76208c8e0f03b8117a754bb4361"
+    )
+    assert key.name == "sdpa_kv_cache-9f8c153fbe19c8ee"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {},
+        {"m": 1, "h": 2, "h_kv": 2, "d": 4},
+        {"m": 1, "l": 1, "h": 2, "h_kv": 2, "d": 4, "p": 0},
+        {"m": 1, "capacity": 1, "h": 2, "h_kv": 2, "d": 4},
+        {"m": 1, "l": 1, "h": 2, "d": 4},
+        {"m": 1, "h": 2, "d": 4},
+        {"m": 1, "k": 2, "n": 3},
+        {"m": 1, "n": 2},
+    ],
+)
+def test_sdpa_kv_cache_shape_members_are_exactly_m_l_h_h_kv_d(shape):
+    with pytest.raises(
+        InvalidRecordError,
+        match="^shape: must be a map with exactly the members d, h, h_kv, l, m",
+    ):
+        op_signature_key(changed(synthetic_sdpa_kv_cache_op(), ["shape"], shape))
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {"m": 3, "l": 2, "h": 4, "h_kv": 2, "d": 5},
+        {"m": 1, "l": 1, "h": 6, "h_kv": 4, "d": 2},
+        {"m": 1, "l": 1, "h": 1, "h_kv": 2, "d": 1},
+        {"m": 0, "l": 1, "h": 1, "h_kv": 1, "d": 1},
+        {"m": 1, "l": 0, "h": 1, "h_kv": 1, "d": 1},
+        {"m": 1, "l": 1, "h": 0, "h_kv": 1, "d": 1},
+        {"m": 1, "l": 1, "h": 1, "h_kv": 0, "d": 1},
+        {"m": 1, "l": 1, "h": 1, "h_kv": 1, "d": 0},
+    ],
+)
+def test_sdpa_kv_cache_contract_rules_are_not_rules_of_the_keys(shape):
+    record = changed(synthetic_sdpa_kv_cache_op(), ["shape"], shape)
+    assert op_signature_key(record).name.startswith("sdpa_kv_cache-")
+
+
+def test_other_kinds_keep_their_members_beside_sdpa_kv_cache():
+    sdpa_shape = {"m": 1, "l": 1, "h": 2, "h_kv": 2, "d": 4}
+    expected = [
+        (synthetic_op(), "k, m, n"),
+        (synthetic_rmsnorm_op(), "m, n"),
+        (synthetic_elementwise_add_op(), "m, n"),
+        (synthetic_swiglu_op(), "m, n"),
+        (synthetic_rope_op(), "d, h, m"),
+    ]
+    for op, members in expected:
+        with pytest.raises(
+            InvalidRecordError,
+            match=f"^shape: must be a map with exactly the members {members}",
+        ):
+            op_signature_key(changed(op, ["shape"], sdpa_shape))
+        assert op_signature_key(op).name.startswith(op["kind"] + "-")
 
 
 @pytest.mark.parametrize("canonical", ["{}", bytearray(b"{}"), None, {"a": 1}])

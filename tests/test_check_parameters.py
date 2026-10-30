@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from hilclaw import check_parameters
-from hilclaw.check_parameters import CheckParameters
+from hilclaw.check_parameters import BF16, Bf16CheckParameters, CheckParameters
 
 # Test values, not a seed, a number of draws or dimensions of the package.
 FIVE = {"seed": 7, "draws": 3, "m": 4, "k": 5, "n": 6}
@@ -87,7 +87,7 @@ def test_the_module_has_the_type_and_imports_typing_only():
         for name, value in vars(check_parameters).items()
         if not name.startswith("_") and not inspect.ismodule(value)
     }
-    assert public == {"CheckParameters"}
+    assert public == {"CheckParameters", "Bf16CheckParameters", "BF16"}
     assert CheckParameters.__module__ == "hilclaw.check_parameters"
     assert CheckParameters.__bases__ == (tuple,)
     found = set()
@@ -98,3 +98,40 @@ def test_the_module_has_the_type_and_imports_typing_only():
         if isinstance(node, ast.ImportFrom):
             found.add("." * node.level + (node.module or ""))
     assert found == {"typing"}
+
+
+BF16_FIVE = {"seed": 7, "draws": 3, "kind": "gemm", "dtype": "bf16", "dims": (4, 5, 6)}
+
+
+def test_the_bf16_type_holds_the_five_values_in_their_order():
+    assert Bf16CheckParameters._fields == ("seed", "draws", "kind", "dtype", "dims")
+    made = Bf16CheckParameters(**BF16_FIVE)
+    assert tuple(made) == (7, 3, "gemm", "bf16", (4, 5, 6))
+    assert made == Bf16CheckParameters(7, 3, "gemm", "bf16", (4, 5, 6))
+    assert Bf16CheckParameters.__bases__ == (tuple,)
+    assert BF16 == "bf16"
+
+
+def test_the_bf16_type_is_no_check_parameters_and_differs_by_any_value():
+    made = Bf16CheckParameters(**BF16_FIVE)
+    assert type(made) is not CheckParameters
+    other = Bf16CheckParameters(**{**BF16_FIVE, "kind": "rmsnorm", "dims": (4, 6)})
+    assert other != made
+
+
+def test_nothing_is_checked_when_a_bf16_instance_is_built():
+    made = Bf16CheckParameters(-1, 0, "conv", "fp32", [True, 0])
+    assert tuple(made) == (-1, 0, "conv", "fp32", [True, 0])
+
+
+@pytest.mark.parametrize("name", list(BF16_FIVE))
+def test_a_missing_bf16_value_is_refused(name):
+    given = {key: value for key, value in BF16_FIVE.items() if key != name}
+    with pytest.raises(TypeError):
+        Bf16CheckParameters(**given)
+
+
+def test_the_bf16_type_holds_the_five_dims_of_sdpa_kv_cache():
+    made = Bf16CheckParameters(7, 3, "sdpa_kv_cache", "bf16", (1, 2, 4, 2, 4))
+    assert made.dims == (1, 2, 4, 2, 4)
+    assert made.kind == "sdpa_kv_cache"

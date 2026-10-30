@@ -1,0 +1,10 @@
+# Values of `type` in `artifacts.json`
+
+The one list of the values that records have defined for the member `type` of a blob record of `runs/<run_id>/artifacts.json` ([ADR-0105](decisions/ADR-0105-od8-blob-type-vocabulary.md) decisions 7 and 8). It is an index: what content a value names is stated only by the defining record, which wins when the two disagree.
+
+- **Adding a row**: a record that defines a value states the content by what it is, whichever tool produces it, and checks that no `defined` or `not written` value here names exactly its kind — if one does, that value is used, a `not written` row being set back to `defined` — and that no `defined` value names any of its content, other than the values it replaces by finer or coarser ones and sets to `not written` in the same commit ([ADR-0105](decisions/ADR-0105-od8-blob-type-vocabulary.md) decisions 3 and 6). It chooses a *name* of [ADR-0001](decisions/ADR-0001-od4-key-schema.md) that is not in this list and is no placeholder of a record or a test (`example_kind`, `another_kind`, `a_kind_nobody_listed` and the like), checks that the string is no other name in `hilclaw/`, `tests/` and `ARCHITECTURE/`, and adds its row with the state `defined` in the commit that lands it (decision 4: the meaning of a value never changes, and a value is never reused).
+- **States**: `defined` (the defining record is accepted); `not written` (an accepted later record, linked in the row, says no writer writes it any more, for example because that record replaced the value by finer or coarser ones; still in the vocabulary; a later record may set it back to `defined` only if its kind is disjoint from every `defined` value it does not set to `not written`); `reverted` (the defining record has been reverted; out of the vocabulary, still taken; what a reader does with records written under it is OD-11's). A row is never removed and its value never changes.
+- Nothing checks a record's `type` against this list; a reader treats a value it does not know as an unknown kind, not as an error ([ADR-0005](decisions/ADR-0005-od8-artifacts-record.md) decision 5).
+
+| `type` | Defined by | State |
+|---|---|---|

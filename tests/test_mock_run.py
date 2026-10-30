@@ -7,12 +7,13 @@ import pytest
 
 from hilclaw import mock_backend, mock_run
 from hilclaw.backends import Backend, BackendTable, select
+from hilclaw.build_log import LogKeeper
 from hilclaw.harness import measurement
 from hilclaw.harness.measurement import N_MIN, State
 from hilclaw.harness.timing import SAMPLE_FORMS, judge_report, parse_report
 from hilclaw.mock_run import default_script, operation
 from hilclaw.run_operation import OperationAnswerInvalid, Reported, ask
-from hilclaw.run_parameters import TimingParameters
+from hilclaw.run_parameters import Bf16TimingParameters, TimingParameters
 from hilclaw.tools import ToolFailure
 
 TOOLS = ("sim.run", "board.run")
@@ -25,6 +26,8 @@ REQUEST = {"run_id": "r1", "execution": 1, "candidate": 2}
 PATH_MARKER = "zq7-path-zq7"
 # A test value: nothing lies there, and no test makes it.
 OUTPUT_PATH = Path(PATH_MARKER) / "runs" / "r1" / "output"
+LOG_PATH = Path(PATH_MARKER) / "runs" / "r1" / "build-log.txt"
+KEEPER = LogKeeper()
 EXPECTED_REPORT = (
     b"resolution_ns 1\n" + b"interval_ns 1000000\n" * N_MIN + b"stop converged\n"
 )
@@ -35,8 +38,8 @@ class Asked:
         self.answer = answer
         self.calls = []
 
-    def __call__(self, tool, request, hw_profile, parameters, output_path):
-        self.calls.append((tool, request, hw_profile, parameters, output_path))
+    def __call__(self, tool, request, hw_profile, parameters, output_path, keeper):
+        self.calls.append((tool, request, hw_profile, parameters, output_path, keeper))
         return self.answer
 
 
@@ -64,7 +67,7 @@ def record(accelerator=mock_backend.NAME):
 
 
 def raising(error):
-    def script(tool, request, hw_profile, parameters, output_path):
+    def script(tool, request, hw_profile, parameters, output_path, keeper):
         raise error
 
     return script
@@ -86,12 +89,15 @@ def imported_modules(path):
 
 
 @pytest.mark.parametrize("tool", TOOLS)
-def test_the_script_is_asked_once_with_the_tool_and_the_very_four_objects(tool):
+def test_the_script_is_asked_once_with_the_tool_and_the_very_five_objects(tool):
     script = Asked(object())
     request, hw_profile = dict(REQUEST), record()
     parameters = TimingParameters(*PARAMETERS)
     output_path = Path(OUTPUT_PATH)
-    answer = operation(tool, script)(request, hw_profile, parameters, output_path)
+    keeper = LogKeeper()
+    answer = operation(tool, script)(
+        request, hw_profile, parameters, output_path, keeper
+    )
     assert answer is script.answer
     ((asked_tool, *asked),) = script.calls
     assert asked_tool == tool
@@ -100,6 +106,8 @@ def test_the_script_is_asked_once_with_the_tool_and_the_very_four_objects(tool):
     assert asked[1] is hw_profile
     assert asked[2] is parameters
     assert asked[3] is output_path
+    assert asked[4] is keeper
+    assert keeper.held() is None
 
 
 @pytest.mark.parametrize("tool", TOOLS)
@@ -119,29 +127,31 @@ def test_the_script_is_asked_once_with_the_tool_and_the_very_four_objects(tool):
 )
 def test_the_operation_returns_the_very_object_the_script_returned(tool, answer):
     made = operation(tool, Asked(answer))
-    assert made(REQUEST, record(), PARAMETERS, OUTPUT_PATH) is answer
+    assert made(REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER) is answer
 
 
 @pytest.mark.parametrize(
     "things",
     [
-        (None, None, None, None),
-        (Untouchable(), Untouchable(), Untouchable(), Untouchable()),
-        ("a str", b"bytes", 17, PATH_MARKER),
+        (None, None, None, None, None),
+        (Untouchable(), Untouchable(), Untouchable(), Untouchable(), Untouchable()),
+        ("a str", b"bytes", 17, PATH_MARKER, "no keeper"),
     ],
     ids=["None", "untouchable", "other types"],
 )
-def test_four_things_of_any_kind_reach_the_script_unlooked_at(things):
+def test_five_things_of_any_kind_reach_the_script_unlooked_at(things):
     script = Asked("an answer")
     assert operation("sim.run", script)(*things) == "an answer"
     asked = script.calls[0][1:]
     assert all(a is b for a, b in zip(asked, things, strict=True))
 
 
-def test_a_call_leaves_its_four_objects_as_they_are():
+def test_a_call_leaves_its_five_objects_as_they_are():
     request, hw_profile = dict(REQUEST), record()
     before = copy.deepcopy((request, hw_profile))
-    operation("board.run", default_script)(request, hw_profile, PARAMETERS, OUTPUT_PATH)
+    operation("board.run", default_script)(
+        request, hw_profile, PARAMETERS, OUTPUT_PATH, KEEPER
+    )
     assert (request, hw_profile) == before
 
 
@@ -149,16 +159,16 @@ def test_building_asks_nothing_and_each_call_asks_once():
     script = Asked()
     made = operation("sim.run", script)
     assert script.calls == []
-    made(REQUEST, record(), PARAMETERS, OUTPUT_PATH)
-    made(REQUEST, record(), PARAMETERS, OUTPUT_PATH)
+    made(REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER)
+    made(REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER)
     assert len(script.calls) == 2
 
 
 def test_one_script_serves_both_tools_and_is_told_the_called_one():
     script = Asked("an answer")
     sim, board = operation("sim.run", script), operation("board.run", script)
-    board(REQUEST, record(), PARAMETERS, OUTPUT_PATH)
-    sim(REQUEST, record(), PARAMETERS, OUTPUT_PATH)
+    board(REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER)
+    sim(REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER)
     assert [call[0] for call in script.calls] == ["board.run", "sim.run"]
 
 
@@ -189,7 +199,7 @@ ERRORS = [
 def test_what_the_script_raises_passes_through_as_the_same_object(tool, error):
     made = operation(tool, raising(error))
     with pytest.raises(BaseException) as caught:
-        made(REQUEST, record(), PARAMETERS, OUTPUT_PATH)
+        made(REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER)
     assert caught.value is error
 
 
@@ -240,14 +250,14 @@ def test_the_tool_is_looked_at_before_the_script():
 @pytest.mark.parametrize(
     "call",
     [
-        lambda made: made(REQUEST, record(), PARAMETERS),
-        lambda made: made(REQUEST, record(), PARAMETERS, OUTPUT_PATH, None),
-        lambda made: made(REQUEST, record(), PARAMETERS, output_path=OUTPUT_PATH),
+        lambda made: made(REQUEST, record(), PARAMETERS, OUTPUT_PATH),
+        lambda made: made(REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER, None),
+        lambda made: made(REQUEST, record(), PARAMETERS, OUTPUT_PATH, keeper=KEEPER),
         lambda made: made(),
     ],
-    ids=["three", "five", "a keyword", "none"],
+    ids=["four", "six", "a keyword", "none"],
 )
-def test_an_operation_takes_four_positional_things_and_nothing_else(call):
+def test_an_operation_takes_five_positional_things_and_nothing_else(call):
     script = Asked()
     with pytest.raises(TypeError):
         call(operation("board.run", script))
@@ -259,7 +269,7 @@ def test_an_operation_takes_four_positional_things_and_nothing_else(call):
 
 @pytest.mark.parametrize("tool", TOOLS)
 def test_the_default_answer_is_the_report_of_n_min_intervals_and_no_figure(tool):
-    answer = default_script(tool, REQUEST, record(), PARAMETERS, OUTPUT_PATH)
+    answer = default_script(tool, REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER)
     assert type(answer) is tuple
     assert len(answer) == 2
     report, figure = answer
@@ -269,7 +279,7 @@ def test_the_default_answer_is_the_report_of_n_min_intervals_and_no_figure(tool)
 
 
 def test_the_report_agrees_with_the_constant_of_the_source():
-    report, _ = default_script("sim.run", None, None, None, None)
+    report, _ = default_script("sim.run", None, None, None, None, None)
     lines = report.split(b"\n")
     assert lines[0] == b"resolution_ns 1"
     assert lines[1:-2] == [b"interval_ns 1000000"] * measurement.N_MIN
@@ -281,14 +291,22 @@ def test_the_report_agrees_with_the_constant_of_the_source():
 @pytest.mark.parametrize("tool", TOOLS)
 def test_the_default_answer_through_ask_is_reported(tool):
     reported = ask(
-        operation(tool, default_script), REQUEST, record(), PARAMETERS, OUTPUT_PATH
+        operation(tool, default_script),
+        REQUEST,
+        record(),
+        PARAMETERS,
+        OUTPUT_PATH,
+        LogKeeper(),
+        log_path=LOG_PATH,
     )
     assert type(reported) is Reported
     assert reported == Reported(EXPECTED_REPORT, None)
 
 
 def test_parse_report_reads_the_default_report():
-    report, _ = default_script("sim.run", REQUEST, record(), PARAMETERS, OUTPUT_PATH)
+    report, _ = default_script(
+        "sim.run", REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER
+    )
     parsed = parse_report(report)
     assert parsed.resolution_ns == 1
     assert parsed.intervals_ns == (1000000,) * N_MIN
@@ -299,7 +317,9 @@ def test_parse_report_reads_the_default_report():
 @pytest.mark.parametrize("n_max", [N_MIN, N_MIN + 1, 10, 2**40])
 def test_the_default_report_is_judged_completed_and_converged(sample_form, n_max):
     parameters = PARAMETERS._replace(n_max=n_max, sample_form=sample_form)
-    report, _ = default_script("board.run", REQUEST, record(), parameters, OUTPUT_PATH)
+    report, _ = default_script(
+        "board.run", REQUEST, record(), parameters, OUTPUT_PATH, KEEPER
+    )
     judged = judge_report(report, sample_form=sample_form, n_max=n_max)
     assert judged.broken is None
     assert judged.state is State.CONVERGED
@@ -308,36 +328,39 @@ def test_the_default_report_is_judged_completed_and_converged(sample_form, n_max
 
 
 ASKED_WITH = [
-    ("sim.run", REQUEST, record(), PARAMETERS, OUTPUT_PATH),
-    ("board.run", REQUEST, record(), PARAMETERS, OUTPUT_PATH),
+    ("sim.run", REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER),
+    ("board.run", REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER),
     (
         "sim.run",
         {"run_id": "r9", "execution": 7, "candidate": 3},
         record(),
         PARAMETERS,
         OUTPUT_PATH,
+        KEEPER,
     ),
-    ("sim.run", REQUEST, record("another"), PARAMETERS, OUTPUT_PATH),
-    ("sim.run", REQUEST, record(), PARAMETERS._replace(seed=0), OUTPUT_PATH),
+    ("sim.run", REQUEST, record("another"), PARAMETERS, OUTPUT_PATH, KEEPER),
+    ("sim.run", REQUEST, record(), PARAMETERS._replace(seed=0), OUTPUT_PATH, KEEPER),
     (
         "sim.run",
         REQUEST,
         record(),
         PARAMETERS._replace(m=4096, k=1, n=2**40),
         OUTPUT_PATH,
+        KEEPER,
     ),
-    ("sim.run", REQUEST, record(), PARAMETERS._replace(n_max=5), OUTPUT_PATH),
+    ("sim.run", REQUEST, record(), PARAMETERS._replace(n_max=5), OUTPUT_PATH, KEEPER),
     (
         "sim.run",
         REQUEST,
         record(),
         PARAMETERS._replace(sample_form="reciprocal"),
         OUTPUT_PATH,
+        KEEPER,
     ),
-    ("sim.run", REQUEST, record(), PARAMETERS, Path(PATH_MARKER) / "elsewhere"),
-    (None, None, None, None, None),
-    (Untouchable(), Untouchable(), Untouchable(), Untouchable(), Untouchable()),
-    ("correctness.check", "no request", 3, (1, 2), b"no path"),
+    ("sim.run", REQUEST, record(), PARAMETERS, Path(PATH_MARKER) / "elsewhere", KEEPER),
+    (None, None, None, None, None, None),
+    (Untouchable(),) * 6,
+    ("correctness.check", "no request", 3, (1, 2), b"no path", "no keeper"),
 ]
 
 
@@ -352,7 +375,9 @@ def test_the_default_answer_is_the_same_whatever_lies_at_the_output_path(tmp_pat
     (present / "kernel.c").write_text("int x;\n", encoding="utf-8")
     absent = tmp_path / "absent"
     for path in (present, absent, str(present)):
-        assert default_script("sim.run", REQUEST, record(), PARAMETERS, path) == (
+        assert default_script(
+            "sim.run", REQUEST, record(), PARAMETERS, path, KEEPER
+        ) == (
             EXPECTED_REPORT,
             None,
         )
@@ -377,7 +402,13 @@ def test_an_answer_of_a_test_passes_through_and_ask_classifies_it(
     tool, answer, expected
 ):
     got = ask(
-        operation(tool, Asked(answer)), REQUEST, record(), PARAMETERS, OUTPUT_PATH
+        operation(tool, Asked(answer)),
+        REQUEST,
+        record(),
+        PARAMETERS,
+        OUTPUT_PATH,
+        LogKeeper(),
+        log_path=LOG_PATH,
     )
     if expected is None:
         assert got == Reported(*answer)
@@ -398,6 +429,8 @@ def test_an_answer_of_neither_form_passes_through_and_ask_refuses_it(answer):
             record(),
             PARAMETERS,
             OUTPUT_PATH,
+            LogKeeper(),
+            log_path=LOG_PATH,
         )
 
 
@@ -414,6 +447,8 @@ def test_a_failure_or_a_request_to_end_reaches_ask_as_the_same_object(error):
             record(),
             PARAMETERS,
             OUTPUT_PATH,
+            LogKeeper(),
+            log_path=LOG_PATH,
         )
     assert caught.value is error
 
@@ -424,8 +459,10 @@ def test_a_failure_or_a_request_to_end_reaches_ask_as_the_same_object(error):
 def test_a_call_writes_no_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     for tool in TOOLS:
-        operation(tool, default_script)(REQUEST, record(), PARAMETERS, OUTPUT_PATH)
-        default_script(tool, None, None, None, tmp_path / "output")
+        operation(tool, default_script)(
+            REQUEST, record(), PARAMETERS, OUTPUT_PATH, KEEPER
+        )
+        default_script(tool, None, None, None, tmp_path / "output", KEEPER)
     assert list(tmp_path.iterdir()) == []
 
 
@@ -458,7 +495,60 @@ def test_public_names_of_the_module_and_no_default():
         "hw_profile",
         "parameters",
         "output_path",
+        "keeper",
     ]
     for parameter in parameters.values():
         assert parameter.default is inspect.Parameter.empty, parameter
     assert list(inspect.signature(operation).parameters) == ["tool", "script"]
+
+
+# The keeper (ADR-0108 decision 8)
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_the_default_script_hands_over_no_log_and_ask_writes_none(tool, tmp_path):
+    keeper = LogKeeper()
+    log_path = tmp_path / "attempt" / "build-log.txt"
+    reported = ask(
+        operation(tool, default_script),
+        REQUEST,
+        record(),
+        PARAMETERS,
+        OUTPUT_PATH,
+        keeper,
+        log_path=log_path,
+    )
+    assert reported == Reported(EXPECTED_REPORT, None)
+    assert keeper.held() is None
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_a_script_of_a_test_hands_a_log_to_the_very_keeper(tool, tmp_path):
+    def handing(called, request, hw_profile, parameters, output_path, keeper):
+        keeper.hand_over(f"log of {called}")
+        return "build_exit_status"
+
+    keeper = LogKeeper()
+    log_path = tmp_path / "attempt" / "build-log.txt"
+    answer = ask(
+        operation(tool, handing),
+        REQUEST,
+        record(),
+        PARAMETERS,
+        OUTPUT_PATH,
+        keeper,
+        log_path=log_path,
+    )
+    assert answer == "build_exit_status"
+    assert keeper.held() == f"log of {tool}"
+    assert log_path.read_text(encoding="utf-8") == f"log of {tool}"
+
+
+@pytest.mark.parametrize("tool", ["sim.run", "board.run"])
+def test_a_bf16_call_is_answered_as_any_call(tool):
+    parameters = Bf16TimingParameters("rope", "bf16", (2, 3, 4), 9, "interval", 7)
+    answer = operation(tool, default_script)(
+        REQUEST, record(), parameters, OUTPUT_PATH, KEEPER
+    )
+    assert answer == (EXPECTED_REPORT, None)

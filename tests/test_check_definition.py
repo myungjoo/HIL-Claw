@@ -17,25 +17,39 @@ from hilclaw import (
     check_definition,
     check_identity,
     check_tool,
+    contract_table,
     data_root_source,
+    elementwise_add_bf16_contract,
     events,
+    gemm_bf16_contract,
     gemm_contract,
     keys,
     layout,
+    local_run,
     mcp_front,
     mock_backend,
     mock_check,
+    mock_run,
+    rmsnorm_bf16_contract,
+    rope_bf16_contract,
     run_state,
+    sdpa_kv_cache_bf16_contract,
+    standin_check,
+    standin_image,
+    standin_profile,
+    standin_run,
+    swiglu_bf16_contract,
     tools,
 )
 from hilclaw.backends import Backend, BackendTable
+from hilclaw.build_log import LogKeeper
 from hilclaw.check_definition import (
     DESCRIPTION,
     default_table,
     definition,
     input_schema,
 )
-from hilclaw.check_parameters import CheckParameters
+from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.harness import seed_source
 from hilclaw.journal import EMPTY
 
@@ -122,7 +136,31 @@ def test_a_registry_accepts_the_description_and_the_schema():
 
 def test_the_default_registry_holds_the_definition_of_the_tool():
     registry = tools.default_registry(lambda: None)
-    assert registry.names() == ("blob.fetch", "blob.push", TOOL)
+    assert registry.names() == (
+        "blob.fetch",
+        "blob.push",
+        "board.run",
+        "case.write",
+        "cases.lookup",
+        "catalog.read",
+        "checks.read",
+        "coder.run",
+        TOOL,
+        "hypotheses.read",
+        "hypotheses.write",
+        "instance.read",
+        "key.store",
+        "round.end",
+        "run.commit",
+        "run.fresh",
+        "sim.run",
+        "spec.write",
+        "state.read",
+        "state.write",
+        "timings.compare",
+        "verdicts.read",
+        "verdicts.write",
+    )
     held = registry.definition(TOOL)
     assert (held.name, held.description, held.input_schema) == (
         TOOL,
@@ -171,13 +209,19 @@ def test_the_module_imports_what_it_names_and_has_its_public_names_only():
         None: {
             "backends",
             "check_identity",
-            "gemm_contract",
+            "contract_table",
             "keys",
             "mock_backend",
             "tools",
             "seed_source",
         },
-        "default_table": {"mock_check"},
+        "default_table": {
+            "mock_check",
+            "mock_run",
+            "standin_check",
+            "standin_profile",
+            "standin_run",
+        },
         "function": {"check_tool"},
     }
     public = {
@@ -215,12 +259,13 @@ REQUEST = {
 }
 PASSED = {
     "outcome": "pass",
+    "contract_key": {"kind": "gemm", "dtype": "fp32", "layout": "row_major"},
     "shape": SHAPE,
     "draws": DRAWS,
     "tolerance": TOLERANCE,
-    "counts": [{"failed": 0, "non_finite": 0}] * DRAWS,
+    "counts": {"c": [{"failed": 0, "non_finite": 0}] * DRAWS},
 }
-STEP = {"step": "correctness_check_sim", "execution": 1}
+STEP = {"step": "correctness_check_sim_v2", "execution": 1}
 NUMBERS = {"round": ROUND, "candidate": 2, "attempt": 1}
 
 
@@ -317,29 +362,58 @@ def mcp_document(name, arguments):
     return json.dumps(document).encode() + b"\n"
 
 
-def test_default_table_holds_the_mock_offering_this_tool_alone():
+def test_default_table_holds_the_mock_and_cpu_standin_offering_the_three_hw_tools():
+    """ADR-0167 decision 3 and Boundaries: one table, the mock and cpu_standin."""
     table = default_table()
     assert type(table) is BackendTable
-    assert table.names() == (mock_backend.NAME,)
-    assert callable(backends.select(table, profile(), TOOL))
-    for tool in backends.HW_TOOLS:
-        if tool != TOOL:
-            with pytest.raises(tools.ToolFailure) as caught:
-                backends.select(table, profile(), tool)
-            assert caught.value.kind == tools.KIND_NOT_OFFERED
-    for accelerator in ("cpu_standin", "acc_b"):
+    assert table.names() == ("cpu_standin", mock_backend.NAME)
+    assert standin_profile.ACCELERATOR == "cpu_standin"
+    for tool in (TOOL, "sim.run", "board.run"):
+        assert callable(backends.select(table, profile(), tool))
+    standin = profile(standin_profile.ACCELERATOR)
+    assert backends.select(table, standin, TOOL) is standin_check.operation
+    for tool in ("sim.run", "board.run"):
+        assert backends.select(table, standin, tool) is standin_run.operation
+    for accelerator in (mock_backend.NAME, standin_profile.ACCELERATOR):
         with pytest.raises(tools.ToolFailure) as caught:
-            backends.select(table, profile(accelerator), TOOL)
+            backends.select(table, profile(accelerator), "profiler.collect")
+        assert caught.value.kind == tools.KIND_NOT_OFFERED
+    for tool in (TOOL, "sim.run", "board.run"):
+        with pytest.raises(tools.ToolFailure) as caught:
+            backends.select(table, profile("acc_b"), tool)
         assert caught.value.kind == tools.KIND_NO_BACKEND
     assert default_table() is not table
+
+
+def test_building_the_default_table_reads_no_image(monkeypatch):
+    def refused(*_):
+        raise AssertionError("the image was read when the table was built")
+
+    monkeypatch.setattr(standin_image, "read_image", refused)
+    monkeypatch.setenv(standin_image.ENV_IMAGE, "registry.example/image:1")
+    assert default_table().names() == ("cpu_standin", mock_backend.NAME)
+
+
+@pytest.mark.parametrize("tool", ["sim.run", "board.run"])
+def test_default_table_run_operation_answers_with_the_default_script(tool, monkeypatch):
+    script = Recorder(mock_run.default_script)
+    monkeypatch.setattr(mock_run, "default_script", script)
+    operation = backends.select(default_table(), profile(), tool)
+    keeper = LogKeeper()
+    answer = operation(REQUEST, profile(), "parameters", Path("output"), keeper)
+    assert script.calls == [
+        (tool, REQUEST, profile(), "parameters", Path("output"), keeper)
+    ]
+    assert answer == script.answers[0]
 
 
 def test_default_table_operation_answers_with_the_default_script(parties):
     operation = backends.select(default_table(), profile(), TOOL)
     asked = CheckParameters(7, 1, 1, 1, 1)
-    answer = operation(REQUEST, profile(), asked, Path("output"))
+    keeper = LogKeeper()
+    answer = operation(REQUEST, profile(), asked, Path("output"), keeper)
     assert parties["script"].calls == [
-        (TOOL, REQUEST, profile(), asked, Path("output"))
+        (TOOL, REQUEST, profile(), asked, Path("output"), keeper)
     ]
     assert answer == parties["script"].answers[0]
 
@@ -368,7 +442,31 @@ def test_definition_refuses_a_source_that_is_not_callable(source):
 def test_building_the_default_registry_calls_no_party(parties):
     source = CountingSource()
     registry = tools.default_registry(source)
-    assert registry.names() == ("blob.fetch", "blob.push", TOOL)
+    assert registry.names() == (
+        "blob.fetch",
+        "blob.push",
+        "board.run",
+        "case.write",
+        "cases.lookup",
+        "catalog.read",
+        "checks.read",
+        "coder.run",
+        TOOL,
+        "hypotheses.read",
+        "hypotheses.write",
+        "instance.read",
+        "key.store",
+        "round.end",
+        "run.commit",
+        "run.fresh",
+        "sim.run",
+        "spec.write",
+        "state.read",
+        "state.write",
+        "timings.compare",
+        "verdicts.read",
+        "verdicts.write",
+    )
     assert (source.calls, *counts(parties)) == (0, 0, 0, 0)
     assert tools.default_registry(source).get(TOOL) is not registry.get(TOOL)
     assert parties["table"].calls == []
@@ -382,7 +480,7 @@ def test_the_default_registry_refuses_a_source_that_is_not_callable(source, part
     assert parties["table"].calls == []
 
 
-def test_tools_list_of_the_mcp_front_holds_the_three_tools():
+def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
     data = (
         json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode() + b"\n"
     )
@@ -399,10 +497,30 @@ def test_tools_list_of_the_mcp_front_holds_the_three_tools():
     assert [tool["name"] for tool in listed] == [
         "blob_fetch",
         "blob_push",
+        "board_run",
+        "case_write",
+        "cases_lookup",
+        "catalog_read",
+        "checks_read",
+        "coder_run",
         "correctness_check",
+        "hypotheses_read",
+        "hypotheses_write",
+        "instance_read",
+        "key_store",
+        "round_end",
+        "run_commit",
+        "run_fresh",
+        "sim_run",
+        "spec_write",
+        "state_read",
+        "state_write",
+        "timings_compare",
+        "verdicts_read",
+        "verdicts_write",
     ]
-    assert listed[2]["description"] == DESCRIPTION
-    assert listed[2]["inputSchema"] == SCHEMA
+    assert listed[8]["description"] == DESCRIPTION
+    assert listed[8]["inputSchema"] == SCHEMA
 
 
 def test_a_call_about_a_run_at_the_mock_passes(root, parties):
@@ -418,20 +536,48 @@ def test_a_call_about_a_run_at_the_mock_passes(root, parties):
         },
     ]
     assert counts(parties) == (1, 1, 1)
-    ((_, _, _, parameters, _),) = parties["script"].calls
+    ((_, _, _, parameters, _, _),) = parties["script"].calls
     assert parameters.seed == parties["seeds"].answers[0]
 
 
-@pytest.mark.parametrize("accelerator", ["cpu_standin", "acc_b"])
-def test_a_call_about_a_run_at_another_accelerator_is_no_backend(
-    tmp_path, parties, accelerator
-):
-    root = a_run(tmp_path / "data", accelerator=accelerator)
+def test_a_call_about_a_run_at_another_accelerator_is_no_backend(tmp_path, parties):
+    root = a_run(tmp_path / "data", accelerator="acc_b")
     registry = tools.default_registry(lambda: root)
     refused(registry, REQUEST, tools.KIND_NO_BACKEND)
     refused(registry, REQUEST, tools.KIND_NO_BACKEND)
     assert no_log(root)
     assert counts(parties) == (0, 0, 0)
+
+
+@pytest.fixture
+def no_container(monkeypatch):
+    """No image is named, and starting any container fails the test."""
+    started = []
+
+    def client(command, **options):
+        started.append(command)
+        raise AssertionError("a container was started")
+
+    monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+    monkeypatch.setattr(local_run, "run", client)
+    return started
+
+
+def test_a_call_about_a_run_at_cpu_standin_reaches_its_operation(
+    tmp_path, parties, no_container, monkeypatch
+):
+    reached = Recorder(standin_check.operation)
+    monkeypatch.setattr(standin_check, "operation", reached)
+    root = a_run(tmp_path / "data", accelerator="cpu_standin")
+    registry = tools.default_registry(lambda: root)
+    failure = refused(registry, REQUEST, "compiler_unavailable")
+    again = refused(registry, REQUEST, "compiler_unavailable")
+    assert again.message == failure.message
+    assert len(reached.calls) == 1
+    assert no_container == []
+    assert counts(parties) == (1, 1, 0)
+    ended = {"kind": "compiler_unavailable", "message": failure.message}
+    assert [line["data"].get("failure") for line in lines(root)] == [None, ended]
 
 
 def test_the_same_request_again_returns_the_stored_result(root, parties):
@@ -473,7 +619,7 @@ def test_no_environment_variable_chooses_the_table_or_the_seeds(
     monkeypatch.setenv("HILCLAW_BACKEND", "cpu_standin")
     monkeypatch.setenv("HILCLAW_SEED", "7")
     monkeypatch.setenv("HILCLAW_SCRIPT", "fail")
-    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="acc_b")
     registry = tools.default_registry(lambda: root)
     assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
     refused(registry, {**REQUEST, "run_id": "run-b"}, tools.KIND_NO_BACKEND)
@@ -481,9 +627,11 @@ def test_no_environment_variable_chooses_the_table_or_the_seeds(
     assert parties["script"].calls[0][3].seed == parties["seeds"].answers[0]
 
 
-def wrong_product(tool, asked, hw_profile, parameters, output_path):
+def wrong_product(tool, asked, hw_profile, parameters, output_path, keeper):
     report = bytearray(
-        mock_check.default_script(tool, asked, hw_profile, parameters, output_path)
+        mock_check.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
     )
     (element,) = struct.unpack_from("=f", report, 4)
     struct.pack_into("=f", report, 4, element + 1000.0)
@@ -512,8 +660,8 @@ def test_a_registry_of_the_test_answers_what_its_script_answers(root, parties):
     assert status == __main__.EXIT_RESULT
     result = json.loads(stdout.getvalue())
     assert result["outcome"] == "fail"
-    assert result["counts"][0]["failed"] >= 1
-    ((_, _, _, parameters, _),) = script.calls
+    assert result["counts"]["c"][0]["failed"] >= 1
+    ((_, _, _, parameters, _, _),) = script.calls
     assert parameters.seed == 7
     stdout = io.BytesIO()
     data = io.BytesIO(mcp_document("correctness_check", REQUEST))
@@ -527,8 +675,8 @@ def test_a_registry_of_the_test_answers_what_its_script_answers(root, parties):
 
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
-    """A data root with a run at the mock and one at cpu_standin, as the fronts' source."""
-    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    """A data root with a run at the mock and one at acc_b, as the fronts' source."""
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="acc_b")
     monkeypatch.setattr(data_root_source, "configured", lambda: root)
     return root
 
@@ -580,6 +728,9 @@ HEAVY = (
     "hilclaw.check_tool",
     "hilclaw.mock_check",
     "hilclaw.harness.verification",
+    "hilclaw.standin_check",
+    "hilclaw.standin_profile",
+    "hilclaw.standin_run",
 )
 CHILD_END = """
 import sys
@@ -625,7 +776,11 @@ def test_building_the_default_registry_imports_no_numpy(tmp_path):
 
 def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
     answers, loaded = heavy_modules_after(LIST_CHILD, tmp_path)
-    assert answers == ["0 blob_fetch blob_push correctness_check"]
+    assert answers == [
+        "0 blob_fetch blob_push board_run case_write cases_lookup catalog_read checks_read coder_run correctness_check"
+        + " hypotheses_read hypotheses_write instance_read key_store round_end run_commit run_fresh sim_run spec_write state_read"
+        + " state_write timings_compare verdicts_read verdicts_write"
+    ]
     assert loaded == ""
 
 
@@ -635,8 +790,8 @@ def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
         ("blob.push", '0 {"sha256":"' + ABSENT + '","present":false}'),
         ("blob.fetch", '0 {"sha256":"' + ABSENT + '","present":false}'),
         (
-            "sim.run",
-            '4 {"error":{"kind":"unknown_tool","message":"unknown tool \'sim.run\'"}}',
+            "profiler.collect",
+            '4 {"error":{"kind":"unknown_tool","message":"unknown tool \'profiler.collect\'"}}',
         ),
     ],
 )
@@ -667,13 +822,13 @@ def test_the_first_call_binds_the_tool_function_of_the_record(
             "source": source,
             "table": parties["table"].answers[0],
             "seeds": parties["seeds"],
-            "covers": parties["covers"],
+            "covers": contract_table.check_covers,
         }
     ]
 
 
 def test_the_table_is_built_once_per_registry(tmp_path, parties):
-    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="cpu_standin")
+    root = a_run(a_run(tmp_path / "data"), "run-b", accelerator="acc_b")
     registry = tools.default_registry(lambda: root)
     assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
     refused(registry, {**REQUEST, "run_id": "run-b"}, tools.KIND_NO_BACKEND)
@@ -704,3 +859,59 @@ def test_a_first_call_whose_binding_fails_keeps_nothing(root, parties, monkeypat
     assert tools.call(registry, TOOL, dict(REQUEST)) == PASSED
     assert len(parties["table"].calls) == 1
     assert counts(parties) == (1, 1, 1)
+
+
+# A bf16 record in the slice of ADR-0177 decision 2
+
+BF16_RECORDS = (
+    gemm_bf16_contract.op_signature_record(*gemm_bf16_contract.SHAPES[0]),
+    rmsnorm_bf16_contract.op_signature_record(*rmsnorm_bf16_contract.SHAPES[0]),
+    elementwise_add_bf16_contract.op_signature_record(
+        *elementwise_add_bf16_contract.SHAPES[0]
+    ),
+    swiglu_bf16_contract.op_signature_record(*swiglu_bf16_contract.SHAPES[0]),
+    rope_bf16_contract.op_signature_record(*rope_bf16_contract.SHAPES[0]),
+    sdpa_kv_cache_bf16_contract.op_signature_record(
+        *sdpa_kv_cache_bf16_contract.SHAPES[0]
+    ),
+)
+BF16_IDS = [record["kind"] for record in BF16_RECORDS]
+CHECKED_BF16 = list(BF16_RECORDS)
+ROPE = [record for record in BF16_RECORDS if record["kind"] == "rope"]
+
+
+@pytest.mark.parametrize("record", ROPE, ids=["rope"])
+def test_a_bf16_record_is_not_covered_by_the_check(
+    tmp_path, parties, record, monkeypatch
+):
+    table = dict(contract_table.TABLE)
+    key = ("rope", "bf16", "row_major", "c")
+    table[key] = table[key]._replace(checked=False)
+    monkeypatch.setattr(contract_table, "TABLE", table)
+    root = a_run(tmp_path / "data", op=record)
+    registry = tools.default_registry(lambda: root)
+    refused(registry, REQUEST, "op_signature_not_covered")
+    assert no_log(root)
+    assert counts(parties) == (0, 1, 0)
+
+
+@pytest.mark.parametrize(
+    "record", CHECKED_BF16, ids=[record["kind"] for record in CHECKED_BF16]
+)
+def test_a_checked_bf16_record_is_judged_by_the_default_registry(
+    tmp_path, parties, record
+):
+    root = a_run(tmp_path / "data", op=record)
+    registry = tools.default_registry(lambda: root)
+    result = tools.call(registry, TOOL, dict(REQUEST))
+    assert result["outcome"] == "pass"
+    assert result["shape"] == record["shape"]
+    assert result["contract_key"] == {
+        name: record[name] for name in ("kind", "dtype", "layout")
+    }
+    assert all(len(entries) == DRAWS for entries in result["counts"].values())
+    assert not no_log(root)
+    assert counts(parties) == (1, 1, 1)
+    ((_, _, _, parameters, _, _),) = parties["script"].calls
+    assert type(parameters) is Bf16CheckParameters
+    assert (parameters.kind, parameters.dtype) == (record["kind"], "bf16")

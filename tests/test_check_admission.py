@@ -14,6 +14,7 @@ from hilclaw import (
     check_admission,
     check_failure,
     check_operation,
+    contract_table,
     gemm_contract,
     instance,
     keys,
@@ -26,6 +27,7 @@ from hilclaw.check_admission import (
     KIND_TOLERANCE_NOT_STATED,
     KINDS,
     Admitted,
+    Bf16Admitted,
     admit,
 )
 
@@ -514,8 +516,11 @@ def test_a_call_writes_no_file_and_keeps_nothing(tmp_path, monkeypatch):
 def test_module_imports_three_modules_and_has_no_entry():
     own = Path(check_admission.__file__)
     assert imported_modules(own) == {
+        "inspect",
         "typing",
         "hilclaw",
+        "hilclaw.check_parameters",
+        "hilclaw.contract_table",
         "hilclaw.instance",
         "hilclaw.tools",
     }
@@ -565,6 +570,7 @@ def test_public_names_of_the_module_and_no_default():
         "KIND_TOLERANCE_NOT_STATED",
         "KINDS",
         "Admitted",
+        "Bf16Admitted",
         "admit",
     }
     parameters = list(inspect.signature(admit).parameters.values())
@@ -574,3 +580,222 @@ def test_public_names_of_the_module_and_no_default():
         inspect.Parameter.KEYWORD_ONLY,
     ]
     assert all(parameter.default is inspect.Parameter.empty for parameter in parameters)
+
+
+# --- bf16 kinds (ADR-0177 decision 3) ---
+
+BF16_SHAPES = {
+    "gemm": ({"m": 2, "k": 3, "n": 4}, (2, 3, 4)),
+    "rmsnorm": ({"m": 5, "n": 8}, (5, 8)),
+    "elementwise_add": ({"m": 6, "n": 7}, (6, 7)),
+    "swiglu": ({"m": 3, "n": 9}, (3, 9)),
+}
+
+
+def bf16_record(kind, shape=None, **changes):
+    stated = {
+        "schema_version": 1,
+        "kind": kind,
+        "shape": dict(BF16_SHAPES[kind][0] if shape is None else shape),
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+    return stated | changes
+
+
+def refused_kind(stated, covers=contract_table.covers):
+    with pytest.raises(tools.ToolFailure) as caught:
+        admit(stated, covers=covers)
+    assert type(caught.value) is tools.ToolFailure
+    return caught.value.kind
+
+
+def test_bf16_admitted_has_six_fields_and_no_default():
+    assert Bf16Admitted._fields == ("kind", "dtype", "dims", "draws", "rtol", "atol")
+    assert Bf16Admitted._field_defaults == {}
+    assert issubclass(Bf16Admitted, tuple)
+    with pytest.raises(TypeError):
+        Bf16Admitted("rmsnorm", "bf16", (1, 2), 3, 0.5)
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_bf16_record_is_admitted_with_the_members_of_its_kind(kind):
+    stated = content(op=bf16_record(kind))
+    expected = Bf16Admitted(kind, "bf16", BF16_SHAPES[kind][1], TEST_DRAWS, 0.25, 3.0)
+    for covers in (contract_table.covers, contract_table.check_covers):
+        admitted = admit(stated, covers=covers)
+        assert type(admitted) is Bf16Admitted
+        assert admitted == expected
+        assert type(admitted.dims) is tuple
+
+
+def test_the_dims_follow_the_order_of_task_contract_not_of_the_record():
+    shape = {"n": 4, "k": 3, "m": 2}
+    stated = content(op=bf16_record("gemm", shape))
+    admitted = admit(stated, covers=contract_table.covers)
+    assert admitted.dims == (2, 3, 4)
+
+
+def test_an_fp32_gemm_record_is_admitted_as_before():
+    stated = content()
+    for covers in (gemm_contract.covers, contract_table.check_covers):
+        admitted = admit(stated, covers=covers)
+        assert type(admitted) is Admitted
+        assert admitted == (1, 2048, 8192, TEST_DRAWS, 0.25, 3.0)
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_covered_bf16_record_is_admitted_with_no_rule_of_a_step(kind):
+    recorder = Recorder(True)
+    stated = content(op=bf16_record(kind))
+    assert type(admit(stated, covers=recorder)) is Bf16Admitted
+    assert len(recorder.calls) == 1
+    missing = content(op=bf16_record(kind), draws=ABSENT, tolerance=ABSENT)
+    assert refused_kind(missing, Recorder(True)) == KIND_DRAWS_NOT_STATED
+
+
+def test_an_fp32_or_fp16_record_is_answered_by_the_predicate_alone():
+    recorder = Recorder(True)
+    stated = content(draws=ABSENT)
+    assert refused_kind(stated, recorder) == KIND_DRAWS_NOT_STATED
+    assert len(recorder.calls) == 1
+    other = content(op=record(dtype="fp16"))
+    assert refused_kind(other, contract_table.check_covers) == (
+        KIND_OP_SIGNATURE_NOT_COVERED
+    )
+
+
+def test_a_bf16_record_the_predicate_refuses_is_not_covered():
+    stated = content(op=bf16_record("rmsnorm"))
+    assert refused_kind(stated, Recorder(False)) == KIND_OP_SIGNATURE_NOT_COVERED
+    admitted = admit(stated, covers=contract_table.check_covers)
+    assert type(admitted) is Bf16Admitted
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_bf16_record_with_a_shape_outside_its_contract_is_not_covered(kind):
+    shape = dict.fromkeys(BF16_SHAPES[kind][0], 1) | {"m": 0}
+    stated = content(op=bf16_record(kind, shape))
+    assert refused_kind(stated) == KIND_OP_SIGNATURE_NOT_COVERED
+
+
+ROPE_RECORD = {
+    "schema_version": 1,
+    "kind": "rope",
+    "shape": {"d": 4, "h": 3, "m": 2},
+    "dtype": "bf16",
+    "layout": "row_major",
+}
+
+
+@pytest.mark.parametrize(
+    "covers", [contract_table.covers, Recorder(True)], ids=["any-entry", "recorder"]
+)
+def test_a_rope_record_is_admitted_with_m_h_d_under_a_predicate_that_covers_it(
+    covers,
+):
+    stated = content(op=ROPE_RECORD)
+    admitted = admit(stated, covers=covers)
+    assert type(admitted) is Bf16Admitted
+    assert admitted == ("rope", "bf16", (2, 3, 4), TEST_DRAWS, 0.25, 3.0)
+
+
+def test_a_rope_record_is_covered_by_the_registered_predicate():
+    stated = content(op=ROPE_RECORD)
+    assert contract_table.covers(ROPE_RECORD)
+    assert contract_table.check_covers(ROPE_RECORD)
+    assert contract_table.run_covers(ROPE_RECORD)
+    assert contract_table.start_covers(ROPE_RECORD)
+    fp16 = {**ROPE_RECORD, "dtype": "fp16"}
+    assert not contract_table.run_covers(fp16)
+    assert not contract_table.start_covers(fp16)
+    admitted = admit(stated, covers=contract_table.check_covers)
+    assert admitted == ("rope", "bf16", (2, 3, 4), TEST_DRAWS, 0.25, 3.0)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [{"m": 2, "h": 3, "d": 5}, {"m": 0, "h": 3, "d": 4}, {"m": 2, "h": 0, "d": 4}],
+    ids=["odd-d", "zero-m", "zero-h"],
+)
+def test_a_rope_record_outside_its_contract_is_not_covered(shape):
+    stated = content(op={**ROPE_RECORD, "shape": shape})
+    assert refused_kind(stated) == KIND_OP_SIGNATURE_NOT_COVERED
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [{"m": 2, "h": 3}, {"m": 2, "h": 3, "d": True}, {"m": 2, "h": 3, "d": 4, "n": 1}],
+    ids=["missing-d", "bool-d", "extra-n"],
+)
+def test_a_rope_record_of_the_wrong_members_is_refused_by_the_key_rules(shape):
+    stated_record = {**ROPE_RECORD, "shape": shape}
+    with pytest.raises(keys.InvalidRecordError):
+        contract_table.covers(stated_record)
+    with pytest.raises(keys.InvalidRecordError):
+        content(op=stated_record)
+
+
+def test_a_bf16_record_of_a_layout_no_entry_has_is_not_covered():
+    stated = content(op=bf16_record("gemm", layout="col_major"))
+    assert refused_kind(stated, Recorder(True)) == KIND_OP_SIGNATURE_NOT_COVERED
+
+
+def test_a_bf16_record_without_draws_or_tolerance_has_those_answers():
+    no_draws = content(op=bf16_record("swiglu"), draws=ABSENT, tolerance=ABSENT)
+    assert refused_kind(no_draws) == KIND_DRAWS_NOT_STATED
+    no_tolerance = content(op=bf16_record("swiglu"), tolerance=ABSENT)
+    assert refused_kind(no_tolerance) == KIND_TOLERANCE_NOT_STATED
+    recorder = Recorder(True)
+    assert refused_kind(content(op=ABSENT), recorder) == KIND_OP_SIGNATURE_NOT_STATED
+    assert recorder.calls == []
+
+
+def test_the_rule_of_a_step_taken_for_a_dtype_is_removed():
+    assert not hasattr(check_admission, "admit_for_step")
+    with pytest.raises(TypeError):
+        admit(content(), covers=gemm_contract.covers, bf16_step=False)
+
+
+# An sdpa_kv_cache record (ADR-0177 decision 3)
+
+SDPA_SHAPE = {"m": 1, "l": 2, "h": 4, "h_kv": 2, "d": 4}
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        SDPA_SHAPE,
+        {"d": 4, "h_kv": 2, "h": 4, "l": 2, "m": 1},
+        {"m": 2, "l": 3, "h": 3, "h_kv": 3, "d": 2},
+    ],
+    ids=["h-multiple-of-h_kv", "members-in-another-order", "h-equals-h_kv"],
+)
+def test_a_covered_sdpa_record_is_admitted_in_the_order_of_task_contract(shape):
+    stated = content(
+        op={**bf16_record("gemm"), "kind": "sdpa_kv_cache", "shape": shape}
+    )
+    dims = tuple(shape[name] for name in ("m", "l", "h", "h_kv", "d"))
+    expected = Bf16Admitted("sdpa_kv_cache", "bf16", dims, TEST_DRAWS, 0.25, 3.0)
+    recorder = Recorder(True)
+    for admitted in (
+        admit(stated, covers=contract_table.covers),
+        admit(stated, covers=recorder),
+    ):
+        assert type(admitted) is Bf16Admitted
+        assert admitted == expected
+    assert len(recorder.calls) == 1
+
+
+def test_an_sdpa_record_is_admitted_by_the_registered_predicate():
+    stated = content(
+        op={**bf16_record("gemm"), "kind": "sdpa_kv_cache", "shape": SDPA_SHAPE}
+    )
+    admitted = admit(stated, covers=contract_table.check_covers)
+    assert type(admitted) is Bf16Admitted
+    assert refused_kind(stated, Recorder(False)) == KIND_OP_SIGNATURE_NOT_COVERED
+    missing = content(
+        op={**bf16_record("gemm"), "kind": "sdpa_kv_cache", "shape": SDPA_SHAPE},
+        draws=ABSENT,
+    )
+    assert refused_kind(missing, Recorder(True)) == KIND_DRAWS_NOT_STATED

@@ -8,9 +8,14 @@ start requires the content to state ``op_signature``, ``objective``,
 ``candidates_per_round``, ``n_max``, ``draws`` and ``tolerance``; that it puts
 the ``n_max`` default of ADR-0007 decision 8 into the content when none is
 given and never replaces a given one; and that a refusal writes nothing and
-reports every missing member in a fixed order (decisions 2 and 3). The module
-renders that check:
+reports every missing member in a fixed order (decisions 2 and 3).
+``ARCHITECTURE/decisions/ADR-0136-od8-first-case-coder-model.md`` decision 4
+adds, at the step where ``n_max`` is filled in, that the start puts the full
+name of the Opus model into the content when it states no ``coder_model`` and
+never replaces a given one. The module renders that check:
 
+* :data:`CODER_MODEL_DEFAULT`: the full Opus name the start fills in
+  (ADR-0136 decision 4).
 * :data:`REPORT_ORDER`: the order of the report (ADR-0076 decision 3).
 * :class:`OutOfScopeError`: a valid document outside decision 1.
 * :class:`MissingMembersError`: the refusal of decision 3, with every missing
@@ -26,20 +31,22 @@ Choices that are this module's own and no rule of a record:
   builds none either. The validity the record names as
   :func:`hilclaw.instance.parse` is :func:`hilclaw.instance.validate` here,
   the document form of the same rules.
-* The order is validity, then scope, then the filling-in of ``n_max``, then
-  the required set. ADR-0076 decision 3 lists the filling-in before validity;
-  for a valid document the outcome is the same, since adding a valid
-  ``n_max`` does not change whether a document is valid; and an invalid
-  document or one outside decision 1 has nothing filled in.
+* The order is validity, then scope, then the filling-in of ``n_max`` and
+  ``coder_model``, then the required set. ADR-0076 decision 3 lists the
+  filling-in before validity; for a valid document the outcome is the same,
+  since adding a valid ``n_max`` or ``coder_model`` does not change whether a
+  document is valid; and an invalid document or one outside decision 1 has
+  nothing filled in. ``coder_model`` is never missing, so
+  :data:`REPORT_ORDER` does not name it (ADR-0136 decision 4).
 * The names of the accelerators of decision 1 and "covered" reach
   :func:`prepare` from its caller, as ``accelerators`` and ``covers``: the
   names of ADR-0016 decisions 4 and 5 are
   :data:`hilclaw.mock_backend.NAME` and the ``ACCELERATOR`` of the module that
   builds the ``cpu_standin`` record, and the reading of ADR-0041 decision 5 is
-  the ``covers`` of the contract module of the first case. Neither the
-  ``cpu_standin`` record module nor the contract module is bound to a start of
-  an instance, so this module imports neither and holds no accelerator name
-  and no reading of "covered" of its own; the caller binds them.
+  the start's predicate of the contract table (ADR-0177 decision 2). This
+  module imports neither the ``cpu_standin`` record module nor the contract
+  table and holds no accelerator name and no reading of "covered" of its
+  own; the caller binds them.
 * A ``covers`` that is not callable, an ``accelerators`` that is not exactly a
   ``tuple`` of exactly ``str`` items and an answer of ``covers`` whose type is
   not exactly ``bool`` are :class:`TypeError`; such an answer is never taken
@@ -49,6 +56,12 @@ Choices that are this module's own and no rule of a record:
   members and constants only and show no value of the document.
 * The default is :data:`hilclaw.harness.measurement.N_MAX_DEFAULT`, the value
   of ADR-0007 decision 8 as the package holds it; this module holds no number.
+  The coder model default is this module's :data:`CODER_MODEL_DEFAULT`, cited
+  from F2 of ADR-0136 with the date it was read. It lives here and not in
+  :mod:`hilclaw.instance`, since only the start applies the default and no
+  reader substitutes one. A later task may replace it with a newer Opus name
+  without a new record; a file once written keeps its value (ADR-0136
+  decision 4).
 
 What the module does not do: it reads, writes and builds no file and no
 bytes, and calls no writer. It names no component of the start and takes no
@@ -57,13 +70,19 @@ budgets, ``owner``, ``project`` or ``injections``, compares no N with a range
 or a cap, and does not check that the stated objective is covered (ADR-0076
 Boundaries; ADR-0061 decision 4). It changes and stands in for no answer of a
 tool (ADR-0076 decision 4) and raises no :class:`hilclaw.tools.ToolFailure`.
-It keeps nothing between calls and imports no NumPy.
+It keeps nothing between calls and imports no NumPy. It resolves no model
+alias, checks no model name against a list of offered models and tries no
+model against any service; how the start learns of a given ``coder_model``
+stays open (ADR-0136 decision 4, HQ-0032).
 """
 
 from hilclaw import instance
 from hilclaw.harness import measurement
 
-#: The members a refusal reports, in the order of ADR-0076 decision 3. ``n_max`` is never missing.
+#: Full name F2 (https://docs.claude.com/en/docs/claude-code/model-config, read 2026-10-21) gives for ``opus``; ADR-0136 decision 4.
+CODER_MODEL_DEFAULT = "claude-opus-5-5"
+
+#: The members a refusal reports, in the order of ADR-0076 decision 3. ``n_max`` and ``coder_model`` are never missing.
 REPORT_ORDER = (
     "op_signature",
     "objective",
@@ -129,7 +148,8 @@ def prepare(document, *, accelerators, covers):
        ``dict``, then when ``accelerators`` is not as above, then when
        ``covers`` is not callable.
     2. :func:`hilclaw.instance.validate`; what it raises passes through
-       unchanged. A given ``n_max`` that breaks ADR-0023 is refused there and
+       unchanged. A given ``n_max`` that breaks ADR-0023, or a given
+       ``coder_model`` that breaks ADR-0136 decision 3, is refused there and
        never replaced by the default.
     3. :class:`OutOfScopeError` when ``hw_profile.record.accelerator`` is none
        of ``accelerators``, or when an ``op_signature`` is stated and
@@ -140,7 +160,9 @@ def prepare(document, *, accelerators, covers):
     4. A new top-level ``dict`` holding every member of ``document`` as given,
        those :mod:`hilclaw.instance` does not define included, and, when
        ``n_max`` is absent, ``n_max`` set to
-       :data:`hilclaw.harness.measurement.N_MAX_DEFAULT`. Nothing else is
+       :data:`hilclaw.harness.measurement.N_MAX_DEFAULT`, and, when
+       ``coder_model`` is absent, ``coder_model`` set to
+       :data:`CODER_MODEL_DEFAULT` (ADR-0136 decision 4). Nothing else is
        added, removed or changed.
     5. :class:`MissingMembersError` when any member of :data:`REPORT_ORDER` is
        absent from it, with every absent one.
@@ -172,6 +194,7 @@ def prepare(document, *, accelerators, covers):
             raise OutOfScopeError(_NOT_COVERED)
     prepared = dict(document)
     prepared.setdefault("n_max", measurement.N_MAX_DEFAULT)
+    prepared.setdefault("coder_model", CODER_MODEL_DEFAULT)
     missing = tuple(name for name in REPORT_ORDER if name not in prepared)
     if missing:
         raise MissingMembersError(missing)

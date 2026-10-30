@@ -6,6 +6,7 @@ from hilclaw import keys, layout
 from hilclaw.layout import (
     ATTEMPT_ARTEFACTS,
     ATTEMPT_ROLES,
+    BUILD_LOG_STEPS,
     LAYOUT_VERSION,
     OP_SIGNATURE_FILES,
     ROLES,
@@ -13,6 +14,7 @@ from hilclaw.layout import (
     InvalidPathValueError,
     attempt_artefact,
     attempt_dir,
+    build_log_file,
     case_record,
     check_run_id,
     decision_log,
@@ -157,6 +159,7 @@ def every_path(root):
     paths += [role_dir(root, RUN, 7, role) for role in ROLES]
     paths += [attempt_dir(root, RUN, 7, role, 3, 2) for role in ATTEMPT_ROLES]
     paths += [attempt_artefact(root, RUN, 7, 3, 2, name) for name in ATTEMPT_ARTEFACTS]
+    paths += [build_log_file(root, RUN, 7, 3, 2, step, 1) for step in BUILD_LOG_STEPS]
     paths += [hw_profile_dir(root, HW), hw_profile_record(root, HW)]
     paths += [op_signature_dir(root, HW, OP)]
     paths += [op_signature_file(root, HW, OP, name) for name in OP_SIGNATURE_FILES]
@@ -573,6 +576,7 @@ def test_module_defines_no_reader_writer_or_entry_point():
         "InvalidPathValueError",
         "attempt_artefact",
         "attempt_dir",
+        "build_log_file",
         "case_record",
         "check_run_id",
         "decision_log",
@@ -587,3 +591,158 @@ def test_module_defines_no_reader_writer_or_entry_point():
         "run_file",
         "verdict_record",
     }
+
+
+# The form of the Walk-through of ADR-0078 with the values of ADR-0183 decision 7.
+ADR_0078_SIM = (
+    "runs/r1/rounds/0003/measure/candidates/02/attempts/01/"
+    "build-log-correctness_check_sim_v2-01.txt"
+)
+ADR_0078_BOARD = (
+    "runs/r1/rounds/0003/measure/candidates/02/attempts/01/"
+    "build-log-correctness_check_board_v2-01.txt"
+)
+
+
+def test_build_log_file_of_the_adr_0078_walk_through():
+    sim = build_log_file(ROOT, "r1", 3, 2, 1, "correctness_check_sim_v2", 1)
+    board = build_log_file(ROOT, "r1", 3, 2, 1, "correctness_check_board_v2", 1)
+    assert rel(sim) == ADR_0078_SIM
+    assert rel(board) == ADR_0078_BOARD
+
+
+def test_build_log_steps_are_those_of_correctness_check_and_the_run_tools():
+    from hilclaw import check_identity, run_identity
+
+    assert BUILD_LOG_STEPS == check_identity.STEPS + run_identity.STEPS
+    assert BUILD_LOG_STEPS == (
+        "correctness_check_sim_v2",
+        "correctness_check_board_v2",
+        "sim_run_timing_v2",
+        "board_run_timing_v2",
+    )
+
+
+# The paths of the Walk-through of ADR-0108 (decision 3) under the v2 values (ADR-0183 decision 7).
+ADR_0108_SIM = (
+    "runs/r1/rounds/0003/measure/candidates/02/attempts/01/"
+    "build-log-sim_run_timing_v2-01.txt"
+)
+ADR_0108_BOARD = (
+    "runs/r1/rounds/0003/measure/candidates/02/attempts/01/"
+    "build-log-board_run_timing_v2-01.txt"
+)
+
+
+def test_build_log_file_of_the_adr_0108_walk_through():
+    sim = build_log_file(ROOT, "r1", 3, 2, 1, "sim_run_timing_v2", 1)
+    board = build_log_file(ROOT, "r1", 3, 2, 1, "board_run_timing_v2", 1)
+    assert rel(sim) == ADR_0108_SIM
+    assert rel(board) == ADR_0108_BOARD
+    assert build_log_file(ROOT, "r1", 3, 2, 1, "sim_run_timing_v2", 12).name == (
+        "build-log-sim_run_timing_v2-12.txt"
+    )
+
+
+@pytest.mark.parametrize(
+    ("number", "name"),
+    [
+        (1, "01"),
+        (99, "99"),
+        (100, "100"),
+        (keys.MAX_INTEGER, "9007199254740991"),
+    ],
+)
+def test_build_log_execution_number_form(number, name):
+    path = build_log_file(ROOT, RUN, 7, 3, 2, "correctness_check_board_v2", number)
+    assert path.name == f"build-log-correctness_check_board_v2-{name}.txt"
+
+
+@pytest.mark.parametrize("step", BUILD_LOG_STEPS)
+def test_build_log_file_is_in_the_measure_attempt_dir(step):
+    path = build_log_file(ROOT, RUN, 7, 3, 2, step, 4)
+    assert path.parent == attempt_dir(ROOT, RUN, 7, "measure", 3, 2)
+    assert path.parent == attempt_artefact(ROOT, RUN, 7, 3, 2, "build.json").parent
+    assert rel(path) == ATTEMPT.format("measure", f"build-log-{step}-04.txt")
+
+
+@pytest.mark.parametrize("step", BUILD_LOG_STEPS)
+def test_build_log_name_is_no_artefact_and_has_only_allowed_characters(step):
+    name = build_log_file(ROOT, RUN, 7, 3, 2, step, keys.MAX_INTEGER).name
+    assert name not in ATTEMPT_ARTEFACTS
+    assert name.count(".") == 1
+    assert set(name) <= set("abcdefghijklmnopqrstuvwxyz0123456789_-.")
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        "correctness_check",
+        "sim_run",
+        "board_run",
+        "sim.run",
+        "board.run",
+        "sim_run_timing ",
+        "SIM_RUN_TIMING",
+        "timing",
+        "coder_generate",
+        "",
+        "correctness_check_sim/..",
+        "../correctness_check_sim",
+        "..",
+        "CORRECTNESS_CHECK_SIM",
+        "Correctness_check_sim",
+        "correctness_check_sim ",
+        StrSubclass("correctness_check_sim"),
+        b"correctness_check_sim",
+        "correctness_check_sim_v2 ",
+        "correctness_check_v2",
+        None,
+        1,
+    ],
+)
+def test_invalid_build_log_step_is_rejected(step):
+    with pytest.raises(InvalidPathValueError, match=r"^step: must be one of "):
+        build_log_file(ROOT, RUN, 7, 3, 2, step, 1)
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        "correctness_check_sim",
+        "correctness_check_board",
+        "correctness_check_bf16_sim",
+        "correctness_check_bf16_board",
+        "sim_run_timing",
+        "board_run_timing",
+    ],
+)
+def test_a_retired_step_is_rejected(step):
+    with pytest.raises(InvalidPathValueError, match=r"^step: must be one of "):
+        build_log_file(ROOT, RUN, 7, 3, 2, step, 1)
+    assert step not in BUILD_LOG_STEPS
+
+
+@pytest.mark.parametrize(
+    "number", [0, -1, keys.MAX_INTEGER + 1, True, False, 1.0, "1", None, IntSubclass(1)]
+)
+def test_invalid_build_log_execution_is_rejected(number):
+    with pytest.raises(
+        InvalidPathValueError, match=r"^execution: must be an int from 1 "
+    ):
+        build_log_file(ROOT, RUN, 7, 3, 2, "correctness_check_sim_v2", number)
+
+
+def test_build_log_file_checks_the_attempt_as_attempt_dir_does():
+    step = "correctness_check_sim_v2"
+    with pytest.raises(InvalidPathValueError, match=r"^run_id: "):
+        build_log_file(ROOT, "Bad", 7, 3, 2, step, 1)
+    with pytest.raises(InvalidPathValueError, match=r"^round: "):
+        build_log_file(ROOT, RUN, -1, 3, 2, step, 1)
+    with pytest.raises(InvalidPathValueError, match=r"^candidate: "):
+        build_log_file(ROOT, RUN, 7, 0, 2, step, 1)
+    with pytest.raises(InvalidPathValueError, match=r"^attempt: "):
+        build_log_file(ROOT, RUN, 7, 3, True, step, 1)
+    assert rel(build_log_file(ROOT, RUN, 0, 1, 1, step, 1)).startswith(
+        f"runs/{RUN}/rounds/0000/measure/"
+    )

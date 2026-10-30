@@ -3,7 +3,9 @@
 ``ARCHITECTURE/decisions/ADR-0069-od18-correctness-check-request-schema.md``
 is the rule; a decision cited by its number alone is one of that record.
 ``ARCHITECTURE/decisions/ADR-0070-od18-correctness-check-registration.md``
-is the rule of :func:`default_table` and :func:`definition`.
+is the rule of :func:`default_table` and :func:`definition`, with
+``ARCHITECTURE/decisions/ADR-0167-od18-run-tools-registration.md`` for the
+run tools' operations of the table.
 
 * :func:`input_schema`: the schema of decision 4, as a Python value. The
   bound of the numbers is :data:`hilclaw.keys.MAX_INTEGER` (ADR-0001
@@ -18,13 +20,20 @@ is the rule of :func:`default_table` and :func:`definition`.
   schema admits it (decision 4). It states no tolerance, number of draws,
   dimension or setting as a value and no rule of who may raise
   ``execution`` or when.
-* :func:`default_table`: the backend table of the default registry, whose
-  one entry is the mock under :data:`hilclaw.mock_backend.NAME` offering
-  this tool alone with the default script (ADR-0070 decision 3).
+* :func:`default_table`: the backend table of the default registry, one
+  table for the three HW tools of the registry (ADR-0167 decision 3). Its
+  entries are the mock under :data:`hilclaw.mock_backend.NAME`, offering
+  this tool with its default script (ADR-0070 decision 3) and ``sim.run``
+  and ``board.run`` with theirs, and ``cpu_standin``
+  (:data:`hilclaw.standin_profile.ACCELERATOR`), offering the three with its
+  operations (ADR-0167 Boundaries; ADR-0170) and no ``profiler.collect``
+  (ADR-0130 decision 2).
 * :func:`definition`: the tool definition :func:`hilclaw.tools.default_registry`
   registers, the tool function bound to that table, to
   :func:`hilclaw.harness.seed_source.system` and to
-  :func:`hilclaw.gemm_contract.covers` (ADR-0070 decisions 4 and 5).
+  :func:`hilclaw.contract_table.check_covers`, which admits the fp32 ``gemm``
+  contract of ADR-0008 alone until the check slice of ADR-0177 lands
+  (ADR-0070 decisions 4 and 5; ADR-0177 decision 2).
 
 Choices that are this module's own and no rule of a record: the names, the
 text of :data:`DESCRIPTION`, and that the schema is returned by a function,
@@ -34,10 +43,13 @@ change the next.
 When the modules are imported is this module's own choice too: it imports
 :mod:`hilclaw.check_tool` and :mod:`hilclaw.mock_check`, and through them
 NumPy, only inside functions, so that importing it or building a definition
-imports neither. :func:`default_table` imports :mod:`hilclaw.mock_check` when
-it is called; the tool function of a definition imports
-:mod:`hilclaw.check_tool`, builds the table and binds the tool function at
-its first call, and keeps that one bound function for its later calls. A
+imports neither, nor any ``hilclaw.standin_*`` module. :func:`default_table`
+imports :mod:`hilclaw.mock_check`, :mod:`hilclaw.mock_run`,
+:mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_profile` and
+:mod:`hilclaw.standin_run` when it is called; the tool function of a definition
+imports :mod:`hilclaw.check_tool`, builds the table and binds the tool
+function at its first call, and keeps that one bound function for its later
+calls. A
 first call whose import or binding raises keeps nothing, and the next call
 binds again; what it raises reaches the front as anything a tool function
 raises does.
@@ -54,10 +66,11 @@ building a definition calls neither the data-root source, the source of
 seeds, the predicate, the script nor :func:`default_table`.
 """
 
-from hilclaw import backends, check_identity, gemm_contract, keys, mock_backend, tools
+from hilclaw import backends, check_identity, contract_table, keys, mock_backend, tools
 from hilclaw.harness import seed_source
 
 _TOOL = "correctness.check"
+_RUN_TOOLS = ("sim.run", "board.run")
 
 #: What a caller of ``correctness.check`` is told of the tool (ADR-0069 decision 5).
 DESCRIPTION = (
@@ -105,20 +118,45 @@ def input_schema():
 
 
 def default_table():
-    """Return a new backend table of the default registry (ADR-0070 decision 3).
+    """Return a new backend table of the default registry (ADR-0070 decision 3, ADR-0167 decision 3).
 
-    It holds one :class:`hilclaw.backends.Backend` named
-    :data:`hilclaw.mock_backend.NAME` that offers ``correctness.check`` alone,
-    with :func:`hilclaw.mock_check.operation` bound to
-    :func:`hilclaw.mock_check.default_script`. It holds no ``cpu_standin``
-    entry, so a call about any other ``accelerator`` is ``no_backend``.
-    It imports :mod:`hilclaw.mock_check`, and so NumPy.
+    It holds two :class:`hilclaw.backends.Backend` entries. The one named
+    :data:`hilclaw.mock_backend.NAME` offers the three HW tools of the
+    default registry: ``correctness.check``, with
+    :func:`hilclaw.mock_check.operation` bound to
+    :func:`hilclaw.mock_check.default_script`, and ``sim.run`` and
+    ``board.run``, each with :func:`hilclaw.mock_run.operation` of that tool
+    bound to :func:`hilclaw.mock_run.default_script`. Each operation takes
+    five arguments, the log keeper (ADR-0078 decision 6, ADR-0108
+    decision 5) the last, and neither default script hands it a log, so a
+    call answered by one leaves no file of a compiler's log. The one named
+    :data:`hilclaw.standin_profile.ACCELERATOR` offers ``correctness.check``
+    with :func:`hilclaw.standin_check.operation` and ``sim.run`` and
+    ``board.run`` with :func:`hilclaw.standin_run.operation`, and no other
+    tool (ADR-0130 decision 2). A call about any other ``accelerator`` is
+    ``no_backend``. It imports :mod:`hilclaw.mock_check`, and so NumPy,
+    :mod:`hilclaw.mock_run`, :mod:`hilclaw.standin_check`,
+    :mod:`hilclaw.standin_profile` and :mod:`hilclaw.standin_run`. Building
+    it reads no image; the ``cpu_standin`` operations read it at each call.
     """
-    from hilclaw import mock_check
+    from hilclaw import (
+        mock_check,
+        mock_run,
+        standin_check,
+        standin_profile,
+        standin_run,
+    )
 
-    operation = mock_check.operation(mock_check.default_script)
+    mock = {_TOOL: mock_check.operation(mock_check.default_script)}
+    standin = {_TOOL: standin_check.operation}
+    for tool in _RUN_TOOLS:
+        mock[tool] = mock_run.operation(tool, mock_run.default_script)
+        standin[tool] = standin_run.operation
     return backends.BackendTable(
-        [backends.Backend(mock_backend.NAME, {_TOOL: operation})]
+        [
+            backends.Backend(mock_backend.NAME, mock),
+            backends.Backend(standin_profile.ACCELERATOR, standin),
+        ]
     )
 
 
@@ -129,7 +167,8 @@ def definition(source):
     call and not here. The tool function is
     :func:`hilclaw.check_tool.tool_function` bound to a new
     :func:`default_table`, to :func:`hilclaw.harness.seed_source.system` and
-    to :func:`hilclaw.gemm_contract.covers` (ADR-0070 decisions 3 and 4); the
+    to :func:`hilclaw.contract_table.check_covers` (ADR-0070 decisions 3 and
+    4; ADR-0177 decision 2); the
     binding is made at the first call of the definition's function, which
     then imports :mod:`hilclaw.check_tool` and builds the table, and is kept
     for its later calls. The description is :data:`DESCRIPTION` and the
@@ -149,7 +188,7 @@ def definition(source):
                     source=source,
                     table=default_table(),
                     seeds=seed_source.system,
-                    covers=gemm_contract.covers,
+                    covers=contract_table.check_covers,
                 )
             )
         return bound[0](request)

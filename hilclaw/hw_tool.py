@@ -58,8 +58,22 @@ needs both). A call of it is the call above, by the same code, but for this:
   ``not_offered``.
 - In 6 the step is handed that object too.
 
-What is said below of a call that fails in 4 holds for both builders, the
-two callables of the contract included, and so does what is said of the
+:func:`read_stepped_tool_function` builds the tool function of a contract
+whose ``step`` follows from the request and from the file read in 2 for the
+stamp (ADR-0177 decision 3). A call of it is the call of
+:func:`stepped_tool_function`, by the same code, but for this:
+
+- In 1 no ``step`` is obtained. In 2 the stamp is read by
+  :func:`hilclaw.journaled_tool.read_stepped_function`, which keeps what the
+  read returned, and right after it the ``step`` is obtained from the request
+  and that value; the lookup of 3 is under the identity with that ``step``.
+  No read is added: the file is read in 2 and in 4, as by the other
+  builders, and not a third time.
+- In 4 the callable of the contract between the selection and the start line
+  is handed the ``step`` of the identity besides.
+
+What is said below of a call that fails in 4 holds for the three builders,
+the two callables of the contract included, and so does what is said of the
 reader, by whichever name a builder takes it.
 
 A call that fails in 4 has not started the step: no line was appended, neither
@@ -105,8 +119,10 @@ Conventions of this module, which the records do not fix:
   hw_profile in ``runs/<run_id>/instance.json`` (ADR-0018 decision 3), which
   :func:`hilclaw.instance.hw_profile_of` reads; this module reads no file for
   it and binds no reader of it. The reader of the stamp is no parameter:
-  the part of :mod:`hilclaw.journaled_tool` that both builders are built
-  over binds :func:`hilclaw.instance.layout_version_of`.
+  the part of :mod:`hilclaw.journaled_tool` that the builders are built
+  over binds :func:`hilclaw.instance.layout_version_of`, or for
+  :func:`read_stepped_tool_function` :func:`hilclaw.instance.read`, the read
+  that function makes.
 - The step of the contract calls the operation, not this module: what an
   operation returns and how that becomes the amounts and the result of the
   step are each tool's contract. Nothing here checks that the step calls it,
@@ -301,6 +317,63 @@ def stepped_tool_function(
         step_of=step_of,
         numbers=numbers,
         carry_out=_carry_out(tool, table, read, hw_profile_in, admit, perform),
+        source=source,
+        check=check,
+        read=read,
+        hw_profile_in=hw_profile_in,
+        admit=admit,
+        perform=perform,
+    )
+
+
+def read_stepped_tool_function(
+    *,
+    tool,
+    steps,
+    step_of,
+    numbers,
+    source,
+    table,
+    read,
+    hw_profile_in,
+    check,
+    admit,
+    perform,
+):
+    """Return the tool function of the journaled HW tool whose ``step`` follows from the request and the read of the stamp.
+
+    The arguments are those of :func:`stepped_tool_function`, and the builder
+    raises what that function raises for them, but for two callables:
+
+    - ``step_of``: called as ``step_of(request, value)``, with the request as
+      the caller gave it and the :class:`hilclaw.instance.Instance` the read
+      of the layout version stamp returned, as
+      :func:`hilclaw.journaled_tool.read_stepped_function` calls it: once in
+      a call, after that read and before the lookup.
+    - ``admit``: called as ``admit(request, value, step)``, with what
+      ``read`` returned and the ``step`` of the identity of the call, once and
+      only after :func:`hilclaw.backends.select` returned.
+
+    The function returned raises what the function of
+    :func:`stepped_tool_function` raises, with the differences
+    :func:`hilclaw.journaled_tool.read_stepped_function` states for what
+    ``step_of`` raises and returns. It does not modify the request or what
+    the reads returned, and keeps nothing between calls.
+    """
+    _check_bound(tool, table)
+
+    def carry_out(data_root, run_id, identity, request):
+        def admitted(request, value):
+            return admit(request, value, identity.step)
+
+        prepared = _carry_out(tool, table, read, hw_profile_in, admitted, perform)
+        return prepared(data_root, run_id, identity, request)
+
+    return journaled_tool.read_stepped_function(
+        steps=steps,
+        step_of=step_of,
+        numbers=numbers,
+        carry_out=carry_out,
         source=source,
         check=check,
         read=read,

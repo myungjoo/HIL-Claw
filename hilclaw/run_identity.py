@@ -3,11 +3,13 @@
 ``ARCHITECTURE/decisions/ADR-0062-od18-run-tools-call-identity.md`` is the
 rule; a decision cited by its number alone is one of that record. The module
 renders, ahead of the tool functions, what its decisions 3 and 4 fix of a
-call:
+call, with the values of ADR-0183 decision 2:
 
-* :data:`STEP_SIM_RUN`, :data:`STEP_BOARD_RUN`, :data:`STEPS`: "Each tool has
-  exactly one ``step`` value: ``sim_run_timing`` for ``sim.run`` and
-  ``board_run_timing`` for ``board.run``" (decision 3).
+* :data:`STEP_SIM_RUN`, :data:`STEP_BOARD_RUN`, :data:`STEPS`: each tool has
+  exactly one ``step`` value, ``sim_run_timing_v2`` for ``sim.run`` and
+  ``board_run_timing_v2`` for ``board.run`` (ADR-0183 decision 2, which
+  retires the values of decision 3 and keeps its rule), the same for every
+  contract.
 * :data:`NUMBERS`: "All three numbers are required" (decision 4).
 * :func:`step_of`: the ``step`` value "follows from the tool and not from
   anything a request says" (decision 1, as decision 3 fixes it); "the tool
@@ -32,21 +34,25 @@ Choices that are this module's own and no rule of a record:
 What the module does not do: it is no tool and no step and is bound to none.
 It holds no tool's own check of a request and looks at no request: the five
 members of decision 4 are the frame's, checked in moment ① (decision 6). It
-does not close the member list of a request, and what is done with a member
-no record names, a member ``point`` among them, is a later slice's (decision
-4). It builds no identity. It does not say which builder the tool functions
-use (ADR-0062 Consequences). It says nothing of who may raise ``execution``
-or which of several executions counts (OD-10, OD-17, OD-18 sub-question ⑳).
-It gives no rule for the ``step`` values of another tool: decision 3 "says
-how these two values were formed and is no rule for the ``step`` values of
-another tool". It keeps nothing between calls, reads no file and imports
-nothing.
+does not close the member list of a request: that the list is closed at those
+five and that a member no record names, a member ``point`` among them, is
+refused are ADR-0106's (decisions 2 and 3) and live in
+:mod:`hilclaw.run_definition`. It builds no identity. It does not say which
+builder the tool functions use (ADR-0062 Consequences). It says nothing of who
+may raise ``execution`` or which of several executions counts (OD-10, OD-17,
+OD-18 sub-question ⑳), except that for the comparisons of a verdict in the
+runs of ADR-0120 decision 1, ADR-0140 decision 3 says which result enters:
+exactly one, the comparison being refused otherwise
+(:mod:`hilclaw.timings_tool`). It gives no rule for the ``step`` values of
+another tool: decision 3 "says how these two values were formed and is no
+rule for the ``step`` values of another tool". It keeps nothing between
+calls, reads no file and imports nothing.
 """
 
-#: The one ``step`` of ``sim.run`` (ADR-0062 decision 3).
-STEP_SIM_RUN = "sim_run_timing"
-#: The one ``step`` of ``board.run`` (ADR-0062 decision 3).
-STEP_BOARD_RUN = "board_run_timing"
+#: The one ``step`` of ``sim.run`` (ADR-0062 decision 3, ADR-0183 decision 2).
+STEP_SIM_RUN = "sim_run_timing_v2"
+#: The one ``step`` of ``board.run`` (ADR-0062 decision 3, ADR-0183 decision 2).
+STEP_BOARD_RUN = "board_run_timing_v2"
 #: The ``step`` values of the two tools, each once; the order means nothing.
 STEPS = (STEP_SIM_RUN, STEP_BOARD_RUN)
 
@@ -62,7 +68,7 @@ _OTHER = _ACCEPTED + "got another string"
 
 
 def step_of(tool):
-    """Return the one ``step`` value of the run tool named ``tool`` (ADR-0062 decision 3).
+    """Return the one ``step`` value of the run tool named ``tool`` (ADR-0062 decision 3, ADR-0183 decision 2).
 
     - ``tool``: the name of the tool, ``"sim.run"`` or ``"board.run"``.
 

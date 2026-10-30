@@ -21,7 +21,7 @@
 
 ## 현재 상태와 MVP 범위
 
-- MVP는 "방법 B"(Claude Code Orchestrator)로 단일 compute kernel 최적화를 다룬다. Phase 1에서는 Objectives의 Database를 Git 디렉토리 트리가 대신한다. ([CLAUDE.md](CLAUDE.md) "현재 프로젝트 상태 주의사항", [Requirements.md](ARCHITECTURE/Requirements.md) §0·FR-13)
+- MVP는 "방법 B"(Claude Code Orchestrator)로 단일 compute kernel 최적화를 다룬다. 개발의 도달 목표는 Llama 3.2 1B를 연산별 커널로 bf16/fp16 end-to-end 실행하는 것이다(오너 2026-10-19 — Requirements C-6 개정·OD-31; 이 목표를 MVP 범위 안에 둔 것은 통합자 독해). Phase 1에서는 Objectives의 Database를 Git 디렉토리 트리가 대신한다. ([CLAUDE.md](CLAUDE.md) "현재 프로젝트 상태 주의사항", [Requirements.md](ARCHITECTURE/Requirements.md) §0·FR-13)
 - run 데이터와 산출물은 별도 저장소 `HIL-Claw-data`에 둔다(#5 A-1). 바이너리·대용량 산출물은 git에 넣지 않는다(#5 A-2: CAS `blobs/` + 해시 참조, Requirements C-3).
 - 2층 도구 패키지와 검증 하네스의 일부가 구현되어 테스트되고 있다. 최적화 run을 수행하는 런타임(1층의 런타임 오케스트레이션)은 아직 없다. 계획은 [PROCESS/PLAN.md](PROCESS/PLAN.md)에, 현재 phase는 [PROCESS/STATE.json](PROCESS/STATE.json)에 있다.
 - instance의 선행조건: instance를 실행하는 머신에서 런타임 사용자의 Claude Code 명령줄(`claude`)이 로그인되어 있어야 한다(Requirements C-7 ②·③의 파생 — [오너 답변 HQ-0006](https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6135246858), [ADR-0054](ARCHITECTURE/decisions/ADR-0054-od18-runtime-self-check.md) 결정 8, [UsageCases.md UC-1](ARCHITECTURE/UsageCases.md#uc-1-loop-instance-정의실행) "선행조건"). instance 시작 때 이 조건을 관찰할 런타임 자체 점검은 ADR-0054에 설계 기록만 있고 코드는 아직 없다([PROCESS/PLAN.md](PROCESS/PLAN.md) P1-9). 이 선행조건은 개발 머신에 대한 요구가 아니다([CLAUDE.md](CLAUDE.md) "개발 드라이버와 런타임의 구분").
@@ -43,7 +43,7 @@
 | 경로 | 내용 |
 |---|---|
 | [CLAUDE.md](CLAUDE.md) | 모든 Claude Code 세션이 따르는 개발 규칙(정본) |
-| [ARCHITECTURE/](ARCHITECTURE/) | 설계 문서: [Requirements.md](ARCHITECTURE/Requirements.md)(요구사항·Open Decisions), [UsageCases.md](ARCHITECTURE/UsageCases.md)(유스케이스), [StandardScenarios.md](ARCHITECTURE/StandardScenarios.md)(표준 시나리오·커버리지 검사), [OpenDecisionProposals.md](ARCHITECTURE/OpenDecisionProposals.md)(OD 제안 본문), [reviews/](ARCHITECTURE/reviews/)(검토 기록) |
+| [ARCHITECTURE/](ARCHITECTURE/) | 설계 문서: [Requirements.md](ARCHITECTURE/Requirements.md)(요구사항·Open Decisions), [UsageCases.md](ARCHITECTURE/UsageCases.md)(유스케이스), [StandardScenarios.md](ARCHITECTURE/StandardScenarios.md)(표준 시나리오·커버리지 검사), [OpenDecisionProposals.md](ARCHITECTURE/OpenDecisionProposals.md)(OD 제안 본문), [EventKinds.md](ARCHITECTURE/EventKinds.md)(events.ndjson 이벤트 종류 목록), [StepValues.md](ARCHITECTURE/StepValues.md)(기록 단계의 step 값 목록), [SpendAxes.md](ARCHITECTURE/SpendAxes.md)(spend 축 이름 목록), [BlobTypes.md](ARCHITECTURE/BlobTypes.md)(artifacts.json blob type 값 목록), [reviews/](ARCHITECTURE/reviews/)(검토 기록) |
 | [ARCHITECTURE/decisions/](ARCHITECTURE/decisions/) | 결정 기록(ADR). 설계 수준 Open Decision은 [PROCESS/DRIVER.md §9](PROCESS/DRIVER.md#9-od-종결-권한-d6-확정-2026-10-05)의 경로로 여기에서 종결된다 |
 | [PROCESS/](PROCESS/) | 개발 드라이버: [DRIVER.md](PROCESS/DRIVER.md)(절차), [PLAN.md](PROCESS/PLAN.md)(phase별 체크리스트), [STATE.json](PROCESS/STATE.json)(드라이버 상태)과 [STATE.schema.json](PROCESS/STATE.schema.json)(그 스키마), [tasks/](PROCESS/tasks/)(task 파일), [journal/](PROCESS/journal/)(iteration 기록), [proposals/](PROCESS/proposals/)(결정 요청의 제안 본문) |
 | [.claude/skills/](.claude/skills/) | 개발 절차 스킬 `dev-item-address`·`dev-code-review` |

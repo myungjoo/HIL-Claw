@@ -8,7 +8,7 @@ coversReq: [FR-10, OD-18, C-7]
 dependsOn: [T-0283]
 touchesFiles: [hilclaw/clang_build.py, tests/test_clang_build.py]
 estimatedSize: {loc: 25, files: 2}   # tests excluded from the cap (DRIVER §5, D4)
-hq: []
+hq: [HQ-0028]
 ---
 ## Why
 
@@ -149,4 +149,16 @@ This is a code change only:
 
 ## Result
 
-- (filled by the executor)
+- **BLOCKED** (criterion 5: the premise of this task does not hold on a supported Python). Not merged.
+- PR: #179 (Draft, label DONOTMERGE, left open), branch `claude/T-0284-clang-build-refuses-posix-env-keys`, commit `e1a40c9`. No merge commit.
+- Change on the branch: `_check_env` refuses on POSIX an empty key and a key with `=` at any position (`ValueError`, `parameter` `"env"`), Windows unchanged; docstring of `build` updated; `UNCHANGED_ENVS` reduced to `{"": "x"}` `windows_only`; new `posix_only` tests (error with/without `cwd`, premise, message, order, pickling).
+- Language: Python, the existing module.
+- Local (Windows, Python 3.14): `ruff check`, `ruff format --check`, `pytest` 22662 passed, 501 skipped.
+- CI run 39079246945: C, sh, test presence, coverage and Python 3.14 gates pass (3.14: 23120 passed); **Python 3.11 gate fails** with 2 failures, both in the premise test, nothing else failing.
+- Premise test classes observed on CI (`directly` with `cwd` None, then `tmp_path`):
+  - Python 3.11: `{"": "x"}` -> [None, None]; `{b"": b"x"}` -> [None, None]. `{"=A": "x"}`, `{b"=A": b"x"}`, `{"=": "x"}` passed (each outcome None or ValueError, at least one ValueError).
+  - Python 3.14: all five cases passed the same assertion.
+  - Cause (reviewer reading, confirmed by the observed classes): in 3.11 `subprocess._execute_child` takes the `os.posix_spawn` path only when `not close_fds`; with the default `close_fds=True` both calls use fork/exec, which accepts the empty key. 3.13 relaxed that condition (`_HAVE_POSIX_SPAWN_CLOSEFROM`). `pyproject.toml` has `requires-python = ">=3.11"`, so the docstring sentence "refused ... by one of the start paths" and "the class it would raise for the same single defect" are false for the empty key on 3.11 (and presumably 3.12).
+- Review: 1 round (Request changes): HIGH the 3.11 premise failure above (stop per criterion 5); MEDIUM the new docstring sentence is not true on every supported Python; LOW the Windows-only `raise` of `_check_env` is not run under the CI coverage gate (optional `_WINDOWS` monkeypatch case). Not addressed, as the task is stopped.
+- Decision needed (planner/owner): whether `build` should refuse the empty key on POSIX even where no `subprocess` start path refuses it (3.11/3.12), i.e. be stricter than `subprocess` with a docstring that says so; or restrict this task to the leading-`=` key (which held on both Pythons) and leave the empty key to `subprocess`.
+- Follow-ups: the doc follow-up of this task stays pending until the code change lands.

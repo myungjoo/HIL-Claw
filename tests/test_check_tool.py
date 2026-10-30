@@ -12,13 +12,16 @@ import pytest
 
 from hilclaw import (
     backends,
+    build_log,
     check_admission,
     check_definition,
     check_seed,
     check_tool,
+    contract_table,
     events,
     gemm_contract,
     instance,
+    journaled_step,
     keys,
     layout,
     mock_backend,
@@ -27,8 +30,9 @@ from hilclaw import (
     tools,
 )
 from hilclaw.backends import Backend, BackendTable
-from hilclaw.check_parameters import CheckParameters
+from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.check_tool import tool_function
+from hilclaw.harness import bf16_rope_verification
 from hilclaw.journal import EMPTY
 from hilclaw.tools import Registry, ToolFailure
 
@@ -58,6 +62,7 @@ REQUEST = {
     "point": "sim",
 }
 ABSENT = object()
+FP32_KEY = {"kind": "gemm", "dtype": "fp32", "layout": "row_major"}
 
 
 def profile(accelerator=mock_backend.NAME):
@@ -126,9 +131,11 @@ def output_of(root, asked):
     return FORM(root, *numbers, "output")
 
 
-def wrong_product(tool, asked, hw_profile, parameters, output_path):
+def wrong_product(tool, asked, hw_profile, parameters, output_path, keeper):
     report = bytearray(
-        mock_check.default_script(tool, asked, hw_profile, parameters, output_path)
+        mock_check.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
     )
     (element,) = struct.unpack_from("=f", report, 4)
     struct.pack_into("=f", report, 4, element + 1000.0)
@@ -149,6 +156,7 @@ class Bench:
     ):
         self.root, self.script_answer, self.covered = root, script, covers
         self.order, self.asked, self.sources = [], [], 0
+        self.keepers = []
         self.answers = list(seeds)
         operations = {TOOL: mock_check.operation(self.script)} if offered else {}
         self.backend = Backend(mock_backend.NAME, operations)
@@ -174,13 +182,16 @@ class Bench:
         self.order.append("covers")
         return self.covered(record)
 
-    def script(self, tool, asked, hw_profile, parameters, output_path):
+    def script(self, tool, asked, hw_profile, parameters, output_path, keeper):
         self.order.append("operation")
         self.asked.append((tool, asked, hw_profile, parameters, output_path))
+        self.keepers.append(keeper)
         if isinstance(self.script_answer, BaseException):
             raise self.script_answer
         if callable(self.script_answer):
-            return self.script_answer(tool, asked, hw_profile, parameters, output_path)
+            return self.script_answer(
+                tool, asked, hw_profile, parameters, output_path, keeper
+            )
         return self.script_answer
 
     def count(self, name):
@@ -238,13 +249,14 @@ def test_a_check_of_a_right_product_reports_pass_and_writes_two_lines(root):
     assert asked == kept
     assert result == {
         "outcome": "pass",
+        "contract_key": FP32_KEY,
         "shape": SHAPE,
         "draws": DRAWS,
         "tolerance": TOLERANCE,
-        "counts": [{"failed": 0, "non_finite": 0}] * DRAWS,
+        "counts": {"c": [{"failed": 0, "non_finite": 0}] * DRAWS},
     }
     numbers = {"round": ROUND, "candidate": 2, "attempt": 1}
-    step = {"step": "correctness_check_sim", "execution": 1}
+    step = {"step": "correctness_check_sim_v2", "execution": 1}
     assert lines(root) == [
         {"schema_version": 1, "kind": "step_started", **numbers, "data": step},
         {
@@ -264,6 +276,8 @@ def test_a_check_of_a_right_product_reports_pass_and_writes_two_lines(root):
         "candidates/02/attempts/01/output"
     )
     assert (bench.sources, bench.count("seeds"), bench.count("covers")) == (1, 1, 1)
+    (keeper,) = bench.keepers
+    assert type(keeper) is build_log.LogKeeper
 
 
 NUMBERS = [
@@ -441,7 +455,7 @@ def test_a_call_is_answered_alike_whatever_lies_at_the_output_path(
 def test_a_wrong_product_reports_fail(root):
     result = Bench(root, script=wrong_product).function(request())
     assert result["outcome"] == "fail"
-    assert result["counts"][0]["failed"] >= 1
+    assert result["counts"]["c"][0]["failed"] >= 1
     assert "condition" not in result
     assert lines(root)[1]["data"]["spend"] == {}
 
@@ -454,12 +468,13 @@ def test_a_condition_of_the_operation_reports_broken(root, condition):
     assert result == {
         "outcome": "broken",
         "condition": condition,
+        "contract_key": FP32_KEY,
         "shape": SHAPE,
         "draws": DRAWS,
         "tolerance": TOLERANCE,
     }
     assert lines(root)[1]["data"] == {
-        "step": "correctness_check_sim",
+        "step": "correctness_check_sim_v2",
         "execution": 1,
         "spend": {},
         "result": result,
@@ -495,10 +510,10 @@ def test_the_two_points_are_two_identities_each_with_its_own_draw(root):
     written = lines(root)
     assert [line["kind"] for line in written] == ["step_started", "step_ended"] * 2
     assert [line["data"]["step"] for line in written] == [
-        "correctness_check_sim",
-        "correctness_check_sim",
-        "correctness_check_board",
-        "correctness_check_board",
+        "correctness_check_sim_v2",
+        "correctness_check_sim_v2",
+        "correctness_check_board_v2",
+        "correctness_check_board_v2",
     ]
     assert [asked[3].seed for asked in bench.asked] == [SEED, OTHER_SEED]
     assert bench.count("seeds") == 2
@@ -780,15 +795,15 @@ def test_a_request_to_end_out_of_the_seed_source_passes_through_with_no_line(roo
     assert bench.function(request())["outcome"] == "pass"
 
 
-def a_path_in_a_tool_failure(tool, asked, hw_profile, parameters, output_path):
+def a_path_in_a_tool_failure(tool, asked, hw_profile, parameters, output_path, keeper):
     raise ToolFailure("example_kind", f"nothing lies at {output_path}")
 
 
-def a_path_in_an_error(tool, asked, hw_profile, parameters, output_path):
+def a_path_in_an_error(tool, asked, hw_profile, parameters, output_path, keeper):
     raise FileNotFoundError(2, "No such file or directory", str(output_path))
 
 
-def a_path_in_a_backend_kind(tool, asked, hw_profile, parameters, output_path):
+def a_path_in_a_backend_kind(tool, asked, hw_profile, parameters, output_path, keeper):
     raise ToolFailure("no_kernel_source", f"nothing lies at {output_path}")
 
 
@@ -840,9 +855,9 @@ def test_a_check_without_an_outcome_ends_the_step_with_that_failure(
     assert (failure.message == RAISED) is as_raised
     assert (RAISED in failure.message) is as_raised
     started, ended = lines(root)
-    assert started["data"] == {"step": "correctness_check_sim", "execution": 1}
+    assert started["data"] == {"step": "correctness_check_sim_v2", "execution": 1}
     assert ended["data"] == {
-        "step": "correctness_check_sim",
+        "step": "correctness_check_sim_v2",
         "execution": 1,
         "spend": {},
         "failure": {"kind": kind, "message": failure.message},
@@ -873,7 +888,7 @@ def test_a_backend_kind_a_script_raises_is_the_failure_of_the_end_line(
     started, ended = lines(root)
     assert started["kind"] == "step_started"
     assert ended["data"] == {
-        "step": f"correctness_check_{point}",
+        "step": f"correctness_check_{point}_v2",
         "execution": 1,
         "spend": {},
         "failure": {"kind": kind, "message": RAISED},
@@ -991,9 +1006,20 @@ def test_what_the_step_is_handed_shows_no_seed(root, monkeypatch):
     seen = []
     check = check_seed.check
 
-    def looking(operation, asked, hw_profile, admitted, seed, output_path):
+    def looking(
+        operation, asked, hw_profile, admitted, seed, output_path, keeper, *, log_path
+    ):
         seen.append(seed)
-        return check(operation, asked, hw_profile, admitted, seed, output_path)
+        return check(
+            operation,
+            asked,
+            hw_profile,
+            admitted,
+            seed,
+            output_path,
+            keeper,
+            log_path=log_path,
+        )
 
     def perform_spy(data_root, asked, hw_profile, operation, drawn):
         seen.append(repr(drawn))
@@ -1096,6 +1122,7 @@ def test_the_module_holds_what_it_joins_and_nothing_of_its_own():
             assert node.module == "hilclaw"
             imported.update(alias.name for alias in node.names)
     assert imported == {
+        "build_log",
         "check_admission",
         "check_ending",
         "check_identity",
@@ -1110,3 +1137,550 @@ def test_the_module_holds_what_it_joins_and_nothing_of_its_own():
         assert word not in text
     public = [name for name in vars(check_tool) if not name.startswith("_")]
     assert sorted(set(public) - imported) == ["tool_function"]
+
+
+# --- checks of the bf16 kinds (ADR-0177 decision 3) ---
+
+BF16_SHAPES = {
+    "gemm": {"m": 2, "k": 3, "n": 4},
+    "rmsnorm": {"m": 2, "n": 8},
+    "elementwise_add": {"m": 3, "n": 5},
+    "swiglu": {"m": 2, "n": 6},
+}
+# One value per point for every contract (ADR-0183 decision 2).
+BF16_STEP = {"sim": "correctness_check_sim_v2", "board": "correctness_check_board_v2"}
+FP32_STEP = BF16_STEP
+RETIRED = {
+    "sim": ("correctness_check_sim", "correctness_check_bf16_sim"),
+    "board": ("correctness_check_board", "correctness_check_bf16_board"),
+}
+OUTPUT = {
+    "gemm": "c",
+    "rmsnorm": "y",
+    "elementwise_add": "c",
+    "swiglu": "out",
+    "rope": "out",
+}
+
+
+def bf16_key(kind):
+    return {"kind": kind, "dtype": "bf16", "layout": "row_major"}
+
+
+A_LOG = "zq7 the log of a build zq7"
+
+
+def bf16_op(kind, shape=None):
+    return {
+        "schema_version": 1,
+        "kind": kind,
+        "shape": dict(BF16_SHAPES[kind] if shape is None else shape),
+        "dtype": "bf16",
+        "layout": "row_major",
+    }
+
+
+def bf16_run(root, kind="rmsnorm", **changes):
+    place(root, content(op=bf16_op(kind), **changes))
+    return root
+
+
+def bf16_failing(tool, asked, hw_profile, parameters, output_path, keeper):
+    report = bytearray(
+        mock_check.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
+    )
+    struct.pack_into("=H", report, 4, 0x7F00)
+    return bytes(report)
+
+
+def logging(tool, asked, hw_profile, parameters, output_path, keeper):
+    keeper.hand_over(A_LOG)
+    return mock_check.default_script(
+        tool, asked, hw_profile, parameters, output_path, keeper
+    )
+
+
+def changing_between_the_reads(monkeypatch, root, later):
+    reads = []
+    read = instance.read
+
+    def changing(data_root, run_id):
+        reads.append(run_id)
+        found = read(data_root, run_id)
+        if len(reads) == 1:
+            place(root, later)
+        return found
+
+    monkeypatch.setattr(instance, "read", changing)
+    return reads
+
+
+def steps_looked_up(monkeypatch):
+    steps = []
+    run_prepared = journaled_step.run_prepared
+
+    def spy(data_root, run_id, identity, *rest, **named):
+        steps.append(identity.step)
+        return run_prepared(data_root, run_id, identity, *rest, **named)
+
+    monkeypatch.setattr(journaled_step, "run_prepared", spy)
+    return steps
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_bf16_check_of_each_kind_at_each_point_passes_under_its_step(
+    root, kind, point
+):
+    bf16_run(root, kind)
+    bench = Bench(root, covers=contract_table.covers, script=logging)
+    asked = request(point=point)
+    result = bench.function(asked)
+    assert result == {
+        "outcome": "pass",
+        "contract_key": bf16_key(kind),
+        "shape": BF16_SHAPES[kind],
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+        "counts": {OUTPUT[kind]: [{"failed": 0, "non_finite": 0}] * DRAWS},
+    }
+    step = {"step": BF16_STEP[point], "execution": 1}
+    assert [line["kind"] for line in lines(root)] == ["step_started", "step_ended"]
+    assert [line["data"]["step"] for line in lines(root)] == [BF16_STEP[point]] * 2
+    assert lines(root)[1]["data"] == {**step, "spend": {}, "result": result}
+    ((_, _, _, parameters, _),) = bench.asked
+    assert type(parameters) is Bf16CheckParameters
+    assert parameters == Bf16CheckParameters(
+        SEED, DRAWS, kind, "bf16", tuple(BF16_SHAPES[kind].values())
+    )
+    log_file = layout.build_log_file(root, RUN, ROUND, 2, 1, BF16_STEP[point], 1)
+    assert log_file.name == f"build-log-{BF16_STEP[point]}-01.txt"
+    assert log_file.read_text(encoding="utf-8") == A_LOG
+    again = bench.function(asked)
+    assert again == result
+    assert (bench.count("seeds"), bench.count("operation")) == (1, 1)
+    assert len(lines(root)) == 2
+
+
+@pytest.mark.parametrize(
+    ("script", "outcome"),
+    [(bf16_failing, "fail"), ("time_limit", "broken")],
+    ids=["fail", "broken"],
+)
+def test_a_bf16_check_reports_fail_and_broken(root, script, outcome):
+    bf16_run(root, "swiglu")
+    bench = Bench(root, covers=contract_table.covers, script=script)
+    result = bench.function(request(point="board"))
+    assert result["outcome"] == outcome
+    assert result["shape"] == BF16_SHAPES["swiglu"]
+    assert result["contract_key"] == bf16_key("swiglu")
+    if outcome == "fail":
+        assert result["counts"]["out"][0]["failed"] >= 1
+    else:
+        assert result["condition"] == "time_limit"
+        assert "counts" not in result
+    assert lines(root)[1]["data"]["step"] == "correctness_check_board_v2"
+    assert lines(root)[1]["data"]["result"] == result
+
+
+def test_an_fp32_check_keeps_its_step_and_its_parameters(root):
+    bench = Bench(root, covers=contract_table.check_covers, seeds=(SEED, OTHER_SEED))
+    for point in ("sim", "board"):
+        assert bench.function(request(point=point))["shape"] == SHAPE
+    assert [line["data"]["step"] for line in lines(root)] == [
+        FP32_STEP["sim"],
+        FP32_STEP["sim"],
+        FP32_STEP["board"],
+        FP32_STEP["board"],
+    ]
+    assert [type(asked[3]) for asked in bench.asked] == [CheckParameters] * 2
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_a_file_that_becomes_bf16_between_the_reads_is_checked_as_the_later_read(
+    root, monkeypatch, point
+):
+    reads = changing_between_the_reads(monkeypatch, root, content(op=bf16_op("gemm")))
+    bench = Bench(root, covers=contract_table.covers)
+    result = bench.function(request(point=point))
+    assert len(reads) == 2
+    assert result["contract_key"] == bf16_key("gemm")
+    assert result["shape"] == BF16_SHAPES["gemm"]
+    assert [line["data"]["step"] for line in lines(root)] == [BF16_STEP[point]] * 2
+    assert type(bench.asked[0][3]) is Bf16CheckParameters
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_a_file_that_stops_being_bf16_between_the_reads_is_answered_for_the_later_read(
+    root, monkeypatch, point
+):
+    bf16_run(root, "elementwise_add", draws=ABSENT)
+    bench = Bench(root, covers=contract_table.covers)
+    changing_between_the_reads(monkeypatch, root, content(draws=ABSENT))
+    failure = bench.failure(request(point=point))
+    assert failure.kind == "draws_not_stated"
+    assert (bench.count("covers"), bench.count("seeds")) == (1, 0)
+    assert lines(root) == []
+
+
+@pytest.mark.parametrize(
+    ("kind", "shape"),
+    [("rope", {"m": 2, "h": 2, "d": 4})],
+    ids=["rope-not-checked"],
+)
+def test_a_bf16_record_with_no_check_is_not_covered_and_writes_no_line(
+    root, monkeypatch, kind, shape
+):
+    record = {**bf16_op("gemm"), "kind": kind, "shape": shape}
+    place(root, content(op=record))
+    table = dict(contract_table.TABLE)
+    key = (kind, "bf16", "row_major", "c")
+    table[key] = table[key]._replace(checked=False)
+    monkeypatch.setattr(contract_table, "TABLE", table)
+    steps = steps_looked_up(monkeypatch)
+    bench = Bench(root, covers=contract_table.check_covers)
+    failure = bench.failure(request(point="board"))
+    assert failure.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert steps == ["correctness_check_board_v2"]
+    assert (bench.count("seeds"), bench.count("operation"), lines(root)) == (0, 0, [])
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_a_bf16_record_with_a_shape_outside_its_contract_is_not_covered(root, kind):
+    shape = dict.fromkeys(BF16_SHAPES[kind], 1) | {"n": 0}
+    place(root, content(op=bf16_op(kind, shape)))
+    bench = Bench(root, covers=contract_table.covers)
+    failure = bench.failure(request())
+    assert failure.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert (bench.count("seeds"), lines(root)) == (0, [])
+
+
+def test_an_invalid_file_is_answered_at_the_read_of_the_stamp(root, recorded):
+    place(root, b"{not json")
+    bench = Bench(root, covers=contract_table.covers)
+    for point in ("sim", "board"):
+        assert bench.failure(request(point=point)).kind == "run_file_invalid"
+    assert recorded == ["read", "read"]
+    assert (bench.count("covers"), bench.count("seeds"), lines(root)) == (0, 0, [])
+
+
+@pytest.mark.parametrize("point", ["cpu", "Sim", None])
+def test_a_point_that_is_neither_value_is_refused_before_any_read(
+    root, recorded, point
+):
+    bf16_run(root)
+    bench = Bench(root, covers=contract_table.covers)
+    failure = bench.failure(request(point=point))
+    assert failure.kind == "invalid_request"
+    assert (recorded, bench.sources, lines(root)) == ([], 0, [])
+
+
+@pytest.mark.parametrize("kind", list(BF16_SHAPES))
+def test_the_default_registry_checks_each_bf16_kind_under_its_step(
+    root, monkeypatch, kind
+):
+    bf16_run(root, kind)
+    steps = steps_looked_up(monkeypatch)
+    registry = tools.default_registry(lambda: root)
+    for point in ("sim", "board"):
+        result = tools.call(registry, TOOL, request(point=point))
+        assert result["outcome"] == "pass"
+        assert result["shape"] == BF16_SHAPES[kind]
+    assert steps == [BF16_STEP["sim"], BF16_STEP["board"]]
+    assert [line["data"]["step"] for line in lines(root)] == [
+        BF16_STEP["sim"],
+        BF16_STEP["sim"],
+        BF16_STEP["board"],
+        BF16_STEP["board"],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("shape", "seed", "start"),
+    [
+        ({"m": 1, "h": 1, "d": 2}, SEED, 2047),
+        ({"m": 1, "h": 8, "d": 64}, SEED - 1, 127),
+        ({"m": 3, "h": 2, "d": 4}, SEED, 0),
+    ],
+    ids=["smallest", "m1", "m3"],
+)
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_a_rope_check_on_the_mock_passes_under_a_predicate_that_covers_it(
+    root, monkeypatch, point, shape, seed, start
+):
+    starts = []
+    rule = bf16_rope_verification.start_position
+
+    def spy(dims, **named):
+        starts.append(rule(dims, **named))
+        return starts[-1]
+
+    monkeypatch.setattr(bf16_rope_verification, "start_position", spy)
+    place(root, content(op=bf16_op("rope", shape)))
+    bench = Bench(root, covers=contract_table.covers, seeds=(seed,))
+    result = bench.function(request(point=point))
+    assert result == {
+        "outcome": "pass",
+        "contract_key": bf16_key("rope"),
+        "shape": shape,
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+        "counts": {"out": [{"failed": 0, "non_finite": 0}] * DRAWS},
+    }
+    ((_, _, _, parameters, _),) = bench.asked
+    assert parameters == Bf16CheckParameters(
+        seed, DRAWS, "rope", "bf16", tuple(shape.values())
+    )
+    assert starts == [start, start]
+    assert [line["data"]["step"] for line in lines(root)] == [BF16_STEP[point]] * 2
+    assert lines(root)[1]["data"]["result"] == result
+
+
+def test_a_rope_check_with_a_wrong_element_fails_in_its_draw(root):
+    place(root, content(op=bf16_op("rope", {"m": 2, "h": 2, "d": 4})))
+
+    def wrong(tool, asked, hw_profile, parameters, output_path, keeper):
+        report = bytearray(
+            mock_check.default_script(
+                tool, asked, hw_profile, parameters, output_path, keeper
+            )
+        )
+        struct.pack_into("=H", report, 4 + 2 * 3, 0x7F80)
+        return bytes(report)
+
+    bench = Bench(root, covers=contract_table.covers, script=wrong)
+    result = bench.function(request(point="board"))
+    assert result["outcome"] == "fail"
+    assert result["counts"] == {
+        "out": [{"failed": 1, "non_finite": 1}, {"failed": 0, "non_finite": 0}]
+    }
+
+
+@pytest.mark.parametrize(
+    "shape", [{"m": 2, "h": 2, "d": 4}, {"m": 1, "h": 2, "d": 4}], ids=["m2", "m1"]
+)
+def test_the_default_registry_checks_rope(root, monkeypatch, shape):
+    place(root, content(op=bf16_op("rope", shape)))
+    steps = steps_looked_up(monkeypatch)
+    registry = tools.default_registry(lambda: root)
+    for point in ("sim", "board"):
+        result = tools.call(registry, TOOL, request(point=point))
+        assert result["outcome"] == "pass"
+        assert result["shape"] == shape
+        assert result["counts"] == {"out": [{"failed": 0, "non_finite": 0}] * DRAWS}
+    assert steps == [BF16_STEP["sim"], BF16_STEP["board"]]
+    assert [line["data"]["step"] for line in lines(root)] == [
+        BF16_STEP["sim"],
+        BF16_STEP["sim"],
+        BF16_STEP["board"],
+        BF16_STEP["board"],
+    ]
+
+
+# --- a check of sdpa_kv_cache (ADR-0177 decision 3, HQ-0077; ADR-0165 decision 8) ---
+
+SDPA_SHAPE = {"m": 2, "l": 3, "h": 4, "h_kv": 2, "d": 4}
+SDPA_DIMS = (2, 3, 4, 2, 4)
+SDPA_PASSED = {
+    "cache_k": [{"differs": 0}] * DRAWS,
+    "cache_v": [{"differs": 0}] * DRAWS,
+    "out": [{"failed": 0, "non_finite": 0}] * DRAWS,
+}
+
+
+def sdpa_run(root, shape=SDPA_SHAPE, **changes):
+    record = {**bf16_op("gemm"), "kind": "sdpa_kv_cache", "shape": dict(shape)}
+    place(root, content(op=record, **changes))
+    return root
+
+
+def cache_failing(tool, asked, hw_profile, parameters, output_path, keeper):
+    report = bytearray(
+        mock_check.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
+    )
+    struct.pack_into("=H", report, 4 + 2 * 2 * 4 * 4, 0x0000)
+    return bytes(report)
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_an_sdpa_check_on_the_mock_passes_under_the_bf16_step(root, point):
+    sdpa_run(root)
+    bench = Bench(root, covers=contract_table.covers)
+    result = bench.function(request(point=point))
+    assert result == {
+        "outcome": "pass",
+        "contract_key": bf16_key("sdpa_kv_cache"),
+        "shape": SDPA_SHAPE,
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+        "counts": SDPA_PASSED,
+    }
+    assert [line["data"]["step"] for line in lines(root)] == [BF16_STEP[point]] * 2
+    assert lines(root)[1]["data"]["result"] == result
+    ((_, _, _, parameters, _),) = bench.asked
+    assert parameters == Bf16CheckParameters(
+        SEED, DRAWS, "sdpa_kv_cache", "bf16", SDPA_DIMS
+    )
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {"d": 4, "h_kv": 2, "h": 4, "l": 3, "m": 2},
+        {"m": 1, "l": 1, "h": 2, "h_kv": 2, "d": 2},
+    ],
+    ids=["members-in-another-order", "h-equals-h_kv"],
+)
+def test_an_sdpa_check_takes_the_dims_in_the_order_of_task_contract(root, shape):
+    sdpa_run(root, shape)
+    bench = Bench(root, covers=contract_table.covers)
+    result = bench.function(request(point="sim"))
+    assert result["outcome"] == "pass"
+    assert list(result["shape"]) == ["m", "l", "h", "h_kv", "d"]
+    assert result["shape"] == shape
+    ((_, _, _, parameters, _),) = bench.asked
+    assert parameters.dims == tuple(result["shape"].values())
+
+
+@pytest.mark.parametrize(
+    ("script", "outcome"),
+    [(cache_failing, "fail"), (bf16_failing, "fail"), ("build_exit_status", "broken")],
+    ids=["cache", "out", "broken"],
+)
+def test_an_sdpa_check_reports_fail_and_broken(root, script, outcome):
+    sdpa_run(root)
+    bench = Bench(root, covers=contract_table.covers, script=script)
+    result = bench.function(request(point="board"))
+    assert result["outcome"] == outcome
+    assert result["shape"] == SDPA_SHAPE
+    assert result["contract_key"] == bf16_key("sdpa_kv_cache")
+    if script is cache_failing:
+        assert result["counts"] == {
+            **SDPA_PASSED,
+            "cache_k": [{"differs": 1}, {"differs": 0}],
+        }
+    elif script is bf16_failing:
+        assert result["counts"]["out"][0]["failed"] == 1
+        assert result["counts"]["cache_k"] == SDPA_PASSED["cache_k"]
+        assert result["counts"]["cache_v"] == SDPA_PASSED["cache_v"]
+    else:
+        assert "counts" not in result
+        assert result["condition"] == "build_exit_status"
+    assert lines(root)[1]["data"]["step"] == BF16_STEP["board"]
+
+
+def test_the_default_registry_checks_sdpa(root, monkeypatch):
+    sdpa_run(root)
+    steps = steps_looked_up(monkeypatch)
+    registry = tools.default_registry(lambda: root)
+    for point in ("sim", "board"):
+        result = tools.call(registry, TOOL, request(point=point))
+        assert result["outcome"] == "pass"
+        assert result["shape"] == SDPA_SHAPE
+        assert result["counts"] == SDPA_PASSED
+    assert steps == [BF16_STEP["sim"], BF16_STEP["board"]]
+    assert len(lines(root)) == 4
+
+
+# --- the v2 step values and results (ADR-0183 decisions 2, 3, 6, 7 and 8) ---
+
+
+def logging_broken_build(tool, asked, hw_profile, parameters, output_path, keeper):
+    keeper.hand_over(A_LOG)
+    return "build_exit_status"
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+@pytest.mark.parametrize("kind", ["fp32", "rmsnorm", "sdpa_kv_cache"])
+def test_a_broken_build_gives_a_v2_broken_result_and_a_log_of_the_v2_value(
+    root, kind, point
+):
+    if kind == "sdpa_kv_cache":
+        sdpa_run(root)
+        key, shape = bf16_key(kind), SDPA_SHAPE
+    elif kind == "rmsnorm":
+        bf16_run(root, kind)
+        key, shape = bf16_key(kind), BF16_SHAPES[kind]
+    else:
+        key, shape = FP32_KEY, SHAPE
+    bench = Bench(root, covers=contract_table.covers, script=logging_broken_build)
+    result = bench.function(request(point=point))
+    assert result == {
+        "outcome": "broken",
+        "condition": "build_exit_status",
+        "contract_key": key,
+        "shape": shape,
+        "draws": DRAWS,
+        "tolerance": TOLERANCE,
+    }
+    step = BF16_STEP[point]
+    assert [line["kind"] for line in lines(root)] == ["step_started", "step_ended"]
+    assert [line["data"]["step"] for line in lines(root)] == [step] * 2
+    assert lines(root)[1]["data"]["result"] == result
+    attempt = layout.attempt_dir(root, RUN, ROUND, "measure", 2, 1)
+    assert sorted(path.name for path in attempt.iterdir()) == [
+        f"build-log-correctness_check_{point}_v2-01.txt"
+    ]
+    assert (attempt / f"build-log-{step}-01.txt").read_text(encoding="utf-8") == A_LOG
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+@pytest.mark.parametrize("ended", [False, True], ids=["open", "ended"])
+def test_a_line_under_a_retired_value_is_passed_over(root, point, ended):
+    numbers = {"round": ROUND, "candidate": 2, "attempt": 1}
+    for retired in RETIRED[point]:
+        data = {"step": retired, "execution": 1}
+        events.append(root, RUN, "step_started", data, **numbers)
+        if ended:
+            ended_data = {**data, "spend": {}, "result": {"outcome": "fail"}}
+            events.append(root, RUN, "step_ended", ended_data, **numbers)
+    before = len(lines(root))
+    bench = Bench(root)
+    result = bench.function(request(point=point))
+    assert result["outcome"] == "pass"
+    assert result["contract_key"] == FP32_KEY
+    assert (bench.count("seeds"), bench.count("operation")) == (1, 1)
+    added = lines(root)[before:]
+    assert [line["data"]["step"] for line in added] == [BF16_STEP[point]] * 2
+    assert added[1]["data"]["result"] == result
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+@pytest.mark.parametrize("kind", ["gemm", "rope", "sdpa_kv_cache"])
+def test_a_covered_bf16_record_is_admitted_at_either_point_under_its_v2_value(
+    root, recorded, kind, point
+):
+    if kind == "sdpa_kv_cache":
+        sdpa_run(root)
+    elif kind == "rope":
+        place(root, content(op=bf16_op("rope", {"m": 2, "h": 2, "d": 4})))
+    else:
+        bf16_run(root, kind)
+    bench = Bench(root, covers=contract_table.check_covers)
+    result = bench.function(request(point=point))
+    assert result["outcome"] == "pass"
+    assert result["contract_key"] == bf16_key(kind)
+    assert [line["data"]["step"] for line in lines(root)] == [BF16_STEP[point]] * 2
+    assert recorded.count("read") == 2
+
+
+@pytest.mark.parametrize("point", ["correctness_check_sim_v2", "sim_v2", "SIM", ""])
+def test_a_step_value_or_another_string_as_the_point_is_refused(root, point):
+    bench = Bench(root)
+    assert bench.failure(request(point=point)).kind == "invalid_request"
+    assert (bench.sources, lines(root)) == (0, [])
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_a_record_no_entry_checks_is_op_signature_not_covered_at_either_point(
+    root, point
+):
+    place(root, content(op={**OP, "dtype": "fp16"}))
+    bench = Bench(root, covers=contract_table.check_covers)
+    failure = bench.failure(request(point=point))
+    assert failure.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert (bench.count("seeds"), lines(root)) == (0, [])

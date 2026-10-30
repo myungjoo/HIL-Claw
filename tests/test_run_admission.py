@@ -10,6 +10,7 @@ import pytest
 
 from hilclaw import (
     check_admission,
+    contract_table,
     gemm_contract,
     instance,
     keys,
@@ -27,6 +28,7 @@ from hilclaw.run_admission import (
     admit,
 )
 
+GEMM = next(e for e in contract_table.TABLE.values() if e.contract is gemm_contract)
 MARKER = "zq7-marker-zq7"
 MESSAGE_LIMIT = 200
 ABSENT = object()
@@ -155,29 +157,29 @@ def test_the_walk_through_first_row_is_admitted_with_its_values(objective, bound
     before = copy.deepcopy(stated)
     admitted = admit(stated, covers=gemm_contract.covers)
     assert type(admitted) is Admitted
-    assert admitted == (1, 2048, 8192, TEST_N_MAX, "interval", bound)
+    assert admitted == (GEMM, (1, 2048, 8192), TEST_N_MAX, "interval", bound)
     shape = stated.op_signature.record["shape"]
-    assert admitted.m is shape["m"]
-    assert admitted.k is shape["k"]
-    assert admitted.n is shape["n"]
+    assert admitted.entry is GEMM
+    assert type(admitted.dims) is tuple
+    assert admitted.dims[0] is shape["m"]
+    assert admitted.dims[1] is shape["k"]
+    assert admitted.dims[2] is shape["n"]
     assert admitted.n_max is stated.n_max
     assert admitted.bound is run_objective.admit(stated.objective).bound
     assert stated == before
 
 
-def test_admitted_has_six_fields_and_no_default():
-    assert Admitted._fields == ("m", "k", "n", "n_max", "sample_form", "bound")
+def test_admitted_has_five_fields_and_no_default():
+    assert Admitted._fields == ("entry", "dims", "n_max", "sample_form", "bound")
     assert Admitted._field_defaults == {}
     with pytest.raises(TypeError):
-        Admitted(1, 2, 3, 4, "interval")
+        Admitted(GEMM, (1, 2, 3), 4, "interval")
 
 
 def test_an_admitted_value_and_a_seed_build_the_timing_parameters():
     admitted = admit(content(op=record(m=5, k=6, n=7)), covers=gemm_contract.covers)
     built = run_parameters.TimingParameters(
-        admitted.m,
-        admitted.k,
-        admitted.n,
+        *admitted.dims,
         admitted.n_max,
         admitted.sample_form,
         seed=42,
@@ -341,9 +343,8 @@ def test_the_rest_of_the_instance_changes_no_answer(
         stated = stated._replace(op_signature=rekeyed, hw_profile_key=MARKER)
     if kind is None:
         assert admit(stated, covers=gemm_contract.covers) == (
-            1,
-            2048,
-            8192,
+            GEMM,
+            (1, 2048, 8192),
             TEST_N_MAX,
             "interval",
             None,
@@ -449,7 +450,9 @@ def test_the_module_imports_what_its_docstring_names():
         elif isinstance(node, ast.ImportFrom):
             names.update(f"{node.module}.{alias.name}" for alias in node.names)
     assert names == {
+        "inspect",
         "typing",
+        "hilclaw.contract_table",
         "hilclaw.instance",
         "hilclaw.run_objective",
         "hilclaw.tools",
@@ -476,3 +479,58 @@ def test_public_names_of_the_module_and_no_default():
     assert [parameter.name for parameter in parameters] == ["instance", "covers"]
     assert parameters[1].kind is inspect.Parameter.KEYWORD_ONLY
     assert all(parameter.default is inspect.Parameter.empty for parameter in parameters)
+
+
+@pytest.mark.parametrize(
+    ("op", "kind", "dims"),
+    [
+        (
+            {
+                "schema_version": 1,
+                "kind": "rmsnorm",
+                "shape": {"n": 2048, "m": 512},
+                "dtype": "bf16",
+                "layout": "row_major",
+            },
+            "rmsnorm",
+            (512, 2048),
+        ),
+        (
+            {
+                "schema_version": 1,
+                "kind": "sdpa_kv_cache",
+                "shape": {"d": 64, "h_kv": 8, "h": 32, "l": 128, "m": 1},
+                "dtype": "bf16",
+                "layout": "row_major",
+            },
+            "sdpa_kv_cache",
+            (1, 128, 32, 8, 64),
+        ),
+    ],
+)
+def test_the_entry_and_dims_follow_the_covering_entry_in_task_contract_order(
+    op, kind, dims
+):
+    stated = content(op=op)
+    assert contract_table.run_covers(op)
+    admitted = admit(stated, covers=contract_table.run_covers)
+    assert admitted.entry is contract_table.entry(op)
+    fp16 = {**op, "dtype": "fp16"}
+    assert not contract_table.run_covers(fp16)
+    refused(content(op=fp16), KIND_OP_SIGNATURE_NOT_COVERED, contract_table.run_covers)
+    assert admitted.entry.contract.DTYPE == op["dtype"]
+    assert admitted.entry.contract.KIND == kind
+    assert admitted.dims == dims
+
+
+@pytest.mark.parametrize("op", [record(dtype="fp16"), record(layout="col_major")])
+def test_a_record_no_entry_covers_is_not_covered_whatever_covers_answers(op):
+    covers = Recorder(True)
+    refused(content(op=op), KIND_OP_SIGNATURE_NOT_COVERED, covers)
+    assert len(covers.calls) == 1
+
+
+def test_the_fp32_gemm_entry_is_admitted_by_run_covers():
+    admitted = admit(content(), covers=contract_table.run_covers)
+    assert admitted.entry is GEMM
+    assert admitted.entry.timed

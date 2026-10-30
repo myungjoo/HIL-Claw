@@ -7,12 +7,18 @@ the compiled set. :func:`is_admitted_name` is the first and
 :func:`read_compiled_set` the second. Who applies the reader, and to which
 path, is ADR-0056 decision 3: the operation of a backend that builds, to the
 path the tool function forms with :func:`hilclaw.layout.attempt_artefact`.
-Nothing calls this module yet.
+No tool and no backend operation applies the reader yet; :mod:`hilclaw.bring_in`
+uses :func:`is_admitted_name`, :func:`hilclaw.standin_copies.place_copies`
+(ADR-0144 slice (2)) applies the reader to copy the kernel files it answers,
+and :func:`hilclaw.attempt_kernel.kernel_reference` applies it to the
+``output/`` of a named attempt for a kernel reference of the model executor
+(ADR-0153 decision 3).
 
 :func:`read_compiled_set` has three outcomes. It returns a
 :class:`KernelSource` whose ``compiled_set`` is not empty and whose ``missing``
-is ``None``; or one whose ``compiled_set`` is empty and whose ``missing`` is one
-of :data:`NO_KERNEL_SOURCE_CASES` ("no kernel source", R1 and R4); or it raises
+is ``None``, with the kernel's own headers (R5) in ``headers``; or one whose
+``compiled_set`` and ``headers`` are empty and whose ``missing`` is one of
+:data:`NO_KERNEL_SOURCE_CASES` ("no kernel source", R1 and R4); or it raises
 :class:`KernelSourceReadError`, whose ``failure`` is one of
 :data:`READER_FAILURES` (R8). The reader lists the attempt directory and
 ``output/`` and determines the kind of every entry of both; the answer depends
@@ -88,10 +94,16 @@ class KernelSource(NamedTuple):
     ``.c``, each the given path joined with the listed name, in ascending byte
     order of the names (R3). ``missing`` is ``None`` when the set is not empty,
     else the one of :data:`NO_KERNEL_SOURCE_CASES` that says why it is empty.
+    ``headers`` holds, formed and ordered the same way, the kernel files whose
+    name ends in ``.h`` (R5), found by the same listing and the same questions
+    for kinds as ``compiled_set``. It is empty whenever ``missing`` is not
+    ``None``, also for :data:`NO_COMPILED_FILE` where ``output/`` holds
+    headers: a header is never built without a compiled file.
     """
 
     compiled_set: tuple[Path, ...]
     missing: str | None
+    headers: tuple[Path, ...] = ()
 
 
 class InvalidOutputPathError(ValueError):
@@ -124,8 +136,9 @@ def read_compiled_set(output_path):
     Returns a :class:`KernelSource`. The ``output/`` is the entry of the parent
     of ``output_path`` that is listed as exactly ``output`` and is itself a
     directory (R1); its kernel files are the entries directly below it that
-    are themselves regular files under an admitted name (R2), and those whose
-    name ends in ``.c`` are the compiled set (R3). A symbolic link is neither.
+    are themselves regular files under an admitted name (R2), those whose
+    name ends in ``.c`` are the compiled set (R3) and those whose name ends in
+    ``.h`` the headers (R5). A symbolic link is none of them.
 
     Raises :class:`InvalidOutputPathError` for a value that is no path of an
     ``output/`` and :class:`KernelSourceReadError` for a failure of the reader.
@@ -143,13 +156,18 @@ def read_compiled_set(output_path):
         listed = os.listdir(output)
     except OSError as error:
         raise KernelSourceReadError(OUTPUT_DIRECTORY_UNLISTABLE) from error
-    names = sorted(
+    kernel_files = sorted(
         name
         for name, mode in _modes(output, listed).items()
-        if stat.S_ISREG(mode) and name.endswith(".c") and is_admitted_name(name)
+        if stat.S_ISREG(mode) and is_admitted_name(name)
     )
+    compiled = [name for name in kernel_files if name.endswith(".c")]
+    if not compiled:
+        return KernelSource((), NO_COMPILED_FILE)
     return KernelSource(
-        tuple(output / name for name in names), None if names else NO_COMPILED_FILE
+        tuple(output / name for name in compiled),
+        None,
+        tuple(output / name for name in kernel_files if name.endswith(".h")),
     )
 
 

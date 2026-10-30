@@ -33,7 +33,14 @@ HW_SOURCES = ("external", "in_house")
 
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _STRING = re.compile(r"[\x20-\x7e]{1,255}")
-_SHAPE_MEMBERS = {"gemm": frozenset({"m", "k", "n"})}
+_SHAPE_MEMBERS = {
+    "elementwise_add": frozenset({"m", "n"}),
+    "gemm": frozenset({"m", "k", "n"}),
+    "rmsnorm": frozenset({"m", "n"}),
+    "rope": frozenset({"m", "h", "d"}),
+    "sdpa_kv_cache": frozenset({"m", "l", "h", "h_kv", "d"}),
+    "swiglu": frozenset({"m", "n"}),
+}
 _HW_REQUIRED = (
     "schema_version",
     "accelerator",
@@ -135,14 +142,18 @@ def op_signature_key(record):
     ``record`` is a mapping with the key fields ``schema_version`` (the integer
     :data:`SCHEMA_VERSION`), ``kind``, ``dtype`` and ``layout`` (names),
     ``shape`` (map of name to integer whose member names are fixed by the kind:
-    ``m``, ``k`` and ``n`` for ``gemm``) and optionally ``ext`` (non-empty map of
-    name to string or integer), and with the optional attribute ``label``
-    (string), which is checked and then left out of the key. The name of the key
-    starts with ``kind``. ``record`` is not modified.
+    ``m`` and ``n`` for ``elementwise_add``, ``m``, ``k`` and ``n`` for
+    ``gemm``, ``m`` and ``n`` for ``rmsnorm``, ``m``, ``h`` and ``d`` for
+    ``rope``, ``m``, ``l``, ``h``, ``h_kv`` and ``d`` for ``sdpa_kv_cache``,
+    ``m`` and ``n`` for ``swiglu``) and optionally ``ext``
+    (non-empty map of name to string or integer), and with the optional
+    attribute ``label`` (string), which is checked and then left out of the
+    key. The name of the key starts with ``kind``. ``record`` is not modified.
 
     Raises :class:`InvalidRecordError` for the first rule found broken, which
     includes an unknown field and a ``kind`` whose shape members this module
-    does not know (only ``gemm`` is known).
+    does not know (only ``elementwise_add``, ``gemm``, ``rmsnorm``, ``rope``,
+    ``sdpa_kv_cache`` and ``swiglu`` are known).
     """
     _fields(record, _OP_REQUIRED)
     key = {

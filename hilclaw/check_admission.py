@@ -20,7 +20,13 @@ tool function:
 * :func:`admit`: the answer for one content, or the :class:`Admitted` of a
   content that has none of the four: the dimensions (ADR-0041 decision 2),
   the number of draws (ADR-0046 decision 2) and the tolerance (ADR-0021
-  decision 4), each as the content states it.
+  decision 4), each as the content states it. For a record whose ``dtype``
+  is ``bf16`` it is a :class:`Bf16Admitted`, with the shape members of the
+  record's kind (ADR-0041 decision 2 read per kind, ADR-0177 decision 3).
+  A covered record is admitted whatever its ``dtype``: the ``step`` of a
+  call follows from its point alone, and the rule of ADR-0177 decision 3
+  that refused a record whose ``dtype`` was not the one the ``step`` was
+  taken for has no object (ADR-0183 decision 2).
 
 Each kind is a tool failure of this tool's own kind and no reserved kind
 (ADR-0021 decision 4; ADR-0041 decisions 4 and 5; ADR-0046 decision 5).
@@ -39,7 +45,18 @@ Choices that are this module's own and no rule of a record:
   returns them and are not validated again. An ``Instance`` built by hand
   with other values is the caller's.
 * The answer for an admitted content is a :class:`typing.NamedTuple`, and
-  the field names and their order are this module's.
+  the field names and their order are this module's. A bf16 record has a
+  type of its own, :class:`Bf16Admitted`, so that the :class:`Admitted` of
+  an fp32 ``gemm`` record is what it was.
+* A bf16 record that ``covers`` answers ``True`` for is answered
+  :data:`KIND_OP_SIGNATURE_NOT_COVERED` when no bf16 entry of
+  :data:`hilclaw.contract_table.TABLE` has its kind and its ``layout``:
+  there is no check for it, whatever the predicate handed over says.
+  Through the predicate the registry binds, such a record is refused by
+  the predicate first.
+* The order of the dimensions of a :class:`Bf16Admitted` is that of the
+  parameters of the ``task_contract`` of that entry (ADR-0177 decisions 1
+  and 3), read when the module is imported.
 * The messages. Each is built when the module is imported, is at most 200
   characters long, starts with the name of the member it is about and shows
   nothing of the content. Nothing may depend on the wording.
@@ -59,14 +76,17 @@ of the four is ever the ``failure`` of an end line (ADR-0021 decision 4;
 ADR-0041 decisions 4 and 5; ADR-0046 decision 5). It says nothing of what
 anybody does after an answer, of whether the start of an instance checks
 these members, or of which number of draws or which tolerance is enough for
-anything. It keeps nothing between calls. It imports :mod:`typing`,
-:mod:`hilclaw.instance` and :mod:`hilclaw.tools` and nothing else.
+anything. It keeps nothing between calls. It imports :mod:`inspect`,
+:mod:`typing`, :mod:`hilclaw.check_parameters`,
+:mod:`hilclaw.contract_table`, :mod:`hilclaw.instance` and
+:mod:`hilclaw.tools` and nothing else.
 """
 
+import inspect
 import typing
 
+from hilclaw import check_parameters, contract_table, tools
 from hilclaw import instance as instances
-from hilclaw import tools
 
 #: The kind of ADR-0041 decision 4: the content states no op_signature.
 KIND_OP_SIGNATURE_NOT_STATED = "op_signature_not_stated"
@@ -118,6 +138,30 @@ class Admitted(typing.NamedTuple):
     atol: float
 
 
+class Bf16Admitted(typing.NamedTuple):
+    """What a check of a bf16 kind that is admitted takes from the content of ``instance.json`` (ADR-0177 decision 3).
+
+    - ``kind``, ``dtype``: those of the stated op_signature record, the
+      ``kind`` and the ``dtype`` of the table key of the covering entry.
+    - ``dims``: the values of the record's ``shape`` members, a ``tuple`` in
+      the order of the parameters of the contract's ``task_contract``
+      (``(m, k, n)`` for ``gemm``, ``(m, n)`` for ``rmsnorm``,
+      ``elementwise_add`` and ``swiglu``, ``(m, h, d)`` for ``rope``,
+      ``(m, l, h, h_kv, d)`` for ``sdpa_kv_cache``).
+    - ``draws``, ``rtol``, ``atol``: as in :class:`Admitted`.
+
+    As :func:`admit` returns it, each value is the one the instance holds,
+    unchanged. No field has a default.
+    """
+
+    kind: str
+    dtype: str
+    dims: tuple
+    draws: int
+    rtol: float
+    atol: float
+
+
 def admit(instance, *, covers):
     """Return the :class:`Admitted` of ``instance``, or raise the one answer it has.
 
@@ -142,17 +186,22 @@ def admit(instance, *, covers):
        :data:`KIND_OP_SIGNATURE_NOT_COVERED`. ``covers`` is called once, with
        the record object the instance holds. What it raises passes through
        unchanged, and :class:`TypeError` is raised when what it returns is
-       not exactly a ``bool``.
+       not exactly a ``bool``. The same kind is raised for a record whose
+       ``dtype`` is ``bf16`` and for which there is no check (see the module
+       docstring).
     3. ``instance.draws`` is ``None``: :data:`KIND_DRAWS_NOT_STATED`.
     4. ``instance.tolerance`` is ``None``: :data:`KIND_TOLERANCE_NOT_STATED`.
-    5. Otherwise the :class:`Admitted` is returned.
+    5. Otherwise the :class:`Admitted` is returned, or for a record whose
+       ``dtype`` is ``bf16`` the :class:`Bf16Admitted`.
 
     Nothing else of the instance is looked at: not ``hw_profile``,
     ``hw_profile_key``, ``others`` or the key of the op_signature. Of the
-    record this function itself reads the ``shape`` only, and only for an
-    admitted content; what ``covers`` reads of it is that callable's. No
-    value is compared with another or with a limit, and none is derived,
-    rounded or replaced.
+    record this function itself reads, after ``covers`` answered ``True``,
+    the ``dtype``, for a bf16 record the ``kind`` and the ``layout``, and the
+    ``shape`` only for an admitted content: ``m``, ``k`` and ``n`` for a
+    record of another ``dtype``, as before, and the members of its kind for a
+    bf16 record. What ``covers`` reads of it is that callable's. No value is
+    compared with a limit, and none is derived, rounded or replaced.
 
     ``instance`` is not modified or kept, and no file is read or written.
     """
@@ -160,20 +209,38 @@ def admit(instance, *, covers):
         raise TypeError("instance: must be exactly a hilclaw.instance.Instance")
     if not callable(covers):
         raise TypeError("covers: must be callable")
+    return _admit(instance, covers)
+
+
+def _admit(instance, covers):
     stated = instance.op_signature
     if stated is None:
         raise _failure(KIND_OP_SIGNATURE_NOT_STATED)
-    covered = covers(stated.record)
+    record = stated.record
+    covered = covers(record)
     if type(covered) is not bool:
         raise TypeError("covers: must return exactly a bool")
     if not covered:
+        raise _failure(KIND_OP_SIGNATURE_NOT_COVERED)
+    bf16 = record["dtype"] == check_parameters.BF16
+    names = _BF16_NAMES.get((record["kind"], record["layout"])) if bf16 else None
+    if bf16 and names is None:
         raise _failure(KIND_OP_SIGNATURE_NOT_COVERED)
     if instance.draws is None:
         raise _failure(KIND_DRAWS_NOT_STATED)
     tolerance = instance.tolerance
     if tolerance is None:
         raise _failure(KIND_TOLERANCE_NOT_STATED)
-    shape = stated.record["shape"]
+    shape = record["shape"]
+    if bf16:
+        return Bf16Admitted(
+            record["kind"],
+            record["dtype"],
+            tuple(shape[name] for name in names),
+            instance.draws,
+            tolerance.rtol,
+            tolerance.atol,
+        )
     return Admitted(
         shape["m"],
         shape["k"],
@@ -182,6 +249,15 @@ def admit(instance, *, covers):
         tolerance.rtol,
         tolerance.atol,
     )
+
+
+_BF16_NAMES = {
+    (contract.KIND, contract.LAYOUT): tuple(
+        inspect.signature(contract.task_contract).parameters
+    )
+    for contract in (entry.contract for entry in contract_table.TABLE.values())
+    if contract.DTYPE == check_parameters.BF16
+}
 
 
 def _failure(kind):

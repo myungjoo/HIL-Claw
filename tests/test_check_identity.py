@@ -200,8 +200,8 @@ def test_the_member_and_its_two_values():
 @pytest.mark.parametrize(
     ("step", "literal", "point"),
     [
-        (STEP_SIM, "correctness_check_sim", SIM),
-        (STEP_BOARD, "correctness_check_board", BOARD),
+        (STEP_SIM, "correctness_check_sim_v2", SIM),
+        (STEP_BOARD, "correctness_check_board_v2", BOARD),
     ],
 )
 def test_a_step_value_is_a_name_formed_from_its_point(step, literal, point):
@@ -210,7 +210,7 @@ def test_a_step_value_is_a_name_formed_from_its_point(step, literal, point):
     assert re.fullmatch(r"[a-z][a-z0-9_]{0,31}", step)
     assert "." not in step
     assert step not in tools.RESERVED_KINDS
-    assert step == "correctness_check_" + point
+    assert step == "correctness_check_" + point + "_v2"
     assert journal.step_identity(step, 1, 0, 1, 1).step == step
 
 
@@ -443,7 +443,11 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
 
 def test_module_imports_re_and_the_tools_only_and_has_no_entry():
     own = Path(check_identity.__file__)
-    assert imported_modules(own) == {"re", "hilclaw", "hilclaw.tools"}
+    assert imported_modules(own) == {
+        "re",
+        "hilclaw",
+        "hilclaw.tools",
+    }
     assert not hasattr(check_identity, "main")
     assert "__main__" not in own.read_text(encoding="utf-8")
 
@@ -474,9 +478,11 @@ def test_the_text_and_the_code_hold_none_of_the_kept_out_strings():
         assert [string for string in code if spelt_once in string] == [
             f'"{spelt_once}"'
         ]
-    for spelt_once in ("correctness_check_sim", "correctness_check_board"):
+    for spelt_once in ("correctness_check_sim_v2", "correctness_check_board_v2"):
         spelt = [string for string in code if spelt_once in string]
         assert spelt == [f'"{spelt_once}"']
+    for retired in RETIRED:
+        assert not [string for string in code if f'"{retired}"' == string], retired
 
 
 def test_public_names_of_the_module_and_no_default():
@@ -502,3 +508,37 @@ def test_public_names_of_the_module_and_no_default():
         assert [parameter.name for parameter in parameters] == ["request"]
         assert parameters[0].default is inspect.Parameter.empty
         assert parameters[0].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+
+
+# --- one value per point for every contract (ADR-0183 decision 2) ---
+
+RETIRED = (
+    "correctness_check_sim",
+    "correctness_check_board",
+    "correctness_check_bf16_sim",
+    "correctness_check_bf16_board",
+)
+
+
+def test_the_retired_values_are_none_of_the_steps_and_no_step_of_returns_them():
+    assert not set(RETIRED) & set(STEPS)
+    assert {step_of(FRAME | {"point": point}) for point in (SIM, BOARD)} == set(STEPS)
+    assert not hasattr(check_identity, "step_of_read")
+    assert not hasattr(check_identity, "BF16_STEPS")
+
+
+@pytest.mark.parametrize(("point", "step"), [(SIM, STEP_SIM), (BOARD, STEP_BOARD)])
+def test_the_step_follows_from_the_point_alone(point, step):
+    request = FRAME | {"point": point}
+    before = copy.deepcopy(request)
+    assert step_of(request) == step
+    for numbers in ({"round": 0}, {"candidate": 9, "attempt": 7}, {"execution": 3}):
+        assert step_of(request | numbers) == step
+    assert request == before
+
+
+@pytest.mark.parametrize("value", [*RETIRED, "correctness_check_sim_v2", "sim_v2"])
+def test_a_step_value_as_the_point_is_another_value(value):
+    assert refusal(step_of, FRAME | {"point": value}) == refused_alike(
+        FRAME | {"point": value}
+    )

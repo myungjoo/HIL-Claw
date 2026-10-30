@@ -17,11 +17,11 @@ from hilclaw import (
     mock_check,
     tools,
 )
+from hilclaw.build_log import LogKeeper
 from hilclaw.check_ending import EndedWithoutOutcome, carry_out
 from hilclaw.check_parameters import CheckParameters
 from hilclaw.harness.verification import END_MARK
 from hilclaw.harness.verification_arrays import (
-    VerificationArgumentError,
     check_value,
     draw_inputs,
     reference,
@@ -40,6 +40,8 @@ MARKER = "zq7-marker-zq7"
 PATH_MARKER = "zq7-path-zq7"
 # A test value: nothing lies there, and no test makes it.
 OUTPUT_PATH = Path(PATH_MARKER) / "runs" / "r1" / "output"
+# A test value: nothing lies there, no test makes it, and no test hands over a log.
+LOG_PATH = Path(PATH_MARKER) / "runs" / "r1" / "build-log.txt"
 # Stand-ins of this file: no record gives either name a meaning.
 EXAMPLE_KIND = "example_kind"
 EXAMPLE_BACKEND_KIND = "example_backend_kind"
@@ -132,13 +134,27 @@ def carried(
     output_path=OUTPUT_PATH,
 ):
     return carry_out(
-        operation, REQUEST, HW_PROFILE, parameters, output_path, **tolerance
+        operation,
+        REQUEST,
+        HW_PROFILE,
+        parameters,
+        output_path,
+        LogKeeper(),
+        log_path=LOG_PATH,
+        **tolerance,
     )
 
 
 def asked(operation, parameters=PARAMETERS, tolerance=EXAMPLE_TOLERANCE):
     return check_operation.ask(
-        operation, REQUEST, HW_PROFILE, parameters, OUTPUT_PATH, **tolerance
+        operation,
+        REQUEST,
+        HW_PROFILE,
+        parameters,
+        OUTPUT_PATH,
+        LogKeeper(),
+        log_path=LOG_PATH,
+        **tolerance,
     )
 
 
@@ -240,8 +256,16 @@ def test_a_good_report_passes_and_the_operation_is_called_once_with_the_four():
     hw_profile = dict(HW_PROFILE)
     parameters = CheckParameters(seed=SEED, draws=DRAWS, **SHAPE)
     output_path = Path(OUTPUT_PATH)
+    keeper = LogKeeper()
     result = carry_out(
-        operation, request, hw_profile, parameters, output_path, **EXAMPLE_TOLERANCE
+        operation,
+        request,
+        hw_profile,
+        parameters,
+        output_path,
+        keeper,
+        log_path=LOG_PATH,
+        **EXAMPLE_TOLERANCE,
     )
     assert type(result) is dict
     assert result["outcome"] == "pass"
@@ -249,11 +273,12 @@ def test_a_good_report_passes_and_the_operation_is_called_once_with_the_four():
     assert len(operation.calls) == 1
     args, kwargs = operation.calls[0]
     assert kwargs == {}
-    assert len(args) == 4
+    assert len(args) == 5
     assert args[0] is request
     assert args[1] is hw_profile
     assert args[2] is parameters
     assert args[3] is output_path
+    assert args[4] is keeper
     assert request == REQUEST
     assert hw_profile == HW_PROFILE
     assert parameters == PARAMETERS
@@ -273,8 +298,9 @@ def test_the_output_path_is_handed_on_whatever_it_is_and_changes_nothing(output_
         )
         ((args, kwargs),) = operation.calls
         assert kwargs == {}
-        assert len(args) == 4
+        assert len(args) == 5
         assert args[3] is output_path
+        assert type(args[4]) is LogKeeper
     for make in (
         lambda: Recording(answer=None),
         lambda: Recording(error=ValueError(MARKER)),
@@ -303,23 +329,34 @@ def test_ask_is_handed_the_very_four_objects(monkeypatch):
     operation = Recording(answer=GOOD)
     request, hw_profile = dict(REQUEST), dict(HW_PROFILE)
     output_path = Path(OUTPUT_PATH)
+    keeper = LogKeeper()
     assert (
         carry_out(
-            operation, request, hw_profile, PARAMETERS, output_path, **EXAMPLE_TOLERANCE
+            operation,
+            request,
+            hw_profile,
+            PARAMETERS,
+            output_path,
+            keeper,
+            log_path=LOG_PATH,
+            **EXAMPLE_TOLERANCE,
         )
         is made
     )
     ((call, args, kwargs),) = handed
-    assert kwargs == EXAMPLE_TOLERANCE
-    assert len(args) == 4
+    assert kwargs == {**EXAMPLE_TOLERANCE, "log_path": LOG_PATH}
+    assert len(args) == 5
     assert args[0] is request
     assert args[1] is hw_profile
     assert args[2] is PARAMETERS
     assert args[3] is output_path
+    assert args[4] is keeper
     assert operation.calls == []
-    assert call(request, hw_profile, PARAMETERS, output_path) is GOOD
-    assert operation.calls == [((request, hw_profile, PARAMETERS, output_path), {})]
-    for wrong in ((request, hw_profile, PARAMETERS), (request,) * 5):
+    assert call(request, hw_profile, PARAMETERS, output_path, keeper) is GOOD
+    assert operation.calls == [
+        ((request, hw_profile, PARAMETERS, output_path, keeper), {})
+    ]
+    for wrong in ((request, hw_profile, PARAMETERS), (request,) * 6):
         with pytest.raises(TypeError):
             call(*wrong)
     assert len(operation.calls) == 1
@@ -641,16 +678,17 @@ def test_an_operation_that_is_not_callable_is_refused(operation):
 def test_the_call_itself_is_checked_by_python():
     operation = Recording(answer=GOOD)
     four = (operation, REQUEST, HW_PROFILE, PARAMETERS)
-    five = (*four, OUTPUT_PATH)
+    five = (*four, OUTPUT_PATH, LogKeeper())
+    tolerance = {**EXAMPLE_TOLERANCE, "log_path": LOG_PATH}
     cases = [
-        ((operation, REQUEST, HW_PROFILE), EXAMPLE_TOLERANCE),
-        (four, EXAMPLE_TOLERANCE),
-        (five, {"rtol": 1e-5}),
-        (five, {"atol": 1e-6}),
-        ((*five, 1e-5, 1e-6), {}),
-        ((*five, 1e-5), {"atol": 1e-6}),
-        (five, {**EXAMPLE_TOLERANCE, "draws": 3}),
-        (five, {**EXAMPLE_TOLERANCE, "output_path": OUTPUT_PATH}),
+        ((operation, REQUEST, HW_PROFILE), tolerance),
+        (four, tolerance),
+        (five, {"rtol": 1e-5, "log_path": LOG_PATH}),
+        (five, {"atol": 1e-6, "log_path": LOG_PATH}),
+        ((*five, 1e-5, 1e-6), {"log_path": LOG_PATH}),
+        ((*five, 1e-5), {"atol": 1e-6, "log_path": LOG_PATH}),
+        (five, {**tolerance, "draws": 3}),
+        (five, {**tolerance, "output_path": OUTPUT_PATH}),
     ]
     for args, kwargs in cases:
         with pytest.raises(TypeError) as caught:
@@ -673,9 +711,9 @@ def test_the_call_itself_is_checked_by_python():
 def test_a_bad_value_beside_a_report_raises_what_ask_raises(changed, tolerance):
     parameters = PARAMETERS._replace(**changed)
     operation = Recording(answer=GOOD)
-    with pytest.raises(VerificationArgumentError) as caught:
+    with pytest.raises(ValueError) as caught:
         carried(operation, parameters, tolerance)
-    with pytest.raises(VerificationArgumentError) as direct:
+    with pytest.raises(ValueError) as direct:
         asked(Recording(answer=GOOD), parameters, tolerance)
     assert type(caught.value) is type(direct.value)
     assert str(caught.value) == str(direct.value)
@@ -759,7 +797,7 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
         carried(Recording(answer=GOOD), None)
     with pytest.raises(TypeError):
         carried(None)
-    with pytest.raises(VerificationArgumentError):
+    with pytest.raises(ValueError):
         carried(Recording(answer=GOOD), PARAMETERS._replace(m=0))
     assert list(tmp_path.iterdir()) == []
 
@@ -768,6 +806,7 @@ def test_module_imports_the_three_only_and_has_no_entry():
     own = Path(check_ending.__file__)
     assert imported_modules(own) == {
         "hilclaw",
+        "hilclaw.build_log",
         "hilclaw.check_failure",
         "hilclaw.check_operation",
         "hilclaw.tools",
@@ -813,6 +852,8 @@ def test_public_names_of_the_module_and_no_default():
         "hw_profile",
         "parameters",
         "output_path",
+        "keeper",
+        "log_path",
         "rtol",
         "atol",
     ]
@@ -820,6 +861,6 @@ def test_public_names_of_the_module_and_no_default():
     for parameter in parameters:
         assert parameter.default is inspect.Parameter.empty, parameter
     positional = inspect.Parameter.POSITIONAL_OR_KEYWORD
-    assert all(parameter.kind is positional for parameter in parameters[:5])
+    assert all(parameter.kind is positional for parameter in parameters[:6])
     keyword_only = inspect.Parameter.KEYWORD_ONLY
-    assert all(parameter.kind is keyword_only for parameter in parameters[5:])
+    assert all(parameter.kind is keyword_only for parameter in parameters[6:])

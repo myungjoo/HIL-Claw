@@ -64,9 +64,11 @@ Nothing here checks what one content does not show: one verdict per ``id`` of
 the round's ``hypotheses.json``, a ``verdict`` against the ``expected``
 entries, ``measured.candidate`` within ``tested_by``, a *ref* naming an
 attempt that exists, the base of the comparison. It reads no other version
-(OD-11) and is no tool. Which agent writes the file and when, what follows a
-taken name and what a second write for a round means are open (ADR-0071
-Boundaries; OD-23, OD-18, OD-17).
+(OD-11) and is no tool. For the runs of ADR-0120 decision 1 the tool
+``verdicts.write`` (:mod:`hilclaw.verdicts_tool`) writes the file for the
+evaluator (ADR-0128 decision 6). When it is written, what follows a taken
+name and what a second write for a round means are open (ADR-0071
+Boundaries, ADR-0128 Boundaries; OD-23, OD-18, OD-17).
 """
 
 import codecs

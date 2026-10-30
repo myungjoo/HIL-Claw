@@ -19,6 +19,7 @@ from hilclaw import (
 from hilclaw.harness import measurement
 from hilclaw.instance import InvalidInstanceError, UnsupportedVersionError
 from hilclaw.instance_start import (
+    CODER_MODEL_DEFAULT,
     REPORT_ORDER,
     MissingMembersError,
     OutOfScopeError,
@@ -32,6 +33,7 @@ TEST_N_MAX = 12
 TEST_CANDIDATES = 2
 TEST_DRAWS = 3
 TEST_TOLERANCE = {"rtol": 0.25, "atol": 3.0}
+TEST_CODER_MODEL = "claude-test-model-1"
 OBJECTIVE = {"objectives": [{"type": "latency_minimisation"}], "constraints": []}
 RECORD = {
     "schema_version": 1,
@@ -63,6 +65,7 @@ def document(
     n_max=TEST_N_MAX,
     draws=TEST_DRAWS,
     tolerance=TEST_TOLERANCE,
+    coder_model=TEST_CODER_MODEL,
     **others,
 ):
     profile = {
@@ -86,6 +89,7 @@ def document(
         "n_max": n_max,
         "draws": draws,
         "tolerance": tolerance,
+        "coder_model": coder_model,
     }
     made.update(
         {
@@ -398,6 +402,7 @@ def test_public_names_of_the_module():
         if not name.startswith("_") and not inspect.ismodule(value)
     }
     assert public == {
+        "CODER_MODEL_DEFAULT",
         "REPORT_ORDER",
         "OutOfScopeError",
         "MissingMembersError",
@@ -522,3 +527,143 @@ def test_the_module_imports_neither_the_standin_nor_the_contract_module():
         elif isinstance(node, ast.ImportFrom):
             imported.update(f"{node.module}.{alias.name}" for alias in node.names)
     assert imported == {"hilclaw.instance", "hilclaw.harness.measurement"}
+
+
+INVALID_CODER_MODELS = [
+    "opus",
+    "default",
+    "claude-opus-5-5[1m]",
+    "",
+    5,
+    None,
+    "Claude-opus-5-5",
+    "claude-opus-5-5-",
+    "c" * 65,
+]
+
+
+def test_the_coder_model_default_is_the_full_opus_name_of_adr_0136():
+    assert type(CODER_MODEL_DEFAULT) is str
+    assert CODER_MODEL_DEFAULT == "claude-opus-5-5"
+    instance.validate(document(coder_model=CODER_MODEL_DEFAULT))
+
+
+@pytest.mark.parametrize("accelerator", ACCELERATORS)
+def test_without_coder_model_the_default_is_filled_in(accelerator):
+    given = without("coder_model", accelerator=accelerator)
+    before = copy.deepcopy(given)
+    prepared = call(given)
+    assert prepared["coder_model"] is CODER_MODEL_DEFAULT
+    assert prepared == {**before, "coder_model": CODER_MODEL_DEFAULT}
+    assert given == before
+    assert "coder_model" not in given
+    instance.validate(prepared)
+    parsed = instance.parse(json.dumps(prepared).encode())
+    assert parsed.coder_model == CODER_MODEL_DEFAULT
+    assert parsed.n_max == TEST_N_MAX
+
+
+def test_without_n_max_and_coder_model_both_are_filled_in_and_nothing_else():
+    given = without("n_max", "coder_model")
+    prepared = call(given)
+    assert prepared == {
+        **given,
+        "n_max": measurement.N_MAX_DEFAULT,
+        "coder_model": CODER_MODEL_DEFAULT,
+    }
+    assert set(prepared) - set(given) == {"n_max", "coder_model"}
+    parsed = instance.parse(json.dumps(prepared).encode())
+    assert parsed.coder_model == CODER_MODEL_DEFAULT
+    assert parsed.n_max == measurement.N_MAX_DEFAULT
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "claude-sonnet-4-5-20250929",
+        "claude-x",
+        "claude-opus-4-8",
+        CODER_MODEL_DEFAULT,
+        "claude-" + "a" * 57,
+    ],
+)
+def test_a_valid_given_coder_model_is_never_replaced(model):
+    given = document(coder_model=model)
+    prepared = call(given)
+    assert prepared["coder_model"] is given["coder_model"]
+    assert prepared == given
+    assert instance.parse(json.dumps(prepared).encode()).coder_model == model
+
+
+@pytest.mark.parametrize("model", INVALID_CODER_MODELS)
+@pytest.mark.parametrize("missing", [(), ("n_max",), REPORT_ORDER])
+def test_an_invalid_coder_model_is_refused_and_never_replaced(model, missing):
+    given = without(*missing, coder_model=model)
+    before = copy.deepcopy(given)
+    with pytest.raises(InvalidInstanceError) as caught:
+        call(given)
+    assert str(caught.value).startswith("coder_model: ")
+    assert given == before
+
+
+@pytest.mark.parametrize("accelerator", ["acc_other", "mocks"])
+def test_another_accelerator_gets_no_coder_model(accelerator):
+    given = without("coder_model", "n_max", accelerator=accelerator)
+    before = copy.deepcopy(given)
+    with pytest.raises(OutOfScopeError):
+        call(given)
+    assert given == before
+    assert "coder_model" not in given
+
+
+def test_an_uncovered_op_signature_gets_no_coder_model():
+    given = without("coder_model", op_signature=op_record(dtype="fp16"))
+    before = copy.deepcopy(given)
+    with pytest.raises(OutOfScopeError):
+        call(given)
+    assert given == before
+    assert "coder_model" not in given
+
+
+def test_another_version_without_coder_model_is_unsupported_before_anything():
+    given = without("coder_model", "n_max")
+    given["schema_version"] = 2
+    before = copy.deepcopy(given)
+    recorder = Recorder(True)
+    with pytest.raises(UnsupportedVersionError):
+        call(given, covers=recorder)
+    assert given == before
+    assert recorder.calls == []
+
+
+@pytest.mark.parametrize("model", [ABSENT, "claude-sonnet-4-5-20250929"])
+def test_coder_model_is_never_reported_missing_and_the_message_names_no_model(model):
+    error = refused(without(*REPORT_ORDER, "n_max", coder_model=model))
+    assert error.missing == REPORT_ORDER
+    assert "coder_model" not in error.missing
+    assert "coder_model" not in REPORT_ORDER
+    message = str(error)
+    assert "claude-" not in message
+    assert "coder_model" not in message
+
+
+def test_the_only_model_name_of_the_module_code_is_the_default():
+    with open(instance_start.__file__, encoding="utf-8") as source:
+        tree = ast.parse(source.read())
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef))
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+    }
+    names = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and type(node.value) is str
+        and id(node) not in docstrings
+        and node.value.startswith("claude-")
+    ]
+    assert names == [CODER_MODEL_DEFAULT]

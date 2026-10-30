@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from hilclaw import (
+    build_log,
     check_operation,
     run_objective,
     run_operation,
@@ -13,7 +14,8 @@ from hilclaw import (
     run_seed,
     tools,
 )
-from hilclaw.check_parameters import CheckParameters
+from hilclaw.build_log import BuildLogUnwritable, HandOverRefused, LogKeeper
+from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.run_operation import (
     CONDITIONS,
     KIND_OPERATION_ANSWER_INVALID,
@@ -21,7 +23,7 @@ from hilclaw.run_operation import (
     Reported,
     ask,
 )
-from hilclaw.run_parameters import TimingParameters
+from hilclaw.run_parameters import Bf16TimingParameters, TimingParameters
 
 # Test values, not dimensions, a bound, a seed or a figure of the package.
 SEED_MARKER = 918273645546372819
@@ -36,6 +38,7 @@ FIGURE_MARKER = 734251
 PATH_MARKER = "zq7-path-zq7"
 # A test value: nothing lies there, and no test makes it.
 OUTPUT_PATH = Path(PATH_MARKER) / "runs" / "r1" / "output"
+LOG_PATH = Path(PATH_MARKER) / "runs" / "r1" / "build-log.txt"
 REPORT = b"report " + BYTE_MARKER
 MESSAGE_LIMIT = 120
 
@@ -54,7 +57,15 @@ class Recording:
 
 
 def asked(operation, parameters=PARAMETERS, output_path=OUTPUT_PATH):
-    return ask(operation, REQUEST, HW_PROFILE, parameters, output_path)
+    return ask(
+        operation,
+        REQUEST,
+        HW_PROFILE,
+        parameters,
+        output_path,
+        LogKeeper(),
+        log_path=LOG_PATH,
+    )
 
 
 def invalid(operation, parameters=PARAMETERS, output_path=OUTPUT_PATH):
@@ -245,24 +256,34 @@ def by_index(values):
     return pytest.mark.parametrize("index", range(len(values)), ids=names)
 
 
-def test_a_report_with_its_figure_is_reported_and_the_four_are_handed_as_they_are():
+def test_a_report_with_its_figure_is_reported_and_the_five_are_handed_as_they_are():
     operation = Recording(answer=(REPORT, FIGURE_MARKER))
     request = dict(REQUEST)
     hw_profile = dict(HW_PROFILE)
     parameters = TimingParameters(*PARAMETERS)
     output_path = Path(OUTPUT_PATH)
-    answer = ask(operation, request, hw_profile, parameters, output_path)
+    keeper = LogKeeper()
+    answer = ask(
+        operation,
+        request,
+        hw_profile,
+        parameters,
+        output_path,
+        keeper,
+        log_path=LOG_PATH,
+    )
     assert type(answer) is Reported
     assert answer == (REPORT, FIGURE_MARKER)
     assert answer.report is REPORT
     assert answer.memory_bytes == FIGURE_MARKER
     ((args, kwargs),) = operation.calls
     assert kwargs == {}
-    assert len(args) == 4
+    assert len(args) == 5
     assert args[0] is request
     assert args[1] is hw_profile
     assert args[2] is parameters
     assert args[3] is output_path
+    assert args[4] is keeper
     assert request == REQUEST
     assert hw_profile == HW_PROFILE
     assert parameters == PARAMETERS
@@ -448,6 +469,32 @@ def test_check_parameters_are_refused_before_the_call():
     assert operation.calls == []
 
 
+BF16_PARAMETERS = Bf16TimingParameters("rmsnorm", "bf16", (2, 3), 40, "interval", 9)
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        Bf16CheckParameters(1, 2, "rmsnorm", "bf16", (2, 3)),
+        tuple(BF16_PARAMETERS),
+        BF16_PARAMETERS._asdict(),
+        type("DerivedBf16", (Bf16TimingParameters,), {})(*BF16_PARAMETERS),
+    ],
+)
+def test_bf16_lookalike_parameters_are_refused_before_the_call(parameters):
+    operation = Recording(answer="time_limit")
+    with pytest.raises(TypeError):
+        asked(operation, parameters)
+    assert operation.calls == []
+
+
+def test_bf16_parameters_are_handed_on_as_the_same_object():
+    operation = Recording(answer=(REPORT, None))
+    assert asked(operation, BF16_PARAMETERS) == Reported(REPORT, None)
+    ((args, _),) = operation.calls
+    assert args[2] is BF16_PARAMETERS
+
+
 @pytest.mark.parametrize("operation", [None, REPORT, "time_limit", 3, object()])
 def test_an_operation_that_is_not_callable_is_refused(operation):
     with pytest.raises(TypeError) as caught:
@@ -550,7 +597,7 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_module_imports_the_three_only_and_has_no_entry():
+def test_module_imports_the_four_only_and_has_no_entry():
     own = Path(run_operation.__file__)
     found = set()
     for node in ast.walk(ast.parse(own.read_text(encoding="utf-8"))):
@@ -563,6 +610,7 @@ def test_module_imports_the_three_only_and_has_no_entry():
     assert found == {
         "typing",
         "hilclaw",
+        "hilclaw.build_log",
         "hilclaw.run_parameters",
         "hilclaw.tools",
     }
@@ -590,8 +638,211 @@ def test_public_names_of_the_module_and_no_default():
         "hw_profile",
         "parameters",
         "output_path",
+        "keeper",
+        "log_path",
     ]
     positional = inspect.Parameter.POSITIONAL_OR_KEYWORD
     for parameter in parameters:
         assert parameter.default is inspect.Parameter.empty, parameter
-        assert parameter.kind is positional, parameter
+        expected = (
+            inspect.Parameter.KEYWORD_ONLY
+            if parameter.name == "log_path"
+            else positional
+        )
+        assert parameter.kind is expected, parameter
+
+
+# The log keeper and the write of the log (ADR-0108 decisions 5 and 7)
+
+LOG = "gemm.c:3:5: warning: unused variable ‘x’ ünïcode\r\nline two"
+
+
+class Handing:
+    """An operation that hands ``log`` to its keeper, then answers ``answer``."""
+
+    def __init__(self, answer, log=LOG):
+        self.answer = answer
+        self.log = log
+        self.keepers = []
+
+    def __call__(self, request, hw_profile, parameters, output_path, keeper):
+        self.keepers.append(keeper)
+        keeper.hand_over(self.log)
+        if isinstance(self.answer, BaseException):
+            raise self.answer
+        return self.answer
+
+
+def log_asked(operation, log_path, keeper=None):
+    return ask(
+        operation,
+        REQUEST,
+        HW_PROFILE,
+        PARAMETERS,
+        OUTPUT_PATH,
+        LogKeeper() if keeper is None else keeper,
+        log_path=log_path,
+    )
+
+
+HANDED_ANSWERS = [
+    (REPORT, FIGURE_MARKER),
+    "build_exit_status",
+    None,
+    ValueError(MARKER),
+    tools.ToolFailure("compiler_unavailable", MARKER),
+]
+
+
+@pytest.mark.parametrize(
+    "keeper", [None, object(), "keeper", type("Derived", (LogKeeper,), {})()]
+)
+def test_a_keeper_of_another_type_is_refused_before_the_call(tmp_path, keeper):
+    operation = Recording(answer=(REPORT, None))
+    with pytest.raises(TypeError) as caught:
+        ask(
+            operation,
+            REQUEST,
+            HW_PROFILE,
+            PARAMETERS,
+            OUTPUT_PATH,
+            keeper,
+            log_path=tmp_path / "log.txt",
+        )
+    assert type(caught.value) is TypeError
+    assert operation.calls == []
+
+
+@pytest.mark.parametrize("index", range(len(HANDED_ANSWERS)))
+def test_a_handed_log_is_written_and_the_keeper_closed_whatever_came_back(
+    tmp_path, index
+):
+    path = tmp_path / "a" / "b" / "build-log.txt"
+    operation = Handing(HANDED_ANSWERS[index])
+    try:
+        log_asked(operation, path)
+    except (tools.ToolFailure, OperationAnswerInvalid):
+        pass
+    assert path.read_bytes() == LOG.encode("utf-8")
+    (keeper,) = operation.keepers
+    assert keeper.held() == LOG
+    with pytest.raises(HandOverRefused):
+        keeper.hand_over("later")
+
+
+def test_the_answer_is_kept_when_the_log_was_written(tmp_path):
+    answer = log_asked(Handing((REPORT, FIGURE_MARKER)), tmp_path / "1.txt")
+    assert answer == Reported(REPORT, FIGURE_MARKER)
+    assert log_asked(Handing("time_limit"), tmp_path / "2.txt") == "time_limit"
+    raised = tools.ToolFailure("compiler_unavailable", MARKER)
+    with pytest.raises(tools.ToolFailure) as caught:
+        log_asked(Handing(raised), tmp_path / "3.txt")
+    assert caught.value is raised
+    with pytest.raises(OperationAnswerInvalid):
+        log_asked(Handing(None), tmp_path / "4.txt")
+
+
+def test_an_empty_log_is_written_as_an_empty_file(tmp_path):
+    path = tmp_path / "build-log.txt"
+    assert log_asked(Handing("exit_status", log=""), path) == "exit_status"
+    assert path.read_bytes() == b""
+
+
+def test_nothing_handed_writes_nothing_and_closes_the_keeper(tmp_path):
+    keeper = LogKeeper()
+    path = tmp_path / "missing" / "build-log.txt"
+    assert log_asked(Recording(answer="exit_status"), path, keeper) == "exit_status"
+    assert keeper.held() is None
+    assert not path.parent.exists()
+    with pytest.raises(HandOverRefused):
+        keeper.hand_over(LOG)
+
+
+@pytest.mark.parametrize("index", range(len(HANDED_ANSWERS)))
+def test_a_failed_write_raises_a_fresh_unwritable_in_place_of_any_answer(
+    tmp_path, index
+):
+    path = tmp_path / "build-log.txt"
+    path.write_bytes(b"taken")
+    with pytest.raises(BuildLogUnwritable) as caught:
+        log_asked(Handing(HANDED_ANSWERS[index]), path)
+    error = caught.value
+    assert type(error) is BuildLogUnwritable
+    assert error.kind == "build_log_unwritable"
+    assert error.__cause__ is None
+    assert error.__context__ is None
+    for kept_out in (MARKER, str(tmp_path), LOG):
+        assert kept_out not in error.message
+    assert path.read_bytes() == b"taken"
+
+
+def test_a_refused_directory_is_unwritable(tmp_path):
+    blocker = tmp_path / "attempt"
+    blocker.write_bytes(b"a file where a directory is needed")
+    with pytest.raises(BuildLogUnwritable):
+        log_asked(Handing((REPORT, None)), blocker / "build-log.txt")
+
+
+@pytest.mark.parametrize("ending", [KeyboardInterrupt(), SystemExit(3)])
+def test_a_request_to_end_passes_and_writes_nothing(tmp_path, ending):
+    path = tmp_path / "build-log.txt"
+    operation = Handing(ending)
+    with pytest.raises(BaseException) as caught:
+        log_asked(operation, path)
+    assert caught.value is ending
+    assert not path.exists()
+    with pytest.raises(HandOverRefused):
+        operation.keepers[0].hand_over("later")
+
+
+def test_an_unwritable_the_operation_raises_is_an_invalid_answer(tmp_path):
+    error = invalid(Recording(error=BuildLogUnwritable(MARKER)))
+    assert error.kind == KIND_OPERATION_ANSWER_INVALID
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_second_hand_over_let_pass_is_an_invalid_answer_with_the_first_written(
+    tmp_path,
+):
+    def twice(request, hw_profile, parameters, output_path, keeper):
+        keeper.hand_over(LOG)
+        keeper.hand_over("second")
+        return (REPORT, None)
+
+    path = tmp_path / "build-log.txt"
+    with pytest.raises(OperationAnswerInvalid):
+        log_asked(twice, path)
+    assert path.read_bytes() == LOG.encode("utf-8")
+
+
+@pytest.mark.parametrize("log", [LOG.encode(), None, 17, "\ud800"])
+def test_a_refused_hand_over_let_pass_is_an_invalid_answer_and_writes_nothing(
+    tmp_path, log
+):
+    path = tmp_path / "build-log.txt"
+    with pytest.raises(OperationAnswerInvalid) as caught:
+        log_asked(Handing((REPORT, None), log=log), path)
+    assert caught.value.message == raised_message()
+    assert not path.exists()
+
+
+def test_a_refused_hand_over_caught_by_the_operation_keeps_its_answer(tmp_path):
+    def caught(request, hw_profile, parameters, output_path, keeper):
+        try:
+            keeper.hand_over(b"bytes")
+        except HandOverRefused:
+            pass
+        return "build_time_limit"
+
+    path = tmp_path / "build-log.txt"
+    assert log_asked(caught, path) == "build_time_limit"
+    assert not path.exists()
+
+
+def test_a_log_path_the_write_cannot_take_passes_through():
+    with pytest.raises(TypeError):
+        log_asked(Handing((REPORT, None)), None)
+
+
+def test_the_kind_of_the_write_is_that_of_build_log():
+    assert BuildLogUnwritable.kind == build_log.KIND_BUILD_LOG_UNWRITABLE

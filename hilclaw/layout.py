@@ -6,6 +6,9 @@ writer roles, candidates and attempts (decisions 1 to 4) and the knowledge tree
 ``db/<hw_profile_key>/<op_signature>/`` (decision 5). This module turns the
 tuple (``run_id``, ``round``, ``candidate``, ``attempt``) of ADR-0002 and the
 two key directory names of ADR-0001 into those paths by formatting alone.
+:func:`build_log_file` adds the file of a compiler's log of ADR-0078
+decision 3, and of ADR-0108 decision 3 for the timing build of ``sim.run``
+and ``board.run``, which is not one of :data:`ATTEMPT_ARTEFACTS`.
 
 Every function is pure and returns a :class:`pathlib.Path` below
 ``Path(data_root)``, as :func:`hilclaw.cas.blob_path` does for
@@ -48,6 +51,12 @@ _ARTEFACT_ROLE = {
     "eval.json": "eval",
 }
 ATTEMPT_ARTEFACTS = tuple(_ARTEFACT_ROLE)
+BUILD_LOG_STEPS = (
+    "correctness_check_sim_v2",
+    "correctness_check_board_v2",
+    "sim_run_timing_v2",
+    "board_run_timing_v2",
+)
 
 _RUN_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 _KEY_NAME = re.compile(rf"[a-z][a-z0-9_]{{0,31}}-[0-9a-f]{{{keys.NAME_DIGEST_LENGTH}}}")
@@ -153,6 +162,29 @@ def attempt_artefact(data_root, run_id, round, candidate, attempt, name):
     """
     role = _ARTEFACT_ROLE[_one_of("name", name, ATTEMPT_ARTEFACTS)]
     return attempt_dir(data_root, run_id, round, role, candidate, attempt) / name
+
+
+def build_log_file(data_root, run_id, round, candidate, attempt, step, execution):
+    """Return ``<measure attempt_dir>/build-log-<step>-<EE>.txt``, the file of a compiler's log.
+
+    The file keeps the log of the build of one check of ``correctness.check``
+    (ADR-0078 decision 3) or of the timing build of one call of ``sim.run``
+    or ``board.run`` (ADR-0108 decision 3). It is not one of
+    :data:`ATTEMPT_ARTEFACTS`: it is no record of a result. ``step`` is one
+    of :data:`BUILD_LOG_STEPS`: ``correctness_check_sim_v2`` and
+    ``correctness_check_board_v2``, the two ``step`` values of
+    ``correctness.check``, then ``sim_run_timing_v2`` and
+    ``board_run_timing_v2``, the one of each run tool (ADR-0183 decisions 2
+    and 7). Any other value is refused, the six values ADR-0183 retired
+    included. ``execution`` is an
+    integer from 1 to :data:`hilclaw.keys.MAX_INTEGER`, written in decimal and
+    zero-padded to at least two digits, never truncated. ``run_id``,
+    ``round``, ``candidate`` and ``attempt`` are checked as
+    :func:`attempt_dir` checks them.
+    """
+    directory = attempt_dir(data_root, run_id, round, "measure", candidate, attempt)
+    step = _one_of("step", step, BUILD_LOG_STEPS)
+    return directory / f"build-log-{step}-{_number('execution', execution, 1, 2)}.txt"
 
 
 def hw_profile_dir(data_root, hw_profile_key):

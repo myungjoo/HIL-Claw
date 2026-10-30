@@ -2,7 +2,7 @@
 id: T-0210
 title: Record ADR-0068, the kinds of the situations in which sim.run / board.run have no timing executable other than a failed build, and what the tool function does with a tool failure an operation raises (OD-18 sub-question 19 part (na))
 phase: P1
-status: BLOCKED
+status: DONE
 commitMode: doc
 coversReq: [FR-10, OD-18, OD-14]
 dependsOn: [T-0191, T-0195, T-0199, T-0201, T-0203, T-0205, T-0208]
@@ -94,3 +94,5 @@ Review: 7 rounds. Rounds 1-3 and 6 Approve; rounds 4, 5 and 7 Request changes (e
 Note: the Required Reading cites "ADR-0067 decision 5" for the widened list of six kinds; it is decision 6, and the record cites decision 6.
 On resume: one more reviewer round on fe4e2d7; on Approve rebase onto origin/main, land per A-13 document mode with the Reviewed-by trailer, delete the branch, post the §9 notice on #5.
 Nothing was built or run. No claude process was started (D16).
+
+Resumed after HQ-0021 (owner 2026-10-26: rebase onto main, fix against the ADRs landed meanwhile, new review cycle): DONE. ADR-0068 landed on main as 8411aa9c in document mode after 2 new review rounds (Approve); the number ADR-0068 was still free. §9 notice posted on #5 (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6400338196). The old branch was deleted. No PLAN checkbox (P1-1 continues). No `claude` was started (D16).

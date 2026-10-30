@@ -185,19 +185,86 @@ def default_registry(data_root_source):
     ``data_root_source`` is the callable without arguments (ADR-0015
     decision 3) to which every tool of the set that needs the data plane is
     bound; building the registry does not call it, and imports no module of
-    the operation of ``correctness.check`` and so no NumPy. Raises
-    :class:`TypeError` when it is not callable.
+    the operation of ``correctness.check``, ``sim.run`` or ``board.run`` and
+    so no NumPy. Raises :class:`TypeError` when it is not callable.
 
     The set is ``blob.fetch`` and ``blob.push`` (:mod:`hilclaw.blob_tools`,
-    ADR-0039) and ``correctness.check`` (:func:`hilclaw.check_definition.definition`,
-    ADR-0070). The backend table of the latter holds the mock alone, offering
-    that tool with the default script of ADR-0044. Its source of seeds is the
-    generator of the operating system. Its predicate "covered" is that of
-    ADR-0041 decision 5. A tool is added here, in the source, and in no other
-    way: no option, environment variable, entry point or plugin registers one
-    or chooses what it is bound to.
+    ADR-0039), ``correctness.check`` (:func:`hilclaw.check_definition.definition`,
+    ADR-0070) and ``sim.run`` and ``board.run``
+    (:func:`hilclaw.run_definition.definitions`, ADR-0167). The three HW
+    tools are bound to one default table, whose entries are the mock,
+    offering the three with the default scripts of ADR-0044 and ADR-0066,
+    and ``cpu_standin``, offering the three with its operations
+    (:mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_run`). Their
+    source of seeds is the generator of the operating system. Their
+    predicate "covered" is that of ADR-0041 decision 5. Beside these FR-10 tools it holds ``state.read``,
+    ``instance.read``, ``run.fresh`` and ``state.write``
+    (:mod:`hilclaw.run_file_tools`, ADR-0124), with which the Round-Manager
+    reads and writes its run's ``STATE.json`` and reads its ``instance.json``,
+    and ``run.commit`` (:func:`hilclaw.run_commit.definition`, ADR-0127), with
+    which it commits an owed round end of its run; and ``verdicts.write``
+    (:func:`hilclaw.verdicts_tool.definition`, ADR-0128 decision 6), with
+    which the evaluator writes a round's ``eval/verdicts.json``, and
+    ``hypotheses.read`` (:func:`hilclaw.hypotheses_tool.definition`, ADR-0129
+    decision 3), with which it reads a round's ``decision/hypotheses.json``,
+    and ``checks.read`` (:func:`hilclaw.checks_tool.definition`, ADR-0131
+    decision 3), with which it reads the ``correctness.check`` lines of an
+    attempt or a candidate at one point and their standing. It holds
+    ``hypotheses.write`` (:func:`hilclaw.hypotheses_write_tool.definition`,
+    ADR-0132 decision 4), with which the technique-selector writes a round's
+    ``decision/hypotheses.json``, and ``catalog.read``
+    (:func:`hilclaw.catalog_tool.definition`, ADR-0171 decision 3), with which
+    it reads the selection criteria of its run's technique catalog, and
+    ``cases.lookup`` (:func:`hilclaw.cases_tool.definition`, ADR-0173
+    decision 2), with which it takes the lookup of the stored cases of its
+    run's key, and ``verdicts.read`` (:func:`hilclaw.verdicts_read_tool.definition`,
+    ADR-0174 decision 2), with which it reads the ``eval/verdicts.json`` of an
+    earlier round of its run. It holds
+    ``case.write`` (:func:`hilclaw.case_tool.definition`, ADR-0133 decision
+    3), with which the Round-Manager writes a round's case, ``key.store``
+    (:func:`hilclaw.key_store_tool.definition`, ADR-0134 decision 3), with
+    which it stores its run's two key record files, and ``round.end``
+    (:func:`hilclaw.round_end_tool.definition`, ADR-0135 decision 2), with
+    which it makes the write that ends its round. It holds ``spec.write``
+    (:func:`hilclaw.spec_tool.definition`, ADR-0138 decision 3), with which
+    the coder-driver has the spec of the first coder call of round 0 written,
+    and that of the first coder call of a round >= 1 (ADR-0151 decision 3),
+    and ``timings.compare`` (:func:`hilclaw.timings_tool.definition`,
+    ADR-0140 decision 3), with which the evaluator gets the ``difference`` of
+    a comparison of two attempts at one point. It holds ``coder.run``
+    (:func:`hilclaw.coder_tool.definition`, ADR-0141 decisions 2 and 3), with
+    which the coder-driver performs the round-0 coder call, bound to
+    :class:`hilclaw.coder_runtime.DockerRuntime` with its defaults
+    (ADR-0137 code slice 2): a call that passes the checks before
+    ``no_container_runtime`` fails with that kind when no container server
+    answers, and with ``coder_not_started`` when the image or the token of
+    ADR-0137 decisions 4 and 5 is missing. Building the registry starts no
+    process.
+    A tool is added here, in the source, and in no other way: no option,
+    environment variable, entry point or plugin registers one or chooses what
+    it is bound to.
     """
-    from hilclaw import blob_tools, check_definition
+    from hilclaw import (
+        blob_tools,
+        case_tool,
+        cases_tool,
+        catalog_tool,
+        check_definition,
+        checks_tool,
+        coder_runtime,
+        coder_tool,
+        hypotheses_tool,
+        hypotheses_write_tool,
+        key_store_tool,
+        round_end_tool,
+        run_commit,
+        run_definition,
+        run_file_tools,
+        spec_tool,
+        timings_tool,
+        verdicts_read_tool,
+        verdicts_tool,
+    )
 
     if not callable(data_root_source):
         raise TypeError("the data-root source must be callable")
@@ -205,6 +272,26 @@ def default_registry(data_root_source):
     for definition in blob_tools.definitions(data_root_source):
         registry.register(*definition)
     registry.register(*check_definition.definition(data_root_source))
+    for definition in run_definition.definitions(data_root_source):
+        registry.register(*definition)
+    for definition in run_file_tools.definitions(data_root_source):
+        registry.register(*definition)
+    registry.register(*run_commit.definition(data_root_source))
+    registry.register(*verdicts_tool.definition(data_root_source))
+    registry.register(*hypotheses_tool.definition(data_root_source))
+    registry.register(*hypotheses_write_tool.definition(data_root_source))
+    registry.register(*catalog_tool.definition(data_root_source))
+    registry.register(*cases_tool.definition(data_root_source))
+    registry.register(*verdicts_read_tool.definition(data_root_source))
+    registry.register(*checks_tool.definition(data_root_source))
+    registry.register(*case_tool.definition(data_root_source))
+    registry.register(*key_store_tool.definition(data_root_source))
+    registry.register(*round_end_tool.definition(data_root_source))
+    registry.register(*spec_tool.definition(data_root_source))
+    registry.register(*timings_tool.definition(data_root_source))
+    registry.register(
+        *coder_tool.definition(data_root_source, coder_runtime.DockerRuntime())
+    )
     return registry
 
 

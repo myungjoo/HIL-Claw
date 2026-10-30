@@ -455,7 +455,7 @@ def test_duplicate_metric_is_rejected():
     assert "unique" in message
 
 
-@pytest.mark.parametrize("value", ["injected", "case", "System", "", None, 1])
+@pytest.mark.parametrize("value", ["case", "System", "", None, 1])
 def test_origin_not_admitted_is_rejected(value):
     path = ["hypotheses", 0, "origin"]
     rejected(with_value(record(), path, value), "hypotheses[0].origin")
@@ -771,7 +771,136 @@ def test_case_own_run_is_checked_before_cases_read_membership():
     rejected(record(entry(basis=basis)), "hypotheses[0].basis[0].case.run_id")
 
 
-def test_injected_origin_is_still_rejected_with_cases_read():
+def test_injected_origin_without_injection_is_rejected_with_cases_read():
     document = with_cases(read_entry())
     document["hypotheses"][0]["origin"] = "injected"
-    rejected(document, "hypotheses[0].origin")
+    message = rejected(document, "hypotheses[0].injection")
+    assert message == "hypotheses[0].injection: required member is missing"
+
+
+# The round-1 hypotheses.json of the example of ADR-0075 (Example), copied from the record.
+ADR_0075_EXAMPLE = json.loads(
+    """
+{
+  "schema_version": 1, "run_id": "20261021t080000z-3c5e7a9b1d2f4608", "round": 1, "candidates": 2,
+  "hypotheses": [
+    {"id": "h1", "statement": "SYNTHETIC: blocking the inner loop lowers the kernel time",
+     "basis": [{"kind": "attempt", "ref": {"round": 0, "candidate": 1, "attempt": 1}, "text": "NOT-DECIDED-HERE"}],
+     "expected": [{"metric": "latency_minimisation", "direction": "lower"}],
+     "origin": "injected", "injection": "u1", "tested_by": [1]},
+    {"id": "h2", "statement": "NOT-DECIDED-HERE",
+     "basis": [{"kind": "attempt", "ref": {"round": 0, "candidate": 1, "attempt": 1}, "text": "NOT-DECIDED-HERE"}],
+     "expected": [{"metric": "latency_minimisation", "direction": "lower"}],
+     "origin": "system", "tested_by": [2]}
+  ]
+}
+"""
+)
+
+
+def injected(ident="h1", injection="u1", **changes):
+    made = {**entry(ident, **changes), "origin": "injected", "injection": injection}
+    return made
+
+
+def test_adr_0075_example_is_valid():
+    before = copy.deepcopy(ADR_0075_EXAMPLE)
+    assert validate(ADR_0075_EXAMPLE) is None
+    assert before == ADR_0075_EXAMPLE
+
+
+def test_injected_entry_has_the_six_members_and_injection():
+    assert sorted(injected()) == sorted([*ADR_HYPOTHESIS, "injection"])
+    validate(record(injected()))
+
+
+def test_injected_entry_with_an_external_basis_is_valid():
+    validate(record(injected(basis=[external_basis()])))
+
+
+def test_injected_entry_with_a_case_basis_is_valid_with_cases_read():
+    document = record(injected(basis=[case_basis()]))
+    document["cases_read"] = [read_entry()]
+    validate(document)
+
+
+def test_two_entries_with_the_same_injection_are_valid():
+    document = record(
+        injected("h1", "u2", tested_by=(1,)),
+        injected("h2", "u2", tested_by=(2,), basis=[external_basis()]),
+        candidates=2,
+    )
+    validate(document)
+
+
+def test_injection_names_no_input_that_is_checked():
+    validate(record(injected(injection="never_injected")))
+
+
+@pytest.mark.parametrize("value", ["u", "a" * 32, "u_1"])
+def test_injection_at_the_limits_of_a_name_is_valid(value):
+    validate(record(injected(injection=value)))
+
+
+def test_injected_entry_without_injection_is_rejected():
+    document = with_value(record(injected()), ["hypotheses", 0, "injection"], REMOVE)
+    message = rejected(document, "hypotheses[0].injection")
+    assert message == "hypotheses[0].injection: required member is missing"
+
+
+def test_system_entry_with_injection_is_rejected():
+    document = record({**entry(), "injection": "u1"})
+    message = rejected(document, "hypotheses[0]")
+    assert message == "hypotheses[0]: unknown member 'injection'"
+
+
+@pytest.mark.parametrize("value", BAD_NAMES)
+def test_bad_injection_is_rejected(value):
+    rejected(record(injected(injection=value)), "hypotheses[0].injection")
+
+
+@pytest.mark.parametrize("value", ["case", "System", "", None, 1])
+def test_injection_beside_an_origin_not_admitted_is_unknown(value):
+    document = record({**entry(), "origin": value, "injection": "u1"})
+    message = rejected(document, "hypotheses[0]")
+    assert message == "hypotheses[0]: unknown member 'injection'"
+
+
+@pytest.mark.parametrize("value", ["case", "System", "", None, 1])
+def test_origin_not_admitted_is_reported_without_injection(value):
+    rejected(record({**entry(), "origin": value}), "hypotheses[0].origin")
+
+
+def test_entry_without_origin_takes_the_member_set_of_system():
+    document = record(injected())
+    del document["hypotheses"][0]["origin"]
+    message = rejected(document, "hypotheses[0]")
+    assert message == "hypotheses[0]: unknown member 'injection'"
+    del document["hypotheses"][0]["injection"]
+    message = rejected(document, "hypotheses[0].origin")
+    assert message == "hypotheses[0].origin: required member is missing"
+
+
+def test_injected_entry_breaking_basis_reports_the_basis_first():
+    document = record(injected(injection="Bad", basis=[]))
+    rejected(document, "hypotheses[0].basis")
+
+
+def test_injected_entry_breaking_its_id_reports_the_id_first():
+    rejected(record(injected("Bad", injection="Bad")), "hypotheses[0].id")
+
+
+def test_injected_entry_breaking_tested_by_reports_the_injection_first():
+    document = record(injected(injection="Bad", tested_by=(5,)))
+    rejected(document, "hypotheses[0].injection")
+
+
+def test_injected_entries_are_bound_by_id_uniqueness():
+    document = record(injected("h1"), injected("h1", tested_by=(2,)), candidates=2)
+    message = rejected(document, "hypotheses[1].id")
+    assert "unique" in message
+
+
+def test_injected_entries_are_bound_by_the_candidate_cover():
+    document = record(injected(), candidates=2)
+    rejected(document, "hypotheses")

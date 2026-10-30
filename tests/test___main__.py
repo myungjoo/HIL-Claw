@@ -13,12 +13,26 @@ from hilclaw.tools import Registry, ToolFailure
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXED_NAMES = [
+    "profiler.collect",
     "sim.run",
     "board.run",
-    "profiler.collect",
     "correctness.check",
     "blob.push",
     "blob.fetch",
+    "state.read",
+    "instance.read",
+    "run.fresh",
+    "state.write",
+    "run.commit",
+    "verdicts.write",
+    "hypotheses.read",
+    "hypotheses.write",
+    "cases.lookup",
+    "catalog.read",
+    "checks.read",
+    "coder.run",
+    "timings.compare",
+    "verdicts.read",
 ]
 NON_ASCII = {"text": "héllo 한글 \U0001f600", "키": [1, 2.5, None, True, {"a": {}}]}
 
@@ -202,11 +216,13 @@ def test_an_interrupt_is_not_answered():
 
 
 @pytest.mark.parametrize("name", FIXED_NAMES)
-def test_the_fixed_tool_set_is_the_blob_tools_and_correctness_check(name):
-    """The C-3 pair (ADR-0039) and correctness.check (ADR-0070); no other FR-10 HW tool yet."""
+def test_the_fixed_tool_set_is_the_blob_tools_hw_tools_and_run_file_tools(
+    name,
+):
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), sim.run and board.run (ADR-0167), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), hypotheses.write (ADR-0132), catalog.read (ADR-0171), cases.lookup (ADR-0173), verdicts.read (ADR-0174), checks.read (ADR-0131), timings.compare (ADR-0140) and coder.run (ADR-0141)."""
     stdout, stderr = io.BytesIO(), io.BytesIO()
     status = main([name], stdin=io.BytesIO(b"{}"), stdout=stdout, stderr=stderr)
-    if name in ("blob.push", "blob.fetch", "correctness.check"):
+    if name not in FIXED_NAMES[:1]:
         assert status == front.EXIT_TOOL_FAILURE == 3
         assert error_of(stdout.getvalue(), "invalid_request")
     else:
@@ -232,10 +248,16 @@ def test_the_default_registry_asks_no_source_to_refuse(monkeypatch, tmp_path):
     with pytest.raises(config.ConfigError):
         config.load_data_repo()
     stdout, stderr = io.BytesIO(), io.BytesIO()
-    status = main(["sim.run"], stdin=io.BytesIO(b"{}"), stdout=stdout, stderr=stderr)
+    status = main(
+        ["profiler.collect"], stdin=io.BytesIO(b"{}"), stdout=stdout, stderr=stderr
+    )
     assert status == 4
-    assert error_of(stdout.getvalue(), "unknown_tool") == "unknown tool 'sim.run'"
-    assert stderr.getvalue() == b"hilclaw: unknown_tool: unknown tool 'sim.run'\n"
+    assert (
+        error_of(stdout.getvalue(), "unknown_tool") == "unknown tool 'profiler.collect'"
+    )
+    assert (
+        stderr.getvalue() == b"hilclaw: unknown_tool: unknown tool 'profiler.collect'\n"
+    )
 
 
 @pytest.mark.parametrize(
@@ -377,14 +399,15 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
             self.buffer = io.BytesIO(data)
 
     stdout, stderr = Standard(), Standard()
-    monkeypatch.setattr(sys, "argv", ["python -m hilclaw", "sim.run"])
+    monkeypatch.setattr(sys, "argv", ["python -m hilclaw", "profiler.collect"])
     monkeypatch.setattr(sys, "stdin", Standard(b"{}"))
     monkeypatch.setattr(sys, "stdout", stdout)
     monkeypatch.setattr(sys, "stderr", stderr)
     assert main() == front.EXIT_FRONT_FAILURE
     error_of(stdout.buffer.getvalue(), "unknown_tool")
     assert (
-        stderr.buffer.getvalue() == b"hilclaw: unknown_tool: unknown tool 'sim.run'\n"
+        stderr.buffer.getvalue()
+        == b"hilclaw: unknown_tool: unknown tool 'profiler.collect'\n"
     )
 
 
@@ -428,7 +451,7 @@ def test_a_closed_standard_output_is_status_4(monkeypatch, stream):
 
 def test_a_process_started_without_standard_error_still_answers():
     code = "import os, runpy, sys; os.close(2); sys.stderr = None; "
-    code += "sys.argv = ['hilclaw', 'sim.run']; runpy.run_module('hilclaw', run_name='__main__')"
+    code += "sys.argv = ['hilclaw', 'profiler.collect']; runpy.run_module('hilclaw', run_name='__main__')"
     done = subprocess.run(
         [sys.executable, "-c", code],
         input=b"{}",
@@ -472,10 +495,10 @@ def run_helper(tmp_path, name, data):
 
 
 def test_process_unknown_tool():
-    done = run_module(["sim.run"], b"{}\r\n")
+    done = run_module(["profiler.collect"], b"{}\r\n")
     assert done.returncode == 4
     assert done.stdout == (
-        b'{"error":{"kind":"unknown_tool","message":"unknown tool \'sim.run\'"}}\n'
+        b'{"error":{"kind":"unknown_tool","message":"unknown tool \'profiler.collect\'"}}\n'
     )
     assert done.stderr.strip()
 

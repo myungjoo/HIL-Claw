@@ -20,7 +20,10 @@ of ``cause``; and the recommendation on shared candidates (decision 5).
 ``against`` is not held against ``tested_by``. This module reads, writes and
 logs nothing, and it does not decide who calls it or when, whether a write is
 refused on a mismatch, or what follows one (ADR-0071 Boundaries; OD-23,
-OD-16, OD-18, P2-3). It is no tool, no hook and no command.
+OD-16, OD-18, P2-3). One caller is the tool ``verdicts.write``
+(:mod:`hilclaw.verdicts_tool`), which refuses the write on a mismatch for the
+runs of ADR-0120 decision 1 (ADR-0128 decision 6). It is no tool, no hook and
+no command.
 """
 
 import reprlib

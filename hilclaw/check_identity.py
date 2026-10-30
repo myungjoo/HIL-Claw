@@ -10,9 +10,13 @@ fix of a request:
 * :data:`MEMBER`, :data:`SIM`, :data:`BOARD`: "The member is named ``point``,
   and its two values are the strings ``"sim"``, for the sim point, and
   ``"board"``, for the board point" (decision 4).
-* :data:`STEP_SIM`, :data:`STEP_BOARD`, :data:`STEPS`: "The values are
-  ``correctness_check_sim`` for the check at the sim point and
-  ``correctness_check_board`` for the check at the board point" (decision 3).
+* :data:`STEP_SIM`, :data:`STEP_BOARD`: ``correctness_check_sim_v2`` at the
+  sim point and ``correctness_check_board_v2`` at the board point, one value
+  per point for every contract, fp32 ``gemm`` and the six bf16 kinds alike
+  (``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md``
+  decision 2). They replace the four values of ADR-0040 decision 3 and
+  ADR-0177 decision 3, which ADR-0183 retired and no call takes.
+* :data:`STEPS`: the two ``step`` values of the tool.
 * :data:`NUMBERS`: "All three numbers are required" (decision 5).
 * :data:`MEMBERS`: "A request of this tool has exactly the six members
   ``run_id``, ``round``, ``candidate``, ``attempt``, ``execution`` and
@@ -23,7 +27,9 @@ fix of a request:
   request", for every value it carries, ``null`` included (ADR-0069
   decision 3).
 * :func:`step_of`: "the tool function takes the ``step`` of a call from the
-  checked value of the member of decision 4" (decision 3).
+  checked value of the member of decision 4" (decision 3): the value follows
+  from ``point`` alone, and no dtype, kind or read of ``instance.json``
+  chooses it (ADR-0183 decision 2).
 
 Choices that are this module's own and no rule of a record:
 
@@ -80,10 +86,10 @@ SIM = "sim"
 #: The value of :data:`MEMBER` for the board point (ADR-0040 decision 4).
 BOARD = "board"
 
-#: The ``step`` of a check at the sim point (ADR-0040 decision 3).
-STEP_SIM = "correctness_check_sim"
-#: The ``step`` of a check at the board point (ADR-0040 decision 3).
-STEP_BOARD = "correctness_check_board"
+#: The ``step`` of a check at the sim point, for every contract (ADR-0183 decision 2).
+STEP_SIM = "correctness_check_sim_v2"
+#: The ``step`` of a check at the board point, for every contract (ADR-0183 decision 2).
+STEP_BOARD = "correctness_check_board_v2"
 #: The ``step`` values of this tool, each once.
 STEPS = (STEP_SIM, STEP_BOARD)
 
@@ -139,7 +145,7 @@ def check(request):
 
 
 def step_of(request):
-    """Return the ``step`` of the call ``request`` asks for (ADR-0040 decision 3).
+    """Return the ``step`` of the call ``request`` asks for (ADR-0040 decision 3, ADR-0183 decision 2).
 
     - ``request``: the request of a call of ``correctness.check``.
 

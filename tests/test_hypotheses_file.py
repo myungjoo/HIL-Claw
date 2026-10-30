@@ -456,6 +456,42 @@ def test_a_case_entry_the_validator_refuses_is_invalid_with_its_message():
     assert isinstance(caught.value.__cause__, hypotheses.InvalidHypothesisRecordError)
 
 
+def with_injected():
+    document = example()
+    document["hypotheses"][0]["origin"] = "injected"
+    document["hypotheses"][0]["injection"] = "u1"
+    return document
+
+
+def test_a_file_with_an_injected_entry_parses_to_its_document():
+    document = with_injected()
+    assert parse(raw(document)) == document
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        changed(with_injected(), ("hypotheses", 0, "injection"), "Bad"),
+        changed(with_injected(), ("hypotheses", 0, "injection"), 7),
+        changed(with_injected(), ("hypotheses", 0, "origin"), "system"),
+        {
+            **example(),
+            "hypotheses": [{**example()["hypotheses"][0], "injection": "u1"}],
+        },
+    ],
+)
+def test_an_injected_entry_the_validator_refuses_is_invalid_with_its_message(
+    document,
+):
+    with pytest.raises(hypotheses.InvalidHypothesisRecordError) as expected:
+        hypotheses.validate(document)
+    with pytest.raises(InvalidHypothesisFileError) as caught:
+        parse(raw(document))
+    assert str(caught.value) == str(expected.value)
+    assert str(caught.value).startswith("hypotheses[0]")
+    assert isinstance(caught.value.__cause__, hypotheses.InvalidHypothesisRecordError)
+
+
 def test_the_classes_tell_invalid_from_another_version():
     assert issubclass(InvalidHypothesisFileError, ValueError)
     assert not issubclass(UnsupportedVersionError, ValueError)
