@@ -112,8 +112,8 @@ def check(
 def message(failure):
     """Return what the user reads for the answer ``failure`` of :func:`check`."""
     return (
-        "the image named by HILCLAW_STANDIN_IMAGE cannot build and start an OpenMP "
-        f"program: {failure}. Every cpu_standin kernel build takes -fopenmp "
+        "the image named by HILCLAW_STANDIN_IMAGE was not shown to build and start "
+        f"an OpenMP program: {failure}. Every cpu_standin kernel build takes -fopenmp "
         "(ADR-0188), so no kernel of a run would build. Needed in that image: a "
         "clang that accepts -fopenmp, <omp.h> and an OpenMP runtime it links. "
         "Nothing was installed or changed; add them to the image, or name another "
