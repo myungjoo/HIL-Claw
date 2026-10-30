@@ -10,7 +10,11 @@ The rules, in short:
 
 * ``revision`` is the word ``host`` (decision 5).
 * ``toolchain`` has the one member ``clang``: the first line that
-  ``<compiler> --version`` writes to standard output (decision 3).
+  ``<compiler> --version`` writes to standard output (decision 3). When the
+  caller names the ``cpu_standin`` image, the kernels are built by the image's
+  ``clang`` (ADR-0144), so the line is that of ``clang --version`` run in one
+  new container of that image
+  (``ARCHITECTURE/decisions/ADR-0186-od14-standin-toolchain-from-image.md``).
 * ``host`` has the members ``cpu`` and ``os`` and no other (decision 4). Which
   rule applies follows from the kernel name and the kernel release
   (:func:`os.uname`, the facts ``uname -s`` and ``uname -r`` name):
@@ -60,24 +64,27 @@ other accelerator and no other machine than the one the process runs on, adds
 no further member to ``toolchain`` or ``host``, does not tell WSL 1 from WSL 2
 and never compares a machine with a record again. The limits ADR-0035 names in
 decision 7 are not handled: the first ``model name`` line stands for the
-machine. Nothing checks that ``compiler`` is the compiler a later build uses
-(decision 3).
+machine. Nothing checks that ``compiler``, or the image, is the compiler a
+later build uses (decision 3; ADR-0186 decision 3).
 
 The kernel name is read first, and for a name without a rule nothing is
 started. Otherwise the module starts at most three commands through
 :func:`hilclaw.local_run.run` (without a shell, found on ``PATH``, with the
-limits that module documents): ``<compiler> --version`` and, for the kernel
-name ``Darwin`` only, ``sysctl -n machdep.cpu.brand_string`` and
-``sw_vers -productVersion``. It reads the two files named above and no other,
+limits that module documents): ``<compiler> --version``, or with an image
+``clang --version`` through :func:`hilclaw.standin_container.run_in_container`
+in a new empty temporary directory, and, for the kernel name ``Darwin`` only,
+``sysctl -n machdep.cpu.brand_string`` and ``sw_vers -productVersion``. It reads the two files named above and no other,
 and writes none. Every fact is read at each call and nothing is kept between
 calls.
 """
 
+import functools
 import os
 import re
 import reprlib
+import tempfile
 
-from hilclaw import clang_build, keys, local_run
+from hilclaw import clang_build, keys, local_run, standin_container
 
 ACCELERATOR = "cpu_standin"
 REVISION = "host"
@@ -103,7 +110,7 @@ class UnreadableFactError(RuntimeError):
     """
 
 
-def local_record(hw_source, *, timeout_s, compiler=None):
+def local_record(hw_source, *, timeout_s, compiler=None, image=None):
     """Return the hw_profile record of the ``cpu_standin`` this process runs on.
 
     The result is a new ``dict`` with exactly the members ``schema_version``
@@ -119,7 +126,11 @@ def local_record(hw_source, *, timeout_s, compiler=None):
     version line is read: ``None`` for
     :data:`hilclaw.clang_build.DEFAULT_COMPILER` on ``PATH``, the name or path
     of an executable (``str`` or :class:`os.PathLike`), or a sequence used as a
-    command prefix: the program followed by ``str`` arguments.
+    command prefix: the program followed by ``str`` arguments. ``image``, when
+    not ``None``, is the reference of the ``cpu_standin`` image, and the line
+    is read from ``clang --version`` run in one new container of it, the time
+    limit and the forced-removal limit both ``timeout_s`` (ADR-0186 decision
+    2); ``compiler`` must then be ``None``.
 
     Raises :class:`hilclaw.keys.InvalidRecordError` for a ``hw_source`` that is
     not one of the two values, whatever the machine holds. Raises
@@ -144,17 +155,32 @@ def local_record(hw_source, *, timeout_s, compiler=None):
     :mod:`subprocess` cannot hand over, and :class:`OverflowError` for a finite
     ``timeout_s`` longer than the platform can wait for. Raised before the
     machine is read: :class:`TypeError` for a ``compiler`` of another type that
-    cannot be iterated and :class:`ValueError` for an empty prefix.
+    cannot be iterated and :class:`ValueError` for an empty prefix, both a
+    ``compiler`` and an ``image``, or an image
+    :func:`hilclaw.standin_container.check_image` refuses (:class:`TypeError`
+    for one that is not ``str``). With an image, a container that cannot be
+    started (:class:`hilclaw.standin_container.NoNumericUserError` among the
+    causes) or a status other than 0 (the client's 125 for a missing image
+    among them) is a fact that cannot be read.
     """
     if type(hw_source) is not str or hw_source not in keys.HW_SOURCES:
         rule = " or ".join(keys.HW_SOURCES)
         got = reprlib.repr(hw_source)
         raise keys.InvalidRecordError(f"hw_source: must be {rule}, got {got}")
-    command = (*_prefix(compiler), "--version")
+    if image is None:
+        command = (*_prefix(compiler), "--version")
+        start = functools.partial(_run, command, timeout_s)
+        shown = "<compiler> --version"
+    else:
+        if compiler is not None:
+            raise ValueError("compiler and image cannot both be given")
+        standin_container.check_image(image)
+        start = functools.partial(_run_in_image, image, timeout_s)
+        shown = "clang --version in the image"
     name, release = _kernel()
     if name not in ("Darwin", "Linux"):
         raise UnreadableFactError("kernel name: this module has no rule for it")
-    clang = _command_line("toolchain.clang", command, "<compiler> --version", timeout_s)
+    clang = _output_line("toolchain.clang", shown, timeout_s, start)
     if name == "Darwin":
         cpu = _command_line("host.cpu", _CPU_COMMAND, " ".join(_CPU_COMMAND), timeout_s)
         words = [
@@ -200,6 +226,18 @@ def _run(command, timeout_s):
     return local_run.run(command, timeout_s=timeout_s)
 
 
+def _run_in_image(image, timeout_s):
+    with tempfile.TemporaryDirectory() as build_dir:
+        return standin_container.run_in_container(
+            image,
+            build_dir,
+            clang_build.DEFAULT_COMPILER,
+            ("--version",),
+            timeout_s=timeout_s,
+            removal_timeout_s=timeout_s,
+        )
+
+
 def _prefix(compiler):
     if compiler is None:
         return (clang_build.DEFAULT_COMPILER,)
@@ -232,13 +270,19 @@ def _spelling(fact, raw):
 
 
 def _command_line(fact, command, shown, timeout_s):
+    return _output_line(
+        fact, shown, timeout_s, functools.partial(_run, command, timeout_s)
+    )
+
+
+def _output_line(fact, shown, timeout_s, start):
     try:
-        result = _run(command, timeout_s)
+        result = start()
     except local_run.ProgramNotFoundError:
         raise UnreadableFactError(
             f"{fact}: the command of `{shown}` was not found"
         ) from None
-    except OSError as error:
+    except (OSError, standin_container.NoNumericUserError) as error:
         reason = type(error).__name__
         raise UnreadableFactError(
             f"{fact}: `{shown}` could not be started ({reason})"

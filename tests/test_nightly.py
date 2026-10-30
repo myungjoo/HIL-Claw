@@ -67,7 +67,7 @@ class World:
         self.base.mkdir()
         self.bin.mkdir()
         self.ran = tmp_path / "stub-ran"
-        for name in ("claude", "clang", "docker"):
+        for name in ("claude", "docker"):
             self.stub(name, f'#!/bin/sh\necho "$0" >> "{self.ran}"\nexit 99\n')
         self.log = tmp_path / "entries.ndjson"
         self.scenario = tmp_path / "scenario.json"
@@ -117,7 +117,7 @@ class World:
             self.base,
             environ=self.env,
             python=(sys.executable, str(self.fake)),
-            profile=profile or (lambda hw_source, *, timeout_s: dict(PROFILE)),
+            profile=profile or (lambda hw_source, *, timeout_s, image: dict(PROFILE)),
             now=lambda: NOW,
         )
 
@@ -454,9 +454,37 @@ def test_missing_variables_and_programs_start_nothing(world):
 
 
 @posix
+def test_the_profile_is_given_the_standin_image(world):
+    asked = []
+
+    def reader(hw_source, *, timeout_s, image):
+        asked.append(image)
+        return dict(PROFILE)
+
+    record = world.fire(profile=reader)
+    assert record["verdict"] == "pass"
+    assert asked == [world.env["HILCLAW_STANDIN_IMAGE"]]
+
+
+@posix
+def test_an_image_the_profile_refuses_is_the_environment(world):
+    def refused(hw_source, *, timeout_s, image):
+        raise ValueError("image must not begin with '-'")
+
+    record = world.fire(profile=refused)
+    assert (record["cause"], record["signature"], record["detail"]) == (
+        "environment",
+        "prepare/hw_profile",
+        "ValueError",
+    )
+    assert world.entries() == []
+
+
+@posix
 def test_an_unreadable_machine_fact_is_the_environment(world):
-    def unreadable(hw_source, *, timeout_s):
+    def unreadable(hw_source, *, timeout_s, image):
         assert (hw_source, timeout_s) == ("external", nightly.PROFILE_TIMEOUT_S)
+        assert image == "stub.invalid/standin:fake"
         raise standin_profile.UnreadableFactError("host.cpu: no model name line")
 
     record = world.fire(profile=unreadable)
@@ -683,7 +711,7 @@ def test_a_second_firing_reuses_the_kept_data_root(world):
         world.base,
         environ=world.env,
         python=(sys.executable, str(world.fake)),
-        profile=lambda hw_source, *, timeout_s: dict(PROFILE),
+        profile=lambda hw_source, *, timeout_s, image: dict(PROFILE),
         now=lambda: NOW + datetime.timedelta(days=1),
     )
     assert record["verdict"] == "pass"
@@ -699,7 +727,7 @@ def test_a_firing_after_case_storage_makes_its_own_data_root(world):
         world.base,
         environ=world.env,
         python=(sys.executable, str(world.fake)),
-        profile=lambda hw_source, *, timeout_s: dict(PROFILE),
+        profile=lambda hw_source, *, timeout_s, image: dict(PROFILE),
         now=lambda: later,
     )
     assert record["verdict"] == "pass"
