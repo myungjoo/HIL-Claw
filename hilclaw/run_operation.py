@@ -101,6 +101,7 @@ KIND_OPERATION_ANSWER_INVALID = "operation_answer_invalid"
 #: The four strings of the form (B), in the order of ADR-0065 decision 4.
 CONDITIONS = ("build_time_limit", "build_exit_status", "time_limit", "exit_status")
 
+_PARAMETERS = (run_parameters.TimingParameters, run_parameters.Bf16TimingParameters)
 _RETURNED = (
     "the operation returned {}, which is neither a report with its figure"
     " nor one of the four conditions"
@@ -207,7 +208,9 @@ def ask(operation, request, hw_profile, parameters, output_path, keeper, *, log_
     - ``request``, ``hw_profile``: the request and the hw_profile of the
       call, handed on as they are and not read.
     - ``parameters``: the timing parameters, exactly a
-      :class:`hilclaw.run_parameters.TimingParameters`.
+      :class:`hilclaw.run_parameters.TimingParameters` or a
+      :class:`hilclaw.run_parameters.Bf16TimingParameters` (ADR-0181
+      decision 4).
     - ``output_path``: the output path of the call, handed on as it is and
       not read, whatever its type is.
     - ``keeper``: the log keeper of the call (ADR-0108 decision 5), exactly a
@@ -220,8 +223,8 @@ def ask(operation, request, hw_profile, parameters, output_path, keeper, *, log_
 
     No parameter has a default. Before the operation is called,
     :class:`TypeError` is raised when ``operation`` is not callable,
-    ``parameters`` are not exactly a ``TimingParameters`` or ``keeper`` is
-    not exactly a ``LogKeeper``.
+    ``parameters`` are exactly neither of the two types or ``keeper`` is not
+    exactly a ``LogKeeper``.
 
     The operation is called as
     ``operation(request, hw_profile, parameters, output_path, keeper)``, with
@@ -265,8 +268,8 @@ def ask(operation, request, hw_profile, parameters, output_path, keeper, *, log_
     """
     if not callable(operation):
         raise TypeError("operation: must be callable")
-    if type(parameters) is not run_parameters.TimingParameters:
-        raise TypeError("parameters: must be TimingParameters")
+    if type(parameters) not in _PARAMETERS:
+        raise TypeError("parameters: must be TimingParameters or Bf16TimingParameters")
     if type(keeper) is not build_log.LogKeeper:
         raise TypeError("keeper: must be exactly a hilclaw.build_log.LogKeeper")
     failure = message = None

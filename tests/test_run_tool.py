@@ -10,13 +10,18 @@ import pytest
 
 from hilclaw import (
     build_log,
+    contract_table,
+    elementwise_add_bf16_contract,
     events,
+    gemm_bf16_contract,
     gemm_contract,
     instance,
     keys,
     layout,
     mock_backend,
     mock_run,
+    rmsnorm_bf16_contract,
+    rope_bf16_contract,
     run_admission,
     run_failure,
     run_identity,
@@ -25,13 +30,15 @@ from hilclaw import (
     run_seed,
     run_state,
     run_tool,
+    sdpa_kv_cache_bf16_contract,
+    swiglu_bf16_contract,
     tools,
 )
 from hilclaw.backends import Backend, BackendTable
 from hilclaw.build_log import HandOverRefused, LogKeeper
 from hilclaw.harness.measurement import N_MIN
 from hilclaw.journal import EMPTY
-from hilclaw.run_parameters import TimingParameters
+from hilclaw.run_parameters import Bf16TimingParameters, TimingParameters
 from hilclaw.run_tool import KIND_BUILD_LOG_UNWRITABLE, tool_function
 from hilclaw.tools import ToolFailure
 
@@ -772,6 +779,119 @@ def test_the_step_of_each_tool_is_its_one_value():
     assert all(step in layout.BUILD_LOG_STEPS for step in STEP.values())
 
 
+# The bf16 kinds on the mock (ADR-0181 decisions 4, 7 and 9), through a predicate that admits them
+
+BF16_KINDS = {
+    "gemm": (gemm_bf16_contract, ("m", "k", "n"), (2, 3, 4)),
+    "rmsnorm": (rmsnorm_bf16_contract, ("m", "n"), (2, 3)),
+    "elementwise_add": (elementwise_add_bf16_contract, ("m", "n"), (2, 3)),
+    "swiglu": (swiglu_bf16_contract, ("m", "n"), (2, 3)),
+    "rope": (rope_bf16_contract, ("m", "h", "d"), (2, 3, 4)),
+    "sdpa_kv_cache": (
+        sdpa_kv_cache_bf16_contract,
+        ("m", "l", "h", "h_kv", "d"),
+        (2, 5, 12, 3, 8),
+    ),
+}
+BF16_CASES = [(tool, kind) for tool in TOOLS for kind in BF16_KINDS]
+
+
+def bf16_run(tmp_path, kind):
+    contract, names, dims = BF16_KINDS[kind]
+    op = contract.op_signature_record(**dict(zip(names, dims, strict=True)))
+    assert contract_table.covers(op)
+    root = a_run(tmp_path / "data", content(op=op))
+    shape = dict(zip(names, dims, strict=True))
+    return root, shape, {"kind": kind, "dtype": "bf16", "layout": op["layout"]}
+
+
+@pytest.mark.parametrize(("tool", "kind"), BF16_CASES)
+def test_the_default_script_gives_a_bf16_kind_its_v2_result(tmp_path, tool, kind):
+    root, shape, key = bf16_run(tmp_path, kind)
+    bench = Bench(root, tool, covers=contract_table.covers)
+    result = bench.function(request())
+    assert result == {**CONVERGED, "contract_key": key, "shape": shape}
+    assert "memory_bytes" not in result
+    assert lines(root) == ended(root, tool, {"result": result})
+    assert list(result["shape"]) == list(BF16_KINDS[kind][1])
+    ((_, _, _, parameters, _),) = bench.asked
+    assert type(parameters) is Bf16TimingParameters
+    assert parameters == Bf16TimingParameters(
+        kind, "bf16", BF16_KINDS[kind][2], N_MAX, "interval", SEED
+    )
+    assert type(parameters.dims) is tuple
+
+
+@pytest.mark.parametrize(("tool", "kind"), BF16_CASES)
+def test_a_condition_for_a_bf16_call_gives_a_broken_v2_result(tmp_path, tool, kind):
+    root, shape, key = bf16_run(tmp_path, kind)
+    bench = Bench(
+        root, tool, script=answering("time_limit"), covers=contract_table.covers
+    )
+    result = bench.function(request())
+    assert result == {
+        "outcome": "broken",
+        "condition": "time_limit",
+        "contract_key": key,
+        "shape": shape,
+        "n_max": N_MAX,
+        "sample_form": "interval",
+        "ceiling": "not_stated",
+    }
+    assert lines(root) == ended(root, tool, {"result": result})
+
+
+def test_a_bad_report_for_a_bf16_call_is_judged_as_any_other(tmp_path):
+    root, shape, key = bf16_run(tmp_path, "rope")
+    bench = Bench(root, script=answering((b"", None)), covers=contract_table.covers)
+    result = bench.function(request())
+    assert (result["outcome"], result["condition"]) == ("broken", "report_form")
+    assert (result["contract_key"], result["shape"]) == (key, shape)
+
+
+def test_a_figure_of_a_bf16_call_is_kept(tmp_path):
+    root, _, _ = bf16_run(tmp_path, "swiglu")
+    bench = Bench(
+        root, script=answering((DEFAULT_REPORT, FIGURE)), covers=contract_table.covers
+    )
+    assert bench.function(request())["memory_bytes"] == FIGURE
+
+
+def test_a_bf16_call_again_returns_the_stored_result(tmp_path):
+    root, _, _ = bf16_run(tmp_path, "sdpa_kv_cache")
+    bench = Bench(root, covers=contract_table.covers)
+    first = bench.function(request())
+    assert bench.function(request()) == first
+    assert bench.count("operation") == 1
+
+
+def test_an_invalid_answer_to_a_bf16_call_ends_the_step_with_the_failure(tmp_path):
+    root, _, _ = bf16_run(tmp_path, "rmsnorm")
+    bench = Bench(root, script=answering(None), covers=contract_table.covers)
+    assert bench.failure().kind == run_operation.KIND_OPERATION_ANSWER_INVALID
+    assert lines(root)[-1]["data"]["failure"]["kind"] == (
+        run_operation.KIND_OPERATION_ANSWER_INVALID
+    )
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+@pytest.mark.parametrize("kind", BF16_KINDS)
+def test_a_bf16_kind_is_refused_where_the_predicate_is_run_covers(tmp_path, tool, kind):
+    root, _, _ = bf16_run(tmp_path, kind)
+    bench = Bench(root, tool, covers=contract_table.run_covers)
+    assert bench.failure().kind == run_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert bench.asked == []
+    assert lines(root) == []
+
+
+def test_fp32_gemm_through_the_table_predicate_keeps_the_six_values(root):
+    bench = Bench(root, covers=contract_table.covers)
+    assert bench.function(request()) == CONVERGED
+    ((_, _, _, parameters, _),) = bench.asked
+    assert type(parameters) is TimingParameters
+    assert parameters == TimingParameters(2, 3, 4, N_MAX, "interval", SEED)
+
+
 # The module
 
 
@@ -786,6 +906,7 @@ def test_the_module_imports_and_names():
         f"hilclaw.{name}"
         for name in (
             "build_log",
+            "gemm_contract",
             "hw_tool",
             "instance",
             "journaled_step",

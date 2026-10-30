@@ -128,6 +128,9 @@ def operation(request, hw_profile, parameters, output_path, keeper, /):
 
     ``request`` and ``hw_profile`` are not read. ``parameters`` are the
     timing parameters, exactly a :class:`hilclaw.run_parameters.TimingParameters`;
+    a :class:`hilclaw.run_parameters.Bf16TimingParameters` is refused with
+    :class:`TypeError` before anything is started, as every other type is
+    (the operation of a bf16 run is ADR-0181 decision 8 item 4);
     ``output_path`` is handed to :func:`hilclaw.standin_copies.place_copies`
     as it is; ``keeper`` is the call's :class:`hilclaw.build_log.LogKeeper`,
     handed at most the timing build's log (ADR-0170 decisions 2 and 3).
