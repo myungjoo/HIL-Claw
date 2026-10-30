@@ -685,6 +685,7 @@ def test_round_zero_without_an_attempt_that_stands_ends_its_round(world, kernel)
 def test_a_round_zero_spec_that_exists_comes_to_the_stop(world):
     world.install()
     run_id = world.new_run(document())
+    replace(world.root, run_id, 0, EMPTY)
     run = world.run_dir(run_id)
     taken = run / ATTEMPT / "spec.json"
     taken.parent.mkdir(parents=True)
@@ -695,11 +696,17 @@ def test_a_round_zero_spec_that_exists_comes_to_the_stop(world):
     told(done, "unchanged_turn", 12)
     assert state_of(world, run_id).round == 0
     log = world.session_log()
-    assert turns(log) == [1, 2]
-    stop = [("round-manager", "run_commit")]
-    assert steps(log, 1) == ROUND_ZERO[:7] + stop
-    assert requests(log, 1)[6]["answer"]["error"]["kind"] == "spec_exists"
-    assert steps(log, 2)[-2:] == [("coder-driver", "spec_write"), *stop]
+    assert turns(log) == [1]
+    assert steps(log, 1) == [
+        ("round-manager", "run_commit"),
+        ("round-manager", "state_read"),
+        ("round-manager", "instance_read"),
+        ("round-manager", "key_store"),
+        ("round-manager", "Agent", "coder-driver"),
+        ("coder-driver", "spec_write"),
+        ("round-manager", "run_commit"),
+    ]
+    assert requests(log, 1)[5]["answer"]["error"]["kind"] == "spec_exists"
     assert taken.read_bytes() == b"{}\n"
     assert not [e for e in world.docker_runs() if e.get("container") == "coder"]
 
