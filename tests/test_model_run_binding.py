@@ -313,7 +313,7 @@ def test_an_unreadable_instance_file_is_named(root, monkeypatch):
 def test_a_run_of_another_target_is_refused(root):
     profile = PROFILE | {"accelerator": "mock"}
     hw = {"key": keys.hw_profile_key(profile).name, "record": profile}
-    assert profile["accelerator"] != standin_profile.ACCELERATOR
+    assert model_run_binding.TARGET == standin_profile.ACCELERATOR
     write_instance(root, hw_profile=hw)
     measured(root, 0, 20)
     refused(root, OTHER_TARGET)

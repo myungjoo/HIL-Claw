@@ -68,7 +68,8 @@ text of an :class:`AttemptKernelError` is its ``reason`` and nothing else.
 What this module does not do: it judges no attempt (no correctness or timing
 result, no ``events.ndjson``, no ``eval/``, no ``best.json``) and chooses no
 attempt for a call site (:mod:`hilclaw.model_run_binding` does, ADR-0189); it
-checks no fit of the contract to a call site, which :mod:`hilclaw.model_binding` does when the executor runs; it
+checks no fit of the contract to a call site, which
+:mod:`hilclaw.model_binding` does when the executor runs; it
 reads no ``build.json`` or other record of build settings (OD-6); it writes
 and creates nothing, reads no file of the run but the spec, lists nothing but
 what the reader of ADR-0055 lists and walks no directory (ADR-0004 decision

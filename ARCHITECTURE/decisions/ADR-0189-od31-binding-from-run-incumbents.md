@@ -23,7 +23,7 @@ A sentence is **cited** when a source is named with it. Every other sentence is 
 
 ### 1. Scope
 
-A run whose `instance.json` names the accelerator `cpu_standin`, the executor's only target (cited: ADR-0153 decision 1), and states `candidates_per_round` 1 and an `op_signature`, the run shape of ADR-0151 decision 1 and of ADR-0184 decision 1. Any other run is refused by name: `other_target` (the mock among them, whose timings say nothing of a kernel), `not_one_candidate` (a run that states no number among them, cited: ADR-0028 decision 4), `no_op_signature`.
+A run whose `instance.json` names the accelerator `cpu_standin`, the executor's only target (cited: ADR-0153 decision 1), and states `candidates_per_round` 1 and an `op_signature`: the run shape of ADR-0184 decision 1 as far as the file states it. Whether the signature is one a contract covers is left to the executor's fit check (ADR-0153 decision 3). Any other run is refused by name: `other_target` (the mock among them, whose timings say nothing of a kernel), `not_one_candidate` (a run that states no number among them, cited: ADR-0028 decision 4), `no_op_signature`.
 
 ### 2. Which attempt of a run: the incumbent over all rounds
 
@@ -84,7 +84,7 @@ The derivation reads what the journal holds at the call and does not read `STATE
 - `hilclaw/model_run_binding.py` holds `binding_from_runs`. `hilclaw/spec_feedback.py` gains `incumbent`, and `feedback` behaves as before. The module reads only, starts nothing and is no tool.
 - A kernel of a coder still runs only through `hilclaw/model_forward_container.py` (cited: ADR-0182 decision 7); the module hands its result to that path and does not call it.
 - **Runtime acceptance items**: none new. A binding derived from real runs at the real dimensions is exercised by P2-15 (RA-0056). They go to `PROCESS/RuntimeAcceptance.md`, not to an HQ, should a later record add any (DRIVER D22).
-- **UsageCases and StandardScenarios** (S0 re-checked): no step changes, no verdict changes, no gap.
+- **UsageCases and StandardScenarios** (S0 and S1 re-checked): no step changes, no verdict changes, no gap.
 - **Less exact, not edited**: the sentence of `hilclaw/model_binding.py` that it "derives no binding from a key's best (OD-20, OD-7)" stays true of that module. ADR-0153 decision 3 calls the derivation open; this record answers it for the scope of decision 1.
 
 ## Boundaries (not decided here)

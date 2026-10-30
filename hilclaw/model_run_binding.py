@@ -57,11 +57,13 @@ from hilclaw import (
     model_forward_run,
     run_identity,
     spec_feedback,
-    standin_profile,
     tools,
 )
 from hilclaw.attempt_kernel import _check_data_root, _check_flags, _parameter
 from hilclaw.model_binding import BindingEntry
+
+TARGET = "cpu_standin"
+"""The one ``accelerator`` of a run this module takes (decision 1)."""
 
 EVERY = "every"
 """The ``shapes`` of every entry: each kind's contract obliges correctness at every shape (decision 5)."""
@@ -199,7 +201,7 @@ def _stated(data_root, run_id, refused):
 
 
 def _out_of_scope(stated):
-    if stated.hw_profile["accelerator"] != standin_profile.ACCELERATOR:
+    if stated.hw_profile["accelerator"] != TARGET:
         return OTHER_TARGET
     if stated.candidates_per_round != 1:
         return NOT_ONE_CANDIDATE
