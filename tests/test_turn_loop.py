@@ -386,6 +386,7 @@ def test_fresh_directory_per_turn(stub, data_root, parent):
 def clear_coder(monkeypatch):
     monkeypatch.delenv(CODER_IMAGE, raising=False)
     monkeypatch.delenv(CODER_TOKEN, raising=False)
+    monkeypatch.delenv(coder_runtime.ENV_LOG_DIR, raising=False)
 
 
 def test_configuration_content(stub, data_root, parent, monkeypatch):
@@ -515,6 +516,19 @@ def test_configuration_forwards_the_coder_image_unchecked(
     go(data_root, parent)
     (call,) = stub.calls()
     assert server_env(call)[CODER_IMAGE] == "--privileged"
+
+
+def test_configuration_forwards_the_coder_log_dir(stub, data_root, parent, monkeypatch):
+    monkeypatch.delenv(standin_image.ENV_IMAGE, raising=False)
+    clear_coder(monkeypatch)
+    monkeypatch.setenv(coder_runtime.ENV_LOG_DIR, "/var/tmp/coder-output")
+    stub.install()
+    go(data_root, parent)
+    (call,) = stub.calls()
+    assert server_env(call) == {
+        config.ENV_LOCAL_PATH: os.path.realpath(data_root),
+        coder_runtime.ENV_LOG_DIR: "/var/tmp/coder-output",
+    }
 
 
 @pytest.mark.parametrize("value", [None, ""])

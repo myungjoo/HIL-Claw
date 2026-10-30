@@ -104,11 +104,15 @@ class Popens:
         self.status = 0
         self.wait_error = None
         self.start_error = None
+        self.output = b""
 
     def __call__(self, command, **options):
         self.calls.append((list(command), options))
         if self.start_error is not None:
             raise self.start_error
+        if hasattr(options.get("stdout"), "write"):
+            options["stdout"].write(self.output)
+            options["stdout"].flush()
         process = Process(self.status, self.wait_error)
         self.processes.append(process)
         return process
@@ -610,3 +614,103 @@ def test_stub_docker_executable(tmp_path, monkeypatch):
 def test_the_prompt_speaks_of_the_base_and_the_plain_baseline():
     assert "feedback.base" in coder_runtime.PROMPT
     assert "single-threaded" in coder_runtime.PROMPT
+
+
+def logs_in(directory):
+    return sorted(Path(directory).iterdir())
+
+
+def test_log_dir_constants():
+    assert coder_runtime.ENV_LOG_DIR == "HILCLAW_CODER_LOG_DIR"
+    assert TOKEN.encode() not in coder_runtime.REDACTED
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_no_log_dir_keeps_nothing(popens, value):
+    assert run(environ(**{coder_runtime.ENV_LOG_DIR: value})) == 0
+    options = popens.calls[0][1]
+    assert options["stdout"] is subprocess.DEVNULL
+    assert options["stderr"] is subprocess.DEVNULL
+
+
+def test_log_dir_keeps_the_output_with_the_token_replaced(popens, tmp_path):
+    popens.output = b"error: " + TOKEN.encode() + b" expired; again " + TOKEN.encode()
+    popens.status = 1
+    assert run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)})) == 1
+    [(command, options)] = popens.calls
+    assert options["stdin"] is subprocess.DEVNULL
+    assert options["stderr"] is subprocess.STDOUT
+    assert options["stdout"].closed
+    [log] = logs_in(tmp_path)
+    assert re.fullmatch(r"\d{8}T\d{6}Z-" + re.escape(command[3]) + r"\.log", log.name)
+    assert log.read_bytes() == (
+        b"error: "
+        + coder_runtime.REDACTED
+        + b" expired; again "
+        + coder_runtime.REDACTED
+    )
+    if sys.platform != "win32":
+        assert log.stat().st_mode & 0o777 == 0o600
+
+
+def test_log_without_the_token_is_kept_as_written(popens, tmp_path):
+    popens.output = b"plain output\n"
+    run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)}))
+    [log] = logs_in(tmp_path)
+    assert log.read_bytes() == b"plain output\n"
+
+
+def test_each_call_gets_its_own_log(popens, tmp_path):
+    env = environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)})
+    run(env)
+    run(env)
+    assert len(logs_in(tmp_path)) == 2
+
+
+@pytest.mark.parametrize("value", ["relative/dir", "missing", 7, "a\0b"])
+def test_log_dir_refused_before_any_process(starts, popens, tmp_path, value):
+    if value == "missing":
+        value = str(tmp_path / "missing")
+    with pytest.raises(CoderNotStartedError) as caught:
+        run(environ(**{coder_runtime.ENV_LOG_DIR: value}))
+    assert coder_runtime.ENV_LOG_DIR in str(caught.value)
+    assert popens.calls == [] and starts.calls == []
+
+
+def test_log_that_cannot_be_made_is_not_started(starts, popens, tmp_path, monkeypatch):
+    def refuse(*args, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(os, "open", refuse)
+    with pytest.raises(CoderNotStartedError) as caught:
+        run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)}))
+    assert "PermissionError" in str(caught.value)
+    assert popens.calls == [] and starts.calls == []
+
+
+def test_start_failure_closes_the_log(popens, tmp_path):
+    popens.start_error = OSError("exec format error")
+    with pytest.raises(CoderNotStartedError):
+        run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)}))
+    [log] = logs_in(tmp_path)
+    assert log.read_bytes() == b""
+
+
+def test_cut_off_wait_still_replaces_the_token(starts, popens, tmp_path):
+    popens.output = TOKEN.encode()
+    popens.wait_error = KeyboardInterrupt()
+    with pytest.raises(KeyboardInterrupt):
+        run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)}))
+    [log] = logs_in(tmp_path)
+    assert log.read_bytes() == coder_runtime.REDACTED
+
+
+def test_log_that_cannot_be_rewritten_is_removed(popens, tmp_path, monkeypatch):
+    popens.output = TOKEN.encode()
+
+    def refuse(*args, **kwargs):
+        raise OSError("read-only")
+
+    monkeypatch.setattr(coder_runtime, "open", refuse, raising=False)
+    run(environ(**{coder_runtime.ENV_LOG_DIR: str(tmp_path)}))
+    assert logs_in(tmp_path) == []
