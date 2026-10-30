@@ -50,7 +50,7 @@ and nothing is created before 12 (ADR-0151 decision 3, table):
    (:data:`hilclaw.catalog.APPLIES_TO`), it refuses every id for a run of a
    bf16 contract and none for a run of the fp32 one, ADR-0177 decision 4);
    the first id that fails decides;
-8. to 10. for ``round`` >= 1, :func:`hilclaw.spec_feedback.attempts`, whose
+8. to 10. for ``round`` >= 1, :func:`hilclaw.spec_feedback.feedback`, whose
    kinds pass out unchanged: :data:`KIND_FEEDBACK_UNREADABLE`, the four
    ``run_file_*`` kinds for the run's ``events.ndjson`` and
    ``check_result_invalid``;
@@ -77,9 +77,11 @@ decision 2), and
 ``techniques``; and ``feedback`` with an empty ``attempts`` (ADR-0138
 decision 2). The document of a round ``r`` >= 1 is that document with
 ``id.round`` ``r``, ``guidance.techniques`` the ``{id, text}`` entries of 7
-in the request's order, and ``feedback.attempts`` the list of 8 to 10
-(ADR-0151 decision 2). No document has ``task.build``, ``feedback.base``,
-``profile``, ``repair`` or ``ext``. The document is encoded by the rule of
+in the request's order, and ``feedback`` that of 8 to 10: ``attempts`` the
+list of ADR-0151 decision 2 and ``base`` the incumbent of
+``ARCHITECTURE/decisions/ADR-0184-od20-first-case-incumbent-base.md``
+decision 2, when there is one. No document has ``task.build``, ``profile``,
+``repair`` or ``ext``, and the document of round 0 no ``feedback.base``. The document is encoded by the rule of
 ``verdicts.write``: ``json.dumps(document, ensure_ascii=False, indent=2,
 allow_nan=False)`` followed by one line feed, in UTF-8 without a byte order
 mark.
@@ -96,7 +98,7 @@ passes out of the tool function and :func:`hilclaw.tools.call` answers it with
 
 The files read are ``instance.json``, for a non-empty ``techniques`` the
 catalog directory, and for ``round`` >= 1 what
-:func:`hilclaw.spec_feedback.attempts` reads (the earlier attempts'
+:func:`hilclaw.spec_feedback.feedback` reads (the earlier attempts'
 directories and specs, ``events.ndjson`` and the compiler logs).
 ``STATE.json``, ``decision/hypotheses.json``, ``decision.md`` and the stored
 key records below ``db/`` are not. The only file written is the spec, through
@@ -161,7 +163,8 @@ _DESCRIPTION = (
     "also carries the catalog entry of each technique id you name in "
     "techniques, in your order, and every earlier attempt of the run whose "
     "check at the sim point is settled, with its technique ids and its "
-    "failure. The spec is written once to "
+    "failure, and names as feedback.base the fastest earlier attempt verified "
+    "at both points, when there is one. The spec is written once to "
     "runs/<run_id>/rounds/<RRRR>/coder/candidates/01/attempts/01/spec.json "
     "and never replaced. Call it before you request that coder call; request "
     "no call when it fails with a kind other than spec_exists, and report the "
@@ -220,7 +223,7 @@ def definition(source):
     of distinct *names*; ``no_data_root`` as
     :func:`hilclaw.data_root_source.obtain` does; the four ``run_file_*``
     kinds as :func:`hilclaw.run_file_tools.read` raises them; what
-    :func:`hilclaw.spec_feedback.attempts` raises; and the kinds of this
+    :func:`hilclaw.spec_feedback.feedback` raises; and the kinds of this
     module, in the order of the module docstring.
     """
     if not callable(source):
@@ -319,9 +322,7 @@ def _write(source, request):
     if round:
         document["id"]["round"] = round
         document["guidance"]["techniques"] = _techniques(stated, document, ids)
-        document["feedback"]["attempts"] = spec_feedback.attempts(
-            data_root, run_id, round
-        )
+        document["feedback"] = spec_feedback.feedback(data_root, run_id, round)
     content, path = _content(data_root, run_id, round, document)
     file = _relative(path, data_root)
     try:

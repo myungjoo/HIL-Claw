@@ -559,7 +559,7 @@ def test_the_scratch_is_made_with_the_data_root_kept_out(
     runtime = FakeRuntime()
     call(request(), source=source, runtime=runtime)
     assert [step for step, _, _ in seen] == ["create", "remove"]
-    assert seen[0][2] == {"keep_out": (data_root,)}
+    assert seen[0][2] == {"keep_out": (data_root,), "base": None}
     assert seen[1] == ("remove", Path(runtime.runs[0]), {"keep_out": (data_root,)})
 
 
@@ -989,3 +989,50 @@ def test_the_module_names_no_model_and_imports_no_default():
         for text in constants
         if text.startswith("claude-") or text in {"opus", "sonnet", "default"}
     ]
+
+
+def base_spec(spec_path):
+    made = document()
+    made["feedback"]["base"] = {"round": 0, "candidate": 1, "attempt": 1}
+    return put_spec(spec_path, (json.dumps(made) + "\n").encode())
+
+
+def test_the_base_source_is_copied_into_the_scratch(
+    data_root, parent, source, spec_path
+):
+    base_spec(spec_path)
+    base = layout.attempt_artefact(data_root, RUN_ID, 0, 1, 1, "output")
+    base.mkdir(parents=True)
+    (base / "kernel.c").write_bytes(KERNEL)
+    seen = []
+    runtime = FakeRuntime(
+        files={"kernel.c": KERNEL},
+        act=lambda root: seen.append(sorted(os.listdir(root / scratch.BASE_COPY_NAME))),
+    )
+    assert call(request(), source=source, runtime=runtime)["taken"] == ["kernel.c"]
+    assert seen == [["kernel.c"]]
+
+
+def test_a_base_without_output_gives_base_unreadable(
+    data_root, parent, source, spec_path
+):
+    base_spec(spec_path)
+    runtime = FakeRuntime()
+    failure(scratch.BASE_UNREADABLE, data_root, request(), source, runtime)
+    assert runtime.runs == []
+    assert os.listdir(parent) == []
+
+
+def test_a_spec_without_base_makes_no_base_directory(data_root, parent, source, spec):
+    seen = []
+    runtime = FakeRuntime(act=lambda root: seen.append(sorted(os.listdir(root))))
+    call(request(), source=source, runtime=runtime)
+    assert seen == [[scratch.SPEC_COPY_NAME]]
+
+
+def test_no_container_runtime_comes_before_base_unreadable(
+    data_root, parent, source, spec_path
+):
+    base_spec(spec_path)
+    runtime = FakeRuntime(available=False)
+    failure(KIND_NO_CONTAINER_RUNTIME, data_root, request(), source, runtime)

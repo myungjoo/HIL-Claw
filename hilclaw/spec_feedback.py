@@ -41,6 +41,22 @@ decision 3:
   appended to the report when that file exists and is not empty; a missing
   file is no failure.
 
+``ARCHITECTURE/decisions/ADR-0184-od20-first-case-incumbent-base.md``
+decision 2 adds ``feedback.base``, which :func:`feedback` returns beside the
+entries: the incumbent, the shown attempt verified at both points whose
+measurement at the step :data:`hilclaw.run_identity.STEP_BOARD_RUN` has the
+lowest median of its intervals, the earliest ``(round, attempt)`` on a tie.
+An attempt has a measurement by the rule of ``timings.compare``
+(:mod:`hilclaw.timings_tool`): exactly one end line at that step whose
+``result`` is an admitted timing result with the ``outcome`` ``"converged"``
+or ``"not_converged"``, and no end line holding a ``failure`` and no start
+line without an end line. An end line whose ``result`` is not admitted makes
+its attempt no incumbent and fails nothing. A step line the journal refuses
+has already failed the read of the checks (``run_file_invalid``). All
+attempts of one run share its ``op_signature``, so the medians are compared
+without comparing ``contract_key`` and ``shape``. With no incumbent there is
+no ``base``.
+
 Choices that are this module's own and no rule of the record:
 
 * Of a listing, only a name that is exactly what :mod:`hilclaw.layout` formats
@@ -64,14 +80,15 @@ Choices that are this module's own and no rule of the record:
 The files read are the listed directories, the found ``spec.json`` files,
 ``events.ndjson`` and the compiler logs; ``STATE.json``, ``instance.json``,
 ``decision/hypotheses.json`` and ``decision.md`` are not. Nothing is created,
-written or kept between calls. Nothing calls this module until ``spec.write``
-(:mod:`hilclaw.spec_tool`) is widened by ADR-0151's second code slice.
+written or kept between calls. ``spec.write`` (:mod:`hilclaw.spec_tool`)
+calls :func:`feedback`.
 :data:`KIND_FEEDBACK_UNREADABLE` is a name of the tool layer and not reserved.
 """
 
 import codecs
 import os
 import stat
+import statistics
 from pathlib import Path
 
 from hilclaw import (
@@ -79,10 +96,13 @@ from hilclaw import (
     check_result,
     check_standing,
     checks_tool,
+    journal,
     keys,
     layout,
     run_files,
+    run_identity,
     spec_file,
+    timings_tool,
     tools,
 )
 
@@ -100,19 +120,34 @@ _PHRASES = {
 }
 _GENERIC_PHRASE = "a condition this report does not name"
 _FAILED = (check_result.FAIL, check_result.BROKEN)
+_ENTERING = ("converged", "not_converged")
+_STEP_KINDS = (journal.STEP_STARTED, journal.STEP_ENDED)
 
 
 def attempts(data_root, run_id, round):
     """Return the ``feedback.attempts`` of the spec of ``(round, 1, 1)`` of the run ``run_id``.
 
+    The ``attempts`` member of :func:`feedback`, with its parameters and
+    exceptions.
+    """
+    return feedback(data_root, run_id, round)["attempts"]
+
+
+def feedback(data_root, run_id, round):
+    """Return the ``feedback`` of the spec of ``(round, 1, 1)`` of the run ``run_id``.
+
+    A new ``dict`` with ``attempts``, as below, and ``base``, the
+    ``{"round", "candidate": 1, "attempt"}`` of the incumbent, exactly when
+    there is one (ADR-0184 decision 2).
+
     @param data_root the data root, used as ``Path(data_root)``.
     @param run_id the run, a name :func:`hilclaw.layout.check_run_id` accepts.
     @param round the round of the spec, an ``int`` (no ``bool``) from 1 to
         :data:`hilclaw.keys.MAX_INTEGER`.
-    @return a new ``list`` of new ``dict`` entries in ascending ``(round,
-        attempt)``, each ``{"round", "candidate": 1, "attempt", "techniques"}``
-        and, for a failed attempt, ``"failure": {"stage", "report"}``; possibly
-        empty.
+    @return the ``dict``, whose ``attempts`` is a new ``list`` of new
+        ``dict`` entries in ascending ``(round, attempt)``, each ``{"round",
+        "candidate": 1, "attempt", "techniques"}`` and, for a failed attempt,
+        ``"failure": {"stage", "report"}``; possibly empty.
     @throws TypeError, ValueError for a ``round`` of another type or value.
     @throws hilclaw.layout.InvalidPathValueError for a bad ``run_id``.
     @throws hilclaw.tools.ToolFailure of kind :data:`KIND_FEEDBACK_UNREADABLE`
@@ -134,7 +169,7 @@ def attempts(data_root, run_id, round):
     root = Path(data_root)
     found = _found(root, run_id, round)
     if not found:
-        return []
+        return {"attempts": []}
     lines = checks_tool.log_lines(root, run_id)
     numbers = {(q, a) for q, a, _ in found}
 
@@ -143,13 +178,13 @@ def attempts(data_root, run_id, round):
         return step in check_identity.STEPS and candidate == 1 and (q, a) in numbers
 
     checks = checks_tool.checks_in_order(run_id, lines, inside)
-    shown = []
+    shown, verified = [], []
     for q, a, techniques in found:
         entry = {"round": q, "candidate": 1, "attempt": a, "techniques": techniques}
         sim = check_standing.point_standing(lines, check_identity.SIM, q, 1, a)
         if sim is check_standing.Standing.UNDETERMINED:
             continue
-        point = None
+        point, board = None, None
         if sim is check_standing.Standing.NOT_VERIFIED:
             point = check_identity.SIM
         else:
@@ -168,10 +203,47 @@ def attempts(data_root, run_id, round):
                 and element["result"]["outcome"] in _FAILED
             )
         shown.append((entry, point, deciding))
+        if board is check_standing.Standing.VERIFIED:
+            verified.append(entry)
     for entry, point, deciding in shown:
         if deciding is not None:
             entry["failure"] = _failure(root, run_id, entry, point, *deciding)
-    return [entry for entry, _, _ in shown]
+    made = {"attempts": [entry for entry, _, _ in shown]}
+    timed = []
+    for entry in verified:
+        median = _board_median(lines, entry["round"], entry["attempt"])
+        if median is not None:
+            timed.append((median, entry["round"], entry["attempt"]))
+    if timed:
+        _, q, a = min(timed)
+        made["base"] = {"round": q, "candidate": 1, "attempt": a}
+    return made
+
+
+def _board_median(lines, q, a):
+    entering, started, ended = [], set(), set()
+    for event in lines:
+        if event["kind"] not in _STEP_KINDS:
+            continue
+        identity = journal.identity_of(event)
+        if identity.step != run_identity.STEP_BOARD_RUN or (
+            identity.round,
+            identity.candidate,
+            identity.attempt,
+        ) != (q, 1, a):
+            continue
+        if event["kind"] == journal.STEP_STARTED:
+            started.add(identity.execution)
+            continue
+        ended.add(identity.execution)
+        data = event["data"]
+        if "failure" in data or timings_tool.timing_problem(data["result"]):
+            return None
+        if data["result"]["outcome"] in _ENTERING:
+            entering.append(data["result"]["intervals"])
+    if len(entering) != 1 or started - ended:
+        return None
+    return statistics.median(entering[0])
 
 
 def _failure(root, run_id, entry, point, step, deciding):

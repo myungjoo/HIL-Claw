@@ -11,6 +11,8 @@ from hilclaw import scratch as scratch_module
 from hilclaw.bring_in import bring_in
 from hilclaw.kernel_source import OUTPUT_NAME
 from hilclaw.scratch import (
+    BASE_COPY_NAME,
+    BASE_UNREADABLE,
     PREFIX,
     SCRATCH_FAILURES,
     SPEC_CHANGED,
@@ -572,8 +574,76 @@ def test_remove_refuses_a_bad_scratch(value, no_rmtree):
 
 
 def test_the_failures_are_distinct_and_texts_hold_no_path():
-    assert len(set(SCRATCH_FAILURES)) == len(SCRATCH_FAILURES) == 3
+    assert len(set(SCRATCH_FAILURES)) == len(SCRATCH_FAILURES) == 4
     for failure in SCRATCH_FAILURES:
         assert str(ScratchError(failure)) == failure
         assert os.sep not in failure
     assert issubclass(InvalidScratchArgumentError, ValueError)
+
+
+@pytest.fixture
+def base(tmp_path):
+    directory = tmp_path / "base"
+    directory.mkdir()
+    (directory / "kernel.c").write_bytes(b"int k;\n")
+    (directory / "kernel.h").write_bytes(b"")
+    return directory
+
+
+def test_create_copies_each_file_of_base(spec, parent, base):
+    scratch = Path(create(spec, parent=parent, base=base))
+    try:
+        assert sorted(os.listdir(scratch)) == [BASE_COPY_NAME, SPEC_COPY_NAME]
+        copied = scratch / BASE_COPY_NAME
+        assert sorted(os.listdir(copied)) == ["kernel.c", "kernel.h"]
+        assert (copied / "kernel.c").read_bytes() == b"int k;\n"
+        assert (copied / "kernel.h").read_bytes() == b""
+    finally:
+        remove(scratch)
+
+
+def test_create_copies_an_empty_base(spec, parent, tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    scratch = Path(create(spec, parent=parent, base=empty))
+    try:
+        assert os.listdir(scratch / BASE_COPY_NAME) == []
+    finally:
+        remove(scratch)
+
+
+def test_create_refuses_a_missing_base(spec, parent, tmp_path):
+    with pytest.raises(ScratchError) as caught:
+        create(spec, parent=parent, base=tmp_path / "absent")
+    assert caught.value.failure == BASE_UNREADABLE
+    assert os.listdir(parent) == []
+
+
+def test_create_refuses_a_base_holding_a_directory(spec, parent, base):
+    (base / "nested").mkdir()
+    with pytest.raises(ScratchError) as caught:
+        create(spec, parent=parent, base=base)
+    assert caught.value.failure == BASE_UNREADABLE
+    assert os.listdir(parent) == []
+
+
+def test_create_refuses_a_bad_base_path(spec, parent):
+    with pytest.raises(InvalidScratchArgumentError):
+        create(spec, parent=parent, base="a\0b")
+
+
+def test_create_refuses_a_base_that_is_a_symbolic_link(spec, parent, base, tmp_path):
+    link = tmp_path / "linked"
+    symlink(link, base, directory=True)
+    with pytest.raises(ScratchError) as caught:
+        create(spec, parent=parent, base=link)
+    assert caught.value.failure == BASE_UNREADABLE
+    assert os.listdir(parent) == []
+
+
+def test_create_refuses_a_base_entry_that_is_a_symbolic_link(spec, parent, base):
+    symlink(base / "other.c", base / "kernel.c")
+    with pytest.raises(ScratchError) as caught:
+        create(spec, parent=parent, base=base)
+    assert caught.value.failure == BASE_UNREADABLE
+    assert os.listdir(parent) == []

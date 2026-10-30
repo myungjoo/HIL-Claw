@@ -605,3 +605,8 @@ def test_stub_docker_executable(tmp_path, monkeypatch):
     assert runtime.run(str(tmp_path), coder_model=MODEL) == 7
     assert log.read_text().splitlines() == ["run", TOKEN, "container"]
     assert coder_runtime.shutil.which("docker") == str(stub)
+
+
+def test_the_prompt_speaks_of_the_base_and_the_plain_baseline():
+    assert "feedback.base" in coder_runtime.PROMPT
+    assert "single-threaded" in coder_runtime.PROMPT

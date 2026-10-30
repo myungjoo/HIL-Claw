@@ -94,6 +94,7 @@ FAILURE_KINDS = (
     KIND_SPEC_UNSUPPORTED,
     KIND_NO_CONTAINER_RUNTIME,
     scratch.SPEC_CHANGED,
+    scratch.BASE_UNREADABLE,
     KIND_CODER_NOT_STARTED,
     KIND_CODER_NOT_ENDED,
     *bring_in.BRING_IN_FAILURES,
@@ -148,7 +149,9 @@ def call(request, *, source, runtime):
     another version; :data:`KIND_NO_CONTAINER_RUNTIME`. Nothing is created and
     the runtime is not run before this point; the read of ``instance.json``
     creates nothing either. Then the value of a
-    :class:`hilclaw.scratch.ScratchError`; :data:`KIND_CODER_NOT_STARTED`;
+    :class:`hilclaw.scratch.ScratchError`, ``base_unreadable`` among them when
+    the spec names a ``feedback.base`` whose ``output`` cannot be copied
+    into the scratch (ADR-0184 decision 3); :data:`KIND_CODER_NOT_STARTED`;
     :data:`KIND_CODER_NOT_ENDED` for a status other than 0, with no bring-in;
     the value of a :class:`hilclaw.bring_in.BringInError`;
     :data:`KIND_OUTPUT_EXISTS` for its :class:`hilclaw.bring_in.OutputExistsError`
@@ -181,15 +184,20 @@ def call(request, *, source, runtime):
     spec_path = layout.attempt_artefact(data_root, run_id, *numbers, "spec.json")
     output_path = layout.attempt_artefact(data_root, run_id, *numbers, "output")
     _refuse_existing_output(output_path)
-    _check_spec(data_root, spec_path, _read_spec(spec_path))
+    document = _check_spec(data_root, spec_path, _read_spec(spec_path))
     if not runtime.available():
         raise tools.ToolFailure(
             KIND_NO_CONTAINER_RUNTIME, "no container runtime is available"
         )
+    base = document["feedback"].get("base")
+    if base is not None:
+        numbers = base["round"], base["candidate"], base["attempt"]
+        base = layout.attempt_artefact(data_root, run_id, *numbers, "output")
     try:
-        scratch_root = scratch.create(spec_path, keep_out=(data_root,))
+        scratch_root = scratch.create(spec_path, keep_out=(data_root,), base=base)
     except scratch.ScratchError as e:
-        raise _fail(e.failure, "the spec file could not be copied") from e
+        copied = "base source" if e.failure == scratch.BASE_UNREADABLE else "spec file"
+        raise _fail(e.failure, f"the {copied} could not be copied") from e
     try:
         taken = _run_and_bring_in(runtime, scratch_root, coder_model, output_path)
     except tools.ToolFailure as e:
@@ -298,6 +306,7 @@ def _check_spec(data_root, spec_path, content):
         raise _fail(
             KIND_SPEC_INVALID, "the spec file's id is not the tuple of the request"
         )
+    return document
 
 
 def _run_and_bring_in(runtime, scratch_root, coder_model, output_path):
