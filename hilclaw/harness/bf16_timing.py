@@ -112,8 +112,9 @@ def run_bf16_timing(
     :func:`hilclaw.harness.bf16_rope_verification.start_position` for ``seed``
     as its standard input, built after those checks; a position whose rows the
     table cannot have raises :class:`hilclaw.harness.timing.TimingArgumentError`
-    before anything is started. The program's status for wrong input is a
-    ``Broken.EXIT_STATUS``.
+    before anything is started, and rows that cannot be allocated raise
+    :class:`MemoryError`, as for a check of ``rope``. The program's status for
+    wrong input is a ``Broken.EXIT_STATUS``.
     """
     arguments = program_arguments(
         kind, dims, n_max=n_max, sample_form=sample_form, seed=seed
