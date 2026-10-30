@@ -28,7 +28,9 @@ narrowed, builds and processes run with that earlier ``PATH`` as a container
 runs with its image's (clang 21 finds the linker on ``PATH``), and the waiter
 runs in a new user and PID namespace made by ``unshare`` where that works. Where it does not, the timing executable runs
 directly and the stub writes the waiter's last line from the host's figure
-for the child.
+for the child. A container started with ``--interactive`` gets the bytes the
+stub read from its own standard input, and the log holds them; any other
+container gets none.
 """
 
 import json
@@ -835,7 +837,7 @@ def _parsed_run(argv):
             break
     image, program, arguments = argv[index], argv[index + 1], argv[index + 2 :]
     mount = dict(part.split("=", 1) for part in options["--mount"][0].split(","))
-    return image, program, arguments, mount
+    return image, program, arguments, mount, "--interactive" in options
 
 
 def _coder(scenario, mount, program, entry):
@@ -860,7 +862,7 @@ def _host(path, source):
     return path
 
 
-def _standin(scenario, mount, program, arguments, entry):
+def _standin(scenario, mount, program, arguments, entry, given):
     source = mount["source"]
     mapped = [_host(argument, source) for argument in arguments]
     if program == "clang":
@@ -868,12 +870,17 @@ def _standin(scenario, mount, program, arguments, entry):
         command = [scenario["clang"], *mapped]
     elif program == "/build/waiter":
         entry["container"] = "timing"
-        return _timing(scenario, source, mapped, entry)
+        return _timing(scenario, source, mapped, entry, given)
     else:
         entry["container"] = "process"
         command = [_host(program, source), *mapped]
     done = subprocess.run(
-        command, cwd=source, env=_image_env(scenario), capture_output=True, check=False
+        command,
+        cwd=source,
+        env=_image_env(scenario),
+        input=given,
+        capture_output=True,
+        check=False,
     )
     sys.stdout.buffer.write(done.stdout)
     sys.stderr.buffer.write(done.stderr)
@@ -884,19 +891,23 @@ def _image_env(scenario):
     return {**os.environ, "PATH": scenario["image_path"]}
 
 
-def _timing(scenario, source, mapped, entry):
+def _timing(scenario, source, mapped, entry, given):
     unshare = scenario["unshare"]
     if unshare is not None:
         entry["waiter"] = "unshare"
         command = [unshare, *NAMESPACE, source + "/waiter", *mapped]
-        done = subprocess.run(command, cwd=source, capture_output=True, check=False)
+        done = subprocess.run(
+            command, cwd=source, input=given, capture_output=True, check=False
+        )
         sys.stdout.buffer.write(done.stdout)
         sys.stderr.buffer.write(done.stderr)
         return done.returncode
     import resource
 
     entry["waiter"] = "host_figure"
-    done = subprocess.run(mapped, cwd=source, capture_output=True, check=False)
+    done = subprocess.run(
+        mapped, cwd=source, input=given, capture_output=True, check=False
+    )
     figure = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     sys.stdout.buffer.write(done.stdout + b"\nwaiter_max_rss_kib %d\n" % figure)
     sys.stderr.buffer.write(done.stderr)
@@ -914,12 +925,14 @@ def docker(argv):
         elif argv[:2] == ["rm", "--force"] or argv[:3] == FORCED_REMOVAL:
             status = 0
         elif argv[:1] == ["run"]:
-            image, program, arguments, mount = _parsed_run(argv[1:])
+            image, program, arguments, mount, interactive = _parsed_run(argv[1:])
             entry["image"] = image
             if mount["target"] == "/scratch":
                 status = _coder(scenario, mount, program, entry)
             else:
-                status = _standin(scenario, mount, program, arguments, entry)
+                given = sys.stdin.buffer.read() if interactive else b""
+                entry["input"] = given.hex()
+                status = _standin(scenario, mount, program, arguments, entry, given)
         else:
             status = 125
     finally:

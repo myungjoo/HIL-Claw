@@ -269,11 +269,11 @@ def unshare_path():
 UNSHARE = unshare_path()
 
 
-def document(budget=1):
+def document(budget=1, op=OP, tolerance=None):
     return {
         "schema_version": 1,
         "hw_profile": {"key": keys.hw_profile_key(PROFILE).name, "record": PROFILE},
-        "op_signature": {"key": keys.op_signature_key(OP).name, "record": OP},
+        "op_signature": {"key": keys.op_signature_key(op).name, "record": op},
         "objective": {
             "objectives": [{"type": "latency_minimisation"}],
             "constraints": [],
@@ -281,7 +281,7 @@ def document(budget=1):
         "candidates_per_round": 1,
         "n_max": 6,
         "draws": 1,
-        "tolerance": {"rtol": 1e-4, "atol": 1e-5},
+        "tolerance": tolerance or {"rtol": 1e-4, "atol": 1e-5},
         "round_budget": budget,
     }
 
@@ -328,7 +328,9 @@ class World:
             check=True,
         ).stdout.decode()
 
-    def install(self, kernel=KERNEL, turns=({},), kernels=None, choices=None):
+    def install(
+        self, kernel=KERNEL, turns=({},), kernels=None, choices=None, name="gemm.c"
+    ):
         scenario = {
             "repo": str(REPOSITORY),
             "git": GIT,
@@ -338,9 +340,9 @@ class World:
             "docker_log": str(self.docker_log),
             "check": CHECK,
             "turns": list(turns),
-            "kernel": None if kernel is None else {"gemm.c": kernel},
+            "kernel": None if kernel is None else {name: kernel},
             "kernels": {
-                str(round_): None if text is None else {"gemm.c": text}
+                str(round_): None if text is None else {name: text}
                 for round_, text in (kernels or {}).items()
             },
             "choices": CHOICES if choices is None else choices,
@@ -871,9 +873,9 @@ def later_round(round_):
     ]
 
 
-def round_paths(world, run_id, round_):
+def round_paths(world, run_id, round_, op=OP):
     hw_key = keys.hw_profile_key(PROFILE).name
-    op_key = keys.op_signature_key(OP).name
+    op_key = keys.op_signature_key(op).name
     root = world.root
     spec_path = layout.attempt_artefact(root, run_id, round_, 1, 1, "spec.json")
     return {
@@ -884,8 +886,8 @@ def round_paths(world, run_id, round_):
     }
 
 
-def stored_round(world, run_id, round_):
-    paths = round_paths(world, run_id, round_)
+def stored_round(world, run_id, round_, op=OP):
+    paths = round_paths(world, run_id, round_, op)
     record = hypotheses_file.parse(paths["hypotheses"].read_bytes())
     hypotheses.validate(record)
     judged = verdicts_file.parse(paths["verdicts"].read_bytes())
