@@ -110,3 +110,4 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0231 follow-up — ADR-0184 결정 2의 "the median is the figure ADR-0140's comparison rests on"이 ADR-0007 결정 7의 T(trimmed mean)와 맞지 않아 보이는 점(executor 관찰, 미확인), ADR 문구 정리.
 - T-0284 follow-up — ADR-0089 결정 2 아래 POSIX `env` 키 거부를 S4 `settings_refused`로 확인하고 ADR-0094 결정 3의 열린 항목을 좁히는 문서 task, ADR 문구 정리.
 - T-0284 follow-up — `tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed`가 Windows 로컬에서 stderr의 `\r\n`으로 실패(executor 관찰, CI는 통과, clean main에서 재확인 안 함), 개발 머신 테스트 정리.
+- T-0286 follow-up — `local_run.run`의 이름 붙은 사전 오류 기록(OD-18 하위 질문 18 (ma), ADR-0088 계열)에 `env`의 `TypeError`를 포함하는 문서 정리.

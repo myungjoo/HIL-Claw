@@ -2,7 +2,7 @@
 id: T-0286
 title: Make `local_run.run` refuse, before the start, an `env` that is not `None` and has no `items` method, with a `TypeError` that carries `parameter` "env"
 phase: P1
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-10, OD-18, C-7]
 dependsOn: [T-0282]
@@ -71,90 +71,14 @@ Scope:
   - the order tests `test_the_time_limit_is_named_before_the_env` through `test_a_missing_program_comes_before_the_env` (lines 1123-1138);
   - `test_the_parameter_survives_pickling` (lines 1158-1178);
   - `test_the_env_is_named_before_the_cwd`, `test_the_cwd_is_checked_last` and `test_no_other_error_of_the_checks_has_a_path_role` (lines 1385-1420).
-- `PROCESS/tasks/T-0282-clang-build-refuses-an-env-without-items.md`: `## Acceptance Criteria` and `## Result` only. The change here has the same shape, in the other module.
+- `PROCESS/tasks/T-0282-clang-build-refuses-an-env-without-items.md`: `## Acceptance Criteria` and `## Result
 
-## Acceptance Criteria
-
-1. **Session entry check** (CLAUDE.md): run `gh pr list`. If an open PR touches `hilclaw/local_run.py` or `tests/test_local_run.py`, stop and return BLOCKED (open-PR conflict risk).
-2. **The change** is in `_check_env` of `hilclaw/local_run.py`, inside the existing `with _parameter("env"):` step:
-   - When `env` is not `None` and `getattr(env, "items", None)` is `None`, raise `TypeError`. It then carries `parameter` `"env"` through the existing context manager, and no `path_role`.
-   - The message names the type of `env` (with `type(env).__name__`) and never its value. Use the same text as `clang_build._check_env`: `env must be None or have an items method, not <type>`.
-   - `None` still inherits and is not refused.
-   - Nothing else changes:
-     - the checks of an `env` that has `items`;
-     - what is left to `subprocess` (the empty key, a key whose only `=` is its first character);
-     - the order of the checks. An earlier defect of `timeout_s` or `command`, and `ProgramNotFoundError`, still come first. The `env` error still comes before a `cwd` error. Nothing is started for it;
-     - `hilclaw/clang_build.py`, `hilclaw/harness/*` and every other module.
-3. **Docstring of `run`**, briefly and in the existing style:
-   - In the `env` paragraph, remove "an ``env`` that is not a mapping" from what is left to `subprocess`. Add a sentence saying that an `env` that is not `None` and has no `items` method is refused with `TypeError`, as `subprocess` has no single class for it (the class differs by platform and start path).
-   - Keep true the sentence "The check refuses nothing that one of the ways :mod:`subprocess` starts a process accepts". If the executor finds a start path that accepts some `env` with no `items` method, stop and report it as BLOCKED (requirement unclear); do not choose.
-   - Keep true the "What :mod:`subprocess` raises is passed on" paragraph ("what it raises for an ``env`` the check above leaves to it") and the `parameter` paragraph, which lists `"env"` already.
-   - Add no comments in code.
-4. **Permitted edits of existing tests.** Only these two existing tests in `tests/test_local_run.py` may be edited, replaced or removed:
-   - `test_an_env_that_is_not_a_mapping_keeps_its_class` (about lines 1078-1089, with its `parametrize` lines);
-   - `test_a_list_env_still_raises_attribute_error` (about lines 1092-1095).
-
-   Replace them with the new behaviour of criterion 5 (error), in place or under new names. Any other existing test that fails is a stop:
-   - do not edit it;
-   - return BLOCKED, with the test's name and the failing assertion in `## Result`.
-
-   `tests/test_clang_build.py` is not touched.
-5. **Tests** in `tests/test_local_run.py`, under CLAUDE.md test rules ①-④. Prove with `child.started` that no process was started.
-   - **error**: for each of `[("A", "x")]`, `5`, `"A=x"`, `b"A=x"`, `object()` and an object whose class sets `items = None`, `run` raises `TypeError` with `parameter == "env"`, no `path_role`, and nothing is started. Cover both wait paths (`platform_wait` `True` and `False`), as the neighbouring tests do.
-   - **message (negative)**: for an `env` such as `"SECRET=1"` (a `str`), the message names the type and does not contain `SECRET`.
-   - **branch / order**:
-     - with an `env` of no `items` and a refused `cwd` (for example `cwd=3`), the error carries `"env"`;
-     - with an `env` of no `items` and an earlier defect (`timeout_s=0`, and an empty `command`), the earlier error comes first, with its own `parameter`;
-     - with an `env` of no `items` and a missing program, `ProgramNotFoundError` comes first, with no `parameter`.
-   - **branch**: an object whose class sets `items = 3` (not callable) is still refused by calling it: `TypeError`, `parameter` `"env"`, as today. Assert what the code does.
-   - **pickling**: add a new test with the pattern of `test_the_parameter_survives_pickling` for one no-`items` `env`, so that the existing test stays unedited.
-   - **happy**: the existing tests of accepted envs, `None` inheriting and `UNCHANGED_ENVS` pass unchanged. Do not duplicate them.
-   - Do not add tests of test code, CI or hook scripts (rule ⑤).
-6. **Gates**:
-   - `pytest` and `ruff` (`ruff check`, `ruff format --check`) pass locally.
-   - The `hilclaw/` line and function coverage stays at or above 80%.
-   - CI is green before merge, on every Python version and platform it runs.
-7. **Code mode** (CLAUDE.md A-13):
-   - Work on branch `claude/T-0286-<slug>`.
-   - Open a Draft PR with `T-0286` in its title and `Task: T-0286` as the last line of its body.
-   - Run the reviewer cycle (dev-item-address steps 10-12) until Approve, within 7 rounds.
-   - Squash-merge with `gh pr merge --squash --body`, using the PR body.
-   - Delete the branch.
-8. **Size**: one non-test file changed, well under 300 changed lines excluding tests.
-9. **Result** records:
-   - the PR and the merge commit;
-   - the review rounds and their findings;
-   - the language line (Python, the existing module);
-   - the follow-ups.
-
-   The executor starts no `claude` program, real compiler or container (D16).
-
-## Out of Scope
-
-- Any edit of `ARCHITECTURE/` (ADRs, Requirements, OpenDecisionProposals, StandardScenarios). The record of `local_run.run`'s named errors waits for HQ-0027.
-- `hilclaw/clang_build.py` and `tests/test_clang_build.py` (open PR #179, HQ-0028).
-- An `env` that has `items` but that `subprocess` still refuses on some platform or start path, each left as it is:
-  - on native Windows, an object with `items` but no `keys` or `values`;
-  - the empty key;
-  - a key whose only `=` is its first character.
-- The other `local_run.run` follow-ups marked "after HQ-0027": the pre-start refusal of a `timeout_s` too long for the platform's wait (T-0271) and the message fix of `_check_timeout` (T-0272).
-- `hilclaw/harness/*`, including `timing_build.py` (waits on HQ-0021).
-- The unlanded branches `claude/T-0210-*`, `claude/T-0231-*` and `claude/T-0264-*`.
-- Any new value of `error.kind` or `condition`, any data-plane member, and any owner-only item (DRIVER §9).
-
-## Follow-ups
-
-- (doc, after HQ-0027) The OD-18 sub-question 18 part (ma) record on the named pre-start errors of `local_run.run` also covers this `TypeError` with `parameter` `"env"`, together with the T-0265 to T-0271 follow-ups.
-
-## Result
-
-- Outcome: BLOCKED (requirement unclear). No branch, commit or PR was created; `main` is unchanged by this task. HQ-0029.
-- Entry checks: `git log origin/main --grep='^Task: T-0286'` and `gh pr list --search T-0286 --state all` found nothing. The only open PR is #179 (`hilclaw/clang_build.py`, `tests/test_clang_build.py`), no overlap.
-- Why it stopped: criterion 3 says to stop if a `subprocess` start path accepts some `env` with no `items` method. Such a path exists:
-  - Native Windows (seen on the driver machine, Python 3.14.4): `subprocess.run([sys.executable, "-c", ...], env=KV(...))` started the child and passed the variable on (exit 0), where `KV` defines only `keys`, `values`, `__getitem__` and `__len__`. `local_run.run` takes this path on Windows (`_run_without_usage`, no `os.wait4`); the Windows start path reads the environment through `keys` and `values`.
-  - POSIX posix_spawn path (from reading the source, not run): `run` meets the conditions under which `subprocess` uses `os.posix_spawn` (absolute program, `cwd` None, DEVNULL stdin with pipes, `close_fds` where `_HAVE_POSIX_SPAWN_CLOSEFROM` holds); `env` is passed unchanged to `os.posix_spawn`, which reads it through `keys`/`values`. Only the fork/exec path calls `env.items()`.
-  - Refusing every non-`None` `env` without `items` would make the docstring sentence "The check refuses nothing that one of the ways :mod:`subprocess` starts a process accepts" false; the task says not to choose in that case.
-- Note: `clang_build.build` (T-0282, 4e05627) already refuses such a keys/values-only `env`; its docstring does not claim the sentence above, but it is still stricter than Windows `subprocess`. Outside this task's scope; raised in HQ-0029.
-- Review: 0 rounds. CI: not run.
-- Language: none chosen (no code written); it would have been Python, the existing module.
-- Follow-ups: re-plan T-0286 once HQ-0029 is answered; if the answer is (b) or (c), consider a matching change to `clang_build._check_env` when PR #179 / HQ-0028 allows.
+- Outcome: DONE. PR #337, squash-merged as e4e26d77; branch deleted. This replaces the earlier BLOCKED stop on HQ-0029.
+- Owner's answer (HQ-0029 (a), chat 2026-10-25) overrides criterion 3: every non-`None` `env` with no `items` is refused, including a keys/values-only object that native Windows or `posix_spawn` would accept. The docstring says so, and its "refuses nothing" sentence now covers only an `env` with `items`. The `posix_spawn` part comes from reading the source (earlier stop), not from a run. The keys/values refusal is tested.
+- Change: `_check_env` in `hilclaw/local_run.py` raises `TypeError` (`parameter` "env", no `path_role`) with the text of `clang_build._check_env`. The two tests criterion 4 permits were replaced; no other existing test or list assertion changed.
+- Review: 1 round, Approve; one nit (a 130-column docstring line), fixed without re-review (D20).
+- CI: green on the merged head (Python 3.11 and 3.14, coverage, C, sh, test presence). Local: `ruff` clean; full `pytest` on native Windows 1 failed, 36488 passed, 2375 skipped; `hilclaw/` line coverage 97%, function coverage from the CI gate.
+- The one local failure is unrelated and also fails on `origin/main`: `tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed` gets `\r\n` from the stand-in's stderr on Windows. No CI job runs on Windows.
+- Language: Python, the existing module.
+- Runtime acceptance items: none. No `claude`, compiler or container was started by this task.
+- Follow-ups: the doc record after HQ-0027 (see `## Follow-ups`); the Windows-only test above is already in the PLAN hold section.
