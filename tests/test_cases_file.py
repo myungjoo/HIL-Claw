@@ -1177,6 +1177,7 @@ def test_the_public_names():
         "final_name",
         "hypotheses",
         "json",
+        "json_text",
         "keys",
         "layout",
         "once_write",

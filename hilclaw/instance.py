@@ -633,7 +633,7 @@ import stat
 from pathlib import Path
 from typing import NamedTuple
 
-from hilclaw import keys, layout
+from hilclaw import json_text, keys, layout
 
 SCHEMA_VERSION = 1
 
@@ -849,7 +849,11 @@ def parse(content):
         raise InvalidInstanceError("content: starts with a byte order mark")
     try:
         text = content.decode("utf-8")
-        document = json.loads(text, object_pairs_hook=_object, parse_constant=_nan)
+        document = json.loads(
+            text,
+            object_pairs_hook=json_text.distinct_members,
+            parse_constant=json_text.no_constant,
+        )
     except RecursionError:
         raise InvalidInstanceError("content: is nested too deeply to parse") from None
     except ValueError as error:
@@ -1558,14 +1562,3 @@ def _coder_model(value):
         )
         _fail("coder_model", rule, value)
     return value
-
-
-def _object(pairs):
-    members = dict(pairs)
-    if len(members) != len(pairs):
-        raise ValueError("a JSON object repeats a member name")
-    return members
-
-
-def _nan(name):
-    raise ValueError(f"{name} is not a JSON value")

@@ -903,6 +903,7 @@ def test_the_public_names():
         "codecs",
         "final_name",
         "json",
+        "json_text",
         "keys",
         "layout",
         "once_write",

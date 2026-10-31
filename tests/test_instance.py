@@ -9309,6 +9309,7 @@ def test_the_module_imports_what_it_imported_before_and_nothing_more():
         "stat",
         "pathlib.Path",
         "typing.NamedTuple",
+        "hilclaw.json_text",
         "hilclaw.keys",
         "hilclaw.layout",
     }

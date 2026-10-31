@@ -168,10 +168,9 @@ import json
 import re
 from pathlib import Path
 
-from hilclaw import keys, layout, once_write, spec
+from hilclaw import json_text, keys, layout, once_write, spec
 
 _FREE = re.compile(r"ext|feedback\.attempts\[[0-9]+\]\.profile")
-_MINUS_ZERO = object()
 
 
 class InvalidSpecFileError(ValueError):
@@ -229,8 +228,12 @@ def parse(content):
         raise InvalidSpecFileError("content: starts with a byte order mark")
     try:
         text = content.decode("utf-8")
-        document = json.loads(text, object_pairs_hook=_object, parse_constant=_nan)
-        spelling = json.loads(text, parse_int=_literal)
+        document = json.loads(
+            text,
+            object_pairs_hook=json_text.distinct_members,
+            parse_constant=json_text.no_constant,
+        )
+        spelling = json.loads(text, parse_int=json_text.mark_minus_zero)
     except RecursionError:
         raise InvalidSpecFileError("content: is nested too deeply to parse") from None
     except ValueError as error:
@@ -249,7 +252,8 @@ def parse(content):
         spec.validate(document)
     except spec.InvalidSpecError as error:
         raise InvalidSpecFileError(str(error)) from error
-    _unsigned("", spelling)
+    for name, value in spelling.items():
+        _unsigned(name, value)
     return document
 
 
@@ -325,29 +329,5 @@ def write(data_root, content):
         raise NameTakenError(reason) from None
 
 
-def _object(pairs):
-    members = dict(pairs)
-    if len(members) != len(pairs):
-        raise ValueError("a JSON object repeats a member name")
-    return members
-
-
-def _nan(name):
-    raise ValueError(f"{name} is not a JSON value")
-
-
-def _literal(literal):
-    return _MINUS_ZERO if literal == "-0" else None
-
-
 def _unsigned(path, value):
-    if _FREE.fullmatch(path):
-        return
-    if value is _MINUS_ZERO:
-        raise InvalidSpecFileError(f"{path}: is written as -0, which is no integer")
-    if isinstance(value, dict):
-        for name, item in value.items():
-            _unsigned(f"{path}.{name}" if path else name, item)
-    elif isinstance(value, list):
-        for index, item in enumerate(value):
-            _unsigned(f"{path}[{index}]", item)
+    json_text.refuse_minus_zero(path, value, InvalidSpecFileError, _FREE.fullmatch)
