@@ -70,7 +70,9 @@ Choices left to the code slice (ADR-0140 decision 3), made here:
   after it is public, as :func:`compare`, and so is the rule of an admitted
   timing result, as :func:`timing_problem`, so that ``verdicts.write``
   (ADR-0140 decision 5) gives the same ``difference`` and kinds for the same
-  lines.
+  lines. The parts of :func:`compare` are public too, as :func:`timing_lines`,
+  :func:`measurement_problem` and :func:`difference_of`, so that
+  :mod:`hilclaw.s6_metric` applies the same rules across two runs.
 * The three ``outcome`` values are written here as ADR-0063 decision 2
   names them: :mod:`hilclaw.run_result` holds the same values and is imported
   by no other module of the package.
@@ -92,6 +94,7 @@ names of the tool layer and not reserved.
 """
 
 import reprlib
+from typing import NamedTuple
 
 from hilclaw import (
     check_identity,
@@ -329,26 +332,135 @@ def _numbers(ref):
     return ref["round"], ref["candidate"], ref["attempt"]
 
 
-def _measurement(file, side, ref, step, found):
-    entering, unknown = found
+class TimingLines(NamedTuple):
+    """What the lines say of one attempt at one point.
+
+    ``entering`` is M, the pairs ``(execution, result)`` in line order;
+    ``unknown`` is U, a ``set`` of executions; ``broken`` the executions of the
+    end lines with a ``"broken"`` result, in line order.
+    """
+
+    entering: list
+    unknown: set
+    broken: list
+
+
+def timing_lines(run_id, lines, point, inside):
+    """Return the :class:`TimingLines` of each attempt that ``inside`` admits, by the step-line pass of ADR-0140 decision 3.
+
+    ``lines`` are as :func:`compare` takes them. ``inside`` is called with the
+    tuple ``(round, candidate, attempt)`` of a line at the ``step`` of ``point``
+    that names an attempt. The result maps each admitted tuple with such a line
+    to its :class:`TimingLines`. Raises as :func:`compare` raises for the first
+    step line that fails, in line order, only admitted end lines being held to
+    :func:`timing_problem`, and :class:`KeyError` for another ``point``.
+    """
+    step = STEP_OF[point]
+    file = run_files.relative(run_id, checks_tool.LOG)
+    found = {}
+    started, ended = {}, set()
+    for number, event in enumerate(lines, 1):
+        if event["kind"] not in _STEP_KINDS:
+            continue
+        try:
+            identity = journal.identity_of(event)
+        except journal.JournalError as e:
+            message = f"{file}: line {number}: {e}"
+            raise tools.ToolFailure(tools.KIND_RUN_FILE_INVALID, message) from e
+        numbers = tuple(identity[2:5])
+        if identity.step != step or identity.attempt is None or not inside(numbers):
+            continue
+        held = found.setdefault(numbers, TimingLines([], set(), []))
+        if event["kind"] == journal.STEP_STARTED:
+            started.setdefault(identity, held)
+            continue
+        ended.add(identity)
+        data = event["data"]
+        if "failure" in data:
+            held.unknown.add(identity.execution)
+            continue
+        problem = _problem(data["result"])
+        if problem is not None:
+            raise tools.ToolFailure(
+                KIND_TIMING_RESULT_INVALID,
+                f"{file}: line {number}: data.result{problem}",
+            )
+        if data["result"]["outcome"] in _ENTERING:
+            held.entering.append((identity.execution, data["result"]))
+        else:
+            held.broken.append(identity.execution)
+    for identity, held in started.items():
+        if identity not in ended:
+            held.unknown.add(identity.execution)
+    return found
+
+
+def measurement_problem(held):
+    """Return the kind that keeps the :class:`TimingLines` ``held`` from one measurement, or ``None`` when it has one (ADR-0140 decision 3).
+
+    :data:`KIND_MEASUREMENT_SEVERAL` when M holds more than one line, else
+    :data:`KIND_MEASUREMENT_UNKNOWN` when U is not empty, else
+    :data:`KIND_MEASUREMENT_MISSING` when M is empty. With ``None``, the
+    measurement is ``held.entering[0]``.
+    """
+    if len(held.entering) > 1:
+        return KIND_MEASUREMENT_SEVERAL
+    if held.unknown:
+        return KIND_MEASUREMENT_UNKNOWN
+    if not held.entering:
+        return KIND_MEASUREMENT_MISSING
+    return None
+
+
+def _measurement(file, side, ref, step, held):
     named = "round {}, candidate {}, attempt {}".format(*_numbers(ref))
     where = f"{file}: {side} ({named}) at {step}"
-    if len(entering) > 1:
-        executions = ", ".join(str(execution) for execution, _ in entering)
+    kind = measurement_problem(held)
+    if kind == KIND_MEASUREMENT_SEVERAL:
+        executions = ", ".join(str(execution) for execution, _ in held.entering)
+        count = len(held.entering)
         raise tools.ToolFailure(
-            KIND_MEASUREMENT_SEVERAL,
-            f"{where}: has {len(entering)} measurements (executions {executions})",
+            kind, f"{where}: has {count} measurements (executions {executions})"
         )
-    if unknown:
+    if kind == KIND_MEASUREMENT_UNKNOWN:
         raise tools.ToolFailure(
-            KIND_MEASUREMENT_UNKNOWN,
-            f"{where}: has a failed or unfinished run (execution {min(unknown)})",
+            kind,
+            f"{where}: has a failed or unfinished run (execution {min(held.unknown)})",
         )
-    if not entering:
+    if kind == KIND_MEASUREMENT_MISSING:
+        raise tools.ToolFailure(kind, f"{where}: has no measurement")
+    return held.entering[0]
+
+
+def difference_of(file, measured, against):
+    """Return the ``difference`` of the two completed results ``measured`` and ``against`` (ADR-0140 decision 4; ADR-0183 decision 8).
+
+    ``measured`` is the result of B and ``against`` that of A of the ordered
+    pair, each admitted by :func:`timing_problem` with a ``"converged"`` or
+    ``"not_converged"`` outcome; they need not be of one run. ``file`` names
+    the source at the start of a message. Returns ``"lower"``, ``"higher"`` or
+    ``"not_different"``. Raises :class:`hilclaw.tools.ToolFailure` of kind
+    :data:`KIND_SHAPES_DIFFER` when their ``contract_key`` or ``shape``
+    differ, then :data:`KIND_SAMPLES_OUT_OF_DOMAIN` when
+    :func:`hilclaw.harness.measurement.ratio_interval` refuses their samples.
+    """
+    y, x = measured, against
+    if y["contract_key"] != x["contract_key"] or y["shape"] != x["shape"]:
         raise tools.ToolFailure(
-            KIND_MEASUREMENT_MISSING, f"{where}: has no measurement"
+            KIND_SHAPES_DIFFER,
+            f"{file}: measured has the contract {_about(y)}, against {_about(x)}",
         )
-    return entering[0]
+    try:
+        low, high = measurement.ratio_interval(x["intervals"], y["intervals"])
+    except measurement.InvalidSamplesError as e:
+        raise tools.ToolFailure(
+            KIND_SAMPLES_OUT_OF_DOMAIN, f"{file}: the samples cannot be compared: {e}"
+        ) from e
+    if high < 1 / (1 + measurement.DELTA):
+        return "lower"
+    if low > 1 + measurement.DELTA:
+        return "higher"
+    return "not_different"
 
 
 def compare(run_id, lines, metric, point, measured, against):
@@ -378,62 +490,15 @@ def compare(run_id, lines, metric, point, measured, against):
         raise ValueError("metric or point is not one the request admits")
     step = STEP_OF[point]
     file = run_files.relative(run_id, checks_tool.LOG)
-    sides = {_numbers(measured): "measured", _numbers(against): "against"}
-    found = {side: ([], set()) for side in _SIDES}
-    started, ended = {}, set()
-    for number, event in enumerate(lines, 1):
-        if event["kind"] not in _STEP_KINDS:
-            continue
-        try:
-            identity = journal.identity_of(event)
-        except journal.JournalError as e:
-            message = f"{file}: line {number}: {e}"
-            raise tools.ToolFailure(tools.KIND_RUN_FILE_INVALID, message) from e
-        side = sides.get(tuple(identity[2:5]))
-        if identity.step != step or side is None:
-            continue
-        if event["kind"] == journal.STEP_STARTED:
-            started.setdefault(identity, side)
-            continue
-        ended.add(identity)
-        data = event["data"]
-        entering, unknown = found[side]
-        if "failure" in data:
-            unknown.add(identity.execution)
-            continue
-        problem = _problem(data["result"])
-        if problem is not None:
-            raise tools.ToolFailure(
-                KIND_TIMING_RESULT_INVALID,
-                f"{file}: line {number}: data.result{problem}",
-            )
-        if data["result"]["outcome"] in _ENTERING:
-            entering.append((identity.execution, data["result"]))
-    for identity, side in started.items():
-        if identity not in ended:
-            found[side][1].add(identity.execution)
+    refs = (measured, against)
+    named = {_numbers(ref) for ref in refs}
+    found = timing_lines(run_id, lines, point, named.__contains__)
+    none = TimingLines([], set(), [])
     chosen = {
-        side: _measurement(file, side, ref, step, found[side])
-        for side, ref in zip(_SIDES, (measured, against))
+        side: _measurement(file, side, ref, step, found.get(_numbers(ref), none))
+        for side, ref in zip(_SIDES, refs)
     }
-    (_, y), (_, x) = chosen["measured"], chosen["against"]
-    if y["contract_key"] != x["contract_key"] or y["shape"] != x["shape"]:
-        raise tools.ToolFailure(
-            KIND_SHAPES_DIFFER,
-            f"{file}: measured has the contract {_about(y)}, against {_about(x)}",
-        )
-    try:
-        low, high = measurement.ratio_interval(x["intervals"], y["intervals"])
-    except measurement.InvalidSamplesError as e:
-        raise tools.ToolFailure(
-            KIND_SAMPLES_OUT_OF_DOMAIN, f"{file}: the samples cannot be compared: {e}"
-        ) from e
-    if high < 1 / (1 + measurement.DELTA):
-        difference = "lower"
-    elif low > 1 + measurement.DELTA:
-        difference = "higher"
-    else:
-        difference = "not_different"
+    difference = difference_of(file, chosen["measured"][1], chosen["against"][1])
     result = {"difference": difference}
     for side in _SIDES:
         execution, chosen_result = chosen[side]

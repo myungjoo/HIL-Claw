@@ -1046,3 +1046,89 @@ def test_the_default_registry_and_the_mcp_front_hold_the_tool(root):
     assert (held.description, held.input_schema) == (own.description, own.input_schema)
     assert mcp_front.mcp_names(registry)["timings_compare"] == "timings.compare"
     assert tools.call(registry, "timings.compare", request()) == answer("lower")
+
+
+def lines_of(root):
+    return checks_tool.log_lines(root, RUN)
+
+
+def test_timing_lines_gives_each_admitted_attempt_its_sets(root):
+    run(root, MEASURED, result=timing(intervals=SLOW))
+    run(root, MEASURED, execution=2, result=broken())
+    run(root, MEASURED, execution=3, failure=FAILED)
+    start(root, MEASURED, execution=4)
+    run(root, AGAINST, result=timing(intervals=FAST))
+    run(root, MEASURED, step=SIM, result=timing(intervals=FAST))
+    found = timings_tool.timing_lines(RUN, lines_of(root), "board", lambda n: n[0] == 1)
+    assert list(found) == [(1, 1, 1)]
+    held = found[(1, 1, 1)]
+    assert [execution for execution, _ in held.entering] == [1]
+    assert held.broken == [2]
+    assert held.unknown == {3, 4}
+
+
+def test_timing_lines_holds_only_admitted_end_lines_to_the_form(root):
+    run(root, AGAINST, result={"outcome": "nonsense"})
+    run(root, MEASURED, result=timing(intervals=SLOW))
+    lines = lines_of(root)
+    found = timings_tool.timing_lines(RUN, lines, "board", lambda n: n[0] == 1)
+    assert list(found) == [(1, 1, 1)]
+    with pytest.raises(ToolFailure) as e:
+        timings_tool.timing_lines(RUN, lines, "board", lambda n: True)
+    assert e.value.kind == timings_tool.KIND_TIMING_RESULT_INVALID
+
+
+def test_timing_lines_refuses_a_damaged_step_line_of_any_attempt(root):
+    raw(root, line({"step": BOARD}))
+    with pytest.raises(ToolFailure) as e:
+        timings_tool.timing_lines(RUN, lines_of(root), "board", lambda n: False)
+    assert e.value.kind == "run_file_invalid"
+
+
+def test_timing_lines_passes_over_a_step_line_that_names_no_attempt(root):
+    data = {"step": BOARD, "execution": 1}
+    events.append(root, RUN, journal.STEP_STARTED, data)
+    assert timings_tool.timing_lines(RUN, lines_of(root), "board", lambda n: True) == {}
+
+
+def test_timing_lines_refuses_another_point():
+    with pytest.raises(KeyError):
+        timings_tool.timing_lines(RUN, [], "elsewhere", lambda n: True)
+
+
+@pytest.mark.parametrize(
+    "entering, unknown, kind",
+    [
+        ([(1, {}), (2, {})], {3}, timings_tool.KIND_MEASUREMENT_SEVERAL),
+        ([(1, {})], {3}, timings_tool.KIND_MEASUREMENT_UNKNOWN),
+        ([], {3}, timings_tool.KIND_MEASUREMENT_UNKNOWN),
+        ([], set(), timings_tool.KIND_MEASUREMENT_MISSING),
+        ([(1, {})], set(), None),
+    ],
+)
+def test_measurement_problem_names_the_first_that_holds(entering, unknown, kind):
+    held = timings_tool.TimingLines(entering, unknown, [])
+    assert timings_tool.measurement_problem(held) == kind
+
+
+@pytest.mark.parametrize(
+    "measured, against, difference",
+    [(FAST, SLOW, "lower"), (SLOW, FAST, "higher"), (SLOW, CLOSE, "not_different")],
+)
+def test_difference_of_gives_the_rule_for_two_results(measured, against, difference):
+    given = timings_tool.difference_of(
+        "f", timing(intervals=measured), timing(intervals=against)
+    )
+    assert given == difference
+
+
+def test_difference_of_refuses_two_shapes():
+    with pytest.raises(ToolFailure) as e:
+        timings_tool.difference_of("f", timing(m=2), timing(m=4))
+    assert e.value.kind == timings_tool.KIND_SHAPES_DIFFER
+
+
+def test_difference_of_refuses_samples_outside_the_domain():
+    with pytest.raises(ToolFailure) as e:
+        timings_tool.difference_of("f", timing(intervals=[10**320] * 5), timing())
+    assert e.value.kind == timings_tool.KIND_SAMPLES_OUT_OF_DOMAIN

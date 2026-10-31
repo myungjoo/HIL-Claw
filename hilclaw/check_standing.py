@@ -53,8 +53,8 @@ What the module does not do: it decides nothing of the second part of OD-18
 sub-question ⑭ (what keeps a caller from asking for a further check). It
 appends no line and reads no file. Its consumers are the tool ``checks.read``
 (:mod:`hilclaw.checks_tool`, ADR-0131 decision 3), which folds the standing
-into its read of a run's log, ``verdicts.write`` and
-:mod:`hilclaw.spec_feedback`. It merges no two
+into its read of a run's log, ``verdicts.write``,
+:mod:`hilclaw.spec_feedback` and :mod:`hilclaw.s6_metric`. It merges no two
 points, judges no result again and sorts no result by cause. It does not
 check that the run is one of the first case or one whose hw_profile names the
 mock: that scope is the caller's (decision 1).
