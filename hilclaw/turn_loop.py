@@ -152,9 +152,9 @@ OD-14's.
   ``${CLAUDE_PLUGIN_DATA}``) is refused, since the hooks would read another
   root than the server's; a directory holding this package or an absolute path
   of the interpreter that holds one is refused too, since the hooks would load
-  another package or start another program. The text is built once per loop, as the server
-  configuration is, and written with exclusive creation in every turn. A
-  missing ``.claude`` is made as a plain directory.
+  another package or start another program. The text is built once per loop,
+  as the server configuration is, and written with exclusive creation in every
+  turn. A missing ``.claude`` is made as a plain directory.
 - *The prompt* is one line of ASCII letters, digits, spaces, ``.``, ``,``,
   ``_`` and ``-``, not beginning with ``-``: on Windows the ``claude`` found
   may be a command script, whose arguments pass through the command
@@ -172,8 +172,8 @@ raised before any other argument but the two callables is checked;
 :class:`ValueError` with a fixed text for a refused place, also before a later
 turn; :class:`ValueError` with a fixed text for a ``data_root`` holding a path
 placeholder, and with another for such a directory of this package or path of
-the interpreter; :class:`RuntimeError` when the interpreter does not know its own
-path;
+the interpreter; :class:`RuntimeError` when the interpreter does not know its
+own path;
 :class:`TypeError` for an answer of ``further_turn`` that is not a ``bool``;
 :class:`ValueError` when ``put_definition`` made :data:`CONFIG_FILE`;
 :class:`ValueError` with a fixed text when the session directory's
