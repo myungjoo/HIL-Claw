@@ -2,7 +2,7 @@
 id: T-0524
 title: Move the repeated JSON text helpers of the file modules into hilclaw/json_text.py with no change of behaviour (replan of T-0225)
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [HQ-0080, FR-13, "ADR-0029", "ADR-0059", "ADR-0071", "ADR-0072"]
 dependsOn: [T-0523]
