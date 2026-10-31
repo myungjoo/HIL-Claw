@@ -71,3 +71,17 @@ Both groups.
 ## Follow-ups
 
 ## Result
+
+- **Outcome**: landed on `main` in document mode, in the commit that holds this text (subject `T-0525: ...`; the driver records the SHA). 1 review round, Approve, by a context-isolated `dev-reviewer`. Nits 2 to 4 of that round were fixed afterwards without another round (D20).
+- **Group E**: criteria 1 to 5 done as written. ADR-0121, ADR-0124 and ADR-0137 are each linked once in the changed section or row. No environment variable name is cited in UC-1 or the README. The OD-28 status word is unchanged.
+- **Group F, claims found right and corrected**:
+  - ADR-0135 decision 5: the citation now follows ADR-0133 decision 4's own reasons. Added "Both hold here too", which the corrected reasons need so that the following sentence still reads as the answer.
+  - ADR-0135 "The cost, plainly": the damaged log line added.
+  - ADR-0147 decision 4: ADR-0018 decision 2 does hold the rule ("Members this record does not define"). The ADR-0012 citation stays for `STATE.json`; ADR-0018 was added to References.
+  - ADR-0158 decision 9: narrowed. The sentence as written holds for any value set, a little more than the criterion's "of the value range the decision states": the smallest square of a row holds at most 1/n of the sum, about 0.024 % of the root mean square at n = 2048, against half a unit in the last place of at least about 0.2 %.
+  - ADR-0163 decision 7: 2^(e−8) / (2^e + 2^(e−8)) = 1/257, reached at a tie just above 2^e. The value just below 2^e gives about 1/511. The "at least 2^e" clause was corrected with it.
+  - ADR-0163 Alternatives row 4: `bits = (word & 1) << 31 | 126 << 23 | word >> 41`, so only the magnitude comes from `word >> 41`.
+- **Left unchanged, found right**: ADR-0135 memo on checks ③ and ④ was not added, as the criterion allows. Decision 2's table already heads them "Checks, in order", and `hilclaw/round_end_tool.py` follows that order.
+- **Coverage recheck**: S0, S1, S2 and S8, no verdict change, no gap. "최근 재검사" updated in place; no history entry.
+- **No decision made, no question closed**, no §9 notice needed. **Runtime acceptance items**: none new.
+- **Follow-up for the driver, not done (out of scope)**: `ARCHITECTURE/decisions/ADR-0164-od31-bf16-rope-verification-run.md` line 91 cites "the 2^−8 of ADR-0163 decision 7", which now reads 1/257 there. A wording line for the PLAN hold section if wanted.

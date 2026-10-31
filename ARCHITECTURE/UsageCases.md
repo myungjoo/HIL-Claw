@@ -68,7 +68,7 @@
 
 ## UC-1. Loop instance 정의·실행
 - **액터**: 배포 엔지니어 / CI
-- **선행조건**: 대상 HW(hw_profile)와 모델, 사용 가능한 sim/board 도구가 등록되어 있음(→ UC-0, Requirements FR-14 ④). instance를 실행하는 머신에서 런타임 사용자의 Claude Code 명령줄(`claude`)이 로그인되어 있음(UC-0이 만드는 조건이 아니다; Requirements C-7 ②·③의 파생 — [오너 답변 HQ-0006](https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6135246858), [ADR-0054](decisions/ADR-0054-od18-runtime-self-check.md)).
+- **선행조건**: 대상 HW(hw_profile)와 모델, 사용 가능한 sim/board 도구가 등록되어 있음(→ UC-0, Requirements FR-14 ④). instance를 실행하는 머신에서 런타임 사용자의 Claude Code 명령줄(`claude`)이 로그인되어 있음(UC-0이 만드는 조건이 아니다; Requirements C-7 ②·③의 파생 — [오너 답변 HQ-0006](https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6135246858), [ADR-0054](decisions/ADR-0054-od18-runtime-self-check.md)). 첫 사례의 코더 호출에는 [ADR-0137](decisions/ADR-0137-od23-first-case-coder-process-start.md) 결정 4·5의 이미지와 토큰도 필요하다.
 - **주 흐름**
   1. 사용자가 *(HW + 모델 + 최적화 target type + (선택) budget + (선택) gate 구성 + autonomy 모드 + 라운드당 후보 수 N + (선택) 참고 사례·자료 + (선택) 주입할 가설)* 를 지정해 instance를 시작한다.
   2. 시스템이 instance용 작업공간(데이터 plane의 `runs/<run_id>/` 또는 Phase 2 DB 레코드)을 만들고 STATE를 초기화한다.

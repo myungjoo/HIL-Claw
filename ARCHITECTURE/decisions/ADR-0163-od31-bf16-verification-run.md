@@ -114,7 +114,7 @@ A sentence marked **owner** renders an HQ answer through the record named. A sen
 - **Owner** (HQ-0066 (2), through ADR-0154 decision 3; the predicate of HQ-0004 (2), through ADR-0017 decision 5): element-wise `rtol` and `atol`, instance parameters; an element passes iff |out − ref| ≤ atol + rtol·|ref|; any NaN or infinity in the output fails.
 - As ADR-0017 decision 5 (cited): on the Python side, in float64, on the widened output; neither `rtol` nor `atol` is passed to the program; each must be finite and not negative, and anything else is refused before a process is started; the reference's own rounding is not accounted for.
 - **For whoever sets a tolerance** (no value and no default):
-  - **Every kind**: a correctly rounded bf16 output differs from the exact value by up to a relative 2^−8 (half a unit in the last place, 2^(e−8), against a value of at least 2^e; computed), so an `rtol` below that, with `atol` too small to cover it, can fail a conforming kernel.
+  - **Every kind**: a correctly rounded bf16 output differs from the exact value by up to a relative 1/257 (half a unit in the last place, 2^(e−8), against an exact value of at least 2^e + 2^(e−8), the smallest that lies so far from a bf16 value; computed), so an `rtol` below that, with `atol` too small to cover it, can fail a conforming kernel.
   - **`gemm`**: the drawn signs are mixed, so an element can lie close to zero while the fp32 accumulation error does not shrink with it; ADR-0017 decision 5's observation that a tolerance with `atol` = 0 can fail a conforming kernel holds here too. A term left out or counted twice moves the exact element by at least 0.25 (ADR-0156 decision 9).
   - **`rmsnorm`**: every exact output has a magnitude between 0.25 and 2, so no element cancels (ADR-0158 decision 9).
   - **`elementwise_add`**: a correct kernel differs from the reference by 0 on three quarters of the pairs and by exactly 2^−8 on the ties, a relative 1/257 at most, and the reference is exactly 0 where b = −a (ADR-0159 decision 10).
@@ -171,7 +171,7 @@ A sentence marked **owner** renders an HQ answer through the record named. A sen
 | 2 | Extend the first case's program to bf16 | Changes ADR-0017's program and the first case. |
 | 3 | `eps` as an argument | No caller has another value (ADR-0158 decision 9); it needs a text-to-float conversion in the program; another value is a change of the value set. |
 | 4 | Draw a binary32 value and round it to bf16 | Can reach 1.0, outside the set (ADR-0156 decision 9). |
-| 4 | Index by `word mod size` or by the low bits | Equal in distribution and cost for a power of two; the top bits are the field the first case's construction already takes its values from (`word >> 41`). |
+| 4 | Index by `word mod size` or by the low bits | Equal in distribution and cost for a power of two; the top bits are the field the first case's construction already takes its magnitudes from (`word >> 41`). |
 | 4 | Related operands (b = −a on a share of elements, or one word for both operands) | Constructs corner cases (#5 B-7); independent draws already give cancellation at 1/256 and match the pair sets the contract records computed over. |
 | 5 | Output left as allocated, or filled with zero | Stale memory or a value that can equal the reference (add at b = −a, `gemm` near zero) would hide an unwritten element. |
 | 6 | Reference `eps` = 1e-05 | Not the value of the call (ADR-0158 decision 5); the difference is negligible, so nothing argues for it. |
