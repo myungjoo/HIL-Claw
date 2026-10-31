@@ -535,3 +535,11 @@
 - 내용:
 
   on each kind of machine of C-7 with Docker, whether a process inside a timing process container, of the waiter's user, can change the waiter's resource limits with `prlimit(2)`, and whether a call so changed, a lowered `RLIMIT_CPU` hard limit among them, ends in anything other than `exit_status` for a stream with no waiter's line and a non-zero status; in particular that it never gives a stream with no waiter's line and status 0.
+
+### RA-0061
+
+- 상태: 미확인
+- 출처: T-0527, ADR-0182 (등록 2026-10-31)
+- 내용:
+
+  On each kind of machine of C-7 with Docker and an image the user names: in the containers of ADR-0182 decision 2, the image links `model_program.c` (with `-DHILCLAW_MODEL_BF16` for bf16, and with `-ldl` where its C library needs it), and the program loads the kernels' shared libraries with `dlopen` by their paths below `/build` and finds each entry point with `dlsym`. This narrows ADR-0182 runtime acceptance item (1) to this program. Closed by the owner by hand or by the runtime's own self-check, never by a driver task.

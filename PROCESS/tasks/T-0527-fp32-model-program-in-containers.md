@@ -2,7 +2,7 @@
 id: T-0527
 title: Build and run the model program of hilclaw.model_execute in ADR-0144 containers (ADR-0182 code slice 3, HQ-0080 group D)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [HQ-0080, OD-14, OD-31, NFR-4]
 dependsOn: [T-0526]
@@ -84,3 +84,11 @@ ADR-0182 decision 2 requires every generation of a kernel an instance or a coder
 ## Follow-ups
 
 ## Result
+
+- PR #345, squash-merged as 844c9ddc; branch deleted. 1 review round, Approve; the reviewer's one Nit (a `model_gemm` docstring sentence) fixed in f4e05a3d after Approve, no re-review (D20).
+- CI green on the final commit (C, sh, test presence, coverage, Python 3.11 and 3.14). Touched modules at 100 % line coverage.
+- Language: Python, as the sibling executor paths `model_execute` and `model_forward_container`.
+- Pinned assertion changed (D21): `tests/test_model_gemm.py::test_public_names_and_fields` (`model_container` import, `run_in_containers` name).
+- Beyond the criteria, stated in the PR body: `model_container.execute` refuses malformed kernel `sources`, `flags`, `headers` or a missing source before anything is made. Private helpers extracted from `model_forward_container` (outside `touchesFiles`, allowed by criterion 9) and `model_execute`, behaviour unchanged.
+- Runtime acceptance item: RA added in `PROCESS/RuntimeAcceptance.md` (source T-0527, ADR-0182).
+- Follow-ups: none.
