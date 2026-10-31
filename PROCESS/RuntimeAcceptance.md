@@ -543,3 +543,27 @@
 - 내용:
 
   On each kind of machine of C-7 with Docker and an image the user names: in the containers of ADR-0182 decision 2, the image links `model_program.c` (with `-DHILCLAW_MODEL_BF16` for bf16, and with `-ldl` where its C library needs it), and the program loads the kernels' shared libraries with `dlopen` by their paths below `/build` and finds each entry point with `dlsym`. This narrows ADR-0182 runtime acceptance item (1) to this program. Closed by the owner by hand or by the runtime's own self-check, never by a driver task.
+
+### RA-0062
+
+- 상태: 미확인
+- 출처: T-0528, ADR-0191 (등록 2026-10-31)
+- 내용:
+
+  `hilclaw.model_files.read` accepts the directory the owner obtains: its tensor names and shapes are those of decision 3, with no extra tensor, and its `config.json` gives the members of decision 7 with `rope_type` `llama3` and `factor` 32.
+
+### RA-0063
+
+- 상태: 미확인
+- 출처: T-0528, ADR-0191 (등록 2026-10-31)
+- 내용:
+
+  Every tensor of that file is stored as `BF16`; another stored dtype is refused and needs an owner answer on the conversion (decision 6).
+
+### RA-0064
+
+- 상태: 미확인
+- 출처: T-0528, ADR-0191 (등록 2026-10-31)
+- 내용:
+
+  That file's Q and K are in the arrangement of decision 4: the logit comparison against transformers shows only that reader and reference agree, so the owner also sees that the generated text makes sense.

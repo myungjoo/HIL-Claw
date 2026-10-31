@@ -2,7 +2,7 @@
 id: T-0528
 title: Read a Hugging Face Llama model directory into the executor's dimensions, constants and bf16 weights (HQ-0084, OD-31 sub-questions 5 and 7)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-31, C-6, FR-9, FR-10, "PLAN P2-15", "HQ-0084", D26]
 dependsOn: []
@@ -81,3 +81,14 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+PR #346, squash-merged as 21f5cec7 (code mode, 2 review rounds, Approve, CI green). No BLOCKED, no HQ. Section 9 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6540391360 (7-day window from 2026-10-31).
+
+- Language: Python. The reader feeds NumPy inputs and needs nothing beyond NumPy, and HQ-0084 (3) keeps packages out of CI.
+- Reader: own safetensors reader on the standard library and NumPy; `pyproject.toml` and CI unchanged.
+- Q and K: the inverse of `permute` is applied on the output axis, with H for Q and H_kv for K, before the transpose and join; V is untouched. The file has no mark of its arrangement and transformers defines these names as half-split, so the reader matches the P2-15 reference however the file was made. A file written with Meta's order under these names would pass the logit comparison and still be wrong (RA-0064).
+- Edited assertion (D21): `tests/test_rope_table.py::test_the_module_is_named_only_by_its_known_callers` gains `model_files.py`.
+- Size: 589 non-blank added lines outside tests, about 710 with blank lines. DRIVER section 5 does not say whether blank lines count against the 600 cap; the PR body states both counts.
+- Coverage: `hilclaw/model_files.py` line coverage 100% locally on the review-fix commit.
+- Runtime acceptance items: RA-0062, RA-0063, RA-0064.
+- Follow-ups: none. The tokenizer, `transformers` reference and command line stay with T-0529, the owner's steps with T-0530.
