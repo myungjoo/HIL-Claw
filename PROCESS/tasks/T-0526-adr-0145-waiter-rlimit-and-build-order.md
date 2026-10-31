@@ -62,3 +62,12 @@ All edits are to ADR-0145, in place. They are corrections to this record, not a 
 ## Follow-ups
 
 ## Result
+
+ADR-0145 corrected in place: new fact F10, decisions 3, 5 and 6, Consequences item (liii), Boundaries and References.
+
+- Criterion 2: `prlimit(2)` is a route to the waiter's limits; `PR_SET_DUMPABLE` is not shown to close it. The man page's rule names no dumpable attribute. `RLIMIT_CPU` is the limit the reading shows may end the waiter (`SIGKILL` at the hard limit). All marked as this record's reading, not observed.
+- Criterion 3: the reading shows no way through a limit to no waiter's line with status 0, so nothing is named here as a new case of the stream ADR-0168 decision 4 leaves open.
+- Criterion 5: `hilclaw/standin_run.py` `_build` matches ADR-0168 C19 and ADR-0170 decision 3, R1 and R6.
+- Follow-up named by the reading: none. The harm stays bounded, so the waiter need not defend itself on this ground.
+
+**Runtime acceptance item** (for `PROCESS/RuntimeAcceptance.md`; source T-0526, ADR-0145 item (liii), D22): on each kind of machine of C-7 with Docker, whether a process inside a timing process container, of the waiter's user, can change the waiter's resource limits with `prlimit(2)`, and whether a call so changed, a lowered `RLIMIT_CPU` hard limit among them, ends in anything other than `exit_status` for a stream with no waiter's line and a non-zero status; in particular that it never gives a stream with no waiter's line and status 0.
