@@ -2,7 +2,7 @@
 id: T-0521
 title: Harden the hook start, turn-session setup and commit failure paths (HQ-0080 group C)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [HQ-0080, OD-18, OD-8, FR-11, NFR-4]
 dependsOn: []
@@ -83,3 +83,10 @@ These fit the decided rules (ADR-0146 decision 5: a fault of the program refuses
 ## Follow-ups
 
 ## Result
+- PR #341 squash-merged as 77db895c (code mode, Task trailer kept, branch deleted). 1 review round, Approve; the one Nit (a docstring reflow in `turn_loop.py`) was fixed after the Approve with no re-review (D20).
+- Language: Python, because all changed code is existing Python layer-2 modules.
+- CI: all six jobs of run 41154416421 green on the final head 3eef8c4e. Local (Windows, Python 3.14) at 745631c7: 37072 passed, 2063 skipped, ruff clean; the only later change is the reflow. Coverage: `hilclaw/` 99%; `caller_check`, `budget_check`, `turn_loop` 100%, `run_commit` 98%. `tests/test_turn_loop.py` needed `--basetemp` outside the default temp directory on this machine, and 3 of its symlink tests skip there.
+- Criteria 1-6 implemented. Criterion 7: T-0379 and ADR-0078 slice 4 (T-0243) were already in the code; confirmed, no test added. Criterion 8: the only changed existing test is the one the task requires. New public names: `turn_loop.LOCAL_SETTINGS_FILE`, `run_commit.INDEX_NOT_UPDATED`.
+- ARCHITECTURE sentences now less exact, not edited: ADR-0146 decision 5 (an import failure now exits 2 by itself) and decision 4 (a `settings.local.json` is now refused too).
+- Known limit, inferred and not run: an interpreter with no usable `sys.stderr` probably exits 1 from the `excepthook`; `onFailure: "block"` remains the backstop (ADR-0146 (lix)).
+- Follow-ups: none. New runtime acceptance items: none. New HQ: none.
