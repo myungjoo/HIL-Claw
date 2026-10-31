@@ -89,6 +89,4 @@ One ASCII JSON line with `outcome`, as ADR-0155 decision 5 does. Each kind has i
 ## References
 
 - Owner: HQ-0084, HQ-0071 in `PROCESS/STATE.json`; [Requirements](../Requirements.md) C-6, FR-9, FR-10, OD-31; [OpenDecisionProposals](../OpenDecisionProposals.md) § OD-31; [RuntimeAcceptance](../../PROCESS/RuntimeAcceptance.md) RA-0035, RA-0050, RA-0056, RA-0058, RA-0061.
-- Upstream, read through `gh api`, at the commit of Context.
 - Code: `hilclaw/model_check.py`, `hilclaw/model_hf_reference.py`; read: `hilclaw/new_run.py`, `hilclaw/model_forward_container.py`, `hilclaw/model_run_binding.py`, `hilclaw/model_reference.py`, `hilclaw/model_files.py`.
-- Process: [PROCESS/DRIVER.md](../../PROCESS/DRIVER.md) §6 D26, §8, §9; [PROCESS/PLAN.md](../../PROCESS/PLAN.md) P2-15.

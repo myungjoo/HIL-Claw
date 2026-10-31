@@ -44,10 +44,10 @@ names the kind:
 ``container_unavailable``  30      ``reason``, ``removed``
 ``build_failed``           31      ``kernel``, ``returncode``, ``timed_out``, ``log``, ``removed``
 ``run_failed``             32      ``failed``, ``returncode``, ``stderr``, ``removed``
-``bad_report``             36      ``reason``, ``removed``
 ``copy_failed``            33      ``reason``
 ``file_system``            34      ``reason``
 ``reference_failed``       35      ``reason``, ``detail``
+``bad_report``             36      ``reason``, ``removed``
 =========================  ======  ==========================================
 
 For ``model_file`` ``reason`` is a constant of :mod:`hilclaw.model_files`; for

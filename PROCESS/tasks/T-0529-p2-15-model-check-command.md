@@ -86,3 +86,34 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+PR #347, code mode, 2 review rounds, Approve. The merge commit and the section 9 notice on #5 (7-day window) follow landing; the driver records them.
+
+- Language: Python. It joins Python modules, and `transformers` is a Python package.
+- Reference: `LlamaForCausalLM.from_pretrained(directory, dtype=torch.float64, attn_implementation="eager", use_safetensors=True, local_files_only=True, trust_remote_code=False)`; logits of another dtype are refused. Upstream keeps RMSNorm, RoPE and the eager softmax at float32 whatever the dtype, so the reference is not float64-exact (ADR-0192 decision 2).
+- Tokenizer: `PreTrainedTokenizerFast` with special tokens added and no chat template. Greedy: an explicit loop of N whole passes.
+- Added beyond the task's list: `bad_report` (a report whose prompt echo or token ids the program could not have made, from review round 1), and `refused_parent`, `copy_failed`, `file_system`, `fault` for what the steps raise. `model_file` and `run_binding` are one kind each, with the constant in `reason`.
+- OD-31 (5) is also marked answered: its last open part was the tokenizer's reading.
+- Edited assertions (D21): none.
+- Size: 599 non-blank added lines outside tests, in the task's cap.
+- Coverage: `hilclaw/model_check.py` 99%, `hilclaw/model_hf_reference.py` 100% locally. Local full suite before the review fixes: 36968 passed, 2388 skipped.
+- Runtime acceptance items: the three of ADR-0192 Consequences.
+
+**Command, for T-0530:** `python -m hilclaw.model_check check.json`, with `HILCLAW_STANDIN_IMAGE` naming the image and the data root configured as for `hilclaw.new_run`. The packages `transformers` and `torch` are the runtime machine's. Every value below is a placeholder of the user's; the example chooses none, and `runs` must name all fifteen call sites of `hilclaw.model_forward_run.CALL_SITES`:
+
+```json
+{
+  "model_directory": "/path/to/llama-3.2-1b",
+  "runs": {"qkv": "<run id>", "attention_norm": "<run id>", "...": "<the other thirteen call sites>"},
+  "flags": ["<the build settings of those runs>"],
+  "prompt": "<text>",
+  "n": 0,
+  "rtol": 0,
+  "atol": 0,
+  "build_timeout_s": 0,
+  "run_timeout_s": 0,
+  "program_flags": ["<flag>"],
+  "program_trailing_flags": ["<flag, such as -ldl where the C library needs it>"],
+  "parent": "<optional: a directory outside the checkout, the model directory and the data root>"
+}
+```

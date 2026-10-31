@@ -40,8 +40,10 @@ REASONS = (
     WRONG_SHAPE,
     NAN_ROW,
 )
+"""Every ``reason`` of :class:`HfReferenceError`."""
 
 PACKAGES = ("torch", "transformers")
+"""The optional packages, in the order they are looked for."""
 
 
 class HfReferenceError(Exception):
