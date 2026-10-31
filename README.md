@@ -80,7 +80,7 @@ python -m ruff format --check .
 실제 Llama 3.2 1B 가중치로 end-to-end가 reference와 맞는지를 오너가 런타임 머신에서 손으로 확인하는 순서다([PROCESS/PLAN.md](PROCESS/PLAN.md) P2-15, [RuntimeAcceptance.md](PROCESS/RuntimeAcceptance.md) RA-0056). 아래의 `<...>`는 모두 오너가 정할 값이며 저장소는 그 값을 고르지 않는다. 그대로 두면 명령이 거절한다.
 
 1. **머신**: [PROCESS/NIGHTLY.md](PROCESS/NIGHTLY.md) §1의 "머신 준비"(POSIX 호스트 또는 WSL 2, 로그인된 `claude`, Docker, 코더·stand-in 이미지, `HILCLAW_CODER_IMAGE`·`HILCLAW_STANDIN_IMAGE`·`HILCLAW_CODER_OAUTH_TOKEN`)와 `python -m pip install transformers torch`([ADR-0192](ARCHITECTURE/decisions/ADR-0192-od31-model-check-command.md) 결정 3). 이 패키지들은 CI와 개발 드라이버의 의존성이 아니다. 데이터 저장소는 이미 있는 git 저장소여야 하며 [hilclaw.config.json](hilclaw.config.json)의 `local_path`나 환경 변수 `HILCLAW_DATA_REPO_LOCAL_PATH`로 가리킨다. 명령은 Claude Code 세션 밖의 셸에서 저장소 루트에서 실행한다.
-2. **모델 파일**: 런타임 사용자가 라이선스에 동의해 Hugging Face의 base 변형(safetensors와 토크나이저 파일 — [ADR-0191](ARCHITECTURE/decisions/ADR-0191-od31-hugging-face-model-files.md) 결정 1)을 직접 받아, 체크아웃과 데이터 저장소 밖의 경로에 둔다.
+2. **모델 파일**: 런타임 사용자가 라이선스에 동의해 Hugging Face의 base 변형(`config.json`, safetensors, 토크나이저 파일 — [ADR-0191](ARCHITECTURE/decisions/ADR-0191-od31-hugging-face-model-files.md) 결정 1)을 직접 받아, 체크아웃과 데이터 저장소 밖의 경로에 둔다.
 3. **instance 문서**: 아래 값 파일을 쓰고 빈 디렉토리를 만든 뒤 실행한다. 종류마다 `<출력 디렉토리>/<kind>.json`이 생긴다. shape는 [ADR-0152](ARCHITECTURE/decisions/ADR-0152-od31-llama-forward-operations.md) 결정 5, 값의 규칙은 [hilclaw/model_instances.py](hilclaw/model_instances.py)에 있다.
 
    ```sh
@@ -146,7 +146,7 @@ python -m ruff format --check .
    }
    ```
 
-   `flags`는 run을 돌린 커밋의 `hilclaw.standin_settings.FLAGS`다(ADR-0189 결정 6). `program_flags`와 `program_trailing_flags`는 [hilclaw/model_build.py](hilclaw/model_build.py)의 것이고 C 라이브러리가 요구하면 뒤쪽에 `-ldl`을 넣는다. `parent`는 선택 멤버로, 빌드 디렉토리를 만들 곳이다. 멤버의 정의는 [hilclaw/model_check.py](hilclaw/model_check.py)에 있다.
+   `flags`는 run을 돌린 커밋의 `hilclaw.standin_settings.FLAGS`다(ADR-0189 결정 6). `program_flags`와 `program_trailing_flags`는 forward program 빌드의 인자이고([hilclaw/model_build.py](hilclaw/model_build.py)의 `build_forward_program`) C 라이브러리가 요구하면 뒤쪽에 `-ldl`을 넣는다. `parent`는 선택 멤버로, 빌드 디렉토리를 만들 곳이다. 멤버의 정의는 [hilclaw/model_check.py](hilclaw/model_check.py)에 있다.
 6. **결과**: `match`(상태 0)는 행마다의 logit이 `rtol`·`atol` 안이고 처음 `n`개 greedy 토큰이 reference와 같다는 뜻이다. `no_match`(상태 10)는 둘 중 하나가 아니라는 뜻이며, 줄의 `logits`와 `first_differing_token`이 어느 쪽인지 말한다. 다른 `outcome`은 판정이 아니라 확인이 그 앞에서 멈춘 것이다. 결과는 어디에도 저장되지 않으므로 오너가 [RuntimeAcceptance.md](PROCESS/RuntimeAcceptance.md)의 RA-0056 `상태`에 손으로 적는다. RA-0035, RA-0050, RA-0057, RA-0058, RA-0061, RA-0065~RA-0067도 이 확인에서 드러나므로 각각 본다.
 
 
