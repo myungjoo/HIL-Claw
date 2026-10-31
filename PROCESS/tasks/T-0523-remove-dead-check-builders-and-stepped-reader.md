@@ -2,7 +2,7 @@
 id: T-0523
 title: Remove the check builders and the read-stepped tool builders no caller uses, and name the build log through layout (HQ-0080 group B)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [HQ-0080, "ADR-0183", "ADR-0078"]
 dependsOn: []
@@ -59,4 +59,16 @@ The owner approved group B of the PLAN hold section in HQ-0080 ("dead code and r
 
 ## Follow-ups
 
+- **Size, proposed split** (criterion 9): the change is about 2780 changed lines (644 in, 2132 out) over 10 files, above the DRIVER §5 cap of 600 lines; nearly all of it is deletion and tests moved to v2. It could have landed as three tasks: `check_result` and `check_judging` with their tests; the two read-stepped builders; the `spec_feedback` line. No further work is proposed.
+
 ## Result
+
+- **Outcome**: DONE. PR #343 squash-merged as `d346d0e6` after 2 review rounds (round 1 Request changes: one Should-fix, one Nit, both fixed; round 2 Approve with no findings). CI green on `ace7660d`: Python gate 3.11/3.14, Coverage gate, C, sh, test-presence. Locally only the affected test modules and `ruff` ran; the one full-suite run was CI's.
+- **Language**: Python, the language of the touched modules.
+- **Criteria 1 and 4**: `git grep` over `hilclaw/`, `orchestration/` and `tests/` found no other user of the removed names, so nothing was kept for one. Same-named items are separate: the helpers `bf16_broken` in `tests/test_checks_tool.py` and `tests/test_spec_feedback.py`, the constants `BF16_KINDS` in `tests/test_run_tool.py` and `tests/test_standin_run.py`, `check_answer._BF16_KINDS`, and `run_result.completed` and `run_result.broken`.
+- **Beyond the named lines**: `_bf16_judge` lost its `type(kind) is str` guard, because its kind now always comes from a contract, and the `from_v2_report` docstring now names the `dims` that `start_position` refuses, as the removed `from_bf16_report` docstring did.
+- **Criterion 5, which case held**: no line that reaches this code can hold a value `build_log_file` refuses. `step` is an item of `check_standing.STEPS_OF`, both of which are in `BUILD_LOG_STEPS`, and `journal.identity_of` has already checked `execution` as an exact `int` from 1 to `MAX_INTEGER`, the range `layout` admits. No outcome needed keeping. The added test `test_a_compiler_log_is_found_by_the_name_of_the_layout` pins the name at executions 1, 100 and `MAX_INTEGER`.
+- **Criterion 6, T-0359 line**: confirmed, no change. `checks_tool` has no `STEP_OF` and `tests/test_checks_tool.py` asserts that. `run_identity._STEP_OF` maps other values.
+- **Criterion 7**: `check_result` and `check_judging` have 100 % line coverage from their own two test files, measured before the round 1 fix, which only added a test case and docstring text. The Coverage gate passed for `hilclaw/`.
+- **Criterion 8**: edits of the public-name assertions are listed in the PR body. `test_module_imports_the_builder_and_the_judging_only_and_has_no_entry` is unchanged, because no import dropped. Beyond the foreseen edits, `test_public_names_of_the_module_and_no_default` lost its keyword-only loop over the removed functions, and the v2 sdpa test lost its comparison with `from_bf16_report` and was renamed `test_an_sdpa_report_gives_per_allocation_v2_counts`.
+- **Runtime acceptance**: none.
