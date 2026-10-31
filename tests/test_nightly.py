@@ -182,6 +182,39 @@ def test_document_refuses_an_invalid_profile():
         nightly.document({"accelerator": "cpu_standin"})
 
 
+def test_instance_document_holds_the_given_values():
+    given = nightly.instance_document(
+        PROFILE, nightly.OP, n_max=6, draws=2, tolerance={"rtol": 1}, round_budget=4
+    )
+    assert (given["n_max"], given["draws"], given["round_budget"]) == (6, 2, 4)
+    assert given["tolerance"] == {"rtol": 1}
+    assert given["op_signature"]["record"] is nightly.OP
+
+
+def test_instance_document_refuses_an_invalid_op():
+    with pytest.raises(keys.InvalidRecordError):
+        nightly.instance_document(
+            PROFILE, {"kind": "x"}, n_max=6, draws=2, tolerance={}, round_budget=4
+        )
+
+
+def test_local_profile_asks_the_reader_once_and_passes_its_failure_on():
+    calls = []
+
+    def reader(hw_source, *, timeout_s, image):
+        calls.append((hw_source, timeout_s, image))
+        return "record"
+
+    assert nightly.local_profile("image", reader) == "record"
+    assert calls == [("external", nightly.PROFILE_TIMEOUT_S, "image")]
+
+    def failing(*arguments, **options):
+        raise OSError("no")
+
+    with pytest.raises(nightly.PROFILE_FAILURES):
+        nightly.local_profile("image", failing)
+
+
 @pytest.mark.parametrize(
     ("stage", "told", "cause", "signature"),
     [
