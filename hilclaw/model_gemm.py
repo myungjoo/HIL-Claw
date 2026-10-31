@@ -4,7 +4,9 @@
 (decisions 3 and 5). :func:`run` checks a binding of the GEMM call sites
 against one generation with :func:`hilclaw.model_binding.check` and, when the
 check is ok, builds the bound kernels and the model program and runs one call
-per checked ``(call_site, shape)`` with :func:`hilclaw.model_execute.execute`.
+per checked ``(call_site, shape)`` with :func:`hilclaw.model_execute.execute`;
+:func:`run_in_containers` does the same with
+:func:`hilclaw.model_container.execute`, whose outcomes are its own.
 The five outcomes of decision 5 are told apart from the returned
 :class:`GemmRun` alone:
 
@@ -37,28 +39,38 @@ What this module does not do: no forward pass, embedding, KV cache or token
 selection; no file outside the build directory of
 :func:`hilclaw.model_execute.execute`; no data-plane file, registry entry,
 MCP name or command-line entry. Arguments are not modified.
+
+Where each may be used (``ARCHITECTURE/decisions/ADR-0182-od14-model-executor-container.md``
+decision 7): :func:`run` builds and runs through host processes, so it is only
+for kernels the caller wrote itself, as the driver's tests write them. A kernel
+an instance or a coder wrote goes through :func:`run_in_containers`, never
+:func:`run`; nothing here checks who wrote a kernel.
 """
 
 from collections.abc import Mapping
 from typing import NamedTuple
 
-from hilclaw import model_binding, model_execute
+from hilclaw import model_binding, model_container, model_execute
 
 
 class GemmRun(NamedTuple):
-    """Outcome of one :func:`run` call.
+    """Outcome of one :func:`run` or :func:`run_in_containers` call.
 
     ``check`` is the :class:`hilclaw.model_binding.BindingCheck` as returned;
     ``calls`` holds ``(call_site, shape, index)`` per call in program order,
     ``index`` the kernel's position in the kernel list, and is ``()`` when the
     check is not ok; ``execution`` is the
-    :class:`hilclaw.model_execute.ModelExecution` as returned, or ``None``
-    when the check is not ok.
+    :class:`hilclaw.model_execute.ModelExecution` or, for
+    :func:`run_in_containers`, the
+    :class:`hilclaw.model_container.ModelContainerExecution` as returned, or
+    ``None`` when the check is not ok.
     """
 
     check: model_binding.BindingCheck
     calls: tuple
-    execution: model_execute.ModelExecution | None
+    execution: (
+        model_execute.ModelExecution | model_container.ModelContainerExecution | None
+    )
 
 
 def run(
@@ -112,28 +124,18 @@ def run(
     ``check.calls`` in its order, ``dtype`` and every remaining keyword
     unchanged; what it raises is passed on unchanged.
     """
-    check = model_binding.check(
+    check, kernels, calls, program_calls = _checked_generation(
         dimensions,
         binding,
-        dtype=dtype,
+        operands,
         prompt=prompt,
         generation_length=generation_length,
         lm_head_rows=lm_head_rows,
         given=given,
+        dtype=dtype,
     )
     if not check.ok:
         return GemmRun(check, (), None)
-    pairs = _checked_operands(operands, check.calls)
-    kernels = []
-    calls = []
-    program_calls = []
-    for (call_site, shape, kernel), (a, b) in zip(check.calls, pairs, strict=True):
-        index = next((i for i, known in enumerate(kernels) if known == kernel), None)
-        if index is None:
-            index = len(kernels)
-            kernels.append(kernel)
-        calls.append((call_site, shape, index))
-        program_calls.append((index, a, b))
     execution = model_execute.execute(
         kernels,
         program_calls,
@@ -148,7 +150,103 @@ def run(
         parent=parent,
         keep_out=keep_out,
     )
-    return GemmRun(check, tuple(calls), execution)
+    return GemmRun(check, calls, execution)
+
+
+def run_in_containers(
+    dimensions,
+    binding,
+    operands,
+    *,
+    prompt,
+    generation_length,
+    lm_head_rows,
+    given=None,
+    dtype,
+    build_timeout_s,
+    run_timeout_s,
+    program_flags=(),
+    program_trailing_flags=(),
+    environ=None,
+    parent=None,
+    keep_out=(),
+):
+    """Check ``binding`` as :func:`run` does and, if ok, build and run its GEMM calls in containers.
+
+    ``dimensions``, ``binding``, ``operands``, ``prompt``,
+    ``generation_length``, ``lm_head_rows``, ``given`` and ``dtype`` are those
+    of :func:`run`, and have its binding check and its operand checks in the
+    same order. If the check is not ok, the result is
+    ``GemmRun(check, (), None)``: nothing is built, started or made, and
+    ``operands`` is not looked at.
+
+    If the check is ok, :func:`hilclaw.model_container.execute` gets the kernel
+    list, one ``(index, a, b)`` per entry of ``check.calls`` in its order,
+    ``dtype`` and every remaining keyword unchanged; what it raises is passed
+    on unchanged, and its result is the ``execution`` of the returned
+    :class:`GemmRun`.
+    """
+    check, kernels, calls, program_calls = _checked_generation(
+        dimensions,
+        binding,
+        operands,
+        prompt=prompt,
+        generation_length=generation_length,
+        lm_head_rows=lm_head_rows,
+        given=given,
+        dtype=dtype,
+    )
+    if not check.ok:
+        return GemmRun(check, (), None)
+    execution = model_container.execute(
+        kernels,
+        program_calls,
+        dtype=dtype,
+        build_timeout_s=build_timeout_s,
+        run_timeout_s=run_timeout_s,
+        program_flags=program_flags,
+        program_trailing_flags=program_trailing_flags,
+        environ=environ,
+        parent=parent,
+        keep_out=keep_out,
+    )
+    return GemmRun(check, calls, execution)
+
+
+def _checked_generation(
+    dimensions,
+    binding,
+    operands,
+    *,
+    prompt,
+    generation_length,
+    lm_head_rows,
+    given,
+    dtype,
+):
+    check = model_binding.check(
+        dimensions,
+        binding,
+        dtype=dtype,
+        prompt=prompt,
+        generation_length=generation_length,
+        lm_head_rows=lm_head_rows,
+        given=given,
+    )
+    if not check.ok:
+        return check, None, (), None
+    pairs = _checked_operands(operands, check.calls)
+    kernels = []
+    calls = []
+    program_calls = []
+    for (call_site, shape, kernel), (a, b) in zip(check.calls, pairs, strict=True):
+        index = next((i for i, known in enumerate(kernels) if known == kernel), None)
+        if index is None:
+            index = len(kernels)
+            kernels.append(kernel)
+        calls.append((call_site, shape, index))
+        program_calls.append((index, a, b))
+    return check, kernels, tuple(calls), program_calls
 
 
 def _checked_operands(operands, checked_calls):

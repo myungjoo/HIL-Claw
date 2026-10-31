@@ -6,7 +6,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from hilclaw import gemm_bf16_contract, gemm_contract, model_execute, model_gemm
+from hilclaw import (
+    gemm_bf16_contract,
+    gemm_contract,
+    model_container,
+    model_execute,
+    model_gemm,
+)
 from hilclaw.clang_build import BuildResult
 from hilclaw.local_run import RunResult
 from hilclaw.model_binding import (
@@ -18,7 +24,7 @@ from hilclaw.model_binding import (
     ModelDimensions,
 )
 from hilclaw.model_execute import BuildFailed, ModelExecution
-from hilclaw.model_gemm import GemmRun, run
+from hilclaw.model_gemm import GemmRun, run, run_in_containers
 from hilclaw.model_run import ModelProgramResult, RunFailed
 
 SMALL = ModelDimensions(
@@ -496,8 +502,14 @@ def test_arguments_are_not_modified(recorder):
 
 def test_public_names_and_fields():
     public = {name for name in vars(model_gemm) if not name.startswith("_")}
-    imported = {"Mapping", "NamedTuple", "model_binding", "model_execute"}
-    assert public - imported == {"GemmRun", "run"}
+    imported = {
+        "Mapping",
+        "NamedTuple",
+        "model_binding",
+        "model_container",
+        "model_execute",
+    }
+    assert public - imported == {"GemmRun", "run", "run_in_containers"}
     assert GemmRun._fields == ("check", "calls", "execution")
     text = Path(model_gemm.__file__).read_text(encoding="utf-8")
     assert "gemm_contract" not in text
@@ -702,3 +714,150 @@ def test_real_bf16_two_kernels_at_different_sites(clang, tmp_path):
         assert index == (1 if site in ("o", "down") else 0)
         assert output.dtype == np.uint16
         assert np.array_equal(output, nearest_bf16(widened(a) @ widened(b) + added))
+
+
+CONTAINER_OPTIONS = {
+    "dtype": "fp32",
+    "build_timeout_s": 30,
+    "run_timeout_s": 7,
+    "program_flags": ("-O1",),
+    "program_trailing_flags": ("-ldl",),
+    "environ": {"HILCLAW_STANDIN_IMAGE": "x"},
+    "parent": "/some/parent",
+    "keep_out": ("/keep",),
+}
+
+
+@pytest.fixture
+def container_recorder(monkeypatch):
+    made = Recorder(model_container.ModelContainerExecution(None, None, None, True))
+    monkeypatch.setattr(model_container, "execute", made)
+    return made
+
+
+def test_run_in_containers_hands_the_same_kernels_and_calls_to_the_container_path(
+    recorder, container_recorder
+):
+    binding = every_binding()
+    operands = operands_for(SMALL, binding)
+    result = run_in_containers(
+        SMALL, binding, operands, **settings(), **CONTAINER_OPTIONS
+    )
+    assert result.check.ok
+    [(kernels, program_calls, options)] = container_recorder.calls
+    assert kernels == [binding[site][0].kernel for site in CALL_SITES]
+    assert options == CONTAINER_OPTIONS
+    assert result.calls == tuple(
+        (site, shape, CALL_SITES.index(site)) for site, shape, _ in result.check.calls
+    )
+    for (site, shape, index), (call_index, a, b) in zip(
+        result.calls, program_calls, strict=True
+    ):
+        assert call_index == index
+        assert a is operands[(site, shape)][0]
+        assert b is operands[(site, shape)][1]
+    assert result.execution is container_recorder.result
+    assert recorder.calls == []
+
+
+def test_run_in_containers_gives_the_calls_of_run(recorder, container_recorder):
+    binding = every_binding()
+    binding["qkv"] = [
+        BindingEntry(kernel("decode"), ((1, 8, 16),)),
+        BindingEntry(kernel("prefill"), ((3, 8, 16),)),
+    ]
+    operands = operands_for(SMALL, binding)
+    by_container = run_in_containers(
+        SMALL, binding, operands, **settings(), **CONTAINER_OPTIONS
+    )
+    by_host = run(SMALL, binding, operands, **settings(), **OPTIONS)
+    assert by_container.check == by_host.check
+    assert by_container.calls == by_host.calls
+    assert container_recorder.calls[0][0] == recorder.calls[0][0]
+
+
+@pytest.mark.parametrize(
+    "binding_of, changes",
+    [
+        (every_binding, {"prompt": [1, 11]}),
+        (
+            lambda: {
+                **every_binding(),
+                "down": [BindingEntry(kernel("prefill"), ((3, 16, 8),))],
+            },
+            {},
+        ),
+        (bf16_binding, {}),
+    ],
+)
+def test_run_in_containers_when_the_check_is_not_ok_starts_nothing(
+    container_recorder, tmp_path, binding_of, changes
+):
+    result = run_in_containers(
+        SMALL,
+        binding_of(),
+        _Untouchable(),
+        **settings(**changes),
+        **{**CONTAINER_OPTIONS, "parent": tmp_path},
+    )
+    assert not result.check.ok
+    assert result == GemmRun(result.check, (), None)
+    assert container_recorder.calls == []
+    assert os.listdir(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "change, kind, text",
+    [
+        (lambda o: {k: v for k, v in o.items() if k != KEY}, ValueError, "missing"),
+        (lambda o: {**o, ("down", (2, 16, 8)): o[KEY]}, ValueError, "no call"),
+        (lambda o: {**o, KEY: None}, TypeError, "pair"),
+        (
+            lambda o: {**o, KEY: (np.zeros((2, 16), np.float32), o[KEY][1])},
+            ValueError,
+            "a has shape",
+        ),
+        (lambda o: list(o), TypeError, "operands"),
+    ],
+)
+def test_run_in_containers_refuses_operands_as_run_does(
+    recorder, container_recorder, change, kind, text
+):
+    operands = change(operands_for(SMALL, every_binding()))
+    with pytest.raises(kind, match=text) as by_container:
+        run_in_containers(
+            SMALL, every_binding(), operands, **settings(), **CONTAINER_OPTIONS
+        )
+    with pytest.raises(kind) as by_host:
+        run(SMALL, every_binding(), operands, **settings(), **OPTIONS)
+    assert str(by_container.value) == str(by_host.value)
+    assert container_recorder.calls == recorder.calls == []
+
+
+def test_run_in_containers_passes_on_what_execute_raises(container_recorder):
+    container_recorder.result = OSError("no parent")
+    binding = every_binding()
+    with pytest.raises(OSError, match="no parent"):
+        run_in_containers(
+            SMALL,
+            binding,
+            operands_for(SMALL, binding),
+            **settings(),
+            **CONTAINER_OPTIONS,
+        )
+
+
+def test_run_in_containers_has_no_host_parameter(container_recorder):
+    binding = every_binding()
+    operands = operands_for(SMALL, binding)
+    for name in ("compiler", "env", "prefix"):
+        with pytest.raises(TypeError, match=name):
+            run_in_containers(
+                SMALL,
+                binding,
+                operands,
+                **settings(),
+                **CONTAINER_OPTIONS,
+                **{name: None},
+            )
+    assert container_recorder.calls == []

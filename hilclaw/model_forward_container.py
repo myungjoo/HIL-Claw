@@ -231,30 +231,14 @@ def execute(
     )
     roots = _checked_keep_out(keep_out)
     place = _checked_parent(parent, roots)
-    for name, flags in (
-        ("program_flags", program_flags),
-        ("program_trailing_flags", program_trailing_flags),
-    ):
-        if not isinstance(flags, (tuple, list)) or not all(
-            isinstance(flag, str) for flag in flags
-        ):
-            raise TypeError(f"{name}: must be a tuple or list of str")
-    _check_limit(build_timeout_s, "build_timeout_s")
-    _check_limit(run_timeout_s, "run_timeout_s")
-    if environ is not None and not isinstance(environ, Mapping):
-        raise TypeError(f"environ: must be a mapping, not {type(environ).__name__}")
+    _check_container_arguments(
+        program_flags, program_trailing_flags, build_timeout_s, run_timeout_s, environ
+    )
     if not check.ok:
         return ForwardContainerExecution(check, None, None, None, None)
-    try:
-        image = standin_image.read_image(environ)
-    except standin_image.ImageRefusedError as error:
-        return ForwardContainerExecution(
-            check, Unavailable(IMAGE_REFUSED, error), None, None, None
-        )
-    if image is None:
-        return ForwardContainerExecution(
-            check, Unavailable(NO_IMAGE, None), None, None, None
-        )
+    image, unavailable = _named_image(environ)
+    if unavailable is not None:
+        return ForwardContainerExecution(check, unavailable, None, None, None)
     kernels = _distinct_kernels(check.calls)
     libraries = _library_table(
         dimensions,
@@ -266,7 +250,7 @@ def execute(
     )
     directory = tempfile.mkdtemp(prefix=PREFIX, dir=place)
     outcomes = []
-    unavailable = build_failed = run = None
+    build_failed = run = None
     try:
         run = _build_and_run(
             image,
@@ -302,6 +286,33 @@ def execute(
     return ForwardContainerExecution(check, unavailable, build_failed, run, removed)
 
 
+def _check_container_arguments(
+    program_flags, program_trailing_flags, build_timeout_s, run_timeout_s, environ
+):
+    for name, flags in (
+        ("program_flags", program_flags),
+        ("program_trailing_flags", program_trailing_flags),
+    ):
+        if not isinstance(flags, (tuple, list)) or not all(
+            isinstance(flag, str) for flag in flags
+        ):
+            raise TypeError(f"{name}: must be a tuple or list of str")
+    _check_limit(build_timeout_s, "build_timeout_s")
+    _check_limit(run_timeout_s, "run_timeout_s")
+    if environ is not None and not isinstance(environ, Mapping):
+        raise TypeError(f"environ: must be a mapping, not {type(environ).__name__}")
+
+
+def _named_image(environ):
+    try:
+        image = standin_image.read_image(environ)
+    except standin_image.ImageRefusedError as error:
+        return None, Unavailable(IMAGE_REFUSED, error)
+    if image is None:
+        return None, Unavailable(NO_IMAGE, None)
+    return image, None
+
+
 def _settle(directory, roots, outcomes):
     if all(standin_answer.build_dir_removable(outcome) for outcome in outcomes):
         return _remove(directory, roots)
@@ -327,25 +338,9 @@ def _build_and_run(
     copies = [
         _copy_kernel(directory, index, kernel) for index, kernel in enumerate(kernels)
     ]
-    libraries = []
-    for index, (kernel, sources) in enumerate(zip(kernels, copies, strict=True)):
-        library = f"kernel-{index}.so"
-        _build(
-            image,
-            directory,
-            outcomes,
-            (
-                *kernel.flags,
-                *model_build.LIBRARY_FLAGS,
-                *(standin_check.in_container(source) for source in sources),
-                "-o",
-                standin_check.in_container(library),
-            ),
-            library,
-            index,
-            build_timeout_s,
-        )
-        libraries.append(standin_check.in_container(library))
+    libraries = _build_kernels(
+        image, directory, outcomes, kernels, copies, build_timeout_s
+    )
     _build(
         image,
         directory,
@@ -389,6 +384,29 @@ def _build_and_run(
     if report is None:
         return ContainerRun(model_run.RunFailed.REPORT_FORM, None, result)
     return ContainerRun(None, report, result)
+
+
+def _build_kernels(image, directory, outcomes, kernels, copies, timeout_s):
+    libraries = []
+    for index, (kernel, sources) in enumerate(zip(kernels, copies, strict=True)):
+        library = f"kernel-{index}.so"
+        _build(
+            image,
+            directory,
+            outcomes,
+            (
+                *kernel.flags,
+                *model_build.LIBRARY_FLAGS,
+                *(standin_check.in_container(source) for source in sources),
+                "-o",
+                standin_check.in_container(library),
+            ),
+            library,
+            index,
+            timeout_s,
+        )
+        libraries.append(standin_check.in_container(library))
+    return libraries
 
 
 def _copy_kernel(directory, index, kernel):
