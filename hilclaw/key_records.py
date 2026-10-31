@@ -74,7 +74,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import NamedTuple
 
-from hilclaw import keys, layout, once_write
+from hilclaw import json_text, keys, layout, once_write
 
 _OP_RECORD = "op_signature.json"
 
@@ -198,13 +198,6 @@ def _root(data_root):
     return root
 
 
-def _object(pairs):
-    members = dict(pairs)
-    if len(members) != len(pairs):
-        raise ValueError("a JSON object repeats a member name")
-    return members
-
-
 def _read(root, path, derive, wanted=None):
     where = path.relative_to(root).as_posix()
     try:
@@ -215,7 +208,7 @@ def _read(root, path, derive, wanted=None):
         raise CorruptKeyRecordError(f"{where}: is not a regular file")
     try:
         text = path.read_bytes().decode("utf-8")
-        record = json.loads(text, object_pairs_hook=_object)
+        record = json.loads(text, object_pairs_hook=json_text.distinct_members)
         key = derive(record)
     except (ValueError, RecursionError) as error:
         rule = "must be UTF-8 JSON of a valid record (ADR-0001 decisions 1 and 2)"

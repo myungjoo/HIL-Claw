@@ -66,7 +66,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
 
-from hilclaw import cas, keys, layout
+from hilclaw import cas, json_text, keys, layout
 
 SCHEMA_VERSION = 1
 RETENTION_CLASSES = ("best", "final", "intermediate", "failed")
@@ -280,13 +280,6 @@ def _where(root, path):
     return path.relative_to(root).as_posix()
 
 
-def _object(pairs):
-    members = dict(pairs)
-    if len(members) != len(pairs):
-        raise ValueError("a JSON object repeats a member name")
-    return members
-
-
 def _read(root, path):
     try:
         mode = os.lstat(path).st_mode
@@ -296,7 +289,7 @@ def _read(root, path):
         raise CorruptArtifactsError(f"{_where(root, path)}: is not a regular file")
     try:
         text = path.read_bytes().decode("utf-8")
-        return _records(json.loads(text, object_pairs_hook=_object))
+        return _records(json.loads(text, object_pairs_hook=json_text.distinct_members))
     except (ValueError, RecursionError) as error:
         rule = "must be UTF-8 JSON of a valid file (ADR-0005 decisions 2 and 3)"
         raise CorruptArtifactsError(f"{_where(root, path)}: {rule}: {error}") from error

@@ -930,6 +930,7 @@ def test_the_module_imports_only_what_it_needs():
         "json",
         "re",
         "pathlib.Path",
+        "hilclaw.json_text",
         "hilclaw.keys",
         "hilclaw.layout",
         "hilclaw.once_write",

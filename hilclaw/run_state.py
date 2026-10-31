@@ -43,7 +43,7 @@ import reprlib
 from types import MappingProxyType
 from typing import NamedTuple
 
-from hilclaw import journal, keys, tools
+from hilclaw import journal, json_text, keys, tools
 
 SCHEMA_VERSION = 1
 
@@ -90,7 +90,11 @@ def parse(content):
         raise InvalidStateError("content: starts with a byte order mark")
     try:
         text = content.decode("utf-8")
-        document = json.loads(text, object_pairs_hook=_object, parse_constant=_nan)
+        document = json.loads(
+            text,
+            object_pairs_hook=json_text.distinct_members,
+            parse_constant=json_text.no_constant,
+        )
     except RecursionError:
         raise InvalidStateError("content: is nested too deeply to parse") from None
     except ValueError as error:
@@ -272,14 +276,3 @@ def _stored(identity):
 def _order(identity):
     numbers = (-1 if number is None else number for number in identity[2:])
     return (*numbers, identity.step, identity.execution)
-
-
-def _object(pairs):
-    members = dict(pairs)
-    if len(members) != len(pairs):
-        raise ValueError("a JSON object repeats a member name")
-    return members
-
-
-def _nan(name):
-    raise ValueError(f"{name} is not a JSON value")

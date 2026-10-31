@@ -49,7 +49,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
 
-from hilclaw import keys, layout
+from hilclaw import json_text, keys, layout
 
 SCHEMA_VERSION = 1
 _CHUNK = 65536
@@ -218,7 +218,11 @@ def read(data_root, run_id, position=0):
         where = f"{file}: line {number}"
         try:
             text = line.decode("utf-8")
-            event = json.loads(text, object_pairs_hook=_object, parse_constant=_nan)
+            event = json.loads(
+                text,
+                object_pairs_hook=json_text.distinct_members,
+                parse_constant=json_text.no_constant,
+            )
             validate(event)
         except UnsupportedVersionError as error:
             raise UnsupportedVersionError(f"{where}: {error}") from None
@@ -292,17 +296,6 @@ def _lstat(root, path):
         where = path.relative_to(root).as_posix()
         raise CorruptEventsError(f"{where}: is not a regular file")
     return status
-
-
-def _object(pairs):
-    members = dict(pairs)
-    if len(members) != len(pairs):
-        raise ValueError("a JSON object repeats a member name")
-    return members
-
-
-def _nan(name):
-    raise ValueError(f"{name} is not a JSON value")
 
 
 def _drop_tail(f):
