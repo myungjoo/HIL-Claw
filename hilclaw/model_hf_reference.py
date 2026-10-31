@@ -6,14 +6,6 @@ decision cited by its number alone is one of that record. ``transformers`` and
 they are imported only inside a call, so importing this module never needs
 them, and no ``torch`` object leaves it.
 
-Its parts:
-
-* :func:`check_packages`: whether both packages can be imported.
-* :func:`read_tokenizer`: the directory's tokenizer as a :class:`Tokenizer`.
-* :func:`reference_outputs`: the reference's two outputs as a
-  :class:`ReferenceOutputs`.
-* :class:`HfReferenceError`: every failure, with a ``reason`` of :data:`REASONS`.
-
 **Loading** (decision 2): only from the named directory, offline, from
 safetensors, with no remote code, at ``torch.float64`` and with the ``eager``
 attention implementation.
@@ -48,10 +40,8 @@ REASONS = (
     WRONG_SHAPE,
     NAN_ROW,
 )
-"""Every ``reason`` of :class:`HfReferenceError`."""
 
 PACKAGES = ("torch", "transformers")
-"""The optional packages, in the order they are looked for."""
 
 
 class HfReferenceError(Exception):

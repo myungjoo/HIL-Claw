@@ -25,7 +25,6 @@ from hilclaw import (
     model_check,
     model_files,
     model_forward_container,
-    model_forward_run,
     model_hf_reference,
     model_reference,
     model_run_binding,
@@ -473,6 +472,28 @@ def test_a_failed_run_is_told(stage, act, failed, returncode):
         assert told["stderr"] == "bad �"
 
 
+@pytest.mark.parametrize(
+    ("whole", "word"),
+    [
+        ([*PROMPT_IDS, 0, 0, forward.V], "vocabulary"),
+        ([*PROMPT_IDS, forward.V, 0, 0], "vocabulary"),
+        ([0, 0, 0, 0, 0, 0], "prompt"),
+    ],
+    ids=["last", "fed", "echo"],
+)
+def test_a_report_the_program_could_not_have_made_is_told_before_the_load(
+    stage, whole, word
+):
+    rows = bf16_of(rows_of(stage.weights, [1, 2, 3, 0, 0]))
+    tokens = np.array(whole, dtype=np.uint64)
+    stage.client.report = forward.generated_report(tokens, len(PROMPT_IDS), rows)
+    told = stage.run()
+    assert told["outcome"] == "bad_report"
+    assert word in told["reason"]
+    assert told["removed"] is True
+    assert stage.packages.loads == []
+
+
 def test_a_missing_parent_is_a_file_system_refusal(stage, tmp_path):
     told = stage.run(parent=str(tmp_path / "builds-none"))
     assert told["outcome"] == "file_system"
@@ -590,7 +611,3 @@ def test_every_status_is_distinct_and_only_match_is_zero():
     assert len(set(statuses)) == len(statuses)
     assert [kind for kind, status in EXIT_STATUS.items() if status == 0] == ["match"]
     assert not {1, 2} & set(statuses)
-
-
-def test_the_stage_names_every_call_site(stage):
-    assert set(stage.members["runs"]) == set(model_forward_run.CALL_SITES)

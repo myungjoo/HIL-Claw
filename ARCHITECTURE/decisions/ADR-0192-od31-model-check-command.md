@@ -21,7 +21,7 @@ A sentence is **cited** when a source is named with it. Every other sentence is 
 
 ### 1. The command
 
-`python -m hilclaw.model_check <file>`: one JSON file decoded under ADR-0155 decision 3's rules. A person runs it. It is registered as no tool, starts no `claude`, and runs a coder's kernel only through `model_forward_container` (cited: ADR-0182 decision 7). The steps stop at the first failure, cheap before long: the document, the packages, `model_files.read`, the tokenizer, the data root, the parent, the binding, the executor at `lm_head_rows` `"all"` with `keep_out` naming the model directory and the data root, the reference, the comparison. The `parent` step is `model_execute`'s own refusal, moved before the binding.
+`python -m hilclaw.model_check <file>`: one JSON file decoded under ADR-0155 decision 3's rules. A person runs it. It is registered as no tool, starts no `claude`, and runs a coder's kernel only through `model_forward_container` (cited: ADR-0182 decision 7). The steps stop at the first failure, cheap before long: the document, the packages, `model_files.read`, the tokenizer, the data root, the parent, the binding, the executor at `lm_head_rows` `"all"` with `keep_out` naming the model directory and the data root, the report's tokens, the reference, the comparison. The `parent` step is `model_execute`'s own refusal, moved before the binding. The report's prompt must echo the prompt and its ids must lie below V, `bad_report` otherwise: a kernel shares the program's process (cited: ADR-0182 Boundaries), so a damaged run can say anything, and that is the executor's failure, told before the long load.
 
 ### 2. The reference's configuration
 
@@ -66,7 +66,6 @@ One ASCII JSON line with `outcome`, as ADR-0155 decision 5 does. Each kind has i
 |---|---|---|
 | 2 | float32 or bf16 for the reference | Decision 2: float32 saves half the memory and departs from ADR-0176 decision 2; RA-0035 can show whether the saving is needed. bf16 measures rounding against rounding. |
 | 2 | The user names the dtype | A value with no use for anyone but a machine short of memory; it can be added if RA-0035 shows the need. |
-| 2 | Patch the float32 steps out of `model` | It would no longer be the reference the owner chose. |
 
 ## Consequences
 
@@ -90,7 +89,6 @@ One ASCII JSON line with `outcome`, as ADR-0155 decision 5 does. Each kind has i
 ## References
 
 - Owner: HQ-0084, HQ-0071 in `PROCESS/STATE.json`; [Requirements](../Requirements.md) C-6, FR-9, FR-10, OD-31; [OpenDecisionProposals](../OpenDecisionProposals.md) § OD-31; [RuntimeAcceptance](../../PROCESS/RuntimeAcceptance.md) RA-0035, RA-0050, RA-0056, RA-0058, RA-0061.
-- Records: ADR-0001, ADR-0155, ADR-0176, ADR-0182, ADR-0189, ADR-0191.
 - Upstream, read through `gh api`, at the commit of Context.
 - Code: `hilclaw/model_check.py`, `hilclaw/model_hf_reference.py`; read: `hilclaw/new_run.py`, `hilclaw/model_forward_container.py`, `hilclaw/model_run_binding.py`, `hilclaw/model_reference.py`, `hilclaw/model_files.py`.
 - Process: [PROCESS/DRIVER.md](../../PROCESS/DRIVER.md) §6 D26, §8, §9; [PROCESS/PLAN.md](../../PROCESS/PLAN.md) P2-15.

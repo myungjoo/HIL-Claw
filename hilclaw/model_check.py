@@ -15,16 +15,9 @@ greedy tokens; ``rtol`` and ``atol``; ``build_timeout_s`` and ``run_timeout_s``
 (:mod:`hilclaw.model_build`); and ``parent``, the directory the build directory
 is made in. An unknown or missing member is ``refused_document``.
 
-**One check**, stopping at the first failure so that a long step is not spent on
-a doomed call: the document; the optional packages; ``model_files.read``; the
-tokenizer; the data root (``data_root_source.configured``, as ``new_run``);
-``binding_from_runs``; :func:`hilclaw.model_forward_container.execute` in the
-generation mode with G = ``n``, ``lm_head_rows`` ``"all"`` and ``keep_out``
-naming the model directory and the data root; the reference; the comparison.
-
+**One check**, stopping at the first failure, in the order of ADR-0192 decision 1.
 **The verdict** (owner, HQ-0071): ``match`` only when
-:func:`hilclaw.model_reference.compare` passes every row and the executor's
-``n`` tokens equal the reference's.
+:func:`hilclaw.model_reference.compare` passes and the ``n`` tokens are equal.
 
 **What the owner is told**, through the process only. Standard output gets one
 line, a compact JSON object in ASCII ended by one LF, whose member ``outcome``
@@ -51,6 +44,7 @@ names the kind:
 ``container_unavailable``  30      ``reason``, ``removed``
 ``build_failed``           31      ``kernel``, ``returncode``, ``timed_out``, ``log``, ``removed``
 ``run_failed``             32      ``failed``, ``returncode``, ``stderr``, ``removed``
+``bad_report``             36      ``reason``, ``removed``
 ``copy_failed``            33      ``reason``
 ``file_system``            34      ``reason``
 ``reference_failed``       35      ``reason``, ``detail``
@@ -123,6 +117,7 @@ EXIT_STATUS = {
     "copy_failed": 33,
     "file_system": 34,
     "reference_failed": 35,
+    "bad_report": 36,
 }
 
 _REQUIRED = frozenset(
@@ -278,6 +273,18 @@ def _report_of(execution):
     return execution.run.report
 
 
+def _selected_tokens(report, prompt, vocabulary, removed):
+    tokens = [int(token) for token in report.tokens]
+    reason = None
+    if tokens[: len(prompt)] != prompt:
+        reason = "the report's prompt differs from the prompt given"
+    elif max(tokens) >= vocabulary:
+        reason = f"a token of the report is outside the vocabulary of {vocabulary}"
+    if reason is not None:
+        raise _Stop({"outcome": "bad_report", "reason": reason, "removed": removed})
+    return tokens[len(prompt) :]
+
+
 def _first_difference(ours, theirs):
     for index, (mine, other) in enumerate(zip(ours, theirs, strict=True)):
         if mine != other:
@@ -314,9 +321,9 @@ def _checked(document, source):
     execution = _executed(document, files, binding, prompt, keep_out)
     report = _report_of(execution)
     vocabulary = files.dimensions.vocabulary
+    selected = _selected_tokens(report, prompt, vocabulary, execution.removed)
     # The reference loads its own float64 copy; the bf16 arrays are not kept beside it.
     del files
-    selected = [int(token) for token in report.tokens[len(prompt) :]]
     outputs = model_hf_reference.reference_outputs(
         directory, prompt, selected, vocabulary=vocabulary
     )
