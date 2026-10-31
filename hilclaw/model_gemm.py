@@ -37,7 +37,8 @@ Readings of this module (not rules of the record):
 
 What this module does not do: no forward pass, embedding, KV cache or token
 selection; no file outside the build directory of
-:func:`hilclaw.model_execute.execute`; no data-plane file, registry entry,
+:func:`hilclaw.model_execute.execute` or of
+:func:`hilclaw.model_container.execute`; no data-plane file, registry entry,
 MCP name or command-line entry. Arguments are not modified.
 
 Where each may be used (``ARCHITECTURE/decisions/ADR-0182-od14-model-executor-container.md``
