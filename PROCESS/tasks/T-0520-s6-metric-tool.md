@@ -2,7 +2,7 @@
 id: T-0520
 title: Compute the S6 verdict of one pair of runs from their recorded facts (PLAN P2-8, ADR-0074)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [S6, FR-18, NFR-5, OD-30, "PLAN P2-8"]
 dependsOn: []
@@ -141,3 +141,22 @@ P2-8 is a checklist item, so the D18 and D26 judgement of off-checklist work doe
 ## Follow-ups
 
 ## Result
+
+DONE. PR #340 squash-merged as f2d903db after 2 review rounds (round 1 Request changes, round 2 Approve). CI green on 981758a2: Python 3.11 and 3.14, Coverage, C, sh, Test presence.
+
+- **Language:** Python, because this is host-side layer-2 code beside the Python it reuses (timings_tool, measurement, check_standing).
+- **Moment of instance.json:** as it stands at the call, with hilclaw.instance.read. The file may change after the start (ADR-0023 decision 6); the tool reads current facts only and walks no git history. The module docstring says so.
+- **Outcomes and exit statuses of `python -m hilclaw.s6_metric <first_run_id> <second_run_id>`:** verdict 0 (met, not met, not applicable), not_a_pair 10, outside_metric 11, read_failure 12, bad_usage 20, no_data_root 21, fault 22.
+- **The moved helper:** timings_tool.compare is split into the public timing_lines, measurement_problem and difference_of (with the TimingLines tuple), called by compare and by the metric. timings.compare and verdicts.write keep their behaviour.
+- **Edited existing assertions:** none. New tests were added to tests/test_timings_tool.py; the metric's tests are in tests/test_s6_metric.py. Docstring only: hilclaw/check_standing.py (consumer list), a file outside touchesFiles.
+- **This module's own choices, named in its docstring, no rule of ADR-0074:**
+  - An attempt left out is counted once, under the first reason of LEFT_OUT_REASONS.
+  - A qualifying attempt the trimmed mean refuses is no first-run best and is listed with samples_out_of_domain.
+  - Among attempts of the second-run round that reach, the lowest candidate, then attempt, is reported.
+  - The last recorded round is the highest round of any log line.
+  - Two equal ids are bad_usage (not two runs).
+- **One narrowing of AC 4:** a missing hypotheses.json is a read failure only in a round the case condition reads to decide the verdict; elsewhere it is passed over, since a round that closed early need not hold one. A damaged file in any round is a read failure. A missing log is run_file_missing, although log_lines itself answers a missing log with no lines.
+- **PLAN P2-8:** checked. The tool computes, from the records of two runs of one key, the rounds to the first run's best and the case references in the second run's decision log, verified on fixtures. OD-30 keeps its status word; ADR-0074 gives the one-pair metric, and sub-question 3 stays with HQ-0081.
+- **ARCHITECTURE/:** no edit. No design gap was found.
+- **Size:** over the DRIVER §5 cap and disclosed in the PR: s6_metric.py +574 (about 95 lines of usage docstring), timings_tool.py +128/-63 (mostly moved code), check_standing.py +2/-2, so 769 changed lines against 600. Test code is outside the cap. Split proposal per §5: the timings_tool helper extraction should have been its own task; no code work remains.
+- **Verification:** no real claude, Docker daemon or D25 test run was used. A full local run on Windows, taken before the review-round-1 commit, gave 36731 passed, 2375 skipped, 1 failed: tests/harness/test_bf16_timing.py::test_standard_error_is_captured_and_not_parsed. This change does not touch that test, it was not investigated further, and it passes in CI.
