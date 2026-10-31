@@ -2,7 +2,7 @@
 id: T-0522
 title: Correct stale module docstrings and Round-Manager prompt lines (HQ-0080 group A)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [HQ-0080, FR-1, OD-31]
 dependsOn: [T-0521]
@@ -70,3 +70,12 @@ Each sentence is rewritten to what the code does now, or removed if it says noth
 ## Follow-ups
 
 ## Result
+
+- **Outcome**: DONE. PR #342 squash-merged as `8c2bb517` after 3 review rounds (round 1 Request changes: one Should-fix, one Nit; round 2 Approve with 2 Nits, both fixed; round 3 Approve after a CI fix, with one PR body Nit fixed after it, D20). CI green on `d9bab112`: Python gate 3.11/3.14, Coverage gate, C, sh, test-presence. Locally only the affected test modules and `ruff` ran; the one full-suite run was CI's (`-n auto` is not available locally).
+- **Edited**: criterion 1 (`orchestration/round-manager.md`), 3 (`turn_definition`), 4 (`events`), 5 (`standin_profile`, `standin_answer`, `standin_container`, `standin_copies`, `standin_image`, `standin_waiter_line`), 8 (`checkout_boundary`), 9 (`model_program.c`), 11 (`rope_table`), 12 (`check_seed`; `git grep admit_for_step -- hilclaw` is now empty).
+- **Left as is, still true**: criterion 2, `round-manager.md` "not Bash or file tools": no tool list contradicts it (the session has `Read`, `Grep`, `Glob`; ADR-0139 decisions 4 and 6). Criterion 6, `gemm_contract.py`: the "bound to one tool" sentence is already gone. Criterion 7, `spec_feedback.py`: "Nothing calls this module until" is already gone. Criterion 10, `case_lookup.py`: T-0488 already rewrote those sentences, and they match `cases_tool` and ADR-0173.
+- **A task premise that differs**: criterion 9 says ADR-0166 made `model_program.c` a forward program. ADR-0166 (Context, alternative 1) keeps it as the GEMM-list program and adds `model_forward.c`, so the header now says that.
+- **Criterion 8**: named `scratch`, `selfcheck_session`, `turn_loop`, `model_execute` (with `keep_out`) and `standin_check` (package directory alone). `bring_in` and `coder_runtime` use only `within`, and `selfcheck_server` only reads `PACKAGE_DIRECTORY`, so they are not named. `standin_check` is an importer the task's list omits.
+- **Criterion 5, `standin_container`**: its direct callers are `standin_openmp`, `standin_profile` and `model_forward_container`, but `tests/test_standin_profile.py::test_module_is_bound_by_the_start_only_and_imports_no_store` lets only three modules name `standin_profile`. The sentence therefore says "other modules of the package". No test changed.
+- **Noticed, not edited (out of scope)**: `standin_answer.py` line 8 still says "ahead of the operations of ADR-0144 slice (4)". `standin_copies.py` `place_harness_copy` is also called by `model_forward_container`, which the docstring does not say.
+- **Runtime acceptance**: none. The prompt line changes wording only.
