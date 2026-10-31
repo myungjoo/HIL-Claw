@@ -2,7 +2,7 @@
 id: T-0525
 title: Bring the registers and usage documents up to landed ADRs and correct four ADR errors (HQ-0080 groups E and F)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [HQ-0080, OD-6, OD-8, OD-28, C-7]
 dependsOn: [T-0523, T-0524]
@@ -72,7 +72,7 @@ Both groups.
 
 ## Result
 
-- **Outcome**: landed on `main` in document mode, in the commit that holds this text (subject `T-0525: ...`; the driver records the SHA). 1 review round, Approve, by a context-isolated `dev-reviewer`. Nits 2 to 4 of that round were fixed afterwards without another round (D20).
+- **Outcome**: landed on `main` in document mode, in the commit that holds this text (subject `T-0525: ...`; `884ee9c4`). 1 review round, Approve, by a context-isolated `dev-reviewer`. Nits 2 to 4 of that round were fixed afterwards without another round (D20).
 - **Group E**: criteria 1 to 5 done as written. ADR-0121, ADR-0124 and ADR-0137 are each linked once in the changed section or row. No environment variable name is cited in UC-1 or the README. The OD-28 status word is unchanged.
 - **Group F, claims found right and corrected**:
   - ADR-0135 decision 5: the citation now follows ADR-0133 decision 4's own reasons. Added "Both hold here too", which the corrected reasons need so that the following sentence still reads as the answer.
