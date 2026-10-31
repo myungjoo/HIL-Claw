@@ -1,11 +1,11 @@
 /*
- * Model program of the model executor (ADR-0153), first code slice.
+ * GEMM-list model program of the model executor (ADR-0153; ADR-0157).
  *
  * It loads each gemm kernel from a shared library of its own and calls the
  * kernels' entry points for a list of calls read from an input file, and
  * writes each call's output to the report. It compares nothing and holds no
  * reference, tolerance or verdict. It reads no clock, no environment variable
- * and no standard input. It is not yet a forward pass (ADR-0153 code slice 2).
+ * and no standard input. It is no forward pass: model_forward.c is (ADR-0166).
  * It needs the C library and POSIX.1-2008 only, <dlfcn.h> included.
  *
  * One source, two programs, one dtype each (ADR-0157 decision 3). The macro

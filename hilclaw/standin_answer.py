@@ -55,8 +55,9 @@ record leaves a situation open (C14, the timing stream with status 0 and no
 waiter's line) the module answers ``None`` and invents nothing.
 
 It starts no process, reads no environment variable, file or clock, imports
-no NumPy and keeps nothing between calls. It is bound to no tool, operation or
-backend, and nothing imports it yet.
+no NumPy and keeps nothing between calls. It is bound to no tool or backend;
+:mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_run` and
+:mod:`hilclaw.model_forward_container` import it.
 """
 
 from typing import NamedTuple

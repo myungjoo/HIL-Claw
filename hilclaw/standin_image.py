@@ -5,7 +5,9 @@ decision 5 decides that the user names the one image of the four first-case
 builds and processes in one environment variable of the process that runs the
 operation, and leaves the variable's name and its check to this code slice.
 The name is :data:`ENV_IMAGE`; :func:`read_image` reads it. The module is
-bound to no tool and no backend operation; nothing calls it yet.
+bound to no tool and no backend operation; :mod:`hilclaw.standin_check` and
+:mod:`hilclaw.model_forward_container` call :func:`read_image`, and
+:mod:`hilclaw.nightly` and :mod:`hilclaw.turn_loop` use :data:`ENV_IMAGE` alone.
 
 It reads only that one variable, writes nothing, starts no program and names
 no image. Its check is :func:`hilclaw.standin_container.check_image`, the one

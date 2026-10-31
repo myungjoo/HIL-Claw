@@ -231,8 +231,9 @@ def read(data_root, run_id, position=0):
 def remove_torn_tail(data_root, run_id):
     """Remove the torn tail of the log of the run ``run_id``; return the number of bytes removed.
 
-    This is the removal :func:`append` performs, for the step that commits the
-    data repository (decision 6): exactly the bytes after the last line feed,
+    This is the removal :func:`append` performs, for ``run.commit``
+    (:mod:`hilclaw.run_commit`), which commits the data repository (decision
+    6): exactly the bytes after the last line feed,
     the whole content when there is none; no earlier line is read. Returns 0,
     and writes nothing, when the file is missing, empty or ends with a line feed
     (an existing file is still opened for writing). Raises

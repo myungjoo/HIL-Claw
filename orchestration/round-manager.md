@@ -7,8 +7,9 @@ first-case run (ADR-0118 decisions 1 and 2).
 
 - This turn carries one round at most. Do not begin a second round
   (ADR-0118 decision 2 (i)).
-- The session ends after the write that ends its round (ADR-0118
-  decision 2 (i); ADR-0012 decisions 3 and 6).
+- The session ends after the `mcp__hilclaw__run_commit` call that follows
+  the write that ends its round, as "The end of a session" says (ADR-0118
+  decision 2 (i); ADR-0012 decisions 3 and 6; ADR-0143 decision 2).
 - Do not use `/loop` or a scheduling tool to carry rounds; rounds are
   carried by turns (ADR-0118 Walk-through).
 
