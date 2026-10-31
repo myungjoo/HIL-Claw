@@ -1001,10 +1001,14 @@ def test_a_completed_rope_judgement_is_bounded_by_m_h_d():
         )
 
 
-@pytest.mark.parametrize("seed", [-1, True], ids=["negative-seed", "bool-seed"])
-def test_a_rope_report_of_a_seed_the_rule_refuses_raises(seed):
+@pytest.mark.parametrize(
+    ("dims", "seed"),
+    [((1, 2, 2), -1), ((1, 2, 2), True), ((1, 1, 2**52), 1)],
+    ids=["negative-seed", "bool-seed", "rows-beyond-the-table"],
+)
+def test_a_rope_report_of_what_the_start_rule_refuses_raises(dims, seed):
     with pytest.raises(VerificationArgumentError):
-        from_v2_report(b"", ROPE_ENTRY, (1, 2, 2), **{**ROPE_CALL, "seed": seed})
+        from_v2_report(b"", ROPE_ENTRY, dims, **{**ROPE_CALL, "seed": seed})
 
 
 @pytest.mark.parametrize(

@@ -237,23 +237,23 @@ def from_v2_report(report, entry, dims, *, draws, seed, rtol, atol):
     :func:`hilclaw.check_result.output_operands` checks them. The report is
     then judged by the judge of the entry's contract (module docstring):
     for fp32 ``gemm`` :func:`hilclaw.harness.verification.judge_report`
-    with ``dims`` as ``m``, ``k``, ``n``, otherwise as
-    by the judge of a bf16 check of the contract's ``kind``, with ``dims``,
-    ``draws``, ``seed``, ``rtol`` and ``atol``, and for ``rope`` with the
-    ``start`` of :func:`hilclaw.harness.bf16_rope_verification.start_position`
-    for ``dims`` and ``seed``. Its judgement is handed to :func:`from_v2_judgement` with the same
-    values but ``seed``, which is no member of the result (ADR-0042
-    decision 6). All but ``report``, ``entry`` and ``dims`` are
-    keyword-only and none has a default.
+    with ``dims`` as ``m``, ``k``, ``n``, otherwise by the judge of a bf16
+    check of the contract's ``kind``, with ``dims``, ``draws``, ``seed``,
+    ``rtol`` and ``atol``, and for ``rope`` with the ``start`` of
+    :func:`hilclaw.harness.bf16_rope_verification.start_position` for
+    ``dims`` and ``seed``. Its judgement is handed to
+    :func:`from_v2_judgement` with the same values but ``seed``, which is no
+    member of the result (ADR-0042 decision 6). All but ``report``, ``entry``
+    and ``dims`` are keyword-only and none has a default.
 
     What each other argument must be, the order of the checks and what is
     raised are those of the ``judge_report`` called and are passed on
     unchanged:
     :class:`hilclaw.harness.verification_arrays.VerificationArgumentError`
     for a number of draws, seed or tolerance it refuses (for ``rope``, first
-    what ``start_position`` refuses of the seed), then :class:`TypeError` for
-    a ``report`` that is not exactly ``bytes``, and what NumPy raises for
-    arrays it cannot allocate. Nothing is returned then.
+    what ``start_position`` refuses of ``dims`` and ``seed``), then
+    :class:`TypeError` for a ``report`` that is not exactly ``bytes``, and
+    what NumPy raises for arrays it cannot allocate. Nothing is returned then.
     """
     check_result.output_operands(entry, dims)
     common = {"draws": draws, "seed": seed, "rtol": rtol, "atol": atol}
