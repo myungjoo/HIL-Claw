@@ -135,6 +135,7 @@ REQUIRED_VARIABLES = (
 REQUIRED_PROGRAMS = ("claude", "docker", "git")
 HOST_SESSION_MARKS = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
 PROFILE_TIMEOUT_S = 60
+PROFILE_FAILURES = (standin_profile.UnreadableFactError, OSError, ValueError)
 TAIL_LINES = 40
 TAIL_WIDTH = 400
 LINE_LIMIT = 2000
@@ -167,25 +168,53 @@ class _Stop(Exception):
         self.detail = detail
 
 
-def document(hw_profile):
-    """Return the ``instance.json`` document of the nightly run for ``hw_profile``."""
+def instance_document(hw_profile, op, *, n_max, draws, tolerance, round_budget):
+    """Return an ``instance.json`` document of one candidate per round for the two records.
+
+    Its keys are the names :mod:`hilclaw.keys` derives, which raises
+    :class:`hilclaw.keys.InvalidRecordError` for a record it refuses. The other
+    values are put in as given and are not checked here.
+    """
     return {
         "schema_version": 1,
         "hw_profile": {
             "key": keys.hw_profile_key(hw_profile).name,
             "record": hw_profile,
         },
-        "op_signature": {"key": keys.op_signature_key(OP).name, "record": OP},
+        "op_signature": {"key": keys.op_signature_key(op).name, "record": op},
         "objective": {
             "objectives": [{"type": "latency_minimisation"}],
             "constraints": [],
         },
         "candidates_per_round": 1,
-        "n_max": N_MAX,
-        "draws": 1,
-        "tolerance": {"rtol": RTOL, "atol": ATOL_PER_K * OP["shape"]["k"]},
-        "round_budget": ROUND_BUDGET,
+        "n_max": n_max,
+        "draws": draws,
+        "tolerance": tolerance,
+        "round_budget": round_budget,
     }
+
+
+def document(hw_profile):
+    """Return the ``instance.json`` document of the nightly run for ``hw_profile``."""
+    return instance_document(
+        hw_profile,
+        OP,
+        n_max=N_MAX,
+        draws=1,
+        tolerance={"rtol": RTOL, "atol": ATOL_PER_K * OP["shape"]["k"]},
+        round_budget=ROUND_BUDGET,
+    )
+
+
+def local_profile(image, profile=None):
+    """Return the hw_profile record of the local ``cpu_standin`` with the toolchain of ``image``.
+
+    ``profile`` is the reader, called with ``hw_source``, ``timeout_s`` and
+    ``image`` (default :func:`hilclaw.standin_profile.local_record`). What it
+    raises is passed on; :data:`PROFILE_FAILURES` are its failures of the machine.
+    """
+    reader = profile or standin_profile.local_record
+    return reader("external", timeout_s=PROFILE_TIMEOUT_S, image=image)
 
 
 def data_root(base, firing, started):
@@ -460,8 +489,8 @@ def _make_data_root(env, data):
 
 def _profile(profile, image):
     try:
-        return profile("external", timeout_s=PROFILE_TIMEOUT_S, image=image)
-    except (standin_profile.UnreadableFactError, OSError, ValueError) as e:
+        return local_profile(image, profile)
+    except PROFILE_FAILURES as e:
         raise _Stop(ENVIRONMENT, "prepare/hw_profile", type(e).__name__) from e
 
 

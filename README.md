@@ -75,6 +75,80 @@ python -m ruff check .
 python -m ruff format --check .
 ```
 
+## P2-15 확인 절차
+
+실제 Llama 3.2 1B 가중치로 end-to-end가 reference와 맞는지를 오너가 런타임 머신에서 손으로 확인하는 순서다([PROCESS/PLAN.md](PROCESS/PLAN.md) P2-15, [RuntimeAcceptance.md](PROCESS/RuntimeAcceptance.md) RA-0056). 아래의 `<...>`는 모두 오너가 정할 값이며 저장소는 그 값을 고르지 않는다. 그대로 두면 명령이 거절한다.
+
+1. **머신**: [PROCESS/NIGHTLY.md](PROCESS/NIGHTLY.md) §1의 "머신 준비"(POSIX 호스트 또는 WSL 2, 로그인된 `claude`, Docker, 코더·stand-in 이미지, `HILCLAW_CODER_IMAGE`·`HILCLAW_STANDIN_IMAGE`·`HILCLAW_CODER_OAUTH_TOKEN`)와 `python -m pip install transformers torch`([ADR-0192](ARCHITECTURE/decisions/ADR-0192-od31-model-check-command.md) 결정 3). 이 패키지들은 CI와 개발 드라이버의 의존성이 아니다. 데이터 저장소는 이미 있는 git 저장소여야 하며 [hilclaw.config.json](hilclaw.config.json)의 `local_path`나 환경 변수 `HILCLAW_DATA_REPO_LOCAL_PATH`로 가리킨다. 명령은 Claude Code 세션 밖의 셸에서 저장소 루트에서 실행한다.
+2. **모델 파일**: 런타임 사용자가 라이선스에 동의해 Hugging Face의 base 변형(safetensors와 토크나이저 파일 — [ADR-0191](ARCHITECTURE/decisions/ADR-0191-od31-hugging-face-model-files.md) 결정 1)을 직접 받아, 체크아웃과 데이터 저장소 밖의 경로에 둔다.
+3. **instance 문서**: 아래 값 파일을 쓰고 빈 디렉토리를 만든 뒤 실행한다. 종류마다 `<출력 디렉토리>/<kind>.json`이 생긴다. shape는 [ADR-0152](ARCHITECTURE/decisions/ADR-0152-od31-llama-forward-operations.md) 결정 5, 값의 규칙은 [hilclaw/model_instances.py](hilclaw/model_instances.py)에 있다.
+
+   ```sh
+   python -m hilclaw.model_instances <값 파일> <출력 디렉토리>
+   ```
+
+   ```json
+   {
+     "n_max": "<n_max>", "draws": "<draws>", "round_budget": "<round_budget>",
+     "kinds": {
+       "gemm": {"m": "<m>", "k": "<k>", "n": "<n>", "rtol": "<rtol>", "atol": "<atol>"},
+       "rmsnorm": {"m": "<m>", "n": "<n>", "rtol": "<rtol>", "atol": "<atol>"},
+       "elementwise_add": {"m": "<m>", "n": "<n>", "rtol": "<rtol>", "atol": "<atol>"},
+       "swiglu": {"m": "<m>", "n": "<n>", "rtol": "<rtol>", "atol": "<atol>"},
+       "rope": {"m": "<m>", "h": "<h>", "d": "<d>", "rtol": "<rtol>", "atol": "<atol>"},
+       "sdpa_kv_cache": {"m": "<m>", "l": "<l>", "h": "<h>", "h_kv": "<h_kv>", "d": "<d>", "rtol": "<rtol>", "atol": "<atol>"}
+     }
+   }
+   ```
+
+4. **run**: 문서마다 한 번씩 실행하며, 아직 돌고 있을 수 있는 run에 `turn_start`를 다시 시작하지 않는다(ADR-0122). `new_run`의 출력 `{"outcome":"started","run_id":"..."}`에서 run id를 읽는다. run이 끝나면 `turn_start`가 표준 출력에 `{"outcome":"run_over"}`를 쓰고 상태 0으로 끝난다. 그 밖의 줄과 상태는 멈춘 이유이며 [hilclaw/turn_start.py](hilclaw/turn_start.py)의 표에 있다. turn 세션의 출력은 표준 오류로 간다.
+
+   ```sh
+   python -m hilclaw.new_run <출력 디렉토리>/<kind>.json
+   python -m hilclaw.turn_start <run id>
+   ```
+
+5. **확인**: 아래 문서를 쓰고 실행한다. 호출 지점 15개가 6개 run을 가리킨다. `lm_head`는 그 자체의 instance 없이 `gemm` run을 쓴다(ADR-0152 결정 4, [ADR-0189](ARCHITECTURE/decisions/ADR-0189-od31-binding-from-run-incumbents.md)).
+
+   | run | 호출 지점 |
+   |---|---|
+   | `gemm` | `qkv`, `o`, `gate`, `up`, `down`, `lm_head` |
+   | `rmsnorm` | `attention_norm`, `ffn_norm`, `norm` |
+   | `elementwise_add` | `attention_residual`, `ffn_residual` |
+   | `swiglu` | `ffn_activation` |
+   | `rope` | `rope_q`, `rope_k` |
+   | `sdpa_kv_cache` | `sdpa` |
+
+   ```sh
+   python -m hilclaw.model_check <확인 문서>
+   ```
+
+   ```json
+   {
+     "model_directory": "<모델 파일 경로>",
+     "runs": {
+       "qkv": "<gemm run id>", "o": "<gemm run id>", "gate": "<gemm run id>", "up": "<gemm run id>", "down": "<gemm run id>", "lm_head": "<gemm run id>",
+       "attention_norm": "<rmsnorm run id>", "ffn_norm": "<rmsnorm run id>", "norm": "<rmsnorm run id>",
+       "attention_residual": "<elementwise_add run id>", "ffn_residual": "<elementwise_add run id>",
+       "ffn_activation": "<swiglu run id>",
+       "rope_q": "<rope run id>", "rope_k": "<rope run id>",
+       "sdpa": "<sdpa_kv_cache run id>"
+     },
+     "flags": ["<그 run들의 빌드 설정>"],
+     "prompt": "<프롬프트>",
+     "n": "<greedy 토큰 수>",
+     "rtol": "<rtol>",
+     "atol": "<atol>",
+     "build_timeout_s": "<초>",
+     "run_timeout_s": "<초>",
+     "program_flags": ["<forward program 빌드 플래그>"],
+     "program_trailing_flags": ["<뒤쪽 플래그>"]
+   }
+   ```
+
+   `flags`는 run을 돌린 커밋의 `hilclaw.standin_settings.FLAGS`다(ADR-0189 결정 6). `program_flags`와 `program_trailing_flags`는 [hilclaw/model_build.py](hilclaw/model_build.py)의 것이고 C 라이브러리가 요구하면 뒤쪽에 `-ldl`을 넣는다. `parent`는 선택 멤버로, 빌드 디렉토리를 만들 곳이다. 멤버의 정의는 [hilclaw/model_check.py](hilclaw/model_check.py)에 있다.
+6. **결과**: `match`(상태 0)는 행마다의 logit이 `rtol`·`atol` 안이고 처음 `n`개 greedy 토큰이 reference와 같다는 뜻이다. `no_match`(상태 10)는 둘 중 하나가 아니라는 뜻이며, 줄의 `logits`와 `first_differing_token`이 어느 쪽인지 말한다. 다른 `outcome`은 판정이 아니라 확인이 그 앞에서 멈춘 것이다. 결과는 어디에도 저장되지 않으므로 오너가 [RuntimeAcceptance.md](PROCESS/RuntimeAcceptance.md)의 RA-0056 `상태`에 손으로 적는다. RA-0035, RA-0050, RA-0057, RA-0058, RA-0061, RA-0065~RA-0067도 이 확인에서 드러나므로 각각 본다.
+
 
 
 ## References
