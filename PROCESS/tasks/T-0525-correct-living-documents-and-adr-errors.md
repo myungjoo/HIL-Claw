@@ -2,7 +2,7 @@
 id: T-0525
 title: Bring the registers and usage documents up to landed ADRs and correct four ADR errors (HQ-0080 groups E and F)
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [HQ-0080, OD-6, OD-8, OD-28, C-7]
 dependsOn: [T-0523, T-0524]
