@@ -519,3 +519,11 @@
 - 내용:
 
   (i) A real technique-selector whose `catalog.read` result on a bf16 run holds no entry reports `techniques: none`, and the round goes on to a spec with an empty `guidance.techniques`. (ii) A real coder given the prompt's every-shape sentence keeps its kernel correct at values of the size parameters other than its spec's. This shows in a generation at the other call shapes (RA-0056).
+
+### RA-0059
+
+- 상태: 미확인
+- 출처: `P2-9` (근거 task T-0520, ADR-0074; 등록 2026-10-31)
+- 내용:
+
+  PLAN P2-9. S6 수용 기준 측정: 오너가 런타임 머신에서 같은 키·target·tolerance·N·budget으로 run을 두 번(첫 run과 두 번째 run) 수행하고 `python -m hilclaw.s6_metric <first_run_id> <second_run_id>`로 판정한다(met·not met·not applicable, ADR-0074). 드라이버의 스텁 `claude` 검증 run, nightly 루틴의 run, 테스트 run(D25)은 첫 run으로도 두 번째 run으로도 쓰지 않는다. 몇 쌍을 돌리고 판정을 어떻게 합치는지, 대조 run과 시간 상한은 HQ-0081의 답을 따른다.

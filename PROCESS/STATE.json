@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P2",
-  "currentTask": null,
-  "nextTask": null,
-  "lock": null,
+  "currentTask": "T-0521",
+  "nextTask": "T-0522",
+  "lock": {
+    "owner": "AKIHA:6696c84b",
+    "acquiredAt": "2026-10-31T00:54:36Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -835,6 +839,14 @@
       "reason": "owner-decision",
       "question": "실제 가중치·토크나이저(OD-31 ⑤·⑦, P2-15 준비). [쟁점] RA-0056(P2-15)을 오너가 확인하려면 실제 가중치 읽기, 토크나이저, transformers 비교가 필요한데 코드가 없다. ① 모델 파일: (a) Hugging Face의 safetensors와 tokenizer 파일, base 변형(저장소·변형 이름은 확인하지 못했으니 오너가 지정) (b) Meta 원본 형식 (c) 그 밖. ② 저장 위치: (a) 런타임 머신의 사용자 경로를 입력으로 받고 데이터 plane에 넣지 않음 (b) CAS (c) 그 밖. ③ 패키지: (a) transformers와 함께 런타임 머신의 선택 의존성으로 두고 드라이버·CI에는 넣지 않음 (b) 그 밖. ④ 진입점: (a) 오너가 수동 실행할 명령줄을 드라이버 task로 만듦(드라이버 검증은 합성 파일) (b) 오너 세션에서 스크립트로 직접. [막히는 것] P2-15의 실제 확인. [막히지 않는 것] 그 밖의 드라이버 task.",
       "askedAt": "2026-10-30T10:55:45Z",
+      "issueComment": null
+    },
+    {
+      "id": "HQ-0085",
+      "taskId": "T-0408",
+      "reason": "owner-decision",
+      "question": "P2-4의 gate 검사와 강제 안전 gate(OD-3, #5 A-5 — 오너 전용). [쟁점] HQ-0080 ④로 P2-4는 미체크로 남았고, 첫 사례의 PreToolUse 예산 검사·저널링·Stop 커밋(ADR-0146~0149)은 있으나 gate 검사가 없다. 지금까지 답해진 것은 툴체인·환경 변경의 허락 요청이 모든 모드에서 run을 멈춘다는 것뿐이다(FR-4). (a) 지금 정한다: 제안된 비-설정형 최소 gate 4종(승격 게이트, 신규 바이너리 첫 실물 실행, board health 실패, roofline 위반)을 채택하고 checkpoint 모드의 기본 구성을 지정(값 지정) (b) P2-15 뒤에 다시 묻고 그때까지 P2-4는 미체크로 둠 (c) MVP에서는 FR-4의 허락 요청 정지만 두고 P2-4를 그 범위로 체크 (d) 그 밖. [막히는 것] P2-4 체크와 gate task. [막히지 않는 것] P2-15 준비와 그 밖의 task.",
+      "askedAt": "2026-10-31T00:54:36Z",
       "issueComment": null
     }
   ],
