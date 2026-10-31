@@ -2,7 +2,7 @@
 id: T-0529
 title: Add the command line the owner runs for P2-15 — tokenize, generate through the named runs' kernels in containers, and compare with Hugging Face transformers (HQ-0084 ④, HQ-0071)
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [OD-31, C-6, FR-9, FR-10, "PLAN P2-15", "HQ-0084", "HQ-0071", D26]
 dependsOn: [T-0528]
