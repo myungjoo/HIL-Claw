@@ -2,7 +2,7 @@
 id: T-0530
 title: Write the six bf16 instance documents from the owner's values and state the P2-15 steps in the README
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [OD-31, C-6, FR-1, FR-5, "PLAN P2-15", D26]
 dependsOn: [T-0528, T-0529]
