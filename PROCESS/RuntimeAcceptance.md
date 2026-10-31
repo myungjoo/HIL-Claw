@@ -567,3 +567,27 @@
 - 내용:
 
   That file's Q and K are in the arrangement of decision 4: the logit comparison against transformers shows only that reader and reference agree, so the owner also sees that the generated text makes sense.
+
+### RA-0065
+
+- 상태: 미확인
+- 출처: T-0529, ADR-0192 (등록 2026-10-31)
+- 내용:
+
+  With the `transformers` and `torch` the owner installs, the loading call of ADR-0192 decision 2 is accepted for the directory obtained and its logits are `torch.float64` (a version that ignores `dtype` gives `wrong_dtype`). Checked together with RA-0056.
+
+### RA-0066
+
+- 상태: 미확인
+- 출처: T-0529, ADR-0192 (등록 2026-10-31)
+- 내용:
+
+  `PreTrainedTokenizerFast` reads that directory's tokenizer, and the prompt's ids in the answer start as the file's rule says (the begin-of-text token expected). Checked together with RA-0056.
+
+### RA-0067
+
+- 상태: 미확인
+- 출처: T-0529, ADR-0192 (등록 2026-10-31)
+- 내용:
+
+  The machine holds the reference's float64 weights (about 10 GB in the Python process, after the executor ended) and N + 1 whole passes finish in a time the owner accepts; this adds to RA-0035. Checked together with RA-0056.

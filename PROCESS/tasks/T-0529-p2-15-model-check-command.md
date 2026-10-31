@@ -2,7 +2,7 @@
 id: T-0529
 title: Add the command line the owner runs for P2-15 — tokenize, generate through the named runs' kernels in containers, and compare with Hugging Face transformers (HQ-0084 ④, HQ-0071)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-31, C-6, FR-9, FR-10, "PLAN P2-15", "HQ-0084", "HQ-0071", D26]
 dependsOn: [T-0528]
@@ -87,7 +87,7 @@ hq: []
 
 ## Result
 
-PR #347, code mode, 2 review rounds, Approve. The merge commit and the section 9 notice on #5 (7-day window) follow landing; the driver records them.
+PR #347, squash-merged as 34944b4a (code mode, 2 review rounds, Approve, CI green). No BLOCKED, no HQ. Section 9 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6541139347 (7-day window from 2026-10-31).
 
 - Language: Python. It joins Python modules, and `transformers` is a Python package.
 - Reference: `LlamaForCausalLM.from_pretrained(directory, dtype=torch.float64, attn_implementation="eager", use_safetensors=True, local_files_only=True, trust_remote_code=False)`; logits of another dtype are refused. Upstream keeps RMSNorm, RoPE and the eager softmax at float32 whatever the dtype, so the reference is not float64-exact (ADR-0192 decision 2).
@@ -97,7 +97,7 @@ PR #347, code mode, 2 review rounds, Approve. The merge commit and the section 9
 - Edited assertions (D21): none.
 - Size: 599 non-blank added lines outside tests, in the task's cap.
 - Coverage: `hilclaw/model_check.py` 99%, `hilclaw/model_hf_reference.py` 100% locally. Local full suite before the review fixes: 36968 passed, 2388 skipped.
-- Runtime acceptance items: the three of ADR-0192 Consequences.
+- Runtime acceptance items: RA-0065, RA-0066, RA-0067 (ADR-0192 Consequences).
 
 **Command, for T-0530:** `python -m hilclaw.model_check check.json`, with `HILCLAW_STANDIN_IMAGE` naming the image and the data root configured as for `hilclaw.new_run`. The packages `transformers` and `torch` are the runtime machine's. Every value below is a placeholder of the user's; the example chooses none, and `runs` must name all fifteen call sites of `hilclaw.model_forward_run.CALL_SITES`:
 
