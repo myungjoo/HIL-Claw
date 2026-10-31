@@ -11,7 +11,9 @@ outside the session directory.
 - the definition lives in the top-level directory ``orchestration/`` of this
   repository, and its files get the names Claude Code reads only in the
   session directory: a project ``CLAUDE.md``, ``.claude/agents/``,
-  ``.claude/skills/`` and ``.claude/settings.json`` (decision 5);
+  ``.claude/skills/`` and ``.claude/settings.json`` (decision 5), the last of
+  which :func:`hilclaw.turn_loop.run` writes itself, refusing a definition
+  that brings its own (ADR-0146 decision 4);
 - no entry under ``orchestration/`` is named ``CLAUDE.md``,
   ``CLAUDE.local.md`` or ``AGENTS.md``, and no directory there is named
   ``.claude`` (decision 5, naming rule);

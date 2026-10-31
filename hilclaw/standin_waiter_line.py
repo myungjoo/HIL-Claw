@@ -9,7 +9,7 @@ line, ended by one LF (its step W5). :func:`read` is the rule of its decision 3,
 output as the waiter's, removes the one LF of W5 before it and returns the
 bytes before that LF, unchanged, as the report, with the memory figure by the
 Linux unit rule of its decision 4. It is bound to no tool and no operation;
-ADR-0144 slice (4) will call it.
+:func:`hilclaw.standin_answer.read_timing_process` calls it.
 
 The waiter's line (W5 leaves its spelling to the code; the C waiter of ADR-0145
 slice (5) is written against this text). It is ASCII, ended by one LF, and

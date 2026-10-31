@@ -9,7 +9,9 @@ container for one build or one process through the container runtime's
 command-line program, waits for it and hands back what the program reported.
 It is bound to no tool and no backend operation; the ``cpu_standin``
 operations of :mod:`hilclaw.standin_check` and :mod:`hilclaw.standin_run` call
-it through :func:`hilclaw.standin_check.run_container`.
+it through :func:`hilclaw.standin_check.run_container`, other modules of the
+package call it directly, and :mod:`hilclaw.coder_runtime` uses
+:func:`check_image` alone.
 
 The one program it starts is the client (default ``docker``), through
 :func:`hilclaw.local_run.run` looked up at call time, with the properties of

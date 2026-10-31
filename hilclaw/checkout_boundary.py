@@ -1,9 +1,11 @@
 """The "outside both checkouts" test shared by the modules that place a directory.
 
 :mod:`hilclaw.scratch` (``ARCHITECTURE/decisions/ADR-0049-od8-coder-call-isolation-means.md``
-decision 3) and :mod:`hilclaw.selfcheck_session` refuse a directory that meets
-a checkout: the directory that holds this package, :data:`PACKAGE_DIRECTORY`,
-or a directory the caller names in ``keep_out``. This module holds that test.
+decision 3), :mod:`hilclaw.selfcheck_session`, :mod:`hilclaw.turn_loop` and
+:mod:`hilclaw.model_execute` refuse a directory that meets a checkout: the
+directory that holds this package, :data:`PACKAGE_DIRECTORY`, or a directory
+the caller names in ``keep_out``; :mod:`hilclaw.standin_check` applies the test
+for the package directory alone. This module holds that test.
 
 Every path it is given is a ``str`` the caller has already checked; each is
 compared by its real path as :func:`os.path.normcase` folds it. It raises no
