@@ -826,6 +826,17 @@ def test_a_bf16_build_failure_shows_the_compiler_log_of_its_v2_step(root, point,
     assert attempts(root, RUN, 1) == [entry({"stage": "compile", "report": report})]
 
 
+@pytest.mark.parametrize("execution", [1, 100, keys.MAX_INTEGER])
+def test_a_compiler_log_is_found_by_the_name_of_the_layout(root, execution):
+    put_spec(root, 0)
+    check(root, 0, SIM, execution=execution, result=bf16_broken("build_exit_status"))
+    path = build_log(root, 0, SIM, execution, content=b"x.c:1: no")
+    assert path == layout.build_log_file(root, RUN, 0, 1, 1, SIM, execution)
+    report = sentence("compile", "sim", "broken", BUILD_EXIT)
+    report += "\nCompiler log:\nx.c:1: no"
+    assert attempts(root, RUN, 1) == [entry({"stage": "compile", "report": report})]
+
+
 def test_an_open_bf16_sim_check_is_not_shown(root):
     put_spec(root, 0)
     check(root, 0, SIM, result=bf16())

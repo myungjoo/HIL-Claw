@@ -285,11 +285,16 @@ def _failure(root, run_id, entry, point, step, deciding):
         sentence += f": {_PHRASES[condition] if named else _GENERIC_PHRASE}"
     report = sentence + "."
     if stage == "compile":
-        directory = layout.attempt_dir(
-            root, run_id, entry["round"], "measure", 1, entry["attempt"]
+        path = layout.build_log_file(
+            root,
+            run_id,
+            entry["round"],
+            1,
+            entry["attempt"],
+            step,
+            deciding["execution"],
         )
-        name = f"build-log-{step}-{deciding['execution']:02d}.txt"
-        text = _compiler_log(root, directory / name)
+        text = _compiler_log(root, path)
         if text:
             report += f"\nCompiler log:\n{text}"
     return {"stage": stage, "report": report}

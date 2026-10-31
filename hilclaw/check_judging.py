@@ -4,51 +4,34 @@
 2) gives all of the judging of a report to the code that is the same for every
 backend; :func:`hilclaw.harness.verification.judge_report` carries it out and
 returns a :class:`hilclaw.harness.verification.Judgement`.
-``ARCHITECTURE/decisions/ADR-0042-od18-correctness-check-result-members.md``
-(decisions 2 to 4 and 7) fixes the members of a result, and
-:mod:`hilclaw.check_result` builds one from plain values. This module joins
-the two:
+``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md`` (decisions 3
+and 6) fixes the members of a result, and :mod:`hilclaw.check_result` builds
+one from plain values. This module joins the two:
 
 * :func:`condition_of`: the value of ``condition`` (ADR-0042 decision 3) for a
   member of :class:`hilclaw.harness.verification.Broken`.
-* :func:`from_judgement`: the result for a ``Judgement``, built by
-  :func:`hilclaw.check_result.completed` or
-  :func:`hilclaw.check_result.broken`.
-* :func:`from_report`: the result for one report, which is ``judge_report``
-  followed by :func:`from_judgement` with the same dimensions, number of draws
-  and tolerance on both sides.
-* :func:`from_bf16_judgement` and :func:`from_bf16_report`: the same for a
-  check of a bf16 kind of :data:`hilclaw.check_result.BF16_KINDS`, whose
-  judge is :func:`hilclaw.harness.bf16_verification.judge_report` with the
-  kind and the dimensions
-  (``ARCHITECTURE/decisions/ADR-0177-od18-od6-contract-table.md``
-  decision 3), and whose result is built by
-  :func:`hilclaw.check_result.bf16_completed` or
-  :func:`hilclaw.check_result.bf16_broken`. For ``sdpa_kv_cache`` the
-  judge is :func:`hilclaw.harness.bf16_sdpa_kv_cache_verification.judge_report`
-  with the dimensions (ADR-0165 decision 8), whose counts per draw also hold
-  the number of cache elements that differ. For ``rope`` the judge is
-  :func:`hilclaw.harness.bf16_rope_verification.judge_report` with the
-  dimensions and the start position that
-  :func:`hilclaw.harness.bf16_rope_verification.start_position` gives for
-  the dimensions and the seed (ADR-0164 decision 10; ADR-0180 decision 1).
-  The verdict classes and the conditions are those of the first case:
-  ADR-0163 to ADR-0165 have them as ADR-0017 decision 7, with the same
-  types. The sdpa judge counts the differences of each cache allocation
-  apart; :func:`hilclaw.check_result.bf16_completed` sums them into the one
-  ``cache_differs`` of such a result.
 * :func:`operand_counts`, :func:`from_v2_judgement` and
-  :func:`from_v2_report`: the same for the v2 result of
-  ``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md``
-  (decisions 3 and 6) of a check of any entry of
+  :func:`from_v2_report`: the v2 result of a check of any entry of
   :data:`hilclaw.contract_table.TABLE`, built by
   :func:`hilclaw.check_result.v2_completed` or
   :func:`hilclaw.check_result.v2_broken`, with the counts of each draw
   split per output operand by :func:`operand_counts`. Every result of the
-  tool is judged by :func:`from_v2_report` (:mod:`hilclaw.check_answer`);
-  :func:`from_judgement`, :func:`from_report`, :func:`from_bf16_judgement`
-  and :func:`from_bf16_report` are called by no tool since ADR-0183
-  decision 9 item 2, and their removal follows in a later task.
+  tool is judged by :func:`from_v2_report` (:mod:`hilclaw.check_answer`).
+
+The judge of a bf16 check is
+:func:`hilclaw.harness.bf16_verification.judge_report` with the kind and the
+dimensions (``ARCHITECTURE/decisions/ADR-0177-od18-od6-contract-table.md``
+decision 3). For ``sdpa_kv_cache`` it is
+:func:`hilclaw.harness.bf16_sdpa_kv_cache_verification.judge_report` with the
+dimensions (ADR-0165 decision 8), whose counts per draw also hold the number
+of cache elements that differ in each allocation. For ``rope`` it is
+:func:`hilclaw.harness.bf16_rope_verification.judge_report` with the
+dimensions and the start position that
+:func:`hilclaw.harness.bf16_rope_verification.start_position` gives for the
+dimensions and the seed (ADR-0164 decision 10; ADR-0180 decision 1). The
+verdict classes and the conditions are those of
+:func:`hilclaw.harness.verification.judge_report`: ADR-0163 to ADR-0165 have
+them as ADR-0017 decision 7, with the same types.
 
 Choices that are this module's own and no rule of a record:
 
@@ -83,8 +66,8 @@ Choices that are this module's own and no rule of a record:
   so by position.
 * The judge of :func:`from_v2_report` is chosen by the ``kind`` and
   ``dtype`` of the entry's contract: fp32 ``gemm`` is judged by
-  :func:`hilclaw.harness.verification.judge_report`, every other kind as
-  :func:`from_bf16_report` judges it.
+  :func:`hilclaw.harness.verification.judge_report`, every other kind by
+  the judge of a bf16 check above.
 
 What the module does not do: it is no tool and is bound to none. It calls no
 operation and says nothing of what an operation returns or of how a report
@@ -134,141 +117,14 @@ def condition_of(broken):
     return _CONDITIONS[broken]
 
 
-def from_judgement(judgement, *, m, k, n, draws, rtol, atol):
-    """Return the result of a check for ``judgement``, as a new ``dict``.
-
-    ``judgement`` is exactly a
-    :class:`hilclaw.harness.verification.Judgement`. ``m``, ``k``, ``n``,
-    ``draws``, ``rtol`` and ``atol`` are the dimensions, the number of draws
-    and the tolerance the report was judged with; they are keyword-only, none
-    has a default, and each follows the rule of
-    :func:`hilclaw.check_result.completed`.
-
-    * ``judgement.broken`` is ``None``: the result is that of
-      :func:`hilclaw.check_result.completed` with ``judgement.counts`` handed
-      over as it is. Its ``outcome`` is derived from the counts, and
-      ``judgement.verdict`` must be the member of
-      :class:`hilclaw.harness.verification.Verdict` that says the same.
-    * ``judgement.broken`` is a member of ``Broken``: the result is that of
-      :func:`hilclaw.check_result.broken` with the condition of
-      :func:`condition_of`. ``judgement.verdict`` and ``judgement.counts``
-      must be ``None``.
-
-    The checks are made in this order, and the first that fails raises:
-
-    1. :class:`TypeError` for a ``judgement`` that is not exactly a
-       ``Judgement``, and :class:`ValueError` for one that does not have its
-       three fields.
-    2. :class:`TypeError` for a ``broken`` that is neither ``None`` nor a
-       member of ``Broken``, then for a ``verdict`` that is neither ``None``
-       nor a member of ``Verdict``.
-    3. For a broken judgement, :class:`ValueError` for a ``verdict`` that is
-       not ``None``, then for a ``counts`` that is not ``None``. For any
-       other, :class:`ValueError` for a ``verdict`` that is ``None``, then
-       for a ``counts`` that is ``None``.
-    4. What the builder of :mod:`hilclaw.check_result` raises for ``m``,
-       ``k``, ``n``, ``draws``, ``rtol``, ``atol`` and the counts, unchanged.
-    5. For a completed judgement, :class:`ValueError` for a ``verdict`` that
-       disagrees with the ``outcome`` of the counts.
-
-    No argument is modified or kept, and the result shares no mutable object
-    with ``judgement``.
-    """
-    common = {"m": m, "k": k, "n": n, "draws": draws, "rtol": rtol, "atol": atol}
-    return _from_judgement(
-        judgement,
-        lambda condition: check_result.broken(condition, **common),
-        lambda counts: check_result.completed(**common, counts=counts),
-    )
-
-
-def from_report(report, *, m, k, n, draws, seed, rtol, atol):
-    """Judge one ``report`` and return the result of the check, as a new ``dict``.
-
-    The report is judged by
-    :func:`hilclaw.harness.verification.judge_report` with all eight
-    arguments, and its judgement is handed to :func:`from_judgement` with the
-    same ``m``, ``k``, ``n``, ``draws``, ``rtol`` and ``atol``, so the result
-    names the dimensions, the number of draws and the tolerance the report
-    was judged with. ``seed`` is used for the judging only and is no member
-    of the result (ADR-0042 decision 6). All but ``report`` are keyword-only
-    and none has a default.
-
-    What each argument must be, the order of the checks and what is raised
-    are those of ``judge_report`` and are passed on unchanged:
-    :class:`hilclaw.harness.verification_arrays.VerificationArgumentError`
-    for a parameter or a tolerance it refuses, then :class:`TypeError` for a
-    ``report`` that is not exactly ``bytes``, and what NumPy raises for arrays
-    it cannot allocate. Nothing is returned then.
-
-    Apart from what ``judge_report`` computes the function is pure: equal
-    arguments give equal results.
-    """
-    judgement = verification.judge_report(
-        report, m=m, k=k, n=n, draws=draws, seed=seed, rtol=rtol, atol=atol
-    )
-    return from_judgement(judgement, m=m, k=k, n=n, draws=draws, rtol=rtol, atol=atol)
-
-
 def _wrong_type(name, rule, value):
     return f"{name}: must be {rule}, got {type(value).__name__}"
 
 
-def from_bf16_judgement(judgement, kind, dims, *, draws, rtol, atol):
-    """Return the result of a bf16 check of ``kind`` for ``judgement``, as a new ``dict``.
-
-    As :func:`from_judgement`, with the result built by
-    :func:`hilclaw.check_result.bf16_completed` or
-    :func:`hilclaw.check_result.bf16_broken` from ``kind``, ``dims``,
-    ``draws``, ``rtol`` and ``atol`` (``draws`` and the tolerance
-    keyword-only, none with a default). The checks and their order are those
-    of :func:`from_judgement`, step 4 being what those two builders raise.
-    """
-    common = {"draws": draws, "rtol": rtol, "atol": atol}
-    return _from_judgement(
-        judgement,
-        lambda condition: check_result.bf16_broken(condition, kind, dims, **common),
-        lambda counts: check_result.bf16_completed(kind, dims, **common, counts=counts),
-    )
-
-
-def from_bf16_report(report, kind, dims, *, draws, seed, rtol, atol):
-    """Judge one ``report`` of a bf16 check of ``kind`` and return its result, as a new ``dict``.
-
-    The report is judged by
-    :func:`hilclaw.harness.bf16_verification.judge_report` with ``kind``,
-    ``dims``, ``draws``, ``seed``, ``rtol`` and ``atol``, or, when ``kind``
-    is exactly the ``str`` ``"sdpa_kv_cache"``, by
-    :func:`hilclaw.harness.bf16_sdpa_kv_cache_verification.judge_report`
-    with all of them but ``kind`` (ADR-0165 decision 8), and when it is
-    exactly the ``str`` ``"rope"``, by
-    :func:`hilclaw.harness.bf16_rope_verification.judge_report` with all of
-    them but ``kind`` and with ``start`` the value of
-    :func:`hilclaw.harness.bf16_rope_verification.start_position` for
-    ``dims`` and ``seed`` (ADR-0180 decision 1); its judgement is
-    handed to :func:`from_bf16_judgement` with the same values but ``seed``,
-    which is no member of the result (ADR-0042 decision 6). All but
-    ``report``, ``kind`` and ``dims`` are keyword-only and none has a default.
-
-    What each argument must be, the order of the checks and what is raised
-    are those of the ``judge_report`` called and are passed on unchanged:
-    :class:`hilclaw.harness.verification_arrays.VerificationArgumentError`
-    for a kind, dimensions, number of draws, seed or tolerance it refuses
-    (for ``rope``, first what ``start_position`` refuses of ``dims`` and
-    ``seed``), then :class:`TypeError` for a ``report`` that is not exactly
-    ``bytes``,
-    and what NumPy raises for arrays it cannot allocate. Nothing is returned
-    then.
-    """
-    common = {"draws": draws, "seed": seed, "rtol": rtol, "atol": atol}
-    judgement = _bf16_judge(report, kind, dims, common)
-    return from_bf16_judgement(judgement, kind, dims, draws=draws, rtol=rtol, atol=atol)
-
-
 def _bf16_judge(report, kind, dims, common):
-    if type(kind) is str and kind == _SDPA:
+    if kind == _SDPA:
         return bf16_sdpa_kv_cache_verification.judge_report(report, dims, **common)
-    if type(kind) is str and kind == _ROPE:
+    if kind == _ROPE:
         rope = bf16_rope_verification
         start = rope.start_position(dims, seed=common["seed"])
         return rope.judge_report(report, dims, start=start, **common)
@@ -328,15 +184,41 @@ def operand_counts(entry, dims, counts):
 def from_v2_judgement(judgement, entry, dims, *, draws, rtol, atol):
     """Return the v2 result of a check of ``entry``'s contract for ``judgement``, as a new ``dict``.
 
-    As :func:`from_judgement`, with the result built by
-    :func:`hilclaw.check_result.v2_completed` from :func:`operand_counts`
-    of ``judgement.counts``, or by :func:`hilclaw.check_result.v2_broken`,
-    from ``entry``, ``dims``, ``draws``, ``rtol`` and ``atol`` (``draws``
-    and the tolerance keyword-only, none with a default). The checks and
-    their order are those of :func:`from_judgement`, step 4 being what
-    :func:`operand_counts` and those two builders raise. The verdict must
-    be the ``outcome`` the counts of all operands give (ADR-0183
-    decision 3).
+    ``judgement`` is exactly a
+    :class:`hilclaw.harness.verification.Judgement`. ``entry``, ``dims``,
+    ``draws``, ``rtol`` and ``atol`` are those the report was judged with
+    (``draws`` and the tolerance keyword-only, none with a default).
+
+    * ``judgement.broken`` is ``None``: the result is that of
+      :func:`hilclaw.check_result.v2_completed` from :func:`operand_counts`
+      of ``judgement.counts``. Its ``outcome`` is derived from the counts of
+      all operands, and ``judgement.verdict`` must be the member of
+      :class:`hilclaw.harness.verification.Verdict` that says the same
+      (ADR-0183 decision 3).
+    * ``judgement.broken`` is a member of ``Broken``: the result is that of
+      :func:`hilclaw.check_result.v2_broken` with the condition of
+      :func:`condition_of`. ``judgement.verdict`` and ``judgement.counts``
+      must be ``None``.
+
+    The checks are made in this order, and the first that fails raises:
+
+    1. :class:`TypeError` for a ``judgement`` that is not exactly a
+       ``Judgement``, and :class:`ValueError` for one that does not have its
+       three fields.
+    2. :class:`TypeError` for a ``broken`` that is neither ``None`` nor a
+       member of ``Broken``, then for a ``verdict`` that is neither ``None``
+       nor a member of ``Verdict``.
+    3. For a broken judgement, :class:`ValueError` for a ``verdict`` that is
+       not ``None``, then for a ``counts`` that is not ``None``. For any
+       other, :class:`ValueError` for a ``verdict`` that is ``None``, then
+       for a ``counts`` that is ``None``.
+    4. What :func:`operand_counts` and the builders of
+       :mod:`hilclaw.check_result` raise, unchanged.
+    5. For a completed judgement, :class:`ValueError` for a ``verdict`` that
+       disagrees with the ``outcome`` of the counts.
+
+    No argument is modified or kept, and the result shares no mutable object
+    with ``judgement``.
     """
     common = {"draws": draws, "rtol": rtol, "atol": atol}
     return _from_judgement(
@@ -355,13 +237,23 @@ def from_v2_report(report, entry, dims, *, draws, seed, rtol, atol):
     :func:`hilclaw.check_result.output_operands` checks them. The report is
     then judged by the judge of the entry's contract (module docstring):
     for fp32 ``gemm`` :func:`hilclaw.harness.verification.judge_report`
-    with ``dims`` as ``m``, ``k``, ``n``, otherwise as
-    :func:`from_bf16_report` judges a report of the contract's ``kind``.
-    Its judgement is handed to :func:`from_v2_judgement` with the same
-    values but ``seed``, which is no member of the result (ADR-0042
-    decision 6). All but ``report``, ``entry`` and ``dims`` are
-    keyword-only and none has a default. What the judge raises is passed on
-    unchanged, as in :func:`from_report` and :func:`from_bf16_report`.
+    with ``dims`` as ``m``, ``k``, ``n``, otherwise by the judge of a bf16
+    check of the contract's ``kind``, with ``dims``, ``draws``, ``seed``,
+    ``rtol`` and ``atol``, and for ``rope`` with the ``start`` of
+    :func:`hilclaw.harness.bf16_rope_verification.start_position` for
+    ``dims`` and ``seed``. Its judgement is handed to
+    :func:`from_v2_judgement` with the same values but ``seed``, which is no
+    member of the result (ADR-0042 decision 6). All but ``report``, ``entry``
+    and ``dims`` are keyword-only and none has a default.
+
+    What each other argument must be, the order of the checks and what is
+    raised are those of the ``judge_report`` called and are passed on
+    unchanged:
+    :class:`hilclaw.harness.verification_arrays.VerificationArgumentError`
+    for a number of draws, seed or tolerance it refuses (for ``rope``, first
+    what ``start_position`` refuses of ``dims`` and ``seed``), then
+    :class:`TypeError` for a ``report`` that is not exactly ``bytes``, and
+    what NumPy raises for arrays it cannot allocate. Nothing is returned then.
     """
     check_result.output_operands(entry, dims)
     common = {"draws": draws, "seed": seed, "rtol": rtol, "atol": atol}
