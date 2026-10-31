@@ -333,6 +333,11 @@ def context_both_equal(config):
     return config | {"original_max_position_embeddings": ROPE.old_context_len}
 
 
+def theta_and_type_both_equal(config):
+    config["rope_scaling"] |= {"rope_theta": ROPE.theta, "type": "llama3"}
+    return config
+
+
 @pytest.mark.parametrize(
     "form",
     [
@@ -341,6 +346,7 @@ def context_both_equal(config):
         current_with_theta_outside,
         context_outside,
         context_both_equal,
+        theta_and_type_both_equal,
     ],
 )
 def test_each_form_of_the_constants(tmp_path, tensors, form):
@@ -527,6 +533,8 @@ def rope_block_change(**changes):
             model_files.TWO_ROPE_FORMS,
         ),
         (config_of(original_max_position_embeddings=9), model_files.TWO_ROPE_FORMS),
+        (rope_block_change(rope_theta=7.0), model_files.TWO_ROPE_FORMS),
+        (rope_block_change(type="default"), model_files.TWO_ROPE_FORMS),
     ],
 )
 def test_refused_config_values(tmp_path, tensors, config, reason):

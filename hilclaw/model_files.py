@@ -156,7 +156,8 @@ def read(directory):
     or weights file that is missing, or two weight forms at once; a file that
     cannot be read; JSON that is malformed, larger than the bound or gives a
     member twice; a config member missing or of a wrong type, a stated value the
-    forward pass does not compute, two RoPE forms that disagree, a constant
+    forward pass does not compute, two RoPE blocks or two values of one RoPE
+    member that differ, a constant
     :func:`hilclaw.rope_table.constant_refusals` or
     :func:`hilclaw.model_binding.rmsnorm_eps` refuses, or dimensions
     :func:`hilclaw.model_binding.check_dimensions` refuses or that do not fit
@@ -282,18 +283,19 @@ def _eps(config):
 
 def _rope(config):
     block = _rope_block(config)
-    rope_type = block.get("rope_type", block.get("type"))
-    if rope_type is None:
-        _refuse(MISSING_MEMBER, "the RoPE parameters have no rope_type")
+    rope_type = _one_value("rope_type", block.get("rope_type"), block.get("type"))
     if rope_type != "llama3":
         _refuse(UNSUPPORTED_MODEL, f"rope_type is {rope_type!r}, not 'llama3'")
     for source in (block, config):
         if source.get("partial_rotary_factor") not in (None, 1.0):
             _refuse(UNSUPPORTED_MODEL, "partial_rotary_factor is not 1")
-    theta = block.get("rope_theta", config.get("rope_theta"))
-    if theta is None:
-        _refuse(MISSING_MEMBER, "no rope_theta is given")
-    values = {"theta": theta, "old_context_len": _context_length(block, config)}
+    context = "original_max_position_embeddings"
+    values = {
+        "theta": _one_value(
+            "rope_theta", block.get("rope_theta"), config.get("rope_theta")
+        ),
+        "old_context_len": _one_value(context, block.get(context), config.get(context)),
+    }
     for field, name in _ROPE_MEMBERS:
         if block.get(name) is None:
             _refuse(MISSING_MEMBER, f"the RoPE parameters have no {name}")
@@ -320,14 +322,12 @@ def _rope_block(config):
     return block
 
 
-def _context_length(block, config):
-    name = "original_max_position_embeddings"
-    inside, outside = block.get(name), config.get(name)
-    if inside is None and outside is None:
+def _one_value(name, first, second):
+    if first is None and second is None:
         _refuse(MISSING_MEMBER, f"no {name} is given")
-    if inside is not None and outside is not None and inside != outside:
-        _refuse(TWO_ROPE_FORMS, f"{name} is both {inside!r} and {outside!r}")
-    return inside if inside is not None else outside
+    if first is not None and second is not None and first != second:
+        _refuse(TWO_ROPE_FORMS, f"{name} is both {first!r} and {second!r}")
+    return first if first is not None else second
 
 
 def _tied(config):
