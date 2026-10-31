@@ -10,7 +10,9 @@ owner's (OD-30 sub-question ③, HQ-0081).
     python -m hilclaw.s6_metric <first_run_id> <second_run_id>
 
 The order of the two ids decides the verdict and is never derived from them. The
-data root comes from :func:`hilclaw.data_root_source.configured`. Standard output
+data root comes from :func:`hilclaw.data_root_source.configured`:
+``data_repo.local_path`` of ``hilclaw.config.json``, or the environment variable
+``HILCLAW_DATA_REPO_LOCAL_PATH``. Standard output
 gets one compact JSON object in ASCII and one LF, whose ``outcome`` names the kind:
 
 ==================  ======  ====================================================

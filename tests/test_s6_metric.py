@@ -658,7 +658,7 @@ def test_a_member_one_leaves_out_differs(root):
 
 
 def test_the_attributes_still_form_a_pair_and_two_are_reported(root):
-    labelled = PROFILE | {"label": "another"}
+    labelled = PROFILE | {"label": "another", "hw_source": "in_house"}
     pair(
         root,
         second={
@@ -956,15 +956,30 @@ def told_by(root, *args):
     return status, json.loads(out)
 
 
-def test_the_entry_gives_status_zero_for_each_verdict(root):
+def test_the_entry_gives_status_zero_for_met(root):
     worked_example(root)
     status, told = told_by(root, FIRST, SECOND)
     assert (status, told["verdict"]) == (0, "met")
     assert tools.encode(told) == call(FIRST, SECOND, source=lambda: root)[1]
 
-    status, told = told_by(root, SECOND, FIRST)
-    assert status == 0
-    assert told["verdict"] in ("not applicable", "not met")
+
+def test_the_entry_gives_status_zero_for_not_met(root):
+    three_rounds_first(root)
+    status, told = told_by(root, FIRST, SECOND)
+    assert (status, told["verdict"]) == (0, "not met")
+
+
+def test_the_entry_gives_status_zero_for_not_applicable(root):
+    pair(root)
+    status, told = told_by(root, FIRST, SECOND)
+    assert (status, told["verdict"]) == (0, "not applicable")
+
+
+def test_the_order_of_the_ids_decides_the_verdict(root):
+    worked_example(root)
+    told = s6_metric.judge(root, SECOND, FIRST)
+    assert told["first_run_best"] == {"round": 2, "candidate": 1, "attempt": 1}
+    assert (told["verdict"], told["reason"]) == ("not met", "not_fewer_rounds")
 
 
 def test_the_entry_gives_status_ten_for_not_a_pair(root):
