@@ -212,6 +212,11 @@ class Source:
         return self.root
 
 
+INDEX_NOT_UPDATED_LINE = (
+    "run.commit: the commit was made and the index was not updated\n"
+)
+
+
 def tool(root):
     source = Source(root)
     return definition(source).function, source
@@ -1191,8 +1196,22 @@ def test_a_failed_index_replacement_sets_the_entries_through_git(root, monkeypat
     assert git(root, "status", "--porcelain").strip() == b""
 
 
+def test_a_commit_and_a_fallback_that_works_write_no_line(root, monkeypatch, capsys):
+    a_run(root, 1)
+    assert commit(root, RUN) is True
+    assert capsys.readouterr() == ("", "")
+    (root / "runs" / RUN / "note.txt").write_text("more", encoding="utf-8")
+
+    def refusing(source, target):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(run_commit.os, "replace", refusing)
+    assert commit(root, RUN) is True
+    assert capsys.readouterr() == ("", "")
+
+
 def test_a_failed_replacement_and_reset_leave_the_commit_and_the_old_index(
-    root, monkeypatch
+    root, monkeypatch, capsys
 ):
     a_run(root, 1)
     before = snapshot(root)
@@ -1213,6 +1232,56 @@ def test_a_failed_replacement_and_reset_leave_the_commit_and_the_old_index(
     assert head(root) != before[0]
     assert (root / ".git" / "index").read_bytes() == before[1]
     assert not (root / ".git" / "index.lock").exists()
+    assert capsys.readouterr() == ("", INDEX_NOT_UPDATED_LINE)
+
+
+def git_gone_at_the_fallback(monkeypatch):
+    real = run_commit._git
+
+    def refusing(source, target):
+        raise PermissionError(13, "Permission denied")
+
+    def gone(data_root, *args, **kwargs):
+        if args[0] == "reset" and kwargs.get("index") is None:
+            raise run_commit.GitNotRunError("git could not be run: secret")
+        return real(data_root, *args, **kwargs)
+
+    monkeypatch.setattr(run_commit.os, "replace", refusing)
+    monkeypatch.setattr(run_commit, "_git", gone)
+
+
+def test_git_not_run_at_the_fallback_leaves_the_commit_and_the_old_index(
+    root, monkeypatch, capsys
+):
+    a_run(root, 1)
+    before = snapshot(root)
+    git_gone_at_the_fallback(monkeypatch)
+    assert commit(root, RUN) is True
+    monkeypatch.undo()
+    assert head(root) != before[0]
+    assert (root / ".git" / "index").read_bytes() == before[1]
+    assert not (root / ".git" / "index.lock").exists()
+    assert capsys.readouterr() == ("", INDEX_NOT_UPDATED_LINE)
+
+
+def test_the_tool_answers_committed_when_the_index_was_not_updated(
+    root, monkeypatch, capsys
+):
+    a_run(root, 1)
+    function, _ = tool(root)
+    git_gone_at_the_fallback(monkeypatch)
+    assert function({"run_id": RUN}) == {"committed": True}
+    assert capsys.readouterr() == ("", INDEX_NOT_UPDATED_LINE)
+
+
+def test_no_standard_error_keeps_the_answer_and_standard_output(
+    root, monkeypatch, capsys
+):
+    a_run(root, 1)
+    git_gone_at_the_fallback(monkeypatch)
+    monkeypatch.setattr(run_commit.sys, "stderr", None)
+    assert commit(root, RUN) is True
+    assert capsys.readouterr().out == ""
 
 
 @pytest.mark.parametrize(

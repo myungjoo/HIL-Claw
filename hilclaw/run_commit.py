@@ -50,6 +50,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import NamedTuple
@@ -67,6 +68,8 @@ KIND_COMMIT_NOT_MADE = "commit_not_made"
 GIT = "git"
 #: The message of every commit this module makes; nothing reads it.
 MESSAGE = "Commit the owed files of a run (run.commit)"
+#: The line written to standard error when the commit stands over an index that was not updated.
+INDEX_NOT_UPDATED = "run.commit: the commit was made and the index was not updated"
 
 _LOCATING = frozenset(
     {
@@ -227,7 +230,9 @@ def commit(data_root, run_id):
     index lock of the repository is held from before ``HEAD`` moves until the
     index is replaced; should that replacement fail, the commit stands and the
     entries are set once more by ``git reset`` on the index, as ``git`` locks
-    it; should that fail too, the index is as it was and nothing reports it.
+    it; should that fail too, the index is as it was, the result is still
+    ``True`` and the one line :data:`INDEX_NOT_UPDATED` on standard error reports
+    it.
 
     Raises what :func:`commit_owed` raises, with nothing removed or committed,
     and :class:`CommitNotMadeError` when the removal fails with an
@@ -324,8 +329,10 @@ def commit(data_root, run_id):
             if not replaced:
                 with contextlib.suppress(FileNotFoundError):
                     os.unlink(real + ".lock")
-    if paths and not replaced:
-        _git(data_root, "reset", "-q", made, *_FROM_STDIN, input=listing)
+    if paths and not replaced and not _entries_set(data_root, made, listing):
+        with contextlib.suppress(Exception):
+            sys.stderr.write(INDEX_NOT_UPDATED + "\n")
+            sys.stderr.flush()
     return True
 
 
@@ -584,6 +591,14 @@ def _git(data_root, *args, index=None, input=None):
         )
     except OSError as e:
         raise GitNotRunError(f"git could not be run: {type(e).__name__}: {e}") from e
+
+
+def _entries_set(data_root, made, listing):
+    try:
+        done = _git(data_root, "reset", "-q", made, *_FROM_STDIN, input=listing)
+    except GitNotRunError:
+        return False
+    return done.returncode == 0
 
 
 def _ok(done, error, what):

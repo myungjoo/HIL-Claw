@@ -27,9 +27,13 @@ only, never against a real session (D16).
 **Chosen here** (left to the code slice by ADR-0146): ``agent_id`` counts
 only when it is a non-empty ``str``; ``mcp_server`` is not read, the prefix
 ``mcp__hilclaw__`` is relied on (decision 2); an input object with a
-repeated key is refused; the line names the tool only when ``tool_name`` has
-the form the shared reader admits for a ``tools`` entry; :data:`START` is
-the start text for the turn loop's settings.
+repeated key or a ``NaN`` or ``Infinity`` constant is refused; the line names
+the tool only when ``tool_name`` has the form the shared reader admits for a
+``tools`` entry; :data:`START` is the start text for the turn loop's settings.
+What it raises before :func:`main` runs (no package argument, a failed import)
+ends through an ``excepthook`` in exit status 2 with one fixed line on standard
+error, so such a fault refuses without relying on ``onFailure``; a
+:class:`SystemExit` does not reach that hook, so :func:`main`'s status is kept.
 
 The settings that name this program are written by :mod:`hilclaw.turn_loop`.
 
@@ -57,7 +61,9 @@ EVENT = "PreToolUse"
 ENV_PROJECT_DIR = "CLAUDE_PROJECT_DIR"
 TOOL_PREFIX = f"mcp__{mcp_front.SERVER_NAME}__"
 START = (
-    "import sys; sys.path.insert(0, sys.argv.pop(1)); "
+    "import os, sys; sys.excepthook = lambda *_: (sys.stderr.write("
+    "'caller check: the hook could not start\\n'), sys.stderr.flush(), os._exit(2)); "
+    "sys.path.insert(0, sys.argv.pop(1)); "
     "from hilclaw.caller_check import main; raise SystemExit(main())"
 )
 _NAMED = re.compile(rf"{re.escape(TOOL_PREFIX)}[a-z][a-z0-9_]*")
@@ -76,6 +82,16 @@ def _unique(pairs):
     if len(found) != len(pairs):
         raise _Refused
     return found
+
+
+def _constant(_):
+    raise _Refused
+
+
+def _payload(data):
+    return json.loads(
+        data.decode("utf-8"), object_pairs_hook=_unique, parse_constant=_constant
+    )
 
 
 def _holders(payload, environ):
@@ -99,7 +115,7 @@ def _holders(payload, environ):
 
 
 def _decide(data, environ):
-    payload = json.loads(data.decode("utf-8"), object_pairs_hook=_unique)
+    payload = _payload(data)
     if not isinstance(payload, dict) or payload.get("hook_event_name") != EVENT:
         raise _Refused
     tool = payload.get("tool_name")
@@ -111,8 +127,7 @@ def _decide(data, environ):
 
 def _line(data):
     with contextlib.suppress(Exception):
-        payload = json.loads(data.decode("utf-8"), object_pairs_hook=_unique)
-        tool = payload.get("tool_name")
+        tool = _payload(data).get("tool_name")
         if isinstance(tool, str) and _NAMED.fullmatch(tool):
             return REFUSAL.format(f" of {tool}")
     return REFUSAL.format("")
