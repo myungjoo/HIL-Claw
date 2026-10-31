@@ -2,7 +2,7 @@
 id: T-0524
 title: Move the repeated JSON text helpers of the file modules into hilclaw/json_text.py with no change of behaviour (replan of T-0225)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [HQ-0080, FR-13, "ADR-0029", "ADR-0059", "ADR-0071", "ADR-0072"]
 dependsOn: [T-0523]
@@ -67,3 +67,15 @@ T-0225 stopped at the four `*_file` modules because of the file cap at that time
 ## Follow-ups
 
 ## Result
+
+- **Result:** DONE. PR #344, squash-merged as `af8d4348`. Review: 1 round, Approve, no findings. CI green on all 6 jobs at head `d5ba225c`, including the coverage gate and the test-presence check.
+- **Language:** Python, the language of the callers.
+- **Public names of `hilclaw/json_text.py`:** `distinct_members`, `no_constant`, `mark_minus_zero`, `refuse_minus_zero(path, value, error, skip=None)`.
+- **Net line change:** `hilclaw/` +135/-171 (net -36, 10 files); with tests +372/-171 (16 files).
+- **Callers:** the nine modules dropped their copies. `hypotheses_file`, `verdicts_file` and `cases_file` keep a one-line `_unsigned` that binds their error class; `spec_file` keeps one that binds its error class and `_FREE.fullmatch`.
+- **`spec_file`:** `parse` now loops over the top-level members instead of walking from the empty path, so the empty-path join stays out of the shared walk. `spec.validate` runs first and refuses a top-level member named `""`, so order and first path are unchanged.
+- **List pins edited (D21), one name added to each:** `tests/test_spec_file.py::test_the_module_imports_only_what_it_needs`, `tests/test_instance.py::test_the_module_imports_what_it_imported_before_and_nothing_more`, and `test_the_public_names` in `tests/test_hypotheses_file.py`, `tests/test_verdicts_file.py` and `tests/test_cases_file.py`. The assertion near `tests/test_instance.py` line 2643 needed no change.
+- **Local verification:** full suite 36575 passed, 2385 skipped. An uncommitted differential run of old against new on random JSON gave 0 mismatches in 37019 cases: `parse` of six modules and the `_unsigned` of the four `*_file` modules. `artifacts`, `events` and `key_records` were not in that run; they are covered by their existing tests and the review.
+- **Known, not treated as a behaviour change:** the wrapper adds one frame to the walk, so its recursion limit is reached one level sooner. That point already depended on the caller's stack depth.
+- **Runtime acceptance items:** none.
+- **Follow-ups:** none.
