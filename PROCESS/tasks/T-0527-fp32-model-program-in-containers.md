@@ -2,7 +2,7 @@
 id: T-0527
 title: Build and run the model program of hilclaw.model_execute in ADR-0144 containers (ADR-0182 code slice 3, HQ-0080 group D)
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [HQ-0080, OD-14, OD-31, NFR-4]
 dependsOn: [T-0526]
