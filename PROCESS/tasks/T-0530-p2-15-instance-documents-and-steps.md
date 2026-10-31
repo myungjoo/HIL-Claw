@@ -2,7 +2,7 @@
 id: T-0530
 title: Write the six bf16 instance documents from the owner's values and state the P2-15 steps in the README
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [OD-31, C-6, FR-1, FR-5, "PLAN P2-15", D26]
 dependsOn: [T-0528, T-0529]
@@ -68,4 +68,21 @@ hq: []
 
 ## Follow-ups
 
+The README's opening note (line 3) and line 26 under "현재 상태와 MVP 범위" still say the optimisation-run runtime does not exist yet, which the new section's steps contradict; the "2층" row of "세 층 모델" may be stale too (unchecked). Left out as outside this task's one short section; not needed to run P2-15.
+
 ## Result
+
+PR #348, squash-merged as 2c6b196e (code mode, 2 review rounds, Approve, CI green). No BLOCKED, no HQ.
+
+- **Language:** Python. The module joins Python modules and hands its records to the Python instance start.
+- **Command:** `python -m hilclaw.model_instances <values file> <output directory>` writes `<kind>.json` for each of the six kinds.
+- **Values file:** the top level holds `n_max`, `draws`, `round_budget` and `kinds`. Each entry under `kinds` holds that kind's shape members plus `rtol` and `atol`. All are required and none has a default.
+- **Check order:** kinds, members and shapes are refused before the output directory and image checks, and before any container starts. The other values are judged by `instance_start.prepare` after the one container that reads the profile, so such a refusal costs one `clang --version` container. This keeps the range rules in their one existing place.
+- **Writing:** files open in exclusive mode, and those of the call are removed if a later one fails.
+- **Shared code:** `hilclaw.nightly` gains public `instance_document`, `local_profile` and `PROFILE_FAILURES`; the nightly document and behaviour are unchanged. The kinds and shape members come from the bf16 entries of `contract_table.TABLE`. The `hilclaw/standin_image.py` docstring now lists the new caller.
+- **Edited assertions (D21):** none.
+- **Review:** round 1 asked for `config.json` in the README's file list (should-fix) and two nits, all fixed. Round 2 approved with no findings.
+- **Tests:** locally `tests/test_model_instances.py` (71 passed), `tests/test_nightly.py`, `tests/test_standin_profile.py`, `tests/test_standin_image.py`. CI on 11e89fbc: 39402 passed, 52 skipped on Python 3.11 and 3.14; all six gates passed. Coverage of `hilclaw/model_instances.py`: 99%. The full suite was not run locally on Windows.
+- **README commands checked, in a scratch directory on Windows:** `model_instances` (placeholders give `refused_values`, an unset image gives `no_standin_image`, Windows gives `hw_profile`, a stubbed profile gives `written`); `new_run` on a written document with a scratch data root gave `started`; `turn_start` with no argument gave `bad_usage`; `model_check` on the README's document gave `refused_document`, and its `runs` holds exactly `CALL_SITES`. Not run: a real profile, a turn, or a check past that refusal (D16).
+- **Runtime acceptance items:** none. RA-0056 is the item these steps serve.
+- **What the owner still cannot do from the README alone:** the README gives the owner's choices no values (shapes — it cites ADR-0152 decision 5 — tolerances, `n_max`, `draws`, budgets, prompt, N, timeouts, program flags); it names no Hugging Face repository, because the owner has not named one (HQ-0084); the coder and stand-in images must already exist on the machine (it cites `PROCESS/NIGHTLY.md` §1); the data root must already be a git repository, or `HILCLAW_DATA_REPO_LOCAL_PATH` must point at one, and no creation command is given.
