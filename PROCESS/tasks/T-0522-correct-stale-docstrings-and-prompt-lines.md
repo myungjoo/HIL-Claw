@@ -2,7 +2,7 @@
 id: T-0522
 title: Correct stale module docstrings and Round-Manager prompt lines (HQ-0080 group A)
 phase: P2
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [HQ-0080, FR-1, OD-31]
 dependsOn: [T-0521]
