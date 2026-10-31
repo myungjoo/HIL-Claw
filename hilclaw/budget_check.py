@@ -33,7 +33,11 @@ and fixture run directories only, never against a real session (D16).
 of other than exactly one element is refused; a relative data root is used
 as given, with no refusal beyond the table; an input object with a repeated
 key or a ``NaN`` or ``Infinity`` constant is refused; the line names the
-tool only when it is a spending tool.
+tool only when it is a spending tool. What :data:`START` raises before
+:func:`main` runs (no package argument, a failed import) ends through an
+``excepthook`` in exit status 2 with one fixed line on standard error, so such
+a fault refuses without relying on ``onFailure``; a :class:`SystemExit` does
+not reach that hook, so :func:`main`'s status is kept.
 
 :mod:`hilclaw.turn_loop` writes the second ``PreToolUse`` entry that names
 this program, its matcher built from :data:`SPENDING_TOOLS` and the data root
@@ -67,7 +71,9 @@ SPENDING_TOOLS = (
     f"{TOOL_PREFIX}board_run",
 )
 START = (
-    "import sys; sys.path.insert(0, sys.argv.pop(1)); "
+    "import os, sys; sys.excepthook = lambda *_: (sys.stderr.write("
+    "'budget check: the hook could not start\\n'), sys.stderr.flush(), os._exit(2)); "
+    "sys.path.insert(0, sys.argv.pop(1)); "
     "from hilclaw.budget_check import main; raise SystemExit(main(args=sys.argv[1:]))"
 )
 REFUSAL = (

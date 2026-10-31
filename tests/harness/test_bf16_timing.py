@@ -29,8 +29,8 @@ here = Path(__file__).parent
 plan = json.loads((here / "plan.json").read_text(encoding="utf-8"))
 call = {"argv": sys.argv[1:], "cwd": os.getcwd(), "mark": os.environ.get("HILCLAW_TEST_MARK")}
 (here / "started.json").write_text(json.dumps(call), encoding="utf-8")
-sys.stderr.write(plan["stderr"])
-sys.stderr.flush()
+sys.stderr.buffer.write(plan["stderr"].encode())
+sys.stderr.buffer.flush()
 sys.stdout.buffer.write(bytes.fromhex(plan["stdout"]))
 sys.stdout.buffer.flush()
 time.sleep(plan["sleep"])

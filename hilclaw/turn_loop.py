@@ -48,7 +48,8 @@ hook in exec form: ``command`` the absolute path of :data:`sys.executable`,
 ``args`` ``-I``, ``-c``, :data:`hilclaw.caller_check.START` and the directory
 holding this package, ``"onFailure": "block"`` and a ``timeout`` well below
 the default. A definition that brings its own ``.claude/settings.json`` is
-refused rather than merged or overwritten.
+refused rather than merged or overwritten; so is one that brings a
+``.claude/settings.local.json``, which is this module's choice.
 
 **Decided by ADR-0147** and only applied here: the second ``PreToolUse``
 entry, in the same exec form with ``"onFailure": "block"``, has a matcher that
@@ -149,7 +150,9 @@ OD-14's.
   one of the path placeholders that Claude Code substitutes into exec-form
   ``args`` (``${CLAUDE_PROJECT_DIR}``, ``${CLAUDE_PLUGIN_ROOT}``,
   ``${CLAUDE_PLUGIN_DATA}``) is refused, since the hooks would read another
-  root than the server's. The text is built once per loop, as the server
+  root than the server's; a directory holding this package or an absolute path
+  of the interpreter that holds one is refused too, since the hooks would load
+  another package or start another program. The text is built once per loop, as the server
   configuration is, and written with exclusive creation in every turn. A
   missing ``.claude`` is made as a plain directory.
 - *The prompt* is one line of ASCII letters, digits, spaces, ``.``, ``,``,
@@ -168,14 +171,16 @@ OD-14's.
 raised before any other argument but the two callables is checked;
 :class:`ValueError` with a fixed text for a refused place, also before a later
 turn; :class:`ValueError` with a fixed text for a ``data_root`` holding a path
-placeholder; :class:`RuntimeError` when the interpreter does not know its own
+placeholder, and with another for such a directory of this package or path of
+the interpreter; :class:`RuntimeError` when the interpreter does not know its own
 path;
 :class:`TypeError` for an answer of ``further_turn`` that is not a ``bool``;
 :class:`ValueError` when ``put_definition`` made :data:`CONFIG_FILE`;
 :class:`ValueError` with a fixed text when the session directory's
 ``.claude`` is a symbolic link, a junction or no directory, and when
-``.claude/settings.json`` exists after ``put_definition``, each before the
-settings file is written and the process starts;
+``.claude/settings.json`` or ``.claude/settings.local.json`` exists after
+``put_definition``, each before the settings file is written and the process
+starts;
 :class:`ValueError` with a fixed text when the definition put into the
 session directory holds an agent file that
 :func:`hilclaw.turn_permissions.options` refuses, before the process starts;
@@ -246,6 +251,7 @@ CONFIG_FILE = "hilclaw-turn.mcp-config.json"
 MARKERS = ("CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", ".claude")
 SETTINGS_DIRECTORY = ".claude"
 SETTINGS_FILE = "settings.json"
+LOCAL_SETTINGS_FILE = "settings.local.json"
 HOOK_TIMEOUT_S = 30
 STOP_HOOK_TIMEOUT_S = 60
 
@@ -269,6 +275,7 @@ _MARKER_ABOVE = (
 )
 _CONFIG_TAKEN = "the definition holds the name of the server configuration file"
 _SETTINGS_TAKEN = "the definition holds the hook settings file"
+_LOCAL_SETTINGS_HELD = "the definition holds a local settings file"
 _NOT_PLAIN = "the session directory's .claude is no plain directory"
 _PLACEHOLDERS = (
     "${CLAUDE_PROJECT_DIR}",
@@ -276,6 +283,9 @@ _PLACEHOLDERS = (
     "${CLAUDE_PLUGIN_DATA}",
 )
 _PLACEHOLDER_HELD = "data_root holds a hook path placeholder"
+_PLACEHOLDER_IN_START = (
+    "the package directory or the interpreter's path holds a hook path placeholder"
+)
 
 
 class ClaudeNotFoundError(LookupError):
@@ -360,10 +370,17 @@ def _entry(matcher, *args):
     return {"matcher": matcher, "hooks": [hook]}
 
 
+def _holds_placeholder(path):
+    return any(placeholder in path for placeholder in _PLACEHOLDERS)
+
+
 def _settings_text(root, run_id):
-    if any(placeholder in root for placeholder in _PLACEHOLDERS):
+    if _holds_placeholder(root):
         raise ValueError(_PLACEHOLDER_HELD)
     package = _checkout_boundary.PACKAGE_DIRECTORY
+    program = os.path.abspath(sys.executable)
+    if _holds_placeholder(package) or _holds_placeholder(program):
+        raise ValueError(_PLACEHOLDER_IN_START)
     entries = [
         _entry("^" + caller_check.TOOL_PREFIX, caller_check.START, package),
         _entry(
@@ -387,6 +404,8 @@ def _write_settings(directory, text):
     place = os.path.join(folder, SETTINGS_FILE)
     if os.path.lexists(place):
         raise ValueError(_SETTINGS_TAKEN)
+    if os.path.lexists(os.path.join(folder, LOCAL_SETTINGS_FILE)):
+        raise ValueError(_LOCAL_SETTINGS_HELD)
     with open(place, "x", encoding="utf-8") as file:
         file.write(text)
 

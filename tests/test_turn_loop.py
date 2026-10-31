@@ -1305,6 +1305,10 @@ def test_lower_case_names_on_windows(stub, data_root, parent, monkeypatch):
 
 
 SETTINGS_TAKEN = "the definition holds the hook settings file"
+LOCAL_SETTINGS_HELD = "the definition holds a local settings file"
+PLACEHOLDER_IN_START = (
+    "the package directory or the interpreter's path holds a hook path placeholder"
+)
 NOT_PLAIN = "the session directory's .claude is no plain directory"
 EXACT_MATCH = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- ,|")
 
@@ -1436,6 +1440,10 @@ def make_link(target, link):
         pytest.skip("symbolic links cannot be made here")
 
 
+def test_local_settings_name():
+    assert turn_loop.LOCAL_SETTINGS_FILE == "settings.local.json"
+
+
 def test_settings_names():
     assert turn_loop.SETTINGS_DIRECTORY == ".claude"
     assert turn_loop.SETTINGS_FILE == "settings.json"
@@ -1541,6 +1549,40 @@ def test_data_root_holding_a_placeholder_refused(stub, tmp_path, parent, placeho
     assert str(caught.value) == "data_root holds a hook path placeholder"
     assert further.seen == []
     assert stub.calls() == []
+
+
+def refused_for_a_placeholder(stub, data_root, parent):
+    stub.install()
+    further = Predicate(1)
+    with pytest.raises(ValueError) as caught:
+        go(data_root, parent, further_turn=further)
+    assert str(caught.value) == PLACEHOLDER_IN_START
+    assert further.seen == []
+    assert stub.calls() == []
+
+
+@pytest.mark.parametrize(
+    "placeholder",
+    ["${CLAUDE_PROJECT_DIR}", "${CLAUDE_PLUGIN_ROOT}", "${CLAUDE_PLUGIN_DATA}"],
+)
+def test_package_directory_holding_a_placeholder_refused(
+    stub, tmp_path, data_root, parent, monkeypatch, placeholder
+):
+    monkeypatch.setattr(
+        checkout_boundary, "PACKAGE_DIRECTORY", str(tmp_path / placeholder)
+    )
+    refused_for_a_placeholder(stub, data_root, parent)
+
+
+@pytest.mark.parametrize(
+    "placeholder",
+    ["${CLAUDE_PROJECT_DIR}", "${CLAUDE_PLUGIN_ROOT}", "${CLAUDE_PLUGIN_DATA}"],
+)
+def test_interpreter_path_holding_a_placeholder_refused(
+    stub, tmp_path, data_root, parent, monkeypatch, placeholder
+):
+    monkeypatch.setattr(sys, "executable", str(tmp_path / placeholder / "python"))
+    refused_for_a_placeholder(stub, data_root, parent)
 
 
 @pytest.mark.parametrize(
@@ -1706,6 +1748,40 @@ def test_definition_settings_file_refused(stub, data_root, parent):
         (session / ".claude" / "settings.json").write_text("{}", encoding="utf-8")
 
     refused(stub, data_root, parent, make, SETTINGS_TAKEN)
+
+
+def local_settings(session):
+    (session / ".claude").mkdir()
+    (session / ".claude" / "settings.local.json").write_text("{}", encoding="utf-8")
+
+
+def test_definition_local_settings_file_refused(stub, data_root, parent):
+    refused(stub, data_root, parent, local_settings, LOCAL_SETTINGS_HELD)
+
+
+def test_definition_local_settings_stop_a_later_turn(stub, data_root, parent):
+    stub.install()
+    puts = []
+
+    def put_definition(session):
+        puts.append(session)
+        if len(puts) == 2:
+            local_settings(session)
+
+    further = Predicate(2)
+    with pytest.raises(ValueError) as caught:
+        go(data_root, parent, further_turn=further, put_definition=put_definition)
+    assert str(caught.value) == LOCAL_SETTINGS_HELD
+    assert len(stub.calls()) == 1
+    assert list(parent.iterdir()) == []
+
+
+def test_local_settings_refused_before_the_settings_file_is_written(tmp_path):
+    local_settings(tmp_path)
+    with pytest.raises(ValueError) as caught:
+        turn_loop._write_settings(tmp_path, "{}")
+    assert str(caught.value) == LOCAL_SETTINGS_HELD
+    assert not (tmp_path / ".claude" / turn_loop.SETTINGS_FILE).exists()
 
 
 def test_definition_settings_directory_refused(stub, data_root, parent):

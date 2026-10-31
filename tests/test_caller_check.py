@@ -539,6 +539,54 @@ def test_started_as_the_turn_loop_will(session):
     assert refused.stderr.decode("utf-8").replace("\r\n", "\n") == line + "\n"
 
 
+def start_failed(tmp_path, kind):
+    arguments = []
+    if kind != "no package argument":
+        arguments = [str(tmp_path)]
+    if kind == "a package that fails to import":
+        (tmp_path / "hilclaw").mkdir()
+        (tmp_path / "hilclaw" / "__init__.py").write_text(
+            "raise RuntimeError('broken')\n", encoding="utf-8"
+        )
+    return subprocess.run(
+        [sys.executable, "-I", "-c", START, *arguments],
+        input=b"",
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "no package argument",
+        "a directory without the package",
+        "a package that fails to import",
+    ],
+)
+def test_a_failure_before_main_refuses(tmp_path, kind):
+    failed = start_failed(tmp_path, kind)
+    assert failed.returncode == EXIT_REFUSE
+    assert failed.stdout == b""
+    text = failed.stderr.decode("utf-8").replace("\r\n", "\n")
+    assert text == "caller check: the hook could not start\n"
+
+
+def test_the_start_text_is_one_exec_form_argument():
+    assert '"' not in START
+    assert "\n" not in START
+    assert "\r" not in START
+
+
+@pytest.mark.parametrize("constant", [b"NaN", b"Infinity", b"-Infinity"])
+def test_a_constant_is_not_json_and_names_no_tool(session, constant):
+    tool = ROUND_MANAGER_TOOLS[0]
+    refuses(payload(tool)[:-1] + b', "x": ' + constant + b"}", session)
+    nested = payload(tool, tool_input={"n": 1}).replace(b'"n": 1', b'"n": ' + constant)
+    refuses(nested, session)
+
+
 SELECTOR_ID = {"agent_id": "f7a8", "agent_type": "technique-selector"}
 RUNNER_ID = {"agent_id": "e5f6", "agent_type": "experiment-runner"}
 

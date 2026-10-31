@@ -615,6 +615,46 @@ def test_started_as_the_turn_loop_will(root):
     assert over.stderr.decode("utf-8").replace("\r\n", "\n") == named(CODER) + "\n"
 
 
+def start_failed(tmp_path, kind):
+    arguments = []
+    if kind != "no package argument":
+        arguments = [str(tmp_path)]
+    if kind == "a package that fails to import":
+        (tmp_path / "hilclaw").mkdir()
+        (tmp_path / "hilclaw" / "__init__.py").write_text(
+            "raise RuntimeError('broken')\n", encoding="utf-8"
+        )
+    return subprocess.run(
+        [sys.executable, "-I", "-c", START, *arguments],
+        input=b"",
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "no package argument",
+        "a directory without the package",
+        "a package that fails to import",
+    ],
+)
+def test_a_failure_before_main_refuses(tmp_path, kind):
+    failed = start_failed(tmp_path, kind)
+    assert failed.returncode == EXIT_REFUSE
+    assert failed.stdout == b""
+    text = failed.stderr.decode("utf-8").replace("\r\n", "\n")
+    assert text == "budget check: the hook could not start\n"
+
+
+def test_the_start_text_is_one_exec_form_argument():
+    assert '"' not in START
+    assert "\n" not in START
+    assert "\r" not in START
+
+
 def test_started_without_the_data_root_argument_is_refused(root):
     stated(root, 0, budget=5)
     missing = started(payload(CODER))
