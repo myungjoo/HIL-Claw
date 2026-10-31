@@ -37,6 +37,13 @@ limit a default; it chooses no flag beyond the dtype's
 :data:`hilclaw.model_build.PROGRAM_DTYPE_FLAGS`; it compares nothing and holds no
 reference or tolerance; it casts no array; it stores, keeps or retries
 nothing; and it writes nothing outside the build directory.
+
+Where it may be used (``ARCHITECTURE/decisions/ADR-0182-od14-model-executor-container.md``
+decision 7): every build and the run of this module are host processes, so it
+is only for kernels the caller wrote itself, as the driver's tests write them.
+A kernel an instance or a coder wrote is built and run in containers by
+:func:`hilclaw.model_container.execute`, never by this module; nothing here
+checks who wrote a kernel.
 """
 
 import os
@@ -146,12 +153,7 @@ def execute(
     _checked_dtype(dtype)
     kernels = _checked_kernels(kernels)
     shapes = model_run.output_shapes(calls, dtype=dtype)
-    for position, (index, _, _) in enumerate(calls):
-        if index >= len(kernels):
-            raise ValueError(
-                f"calls[{position}]: index {index} is not below the number of "
-                f"kernels {len(kernels)}"
-            )
+    _check_indices(calls, kernels)
     prefix = _checked_prefix(prefix)
     roots = _checked_keep_out(keep_out)
     place = _checked_parent(parent, roots)
@@ -292,6 +294,15 @@ def _checked_kernels(kernels):
             if not hasattr(kernel, attribute):
                 raise TypeError(f"kernels[{position}]: has no attribute {attribute!r}")
     return tuple(kernels)
+
+
+def _check_indices(calls, kernels):
+    for position, (index, _, _) in enumerate(calls):
+        if index >= len(kernels):
+            raise ValueError(
+                f"calls[{position}]: index {index} is not below the number of "
+                f"kernels {len(kernels)}"
+            )
 
 
 def _checked_prefix(prefix):
