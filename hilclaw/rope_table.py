@@ -58,8 +58,8 @@ rounding of a decimal value, ties to even.
 
 **Inputs.** Every constant is a required keyword argument with no default.
 The scale factor Llama 3.2 1B needs is 32 (the owner's answer to HQ-0070;
-ADR-0176 O2); it is the caller's input, not this module's choice. Two limits are conventions of this
-module, not rules of the record: ``high_freq_factor`` must exceed
+ADR-0176 O2); it is the caller's input, not this module's choice. Two limits
+are conventions of this module, not rules of the record: ``high_freq_factor`` must exceed
 ``low_freq_factor``, so b - a is never 0, and ``positions * head_dim`` must not
 exceed :data:`hilclaw.keys.MAX_INTEGER`.
 
