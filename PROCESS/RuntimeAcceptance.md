@@ -527,3 +527,11 @@
 - 내용:
 
   PLAN P2-9. S6 수용 기준 측정: 오너가 런타임 머신에서 같은 키·target·tolerance·N·budget으로 run을 두 번(첫 run과 두 번째 run) 수행하고 `python -m hilclaw.s6_metric <first_run_id> <second_run_id>`로 판정한다(met·not met·not applicable, ADR-0074). 드라이버의 스텁 `claude` 검증 run, nightly 루틴의 run, 테스트 run(D25)은 첫 run으로도 두 번째 run으로도 쓰지 않는다. 몇 쌍을 돌리고 판정을 어떻게 합치는지, 대조 run과 시간 상한은 HQ-0081의 답을 따른다.
+
+### RA-0060
+
+- 상태: 미확인
+- 출처: T-0526, ADR-0145 (등록 2026-10-31)
+- 내용:
+
+  on each kind of machine of C-7 with Docker, whether a process inside a timing process container, of the waiter's user, can change the waiter's resource limits with `prlimit(2)`, and whether a call so changed, a lowered `RLIMIT_CPU` hard limit among them, ends in anything other than `exit_status` for a stream with no waiter's line and a non-zero status; in particular that it never gives a stream with no waiter's line and status 0.

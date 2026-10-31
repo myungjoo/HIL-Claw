@@ -2,7 +2,7 @@
 id: T-0526
 title: Correct ADR-0145 on what a kernel can do to the waiter's limits and state why the waiter's build comes second (HQ-0080 group D)
 phase: P2
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [HQ-0080, OD-14, NFR-4]
 dependsOn: []
