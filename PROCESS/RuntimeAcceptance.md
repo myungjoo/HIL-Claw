@@ -591,3 +591,11 @@
 - 내용:
 
   The machine holds the reference's float64 weights (about 10 GB in the Python process, after the executor ended) and N + 1 whole passes finish in a time the owner accepts; this adds to RA-0035. Checked together with RA-0056.
+
+### RA-0068
+
+- 상태: 미확인
+- 출처: P0.5-4, T-0007, T-0107, T-0151, HQ-0082 (등록 2026-11-02)
+- 내용:
+
+  Checkable once the owner has registered `python -m hilclaw.merge_guard` as a `PreToolUse` hook in the driver clone's `.claude/settings.local.json`. In a real driver session under Bypass permissions: (1) the hook fires for the Bash and PowerShell tools, in the main session and in sub-agents, and exit 2 stops the call; (2) the module is found from the working directory the hook starts in. If it is not found, Python exits 1, which the repository's records (the T-0406 follow-up) describe as a non-blocking error, so the guard would be silently off and its fail-closed exit 2 would never run; (3) `python -m hilclaw.nightly <base>` started by the executor passes, and the `claude` turn sessions that run starts as Python children are not stopped by this hook (HQ-0082 observed the first half on the guard function and expected the second, neither in a real session); (4) what happens to a call when the hook exceeds its timeout (T-0007, T-0107 Follow-ups). Closed by the owner's check; not a driver task.
