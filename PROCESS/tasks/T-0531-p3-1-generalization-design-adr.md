@@ -2,7 +2,7 @@
 id: T-0531
 title: Write the generalization design ADR for PLAN P3-1 and state the owner's parts as concrete questions
 phase: P3
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: doc
 coversReq: [D27, OD-32, C-6, NFR-6, "PLAN P3-1"]
 dependsOn: []
@@ -12,7 +12,7 @@ touchesFiles:
   - ARCHITECTURE/Requirements.md
   - ARCHITECTURE/StandardScenarios.md
 estimatedSize: {loc: 500, files: 4}
-hq: [HQ-0086]
+hq: [HQ-0086, HQ-0087]
 ---
 ## Why
 
@@ -104,7 +104,14 @@ hq: [HQ-0086]
 
 ## Result
 
-- **Status: `BLOCKED`, review round limit (CLAUDE.md A-13; 7 rounds used, no Approve).** Not landed on `main`. Round 7 found no Must-fix and no owner part decided; it left 2 Should-fix and 3 Nit, all register consistency. All five are addressed on branch `claude/T-0531-generalization-design-adr` (tip after round 7), which **no reviewer has seen**. Rounds by verdict: 7 of 7 Request changes. To finish: an owner decision on another round (one review of the tip, then rebase, one commit with `Reviewed-by` and `Task: T-0531`, push to `main`). P3-1 is not to be checked until the ADR lands (PLAN P3-1). **The HQs below are drafts of an unaccepted record** and are for the driver to hold until then; only the BLOCKED question goes in now.
+- **Status: `BLOCKED`, review round limit (CLAUDE.md A-13; HQ-0086 (a) allowed one extra round; 8 rounds used, no Approve).** Not landed on `main`. Round 8 reviewed `664264f8` on branch `claude/T-0531-generalization-design-adr-r8` (rebased on `db796e05`; one squashed commit; the old branch `claude/T-0531-generalization-design-adr` at `01778ed1` is kept). Verdict Request changes: no Must-fix, no owner part decided, 3 Should-fix, 4 Nit. All three Should-fix come from `08711c70` (FR-19, OD-33, PLAN P3-7 to P3-12) and sit in owner-facing question text; the design decisions need no change. Nothing from round 8 is applied. The HQ drafts below stay drafts of an unaccepted record and are not to be registered yet.
+- **Corrections to the drafts below, proposed by round 8 and NOT applied (need a reviewed round):**
+  - **S1**: O1 ① (c) and its recommendation reason, ADR-0193 decision 2's "Waits on" cell and decision 9 O1: a real toolchain is needed only for real results and acceptance; development goes by the fake-toolchain path of P3-7 to P3-10 (FR-19 ⑤, D16). Keep the recommendation only on its remaining reasons.
+  - **S2**: O1's blocked list: add P3-12 (waits on OD-32 ⑦ besides its OD-33 answers); O1 ④ (a) does not release it.
+  - **S3**: O3 and ADR-0193 decision 9: state how far the answer reaches into OD-33 ⑥ (unit list; memory figures of vendor targets only as the owner states). OD-33's wording is not edited.
+  - **Nits**: N1 status date ranges of the OD-4, OD-13, OD-26, OD-31 rows; N2 ADR-0004, ADR-0009, ADR-0017, ADR-0052, ADR-0076, ADR-0117, ADR-0145, ADR-0186 missing from References; N3 O1 scenario option (c) absent from the ADR; N4 §9 notice omits ④'s data-plane side.
+- **Rebase edits on the `-r8` branch beyond conflict resolution (reviewed in round 8)**: acceptance date 2026-11-03; session entry check and owner-sentence search updated for #5 comment 6572518011; Boundaries names P3-7 to P3-12, FR-19, OD-33; S12 added to the recheck; OD-32 row date 2026-11-03.
+- **Round 7 state (history).** **Status: `BLOCKED`, review round limit (CLAUDE.md A-13; 7 rounds used, no Approve).** Not landed on `main`. Round 7 found no Must-fix and no owner part decided; it left 2 Should-fix and 3 Nit, all register consistency. All five are addressed on branch `claude/T-0531-generalization-design-adr` (tip after round 7), which **no reviewer has seen**. Rounds by verdict: 7 of 7 Request changes. To finish: an owner decision on another round (one review of the tip, then rebase, one commit with `Reviewed-by` and `Task: T-0531`, push to `main`). P3-1 is not to be checked until the ADR lands (PLAN P3-1). **The HQs below are drafts of an unaccepted record** and are for the driver to hold until then; only the BLOCKED question goes in now.
 - **BLOCKED HQ draft**: `taskId` T-0531, `reason` `review-rounds-exceeded`, `question`: (A-13, 리뷰 7라운드 초과) [쟁점] T-0531의 ADR-0193이 7라운드에서 Approve를 받지 못했다. 7라운드의 지적은 Must-fix 0건, Should-fix 2건, Nit 3건으로 모두 등록부 정합성이고, 오너 몫을 정한 문장은 찾지 못했다. 그 지적은 브랜치 `claude/T-0531-generalization-design-adr`에 반영했으나 리뷰를 받지 않았다. [선택지] (a) 리뷰 1라운드를 더 허용하고 Approve면 land한다 (b) ADR을 더 작게 쪼개 처음부터 다시 한다 (c) 그 밖. 실행자의 권고(결정 아님): (a). [막히는 것] P3-1 체크, P3-2 이후 항목의 설계 근거, 아래 네 초안의 등재. [막히지 않는 것] P2-15 확인, P3 밖의 task.
 - **ADR**: `ARCHITECTURE/decisions/ADR-0193-od32-generalization-design.md`. The English statement of each owner part is its decision 9 (O1 to O4, in the order of the drafts below).
 - **Runtime acceptance items**: none. P3-3 and P3-4 register their own after landing.
