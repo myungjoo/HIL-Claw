@@ -10,7 +10,7 @@
 - **MVP 단계 분할**
   - **Phase 1**: 별도 DB 없이 **데이터 plane의 디렉토리 트리가 DB를 대신**한다(소스 repo와 분리 — #5 A-1). 디렉토리 레이아웃은 미래 DB 스키마를 미러링한다. 단일 run 전제.
   - **Phase 2**: 실제 Local DB 도입. Phase 1 레이아웃을 그대로 마이그레이션.
-- **계층**: 본 문서의 UC-0~7은 **기본(MVP)** 유스케이스다. §4의 확장 유스케이스(UC-E1·E3·E4)는 MVP 구현 대상이 아니며, 설계가 이를 막지 않아야 한다는 제약만 진다([StandardScenarios](StandardScenarios.md) 계층·[확장 호환] 규칙과 동일). UC-E2(라운드 내 다중 후보)는 2026-10-01 OD-21 확정으로 MVP에 편입되어 UC-1·UC-2에 흡수되었다.
+- **계층**: 본 문서의 UC-0~7은 **기본(MVP)** 유스케이스다. §4의 확장 유스케이스(UC-E1·E3·E4·E5)는 MVP 구현 대상이 아니며, 설계가 이를 막지 않아야 한다는 제약만 진다([StandardScenarios](StandardScenarios.md) 계층·[확장 호환] 규칙과 동일). UC-E2(라운드 내 다중 후보)는 2026-10-01 OD-21 확정으로 MVP에 편입되어 UC-1·UC-2에 흡수되었다.
 - **대상 HW의 출처**: 외부 타사 HW를 가져와 시험하는 경우와 **자사의 개발 중 HW**를 대상으로 하는 경우가 모두 있다(2026-09-03 확정). 후자는 실리콘·문서·도구가 개발 진행에 따라 변동될 수 있을 것으로 예상되며, 그 처리 방식은 미결이다(→ UC-0, Requirements OD-26).
 - **Out-of-scope (Non-goal)**: 방법 A(DeepAgents/LangGraph 기반 별도 Agent System)는 **"HIL-Claw 2"** 로 이연한다. 방법 B가 완료되고 모든 동작이 원활히 검증된 이후에 착수한다. 본 문서에서 방법 A는 다루지 않으며, 다만 방법 B의 인터페이스(STATE/spec/도구/카탈로그)는 미래 HIL-Claw 2 승격이 쉽도록 외부화한다(→ [Requirements](Requirements.md) NFR-확장성).
 
@@ -146,7 +146,7 @@
 
 # 4. 확장 유스케이스 (Post-MVP)
 
-MVP 구현 대상이 아니다. 설계(STATE/spec/도구/레이아웃 인터페이스)가 아래를 **구조적으로 배제하지 않아야** 한다(NFR-6, [확장 호환] 규칙). 구체 단계는 [StandardScenarios](StandardScenarios.md) S7·S9·S10 참조. UC-E2(라운드 내 다중 후보, S8)는 OD-21 확정(2026-10-01)으로 MVP에 편입되어 UC-1·UC-2의 N·k로 흡수되었다(ID는 이력 보존을 위해 비워 둔다).
+MVP 구현 대상이 아니다. 설계(STATE/spec/도구/레이아웃 인터페이스)가 아래를 **구조적으로 배제하지 않아야** 한다(NFR-6, [확장 호환] 규칙). 구체 단계는 [StandardScenarios](StandardScenarios.md) S7·S9·S10·S12 참조. UC-E2(라운드 내 다중 후보, S8)는 OD-21 확정(2026-10-01)으로 MVP에 편입되어 UC-1·UC-2의 N·k로 흡수되었다(ID는 이력 보존을 위해 비워 둔다).
 
 | ID | 확장 유스케이스 | 대응 시나리오 | 설계에 대한 제약 |
 |---|---|---|---|
@@ -154,6 +154,7 @@ MVP 구현 대상이 아니다. 설계(STATE/spec/도구/레이아웃 인터페�
 | ~~UC-E2~~ | *(MVP 편입 — OD-21, UC-1·UC-2)* | S8(기본 계층) | — |
 | **UC-E3** | board 장애·측정 노이즈 대응 — 재시도/대체 board, 반복 측정·신뢰구간 | S9 | board 도구 인터페이스가 실패·재시도 상태를 표현할 것(OD-10, OD-13, NFR-3) |
 | **UC-E4** | 결과 재현 — 과거 best를 source commit + CAS 해시로 복원해 재측정, 환경 변화 감지 | S10 | hw_profile에 환경 revision 정보가 있을 것(OD-4·OD-26, UC-0 대안 흐름); 참조 자료 스냅샷(FR-14 ②, OD-12) |
+| **UC-E5** | 벤더 스택 코드 평가 — QNN·HexKL 등을 쓰는 LLM 코드나 CUDA를 쓰는 코드를 빌드·실행·검사·측정·기록 | S12 | 툴체인·측정 지점이 대상별로 정해질 수 있고 `cpu_standin`을 바꾸지 않을 것(FR-19, OD-33) |
 
 ---
 
@@ -166,7 +167,7 @@ MVP 구현 대상이 아니다. 설계(STATE/spec/도구/레이아웃 인터페�
 - UC-5는 UC-2/UC-3의 "기법 선택" 품질을 좌우한다(guided search 근거 공급).
 - UC-2/UC-3의 매 라운드가 남긴 가설–결과 사례는 같은 키의 이후 UC-1 instance의 입력이 된다(FR-18, 크로스런 학습 — StandardScenarios S6).
 - UC-7은 UC-2/UC-3 내부의 분기 흐름이다.
-- UC-E1·E3·E4는 UC-2/UC-3·UC-6의 확장이며, MVP 인터페이스 설계 시 배제 여부만 검사한다.
+- UC-E1·E3·E4·E5는 UC-2/UC-3·UC-6의 확장이며, MVP 인터페이스 설계 시 배제 여부만 검사한다.
 
 > 본 유스케이스로부터 도출된 요구사항은 [Requirements.md](Requirements.md)에 정리한다.
 > 유스케이스를 구체적 단계로 풀어 쓰고 설계 커버리지를 검사하는 표준 시나리오는 [StandardScenarios.md](StandardScenarios.md)에 있다.
