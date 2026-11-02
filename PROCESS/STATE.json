@@ -859,7 +859,9 @@
       "reason": "review-rounds-exceeded",
       "question": "(A-13, 리뷰 7라운드 초과) [쟁점] T-0531의 ADR-0193이 7라운드에서 Approve를 받지 못했다. 7라운드의 지적은 Must-fix 0건, Should-fix 2건, Nit 3건으로 모두 등록부 정합성이고, 실행자는 리뷰어가 오너 몫을 정한 문장을 찾지 못했다고 보고했다. 그 지적은 브랜치 claude/T-0531-generalization-design-adr(01778ed1)에 반영했으나 리뷰를 받지 않았다. [선택지] (a) 리뷰 1라운드를 더 허용하고 Approve면 land한다 (b) ADR을 더 작게 쪼개 처음부터 다시 한다 (c) 그 밖. 실행자의 권고(결정 아님): (a). [막히는 것] P3-1 체크, P3-2 이후 항목의 설계 근거, ADR이 land된 뒤 올릴 HQ 초안 네 건(O1~O4, task 파일 Result). [막히지 않는 것] P2-15 확인, P3 밖의 task.",
       "askedAt": "2026-11-02T03:36:25Z",
-      "issueComment": null
+      "issueComment": null,
+      "resolvedAt": "2026-11-02T15:42:13Z",
+      "decision": "(a) 리뷰 1라운드를 더 허용하고 Approve면 land한다."
     }
   ],
   "counters": {
