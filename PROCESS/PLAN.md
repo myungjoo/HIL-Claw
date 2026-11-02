@@ -1,6 +1,6 @@
 # 개발 PLAN
 
-[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D18은 모두 답변되어(2026-10-03~19) 본 PLAN에 ⚑ 항목은 없다. **우선순위(D18, 오너 2026-10-19, 채팅)**: 도달 목표는 P2-14(Llama 3.2 1B end-to-end, C-6 개정)이고, 가까운 목표는 P2-5다. P1-1·P1-8은 아래 완료 기준까지만 하고, 체크리스트 밖의 일(follow-up·OD 하위 질문) 가운데 두 목표에 필요하지 않은 것은 맨 아래 "보류" 절에 한 줄로 적어 둔다(DRIVER §6). P2-5 구성의 첫 실제 run 전까지는 이 우선순위가 DRIVER §6 D24의 동결로 좁혀진다(D24, 오너 2026-10-29) — 그 동안의 `(D24 동결)` 보류 줄은 P2-14가 아니라 동결 해제 때 다시 판단한다. *(런타임 인수 항목)* 으로 표시된 줄은 체크리스트 항목이 아니며 planner가 task로 만들지 않는다(DRIVER §6, D16). **P2-14 뒤(D26, 오너 2026-10-30, 채팅)**: P2-14가 체크되어, 체크리스트 밖의 일의 기준은 이제 오너가 P2-15를 돌려 시스템이 동작하는지 확인하는 데 필요한가이고, planner는 그 일을 HQ-0080의 묶음과 남은 체크리스트 항목보다 앞에 두되 HQ를 기다리는 그 일은 다른 task를 막지 않는다(DRIVER §6 D26). D15(드라이버 병렬 실행)의 전환은 PLAN 항목이 아니며 planner는 그것을 task로 만들지 않는다 — 루틴을 멈춘 통합자 세션이 P0-3 완료와 P0.5-4의 hook 등록 뒤에 수행한다(D15-3·D15-4, [proposals/D15-parallel-drivers.md](proposals/D15-parallel-drivers.md) §8).
+[DRIVER.md](DRIVER.md) §6 planner의 입력. phase 안의 항목은 **체크리스트**이며 각 항목은 1개 이상의 task(`tasks/`)로 쪼개진다. `coversReq`는 추적용 ID — Requirements ID(FR/NFR/C/OD), 오너 결정 ID(#5 A-n·B-n·D-n), 이슈(#9), 또는 DRIVER.md 절. 완료된 phase는 그대로 두고 체크만 한다(감사성). 표시 규약: "**오너 확정 필요**"(#5 A·B 항목, C-6, OD-25, OD-3) 항목은 그 결정이 닫히기 전까지 planner가 건너뛴다; "**OD-n 종결 필요(§9)**" 항목은 그 OD를 닫는 ADR 작성을 포함한 task로 만든다(DRIVER §6·§9, D6). DRIVER §11의 D1~D18은 모두 답변되어(2026-10-03~19) 본 PLAN에 ⚑ 항목은 없다. **우선순위(D18, 오너 2026-10-19, 채팅)**: 도달 목표는 P2-14(Llama 3.2 1B end-to-end, C-6 개정)이고, 가까운 목표는 P2-5다. P1-1·P1-8은 아래 완료 기준까지만 하고, 체크리스트 밖의 일(follow-up·OD 하위 질문) 가운데 두 목표에 필요하지 않은 것은 맨 아래 "보류" 절에 한 줄로 적어 둔다(DRIVER §6). P2-5 구성의 첫 실제 run 전까지는 이 우선순위가 DRIVER §6 D24의 동결로 좁혀진다(D24, 오너 2026-10-29) — 그 동안의 `(D24 동결)` 보류 줄은 P2-14가 아니라 동결 해제 때 다시 판단한다. *(런타임 인수 항목)* 으로 표시된 줄은 체크리스트 항목이 아니며 planner가 task로 만들지 않는다(DRIVER §6, D16). **P2-14 뒤(D26, 오너 2026-10-30, 채팅)**: P2-14가 체크되어, 체크리스트 밖의 일의 기준은 이제 오너가 P2-15를 돌려 시스템이 동작하는지 확인하는 데 필요한가이고, planner는 그 일을 HQ-0080의 묶음과 남은 체크리스트 항목보다 앞에 두되 HQ를 기다리는 그 일은 다른 task를 막지 않는다(DRIVER §6 D26). **일반화(D27, 오너 2026-11-02, 채팅)**: 다음 목표는 아래 "P3 — 일반화"이고 P2-15와 병행하며, P2-15 실패의 수정이 먼저다. 통합자 적용(오너의 말이 아님): 체크리스트 밖의 일의 기준에 지금의 P3 항목에 필요한가를 더하고, P0.5-4와 P2-4는 P3를 막지 않는다(DRIVER §6 D27). D15(드라이버 병렬 실행)의 전환은 PLAN 항목이 아니며 planner는 그것을 task로 만들지 않는다 — 루틴을 멈춘 통합자 세션이 P0-3 완료와 P0.5-4의 hook 등록 뒤에 수행한다(D15-3·D15-4, [proposals/D15-parallel-drivers.md](proposals/D15-parallel-drivers.md) §8).
 
 현재 phase: `PROCESS/STATE.json`의 `phase`가 정본.
 
@@ -18,7 +18,7 @@
 - [x] P0.5-1 sh 게이트(shellcheck) · C 게이트(clang 빌드 + 하네스 통과) CI 추가 · coversReq: #9
 - [x] P0.5-2 테스트 존재 검사(D12 확정): `hilclaw/`의 새 모듈에 대응 테스트 파일이 없으면 CI 실패 · coversReq: #5 D12, dev-code-review "테스트 완비"
 - [x] P0.5-3 커버리지 게이트(D12 확정): `hilclaw/` **line ≥ 80%·function ≥ 80%**; branch 임계는 데이터가 쌓인 뒤 · coversReq: #5 D12, #9
-- [ ] P0.5-4 merge 가드 hook(D10 확정): `PreToolUse`가 `gh pr merge`를 가로채 PR checks가 전부 success가 아니면 거부. hook 테스트는 **명시 요구됨**(D12 예외 ②). 배치(P0.5)는 통합자 선택 — 오너 선택지는 "P2-4와 함께 또는 저렴하면 P0-3과 함께" · D13(2026-10-06) 이후 금지 명령(`git push --force*`·`rm -rf *`·`gh repo delete *`)의 PreToolUse 가드도 같은 hook에서 검토(follow-up — 범위 포함 여부는 P0.5-4 task 작성 시 planner/executor가 §9 기준으로 정함; 오너 전용 결정 아님) · coversReq: #5 D10·D12, OD-18
+- [ ] P0.5-4 *(오너의 hook 등록 대기 — HQ-0082; task를 만들지 않으며 P3를 막지 않는다, D27)* merge 가드 hook(D10 확정): `PreToolUse`가 `gh pr merge`를 가로채 PR checks가 전부 success가 아니면 거부. hook 테스트는 **명시 요구됨**(D12 예외 ②). 배치(P0.5)는 통합자 선택 — 오너 선택지는 "P2-4와 함께 또는 저렴하면 P0-3과 함께" · D13(2026-10-06) 이후 금지 명령(`git push --force*`·`rm -rf *`·`gh repo delete *`)의 PreToolUse 가드도 같은 hook에서 검토(follow-up — 범위 포함 여부는 P0.5-4 task 작성 시 planner/executor가 §9 기준으로 정함; 오너 전용 결정 아님) · coversReq: #5 D10·D12, OD-18
 
 ## P1 — 2층 도구 패키지 (MVP 핵심 부품)
 
@@ -39,7 +39,7 @@
 - [x] P2-1 Round-Manager 프롬프트·라운드 0(bring-up+baseline) 절차 · coversReq: FR-1
 - [x] P2-2 coder-driver(`claude -p` 호출, spec 전달, 출력 캡처) — **OD-23 종결 필요(§9 ADR 경로)**(로스터·입출력 계약, 논의중) · coversReq: FR-5, OD-23
 - [x] P2-3 evaluator(Write 권한 없음, 하네스만 호출) — **OD-16 종결 필요(§9 ADR 경로)** · coversReq: FR-9, OD-16
-- [ ] P2-4 hooks: PreToolUse 예산·gate 검사, PostToolUse 저널링, Stop 커밋 강제 — **OD-18·OD-19 종결 필요(§9 ADR 경로)** · coversReq: FR-3·4·11, OD-18·19
+- [ ] P2-4 *(HQ-0085 (b) — RA-0056이 `확인됨`이 된 뒤 다시 묻는다; 그 답 전에는 task를 만들지 않으며 P3를 막지 않는다, D27)* hooks: PreToolUse 예산·gate 검사, PostToolUse 저널링, Stop 커밋 강제 — **OD-18·OD-19 종결 필요(§9 ADR 경로)** · coversReq: FR-3·4·11, OD-18·19
 - [x] P2-6 가설 레코드와 판정(오너 결정 2026-10-13): 기법 선택이 가설·근거·예상 효과·출처를 구조화 기록으로 남기고 evaluate가 가설마다 판정·원인을 기록 — 스키마·파일 자리는 **OD-30 종결 필요(§9 ADR 경로)**; 2층의 스키마 검증·쓰기와 1층 프롬프트(P2-1·P2-3)에의 반영을 포함. 수행 순서는 나열 순서(P2-5보다 앞) — 첫 run이 사례를 남기도록 · coversReq: FR-11·17, OD-30·OD-23
 - [x] P2-7 가설–결과 사례 저장과 같은 키 정확 일치 조회(MVP 최소분, 오너 결정 2026-10-13): 라운드 종료 때 사례(기각·실패 포함)를 `db/<hw_profile_key>/<op_signature>/`에 저장, 기법 선택이 그 키의 사례를 읽고 참조를 결정 로그에 기록, instance 시작 시의 가설 주입 입력(FR-15) — **OD-30 종결 필요(§9 ADR 경로)**(사례 필드·싣는 사례의 선택; OD-20·OD-7과의 관계) · coversReq: FR-15·18, S11, OD-30·OD-20·OD-7
 - [x] P2-5 첫 end-to-end run: `cpu_standin` × GEMM, N=1, 5라운드 — 드라이버 task의 검증은 테스트가 만든 스텁 `claude`로 한다(D16); 드라이버 쪽에서 실제 `claude`를 쓰는 run은 P2-10의 nightly 루틴과 executor의 테스트 run(D25)이며(D17) 이 항목의 완료는 그 결과에 달려 있지 않다 · coversReq: S0, S1, S8(N=1), FR-17·18
@@ -52,12 +52,23 @@
 - [x] P2-8 S6 수용 기준의 계산 도구: 같은 키의 두 run의 기록에서 첫 run의 best에 도달하기까지의 라운드 수와 두 번째 run의 결정 로그에 든 사례 참조의 유무를 계산(fixture로 검증) — 지표 정의는 **OD-30 종결 필요(§9 ADR 경로)** · coversReq: S6, FR-18, OD-30
 - P2-9 *(런타임 인수 항목 — 드라이버 task로 만들지 않는다, D16)* S6 수용 기준 측정: 오너가 런타임 머신에서 같은 키·target·tolerance·N·budget으로 run을 두 번(첫 run과 두 번째 run) 수행하고 P2-8의 도구로 판정한다 — 드라이버의 P2-5 검증(스텁 `claude`)의 run과 nightly 루틴의 run(P2-10, D17 ②)과 테스트 run(D25 — 정해질 때까지)은 첫 run으로도 두 번째 run으로도 쓰지 않는다. P2-8이 체크된 뒤 planner가 처음 PLAN을 읽는 iteration(DRIVER §3-3)에 [RuntimeAcceptance.md](RuntimeAcceptance.md)에 항목(출처 = `P2-9`, 근거 task = P2-8의 task)을 한 번 더한다(DRIVER §8, D22); 이미 더했는지는 그 파일에 출처 `P2-9`의 항목이 있는지로 판정하며 PLAN 본문에는 적지 않는다. phase 전환 조건에 들지 않으며 오너의 수동 확인으로만 닫힌다 · coversReq: S6, FR-18
 
-## P3 이후 (초안만)
+## P3 — 일반화 (D27)
+
+[오너 2026-11-02, 채팅](https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6567151354): 다양한 custom NPU에서 다양한 모델을 돌리는 시스템으로 넓힌다. P3-1~P3-5는 오너가 승인한 첫 묶음이고 수행 순서는 나열 순서다. 틀의 변경(D23)은 구체적인 형식을 적은 HQ로 오너 승인을 받는다. 통합자 적용(오너의 말이 아님): 이후 항목은 통합자 세션이 오너 확인을 받아 문서 모드로 더한다. 드라이버 task의 검증은 개발 머신과 스텁 `claude`로 하고(D16; 테스트 run의 보조 사용은 D25), 실제 `claude`로 도는 확인은 런타임 인수 항목이다. 아래 항목의 세부는 [OD-32](../ARCHITECTURE/OpenDecisionProposals.md#od-32)이고, 아래의 Qualcomm 예약은 task가 되지 않는다.
+
+- [ ] P3-1 일반화 설계(ADR): 후보의 종류(C 커널, 벤더 언어 커널, 양자화 설정, 컴파일 설정)와 종류별로 후보를 만들고 평가하는 경계, 대상 기술, 가상 NPU, 모델 그래프 파일, 표 기반 생성의 설계. 데이터 형식의 틀을 바꾸는 부분과 OD-32의 다른 오너 귀속(⑥·⑦ 포함)은 정하지 않고 오너에게 물을 형식까지 적는다. **완료 기준**: ADR이 land되고 그 오너 몫이 모두 HQ로 등재되면 체크한다 — OD-32 전체 종결은 요구하지 않는다(§9 ADR 경로, DRIVER §6 D27 ⑤) · coversReq: D27, OD-32, C-6, NFR-6
+- [ ] P3-2 컴파일 옵션과 대상의 분리: CPU용 상수로 고정된 빌드 옵션(`hilclaw/standin_settings.py`), 모델 실행의 고정 대상(`hilclaw/model_run_binding.py`)을 대상이 정하는 값으로 옮긴다. 언어의 자리는 P3-1의 ADR(OD-32 ②)을 따른다. `cpu_standin`의 동작과 기존 결과는 그대로다 · coversReq: D27, OD-32, FR-10, NFR-6
+- [ ] P3-3 가상 NPU: 개발 머신에서 도는 백엔드로, 컴파일러 옵션·메모리 제한·데이터 타입·측정 단위를 일부러 CPU와 다르게 둔다. 여기서 드러나는 첫 사례의 가정을 고친다. 수치는 일반화 검사용이며 실제 NPU의 사실이나 근거가 아니다 · coversReq: D27, OD-32, FR-10, FR-14, NFR-6
+- [ ] P3-4 모델 그래프 파일: 노드와 연결을 적은 내부 파일을 읽어 모델을 실행한다. Llama 구조를 이 형식으로 옮겨 합성 가중치에서 기존과 결과가 같은지 확인하고, 합성 가중치의 다른 구조 모델로도 검증한다(통합자 적용: 드라이버 task의 확인은 합성 가중치이고, 실제 가중치에서의 동일 확인은 P3-4 착지 뒤의 런타임 인수 항목이다 — D16·D22). 외부 형식은 OD-9로 남는다 · coversReq: D27, OD-32, C-6, OD-31
+- [ ] P3-5 표 기반 생성: 커널 계약 표(ADR-0177)를 단일 원천으로 harness 코드(정확도 검사·성능 측정)를 생성하고, 생성이 어려운 연산만 손으로 쓴다. 기존 연산의 결과는 그대로다 · coversReq: D27, OD-32, FR-9
+- [ ] P3-6 커널 밖의 후보 **오너 확정 필요(OD-32 ①·⑥·⑦)**: 그 답이 닫히기 전까지 planner가 건너뛴다. 답의 범위에서 첫 커널 밖 후보 종류를 만들고 평가한다 · coversReq: D27, OD-32, C-6
+
+## P3 밖 (초안만)
 
 - Best-of-N(N≤5) 실행·승격 정책(OD-29), LAN 백엔드(SSH)·`board.run` 원격(B-2 대기), 기법 카탈로그 콜드스타트(OD-22), 크로스런 통계의 랭킹 신호·유사 키 사례 활용(OD-7·OD-4 잔여 — 가설 레코드는 P2-6, 사례 저장과 정확 일치 조회는 P2-7), 알림(OD-27).
 - **예약(오너, 2026-10-13 채팅) — 지원 대상 순서와 2번째 대상**: 1번째 지원 대상은 CPU(현재의 `cpu_standin` 백엔드, #5 A-7 — 통합자 독해), **2번째 지원 대상은 Qualcomm NPU**다. QNN·AIMET 등을 이용해 HuggingFace의 주요 On-Device LLM 모델(3B급)을 최적화한다 — 목표 산출물은 더 빠르게 동작하고 더 적은 메모리를 쓰면서 품질 성능은 유지·향상되는 **양자화 모델**. 예약일 뿐이며 planner는 이 항목을 task로 만들지 않는다. **오너 확정 필요** — 위 문장에 없는 것은 어느 것도 정해지지 않았고, 이 항목은 #5 B-1·B-2·B-3·B-5(OD-9)·B-8·A-4의 어느 부분도 닫지 않는다. 정해지지 않은 것의 예(완결된 목록이 아니다): 대상 SoC·SDK 버전, 대상 모델 목록, 모델 입력 포맷·frontend 경계, 양자화 방식, 품질 지표와 평가 데이터, simulator 유무·종류, 실행 장비 접근 방식, 3층 코더의 역할, 단일 compute-kernel 범위(C-6)와 모델 단위 양자화 산출물의 관계.
 
-## 보류 (D18·D26)
+## 보류 (D18·D26·D27)
 
 DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 되돌리지 않은 일을 한 줄씩 적는다(근거 task·ADR 또는 follow-up의 출처, 무엇). 줄은 체크박스가 아니며 phase 전환 조건에 들지 않는다. 줄을 더하는 것은 드라이버 상태 커밋이다(DRIVER §2). P2-14 체크 뒤의 줄별 처리와 줄 삭제, status를 바꾸는 주체, 결과 없이 닫는 권한은 HQ-0080(오너 2026-10-30)이 그 승인 목록의 줄에 대해 정했다(드라이버가 상태 커밋으로 적용). 여기 든 BLOCKED task는 그 HQ가 답해져도 `TODO`로 돌아가지 않는다(DRIVER §3-2; 예외는 HQ-0080 ①~③의 적용) — 답은 기록되고 그 줄을 처리할 때 쓰인다. 그 task의 열린 PR은 닫고 브랜치는 남긴다(DRIVER §3-2; 통합자 적용, D18). 그 승인 목록에 없는 줄(DRIVER §6 D26이 이름한 T-0516 follow-up 줄 제외)과 D26 뒤에 든 줄을 언제 다시 보는지는 정하지 않았다(DRIVER §6 D26).
 
