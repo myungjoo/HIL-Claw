@@ -9,12 +9,12 @@ import pytest
 
 import hilclaw.harness
 from hilclaw import (
-    clang_build,
     elementwise_add_bf16_contract,
     local_run,
     rmsnorm_bf16_contract,
     swiglu_bf16_contract,
 )
+from hilclaw.harness.bf16_program_generator import verification_source
 from hilclaw.harness.bf16_verification_arrays import (
     EPS_BITS,
     check_value,
@@ -23,6 +23,7 @@ from hilclaw.harness.bf16_verification_arrays import (
     reference,
     widen,
 )
+from hilclaw.harness.bf16_verification_build import build_bf16_verification_executable
 
 DIRECTORY = Path(hilclaw.harness.__file__).parent
 HEADER = DIRECTORY / "bf16_verification.h"
@@ -265,10 +266,6 @@ def split(report, m, n, draws):
     ]
 
 
-def program(kind):
-    return DIRECTORY / f"bf16_verification_{kind}.c"
-
-
 def prefix(kind):
     return f"bf16_verification_{kind}: ".encode("ascii")
 
@@ -301,8 +298,9 @@ def executable(tmp_path_factory):
             source = directory / f"{stem}.c"
             source.write_text(text, encoding="ascii", newline="\n")
             path = directory / stem
-            result = clang_build.build(
-                (program(kind), source),
+            result = build_bf16_verification_executable(
+                kind,
+                source,
                 path,
                 timeout_s=BUILD_TIMEOUT,
                 flags=flags,
@@ -338,7 +336,9 @@ def assert_refused(run, kind, status):
 @pytest.mark.parametrize("kind", KINDS)
 def test_program_is_ascii_and_declares_the_contract_prototype(kind):
     HEADER.read_bytes().decode("ascii")
-    lines = program(kind).read_bytes().decode("ascii").splitlines()
+    text = verification_source(kind)
+    text.encode("ascii")
+    lines = text.splitlines()
     assert KINDS[kind][0].PROTOTYPE in lines
     assert f'#define PROGRAM "bf16_verification_{kind}"' in lines
     assert lines.index("#define _POSIX_C_SOURCE 200809L") < lines.index(

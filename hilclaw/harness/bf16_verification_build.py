@@ -11,8 +11,9 @@ generated from the contract table at each build (ADR-0193 decision 6): its
 text, :func:`hilclaw.harness.bf16_program_generator.verification_source`, is
 written under the file name of its entry of :data:`PROGRAM_SOURCES` into a new
 temporary directory, beside a copy of ``bf16_verification.h``, and that
-directory is removed before the function returns or raises. For ``rope`` and
-``sdpa_kv_cache`` the program is the C source :data:`PROGRAM_SOURCES` names.
+directory is removed before the function returns or raises; no file of the
+package exists at the path of that entry. For ``rope`` and ``sdpa_kv_cache``
+the program is the C source :data:`PROGRAM_SOURCES` names.
 The program of ``rope`` reads the ``freqs_cis`` rows of the run on its standard
 input (ADR-0164 decision 3); running it and that input are the caller's,
 through ``local_run.run(..., stdin_data=...)``, as running every other program
@@ -83,8 +84,7 @@ PROGRAM_SOURCES = types.MappingProxyType(
 
 For a kind of :data:`hilclaw.harness.bf16_program_generator.GENERATED_KINDS`
 only the file name of the path is used by a build: the generated program is
-written under it (ADR-0193 decision 6), and the file the path names is read
-by no build of this package.
+written under it (ADR-0193 decision 6), and no file exists at the path.
 """
 
 

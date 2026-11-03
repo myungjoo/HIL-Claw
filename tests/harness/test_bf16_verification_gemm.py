@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 import hilclaw.harness
-from hilclaw import clang_build, gemm_bf16_contract, local_run
+from hilclaw import gemm_bf16_contract, local_run
+from hilclaw.harness.bf16_program_generator import verification_source
 from hilclaw.harness.bf16_verification_arrays import (
     check_value,
     count_failures,
@@ -16,9 +17,9 @@ from hilclaw.harness.bf16_verification_arrays import (
     reference,
     widen,
 )
+from hilclaw.harness.bf16_verification_build import build_bf16_verification_executable
 
 DIRECTORY = Path(hilclaw.harness.__file__).parent
-PROGRAM = DIRECTORY / "bf16_verification_gemm.c"
 HEADER = DIRECTORY / "bf16_verification.h"
 
 STRICT = ("-std=c99", "-Wall", "-Wextra", "-Wpedantic", "-Werror")
@@ -239,8 +240,8 @@ def executable(tmp_path_factory):
             source = directory / f"{stem}.c"
             source.write_text(text, encoding="ascii", newline="\n")
             output = directory / stem
-            result = clang_build.build(
-                (PROGRAM, source), output, timeout_s=BUILD_TIMEOUT, flags=flags
+            result = build_bf16_verification_executable(
+                "gemm", source, output, timeout_s=BUILD_TIMEOUT, flags=flags
             )
             assert result.ok, result.log
             built[name, flags] = output
@@ -271,7 +272,8 @@ def assert_refused(run, status):
 
 def test_sources_are_ascii_and_program_declares_the_contract_prototype():
     HEADER.read_bytes().decode("ascii")
-    text = PROGRAM.read_bytes().decode("ascii")
+    text = verification_source("gemm")
+    text.encode("ascii")
     assert gemm_bf16_contract.PROTOTYPE in text.splitlines()
     assert '#include "bf16_verification.h"' in text.splitlines()
 
