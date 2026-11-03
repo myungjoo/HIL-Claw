@@ -73,7 +73,7 @@ hq: []
 
 ## Result
 
-- **Outcome**: DONE (pending review; this section is updated at landing). Order check (D27 ①) on `ec58f7c7`: no open `nightly-failure` issue, no open PR, RA-0056 still `미확인`; P3-2 stands as the next item.
+- **Outcome**: DONE. PR #349 (squash-merged; the merge commit carries the `Task: T-0532` line). Review: 2 rounds (round 1 Request changes: two allow-list assertions failing in the full suite and CI, and `targets.target` masking an error of building an entry; round 2 Approve). Nits after Approve: a docstring rewrap in `check_definition.py` applied (D20); not applied: reusing `standin_check._check_target` in `standin_run` (ruff SLF001 forbids the private access) and moving the shared test helper `a_target`. Order check (D27 ①) on `ec58f7c7`: no open `nightly-failure` issue, no open PR, RA-0056 still `미확인`; P3-2 stands as the next item.
 - **Language**: Python, as the touched modules and the existing `hilclaw` package (the target table is a value table read by Python tools).
 - **What changed**
   - New `hilclaw/targets.py`: `Target` (frozen dataclass; every member checked at construction), `CPU_STANDIN`, `TABLE` (read-only mapping with the one entry `cpu_standin`, built from the `standin_settings.py` constants each time it is read, so those constants stay the source and a test that patches one is still seen), `target(name, table=TABLE)` raising `NoTargetError` (a `LookupError`), `instance_start_accelerators(table=TABLE)`.
