@@ -55,10 +55,18 @@ Open under decision 6, and so not in the set: a target-specific flag such as
 The set holds no compiler (OD-14). The time limits stand beside the set
 (ADR-0117 decision 2).
 
+The dimensions of a bf16 kind are the parameters of its contract's
+``task_contract`` in :data:`hilclaw.contract_table.TABLE`, in their order
+(ADR-0193 decision 6).
+
 What this module does not do: it reads no file, no environment variable, no
 configuration and no hw_profile (ADR-0116 decision 2; ADR-0117 decision 2),
 and it starts no process.
 """
+
+import inspect
+
+from hilclaw import contract_table
 
 FLAGS = ("-std=gnu11", "-O2", "-ffp-contract=off", "-fopenmp")
 """Flags of every ``cpu_standin`` kernel build, in this order (ADR-0116 decision 3; ADR-0188 decision 1)."""
@@ -123,12 +131,9 @@ BF16_ELEMENT_WEIGHT = 10
 """Operations counted per element of a bf16 verification program's arrays (ADR-0179 decision 3)."""
 
 _BF16_DIMENSIONS = {
-    "gemm": ("m", "k", "n"),
-    "rmsnorm": ("m", "n"),
-    "elementwise_add": ("m", "n"),
-    "swiglu": ("m", "n"),
-    "rope": ("m", "h", "d"),
-    "sdpa_kv_cache": ("m", "l", "h", "h_kv", "d"),
+    key[0]: tuple(inspect.signature(found.contract.task_contract).parameters)
+    for key, found in contract_table.TABLE.items()
+    if key[0] in BF16_CHECK_KINDS and key[1] == "bf16"
 }
 
 

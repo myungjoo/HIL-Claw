@@ -456,6 +456,7 @@ def test_public_names_of_the_module():
         "PROTOTYPE",
         "SHAPES",
         "INPUT_PATTERNS",
+        "DRAW_BITS",
         "covers",
         "op_signature_record",
         "task_contract",
@@ -490,3 +491,15 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
     with pytest.raises(InvalidRecordError):
         covers({})
     assert list(tmp_path.iterdir()) == []
+
+
+def test_draw_bits_are_those_of_the_harness_programs_inputs_in_order():
+    assert gemm_bf16_contract.DRAW_BITS == (8, 8)
+    assert type(gemm_bf16_contract.DRAW_BITS) is tuple
+    assert all(type(bits) is int for bits in gemm_bf16_contract.DRAW_BITS)
+    inputs = [
+        o
+        for o in gemm_bf16_contract.task_contract(1, 2, 3)["operands"]
+        if o["role"] == "input"
+    ]
+    assert len(gemm_bf16_contract.DRAW_BITS) == len(inputs)

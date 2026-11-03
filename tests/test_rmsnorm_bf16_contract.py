@@ -477,6 +477,8 @@ def test_public_names_of_the_module():
         "SHAPES",
         "INPUT_PATTERNS",
         "EPS",
+        "DRAW_BITS",
+        "EPS_BITS",
         "covers",
         "op_signature_record",
         "task_contract",
@@ -512,3 +514,23 @@ def test_a_call_writes_no_file(tmp_path, monkeypatch):
     with pytest.raises(InvalidRecordError):
         covers({})
     assert list(tmp_path.iterdir()) == []
+
+
+def test_draw_bits_are_those_of_the_harness_programs_inputs_in_order():
+    assert rmsnorm_bf16_contract.DRAW_BITS == (8, 8)
+    assert type(rmsnorm_bf16_contract.DRAW_BITS) is tuple
+    assert all(type(bits) is int for bits in rmsnorm_bf16_contract.DRAW_BITS)
+    inputs = [
+        o
+        for o in rmsnorm_bf16_contract.task_contract(1, 2)["operands"]
+        if o["role"] == "input"
+    ]
+    assert len(rmsnorm_bf16_contract.DRAW_BITS) == len(inputs)
+
+
+def test_eps_bits_is_the_binary32_pattern_of_eps():
+    assert rmsnorm_bf16_contract.EPS_BITS == 0x3727C5AC
+    assert (
+        struct.unpack("=f", struct.pack("=I", rmsnorm_bf16_contract.EPS_BITS))[0]
+        == rmsnorm_bf16_contract.EPS
+    )

@@ -18,29 +18,31 @@ input, which :func:`rope_rows` builds. Building them is what needs NumPy, so the
 imports that do are made when they are built and importing this module imports
 no NumPy.
 
+The number of dimensions of a kind is that of the parameters of its
+contract's ``task_contract`` in :data:`hilclaw.contract_table.TABLE`
+(ADR-0193 decision 6).
+
 It builds nothing, gives no default to the sample form, the seed or the time
 limit, and registers no kind with a run tool (ADR-0181 decision 8).
 """
 
+import inspect
 import os
 import reprlib
 import sys
 
-from hilclaw import local_run
+from hilclaw import contract_table, local_run
 from hilclaw.harness import memory_ceiling, timing
 from hilclaw.harness.measurement import N_MAX_DEFAULT
 from hilclaw.harness.timing import Broken, TimingArgumentError, TimingResult
 
-_DIMENSIONS = {
-    "gemm": 3,
-    "rmsnorm": 2,
-    "elementwise_add": 2,
-    "swiglu": 2,
-    "rope": 3,
-    "sdpa_kv_cache": 5,
-}
+KINDS = ("gemm", "rmsnorm", "elementwise_add", "swiglu", "rope", "sdpa_kv_cache")
 
-KINDS = tuple(_DIMENSIONS)
+_DIMENSIONS = {
+    key[0]: len(inspect.signature(found.contract.task_contract).parameters)
+    for key, found in contract_table.TABLE.items()
+    if key[0] in KINDS and key[1] == "bf16"
+}
 
 __all__ = ["KINDS", "program_arguments", "rope_rows", "run_bf16_timing"]
 

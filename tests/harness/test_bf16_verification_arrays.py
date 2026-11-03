@@ -654,3 +654,15 @@ def test_an_argument_error_names_the_argument_and_shows_no_element():
     with pytest.raises(VerificationArgumentError) as caught:
         draw_inputs("gemm", (1, 2), seed=0, draw=0)
     assert str(caught.value) == "dims: must be a tuple of 3 ints for gemm, got tuple"
+
+
+def test_draw_bits_and_eps_bits_come_from_the_contracts(monkeypatch):
+    assert EPS_BITS == rmsnorm_bf16_contract.EPS_BITS
+    first, second = draw_inputs("swiglu", (4, 64), seed=3, draw=0)
+    assert not set(first.flat) <= set(swiglu_bf16_contract.UP_PATTERNS)
+    monkeypatch.setattr(swiglu_bf16_contract, "DRAW_BITS", (8, 8))
+    first, second = draw_inputs("swiglu", (4, 64), seed=3, draw=0)
+    assert set(first.flat) <= set(swiglu_bf16_contract.UP_PATTERNS)
+    added = draw_inputs("elementwise_add", (4, 64), seed=3, draw=0)
+    np.testing.assert_array_equal(first, added[0])
+    np.testing.assert_array_equal(second, added[1])

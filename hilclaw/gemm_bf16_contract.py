@@ -24,6 +24,9 @@ as well (decision 7). The values, and one test of a record:
   order.
 * :data:`INPUT_PATTERNS`: the 256 bf16 bit patterns of the value set of the
   verification inputs (decision 9).
+* :data:`DRAW_BITS`: the ``bits`` with which the bf16 harness programs draw
+  each input operand, in the order they draw them (ADR-0163 decision 4;
+  ADR-0193 decision 6).
 * :func:`covers`: whether an op_signature record is covered by this contract.
 
 What the module does not do: it builds no spec and no other part of one - no
@@ -64,6 +67,7 @@ SHAPES = tuple(
     for m in (1, 32, 512)
 )
 INPUT_PATTERNS = (*range(0x3F00, 0x3F80), *range(0xBF00, 0xBF80))
+DRAW_BITS = (8, 8)
 
 
 def op_signature_record(m, k, n):

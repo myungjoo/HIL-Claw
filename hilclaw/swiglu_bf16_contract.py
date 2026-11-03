@@ -30,6 +30,9 @@ record:
 * :data:`UP_PATTERNS`: the 256 bf16 bit patterns of the value set of the
   verification input ``up``, every bf16 value of magnitude in [0.5, 1) with
   either sign, the set of ADR-0156 decision 9 (decision 10).
+* :data:`DRAW_BITS`: the ``bits`` with which the bf16 harness programs draw
+  each input operand, in the order they draw them (ADR-0163 decision 4;
+  ADR-0193 decision 6).
 * :func:`covers`: whether an op_signature record is covered by this contract.
 
 The contract has no scalar parameter, so there is no constant beside these.
@@ -69,6 +72,7 @@ PROTOTYPE = (
 SHAPES = ((1, 8192), (32, 8192), (512, 8192))
 GATE_PATTERNS = (*range(0x3F00, 0x4100), *range(0xBF00, 0xC100))
 UP_PATTERNS = (*range(0x3F00, 0x3F80), *range(0xBF00, 0xBF80))
+DRAW_BITS = (10, 8)
 
 
 def op_signature_record(m, n):

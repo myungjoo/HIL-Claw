@@ -28,9 +28,10 @@ The elements of draw ``d`` form one sequence: the F elements of the first
 operand in row-major order, then the S elements of the second (``gemm``:
 ``a`` (m, k) then ``b`` (k, n); ``rmsnorm``: ``x`` (m, n) then ``w`` (n);
 ``elementwise_add``: ``a`` then ``b``, both (m, n); ``swiglu``: ``gate`` then
-``up``, both (m, n)). ``bits`` is 10 for ``gate`` and 8 for every other
-operand, and ``pattern`` is the ``uint16_t`` bf16 bit pattern of the
-element in the byte order of the host; the pattern of index ``r`` is
+``up``, both (m, n)). ``bits`` is the contract module's ``DRAW_BITS`` entry
+of the operand, 10 for ``gate`` and 8 for every other operand, and
+``pattern`` is the ``uint16_t`` bf16 bit pattern of the element in the byte
+order of the host; the pattern of index ``r`` is
 element ``r`` of the contract module's tuple. Changing anything in this
 paragraph or the one above changes the contract of the verification programs,
 which must reproduce it bit for bit. The check value of a draw is
@@ -64,6 +65,7 @@ import zlib
 
 import numpy as np
 
+from hilclaw import contract_table
 from hilclaw.harness.verification_arrays import (
     GOLDEN,
     SEED_LIMIT,
@@ -90,7 +92,13 @@ __all__ = [
 ]
 
 KINDS = ("gemm", "rmsnorm", "elementwise_add", "swiglu")
-EPS_BITS = 0x3727C5AC
+
+_CONTRACTS = {
+    key[0]: found.contract
+    for key, found in contract_table.TABLE.items()
+    if key[0] in KINDS and key[1] == "bf16"
+}
+EPS_BITS = _CONTRACTS["rmsnorm"].EPS_BITS
 
 _EPS = float(np.array([EPS_BITS], dtype=np.uint32).view(np.float32)[0])
 
@@ -116,8 +124,9 @@ def draw_inputs(kind, dims, *, seed, draw):
     _mix(words)
     patterns = np.empty(sum(sizes), dtype=np.uint16)
     first, second = patterns[: sizes[0]], patterns[sizes[0] :]
-    first[...] = _patterns(words[: sizes[0]], 10 if kind == "swiglu" else 8)
-    second[...] = _patterns(words[sizes[0] :], 8)
+    first_bits, second_bits = _CONTRACTS[kind].DRAW_BITS
+    first[...] = _patterns(words[: sizes[0]], first_bits)
+    second[...] = _patterns(words[sizes[0] :], second_bits)
     return first.reshape(shapes[0]), second.reshape(shapes[1])
 
 
