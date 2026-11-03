@@ -188,7 +188,7 @@ def test_program_sources_are_the_c_files_of_the_kinds_next_to_the_package():
     for kind, path in PROGRAM_SOURCES.items():
         assert isinstance(path, Path)
         assert path.is_absolute()
-        assert path.is_file()
+        assert path.is_file() is (kind not in GENERATED_KINDS)
         assert path.name == f"bf16_verification_{kind}.c"
         assert path.parent == DIRECTORY
     assert (DIRECTORY / "bf16_verification.h").is_file()
@@ -356,7 +356,7 @@ def test_kernel_sources_in_every_accepted_form(stub, kernel, out, form):
 
 def test_duplicate_sources_are_not_checked(stub, kernel, out):
     source = kernel()
-    program = PROGRAM_SOURCES["elementwise_add"]
+    program = PROGRAM_SOURCES["rope"]
     assert build_bf16_verification_executable(
         "elementwise_add",
         (source, program, source),

@@ -25,22 +25,26 @@ bf16 SDPA-with-KV-cache verification run of ADR-0165
 executable that is already built
 (:mod:`hilclaw.harness.bf16_sdpa_kv_cache_verification`), these last eight
 being the eight modules that import ``numpy``, and nothing else of the
-harness. The C sources
-of the bf16 verification runs are their shared header
-(``bf16_verification.h``) and their six verification programs, one per kind,
-which include it (``bf16_verification_gemm.c``, ``bf16_verification_rmsnorm.c``,
-``bf16_verification_elementwise_add.c``, ``bf16_verification_swiglu.c``,
-``bf16_verification_rope.c`` of ADR-0164, which reads the ``freqs_cis`` rows
-on its standard input, and ``bf16_verification_sdpa_kv_cache.c`` of ADR-0165),
-and the build of a bf16 verification executable from one of them
-(:mod:`hilclaw.harness.bf16_verification_build`). The C sources of the bf16
-timing runs of ADR-0181 are their shared header (``bf16_timing.h``, which
-includes ``bf16_verification.h``) and six timing programs, one per kind, which
-include it (``bf16_timing_gemm.c``, ``bf16_timing_rmsnorm.c``,
-``bf16_timing_elementwise_add.c``, ``bf16_timing_swiglu.c``,
-``bf16_timing_rope.c``, which reads the ``freqs_cis`` rows on its standard
-input, and ``bf16_timing_sdpa_kv_cache.c``), with the build
-of a bf16 timing executable from one of them
+harness. The verification and timing programs of the bf16 kinds ``gemm``,
+``rmsnorm``, ``elementwise_add`` and ``swiglu`` are generated from the
+contract table at each build by
+:mod:`hilclaw.harness.bf16_program_generator` (ADR-0193 decision 6); ``rope``
+and ``sdpa_kv_cache`` keep their handwritten programs. The C sources of the
+bf16 verification runs are their shared header (``bf16_verification.h``) and
+the two handwritten verification programs, which include it
+(``bf16_verification_rope.c`` of ADR-0164, which reads the ``freqs_cis`` rows
+on its standard input, and ``bf16_verification_sdpa_kv_cache.c`` of
+ADR-0165), with the build of a bf16 verification executable of any of the six
+kinds (:mod:`hilclaw.harness.bf16_verification_build`). The C sources of the
+bf16 timing runs of ADR-0181 are their shared header (``bf16_timing.h``,
+which includes ``bf16_verification.h``) and the two handwritten timing
+programs, which include it (``bf16_timing_rope.c``, which reads the
+``freqs_cis`` rows on its standard input, and ``bf16_timing_sdpa_kv_cache.c``);
+the handwritten timing programs of the four generated kinds
+(``bf16_timing_gemm.c``, ``bf16_timing_rmsnorm.c``,
+``bf16_timing_elementwise_add.c``, ``bf16_timing_swiglu.c``) are still in the
+package but read by no build. With them is the build of a bf16 timing
+executable of any of the six kinds
 (:mod:`hilclaw.harness.bf16_timing_build`) and its Python side over an
 executable that is already built (:mod:`hilclaw.harness.bf16_timing`), which
 imports the NumPy modules above only when a ``rope`` run starts.

@@ -1,5 +1,7 @@
 import builtins
+import hashlib
 import io
+import json
 import os
 import re
 import shutil
@@ -31,6 +33,9 @@ from hilclaw.harness.bf16_timing import run_bf16_timing
 
 DIRECTORY = Path(hilclaw.harness.__file__).parent
 HEADERS = ("bf16_verification.h", "bf16_timing.h")
+RECORDED = json.loads(
+    Path(__file__).with_name("bf16_program_digests.json").read_text(encoding="ascii")
+)
 
 STRICT = ("-std=c99", "-Wall", "-Wextra", "-Wpedantic", "-Werror")
 BUILD_TIMEOUT = 120
@@ -183,10 +188,6 @@ def kernel_source(kind, body):
     return text
 
 
-def handwritten(form, kind):
-    return DIRECTORY / FORMS[form][0](kind)
-
-
 # Names and refusals
 
 
@@ -206,7 +207,7 @@ def test_generated_kinds_and_public_names():
 def test_names_are_those_of_the_handwritten_programs(kind):
     assert verification_name(kind) == f"bf16_verification_{kind}.c"
     assert timing_name(kind) == f"bf16_timing_{kind}.c"
-    assert (DIRECTORY / verification_name(kind)).is_file()
+    assert not (DIRECTORY / verification_name(kind)).exists()
     assert (DIRECTORY / timing_name(kind)).is_file()
 
 
@@ -347,24 +348,8 @@ def test_the_module_imports_no_numpy():
     assert found.stdout.strip() == "[]"
 
 
-# The contract constants are the bits of today's programs
-
-
-@pytest.mark.parametrize("form", FORMS)
-@pytest.mark.parametrize("kind", GENERATED_KINDS)
-def test_the_contract_constants_are_the_bits_of_the_handwritten_programs(kind, form):
-    contract = KINDS[kind][0]
-    text = handwritten(form, kind).read_text(encoding="ascii")
-    bits = re.findall(r"draw_patterns\(\w+, [^;]*, (\d+)\);", text)
-    assert tuple(int(value) for value in bits) == contract.DRAW_BITS
-    patterns = re.findall(r"UINT32_C\((0x[0-9A-F]{8})\)", text)
-    if kind == "rmsnorm":
-        assert [int(value, 16) for value in patterns] == [contract.EPS_BITS]
-    else:
-        assert patterns == []
-
-
-# Equivalence with the handwritten programs (ADR-0193 decision 6 items 1 to 3)
+# Equivalence with the handwritten programs, through the values recorded from
+# them before their removal (ADR-0193 decision 6 items 1 to 3)
 
 
 @pytest.fixture(scope="session")
@@ -382,15 +367,13 @@ def built(tmp_path_factory):
         shutil.copyfile(DIRECTORY / header, generated / header)
     cache = {}
 
-    def build(form, kind, origin, body):
-        key = (form, kind, origin, body)
+    def build(form, kind, body):
+        key = (form, kind, body)
         if key not in cache:
             name, source = FORMS[form]
-            program = DIRECTORY / name(kind)
-            if origin == "generated":
-                program = generated / name(kind)
-                program.write_text(source(kind), encoding="ascii", newline="\n")
-            stem = f"{form}-{kind}-{origin}-{body}"
+            program = generated / name(kind)
+            program.write_text(source(kind), encoding="ascii", newline="\n")
+            stem = f"{form}-{kind}-{body}"
             kernel = directory / f"{stem}-kernel.c"
             kernel.write_text(kernel_source(kind, body), encoding="ascii", newline="\n")
             output = directory / stem
@@ -408,44 +391,53 @@ def built(tmp_path_factory):
     return build
 
 
-def both(built, form, kind, body, *arguments):
-    return [
-        local_run.run(
-            (built(form, kind, origin, body), *map(str, arguments)),
-            timeout_s=RUN_TIMEOUT,
-        )
-        for origin in ("handwritten", "generated")
-    ]
+def run(built, form, kind, body, *arguments):
+    result = local_run.run(
+        (built(form, kind, body), *map(str, arguments)), timeout_s=RUN_TIMEOUT
+    )
+    assert result.timed_out is False
+    return result
 
 
-def assert_same(runs):
-    old, new = runs
-    assert old.timed_out is False
-    assert new.timed_out is False
-    assert new.returncode == old.returncode
-    assert new.stdout == old.stdout
-    assert new.stderr == old.stderr
+def recorded(section, *keys):
+    cases = RECORDED[section]
+    for key in keys:
+        cases = cases[key]
+    return cases
+
+
+def assert_as_recorded(result, case, arguments):
+    assert case["arguments"] == list(arguments)
+    assert result.returncode == case["status"], (arguments, result)
+    assert result.stderr == case["stderr"].encode("ascii")
 
 
 @pytest.mark.parametrize("body", ["mixing", "silent"])
 @pytest.mark.parametrize("kind", GENERATED_KINDS)
 def test_verification_reports_are_equal_byte_for_byte(built, kind, body):
-    for dims in DIMS[kind]:
-        for seed in SEEDS:
-            for draws in (1, 3):
-                runs = both(built, "verification", kind, body, *dims, draws, seed)
-                assert_same(runs)
-                assert runs[0].returncode == 0, runs[0]
-                m_n = dims[0] * dims[-1]
-                assert len(runs[0].stdout) == draws * (4 + 2 * m_n) + 4
-                assert runs[0].stdout.endswith(b"end\n")
+    cases = [
+        (*dims, draws, seed)
+        for dims in DIMS[kind]
+        for seed in SEEDS
+        for draws in (1, 3)
+    ]
+    for arguments, case in zip(
+        cases, recorded("verification", kind, body), strict=True
+    ):
+        result = run(built, "verification", kind, body, *arguments)
+        assert_as_recorded(result, case, arguments)
+        assert result.returncode == 0, result
+        assert hashlib.sha256(result.stdout).hexdigest() == case["report_sha256"]
+        draws, m_n = arguments[-2], arguments[0] * arguments[-3]
+        assert len(result.stdout) == draws * (4 + 2 * m_n) + 4
+        assert result.stdout.endswith(b"end\n")
 
 
 @pytest.mark.parametrize("kind", GENERATED_KINDS)
 def test_verification_reports_differ_by_seed(built, kind):
     dims = DIMS[kind][1]
     reports = {
-        both(built, "verification", kind, "mixing", *dims, 2, seed)[1].stdout
+        run(built, "verification", kind, "mixing", *dims, 2, seed).stdout
         for seed in SEEDS
     }
     assert len(reports) == len(SEEDS)
@@ -453,33 +445,30 @@ def test_verification_reports_differ_by_seed(built, kind):
 
 @pytest.mark.parametrize("kind", GENERATED_KINDS)
 def test_timing_digests_are_equal_and_both_reports_are_judged(built, kind):
-    for dims in DIMS[kind][:2]:
-        for seed in SEEDS:
-            digests = []
-            for origin in ("handwritten", "generated"):
-                result = run_bf16_timing(
-                    built("timing", kind, origin, "digest"),
-                    kind,
-                    dims,
-                    sample_form="interval",
-                    seed=seed,
-                    timeout_s=RUN_TIMEOUT,
-                    n_max=10,
-                )
-                assert result.broken is None, result.run
-                lines = [
-                    line
-                    for line in result.run.stderr.splitlines()
-                    if line.startswith(b"digest ")
-                ]
-                assert len(lines) == 1 + len(result.intervals_ns)
-                assert all(DIGEST.fullmatch(line) for line in lines)
-                assert len(set(lines)) == 1
-                digests.append(lines[0])
-            assert digests[0] == digests[1]
-            assert digests[0].startswith(
-                b"digest " + " ".join(map(str, dims)).encode() + b" "
-            )
+    cases = [(dims, seed) for dims in DIMS[kind][:2] for seed in SEEDS]
+    for (dims, seed), case in zip(cases, recorded("timing", kind), strict=True):
+        assert (case["dimensions"], case["seed"]) == (list(dims), seed)
+        result = run_bf16_timing(
+            built("timing", kind, "digest"),
+            kind,
+            dims,
+            sample_form="interval",
+            seed=seed,
+            timeout_s=RUN_TIMEOUT,
+            n_max=10,
+        )
+        assert result.broken is None, result.run
+        lines = [
+            line
+            for line in result.run.stderr.splitlines()
+            if line.startswith(b"digest ")
+        ]
+        assert len(lines) == 1 + len(result.intervals_ns)
+        assert all(DIGEST.fullmatch(line) for line in lines)
+        assert set(lines) == {case["digest"].encode("ascii")}
+        assert lines[0].startswith(
+            b"digest " + " ".join(map(str, dims)).encode() + b" "
+        )
 
 
 def command_lines(form, kind):
@@ -500,14 +489,37 @@ def command_lines(form, kind):
 @pytest.mark.parametrize("kind", GENERATED_KINDS)
 def test_refused_command_lines_give_the_same_status_and_message(built, kind, form):
     seen = set()
-    for arguments in command_lines(form, kind):
-        runs = both(built, form, kind, "silent", *arguments)
-        assert_same(runs)
-        assert runs[0].returncode in (2, 3), (arguments, runs[0])
-        assert runs[0].stdout == b""
-        assert runs[0].stderr.startswith(f"bf16_{form}_{kind}: ".encode())
-        assert runs[0].stderr.count(b"\n") == 1
-        seen.add((runs[0].returncode, runs[0].stderr.split(b":")[1]))
+    cases = command_lines(form, kind)
+    for arguments, case in zip(
+        cases, recorded("command_lines", form, kind), strict=True
+    ):
+        result = run(built, form, kind, "silent", *arguments)
+        assert_as_recorded(result, case, arguments)
+        assert result.returncode in (2, 3), (arguments, result)
+        assert result.stdout == b""
+        assert result.stderr.startswith(f"bf16_{form}_{kind}: ".encode())
+        assert result.stderr.count(b"\n") == 1
+        seen.add((result.returncode, result.stderr.split(b":")[1]))
     assert (3, b" sizes") in seen
     assert (3, b" malloc") in seen
     assert (2, b" usage") in seen
+
+
+@pytest.mark.parametrize("kind", GENERATED_KINDS)
+def test_the_recorded_cases_are_those_of_the_tests(kind):
+    verification = [
+        [*dims, draws, seed]
+        for dims in DIMS[kind]
+        for seed in SEEDS
+        for draws in (1, 3)
+    ]
+    for body in ("mixing", "silent"):
+        cases = recorded("verification", kind, body)
+        assert [case["arguments"] for case in cases] == verification
+    timing = [[list(dims), seed] for dims in DIMS[kind][:2] for seed in SEEDS]
+    cases = recorded("timing", kind)
+    assert [[case["dimensions"], case["seed"]] for case in cases] == timing
+    for form in FORMS:
+        cases = recorded("command_lines", form, kind)
+        wanted = [list(arguments) for arguments in command_lines(form, kind)]
+        assert [case["arguments"] for case in cases] == wanted

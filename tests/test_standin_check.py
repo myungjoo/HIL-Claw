@@ -1009,7 +1009,10 @@ def test_bf16_the_copied_program_compiles_with_the_fixed_set(tmp_path, kind):
     build_dir = tmp_path / "build"
     build_dir.mkdir()
     program = bf16_verification_build.PROGRAM_SOURCES[kind]
-    copies = standin_copies.place_copies(output, program, build_dir)
+    text = None
+    if kind in bf16_program_generator.GENERATED_KINDS:
+        text = bf16_program_generator.verification_source(kind).encode("ascii")
+    copies = standin_copies.place_copies(output, program, build_dir, text)
     standin_copies.place_harness_copy(standin_check.BF16_HEADER, build_dir)
     result = subprocess.run(
         [

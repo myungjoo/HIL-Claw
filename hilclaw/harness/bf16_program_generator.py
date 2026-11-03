@@ -6,10 +6,12 @@ decision 2 of each kind of :data:`GENERATED_KINDS` the output of a pure
 function of a contract-table entry. :func:`verification_source` and
 :func:`timing_source` return the text of such a program; it includes the
 shared header (``bf16_verification.h`` or ``bf16_timing.h``) with quotes, as
-the handwritten programs do, and has the same command line, argument checks,
-draws, check values, output fill, report, calls and exit statuses as the
-handwritten program of the same kind and form. :func:`verification_name` and
-:func:`timing_name` give the file name the program has next to those headers.
+the handwritten programs of ``rope`` and ``sdpa_kv_cache`` do, and has the
+same command line, argument checks, draws, check values, output fill, report,
+calls and exit statuses as the handwritten program of the same kind and form
+(for the verification programs, as it had before it was removed).
+:func:`verification_name` and :func:`timing_name` give the file name the
+program has next to those headers.
 
 What is read, all from the bf16 entry of the kind in
 :data:`hilclaw.contract_table.TABLE`:

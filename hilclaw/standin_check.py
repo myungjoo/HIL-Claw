@@ -165,7 +165,7 @@ from hilclaw.harness import (
 REMOVAL_TIMEOUT_S = 60
 
 #: The header every bf16 verification program includes, copied beside it (ADR-0179 decision 5).
-BF16_HEADER = bf16_verification_build.PROGRAM_SOURCES["gemm"].with_name(
+BF16_HEADER = bf16_verification_build.PROGRAM_SOURCES["rope"].with_name(
     "bf16_verification.h"
 )
 
