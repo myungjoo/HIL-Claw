@@ -2,7 +2,7 @@
 id: T-0534
 title: Add the model graph file of ADR-0193 decision 5 (format 1 reader, checks against the contract table and a binding, resolution into a per-pass call plan) and the Llama graph file
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, C-6, OD-31, "PLAN P3-4"]
 dependsOn: []
@@ -72,3 +72,5 @@ hq: []
 - T-0535: the graph program `hilclaw/model_graph.c`, the plan encoding and host run, the byte-for-byte check against `model_forward.c`, and the second model.
 
 ## Result
+
+PR #351 squash-merged as 14ad0c2d; 2 review rounds (R2 Approve). Per acceptance criterion 12 the binding check (end of criteria 6 and 8) moves to T-0535. No new RA item.
