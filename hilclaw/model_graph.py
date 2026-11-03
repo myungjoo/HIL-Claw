@@ -329,7 +329,7 @@ def resolve(graph, dimensions, *, prompt_length, generation_length, lm_head_rows
                     _positive(v[m], f"{where}.{m}")
                 source, target = array(node.source), array(node.target)
                 if source is target or (T > 1 and v["to_stride"] < v["columns"]):
-                    raise GraphFileError("overlap", where, "copies onto itself")
+                    raise GraphFileError("overlap", where, "its ranges overlap")
                 _within(
                     v["from_start"],
                     (T - 1) * v["from_stride"] + v["columns"],
