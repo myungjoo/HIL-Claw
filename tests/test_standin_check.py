@@ -20,10 +20,12 @@ from hilclaw import (
     standin_copies,
     standin_image,
     standin_settings,
+    targets,
     tools,
 )
 from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.harness import (
+    bf16_program_generator,
     bf16_rope_arrays,
     bf16_rope_verification,
     bf16_sdpa_kv_cache_verification,
@@ -894,10 +896,10 @@ def test_bf16_the_program_missing_is_build_input_missing(
     monkeypatch, client, output, keeper, tmp_path, temporary
 ):
     sources = dict(bf16_verification_build.PROGRAM_SOURCES)
-    sources["gemm"] = tmp_path / "gone.c"
+    sources["rope"] = tmp_path / "gone.c"
     monkeypatch.setattr(bf16_verification_build, "PROGRAM_SOURCES", sources)
     with pytest.raises(tools.ToolFailure) as raised:
-        call(output, keeper, bf16("gemm"))
+        call(output, keeper, bf16("rope", (1, 2, 4)))
     assert raised.value.kind == check_failure.KIND_BUILD_INPUT_MISSING
     assert client.calls == []
     assert build_dirs(temporary) == []
@@ -1342,3 +1344,82 @@ def test_the_cpu_standin_operation_gives_no_memory_bound(client, output, keeper)
     assert call(output, keeper) == REPORT
     for command in client.runs():
         assert memory_options(command) == []
+
+
+# The generated programs of four bf16 kinds (ADR-0193 decision 6)
+
+
+def placed_program(seen, name):
+    make = built()
+
+    def act(command):
+        with open(os.path.join(mount_source(command), name), "rb") as file:
+            seen["program"] = file.read()
+        return make(command)
+
+    return act
+
+
+@pytest.mark.parametrize("target", ["cpu_standin", "virtual_npu"])
+@pytest.mark.parametrize("kind", list(BF16_DIMS))
+def test_bf16_the_placed_program_is_the_generated_text(
+    client, output, keeper, temporary, kind, target
+):
+    seen = {}
+    program = bf16_verification_build.PROGRAM_SOURCES[kind]
+    client.script = [placed_program(seen, program.name), reported()]
+    if target == "cpu_standin":
+        answer = call(output, keeper, bf16(kind))
+    else:
+        built_operation = standin_check.operation_for(targets.target(target))
+        answer = built_operation({}, {}, bf16(kind), output, keeper)
+    assert answer == REPORT
+    if kind in bf16_program_generator.GENERATED_KINDS:
+        assert program.name == bf16_program_generator.verification_name(kind)
+        expected = bf16_program_generator.verification_source(kind).encode("ascii")
+    else:
+        expected = program.read_bytes()
+    assert seen["program"] == expected
+    assert build_dirs(temporary) == []
+
+
+@pytest.mark.parametrize("kind", bf16_program_generator.GENERATED_KINDS)
+def test_bf16_a_generated_kind_reads_no_program_file(
+    monkeypatch, client, output, keeper, tmp_path, kind
+):
+    sources = dict(bf16_verification_build.PROGRAM_SOURCES)
+    sources[kind] = tmp_path / sources[kind].name
+    monkeypatch.setattr(bf16_verification_build, "PROGRAM_SOURCES", sources)
+    client.script = [built(), reported()]
+    assert call(output, keeper, bf16(kind)) == REPORT
+
+
+def test_bf16_a_generated_program_that_cannot_be_written_is_build_directory_unusable(
+    monkeypatch, client, output, keeper, temporary
+):
+    name = bf16_program_generator.verification_name("swiglu")
+    real_open = os.open
+
+    def failing(path, flags, *args, **kwargs):
+        if os.path.basename(path) == name:
+            raise PermissionError(13, "denied")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(standin_copies.os, "open", failing)
+    with pytest.raises(tools.ToolFailure) as raised:
+        call(output, keeper, bf16("swiglu"))
+    assert raised.value.kind == check_failure.KIND_BUILD_DIRECTORY_UNUSABLE
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+def test_bf16_a_refused_kind_generates_nothing(
+    monkeypatch, client, output, keeper, temporary
+):
+    def refuse(kind):
+        raise AssertionError("a program was generated")
+
+    monkeypatch.setattr(bf16_program_generator, "verification_source", refuse)
+    with pytest.raises(ValueError):
+        call(output, keeper, Bf16CheckParameters(SEED, 3, "softmax", "bf16", (1, 2)))
+    assert (client.calls, build_dirs(temporary)) == ([], [])

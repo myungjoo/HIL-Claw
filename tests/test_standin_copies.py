@@ -707,3 +707,88 @@ def test_a_further_harness_program_refused_before_anything(
         )
     assert raised.value.parameter == parameter
     assert tree(build_dir) == []
+
+
+# A harness program generated at the call (ADR-0193 decision 6)
+
+
+def test_harness_text_is_written_in_place_of_a_read_program(
+    output, build_dir, tmp_path
+):
+    write(output, "a.c")
+    absent = tmp_path / "nowhere" / "generated_program.c"
+    copies = place_copies(output, absent, build_dir, b"int main(void);\r\n")
+    assert copies == Copies(("kernel/a.c",), (), "generated_program.c", None)
+    assert (build_dir / "generated_program.c").read_bytes() == b"int main(void);\r\n"
+    assert tree(build_dir) == ["generated_program.c", "kernel", "kernel/a.c"]
+
+
+def test_harness_text_none_reads_the_program(output, build_dir, harness):
+    write(output, "a.c")
+    place_copies(output, harness, build_dir, None)
+    assert (build_dir / harness.name).read_bytes() == harness.read_bytes()
+
+
+def test_empty_harness_text_is_an_empty_copy(output, build_dir, harness):
+    write(output, "a.c")
+    place_copies(output, harness, build_dir, b"")
+    assert (build_dir / harness.name).read_bytes() == b""
+
+
+@pytest.mark.parametrize(
+    "text", ["int x;\n", bytearray(b"x"), memoryview(b"x"), 7], ids=repr
+)
+def test_harness_text_that_is_not_bytes(monkeypatch, output, build_dir, harness, text):
+    write(output, "a.c")
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("the file system was looked at")
+
+    monkeypatch.setattr(kernel_source, "read_compiled_set", refuse)
+    monkeypatch.setattr(standin_copies.os, "lstat", refuse)
+    with pytest.raises(TypeError) as raised:
+        place_copies(output, harness, build_dir, text)
+    assert raised.value.parameter == "harness_text"
+    assert tree(build_dir) == []
+
+
+def test_harness_program_is_checked_before_harness_text(output, build_dir):
+    with pytest.raises(ValueError) as raised:
+        place_copies(output, "kernel", build_dir, "not bytes")
+    assert raised.value.parameter == "harness_program"
+
+
+def test_harness_text_with_no_kernel_source_writes_nothing(build_dir, tmp_path):
+    missing = tmp_path / "attempts" / "02" / "output"
+    copies = place_copies(missing, "generated.c", build_dir, b"int x;\n")
+    assert copies.missing == NO_ATTEMPT_DIRECTORY
+    assert copies.harness is None
+    assert tree(build_dir) == []
+
+
+def test_harness_text_at_an_existing_entry(output, build_dir, harness):
+    write(output, "a.c")
+    write(build_dir, harness.name, b"old")
+    with pytest.raises(CopyError) as raised:
+        place_copies(output, harness, build_dir, b"new")
+    assert raised.value.failure == ENTRY_EXISTS
+    assert isinstance(raised.value.__cause__, FileExistsError)
+    assert (build_dir / harness.name).read_bytes() == b"old"
+
+
+def test_harness_text_that_cannot_be_written(monkeypatch, output, build_dir, harness):
+    write(output, "a.c")
+    real_open = os.open
+    error = PermissionError(errno.EACCES, "denied")
+
+    def failing(path, flags, *args, **kwargs):
+        if os.path.basename(path) == harness.name:
+            raise error
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(standin_copies.os, "open", failing)
+    with pytest.raises(CopyError) as raised:
+        place_copies(output, harness, build_dir, b"new")
+    assert raised.value.failure == COPY_UNWRITABLE
+    assert raised.value.__cause__ is error
+    assert tree(build_dir) == ["kernel", "kernel/a.c"]

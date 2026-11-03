@@ -13,6 +13,10 @@ slice. It is bound to no tool and no backend operation; the ``cpu_standin``
 operations of :mod:`hilclaw.standin_check` and :mod:`hilclaw.standin_run` call
 it.
 
+A harness program generated at the call (ADR-0193 decision 6) is written
+from its bytes in place of the copy of a read program
+(:func:`place_copies`' ``harness_text``).
+
 :func:`place_harness_copy` copies one further harness program beside the
 first, as the waiter's source of ADR-0145 decision 3 is copied with the timing
 driver (ADR-0170).
@@ -124,7 +128,7 @@ class CopyError(Exception):
         self.failure = failure
 
 
-def place_copies(output_path, harness_program, build_dir):
+def place_copies(output_path, harness_program, build_dir, harness_text=None):
     """Copy the kernel files of ``output_path`` and ``harness_program`` into ``build_dir``.
 
     Applies :func:`hilclaw.kernel_source.read_compiled_set` to ``output_path``
@@ -136,6 +140,12 @@ def place_copies(output_path, harness_program, build_dir):
     the harness program directly into ``build_dir`` under its basename, and
     returns the relative paths of the copies.
 
+    ``harness_text``, when it is not ``None``, is exactly ``bytes``: the
+    harness program generated at this call (ADR-0193 decision 6). The harness
+    copy then holds those bytes, written as the copy of a read program would
+    be, under the basename of ``harness_program``, and nothing is read at
+    ``harness_program``, which need not exist.
+
     Raised before the file system is looked at, each a :class:`TypeError` or
     :class:`ValueError` with an attribute ``parameter`` naming the argument: a
     ``harness_program`` or ``build_dir`` that is not a ``str`` or an
@@ -144,7 +154,10 @@ def place_copies(output_path, harness_program, build_dir):
     :data:`KERNEL_DIR` in any case. Then the :class:`OSError` of
     :func:`os.lstat` on ``build_dir`` unchanged, or :class:`NotADirectoryError`
     where ``build_dir`` is not itself a directory (a symbolic link or a
-    junction is not). Then, from the reader and unchanged,
+    junction is not). A ``harness_text`` that is neither ``None`` nor exactly
+    ``bytes`` raises :class:`TypeError` with ``parameter`` ``"harness_text"``
+    after the other arguments and before the file system is looked at. Then,
+    from the reader and unchanged,
     :class:`hilclaw.kernel_source.InvalidOutputPathError` and
     :class:`hilclaw.kernel_source.KernelSourceReadError`. Then
     :class:`CopyError`: the reading failures before anything is written, and
@@ -153,11 +166,19 @@ def place_copies(output_path, harness_program, build_dir):
     with what was written before it left in place.
     """
     harness_program, harness_name, build_dir = _check(harness_program, build_dir)
+    if harness_text is not None and type(harness_text) is not bytes:
+        error = TypeError(
+            f"harness_text must be bytes or None, not {type(harness_text).__name__}"
+        )
+        error.parameter = "harness_text"
+        raise error
     _check_build_directory(build_dir)
     answer = kernel_source.read_compiled_set(output_path)
     if answer.missing is not None:
         return Copies((), (), None, answer.missing)
-    harness = _read(harness_program, harness=True)
+    harness = harness_text
+    if harness is None:
+        harness = _read(harness_program, harness=True)
     kernel = [
         (path.name, _read(path, harness=False))
         for path in answer.compiled_set + answer.headers

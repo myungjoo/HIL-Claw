@@ -5,9 +5,15 @@
 ``ARCHITECTURE/decisions/ADR-0164-od31-bf16-rope-verification-run.md``
 (decision 2), and for kind ``sdpa_kv_cache``
 ``ARCHITECTURE/decisions/ADR-0165-od31-bf16-sdpa-kv-cache-verification-run.md``
-(decision 2). There is one verification program per kind, and
-:data:`PROGRAM_SOURCES` maps each kind to the C source of its program. The
-program of ``rope`` reads the ``freqs_cis`` rows of the run on its standard
+(decision 2). There is one verification program per kind. For a kind of
+:data:`hilclaw.harness.bf16_program_generator.GENERATED_KINDS` the program is
+generated from the contract table at each build (ADR-0193 decision 6): its
+text, :func:`hilclaw.harness.bf16_program_generator.verification_source`, is
+written under the file name of its entry of :data:`PROGRAM_SOURCES` into a new
+temporary directory, beside a copy of ``bf16_verification.h``, and that
+directory is removed before the function returns or raises. For ``rope`` and
+``sdpa_kv_cache`` the program is the C source :data:`PROGRAM_SOURCES` names.
+The program of ``rope`` reads the ``freqs_cis`` rows of the run on its standard
 input (ADR-0164 decision 3); running it and that input are the caller's,
 through ``local_run.run(..., stdin_data=...)``, as running every other program
 is. The program of ``sdpa_kv_cache``, like those of ADR-0163, reads no
@@ -27,7 +33,7 @@ the program source as well. The programs need no math library, but a kernel
 may: a SwiGLU or SDPA kernel that calls ``expf`` or an RMSNorm kernel that
 uses ``<math.h>`` needs the caller's ``-lm`` among the ``trailing_flags``. Each
 program includes the shared header ``bf16_verification.h`` with quotes, and
-the compiler finds it next to the program sources, so no include directory is
+the compiler finds it next to the program source, so no include directory is
 needed. Flags that do not produce an executable (an object, a shared library)
 are not corrected: what was built is not looked at.
 
@@ -49,12 +55,16 @@ ADR-0164 and ADR-0165 Boundaries).
 """
 
 import os
+import shutil
+import tempfile
 import types
 from pathlib import Path
 
 from hilclaw import clang_build
+from hilclaw.harness import bf16_program_generator
 
 _HERE = Path(__file__).parent
+_HEADER = _HERE / "bf16_verification.h"
 
 PROGRAM_SOURCES = types.MappingProxyType(
     {
@@ -69,7 +79,13 @@ PROGRAM_SOURCES = types.MappingProxyType(
         )
     }
 )
-"""Read-only mapping from each kind to the path of its verification program, next to this module."""
+"""Read-only mapping from each kind to the path of its verification program, next to this module.
+
+For a kind of :data:`hilclaw.harness.bf16_program_generator.GENERATED_KINDS`
+only the file name of the path is used by a build: the generated program is
+written under it (ADR-0193 decision 6), and the file the path names is read
+by no build of this package.
+"""
 
 
 def build_bf16_verification_executable(
@@ -105,9 +121,17 @@ def build_bf16_verification_executable(
     ``getattr(error, "parameter", None)``; the :class:`ValueError` for no
     kernel source carries none. Whatever :func:`hilclaw.clang_build.build`
     raises is passed on unchanged, with its own attributes. That includes
-    :class:`FileNotFoundError` for a program source that is missing from the
-    installation and :class:`TypeError` for a ``bytes`` path, with
-    ``parameter`` ``"sources"`` (an empty one is no kernel source).
+    :class:`FileNotFoundError` for a program source of ``rope`` or
+    ``sdpa_kv_cache`` that is missing from the installation and
+    :class:`TypeError` for a ``bytes`` path, with ``parameter`` ``"sources"``
+    (an empty one is no kernel source).
+
+    For a generated kind the program source handed to the build is the
+    generated file in the temporary directory, so the ``command`` of the
+    result names a file that no longer exists when the result is returned.
+    The :class:`OSError` of making that directory or writing into it, a
+    missing ``bf16_verification.h`` included, is raised before the compiler
+    is started.
     """
     if type(kind) is not str or kind not in PROGRAM_SOURCES:
         error = ValueError(
@@ -124,13 +148,36 @@ def build_bf16_verification_executable(
         raise
     if not kernel_sources:
         raise ValueError("no kernel source file given")
-    return clang_build.build(
-        (PROGRAM_SOURCES[kind], *kernel_sources),
-        output,
-        timeout_s=timeout_s,
-        flags=flags,
-        trailing_flags=trailing_flags,
-        compiler=compiler,
-        cwd=cwd,
-        env=env,
-    )
+    settings = {
+        "timeout_s": timeout_s,
+        "flags": flags,
+        "trailing_flags": trailing_flags,
+        "compiler": compiler,
+        "cwd": cwd,
+        "env": env,
+    }
+    program = PROGRAM_SOURCES[kind]
+    if kind not in bf16_program_generator.GENERATED_KINDS:
+        return clang_build.build((program, *kernel_sources), output, **settings)
+    text = bf16_program_generator.verification_source(kind)
+    with tempfile.TemporaryDirectory(prefix="hilclaw-bf16-program-") as directory:
+        generated = write_generated(directory, program.name, text, (_HEADER,))
+        return clang_build.build((generated, *kernel_sources), output, **settings)
+
+
+def write_generated(directory, name, text, headers):
+    """Write ``text`` as the program ``name`` into ``directory`` beside copies of ``headers``; return its path.
+
+    ``directory`` is an existing directory, ``name`` a file name, ``text``
+    the ``str`` of a generated program, written as ASCII with no change of
+    its line ends, and ``headers`` the paths of the headers it includes, each
+    copied under its own name. Used by the build functions of this module and
+    of :mod:`hilclaw.harness.bf16_timing_build`. Raises the :class:`OSError`
+    of a write or a copy, and :class:`UnicodeEncodeError` for a ``text``
+    that is not ASCII.
+    """
+    for header in headers:
+        shutil.copyfile(header, os.path.join(directory, Path(header).name))
+    path = Path(directory) / name
+    path.write_bytes(text.encode("ascii"))
+    return path
