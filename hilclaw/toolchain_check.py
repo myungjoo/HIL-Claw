@@ -17,7 +17,8 @@ are not ``host_only``, through
 pull policy ``never`` (ADR-0144). Devices are read on the host only
 (``host_only``), since a container is given none (ADR-0194 decision 2). A
 component is added by an entry of :data:`COMPONENTS`; today the table holds
-``clang`` of :mod:`hilclaw.clang_adapter`.
+``clang`` of :mod:`hilclaw.clang_adapter`, and ``nvcc`` and the host-only
+device query ``nvidia-smi`` of :mod:`hilclaw.cuda_adapter`.
 
 **The report.** Standard output gets one JSON document followed by one LF:
 
@@ -31,7 +32,9 @@ component is added by an entry of :data:`COMPONENTS`; today the table holds
 
 A component entry has ``state`` (``present``, ``absent`` or ``unreadable``),
 ``version`` (the version line when ``present``, else ``null``) and
-``message`` (``null`` when ``present``, else a short fixed text). The report
+``message`` (``null`` when ``present``, else a short fixed text). For the
+device query, ``absent`` is either the query program missing or no device
+(:data:`hilclaw.cuda_adapter.NO_DEVICE` as the message). The report
 holds no path, environment value, token, command line or output of a child
 other than the version line. It is no data-plane format and has no
 ``schema_version``; where it goes beyond standard output is not this
@@ -71,7 +74,13 @@ import sys
 import tempfile
 from typing import NamedTuple
 
-from hilclaw import clang_adapter, local_run, standin_container, vendor_adapter
+from hilclaw import (
+    clang_adapter,
+    cuda_adapter,
+    local_run,
+    standin_container,
+    vendor_adapter,
+)
 
 HOST_TIME_LIMIT_S = 30
 IMAGE_TIME_LIMIT_S = 120
@@ -97,7 +106,8 @@ class Component(NamedTuple):
     reads a host answer and ``interpret_container(answer)`` a container
     answer, each as a :class:`hilclaw.vendor_adapter.Probe` or ``None``.
     ``program`` is handed to ``assemble``; ``host_only`` keeps the component
-    out of images (a device query).
+    out of images (a device query), whose ``interpret_container`` may then be
+    ``None``.
     """
 
     assemble: object
@@ -113,6 +123,19 @@ COMPONENTS = {
         interpret=clang_adapter.interpret_probe,
         interpret_container=clang_adapter.interpret_container_probe,
         program=clang_adapter.PROGRAM,
+    ),
+    "nvcc": Component(
+        assemble=cuda_adapter.assemble_probe,
+        interpret=cuda_adapter.interpret_probe,
+        interpret_container=cuda_adapter.interpret_container_probe,
+        program=cuda_adapter.PROGRAM,
+    ),
+    "nvidia-smi": Component(
+        assemble=cuda_adapter.assemble_device_probe,
+        interpret=cuda_adapter.interpret_device_probe,
+        interpret_container=None,
+        program=cuda_adapter.DEVICE_PROGRAM,
+        host_only=True,
     ),
 }
 

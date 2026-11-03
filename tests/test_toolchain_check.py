@@ -11,6 +11,7 @@ import pytest
 from hilclaw import (
     clang_adapter,
     clang_build,
+    cuda_adapter,
     local_run,
     standin_container,
     toolchain_check,
@@ -42,6 +43,7 @@ USAGE_LINE = (
 # the test's own temporary directory and passed only as a table's program.
 HANG = "import threading\nthreading.Event().wait()\n"
 NO_LINE = "pass\n"
+NO_GPU = "import sys\nsys.exit(6)\n"
 
 # A stub container client: it records its arguments and answers as told by
 # the files beside it. It stands for the container runtime, not for a tool.
@@ -155,7 +157,7 @@ def test_constants():
 
 
 def test_the_table_holds_the_clang_adapter_probe_pair():
-    assert list(COMPONENTS) == ["clang"]
+    assert list(COMPONENTS) == ["clang", "nvcc", "nvidia-smi"]
     assert COMPONENTS["clang"] == Component(
         assemble=clang_adapter.assemble_probe,
         interpret=clang_adapter.interpret_probe,
@@ -165,13 +167,33 @@ def test_the_table_holds_the_clang_adapter_probe_pair():
     )
 
 
+def test_the_table_holds_the_cuda_adapter_probe_pairs():
+    assert COMPONENTS["nvcc"] == Component(
+        assemble=cuda_adapter.assemble_probe,
+        interpret=cuda_adapter.interpret_probe,
+        interpret_container=cuda_adapter.interpret_container_probe,
+        program=cuda_adapter.PROGRAM,
+        host_only=False,
+    )
+    assert COMPONENTS["nvidia-smi"] == Component(
+        assemble=cuda_adapter.assemble_device_probe,
+        interpret=cuda_adapter.interpret_device_probe,
+        interpret_container=None,
+        program=cuda_adapter.DEVICE_PROGRAM,
+        host_only=True,
+    )
+
+
 def test_real_clang_on_the_host_is_present_with_the_compiler_version(clang):
     report = check()
     expected = clang_build.compiler_version(timeout_s=HOST_TIME_LIMIT_S)
-    assert report == {
-        "host": {"clang": {"state": "present", "version": expected, "message": None}},
-        "images": {},
+    assert list(report["host"]) == list(COMPONENTS)
+    assert report["host"]["clang"] == {
+        "state": "present",
+        "version": expected,
+        "message": None,
     }
+    assert report["images"] == {}
     assert exit_status(report) == EXIT_READ
 
 
@@ -538,3 +560,49 @@ def test_running_the_module_reports_the_host(clang):
     )
     assert (done.returncode, done.stderr) == (EXIT_READ, b"")
     assert json.loads(done.stdout)["host"]["clang"]["state"] == "present"
+
+
+def test_fault_device_query_without_a_gpu_is_absent_with_no_device(script):
+    # Stands for nvidia-smi on a machine with no GPU: status 6, "A query to find
+    # an object was unsuccessful" (nvidia-smi documentation, "RETURN VALUE",
+    # https://docs.nvidia.com/deploy/nvidia-smi/index.html, read 2026-11-03).
+    table = {"nvidia-smi": COMPONENTS["nvidia-smi"]._replace(program=script(NO_GPU))}
+    report = check(components=table)
+    assert report["host"]["nvidia-smi"] == {
+        "state": "absent",
+        "version": None,
+        "message": cuda_adapter.NO_DEVICE,
+    }
+    assert exit_status(report) == EXIT_READ
+
+
+def test_the_device_query_is_not_read_in_an_image(monkeypatch):
+    started = []
+
+    def fake_container(image, build_dir, program, arguments, **options):
+        started.append((program, tuple(arguments)))
+        return standin_container.ContainerResult(
+            127, False, b"", b"", ("docker",), 0.1, "n", None
+        )
+
+    def fake_run(command, *, timeout_s, env=None):
+        raise local_run.ProgramNotFoundError(command[0])
+
+    monkeypatch.setattr(standin_container, "run_in_container", fake_container)
+    monkeypatch.setattr(local_run, "run", fake_run)
+    report = check([IMAGE])
+    assert started == [("clang", ("--version",)), ("nvcc", ("--version",))]
+    assert list(report["host"]) == ["clang", "nvcc", "nvidia-smi"]
+    assert report["host"]["nvidia-smi"]["state"] == "absent"
+    assert report["host"]["nvidia-smi"]["message"] != cuda_adapter.NO_DEVICE
+    assert list(report["images"][IMAGE]["components"]) == ["clang", "nvcc"]
+
+
+def test_real_cuda_tools_on_the_host_are_read_by_the_cuda_adapter():
+    report = check()
+    for name, found in (
+        ("nvcc", cuda_adapter.probe(timeout_s=HOST_TIME_LIMIT_S)),
+        ("nvidia-smi", cuda_adapter.device_probe(timeout_s=HOST_TIME_LIMIT_S)),
+    ):
+        entry = report["host"][name]
+        assert (entry["state"], entry["version"]) == (found.state, found.version)
