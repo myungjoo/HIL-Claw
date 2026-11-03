@@ -17,8 +17,9 @@ are not ``host_only``, through
 pull policy ``never`` (ADR-0144). Devices are read on the host only
 (``host_only``), since a container is given none (ADR-0194 decision 2). A
 component is added by an entry of :data:`COMPONENTS`; today the table holds
-``clang`` of :mod:`hilclaw.clang_adapter`, and ``nvcc`` and the host-only
-device query ``nvidia-smi`` of :mod:`hilclaw.cuda_adapter`.
+``clang`` of :mod:`hilclaw.clang_adapter`, ``nvcc`` and the host-only
+device query ``nvidia-smi`` of :mod:`hilclaw.cuda_adapter`, and the QNN SDK's
+``qnn-net-run`` of :mod:`hilclaw.qnn_adapter`.
 
 **The report.** Standard output gets one JSON document followed by one LF:
 
@@ -78,6 +79,7 @@ from hilclaw import (
     clang_adapter,
     cuda_adapter,
     local_run,
+    qnn_adapter,
     standin_container,
     vendor_adapter,
 )
@@ -136,6 +138,12 @@ COMPONENTS = {
         interpret_container=None,
         program=cuda_adapter.DEVICE_PROGRAM,
         host_only=True,
+    ),
+    "qnn-net-run": Component(
+        assemble=qnn_adapter.assemble_probe,
+        interpret=qnn_adapter.interpret_probe,
+        interpret_container=qnn_adapter.interpret_container_probe,
+        program=qnn_adapter.VERSION_PROGRAM,
     ),
 }
 

@@ -13,6 +13,7 @@ from hilclaw import (
     clang_build,
     cuda_adapter,
     local_run,
+    qnn_adapter,
     standin_container,
     toolchain_check,
 )
@@ -157,7 +158,7 @@ def test_constants():
 
 
 def test_the_table_holds_the_clang_adapter_probe_pair():
-    assert list(COMPONENTS) == ["clang", "nvcc", "nvidia-smi"]
+    assert list(COMPONENTS) == ["clang", "nvcc", "nvidia-smi", "qnn-net-run"]
     assert COMPONENTS["clang"] == Component(
         assemble=clang_adapter.assemble_probe,
         interpret=clang_adapter.interpret_probe,
@@ -181,6 +182,16 @@ def test_the_table_holds_the_cuda_adapter_probe_pairs():
         interpret_container=None,
         program=cuda_adapter.DEVICE_PROGRAM,
         host_only=True,
+    )
+
+
+def test_the_table_holds_the_qnn_adapter_probe_pair():
+    assert COMPONENTS["qnn-net-run"] == Component(
+        assemble=qnn_adapter.assemble_probe,
+        interpret=qnn_adapter.interpret_probe,
+        interpret_container=qnn_adapter.interpret_container_probe,
+        program=qnn_adapter.VERSION_PROGRAM,
+        host_only=False,
     )
 
 
@@ -591,11 +602,19 @@ def test_the_device_query_is_not_read_in_an_image(monkeypatch):
     monkeypatch.setattr(standin_container, "run_in_container", fake_container)
     monkeypatch.setattr(local_run, "run", fake_run)
     report = check([IMAGE])
-    assert started == [("clang", ("--version",)), ("nvcc", ("--version",))]
-    assert list(report["host"]) == ["clang", "nvcc", "nvidia-smi"]
+    assert started == [
+        ("clang", ("--version",)),
+        ("nvcc", ("--version",)),
+        ("qnn-net-run", ("--version",)),
+    ]
+    assert list(report["host"]) == ["clang", "nvcc", "nvidia-smi", "qnn-net-run"]
     assert report["host"]["nvidia-smi"]["state"] == "absent"
     assert report["host"]["nvidia-smi"]["message"] != cuda_adapter.NO_DEVICE
-    assert list(report["images"][IMAGE]["components"]) == ["clang", "nvcc"]
+    assert list(report["images"][IMAGE]["components"]) == [
+        "clang",
+        "nvcc",
+        "qnn-net-run",
+    ]
 
 
 def test_real_cuda_tools_on_the_host_are_read_by_the_cuda_adapter():
@@ -606,3 +625,10 @@ def test_real_cuda_tools_on_the_host_are_read_by_the_cuda_adapter():
     ):
         entry = report["host"][name]
         assert (entry["state"], entry["version"]) == (found.state, found.version)
+
+
+def test_real_qnn_sdk_on_the_host_is_read_by_the_qnn_adapter():
+    report = check()
+    found = qnn_adapter.probe(timeout_s=HOST_TIME_LIMIT_S)
+    entry = report["host"]["qnn-net-run"]
+    assert (entry["state"], entry["version"]) == (found.state, found.version)
