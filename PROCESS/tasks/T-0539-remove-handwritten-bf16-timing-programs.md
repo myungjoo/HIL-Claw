@@ -2,7 +2,7 @@
 id: T-0539
 title: Remove the four handwritten bf16 timing programs of gemm, rmsnorm, elementwise_add and swiglu, the split T-0538 left (ADR-0193 decision 6, "Order")
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, FR-9, "PLAN P3-5"]
 dependsOn: []
