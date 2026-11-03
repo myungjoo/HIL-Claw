@@ -31,15 +31,17 @@ decision 3 and decision 3 it:
    place, and :data:`BF16_HEADERS` are copied beside it before the waiter and
    handed to the compiler as no source (ADR-0181 decision 3);
 4. runs the timing build in one container: :data:`hilclaw.standin_check.COMPILER`
-   with :data:`hilclaw.standin_settings.FLAGS`, the driver source first and
+   with the target's flags (for ``cpu_standin``
+   :data:`hilclaw.standin_settings.FLAGS`), the driver source first and
    the kernel's compiled set in the reader's order, the trailing flags and
-   ``-o`` :data:`TIMING_EXECUTABLE_NAME`, within
-   :data:`hilclaw.standin_settings.BUILD_TIME_LIMIT_S`; hands the keeper its
+   ``-o`` :data:`TIMING_EXECUTABLE_NAME`, within the target's build time
+   limit; hands the keeper its
    log by ADR-0169 decisions 2 and 3, before anything else is looked at
    (decision 3); answers a status 0 that left no executable
    ``build_output_missing`` (S9);
-5. runs the waiter's build in a second container:
-   :data:`hilclaw.standin_settings.WAITER_FLAGS`, the waiter's source and
+5. runs the waiter's build in a second container: the target's waiter flags
+   (for ``cpu_standin`` :data:`hilclaw.standin_settings.WAITER_FLAGS`), the
+   waiter's source and
    ``-o`` :data:`WAITER_EXECUTABLE_NAME`, no trailing flag
    (decision 4), within what is left of the build limit; hands the keeper
    nothing for it (decision 2); answers it by C19, with
@@ -99,7 +101,10 @@ the ``rope`` rows and through :mod:`hilclaw.standin_check` import NumPy), reads
 no environment variable of its own (the image's is read by
 :func:`hilclaw.standin_image.read_image`) and keeps nothing between calls.
 It is the ``sim.run`` and ``board.run`` operation of the ``cpu_standin``
-entry of :func:`hilclaw.check_definition.default_table`.
+entry of :func:`hilclaw.check_definition.default_table`; it takes its build
+settings and time limits from the ``cpu_standin`` :class:`hilclaw.targets.Target`,
+and :func:`operation_for` builds the same operation with another
+:class:`hilclaw.targets.Target` (ADR-0193 decision 3).
 """
 
 from time import monotonic
@@ -112,8 +117,10 @@ from hilclaw import (
     standin_answer,
     standin_check,
     standin_copies,
+    standin_profile,
     standin_settings,
     standin_waiter_line,
+    targets,
 )
 from hilclaw.harness import bf16_timing, bf16_timing_build, timing, timing_build
 
@@ -163,19 +170,48 @@ def operation(request, hw_profile, parameters, output_path, keeper, /):
     reference, container name, stream byte or error text. Lets pass what no
     row places and every request to end. See the module docstring for the
     order and the module's own choices.
+
+    The flags, trailing flags, waiter flags, build time limit and process
+    time-limit cap are those of the :class:`hilclaw.targets.Target` of
+    :data:`hilclaw.standin_profile.ACCELERATOR`, read from
+    :data:`hilclaw.targets.TABLE` at the call (ADR-0193 decision 3).
     """
-    checked = _checked(parameters, keeper)
+    target = targets.target(standin_profile.ACCELERATOR)
+    return _operate(target, parameters, output_path, keeper)
+
+
+def operation_for(target):
+    """Return the operation of :func:`operation` built with ``target``, a :class:`hilclaw.targets.Target`.
+
+    The operation takes the same five arguments and answers as
+    :func:`operation` does, with the flags, trailing flags, waiter flags,
+    build time limit and process time-limit cap of ``target`` in place of
+    those of the ``cpu_standin`` entry; it reads no hw_profile (ADR-0193
+    decision 3; ADR-0060 decision 3). Raises :class:`TypeError` for a
+    ``target`` that is not exactly a :class:`hilclaw.targets.Target`.
+    """
+    if type(target) is not targets.Target:
+        raise TypeError(f"target must be a Target, not {type(target).__name__}")
+
+    def built(request, hw_profile, parameters, output_path, keeper, /):
+        return _operate(target, parameters, output_path, keeper)
+
+    return built
+
+
+def _operate(target, parameters, output_path, keeper):
+    checked = _checked(parameters, keeper, target.process_time_limit_cap_s)
     image = standin_check.container_image()
     build_dir = standin_check.make_build_dir(BUILD_DIR_PREFIX)
     return standin_check.carry_out(
         build_dir,
         lambda outcomes: _carry_out(
-            image, build_dir, output_path, keeper, checked, outcomes
+            target, image, build_dir, output_path, keeper, checked, outcomes
         ),
     )
 
 
-def _checked(parameters, keeper):
+def _checked(parameters, keeper, cap_s):
     if type(parameters) not in (
         run_parameters.TimingParameters,
         run_parameters.Bf16TimingParameters,
@@ -187,32 +223,32 @@ def _checked(parameters, keeper):
     if type(keeper) is not build_log.LogKeeper:
         raise TypeError(f"keeper must be a LogKeeper, not {type(keeper).__name__}")
     if type(parameters) is run_parameters.Bf16TimingParameters:
-        return _bf16_checked(parameters)
+        return _bf16_checked(parameters, cap_s)
     m, k, n, n_max, sample_form, seed = parameters
     arguments = timing.driver_arguments(
         m=m, k=k, n=n, n_max=n_max, sample_form=sample_form, seed=seed
     )
-    limit = standin_settings.timing_process_time_limit_s(m, k, n, n_max)
+    limit = standin_settings.timing_process_time_limit_s(m, k, n, n_max, cap_s)
     return (timing_build.DRIVER_SOURCE, ()), arguments, limit, None
 
 
-def _bf16_checked(parameters):
+def _bf16_checked(parameters, cap_s):
     kind, dtype, dims, n_max, sample_form, seed = parameters
     if type(dtype) is not str or dtype != check_parameters.BF16:
         raise ValueError(f"dtype must be {check_parameters.BF16!r}")
     arguments = bf16_timing.program_arguments(
         kind, dims, n_max=n_max, sample_form=sample_form, seed=seed
     )
-    limit = standin_settings.bf16_timing_process_time_limit_s(kind, dims, n_max)
+    limit = standin_settings.bf16_timing_process_time_limit_s(kind, dims, n_max, cap_s)
     rows = bf16_timing.rope_rows(dims, seed) if kind == "rope" else None
     program = bf16_timing_build.PROGRAM_SOURCES[kind]
     return (program, BF16_HEADERS), arguments, limit, rows
 
 
-def _carry_out(image, build_dir, output_path, keeper, checked, outcomes):
+def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes):
     (program, headers), arguments, limit, rows = checked
     copies, waiter = _placed_copies(output_path, build_dir, program, headers)
-    built = _build(image, build_dir, copies, waiter, keeper, outcomes)
+    built = _build(target, image, build_dir, copies, waiter, keeper, outcomes)
     if built is not standin_answer.GO_ON:
         return built
     ran = standin_check.run_container(
@@ -254,7 +290,7 @@ def _placed_copies(output_path, build_dir, program, headers):
     return copies, waiter
 
 
-def _build(image, build_dir, copies, waiter, keeper, outcomes):
+def _build(target, image, build_dir, copies, waiter, keeper, outcomes):
     sources = (copies.harness, *copies.compiled_set)
     started = monotonic()
     built = standin_check.run_build(
@@ -262,20 +298,20 @@ def _build(image, build_dir, copies, waiter, keeper, outcomes):
         image,
         build_dir,
         (
-            *standin_settings.FLAGS,
+            *target.flags,
             *(standin_check.in_container(source) for source in sources),
-            *standin_settings.TRAILING_FLAGS,
+            *target.trailing_flags,
             "-o",
             _TIMING_EXECUTABLE,
         ),
-        standin_settings.BUILD_TIME_LIMIT_S,
+        target.build_time_limit_s,
         keeper=keeper,
         executable=TIMING_EXECUTABLE_NAME,
         missing=_NO_TIMING_EXECUTABLE,
     )
     if built is not standin_answer.GO_ON:
         return built
-    left = standin_settings.BUILD_TIME_LIMIT_S - (monotonic() - started)
+    left = target.build_time_limit_s - (monotonic() - started)
     if not left > 0:
         return "build_time_limit"
     return standin_check.run_build(
@@ -283,7 +319,7 @@ def _build(image, build_dir, copies, waiter, keeper, outcomes):
         image,
         build_dir,
         (
-            *standin_settings.WAITER_FLAGS,
+            *target.waiter_flags,
             standin_check.in_container(waiter),
             "-o",
             _WAITER_EXECUTABLE,

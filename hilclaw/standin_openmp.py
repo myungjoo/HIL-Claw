@@ -4,9 +4,10 @@
 puts ``-fopenmp`` into the flags of every ``cpu_standin`` kernel build, so an
 image without a usable OpenMP builds no kernel at all. :func:`check` finds that
 out before a run starts: in a new temporary directory it writes
-:data:`SOURCE`, builds it in one new container of the image with
-:data:`hilclaw.standin_settings.FLAGS` and
-:data:`hilclaw.standin_settings.TRAILING_FLAGS`, starts the result in a second
+:data:`SOURCE`, builds it in one new container of the image with the flags and
+trailing flags of the ``cpu_standin`` :class:`hilclaw.targets.Target`
+(:data:`hilclaw.standin_settings.FLAGS` and
+:data:`hilclaw.standin_settings.TRAILING_FLAGS`), starts the result in a second
 new container, and removes the directory. Both containers have the options of
 ADR-0144 through :func:`hilclaw.standin_container.run_in_container`, one per
 build and per process as its decision 3 says.
@@ -21,7 +22,7 @@ count and no runtime version; and it is called only by :mod:`hilclaw.nightly`
 import tempfile
 from pathlib import Path
 
-from hilclaw import standin_check, standin_container, standin_settings
+from hilclaw import standin_check, standin_container, standin_profile, targets
 
 SOURCE_NAME = "openmp_probe.c"
 """File name of the probe's source in the temporary directory."""
@@ -60,12 +61,13 @@ _NOT_STARTED = (
 def check(
     image,
     *,
-    timeout_s=standin_settings.BUILD_TIME_LIMIT_S,
+    timeout_s=None,
     removal_timeout_s=standin_check.REMOVAL_TIMEOUT_S,
 ):
     """Return ``None`` when ``image`` builds and starts the probe, else why it does not.
 
-    ``timeout_s`` is the time limit of each of the two containers and
+    ``timeout_s`` is the time limit of each of the two containers, ``None``
+    for the build time limit of the ``cpu_standin`` target, and
     ``removal_timeout_s`` that of a forced removal after it. The answer is a
     ``str`` for :func:`message`: the step, ``build`` or ``start``, and what
     happened to it, a status other than 0 (the client's 125 to 127 among
@@ -75,14 +77,17 @@ def check(
     case; after a timeout the container is removed by force, and a removal that
     did not succeed is added to the answer.
     """
+    target = targets.target(standin_profile.ACCELERATOR)
+    if timeout_s is None:
+        timeout_s = target.build_time_limit_s
     steps = (
         (
             "build",
             standin_check.COMPILER,
             (
-                *standin_settings.FLAGS,
+                *target.flags,
                 standin_check.in_container(SOURCE_NAME),
-                *standin_settings.TRAILING_FLAGS,
+                *target.trailing_flags,
                 "-o",
                 standin_check.in_container(EXECUTABLE_NAME),
             ),

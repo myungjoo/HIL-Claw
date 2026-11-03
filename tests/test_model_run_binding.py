@@ -22,6 +22,7 @@ from hilclaw import (
     spec_feedback,
     spec_file,
     standin_profile,
+    targets,
     tools,
 )
 from hilclaw.model_binding import BindingEntry, KernelReference
@@ -39,6 +40,7 @@ from hilclaw.model_run_binding import (
     OTHER_TARGET,
     REASONS,
     RUN_MISSING,
+    TWO_TARGETS,
     RunBindingError,
     binding_from_runs,
 )
@@ -313,7 +315,7 @@ def test_an_unreadable_instance_file_is_named(root, monkeypatch):
 def test_a_run_of_another_target_is_refused(root):
     profile = PROFILE | {"accelerator": "mock"}
     hw = {"key": keys.hw_profile_key(profile).name, "record": profile}
-    assert model_run_binding.TARGET == standin_profile.ACCELERATOR
+    assert targets.TABLE[standin_profile.ACCELERATOR].model_run is True
     write_instance(root, hw_profile=hw)
     measured(root, 0, 20)
     refused(root, OTHER_TARGET)
@@ -474,3 +476,104 @@ def test_a_binding_from_six_runs_passes_the_check_and_the_container_path(
     assert sorted(name.rsplit("/", 1)[-1] for name in copied if "kernel-" in name) == (
         sorted(f"{kind}.c" for kind in forward.KINDS)
     )
+
+
+SECOND = "synthetic_npu"
+
+
+def second_target(model_run=True):
+    standin = targets.target(standin_profile.ACCELERATOR)
+    return targets.Target(
+        flags=("-O1",),
+        trailing_flags=(),
+        waiter_flags=(),
+        env=None,
+        build_time_limit_s=10,
+        process_time_limit_cap_s=20,
+        contracts=standin.contracts[1:],
+        memory_limit_bytes=1 << 20,
+        unit="ns",
+        model_run=model_run,
+        instance_start=False,
+    )
+
+
+def second_table(model_run=True):
+    return {
+        standin_profile.ACCELERATOR: targets.target(standin_profile.ACCELERATOR),
+        SECOND: second_target(model_run),
+    }
+
+
+def write_at(root, run_id, accelerator):
+    profile = PROFILE | {"accelerator": accelerator}
+    hw = {"key": keys.hw_profile_key(profile).name, "record": profile}
+    write_instance(root, run_id, hw_profile=hw)
+    measured(root, 0, 20, run_id=run_id)
+
+
+def test_a_run_at_a_second_target_with_model_run_is_bound(root):
+    write_at(root, RUN, SECOND)
+    binding = binding_from_runs(root, {"qkv": RUN}, flags=FLAGS, table=second_table())
+    assert binding["qkv"][0].kernel == kernel_of(root, 0)
+
+
+def test_two_runs_at_one_second_target_are_bound(root):
+    other = "synthetic-run-2"
+    write_at(root, RUN, SECOND)
+    write_at(root, other, SECOND)
+    runs = {"qkv": RUN, "o": other}
+    binding = binding_from_runs(root, runs, flags=FLAGS, table=second_table())
+    assert binding["o"][0].kernel == kernel_of(root, 0, run_id=other)
+
+
+def test_a_second_target_without_model_run_is_another_target(root):
+    write_at(root, RUN, SECOND)
+    with pytest.raises(RunBindingError) as caught:
+        binding_from_runs(root, {"qkv": RUN}, flags=FLAGS, table=second_table(False))
+    assert caught.value.reason == OTHER_TARGET
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [(standin_profile.ACCELERATOR, SECOND), (SECOND, standin_profile.ACCELERATOR)],
+)
+def test_runs_at_two_targets_in_one_binding_are_refused(root, first, second):
+    other = "synthetic-run-2"
+    write_at(root, RUN, first)
+    write_at(root, other, second)
+    runs = {"qkv": RUN, "lm_head": RUN, "o": other}
+    with pytest.raises(RunBindingError) as caught:
+        binding_from_runs(root, runs, flags=FLAGS, table=second_table())
+    assert caught.value.reason == TWO_TARGETS
+    assert TWO_TARGETS in REASONS
+    assert (caught.value.call_site, caught.value.run_id) == ("o", other)
+
+
+def test_an_accelerator_with_no_target_is_another_target(root):
+    write_at(root, RUN, SECOND)
+    refused(root, OTHER_TARGET)
+    with pytest.raises(RunBindingError) as caught:
+        binding_from_runs(
+            root, {"qkv": RUN}, flags=FLAGS, table={"elsewhere": second_target()}
+        )
+    assert caught.value.reason == OTHER_TARGET
+
+
+def test_the_package_table_is_the_default(root):
+    write_instance(root)
+    measured(root, 0, 20)
+    assert bound(root) == kernel_of(root, 0)
+    without = {standin_profile.ACCELERATOR: second_target(False)}
+    with pytest.raises(RunBindingError) as caught:
+        binding_from_runs(root, {"qkv": RUN}, flags=FLAGS, table=without)
+    assert caught.value.reason == OTHER_TARGET
+
+
+@pytest.mark.parametrize(
+    "table", [[], None, {standin_profile.ACCELERATOR: "cpu_standin"}]
+)
+def test_a_malformed_table_is_refused_before_anything_is_read(root, table):
+    with pytest.raises(TypeError) as caught:
+        binding_from_runs(root, {"qkv": "gone"}, flags=FLAGS, table=table)
+    assert caught.value.parameter == "table"

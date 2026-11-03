@@ -8,6 +8,11 @@ first refusal ends the call:
 
 1. Reads the run's ``instance.json`` with :func:`hilclaw.instance.read` and
    refuses a run outside the scope of decision 1 or the objective of decision 4.
+   The scope's target is read from the target table (ADR-0193 decision 3): a
+   run whose ``accelerator`` has no :class:`hilclaw.targets.Target` there, or
+   one whose ``model_run`` is false, is :data:`OTHER_TARGET`, and a run at
+   another ``accelerator`` than the binding's first run is
+   :data:`TWO_TARGETS`, as all call sites of one binding have one target.
 2. Reads the incumbent with :func:`hilclaw.spec_feedback.incumbent`, the rule
    of ADR-0184 decision 2 over all rounds of the run (decision 2).
 3. Refuses a run whose journal holds a timing step of an attempt whose
@@ -31,6 +36,8 @@ Outcomes:
   from names of :data:`hilclaw.model_forward_run.CALL_SITES` to names that
   :func:`hilclaw.layout.check_run_id` accepts; a bad run id is its
   :class:`hilclaw.layout.InvalidPathValueError`, a :class:`ValueError`.
+  ``table`` must be a mapping from ``accelerator`` to
+  :class:`hilclaw.targets.Target`.
 * Every other outcome but the answer raises :class:`RunBindingError`, whose
   ``reason`` is one of :data:`REASONS`; the original error, where one exists,
   is its ``__cause__``. Besides the names of this module, a ``reason`` is the
@@ -57,13 +64,11 @@ from hilclaw import (
     model_forward_run,
     run_identity,
     spec_feedback,
+    targets,
     tools,
 )
 from hilclaw.attempt_kernel import _check_data_root, _check_flags, _parameter
 from hilclaw.model_binding import BindingEntry
-
-TARGET = "cpu_standin"
-"""The one ``accelerator`` of a run this module takes (decision 1)."""
 
 EVERY = "every"
 """The ``shapes`` of every entry: each kind's contract obliges correctness at every shape (decision 5)."""
@@ -73,6 +78,8 @@ INSTANCE_UNREADABLE = "instance_unreadable"
 INSTANCE_INVALID = "instance_invalid"
 INSTANCE_OTHER_VERSION = "instance_other_version"
 OTHER_TARGET = "other_target"
+TWO_TARGETS = "two_targets"
+"""The ``reason`` of a run at another ``accelerator`` than the first run of the binding."""
 NOT_ONE_CANDIDATE = "not_one_candidate"
 NO_OP_SIGNATURE = "no_op_signature"
 NO_OBJECTIVE = "no_objective"
@@ -95,6 +102,7 @@ REASONS = (
     INSTANCE_INVALID,
     INSTANCE_OTHER_VERSION,
     OTHER_TARGET,
+    TWO_TARGETS,
     NOT_ONE_CANDIDATE,
     NO_OP_SIGNATURE,
     NO_OBJECTIVE,
@@ -120,7 +128,7 @@ class RunBindingError(Exception):
         self.run_id = run_id
 
 
-def binding_from_runs(data_root, runs, *, flags):
+def binding_from_runs(data_root, runs, *, flags, table=targets.TABLE):
     """Return the binding whose entry for each call site is the incumbent of the run named for it.
 
     @param data_root the data root, a ``str`` or an :class:`os.PathLike` of ``str``.
@@ -129,6 +137,9 @@ def binding_from_runs(data_root, runs, *, flags):
     @param flags the build settings the kernels were built with, a ``tuple`` or
         ``list`` of ``str``, for example
         :data:`hilclaw.standin_settings.FLAGS`; required.
+    @param table the target table, a mapping from ``accelerator`` to
+        :class:`hilclaw.targets.Target`; by default :data:`hilclaw.targets.TABLE`.
+        A run is taken only at a target whose ``model_run`` is true.
     @return a new ``dict`` from call site to a ``tuple`` of one
         :class:`hilclaw.model_binding.BindingEntry`, the form
         :func:`hilclaw.model_binding.check` and its siblings take.
@@ -142,13 +153,26 @@ def binding_from_runs(data_root, runs, *, flags):
         _check_runs(runs)
     with _parameter("flags"):
         _check_flags(flags)
+    with _parameter("table"):
+        _check_table(table)
     kernels = {}
     binding = {}
+    accelerators = []
     for call_site, run_id in runs.items():
         if run_id not in kernels:
-            kernels[run_id] = _incumbent_kernel(data_root, call_site, run_id, flags)
+            kernels[run_id] = _incumbent_kernel(
+                data_root, call_site, run_id, flags, table, accelerators
+            )
         binding[call_site] = (BindingEntry(kernels[run_id], EVERY),)
     return binding
+
+
+def _check_table(table):
+    if not isinstance(table, Mapping):
+        raise TypeError(f"must be a mapping, got {type(table).__name__}")
+    for name, entry in table.items():
+        if type(entry) is not targets.Target:
+            raise TypeError(f"entry {name!r} is no Target")
 
 
 def _check_runs(runs):
@@ -160,11 +184,14 @@ def _check_runs(runs):
         layout.check_run_id(run_id)
 
 
-def _incumbent_kernel(data_root, call_site, run_id, flags):
+def _incumbent_kernel(data_root, call_site, run_id, flags, table, accelerators):
     def refused(reason):
         return RunBindingError(reason, call_site, run_id)
 
-    reason = _out_of_scope(_stated(data_root, run_id, refused))
+    stated = _stated(data_root, run_id, refused)
+    reason = _other_target(stated.hw_profile["accelerator"], table, accelerators)
+    if reason is None:
+        reason = _out_of_scope(stated)
     if reason is not None:
         raise refused(reason)
     try:
@@ -200,9 +227,21 @@ def _stated(data_root, run_id, refused):
         raise refused(INSTANCE_UNREADABLE) from error
 
 
-def _out_of_scope(stated):
-    if stated.hw_profile["accelerator"] != TARGET:
+def _other_target(accelerator, table, accelerators):
+    try:
+        entry = targets.target(accelerator, table)
+    except targets.NoTargetError:
         return OTHER_TARGET
+    if not entry.model_run:
+        return OTHER_TARGET
+    if not accelerators:
+        accelerators.append(accelerator)
+    elif accelerator != accelerators[0]:
+        return TWO_TARGETS
+    return None
+
+
+def _out_of_scope(stated):
     if stated.candidates_per_round != 1:
         return NOT_ONE_CANDIDATE
     if stated.op_signature is None:

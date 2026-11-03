@@ -7,8 +7,10 @@ joins :func:`hilclaw.instance_start.prepare` (ADR-0076), the refusal of a
 given id (ADR-0111 decision 2), :func:`hilclaw.run_id.new` (ADR-0027),
 :func:`hilclaw.instance_file.write` (ADR-0025) and the stop on a taken name
 (ADR-0109), and returns the id it built (ADR-0111 decision 3). It binds the
-``accelerators`` of ``prepare`` to :data:`hilclaw.mock_backend.NAME` and
-:data:`hilclaw.standin_profile.ACCELERATOR` and its ``covers`` to
+``accelerators`` of ``prepare`` to :data:`hilclaw.mock_backend.NAME` and each
+target of :data:`hilclaw.targets.TABLE` whose ``instance_start`` is true,
+read from the table when this module is imported (ADR-0193 decision 3; today
+:data:`hilclaw.standin_profile.ACCELERATOR` alone), and its ``covers`` to
 :func:`hilclaw.contract_table.start_covers`, which admits a contract only when
 every tool round 0 calls admits it - today the fp32 ``gemm`` contract of
 ADR-0008 and the six bf16 contracts (ADR-0177 decision 2; ADR-0181 decision 8
@@ -58,10 +60,10 @@ from hilclaw import (
     instance_start,
     mock_backend,
     run_id,
-    standin_profile,
+    targets,
 )
 
-_ACCELERATORS = (mock_backend.NAME, standin_profile.ACCELERATOR)
+_ACCELERATORS = (mock_backend.NAME, *targets.instance_start_accelerators())
 
 
 class GivenRunIdError(Exception):

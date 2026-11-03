@@ -1162,3 +1162,42 @@ def test_a_bf16_call_is_answered_by_ask(client, output, keeper, tmp_path):
     )
     assert answer == run_operation.Reported(REPORT, 300 * 1024)
     assert log_path.read_bytes() == BUILD_STDOUT + BUILD_STDERR
+
+
+def test_an_operation_built_with_a_target_reads_that_target(
+    client, output, keeper, temporary
+):
+    from test_standin_check import a_target
+
+    client.script = happy()
+    built_operation = standin_run.operation_for(a_target())
+    answer = built_operation(
+        {"tool": "sim.run"},
+        {"accelerator": "anything"},
+        TimingParameters(2**40, 2**40, 2**40, 40, "interval", SEED),
+        output,
+        keeper,
+    )
+    assert answer == (REPORT, 300 * 1024)
+    assert build_dirs(temporary) == []
+    timing_build_command, waiter_build, _ = client.runs()
+    compiled = program(timing_build_command)
+    assert compiled[1:3] == ["-std=gnu11", "-O1"]
+    assert compiled[-4:-2] == ["-lm", "-lc"]
+    assert program(waiter_build) == [
+        "clang",
+        "-O0",
+        f"{INSIDE}/timing_waiter.c",
+        "-o",
+        f"{INSIDE}/waiter",
+    ]
+    options = client.run_options()
+    assert options[0]["timeout_s"] == 33
+    assert 0 < options[1]["timeout_s"] <= 33
+    assert options[2]["timeout_s"] == 11.0
+
+
+@pytest.mark.parametrize("given", [None, "cpu_standin"])
+def test_an_operation_is_built_only_with_a_target(given):
+    with pytest.raises(TypeError):
+        standin_run.operation_for(given)

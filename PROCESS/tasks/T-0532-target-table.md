@@ -72,3 +72,17 @@ hq: []
 - PLAN P3-3 builds on the table this task adds (ADR-0193 decision 8, ~500 LOC, 1 task).
 
 ## Result
+
+- **Outcome**: DONE (pending review; this section is updated at landing). Order check (D27 ①) on `ec58f7c7`: no open `nightly-failure` issue, no open PR, RA-0056 still `미확인`; P3-2 stands as the next item.
+- **Language**: Python, as the touched modules and the existing `hilclaw` package (the target table is a value table read by Python tools).
+- **What changed**
+  - New `hilclaw/targets.py`: `Target` (frozen dataclass; every member checked at construction), `TABLE` (read-only mapping with the one entry `cpu_standin`, built from the `standin_settings.py` constants each time it is read, so those constants stay the source and a test that patches one is still seen), `target(name, table=TABLE)` raising `NoTargetError` (a `LookupError`), `instance_start_accelerators(table=TABLE)`.
+  - `standin_check` / `standin_run`: `operation` reads the `cpu_standin` `Target` at each call; new `operation_for(target)` builds the same operation with any `Target`. Flags, trailing flags, waiter flags, build limit and process-limit cap come from the `Target`.
+  - `standin_settings`: the four process-limit functions take an optional `cap_s` (default `None` = `PROCESS_TIME_LIMIT_CAP_S` read at the call; refused unless finite and above 0). The rule of ADR-0117 decision 4 is unchanged.
+  - `standin_openmp.check`: flags and the default build limit come from the `cpu_standin` `Target` (`timeout_s=None` means that limit).
+  - `check_definition.default_table`: still selects `standin_check.operation` and `standin_run.operation` (existing tests pin their identity and monkeypatch them); its docstring states they are the operations built with the `cpu_standin` `Target`.
+  - `start_instance._ACCELERATORS` = the mock plus `targets.instance_start_accelerators()` (= `("mock", "cpu_standin")`); `model_instances` imports it unchanged.
+  - `model_run_binding`: `TARGET` removed; `binding_from_runs(..., table=targets.TABLE)` takes a run whose accelerator has a `Target` with `model_run` true (else `other_target`), and a run at another accelerator than the binding's first run is refused with the new reason `two_targets` (in `REASONS` after `other_target`). `model_check` passes nothing new.
+- **Edited existing assertions (D21)**: `tests/test_model_run_binding.py` `test_a_run_of_another_target_is_refused`: `model_run_binding.TARGET == standin_profile.ACCELERATOR` replaced by `targets.TABLE[standin_profile.ACCELERATOR].model_run is True` (the name `TARGET` is removed); the import lists of that file gain `targets` and `TWO_TARGETS`.
+- **No frame change**: no data-plane file, member, value or version; `run_result.UNITS` unchanged; no open list used.
+- **Runtime acceptance items**: none.

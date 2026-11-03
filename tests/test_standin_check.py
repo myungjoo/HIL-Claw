@@ -1241,3 +1241,64 @@ def test_run_container_lets_a_refused_input_pass(client, temporary):
     assert raised.value.parameter == "stdin_data"
     assert outcomes == [raised.value]
     assert client.calls == []
+
+
+def a_target(**changes):
+    from hilclaw import targets
+
+    values = {
+        "flags": ("-std=gnu11", "-O1"),
+        "trailing_flags": ("-lm", "-lc"),
+        "waiter_flags": ("-O0",),
+        "env": None,
+        "build_time_limit_s": 33,
+        "process_time_limit_cap_s": 11,
+        "contracts": (),
+        "memory_limit_bytes": None,
+        "unit": "ns",
+        "model_run": False,
+        "instance_start": False,
+    }
+    return targets.Target(**(values | changes))
+
+
+def test_an_operation_built_with_a_target_reads_that_target(
+    client, output, keeper, temporary
+):
+    client.script = [built(), reported()]
+    built_operation = standin_check.operation_for(a_target())
+    answer = built_operation(
+        {"tool": "correctness.check"},
+        {"accelerator": "anything"},
+        CheckParameters(SEED, 3, 2**40, 2**40, 2**40),
+        output,
+        keeper,
+    )
+    assert answer == REPORT
+    assert build_dirs(temporary) == []
+    build, _ = client.runs()
+    program = build[build.index(IMAGE) + 1 :]
+    assert program[1:3] == ["-std=gnu11", "-O1"]
+    assert program[-4:-2] == ["-lm", "-lc"]
+    options = [options for _, options in client.calls]
+    assert options[0]["timeout_s"] == 33
+    assert options[1]["timeout_s"] == 11.0
+
+
+def test_the_cpu_standin_operation_reads_the_table_at_the_call(
+    monkeypatch, client, output, keeper
+):
+    from hilclaw import targets
+
+    monkeypatch.setattr(standin_settings, "PROCESS_TIME_LIMIT_CAP_S", 9)
+    client.script = [built(), reported()]
+    call(output, keeper, CheckParameters(SEED, 3, 2**40, 2**40, 2**40))
+    options = [options for _, options in client.calls]
+    assert options[1]["timeout_s"] == 9.0
+    assert targets.target("cpu_standin").process_time_limit_cap_s == 9
+
+
+@pytest.mark.parametrize("given", [None, "cpu_standin", {"flags": ()}])
+def test_an_operation_is_built_only_with_a_target(given):
+    with pytest.raises(TypeError):
+        standin_check.operation_for(given)
