@@ -2,7 +2,7 @@
 id: T-0532
 title: Add the target table of ADR-0193 decision 3 and make the cpu_standin builds, the instance start and the model-run binding read it
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, FR-10, NFR-6, "PLAN P3-2"]
 dependsOn: []
