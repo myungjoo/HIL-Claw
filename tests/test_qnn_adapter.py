@@ -9,18 +9,23 @@ from pathlib import Path
 import pytest
 
 from hilclaw import clang_adapter, local_run, standin_container, targets, vendor_adapter
+from hilclaw.harness import timing
+from hilclaw.harness.measurement import N_MIN
 from hilclaw.qnn_adapter import (
     BUILD_PROGRAM,
     VERSION_PROGRAM,
     assemble_build,
     assemble_probe,
     assemble_run,
+    assemble_timing,
     build,
     interpret_container_probe,
     interpret_probe,
+    measure,
     probe,
     run,
 )
+from hilclaw.run_parameters import Bf16TimingParameters, TimingParameters
 from hilclaw.vendor_adapter import (
     ABSENT,
     BROKEN,
@@ -43,6 +48,9 @@ EXE = ".exe" if os.name == "nt" else ""
 LIMIT = 300
 VERSION = b"QNN SDK v2.37.0.250724175447_124859"
 PID_LINE = b"qnn-net-run pid:4242\r\n"
+PARAMETERS = TimingParameters(2, 3, 4, 10, "interval", 42)
+DRIVER_ARGUMENTS = ("2", "3", "4", "5", "10", "0.05", "interval", "42")
+REPORT = b"resolution_ns 100\n" + b"interval_ns 5000\n" * N_MIN + b"stop converged\n"
 
 # Fault-injection scripts (ADR-0194 decision 6), each run by this interpreter
 # from the test's own temporary directory and passed only as ``program`` or
@@ -54,6 +62,11 @@ NO_ARTEFACT = "pass\n"
 ALLOCATION_FAILURE = (
     "import sys\nsys.stderr.write('QnnGraph_create failed: 1002\\n')\nsys.exit(1)\n"
 )
+
+
+class BytesPath:
+    def __fspath__(self):
+        return b"QnnHtp.dll"
 
 
 def make_target(**changes):
@@ -227,6 +240,11 @@ def test_assemble_parts_are_pure(monkeypatch):
     assert assemble_build(target, ["a.c"], "o").env == target.env
     assert assemble_run(target, "p", ["a"], timeout_s=1).command == ("p", "a")
     assert assemble_probe(timeout_s=1).command == ("qnn-net-run", "--version")
+    assert assemble_timing(target, "p", "b.so", PARAMETERS, timeout_s=1).command == (
+        "p",
+        "b.so",
+        *DRIVER_ARGUMENTS,
+    )
 
 
 @pytest.mark.parametrize(
@@ -596,3 +614,208 @@ def test_fault_version_query_that_hangs_is_unreadable(script):
     # decisions 6 and 7).
     found = probe(timeout_s=0.5, program=script(HANG))
     assert (found.state, found.version) == (UNREADABLE, None)
+
+
+def test_assemble_timing_puts_the_backend_before_the_driver_arguments():
+    target = make_target(process_time_limit_cap_s=5, env={"PATH": "lib"})
+    call = assemble_timing(target, Path("t"), "QnnHtp.dll", PARAMETERS, timeout_s=9)
+    assert call == RunCall(
+        command=("t", "QnnHtp.dll", *DRIVER_ARGUMENTS),
+        env=target.env,
+        timeout_s=5,
+        files=(),
+    )
+    reciprocal = PARAMETERS._replace(sample_form="reciprocal", seed=0)
+    call = assemble_timing(
+        target, "t", Path("lib") / "libQnnCpu.so", reciprocal, timeout_s=2
+    )
+    assert call.command == (
+        "t",
+        os.fspath(Path("lib") / "libQnnCpu.so"),
+        *timing.driver_arguments(**reciprocal._asdict()),
+    )
+    assert call.command[-2:] == ("reciprocal", "0")
+    assert call.timeout_s == 2
+
+
+@pytest.mark.parametrize(
+    ("changes", "error", "parameter"),
+    [
+        ({"target": None}, TypeError, "target"),
+        ({"executable": ""}, ValueError, "executable"),
+        ({"executable": b"t"}, TypeError, "executable"),
+        ({"backend": None}, TypeError, "backend"),
+        ({"backend": b"QnnHtp.dll"}, TypeError, "backend"),
+        ({"backend": ""}, ValueError, "backend"),
+        ({"backend": BytesPath()}, TypeError, "backend"),
+        ({"parameters": tuple(PARAMETERS)}, TypeError, "parameters"),
+        (
+            {
+                "parameters": Bf16TimingParameters(
+                    "gemm", "bf16", (2, 3, 4), 10, "interval", 1
+                )
+            },
+            TypeError,
+            "parameters",
+        ),
+        (
+            {"parameters": PARAMETERS._replace(n_max=N_MIN - 1)},
+            ValueError,
+            "parameters",
+        ),
+        ({"parameters": PARAMETERS._replace(m=0)}, ValueError, "parameters"),
+        ({"parameters": PARAMETERS._replace(k=True)}, ValueError, "parameters"),
+        (
+            {"parameters": PARAMETERS._replace(sample_form="both")},
+            ValueError,
+            "parameters",
+        ),
+        ({"parameters": PARAMETERS._replace(seed=-1)}, ValueError, "parameters"),
+        ({"parameters": PARAMETERS._replace(seed=2**64)}, ValueError, "parameters"),
+        ({"timeout_s": 0}, ValueError, "timeout_s"),
+        ({"timeout_s": "1"}, TypeError, "timeout_s"),
+    ],
+)
+def test_assemble_timing_and_measure_refuse_bad_arguments(
+    changes, error, parameter, monkeypatch
+):
+    def refused(*args, **kwargs):
+        raise AssertionError("an executor was called")
+
+    values = {
+        "target": make_target(),
+        "executable": "t",
+        "backend": "QnnHtp.dll",
+        "parameters": PARAMETERS,
+        "timeout_s": 1,
+    }
+    values.update(changes)
+    monkeypatch.setattr(local_run, "run", refused)
+    for call in (assemble_timing, measure):
+        with pytest.raises(error) as caught:
+            call(**values)
+        assert caught.value.parameter == parameter
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        (recorded(stdout=REPORT), (REPORT, None)),
+        (recorded(stdout=b""), (b"", None)),
+        (recorded(returncode=1, stdout=b"resolution_ns 100\n"), "exit_status"),
+        (recorded(returncode=-11), "exit_status"),
+        (recorded(returncode=None, timed_out=True), "time_limit"),
+    ],
+)
+def test_measure_hands_the_ended_process_to_the_vendor_measure(
+    answer, expected, monkeypatch
+):
+    seen = []
+
+    def fake_run(command, *, timeout_s, env=None):
+        seen.append((command, timeout_s, env))
+        return answer
+
+    monkeypatch.setattr(local_run, "run", fake_run)
+    target = make_target(env={"PATH": "lib"}, process_time_limit_cap_s=4)
+    assert measure(target, "t", "QnnHtp.dll", PARAMETERS, timeout_s=9) == expected
+    assert seen == [(("t", "QnnHtp.dll", *DRIVER_ARGUMENTS), 4, target.env)]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [local_run.ProgramNotFoundError("t"), OSError(5, "I/O after start")],
+)
+def test_measure_raises_the_executor_errors_unchanged(error, monkeypatch):
+    def raising(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(local_run, "run", raising)
+    with pytest.raises(type(error)) as caught:
+        measure(make_target(), "t", "QnnHtp.dll", PARAMETERS, timeout_s=1)
+    assert caught.value is error
+
+
+def test_measure_of_a_missing_program_raises_and_is_placed_by_interpret_run(tmp_path):
+    missing = tmp_path / MISSING
+    with pytest.raises((local_run.ProgramNotFoundError, OSError)) as caught:
+        measure(make_target(), missing, "QnnHtp.dll", PARAMETERS, timeout_s=LIMIT)
+    outcome = vendor_adapter.interpret_run(caught.value, str(missing))
+    assert_form(outcome, TOOL_FAILURE, kind="executable_unstartable")
+
+
+def test_measure_refuses_an_answer_no_row_holds(monkeypatch):
+    monkeypatch.setattr(
+        local_run, "run", lambda *args, **kwargs: recorded(returncode=None)
+    )
+    with pytest.raises(ValueError):
+        measure(make_target(), "t", "QnnHtp.dll", PARAMETERS, timeout_s=1)
+
+
+def test_fault_timing_run_that_hangs_is_time_limit(script):
+    # Stands for a timing run on the HTP emulator that never ends (ADR-0194
+    # decision 6: the runner's or emulator's own hang; ADR-0042 decision 3).
+    # The script takes the backend library's place in the command.
+    interpreter, path = script(HANG)
+    assert measure(make_target(), interpreter, path, PARAMETERS, timeout_s=0.5) == (
+        "time_limit"
+    )
+
+
+def test_fault_timing_run_with_an_allocation_failure_is_exit_status(script):
+    # Stands for the timing fixture whose QnnGraph_create returns
+    # QNN_GRAPH_ERROR_MEM_ALLOC (1002, "create failed due to memory/resource
+    # allocation", include/QNN/QnnGraph.h and QnnCommon.h of QNN SDK 2.37.0)
+    # and that reports it by a non-zero status (ADR-0194 decision 3).
+    interpreter, path = script(ALLOCATION_FAILURE)
+    assert measure(make_target(), interpreter, path, PARAMETERS, timeout_s=LIMIT) == (
+        "exit_status"
+    )
+
+
+def built_timing(qnn, tmp_path):
+    target, compiler, _ = qnn
+    out = tmp_path / ("timing" + EXE)
+    outcome = build(target, source(tmp_path, "timing"), out, program=compiler)
+    assert_form(outcome, GO_ON)
+    assert outcome.carried == out
+    return out
+
+
+@pytest.mark.parametrize("sample_form", timing.SAMPLE_FORMS)
+def test_real_qnn_timing_fixture_reports_at_the_htp_emulator_point(
+    qnn, tmp_path, sample_form
+):
+    # The intervals are times of the emulation on the host, no device figure
+    # (FR-19 (4); ADR-0194 decision 4).
+    target, _, backend = qnn
+    executable = built_timing(qnn, tmp_path)
+    parameters = TimingParameters(2, 3, 4, 50, sample_form, 7)
+    answer = measure(target, executable, backend, parameters, timeout_s=LIMIT)
+    assert type(answer) is tuple
+    report, figure = answer
+    assert figure is None
+    judgement = timing.judge_report(report, sample_form=sample_form, n_max=50)
+    assert judgement.broken is None
+    assert judgement.state in (
+        timing.measurement.State.CONVERGED,
+        timing.measurement.State.NOT_CONVERGED,
+    )
+    assert judgement.resolution_ns > 0
+    assert N_MIN <= len(judgement.intervals_ns) <= 50
+    assert all(interval > 0 for interval in judgement.intervals_ns)
+    assert report.startswith(b"resolution_ns ")
+
+
+def test_real_qnn_timing_fixture_without_its_backend_is_exit_status(qnn, tmp_path):
+    target, _, backend = qnn
+    executable = built_timing(qnn, tmp_path)
+    missing = str(Path(backend).with_name("hilclaw-no-such-backend.dll"))
+    assert measure(target, executable, missing, PARAMETERS, timeout_s=LIMIT) == (
+        "exit_status"
+    )
+    call = assemble_timing(target, executable, missing, PARAMETERS, timeout_s=LIMIT)
+    ended = local_run.run(call.command, timeout_s=call.timeout_s, env=call.env)
+    assert ended.returncode == 1
+    assert b"stop" not in ended.stdout
+    assert len(ended.stderr.decode("utf-8", "replace").strip().splitlines()) == 1

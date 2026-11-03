@@ -1,0 +1,389 @@
+/*
+ * Test fixture: a timing run of ADR-0009 on a QNN backend (ADR-0194 decision 4).
+ *
+ *     <program> <QNN backend library> <m> <k> <n> <n_min> <n_max> <cv_max> <sample_form> <seed>
+ *
+ * The eight arguments after the library are those of hilclaw/harness/timing.py
+ * (driver_arguments), with the same rules as hilclaw/harness/timing_driver.c.
+ * The graph is one ElementWiseAdd of two UFIXED_POINT_8 tensors of shape
+ * [m, k, n] (scale 1, offset 0); the operands are bytes of 0 to 127 drawn
+ * from seed by splitmix64, so every sum is exact.
+ *
+ * Outside the interval: loading the library, creating the backend, context
+ * and graph, addNode, finalize, allocation, input generation, one untimed
+ * QnnGraph_execute, and reading back and checking the output. Inside: one
+ * QnnGraph_execute per repeat between two readings of the host's monotonic
+ * clock (CLOCK_MONOTONIC, or QueryPerformanceCounter on Windows), whose
+ * resolution is the report's resolution_ns. QnnGraph_execute is synchronous
+ * (QnnGraph.h of the QNN SDK: "Synchronously execute a finalized graph").
+ *
+ * The report of ADR-0009 decision 8 goes to the standard output the process
+ * was started with; descriptor 1 is pointed at standard error before the
+ * library is loaded, so what the backend prints is not part of the report.
+ * Exit status: 1 a QNN call, the library or a wrong sum; 2 the command line;
+ * 3 the sizes or an allocation; 4 the clock, a descriptor or a write;
+ * 5 an interval of 0 ns. A non-zero status comes with one line on standard
+ * error and without a "stop" line.
+ */
+#ifndef _WIN32
+#define _POSIX_C_SOURCE 200809L
+#endif
+
+#include <float.h>
+#include <inttypes.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "QnnInterface.h"
+#include "QnnOpDef.h"
+#include "QnnTypes.h"
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <fcntl.h>
+#include <io.h>
+#include <windows.h>
+#define OPEN(path) ((void *)LoadLibraryA(path))
+#define SYMBOL(lib, name) ((void *)GetProcAddress((HMODULE)(lib), name))
+#define DUP _dup
+#define DUP2 _dup2
+#define WRITE(fd, text, size) _write(fd, text, (unsigned)(size))
+#define OUT_FD 1
+#define ERR_FD 2
+#define BINARY(fd) _setmode(fd, _O_BINARY)
+#else
+#include <dlfcn.h>
+#include <errno.h>
+#include <time.h>
+#include <unistd.h>
+#define OPEN(path) dlopen(path, RTLD_NOW | RTLD_LOCAL)
+#define SYMBOL(lib, name) dlsym(lib, name)
+#define DUP dup
+#define DUP2 dup2
+#define WRITE(fd, text, size) write(fd, text, size)
+#define OUT_FD STDOUT_FILENO
+#define ERR_FD STDERR_FILENO
+#define BINARY(fd) 0
+#endif
+
+enum {
+    STATUS_QNN = 1,
+    STATUS_COMMAND_LINE = 2,
+    STATUS_MEMORY = 3,
+    STATUS_SYSTEM = 4,
+    STATUS_ZERO_INTERVAL = 5
+};
+
+typedef Qnn_ErrorHandle_t (*GetProviders)(const QnnInterface_t ***, uint32_t *);
+
+static int report_fd = -1;
+static uint32_t dims[3];
+
+static int fail(int status, const char *subject, const char *message)
+{
+    fprintf(stderr, "timing: %s: %s\n", subject, message);
+    return status;
+}
+
+static int qnn_fail(const char *call, Qnn_ErrorHandle_t status)
+{
+    fprintf(stderr, "timing: %s failed: %lu\n", call, (unsigned long)status);
+    return STATUS_QNN;
+}
+
+static uint64_t digits(const char *name, const char *text, uint64_t minimum, uint64_t maximum)
+{
+    const char *rule = "must be decimal digits (no sign, space or leading zero) within its range";
+    uint64_t value = 0;
+    const char *p = text;
+    int valid = *p != '\0' && (p[0] != '0' || p[1] == '\0');
+
+    for (; valid && *p != '\0'; p++) {
+        uint64_t digit = (uint64_t)(*p - '0');
+
+        valid = *p >= '0' && *p <= '9' && digit <= maximum && value <= (maximum - digit) / 10;
+        if (valid)
+            value = value * 10 + digit;
+    }
+    if (!valid || value < minimum)
+        exit(fail(STATUS_COMMAND_LINE, name, rule));
+    return value;
+}
+
+static uint64_t splitmix64(uint64_t *state)
+{
+    uint64_t z = (*state += UINT64_C(0x9E3779B97F4A7C15));
+
+    z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);
+    return z ^ (z >> 31);
+}
+
+static void fill(uint8_t *array, size_t count, uint64_t *state)
+{
+    size_t i;
+
+    for (i = 0; i < count; i++)
+        array[i] = (uint8_t)(splitmix64(state) >> 57);
+}
+
+static void emit(const char *text)
+{
+    size_t left = strlen(text);
+
+    while (left > 0) {
+        long written = (long)WRITE(report_fd, text, left);
+
+#ifndef _WIN32
+        if (written < 0 && errno == EINTR)
+            continue;
+#endif
+        if (written <= 0)
+            exit(fail(STATUS_SYSTEM, "report", "cannot write to the standard output"));
+        text += written;
+        left -= (size_t)written;
+    }
+}
+
+static void emit_value(const char *keyword, uint64_t value)
+{
+    char line[64];
+
+    snprintf(line, sizeof line, "%s %" PRIu64 "\n", keyword, value);
+    emit(line);
+}
+
+#ifdef _WIN32
+static uint64_t frequency;
+
+static int clock_resolution(uint64_t *ns)
+{
+    LARGE_INTEGER f;
+
+    if (!QueryPerformanceFrequency(&f) || f.QuadPart <= 0)
+        return 0;
+    frequency = (uint64_t)f.QuadPart;
+    *ns = (UINT64_C(1000000000) + frequency - 1) / frequency;
+    return 1;
+}
+
+static int clock_now(uint64_t *ns)
+{
+    LARGE_INTEGER c;
+    uint64_t ticks;
+
+    if (!QueryPerformanceCounter(&c) || c.QuadPart < 0)
+        return 0;
+    ticks = (uint64_t)c.QuadPart;
+    *ns = ticks / frequency * UINT64_C(1000000000) + ticks % frequency * UINT64_C(1000000000) / frequency;
+    return 1;
+}
+#else
+static int clock_resolution(uint64_t *ns)
+{
+    struct timespec r;
+
+    if (clock_getres(CLOCK_MONOTONIC, &r) != 0 || r.tv_sec < 0)
+        return 0;
+    *ns = (uint64_t)r.tv_sec * UINT64_C(1000000000) + (uint64_t)r.tv_nsec;
+    return 1;
+}
+
+static int clock_now(uint64_t *ns)
+{
+    struct timespec t;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &t) != 0 || t.tv_sec < 0)
+        return 0;
+    *ns = (uint64_t)t.tv_sec * UINT64_C(1000000000) + (uint64_t)t.tv_nsec;
+    return 1;
+}
+#endif
+
+/* ADR-0007 decision 4 as CV^2 < cv_max^2, as in timing_driver.c. */
+static int converged(const double *samples, size_t count, double cv_max)
+{
+    double sum = 0.0, squares = 0.0, mean;
+    size_t i;
+
+    for (i = 0; i < count; i++)
+        sum += samples[i];
+    mean = sum / (double)count;
+    for (i = 0; i < count; i++) {
+        double deviation = (samples[i] - mean) / mean;
+
+        squares += deviation * deviation;
+    }
+    return squares < cv_max * cv_max * (double)(count - 1);
+}
+
+static Qnn_Tensor_t tensor(const char *name, Qnn_TensorType_t type, uint32_t bytes)
+{
+    Qnn_Tensor_t t = QNN_TENSOR_INIT;
+
+    t.version = QNN_TENSOR_VERSION_1;
+    t.v1.name = name;
+    t.v1.type = type;
+    t.v1.dataFormat = QNN_TENSOR_DATA_FORMAT_FLAT_BUFFER;
+    t.v1.dataType = QNN_DATATYPE_UFIXED_POINT_8;
+    t.v1.quantizeParams.encodingDefinition = QNN_DEFINITION_DEFINED;
+    t.v1.quantizeParams.quantizationEncoding = QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
+    t.v1.quantizeParams.scaleOffsetEncoding.scale = 1.0f;
+    t.v1.quantizeParams.scaleOffsetEncoding.offset = 0;
+    t.v1.rank = 3;
+    t.v1.dimensions = dims;
+    t.v1.memType = QNN_TENSORMEMTYPE_RAW;
+    t.v1.clientBuf.dataSize = bytes;
+    return t;
+}
+
+static int sums_wrong(const uint8_t *a, const uint8_t *b, const uint8_t *sum, size_t count)
+{
+    size_t i;
+
+    for (i = 0; i < count; i++)
+        if (sum[i] != a[i] + b[i])
+            return 1;
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    size_t m, k, n, n_min, n_max, count, done = 0;
+    uint64_t seed, ns = 0, before, after;
+    double cv_max, *samples;
+    uint8_t *a, *b, *sum;
+    char *end;
+    int reciprocal, state = 0;
+    const QnnInterface_t **providers = NULL;
+    uint32_t found = 0, i;
+    QNN_INTERFACE_VER_TYPE qnn;
+    Qnn_BackendHandle_t backend = NULL;
+    Qnn_ContextHandle_t context = NULL;
+    Qnn_GraphHandle_t graph = NULL;
+    Qnn_ErrorHandle_t status;
+    Qnn_OpConfig_t op = QNN_OPCONFIG_INIT;
+    Qnn_Tensor_t inputs[2], outputs[1];
+    GetProviders get;
+    void *library;
+
+    if (argc != 10)
+        return fail(STATUS_COMMAND_LINE, "usage",
+                    "<library> <m> <k> <n> <n_min> <n_max> <cv_max> <sample_form> <seed>");
+    m = (size_t)digits("m", argv[2], 1, UINT32_MAX);
+    k = (size_t)digits("k", argv[3], 1, UINT32_MAX);
+    n = (size_t)digits("n", argv[4], 1, UINT32_MAX);
+    n_min = (size_t)digits("n_min", argv[5], 2, SIZE_MAX);
+    n_max = (size_t)digits("n_max", argv[6], n_min, SIZE_MAX);
+    cv_max = strtod(argv[7], &end);
+    if (end == argv[7] || *end != '\0' || !(cv_max > 0.0) || cv_max > DBL_MAX)
+        return fail(STATUS_COMMAND_LINE, "cv_max", "must be a positive finite number");
+    reciprocal = strcmp(argv[8], "reciprocal") == 0;
+    if (!reciprocal && strcmp(argv[8], "interval") != 0)
+        return fail(STATUS_COMMAND_LINE, "sample_form", "must be interval or reciprocal");
+    seed = digits("seed", argv[9], 0, UINT64_MAX);
+
+    if (m > UINT32_MAX / k || m * k > UINT32_MAX / n || n_max > SIZE_MAX / sizeof(double))
+        return fail(STATUS_MEMORY, "sizes", "the tensor or the samples are too large");
+    count = m * k * n;
+    a = malloc(count);
+    b = malloc(count);
+    sum = calloc(count, 1);
+    samples = malloc(n_max * sizeof(double));
+    if (a == NULL || b == NULL || sum == NULL || samples == NULL)
+        return fail(STATUS_MEMORY, "malloc", "cannot allocate the tensors and the samples");
+    fill(a, count, &seed);
+    fill(b, count, &seed);
+    dims[0] = (uint32_t)m;
+    dims[1] = (uint32_t)k;
+    dims[2] = (uint32_t)n;
+
+    report_fd = DUP(OUT_FD);
+    if (report_fd < 0 || BINARY(report_fd) < 0 || DUP2(ERR_FD, OUT_FD) < 0)
+        return fail(STATUS_SYSTEM, "descriptors", "cannot keep the standard output apart");
+
+    library = OPEN(argv[1]);
+    if (library == NULL)
+        return fail(STATUS_QNN, "library", "cannot load the QNN backend library");
+    get = (GetProviders)SYMBOL(library, "QnnInterface_getProviders");
+    if (get == NULL)
+        return fail(STATUS_QNN, "library", "has no QnnInterface_getProviders");
+    status = get(&providers, &found);
+    if (status != QNN_SUCCESS || found == 0)
+        return qnn_fail("QnnInterface_getProviders", status);
+    for (i = 0; i < found; i++)
+        if (providers[i]->apiVersion.coreApiVersion.major == QNN_API_VERSION_MAJOR)
+            break;
+    if (i == found)
+        return fail(STATUS_QNN, "QnnInterface_getProviders", "no provider of this API version");
+    qnn = providers[i]->QNN_INTERFACE_VER_NAME;
+
+    if ((status = qnn.backendCreate(NULL, NULL, &backend)) != QNN_SUCCESS)
+        return qnn_fail("QnnBackend_create", status);
+    if ((status = qnn.contextCreate(backend, NULL, NULL, &context)) != QNN_SUCCESS)
+        return qnn_fail("QnnContext_create", status);
+    if ((status = qnn.graphCreate(context, "timing", NULL, &graph)) != QNN_SUCCESS)
+        return qnn_fail("QnnGraph_create", status);
+    inputs[0] = tensor("a", QNN_TENSOR_TYPE_APP_WRITE, (uint32_t)count);
+    inputs[1] = tensor("b", QNN_TENSOR_TYPE_APP_WRITE, (uint32_t)count);
+    outputs[0] = tensor("sum", QNN_TENSOR_TYPE_APP_READ, (uint32_t)count);
+    for (i = 0; i < 2; i++)
+        if ((status = qnn.tensorCreateGraphTensor(graph, &inputs[i])) != QNN_SUCCESS)
+            return qnn_fail("QnnTensor_createGraphTensor", status);
+    if ((status = qnn.tensorCreateGraphTensor(graph, &outputs[0])) != QNN_SUCCESS)
+        return qnn_fail("QnnTensor_createGraphTensor", status);
+    op.version = QNN_OPCONFIG_VERSION_1;
+    op.v1.name = "add";
+    op.v1.packageName = QNN_OP_PACKAGE_NAME_QTI_AISW;
+    op.v1.typeName = QNN_OP_ELEMENT_WISE_ADD;
+    op.v1.numOfInputs = 2;
+    op.v1.inputTensors = inputs;
+    op.v1.numOfOutputs = 1;
+    op.v1.outputTensors = outputs;
+    if ((status = qnn.graphAddNode(graph, op)) != QNN_SUCCESS)
+        return qnn_fail("QnnGraph_addNode", status);
+    if ((status = qnn.graphFinalize(graph, NULL, NULL)) != QNN_SUCCESS)
+        return qnn_fail("QnnGraph_finalize", status);
+    inputs[0].v1.clientBuf.data = a;
+    inputs[1].v1.clientBuf.data = b;
+    outputs[0].v1.clientBuf.data = sum;
+
+    if (!clock_resolution(&ns))
+        return fail(STATUS_SYSTEM, "clock", "cannot read the resolution of the monotonic clock");
+    emit_value("resolution_ns", ns);
+
+    if ((status = qnn.graphExecute(graph, inputs, 2, outputs, 1, NULL, NULL)) != QNN_SUCCESS)
+        return qnn_fail("QnnGraph_execute", status);
+    if (sums_wrong(a, b, sum, count))
+        return fail(STATUS_QNN, "QnnGraph_execute", "wrong sum");
+    while (state == 0) {
+        int started = clock_now(&before);
+
+        status = qnn.graphExecute(graph, inputs, 2, outputs, 1, NULL, NULL);
+        if (!clock_now(&after) || !started || after < before)
+            return fail(STATUS_SYSTEM, "clock", "cannot read an interval of the monotonic clock");
+        if (status != QNN_SUCCESS)
+            return qnn_fail("QnnGraph_execute", status);
+        ns = after - before;
+        emit_value("interval_ns", ns);
+        if (ns == 0)
+            return fail(STATUS_ZERO_INTERVAL, "interval", "an interval of 0 ns is not a sample");
+        samples[done++] = reciprocal ? 1.0 / (double)ns : (double)ns;
+        if (done >= n_min && converged(samples, done, cv_max))
+            state = 1;
+        else if (done == n_max)
+            state = 2;
+    }
+    if (sums_wrong(a, b, sum, count))
+        return fail(STATUS_QNN, "QnnGraph_execute", "wrong sum");
+    qnn.contextFree(context, NULL);
+    qnn.backendFree(backend);
+    emit(state == 1 ? "stop converged\n" : "stop not_converged\n");
+    free(samples);
+    free(sum);
+    free(b);
+    free(a);
+    return 0;
+}
