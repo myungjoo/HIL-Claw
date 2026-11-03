@@ -2,7 +2,7 @@
 id: T-0535
 title: Add the graph program of ADR-0193 decision 5 (model_graph.c running an encoded plan), its host-side build and run, the byte-for-byte check against model_forward.c on synthetic weights, and a second model of another structure
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D27, OD-32, C-6, OD-31, "PLAN P3-4"]
 dependsOn: [T-0534]
