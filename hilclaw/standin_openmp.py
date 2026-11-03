@@ -22,7 +22,7 @@ count and no runtime version; and it is called only by :mod:`hilclaw.nightly`
 import tempfile
 from pathlib import Path
 
-from hilclaw import standin_check, standin_container, standin_profile, targets
+from hilclaw import standin_check, standin_container, targets
 
 SOURCE_NAME = "openmp_probe.c"
 """File name of the probe's source in the temporary directory."""
@@ -77,7 +77,7 @@ def check(
     case; after a timeout the container is removed by force, and a removal that
     did not succeed is added to the answer.
     """
-    target = targets.target(standin_profile.ACCELERATOR)
+    target = targets.target(targets.CPU_STANDIN)
     if timeout_s is None:
         timeout_s = target.build_time_limit_s
     steps = (

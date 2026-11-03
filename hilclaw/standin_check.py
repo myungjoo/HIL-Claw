@@ -143,7 +143,6 @@ from hilclaw import (
     standin_container,
     standin_copies,
     standin_image,
-    standin_profile,
     standin_settings,
     targets,
     tools,
@@ -212,10 +211,10 @@ def operation(request, hw_profile, parameters, output_path, keeper, /):
 
     The flags, trailing flags, build time limit and process time-limit cap are
     those of the :class:`hilclaw.targets.Target` of
-    :data:`hilclaw.standin_profile.ACCELERATOR`, read from
+    :data:`hilclaw.targets.CPU_STANDIN`, read from
     :data:`hilclaw.targets.TABLE` at the call (ADR-0193 decision 3).
     """
-    target = targets.target(standin_profile.ACCELERATOR)
+    target = targets.target(targets.CPU_STANDIN)
     return _operate(target, parameters, output_path, keeper)
 
 

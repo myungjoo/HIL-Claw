@@ -86,6 +86,21 @@ def test_a_name_with_no_target_is_refused(name):
     assert caught.value.name == name
 
 
+def test_an_error_of_building_the_entry_is_not_masked(monkeypatch):
+    monkeypatch.setattr(standin_settings, "FLAGS", ["-O2"])
+    with pytest.raises(TypeError, match="^flags must be a tuple"):
+        targets.target(targets.CPU_STANDIN)
+    assert targets.CPU_STANDIN in TABLE
+    monkeypatch.undo()
+    monkeypatch.setattr(standin_settings, "BUILD_TIME_LIMIT_S", 0)
+    with pytest.raises(ValueError, match="^build_time_limit_s"):
+        targets.target(targets.CPU_STANDIN)
+
+
+def test_the_name_of_the_cpu_standin_entry():
+    assert targets.CPU_STANDIN == standin_profile.ACCELERATOR == "cpu_standin"
+
+
 def test_a_given_table_is_looked_up():
     other = made()
     assert targets.target("synthetic", {"synthetic": other}) is other

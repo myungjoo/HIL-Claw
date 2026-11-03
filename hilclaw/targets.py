@@ -167,12 +167,19 @@ def _cpu_standin():
     )
 
 
+CPU_STANDIN = standin_profile.ACCELERATOR
+"""The name of the ``cpu_standin`` entry, :data:`hilclaw.standin_profile.ACCELERATOR`."""
+
+
 class _Table(Mapping):
     def __init__(self, builders):
         self._builders = types.MappingProxyType(dict(builders))
 
     def __getitem__(self, name):
         return self._builders[name]()
+
+    def __contains__(self, name):
+        return name in self._builders
 
     def __iter__(self):
         return iter(self._builders)
@@ -184,7 +191,7 @@ class _Table(Mapping):
         return f"<target table: {', '.join(self._builders)}>"
 
 
-TABLE = _Table({standin_profile.ACCELERATOR: _cpu_standin})
+TABLE = _Table({CPU_STANDIN: _cpu_standin})
 """The target table: a read-only mapping from ``accelerator`` to :class:`Target`, each entry built when it is read."""
 
 
@@ -195,12 +202,17 @@ def target(name, table=TABLE):
     @param table a mapping from ``accelerator`` to :class:`Target`, by default
         :data:`TABLE`.
     @throws NoTargetError when ``table`` holds no entry for ``name``, a name
-        that is not a ``str`` or one it cannot look up included.
+        it cannot look up included. What building the entry raises, such as
+        the :class:`TypeError` or :class:`ValueError` of a refused member,
+        passes unchanged.
     """
     try:
-        return table[name]
-    except (KeyError, TypeError):
-        raise NoTargetError(name) from None
+        held = name in table
+    except TypeError:
+        held = False
+    if not held:
+        raise NoTargetError(name)
+    return table[name]
 
 
 def instance_start_accelerators(table=TABLE):
