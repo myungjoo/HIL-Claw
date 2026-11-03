@@ -40,8 +40,7 @@ bf16 timing runs of ADR-0181 are their shared header (``bf16_timing.h``,
 which includes ``bf16_verification.h``) and the two handwritten timing
 programs, which include it (``bf16_timing_rope.c``, which reads the
 ``freqs_cis`` rows on its standard input, and ``bf16_timing_sdpa_kv_cache.c``).
-With them is the build of a bf16 timing
-executable of any of the six kinds
+With them is the build of a bf16 timing executable of any of the six kinds
 (:mod:`hilclaw.harness.bf16_timing_build`) and its Python side over an
 executable that is already built (:mod:`hilclaw.harness.bf16_timing`), which
 imports the NumPy modules above only when a ``rope`` run starts.
