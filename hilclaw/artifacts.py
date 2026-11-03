@@ -5,8 +5,9 @@ the file: its shape (decision 2), the six members of a record (decision 3),
 identity by ``sha256`` (decision 6), the changes a record may undergo
 (decision 7) and the order "blob first, then record" (decision 8). This module
 validates a parsed file, reads the file of a run, adds the record of a blob that
-:mod:`hilclaw.cas` has stored and replaces the retention class of a record. The
-path comes from :func:`hilclaw.layout.run_file`.
+:mod:`hilclaw.cas` has stored, replaces the retention class of a record and
+adds ``gc_at`` to the record of a blob a GC has removed (ADR-0195). The path
+comes from :func:`hilclaw.layout.run_file`.
 
 ``data_root`` is given by the caller and must be an existing directory
 (:class:`FileNotFoundError` or :class:`NotADirectoryError` otherwise). Arguments
@@ -47,7 +48,7 @@ Conventions of this module, which ADR-0005 does not fix:
 
 What this module does not do: it stores and deletes no blob; it never removes
 or moves a record, never changes ``sha256``, ``size``, ``type`` or ``round`` of
-one and never writes ``gc_at`` (the MVP has no GC tool); it knows no list of
+one, and never changes or removes a ``gc_at`` once written; it knows no list of
 ``type`` values and judges no change of class (OD-20, OD-29, OD-23); it reads
 no configuration, runs no ``git`` and commits nothing; it takes no lock, so
 two writers at once are not prevented and the later move wins (OD-17, ADR-0014
@@ -120,6 +121,10 @@ class ArtifactNotFoundError(LookupError):
 
 class SizeConflictError(Exception):
     """A hash is recorded with another size than the one given (ADR-0005 decision 6)."""
+
+
+class BlobPresentError(Exception):
+    """The blob of a record is in the store, so no ``gc_at`` may be added (ADR-0195)."""
 
 
 def validate(document):
@@ -199,7 +204,7 @@ def add_record(data_root, run_id, ref, *, type, round, retention_class):
 def set_retention_class(data_root, run_id, sha256, retention_class):
     """Replace the retention class of the record ``sha256`` and return the record after the call.
 
-    This is the one edit of ADR-0005 decision 7 this module performs. Any of
+    This is one of the two edits of ADR-0005 decision 7. Any of
     :data:`RETENTION_CLASSES` may replace any other, also on a record that has
     ``gc_at``; no other member changes. When the record already has the given
     class, nothing is written.
@@ -217,6 +222,38 @@ def set_retention_class(data_root, run_id, sha256, retention_class):
         if record["sha256"] == sha256:
             if record["retention_class"] != retention_class:
                 record["retention_class"] = retention_class
+                _write(path, records)
+            return record
+    raise ArtifactNotFoundError(f"{_where(root, path)}: no record with sha256 {sha256}")
+
+
+def set_gc_at(data_root, run_id, sha256, gc_at):
+    """Add ``gc_at`` to the record ``sha256`` and return the record after the call.
+
+    This is the other edit of ADR-0005 decision 7; the GC of ADR-0195 calls it
+    after it has removed the blob. ``gc_at`` must be of the form of ADR-0006
+    decision 3 (ADR-0099). A record that already has ``gc_at`` keeps the one
+    it has and nothing is written (ADR-0195 decision 5); no other member
+    changes.
+
+    Raises :class:`InvalidArtifactsError` for a malformed ``sha256`` or
+    ``gc_at``, :class:`BlobPresentError` when the blob is in the store (a
+    ``gc_at`` never precedes the removal), :class:`ArtifactNotFoundError` when
+    the file has no record with this hash and :class:`CorruptArtifactsError`
+    as :func:`load`; nothing is written.
+    """
+    path = layout.run_file(data_root, run_id, _FILE)
+    _member("sha256", sha256)
+    _member("gc_at", gc_at)
+    root = _root(data_root)
+    if cas.has_blob(root, sha256):
+        rule = "a gc_at never precedes the removal of its blob (ADR-0195)"
+        raise BlobPresentError(f"blob {sha256} is in the store: {rule}")
+    records = _read(root, path)
+    for record in records:
+        if record["sha256"] == sha256:
+            if "gc_at" not in record:
+                record["gc_at"] = gc_at
                 _write(path, records)
             return record
     raise ArtifactNotFoundError(f"{_where(root, path)}: no record with sha256 {sha256}")
