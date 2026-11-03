@@ -647,3 +647,11 @@
 - 내용:
 
   PLAN P3-10. 오너가 런타임 머신에서 다음을 확인한다. ① libc++가 있는 x86_64 Linux 머신(또는 이미지)에서 `tests/qnn_fixtures/timing.c.in`을 clang과 `-ldl`로 빌드한다. 그 프로그램을 `libQnnHtp.so`(HTP 에뮬레이터)와 `hilclaw.harness.timing.driver_arguments`의 여덟 인자로 실행하면 상태 0으로 끝나야 한다. 그 표준 출력은 `hilclaw.harness.timing.judge_report`가 받아들여야 한다(`interval`·`reciprocal` 둘 다). ② 같은 머신에서 `tests/test_qnn_points.py`의 세 테스트가 통과하는지 본다. 이 테스트는 `libQnnHtp.so`를 `sim.run`에, `libQnnCpu.so`를 `board.run`에 묶는 테스트 전용 구성이다. ③ Qualcomm 장치 지점의 측정 경계(결정 4)는 장치가 없어 확인하지 않았다. 어느 실행이 어느 지점인지는 HQ-0095 ①, 장치 접근은 HQ-0095 ③이다. 위 숫자들은 모두 에뮬레이션·호스트 수치이며 장치 수치가 아니다. 개발 머신에서의 확인 범위: Windows x64의 실제 SDK 2.37.0.250724(MinGW gcc 16.2.0 빌드)에서 HTP 에뮬레이터와 CPU 백엔드로 실행했다. WSL2에서는 libc++가 없어(HQ-0098 미답) 빌드·링크까지만 확인했다. 두 지점 테스트의 도구 함수 경로는 Windows에서 돌았으므로, 그 경로를 위한 별도 항목은 없다. T-0545(PR #361, main 827245ed) 착지 뒤 확인 가능.
+
+### RA-0075
+
+- 상태: 미확인
+- 출처: P3-13, T-0546, ADR-0194 (등록 2026-11-03)
+- 내용:
+
+  PLAN P3-13. NVIDIA GPU가 있는 다른 C-7 머신(특히 native Linux)에서 오너가 `tests/test_cuda_adapter.py`의 `test_real_gpu_*`로 다음을 확인한다. ① `tests/cuda_fixtures/timing.cu`의 측정 보고가 두 sample form(`interval`·`reciprocal`) 모두에서 `hilclaw.harness.timing.judge_report`로 받아들여지는지 ② 붙들어 둔 커널의 측정 구간이 하한 이상인지(완료 대기가 구간 안) ③ 장치 메모리의 1024배 `cudaMalloc`이 곧바로 `exit_status`로 끝나는지 ④ illegal address는 `exit_status`, hang은 `time_limit`으로 끝나고 그 뒤 GPU를 곧바로 다시 쓸 수 있는지(TDR·GPU 재설정 없음 포함). 개발 머신에서는 WSL2의 RTX 4070(nvcc 13.1)으로만 확인했다(측정 구간 5,022,585~5,039,147 ns; WSL2에서는 장치 메모리의 4배까지 `cudaMalloc`이 성공하고 64배는 실패까지 58초). Windows에서는 MSVC가 없어 건너뛴다. 런타임 컨테이너에 GPU를 주는 일은 확인하지 않았다. T-0546(PR #362, main 1a7df6a5) 착지 뒤 확인 가능.
