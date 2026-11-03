@@ -367,6 +367,46 @@ def test_the_report_after_a_removal(root):
     assert blob_gc.exit_status(dict(document, index_updated=False)) == EXIT_REPORTED
 
 
+@pytest.mark.parametrize("gone", ["file", "directory"])
+def test_records_that_only_head_holds_keep_their_hashes(root, gone):
+    (digest,) = run(root, "r1", (b"a", "best"))
+    run(root, "r2", (b"a", "intermediate"))
+    if gone == "file":
+        (root / "runs" / "r1" / "artifacts.json").unlink()
+    else:
+        for path in sorted((root / "runs" / "r1").iterdir()):
+            path.unlink()
+        (root / "runs" / "r1").rmdir()
+
+    planned = blob_gc.plan(root, now=NOW)
+
+    assert reading(planned, "r1").state == UNDETERMINED
+    assert planned.removable == () and cas.has_blob(root, digest)
+
+
+def test_records_that_head_does_not_hold_keep_their_hashes(root):
+    (root / ".gitignore").write_text("blobs/sha256/\n*.tmp\nruns/r1/artifacts.json\n")
+    git(root, "commit", "-q", "-am", "ignore", when=LONG_AGO)
+    (digest,) = run(root, "r1", (b"a", "intermediate"))
+
+    planned = blob_gc.plan(root, now=NOW)
+
+    assert git(root, "ls-files", "runs/r1") == "runs/r1/STATE.json\n"
+    assert reading(planned, "r1").message == "runs/r1/artifacts.json: differs from HEAD"
+    assert planned.removable == () and cas.has_blob(root, digest)
+
+
+def test_a_regular_file_in_runs_of_head_is_passed_over(root):
+    run(root, "r1", (b"a", "intermediate"))
+    (root / "runs" / ".gitkeep").write_bytes(b"")
+    git(root, "add", "runs/.gitkeep")
+    git(root, "commit", "-q", "-m", "keep", when=LONG_AGO)
+
+    planned = blob_gc.plan(root, now=NOW)
+
+    assert planned.blocked == () and len(planned.removable) == 1
+
+
 # --- negative ---
 
 
@@ -574,3 +614,33 @@ def test_a_commit_error_on_the_command_line_is_reported(root, monkeypatch):
     document = json.loads(out)
     assert status == EXIT_REPORTED
     assert (document["commit"], document["commit_error"]) == (None, "synthetic")
+
+
+def test_an_invalid_artifacts_file_in_head_blocks_every_removal(root):
+    (digest,) = run(root, "r1", (b"a", "intermediate"))
+    path = root / "runs" / "r1" / "artifacts.json"
+    valid = path.read_bytes()
+    path.write_bytes(b"not json")
+    git(root, "commit", "-q", "-am", "damage", when=LONG_AGO)
+    path.write_bytes(valid)
+
+    planned = blob_gc.plan(root, now=NOW)
+
+    assert planned.blocked[0].startswith("runs/r1/artifacts.json in HEAD: must be")
+    assert planned.removable == () and cas.has_blob(root, digest)
+
+
+def test_a_name_layout_refuses_in_head_blocks_every_removal(root):
+    run(root, "r1", (b"a", "intermediate"))
+    bad = root / "runs" / "Not-A-Run"
+    bad.mkdir()
+    (bad / "file").write_bytes(b"")
+    git(root, "add", "runs/Not-A-Run")
+    git(root, "commit", "-q", "-m", "bad", when=LONG_AGO)
+    (bad / "file").unlink()
+    bad.rmdir()
+
+    planned = blob_gc.plan(root, now=NOW)
+
+    assert planned.blocked[0].startswith("runs/Not-A-Run: run_id: must be")
+    assert planned.removable == ()

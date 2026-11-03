@@ -4,23 +4,27 @@ Command line: ``python -m hilclaw.blob_gc --data-root <path> [--grace-days <n>]
 [--remove]``. A person or a script starts it; no runtime step does (ADR-0195
 decision 2). Without ``--remove`` it only reports what a removal would do.
 
-**Plan** (:func:`plan`, read-only). ``runs/`` is listed (one directory of
-known path; no tree is walked) and each run's ``artifacts.json`` is read by
-:func:`hilclaw.artifacts.load`. A run is *ended* when the ``STATE.json`` that
-the commit ``HEAD`` holds for it is valid at version 1 and has ``run_status``
-``"over"`` (ADR-0121); its end is the committer time of the last commit
-reachable from ``HEAD`` that changed that file (ADR-0195 decision 4). A run
-is *past its grace* when it is ended, its ``artifacts.json`` in the working
-tree is as ``HEAD`` holds it, and at least ``grace_days`` times 86400 seconds
-have passed since its end. A hash is *eligible* when every record of every
+**Plan** (:func:`plan`, read-only). ``runs/`` is listed in the working tree
+and in ``HEAD`` (one directory of known path; no tree is walked), and for
+each run named by either, its ``artifacts.json`` is read both as
+:func:`hilclaw.artifacts.load` reads the working tree's and as ``HEAD``
+holds it; the records of both count. A run is *ended* when the
+``STATE.json`` that the commit ``HEAD`` holds for it is valid at version 1
+and has ``run_status`` ``"over"`` (ADR-0121); its end is the committer time
+of the last commit reachable from ``HEAD`` that changed that file (ADR-0195
+decision 4). A run is *past its grace* when it is ended, its
+``artifacts.json`` in the working tree holds the same records as the one
+``HEAD`` holds, and at least ``grace_days`` times 86400 seconds have passed
+since its end. A hash is *eligible* when every record of every
 run that names it has the class ``intermediate`` or ``failed`` and belongs to
 a run past its grace (ADR-0195 decision 6). An eligible hash whose blob is in
 the store and intact is *removable*; one whose blob is not intact is reported
 and kept; one whose blob is gone is reported when a record that names it has
-no ``gc_at``. A ``runs/`` entry that could hold records and cannot be read —
-a directory whose name :func:`hilclaw.layout.check_run_id` refuses, a
-symbolic link, an ``artifacts.json`` that is invalid or unreadable — makes
-nothing removable at all (ADR-0195 decision 7).
+no ``gc_at``. A ``runs/`` entry of either that could hold records and
+cannot be read — a directory whose name
+:func:`hilclaw.layout.check_run_id` refuses, a symbolic link, an
+``artifacts.json`` that is invalid or unreadable — makes nothing removable at
+all (ADR-0195 decision 7).
 
 **Removal** (:func:`remove`). For each removable hash the blob is checked
 again, the file at its place below ``blobs/sha256/`` is unlinked, the UTC
@@ -57,7 +61,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
 
-from hilclaw import artifacts, cas, layout, run_state
+from hilclaw import artifacts, cas, json_text, layout, run_state
 
 DEFAULT_GRACE_DAYS = 30
 SECONDS_PER_DAY = 86400
@@ -96,6 +100,7 @@ _LOCATING = frozenset(
     }
 )
 _DIGITS = re.compile(r"[0-9]{1,9}")
+_REGULAR_MODES = ("100644", "100755")
 _ABSENT = object()
 
 
@@ -176,29 +181,36 @@ def plan(data_root, *, grace_days=DEFAULT_GRACE_DAYS, now=None):
     _top(root)
     head = _head(root)
     blocked, readings, holders = [], [], {}
-    for run_id, problem in _runs(root):
+    for run_id, problem in _runs(root, head):
         if problem is not None:
             blocked.append(problem)
             continue
         try:
-            records = artifacts.load(root, run_id)
+            working = artifacts.load(root, run_id)
+            committed = _committed(root, head, run_id)
         except (artifacts.CorruptArtifactsError, OSError) as error:
             message = _text(error)
             blocked.append(message)
             readings.append(RunReading(run_id, UNREADABLE, None, message))
             continue
-        reading = _reading(root, head, run_id, int(now.timestamp()), grace_days)
+        seconds = int(now.timestamp())
+        same = working == committed
+        reading = _reading(root, head, run_id, seconds, grace_days, same)
         readings.append(reading)
-        for record in records:
-            holders.setdefault(record["sha256"], []).append((reading, record))
+        for record in working:
+            holders.setdefault(record["sha256"], []).append((reading, record, True))
+        for record in committed:
+            holders.setdefault(record["sha256"], []).append((reading, record, False))
     removable, absent, damaged = [], [], []
     if not blocked:
         for digest in sorted(holders):
             held = holders[digest]
-            if not all(_collectable(reading, record) for reading, record in held):
+            if not all(_collectable(reading, record) for reading, record, _ in held):
                 continue
-            runs = tuple(reading.run_id for reading, _ in held)
-            lacking = tuple(r.run_id for r, record in held if "gc_at" not in record)
+            runs = tuple(dict.fromkeys(r.run_id for r, _, _ in held))
+            lacking = tuple(
+                r.run_id for r, record, mine in held if mine and "gc_at" not in record
+            )
             blob = Blob(digest, runs, lacking)
             if not cas.has_blob(root, digest):
                 if lacking:
@@ -375,7 +387,12 @@ def main(argv=None, *, stdout=None, stderr=None):
             removal = remove(data_root, planned)
             try:
                 committed, error = commit(data_root, removal.edited), None
-            except (CommitNotMadeError, GitNotRunError, NoRepositoryError) as e:
+            except (
+                CommitNotMadeError,
+                GitNotRunError,
+                NoRepositoryError,
+                OSError,
+            ) as e:
                 committed, error = None, _text(e)
             document = report(planned, removal, committed, error)
         else:
@@ -428,27 +445,78 @@ def _check_grace(grace_days):
         raise ValueError(f"grace_days must be at least 1, got {grace_days}")
 
 
-def _runs(root):
+def _runs(root, head):
+    names = {}
     try:
-        entries = sorted(os.scandir(root / "runs"), key=lambda e: e.name)
+        entries = list(os.scandir(root / "runs"))
     except (FileNotFoundError, NotADirectoryError):
-        return
+        entries = []
     for entry in entries:
         try:
             mode = entry.stat(follow_symlinks=False).st_mode
         except OSError as error:
-            yield None, f"runs/{entry.name}: {_text(error)}"
+            names[entry.name] = f"runs/{entry.name}: {_text(error)}"
             continue
         if stat.S_ISLNK(mode):
-            yield None, f"runs/{entry.name}: is a symbolic link"
+            names[entry.name] = f"runs/{entry.name}: is a symbolic link"
         elif stat.S_ISDIR(mode):
-            try:
-                yield layout.check_run_id(entry.name), None
-            except layout.InvalidPathValueError as error:
-                yield None, f"runs/{entry.name}: {error}"
+            names.setdefault(entry.name, None)
+    if head is not None:
+        listed = _git(root, "ls-tree", "-z", head, "--", "runs/")
+        if listed.returncode:
+            names[""] = "runs/ in HEAD: git ls-tree failed"
+        for mode, kind, _, path in _entries(listed.stdout):
+            name = path.removeprefix("runs/")
+            if kind == "tree":
+                names.setdefault(name, None)
+            elif mode not in _REGULAR_MODES:
+                names[name] = (
+                    f"runs/{name} in HEAD: is no directory and no regular file"
+                )
+    for name in sorted(names):
+        if names[name] is not None:
+            yield None, names[name]
+            continue
+        try:
+            yield layout.check_run_id(name), None
+        except layout.InvalidPathValueError as error:
+            yield None, f"runs/{name}: {error}"
 
 
-def _reading(root, head, run_id, now, grace_days):
+def _committed(root, head, run_id):
+    if head is None:
+        return []
+    path = f"runs/{run_id}/artifacts.json"
+    listed = _git(root, "ls-tree", "-z", head, "--", path)
+    if listed.returncode:
+        raise artifacts.CorruptArtifactsError(f"{path} in HEAD: git ls-tree failed")
+    found = list(_entries(listed.stdout))
+    if not found:
+        return []
+    if found[0][0] not in _REGULAR_MODES:
+        raise artifacts.CorruptArtifactsError(f"{path} in HEAD: is not a regular file")
+    content = _git(root, "cat-file", "blob", found[0][2])
+    try:
+        if content.returncode:
+            raise ValueError("git cat-file failed")
+        text = content.stdout.decode("utf-8")
+        document = json.loads(text, object_pairs_hook=json_text.distinct_members)
+        artifacts.validate(document)
+    except (ValueError, RecursionError) as error:
+        message = f"{path} in HEAD: must be UTF-8 JSON of a valid file: {_text(error)}"
+        raise artifacts.CorruptArtifactsError(message) from None
+    return document["artifacts"]
+
+
+def _entries(output):
+    for record in output.split(b"\0"):
+        if record:
+            info, path = record.split(b"\t", 1)
+            mode, kind, oid = info.decode().split(" ")
+            yield mode, kind, oid, os.fsdecode(path)
+
+
+def _reading(root, head, run_id, now, grace_days, same):
     prefix = f"runs/{run_id}"
     state_path = f"{prefix}/STATE.json"
     if head is None:
@@ -483,12 +551,8 @@ def _reading(root, head, run_id, now, grace_days):
     except (ValueError, OverflowError, OSError) as error:
         message = f"{state_path}: the time of its last commit cannot be read: {error}"
         return RunReading(run_id, UNDETERMINED, None, message)
-    files = f"{prefix}/artifacts.json"
-    status = _git(
-        root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", files
-    )
-    if status.returncode or status.stdout:
-        message = f"{files}: differs from HEAD"
+    if not same:
+        message = f"{prefix}/artifacts.json: differs from HEAD"
         return RunReading(run_id, UNDETERMINED, ended_at, message)
     if now - ended < grace_days * SECONDS_PER_DAY:
         return RunReading(run_id, IN_GRACE, ended_at, None)
