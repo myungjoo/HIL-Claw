@@ -69,8 +69,6 @@ class BytesPath:
         return b"QnnHtp.dll"
 
 
-os.PathLike.register(BytesPath)
-
 
 def make_target(**changes):
     values = {
