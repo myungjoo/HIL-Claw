@@ -631,3 +631,11 @@
 - 내용:
 
   PLAN P3-9. C-7의 각 머신 종류(native Linux, macOS Docker Desktop, Windows WSL)에서 `python -m hilclaw.toolchain_check <image>`가 ① host와 지정한 이미지의 `nvcc`를 `Cuda compilation tools, release …` 줄과 함께 `present`로, 없으면 `absent`로 보고하는지, ② host의 `nvidia-smi` 항목이 GPU와 드라이버가 있는 머신에서 `present`(`<GPU 이름> (driver <버전>)`)로, GPU나 드라이버가 없는 머신(예: macOS)에서 `absent`(메시지 "the device query found no GPU or could not reach the driver", 또는 `nvidia-smi` 자체가 없으면 "the device query program was not found or could not be started")로 보고하고 종료 상태 0을 돌려주는지, ③ 이미지 쪽에는 `nvidia-smi` 항목이 없는지 오너가 런타임 머신에서 확인한다. 개발 머신에서는 WSL2와 Windows의 실제 `nvcc`·`nvidia-smi`(GPU 있음)로만 확인했고, GPU 없음·드라이버 없음은 실패 주입 스크립트로만 시험했다(근거가 아니다, ADR-0194 결정 6). T-0543(PR #359, main 7777745d) 착지 뒤 확인 가능. 이 머신에는 GPU가 있으므로 P3-13의 GPU 확인은 런타임 인수 항목으로 적지 않는다.
+
+### RA-0073
+
+- 상태: 미확인
+- 출처: P3-10, T-0544, ADR-0194 (등록 2026-11-03)
+- 내용:
+
+  PLAN P3-10. 오너가 런타임 머신에서 다음을 확인한다. ① C-7의 각 머신 종류(native Linux, macOS Docker Desktop, Windows WSL)에서 `python -m hilclaw.toolchain_check <image>`가 `qnn-net-run`을 맞게 보고하는지 본다. 대상은 QNN SDK의 `bin`이 `PATH`에 있는 host와 그 SDK를 담은 이미지다. SDK가 있으면 `QNN SDK v…` 줄과 함께 `present`, 없으면 `absent`, 있지만 실행되지 않으면(예: x86_64 Linux에서 libc++ 없음) `unreadable`이어야 한다. ② libc++가 있는 Linux 머신(또는 이미지)에서 x86_64 Linux 형태가 도는지 본다. `tests/qnn_fixtures/add.c.in`을 clang으로 빌드한 C 프로그램이 `libQnnHtp.so`(HTP 에뮬레이터)를 불러 `sum 11 22 33 44`를 내고 상태 0으로 끝나야 한다. ③ Qualcomm 장치 지점은 이 머신에 장치가 없어 확인하지 않았다(접근 수단은 HQ-0095 ③). 개발 머신에서는 실행을 Windows x64의 실제 SDK 2.37.0.250724(MinGW gcc 16.2.0 빌드)로만 확인했고, WSL2에서는 libc++가 없어 빌드와 링크까지만 확인했다(HQ-0098). T-0544(PR #360, main 2298c8de) 착지 뒤 확인 가능.

@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P3",
-  "currentTask": "T-0544",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:b5bddf76",
-    "acquiredAt": "2026-11-03T14:22:42Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -956,18 +952,26 @@
       "question": "(A-13 틀의 변경, OD-33 ⑥; ADR-0194 결정 3·10 V6. 측정 단위와 GPU·NPU 메모리 수치는 HQ-0090이 묻는다) [쟁점 (a)] run을 시작할 때 장치가 없거나 쓸 수 없으면(GPU 없음, 장비에 닿지 않음) 프로그램은 시작되므로 기존 tool failure `compiler_unavailable`(S6)·`executable_unstartable`(S10)이 맞지 않고, broken `exit_status`는 머신의 사실을 시도의 탓으로 돌린다. 어떤 답이든 이것은 시도의 코드가 없는 probe 프로세스가 시도의 프로세스 전에 찾으며, 시도의 프로세스의 status·출력은 그렇게 읽지 않는다(커널이 같은 것을 써서 자기 broken 결과를 tool failure로 바꿀 수 있으므로 — ADR-0168 결정 3, ADR-0110 결정 3). 답이 있을 때까지 벤더 백엔드는 기본 백엔드 표에 들지 않는다(GPU·장치를 쓰는 대상은 런타임 컨테이너에 그것을 여는 기록도 있어야 한다 — OD-33 ⑨의 나머지). [선택지 (a)] (i) 새 backend kind `device_unavailable` — probe가 쓸 수 있는 장치를 찾지 못했다는 뜻의 tool failure, `correctness.check`·`sim.run`·`board.run` 공통, 끝 줄의 `failure`에 저장 (ii) 기존 `executable_unstartable`로 읽는다(기존 값의 뜻 변경) (iii) broken `exit_status`(변경 없음, 그러나 시도의 탓). [쟁점 (b)] 주어진 코드를 평가한다면(같은 task의 OD-33 ① HQ) 그 기록. [선택지 (b)] (i) 코드를 CAS blob으로 두고 `artifacts.json`에 새 `type` `given_code`의 레코드(`type`은 ADR-0005 결정 5의 열린 형식), `instance.json`에 그 해시를 담는 멤버 `given_code` — 그 파일의 `schema_version`이 오른다(ADR-0018 결정 2) (ii) OD-33 ①의 답 뒤에 다른 형식으로 다시 묻는다. 실행자의 권고(결정 아님): (a) (i) — 시도에 대해 아무것도 확인되지 않았다, (b) (i). [막히는 것] 벤더 백엔드를 기본 표에 넣는 것(P3-9의 장치 없음 응답 — 쟁점 (a)), P3-11의 기록. [막히지 않는 것] P3-8과 P3-9의 나머지, P3-10, P3-13, P2-15 확인, 그 밖의 task.",
       "askedAt": "2026-11-03T11:25:29Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0098",
+      "taskId": "T-0544",
+      "reason": "new-external-dependency",
+      "question": "(D29; Qualcomm 사이트 밖의 도구라 요청한다) [쟁점] QNN SDK 2.37.0.250724의 x86_64 Linux 도구(`qnn-net-run`)와 HTP 에뮬레이터 라이브러리(`libQnnHtp.so`)는 SDK에 없는 `libc++.so.1`·`libc++abi.so.1`·`libunwind.so.1`이 있어야 실행된다. SDK의 `bin/check-linux-dependency.sh`는 Ubuntu 22.04에서 apt `libc++-dev`·`libc++abi-dev`(Ubuntu jammy universe의 LLVM 14 패키지, Apache-2.0 WITH LLVM-exception; 의존 `libc++1-14`·`libc++abi1-14`·`libunwind-14`)를 설치하라고 한다. T-0544는 실행을 Windows x64 형태(MinGW gcc 16.2.0 빌드)로만 확인했고 WSL2에서는 빌드·링크까지만 확인했다. [선택지] (a) 개발 머신의 WSL2 host에 apt로 설치를 승인 — 다음 P3-10 task가 x86_64 Linux 형태로도 실행을 확인한다(실행자 권고) (b) host가 아니라 도구 이미지에만 넣는 것을 승인 — 이미지에 QNN SDK를 넣는 것은 HQ-0094(라이선스)의 답에 걸린다 (c) 설치하지 않음 — Linux 형태의 실행 확인은 RA-0073으로만 남는다. [막히는 것] x86_64 Linux(WSL2)에서의 QNN 실행 확인. [막히지 않는 것] T-0544(DONE), 다음 P3-10 task의 Windows x64 형태 확인, P3-13, P3-14.",
+      "askedAt": "2026-11-03T15:18:00Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 573,
-    "tasksDone": 539,
+    "iterations": 574,
+    "tasksDone": 540,
     "tasksBlocked": 35,
-    "reviewRoundsTotal": 1748
+    "reviewRoundsTotal": 1750
   },
   "lastIteration": {
-    "at": "2026-11-03T13:49:40Z",
-    "owner": "AKIHA:858a7fa6",
-    "taskId": "T-0543",
+    "at": "2026-11-03T15:18:00Z",
+    "owner": "AKIHA:b5bddf76",
+    "taskId": "T-0544",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

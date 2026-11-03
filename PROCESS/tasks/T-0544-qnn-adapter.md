@@ -2,7 +2,7 @@
 id: T-0544
 title: Add the Qualcomm QNN adapter of PLAN P3-10 (build, HTP-emulator run and SDK version probe) on the ADR-0194 frame, checked with a real QNN SDK on the machine
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-19, OD-33, FR-10, NFR-3, "PLAN P3-10"]
 dependsOn: []
@@ -200,3 +200,83 @@ This task adds the QNN adapter on that frame, the same way, and registers its pr
 ## Follow-ups
 
 ## Result
+
+- **Landing**: PR #360 (squash-merge), review 2 rounds (round 1 Request changes: the CI C gate failed on the `*.c` fixtures — Must-fix, fixed by the `*.c.in` rename; the empty `## Result` — Should-fix, a draft put in the PR body; two nits — the MinGW gcc compiler of the real run and a present-but-unusable Linux SDK failing rather than skipping, both recorded below; round 2 Approve with one nit, this section, written here by the executor for the driver to commit). Squash commit `2298c8de`. After round 1 the fixtures became `tests/qnn_fixtures/*.c.in`: CI's C gate builds every tracked `*.c` with `clang -std=c99 -Wpedantic -Werror` and no SDK headers (`broken.c` fails there on purpose, and the SDK headers use C11 anonymous unions); the real-SDK tests copy them to `*.c` in `tmp_path`.
+- **Order check (D27 ①)**: unchanged when the task ran (main `35f8e5d4`): no open PR, no open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`; P3-7 to P3-9 checked, P3-10 next. No branch or PR for T-0544 existed before (resume rule).
+- **Language**: Python — the adapter wraps the Python adapter parts and executors (`clang_adapter`, `vendor_adapter`, `local_run`) and returns their types. The fixtures under `tests/qnn_fixtures/` are C (ADR-0194 decision 8).
+- **Public names of `hilclaw/qnn_adapter.py`**: `BUILD_PROGRAM` (`"clang"`), `VERSION_PROGRAM` (`"qnn-net-run"`), `assemble_build(target, sources, output, *, program=BUILD_PROGRAM)`, `build(target, sources, output, *, program=BUILD_PROGRAM)`, `assemble_run(target, executable, arguments=(), *, timeout_s)`, `run(target, executable, arguments=(), *, timeout_s)`, `assemble_probe(*, timeout_s, program=VERSION_PROGRAM)`, `interpret_probe(answer, program)`, `interpret_container_probe(answer)`, `probe(*, timeout_s, program=VERSION_PROGRAM)`. Build, run and probe-assemble delegate to the `clang_adapter` functions of the same name. The two interpret parts delegate to `clang_adapter`'s and replace only the status-0 reading. `clang_build` and `local_run` refused nothing the form needs and are unchanged. In `toolchain_check.COMPONENTS`, `"qnn-net-run"` maps to `Component(qnn_adapter.assemble_probe, qnn_adapter.interpret_probe, qnn_adapter.interpret_container_probe, qnn_adapter.VERSION_PROGRAM)` and is read on the host and in images.
+- **Build and run forms (criterion 2)**: the chosen form is the preferred one: a C program against QNN's C interface (`include/QNN`). It loads the HTP backend library by path (`dlopen`, or `LoadLibraryA` on Windows), takes `QnnInterface_getProviders`, and creates, finalizes and executes a one-op graph (`ElementWiseAdd` of two `UFIXED_POINT_8` tensors of 4, scale 1, offset 0). It prints `sum 11 22 33 44` and exits 0; otherwise it names the failed QNN call and exits 1 (usage error 2).
+  - Build: the `clang_build.build` form with `BUILD_PROGRAM`. The include directory and `-ldl` are the target's `flags`/`trailing_flags`.
+  - Run: the built program, with the backend library path as the run's argument and the target's `env` (`LD_LIBRARY_PATH`, or `PATH` on Windows).
+  - Alternative considered: `qnn-net-run --backend <libQnnHtp.so> --model <model library>` with a hand-written model library. Not chosen: the C harness is decision 8's language, keeps the follow-up timing harness in C and needs no model-library step.
+  - Sources (QNN SDK 2.37.0.250724): `docs/QNN/general/backend.html` (the HTP x86_64-linux backend "serves as an functional simulator for the hardware accelerator"; the backend loads `QnnHtpPrepare` for `addNode` and `finalize`); `docs/QNN/general/setup/linux_setup.html` and `windows_setup.html` ("The x86_64 targets are built using clang-14"); the headers `QnnInterface.h`, `QnnGraph.h`, `QnnTensor.h`, `QnnTypes.h` and `QnnOpDef.h`. The Windows x64 host emulator path comes from ExecuTorch's "Qualcomm AI Engine Backend" page (ADR-0194 decision 9).
+  - No HTP architecture, SoC or optimisation value is fixed in `hilclaw/`.
+- **Version reading**: `qnn-net-run --version`. The version is the first line, of stdout and then of stderr, that begins with `QNN SDK v`, stripped.
+  - Real output (Windows x64, `C:\Qualcomm\AIStack\QAIRT\2.37.0.250724\bin\x86_64-windows-msvc\qnn-net-run.exe --version`, status 0): stdout `qnn-net-run pid:108592`, stderr `QNN SDK v2.37.0.250724175447_124859`.
+  - Documented in `docs/QNN/general/tools.html` (`--version  Print the QNN SDK version.`).
+  - Status 0 without that line is `unreadable`. Absent, time limit, non-zero status, 125/126/127 in an image and the re-raised `None` follow `clang_adapter`'s conventions.
+  - No second probe of the backend library. `qnn-net-run --backend <lib> --version` prints the version without loading the backend (checked with a missing `nosuch.dll`: status 0, same line), and no SDK tool loads the library without a model, so it cannot be read without attempt code.
+  - A missing emulator library is the built program's failure (status 1, broken `exit_status`) and is not read specially (ADR-0194 decision 3).
+- **Fault scripts**: Python, run by the test's interpreter from `tmp_path` and passed only as `program` or as the run's executable; none reads a clock, random source or counter.
+  - `HANG`: a compiler that never ends → `build_time_limit`; a run on the HTP emulator that never ends → `time_limit`; a `qnn-net-run --version` that never ends → `unreadable`.
+  - `SILENT_STATUS` (`sys.exit(70)`): a compiler crash with no diagnostic → `build_exit_status`.
+  - `SIGNAL` (POSIX only): a compiler killed by SIGSEGV → `build_exit_status`.
+  - `NO_ARTEFACT`: a compiler that exits 0 with no artefact → `build_output_missing`.
+  - `ALLOCATION_FAILURE` (writes `QnnGraph_create failed: 1002`, exits 1): a QNN program whose `QnnGraph_create` returns `QNN_GRAPH_ERROR_MEM_ALLOC` ("create failed due to memory/resource allocation", `include/QNN/QnnGraph.h` and `QnnCommon.h`) and reports it by its status → broken `exit_status`.
+
+  Missing programs are tested with real missing paths (`compiler_unavailable`, `executable_unstartable`, probe `absent`). No fact of a tool rests on these scripts.
+- **Toolchain reading (D29)**, before writing code:
+  - Windows: no `QNN_SDK_ROOT` or `QAIRT_SDK_ROOT`, no `qnn-net-run`, no `C:\Qualcomm`; MinGW-w64 gcc 16.2.0 (WinLibs); no clang, no MSVC; `vcruntime140.dll`, `vcruntime140_1.dll` and `msvcp140.dll` in System32.
+  - WSL2 Ubuntu 22.04.5: no QNN SDK, no `libQnnHtp.so`; clang 14.0.0-1ubuntu1.1 and g++ 11.4.0; no libc++ (`libc++1-14` and `libc++abi1-14` not installed).
+  - `python -m hilclaw.toolchain_check` before the change: `clang` present (14.0.0), `nvcc` absent on the default `PATH`, `nvidia-smi` present.
+- **Download and install** (D29, Qualcomm's official site, no login or terms prompt):
+  - Command: `curl -sSL -o v2.37.0.250724.zip https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.37.0.250724/v2.37.0.250724.zip`. It redirects to `apigwx-aws.qualcomm.com/qsc/public/v1/api/download/...`; 1,354,151,797 bytes, sha256 `878685c710b0d3b1c3d4694e6d135305720e08bf35d5047424a0431f0d04b0e9`. Downloaded into `/tmp/hilclaw-driver/T-0544/`, unpacked with `unzip`, archive removed.
+  - Version (`sdk.yaml`): product QAIRT, version 2.37.0, build_id 250724175447_124859, qnn_backend_api_version 2.18.0.
+  - **Install path `C:\Qualcomm\AIStack\QAIRT\2.37.0.250724`** (WSL `/mnt/c/Qualcomm/AIStack/QAIRT/2.37.0.250724`); one copy serves both. It was first unpacked under WSL `~/qairt` and then moved there, because Windows Python's `shutil.which` cannot find `qnn-net-run.exe` on the case-sensitive `\\wsl.localhost` share.
+  - Licence file: `C:\Qualcomm\AIStack\QAIRT\2.37.0.250724\LICENSE.pdf` (not read).
+  - Nothing of the SDK is committed or pushed. No image was made.
+- **The x86_64 Linux form cannot run here**: `bin/x86_64-linux-clang/qnn-net-run` and `lib/x86_64-linux-clang/libQnnHtp.so` need `libc++.so.1`, `libc++abi.so.1` and `libunwind.so.1`, which the SDK does not ship. The SDK's `bin/check-linux-dependency.sh` installs apt `clang`, `libc++-dev` and `libc++abi-dev` on Ubuntu 22.04. They were not installed: they are a non-Qualcomm prerequisite (D29; see the HQ below). The checks therefore ran on the documented Windows x64 host form, which needs none of them. In WSL the fixture compiles and links with clang 14 (`-ldl`), but its run exits 1 (`cannot load .../libQnnHtp.so`), and `qnn-net-run --version` ends with the loader's status 127.
+- **Real-SDK execution tests (FR-19 ⑤)** on Windows x64: Python 3.14.4, `C:\Qualcomm\AIStack\QAIRT\2.37.0.250724\bin\x86_64-windows-msvc` prepended to `PATH`, compiler MinGW gcc 16.2.0. There is no clang on Windows; the SDK documents MSVC or clang-14 there, and the C interface is plain C.
+  - `add.c` builds (`go_on`) and runs on the HTP emulator (`QnnHtp.dll`), with status 0 and last line `sum 11 22 33 44` (`go_on`).
+  - `broken.c` fails (`build_exit_status`, no artefact).
+  - `probe` reports `present` with `QNN SDK v2.37.0.250724175447_124859`.
+  - `tests/test_qnn_adapter.py`: 65 passed, 1 skipped (the POSIX signal test).
+  - How the tests find the SDK: `shutil.which("qnn-net-run")`; the SDK root is its `../..`; the compiler is `clang` on `PATH`, else `gcc` on Windows. Without `qnn-net-run` on `PATH` the three tests skip ("qnn-net-run is not on PATH (FR-19 (5): a vendor tool's execution test)"). With the Linux SDK `bin` on `PATH` and no libc++ they fail rather than skip, because the SDK is present but unusable.
+  - The default `clang` build form was checked only to compile and link, in WSL.
+- **Local runs** (WSL2, Python 3.12.13, `~/.venvs/hilclaw-driver`, default `PATH`):
+  - Full suite: 40632 passed, 95 skipped in 9 min 52 s. The 3 QNN and 3 `nvcc` execution tests skip; the other 89 skips existed before.
+  - `coverage run --branch`: `hilclaw/qnn_adapter.py` 100 %; `hilclaw/toolchain_check.py` 98 % (line 291, `raise SystemExit(main())`, is run by a subprocess test).
+  - `ruff check`, `ruff format --check` and the C gate command pass.
+  - CI on the PR: C gate, Python gates 3.11 and 3.14, Coverage gate, Test presence and sh gate all pass.
+- **`python -m hilclaw.toolchain_check` after the change**:
+  - Windows, SDK `bin` on `PATH` (status 0): `{"host": {"clang": {"state": "absent", ...}, "nvcc": {"state": "present", "version": "Cuda compilation tools, release 12.3, V12.3.107", ...}, "nvidia-smi": {"state": "present", "version": "NVIDIA GeForce RTX 4070 (driver 617.14)", ...}, "qnn-net-run": {"state": "present", "version": "QNN SDK v2.37.0.250724175447_124859", "message": null}}, "images": {}}`
+  - WSL2, default `PATH` (status 0): `qnn-net-run` `absent` ("the program was not found or could not be started"); the other entries as before.
+  - WSL2, Linux SDK `bin` and CUDA on `PATH`, image `hilclaw-standin:2026-10-29` (status 10): host `qnn-net-run` `unreadable` ("the version query ended with a non-zero status or by a signal"); image `qnn-net-run` `absent`.
+- **D21 list-assertion edits** (`tests/test_toolchain_check.py`):
+  - `test_the_table_holds_the_clang_adapter_probe_pair`: `list(COMPONENTS)` gains `"qnn-net-run"`.
+  - `test_the_device_query_is_not_read_in_an_image`: `started` gains `("qnn-net-run", ("--version",))`; `list(report["host"])` and `list(report["images"][IMAGE]["components"])` gain `"qnn-net-run"`.
+- **Runtime acceptance item (D22)**: 드라이버가 `PROCESS/RuntimeAcceptance.md`에 더할 항목이다(출처 `P3-10`, 근거 task T-0544, ADR-0194).
+
+  PLAN P3-10. 오너가 런타임 머신에서 다음을 확인한다.
+  ① C-7의 각 머신 종류(native Linux, macOS Docker Desktop, Windows WSL)에서 `python -m hilclaw.toolchain_check <image>`가 `qnn-net-run`을 맞게 보고하는지 본다. 대상은 QNN SDK의 `bin`이 `PATH`에 있는 host와 그 SDK를 담은 이미지다. SDK가 있으면 `QNN SDK v…` 줄과 함께 `present`, 없으면 `absent`, 있지만 실행되지 않으면(예: x86_64 Linux에서 libc++ 없음) `unreadable`이어야 한다.
+  ② libc++가 있는 Linux 머신(또는 이미지)에서 x86_64 Linux 형태가 도는지 본다. `tests/qnn_fixtures/add.c.in`을 clang으로 빌드한 C 프로그램이 `libQnnHtp.so`(HTP 에뮬레이터)를 불러 `sum 11 22 33 44`를 내고 상태 0으로 끝나야 한다.
+  ③ Qualcomm 장치 지점은 이 머신에 장치가 없어 확인하지 않았다(접근 수단은 HQ-0095 ③).
+
+  개발 머신에서의 확인 범위: 실행은 Windows x64의 실제 SDK 2.37.0.250724(MinGW gcc 16.2.0 빌드)로만 확인했다. WSL2에서는 libc++가 없어 빌드와 링크까지만 확인했다. T-0544 착지 뒤 확인할 수 있다.
+- **New HQ** (§8 구조, 드라이버가 기록):
+
+  질문: x86_64 Linux에서 QNN을 실행하는 데 필요한 libc++ 패키지를 개발 머신의 WSL2 host에 설치해도 될까요?
+  - 배경: QNN SDK 2.37.0.250724의 x86_64 Linux 도구(`qnn-net-run`)와 HTP 에뮬레이터 라이브러리(`libQnnHtp.so`)는 `libc++.so.1`, `libc++abi.so.1`, `libunwind.so.1`이 있어야 실행된다. 이 셋은 SDK에 들어 있지 않다.
+  - SDK의 요구: SDK의 `bin/check-linux-dependency.sh`는 Ubuntu 22.04에서 apt `libc++-dev`와 `libc++abi-dev`를 설치하라고 한다. Ubuntu jammy universe의 LLVM 14 패키지이고, 라이선스는 Apache-2.0 WITH LLVM-exception이다.
+  - 설치 대상: 이 두 패키지와 그 의존 패키지 `libc++1-14`, `libc++abi1-14`, `libunwind-14`.
+  - 요청하는 이유: Qualcomm 사이트 밖의 도구라서 D29에 따라 요청한다.
+
+  선택지:
+  - (a) WSL2 host에 apt로 설치하는 것을 승인한다. 그러면 다음 P3-10 task가 x86_64 Linux 형태(런타임 이미지와 같은 Linux)로도 실행을 확인한다. (권고)
+  - (b) host가 아니라 도구 이미지에 넣는 것만 승인한다. 다만 이미지에 QNN SDK를 넣는 것은 HQ-0094(라이선스)의 답에 걸린다.
+  - (c) 설치하지 않는다. 그러면 Linux 형태의 실행 확인은 RuntimeAcceptance 항목으로만 남는다.
+
+  걸리는 것: x86_64 Linux(WSL2)에서의 QNN 실행 확인.
+  걸리지 않는 것: T-0544(Windows x64에서 확인하고 착지), 다음 P3-10 task의 Windows x64 형태 확인, P3-13, P3-14.
+- **Size**: about 160 lines in `hilclaw/qnn_adapter.py` (over half docstrings) and 10 lines in `hilclaw/toolchain_check.py`; 2 source files, 2 test files and 2 fixture files.
+- **Cleanup**: the task directories `/tmp/hilclaw-driver/T-0544/` (WSL2: the downloaded archive, already removed after the install, extracted documentation text, pytest temporaries and logs) and `%TEMP%\hilclaw-driver\T-0544\` (Windows: fixture builds, PR body and commit texts) are removed with `rm -r` after the merge. The installed SDK at `C:\Qualcomm\AIStack\QAIRT\2.37.0.250724` stays (a tool install, D29). No image was created.
