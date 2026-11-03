@@ -2,7 +2,7 @@
 id: T-0537
 title: Build the generated bf16 verification and timing programs of gemm, rmsnorm, elementwise_add and swiglu in the cpu_standin and virtual_npu operations and the host build functions (ADR-0193 decision 6)
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, FR-9, "PLAN P3-5"]
 dependsOn: [T-0536]
