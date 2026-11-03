@@ -139,3 +139,5 @@ DRIVER §6·§3-2의 우선순위 규칙으로 task로 만들지 않았거나 �
 - T-0522 follow-up — `hilclaw/standin_answer.py` 모듈 docstring의 "ahead of the operations of ADR-0144 slice (4)"와 `hilclaw/standin_copies.py` `place_harness_copy`의 호출자 `model_forward_container`가 docstring에 없는 점, docstring 문구 정리이며 P2-15의 확인에는 필요하지 않다.
 - HQ-0083 답(오너 2026-11-02) — fp16(P2-12의 나머지, OD-31 ②): P2-12는 bf16 범위로 체크되었고 fp16은 P2-15 뒤에 오너에게 다시 묻는다, P2-15의 확인에는 필요하지 않다.
 - HQ-0082 답(오너 2026-11-02) follow-up — DRIVER §1-5와 NIGHTLY §9의 "테스트 run과 함께 서는 방법은 정해지지 않았다", `hilclaw/merge_guard.py` docstring의 "not decided here"(nightly와의 공존은 HQ-0076 ⑥, 테스트 run은 HQ-0082 (a)로 정해짐), T-0007 Follow-ups의 등록 자리 `.claude/settings.json`(NIGHTLY §9로 대체됨), CLAUDE.md의 "CI 미구축" 주의사항, 문서·docstring 문구 정리이며 P2-15의 확인에는 필요하지 않다.
+- T-0535 follow-up — graph program의 ADR-0182 컨테이너 경로와 실제 가중치 확인(RA-0070)을 coder 커널로 돌리는 진입점(`hilclaw/model_graph_container.py`와 명령 진입점), 오너의 P2-15 확인과 지금의 P3 항목(P3-5)에 필요하지 않다.
+- T-0535 follow-up — `model_graph_execute`의 private `model_graph._parts` import와 `model_graph`의 `model_binding._binding`·`_bind`, `model_forward_run._report` import를 public으로 정리, 동작 변경 없는 리팩토링이며 P2-15 확인과 P3-5에 필요하지 않다.
