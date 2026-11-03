@@ -15,8 +15,9 @@ the program is generated at each build (ADR-0193 decision 6): the text of
 :func:`hilclaw.harness.bf16_program_generator.timing_source` is written under
 the file name of its entry of :data:`PROGRAM_SOURCES` into a new temporary
 directory, beside copies of both headers, which is removed before the
-function returns or raises; only that file name of the entry is used. For
-``rope`` and ``sdpa_kv_cache`` the program is the C source the entry names.
+function returns or raises; no file of the package exists at the path of that
+entry. For ``rope`` and ``sdpa_kv_cache`` the program is the C source the
+entry names.
 """
 
 import os
@@ -43,6 +44,12 @@ PROGRAM_SOURCES = types.MappingProxyType(
         )
     }
 )
+"""Read-only mapping from each kind to the path of its timing program, next to this module.
+
+For a kind of :data:`hilclaw.harness.bf16_program_generator.GENERATED_KINDS`
+only the file name of the path is used by a build: the generated program is
+written under it (ADR-0193 decision 6), and no file exists at the path.
+"""
 
 
 def build_bf16_timing_executable(

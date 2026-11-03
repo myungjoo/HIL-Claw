@@ -138,7 +138,7 @@ WAITER_SOURCE = timing_build.DRIVER_SOURCE.with_name("timing_waiter.c")
 
 #: What a bf16 timing program includes, copied beside it (ADR-0181 decision 3).
 BF16_HEADERS = (
-    bf16_timing_build.PROGRAM_SOURCES["gemm"].with_name("bf16_timing.h"),
+    bf16_timing_build.PROGRAM_SOURCES["rope"].with_name("bf16_timing.h"),
     standin_check.BF16_HEADER,
 )
 
