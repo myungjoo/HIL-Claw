@@ -632,3 +632,35 @@ def test_real_qnn_sdk_on_the_host_is_read_by_the_qnn_adapter():
     found = qnn_adapter.probe(timeout_s=HOST_TIME_LIMIT_S)
     entry = report["host"]["qnn-net-run"]
     assert (entry["state"], entry["version"]) == (found.state, found.version)
+
+
+def test_image_entry_reads_one_image_and_not_the_host(monkeypatch):
+    monkeypatch.setattr(os, "getuid", lambda: 1000, raising=False)
+    monkeypatch.setattr(os, "getgid", lambda: 1000, raising=False)
+    started = []
+
+    def answering(command, **options):
+        started.append(list(command))
+        return local_run.RunResult(
+            0, False, b"clang version 9\n", b"", tuple(command), 0.0
+        )
+
+    monkeypatch.setattr(local_run, "run", answering)
+    entry = toolchain_check.image_entry(IMAGE, components={"c": component("clang")})
+    assert entry == {
+        "state": "read",
+        "message": None,
+        "components": {
+            "c": {"state": "present", "version": "clang version 9", "message": None}
+        },
+    }
+    assert [command[1] for command in started] == ["run"]
+
+
+@pytest.mark.parametrize(("image", "error"), [("-x", ValueError), (None, TypeError)])
+def test_image_entry_refuses_a_reference_before_anything_starts(
+    image, error, monkeypatch
+):
+    monkeypatch.setattr(local_run, "run", lambda *a, **k: pytest.fail("started"))
+    with pytest.raises(error):
+        toolchain_check.image_entry(image)

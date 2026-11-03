@@ -206,6 +206,18 @@ def _image_entry(image, components, client):
     return {"state": READ, "message": None, "components": found}
 
 
+def image_entry(image, *, components=None, client=CLIENT):
+    """Read the components of one image and return its entry of the report's ``images``.
+
+    ``image`` is checked by :func:`hilclaw.standin_container.check_image`
+    first (its :class:`TypeError` or :class:`ValueError` is passed on);
+    ``components`` and ``client`` are as in :func:`check`, and an exception
+    outside the queries is passed on as there. The host is not read.
+    """
+    standin_container.check_image(image)
+    return _image_entry(image, COMPONENTS if components is None else components, client)
+
+
 def check(images=(), *, components=None, client=CLIENT):
     """Read the host and each of ``images`` and return the report as a ``dict``.
 
