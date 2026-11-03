@@ -2,7 +2,7 @@
 id: T-0538
 title: Remove the eight handwritten bf16 harness programs of gemm, rmsnorm, elementwise_add and swiglu, keeping their report digests as test data (ADR-0193 decision 6, "Order")
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, FR-9, "PLAN P3-5"]
 dependsOn: [T-0536, T-0537]
@@ -91,7 +91,7 @@ Most of this task's counted size is the deleted C lines, about 600. The remainin
 
 ## Result
 
-- Outcome: PR (see below); scope cut by criterion 8 — the four **verification** programs are removed, the four timing programs stay for the split in `## Follow-ups`. PLAN P3-5 is not to be checked until that split lands.
+- Outcome: PR #355, squash-merged as 741e1e39, 1 review round; scope cut by criterion 8 — the four **verification** programs are removed, the four timing programs stay for the split in `## Follow-ups`. PLAN P3-5 is not to be checked until that split lands.
 - Precondition checks (2026-11-03): T-0536 and T-0537 `DONE`; T-0537 left no build path compiling a handwritten file of the four kinds. No open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`, no P2-15 preparation pending. HQ-0088 to HQ-0091 not crossed.
 - Language: Python (test data JSON), as the harness and its tests.
 - **Data file**: `tests/harness/bf16_program_digests.json` (464 lines, ASCII JSON). For each of the four kinds: `verification` — per kernel body (`mixing`, `silent`) and each of the 48 argument tuples of `test_verification_reports_are_equal_byte_for_byte` (192 in all), the exit status, the SHA-256 of the report on standard output and the standard error; `timing` — per (dimensions, seed) of the timing test (24 in all), the operand digest line; `command_lines` — per form and refused command line of T-0536 criterion 7 (186 in all), the exit status and standard error. **How produced**: on the branch at commit `3a14b9bd` (the commit that adds it, with all eight handwritten programs still in the tree), by a helper outside the repository (`/tmp/hilclaw-driver/T-0538/record.py`, deleted) that imports `tests/harness/test_bf16_program_generator.py` for its kernel text, dimensions, seeds, flags (`-std=c99 -Wall -Wextra -Wpedantic -Werror -O2`, trailing `-lm`) and command-line cases, builds each handwritten program with `hilclaw.clang_build.build` and runs it with `hilclaw.local_run.run` / `run_bf16_timing` exactly as the former test did: `python record.py <repo> <out>` with Python 3.12, **Ubuntu clang 14.0.0-1ubuntu1.1**, on WSL2 Ubuntu (Linux 6.18 x86_64) on the development machine AKIHA. No helper or test of a helper was added (test rule ⑤). The generated programs matched every recorded value before the removal.
