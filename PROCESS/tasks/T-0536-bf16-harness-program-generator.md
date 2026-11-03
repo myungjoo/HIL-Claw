@@ -2,7 +2,7 @@
 id: T-0536
 title: Add the bf16 harness program generator of ADR-0193 decision 6 for gemm, rmsnorm, elementwise_add and swiglu, the contract constants it reads, the dimension lists read from task_contract, and the equivalence tests against the handwritten programs
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, FR-9, "PLAN P3-5"]
 dependsOn: []
@@ -109,3 +109,11 @@ ADR-0193 decision 6, in short:
 ## Follow-ups
 
 ## Result
+
+- Landed PR #353 (squash c44f90bf), 1 review round (Approve), CI green.
+- Language: Python, as the harness's other Python modules.
+- New constants: `DRAW_BITS` in the `gemm`, `rmsnorm`, `elementwise_add`, `swiglu` bf16 contracts; `EPS_BITS` in `rmsnorm`.
+- Per-kind input kept in the generator: `_INPUTS_FIT_TOGETHER`.
+- Public names for T-0537: `GENERATED_KINDS`, `verification_source`, `timing_source`, `verification_name`, `timing_name`.
+- Edited pinning assertions (D21): the four contracts' `test_public_names_of_the_module`; `test_standin_settings.py::test_the_module_exposes_only_the_settings_and_the_time_limits`.
+- Details in the PR body. No follow-ups, no runtime-acceptance items.
