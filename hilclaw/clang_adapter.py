@@ -18,7 +18,10 @@ It checks the frame of :mod:`hilclaw.vendor_adapter` with the tool CI has
   :func:`interpret_probe` reads what :func:`hilclaw.local_run.run` gave as a
   :class:`hilclaw.vendor_adapter.Probe`; :func:`probe` joins the two. The
   version is the first line of standard output, stripped, as
-  :func:`hilclaw.clang_build.compiler_version` reads it.
+  :func:`hilclaw.clang_build.compiler_version` reads it. In an image the same
+  query runs through :func:`hilclaw.standin_container.run_in_container` and
+  :func:`interpret_container_probe` reads it (the environment check of
+  :mod:`hilclaw.toolchain_check`, ADR-0194 decision 7).
 
 The program started by a build or a probe is the argument ``program``,
 whose default is :data:`PROGRAM`, as :func:`hilclaw.clang_build.build`
@@ -38,7 +41,7 @@ unchanged. No ``Target`` entry, backend or tool is attached here.
 
 import os
 
-from hilclaw import clang_build, local_run, targets, vendor_adapter
+from hilclaw import clang_build, local_run, standin_container, targets, vendor_adapter
 
 PROGRAM = "clang"
 
@@ -49,6 +52,8 @@ _FAILED = {
     vendor_adapter.TIME_LIMIT: "the version query did not end within its time limit",
     vendor_adapter.EXIT_STATUS: "the version query ended with a non-zero status or by a signal",
 }
+_CLIENT_FAILED = 125
+_NOT_IN_IMAGE = (126, 127)
 
 
 def _refuse(error, parameter):
@@ -215,10 +220,61 @@ def interpret_probe(answer, program):
         return vendor_adapter.Probe(
             vendor_adapter.UNREADABLE, None, _FAILED[outcome.condition]
         )
-    lines = outcome.carried.decode("utf-8", errors="replace").splitlines()
+    return _version(outcome.carried)
+
+
+def _version(stdout):
+    lines = stdout.decode("utf-8", errors="replace").splitlines()
     if not lines or not lines[0].strip():
         return vendor_adapter.Probe(vendor_adapter.UNREADABLE, None, _NO_LINE)
     return vendor_adapter.Probe(vendor_adapter.PRESENT, lines[0].strip(), _PRESENT)
+
+
+def interpret_container_probe(answer):
+    """Return the :class:`hilclaw.vendor_adapter.Probe` of the version query run in a container.
+
+    ``answer`` is the :class:`hilclaw.standin_container.ContainerResult` or
+    the exception of :func:`hilclaw.standin_container.run_in_container` for
+    the command of :func:`assemble_probe`. Past the limit,
+    :data:`~hilclaw.vendor_adapter.UNREADABLE`; status 0, as
+    :func:`interpret_probe` reads the first line; 126 or 127, the client's
+    statuses for a program it could not start or find in the image,
+    :data:`~hilclaw.vendor_adapter.ABSENT` (the query holds no code of an
+    attempt, so these are no status of the program's, ADR-0194 decision 3);
+    any other status, :data:`~hilclaw.vendor_adapter.UNREADABLE`. Status 125,
+    the client's own failure, and any exception give ``None``: no container
+    was used, which is a fact of the image and not of the program. A status
+    that is not exactly an ``int`` raises :class:`ValueError`; any other
+    value raises :class:`TypeError` with ``parameter`` ``"answer"``.
+    """
+    if isinstance(answer, BaseException):
+        return None
+    if type(answer) is not standin_container.ContainerResult:
+        _refuse(
+            TypeError(
+                "answer must be ContainerResult or an exception, "
+                f"not {type(answer).__name__}"
+            ),
+            "answer",
+        )
+    if answer.timed_out:
+        return vendor_adapter.Probe(
+            vendor_adapter.UNREADABLE, None, _FAILED[vendor_adapter.TIME_LIMIT]
+        )
+    status = answer.returncode
+    if type(status) is not int:
+        raise ValueError(
+            "no row holds a container that did not time out and has no status"
+        )
+    if status == _CLIENT_FAILED:
+        return None
+    if status in _NOT_IN_IMAGE:
+        return vendor_adapter.Probe(vendor_adapter.ABSENT, None, _ABSENT)
+    if status != 0:
+        return vendor_adapter.Probe(
+            vendor_adapter.UNREADABLE, None, _FAILED[vendor_adapter.EXIT_STATUS]
+        )
+    return _version(answer.stdout)
 
 
 def build(target, sources, output, *, program=PROGRAM):

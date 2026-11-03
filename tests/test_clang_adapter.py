@@ -8,13 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import clang_adapter, local_run, targets, vendor_adapter
+from hilclaw import clang_adapter, local_run, standin_container, targets, vendor_adapter
 from hilclaw.clang_adapter import (
     PROGRAM,
     assemble_build,
     assemble_probe,
     assemble_run,
     build,
+    interpret_container_probe,
     interpret_probe,
     probe,
     run,
@@ -539,3 +540,65 @@ def test_execute_parts_hand_the_assembled_values(tmp_path, monkeypatch):
             "env": target.env,
         },
     )
+
+
+def contained(returncode=0, stdout=b"", timed_out=False):
+    return standin_container.ContainerResult(
+        returncode=returncode,
+        timed_out=timed_out,
+        stdout=stdout,
+        stderr=b"",
+        command=("docker", "run"),
+        duration_s=0.1,
+        name="hilclaw-standin-" + "0" * 32,
+        removal=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("answer", "state", "version"),
+    [
+        (
+            contained(stdout=b" clang version 9.9.9 \nTarget: y\n"),
+            PRESENT,
+            "clang version 9.9.9",
+        ),
+        (contained(stdout=b""), UNREADABLE, None),
+        (contained(stdout=b"\nclang version 1\n"), UNREADABLE, None),
+        (contained(returncode=1, stdout=b"clang version 1\n"), UNREADABLE, None),
+        (contained(returncode=-9), UNREADABLE, None),
+        (contained(returncode=124), UNREADABLE, None),
+        (contained(returncode=126), ABSENT, None),
+        (contained(returncode=127), ABSENT, None),
+        (contained(returncode=None, timed_out=True), UNREADABLE, None),
+    ],
+)
+def test_interpret_container_probe_on_recorded_answers(answer, state, version):
+    found = interpret_container_probe(answer)
+    assert type(found) is Probe
+    assert (found.state, found.version) == (state, version)
+    assert type(found.message) is str and found.message
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        contained(returncode=125),
+        local_run.ProgramNotFoundError("docker"),
+        standin_container.NoNumericUserError("no uid"),
+        OSError(5, "I/O"),
+        KeyboardInterrupt(),
+    ],
+)
+def test_interpret_container_probe_leaves_an_unused_container_to_the_caller(answer):
+    assert interpret_container_probe(answer) is None
+
+
+def test_interpret_container_probe_refuses_other_values():
+    with pytest.raises(TypeError) as caught:
+        interpret_container_probe(recorded())
+    assert caught.value.parameter == "answer"
+    with pytest.raises(ValueError):
+        interpret_container_probe(contained(returncode=None))
+    with pytest.raises(ValueError):
+        interpret_container_probe(contained(returncode=True))
