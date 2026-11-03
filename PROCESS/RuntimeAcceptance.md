@@ -615,3 +615,11 @@
 - 내용:
 
   PLAN P3-4. 실제 Llama 3.2 1B 가중치를 `hilclaw.model_files.read`(ADR-0191)로 읽어, 같은 binding과 같은 설정(prompt, G, `lm_head_rows`, 모드, eps, RoPE 상수)으로 Llama 그래프 파일을 돌린 `model_graph.c`의 보고가 `model_forward.c`의 보고와 바이트 단위로 같은지 오너가 런타임 머신에서 확인한다. 개발 머신에서는 합성 가중치와 fixture 커널로만 확인했다(D16). 오너가 쓴 커널이면 지금 land된 `model_forward_execute.execute`와 `model_graph_execute.execute`로 짧은 Python 스크립트를 써서 확인할 수 있다(host 경로). coder 커널(P2-15 run의 binding)로 확인하려면 graph program의 ADR-0182 컨테이너 경로와 진입점이 land된 뒤에 가능하다(T-0535 Follow-ups). RA-0056, RA-0065~RA-0067과 함께 본다.
+
+### RA-0071
+
+- 상태: 미확인
+- 출처: P3-8, T-0542, ADR-0194 (등록 2026-11-03)
+- 내용:
+
+  PLAN P3-8. C-7의 각 머신 종류(native Linux, macOS Docker Desktop, Windows WSL)에서 `python -m hilclaw.toolchain_check <image>`가 ① host의 `clang`과 지정한 이미지 안의 `clang`을 올바른 버전 줄과 함께 `present`로 보고하는지, ② 어떤 구성요소(host 또는 이미지의 `clang`)가 없을 때 그것을 `absent`로 보고하고 종료 상태 0을 돌려주는지, ③ 이미지를 읽을 때 네트워크 접근이나 pull을 시작하지 않는지(로컬에 없는 이미지는 이미지 `unreadable`, 종료 상태 10) 오너가 런타임 머신에서 확인한다. 개발 머신에서는 WSL2의 실제 Docker와 스텁 컨테이너 클라이언트로만 확인했다(D16). T-0542(PR #358, main 99d4d47e) 착지 뒤 확인 가능.
