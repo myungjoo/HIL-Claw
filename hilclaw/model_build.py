@@ -12,7 +12,9 @@ input file and report). The flags a dtype needs are
 forward program of ADR-0166, :data:`FORWARD_PROGRAM_SOURCE`, is built with
 :func:`build_forward_program`; it is bf16 only, so no dtype flag applies to it
 (its header comment states its command line, input file, library table and
-report). Each function makes one call of :func:`hilclaw.clang_build.build`,
+report). The graph program of ADR-0193 decision 5,
+:data:`GRAPH_PROGRAM_SOURCE`, is built with :func:`build_graph_program`, as
+the forward program is. Each function makes one call of :func:`hilclaw.clang_build.build`,
 whose command is::
 
     <compiler...> <flags...> <sources...> <trailing_flags...> -o <temporary output>
@@ -24,7 +26,8 @@ What this module does not do: it checks no binding of a kernel to a call; it
 places no directory and chooses no output path, compiler or time limit; it runs
 nothing that it built and writes no input file of the program; it chooses no
 flag beyond :data:`LIBRARY_FLAGS`, adds no flag to the program build by
-itself (not even :data:`PROGRAM_DTYPE_FLAGS`) or to the forward program build,
+itself (not even :data:`PROGRAM_DTYPE_FLAGS`) or to the forward or graph
+program build,
 and in particular adds no ``-ldl`` to either (that is the caller's
 ``trailing_flags``); it does not retry,
 repair or store a failed build; and it reads no configuration and no
@@ -42,6 +45,9 @@ PROGRAM_SOURCE = Path(__file__).with_name("model_program.c")
 
 FORWARD_PROGRAM_SOURCE = Path(__file__).with_name("model_forward.c")
 """Path of the C source of the forward program of ADR-0166, next to this module."""
+
+GRAPH_PROGRAM_SOURCE = Path(__file__).with_name("model_graph.c")
+"""Path of the C source of the graph program of ADR-0193 decision 5, next to this module."""
 
 LIBRARY_FLAGS = ("-shared", "-fPIC")
 """Flags that make a kernel build a shared library, after the caller's flags."""
@@ -166,6 +172,35 @@ def build_forward_program(
     """
     return clang_build.build(
         (FORWARD_PROGRAM_SOURCE,),
+        output,
+        timeout_s=timeout_s,
+        flags=flags,
+        trailing_flags=trailing_flags,
+        compiler=compiler,
+        cwd=cwd,
+        env=env,
+    )
+
+
+def build_graph_program(
+    output,
+    *,
+    timeout_s,
+    flags=(),
+    trailing_flags=(),
+    compiler=None,
+    cwd=None,
+    env=None,
+):
+    """Build :data:`GRAPH_PROGRAM_SOURCE` alone into the executable ``output``.
+
+    As :func:`build_forward_program`: every argument is that of
+    :func:`hilclaw.clang_build.build`, handed over unchanged, no flag is
+    added, the call is made once and its result returned as it is, and what
+    :func:`hilclaw.clang_build.build` raises is passed on unchanged.
+    """
+    return clang_build.build(
+        (GRAPH_PROGRAM_SOURCE,),
         output,
         timeout_s=timeout_s,
         flags=flags,

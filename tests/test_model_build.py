@@ -7,10 +7,12 @@ import pytest
 from hilclaw import clang_build, model_build, model_run
 from hilclaw.model_build import (
     FORWARD_PROGRAM_SOURCE,
+    GRAPH_PROGRAM_SOURCE,
     LIBRARY_FLAGS,
     PROGRAM_DTYPE_FLAGS,
     PROGRAM_SOURCE,
     build_forward_program,
+    build_graph_program,
     build_kernel_library,
     build_model_program,
 )
@@ -102,11 +104,13 @@ def test_public_names():
     assert public - imported == {
         "PROGRAM_SOURCE",
         "FORWARD_PROGRAM_SOURCE",
+        "GRAPH_PROGRAM_SOURCE",
         "LIBRARY_FLAGS",
         "PROGRAM_DTYPE_FLAGS",
         "build_kernel_library",
         "build_model_program",
         "build_forward_program",
+        "build_graph_program",
     }
 
 
@@ -419,4 +423,63 @@ def test_clang_builds_the_forward_program_with_the_callers_flags(clang, tmp_path
     assert result.command[1:7] == flags
     assert result.command[7].endswith("model_forward.c")
     assert result.command[8] == "-ldl"
+    assert os.access(output, os.X_OK)
+
+
+def test_graph_program_source_is_next_to_the_module():
+    assert GRAPH_PROGRAM_SOURCE == Path(model_build.__file__).with_name("model_graph.c")
+    assert GRAPH_PROGRAM_SOURCE.is_file()
+
+
+def test_graph_program_hands_every_argument_over(recorder):
+    env = {"C": "3"}
+    flags = ["-O2"]
+    trailing = ("-ldl",)
+    result = build_graph_program(
+        "graph",
+        timeout_s=11,
+        flags=flags,
+        trailing_flags=trailing,
+        compiler=("ccache", "clang"),
+        cwd="work",
+        env=env,
+    )
+    assert result == "built"
+    args, kwargs = recorder.calls[0]
+    assert len(recorder.calls) == 1
+    assert args == ((GRAPH_PROGRAM_SOURCE,), "graph")
+    assert kwargs == {
+        "timeout_s": 11,
+        "flags": flags,
+        "trailing_flags": trailing,
+        "compiler": ("ccache", "clang"),
+        "cwd": "work",
+        "env": env,
+    }
+    assert kwargs["flags"] is flags
+    assert kwargs["env"] is env
+
+
+def test_graph_program_defaults_add_no_flag(recorder):
+    recorder.result = object()
+    assert build_graph_program("graph", timeout_s=1) is recorder.result
+    assert recorder.calls[0][1]["flags"] == ()
+    assert recorder.calls[0][1]["trailing_flags"] == ()
+    assert recorder.calls[0][1]["compiler"] is None
+
+
+def test_graph_program_passes_on_what_the_build_raises(tmp_path):
+    with pytest.raises(ValueError) as caught:
+        build_graph_program(tmp_path / "graph", timeout_s=0)
+    assert caught.value.parameter == "timeout_s"
+
+
+def test_clang_builds_the_graph_program_with_the_callers_flags(clang, tmp_path):
+    output = tmp_path / "model_graph"
+    flags = ("-std=c99", "-O2", "-Wall", "-Wextra", "-Wpedantic", "-Werror")
+    result = build_graph_program(
+        output, timeout_s=TIMEOUT, flags=flags, trailing_flags=("-ldl",)
+    )
+    assert result.ok, result.log
+    assert result.command[7].endswith("model_graph.c")
     assert os.access(output, os.X_OK)
