@@ -1,4 +1,4 @@
-"""The CUDA adapter of PLAN P3-9 on the frame of ADR-0194: ``nvcc`` build, run and probe, and the ``nvidia-smi`` device query.
+"""The CUDA adapter of PLANs P3-9 and P3-13 on the frame of ADR-0194: ``nvcc`` build, run, timing run and probe, and the ``nvidia-smi`` device query.
 
 Each job has the three parts of :mod:`hilclaw.vendor_adapter`:
 
@@ -15,6 +15,17 @@ Each job has the three parts of :mod:`hilclaw.vendor_adapter`:
   ``process_time_limit_cap_s``. A CUDA program that reports an error (a device
   out of memory included) by a non-zero status is broken ``exit_status``
   (ADR-0194 decision 3, the "Run failure" row).
+* **measure**: :func:`assemble_timing` and :func:`measure`: one host process
+  of a built timing program with the eight arguments of
+  :func:`hilclaw.harness.timing.driver_arguments`, the target's ``env`` and
+  the run's time limit; :func:`measure` hands the ended process to
+  :func:`hilclaw.vendor_adapter.measure`, which gives the form (A)
+  ``(stdout, None)`` or (B) of :mod:`hilclaw.run_operation`. Where the
+  interval starts and ends (launch and completion inside, transfers outside,
+  ADR-0194 decision 4) is the timing program's; no GPU memory figure is given
+  (HQ-0090), and a program that cannot start is not an ended process: the
+  exception of :func:`hilclaw.local_run.run` is raised unchanged, and the
+  caller may place it with :func:`hilclaw.vendor_adapter.interpret_run`.
 * **probe**: :func:`assemble_probe` gives ``<program> --version``;
   :func:`interpret_probe` (host) and :func:`interpret_container_probe`
   (image) read it as :mod:`hilclaw.clang_adapter` does, except for the
@@ -49,7 +60,8 @@ No ``Target`` entry, backend or tool is attached here, and no version is
 written anywhere.
 """
 
-from hilclaw import clang_adapter, local_run, vendor_adapter
+from hilclaw import clang_adapter, local_run, run_parameters, vendor_adapter
+from hilclaw.harness import timing
 
 PROGRAM = "nvcc"
 DEVICE_PROGRAM = "nvidia-smi"
@@ -104,6 +116,52 @@ def run(target, executable, arguments=(), *, timeout_s):
     As :func:`hilclaw.clang_adapter.run`.
     """
     return clang_adapter.run(target, executable, arguments, timeout_s=timeout_s)
+
+
+def _driver_arguments(parameters):
+    if type(parameters) is not run_parameters.TimingParameters:
+        error = TypeError(
+            "parameters must be a run_parameters.TimingParameters, "
+            f"not {type(parameters).__name__}"
+        )
+        error.parameter = "parameters"
+        raise error
+    try:
+        return timing.driver_arguments(**parameters._asdict())
+    except timing.TimingArgumentError as error:
+        error.parameter = "parameters"
+        raise
+
+
+def assemble_timing(target, executable, parameters, *, timeout_s):
+    """Return the :class:`hilclaw.vendor_adapter.RunCall` of one timing run of ``executable`` at ``target``.
+
+    The command is ``executable`` and the eight arguments
+    :func:`hilclaw.harness.timing.driver_arguments` gives for ``parameters``,
+    exactly a :class:`hilclaw.run_parameters.TimingParameters`; the rest is
+    :func:`assemble_run`'s. Raises :class:`TypeError` or :class:`ValueError`
+    with ``parameter`` ``"parameters"`` (a
+    :class:`hilclaw.harness.timing.TimingArgumentError` for a value
+    ``driver_arguments`` refuses included), ``"target"``, ``"executable"`` or
+    ``"timeout_s"`` for a refused argument.
+    """
+    arguments = _driver_arguments(parameters)
+    return assemble_run(target, executable, arguments, timeout_s=timeout_s)
+
+
+def measure(target, executable, parameters, *, timeout_s):
+    """Run one timing process at ``target`` and return the form (A) or (B) of :mod:`hilclaw.run_operation`.
+
+    Arguments as :func:`assemble_timing`, all checked before anything starts.
+    The ended process is handed to :func:`hilclaw.vendor_adapter.measure`
+    with no figure: status 0 gives ``(stdout, None)``, a time limit
+    ``"time_limit"`` and any other status ``"exit_status"``. An exception of
+    :func:`hilclaw.local_run.run` is raised unchanged. The report is not
+    judged here (ADR-0061 decision 3: that is the tool function's).
+    """
+    call = assemble_timing(target, executable, parameters, timeout_s=timeout_s)
+    result = local_run.run(call.command, timeout_s=call.timeout_s, env=call.env)
+    return vendor_adapter.measure(result)
 
 
 def assemble_probe(*, timeout_s, program=PROGRAM):
