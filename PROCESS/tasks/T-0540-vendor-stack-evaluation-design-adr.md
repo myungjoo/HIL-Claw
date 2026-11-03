@@ -2,7 +2,7 @@
 id: T-0540
 title: Write the vendor-stack evaluation design ADR for PLAN P3-7 (adapter boundary, measurement scope, fault-injection contract, fact re-check) and state the owner's parts of OD-33 as concrete questions
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [FR-19, OD-33, FR-10, FR-14, NFR-4, "PLAN P3-7"]
 dependsOn: []
@@ -73,3 +73,46 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+- **Status: `DONE`.** Landed on `main` as `c10d84b1` in doc mode, `Reviewed-by: reviewer agent (4 rounds, Approve)`, `Task: T-0540`; branch deleted. Rounds 1 to 3 Request changes (round 1: OD-18 ⑫ overlap — point assignment moved to V4 ①, device-absent probe, executor without GPU, ⑥ partial answer, V3 ①/V5 overlap with D29/HQ-0088 ④; round 2: runtime isolation (owner 2026-10-15) kept, launch reading, wording; round 3: S10 scope inside containers, V6 labels). Round 4 Approve with four Nits, applied as wording only (D20 exception, no new round).
+- **Session entry**: no open PR, no `nightly-failure` issue, no `실패` item in `RuntimeAcceptance.md` (as of `9e1f831d`); recorded in ADR-0194 Status.
+- **Coverage recheck**: S12 rechecked, "최근 재검사" rewritten in place, verdict unchanged, no gap.
+- **ADR**: `ARCHITECTURE/decisions/ADR-0194-od33-vendor-stack-evaluation-design.md`. The English statement of each owner part is its decision 10 (V1 to V6, in the order of the drafts below).
+- **Runtime acceptance items**: none from this record (no code lands). P3-8 to P3-10 register their own after landing (ADR-0194 Consequences).
+- **Less exact, listed not edited**: none found (ADR-0194 Consequences).
+- **Machine read for the ADR** (no install, D29): Windows host `nvcc` 12.3 (V12.3.107), `nvidia-smi` RTX 4070 driver 617.14; WSL Ubuntu CUDA 13.1, clang 14.0.0, Docker 29.1.3; no QNN tool.
+- **Size**: ADR 178 lines (long lines) plus 7 changed lines in three other files; within the recommendation (D30).
+- **Temporary files**: `${TMPDIR:-/tmp}/hilclaw-driver/T-0540/` removed at the end (vendor pages and review downloads only). No tool installed, no image made.
+- **Follow-ups**: none.
+
+### HQ drafts (final text, for `PROCESS/STATE.json`; `askedAt` and `id` the driver's; `issueComment` null)
+
+**Draft V1**: `taskId` T-0540, `reason` `owner-decision`, `question`:
+
+(OD-33 ①, PLAN P3-11; 설계는 ADR-0194 결정 10 V1) [쟁점] FR-19는 QNN·HexKL 등을 쓰는 LLM 코드나 CUDA 코드를 평가할 환경을 갖추라고 하지만, 평가하는 코드가 사용자가 준 기존 코드인지, 코더가 쓴 코드인지, 둘 다인지는 정하지 않았다. [선택지] (a) 사용자가 준 코드를 먼저 P3-11로 평가하고, 벤더 대상에서 코더가 쓰는 코드는 벤더 언어 커널 종류(HQ-0088 ① (c))가 정해질 때 함께 다룬다 (b) 둘 다 지금 (c) 코더가 쓴 코드만. 주어진 코드의 기록 형식은 같은 task의 다른 HQ(틀의 변경)가 묻는다. 실행자의 권고(결정 아님): (a) — 오너의 지시가 기존 LLM·CUDA 코드를 든다. [막히는 것] P3-11, P3-12. [막히지 않는 것] P3-8~P3-10, P3-13, P2-15 확인, 그 밖의 task.
+
+**Draft V2**: `taskId` T-0540, `reason` `owner-decision`, `question`:
+
+(OD-33 ②, #5 B-1; ADR-0194 결정 9·10 V2) [쟁점] PLAN의 예약은 "2번째 지원 대상은 Qualcomm NPU"(오너 2026-10-13)이고 CUDA가 이 순서의 어디에 드는지, 대상의 세대와 SDK 버전은 정해지지 않았다. HexKL은 Qualcomm 소프트웨어 센터의 항목이지만 "currently available on request"다(hexagon-mlir `docs/faq.md`, 2026-11-03 확인). [선택지] ① 순서: (a) Qualcomm은 예약대로 2번째 지원 대상이고 CUDA는 그 순서 밖의 FR-19 평가 대상 (b) CUDA 2번째, Qualcomm 3번째 (c) 그 밖. ② 버전: (a) CUDA는 머신에 있는 툴킷의 버전을 run마다 기록(지금 Windows host 12.3, WSL 13.1) (b) 오너가 정한 버전; 그리고 Qualcomm의 SoC 또는 Hexagon 세대(예: v73·v75·v79)와 QNN 버전(ExecuTorch 문서의 권장은 2.37.0)을 지정해 주십시오. ③ HexKL: (a) 오너가 지금 Qualcomm에 요청 (b) Qualcomm 장비가 생기기 전에는 하지 않음. 실행자의 권고(결정 아님): ① (a), ② (a), ③ (b). [막히는 것] P3-9·P3-10에서 이 값에 기대는 부분, HexKL. [막히지 않는 것] P3-8, 머신에 있는 도구로 하는 P3-9·P3-10, P2-15 확인, 그 밖의 task.
+
+**Draft V3**: `taskId` T-0540, `reason` `owner-decision`, `question`:
+
+(OD-33 ③의 나머지, A-13 새 외부 의존성, NFR-4; ADR-0194 결정 9·10 V3. Qualcomm·NVIDIA 공식 사이트 밖의 도구는 D29대로 도구마다 요청하므로 묻지 않는다) [쟁점] D29는 드라이버의 Qualcomm·NVIDIA 도구 입수와 컨테이너 이미지를 허용했으나, 런타임의 입수, 라이선스 때문에 다른 규칙이 필요한지, 스토리지 상한은 남았다. QNN SDK 안의 `LICENSE.pdf`, Hexagon SDK·HexKL·CUDA 툴킷의 조건과 그것이 컨테이너 이미지에 대해 말하는 것은 읽지 못했다. [선택지] ① 런타임의 입수: (a) NFR-4대로 설치마다 사용자 허락, 같은 공식 출처 (b) 그 밖. ② 라이선스: (a) 벤더 SDK와 그것을 담은 이미지는 그 머신을 떠나지 않고 push·commit하지 않으며, 설치와 함께 라이선스 파일의 경로와 버전을 기록한다 (b) 첫 다운로드 전에 오너가 각 라이선스를 읽는다 (c) 그 밖. ③ 스토리지 상한: (a) D29의 정리와 P3-14 밖의 상한은 없다 (b) 상한을 둔다(값 지정). 실행자의 권고(결정 아님): ① (a), ② (a), ③ (a). [막히는 것] 런타임의 벤더 SDK 설치. [막히지 않는 것] P3-8, D29의 Qualcomm·NVIDIA 공식 다운로드, P2-15 확인, 그 밖의 task.
+
+**Draft V4**: `taskId` T-0540, `reason` `owner-decision`, `question`:
+
+(OD-33 ④의 오너 몫과 벤더 대상에 대한 OD-18 ⑫, #5 B-2·B-3, FR-9; ADR-0194 결정 5·10 V4) [쟁점] HQ-0005는 sim 지점이 에뮬레이터, board 지점이 측정인 구성을 내다보았으나 정하지 않았고(OD-18 ⑫, "필요한 것들과 함께 정하며 그 전에는 정하지 않는다"), ADR-0194는 지점이 정해진 뒤 결과에서 구별하는 수단만 정했다(기존 `step` 값, 지점 사이 대체 없음). [선택지] ① 에뮬레이터·시뮬레이터와 장비가 있는 대상에서 어느 실행이 어느 지점인가: (a) 에뮬레이터·시뮬레이터는 `sim`, 장비는 `board` (b) 에뮬레이터는 mock처럼 다른 `accelerator`의 별도 대상 (c) 그 밖. ② 로컬 GPU의 CUDA는 두 지점의 수단이 하나다: (a) 두 지점 모두 같은 로컬 GPU 실행(HQ-0005가 `cpu_standin`에 한해 답한 것과 같게) (b) `board`만, `sim.run`은 제공하지 않음(한 지점 대상의 규칙 OD-26, 미결). ③ Qualcomm 장비: (a) 개발 머신에 연결(USB, `adb`) (b) LAN의 머신(#5 B-2) (c) 당분간 없음 — 에뮬레이터만, 다른 지점은 제공하지 않음. 실행자의 권고(결정 아님): ① (a) — FR-9의 역할(sim은 조기 필터, board가 최종 판정)을 지킨다, ② (a), ③ (c) 장비가 생길 때까지. [막히는 것] P3-9·P3-10·P3-13의 지점 배정. [막히지 않는 것] 어댑터, P3-8의 틀, ADR-0194 결정 5의 구별 수단, P2-15 확인, 그 밖의 task.
+
+**Draft V5**: `taskId` T-0540, `reason` `owner-decision`, `question`:
+
+(OD-33 ⑤, #5 A-4·B-7·B-8, OD-32 ⑦; ADR-0194 결정 10 V5. HQ-0088 ④와 겹치는 부분은 다시 묻지 않는다) [쟁점 ①] HQ-0088 ④는 모델 단위 후보의 instance 단위·품질 지표·평가 데이터를 언제 정할지 묻는다. 그 답이 주어진 LLM 코드의 평가(OD-33 ⑤의 단위와 LLM 수준 지표)에도 그대로 미치는가: (a) 예, 하나의 답으로 둘 다 정하고 P3-12는 그 답을 따른다 (b) 따로 정한다 — 단위(커널 하나 또는 LLM 전체)와 지표를 지정(예: prefill·decode 초당 토큰, 첫 토큰까지의 시간, 최대 메모리; 품질은 reference 출력과의 일치 또는 지정한 데이터의 perplexity). [쟁점 ②] FR-9는 시스템 생성 reference를 `cpu_standin`에 한해 확정으로 적고, HQ-0091은 `virtual_npu`만 묻는다. 벤더 대상에서 기존 커널 계약의 oracle: (a) 그 계약의 기존 reference와 사용자가 정하는 허용 오차를 그 대상에 한해 쓴다(B-7의 일반 답이 아님) (b) 벤더의 golden output (c) 그 밖. 실행자의 권고(결정 아님): ① (a), ② (a)(HQ-0091 ① (a)와 같은 모양). [막히는 것] 벤더 대상의 `correctness.check`와 instance 시작(②), P3-12(①). [막히지 않는 것] 시작 아래의 빌드·실행·측정, P3-8~P3-10, P2-15 확인, 그 밖의 task.
+
+**Draft V6**: `taskId` T-0540, `reason` `data-plane-schema-change`, `question`:
+
+(A-13 틀의 변경, OD-33 ⑥; ADR-0194 결정 3·10 V6. 측정 단위와 GPU·NPU 메모리 수치는 HQ-0090이 묻는다) [쟁점 (a)] run을 시작할 때 장치가 없거나 쓸 수 없으면(GPU 없음, 장비에 닿지 않음) 프로그램은 시작되므로 기존 tool failure `compiler_unavailable`(S6)·`executable_unstartable`(S10)이 맞지 않고, broken `exit_status`는 머신의 사실을 시도의 탓으로 돌린다. 어떤 답이든 이것은 시도의 코드가 없는 probe 프로세스가 시도의 프로세스 전에 찾으며, 시도의 프로세스의 status·출력은 그렇게 읽지 않는다(커널이 같은 것을 써서 자기 broken 결과를 tool failure로 바꿀 수 있으므로 — ADR-0168 결정 3, ADR-0110 결정 3). 답이 있을 때까지 벤더 백엔드는 기본 백엔드 표에 들지 않는다(GPU·장치를 쓰는 대상은 런타임 컨테이너에 그것을 여는 기록도 있어야 한다 — OD-33 ⑨의 나머지). [선택지 (a)] (i) 새 backend kind `device_unavailable` — probe가 쓸 수 있는 장치를 찾지 못했다는 뜻의 tool failure, `correctness.check`·`sim.run`·`board.run` 공통, 끝 줄의 `failure`에 저장 (ii) 기존 `executable_unstartable`로 읽는다(기존 값의 뜻 변경) (iii) broken `exit_status`(변경 없음, 그러나 시도의 탓). [쟁점 (b)] 주어진 코드를 평가한다면(같은 task의 OD-33 ① HQ) 그 기록. [선택지 (b)] (i) 코드를 CAS blob으로 두고 `artifacts.json`에 새 `type` `given_code`의 레코드(`type`은 ADR-0005 결정 5의 열린 형식), `instance.json`에 그 해시를 담는 멤버 `given_code` — 그 파일의 `schema_version`이 오른다(ADR-0018 결정 2) (ii) OD-33 ①의 답 뒤에 다른 형식으로 다시 묻는다. 실행자의 권고(결정 아님): (a) (i) — 시도에 대해 아무것도 확인되지 않았다, (b) (i). [막히는 것] 벤더 백엔드를 기본 표에 넣는 것(P3-9의 장치 없음 응답 — 쟁점 (a)), P3-11의 기록. [막히지 않는 것] P3-8과 P3-9의 나머지, P3-10, P3-13, P2-15 확인, 그 밖의 task.
+
+**Coverage**: ADR-0194 decision 10's table. Not asked again: the coder's role and the "C 커널" wording (HQ-0088), the unit list and memory figures (HQ-0090), another vendor's tools (D29 already answers). No draft repeats a question in `STATE.json`.
+
+### §9 notice
+
+Posted on #5 by the executor after landing (AC10): https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6602545962
