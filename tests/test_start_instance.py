@@ -595,3 +595,13 @@ def test_a_record_of_another_dtype_is_out_of_scope_of_the_start(tmp_path, ids, r
     assert not contract_table.covers(other)
     assert not contract_table.start_covers(other)
     assert_refused(document(op_signature=other), OutOfScopeError, tmp_path, ids)
+
+
+def test_the_admitted_accelerators_are_the_mock_and_the_targets_that_start():
+    from hilclaw import start_instance, targets
+
+    assert start_instance._ACCELERATORS == (
+        mock_backend.NAME,
+        *targets.instance_start_accelerators(),
+    )
+    assert start_instance._ACCELERATORS == ("mock", "cpu_standin")

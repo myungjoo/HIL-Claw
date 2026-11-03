@@ -133,11 +133,14 @@ def default_table():
     :data:`hilclaw.standin_profile.ACCELERATOR` offers ``correctness.check``
     with :func:`hilclaw.standin_check.operation` and ``sim.run`` and
     ``board.run`` with :func:`hilclaw.standin_run.operation`, and no other
-    tool (ADR-0130 decision 2). A call about any other ``accelerator`` is
-    ``no_backend``. It imports :mod:`hilclaw.mock_check`, and so NumPy,
-    :mod:`hilclaw.mock_run`, :mod:`hilclaw.standin_check`,
-    :mod:`hilclaw.standin_profile` and :mod:`hilclaw.standin_run`. Building
-    it reads no image; the ``cpu_standin`` operations read it at each call.
+    tool (ADR-0130 decision 2); those two are the operations built with the
+    ``cpu_standin`` :class:`hilclaw.targets.Target`, which they read from
+    :data:`hilclaw.targets.TABLE` at each call (ADR-0193 decision 3). A call
+    about any other ``accelerator`` is ``no_backend``. It imports
+    :mod:`hilclaw.mock_check`, and so NumPy, :mod:`hilclaw.mock_run`,
+    :mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_profile` and
+    :mod:`hilclaw.standin_run`. Building it reads no image; the
+    ``cpu_standin`` operations read it at each call.
     """
     from hilclaw import (
         mock_check,

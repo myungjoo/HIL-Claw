@@ -33,11 +33,12 @@ of ADR-0168 it:
    (:func:`hilclaw.standin_copies.place_harness_copy`; ADR-0179 decision 5),
    which is handed to the compiler as no source;
 5. runs the verification build in one container (ADR-0144 decision 3):
-   :data:`COMPILER` with :data:`hilclaw.standin_settings.FLAGS`, the program
+   :data:`COMPILER` with the target's flags (for ``cpu_standin``
+   :data:`hilclaw.standin_settings.FLAGS`), the program
    source first and the kernel's compiled set in the reader's order, the
    trailing flags and ``-o`` the executable :data:`EXECUTABLE_NAME` in
    :data:`hilclaw.standin_container.CONTAINER_BUILD_DIR`, within
-   :data:`hilclaw.standin_settings.BUILD_TIME_LIMIT_S`; hands the keeper the
+   the target's build time limit; hands the keeper the
    log where decision 3 says so (decision 2: the client's standard output,
    then its standard error, each decoded as UTF-8 with invalid bytes
    replaced, nothing between them); reads the result with
@@ -113,7 +114,10 @@ variables that name the temporary directory of the system), and keeps
 nothing between calls.
 The process's standard error is read by nothing (OD-16 sub-question 5). The
 operation is the ``correctness.check`` operation of the ``cpu_standin``
-entry of :func:`hilclaw.check_definition.default_table`.
+entry of :func:`hilclaw.check_definition.default_table`; it takes its build
+settings and time limits from the ``cpu_standin`` :class:`hilclaw.targets.Target`,
+and :func:`operation_for` builds the same operation with another
+:class:`hilclaw.targets.Target` (ADR-0193 decision 3).
 
 :class:`Answered`, :func:`carry_out`, :func:`container_image`,
 :func:`make_build_dir`, :func:`in_container`, :func:`run_build`,
@@ -140,6 +144,7 @@ from hilclaw import (
     standin_copies,
     standin_image,
     standin_settings,
+    targets,
     tools,
 )
 from hilclaw.harness import (
@@ -203,14 +208,47 @@ def operation(request, hw_profile, parameters, output_path, keeper, /):
     a message that shows no path, image reference, container name, stream
     byte or error text. Lets pass what no row places and every request to
     end. See the module docstring for the order and the module's own choices.
+
+    The flags, trailing flags, build time limit and process time-limit cap are
+    those of the :class:`hilclaw.targets.Target` of
+    :data:`hilclaw.targets.CPU_STANDIN`, read from
+    :data:`hilclaw.targets.TABLE` at the call (ADR-0193 decision 3).
     """
-    checked = _checked(parameters, keeper)
+    target = targets.target(targets.CPU_STANDIN)
+    return _operate(target, parameters, output_path, keeper)
+
+
+def operation_for(target):
+    """Return the operation of :func:`operation` built with ``target``, a :class:`hilclaw.targets.Target`.
+
+    The operation takes the same five arguments and answers as
+    :func:`operation` does, with the flags, trailing flags, build time limit
+    and process time-limit cap of ``target`` in place of those of the
+    ``cpu_standin`` entry; it reads no hw_profile (ADR-0193 decision 3;
+    ADR-0060 decision 3). Raises :class:`TypeError` for a ``target`` that is
+    not exactly a :class:`hilclaw.targets.Target`.
+    """
+    _check_target(target)
+
+    def built(request, hw_profile, parameters, output_path, keeper, /):
+        return _operate(target, parameters, output_path, keeper)
+
+    return built
+
+
+def _check_target(target):
+    if type(target) is not targets.Target:
+        raise TypeError(f"target must be a Target, not {type(target).__name__}")
+
+
+def _operate(target, parameters, output_path, keeper):
+    checked = _checked(parameters, keeper, target.process_time_limit_cap_s)
     image = container_image()
     build_dir = make_build_dir(BUILD_DIR_PREFIX)
     return carry_out(
         build_dir,
         lambda outcomes: _carry_out(
-            image, build_dir, output_path, keeper, checked, outcomes
+            target, image, build_dir, output_path, keeper, checked, outcomes
         ),
     )
 
@@ -237,10 +275,10 @@ def carry_out(build_dir, steps):
     raise tools.ToolFailure(answer.kind, answer.message)
 
 
-def _checked(parameters, keeper):
+def _checked(parameters, keeper, cap_s):
     if type(parameters) is check_parameters.Bf16CheckParameters:
         _check_keeper(keeper)
-        return _bf16_checked(parameters)
+        return _bf16_checked(parameters, cap_s)
     if type(parameters) is not check_parameters.CheckParameters:
         raise TypeError(
             "parameters must be CheckParameters or Bf16CheckParameters, "
@@ -248,7 +286,7 @@ def _checked(parameters, keeper):
         )
     _check_keeper(keeper)
     seed, draws, m, k, n = parameters
-    limit = standin_settings.verification_process_time_limit_s(m, k, n, draws)
+    limit = standin_settings.verification_process_time_limit_s(m, k, n, draws, cap_s)
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise TypeError(f"seed must be an int, not {type(seed).__name__}")
     if not 0 <= seed < _SEED_LIMIT:
@@ -262,11 +300,13 @@ def _check_keeper(keeper):
         raise TypeError(f"keeper must be a LogKeeper, not {type(keeper).__name__}")
 
 
-def _bf16_checked(parameters):
+def _bf16_checked(parameters, cap_s):
     seed, draws, kind, dtype, dims = parameters
     if type(dtype) is not str or dtype != check_parameters.BF16:
         raise ValueError(f"dtype must be {check_parameters.BF16!r}")
-    limit = standin_settings.bf16_verification_process_time_limit_s(kind, dims, draws)
+    limit = standin_settings.bf16_verification_process_time_limit_s(
+        kind, dims, draws, cap_s
+    )
     rows = None
     if kind == "rope":
         rope = bf16_rope_verification
@@ -337,10 +377,10 @@ def _inside_checkout(directory):
         current = parent
 
 
-def _carry_out(image, build_dir, output_path, keeper, checked, outcomes):
+def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes):
     (program, header), arguments, limit, rows = checked
     copies = _placed_copies(output_path, build_dir, program, header)
-    built = _build(image, build_dir, copies, keeper, outcomes)
+    built = _build(target, image, build_dir, copies, keeper, outcomes)
     if built is not standin_answer.GO_ON:
         return built
     ran = run_container(
@@ -379,12 +419,12 @@ def _placed_copies(output_path, build_dir, program, header):
     return copies
 
 
-def _build(image, build_dir, copies, keeper, outcomes):
+def _build(target, image, build_dir, copies, keeper, outcomes):
     sources = (copies.harness, *copies.compiled_set)
     command = (
-        *standin_settings.FLAGS,
+        *target.flags,
         *(in_container(source) for source in sources),
-        *standin_settings.TRAILING_FLAGS,
+        *target.trailing_flags,
         "-o",
         _EXECUTABLE,
     )
@@ -393,7 +433,7 @@ def _build(image, build_dir, copies, keeper, outcomes):
         image,
         build_dir,
         command,
-        standin_settings.BUILD_TIME_LIMIT_S,
+        target.build_time_limit_s,
         keeper=keeper,
         executable=EXECUTABLE_NAME,
         missing=_NO_EXECUTABLE,

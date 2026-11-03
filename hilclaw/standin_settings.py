@@ -40,6 +40,11 @@ commit of this repository.
   to the kind, the dimensions and ``n_max`` the operation of ``sim.run`` and
   ``board.run`` is handed for a bf16 kind (ADR-0181 decision 6).
 
+The ``cpu_standin`` entry of :data:`hilclaw.targets.TABLE` reads the six
+constants each time it is read, and the operations take them from that entry
+(ADR-0193 decision 3); the four functions take the cap of the caller's target
+as ``cap_s``.
+
 The first three are handed as ``flags``, ``trailing_flags`` and ``env`` to
 :func:`hilclaw.harness.verification_build.build_verification_executable`,
 :func:`hilclaw.harness.timing_build.build_timing_executable` and, for ``env``,
@@ -74,29 +79,34 @@ PROCESS_TIME_LIMIT_CAP_S = 1500
 """Cap in seconds of every ``cpu_standin`` process time limit (ADR-0117 decision 4)."""
 
 
-def verification_process_time_limit_s(m, k, n, draws):
+def verification_process_time_limit_s(m, k, n, draws, cap_s=None):
     """Return the time limit in seconds of the verification process.
 
     ``min(1500, 10 + draws * (1 + 2*m*k*n / 2e8))`` (ADR-0117 decision 4, with
     ``c = draws``), computed exactly and returned as a positive finite
-    ``float`` of at most :data:`PROCESS_TIME_LIMIT_CAP_S`.
+    ``float`` of at most the cap. ``cap_s`` is the cap in seconds in place of
+    1500, the caller's target's (ADR-0193 decision 3); ``None`` is
+    :data:`PROCESS_TIME_LIMIT_CAP_S`.
 
     Raises :class:`TypeError` for an argument that is not an ``int`` or is a
-    ``bool``, and :class:`ValueError` for one below 1.
+    ``bool``, and :class:`ValueError` for one below 1; for a ``cap_s`` that is
+    not ``None``, an ``int`` or a ``float`` (a ``bool`` included)
+    :class:`TypeError`, and :class:`ValueError` for one that is not finite
+    and above 0.
     """
     _check_counts(m=m, k=k, n=n, draws=draws)
-    return _process_time_limit_s(m, k, n, draws)
+    return _limit_s(draws, 2 * m * k * n, _cap(cap_s))
 
 
-def timing_process_time_limit_s(m, k, n, n_max):
+def timing_process_time_limit_s(m, k, n, n_max, cap_s=None):
     """Return the time limit in seconds of the timing run.
 
     The rule of :func:`verification_process_time_limit_s` with
     ``c = n_max + 1``: one untimed call and up to ``n_max`` repeats
-    (ADR-0117 decision 4). Same return value and exceptions.
+    (ADR-0117 decision 4). Same ``cap_s``, return value and exceptions.
     """
     _check_counts(m=m, k=k, n=n, n_max=n_max)
-    return _process_time_limit_s(m, k, n, n_max + 1)
+    return _limit_s(n_max + 1, 2 * m * k * n, _cap(cap_s))
 
 
 BF16_CHECK_KINDS = (
@@ -122,7 +132,7 @@ _BF16_DIMENSIONS = {
 }
 
 
-def bf16_verification_process_time_limit_s(kind, dims, draws):
+def bf16_verification_process_time_limit_s(kind, dims, draws, cap_s=None):
     """Return the time limit in seconds of the verification process of a bf16 ``kind``.
 
     ``min(1500, 10 + draws * (1 + W / 2e8))`` (ADR-0117 decision 4 with
@@ -132,28 +142,29 @@ def bf16_verification_process_time_limit_s(kind, dims, draws):
     ``rope``) plus :data:`BF16_ELEMENT_WEIGHT` times the number of elements
     of the program's arrays (for ``rope`` ``2*m*h*d + 2*m*d``, ADR-0180
     decision 2). Computed exactly and returned as a positive finite ``float`` of
-    at most :data:`PROCESS_TIME_LIMIT_CAP_S`.
+    at most the cap, ``cap_s`` as for :func:`verification_process_time_limit_s`.
 
     ``kind`` is exactly a ``str`` of :data:`BF16_CHECK_KINDS`; ``dims`` is
     exactly a ``tuple`` of the kind's dimensions in the order of its
     ``task_contract`` parameters. Raises :class:`ValueError` for another
     ``kind`` or a ``dims`` of another length, :class:`TypeError` for a
     ``dims`` that is not a ``tuple`` or a dimension or ``draws`` that is not
-    an ``int`` or is a ``bool``, and :class:`ValueError` for one below 1.
+    an ``int`` or is a ``bool``, and :class:`ValueError` for one below 1; for
+    ``cap_s`` as :func:`verification_process_time_limit_s` does.
     """
-    return _limit_s(draws, _checked_bf16_work(kind, dims, draws=draws))
+    return _limit_s(draws, _checked_bf16_work(kind, dims, draws=draws), _cap(cap_s))
 
 
-def bf16_timing_process_time_limit_s(kind, dims, n_max):
+def bf16_timing_process_time_limit_s(kind, dims, n_max, cap_s=None):
     """Return the time limit in seconds of the timing process of a bf16 ``kind``.
 
     The rule and the work measure of
     :func:`bf16_verification_process_time_limit_s` with ``c = n_max + 1``: one
     untimed call and up to ``n_max`` repeats (ADR-0181 decision 6). Same return
-    value and exceptions, with ``n_max`` in place of ``draws``.
+    value, ``cap_s`` and exceptions, with ``n_max`` in place of ``draws``.
     """
     work = _checked_bf16_work(kind, dims, n_max=n_max)
-    return _limit_s(n_max + 1, work)
+    return _limit_s(n_max + 1, work, _cap(cap_s))
 
 
 def _checked_bf16_work(kind, dims, **count):
@@ -192,11 +203,17 @@ def _check_counts(**counts):
             raise ValueError(f"{name} must be at least 1")
 
 
-def _process_time_limit_s(m, k, n, calls):
-    return _limit_s(calls, 2 * m * k * n)
+def _cap(cap_s):
+    if cap_s is None:
+        return PROCESS_TIME_LIMIT_CAP_S
+    if isinstance(cap_s, bool) or not isinstance(cap_s, (int, float)):
+        raise TypeError(f"cap_s must be an int or float, not {type(cap_s).__name__}")
+    if not 0 < cap_s < float("inf"):
+        raise ValueError("cap_s must be finite and above 0")
+    return cap_s
 
 
-def _limit_s(calls, work):
+def _limit_s(calls, work, cap_s):
     scale = 2 * 10**8
     scaled = 10 * scale + calls * (scale + work)
-    return min(scaled, PROCESS_TIME_LIMIT_CAP_S * scale) / scale
+    return min(scaled, cap_s * scale) / scale

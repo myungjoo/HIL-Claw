@@ -673,3 +673,55 @@ def test_a_warning_does_not_fail_the_build(clang, tmp_path):
     result = build_verification(source, executable)
     assert result.ok, result.log
     assert verify(executable) is Verdict.PASS
+
+
+CAP_CALLS = [
+    (verification_process_time_limit_s, (HUGE, HUGE, HUGE, 1)),
+    (timing_process_time_limit_s, (HUGE, HUGE, HUGE, 1)),
+    (bf16_verification_process_time_limit_s, ("gemm", (HUGE, HUGE, HUGE), 1)),
+    (bf16_timing_process_time_limit_s, ("gemm", (HUGE, HUGE, HUGE), 1)),
+]
+
+
+@pytest.mark.parametrize(("function", "args"), CAP_CALLS)
+def test_the_cap_is_the_callers(function, args):
+    assert function(*args) == PROCESS_TIME_LIMIT_CAP_S
+    assert function(*args, cap_s=None) == PROCESS_TIME_LIMIT_CAP_S
+    assert function(*args, 20) == 20.0
+    assert function(*args, cap_s=0.5) == 0.5
+
+
+@pytest.mark.parametrize(
+    ("function", "args"),
+    [
+        (verification_process_time_limit_s, (1, 1, 1, 1)),
+        (timing_process_time_limit_s, (1, 1, 1, 1)),
+        (bf16_verification_process_time_limit_s, ("gemm", (1, 1, 1), 1)),
+        (bf16_timing_process_time_limit_s, ("gemm", (1, 1, 1), 1)),
+    ],
+)
+def test_a_cap_above_the_rule_leaves_the_rule(function, args):
+    assert function(*args, cap_s=10**6) == function(*args) < 20
+
+
+@pytest.mark.parametrize(
+    ("cap", "error"),
+    [
+        (0, ValueError),
+        (-1, ValueError),
+        (math.nan, ValueError),
+        (math.inf, ValueError),
+        (True, TypeError),
+        ("1500", TypeError),
+        (Fraction(1), TypeError),
+    ],
+)
+@pytest.mark.parametrize(("function", "args"), CAP_CALLS)
+def test_a_cap_that_is_no_positive_number_is_refused(function, args, cap, error):
+    with pytest.raises(error, match="^cap_s must"):
+        function(*args, cap_s=cap)
+
+
+def test_the_cap_reads_the_constant_at_the_call(monkeypatch):
+    monkeypatch.setattr(standin_settings, "PROCESS_TIME_LIMIT_CAP_S", 12)
+    assert verification_process_time_limit_s(HUGE, HUGE, HUGE, 1) == 12.0
