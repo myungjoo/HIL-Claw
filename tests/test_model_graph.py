@@ -1,9 +1,16 @@
 import copy
 import json
 
+import numpy as np
 import pytest
 
-from hilclaw import model_binding, model_forward_run, model_graph
+from hilclaw import (
+    model_binding,
+    model_forward_check,
+    model_forward_run,
+    model_graph,
+    rope_table,
+)
 from hilclaw.keys import MAX_INTEGER
 from hilclaw.model_binding import ModelDimensions
 from hilclaw.model_graph import (
@@ -700,3 +707,448 @@ def test_single_pass_generation():
     )
     assert len(plan.passes) == 1
     assert {a.name: a.elements for a in plan.arrays}["rope"] == DIMENSION_SETS[1]["d"]
+
+
+CONTRACTS = {
+    kind: model_graph._contract(kind).task_contract(*(2,) * len(members))
+    for kind, members in (
+        ("gemm", "mkn"),
+        ("rmsnorm", "mn"),
+        ("elementwise_add", "mn"),
+        ("swiglu", "mn"),
+        ("rope", "mhd"),
+        ("sdpa_kv_cache", "mlhkd"),
+    )
+}
+KIND_OF_SITE = dict(
+    zip(
+        model_forward_run.CALL_SITES,
+        ("gemm",) * 6
+        + ("rmsnorm",) * 3
+        + ("elementwise_add",) * 2
+        + ("swiglu",)
+        + ("rope",) * 2
+        + ("sdpa_kv_cache",),
+        strict=True,
+    )
+)
+ROPE = model_forward_check.RopeConstants(10000.0, 2.0, 1.0, 4.0, 8)
+
+
+def kernel_of(kind, name=None):
+    return model_binding.KernelReference((name or kind,), CONTRACTS[kind], ())
+
+
+def every_binding(**changes):
+    binding = {
+        site: [model_binding.BindingEntry(kernel_of(kind), "every")]
+        for site, kind in KIND_OF_SITE.items()
+    }
+    binding.update(changes)
+    return {site: entries for site, entries in binding.items() if entries}
+
+
+def forward_weights(dims):
+    D, F, V, N = dims["D"], dims["F"], dims["V"], dims["N"]
+    W, Hd = (dims["H"] + 2 * dims["H_kv"]) * dims["d"], dims["H"] * dims["d"]
+
+    def zeros(*shape):
+        return np.zeros(shape, dtype=np.uint16)
+
+    return model_forward_check.Weights(
+        embedding=zeros(V, D),
+        attention_norm=[zeros(D) for _ in range(N)],
+        qkv=[zeros(D, W) for _ in range(N)],
+        o=[zeros(Hd, D) for _ in range(N)],
+        ffn_norm=[zeros(D) for _ in range(N)],
+        gate=[zeros(D, F) for _ in range(N)],
+        up=[zeros(D, F) for _ in range(N)],
+        down=[zeros(F, D) for _ in range(N)],
+        norm=zeros(D),
+        lm_head=zeros(D, V),
+    )
+
+
+def forward_check(dims, binding, S, G, lm_head_rows):
+    return model_forward_check.check(
+        model_dimensions(dims),
+        binding,
+        dtype="bf16",
+        eps=0.5,
+        rope=ROPE,
+        weights=forward_weights(dims),
+        prompt=[0] * S,
+        given=None,
+        generation_length=G,
+        lm_head_rows=lm_head_rows,
+    )
+
+
+def call_list(check):
+    return sorted((site, shape, kernel.sources) for site, shape, kernel in check.calls)
+
+
+def outcome_set(check):
+    return {(o.kind, o.call_site, o.shape) for o in check.outcomes}
+
+
+def entry(kind, shapes, name=None):
+    return model_binding.BindingEntry(kernel_of(kind, name), shapes)
+
+
+def binding_cases(dims, S, G, lm_head_rows):
+    plan = resolve(
+        LLAMA, dims, prompt_length=S, generation_length=G, lm_head_rows=lm_head_rows
+    )
+    exact = {}
+    for site, shape, _ in model_graph.check_binding(plan, every_binding()).calls:
+        exact.setdefault(site, []).append(shape)
+    lm_head = [entry("gemm", tuple(exact["lm_head"][:1]), "first")]
+    if exact["lm_head"][1:]:
+        lm_head.append(entry("gemm", tuple(exact["lm_head"][1:]), "later"))
+    unfit = model_binding.KernelReference(("q",), {"language": "c"}, ())
+    return plan, {
+        "every": every_binding(),
+        "exact": every_binding(
+            **{
+                site: [entry(KIND_OF_SITE[site], tuple(shapes))]
+                for site, shapes in exact.items()
+            }
+        ),
+        "per_shape": every_binding(lm_head=lm_head),
+        "missing_site": every_binding(sdpa=[]),
+        "missing_shape": every_binding(
+            sdpa=[entry("sdpa_kv_cache", tuple(exact["sdpa"][:1]))]
+        ),
+        "unfit": every_binding(norm=[entry("gemm", "every")]),
+        "unfit_contract": every_binding(
+            qkv=[model_binding.BindingEntry(unfit, "every")]
+        ),
+    }
+
+
+@pytest.mark.parametrize("lm_head_rows", ["all", "last"])
+@pytest.mark.parametrize("lengths", LENGTHS)
+@pytest.mark.parametrize("dims", DIMENSION_SETS)
+def test_binding_check_agrees_with_the_forward_check(dims, lengths, lm_head_rows):
+    S, G = lengths
+    plan, cases = binding_cases(dims, S, G, lm_head_rows)
+    for name, binding in cases.items():
+        ours = model_graph.check_binding(plan, binding)
+        theirs = forward_check(dims, binding, S, G, lm_head_rows)
+        assert ours.ok == theirs.ok, name
+        assert call_list(ours) == call_list(theirs), name
+        assert outcome_set(ours) == outcome_set(theirs), name
+        assert ours.ok == (name in ("every", "exact", "per_shape")), name
+
+
+def test_binding_check_binds_every_kernel_step():
+    plan = resolve_llama(LLAMA_TEXT)
+    check = model_graph.check_binding(plan, every_binding())
+    bound = {(site, shape): k for site, shape, k in check.calls}
+    for one in plan.passes:
+        for step in one.steps:
+            if isinstance(step, KernelStep):
+                assert bound[(step.site, step.shape)].sources == (step.kind,)
+
+
+@pytest.mark.parametrize(
+    ("plan", "binding", "error", "parameter"),
+    [
+        ("plan", {}, TypeError, "plan"),
+        (None, [], TypeError, "binding"),
+        (None, {"nowhere": []}, ValueError, "binding"),
+        (None, {"qkv": []}, ValueError, "binding"),
+        (None, {"qkv": ["entry"]}, TypeError, "binding"),
+        (None, {"qkv": [entry("gemm", ((1, 2),))]}, ValueError, "binding"),
+    ],
+)
+def test_binding_check_refusals(plan, binding, error, parameter):
+    if plan is None:
+        plan = resolve_llama(LLAMA_TEXT)
+    with pytest.raises(error) as caught:
+        model_graph.check_binding(plan, binding)
+    assert caught.value.parameter == parameter
+
+
+def test_libraries_are_distinct_in_first_call_order():
+    plan = resolve_llama(LLAMA_TEXT)
+    check = model_graph.check_binding(plan, every_binding())
+    kernels = model_graph.libraries(check)
+    assert [k.sources[0] for k in kernels] == [
+        "rmsnorm",
+        "gemm",
+        "rope",
+        "sdpa_kv_cache",
+        "elementwise_add",
+        "swiglu",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("check", "error"),
+    [("check", TypeError), (model_binding.BindingCheck(False, (), ()), ValueError)],
+)
+def test_libraries_refusals(check, error):
+    with pytest.raises(error) as caught:
+        model_graph.libraries(check)
+    assert caught.value.parameter == "check"
+
+
+def llama_inputs(**changes):
+    dims = DIMENSION_SETS[0]
+    weights = forward_weights(dims)
+    provided = {"embedding": weights.embedding, "norm": weights.norm}
+    provided["lm_head"] = weights.lm_head
+    for name in ("attention_norm", "qkv", "o", "ffn_norm", "gate", "up", "down"):
+        for i, array in enumerate(getattr(weights, name)):
+            provided[f"{name}[{i}]"] = array
+    values = {
+        "scalars": {"eps": 0.5},
+        "tables": {"rope": ROPE},
+        "weights": provided,
+        "prompt": [0, 1, 2],
+        "given": [dims["V"] - 1] * 3,
+    }
+    values.update(changes)
+    return values
+
+
+def encoded(lm_head_rows="all", **changes):
+    plan = resolve_llama(LLAMA_TEXT, lm_head_rows=lm_head_rows)
+    check = model_graph.check_binding(plan, every_binding())
+    return plan, model_graph.encode(plan, check, **llama_inputs(**changes))
+
+
+def words(data, count, offset=0):
+    return [int(w) for w in np.frombuffer(data, np.uint64, count, offset)]
+
+
+@pytest.mark.parametrize("lm_head_rows", ["all", "last"])
+@pytest.mark.parametrize("generation", [False, True])
+def test_encode_follows_the_program_header(lm_head_rows, generation):
+    plan, data = encoded(lm_head_rows, **({"given": None} if generation else {}))
+    dims = DIMENSION_SETS[0]
+    A, steps = len(plan.arrays), sum(len(p.steps) for p in plan.passes)
+    output = [a.name for a in plan.arrays].index("logits")
+    assert words(data, 8) == [A, 1, 3, 3, dims["V"], int(generation), output, dims["V"]]
+    assert np.frombuffer(data, np.float32, 1, 64)[0] == 0.5
+    tables = words(data, 3 * A + 6, 68)
+    for i, array in enumerate(plan.arrays):
+        size = 4 if array.kind == "table" else 2
+        role = int(array.kind in ("state", "buffer"))
+        assert tables[3 * i : 3 * i + 3] == [array.elements, size, role]
+    passes = [w for p in plan.passes for w in (p.output_rows, len(p.steps))]
+    assert tables[3 * A :] == passes
+    tokens = 3 if generation else 6
+    contents = sum(
+        a.elements * (4 if a.kind == "table" else 2)
+        for a in plan.arrays
+        if a.kind in ("weight", "table")
+    )
+    at = 68 + 8 * (3 * A + 6)
+    assert len(data) == at + 160 * steps + 8 * tokens + contents
+    expected = [0, 1, 2] + ([] if generation else [dims["V"] - 1] * 3)
+    assert words(data, tokens, at + 160 * steps) == expected
+    embed = words(data, 20, at)
+    assert embed[:5] == [0, 0, 3, dims["D"], 0]
+    names = [a.name for a in plan.arrays]
+    assert embed[7:11] == [names.index("embedding"), 0, names.index("x"), 0]
+    norm = words(data, 20, at + 160)
+    assert norm[:4] == [3, 0, 3, dims["D"]]
+    assert norm[19] == 0
+
+
+def test_encode_builds_the_rope_table():
+    _, data = encoded()
+    rope = rope_table.build(
+        head_dim=DIMENSION_SETS[0]["d"], positions=5, **ROPE._asdict()
+    )
+    assert rope.tobytes() in data
+
+
+def test_encode_uses_the_library_of_each_pass():
+    plan = resolve_llama(LLAMA_TEXT)
+    exact = {}
+    for site, shape, _ in model_graph.check_binding(plan, every_binding()).calls:
+        exact.setdefault(site, []).append(shape)
+    o = [
+        entry("gemm", tuple(exact["o"][:1])),
+        entry("gemm", tuple(exact["o"][1:]), "later"),
+    ]
+    check = model_graph.check_binding(plan, every_binding(o=o))
+    data = model_graph.encode(plan, check, **llama_inputs())
+    names = [k.sources[0] for k in model_graph.libraries(check)]
+    at = 68 + 8 * (3 * len(plan.arrays) + 6)
+    seen = []
+    for p, one in enumerate(plan.passes):
+        for step in one.steps:
+            if isinstance(step, KernelStep) and step.site == "o":
+                seen.append((p, names[words(data, 2, at)[1]]))
+            at += 160
+    assert {name for p, name in seen if p == 0} == {"gemm"}
+    assert {name for p, name in seen if p > 0} == {"later"}
+
+
+ENCODE_REFUSALS = (
+    ("scalars", TypeError, {"scalars": [0.5]}),
+    ("scalars", ValueError, {"scalars": {}}),
+    ("scalars", ValueError, {"scalars": {"eps": 0.5, "other": 1.0}}),
+    ("scalars", ValueError, {"scalars": {"eps": -1.0}}),
+    ("tables", ValueError, {"tables": {}}),
+    ("tables", TypeError, {"tables": None}),
+    ("tables", TypeError, {"tables": {"rope": ROPE._asdict()}}),
+    ("tables", ValueError, {"tables": {"rope": ROPE._replace(theta=-1.0)}}),
+    ("weights", ValueError, {"weights": {}}),
+    ("weights", TypeError, {"weights": 3}),
+    ("prompt", TypeError, {"prompt": "abc"}),
+    ("prompt", ValueError, {"prompt": [0, 1]}),
+    ("prompt", TypeError, {"prompt": [0, 1, 2.0]}),
+    ("prompt", TypeError, {"prompt": [0, 1, True]}),
+    ("prompt", ValueError, {"prompt": [0, 1, 10]}),
+    ("prompt", ValueError, {"prompt": [0, -1, 2]}),
+    ("given", ValueError, {"given": [0, 1]}),
+    ("given", ValueError, {"given": [0, 1, 10]}),
+    ("given", TypeError, {"given": 5}),
+)
+
+
+@pytest.mark.parametrize(("parameter", "error", "changes"), ENCODE_REFUSALS)
+def test_encode_refusals(parameter, error, changes):
+    with pytest.raises(error) as caught:
+        encoded(**changes)
+    assert caught.value.parameter == parameter
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "error"),
+    [
+        ("qkv[1]", None, ValueError),
+        ("extra", np.zeros(1, dtype=np.uint16), ValueError),
+        ("norm", [0] * 8, TypeError),
+        ("norm", np.zeros(8, dtype=np.int16), ValueError),
+        ("norm", np.zeros(8, dtype=np.float32), ValueError),
+        ("norm", np.zeros(9, dtype=np.uint16), ValueError),
+        ("qkv[0]", np.zeros((8, 32, 1), dtype=np.uint16), ValueError),
+    ],
+)
+def test_encode_refuses_weights(name, value, error):
+    weights = llama_inputs()["weights"]
+    if value is None:
+        del weights[name]
+    else:
+        weights[name] = value
+    with pytest.raises(error) as caught:
+        encoded(weights=weights)
+    assert caught.value.parameter == "weights"
+
+
+def changed_plan(function):
+    doc = llama_document()
+    function(doc)
+    plan = resolve_llama(json.dumps(doc))
+    return plan, model_graph.check_binding(plan, every_binding())
+
+
+def wider_output(doc):
+    doc["weights"][-1]["shape"] = ["D", "V+1"]
+    doc["buffers"][-1]["shape"] = ["R", "V+1"]
+    node(doc, "lm_head")["shape"]["n"] = "V+1"
+
+
+def test_encode_refuses_an_output_wider_than_the_vocabulary_when_generating():
+    plan, check = changed_plan(wider_output)
+    values = llama_inputs(given=None)
+    values["weights"]["lm_head"] = np.zeros((8, 11), dtype=np.uint16)
+    with pytest.raises(ValueError) as caught:
+        model_graph.encode(plan, check, **values)
+    assert caught.value.parameter == "given"
+    values["given"] = [0, 1, 2]
+    assert model_graph.encode(plan, check, **values)
+
+
+def test_encode_refuses_a_plan_without_embed():
+    plan, check = changed_plan(lambda doc: doc["nodes"].pop(0))
+    with pytest.raises(ValueError) as caught:
+        model_graph.encode(plan, check, **llama_inputs())
+    assert caught.value.parameter == "plan"
+
+
+def test_encode_refuses_a_check_of_another_plan():
+    plan = resolve_llama(LLAMA_TEXT)
+    check = model_graph.check_binding(resolve_llama(LLAMA_TEXT, S=4), every_binding())
+    with pytest.raises(ValueError) as caught:
+        model_graph.encode(plan, check, **llama_inputs())
+    assert caught.value.parameter == "check"
+
+
+@pytest.mark.parametrize(
+    ("plan", "check", "error", "parameter"),
+    [
+        ("plan", None, TypeError, "plan"),
+        (None, "check", TypeError, "check"),
+        (None, model_binding.BindingCheck(False, (), ()), ValueError, "check"),
+    ],
+)
+def test_encode_argument_types(plan, check, error, parameter):
+    real = resolve_llama(LLAMA_TEXT)
+    plan = real if plan is None else plan
+    if check is None:
+        check = model_graph.check_binding(real, every_binding())
+    with pytest.raises(error) as caught:
+        model_graph.encode(plan, check, **llama_inputs())
+    assert caught.value.parameter == parameter
+
+
+@pytest.mark.parametrize("lm_head_rows", ["all", "last"])
+@pytest.mark.parametrize("mode", ["given", "generation"])
+def test_parse_report(lm_head_rows, mode):
+    plan = resolve_llama(LLAMA_TEXT, lm_head_rows=lm_head_rows)
+    V = DIMENSION_SETS[0]["V"]
+    rows = 5 if lm_head_rows == "all" else 3
+    tokens = np.arange(6, dtype=np.uint64)
+    logits = np.arange(rows * V, dtype=np.uint16).tobytes()
+    if mode == "given":
+        report = tokens.tobytes() + logits + b"end\n"
+    else:
+        report = tokens[:3].tobytes() + logits + tokens[3:].tobytes() + b"end\n"
+    parsed = model_graph.parse_report(report, plan, mode=mode)
+    assert parsed.tokens.tolist() == list(range(6))
+    assert parsed.logits.shape == (rows, V)
+    assert parsed.logits.tobytes() == logits
+    assert model_graph.parse_report(report[:-1], plan, mode=mode) is None
+    assert model_graph.parse_report(report[:-4] + b"END\n", plan, mode=mode) is None
+
+
+@pytest.mark.parametrize(
+    ("report", "plan", "mode", "error", "parameter"),
+    [
+        (b"", "plan", "given", TypeError, "plan"),
+        (b"", None, "other", ValueError, "mode"),
+        ("text", None, "given", TypeError, "report"),
+    ],
+)
+def test_parse_report_refusals(report, plan, mode, error, parameter):
+    plan = resolve_llama(LLAMA_TEXT) if plan is None else plan
+    with pytest.raises(error) as caught:
+        model_graph.parse_report(report, plan, mode=mode)
+    assert caught.value.parameter == parameter
+
+
+def test_arrays_carry_their_evaluated_shape():
+    plan = resolve_llama(LLAMA_TEXT, lm_head_rows="last")
+    shapes = {a.name: a.shape for a in plan.arrays}
+    dims = DIMENSION_SETS[0]
+    assert shapes["qkv[1]"] == (dims["D"], (dims["H"] + 2 * dims["H_kv"]) * dims["d"])
+    assert shapes["logits"] == (1, dims["V"])
+    assert shapes["rope"] == (5, dims["d"])
+    assert shapes["cache_k[0]"] == (5, dims["H_kv"], dims["d"])
+
+
+def test_encode_refuses_a_table_that_is_not_two_dimensional():
+    plan, check = changed_plan(
+        lambda doc: doc["tables"][0].__setitem__("shape", ["C", "d", "1"])
+    )
+    with pytest.raises(ValueError) as caught:
+        model_graph.encode(plan, check, **llama_inputs())
+    assert caught.value.parameter == "tables"

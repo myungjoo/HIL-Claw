@@ -1,0 +1,41 @@
+{
+  "graph_format": 1,
+  "dimensions": ["E", "U", "K", "L"],
+  "weights": [
+    {"name": "embedding", "shape": ["K", "E"], "per": null},
+    {"name": "norm", "shape": ["E"], "per": "L"},
+    {"name": "gate", "shape": ["E", "U"], "per": "L"},
+    {"name": "up", "shape": ["E", "U"], "per": "L"},
+    {"name": "down", "shape": ["U", "E"], "per": "L"},
+    {"name": "final_norm", "shape": ["E"], "per": null},
+    {"name": "head", "shape": ["E", "K"], "per": null}
+  ],
+  "tables": [],
+  "scalars": ["eps"],
+  "state": [],
+  "buffers": [
+    {"name": "x", "shape": ["T", "E"]},
+    {"name": "normed", "shape": ["T", "E"]},
+    {"name": "gate_out", "shape": ["T", "U"]},
+    {"name": "up_out", "shape": ["T", "U"]},
+    {"name": "act", "shape": ["T", "U"]},
+    {"name": "down_out", "shape": ["T", "E"]},
+    {"name": "y", "shape": ["T", "E"]},
+    {"name": "scores", "shape": ["R", "K"]}
+  ],
+  "nodes": [
+    {"op": "embed", "weight": "embedding", "out": "x"},
+    {"op": "repeat", "count": "L", "index": "block", "nodes": [
+      {"op": "kernel", "site": "block_norm", "kind": "rmsnorm", "shape": {"m": "T", "n": "E"}, "operands": {"x": "x", "w": "norm{block}", "y": "normed"}, "scalars": {"eps": "eps"}},
+      {"op": "kernel", "site": "gate", "kind": "gemm", "shape": {"m": "T", "k": "E", "n": "U"}, "operands": {"a": "normed", "b": "gate{block}", "c": "gate_out"}, "scalars": {}},
+      {"op": "kernel", "site": "up", "kind": "gemm", "shape": {"m": "T", "k": "E", "n": "U"}, "operands": {"a": "normed", "b": "up{block}", "c": "up_out"}, "scalars": {}},
+      {"op": "kernel", "site": "activation", "kind": "swiglu", "shape": {"m": "T", "n": "U"}, "operands": {"gate": "gate_out", "up": "up_out", "out": "act"}, "scalars": {}},
+      {"op": "kernel", "site": "down", "kind": "gemm", "shape": {"m": "T", "k": "U", "n": "E"}, "operands": {"a": "act", "b": "down{block}", "c": "down_out"}, "scalars": {}},
+      {"op": "kernel", "site": "residual", "kind": "elementwise_add", "shape": {"m": "T", "n": "E"}, "operands": {"a": "x", "b": "down_out", "c": "y"}, "scalars": {}},
+      {"op": "copy", "from": "y", "from_stride": "E", "from_start": "0", "to": "x", "to_stride": "E", "columns": "E"}
+    ]},
+    {"op": "kernel", "site": "final_norm", "kind": "rmsnorm", "shape": {"m": "T", "n": "E"}, "operands": {"x": "x", "w": "final_norm", "y": "normed"}, "scalars": {"eps": "eps"}},
+    {"op": "kernel", "site": "head", "kind": "gemm", "shape": {"m": "R", "k": "E", "n": "K"}, "operands": {"a": {"of": "normed", "start": "(T-R)*E"}, "b": "head", "c": "scores"}, "scalars": {}}
+  ],
+  "output": {"buffer": "scores", "rows": "R"}
+}

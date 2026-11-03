@@ -61,9 +61,24 @@ A connection is a buffer name: no scheduler, no fusion. ``embed`` and
 
 What this module does not do: it starts no process, writes nothing and reads
 no file but the one named; it knows no external model format (OD-9) and no
-tensor name, reads no weight and builds no table; no data-plane record names
-a graph and ``graph_format`` is no data-plane version (ADR-0193 decision 5);
-it checks no binding, encodes no plan for a program and runs none.
+tensor name; it reads no weight but those handed to :func:`encode` and builds
+no table but through :func:`hilclaw.rope_table.build`, from the caller's
+constants (no default, HQ-0070); no data-plane record names a graph and
+``graph_format`` is no data-plane version (ADR-0193 decision 5); it runs no
+program.
+
+**Binding, encoding and report.** :func:`check_binding` checks a binding (a
+mapping from each ``site`` to a sequence of
+:class:`hilclaw.model_binding.BindingEntry`) against a plan with
+:mod:`hilclaw.model_binding`'s fitting rules and outcomes;
+:func:`libraries` lists the distinct kernels of its calls, library ``i`` of
+the program's command line; :func:`encode` turns a plan, an ``ok`` check
+and the caller's values into the input file of ``model_graph.c``
+(:data:`hilclaw.model_build.GRAPH_PROGRAM_SOURCE`), whose header comment
+states the form; and :func:`parse_report` reads the program's report. The vocabulary is the row
+count of the weights the embed steps read; the report's rows are the first
+``rows`` rows of the output buffer after each pass, as wide as its last
+shape member; in the generation mode the selection row is the last of them.
 
 Every :class:`TypeError` or :class:`ValueError` raised for an argument
 carries the attribute ``parameter``; every refusal of a graph is a
@@ -77,10 +92,22 @@ import json
 import math
 import os
 import re
-from collections.abc import Mapping
+import types
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from hilclaw import contract_table, json_text, keys
+import numpy
+
+from hilclaw import (
+    contract_table,
+    json_text,
+    keys,
+    model_binding,
+    model_forward_check,
+    rope_table,
+)
+from hilclaw.model_binding import _bind, _binding
+from hilclaw.model_forward_run import _report
 
 LLAMA_GRAPH = Path(__file__).parent / "graphs" / "llama.json"
 GRAPH_FORMAT = 1
@@ -116,6 +143,7 @@ _FORMS = {
 _COPY = ("from_stride", "from_start", "to_stride", "columns")
 _WRITABLE = ("buffer", "state")
 _ARRAYS = ("weight", "table", "state", "buffer")
+_KINDS = ("gemm", "rmsnorm", "elementwise_add", "swiglu", "rope", "sdpa_kv_cache")
 
 
 def _record(name, fields, doc):
@@ -161,9 +189,10 @@ Graph = _record(
 )
 Array = _record(
     "Array",
-    "name kind base index elements dtype source",
+    "name kind base index elements dtype source shape",
     "An array of a plan: ``name`` is ``base[index]`` for an entry of a ``per``"
-    " declaration; ``kind`` is weight, table, state or buffer.",
+    " declaration; ``kind`` is weight, table, state or buffer; ``shape`` is"
+    " its evaluated shape.",
 )
 Operand = _record(
     "Operand", "name array offset", "A contract operand, its array and offset."
@@ -292,7 +321,7 @@ def resolve(graph, dimensions, *, prompt_length, generation_length, lm_head_rows
             for index in range(base[d.per]) if d.per else (None,):
                 name = d.name if index is None else f"{d.name}[{index}]"
                 arrays[name] = Array(
-                    name, kind, d.name, index, elements, dtype, d.source
+                    name, kind, d.name, index, elements, dtype, d.source, tuple(sizes)
                 )
 
     def walk(nodes, path, env, indices, steps):
@@ -358,6 +387,264 @@ def resolve(graph, dimensions, *, prompt_length, generation_length, lm_head_rows
         rows = _positive(_value(graph.output[1].tree, env), "$.output.rows")
         passes.append(Pass(T, env["P"], rows, tuple(steps)))
     return Plan(tuple(arrays.values()), graph.scalars, graph.output[0], tuple(passes))
+
+
+def check_binding(plan, binding):
+    """Check ``binding`` against every kernel step of ``plan``; return a :class:`hilclaw.model_binding.BindingCheck`.
+
+    ``binding`` maps sites of the plan to non-empty sequences of
+    :class:`hilclaw.model_binding.BindingEntry`, as the binding checks of
+    :mod:`hilclaw.model_binding` take them, each site with the shape form of
+    its kind's contract. A key that is no site of the plan, or an entry that
+    module refuses, makes it malformed (:class:`TypeError` or
+    :class:`ValueError`, ``parameter`` ``"binding"``). Per site in the order
+    of its first step: ``"kernel_unfit"`` for each entry whose contract is not
+    the bf16 contract of the site's kind, then ``"no_kernel"`` for each
+    distinct shape of the site, in pass order, that no entry covers. ``calls``
+    holds ``(site, shape, kernel)`` for each such shape, only when ``ok``.
+    """
+    with _parameter("plan"):
+        if not isinstance(plan, Plan):
+            raise TypeError(f"must be a Plan, got {type(plan).__name__}")
+    sites = {}
+    for step in (s for p in plan.passes for s in p.steps):
+        if isinstance(step, KernelStep):
+            shapes = sites.setdefault(step.site, (step.kind, []))[1]
+            if step.shape not in shapes:
+                shapes.append(step.shape)
+    with _parameter("binding"):
+        if not isinstance(binding, Mapping):
+            raise TypeError(f"must be a mapping, got {type(binding).__name__}")
+        for site in binding:
+            if site not in sites:
+                raise ValueError(f"key {site!r} is not a site of the plan")
+    entries, outcomes, calls = {}, [], []
+    for site, (kind, _) in sites.items():
+        if site in binding:
+            members = _signature(kind)[0]
+            entries.update(_binding({site: binding[site]}, (site,), members))
+    for site, (kind, shapes) in sites.items():
+        reference = _contract(kind).task_contract(*shapes[0])
+        _bind(
+            (site,), entries, {site: shapes}, reference, f"bf16 {kind}", outcomes, calls
+        )
+    ok = not outcomes
+    return model_binding.BindingCheck(ok, tuple(outcomes), tuple(calls) if ok else ())
+
+
+def libraries(check):
+    """Return the distinct kernels of an ``ok`` check's ``calls`` in first-call order: kernel ``i`` is library ``i``.
+
+    Two kernels are the same when they compare equal. Raises
+    :class:`TypeError` for ``check`` that is no
+    :class:`hilclaw.model_binding.BindingCheck` and :class:`ValueError` for
+    one that is not ``ok`` (``parameter`` ``"check"``).
+    """
+    with _parameter("check"):
+        if not isinstance(check, model_binding.BindingCheck):
+            raise TypeError(f"must be a BindingCheck, got {type(check).__name__}")
+        if not check.ok:
+            raise ValueError("is not ok")
+    kernels = []
+    for _, _, kernel in check.calls:
+        if kernel not in kernels:
+            kernels.append(kernel)
+    return tuple(kernels)
+
+
+def encode(plan, check, *, scalars, tables, weights, prompt, given):
+    """Return the bytes of the input file of ``model_graph.c`` for ``plan``.
+
+    ``check`` is an ``ok`` result of :func:`check_binding` for ``plan``; a
+    kernel step uses the library :func:`libraries` gives the kernel bound to
+    its site and shape, so the library may differ from pass to pass.
+    ``scalars`` maps exactly the plan's scalar names to values, each passed
+    through :func:`hilclaw.model_binding.rmsnorm_eps`. ``tables`` maps
+    exactly the plan's table names to
+    :class:`hilclaw.model_forward_check.RopeConstants`; a table of shape
+    (positions, d) is ``rope_table.build(head_dim=d, positions=positions,
+    ...)``. ``weights`` maps exactly the names of the plan's weight arrays
+    (``name[index]`` for an entry of a ``per`` weight) to ``numpy.uint16``
+    arrays of their evaluated shape, written in row-major order. ``prompt``
+    is a sequence of S ``int`` token ids, S the rows of pass 0; ``given`` a
+    sequence of G ``int`` token ids, G the passes (the given-sequence mode),
+    or ``None`` (the generation mode). ``lm_head_rows`` was given to
+    :func:`resolve` and is the plan's output rows.
+
+    Raised before any byte is built, ``parameter`` the argument's name:
+    :class:`TypeError` for a wrong type; :class:`ValueError` for a check that
+    is not ``ok`` or lacks a call of the plan, a missing or extra name, a
+    value :func:`~hilclaw.model_binding.rmsnorm_eps` or
+    :func:`~hilclaw.rope_table.build` refuses, a weight of another element
+    type or shape, a prompt or ``given`` of another length, a token id not
+    below the vocabulary, a plan whose embed steps read no weight or weights
+    of different row counts, and in the generation mode an output row wider
+    than the vocabulary.
+    """
+    words, values, tokens, contents = _parts(
+        plan, check, scalars, tables, weights, prompt, given
+    )
+    return b"".join(
+        (
+            numpy.array(words[:8], dtype=numpy.uint64).tobytes(),
+            numpy.array(values, dtype=numpy.float32).tobytes(),
+            numpy.array(words[8:], dtype=numpy.uint64).tobytes(),
+            numpy.array(tokens, dtype=numpy.uint64).tobytes(),
+            *(array.tobytes(order="C") for array in contents),
+        )
+    )
+
+
+def _parts(plan, check, scalars, tables, weights, prompt, given):
+    with _parameter("plan"):
+        if not isinstance(plan, Plan):
+            raise TypeError(f"must be a Plan, got {type(plan).__name__}")
+    kernels = libraries(check)
+    bound = {(site, shape): kernels.index(k) for site, shape, k in check.calls}
+    index = {a.name: i for i, a in enumerate(plan.arrays)}
+    columns, S, G = _width(plan), plan.passes[0].rows, len(plan.passes)
+    rows = {
+        plan.arrays[index[s.weight]].shape[0]
+        for p in plan.passes
+        for s in p.steps
+        if isinstance(s, EmbedStep)
+    }
+    with _parameter("plan"):
+        if len(rows) != 1:
+            raise ValueError("its embed steps read no weight or weights of two sizes")
+    vocabulary = rows.pop()
+    values = _exact_names(scalars, "scalars", plan.scalars)
+    with _parameter("scalars"):
+        values = [model_binding.rmsnorm_eps(values[name]) for name in plan.scalars]
+    contents = _contents(plan, tables, weights)
+    tokens = _tokens(prompt, "prompt", S, vocabulary)
+    if given is not None:
+        tokens += _tokens(given, "given", G, vocabulary)
+    elif columns > vocabulary:
+        with _parameter("given"):
+            raise ValueError(f"an output row of {columns} is wider than the vocabulary")
+    words = [len(values), G, S, vocabulary, int(given is None)]
+    words = [len(plan.arrays), *words, index[plan.output], columns]
+    for a in plan.arrays:
+        words += [a.elements, 2 if a.dtype == _DTYPE else 4, int(a.kind in _WRITABLE)]
+    words += [w for p in plan.passes for w in (p.output_rows, len(p.steps))]
+    for p in plan.passes:
+        for step in p.steps:
+            words += _step(step, index, bound, plan.scalars)
+    return words, values, tokens, contents
+
+
+def parse_report(report, plan, *, mode):
+    """Return the :class:`hilclaw.model_forward_run.ForwardReport` of a complete report of ``plan``, or ``None``.
+
+    ``mode`` is ``"given"`` or ``"generation"``. A complete report holds
+    ``8*(S + G) + 2*rows*Q`` bytes and the end mark, ``rows`` the sum of the
+    passes' output rows and Q the output buffer's row width, in the order of
+    ``model_forward.c``'s report; ``logits`` has the shape (rows, Q). Raises
+    :class:`TypeError` or :class:`ValueError` (``parameter`` the argument's
+    name) for a ``plan`` that is no :class:`Plan`, another ``mode`` or a
+    ``report`` that is not ``bytes``.
+    """
+    with _parameter("plan"):
+        if not isinstance(plan, Plan):
+            raise TypeError(f"must be a Plan, got {type(plan).__name__}")
+    with _parameter("mode"):
+        if mode not in ("given", "generation"):
+            raise ValueError(f"must be 'given' or 'generation', got {mode!r}")
+    with _parameter("report"):
+        if type(report) is not bytes:
+            raise TypeError(f"must be bytes, got {type(report).__name__}")
+    return _report(
+        report,
+        plan.passes[0].rows,
+        len(plan.passes),
+        sum(p.output_rows for p in plan.passes),
+        types.SimpleNamespace(vocabulary=_width(plan)),
+        mode,
+    )
+
+
+def _width(plan):
+    return next(a for a in plan.arrays if a.name == plan.output).shape[-1]
+
+
+def _step(step, index, bound, scalars):
+    library = scalar = 0
+    if isinstance(step, EmbedStep):
+        op, shape = 0, (step.rows, step.columns, step.first_token)
+        pairs = ((step.weight, 0), (step.out, 0))
+    elif isinstance(step, CopyStep):
+        op = 1
+        shape = (step.rows, step.columns, step.from_stride, step.to_stride)
+        pairs = ((step.source, step.from_start), (step.target, 0))
+    else:
+        op, shape = 2 + _KINDS.index(step.kind), step.shape
+        pairs = tuple((o.array, o.offset) for o in step.operands)
+        with _parameter("check"):
+            if (step.site, step.shape) not in bound:
+                raise ValueError(f"has no call of {step.site} at {step.shape}")
+        library = bound[(step.site, step.shape)]
+        if step.scalars:
+            scalar = scalars.index(step.scalars[0][1])
+    words = [op, library, *shape, *(0,) * (5 - len(shape))]
+    for name, offset in pairs + ((None, 0),) * (6 - len(pairs)):
+        words += [0 if name is None else index[name], offset]
+    return [*words, scalar]
+
+
+def _contents(plan, tables, weights):
+    names = [a.name for a in plan.arrays if a.kind == "weight"]
+    given = _exact_names(weights, "weights", names)
+    bases = [a.name for a in plan.arrays if a.kind == "table"]
+    constants = _exact_names(tables, "tables", bases)
+    contents = []
+    for a in plan.arrays:
+        if a.kind == "table":
+            with _parameter("tables"):
+                if not isinstance(constants[a.name], model_forward_check.RopeConstants):
+                    raise TypeError(f"{a.name}: must be a RopeConstants")
+                if len(a.shape) != 2:
+                    raise ValueError(f"{a.name}: a rope table has two dimensions")
+                table = rope_table.build(
+                    head_dim=a.shape[1],
+                    positions=a.shape[0],
+                    **constants[a.name]._asdict(),
+                )
+            contents.append(table)
+        elif a.kind == "weight":
+            value = given[a.name]
+            with _parameter("weights"):
+                if not isinstance(value, numpy.ndarray):
+                    raise TypeError(f"{a.name}: must be a numpy.ndarray")
+                if value.dtype != numpy.dtype(numpy.uint16) or value.shape != a.shape:
+                    raise ValueError(
+                        f"{a.name}: is {value.dtype} {value.shape}, not uint16 {a.shape}"
+                    )
+            contents.append(value)
+    return contents
+
+
+def _exact_names(value, name, names):
+    with _parameter(name):
+        if not isinstance(value, Mapping):
+            raise TypeError(f"must be a mapping, got {type(value).__name__}")
+        if set(value) != set(names):
+            raise ValueError(f"must give exactly {tuple(names)}, got {tuple(value)}")
+    return value
+
+
+def _tokens(value, name, length, vocabulary):
+    with _parameter(name):
+        if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+            raise TypeError(f"must be a sequence, got {type(value).__name__}")
+        if len(value) != length:
+            raise ValueError(f"has {len(value)} token ids, not {length}")
+        for token in value:
+            if type(token) is not int:
+                raise TypeError(f"a token id is not an int: {token!r}")
+            if not 0 <= token < vocabulary:
+                raise ValueError(f"token id {token} is outside 0 to {vocabulary - 1}")
+    return list(value)
 
 
 class _Reader:
