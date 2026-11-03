@@ -79,6 +79,8 @@ def test_the_module_exposes_only_the_settings_and_the_time_limits():
         "BF16_ELEMENT_WEIGHT",
         "bf16_verification_process_time_limit_s",
         "bf16_timing_process_time_limit_s",
+        "contract_table",
+        "inspect",
     }
 
 
@@ -725,3 +727,21 @@ def test_a_cap_that_is_no_positive_number_is_refused(function, args, cap, error)
 def test_the_cap_reads_the_constant_at_the_call(monkeypatch):
     monkeypatch.setattr(standin_settings, "PROCESS_TIME_LIMIT_CAP_S", 12)
     assert verification_process_time_limit_s(HUGE, HUGE, HUGE, 1) == 12.0
+
+
+def test_the_bf16_dimension_names_are_the_task_contract_parameters_of_the_table():
+    import inspect
+
+    from hilclaw import contract_table
+
+    wanted = {
+        key[0]: tuple(inspect.signature(found.contract.task_contract).parameters)
+        for key, found in contract_table.TABLE.items()
+        if key[1] == "bf16"
+    }
+    assert standin_settings._BF16_DIMENSIONS == wanted
+    assert set(wanted) == set(BF16_CHECK_KINDS)
+    assert wanted["gemm"] == ("m", "k", "n")
+    assert wanted["sdpa_kv_cache"] == ("m", "l", "h", "h_kv", "d")
+    with pytest.raises(ValueError, match="dims of rope must be 3 values"):
+        bf16_verification_process_time_limit_s("rope", (1, 2), 1)

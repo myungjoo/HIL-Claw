@@ -505,3 +505,28 @@ def test_importing_the_module_and_running_another_kind_import_no_numpy():
     )
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == b"False"
+
+
+def test_the_number_of_dimensions_is_that_of_the_contracts_task_contract():
+    import inspect
+
+    from hilclaw import contract_table
+
+    wanted = {
+        key[0]: len(inspect.signature(found.contract.task_contract).parameters)
+        for key, found in contract_table.TABLE.items()
+        if key[1] == "bf16"
+    }
+    assert bf16_timing._DIMENSIONS == wanted
+    assert set(bf16_timing._DIMENSIONS) == set(KINDS)
+    for kind in KINDS:
+        dims = (2,) * wanted[kind]
+        if kind == "sdpa_kv_cache":
+            dims = (1, 2, 2, 1, 2)
+        assert program_arguments(kind, dims, n_max=10, sample_form="interval", seed=0)[
+            : len(dims)
+        ] == tuple(map(str, dims))
+        with pytest.raises(TimingArgumentError):
+            program_arguments(
+                kind, dims + (2,), n_max=10, sample_form="interval", seed=0
+            )

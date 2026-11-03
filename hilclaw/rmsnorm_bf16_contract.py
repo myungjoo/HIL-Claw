@@ -28,6 +28,11 @@ normalised and scaled by a weight of ``n`` elements. For a shape that holds a
   verification inputs ``x`` and ``w`` (decision 9).
 * :data:`EPS`: the ``eps`` of every verification call, the binary32 value
   nearest to 1e-05 (decision 9).
+* :data:`DRAW_BITS`: the ``bits`` with which the bf16 harness programs draw
+  each input operand, in the order they draw them (ADR-0163 decision 4;
+  ADR-0193 decision 6).
+* :data:`EPS_BITS`: the binary32 bit pattern of :data:`EPS`, which the bf16
+  harness programs pass as ``eps`` (ADR-0163 decision 3; ADR-0193 decision 6).
 * :func:`covers`: whether an op_signature record is covered by this contract.
 
 What the module does not do: it builds no spec and no other part of one - no
@@ -65,6 +70,8 @@ PROTOTYPE = (
 SHAPES = ((1, 2048), (32, 2048), (512, 2048))
 INPUT_PATTERNS = (*range(0x3F00, 0x3F80), *range(0xBF00, 0xBF80))
 EPS = 9.999999747378752e-06
+DRAW_BITS = (8, 8)
+EPS_BITS = 0x3727C5AC
 
 
 def op_signature_record(m, n):
