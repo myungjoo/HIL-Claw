@@ -1,4 +1,4 @@
-"""The Qualcomm QNN adapter of PLAN P3-10 on the frame of ADR-0194: build, HTP-emulator run and SDK version probe.
+"""The Qualcomm QNN adapter of PLAN P3-10 on the frame of ADR-0194: build, HTP-emulator run, timing run and SDK version probe.
 
 The form is a C program against QNN's C interface (the headers under the
 SDK's ``include/QNN``): it loads the QNN HTP backend library, whose host
@@ -26,6 +26,16 @@ interface). Each job has the three parts of :mod:`hilclaw.vendor_adapter`:
   process (ADR-0194 decision 3; ADR-0110 decision 3): it is the program's
   failure, and the SDK is reported by the probe and the environment check
   of :mod:`hilclaw.toolchain_check`.
+* **measure**: :func:`assemble_timing` and :func:`measure`: one host process
+  of a built timing program with the backend library path followed by the
+  eight arguments of :func:`hilclaw.harness.timing.driver_arguments`, the
+  target's ``env`` and the run's time limit; :func:`measure` hands the ended
+  process to :func:`hilclaw.vendor_adapter.measure`, which gives the form (A)
+  ``(stdout, None)`` or (B) of :mod:`hilclaw.run_operation`. No memory figure
+  is given (HQ-0090 holds the figure of a vendor target), and a program that
+  cannot start is not an ended process: the exception of
+  :func:`hilclaw.local_run.run` is raised unchanged, and the caller may place
+  it with :func:`hilclaw.vendor_adapter.interpret_run`.
 * **probe**: :func:`assemble_probe` gives ``<program> --version``
   (:data:`VERSION_PROGRAM` is ``qnn-net-run``); :func:`interpret_probe`
   (host) and :func:`interpret_container_probe` (image) read it as
@@ -45,7 +55,10 @@ attached here, no HTP architecture, SoC or optimisation value is fixed, and
 no version is written anywhere.
 """
 
-from hilclaw import clang_adapter, local_run, vendor_adapter
+import os
+
+from hilclaw import clang_adapter, local_run, run_parameters, vendor_adapter
+from hilclaw.harness import timing
 
 BUILD_PROGRAM = "clang"
 VERSION_PROGRAM = "qnn-net-run"
@@ -89,6 +102,75 @@ def run(target, executable, arguments=(), *, timeout_s):
     As :func:`hilclaw.clang_adapter.run`.
     """
     return clang_adapter.run(target, executable, arguments, timeout_s=timeout_s)
+
+
+def _refuse(error, parameter):
+    error.parameter = parameter
+    raise error
+
+
+def _backend(backend):
+    if not isinstance(backend, (str, os.PathLike)):
+        _refuse(
+            TypeError(
+                f"backend must be str or os.PathLike, not {type(backend).__name__}"
+            ),
+            "backend",
+        )
+    text = os.fspath(backend)
+    if not isinstance(text, str):
+        _refuse(TypeError("backend must be a str path, not bytes"), "backend")
+    if not text:
+        _refuse(ValueError("backend is empty"), "backend")
+    return text
+
+
+def _driver_arguments(parameters):
+    if type(parameters) is not run_parameters.TimingParameters:
+        _refuse(
+            TypeError(
+                "parameters must be a run_parameters.TimingParameters, "
+                f"not {type(parameters).__name__}"
+            ),
+            "parameters",
+        )
+    try:
+        return timing.driver_arguments(**parameters._asdict())
+    except timing.TimingArgumentError as error:
+        _refuse(error, "parameters")
+
+
+def assemble_timing(target, executable, backend, parameters, *, timeout_s):
+    """Return the :class:`hilclaw.vendor_adapter.RunCall` of one timing run of ``executable`` at ``target``.
+
+    The command is ``executable``, the path of the QNN backend library
+    ``backend`` (a non-empty ``str`` or :class:`os.PathLike` of ``str``) and
+    the eight arguments :func:`hilclaw.harness.timing.driver_arguments` gives
+    for ``parameters``, exactly a
+    :class:`hilclaw.run_parameters.TimingParameters`; the rest is
+    :func:`assemble_run`'s. Raises :class:`TypeError` or :class:`ValueError`
+    with ``parameter`` ``"backend"``, ``"parameters"`` (a
+    :class:`hilclaw.harness.timing.TimingArgumentError` for a value
+    ``driver_arguments`` refuses included), ``"target"``, ``"executable"`` or
+    ``"timeout_s"`` for a refused argument.
+    """
+    arguments = (_backend(backend), *_driver_arguments(parameters))
+    return assemble_run(target, executable, arguments, timeout_s=timeout_s)
+
+
+def measure(target, executable, backend, parameters, *, timeout_s):
+    """Run one timing process at ``target`` and return the form (A) or (B) of :mod:`hilclaw.run_operation`.
+
+    Arguments as :func:`assemble_timing`, all checked before anything starts.
+    The ended process is handed to :func:`hilclaw.vendor_adapter.measure`
+    with no figure: status 0 gives ``(stdout, None)``, a time limit
+    ``"time_limit"`` and any other status ``"exit_status"``. An exception of
+    :func:`hilclaw.local_run.run` is raised unchanged. The report is not
+    judged here (ADR-0061 decision 3: that is the tool function's).
+    """
+    call = assemble_timing(target, executable, backend, parameters, timeout_s=timeout_s)
+    result = local_run.run(call.command, timeout_s=call.timeout_s, env=call.env)
+    return vendor_adapter.measure(result)
 
 
 def assemble_probe(*, timeout_s, program=VERSION_PROGRAM):
