@@ -14,12 +14,9 @@ from hilclaw import (
     rmsnorm_bf16_contract,
     swiglu_bf16_contract,
 )
-from hilclaw.harness.bf16_program_generator import verification_source
+from hilclaw.harness.bf16_program_generator import timing_source, verification_source
 from hilclaw.harness.bf16_timing import run_bf16_timing
-from hilclaw.harness.bf16_timing_build import (
-    PROGRAM_SOURCES,
-    build_bf16_timing_executable,
-)
+from hilclaw.harness.bf16_timing_build import build_bf16_timing_executable
 from hilclaw.harness.bf16_verification_arrays import EPS_BITS, check_value, draw_inputs
 from hilclaw.harness.measurement import State
 from hilclaw.harness.timing import Broken
@@ -198,7 +195,7 @@ def expected_check(kind, dims, seed):
 @pytest.mark.parametrize("kind", KINDS)
 def test_each_program_declares_its_prototype_byte_for_byte_and_calls_it_once(kind):
     contract = KINDS_OF[kind][0]
-    text = PROGRAM_SOURCES[kind].read_text(encoding="ascii")
+    text = timing_source(kind)
     verification = verification_source(kind)
     assert contract.PROTOTYPE + "\n" in text
     assert contract.PROTOTYPE + "\n" in verification
@@ -221,7 +218,7 @@ def test_the_header_includes_the_verification_header_and_no_math():
 
 
 def test_rmsnorm_compiles_in_the_contracts_eps():
-    text = PROGRAM_SOURCES["rmsnorm"].read_text(encoding="ascii")
+    text = timing_source("rmsnorm")
     assert f"UINT32_C(0x{EPS_BITS:08X})" in text
 
 

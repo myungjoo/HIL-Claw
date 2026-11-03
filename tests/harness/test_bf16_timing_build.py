@@ -157,7 +157,7 @@ def test_program_sources_are_the_c_files_of_the_kinds_next_to_the_package():
     for kind, path in PROGRAM_SOURCES.items():
         assert isinstance(path, Path)
         assert path.is_absolute()
-        assert path.is_file()
+        assert path.is_file() is (kind not in GENERATED_KINDS)
         assert path.name == f"bf16_timing_{kind}.c"
         assert path.parent == DIRECTORY
     assert (DIRECTORY / "bf16_timing.h").is_file()

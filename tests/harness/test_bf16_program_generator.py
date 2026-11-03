@@ -208,7 +208,7 @@ def test_names_are_those_of_the_handwritten_programs(kind):
     assert verification_name(kind) == f"bf16_verification_{kind}.c"
     assert timing_name(kind) == f"bf16_timing_{kind}.c"
     assert not (DIRECTORY / verification_name(kind)).exists()
-    assert (DIRECTORY / timing_name(kind)).is_file()
+    assert not (DIRECTORY / timing_name(kind)).exists()
 
 
 @pytest.mark.parametrize("function", FUNCTIONS, ids=lambda f: f.__name__)
