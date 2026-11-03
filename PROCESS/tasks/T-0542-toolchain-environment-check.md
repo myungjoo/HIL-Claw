@@ -2,7 +2,7 @@
 id: T-0542
 title: Add the read-only environment check command of ADR-0194 decision 7 that reports host and image toolchain components through the adapters' probe parts
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [FR-19, OD-33, NFR-4, NFR-2, "PLAN P3-8"]
 dependsOn: [T-0541]
