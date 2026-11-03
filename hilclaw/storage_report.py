@@ -51,7 +51,8 @@ an image named now by ``HILCLAW_STANDIN_IMAGE`` or ``HILCLAW_CODER_IMAGE``.
 The two variables are read from the process environment (an unset, empty or
 refused value names nothing); a value is matched against each image's named
 references, tags and id, with ``:latest`` added when it holds no tag, and
-against the image id the client gives for it.
+against the image id the client gives for it, which is asked only when an
+image was read.
 
 **The report.** Standard output gets one ASCII JSON document and one LF,
 with ``files`` (``directories`` and ``duplicates``) and ``images``
@@ -464,7 +465,8 @@ def report(directories=(), images=(), *, environ=None, components=None, client=C
         identities.update({(directory, path): ident for path, ident in found.items()})
     entries, inspected = _read_images(images, components, client)
     named_now = set()
-    for value in _named_by_runtime(environ):
+    runtime = _named_by_runtime(environ) if any(e["id"] for e in entries) else []
+    for value in runtime:
         found = inspected.get(value)
         if found is None and value not in inspected:
             found, _ = inspect_image(value, client=client)

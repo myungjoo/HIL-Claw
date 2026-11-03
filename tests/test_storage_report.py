@@ -471,6 +471,13 @@ def test_a_runtime_variable_is_matched_by_the_id_the_client_gives(client):
     assert "registry.example/nvcc-old" in client.inspected()
 
 
+def test_runtime_variables_are_not_asked_about_when_no_image_was_read(client, tmp_path):
+    environ = {"HILCLAW_STANDIN_IMAGE": "s:1", "HILCLAW_CODER_IMAGE": "c:1"}
+    report([str(tmp_path)], environ=environ, client="docker")
+    report(images=["gone:1"], environ=environ, client="docker")
+    assert client.inspected() == ["gone:1"]
+
+
 def test_a_runtime_variable_without_tag_matches_its_latest_tag(client):
     _tools(client)
     client.image("nvcc:12.4", 1, ["nvcc:12.4", "old:latest"])
