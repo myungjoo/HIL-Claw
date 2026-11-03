@@ -2,7 +2,7 @@
 id: T-0547
 title: Write the storage cleanup ADR of PLAN P3-14 (C-3 GC points left open by ADR-0005, duplicate installers and images, tool image retirement) and land its first code slice, the CAS GC of intermediate and failed blobs
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-19, C-3, NFR-2, NFR-4, OD-33, D29, "PLAN P3-14"]
 dependsOn: []
