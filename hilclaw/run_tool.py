@@ -23,6 +23,12 @@ that render them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
    hw_profile of that read (``no_backend``, ``not_offered``). Then
    :func:`hilclaw.run_admission.admit` gives one of its five answers or what
    the call takes from the same read (ADR-0067 decision 5, steps 3 to 7).
+   Where the ``accelerator`` of that hw_profile has a
+   :class:`hilclaw.targets.Target`, the predicate it is handed answers
+   ``True`` only when ``covers`` does and the target serves the record's
+   entry (:func:`hilclaw.contract_table.served_at`; ADR-0193 decision 4),
+   so a record of a contract the target does not serve is
+   ``op_signature_not_covered``; for the mock it is ``covers`` itself.
 4. The source of seeds is asked once, by :func:`hilclaw.run_seed.draw`
    (ADR-0064 decisions 2 to 4; ADR-0067 decision 5).
 5. ⑤ The start line is appended.
@@ -39,10 +45,12 @@ that render them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
    judgement. An answer of the form (B) is broken with that condition. The
    verdict is computed where a ``bound`` is stated (ADR-0063 decision 7), by
    :mod:`hilclaw.run_result`, which is handed the covering entry and the
-   dimensions of the admitted run and, for a completed run, the unit
-   ``"ns"`` and the judgement's resolution and intervals (ADR-0183
-   decision 4). A raised request to end passes through, and nothing is
-   written.
+   dimensions of the admitted run and, for a completed run, the unit and
+   the judgement's resolution and intervals (ADR-0183 decision 4). The unit
+   is the ``unit`` of the :class:`hilclaw.targets.Target` of the run's
+   ``accelerator`` (ADR-0193 decision 4), and ``"ns"`` for an
+   ``accelerator`` with no target, the mock. A raised request to end passes
+   through, and nothing is written.
 7. ⑦ The end line is appended with the result, or with the ``failure`` of a
    call that made none: ``operation_answer_invalid`` for an answer of
    neither form (ADR-0065 decision 7), the pair
@@ -73,8 +81,8 @@ Choices that are this module's own and no rule of a record:
   ``"board.run"`` as :func:`hilclaw.run_identity.step_of` does, before
   anything else, and a ``seeds`` or a ``covers`` that is not callable last.
 * What the place before the start line hands to the step is an object of a
-  private class with two slots, alive for that call only. Its ``repr`` shows
-  neither slot.
+  private class with three slots, alive for that call only. Its ``repr``
+  shows none of them.
 * The output path is the :class:`pathlib.Path` that
   :func:`hilclaw.layout.attempt_artefact` returns for the data root of the
   call, the members ``run_id``, ``round``, ``candidate`` and ``attempt`` of
@@ -129,6 +137,7 @@ nothing between calls.
 
 from hilclaw import (
     build_log,
+    contract_table,
     hw_tool,
     instance,
     journaled_step,
@@ -141,6 +150,7 @@ from hilclaw import (
     run_parameters,
     run_result,
     run_seed,
+    targets,
     tools,
 )
 from hilclaw.harness import measurement, timing
@@ -162,11 +172,12 @@ _CONDITIONS = {
 
 
 class _Drawn:
-    __slots__ = ("admitted", "seed")
+    __slots__ = ("admitted", "seed", "unit")
 
-    def __init__(self, admitted, seed):
+    def __init__(self, admitted, seed, unit):
         self.admitted = admitted
         self.seed = seed
+        self.unit = unit
 
 
 def tool_function(tool, *, source, table, seeds, covers):
@@ -215,8 +226,10 @@ def tool_function(tool, *, source, table, seeds, covers):
     step = run_identity.step_of(tool)
 
     def admit(request, read):
-        admitted = run_admission.admit(read, covers=covers)
-        return _Drawn(admitted, run_seed.draw(seeds))
+        target = _target_of(read.hw_profile["accelerator"])
+        admitted = run_admission.admit(read, covers=_at_target(covers, target))
+        unit = _UNIT if target is None else target.unit
+        return _Drawn(admitted, run_seed.draw(seeds), unit)
 
     def perform(data_root, request, hw_profile, operation, drawn):
         return _perform(step, data_root, request, hw_profile, operation, drawn)
@@ -238,6 +251,26 @@ def tool_function(tool, *, source, table, seeds, covers):
         if not callable(value):
             raise TypeError(f"{name}: must be callable")
     return function
+
+
+def _target_of(accelerator):
+    try:
+        return targets.target(accelerator)
+    except targets.NoTargetError:
+        return None
+
+
+def _at_target(covers, target):
+    if target is None:
+        return covers
+
+    def covered_at_target(record):
+        covered = covers(record)
+        if covered is not True:
+            return covered
+        return contract_table.served_at(record, target)
+
+    return covered_at_target
 
 
 def _hw_profile(read):
@@ -273,7 +306,7 @@ def _perform(step, data_root, request, hw_profile, operation, drawn):
     except build_log.BuildLogUnwritable as unwritable:
         kind, message = KIND_BUILD_LOG_UNWRITABLE, unwritable.message
     else:
-        return {}, _result(answer, admitted)
+        return {}, _result(answer, admitted, drawn.unit)
     raise journaled_step.StepFailed({}, kind, message)
 
 
@@ -287,7 +320,7 @@ def _parameters(admitted, seed):
     )
 
 
-def _result(answer, admitted):
+def _result(answer, admitted, unit):
     contract = (admitted.entry, admitted.dims)
     common = {
         "n_max": admitted.n_max,
@@ -304,7 +337,7 @@ def _result(answer, admitted):
     return run_result.completed(
         _OUTCOMES[judgement.state],
         *contract,
-        unit=_UNIT,
+        unit=unit,
         resolution=judgement.resolution_ns,
         intervals=judgement.intervals_ns,
         memory_bytes=answer.memory_bytes,

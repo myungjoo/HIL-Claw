@@ -185,7 +185,10 @@ def operation_for(target):
     The operation takes the same five arguments and answers as
     :func:`operation` does, with the flags, trailing flags, waiter flags,
     build time limit and process time-limit cap of ``target`` in place of
-    those of the ``cpu_standin`` entry; it reads no hw_profile (ADR-0193
+    those of the ``cpu_standin`` entry, and the timing process container
+    bounded to its ``memory_limit_bytes`` where that is not ``None``
+    (ADR-0193 decision 4); a process ended over the bound is answered as any
+    non-zero status, ``"exit_status"``. It reads no hw_profile (ADR-0193
     decision 3; ADR-0060 decision 3). Raises :class:`TypeError` for a
     ``target`` that is not exactly a :class:`hilclaw.targets.Target`.
     """
@@ -259,6 +262,7 @@ def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes)
         (_TIMING_EXECUTABLE, *arguments),
         limit,
         stdin_data=rows,
+        memory_limit_bytes=target.memory_limit_bytes,
     )
     if type(ran) is str:
         return ran

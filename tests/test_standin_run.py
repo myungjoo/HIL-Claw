@@ -1201,3 +1201,54 @@ def test_an_operation_built_with_a_target_reads_that_target(
 def test_an_operation_is_built_only_with_a_target(given):
     with pytest.raises(TypeError):
         standin_run.operation_for(given)
+
+
+def memory_options(command):
+    before = command[: command.index(IMAGE)]
+    return [
+        item
+        for index, item in enumerate(before)
+        if item.startswith("--memory") or before[index - 1].startswith("--memory")
+    ]
+
+
+def test_the_virtual_npu_operation_bounds_the_timing_process_alone(
+    client, output, keeper, temporary
+):
+    from hilclaw import targets
+
+    client.script = happy()
+    virtual = targets.target(targets.VIRTUAL_NPU)
+    answer = standin_run.operation_for(virtual)({}, {}, bf16("gemm"), output, keeper)
+    assert answer == (REPORT, 300 * 1024)
+    timing_build_command, waiter_build, process = client.runs()
+    compiled = program(timing_build_command)
+    assert compiled[1:6] == list(targets.VIRTUAL_NPU_FLAGS)
+    assert "-fopenmp" not in compiled
+    assert memory_options(timing_build_command) == []
+    assert memory_options(waiter_build) == []
+    assert memory_options(process) == [
+        "--memory",
+        "268435456",
+        "--memory-swap",
+        "268435456",
+    ]
+    assert build_dirs(temporary) == []
+
+
+@pytest.mark.parametrize("status", [137, 1])
+def test_a_timing_process_ended_over_the_bound_is_exit_status(
+    client, output, keeper, status
+):
+    from hilclaw import targets
+
+    client.script = [timing_built(), waiter_built(), ended(status, stdout=b"")]
+    operation_of = standin_run.operation_for(targets.target(targets.VIRTUAL_NPU))
+    assert operation_of({}, {}, bf16("rmsnorm"), output, keeper) == "exit_status"
+
+
+def test_the_cpu_standin_operation_gives_no_memory_bound(client, output, keeper):
+    client.script = happy()
+    assert call(output, keeper) == (REPORT, 300 * 1024)
+    for command in client.runs():
+        assert memory_options(command) == []

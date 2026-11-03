@@ -26,7 +26,15 @@ The predicates, each exactly a ``bool``, and the place that binds each
 
 A record is covered by an entry when the entry's ``covers`` (the predicate
 of ADR-0041 decision 5 read per contract) answers ``True`` for it; a record
-that matches no entry is not covered. The record states no language
+that matches no entry is not covered. Each predicate also answers at a
+target (ADR-0193 decision 4): given a ``target`` (a
+:class:`hilclaw.targets.Target`, of which ``contracts`` alone is read), only
+the entries whose key is in its ``contracts`` are asked, so a record is
+covered there only when its covering entry is one the target serves. Without
+a target the predicates answer as before. :func:`served_at` answers the
+target's part alone, without asking any contract's ``covers``; the run
+tools join it to their bound predicate at the target of the run
+(:mod:`hilclaw.run_tool`). The record states no language
 (ADR-0031 decision 2), so the table holds at most one entry per ``kind``,
 ``dtype`` and ``layout`` (ADR-0177 decision 1). :func:`entry` returns the
 covering entry, and :func:`task_contract` the ``task.contract`` of a covered
@@ -87,41 +95,64 @@ def entry(record):
     return _first(record, lambda e: True)
 
 
-def covers(record):
+def covers(record, target=None):
     """Return whether any entry of :data:`TABLE` covers the op_signature ``record``.
 
-    The predicate of ``spec.write`` (ADR-0177 decision 2). Raises as
-    :func:`entry` raises.
+    The predicate of ``spec.write`` (ADR-0177 decision 2). ``target``, when
+    not ``None``, limits the entries asked to its ``contracts`` (see the
+    module docstring). Raises as :func:`entry` raises, then as
+    :func:`served_at` raises for a ``target``.
     """
-    return entry(record) is not None
+    return _first(record, lambda e: True, target) is not None
 
 
-def check_covers(record):
+def check_covers(record, target=None):
     """Return whether a ``checked`` entry covers the op_signature ``record``.
 
     The predicate of ``correctness.check`` (ADR-0177 decision 2). Only the
-    ``checked`` entries are asked. Raises as :func:`entry` raises.
+    ``checked`` entries are asked, at ``target`` as :func:`covers` says.
+    Raises as :func:`covers` raises.
     """
-    return _first(record, lambda e: e.checked) is not None
+    return _first(record, lambda e: e.checked, target) is not None
 
 
-def run_covers(record):
+def run_covers(record, target=None):
     """Return whether a ``timed`` entry covers the op_signature ``record``.
 
     The predicate of ``sim.run`` and ``board.run`` (ADR-0177 decision 2).
-    Only the ``timed`` entries are asked. Raises as :func:`entry` raises.
+    Only the ``timed`` entries are asked, at ``target`` as :func:`covers`
+    says. Raises as :func:`covers` raises.
     """
-    return _first(record, lambda e: e.timed) is not None
+    return _first(record, lambda e: e.timed, target) is not None
 
 
-def start_covers(record):
+def start_covers(record, target=None):
     """Return whether an entry that is both ``checked`` and ``timed`` covers the op_signature ``record``.
 
     The predicate of the instance start (ADR-0177 decision 2): a run the
     start admits is admitted by every tool its round 0 calls. Only those
-    entries are asked. Raises as :func:`entry` raises.
+    entries are asked, at ``target`` as :func:`covers` says. Raises as
+    :func:`covers` raises.
     """
-    return _first(record, lambda e: e.checked and e.timed) is not None
+    return _first(record, lambda e: e.checked and e.timed, target) is not None
+
+
+def served_at(record, target):
+    """Return whether ``target`` serves the entry of the op_signature ``record``'s ``kind``, ``dtype`` and ``layout``.
+
+    ``True`` when :data:`TABLE` has a key with those three values (and any
+    language) that is in ``target.contracts``; ``False`` otherwise, a record
+    no key matches included. No contract's ``covers`` is asked, so a
+    record is covered at ``target`` exactly when a predicate of this module
+    answers ``True`` for it and this answers ``True`` (ADR-0193 decision 4).
+    ``record`` is first validated as :func:`entry` validates it; then
+    :class:`AttributeError` is raised for a ``target`` with no ``contracts``
+    and :class:`TypeError` for ``contracts`` that cannot be iterated.
+    """
+    keys.op_signature_key(record)
+    stated = (record["kind"], record["dtype"], record["layout"])
+    served = tuple(target.contracts)
+    return any(key[:3] == stated and key in served for key in TABLE)
 
 
 def task_contract(record):
@@ -140,9 +171,12 @@ def task_contract(record):
     return function(*(shape[name] for name in inspect.signature(function).parameters))
 
 
-def _first(record, wanted):
+def _first(record, wanted, target=None):
     keys.op_signature_key(record)
-    for candidate in TABLE.values():
+    served = None if target is None else tuple(target.contracts)
+    for key, candidate in TABLE.items():
+        if served is not None and key not in served:
+            continue
         if wanted(candidate) and candidate.contract.covers(record):
             return candidate
     return None

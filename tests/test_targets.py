@@ -34,12 +34,12 @@ def made(**changes):
     return Target(**(GOOD | changes))
 
 
-def test_the_table_holds_cpu_standin_alone_and_not_the_mock():
+def test_the_table_holds_cpu_standin_and_virtual_npu_and_not_the_mock():
     assert isinstance(TABLE, Mapping)
-    assert tuple(TABLE) == (standin_profile.ACCELERATOR,)
-    assert len(TABLE) == 1
+    assert tuple(TABLE) == (standin_profile.ACCELERATOR, "virtual_npu")
+    assert len(TABLE) == 2
     assert mock_backend.NAME not in TABLE
-    assert "cpu_standin" in repr(TABLE)
+    assert repr(TABLE) == "<target table: cpu_standin, virtual_npu>"
 
 
 def test_cpu_standin_keeps_the_constants_of_standin_settings():
@@ -78,7 +78,9 @@ def test_the_table_cannot_be_changed():
         targets.target(standin_profile.ACCELERATOR).unit = "cycles"
 
 
-@pytest.mark.parametrize("name", ["mock", "virtual_npu", "", 3, None, ["cpu_standin"]])
+@pytest.mark.parametrize(
+    "name", ["mock", "synthetic_npu", "", 3, None, ["cpu_standin"]]
+)
 def test_a_name_with_no_target_is_refused(name):
     with pytest.raises(NoTargetError) as caught:
         targets.target(name)
@@ -238,3 +240,60 @@ def test_a_unit_outside_the_units_is_refused(value, error):
 def test_a_boolean_that_is_no_bool_is_refused(member, value):
     with pytest.raises(TypeError):
         made(**{member: value})
+
+
+def test_virtual_npu_has_the_values_of_adr_0193_decision_4():
+    virtual = targets.target(targets.VIRTUAL_NPU)
+    assert targets.VIRTUAL_NPU == standin_profile.VIRTUAL_NPU == "virtual_npu"
+    assert type(virtual) is Target
+    assert virtual.flags == (
+        "-std=gnu11",
+        "-O1",
+        "-ffp-contract=off",
+        "-fno-vectorize",
+        "-fno-slp-vectorize",
+    )
+    assert virtual.flags == targets.VIRTUAL_NPU_FLAGS
+    assert "-fopenmp" not in virtual.flags
+    assert virtual.trailing_flags == standin_settings.TRAILING_FLAGS
+    assert virtual.waiter_flags == standin_settings.WAITER_FLAGS
+    assert virtual.env is None is standin_settings.ENV
+    assert virtual.build_time_limit_s == standin_settings.BUILD_TIME_LIMIT_S
+    assert virtual.process_time_limit_cap_s == standin_settings.PROCESS_TIME_LIMIT_CAP_S
+    assert virtual.contracts == tuple(
+        key for key in contract_table.TABLE if key != ("gemm", "fp32", "row_major", "c")
+    )
+    assert len(virtual.contracts) == 6
+    assert {key[1] for key in virtual.contracts} == {"bf16"}
+    assert virtual.memory_limit_bytes == 268435456
+    assert virtual.memory_limit_bytes == targets.VIRTUAL_NPU_MEMORY_LIMIT_BYTES
+    assert virtual.unit == "ns"
+    assert virtual.model_run is False
+    assert virtual.instance_start is False
+
+
+def test_virtual_npu_reads_the_shared_constants_each_time_it_is_read(monkeypatch):
+    monkeypatch.setattr(standin_settings, "BUILD_TIME_LIMIT_S", 7)
+    monkeypatch.setattr(standin_settings, "PROCESS_TIME_LIMIT_CAP_S", 9)
+    monkeypatch.setattr(standin_settings, "TRAILING_FLAGS", ("-lfoo",))
+    monkeypatch.setattr(standin_settings, "WAITER_FLAGS", ("-O3",))
+    monkeypatch.setattr(standin_settings, "ENV", {"A": "1"})
+    monkeypatch.setattr(standin_settings, "FLAGS", ("-O0",))
+    virtual = TABLE[targets.VIRTUAL_NPU]
+    assert virtual.build_time_limit_s == 7
+    assert virtual.process_time_limit_cap_s == 9
+    assert virtual.trailing_flags == ("-lfoo",)
+    assert virtual.waiter_flags == ("-O3",)
+    assert dict(virtual.env) == {"A": "1"}
+    assert virtual.flags == targets.VIRTUAL_NPU_FLAGS
+
+
+def test_an_error_of_building_virtual_npu_is_not_masked(monkeypatch):
+    monkeypatch.setattr(standin_settings, "PROCESS_TIME_LIMIT_CAP_S", math.inf)
+    with pytest.raises(ValueError, match="^process_time_limit_cap_s"):
+        targets.target(targets.VIRTUAL_NPU)
+
+
+def test_virtual_npu_takes_no_instance_start():
+    assert targets.instance_start_accelerators() == (targets.CPU_STANDIN,)
+    assert targets.VIRTUAL_NPU not in targets.instance_start_accelerators()

@@ -224,7 +224,10 @@ def operation_for(target):
     The operation takes the same five arguments and answers as
     :func:`operation` does, with the flags, trailing flags, build time limit
     and process time-limit cap of ``target`` in place of those of the
-    ``cpu_standin`` entry; it reads no hw_profile (ADR-0193 decision 3;
+    ``cpu_standin`` entry, and the verification process container bounded to
+    its ``memory_limit_bytes`` where that is not ``None`` (ADR-0193 decision
+    4); a process ended over the bound is answered as any non-zero status,
+    ``"exit_status"``. It reads no hw_profile (ADR-0193 decision 3;
     ADR-0060 decision 3). Raises :class:`TypeError` for a ``target`` that is
     not exactly a :class:`hilclaw.targets.Target`.
     """
@@ -392,6 +395,7 @@ def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes)
         arguments,
         limit,
         stdin_data=rows,
+        memory_limit_bytes=target.memory_limit_bytes,
     )
     if type(ran) is str:
         return ran
@@ -475,13 +479,25 @@ def in_container(relative):
 
 
 def run_container(
-    outcomes, step, image, build_dir, program, arguments, timeout_s, *, stdin_data=None
+    outcomes,
+    step,
+    image,
+    build_dir,
+    program,
+    arguments,
+    timeout_s,
+    *,
+    stdin_data=None,
+    memory_limit_bytes=None,
 ):
     """Run ``program`` in one container, give its forced removal :data:`REMOVAL_TIMEOUT_S`, and place what it raised.
 
-    ``stdin_data`` is handed to
-    :func:`hilclaw.standin_container.run_in_container` as it is: ``None``,
-    the default, leaves the container's standard input the null device.
+    ``stdin_data`` and ``memory_limit_bytes`` are handed to
+    :func:`hilclaw.standin_container.run_in_container` as they are: ``None``,
+    the default of each, leaves the container's standard input the null
+    device and gives no memory bound. The operations hand a target's
+    ``memory_limit_bytes`` to each process container and to no build
+    container (ADR-0193 decision 4).
 
     What :func:`hilclaw.standin_container.run_in_container` returned or raised
     is appended to ``outcomes``. Returns its
@@ -500,6 +516,7 @@ def run_container(
                 timeout_s=timeout_s,
                 removal_timeout_s=REMOVAL_TIMEOUT_S,
                 stdin_data=stdin_data,
+                memory_limit_bytes=memory_limit_bytes,
             )
         except BaseException as error:
             outcomes.append(error)

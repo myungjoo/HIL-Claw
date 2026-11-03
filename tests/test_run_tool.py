@@ -4,6 +4,7 @@ import inspect
 import json
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -27,11 +28,13 @@ from hilclaw import (
     run_identity,
     run_objective,
     run_operation,
+    run_result,
     run_seed,
     run_state,
     run_tool,
     sdpa_kv_cache_bf16_contract,
     swiglu_bf16_contract,
+    targets,
     tools,
 )
 from hilclaw.backends import Backend, BackendTable
@@ -167,6 +170,7 @@ class Bench:
         seeds=(SEED,),
         covers=gemm_contract.covers,
         offered=True,
+        accelerator=mock_backend.NAME,
     ):
         self.root, self.tool, self.answer, self.covered = root, tool, script, covers
         self.order, self.asked, self.keepers, self.sources = [], [], [], 0
@@ -176,7 +180,7 @@ class Bench:
             if offered
             else {}
         )
-        self.table = BackendTable([Backend(mock_backend.NAME, operations)])
+        self.table = BackendTable([Backend(accelerator, operations)])
         self.function = tool_function(
             tool,
             source=self.source,
@@ -926,6 +930,7 @@ def test_the_module_imports_and_names():
         f"hilclaw.{name}"
         for name in (
             "build_log",
+            "contract_table",
             "hw_tool",
             "instance",
             "journaled_step",
@@ -938,6 +943,7 @@ def test_the_module_imports_and_names():
             "run_parameters",
             "run_result",
             "run_seed",
+            "targets",
             "tools",
         )
     } | {"hilclaw.harness.measurement", "hilclaw.harness.timing"}
@@ -974,3 +980,107 @@ def test_importing_the_run_tool_modules_imports_no_numpy():
         check=False,
     )
     assert (done.returncode, done.stderr, done.stdout.strip()) == (0, b"", b"False")
+
+
+# Coverage and unit per target (ADR-0193 decision 4)
+
+
+def target_run(tmp_path, accelerator, kind=None):
+    if kind is None:
+        root = a_run(tmp_path / "data", content(accelerator=accelerator))
+        return root, SHAPE, CONTRACT_KEY
+    root, shape, key = bf16_run(tmp_path, kind)
+    contract, names, dims = BF16_KINDS[kind]
+    op = contract.op_signature_record(**dict(zip(names, dims, strict=True)))
+    a_run(root, content(op=op, accelerator=accelerator))
+    return root, shape, key
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_fp32_gemm_is_not_covered_at_virtual_npu(tmp_path, tool):
+    root, _, _ = target_run(tmp_path, targets.VIRTUAL_NPU)
+    bench = Bench(
+        root, tool, covers=contract_table.run_covers, accelerator=targets.VIRTUAL_NPU
+    )
+    assert bench.failure().kind == run_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert bench.order == ["covers"]
+    assert lines(root) == []
+
+
+@pytest.mark.parametrize(("tool", "kind"), BF16_CASES)
+def test_a_bf16_kind_is_admitted_at_virtual_npu_with_the_unit_ns(tmp_path, tool, kind):
+    root, shape, key = target_run(tmp_path, targets.VIRTUAL_NPU, kind)
+    bench = Bench(
+        root, tool, covers=contract_table.run_covers, accelerator=targets.VIRTUAL_NPU
+    )
+    result = bench.function(request())
+    assert result == {**CONVERGED, "contract_key": key, "shape": shape}
+    assert result["unit"] == "ns"
+    assert bench.count("covers") == 1
+
+
+@pytest.mark.parametrize("kind", [None, *BF16_KINDS])
+def test_every_contract_is_admitted_at_cpu_standin_as_before(tmp_path, kind):
+    root, shape, key = target_run(tmp_path, targets.CPU_STANDIN, kind)
+    bench = Bench(
+        root, covers=contract_table.run_covers, accelerator=targets.CPU_STANDIN
+    )
+    assert bench.function(request()) == {
+        **CONVERGED,
+        "contract_key": key,
+        "shape": shape,
+    }
+
+
+def test_a_refusal_of_the_bound_predicate_stands_at_a_target(tmp_path):
+    root, _, _ = target_run(tmp_path, targets.VIRTUAL_NPU, "gemm")
+    bench = Bench(root, covers=lambda record: False, accelerator=targets.VIRTUAL_NPU)
+    assert bench.failure().kind == run_admission.KIND_OP_SIGNATURE_NOT_COVERED
+
+
+@pytest.mark.parametrize("answer", [1, None, "yes"])
+def test_a_bound_predicate_that_answers_no_bool_is_refused_at_a_target(
+    tmp_path, answer
+):
+    root, _, _ = target_run(tmp_path, targets.VIRTUAL_NPU, "gemm")
+    bench = Bench(root, covers=lambda record: answer, accelerator=targets.VIRTUAL_NPU)
+    with pytest.raises(TypeError, match="exactly a bool"):
+        bench.function(request())
+    assert lines(root) == []
+
+
+def test_the_unit_is_read_from_the_target_of_the_run(tmp_path, monkeypatch):
+    seen = []
+
+    def target(name):
+        seen.append(name)
+        return types.SimpleNamespace(unit=MARKER, contracts=tuple(contract_table.TABLE))
+
+    monkeypatch.setattr(targets, "target", target)
+    monkeypatch.setattr(run_result, "UNITS", ("ns", MARKER))
+    root, _, _ = target_run(tmp_path, "synthetic_npu")
+    bench = Bench(root, covers=contract_table.run_covers, accelerator="synthetic_npu")
+    assert bench.function(request()) == {**CONVERGED, "unit": MARKER}
+    assert seen == ["synthetic_npu"]
+
+
+def test_an_accelerator_with_no_target_keeps_the_unit_ns(tmp_path, monkeypatch):
+    monkeypatch.setattr(run_result, "UNITS", ("ns", MARKER))
+    root, _, _ = target_run(tmp_path, "synthetic_npu")
+    bench = Bench(root, covers=gemm_contract.covers, accelerator="synthetic_npu")
+    assert bench.function(request())["unit"] == "ns"
+    assert bench.count("covers") == 1
+
+
+def test_an_error_of_building_the_target_passes(tmp_path, monkeypatch):
+    def target(name):
+        raise ValueError("refused member")
+
+    monkeypatch.setattr(targets, "target", target)
+    root, _, _ = target_run(tmp_path, targets.CPU_STANDIN)
+    bench = Bench(
+        root, covers=contract_table.run_covers, accelerator=targets.CPU_STANDIN
+    )
+    with pytest.raises(ValueError, match="refused member"):
+        bench.function(request())
+    assert (bench.order, lines(root)) == ([], [])

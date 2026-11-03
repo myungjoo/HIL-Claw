@@ -19,12 +19,13 @@ ADR-0144 decision 6 as Docker options (E2 to E6, E11, E12). The build
 directory is the one writable mount, given with ``--mount type=bind``, which
 unlike ``-v`` does not create a missing source, at :data:`CONTAINER_BUILD_DIR`;
 ``--entrypoint=`` empties the image's entrypoint so that the program after the
-image is the one started. No variable, other host path, privilege or resource
-bound is given. The program's standard input is the null device unless the
-caller hands bytes for it; then ``--interactive`` keeps it open for them and
-no ``--tty`` is given (ADR-0180 decision 3, for the rows of a bf16 ``rope``
-process). At the time limit the container is removed by its name, by
-force (``rm --force``, E5).
+image is the one started. No variable, other host path or privilege is given,
+and no resource bound but the memory bound a caller asks for (ADR-0193
+decision 4: ``--memory`` and an equal ``--memory-swap``). The program's
+standard input is the null device unless the caller hands bytes for it; then
+``--interactive`` keeps it open for them and no ``--tty`` is given (ADR-0180
+decision 3, for the rows of a bf16 ``rope`` process). At the time limit the
+container is removed by its name, by force (``rm --force``, E5).
 
 What this module does not decide: what a tool answers where no container
 runtime, no image or no container can be had (ADR-0144 decision 7, OD-18
@@ -101,6 +102,7 @@ def run_in_container(
     removal_timeout_s,
     client="docker",
     stdin_data=None,
+    memory_limit_bytes=None,
 ):
     """Run ``program`` with ``arguments`` in one new container of ``image``.
 
@@ -119,7 +121,10 @@ def run_in_container(
     the bytes are handed to :func:`hilclaw.local_run.run` as its
     ``stdin_data``, written while the output is collected and then closed
     (ADR-0180 decision 3). An empty ``bytes`` is admitted: the program reads
-    end of input at once.
+    end of input at once. ``memory_limit_bytes`` is ``None``, the default,
+    for no bound and no option, or an ``int`` above 0: then ``--memory <n>``
+    and ``--memory-swap <n>`` with the same ``n`` are given before the image
+    (ADR-0193 decision 4).
 
     The client runs with the environment of the calling process. After a
     normal end, whatever the status, the client removed the container
@@ -140,8 +145,10 @@ def run_in_container(
     hold an item that is not ``str`` or holds NUL; a ``timeout_s`` or
     ``removal_timeout_s`` that is not a number or not positive and finite;
     a ``stdin_data`` that is neither ``None`` nor exactly ``bytes``
-    (:class:`TypeError`; a ``bytearray`` or ``memoryview`` included).
-    Then :class:`NoNumericUserError` where the platform has no ``os.getuid``
+    (:class:`TypeError`; a ``bytearray`` or ``memoryview`` included); a
+    ``memory_limit_bytes`` that is neither ``None`` nor an ``int``, a
+    ``bool`` included (:class:`TypeError`), or is not above 0
+    (:class:`ValueError`). Then :class:`NoNumericUserError` where the platform has no ``os.getuid``
     or ``os.getgid``: a precondition of this function for the POSIX machines
     of C-7 1, not an answer of any tool. Then the :class:`OSError` of
     :func:`os.stat` on ``build_dir``, or :class:`NotADirectoryError`.
@@ -167,6 +174,8 @@ def run_in_container(
     )
     with _parameter("stdin_data"):
         _check_input(stdin_data)
+    with _parameter("memory_limit_bytes"):
+        bound = _memory_options(memory_limit_bytes)
     user = _numeric_user()
     _check_directory(source)
     name = NAME_PREFIX + secrets.token_hex(16)
@@ -191,6 +200,7 @@ def run_in_container(
         "--security-opt",
         "no-new-privileges=true",
         *(() if stdin_data is None else ("--interactive",)),
+        *bound,
         "--entrypoint=",
         image,
         program,
@@ -340,6 +350,18 @@ def _check_input(stdin_data):
         raise TypeError(
             f"stdin_data must be None or bytes, not {type(stdin_data).__name__}"
         )
+
+
+def _memory_options(value):
+    if value is None:
+        return ()
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(
+            f"memory_limit_bytes must be None or an int, not {type(value).__name__}"
+        )
+    if value < 1:
+        raise ValueError(f"memory_limit_bytes must be above 0: {value!r}")
+    return ("--memory", str(value), "--memory-swap", str(value))
 
 
 def _check_limit(value, what):

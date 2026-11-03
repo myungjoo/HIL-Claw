@@ -11,12 +11,22 @@ places the description of a target in a table in the package source, one
   limits, the contract-table keys it serves, a memory limit or ``None``, the
   measurement unit, and whether the model executor may take its runs
   (``model_run``) and an instance may start on it (``instance_start``).
-* The one entry is :data:`hilclaw.standin_profile.ACCELERATOR`. Its values are
-  read from :mod:`hilclaw.standin_settings` each time the entry is read, so
-  those constants stay the source of its build settings and time limits
-  (ADR-0116 decision 2 (a); ADR-0117; ADR-0188). It serves every key of
+* The entry :data:`CPU_STANDIN` (:data:`hilclaw.standin_profile.ACCELERATOR`).
+  Its values are read from :mod:`hilclaw.standin_settings` each time the entry
+  is read, so those constants stay the source of its build settings and time
+  limits (ADR-0116 decision 2 (a); ADR-0117; ADR-0188). It serves every key of
   :data:`hilclaw.contract_table.TABLE`, has no memory limit, the unit ``ns``,
   and both booleans true.
+* The entry :data:`VIRTUAL_NPU`, the virtual NPU of ADR-0193 decision 4: a
+  check backend on the development machine whose values exist to make
+  first-case assumptions fail and are no fact about any real NPU. Its flags
+  are :data:`VIRTUAL_NPU_FLAGS`; its trailing and waiter flags, environment,
+  build time limit and process time-limit cap are those of ``cpu_standin``,
+  read from the same constants. It serves the six bf16 keys of
+  :data:`hilclaw.contract_table.TABLE` (not fp32 ``gemm``), bounds each
+  process container to :data:`VIRTUAL_NPU_MEMORY_LIMIT_BYTES`, has the unit
+  ``ns`` (until the owner answers whether another unit is admitted) and both
+  booleans false.
 * The mock (:data:`hilclaw.mock_backend.NAME`) builds nothing and has no
   :class:`Target`.
 
@@ -151,6 +161,26 @@ def _check_memory_limit(value):
         raise ValueError("memory_limit_bytes must be above 0")
 
 
+def _bf16_contracts():
+    return tuple(key for key in contract_table.TABLE if key[1] == "bf16")
+
+
+def _virtual_npu():
+    return Target(
+        flags=VIRTUAL_NPU_FLAGS,
+        trailing_flags=standin_settings.TRAILING_FLAGS,
+        waiter_flags=standin_settings.WAITER_FLAGS,
+        env=standin_settings.ENV,
+        build_time_limit_s=standin_settings.BUILD_TIME_LIMIT_S,
+        process_time_limit_cap_s=standin_settings.PROCESS_TIME_LIMIT_CAP_S,
+        contracts=_bf16_contracts(),
+        memory_limit_bytes=VIRTUAL_NPU_MEMORY_LIMIT_BYTES,
+        unit="ns",
+        model_run=False,
+        instance_start=False,
+    )
+
+
 def _cpu_standin():
     return Target(
         flags=standin_settings.FLAGS,
@@ -169,6 +199,21 @@ def _cpu_standin():
 
 CPU_STANDIN = standin_profile.ACCELERATOR
 """The name of the ``cpu_standin`` entry, :data:`hilclaw.standin_profile.ACCELERATOR`."""
+
+VIRTUAL_NPU = standin_profile.VIRTUAL_NPU
+"""The name of the ``virtual_npu`` entry, :data:`hilclaw.standin_profile.VIRTUAL_NPU` (ADR-0193 decision 4)."""
+
+VIRTUAL_NPU_FLAGS = (
+    "-std=gnu11",
+    "-O1",
+    "-ffp-contract=off",
+    "-fno-vectorize",
+    "-fno-slp-vectorize",
+)
+"""The flags of every kernel build at ``virtual_npu`` (ADR-0193 decision 4)."""
+
+VIRTUAL_NPU_MEMORY_LIMIT_BYTES = 268435456
+"""The memory bound in bytes of each ``virtual_npu`` process container (ADR-0193 decision 4)."""
 
 
 class _Table(Mapping):
@@ -191,7 +236,7 @@ class _Table(Mapping):
         return f"<target table: {', '.join(self._builders)}>"
 
 
-TABLE = _Table({CPU_STANDIN: _cpu_standin})
+TABLE = _Table({CPU_STANDIN: _cpu_standin, VIRTUAL_NPU: _virtual_npu})
 """The target table: a read-only mapping from ``accelerator`` to :class:`Target`, each entry built when it is read."""
 
 
