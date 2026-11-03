@@ -766,11 +766,7 @@ def test_measure_refuses_an_answer_no_row_holds(monkeypatch):
         measure(make_target(), "t", PARAMETERS, timeout_s=1)
 
 
-# Real-GPU tests (PLAN P3-13, FR-19 (5)) of tests/cuda_fixtures/timing.cu; the
-# intervals are this machine's figures only. With TIMING_HOLD_NS thread 0 spins
-# until %globaltimer, a nanosecond timer (PTX ISA, "Special Registers"), has
-# advanced HOLD_NS, so the kernel lasts at least HOLD_NS less one timer step;
-# STEP_NS bounds that step widely (1024 ns was read on an RTX 4070).
+# The held kernel lasts at least HOLD_NS less one %globaltimer step (STEP_NS, a wide bound).
 HOLD_NS = 5_000_000
 STEP_NS = 100_000
 GPU_PARAMETERS = TimingParameters(64, 64, 64, 50, "interval", 7)
@@ -793,8 +789,8 @@ def built_timing(tmp_path, name, *flags):
     return out
 
 
-def ended(executable, parameters):
-    call = assemble_timing(make_target(), executable, parameters, timeout_s=LIMIT)
+def ended(executable, parameters, timeout_s=LIMIT):
+    call = assemble_timing(make_target(), executable, parameters, timeout_s=timeout_s)
     return local_run.run(call.command, timeout_s=call.timeout_s, env=call.env)
 
 
@@ -872,6 +868,10 @@ def test_real_gpu_illegal_address_is_exit_status(gpu, tmp_path):
 def test_real_gpu_hang_is_time_limit_and_leaves_the_gpu_usable(gpu, tmp_path):
     executable = built_timing(tmp_path, "hang", "-DTIMING_FAULT=3")
     assert measure(make_target(), executable, PARAMETERS, timeout_s=1) == "time_limit"
+    result = ended(executable, PARAMETERS, timeout_s=1)
+    assert result.timed_out
+    assert result.stdout.startswith(b"resolution_ns ")
+    assert b"interval_ns" not in result.stdout
     after = built_timing(tmp_path, "timing")
     answer = measure(make_target(), after, GPU_PARAMETERS, timeout_s=LIMIT)
     judged(answer, GPU_PARAMETERS)
