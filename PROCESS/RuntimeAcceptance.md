@@ -599,3 +599,11 @@
 - 내용:
 
   Checkable once the owner has registered `python -m hilclaw.merge_guard` as a `PreToolUse` hook in the driver clone's `.claude/settings.local.json`. In a real driver session under Bypass permissions: (1) the hook fires for the Bash and PowerShell tools, in the main session and in sub-agents, and exit 2 stops the call; (2) the module is found from the working directory the hook starts in. If it is not found, Python exits 1, which the repository's records (the T-0406 follow-up) describe as a non-blocking error, so the guard would be silently off and its fail-closed exit 2 would never run; (3) `python -m hilclaw.nightly <base>` started by the executor passes, and the `claude` turn sessions that run starts as Python children are not stopped by this hook (HQ-0082 observed the first half on the guard function and expected the second, neither in a real session); (4) what happens to a call when the hook exceeds its timeout (T-0007, T-0107 Follow-ups). Closed by the owner's check; not a driver task.
+
+### RA-0069
+
+- 상태: 미확인
+- 출처: P3-3, T-0533, ADR-0193 (등록 2026-11-03)
+- 내용:
+
+  PLAN P3-3. 실제 컨테이너 런타임(Docker)이 있는 런타임 머신에서 두 가지를 확인한다. ① `virtual_npu`의 timing process 컨테이너를 `--memory 268435456 --memory-swap 268435456`으로 시작하면 실제로 그 메모리 한도(스왑 없이 268435456 바이트)에 묶이는지. ② 그 한도를 넘게 메모리를 쓰는 커널을 `sim.run`이나 `board.run`으로 호출하면 결과가 `broken`, `condition` `exit_status`로 끝나는지(새 condition이나 member가 없고, `memory_ceiling`은 계속 허용되지 않음). verification process에 같은 한도를 거는 코드 경로도 있지만, `virtual_npu`는 아직 `correctness.check`를 제공하지 않으므로(HQ-0091) 확인 대상은 timing process뿐이다. 개발 머신에서는 스텁 Docker 클라이언트로만 검증했다(D16). T-0533(PR #350, main 0de635d9) 착지 뒤 확인 가능.

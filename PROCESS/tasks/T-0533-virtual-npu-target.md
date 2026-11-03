@@ -2,7 +2,7 @@
 id: T-0533
 title: Add the virtual_npu target and backend of ADR-0193 decision 4 (flags, memory bound, coverage per target, unit read from the target) below the instance start
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, FR-10, FR-14, NFR-6, "PLAN P3-3"]
 dependsOn: []
