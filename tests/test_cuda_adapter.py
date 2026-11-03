@@ -17,14 +17,19 @@ from hilclaw.cuda_adapter import (
     assemble_device_probe,
     assemble_probe,
     assemble_run,
+    assemble_timing,
     build,
     device_probe,
     interpret_container_probe,
     interpret_device_probe,
     interpret_probe,
+    measure,
     probe,
     run,
 )
+from hilclaw.harness import timing
+from hilclaw.harness.measurement import N_MIN
+from hilclaw.run_parameters import Bf16TimingParameters, TimingParameters
 from hilclaw.vendor_adapter import (
     ABSENT,
     BROKEN,
@@ -51,6 +56,9 @@ NVCC_OUTPUT = (
     b"Built on Tue_Dec_16_07:23:41_PM_PST_2025\n" + RELEASE + b"\n"
     b"Build cuda_13.1.r13.1/compiler.37061995_0\n"
 )
+PARAMETERS = TimingParameters(2, 3, 4, 10, "interval", 42)
+DRIVER_ARGUMENTS = ("2", "3", "4", "5", "10", "0.05", "interval", "42")
+REPORT = b"resolution_ns 1\n" + b"interval_ns 30000\n" * N_MIN + b"stop converged\n"
 
 # Fault-injection scripts (ADR-0194 decision 6), each run by this interpreter
 # from the test's own temporary directory and passed only as ``program`` or
@@ -225,6 +233,10 @@ def test_assemble_parts_are_pure(monkeypatch):
     assert assemble_run(target, "p", ["a"], timeout_s=1).command == ("p", "a")
     assert assemble_probe(timeout_s=1).command == ("nvcc", "--version")
     assert assemble_device_probe(timeout_s=1).command[0] == "nvidia-smi"
+    assert assemble_timing(target, "p", PARAMETERS, timeout_s=1).command == (
+        "p",
+        *DRIVER_ARGUMENTS,
+    )
 
 
 @pytest.mark.parametrize(
@@ -628,3 +640,238 @@ def test_fault_nvcc_version_query_that_hangs_is_unreadable(script):
     # Stands for an nvcc version query that never ends (ADR-0194 decisions 6 and 7).
     found = probe(timeout_s=0.5, program=script(HANG))
     assert (found.state, found.version) == (UNREADABLE, None)
+
+
+def test_assemble_timing_gives_the_driver_arguments_after_the_executable():
+    target = make_target(process_time_limit_cap_s=5, env={"CUDA_VISIBLE_DEVICES": "0"})
+    call = assemble_timing(target, Path("t"), PARAMETERS, timeout_s=9)
+    assert call == RunCall(
+        command=("t", *DRIVER_ARGUMENTS), env=target.env, timeout_s=5, files=()
+    )
+    reciprocal = PARAMETERS._replace(sample_form="reciprocal", seed=0)
+    call = assemble_timing(target, "t", reciprocal, timeout_s=2)
+    assert call.command == ("t", *timing.driver_arguments(**reciprocal._asdict()))
+    assert call.command[-2:] == ("reciprocal", "0")
+    assert call.timeout_s == 2
+
+
+@pytest.mark.parametrize(
+    ("changes", "error", "parameter"),
+    [
+        ({"target": None}, TypeError, "target"),
+        ({"executable": ""}, ValueError, "executable"),
+        ({"executable": b"t"}, TypeError, "executable"),
+        ({"parameters": tuple(PARAMETERS)}, TypeError, "parameters"),
+        ({"parameters": None}, TypeError, "parameters"),
+        (
+            {
+                "parameters": Bf16TimingParameters(
+                    "gemm", "bf16", (2, 3, 4), 10, "interval", 1
+                )
+            },
+            TypeError,
+            "parameters",
+        ),
+        (
+            {"parameters": PARAMETERS._replace(n_max=N_MIN - 1)},
+            ValueError,
+            "parameters",
+        ),
+        ({"parameters": PARAMETERS._replace(m=0)}, ValueError, "parameters"),
+        ({"parameters": PARAMETERS._replace(k=True)}, ValueError, "parameters"),
+        ({"parameters": PARAMETERS._replace(n=2.0)}, ValueError, "parameters"),
+        (
+            {"parameters": PARAMETERS._replace(sample_form="both")},
+            ValueError,
+            "parameters",
+        ),
+        ({"parameters": PARAMETERS._replace(seed=-1)}, ValueError, "parameters"),
+        ({"parameters": PARAMETERS._replace(seed=2**64)}, ValueError, "parameters"),
+        ({"timeout_s": 0}, ValueError, "timeout_s"),
+        ({"timeout_s": "1"}, TypeError, "timeout_s"),
+    ],
+)
+def test_assemble_timing_and_measure_refuse_bad_arguments(
+    changes, error, parameter, monkeypatch
+):
+    def refused(*args, **kwargs):
+        raise AssertionError("an executor was called")
+
+    values = {
+        "target": make_target(),
+        "executable": "t",
+        "parameters": PARAMETERS,
+        "timeout_s": 1,
+    }
+    values.update(changes)
+    monkeypatch.setattr(local_run, "run", refused)
+    for call in (assemble_timing, measure):
+        with pytest.raises(error) as caught:
+            call(**values)
+        assert caught.value.parameter == parameter
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        (recorded(stdout=REPORT), (REPORT, None)),
+        (recorded(stdout=b""), (b"", None)),
+        (recorded(returncode=1, stdout=b"resolution_ns 1\n"), "exit_status"),
+        (recorded(returncode=-9), "exit_status"),
+        (recorded(returncode=None, timed_out=True), "time_limit"),
+    ],
+)
+def test_measure_hands_the_ended_process_to_the_vendor_measure(
+    answer, expected, monkeypatch
+):
+    seen = []
+
+    def fake_run(command, *, timeout_s, env=None):
+        seen.append((command, timeout_s, env))
+        return answer
+
+    monkeypatch.setattr(local_run, "run", fake_run)
+    target = make_target(env={"CUDA_VISIBLE_DEVICES": "0"}, process_time_limit_cap_s=4)
+    assert measure(target, "t", PARAMETERS, timeout_s=9) == expected
+    assert seen == [(("t", *DRIVER_ARGUMENTS), 4, target.env)]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [local_run.ProgramNotFoundError("t"), OSError(5, "I/O after start")],
+)
+def test_measure_raises_the_executor_errors_unchanged(error, monkeypatch):
+    def raising(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(local_run, "run", raising)
+    with pytest.raises(type(error)) as caught:
+        measure(make_target(), "t", PARAMETERS, timeout_s=1)
+    assert caught.value is error
+
+
+def test_measure_of_a_missing_program_raises_and_is_placed_by_interpret_run(tmp_path):
+    missing = tmp_path / MISSING
+    with pytest.raises((local_run.ProgramNotFoundError, OSError)) as caught:
+        measure(make_target(), missing, PARAMETERS, timeout_s=LIMIT)
+    outcome = vendor_adapter.interpret_run(caught.value, str(missing))
+    assert_form(outcome, TOOL_FAILURE, kind="executable_unstartable")
+
+
+def test_measure_refuses_an_answer_no_row_holds(monkeypatch):
+    monkeypatch.setattr(
+        local_run, "run", lambda *args, **kwargs: recorded(returncode=None)
+    )
+    with pytest.raises(ValueError):
+        measure(make_target(), "t", PARAMETERS, timeout_s=1)
+
+
+# The held kernel lasts at least HOLD_NS less one %globaltimer step (STEP_NS, a wide bound).
+HOLD_NS = 5_000_000
+STEP_NS = 100_000
+GPU_PARAMETERS = TimingParameters(64, 64, 64, 50, "interval", 7)
+
+
+@pytest.fixture
+def gpu(nvcc, nvidia_smi):
+    if os.name != "posix":
+        pytest.skip("the timing fixture reads CLOCK_MONOTONIC (POSIX hosts only)")
+    found = device_probe(timeout_s=LIMIT)
+    if found.state != PRESENT:
+        pytest.skip(f"no usable GPU: {found.message}")
+
+
+def built_timing(tmp_path, name, *flags):
+    out = tmp_path / (name + EXE)
+    outcome = build(make_target(flags=flags), FIXTURES / "timing.cu", out)
+    assert_form(outcome, GO_ON)
+    assert outcome.carried == out
+    return out
+
+
+def ended(executable, parameters, timeout_s=LIMIT):
+    call = assemble_timing(make_target(), executable, parameters, timeout_s=timeout_s)
+    return local_run.run(call.command, timeout_s=call.timeout_s, env=call.env)
+
+
+def judged(answer, parameters):
+    assert type(answer) is tuple
+    report, figure = answer
+    assert figure is None
+    judgement = timing.judge_report(
+        report, sample_form=parameters.sample_form, n_max=parameters.n_max
+    )
+    assert judgement.broken is None
+    assert judgement.state in (
+        timing.measurement.State.CONVERGED,
+        timing.measurement.State.NOT_CONVERGED,
+    )
+    assert judgement.resolution_ns > 0
+    assert N_MIN <= len(judgement.intervals_ns) <= parameters.n_max
+    assert all(interval > 0 for interval in judgement.intervals_ns)
+    return judgement
+
+
+def assert_one_error_line(result, text):
+    assert result.returncode == 1
+    assert b"stop" not in result.stdout
+    lines = result.stderr.decode("utf-8", "replace").strip().splitlines()
+    assert len(lines) == 1
+    assert text in lines[0]
+
+
+@pytest.mark.parametrize("sample_form", timing.SAMPLE_FORMS)
+def test_real_gpu_timing_fixture_reports_a_judged_measurement(
+    gpu, tmp_path, sample_form
+):
+    executable = built_timing(tmp_path, "timing")
+    parameters = GPU_PARAMETERS._replace(sample_form=sample_form)
+    judged(measure(make_target(), executable, parameters, timeout_s=LIMIT), parameters)
+
+
+def test_real_gpu_interval_holds_the_completion_of_the_kernel(gpu, tmp_path):
+    executable = built_timing(tmp_path, "hold", f"-DTIMING_HOLD_NS={HOLD_NS}")
+    parameters = GPU_PARAMETERS._replace(n_max=20)
+    answer = measure(make_target(), executable, parameters, timeout_s=LIMIT)
+    judgement = judged(answer, parameters)
+    bound = HOLD_NS - STEP_NS - judgement.resolution_ns
+    assert all(interval >= bound for interval in judgement.intervals_ns)
+
+
+def test_real_gpu_runs_the_scale_executable_with_status_zero(gpu, tmp_path):
+    out = tmp_path / ("scale" + EXE)
+    assert_form(build(make_target(), FIXTURES / "scale.cu", out), GO_ON)
+    outcome = run(make_target(), out, timeout_s=LIMIT)
+    assert_form(outcome, GO_ON)
+    assert outcome.carried == b"built\n"
+
+
+def test_real_gpu_out_of_memory_is_exit_status(gpu, tmp_path):
+    executable = built_timing(tmp_path, "oom", "-DTIMING_FAULT=1")
+    assert measure(make_target(), executable, PARAMETERS, timeout_s=LIMIT) == (
+        "exit_status"
+    )
+    result = ended(executable, PARAMETERS)
+    assert_one_error_line(result, "cudaMalloc: cudaErrorMemoryAllocation")
+    assert result.stdout == b""
+
+
+def test_real_gpu_illegal_address_is_exit_status(gpu, tmp_path):
+    executable = built_timing(tmp_path, "fault", "-DTIMING_FAULT=2")
+    assert measure(make_target(), executable, PARAMETERS, timeout_s=LIMIT) == (
+        "exit_status"
+    )
+    result = ended(executable, PARAMETERS)
+    assert_one_error_line(result, "cudaDeviceSynchronize: cudaErrorIllegalAddress")
+
+
+def test_real_gpu_hang_is_time_limit_and_leaves_the_gpu_usable(gpu, tmp_path):
+    executable = built_timing(tmp_path, "hang", "-DTIMING_FAULT=3")
+    assert measure(make_target(), executable, PARAMETERS, timeout_s=1) == "time_limit"
+    result = ended(executable, PARAMETERS, timeout_s=1)
+    assert result.timed_out
+    assert result.stdout.startswith(b"resolution_ns ")
+    assert b"interval_ns" not in result.stdout
+    after = built_timing(tmp_path, "timing")
+    answer = measure(make_target(), after, GPU_PARAMETERS, timeout_s=LIMIT)
+    judged(answer, GPU_PARAMETERS)
