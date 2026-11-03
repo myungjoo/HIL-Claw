@@ -2,7 +2,7 @@
 id: T-0535
 title: Add the graph program of ADR-0193 decision 5 (model_graph.c running an encoded plan), its host-side build and run, the byte-for-byte check against model_forward.c on synthetic weights, and a second model of another structure
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, C-6, OD-31, "PLAN P3-4"]
 dependsOn: [T-0534]
@@ -92,3 +92,32 @@ hq: []
 - If needed for the owner's real-weight check: the graph program in the ADR-0182 container path and an entry for it, proposed in `## Result` with a sketch.
 
 ## Result
+
+PR #352 squash-merged as 5cc6367d; 3 review rounds (R1 and R2 Request changes, R3 Approve); CI green on the final head (Python 3.11/3.14, C, sh, coverage, test presence). Not BLOCKED. Order check (D27 ①) before code: no open PR, no open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`, no P2-15 preparation pending; T-0534 `DONE` with its binding check split to this task, which was done first.
+
+**Languages.** C for `hilclaw/model_graph.c`: it loads kernels with `dlopen` and calls them as `model_forward.c` does (C library and POSIX.1-2008 only). Python for the host side (`model_graph.py`, `model_graph_execute.py`, `model_build.py`), as the rest of the executor's host modules.
+
+**What landed.** `model_graph.check_binding` (the T-0534 split: `model_binding`'s fitting rules and outcomes over the plan's sites and distinct shapes, reusing `model_binding._binding`/`_bind`; no `model_binding` function made public), `libraries`, `encode`, `parse_report` (reuses `model_forward_run._report`, that module unedited); `Array` gains a `shape` field (the evaluated shape); `model_build.GRAPH_PROGRAM_SOURCE` and `build_graph_program`; `model_graph_execute.execute` (host path only, ADR-0182 decision 7; outcomes invalid input, no kernel, kernel unfit, build failed, run failed); the program `hilclaw/model_graph.c`. P2-15 files unchanged; no data-plane member, contract entry, kind, dtype or version added.
+
+**Input form of the program.** Host byte order, no padding: 8 `uint64` header words A (arrays), K (scalars), G (passes), S (prompt length), V (vocabulary), mode (0 given-sequence, 1 generation), O (output array index), Q (output row width); K binary32 scalars (eps through `rmsnorm_eps`); A array records (elements, element size 2 or 4, role 0 read from the file or 1 filled with 0x7FC0); G pass records (output rows, step count); every pass's steps, 20 `uint64` each (op: 0 embed, 1 copy, 2 gemm, 3 rmsnorm, 4 elementwise_add, 5 swiglu, 6 rope, 7 sdpa_kv_cache; library index; 5 shape words; 6 operand (array, offset) pairs; scalar index); the token ids (S + G given, S generating); then the contents of every role-0 array (weights row-major, the RoPE table from `rope_table.build`) in array order. The report is `model_forward.c`'s: tokens as read, each pass's first `rows * Q` output elements, the selected tokens when generating, `end\n`; the selection row is a pass's last output row.
+
+**Second graph.** `tests/model_graph_feed_forward.json`: dimensions `E`, `U`, `K`, `L`; a repeat over `L` (three blocks in the test) of `rmsnorm`, `gate`/`up` `gemm`, `swiglu`, `down` `gemm`, `elementwise_add` and a range copy; its own `final_norm` and `head` output on `{"of": "normed", "start": "(T-R)*E"}`; no `rope`, no `sdpa_kv_cache`. Bit for bit equal to a Python re-computation under both `lm_head_rows` and both modes.
+
+**Edited existing assertions (D21).** `tests/test_model_build.py::test_public_names` (+ `GRAPH_PROGRAM_SOURCE`, `build_graph_program`); `tests/test_rope_table.py::test_the_module_is_named_only_by_its_known_callers` (+ `model_graph.py`, which now calls `rope_table.build`).
+
+**Deviations, recorded.** (1) `encode` takes no `lm_head_rows` (criterion 2 lists it): `resolve` already evaluated `R` into each pass's output rows, and the program's selection row is the last output row, which is row T - 1 for `"all"` and the one row for `"last"`. (2) Size: about 1100 non-test lines (the C program with its header comment about 530), over the 600 cap. Criterion 10's remedy (split the second model) would not reduce the counted size, as the second model is test-only, and criteria 1 to 4 and 6 alone exceed the cap; nothing was split, so PLAN P3-4 can be checked.
+
+**Verification.** WSL Ubuntu with clang 14 (this machine's Windows side has no clang): full suite 39976 passed, 89 skipped; `ruff check`/`ruff format --check` clean; `model_graph.py`, `model_graph_execute.py`, `model_build.py` 100 % line coverage, package 99 %. No `claude`, Docker or model file was used (D16); no test run (D25).
+
+**Follow-ups.**
+
+- **Container path and an entry for the owner's real-weight check (proposal, not built).** Needed when the check is to use the coder kernels of P2-15's runs, which may only run in containers (ADR-0182 decision 7). Sketch: a `hilclaw/model_graph_container.py` mirroring `model_forward_container.execute`, building each kernel and `GRAPH_PROGRAM_SOURCE` and running the program with the `encode` bytes in the ADR-0182 container path; and an entry beside `python -m hilclaw.model_check`, for example a document member or a separate command that reads the model directory with `model_files.read`, maps `ModelDimensions` to the Llama graph's `D F V N H H_kv d`, `Weights` to the provider names (`embedding`, `qkv[i]`, ...), resolves the runs' binding as `model_check` does, runs both programs on the same binding and settings and reports whether the two reports are equal byte for byte. With kernels the owner wrote, the check can run already through `model_forward_execute.execute` and `model_graph_execute.execute` (host path) from a short Python script.
+- Optional cleanup: `model_graph_execute` imports the private `model_graph._parts`, and `model_graph` imports `model_binding._binding`/`_bind` and `model_forward_run._report` (the same pattern as `model_forward_run`'s use of `model_run._path`); making them public is a later choice.
+
+**Runtime acceptance item for the driver to register (D22).**
+
+- 상태: 미확인
+- 출처: `P3-4` (근거 task T-0535, 등록 2026-11-03)
+- 내용:
+
+  PLAN P3-4. 실제 Llama 3.2 1B 가중치를 `hilclaw.model_files.read`(ADR-0191)로 읽어, 같은 binding과 같은 설정(prompt, G, `lm_head_rows`, 모드, eps, RoPE 상수)으로 Llama 그래프 파일(`hilclaw/graphs/llama.json`)을 돌린 graph program(`model_graph.c`)의 보고가 `model_forward.c`의 보고와 바이트 단위로 같은지 오너가 런타임 머신에서 확인한다. 개발 머신에서는 합성 가중치와 테스트가 쓴 fixture 커널로만 확인했다(T-0535, D16). 지금 land된 것으로 돌리는 방법: 오너가 쓴 커널이면 짧은 Python 스크립트로 `model_files.read`의 `dimensions`·`eps`·`rope`·`weights`를 `model_forward_execute.execute`와 `model_graph_execute.execute`(그래프 차원 `D F V N H H_kv d`, 가중치 이름 `embedding`·`qkv[i]` 등으로 옮겨)에 같은 binding으로 넘기고 두 보고를 비교한다(host 경로, ADR-0182 결정 7). coder가 쓴 커널(P2-15 run의 binding)로 확인하려면 graph program의 ADR-0182 컨테이너 경로와 그 진입점이 land된 뒤에 확인 가능하다(T-0535 Follow-ups 제안). RA-0056, RA-0065~RA-0067과 함께 본다.
