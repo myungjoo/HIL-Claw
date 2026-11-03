@@ -35,7 +35,9 @@ from hilclaw.vendor_adapter import (
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX behaviour")
 
+# Kept as *.c.in, outside the CI C gate (no SDK headers there); copied to *.c.
 FIXTURES = Path(__file__).resolve().parent / "qnn_fixtures"
+FIXTURE = FIXTURES / "add.c.in"
 MISSING = "hilclaw-no-such-program"
 EXE = ".exe" if os.name == "nt" else ""
 LIMIT = 300
@@ -113,6 +115,12 @@ def script(tmp_path):
         return (sys.executable, str(path))
 
     return write
+
+
+def source(tmp_path, name):
+    path = tmp_path / (name + ".c")
+    shutil.copyfile(FIXTURES / (name + ".c.in"), path)
+    return path
 
 
 def assert_form(outcome, form, condition=None, kind=None):
@@ -487,7 +495,7 @@ def test_interpret_container_probe_refuses_other_values():
 def test_real_qnn_program_builds_and_runs_on_the_htp_emulator(qnn, tmp_path):
     target, compiler, backend = qnn
     out = tmp_path / ("add" + EXE)
-    outcome = build(target, FIXTURES / "add.c", out, program=compiler)
+    outcome = build(target, source(tmp_path, "add"), out, program=compiler)
     assert_form(outcome, GO_ON)
     assert outcome.carried == out
     assert out.is_file()
@@ -500,7 +508,7 @@ def test_real_qnn_program_builds_and_runs_on_the_htp_emulator(qnn, tmp_path):
 def test_real_qnn_compile_failure_is_build_exit_status(qnn, tmp_path):
     target, compiler, _ = qnn
     out = tmp_path / ("broken" + EXE)
-    outcome = build(target, FIXTURES / "broken.c", out, program=compiler)
+    outcome = build(target, source(tmp_path, "broken"), out, program=compiler)
     assert_form(outcome, BROKEN, condition="build_exit_status")
     assert not out.exists()
 
@@ -514,7 +522,7 @@ def test_real_qnn_probe_reports_present_with_the_sdk_version(qnn_sdk):
 
 def test_missing_programs_are_absent_or_unavailable(tmp_path):
     assert_form(
-        build(make_target(), FIXTURES / "add.c", tmp_path / "o", program=MISSING),
+        build(make_target(), FIXTURE, tmp_path / "o", program=MISSING),
         TOOL_FAILURE,
         kind="compiler_unavailable",
     )
@@ -550,7 +558,7 @@ def test_fault_build_tool_that_hangs_is_build_time_limit(script, tmp_path):
     # Stands for a compiler that never ends (ADR-0194 decision 6: the tool's own hang).
     outcome = build(
         make_target(build_time_limit_s=0.5),
-        FIXTURES / "add.c",
+        FIXTURE,
         tmp_path / "o",
         program=script(HANG),
     )
@@ -561,7 +569,7 @@ def test_fault_build_tool_with_a_silent_status_is_build_exit_status(script, tmp_
     # Stands for a compiler that crashes with a non-zero status and no
     # diagnostic (ADR-0194 decision 6; ADR-0060 decision 4, S7).
     outcome = build(
-        make_target(), FIXTURES / "add.c", tmp_path / "o", program=script(SILENT_STATUS)
+        make_target(), FIXTURE, tmp_path / "o", program=script(SILENT_STATUS)
     )
     assert_form(outcome, BROKEN, condition="build_exit_status")
 
@@ -570,9 +578,7 @@ def test_fault_build_tool_with_a_silent_status_is_build_exit_status(script, tmp_
 def test_fault_build_tool_ended_by_a_signal_is_build_exit_status(script, tmp_path):
     # Stands for a compiler that crashes by a signal (ADR-0194 decision 6;
     # ADR-0060 decision 4 reads a signal as S7).
-    outcome = build(
-        make_target(), FIXTURES / "add.c", tmp_path / "o", program=script(SIGNAL)
-    )
+    outcome = build(make_target(), FIXTURE, tmp_path / "o", program=script(SIGNAL))
     assert_form(outcome, BROKEN, condition="build_exit_status")
 
 
@@ -580,7 +586,7 @@ def test_fault_build_tool_without_artefact_is_build_output_missing(script, tmp_p
     # Stands for a compiler that exits 0 and leaves no artefact (ADR-0060
     # decision 4, S9).
     out = tmp_path / "o"
-    outcome = build(make_target(), FIXTURES / "add.c", out, program=script(NO_ARTEFACT))
+    outcome = build(make_target(), FIXTURE, out, program=script(NO_ARTEFACT))
     assert_form(outcome, TOOL_FAILURE, kind="build_output_missing")
     assert not out.exists()
 
