@@ -2,7 +2,7 @@
 id: T-0545
 title: Finish PLAN P3-10 — time a QNN one-op graph at the HTP-emulator point within the ADR-0194 decision 4 boundary, and show through the run tools that two points of one test-built QNN target stay apart (ADR-0194 decision 5)
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-19, OD-33, FR-10, NFR-3, "PLAN P3-10"]
 dependsOn: []
@@ -192,3 +192,61 @@ If the work shows a further owner-only part that none of these HQs covers, write
 ## Follow-ups
 
 ## Result
+
+- **Landing**: PR #361, squash commit `827245ed`, branch deleted. Review 3 rounds:
+  - Round 1, Request changes: a test that checked only the fixture's own command-line parsing (a test of test code, CLAUDE.md test rule ⑤; Must-fix, removed); the untested refusal of an `os.PathLike` giving bytes (Should-fix, case added); a skip when the SDK has no QNN CPU library (Nit, added); the reason for not reusing `qnn_adapter.run` in this section (Nit, added).
+  - Round 2, Request changes: the PR body still named the removed test (Should-fix, body edited); an unneeded `os.PathLike.register` (Nit, removed).
+  - Round 3: Approve, no findings.
+  - CI on the PR head `90fc8a02`: C gate, Python gates 3.11 and 3.14, Coverage gate, Test presence and sh gate all pass.
+- **Order check (D27 ①)**: unchanged when the task ran (main `443ccf89`): no open PR, no open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`; P3-10 next. No branch, commit or PR for T-0545 existed before (resume rule).
+- **Language**: Python for the adapter parts (they wrap the Python executors and `vendor_adapter`, and return their types). The fixture is C against QNN's C interface (ADR-0194 decision 8).
+- **Part added to `qnn_adapter`** (criterion 3): two public functions, no module constant.
+  - `assemble_timing(target, executable, backend, parameters, *, timeout_s)`: the `RunCall` of `<executable> <backend> <driver_arguments(**parameters)>`, through `assemble_run` (target `env`, time limit capped by `process_time_limit_cap_s`). `backend` is a non-empty `str` or `os.PathLike` of `str` (`parameter` `"backend"`); `parameters` is exactly a `run_parameters.TimingParameters`, and a value `driver_arguments` refuses is re-raised with `parameter` `"parameters"`.
+  - `measure(target, executable, backend, parameters, *, timeout_s)`: one `local_run.run` of that call, handed to `vendor_adapter.measure` with no figure: `(stdout, None)`, `"time_limit"` or `"exit_status"`. It reads no clock or file. An exception of `local_run.run` (for example a program that cannot start) is raised unchanged; the caller can place it with `vendor_adapter.interpret_run`.
+  - **Why not `qnn_adapter.run`**: `run` interprets the ended process into an `Outcome`, while `vendor_adapter.measure` reads the ended process (`local_run.RunResult`) itself. So `measure` delegates to `assemble_run` (through `assemble_timing`), `local_run.run` and `vendor_adapter.measure`.
+  - No memory figure: the figure of a vendor target is HQ-0090's.
+- **The fixture** `tests/qnn_fixtures/timing.c.in` (criterion 2):
+  - Command line: `<program> <QNN backend library> <m> <k> <n> <n_min> <n_max> <cv_max> <sample_form> <seed>`. The eight after the library are `hilclaw.harness.timing.driver_arguments`, with `timing_driver.c`'s rules; `m`, `k`, `n` and `m*k*n` are also at most 2^32 - 1, because `clientBuf.dataSize` is `uint32_t`.
+  - Graph: one `ElementWiseAdd` of two `UFIXED_POINT_8` tensors of shape `[m, k, n]` (scale 1, offset 0). So `m`, `k` and `n` set the tensor size, `m*k*n` bytes per tensor. The operands are bytes 0..127 drawn from `seed` by splitmix64, so every sum is exact. No HTP architecture, SoC or optimisation value is set.
+  - Outside the interval: loading the library; `QnnBackend_create`, `QnnContext_create`, `QnnGraph_create` and tensor creation; `addNode` and `finalize`; allocation and input generation; one untimed `QnnGraph_execute` (decision 4 "Warm-up"); reading back and checking the sums (after the warm-up and after the last repeat).
+  - Inside the interval: one `QnnGraph_execute` per repeat between two readings of the host's monotonic clock: `CLOCK_MONOTONIC` on POSIX, `QueryPerformanceCounter` on Windows (chosen by the preprocessor). `resolution_ns` is `clock_getres(CLOCK_MONOTONIC)`, or on Windows ceil(10^9 / `QueryPerformanceFrequency`) (100 ns on this machine).
+  - **`QnnGraph_execute` returns only after the work is complete on this backend.** Source: `include/QNN/QnnGraph.h` of QNN SDK 2.37.0.250724 (QAIRT 2.37.0, QNN backend API 2.18.0): "@brief Synchronously execute a finalized graph", and in the same comment, about `QnnGraph_execute` against `QnnGraph_executeAsync`, "the only difference in behavior is whether the function returns when the execution is enqueued, or when the execution finishes". So the harness adds no wait; the completion is inside the interval as the return of the call.
+  - **The decision 4 rest ("nothing else the harness can keep out")**: with `QNN_TENSORMEMTYPE_RAW` client buffers, any copy the backend makes between the client buffers and its own memory inside `execute`; and on the Windows x64 HTP emulator, the backend's own log lines (`WARNING:windows doesn't support this`) that it writes to standard error during each `execute`.
+  - Report: the ADR-0009 decision 8 report on a duplicate of the original standard output. Descriptor 1 is pointed at standard error before the library is loaded, because the HTP backend prints to standard output (`<W> Logs will be sent to the system's default channel`). On Windows the duplicate is set to binary mode; otherwise the C runtime writes CR LF and the report is not of the form.
+  - Failure: a missing library or symbol, a failing QNN call or a wrong sum ends with status 1; the command line with 2; sizes or allocation with 3; the clock, a descriptor or a write with 4; an interval of 0 with 5. Each writes one line on standard error and no `stop` line.
+  - Build: `qnn_adapter.build` on the existing form (the include directory in the target's `flags`; `-ldl` in `trailing_flags` on POSIX). C99 plus POSIX `clock_gettime`, or Windows `QueryPerformanceCounter`.
+- **Real reports** (Windows x64, MinGW gcc 16.2.0 build, arguments `2 3 4 5 50 0.05 interval 7`). **These are emulation and host figures, not device figures** (FR-19 ④; ADR-0194 decision 4):
+  - HTP emulator (`QnnHtp.dll`), emulation figures: first lines `resolution_ns 100`, `interval_ns 57300`; last lines `interval_ns 39300`, `stop not_converged`; 50 intervals; status 0.
+  - QNN CPU backend (`QnnCpu.dll`), host figures: first lines `resolution_ns 100`, `interval_ns 1600`; last lines `interval_ns 1000`, `stop not_converged`; 50 intervals; status 0. With `n_max` 100 and seed 42 the CPU backend gave `stop converged` after 8 intervals.
+- **Two-point tests** `tests/test_qnn_points.py` (criterion 5). **The binding is test-only and assigns no point (HQ-0095 ①). The QNN CPU backend stands in for "another means" only to show the separation, and is no device figure.** The accelerator `test_qnn_two_points` is in no `targets.TABLE` entry. The test builds its own `BackendTable` (ADR-0016 decision 5) of one `Backend` whose `sim.run` runs the fixture with `QnnHtp` and whose `board.run` runs it with `QnnCpu`, each through `qnn_adapter.measure`. Through `run_tool.tool_function`, with a run built as `tests/test_run_tool.py` builds one:
+  - `test_each_point_ends_with_its_own_step_from_its_own_operation`: each tool ends converged or not converged, with `sim_run_timing_v2` or `board_run_timing_v2` in its own end line. Each operation was handed its own library once (sim `QnnHtp`, board `QnnCpu`). `timings_tool.timing_lines` for `sim` and for `board` each hold only that point's result (ADR-0183 decision 8).
+  - `test_a_board_run_without_its_means_is_broken_and_takes_nothing_of_sim`: with the board's library path missing, `board.run` ends broken `exit_status`. The stored `sim.run` result is returned unchanged, with no new sim run.
+  - `test_a_point_with_no_means_is_not_offered`: a backend with only `sim.run` answers `board.run` with `not_offered` and no line; `sim.run` still works.
+  - Platform: they ran on Windows x64 with the real SDK (3 passed). `run_tool`'s path runs on Windows, so no operation-level substitute was needed. Without `qnn-net-run` on `PATH` (WSL2, CI) they skip with T-0544's reason; they also skip if the SDK has no QNN CPU library.
+- **Real-SDK timing tests** in `tests/test_qnn_adapter.py` (criterion 4), Windows x64:
+  - The fixture builds (`go_on`).
+  - On the HTP emulator, `measure` gives form (A), and `judge_report` accepts it for `interval` and `reciprocal`: resolution > 0, at least `N_MIN` positive intervals, and the replay agrees.
+  - A missing backend library path gives `exit_status` through `measure`. The same run's standard output has no `stop` line, and its standard error has one line.
+  - Fault scripts (ADR-0194 decision 6): a timing run that hangs gives `time_limit`. A fixture whose `QnnGraph_create` returns `QNN_GRAPH_ERROR_MEM_ALLOC` (1002, `QnnGraph.h` and `QnnCommon.h`) and reports it by status 1 gives `exit_status`. No fact of the tool rests on them.
+- **Toolchain reading (D29)**, before writing code; nothing was installed:
+  - Windows: QAIRT/QNN SDK 2.37.0.250724 at `C:\Qualcomm\AIStack\QAIRT\2.37.0.250724` (from T-0544). Its `lib/x86_64-windows-msvc` holds `QnnHtp.dll`, `HtpPrepare.dll` and `QnnCpu.dll`. MinGW-w64 gcc 16.2.0 (WinLibs, UCRT); no clang, no MSVC; Python 3.14.4.
+  - WSL2 Ubuntu 22.04: clang 14.0.0-1ubuntu1.1. The SDK's `lib/x86_64-linux-clang` holds `libQnnHtp.so` and `libQnnCpu.so`. No `libc++.so.1` (only `libunwind8` and `libunwind-dev` 1.3.2, not LLVM's `libunwind-14`).
+  - `python -m hilclaw.toolchain_check` on Windows, default `PATH` (status 0): `clang` absent, `nvcc` present (`Cuda compilation tools, release 12.3, V12.3.107`), `nvidia-smi` present (`NVIDIA GeForce RTX 4070 (driver 617.14)`), `qnn-net-run` absent. With the SDK `bin` on `PATH`: `qnn-net-run` present, `QNN SDK v2.37.0.250724175447_124859`.
+  - HQ-0098 in `PROCESS/STATE.json`: asked 2026-11-03T15:18Z, no answer. So the execution tests ran on the Windows x64 form, as in T-0544. In WSL2 the fixture compiles and links with clang 14 (`-ldl`, clean under `-Wall -Wextra`) and exits 1 (`timing: library: cannot load the QNN backend library`), as expected without libc++.
+- **Local runs**:
+  - Windows x64, SDK `bin` on `PATH`, final head: `tests/test_qnn_adapter.py` and `tests/test_qnn_points.py` 100 passed, 1 skipped (the POSIX signal test).
+  - WSL2 (Python 3.12.13, `~/.venvs/hilclaw-driver`, default `PATH`), first commit: full suite 40660 passed, 102 skipped in 10 min 20 s. `coverage run --branch`: `hilclaw/qnn_adapter.py` 98 % (its one missed branch, an `os.PathLike` giving bytes, has a test since round 1); package total 99 %.
+  - `ruff check` and `ruff format --check` pass.
+- **D21 list-assertion edits**: none. `test_assemble_parts_are_pure` gained one assertion for `assemble_timing`; `test_program_constants` is unchanged.
+- **Size**: about 80 lines in `hilclaw/qnn_adapter.py` (half of them docstrings); 1 source file, 2 test files and 1 fixture file.
+- **Runtime acceptance item (D22)**: 드라이버가 `PROCESS/RuntimeAcceptance.md`에 더할 항목이다(출처 `P3-10`, 근거 task T-0545, ADR-0194 결정 4·5).
+
+  PLAN P3-10. 오너가 런타임 머신에서 다음을 확인한다.
+  ① libc++가 있는 x86_64 Linux 머신(또는 이미지)에서 `tests/qnn_fixtures/timing.c.in`을 clang과 `-ldl`로 빌드한다. 그 프로그램을 `libQnnHtp.so`(HTP 에뮬레이터)와 `hilclaw.harness.timing.driver_arguments`의 여덟 인자로 실행하면 상태 0으로 끝나야 한다. 그 표준 출력은 `hilclaw.harness.timing.judge_report`가 받아들여야 한다(`interval`·`reciprocal` 둘 다).
+  ② 같은 머신에서 `tests/test_qnn_points.py`의 세 테스트가 통과하는지 본다. 이 테스트는 `libQnnHtp.so`를 `sim.run`에, `libQnnCpu.so`를 `board.run`에 묶는 테스트 전용 구성이다.
+  ③ Qualcomm 장치 지점의 측정 경계(결정 4)는 장치가 없어 확인하지 않았다. 어느 실행이 어느 지점인지는 HQ-0095 ①, 장치 접근은 HQ-0095 ③이다.
+
+  위 숫자들은 모두 에뮬레이션·호스트 수치이며 장치 수치가 아니다.
+  개발 머신에서의 확인 범위: Windows x64의 실제 SDK 2.37.0.250724(MinGW gcc 16.2.0 빌드)에서 HTP 에뮬레이터와 CPU 백엔드로 실행했다. WSL2에서는 libc++가 없어(HQ-0098 미답) 빌드·링크까지만 확인했다. 두 지점 테스트의 도구 함수 경로는 Windows에서 돌았으므로, 그 경로를 위한 별도 항목은 없다. T-0545 착지 뒤 확인할 수 있다.
+- **New HQ**: none. The work showed no owner-only part beyond HQ-0093 to HQ-0098.
+- **Cleanup (D29)**: removed with `rm -r` after the merge: the Windows task directory `%TEMP%\hilclaw-driver\T-0545\` (fixture builds, pytest temporaries, commit and PR texts) and the WSL2 task directory `/tmp/hilclaw-driver/T-0545/` (coverage data, full-suite log, pytest temporaries). Nothing was installed and no image was made; the SDK at `C:\Qualcomm\AIStack\QAIRT\2.37.0.250724` stays (T-0544's tool install). Nothing remains.
