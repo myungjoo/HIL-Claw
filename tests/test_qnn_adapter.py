@@ -69,7 +69,6 @@ class BytesPath:
         return b"QnnHtp.dll"
 
 
-
 def make_target(**changes):
     values = {
         "flags": (),
