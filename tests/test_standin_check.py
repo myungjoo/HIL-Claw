@@ -1302,3 +1302,43 @@ def test_the_cpu_standin_operation_reads_the_table_at_the_call(
 def test_an_operation_is_built_only_with_a_target(given):
     with pytest.raises(TypeError):
         standin_check.operation_for(given)
+
+
+def memory_options(command):
+    before = command[: command.index(IMAGE)]
+    return [
+        item
+        for index, item in enumerate(before)
+        if item.startswith("--memory") or before[index - 1].startswith("--memory")
+    ]
+
+
+def test_a_memory_bound_of_the_target_reaches_the_process_container_alone(
+    client, output, keeper, temporary
+):
+    client.script = [built(), reported()]
+    built_operation = standin_check.operation_for(a_target(memory_limit_bytes=4096))
+    answer = built_operation({}, {}, CheckParameters(SEED, 3, 2, 3, 4), output, keeper)
+    assert answer == REPORT
+    build, process = client.runs()
+    assert memory_options(build) == []
+    assert memory_options(process) == ["--memory", "4096", "--memory-swap", "4096"]
+    assert build_dirs(temporary) == []
+
+
+@pytest.mark.parametrize("status", [137, 1])
+def test_a_process_ended_over_the_bound_is_exit_status(
+    client, output, keeper, temporary, status
+):
+    client.script = [built(), ended(status, stdout=b"partial")]
+    built_operation = standin_check.operation_for(a_target(memory_limit_bytes=4096))
+    answer = built_operation({}, {}, CheckParameters(SEED, 3, 2, 3, 4), output, keeper)
+    assert answer == "exit_status"
+    assert build_dirs(temporary) == []
+
+
+def test_the_cpu_standin_operation_gives_no_memory_bound(client, output, keeper):
+    client.script = [built(), reported()]
+    assert call(output, keeper) == REPORT
+    for command in client.runs():
+        assert memory_options(command) == []

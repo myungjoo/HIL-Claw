@@ -869,7 +869,13 @@ def test_hw_source_and_timeout_are_required(machine):
 
 def test_signature_carries_no_machine_fact():
     parameters = inspect.signature(local_record).parameters
-    assert list(parameters) == ["hw_source", "timeout_s", "compiler", "image"]
+    assert list(parameters) == [
+        "hw_source",
+        "timeout_s",
+        "compiler",
+        "image",
+        "accelerator",
+    ]
     assert parameters["hw_source"].default is inspect.Parameter.empty
     assert parameters["timeout_s"].default is inspect.Parameter.empty
     assert parameters["timeout_s"].kind is inspect.Parameter.KEYWORD_ONLY
@@ -1092,7 +1098,14 @@ def test_public_names_of_the_module():
         for name, value in vars(standin_profile).items()
         if not name.startswith("_") and not inspect.ismodule(value)
     }
-    assert public == {"ACCELERATOR", "REVISION", "UnreadableFactError", "local_record"}
+    assert public == {
+        "ACCELERATOR",
+        "REVISION",
+        "VIRTUAL_NPU",
+        "VIRTUAL_NPU_REVISION",
+        "UnreadableFactError",
+        "local_record",
+    }
     assert issubclass(UnreadableFactError, Exception)
     assert not issubclass(UnreadableFactError, (InvalidRecordError, OSError))
 
@@ -1220,3 +1233,80 @@ def test_image_client_that_is_missing_names_the_client_command(machine):
         local_record("external", timeout_s=TIMEOUT, image=IMAGE)
     assert "`docker run <image> clang --version` was not found" in str(caught.value)
     assert IMAGE not in str(caught.value)
+
+
+# The hw key of virtual_npu (ADR-0193 decision 4)
+
+VIRTUAL = dict(EXAMPLE, accelerator="virtual_npu", revision="virtual-1")
+
+
+def test_the_constants_of_virtual_npu():
+    assert standin_profile.VIRTUAL_NPU == "virtual_npu"
+    assert standin_profile.VIRTUAL_NPU_REVISION == "virtual-1"
+
+
+@pytest.mark.parametrize("hw_source", HW_SOURCES)
+def test_virtual_npu_gets_its_own_key_from_the_same_facts(machine, hw_source):
+    record = local_record(
+        hw_source, timeout_s=TIMEOUT, accelerator=standin_profile.VIRTUAL_NPU
+    )
+    assert record == dict(VIRTUAL, hw_source=hw_source)
+    assert list(record) == list(EXAMPLE)
+    command = ("clang", "--version")
+    assert machine.asked == ["kernel", command, CPUINFO_PATH, OS_RELEASE_PATH]
+    standin = local_record(hw_source, timeout_s=TIMEOUT)
+    assert standin == dict(EXAMPLE, hw_source=hw_source)
+    assert {name: record[name] for name in ("toolchain", "host")} == {
+        name: standin[name] for name in ("toolchain", "host")
+    }
+    assert hw_profile_key(record).name != hw_profile_key(standin).name
+
+
+def test_virtual_npu_reads_the_clang_of_the_image(machine):
+    machine.clang = b"Host clang version 9.9.9\n"
+    record = local_record(
+        "external", timeout_s=7, image=IMAGE, accelerator=standin_profile.VIRTUAL_NPU
+    )
+    assert record == VIRTUAL
+    assert machine.asked == ["kernel", ("image", IMAGE), CPUINFO_PATH, OS_RELEASE_PATH]
+
+
+def test_the_default_accelerator_is_cpu_standin(machine):
+    assert local_record("external", timeout_s=TIMEOUT, accelerator=ACCELERATOR) == (
+        EXAMPLE
+    )
+    parameter = inspect.signature(local_record).parameters["accelerator"]
+    assert parameter.default == ACCELERATOR
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+
+
+@pytest.mark.parametrize(
+    ("accelerator", "error"),
+    [
+        ("mock", ValueError),
+        ("", ValueError),
+        ("Virtual_npu", ValueError),
+        (None, TypeError),
+        (["virtual_npu"], TypeError),
+        (b"virtual_npu", TypeError),
+    ],
+)
+def test_another_accelerator_is_refused_before_the_machine_is_read(
+    machine, accelerator, error
+):
+    with pytest.raises(error):
+        local_record("external", timeout_s=TIMEOUT, accelerator=accelerator)
+    assert machine.asked == []
+
+
+def test_bad_hw_source_wins_over_a_bad_accelerator(machine):
+    with pytest.raises(InvalidRecordError):
+        local_record("vendor", timeout_s=TIMEOUT, accelerator="mock")
+
+
+def test_a_fact_that_cannot_be_read_gives_no_virtual_npu_record(machine):
+    machine.kernel = ("Windows", "10")
+    with pytest.raises(UnreadableFactError, match="^kernel name: "):
+        local_record(
+            "external", timeout_s=TIMEOUT, accelerator=standin_profile.VIRTUAL_NPU
+        )

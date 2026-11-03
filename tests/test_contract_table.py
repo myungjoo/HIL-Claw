@@ -16,6 +16,7 @@ from hilclaw import (
     rope_bf16_contract,
     sdpa_kv_cache_bf16_contract,
     swiglu_bf16_contract,
+    targets,
 )
 from hilclaw.contract_table import (
     TABLE,
@@ -24,6 +25,7 @@ from hilclaw.contract_table import (
     covers,
     entry,
     run_covers,
+    served_at,
     start_covers,
     task_contract,
 )
@@ -274,6 +276,7 @@ def test_public_names_of_the_module():
         "covers",
         "entry",
         "run_covers",
+        "served_at",
         "start_covers",
         "task_contract",
     }
@@ -304,3 +307,102 @@ def test_the_module_imports_the_contract_modules_and_no_numpy():
         cwd=own.parent.parent,
     )
     assert found.stdout.strip() == "[]"
+
+
+# Coverage at a target (ADR-0193 decision 4)
+
+RECORDS = [first(contract) for contract in CONTRACTS]
+RECORD_IDS = [named(contract) for contract in CONTRACTS]
+
+
+class Served:
+    def __init__(self, contracts):
+        self.contracts = contracts
+
+
+@pytest.mark.parametrize("record", RECORDS, ids=RECORD_IDS)
+def test_at_cpu_standin_every_predicate_answers_as_without_a_target(record):
+    standin = targets.target(targets.CPU_STANDIN)
+    for predicate in PREDICATES:
+        answer = predicate(record, standin)
+        assert type(answer) is bool
+        assert answer == predicate(record) is True
+    assert served_at(record, standin) is True
+
+
+@pytest.mark.parametrize("record", NOT_COVERED.values(), ids=list(NOT_COVERED))
+def test_a_record_no_entry_covers_is_not_covered_at_any_target(record):
+    for name in targets.TABLE:
+        for predicate in PREDICATES:
+            assert predicate(record, targets.target(name)) is False
+
+
+@pytest.mark.parametrize("record", RECORDS, ids=RECORD_IDS)
+def test_at_virtual_npu_only_the_bf16_contracts_are_covered(record):
+    virtual = targets.target(targets.VIRTUAL_NPU)
+    bf16 = record["dtype"] == "bf16"
+    for predicate in PREDICATES:
+        assert predicate(record, virtual) is bf16
+    assert served_at(record, virtual) is bf16
+
+
+def test_a_target_that_serves_nothing_covers_nothing():
+    for record in RECORDS:
+        for predicate in PREDICATES:
+            assert predicate(record, Served(())) is False
+        assert served_at(record, Served(())) is False
+
+
+def test_the_flags_still_apply_at_a_target(monkeypatch):
+    key = next(iter(TABLE))
+    record = first(gemm_contract)
+    standin = targets.target(targets.CPU_STANDIN)
+    changed = dict(TABLE)
+    changed[key] = TABLE[key]._replace(timed=False)
+    monkeypatch.setattr(contract_table, "TABLE", changed)
+    assert run_covers(record, standin) is False
+    assert start_covers(record, standin) is False
+    assert check_covers(record, standin) is True
+    assert served_at(record, standin) is True
+
+
+def test_served_at_asks_no_contract(monkeypatch):
+    def refused(record):
+        raise AssertionError("a contract was asked")
+
+    for contract in CONTRACTS:
+        monkeypatch.setattr(contract, "covers", refused)
+    virtual = targets.target(targets.VIRTUAL_NPU)
+    assert served_at(first(gemm_contract), virtual) is False
+    assert served_at(first(swiglu_bf16_contract), virtual) is True
+
+
+def test_served_at_reads_kind_dtype_and_layout_alone():
+    record = with_changes(first(gemm_bf16_contract), shape={"m": 0, "k": 1, "n": 1})
+    assert served_at(record, targets.target(targets.VIRTUAL_NPU)) is True
+    assert covers(record) is False
+    other = with_changes(first(gemm_bf16_contract), dtype="fp16")
+    assert served_at(other, targets.target(targets.CPU_STANDIN)) is False
+
+
+@pytest.mark.parametrize(
+    ("target", "error"),
+    [(object(), AttributeError), (Served(3), TypeError), (Served(None), TypeError)],
+)
+def test_a_target_without_searchable_contracts_is_refused(target, error):
+    for function in (*PREDICATES, served_at):
+        with pytest.raises(error):
+            function(first(gemm_contract), target)
+
+
+def test_served_at_has_no_answer_without_a_target():
+    with pytest.raises(AttributeError):
+        served_at(first(gemm_contract), None)
+
+
+@pytest.mark.parametrize("record", INVALID.values(), ids=list(INVALID))
+def test_an_invalid_record_is_refused_at_a_target(record):
+    virtual = targets.target(targets.VIRTUAL_NPU)
+    for function in (*PREDICATES, served_at):
+        with pytest.raises(keys.InvalidRecordError):
+            function(record, virtual)

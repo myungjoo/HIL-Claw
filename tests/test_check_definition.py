@@ -39,6 +39,7 @@ from hilclaw import (
     standin_profile,
     standin_run,
     swiglu_bf16_contract,
+    targets,
     tools,
 )
 from hilclaw.backends import Backend, BackendTable
@@ -52,6 +53,8 @@ from hilclaw.check_definition import (
 from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.harness import seed_source
 from hilclaw.journal import EMPTY
+
+RUN_TOOLS = ("sim.run", "board.run")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TOOL = "correctness.check"
@@ -221,6 +224,7 @@ def test_the_module_imports_what_it_names_and_has_its_public_names_only():
             "standin_check",
             "standin_profile",
             "standin_run",
+            "targets",
         },
         "function": {"check_tool"},
     }
@@ -362,11 +366,11 @@ def mcp_document(name, arguments):
     return json.dumps(document).encode() + b"\n"
 
 
-def test_default_table_holds_the_mock_and_cpu_standin_offering_the_three_hw_tools():
-    """ADR-0167 decision 3 and Boundaries: one table, the mock and cpu_standin."""
+def test_default_table_holds_the_mock_cpu_standin_and_virtual_npu():
+    """ADR-0167 decision 3 and Boundaries, ADR-0193 decision 4: one table of three backends."""
     table = default_table()
     assert type(table) is BackendTable
-    assert table.names() == ("cpu_standin", mock_backend.NAME)
+    assert table.names() == ("cpu_standin", mock_backend.NAME, "virtual_npu")
     assert standin_profile.ACCELERATOR == "cpu_standin"
     for tool in (TOOL, "sim.run", "board.run"):
         assert callable(backends.select(table, profile(), tool))
@@ -391,7 +395,7 @@ def test_building_the_default_table_reads_no_image(monkeypatch):
 
     monkeypatch.setattr(standin_image, "read_image", refused)
     monkeypatch.setenv(standin_image.ENV_IMAGE, "registry.example/image:1")
-    assert default_table().names() == ("cpu_standin", mock_backend.NAME)
+    assert default_table().names() == ("cpu_standin", mock_backend.NAME, "virtual_npu")
 
 
 @pytest.mark.parametrize("tool", ["sim.run", "board.run"])
@@ -547,6 +551,50 @@ def test_a_call_about_a_run_at_another_accelerator_is_no_backend(tmp_path, parti
     refused(registry, REQUEST, tools.KIND_NO_BACKEND)
     assert no_log(root)
     assert counts(parties) == (0, 0, 0)
+
+
+def test_a_call_about_a_run_at_virtual_npu_is_not_offered(tmp_path, parties):
+    for op in (OP, gemm_bf16_contract.op_signature_record(2, 3, 4)):
+        root = a_run(tmp_path / op["dtype"], accelerator=targets.VIRTUAL_NPU, op=op)
+        registry = tools.default_registry(lambda root=root: root)
+        refused(registry, REQUEST, tools.KIND_NOT_OFFERED)
+        assert no_log(root)
+    assert counts(parties) == (0, 0, 0)
+
+
+def test_default_table_offers_the_run_tools_alone_at_virtual_npu(monkeypatch):
+    built = []
+    real = standin_run.operation_for
+
+    def operation_for(target):
+        built.append(target)
+        return real(target)
+
+    monkeypatch.setattr(standin_run, "operation_for", operation_for)
+    table = default_table()
+    (target,) = built
+    assert target == targets.target(targets.VIRTUAL_NPU)
+    virtual = profile(targets.VIRTUAL_NPU)
+    sim, board = (backends.select(table, virtual, tool) for tool in RUN_TOOLS)
+    assert callable(sim)
+    assert sim is board
+    assert sim is not standin_run.operation
+    for tool in (TOOL, "profiler.collect"):
+        with pytest.raises(tools.ToolFailure) as caught:
+            backends.select(table, virtual, tool)
+        assert caught.value.kind == tools.KIND_NOT_OFFERED
+    standin = profile(standin_profile.ACCELERATOR)
+    assert backends.select(table, standin, TOOL) is standin_check.operation
+    for tool in RUN_TOOLS:
+        assert backends.select(table, standin, tool) is standin_run.operation
+
+
+def test_an_error_of_building_virtual_npu_passes_out_of_default_table(monkeypatch):
+    from hilclaw import standin_settings
+
+    monkeypatch.setattr(standin_settings, "BUILD_TIME_LIMIT_S", 0)
+    with pytest.raises(ValueError, match="^build_time_limit_s"):
+        default_table()
 
 
 @pytest.fixture

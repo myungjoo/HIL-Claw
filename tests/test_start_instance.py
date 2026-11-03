@@ -25,6 +25,7 @@ from hilclaw import (
     sdpa_kv_cache_bf16_contract,
     standin_profile,
     swiglu_bf16_contract,
+    targets,
 )
 from hilclaw.harness import measurement
 from hilclaw.instance import InvalidInstanceError, UnsupportedVersionError
@@ -343,6 +344,12 @@ def test_a_dict_subclass_is_a_type_error(tmp_path, ids):
 
 def test_another_accelerator_is_out_of_scope(tmp_path, ids):
     assert_refused(document(accelerator="acc_other"), OutOfScopeError, tmp_path, ids)
+
+
+def test_virtual_npu_is_out_of_scope_for_an_instance(tmp_path, ids):
+    assert targets.target(targets.VIRTUAL_NPU).instance_start is False
+    given = document(accelerator=targets.VIRTUAL_NPU)
+    assert_refused(given, OutOfScopeError, tmp_path, ids)
 
 
 @pytest.mark.parametrize(

@@ -550,6 +550,12 @@ def test_runs_at_two_targets_in_one_binding_are_refused(root, first, second):
     assert (caught.value.call_site, caught.value.run_id) == ("o", other)
 
 
+def test_a_run_at_virtual_npu_is_another_target(root):
+    assert targets.target(targets.VIRTUAL_NPU).model_run is False
+    write_at(root, RUN, targets.VIRTUAL_NPU)
+    refused(root, OTHER_TARGET)
+
+
 def test_an_accelerator_with_no_target_is_another_target(root):
     write_at(root, RUN, SECOND)
     refused(root, OTHER_TARGET)

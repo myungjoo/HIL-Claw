@@ -27,7 +27,10 @@ run tools' operations of the table.
   and ``board.run`` with theirs, and ``cpu_standin``
   (:data:`hilclaw.standin_profile.ACCELERATOR`), offering the three with its
   operations (ADR-0167 Boundaries; ADR-0170) and no ``profiler.collect``
-  (ADR-0130 decision 2).
+  (ADR-0130 decision 2), and ``virtual_npu``
+  (:data:`hilclaw.targets.VIRTUAL_NPU`), offering ``sim.run`` and
+  ``board.run`` alone, with the operations built with its target (ADR-0193
+  decision 4).
 * :func:`definition`: the tool definition :func:`hilclaw.tools.default_registry`
   registers, the tool function bound to that table, to
   :func:`hilclaw.harness.seed_source.system` and to
@@ -45,8 +48,8 @@ When the modules are imported is this module's own choice too: it imports
 NumPy, only inside functions, so that importing it or building a definition
 imports neither, nor any ``hilclaw.standin_*`` module. :func:`default_table`
 imports :mod:`hilclaw.mock_check`, :mod:`hilclaw.mock_run`,
-:mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_profile` and
-:mod:`hilclaw.standin_run` when it is called; the tool function of a definition
+:mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_profile`,
+:mod:`hilclaw.standin_run` and :mod:`hilclaw.targets` when it is called; the tool function of a definition
 imports :mod:`hilclaw.check_tool`, builds the table and binds the tool
 function at its first call, and keeps that one bound function for its later
 calls. A
@@ -120,7 +123,7 @@ def input_schema():
 def default_table():
     """Return a new backend table of the default registry (ADR-0070 decision 3, ADR-0167 decision 3).
 
-    It holds two :class:`hilclaw.backends.Backend` entries. The one named
+    It holds three :class:`hilclaw.backends.Backend` entries. The one named
     :data:`hilclaw.mock_backend.NAME` offers the three HW tools of the
     default registry: ``correctness.check``, with
     :func:`hilclaw.mock_check.operation` bound to
@@ -135,12 +138,18 @@ def default_table():
     ``board.run`` with :func:`hilclaw.standin_run.operation`, and no other
     tool (ADR-0130 decision 2); those two are the operations built with the
     ``cpu_standin`` :class:`hilclaw.targets.Target`, which they read from
-    :data:`hilclaw.targets.TABLE` at each call (ADR-0193 decision 3). A call
+    :data:`hilclaw.targets.TABLE` at each call (ADR-0193 decision 3). The
+    one named :data:`hilclaw.targets.VIRTUAL_NPU` offers ``sim.run`` and
+    ``board.run``, each with :func:`hilclaw.standin_run.operation_for` of
+    the ``virtual_npu`` :class:`hilclaw.targets.Target`, read when the table
+    is built, and no ``correctness.check``, which a call about it answers
+    ``not_offered`` (ADR-0193 decision 4; ADR-0016 decision 3). A call
     about any other ``accelerator`` is ``no_backend``. It imports
     :mod:`hilclaw.mock_check`, and so NumPy, :mod:`hilclaw.mock_run`,
-    :mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_profile` and
-    :mod:`hilclaw.standin_run`. Building it reads no image; the
-    ``cpu_standin`` operations read it at each call.
+    :mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_profile`,
+    :mod:`hilclaw.standin_run` and :mod:`hilclaw.targets`. Building it reads
+    no image; the ``cpu_standin`` and ``virtual_npu`` operations read it at
+    each call.
     """
     from hilclaw import (
         mock_check,
@@ -148,10 +157,12 @@ def default_table():
         standin_check,
         standin_profile,
         standin_run,
+        targets,
     )
 
     mock = {_TOOL: mock_check.operation(mock_check.default_script)}
     standin = {_TOOL: standin_check.operation}
+    virtual = standin_run.operation_for(targets.target(targets.VIRTUAL_NPU))
     for tool in _RUN_TOOLS:
         mock[tool] = mock_run.operation(tool, mock_run.default_script)
         standin[tool] = standin_run.operation
@@ -159,6 +170,7 @@ def default_table():
         [
             backends.Backend(mock_backend.NAME, mock),
             backends.Backend(standin_profile.ACCELERATOR, standin),
+            backends.Backend(targets.VIRTUAL_NPU, dict.fromkeys(_RUN_TOOLS, virtual)),
         ]
     )
 

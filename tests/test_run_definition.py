@@ -39,6 +39,7 @@ from hilclaw import (
     standin_image,
     standin_run,
     swiglu_bf16_contract,
+    targets,
     tools,
 )
 from hilclaw.harness import bf16_timing_build, seed_source
@@ -1183,4 +1184,123 @@ def test_a_bf16_record_is_served_by_the_run_tools_at_cpu_standin(
     program = bf16_timing_build.PROGRAM_SOURCES[record["kind"]].name
     assert any(argument.endswith(program) for argument in calls[0][0])
     assert ("stdin_data" in calls[2][1]) == (record["kind"] == "rope")
+    assert os.listdir(scratch) == []
+
+
+# The virtual NPU below the instance start (ADR-0193 decision 4)
+
+
+def virtual_npu_run(tmp_path, monkeypatch, record, client):
+    scratch = tmp_path / "tmp"
+    scratch.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+    monkeypatch.setenv(standin_image.ENV_IMAGE, "registry.example/hilclaw-clang:1")
+    monkeypatch.setattr(os, "getuid", lambda: 1234, raising=False)
+    monkeypatch.setattr(os, "getgid", lambda: 567, raising=False)
+    monkeypatch.setattr(local_run, "run", client)
+    root = a_run_of(tmp_path / "data", record, accelerator=targets.VIRTUAL_NPU)
+    output = layout.attempt_artefact(root, RUN, ROUND, 2, 1, "output")
+    output.mkdir(parents=True)
+    (output / "kernel.c").write_bytes(b"void kernel(void) {}\n")
+    return root, scratch
+
+
+def before_image(command):
+    return command[: command.index("registry.example/hilclaw-clang:1")]
+
+
+def bounded(command):
+    before = before_image(command)
+    return [
+        before[index + 1]
+        for index, item in enumerate(before)
+        if item in ("--memory", "--memory-swap")
+    ]
+
+
+@pytest.mark.parametrize("tool", ["sim.run", "board.run"])
+@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
+def test_a_bf16_record_is_served_by_the_run_tools_at_virtual_npu(
+    tmp_path, monkeypatch, tool, record
+):
+    calls = []
+    root, scratch = virtual_npu_run(
+        tmp_path, monkeypatch, record, standin_client(calls)
+    )
+    registry = tools.default_registry(lambda: root)
+    expected = {**bf16_result(record), "memory_bytes": 300 * 1024}
+    result = tools.call(registry, tool, dict(CALL))
+    assert result == expected
+    assert result["unit"] == "ns"
+    assert step_lines(root) == timed(tool, expected)
+    timing_build, waiter_build, process = (command for command, _ in calls)
+    image_at = timing_build.index("registry.example/hilclaw-clang:1")
+    compiled = timing_build[image_at + 1 :]
+    assert compiled[0] == "clang"
+    assert compiled[1:6] == list(targets.VIRTUAL_NPU_FLAGS)
+    assert "-O1" in compiled
+    assert "-fno-vectorize" in compiled
+    assert "-fno-slp-vectorize" in compiled
+    assert "-fopenmp" not in compiled
+    assert "-O2" not in compiled
+    assert bounded(timing_build) == bounded(waiter_build) == []
+    assert bounded(process) == ["268435456", "268435456"]
+    assert before_image(process).index("--memory-swap") == (
+        before_image(process).index("--memory") + 2
+    )
+    assert os.listdir(scratch) == []
+
+
+def test_the_cpu_standin_containers_are_given_no_memory_bound(tmp_path, monkeypatch):
+    calls = []
+    scratch = tmp_path / "tmp"
+    scratch.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+    monkeypatch.setenv(standin_image.ENV_IMAGE, "registry.example/hilclaw-clang:1")
+    monkeypatch.setattr(os, "getuid", lambda: 1234, raising=False)
+    monkeypatch.setattr(os, "getgid", lambda: 567, raising=False)
+    monkeypatch.setattr(local_run, "run", standin_client(calls))
+    root = a_run_of(tmp_path / "data", BF16_RECORDS[0], accelerator="cpu_standin")
+    output = layout.attempt_artefact(root, RUN, ROUND, 2, 1, "output")
+    output.mkdir(parents=True)
+    (output / "kernel.c").write_bytes(b"void kernel(void) {}\n")
+    tools.call(tools.default_registry(lambda: root), "sim.run", dict(CALL))
+    assert len(calls) == 3
+    for command, _ in calls:
+        assert bounded(command) == []
+    assert "-fopenmp" in calls[0][0]
+
+
+@pytest.mark.parametrize("tool", ["sim.run", "board.run"])
+def test_fp32_gemm_is_not_covered_by_the_run_tools_at_virtual_npu(
+    tmp_path, monkeypatch, tool
+):
+    started = []
+    monkeypatch.setattr(local_run, "run", lambda command, **_: started.append(command))
+    root = a_run(tmp_path / "data", accelerator=targets.VIRTUAL_NPU)
+    registry = tools.default_registry(lambda: root)
+    refused_call(registry, tool, dict(CALL), "op_signature_not_covered")
+    assert no_log(root)
+    assert started == []
+
+
+def test_a_virtual_npu_process_over_the_bound_is_broken_with_exit_status(
+    tmp_path, monkeypatch
+):
+    calls = []
+    passing = standin_client(calls)
+
+    def client(command, **options):
+        answer = passing(command, **options)
+        if "--memory" in command:
+            return answer._replace(returncode=137, stdout=b"")
+        return answer
+
+    record = BF16_RECORDS[1]
+    root, scratch = virtual_npu_run(tmp_path, monkeypatch, record, client)
+    result = tools.call(tools.default_registry(lambda: root), "sim.run", dict(CALL))
+    assert result["outcome"] == "broken"
+    assert result["condition"] == "exit_status"
+    assert "memory_ceiling" not in json.dumps(result)
+    assert "--memory" in calls[2][0]
     assert os.listdir(scratch) == []

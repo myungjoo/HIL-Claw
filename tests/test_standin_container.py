@@ -559,3 +559,70 @@ def test_a_refused_input_is_c16_for_the_answer(starts, build_dir):
         call(build_dir, stdin_data="rows")
     for step in (standin_answer.BUILD, standin_answer.PROCESS):
         assert standin_answer.place_error(raised.value, step) is None
+
+
+# The memory bound (ADR-0193 decision 4)
+
+
+def test_a_memory_bound_adds_memory_and_an_equal_memory_swap(starts, build_dir):
+    call(build_dir, "/build/timing", ["1"], memory_limit_bytes=268435456)
+    ((command, options),) = starts.calls
+    image_at = command.index("example/standin:1")
+    before = command[:image_at]
+    assert option(command, "--memory") == "268435456"
+    assert option(command, "--memory-swap") == "268435456"
+    assert before.index("--memory-swap") == before.index("--memory") + 2
+    assert before.index("--memory") < before.index("--entrypoint=")
+    without = [
+        item
+        for item in command
+        if item not in ("--memory", "--memory-swap", "268435456")
+    ]
+    assert_client_list(without, build_dir, "/build/timing", ["1"])
+    assert options == {"timeout_s": 30, "env": None}
+
+
+def test_a_memory_bound_and_an_input_are_both_given(starts, build_dir):
+    call(build_dir, "/build/timing", (), stdin_data=b"rows", memory_limit_bytes=1)
+    ((command, options),) = starts.calls
+    assert "--interactive" in command
+    assert (option(command, "--memory"), option(command, "--memory-swap")) == (
+        "1",
+        "1",
+    )
+    assert options["stdin_data"] == b"rows"
+
+
+def test_no_memory_bound_keeps_the_command_as_it_was(starts, build_dir):
+    call(build_dir, "/build/timing", ["1"])
+    call(build_dir, "/build/timing", ["1"], memory_limit_bytes=None)
+    first, second = (command for command, _ in starts.calls)
+    for command in (first, second):
+        assert "--memory" not in command
+        assert "--memory-swap" not in command
+        assert_client_list(command, build_dir, "/build/timing", ["1"])
+    assert [item for item in first if not item.startswith(NAME_PREFIX)] == [
+        item for item in second if not item.startswith(NAME_PREFIX)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("value", "kind"),
+    [
+        (0, ValueError),
+        (-1, ValueError),
+        (True, TypeError),
+        (False, TypeError),
+        (1.0, TypeError),
+        ("268435456", TypeError),
+        ([1], TypeError),
+    ],
+)
+def test_a_memory_bound_that_is_no_positive_int_is_refused_before_the_start(
+    starts, build_dir, value, kind
+):
+    with pytest.raises(kind) as raised:
+        call(build_dir, memory_limit_bytes=value)
+    assert type(raised.value) is kind
+    assert raised.value.parameter == "memory_limit_bytes"
+    assert starts.calls == []

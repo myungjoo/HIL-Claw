@@ -84,3 +84,54 @@ hq: []
 - PLAN P3-3 is checked by the driver only once both answers have been applied (ADR-0193 decision 8).
 
 ## Result
+
+**Order check** (D27 ①), on `main` `edcad743` before any code: no open `nightly-failure` issue, no open PR, no `RuntimeAcceptance.md` item with `상태` `실패`, no P2-15 preparation pending. P3-3 was still the next item.
+
+**What landed** (criteria 1 to 11; the PR is the one whose body ends with `Task: T-0533`).
+
+- `hilclaw/targets.py`: the entry `VIRTUAL_NPU` (`"virtual_npu"`, equal to `standin_profile.VIRTUAL_NPU`) with `VIRTUAL_NPU_FLAGS` (`-std=gnu11 -O1 -ffp-contract=off -fno-vectorize -fno-slp-vectorize`); the trailing flags, waiter flags, environment, build limit and process cap read at each read from the same `standin_settings` constants as `cpu_standin`; `contracts` the six bf16 keys; `memory_limit_bytes` `VIRTUAL_NPU_MEMORY_LIMIT_BYTES` = 268435456; `unit` `ns`; `model_run` and `instance_start` false. `cpu_standin` is unchanged, and `instance_start_accelerators()` is still `("cpu_standin",)`.
+- `hilclaw/check_definition.py`: `default_table` holds a third backend `virtual_npu` offering `sim.run` and `board.run` with `standin_run.operation_for(<virtual_npu Target>)` and no `correctness.check` (a call answers `not_offered`). The mock and `cpu_standin` entries and the identity of their operations are unchanged.
+- `hilclaw/standin_container.py`: `run_in_container(..., memory_limit_bytes=None)`. An `int` above 0 adds `--memory <n> --memory-swap <n>` before the image. A `bool`, a non-`int` or a value not above 0 is refused before any start (`TypeError` or `ValueError`, `parameter` `memory_limit_bytes`). With `None` the argument list is exactly today's.
+- `hilclaw/standin_check.py`, `hilclaw/standin_run.py`: `run_container` passes `memory_limit_bytes` through. The operations hand the target's `memory_limit_bytes` to the process container only (the verification process, the timing process), never to a build container. A process ended over the bound is the existing `exit_status` (`broken`), with no new condition, member or value.
+- `hilclaw/run_tool.py`: the run's `accelerator` is looked up in `targets.TABLE`. For a target, the predicate handed to `run_admission.admit` is the bound `covers` joined to `contract_table.served_at(record, target)`, and the result's `unit` is `target.unit`. For an accelerator with no target (the mock) it is the bound `covers` itself and `"ns"`. `run_result.UNITS`, `timings_tool` and every `step` are unchanged.
+- `hilclaw/standin_profile.py`: `local_record(..., accelerator=ACCELERATOR)`. `VIRTUAL_NPU` gives `revision` `VIRTUAL_NPU_REVISION` = `virtual-1`, with `toolchain`, `host` and `hw_source` by the `cpu_standin` rules. Any other value is refused before the machine is read.
+- `hilclaw/run_definition.py`: docstring only (the run tools join the predicate to the run's target).
+
+**Seam of criterion 5.** `contract_table.covers`, `check_covers`, `run_covers` and `start_covers` take an optional `target` (anything with `contracts`, a `Target`): only the entries whose key is in `target.contracts` are asked. So for `cpu_standin`, and without a target, every predicate answers as before (tests over the seven keys). A new public `contract_table.served_at(record, target)` answers the target's part alone, by the record's `kind`, `dtype` and `layout`, without asking any contract's `covers`. `run_tool` uses it so that the bound predicate is still called exactly once per call (an existing test counts those calls). Wired in the run tools' admission (`sim.run`, `board.run`): fp32 `gemm` at `virtual_npu` is `op_signature_not_covered` and the six bf16 contracts are admitted. **Call sites left record-only**:
+- `spec.write` (`spec_tool`, `contract_table.covers`);
+- `correctness.check` (`check_definition.definition` / `check_tool`, `check_covers`): `virtual_npu` is `not_offered` at backend selection, before coverage is asked;
+- the instance start (`start_instance` / `instance_start.prepare`, `start_covers`): `virtual_npu` is refused as out of scope before coverage matters;
+- the S6 metric (`s6_metric`, `start_covers`): it admits `cpu_standin` and the mock alone before coverage is asked (ADR-0193 decision 1 leaves its `_ACCELERATORS` without `virtual_npu`).
+
+`model_run_binding` is unchanged and refuses a `virtual_npu` run with `other_target` (`model_run` false).
+
+**Language**: Python. Every touched module is an existing Python module of the 2-layer package; no module was added.
+
+**Edited assertions (D21, pinning lists)**:
+- `tests/test_targets.py`: `test_the_table_holds_cpu_standin_alone_and_not_the_mock`, renamed `test_the_table_holds_cpu_standin_and_virtual_npu_and_not_the_mock` (names, length and repr of the table); the parametrize value `"virtual_npu"` of `test_a_name_with_no_target_is_refused`, replaced by `"synthetic_npu"`.
+- `tests/test_check_definition.py`: the backend names of `default_table` in `test_default_table_holds_the_mock_and_cpu_standin_offering_the_three_hw_tools` (renamed `test_default_table_holds_the_mock_cpu_standin_and_virtual_npu`) and `test_building_the_default_table_reads_no_image`; `targets` added to the imports of `default_table` in `test_the_module_imports_what_it_names_and_has_its_public_names_only`.
+- `tests/test_backend_conformance.py`: the backend names of `default_table` in `test_the_default_table_offers_the_three_tools_and_no_profiler_at_both_entries` (now with `virtual_npu`; the per-entry checks still cover the mock and `cpu_standin`).
+- `tests/test_run_tool.py`: `contract_table` and `targets` added to the imports pinned by `test_the_module_imports_and_names`. The test helper `Bench` gained an `accelerator` keyword (default the mock).
+- `tests/test_contract_table.py`: `served_at` added to `test_public_names_of_the_module`.
+- `tests/test_standin_profile.py`: `VIRTUAL_NPU` and `VIRTUAL_NPU_REVISION` added to `test_public_names_of_the_module`; `accelerator` added to the parameter list of `test_signature_carries_no_machine_fact`. The allow-list of files that may name `standin_profile` needed no change.
+- `tests/test_run_result.py`: no change needed (`run_tool`'s import of `run_result` is unchanged).
+
+**Tests added**:
+- `test_targets.py`: the `virtual_npu` values and the reads of the shared constants.
+- `test_contract_table.py`: the predicates at a target over the seven keys, and `served_at`, with negative targets and invalid records.
+- `test_check_definition.py`: the third backend, and `not_offered` for `correctness.check`.
+- `test_run_definition.py`, end to end with a stub Docker client for each bf16 contract and each tool at `virtual_npu`: the build flags (no `-fopenmp`), `--memory 268435456 --memory-swap 268435456` on the timing process only, and `unit` `ns`. Also fp32 `gemm` refused, status 137 giving `broken` / `exit_status`, and no bound on any `cpu_standin` container.
+- `test_run_tool.py`: the unit read from the target, the predicate join, and errors.
+- `test_standin_container.py`: the memory option and its refusals.
+- `test_standin_check.py`, `test_standin_run.py`: the bound on the process container alone.
+- `test_standin_profile.py`: the hw key.
+- `test_start_instance.py`: `virtual_npu` refused with `OutOfScopeError`.
+- `test_model_run_binding.py`: `virtual_npu` refused with `other_target`.
+
+**Frame** (criterion 11): no file, member, value or version of the data plane changed beyond the A-13 reading of ADR-0193 (`virtual_npu` as an `accelerator` and backend name, `virtual-1` as a `revision` value). `run_result.UNITS` is unchanged, no open list got a value, and no contract-table entry was added.
+
+**PLAN P3-3 stays unchecked** (ADR-0193 decision 8): HQ-0090 (the unit) and HQ-0091 (the oracle at `virtual_npu`, a new type) remain open.
+
+**Runtime acceptance item for the driver to register (D22)**, 출처 `P3-3` (근거 task T-0533):
+
+  PLAN P3-3. 실제 컨테이너 런타임(Docker)이 있는 런타임 머신에서 두 가지를 확인한다. ① `virtual_npu`의 timing process 컨테이너를 `--memory 268435456 --memory-swap 268435456`으로 시작하면 실제로 그 메모리 한도(스왑 없이 268435456 바이트)에 묶이는지. ② 그 한도를 넘게 메모리를 쓰는 커널을 `sim.run`이나 `board.run`으로 호출하면 결과가 `broken`, `condition` `exit_status`로 끝나는지(새 condition이나 member가 없고, `memory_ceiling`은 계속 허용되지 않음). verification process에 같은 한도를 거는 코드 경로도 있지만, `virtual_npu`는 아직 `correctness.check`를 제공하지 않으므로(HQ-0091) 확인 대상은 timing process뿐이다. 개발 머신에서는 스텁 Docker 클라이언트로만 검증했다(D16).

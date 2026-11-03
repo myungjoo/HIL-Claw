@@ -36,7 +36,9 @@ renders, ahead of the tool functions, what its decisions 2 to 5 fix:
   :func:`hilclaw.harness.seed_source.system` and to
   :func:`hilclaw.contract_table.run_covers`, which admits an entry only once
   it is ``timed`` (ADR-0177 decision 2): today the fp32 ``gemm`` entry and
-  the six bf16 entries (ADR-0181 decision 8 item 4).
+  the six bf16 entries (ADR-0181 decision 8 item 4). The tool function
+  joins it to the contracts of the run's target, so at ``virtual_npu`` the
+  six bf16 entries alone (ADR-0193 decision 4).
 
 Choices that are this module's own and no rule of a record:
 

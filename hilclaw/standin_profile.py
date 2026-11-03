@@ -1,4 +1,4 @@
-"""The hw_profile record of the local ``cpu_standin`` (ADR-0035 decisions 2 to 6 and 8).
+"""The hw_profile record of the local ``cpu_standin`` (ADR-0035 decisions 2 to 6 and 8) and ``virtual_npu`` (ADR-0193 decision 4).
 
 ``ARCHITECTURE/decisions/ADR-0035-od4-cpu-standin-hw-key-values.md``, built on
 ADR-0001, says which strings the key fields of a hw_profile hold when its
@@ -6,9 +6,16 @@ ADR-0001, says which strings the key fields of a hw_profile hold when its
 machine. :func:`local_record` reads those strings from the machine it runs on
 and returns the record. Under WSL that machine is the Linux environment.
 
+ADR-0193 decision 4 gives the hw key of the virtual NPU, a check backend on
+the same machine: ``accelerator`` :data:`VIRTUAL_NPU`, ``revision``
+:data:`VIRTUAL_NPU_REVISION`, and ``toolchain``, ``host`` and ``hw_source``
+by the rules of ``cpu_standin`` below; :func:`local_record` builds it when
+asked for that ``accelerator``.
+
 The rules, in short:
 
-* ``revision`` is the word ``host`` (decision 5).
+* ``revision`` is the word ``host`` (decision 5), and for ``virtual_npu``
+  :data:`VIRTUAL_NPU_REVISION`.
 * ``toolchain`` has the one member ``clang``: the first line that
   ``<compiler> --version`` writes to standard output (decision 3). When the
   caller names the ``cpu_standin`` image, the kernels are built by the image's
@@ -61,9 +68,10 @@ What the module does not do: it registers and stores nothing, is bound to no
 tool and has no command-line entry; the one caller of :func:`local_record` is
 the nightly entry :mod:`hilclaw.nightly`, which puts the record into its own
 instance, and :mod:`hilclaw.check_definition` and :mod:`hilclaw.start_instance`
-read :data:`ACCELERATOR` alone. It knows no
-other accelerator and no other machine than the one the process runs on, adds
-no further member to ``toolchain`` or ``host``, does not tell WSL 1 from WSL 2
+read :data:`ACCELERATOR` alone, and :mod:`hilclaw.targets` reads
+:data:`ACCELERATOR` and :data:`VIRTUAL_NPU`. It knows no accelerator but
+these two and no other machine than the one the process runs on, adds no
+further member to ``toolchain`` or ``host``, does not tell WSL 1 from WSL 2
 and never compares a machine with a record again. The limits ADR-0035 names in
 decision 7 are not handled: the first ``model name`` line stands for the
 machine. Nothing checks that ``compiler``, or the image, is the compiler a
@@ -92,6 +100,9 @@ from hilclaw import clang_build, keys, local_run, standin_container
 
 ACCELERATOR = "cpu_standin"
 REVISION = "host"
+VIRTUAL_NPU = "virtual_npu"
+VIRTUAL_NPU_REVISION = "virtual-1"
+_REVISIONS = {ACCELERATOR: REVISION, VIRTUAL_NPU: VIRTUAL_NPU_REVISION}
 
 _CPUINFO = "/proc/cpuinfo"
 _OS_RELEASE = "/etc/os-release"
@@ -114,12 +125,15 @@ class UnreadableFactError(RuntimeError):
     """
 
 
-def local_record(hw_source, *, timeout_s, compiler=None, image=None):
-    """Return the hw_profile record of the ``cpu_standin`` this process runs on.
+def local_record(
+    hw_source, *, timeout_s, compiler=None, image=None, accelerator=ACCELERATOR
+):
+    """Return the hw_profile record of the ``cpu_standin`` or ``virtual_npu`` this process runs on.
 
     The result is a new ``dict`` with exactly the members ``schema_version``
-    (:data:`hilclaw.keys.SCHEMA_VERSION`), ``accelerator``
-    (:data:`ACCELERATOR`), ``revision`` (:data:`REVISION`), ``toolchain``
+    (:data:`hilclaw.keys.SCHEMA_VERSION`), ``accelerator`` (``accelerator``),
+    ``revision`` (:data:`REVISION` for :data:`ACCELERATOR`,
+    :data:`VIRTUAL_NPU_REVISION` for :data:`VIRTUAL_NPU`), ``toolchain``
     (``{"clang": ...}``), ``host`` (``{"cpu": ..., "os": ...}``) and
     ``hw_source``. It is a record :func:`hilclaw.keys.hw_profile_key` accepts;
     the key is not returned, and the record is neither stored nor registered.
@@ -136,8 +150,14 @@ def local_record(hw_source, *, timeout_s, compiler=None, image=None):
     limit and the forced-removal limit both ``timeout_s`` (ADR-0186 decision
     2); ``compiler`` must then be ``None``.
 
+    ``accelerator`` is :data:`ACCELERATOR`, the default, or :data:`VIRTUAL_NPU`
+    (ADR-0193 decision 4); the other members are read by the same rules for
+    both.
+
     Raises :class:`hilclaw.keys.InvalidRecordError` for a ``hw_source`` that is
-    not one of the two values, whatever the machine holds. Raises
+    not one of the two values, whatever the machine holds. Then, before the
+    machine is read, :class:`TypeError` for an ``accelerator`` that is not
+    exactly a ``str`` and :class:`ValueError` for another ``str``. Raises
     :class:`UnreadableFactError` when a fact cannot be read. The cases of the
     record: a command that is not found or ends with a status other than 0; a
     file that is missing; no ``model name`` line; no ``ID`` line; an ``ID`` or
@@ -176,6 +196,10 @@ def local_record(hw_source, *, timeout_s, compiler=None, image=None):
         rule = " or ".join(keys.HW_SOURCES)
         got = reprlib.repr(hw_source)
         raise keys.InvalidRecordError(f"hw_source: must be {rule}, got {got}")
+    if type(accelerator) is not str:
+        raise TypeError(f"accelerator must be a str, not {type(accelerator).__name__}")
+    if accelerator not in _REVISIONS:
+        raise ValueError(f"accelerator must be {' or '.join(_REVISIONS)}")
     if image is None:
         command = (*_prefix(compiler), "--version")
         start = functools.partial(_run, command, timeout_s)
@@ -208,8 +232,8 @@ def local_record(hw_source, *, timeout_s, compiler=None, image=None):
             words.append(version)
     return {
         "schema_version": keys.SCHEMA_VERSION,
-        "accelerator": ACCELERATOR,
-        "revision": REVISION,
+        "accelerator": accelerator,
+        "revision": _REVISIONS[accelerator],
         "toolchain": {"clang": clang.decode("ascii")},
         "host": {
             "cpu": cpu.decode("ascii"),
