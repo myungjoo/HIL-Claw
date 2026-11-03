@@ -1314,7 +1314,7 @@ def test_a_missing_handwritten_program_is_build_input_missing(
     assert build_dirs(temporary) == []
 
 
-def test_a_generated_program_at_a_taken_name_is_build_directory_unusable(
+def test_a_header_named_like_the_generated_program_is_build_directory_unusable(
     monkeypatch, client, output, keeper, tmp_path, temporary
 ):
     taken = tmp_path / "header" / bf16_program_generator.timing_name("gemm")

@@ -31,8 +31,9 @@ decision 3 and decision 3 it:
    place (for a kind of
    :data:`hilclaw.harness.bf16_program_generator.GENERATED_KINDS` the text of
    :func:`hilclaw.harness.bf16_program_generator.timing_source` under the file
-   name of that entry, ADR-0193 decision 6), and :data:`BF16_HEADERS` are copied beside it before the waiter and
-   handed to the compiler as no source (ADR-0181 decision 3);
+   name of that entry, ADR-0193 decision 6), and :data:`BF16_HEADERS` are
+   copied beside it before the waiter and handed to the compiler as no
+   source (ADR-0181 decision 3);
 4. runs the timing build in one container: :data:`hilclaw.standin_check.COMPILER`
    with the target's flags (for ``cpu_standin``
    :data:`hilclaw.standin_settings.FLAGS`), the driver source first and

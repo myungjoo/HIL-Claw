@@ -101,7 +101,7 @@ If T-0536 is not `DONE`, stop and report it.
 
 ## Result
 
-- Outcome: landed by PR (see the PR titled `T-0537: ...`); review rounds and merge commit are in the driver's record.
+- Outcome: PR #354, 1 review round (Approve; nits 2 and 3 fixed after it, nit 1 is the edited-assertion note below).
 - Precondition checks: T-0536 is `DONE` (PR #353) with the public names `GENERATED_KINDS`, `verification_source`, `timing_source`, `verification_name`, `timing_name`, used as landed. No open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`, no P2-15 preparation pending (checked 2026-11-03).
 - Language: Python, as the harness and container-operation modules it changes.
 - `PROGRAM_SOURCES` (both build modules): form kept, a read-only mapping from each of the six kinds to a path next to the module. For a kind of `GENERATED_KINDS` only the file name of the path is used by any build (host and container); the file it names is read by no build. For `rope` and `sdpa_kv_cache` the path is the program source as before. So `standin_check.BF16_HEADER` and `standin_run.BF16_HEADERS` (derived from `PROGRAM_SOURCES["gemm"]`) still name the existing headers.
