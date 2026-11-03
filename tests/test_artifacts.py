@@ -10,11 +10,13 @@ from hilclaw import artifacts, cas, keys, layout
 from hilclaw.artifacts import (
     Added,
     ArtifactNotFoundError,
+    BlobPresentError,
     CorruptArtifactsError,
     InvalidArtifactsError,
     SizeConflictError,
     add_record,
     load,
+    set_gc_at,
     set_retention_class,
     validate,
 )
@@ -1167,3 +1169,104 @@ def test_an_invalid_previous_file_takes_no_step(root, monkeypatch, edit):
 
     assert seen == [] and opened == []
     assert run_files(root) == {"artifacts.json": CORRUPT["not json"]}
+
+
+# --- set_gc_at (ADR-0195) ---
+
+GC_AT = "2026-11-02T03:04:05Z"
+
+
+def removed(root, number=1):
+    ref = put(root, number)
+    add(root, ref)
+    cas.blob_path(root, ref.digest).unlink()
+    return ref
+
+
+def test_set_gc_at_adds_the_member_after_the_blob_is_removed(root):
+    first, second = removed(root, 1), put(root, 2)
+    add(root, second)
+
+    result = set_gc_at(root, RUN, first.digest, GC_AT)
+
+    assert result == stored(first, gc_at=GC_AT)
+    assert held(root) == text(stored(first, gc_at=GC_AT), stored(second))
+    assert run_files(root) == {"artifacts.json": held(root)}
+
+
+def test_set_gc_at_keeps_a_gc_at_already_written(root, tmp_path):
+    ref = removed(root)
+    set_gc_at(root, RUN, ref.digest, "2001-02-03T04:05:06Z")
+    before = snapshot(tmp_path)
+
+    result = set_gc_at(root, RUN, ref.digest, GC_AT)
+
+    assert result["gc_at"] == "2001-02-03T04:05:06Z"
+    assert snapshot(tmp_path) == before
+
+
+def test_set_gc_at_refuses_while_the_blob_is_in_the_store(root, tmp_path):
+    ref = put(root)
+    add(root, ref)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(BlobPresentError, match=f"^blob {ref.digest} is in the store"):
+        set_gc_at(root, RUN, ref.digest, GC_AT)
+
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("present", [True, False])
+def test_set_gc_at_of_an_unknown_hash(root, tmp_path, present):
+    if present:
+        removed(root)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(ArtifactNotFoundError) as excinfo:
+        set_gc_at(root, RUN, "2" * 64, GC_AT)
+
+    assert str(excinfo.value) == f"{FILE}: no record with sha256 {'2' * 64}"
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("case", BAD_GC_AT)
+def test_set_gc_at_rejects_a_gc_at(root, tmp_path, case):
+    ref = removed(root)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(InvalidArtifactsError, match="^gc_at: must be"):
+        set_gc_at(root, RUN, ref.digest, BAD_GC_AT[case])
+
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("case", BAD_SHA256)
+def test_set_gc_at_rejects_a_malformed_hash(root, tmp_path, case):
+    removed(root)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(InvalidArtifactsError, match="^sha256: must be a str of 64"):
+        set_gc_at(root, RUN, BAD_SHA256[case], GC_AT)
+
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("run_id", BAD_RUN_IDS)
+def test_set_gc_at_rejects_a_run_id(root, tmp_path, run_id):
+    before = snapshot(tmp_path)
+
+    with pytest.raises(layout.InvalidPathValueError):
+        set_gc_at(root, run_id, ONES, GC_AT)
+
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("case", ["not json", "duplicated sha256"])
+def test_set_gc_at_on_a_stored_file_that_is_not_valid(root, tmp_path, case):
+    place(root, FILE, CORRUPT[case])
+    before = snapshot(tmp_path)
+
+    with pytest.raises(CorruptArtifactsError):
+        set_gc_at(root, RUN, ONES, GC_AT)
+
+    assert snapshot(tmp_path) == before

@@ -198,3 +198,22 @@ The same applies to any owner-only part the work reveals.
 ## Follow-ups
 
 ## Result
+- **Order check (Why)**: unchanged at `main` `046a354e` — no open PR, no open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`; P3-14 was the next selectable P3 item.
+- **ADR**: [ADR-0195](../../ARCHITECTURE/decisions/ADR-0195-p3-14-storage-cleanup-and-cas-gc.md), accepted under §9. It closes all of (a) to (h) and decides the §9 part of (i):
+  - (a) `python -m hilclaw.blob_gc --data-root <path> [--grace-days <n>] [--remove]`, started by a person or a script, never by a runtime step; report (dry run) by default, `--remove` removes, records and commits.
+  - (b) whole days, default 30 (owner), given by `--grace-days` per invocation; not stored in any data-plane file.
+  - (c) a run is ended when `HEAD`'s `STATE.json` holds `run_status` `"over"`; its end is the committer time of the last commit that changed that file; a run whose `artifacts.json` differs from `HEAD`, or whose `STATE.json` is invalid or holds another status, is undetermined and keeps its blobs; a run that never ends keeps its blobs.
+  - (d) the UTC clock read right after each unlink, ADR-0099 form.
+  - (e) a `gc_at` once written is never changed or removed; content stored again keeps the record (ADR-0005 decision 6); a later removal adds `gc_at` only to records that lack one.
+  - (f) a hash is removed only when every record of every run naming it is `intermediate`/`failed` in a run past its grace; then every such record lacking `gc_at` gets it.
+  - (g) only `artifacts.json` names blobs today; a later record that makes another file name a blob must keep it `best`/`final` in `artifacts.json` or revisit ADR-0195; an unreadable `runs/` entry (refused name, symlink, invalid `artifacts.json`) blocks every removal.
+  - (h) the GC commits the edited `artifacts.json` files itself in one local commit built in a temporary index; no push; nothing under `runs/` or `db/` deleted.
+  - (i) design of the next task: a read-only report of installer/image duplicates and retirement candidates using `toolchain_check`'s image reading; deletion only with FR-4/NFR-4 permission (runtime) or an approved HQ (driver). The cap stays OD-33 ③ / HQ-0094 ③.
+- **Registers**: `Requirements.md`, `OpenDecisionProposals.md`, `UsageCases.md` and `StandardScenarios.md` are not edited (no OD exists for the GC), so no coverage re-check was needed. The C-3 sentence is not edited.
+- **Code**: `hilclaw/blob_gc.py` (new) and `hilclaw.artifacts.set_gc_at` with `BlobPresentError`; the `artifacts.py` docstring sentence on `gc_at` corrected. Tests: `tests/test_blob_gc.py` (new) and `set_gc_at` tests appended to `tests/test_artifacts.py`. No existing test changed; no D21 list assertion needed an edit (`tests/test_artifacts.py` pins no public-name list).
+- **Language**: Python — the GC builds on `cas`, `artifacts` and `run_commit` (all Python) and runs `git` through `subprocess` without a shell.
+- **Size**: about 640 LOC of code (`blob_gc.py` 590 lines, most of it docstrings; `artifacts.py` +45) plus the 162-line ADR, above the 600-LOC recommendation (D30); kept whole because D20 ① puts the ADR with its first code slice and the plan, removal and commit are one feature.
+- **HQ**: none. No point needed a frame change or an owner-only value.
+- **Runtime acceptance items**: none.
+- **Follow-up for the planner**: the installer and image half of P3-14 from ADR-0195 decision 10 — a read-only report command (duplicates by SHA-256 for named files; duplicates and retirement candidates for named images via `toolchain_check`'s probes), with the driver's approval HQ form for removals.
+- **Nothing was run on a real data root, image or installer** (AC 6); every test uses temporary data roots and temporary git repositories.
