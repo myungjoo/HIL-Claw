@@ -531,7 +531,9 @@ def test_real_nvcc_probe_reports_present_with_the_release_line(nvcc):
 
 def test_real_nvidia_smi_reports_a_usable_device(nvidia_smi):
     found = device_probe(timeout_s=LIMIT)
-    assert found.state == PRESENT, found
+    assert found.state == PRESENT, (
+        f"nvidia-smi is on PATH but reports no usable GPU or driver: {found}"
+    )
     assert "(driver " in found.version
 
 
