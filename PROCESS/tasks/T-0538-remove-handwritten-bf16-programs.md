@@ -2,7 +2,7 @@
 id: T-0538
 title: Remove the eight handwritten bf16 harness programs of gemm, rmsnorm, elementwise_add and swiglu, keeping their report digests as test data (ADR-0193 decision 6, "Order")
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D27, OD-32, FR-9, "PLAN P3-5"]
 dependsOn: [T-0536, T-0537]
