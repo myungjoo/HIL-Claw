@@ -2,7 +2,7 @@
 id: T-0543
 title: Add the CUDA adapter of PLAN P3-9 (nvcc build and probe, nvidia-smi device query) on the ADR-0194 frame, checked with the machine's real nvcc and nvidia-smi
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-19, OD-33, FR-10, "PLAN P3-9"]
 dependsOn: []
