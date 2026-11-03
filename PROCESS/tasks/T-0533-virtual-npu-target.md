@@ -100,7 +100,8 @@ hq: []
 **Seam of criterion 5.** `contract_table.covers`, `check_covers`, `run_covers` and `start_covers` take an optional `target` (anything with `contracts`, a `Target`): only the entries whose key is in `target.contracts` are asked. So for `cpu_standin`, and without a target, every predicate answers as before (tests over the seven keys). A new public `contract_table.served_at(record, target)` answers the target's part alone, by the record's `kind`, `dtype` and `layout`, without asking any contract's `covers`. `run_tool` uses it so that the bound predicate is still called exactly once per call (an existing test counts those calls). Wired in the run tools' admission (`sim.run`, `board.run`): fp32 `gemm` at `virtual_npu` is `op_signature_not_covered` and the six bf16 contracts are admitted. **Call sites left record-only**:
 - `spec.write` (`spec_tool`, `contract_table.covers`);
 - `correctness.check` (`check_definition.definition` / `check_tool`, `check_covers`): `virtual_npu` is `not_offered` at backend selection, before coverage is asked;
-- the instance start (`start_instance` / `instance_start.prepare`, `start_covers`): `virtual_npu` is refused as out of scope before coverage matters.
+- the instance start (`start_instance` / `instance_start.prepare`, `start_covers`): `virtual_npu` is refused as out of scope before coverage matters;
+- the S6 metric (`s6_metric`, `start_covers`): it admits `cpu_standin` and the mock alone before coverage is asked (ADR-0193 decision 1 leaves its `_ACCELERATORS` without `virtual_npu`).
 
 `model_run_binding` is unchanged and refuses a `virtual_npu` run with `other_target` (`model_run` false).
 
@@ -108,7 +109,7 @@ hq: []
 
 **Edited assertions (D21, pinning lists)**:
 - `tests/test_targets.py`: `test_the_table_holds_cpu_standin_alone_and_not_the_mock`, renamed `test_the_table_holds_cpu_standin_and_virtual_npu_and_not_the_mock` (names, length and repr of the table); the parametrize value `"virtual_npu"` of `test_a_name_with_no_target_is_refused`, replaced by `"synthetic_npu"`.
-- `tests/test_check_definition.py`: the backend names of `default_table` in `test_default_table_holds_the_mock_and_cpu_standin_offering_the_three_hw_tools` and `test_building_the_default_table_reads_no_image`; `targets` added to the imports of `default_table` in `test_the_module_imports_what_it_names_and_has_its_public_names_only`.
+- `tests/test_check_definition.py`: the backend names of `default_table` in `test_default_table_holds_the_mock_and_cpu_standin_offering_the_three_hw_tools` (renamed `test_default_table_holds_the_mock_cpu_standin_and_virtual_npu`) and `test_building_the_default_table_reads_no_image`; `targets` added to the imports of `default_table` in `test_the_module_imports_what_it_names_and_has_its_public_names_only`.
 - `tests/test_run_tool.py`: `contract_table` and `targets` added to the imports pinned by `test_the_module_imports_and_names`. The test helper `Bench` gained an `accelerator` keyword (default the mock).
 - `tests/test_contract_table.py`: `served_at` added to `test_public_names_of_the_module`.
 - `tests/test_standin_profile.py`: `VIRTUAL_NPU` and `VIRTUAL_NPU_REVISION` added to `test_public_names_of_the_module`; `accelerator` added to the parameter list of `test_signature_carries_no_machine_fact`. The allow-list of files that may name `standin_profile` needed no change.

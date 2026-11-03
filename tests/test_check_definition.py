@@ -366,8 +366,8 @@ def mcp_document(name, arguments):
     return json.dumps(document).encode() + b"\n"
 
 
-def test_default_table_holds_the_mock_and_cpu_standin_offering_the_three_hw_tools():
-    """ADR-0167 decision 3 and Boundaries: one table, the mock and cpu_standin."""
+def test_default_table_holds_the_mock_cpu_standin_and_virtual_npu():
+    """ADR-0167 decision 3 and Boundaries, ADR-0193 decision 4: one table of three backends."""
     table = default_table()
     assert type(table) is BackendTable
     assert table.names() == ("cpu_standin", mock_backend.NAME, "virtual_npu")
