@@ -997,6 +997,7 @@ ENCODE_REFUSALS = (
     ("scalars", ValueError, {"scalars": {"eps": -1.0}}),
     ("tables", ValueError, {"tables": {}}),
     ("tables", TypeError, {"tables": None}),
+    ("tables", TypeError, {"tables": {"rope": ROPE._asdict()}}),
     ("tables", ValueError, {"tables": {"rope": ROPE._replace(theta=-1.0)}}),
     ("weights", ValueError, {"weights": {}}),
     ("weights", TypeError, {"weights": 3}),

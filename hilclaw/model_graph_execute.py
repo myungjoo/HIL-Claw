@@ -10,10 +10,10 @@ forward program. :func:`execute` takes these steps, in order:
 1. The graph is read with :func:`hilclaw.model_graph.read` when it is a path
    and resolved with :func:`hilclaw.model_graph.resolve`; a
    :class:`hilclaw.model_graph.GraphFileError` of either is raised.
-2. The input values are checked by encoding them once with a binding that
-   covers every call: a :class:`ValueError` of
-   :func:`hilclaw.model_graph.encode` is the outcome **invalid input**,
-   ``"invalid_input"`` with the error's text as its reason.
+2. The input values are checked as :func:`hilclaw.model_graph.encode` checks
+   them, without building the bytes: a :class:`ValueError` it would raise is
+   the outcome **invalid input**, ``"invalid_input"`` with the error's
+   parameter and text as its reason.
 3. The binding is checked with :func:`hilclaw.model_graph.check_binding`:
    **no kernel** and **kernel unfit**. If an outcome is found, nothing is
    built, written or started.
@@ -56,6 +56,7 @@ from hilclaw.model_execute import (
     _remove,
 )
 from hilclaw.model_forward_run import ForwardProgramResult
+from hilclaw.model_graph import _parts
 from hilclaw.model_run import RunFailed
 
 PREFIX = "hilclaw-graph-"
@@ -181,7 +182,7 @@ def _invalid(plan, inputs):
             calls.append((step.site, step.shape, anything))
     covering = model_binding.BindingCheck(True, (), tuple(calls))
     try:
-        model_graph.encode(plan, covering, **inputs)
+        _parts(plan, covering, **inputs)
     except ValueError as error:
         return f"{getattr(error, 'parameter', '?')}: {error}"
     return None

@@ -103,6 +103,7 @@ from hilclaw import (
     json_text,
     keys,
     model_binding,
+    model_forward_check,
     rope_table,
 )
 from hilclaw.model_binding import _bind, _binding
@@ -480,6 +481,21 @@ def encode(plan, check, *, scalars, tables, weights, prompt, given):
     of different row counts, and in the generation mode an output row wider
     than the vocabulary.
     """
+    words, values, tokens, contents = _parts(
+        plan, check, scalars, tables, weights, prompt, given
+    )
+    return b"".join(
+        (
+            numpy.array(words[:8], dtype=numpy.uint64).tobytes(),
+            numpy.array(values, dtype=numpy.float32).tobytes(),
+            numpy.array(words[8:], dtype=numpy.uint64).tobytes(),
+            numpy.array(tokens, dtype=numpy.uint64).tobytes(),
+            *(array.tobytes(order="C") for array in contents),
+        )
+    )
+
+
+def _parts(plan, check, scalars, tables, weights, prompt, given):
     with _parameter("plan"):
         if not isinstance(plan, Plan):
             raise TypeError(f"must be a Plan, got {type(plan).__name__}")
@@ -515,15 +531,7 @@ def encode(plan, check, *, scalars, tables, weights, prompt, given):
     for p in plan.passes:
         for step in p.steps:
             words += _step(step, index, bound, plan.scalars)
-    return b"".join(
-        (
-            numpy.array(words[:8], dtype=numpy.uint64).tobytes(),
-            numpy.array(values, dtype=numpy.float32).tobytes(),
-            numpy.array(words[8:], dtype=numpy.uint64).tobytes(),
-            numpy.array(tokens, dtype=numpy.uint64).tobytes(),
-            *contents,
-        )
-    )
+    return words, values, tokens, contents
 
 
 def parse_report(report, plan, *, mode):
@@ -593,6 +601,8 @@ def _contents(plan, tables, weights):
     for a in plan.arrays:
         if a.kind == "table":
             with _parameter("tables"):
+                if not isinstance(constants[a.name], model_forward_check.RopeConstants):
+                    raise TypeError(f"{a.name}: must be a RopeConstants")
                 if len(a.shape) != 2:
                     raise ValueError(f"{a.name}: a rope table has two dimensions")
                 table = rope_table.build(
@@ -600,7 +610,7 @@ def _contents(plan, tables, weights):
                     positions=a.shape[0],
                     **constants[a.name]._asdict(),
                 )
-            contents.append(table.tobytes())
+            contents.append(table)
         elif a.kind == "weight":
             value = given[a.name]
             with _parameter("weights"):
@@ -610,7 +620,7 @@ def _contents(plan, tables, weights):
                     raise ValueError(
                         f"{a.name}: is {value.dtype} {value.shape}, not uint16 {a.shape}"
                     )
-            contents.append(value.tobytes(order="C"))
+            contents.append(value)
     return contents
 
 

@@ -516,3 +516,132 @@ def test_kernel_output_goes_to_standard_error(built, tmp_path):
     assert result.returncode == 0, result.stderr
     assert result.stderr == b"kernel says hello\n" * (2 * forward.N * 3)
     assert result.stdout.endswith(END)
+
+
+def nth_step_word(plan, pass_index, k, word):
+    before = sum(len(p.steps) for p in plan.passes[:pass_index])
+    return header_size(plan) + 160 * (before + k) + 8 * word
+
+
+def array_index(plan, name):
+    return [a.name for a in plan.arrays].index(name)
+
+
+def array_word(plan, name, word):
+    return 64 + 4 * len(plan.scalars) + 24 * array_index(plan, name) + 8 * word
+
+
+def pass_word(plan, pass_index, word):
+    return (
+        64 + 4 * len(plan.scalars) + 24 * len(plan.arrays) + 16 * pass_index + 8 * word
+    )
+
+
+def embed_weight_with_fewer_rows(plan):
+    return nth_step_word(plan, 0, 0, 7), array_index(plan, "norm")
+
+
+def embed_weight_at_an_offset(plan):
+    return nth_step_word(plan, 0, 0, 8), 1
+
+
+def embed_of_a_token_not_yet_known(plan):
+    return nth_step_word(plan, 1, 0, 4), plan.passes[0].rows + 1
+
+
+def bf16_operand_on_the_table(plan):
+    return step_word(plan, 0, "qkv", 9), array_index(plan, "rope")
+
+
+def table_operand_on_a_bf16_array(plan):
+    return step_word(plan, 0, "rope_q", 9), array_index(plan, "norm")
+
+
+def sdpa_heads_not_a_multiple(plan):
+    return step_word(plan, 0, "sdpa", 5), 3
+
+
+def sdpa_l_below_m(plan):
+    return step_word(plan, 0, "sdpa", 3), 1
+
+
+def output_on_a_weight(plan):
+    return 48, array_index(plan, "embedding")
+
+
+def output_on_the_table(plan):
+    return 48, array_index(plan, "rope")
+
+
+def pass_without_output_rows(plan):
+    return pass_word(plan, 1, 0), 0
+
+
+def pass_rows_past_the_output(plan):
+    return pass_word(plan, 0, 0), plan.passes[0].rows + 1
+
+
+def pass_without_steps(plan):
+    return pass_word(plan, 2, 1), 0
+
+
+def array_of_no_elements(plan):
+    return array_word(plan, "norm", 0), 0
+
+
+def array_of_element_size_3(plan):
+    return array_word(plan, "norm", 1), 3
+
+
+def array_role_2(plan):
+    return array_word(plan, "norm", 2), 2
+
+
+def filled_array_of_4_byte_elements(plan):
+    return array_word(plan, "x", 1), 4
+
+
+@pytest.mark.parametrize(
+    ("change", "text"),
+    [
+        (embed_weight_with_fewer_rows, b"an embed weight has fewer than V rows"),
+        (embed_weight_at_an_offset, b"an embed weight has fewer than V rows"),
+        (embed_of_a_token_not_yet_known, b"an embed reads a token not yet known"),
+        (bf16_operand_on_the_table, b"an operand array has the wrong element size"),
+        (table_operand_on_a_bf16_array, b"an operand array has the wrong element size"),
+        (sdpa_heads_not_a_multiple, b"a shape is outside its kind's range"),
+        (sdpa_l_below_m, b"a shape is outside its kind's range"),
+        (output_on_a_weight, b"the output array is not a filled bf16 array"),
+        (output_on_the_table, b"the output array is not a filled bf16 array"),
+        (pass_without_output_rows, b"a pass has no steps or its output rows run"),
+        (pass_rows_past_the_output, b"a pass has no steps or its output rows run"),
+        (pass_without_steps, b"a pass has no steps or its output rows run"),
+        (array_of_no_elements, b"an array record is out of range"),
+        (array_of_element_size_3, b"an array record is out of range"),
+        (array_role_2, b"an array record is out of range"),
+        (filled_array_of_4_byte_elements, b"an array record is out of range"),
+    ],
+)
+def test_refusals_that_keep_steps_inside_their_arrays(
+    built, tmp_path, case, change, text
+):
+    _, plan, _, data, names = case
+    at, value = change(plan)
+    data = patched(data, at, value)
+    assert_failed(start(built, tmp_path, "model_graph", data, names), 5, text)
+
+
+def test_an_output_row_wider_than_the_vocabulary_when_generating(built, tmp_path):
+    _, _, _, data, names = llama_case(29, False, True, by_kind)
+    data = patched(data, 56, forward.V + 1)
+    result = start(built, tmp_path, "model_graph", data, names)
+    assert_failed(result, 5, b"the mode, the output array or its row width")
+
+
+def test_the_same_change_in_the_given_mode_is_accepted_by_the_header(
+    built, tmp_path, case
+):
+    _, _, _, data, names = case
+    data = patched(data, 56, forward.V + 1)
+    result = start(built, tmp_path, "model_graph", data, names)
+    assert_failed(result, 5, b"a pass has no steps or its output rows run")
