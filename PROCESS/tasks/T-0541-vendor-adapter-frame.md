@@ -2,7 +2,7 @@
 id: T-0541
 title: Add the vendor adapter frame of ADR-0194 decisions 2, 3 and 6 (pure assemble and interpret around the existing executors) with a clang reference adapter checked against the real clang
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-19, OD-33, FR-10, NFR-4, "PLAN P3-8"]
 dependsOn: []
