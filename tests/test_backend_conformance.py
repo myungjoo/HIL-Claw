@@ -401,7 +401,7 @@ def test_profiler_collect_is_refused_by_the_registry_at_both_entries(root, entry
 
 def test_the_default_table_offers_the_three_tools_and_no_profiler_at_both_entries():
     table = check_definition.default_table()
-    assert table.names() == tuple(sorted(ENTRIES))
+    assert table.names() == tuple(sorted((*ENTRIES, "virtual_npu")))
     for entry in ENTRIES:
         for tool in TOOLS:
             assert callable(backends.select(table, hw_profile(entry), tool))
