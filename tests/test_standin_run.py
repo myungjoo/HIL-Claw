@@ -18,6 +18,7 @@ from hilclaw import (
     tools,
 )
 from hilclaw.harness import (
+    bf16_program_generator,
     bf16_rope_verification,
     bf16_timing,
     bf16_timing_build,
@@ -1252,3 +1253,109 @@ def test_the_cpu_standin_operation_gives_no_memory_bound(client, output, keeper)
     assert call(output, keeper) == (REPORT, 300 * 1024)
     for command in client.runs():
         assert memory_options(command) == []
+
+
+# The generated programs of four bf16 kinds (ADR-0193 decision 6)
+
+
+@pytest.mark.parametrize("target", ["cpu_standin", "virtual_npu"])
+@pytest.mark.parametrize("kind", BF16_KINDS)
+def test_a_bf16_call_places_the_generated_text(
+    client, output, keeper, temporary, kind, target
+):
+    from hilclaw import targets
+
+    seen = {}
+    program_file = bf16_timing_build.PROGRAM_SOURCES[kind]
+
+    def look(command):
+        path = os.path.join(mount_source(command), program_file.name)
+        with open(path, "rb") as file:
+            seen["program"] = file.read()
+        return timing_built()(command)
+
+    client.script = [look, waiter_built(), waited()]
+    if target == "cpu_standin":
+        answer = call(output, keeper, bf16(kind))
+    else:
+        built_operation = standin_run.operation_for(targets.target(target))
+        answer = built_operation({}, {}, bf16(kind), output, keeper)
+    assert answer == (REPORT, 300 * 1024)
+    if kind in bf16_program_generator.GENERATED_KINDS:
+        assert program_file.name == bf16_program_generator.timing_name(kind)
+        expected = bf16_program_generator.timing_source(kind).encode("ascii")
+    else:
+        expected = program_file.read_bytes()
+    assert seen["program"] == expected
+    assert build_dirs(temporary) == []
+
+
+@pytest.mark.parametrize("kind", bf16_program_generator.GENERATED_KINDS)
+def test_a_generated_kind_reads_no_program_file(
+    monkeypatch, client, output, keeper, tmp_path, kind
+):
+    sources = dict(bf16_timing_build.PROGRAM_SOURCES)
+    sources[kind] = tmp_path / sources[kind].name
+    monkeypatch.setattr(bf16_timing_build, "PROGRAM_SOURCES", sources)
+    client.script = [timing_built(), waiter_built(), waited()]
+    assert call(output, keeper, bf16(kind)) == (REPORT, 300 * 1024)
+
+
+def test_a_missing_handwritten_program_is_build_input_missing(
+    monkeypatch, client, output, keeper, tmp_path, temporary
+):
+    sources = dict(bf16_timing_build.PROGRAM_SOURCES)
+    sources["sdpa_kv_cache"] = tmp_path / "gone.c"
+    monkeypatch.setattr(bf16_timing_build, "PROGRAM_SOURCES", sources)
+    with pytest.raises(tools.ToolFailure) as raised:
+        call(output, keeper, bf16("sdpa_kv_cache"))
+    assert raised.value.kind == run_failure.KIND_BUILD_INPUT_MISSING
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+def test_a_header_named_like_the_generated_program_is_build_directory_unusable(
+    monkeypatch, client, output, keeper, tmp_path, temporary
+):
+    taken = tmp_path / "header" / bf16_program_generator.timing_name("gemm")
+    taken.parent.mkdir()
+    taken.write_bytes(b"/* a header named like the program */\n")
+    monkeypatch.setattr(
+        standin_run, "BF16_HEADERS", (taken, *standin_run.BF16_HEADERS[1:])
+    )
+    with pytest.raises(tools.ToolFailure) as raised:
+        call(output, keeper, bf16("gemm"))
+    assert raised.value.kind == run_failure.KIND_BUILD_DIRECTORY_UNUSABLE
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+def test_a_generated_program_that_cannot_be_written_is_build_directory_unusable(
+    monkeypatch, client, output, keeper, temporary
+):
+    name = bf16_program_generator.timing_name("elementwise_add")
+    real_open = os.open
+
+    def failing(path, flags, *args, **kwargs):
+        if os.path.basename(path) == name:
+            raise PermissionError(13, "denied")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(standin_copies.os, "open", failing)
+    with pytest.raises(tools.ToolFailure) as raised:
+        call(output, keeper, bf16("elementwise_add"))
+    assert raised.value.kind == run_failure.KIND_BUILD_DIRECTORY_UNUSABLE
+    assert client.calls == []
+    assert build_dirs(temporary) == []
+
+
+def test_a_refused_bf16_kind_generates_nothing(
+    monkeypatch, client, output, keeper, temporary
+):
+    def refuse(kind):
+        raise AssertionError("a program was generated")
+
+    monkeypatch.setattr(bf16_program_generator, "timing_source", refuse)
+    with pytest.raises(ValueError):
+        call(output, keeper, bf16("softmax", (1, 2)))
+    assert (client.calls, build_dirs(temporary)) == ([], [])

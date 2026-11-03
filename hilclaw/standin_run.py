@@ -28,8 +28,12 @@ decision 3 and decision 3 it:
    beside the driver (:func:`hilclaw.standin_copies.place_harness_copy`;
    C12, C13, C15); for a bf16 run the kind's program of
    :data:`hilclaw.harness.bf16_timing_build.PROGRAM_SOURCES` takes the driver's
-   place, and :data:`BF16_HEADERS` are copied beside it before the waiter and
-   handed to the compiler as no source (ADR-0181 decision 3);
+   place (for a kind of
+   :data:`hilclaw.harness.bf16_program_generator.GENERATED_KINDS` the text of
+   :func:`hilclaw.harness.bf16_program_generator.timing_source` under the file
+   name of that entry, ADR-0193 decision 6), and :data:`BF16_HEADERS` are
+   copied beside it before the waiter and handed to the compiler as no
+   source (ADR-0181 decision 3);
 4. runs the timing build in one container: :data:`hilclaw.standin_check.COMPILER`
    with the target's flags (for ``cpu_standin``
    :data:`hilclaw.standin_settings.FLAGS`), the driver source first and
@@ -121,7 +125,13 @@ from hilclaw import (
     standin_waiter_line,
     targets,
 )
-from hilclaw.harness import bf16_timing, bf16_timing_build, timing, timing_build
+from hilclaw.harness import (
+    bf16_program_generator,
+    bf16_timing,
+    bf16_timing_build,
+    timing,
+    timing_build,
+)
 
 #: The waiter's source in the installation (ADR-0145 decision 3).
 WAITER_SOURCE = timing_build.DRIVER_SOURCE.with_name("timing_waiter.c")
@@ -231,7 +241,7 @@ def _checked(parameters, keeper, cap_s):
         m=m, k=k, n=n, n_max=n_max, sample_form=sample_form, seed=seed
     )
     limit = standin_settings.timing_process_time_limit_s(m, k, n, n_max, cap_s)
-    return (timing_build.DRIVER_SOURCE, ()), arguments, limit, None
+    return (timing_build.DRIVER_SOURCE, (), None), arguments, limit, None
 
 
 def _bf16_checked(parameters, cap_s):
@@ -244,12 +254,15 @@ def _bf16_checked(parameters, cap_s):
     limit = standin_settings.bf16_timing_process_time_limit_s(kind, dims, n_max, cap_s)
     rows = bf16_timing.rope_rows(dims, seed) if kind == "rope" else None
     program = bf16_timing_build.PROGRAM_SOURCES[kind]
-    return (program, BF16_HEADERS), arguments, limit, rows
+    text = None
+    if kind in bf16_program_generator.GENERATED_KINDS:
+        text = bf16_program_generator.timing_source(kind).encode("ascii")
+    return (program, BF16_HEADERS, text), arguments, limit, rows
 
 
 def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes):
-    (program, headers), arguments, limit, rows = checked
-    copies, waiter = _placed_copies(output_path, build_dir, program, headers)
+    (program, headers, text), arguments, limit, rows = checked
+    copies, waiter = _placed_copies(output_path, build_dir, program, headers, text)
     built = _build(target, image, build_dir, copies, waiter, keeper, outcomes)
     if built is not standin_answer.GO_ON:
         return built
@@ -274,9 +287,9 @@ def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes)
     raise RuntimeError(_NOT_PLACED)
 
 
-def _placed_copies(output_path, build_dir, program, headers):
+def _placed_copies(output_path, build_dir, program, headers, text):
     try:
-        copies = standin_copies.place_copies(output_path, program, build_dir)
+        copies = standin_copies.place_copies(output_path, program, build_dir, text)
         answer = standin_answer.read_copies(copies)
         if answer is not standin_answer.GO_ON:
             raise standin_check.Answered(answer)

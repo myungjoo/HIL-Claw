@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import types
 from pathlib import Path
 
@@ -18,8 +19,9 @@ from hilclaw import (
     swiglu_bf16_contract,
 )
 from hilclaw.clang_build import BuildResult
-from hilclaw.harness import bf16_verification_build, timing_build
-from hilclaw.harness.bf16_timing import KINDS
+from hilclaw.harness import bf16_timing_build, bf16_verification_build, timing_build
+from hilclaw.harness.bf16_program_generator import GENERATED_KINDS, timing_source
+from hilclaw.harness.bf16_timing import KINDS, run_bf16_timing
 from hilclaw.harness.bf16_timing_build import (
     PROGRAM_SOURCES,
     build_bf16_timing_executable,
@@ -124,6 +126,25 @@ def clang():
 
 
 @pytest.fixture
+def scratch(tmp_path, monkeypatch):
+    directory = tmp_path / "scratch"
+    directory.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(directory))
+    return directory
+
+
+def assert_program(kind, path):
+    if kind not in GENERATED_KINDS:
+        assert path is PROGRAM_SOURCES[kind] or path == str(PROGRAM_SOURCES[kind])
+        return
+    path = Path(path)
+    assert path.is_absolute()
+    assert path.name == PROGRAM_SOURCES[kind].name
+    assert path.parent != DIRECTORY
+    assert not path.parent.exists()
+
+
+@pytest.fixture
 def no_build(monkeypatch):
     def refuse(*arguments, **keywords):
         pytest.fail("clang_build.build was called")
@@ -183,8 +204,8 @@ def test_arguments_are_handed_over_unchanged_in_one_call(monkeypatch, kind):
     assert result is outcome
     assert len(calls) == 1
     sources, handed, keywords = calls[0]
-    assert sources == (PROGRAM_SOURCES[kind], first, "l.c")
-    assert sources[0] is PROGRAM_SOURCES[kind]
+    assert sources[1:] == (first, "l.c")
+    assert_program(kind, sources[0])
     assert handed is output
     assert keywords.keys() == given.keys()
     assert all(keywords[name] is given[name] for name in given)
@@ -195,9 +216,10 @@ def test_defaults_are_those_of_clang_build(monkeypatch, kind):
     calls = []
     monkeypatch.setattr(clang_build, "build", lambda *a, **k: calls.append((a, k)))
     assert build_bf16_timing_executable(kind, "k.c", "exe", timeout_s=3) is None
+    assert_program(kind, calls[0][0][0][0])
     assert calls == [
         (
-            ((PROGRAM_SOURCES[kind], "k.c"), "exe"),
+            ((calls[0][0][0][0], "k.c"), "exe"),
             {
                 "timeout_s": 3,
                 "flags": (),
@@ -227,9 +249,10 @@ def test_stub_build_adds_no_flag_and_puts_the_program_first(stub, kernel, out, k
     assert isinstance(result, BuildResult)
     assert result.ok is True
     assert out.read_bytes() == b"artefact"
+    assert_program(kind, stub.sources()[len(flags)])
     assert stub.sources() == [
         *flags,
-        str(PROGRAM_SOURCES[kind]),
+        stub.sources()[len(flags)],
         str(first),
         str(second),
         *trailing,
@@ -268,7 +291,8 @@ def test_kernel_sources_in_every_accepted_form(stub, kernel, out, form):
         "rmsnorm", given, out, timeout_s=TIMEOUT, compiler=stub(WRITE)
     )
     assert result.ok
-    assert stub.sources() == [str(PROGRAM_SOURCES["rmsnorm"]), *map(str, expected)]
+    assert_program("rmsnorm", stub.sources()[0])
+    assert stub.sources()[1:] == [*map(str, expected)]
 
 
 def test_a_failed_build_is_a_result(stub, kernel, out):
@@ -338,3 +362,157 @@ def test_a_kernel_of_another_kind_fails_at_the_linker(clang, kernel, out):
     )
     assert result.ok is False
     assert "hilclaw_gemm_bf16" in result.log
+
+
+# The generated programs (ADR-0193 decision 6)
+
+
+def test_the_generated_kinds_keep_the_file_names_of_their_programs():
+    for kind in GENERATED_KINDS:
+        assert PROGRAM_SOURCES[kind].name == f"bf16_timing_{kind}.c"
+    assert set(GENERATED_KINDS) < set(PROGRAM_SOURCES)
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_the_build_compiles_the_generated_text_beside_both_headers(
+    monkeypatch, scratch, kind
+):
+    seen = {}
+
+    def fake(sources, output, **keywords):
+        program = Path(sources[0])
+        seen["text"] = program.read_text(encoding="ascii")
+        seen["entries"] = sorted(os.listdir(program.parent))
+        seen["headers"] = [
+            (program.parent / name).read_bytes()
+            for name in ("bf16_timing.h", "bf16_verification.h")
+        ]
+        seen["parent"] = program.parent
+        return "built"
+
+    monkeypatch.setattr(clang_build, "build", fake)
+    assert build_bf16_timing_executable(kind, "k.c", "exe", timeout_s=3) == "built"
+    if kind in GENERATED_KINDS:
+        assert seen["text"] == timing_source(kind)
+        assert seen["entries"] == sorted(
+            ["bf16_timing.h", "bf16_verification.h", PROGRAM_SOURCES[kind].name]
+        )
+        assert seen["headers"] == [
+            (DIRECTORY / name).read_bytes()
+            for name in ("bf16_timing.h", "bf16_verification.h")
+        ]
+        assert seen["parent"].parent == scratch
+    else:
+        assert seen["text"] == PROGRAM_SOURCES[kind].read_text(encoding="ascii")
+        assert seen["parent"] == DIRECTORY
+    assert os.listdir(scratch) == []
+
+
+@pytest.mark.parametrize("kind", GENERATED_KINDS)
+def test_a_generated_kind_reads_no_program_file(stub, kernel, out, monkeypatch, kind):
+    sources = {**PROGRAM_SOURCES, kind: kernel().with_name(f"bf16_timing_{kind}.c")}
+    monkeypatch.setattr(
+        bf16_timing_build, "PROGRAM_SOURCES", types.MappingProxyType(sources)
+    )
+    result = build_bf16_timing_executable(
+        kind, kernel(), out, timeout_s=TIMEOUT, compiler=stub(WRITE)
+    )
+    assert result.ok
+    assert_program(kind, stub.sources()[0])
+
+
+def test_a_handwritten_program_that_is_missing_raises(stub, kernel, out, monkeypatch):
+    sources = {**PROGRAM_SOURCES, "rope": kernel().with_name("bf16_timing_rope.c")}
+    monkeypatch.setattr(
+        bf16_timing_build, "PROGRAM_SOURCES", types.MappingProxyType(sources)
+    )
+    with pytest.raises(FileNotFoundError, match="bf16_timing_rope.c"):
+        build_bf16_timing_executable(
+            "rope", kernel(), out, timeout_s=TIMEOUT, compiler=stub(WRITE)
+        )
+    assert not stub.started
+
+
+def test_the_directory_is_removed_after_a_failed_build(stub, kernel, out, scratch):
+    result = build_bf16_timing_executable(
+        "elementwise_add", kernel(), out, timeout_s=TIMEOUT, compiler=stub(FAIL)
+    )
+    assert result.ok is False
+    assert_program("elementwise_add", stub.sources()[0])
+    assert os.listdir(scratch) == []
+
+
+@pytest.mark.parametrize(
+    "keywords",
+    [{"trailing_flags": ("-o", "x")}, {"timeout_s": -1}, {"compiler": ()}],
+    ids=["trailing", "timeout", "compiler"],
+)
+def test_the_directory_is_removed_after_a_raise(kernel, out, scratch, keywords):
+    with pytest.raises((TypeError, ValueError)):
+        build_bf16_timing_executable(
+            "gemm", kernel(), out, **{"timeout_s": TIMEOUT, **keywords}
+        )
+    assert os.listdir(scratch) == []
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("index", [0, 1])
+def test_a_missing_header_raises_before_the_compiler(
+    stub, kernel, out, scratch, monkeypatch, tmp_path, index
+):
+    headers = list(bf16_timing_build._HEADERS)
+    headers[index] = tmp_path / "gone.h"
+    monkeypatch.setattr(bf16_timing_build, "_HEADERS", tuple(headers))
+    with pytest.raises(FileNotFoundError):
+        build_bf16_timing_executable(
+            "swiglu", kernel(), out, timeout_s=TIMEOUT, compiler=stub(WRITE)
+        )
+    assert not stub.started
+    assert os.listdir(scratch) == []
+
+
+@pytest.mark.parametrize("kind", ["fp16", "GEMM", None, Count("gemm")], ids=repr)
+def test_a_refused_kind_makes_no_directory(no_build, scratch, kind):
+    with pytest.raises(ValueError):
+        build_bf16_timing_executable(kind, "k.c", "exe", timeout_s=3)
+    assert os.listdir(scratch) == []
+
+
+@pytest.mark.parametrize("sources", [(), 7], ids=repr)
+def test_refused_kernel_sources_make_no_directory(no_build, scratch, sources):
+    with pytest.raises((TypeError, ValueError)):
+        build_bf16_timing_executable("rmsnorm", sources, "exe", timeout_s=3)
+    assert os.listdir(scratch) == []
+
+
+def busy_kernel(kind):
+    return empty_kernel(kind).replace(
+        "\n}\n",
+        "\n    volatile unsigned spin = 0;\n"
+        "    for (unsigned i = 0; i < 20000; i++)\n"
+        "        spin += i;\n"
+        "    (void)spin;\n}\n",
+    )
+
+
+@pytest.mark.parametrize("kind", GENERATED_KINDS)
+def test_real_clang_builds_the_generated_program_whose_report_is_accepted(
+    clang, kernel, out, kind
+):
+    source = kernel(text=busy_kernel(kind))
+    result = build_bf16_timing_executable(
+        kind, source, out, timeout_s=TIMEOUT, flags=STRICT
+    )
+    assert result.ok, result.log
+    dims = (3, 4, 5) if kind == "gemm" else (3, 5)
+    timed = run_bf16_timing(
+        out,
+        kind,
+        dims,
+        sample_form="interval",
+        seed=20261103,
+        timeout_s=TIMEOUT,
+        n_max=10,
+    )
+    assert timed.broken is None, timed.run
+    assert timed.intervals_ns

@@ -29,6 +29,10 @@ of ADR-0168 it:
    into it (:func:`hilclaw.standin_copies.place_copies`; C12, C13, C15); for
    a bf16 kind the kind's program of
    :data:`hilclaw.harness.bf16_verification_build.PROGRAM_SOURCES` instead,
+   which for a kind of
+   :data:`hilclaw.harness.bf16_program_generator.GENERATED_KINDS` is the text
+   of :func:`hilclaw.harness.bf16_program_generator.verification_source`
+   written under the file name of that entry (ADR-0193 decision 6),
    then :data:`BF16_HEADER` beside it
    (:func:`hilclaw.standin_copies.place_harness_copy`; ADR-0179 decision 5),
    which is handed to the compiler as no source;
@@ -148,6 +152,7 @@ from hilclaw import (
     tools,
 )
 from hilclaw.harness import (
+    bf16_program_generator,
     bf16_rope_arrays,
     bf16_rope_verification,
     bf16_sdpa_kv_cache_verification,
@@ -295,7 +300,7 @@ def _checked(parameters, keeper, cap_s):
     if not 0 <= seed < _SEED_LIMIT:
         raise ValueError("seed must be an int from 0 to below 2**64")
     arguments = tuple(str(int(value)) for value in (m, k, n, draws, seed))
-    return (verification_build.PROGRAM_SOURCE, None), arguments, limit, None
+    return (verification_build.PROGRAM_SOURCE, None, None), arguments, limit, None
 
 
 def _check_keeper(keeper):
@@ -325,7 +330,10 @@ def _bf16_checked(parameters, cap_s):
             kind, dims, draws=draws, seed=seed
         )
     program = bf16_verification_build.PROGRAM_SOURCES[kind]
-    return (program, BF16_HEADER), arguments, limit, rows
+    text = None
+    if kind in bf16_program_generator.GENERATED_KINDS:
+        text = bf16_program_generator.verification_source(kind).encode("ascii")
+    return (program, BF16_HEADER, text), arguments, limit, rows
 
 
 def container_image():
@@ -381,8 +389,8 @@ def _inside_checkout(directory):
 
 
 def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes):
-    (program, header), arguments, limit, rows = checked
-    copies = _placed_copies(output_path, build_dir, program, header)
+    (program, header, text), arguments, limit, rows = checked
+    copies = _placed_copies(output_path, build_dir, program, header, text)
     built = _build(target, image, build_dir, copies, keeper, outcomes)
     if built is not standin_answer.GO_ON:
         return built
@@ -405,9 +413,9 @@ def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes)
     return settled(answer)
 
 
-def _placed_copies(output_path, build_dir, program, header):
+def _placed_copies(output_path, build_dir, program, header, text):
     try:
-        copies = standin_copies.place_copies(output_path, program, build_dir)
+        copies = standin_copies.place_copies(output_path, program, build_dir, text)
         answer = standin_answer.read_copies(copies)
         if answer is not standin_answer.GO_ON:
             raise Answered(answer)
