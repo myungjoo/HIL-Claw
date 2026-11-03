@@ -2,7 +2,7 @@
 id: T-0531
 title: Write the generalization design ADR for PLAN P3-1 and state the owner's parts as concrete questions
 phase: P3
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [D27, OD-32, C-6, NFR-6, "PLAN P3-1"]
 dependsOn: []
