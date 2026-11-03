@@ -2,7 +2,7 @@
 id: T-0548
 title: Land the read-only installer and image report of ADR-0195 decision 10 (duplicates and retirement candidates), the second half of PLAN P3-14
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [FR-19, C-3, NFR-4, OD-33, D29, "PLAN P3-14"]
 dependsOn: []
