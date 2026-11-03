@@ -478,6 +478,9 @@ def test_interpret_probe_refuses_other_values():
     with pytest.raises(TypeError) as caught:
         interpret_probe(b"clang version", "clang")
     assert caught.value.parameter == "answer"
+    with pytest.raises(TypeError) as caught:
+        interpret_probe(recorded(), 3)
+    assert caught.value.parameter == "program"
 
 
 def test_execute_parts_raise_unplaced_errors_unchanged(tmp_path, monkeypatch):

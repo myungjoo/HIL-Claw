@@ -430,23 +430,20 @@ def test_container_interprets_refuse_other_values(tmp_path, value):
     assert caught.value.parameter == "answer"
 
 
-@pytest.mark.parametrize("make", [run_result_of, container_result])
 @pytest.mark.parametrize("figure", [None, 1, 2**70])
-def test_measure_status_zero_is_the_pair(make, figure):
-    pair = measure(make(stdout=b"report"), figure)
+def test_measure_status_zero_is_the_pair(figure):
+    pair = measure(run_result_of(stdout=b"report"), figure)
     assert type(pair) is tuple
     assert pair == (b"report", figure)
 
 
-@pytest.mark.parametrize("make", [run_result_of, container_result])
 @pytest.mark.parametrize("returncode", [1, 125, 127, -11])
-def test_measure_non_zero_status_is_exit_status(make, returncode):
-    assert measure(make(returncode=returncode), 5) == "exit_status"
+def test_measure_non_zero_status_is_exit_status(returncode):
+    assert measure(run_result_of(returncode=returncode), 5) == "exit_status"
 
 
-@pytest.mark.parametrize("make", [run_result_of, container_result])
-def test_measure_timeout_is_time_limit(make):
-    answer = measure(make(returncode=None, timed_out=True))
+def test_measure_timeout_is_time_limit():
+    answer = measure(run_result_of(returncode=None, timed_out=True))
     assert answer == "time_limit"
     assert answer in run_operation.CONDITIONS
 
@@ -456,7 +453,9 @@ def test_measure_status_of_another_type_is_no_row():
         measure(run_result_of(returncode=None))
 
 
-@pytest.mark.parametrize("value", [None, build_result(), (b"r", None), OSError()])
+@pytest.mark.parametrize(
+    "value", [None, build_result(), container_result(), (b"r", None), OSError()]
+)
 def test_measure_refuses_other_answers(value):
     with pytest.raises(TypeError) as caught:
         measure(value)
@@ -511,3 +510,39 @@ def test_check_timeout_refuses(value, error):
     with pytest.raises(error) as caught:
         check_timeout(value, "limit")
     assert caught.value.parameter == "limit"
+
+
+class BytesPath:
+    def __fspath__(self):
+        return b"p"
+
+
+BAD_PATHS = [
+    (None, TypeError),
+    (3, TypeError),
+    (b"p", TypeError),
+    (BytesPath(), TypeError),
+    ("", ValueError),
+]
+
+
+@pytest.mark.parametrize(("value", "error"), BAD_PATHS)
+@pytest.mark.parametrize(
+    "answer", [run_result_of(), local_run.ProgramNotFoundError("x")]
+)
+def test_run_refuses_a_bad_program(answer, value, error):
+    with pytest.raises(error) as caught:
+        interpret_run(answer, value)
+    assert caught.value.parameter == "program"
+
+
+@pytest.mark.parametrize(("value", "error"), BAD_PATHS)
+@pytest.mark.parametrize("answer", [container_result(), OSError(5, "x")])
+def test_container_build_refuses_a_bad_artefact(monkeypatch, answer, value, error):
+    def refused(path):
+        raise AssertionError("stat was called")
+
+    monkeypatch.setattr(vendor_adapter.os, "stat", refused)
+    with pytest.raises(error) as caught:
+        interpret_container_build(answer, value)
+    assert caught.value.parameter == "artefact"

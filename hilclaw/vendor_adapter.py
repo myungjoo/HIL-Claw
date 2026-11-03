@@ -16,7 +16,8 @@ holds what every adapter shares:
   :func:`tool_failure` (decision 3). A condition is one of the first four
   values of :data:`hilclaw.run_result.CONDITIONS`, taken from
   :data:`hilclaw.check_result.CONDITIONS`, whose first four are the same
-  strings (only the run tool function imports ``run_result``); a kind is one of
+  strings (the tests of ``run_result`` keep a closed list of the modules
+  that import it); a kind is one of
   ``compiler_unavailable``, ``build_output_missing`` and
   ``executable_unstartable`` of :mod:`hilclaw.check_failure`.
 * :class:`BuildCall` and :class:`RunCall`: what an assemble part returns, the
@@ -31,8 +32,11 @@ holds what every adapter shares:
   :func:`~hilclaw.standin_answer.read_process` and
   :func:`~hilclaw.standin_answer.place_error`, so no table of ADR-0060 or
   ADR-0168 is copied here.
-* :func:`measure`: the measure part, from one ended timing process to the
-  form (A) or (B) of :mod:`hilclaw.run_operation` (ADR-0065 decision 4).
+* :func:`measure`: the measure part, from one ended timing process on the
+  host to the form (A) or (B) of :mod:`hilclaw.run_operation` (ADR-0065
+  decision 4). A timing process in a container is read by
+  :func:`hilclaw.standin_answer.read_timing_process` (ADR-0168 decision 4)
+  and is not measured here.
 
 Each interpret part takes the executor's returned value or the
 :class:`Exception` it raised. For a returned value it gives an
@@ -250,13 +254,30 @@ def interpret_build(answer):
     return _from_condition_or_kind(read)
 
 
+def _path_text(value, parameter):
+    if not isinstance(value, (str, os.PathLike)):
+        error = TypeError(
+            f"{parameter} must be str or os.PathLike, not {type(value).__name__}"
+        )
+    else:
+        value = os.fspath(value)
+        if not isinstance(value, str):
+            error = TypeError(f"{parameter} must be a str path, not bytes")
+        elif not value:
+            error = ValueError(f"{parameter} is empty")
+        else:
+            return value
+    error.parameter = parameter
+    raise error
+
+
 def _names_program(error, program):
     if getattr(error, "path_role", None) is not None:
         return False
     filename = getattr(error, "filename", None)
     if not isinstance(filename, str) or not filename:
         return False
-    return os.path.basename(filename) == os.path.basename(os.fspath(program))
+    return os.path.basename(filename) == os.path.basename(program)
 
 
 def _status_outcome(returncode, timed_out, stdout):
@@ -283,9 +304,12 @@ def interpret_run(answer, program):
     element of the command handed to the run; the failed start of the
     program), :data:`TOOL_FAILURE` ``executable_unstartable``; for any other
     exception ``None``. Raises :class:`TypeError` with ``parameter``
-    ``"answer"`` for any other value.
+    ``"answer"`` for any other value, and :class:`TypeError` or
+    :class:`ValueError` with ``parameter`` ``"program"`` for a ``program``
+    that is not a non-empty ``str`` or :class:`os.PathLike` of ``str``.
     """
     _answer_type(answer, local_run.RunResult)
+    program = _path_text(program, "program")
     if isinstance(answer, BaseException):
         if isinstance(answer, local_run.ProgramNotFoundError) or (
             isinstance(answer, OSError) and _names_program(answer, program)
@@ -328,9 +352,12 @@ def interpret_container_build(answer, artefact):
     where that answer is none or a kind outside :data:`KINDS`. An
     :class:`OSError` from the stat of ``artefact`` other than an absent path
     is passed on. Raises :class:`TypeError` with ``parameter`` ``"answer"``
-    for any other value.
+    for any other value, and :class:`TypeError` or :class:`ValueError` with
+    ``parameter`` ``"artefact"`` for an ``artefact`` that is not a non-empty
+    ``str`` or :class:`os.PathLike` of ``str``.
     """
     _answer_type(answer, standin_container.ContainerResult)
+    _path_text(artefact, "artefact")
     if isinstance(answer, BaseException):
         return _from_container_answer(
             standin_answer.place_error(answer, standin_answer.BUILD), None
@@ -385,21 +412,18 @@ def _check_figure(figure):
 def measure(answer, figure=None):
     """Return the form (A) or (B) of :mod:`hilclaw.run_operation` for one ended timing process.
 
-    ``answer`` is the :class:`hilclaw.local_run.RunResult` or the
-    :class:`hilclaw.standin_container.ContainerResult` of the timing process;
+    ``answer`` is the :class:`hilclaw.local_run.RunResult` of the timing
+    process on the host;
     ``figure`` is the caller's memory figure, exactly an ``int`` of at least 1,
     or ``None``. Status 0 gives the pair ``(stdout, figure)``, the form (A);
-    a time limit ``"time_limit"`` and any other status, a signal and 125 to
-    127 included, ``"exit_status"``, the form (B). It reads nothing but its
+    a time limit ``"time_limit"`` and any other status, a signal included,
+    ``"exit_status"``, the form (B). It reads nothing but its
     arguments and computes no figure. Raises :class:`TypeError` or
     :class:`ValueError` with ``parameter`` ``"answer"`` or ``"figure"`` for a
     refused argument, and :class:`ValueError` for a status no row holds.
     """
-    if type(answer) not in (local_run.RunResult, standin_container.ContainerResult):
-        error = TypeError(
-            "answer must be a RunResult or a ContainerResult, "
-            f"not {type(answer).__name__}"
-        )
+    if type(answer) is not local_run.RunResult:
+        error = TypeError(f"answer must be a RunResult, not {type(answer).__name__}")
         error.parameter = "answer"
         raise error
     _check_figure(figure)
