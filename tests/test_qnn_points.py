@@ -62,7 +62,10 @@ def means(qnn, tmp_path):  # noqa: F811
         target, qnn_tests.source(tmp_path, "timing"), executable, program=compiler
     )
     assert built.form == "go_on"
-    cpu = str(Path(htp).with_name("QnnCpu.dll" if os.name == "nt" else "libQnnCpu.so"))
+    cpu = Path(htp).with_name("QnnCpu.dll" if os.name == "nt" else "libQnnCpu.so")
+    if not cpu.is_file():
+        pytest.skip("the SDK holds no QNN CPU backend library")
+    cpu = str(cpu)
     return target, executable, htp, cpu
 
 

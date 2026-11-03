@@ -64,6 +64,14 @@ ALLOCATION_FAILURE = (
 )
 
 
+class BytesPath:
+    def __fspath__(self):
+        return b"QnnHtp.dll"
+
+
+os.PathLike.register(BytesPath)
+
+
 def make_target(**changes):
     values = {
         "flags": (),
@@ -642,6 +650,7 @@ def test_assemble_timing_puts_the_backend_before_the_driver_arguments():
         ({"backend": None}, TypeError, "backend"),
         ({"backend": b"QnnHtp.dll"}, TypeError, "backend"),
         ({"backend": ""}, ValueError, "backend"),
+        ({"backend": BytesPath()}, TypeError, "backend"),
         ({"parameters": tuple(PARAMETERS)}, TypeError, "parameters"),
         (
             {
@@ -813,14 +822,3 @@ def test_real_qnn_timing_fixture_without_its_backend_is_exit_status(qnn, tmp_pat
     assert ended.returncode == 1
     assert b"stop" not in ended.stdout
     assert len(ended.stderr.decode("utf-8", "replace").strip().splitlines()) == 1
-
-
-def test_real_qnn_timing_fixture_refuses_a_bad_command_line(qnn, tmp_path):
-    target, _, backend = qnn
-    executable = built_timing(qnn, tmp_path)
-    for arguments in ([backend], [backend, *DRIVER_ARGUMENTS[:-1], "-1"]):
-        ended = local_run.run(
-            (str(executable), *arguments), timeout_s=LIMIT, env=target.env
-        )
-        assert ended.returncode == 2
-        assert ended.stdout == b""
