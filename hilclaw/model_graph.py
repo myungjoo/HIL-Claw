@@ -38,17 +38,19 @@ and none of the always available names. The nodes, run in array order:
   ``kind`` is that of a bf16 entry of the contract table; ``shape`` maps
   exactly the parameters of its ``op_signature_record`` to expressions,
   ``operands`` exactly the operands of its ``task_contract`` to references,
-  and ``scalars`` (left out when there is none) exactly the other arguments
-  of its ``PROTOTYPE`` to scalars. ``site``, a call-site name, is used once.
+  and ``scalars`` exactly the other arguments of its ``PROTOTYPE`` to
+  scalars (``{}`` when there is none). ``site``, a call-site name, is used once.
   A reference is a name or ``{"of": name, "start": expression}``, that many
   elements in. An operand's array has the operand's dtype (bf16, or for a
   table its source's), and an ``output`` or ``inout`` operand's is a buffer
   or state;
 * ``{"op": "embed", "weight", "out"}``: row i of ``out``, for i < T, gets the
-  row of the two-dimensional weight for the pass's token id P + i;
+  row of the two-dimensional weight for the pass's token id P + i; the last
+  shape members of ``out`` and the weight are equal;
 * ``{"op": "copy", "from", "from_stride", "from_start", "to", "to_stride",
   "columns"}``: for i < T, ``columns`` elements from element ``from_start +
-  i * from_stride`` of ``from`` to element ``i * to_stride`` of ``to``;
+  i * from_stride`` of ``from`` to element ``i * to_stride`` of ``to``, two
+  arrays, with no two target rows overlapping;
 * ``{"op": "repeat", "count", "index", "nodes"}``: its nodes once per index
   below the dimension ``count``; ``name{index}`` selects the entry of a
   ``per`` weight or state whose ``per`` is ``count``, and an entry of a
@@ -106,7 +108,7 @@ _DECLARED = {
     "buffers": ("buffer", ("name", "shape")),
 }
 _FORMS = {
-    "kernel": ("op site kind shape operands", ("scalars",)),
+    "kernel": ("op site kind shape operands scalars", ()),
     "embed": ("op weight out", ()),
     "copy": ("op from from_stride from_start to to_stride columns", ()),
     "repeat": ("op count index nodes", ()),
@@ -234,7 +236,10 @@ def read_text(text):
         raise GraphFileError("malformed", "$", str(error)) from None
     if type(value) is not dict:
         raise GraphFileError("not_object", "$", "the JSON text is no object")
-    return _Reader().graph(value)
+    try:
+        return _Reader().graph(value)
+    except RecursionError:
+        raise GraphFileError("malformed", "$", "nests too deeply") from None
 
 
 def resolve(graph, dimensions, *, prompt_length, generation_length, lm_head_rows):
@@ -248,10 +253,11 @@ def resolve(graph, dimensions, *, prompt_length, generation_length, lm_head_rows
     :class:`ValueError` with the argument's name as ``parameter``. A graph
     that fails at these values raises :class:`GraphFileError` before any plan
     is returned: ``"bad_value"`` for a shape member, element count, stride or
-    column count not from 1 to 2**53 - 1 or a shape its contract refuses,
+    column count not from 1 to 2**53 - 1, a shape its contract refuses or an
+    embed whose ``out`` row width is not the weight's,
     ``"out_of_range"`` for a range outside its array (a negative start
     included), ``"overlap"`` for overlapping operands of one kernel step or a
-    copy within one array.
+    copy within one array or onto overlapping target rows.
     """
     with _parameter("graph"):
         if not isinstance(graph, Graph):
@@ -311,6 +317,8 @@ def resolve(graph, dimensions, *, prompt_length, generation_length, lm_head_rows
             T = env["T"]
             if isinstance(node, Embed):
                 weight, out = array(node.weight), array(node.out)
+                if widths[out.base] != widths[weight.base]:
+                    raise GraphFileError("bad_value", where, "row widths differ")
                 _within(0, T * widths[weight.base], out, where)
                 steps.append(
                     EmbedStep(weight.name, out.name, T, widths[weight.base], env["P"])
@@ -320,8 +328,8 @@ def resolve(graph, dimensions, *, prompt_length, generation_length, lm_head_rows
                 for m in ("from_stride", "to_stride", "columns"):
                     _positive(v[m], f"{where}.{m}")
                 source, target = array(node.source), array(node.target)
-                if source is target:
-                    raise GraphFileError("overlap", where, "copies within one array")
+                if source is target or (T > 1 and v["to_stride"] < v["columns"]):
+                    raise GraphFileError("overlap", where, "copies onto itself")
                 _within(
                     v["from_start"],
                     (T - 1) * v["from_stride"] + v["columns"],
@@ -498,7 +506,7 @@ class _Reader:
             if role != "input" and category not in _WRITABLE:
                 raise GraphFileError("operand_mismatch", where, f"is a {category}")
             bound.append((name, reference))
-        given = _exact(value.get("scalars", {}), f"{path}.scalars", scalars)
+        given = _exact(value["scalars"], f"{path}.scalars", scalars)
         for argument in scalars:
             if not self._is(given[argument], ("scalar",)):
                 raise GraphFileError(
@@ -546,10 +554,10 @@ def _kernel_step(node, where, env, array):
         end = offset + math.prod(operand["shape"])
         target = array(reference)
         _within(offset, end - offset, target, f"{where}.operands.{name}")
-        for other, start, stop in ranges:
-            if other == target.name and offset < stop and start < end:
+        for other, array_name, start, stop in ranges:
+            if array_name == target.name and offset < stop and start < end:
                 raise GraphFileError("overlap", where, f"{name} overlaps {other}")
-        ranges.append((target.name, offset, end))
+        ranges.append((name, target.name, offset, end))
         made.append(Operand(name, target.name, offset))
     return KernelStep(node.site, node.kind, shape, tuple(made), node.scalars)
 

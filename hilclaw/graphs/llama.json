@@ -41,24 +41,24 @@
     {"op": "embed", "weight": "embedding", "out": "x"},
     {"op": "repeat", "count": "N", "index": "layer", "nodes": [
       {"op": "kernel", "site": "attention_norm", "kind": "rmsnorm", "shape": {"m": "T", "n": "D"}, "operands": {"x": "x", "w": "attention_norm{layer}", "y": "normed"}, "scalars": {"eps": "eps"}},
-      {"op": "kernel", "site": "qkv", "kind": "gemm", "shape": {"m": "T", "k": "D", "n": "(H+2*H_kv)*d"}, "operands": {"a": "normed", "b": "qkv{layer}", "c": "qkv_out"}},
+      {"op": "kernel", "site": "qkv", "kind": "gemm", "shape": {"m": "T", "k": "D", "n": "(H+2*H_kv)*d"}, "operands": {"a": "normed", "b": "qkv{layer}", "c": "qkv_out"}, "scalars": {}},
       {"op": "copy", "from": "qkv_out", "from_stride": "(H+2*H_kv)*d", "from_start": "0", "to": "q_in", "to_stride": "H*d", "columns": "H*d"},
       {"op": "copy", "from": "qkv_out", "from_stride": "(H+2*H_kv)*d", "from_start": "H*d", "to": "k_in", "to_stride": "H_kv*d", "columns": "H_kv*d"},
       {"op": "copy", "from": "qkv_out", "from_stride": "(H+2*H_kv)*d", "from_start": "H*d+H_kv*d", "to": "v_in", "to_stride": "H_kv*d", "columns": "H_kv*d"},
-      {"op": "kernel", "site": "rope_q", "kind": "rope", "shape": {"m": "T", "h": "H", "d": "d"}, "operands": {"x": "q_in", "freqs_cis": {"of": "rope", "start": "P*d"}, "out": "q_rot"}},
-      {"op": "kernel", "site": "rope_k", "kind": "rope", "shape": {"m": "T", "h": "H_kv", "d": "d"}, "operands": {"x": "k_in", "freqs_cis": {"of": "rope", "start": "P*d"}, "out": "k_rot"}},
-      {"op": "kernel", "site": "sdpa", "kind": "sdpa_kv_cache", "shape": {"m": "T", "l": "P+T", "h": "H", "h_kv": "H_kv", "d": "d"}, "operands": {"q": "q_rot", "k_new": "k_rot", "v_new": "v_in", "cache_k": "cache_k{layer}", "cache_v": "cache_v{layer}", "out": "attn"}},
-      {"op": "kernel", "site": "o", "kind": "gemm", "shape": {"m": "T", "k": "H*d", "n": "D"}, "operands": {"a": "attn", "b": "o{layer}", "c": "o_out"}},
-      {"op": "kernel", "site": "attention_residual", "kind": "elementwise_add", "shape": {"m": "T", "n": "D"}, "operands": {"a": "x", "b": "o_out", "c": "h"}},
+      {"op": "kernel", "site": "rope_q", "kind": "rope", "shape": {"m": "T", "h": "H", "d": "d"}, "operands": {"x": "q_in", "freqs_cis": {"of": "rope", "start": "P*d"}, "out": "q_rot"}, "scalars": {}},
+      {"op": "kernel", "site": "rope_k", "kind": "rope", "shape": {"m": "T", "h": "H_kv", "d": "d"}, "operands": {"x": "k_in", "freqs_cis": {"of": "rope", "start": "P*d"}, "out": "k_rot"}, "scalars": {}},
+      {"op": "kernel", "site": "sdpa", "kind": "sdpa_kv_cache", "shape": {"m": "T", "l": "P+T", "h": "H", "h_kv": "H_kv", "d": "d"}, "operands": {"q": "q_rot", "k_new": "k_rot", "v_new": "v_in", "cache_k": "cache_k{layer}", "cache_v": "cache_v{layer}", "out": "attn"}, "scalars": {}},
+      {"op": "kernel", "site": "o", "kind": "gemm", "shape": {"m": "T", "k": "H*d", "n": "D"}, "operands": {"a": "attn", "b": "o{layer}", "c": "o_out"}, "scalars": {}},
+      {"op": "kernel", "site": "attention_residual", "kind": "elementwise_add", "shape": {"m": "T", "n": "D"}, "operands": {"a": "x", "b": "o_out", "c": "h"}, "scalars": {}},
       {"op": "kernel", "site": "ffn_norm", "kind": "rmsnorm", "shape": {"m": "T", "n": "D"}, "operands": {"x": "h", "w": "ffn_norm{layer}", "y": "normed"}, "scalars": {"eps": "eps"}},
-      {"op": "kernel", "site": "gate", "kind": "gemm", "shape": {"m": "T", "k": "D", "n": "F"}, "operands": {"a": "normed", "b": "gate{layer}", "c": "gate_out"}},
-      {"op": "kernel", "site": "up", "kind": "gemm", "shape": {"m": "T", "k": "D", "n": "F"}, "operands": {"a": "normed", "b": "up{layer}", "c": "up_out"}},
-      {"op": "kernel", "site": "ffn_activation", "kind": "swiglu", "shape": {"m": "T", "n": "F"}, "operands": {"gate": "gate_out", "up": "up_out", "out": "act"}},
-      {"op": "kernel", "site": "down", "kind": "gemm", "shape": {"m": "T", "k": "F", "n": "D"}, "operands": {"a": "act", "b": "down{layer}", "c": "down_out"}},
-      {"op": "kernel", "site": "ffn_residual", "kind": "elementwise_add", "shape": {"m": "T", "n": "D"}, "operands": {"a": "h", "b": "down_out", "c": "x"}}
+      {"op": "kernel", "site": "gate", "kind": "gemm", "shape": {"m": "T", "k": "D", "n": "F"}, "operands": {"a": "normed", "b": "gate{layer}", "c": "gate_out"}, "scalars": {}},
+      {"op": "kernel", "site": "up", "kind": "gemm", "shape": {"m": "T", "k": "D", "n": "F"}, "operands": {"a": "normed", "b": "up{layer}", "c": "up_out"}, "scalars": {}},
+      {"op": "kernel", "site": "ffn_activation", "kind": "swiglu", "shape": {"m": "T", "n": "F"}, "operands": {"gate": "gate_out", "up": "up_out", "out": "act"}, "scalars": {}},
+      {"op": "kernel", "site": "down", "kind": "gemm", "shape": {"m": "T", "k": "F", "n": "D"}, "operands": {"a": "act", "b": "down{layer}", "c": "down_out"}, "scalars": {}},
+      {"op": "kernel", "site": "ffn_residual", "kind": "elementwise_add", "shape": {"m": "T", "n": "D"}, "operands": {"a": "h", "b": "down_out", "c": "x"}, "scalars": {}}
     ]},
     {"op": "kernel", "site": "norm", "kind": "rmsnorm", "shape": {"m": "T", "n": "D"}, "operands": {"x": "x", "w": "norm", "y": "normed"}, "scalars": {"eps": "eps"}},
-    {"op": "kernel", "site": "lm_head", "kind": "gemm", "shape": {"m": "R", "k": "D", "n": "V"}, "operands": {"a": {"of": "normed", "start": "(T-R)*D"}, "b": "lm_head", "c": "logits"}}
+    {"op": "kernel", "site": "lm_head", "kind": "gemm", "shape": {"m": "R", "k": "D", "n": "V"}, "operands": {"a": {"of": "normed", "start": "(T-R)*D"}, "b": "lm_head", "c": "logits"}, "scalars": {}}
   ],
   "output": {"buffer": "logits", "rows": "R"}
 }

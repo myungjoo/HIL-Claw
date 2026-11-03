@@ -295,6 +295,7 @@ def add(site, a, b, c, n="1"):
         "kind": "elementwise_add",
         "shape": {"m": "1", "n": n},
         "operands": {"a": a, "b": b, "c": c},
+        "scalars": {},
     }
 
 
@@ -510,7 +511,8 @@ READ_REFUSALS = (
     ("contract_mismatch", change(lambda doc: node(doc, "qkv")["shape"].pop("k"))),
     ("contract_mismatch", shape_member("qkv", "l", "T")),
     ("contract_mismatch", operand("qkv", "d", "x")),
-    ("contract_mismatch", change(lambda doc: node(doc, "norm").pop("scalars"))),
+    ("missing_member", change(lambda doc: node(doc, "qkv").pop("scalars"))),
+    ("contract_mismatch", site_member("norm", "scalars", {})),
     ("contract_mismatch", site_member("qkv", "scalars", {"eps": "eps"})),
     ("operand_mismatch", operand("rope_q", "freqs_cis", "x")),
     ("operand_mismatch", operand("rope_q", "x", "rope")),
@@ -539,8 +541,14 @@ def test_unchanged_document_reads():
     assert read_text(change(lambda doc: None)()) == LLAMA
 
 
-def test_scalars_may_be_left_out_or_empty():
-    assert read_text(site_member("qkv", "scalars", {})()) == LLAMA
+def test_deeply_nested_repeats_are_malformed():
+    nodes = [add("s", "x", "y", "z")]
+    for level in range(400):
+        nodes = [{"op": "repeat", "count": "A", "index": f"i{level}", "nodes": nodes}]
+    buffers = [{"name": n, "shape": ["1"]} for n in ("x", "y", "z")]
+    with pytest.raises(GraphFileError) as caught:
+        read_text(json.dumps(graph_of(buffers, nodes)))
+    assert caught.value.reason == "malformed"
 
 
 def test_unreadable(tmp_path):
@@ -591,10 +599,12 @@ RESOLVE_REFUSALS = (
     ("out_of_range", setter(["nodes", 1, "nodes", 4, "from_start"], "H*d+H_kv*d+1")),
     ("out_of_range", setter(["nodes", 1, "nodes", 4, "from_start"], "0-1")),
     ("out_of_range", setter(["nodes", 1, "nodes", 2, "to_stride"], "H*d+1")),
-    ("out_of_range", setter(["buffers", 0, "shape", 1], "D-1")),
+    ("out_of_range", setter(["buffers", 1, "shape", 1], "D-1")),
     ("overlap", operand("rope_q", "out", "q_in")),
     ("overlap", operand("sdpa", "cache_v", "cache_k{layer}")),
     ("overlap", setter(["nodes", 1, "nodes", 2, "to"], "qkv_out")),
+    ("overlap", setter(["nodes", 1, "nodes", 2, "to_stride"], "H*d-1")),
+    ("bad_value", setter(["buffers", 0, "shape", 1], "D+1")),
 )
 
 
