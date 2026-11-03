@@ -549,6 +549,10 @@ def embed_of_a_token_not_yet_known(plan):
     return nth_step_word(plan, 1, 0, 4), plan.passes[0].rows + 1
 
 
+def embed_into_its_own_weight(plan):
+    return nth_step_word(plan, 0, 0, 9), array_index(plan, "embedding")
+
+
 def bf16_operand_on_the_table(plan):
     return step_word(plan, 0, "qkv", 9), array_index(plan, "rope")
 
@@ -607,6 +611,7 @@ def filled_array_of_4_byte_elements(plan):
         (embed_weight_with_fewer_rows, b"an embed weight has fewer than V rows"),
         (embed_weight_at_an_offset, b"an embed weight has fewer than V rows"),
         (embed_of_a_token_not_yet_known, b"an embed reads a token not yet known"),
+        (embed_into_its_own_weight, b"two operands of a step overlap"),
         (bf16_operand_on_the_table, b"an operand array has the wrong element size"),
         (table_operand_on_a_bf16_array, b"an operand array has the wrong element size"),
         (sdpa_heads_not_a_multiple, b"a shape is outside its kind's range"),

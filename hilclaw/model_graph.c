@@ -215,13 +215,13 @@ static void library_failure(size_t index, const char *problem, const char *symbo
     exit(STATUS_LIBRARY);
 }
 
-static void counts(const struct step *s, uint64_t *count)
+static void counts(const struct step *s, uint64_t V, uint64_t *count)
 {
     const uint64_t *x = s->shape;
 
     switch (s->op) {
     case EMBED:
-        count[0] = 0;
+        count[0] = span(V, x[1]);
         count[1] = span(x[0], x[1]);
         break;
     case COPY:
@@ -270,7 +270,7 @@ static void check_step(const struct graph *g, const struct step *s, size_t libra
         input_error("a scalar index is out of range");
     if (s->op == EMBED && plus(s->shape[2], s->shape[0]) > g->S + pass)
         input_error("an embed reads a token not yet known");
-    counts(s, count);
+    counts(s, g->V, count);
     for (i = 0; i < operands_of[s->op]; i++) {
         const uint64_t index = s->operand[i][0], offset = s->operand[i][1];
         const struct array *a;
