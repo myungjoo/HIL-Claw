@@ -663,3 +663,11 @@
 - 내용:
 
   PLAN P3-3 / ADR-0196. On a runtime machine with Docker and the clang image, a real `virtual_npu` `sim.run` / `board.run` timing run (bf16 kind) ends with a `step_ended` line under `sim_run_timing_v3` / `board_run_timing_v3` whose result has unit `cycles`. Its `resolution` and `intervals` are 3x the harness's ns figures, `memory_bytes` is unconverted, and `timings.compare` between two such attempts answers without `units_differ`. `cpu_standin` runs report `ns` under the v3 values. T-0550(PR #366, main 62db40bd) 착지 뒤 확인 가능.
+
+### RA-0077
+
+- 상태: 미확인
+- 출처: P3-3, T-0551, ADR-0197 (등록 2026-11-05)
+- 내용:
+
+  PLAN P3-3 / ADR-0197. On a runtime machine with Docker and the clang image: (i) `virtual_npu`'s bf16 `correctness.check` runs inside the verification container bounded by `--memory 268435456 --memory-swap 268435456` and returns the bf16 contract's verdict; (ii) exceeding the limit ends with `exit_status`; (iii) `new_run` starts a `virtual_npu` bf16 instance and rejects an fp32 `gemm` instance with `out_of_scope`.

@@ -2,7 +2,7 @@
 id: T-0551
 title: Apply HQ-0091 ① (a)·② (a) for PLAN P3-3 — write the §9 ADR that widens the instance-start scope (ADR-0076 decision 1) and the oracle to bf16 instances at `virtual_npu`, offer `correctness.check` there, turn on its `instance_start`, and admit at each target only the contracts it serves
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, FR-9, OD-31, FR-10, NFR-6, "PLAN P3-3", HQ-0091]
 dependsOn: [T-0550]
@@ -95,3 +95,23 @@ The integrator's note in that `decision` (not the owner's words) names the follo
 ## Follow-ups
 
 ## Result
+
+- **Outcome**: DONE. PR #367, squash-merged as `eecaae99` (code mode). Review rounds: 2 (round 1 Request changes: Proposals § OD-31 and § OD-8 lacked the adopted-ADR lines, plus three Nits; round 2 Approve). CI: all gates green on the PR head.
+- **Language**: Python, as the existing modules of the tool package.
+- **Size**: 10 non-test files (4 documents + 6 modules), about 250 changed non-test lines including the ADR. `tests/test_standin_check.py` was changed although not in `touchesFiles` (the memory-bound test through the default table needs its stub Docker client); `tests/test_instance_start.py` needed no change (`instance_start` changed in docstrings only, and its existing tests cover its public functions).
+- **ADR-0197** (`ARCHITECTURE/decisions/ADR-0197-od32-virtual-npu-oracle-and-instance-start.md`), decisions in one line each:
+  1. Scope: ADR-0076 decision 1 widened to `virtual_npu` instances whose op_signature a contract `virtual_npu` serves covers (the six bf16 contracts), with `cpu_standin`'s required set (owner); without `op_signature` such an instance is in scope and refused with `MissingMembersError` naming it; no general answer to #5 B-7, nothing about vendor targets.
+  2. Oracle: `correctness.check` at `virtual_npu` uses the bf16 contracts' existing reference and the user's tolerance (owner), through `standin_check.operation_for` of the `virtual_npu` `Target` (flags, memory bound on the verification process container).
+  3. Admission at the target: one binder `targets.covers_at(covers, accelerator)` joins the bound predicate to `contract_table.served_at` at the run's target (the mock: `covers` itself); the check tool and the start use it, so fp32 `gemm` at `virtual_npu` is `op_signature_not_covered` / `OutOfScopeError` (the data-type difference of ② (a)); `run_tool` keeps its own equivalent join (moving it would exceed the 10-file cap).
+  4. What stays: `model_run` false, the S6 metric's accelerators, every data-plane member, event kind, `step` value and layout version; fp16 untouched; the `model_instances` command still writes `cpu_standin` documents.
+  5. A-13 reading: no frame change (scope of an existing check, a boolean and an operation in package source); the oracle is the owner's; no BLOCKED reason remains.
+  6. Consequences: lists the sentences made less exact and not edited (ADR-0076 decision 1 and Boundaries, ADR-0193 decision 4 and O4, ADR-0196 Boundaries, the RA `virtual_npu` memory item).
+  7. Boundaries: vendor oracle (HQ-0096 ②), new numeric formats (HQ-0088), fp16 (HQ-0083 (b)), model runs at `virtual_npu`, which execution is which point (HQ-0095).
+- **Registers**: Requirements rows OD-8, OD-31, OD-32 (one ADR-0197 link each; OD-31 ③ and OD-32 remainders rewritten in place); Proposals § OD-32 (adopted line; ③'s partial answer gains ADR-0197, remainder: the introduction of new numeric formats), § OD-31 (adopted line; ③ partial answer and remainder) and § OD-8 (adopted line); StandardScenarios "최근 재검사" line (S1·S12 re-checked, no verdict change, no gap). **FR-9 not touched**: the "행 형식" rule governs the OD register's last column, not FR rows, and FR-9's "그 밖의 어휘 … #5 B-7 미결 그대로" stays exact because HQ-0091 ① (a) is explicitly no B-7 answer.
+- **PLAN P3-3 completion condition holds**: ADR-0193 decision 8's P3-3 row checks the item once O3 and O4 are answered. O3 (HQ-0090) is answered and applied (ADR-0196, T-0549 and T-0550: `virtual_npu` reports `cycles`); O4 (HQ-0091) is answered and applied here (① oracle and instance start; ② (a) the served subset is the data-type difference). With the flags, memory bound and served subset already landed for P3-3 (ADR-0193 decision 4), every difference P3-3 names (compiler options, memory limit, data type, unit) exists at `virtual_npu`.
+- **D27 order check**: at the start no open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`, no P2-15 preparation pending.
+- **§9 notice on #5**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6649619428
+- **Runtime acceptance item** (for `PROCESS/RuntimeAcceptance.md`): PLAN P3-3 / ADR-0197. On a runtime machine with Docker and the clang image, a real `correctness.check` at `virtual_npu` of a bf16 instance (any of the six kinds) starts its verification process container with `--memory 268435456 --memory-swap 268435456` and the `virtual_npu` flags, runs within that bound and returns the bf16 contract's verdict (a v2 result under `correctness_check_sim_v2` / `correctness_check_board_v2`); a verification process over the bound ends the check as `exit_status`; and `python -m hilclaw.new_run` starts a `virtual_npu` bf16 instance and refuses a `virtual_npu` fp32 `gemm` instance as `out_of_scope`. The existing `virtual_npu` memory item names the timing process only. Can be checked after PR #367 lands.
+- **New owner-only questions**: none.
+- **Process observation**: during round 1 the task directory `${TMPDIR}/hilclaw-driver/T-0551/` disappeared while the reviewer ran (the round-1 reviewer was told to keep temporary files there and may have removed the directory at its end); it was recreated, and the round-2 reviewer was told to use and remove only its own subdirectory. Nothing of the result depended on it.
+- **Cleanup**: task directory removed with `rm -r`; no images or installs.
