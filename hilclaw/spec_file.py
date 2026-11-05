@@ -24,7 +24,10 @@ writes version 2 only.
 adds version 3, the spec of an attempt with no coder call, at the same path:
 :func:`parse_versioned` reads a file of version 2 or 3 by the same rules of
 the text, while :func:`parse`, :func:`final_name` and :func:`write` keep to
-version 2, so no version-3 file is written here (decision 8).
+version 2 (decision 8).
+``ARCHITECTURE/decisions/ADR-0199-od32-compile-settings-spec-write-and-round.md``
+adds :func:`final_name_versioned` and :func:`write_versioned` beside them, the
+same steps for a content of version 2 or 3 (its decision 6).
 
 The rules of the record that :func:`parse` holds: the content is exactly one
 JSON text that is an object, in UTF-8 without a byte order mark, with no
@@ -162,7 +165,9 @@ right beyond decisions 2 and 3, that a coder was or will be called with it or
 that the coder reads the file; it reads no other version; and it is no tool.
 The spec of the first coder call of round 0 of a first-case run with one
 candidate per round (ADR-0138 decision 1) is composed and written by the tool
-``spec.write`` (:mod:`hilclaw.spec_tool`) through :func:`write`. What composes
+``spec.write`` (:mod:`hilclaw.spec_tool`) through :func:`write`, and the
+version-3 spec of a round >= 1 of a ``compile_settings`` run through
+:func:`write_versioned` (ADR-0199 decision 6). What composes
 or writes any other spec, when, in which order against any other file, what
 follows a taken name and what a second write for a tuple means are open
 (OD-23, sub-questions 10 and 26 of OD-8).
@@ -190,7 +195,8 @@ class UnsupportedVersionError(Exception):
     """``schema_version`` is an integer the entry does not read: not damage, and nothing is interpreted.
 
     :func:`parse`, :func:`final_name` and :func:`write` read version 2 only,
-    1 and 3 among the others; :func:`parse_versioned` reads 2 and 3.
+    1 and 3 among the others; :func:`parse_versioned`,
+    :func:`final_name_versioned` and :func:`write_versioned` read 2 and 3.
     """
 
 
@@ -302,6 +308,22 @@ def final_name(data_root, document):
     ``id.run_id`` is no run directory name: it has no path.
     """
     spec.validate(document)
+    return _formatted(data_root, document)
+
+
+def final_name_versioned(data_root, document):
+    """Return the path the ``id`` of ``document``, a spec of version 2 or 3, formats to (ADR-0199 decision 6).
+
+    As :func:`final_name`, with :func:`hilclaw.spec.validate_versioned` in
+    the place of :func:`hilclaw.spec.validate`: a version-3 document has the
+    path of its attempt, and :class:`hilclaw.spec.InvalidSpecError` is raised
+    for a document of a version other than 2 and 3.
+    """
+    spec.validate_versioned(document)
+    return _formatted(data_root, document)
+
+
+def _formatted(data_root, document):
     ident = document["id"]
     numbers = ident["round"], ident["candidate"], ident["attempt"]
     return layout.attempt_artefact(data_root, ident["run_id"], *numbers, "spec.json")
@@ -341,7 +363,23 @@ def write(data_root, content):
     any other. This call leaves the entry under the name as it found it and
     removes its temporary file where that is possible. Nothing is retried.
     """
-    path = final_name(data_root, parse(content))
+    _put(data_root, content, final_name(data_root, parse(content)))
+
+
+def write_versioned(data_root, content):
+    """Put ``content``, a spec of version 2 or 3, under the path its ``id`` formats to if that name is free; return ``None`` (ADR-0199 decision 6).
+
+    As :func:`write`, with :func:`parse_versioned` and
+    :func:`final_name_versioned` in the place of :func:`parse` and
+    :func:`final_name`: the steps, their order and every error are those of
+    :func:`write`, and :class:`UnsupportedVersionError` is raised for a
+    version other than 2 and 3. A content of version 2 is written as
+    :func:`write` writes it.
+    """
+    _put(data_root, content, final_name_versioned(data_root, parse_versioned(content)))
+
+
+def _put(data_root, content, path):
     if not content.endswith(b"\n"):
         raise WrittenFormError("content: does not end with a line feed")
     if b"\r" in content:

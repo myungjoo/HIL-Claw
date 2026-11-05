@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from hilclaw import (
+    attempt_kernel,
     catalog,
     coder_call,
     elementwise_add_bf16_contract,
@@ -177,6 +178,7 @@ def test_the_definition_is_bound_to_the_source_and_does_not_call_it(root):
             "candidate": {"type": "integer", "minimum": 1, "maximum": 1},
             "attempt": {"type": "integer", "minimum": 1, "maximum": 1},
             "techniques": {"type": "array"},
+            "flags": {"type": "array"},
         },
         "required": ["run_id", "round", "candidate", "attempt"],
         "additionalProperties": False,
@@ -223,6 +225,13 @@ def test_the_description_names_every_kind_in_order():
     assert "never part of the request" in description
     assert SPEC_PATH.replace(RUN, "<run_id>").replace("0000", "<RRRR>") in description
     assert "exactly when round is 1 or more, techniques" in description
+    assert "or flags: an array of strings of 1 to 255 printable ASCII" in description
+    again = description.index("invalid_request again when the request's form")
+    assert places[5] < again < places[6]
+    assert "(techniques in a compile_settings run, flags in a c_kernel run)" in (
+        description
+    )
+    assert "schema_version 3, with task.build" in description
 
 
 def test_the_kinds_are_those_of_the_record():
@@ -1339,3 +1348,285 @@ def test_round_0_of_a_compile_settings_run_writes_the_version_2_spec_of_its_twin
     written = spec_file.parse(spec_path(root).read_bytes())
     assert written == expected_spec(twin)
     assert "build" not in written["task"]
+
+
+# --- the version-3 spec of a compile_settings run (ADR-0199) ---
+
+KINDED = {"schema_version": 2, "candidate_kind": "compile_settings"}
+FLAGS = ["-O3", "-mllvm", "-unroll-count=4", "-mllvm", "-unroll-count=4"]
+
+
+def settings_run(root, **changes):
+    twin = instance_document(**changes)
+    run(root, twin | KINDED)
+    return twin
+
+
+def flagged(round=1, flags=None, **changes):
+    listed = list(FLAGS) if flags is None else flags
+    return request(round=round, **changes) | {"flags": listed}
+
+
+def expected_settings(twin, round=1, flags=FLAGS):
+    made = expected_spec(twin)
+    made["schema_version"] = 3
+    made["id"]["round"] = round
+    made["task"]["build"] = {
+        "candidate_kind": "compile_settings",
+        "flags": list(flags),
+        "kernel_round": 0,
+        "kernel_candidate": 1,
+        "kernel_attempt": 1,
+    }
+    return made
+
+
+def written_settings(root, round=1):
+    path = later_path(root, round)
+    content = path.read_bytes()
+    document = spec_file.parse_versioned(content)
+    assert spec.validate_versioned(document) == 3
+    assert spec_file.final_name_versioned(root, document) == path
+    expected = json.dumps(document, ensure_ascii=False, indent=2) + "\n"
+    assert content == expected.encode()
+    assert sorted(p.name for p in path.parent.iterdir()) == ["spec.json"]
+    return document
+
+
+@pytest.mark.parametrize("round", [1, 2])
+def test_a_compile_settings_round_writes_the_version_3_spec(root, round):
+    twin = settings_run(root)
+    source = Source(root)
+    assert spec_tool.definition(source).function(flagged(round)) == {}
+    assert source.calls == 1
+    assert written_settings(root, round) == expected_settings(twin, round)
+    assert later_path(root, round).relative_to(root).as_posix() == SPEC_PATH.replace(
+        "rounds/0000", f"rounds/{round:04d}"
+    )
+    assert not spec_path(root).exists()
+
+
+def test_the_version_3_spec_has_its_exact_bytes(root):
+    twin = settings_run(root)
+    write(Source(root), flagged(flags=["-O2"]))
+    document = expected_settings(twin, 1, ["-O2"])
+    text = json.dumps(document, ensure_ascii=False, indent=2, allow_nan=False)
+    assert later_path(root).read_bytes() == (text + "\n").encode("utf-8")
+    assert list(document["task"]) == ["op_signature", "contract", "objective", "build"]
+
+
+def test_an_empty_flags_list_is_written(root):
+    twin = settings_run(root)
+    assert write(Source(root), flagged(flags=[])) == {}
+    assert written_settings(root) == expected_settings(twin, 1, [])
+
+
+def test_rounds_after_a_version_3_round_read_no_feedback(logged, shelf, monkeypatch):
+    twin = settings_run(logged)
+    write(Source(logged))
+    check(logged, 0, SIM, result=PASS)
+    write(Source(logged), flagged(1))
+
+    def refusing(*arguments, **keywords):
+        raise AssertionError("not read for a version-3 spec")
+
+    monkeypatch.setattr(spec_feedback, "feedback", refusing)
+    monkeypatch.setattr(catalog, "technique", refusing)
+    assert write(Source(logged), flagged(2, ["-Os"])) == {}
+    assert written_settings(logged, 2) == expected_settings(twin, 2, ["-Os"])
+    assert written_settings(logged, 1) == expected_settings(twin, 1)
+
+
+def test_the_written_spec_is_refused_by_the_coder_and_followed_by_evaluation(root):
+    settings_run(root, coder_model="claude-test-model-1")
+    write(Source(root))
+    write(Source(root), flagged())
+
+    class Untouched:
+        def __getattr__(self, name):
+            raise AssertionError(f"the runtime was used: {name}")
+
+    with pytest.raises(ToolFailure) as failure:
+        coder_call.call(
+            {"run_id": RUN, "round": 1, "candidate": 1, "attempt": 1},
+            source=Source(root),
+            runtime=Untouched(),
+        )
+    assert failure.value.kind == coder_call.KIND_SPEC_UNSUPPORTED
+    found = attempt_kernel.kernel_attempt(root, RUN, 1, 1, 1)
+    assert (found.round, found.candidate, found.attempt) == (0, 1, 1)
+    assert found.flags == tuple(FLAGS)
+    assert found.contract == written_settings(root)["task"]["contract"]
+
+
+def test_a_second_version_3_call_is_spec_exists_and_changes_nothing(root):
+    settings_run(root)
+    write(Source(root), flagged())
+    first = later_path(root).read_bytes()
+    before = tree(root)
+    with pytest.raises(ToolFailure) as failure:
+        write(Source(root), flagged(flags=["-O1"]))
+    assert failure.value.kind == "spec_exists"
+    assert failure.value.message.startswith(SPEC_PATH.replace("0000", "0001"))
+    assert tree(root) == before
+    assert later_path(root).read_bytes() == first
+
+
+def test_a_failing_version_3_write_is_spec_not_written(root, monkeypatch):
+    settings_run(root)
+    calls = []
+
+    def failing(data_root, content):
+        calls.append(content)
+        raise PermissionError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(spec_file, "write_versioned", failing)
+    failure = refused_later(root, flagged())
+    assert failure.kind == "spec_not_written"
+    assert len(calls) == 1
+
+
+def test_a_refused_version_3_composition_is_spec_invalid(root, monkeypatch):
+    settings_run(root)
+
+    def final_name(data_root, document):
+        raise spec.InvalidSpecError("synthetic refusal")
+
+    monkeypatch.setattr(spec_file, "final_name_versioned", final_name)
+    failure = refused_later(root, flagged())
+    assert failure.kind == "spec_invalid"
+    assert failure.message.startswith(SPEC_PATH.replace("0000", "0001"))
+    assert "synthetic refusal" in failure.message
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        (request(flags=[]), "flags: is taken only with a round of 1 or more"),
+        (request(flags=["-O3"]), "flags: is taken only with a round of 1 or more"),
+        (
+            flagged() | {"techniques": []},
+            "techniques and flags: the request takes one of them, not both",
+        ),
+        (flagged(flags="-O3"), "flags: must be an array, got str"),
+        (flagged() | {"flags": None}, "flags: must be an array, got NoneType"),
+        (
+            flagged(flags=[3]),
+            "flags[0]: must be a string of 1 to 255 printable ASCII characters",
+        ),
+        (
+            flagged(flags=["-O3", ""]),
+            "flags[1]: must be a string of 1 to 255 printable ASCII characters",
+        ),
+        (
+            flagged(flags=["-D" + "x" * 254]),
+            "flags[0]: must be a string of 1 to 255 printable ASCII characters",
+        ),
+        (
+            flagged(flags=["-O3\t"]),
+            "flags[0]: must be a string of 1 to 255 printable ASCII characters",
+        ),
+        (
+            flagged(flags=["-Dé"]),
+            "flags[0]: must be a string of 1 to 255 printable ASCII characters",
+        ),
+        (
+            flagged(extra=1),
+            (
+                "the request takes the members run_id, round, candidate, attempt, "
+                "flags only, not 'extra'"
+            ),
+        ),
+        (flagged(candidate=2), None),
+        (flagged(round=True), None),
+    ],
+)
+def test_a_flags_request_breaking_the_rule_is_invalid(root, body, message):
+    settings_run(root)
+    source = Source(root)
+    failure = refused_later(root, body, source)
+    assert failure.kind == "invalid_request"
+    if message is not None:
+        assert failure.message == message
+    assert source.calls == 0
+
+
+def test_a_flag_of_255_characters_is_taken(root):
+    twin = settings_run(root)
+    flag = "-D" + "x" * 253
+    write(Source(root), flagged(flags=[flag, " "]))
+    assert written_settings(root) == expected_settings(twin, 1, [flag, " "])
+
+
+def test_techniques_in_a_compile_settings_run_are_invalid(root, shelf):
+    settings_run(root)
+    source = Source(root)
+    failure = refused_later(root, later(techniques=["tiling"]), source)
+    assert failure.kind == "invalid_request"
+    assert failure.message == (
+        f"{INSTANCE_PATH}: states the candidate kind compile_settings; a round of "
+        "1 or more of such a run takes flags, not techniques; nothing was written"
+    )
+    assert source.calls == 1
+
+
+def test_flags_in_a_c_kernel_run_are_invalid(root):
+    run(root)
+    failure = refused_later(root, flagged())
+    assert failure.kind == "invalid_request"
+    assert failure.message == (
+        f"{INSTANCE_PATH}: states the candidate kind c_kernel; a round of 1 or "
+        "more of such a run takes techniques, not flags; nothing was written"
+    )
+
+
+def test_the_kind_check_comes_after_the_instance_read(root):
+    failure = refused_later(root, flagged())
+    assert failure.kind == "run_file_missing"
+    assert refused_later(root, flagged(), FailingSource()).kind == "no_data_root"
+
+
+@pytest.mark.parametrize(
+    ("document", "kind"),
+    [
+        (instance_document() | {"schema_version": 2}, "run_file_invalid"),
+        (
+            instance_document() | {"schema_version": 2, "candidate_kind": "c_kernel"},
+            "run_file_invalid",
+        ),
+        (
+            instance_document() | {"candidate_kind": "compile_settings"},
+            "run_file_invalid",
+        ),
+        (instance_document() | KINDED | {"schema_version": 3}, "run_file_unsupported"),
+    ],
+)
+def test_an_instance_that_cannot_be_used_refuses_a_flags_request(root, document, kind):
+    run(root, document)
+    assert refused_later(root, flagged()).kind == kind
+
+
+def test_the_kind_check_comes_before_candidates_per_round(root):
+    settings_run(root, candidates_per_round=None)
+    assert refused_later(root, later()).kind == "invalid_request"
+    assert refused_later(root, flagged()).kind == "candidates_per_round_not_stated"
+
+
+@pytest.mark.parametrize(
+    ("changes", "kind"),
+    [
+        ({"candidates_per_round": 2}, "candidates_per_round_not_covered"),
+        ({"op_signature": None}, "op_signature_not_stated"),
+        ({"objective": None}, "objective_not_stated"),
+    ],
+)
+def test_the_run_checks_apply_to_a_flags_request(root, changes, kind):
+    settings_run(root, **changes)
+    assert refused_later(root, flagged()).kind == kind
+
+
+def test_a_c_kernel_round_1_is_unchanged_by_the_flags_form(root):
+    document = instance_document()
+    run(root, document)
+    write(Source(root), later())
+    assert written(root) == expected_later(document, 1)

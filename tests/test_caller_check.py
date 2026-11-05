@@ -607,6 +607,7 @@ def test_the_real_technique_selector_holds_hypotheses_write(session):
         "mcp__hilclaw__hypotheses_read",
         "mcp__hilclaw__checks_read",
         "mcp__hilclaw__verdicts_read",
+        "mcp__hilclaw__spec_write",
     ],
 )
 def test_the_real_technique_selector_holds_its_reads(session, tool):
@@ -619,7 +620,6 @@ def test_the_real_technique_selector_holds_its_reads(session, tool):
         "mcp__hilclaw__timings_compare",
         "mcp__hilclaw__verdicts_write",
         "mcp__hilclaw__state_write",
-        "mcp__hilclaw__spec_write",
         "mcp__hilclaw__coder_run",
         "mcp__hilclaw__board_run",
     ],

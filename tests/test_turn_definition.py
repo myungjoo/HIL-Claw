@@ -38,6 +38,7 @@ TECHNIQUE_SELECTOR_TOOLS = {
     "mcp__hilclaw__catalog_read",
     "mcp__hilclaw__cases_lookup",
     "mcp__hilclaw__verdicts_read",
+    "mcp__hilclaw__spec_write",
 }
 
 UNKNOWN = "the definition holds an entry that is not in the layout"
@@ -1137,7 +1138,6 @@ def test_the_technique_selector_still_judges_no_pair_and_writes_no_verdicts():
         "mcp__hilclaw__correctness_check",
         "mcp__hilclaw__sim_run",
         "mcp__hilclaw__board_run",
-        "mcp__hilclaw__spec_write",
         "mcp__hilclaw__coder_run",
     ):
         assert name not in tools
@@ -1332,3 +1332,104 @@ def test_the_experiment_runner_serves_every_round():
     assert "round-0" not in description
     assert "in round 0 and in a round of at least 1" in description
     assert "ADR-0172 decision 4" in " ".join(data.split())
+
+
+# --- a compile_settings run (ADR-0198 decision 3; ADR-0199 decision 5) ---
+
+
+def test_the_technique_selector_writes_the_spec_of_a_compile_settings_run():
+    body = selector_body()
+    given = between(body, "## What you are given", "## Fixed rules")
+    assert "`mcp__hilclaw__spec_write` writes the spec of candidate 1, attempt 1" in (
+        given
+    )
+    assert "in a `compile_settings` run, and you use it for nothing else" in given
+    rules = between(body, "## Fixed rules", "## The record")
+    assert "states `candidate_kind` `compile_settings`" in rules
+    assert "takes the place of the case lookup and of the choice of techniques" in (
+        rules
+    )
+    assert "Request no check, measurement, spec or coder call" in rules
+    assert 'but the one spec "A compile-settings run" asks for' in rules
+    run = between(body, "## A compile-settings run", "## Your report")
+    assert body.index("## The choice of techniques") < body.index(
+        "## A compile-settings run"
+    )
+    assert "An instance with no `candidate_kind` is a `c_kernel` run" in run
+    assert (
+        "Do not call `mcp__hilclaw__cases_lookup` or `mcp__hilclaw__catalog_read`"
+        in run
+    )
+    assert "Give the record an empty `cases_read`" in run
+    assert "Choose no techniques and give no `techniques:` line" in run
+    assert "After the round's record exists" in run
+    assert "choose the compiler flags of candidate 1 of the round" in run
+    assert "the C kernel of the run's round 0" in run
+    assert "Which flags, how many and in what order are your judgement" in run
+    assert "1 to 255 printable ASCII characters" in run
+    call = run.split("Then call `mcp__hilclaw__spec_write`", 1)[1]
+    assert "`round` your round, `candidate` 1, `attempt` 1 and `flags`" in call
+    assert "On `invalid_request`, correct the request and send it again" in call
+    assert "On any other kind, send nothing further, report the kind and end" in call
+    for word in ("techniques`:", "coder_run", "correctness_check"):
+        assert word not in run
+    report = body.split("## Your report", 1)[1]
+    line = report.split("When you made a `mcp__hilclaw__spec_write` request", 1)[1]
+    assert "exactly one line `spec: written` when it returned `{}`" in line
+    assert "or `spec: <kind>` with the failure kind of your last request" in line
+    assert "Otherwise give no such line (ADR-0199 decision 5)" in line
+
+
+def test_the_technique_selector_keeps_the_c_kernel_rules():
+    body = selector_body()
+    rules = between(body, "## Fixed rules", "## The record")
+    assert "Before you send the record, call `mcp__hilclaw__cases_lookup`" in rules
+    choice = between(body, "## The choice of techniques", "## A compile-settings run")
+    assert "choose the technique ids of the spec of candidate 1" in choice
+    assert "compile_settings" not in choice
+
+
+def test_step_6_says_the_selector_writes_the_spec_of_a_compile_settings_run():
+    step = round_step(6)
+    tail = step.split("go on to step 7 (ADR-0132 decision 6).", 1)[1]
+    assert "as entry step 6 read it, states `candidate_kind` `compile_settings`" in (
+        tail
+    )
+    assert "has the spec of the round's candidate 1, attempt 1 written" in tail
+    assert "reports a `spec:` line, and step 8 is not taken" in tail
+    assert "ADR-0198 decision 3; ADR-0199 decision 5" in tail
+
+
+def test_step_8_is_not_taken_in_a_compile_settings_run():
+    step = round_step(8)
+    kernel, settings = step.split(
+        "In a run whose `instance.json`, as entry step 6 read it, states "
+        "`candidate_kind` `compile_settings`, this step is not taken",
+        1,
+    )
+    assert "If the report of step 6 does not hold exactly one `techniques:` line" in (
+        kernel
+    )
+    assert "its two paragraphs above do not apply" in settings
+    assert "delegate nothing and make no coder call (ADR-0198 decision 3)" in settings
+    going, otherwise = between(
+        settings, "When the report of step 6 holds exactly one line", "decision 5)."
+    ).split("Otherwise", 1)
+    assert "`spec: written`, go on to step 9 with the tuple `round` the round" in going
+    assert "`candidate` 1, `attempt` 1" in going
+    assert "come to the stop" not in going
+    assert "report in one line that no spec was written and come to the stop" in (
+        otherwise
+    )
+    assert "asking for no repair (ADR-0199" in otherwise
+    for word in ("coder-driver", "spec_write", "evaluator", "step 12"):
+        assert word not in settings
+
+
+def test_the_stop_follows_step_8_in_a_compile_settings_run():
+    later = the_stop().split("In other rounds it follows step 7", 1)[1]
+    assert "and step 8 or step 12 as they say" in later
+    assert (
+        "In a `compile_settings` run it follows step 8's last paragraph when no "
+        "spec was written (ADR-0199 decision 5)"
+    ) in later
