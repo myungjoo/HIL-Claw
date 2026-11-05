@@ -9,6 +9,7 @@ import pytest
 
 from hilclaw import (
     build_log,
+    build_record,
     check_failure,
     check_judging,
     check_operation,
@@ -1456,3 +1457,127 @@ def test_bf16_a_refused_kind_generates_nothing(
     with pytest.raises(ValueError):
         call(output, keeper, Bf16CheckParameters(SEED, 3, "softmax", "bf16", (1, 2)))
     assert (client.calls, build_dirs(temporary)) == ([], [])
+
+
+# --- a compile_settings candidate (ADR-0198 decisions 5 and 6) ---
+
+CANDIDATE_FLAGS = ("-O3", "-funroll-loops")
+
+
+def candidate_build(tmp_path, flags=CANDIDATE_FLAGS):
+    return build_record.CandidateBuild(tmp_path / "build.json", flags)
+
+
+def test_a_candidate_is_built_with_the_target_flags_then_its_own(
+    client, output, keeper, tmp_path
+):
+    client.script = [built(), reported()]
+    build = candidate_build(tmp_path)
+    with build_record.building(build):
+        assert call(output, keeper) == REPORT
+    compiled = client.runs()[0]
+    compiled = compiled[compiled.index(IMAGE) + 2 :]
+    flags = [*standin_settings.FLAGS, *CANDIDATE_FLAGS]
+    trailing = list(standin_settings.TRAILING_FLAGS)
+    assert compiled[: len(flags)] == flags
+    assert compiled[-len(trailing) - 2 : -2] == trailing
+    assert build.document == {
+        "schema_version": 1,
+        "outcome": "built",
+        "flags": flags,
+        "trailing_flags": trailing,
+    }
+    build_record.validate(build.document)
+
+
+def test_a_candidate_at_another_target_is_built_with_that_target_flags(
+    client, output, keeper, tmp_path
+):
+    target = targets.target(targets.VIRTUAL_NPU)
+    client.script = [built(), reported()]
+    build = candidate_build(tmp_path, ("-O2",))
+    with build_record.building(build):
+        standin_check.operation_for(target)(
+            {"tool": "correctness.check"}, {"hw": 1}, PARAMETERS, output, keeper
+        )
+    assert build.document["flags"] == [*targets.VIRTUAL_NPU_FLAGS, "-O2"]
+    assert build.document["trailing_flags"] == list(target.trailing_flags)
+
+
+@pytest.mark.parametrize(
+    ("script", "condition"),
+    [(ended(1), "build_exit_status"), (timed_out(), "build_time_limit")],
+)
+def test_a_broken_candidate_build_is_told_with_its_condition(
+    client, output, keeper, tmp_path, script, condition
+):
+    client.script = [script]
+    build = candidate_build(tmp_path)
+    with build_record.building(build):
+        assert call(output, keeper) == condition
+    assert build.document["outcome"] == "broken"
+    assert build.document["condition"] == condition
+
+
+def test_a_candidate_build_that_left_no_executable_is_not_told(
+    client, output, keeper, tmp_path
+):
+    client.script = [built(executable=False)]
+    build = candidate_build(tmp_path)
+    with build_record.building(build), pytest.raises(tools.ToolFailure):
+        call(output, keeper)
+    assert build.document is None
+
+
+@pytest.mark.parametrize("flag", ["-o", "-ofile", "--output=x", "-O2\0"])
+def test_a_refused_candidate_flag_is_settings_refused_before_anything(
+    client, output, keeper, temporary, tmp_path, flag
+):
+    build = candidate_build(tmp_path, ("-O2", flag))
+    with build_record.building(build):
+        error = failure(output, keeper, check_failure.KIND_SETTINGS_REFUSED)
+    assert flag not in error.message
+    assert (client.calls, build_dirs(temporary), build.document) == ([], [], None)
+
+
+def test_with_no_candidate_the_build_is_the_targets(client, output, keeper):
+    client.script = [built(), reported()]
+    with build_record.building(None):
+        call(output, keeper)
+    compiled = client.runs()[0]
+    compiled = compiled[compiled.index(IMAGE) + 2 :]
+    flags = list(standin_settings.FLAGS)
+    assert compiled[: len(flags)] == flags
+    assert compiled[len(flags)].startswith(standin_container.CONTAINER_BUILD_DIR)
+
+
+def test_candidate_target(tmp_path):
+    target = targets.target(targets.CPU_STANDIN)
+    assert standin_check.candidate_target(target, None) is target
+    widened = standin_check.candidate_target(target, candidate_build(tmp_path))
+    assert widened.flags == (*target.flags, *CANDIDATE_FLAGS)
+    assert widened.trailing_flags == target.trailing_flags
+    with pytest.raises(tools.ToolFailure) as raised:
+        standin_check.candidate_target(target, candidate_build(tmp_path, ("-o",)))
+    assert raised.value.kind == check_failure.KIND_SETTINGS_REFUSED
+    assert raised.value.__cause__ is None
+
+
+def test_report_build(tmp_path):
+    from hilclaw import standin_answer
+
+    target = targets.target(targets.CPU_STANDIN)
+    standin_check.report_build(None, standin_answer.GO_ON, target)
+    for answer in ("time_limit", "exit_status", None, 3):
+        build = candidate_build(tmp_path)
+        standin_check.report_build(build, answer, target)
+        assert build.document is None
+    build = candidate_build(tmp_path)
+    standin_check.report_build(build, "build_time_limit", target)
+    assert build.document["condition"] == "build_time_limit"
+    standin_check.report_build(build, standin_answer.GO_ON, target)
+    assert build.document["outcome"] == "broken"
+    build = candidate_build(tmp_path)
+    standin_check.report_build(build, standin_answer.GO_ON, target)
+    assert build.document["outcome"] == "built"
+    assert build.document["flags"] == list(target.flags)

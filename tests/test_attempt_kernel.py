@@ -337,7 +337,7 @@ def test_a_spec_with_a_broken_contract(tmp_path):
     refused(tmp_path, SPEC_INVALID)
 
 
-@pytest.mark.parametrize("version", [1, 3])
+@pytest.mark.parametrize("version", [1, 4])
 def test_a_spec_of_another_version(tmp_path, version):
     made = document()
     made["schema_version"] = version
@@ -570,3 +570,111 @@ def test_a_greedy_generation_whose_every_kernel_comes_from_an_attempt(
     by_hand = reference.executed(real, model, rows, given=None)
     assert np.array_equal(report.tokens, by_hand.tokens)
     assert np.array_equal(report.logits, by_hand.logits)
+
+
+# --- an attempt of a compile_settings candidate (ADR-0198 decisions 2 and 8, row 7) ---
+
+
+def place_candidate(
+    root, numbers=(2, 1, 1), named=(1, 1, 1), flags=("-O3",), **changes
+):
+    made = document(*numbers, **changes)
+    made["schema_version"] = 3
+    made["task"]["build"] = {
+        "candidate_kind": "compile_settings",
+        "flags": list(flags),
+        "kernel_round": named[0],
+        "kernel_candidate": named[1],
+        "kernel_attempt": named[2],
+    }
+    path = spec_path(root, *numbers)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content_of(made))
+    return made
+
+
+def test_kernel_attempt_of_a_coder_attempt_is_the_attempt_itself(tmp_path):
+    made = make_attempt(tmp_path)
+    answer = attempt_kernel.kernel_attempt(tmp_path, RUN, 1, 1, 1)
+    assert type(answer) is attempt_kernel.KernelAttempt
+    assert answer == (1, 1, 1, None, made["task"]["contract"])
+
+
+def test_kernel_attempt_of_a_candidate_is_the_named_attempt(tmp_path, monkeypatch):
+    made = make_attempt(tmp_path, contract="gemm_bf16")
+    place_candidate(tmp_path, flags=("-O3", "-ffast-math"))
+    monkeypatch.setattr(kernel_source, "read_compiled_set", pytest.fail)
+    answer = attempt_kernel.kernel_attempt(tmp_path, RUN, 2, 1, 1)
+    assert answer == (1, 1, 1, ("-O3", "-ffast-math"), made["task"]["contract"])
+    assert type(answer.flags) is tuple
+
+
+def test_the_reference_of_a_candidate_is_the_named_kernel_with_the_callers_flags(
+    tmp_path,
+):
+    made = make_attempt(tmp_path, round=1, candidate=2, names=("b.c", "k.h"))
+    place_candidate(tmp_path, numbers=(3, 1, 1), named=(1, 2, 1), flags=("-O3",))
+    before = tree(tmp_path)
+    answer = kernel_reference(tmp_path, RUN, 3, 1, 1, flags=FLAGS)
+    output = output_path(tmp_path, 1, 2, 1)
+    assert answer == KernelReference(
+        (output / "b.c",), made["task"]["contract"], FLAGS, (output / "k.h",)
+    )
+    assert tree(tmp_path) == before
+
+
+def test_a_candidate_naming_another_candidate_gives_no_reference(tmp_path):
+    make_attempt(tmp_path)
+    place_candidate(tmp_path, numbers=(2, 1, 1), named=(1, 1, 1))
+    place_candidate(tmp_path, numbers=(3, 1, 1), named=(2, 1, 1))
+    error = refused(tmp_path, SPEC_OTHER_VERSION, RUN, 3, 1, 1)
+    assert error.__cause__ is None
+    with pytest.raises(AttemptKernelError) as raised:
+        attempt_kernel.kernel_attempt(tmp_path, RUN, 3, 1, 1)
+    assert raised.value.reason == SPEC_OTHER_VERSION
+
+
+@pytest.mark.parametrize(
+    ("reason", "prepare"),
+    [
+        (NO_SPEC_FILE, lambda root: None),
+        (SPEC_INVALID, lambda root: place_spec(root, b"[]")),
+        (
+            NO_OUTPUT_DIRECTORY,
+            lambda root: spec_file.write(root, content_of(document())),
+        ),
+        (
+            SPEC_OTHER_ATTEMPT,
+            lambda root: place_spec(root, content_of(document(1, 1, 2))),
+        ),
+    ],
+)
+def test_the_named_attempt_of_a_candidate_is_refused_with_its_reason(
+    tmp_path, reason, prepare
+):
+    prepare(tmp_path)
+    place_candidate(tmp_path)
+    refused(tmp_path, reason, RUN, 2, 1, 1)
+
+
+def test_the_named_attempt_without_a_compiled_set(tmp_path):
+    make_attempt(tmp_path, names=("k.h",))
+    place_candidate(tmp_path)
+    refused(tmp_path, NO_COMPILED_FILE, RUN, 2, 1, 1)
+
+
+def test_kernel_attempt_refuses_a_malformed_argument(tmp_path):
+    with pytest.raises(ValueError) as raised:
+        attempt_kernel.kernel_attempt(tmp_path, RUN, 1, 1, 0)
+    assert raised.value.parameter == "attempt"
+    with pytest.raises(TypeError) as raised:
+        attempt_kernel.kernel_attempt(None, RUN, 1, 1, 1)
+    assert raised.value.parameter == "data_root"
+
+
+def test_kernel_attempt_reads_no_output_and_writes_nothing(tmp_path, monkeypatch):
+    place_spec(tmp_path, content_of(document()))
+    monkeypatch.setattr(kernel_source, "read_compiled_set", pytest.fail)
+    before = tree(tmp_path)
+    assert attempt_kernel.kernel_attempt(tmp_path, RUN, 1, 1, 1).flags is None
+    assert tree(tmp_path) == before

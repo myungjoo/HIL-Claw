@@ -21,7 +21,9 @@ that render them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
    :mod:`hilclaw.hw_tool` has them. An ended identity is answered with what
    its end line holds and an open one with ``step_open``; nothing runs.
 3. ④ For an identity with no line ``instance.json`` is read once, by
-   :func:`hilclaw.instance.read`, and the backend is selected for the
+   :func:`hilclaw.instance.read` and, for a file of another version, by
+   :func:`hilclaw.instance.read_kinded`, so a run of either candidate kind is
+   read (ADR-0198 decision 8, row 6); the backend is selected for the
    hw_profile of that read (``no_backend``, ``not_offered``). Then
    :func:`hilclaw.run_admission.admit` gives one of its five answers or what
    the call takes from the same read (ADR-0067 decision 5, steps 3 to 7).
@@ -66,6 +68,19 @@ that render them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
    (ADR-0108 decision 7); in all cases with the empty ``spend`` (ADR-0062
    decision 5).
 
+In a run whose candidate kind is ``compile_settings`` (ADR-0198 decisions 2,
+5 and 6) the attempt's spec is read in ⑥, after the start line, by
+:func:`hilclaw.build_record.evaluated`, as :mod:`hilclaw.check_tool` does: a
+version-2 spec is evaluated as in a C kernel run, and so is every attempt of
+a ``c_kernel`` run, whose spec is not read; for a version-3 spec the output
+path is that of the attempt the spec names, the operation is called with the
+spec's :class:`hilclaw.build_record.CandidateBuild` current, and when the
+operation came back, by returning or by raising an :class:`Exception`, the
+build is written to the attempt's ``build.json`` if a build ended and the
+name is free, before the end line. A spec or a named attempt that gives no
+kernel ends the call with the kind of
+:class:`hilclaw.build_record.KernelRefused` and calls no operation.
+
 :data:`KIND_BUILD_LOG_UNWRITABLE` is the run tools' own kind of ADR-0108
 decision 7, "defined again by this contract" with the spelling and the
 meaning of the kind of ``correctness.check``
@@ -87,13 +102,14 @@ Choices that are this module's own and no rule of a record:
   ``"board.run"`` as :func:`hilclaw.run_identity.step_of` does, before
   anything else, and a ``seeds`` or a ``covers`` that is not callable last.
 * What the place before the start line hands to the step is an object of a
-  private class with four slots, alive for that call only. Its ``repr``
+  private class with five slots, alive for that call only. Its ``repr``
   shows none of them.
 * The output path is the :class:`pathlib.Path` that
   :func:`hilclaw.layout.attempt_artefact` returns for the data root of the
   call, the members ``run_id``, ``round``, ``candidate`` and ``attempt`` of
-  the request and the name ``output``, as it is: not resolved and not made
-  absolute. The path of the log file is the :class:`pathlib.Path` that
+  the request (of the named attempt, for a version-3 spec) and the name
+  ``output``, as it is: not resolved and not made absolute. The path of the
+  log file is the :class:`pathlib.Path` that
   :func:`hilclaw.layout.build_log_file` returns for the same data root and
   four members, the tool's ``step`` and the member ``execution``. Both are
   formed once for a call, after the start line, and handed on as they are.
@@ -127,8 +143,11 @@ definition; the input schema and the descriptions are those of
 predicate (left to a later task), has no ``cpu_standin`` operation, states
 no spend axis and bounds no size of a log (ADR-0108 decision 6). It hands
 the operation no setting, no ``bound`` and no objective (ADR-0061
-decision 3). Of the kernel of the attempt it forms the output path and hands
-it on; it reads nothing there and composes no message that holds the path.
+decision 3); a candidate's flags reach the operation through
+:mod:`hilclaw.build_record`. Of the kernel of the attempt it forms the
+output path and hands it on; but for the reads of
+:func:`hilclaw.build_record.evaluated` in a ``compile_settings`` run it
+reads nothing there, and it composes no message that holds the path.
 It writes the file of the compiler's log only through
 :func:`hilclaw.run_operation.ask`, by :func:`hilclaw.build_log.write`, whose
 message shows no path, no text of an error and no byte of the log. It
@@ -143,6 +162,7 @@ nothing between calls.
 
 from hilclaw import (
     build_log,
+    build_record,
     contract_table,
     hw_tool,
     instance,
@@ -170,6 +190,7 @@ _OUTCOMES = {
 }
 _MOCK_UNIT = "ns"
 _FP32_GEMM = ("gemm", "fp32")
+_C_KERNEL = "c_kernel"
 _CONDITIONS = {
     timing.Broken.REPORT_FORM: "report_form",
     timing.Broken.ZERO_INTERVAL: "zero_interval",
@@ -178,13 +199,14 @@ _CONDITIONS = {
 
 
 class _Drawn:
-    __slots__ = ("admitted", "seed", "unit", "units_per_ns")
+    __slots__ = ("admitted", "kind", "seed", "unit", "units_per_ns")
 
-    def __init__(self, admitted, seed, unit, units_per_ns):
+    def __init__(self, admitted, seed, unit, units_per_ns, kind):
         self.admitted = admitted
         self.seed = seed
         self.unit = unit
         self.units_per_ns = units_per_ns
+        self.kind = kind
 
 
 def tool_function(tool, *, source, table, seeds, covers):
@@ -233,13 +255,14 @@ def tool_function(tool, *, source, table, seeds, covers):
     step = run_identity.step_of(tool)
 
     def admit(request, read):
-        target = _target_of(read.hw_profile["accelerator"])
-        admitted = run_admission.admit(read, covers=_at_target(covers, target))
+        run, kind = read
+        target = _target_of(run.hw_profile["accelerator"])
+        admitted = run_admission.admit(run, covers=_at_target(covers, target))
         if target is None:
             unit, factor = _MOCK_UNIT, 1
         else:
             unit, factor = target.unit, target.units_per_ns
-        return _Drawn(admitted, run_seed.draw(seeds), unit, factor)
+        return _Drawn(admitted, run_seed.draw(seeds), unit, factor, kind)
 
     def perform(data_root, request, hw_profile, operation, drawn):
         return _perform(step, data_root, request, hw_profile, operation, drawn)
@@ -251,7 +274,7 @@ def tool_function(tool, *, source, table, seeds, covers):
         numbers=run_identity.NUMBERS,
         source=source,
         table=table,
-        read=instance.read,
+        read=_read,
         hw_profile_in=_hw_profile,
         check=run_definition.check,
         admit=admit,
@@ -283,8 +306,16 @@ def _at_target(covers, target):
     return covered_at_target
 
 
+def _read(data_root, run_id):
+    try:
+        return instance.read(data_root, run_id), _C_KERNEL
+    except instance.UnsupportedVersionError:
+        kinded = instance.read_kinded(data_root, run_id)
+        return kinded.instance, kinded.candidate_kind
+
+
 def _hw_profile(read):
-    return read.hw_profile
+    return read[0].hw_profile
 
 
 def _perform(step, data_root, request, hw_profile, operation, drawn):
@@ -295,29 +326,43 @@ def _perform(step, data_root, request, hw_profile, operation, drawn):
         request["candidate"],
         request["attempt"],
     )
-    output_path = layout.attempt_artefact(*attempt, "output")
     log_path = layout.build_log_file(*attempt, step, request["execution"])
     admitted = drawn.admitted
     parameters = _parameters(admitted, drawn.seed)
     try:
-        answer = run_operation.ask(
-            operation,
-            request,
-            hw_profile,
-            parameters,
-            output_path,
-            build_log.LogKeeper(),
-            log_path=log_path,
-        )
-    except tools.ToolFailure as raised:
-        kind, message = run_failure.ended_with(raised)
-    except run_operation.OperationAnswerInvalid as invalid:
-        kind, message = invalid.kind, invalid.message
-    except build_log.BuildLogUnwritable as unwritable:
-        kind, message = KIND_BUILD_LOG_UNWRITABLE, unwritable.message
-    else:
+        evaluated = _evaluated(drawn.kind, attempt)
+    except build_record.KernelRefused as refused:
+        raise journaled_step.StepFailed({}, refused.kind, refused.message) from None
+    with build_record.building(evaluated.build):
+        try:
+            answer = run_operation.ask(
+                operation,
+                request,
+                hw_profile,
+                parameters,
+                evaluated.output_path,
+                build_log.LogKeeper(),
+                log_path=log_path,
+            )
+        except tools.ToolFailure as raised:
+            kind, message = run_failure.ended_with(raised)
+        except run_operation.OperationAnswerInvalid as invalid:
+            kind, message = invalid.kind, invalid.message
+        except build_log.BuildLogUnwritable as unwritable:
+            kind, message = KIND_BUILD_LOG_UNWRITABLE, unwritable.message
+        else:
+            kind = None
+    if evaluated.build is not None:
+        evaluated.build.write()
+    if kind is None:
         return {}, _result(answer, admitted, drawn.unit, drawn.units_per_ns)
     raise journaled_step.StepFailed({}, kind, message)
+
+
+def _evaluated(kind, attempt):
+    if kind == _C_KERNEL:
+        return build_record.Evaluated(layout.attempt_artefact(*attempt, "output"), None)
+    return build_record.evaluated(*attempt)
 
 
 def _parameters(admitted, seed):

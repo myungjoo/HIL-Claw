@@ -13,7 +13,33 @@ the exact arguments of the build, each an array of strings.
 
 :func:`parse` and :func:`validate` are pure functions of the bytes of a
 content and of a parsed document; :func:`read` reads the file of an attempt.
-Nothing here writes the file, and no tool reads it yet (ADR-0198 decision 8).
+No tool reads the file (ADR-0198 decision 8).
+
+The writer is the evaluation tool that carries out the attempt's first build
+(decision 5; ``correctness.check``, ``sim.run`` and ``board.run``), through
+three parts of this module:
+
+* :func:`evaluated` says, for an attempt of a ``compile_settings`` run, which
+  ``output/`` the tool hands its operation and, for a candidate whose spec is
+  of version 3, the :class:`CandidateBuild` of the call (decisions 2 and 6),
+  or raises :class:`KernelRefused` with an existing backend kind of
+  :mod:`hilclaw.check_failure`: ``no_kernel_source`` for a spec that is
+  missing or of a version other than 2 and 3, a named attempt whose spec is
+  missing or of version 3, and a named attempt with no compiled set;
+  ``kernel_source_unreadable`` for a spec that cannot be read, is invalid or
+  whose ``id`` formats to another path, and for a failure of the reader of
+  ADR-0055.
+* :func:`building` makes a :class:`CandidateBuild` the one :func:`current`
+  returns while the tool's operation runs. An operation that builds
+  (:mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_run`) adds its flags
+  after the target's and tells it, by :meth:`CandidateBuild.ended`, what its
+  kernel build gave and the exact argument arrays it handed the compiler; an
+  operation that builds nothing (the mock) does neither. This keeps the five
+  arguments of an operation (:mod:`hilclaw.backends`).
+* :meth:`CandidateBuild.write`, called by the tool after the operation came
+  back and before its end line, gives the file the name only if it is free
+  (:func:`hilclaw.once_write.write_once`), so the first build of an attempt
+  writes it and a later one writes nothing.
 
 Conventions of this module, which the record does not fix: a content is
 exactly ``bytes``, UTF-8 without a byte order mark, one JSON text with no
@@ -21,10 +47,16 @@ member name twice in any object; values are as :func:`json.loads` returns
 them, an integer exactly an ``int``; an argument is a ``str`` of at least one
 character without the character U+0000, which no argument of a process can
 hold. The version comes first, then the members in the order above; the
-first rule found broken is reported, naming its place.
+first rule found broken is reported, naming its place. A
+:class:`CandidateBuild` is of one call and kept in a
+:class:`contextvars.ContextVar`, so a thread or a task sees only its own. A
+write of the file that fails with an :class:`OSError` is not answered: the
+call's result stands, and a later build of the attempt finds the name free.
 """
 
 import codecs
+import contextlib
+import contextvars
 import json
 import os
 import reprlib
@@ -32,13 +64,27 @@ import stat
 from pathlib import Path
 from typing import NamedTuple
 
-from hilclaw import json_text, keys, layout
+from hilclaw import (
+    attempt_kernel,
+    check_failure,
+    json_text,
+    kernel_source,
+    keys,
+    layout,
+    once_write,
+)
 
 SCHEMA_VERSION = 1
 OUTCOMES = ("built", "broken")
 CONDITIONS = ("build_time_limit", "build_exit_status")
 
 _MEMBERS = ("schema_version", "outcome", "flags", "trailing_flags")
+_CURRENT = contextvars.ContextVar("hilclaw.build_record.current", default=None)
+_NO_KERNEL = (
+    attempt_kernel.NO_SPEC_FILE,
+    attempt_kernel.SPEC_OTHER_VERSION,
+    *kernel_source.NO_KERNEL_SOURCE_CASES,
+)
 
 
 class InvalidBuildRecordError(ValueError):
@@ -64,6 +110,156 @@ class BuildRecord(NamedTuple):
     condition: str | None
     flags: list
     trailing_flags: list
+
+
+class KernelRefused(Exception):
+    """:func:`evaluated` found no kernel to build; ``kind`` and ``message`` are those of the end line.
+
+    ``kind`` is :data:`hilclaw.check_failure.KIND_NO_KERNEL_SOURCE` or
+    :data:`hilclaw.check_failure.KIND_KERNEL_SOURCE_UNREADABLE`; ``message``
+    names the reason of :mod:`hilclaw.attempt_kernel` and shows no path.
+    """
+
+    def __init__(self, kind, message):
+        super().__init__(kind, message)
+        self.kind = kind
+        self.message = message
+
+
+class CandidateBuild:
+    """The candidate's flags for the kernel build of one call, and what that build gave (ADR-0198 decisions 5 and 6).
+
+    ``path`` is the attempt's ``build.json``; ``flags`` the candidate's
+    flags, a ``tuple`` of ``str``; ``document`` is ``None`` until
+    :meth:`ended` is called, then the document of the first build it was
+    told of.
+    """
+
+    __slots__ = ("document", "flags", "path")
+
+    def __init__(self, path, flags):
+        """Hold ``path``, a :class:`pathlib.Path`, and ``flags``.
+
+        Raises :class:`TypeError` for a ``path`` that is no
+        :class:`pathlib.Path` or ``flags`` that is not a ``tuple`` of ``str``.
+        """
+        if not isinstance(path, Path):
+            raise TypeError(f"path must be a Path, not {type(path).__name__}")
+        if type(flags) is not tuple or not all(type(flag) is str for flag in flags):
+            raise TypeError("flags must be a tuple of str")
+        self.path = path
+        self.flags = flags
+        self.document = None
+
+    def __repr__(self):
+        return f"<CandidateBuild of {len(self.flags)} flags>"
+
+    def ended(self, condition, flags, trailing_flags):
+        """Keep the document of a kernel build that ended (ADR-0198 decision 5).
+
+        ``condition`` is ``None`` for a build answered built, else one of
+        :data:`CONDITIONS`; ``flags`` and ``trailing_flags`` are the argument
+        arrays handed to the compiler before and after the sources, each a
+        sequence of ``str``. The first call keeps the document and every
+        later one is ignored. Raises :class:`InvalidBuildRecordError` for
+        values :func:`validate` refuses, nothing kept then.
+        """
+        document = {"schema_version": SCHEMA_VERSION}
+        if condition is None:
+            document["outcome"] = "built"
+        else:
+            document["outcome"] = "broken"
+            document["condition"] = condition
+        document["flags"] = list(flags)
+        document["trailing_flags"] = list(trailing_flags)
+        _checked(document)
+        if self.document is None:
+            self.document = document
+
+    def write(self):
+        """Write the kept document to :attr:`path` if the name is free; return whether it was written.
+
+        Returns ``False`` when no build ended (:meth:`ended` was not called),
+        when the name is taken, whatever is there, and when a step of the
+        write failed with an :class:`OSError`; nothing is retried. Every
+        missing directory above the path is created. The content is the
+        document as JSON with two spaces of indent and a final line feed.
+        """
+        if self.document is None:
+            return False
+        content = (json.dumps(self.document, indent=2) + "\n").encode("utf-8")
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            return once_write.write_once(self.path, content) is None
+        except OSError:
+            return False
+
+
+class Evaluated(NamedTuple):
+    """Answer of :func:`evaluated`: the ``output/`` to build and the :class:`CandidateBuild` or ``None``."""
+
+    output_path: Path
+    build: CandidateBuild | None
+
+
+def current():
+    """Return the :class:`CandidateBuild` :func:`building` made current here, or ``None``."""
+    return _CURRENT.get()
+
+
+@contextlib.contextmanager
+def building(build):
+    """Make ``build``, a :class:`CandidateBuild` or ``None``, what :func:`current` returns inside the block.
+
+    The one current before is restored when the block ends, however it ends.
+    Raises :class:`TypeError` for another ``build``.
+    """
+    if build is not None and type(build) is not CandidateBuild:
+        raise TypeError(f"build must be a CandidateBuild, not {type(build).__name__}")
+    token = _CURRENT.set(build)
+    try:
+        yield build
+    finally:
+        _CURRENT.reset(token)
+
+
+def evaluated(data_root, run_id, round, candidate, attempt):
+    """Return the :class:`Evaluated` of an attempt of a ``compile_settings`` run (ADR-0198 decisions 2 and 6).
+
+    The attempt's spec is read by :func:`hilclaw.attempt_kernel.kernel_attempt`.
+    For a version-2 spec the answer is the attempt's own ``output/`` and no
+    build: it is evaluated as in a C kernel run, and its ``output/`` is not
+    read here. For a version-3 spec the ``output/`` of the attempt it names
+    must yield a compiled set (:func:`hilclaw.kernel_source.read_compiled_set`);
+    the answer is that ``output/`` and a new :class:`CandidateBuild` of the
+    spec's flags whose path is the attempt's own ``build.json``.
+
+    Raises :class:`KernelRefused` with the kind the module docstring gives
+    for each reason, and what :func:`hilclaw.attempt_kernel.kernel_attempt`
+    raises for a malformed argument. Nothing is written.
+    """
+    numbers = round, candidate, attempt
+    try:
+        followed = attempt_kernel.kernel_attempt(data_root, run_id, *numbers)
+        if followed.flags is None:
+            own = layout.attempt_artefact(data_root, run_id, *numbers, "output")
+            return Evaluated(own, None)
+        named = followed.round, followed.candidate, followed.attempt
+        output = layout.attempt_artefact(data_root, run_id, *named, "output")
+        try:
+            source = kernel_source.read_compiled_set(output)
+        except kernel_source.KernelSourceReadError as error:
+            raise attempt_kernel.AttemptKernelError(error.failure) from error
+        if source.missing is not None:
+            raise attempt_kernel.AttemptKernelError(source.missing)
+    except attempt_kernel.AttemptKernelError as error:
+        kind = check_failure.KIND_KERNEL_SOURCE_UNREADABLE
+        if error.reason in _NO_KERNEL:
+            kind = check_failure.KIND_NO_KERNEL_SOURCE
+        message = f"the attempt gives no kernel to build: {error.reason}"
+        raise KernelRefused(kind, message) from None
+    path = layout.attempt_artefact(data_root, run_id, *numbers, "build.json")
+    return Evaluated(output, CandidateBuild(path, followed.flags))
 
 
 def parse(content):

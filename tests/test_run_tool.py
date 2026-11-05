@@ -8,9 +8,11 @@ import types
 from pathlib import Path
 
 import pytest
+import test_build_record as records
 
 from hilclaw import (
     build_log,
+    build_record,
     checks_tool,
     contract_table,
     elementwise_add_bf16_contract,
@@ -937,6 +939,7 @@ def test_the_module_imports_and_names():
         f"hilclaw.{name}"
         for name in (
             "build_log",
+            "build_record",
             "contract_table",
             "hw_tool",
             "instance",
@@ -1253,20 +1256,137 @@ def test_a_coarse_clock_is_found_on_a_line_virtual_npu_wrote(
     assert timing_finding.line_finding(line) is found
 
 
-# --- a compile_settings run (ADR-0198 decision 8, slice 2b) ---
+# --- a compile_settings run (ADR-0198 decisions 2, 5, 6 and 8, slice 3) ---
+
+KERNEL_ATTEMPT = (0, 1, 1)
+ASKED_ATTEMPT = (ROUND, 2, 1)
+CANDIDATE_FLAGS = ("-O3",)
+TARGET_FLAGS = ("-std=gnu11", "-O2")
+TRAILING = ("-lm",)
 
 
-@pytest.mark.parametrize("tool", TOOLS)
-def test_a_compile_settings_run_is_run_file_unsupported_with_no_line(root, tool):
+def settings_run(root):
     document = json.loads(content())
     document |= {"schema_version": 2, "candidate_kind": "compile_settings"}
     (root / "runs" / RUN / "instance.json").write_bytes(json.dumps(document).encode())
-    before = sorted(path.relative_to(root).as_posix() for path in root.rglob("*"))
-    bench = Bench(root, tool)
-    failure = bench.failure()
-    assert failure.kind == "run_file_unsupported"
-    assert failure.message.startswith(f"runs/{RUN}/instance.json: schema_version: 2")
-    assert (bench.asked, bench.order, lines(root)) == ([], [], [])
-    assert (
-        sorted(path.relative_to(root).as_posix() for path in root.rglob("*")) == before
+
+
+def a_candidate(root):
+    settings_run(root)
+    records.place_spec(root, RUN, KERNEL_ATTEMPT)
+    records.place_kernel(root, RUN, KERNEL_ATTEMPT)
+    records.place_spec(
+        root, RUN, ASKED_ATTEMPT, named=KERNEL_ATTEMPT, flags=CANDIDATE_FLAGS
     )
+
+
+def build_json(root):
+    return layout.attempt_artefact(root, RUN, *ASKED_ATTEMPT, "build.json")
+
+
+def building(condition=None, then=None):
+    """A script that builds: it tells the current build, as an operation that builds does."""
+
+    def script(tool, asked, hw_profile, parameters, output_path, keeper):
+        build = build_record.current()
+        build.ended(condition, (*TARGET_FLAGS, *build.flags), TRAILING)
+        if then is not None:
+            raise then
+        if condition is not None:
+            return condition
+        return mock_run.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
+
+    return script
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_a_candidate_is_timed_from_the_named_kernel_and_its_first_build_recorded(
+    root, tool
+):
+    a_candidate(root)
+    bench = Bench(root, tool, script=building())
+    assert bench.function(request()) == CONVERGED
+    ((_, _, _, _, output_path),) = bench.asked
+    assert output_path == layout.attempt_artefact(root, RUN, *KERNEL_ATTEMPT, "output")
+    assert build_record.read(root, RUN, *ASKED_ATTEMPT) == (
+        "built",
+        None,
+        [*TARGET_FLAGS, *CANDIDATE_FLAGS],
+        list(TRAILING),
+    )
+    assert build_record.current() is None
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_a_later_timing_build_writes_no_build_record(root, tool):
+    a_candidate(root)
+    first = Bench(root, tool, script=building("build_exit_status"))
+    assert first.function(request())["condition"] == "build_exit_status"
+    written = build_json(root).read_bytes()
+    later = Bench(root, tool, script=building())
+    assert later.function(request(execution=2)) == CONVERGED
+    assert build_json(root).read_bytes() == written
+    assert build_record.read(root, RUN, *ASKED_ATTEMPT).condition == "build_exit_status"
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_a_coder_attempt_of_a_compile_settings_run_is_timed_as_a_c_kernel(root, tool):
+    settings_run(root)
+    records.place_spec(root, RUN, ASKED_ATTEMPT)
+    seen = []
+
+    def script(tool, asked, hw_profile, parameters, output_path, keeper):
+        seen.append(build_record.current())
+        return mock_run.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
+
+    bench = Bench(root, tool, script=script)
+    assert bench.function(request()) == CONVERGED
+    assert seen == [None]
+    assert bench.asked[0][4] == layout.attempt_artefact(
+        root, RUN, *ASKED_ATTEMPT, "output"
+    )
+    assert not build_json(root).exists()
+
+
+def test_the_mock_times_a_candidate_and_writes_no_build_record(root):
+    a_candidate(root)
+    assert Bench(root).function(request()) == CONVERGED
+    assert not build_json(root).exists()
+
+
+def test_a_failure_after_the_timing_build_still_records_it(root):
+    a_candidate(root)
+    raised = ToolFailure("executable_unstartable", "the executable did not start")
+    failure = Bench(root, script=building(then=raised)).failure()
+    assert failure.kind == "executable_unstartable"
+    assert build_record.read(root, RUN, *ASKED_ATTEMPT).outcome == "built"
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_a_candidate_with_no_kernel_ends_the_call_with_no_operation(root, tool):
+    settings_run(root)
+    records.place_spec(root, RUN, KERNEL_ATTEMPT)
+    records.place_spec(root, RUN, ASKED_ATTEMPT, named=KERNEL_ATTEMPT)
+    bench = Bench(root, tool, script=building())
+    failure = bench.failure()
+    assert failure.kind == "no_kernel_source"
+    assert (
+        failure.message == "the attempt gives no kernel to build: no_output_directory"
+    )
+    assert bench.asked == []
+    _, ended = lines(root)
+    assert ended["data"]["failure"] == {
+        "kind": "no_kernel_source",
+        "message": failure.message,
+    }
+    assert not build_json(root).exists()
+
+
+def test_a_c_kernel_run_reads_no_spec(root, monkeypatch):
+    monkeypatch.setattr(build_record, "evaluated", pytest.fail)
+    assert Bench(root).function(request()) == CONVERGED
+    assert not list(root.rglob("build.json"))

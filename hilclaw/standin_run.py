@@ -109,12 +109,23 @@ entry of :func:`hilclaw.check_definition.default_table`; it takes its build
 settings and time limits from the ``cpu_standin`` :class:`hilclaw.targets.Target`,
 and :func:`operation_for` builds the same operation with another
 :class:`hilclaw.targets.Target` (ADR-0193 decision 3).
+
+In a call of a ``compile_settings`` candidate (ADR-0198 decision 6) the
+timing build is given the target's flags followed by the candidate's flags
+and the target's trailing flags, and a refused candidate flag is
+``settings_refused`` before the image is read, as in
+:mod:`hilclaw.standin_check` (:func:`hilclaw.standin_check.candidate_target`);
+the timing build, the kernel's, is told to the current
+:class:`hilclaw.build_record.CandidateBuild`
+(:func:`hilclaw.standin_check.report_build`) before the waiter's build, which
+keeps the target's waiter flags and is not told.
 """
 
 from time import monotonic
 
 from hilclaw import (
     build_log,
+    build_record,
     check_parameters,
     run_failure,
     run_parameters,
@@ -213,12 +224,14 @@ def operation_for(target):
 
 def _operate(target, parameters, output_path, keeper):
     checked = _checked(parameters, keeper, target.process_time_limit_cap_s)
+    build = build_record.current()
+    target = standin_check.candidate_target(target, build)
     image = standin_check.container_image()
     build_dir = standin_check.make_build_dir(BUILD_DIR_PREFIX)
     return standin_check.carry_out(
         build_dir,
         lambda outcomes: _carry_out(
-            target, image, build_dir, output_path, keeper, checked, outcomes
+            target, image, build_dir, output_path, keeper, checked, outcomes, build
         ),
     )
 
@@ -260,10 +273,10 @@ def _bf16_checked(parameters, cap_s):
     return (program, BF16_HEADERS, text), arguments, limit, rows
 
 
-def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes):
+def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes, build):
     (program, headers, text), arguments, limit, rows = checked
     copies, waiter = _placed_copies(output_path, build_dir, program, headers, text)
-    built = _build(target, image, build_dir, copies, waiter, keeper, outcomes)
+    built = _build(target, image, build_dir, copies, waiter, keeper, outcomes, build)
     if built is not standin_answer.GO_ON:
         return built
     ran = standin_check.run_container(
@@ -306,7 +319,7 @@ def _placed_copies(output_path, build_dir, program, headers, text):
     return copies, waiter
 
 
-def _build(target, image, build_dir, copies, waiter, keeper, outcomes):
+def _build(target, image, build_dir, copies, waiter, keeper, outcomes, build):
     sources = (copies.harness, *copies.compiled_set)
     started = monotonic()
     built = standin_check.run_build(
@@ -325,6 +338,7 @@ def _build(target, image, build_dir, copies, waiter, keeper, outcomes):
         executable=TIMING_EXECUTABLE_NAME,
         missing=_NO_TIMING_EXECUTABLE,
     )
+    standin_check.report_build(build, built, target)
     if built is not standin_answer.GO_ON:
         return built
     left = target.build_time_limit_s - (monotonic() - started)

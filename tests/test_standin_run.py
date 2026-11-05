@@ -5,6 +5,7 @@ import pytest
 
 from hilclaw import (
     build_log,
+    build_record,
     kernel_source,
     local_run,
     run_failure,
@@ -1359,3 +1360,71 @@ def test_a_refused_bf16_kind_generates_nothing(
     with pytest.raises(ValueError):
         call(output, keeper, bf16("softmax", (1, 2)))
     assert (client.calls, build_dirs(temporary)) == ([], [])
+
+
+# --- a compile_settings candidate (ADR-0198 decisions 5 and 6) ---
+
+CANDIDATE_FLAGS = ("-O3", "-march=native")
+
+
+def candidate_build(tmp_path, flags=CANDIDATE_FLAGS):
+    return build_record.CandidateBuild(tmp_path / "build.json", flags)
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_a_candidate_timing_build_has_the_target_flags_then_its_own(
+    client, output, keeper, tmp_path, tool
+):
+    client.script = happy()
+    build = candidate_build(tmp_path)
+    with build_record.building(build):
+        assert call(output, keeper, tool=tool) == (REPORT, 300 * 1024)
+    timing_build_command, waiter_build, _ = client.runs()
+    flags = [*standin_settings.FLAGS, *CANDIDATE_FLAGS]
+    trailing = list(standin_settings.TRAILING_FLAGS)
+    compiled = program(timing_build_command)
+    assert compiled[1 : 1 + len(flags)] == flags
+    assert compiled[-len(trailing) - 2 : -2] == trailing
+    assert program(waiter_build)[1:-3] == list(standin_settings.WAITER_FLAGS)
+    assert build.document == {
+        "schema_version": 1,
+        "outcome": "built",
+        "flags": flags,
+        "trailing_flags": trailing,
+    }
+
+
+@pytest.mark.parametrize(
+    ("script", "condition"),
+    [(ended(1), "build_exit_status"), (timed_out(), "build_time_limit")],
+)
+def test_a_broken_candidate_timing_build_is_told(
+    client, output, keeper, tmp_path, script, condition
+):
+    client.script = [script, None]
+    build = candidate_build(tmp_path)
+    with build_record.building(build):
+        assert call(output, keeper) == condition
+    assert (build.document["outcome"], build.document["condition"]) == (
+        "broken",
+        condition,
+    )
+
+
+def test_a_waiters_build_that_fails_leaves_the_candidate_built(
+    client, output, keeper, tmp_path
+):
+    client.script = [timing_built(), ended(1, stderr=WAITER_STDERR)]
+    build = candidate_build(tmp_path)
+    with build_record.building(build):
+        assert call(output, keeper) == "build_exit_status"
+    assert build.document["outcome"] == "built"
+
+
+def test_a_refused_candidate_flag_is_settings_refused_before_the_image(
+    client, output, keeper, temporary, tmp_path
+):
+    build = candidate_build(tmp_path, ("--output", "-O2"))
+    with build_record.building(build):
+        failure(output, keeper, run_failure.KIND_SETTINGS_REFUSED)
+    assert (client.calls, build_dirs(temporary), build.document) == ([], [], None)
