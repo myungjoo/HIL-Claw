@@ -206,9 +206,9 @@ before any other step of it:
    report in one line that no choice was given and come to the stop,
    delegating nothing (ADR-0171 decision 6).
    In a run whose `instance.json`, as entry step 6 read it, states
-   `candidate_kind` `compile_settings`, this step is not taken and its two
-   paragraphs above do not apply: delegate nothing and make no coder call
-   (ADR-0198 decision 3). When the report of step 6 holds exactly one line
+   `candidate_kind` `compile_settings`, only this paragraph of step 8
+   applies: its coder call is not taken, so delegate nothing (ADR-0198
+   decision 3). When the report of step 6 holds exactly one line
    `spec: written`, go on to step 9 with the tuple `round` the round,
    `candidate` 1, `attempt` 1. Otherwise report in one line that no spec was
    written and come to the stop, asking for no repair (ADR-0199

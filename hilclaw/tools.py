@@ -230,7 +230,7 @@ def default_registry(data_root_source):
     the coder-driver has the spec of the first coder call of round 0 written,
     and that of the first coder call of a round >= 1 (ADR-0151 decision 3),
     and with which the technique-selector has the version-3 spec of a round
-    >= 1 of a ``compile_settings`` run written (ADR-0199 decision 2), and
+    >= 1 of a ``compile_settings`` run written (ADR-0199 decision 5), and
     ``timings.compare`` (:func:`hilclaw.timings_tool.definition`,
     ADR-0140 decision 3), with which the evaluator gets the ``difference`` of
     a comparison of two attempts at one point. It holds ``coder.run``

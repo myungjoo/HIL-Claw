@@ -1404,14 +1404,13 @@ def test_step_8_is_not_taken_in_a_compile_settings_run():
     step = round_step(8)
     kernel, settings = step.split(
         "In a run whose `instance.json`, as entry step 6 read it, states "
-        "`candidate_kind` `compile_settings`, this step is not taken",
+        "`candidate_kind` `compile_settings`, only this paragraph of step 8 applies",
         1,
     )
     assert "If the report of step 6 does not hold exactly one `techniques:` line" in (
         kernel
     )
-    assert "its two paragraphs above do not apply" in settings
-    assert "delegate nothing and make no coder call (ADR-0198 decision 3)" in settings
+    assert "its coder call is not taken, so delegate nothing (ADR-0198" in settings
     going, otherwise = between(
         settings, "When the report of step 6 holds exactly one line", "decision 5)."
     ).split("Otherwise", 1)
