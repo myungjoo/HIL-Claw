@@ -2,7 +2,7 @@
 id: T-0557
 title: ADR-0198 slice 4 for PLAN P3-6 — land the first non-kernel candidate kind in the documents: change the three-layer "C 커널" wording of CLAUDE.md and Requirements, add the compile-settings scenario to StandardScenarios with the coverage re-check, link ADR-0199 in the registers, and hand over the runtime acceptance item for a coder-free round
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: doc
 coversReq: [D27, OD-32, OD-6, C-6, FR-1, FR-5, "PLAN P3-6", HQ-0088, HQ-0089, ADR-0198, "#5 A-12"]
 dependsOn: [T-0556]
