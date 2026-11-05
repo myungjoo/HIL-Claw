@@ -1419,9 +1419,9 @@ def layout_version_of_kinded(data_root, run_id):
     ``int`` 1 for a valid version-2 file (ADR-0198 decision 7). Raises what
     the first read raises otherwise, and what the second raises after it, so
     :class:`UnsupportedVersionError` for a version other than 1 and 2 and
-    :class:`InvalidInstanceError` for a version-2 file without a kind other
-    than ``c_kernel``. A file changed between the two reads is answered by
-    the second.
+    :class:`InvalidInstanceError` for a version-2 file stating no
+    ``candidate_kind`` or ``c_kernel``. A file changed between the two reads
+    is answered by the second.
     """
     try:
         return layout_version_of(data_root, run_id)

@@ -225,7 +225,7 @@ def read(data_root, run_id, name):
     message starting with the file's path relative to ``data_root``: the
     place holding no regular file or bytes the parser refuses
     ``run_file_invalid`` (a version-1 ``instance.json`` holding
-    ``candidate_kind`` and a version-2 one without a kind other than
+    ``candidate_kind`` and a version-2 one stating no ``candidate_kind`` or
     ``c_kernel`` among them), another ``schema_version`` (for
     ``instance.json`` one other than 1 and 2) ``run_file_unsupported``, and
     an :class:`OSError` as :func:`hilclaw.run_files.read_failure` answers it.

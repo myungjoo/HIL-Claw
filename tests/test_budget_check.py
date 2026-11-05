@@ -661,3 +661,22 @@ def test_started_without_the_data_root_argument_is_refused(root):
     assert missing.returncode == EXIT_REFUSE
     assert missing.stdout == b""
     assert missing.stderr.decode("utf-8").replace("\r\n", "\n") == named(CODER) + "\n"
+
+
+# --- a compile_settings run (ADR-0198 decision 8, slice 2b) ---
+
+KINDED = {"schema_version": 2, "candidate_kind": "compile_settings"}
+
+
+@pytest.mark.parametrize(
+    ("round", "budget", "decided"),
+    [(4, 5, False), (5, 5, True), (50, None, False)],
+)
+def test_a_compile_settings_run_is_decided_as_its_version_1_twin(
+    root, round, budget, decided
+):
+    stated(root, round, budget=budget, **KINDED)
+    if decided:
+        refused(payload(CODER), [str(root)], named(CODER))
+    else:
+        passes(payload(CODER), root)
