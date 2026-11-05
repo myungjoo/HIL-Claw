@@ -959,7 +959,9 @@
       "reason": "new-external-dependency",
       "question": "(D29; Qualcomm 사이트 밖의 도구라 요청한다) [쟁점] QNN SDK 2.37.0.250724의 x86_64 Linux 도구(`qnn-net-run`)와 HTP 에뮬레이터 라이브러리(`libQnnHtp.so`)는 SDK에 없는 `libc++.so.1`·`libc++abi.so.1`·`libunwind.so.1`이 있어야 실행된다. SDK의 `bin/check-linux-dependency.sh`는 Ubuntu 22.04에서 apt `libc++-dev`·`libc++abi-dev`(Ubuntu jammy universe의 LLVM 14 패키지, Apache-2.0 WITH LLVM-exception; 의존 `libc++1-14`·`libc++abi1-14`·`libunwind-14`)를 설치하라고 한다. T-0544는 실행을 Windows x64 형태(MinGW gcc 16.2.0 빌드)로만 확인했고 WSL2에서는 빌드·링크까지만 확인했다. [선택지] (a) 개발 머신의 WSL2 host에 apt로 설치를 승인 — 다음 P3-10 task가 x86_64 Linux 형태로도 실행을 확인한다(실행자 권고) (b) host가 아니라 도구 이미지에만 넣는 것을 승인 — 이미지에 QNN SDK를 넣는 것은 HQ-0094(라이선스)의 답에 걸린다 (c) 설치하지 않음 — Linux 형태의 실행 확인은 RA-0073으로만 남는다. [막히는 것] x86_64 Linux(WSL2)에서의 QNN 실행 확인. [막히지 않는 것] T-0544(DONE), 다음 P3-10 task의 Windows x64 형태 확인, P3-13, P3-14.",
       "askedAt": "2026-11-03T15:18:00Z",
-      "issueComment": null
+      "issueComment": null,
+      "resolvedAt": "2026-11-05T00:21:37Z",
+      "decision": "(a) 개발 머신의 WSL2 host에 apt로 설치를 승인 — 오너(채팅, 2026-11-05): \"a\"; 문안: \"승인\". 통합자 독해(오너의 말이 아님): 설치 대상은 실행에 필요한 런타임 패키지 `libc++1-14`·`libc++abi1-14`·`libunwind-14`(jammy-updates 1:14.0.0-1ubuntu1.1, Apache-2.0 WITH LLVM-exception)이고, `libc++-dev`·`libc++abi-dev`는 이 머신의 `libunwind-dev`와 gstreamer dev 패키지 4개를 지우므로 넣지 않으며 필요해지면 다시 묻는다. 다음 P3-10 task는 없으므로(T-0545가 P3-10을 체크) 오너가 2026-11-05 `sudo apt-get install -y libc++1-14 libc++abi1-14 libunwind-14`로 host(WSL2 Ubuntu 22.04.5)에 설치했고, 통합자 세션이 같은 날 x86_64 Linux 형태를 확인했다: `qnn-net-run --version` 상태 0(`QNN SDK v2.37.0.250724175447_124859`), `python -m hilclaw.toolchain_check`의 host `qnn-net-run` `present`, `tests/qnn_fixtures/add.c.in`(clang 14, `-ldl`)이 `libQnnHtp.so`로 `sum 11 22 33 44`·상태 0, Linux SDK `bin`을 `PATH`에 두고 `tests/test_qnn_adapter.py`·`tests/test_qnn_points.py` 101 passed·0 skipped. 이는 RA-0073 ②·RA-0074 ①의 Windows WSL 관찰이며 그 항목의 `상태`는 바꾸지 않는다(①·③은 남는다). 이후 QNN을 쓰는 task의 executor는 설치된 상태를 전제한다."
     }
   ],
   "counters": {
