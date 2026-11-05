@@ -2,7 +2,7 @@
 id: T-0550
 title: Land ADR-0196 slice 2 for PLAN P3-3 — the writers of `sim.run`/`board.run` switch to `sim_run_timing_v3`/`board_run_timing_v3` for every target, `virtual_npu` reports `cycles` (its ns × 3), and the remaining readers (`feedback.base`, `model_run_binding`) read both values
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, OD-33, OD-18, FR-10, NFR-6, "PLAN P3-3", HQ-0090]
 dependsOn: []
@@ -90,3 +90,29 @@ T-0549 (PR #365, `41dbf4bf`) wrote the §9 record **ADR-0196** (`ARCHITECTURE/de
 - T-0551 (HQ-0091 follow-up: `correctness.check` and instance start at `virtual_npu`) depends on this task.
 
 ## Result
+
+- PR: #366 (squash-merged, branch deleted). Merge commit: 62db40bd on main.
+- Review: 2 rounds (dev-reviewer, context-isolated). Round 1 asked for changes: tests/test_run_definition.py still expected v2 steps and ns at virtual_npu, so 40 tests failed. Round 2 approved. The one nit after the approval (a docstring rewrap) was fixed without another review (D20).
+- CI: all six gates green on the final head ec939731 (Python 3.11/3.14, Coverage gate (hilclaw), C, sh, Test presence). A full local run on head 41c37f4e gave 38915 passed, 2213 skipped.
+- Language: Python, as the existing 2nd-layer modules it changes (one line in the commit body).
+- Order check (D27 ①): unchanged from the task's statement at start. No open PR, no nightly-failure issue, no `실패` in RuntimeAcceptance.md.
+- What landed (ADR-0196 slice 2):
+  - run_identity.step_of returns sim_run_timing_v3 / board_run_timing_v3. No writer writes a v2 value any more.
+  - run_result.UNITS = run_identity.UNITS_OF of the v3 value (ns, cycles).
+  - targets.Target gains the field units_per_ns: an int >= 1, not a bool, and exactly 1 for unit ns. cpu_standin is ns/1; virtual_npu is cycles/VIRTUAL_NPU_CYCLES_PER_NS = 3. The module docstring sentence is replaced and cites ADR-0196.
+  - run_tool converts resolution and intervals by the target's factor after the ns judgement. A resolution of 0 stays 0, memory_bytes is not converted, and the mock keeps ns with factor 1.
+  - spec_feedback._board_median reads both board values and calls timing_problem with each line's step. There is no base when the measured attempts hold more than one unit.
+  - model_run_binding._timed_attempt_without_spec accepts either board value. Both readers take the values from timings_tool.STEPS_OF.
+  - timing_finding: docstrings only.
+- Slice-1 readers verified, no change: timings_tool (STEPS_OF, units_differ), verdicts_tool, s6_metric, layout.BUILD_LOG_STEPS, timing_finding (via run_identity.STEPS).
+- Existing tests changed under criterion 5 (writer expectations v2 -> v3): test_run_tool.py; test_run_definition.py (also cycles x3 at virtual_npu); test_backend_conformance.py; test_bf16_end_to_end.py; test_first_run_end_to_end.py; test_qnn_points.py; test_run_identity.py (the slice-1 test "step_of still returns v2" is inverted).
+- New required Target field units_per_ns=1 added to the test helpers in test_clang_adapter.py, test_cuda_adapter.py, test_qnn_adapter.py, test_standin_check.py and test_model_run_binding.py.
+- D21 list assertions modified: test_run_result.py (UNITS == ("ns", "cycles"), and the module's import set gains hilclaw.run_identity); test_targets.py (the GOOD field dict gains units_per_ns; virtual_npu holds cycles/3; "cycles" is removed from the cases of a unit outside the list).
+- Readers that still assume ns or v2 only: hilclaw/s6_metric.py:168,274 admits ns only — intended (ADR-0196 decision 4), not a defect. timings_tool.timing_problem(step=None) still defaults to the v2 rule, but no caller in hilclaw/ omits step.
+- Register sentences now inexact (not edited; ADR-0196 "Less exact" already lists them): ADR-0193 decisions 3 and 4, ADR-0183 decisions 4, 7 and 8, ADR-0184 decision 2, ADR-0189 decision 2, ADR-0194 decisions 4 and 5. No further one was found.
+- Interpretation recorded in the commit body: the "more than one unit gives no base" test looks at the attempts verified at both points, the only ones whose medians are compared (a reading of ADR-0196 decision 4's "shown attempts").
+- Runtime acceptance item: recorded by the driver as RA-0076.
+- PLAN P3-3: not met. It still waits for T-0551 (HQ-0091 follow-up: correctness.check and instance start at virtual_npu).
+- New HQ: none.
+- Process note: the round-1 reviewer removed the whole task directory ${TMPDIR}/hilclaw-driver/T-0550/ with `rm -r`, including executor files (outside its scope). Nothing needed for the task was lost; the round-2 brief limited the reviewer to its own subdirectory.
+- Cleanup: the task directory was removed with `rm -r`. No work images, host installs or leftover paths. The local and remote branch are deleted.

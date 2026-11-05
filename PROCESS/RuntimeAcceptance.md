@@ -655,3 +655,11 @@
 - 내용:
 
   PLAN P3-13. NVIDIA GPU가 있는 다른 C-7 머신(특히 native Linux)에서 오너가 `tests/test_cuda_adapter.py`의 `test_real_gpu_*`로 다음을 확인한다. ① `tests/cuda_fixtures/timing.cu`의 측정 보고가 두 sample form(`interval`·`reciprocal`) 모두에서 `hilclaw.harness.timing.judge_report`로 받아들여지는지 ② 붙들어 둔 커널의 측정 구간이 하한 이상인지(완료 대기가 구간 안) ③ 장치 메모리의 1024배 `cudaMalloc`이 곧바로 `exit_status`로 끝나는지 ④ illegal address는 `exit_status`, hang은 `time_limit`으로 끝나고 그 뒤 GPU를 곧바로 다시 쓸 수 있는지(TDR·GPU 재설정 없음 포함). 개발 머신에서는 WSL2의 RTX 4070(nvcc 13.1)으로만 확인했다(측정 구간 5,022,585~5,039,147 ns; WSL2에서는 장치 메모리의 4배까지 `cudaMalloc`이 성공하고 64배는 실패까지 58초). Windows에서는 MSVC가 없어 건너뛴다. 런타임 컨테이너에 GPU를 주는 일은 확인하지 않았다. T-0546(PR #362, main 1a7df6a5) 착지 뒤 확인 가능.
+
+### RA-0076
+
+- 상태: 미확인
+- 출처: P3-3, T-0550, ADR-0196 (등록 2026-11-05)
+- 내용:
+
+  PLAN P3-3 / ADR-0196. On a runtime machine with Docker and the clang image, a real `virtual_npu` `sim.run` / `board.run` timing run (bf16 kind) ends with a `step_ended` line under `sim_run_timing_v3` / `board_run_timing_v3` whose result has unit `cycles`. Its `resolution` and `intervals` are 3x the harness's ns figures, `memory_bytes` is unconverted, and `timings.compare` between two such attempts answers without `units_differ`. `cpu_standin` runs report `ns` under the v3 values. T-0550(PR #366, main 62db40bd) 착지 뒤 확인 가능.
