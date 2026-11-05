@@ -17,8 +17,11 @@ and ADR-0078 decisions 6 and 7 are the rules of the compiler's log.
    value ADR-0183 retired is a line of another step and is not taken as
    open (ADR-0100 decision 5).
 3. For an identity with no line ``instance.json`` is read, by
-   :func:`hilclaw.instance.read`, and the backend is selected for the
-   hw_profile of that read. Then :func:`hilclaw.check_admission.admit`
+   :func:`hilclaw.instance.read` and, for a file of another version, by
+   :func:`hilclaw.instance.read_kinded`, so a run of the candidate kind
+   ``c_kernel`` or ``compile_settings`` is read (ADR-0198 decision 8, row 6)
+   and a run of any other kind is ``run_file_unsupported``; the backend is
+   selected for the hw_profile of that read. Then :func:`hilclaw.check_admission.admit`
    gives one of its four answers or what the check takes from the same
    read (ADR-0046 decision 8): a record ``covers`` answers ``True`` for is
    admitted whatever its ``dtype`` (ADR-0183 decision 2). ``covers`` is read
@@ -31,7 +34,8 @@ and ADR-0078 decisions 6 and 7 are the rules of the compiler's log.
    (ADR-0048 decisions 3 to 5).
 5. The start line is appended.
 6. The output path and the path of the file of the compiler's log are
-   formed, a new log keeper is made, and :func:`hilclaw.check_seed.check`
+   formed (for a ``compile_settings`` run see below), a new log keeper is
+   made, and :func:`hilclaw.check_seed.check`
    calls the operation with the request, the hw_profile, the check
    parameters, the seed among them, the output path (ADR-0056 decision 3)
    and the keeper (ADR-0078 decision 6). When the operation came back, by
@@ -44,6 +48,24 @@ and ADR-0078 decisions 6 and 7 are the rules of the compiler's log.
    (ADR-0078 decision 7), and in all cases with the empty ``spend``
    (ADR-0040 decision 6). The result is the v2 result of ADR-0183
    decision 3 for every contract (:mod:`hilclaw.check_answer`).
+
+In a run whose candidate kind is ``compile_settings`` (ADR-0198 decisions 2,
+5 and 6) the attempt's spec is read in 6, after the start line, by
+:func:`hilclaw.build_record.evaluated`. A version-2 spec is evaluated as in a
+C kernel run, and so is every attempt of a ``c_kernel`` run, whose spec is
+not read. For a version-3 spec the output path is that of the attempt the
+spec names, the operation is called with the spec's
+:class:`hilclaw.build_record.CandidateBuild` current
+(:func:`hilclaw.build_record.building`), so that an operation that builds
+adds the candidate's flags after the target's, and when the operation came
+back, by returning or by a tool failure, the build is written to the
+attempt's ``build.json`` if a build ended and the name is free
+(:meth:`hilclaw.build_record.CandidateBuild.write`), before the end line. A
+spec or a named attempt that gives no kernel ends the step with the kind and
+the message of :class:`hilclaw.build_record.KernelRefused`, a backend kind
+of a missing or unreadable kernel, and no operation is called; a refused
+candidate flag is the operation's ``settings_refused``. Neither writes a
+``build.json``, and neither does a call whose operation builds nothing.
 
 Choices that are this module's own and no rule of a record:
 
@@ -58,7 +80,8 @@ Choices that are this module's own and no rule of a record:
 * The output path is the :class:`pathlib.Path` that
   :func:`hilclaw.layout.attempt_artefact` returns for the data root of the
   call, the members ``run_id``, ``round``, ``candidate`` and ``attempt`` of
-  the request and the name ``output``, as it is: not resolved and not made
+  the request (of the named attempt, for a version-3 spec) and the name
+  ``output``, as it is: not resolved and not made
   absolute, so that it does not depend on the working directory. It is
   formed once for a call, after the start line, and handed on as that one
   object.
@@ -83,13 +106,16 @@ seeds and a predicate "covered" are bound; the default registry binds them
 (ADR-0070), this module does not. It looks at no value but that of
 ``point`` and of the five the two paths are formed from, and hands the
 request on as the caller gave it. Of the kernel of the attempt it forms the
-output path and hands it on; it reads nothing there, does not test whether the
-path or anything above it exists, and composes no message that holds the path.
+output path and hands it on; but for the reads of
+:func:`hilclaw.build_record.evaluated` in a ``compile_settings`` run it reads
+nothing there, does not test whether the path or anything above it exists,
+and composes no message that holds the path.
 It writes the file of the compiler's log only through
 :func:`hilclaw.check_seed.check`, which writes it by
 :func:`hilclaw.build_log.write`; the message of ``build_log_unwritable`` is
 that module's and shows no path, no text of an error and no byte of the log.
-It says nothing of flags or of time limits. It binds no source of seeds, no
+It says nothing of flags or of time limits; a candidate's flags reach the
+operation through :mod:`hilclaw.build_record`. It binds no source of seeds, no
 predicate, no backend, no table and no script, and no parameter has a default.
 It names no kind, no ``step`` value and no member of its own, and composes the
 message of no tool failure. It composes no message that holds a seed. The end
@@ -101,7 +127,7 @@ for the six of its decision 4) and has no content that holds the seed
 (ADR-0047 decision 4, citing ADR-0021 decision 3); nothing detects a message
 that breaks this. It gives no rule for another HW tool and keeps nothing
 between calls. It imports :mod:`hilclaw.build_log`,
-:mod:`hilclaw.check_admission`,
+:mod:`hilclaw.build_record`, :mod:`hilclaw.check_admission`,
 :mod:`hilclaw.check_ending`, :mod:`hilclaw.check_identity`,
 :mod:`hilclaw.check_seed`, :mod:`hilclaw.hw_tool`, :mod:`hilclaw.instance`,
 :mod:`hilclaw.journaled_step`, :mod:`hilclaw.layout` and
@@ -110,6 +136,7 @@ between calls. It imports :mod:`hilclaw.build_log`,
 
 from hilclaw import (
     build_log,
+    build_record,
     check_admission,
     check_ending,
     check_identity,
@@ -122,15 +149,18 @@ from hilclaw import (
 )
 
 _TOOL = "correctness.check"
+_C_KERNEL = "c_kernel"
+_EVALUATED_KINDS = (_C_KERNEL, "compile_settings")
 
 
 class _Drawn:
-    __slots__ = ("admitted", "seed", "step")
+    __slots__ = ("admitted", "kind", "seed", "step")
 
-    def __init__(self, admitted, seed, step):
+    def __init__(self, admitted, seed, step, kind):
         self.admitted = admitted
         self.seed = seed
         self.step = step
+        self.kind = kind
 
 
 def tool_function(*, source, table, seeds, covers):
@@ -178,9 +208,11 @@ def tool_function(*, source, table, seeds, covers):
     """
 
     def admit(request, read):
-        at_target = targets.covers_at(covers, read.hw_profile["accelerator"])
-        admitted = check_admission.admit(read, covers=at_target)
-        return _Drawn(admitted, check_seed.draw(seeds), check_identity.step_of(request))
+        run, kind = read
+        at_target = targets.covers_at(covers, run.hw_profile["accelerator"])
+        admitted = check_admission.admit(run, covers=at_target)
+        step = check_identity.step_of(request)
+        return _Drawn(admitted, check_seed.draw(seeds), step, kind)
 
     function = hw_tool.stepped_tool_function(
         tool=_TOOL,
@@ -189,7 +221,7 @@ def tool_function(*, source, table, seeds, covers):
         numbers=check_identity.NUMBERS,
         source=source,
         table=table,
-        read=instance.read,
+        read=_read,
         hw_profile_in=_hw_profile,
         check=check_identity.check,
         admit=admit,
@@ -201,8 +233,22 @@ def tool_function(*, source, table, seeds, covers):
     return function
 
 
+def _read(data_root, run_id):
+    try:
+        return instance.read(data_root, run_id), _C_KERNEL
+    except instance.UnsupportedVersionError:
+        kinded = instance.read_kinded(data_root, run_id)
+    if kinded.candidate_kind not in _EVALUATED_KINDS:
+        raise instance.UnsupportedVersionError(
+            f"runs/{run_id}/instance.json: states the candidate kind "
+            f"{kinded.candidate_kind}; this tool evaluates "
+            f"{' and '.join(_EVALUATED_KINDS)} runs only"
+        )
+    return kinded.instance, kinded.candidate_kind
+
+
 def _hw_profile(read):
-    return read.hw_profile
+    return read[0].hw_profile
 
 
 def _perform(data_root, request, hw_profile, operation, drawn):
@@ -213,21 +259,34 @@ def _perform(data_root, request, hw_profile, operation, drawn):
         request["candidate"],
         request["attempt"],
     )
-    output_path = layout.attempt_artefact(*attempt, "output")
     log_path = layout.build_log_file(*attempt, drawn.step, request["execution"])
     try:
-        result = check_seed.check(
-            operation,
-            request,
-            hw_profile,
-            drawn.admitted,
-            drawn.seed,
-            output_path,
-            build_log.LogKeeper(),
-            log_path=log_path,
-        )
-    except check_ending.EndedWithoutOutcome as ended:
-        kind, message = ended.kind, ended.message
-    else:
+        evaluated = _evaluated(drawn.kind, attempt)
+    except build_record.KernelRefused as refused:
+        raise journaled_step.StepFailed({}, refused.kind, refused.message) from None
+    with build_record.building(evaluated.build):
+        try:
+            result = check_seed.check(
+                operation,
+                request,
+                hw_profile,
+                drawn.admitted,
+                drawn.seed,
+                evaluated.output_path,
+                build_log.LogKeeper(),
+                log_path=log_path,
+            )
+        except check_ending.EndedWithoutOutcome as ended:
+            kind, message = ended.kind, ended.message
+            result = None
+    if evaluated.build is not None:
+        evaluated.build.write()
+    if result is not None:
         return {}, result
     raise journaled_step.StepFailed({}, kind, message)
+
+
+def _evaluated(kind, attempt):
+    if kind == _C_KERNEL:
+        return build_record.Evaluated(layout.attempt_artefact(*attempt, "output"), None)
+    return build_record.evaluated(*attempt)

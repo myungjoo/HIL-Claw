@@ -429,3 +429,44 @@ def test_covers_at_passes_what_covers_and_served_at_raise():
     at = targets.covers_at(Asked(True), targets.VIRTUAL_NPU)
     with pytest.raises(keys.InvalidRecordError):
         at({**BF16_GEMM, "kind": "unknown_kind"})
+
+
+# --- a candidate's flags (ADR-0198 decision 6) ---
+
+
+@pytest.mark.parametrize("name", [targets.CPU_STANDIN, targets.VIRTUAL_NPU])
+@pytest.mark.parametrize("flags", [("-O3", "-funroll-loops"), ["-O1"], ()])
+def test_with_candidate_flags_puts_them_after_the_targets(name, flags):
+    target = targets.target(name)
+    widened = targets.with_candidate_flags(target, flags)
+    assert type(widened) is Target
+    assert widened.flags == (*target.flags, *flags)
+    assert dataclasses.replace(widened, flags=target.flags) == target
+    assert targets.target(name) == target
+
+
+@pytest.mark.parametrize(
+    "flag", ["-o", "-ofile", "-objcmt-migrate-all", "--output", "--output=x", "-O\0"]
+)
+def test_with_candidate_flags_refuses_what_the_build_refuses(flag):
+    with pytest.raises(ValueError) as raised:
+        targets.with_candidate_flags(targets.target(targets.CPU_STANDIN), ("-O2", flag))
+    assert flag not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("target", "flags"),
+    [
+        ("cpu_standin", ()),
+        (None, ()),
+        ("standin", "-O3"),
+        ("standin", ("-O3", 3)),
+        ("standin", None),
+        ("standin", iter(("-O3",))),
+    ],
+)
+def test_with_candidate_flags_refuses_a_bad_argument(target, flags):
+    if target == "standin":
+        target = targets.target(targets.CPU_STANDIN)
+    with pytest.raises(TypeError):
+        targets.with_candidate_flags(target, flags)

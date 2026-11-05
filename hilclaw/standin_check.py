@@ -123,10 +123,23 @@ settings and time limits from the ``cpu_standin`` :class:`hilclaw.targets.Target
 and :func:`operation_for` builds the same operation with another
 :class:`hilclaw.targets.Target` (ADR-0193 decision 3).
 
-:class:`Answered`, :func:`carry_out`, :func:`container_image`,
-:func:`make_build_dir`, :func:`in_container`, :func:`run_build`,
-:func:`run_container`, :func:`settled` and :func:`remove_build_dir` are the
-steps this operation shares with the ``cpu_standin`` operation of the run
+In a call of a ``compile_settings`` candidate (ADR-0198 decision 6) the
+tool function makes a :class:`hilclaw.build_record.CandidateBuild` current
+(:func:`hilclaw.build_record.building`). The operation then builds with the
+target's flags followed by the candidate's flags and the target's trailing
+flags (:func:`candidate_target`), answers a candidate flag the build refuses
+``settings_refused`` (S4) before the image is read, and tells the build, by
+:func:`report_build`, what the kernel build gave: built for a status 0, the
+condition for ``build_time_limit`` or ``build_exit_status``, with the exact
+flags and trailing flags handed to the compiler. A build answered with a
+failure (S9 among them) is not told. With no current build the operation is
+as before.
+
+:class:`Answered`, :func:`candidate_target`, :func:`carry_out`,
+:func:`container_image`, :func:`make_build_dir`, :func:`in_container`,
+:func:`run_build`, :func:`report_build`, :func:`run_container`,
+:func:`settled` and :func:`remove_build_dir` are the steps this operation
+shares with the ``cpu_standin`` operation of the run
 tools, :func:`hilclaw.standin_run.operation` (ADR-0170).
 """
 
@@ -140,6 +153,7 @@ import time
 
 from hilclaw import (
     build_log,
+    build_record,
     check_failure,
     check_parameters,
     checkout_boundary,
@@ -184,6 +198,7 @@ _NO_EXECUTABLE = standin_answer.Failure(
     "the build ended with status 0 and left no executable",
 )
 _NO_STATUS = "the container's client handed back no status"
+_REFUSED = "a flag of the candidate is one the build refuses"
 _EXECUTABLE = posixpath.join(standin_container.CONTAINER_BUILD_DIR, EXECUTABLE_NAME)
 
 
@@ -251,14 +266,51 @@ def _check_target(target):
 
 def _operate(target, parameters, output_path, keeper):
     checked = _checked(parameters, keeper, target.process_time_limit_cap_s)
+    build = build_record.current()
+    target = candidate_target(target, build)
     image = container_image()
     build_dir = make_build_dir(BUILD_DIR_PREFIX)
     return carry_out(
         build_dir,
         lambda outcomes: _carry_out(
-            target, image, build_dir, output_path, keeper, checked, outcomes
+            target, image, build_dir, output_path, keeper, checked, outcomes, build
         ),
     )
+
+
+def candidate_target(target, build):
+    """Return ``target`` with the flags of ``build`` after its own, or ``target`` itself when ``build`` is ``None``.
+
+    ``build`` is a :class:`hilclaw.build_record.CandidateBuild` or ``None``
+    (ADR-0198 decision 6). Raises :class:`hilclaw.tools.ToolFailure`
+    ``settings_refused`` (S4) for a candidate flag
+    :func:`hilclaw.targets.with_candidate_flags` refuses, with a message that
+    shows no flag.
+    """
+    if build is None:
+        return target
+    try:
+        return targets.with_candidate_flags(target, build.flags)
+    except ValueError:
+        raise tools.ToolFailure(check_failure.KIND_SETTINGS_REFUSED, _REFUSED) from None
+
+
+def report_build(build, answer, target):
+    """Tell ``build`` what a kernel build built with ``target`` gave, where it ended built or broken.
+
+    ``build`` is a :class:`hilclaw.build_record.CandidateBuild` or ``None``,
+    for which nothing is done. ``answer`` is what :func:`run_build` returned:
+    :data:`hilclaw.standin_answer.GO_ON` is told as built, a value of
+    :data:`hilclaw.build_record.CONDITIONS` as broken with that condition,
+    each with ``target.flags`` and ``target.trailing_flags``; any other value
+    is not told.
+    """
+    if build is None:
+        return
+    if answer is standin_answer.GO_ON:
+        build.ended(None, target.flags, target.trailing_flags)
+    elif type(answer) is str and answer in build_record.CONDITIONS:
+        build.ended(answer, target.flags, target.trailing_flags)
 
 
 def carry_out(build_dir, steps):
@@ -388,10 +440,11 @@ def _inside_checkout(directory):
         current = parent
 
 
-def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes):
+def _carry_out(target, image, build_dir, output_path, keeper, checked, outcomes, build):
     (program, header, text), arguments, limit, rows = checked
     copies = _placed_copies(output_path, build_dir, program, header, text)
     built = _build(target, image, build_dir, copies, keeper, outcomes)
+    report_build(build, built, target)
     if built is not standin_answer.GO_ON:
         return built
     ran = run_container(

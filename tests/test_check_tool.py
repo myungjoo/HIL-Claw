@@ -9,10 +9,12 @@ import struct
 from pathlib import Path
 
 import pytest
+import test_build_record as records
 
 from hilclaw import (
     backends,
     build_log,
+    build_record,
     check_admission,
     check_definition,
     check_seed,
@@ -22,6 +24,7 @@ from hilclaw import (
     gemm_contract,
     instance,
     journaled_step,
+    kernel_source,
     keys,
     layout,
     mock_backend,
@@ -1124,6 +1127,7 @@ def test_the_module_holds_what_it_joins_and_nothing_of_its_own():
             imported.update(alias.name for alias in node.names)
     assert imported == {
         "build_log",
+        "build_record",
         "check_admission",
         "check_ending",
         "check_identity",
@@ -1779,22 +1783,265 @@ def test_an_error_of_building_the_target_passes_before_any_line(root, monkeypatc
     assert lines(root) == []
 
 
-# --- a compile_settings run (ADR-0198 decision 8, slice 2b) ---
+# --- a compile_settings run (ADR-0198 decisions 2, 5, 6 and 8, slice 3) ---
+
+KERNEL_ATTEMPT = (0, 1, 1)
+ASKED_ATTEMPT = (ROUND, 2, 1)
+CANDIDATE_FLAGS = ("-O3", "-funroll-loops")
+TARGET_FLAGS = ("-std=gnu11", "-O2")
+TRAILING = ("-lm",)
 
 
 def files_of(root):
     return sorted(path.relative_to(root).as_posix() for path in root.rglob("*"))
 
 
-def test_a_compile_settings_run_is_run_file_unsupported_with_no_line(root, recorded):
+def settings_run(root):
     document = json.loads(content())
     document |= {"schema_version": 2, "candidate_kind": "compile_settings"}
+    place(root, json.dumps(document).encode())
+
+
+def a_candidate(root, flags=CANDIDATE_FLAGS):
+    settings_run(root)
+    records.place_spec(root, RUN, KERNEL_ATTEMPT)
+    records.place_kernel(root, RUN, KERNEL_ATTEMPT)
+    records.place_spec(root, RUN, ASKED_ATTEMPT, named=KERNEL_ATTEMPT, flags=flags)
+
+
+def build_json(root):
+    return FORM(root, RUN, *ASKED_ATTEMPT, "build.json")
+
+
+def kernel_output(root):
+    return FORM(root, RUN, *KERNEL_ATTEMPT, "output")
+
+
+def building(condition=None, then=None):
+    """A script that builds: it tells the current build, as an operation that builds does."""
+
+    def script(tool, asked, hw_profile, parameters, output_path, keeper):
+        build = build_record.current()
+        build.ended(condition, (*TARGET_FLAGS, *build.flags), TRAILING)
+        if then is not None:
+            raise then
+        if condition is not None:
+            return condition
+        return mock_check.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
+
+    return script
+
+
+def seeing(seen):
+    def script(tool, asked, hw_profile, parameters, output_path, keeper):
+        seen.append(build_record.current())
+        return mock_check.default_script(
+            tool, asked, hw_profile, parameters, output_path, keeper
+        )
+
+    return script
+
+
+def test_a_coder_attempt_of_a_compile_settings_run_is_checked_as_a_c_kernel(root):
+    settings_run(root)
+    records.place_spec(root, RUN, ASKED_ATTEMPT)
+    seen = []
+    bench = Bench(root, script=seeing(seen))
+    assert bench.function(request())["outcome"] == "pass"
+    assert bench.asked[0][4] == output_of(root, request())
+    assert seen == [None]
+    assert not build_json(root).exists()
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_a_candidate_is_built_from_the_named_kernel_and_its_first_build_recorded(
+    root, point
+):
+    a_candidate(root)
+    bench = Bench(root, script=building())
+    result = bench.function(request(point=point))
+    assert result["outcome"] == "pass"
+    ((_, _, _, _, output_path),) = bench.asked
+    assert output_path == kernel_output(root)
+    assert build_record.read(root, RUN, *ASKED_ATTEMPT) == (
+        "built",
+        None,
+        [*TARGET_FLAGS, *CANDIDATE_FLAGS],
+        list(TRAILING),
+    )
+    assert build_record.current() is None
+    _, ended = lines(root)
+    assert ended["data"]["result"] == result
+
+
+def test_a_later_build_of_the_attempt_writes_no_build_record(root):
+    a_candidate(root)
+    Bench(root, script=building()).function(request(point="sim"))
+    first = build_json(root).read_bytes()
+    later = Bench(root, script=building("build_exit_status"))
+    result = later.function(request(point="board"))
+    assert (result["outcome"], result["condition"]) == ("broken", "build_exit_status")
+    assert build_json(root).read_bytes() == first
+    again = Bench(root, script=building("build_time_limit"))
+    again.function(request(point="sim", execution=2))
+    assert build_json(root).read_bytes() == first
+
+
+@pytest.mark.parametrize("condition", ["build_time_limit", "build_exit_status"])
+def test_a_broken_first_build_is_recorded_with_the_condition_of_its_result(
+    root, condition
+):
+    a_candidate(root)
+    result = Bench(root, script=building(condition)).function(request())
+    assert (result["outcome"], result["condition"]) == ("broken", condition)
+    record = build_record.read(root, RUN, *ASKED_ATTEMPT)
+    assert (record.outcome, record.condition) == ("broken", condition)
+
+
+def test_a_backend_that_builds_nothing_writes_no_build_record(root):
+    a_candidate(root)
+    bench = Bench(root)
+    assert bench.function(request())["outcome"] == "pass"
+    assert bench.asked[0][4] == kernel_output(root)
+    assert not build_json(root).exists()
+
+
+def test_a_tool_failure_after_the_build_ended_still_records_the_build(root):
+    a_candidate(root)
+    raised = ToolFailure("executable_unstartable", "the executable did not start")
+    failure = Bench(root, script=building(then=raised)).failure()
+    assert failure.kind == "executable_unstartable"
+    assert build_record.read(root, RUN, *ASKED_ATTEMPT).outcome == "built"
+
+
+def test_a_settings_refused_operation_writes_no_build_record(root):
+    a_candidate(root, flags=("-o",))
+    raised = ToolFailure("settings_refused", "a flag of the candidate is refused")
+    failure = Bench(root, script=raised).failure()
+    assert failure.kind == "settings_refused"
+    assert not build_json(root).exists()
+
+
+def test_a_request_to_end_after_the_build_writes_no_build_record(root):
+    a_candidate(root)
+    with pytest.raises(KeyboardInterrupt):
+        Bench(root, script=building(then=KeyboardInterrupt())).function(request())
+    assert not build_json(root).exists()
+    assert build_record.current() is None
+
+
+def test_a_build_record_that_cannot_be_written_changes_no_result(root):
+    a_candidate(root)
+    measure = FORM(root, RUN, *ASKED_ATTEMPT, "build.json").parent
+    measure.parent.mkdir(parents=True)
+    measure.write_bytes(b"")
+    result = Bench(root, script=building()).function(request())
+    assert result["outcome"] == "pass"
+    assert measure.is_file()
+
+
+def no_spec(root):
+    records.place_kernel(root, RUN, ASKED_ATTEMPT)
+
+
+def invalid_spec(root):
+    records.place_spec(root, RUN, ASKED_ATTEMPT, content=b"{}")
+
+
+def named_candidate(root):
+    records.place_spec(root, RUN, (1, 1, 1), named=KERNEL_ATTEMPT)
+    records.place_spec(root, RUN, ASKED_ATTEMPT, named=(1, 1, 1))
+
+
+def named_without_compiled_set(root):
+    records.place_spec(root, RUN, KERNEL_ATTEMPT)
+    records.place_kernel(root, RUN, KERNEL_ATTEMPT, names=("k.h",))
+    records.place_spec(root, RUN, ASKED_ATTEMPT, named=KERNEL_ATTEMPT)
+
+
+@pytest.mark.parametrize(
+    ("made", "kind"),
+    [
+        (no_spec, "no_kernel_source"),
+        (invalid_spec, "kernel_source_unreadable"),
+        (named_candidate, "no_kernel_source"),
+        (named_without_compiled_set, "no_kernel_source"),
+    ],
+)
+def test_an_attempt_that_gives_no_kernel_ends_the_step_with_no_operation(
+    root, made, kind
+):
+    settings_run(root)
+    records.place_spec(root, RUN, KERNEL_ATTEMPT)
+    made(root)
+    bench = Bench(root, script=building())
+    failure = bench.failure()
+    assert failure.kind == kind
+    assert failure.message.startswith("the attempt gives no kernel to build: ")
+    assert str(root) not in failure.message
+    assert failure.__cause__ is None
+    assert bench.asked == []
+    _, ended = lines(root)
+    assert ended["data"]["failure"] == {"kind": kind, "message": failure.message}
+    assert not build_json(root).exists()
+
+
+def test_a_c_kernel_run_reads_no_spec_and_records_no_build(root, monkeypatch):
+    monkeypatch.setattr(build_record, "evaluated", pytest.fail)
+    seen = []
+    bench = Bench(root, script=seeing(seen))
+    assert bench.function(request())["outcome"] == "pass"
+    assert seen == [None]
+    assert bench.asked[0][4] == output_of(root, request())
+    assert not list(root.rglob("build.json"))
+
+
+def test_a_version_3_spec_in_a_c_kernel_run_has_no_kernel_source(root):
+    records.place_spec(root, RUN, KERNEL_ATTEMPT)
+    records.place_kernel(root, RUN, KERNEL_ATTEMPT)
+    records.place_spec(root, RUN, ASKED_ATTEMPT, named=KERNEL_ATTEMPT)
+
+    def reading(tool, asked, hw_profile, parameters, output_path, keeper):
+        assert build_record.current() is None
+        if kernel_source.read_compiled_set(output_path).missing is not None:
+            raise ToolFailure("no_kernel_source", "the attempt has no kernel source")
+        raise AssertionError("the named kernel was handed")
+
+    bench = Bench(root, script=reading)
+    assert bench.failure().kind == "no_kernel_source"
+    assert bench.asked[0][4] == output_of(root, request())
+    assert not build_json(root).exists()
+
+
+def test_a_compile_settings_run_of_another_version_is_still_unsupported(root, recorded):
+    document = json.loads(content())
+    document |= {"schema_version": 3, "candidate_kind": "compile_settings"}
     place(root, json.dumps(document).encode())
     before = files_of(root)
     bench = Bench(root)
     failure = bench.failure()
     assert failure.kind == tools.KIND_RUN_FILE_UNSUPPORTED
-    assert failure.message.startswith(f"{FILE}: schema_version: 2")
-    assert type(failure.__cause__) is instance.UnsupportedVersionError
+    assert (bench.asked, bench.order, lines(root)) == ([], [], [])
+    assert files_of(root) == before
+
+
+def test_a_run_of_a_kind_the_tool_does_not_evaluate_is_unsupported(root, monkeypatch):
+    settings_run(root)
+    read_kinded = instance.read_kinded
+
+    def another_kind(data_root, run_id):
+        return read_kinded(data_root, run_id)._replace(candidate_kind="quantization")
+
+    monkeypatch.setattr(instance, "read_kinded", another_kind)
+    before = files_of(root)
+    bench = Bench(root)
+    failure = bench.failure()
+    assert failure.kind == tools.KIND_RUN_FILE_UNSUPPORTED
+    assert failure.message == (
+        f"{FILE}: states the candidate kind quantization; this tool evaluates "
+        "c_kernel and compile_settings runs only"
+    )
     assert (bench.asked, bench.order, lines(root)) == ([], [], [])
     assert files_of(root) == before

@@ -32,9 +32,10 @@ A call, in this order:
    version 1 for both (ADR-0198 decisions 7 and 8); a version-1 file is read
    by :func:`hilclaw.instance.layout_version_of` as before, and a version-2
    one read again as its version-1 twin. Whether a run of that kind is
-   carried out is the tool's (the read of the hw_profile in
-   :mod:`hilclaw.hw_tool` still refuses it). When the stamp cannot be had,
-   the call is a tool failure of one of the four reserved kinds of ADR-0019
+   carried out is the tool's (a reader of the hw_profile handed to
+   :mod:`hilclaw.hw_tool` that reads version 1 only refuses it; those of
+   ``correctness.check``, ``sim.run`` and ``board.run`` read it). When the
+   stamp cannot be had, the call is a tool failure of one of the four reserved kinds of ADR-0019
    decision 2, and what follows under 3 does not take place (ADR-0030
    decision 4; the cases are below).
 3. The step of the identity is carried out by ``journaled_step.run``. What it

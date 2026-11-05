@@ -4,9 +4,10 @@
 places the description of a target in a table in the package source, one
 :class:`Target` per ``accelerator`` value. This module is that table,
 :data:`TABLE`, with :func:`target` to look one up,
-:func:`instance_start_accelerators` for the names an instance may start on and
+:func:`instance_start_accelerators` for the names an instance may start on,
 :func:`covers_at` for a predicate "covered" read at the target of an
-``accelerator`` (ADR-0197 decision 3).
+``accelerator`` (ADR-0197 decision 3) and :func:`with_candidate_flags` for a
+target's flags followed by a candidate's (ADR-0198 decision 6).
 
 * A :class:`Target` holds the build flags, trailing flags and waiter flags,
   the environment, the build time limit and the cap of the process time
@@ -324,3 +325,29 @@ def covers_at(covers, accelerator, table=TABLE):
         return contract_table.served_at(record, held)
 
     return covered_at_target
+
+
+def with_candidate_flags(target, flags):
+    """Return ``target`` with ``flags``, a candidate's flags, after its own (ADR-0198 decision 6).
+
+    The result is a new :class:`Target` whose ``flags`` are ``target.flags``
+    followed by ``flags`` in their order; every other member, the
+    ``trailing_flags`` among them, is that of ``target``. ``target`` is not
+    modified.
+
+    @param target exactly a :class:`Target`.
+    @param flags a ``tuple`` or ``list`` of ``str``, possibly empty.
+    @throws TypeError for a ``target`` that is not exactly a :class:`Target`
+        or ``flags`` of another form.
+    @throws ValueError for a flag :func:`hilclaw.clang_build.build` refuses:
+        one that sets the output (it starts with ``-o`` or ``--output``) or
+        one holding U+0000. The message names neither the flag nor its place.
+    """
+    if type(target) is not Target:
+        raise TypeError(f"target must be a Target, not {type(target).__name__}")
+    if type(flags) not in (tuple, list) or not all(type(flag) is str for flag in flags):
+        raise TypeError("flags must be a tuple or list of str")
+    for flag in flags:
+        if flag.startswith(("-o", "--output")) or "\0" in flag:
+            raise ValueError("a flag of the candidate is one the build refuses")
+    return dataclasses.replace(target, flags=(*target.flags, *flags))
