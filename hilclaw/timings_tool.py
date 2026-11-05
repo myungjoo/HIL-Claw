@@ -48,7 +48,7 @@ and ``contract_key``, an object of exactly ``kind``, ``dtype`` and
 looked at.
 
 The measurement of one attempt at the point: M is its end lines at the
-point's two ``step`` values, both values and every ``execution`` together, whose ``result`` has ``outcome``
+point's two ``step`` values, both of them and every ``execution`` together, whose ``result`` has ``outcome``
 ``"converged"`` or ``"not_converged"``; U is its end lines that hold a
 ``failure`` together with its identities that have a start line and no end
 line. It has a measurement exactly when M holds one line and U is empty:
@@ -528,7 +528,7 @@ def compare(run_id, lines, metric, point, measured, against):
     refs = (measured, against)
     named = {_numbers(ref) for ref in refs}
     found = timing_lines(run_id, lines, point, named.__contains__)
-    none = TimingLines([], set(), [])
+    none = TimingLines([], set(), [], set())
     chosen = {
         side: _measurement(file, side, ref, steps, found.get(_numbers(ref), none))
         for side, ref in zip(_SIDES, refs)

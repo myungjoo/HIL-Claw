@@ -1121,13 +1121,17 @@ def test_a_v3_measurement_in_ns_is_read_as_a_v2_one(root, tmp_path):
     assert told["second_run_round"] == 2
 
 
-def test_a_different_unit_does_not_reach_and_is_reported(root):
+@pytest.mark.parametrize("run_id", [FIRST, SECOND])
+def test_a_result_in_another_unit_is_a_read_failure(root, run_id):
     three_rounds_first(root)
-    check(root, SECOND, 1)
-    result = timing(D) | {"unit": "cycles"}
-    lines(root, SECOND, "board_run_timing_v3", 1, 1, 1, result=result)
+    check(root, run_id, 3)
+    result = timing([1, 1, 1, 1, 1]) | {"unit": "cycles"}
+    lines(root, run_id, "board_run_timing_v3", 3, 1, 1, result=result)
     told = judged(root)
-    assert told["second_run_round"] == "not reached"
-    assert told["second_run"]["left_out"]["did_not_reach"] == [
-        {"round": 1, "candidate": 1, "attempt": 1, "reason": "units_differ"}
-    ]
+    assert told["outcome"] == "read_failure"
+    assert told["kind"] == "timing_result_invalid"
+    assert told["run_id"] == run_id
+    assert told["reason"].endswith(
+        "round 3, candidate 1, attempt 1, execution 1: the unit cycles is not ns, "
+        "the one unit the S6 metric compares"
+    )

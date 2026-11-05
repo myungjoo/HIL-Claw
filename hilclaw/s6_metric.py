@@ -73,12 +73,11 @@ A-8), ``same_source_commit`` and ``same_draws``.
 once, under its first reason in the order of :data:`LEFT_OUT_REASONS`: the
 measurement rule, then the outcome, then the standing. A qualifying attempt whose
 samples the trimmed mean refuses cannot be ordered, so it is no first-run best and
-is listed in ``did_not_reach`` with ``samples_out_of_domain``. An attempt whose
-comparison with the first-run best gives ``shapes_differ``, ``units_differ``
-(ADR-0196 decision 4: results of two units are not compared) or
-``samples_out_of_domain`` does not reach and is listed there with that kind.
-Both runs being of ``cpu_standin`` or the mock, their results are in ``ns``
-under either ``step`` value the read takes. Among attempts of
+is listed in ``did_not_reach`` with ``samples_out_of_domain``. The board
+lines of both ``step`` values are read (ADR-0196 decision 4), and only results
+in ``ns`` are admitted: both runs are of ``cpu_standin`` or the mock, whose
+results are in ``ns``, so a completed result in another unit is a read failure,
+``timing_result_invalid``, and no two units are ever compared. Among attempts of
 the second-run round that reach, the one reported is the lowest candidate, then
 attempt. The last recorded round is the highest ``round`` of any line of the log.
 
@@ -164,9 +163,9 @@ _LATENCY_ONLY = {"objectives": [{"type": "latency_minimisation"}], "constraints"
 _ROUND_NAME = re.compile("[0-9]{4,}")
 _OUT_OF_REACH = (
     timings_tool.KIND_SHAPES_DIFFER,
-    timings_tool.KIND_UNITS_DIFFER,
     timings_tool.KIND_SAMPLES_OUT_OF_DOMAIN,
 )
+_UNIT = "ns"
 _INSTANCE_KINDS = (
     (instance.MissingInstanceError, "instance_missing"),
     (FileNotFoundError, "instance_missing"),
@@ -270,6 +269,19 @@ def _verified_attempts(run_id, lines):
     }
 
 
+def _in_ns(run_id, numbers, held):
+    for execution, result in held.entering:
+        if result["unit"] != _UNIT:
+            file = run_files.relative(run_id, checks_tool.LOG)
+            named = "round {}, candidate {}, attempt {}".format(*numbers)
+            raise tools.ToolFailure(
+                timings_tool.KIND_TIMING_RESULT_INVALID,
+                f"{file}: {named}, execution {execution}: the unit "
+                f"{result['unit']} is not {_UNIT}, the one unit the S6 metric "
+                "compares",
+            )
+
+
 def _left_out_reason(numbers, held, verified):
     problem = timings_tool.measurement_problem(held)
     if problem is not None:
@@ -339,6 +351,7 @@ def _read_run(data_root, run_id):
         verified = _verified_attempts(run_id, lines)
         qualifying, left_out = {}, {}
         for numbers, held in timing.items():
+            _in_ns(run_id, numbers, held)
             reason = _left_out_reason(numbers, held, verified)
             if reason is None:
                 qualifying[numbers] = held.entering[0][1]
