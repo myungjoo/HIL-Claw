@@ -620,6 +620,8 @@ def test_build_log_steps_are_those_of_correctness_check_and_the_run_tools():
         "correctness_check_board_v2",
         "sim_run_timing_v2",
         "board_run_timing_v2",
+        "sim_run_timing_v3",
+        "board_run_timing_v3",
     )
 
 
@@ -746,3 +748,20 @@ def test_build_log_file_checks_the_attempt_as_attempt_dir_does():
     assert rel(build_log_file(ROOT, RUN, 0, 1, 1, step, 1)).startswith(
         f"runs/{RUN}/rounds/0000/measure/"
     )
+
+
+@pytest.mark.parametrize("step", ["sim_run_timing_v3", "board_run_timing_v3"])
+def test_build_log_file_admits_the_v3_run_values(step):
+    path = build_log_file(ROOT, RUN, 3, 2, 1, step, 1)
+    assert rel(path) == (
+        f"runs/{RUN}/rounds/0003/measure/candidates/02/attempts/01/"
+        f"build-log-{step}-01.txt"
+    )
+
+
+@pytest.mark.parametrize(
+    "step", ["sim_run_timing_v4", "correctness_check_sim_v3", "board_run_timing_V3"]
+)
+def test_an_unknown_step_beside_the_v3_values_is_rejected(step):
+    with pytest.raises(InvalidPathValueError, match=r"^step: must be one of "):
+        build_log_file(ROOT, RUN, 7, 3, 2, step, 1)

@@ -56,6 +56,8 @@ BUILD_LOG_STEPS = (
     "correctness_check_board_v2",
     "sim_run_timing_v2",
     "board_run_timing_v2",
+    "sim_run_timing_v3",
+    "board_run_timing_v3",
 )
 
 _RUN_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
@@ -174,9 +176,11 @@ def build_log_file(data_root, run_id, round, candidate, attempt, step, execution
     of :data:`BUILD_LOG_STEPS`: ``correctness_check_sim_v2`` and
     ``correctness_check_board_v2``, the two ``step`` values of
     ``correctness.check``, then ``sim_run_timing_v2`` and
-    ``board_run_timing_v2``, the one of each run tool (ADR-0183 decisions 2
-    and 7). Any other value is refused, the six values ADR-0183 retired
-    included. ``execution`` is an
+    ``board_run_timing_v2``, the v2 value of each run tool (ADR-0183
+    decisions 2 and 7), then ``sim_run_timing_v3`` and
+    ``board_run_timing_v3``, their v3 values (ADR-0196 decision 6). Any
+    other value is refused, the six values ADR-0183 retired included.
+    ``execution`` is an
     integer from 1 to :data:`hilclaw.keys.MAX_INTEGER`, written in decimal and
     zero-padded to at least two digits, never truncated. ``run_id``,
     ``round``, ``candidate`` and ``attempt`` are checked as

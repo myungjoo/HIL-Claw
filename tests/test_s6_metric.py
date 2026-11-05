@@ -1105,3 +1105,29 @@ def test_the_helpers_are_those_of_the_timing_tool(monkeypatch, root):
     monkeypatch.setattr(timings_tool, "difference_of", recording)
     assert judged(root)["verdict"] == "met"
     assert seen
+
+
+def test_a_v3_measurement_in_ns_is_read_as_a_v2_one(root, tmp_path):
+    other = tmp_path / "v2"
+    other.mkdir()
+    for data_root, step in ((root, "board_run_timing_v3"), (other, TIMING)):
+        three_rounds_first(data_root)
+        measured(data_root, SECOND, 0, FAR)
+        check(data_root, SECOND, 2)
+        lines(data_root, SECOND, step, 2, 1, 1, result=timing(D))
+        with_case(data_root, 1)
+    told = judged(root)
+    assert told == judged(other)
+    assert told["second_run_round"] == 2
+
+
+def test_a_different_unit_does_not_reach_and_is_reported(root):
+    three_rounds_first(root)
+    check(root, SECOND, 1)
+    result = timing(D) | {"unit": "cycles"}
+    lines(root, SECOND, "board_run_timing_v3", 1, 1, 1, result=result)
+    told = judged(root)
+    assert told["second_run_round"] == "not reached"
+    assert told["second_run"]["left_out"]["did_not_reach"] == [
+        {"round": 1, "candidate": 1, "attempt": 1, "reason": "units_differ"}
+    ]

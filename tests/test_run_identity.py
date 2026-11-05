@@ -15,7 +15,16 @@ from hilclaw import (
     run_identity,
     tools,
 )
-from hilclaw.run_identity import NUMBERS, STEP_BOARD_RUN, STEP_SIM_RUN, STEPS, step_of
+from hilclaw.run_identity import (
+    NUMBERS,
+    STEP_BOARD_RUN,
+    STEP_BOARD_RUN_V3,
+    STEP_SIM_RUN,
+    STEP_SIM_RUN_V3,
+    STEPS,
+    UNITS_OF,
+    step_of,
+)
 
 MARKER = "zq7-marker-zq7"
 MESSAGE_LIMIT = 100
@@ -136,8 +145,8 @@ def test_a_step_value_is_a_name_of_its_own(step, literal):
 
 def test_the_step_values_and_the_numbers_are_tuples():
     assert type(STEPS) is tuple
-    assert STEPS == (STEP_SIM_RUN, STEP_BOARD_RUN)
-    assert len(set(STEPS)) == 2
+    assert STEPS == (STEP_SIM_RUN, STEP_BOARD_RUN, STEP_SIM_RUN_V3, STEP_BOARD_RUN_V3)
+    assert len(set(STEPS)) == 4
     assert type(NUMBERS) is tuple
     assert NUMBERS == ("round", "candidate", "attempt")
 
@@ -146,7 +155,7 @@ def test_the_step_follows_from_the_tool():
     assert step_of("sim.run") == STEP_SIM_RUN
     assert step_of("board.run") == STEP_BOARD_RUN
     assert all(tool in backends.HW_TOOLS for tool in TOOLS)
-    assert {step_of(tool) for tool in TOOLS} == set(STEPS)
+    assert {step_of(tool) for tool in TOOLS} == set(STEPS[:2])
 
 
 def checked(step, asked):
@@ -296,8 +305,56 @@ def test_public_names_of_the_module_and_no_default():
         for name, value in vars(run_identity).items()
         if not name.startswith("_") and not inspect.ismodule(value)
     }
-    assert public == {"STEP_SIM_RUN", "STEP_BOARD_RUN", "STEPS", "NUMBERS", "step_of"}
+    assert public == {
+        "STEP_SIM_RUN",
+        "STEP_BOARD_RUN",
+        "STEP_SIM_RUN_V3",
+        "STEP_BOARD_RUN_V3",
+        "STEPS",
+        "UNITS_OF",
+        "NUMBERS",
+        "step_of",
+    }
     parameters = list(inspect.signature(step_of).parameters.values())
     assert [parameter.name for parameter in parameters] == ["tool"]
     assert parameters[0].default is inspect.Parameter.empty
     assert parameters[0].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+
+
+@pytest.mark.parametrize(
+    ("step", "literal"),
+    [
+        (STEP_SIM_RUN_V3, "sim_run_timing_v3"),
+        (STEP_BOARD_RUN_V3, "board_run_timing_v3"),
+    ],
+)
+def test_a_v3_value_is_a_name_of_its_own(step, literal):
+    assert step == literal
+    assert re.fullmatch(r"[a-z][a-z0-9_]{0,31}", step)
+    assert step not in tools.RESERVED_KINDS
+    assert journal.step_identity(step, 1, 0, 1, 1).step == step
+    assert step not in check_identity.STEPS
+    assert step not in (STEP_SIM_RUN, STEP_BOARD_RUN)
+
+
+def test_step_of_still_returns_the_v2_values():
+    assert step_of("sim.run") == "sim_run_timing_v2"
+    assert step_of("board.run") == "board_run_timing_v2"
+    assert STEP_SIM_RUN_V3 not in {step_of(tool) for tool in TOOLS}
+    assert STEP_BOARD_RUN_V3 not in {step_of(tool) for tool in TOOLS}
+
+
+def test_the_units_of_each_value():
+    assert UNITS_OF == {
+        "sim_run_timing_v2": ("ns",),
+        "board_run_timing_v2": ("ns",),
+        "sim_run_timing_v3": ("ns", "cycles"),
+        "board_run_timing_v3": ("ns", "cycles"),
+    }
+    assert tuple(UNITS_OF) == STEPS
+    assert all(type(units) is tuple and units[0] == "ns" for units in UNITS_OF.values())
+
+
+@pytest.mark.parametrize("unit", ["us", "NS", "cycle", "memory_bytes", ""])
+def test_no_value_admits_another_unit(unit):
+    assert not any(unit in units for units in UNITS_OF.values())

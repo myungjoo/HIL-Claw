@@ -16,5 +16,7 @@ The one list of the values that records have fixed for `step` in the `data` of `
 | `correctness_check_bf16_board` | `correctness.check` | [ADR-0177](decisions/ADR-0177-od18-od6-contract-table.md) decision 3 | `not used` ([ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2) |
 | `correctness_check_sim_v2` | `correctness.check` | [ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2 | `defined` |
 | `correctness_check_board_v2` | `correctness.check` | [ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2 | `defined` |
-| `sim_run_timing_v2` | `sim.run` | [ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2 | `defined` |
-| `board_run_timing_v2` | `board.run` | [ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2 | `defined` |
+| `sim_run_timing_v2` | `sim.run` | [ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2 | `not used` ([ADR-0196](decisions/ADR-0196-od32-measurement-unit-list-and-run-result-v3.md) decision 7) |
+| `board_run_timing_v2` | `board.run` | [ADR-0183](decisions/ADR-0183-od18-tool-result-format-v2.md) decision 2 | `not used` ([ADR-0196](decisions/ADR-0196-od32-measurement-unit-list-and-run-result-v3.md) decision 7) |
+| `sim_run_timing_v3` | `sim.run` | [ADR-0196](decisions/ADR-0196-od32-measurement-unit-list-and-run-result-v3.md) decision 2 | `defined` |
+| `board_run_timing_v3` | `board.run` | [ADR-0196](decisions/ADR-0196-od32-measurement-unit-list-and-run-result-v3.md) decision 2 | `defined` |

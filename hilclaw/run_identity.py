@@ -5,11 +5,21 @@ rule; a decision cited by its number alone is one of that record. The module
 renders, ahead of the tool functions, what its decisions 3 and 4 fix of a
 call, with the values of ADR-0183 decision 2:
 
-* :data:`STEP_SIM_RUN`, :data:`STEP_BOARD_RUN`, :data:`STEPS`: each tool has
-  exactly one ``step`` value, ``sim_run_timing_v2`` for ``sim.run`` and
-  ``board_run_timing_v2`` for ``board.run`` (ADR-0183 decision 2, which
-  retires the values of decision 3 and keeps its rule), the same for every
-  contract.
+* :data:`STEP_SIM_RUN`, :data:`STEP_BOARD_RUN`: each tool has exactly one
+  ``step`` value it calls a step under, ``sim_run_timing_v2`` for
+  ``sim.run`` and ``board_run_timing_v2`` for ``board.run`` (ADR-0183
+  decision 2, which retires the values of decision 3 and keeps its rule),
+  the same for every contract.
+* :data:`STEP_SIM_RUN_V3`, :data:`STEP_BOARD_RUN_V3`: the v3 values of the
+  two tools, ``sim_run_timing_v3`` and ``board_run_timing_v3`` (ADR-0196
+  decision 2, after HQ-0090 (a)), whose result admits a ``unit`` of the
+  approved open list of units. No tool calls a step under them until
+  ADR-0196's second slice; their readers read them first (ADR-0196
+  decision 6).
+* :data:`STEPS`: the four values above, those a reader of the run lines
+  reads (ADR-0196 decision 4); :data:`UNITS_OF`: the ``unit`` values the
+  result definition of each of them admits (ADR-0183 decision 4, ADR-0196
+  decision 2).
 * :data:`NUMBERS`: "All three numbers are required" (decision 4).
 * :func:`step_of`: the ``step`` value "follows from the tool and not from
   anything a request says" (decision 1, as decision 3 fixes it); "the tool
@@ -17,8 +27,9 @@ call, with the values of ADR-0183 decision 2:
 
 Choices that are this module's own and no rule of a record:
 
-* :data:`STEPS` is a ``tuple`` in the order sim, board. The order means
-  nothing, and it is no list of the values of one tool: each tool has one.
+* :data:`STEPS` is a ``tuple`` in the order sim, board of v2, then sim,
+  board of v3. The order means nothing. :data:`UNITS_OF` maps each value to
+  a ``tuple`` of its units, ``ns`` first.
 * :func:`step_of` refuses every value but the two tool names, compared as
   they are. That it refuses ``correctness.check``, ``profiler.collect`` and
   every other name is this module's choice: their ``step`` values are not this
@@ -53,8 +64,19 @@ calls, reads no file and imports nothing.
 STEP_SIM_RUN = "sim_run_timing_v2"
 #: The one ``step`` of ``board.run`` (ADR-0062 decision 3, ADR-0183 decision 2).
 STEP_BOARD_RUN = "board_run_timing_v2"
-#: The ``step`` values of the two tools, each once; the order means nothing.
-STEPS = (STEP_SIM_RUN, STEP_BOARD_RUN)
+#: The v3 ``step`` of ``sim.run`` (ADR-0196 decision 2).
+STEP_SIM_RUN_V3 = "sim_run_timing_v3"
+#: The v3 ``step`` of ``board.run`` (ADR-0196 decision 2).
+STEP_BOARD_RUN_V3 = "board_run_timing_v3"
+#: The ``step`` values a reader of the two tools' lines reads, each once; the order means nothing (ADR-0196 decision 4).
+STEPS = (STEP_SIM_RUN, STEP_BOARD_RUN, STEP_SIM_RUN_V3, STEP_BOARD_RUN_V3)
+#: The ``unit`` values the result of each ``step`` value admits: ``ns`` alone under v2, the approved open list under v3 (ADR-0196 decision 2).
+UNITS_OF = {
+    STEP_SIM_RUN: ("ns",),
+    STEP_BOARD_RUN: ("ns",),
+    STEP_SIM_RUN_V3: ("ns", "cycles"),
+    STEP_BOARD_RUN_V3: ("ns", "cycles"),
+}
 
 #: The numbers a request of either tool requires (ADR-0062 decision 4), as a builder of :mod:`hilclaw.journaled_tool` takes them.
 NUMBERS = ("round", "candidate", "attempt")

@@ -73,7 +73,12 @@ A-8), ``same_source_commit`` and ``same_draws``.
 once, under its first reason in the order of :data:`LEFT_OUT_REASONS`: the
 measurement rule, then the outcome, then the standing. A qualifying attempt whose
 samples the trimmed mean refuses cannot be ordered, so it is no first-run best and
-is listed in ``did_not_reach`` with ``samples_out_of_domain``. Among attempts of
+is listed in ``did_not_reach`` with ``samples_out_of_domain``. An attempt whose
+comparison with the first-run best gives ``shapes_differ``, ``units_differ``
+(ADR-0196 decision 4: results of two units are not compared) or
+``samples_out_of_domain`` does not reach and is listed there with that kind.
+Both runs being of ``cpu_standin`` or the mock, their results are in ``ns``
+under either ``step`` value the read takes. Among attempts of
 the second-run round that reach, the one reported is the lowest candidate, then
 attempt. The last recorded round is the highest ``round`` of any line of the log.
 
@@ -159,6 +164,7 @@ _LATENCY_ONLY = {"objectives": [{"type": "latency_minimisation"}], "constraints"
 _ROUND_NAME = re.compile("[0-9]{4,}")
 _OUT_OF_REACH = (
     timings_tool.KIND_SHAPES_DIFFER,
+    timings_tool.KIND_UNITS_DIFFER,
     timings_tool.KIND_SAMPLES_OUT_OF_DOMAIN,
 )
 _INSTANCE_KINDS = (

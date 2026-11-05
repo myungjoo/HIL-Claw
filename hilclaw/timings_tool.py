@@ -9,8 +9,8 @@ FR-10 tools, not an FR-10 tool: it is not journaled, appends no line to
 The request has exactly ``run_id``, ``metric``, ``point``, ``measured`` and
 ``against``, all required. ``metric`` is exactly ``"latency_minimisation"``;
 ``point`` is exactly ``"sim"`` or ``"board"``, compared as it is, and names
-the ``step`` read, :data:`hilclaw.run_identity.STEP_SIM_RUN` or
-:data:`~hilclaw.run_identity.STEP_BOARD_RUN`; ``measured`` and ``against``
+the two ``step`` values read, :data:`STEPS_OF`: the v2 and the v3 value of
+its tool (ADR-0196 decision 4); ``measured`` and ``against``
 are each a ``dict`` of exactly ``round`` (an ``int`` from 0), ``candidate``
 and ``attempt`` (``int`` values from 1), each at most
 :data:`hilclaw.keys.MAX_INTEGER`, a ``bool`` being none, and they are not
@@ -27,25 +27,28 @@ of ``runs/<run_id>/events.ndjson`` from its first line by
 :func:`hilclaw.checks_tool.log_lines`, with its four ``run_file_*`` kinds;
 then the step lines in line order, the first that fails deciding: a step line
 about any attempt that :func:`hilclaw.journal.identity_of` refuses
-(``run_file_invalid``) and an end line of ``measured`` or ``against`` at the
-``step`` whose ``result`` is not an admitted timing result
-(:data:`KIND_TIMING_RESULT_INVALID`); then ``measured`` and after it
-``against`` by the measurement rule (:data:`KIND_MEASUREMENT_SEVERAL`,
-:data:`KIND_MEASUREMENT_UNKNOWN`, :data:`KIND_MEASUREMENT_MISSING`, in this
-order); the two results' ``contract_key`` and ``shape``
-(:data:`KIND_SHAPES_DIFFER`); the domain of
+(``run_file_invalid``) and an end line of ``measured`` or ``against`` at
+either ``step`` of the point whose ``result`` is not an admitted timing
+result under its own value (:data:`KIND_TIMING_RESULT_INVALID`); then
+``measured`` and after it ``against`` by the measurement rule
+(:data:`KIND_MEASUREMENT_SEVERAL`, :data:`KIND_MEASUREMENT_UNKNOWN`,
+:data:`KIND_MEASUREMENT_MISSING`, in this order); the two results'
+``contract_key`` and ``shape`` (:data:`KIND_SHAPES_DIFFER`); their ``unit``
+(:data:`KIND_UNITS_DIFFER`); the domain of
 :func:`hilclaw.harness.measurement.ratio_interval`
 (:data:`KIND_SAMPLES_OUT_OF_DOMAIN`). An admitted timing result (ADR-0183
-decision 8) has ``outcome`` ``"converged"``, ``"not_converged"`` or
-``"broken"`` and, for the first two, ``intervals``, a list of at least
-``N_MIN`` ``int`` values of at least 1; ``unit``, exactly ``"ns"``;
+decision 8, ADR-0196 decision 4) has ``outcome`` ``"converged"``,
+``"not_converged"`` or ``"broken"`` and, for the first two, ``intervals``, a
+list of at least ``N_MIN`` ``int`` values of at least 1; ``unit``, a
+``str`` that is one of :data:`hilclaw.run_identity.UNITS_OF` for the line's
+``step`` (exactly ``"ns"`` under a v2 value);
 ``shape``, an object of at least one member, each an ``int`` of at least 1;
 and ``contract_key``, an object of exactly ``kind``, ``dtype`` and
 ``layout``, each a ``str``; checked in that order. Its other members are not
 looked at.
 
 The measurement of one attempt at the point: M is its end lines at the
-``step``, every ``execution`` together, whose ``result`` has ``outcome``
+point's two ``step`` values, both values and every ``execution`` together, whose ``result`` has ``outcome``
 ``"converged"`` or ``"not_converged"``; U is its end lines that hold a
 ``failure`` together with its identities that have a start line and no end
 line. It has a measurement exactly when M holds one line and U is empty:
@@ -62,7 +65,9 @@ strictly above ``1 + DELTA``, and ``"not_different"`` otherwise. The pair is
 never exchanged and no parameter is added. Two measurements are of the
 same quantity when their ``contract_key`` and their ``shape`` are equal
 (ADR-0183 decision 8): equal ``shape`` objects of two kinds that share the
-shape members ``m`` and ``n`` are not.
+shape members ``m`` and ``n`` are not. They are compared only when their
+``unit`` is one (ADR-0196 decision 4), whatever ``step`` value each was
+read under.
 
 Choices left to the code slice (ADR-0140 decision 3), made here:
 
@@ -89,8 +94,8 @@ holds no line and is answered ``measurement_missing`` for ``measured``.
 Nothing checks that the run is one of ADR-0120 decision 1, that the two
 rounds stand in any order or that either attempt passed a check; neither
 ``sample_form`` nor ``n_max`` is compared and ``ceiling`` is not read.
-Nothing is created and nothing is kept between calls. The six kinds below are
-names of the tool layer and not reserved.
+Nothing is created and nothing is kept between calls. The seven kinds below
+are names of the tool layer and not reserved.
 """
 
 import reprlib
@@ -119,14 +124,19 @@ KIND_MEASUREMENT_UNKNOWN = "measurement_unknown"
 KIND_MEASUREMENT_MISSING = "measurement_missing"
 #: The two measurements are of different shapes.
 KIND_SHAPES_DIFFER = "shapes_differ"
+#: The two measurements are in different units (ADR-0196 decision 4).
+KIND_UNITS_DIFFER = "units_differ"
 #: The rule's functions refuse the two sample sets.
 KIND_SAMPLES_OUT_OF_DOMAIN = "samples_out_of_domain"
 #: The one admitted metric (ADR-0059 decision 3).
 METRIC = "latency_minimisation"
-#: The ``step`` read at each ``point`` (ADR-0062 decision 3, ADR-0183 decision 8).
-STEP_OF = {
-    check_identity.SIM: run_identity.STEP_SIM_RUN,
-    check_identity.BOARD: run_identity.STEP_BOARD_RUN,
+#: The ``step`` values read at each ``point``, v2 then v3 (ADR-0183 decision 8, ADR-0196 decision 4).
+STEPS_OF = {
+    check_identity.SIM: (run_identity.STEP_SIM_RUN, run_identity.STEP_SIM_RUN_V3),
+    check_identity.BOARD: (
+        run_identity.STEP_BOARD_RUN,
+        run_identity.STEP_BOARD_RUN_V3,
+    ),
 }
 
 NAME = "timings.compare"
@@ -160,8 +170,9 @@ _DESCRIPTION = (
     "measurement_unknown when a side has a failed or unfinished run; "
     "measurement_missing when a side has no result, also when the run has no "
     "log or does not exist; shapes_differ when the two results are of "
-    "different contracts or shapes; and samples_out_of_domain when the "
-    "samples are too large to compare."
+    "different contracts or shapes; units_differ when the two results are "
+    "in different units; and samples_out_of_domain when the samples are too "
+    "large to compare."
 )
 _MEMBERS = ("run_id", "metric", "point", "measured", "against")
 _SIDES = ("measured", "against")
@@ -169,8 +180,8 @@ _LEAST = {"round": 0, "candidate": 1, "attempt": 1}
 _BROKEN = "broken"
 _ENTERING = ("converged", "not_converged")
 _OUTCOMES = (*_ENTERING, _BROKEN)
-_UNIT = "ns"
 _CONTRACT_KEY = ("kind", "dtype", "layout")
+_UNITS_OF = run_identity.UNITS_OF
 _STEP_KINDS = (journal.STEP_STARTED, journal.STEP_ENDED)
 
 
@@ -205,7 +216,7 @@ def _input_schema():
         "properties": {
             "run_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"},
             "metric": {"type": "string", "enum": [METRIC]},
-            "point": {"type": "string", "enum": list(STEP_OF)},
+            "point": {"type": "string", "enum": list(STEPS_OF)},
             "measured": {"type": "object"},
             "against": {"type": "object"},
         },
@@ -258,7 +269,7 @@ def _checked(request):
     metric, point = request["metric"], request["point"]
     if type(metric) is not str or metric != METRIC:
         raise _invalid(f'metric: must be "{METRIC}", got {_shown(metric)}')
-    if type(point) is not str or point not in STEP_OF:
+    if type(point) is not str or point not in STEPS_OF:
         raise _invalid(f'point: must be "sim" or "board", got {_shown(point)}')
     measured, against = (_ref(name, request[name]) for name in _SIDES)
     if measured == against:
@@ -266,7 +277,7 @@ def _checked(request):
     return run_id, metric, point, measured, against
 
 
-def _problem(result):
+def _problem(result, units):
     if "outcome" not in result:
         return ": lacks the member outcome"
     outcome = result["outcome"]
@@ -288,8 +299,10 @@ def _problem(result):
             "of at least 1"
         )
     unit = result["unit"]
-    if type(unit) is not str or unit != _UNIT:
-        return f'.unit: must be "{_UNIT}", got {_shown(unit)}'
+    if type(unit) is not str or unit not in units:
+        if len(units) == 1:
+            return f'.unit: must be "{units[0]}", got {_shown(unit)}'
+        return f".unit: must be one of {', '.join(units)}, got {_shown(unit)}"
     shape = result["shape"]
     if (
         type(shape) is not dict
@@ -310,17 +323,23 @@ def _problem(result):
     return None
 
 
-def timing_problem(result):
+def timing_problem(result, step=None):
     """Return ``None`` when ``result``, the ``result`` of an end line, is an admitted timing result (ADR-0140 decision 3), else what is wrong.
 
     ``result`` is a ``dict``, as :func:`hilclaw.journal.identity_of` admits
-    it. The rule is that of the module docstring, the one :func:`compare`
-    holds the end lines of its two sides to. What is wrong is a ``str``
-    starting with ``data.result``, as the messages of
+    it. ``step`` is the ``step`` value of its line, one of
+    :data:`hilclaw.run_identity.STEPS`, and chooses the ``unit`` values
+    admitted, :data:`hilclaw.run_identity.UNITS_OF` (ADR-0196 decision 4);
+    ``None``, the default, admits those of the v2 values, ``"ns"`` alone.
+    The rule is that of the module docstring, the one :func:`compare` holds
+    the end lines of its two sides to. What is wrong is a ``str`` starting
+    with ``data.result``, as the messages of
     :data:`KIND_TIMING_RESULT_INVALID` give it after ``line <n>: ``. Shared
-    with ``verdicts.write`` (ADR-0140 decision 5).
+    with ``verdicts.write`` (ADR-0140 decision 5). Raises :class:`KeyError`
+    for a ``step`` that is neither ``None`` nor one of those values.
     """
-    problem = _problem(result)
+    units = _UNITS_OF[run_identity.STEP_SIM_RUN if step is None else step]
+    problem = _problem(result, units)
     return None if problem is None else f"data.result{problem}"
 
 
@@ -337,25 +356,28 @@ class TimingLines(NamedTuple):
 
     ``entering`` is M, the pairs ``(execution, result)`` in line order;
     ``unknown`` is U, a ``set`` of executions; ``broken`` the executions of the
-    end lines with a ``"broken"`` result, in line order.
+    end lines with a ``"broken"`` result, in line order; ``steps`` the
+    ``step`` values of the point that the attempt has a step line under.
     """
 
     entering: list
     unknown: set
     broken: list
+    steps: set = frozenset()
 
 
 def timing_lines(run_id, lines, point, inside):
     """Return the :class:`TimingLines` of each attempt that ``inside`` admits, by the step-line pass of ADR-0140 decision 3.
 
     ``lines`` are as :func:`compare` takes them. ``inside`` is called with the
-    tuple ``(round, candidate, attempt)`` of a line at the ``step`` of ``point``
-    that names an attempt. The result maps each admitted tuple with such a line
+    tuple ``(round, candidate, attempt)`` of a line at either ``step`` of
+    ``point`` (:data:`STEPS_OF`) that names an attempt; the lines of both
+    values are taken together. The result maps each admitted tuple with such a line
     to its :class:`TimingLines`. Raises as :func:`compare` raises for the first
     step line that fails, in line order, only admitted end lines being held to
     :func:`timing_problem`, and :class:`KeyError` for another ``point``.
     """
-    step = STEP_OF[point]
+    steps = STEPS_OF[point]
     file = run_files.relative(run_id, checks_tool.LOG)
     found = {}
     started, ended = {}, set()
@@ -368,9 +390,12 @@ def timing_lines(run_id, lines, point, inside):
             message = f"{file}: line {number}: {e}"
             raise tools.ToolFailure(tools.KIND_RUN_FILE_INVALID, message) from e
         numbers = tuple(identity[2:5])
-        if identity.step != step or identity.attempt is None or not inside(numbers):
+        if identity.step not in steps or identity.attempt is None:
             continue
-        held = found.setdefault(numbers, TimingLines([], set(), []))
+        if not inside(numbers):
+            continue
+        held = found.setdefault(numbers, TimingLines([], set(), [], set()))
+        held.steps.add(identity.step)
         if event["kind"] == journal.STEP_STARTED:
             started.setdefault(identity, held)
             continue
@@ -379,7 +404,7 @@ def timing_lines(run_id, lines, point, inside):
         if "failure" in data:
             held.unknown.add(identity.execution)
             continue
-        problem = _problem(data["result"])
+        problem = _problem(data["result"], _UNITS_OF[identity.step])
         if problem is not None:
             raise tools.ToolFailure(
                 KIND_TIMING_RESULT_INVALID,
@@ -412,9 +437,10 @@ def measurement_problem(held):
     return None
 
 
-def _measurement(file, side, ref, step, held):
+def _measurement(file, side, ref, steps, held):
     named = "round {}, candidate {}, attempt {}".format(*_numbers(ref))
-    where = f"{file}: {side} ({named}) at {step}"
+    shown = [step for step in steps if step in held.steps] or steps[:1]
+    where = f"{file}: {side} ({named}) at {' and '.join(shown)}"
     kind = measurement_problem(held)
     if kind == KIND_MEASUREMENT_SEVERAL:
         executions = ", ".join(str(execution) for execution, _ in held.entering)
@@ -441,7 +467,8 @@ def difference_of(file, measured, against):
     the source at the start of a message. Returns ``"lower"``, ``"higher"`` or
     ``"not_different"``. Raises :class:`hilclaw.tools.ToolFailure` of kind
     :data:`KIND_SHAPES_DIFFER` when their ``contract_key`` or ``shape``
-    differ, then :data:`KIND_SAMPLES_OUT_OF_DOMAIN` when
+    differ, then :data:`KIND_UNITS_DIFFER` when their ``unit`` differs
+    (ADR-0196 decision 4), then :data:`KIND_SAMPLES_OUT_OF_DOMAIN` when
     :func:`hilclaw.harness.measurement.ratio_interval` refuses their samples.
     """
     y, x = measured, against
@@ -449,6 +476,12 @@ def difference_of(file, measured, against):
         raise tools.ToolFailure(
             KIND_SHAPES_DIFFER,
             f"{file}: measured has the contract {_about(y)}, against {_about(x)}",
+        )
+    if y["unit"] != x["unit"]:
+        raise tools.ToolFailure(
+            KIND_UNITS_DIFFER,
+            f"{file}: measured is in the unit {y['unit']}, against in {x['unit']}; "
+            "results are compared only within one unit",
         )
     try:
         low, high = measurement.ratio_interval(x["intervals"], y["intervals"])
@@ -472,7 +505,7 @@ def compare(run_id, lines, metric, point, measured, against):
     are each a mapping of ``round``, ``candidate`` and ``attempt`` in the
     request's forms, naming two different attempts. Nothing of them is
     checked but that ``metric`` is :data:`METRIC` and ``point`` a key of
-    :data:`STEP_OF`, a :class:`ValueError` otherwise. Shared by
+    :data:`STEPS_OF`, a :class:`ValueError` otherwise. Shared by
     ``timings.compare`` and ``verdicts.write`` (ADR-0140 decision 5).
 
     Returns ``{"difference": d, "measured": {"execution": n, "outcome": o},
@@ -483,19 +516,21 @@ def compare(run_id, lines, metric, point, measured, against):
     line order, each message starting with ``runs/<run_id>/events.ndjson:
     line <n>``; then :data:`KIND_MEASUREMENT_SEVERAL`,
     :data:`KIND_MEASUREMENT_UNKNOWN` and :data:`KIND_MEASUREMENT_MISSING` for
-    ``measured`` and then for ``against``, the message naming the side;
-    :data:`KIND_SHAPES_DIFFER`; :data:`KIND_SAMPLES_OUT_OF_DOMAIN`.
+    ``measured`` and then for ``against``, the message naming the side and
+    the ``step`` values its lines are under (the v2 value when it has none);
+    :data:`KIND_SHAPES_DIFFER`; :data:`KIND_UNITS_DIFFER`;
+    :data:`KIND_SAMPLES_OUT_OF_DOMAIN`.
     """
-    if metric != METRIC or point not in STEP_OF:
+    if metric != METRIC or point not in STEPS_OF:
         raise ValueError("metric or point is not one the request admits")
-    step = STEP_OF[point]
+    steps = STEPS_OF[point]
     file = run_files.relative(run_id, checks_tool.LOG)
     refs = (measured, against)
     named = {_numbers(ref) for ref in refs}
     found = timing_lines(run_id, lines, point, named.__contains__)
     none = TimingLines([], set(), [])
     chosen = {
-        side: _measurement(file, side, ref, step, found.get(_numbers(ref), none))
+        side: _measurement(file, side, ref, steps, found.get(_numbers(ref), none))
         for side, ref in zip(_SIDES, refs)
     }
     difference = difference_of(file, chosen["measured"][1], chosen["against"][1])
