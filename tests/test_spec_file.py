@@ -951,10 +951,12 @@ def test_the_public_names_and_the_call_forms():
         "WrittenFormError",
         "NameTakenError",
         "parse",
+        "parse_versioned",
         "final_name",
         "write",
     }
     assert str(inspect.signature(parse)) == "(content)"
+    assert str(inspect.signature(spec_file.parse_versioned)) == "(content)"
     assert str(inspect.signature(final_name)) == "(data_root, document)"
     assert str(inspect.signature(write)) == "(data_root, content)"
     for function in (parse, final_name, write):
@@ -1702,3 +1704,64 @@ def test_the_module_holds_no_value_of_a_content():
         inspect.ismodule(value) or inspect.isclass(value) or inspect.isfunction(value)
         for value in own
     )
+
+
+# --- version 3 (ADR-0198 decision 8) ---
+
+
+def settings_spec():
+    made = minimal()
+    made["schema_version"] = 3
+    made["task"]["build"] = {
+        "candidate_kind": "compile_settings",
+        "flags": ["-O3"],
+        "kernel_round": 0,
+        "kernel_candidate": 1,
+        "kernel_attempt": 1,
+    }
+    return made
+
+
+def test_parse_versioned_reads_version_2_and_3():
+    for document in (minimal(), full(), settings_spec()):
+        assert spec_file.parse_versioned(raw(document)) == document
+
+
+def test_the_version_2_entries_refuse_a_version_3_content_as_another_version(tmp_path):
+    content = raw(settings_spec()) + b"\n"
+    other_version(content, 3)
+    with pytest.raises(UnsupportedVersionError):
+        write(tmp_path, content)
+    assert list(tmp_path.iterdir()) == []
+    with pytest.raises(spec.InvalidSpecError, match="^schema_version: must be"):
+        final_name(tmp_path, settings_spec())
+
+
+@pytest.mark.parametrize("version", [0, 1, 4, MAX])
+def test_parse_versioned_refuses_other_versions(version):
+    with pytest.raises(UnsupportedVersionError) as caught:
+        spec_file.parse_versioned(
+            raw(changed(settings_spec(), ["schema_version"], version))
+        )
+    assert str(caught.value) == f"schema_version: is {version}, not 2 or 3"
+
+
+def test_parse_versioned_refuses_an_invalid_version_3_content():
+    document = settings_spec()
+    del document["task"]["build"]["kernel_attempt"]
+    with pytest.raises(
+        InvalidSpecFileError, match="^task.build.kernel_attempt: required"
+    ):
+        spec_file.parse_versioned(raw(document))
+    with pytest.raises(InvalidSpecFileError, match="byte order mark"):
+        spec_file.parse_versioned(codecs.BOM_UTF8 + raw(settings_spec()))
+    with pytest.raises(TypeError):
+        spec_file.parse_versioned("{}")
+
+
+def test_parse_versioned_refuses_minus_zero_at_kernel_round():
+    content = spelt(settings_spec(), ["task", "build", "kernel_round"], b"-0")
+    with pytest.raises(InvalidSpecFileError, match="^task.build.kernel_round"):
+        spec_file.parse_versioned(content)
+    plain = spelt(settings_spec(), ["task", "build", "kernel_round"], b"0")
+    assert spec_file.parse_versioned(plain) == settings_spec()

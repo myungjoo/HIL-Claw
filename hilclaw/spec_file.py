@@ -20,6 +20,11 @@ The document is valid by ADR-0050 in the place of ADR-0002, the ``bound`` of
 a constraint entry joins the *integer* places, and a file of another version
 is one whose ``schema_version`` is an *integer* other than 2, while a write
 writes version 2 only.
+``ARCHITECTURE/decisions/ADR-0198-od32-compile-settings-candidate-kind.md``
+adds version 3, the spec of an attempt with no coder call, at the same path:
+:func:`parse_versioned` reads a file of version 2 or 3 by the same rules of
+the text, while :func:`parse`, :func:`final_name` and :func:`write` keep to
+version 2, so no version-3 file is written here (decision 8).
 
 The rules of the record that :func:`parse` holds: the content is exactly one
 JSON text that is an object, in UTF-8 without a byte order mark, with no
@@ -182,7 +187,11 @@ class InvalidSpecFileError(ValueError):
 
 
 class UnsupportedVersionError(Exception):
-    """``schema_version`` is an integer other than 2, 1 among them: not damage, and nothing is interpreted."""
+    """``schema_version`` is an integer the entry does not read: not damage, and nothing is interpreted.
+
+    :func:`parse`, :func:`final_name` and :func:`write` read version 2 only,
+    1 and 3 among the others; :func:`parse_versioned` reads 2 and 3.
+    """
 
 
 class WrittenFormError(ValueError):
@@ -222,6 +231,25 @@ def parse(content):
     Nothing is returned then, and nothing is repaired or converted. The order
     of the checks is in the module docstring.
     """
+    return _parsed(content, (spec.SCHEMA_VERSION,), spec.validate)
+
+
+def parse_versioned(content):
+    """Return the document of ``content``, the bytes of a spec file of version 2 or 3 (ADR-0198 decision 8).
+
+    The rules and errors are those of :func:`parse`, with
+    :func:`hilclaw.spec.validate_versioned` in the place of
+    :func:`hilclaw.spec.validate`, so a version-3 content is read and
+    :class:`UnsupportedVersionError` is raised for a version other than 2
+    and 3. The integer places of ``task.build`` of version 3 are *integer*
+    places, ``-0`` refused there as elsewhere. Nothing here writes a
+    version-3 file or gives it a name.
+    """
+    versions = (spec.SCHEMA_VERSION, spec.SETTINGS_SCHEMA_VERSION)
+    return _parsed(content, versions, spec.validate_versioned)
+
+
+def _parsed(content, versions, validate):
     if type(content) is not bytes:
         raise TypeError(f"content must be bytes, got {type(content).__name__}")
     if content.startswith(codecs.BOM_UTF8):
@@ -243,13 +271,13 @@ def parse(content):
         kind = type(document).__name__
         raise InvalidSpecFileError(f"content: must be a JSON object, got {kind}")
     version = document.get("schema_version")
-    other = type(version) is int and version != spec.SCHEMA_VERSION
+    other = type(version) is int and version not in versions
     if other and 0 <= version <= keys.MAX_INTEGER:
         _unsigned("schema_version", spelling["schema_version"])
-        expected = spec.SCHEMA_VERSION
+        expected = " or ".join(map(str, versions))
         raise UnsupportedVersionError(f"schema_version: is {version}, not {expected}")
     try:
-        spec.validate(document)
+        validate(document)
     except spec.InvalidSpecError as error:
         raise InvalidSpecFileError(str(error)) from error
     for name, value in spelling.items():

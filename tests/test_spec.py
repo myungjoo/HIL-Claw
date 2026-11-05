@@ -980,3 +980,142 @@ def test_first_problem_is_reported_in_section_order():
     document["id"]["round"] = -1
     document["guidance"] = None
     rejects(document, r"^id\.round: ")
+
+
+# --- version 3, the spec of an attempt with no coder call (ADR-0198 decision 4) ---
+
+
+def settings(**build):
+    result = minimal()
+    result["schema_version"] = 3
+    result["id"]["round"] = 2
+    result["task"]["build"] = {
+        "candidate_kind": "compile_settings",
+        "flags": ["-O3", "-march=native"],
+        "kernel_round": 0,
+        "kernel_candidate": 1,
+        "kernel_attempt": 1,
+    }
+    for name, value in build.items():
+        if value is REMOVE:
+            del result["task"]["build"][name]
+        else:
+            result["task"]["build"][name] = value
+    return result
+
+
+def rejects_versioned(document, match):
+    with pytest.raises(InvalidSpecError, match=match) as info:
+        spec.validate_versioned(document)
+    return str(info.value)
+
+
+def test_the_settings_version_constant():
+    assert spec.SETTINGS_SCHEMA_VERSION == 3
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        settings(),
+        settings(flags=[]),
+        settings(kernel_round=1, kernel_candidate=3, kernel_attempt=2),
+        changed(settings(), ["id", "round"], 2**53 - 1),
+    ],
+)
+def test_a_valid_version_3_spec_is_accepted_by_the_versioned_entry_only(document):
+    before = copy.deepcopy(document)
+
+    assert spec.validate_versioned(document) == 3
+    assert document == before
+    rejects(document, "^schema_version: must be the integer 2, got 3$")
+
+
+@pytest.mark.parametrize("document", [minimal(), full(), repair()])
+def test_a_valid_version_2_spec_is_accepted_by_both_entries(document):
+    assert validate(document) is None
+    assert spec.validate_versioned(document) == 2
+
+
+@pytest.mark.parametrize("value", [0, 1, 4, True, "3", 3.0, None, IntEnum.TWO])
+def test_the_versioned_entry_refuses_other_versions(value):
+    document = changed(settings(), ["schema_version"], value)
+    rejects_versioned(
+        document, "^schema_version: must be the integer 2 or the integer 3, got "
+    )
+
+
+@pytest.mark.parametrize("value", ["compile_settings", "c_kernel", "anything"])
+def test_a_version_2_spec_states_no_kind(value):
+    document = changed(minimal(), ["task", "build"], {"candidate_kind": value})
+    for function in (validate, spec.validate_versioned):
+        with pytest.raises(
+            InvalidSpecError, match="^task.build.candidate_kind: is not"
+        ):
+            function(document)
+
+
+def test_a_version_2_spec_keeps_its_open_build_map_otherwise():
+    build = {"flags": ["-O3"], "kernel_round": 0, "kernel_attempt": 1}
+    document = changed(minimal(), ["task", "build"], build)
+    assert validate(document) is None
+    assert spec.validate_versioned(document) == 2
+
+
+def test_version_3_requires_the_build():
+    document = settings()
+    del document["task"]["build"]
+    rejects_versioned(document, "^task.build: required member is missing")
+
+
+@pytest.mark.parametrize("name", list(spec._SETTINGS_BUILD))
+def test_version_3_requires_each_build_member(name):
+    rejects_versioned(
+        settings(**{name: REMOVE}), f"^task.build.{name}: required member is missing$"
+    )
+
+
+def test_version_3_admits_no_other_build_member():
+    rejects_versioned(settings(threads=4), "^task.build: unknown member 'threads'$")
+
+
+@pytest.mark.parametrize("value", ["c_kernel", "quantization", "Compile_settings", 3])
+def test_version_3_admits_the_kind_compile_settings_only(value):
+    rejects_versioned(
+        settings(candidate_kind=value),
+        "^task.build.candidate_kind: must be compile_settings, got ",
+    )
+
+
+@pytest.mark.parametrize("value", ["-O3", ["-O3", ""], ["s" * 256], ["café"]])
+def test_version_3_flags_are_an_array_of_strings(value):
+    rejects_versioned(settings(flags=value), "^task.build.flags")
+
+
+@pytest.mark.parametrize("name", ["kernel_round", "kernel_candidate", "kernel_attempt"])
+@pytest.mark.parametrize("value", [-1, 2**53, 1.0, None])
+def test_version_3_kernel_members_are_integers(name, value):
+    rejects_versioned(settings(**{name: value}), f"^task.build.{name}")
+
+
+@pytest.mark.parametrize("name", ["kernel_candidate", "kernel_attempt"])
+def test_version_3_kernel_candidate_and_attempt_start_at_one(name):
+    rejects_versioned(
+        settings(**{name: 0}), f"^task.build.{name}: must be an integer from 1 "
+    )
+
+
+@pytest.mark.parametrize("value", [2, 3])
+def test_version_3_names_a_kernel_of_an_earlier_round(value):
+    rejects_versioned(
+        settings(kernel_round=value),
+        rf"^task.build.kernel_round: must be less than id.round \(2\), got {value}$",
+    )
+
+
+def test_version_3_is_held_to_the_rules_of_version_2():
+    rejects_versioned(
+        changed(settings(), ["guidance"], REMOVE), "^guidance: required member"
+    )
+    document = changed(settings(), ["id", "attempt"], 2)
+    rejects_versioned(document, "^repair: must be present exactly when")
