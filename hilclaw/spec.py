@@ -48,7 +48,8 @@ form of HQ-0089 (decisions 4 and 8): the sections and rules of version 2,
 with ``task.build`` required and holding exactly ``candidate_kind``
 (``compile_settings``), ``flags`` (an array of strings) and
 ``kernel_round``, ``kernel_candidate`` and ``kernel_attempt`` (the attempt of
-an earlier round whose C kernel the candidate builds). :func:`validate` keeps
+an earlier round whose C kernel the candidate builds); at version 2
+``task.build`` may not hold ``candidate_kind``. :func:`validate` keeps
 checking version 2 only; :func:`validate_versioned` checks version 2 or 3.
 """
 
@@ -101,7 +102,8 @@ def validate(spec):
     inside an embedded key record is reported with its path below
     ``hw_profile.record`` or ``task.op_signature.record``. A document of any
     other ``schema_version``, the integers 1 and 3 among them, is refused as
-    any other wrong value.
+    any other wrong value. ``task.build`` holding ``candidate_kind`` is
+    refused: a C kernel spec states no kind (ADR-0198 decision 4).
     """
     _validated(spec, (SCHEMA_VERSION,))
 
@@ -137,6 +139,11 @@ def _validated(spec, versions):
     _task(spec["task"])
     if version == SETTINGS_SCHEMA_VERSION:
         _settings(spec["task"], spec["id"]["round"])
+    elif "candidate_kind" in spec["task"].get("build", {}):
+        path = "task.build.candidate_kind"
+        _broken(
+            path, "is not admitted at schema_version 2: a C kernel spec states no kind"
+        )
     guidance = _object("guidance", spec["guidance"], ("techniques",))
     _array("guidance.techniques", guidance["techniques"], _technique)
     feedback = _object("feedback", spec["feedback"], ("attempts",), ("base",))

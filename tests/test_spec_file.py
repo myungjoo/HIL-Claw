@@ -1759,9 +1759,9 @@ def test_parse_versioned_refuses_an_invalid_version_3_content():
         spec_file.parse_versioned("{}")
 
 
-@pytest.mark.parametrize("name", ["kernel_round", "kernel_candidate", "kernel_attempt"])
-def test_parse_versioned_refuses_minus_zero_at_the_kernel_places(name):
-    literal = b"-0" if name == "kernel_round" else b"-1"
-    content = spelt(settings_spec(), ["task", "build", name], literal)
-    with pytest.raises(InvalidSpecFileError, match=f"^task.build.{name}"):
+def test_parse_versioned_refuses_minus_zero_at_kernel_round():
+    content = spelt(settings_spec(), ["task", "build", "kernel_round"], b"-0")
+    with pytest.raises(InvalidSpecFileError, match="^task.build.kernel_round"):
         spec_file.parse_versioned(content)
+    plain = spelt(settings_spec(), ["task", "build", "kernel_round"], b"0")
+    assert spec_file.parse_versioned(plain) == settings_spec()

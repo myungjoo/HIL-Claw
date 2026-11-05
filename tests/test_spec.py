@@ -1045,8 +1045,20 @@ def test_the_versioned_entry_refuses_other_versions(value):
     )
 
 
-def test_a_version_2_spec_keeps_its_open_build_map():
-    document = changed(minimal(), ["task", "build"], {"candidate_kind": "anything"})
+@pytest.mark.parametrize("value", ["compile_settings", "c_kernel", "anything"])
+def test_a_version_2_spec_states_no_kind(value):
+    document = changed(minimal(), ["task", "build"], {"candidate_kind": value})
+    for function in (validate, spec.validate_versioned):
+        with pytest.raises(
+            InvalidSpecError, match="^task.build.candidate_kind: is not"
+        ):
+            function(document)
+
+
+def test_a_version_2_spec_keeps_its_open_build_map_otherwise():
+    build = {"flags": ["-O3"], "kernel_round": 0, "kernel_attempt": 1}
+    document = changed(minimal(), ["task", "build"], build)
+    assert validate(document) is None
     assert spec.validate_versioned(document) == 2
 
 
