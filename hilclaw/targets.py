@@ -3,8 +3,10 @@
 ``ARCHITECTURE/decisions/ADR-0193-od32-generalization-design.md`` decision 3
 places the description of a target in a table in the package source, one
 :class:`Target` per ``accelerator`` value. This module is that table,
-:data:`TABLE`, with :func:`target` to look one up and
-:func:`instance_start_accelerators` for the names an instance may start on.
+:data:`TABLE`, with :func:`target` to look one up,
+:func:`instance_start_accelerators` for the names an instance may start on and
+:func:`covers_at` for a predicate "covered" read at the target of an
+``accelerator`` (ADR-0197 decision 3).
 
 * A :class:`Target` holds the build flags, trailing flags and waiter flags,
   the environment, the build time limit and the cap of the process time
@@ -28,7 +30,10 @@ places the description of a target in a table in the package source, one
   process container to :data:`VIRTUAL_NPU_MEMORY_LIMIT_BYTES`, has the unit
   ``cycles`` with the factor :data:`VIRTUAL_NPU_CYCLES_PER_NS` (HQ-0090 (a);
   ADR-0196 decision 5: a check value, no fact about the cycles of any real
-  NPU) and both booleans false.
+  NPU), ``model_run`` false and ``instance_start`` true: an instance of a
+  contract it serves may start on it, checked with the bf16 contracts'
+  reference and the user's tolerance (HQ-0091 ① (a); ADR-0197 decisions 1
+  and 2).
 * The mock (:data:`hilclaw.mock_backend.NAME`) builds nothing and has no
   :class:`Target`.
 
@@ -194,7 +199,7 @@ def _virtual_npu():
         unit="cycles",
         units_per_ns=VIRTUAL_NPU_CYCLES_PER_NS,
         model_run=False,
-        instance_start=False,
+        instance_start=True,
     )
 
 
@@ -284,3 +289,38 @@ def target(name, table=TABLE):
 def instance_start_accelerators(table=TABLE):
     """Return the names of ``table`` whose :class:`Target` has ``instance_start`` true, in its order, as a ``tuple``."""
     return tuple(name for name, entry in table.items() if entry.instance_start)
+
+
+def covers_at(covers, accelerator, table=TABLE):
+    """Return the predicate ``covers`` read at the target of ``accelerator`` (ADR-0197 decision 3).
+
+    Where ``table`` holds a :class:`Target` for ``accelerator``, the result
+    answers ``True`` for a record only when ``covers`` does and the target
+    serves the record's entry (:func:`hilclaw.contract_table.served_at`), so
+    a record of a contract the target does not serve is not covered there;
+    any other answer of ``covers`` is returned as it is. The target is read
+    from ``table`` here, once. Where ``table`` holds none, the mock or an
+    unknown name, the result is ``covers`` itself.
+
+    @param covers a predicate "covered", handed an op_signature record.
+    @param accelerator the ``accelerator`` value of the run's hw_profile.
+    @param table a mapping from ``accelerator`` to :class:`Target`, by default
+        :data:`TABLE`.
+    @throws TypeError when ``covers`` is not callable. What building the
+        entry raises passes unchanged, as in :func:`target`; what ``covers``
+        and ``served_at`` raise passes unchanged from the result.
+    """
+    if not callable(covers):
+        raise TypeError("covers: must be callable")
+    try:
+        held = target(accelerator, table)
+    except NoTargetError:
+        return covers
+
+    def covered_at_target(record):
+        covered = covers(record)
+        if covered is not True:
+            return covered
+        return contract_table.served_at(record, held)
+
+    return covered_at_target

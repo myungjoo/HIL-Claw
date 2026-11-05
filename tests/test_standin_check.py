@@ -1332,6 +1332,35 @@ def test_a_memory_bound_of_the_target_reaches_the_process_container_alone(
     assert build_dirs(temporary) == []
 
 
+def test_the_virtual_npu_check_of_the_default_table_bounds_its_process_container(
+    client, output, keeper, temporary
+):
+    """ADR-0197 decision 2: the virtual_npu target's flags and memory bound."""
+    from hilclaw import backends, check_definition
+
+    virtual = {
+        "schema_version": 1,
+        "accelerator": targets.VIRTUAL_NPU,
+        "revision": "test-revision",
+        "toolchain": {"cc": "test"},
+        "host": {"cpu": "test", "os": "test"},
+        "hw_source": "external",
+    }
+    checked = backends.select(
+        check_definition.default_table(), virtual, "correctness.check"
+    )
+    client.script = [built(), reported()]
+    assert checked({}, virtual, bf16("gemm"), output, keeper) == REPORT
+    build, process = client.runs()
+    assert memory_options(build) == []
+    bound = str(targets.VIRTUAL_NPU_MEMORY_LIMIT_BYTES)
+    assert memory_options(process) == ["--memory", bound, "--memory-swap", bound]
+    for flag in targets.VIRTUAL_NPU_FLAGS:
+        assert flag in build
+    assert "-fopenmp" not in build
+    assert build_dirs(temporary) == []
+
+
 @pytest.mark.parametrize("status", [137, 1])
 def test_a_process_ended_over_the_bound_is_exit_status(
     client, output, keeper, temporary, status

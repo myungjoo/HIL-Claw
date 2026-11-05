@@ -21,7 +21,12 @@ and ADR-0078 decisions 6 and 7 are the rules of the compiler's log.
    hw_profile of that read. Then :func:`hilclaw.check_admission.admit`
    gives one of its four answers or what the check takes from the same
    read (ADR-0046 decision 8): a record ``covers`` answers ``True`` for is
-   admitted whatever its ``dtype`` (ADR-0183 decision 2).
+   admitted whatever its ``dtype`` (ADR-0183 decision 2). ``covers`` is read
+   at the target of the hw_profile's ``accelerator``
+   (:func:`hilclaw.targets.covers_at`; ADR-0197 decision 3): where that
+   ``accelerator`` has a :class:`hilclaw.targets.Target`, a record of a
+   contract the target does not serve is ``op_signature_not_covered``; for
+   the mock it is ``covers`` itself.
 4. The source of seeds is asked once, by :func:`hilclaw.check_seed.draw`
    (ADR-0048 decisions 3 to 5).
 5. The start line is appended.
@@ -99,7 +104,8 @@ between calls. It imports :mod:`hilclaw.build_log`,
 :mod:`hilclaw.check_admission`,
 :mod:`hilclaw.check_ending`, :mod:`hilclaw.check_identity`,
 :mod:`hilclaw.check_seed`, :mod:`hilclaw.hw_tool`, :mod:`hilclaw.instance`,
-:mod:`hilclaw.journaled_step` and :mod:`hilclaw.layout` and nothing else.
+:mod:`hilclaw.journaled_step`, :mod:`hilclaw.layout` and
+:mod:`hilclaw.targets` and nothing else.
 """
 
 from hilclaw import (
@@ -112,6 +118,7 @@ from hilclaw import (
     instance,
     journaled_step,
     layout,
+    targets,
 )
 
 _TOOL = "correctness.check"
@@ -136,7 +143,8 @@ def tool_function(*, source, table, seeds, covers):
     - ``seeds``: the source of seeds, a callable without arguments
       (:mod:`hilclaw.harness.seed_source`).
     - ``covers``: the predicate of ADR-0041 decision 5, handed to
-      :func:`hilclaw.check_admission.admit` as it is.
+      :func:`hilclaw.check_admission.admit` read at the target of the run
+      (:func:`hilclaw.targets.covers_at`).
 
     No parameter has a default. Raises :class:`TypeError`, in this order: when
     ``table`` is no ``BackendTable``; when ``source`` is not callable; when
@@ -156,8 +164,9 @@ def tool_function(*, source, table, seeds, covers):
     before the draw is ``seeds`` called.
 
     Everything else passes through unchanged, whatever it is: what
-    ``covers`` raises and what ``seeds`` raises that is no
-    :class:`Exception`, with no line appended; and what
+    ``covers`` raises, what building the run's target raises and what
+    ``seeds`` raises that is no :class:`Exception`, with no line appended;
+    and what
     :func:`hilclaw.check_seed.check` raises that is no
     :class:`hilclaw.check_ending.EndedWithoutOutcome`, after the start line,
     which leaves the identity open (:mod:`hilclaw.journaled_step`); a
@@ -169,7 +178,8 @@ def tool_function(*, source, table, seeds, covers):
     """
 
     def admit(request, read):
-        admitted = check_admission.admit(read, covers=covers)
+        at_target = targets.covers_at(covers, read.hw_profile["accelerator"])
+        admitted = check_admission.admit(read, covers=at_target)
         return _Drawn(admitted, check_seed.draw(seeds), check_identity.step_of(request))
 
     function = hw_tool.stepped_tool_function(

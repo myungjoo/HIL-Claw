@@ -81,7 +81,7 @@ from hilclaw import (
     tools,
 )
 from hilclaw.new_run import _described, _parsed, _standard, _told
-from hilclaw.start_instance import _ACCELERATORS
+from hilclaw.start_instance import _ACCELERATORS, _covers_of
 
 _DTYPE = "bf16"
 _TOLERANCE = ("rtol", "atol")
@@ -180,7 +180,7 @@ def documents(values, hw_profile):
             instance_start.prepare(
                 document,
                 accelerators=_ACCELERATORS,
-                covers=contract_table.start_covers,
+                covers=_covers_of(document),
             )
         except (
             keys.InvalidRecordError,

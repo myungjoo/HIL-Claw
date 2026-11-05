@@ -28,15 +28,15 @@ run tools' operations of the table.
   (:data:`hilclaw.standin_profile.ACCELERATOR`), offering the three with its
   operations (ADR-0167 Boundaries; ADR-0170) and no ``profiler.collect``
   (ADR-0130 decision 2), and ``virtual_npu``
-  (:data:`hilclaw.targets.VIRTUAL_NPU`), offering ``sim.run`` and
-  ``board.run`` alone, with the operations built with its target (ADR-0193
-  decision 4).
+  (:data:`hilclaw.targets.VIRTUAL_NPU`), offering the three with the
+  operations built with its target (ADR-0193 decision 4; ADR-0197
+  decision 2) and no ``profiler.collect``.
 * :func:`definition`: the tool definition :func:`hilclaw.tools.default_registry`
   registers, the tool function bound to that table, to
   :func:`hilclaw.harness.seed_source.system` and to
-  :func:`hilclaw.contract_table.check_covers`, which admits the fp32 ``gemm``
-  contract of ADR-0008 alone until the check slice of ADR-0177 lands
-  (ADR-0070 decisions 4 and 5; ADR-0177 decision 2).
+  :func:`hilclaw.contract_table.check_covers` (ADR-0070 decisions 4 and 5;
+  ADR-0177 decision 2), which the tool function reads at the target of the
+  run (ADR-0197 decision 3).
 
 Choices that are this module's own and no rule of a record: the names, the
 text of :data:`DESCRIPTION`, and that the schema is returned by a function,
@@ -142,9 +142,10 @@ def default_table():
     one named :data:`hilclaw.targets.VIRTUAL_NPU` offers ``sim.run`` and
     ``board.run``, each with :func:`hilclaw.standin_run.operation_for` of
     the ``virtual_npu`` :class:`hilclaw.targets.Target`, read when the table
-    is built, and no ``correctness.check``, which a call about it answers
-    ``not_offered`` (ADR-0193 decision 4; ADR-0016 decision 3). A call
-    about any other ``accelerator`` is ``no_backend``. It imports
+    is built, and ``correctness.check`` with
+    :func:`hilclaw.standin_check.operation_for` of that same target
+    (ADR-0193 decision 4; ADR-0197 decision 2). A call about any other
+    ``accelerator`` is ``no_backend``. It imports
     :mod:`hilclaw.mock_check`, and so NumPy, :mod:`hilclaw.mock_run`,
     :mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_profile`,
     :mod:`hilclaw.standin_run` and :mod:`hilclaw.targets`. Building it reads
@@ -162,15 +163,18 @@ def default_table():
 
     mock = {_TOOL: mock_check.operation(mock_check.default_script)}
     standin = {_TOOL: standin_check.operation}
-    virtual = standin_run.operation_for(targets.target(targets.VIRTUAL_NPU))
+    virtual_target = targets.target(targets.VIRTUAL_NPU)
+    virtual_run = standin_run.operation_for(virtual_target)
+    virtual = {_TOOL: standin_check.operation_for(virtual_target)}
     for tool in _RUN_TOOLS:
         mock[tool] = mock_run.operation(tool, mock_run.default_script)
         standin[tool] = standin_run.operation
+        virtual[tool] = virtual_run
     return backends.BackendTable(
         [
             backends.Backend(mock_backend.NAME, mock),
             backends.Backend(standin_profile.ACCELERATOR, standin),
-            backends.Backend(targets.VIRTUAL_NPU, dict.fromkeys(_RUN_TOOLS, virtual)),
+            backends.Backend(targets.VIRTUAL_NPU, virtual),
         ]
     )
 
