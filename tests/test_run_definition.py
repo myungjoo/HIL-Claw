@@ -122,8 +122,8 @@ NOT_SHOWABLE = [
 ]
 NO_OBJECT = [None, [], [("run_id", "r1")], "r1", json.dumps(REQUEST), 0, 1.0]
 TOOLS = {
-    "sim.run": (run_identity.STEP_SIM_RUN, SIM_DESCRIPTION),
-    "board.run": (run_identity.STEP_BOARD_RUN, BOARD_DESCRIPTION),
+    "sim.run": (run_identity.STEP_SIM_RUN_V3, SIM_DESCRIPTION),
+    "board.run": (run_identity.STEP_BOARD_RUN_V3, BOARD_DESCRIPTION),
 }
 each_tool = pytest.mark.parametrize("tool", list(TOOLS))
 
@@ -1228,10 +1228,17 @@ def test_a_bf16_record_is_served_by_the_run_tools_at_virtual_npu(
         tmp_path, monkeypatch, record, standin_client(calls)
     )
     registry = tools.default_registry(lambda: root)
-    expected = {**bf16_result(record), "memory_bytes": 300 * 1024}
+    factor = targets.VIRTUAL_NPU_CYCLES_PER_NS
+    in_ns = bf16_result(record)
+    expected = {
+        **in_ns,
+        "unit": "cycles",
+        "resolution": in_ns["resolution"] * factor,
+        "intervals": [interval * factor for interval in in_ns["intervals"]],
+        "memory_bytes": 300 * 1024,
+    }
     result = tools.call(registry, tool, dict(CALL))
     assert result == expected
-    assert result["unit"] == "ns"
     assert step_lines(root) == timed(tool, expected)
     timing_build, waiter_build, process = (command for command, _ in calls)
     image_at = timing_build.index("registry.example/hilclaw-clang:1")

@@ -59,14 +59,15 @@ from collections.abc import Mapping
 
 from hilclaw import (
     attempt_kernel,
+    check_identity,
     checks_tool,
     instance,
     journal,
     layout,
     model_forward_run,
-    run_identity,
     spec_feedback,
     targets,
+    timings_tool,
     tools,
 )
 from hilclaw.attempt_kernel import _check_data_root, _check_flags, _parameter
@@ -118,7 +119,7 @@ REASONS = (
 
 _LATENCY_ONLY = {"objectives": [{"type": "latency_minimisation"}], "constraints": []}
 _STEP_KINDS = (journal.STEP_STARTED, journal.STEP_ENDED)
-_BOARD_STEPS = (run_identity.STEP_BOARD_RUN, run_identity.STEP_BOARD_RUN_V3)
+_BOARD_STEPS = timings_tool.STEPS_OF[check_identity.BOARD]
 
 
 class RunBindingError(Exception):

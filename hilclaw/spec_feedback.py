@@ -56,8 +56,9 @@ no end line holding a ``failure`` and no start line without an end line.
 The medians are compared within one unit: when the measurements of the
 attempts verified at both points hold more than one ``unit`` there is no
 ``base`` (ADR-0196 decision 4). An end line whose ``result`` is not
-admitted makes its attempt no incumbent and fails nothing. A step line the journal refuses
-has already failed the read of the checks (``run_file_invalid``). All
+admitted makes its attempt no incumbent and fails nothing. A step line the
+journal refuses has already failed the read of the checks
+(``run_file_invalid``). All
 attempts of one run share its ``op_signature``, so the medians are compared
 without comparing ``contract_key`` and ``shape``. With no incumbent there is
 no ``base``.
