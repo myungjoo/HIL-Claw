@@ -2,7 +2,7 @@
 id: T-0551
 title: Apply HQ-0091 ① (a)·② (a) for PLAN P3-3 — write the §9 ADR that widens the instance-start scope (ADR-0076 decision 1) and the oracle to bf16 instances at `virtual_npu`, offer `correctness.check` there, turn on its `instance_start`, and admit at each target only the contracts it serves
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D27, OD-32, FR-9, OD-31, FR-10, NFR-6, "PLAN P3-3", HQ-0091]
 dependsOn: [T-0550]
