@@ -10,7 +10,12 @@ from hilclaw.harness.timing_finding import (
     measurement_found,
     run_found_at,
 )
-from hilclaw.run_identity import STEP_BOARD_RUN, STEP_SIM_RUN
+from hilclaw.run_identity import (
+    STEP_BOARD_RUN,
+    STEP_BOARD_RUN_V3,
+    STEP_SIM_RUN,
+    STEP_SIM_RUN_V3,
+)
 
 INTERVALS = [104200311, 99870122, 101004517, 100310960, 102118803]
 SMALLEST = min(INTERVALS)
@@ -282,7 +287,9 @@ def test_failure_end_line_gives_false():
     assert line_finding(failed(STEP_BOARD_RUN)) is False
 
 
-@pytest.mark.parametrize("step", [STEP_SIM_RUN, STEP_BOARD_RUN])
+@pytest.mark.parametrize(
+    "step", [STEP_SIM_RUN, STEP_BOARD_RUN, STEP_SIM_RUN_V3, STEP_BOARD_RUN_V3]
+)
 def test_end_line_of_a_run_tool_gives_the_finding_of_its_result(step):
     assert line_finding(ended(CLEAN, step)) is False
     assert line_finding(ended(COARSE, step)) is True
@@ -495,3 +502,20 @@ def test_a_v3_line_is_found_as_its_v2_line_in_ns(step):
 def test_an_invalid_v3_result_is_refused(step):
     with pytest.raises(ValueError, match="^resolution: must be at least 0"):
         line_finding(ended(converged(-1), step))
+
+
+@pytest.mark.parametrize("step", [STEP_SIM_RUN_V3, STEP_BOARD_RUN_V3])
+@pytest.mark.parametrize(
+    "result",
+    [
+        CLEAN,
+        COARSE,
+        converged(0),
+        converged(1, [100, 200]),
+        converged(2, [100, 200]),
+        converged(3, [300, 200, 250]),
+        not_converged(),
+    ],
+)
+def test_a_cycles_line_three_times_its_ns_gives_the_ns_finding(step, result):
+    assert line_finding(ended(in_cycles(result), step)) is measurement_found(result)

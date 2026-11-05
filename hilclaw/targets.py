@@ -9,14 +9,15 @@ places the description of a target in a table in the package source, one
 * A :class:`Target` holds the build flags, trailing flags and waiter flags,
   the environment, the build time limit and the cap of the process time
   limits, the contract-table keys it serves, a memory limit or ``None``, the
-  measurement unit, and whether the model executor may take its runs
-  (``model_run``) and an instance may start on it (``instance_start``).
+  measurement unit and the integer factor its figures are its ``ns`` figures
+  times (ADR-0196 decisions 3 and 5), and whether the model executor may
+  take its runs (``model_run``) and an instance may start on it (``instance_start``).
 * The entry :data:`CPU_STANDIN` (:data:`hilclaw.standin_profile.ACCELERATOR`).
   Its values are read from :mod:`hilclaw.standin_settings` each time the entry
   is read, so those constants stay the source of its build settings and time
   limits (ADR-0116 decision 2 (a); ADR-0117; ADR-0188). It serves every key of
-  :data:`hilclaw.contract_table.TABLE`, has no memory limit, the unit ``ns``,
-  and both booleans true.
+  :data:`hilclaw.contract_table.TABLE`, has no memory limit, the unit ``ns``
+  with the factor 1, and both booleans true.
 * The entry :data:`VIRTUAL_NPU`, the virtual NPU of ADR-0193 decision 4: a
   check backend on the development machine whose values exist to make
   first-case assumptions fail and are no fact about any real NPU. Its flags
@@ -25,8 +26,9 @@ places the description of a target in a table in the package source, one
   read from the same constants. It serves the six bf16 keys of
   :data:`hilclaw.contract_table.TABLE` (not fp32 ``gemm``), bounds each
   process container to :data:`VIRTUAL_NPU_MEMORY_LIMIT_BYTES`, has the unit
-  ``ns`` (until the owner answers whether another unit is admitted) and both
-  booleans false.
+  ``cycles`` with the factor :data:`VIRTUAL_NPU_CYCLES_PER_NS` (HQ-0090 (a);
+  ADR-0196 decision 5: a check value, no fact about the cycles of any real
+  NPU) and both booleans false.
 * The mock (:data:`hilclaw.mock_backend.NAME`) builds nothing and has no
   :class:`Target`.
 
@@ -72,6 +74,9 @@ class Target:
         serves, a ``tuple`` with no key twice.
     @param memory_limit_bytes ``None`` for no bound, or an ``int`` above 0 (not a ``bool``).
     @param unit the measurement unit, one of :data:`hilclaw.run_result.UNITS`.
+    @param units_per_ns the factor every figure in ``unit`` is the ``ns``
+        figure times (ADR-0196 decision 5): an ``int`` of at least 1 (not a
+        ``bool``), exactly 1 when ``unit`` is ``ns``.
     @param model_run exactly a ``bool``: the model executor may take this target's runs.
     @param instance_start exactly a ``bool``: an instance may start on this target.
     @throws TypeError for a member of the wrong type.
@@ -87,6 +92,7 @@ class Target:
     contracts: tuple
     memory_limit_bytes: object
     unit: str
+    units_per_ns: int
     model_run: bool
     instance_start: bool
 
@@ -104,6 +110,7 @@ class Target:
             raise TypeError(f"unit must be a str, not {type(self.unit).__name__}")
         if self.unit not in run_result.UNITS:
             raise ValueError(f"unit must be one of {', '.join(run_result.UNITS)}")
+        _check_units_per_ns(self.unit, self.units_per_ns)
         for name in ("model_run", "instance_start"):
             value = getattr(self, name)
             if type(value) is not bool:
@@ -161,6 +168,15 @@ def _check_memory_limit(value):
         raise ValueError("memory_limit_bytes must be above 0")
 
 
+def _check_units_per_ns(unit, value):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"units_per_ns must be an int, not {type(value).__name__}")
+    if value < 1:
+        raise ValueError("units_per_ns must be at least 1")
+    if unit == "ns" and value != 1:
+        raise ValueError("units_per_ns must be 1 for the unit ns")
+
+
 def _bf16_contracts():
     return tuple(key for key in contract_table.TABLE if key[1] == "bf16")
 
@@ -175,7 +191,8 @@ def _virtual_npu():
         process_time_limit_cap_s=standin_settings.PROCESS_TIME_LIMIT_CAP_S,
         contracts=_bf16_contracts(),
         memory_limit_bytes=VIRTUAL_NPU_MEMORY_LIMIT_BYTES,
-        unit="ns",
+        unit="cycles",
+        units_per_ns=VIRTUAL_NPU_CYCLES_PER_NS,
         model_run=False,
         instance_start=False,
     )
@@ -192,6 +209,7 @@ def _cpu_standin():
         contracts=tuple(contract_table.TABLE),
         memory_limit_bytes=None,
         unit="ns",
+        units_per_ns=1,
         model_run=True,
         instance_start=True,
     )
@@ -214,6 +232,9 @@ VIRTUAL_NPU_FLAGS = (
 
 VIRTUAL_NPU_MEMORY_LIMIT_BYTES = 268435456
 """The memory bound in bytes of each ``virtual_npu`` process container (ADR-0193 decision 4)."""
+
+VIRTUAL_NPU_CYCLES_PER_NS = 3
+"""The factor of ``virtual_npu``'s ``cycles``: its ``ns`` figures times 3, a check value (ADR-0196 decision 5)."""
 
 
 class _Table(Mapping):

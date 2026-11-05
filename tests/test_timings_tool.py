@@ -1298,3 +1298,40 @@ def test_difference_of_refuses_two_units():
         )
         == "lower"
     )
+
+
+def times_three(intervals):
+    return [interval * 3 for interval in intervals]
+
+
+@pytest.mark.parametrize(
+    "measured, against",
+    [(FAST, SLOW), (SLOW, FAST), (SLOW, CLOSE), (CLOSE, SLOW)],
+)
+def test_cycles_three_times_ns_keep_the_ratio_and_the_difference(measured, against):
+    in_ns = measurement.ratio_interval(against, measured)
+    in_cycles = measurement.ratio_interval(times_three(against), times_three(measured))
+    assert in_cycles == pytest.approx(in_ns, rel=1e-12)
+    assert timings_tool.difference_of(
+        "f",
+        in_unit("cycles", times_three(measured)),
+        in_unit("cycles", times_three(against)),
+    ) == timings_tool.difference_of(
+        "f", in_unit("ns", measured), in_unit("ns", against)
+    )
+
+
+@pytest.mark.parametrize(
+    "measured, against", [(FAST, SLOW), (SLOW, FAST), (CLOSE, SLOW)]
+)
+def test_compare_on_two_cycles_results_of_one_run_answers_as_on_ns(
+    tmp_path, measured, against
+):
+    answers = []
+    for unit, convert in (("ns", list), ("cycles", times_three)):
+        data_root = tmp_path / unit
+        data_root.mkdir()
+        run(data_root, MEASURED, step=BOARD_V3, result=in_unit(unit, convert(measured)))
+        run(data_root, AGAINST, step=BOARD_V3, result=in_unit(unit, convert(against)))
+        answers.append(compared(data_root))
+    assert answers[0] == answers[1]

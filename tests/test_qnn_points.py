@@ -117,8 +117,8 @@ def test_each_point_ends_with_its_own_step_from_its_own_operation(root, means):
     assert {
         line["data"]["step"] for line in events.read(root, run_tests.RUN).events
     } == {
-        "sim_run_timing_v2",
-        "board_run_timing_v2",
+        "sim_run_timing_v3",
+        "board_run_timing_v3",
     }
 
     lines = checks_tool.log_lines(root, run_tests.RUN)

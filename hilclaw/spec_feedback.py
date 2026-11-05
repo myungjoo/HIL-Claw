@@ -44,18 +44,23 @@ decision 3:
 ``ARCHITECTURE/decisions/ADR-0184-od20-first-case-incumbent-base.md``
 decision 2 adds ``feedback.base``, which :func:`feedback` returns beside the
 entries: the incumbent, the shown attempt verified at both points whose
-measurement at the step :data:`hilclaw.run_identity.STEP_BOARD_RUN` has the
-lowest median of its intervals, the earliest ``(round, attempt)`` on a tie.
-An attempt has a measurement by the rule of ``timings.compare``
-(:mod:`hilclaw.timings_tool`): exactly one end line at that step whose
-``result`` is an admitted timing result with the ``outcome`` ``"converged"``
-or ``"not_converged"``, and no end line holding a ``failure`` and no start
-line without an end line. An end line whose ``result`` is not admitted makes
-its attempt no incumbent and fails nothing. A step line the journal refuses
-has already failed the read of the checks (``run_file_invalid``). All
-attempts of one run share its ``op_signature``, so the medians are compared
-without comparing ``contract_key`` and ``shape``. With no incumbent there is
-no ``base``.
+measurement at the board point has the lowest median of its intervals, the
+earliest ``(round, attempt)`` on a tie. The board point's lines are those
+under either of its values, ``board_run_timing_v2`` and
+``board_run_timing_v3`` (:data:`hilclaw.timings_tool.STEPS_OF`; ADR-0196
+decision 4), read together. An attempt has a measurement by the rule of
+``timings.compare`` (:mod:`hilclaw.timings_tool`): exactly one end line at
+those steps whose ``result`` is an admitted timing result for the ``step``
+of its line with the ``outcome`` ``"converged"`` or ``"not_converged"``, and
+no end line holding a ``failure`` and no start line without an end line.
+The medians are compared within one unit: when the measurements of the
+attempts verified at both points hold more than one ``unit`` there is no
+``base`` (ADR-0196 decision 4). An end line whose ``result`` is not
+admitted makes its attempt no incumbent and fails nothing. A step line the
+journal refuses has already failed the read of the checks
+(``run_file_invalid``). All attempts of one run share its ``op_signature``,
+so the medians are compared without comparing ``contract_key`` and
+``shape``. With no incumbent there is no ``base``.
 
 Choices that are this module's own and no rule of the record:
 
@@ -103,7 +108,6 @@ from hilclaw import (
     keys,
     layout,
     run_files,
-    run_identity,
     spec_file,
     timings_tool,
     tools,
@@ -125,6 +129,7 @@ _GENERIC_PHRASE = "a condition this report does not name"
 _FAILED = (check_result.FAIL, check_result.BROKEN)
 _ENTERING = ("converged", "not_converged")
 _STEP_KINDS = (journal.STEP_STARTED, journal.STEP_ENDED)
+_BOARD_STEPS = timings_tool.STEPS_OF[check_identity.BOARD]
 
 
 def attempts(data_root, run_id, round):
@@ -235,11 +240,11 @@ def _feedback(root, run_id, round):
     made = {"attempts": [entry for entry, _, _ in shown]}
     timed = []
     for entry in verified:
-        median = _board_median(lines, entry["round"], entry["attempt"])
-        if median is not None:
-            timed.append((median, entry["round"], entry["attempt"]))
-    if timed:
-        _, q, a = min(timed)
+        measured = _board_median(lines, entry["round"], entry["attempt"])
+        if measured is not None:
+            timed.append((*measured, entry["round"], entry["attempt"]))
+    if timed and len({unit for _, unit, _, _ in timed}) == 1:
+        _, _, q, a = min(timed)
         made["base"] = {"round": q, "candidate": 1, "attempt": a}
     return made
 
@@ -250,7 +255,7 @@ def _board_median(lines, q, a):
         if event["kind"] not in _STEP_KINDS:
             continue
         identity = journal.identity_of(event)
-        if identity.step != run_identity.STEP_BOARD_RUN or (
+        if identity.step not in _BOARD_STEPS or (
             identity.round,
             identity.candidate,
             identity.attempt,
@@ -261,13 +266,15 @@ def _board_median(lines, q, a):
             continue
         ended.add(identity.execution)
         data = event["data"]
-        if "failure" in data or timings_tool.timing_problem(data["result"]):
+        if "failure" in data or timings_tool.timing_problem(
+            data["result"], identity.step
+        ):
             return None
         if data["result"]["outcome"] in _ENTERING:
-            entering.append(data["result"]["intervals"])
+            entering.append(data["result"])
     if len(entering) != 1 or started - ended:
         return None
-    return statistics.median(entering[0])
+    return statistics.median(entering[0]["intervals"]), entering[0]["unit"]
 
 
 def _failure(root, run_id, entry, point, step, deciding):

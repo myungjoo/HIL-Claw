@@ -1261,6 +1261,7 @@ def a_target(**changes):
         "contracts": (),
         "memory_limit_bytes": None,
         "unit": "ns",
+        "units_per_ns": 1,
         "model_run": False,
         "instance_start": False,
     }

@@ -5,17 +5,17 @@ rule; a decision cited by its number alone is one of that record. The module
 renders, ahead of the tool functions, what its decisions 3 and 4 fix of a
 call, with the values of ADR-0183 decision 2:
 
-* :data:`STEP_SIM_RUN`, :data:`STEP_BOARD_RUN`: each tool has exactly one
-  ``step`` value it calls a step under, ``sim_run_timing_v2`` for
-  ``sim.run`` and ``board_run_timing_v2`` for ``board.run`` (ADR-0183
-  decision 2, which retires the values of decision 3 and keeps its rule),
-  the same for every contract.
+* :data:`STEP_SIM_RUN`, :data:`STEP_BOARD_RUN`: the v2 values of the two
+  tools, ``sim_run_timing_v2`` and ``board_run_timing_v2`` (ADR-0183
+  decision 2, which retires the values of decision 3 and keeps its rule).
+  No tool calls a step under them any more (ADR-0196 decisions 6 and 7);
+  the readers still read their lines (ADR-0196 decision 4).
 * :data:`STEP_SIM_RUN_V3`, :data:`STEP_BOARD_RUN_V3`: the v3 values of the
   two tools, ``sim_run_timing_v3`` and ``board_run_timing_v3`` (ADR-0196
   decision 2, after HQ-0090 (a)), whose result admits a ``unit`` of the
-  approved open list of units. No tool calls a step under them until
-  ADR-0196's second slice; their readers read them first (ADR-0196
-  decision 6).
+  approved open list of units. Each tool has exactly one ``step`` value it
+  calls a step under, its v3 value, the same for every contract and every
+  target (ADR-0196 decisions 2 and 6).
 * :data:`STEPS`: the four values above, those a reader of the run lines
   reads (ADR-0196 decision 4); :data:`UNITS_OF`: the ``unit`` values the
   result definition of each of them admits (ADR-0183 decision 4, ADR-0196
@@ -60,13 +60,13 @@ rule for the ``step`` values of another tool". It keeps nothing between
 calls, reads no file and imports nothing.
 """
 
-#: The one ``step`` of ``sim.run`` (ADR-0062 decision 3, ADR-0183 decision 2).
+#: The v2 ``step`` of ``sim.run``, read and no longer called (ADR-0183 decision 2, ADR-0196 decision 7).
 STEP_SIM_RUN = "sim_run_timing_v2"
-#: The one ``step`` of ``board.run`` (ADR-0062 decision 3, ADR-0183 decision 2).
+#: The v2 ``step`` of ``board.run``, read and no longer called (ADR-0183 decision 2, ADR-0196 decision 7).
 STEP_BOARD_RUN = "board_run_timing_v2"
-#: The v3 ``step`` of ``sim.run`` (ADR-0196 decision 2).
+#: The one ``step`` of ``sim.run``, its v3 value (ADR-0062 decision 3, ADR-0196 decision 2).
 STEP_SIM_RUN_V3 = "sim_run_timing_v3"
-#: The v3 ``step`` of ``board.run`` (ADR-0196 decision 2).
+#: The one ``step`` of ``board.run``, its v3 value (ADR-0062 decision 3, ADR-0196 decision 2).
 STEP_BOARD_RUN_V3 = "board_run_timing_v3"
 #: The ``step`` values a reader of the two tools' lines reads, each once; the order means nothing (ADR-0196 decision 4).
 STEPS = (STEP_SIM_RUN, STEP_BOARD_RUN, STEP_SIM_RUN_V3, STEP_BOARD_RUN_V3)
@@ -83,21 +83,21 @@ NUMBERS = ("round", "candidate", "attempt")
 
 _SIM = "sim.run"
 _BOARD = "board.run"
-_STEP_OF = {_SIM: STEP_SIM_RUN, _BOARD: STEP_BOARD_RUN}
+_STEP_OF = {_SIM: STEP_SIM_RUN_V3, _BOARD: STEP_BOARD_RUN_V3}
 _ACCEPTED = f'tool: must be "{_SIM}" or "{_BOARD}", '
 _NO_STRING = _ACCEPTED + "got a value that is not exactly a string"
 _OTHER = _ACCEPTED + "got another string"
 
 
 def step_of(tool):
-    """Return the one ``step`` value of the run tool named ``tool`` (ADR-0062 decision 3, ADR-0183 decision 2).
+    """Return the one ``step`` value of the run tool named ``tool`` (ADR-0062 decision 3, ADR-0196 decision 2).
 
     - ``tool``: the name of the tool, ``"sim.run"`` or ``"board.run"``.
 
-    The parameter has no default. Returns :data:`STEP_SIM_RUN` for exactly
-    ``"sim.run"`` and :data:`STEP_BOARD_RUN` for exactly ``"board.run"``, and
-    no other value. It is meant for building a tool function, not for
-    answering a call: it takes no request and raises no
+    The parameter has no default. Returns :data:`STEP_SIM_RUN_V3` for exactly
+    ``"sim.run"`` and :data:`STEP_BOARD_RUN_V3` for exactly ``"board.run"``,
+    and no other value: no v2 value. It is meant for building a tool
+    function, not for answering a call: it takes no request and raises no
     :class:`hilclaw.tools.ToolFailure`.
 
     Raises :class:`TypeError` when ``tool`` is not exactly a ``str``, without

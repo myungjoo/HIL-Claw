@@ -30,10 +30,14 @@ Choices that are this module's own and no rule of a record:
   an accepted type with a value that is not admitted or for an absent member.
   The message starts with the name of the member and shows nothing of the
   value, so no code of the value is called.
-* The members read are those of the v2 result (ADR-0183 decision 8):
-  ``resolution`` and ``intervals`` (ADR-0063 decision 4's ``resolution_ns``
-  and ``intervals_ns`` renamed). ``unit`` is not read: both are in the one
-  unit it states, so the coarse-clock test needs none.
+* The lines read are the end lines under the four values of
+  :data:`hilclaw.run_identity.STEPS`, the v2 and the v3 value of each run
+  tool (ADR-0196 decision 4). The members read are those the v2 and the v3
+  result share (ADR-0183 decision 8, ADR-0196 decision 2): ``resolution``
+  and ``intervals`` (ADR-0063 decision 4's ``resolution_ns`` and
+  ``intervals_ns`` renamed). ``unit`` is not read: both are in the one unit
+  it states, ``ns`` or ``cycles``, so the coarse-clock test, a ratio of the
+  two, needs none (ADR-0196 decision 4).
 * ``resolution`` and ``intervals`` are read and checked for both
   ``"converged"`` and ``"not_converged"``, although the not-converged ground
   needs neither.
@@ -129,7 +133,8 @@ def line_finding(event):
 
     ``None`` when ``event`` is not a run tools' end line: its ``kind`` is not
     ``step_ended`` or its ``data.step`` is not in
-    :data:`hilclaw.run_identity.STEPS`. Lines under another ``step`` are not
+    :data:`hilclaw.run_identity.STEPS`, the v2 and the v3 values of the two
+    run tools. Lines under another ``step`` are not
     read further (ADR-0104 decision 3). A run tools' end line is checked as
     :func:`hilclaw.journal.check_step` checks it and gives ``False`` when it
     holds ``failure``, otherwise :func:`measurement_found` of
