@@ -2,7 +2,7 @@
 id: T-0555
 title: ADR-0198 slice 3 for PLAN P3-6 — `correctness.check`, `sim.run` and `board.run` read a `compile_settings` run, build a version-3 attempt from the named round's kernel with the target's flags plus the candidate's, and write `measure/…/build.json`; `attempt_kernel` follows the reference
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, OD-6, OD-18, FR-5, FR-10, "PLAN P3-6", HQ-0089, ADR-0198, ADR-0116]
 dependsOn: [T-0553, T-0554]
@@ -70,7 +70,7 @@ hq: []
 
 ## Result
 
-- **Outcome**: DONE. PR #371 (`claude/T-0555-compile-settings-evaluation`), squash-merged into `main`; the merge commit is the squash of PR #371 and carries `Task: T-0555`. 2 review rounds by a context-isolated reviewer (round 1 Approve with four Nits, round 2 Approve with four Nits). CI on GitHub was green before the merge.
+- **Outcome**: DONE. PR #371 (`claude/T-0555-compile-settings-evaluation`), squash-merged into `main` as 123fe11f; the merge commit is the squash of PR #371 and carries `Task: T-0555`. 2 review rounds by a context-isolated reviewer (round 1 Approve with four Nits, round 2 Approve with four Nits). CI on GitHub was green before the merge.
 - **Order check (D27 ①)**: unchanged at the start: no open PR, no open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`, P3-6 the first selectable P3 item.
 - **Language**: Python. Every module touched is a Python module of the 2nd-layer package `hilclaw/`, and the change only extends those modules.
 - **What landed**:
