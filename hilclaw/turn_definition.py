@@ -55,8 +55,12 @@ outside the session directory.
   and every report of the measurement lead to the evaluator's verdicts of
   the round, and written verdicts to the closing steps. A failed spec
   write, ``spec_exists``, a coder-driver report it cannot read or verdicts
-  not written stop (ADR-0172 decisions 2 to 7). The stop writes nothing
-  else and ends no round.
+  not written stop (ADR-0172 decisions 2 to 7). In a round >= 1 of a
+  ``compile_settings`` run the selector has the round's version-3 spec
+  written itself and no coder call is delegated: after the read, a
+  selector report that the spec was written leads to the sim-point check
+  and any other report stops (ADR-0198 decision 3; ADR-0199 decision 5).
+  The stop writes nothing else and ends no round.
 - *Refusals*, each a :class:`ValueError` with a fixed text raised before
   anything is written: a top-level entry that is not a key of :data:`LAYOUT`;
   an entry of the wrong kind; a missing ``round-manager.md``; an entry at any
@@ -77,7 +81,7 @@ The roster: ``orchestration/agents/`` holds the evaluator's definition
 decision 5; ADR-0171 decision 5), the experiment-runner's (ADR-0142
 decision 4; ADR-0172 decision 4) and the technique-selector's (ADR-0132
 decision 7; ADR-0171 decisions 2 to 4; ADR-0173 decisions 4 and 5; ADR-0174
-decision 6), and the rest of the roster stays open (OD-23).
+decision 6; ADR-0199 decision 5), and the rest of the roster stays open (OD-23).
 
 Not done here: no skills, no settings, hooks or permissions (PLAN P2-4;
 ADR-0118 decision 4, "Workspace trust"), no repair (OD-19), retry

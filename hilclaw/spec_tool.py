@@ -1,19 +1,26 @@
-"""The tool ``spec.write``, which composes and writes the spec of the first coder call of a round of a first-case run (ADR-0138 decision 3, ADR-0151 decision 3).
+"""The tool ``spec.write``, which composes and writes the spec of the first attempt of a round of a first-case run (ADR-0138 decision 3, ADR-0151 decision 3, ADR-0199).
 
 For the runs of ADR-0120 decision 1 whose ``instance.json`` states
 ``candidates_per_round`` 1, the ``coder-driver`` has the spec of the first
 coder call of a round (``candidate`` 1, ``attempt`` 1) written through this
 tool before it requests that call: the bring-up call of round 0 (ADR-0138
 decisions 1 and 3) and the first call of a round >= 1 (ADR-0151 decisions 1
-and 3). It is a tool of the registry beside the FR-10 tools, not an FR-10
-tool: it is not journaled, appends no line to ``events.ndjson``, selects no
-backend and keeps nothing between calls.
+and 3). In a round >= 1 of a run whose ``instance.json`` states the
+candidate kind ``compile_settings``, the ``technique-selector`` has the
+version-3 spec of that attempt written through it instead, and no coder
+call follows (ADR-0198 decision 3; ADR-0199 decisions 2 to 4). It is a tool
+of the registry beside the FR-10 tools, not an FR-10 tool: it is not
+journaled, appends no line to ``events.ndjson``, selects no backend and
+keeps nothing between calls.
 
 The request is ``{"run_id": ..., "round": ..., "candidate": 1, "attempt":
 1}`` and, exactly when ``round`` >= 1, ``"techniques"``: an array of
 *names* of ADR-0001 decision 1, none twice, possibly empty, with no length
-bound. The numbers are in the form of ADR-0015 decision 4: ``int`` values, a
-``bool`` being none, ``round`` from 0 to :data:`hilclaw.keys.MAX_INTEGER`.
+bound, or in its place ``"flags"``: an array of strings of 1 to 255
+printable ASCII characters, possibly empty, repeats allowed, with no length
+bound (ADR-0199 decision 2). The numbers are in the form of ADR-0015
+decision 4: ``int`` values, a ``bool`` being none, ``round`` from 0 to
+:data:`hilclaw.keys.MAX_INTEGER`.
 The data root comes from the data-root source, asked at each call after the
 request was checked, and never from the request (ADR-0015 decision 3). The
 result is the empty object ``{}``. ``id.round`` is not held against
@@ -24,12 +31,17 @@ and nothing is created before 12 (ADR-0151 decision 3, table):
 
 1. the request (``invalid_request``): a member other than those above, one
    missing, a value outside its form, ``candidate`` or ``attempt`` other
-   than 1, ``techniques`` with ``round`` 0 or absent with ``round`` >= 1, or
-   an element of it that is no *name* or occurs twice;
+   than 1, ``techniques`` or ``flags`` with ``round`` 0, neither or both
+   with ``round`` >= 1, an element of ``techniques`` that is no *name* or
+   occurs twice, or an element of ``flags`` outside its form;
 2. the data root (``no_data_root``);
 3. the run's ``instance.json`` read once by :func:`hilclaw.run_file_tools.read`
    (the four ``run_file_*`` kinds of ADR-0019, as ``instance.read`` answers
    them);
+3a. the request's form against the run's candidate kind, read from the same
+   bytes by :func:`hilclaw.instance.parse_kinded` (``invalid_request``):
+   ``techniques`` in a run whose kind is not ``c_kernel``, ``flags`` in a
+   ``c_kernel`` run (ADR-0199 decision 4);
 4. ``candidates_per_round`` stated (:data:`KIND_CANDIDATES_PER_ROUND_NOT_STATED`)
    and equal to 1 (:data:`KIND_CANDIDATES_PER_ROUND_NOT_COVERED`);
 5. ``op_signature`` stated (:data:`KIND_OP_SIGNATURE_NOT_STATED`) and covered
@@ -37,7 +49,7 @@ and nothing is created before 12 (ADR-0151 decision 3, table):
    and the six bf16 ones, through :func:`hilclaw.contract_table.covers`
    (:data:`KIND_OP_SIGNATURE_NOT_COVERED`; ADR-0177 decision 2);
 6. ``objective`` stated (:data:`KIND_OBJECTIVE_NOT_STATED`);
-7. for ``round`` >= 1 and a non-empty ``techniques`` only, each id in the
+7. for a non-empty ``techniques`` only, each id in the
    request's order looked up by :func:`hilclaw.catalog.technique` in the
    directory of the instance's ``hw_profile`` ``accelerator`` below
    :data:`hilclaw.catalog.SOURCE`: a directory that is missing, is refused
@@ -50,16 +62,19 @@ and nothing is created before 12 (ADR-0151 decision 3, table):
    (:data:`hilclaw.catalog.APPLIES_TO`), it refuses every id for a run of a
    bf16 contract and none for a run of the fp32 one, ADR-0177 decision 4);
    the first id that fails decides;
-8. to 10. for ``round`` >= 1, :func:`hilclaw.spec_feedback.feedback`, whose
+8. to 10. for ``techniques`` only, :func:`hilclaw.spec_feedback.feedback`, whose
    kinds pass out unchanged: :data:`KIND_FEEDBACK_UNREADABLE`, the four
    ``run_file_*`` kinds for the run's ``events.ndjson`` and
    ``check_result_invalid``;
 11. the composed document encoded into the written form of ADR-0029 decision
     2, accepted by :func:`hilclaw.spec_file.parse` and given its final name
-    by :func:`hilclaw.spec_file.final_name` (:data:`KIND_SPEC_INVALID`, a
+    by :func:`hilclaw.spec_file.final_name`, for ``flags`` by
+    :func:`hilclaw.spec_file.parse_versioned` and
+    :func:`hilclaw.spec_file.final_name_versioned` (:data:`KIND_SPEC_INVALID`, a
     document that cannot be so encoded among them); no valid
     ``instance.json`` makes this check refuse today;
-12. the write by :func:`hilclaw.spec_file.write`: a taken final name
+12. the write by :func:`hilclaw.spec_file.write`, for ``flags`` by
+    :func:`hilclaw.spec_file.write_versioned`: a taken final name
     (:data:`KIND_SPEC_EXISTS`; nothing is written, and the file under the name
     is not read or compared), any :class:`OSError`, a data root gone since 2
     among them (:data:`KIND_SPEC_NOT_WRITTEN`).
@@ -80,8 +95,14 @@ decision 2). The document of a round ``r`` >= 1 is that document with
 in the request's order, and ``feedback`` that of 8 to 10: ``attempts`` the
 list of ADR-0151 decision 2 and ``base`` the incumbent of
 ``ARCHITECTURE/decisions/ADR-0184-od20-first-case-incumbent-base.md``
-decision 2, when there is one. No document has ``task.build``, ``profile``,
-``repair`` or ``ext``, and the document of round 0 no ``feedback.base``. The document is encoded by the rule of
+decision 2, when there is one. The document of a request with ``flags`` is
+the round-0 document with ``schema_version`` 3, ``id.round`` ``r`` and
+``task.build`` ``{candidate_kind: "compile_settings", flags, kernel_round: 0,
+kernel_candidate: 1, kernel_attempt: 1}``, ``flags`` the request's in its
+order; its ``guidance.techniques`` and ``feedback.attempts`` stay empty
+(ADR-0199 decision 3). No other document has ``task.build``, none has
+``profile``, ``repair`` or ``ext``, and only a round >= 1 document of
+``techniques`` may have ``feedback.base``. The document is encoded by the rule of
 ``verdicts.write``: ``json.dumps(document, ensure_ascii=False, indent=2,
 allow_nan=False)`` followed by one line feed, in UTF-8 without a byte order
 mark.
@@ -97,12 +118,15 @@ passes out of the tool function and :func:`hilclaw.tools.call` answers it with
 ``tool_crashed``.
 
 The files read are ``instance.json``, for a non-empty ``techniques`` the
-catalog directory, and for ``round`` >= 1 what
+catalog directory, and for ``techniques`` what
 :func:`hilclaw.spec_feedback.feedback` reads (the earlier attempts'
 directories and specs, ``events.ndjson`` and the compiler logs).
 ``STATE.json``, ``decision/hypotheses.json``, ``decision.md`` and the stored
-key records below ``db/`` are not. The only file written is the spec, through
-:func:`hilclaw.spec_file.write`. The new kinds are names of the tool layer and
+key records below ``db/`` are not, and neither is the attempt that
+``task.build`` names: whether it has a kernel is checked at evaluation
+(ADR-0198 decision 2). The only file written is the spec, through
+:func:`hilclaw.spec_file.write` or :func:`hilclaw.spec_file.write_versioned`;
+no ``output/`` is created. The new kinds are names of the tool layer and
 none is reserved; the four ``run_file_*`` kinds are the reserved ones of
 ADR-0019, widened to these reads by ADR-0138 decision 3 and ADR-0151
 decision 3.
@@ -116,12 +140,14 @@ from hilclaw import (
     coder_call,
     contract_table,
     data_root_source,
+    instance,
     keys,
     layout,
     run_admission,
     run_file_tools,
     run_files,
     run_objective,
+    spec,
     spec_feedback,
     spec_file,
     tools,
@@ -155,42 +181,53 @@ KIND_SPEC_NOT_WRITTEN = "spec_not_written"
 NAME = "spec.write"
 
 _DESCRIPTION = (
-    "Compose and write the spec of the first coder call of a round of the run "
-    "run_id, the call with candidate 1 and attempt 1, from the run's "
+    "Compose and write the spec of the first attempt of a round of the run "
+    "run_id, the attempt with candidate 1 and attempt 1, from the run's "
     "instance.json: its hw_profile, its op_signature with the contract that "
-    "covers it, and its objective. For round 0, the bring-up call, the spec "
-    "has no technique and no feedback. For a round of 1 or more, the spec "
-    "also carries the catalog entry of each technique id you name in "
-    "techniques, in your order, and every earlier attempt of the run whose "
-    "check at the sim point is settled, with its technique ids and its "
-    "failure, and names as feedback.base the fastest earlier attempt verified "
-    "at both points, when there is one. The spec is written once to "
+    "covers it, and its objective. For round 0, the bring-up coder call, the "
+    "spec has no technique and no feedback. For a round of 1 or more of a "
+    "c_kernel run, the spec of the coder call also carries the catalog entry "
+    "of each technique id you name in techniques, in your order, and every "
+    "earlier attempt of the run whose check at the sim point is settled, "
+    "with its technique ids and its failure, and names as feedback.base the "
+    "fastest earlier attempt verified at both points, when there is one. For "
+    "a round of 1 or more of a compile_settings run, the spec is that of an "
+    "attempt with no coder call: schema_version 3, with task.build naming "
+    "the candidate kind compile_settings, the compiler flags you give in "
+    "flags, in your order, and the run's round-0 attempt (round 0, candidate "
+    "1, attempt 1) as the kernel they build; it has no technique and no "
+    "feedback. The spec is written once to "
     "runs/<run_id>/rounds/<RRRR>/coder/candidates/01/attempts/01/spec.json "
-    "and never replaced. Call it before you request that coder call; request "
-    "no call when it fails with a kind other than spec_exists, and report the "
-    "kind in every case. The request is run_id, round, candidate 1 and "
-    "attempt 1, and, exactly when round is 1 or more, techniques: an array "
-    "of technique ids, each a name, none twice, possibly empty. The result "
-    "is {}. The data root is never part of the request; the tool knows it. "
-    "Nothing is written when it fails. It fails, checked in this order, with "
-    "invalid_request for a request with another member, a member missing, "
-    "a value outside its form, a candidate or attempt other than 1, "
-    "techniques with round 0 or without it for a round of 1 or more, or an "
-    "id that is no name or is given twice; no_data_root when the data root "
-    "cannot be obtained; run_file_missing, run_file_invalid, "
+    "and never replaced. Call it before you request that coder call, or, in "
+    "a compile_settings run, in place of it; request no call when it fails "
+    "with a kind other than spec_exists, and report the kind in every case. "
+    "The request is run_id, round, candidate 1 and attempt 1, and, exactly "
+    "when round is 1 or more, techniques: an array of technique ids, each a "
+    "name, none twice, possibly empty, in a c_kernel run, or flags: an array "
+    "of strings of 1 to 255 printable ASCII characters, possibly empty, in a "
+    "compile_settings run. The result is {}. The data root is never part of "
+    "the request; the tool knows it. Nothing is written when it fails. It "
+    "fails, checked in this order, with invalid_request for a request with "
+    "another member, a member missing, a value outside its form, a "
+    "candidate or attempt other than 1, techniques or flags with round 0, "
+    "neither or both for a round of 1 or more, an id that is no name or is "
+    "given twice, or a flag outside its form; no_data_root when the data "
+    "root cannot be obtained; run_file_missing, run_file_invalid, "
     "run_file_unsupported or run_file_unreadable when the run's "
     "instance.json is not there, is invalid or no regular file, has another "
-    "schema_version or cannot be read; candidates_per_round_not_stated when "
-    "instance.json states no candidates_per_round; "
-    "candidates_per_round_not_covered when it states one other than 1; "
-    "op_signature_not_stated when it states no op_signature; "
-    "op_signature_not_covered when the op_signature is not covered by any "
-    "kernel contract of the package; objective_not_stated when it states no "
-    "objective; for a round of 1 or more with ids only, catalog_unusable "
-    "when the catalog of the run's accelerator is missing, invalid or cannot "
-    "be read, technique_unknown when an id names no entry of it, and "
-    "technique_not_applicable when an entry applies to another task than "
-    "the spec's; for a round of 1 or more, feedback_unreadable when an "
+    "schema_version or cannot be read; invalid_request again when the "
+    "request's form is not that of the run's candidate kind (techniques in "
+    "a compile_settings run, flags in a c_kernel run); "
+    "candidates_per_round_not_stated when instance.json states no "
+    "candidates_per_round; candidates_per_round_not_covered when it states "
+    "one other than 1; op_signature_not_stated when it states no "
+    "op_signature; op_signature_not_covered when the op_signature is not "
+    "covered by any kernel contract of the package; objective_not_stated "
+    "when it states no objective; for techniques with ids only, "
+    "catalog_unusable when the catalog of the run's accelerator is missing, "
+    "invalid or cannot be read, technique_unknown when an id names no entry "
+    "of it, and technique_not_applicable when an entry applies to another "
+    "task than the spec's; for techniques, feedback_unreadable when an "
     "earlier attempt's spec, a listing or a compiler log cannot be used, "
     "run_file_missing, run_file_invalid, run_file_unsupported or "
     "run_file_unreadable for the run's events.ndjson, and "
@@ -201,8 +238,12 @@ _DESCRIPTION = (
 )
 _MEMBERS = ("run_id", "round", "candidate", "attempt")
 _TECHNIQUES = "techniques"
+_FLAGS = "flags"
+_FORMS = (_TECHNIQUES, _FLAGS)
 _TUPLE = {"round": 0, "candidate": 1, "attempt": 1}
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
+_FLAG = re.compile(r"[\x20-\x7e]{1,255}")
+_KERNEL = {"kernel_round": 0, "kernel_candidate": 1, "kernel_attempt": 1}
 
 
 def definition(source):
@@ -216,11 +257,14 @@ def definition(source):
     The tool function raises :class:`hilclaw.tools.ToolFailure` of kind
     ``invalid_request`` for a request that is not ``run_id``, ``round``,
     ``candidate`` and ``attempt`` with, exactly when ``round`` >= 1,
-    ``techniques``; whose ``run_id`` :func:`hilclaw.layout.check_run_id`
-    refuses; whose numbers are not ``int`` values in the form of ADR-0015
-    decision 4, ``round`` from 0 to :data:`hilclaw.keys.MAX_INTEGER` and
-    ``candidate`` and ``attempt`` 1; or whose ``techniques`` is no ``list``
-    of distinct *names*; ``no_data_root`` as
+    ``techniques`` or ``flags``; whose ``run_id``
+    :func:`hilclaw.layout.check_run_id` refuses; whose numbers are not
+    ``int`` values in the form of ADR-0015 decision 4, ``round`` from 0 to
+    :data:`hilclaw.keys.MAX_INTEGER` and ``candidate`` and ``attempt`` 1;
+    whose ``techniques`` is no ``list`` of distinct *names* or whose
+    ``flags`` is no ``list`` of strings of 1 to 255 printable ASCII
+    characters; or whose form is not that of the run's candidate kind (the
+    module docstring, 3a); ``no_data_root`` as
     :func:`hilclaw.data_root_source.obtain` does; the four ``run_file_*``
     kinds as :func:`hilclaw.run_file_tools.read` raises them; what
     :func:`hilclaw.spec_feedback.feedback` raises; and the kinds of this
@@ -244,6 +288,7 @@ def _input_schema():
             "candidate": {"type": "integer", "minimum": 1, "maximum": 1},
             "attempt": {"type": "integer", "minimum": 1, "maximum": 1},
             _TECHNIQUES: {"type": "array"},
+            _FLAGS: {"type": "array"},
         },
         "required": list(_MEMBERS),
         "additionalProperties": False,
@@ -257,8 +302,9 @@ def _invalid(message):
 def _checked(request):
     value = request.get("round")
     later = type(value) is int and value >= 1
-    taken = (*_MEMBERS, _TECHNIQUES) if later else _MEMBERS
-    others = sorted(name for name in request if name not in (*_MEMBERS, _TECHNIQUES))
+    form = _FLAGS if _FLAGS in request and _TECHNIQUES not in request else _TECHNIQUES
+    taken = (*_MEMBERS, form) if later else _MEMBERS
+    others = sorted(name for name in request if name not in (*_MEMBERS, *_FORMS))
     if others:
         raise _invalid(
             f"the request takes the members {', '.join(taken)} only, "
@@ -283,15 +329,32 @@ def _checked(request):
                 f"candidate 1, attempt 1 of a round, got {value}"
             )
     if not later:
-        if _TECHNIQUES in request:
-            raise _invalid("techniques: is taken only with a round of 1 or more")
-        return run_id, 0, []
-    if _TECHNIQUES not in request:
+        for name in _FORMS:
+            if name in request:
+                raise _invalid(f"{name}: is taken only with a round of 1 or more")
+        return run_id, 0, None, []
+    if all(name in request for name in _FORMS):
+        raise _invalid("techniques and flags: the request takes one of them, not both")
+    if form not in request:
         raise _invalid(
             "the request lacks the member techniques, which a round of 1 or "
             "more requires"
         )
-    return run_id, request["round"], _ids(request[_TECHNIQUES])
+    if form == _FLAGS:
+        return run_id, request["round"], _FLAGS, _flags(request[_FLAGS])
+    return run_id, request["round"], _TECHNIQUES, _ids(request[_TECHNIQUES])
+
+
+def _flags(value):
+    if type(value) is not list:
+        raise _invalid(f"flags: must be an array, got {type(value).__name__}")
+    for index, flag in enumerate(value):
+        if type(flag) is not str or not _FLAG.fullmatch(flag):
+            raise _invalid(
+                f"flags[{index}]: must be a string of 1 to 255 printable ASCII "
+                "characters"
+            )
+    return value
 
 
 def _ids(value):
@@ -314,19 +377,26 @@ def _ids(value):
 
 
 def _write(source, request):
-    run_id, round, ids = _checked(request)
+    run_id, round, form, values = _checked(request)
     data_root = data_root_source.obtain(source)
-    stated, _ = run_file_tools.read(data_root, run_id, "instance.json")
+    stated, raw = run_file_tools.read(data_root, run_id, "instance.json")
+    _matched(run_id, form, instance.parse_kinded(raw).candidate_kind)
     _admitted(run_id, stated)
     document = _compose(run_id, stated)
+    settings = form == _FLAGS
     if round:
         document["id"]["round"] = round
-        document["guidance"]["techniques"] = _techniques(stated, document, ids)
+    if settings:
+        document["schema_version"] = spec.SETTINGS_SCHEMA_VERSION
+        document["task"]["build"] = _build(values)
+    elif round:
+        document["guidance"]["techniques"] = _techniques(stated, document, values)
         document["feedback"] = spec_feedback.feedback(data_root, run_id, round)
-    content, path = _content(data_root, run_id, round, document)
+    content, path = _content(data_root, run_id, round, document, settings)
     file = _relative(path, data_root)
+    put = spec_file.write_versioned if settings else spec_file.write
     try:
-        spec_file.write(data_root, content)
+        put(data_root, content)
     except spec_file.NameTakenError as e:
         raise tools.ToolFailure(
             KIND_SPEC_EXISTS,
@@ -338,6 +408,25 @@ def _write(source, request):
             f"{file}: was not written: {_reported(e, data_root)}",
         ) from e
     return {}
+
+
+def _matched(run_id, form, kind):
+    if form is None or (form == _FLAGS) == (kind != instance.CANDIDATE_KINDS[0]):
+        return
+    file = run_files.relative(run_id, "instance.json")
+    wanted = _TECHNIQUES if form == _FLAGS else _FLAGS
+    raise _invalid(
+        f"{file}: states the candidate kind {kind}; a round of 1 or more of "
+        f"such a run takes {wanted}, not {form}; nothing was written"
+    )
+
+
+def _build(flags):
+    return {
+        "candidate_kind": instance.CANDIDATE_KINDS[1],
+        "flags": list(flags),
+        **_KERNEL,
+    }
 
 
 def _admitted(run_id, stated):
@@ -436,14 +525,18 @@ def _unusable(directory, problem):
     )
 
 
-def _content(data_root, run_id, round, document):
+def _content(data_root, run_id, round, document, settings):
     place = layout.attempt_artefact(data_root, run_id, round, 1, 1, "spec.json")
     file = _relative(place, data_root)
+    if settings:
+        parse, final_name = spec_file.parse_versioned, spec_file.final_name_versioned
+    else:
+        parse, final_name = spec_file.parse, spec_file.final_name
     try:
         content = _encoded(document)
         if not content.endswith(b"\n") or b"\r" in content:
             raise ValueError("it is not in the written form of ADR-0029 decision 2")
-        path = spec_file.final_name(data_root, spec_file.parse(content))
+        path = final_name(data_root, parse(content))
     except (ValueError, spec_file.UnsupportedVersionError) as e:
         raise tools.ToolFailure(
             KIND_SPEC_INVALID,

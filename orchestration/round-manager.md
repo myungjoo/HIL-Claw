@@ -176,7 +176,11 @@ before any other step of it:
    tool and wait for its report. The message names your run id and the
    round, and no place (ADR-0132 decisions 6 and 7; ADR-0123 decisions 2
    and 4). Whatever it reports, report it in one line, and go on to step 7
-   (ADR-0132 decision 6).
+   (ADR-0132 decision 6). In a run whose `instance.json`, as entry step 6
+   read it, states `candidate_kind` `compile_settings`, the selector also
+   has the spec of the round's candidate 1, attempt 1 written and reports a
+   `spec:` line, and step 8 is not taken (ADR-0198 decision 3; ADR-0199
+   decision 5).
 7. **Round ≥ 1 only.** Call `mcp__hilclaw__hypotheses_read`, your run id as
    `run_id` and the round as `round`, whatever the report of step 6 said
    (ADR-0132 decision 6). If the call fails with any kind, report the kind
@@ -201,6 +205,14 @@ before any other step of it:
    If the report of step 6 does not hold exactly one `techniques:` line,
    report in one line that no choice was given and come to the stop,
    delegating nothing (ADR-0171 decision 6).
+   In a run whose `instance.json`, as entry step 6 read it, states
+   `candidate_kind` `compile_settings`, only this paragraph of step 8
+   applies: its coder call is not taken, so delegate nothing (ADR-0198
+   decision 3). When the report of step 6 holds exactly one line
+   `spec: written`, go on to step 9 with the tuple `round` the round,
+   `candidate` 1, `attempt` 1. Otherwise report in one line that no spec was
+   written and come to the stop, asking for no repair (ADR-0199
+   decision 5).
 9. **Round ≥ 1 only.** Delegate to `evaluator` with the `Agent` tool and
    wait for its report. The message names your run id, the tuple `round` the
    round, `candidate` 1, `attempt` 1, the point `sim`, and no place and no
@@ -237,7 +249,8 @@ step waits for has come (ADR-0143 decision 7; ADR-0185 decision 2). In
 other rounds it follows step 7 after a failed read, once its kind is
 reported (ADR-0132 decision 6), and step 8 or step 12 as they say, once the
 one-line report is made (ADR-0171 decision 6; ADR-0172 decisions 2, 5
-and 7).
+and 7). In a `compile_settings` run it follows step 8's last paragraph
+when no spec was written (ADR-0199 decision 5).
 In every case write nothing further, call `mcp__hilclaw__run_commit` as "The
 end of a session" says, and end the session (ADR-0143 decisions 2 and 7).
 Round 0 is not ended: no `round.end` (ADR-0142 decisions 1 and 2). Nor

@@ -954,6 +954,8 @@ def test_the_public_names_and_the_call_forms():
         "parse_versioned",
         "final_name",
         "write",
+        "final_name_versioned",
+        "write_versioned",
     }
     assert str(inspect.signature(parse)) == "(content)"
     assert str(inspect.signature(spec_file.parse_versioned)) == "(content)"
@@ -1765,3 +1767,81 @@ def test_parse_versioned_refuses_minus_zero_at_kernel_round():
         spec_file.parse_versioned(content)
     plain = spelt(settings_spec(), ["task", "build", "kernel_round"], b"0")
     assert spec_file.parse_versioned(plain) == settings_spec()
+
+
+def test_final_name_versioned_gives_the_attempt_path_of_version_2_and_3(tmp_path):
+    for document in (minimal(), settings_spec()):
+        before = copy.deepcopy(document)
+        ident = document["id"]
+        numbers = ident["round"], ident["candidate"], ident["attempt"]
+        expected = layout.attempt_artefact(
+            tmp_path, ident["run_id"], *numbers, "spec.json"
+        )
+        assert spec_file.final_name_versioned(tmp_path, document) == expected
+        assert spec_file.final_name_versioned(str(tmp_path), document) == expected
+        assert document == before
+    assert spec_file.final_name_versioned(tmp_path, minimal()) == final_name(
+        tmp_path, minimal()
+    )
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("version", [1, 4])
+def test_final_name_versioned_refuses_other_versions(tmp_path, version):
+    document = changed(settings_spec(), ["schema_version"], version)
+    with pytest.raises(spec.InvalidSpecError, match="^schema_version: must be"):
+        spec_file.final_name_versioned(tmp_path, document)
+
+
+def test_final_name_versioned_refuses_an_invalid_version_3_document(tmp_path):
+    document = settings_spec()
+    document["task"]["build"]["flags"] = [""]
+    with pytest.raises(spec.InvalidSpecError, match=r"^task.build.flags\[0\]"):
+        spec_file.final_name_versioned(tmp_path, document)
+    document = settings_spec()
+    document["id"]["run_id"] = "Bad Run"
+    with pytest.raises(layout.InvalidPathValueError):
+        spec_file.final_name_versioned(tmp_path, document)
+
+
+def test_write_versioned_writes_a_version_3_content_once(tmp_path):
+    content = raw(settings_spec()) + b"\n"
+    assert spec_file.write_versioned(tmp_path, content) is None
+    path = spec_file.final_name_versioned(tmp_path, settings_spec())
+    assert path.read_bytes() == content
+    assert not (path.parent / "output").exists()
+    assert sorted(p.name for p in path.parent.iterdir()) == ["spec.json"]
+    with pytest.raises(NameTakenError):
+        spec_file.write_versioned(tmp_path, raw(settings_spec()) + b" \n")
+    assert path.read_bytes() == content
+
+
+def test_write_versioned_writes_a_version_2_content_as_write_does(tmp_path):
+    content = raw(minimal()) + b"\n"
+    first, second = tmp_path / "a", tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+    write(first, content)
+    spec_file.write_versioned(second, content)
+    one = final_name(first, minimal())
+    two = final_name(second, minimal())
+    assert one.read_bytes() == two.read_bytes() == content
+
+
+def test_write_versioned_refuses_before_the_file_system_is_touched(tmp_path):
+    with pytest.raises(UnsupportedVersionError):
+        spec_file.write_versioned(
+            tmp_path, raw(changed(settings_spec(), ["schema_version"], 4)) + b"\n"
+        )
+    with pytest.raises(InvalidSpecFileError):
+        spec_file.write_versioned(tmp_path, b"{}\n")
+    with pytest.raises(TypeError):
+        spec_file.write_versioned(tmp_path, "{}\n")
+    with pytest.raises(WrittenFormError, match="line feed"):
+        spec_file.write_versioned(tmp_path, raw(settings_spec()))
+    with pytest.raises(WrittenFormError, match="carriage return"):
+        spec_file.write_versioned(tmp_path, raw(settings_spec()) + b"\r\n")
+    assert list(tmp_path.iterdir()) == []
+    with pytest.raises(FileNotFoundError):
+        spec_file.write_versioned(tmp_path / "gone", raw(settings_spec()) + b"\n")
+    assert list(tmp_path.iterdir()) == []
