@@ -22,9 +22,11 @@ that render them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
    its end line holds and an open one with ``step_open``; nothing runs.
 3. ④ For an identity with no line ``instance.json`` is read once, by
    :func:`hilclaw.instance.read` and, for a file of another version, by
-   :func:`hilclaw.instance.read_kinded`, so a run of either candidate kind is
-   read (ADR-0198 decision 8, row 6); the backend is selected for the
-   hw_profile of that read (``no_backend``, ``not_offered``). Then
+   :func:`hilclaw.instance.read_kinded`, so a run of the candidate kind
+   ``c_kernel`` or ``compile_settings`` is read (ADR-0198 decision 8, row 6)
+   and a run of any other kind is ``run_file_unsupported``; the backend is
+   selected for the hw_profile of that read (``no_backend``,
+   ``not_offered``). Then
    :func:`hilclaw.run_admission.admit` gives one of its five answers or what
    the call takes from the same read (ADR-0067 decision 5, steps 3 to 7).
    Where the ``accelerator`` of that hw_profile has a
@@ -191,6 +193,7 @@ _OUTCOMES = {
 _MOCK_UNIT = "ns"
 _FP32_GEMM = ("gemm", "fp32")
 _C_KERNEL = "c_kernel"
+_EVALUATED_KINDS = (_C_KERNEL, "compile_settings")
 _CONDITIONS = {
     timing.Broken.REPORT_FORM: "report_form",
     timing.Broken.ZERO_INTERVAL: "zero_interval",
@@ -311,7 +314,13 @@ def _read(data_root, run_id):
         return instance.read(data_root, run_id), _C_KERNEL
     except instance.UnsupportedVersionError:
         kinded = instance.read_kinded(data_root, run_id)
-        return kinded.instance, kinded.candidate_kind
+    if kinded.candidate_kind not in _EVALUATED_KINDS:
+        raise instance.UnsupportedVersionError(
+            f"runs/{run_id}/instance.json: states the candidate kind "
+            f"{kinded.candidate_kind}; this tool evaluates "
+            f"{' and '.join(_EVALUATED_KINDS)} runs only"
+        )
+    return kinded.instance, kinded.candidate_kind
 
 
 def _hw_profile(read):

@@ -18,9 +18,10 @@ and ADR-0078 decisions 6 and 7 are the rules of the compiler's log.
    open (ADR-0100 decision 5).
 3. For an identity with no line ``instance.json`` is read, by
    :func:`hilclaw.instance.read` and, for a file of another version, by
-   :func:`hilclaw.instance.read_kinded`, so a run of either candidate kind is
-   read (ADR-0198 decision 8, row 6); the backend is selected for the
-   hw_profile of that read. Then :func:`hilclaw.check_admission.admit`
+   :func:`hilclaw.instance.read_kinded`, so a run of the candidate kind
+   ``c_kernel`` or ``compile_settings`` is read (ADR-0198 decision 8, row 6)
+   and a run of any other kind is ``run_file_unsupported``; the backend is
+   selected for the hw_profile of that read. Then :func:`hilclaw.check_admission.admit`
    gives one of its four answers or what the check takes from the same
    read (ADR-0046 decision 8): a record ``covers`` answers ``True`` for is
    admitted whatever its ``dtype`` (ADR-0183 decision 2). ``covers`` is read
@@ -149,6 +150,7 @@ from hilclaw import (
 
 _TOOL = "correctness.check"
 _C_KERNEL = "c_kernel"
+_EVALUATED_KINDS = (_C_KERNEL, "compile_settings")
 
 
 class _Drawn:
@@ -236,7 +238,13 @@ def _read(data_root, run_id):
         return instance.read(data_root, run_id), _C_KERNEL
     except instance.UnsupportedVersionError:
         kinded = instance.read_kinded(data_root, run_id)
-        return kinded.instance, kinded.candidate_kind
+    if kinded.candidate_kind not in _EVALUATED_KINDS:
+        raise instance.UnsupportedVersionError(
+            f"runs/{run_id}/instance.json: states the candidate kind "
+            f"{kinded.candidate_kind}; this tool evaluates "
+            f"{' and '.join(_EVALUATED_KINDS)} runs only"
+        )
+    return kinded.instance, kinded.candidate_kind
 
 
 def _hw_profile(read):

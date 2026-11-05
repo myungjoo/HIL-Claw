@@ -2025,3 +2025,23 @@ def test_a_compile_settings_run_of_another_version_is_still_unsupported(root, re
     assert failure.kind == tools.KIND_RUN_FILE_UNSUPPORTED
     assert (bench.asked, bench.order, lines(root)) == ([], [], [])
     assert files_of(root) == before
+
+
+def test_a_run_of_a_kind_the_tool_does_not_evaluate_is_unsupported(root, monkeypatch):
+    settings_run(root)
+    read_kinded = instance.read_kinded
+
+    def another_kind(data_root, run_id):
+        return read_kinded(data_root, run_id)._replace(candidate_kind="quantization")
+
+    monkeypatch.setattr(instance, "read_kinded", another_kind)
+    before = files_of(root)
+    bench = Bench(root)
+    failure = bench.failure()
+    assert failure.kind == tools.KIND_RUN_FILE_UNSUPPORTED
+    assert failure.message == (
+        f"{FILE}: states the candidate kind quantization; this tool evaluates "
+        "c_kernel and compile_settings runs only"
+    )
+    assert (bench.asked, bench.order, lines(root)) == ([], [], [])
+    assert files_of(root) == before

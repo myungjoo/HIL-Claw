@@ -1390,3 +1390,23 @@ def test_a_c_kernel_run_reads_no_spec(root, monkeypatch):
     monkeypatch.setattr(build_record, "evaluated", pytest.fail)
     assert Bench(root).function(request()) == CONVERGED
     assert not list(root.rglob("build.json"))
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_a_run_of_a_kind_the_tool_does_not_evaluate_is_unsupported(
+    root, monkeypatch, tool
+):
+    settings_run(root)
+    read_kinded = instance.read_kinded
+
+    def another_kind(data_root, run_id):
+        return read_kinded(data_root, run_id)._replace(candidate_kind="quantization")
+
+    monkeypatch.setattr(instance, "read_kinded", another_kind)
+    bench = Bench(root, tool)
+    failure = bench.failure()
+    assert failure.kind == "run_file_unsupported"
+    assert failure.message.startswith(
+        f"runs/{RUN}/instance.json: states the candidate kind quantization"
+    )
+    assert (bench.asked, bench.order, lines(root)) == ([], [], [])
