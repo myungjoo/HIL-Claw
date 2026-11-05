@@ -911,7 +911,9 @@
       "reason": "owner-decision",
       "question": "(OD-32 ③, FR-9, #5 B-7, OD-31 ③; ADR-0193 결정 4·9. fp16은 묻지 않는다 — HQ-0083 (b), D27 ④) [쟁점 ①] FR-9는 시스템 생성 reference를 `cpu_standin`에 한해 확정으로 적고(HQ-0004) B-7의 일반 답이 아니라고 한다. 가상 NPU의 검사에 무엇을 쓸지는 답해지지 않았다. [선택지 ①] (a) bf16 계약의 기존 reference와 사용자가 정하는 허용 오차를 이 검사용 백엔드에 한해 그대로 쓰고, `instance.json`의 요구 멤버는 `cpu_standin`과 같게 한다(B-7의 일반 답이 아님) (b) 가상 NPU에서는 correctness를 검사하지 않고 instance 시작 아래의 빌드와 측정만 쓴다 (c) 그 밖. [쟁점 ②] 가상 NPU는 새 형식 없이도 CPU와 데이터 타입이 다를 수 있다 — bf16 여섯 계약만 받고 fp32 `gemm`을 거부한다. 다만 CPU에 없는 타입을 갖는 것은 새 수치 형식으로만 된다. [선택지 ②] (a) 새 형식 없음: 지원 집합의 차이만 데이터 타입의 차이로 본다 (b) 검사용 새 `dtype` 값 `int8`을 `elementwise_add` 한 kind에 계약 표 항목 하나로 더하고 `virtual_npu`만 받는다(연산의 뜻은 그 항목의 기록이 정함; 실제 NPU의 근거가 아님) (c) 양자화 설정을 후보로 다루기로 정할 때 함께 정한다. 실행자의 권고(결정 아님): ① (a), ② (a). [막히는 것] `virtual_npu`에서의 `correctness.check`와 instance 시작(①), P3-3의 체크(② (b)이면 그 항목까지). [막히지 않는 것] P3-3의 나머지(대상 항목, 백엔드, 플래그, 메모리, 대상별 범위, 시작 아래의 `sim.run`·`board.run`), P3-2·P3-4·P3-5, P2-15 확인, 그 밖의 task.",
       "askedAt": "2026-11-03T00:26:36Z",
-      "issueComment": null
+      "issueComment": null,
+      "resolvedAt": "2026-11-05T01:04:33Z",
+      "decision": "① (a)·② (a) — 오너(채팅, 2026-11-05): \"예, ①(a)·②(a) 기록\". ① (a) bf16 계약의 기존 reference와 사용자가 정하는 허용 오차를 이 검사용 백엔드(`virtual_npu`)에 한해 그대로 쓰고, `instance.json`의 요구 멤버는 `cpu_standin`과 같게 한다 — #5 B-7의 일반 답이 아니다. ② (a) 새 형식 없음: 지원 집합의 차이(bf16 여섯 계약만 받고 fp32 `gemm`을 거부)만 데이터 타입의 차이로 본다. 통합자 독해(오너의 말이 아님): 후속은 `virtual_npu`의 백엔드에 `correctness.check`를 제공하고 `Target.instance_start`를 켜는 작은 task이며, 그 §9 ADR이 ADR-0076 결정 1의 범위를 bf16 op_signature의 `virtual_npu` instance로 넓힌다; `model_run` false와 S6 지표의 제외는 그대로다(ADR-0193 결정 1·4); 새 수치 형식은 양자화 설정이 후보가 될 때(HQ-0088) 그때 묻고, fp16은 HQ-0083 (b)대로 P2-15 뒤에 다시 묻는다; P3-3의 체크는 이 답과 HQ-0090의 답이 모두 적용된 뒤다(ADR-0193 결정 8)."
     },
     {
       "id": "HQ-0092",
