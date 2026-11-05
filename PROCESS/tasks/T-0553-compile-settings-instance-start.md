@@ -61,3 +61,13 @@ hq: []
 
 ## Result
 
+- **Outcome**: DONE. PR #369 (Draft -> squash-merged), branch `claude/T-0553-compile-settings-instance-start`. Order check (D27 ①) at `origin/main` `170868bd`: no open PR, no open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`; unchanged from the Why.
+- **Review**: 1 round, Approve (context-isolated `dev-reviewer`), 4 nits; nit 3 (cite HQ-0089 ④/③ and ADR-0198 "A-13 reading" in the PR body) applied, the others needed no change.
+- **Language**: Python — the touched modules are existing Python modules of the 2nd-layer package.
+- **Request rule (criterion 2)**: the request states its version and kind and the start sets neither. v1 without the member -> v1 as today; v1 + exact `"c_kernel"` -> v1 with that member left out (byte-identical to today's start without it); v2 + `"compile_settings"` -> v2 as given; v1 with another kind, v2 with `c_kernel`/another kind/no kind -> `InvalidInstanceError`; another version -> `UnsupportedVersionError` (both `invalid` in `new_run`). No new member, value, version or outcome.
+- **Existing tests edited** (outside D21 and criterion 6 (b), forced by criteria 1 and 3, which make version 2 writable; the planner's foreseen list missed them): four "another version is unsupported" assertions moved from version 2 to version 3 — `tests/test_instance_start.py::test_a_document_of_another_version_is_unsupported`, `::test_another_version_without_coder_model_is_unsupported_before_anything`, `tests/test_start_instance.py::test_an_invalid_document_passes_through` (one case), `tests/test_instance_file.py` `REFUSED["version 2"]` -> `"version 3"`. No list assertion changed; no existing test asserted the start refusing `candidate_kind`.
+- **Size**: 4 files in `hilclaw/` (~70 changed lines, mostly docstrings) + 4 test files.
+- **Coverage**: touched modules `instance_start` 100%, `start_instance` 100%, `instance_file` 100%, `new_run` 99%.
+- **Runtime acceptance items**: none (ADR-0198's item is handed over by slice 4).
+- **HQ**: none.
+- **Follow-ups**: none beyond the task's (T-0554, T-0555, the rest of slice 2b, slice 4).

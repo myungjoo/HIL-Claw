@@ -3,7 +3,8 @@
 Command line: ``python -m hilclaw.new_run <file>``. The one argument is the
 path of a file whose content is the ``instance.json`` document as JSON; no
 option exists and nothing is read from standard input. A person or a script
-runs it to start an instance of ADR-0076 decision 1. It calls
+runs it to start an instance of ADR-0076 decision 1, of either candidate
+kind of ADR-0198 decision 7 (the document states it). It calls
 :func:`hilclaw.start_instance.start` once and is the caller of that function
 for such a start (ADR-0155 decision 2). It is no FR-10 tool and has no entry
 in :mod:`hilclaw.tools` or any registry and no MCP name.
@@ -49,7 +50,8 @@ exactly one line, a compact JSON object in ASCII ended by one LF, whose member
 Each kind has its own status; only ``started`` has 0 and no status is 1 or 2.
 ``reason`` is free text, which may name a path, and is never parsed.
 ``invalid`` is :class:`hilclaw.instance.InvalidInstanceError` or
-:class:`hilclaw.instance.UnsupportedVersionError`; ``unwritable_value`` is the
+:class:`hilclaw.instance.UnsupportedVersionError`, a candidate kind and
+version that ``start`` refuses among them; ``unwritable_value`` is the
 plain :class:`ValueError` of :func:`json.dumps` inside ``start``, told apart by
 its exact class; ``run_id_in_use`` is
 :class:`hilclaw.start_instance.RunIdInUseError`, told apart from the

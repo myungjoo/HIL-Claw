@@ -17,7 +17,13 @@ when every tool round 0 calls admits it - the fp32 ``gemm`` contract of
 ADR-0008 and the six bf16 contracts (ADR-0177 decision 2; ADR-0181 decision 8
 item 4) - read at the target of the document's ``accelerator``
 (:func:`hilclaw.targets.covers_at`; ADR-0197 decision 3), so that a record of
-a contract that target does not serve is out of scope there.
+a contract that target does not serve is out of scope there. It takes the
+candidate kind of ADR-0198 decision 7 as ``prepare`` reads it: a document of
+``schema_version`` 2 naming ``compile_settings`` is written as an
+``instance.json`` of version 2 with that member, one of version 1 naming no
+kind or ``c_kernel`` as version 1 without it, and every other pair is
+refused, never rewritten; the accelerators and ``covers`` are bound alike
+for both kinds.
 
 Conventions of this module, not rules of a record:
 
@@ -113,7 +119,17 @@ def start(document, *, data_root):
     In this order:
 
     1. What :func:`hilclaw.instance_start.prepare` raises for the type, the
-       validity and the scope of ``document`` passes through unchanged.
+       validity, the candidate kind and the scope of ``document`` passes
+       through unchanged. The kind and the version are the document's
+       (ADR-0198 decision 7): ``schema_version`` 2 with ``candidate_kind``
+       ``compile_settings`` is written as version 2 with the member, version
+       1 without ``candidate_kind`` as version 1, and version 1 with
+       ``candidate_kind`` ``c_kernel`` as version 1 without the member. Any
+       other pair (version 1 with another kind, version 2 with ``c_kernel``,
+       another kind or none) is
+       :class:`hilclaw.instance.InvalidInstanceError`, and a version other
+       than 1 and 2 :class:`hilclaw.instance.UnsupportedVersionError`; the
+       start sets and changes no version and no kind.
     2. :class:`GivenRunIdError` when the top level of ``document`` holds
        ``run_id``, before any :class:`hilclaw.instance_start.MissingMembersError`.
     3. :class:`hilclaw.instance_start.MissingMembersError` passes through

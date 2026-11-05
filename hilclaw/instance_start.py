@@ -14,7 +14,12 @@ reports every missing member in a fixed order (decisions 2 and 3).
 ``ARCHITECTURE/decisions/ADR-0136-od8-first-case-coder-model.md`` decision 4
 adds, at the step where ``n_max`` is filled in, that the start puts the full
 name of the Opus model into the content when it states no ``coder_model`` and
-never replaces a given one. The module renders that check:
+never replaces a given one.
+``ARCHITECTURE/decisions/ADR-0198-od32-compile-settings-candidate-kind.md``
+decision 7 has the start take ``candidate_kind``: a content that names
+``compile_settings`` is written as version 2 with that member, one that names
+no kind or ``c_kernel`` as version 1 without it; the required set and its
+scope are the same for both. The module renders that check:
 
 * :data:`CODER_MODEL_DEFAULT`: the full Opus name the start fills in
   (ADR-0136 decision 4).
@@ -31,8 +36,19 @@ Choices that are this module's own and no rule of a record:
   held before step 1 of ADR-0025 and has the start put the default into that
   content; building JSON text is not done here, as :mod:`hilclaw.instance_file`
   builds none either. The validity the record names as
-  :func:`hilclaw.instance.parse` is :func:`hilclaw.instance.validate` here,
-  the document form of the same rules.
+  :func:`hilclaw.instance.parse` is :func:`hilclaw.instance.validate_kinded`
+  here, the document form of the rules of versions 1 and 2.
+* The kind is stated by the content, with its version, and the start sets
+  neither: ``schema_version`` 2 with ``candidate_kind`` ``compile_settings``
+  is a version-2 instance, and ``schema_version`` 1 without the member is a
+  C kernel instance. ``schema_version`` 1 with ``candidate_kind``
+  ``c_kernel`` names the kind a version-1 file states by lacking the member,
+  so the member is left out of the returned document and nothing else
+  changes; this is the only member the start removes. Every other pair is
+  contradictory or names no kind of the list and is refused as
+  :func:`hilclaw.instance.validate_kinded` refuses it, never rewritten:
+  version 1 with another kind, version 2 with ``c_kernel``, another kind or
+  none.
 * The order is validity, then scope, then the filling-in of ``n_max`` and
   ``coder_model``, then the required set. ADR-0076 decision 3 lists the
   filling-in before validity; for a valid document the outcome is the same,
@@ -94,6 +110,8 @@ REPORT_ORDER = (
     "tolerance",
 )
 
+_C_KERNEL, *_ = instance.CANDIDATE_KINDS
+
 _NOT_THESE_ACCELERATORS = (
     "hw_profile.record.accelerator: names none of the accelerators of ADR-0076 decision 1; "
     "ADR-0076 requires and allows nothing of such an instance"
@@ -150,27 +168,41 @@ def prepare(document, *, accelerators, covers):
     1. :class:`TypeError` when the type of ``document`` is not exactly
        ``dict``, then when ``accelerators`` is not as above, then when
        ``covers`` is not callable.
-    2. :func:`hilclaw.instance.validate`; what it raises passes through
-       unchanged. A given ``n_max`` that breaks ADR-0023, or a given
-       ``coder_model`` that breaks ADR-0136 decision 3, is refused there and
-       never replaced by the default.
-    3. :class:`OutOfScopeError` when ``hw_profile.record.accelerator`` is none
+    2. The kind (ADR-0198 decision 7): when ``schema_version`` is exactly
+       the ``int`` 1 and ``candidate_kind`` exactly the ``str``
+       ``c_kernel``, the document checked and handed on from here is
+       ``document`` without ``candidate_kind``; otherwise it is ``document``.
+    3. :func:`hilclaw.instance.validate_kinded`; what it raises passes
+       through unchanged. A version other than 1 and 2 is
+       :class:`hilclaw.instance.UnsupportedVersionError`; version 1 holding
+       ``candidate_kind`` (other than step 2's) and version 2 lacking it or
+       holding ``c_kernel`` or a value outside
+       :data:`hilclaw.instance.CANDIDATE_KINDS` are
+       :class:`hilclaw.instance.InvalidInstanceError`, so no version or kind
+       is ever set or changed by the start. A given ``n_max`` that breaks
+       ADR-0023, or a given ``coder_model`` that breaks ADR-0136 decision 3,
+       is refused there and never replaced by the default.
+    4. :class:`OutOfScopeError` when ``hw_profile.record.accelerator`` is none
        of ``accelerators``, or when an ``op_signature`` is stated and
        ``covers``, called once with its record, returns ``False``. What
        ``covers`` raises passes through unchanged, and an answer that is not
        exactly a ``bool`` is :class:`TypeError`. ``covers`` is not called for
        a document without ``op_signature`` or with another accelerator.
-    4. A new top-level ``dict`` holding every member of ``document`` as given,
-       those :mod:`hilclaw.instance` does not define included, and, when
+       The scope is the same for both versions.
+    5. A new top-level ``dict`` holding every member of the document of step
+       2 as given, those :mod:`hilclaw.instance` does not define included,
+       in their order, and, when
        ``n_max`` is absent, ``n_max`` set to
        :data:`hilclaw.harness.measurement.N_MAX_DEFAULT`, and, when
        ``coder_model`` is absent, ``coder_model`` set to
        :data:`CODER_MODEL_DEFAULT` (ADR-0136 decision 4). Nothing else is
        added, removed or changed.
-    5. :class:`MissingMembersError` when any member of :data:`REPORT_ORDER` is
-       absent from it, with every absent one.
-    6. Otherwise that ``dict`` is returned; it passes
-       :func:`hilclaw.instance.validate`.
+    6. :class:`MissingMembersError` when any member of :data:`REPORT_ORDER` is
+       absent from it, with every absent one; the required set is the same
+       for both versions.
+    7. Otherwise that ``dict`` is returned; it passes
+       :func:`hilclaw.instance.validate_kinded`, and a returned version-1
+       ``dict`` also passes :func:`hilclaw.instance.validate`.
 
     ``document`` is never modified. The returned ``dict`` is a new object, but
     the values of its members are the objects ``document`` holds, shared and
@@ -186,7 +218,8 @@ def prepare(document, *, accelerators, covers):
         raise TypeError("accelerators: must be exactly a tuple of exactly str items")
     if not callable(covers):
         raise TypeError("covers: must be callable")
-    instance.validate(document)
+    document = _without_c_kernel(document)
+    instance.validate_kinded(document)
     if document["hw_profile"]["record"]["accelerator"] not in accelerators:
         raise OutOfScopeError(_NOT_THESE_ACCELERATORS)
     if "op_signature" in document:
@@ -202,3 +235,13 @@ def prepare(document, *, accelerators, covers):
     if missing:
         raise MissingMembersError(missing)
     return prepared
+
+
+def _without_c_kernel(document):
+    version = document.get("schema_version")
+    kind = document.get("candidate_kind")
+    if not (type(version) is int and version == instance.SCHEMA_VERSION):
+        return document
+    if not (type(kind) is str and kind == _C_KERNEL):
+        return document
+    return {name: value for name, value in document.items() if name != "candidate_kind"}

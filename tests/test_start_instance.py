@@ -316,7 +316,7 @@ def test_a_run_id_out_of_scope_is_refused_as_out_of_scope(tmp_path, ids):
         (document(n_max=4), InvalidInstanceError),
         (document(tolerance={"rtol": -1.0, "atol": 0.0}), InvalidInstanceError),
         ({"hw_profile": document()["hw_profile"]}, InvalidInstanceError),
-        (document(schema_version=2), UnsupportedVersionError),
+        (document(schema_version=3), UnsupportedVersionError),
         (document(tolerance={"rtol": float("nan"), "atol": 0.0}), InvalidInstanceError),
     ],
 )
@@ -678,3 +678,114 @@ def test_an_unknown_accelerator_is_still_out_of_scope_with_a_bf16_record(tmp_pat
     given = document(accelerator="npu_other", op_signature=BF16_RECORDS[0])
     error = assert_refused(given, OutOfScopeError, tmp_path, ids)
     assert str(error).startswith("hw_profile.record.accelerator:")
+
+
+# The candidate kind of ADR-0198 decision 7
+
+
+def kinded(kind="compile_settings", version=2, **changes):
+    made = document(**changes)
+    made["schema_version"] = version
+    made["candidate_kind"] = kind
+    return made
+
+
+def stored_bytes(root, built):
+    return (root / "runs" / built / "instance.json").read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("accelerator", "record"),
+    [
+        (standin_profile.ACCELERATOR, RECORD),
+        (mock_backend.NAME, RECORD),
+        (targets.VIRTUAL_NPU, BF16_RECORDS[0]),
+    ],
+)
+def test_a_compile_settings_start_writes_version_2(tmp_path, ids, accelerator, record):
+    given = kinded(accelerator=accelerator, op_signature=record)
+    before = copy.deepcopy(given)
+    built = start(given, data_root=tmp_path)
+    assert given == before
+    assert ids.calls == 1
+    assert tree(tmp_path) == ["runs", f"runs/{built}", f"runs/{built}/instance.json"]
+    expected = {**given, "coder_model": CODER_MODEL_DEFAULT}
+    assert stored_bytes(tmp_path, built) == (
+        json.dumps(expected, indent=2).encode() + b"\n"
+    )
+    read = instance.read_kinded(tmp_path, built)
+    assert read.schema_version == instance.KIND_SCHEMA_VERSION
+    assert read.candidate_kind == "compile_settings"
+    assert read.layout_version == 1
+    assert read.instance.hw_profile["accelerator"] == accelerator
+    assert read.instance.op_signature.record == record
+    assert read.instance.others == {}
+    assert instance.candidate_kind_of(tmp_path, built) == "compile_settings"
+
+
+def test_a_strict_reader_still_refuses_a_run_the_start_wrote_as_version_2(
+    tmp_path, ids
+):
+    built = start(kinded(), data_root=tmp_path)
+    with pytest.raises(UnsupportedVersionError):
+        instance.read(tmp_path, built)
+    with pytest.raises(UnsupportedVersionError):
+        instance.layout_version_of(tmp_path, built)
+
+
+@pytest.mark.parametrize("named", [True, False], ids=["c_kernel", "no_kind"])
+def test_a_start_naming_no_kind_or_c_kernel_writes_the_bytes_of_today(
+    tmp_path, fixed_sources, named
+):
+    given = kinded("c_kernel", 1) if named else document()
+    today = tmp_path / "today"
+    today.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+    built = start(given, data_root=other)
+    assert start(document(), data_root=today) == built
+    assert stored_bytes(other, built) == stored_bytes(today, built)
+    assert b"candidate_kind" not in stored_bytes(other, built)
+    assert instance.read(other, built).others == {}
+    assert instance.candidate_kind_of(other, built) == "c_kernel"
+
+
+@pytest.mark.parametrize(
+    ("version", "kind", "error"),
+    [
+        (1, "compile_settings", InvalidInstanceError),
+        (1, "vendor_kernel", InvalidInstanceError),
+        (2, "c_kernel", InvalidInstanceError),
+        (2, "vendor_kernel", InvalidInstanceError),
+        (2, ABSENT, InvalidInstanceError),
+        (3, "compile_settings", UnsupportedVersionError),
+    ],
+)
+def test_a_contradictory_or_unknown_kind_is_refused_and_nothing_is_built(
+    tmp_path, ids, version, kind, error
+):
+    given = kinded(kind, version)
+    if kind is ABSENT:
+        del given["candidate_kind"]
+    assert_refused(given, error, tmp_path, ids)
+
+
+def test_a_version_2_start_at_another_accelerator_is_out_of_scope(tmp_path, ids):
+    assert_refused(kinded(accelerator="acc_other"), OutOfScopeError, tmp_path, ids)
+
+
+def test_a_version_2_start_with_an_uncovered_op_signature_is_out_of_scope(
+    tmp_path, ids
+):
+    other = {**RECORD, "dtype": "fp16"}
+    assert_refused(kinded(op_signature=other), OutOfScopeError, tmp_path, ids)
+
+
+def test_a_version_2_start_lacking_members_reports_them(tmp_path, ids):
+    given = kinded(draws=ABSENT, tolerance=ABSENT)
+    error = assert_refused(given, MissingMembersError, tmp_path, ids)
+    assert error.missing == ("draws", "tolerance")
+
+
+def test_a_version_2_start_with_a_run_id_is_refused_as_a_given_id(tmp_path, ids):
+    assert_refused(kinded(run_id=FIXED_ID), GivenRunIdError, tmp_path, ids)
