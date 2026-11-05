@@ -2,7 +2,7 @@
 id: T-0555
 title: ADR-0198 slice 3 for PLAN P3-6 — `correctness.check`, `sim.run` and `board.run` read a `compile_settings` run, build a version-3 attempt from the named round's kernel with the target's flags plus the candidate's, and write `measure/…/build.json`; `attempt_kernel` follows the reference
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D27, OD-32, OD-6, OD-18, FR-5, FR-10, "PLAN P3-6", HQ-0089, ADR-0198, ADR-0116]
 dependsOn: [T-0553, T-0554]
