@@ -2,7 +2,7 @@
 id: T-0554
 title: ADR-0198 slice 2b, first half, for PLAN P3-6 — the run-level readers read `instance.json` version 2 as version 1, and the case, cases and catalog tools refuse a run whose kind is not `c_kernel`
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, OD-8, FR-1, FR-10, "PLAN P3-6", HQ-0089, ADR-0198]
 dependsOn: [T-0553]
@@ -71,3 +71,16 @@ After this task a `compile_settings` run can pass the entry of a turn (`state.re
 
 ## Result
 
+- **DONE**: PR #370, squash-merged as `96820276` on `main` (the squash message ends with `Task: T-0554`). Two review rounds: round 1 Request changes (one blocking item: happy-path tests on a version-2 run for `budget.check`, `key.store`, `hypotheses.write`, `round.end` and round 0's `spec.write`; two nits), all fixed; round 2 Approve. CI green on head `fd892389`, including the coverage gate for `hilclaw/`. The full local suite passed: 39228 passed, 2213 skipped.
+- **Order check (D27 ①)**: still held when the task ran: no open PR, no open `nightly-failure` issue, no `실패` item in RuntimeAcceptance.
+- **Language**: Python, because the touched modules are the Python layer-2 package.
+- **Choice (criterion 3)**: `hilclaw/instance.py` gains `layout_version_of_kinded` and `read_as_version_1`. Each reads through the strict entry first and reads the file again with `read_kinded` only on `UnsupportedVersionError`, so a version-1 run makes the same calls as before; many existing tests spy on `instance.read` and `instance.layout_version_of`. `run_file_tools.read` still returns an `Instance`, the version-1 twin for a version-2 file. The new `run_file_tools.c_kernel_only(run_id, content)` refuses another kind with `run_file_unsupported`, and is called by `case.write`, `cases.lookup` and `catalog.read`.
+- **Planner's reading of the table gap: confirmed.** `case_tool` refuses like `cases_tool` and `catalog_tool`. Every other caller of `run_file_tools.read` reads version 2. `case_lookup`, `s6_metric` and `model_run_binding` stay strict, as do `check_tool` and `run_tool` through `hw_tool`'s strict hw_profile read (row 6).
+- **Size**: 9 non-test files, about 200 changed lines; tests excluded. The extra file is `hilclaw/hw_tool.py` (docstring only), which is not in `touchesFiles`.
+- **Existing tests edited**, listed in the PR body:
+  - (a) `test_instance.py::test_the_public_names`.
+  - (b) cases that wrote a version-2 `instance.json` without `candidate_kind` and expected "another version" were moved to version 3, in `test_journaled_tool`, `test_hw_tool`, `test_instance`, `test_further_turn`, `test_turn_start` and one parametrize row each in the case, cases, catalog, budget, key-store, round-end, hypotheses-write, spec and coder-call tests.
+  - `test_hw_tool::test_a_file_valid_for_the_stamp_and_not_in_the_selection_is_answered_there` now places a valid version-2 `compile_settings` file, following the new rule of row 6.
+- **Runtime acceptance items**: none.
+- **Follow-ups**: none beyond the task's own (T-0555 slice 3; then the second half of slice 2b and slice 4 by the planner).
+- **Storage**: `${TMPDIR}/hilclaw-driver/T-0554/` was removed. No image or tool was installed.
