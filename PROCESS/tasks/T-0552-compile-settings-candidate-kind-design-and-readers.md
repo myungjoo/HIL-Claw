@@ -2,7 +2,7 @@
 id: T-0552
 title: Apply HQ-0088 and HQ-0089 for PLAN P3-6 — write the §9 ADR for the first non-kernel candidate kind (`compile_settings`), update the registers, and land its first code slice (validators and readers of `instance.json` v2, `spec.json` v3 and `measure/build.json` v1, with no existing caller widened)
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, OD-6, OD-18, OD-8, C-6, FR-1, FR-5, "PLAN P3-6", HQ-0088, HQ-0089]
 dependsOn: []
