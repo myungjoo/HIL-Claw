@@ -1777,3 +1777,24 @@ def test_an_error_of_building_the_target_passes_before_any_line(root, monkeypatc
         function(request())
     assert asked == []
     assert lines(root) == []
+
+
+# --- a compile_settings run (ADR-0198 decision 8, slice 2b) ---
+
+
+def files_of(root):
+    return sorted(path.relative_to(root).as_posix() for path in root.rglob("*"))
+
+
+def test_a_compile_settings_run_is_run_file_unsupported_with_no_line(root, recorded):
+    document = json.loads(content())
+    document |= {"schema_version": 2, "candidate_kind": "compile_settings"}
+    place(root, json.dumps(document).encode())
+    before = files_of(root)
+    bench = Bench(root)
+    failure = bench.failure()
+    assert failure.kind == tools.KIND_RUN_FILE_UNSUPPORTED
+    assert failure.message.startswith(f"{FILE}: schema_version: 2")
+    assert type(failure.__cause__) is instance.UnsupportedVersionError
+    assert (bench.asked, bench.order, lines(root)) == ([], [], [])
+    assert files_of(root) == before

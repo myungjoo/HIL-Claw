@@ -522,7 +522,7 @@ def test_a_missing_instance_is_run_file_missing(root):
     ("content", "kind"),
     [
         (b"[]", "run_file_invalid"),
-        (encoded(instance_document() | {"schema_version": 2}), "run_file_unsupported"),
+        (encoded(instance_document() | {"schema_version": 3}), "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_is_its_kind(root, content, kind):

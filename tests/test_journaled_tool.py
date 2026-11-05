@@ -1441,7 +1441,7 @@ NO_STAMP = {
     ),
     "a-directory": (a_directory, *BROKEN),
     "version-0": (content(stamp(schema_version=0)), *OTHER_VERSION),
-    "version-2": (content(stamp(schema_version=2)), *OTHER_VERSION),
+    "version-3": (content(stamp(schema_version=3)), *OTHER_VERSION),
     "a-version-that-is-a-string": (content(stamp(schema_version="1")), *BROKEN),
     "a-version-that-is-a-float": (content(stamp(schema_version=1.0)), *BROKEN),
     "a-version-that-is-a-boolean": (content(stamp(schema_version=True)), *BROKEN),
@@ -1598,7 +1598,7 @@ def test_the_stamp_is_read_again_at_each_call_and_nothing_is_kept(root, monkeypa
     changes = [
         (no_stamp, "run_file_missing"),
         (content(b"{"), "run_file_invalid"),
-        (content(stamp(schema_version=2)), "run_file_unsupported"),
+        (content(stamp(schema_version=3)), "run_file_unsupported"),
     ]
     for change, kind in changes:
         change(root, monkeypatch)
@@ -1721,7 +1721,7 @@ def test_the_layout_the_source_builds_is_compared_with_nothing(
     for _ in range(2):
         assert tool.function(request()) == {"example_member": 1}
     assert tool.performed == 1
-    place(root, stamp(schema_version=2), STAMP)
+    place(root, stamp(schema_version=3), STAMP)
     with pytest.raises(ToolFailure) as caught:
         tool.function(request())
     assert caught.value.kind == "run_file_unsupported"
@@ -2121,3 +2121,49 @@ def test_checked_function_still_takes_a_further_callable_of_any_name(root):
     shared = Shared(str(root), step_of=len, steps=len)
     assert shared.function(dict(REQUEST)) is None
     assert shared.seen[0][2] == ID
+
+
+# --- the stamp of an instance.json of version 2 (ADR-0198 decisions 7 and 8) ---
+
+KINDED = {"schema_version": 2, "candidate_kind": "compile_settings"}
+
+
+def test_a_compile_settings_run_has_its_stamp_and_the_step_is_carried_out(root):
+    place(root, stamp(**KINDED), STAMP)
+    tool = Tool(root)
+    assert tool.function(request()) == {"example_member": 1}
+    assert tool.function(request()) == {"example_member": 1}
+    assert tool.performed == 1
+    assert len(lines(root)) == 2
+
+
+def test_the_stamp_of_a_version_1_run_is_read_as_before(root, monkeypatch):
+    made = reads(monkeypatch)
+    tool = Tool(root)
+    assert tool.function(request()) == {"example_member": 1}
+    assert made[0] == "stamp" and tool.performed == 1
+
+
+@pytest.mark.parametrize(
+    ("changes", "kind", "cause"),
+    [
+        ({"candidate_kind": "compile_settings"}, *BROKEN),
+        ({**KINDED, "candidate_kind": "c_kernel"}, *BROKEN),
+        ({"schema_version": 2}, *BROKEN),
+        ({**KINDED, "schema_version": 3}, *OTHER_VERSION),
+    ],
+    ids=["v1-with-kind", "v2-c_kernel", "v2-no-kind", "v3"],
+)
+def test_the_narrowed_forms_and_other_versions_have_no_stamp(
+    root, monkeypatch, changes, kind, cause
+):
+    place(root, stamp(**changes), STAMP)
+    before = snapshot(root)
+    made = reads(monkeypatch)
+    tool = Tool(root)
+    with pytest.raises(ToolFailure) as caught:
+        tool.function(request())
+    assert (caught.value.kind, type(caught.value.__cause__)) == (kind, cause)
+    assert caught.value.message.startswith(f"{STAMP}: ")
+    assert made == ["stamp"] and tool.performed == 0
+    assert snapshot(root) == before

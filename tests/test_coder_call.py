@@ -833,7 +833,7 @@ def test_an_instance_file_that_parse_refuses_gives_run_file_invalid(
 def test_an_instance_file_of_another_version_gives_run_file_unsupported(
     data_root, parent, source, spec, output_path
 ):
-    put_instance(data_root, instance_content(schema_version=2))
+    put_instance(data_root, instance_content(schema_version=3))
     caught = refused(
         tools.KIND_RUN_FILE_UNSUPPORTED, data_root, parent, source, output_path
     )
@@ -1036,3 +1036,50 @@ def test_no_container_runtime_comes_before_base_unreadable(
     base_spec(spec_path)
     runtime = FakeRuntime(available=False)
     failure(KIND_NO_CONTAINER_RUNTIME, data_root, request(), source, runtime)
+
+
+# --- a compile_settings run (ADR-0198 decision 8, slice 2b) ---
+
+KINDED = {"schema_version": 2, "candidate_kind": "compile_settings"}
+
+
+def test_a_compile_settings_run_calls_the_coder_on_a_version_2_spec(
+    data_root, parent, source, spec, output_path
+):
+    put_instance(data_root, instance_content(**KINDED))
+    runtime = FakeRuntime(files={"kernel.c": KERNEL})
+    assert call(request(), source=source, runtime=runtime) == {
+        "taken": ["kernel.c"],
+        "scratch_removed": True,
+    }
+    assert runtime.spec_copies == [spec]
+    assert (output_path / "kernel.c").read_bytes() == KERNEL
+
+
+def test_a_compile_settings_run_still_refuses_a_version_3_spec(
+    data_root, parent, source, spec_path
+):
+    put_instance(data_root, instance_content(**KINDED))
+    other = {**document(), "schema_version": 3}
+    put_spec(spec_path, (json.dumps(other) + "\n").encode())
+    runtime = FakeRuntime()
+    failure(KIND_SPEC_UNSUPPORTED, data_root, request(), source, runtime)
+    assert_nothing_started(parent, runtime)
+
+
+@pytest.mark.parametrize(
+    ("changes", "kind"),
+    [
+        ({"candidate_kind": "compile_settings"}, tools.KIND_RUN_FILE_INVALID),
+        ({**KINDED, "candidate_kind": "c_kernel"}, tools.KIND_RUN_FILE_INVALID),
+    ],
+    ids=["v1-with-kind", "v2-c_kernel"],
+)
+def test_the_narrowed_forms_of_an_instance_are_run_file_invalid(
+    data_root, parent, source, spec, changes, kind
+):
+    put_instance(data_root, instance_content(**changes))
+    runtime = FakeRuntime()
+    caught = failure(kind, data_root, request(), source, runtime)
+    assert caught.message.startswith(f"runs/{RUN_ID}/instance.json: candidate_kind")
+    assert_nothing_started(parent, runtime)

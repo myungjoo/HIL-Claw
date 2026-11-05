@@ -106,7 +106,10 @@ Conventions of this module, which the records do not fix:
   :func:`hilclaw.instance.hw_profile_of` reads; this module reads no file for
   it and binds no reader of it. The reader of the stamp is no parameter:
   the part of :mod:`hilclaw.journaled_tool` that the builders are built
-  over binds :func:`hilclaw.instance.layout_version_of`.
+  over binds :func:`hilclaw.instance.layout_version_of_kinded`, which reads
+  an ``instance.json`` of version 1 or 2 (ADR-0198 decision 8); a reader of
+  the hw_profile that reads version 1 only, as :func:`hilclaw.instance.read`
+  does, still refuses a version-2 run in 4 with ``run_file_unsupported``.
 - The step of the contract calls the operation, not this module: what an
   operation returns and how that becomes the amounts and the result of the
   step are each tool's contract. Nothing here checks that the step calls it,
@@ -133,7 +136,7 @@ Conventions of this module, which the records do not fix:
 - The message of such a failure starts with ``runs/<run_id>/instance.json``
   (ADR-0019 decision 6): for the three classes it is the message of the
   reader as it is, which :func:`hilclaw.instance.hw_profile_of` and
-  :func:`hilclaw.instance.layout_version_of` start that way, and for an
+  :func:`hilclaw.instance.layout_version_of_kinded` start that way, and for an
   :class:`OSError` it is composed by :mod:`hilclaw.run_files`.
   The message of another reader that raises one of the three is used
   unchanged and not checked. Nothing may depend on the rest of the wording.

@@ -83,8 +83,9 @@ adds version 2 of the file, the owner's form of HQ-0089: the member
 kernel run keeps writing version 1 (decision 7). :func:`parse`,
 :func:`validate`, :func:`read` and every reader of a member keep reading
 version 1 only, and a version-2 file is another version to them; only
-:func:`parse_kinded`, :func:`validate_kinded`, :func:`read_kinded` and
-:func:`candidate_kind_of` read both (decision 8). This
+:func:`parse_kinded`, :func:`validate_kinded`, :func:`read_kinded`,
+:func:`candidate_kind_of`, :func:`layout_version_of_kinded` and
+:func:`read_as_version_1` read both (decision 8). This
 module is those rules: :func:`parse` and :func:`validate` are pure functions of
 the bytes of a content and of a parsed document, and :func:`read`,
 :func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
@@ -612,7 +613,8 @@ function carries out the lookup of a journaled tool or the selection of a HW
 tool about a run, ADR-0030 decision 3 says when the call has the stamp: after
 the data root was obtained and before it uses any other path of that run.
 :func:`hilclaw.journaled_tool.checked_function`, the part the two builders of
-such a tool function share, calls :func:`layout_version_of` for that. Whether
+such a tool function share, calls :func:`layout_version_of_kinded` for that,
+so that a run of version 2 has its stamp too (ADR-0198 decision 8). Whether
 and at which moment another user of a path of a run has the stamp, and
 whether a source holds the stamp against the layout it builds, is not said
 here (OD-8 sub-question 27), and neither is what states the layout of
@@ -625,7 +627,7 @@ record and the stored one relate is open (OD-8 sub-question 18 for the
 hw_profile, part (iii) of sub-question 28 for the op_signature). None of its
 errors is a :class:`hilclaw.tools.ToolFailure`: the kind a call of a tool
 answers for them is given by the tool function that calls :func:`hw_profile_of`
-or :func:`layout_version_of` (:mod:`hilclaw.hw_tool`,
+or :func:`layout_version_of_kinded` (:mod:`hilclaw.hw_tool`,
 :mod:`hilclaw.journaled_tool`; ADR-0019, ADR-0030), not here. It reads no other
 version (OD-11) and says nothing of what writes the file, of when, or of a run
 directory without it (OD-8 sub-questions 10 and 17). Nothing is kept between
@@ -697,7 +699,9 @@ class UnsupportedVersionError(Exception):
     """``schema_version`` is an integer the entry does not read: not damage, and nothing is interpreted.
 
     The entries of version 1 read 1 only; those of ADR-0198 decision 8,
-    named ``*_kinded`` and :func:`candidate_kind_of`, read 1 and 2.
+    named ``*_kinded`` and :func:`candidate_kind_of`, read 1 and 2
+    (:func:`layout_version_of_kinded` and :func:`read_as_version_1` among
+    them).
     """
 
 
@@ -1403,6 +1407,42 @@ def layout_version_of(data_root, run_id):
     """
     read(data_root, run_id)
     return _STATED_LAYOUT[SCHEMA_VERSION]
+
+
+def layout_version_of_kinded(data_root, run_id):
+    """Return the layout version the run ``run_id`` states, from an ``instance.json`` of version 1 or 2.
+
+    The file is first read by :func:`layout_version_of`, so a version-1 run
+    is read exactly as that function reads it. Only when that read raises
+    :class:`UnsupportedVersionError` is the file read again, by
+    :func:`read_kinded`, and the ``layout_version`` it gives returned: the
+    ``int`` 1 for a valid version-2 file (ADR-0198 decision 7). Raises what
+    the first read raises otherwise, and what the second raises after it, so
+    :class:`UnsupportedVersionError` for a version other than 1 and 2 and
+    :class:`InvalidInstanceError` for a version-2 file without a kind other
+    than ``c_kernel``. A file changed between the two reads is answered by
+    the second.
+    """
+    try:
+        return layout_version_of(data_root, run_id)
+    except UnsupportedVersionError:
+        return read_kinded(data_root, run_id).layout_version
+
+
+def read_as_version_1(data_root, run_id):
+    """Return the :class:`Instance` of the run ``run_id`` from an ``instance.json`` of version 1 or 2.
+
+    The file is first read by :func:`read`, so a version-1 run is read
+    exactly as that function reads it. Only when that read raises
+    :class:`UnsupportedVersionError` is the file read again, by
+    :func:`read_kinded`, and its ``instance`` returned: a version-2 file is
+    read as its version-1 twin, its ``candidate_kind`` left out (ADR-0198
+    decision 8). The errors are those of :func:`layout_version_of_kinded`.
+    """
+    try:
+        return read(data_root, run_id)
+    except UnsupportedVersionError:
+        return read_kinded(data_root, run_id).instance
 
 
 def _fail(place, rule, value):

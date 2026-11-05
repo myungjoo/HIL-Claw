@@ -232,6 +232,7 @@ def test_the_public_names():
         "draws_of",
         "hw_profile_of",
         "layout_version_of",
+        "layout_version_of_kinded",
         "n_max_of",
         "objective_of",
         "op_signature_of",
@@ -240,6 +241,7 @@ def test_the_public_names():
         "parse_kinded",
         "project_of",
         "read",
+        "read_as_version_1",
         "read_kinded",
         "round_budget_of",
         "source_commit_of",
@@ -4820,7 +4822,7 @@ UNUSABLE = {
         "run_file_invalid",
     ),
     "another version": (
-        raw(doc(schema_version=2)),
+        raw(doc(schema_version=3)),
         UnsupportedVersionError,
         "run_file_unsupported",
     ),
@@ -9933,3 +9935,117 @@ def test_the_kind_of_a_run_is_not_inferred_from_a_bad_file(root):
         instance.read_kinded(root, RUN)
     with pytest.raises(layout.InvalidPathValueError):
         instance.read_kinded(root, "../x")
+
+
+def test_the_kinded_layout_version_is_1_for_both_versions(root):
+    place(root, raw(kinded()))
+    place(root, raw(doc()), f"runs/{OTHER_RUN}/instance.json")
+    before = snapshot(root)
+
+    assert instance.layout_version_of_kinded(root, RUN) == 1
+    assert instance.layout_version_of_kinded(str(root), OTHER_RUN) == 1
+    assert type(instance.layout_version_of_kinded(root, RUN)) is int
+    assert snapshot(root) == before
+    with pytest.raises(UnsupportedVersionError, match=f"^{FILE}: schema_version: 2"):
+        layout_version_of(root, RUN)
+
+
+@pytest.mark.parametrize(
+    ("document", "error", "start"),
+    [
+        (doc(schema_version=3), UnsupportedVersionError, "schema_version: 3"),
+        (doc(schema_version=0), UnsupportedVersionError, "schema_version: 0"),
+        (doc(candidate_kind="compile_settings"), InvalidInstanceError, "candidate_"),
+        (kinded("c_kernel"), InvalidInstanceError, "candidate_kind: "),
+        (doc(schema_version=2), InvalidInstanceError, "document: lacks"),
+        (kinded(n_max=4), InvalidInstanceError, "n_max: "),
+    ],
+    ids=["v3", "v0", "v1-with-kind", "v2-c_kernel", "v2-no-kind", "v2-invalid"],
+)
+def test_the_kinded_layout_version_is_not_had_from_a_bad_file(
+    root, document, error, start
+):
+    place(root, raw(document))
+    with pytest.raises(error, match=f"^{FILE}: {start}"):
+        instance.layout_version_of_kinded(root, RUN)
+
+
+def test_the_kinded_layout_version_of_a_missing_file_or_run_id(root, tmp_path):
+    with pytest.raises(MissingInstanceError):
+        instance.layout_version_of_kinded(root, RUN)
+    with pytest.raises(layout.InvalidPathValueError):
+        instance.layout_version_of_kinded(root, "../x")
+    with pytest.raises(FileNotFoundError):
+        instance.layout_version_of_kinded(tmp_path / "absent", RUN)
+
+
+def test_read_as_version_1_gives_a_version_2_file_as_its_twin(root):
+    place(root, raw(kinded(n_max=7)))
+    place(root, raw(doc(n_max=7)), f"runs/{OTHER_RUN}/instance.json")
+    before = snapshot(root)
+
+    twin = instance.read_as_version_1(root, RUN)
+
+    assert twin == read(root, OTHER_RUN) == instance.read_as_version_1(root, OTHER_RUN)
+    assert type(twin) is instance.Instance
+    assert "candidate_kind" not in twin.others
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize(
+    ("document", "error", "start"),
+    [
+        (doc(schema_version=3), UnsupportedVersionError, "schema_version: 3"),
+        (doc(candidate_kind="compile_settings"), InvalidInstanceError, "candidate_"),
+        (kinded("c_kernel"), InvalidInstanceError, "candidate_kind: "),
+        (doc(schema_version=2), InvalidInstanceError, "document: lacks"),
+    ],
+    ids=["v3", "v1-with-kind", "v2-c_kernel", "v2-no-kind"],
+)
+def test_read_as_version_1_refuses_what_the_kinded_read_refuses(
+    root, document, error, start
+):
+    place(root, raw(document))
+    with pytest.raises(error, match=f"^{FILE}: {start}"):
+        instance.read_as_version_1(root, RUN)
+
+
+def test_read_as_version_1_of_a_missing_file_or_run_id(root):
+    with pytest.raises(MissingInstanceError):
+        instance.read_as_version_1(root, RUN)
+    with pytest.raises(layout.InvalidPathValueError):
+        instance.read_as_version_1(root, "../x")
+
+
+@pytest.mark.parametrize(
+    ("entry", "strict"),
+    [
+        (instance.read_as_version_1, "read"),
+        (instance.layout_version_of_kinded, "layout_version_of"),
+    ],
+)
+def test_a_version_1_file_is_read_once_by_the_strict_entry(
+    root, monkeypatch, entry, strict
+):
+    calls, real, real_kinded = [], getattr(instance, strict), instance.read_kinded
+
+    def spy(*arguments):
+        calls.append(strict)
+        return real(*arguments)
+
+    def kinded_spy(*arguments):
+        calls.append("kinded")
+        return real_kinded(*arguments)
+
+    monkeypatch.setattr(instance, strict, spy)
+    monkeypatch.setattr(instance, "read_kinded", kinded_spy)
+    place(root, raw(doc()))
+    entry(root, RUN)
+    assert calls == [strict]
+    place(root, raw(kinded()))
+    entry(root, RUN)
+    assert calls == [strict, strict, "kinded"]
+    place(root, b"{")
+    with pytest.raises(InvalidInstanceError):
+        entry(root, RUN)
+    assert calls == [strict, strict, "kinded", strict]

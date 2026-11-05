@@ -563,7 +563,7 @@ def test_a_missing_instance_is_run_file_missing(root):
     ("content", "kind"),
     [
         (b"[]", "run_file_invalid"),
-        (encoded(instance_document() | {"schema_version": 2}), "run_file_unsupported"),
+        (encoded(instance_document() | {"schema_version": 3}), "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_is_its_kind(root, content, kind):
@@ -1000,3 +1000,56 @@ def test_the_shared_read_refuses_another_name(root):
         run_file_tools.read(root, RUN, "events.ndjson")
     with pytest.raises(layout.InvalidPathValueError):
         run_file_tools.read(root, "Bad Run", "STATE.json")
+
+
+# instance.json of version 2 (ADR-0198 decision 8, slice 2b)
+
+KINDED = {"schema_version": 2, "candidate_kind": "compile_settings"}
+
+
+def test_a_compile_settings_run_is_run_file_unsupported_and_nothing_is_written(root):
+    run(root)
+    place(instance_path(root), encoded(instance_document() | KINDED))
+    failure = refused(root)
+    assert failure.kind == "run_file_unsupported"
+    assert failure.message == (
+        f"{INSTANCE_PATH}: states the candidate kind compile_settings; "
+        "this tool reads c_kernel runs only"
+    )
+    assert not case_path(root).exists()
+
+
+def test_the_kind_is_refused_before_the_key(root):
+    run(root, key=False, hypotheses=False, verdicts=False)
+    place(instance_path(root), encoded(instance_document(with_op=False) | KINDED))
+    assert refused(root).kind == "run_file_unsupported"
+
+
+def test_the_state_is_checked_before_the_kind(root):
+    run(root, round=2)
+    place(instance_path(root), encoded(instance_document() | KINDED))
+    assert refused(root).kind == "round_not_current"
+
+
+@pytest.mark.parametrize(
+    ("changes", "kind"),
+    [
+        ({"schema_version": 1}, "run_file_invalid"),
+        ({"candidate_kind": "c_kernel"}, "run_file_invalid"),
+        ({"schema_version": 0}, "run_file_unsupported"),
+    ],
+    ids=["v1-with-kind", "v2-c_kernel", "v0"],
+)
+def test_the_narrowed_forms_and_other_versions_are_their_kind(root, changes, kind):
+    run(root)
+    place(instance_path(root), encoded(instance_document() | KINDED | changes))
+    failure = refused(root)
+    assert failure.kind == kind
+    assert failure.message.startswith(f"{INSTANCE_PATH}: ")
+    assert "candidate kind" not in failure.message
+
+
+def test_a_version_1_run_is_stored_as_before(root):
+    run(root)
+    assert write(Source(root), request()) == {"with_verdicts": True}
+    assert case_path(root).is_file()

@@ -27,10 +27,16 @@ A call, in this order:
    :func:`hilclaw.data_root_source.obtain`; its ``no_data_root`` passes through.
    Then the layout version stamp of the run is read (ADR-0030 decision 3):
    ``runs/<run_id>/instance.json`` below that data root, as a whole, by
-   :func:`hilclaw.instance.layout_version_of`, before ``STATE.json`` or the
-   log is opened. When the stamp cannot be had, the call is a tool failure of
-   one of the four reserved kinds of ADR-0019 decision 2, and what follows
-   under 3 does not take place (ADR-0030 decision 4; the cases are below).
+   :func:`hilclaw.instance.layout_version_of_kinded`, before ``STATE.json`` or
+   the log is opened. A file of version 1 or 2 gives the stamp, layout
+   version 1 for both (ADR-0198 decisions 7 and 8); a version-1 file is read
+   by :func:`hilclaw.instance.layout_version_of` as before, and a version-2
+   one read again as its version-1 twin. Whether a run of that kind is
+   carried out is the tool's (the read of the hw_profile in
+   :mod:`hilclaw.hw_tool` still refuses it). When the stamp cannot be had,
+   the call is a tool failure of one of the four reserved kinds of ADR-0019
+   decision 2, and what follows under 3 does not take place (ADR-0030
+   decision 4; the cases are below).
 3. The step of the identity is carried out by ``journaled_step.run``. What it
    returns is returned and what it raises passes through unchanged: the tool
    failure of one of the same four kinds for what the lookup finds in
@@ -46,7 +52,8 @@ rows ADR-0019 decision 3 has for that file and the borders of its decision 4:
   is no existing directory at the read, a file gone during the read).
 - ``run_file_invalid``: :class:`hilclaw.instance.InvalidInstanceError` (an
   invalid content, an empty file included, or a path that is no regular file).
-- ``run_file_unsupported``: :class:`hilclaw.instance.UnsupportedVersionError`.
+- ``run_file_unsupported``: :class:`hilclaw.instance.UnsupportedVersionError`
+  (a version other than 1 and 2).
 - ``run_file_unreadable``: every other :class:`OSError`.
 
 Such a call appended no line, opened neither ``STATE.json`` nor the log and
@@ -78,7 +85,7 @@ Conventions of this module, which the records do not fix:
   it is a :class:`RuntimeError`, raised before the data root is asked.
 - The reader of the stamp is no parameter: ADR-0030 decision 3 names the file
   and ADR-0024 decision 4 the condition, and
-  :func:`hilclaw.instance.layout_version_of` is both.
+  :func:`hilclaw.instance.layout_version_of_kinded` is both.
 - What that function returns is compared with nothing (ADR-0030 decision 5).
 - Only the read of the stamp is answered this way here: the same classes out
   of the tool's own check or out of ``carry_out`` are not.
@@ -205,7 +212,7 @@ def checked_function(*, step, numbers, carry_out, source, check, **others):
       ``run_id``, the :class:`hilclaw.journal.Identity` formed from ``step``
       and the request, and the request as the caller gave it; once in a call,
       and only after both checks passed, the data root was obtained and
-      :func:`hilclaw.instance.layout_version_of` returned for that data root
+      :func:`hilclaw.instance.layout_version_of_kinded` returned for that data root
       and that ``run_id``.
     - ``others``: further arguments by name, meant for the callables
       ``carry_out`` uses. Each is checked for being callable when built and
@@ -314,7 +321,7 @@ def _function(steps, step_of, numbers, carry_out, source, check):
         identity = identity._replace(step=_step(steps, step_of(request)))
         data_root = data_root_source.obtain(source)
         with run_files.reading(data_root, run_id, "instance.json", _STAMP_KINDS):
-            instance.layout_version_of(data_root, run_id)
+            instance.layout_version_of_kinded(data_root, run_id)
         return carry_out(data_root, run_id, identity, request)
 
     return journaled
