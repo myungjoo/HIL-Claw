@@ -125,7 +125,7 @@ REFUSED = {
     "byte order mark": (codecs.BOM_UTF8 + MINIMAL, InvalidInstanceError),
     "member name twice": (text(VERSION, VERSION, SECTION), InvalidInstanceError),
     "version 0": (written(doc(schema_version=0)), UnsupportedVersionError),
-    "version 2": (written(doc(schema_version=2)), UnsupportedVersionError),
+    "version 3": (written(doc(schema_version=3)), UnsupportedVersionError),
     "no hw_profile": (written(doc(hw_profile=REMOVE)), InvalidInstanceError),
     "tolerance": (
         written(doc(tolerance={"rtol": -1, "atol": 0})),
@@ -763,3 +763,53 @@ def test_a_content_with_an_invalid_coder_model_is_not_written(root, model):
     assert snapshot(root) == {}
     write(root, RUN, written(doc(coder_model="claude-example-1-2")))
     assert instance.read(root, RUN).coder_model == "claude-example-1-2"
+
+
+# Version 2 of ADR-0198 decision 7
+
+KINDED = written(doc(schema_version=2, candidate_kind="compile_settings"))
+
+
+def test_a_version_2_content_is_written_as_given(root):
+    write(root, RUN, KINDED)
+    assert (root / FILE).read_bytes() == KINDED
+    read = instance.read_kinded(root, RUN)
+    assert read.schema_version == 2
+    assert read.candidate_kind == "compile_settings"
+    assert snapshot(root) == {"runs": None, f"runs/{RUN}": None, FILE: KINDED}
+    with pytest.raises(UnsupportedVersionError):
+        instance.read(root, RUN)
+
+
+@pytest.mark.parametrize(
+    ("content", "error"),
+    [
+        (written(doc(schema_version=2)), InvalidInstanceError),
+        (
+            written(doc(schema_version=2, candidate_kind="c_kernel")),
+            InvalidInstanceError,
+        ),
+        (written(doc(schema_version=2, candidate_kind="other")), InvalidInstanceError),
+        (written(doc(candidate_kind="c_kernel")), InvalidInstanceError),
+        (written(doc(candidate_kind="compile_settings")), InvalidInstanceError),
+        (
+            written(doc(schema_version=3, candidate_kind="compile_settings")),
+            UnsupportedVersionError,
+        ),
+        (KINDED[:-1], WrittenFormError),
+    ],
+    ids=[
+        "version 2 without kind",
+        "version 2 c_kernel",
+        "version 2 unknown kind",
+        "version 1 c_kernel",
+        "version 1 compile_settings",
+        "version 3",
+        "version 2 no line feed",
+    ],
+)
+def test_a_refused_kinded_content_creates_nothing(root, content, error):
+    with pytest.raises(error):
+        write(root, RUN, content)
+    assert snapshot(root) == {}
+    assert found(root) is None

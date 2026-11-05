@@ -7,13 +7,15 @@ new temporary file beside the final name; its content brought to stable
 storage; one last step that gives the final name only if that name does not
 exist and otherwise changes nothing; and the temporary file removed when a
 step fails before the name is given. This module is those steps over
-:func:`hilclaw.instance.parse` (the validity of the content) and
-:func:`hilclaw.layout.run_file` (the path). The temporary file is
-``instance.json.<token>.tmp`` in the run directory (decision 6). The last step
-is a hard link from the temporary name to the final name, followed by the
-removal of the temporary name. There is no fallback to a replacing rename:
-where the link is not possible the write fails and has put nothing under the
-final name.
+:func:`hilclaw.instance.parse_kinded` (the validity of the content, of
+version 1 or of the version 2 of
+``ARCHITECTURE/decisions/ADR-0198-od32-compile-settings-candidate-kind.md``
+decision 7) and :func:`hilclaw.layout.run_file` (the path). The temporary
+file is ``instance.json.<token>.tmp`` in the run directory (decision 6). The
+last step is a hard link from the temporary name to the final name,
+followed by the removal of the temporary name. There is no fallback to a
+replacing rename: where the link is not possible the write fails and has put
+nothing under the final name.
 
 Conventions of this module, which the record does not fix:
 
@@ -22,9 +24,9 @@ Conventions of this module, which the record does not fix:
 - The checks come in this order: ``run_id``, then the validity of the content,
   then its written form, then ``data_root``, then the file system. Nothing is
   created before the last of them.
-- What :func:`hilclaw.instance.parse` raises for a content passes through
-  unchanged. A valid content that is not in the written form of ADR-0018
-  decision 2 raises :class:`WrittenFormError`. The written form is checked as:
+- What :func:`hilclaw.instance.parse_kinded` raises for a content passes
+  through unchanged. A valid content that is not in the written form of
+  ADR-0018 decision 2 raises :class:`WrittenFormError`. The written form is checked as:
   the content ends with a line feed and holds no carriage return byte. No
   member order, indentation or number of lines is checked.
 - ``data_root`` is a ``str`` or a path, is not resolved and must be an existing
@@ -111,9 +113,10 @@ def write(data_root, run_id, content):
     :class:`hilclaw.layout.InvalidPathValueError` for an invalid ``run_id``;
     :class:`TypeError`, :class:`hilclaw.instance.InvalidInstanceError` or
     :class:`hilclaw.instance.UnsupportedVersionError` for a content
-    :func:`hilclaw.instance.parse` refuses; :class:`WrittenFormError` for a
-    valid content that does not end with a line feed or holds a carriage
-    return byte. Nothing is created then.
+    :func:`hilclaw.instance.parse_kinded` refuses, so a content of version 1
+    or 2 is accepted and one of any other version is refused;
+    :class:`WrittenFormError` for a valid content that does not end with a
+    line feed or holds a carriage return byte. Nothing is created then.
 
     Raises :class:`FileNotFoundError` or :class:`NotADirectoryError` for a
     ``data_root`` that is no existing directory, and the :class:`OSError` of
@@ -128,7 +131,7 @@ def write(data_root, run_id, content):
     removes its temporary file where that is possible. Nothing is retried.
     """
     layout.check_run_id(run_id)
-    instance.parse(content)
+    instance.parse_kinded(content)
     if not content.endswith(b"\n"):
         raise WrittenFormError("content: does not end with a line feed")
     if b"\r" in content:

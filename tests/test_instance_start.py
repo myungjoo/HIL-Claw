@@ -364,7 +364,7 @@ def test_an_invalid_document_missing_members_is_invalid_not_missing():
 
 def test_a_document_of_another_version_is_unsupported():
     given = without(*REPORT_ORDER, "n_max")
-    given["schema_version"] = 2
+    given["schema_version"] = 3
     before = copy.deepcopy(given)
     with pytest.raises(UnsupportedVersionError):
         call(given)
@@ -627,7 +627,7 @@ def test_an_uncovered_op_signature_gets_no_coder_model():
 
 def test_another_version_without_coder_model_is_unsupported_before_anything():
     given = without("coder_model", "n_max")
-    given["schema_version"] = 2
+    given["schema_version"] = 3
     before = copy.deepcopy(given)
     recorder = Recorder(True)
     with pytest.raises(UnsupportedVersionError):
@@ -667,3 +667,131 @@ def test_the_only_model_name_of_the_module_code_is_the_default():
         and node.value.startswith("claude-")
     ]
     assert names == [CODER_MODEL_DEFAULT]
+
+
+# The candidate kind of ADR-0198 decision 7
+
+
+def kinded(kind="compile_settings", version=2, **changes):
+    made = document(**changes)
+    made["schema_version"] = version
+    made["candidate_kind"] = kind
+    return made
+
+
+@pytest.mark.parametrize("accelerator", ACCELERATORS)
+def test_a_compile_settings_document_is_prepared_as_version_2(accelerator):
+    given = kinded(accelerator=accelerator, n_max=ABSENT, coder_model=ABSENT)
+    before = copy.deepcopy(given)
+    prepared = call(given)
+    assert given == before
+    assert prepared == {
+        **given,
+        "n_max": measurement.N_MAX_DEFAULT,
+        "coder_model": CODER_MODEL_DEFAULT,
+    }
+    assert prepared["schema_version"] == instance.KIND_SCHEMA_VERSION
+    assert prepared["candidate_kind"] == "compile_settings"
+    instance.validate_kinded(prepared)
+    with pytest.raises(UnsupportedVersionError):
+        instance.validate(prepared)
+
+
+def test_a_version_1_document_naming_c_kernel_is_prepared_without_the_member():
+    given = kinded("c_kernel", 1)
+    before = copy.deepcopy(given)
+    prepared = call(given)
+    assert given == before
+    assert "candidate_kind" not in prepared
+    assert prepared == call(document())
+    assert list(prepared) == list(document())
+    instance.validate(prepared)
+
+
+def test_the_c_kernel_member_is_left_out_wherever_it_stands():
+    given = {"candidate_kind": "c_kernel", **document(), "example_member": [1]}
+    prepared = call(given)
+    assert list(prepared) == [name for name in given if name != "candidate_kind"]
+    assert prepared["example_member"] is given["example_member"]
+
+
+def test_a_version_1_document_naming_no_kind_is_prepared_as_today():
+    given = document()
+    prepared = call(given)
+    assert prepared == given
+    assert "candidate_kind" not in prepared
+
+
+@pytest.mark.parametrize(
+    ("version", "kind"),
+    [
+        (1, "compile_settings"),
+        (1, "vendor_kernel"),
+        (1, ""),
+        (1, None),
+        (1, 1),
+        (1, ["c_kernel"]),
+        (2, "c_kernel"),
+        (2, "vendor_kernel"),
+        (2, "Compile_Settings"),
+        (2, None),
+        (2, ABSENT),
+        (True, "c_kernel"),
+        (1.0, "c_kernel"),
+    ],
+)
+def test_a_contradictory_or_unknown_kind_is_invalid_and_never_rewritten(version, kind):
+    given = kinded(kind, version)
+    if kind is ABSENT:
+        del given["candidate_kind"]
+    before = copy.deepcopy(given)
+    recorder = Recorder(True)
+    with pytest.raises(InvalidInstanceError):
+        call(given, covers=recorder)
+    assert given == before
+    assert recorder.calls == []
+
+
+def test_a_c_kernel_of_a_str_subclass_is_not_left_out():
+    class Text(str):
+        pass
+
+    given = kinded(Text("c_kernel"), 1)
+    with pytest.raises(InvalidInstanceError):
+        call(given)
+    assert type(given["candidate_kind"]) is Text
+
+
+@pytest.mark.parametrize("kind", ["compile_settings", "c_kernel", ABSENT])
+def test_version_3_is_unsupported_whatever_the_kind(kind):
+    given = kinded(kind, 3)
+    if kind is ABSENT:
+        del given["candidate_kind"]
+    with pytest.raises(UnsupportedVersionError):
+        call(given)
+
+
+def test_a_version_2_document_at_another_accelerator_is_out_of_scope():
+    given = kinded(accelerator="acc_other", n_max=ABSENT)
+    with pytest.raises(OutOfScopeError):
+        call(given)
+    assert "n_max" not in given
+
+
+def test_a_version_2_document_with_an_uncovered_op_signature_is_out_of_scope():
+    given = kinded(op_signature=op_record(m=2))
+    recorder = Recorder(False)
+    with pytest.raises(OutOfScopeError):
+        call(given, covers=recorder)
+    assert recorder.calls == [given["op_signature"]["record"]]
+
+
+def test_a_version_2_document_lacking_members_reports_them_as_version_1():
+    names = ("objective", "draws")
+    error = refused(kinded(**{name: ABSENT for name in names}))
+    assert error.missing == refused(without(*names)).missing == names
+
+
+def test_a_c_kernel_document_lacking_members_reports_them_as_version_1():
+    error = refused(kinded("c_kernel", 1, tolerance=ABSENT))
+    assert error.missing == ("tolerance",)

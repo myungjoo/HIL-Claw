@@ -517,3 +517,43 @@ def test_the_module_runs_as_a_command():
     assert done.returncode == EXIT_STATUS[BAD_USAGE]
     assert json.loads(done.stdout)["outcome"] == BAD_USAGE
     assert done.stderr == b""
+
+
+# The candidate kind of ADR-0198 decision 7
+
+
+def test_a_compile_settings_document_is_started_as_version_2(root, given):
+    content = document(schema_version=2, candidate_kind="compile_settings")
+    ran = run([given(content)], root)
+    assert ran.status == EXIT_STATUS[STARTED]
+    assert set(ran.told) == {"outcome", "run_id"}
+    assert ran.told["outcome"] == STARTED
+    built = ran.told["run_id"]
+    assert tree(root) == ["runs", f"runs/{built}", f"runs/{built}/instance.json"]
+    assert instance.candidate_kind_of(root, built) == "compile_settings"
+    assert instance.read_kinded(root, built).schema_version == 2
+
+
+def test_a_c_kernel_document_is_started_as_version_1(root, given):
+    ran = run([given(document(candidate_kind="c_kernel"))], root)
+    assert ran.told["outcome"] == STARTED
+    read = instance.read(root, ran.told["run_id"])
+    assert "candidate_kind" not in read.others
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"candidate_kind": "compile_settings"},
+        {"schema_version": 2, "candidate_kind": "c_kernel"},
+        {"schema_version": 2, "candidate_kind": "vendor_kernel"},
+        {"schema_version": 3, "candidate_kind": "compile_settings"},
+    ],
+    ids=["v1_compile_settings", "v2_c_kernel", "v2_unknown", "v3"],
+)
+def test_a_refused_kind_is_invalid_and_starts_nothing(root, given, changes):
+    ran = run([given(document(**changes))], root)
+    assert ran.told["outcome"] == INVALID
+    assert set(ran.told) == {"outcome", "reason"}
+    assert ran.status == EXIT_STATUS[INVALID]
+    assert tree(root) == []
