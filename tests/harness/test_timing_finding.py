@@ -463,3 +463,35 @@ def test_the_members_of_the_retired_definition_are_not_read(name):
 def test_an_end_line_under_a_retired_run_value_gives_no_finding(retired):
     assert line_finding(ended(COARSE, step=retired)) is None
     assert run_found_at([started(retired), ended(COARSE, step=retired)]) is None
+
+
+V3_STEPS = ("sim_run_timing_v3", "board_run_timing_v3")
+
+
+def in_cycles(result, factor=3):
+    return result | {
+        "unit": "cycles",
+        "resolution": result["resolution"] * factor,
+        "intervals": [i * factor for i in result["intervals"]],
+    }
+
+
+@pytest.mark.parametrize("step", V3_STEPS)
+def test_a_coarse_clock_in_cycles_on_a_v3_line_is_found(step):
+    assert line_finding(ended(in_cycles(COARSE), step)) is True
+    assert line_finding(ended(in_cycles(CLEAN), step)) is False
+    assert run_found_at([started(step), ended(in_cycles(CLEAN), step)]) is None
+    assert run_found_at([started(step), ended(in_cycles(COARSE), step)]) == 2
+
+
+@pytest.mark.parametrize("step", V3_STEPS)
+def test_a_v3_line_is_found_as_its_v2_line_in_ns(step):
+    for result in (CLEAN, COARSE, not_converged(), BROKEN):
+        v2 = line_finding(ended(result, STEP_SIM_RUN))
+        assert line_finding(ended(result, step)) is v2
+
+
+@pytest.mark.parametrize("step", V3_STEPS)
+def test_an_invalid_v3_result_is_refused(step):
+    with pytest.raises(ValueError, match="^resolution: must be at least 0"):
+        line_finding(ended(converged(-1), step))

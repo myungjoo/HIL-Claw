@@ -1704,3 +1704,81 @@ def test_timing_lines_under_a_retired_run_value_are_not_read(root, retired, poin
         "record.verdicts[0].evidence[0]: measurement_missing: "
     )
     assert error.message.endswith(f"at {retired}_v2: has no measurement")
+
+
+# The v3 values and the unit (ADR-0196 decision 4)
+
+T_SIM_V3 = "sim_run_timing_v3"
+T_BOARD_V3 = "board_run_timing_v3"
+
+
+def in_unit(unit, intervals=SLOW):
+    return timing(intervals=intervals) | {"unit": unit}
+
+
+@pytest.mark.parametrize("unit", ["ns", "cycles"])
+def test_a_counted_comparison_of_v3_results_is_written(root, unit):
+    with_hypotheses(root)
+    check(root, at=AGAINST, result=PASS)
+    check(root, at=MEASURED, step=T_BOARD_V3, result=in_unit(unit, FAST))
+    check(root, at=AGAINST, step=T_BOARD_V3, result=in_unit(unit, SLOW))
+    written(root, counted())
+
+
+def test_a_sim_comparison_of_v3_results_in_cycles_is_written(root):
+    with_hypotheses(root)
+    check(root, at=MEASURED, step=T_SIM_V3, result=in_unit("cycles", SLOW))
+    check(root, at=AGAINST, step=T_SIM_V3, result=in_unit("cycles", FAST))
+    written(root, pair([comparison(point="sim", difference="higher")]))
+
+
+def test_a_comparison_of_a_v2_and_a_v3_result_in_ns_is_written(root):
+    with_hypotheses(root)
+    check(root, at=MEASURED, step=T_BOARD_V3, result=in_unit("ns", CLOSE))
+    check(root, at=AGAINST, step=T_BOARD, result=timing(intervals=SLOW))
+    written(root, pair([comparison(difference="not_different")]))
+
+
+def test_a_comparison_across_two_units_is_comparison_unfounded(root):
+    with_hypotheses(root)
+    check(root, at=MEASURED, step=T_BOARD_V3, result=in_unit("cycles", FAST))
+    check(root, at=AGAINST, step=T_BOARD, result=timing(intervals=SLOW))
+    error = refused(root, pair([comparison()]))
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNFOUNDED
+    assert error.message.startswith("record.verdicts[0].evidence[0]: units_differ: ")
+
+
+@pytest.mark.parametrize("step", [T_SIM, T_BOARD])
+def test_a_v2_result_in_cycles_is_timing_result_invalid(root, step):
+    with_hypotheses(root)
+    point = "sim" if step == T_SIM else "board"
+    check(root, at=MEASURED, step=step, result=in_unit("cycles", FAST))
+    check(root, at=AGAINST, step=step, result=timing(intervals=SLOW))
+    error = refused(root, pair([comparison(point=point)]))
+    assert error.kind == verdicts_tool.KIND_TIMING_RESULT_INVALID
+    assert error.message.endswith("data.result.unit: must be \"ns\", got str 'cycles'")
+
+
+def test_a_v3_result_in_a_unit_outside_the_list_is_timing_result_invalid(root):
+    with_hypotheses(root)
+    check(root, at=MEASURED, step=T_BOARD_V3, result=in_unit("us", FAST))
+    check(root, at=AGAINST, step=T_BOARD_V3, result=in_unit("ns", SLOW))
+    error = refused(root, pair([comparison()]))
+    assert error.kind == verdicts_tool.KIND_TIMING_RESULT_INVALID
+    assert error.message.endswith(
+        "data.result.unit: must be one of ns, cycles, got str 'us'"
+    )
+
+
+def test_an_attempt_with_a_v2_and_a_v3_measurement_is_comparison_unfounded(root):
+    with_hypotheses(root)
+    timed(root)
+    check(root, at=MEASURED, step=T_BOARD_V3, result=in_unit("ns", FAST))
+    error = refused(root, pair([comparison()]))
+    assert error.kind == verdicts_tool.KIND_COMPARISON_UNFOUNDED
+    assert "measurement_several" in error.message
+    assert f"at {T_BOARD} and {T_BOARD_V3}" in error.message
+
+
+def test_units_differ_is_one_of_the_unfounded_kinds():
+    assert timings_tool.KIND_UNITS_DIFFER in verdicts_tool._UNFOUNDED_KINDS

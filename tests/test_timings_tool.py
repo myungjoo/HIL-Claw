@@ -250,9 +250,9 @@ def test_the_new_kinds_are_of_the_tool_layer_and_not_reserved():
 
 
 def test_the_steps_of_the_points_are_those_of_the_run_tools():
-    assert timings_tool.STEP_OF == {
-        "sim": run_identity.STEP_SIM_RUN,
-        "board": run_identity.STEP_BOARD_RUN,
+    assert timings_tool.STEPS_OF == {
+        "sim": (run_identity.STEP_SIM_RUN, run_identity.STEP_SIM_RUN_V3),
+        "board": (run_identity.STEP_BOARD_RUN, run_identity.STEP_BOARD_RUN_V3),
     }
     assert timings_tool.METRIC == "latency_minimisation"
     assert timings_tool._OUTCOMES == (
@@ -1132,3 +1132,169 @@ def test_difference_of_refuses_samples_outside_the_domain():
     with pytest.raises(ToolFailure) as e:
         timings_tool.difference_of("f", timing(intervals=[10**320] * 5), timing())
     assert e.value.kind == timings_tool.KIND_SAMPLES_OUT_OF_DOMAIN
+
+
+# The v3 values and the unit (ADR-0196 decision 4)
+
+SIM_V3 = "sim_run_timing_v3"
+BOARD_V3 = "board_run_timing_v3"
+
+
+def in_unit(unit, intervals=SLOW):
+    return timing(intervals=intervals) | {"unit": unit}
+
+
+def test_the_v3_values_and_their_units_are_those_of_run_identity():
+    assert (SIM_V3, BOARD_V3) == (
+        run_identity.STEP_SIM_RUN_V3,
+        run_identity.STEP_BOARD_RUN_V3,
+    )
+    assert timings_tool.KIND_UNITS_DIFFER == "units_differ"
+    assert timings_tool.KIND_UNITS_DIFFER not in tools.RESERVED_KINDS
+    description = timings_tool.definition(lambda: None).description
+    assert "units_differ when the two results are in different units" in description
+
+
+@pytest.mark.parametrize("unit", ["ns", "cycles"])
+def test_two_v3_results_of_one_unit_are_compared(root, unit):
+    run(root, MEASURED, step=BOARD_V3, result=in_unit(unit, FAST))
+    run(root, AGAINST, step=BOARD_V3, result=in_unit(unit, SLOW))
+    assert compared(root) == answer("lower")
+
+
+def test_the_sim_point_reads_its_v3_lines(root):
+    run(root, MEASURED, step=SIM_V3, result=in_unit("cycles", SLOW))
+    run(root, AGAINST, step=SIM_V3, result=in_unit("cycles", FAST))
+    run(root, MEASURED, step=BOARD_V3, result=in_unit("cycles", FAST))
+    assert compared(root, request(point="sim")) == answer("higher")
+
+
+def test_a_v2_and_a_v3_result_in_ns_are_compared(root):
+    run(root, MEASURED, step=BOARD_V3, result=in_unit("ns", CLOSE))
+    run(root, AGAINST, step=BOARD, result=timing(intervals=SLOW))
+    assert compared(root) == answer("not_different")
+
+
+def test_results_in_two_units_are_units_differ(root):
+    run(root, MEASURED, step=BOARD_V3, result=in_unit("cycles", FAST))
+    run(root, AGAINST, step=BOARD, result=timing(intervals=SLOW))
+    refused = failure(root)
+    assert refused.kind == timings_tool.KIND_UNITS_DIFFER
+    assert refused.message == (
+        f"{LOG}: measured is in the unit cycles, against in ns; "
+        "results are compared only within one unit"
+    )
+
+
+def test_shapes_differ_comes_before_units_differ(root):
+    run(root, MEASURED, step=BOARD_V3, result=timing(m=8) | {"unit": "cycles"})
+    run(root, AGAINST, step=BOARD_V3, result=in_unit("ns"))
+    assert failure(root).kind == timings_tool.KIND_SHAPES_DIFFER
+
+
+def test_units_differ_comes_before_samples_out_of_domain(root):
+    huge = [10**400] * 5
+    run(root, MEASURED, step=BOARD_V3, result=in_unit("cycles", huge))
+    run(root, AGAINST, step=BOARD_V3, result=in_unit("ns", SLOW))
+    assert failure(root).kind == timings_tool.KIND_UNITS_DIFFER
+
+
+@pytest.mark.parametrize("step", [SIM, BOARD])
+def test_a_v2_result_in_cycles_is_timing_result_invalid(root, step):
+    run(root, MEASURED, step=step, result=in_unit("cycles"))
+    run(root, AGAINST, step=step, result=in_unit("ns"))
+    refused = failure(root, request(point="sim" if step == SIM else "board"))
+    assert refused.kind == timings_tool.KIND_TIMING_RESULT_INVALID
+    assert refused.message == (
+        f"{LOG}: line 2: data.result.unit: must be \"ns\", got str 'cycles'"
+    )
+
+
+@pytest.mark.parametrize("unit", ["us", "NS", "Cycles", "", 1, None])
+def test_a_v3_result_in_a_unit_outside_the_list_is_timing_result_invalid(root, unit):
+    run(root, MEASURED, step=BOARD_V3, result=in_unit(unit))
+    run(root, AGAINST, step=BOARD_V3, result=in_unit("ns"))
+    refused = failure(root)
+    assert refused.kind == timings_tool.KIND_TIMING_RESULT_INVALID
+    assert refused.message.startswith(
+        f"{LOG}: line 2: data.result.unit: must be one of ns, cycles, got "
+    )
+
+
+def test_an_attempt_with_a_v2_and_a_v3_measurement_is_measurement_several(root):
+    run(root, MEASURED, 1, step=BOARD, result=timing(intervals=FAST))
+    run(root, MEASURED, 1, step=BOARD_V3, result=in_unit("ns", FAST))
+    run(root, AGAINST, result=timing(intervals=SLOW))
+    refused = failure(root)
+    assert refused.kind == timings_tool.KIND_MEASUREMENT_SEVERAL
+    assert refused.message == (
+        f"{LOG}: measured (round 1, candidate 1, attempt 1) at {BOARD} and "
+        f"{BOARD_V3}: has 2 measurements (executions 1, 1)"
+    )
+
+
+def test_an_open_identity_under_one_value_is_not_ended_by_the_other(root):
+    start(root, MEASURED, 1, step=BOARD)
+    run(root, MEASURED, 1, step=BOARD_V3, result=in_unit("cycles", FAST))
+    run(root, AGAINST, step=BOARD_V3, result=in_unit("cycles", SLOW))
+    refused = failure(root)
+    assert refused.kind == timings_tool.KIND_MEASUREMENT_UNKNOWN
+
+
+def test_a_broken_v2_line_beside_a_v3_measurement_gives_the_v3_one(root):
+    run(root, MEASURED, 1, step=BOARD, result=broken())
+    run(root, MEASURED, 2, step=BOARD_V3, result=in_unit("cycles", FAST))
+    run(root, AGAINST, step=BOARD_V3, result=in_unit("cycles", SLOW))
+    assert compared(root) == answer("lower", measured=(2, "converged"))
+
+
+def test_a_side_with_only_v3_lines_is_named_by_its_v3_value(root):
+    run(root, MEASURED, step=BOARD_V3, result=broken())
+    run(root, AGAINST, step=BOARD_V3, result=in_unit("ns"))
+    refused = failure(root)
+    assert refused.kind == timings_tool.KIND_MEASUREMENT_MISSING
+    assert refused.message == (
+        f"{LOG}: measured (round 1, candidate 1, attempt 1) at {BOARD_V3}: "
+        "has no measurement"
+    )
+
+
+def test_timing_lines_reads_both_values_and_names_them(root):
+    start(root, MEASURED, 1, step=BOARD_V3)
+    lines = checks_tool.log_lines(root, RUN)
+    found = timings_tool.timing_lines(RUN, lines, "board", lambda numbers: True)
+    held = found[(1, 1, 1)]
+    assert held.steps == {BOARD_V3}
+    assert held.unknown == {1}
+    assert timings_tool.TimingLines([], set(), []).steps == frozenset()
+
+
+@pytest.mark.parametrize("step", [BOARD_V3, SIM_V3])
+@pytest.mark.parametrize("unit", ["ns", "cycles"])
+def test_timing_problem_admits_a_v3_unit_of_the_list(step, unit):
+    assert timings_tool.timing_problem(in_unit(unit), step) is None
+
+
+@pytest.mark.parametrize("step", [None, SIM, BOARD])
+def test_timing_problem_admits_only_ns_under_v2(step):
+    assert timings_tool.timing_problem(in_unit("ns"), step) is None
+    assert timings_tool.timing_problem(in_unit("cycles"), step) == (
+        "data.result.unit: must be \"ns\", got str 'cycles'"
+    )
+
+
+def test_timing_problem_refuses_a_step_of_another_tool():
+    with pytest.raises(KeyError):
+        timings_tool.timing_problem(in_unit("ns"), "correctness_check_sim_v2")
+
+
+def test_difference_of_refuses_two_units():
+    with pytest.raises(ToolFailure) as refused:
+        timings_tool.difference_of("f", in_unit("cycles", FAST), in_unit("ns", SLOW))
+    assert refused.value.kind == timings_tool.KIND_UNITS_DIFFER
+    assert (
+        timings_tool.difference_of(
+            "f", in_unit("cycles", FAST), in_unit("cycles", SLOW)
+        )
+        == "lower"
+    )

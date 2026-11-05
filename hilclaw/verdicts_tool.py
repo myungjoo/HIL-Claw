@@ -40,8 +40,8 @@ order, the first that fails deciding (a step line about any attempt that
 of an attempt and point that a ``check`` entry names whose ``result`` has no
 admitted ``outcome`` :data:`KIND_CHECK_RESULT_INVALID`, an end line of an
 attempt that a ``comparison`` entry names as ``measured`` or ``against``, at
-the ``step`` of its ``point``, whose ``result`` is no admitted timing result
-by :func:`hilclaw.timings_tool.timing_problem`
+either ``step`` of its ``point``, whose ``result`` is no admitted timing result
+under its own value by :func:`hilclaw.timings_tool.timing_problem`
 :data:`KIND_TIMING_RESULT_INVALID`); every ``check`` entry founded by ADR-0131
 decision 4 (:data:`KIND_CHECK_UNFOUNDED`); every ``comparison`` entry founded
 (:data:`KIND_COMPARISON_UNFOUNDED`); every counted comparison verified
@@ -50,14 +50,16 @@ taken name, ``verdicts_not_written`` for any other failure of the file
 system). Within each of the last three entry checks the first failing entry
 in record order decides. The two scopes of the step pass are disjoint: a
 ``check`` entry names a ``correctness_check_*_v2`` step and a ``comparison``
-entry a ``*_run_timing_v2`` step, so no end line is held to both rules.
+entry a ``*_run_timing_v2`` or ``*_run_timing_v3`` step, so no end line is
+held to both rules.
 
 A ``comparison`` entry, counted or not, is founded when
 :func:`hilclaw.timings_tool.compare` over the lines read, for its ``metric``,
 ``point``, ``measured`` and ``against``, returns its ``difference``. It is
 unfounded when ``compare`` gives ``measurement_several``,
-``measurement_unknown``, ``measurement_missing``, ``shapes_differ`` or
-``samples_out_of_domain`` (the message then names that kind and its message)
+``measurement_unknown``, ``measurement_missing``, ``shapes_differ``,
+``units_differ`` or ``samples_out_of_domain`` (the message then names that
+kind and its message)
 or another ``difference``. A comparison is counted when its ``point`` is
 ``board`` and the same verdict holds ``check`` entries at ``board`` with
 ``outcome`` ``"pass"`` for both its ``measured`` and its ``against``; each of
@@ -80,9 +82,10 @@ standing, are not held (ADR-0131 decision 5). The lines of a ``point`` here
 are those of its one ``step`` value in
 :data:`hilclaw.check_standing.STEPS_OF`, ``correctness_check_sim_v2`` or
 ``correctness_check_board_v2``, and those of a ``comparison`` entry those of
-:data:`hilclaw.timings_tool.STEP_OF`, ``sim_run_timing_v2`` or
-``board_run_timing_v2`` (ADR-0183 decision 8). A line under a value
-ADR-0183 retired is neither read nor refused.
+both values of :data:`hilclaw.timings_tool.STEPS_OF`, ``sim_run_timing_v2``
+and ``sim_run_timing_v3`` or ``board_run_timing_v2`` and
+``board_run_timing_v3`` (ADR-0183 decision 8, ADR-0196 decision 4). A line
+under a value ADR-0183 retired is neither read nor refused.
 
 :func:`hilclaw.verdicts_file.validate` is unchanged: a file that breaks
 ADR-0140 decision 5 is still a valid file by ADR-0071, and the kinds of that
@@ -188,6 +191,7 @@ _UNFOUNDED_KINDS = (
     timings_tool.KIND_MEASUREMENT_UNKNOWN,
     timings_tool.KIND_MEASUREMENT_MISSING,
     timings_tool.KIND_SHAPES_DIFFER,
+    timings_tool.KIND_UNITS_DIFFER,
     timings_tool.KIND_SAMPLES_OUT_OF_DOMAIN,
 )
 
@@ -307,9 +311,10 @@ def _write(source, request):
     lines = checks_tool.log_lines(data_root, run_id)
     scope = set().union(*(wanted for _, wanted, _ in named))
     timed = {
-        (timings_tool.STEP_OF[entry["point"]], *_numbers(entry[side]))
+        (step, *_numbers(entry[side]))
         for _, entry, _ in compared
         for side in _SIDES
+        for step in timings_tool.STEPS_OF[entry["point"]]
     }
     _timing_results(run_id, lines, scope, timed)
     found = checks_tool.checks_in_order(run_id, lines, scope.__contains__)
@@ -358,7 +363,7 @@ def _timing_results(run_id, lines, checked, timed):
         data = event["data"]
         if "result" not in data or (identity.step, *identity[2:5]) not in timed:
             continue
-        problem = timings_tool.timing_problem(data["result"])
+        problem = timings_tool.timing_problem(data["result"], identity.step)
         if problem is not None:
             checks_tool.checks_of(run_id, lines[:number], checked.__contains__)
             file = run_files.relative(run_id, checks_tool.LOG)

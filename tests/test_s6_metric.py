@@ -1105,3 +1105,33 @@ def test_the_helpers_are_those_of_the_timing_tool(monkeypatch, root):
     monkeypatch.setattr(timings_tool, "difference_of", recording)
     assert judged(root)["verdict"] == "met"
     assert seen
+
+
+def test_a_v3_measurement_in_ns_is_read_as_a_v2_one(root, tmp_path):
+    other = tmp_path / "v2"
+    other.mkdir()
+    for data_root, step in ((root, "board_run_timing_v3"), (other, TIMING)):
+        three_rounds_first(data_root)
+        measured(data_root, SECOND, 0, FAR)
+        check(data_root, SECOND, 2)
+        lines(data_root, SECOND, step, 2, 1, 1, result=timing(D))
+        with_case(data_root, 1)
+    told = judged(root)
+    assert told == judged(other)
+    assert told["second_run_round"] == 2
+
+
+@pytest.mark.parametrize("run_id", [FIRST, SECOND])
+def test_a_result_in_another_unit_is_a_read_failure(root, run_id):
+    three_rounds_first(root)
+    check(root, run_id, 3)
+    result = timing([1, 1, 1, 1, 1]) | {"unit": "cycles"}
+    lines(root, run_id, "board_run_timing_v3", 3, 1, 1, result=result)
+    told = judged(root)
+    assert told["outcome"] == "read_failure"
+    assert told["kind"] == "timing_result_invalid"
+    assert told["run_id"] == run_id
+    assert told["reason"].endswith(
+        "round 3, candidate 1, attempt 1, execution 1: the unit cycles is not ns, "
+        "the one unit the S6 metric compares"
+    )
