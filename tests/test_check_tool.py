@@ -27,6 +27,7 @@ from hilclaw import (
     mock_backend,
     mock_check,
     run_state,
+    targets,
     tools,
 )
 from hilclaw.backends import Backend, BackendTable
@@ -1131,6 +1132,7 @@ def test_the_module_holds_what_it_joins_and_nothing_of_its_own():
         "instance",
         "journaled_step",
         "layout",
+        "targets",
     }
     kept_out = ("gemm" + "_contract", "standin" + "_profile", "register(")
     for word in (*kept_out, "kernel" + "_source", "resolve(", "absolute("):
@@ -1684,3 +1686,94 @@ def test_a_record_no_entry_checks_is_op_signature_not_covered_at_either_point(
     failure = bench.failure(request(point=point))
     assert failure.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
     assert (bench.count("seeds"), lines(root)) == (0, [])
+
+
+# --- admission at the target of the run (ADR-0197 decision 3) ---
+
+
+def at_targets(root, covers=contract_table.check_covers):
+    """The function over a table whose three backends answer with the mock's default script."""
+    asked = []
+
+    def counted(record):
+        asked.append(record)
+        return covers(record)
+
+    operation = mock_check.operation(mock_check.default_script)
+    names = (mock_backend.NAME, targets.CPU_STANDIN, targets.VIRTUAL_NPU)
+    table = BackendTable([Backend(name, {TOOL: operation}) for name in names])
+    function = tool_function(
+        source=lambda: root, table=table, seeds=lambda: SEED, covers=counted
+    )
+    return function, asked
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_fp32_gemm_at_virtual_npu_is_op_signature_not_covered(root, point):
+    place(root, content(accelerator=targets.VIRTUAL_NPU))
+    function, asked = at_targets(root)
+    with pytest.raises(ToolFailure) as caught:
+        function(request(point=point))
+    assert caught.value.kind == check_admission.KIND_OP_SIGNATURE_NOT_COVERED
+    assert asked == [OP]
+    assert lines(root) == []
+
+
+@pytest.mark.parametrize("kind", ["gemm", "rmsnorm", "elementwise_add"])
+def test_a_bf16_record_at_virtual_npu_is_admitted(root, kind):
+    place(root, content(op=bf16_op(kind), accelerator=targets.VIRTUAL_NPU))
+    function, asked = at_targets(root)
+    result = function(request())
+    assert result["outcome"] == "pass"
+    assert result["contract_key"] == bf16_key(kind)
+    assert len(asked) == 1
+    assert len(lines(root)) == 2
+
+
+@pytest.mark.parametrize("op", [OP, bf16_op("gemm")], ids=["fp32", "bf16"])
+@pytest.mark.parametrize("accelerator", [targets.CPU_STANDIN, mock_backend.NAME])
+def test_cpu_standin_and_the_mock_admit_as_before(root, accelerator, op):
+    place(root, content(op=op, accelerator=accelerator))
+    function, _ = at_targets(root)
+    assert function(request())["outcome"] == "pass"
+
+
+def test_the_mock_is_handed_covers_itself(root, monkeypatch):
+    place(root, content(op={**OP, "dtype": "fp16"}))
+    seen = []
+    real = check_admission.admit
+
+    def admit(read, *, covers):
+        seen.append(covers)
+        return real(read, covers=covers)
+
+    monkeypatch.setattr(check_admission, "admit", admit)
+    covers = Bench(root).covers
+    function = tool_function(
+        source=lambda: root,
+        table=BackendTable(
+            [
+                Backend(
+                    mock_backend.NAME,
+                    {TOOL: mock_check.operation(mock_check.default_script)},
+                )
+            ]
+        ),
+        seeds=lambda: SEED,
+        covers=covers,
+    )
+    with pytest.raises(ToolFailure):
+        function(request())
+    assert seen == [covers]
+
+
+def test_an_error_of_building_the_target_passes_before_any_line(root, monkeypatch):
+    from hilclaw import standin_settings
+
+    place(root, content(op=bf16_op("gemm"), accelerator=targets.VIRTUAL_NPU))
+    monkeypatch.setattr(standin_settings, "BUILD_TIME_LIMIT_S", 0)
+    function, asked = at_targets(root)
+    with pytest.raises(ValueError, match="^build_time_limit_s"):
+        function(request())
+    assert asked == []
+    assert lines(root) == []

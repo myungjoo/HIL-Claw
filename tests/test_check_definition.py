@@ -553,36 +553,77 @@ def test_a_call_about_a_run_at_another_accelerator_is_no_backend(tmp_path, parti
     assert counts(parties) == (0, 0, 0)
 
 
-def test_a_call_about_a_run_at_virtual_npu_is_not_offered(tmp_path, parties):
-    for op in (OP, gemm_bf16_contract.op_signature_record(2, 3, 4)):
-        root = a_run(tmp_path / op["dtype"], accelerator=targets.VIRTUAL_NPU, op=op)
-        registry = tools.default_registry(lambda root=root: root)
-        refused(registry, REQUEST, tools.KIND_NOT_OFFERED)
-        assert no_log(root)
-    assert counts(parties) == (0, 0, 0)
+def test_a_call_about_fp32_gemm_at_virtual_npu_is_not_covered(tmp_path, parties):
+    """ADR-0197 decision 3: virtual_npu serves the six bf16 contracts only."""
+    root = a_run(tmp_path / "data", accelerator=targets.VIRTUAL_NPU, op=OP)
+    registry = tools.default_registry(lambda: root)
+    refused(registry, REQUEST, "op_signature_not_covered")
+    refused(registry, REQUEST, "op_signature_not_covered")
+    assert no_log(root)
+    assert counts(parties) == (0, 2, 0)
 
 
-def test_default_table_offers_the_run_tools_alone_at_virtual_npu(monkeypatch):
-    built = []
-    real = standin_run.operation_for
+BF16_OP = gemm_bf16_contract.op_signature_record(*gemm_bf16_contract.SHAPES[0])
+
+
+def test_a_call_about_a_bf16_run_at_virtual_npu_reaches_its_operation(
+    tmp_path, parties, no_container, monkeypatch
+):
+    """ADR-0197 decisions 2 and 3: admitted, and the operation of the virtual_npu target."""
+    built, reached = [], []
+    real = standin_check.operation_for
 
     def operation_for(target):
         built.append(target)
-        return real(target)
+        operation = Recorder(real(target))
+        reached.append(operation)
+        return operation
 
-    monkeypatch.setattr(standin_run, "operation_for", operation_for)
+    monkeypatch.setattr(standin_check, "operation_for", operation_for)
+    root = a_run(tmp_path / "data", accelerator=targets.VIRTUAL_NPU, op=BF16_OP)
+    registry = tools.default_registry(lambda: root)
+    failure = refused(registry, REQUEST, "compiler_unavailable")
+    assert built == [targets.target(targets.VIRTUAL_NPU)]
+    assert built[0].memory_limit_bytes == targets.VIRTUAL_NPU_MEMORY_LIMIT_BYTES
+    ((request, hw_profile, parameters, _, _),) = reached[0].calls
+    assert request == REQUEST
+    assert hw_profile["accelerator"] == targets.VIRTUAL_NPU
+    assert parameters.seed == parties["seeds"].answers[0]
+    assert no_container == []
+    ended = {"kind": "compiler_unavailable", "message": failure.message}
+    assert [line["data"].get("failure") for line in lines(root)] == [None, ended]
+
+
+def test_default_table_offers_the_three_tools_at_virtual_npu(monkeypatch):
+    built = {"run": [], "check": []}
+    real_run, real_check = standin_run.operation_for, standin_check.operation_for
+
+    def run_for(target):
+        built["run"].append(target)
+        return real_run(target)
+
+    def check_for(target):
+        built["check"].append(target)
+        return real_check(target)
+
+    monkeypatch.setattr(standin_run, "operation_for", run_for)
+    monkeypatch.setattr(standin_check, "operation_for", check_for)
     table = default_table()
-    (target,) = built
+    (target,) = built["run"]
+    assert built["check"] == [target]
     assert target == targets.target(targets.VIRTUAL_NPU)
     virtual = profile(targets.VIRTUAL_NPU)
     sim, board = (backends.select(table, virtual, tool) for tool in RUN_TOOLS)
     assert callable(sim)
     assert sim is board
     assert sim is not standin_run.operation
-    for tool in (TOOL, "profiler.collect"):
-        with pytest.raises(tools.ToolFailure) as caught:
-            backends.select(table, virtual, tool)
-        assert caught.value.kind == tools.KIND_NOT_OFFERED
+    check = backends.select(table, virtual, TOOL)
+    assert callable(check)
+    assert check is not standin_check.operation
+    assert check is not sim
+    with pytest.raises(tools.ToolFailure) as caught:
+        backends.select(table, virtual, "profiler.collect")
+    assert caught.value.kind == tools.KIND_NOT_OFFERED
     standin = profile(standin_profile.ACCELERATOR)
     assert backends.select(table, standin, TOOL) is standin_check.operation
     for tool in RUN_TOOLS:

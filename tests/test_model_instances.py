@@ -287,6 +287,34 @@ def test_documents_refuses_a_bad_profile():
         documents(values(), {"accelerator": "cpu_standin"})
 
 
+def test_documents_takes_the_start_s_scope_at_the_profile_s_accelerator():
+    """ADR-0197 decision 1: the start's predicate is read at the profile's target."""
+    virtual = {**PROFILE, "accelerator": "virtual_npu"}
+    made = documents(values(), virtual)
+    assert tuple(made) == KINDS
+    for document in made.values():
+        assert document["hw_profile"]["record"] == virtual
+    with pytest.raises(RefusedValuesError, match="kinds.gemm"):
+        documents(values(), {**PROFILE, "accelerator": "npu_other"})
+
+
+def test_documents_hands_prepare_the_start_s_accelerators_and_predicate(monkeypatch):
+    seen = []
+    real = instance_start.prepare
+
+    def prepare(document, *, accelerators, covers):
+        seen.append((accelerators, covers))
+        return real(document, accelerators=accelerators, covers=covers)
+
+    monkeypatch.setattr(instance_start, "prepare", prepare)
+    made = documents(values(), PROFILE)
+    assert len(seen) == len(KINDS)
+    fp32 = {**made["gemm"]["op_signature"]["record"], "dtype": "fp32"}
+    for accelerators, covers in seen:
+        assert accelerators is _ACCELERATORS
+        assert covers(fp32) is True
+
+
 def test_documents_refuses_as_op_records_does():
     with pytest.raises(RefusedValuesError, match="kinds"):
         documents(removed(("kinds",)), PROFILE)

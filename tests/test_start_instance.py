@@ -346,10 +346,29 @@ def test_another_accelerator_is_out_of_scope(tmp_path, ids):
     assert_refused(document(accelerator="acc_other"), OutOfScopeError, tmp_path, ids)
 
 
-def test_virtual_npu_is_out_of_scope_for_an_instance(tmp_path, ids):
-    assert targets.target(targets.VIRTUAL_NPU).instance_start is False
+def test_fp32_gemm_at_virtual_npu_is_out_of_scope(tmp_path, ids):
+    """ADR-0197 decision 3: virtual_npu does not serve the fp32 gemm contract."""
+    assert contract_table.start_covers(RECORD)
     given = document(accelerator=targets.VIRTUAL_NPU)
-    assert_refused(given, OutOfScopeError, tmp_path, ids)
+    error = assert_refused(given, OutOfScopeError, tmp_path, ids)
+    assert str(error).startswith("op_signature:")
+
+
+def test_an_instance_at_virtual_npu_lacking_members_is_refused_as_at_cpu_standin(
+    tmp_path, ids
+):
+    for accelerator in (targets.VIRTUAL_NPU, standin_profile.ACCELERATOR):
+        given = without(
+            "draws", "tolerance", accelerator=accelerator, op_signature=BF16_RECORDS[1]
+        )
+        error = assert_refused(given, MissingMembersError, tmp_path, ids)
+        assert error.missing == ("draws", "tolerance")
+
+
+def test_an_instance_at_virtual_npu_with_no_op_signature_is_missing_it(tmp_path, ids):
+    given = without("op_signature", accelerator=targets.VIRTUAL_NPU)
+    error = assert_refused(given, MissingMembersError, tmp_path, ids)
+    assert error.missing == ("op_signature",)
 
 
 @pytest.mark.parametrize(
@@ -388,8 +407,12 @@ def test_the_errors_of_prepare_are_the_same_objects(tmp_path, monkeypatch, ids):
     raised = MissingMembersError(("draws",))
 
     def prepare(document, *, accelerators, covers):
-        assert accelerators == (mock_backend.NAME, standin_profile.ACCELERATOR)
-        assert covers is contract_table.start_covers
+        assert accelerators == (
+            mock_backend.NAME,
+            standin_profile.ACCELERATOR,
+            targets.VIRTUAL_NPU,
+        )
+        assert covers(RECORD) is True
         raise raised
 
     monkeypatch.setattr(instance_start, "prepare", prepare)
@@ -410,8 +433,34 @@ def test_prepare_is_given_the_bound_accelerators_and_covers(tmp_path, monkeypatc
     monkeypatch.setattr(instance_start, "prepare", prepare)
     start(document(), data_root=tmp_path)
     assert type(seen["accelerators"]) is tuple
-    assert set(seen["accelerators"]) == {mock_backend.NAME, standin_profile.ACCELERATOR}
-    assert seen["covers"] is contract_table.start_covers
+    assert set(seen["accelerators"]) == {
+        mock_backend.NAME,
+        standin_profile.ACCELERATOR,
+        targets.VIRTUAL_NPU,
+    }
+    covers = seen["covers"]
+    assert covers(RECORD) is True
+    assert covers(BF16_RECORDS[0]) is True
+    assert covers({**RECORD, "dtype": "fp16"}) is False
+
+
+def test_the_bound_covers_reads_the_accelerator_of_the_document(monkeypatch):
+    seen = []
+
+    def prepare(document, *, accelerators, covers):
+        seen.append(covers)
+        raise MissingMembersError(("draws",))
+
+    monkeypatch.setattr(instance_start, "prepare", prepare)
+    for accelerator in (targets.VIRTUAL_NPU, standin_profile.ACCELERATOR):
+        with pytest.raises(MissingMembersError):
+            start(document(accelerator=accelerator), data_root="unused")
+    at_virtual, at_standin = seen
+    assert at_virtual(RECORD) is False
+    assert at_standin(RECORD) is True
+    for record in BF16_RECORDS:
+        assert at_virtual(record) is True
+        assert at_standin(record) is True
 
 
 def test_a_taken_name_stops_the_start(tmp_path, fixed_sources, monkeypatch):
@@ -611,4 +660,21 @@ def test_the_admitted_accelerators_are_the_mock_and_the_targets_that_start():
         mock_backend.NAME,
         *targets.instance_start_accelerators(),
     )
-    assert start_instance._ACCELERATORS == ("mock", "cpu_standin")
+    assert start_instance._ACCELERATORS == ("mock", "cpu_standin", "virtual_npu")
+
+
+@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
+def test_a_bf16_instance_at_virtual_npu_is_started(tmp_path, ids, record):
+    """ADR-0197 decision 1: the required set is cpu_standin's."""
+    given = document(accelerator=targets.VIRTUAL_NPU, op_signature=record)
+    built = start(given, data_root=tmp_path)
+    read = instance.read(tmp_path, built)
+    assert read.hw_profile["accelerator"] == targets.VIRTUAL_NPU
+    assert read.op_signature.record == record
+    assert ids.calls == 1
+
+
+def test_an_unknown_accelerator_is_still_out_of_scope_with_a_bf16_record(tmp_path, ids):
+    given = document(accelerator="npu_other", op_signature=BF16_RECORDS[0])
+    error = assert_refused(given, OutOfScopeError, tmp_path, ids)
+    assert str(error).startswith("hw_profile.record.accelerator:")

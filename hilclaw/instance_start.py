@@ -3,7 +3,9 @@
 ``ARCHITECTURE/decisions/ADR-0076-od8-instance-start-required-members.md``
 fixes, for the instances of its decision 1 (an ``hw_profile.record`` that
 names ``cpu_standin`` or the mock as its ``accelerator``, and either no
-stated ``op_signature`` or one that ADR-0041 decision 5 covers), that the
+stated ``op_signature`` or one that ADR-0041 decision 5 covers; widened by
+``ARCHITECTURE/decisions/ADR-0197-od32-virtual-npu-oracle-and-instance-start.md``
+decision 1 to ``virtual_npu`` and the contracts it serves), that the
 start requires the content to state ``op_signature``, ``objective``,
 ``candidates_per_round``, ``n_max``, ``draws`` and ``tolerance``; that it puts
 the ``n_max`` default of ADR-0007 decision 8 into the content when none is
@@ -40,10 +42,11 @@ Choices that are this module's own and no rule of a record:
   :data:`REPORT_ORDER` does not name it (ADR-0136 decision 4).
 * The names of the accelerators of decision 1 and "covered" reach
   :func:`prepare` from its caller, as ``accelerators`` and ``covers``: the
-  names of ADR-0016 decisions 4 and 5 are
-  :data:`hilclaw.mock_backend.NAME` and the ``ACCELERATOR`` of the module that
-  builds the ``cpu_standin`` record, and the reading of ADR-0041 decision 5 is
-  the start's predicate of the contract table (ADR-0177 decision 2). This
+  names are :data:`hilclaw.mock_backend.NAME` and those of the target table
+  whose ``instance_start`` is true (ADR-0193 decision 3; ADR-0197 decision 1),
+  and the reading of ADR-0041 decision 5 is the start's predicate of the
+  contract table (ADR-0177 decision 2) read at the target of the document's
+  ``accelerator`` (ADR-0197 decision 3). This
   module imports neither the ``cpu_standin`` record module nor the contract
   table and holds no accelerator name and no reading of "covered" of its
   own; the caller binds them.
@@ -134,9 +137,9 @@ def prepare(document, *, accelerators, covers):
     """Return the document the start of the instance may hand on to be written.
 
     - ``document``: a parsed ``instance.json``, exactly a ``dict``.
-    - ``accelerators``: the names of the accelerators of ADR-0076 decision 1,
-      exactly a ``tuple`` of exactly ``str`` items: the ``cpu_standin`` and the
-      mock names (ADR-0016 decisions 4 and 5).
+    - ``accelerators``: the names of the accelerators of ADR-0076 decision 1
+      as ADR-0197 decision 1 widens it, exactly a ``tuple`` of exactly ``str``
+      items.
     - ``covers``: the predicate of ADR-0041 decision 5, a callable that is
       handed an op_signature record and returns ``True`` when it is covered
       and ``False`` when it is not.

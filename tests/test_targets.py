@@ -7,6 +7,9 @@ import pytest
 
 from hilclaw import (
     contract_table,
+    gemm_bf16_contract,
+    gemm_contract,
+    keys,
     mock_backend,
     run_result,
     standin_profile,
@@ -113,7 +116,10 @@ def test_a_given_table_is_looked_up():
 
 
 def test_instance_start_accelerators_reads_the_boolean():
-    assert targets.instance_start_accelerators() == (standin_profile.ACCELERATOR,)
+    assert targets.instance_start_accelerators() == (
+        standin_profile.ACCELERATOR,
+        targets.VIRTUAL_NPU,
+    )
     table = {
         "a": made(instance_start=True),
         "b": made(),
@@ -313,7 +319,7 @@ def test_virtual_npu_has_the_values_of_adr_0193_decision_4():
     assert virtual.units_per_ns == targets.VIRTUAL_NPU_CYCLES_PER_NS
     assert type(targets.VIRTUAL_NPU_CYCLES_PER_NS) is int
     assert virtual.model_run is False
-    assert virtual.instance_start is False
+    assert virtual.instance_start is True
 
 
 def test_virtual_npu_reads_the_shared_constants_each_time_it_is_read(monkeypatch):
@@ -338,6 +344,88 @@ def test_an_error_of_building_virtual_npu_is_not_masked(monkeypatch):
         targets.target(targets.VIRTUAL_NPU)
 
 
-def test_virtual_npu_takes_no_instance_start():
-    assert targets.instance_start_accelerators() == (targets.CPU_STANDIN,)
-    assert targets.VIRTUAL_NPU not in targets.instance_start_accelerators()
+def test_virtual_npu_takes_an_instance_start_and_no_model_run():
+    assert targets.instance_start_accelerators() == (
+        targets.CPU_STANDIN,
+        targets.VIRTUAL_NPU,
+    )
+    assert targets.target(targets.VIRTUAL_NPU).model_run is False
+
+
+# covers_at (ADR-0197 decision 3)
+
+FP32_GEMM = gemm_contract.op_signature_record(2, 3, 4)
+BF16_GEMM = gemm_bf16_contract.op_signature_record(*gemm_bf16_contract.SHAPES[0])
+
+
+class Asked:
+    def __init__(self, answer):
+        self.answer, self.calls = answer, []
+
+    def __call__(self, record):
+        self.calls.append(record)
+        return self.answer
+
+
+def test_covers_at_virtual_npu_admits_a_served_contract_only():
+    at = targets.covers_at(contract_table.check_covers, targets.VIRTUAL_NPU)
+    assert at(BF16_GEMM) is True
+    assert at(FP32_GEMM) is False
+    assert contract_table.check_covers(FP32_GEMM) is True
+
+
+def test_covers_at_cpu_standin_answers_as_covers():
+    at = targets.covers_at(contract_table.start_covers, targets.CPU_STANDIN)
+    for record in (FP32_GEMM, BF16_GEMM):
+        assert at(record) is True
+    assert at({**FP32_GEMM, "dtype": "fp16"}) is False
+
+
+@pytest.mark.parametrize("name", [mock_backend.NAME, "acc_other", None, ["x"]])
+def test_covers_at_a_name_with_no_target_is_covers_itself(name):
+    assert targets.covers_at(contract_table.covers, name) is contract_table.covers
+
+
+def test_covers_at_returns_an_answer_of_covers_that_is_not_true_unchanged():
+    for answer in (False, None, 1):
+        asked = Asked(answer)
+        at = targets.covers_at(asked, targets.VIRTUAL_NPU)
+        assert at(BF16_GEMM) is answer
+        assert asked.calls == [BF16_GEMM]
+
+
+def test_covers_at_reads_the_given_table_once():
+    built = []
+
+    def entry():
+        built.append(None)
+        return made(contracts=(("gemm", "fp32", "row_major", "c"),))
+
+    table = targets._Table({"synthetic": entry})
+    at = targets.covers_at(Asked(True), "synthetic", table)
+    assert len(built) == 1
+    assert at(FP32_GEMM) is True
+    assert at(BF16_GEMM) is False
+    assert len(built) == 1
+
+
+def test_covers_at_refuses_a_covers_that_is_not_callable():
+    with pytest.raises(TypeError, match="^covers"):
+        targets.covers_at(None, targets.VIRTUAL_NPU)
+
+
+def test_covers_at_passes_an_error_of_building_the_entry(monkeypatch):
+    monkeypatch.setattr(standin_settings, "PROCESS_TIME_LIMIT_CAP_S", math.inf)
+    with pytest.raises(ValueError, match="^process_time_limit_cap_s"):
+        targets.covers_at(contract_table.covers, targets.VIRTUAL_NPU)
+
+
+def test_covers_at_passes_what_covers_and_served_at_raise():
+    def broken(record):
+        raise RuntimeError("covers")
+
+    with pytest.raises(RuntimeError, match="^covers$"):
+        targets.covers_at(broken, targets.VIRTUAL_NPU)(BF16_GEMM)
+    at = targets.covers_at(Asked(True), targets.VIRTUAL_NPU)
+    with pytest.raises(keys.InvalidRecordError):
+        at({**BF16_GEMM, "kind": "unknown_kind"})

@@ -10,11 +10,14 @@ given id (ADR-0111 decision 2), :func:`hilclaw.run_id.new` (ADR-0027),
 ``accelerators`` of ``prepare`` to :data:`hilclaw.mock_backend.NAME` and each
 target of :data:`hilclaw.targets.TABLE` whose ``instance_start`` is true,
 read from the table when this module is imported (ADR-0193 decision 3; today
-:data:`hilclaw.standin_profile.ACCELERATOR` alone), and its ``covers`` to
-:func:`hilclaw.contract_table.start_covers`, which admits a contract only when
-every tool round 0 calls admits it - today the fp32 ``gemm`` contract of
+:data:`hilclaw.standin_profile.ACCELERATOR` and
+:data:`hilclaw.targets.VIRTUAL_NPU`, ADR-0197 decision 1), and its ``covers``
+to :func:`hilclaw.contract_table.start_covers`, which admits a contract only
+when every tool round 0 calls admits it - the fp32 ``gemm`` contract of
 ADR-0008 and the six bf16 contracts (ADR-0177 decision 2; ADR-0181 decision 8
-item 4).
+item 4) - read at the target of the document's ``accelerator``
+(:func:`hilclaw.targets.covers_at`; ADR-0197 decision 3), so that a record of
+a contract that target does not serve is out of scope there.
 
 Conventions of this module, not rules of a record:
 
@@ -64,6 +67,15 @@ from hilclaw import (
 )
 
 _ACCELERATORS = (mock_backend.NAME, *targets.instance_start_accelerators())
+
+
+def _covers_of(document):
+    # Read when prepare calls it, after the document is valid and in scope by its accelerator.
+    def covered(record):
+        accelerator = document["hw_profile"]["record"]["accelerator"]
+        return targets.covers_at(contract_table.start_covers, accelerator)(record)
+
+    return covered
 
 
 class GivenRunIdError(Exception):
@@ -119,7 +131,7 @@ def start(document, *, data_root):
     """
     try:
         prepared = instance_start.prepare(
-            document, accelerators=_ACCELERATORS, covers=contract_table.start_covers
+            document, accelerators=_ACCELERATORS, covers=_covers_of(document)
         )
     except instance_start.MissingMembersError:
         if "run_id" in document:
