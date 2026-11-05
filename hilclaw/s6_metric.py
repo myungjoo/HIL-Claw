@@ -88,8 +88,8 @@ the kinds of :func:`hilclaw.checks_tool.log_lines`,
 :func:`~hilclaw.checks_tool.checks_of` and
 :func:`hilclaw.timings_tool.timing_lines`, ``timing_result_invalid`` also for a
 result the imprecise finding refuses and for a completed result not in ``ns``;
-the four kinds of :func:`hilclaw.hypotheses_tool.read`, ``hypotheses_invalid`` also for a file that
-names another ``run_id`` or ``round``. Every record below ``rounds/`` is read for
+the four kinds of :func:`hilclaw.hypotheses_tool.read`, ``hypotheses_invalid``
+also for a file that names another ``run_id`` or ``round``. Every record below ``rounds/`` is read for
 ``cases_read_runs``, so a damaged one in any round is a failure. A missing one is
 a failure in a round the case condition reads to decide the verdict; elsewhere
 it is passed over, since a round that closed early need not hold one.
