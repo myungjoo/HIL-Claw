@@ -409,7 +409,7 @@ def test_a_missing_instance_is_run_file_missing(root):
     [
         (b"{", "run_file_invalid"),
         (encoded({"schema_version": 1}), "run_file_invalid"),
-        (encoded(instance_document() | {"schema_version": 2}), "run_file_unsupported"),
+        (encoded(instance_document() | {"schema_version": 3}), "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_is_its_kind(root, content, kind):
@@ -663,3 +663,20 @@ def test_each_call_asks_the_source_once_and_reads_no_state(root, monkeypatch):
     assert source.calls == 2
     assert names == ["instance.json", "instance.json"]
     assert not layout.run_file(root, RUN, "STATE.json").exists()
+
+
+# --- a compile_settings run (ADR-0198 decision 8, slice 2b) ---
+
+
+def test_a_compile_settings_run_stores_the_key_of_its_version_1_twin(root):
+    kinded = {"schema_version": 2, "candidate_kind": "compile_settings"}
+    place(instance_path(root), encoded(instance_document() | kinded))
+    assert store(Source(root)) == {
+        "hw_profile_created": True,
+        "op_signature_created": True,
+    }
+    assert key_records.lookup(root, hw(), op()) == (HW_KEY, OP_KEY)
+    assert store(Source(root)) == {
+        "hw_profile_created": False,
+        "op_signature_created": False,
+    }

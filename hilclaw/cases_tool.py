@@ -32,7 +32,9 @@ The checks, in this order, each with its kind (ADR-0173 decision 2, table):
 2. the data root (``no_data_root``);
 3. the run's ``instance.json`` read once by :func:`hilclaw.run_file_tools.read`
    (the four ``run_file_*`` kinds of ADR-0019, as ``instance.read`` answers
-   them);
+   them), and a run whose candidate kind is not ``c_kernel`` refused by
+   :func:`hilclaw.run_file_tools.c_kernel_only` with ``run_file_unsupported``
+   (ADR-0198 decision 8 and Boundaries);
 4. the lookup: any :class:`OSError` of :func:`hilclaw.case_lookup.find`
    (:data:`KIND_CASES_UNREADABLE`, the kind of ``hypotheses.write``).
 
@@ -77,9 +79,9 @@ _DESCRIPTION = (
     "run_id; no_data_root when the data root cannot be obtained; "
     "run_file_missing, run_file_invalid, run_file_unsupported or "
     "run_file_unreadable when the run's instance.json is not there, is "
-    "invalid or no regular file, has another schema_version or cannot be "
-    "read; and cases_unreadable when the cases of the run's key cannot be "
-    "looked up."
+    "invalid or no regular file, has another schema_version or a candidate "
+    "kind other than c_kernel, or cannot be read; and cases_unreadable when "
+    "the cases of the run's key cannot be looked up."
 )
 _MEMBERS = ("run_id",)
 
@@ -97,7 +99,8 @@ def definition(source):
     request that is not exactly ``run_id`` or whose ``run_id``
     :func:`hilclaw.layout.check_run_id` refuses; ``no_data_root`` as
     :func:`hilclaw.data_root_source.obtain` does; the four ``run_file_*``
-    kinds as :func:`hilclaw.run_file_tools.read` raises them; and
+    kinds as :func:`hilclaw.run_file_tools.read` and
+    :func:`hilclaw.run_file_tools.c_kernel_only` raise them; and
     :data:`KIND_CASES_UNREADABLE`, in the order of the module docstring.
     """
     if not callable(source):
@@ -141,7 +144,8 @@ def _checked(request):
 def _look_up(source, request):
     run_id = _checked(request)
     data_root = data_root_source.obtain(source)
-    stated, _ = run_file_tools.read(data_root, run_id, "instance.json")
+    stated, content = run_file_tools.read(data_root, run_id, "instance.json")
+    run_file_tools.c_kernel_only(run_id, content)
     op_signature = stated.op_signature
     if op_signature is None:
         where = run_files.relative(run_id, "instance.json")

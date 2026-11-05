@@ -12,8 +12,10 @@ the turn loop of ADR-0118 decision 3 answers by itself, and only these:
   value, a non-string included (ADR-0121 decision 2): no further turn, and the
   value is reported;
 - P4, ``STATE.json`` valid, version 1, without ``run_status``, and
-  ``instance.json`` valid, version 1, with ``round_budget``: a further turn,
-  whatever ``round`` is.
+  ``instance.json`` valid, version 1 or 2, with ``round_budget``: a further
+  turn, whatever ``round`` is. A version-2 ``instance.json`` is read as its
+  version-1 twin (ADR-0198 decision 8): its ``candidate_kind`` changes no
+  finding.
 
 In every other state the code asks its caller's predicate (ADR-0121 decision
 5, last bullet). :func:`classify` tells the state; :func:`predicate` makes the
@@ -108,9 +110,10 @@ def classify(data_root, run_id):
     :data:`UNKNOWN_STATUS` with the value as parsed when ``run_status`` holds
     any other value (P3); without ``run_status``, :data:`OPEN` with
     :data:`INSTANCE_MISSING`, :data:`INSTANCE_INVALID` or
-    :data:`INSTANCE_VERSION` when :func:`hilclaw.instance.read` finds no
-    ``instance.json``, an invalid one or another version, :data:`OPEN` with
-    :data:`NO_ROUND_BUDGET` for one without ``round_budget``, and :data:`DUE`
+    :data:`INSTANCE_VERSION` when :func:`hilclaw.instance.read_as_version_1`
+    finds no ``instance.json``, an invalid one or a version other than 1 and
+    2, :data:`OPEN` with :data:`NO_ROUND_BUDGET` for one without
+    ``round_budget``, and :data:`DUE`
     with the ``round`` of that same ``STATE.json`` read when it states one
     (P4).
 
@@ -136,7 +139,7 @@ def classify(data_root, run_id):
             return _p2(data_root, run_id)
         return Finding(UNKNOWN_STATUS, value)
     try:
-        stated = instance.read(data_root, run_id)
+        stated = instance.read_as_version_1(data_root, run_id)
     except instance.MissingInstanceError:
         return Finding(OPEN, INSTANCE_MISSING)
     except instance.InvalidInstanceError:

@@ -21,7 +21,9 @@ round 1 (ADR-0072 decisions 1 and 3), and each of the two key record files
 ``db/<hw_profile_key>/hw_profile.json`` and
 ``db/<hw_profile_key>/<op_signature>/op_signature.json`` of the keys the run's
 ``instance.json`` states that is a regular file in the working tree and that
-``HEAD`` does not hold (ADR-0134 decision 7), and nothing else. A record file
+``HEAD`` does not hold (ADR-0134 decision 7), and nothing else. The keys are
+read alike from an ``instance.json`` of version 1 or 2 (ADR-0198 decision 8);
+one of another version, or invalid, gives no key. A record file
 ``HEAD`` holds is never taken in again, whatever the working tree holds, and
 an ``instance.json`` that gives no key gives no record file and refuses
 nothing on this account; the record files are looked for only when a commit
@@ -536,7 +538,7 @@ def _head_round(data_root, prefix, held):
 
 def _keys(data_root, run_id, prefix):
     try:
-        record = instance.read(data_root, run_id)
+        record = instance.read_as_version_1(data_root, run_id)
     except _NO_INSTANCE as e:
         raise NoKeyDirectoryError(f"no key directory for the case files: {e}") from e
     if record.op_signature is None:
@@ -548,7 +550,7 @@ def _keys(data_root, run_id, prefix):
 
 def _stated_keys(data_root, run_id):
     try:
-        record = instance.read(data_root, run_id)
+        record = instance.read_as_version_1(data_root, run_id)
     except _NO_INSTANCE:
         return None
     if record.op_signature is None:

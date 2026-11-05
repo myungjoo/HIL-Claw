@@ -350,9 +350,9 @@ def open_instance_directory(root):
     (run_dir(root) / "instance.json").mkdir()
 
 
-def open_instance_version_2(root):
+def open_instance_version_3(root):
     stated(root)
-    (run_dir(root) / "instance.json").write_bytes(b'{"schema_version": 2}\n')
+    (run_dir(root) / "instance.json").write_bytes(b'{"schema_version": 3}\n')
 
 
 def open_no_budget(root):
@@ -367,7 +367,7 @@ OPEN_STATES = [
     (open_missing_instance, INSTANCE_MISSING),
     (open_invalid_instance, INSTANCE_INVALID),
     (open_instance_directory, INSTANCE_INVALID),
-    (open_instance_version_2, INSTANCE_VERSION),
+    (open_instance_version_3, INSTANCE_VERSION),
     (open_no_budget, NO_ROUND_BUDGET),
 ]
 
@@ -852,3 +852,43 @@ def test_a_missing_data_root_raises_before_the_rule(tmp_path, monkeypatch):
     monkeypatch.setattr(run_commit, "commit_owed", refuse)
     with pytest.raises(FileNotFoundError):
         classify(tmp_path / "absent", RUN)
+
+
+# --- instance.json of version 2 (ADR-0198 decision 8, slice 2b) ---
+
+KINDED = {"schema_version": 2, "candidate_kind": "compile_settings"}
+
+
+def with_instance(root, content, round=3):
+    stated(root, round)
+    (run_dir(root) / "instance.json").write_bytes(content)
+
+
+@pytest.mark.parametrize("round", [0, 3])
+def test_p4_reads_a_compile_settings_run_as_its_version_1_twin(root, round):
+    with_instance(root, instance_bytes(round_budget=5, **KINDED), round)
+    assert classify(root, RUN) == Finding(DUE, round)
+    further, fallback, report = make(root)
+    assert further(None) is True
+    assert fallback.seen == [] and report.seen == []
+
+
+def test_a_compile_settings_run_without_a_budget_is_open(root):
+    with_instance(root, instance_bytes(**KINDED))
+    assert classify(root, RUN) == Finding(OPEN, NO_ROUND_BUDGET)
+
+
+@pytest.mark.parametrize(
+    ("members", "reason"),
+    [
+        ({"schema_version": 3}, INSTANCE_VERSION),
+        ({"schema_version": 0}, INSTANCE_VERSION),
+        ({"candidate_kind": "compile_settings"}, INSTANCE_INVALID),
+        ({**KINDED, "candidate_kind": "c_kernel"}, INSTANCE_INVALID),
+        ({"schema_version": 2}, INSTANCE_INVALID),
+    ],
+    ids=["v3", "v0", "v1-with-kind", "v2-c_kernel", "v2-no-kind"],
+)
+def test_other_versions_and_the_narrowed_forms_are_open(root, members, reason):
+    with_instance(root, instance_bytes(round_budget=5, **members))
+    assert classify(root, RUN) == Finding(OPEN, reason)

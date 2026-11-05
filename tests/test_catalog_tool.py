@@ -267,7 +267,7 @@ def test_a_missing_instance_is_run_file_missing(root, shelf):
     [
         (b"{", "run_file_invalid"),
         (encoded({"schema_version": 1}), "run_file_invalid"),
-        (encoded(instance_document(schema_version=2)), "run_file_unsupported"),
+        (encoded(instance_document(schema_version=3)), "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_is_its_kind(root, shelf, content, kind):
@@ -595,3 +595,56 @@ def test_spec_write_still_refuses_a_catalog_id_for_a_bf16_run(root, key):
         "catalog/cpu_standin/loop_order_ikj.md: applies to the "
         f"{name} {value}, not the spec's {stated}; nothing was written"
     )
+
+
+# instance.json of version 2 (ADR-0198 decision 8, slice 2b)
+
+
+def kinded(**changes):
+    return (
+        instance_document(schema_version=2, candidate_kind="compile_settings") | changes
+    )
+
+
+def test_a_compile_settings_run_is_run_file_unsupported_before_the_catalog(
+    root, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(catalog, "SOURCE", tmp_path / "missing")
+    run(root, kinded())
+    before = tree(root)
+    failure = refused(root)
+    assert failure.kind == "run_file_unsupported"
+    assert failure.message == (
+        f"{INSTANCE_PATH}: states the candidate kind compile_settings; "
+        "this tool reads c_kernel runs only"
+    )
+    assert tree(root) == before
+
+
+def test_a_compile_settings_run_with_a_catalog_is_refused_too(root, shelf):
+    place(shelf / "tiling.md", entry("tiling"))
+    run(root, kinded())
+    assert refused(root).kind == "run_file_unsupported"
+    run(root)
+    assert read(Source(root)) == {
+        "entries": [{"id": "tiling", "when": "Worth trying."}]
+    }
+
+
+@pytest.mark.parametrize(
+    ("changes", "kind"),
+    [
+        ({"schema_version": 3}, "run_file_unsupported"),
+        ({"schema_version": 1}, "run_file_invalid"),
+        ({"candidate_kind": "c_kernel"}, "run_file_invalid"),
+    ],
+    ids=["v3", "v1-with-kind", "v2-c_kernel"],
+)
+def test_other_versions_and_the_narrowed_forms_are_their_kind(
+    root, shelf, changes, kind
+):
+    run(root, kinded(**changes))
+    failure = refused(root)
+    assert failure.kind == kind
+    assert failure.message.startswith(f"{INSTANCE_PATH}: ")
+    assert "candidate kind" not in failure.message

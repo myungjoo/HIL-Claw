@@ -24,7 +24,11 @@ and every check before the write creates nothing (ADR-0133 decision 3, table):
    (the four ``run_file_*`` kinds of ADR-0019, as ``state.read`` answers
    them), and its ``round`` equal to the request's
    (:data:`KIND_ROUND_NOT_CURRENT`);
-4. the run's ``instance.json`` read the same way (the same four kinds);
+4. the run's ``instance.json`` read the same way (the same four kinds; a
+   version-2 file is read as its version-1 twin), and a run whose candidate
+   kind is not ``c_kernel`` refused by
+   :func:`hilclaw.run_file_tools.c_kernel_only` with ``run_file_unsupported``:
+   cases of such a run are not written (ADR-0198 decision 8 and Boundaries);
 5. the key: an instance stating no ``op_signature``, or
    :func:`hilclaw.key_records.lookup` of its two records finding no record
    file (:data:`KIND_KEY_NOT_STORED`); a collision or an invalid stored record
@@ -138,7 +142,8 @@ _DESCRIPTION = (
     "run_file_unsupported or run_file_unreadable when the run's STATE.json is "
     "not there, is invalid or no regular file, has another schema_version or "
     "cannot be read; round_not_current when round is not the round STATE.json "
-    "names; the same four run_file kinds for the run's instance.json; "
+    "names; the same four run_file kinds for the run's instance.json, "
+    "run_file_unsupported also for a run whose candidate kind is not c_kernel; "
     "key_not_stored when instance.json states no op_signature or the key's "
     "hw_profile.json or op_signature.json is not stored; key_record_invalid "
     "when a stored key record is invalid or collides; key_record_unreadable "
@@ -169,7 +174,8 @@ def definition(source):
     ``round``, whose ``run_id`` :func:`hilclaw.layout.check_run_id` refuses or
     whose ``round`` is no ``int`` from 1 to :data:`hilclaw.keys.MAX_INTEGER`;
     ``no_data_root`` as :func:`hilclaw.data_root_source.obtain` does; the four
-    ``run_file_*`` kinds as :func:`hilclaw.run_file_tools.read` raises them;
+    ``run_file_*`` kinds as :func:`hilclaw.run_file_tools.read` and
+    :func:`hilclaw.run_file_tools.c_kernel_only` raise them;
     the kinds of :func:`hilclaw.hypotheses_tool.read`; and the kinds of this
     module, in the order of the module docstring.
     """
@@ -232,7 +238,8 @@ def _write(source, request):
             f"{file}: names round {state.round} as in progress, not the "
             f"request's round {round}",
         )
-    stated, _ = run_file_tools.read(data_root, run_id, "instance.json")
+    stated, content = run_file_tools.read(data_root, run_id, "instance.json")
+    run_file_tools.c_kernel_only(run_id, content)
     hw, op = _key(data_root, run_id, stated)
     hypotheses = hypotheses_tool.read(data_root, run_id, round)
     path = layout.hypothesis_record(data_root, run_id, round)

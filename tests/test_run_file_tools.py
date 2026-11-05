@@ -10,6 +10,7 @@ import pytest
 from hilclaw import __main__ as command_line
 from hilclaw import (
     fresh_run,
+    instance,
     keys,
     mcp_front,
     run_file_tools,
@@ -605,3 +606,90 @@ def test_a_failed_look_without_strerror_gives_no_text_of_the_error(root, monkeyp
     refused = failure(Source(root), "run.fresh", {"run_id": RUN})
     assert refused.kind == run_file_tools.KIND_RUN_DIR_UNREADABLE
     assert refused.message == f"runs/{RUN}: could not be looked at: OSError"
+
+
+# instance.json of version 2 (ADR-0198 decision 8, slice 2b)
+
+
+KINDED = INSTANCE | {"schema_version": 2, "candidate_kind": "compile_settings"}
+
+
+def test_instance_read_returns_a_version_2_document_with_its_kind(root):
+    started(root, KINDED)
+    before = tree(root)
+    assert ask(Source(root), "instance.read", {"run_id": RUN}) == {"instance": KINDED}
+    assert tree(root) == before
+
+
+def test_read_gives_a_version_2_file_as_its_version_1_twin(root):
+    started(root, KINDED)
+    stated, content = run_file_tools.read(root, RUN, "instance.json")
+    assert content == (run_dir(root) / "instance.json").read_bytes()
+    twin = instance.parse(json.dumps(INSTANCE).encode())
+    assert stated == twin
+    assert type(stated) is instance.Instance
+    assert "candidate_kind" not in stated.others
+
+
+def test_read_of_a_version_1_file_is_unchanged(root):
+    started(root)
+    stated, content = run_file_tools.read(root, RUN, "instance.json")
+    assert stated == instance.parse(content)
+
+
+@pytest.mark.parametrize(
+    ("document", "kind", "start"),
+    [
+        (INSTANCE | {"schema_version": 3}, "run_file_unsupported", "schema_version: 3"),
+        (INSTANCE | {"schema_version": 0}, "run_file_unsupported", "schema_version: 0"),
+        (KINDED | {"schema_version": 1}, "run_file_invalid", "candidate_kind: "),
+        (
+            KINDED | {"candidate_kind": "c_kernel"},
+            "run_file_invalid",
+            "candidate_kind: ",
+        ),
+        (INSTANCE | {"schema_version": 2}, "run_file_invalid", "document: lacks"),
+    ],
+    ids=["v3", "v0", "v1-with-kind", "v2-c_kernel", "v2-no-kind"],
+)
+def test_other_versions_and_the_narrowed_forms_are_refused(root, document, kind, start):
+    started(root, document)
+    with pytest.raises(ToolFailure) as caught:
+        run_file_tools.read(root, RUN, "instance.json")
+    assert caught.value.kind == kind
+    assert caught.value.message.startswith(f"{INSTANCE_PATH}: {start}")
+    refused = failure(Source(root), "instance.read", {"run_id": RUN})
+    assert (refused.kind, refused.message) == (kind, caught.value.message)
+
+
+def test_c_kernel_only_passes_a_version_1_run(root):
+    started(root)
+    _, content = run_file_tools.read(root, RUN, "instance.json")
+    assert run_file_tools.c_kernel_only(RUN, content) is None
+
+
+def test_c_kernel_only_refuses_a_compile_settings_run(root):
+    started(root, KINDED)
+    before = tree(root)
+    _, content = run_file_tools.read(root, RUN, "instance.json")
+    with pytest.raises(ToolFailure) as caught:
+        run_file_tools.c_kernel_only(RUN, content)
+    assert caught.value.kind == tools.KIND_RUN_FILE_UNSUPPORTED
+    assert caught.value.message == (
+        f"{INSTANCE_PATH}: states the candidate kind compile_settings; "
+        "this tool reads c_kernel runs only"
+    )
+    assert tree(root) == before
+
+
+@pytest.mark.parametrize(
+    ("content", "error"),
+    [
+        (b"{", instance.InvalidInstanceError),
+        (b'{"schema_version": 3}', instance.UnsupportedVersionError),
+        ("{}", TypeError),
+    ],
+)
+def test_c_kernel_only_raises_what_the_parser_raises_for_other_bytes(content, error):
+    with pytest.raises(error):
+        run_file_tools.c_kernel_only(RUN, content)

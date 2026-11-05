@@ -1215,7 +1215,7 @@ NO_STAMP = {
     ),
     "a-directory": (a_directory, *BROKEN),
     "version-0": (content(stamp(schema_version=0)), *OTHER_VERSION),
-    "version-2": (content(stamp(schema_version=2)), *OTHER_VERSION),
+    "version-3": (content(stamp(schema_version=3)), *OTHER_VERSION),
     "a-version-that-is-a-string": (content(stamp(schema_version="1")), *BROKEN),
     "a-version-that-is-a-float": (content(stamp(schema_version=1.0)), *BROKEN),
     "a-version-that-is-a-boolean": (content(stamp(schema_version=True)), *BROKEN),
@@ -1379,7 +1379,7 @@ def test_a_file_valid_for_the_stamp_and_not_in_the_selection_is_answered_there(
     tool = Tool(root)
 
     def reader(data_root, run_id):
-        place(root, stamp(schema_version=2), FILE)
+        place(root, stamp(schema_version=2, candidate_kind="compile_settings"), FILE)
         return instance.hw_profile_of(data_root, run_id)
 
     function = with_reader(tool, root, reader)
@@ -1393,7 +1393,7 @@ def test_a_file_valid_for_the_stamp_and_not_in_the_selection_is_answered_there(
     with pytest.raises(ToolFailure) as caught:
         function(request())
     assert caught.value.kind == "run_file_unsupported"
-    assert made == ["stamp", "state", "log", "stamp"]
+    assert made == ["stamp", "state", "log"] * 2
 
 
 @each_way
@@ -1435,7 +1435,7 @@ def test_the_stamp_is_read_again_at_each_call_and_nothing_is_kept(root, monkeypa
     changes = [
         (no_stamp, "run_file_missing"),
         (content(b"{"), "run_file_invalid"),
-        (content(stamp(schema_version=2)), "run_file_unsupported"),
+        (content(stamp(schema_version=3)), "run_file_unsupported"),
     ]
     for change, kind in changes:
         change(root, monkeypatch)
@@ -1543,7 +1543,7 @@ def test_the_layout_the_source_builds_is_compared_with_nothing(
     for _ in range(2):
         assert tool.function(request()) == {"example_member": 1}
     assert tool.performed == 1
-    place(root, stamp(schema_version=2), FILE)
+    place(root, stamp(schema_version=3), FILE)
     with pytest.raises(ToolFailure) as caught:
         tool.function(request())
     assert caught.value.kind == "run_file_unsupported"
@@ -1917,7 +1917,7 @@ def test_a_failing_source_of_a_stepped_tool_is_no_data_root(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "state", ["missing", "empty", "version-2", "unreadable", "a-directory"]
+    "state", ["missing", "empty", "version-3", "unreadable", "a-directory"]
 )
 def test_a_stepped_run_whose_stamp_cannot_be_had_is_answered_before_the_lookup(
     root, monkeypatch, state

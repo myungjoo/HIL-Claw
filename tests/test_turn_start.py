@@ -770,7 +770,7 @@ def open_invalid_instance(root):
 
 def open_instance_version(root):
     stated(root)
-    (root / INSTANCE).write_bytes(b'{"schema_version": 2}\n')
+    (root / INSTANCE).write_bytes(b'{"schema_version": 3}\n')
 
 
 def open_no_budget(root):

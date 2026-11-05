@@ -617,7 +617,7 @@ def test_a_missing_instance_is_run_file_missing(root):
         (b"{", "run_file_invalid"),
         (encoded(instance_document(round_budget=0)), "run_file_invalid"),
         (encoded({"schema_version": 1}), "run_file_invalid"),
-        (encoded(instance_document() | {"schema_version": 2}), "run_file_unsupported"),
+        (encoded(instance_document() | {"schema_version": 3}), "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_is_its_kind(root, content, kind):
@@ -818,3 +818,18 @@ def test_each_call_asks_the_source_once_and_reads_only_the_frame_files(
         STATE_PATH,
         LOG_PATH,
     }
+
+
+# --- a compile_settings run (ADR-0198 decision 8, slice 2b) ---
+
+
+@pytest.mark.parametrize(("round", "budget", "over"), [(4, 5, True), (3, 5, False)])
+def test_a_compile_settings_run_is_ended_as_its_version_1_twin(
+    root, round, budget, over
+):
+    run(root, round=round, log=ended(1, round, **{AXIS: 1}), round_budget=budget)
+    kinded = {"schema_version": 2, "candidate_kind": "compile_settings"}
+    place(instance_path(root), encoded(instance_document(budget) | kinded))
+    result = end(Source(root), request(round=round))
+    assert result == {"round": round + 1, "over": over, "reported_lines": [1]}
+    assert written(root).others == ({"run_status": "over"} if over else {})

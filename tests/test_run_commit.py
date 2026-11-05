@@ -1478,3 +1478,44 @@ def test_the_default_registry_and_the_mcp_front_hold_run_commit(root):
     assert mcp_front.mcp_names(registry)["run_commit"] == "run.commit"
     assert tools.call(registry, "run.commit", {"run_id": RUN}) == {"committed": True}
     assert os.path.isfile(root / f"runs/{RUN}/STATE.json")
+
+
+# --- instance.json of version 2 (ADR-0198 decision 8, slice 2b) ---
+
+KINDED = {"schema_version": 2, "candidate_kind": "compile_settings"}
+
+
+def kinded_instance(root, **changes):
+    document = json.loads(instance_document()) | KINDED | changes
+    return write(root, f"runs/{RUN}/instance.json", json.dumps(document).encode())
+
+
+def test_a_compile_settings_run_takes_in_its_record_files_and_cases(root):
+    kinded_instance(root)
+    write_state(root, 0)
+    write_events(root, b'{"line": 1}\n')
+    store_keys(root)
+    assert commit(root, RUN) is True
+    assert {HW_RECORD, OP_RECORD} <= changed(root)
+    write_state(root, 2)
+    write(root, case(1), b'{"case": 1}\n')
+    assert owed_rounds(root, RUN) == range(2)
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/STATE.json", case(1)}
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"schema_version": 1}, {"candidate_kind": "c_kernel"}, {"schema_version": 3}],
+    ids=["v1-with-kind", "v2-c_kernel", "v3"],
+)
+def test_the_narrowed_forms_and_other_versions_give_no_key(root, changes):
+    write_state(root, 1)
+    write_events(root, b'{"line": 1}\n')
+    kinded_instance(root, **changes)
+    write(root, HW_RECORD, b'{"hw": 1}\n')
+    write(root, OP_RECORD, b'{"op": 1}\n')
+    assert commit(root, RUN) is True
+    assert not changed(root) & {HW_RECORD, OP_RECORD}
+    write_state(root, 2)
+    refused_unchanged(root, run_commit.NoKeyDirectoryError, "no key directory")

@@ -29,7 +29,9 @@ The checks, in this order, each with its kind (ADR-0171 decision 3, table):
 2. the data root (``no_data_root``);
 3. the run's ``instance.json`` read once by :func:`hilclaw.run_file_tools.read`
    (the four ``run_file_*`` kinds of ADR-0019, as ``instance.read`` answers
-   them);
+   them), and a run whose candidate kind is not ``c_kernel`` refused by
+   :func:`hilclaw.run_file_tools.c_kernel_only` with ``run_file_unsupported``
+   (ADR-0198 decision 8 and Boundaries);
 4. the directory of the instance's ``hw_profile`` ``accelerator`` below
    :data:`hilclaw.catalog.SOURCE` read by :func:`hilclaw.catalog.criteria`:
    a directory that is missing, is refused by the catalog's rules or cannot
@@ -71,8 +73,9 @@ _DESCRIPTION = (
     "no_data_root when the data root cannot be obtained; run_file_missing, "
     "run_file_invalid, run_file_unsupported or run_file_unreadable when the "
     "run's instance.json is not there, is invalid or no regular file, has "
-    "another schema_version or cannot be read; and catalog_unusable when the "
-    "catalog of the run's accelerator is missing, invalid or cannot be read."
+    "another schema_version or a candidate kind other than c_kernel, or "
+    "cannot be read; and catalog_unusable when the catalog of the run's "
+    "accelerator is missing, invalid or cannot be read."
 )
 _MEMBERS = ("run_id",)
 
@@ -89,7 +92,8 @@ def definition(source):
     ``invalid_request`` for a request that is not exactly ``run_id`` or whose
     ``run_id`` :func:`hilclaw.layout.check_run_id` refuses; ``no_data_root``
     as :func:`hilclaw.data_root_source.obtain` does; the four ``run_file_*``
-    kinds as :func:`hilclaw.run_file_tools.read` raises them; and
+    kinds as :func:`hilclaw.run_file_tools.read` and
+    :func:`hilclaw.run_file_tools.c_kernel_only` raise them; and
     :data:`KIND_CATALOG_UNUSABLE`, in the order of the module docstring.
     """
     if not callable(source):
@@ -133,7 +137,8 @@ def _checked(request):
 def _read(source, request):
     run_id = _checked(request)
     data_root = data_root_source.obtain(source)
-    stated, _ = run_file_tools.read(data_root, run_id, "instance.json")
+    stated, content = run_file_tools.read(data_root, run_id, "instance.json")
+    run_file_tools.c_kernel_only(run_id, content)
     accelerator = stated.hw_profile["accelerator"]
     directory = f"catalog/{accelerator}"
     try:

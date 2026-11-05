@@ -522,7 +522,7 @@ def test_a_missing_instance_is_run_file_missing(root):
     ("content", "kind"),
     [
         (b"[]", "run_file_invalid"),
-        (encoded(instance_document() | {"schema_version": 2}), "run_file_unsupported"),
+        (encoded(instance_document() | {"schema_version": 3}), "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_is_its_kind(root, content, kind):
@@ -752,3 +752,15 @@ def test_the_mcp_front_lists_and_serves_hypotheses_write(root):
     assert taken["result"]["isError"] is True
     error = json.loads(taken["result"]["content"][0]["text"])["error"]
     assert error["kind"] == "hypotheses_exist"
+
+
+# --- a compile_settings run (ADR-0198 decision 8, slice 2b) ---
+
+
+def test_a_compile_settings_run_is_written_as_its_version_1_twin(root):
+    run(root, instance=False)
+    kinded = {"schema_version": 2, "candidate_kind": "compile_settings"}
+    place(instance_path(root), encoded(instance_document() | kinded))
+    given = record()
+    assert write(Source(root), {"run_id": RUN, "record": copy.deepcopy(given)}) == {}
+    assert hypotheses_path(root).read_bytes() == fixed_bytes(given)

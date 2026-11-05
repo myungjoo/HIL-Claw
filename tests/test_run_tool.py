@@ -1251,3 +1251,22 @@ def test_a_coarse_clock_is_found_on_a_line_virtual_npu_wrote(
     written = events.read(root, RUN).events
     (line,) = [event for event in written if event["kind"] == "step_ended"]
     assert timing_finding.line_finding(line) is found
+
+
+# --- a compile_settings run (ADR-0198 decision 8, slice 2b) ---
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_a_compile_settings_run_is_run_file_unsupported_with_no_line(root, tool):
+    document = json.loads(content())
+    document |= {"schema_version": 2, "candidate_kind": "compile_settings"}
+    (root / "runs" / RUN / "instance.json").write_bytes(json.dumps(document).encode())
+    before = sorted(path.relative_to(root).as_posix() for path in root.rglob("*"))
+    bench = Bench(root, tool)
+    failure = bench.failure()
+    assert failure.kind == "run_file_unsupported"
+    assert failure.message.startswith(f"runs/{RUN}/instance.json: schema_version: 2")
+    assert (bench.asked, bench.order, lines(root)) == ([], [], [])
+    assert (
+        sorted(path.relative_to(root).as_posix() for path in root.rglob("*")) == before
+    )
