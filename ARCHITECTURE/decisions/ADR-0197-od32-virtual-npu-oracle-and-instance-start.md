@@ -39,7 +39,7 @@
 
 ### 4. What stays
 
-- `virtual_npu` keeps `model_run` false; the S6 metric keeps admitting only `cpu_standin` and the mock (`outside_metric` otherwise, `s6_metric._ACCELERATORS` unchanged); `model_instances` still builds documents for the hw_profile it reads, `cpu_standin`'s.
+- `virtual_npu` keeps `model_run` false; the S6 metric keeps admitting only `cpu_standin` and the mock (`outside_metric` otherwise, `s6_metric._ACCELERATORS` unchanged); the `model_instances` command still writes documents for the hw_profile it reads, `cpu_standin`'s; its `documents` function, given another hw_profile, accepts what the start accepts there (decision 3), `virtual_npu`'s included.
 - No member of `instance.json`, a spec, a result or `STATE.json`, no event kind, no `step` value and no layout version changes. fp16 is not touched (**owner**, HQ-0083 (b)). No numeric format is added (**owner** ② (a)).
 
 ### A-13 reading
@@ -79,7 +79,7 @@
 ## References
 
 - Owner: HQ-0091 in `PROCESS/STATE.json`; HQ-0083, HQ-0088, HQ-0096 where named; D6, D27.
-- [Requirements](../Requirements.md): FR-9, FR-10, NFR-6; rows OD-8, OD-31, OD-32. [OpenDecisionProposals](../OpenDecisionProposals.md) § OD-32; [StandardScenarios](../StandardScenarios.md).
+- [Requirements](../Requirements.md): FR-9, FR-10, NFR-6; rows OD-8, OD-31, OD-32. [OpenDecisionProposals](../OpenDecisionProposals.md) § OD-8, § OD-31, § OD-32; [StandardScenarios](../StandardScenarios.md).
 - Records: ADR-0016, ADR-0041, ADR-0076, ADR-0130, ADR-0163 to ADR-0165, ADR-0177, ADR-0181, ADR-0183, ADR-0193, ADR-0196.
 - Code read: `hilclaw/targets.py`, `check_definition.py`, `check_tool.py`, `run_tool.py`, `contract_table.py`, `standin_check.py`, `instance_start.py`, `start_instance.py`, `model_instances.py`, `new_run.py`, `s6_metric.py`.
 - Process: [PROCESS/DRIVER.md](../../PROCESS/DRIVER.md) §3, §5, §6 D27, §8, §9; [PROCESS/PLAN.md](../../PROCESS/PLAN.md) P3-3; task T-0551.
