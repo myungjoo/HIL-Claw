@@ -671,3 +671,11 @@
 - 내용:
 
   PLAN P3-3 / ADR-0197. On a runtime machine with Docker and the clang image: (i) `virtual_npu`'s bf16 `correctness.check` runs inside the verification container bounded by `--memory 268435456 --memory-swap 268435456` and returns the bf16 contract's verdict; (ii) exceeding the limit ends with `exit_status`; (iii) `new_run` starts a `virtual_npu` bf16 instance and rejects an fp32 `gemm` instance with `out_of_scope`.
+
+### RA-0078
+
+- 상태: 미확인
+- 출처: P3-6, T-0556, T-0557, ADR-0198, ADR-0199 (등록 2026-11-05)
+- 내용:
+
+  PLAN P3-6 / ADR-0198·ADR-0199. 로그인된 `claude`와 clang 이미지가 있는 런타임 머신에서, 후보 종류 `compile_settings`(N = 1) run의 실제 라운드 ≥ 1 하나가 다음을 모두 만족한다 — technique-selector가 ADR-0199의 요청(`run_id`, `round`, `candidate` 1, `attempt` 1, `flags`)으로 `spec.write`를 불러 `(round, 1, 1)`의 버전 3 spec이 쓰이고 보고에 `spec: written` 한 줄이 있다; Round-Manager가 단계 8을 하지 않고 코더 호출이 없다(그 시도의 `output/`은 비어 있다); `sim` 지점의 `correctness.check`가 라운드 0 시도 `(0, 1, 1)`의 커널을 대상의 플래그 뒤에 후보의 플래그를 붙여 빌드하고 `measure/…/build.json`을 쓴다; 라운드가 단계 9~12와 닫는 단계로 끝난다(`case.write`는 거부되고 라운드는 이어진다). ADR-0199가 이 항목에 넣은 것: 실제 technique-selector가 "A compile-settings run" 절을 따르는 것과 실제 Round-Manager가 단계 8을 건너뛰는 것. T-0556(PR #372, main e7c24fc4)·T-0557(main 78d1b334·14cbd779·a7271068) 착지 뒤 확인 가능.

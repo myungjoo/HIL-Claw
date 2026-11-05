@@ -2,7 +2,7 @@
 id: T-0557
 title: ADR-0198 slice 4 for PLAN P3-6 — land the first non-kernel candidate kind in the documents: change the three-layer "C 커널" wording of CLAUDE.md and Requirements, add the compile-settings scenario to StandardScenarios with the coverage re-check, link ADR-0199 in the registers, and hand over the runtime acceptance item for a coder-free round
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [D27, OD-32, OD-6, C-6, FR-1, FR-5, "PLAN P3-6", HQ-0088, HQ-0089, ADR-0198, "#5 A-12"]
 dependsOn: [T-0556]
@@ -62,3 +62,13 @@ After this task lands, the driver checks PLAN P3-6 (ADR-0198 decision 9: "PLAN P
 - None planned. After this lands the driver checks PLAN P3-6 in its §3-6 status commit and adds the returned runtime acceptance item to `PROCESS/RuntimeAcceptance.md`.
 
 ## Result
+
+- **Outcome**: DONE (document mode). T-0556 was confirmed `DONE` with ADR-0199 on `main` (dev-item-address step 1).
+- **Landed on `main`**: `78d1b334` (main change), `14cbd779` (round-1 nits), `a7271068` (round-2 nit; carries `Reviewed-by: reviewer agent (2 rounds, Approve)` and `Task: T-0557`). Review: 2 rounds with a context-isolated `dev-reviewer`; round 1 Approve with 5 nits (4 fixed, the N > 1 tag not added), round 2 Approve with 3 nits (the OD-32 tag of S13 step 2 fixed; the step-4 tag/verdict-row symmetry and the pre-existing OD-6 status-cell date range left).
+- **Process deviation**: the landing script ran `git push origin HEAD:main` on a separate line after a failed `git rebase` (unstaged nit fix), so the two reviewed branch commits reached `main` unsquashed and without the `Reviewed-by` trailer. History was not rewritten (no force push); the follow-up commit `a7271068` holds the trailer and states the review record of `78d1b334` and `14cbd779` in its body. All three carry `Task: T-0557`. The branch `claude/T-0557-compile-settings-landing` is deleted (remote and local).
+- **Files changed**: `CLAUDE.md` (three-layer bullet, layer 3 only), `ARCHITECTURE/Requirements.md` (line 11; rows OD-6, OD-23, OD-32: ADR-0199 link, OD-32 `**잔여**` rewritten), `ARCHITECTURE/OpenDecisionProposals.md` (one ADR-0199 `**채택분**` line each in § OD-6, § OD-23, § OD-32; OD-32 ⑥ and ⑦ end-states rewritten), `ARCHITECTURE/StandardScenarios.md` (계층, S13, 최근 재검사, 판정 변화 이력, verdict row).
+- **Scenario**: **S13** (next free number), **extension tier (Post-MVP)** — integrator's reading, stated in the 계층 paragraph: compile settings is PLAN P3 (D27), outside the MVP scope, and promoting a scenario to the basic tier has been an owner decision (S8, OD-21); same placement as S12. Verdict: 확장 호환; no other verdict changed; no gap. Observation (not a gap: FR-18 grounds it and nothing structurally excludes it): cases and the S6 metric of a `compile_settings` run have no registered OD (ADR-0198 Boundaries); S13 step 5 and its verdict row say so. No HQ is raised.
+- **Runtime acceptance item** (for the driver to append to `PROCESS/RuntimeAcceptance.md`; source `P3-6, T-0556, T-0557, ADR-0198, ADR-0199`; checkable now that T-0556 and T-0557 have landed):
+  - 로그인된 `claude`와 clang 이미지가 있는 런타임 머신에서, 후보 종류 `compile_settings`(N = 1) run의 실제 라운드 ≥ 1 하나가 다음을 모두 만족한다 — technique-selector가 ADR-0199의 요청(`run_id`, `round`, `candidate` 1, `attempt` 1, `flags`)으로 `spec.write`를 불러 `(round, 1, 1)`의 버전 3 spec이 쓰이고 보고에 `spec: written` 한 줄이 있다; Round-Manager가 단계 8을 하지 않고 코더 호출이 없다(그 시도의 `output/`은 비어 있다); `sim` 지점의 `correctness.check`가 라운드 0 시도 `(0, 1, 1)`의 커널을 대상의 플래그 뒤에 후보의 플래그를 붙여 빌드하고 `measure/…/build.json`을 쓴다; 라운드가 단계 9~12와 닫는 단계로 끝난다(`case.write`는 거부되고 라운드는 이어진다). ADR-0199가 이 항목에 넣은 것: 실제 technique-selector가 "A compile-settings run" 절을 따르는 것과 실제 Round-Manager가 단계 8을 건너뛰는 것. 확인 가능 시점: T-0556·T-0557 land 뒤(지금).
+- **Storage**: no task directory, image or install was created; nothing to clean. No `claude` process and no test run (D16, D25).
+- **Follow-ups**: none. The driver checks PLAN P3-6.
