@@ -1,0 +1,95 @@
+---
+id: T-0552
+title: Apply HQ-0088 and HQ-0089 for PLAN P3-6 — write the §9 ADR for the first non-kernel candidate kind (`compile_settings`), update the registers, and land its first code slice (validators and readers of `instance.json` v2, `spec.json` v3 and `measure/build.json` v1, with no existing caller widened)
+phase: P3
+status: IN_PROGRESS
+commitMode: code
+coversReq: [D27, OD-32, OD-6, OD-18, OD-8, C-6, FR-1, FR-5, "PLAN P3-6", HQ-0088, HQ-0089]
+dependsOn: []
+touchesFiles:
+  - ARCHITECTURE/decisions/ADR-0198-od32-compile-settings-candidate-kind.md
+  - ARCHITECTURE/Requirements.md
+  - ARCHITECTURE/OpenDecisionProposals.md
+  - ARCHITECTURE/StandardScenarios.md
+  - hilclaw/instance.py
+  - hilclaw/spec.py
+  - hilclaw/spec_file.py
+  - hilclaw/build_record.py
+  - tests/test_instance.py
+  - tests/test_spec.py
+  - tests/test_spec_file.py
+  - tests/test_build_record.py
+estimatedSize: {loc: 560, files: 8}
+hq: []
+---
+## Why
+
+**PLAN P3-6** (커널 밖의 후보) makes and evaluates the first candidate kind that is not a C kernel. The PLAN line still carries "오너 확정 필요(OD-32 ①·⑥·⑦)", but the owner has answered both questions ADR-0193 decision 9 wrote for it (O1, O2), on 2026-11-05:
+
+- **HQ-0088** (commit `4c0feda1`), "권고대로 (a)×5": ① the first kind is **compile settings**; ② the **orchestrator's selection role writes them into the spec's `task.build` and does not call the coder**; ③ CLAUDE.md's three-layer "C 커널" wording changes **when the first non-kernel kind lands**; ④ the unit, artefact, quality metric and evaluation data of a model-level kind are asked **when that kind is chosen**; ⑤ the scenario for this flow is added **in the same work as the first kind that lands**.
+- **HQ-0089** (commit `1f38ced2`), "권고대로 (a)×4": ① one kind per instance; ② the settings actually built go to `build.json` under the attempt's `measure/` (ADR-0004's place), for this kind only — `schema_version` 1, `outcome` (`"built"`/`"broken"`), `condition` (broken only: `build_time_limit`/`build_exit_status`), `flags` and `trailing_flags` (exact argument arrays); results and `step` unchanged; ③ `candidate_kind` is an approved open list of DRIVER §3, first values `c_kernel` and `compile_settings`; ④ the whole proposed format is approved: `instance.json` member `candidate_kind` (a name) with `schema_version` 2 (a C kernel run keeps version 1 without the member; readers accept both); `spec.json` `task.build` members `candidate_kind` (string), `flags` (array of strings added to the target's flags), `kernel_round`, `kernel_candidate`, `kernel_attempt` (integers: the attempt that gave the C kernel this candidate builds), all required when `candidate_kind` is `compile_settings`; a spec with no coder call is `schema_version` 3 (C kernel specs stay 2; readers accept both), and such an attempt's `output/` is empty.
+
+The integrator's reading in HQ-0089's `decision` (not the owner's words) states "HQ-0088이 (a)×5로 답해져 P3-6을 막는 HQ는 이제 없다", and leaves to **P3-6's §9 ADR**: which attempt the C kernel of a compile-settings instance comes from (the run's round-0 bring-up coder attempt, or another run's best) — **if that needs a frame element the answer did not approve (a new member, a reference to another run), ask it as an HQ (D23)**; which of an attempt's builds `build.json` records (one file per attempt); and the register updates for OD-32 ①·⑥·⑦, OD-6 ② and OD-18 ⑰ (다) for this kind. So P3-6 is no longer skipped (DRIVER §6: "그 결정이 닫힐 때까지 건너뜀" — the decision is closed). The earlier planner call of 3d8d8986 listed P3-6 as waiting; that reading predates noticing HQ-0089's statement and is corrected here.
+
+**Why one task now (DRIVER §6 D20 ① and ④).** D20 ① puts the ADR with its first code slice. The later slices (the selection role's flow in `orchestration/`, the `spec.write` path for v3, the instance start taking `candidate_kind`, the three evaluation tools building the named attempt's kernel with the candidate's flags and writing `build.json`, the CLAUDE.md wording and the new scenario) depend on decisions this ADR makes, so they are not created ahead; the ADR lists them with sizes and the planner creates them after this task lands. The first slice is the part every later slice reads and the answers fully fix: validators and readers of the three approved forms.
+
+**Order (DRIVER §6 D27 ①).** On `main` `4fc268bc`: no `nightly-failure` issue is open, no PR is open, `PROCESS/RuntimeAcceptance.md` has no item whose `상태` is `실패` (RA-0056 is `미확인`, so D27 ④ asks nothing yet), no P2-15 preparation is pending, and P3-6 is the first unchecked P3 item (P3-11 and P3-12 wait on HQ-0097 (b) and HQ-0096). If that has changed when this task runs, report it in `## Result` and stop before writing code.
+
+**Open HQs (D27 ⑥/⑦).** Do not ask again or anticipate: HQ-0081 (S6 scale), HQ-0083 (fp16, asked again only after RA-0056), HQ-0085 (gates, same), HQ-0095 (which execution is which point), HQ-0096 (vendor oracle, LLM-level unit), HQ-0097 (device-unavailable kind, given-code record). Vendor-language kernels and quantization settings are **not chosen** and stay candidate kinds (D27 ①); this task adds no value to the `candidate_kind` list beyond the two the owner approved. If the work shows a further owner-only part none of these covers (in particular a frame element HQ-0089 did not approve), write the question in `## Result` in the DRIVER §8 structure (Korean: 쟁점, 선택지 (a)/(b)/…, 실행자의 권고, 막히는 것/막히지 않는 것), land the rest and return `DONE` (D27 ⑥).
+
+## Required Reading
+
+- `PROCESS/DRIVER.md`:
+  - **§3-5 and §5**: branch `claude/T-0552-<slug>`, the `Task: T-0552` trailer and the PR body's last line, size (D30: ≤ 600 LOC recommended, ≤ 10 files, tests excluded), tests (D12), list assertions (D21), storage (D29: temporary files only under `${TMPDIR:-/tmp}/hilclaw-driver/T-0552/`, removed at the end).
+  - §3 "BLOCKED 사유" and **"승인된 열린 목록"** — the "후보 종류" entry (line ~83) and the paragraph on what is and is not a frame change.
+  - §6 D27 (①, ⑥, ⑦) and **§9** (the ADR path: executor ADR + reviewer Approve + owner notice on #5).
+- `PROCESS/STATE.json` `humanQuestions`: **HQ-0088** and **HQ-0089** (question and `decision`, the verbatim source of the owner's answers and of the integrator's readings); HQ-0083, HQ-0095 to HQ-0097 (not to be anticipated).
+- `ARCHITECTURE/decisions/ADR-0193-od32-generalization-design.md`: decision 1 (the last two rows: `kernel_source.py`, ADR-0177 decision 1), **decision 2** (the seam; the "Compile settings" row), decision 3 (the `Target` fields `flags`, `trailing_flags`, `waiter_flags`), **decision 9 O1, O2** and the coverage table, "Less exact, not edited".
+- `ARCHITECTURE/decisions/ADR-0002-od6-codegen-spec.md` (`id`, `task.build`, decisions 6 and 7); `ADR-0004-od8-data-plane-layout.md` (attempt roles, `measure/build.json`, `coder/…/spec.json`, `output/`); `ADR-0018-od8-instance-record-hw-profile.md` decision 2 (when the version rises); `ADR-0024-od8-instance-record-layout-version.md` and `ADR-0030-od8-layout-stamp-read-order.md` (the layout version an instance file states — decide what version 2 states); `ADR-0116-od18-cpu-standin-build-settings.md` decision 2 ("one fixed set"); `ADR-0060-od18-correctness-check-build-answers-and-settings.md`; `ADR-0078-od18-correctness-check-compiler-log-file.md` and `ADR-0108-od18-run-tools-timing-build-compiler-log.md` (how many builds one attempt has today); `ADR-0055-od23-coder-output-form.md`; `ADR-0138-od6-first-case-round-zero-spec.md` and `ADR-0151-od6-first-case-later-round-spec.md` (what a spec takes from `instance.json`); `ADR-0076-od8-instance-start-required-members.md`; `ADR-0100-od8-tool-result-change.md` (to confirm results and `step` do not change); the "Record format" section of `ADR-0001-od4-key-schema.md`; `ADR-0196-od32-measurement-unit-list-and-run-result-v3.md` "A-13 reading" (the model for this ADR's, naming the approved list).
+- `orchestration/round-manager.md` and `orchestration/agents/technique-selector.md`, `coder-driver.md`, `evaluator.md`, `experiment-runner.md` — to decide which role is "the orchestrator's selection role" and where in the round the no-coder spec is written.
+- Code: `hilclaw/instance.py` (`SCHEMA_VERSION`, `_STATED_LAYOUT`, `_checked`, `validate`, `read`, `layout_version_of`, the `*_of` accessors), `hilclaw/instance_file.py`, `hilclaw/spec.py` (`SCHEMA_VERSION`, `_TOP`, `_id`, `_task`, `_build_value`), `hilclaw/spec_file.py` (`parse`, `UnsupportedVersionError`, `final_name`, `write`), `hilclaw/layout.py` (`attempt_artefact`, `_ARTEFACT_ROLE`), `hilclaw/attempt_kernel.py` (reads an attempt's kernel; "reads no `build.json`"), `hilclaw/targets.py`, `hilclaw/standin_settings.py`, and the callers of the readers: of `spec_file`/`spec.validate` — `attempt_kernel.py`, `coder_call.py`, `spec_feedback.py`, `spec_tool.py`; of `instance.read`/`validate` — `case_lookup.py`, `cases_tool.py`, `catalog_tool.py`, `check_admission.py`, `check_tool.py`, `further_turn.py`, `instance_file.py`, `instance_start.py`, `key_store_tool.py`, `model_run_binding.py`, `run_admission.py`, `run_commit.py`, `run_file_tools.py`, `run_objective.py`, `run_tool.py`, `s6_metric.py`, `spec_tool.py`, `start_instance.py`, `tools.py`.
+- Recording rules — follow these, do not copy earlier task files' wording:
+  - `ARCHITECTURE/Requirements.md` "**행 형식**" (the paragraph before the OD register).
+  - `ARCHITECTURE/OpenDecisionProposals.md` header "**기록 규칙**".
+  - `ARCHITECTURE/StandardScenarios.md`, the first paragraph of §검사 결과.
+
+## Acceptance Criteria
+
+1. **ADR-0198** (`ARCHITECTURE/decisions/ADR-0198-od32-compile-settings-candidate-kind.md`), in the ADR-0001 record format, with Status separating **owner** content (HQ-0088, HQ-0089, D27 — cited, not subject to the objection window) from **this record's own** §9 decisions (executor + reviewer, owner notified on #5 with the 7-day objection window). It decides, within the approved format and adding no member, value or version beyond it:
+   1. **The record of the owner's answers**: HQ-0088 ①–⑤ and HQ-0089 ①–④, cited from `STATE.json`, with no restatement beyond what the decisions below need.
+   2. **Where the C kernel comes from**: which attempt `kernel_round`/`kernel_candidate`/`kernel_attempt` may name (e.g. the run's round-0 bring-up attempt, whose spec is a coder spec v2 inside a compile-settings instance, or any earlier attempt of the run with a passing check), and what is checked about it. If the design needs a kernel from another run, do not invent a member: write the HQ (Why, "Open HQs") and decide the within-run form only.
+   3. **The selection role**: which existing orchestration role writes the v3 spec and the `task.build` members, at which step of the round, and that no coder call happens for such an attempt; what of the round loop does not change (ADR-0193 decision 2). Bounded to the text the later slices change; no `orchestration/` file is edited in this task.
+   4. **The meaning of `id` in a v3 spec** (HQ-0089 ④: widened to the attempt), the v3 spec's file place (ADR-0004 `coder/…/spec.json` or otherwise, with no new place unless the answer covers it) and its writers.
+   5. **`build.json`**: which build of an attempt it records (an attempt has check builds and timing builds today), who writes it and when, how `outcome`/`condition` map onto the existing build answers, and that results and `step` do not change.
+   6. **How evaluation reads the candidate**: the three tools build the named attempt's kernel with the target's flags plus the candidate's `flags` (ADR-0116's "one fixed set" read per target and per candidate); what is refused (a missing or failing kernel attempt, a flag the target forbids, if any).
+   7. **The instance start**: how `candidate_kind` reaches `instance.json` v2, what layout version a v2 file states (ADR-0024/ADR-0030), and that a C kernel run still writes v1 without the member.
+   8. **A reader table** (as ADR-0183 decision 8 did): every caller listed in Required Reading, with what it does with an `instance.json` v2 and a `spec.json` v3 after each slice. A caller that would treat a compile-settings run or spec as a C kernel one must refuse it (as unsupported) until the slice that teaches it lands.
+   9. **The slices** for the planner, with rough sizes against DRIVER §5 (≤ 600 LOC recommended, ≤ 10 files), and naming which slice changes CLAUDE.md's "C 커널" wording (HQ-0088 ③) and adds the StandardScenarios scenario (HQ-0088 ⑤) — the slice in which the kind becomes runnable end to end.
+   10. **A-13 reading**: the frame elements used are exactly those HQ-0089 approved; the values `c_kernel` and `compile_settings` are the approved open list "후보 종류" of DRIVER §3, named; nothing else changes the frame.
+   11. **Consequences** (registers answered, runtime acceptance items if any — e.g. a real coder-free round in a live session — handed to `PROCESS/RuntimeAcceptance.md` through `## Result`, "Less exact, not edited" list) and **Boundaries** (vendor-language kernels and quantization settings, model-level kinds and their metrics (HQ-0088 ④), anything of HQ-0095 to HQ-0097).
+2. **Registers**, by their own recording rules:
+   - `ARCHITECTURE/Requirements.md`: the OD-32 row gains one `**확정분**` link to ADR-0198 (and the owner decision as one phrase), and its `**잔여**` is rewritten in place; the OD-6 and OD-18 rows likewise only where ADR-0198 answers ② / ⑰ (다) for this kind. Follow "행 형식": no restatement, no dated chain.
+   - `ARCHITECTURE/OpenDecisionProposals.md`: § OD-32 gains one `**채택분**` line for ADR-0198; sub-questions ①, ⑥ and ⑦ get their state rewritten in place (bullet-head state word and the `→ …` ending, question text kept); § OD-6 ② and § OD-18 ⑰ (다) likewise for this kind. Follow "기록 규칙".
+   - `ARCHITECTURE/StandardScenarios.md`: re-check coverage by its rules (CLAUDE.md "문서 커버리지 재검사") and update §검사 결과 by its first paragraph. **No new scenario in this task** (HQ-0088 ⑤ puts it with the landing of the kind).
+3. **Code slice 1 — validators and readers only** (Python; record the language choice in the commit body):
+   - `hilclaw/build_record.py` (new): validate and parse a `measure/build.json` document of exactly the approved form (`schema_version` 1; `outcome` `"built"`/`"broken"`; `condition` present exactly when broken, one of `build_time_limit`/`build_exit_status`; `flags` and `trailing_flags` arrays of strings; no other member unless ADR-0198 says so), in the style of the existing record modules (error types, messages naming the place and rule).
+   - `hilclaw/instance.py`: a document of `schema_version` 2 is valid exactly when it has `candidate_kind` with a value of the approved list (and whatever ADR-0198 decides about `c_kernel` in a v2 file); version 1 is unchanged and has no such member; any other version is refused as today. A public accessor returns the kind of a run (`c_kernel` for a v1 file), and the layout version a v2 file states follows ADR-0198.
+   - `hilclaw/spec.py` / `hilclaw/spec_file.py`: a spec of `schema_version` 3 is valid exactly as ADR-0198 and HQ-0089 ④ state (the `task.build` members, all required when `candidate_kind` is `compile_settings`; the widened `id`); version 2 is unchanged; other versions are refused as today.
+   - **No existing caller is widened in this slice**: every caller in ADR-0198's reader table keeps its behaviour for v1 instances and v2 specs and refuses a v2 instance or a v3 spec with an existing error kind, unless the table says otherwise for this slice. Achieve it with the smallest change (for example an explicit opt-in entry for the new versions and the existing entries kept strict); state the choice in the ADR.
+4. **Tests** (D12): new `tests/test_build_record.py`; extended `tests/test_instance.py`, `tests/test_spec.py`, `tests/test_spec_file.py`. Cover happy, error, branch and **negative** cases: each required member missing, wrong type, out-of-list `candidate_kind`, `condition` with `"built"` and without `"broken"`, `compile_settings` with a missing `kernel_*` member, a v2 instance without `candidate_kind`, a v1 instance with it, a v3 spec handed to a strict entry, versions 0/4. Every public function of the touched modules is tested; `hilclaw/` line and function coverage stay ≥ 80%. Existing tests stay unchanged except: (a) list assertions under D21 — foreseen: `tests/test_instance.py::test_the_public_names` (new accessor/entry) and any public-name set in `tests/test_spec.py`/`tests/test_spec_file.py`; (b) a test that asserts the refusal of instance version 2 or spec version 3 at an entry that ADR-0198 makes accept it — rewrite it to the new rule. List every such edit in the PR body.
+5. **Unchanged behaviour**: no writer writes a v2 instance, a v3 spec or a `build.json` in this task; every existing run, tool, nightly and model path behaves and writes exactly as before; the full test suite passes.
+6. **Process**: dev-item-address steps, Draft PR, context-isolated review to Approve (≤ 14 rounds, D28), CI green, self squash-merge with the PR body's last line `Task: T-0552`; §9 notice of ADR-0198 on issue #5 (English, no bare `@` mentions).
+
+## Out of Scope
+
+- The later slices: `orchestration/` text, `spec.write` for v3, the instance start taking `candidate_kind`, the evaluation tools building with candidate flags and writing `build.json`, CLAUDE.md's "C 커널" wording (HQ-0088 ③) and the new scenario (HQ-0088 ⑤). Create no other task file.
+- Any value of `candidate_kind` beyond `c_kernel` and `compile_settings`; vendor-language kernels, quantization settings, model-level kinds (HQ-0088 ④).
+- Any change to results, `step` values, `events.ndjson`, `artifacts.json` or `STATE.json`.
+- fp16, gates, S6 scale (HQ-0083, HQ-0085, HQ-0081); vendor targets and HQ-0095 to HQ-0097.
+- Starting `claude` in any form (D16); no test run (D25) is needed for a reader slice.
+
+## Follow-ups
+
+- The planner creates the next slice(s) of ADR-0198 after this task lands, in the order decision 9 of that ADR gives; PLAN P3-6 is checked only when the kind is made and evaluated end to end ("답의 범위에서 첫 커널 밖 후보 종류를 만들고 평가한다").
+
+## Result
