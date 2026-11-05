@@ -2,7 +2,7 @@
 id: T-0549
 title: Apply HQ-0090 (a)·(가) for PLAN P3-3 — write the §9 ADR for the open `unit` list of `sim.run`/`board.run` results (`ns`, `cycles`), the new `step` values `sim_run_timing_v3`/`board_run_timing_v3` and the readers of v2 and v3, update the registers, and land the ADR's first code slice (the readers)
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, OD-33, OD-18, OD-8, FR-10, NFR-6, "PLAN P3-3", HQ-0090]
 dependsOn: []
@@ -105,3 +105,24 @@ The integrator's note in the HQ's `decision` (not the owner's words) names the f
 - Slice 2 of the new ADR (writers to v3, `virtual_npu` `cycles`, remaining readers): the planner creates it after this task is `DONE`.
 
 ## Result
+
+- **Outcome**: DONE. PR #365 (squash-merged as `41dbf4bf`), branch `claude/T-0549-measurement-unit-list-v3` deleted. Review rounds: 4 (R1 Request changes — S6 `_best_of` could choose a best across units; R2 Approve; R3 Request changes after merging `origin/main` (HQ-0089/0091/0092/0094 register edits) — OD-18 ⑩'s end state lacked ADR-0196; R4 Approve; two docstring Nits after Approve fixed without re-review, D20). CI green on the PR head (run 41950324371); local full suite 38832 passed / 2213 skipped, `hilclaw/` coverage 98.7 % lines, 99.2 % functions.
+- **Order check (D27 ①)** held at `main` `4d3e3ece`. During the task HQ-0091 was answered (`c1d2f567`); ADR-0196 records that and depends on nothing of it.
+- **ADR-0196** (`ARCHITECTURE/decisions/ADR-0196-od32-measurement-unit-list-and-run-result-v3.md`), decisions one line each:
+  1. Scope: every `sim.run`/`board.run` call at every target; one format for all targets (owner).
+  2. v3 result under `sim_run_timing_v3`/`board_run_timing_v3` (owner's spellings): ADR-0183 decision 4's members, `unit` a value of the approved open list "측정 단위" (`ns`, `cycles`), applying to `intervals`/`resolution` only, `memory_bytes` unchanged; the definition refers to the list, so a later value needs no new `step`; v2 keeps `unit` exactly `ns`.
+  3. The unit is held on the `Target` (not per point's means); a later target whose points differ moves it in package source.
+  4. Readers read a point's v2 and v3 lines together (ADR-0178 form); each line held to its own value's unit rule; an attempt with both is one point (`measurement_several` etc.); two units → new tool-layer kind `units_differ` (after `shapes_differ`); S6 admits `ns` only (read failure otherwise).
+  5. `virtual_npu` reports `cycles` = its ns × 3 (check value, no fact of any real NPU), converted after the ns judgement, `resolution` and `intervals` both, 0 stays 0; ADR-0103's test unchanged.
+  6. Slices: 1 = readers (this task); 2 = writers and remaining readers.
+  7. StepValues: v3 rows `defined`; v2 rows `not used`.
+  A-13 reading names the list "측정 단위"; no frame change beyond the owner's; no BLOCKED reason.
+- **Registers**: StepValues (2 v3 rows, v2 rows `not used`); Requirements OD-8/OD-18/OD-32/OD-33 rows; OpenDecisionProposals §OD-8, §OD-18 (adopted line and ⑩ end state), §OD-32 (②·③), §OD-33 (⑥); StandardScenarios "최근 재검사" (no verdict change, no gap).
+- **Code slice 1** (non-test: 5 modules, ~220 changed lines incl. docstrings; with the ADR and registers ~400 changed lines, 10 files): `run_identity` (v3 constants, `STEPS` = four values, `UNITS_OF`; `step_of` still v2), `layout.BUILD_LOG_STEPS`, `timings_tool` (`STEPS_OF` replaces `STEP_OF`, unit rule, `KIND_UNITS_DIFFER`, `timing_problem(result, step=None)`, `TimingLines.steps`), `verdicts_tool`, `s6_metric`. `harness/timing_finding.py` needed no change (reads `run_identity.STEPS`), so it moved out of the slice to keep `s6_metric` within the 10-file cap. Language: Python.
+- **D21 list assertions changed**: `tests/test_run_identity.py` (`STEPS` tuple and length, `set(STEPS)` → `set(STEPS[:2])`, public-name set, import list), `tests/test_layout.py` (`BUILD_LOG_STEPS` tuple), `tests/test_timings_tool.py` (`STEP_OF` → `STEPS_OF` equality).
+- **Readers found beyond ADR-0183's table**: `hilclaw/s6_metric.py` (slice 1), `hilclaw/spec_feedback.py` `_board_median` (`feedback.base`, ADR-0184) and `hilclaw/model_run_binding.py` `_timed_attempt_without_spec` (ADR-0189) (slice 2).
+- **Follow-up for the planner — ADR-0196 slice 2** (writers to v3 and remaining readers): `hilclaw/run_identity.py` (`step_of` → v3), `hilclaw/run_result.py` (`UNITS` from `UNITS_OF` of v3), `hilclaw/run_tool.py` (conversion by the target factor after the ns judgement; mock `ns`), `hilclaw/targets.py` (factor on `Target`, `virtual_npu` `cycles` × 3 as `VIRTUAL_NPU_CYCLES_PER_NS`, `cpu_standin` `ns` × 1, docstring), `hilclaw/spec_feedback.py` (both board values, `timing_problem` with the line's step, medians within one unit else no `base`), `hilclaw/model_run_binding.py` (either board value), `hilclaw/harness/timing_finding.py` docstrings. About 250 changed code lines, 7 files.
+- **Runtime acceptance items**: none.
+- **New owner-only question**: none.
+- **§9 notice**: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6647513986
+- **Storage**: task directory `${TMPDIR}/hilclaw-driver/T-0549/` removed with `rm -r`; no image, no install.
