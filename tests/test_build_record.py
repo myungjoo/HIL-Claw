@@ -181,7 +181,7 @@ def test_the_text_rules():
         (b"\xff", "content: cannot be read as one JSON text"),
         (b'{"outcome": "built", "outcome": "built"}', "content: cannot be read"),
         (b'{"schema_version": NaN}', "content: cannot be read"),
-        (b"[" * 100000, "content: is nested too deeply"),
+        (b"[" * 2_000_000 + b"]" * 2_000_000, "content: is nested too deeply"),
     ]:
         with pytest.raises(InvalidBuildRecordError, match=f"^{reason}"):
             parse(content)
