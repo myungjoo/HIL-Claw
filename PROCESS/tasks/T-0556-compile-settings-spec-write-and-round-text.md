@@ -2,7 +2,7 @@
 id: T-0556
 title: ADR-0198 slice 2b, second half, for PLAN P3-6 — record the request form in a short ADR, let `spec.write` compose and write a version-3 spec on the technique-selector's request in a `compile_settings` run, and change `orchestration/round-manager.md` steps 6 and 8 and `orchestration/agents/technique-selector.md` so that such a round makes no coder call
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, OD-6, OD-23, FR-1, FR-5, "PLAN P3-6", HQ-0088, HQ-0089, ADR-0198]
 dependsOn: []
