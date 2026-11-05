@@ -125,7 +125,8 @@ Read under the owner's decision D23 (CLAUDE.md A-13; DRIVER §3 "승인된 열�
 
 ## Boundaries (not decided here)
 
-- **Owner-only or asked**: the form of a GPU or NPU memory figure at vendor targets ((가) leaves `memory_bytes` as it is; ADR-0194 decision 4; asked separately if needed); which execution is which point (HQ-0095); the oracle, tolerance and data types at `virtual_npu` and its `correctness.check` and instance start (HQ-0091, answered 2026-11-05; its own follow-up task); units other than `ns` and `cycles` (each a §9 ADR naming the list); the check of PLAN P3-3, which also waits on that follow-up.
+- **Owner-only or asked**: the form of a GPU or NPU memory figure at vendor targets ((가) leaves `memory_bytes` as it is; ADR-0194 decision 4; asked separately if needed); which execution is which point (HQ-0095); units other than `ns` and `cycles` (each a §9 ADR naming the list).
+- **Left to HQ-0091's follow-up task** (answered 2026-11-05): the oracle, tolerance and data types at `virtual_npu`, its `correctness.check` and instance start, and with them the check of PLAN P3-3.
 - The result files `sim.json` and `board.json` (ADR-0063 decision 10); a cycle counter of any real device; `profiler.collect`.
 - Any change to an accepted record, to `orchestration/` or to `catalog/`.
 
