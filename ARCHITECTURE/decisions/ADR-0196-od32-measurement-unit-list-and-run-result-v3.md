@@ -8,7 +8,7 @@
   - **The integrator's reading, cited and not this record's**: the note in HQ-0090's `decision` that marks itself "통합자 독해(오너의 말이 아님)".
   - **This record's own**: every other sentence — where the unit is held, the factor 3, the readers' rules, `units_differ`, the StepValues states, the slices and every weighing.
 - **Answers** part of **OD-32** ② (where the unit is held) and ③ (the virtual NPU's unit), the unit-list part of **OD-33** ⑥ that HQ-0090 settled (recorded here, not decided), part of **OD-18** ⑩ (the result format of the run tools) and part of **OD-8** (two `step` values of `events.ndjson` lines by the rule of [ADR-0100](ADR-0100-od8-tool-result-change.md), and their [StepValues](../StepValues.md) rows). Each OD keeps its status.
-- **Session entry check** (CLAUDE.md), on 2026-11-05 at `main` `4d3e3ece`: open PRs — none; no open `nightly-failure` issue; no `실패` item in `PROCESS/RuntimeAcceptance.md`; issue #4 last comment 2026-07-31, #5 2026-11-05, #7 2026-09-07, #8 closed. Unresolved HQs: HQ-0081, HQ-0089, HQ-0091 to HQ-0097. None is crossed: HQ-0091 (oracle and data type at `virtual_npu`), HQ-0095 (which execution is which point) and HQ-0097 (device-unavailable kind) are named in Boundaries and not anticipated.
+- **Session entry check** (CLAUDE.md), on 2026-11-05 at `main` `4d3e3ece`: open PRs — none; no open `nightly-failure` issue; no `실패` item in `PROCESS/RuntimeAcceptance.md`; issue #4 last comment 2026-07-31, #5 2026-11-05, #7 2026-09-07, #8 closed. Unresolved HQs: HQ-0081, HQ-0089, HQ-0091 to HQ-0097. None is crossed: HQ-0091 (oracle and data type at `virtual_npu`), HQ-0095 (which execution is which point) and HQ-0097 (device-unavailable kind) are named in Boundaries and not anticipated. **HQ-0091 was answered later the same day** (`main` `c1d2f567`, ① (a)·② (a)); its follow-up is its own task, and nothing here depends on it.
 - **Code**: slice 1 of decision 6 lands with this record (readers only; no writer changes). No `claude` process was started, nothing was built or run in a container, and nothing needs a board or a key (D16). Statements about code are observations of `main` at `4d3e3ece`. The format follows the "Record format" section of [ADR-0001](ADR-0001-od4-key-schema.md).
 
 ## Context
@@ -114,7 +114,7 @@ Read under the owner's decision D23 (CLAUDE.md A-13; DRIVER §3 "승인된 열�
 
 ## Consequences
 
-- **PLAN P3-3** stays unchecked: after slice 2 its "measurement unit" difference exists; the item also waits for HQ-0091 (ADR-0193 decision 8).
+- **PLAN P3-3** stays unchecked: after slice 2 its "measurement unit" difference exists; the item also waits for the follow-up of HQ-0091's answer (ADR-0193 decision 8).
 - **Until slice 2 lands** the run tools still write v2 results under the v2 values; the StepValues rows already say `not used`, which describes the contract (as ADR-0183 Consequences has it for its slices).
 - **Runtime acceptance items**: none. Every fact here is a statement of records and code a test with constructed `events.ndjson` lines checks (D16, D22).
 - **Less exact, not edited** (slice 2 fixes the docstrings it touches; the list is what a search of the records named here and of `hilclaw/` found, not claimed complete):
@@ -125,7 +125,7 @@ Read under the owner's decision D23 (CLAUDE.md A-13; DRIVER §3 "승인된 열�
 
 ## Boundaries (not decided here)
 
-- **Owner-only or asked**: the form of a GPU or NPU memory figure at vendor targets ((가) leaves `memory_bytes` as it is; ADR-0194 decision 4; asked separately if needed); which execution is which point (HQ-0095); the oracle, tolerance and data types at `virtual_npu` and its `correctness.check` and instance start (HQ-0091); units other than `ns` and `cycles` (each a §9 ADR naming the list); the check of PLAN P3-3, which waits on HQ-0091.
+- **Owner-only or asked**: the form of a GPU or NPU memory figure at vendor targets ((가) leaves `memory_bytes` as it is; ADR-0194 decision 4; asked separately if needed); which execution is which point (HQ-0095); the oracle, tolerance and data types at `virtual_npu` and its `correctness.check` and instance start (HQ-0091, answered 2026-11-05; its own follow-up task); units other than `ns` and `cycles` (each a §9 ADR naming the list); the check of PLAN P3-3, which also waits on that follow-up.
 - The result files `sim.json` and `board.json` (ADR-0063 decision 10); a cycle counter of any real device; `profiler.collect`.
 - Any change to an accepted record, to `orchestration/` or to `catalog/`.
 

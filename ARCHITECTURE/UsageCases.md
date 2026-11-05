@@ -154,7 +154,7 @@ MVP 구현 대상이 아니다. 설계(STATE/spec/도구/레이아웃 인터페�
 | ~~UC-E2~~ | *(MVP 편입 — OD-21, UC-1·UC-2)* | S8(기본 계층) | — |
 | **UC-E3** | board 장애·측정 노이즈 대응 — 재시도/대체 board, 반복 측정·신뢰구간 | S9 | board 도구 인터페이스가 실패·재시도 상태를 표현할 것(OD-10, OD-13, NFR-3) |
 | **UC-E4** | 결과 재현 — 과거 best를 source commit + CAS 해시로 복원해 재측정, 환경 변화 감지 | S10 | hw_profile에 환경 revision 정보가 있을 것(OD-4·OD-26, UC-0 대안 흐름); 참조 자료 스냅샷(FR-14 ②, OD-12) |
-| **UC-E5** | 벤더 스택 코드 평가 — QNN·HexKL 등을 쓰는 LLM 코드나 CUDA를 쓰는 코드를 빌드·실행·검사·측정·기록 | S12 | 툴체인·측정 지점이 대상별로 정해질 수 있고 `cpu_standin`을 바꾸지 않을 것(FR-19, OD-33) |
+| **UC-E5** | 벤더 스택 코드 평가 — QNN·HexKL 등을 쓰는 LLM 코드나 CUDA를 쓰는 코드를 빌드·실행·검사·측정·기록. 루프 안에서는 실험 단계, 루프 밖의 독립 평가는 가설 도입과 측정 후 진행 정도 측정([오너 2026-11-05, 채팅](https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6646588742)) | S12 | 툴체인·측정 지점이 대상별로 정해질 수 있고 `cpu_standin`을 바꾸지 않을 것(FR-19, OD-33) |
 
 ---
 
