@@ -70,3 +70,43 @@ hq: []
 
 ## Result
 
+- **Outcome**: DONE. PR #371 (`claude/T-0555-compile-settings-evaluation`), squash-merged into `main`; the merge commit is the squash of PR #371 and carries `Task: T-0555`. 2 review rounds by a context-isolated reviewer (round 1 Approve with four Nits, round 2 Approve with four Nits). CI on GitHub was green before the merge.
+- **Order check (D27 ①)**: unchanged at the start: no open PR, no open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`, P3-6 the first selectable P3 item.
+- **Language**: Python. Every module touched is a Python module of the 2nd-layer package `hilclaw/`, and the change only extends those modules.
+- **What landed**:
+  - `correctness.check`, `sim.run` and `board.run` read an `instance.json` of version 2 (row 6, "Slice 3").
+  - A kind other than `c_kernel` and `compile_settings` is `run_file_unsupported` before the start line.
+  - In a `compile_settings` run the asked attempt's spec is read after the start line by `build_record.evaluated`. A version-2 spec is evaluated as in a C kernel run.
+  - A version-3 spec is evaluated from the named attempt's `output/`. It is built with the target's `flags`, then the candidate's `flags`, then the target's `trailing_flags`.
+  - `build.json` is written by `CandidateBuild.write` (once, by `once_write.write_once`) after the operation came back and before the end line.
+  - A `c_kernel` run reads no spec and writes no `build.json`.
+  - `attempt_kernel.kernel_reference` follows a version-3 spec to the named kernel, with `kernel_attempt`/`KernelAttempt` new.
+- **How the flags reach the build**: a `contextvars.ContextVar` in `hilclaw/build_record.py` (`building`/`current`). The five-argument operation contract of `hilclaw.backends` and the mock backend are unchanged. `standin_check`/`standin_run` read it (`candidate_target`, `report_build`).
+- **Kinds (criterion 3; no new kind)**: listed in the `hilclaw/build_record.py` module docstring and the PR body.
+  - `no_kernel_source` for:
+    - a missing spec, or a spec of a version other than 2 and 3;
+    - a named attempt whose spec is missing or of version 3;
+    - a named attempt with no compiled set.
+  - `kernel_source_unreadable` for an unreadable or invalid spec, an `id` that formats to another path, and a reader failure.
+  - `settings_refused` (raised by the operation) for a candidate flag `clang_build` refuses.
+- **Readings that are this task's own (ADR-0198 does not decide them; no ADR written)**:
+  1. In `sim.run`/`board.run`, `build.json` records the timing build, which is the kernel's build. A waiter build that fails after it, or the shared build time limit running out, makes the result `broken` while `build.json` says `built`. This reads decision 5 ("the first build of the attempt's candidate") as the kernel build. In the round order the first build is `correctness.check` at `sim`, which has no waiter.
+  2. A write of `build.json` that fails with an `OSError` changes no result and is not answered. The name stays free, so a later build of the attempt writes it. No kind exists for this, and adding one would be a frame change.
+  3. A status-0 build that leaves no executable (S9, `build_output_missing`) is not recorded, because `check_build.read_build` does not answer it "built". A tool failure raised after a recorded build (for example `executable_unstartable`) still writes `build.json`.
+- **Existing tests changed**: listed in the PR body.
+  - D21 lists: `test_build_record.py::test_the_public_names`, `test_check_tool.py::test_the_module_holds_what_it_joins_and_nothing_of_its_own`, `test_run_tool.py::test_the_module_imports_and_names`.
+  - The T-0554 v2-refusal tests of `test_check_tool.py`/`test_run_tool.py` are rewritten to slice 3.
+  - `test_attempt_kernel.py::test_a_spec_of_another_version` changed from `[1, 3]` to `[1, 4]`, because criterion 5 makes version 3 followed.
+- **Size**: 8 non-test files.
+  - The 8 files: `attempt_kernel.py`, `build_record.py`, `check_tool.py`, `run_tool.py`, `standin_check.py`, `standin_run.py`, `targets.py`, and `journaled_tool.py` (docstring only; not in `touchesFiles`).
+  - About 650 changed non-test lines, much of it docstrings.
+  - `tests/test_targets.py` is a test file outside `touchesFiles`.
+  - `hilclaw/hw_tool.py` was not changed: its sentence about a version-1-only reader is still true as a general statement.
+- **Nits not taken**:
+  - The output-flag rule is restated in `targets.with_candidate_flags` and not shared with `clang_build`, whose check is private.
+  - `_read`/`_evaluated` are duplicated in `check_tool.py` and `run_tool.py`.
+- **Runtime acceptance items**: none from this slice. ADR-0198's item, a live coder-free round ≥ 1 of a `compile_settings` run, is handed to `PROCESS/RuntimeAcceptance.md` by slice 4.
+- **List assertions amended (D21)**: the three above.
+- **Builds and test runs**: none. Builds are stubs only: no clang, no container, no `claude`, no test run (D25).
+- **Temporary files**: everything was under `${TMPDIR}/hilclaw-driver/T-0555/`, which was removed at the end. No image was made.
+- **Follow-ups**: none new. The planner's follow-ups in this file stand: the second half of slice 2b, then slice 4.
