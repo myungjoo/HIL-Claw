@@ -216,13 +216,17 @@ def test_the_public_names():
         and getattr(value, "__module__", instance.__name__) == instance.__name__
     )
     assert public == [
+        "CANDIDATE_KINDS",
         "Instance",
         "InvalidInstanceError",
+        "KIND_SCHEMA_VERSION",
+        "Kinded",
         "MissingInstanceError",
         "OpSignature",
         "SCHEMA_VERSION",
         "Tolerance",
         "UnsupportedVersionError",
+        "candidate_kind_of",
         "candidates_per_round_of",
         "coder_model_of",
         "draws_of",
@@ -233,12 +237,15 @@ def test_the_public_names():
         "op_signature_of",
         "owner_of",
         "parse",
+        "parse_kinded",
         "project_of",
         "read",
+        "read_kinded",
         "round_budget_of",
         "source_commit_of",
         "tolerance_of",
         "validate",
+        "validate_kinded",
         "wall_clock_budget_s_of",
     ]
     assert SCHEMA_VERSION == 1
@@ -1181,7 +1188,7 @@ def test_nothing_of_the_module_holds_a_tolerance_value():
         if type(value) in (int, float, Tolerance)
     }
 
-    assert numbers == {"SCHEMA_VERSION": 1, "_MAX": MAX}
+    assert numbers == {"SCHEMA_VERSION": 1, "KIND_SCHEMA_VERSION": 2, "_MAX": MAX}
 
 
 # --- happy: the member source_commit (ADR-0022) ---
@@ -9771,3 +9778,158 @@ def test_the_first_broken_rule_is_reported_with_the_injections(where, changes):
 )
 def test_the_order_of_the_checks_inside_injections(entries, where):
     invalid(where, validate, doc(injections=entries))
+
+
+# --- the candidate kind and version 2 (ADR-0198 decisions 7 and 8) ---
+
+
+def kinded(kind="compile_settings", **changes):
+    return doc(schema_version=2, candidate_kind=kind, **changes)
+
+
+def test_a_version_2_document_states_its_kind_beside_the_members_of_version_1():
+    document = kinded(n_max=7, example=[1])
+
+    result = instance.parse_kinded(raw(document))
+
+    assert result == instance.Kinded(
+        2, "compile_settings", 1, parse(raw(doc(n_max=7, example=[1])))
+    )
+    assert result.instance.others == {"example": [1]}
+    assert instance.validate_kinded(document) is None
+
+
+def test_a_version_1_document_is_read_by_the_kinded_entries_as_a_c_kernel_run():
+    result = instance.parse_kinded(raw(doc()))
+
+    assert result == instance.Kinded(1, "c_kernel", 1, parse(raw(doc())))
+    assert instance.validate_kinded(doc()) is None
+
+
+def test_the_approved_list_and_the_version_constants():
+    assert instance.CANDIDATE_KINDS == ("c_kernel", "compile_settings")
+    assert instance.KIND_SCHEMA_VERSION == 2
+    assert instance.Kinded._fields == (
+        "schema_version",
+        "candidate_kind",
+        "layout_version",
+        "instance",
+    )
+
+
+@pytest.mark.parametrize("function", [validate, lambda d: parse(raw(d))])
+def test_the_strict_entries_refuse_version_2_as_another_version(function):
+    with pytest.raises(UnsupportedVersionError, match="^schema_version: 2 is not"):
+        function(kinded())
+
+
+@pytest.mark.parametrize("version", [0, 3, 4, MAX])
+@pytest.mark.parametrize(
+    "function", [instance.validate_kinded, lambda d: instance.parse_kinded(raw(d))]
+)
+def test_the_kinded_entries_refuse_other_versions_first(version, function):
+    with pytest.raises(UnsupportedVersionError, match=f"^schema_version: {version} is"):
+        function({"schema_version": version, "candidate_kind": 7})
+
+
+@pytest.mark.parametrize(
+    "function", [validate, instance.validate_kinded, lambda d: parse(raw(d))]
+)
+@pytest.mark.parametrize("kind", ["c_kernel", "compile_settings", 7])
+def test_a_version_1_document_with_a_kind_is_invalid_at_every_entry(function, kind):
+    message = invalid("candidate_kind: ", function, doc(candidate_kind=kind))
+
+    assert "schema_version 1" in message
+
+
+def test_a_version_2_document_without_a_kind_is_invalid():
+    invalid(
+        "document: lacks the member candidate_kind",
+        instance.validate_kinded,
+        doc(schema_version=2),
+    )
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "c_kernel",
+        "quantization",
+        "Compile_settings",
+        "compile_settings ",
+        "",
+        None,
+        1,
+        True,
+        ["compile_settings"],
+    ],
+)
+def test_a_version_2_document_with_another_kind_is_invalid(kind):
+    message = invalid(
+        "candidate_kind: must be one of compile_settings",
+        instance.validate_kinded,
+        kinded(kind),
+    )
+
+    assert "got" in message
+
+
+def test_the_kind_is_checked_before_the_hw_profile():
+    invalid(
+        "candidate_kind: ",
+        instance.validate_kinded,
+        kinded("c_kernel", hw_profile=REMOVE),
+    )
+    invalid(
+        "document: lacks the member hw_profile",
+        instance.validate_kinded,
+        kinded(hw_profile=REMOVE),
+    )
+
+
+def test_a_version_2_document_is_held_to_the_rules_of_version_1():
+    invalid("n_max: ", instance.validate_kinded, kinded(n_max=4))
+    invalid(
+        "tolerance",
+        lambda d: instance.parse_kinded(raw(d)),
+        kinded(tolerance={"rtol": -1, "atol": 0}),
+    )
+
+
+def test_parse_kinded_refuses_what_parse_refuses_for_the_text():
+    with pytest.raises(TypeError):
+        instance.parse_kinded("{}")
+    invalid(
+        "content: starts with a byte order mark",
+        instance.parse_kinded,
+        b"\xef\xbb\xbf" + raw(kinded()),
+    )
+    invalid("content: cannot be read", instance.parse_kinded, b"")
+
+
+def test_read_kinded_and_the_kind_of_a_run(root):
+    place(root, raw(kinded()))
+    place(root, raw(doc()), f"runs/{OTHER_RUN}/instance.json")
+    before = snapshot(root)
+
+    assert instance.read_kinded(root, RUN) == instance.parse_kinded(raw(kinded()))
+    assert instance.candidate_kind_of(root, RUN) == "compile_settings"
+    assert instance.candidate_kind_of(root, OTHER_RUN) == "c_kernel"
+    assert snapshot(root) == before
+    with pytest.raises(UnsupportedVersionError, match=f"^{FILE}: schema_version: 2"):
+        read(root, RUN)
+    with pytest.raises(UnsupportedVersionError, match=f"^{FILE}: schema_version: 2"):
+        layout_version_of(root, RUN)
+
+
+def test_the_kind_of_a_run_is_not_inferred_from_a_bad_file(root):
+    with pytest.raises(MissingInstanceError):
+        instance.candidate_kind_of(root, RUN)
+    place(root, raw(doc(schema_version=2)))
+    with pytest.raises(InvalidInstanceError, match=f"^{FILE}: document: lacks"):
+        instance.candidate_kind_of(root, RUN)
+    place(root, raw(doc(schema_version=3)))
+    with pytest.raises(UnsupportedVersionError, match=f"^{FILE}: schema_version: 3"):
+        instance.read_kinded(root, RUN)
+    with pytest.raises(layout.InvalidPathValueError):
+        instance.read_kinded(root, "../x")

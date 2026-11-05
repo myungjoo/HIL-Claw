@@ -75,7 +75,16 @@ that no injected input is recorded (decision 2).
 member ``coder_model``, in which a run states the full name of the Claude
 model its coder calls request (decisions 2 and 3), and says that a valid file
 may lack it, that a present one must be valid and that nothing stands in for
-an absent one (decision 4). This
+an absent one (decision 4).
+``ARCHITECTURE/decisions/ADR-0198-od32-compile-settings-candidate-kind.md``
+adds version 2 of the file, the owner's form of HQ-0089: the member
+``candidate_kind``, a value of :data:`CANDIDATE_KINDS` other than
+``c_kernel``, which version 2 requires and version 1 does not admit, so a C
+kernel run keeps writing version 1 (decision 7). :func:`parse`,
+:func:`validate`, :func:`read` and every reader of a member keep reading
+version 1 only, and a version-2 file is another version to them; only
+:func:`parse_kinded`, :func:`validate_kinded`, :func:`read_kinded` and
+:func:`candidate_kind_of` read both (decision 8). This
 module is those rules: :func:`parse` and :func:`validate` are pure functions of
 the bytes of a content and of a parsed document, and :func:`read`,
 :func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
@@ -636,6 +645,8 @@ from typing import NamedTuple
 from hilclaw import json_text, keys, layout
 
 SCHEMA_VERSION = 1
+KIND_SCHEMA_VERSION = 2
+CANDIDATE_KINDS = ("c_kernel", "compile_settings")
 
 _MAX = keys.MAX_INTEGER
 _DEFINED = (
@@ -654,12 +665,13 @@ _DEFINED = (
     "objective",
     "injections",
     "coder_model",
+    "candidate_kind",
 )
 _SECTION = ("key", "record")
 _TOLERANCE = ("rtol", "atol")
 _COMMIT_LENGTHS = (40, 64)
 _COMMIT_CHARACTERS = frozenset("0123456789abcdef")
-_STATED_LAYOUT = {SCHEMA_VERSION: 1}
+_STATED_LAYOUT = {SCHEMA_VERSION: 1, KIND_SCHEMA_VERSION: 1}
 _OBJECTIVE = ("objectives", "constraints")
 _OBJECTIVE_ENTRY = ("type",)
 _OBJECTIVE_TYPES = ("latency_minimisation",)
@@ -667,6 +679,8 @@ _INJECTIONS = {
     "hypothesis": ("id", "kind", "statement"),
     "material": ("id", "kind", "source"),
 }
+_STRICT = (SCHEMA_VERSION,)
+_KINDED = (SCHEMA_VERSION, KIND_SCHEMA_VERSION)
 _NAME_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_")
 
 
@@ -680,7 +694,11 @@ class InvalidInstanceError(ValueError):
 
 
 class UnsupportedVersionError(Exception):
-    """``schema_version`` is an integer other than 1: not damage, and nothing is interpreted."""
+    """``schema_version`` is an integer the entry does not read: not damage, and nothing is interpreted.
+
+    The entries of version 1 read 1 only; those of ADR-0198 decision 8,
+    named ``*_kinded`` and :func:`candidate_kind_of`, read 1 and 2.
+    """
 
 
 class MissingInstanceError(Exception):
@@ -765,6 +783,23 @@ class Instance(NamedTuple):
     others: dict
 
 
+class Kinded(NamedTuple):
+    """Result of :func:`parse_kinded`: a file of version 1 or 2 (ADR-0198 decision 7).
+
+    ``schema_version`` is 1 or 2. ``candidate_kind`` is the member of that
+    name of a version-2 file, or ``"c_kernel"`` for a version-1 file, which
+    states no kind. ``layout_version`` is the layout version the file states,
+    1 for both versions. ``instance`` is the :class:`Instance` of the other
+    members, read by the rules of version 1; its ``others`` never holds
+    ``candidate_kind``.
+    """
+
+    schema_version: int
+    candidate_kind: str
+    layout_version: int
+    instance: Instance
+
+
 def parse(content):
     """Return the :class:`Instance` of ``content``, the bytes of an ``instance.json``.
 
@@ -843,6 +878,22 @@ def parse(content):
     refuses, and :class:`UnsupportedVersionError` as that function does.
     Nothing is returned then, and nothing is repaired.
     """
+    return _checked(_document(content), _STRICT)[2]
+
+
+def parse_kinded(content):
+    """Return the :class:`Kinded` of ``content``, an ``instance.json`` of version 1 or 2.
+
+    The rules of the text and the errors are those of :func:`parse`; the
+    document must be one :func:`validate_kinded` accepts, and
+    :class:`UnsupportedVersionError` is raised for a version other than 1
+    and 2 (ADR-0198 decisions 7 and 8).
+    """
+    version, kind, record = _checked(_document(content), _KINDED)
+    return Kinded(version, kind, _STATED_LAYOUT[version], record)
+
+
+def _document(content):
     if type(content) is not bytes:
         raise TypeError(f"content must be bytes, got {type(content).__name__}")
     if content.startswith(codecs.BOM_UTF8):
@@ -859,7 +910,7 @@ def parse(content):
     except ValueError as error:
         reason = f"content: cannot be read as one JSON text: {error}"
         raise InvalidInstanceError(reason) from None
-    return _checked(document)
+    return document
 
 
 def validate(document):
@@ -943,7 +994,8 @@ def validate(document):
     checked on a parsed value. The thirteen records are ADR-0018, ADR-0020,
     ADR-0022, ADR-0023, ADR-0028, ADR-0031, ADR-0032, ADR-0033, ADR-0034,
     ADR-0046, ADR-0053, ADR-0075 and ADR-0136; ADR-0024 adds no rule of
-    validity.
+    validity. A document of version 1 that holds ``candidate_kind`` is
+    invalid (ADR-0198 decision 7): a C kernel run states no kind.
 
     Raises :class:`InvalidInstanceError` for the first rule found broken,
     naming the place (for example ``hw_profile.record.accelerator``,
@@ -955,7 +1007,21 @@ def validate(document):
     version comes first: an integer other than :data:`SCHEMA_VERSION` raises
     :class:`UnsupportedVersionError` before any other member is looked at.
     """
-    _checked(document)
+    _checked(document, _STRICT)
+
+
+def validate_kinded(document):
+    """Check ``document``, a parsed ``instance.json`` of version 1 or 2 (ADR-0198 decision 7).
+
+    Version 1 is checked as :func:`validate` checks it. Version 2 must hold
+    ``candidate_kind``, exactly a ``str`` of :data:`CANDIDATE_KINDS` other
+    than ``c_kernel``, and its other members are checked by the rules of
+    version 1. The version comes first, then ``candidate_kind``, then the
+    order of :func:`validate`. Raises :class:`UnsupportedVersionError` for an
+    integer version other than 1 and 2, and :class:`InvalidInstanceError` for
+    the first rule found broken.
+    """
+    _checked(document, _KINDED)
 
 
 def read(data_root, run_id):
@@ -977,6 +1043,33 @@ def read(data_root, run_id):
     that is not a regular file is none of the four: by the convention of this
     module it raises :class:`InvalidInstanceError`.
     """
+    return _read(data_root, run_id, parse)
+
+
+def read_kinded(data_root, run_id):
+    """Return the :class:`Kinded` of the run ``run_id``, read from its ``instance.json``.
+
+    The file is read as :func:`read` reads it and given to
+    :func:`parse_kinded`, so a file of version 1 or 2 is read; the errors are
+    those of :func:`read`, :class:`UnsupportedVersionError` for a version
+    other than 1 and 2 (ADR-0198 decision 8).
+    """
+    return _read(data_root, run_id, parse_kinded)
+
+
+def candidate_kind_of(data_root, run_id):
+    """Return the candidate kind of the run ``run_id`` (ADR-0198 decision 7).
+
+    It is the ``candidate_kind`` of what :func:`read_kinded` returns: the
+    member of a version-2 file, or ``"c_kernel"`` for a version-1 file, which
+    states no kind. Raises what :func:`read_kinded` raises, so no kind is
+    returned, and none is inferred, for a missing, unreadable or invalid file
+    or one of a version other than 1 and 2.
+    """
+    return read_kinded(data_root, run_id).candidate_kind
+
+
+def _read(data_root, run_id, parsed):
     path = layout.run_file(data_root, run_id, "instance.json")
     root = Path(data_root)
     if not root.is_dir():
@@ -991,7 +1084,7 @@ def read(data_root, run_id):
     if not stat.S_ISREG(status.st_mode):
         raise InvalidInstanceError(f"{file}: is not a regular file")
     try:
-        return parse(path.read_bytes())
+        return parsed(path.read_bytes())
     except (InvalidInstanceError, UnsupportedVersionError) as error:
         raise type(error)(f"{file}: {error}") from None
 
@@ -1319,7 +1412,7 @@ def _fail(place, rule, value):
     raise InvalidInstanceError(f"{place}: must be {rule}, got {got}")
 
 
-def _checked(document):
+def _checked(document, versions):
     if type(document) is not dict:
         _fail("document", "an object", document)
     if "schema_version" not in document:
@@ -1327,8 +1420,9 @@ def _checked(document):
     version = document["schema_version"]
     if type(version) is not int or not 0 <= version <= _MAX:
         _fail("schema_version", f"an int from 0 to {_MAX}", version)
-    if version != SCHEMA_VERSION:
+    if version not in versions:
         raise UnsupportedVersionError(f"schema_version: {version} is not supported")
+    kind = _candidate_kind(version, document)
     if "hw_profile" not in document:
         raise InvalidInstanceError("document: lacks the member hw_profile")
     key, record = _keyed("hw_profile", document["hw_profile"], keys.hw_profile_key)
@@ -1366,24 +1460,44 @@ def _checked(document):
     if "coder_model" in document:
         model = _coder_model(document["coder_model"])
     others = {name: value for name, value in document.items() if name not in _DEFINED}
-    return Instance(
-        key,
-        record,
-        tolerance,
-        commit,
-        n_max,
-        candidates,
-        op,
-        budget,
-        seconds,
-        owner,
-        project,
-        draws,
-        objective,
-        model,
-        injections,
-        others,
+    return (
+        version,
+        kind,
+        Instance(
+            key,
+            record,
+            tolerance,
+            commit,
+            n_max,
+            candidates,
+            op,
+            budget,
+            seconds,
+            owner,
+            project,
+            draws,
+            objective,
+            model,
+            injections,
+            others,
+        ),
     )
+
+
+def _candidate_kind(version, document):
+    if version == SCHEMA_VERSION:
+        if "candidate_kind" in document:
+            reason = (
+                "is not admitted at schema_version 1: a C kernel run states no kind"
+            )
+            raise InvalidInstanceError(f"candidate_kind: {reason}")
+        return CANDIDATE_KINDS[0]
+    if "candidate_kind" not in document:
+        raise InvalidInstanceError("document: lacks the member candidate_kind")
+    value = document["candidate_kind"]
+    if type(value) is not str or value not in CANDIDATE_KINDS[1:]:
+        _fail("candidate_kind", f"one of {', '.join(CANDIDATE_KINDS[1:])}", value)
+    return value
 
 
 def _keyed(place, section, derive):

@@ -41,6 +41,15 @@ file, the final name of a content and the write of the file are ADR-0029's as
 ADR-0051 carries them over to version 2, and :mod:`hilclaw.spec_file` holds
 them. Reading a spec of another schema version, version 1 among them, is not
 part of this module either (OD-11).
+
+``ARCHITECTURE/decisions/ADR-0198-od32-compile-settings-candidate-kind.md``
+adds version 3, the spec of an attempt with no coder call, in the owner's
+form of HQ-0089 (decisions 4 and 8): the sections and rules of version 2,
+with ``task.build`` required and holding exactly ``candidate_kind``
+(``compile_settings``), ``flags`` (an array of strings) and
+``kernel_round``, ``kernel_candidate`` and ``kernel_attempt`` (the attempt of
+an earlier round whose C kernel the candidate builds). :func:`validate` keeps
+checking version 2 only; :func:`validate_versioned` checks version 2 or 3.
 """
 
 import re
@@ -51,6 +60,7 @@ from functools import partial
 from hilclaw import keys
 
 SCHEMA_VERSION = 2
+SETTINGS_SCHEMA_VERSION = 3
 
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _STRING = re.compile(r"[\x20-\x7e]{1,255}")
@@ -62,6 +72,14 @@ _OBJECTIVE_TYPES = ("latency_minimisation",)
 _TOP = ("schema_version", "id", "hw_profile", "task", "guidance", "feedback")
 _ID = ("run_id", "round", "candidate", "attempt", "candidates", "relation")
 _REF = ("round", "candidate", "attempt")
+_SETTINGS_BUILD = (
+    "candidate_kind",
+    "flags",
+    "kernel_round",
+    "kernel_candidate",
+    "kernel_attempt",
+)
+_SETTINGS_KINDS = ("compile_settings",)
 
 
 class InvalidSpecError(ValueError):
@@ -82,16 +100,43 @@ def validate(spec):
     Raises :class:`InvalidSpecError` for the first rule found broken. A problem
     inside an embedded key record is reported with its path below
     ``hw_profile.record`` or ``task.op_signature.record``. A document of any
-    other ``schema_version``, the integer 1 among them, is refused as any
-    other wrong value.
+    other ``schema_version``, the integers 1 and 3 among them, is refused as
+    any other wrong value.
     """
+    _validated(spec, (SCHEMA_VERSION,))
+
+
+def validate_versioned(spec):
+    """Return the version of ``spec`` when it is a valid spec of version 2 or 3 (ADR-0198 decision 4).
+
+    Version 2 is checked as :func:`validate` checks it. Version 3 is checked
+    by the same rules and, besides: ``task.build`` is present and is an
+    object with exactly ``candidate_kind``, the string ``compile_settings``,
+    ``flags``, an array of strings of 1 to 255 printable ASCII characters
+    (possibly empty), and ``kernel_round``, ``kernel_candidate`` and
+    ``kernel_attempt``, integers of the ranges of ``id.round``,
+    ``id.candidate`` and ``id.attempt``, with ``kernel_round`` less than
+    ``id.round``. That the named attempt exists or gave a kernel is not
+    checked: one spec does not show it. ``spec`` is not modified.
+
+    Raises :class:`InvalidSpecError` for the first rule found broken, a
+    ``schema_version`` other than the integers 2 and 3 among them.
+    """
+    return _validated(spec, (SCHEMA_VERSION, SETTINGS_SCHEMA_VERSION))
+
+
+def _validated(spec, versions):
     _object("", spec, _TOP, ("repair", "ext"))
     version = spec["schema_version"]
-    if type(version) is not int or version != SCHEMA_VERSION:
-        _fail("schema_version", f"the integer {SCHEMA_VERSION}", version)
+    if type(version) is not int or version not in versions:
+        _fail(
+            "schema_version", " or ".join(f"the integer {v}" for v in versions), version
+        )
     attempt = _id(spec["id"])
     _keyed("hw_profile", spec["hw_profile"], keys.hw_profile_key)
     _task(spec["task"])
+    if version == SETTINGS_SCHEMA_VERSION:
+        _settings(spec["task"], spec["id"]["round"])
     guidance = _object("guidance", spec["guidance"], ("techniques",))
     _array("guidance.techniques", guidance["techniques"], _technique)
     feedback = _object("feedback", spec["feedback"], ("attempts",), ("base",))
@@ -104,6 +149,7 @@ def validate(spec):
         _repair(spec["repair"], attempt)
     if "ext" in spec:
         _open_map("ext", spec["ext"])
+    return version
 
 
 def _broken(path, rule):
@@ -220,6 +266,20 @@ def _task(task):
     _objective(task["objective"])
     if "build" in task:
         _open_map("task.build", task["build"], _build_value)
+
+
+def _settings(task, round):
+    if "build" not in task:
+        _broken("task.build", "required member is missing at schema_version 3")
+    build = _object("task.build", task["build"], _SETTINGS_BUILD)
+    _one_of("task.build.candidate_kind", build["candidate_kind"], _SETTINGS_KINDS)
+    _array("task.build.flags", build["flags"], _string)
+    _integer("task.build.kernel_round", build["kernel_round"])
+    _integer("task.build.kernel_candidate", build["kernel_candidate"], 1)
+    _integer("task.build.kernel_attempt", build["kernel_attempt"], 1)
+    if build["kernel_round"] >= round:
+        path = "task.build.kernel_round"
+        _fail(path, f"less than id.round ({round})", build["kernel_round"])
 
 
 def _operand(path, operand, *, sizes):
