@@ -2,7 +2,7 @@
 id: T-0553
 title: ADR-0198 slice 2a for PLAN P3-6 — let the instance start take `candidate_kind` and write `instance.json` version 2 for a `compile_settings` run, version 1 otherwise
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, OD-32, OD-8, FR-1, "PLAN P3-6", HQ-0088, HQ-0089, ADR-0198]
 dependsOn: []
