@@ -178,7 +178,7 @@
 **액터**: 배포 엔지니어 / CI
 
 1. 후보 종류 `compile_settings`, N = 1로 instance를 시작한다. 한 instance는 한 종류의 단일 커널 instance다. (UC-1, FR-1·2, C-6; 종류의 기록 = OD-32 ① 부분 답 [ADR-0198](decisions/ADR-0198-od32-compile-settings-candidate-kind.md), 다른 종류 = OD-32 ①·⑥, 모델 단위 종류 = OD-32 ⑦)
-2. 라운드 0은 S0과 같다: 코더가 C 커널을 bring-up하고 그 커널을 검사·측정한다. 이후 라운드의 후보는 이 커널을 빌드한다. (FR-1 라운드 0·FR-5; 커널의 출처 = OD-32 ⑥ 부분 답, baseline = OD-28)
+2. 라운드 0은 S0과 같다: 코더가 C 커널을 bring-up하고 그 커널을 검사·측정한다. 이후 라운드의 후보는 이 커널을 빌드한다. (FR-1 라운드 0·FR-5; 커널의 출처 = OD-32 ① 부분 답, baseline = OD-28)
 3. 라운드 ≥ 1마다 선택 역할(technique-selector)이 가설 레코드를 쓰고 컴파일 플래그를 골라 그 시도의 spec(버전 3)을 쓰게 한다. 코더는 부르지 않는다. (FR-1·11·17; 쓰는 쪽과 요청 = OD-23·OD-6 확정분 [ADR-0199](decisions/ADR-0199-od32-compile-settings-spec-write-and-round.md))
 4. 평가는 라운드 0의 커널을 대상의 플래그 뒤에 후보의 플래그를 붙여 빌드하고 sim·board 두 지점에서 검사·측정하며, 쓰인 설정을 시도의 `build.json`에 기록한다. (FR-1·9·10; 쓰인 설정의 기록 = OD-6 ②·OD-18 ⑰ (다) 부분 답)
 5. 판정과 라운드 끝은 S0과 같다. 이 종류의 사례와 S6 지표는 아직 없어 사례 쓰기는 거부되고 라운드는 이어진다. (FR-1·3·6·11·17·18; 이 종류의 사례·S6 지표 = FR-18, 등재된 OD 없음)
