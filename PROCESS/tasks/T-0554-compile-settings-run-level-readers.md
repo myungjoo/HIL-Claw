@@ -2,7 +2,7 @@
 id: T-0554
 title: ADR-0198 slice 2b, first half, for PLAN P3-6 — the run-level readers read `instance.json` version 2 as version 1, and the case, cases and catalog tools refuse a run whose kind is not `c_kernel`
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D27, OD-32, OD-8, FR-1, FR-10, "PLAN P3-6", HQ-0089, ADR-0198]
 dependsOn: [T-0553]
