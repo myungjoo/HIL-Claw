@@ -77,3 +77,25 @@ This task is the **second half of slice 2b**: row 3 of ADR-0198 decision 8 ("`sp
 - T-0557 (slice 4, the landing) follows in this batch; PLAN P3-6 is checked after it.
 
 ## Result
+
+- **Outcome**: DONE. PR #372 (Draft, then squash-merged; the merge commit is in the driver's wrap-up). Branch `claude/T-0556-compile-settings-spec-write`. One review round, by a context-isolated `dev-reviewer` (opus), verdict Approve with 3 Nits. Two Nits were fixed after the Approve and needed no new round under D20 (wording and citation only): the `tools.registry` docstring now cites ADR-0199 decision 5, and step 8's paragraph reads "only this paragraph of step 8 applies". The third Nit was not taken. It asked that a round ≥ 1 request carrying neither `techniques` nor `flags` get a message naming both members. Doing that would change the exact message that the existing test `test_the_messages_of_the_techniques_member` asserts, and criterion 6 forbids that edit. ADR-0199 decision 4 records that the message is kept.
+- **Order check (D27)** on `main` `ed354868`: unchanged from the Why. No open PR, no open `nightly-failure` issue, no `실패` RA item. Unresolved HQs are HQ-0081, HQ-0095, HQ-0096 and HQ-0097; none is crossed.
+- **ADR**: `ARCHITECTURE/decisions/ADR-0199-od32-compile-settings-spec-write-and-round.md`. It records:
+  - The request `{run_id, round, candidate 1, attempt 1, flags}`. The tool composes the kernel reference `(0, 1, 1)`.
+  - The document: the round-0 document with `schema_version` 3 and `task.build`, an empty `guidance.techniques`, an empty `feedback.attempts` and no `feedback.base`.
+  - The checks. 1 to 6 apply. A new check 3a holds the form against the kind. 7 to 10 are skipped for `flags`. 11 and 12 go through the versioned entries.
+  - `invalid_request` for the other kind's form. No new kind.
+  - The selector's report line `spec: written` / `spec: <kind>`, and the Round-Manager text.
+  - The A-13 reading: no frame element beyond HQ-0089's.
+  - Registers are left to T-0557. No OD status word changes.
+- **`spec_file` choice** (criterion 2): new entries `final_name_versioned` and `write_versioned` beside the strict ones. `parse`, `final_name` and `write` are unchanged.
+- **Size**: 7 non-test files, about 355 added and 81 removed lines, ADR included. Tests: about 474 added lines.
+- **Existing tests changed**, all listed in the PR body:
+  - D21 list assertions: `TECHNIQUE_SELECTOR_TOOLS`, the not-held list in `test_the_technique_selector_still_judges_no_pair_and_writes_no_verdicts`, the technique-selector tuple in `test_holder_lists_the_real_definition`, the two technique-selector parametrize lists in `test_caller_check.py`, `test_the_public_names_and_the_call_forms`, and the input-schema `properties` in `test_the_definition_is_bound_to_the_source_and_does_not_call_it`.
+  - Criterion 6 (c): `test_the_description_names_every_kind_in_order`.
+- **Tests**: local `pytest` and `ruff check`/`ruff format --check` are green. CI on PR #372 is green: Python 3.11 and 3.14, the coverage gate, C, sh and test presence. `hilclaw/` line coverage is 99% locally (`spec_file` 100%, `spec_tool` 94%), and function coverage stays ≥ 80% (CI coverage gate). `tests/first_run_stubs.py` was not extended. It follows the round text in code, not by parsing, and `test_first_run_end_to_end.py` passes unchanged. A stub compile-settings round would need a compile-settings start and a v3 evaluation in the stub harness, which is more than cheap.
+- **Language**: Python, because the slice extends the existing layer-2 modules `spec_tool` and `spec_file`.
+- **Runtime acceptance**: nothing beyond ADR-0198's item, which T-0557 hands over: a live round ≥ 1 of a `compile_settings` run in which the technique-selector writes the v3 spec, no coder call is made, and evaluation builds round 0's kernel with the flags. That a live selector follows the new section and a live Round-Manager skips step 8 belongs to that item.
+- **§9 notice**: posted on issue #5 after the merge.
+- **Storage**: temporary files were under `${TMPDIR}/hilclaw-driver/T-0556/` and were removed with `rm -r`. No images and no installs.
+- **Follow-ups**: none. T-0557 (slice 4, the landing) follows as planned.
