@@ -12,8 +12,10 @@ from hilclaw import (
     contract_table,
     gemm_contract,
     rmsnorm_bf16_contract,
+    run_identity,
     run_result,
     sdpa_kv_cache_bf16_contract,
+    timings_tool,
     tools,
 )
 from hilclaw.harness import memory_ceiling, timing
@@ -280,7 +282,9 @@ def test_constants_are_those_of_the_record():
         "replay",
     )
     assert SAMPLE_FORMS == ("interval", "reciprocal")
-    assert UNITS == ("ns",)
+    assert UNITS == ("ns", "cycles")
+    assert UNITS == run_identity.UNITS_OF[run_identity.STEP_SIM_RUN_V3]
+    assert UNITS == run_identity.UNITS_OF[run_identity.STEP_BOARD_RUN_V3]
     assert type(UNITS) is tuple
     assert (WITHIN, OVER, NOT_JUDGED, NOT_STATED) == (
         "within",
@@ -836,6 +840,7 @@ def test_module_imports_and_has_no_entry():
         "reprlib",
         "hilclaw",
         "hilclaw.contract_table",
+        "hilclaw.run_identity",
         "hilclaw.harness",
         "hilclaw.harness.memory_ceiling",
     }
@@ -999,8 +1004,40 @@ def test_bad_dims_are_refused(function, entry, value, expected, name):
         (Text("ns"), TypeError),
     ],
 )
-def test_a_unit_other_than_ns_is_refused(value, expected):
+def test_a_unit_outside_the_list_is_refused(value, expected):
     refused(expected, call_completed, "unit", unit=value)
+
+
+@pytest.mark.parametrize("value", ["cycle", "Cycles", "CYCLES", "cycles "])
+def test_a_near_spelling_of_cycles_is_refused(value):
+    refused(ValueError, call_completed, "unit", unit=value)
+
+
+@pytest.mark.parametrize("unit", ["ns", "cycles"])
+def test_a_completed_result_in_each_unit_of_the_list(unit):
+    intervals = [6, 9, 12, 15, 18]
+    result = call_completed(
+        unit=unit, resolution=3, intervals=intervals, memory_bytes=12
+    )
+    assert result["unit"] == unit
+    assert result["resolution"] == 3
+    assert result["intervals"] == intervals
+    assert result["memory_bytes"] == 12
+    assert list(result) == [
+        "outcome",
+        "contract_key",
+        "shape",
+        "n_max",
+        "sample_form",
+        "unit",
+        "resolution",
+        "intervals",
+        "memory_bytes",
+        "ceiling",
+    ]
+    assert timings_tool.timing_problem(result, run_identity.STEP_BOARD_RUN_V3) is None
+    v2_problem = timings_tool.timing_problem(result, run_identity.STEP_BOARD_RUN)
+    assert (v2_problem is None) == (unit == "ns")
 
 
 def test_the_entry_is_checked_before_the_unit_and_after_the_outcome():

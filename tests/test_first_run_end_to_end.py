@@ -536,7 +536,7 @@ def test_round_zero_of_a_first_run_ends_the_run_over(world):
     assert [line["data"]["step"] for line in lines[1::2]] == [
         "correctness_check_sim_v2",
         "correctness_check_board_v2",
-        "board_run_timing_v2",
+        "board_run_timing_v3",
     ]
     assert {(line["round"], line["candidate"], line["attempt"]) for line in lines} == {
         (0, 1, 1)
@@ -570,7 +570,7 @@ def test_round_zero_of_a_first_run_ends_the_run_over(world):
     }
     assert baseline["unit"] == "ns"
     assert sorted(path.name for path in (run / MEASURE).iterdir()) == [
-        "build-log-board_run_timing_v2-01.txt",
+        "build-log-board_run_timing_v3-01.txt",
         "build-log-correctness_check_board_v2-01.txt",
         "build-log-correctness_check_sim_v2-01.txt",
     ]
@@ -678,7 +678,7 @@ def test_round_zero_without_an_attempt_that_stands_ends_its_round(world, kernel)
     assert_hooks_ran_and_passed(requests(log))
     assert_stopped_once(log, 1)
     assert not (run / "rounds/0000/eval").exists()
-    assert not (run / MEASURE / "build-log-board_run_timing_v2-01.txt").exists()
+    assert not (run / MEASURE / "build-log-board_run_timing_v3-01.txt").exists()
     coders = [
         entry for entry in world.docker_runs() if entry.get("container") == "coder"
     ]
@@ -987,7 +987,7 @@ def test_five_rounds_of_a_first_run_end_the_run_over(world):
         assert [line["data"]["step"] for line in mine[1::2]] == [
             "correctness_check_sim_v2",
             "correctness_check_board_v2",
-            "board_run_timing_v2",
+            "board_run_timing_v3",
         ]
         for name, line in zip(
             ("correctness_check_sim_v2", "correctness_check_board_v2"), mine[1:4:2]

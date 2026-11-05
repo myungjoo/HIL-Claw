@@ -25,6 +25,7 @@ GOOD = {
     "contracts": tuple(contract_table.TABLE)[:2],
     "memory_limit_bytes": None,
     "unit": "ns",
+    "units_per_ns": 1,
     "model_run": False,
     "instance_start": False,
 }
@@ -59,6 +60,7 @@ def test_cpu_standin_keeps_the_constants_of_standin_settings():
     assert len(standin.contracts) == 7
     assert standin.memory_limit_bytes is None
     assert standin.unit == "ns"
+    assert standin.units_per_ns == 1
     assert standin.model_run is True
     assert standin.instance_start is True
 
@@ -227,12 +229,51 @@ def test_a_memory_limit_that_is_not_none_or_a_positive_int_is_refused(value, err
 
 
 @pytest.mark.parametrize(
-    ("value", "error"), [("cycles", ValueError), ("", ValueError), (None, TypeError)]
+    ("value", "error"),
+    [("cycle", ValueError), ("us", ValueError), ("", ValueError), (None, TypeError)],
 )
 def test_a_unit_outside_the_units_is_refused(value, error):
     assert value not in run_result.UNITS
     with pytest.raises(error):
         made(unit=value)
+
+
+@pytest.mark.parametrize("factor", [1, 3, 1000])
+def test_a_cycles_target_keeps_its_factor(factor):
+    target = made(unit="cycles", units_per_ns=factor)
+    assert target.unit == "cycles"
+    assert target.units_per_ns == factor
+
+
+@pytest.mark.parametrize("unit", ["ns", "cycles"])
+@pytest.mark.parametrize(
+    ("value", "error"),
+    [
+        (0, ValueError),
+        (-1, ValueError),
+        (-3, ValueError),
+        (True, TypeError),
+        (False, TypeError),
+        (3.0, TypeError),
+        (1.0, TypeError),
+        ("3", TypeError),
+        (None, TypeError),
+    ],
+)
+def test_a_factor_that_is_no_int_of_at_least_1_is_refused(unit, value, error):
+    with pytest.raises(error, match="^units_per_ns"):
+        made(unit=unit, units_per_ns=value)
+
+
+@pytest.mark.parametrize("value", [2, 3, 1000])
+def test_a_factor_other_than_1_with_the_unit_ns_is_refused(value):
+    with pytest.raises(ValueError, match="^units_per_ns must be 1 for the unit ns"):
+        made(unit="ns", units_per_ns=value)
+
+
+def test_the_unit_is_checked_before_the_factor():
+    with pytest.raises(ValueError, match="^unit must be one of ns, cycles"):
+        made(unit="us", units_per_ns=0)
 
 
 @pytest.mark.parametrize("member", ["model_run", "instance_start"])
@@ -267,7 +308,10 @@ def test_virtual_npu_has_the_values_of_adr_0193_decision_4():
     assert {key[1] for key in virtual.contracts} == {"bf16"}
     assert virtual.memory_limit_bytes == 268435456
     assert virtual.memory_limit_bytes == targets.VIRTUAL_NPU_MEMORY_LIMIT_BYTES
-    assert virtual.unit == "ns"
+    assert virtual.unit == "cycles"
+    assert virtual.units_per_ns == 3
+    assert virtual.units_per_ns == targets.VIRTUAL_NPU_CYCLES_PER_NS
+    assert type(targets.VIRTUAL_NPU_CYCLES_PER_NS) is int
     assert virtual.model_run is False
     assert virtual.instance_start is False
 

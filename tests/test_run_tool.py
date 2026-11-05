@@ -11,6 +11,7 @@ import pytest
 
 from hilclaw import (
     build_log,
+    checks_tool,
     contract_table,
     elementwise_add_bf16_contract,
     events,
@@ -35,10 +36,12 @@ from hilclaw import (
     sdpa_kv_cache_bf16_contract,
     swiglu_bf16_contract,
     targets,
+    timings_tool,
     tools,
 )
 from hilclaw.backends import Backend, BackendTable
 from hilclaw.build_log import HandOverRefused, LogKeeper
+from hilclaw.harness import timing_finding
 from hilclaw.harness.measurement import N_MIN
 from hilclaw.journal import EMPTY
 from hilclaw.run_parameters import Bf16TimingParameters, TimingParameters
@@ -47,7 +50,7 @@ from hilclaw.tools import ToolFailure
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOLS = ("sim.run", "board.run")
-STEP = {"sim.run": "sim_run_timing_v2", "board.run": "board_run_timing_v2"}
+STEP = {"sim.run": "sim_run_timing_v3", "board.run": "board_run_timing_v3"}
 
 # Test values only: the package defaults to none of them and recommends none.
 RUN = "run-a"
@@ -300,10 +303,10 @@ def test_board_run_with_the_same_request_is_another_identity(root):
     assert sim.function(request()) == CONVERGED
     assert board.function(request()) == CONVERGED
     assert [line["data"]["step"] for line in lines(root)] == [
-        "sim_run_timing_v2",
-        "sim_run_timing_v2",
-        "board_run_timing_v2",
-        "board_run_timing_v2",
+        "sim_run_timing_v3",
+        "sim_run_timing_v3",
+        "board_run_timing_v3",
+        "board_run_timing_v3",
     ]
     assert (sim.count("operation"), board.count("operation")) == (1, 1)
 
@@ -463,8 +466,8 @@ def test_a_further_execution_writes_its_own_file(root):
     bench.function(request())
     bench.function(request(execution=2))
     assert sorted(path.name for path in attempt_dir(root).iterdir()) == [
-        "build-log-sim_run_timing_v2-01.txt",
-        "build-log-sim_run_timing_v2-02.txt",
+        "build-log-sim_run_timing_v3-01.txt",
+        "build-log-sim_run_timing_v3-02.txt",
     ]
 
 
@@ -781,6 +784,10 @@ def test_building_calls_nothing_and_reads_nothing(tmp_path):
 def test_the_step_of_each_tool_is_its_one_value():
     assert STEP == {tool: run_identity.step_of(tool) for tool in TOOLS}
     assert all(step in layout.BUILD_LOG_STEPS for step in STEP.values())
+    assert STEP == {
+        "sim.run": run_identity.STEP_SIM_RUN_V3,
+        "board.run": run_identity.STEP_BOARD_RUN_V3,
+    }
 
 
 # The bf16 kinds on the mock (ADR-0181 decisions 4, 7 and 9), through a predicate that admits them
@@ -1008,15 +1015,121 @@ def test_fp32_gemm_is_not_covered_at_virtual_npu(tmp_path, tool):
 
 
 @pytest.mark.parametrize(("tool", "kind"), BF16_CASES)
-def test_a_bf16_kind_is_admitted_at_virtual_npu_with_the_unit_ns(tmp_path, tool, kind):
+def test_a_bf16_kind_is_admitted_at_virtual_npu_with_the_unit_cycles(
+    tmp_path, tool, kind
+):
     root, shape, key = target_run(tmp_path, targets.VIRTUAL_NPU, kind)
     bench = Bench(
         root, tool, covers=contract_table.run_covers, accelerator=targets.VIRTUAL_NPU
     )
     result = bench.function(request())
-    assert result == {**CONVERGED, "contract_key": key, "shape": shape}
-    assert result["unit"] == "ns"
+    assert result == {
+        **CONVERGED,
+        "contract_key": key,
+        "shape": shape,
+        "unit": "cycles",
+        "resolution": 3,
+        "intervals": [3000000] * N_MIN,
+    }
+    assert lines(root) == ended(root, tool, {"result": result})
     assert bench.count("covers") == 1
+
+
+def virtual_npu_bench(tmp_path, tool, answer):
+    root, shape, key = target_run(tmp_path, targets.VIRTUAL_NPU, "rmsnorm")
+    bench = Bench(
+        root,
+        tool,
+        script=answering(answer),
+        covers=contract_table.run_covers,
+        accelerator=targets.VIRTUAL_NPU,
+    )
+    return root, bench, {"contract_key": key, "shape": shape}
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_virtual_npu_converts_after_the_judgement_in_ns(tmp_path, tool):
+    root, bench, contract = virtual_npu_bench(
+        tmp_path, tool, (NOT_CONVERGED_REPORT, FIGURE)
+    )
+    result = bench.function(request())
+    factor = targets.VIRTUAL_NPU_CYCLES_PER_NS
+    assert factor == 3
+    assert result == {
+        **CONVERGED,
+        **contract,
+        "outcome": "not_converged",
+        "unit": "cycles",
+        "resolution": 7 * factor,
+        "intervals": [1 * factor, 1000 * factor] * (N_MAX // 2),
+        "memory_bytes": FIGURE,
+    }
+    assert all(type(interval) is int for interval in result["intervals"])
+    (line,) = [event for event in lines(root) if event["kind"] == "step_ended"]
+    assert line["data"]["step"] == STEP[tool]
+    assert line["data"]["result"] == result
+
+
+def test_virtual_npu_keeps_a_resolution_of_0_at_0(tmp_path):
+    zero = b"resolution_ns 0\n" + b"interval_ns 5\n" * N_MIN + b"stop converged\n"
+    _, bench, contract = virtual_npu_bench(tmp_path, "board.run", (zero, None))
+    result = bench.function(request())
+    assert result == {
+        **CONVERGED,
+        **contract,
+        "unit": "cycles",
+        "resolution": 0,
+        "intervals": [15] * N_MIN,
+    }
+
+
+@pytest.mark.parametrize("condition", ["zero_interval", "replay"])
+def test_virtual_npu_breaks_a_report_as_the_judgement_in_ns_does(tmp_path, condition):
+    if condition == "zero_interval":
+        bad = b"resolution_ns 1\n" + b"interval_ns 0\n" * N_MIN + b"stop converged\n"
+    else:
+        bad = report([1, 1000] * (N_MAX // 2), b"converged")
+    _, bench, _ = virtual_npu_bench(tmp_path, "sim.run", (bad, FIGURE))
+    result = bench.function(request())
+    assert result["outcome"] == "broken"
+    assert result["condition"] == condition
+    for name in ("unit", "resolution", "intervals", "memory_bytes"):
+        assert name not in result
+
+
+def test_a_virtual_npu_build_log_is_named_by_the_v3_value(tmp_path):
+    root, _, _ = target_run(tmp_path, targets.VIRTUAL_NPU, "rmsnorm")
+    bench = Bench(
+        root,
+        "board.run",
+        script=handing("exit_status"),
+        covers=contract_table.run_covers,
+        accelerator=targets.VIRTUAL_NPU,
+    )
+    bench.function(request())
+    assert sorted(path.name for path in attempt_dir(root).iterdir()) == [
+        "build-log-board_run_timing_v3-01.txt"
+    ]
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_cpu_standin_and_the_mock_write_ns_unconverted_under_the_v3_value(
+    tmp_path, tool
+):
+    for accelerator in (targets.CPU_STANDIN, mock_backend.NAME):
+        root, _, _ = target_run(tmp_path / accelerator, accelerator)
+        bench = Bench(
+            root,
+            tool,
+            script=answering((NOT_CONVERGED_REPORT, FIGURE)),
+            accelerator=accelerator,
+        )
+        result = bench.function(request())
+        assert result["unit"] == "ns"
+        assert result["resolution"] == 7
+        assert result["intervals"] == [1, 1000] * (N_MAX // 2)
+        assert result["memory_bytes"] == FIGURE
+        assert {line["data"]["step"] for line in lines(root)} == {STEP[tool]}
 
 
 @pytest.mark.parametrize("kind", [None, *BF16_KINDS])
@@ -1054,7 +1167,9 @@ def test_the_unit_is_read_from_the_target_of_the_run(tmp_path, monkeypatch):
 
     def target(name):
         seen.append(name)
-        return types.SimpleNamespace(unit=MARKER, contracts=tuple(contract_table.TABLE))
+        return types.SimpleNamespace(
+            unit=MARKER, units_per_ns=1, contracts=tuple(contract_table.TABLE)
+        )
 
     monkeypatch.setattr(targets, "target", target)
     monkeypatch.setattr(run_result, "UNITS", ("ns", MARKER))
@@ -1084,3 +1199,55 @@ def test_an_error_of_building_the_target_passes(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="refused member"):
         bench.function(request())
     assert (bench.order, lines(root)) == ([], [])
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [(500, 1000), (1000, 500), (1000, 1001)],
+)
+def test_a_run_then_compare_at_virtual_npu_answers_as_at_cpu_standin(
+    tmp_path, first, second
+):
+    answers = {}
+    for accelerator in (targets.CPU_STANDIN, targets.VIRTUAL_NPU):
+        root, _, _ = target_run(tmp_path / accelerator, accelerator, "rmsnorm")
+        for attempt, interval in ((1, first), (2, second)):
+            answer = (report([interval] * N_MIN, b"converged"), None)
+            bench = Bench(
+                root,
+                "board.run",
+                script=answering(answer),
+                covers=contract_table.run_covers,
+                accelerator=accelerator,
+            )
+            bench.function(request(attempt=attempt))
+        refs = [{"round": ROUND, "candidate": 2, "attempt": a} for a in (1, 2)]
+        assert {line["data"]["step"] for line in lines(root)} == {STEP["board.run"]}
+        ended_units = {
+            line["data"]["result"]["unit"]
+            for line in lines(root)
+            if line["kind"] == "step_ended"
+        }
+        assert ended_units == {targets.target(accelerator).unit}
+        answers[accelerator] = timings_tool.compare(
+            RUN,
+            checks_tool.log_lines(root, RUN),
+            timings_tool.METRIC,
+            "board",
+            *refs,
+        )
+    assert answers[targets.VIRTUAL_NPU] == answers[targets.CPU_STANDIN]
+
+
+@pytest.mark.parametrize(("resolution", "found"), [(10, False), (11, True)])
+def test_a_coarse_clock_is_found_on_a_line_virtual_npu_wrote(
+    tmp_path, resolution, found
+):
+    form = report([1000] * N_MIN, b"converged")
+    answer = (form.replace(b"_ns 7", b"_ns %d" % resolution), None)
+    root, bench, _ = virtual_npu_bench(tmp_path, "board.run", answer)
+    result = bench.function(request())
+    assert (result["unit"], result["resolution"]) == ("cycles", resolution * 3)
+    written = events.read(root, RUN).events
+    (line,) = [event for event in written if event["kind"] == "step_ended"]
+    assert timing_finding.line_finding(line) is found

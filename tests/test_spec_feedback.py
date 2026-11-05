@@ -1105,3 +1105,82 @@ def test_an_attempt_undetermined_at_the_board_point_is_no_incumbent(root):
     check(root, 1, SIM, result=PASS)
     check(root, 1, TIMING, result=timing([1] * 5))
     assert base_of(root, 2) == ref(0)
+
+
+TIMING_V3 = "board_run_timing_v3"
+
+
+def timed_v3(root, round, intervals, unit="ns", attempt=1, execution=1):
+    passed(root, round, attempt)
+    result = timing(intervals, unit=unit)
+    check(root, round, TIMING_V3, attempt, execution, result=result)
+
+
+@pytest.mark.parametrize("unit", ["ns", "cycles"])
+def test_board_lines_under_the_v3_value_are_read(root, unit):
+    for q in (0, 1, 2):
+        put_spec(root, q)
+    timed_v3(root, 0, [50] * 5, unit)
+    timed_v3(root, 1, [90, 10, 10, 10, 90], unit)
+    timed_v3(root, 2, [30] * 5, unit)
+    assert base_of(root, 3) == ref(1)
+
+
+def test_v2_and_v3_lines_in_one_unit_are_read_as_one(root):
+    for q in (0, 1, 2):
+        put_spec(root, q)
+    timed(root, 0, [50] * 5)
+    timed_v3(root, 1, [20] * 5)
+    timed(root, 2, [30] * 5)
+    assert base_of(root, 3) == ref(1)
+    assert spec_feedback.incumbent(root, RUN) == ref(1)
+
+
+def test_measurements_in_two_units_give_no_base(root):
+    for q in (0, 1):
+        put_spec(root, q)
+    timed(root, 0, [50] * 5)
+    timed_v3(root, 1, [20] * 5, "cycles")
+    made = spec_feedback.feedback(root, RUN, 2)
+    assert "base" not in made
+    assert made["attempts"] == attempts(root, RUN, 2)
+    assert spec_feedback.incumbent(root, RUN) is None
+
+
+def test_an_attempt_with_a_v2_and_a_v3_measurement_has_two_measurements(root):
+    for q in (0, 1):
+        put_spec(root, q)
+    timed(root, 0, [50] * 5)
+    timed(root, 1, [10] * 5)
+    check(root, 1, TIMING_V3, result=timing([10] * 5))
+    assert base_of(root, 2) == ref(0)
+
+
+def test_a_failure_under_the_v3_value_spoils_a_v2_measurement(root):
+    for q in (0, 1):
+        put_spec(root, q)
+    timed(root, 0, [50] * 5)
+    timed(root, 1, [10] * 5)
+    check(root, 1, TIMING_V3, failure=UNSTARTED)
+    assert base_of(root, 2) == ref(0)
+
+
+@pytest.mark.parametrize(
+    ("step", "unit"),
+    [(TIMING, "cycles"), (TIMING_V3, "ms"), (TIMING_V3, "NS")],
+    ids=["cycles under v2", "ms under v3", "NS under v3"],
+)
+def test_a_unit_its_line_s_value_does_not_admit_makes_no_incumbent(root, step, unit):
+    for q in (0, 1):
+        put_spec(root, q)
+    timed(root, 0, [50] * 5)
+    passed(root, 1)
+    check(root, 1, step, result=timing([10] * 5, unit=unit))
+    assert base_of(root, 2) == ref(0)
+
+
+def test_a_sim_timing_line_under_the_v3_value_is_not_a_board_measurement(root):
+    put_spec(root, 0)
+    passed(root, 0)
+    check(root, 0, "sim_run_timing_v3", result=timing([10] * 5))
+    assert base_of(root, 1) is None

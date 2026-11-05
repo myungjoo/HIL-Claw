@@ -56,8 +56,8 @@ TOOLS = {
 }
 STEPS = {
     "correctness.check": "correctness_check_sim_v2",
-    "sim.run": "sim_run_timing_v2",
-    "board.run": "board_run_timing_v2",
+    "sim.run": "sim_run_timing_v3",
+    "board.run": "board_run_timing_v3",
 }
 PASSED = {
     "outcome": "pass",

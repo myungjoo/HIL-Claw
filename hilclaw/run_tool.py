@@ -6,15 +6,17 @@ decision 6 is the order of a call, with
 decision 5 for the order of moment ④ and the place of the draw (ADR-0064
 decisions 2 and 3). ADR-0061 decisions 3, 4 and 6 are the split between the
 tool function and the operation, ADR-0183 decision 4 the result (the v2
-result of ADR-0063's members), ADR-0065 the form of an answer, ADR-0068 a
+result of ADR-0063's members, which ADR-0196 decision 2 keeps for the v3
+result the tools write), ADR-0065 the form of an answer, ADR-0068 a
 tool failure an operation raises and ADR-0108 the compiler's log of the
 timing build. :func:`tool_function` joins the modules
 that render them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
 
 1. ① The request is checked: the frame, then the member list
    (:func:`hilclaw.run_definition.check`; ADR-0106 decision 3). The
-   ``step`` is the tool's one value (:func:`hilclaw.run_identity.step_of`;
-   ADR-0062 decision 3).
+   ``step`` is the tool's one value, its v3 value
+   (:func:`hilclaw.run_identity.step_of`; ADR-0062 decision 3, ADR-0196
+   decision 2), at every target.
 2. ②, ⓢ and ③: the data root, the layout version stamp and the lookup, as
    :mod:`hilclaw.hw_tool` has them. An ended identity is answered with what
    its end line holds and an open one with ``step_open``; nothing runs.
@@ -48,8 +50,12 @@ that render them, over :func:`hilclaw.hw_tool.stepped_tool_function`:
    dimensions of the admitted run and, for a completed run, the unit and
    the judgement's resolution and intervals (ADR-0183 decision 4). The unit
    is the ``unit`` of the :class:`hilclaw.targets.Target` of the run's
-   ``accelerator`` (ADR-0193 decision 4), and ``"ns"`` for an
-   ``accelerator`` with no target, the mock. A raised request to end passes
+   ``accelerator`` (ADR-0193 decision 4, ADR-0196 decision 3), and ``"ns"``
+   for an ``accelerator`` with no target, the mock. After the judgement in
+   ``ns``, which fixes ``outcome`` and ``condition``, the resolution and
+   every interval are multiplied by the target's ``units_per_ns``, in
+   integers and in their order (ADR-0196 decision 5); the mock's factor is
+   1. ``memory_bytes`` is not converted. A raised request to end passes
    through, and nothing is written.
 7. ⑦ The end line is appended with the result, or with the ``failure`` of a
    call that made none: ``operation_answer_invalid`` for an answer of
@@ -81,7 +87,7 @@ Choices that are this module's own and no rule of a record:
   ``"board.run"`` as :func:`hilclaw.run_identity.step_of` does, before
   anything else, and a ``seeds`` or a ``covers`` that is not callable last.
 * What the place before the start line hands to the step is an object of a
-  private class with three slots, alive for that call only. Its ``repr``
+  private class with four slots, alive for that call only. Its ``repr``
   shows none of them.
 * The output path is the :class:`pathlib.Path` that
   :func:`hilclaw.layout.attempt_artefact` returns for the data root of the
@@ -162,7 +168,7 @@ _OUTCOMES = {
     measurement.State.CONVERGED: run_result.CONVERGED,
     measurement.State.NOT_CONVERGED: run_result.NOT_CONVERGED,
 }
-(_UNIT,) = run_result.UNITS
+_MOCK_UNIT = "ns"
 _FP32_GEMM = ("gemm", "fp32")
 _CONDITIONS = {
     timing.Broken.REPORT_FORM: "report_form",
@@ -172,12 +178,13 @@ _CONDITIONS = {
 
 
 class _Drawn:
-    __slots__ = ("admitted", "seed", "unit")
+    __slots__ = ("admitted", "seed", "unit", "units_per_ns")
 
-    def __init__(self, admitted, seed, unit):
+    def __init__(self, admitted, seed, unit, units_per_ns):
         self.admitted = admitted
         self.seed = seed
         self.unit = unit
+        self.units_per_ns = units_per_ns
 
 
 def tool_function(tool, *, source, table, seeds, covers):
@@ -228,8 +235,11 @@ def tool_function(tool, *, source, table, seeds, covers):
     def admit(request, read):
         target = _target_of(read.hw_profile["accelerator"])
         admitted = run_admission.admit(read, covers=_at_target(covers, target))
-        unit = _UNIT if target is None else target.unit
-        return _Drawn(admitted, run_seed.draw(seeds), unit)
+        if target is None:
+            unit, factor = _MOCK_UNIT, 1
+        else:
+            unit, factor = target.unit, target.units_per_ns
+        return _Drawn(admitted, run_seed.draw(seeds), unit, factor)
 
     def perform(data_root, request, hw_profile, operation, drawn):
         return _perform(step, data_root, request, hw_profile, operation, drawn)
@@ -306,7 +316,7 @@ def _perform(step, data_root, request, hw_profile, operation, drawn):
     except build_log.BuildLogUnwritable as unwritable:
         kind, message = KIND_BUILD_LOG_UNWRITABLE, unwritable.message
     else:
-        return {}, _result(answer, admitted, drawn.unit)
+        return {}, _result(answer, admitted, drawn.unit, drawn.units_per_ns)
     raise journaled_step.StepFailed({}, kind, message)
 
 
@@ -320,7 +330,7 @@ def _parameters(admitted, seed):
     )
 
 
-def _result(answer, admitted, unit):
+def _result(answer, admitted, unit, units_per_ns):
     contract = (admitted.entry, admitted.dims)
     common = {
         "n_max": admitted.n_max,
@@ -338,8 +348,8 @@ def _result(answer, admitted, unit):
         _OUTCOMES[judgement.state],
         *contract,
         unit=unit,
-        resolution=judgement.resolution_ns,
-        intervals=judgement.intervals_ns,
+        resolution=judgement.resolution_ns * units_per_ns,
+        intervals=[interval * units_per_ns for interval in judgement.intervals_ns],
         memory_bytes=answer.memory_bytes,
         **common,
     )

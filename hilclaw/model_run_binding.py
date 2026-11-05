@@ -15,9 +15,11 @@ first refusal ends the call:
    :data:`TWO_TARGETS`, as all call sites of one binding have one target.
 2. Reads the incumbent with :func:`hilclaw.spec_feedback.incumbent`, the rule
    of ADR-0184 decision 2 over all rounds of the run (decision 2).
-3. Refuses a run whose journal holds a timing step of an attempt whose
-   ``spec.json`` is gone: the incumbent read does not see that attempt, so the
-   choice might otherwise fall silently on another one (decision 2).
+3. Refuses a run whose journal holds a board timing step, under
+   ``board_run_timing_v2`` or ``board_run_timing_v3`` (ADR-0196 decision 4),
+   of an attempt whose ``spec.json`` is gone: the incumbent read does not
+   see that attempt, so the choice might otherwise fall silently on another
+   one (decision 2).
 4. Reads the kernel with :func:`hilclaw.attempt_kernel.kernel_reference`, with
    the build settings the caller gives (decision 6).
 
@@ -116,6 +118,7 @@ REASONS = (
 
 _LATENCY_ONLY = {"objectives": [{"type": "latency_minimisation"}], "constraints": []}
 _STEP_KINDS = (journal.STEP_STARTED, journal.STEP_ENDED)
+_BOARD_STEPS = (run_identity.STEP_BOARD_RUN, run_identity.STEP_BOARD_RUN_V3)
 
 
 class RunBindingError(Exception):
@@ -263,7 +266,7 @@ def _timed_attempt_without_spec(data_root, run_id):
             message = f"{run_id}: a step line of the journal is refused"
             raise tools.ToolFailure(tools.KIND_RUN_FILE_INVALID, message) from error
         if (
-            identity.step == run_identity.STEP_BOARD_RUN
+            identity.step in _BOARD_STEPS
             and identity.candidate == 1
             and identity.attempt is not None
             and not os.path.lexists(

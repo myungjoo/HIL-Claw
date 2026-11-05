@@ -116,7 +116,7 @@ def run_instance(world, kind, choices=CHOICES):  # noqa: F811
         ]
         assert [line["data"]["step"] for line in ended] == [
             *CHECKS,
-            "board_run_timing_v2",
+            "board_run_timing_v3",
         ]
         for name, line in zip(CHECKS, ended):
             assert line["data"]["result"]["outcome"] == "pass", line
@@ -193,7 +193,7 @@ def test_a_wrong_kernel_leaves_its_attempt_not_standing(world):  # noqa: F811
     assert not (run / "rounds/0000/eval").exists()
     coders = [e for e in world.docker_runs() if e.get("container") == "coder"]
     assert len(coders) == 1
-    timing_log = run / first_run.MEASURE / "build-log-board_run_timing_v2-01.txt"
+    timing_log = run / first_run.MEASURE / "build-log-board_run_timing_v3-01.txt"
     assert not timing_log.exists()
     first_run.assert_committed_clean(world, run_id)
 

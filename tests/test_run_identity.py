@@ -152,10 +152,10 @@ def test_the_step_values_and_the_numbers_are_tuples():
 
 
 def test_the_step_follows_from_the_tool():
-    assert step_of("sim.run") == STEP_SIM_RUN
-    assert step_of("board.run") == STEP_BOARD_RUN
+    assert step_of("sim.run") == STEP_SIM_RUN_V3
+    assert step_of("board.run") == STEP_BOARD_RUN_V3
     assert all(tool in backends.HW_TOOLS for tool in TOOLS)
-    assert {step_of(tool) for tool in TOOLS} == set(STEPS[:2])
+    assert {step_of(tool) for tool in TOOLS} == set(STEPS[2:])
 
 
 def checked(step, asked):
@@ -253,7 +253,7 @@ def test_step_of_returns_a_step_value_or_refuses():
             returned.append(step_of(tool))
         except (TypeError, ValueError) as error:
             assert type(error) in (TypeError, ValueError)
-    assert returned == [STEP_SIM_RUN, STEP_BOARD_RUN]
+    assert returned == [STEP_SIM_RUN_V3, STEP_BOARD_RUN_V3]
     assert set(returned) <= set(STEPS)
 
 
@@ -337,11 +337,12 @@ def test_a_v3_value_is_a_name_of_its_own(step, literal):
     assert step not in (STEP_SIM_RUN, STEP_BOARD_RUN)
 
 
-def test_step_of_still_returns_the_v2_values():
-    assert step_of("sim.run") == "sim_run_timing_v2"
-    assert step_of("board.run") == "board_run_timing_v2"
-    assert STEP_SIM_RUN_V3 not in {step_of(tool) for tool in TOOLS}
-    assert STEP_BOARD_RUN_V3 not in {step_of(tool) for tool in TOOLS}
+def test_step_of_returns_the_v3_values_and_never_a_v2_value():
+    assert step_of("sim.run") == "sim_run_timing_v3"
+    assert step_of("board.run") == "board_run_timing_v3"
+    assert STEP_SIM_RUN not in {step_of(tool) for tool in TOOLS}
+    assert STEP_BOARD_RUN not in {step_of(tool) for tool in TOOLS}
+    assert all("cycles" in UNITS_OF[step_of(tool)] for tool in TOOLS)
 
 
 def test_the_units_of_each_value():

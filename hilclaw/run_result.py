@@ -1,10 +1,13 @@
-"""The v2 result object of a call of ``sim.run`` or ``board.run`` (ADR-0183 decision 4).
+"""The v3 result object of a call of ``sim.run`` or ``board.run`` (ADR-0196 decision 2).
 
 ``ARCHITECTURE/decisions/ADR-0183-od18-tool-result-format-v2.md`` decision 4
 fixes the members of a v2 result of either run tool and closes the member
 list: a result has ``outcome``, ``condition``, ``contract_key``, ``shape``,
 ``n_max``, ``sample_form``, ``unit``, ``resolution``, ``intervals``,
-``memory_bytes``, ``ceiling`` and ``bound``, and no other. One list serves
+``memory_bytes``, ``ceiling`` and ``bound``, and no other.
+``ARCHITECTURE/decisions/ADR-0196-od32-measurement-unit-list-and-run-result-v3.md``
+decision 2 keeps that list for the v3 result, with ``unit`` a value of the
+approved open list of units in place of ``"ns"`` alone. One list serves
 both tools and every contract of :data:`hilclaw.contract_table.TABLE`.
 ``outcome``, ``condition``, ``n_max``, ``sample_form``, ``memory_bytes``,
 ``ceiling`` and ``bound`` are those of ADR-0063 (decisions 2, 3, 5, 6 and
@@ -17,7 +20,10 @@ This module renders that table as plain Python values:
 * :data:`CONDITIONS`: the seven values of ``condition``, in the order of
   ADR-0063 decision 3.
 * :data:`SAMPLE_FORMS`: the two values of ``sample_form``.
-* :data:`UNITS`: the values of ``unit``, ``"ns"`` alone (HQ-0078 ⑤).
+* :data:`UNITS`: the values of ``unit``, those
+  :data:`hilclaw.run_identity.UNITS_OF` gives the v3 values (HQ-0090 (a)).
+  ``unit`` states ``resolution`` and ``intervals`` only; ``memory_bytes`` is
+  bytes in every unit (HQ-0090 (가)).
 * :data:`WITHIN`, :data:`OVER`, :data:`NOT_JUDGED` and :data:`NOT_STATED`: the
   four values of ``ceiling``.
 * :func:`completed`: the result of a completed run of a covering entry, from
@@ -69,7 +75,7 @@ has no command-line entry.
 import inspect
 import reprlib
 
-from hilclaw import contract_table
+from hilclaw import contract_table, run_identity
 from hilclaw.harness import memory_ceiling
 
 CONVERGED = "converged"
@@ -85,7 +91,7 @@ CONDITIONS = (
     "replay",
 )
 SAMPLE_FORMS = ("interval", "reciprocal")
-UNITS = ("ns",)
+UNITS = run_identity.UNITS_OF[run_identity.STEP_SIM_RUN_V3]
 WITHIN = "within"
 OVER = "over"
 NOT_JUDGED = "not_judged"
@@ -112,7 +118,7 @@ def completed(
     sample_form,
     bound,
 ):
-    """Return the v2 result of a completed run of ``entry``'s contract whose report ended in ``outcome``.
+    """Return the v3 result of a completed run of ``entry``'s contract whose report ended in ``outcome``.
 
     The result is a new ``dict`` with exactly the members ``outcome``,
     ``contract_key``, ``shape``, ``n_max``, ``sample_form`` (as in
@@ -170,7 +176,7 @@ def completed(
 
 
 def broken(condition, entry, dims, *, n_max, sample_form, bound):
-    """Return the v2 result of a broken run of ``entry``'s contract that failed ``condition`` first.
+    """Return the v3 result of a broken run of ``entry``'s contract that failed ``condition`` first.
 
     The result is a new ``dict`` with exactly the members ``outcome``
     (:data:`BROKEN`), ``condition``, ``contract_key``, ``shape``, ``n_max``,

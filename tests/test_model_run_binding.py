@@ -493,6 +493,7 @@ def second_target(model_run=True):
         contracts=standin.contracts[1:],
         memory_limit_bytes=1 << 20,
         unit="ns",
+        units_per_ns=1,
         model_run=model_run,
         instance_start=False,
     )
@@ -583,3 +584,34 @@ def test_a_malformed_table_is_refused_before_anything_is_read(root, table):
     with pytest.raises(TypeError) as caught:
         binding_from_runs(root, {"qkv": "gone"}, flags=FLAGS, table=table)
     assert caught.value.parameter == "table"
+
+
+def test_a_v3_measurement_is_read_and_binds(root):
+    write_instance(root)
+    measured(root, 0, 50)
+    write_attempt(root, 1)
+    step(root, 1, SIM, result=PASS)
+    step(root, 1, BOARD, result=PASS)
+    step(root, 1, "board_run_timing_v3", result=timing([20] * 5))
+    assert bound(root) == kernel_of(root, 1)
+
+
+@pytest.mark.parametrize("value", ["board_run_timing_v2", "board_run_timing_v3"])
+def test_an_attempt_timed_under_either_board_value_without_its_spec_is_named(
+    root, value
+):
+    write_instance(root)
+    measured(root, 0, 50)
+    write_attempt(root, 1)
+    step(root, 1, value, result=timing([20] * 5))
+    layout.attempt_artefact(root, RUN, 1, 1, 1, "spec.json").unlink()
+    refused(root, ATTEMPT_WITHOUT_SPEC)
+
+
+def test_a_sim_timing_line_without_its_spec_is_not_a_timed_attempt(root):
+    write_instance(root)
+    measured(root, 0, 50)
+    write_attempt(root, 1)
+    step(root, 1, "sim_run_timing_v3", result=timing([20] * 5))
+    layout.attempt_artefact(root, RUN, 1, 1, 1, "spec.json").unlink()
+    assert bound(root) == kernel_of(root, 0)
