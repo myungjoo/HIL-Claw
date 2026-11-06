@@ -526,7 +526,7 @@
 - 출처: `P2-9` (근거 task T-0520, ADR-0074; 등록 2026-10-31)
 - 내용:
 
-  PLAN P2-9. S6 수용 기준 측정: 오너가 런타임 머신에서 같은 키·target·tolerance·N·budget으로 run을 두 번(첫 run과 두 번째 run) 수행하고 `python -m hilclaw.s6_metric <first_run_id> <second_run_id>`로 판정한다(met·not met·not applicable, ADR-0074). 드라이버의 스텁 `claude` 검증 run, nightly 루틴의 run, 테스트 run(D25)은 첫 run으로도 두 번째 run으로도 쓰지 않는다. 몇 쌍을 돌리고 판정을 어떻게 합치는지, 대조 run과 시간 상한은 HQ-0081의 답을 따른다.
+  PLAN P2-9. S6 수용 기준 측정: 오너가 런타임 머신에서 같은 키·target·tolerance·N·budget으로 run을 두 번(첫 run과 두 번째 run) 수행하고 `python -m hilclaw.s6_metric <first_run_id> <second_run_id>`로 판정한다(met·not met·not applicable, ADR-0074). 드라이버의 스텁 `claude` 검증 run, nightly 루틴의 run, 드라이버 executor의 테스트 run(D25)은 첫 run으로도 두 번째 run으로도 쓰지 않으며, P2-9 전용 base에서 오너가 런타임 진입점으로 시작한 run이 P2-9의 run이다. 규모([오너 HQ-0081, 2026-11-06](https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6685955211)): 쌍마다 새 data root(도구 보고의 첫 run `cases_read_runs`가 빈 목록이어야 쌍으로 센다), 적용 가능한 쌍(met 또는 not met)을 한 번에 하나씩 최대 5쌍 — met 4쌍이면 S6 met, not met 2쌍이면 S6 not met로 그 시점에 끝내고, `not applicable`은 세지 않고 다음 쌍으로 교체; 대조 run 없음; 교체 포함 최대 7쌍(14 run), 하루 1쌍 이하, nightly 발화(KST 03:00) 전후 1시간 회피, 시간·토큰 상한 없음; 구성은 nightly 구성 그대로 2026-11-30(KST)까지(그 뒤 `hilclaw.nightly`는 발화마다 새 data root라 쌍을 만들 수 없다). 2026-10-30의 `mvp-base4` 쌍(dcbdbff)은 pilot이며 세지 않는다. 통합자 독해(오너의 말이 아님): 상한 안에서 종료 조건에 이르지 못하면 전체를 not applicable로 기록해 뒤에 다시 한다; 닫을 때 쌍별 판정과 종료 조건은 #5에 남긴다(D22).
 
 ### RA-0060
 
