@@ -2,7 +2,7 @@
 id: T-0558
 title: Nightly failure issue #373 (turn_start/stopped_at_check/not_logged_in) — judge the cause of report 20261110T180351Z and fix a code defect behind it, or return BLOCKED nightly-environment
 phase: P3
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: code
 coversReq: ["nightly #373 20261110T180351Z", D17, D24, "PLAN P2-10"]
 dependsOn: []
@@ -14,7 +14,7 @@ touchesFiles:
   - tests/test_selfcheck_login.py
   - tests/test_turn_start.py
 estimatedSize: {loc: 80, files: 3}
-hq: []
+hq: [HQ-0099]
 ---
 ## Why
 
@@ -55,3 +55,10 @@ NIGHTLY §6 and DRIVER §6 D24 ② put a nightly failure issue ahead of PLAN ite
 ## Follow-ups
 
 ## Result
+
+Outcome: BLOCKED, reason `nightly-environment` (HQ-0099). Nothing landed (no branch push, no commit, no PR). Review rounds: 0. No task temp dir or work image was created. No runtime acceptance items.
+
+Judgement (NIGHTLY §5, dev-item-address step 1), from the filtered read of NIGHTLY §3 (one accepted report, `20261110T180351Z`; first `nightly-failure` issue; landed tasks for #373: 0, so the §7 repeat limit does not apply):
+- The check result line has `login.exit_status` = 1, `auth_method` = `none`, `timed_out` false: `claude auth status` itself ran, exited 1 and printed `authMethod: "none"`. `selfcheck_login.read` maps exit status 1 to `not_logged_in` per ADR-0054 and reads no other member, so a mapping error cannot produce this result.
+- `hilclaw/nightly.py` `_child_environment` passes the caller's whole environment, removing only `CLAUDECODE` and `CLAUDE_CODE_ENTRYPOINT` and adding the HILCLAW data variables and `PYTHONPATH`; `HOME`, `CLAUDE_CONFIG_DIR`, `PATH` and login variables are kept. `turn_start`, `selfcheck` and `local_run` do not change the environment, and `claude auth status` does not depend on the working directory. `prepare` found `claude` on the WSL `PATH`.
+- No code path makes a logged-in `claude` read as logged out. Likely cause: the routine runs on Windows while the entry point runs inside WSL 2 (NIGHTLY §1); the WSL user's `claude` keeps its own `~/.claude`, so a Windows-side login does not reach it.
