@@ -14,8 +14,8 @@ decision 7 or of the version 3 of
 ``ARCHITECTURE/decisions/ADR-0200-od33-given-code-evaluation.md`` decision 6,
 which the start writes for given code) and :func:`hilclaw.layout.run_file`
 (the path). The temporary file is ``instance.json.<token>.tmp`` in the run
-directory (decision 6). The last step is a hard link from the temporary name to the final name,
-followed by the removal of the temporary name. There is no fallback to a
+directory (decision 6). The last step is a hard link from the temporary name
+to the final name, followed by the removal of the temporary name. There is no fallback to a
 replacing rename: where the link is not possible the write fails and has put
 nothing under the final name.
 
