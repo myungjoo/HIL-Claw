@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import mcp_front, turn_definition, turn_loop
+from hilclaw import mcp_front, turn_definition, turn_loop, turn_permissions
 from hilclaw import tools as tools_module
 from hilclaw.turn_definition import DIRECTORIES, LAYOUT, PROMPT, SOURCE, put
 
@@ -1432,3 +1432,51 @@ def test_the_stop_follows_step_8_in_a_compile_settings_run():
         "In a `compile_settings` run it follows step 8's last paragraph when no "
         "spec was written (ADR-0199 decision 5)"
     ) in later
+
+
+def test_step_2_reads_the_instance_when_the_entry_did_not():
+    step = round_step(2)
+    head = step.split("Otherwise delegate to `coder-driver`", 1)[0]
+    assert "as entry step 6 read it in this turn" in head
+    assert (
+        "did not reach entry step 6, from a call of `mcp__hilclaw__instance_read`"
+        in head
+    )
+    assert (
+        "If that call fails with any kind, report the kind in one line and come to the stop"
+        in head
+    )
+    assert "If it holds `given_code`, do the last paragraph of this step" in head
+    assert "ADR-0200 decision 4 (a)" in head
+    assert "in round 0 it follows step 2 as it says" in the_stop()
+    assert "the failed read of `instance.json` has been reported" in the_stop()
+
+
+def test_step_2_places_the_given_code_and_makes_no_coder_call():
+    step = round_step(2)
+    given = step.split(
+        "In a run whose `instance.json` holds `given_code`, the given", 1
+    )[1]
+    assert "no coder call is made: call `mcp__hilclaw__given_place` once" in given
+    assert "Delegate nothing to `coder-driver`, have no spec written" in given
+    assert "ask for no repair (ADR-0200 decision 4 (a))" in given
+    assert "When it returns its result" in given
+    assert "go on to step 3, and steps 3 to 5 and the closing steps follow" in given
+    assert "ADR-0142 decisions 3 to 6" in given
+    failed = given.split("When it fails with any kind", 1)[1]
+    assert 'go to "The closing steps of a round"' in failed
+    assert "ADR-0185 decision 2" in failed
+    assert "come to the stop" not in given
+    assert step.index("Otherwise delegate to `coder-driver`") < step.index(given)
+
+
+def test_given_place_is_named_only_in_step_2_and_the_tool_bullet():
+    text = prompt_text()
+    naming = [s for s in re.split(r"(?<=\.) ", text) if "given_place" in s]
+    assert naming[0].startswith("Use `mcp__hilclaw__given_place`, your run id as")
+    assert "only as the last paragraph of step 2 says" in naming[0]
+    assert all("given_place" not in round_step(n) for n in range(3, 12))
+    assert "given_place" not in between(
+        text, "## The entry of a turn", "## The round steps"
+    )
+    assert "mcp__hilclaw__given_place" in turn_permissions.ROUND_MANAGER_TOOLS

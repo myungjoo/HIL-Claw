@@ -48,6 +48,9 @@ first-case run (ADR-0118 decisions 1 and 2).
   decision 6), to `evaluator`, only as steps 9, 10 and 12 say, and to
   `experiment-runner`, only as step 11 says (ADR-0172 decisions 3 to 5),
   and to `technique-selector`, only as step 6 says (ADR-0132 decision 7).
+  Use `mcp__hilclaw__given_place`, your run id as `run_id`, only as the last
+  paragraph of step 2 says, to place the given code of your run (ADR-0200
+  decision 4 (a); ADR-0201 decision 2).
   Do not call
   `mcp__hilclaw__spec_write` or `mcp__hilclaw__coder_run` yourself, and write
   no spec or kernel by any other means (ADR-0126 decision 2; ADR-0141
@@ -134,7 +137,13 @@ before any other step of it:
    on and do not report the values. If the call fails with any kind, report
    the kind in one line and go on: do not end the session, do not call it
    again in this turn and do not store the files another way (ADR-0134 decisions 5 and 6).
-2. **Round 0 only.** Delegate to `coder-driver` with the `Agent` tool and
+2. **Round 0 only.** First tell whether your run's `instance.json` holds
+   `given_code`: as entry step 6 read it in this turn, or, when this turn
+   did not reach entry step 6, from a call of `mcp__hilclaw__instance_read`,
+   your run id as `run_id`. If that call fails with any kind, report the
+   kind in one line and come to the stop. If it holds `given_code`, do the
+   last paragraph of this step in place of the rest (ADR-0200 decision
+   4 (a); ADR-0201 decision 2). Otherwise delegate to `coder-driver` with the `Agent` tool and
    wait for its report. The message names your run id and the tuple
    `round` 0, `candidate` 1, `attempt` 1, and no place (ADR-0141 decision 6;
    ADR-0126 decision 6; ADR-0123 decisions 2 and 4). Whatever it reports, a
@@ -149,6 +158,18 @@ before any other step of it:
    can read) come to the stop, and read nothing more into the kind or the
    names (ADR-0142 decision 2). In a round ≥ 1 there are no steps 2 to 5:
    step 6 follows step 1.
+   In a run whose `instance.json` holds `given_code`, the given code is the
+   attempt of round 0 and no coder call is made: call
+   `mcp__hilclaw__given_place` once, your run id as `run_id`. Delegate
+   nothing to `coder-driver`, have no spec written, write no kernel by any
+   other means and ask for no repair (ADR-0200 decision 4 (a)). Whatever it
+   answers, its result or a failure kind, report it in one line. When it
+   returns its result, the attempt `round` 0, `candidate` 1, `attempt` 1
+   holds the given code: go on to step 3, and steps 3 to 5 and the closing
+   steps follow as for an attempt of `coder-driver` (ADR-0200 decision
+   4 (a); ADR-0142 decisions 3 to 6). When it fails with any kind, the round
+   has no attempt that stands: go to "The closing steps of a round"
+   (ADR-0200 decision 4 (a); ADR-0185 decision 2).
 3. **Round 0 only.** Delegate to `evaluator` with the `Agent` tool and wait
    for its report. The message names your run id, the tuple `round` 0,
    `candidate` 1, `attempt` 1, the point `sim`, and no place and no
@@ -245,7 +266,9 @@ before any other step of it:
     can read) come to the stop (ADR-0172 decision 5; FR-17).
 
 The stop: in round 0 it follows step 2 as it says, once the report that
-step waits for has come (ADR-0143 decision 7; ADR-0185 decision 2). In
+step waits for has come or the failed read of `instance.json` has been
+reported (ADR-0143 decision 7; ADR-0185 decision 2; ADR-0200 decision
+4 (a)). In
 other rounds it follows step 7 after a failed read, once its kind is
 reported (ADR-0132 decision 6), and step 8 or step 12 as they say, once the
 one-line report is made (ADR-0171 decision 6; ADR-0172 decisions 2, 5

@@ -184,6 +184,7 @@ def test_the_default_registry_holds_the_definitions(root):
         "checks.read",
         "coder.run",
         "correctness.check",
+        "given.place",
         "hypotheses.read",
         "hypotheses.write",
         "instance.read",
@@ -722,6 +723,7 @@ def test_the_mcp_front_lists_the_blob_tools_among_the_fixed_set(configured):
     assert coder["name"] == "coder_run"
     assert correctness["name"] == "correctness_check"
     assert [tool["name"] for tool in listed["result"]["tools"][9:]] == [
+        "given_place",
         "hypotheses_read",
         "hypotheses_write",
         "instance_read",

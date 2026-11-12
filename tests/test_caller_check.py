@@ -630,3 +630,10 @@ def test_the_real_technique_selector_is_refused_what_it_does_not_hold(session, t
 
 def test_the_main_session_now_reads_hypotheses(session):
     passes(payload("mcp__hilclaw__hypotheses_read"), session)
+
+
+def test_only_the_main_session_holds_given_place(session):
+    tool = "mcp__hilclaw__given_place"
+    passes(payload(tool), session)
+    for ids in (EVALUATOR_ID, CODER_ID, RUNNER_ID, SELECTOR_ID):
+        refuses(payload(tool, **ids), session, named(tool))

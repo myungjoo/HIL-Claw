@@ -496,6 +496,7 @@ DEFAULT_SET = (
     "checks.read",
     "coder.run",
     "correctness.check",
+    "given.place",
     "hypotheses.read",
     "hypotheses.write",
     "instance.read",

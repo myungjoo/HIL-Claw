@@ -411,6 +411,7 @@ class _Turn:
             )
             if not written.ok:
                 self.end(f"state.write failed: {written.kind}")
+            self.instance = None
             self.round_steps(0)
             return
         if not read.ok:
@@ -423,7 +424,8 @@ class _Turn:
         stated = self.call(self.main, "instance_read", run_id=run_id)
         if not stated.ok:
             self.end(f"instance.read failed: {stated.kind}")
-        budget = stated.result["instance"].get("round_budget")
+        self.instance = stated.result["instance"]
+        budget = self.instance.get("round_budget")
         if budget is None:
             self.end("the instance states no round_budget")
         if state["round"] >= budget:
@@ -454,6 +456,20 @@ class _Turn:
         self.closing_steps(round_)
 
     def round_zero(self, tuple_):
+        if self.instance is None:
+            stated = self.call(self.main, "instance_read", run_id=self.run_id)
+            if not stated.ok:
+                self.end(f"instance.read failed: {stated.kind or 'refused'}")
+            self.instance = stated.result["instance"]
+        if "given_code" in self.instance:
+            placed = self.call(self.main, "given_place", run_id=self.run_id)
+            self.report(f"given.place: {placed.result or placed.kind or 'refused'}")
+            if placed.ok and self.checks_stand(tuple_):
+                measured = self.delegate(
+                    "experiment-runner", tuple_, self.experiment_runner
+                )
+                self.report(f"experiment-runner: {measured}")
+            return
         coded = self.delegate("coder-driver", tuple_, self.coder_driver)
         self.report(f"coder-driver: {coded}")
         if coded.get("tool") != "coder_run":

@@ -468,7 +468,7 @@ def test_an_interrupt_of_a_tool_is_not_answered(error):
 
 
 def test_the_fixed_tool_set_is_the_blob_tools_hw_tools_and_run_file_tools():
-    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), sim.run and board.run (ADR-0167), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), hypotheses.write (ADR-0132), catalog.read (ADR-0171), cases.lookup (ADR-0173), verdicts.read (ADR-0174), checks.read (ADR-0131), case.write (ADR-0133), key.store (ADR-0134), round.end (ADR-0135), spec.write (ADR-0138), timings.compare (ADR-0140) and coder.run (ADR-0141)."""
+    """The C-3 pair (ADR-0039), correctness.check (ADR-0070), sim.run and board.run (ADR-0167), the run-file tools (ADR-0124), run.commit (ADR-0127), verdicts.write (ADR-0128), hypotheses.read (ADR-0129), hypotheses.write (ADR-0132), catalog.read (ADR-0171), cases.lookup (ADR-0173), verdicts.read (ADR-0174), checks.read (ADR-0131), case.write (ADR-0133), key.store (ADR-0134), round.end (ADR-0135), spec.write (ADR-0138), timings.compare (ADR-0140), coder.run (ADR-0141) and given.place (ADR-0200)."""
     held = {
         "blob_fetch": "blob.fetch",
         "blob_push": "blob.push",
@@ -479,6 +479,7 @@ def test_the_fixed_tool_set_is_the_blob_tools_hw_tools_and_run_file_tools():
         "checks_read": "checks.read",
         "coder_run": "coder.run",
         "correctness_check": "correctness.check",
+        "given_place": "given.place",
         "hypotheses_read": "hypotheses.read",
         "hypotheses_write": "hypotheses.write",
         "instance_read": "instance.read",
@@ -542,6 +543,7 @@ def test_the_default_registry_asks_no_source_to_list_or_to_refuse(
         "checks_read",
         "coder_run",
         "correctness_check",
+        "given_place",
         "hypotheses_read",
         "hypotheses_write",
         "instance_read",
@@ -999,6 +1001,7 @@ def test_main_defaults_to_the_process_arguments_and_streams(monkeypatch):
             "checks_read",
             "coder_run",
             "correctness_check",
+            "given_place",
             "hypotheses_read",
             "hypotheses_write",
             "instance_read",
@@ -1112,6 +1115,7 @@ def test_process_handshake_and_tool_list():
             "checks_read",
             "coder_run",
             "correctness_check",
+            "given_place",
             "hypotheses_read",
             "hypotheses_write",
             "instance_read",
