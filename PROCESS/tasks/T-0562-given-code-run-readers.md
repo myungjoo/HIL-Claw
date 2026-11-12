@@ -2,7 +2,7 @@
 id: T-0562
 title: Land ADR-0200 slice 3a for PLAN P3-11 — the run-level readers and the three evaluation tools read `instance.json` version 3 (rows 2 to 4 of ADR-0200's reader table), while the readers of row 6 keep refusing it
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, FR-19, OD-33, "PLAN P3-11", HQ-0097, ADR-0200]
 dependsOn: [T-0561]
@@ -73,3 +73,39 @@ hq: []
 - T-0563 (slice 3b) follows in this batch.
 
 ## Result
+
+**Outcome**: DONE — PR #376 (code mode), squash-merged as `93fbc119`, branch deleted. Reviewer (context-isolated, opus) Approve in round 1 with 3 nits; nits 1 and 3 were addressed in the PR body after Approve (D20, no code change) and nit 2 is recorded here. CI green on all six gates; local full suite 39652 passed, 2215 skipped, `hilclaw/` line coverage 99% (touched modules 98–100%).
+
+**Order check (D27 ①)**: unchanged at run time (no open PR; #373 still with T-0559; no `실패` item in RuntimeAcceptance.md).
+
+**What landed** (ADR-0200 slice 3a, reader table rows 2 to 4; row 6 still refuses):
+- `hilclaw/instance.py`: `layout_version_of_kinded` and `read_as_version_1` fall back to `read_given` and so read versions 1–3. They were widened in place, with no opt-in entry, because their only callers are `journaled_tool` (the stamp of `correctness.check`/`sim.run`/`board.run` via `hw_tool`), `further_turn` and `run_commit`. All of those are rows 2 and 3, so no row-6 caller is widened. No new public name.
+- `hilclaw/run_file_tools.py`: `read` parses with `parse_given`, so `instance.read` returns `given_code` as stored. Every round tool that reads through it reads v3: `round.end`, `key.store`, `coder.run`, `hypotheses.write`, the budget hook and `spec.write`. `c_kernel_only` now also refuses a given-code run with `run_file_unsupported`, so row 6 (`case.write`, `cases.read`, `catalog.read`) keeps its existing kind.
+- `hilclaw/check_tool.py`, `hilclaw/run_tool.py`: v3 `c_kernel` runs are evaluated from `output/` as C kernel attempts, `(0, 1, 1)` with `given.c` included. A v3 `compile_settings` run is `run_file_unsupported` until slice 5.
+- `hilclaw/spec_tool.py`: rounds ≥ 1 of a v3 run are written as for its twin. Round 0 of a given-code run is refused with `invalid_request` at check 3a (ADR-0200 decision 4 (a)).
+- Docstrings corrected: `run_file_tools.py`, `journaled_tool.py`, `hw_tool.py`, `further_turn.py`, `run_commit.py`, `instance.py`.
+- The real-clang `correctness.check` test (`tests/test_check_tool.py::test_the_given_attempt_of_a_started_run_is_checked_with_the_real_clang`) starts a run with T-0561's start, places `given.c` from the blob, and checks a right and a wrong kernel at `cpu_standin` through a stub docker with the host clang. It ran under WSL Ubuntu (clang 14, libomp extracted user-locally into the task directory) and on CI.
+
+**Deviation from `touchesFiles`** (reviewer nit 2):
+- `hilclaw/hw_tool.py` was edited (docstring only, criterion 7); there are 9 non-test files in total.
+- `hilclaw/run_admission.py` and `hilclaw/check_admission.py` needed no change, because a v3 read yields the same `Instance` type.
+- Test files outside the list were edited: `test_hw_tool`, `test_case_tool`, `test_cases_tool`, `test_catalog_tool`, `test_coder_call`, `test_round_end_tool`, `test_key_store_tool`, `test_budget_check`, `test_hypotheses_write_tool`, `test_turn_start`. In most of them `schema_version` 3 had been the sentinel for "another version" and became 4, because a bare v3 file is now `run_file_invalid`. Some also gained new v3 or row-6 cases.
+- Every edit to an existing test is listed in the PR body.
+
+**Commit trailer**: the squash commit's message is the PR body, which ends with `Task: T-0562` but lacks the `Co-Authored-By` line; the branch commit `c7e38aec` had both. This was not repaired, since repairing it would need a force push.
+
+**Less exact, not edited** (outside the file cap):
+- The docstrings of `hilclaw/case_tool.py`, `cases_tool.py` and `catalog_tool.py` describe `c_kernel_only` as refusing "a run whose candidate kind is not `c_kernel`". It now also refuses a given-code run.
+- ADR-0198 decision 8 and ADR-0200 decision 7, slice-1 column: they say `layout_version_of_kinded` and `read_as_version_1` read versions 1 and 2. They now read versions 1 to 3, as column 3a requires.
+
+**Observation for the planner (slice 3b/4, not an HQ)**: `spec_feedback` ignores an attempt directory without `spec.json`. So the given attempt `(0, 1, 1)` of a given-code run never appears in the `feedback.attempts` of a round ≥ 1 spec, and it can never be `feedback.base`, the incumbent of ADR-0184. ADR-0200 decision 4 (a) says ADR-0119's baseline rule applies to the given attempt and that rounds ≥ 1 are unchanged. Whether round-1 feedback should show the given attempt is not settled by ADR-0200. Slice 3b or 4 should look at it; if that needs a decision of form, it is §9 or an HQ.
+
+**Runtime acceptance items**: none from this slice (ADR-0200 Consequences: slice 3b hands one over).
+
+**HQ**: none.
+
+**Storage**:
+- `%TMP%/hilclaw-driver/T-0562/` and WSL `/tmp/hilclaw-driver/T-0562/` (the user-local libomp extract) were removed with `rm -r`.
+- The empty WSL `/tmp/hilclaw-driver` was also removed with `rmdir`; whether this task created it is not known.
+- No images were made and nothing was installed. The existing WSL venv `~/.venvs/hilclaw-driver` was used as it was.
+- No `claude` process was started and no test run was made (D25).
