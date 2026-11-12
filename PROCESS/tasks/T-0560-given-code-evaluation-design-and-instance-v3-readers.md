@@ -2,7 +2,7 @@
 id: T-0560
 title: Apply HQ-0092 and HQ-0097 (b) for PLAN P3-11 — write the §9 ADR for evaluating given code (the bundle, its key, the out-of-loop evaluation and the round-0 baseline use), update the registers, and land its first code slice (validators and readers of `instance.json` version 3 with the optional `given_code` member, with no existing caller widened)
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, FR-19, FR-15, OD-33, OD-28, OD-8, "PLAN P3-11", HQ-0092, HQ-0097]
 dependsOn: []
@@ -82,3 +82,15 @@ hq: []
 - The planner creates the next slice(s) of ADR-0200 after this task lands, in the order its slice list gives; PLAN P3-11 is checked only when the entry point is verified with a real toolchain (PLAN P3-11: "답의 범위에서 코드 묶음을 받아 빌드·실행·검사·측정·기록까지 도는 진입점을 실제 툴체인으로 검증한다").
 
 ## Result
+
+- **Outcome**: DONE. PR #374 (`claude/T-0560-given-code-instance-v3`), squash-merged as `786a7379`; 2 review rounds (round 1 Approve with 5 nits, all addressed; round 2 Approve with 3 nits — the placement nit addressed after Approve under D20, the other two left: `tests/test_instance_start.py` is not in `touchesFiles` (tests are not counted), and the `instance_start.prepare` docstring's general "passes through" sentence already covers the new refusal). CI: green on the final commit; local full suite `39480 passed, 2213 skipped`, `hilclaw/` line coverage 98% total, `hilclaw/instance.py` 100% under its own tests.
+- **ADR-0200** (`ARCHITECTURE/decisions/ADR-0200-od33-given-code-evaluation.md`, §9; owner notice on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6812574914): a given-code bundle is one C source file implementing a contract of the contract table at a target an instance may start on; the blob has no format of its own (no data-plane frame, **no HQ**); the run's `hw_profile` and `op_signature` are the key (LLM-wide code left to OD-33 ⑤ / HQ-0096 ①); a run whose `instance.json` (v3) holds `given_code` has the code as round-0 attempt `(0, 1, 1)` (placed as `given.c`, no spec, no repair, N = 1) instead of the bring-up coder call; an out-of-loop evaluation is such a run with `round_budget` 1, carried through by a later command `python -m hilclaw.given_eval`; reader table and slice list.
+- **Registers**: Requirements FR-19 (open parts), OD-33 and OD-28 rows; OpenDecisionProposals § OD-33 (①, ⑥, `채택분`) and § OD-28 (`채택분`, partial answer); StandardScenarios S12 steps 2 and 5, verdict row, "최근 재검사" (no verdict change, no gap).
+- **Code slice 1**: `hilclaw/instance.py` gains `GIVEN_SCHEMA_VERSION`, `Given`, `parse_given`, `validate_given`, `read_given`, `given_code_of`; strict and kinded entries keep refusing v3. Narrowing: `given_code` in a v1/v2 file is now invalid at every entry, so a start request holding it is refused (pinned by a new test in `tests/test_instance_start.py`). `hilclaw/instance_file.py` unchanged. Language: Python (the module it extends; standard library only).
+- **D21 list assertions edited**: `tests/test_instance.py::test_the_public_names`, `::test_nothing_of_the_module_holds_a_tolerance_value`.
+- **Size**: about 130 LOC of code, 141 lines of ADR, about 20 lines of register edits (tests excluded); 5 non-test files.
+- **Runtime acceptance items**: none from this task (ADR-0200 Consequences: slice 3b hands one over).
+- **HQ**: none.
+- **Order check (D27 ①)**: unchanged from the task's Why at `7fbecebe`. After the lock, the owner's purpose-first re-ordering landed as DRIVER D31 (`c2cef299`); its E4 brake names P3-11 as proceeding ("P3-11·P3-12는 그대로 수행한다"), so the task went on.
+- **Follow-ups for the planner** (ADR-0200 decision 8, in order): slice 2 (the start takes a C file: `cas.put_file`, v3 `instance.json`, the `given_code` record, ~300 LOC), 3a (run-level readers and the three evaluation tools read v3, ~400 LOC), 3b (placement of `(0, 1, 1)`, `orchestration/round-manager.md` round 0 of a given-code run, a runtime acceptance item, ~300 LOC), 4 (the command `hilclaw.given_eval`, verified with the real clang at `cpu_standin`; PLAN P3-11 is checked after it, ~350 LOC); 5 (given code with `compile_settings`) is optional and not needed for P3-11.
+- **Storage**: task directory `${TMPDIR}/hilclaw-driver/T-0560/` removed; no images, no installs.
