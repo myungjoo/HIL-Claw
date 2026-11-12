@@ -25,6 +25,17 @@ kind or ``c_kernel`` as version 1 without it, and every other pair is
 refused, never rewritten; the accelerators and ``covers`` are bound alike
 for both kinds.
 
+It takes given code as ADR-0200 decisions 5 and 6 order (slice 2 of its
+decision 8): a start handed ``code_file``, the path of one C source file,
+reads the file, checks it against the kernel-file limit of ADR-0055 decision
+6 (:data:`hilclaw.bring_in.MAX_FILE_BYTES`), has ``prepare`` check the
+document with the file's SHA-256 (so version 3 holds ``given_code``, for a
+``c_kernel`` instance of one candidate per round only), and then writes in
+the order of ADR-0200 decision 5: the blob, ``instance.json`` of version 3,
+and the ``artifacts.json`` record of the blob (``type`` ``given_code``,
+``round`` 0, class ``final``, :func:`hilclaw.artifacts.add_record`). A start
+without ``code_file`` writes exactly what it wrote before.
+
 Conventions of this module, not rules of a record:
 
 * The input is a parsed ``instance.json`` document, exactly a ``dict``, and a
@@ -36,14 +47,30 @@ Conventions of this module, not rules of a record:
   start, not a rule of validity: :mod:`hilclaw.instance` still accepts such a
   file. The owner confirmed this reading (HQ-0032).
 * The bytes are built before the id and the id is built after every check
-  has passed, immediately before the write, so a refusal builds no id. The
+  has passed, immediately before the write of ``instance.json`` (after the
+  blob, with ``code_file``), so a refusal builds no id. The
   bytes are the JSON text of the prepared document with an indent of two
   spaces, its members in the order the document holds them, non-ASCII
   characters escaped and no NaN or infinity, encoded as UTF-8 without a byte
   order mark and followed by one line feed.
+* The C file is read once, whole, before any check of the document, and the
+  bytes read are the bytes hashed and stored: the blob is stored with
+  :func:`hilclaw.cas.put_bytes` of those bytes rather than
+  :func:`hilclaw.cas.put_file` of the path (ADR-0200 decision 5 names the
+  latter), which would read the file a second time after the checks. No
+  name, suffix or content of the file is checked; it is placed as
+  ``given.c`` when it becomes an attempt's kernel (ADR-0200 decision 2).
+* Every refusal comes before the first write: a C file that cannot be read
+  or exceeds the limit, and every refusal of ``prepare`` or of the given id,
+  leave the data root as they found it. The blob is the first write; a
+  failure of ``instance.json`` after it leaves a blob no ``artifacts.json``
+  names, which the CAS GC keeps (ADR-0195 decision 7).
 * The reports are exceptions told apart from each other:
-  :class:`GivenRunIdError`, :class:`hilclaw.instance_start.MissingMembersError`
-  (passed through), :class:`RunIdInUseError` (no :class:`OSError`) and the
+  :class:`GivenCodeFileError` (no :class:`OSError`), :class:`GivenRunIdError`,
+  :class:`hilclaw.instance_start.MissingMembersError` (passed through),
+  :class:`GivenCodeNotAdmittedError`, :class:`RunIdInUseError` (no
+  :class:`OSError`), :class:`GivenCodeUnrecordedError` (no :class:`OSError`)
+  and the
   :class:`OSError` of the file system (passed through). The
   :class:`ValueError` of :func:`json.dumps` for NaN or an infinity, which
   :func:`hilclaw.instance.validate` lets through in an undefined member, also
@@ -61,9 +88,13 @@ in no ``owner`` or ``project`` (㉛). It says nothing of a run directory
 without ``instance.json``. It keeps nothing between calls.
 """
 
+import hashlib
 import json
 
 from hilclaw import (
+    artifacts,
+    bring_in,
+    cas,
     contract_table,
     instance_file,
     instance_start,
@@ -82,6 +113,50 @@ def _covers_of(document):
         return targets.covers_at(contract_table.start_covers, accelerator)(record)
 
     return covered
+
+
+#: The ``artifacts.json`` ``type`` of the given-code blob (ADR-0200 decision 5; HQ-0097 (b) (i)).
+GIVEN_CODE_TYPE = "given_code"
+
+
+class GivenCodeFileError(Exception):
+    """The given C file cannot be read or exceeds :data:`hilclaw.bring_in.MAX_FILE_BYTES`.
+
+    ``reason`` says which. Nothing was built or written. It is no
+    :class:`OSError`, so it is not taken for a failure of the data root.
+    """
+
+    def __init__(self, reason):
+        self.reason = reason
+        super().__init__(f"given code: {reason}; nothing was started")
+
+
+class GivenCodeNotAdmittedError(Exception):
+    """A start with given code that ADR-0200 decision 6 does not admit yet.
+
+    The message names why: the candidate kind ``compile_settings`` (until
+    slice 5 of ADR-0200 decision 8) or a ``candidates_per_round`` other than
+    1. Nothing was built or written. The message shows no value of the
+    document.
+    """
+
+
+class GivenCodeUnrecordedError(Exception):
+    """The run was started but the record of its given code was not written.
+
+    ``run_id`` is the id of the started run, whose ``instance.json`` and blob
+    stay; ``reason`` names the failure of :func:`hilclaw.artifacts.add_record`
+    (ADR-0200 decision 5). It is no :class:`OSError` and is raised ``from``
+    that failure.
+    """
+
+    def __init__(self, built, reason):
+        self.run_id = built
+        self.reason = reason
+        super().__init__(
+            f"runs/{built}/artifacts.json: the run {built} was started, but the "
+            f"record of its given code was not written: {reason}"
+        )
 
 
 class GivenRunIdError(Exception):
@@ -113,12 +188,18 @@ class RunIdInUseError(Exception):
         )
 
 
-def start(document, *, data_root):
+def start(document, *, data_root, code_file=None):
     """Start the instance ``document`` under ``data_root``; return the ``run_id`` it built.
 
-    In this order:
+    ``code_file`` is ``None`` or the path of the given C file, a ``str`` or a
+    path, given by name. In this order:
 
-    1. What :func:`hilclaw.instance_start.prepare` raises for the type, the
+    1. With ``code_file``: the file is read whole; :class:`GivenCodeFileError`
+       when it cannot be read (an :class:`OSError`, or the
+       :class:`ValueError` of a path holding NUL) or holds more than
+       :data:`hilclaw.bring_in.MAX_FILE_BYTES` bytes. Its SHA-256 is handed
+       to ``prepare`` as ``given_code``.
+    2. What :func:`hilclaw.instance_start.prepare` raises for the type, the
        validity, the candidate kind and the scope of ``document`` passes
        through unchanged. The kind and the version are the document's
        (ADR-0198 decision 7): ``schema_version`` 2 with ``candidate_kind``
@@ -129,25 +210,44 @@ def start(document, *, data_root):
        another kind or none) is
        :class:`hilclaw.instance.InvalidInstanceError`, and a version other
        than 1 and 2 :class:`hilclaw.instance.UnsupportedVersionError`; the
-       start sets and changes no version and no kind.
-    2. :class:`GivenRunIdError` when the top level of ``document`` holds
+       start sets and changes no version and no kind, but for version 3
+       with ``code_file``. A document that holds ``given_code`` or states
+       version 3 is refused so, with ``code_file`` or without it.
+       ``prepare`` is handed ``given_code`` only with ``code_file``.
+    3. :class:`GivenRunIdError` when the top level of ``document`` holds
        ``run_id``, before any :class:`hilclaw.instance_start.MissingMembersError`.
-    3. :class:`hilclaw.instance_start.MissingMembersError` passes through
-       unchanged.
-    4. The bytes of the prepared document are built; what :func:`json.dumps`
+    4. :class:`hilclaw.instance_start.MissingMembersError` passes through
+       unchanged; then, with ``code_file``,
+       :class:`GivenCodeNotAdmittedError` when the prepared document names
+       ``compile_settings`` or a ``candidates_per_round`` other than 1.
+    5. The bytes of the prepared document are built; what :func:`json.dumps`
        raises for a value it cannot write passes through unchanged.
-    5. One id is built by :func:`hilclaw.run_id.new` and the bytes are handed
+    6. With ``code_file``: the bytes read are stored by
+       :func:`hilclaw.cas.put_bytes` under ``data_root``; its
+       :class:`OSError` passes through unchanged.
+    7. One id is built by :func:`hilclaw.run_id.new` and the bytes are handed
        to :func:`hilclaw.instance_file.write` under it.
-    6. :class:`RunIdInUseError` with that id when the write finds the name
+    8. :class:`RunIdInUseError` with that id when the write finds the name
        taken; nothing is retried and no other id is built. Every other
        exception of the write passes through unchanged.
-    7. Otherwise the id is returned.
+    9. With ``code_file``: the blob is recorded in the run's
+       ``artifacts.json`` (``type`` :data:`GIVEN_CODE_TYPE`, ``round`` 0,
+       class ``final``); any :class:`Exception` of that is
+       :class:`GivenCodeUnrecordedError` with the id, and the blob and
+       ``instance.json`` stay.
+    10. Otherwise the id is returned.
 
-    Nothing is built or written before step 5. ``document`` is never modified.
+    Nothing is written before step 6 and no id is built before step 7.
+    ``document`` is never modified.
     """
+    code = None if code_file is None else _read_code(code_file)
+    given_code = None if code is None else hashlib.sha256(code).hexdigest()
     try:
         prepared = instance_start.prepare(
-            document, accelerators=_ACCELERATORS, covers=_covers_of(document)
+            document,
+            accelerators=_ACCELERATORS,
+            covers=_covers_of(document),
+            **({} if given_code is None else {"given_code": given_code}),
         )
     except instance_start.MissingMembersError:
         if "run_id" in document:
@@ -155,10 +255,56 @@ def start(document, *, data_root):
         raise
     if "run_id" in document:
         raise GivenRunIdError()
+    if given_code is not None:
+        _admit(prepared)
     content = json.dumps(prepared, indent=2, allow_nan=False).encode() + b"\n"
+    ref = None if code is None else cas.put_bytes(data_root, code)
     built = run_id.new()
     try:
         instance_file.write(data_root, built, content)
     except instance_file.NameTakenError:
         raise RunIdInUseError(built) from None
+    if ref is not None:
+        try:
+            artifacts.add_record(
+                data_root,
+                built,
+                ref,
+                type=GIVEN_CODE_TYPE,
+                round=0,
+                retention_class="final",
+            )
+        except Exception as e:
+            raise GivenCodeUnrecordedError(built, _described(e)) from e
     return built
+
+
+def _admit(prepared):
+    if "candidate_kind" in prepared:
+        raise GivenCodeNotAdmittedError(
+            "candidate_kind: given code is started for a c_kernel instance only; "
+            "compile_settings with given code waits on slice 5 of ADR-0200 decision 8"
+        )
+    if prepared["candidates_per_round"] != 1:
+        raise GivenCodeNotAdmittedError(
+            "candidates_per_round: given code is started with one candidate per "
+            "round only (ADR-0200 decision 6)"
+        )
+
+
+def _described(error):
+    return f"{type(error).__name__}: {error}"
+
+
+def _read_code(code_file):
+    try:
+        with open(code_file, "rb") as f:
+            code = f.read(bring_in.MAX_FILE_BYTES + 1)
+    except (OSError, ValueError) as e:
+        raise GivenCodeFileError(f"the file cannot be read ({_described(e)})") from None
+    if len(code) > bring_in.MAX_FILE_BYTES:
+        raise GivenCodeFileError(
+            f"the file holds more than {bring_in.MAX_FILE_BYTES} bytes "
+            "(ADR-0055 decision 6)"
+        )
+    return code

@@ -125,7 +125,7 @@ REFUSED = {
     "byte order mark": (codecs.BOM_UTF8 + MINIMAL, InvalidInstanceError),
     "member name twice": (text(VERSION, VERSION, SECTION), InvalidInstanceError),
     "version 0": (written(doc(schema_version=0)), UnsupportedVersionError),
-    "version 3": (written(doc(schema_version=3)), UnsupportedVersionError),
+    "version 3": (written(doc(schema_version=3)), InvalidInstanceError),
     "no hw_profile": (written(doc(hw_profile=REMOVE)), InvalidInstanceError),
     "tolerance": (
         written(doc(tolerance={"rtol": -1, "atol": 0})),
@@ -794,7 +794,7 @@ def test_a_version_2_content_is_written_as_given(root):
         (written(doc(candidate_kind="compile_settings")), InvalidInstanceError),
         (
             written(doc(schema_version=3, candidate_kind="compile_settings")),
-            UnsupportedVersionError,
+            InvalidInstanceError,
         ),
         (KINDED[:-1], WrittenFormError),
     ],
@@ -813,3 +813,62 @@ def test_a_refused_kinded_content_creates_nothing(root, content, error):
         write(root, RUN, content)
     assert snapshot(root) == {}
     assert found(root) is None
+
+
+# Version 3 of ADR-0200 decision 6, which the start writes for given code
+
+DIGEST = "0123456789abcdef" * 4
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{}, {"candidate_kind": "compile_settings"}],
+    ids=["c_kernel", "compile_settings"],
+)
+def test_a_version_3_content_is_written_as_given(root, changes):
+    content = written(doc(schema_version=3, given_code=DIGEST, **changes))
+    write(root, RUN, content)
+    assert (root / FILE).read_bytes() == content
+    assert instance.given_code_of(root, RUN) == DIGEST
+    assert snapshot(root) == {"runs": None, f"runs/{RUN}": None, FILE: content}
+    with pytest.raises(UnsupportedVersionError):
+        instance.read_kinded(root, RUN)
+
+
+@pytest.mark.parametrize(
+    ("content", "error"),
+    [
+        (written(doc(given_code=DIGEST)), InvalidInstanceError),
+        (
+            written(
+                doc(
+                    schema_version=2,
+                    candidate_kind="compile_settings",
+                    given_code=DIGEST,
+                )
+            ),
+            InvalidInstanceError,
+        ),
+        (written(doc(schema_version=3, given_code="0" * 63)), InvalidInstanceError),
+        (
+            written(
+                doc(schema_version=3, given_code=DIGEST, candidate_kind="c_kernel")
+            ),
+            InvalidInstanceError,
+        ),
+        (written(doc(schema_version=4, given_code=DIGEST)), UnsupportedVersionError),
+        (written(doc(schema_version=3, given_code=DIGEST))[:-1], WrittenFormError),
+    ],
+    ids=[
+        "given_code at version 1",
+        "given_code at version 2",
+        "short given_code",
+        "version 3 c_kernel",
+        "version 4",
+        "version 3 no line feed",
+    ],
+)
+def test_a_refused_given_content_creates_nothing(root, content, error):
+    with pytest.raises(error):
+        write(root, RUN, content)
+    assert snapshot(root) == {}

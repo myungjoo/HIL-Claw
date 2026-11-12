@@ -1,20 +1,28 @@
 """The command-line entry that starts a first-case instance (ADR-0155).
 
-Command line: ``python -m hilclaw.new_run <file>``. The one argument is the
-path of a file whose content is the ``instance.json`` document as JSON; no
-option exists and nothing is read from standard input. A person or a script
-runs it to start an instance of ADR-0076 decision 1, of either candidate
-kind of ADR-0198 decision 7 (the document states it). It calls
+Command line: ``python -m hilclaw.new_run <file> [--given-code <c-file>]``.
+``<file>`` is the path of a file whose content is the ``instance.json``
+document as JSON; nothing is read from standard input. The one option,
+exactly the argument ``--given-code`` followed by exactly one argument, gives
+the path of a C source file as given code (ADR-0200 decision 6, slice 2 of
+its decision 8): the start stores it and writes ``instance.json`` of version
+3. The option comes after ``<file>`` only, and no other argument or form is
+accepted. A person or a script runs it to start an instance of ADR-0076
+decision 1, of either candidate kind of ADR-0198 decision 7 (the document
+states it). It calls
 :func:`hilclaw.start_instance.start` once and is the caller of that function
 for such a start (ADR-0155 decision 2). It is no FR-10 tool and has no entry
 in :mod:`hilclaw.tools` or any registry and no MCP name.
 
 **One start**, in this order: standard output must exist; exactly one
-argument; the file is read and decoded; the data root is obtained once with
-:func:`hilclaw.data_root_source.obtain` from the source (by default
-:func:`hilclaw.data_root_source.configured`, so ``hilclaw.config``); then
+argument, or three of the option form; the file is read and decoded; the
+data root is obtained once with :func:`hilclaw.data_root_source.obtain` from
+the source (by default :func:`hilclaw.data_root_source.configured`, so
+``hilclaw.config``); then
 :func:`hilclaw.start_instance.start` is called once with the parsed object,
-unchanged: nothing is added, defaulted or removed, and nobody is asked. Every
+unchanged: nothing is added, defaulted or removed, and nobody is asked. With
+the option it is handed the C file's path as ``code_file``, which ``start``
+reads; without it, it is called exactly as before the option existed. Every
 failure before ``start`` starts nothing, and nothing is written before it.
 
 **Decoding rules** (ADR-0155 decision 3, this module's): the bytes are decoded
@@ -29,23 +37,26 @@ defines and as **unwritable value** elsewhere.
 exactly one line, a compact JSON object in ASCII ended by one LF, whose member
 ``outcome`` names the kind; the data are further members:
 
-=====================  ======  ===================================================
-``outcome``            status  further members
-=====================  ======  ===================================================
-``started``            0       ``run_id``: the id ``start`` built
-``given_run_id``       10      none
-``missing_members``    11      ``missing``: list, in the order of ``REPORT_ORDER``
-``invalid``            12      ``reason``
-``out_of_scope``       13      ``reason``
-``run_id_in_use``      14      ``run_id``: the id ``start`` built
-``file_system``        15      ``reason``
-``unwritable_value``   16      ``reason``
-``bad_usage``          20      ``reason``
-``unreadable_input``   21      ``reason``
-``bad_input``          22      ``reason``
-``no_data_root``       23      ``reason``
-``fault``              24      ``fault``: the class name of the exception, if any
-=====================  ======  ===================================================
+=========================  ======  ===================================================
+``outcome``                status  further members
+=========================  ======  ===================================================
+``started``                0       ``run_id``: the id ``start`` built
+``given_run_id``           10      none
+``missing_members``        11      ``missing``: list, in the order of ``REPORT_ORDER``
+``invalid``                12      ``reason``
+``out_of_scope``           13      ``reason``
+``run_id_in_use``          14      ``run_id``: the id ``start`` built
+``file_system``            15      ``reason``
+``unwritable_value``       16      ``reason``
+``given_code_refused``     17      ``reason``
+``bad_given_code``         18      ``reason``
+``given_code_unrecorded``  19      ``run_id``: the id ``start`` built; ``reason``
+``bad_usage``              20      ``reason``
+``unreadable_input``       21      ``reason``
+``bad_input``              22      ``reason``
+``no_data_root``           23      ``reason``
+``fault``                  24      ``fault``: the class name of the exception, if any
+=========================  ======  ===================================================
 
 Each kind has its own status; only ``started`` has 0 and no status is 1 or 2.
 ``reason`` is free text, which may name a path, and is never parsed.
@@ -55,7 +66,16 @@ version that ``start`` refuses among them; ``unwritable_value`` is the
 plain :class:`ValueError` of :func:`json.dumps` inside ``start``, told apart by
 its exact class; ``run_id_in_use`` is
 :class:`hilclaw.start_instance.RunIdInUseError`, told apart from the
-:class:`OSError` of ``file_system``. Any other :class:`Exception` is ``fault``.
+:class:`OSError` of ``file_system``. The three kinds of given code are
+used only with the option: ``given_code_refused`` is
+:class:`hilclaw.start_instance.GivenCodeNotAdmittedError` (``compile_settings``
+or a ``candidates_per_round`` other than 1), ``bad_given_code`` is
+:class:`hilclaw.start_instance.GivenCodeFileError` (the C file cannot be read
+or exceeds the kernel-file limit of ADR-0055 decision 6), and
+``given_code_unrecorded`` is
+:class:`hilclaw.start_instance.GivenCodeUnrecordedError`: the run was started
+and its blob stays, but its ``artifacts.json`` record was not written
+(ADR-0200 decision 5). Any other :class:`Exception` is ``fault``.
 
 Standard error gets nothing for a kind, with two exceptions. A process
 without a standard output gets ``fault`` (status 24), said on standard error,
@@ -87,11 +107,16 @@ OUT_OF_SCOPE = "out_of_scope"
 RUN_ID_IN_USE = "run_id_in_use"
 FILE_SYSTEM = "file_system"
 UNWRITABLE_VALUE = "unwritable_value"
+GIVEN_CODE_REFUSED = "given_code_refused"
+BAD_GIVEN_CODE = "bad_given_code"
+GIVEN_CODE_UNRECORDED = "given_code_unrecorded"
 BAD_USAGE = "bad_usage"
 UNREADABLE_INPUT = "unreadable_input"
 BAD_INPUT = "bad_input"
 NO_DATA_ROOT = "no_data_root"
 FAULT = "fault"
+
+GIVEN_CODE_OPTION = "--given-code"
 
 EXIT_STATUS = {
     STARTED: 0,
@@ -102,6 +127,9 @@ EXIT_STATUS = {
     RUN_ID_IN_USE: 14,
     FILE_SYSTEM: 15,
     UNWRITABLE_VALUE: 16,
+    GIVEN_CODE_REFUSED: 17,
+    BAD_GIVEN_CODE: 18,
+    GIVEN_CODE_UNRECORDED: 19,
     BAD_USAGE: 20,
     UNREADABLE_INPUT: 21,
     BAD_INPUT: 22,
@@ -158,9 +186,20 @@ def _parsed(path):
     return value, None
 
 
-def _started(document, root):
+def _started(document, root, code_file):
+    options = {} if code_file is None else {"code_file": code_file}
     try:
-        built = start_instance.start(document, data_root=root)
+        built = start_instance.start(document, data_root=root, **options)
+    except start_instance.GivenCodeFileError as e:
+        return _told(BAD_GIVEN_CODE, e.reason)
+    except start_instance.GivenCodeNotAdmittedError as e:
+        return _told(GIVEN_CODE_REFUSED, _described(e))
+    except start_instance.GivenCodeUnrecordedError as e:
+        return {
+            "outcome": GIVEN_CODE_UNRECORDED,
+            "run_id": e.run_id,
+            "reason": e.reason,
+        }
     except start_instance.GivenRunIdError:
         return {"outcome": GIVEN_RUN_ID}
     except instance_start.MissingMembersError as e:
@@ -181,8 +220,16 @@ def _started(document, root):
 
 
 def _start(args, source):
-    if len(args) != 1:
-        return _told(BAD_USAGE, f"usage: expected one file, got {len(args)} arguments")
+    if len(args) == 3 and args[1] == GIVEN_CODE_OPTION:
+        code_file = args[2]
+    elif len(args) == 1:
+        code_file = None
+    else:
+        return _told(
+            BAD_USAGE,
+            f"usage: expected one file, optionally followed by {GIVEN_CODE_OPTION} "
+            f"and a C file, got {len(args)} arguments",
+        )
     document, refused = _parsed(args[0])
     if refused is not None:
         return refused
@@ -192,7 +239,7 @@ def _start(args, source):
         return _told(NO_DATA_ROOT, e.message)
     except Exception as e:  # noqa: BLE001
         return {"outcome": FAULT, "fault": type(e).__name__}
-    return _started(document, root)
+    return _started(document, root, code_file)
 
 
 def _standard(name):
@@ -208,7 +255,7 @@ def _say(stderr, text):
 
 
 def main(argv=None, *, source=data_root_source.configured, stdout=None, stderr=None):
-    """Start the instance of the file named by the one argument; return the exit status.
+    """Start the instance of the file named by the first argument; return the exit status.
 
     ``argv`` defaults to ``sys.argv[1:]``. ``source`` is the data-root source
     (:mod:`hilclaw.data_root_source`), asked once and only after the input was

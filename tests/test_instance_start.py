@@ -412,7 +412,7 @@ def test_public_names_of_the_module():
 
 def test_the_arguments_are_one_document_and_two_by_name_without_default():
     parameters = inspect.signature(prepare).parameters
-    assert list(parameters) == ["document", "accelerators", "covers"]
+    assert list(parameters) == ["document", "accelerators", "covers", "given_code"]
     assert parameters["document"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
     for name in ("accelerators", "covers"):
         assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
@@ -821,3 +821,114 @@ def test_a_document_naming_given_code_is_refused_and_never_rewritten(given):
         call(given, covers=recorder)
     assert given == before
     assert recorder.calls == []
+
+
+# The hash of given code handed to prepare (ADR-0200 decision 6, slice 2)
+
+DIGEST = "0123456789abcdef" * 4
+
+
+def given_call(given, given_code=DIGEST, covers=gemm_contract.covers):
+    return prepare(
+        given, accelerators=ACCELERATORS, covers=covers, given_code=given_code
+    )
+
+
+@pytest.mark.parametrize("candidate_kind", [ABSENT, "c_kernel"])
+def test_a_given_hash_makes_version_3_with_given_code_last(candidate_kind):
+    given = document(n_max=ABSENT, coder_model=ABSENT)
+    if candidate_kind is not ABSENT:
+        given["candidate_kind"] = candidate_kind
+    before = copy.deepcopy(given)
+    prepared = given_call(given)
+    assert given == before
+    assert prepared is not given
+    assert prepared["schema_version"] == instance.GIVEN_SCHEMA_VERSION == 3
+    assert prepared["given_code"] == DIGEST
+    assert "candidate_kind" not in prepared
+    names = list(prepared)
+    assert names[0] == "schema_version"
+    assert names[-3:] == ["n_max", "coder_model", "given_code"]
+    assert prepared["n_max"] == measurement.N_MAX_DEFAULT
+    assert prepared["coder_model"] == CODER_MODEL_DEFAULT
+    instance.validate_given(prepared)
+    with pytest.raises(UnsupportedVersionError):
+        instance.validate_kinded(prepared)
+
+
+def test_a_given_hash_changes_nothing_else():
+    given = document(extra={"kept": [1]})
+    plain = call(given)
+    prepared = given_call(given)
+    assert prepared.pop("given_code") == DIGEST
+    assert prepared.pop("schema_version") == 3
+    assert plain.pop("schema_version") == 1
+    assert prepared == plain
+    assert prepared["extra"] is given["extra"]
+
+
+def test_a_compile_settings_document_with_a_hash_is_prepared_as_version_3():
+    prepared = given_call(kinded())
+    assert prepared["schema_version"] == 3
+    assert prepared["candidate_kind"] == "compile_settings"
+    assert instance.validate_given(prepared) is None
+
+
+def test_none_is_the_default_and_prepares_as_before():
+    given = document()
+    assert given_call(given, given_code=None) == call(given)
+    parameter = inspect.signature(prepare).parameters["given_code"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["0" * 63, "0" * 65, "A" * 64, "g" * 64, 0, b"0" * 64, ["0" * 64]],
+    ids=["short", "long", "upper", "not hex", "int", "bytes", "list"],
+)
+def test_a_hash_that_is_no_digest_is_invalid(bad):
+    given = document()
+    before = copy.deepcopy(given)
+    with pytest.raises(InvalidInstanceError) as caught:
+        given_call(given, given_code=bad)
+    assert "given_code" in str(caught.value)
+    assert given == before
+
+
+@pytest.mark.parametrize(
+    ("given", "error"),
+    [
+        ({**document(), "given_code": DIGEST}, InvalidInstanceError),
+        ({**kinded(), "given_code": DIGEST}, InvalidInstanceError),
+        (
+            {**document(), "schema_version": 3, "given_code": DIGEST},
+            UnsupportedVersionError,
+        ),
+        ({**document(), "schema_version": 3}, UnsupportedVersionError),
+    ],
+    ids=["v1 holding it", "v2 holding it", "v3 holding it", "v3 lacking it"],
+)
+def test_a_document_stating_given_code_is_refused_with_a_hash_too(given, error):
+    recorder = Recorder(True)
+    before = copy.deepcopy(given)
+    with pytest.raises(error):
+        given_call(given, covers=recorder)
+    assert given == before
+    assert recorder.calls == []
+
+
+def test_a_given_hash_does_not_change_the_order_of_refusals():
+    with pytest.raises(OutOfScopeError):
+        given_call(document(accelerator="acc_other"), given_code="bad")
+    with pytest.raises(MissingMembersError) as caught:
+        given_call(document(draws=ABSENT, tolerance=ABSENT), given_code="bad")
+    error = caught.value
+    assert error.missing == ("draws", "tolerance")
+    with pytest.raises(TypeError):
+        prepare(
+            [],
+            accelerators=ACCELERATORS,
+            covers=gemm_contract.covers,
+            given_code=DIGEST,
+        )
