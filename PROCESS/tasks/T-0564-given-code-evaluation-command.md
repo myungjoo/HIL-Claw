@@ -65,3 +65,28 @@ hq: []
 - After this task the driver checks PLAN P3-11 (ADR-0200 decision 8); the next planner call goes to P3-15 (D31 ①; P3-12, P3-16 and P3-17 wait on owner answers).
 
 ## Result
+
+**Outcome**: DONE — PR #378 (code mode), squash-merged by the executor after the context-isolated reviewer (opus) approved in round 2 (round 1: 2 should-fix, 4 nits; round 2: Approve with 2 nits, both addressed after Approve under D20 — a docstring reflow and the PR body's test-result line). CI green on all gates.
+
+**Order check (D27 ①)**: unchanged at run time — no open PR, #373 still with T-0559, no `실패` item in `PROCESS/RuntimeAcceptance.md`.
+
+**What landed**:
+- `hilclaw/given_eval.py` (new): `python -m hilclaw.given_eval <request> <c-file>`, `main(argv=None, *, source=..., stdout=None, stderr=None)`, no tool, no `claude`. Steps: request (new_run's decoding; `target_refused` outside `instance_start_accelerators`, `round_budget_refused` for any value but 1, absent → 1) → data root → `start_instance.start(..., code_file=...)` (read-once) → `run.fresh` + `state.write` (first `STATE.json`) → `key.store` (failure told, goes on, as round step 1) → `given_attempt.place` → `correctness.check` + `checks.read` at `sim`, then `board` → `board.run` → `round.end` → `run.commit`, all through `tools.default_registry`, so journaled as a live round 0. ADR-0185 paths reach `round.end`/`run.commit`. Summary JSON on stdout (`measured` 0 / `not_measured` 10; place, sim, board, timing with median and unit); refusals and failures as JSON lines on stderr with distinct statuses (11–37) and the run id once a run exists.
+- `hilclaw/spec_feedback.py` (ADR-0202 decision 1): in a run whose `instance.json` states `given_code`, `(0, 1, 1)` without `spec.json` is found with `techniques` `[]` and is shown, failed and chosen as `feedback.base` by the existing rules; `instance.json` is read only when that directory holds no `spec.json`. `hilclaw/spec_tool.py`: docstring only.
+- **ADR-0202** (§9, new): `ARCHITECTURE/decisions/ADR-0202-od33-given-attempt-in-feedback.md` — decision 1 (feedback) and decision 2 (the command's choices); closes the ADR-0201 Boundaries question; registers unchanged (no new OD part answered). §9 notice on #5 (link in the driver record / issue #5, "ADR-0202 accepted").
+
+**Tests**: `tests/test_given_eval.py` (new; the real-clang happy path and wrong kernel at `cpu_standin` through the stub docker of `tests/first_run_stubs.py`, skipped where clang or `os.getuid` is missing and failing on CI via `openmp_clang.need()`; step order, survived failures, stops, all negative cases of criterion 5, streams, status table); added cases in `tests/test_spec_feedback.py`, `tests/test_spec_tool.py` (round 1 of a given-code run names the given attempt and its base, or its failure) and `tests/test_coder_call.py` (base `given.c` copied to the scratch). No existing assertion edited (no D21 list needed a change). Local: Windows ruff + touched tests; WSL Ubuntu (clang 14, libomp 14 extracted user-locally into the task directory) the touched and related files, 809 passed with the real clang; the full suite on the final head, 41960 passed, 71 skipped, 1 failed — `tests/test_standin_openmp.py::test_the_waiter_built_without_openmp_keeps_its_line_for_a_child_with_threads` (WSL reports a child RSS of 16637952 bytes, under the test's 16 MiB floor; a measurement of this machine, not touched by this change, green on CI). `hilclaw/given_eval.py` 98% and `hilclaw/spec_feedback.py` 99% line coverage; CI Coverage gate green.
+
+**Deviation from `touchesFiles`**: `hilclaw/spec_tool.py` (docstring), `tests/test_spec_tool.py`, `tests/test_coder_call.py` (review round 1, criterion 3's coder check). Non-test files: 3 plus the ADR.
+
+**Less exact, not edited**: ADR-0151 decision 3 ⑧ and decision 2 (d) (only attempts with a spec); listed in ADR-0202 Consequences.
+
+**Runtime acceptance item** (for `PROCESS/RuntimeAcceptance.md`; the driver adds it):
+- 출처: `T-0564`, ADR-0202 결정 1
+- 항목: 실제 `claude`가 도는 given-code 루프 run(`instance.json` 버전 3에 `given_code`, `cpu_standin`, `candidates_per_round` 1, `round_budget` 2 이상)에서 라운드 0의 주어진 시도 `(0, 1, 1)`이 두 지점에서 검증되고 측정된 뒤, 라운드 1의 `spec.write`가 그 시도를 `feedback.attempts`(`techniques` `[]`)와 `feedback.base`로 적고, 실제 코더가 scratch의 `base/given.c`에서 출발해 커널을 쓰는가(코더의 보고나 산출물로 확인).
+- 선택지: (a) 오너가 수동 확인 (b) 런타임 자체 점검 코드로 확인 (c) 보류. D16에 따라 드라이버 task로는 닫지 않는다.
+- 막히는 것: 없음(T-0564 DONE). 실패로 드러나면 ADR-0202 결정 1(주어진 시도의 feedback 표시)을 다시 정한다.
+
+**HQ**: none.
+
+**Storage**: `%TMP%/hilclaw-driver/T-0564/` (commit and PR drafts, CI watch log) and WSL `/tmp/hilclaw-driver/T-0564/` (libomp 14 extract, two working copies of the tree, logs, coverage data) removed with `rm -r` at the end. No image made, nothing installed; the existing WSL venv `~/.venvs/hilclaw-driver` was used as it was. No `claude` process was started and no test run was made (D25).

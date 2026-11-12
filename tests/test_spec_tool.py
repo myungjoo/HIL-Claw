@@ -1662,6 +1662,55 @@ def test_a_later_round_of_a_given_code_run_takes_named_techniques(root, shelf):
     assert written(root) == expected_later(twin, techniques=["tiling"])
 
 
+def place_given_attempt(root, outcome=PASS):
+    output = layout.attempt_artefact(root, RUN, 0, 1, 1, "output")
+    output.mkdir(parents=True)
+    (output / "given.c").write_bytes(b"void f(void) {}\n")
+    check(root, 0, SIM, result=outcome)
+    if outcome is PASS:
+        check(root, 0, BOARD, result=PASS)
+        timing = {
+            "outcome": "converged",
+            "intervals": [7, 7, 7, 7, 7],
+            "unit": "ns",
+            "shape": {"m": 3, "k": 5, "n": 7},
+            "contract_key": {"kind": "gemm", "dtype": "fp32", "layout": "row_major"},
+        }
+        check(root, 0, "board_run_timing_v2", result=timing)
+
+
+def test_round_1_of_a_given_code_run_starts_from_the_given_attempt(logged):
+    twin = given_run(logged)
+    place_given_attempt(logged)
+    assert write(Source(logged), later()) == {}
+    attempt = {"round": 0, "candidate": 1, "attempt": 1, "techniques": []}
+    made = expected_later(twin, 1, (), [attempt])
+    made["feedback"]["base"] = {"round": 0, "candidate": 1, "attempt": 1}
+    assert written(logged) == made
+
+
+def test_round_1_of_a_given_code_run_shows_a_given_attempt_that_failed(logged):
+    twin = given_run(logged)
+    place_given_attempt(logged, {"outcome": "fail", "max_abs_error": 1.0})
+    assert write(Source(logged), later()) == {}
+    shown = written(logged)["feedback"]
+    assert "base" not in shown
+    assert shown["attempts"] == [
+        {
+            "round": 0,
+            "candidate": 1,
+            "attempt": 1,
+            "techniques": [],
+            "failure": {
+                "stage": "sim",
+                "report": "Stage sim: the correctness check at the sim point "
+                "ended with the outcome fail.",
+            },
+        }
+    ]
+    assert written(logged)["id"] == expected_later(twin)["id"]
+
+
 def test_round_0_of_a_given_code_run_writes_no_spec(root):
     given_run(root)
     failure = refused(root)

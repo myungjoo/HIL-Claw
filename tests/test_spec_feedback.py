@@ -1184,3 +1184,136 @@ def test_a_sim_timing_line_under_the_v3_value_is_not_a_board_measurement(root):
     passed(root, 0)
     check(root, 0, "sim_run_timing_v3", result=timing([10] * 5))
     assert base_of(root, 1) is None
+
+
+GIVEN_DIGEST = "ab" * 32
+GIVEN_INSTANCE = {
+    "schema_version": 1,
+    "hw_profile": {
+        "key": keys.hw_profile_key(document()["hw_profile"]["record"]).name,
+        "record": document()["hw_profile"]["record"],
+    },
+    "op_signature": document()["task"]["op_signature"],
+    "objective": {"objectives": [{"type": "latency_minimisation"}], "constraints": []},
+    "candidates_per_round": 1,
+    "n_max": 6,
+    "draws": 1,
+    "tolerance": {"rtol": 1e-4, "atol": 1e-5},
+    "round_budget": 3,
+}
+
+
+def put_instance(root, given=True, content=None):
+    path = layout.run_file(root, RUN, "instance.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if content is None:
+        made = dict(GIVEN_INSTANCE)
+        if given:
+            made |= {"schema_version": 3, "given_code": GIVEN_DIGEST}
+        content = json.dumps(made).encode()
+    path.write_bytes(content)
+
+
+def place_given(root):
+    output = layout.attempt_artefact(root, RUN, 0, 1, 1, "output")
+    output.mkdir(parents=True)
+    (output / "given.c").write_bytes(b"void f(void) {}\n")
+
+
+def test_the_given_attempt_measured_is_shown_and_is_the_base(root):
+    put_instance(root)
+    place_given(root)
+    timed(root, 0, [50] * 5)
+    made = spec_feedback.feedback(root, RUN, 1)
+    assert made == {
+        "attempts": [{"round": 0, "candidate": 1, "attempt": 1, "techniques": []}],
+        "base": ref(0),
+    }
+    assert spec_feedback.incumbent(root, RUN) == ref(0)
+
+
+def test_the_given_attempt_competes_with_later_coder_attempts(root):
+    put_instance(root)
+    place_given(root)
+    timed(root, 0, [50] * 5)
+    put_spec(root, 1, techniques=("t1",))
+    timed(root, 1, [20] * 5)
+    made = spec_feedback.feedback(root, RUN, 2)
+    assert [e["techniques"] for e in made["attempts"]] == [[], ["t1"]]
+    assert made["base"] == ref(1)
+
+
+def test_the_given_attempt_failed_at_sim_is_shown_with_its_failure(root):
+    put_instance(root)
+    place_given(root)
+    check(root, 0, SIM, result=FAIL)
+    made = spec_feedback.feedback(root, RUN, 1)
+    assert made == {
+        "attempts": [
+            {
+                "round": 0,
+                "candidate": 1,
+                "attempt": 1,
+                "techniques": [],
+                "failure": {"stage": "sim", "report": sentence("sim", "sim", "fail")},
+            }
+        ]
+    }
+
+
+def test_a_given_attempt_that_failed_to_build_carries_its_compiler_log(root):
+    put_instance(root)
+    place_given(root)
+    check(root, 0, SIM, result=broken("build_exit_status"))
+    build_log(root, 0)
+    failure = attempts(root, RUN, 1)[0]["failure"]
+    assert failure["stage"] == "compile"
+    assert failure["report"].endswith("Compiler log:\nx.c:1: error")
+
+
+def test_a_given_attempt_never_checked_is_not_shown(root):
+    put_instance(root)
+    place_given(root)
+    assert spec_feedback.feedback(root, RUN, 1) == {"attempts": []}
+
+
+def test_a_run_without_given_code_still_ignores_an_attempt_without_a_spec(root):
+    put_instance(root, given=False)
+    place_given(root)
+    timed(root, 0, [50] * 5)
+    assert spec_feedback.feedback(root, RUN, 1) == {"attempts": []}
+
+
+def test_only_the_given_tuple_is_found_without_a_spec(root):
+    put_instance(root)
+    place_given(root)
+    passed(root, 0)
+    for q, a in ((0, 2), (1, 1)):
+        layout.attempt_artefact(root, RUN, q, 1, a, "output").mkdir(parents=True)
+        check(root, q, SIM, a, result=FAIL)
+    assert [(e["round"], e["attempt"]) for e in attempts(root, RUN, 2)] == [(0, 1)]
+
+
+def test_the_instance_is_not_read_while_every_attempt_has_a_spec(root):
+    put_spec(root, 0)
+    passed(root, 0)
+    layout.run_file(root, RUN, "instance.json").mkdir()
+    assert len(attempts(root, RUN, 1)) == 1
+
+
+@pytest.mark.parametrize(
+    ("content", "kind"),
+    [
+        (None, "run_file_missing"),
+        (b"{", "run_file_invalid"),
+        (json.dumps({"schema_version": 9}).encode(), "run_file_unsupported"),
+    ],
+    ids=["missing", "invalid", "other-version"],
+)
+def test_an_instance_that_cannot_be_read_fails_the_given_lookup(root, content, kind):
+    place_given(root)
+    if content is not None:
+        put_instance(root, content=content)
+    with pytest.raises(ToolFailure) as caught:
+        spec_feedback.feedback(root, RUN, 1)
+    assert caught.value.kind == kind
