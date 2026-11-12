@@ -1324,6 +1324,62 @@ def test_a_later_round_of_fp32_gemm_refuses_a_committed_gemm_bf16_entry(root):
     )
 
 
+OTHER_BF16_ENTRIES = (
+    (rmsnorm_bf16_contract, "rmsnorm_bf16_lane_sums", "elementwise_add_bf16_flat_loop"),
+    (
+        elementwise_add_bf16_contract,
+        "elementwise_add_bf16_flat_loop",
+        "swiglu_bf16_poly_exp",
+    ),
+    (swiglu_bf16_contract, "swiglu_bf16_flat_loop", "rope_bf16_table_row_per_token"),
+    (swiglu_bf16_contract, "swiglu_bf16_poly_exp", "rmsnorm_bf16_lane_sums"),
+    (
+        rope_bf16_contract,
+        "rope_bf16_table_row_per_token",
+        "sdpa_kv_cache_bf16_two_pass",
+    ),
+    (
+        sdpa_kv_cache_bf16_contract,
+        "sdpa_kv_cache_bf16_two_pass",
+        "gemm_bf16_widened_b_panel",
+    ),
+    (
+        sdpa_kv_cache_bf16_contract,
+        "sdpa_kv_cache_bf16_gqa_groups",
+        "swiglu_bf16_flat_loop",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "contract, own, other", OTHER_BF16_ENTRIES, ids=[e[1] for e in OTHER_BF16_ENTRIES]
+)
+def test_a_later_round_of_another_bf16_kind_takes_its_committed_entry(
+    root, contract, own, other
+):
+    run(root, on_standin(contract.op_signature_record(*contract.SHAPES[0])))
+    assert write(Source(root), later(techniques=[own])) == {}
+    made = written(root)
+    assert made["guidance"]["techniques"] == [catalog.technique("cpu_standin", own)]
+    assert f"hilclaw_{contract.KIND}_bf16(" in made["guidance"]["techniques"][0]["text"]
+
+
+@pytest.mark.parametrize(
+    "contract, own, other", OTHER_BF16_ENTRIES, ids=[e[1] for e in OTHER_BF16_ENTRIES]
+)
+def test_a_later_round_of_another_bf16_kind_refuses_an_entry_of_another_contract(
+    root, contract, own, other
+):
+    run(root, on_standin(contract.op_signature_record(*contract.SHAPES[0])))
+    failure = refused_later(root, later(techniques=[own, other]))
+    assert failure.kind == "technique_not_applicable"
+    stated = catalog.entries("cpu_standin")[other].applies_to.kind
+    assert failure.message == (
+        f"catalog/cpu_standin/{other}.md: applies to the kind {stated}, not the "
+        f"spec's {contract.KIND}; nothing was written"
+    )
+
+
 NOT_COVERED = {
     "gemm_bf16_zero": gemm_bf16_contract.op_signature_record(1, 2048, 8192)
     | {"shape": {"m": 0, "k": 2048, "n": 8192}},

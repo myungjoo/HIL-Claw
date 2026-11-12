@@ -458,7 +458,22 @@ COMMITTED_FP32 = [
     "simd_baseline_intrinsics",
 ]
 COMMITTED_BF16_GEMM = ["gemm_bf16_row_accumulators", "gemm_bf16_widened_b_panel"]
-BF16_WITHOUT_ENTRIES = [key for key in BF16 if key != BF16_GEMM]
+COMMITTED = {
+    FP32_GEMM: COMMITTED_FP32,
+    BF16_GEMM: COMMITTED_BF16_GEMM,
+    ("rmsnorm", "bf16", "row_major", "c"): ["rmsnorm_bf16_lane_sums"],
+    ("elementwise_add", "bf16", "row_major", "c"): ["elementwise_add_bf16_flat_loop"],
+    ("swiglu", "bf16", "row_major", "c"): [
+        "swiglu_bf16_flat_loop",
+        "swiglu_bf16_poly_exp",
+    ],
+    ("rope", "bf16", "row_major", "c"): ["rope_bf16_table_row_per_token"],
+    ("sdpa_kv_cache", "bf16", "row_major", "c"): [
+        "sdpa_kv_cache_bf16_gqa_groups",
+        "sdpa_kv_cache_bf16_two_pass",
+    ],
+}
+OTHER_BF16 = [key for key in BF16 if key != BF16_GEMM]
 CHANGED_TO_BF16 = (
     "- kind: gemm",
     "- dtype: bf16",
@@ -509,13 +524,16 @@ def test_the_table_holds_the_six_bf16_contracts_and_one_fp32():
     assert len(CONTRACTS) == 7 and FP32_GEMM in CONTRACTS
 
 
-@pytest.mark.parametrize(
-    "key", BF16_WITHOUT_ENTRIES, ids=[key[0] for key in BF16_WITHOUT_ENTRIES]
-)
-def test_a_bf16_run_gets_no_entry_of_the_committed_catalog(root, key):
+@pytest.mark.parametrize("key", OTHER_BF16, ids=[key[0] for key in OTHER_BF16])
+def test_a_bf16_run_gets_the_committed_entries_of_its_contract_only(root, key):
     run(root, standin(record_of(key)))
-    assert catalog.criteria("cpu_standin")
-    assert read(Source(root)) == {"entries": []}
+    criteria = catalog.criteria("cpu_standin")
+    assert read(Source(root)) == {
+        "entries": [{"id": i, "when": criteria[i]} for i in COMMITTED[key]]
+    }
+    others = {i for other, ids in COMMITTED.items() if other != key for i in ids}
+    assert others and not others & set(COMMITTED[key])
+    assert sorted(criteria) == sorted(i for ids in COMMITTED.values() for i in ids)
 
 
 def test_an_fp32_gemm_run_gets_the_four_committed_entries(root):
@@ -622,9 +640,7 @@ def test_a_damaged_catalog_is_catalog_unusable_with_nothing_applicable(
 def test_every_id_returned_for_a_contract_passes_spec_write(root, key):
     run(root, standin(record_of(key)))
     ids = [e["id"] for e in read(Source(root))["entries"]]
-    assert ids == {FP32_GEMM: COMMITTED_FP32, BF16_GEMM: COMMITTED_BF16_GEMM}.get(
-        key, []
-    )
+    assert ids == COMMITTED[key]
     assert spec_tool.definition(Source(root)).function(later_round(ids)) == {}
     path = layout.attempt_artefact(root, RUN, 1, 1, 1, "spec.json")
     made = json.loads(path.read_bytes())
