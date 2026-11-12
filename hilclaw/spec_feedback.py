@@ -62,6 +62,17 @@ journal refuses has already failed the read of the checks
 so the medians are compared without comparing ``contract_key`` and
 ``shape``. With no incumbent there is no ``base``.
 
+``ARCHITECTURE/decisions/ADR-0202-od33-given-attempt-in-feedback.md``
+decision 1 adds the given attempt of a run whose ``instance.json`` states
+``given_code`` (ADR-0200 decision 4 (a)): the attempt ``(0, 1, 1)``, which
+has no ``spec.json``, is found at ⑧ when its directory exists and holds no
+entry ``spec.json``, with ``techniques`` the empty list, and is then shown,
+failed and made the incumbent by the same rules as every other attempt. The
+run's ``instance.json`` is read for this, by
+:func:`hilclaw.run_file_tools.read` and only when that directory holds no
+``spec.json``, its failures being the four ``run_file_*`` kinds; a file of
+version 1 or 2 states no given code and the directory is ignored as before.
+
 Choices that are this module's own and no rule of the record:
 
 * Of a listing, only a name that is exactly what :mod:`hilclaw.layout` formats
@@ -83,8 +94,8 @@ Choices that are this module's own and no rule of the record:
   class and the text of the system, without the absolute path.
 
 The files read are the listed directories, the found ``spec.json`` files,
-``events.ndjson`` and the compiler logs; ``STATE.json``, ``instance.json``,
-``decision/hypotheses.json`` and ``decision.md`` are not. Nothing is created,
+``events.ndjson``, the compiler logs and, as above, ``instance.json``;
+``STATE.json``, ``decision/hypotheses.json`` and ``decision.md`` are not. Nothing is created,
 written or kept between calls. ``spec.write`` (:mod:`hilclaw.spec_tool`)
 calls :func:`feedback`. :func:`incumbent` applies the same reading to every
 round of a run, for the binding of
@@ -104,9 +115,12 @@ from hilclaw import (
     check_result,
     check_standing,
     checks_tool,
+    given_attempt,
+    instance,
     journal,
     keys,
     layout,
+    run_file_tools,
     run_files,
     spec_file,
     timings_tool,
@@ -166,7 +180,9 @@ def feedback(data_root, run_id, round):
         UTF-8 without a byte order mark; of kind ``run_file_missing``,
         ``run_file_unreadable``, ``run_file_invalid`` or
         ``run_file_unsupported`` as :func:`hilclaw.checks_tool.log_lines`
-        raises them; of kind ``run_file_invalid`` or ``check_result_invalid``
+        raises them, and as :func:`hilclaw.run_file_tools.read` raises them
+        for the ``instance.json`` read when ``(0, 1, 1)`` holds no
+        ``spec.json``; of kind ``run_file_invalid`` or ``check_result_invalid``
         as :func:`hilclaw.checks_tool.checks_in_order` raises them.
     """
     if type(round) is not int:
@@ -319,7 +335,14 @@ def _found(root, run_id, round):
             if document is not None:
                 techniques = [t["id"] for t in document["guidance"]["techniques"]]
                 found.append((q, a, techniques))
+            elif (q, 1, a) == given_attempt.GIVEN_ATTEMPT and _given(root, run_id):
+                found.append((q, a, []))
     return found
+
+
+def _given(root, run_id):
+    _, content = run_file_tools.read(root, run_id, "instance.json")
+    return instance.parse_given(content).given_code is not None
 
 
 def _listed(root, directory, numbers, name_of):
