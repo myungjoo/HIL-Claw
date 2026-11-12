@@ -32,7 +32,7 @@ The one LAN aarch64 machine the owner named for the driver's demonstration (DRIV
 ### 3. Where the destination is read
 
 - **One environment variable, `HILCLAW_AARCH64_SSH`**, holds one ssh destination as the caller's own ssh client resolves it: an alias of the caller's ssh configuration, or a destination of the form ssh documents. Nothing of the repository holds its value.
-- **Unset or empty**: the runner raises its "not configured" error before anything is started; the environment check reports the state `not_configured`; the test that reaches the machine is skipped (so in CI).
+- **Unset or empty**: the runner raises its "not configured" error before anything is started; the environment check reports the state `not_configured`; the test that reaches the machine is skipped (so in CI). That test also needs `HILCLAW_REMOTE_TEST_TASK`, the id of the running task, whose remote directory it uses.
 - **A value that begins with `-` or holds a character outside 0x21 to 0x7E is refused** before anything is started, since ssh could read it as an option or split it. The refusal's text does not repeat the value.
 - **Weighed**: a member of the committed `hilclaw.config.json` or a constant of the package would put the machine's name into every checkout and commit, which PLAN P3-17 forbids; a task file is committed as well. An environment variable is the source ADR-0144 decision 5 (c) chose for the same reason (a machine's value, no committed value).
 
