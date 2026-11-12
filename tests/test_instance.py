@@ -10184,7 +10184,7 @@ def test_a_version_3_document_with_a_malformed_given_code_is_invalid(value):
     assert message.endswith(type(value).__name__) or "str " in message
 
 
-def test_a_given_code_of_a_subclass_of_str_is_none():
+def test_a_given_code_of_a_subclass_of_str_is_refused():
     class Digest(str):
         pass
 

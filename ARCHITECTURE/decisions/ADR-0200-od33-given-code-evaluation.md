@@ -78,7 +78,7 @@ As cited in Context (**owner**). Decisions 2 to 9 stay inside them: they add no 
 
 | Caller | Slice 1 (this) | 2 (start) | 3a (run readers) | 3b (round 0) | 4 (command) |
 |---|---|---|---|---|---|
-| `instance_file`, `instance_start`, `start_instance`, `new_run` | write v1 or v2 only | write v3 for a request with a C file (`c_kernel`, N = 1) | — | — | used by the command |
+| `instance_file`, `instance_start`, `start_instance`, `new_run` (and `model_instances`, through `instance_start.prepare`) | write v1 or v2 only | write v3 for a request with a C file (`c_kernel`, N = 1) | — | — | used by the command |
 | `journaled_tool` / `layout_version_of_kinded`, `hw_tool`, `run_file_tools` (`instance.read`, `state.read`), `round_end_tool`, `key_store_tool`, `run_admission`, `run_objective`, `run_commit`, `further_turn`, `tools` | refuse v3 | refuse v3 | read v3 as its v1 twin (its other members mean the same) | — | — |
 | `check_admission`, `check_tool`, `run_tool` | refuse v3 | refuse v3 | read v3 of kind `c_kernel`; the given attempt is evaluated as a C kernel attempt, from its `output/` | — | called by the command |
 | `spec_tool`, `coder_call`, `spec_feedback` | refuse v3 (through `run_file_tools`) | — | read v3 for rounds ≥ 1 | no spec and no coder call for `(0, 1, 1)` | — |

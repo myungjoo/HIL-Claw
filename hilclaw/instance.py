@@ -684,7 +684,7 @@ _TOLERANCE = ("rtol", "atol")
 _COMMIT_LENGTHS = (40, 64)
 _COMMIT_CHARACTERS = frozenset("0123456789abcdef")
 _STATED_LAYOUT = {SCHEMA_VERSION: 1, KIND_SCHEMA_VERSION: 1, GIVEN_SCHEMA_VERSION: 1}
-
+_DIGEST_CHARACTERS = frozenset("0123456789abcdef")
 _OBJECTIVE = ("objectives", "constraints")
 _OBJECTIVE_ENTRY = ("type",)
 _OBJECTIVE_TYPES = ("latency_minimisation",)
@@ -1644,7 +1644,7 @@ def _given_code(version, document):
     if (
         type(value) is not str
         or len(value) != 64
-        or not _COMMIT_CHARACTERS.issuperset(value)
+        or not _DIGEST_CHARACTERS.issuperset(value)
     ):
         _fail("given_code", "a str of 64 lowercase hexadecimal characters", value)
     return value

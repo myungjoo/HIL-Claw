@@ -795,3 +795,29 @@ def test_a_version_2_document_lacking_members_reports_them_as_version_1():
 def test_a_c_kernel_document_lacking_members_reports_them_as_version_1():
     error = refused(kinded("c_kernel", 1, tolerance=ABSENT))
     assert error.missing == ("tolerance",)
+
+
+# The member given_code of ADR-0200 decision 6, not yet taken by the start
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        {**document(), "given_code": "0" * 64},
+        {**kinded(), "given_code": "0" * 64},
+        {**document(), "schema_version": 3, "given_code": "0" * 64},
+    ],
+    ids=["v1", "v2", "v3"],
+)
+def test_a_document_naming_given_code_is_refused_and_never_rewritten(given):
+    before = copy.deepcopy(given)
+    recorder = Recorder(True)
+    error = (
+        UnsupportedVersionError
+        if given["schema_version"] == 3
+        else InvalidInstanceError
+    )
+    with pytest.raises(error):
+        call(given, covers=recorder)
+    assert given == before
+    assert recorder.calls == []
