@@ -1,28 +1,36 @@
-"""The reader of the technique catalog (ADR-0150 decision 2 and Consequences slice 1).
+"""The reader of the technique catalog (ADR-0150 decision 2 and Consequences slice 1; ADR-0203).
 
 :func:`check` checks one accelerator's directory of the catalog,
 :func:`technique` returns what one entry gives a spec, :func:`criteria`
-returns the selection criteria of every entry, and :func:`applies` with
-:func:`mismatch` compare the values of :data:`APPLIES_TO` with a run's or a
-spec's (ADR-0190 decision 2). ``spec.write`` (:mod:`hilclaw.spec_tool`) calls
-:func:`technique` for each id of its request and checks the rule of decision 4
-against the spec it composes (ADR-0151 decision 2 (b)); ``catalog.read``
-(:mod:`hilclaw.catalog_tool`) calls :func:`criteria` for the technique-selector,
-which chooses the ids a spec of a round >= 1 carries (ADR-0171 decisions 2 and
-3), and gives it only the entries that apply to its run. It is no registry
-tool, calls no model, starts no process and writes nothing.
+returns the selection criteria of every entry, :func:`entries` returns every
+entry with the values of its ``Applies to``, and :func:`applies` with
+:func:`mismatch` compare one entry's values with a run's or a spec's (ADR-0190
+decision 2; ADR-0203 decision 3). ``spec.write`` (:mod:`hilclaw.spec_tool`)
+calls :func:`entries` and :func:`mismatch` for the ids of its request and so
+checks the rule of ADR-0150 decision 4 against the spec it composes (ADR-0151
+decision 2 (b)); ``catalog.read`` (:mod:`hilclaw.catalog_tool`) calls
+:func:`entries` and :func:`applies` for the technique-selector, which chooses
+the ids a spec of a round >= 1 carries (ADR-0171 decisions 2 and 3), and gives
+it only the entries that apply to its run. It is no registry tool, calls no
+model, starts no process and writes nothing.
 
 **Decided by ADR-0150** and only applied here: the catalog is ``catalog/``
 (:data:`SOURCE`), with one directory per ``accelerator`` value holding one file
 ``<id>.md`` per entry, the id a *name* of ADR-0001, and nothing else; an entry
 file is UTF-8 with LF line ends and has, in this order and with no other
-heading of level 1 or 2, ``# <id>``, ``## Applies to`` with the lines of
-:data:`APPLIES_TO`, ``## When`` and ``## Guidance``; its ``text`` is the content
-of ``## Guidance`` to the end of the file with leading and trailing line feeds
-removed, and it gives a spec exactly ``{"id": <id>, "text": <text>}``
-(decisions 2 to 4). An entry's selection criteria are the content of its
-``## When`` section with leading and trailing line feeds removed (ADR-0171
-decision 3).
+heading of level 1 or 2, ``# <id>``, ``## Applies to``, ``## When`` and
+``## Guidance``; its ``text`` is the content of ``## Guidance`` to the end of
+the file with leading and trailing line feeds removed, and it gives a spec
+exactly ``{"id": <id>, "text": <text>}`` (decisions 2 to 4). An entry's
+selection criteria are the content of its ``## When`` section with leading
+and trailing line feeds removed (ADR-0171 decision 3).
+
+**Decided by ADR-0203** (decision 2) and only applied here: ``## Applies to``
+holds exactly the four lines ``- kind: <v>``, ``- dtype: <v>``,
+``- layout: <v>`` and ``- language: <v>``, in that order, each value a
+*name*, and the four values are a key of
+:data:`hilclaw.contract_table.TABLE`; an entry whose values name no contract
+of the table is refused. An entry applies to that one contract.
 
 **Choices of this module**; a breach of them or of the rules above raises
 :class:`InvalidCatalogError`:
@@ -35,11 +43,12 @@ decision 3).
   inside a fenced code block too; below a non-blank line, a line of ``=`` or
   ``-`` signs is refused, with any leading spaces, tabs or ``>`` and any
   trailing white space;
-- the lines of :data:`APPLIES_TO` come in that order, with only blank lines
-  before and after them; ``## When`` and the ``text`` are not blank.
+- the four lines of ``## Applies to`` have only blank lines before and after
+  them and no other character; ``## When`` and the ``text`` are not blank.
 
-An empty directory gives no entry. The rule of decision 4 against a spec is
-not enforced here: ``spec.write`` enforces it, through :func:`mismatch`.
+An empty directory gives no entry. The rule of ADR-0150 decision 4 against a
+spec is not enforced here: ``spec.write`` enforces it, through
+:func:`mismatch`.
 **Also raised**: :class:`TypeError` for an
 ``accelerator`` or id that is not a ``str`` or a ``source`` that is not a
 ``str`` or path object; :class:`FileNotFoundError` for a missing directory;
@@ -47,13 +56,20 @@ not enforced here: ``spec.write`` enforces it, through :func:`mismatch`.
 what reading the directory or a file raises.
 """
 
+import collections
 import os
 import re
 import stat
 from pathlib import Path
 
+from hilclaw import contract_table
+
 SOURCE = Path(__file__).resolve().parent.parent / "catalog"
-APPLIES_TO = ("- kind: gemm", "- dtype: fp32", "- layout: row_major", "- language: c")
+
+#: The four values of an entry's ``## Applies to``, in the order of its lines (ADR-0203 decision 2).
+AppliesTo = collections.namedtuple("AppliesTo", ("kind", "dtype", "layout", "language"))
+#: One entry as :func:`entries` returns it: its :class:`AppliesTo`, its selection criteria and its ``text``.
+Entry = collections.namedtuple("Entry", ("applies_to", "when", "text"))
 
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _FILE_NAME = re.compile(r"([a-z][a-z0-9_]{0,31})\.md")
@@ -61,12 +77,13 @@ _PREFIX = re.compile(r"(?:[ \t]*(?:>|[-*+](?=[ \t])|[0-9]{1,9}[.)](?=[ \t])))*[ 
 _HEADING = re.compile(r"#{1,2}(?:[ \t]|$)")
 _HTML_HEADING = re.compile(r"<h[12](?:[\s/>]|$)", re.IGNORECASE)
 _UNDERLINE = re.compile(r"(?:=+|-+)[ \t]*")
+_APPLIES_LINE = re.compile(r"- ([a-z]+): (.*)")
 _BOM = b"\xef\xbb\xbf"
 _JUNCTION_TAG = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
 
 
 class InvalidCatalogError(ValueError):
-    """An accelerator's directory or an entry file breaks a rule of ADR-0150 or of this module."""
+    """An accelerator's directory or an entry file breaks a rule of ADR-0150, of ADR-0203 or of this module."""
 
 
 def _path(value, what):
@@ -128,16 +145,32 @@ def _entry(path, entry_id):
     expected = [f"# {entry_id}", "## Applies to", "## When", "## Guidance"]
     if [lines[index] for index in found] != expected:
         raise InvalidCatalogError("an entry file has other headings than ADR-0150's")
-    applies = [line.strip() and line for line in lines[found[1] + 1 : found[2]]]
-    if "\n".join(applies).strip("\n").split("\n") != list(APPLIES_TO):
-        raise InvalidCatalogError("Applies to is not the four lines of ADR-0150")
+    applies_to = _applies_to(lines[found[1] + 1 : found[2]])
     when = "\n".join(lines[found[2] + 1 : found[3]]).strip("\n")
     if not when.strip():
         raise InvalidCatalogError("the When section is empty")
     text = "\n".join(lines[found[3] + 1 :]).strip("\n")
     if not text.strip():
         raise InvalidCatalogError("the Guidance section is empty")
-    return when, text
+    return Entry(applies_to, when, text)
+
+
+def _applies_to(lines):
+    stated = "\n".join(line.strip() and line for line in lines).strip("\n")
+    matched = [_APPLIES_LINE.fullmatch(line) for line in stated.split("\n")]
+    if not all(matched) or [m.group(1) for m in matched] != list(AppliesTo._fields):
+        raise InvalidCatalogError(
+            "Applies to is not the four lines kind, dtype, layout and language"
+        )
+    values = AppliesTo(*(m.group(2) for m in matched))
+    for name, value in zip(AppliesTo._fields, values):
+        if not _NAME.fullmatch(value):
+            raise InvalidCatalogError(
+                f"Applies to: the {name} must be a name matching {_NAME.pattern}"
+            )
+    if values not in contract_table.TABLE:
+        raise InvalidCatalogError("Applies to names no contract of the contract table")
+    return values
 
 
 def _read(accelerator, source):
@@ -190,7 +223,7 @@ def technique(accelerator, entry_id, *, source=None):
     entries = _read(accelerator, source)
     if entry_id not in entries:
         raise KeyError(entry_id)
-    return {"id": entry_id, "text": entries[entry_id][1]}
+    return {"id": entry_id, "text": entries[entry_id].text}
 
 
 def criteria(accelerator, *, source=None):
@@ -203,36 +236,52 @@ def criteria(accelerator, *, source=None):
     module docstring lists.
     """
     return {
-        entry_id: when for entry_id, (when, _) in _read(accelerator, source).items()
+        entry_id: found.when for entry_id, found in _read(accelerator, source).items()
     }
 
 
-def mismatch(kind, dtype, layout, language):
-    """Return the first value of :data:`APPLIES_TO` that the given values differ from.
+def entries(accelerator, *, source=None):
+    """Return every entry of ``accelerator`` with the values of its ``Applies to``.
 
-    Every entry the catalog's rules admit states the lines of
-    :data:`APPLIES_TO` (ADR-0150 decision 2), so the answer holds for each of
-    them. ``kind``, ``dtype`` and ``layout`` are those of an op_signature
-    record and ``language`` is that of its contract (ADR-0150 decision 4).
-    Returns ``None`` when all four are equal, and otherwise the pair of the
-    member's name and the entry's value, in the order of :data:`APPLIES_TO`.
-    Raises :class:`TypeError` when one of the four is not a ``str``.
+    ``accelerator`` and ``source`` are as for :func:`check`. After the whole
+    directory has passed :func:`check`, returns a new ``dict`` mapping each id,
+    in sorted order, to an :class:`Entry`: the :class:`AppliesTo` of the
+    entry, its selection criteria as :func:`criteria` gives them and its
+    ``text`` as :func:`technique` gives it (ADR-0203 decision 3). Raises as
+    the module docstring lists.
     """
-    given = {"kind": kind, "dtype": dtype, "layout": layout, "language": language}
-    for name, value in given.items():
+    return _read(accelerator, source)
+
+
+def mismatch(applies_to, kind, dtype, layout, language):
+    """Return the first value of the entry's ``applies_to`` that the given values differ from.
+
+    ``applies_to`` is the :class:`AppliesTo` of one entry, as :func:`entries`
+    gives it (ADR-0203 decision 3). ``kind``, ``dtype`` and ``layout`` are
+    those of an op_signature record and ``language`` is that of its contract
+    (ADR-0150 decision 4). Returns ``None`` when all four are equal, and
+    otherwise the pair of the member's name and the entry's value, in the
+    order of :class:`AppliesTo`. Raises :class:`TypeError` when
+    ``applies_to`` is not an :class:`AppliesTo` or one of the other four is
+    not a ``str``.
+    """
+    if not isinstance(applies_to, AppliesTo):
+        raise TypeError("applies_to must be an AppliesTo")
+    given = AppliesTo(kind, dtype, layout, language)
+    for name, value in zip(AppliesTo._fields, given):
         if type(value) is not str:
             raise TypeError(f"{name} must be a str")
-    for line in APPLIES_TO:
-        name, value = line.removeprefix("- ").split(": ", 1)
-        if given[name] != value:
+    for name, value, stated in zip(AppliesTo._fields, applies_to, given):
+        if stated != value:
             return name, value
     return None
 
 
-def applies(kind, dtype, layout, language):
-    """Return whether an entry's ``Applies to`` matches the given values.
+def applies(applies_to, kind, dtype, layout, language):
+    """Return whether the entry whose ``Applies to`` is ``applies_to`` matches the given values.
 
-    The predicate of ADR-0190 decision 2, exactly a ``bool``: :func:`mismatch`
-    finds no difference. Raises as :func:`mismatch` raises.
+    The predicate of ADR-0190 decision 2, made against each entry's own values
+    (ADR-0203 decision 3), exactly a ``bool``: :func:`mismatch` finds no
+    difference. Raises as :func:`mismatch` raises.
     """
-    return mismatch(kind, dtype, layout, language) is None
+    return mismatch(applies_to, kind, dtype, layout, language) is None

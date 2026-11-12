@@ -800,8 +800,11 @@ BOARD = "correctness_check_board_v2"
 PASS = {"outcome": "pass", "max_abs_error": 0.0}
 
 
-def entry(entry_id, applies=None):
-    lines = "\n".join(catalog.APPLIES_TO if applies is None else applies)
+FP32_LINES = ("- kind: gemm", "- dtype: fp32", "- layout: row_major", "- language: c")
+
+
+def entry(entry_id, applies=FP32_LINES):
+    lines = "\n".join(applies)
     return (
         f"# {entry_id}\n\n## Applies to\n\n{lines}\n\n## When\n\nWorth trying.\n\n"
         f"## Guidance\n\nUse {entry_id}.\n"
@@ -1072,18 +1075,14 @@ def test_an_id_with_no_entry_is_technique_unknown(root, shelf):
     )
 
 
-def test_an_entry_for_another_dtype_is_technique_not_applicable(
-    root, shelf, monkeypatch
-):
+def test_an_entry_for_another_dtype_is_technique_not_applicable(root, shelf):
     run(root)
-    applies = ("- kind: gemm", "- dtype: fp16", "- layout: row_major", "- language: c")
-    monkeypatch.setattr(catalog, "APPLIES_TO", applies)
-    for path in shelf.iterdir():
-        path.write_bytes(entry(path.stem, applies))
-    failure = refused_later(root, later(techniques=["tiling"]))
+    applies = ("- kind: gemm", "- dtype: bf16", "- layout: row_major", "- language: c")
+    (shelf / "tiling.md").write_bytes(entry("tiling", applies))
+    failure = refused_later(root, later(techniques=["loop_order", "tiling"]))
     assert failure.kind == "technique_not_applicable"
     assert failure.message == (
-        f"catalog/{ACCELERATOR}/tiling.md: applies to the dtype fp16, not the "
+        f"catalog/{ACCELERATOR}/tiling.md: applies to the dtype bf16, not the "
         "spec's fp32; nothing was written"
     )
 
@@ -1248,10 +1247,9 @@ def test_round_0_composes_the_spec_of_each_contract(root, contract, shape):
 
 @pytest.mark.parametrize("contract, shape", BF16, ids=[named(c) for c, _ in BF16])
 def test_a_later_round_of_a_bf16_contract_takes_entries_that_name_it(
-    root, shelf, monkeypatch, contract, shape
+    root, shelf, contract, shape
 ):
     applies = applies_to(contract)
-    monkeypatch.setattr(catalog, "APPLIES_TO", applies)
     for path in shelf.iterdir():
         path.write_bytes(entry(path.stem, applies))
     record = contract.op_signature_record(*shape)
@@ -1278,6 +1276,51 @@ def test_a_later_round_of_a_bf16_contract_refuses_an_fp32_entry(
         if contract.KIND != "gemm"
         else f"catalog/{ACCELERATOR}/tiling.md: applies to the dtype fp32, not the "
         "spec's bf16; nothing was written"
+    )
+
+
+def on_standin(record):
+    machine = hw(accelerator="cpu_standin")
+    return instance_document(record) | {
+        "hw_profile": {"key": keys.hw_profile_key(machine).name, "record": machine}
+    }
+
+
+GEMM_BF16_SHAPE = gemm_bf16_contract.SHAPES[0]
+COMMITTED_GEMM_BF16 = ["gemm_bf16_widened_b_panel", "gemm_bf16_row_accumulators"]
+
+
+def test_a_later_round_of_gemm_bf16_takes_the_committed_gemm_bf16_entries(root):
+    run(root, on_standin(gemm_bf16_contract.op_signature_record(*GEMM_BF16_SHAPE)))
+    assert write(Source(root), later(techniques=COMMITTED_GEMM_BF16)) == {}
+    made = written(root)
+    assert made["guidance"]["techniques"] == [
+        catalog.technique("cpu_standin", i) for i in COMMITTED_GEMM_BF16
+    ]
+    assert all(
+        "hilclaw_gemm_bf16(" in t["text"] for t in made["guidance"]["techniques"]
+    )
+
+
+def test_a_later_round_of_gemm_bf16_refuses_a_committed_fp32_entry(root):
+    run(root, on_standin(gemm_bf16_contract.op_signature_record(*GEMM_BF16_SHAPE)))
+    failure = refused_later(
+        root, later(techniques=["gemm_bf16_row_accumulators", "loop_order_ikj"])
+    )
+    assert failure.kind == "technique_not_applicable"
+    assert failure.message == (
+        "catalog/cpu_standin/loop_order_ikj.md: applies to the dtype fp32, not the "
+        "spec's bf16; nothing was written"
+    )
+
+
+def test_a_later_round_of_fp32_gemm_refuses_a_committed_gemm_bf16_entry(root):
+    run(root, on_standin(op()))
+    failure = refused_later(root, later(techniques=["gemm_bf16_row_accumulators"]))
+    assert failure.kind == "technique_not_applicable"
+    assert failure.message == (
+        "catalog/cpu_standin/gemm_bf16_row_accumulators.md: applies to the dtype "
+        "bf16, not the spec's fp32; nothing was written"
     )
 
 

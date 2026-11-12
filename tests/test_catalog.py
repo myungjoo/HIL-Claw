@@ -6,14 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import catalog, spec
+from hilclaw import catalog, contract_table, spec
 from hilclaw.catalog import (
-    APPLIES_TO,
     SOURCE,
+    AppliesTo,
+    Entry,
     InvalidCatalogError,
     applies,
     check,
     criteria,
+    entries,
     mismatch,
     technique,
 )
@@ -26,11 +28,22 @@ COMMITTED = (
     "register_blocking",
     "simd_baseline_intrinsics",
 )
+GEMM_BF16 = ("gemm_bf16_row_accumulators", "gemm_bf16_widened_b_panel")
+ALL_COMMITTED = tuple(sorted(COMMITTED + GEMM_BF16))
 FORBIDDEN = re.compile(
     r"\bomp\b|openmp|pthread|\bthreads?\b|(?<![\w-])-[fD]\w|__attribute__|avx|nntrainer",
     re.IGNORECASE,
 )
-APPLIES = "\n".join(APPLIES_TO)
+FP32_LINES = ("- kind: gemm", "- dtype: fp32", "- layout: row_major", "- language: c")
+APPLIES = "\n".join(FP32_LINES)
+FP32 = AppliesTo("gemm", "fp32", "row_major", "c")
+BF16_GEMM = AppliesTo("gemm", "bf16", "row_major", "c")
+
+
+def lines_of(key):
+    return "\n".join(
+        f"- {name}: {value}" for name, value in zip(AppliesTo._fields, key)
+    )
 
 
 def body(
@@ -85,20 +98,55 @@ def junction(link, target):
 def test_public_names():
     assert catalog.__doc__
     assert SOURCE == Path(catalog.__file__).resolve().parent.parent / "catalog"
-    assert APPLIES_TO == (
-        "- kind: gemm",
-        "- dtype: fp32",
-        "- layout: row_major",
-        "- language: c",
-    )
+    assert AppliesTo._fields == ("kind", "dtype", "layout", "language")
+    assert Entry._fields == ("applies_to", "when", "text")
+    assert not hasattr(catalog, "APPLIES_TO")
     assert issubclass(InvalidCatalogError, ValueError)
     assert check.__doc__ and technique.__doc__ and criteria.__doc__
+    assert entries.__doc__ and applies.__doc__ and mismatch.__doc__
 
 
 def test_committed_catalog_holds_the_four_entries():
     assert sorted(os.listdir(SOURCE)) == ["cpu_standin"]
-    assert check("cpu_standin") == COMMITTED
-    assert sorted(os.listdir(SOURCE / "cpu_standin")) == [f"{i}.md" for i in COMMITTED]
+    assert check("cpu_standin") == ALL_COMMITTED
+    assert sorted(os.listdir(SOURCE / "cpu_standin")) == [
+        f"{i}.md" for i in ALL_COMMITTED
+    ]
+
+
+def test_committed_entries_state_their_contracts():
+    found = entries("cpu_standin")
+    assert {i: e.applies_to for i, e in found.items()} == {
+        i: FP32 if i in COMMITTED else BF16_GEMM for i in ALL_COMMITTED
+    }
+    assert all(e.applies_to in contract_table.TABLE for e in found.values())
+
+
+@pytest.mark.parametrize("entry_id", GEMM_BF16)
+def test_committed_gemm_bf16_entry_keeps_its_contract(entry_id):
+    given = technique("cpu_standin", entry_id)
+    document = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    document["guidance"]["techniques"] = [given]
+    spec.validate(document)
+    content = (SOURCE / "cpu_standin" / f"{entry_id}.md").read_text(encoding="utf-8")
+    assert not FORBIDDEN.search(content)
+    text = given["text"]
+    assert text == content.split("## Guidance\n", 1)[1].strip("\n")
+    assert (
+        "`void hilclaw_gemm_bf16(size_t m, size_t k, size_t n, "
+        "const uint16_t *restrict a, const uint16_t *restrict b, "
+        "uint16_t *restrict c);`"
+    ) in text
+    for words in (
+        "round to nearest, ties to even",
+        "`uint16_t`",
+        "do not accumulate in `double`",
+        "not a measured or tuned value",
+        "`m`, `k` and `n` of at least 1",
+        "never read",
+    ):
+        assert words in text
+    assert "hilclaw_gemm(" not in text
 
 
 @pytest.mark.parametrize("entry_id", COMMITTED)
@@ -422,19 +470,22 @@ def test_thematic_break_after_blank_line(root):
     assert technique("cpu_standin", "alpha", source=root)["text"] == guidance
 
 
-APPLIES_WRONG = "Applies to is not the four lines of ADR-0150"
+APPLIES_WRONG = "Applies to is not the four lines kind, dtype, layout and language"
 
 
 @pytest.mark.parametrize(
     "applies",
     [
         "",
-        "\n".join(APPLIES_TO[:3]),
+        "\n".join(FP32_LINES[:3]),
         APPLIES + "\n- ext: x",
-        "\n".join(reversed(APPLIES_TO)),
-        APPLIES.replace("fp32", "fp16"),
+        APPLIES + "\n- language: c",
+        "\n".join(reversed(FP32_LINES)),
+        "\n".join(FP32_LINES[1:2] + FP32_LINES[:1] + FP32_LINES[2:]),
         APPLIES.replace("- kind", "* kind"),
-        APPLIES.replace("- language: c", "- language: c "),
+        APPLIES.replace("- kind: ", "- kind:"),
+        APPLIES.replace("- kind", "-  kind"),
+        APPLIES.replace("- dtype", "- Dtype"),
         APPLIES.replace("- dtype", "\n- dtype"),
         APPLIES + "\nNote.",
     ],
@@ -442,6 +493,45 @@ APPLIES_WRONG = "Applies to is not the four lines of ADR-0150"
 def test_wrong_applies_to(root, applies):
     put(root, "alpha.md", body("alpha", applies=applies))
     refused(root, APPLIES_WRONG)
+
+
+@pytest.mark.parametrize(
+    ("member", "applies"),
+    [
+        ("language", APPLIES.replace("- language: c", "- language: c ")),
+        ("dtype", APPLIES.replace("fp32", "FP32")),
+        ("kind", APPLIES.replace("gemm", "")),
+        ("layout", APPLIES.replace("row_major", "row-major")),
+        ("kind", APPLIES.replace("gemm", "g" * 33)),
+    ],
+)
+def test_applies_to_value_not_a_name(root, member, applies):
+    put(root, "alpha.md", body("alpha", applies=applies))
+    refused(
+        root, f"Applies to: the {member} must be a name matching [a-z][a-z0-9_]{{0,31}}"
+    )
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        ("gemm", "fp16", "row_major", "c"),
+        ("gemm", "fp32", "column_major", "c"),
+        ("gemm", "bf16", "row_major", "cpp"),
+        ("rmsnorm", "fp32", "row_major", "c"),
+        ("matmul", "bf16", "row_major", "c"),
+    ],
+)
+def test_applies_to_naming_no_contract(root, key):
+    put(root, "alpha.md", body("alpha", applies=lines_of(key)))
+    refused(root, "Applies to names no contract of the contract table")
+
+
+@pytest.mark.parametrize("key", list(contract_table.TABLE), ids="-".join)
+def test_an_entry_for_each_contract_of_the_table(root, key):
+    put(root, "alpha.md", body("alpha", applies=lines_of(key)))
+    assert check("cpu_standin", source=root) == ("alpha",)
+    assert entries("cpu_standin", source=root)["alpha"].applies_to == AppliesTo(*key)
 
 
 def test_applies_to_without_blank_lines(root):
@@ -530,7 +620,7 @@ def test_criteria_returns_a_new_dict(root):
 
 def test_criteria_of_the_committed_catalog():
     found = criteria("cpu_standin")
-    assert sorted(found) == list(COMMITTED)
+    assert sorted(found) == list(ALL_COMMITTED)
     assert all(text.strip() and "## " not in text for text in found.values())
 
 
@@ -546,12 +636,45 @@ def test_criteria_refuse_as_check_does(root, tmp_path):
         criteria("cpu_standin", source=root)
 
 
+def test_entries_of_every_entry_sorted(root):
+    put(root, "beta.md", body("beta", applies=lines_of(BF16_GEMM), guidance="B."))
+    put(root, "alpha.md", body("alpha", when="Now."))
+    found = entries("cpu_standin", source=str(root))
+    assert list(found) == ["alpha", "beta"]
+    assert found["alpha"] == Entry(FP32, "Now.", "Do it.")
+    assert found["beta"] == Entry(BF16_GEMM, "Worth trying when n is above 1.", "B.")
+    assert found["alpha"].applies_to.dtype == "fp32"
+
+
+def test_entries_of_an_empty_directory_and_a_new_dict(root):
+    assert entries("cpu_standin", source=root) == {}
+    put(root, "alpha.md", body("alpha"))
+    first = entries("cpu_standin", source=root)
+    first.clear()
+    assert list(entries("cpu_standin", source=root)) == ["alpha"]
+
+
+def test_entries_refuse_as_check_does(root, tmp_path):
+    with pytest.raises(FileNotFoundError):
+        entries("cpu_standin", source=tmp_path / "missing")
+    with pytest.raises(InvalidCatalogError):
+        entries("CPU", source=root)
+    with pytest.raises(TypeError):
+        entries(3, source=root)
+    with pytest.raises(TypeError):
+        entries("cpu_standin", source=3)
+    fp16 = lines_of(("gemm", "fp16", "row_major", "c"))
+    put(root, "alpha.md", body("alpha", applies=fp16))
+    with pytest.raises(InvalidCatalogError, match="names no contract"):
+        entries("cpu_standin", source=root)
+
+
 MATCHING = {"kind": "gemm", "dtype": "fp32", "layout": "row_major", "language": "c"}
 
 
 def test_the_values_of_applies_to_match():
-    assert applies(**MATCHING) is True
-    assert mismatch(**MATCHING) is None
+    assert applies(FP32, **MATCHING) is True
+    assert mismatch(FP32, **MATCHING) is None
 
 
 @pytest.mark.parametrize(
@@ -568,14 +691,14 @@ def test_the_values_of_applies_to_match():
 )
 def test_each_differing_member_does_not_apply(member, other):
     given = MATCHING | {member: other}
-    assert applies(**given) is False
-    assert mismatch(**given) == (member, MATCHING[member])
+    assert applies(FP32, **given) is False
+    assert mismatch(FP32, **given) == (member, MATCHING[member])
 
 
 def test_the_first_difference_in_the_order_of_applies_to_is_named():
     given = {"kind": "rope", "dtype": "bf16", "layout": "x", "language": "y"}
-    assert mismatch(**given) == ("kind", "gemm")
-    assert mismatch(**(given | {"kind": "gemm"})) == ("dtype", "fp32")
+    assert mismatch(FP32, **given) == ("kind", "gemm")
+    assert mismatch(FP32, **(given | {"kind": "gemm"})) == ("dtype", "fp32")
 
 
 @pytest.mark.parametrize("member", sorted(MATCHING))
@@ -583,13 +706,27 @@ def test_the_first_difference_in_the_order_of_applies_to_is_named():
 def test_a_value_that_is_not_a_str_is_refused(member, value):
     given = MATCHING | {member: value}
     with pytest.raises(TypeError, match=f"{member} must be a str"):
-        applies(**given)
+        applies(FP32, **given)
     with pytest.raises(TypeError, match=f"{member} must be a str"):
-        mismatch(**given)
+        mismatch(FP32, **given)
 
 
-def test_the_comparison_reads_applies_to_at_the_call(monkeypatch):
-    changed = ("- kind: gemm", "- dtype: bf16", "- layout: row_major", "- language: c")
-    monkeypatch.setattr(catalog, "APPLIES_TO", changed)
-    assert applies(**MATCHING) is False
-    assert applies(**(MATCHING | {"dtype": "bf16"})) is True
+@pytest.mark.parametrize(
+    "applies_to", [None, tuple(FP32), list(FP32), "gemm", MATCHING]
+)
+def test_applies_to_that_is_not_an_applies_to_is_refused(applies_to):
+    with pytest.raises(TypeError, match="applies_to must be an AppliesTo"):
+        applies(applies_to, **MATCHING)
+    with pytest.raises(TypeError, match="applies_to must be an AppliesTo"):
+        mismatch(applies_to, **MATCHING)
+
+
+def test_the_comparison_is_made_against_each_entry_s_own_values():
+    bf16 = MATCHING | {"dtype": "bf16"}
+    assert applies(BF16_GEMM, **MATCHING) is False
+    assert mismatch(BF16_GEMM, **MATCHING) == ("dtype", "bf16")
+    assert applies(BF16_GEMM, **bf16) is True
+    assert mismatch(FP32, **bf16) == ("dtype", "fp32")
+    rope = AppliesTo("rope", "bf16", "row_major", "c")
+    assert applies(rope, **(bf16 | {"kind": "rope"})) is True
+    assert mismatch(rope, **bf16) == ("kind", "rope")

@@ -73,8 +73,11 @@ def run(root, document=None):
     place(instance_path(root), encoded(document or instance_document()))
 
 
-def entry(entry_id, when="Worth trying."):
-    lines = "\n".join(catalog.APPLIES_TO)
+FP32_LINES = ("- kind: gemm", "- dtype: fp32", "- layout: row_major", "- language: c")
+
+
+def entry(entry_id, when="Worth trying.", applies=FP32_LINES):
+    lines = "\n".join(applies)
     return (
         f"# {entry_id}\n\n## Applies to\n\n{lines}\n\n## When\n\n{when}\n\n"
         f"## Guidance\n\nUse {entry_id}.\n"
@@ -201,8 +204,15 @@ def test_the_committed_catalog_of_cpu_standin(root):
     run(root, instance_document(hw(accelerator="cpu_standin")))
     result = read(Source(root))
     criteria = catalog.criteria("cpu_standin")
-    assert [e["id"] for e in result["entries"]] == sorted(criteria)
-    assert {e["id"]: e["when"] for e in result["entries"]} == criteria
+    fp32 = [
+        i
+        for i, e in catalog.entries("cpu_standin").items()
+        if e.applies_to.dtype == "fp32"
+    ]
+    assert [e["id"] for e in result["entries"]] == fp32
+    assert {e["id"]: e["when"] for e in result["entries"]} == {
+        i: criteria[i] for i in fp32
+    }
     assert all(e["when"].strip() for e in result["entries"])
 
 
@@ -440,6 +450,15 @@ CONTRACTS = {
 }
 BF16 = [key for key in CONTRACTS if key[1] == "bf16"]
 FP32_GEMM = ("gemm", "fp32", "row_major", "c")
+BF16_GEMM = ("gemm", "bf16", "row_major", "c")
+COMMITTED_FP32 = [
+    "cache_blocking",
+    "loop_order_ikj",
+    "register_blocking",
+    "simd_baseline_intrinsics",
+]
+COMMITTED_BF16_GEMM = ["gemm_bf16_row_accumulators", "gemm_bf16_widened_b_panel"]
+BF16_WITHOUT_ENTRIES = [key for key in BF16 if key != BF16_GEMM]
 CHANGED_TO_BF16 = (
     "- kind: gemm",
     "- dtype: bf16",
@@ -490,7 +509,9 @@ def test_the_table_holds_the_six_bf16_contracts_and_one_fp32():
     assert len(CONTRACTS) == 7 and FP32_GEMM in CONTRACTS
 
 
-@pytest.mark.parametrize("key", BF16, ids=[key[0] for key in BF16])
+@pytest.mark.parametrize(
+    "key", BF16_WITHOUT_ENTRIES, ids=[key[0] for key in BF16_WITHOUT_ENTRIES]
+)
 def test_a_bf16_run_gets_no_entry_of_the_committed_catalog(root, key):
     run(root, standin(record_of(key)))
     assert catalog.criteria("cpu_standin")
@@ -499,12 +520,15 @@ def test_a_bf16_run_gets_no_entry_of_the_committed_catalog(root, key):
 
 def test_an_fp32_gemm_run_gets_the_four_committed_entries(root):
     run(root, standin(record_of(FP32_GEMM)))
-    assert [e["id"] for e in read(Source(root))["entries"]] == [
-        "cache_blocking",
-        "loop_order_ikj",
-        "register_blocking",
-        "simd_baseline_intrinsics",
-    ]
+    assert [e["id"] for e in read(Source(root))["entries"]] == COMMITTED_FP32
+
+
+def test_a_gemm_bf16_run_gets_the_committed_gemm_bf16_entries(root):
+    run(root, standin(record_of(BF16_GEMM)))
+    criteria = catalog.criteria("cpu_standin")
+    assert read(Source(root)) == {
+        "entries": [{"id": i, "when": criteria[i]} for i in COMMITTED_BF16_GEMM]
+    }
 
 
 def test_an_instance_with_no_op_signature_gets_no_entry(root, shelf):
@@ -519,21 +543,15 @@ def test_an_uncovered_op_signature_gets_no_entry(root, shelf):
     assert read(Source(root)) == {"entries": []}
 
 
-def test_an_entry_for_another_dtype_is_not_given_to_a_covered_fp32_run(
-    root, shelf, monkeypatch
-):
-    monkeypatch.setattr(catalog, "APPLIES_TO", CHANGED_TO_BF16)
-    place(shelf / "tiling.md", entry("tiling"))
+def test_an_entry_for_another_dtype_is_not_given_to_a_covered_fp32_run(root, shelf):
+    place(shelf / "tiling.md", entry("tiling", applies=CHANGED_TO_BF16))
     run(root)
     assert read(Source(root)) == {"entries": []}
 
 
-def test_an_entry_that_names_a_bf16_contract_is_given_to_its_run(
-    root, shelf, monkeypatch
-):
-    monkeypatch.setattr(catalog, "APPLIES_TO", CHANGED_TO_BF16)
-    place(shelf / "tiling.md", entry("tiling"))
-    place(shelf / "fused.md", entry("fused", "When small."))
+def test_an_entry_that_names_a_bf16_contract_is_given_to_its_run(root, shelf):
+    place(shelf / "tiling.md", entry("tiling", applies=CHANGED_TO_BF16))
+    place(shelf / "fused.md", entry("fused", "When small.", CHANGED_TO_BF16))
     run(root, signed(record_of(("gemm", "bf16", "row_major", "c"))))
     assert read(Source(root)) == {
         "entries": [
@@ -541,6 +559,35 @@ def test_an_entry_that_names_a_bf16_contract_is_given_to_its_run(
             {"id": "tiling", "when": "Worth trying."},
         ]
     }
+
+
+def test_only_the_entries_of_the_run_s_contract_are_given(root, shelf):
+    rope = ("- kind: rope", "- dtype: bf16", "- layout: row_major", "- language: c")
+    place(shelf / "a_fp32.md", entry("a_fp32"))
+    place(shelf / "b_bf16.md", entry("b_bf16", "Bf16.", CHANGED_TO_BF16))
+    place(shelf / "c_rope.md", entry("c_rope", "Rope.", rope))
+    run(root, signed(record_of(("gemm", "bf16", "row_major", "c"))))
+    assert read(Source(root)) == {"entries": [{"id": "b_bf16", "when": "Bf16."}]}
+    run(root, signed(record_of(("rope", "bf16", "row_major", "c"))))
+    assert read(Source(root)) == {"entries": [{"id": "c_rope", "when": "Rope."}]}
+    run(root)
+    assert read(Source(root)) == {
+        "entries": [{"id": "a_fp32", "when": "Worth trying."}]
+    }
+    run(root, signed(record_of(("swiglu", "bf16", "row_major", "c"))))
+    assert read(Source(root)) == {"entries": []}
+
+
+def test_an_entry_naming_no_contract_is_catalog_unusable(root, shelf):
+    fp16 = ("- kind: gemm", "- dtype: fp16", "- layout: row_major", "- language: c")
+    place(shelf / "tiling.md", entry("tiling", applies=fp16))
+    run(root)
+    failure = refused(root)
+    assert failure.kind == "catalog_unusable"
+    assert failure.message == (
+        f"catalog/{ACCELERATOR}: the catalog directory is refused: "
+        "Applies to names no contract of the contract table"
+    )
 
 
 @pytest.mark.parametrize(
@@ -575,7 +622,9 @@ def test_a_damaged_catalog_is_catalog_unusable_with_nothing_applicable(
 def test_every_id_returned_for_a_contract_passes_spec_write(root, key):
     run(root, standin(record_of(key)))
     ids = [e["id"] for e in read(Source(root))["entries"]]
-    assert bool(ids) == (key == FP32_GEMM)
+    assert ids == {FP32_GEMM: COMMITTED_FP32, BF16_GEMM: COMMITTED_BF16_GEMM}.get(
+        key, []
+    )
     assert spec_tool.definition(Source(root)).function(later_round(ids)) == {}
     path = layout.attempt_artefact(root, RUN, 1, 1, 1, "spec.json")
     made = json.loads(path.read_bytes())
