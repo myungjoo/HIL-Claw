@@ -2,7 +2,7 @@
 id: T-0563
 title: Land ADR-0200 slice 3b for PLAN P3-11 — place the given code as attempt `(0, 1, 1)` (`output/given.c`, written from the verified blob), and teach round 0 of a given-code run in `orchestration/round-manager.md` (no coder call, no spec, no repair), handing one runtime acceptance item to the driver
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D27, FR-19, FR-1, OD-33, OD-28, "PLAN P3-11", HQ-0092, HQ-0097, ADR-0200]
 dependsOn: [T-0561, T-0562]
