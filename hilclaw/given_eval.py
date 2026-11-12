@@ -36,7 +36,8 @@ first failure:
    otherwise), then ``state.write`` writes the first ``STATE.json``. The
    entry's ``run.commit`` and ``state.read`` are not made: the run was made
    by step 4 of this call, so nothing is owed and no ``STATE.json`` exists.
-6. ``key.store``.
+6. ``key.store``; a failure is told and the steps go on, as round step 1
+   says (ADR-0134 decisions 5 and 6).
 7. The placement of ``(0, 1, 1)`` by :func:`hilclaw.given_attempt.place`
    (ADR-0201 decision 2).
 8. ``correctness.check`` at ``sim``, then at ``board``, each followed by
@@ -72,10 +73,10 @@ otherwise.
 Every refusal and failure goes to standard error as one compact JSON line
 with ``outcome``, the kind of this command, ``run_id`` once a run exists,
 and the members the kind has (``reason``, ``missing``, ``step``, ``kind``,
-``message``, ``fault``). A failure inside step 7 or 8 that round 0 survives
-(it goes to ``round.end``) is told on standard error when it happens; the
-summary follows when step 10 answered, and the status is that of the
-failure. No traceback reaches the person, and :class:`KeyboardInterrupt` and
+``message``, ``fault``). A failure inside step 6, 7 or 8 that round 0
+survives is told on standard error when it happens; the summary follows when
+step 10 answered, and the status is that of the first such failure. No
+traceback reaches the person, and :class:`KeyboardInterrupt` and
 :class:`SystemExit` are not caught.
 
 =========================  ======  ============================================
@@ -170,7 +171,7 @@ FIRST_STATE = {
 _ATTEMPT = {"round": 0, "candidate": 1, "attempt": 1}
 _ENTERING = ("converged", "not_converged")
 _VERIFIED = "verified"
-_SURVIVED = ("check_failed", "board_run_failed")
+_SURVIVED = ("key_store_failed", "check_failed", "board_run_failed")
 
 
 class _Stop(Exception):

@@ -95,8 +95,8 @@ Choices that are this module's own and no rule of the record:
 
 The files read are the listed directories, the found ``spec.json`` files,
 ``events.ndjson``, the compiler logs and, as above, ``instance.json``;
-``STATE.json``, ``decision/hypotheses.json`` and ``decision.md`` are not. Nothing is created,
-written or kept between calls. ``spec.write`` (:mod:`hilclaw.spec_tool`)
+``STATE.json``, ``decision/hypotheses.json`` and ``decision.md`` are not.
+Nothing is created, written or kept between calls. ``spec.write`` (:mod:`hilclaw.spec_tool`)
 calls :func:`feedback`. :func:`incumbent` applies the same reading to every
 round of a run, for the binding of
 ``ARCHITECTURE/decisions/ADR-0189-od31-binding-from-run-incumbents.md``
@@ -182,8 +182,9 @@ def feedback(data_root, run_id, round):
         ``run_file_unsupported`` as :func:`hilclaw.checks_tool.log_lines`
         raises them, and as :func:`hilclaw.run_file_tools.read` raises them
         for the ``instance.json`` read when ``(0, 1, 1)`` holds no
-        ``spec.json``; of kind ``run_file_invalid`` or ``check_result_invalid``
-        as :func:`hilclaw.checks_tool.checks_in_order` raises them.
+        ``spec.json``; of kind ``run_file_invalid`` or
+        ``check_result_invalid`` as
+        :func:`hilclaw.checks_tool.checks_in_order` raises them.
     """
     if type(round) is not int:
         raise TypeError(f"round: must be an int, got {type(round).__name__}")

@@ -333,12 +333,8 @@ def test_a_request_without_round_budget_is_started_with_one(bench, monkeypatch):
             {"checks.read": {"attempts": []}},
             {"sim": {"outcome": "pass", "standing": None}},
         ),
-        (
-            {"board.run": {"outcome": "converged"}},
-            {"timing": {"outcome": "converged"}},
-        ),
     ],
-    ids=["broken-timing", "not-verified", "no-entry", "no-intervals"],
+    ids=["broken-timing", "not-verified", "no-entry"],
 )
 def test_an_attempt_that_does_not_stand_is_not_measured(
     bench, monkeypatch, answers, summary
@@ -348,9 +344,15 @@ def test_an_attempt_that_does_not_stand_is_not_measured(
     made = bench.summary()
     for name, value in summary.items():
         assert made[name] == value
-    expected = 0 if answers.get("board.run") == {"outcome": "converged"} else 10
-    assert status == expected
+    assert status == EXIT_STATUS["not_measured"]
     assert state_of(bench.root, made["run_id"])["run_status"] == "over"
+
+
+@pytest.mark.skipif(GIT is None, reason="run.commit needs git")
+def test_a_timing_without_intervals_is_measured_with_no_median(bench, monkeypatch):
+    faked(monkeypatch, default_answers(**{"board.run": {"outcome": "converged"}}))
+    assert bench.main() == 0
+    assert bench.summary()["timing"] == {"outcome": "converged"}
 
 
 def failure(kind="tool_kind"):
@@ -401,6 +403,34 @@ def test_an_evaluation_failure_is_told_and_the_round_still_ends(
 
 
 @pytest.mark.skipif(GIT is None, reason="run.commit needs git")
+def test_a_key_store_failure_is_told_and_round_zero_goes_on(bench, monkeypatch):
+    asked = faked(
+        monkeypatch,
+        default_answers(**{"key.store": failure(), "board.run": failure("late")}),
+    )
+    assert bench.main() == EXIT_STATUS["key_store_failed"]
+    summary = bench.summary()
+    assert asked == [
+        "run.fresh",
+        "state.write",
+        "key.store",
+        "correctness.check",
+        "checks.read",
+        "correctness.check",
+        "checks.read",
+        "board.run",
+        "round.end",
+        "run.commit",
+    ]
+    assert [(t["outcome"], t["step"], t["kind"]) for t in bench.told()] == [
+        ("key_store_failed", "key.store", "tool_kind"),
+        ("board_run_failed", "board.run", "late"),
+    ]
+    assert summary["sim"] == {"outcome": "pass", "standing": "verified"}
+    assert summary["timing"] == {"failure": "late"}
+
+
+@pytest.mark.skipif(GIT is None, reason="run.commit needs git")
 def test_a_placement_that_fails_goes_to_round_end(bench, monkeypatch):
     asked = faked(monkeypatch, default_answers())
     real_start = given_eval._started
@@ -445,7 +475,6 @@ def test_an_existing_output_is_a_stop(bench, monkeypatch):
     [
         ("run.fresh", "state_write_failed", []),
         ("state.write", "state_write_failed", ["run.fresh"]),
-        ("key.store", "key_store_failed", ["run.fresh", "state.write"]),
         ("round.end", "round_end_failed", None),
         ("run.commit", "run_commit_failed", None),
     ],

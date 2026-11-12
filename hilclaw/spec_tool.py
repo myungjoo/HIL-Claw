@@ -68,7 +68,8 @@ and nothing is created before 12 (ADR-0151 decision 3, table):
    the first id that fails decides;
 8. to 10. for ``techniques`` only, :func:`hilclaw.spec_feedback.feedback`, whose
    kinds pass out unchanged: :data:`KIND_FEEDBACK_UNREADABLE`, the four
-   ``run_file_*`` kinds for the run's ``events.ndjson`` and
+   ``run_file_*`` kinds for the run's ``events.ndjson`` and, in a run with
+   given code, its ``instance.json`` (ADR-0202 decision 1), and
    ``check_result_invalid``;
 11. the composed document encoded into the written form of ADR-0029 decision
     2, accepted by :func:`hilclaw.spec_file.parse` and given its final name
@@ -124,7 +125,8 @@ passes out of the tool function and :func:`hilclaw.tools.call` answers it with
 The files read are ``instance.json``, for a non-empty ``techniques`` the
 catalog directory, and for ``techniques`` what
 :func:`hilclaw.spec_feedback.feedback` reads (the earlier attempts'
-directories and specs, ``events.ndjson`` and the compiler logs).
+directories and specs, ``events.ndjson``, the compiler logs and, when the
+attempt ``(0, 1, 1)`` has no spec, ``instance.json`` once more).
 ``STATE.json``, ``decision/hypotheses.json``, ``decision.md`` and the stored
 key records below ``db/`` are not, and neither is the attempt that
 ``task.build`` names: whether it has a kernel is checked at evaluation

@@ -1013,6 +1013,25 @@ def test_the_base_source_is_copied_into_the_scratch(
     assert seen == [["kernel.c"]]
 
 
+def test_a_given_attempt_as_base_gives_its_given_c(
+    data_root, parent, source, spec_path
+):
+    base_spec(spec_path)
+    base = layout.attempt_artefact(data_root, RUN_ID, 0, 1, 1, "output")
+    base.mkdir(parents=True)
+    (base / "given.c").write_bytes(KERNEL)
+    seen = []
+    runtime = FakeRuntime(
+        files={"given.c": KERNEL},
+        act=lambda root: seen.append(
+            (root / scratch.BASE_COPY_NAME / "given.c").read_bytes()
+        ),
+    )
+    assert call(request(), source=source, runtime=runtime)["taken"] == ["given.c"]
+    assert seen == [KERNEL]
+    assert not (base.parent / "spec.json").exists()
+
+
 def test_a_base_without_output_gives_base_unreadable(
     data_root, parent, source, spec_path
 ):
