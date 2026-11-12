@@ -96,9 +96,9 @@ Choices that are this module's own and no rule of the record:
 The files read are the listed directories, the found ``spec.json`` files,
 ``events.ndjson``, the compiler logs and, as above, ``instance.json``;
 ``STATE.json``, ``decision/hypotheses.json`` and ``decision.md`` are not.
-Nothing is created, written or kept between calls. ``spec.write`` (:mod:`hilclaw.spec_tool`)
-calls :func:`feedback`. :func:`incumbent` applies the same reading to every
-round of a run, for the binding of
+Nothing is created, written or kept between calls. ``spec.write``
+(:mod:`hilclaw.spec_tool`) calls :func:`feedback`. :func:`incumbent` applies
+the same reading to every round of a run, for the binding of
 ``ARCHITECTURE/decisions/ADR-0189-od31-binding-from-run-incumbents.md``
 (:mod:`hilclaw.model_run_binding`).
 :data:`KIND_FEEDBACK_UNREADABLE` is a name of the tool layer and not reserved.
