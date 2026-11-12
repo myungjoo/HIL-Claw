@@ -1,5 +1,6 @@
 import copy
 import datetime
+import hashlib
 import inspect
 import json
 import re
@@ -8,6 +9,9 @@ from pathlib import Path
 import pytest
 
 from hilclaw import (
+    artifacts,
+    bring_in,
+    cas,
     contract_table,
     elementwise_add_bf16_contract,
     gemm_bf16_contract,
@@ -35,7 +39,15 @@ from hilclaw.instance_start import (
     MissingMembersError,
     OutOfScopeError,
 )
-from hilclaw.start_instance import GivenRunIdError, RunIdInUseError, start
+from hilclaw.start_instance import (
+    GIVEN_CODE_TYPE,
+    GivenCodeFileError,
+    GivenCodeNotAdmittedError,
+    GivenCodeUnrecordedError,
+    GivenRunIdError,
+    RunIdInUseError,
+    start,
+)
 
 ABSENT = object()
 MARKER = "zq7-marker-zq7"
@@ -605,7 +617,7 @@ def test_a_missing_data_root_is_a_type_error(ids):
 
 def test_the_public_surface():
     parameters = inspect.signature(start).parameters
-    assert list(parameters) == ["document", "data_root"]
+    assert list(parameters) == ["document", "data_root", "code_file"]
     assert parameters["data_root"].kind is inspect.Parameter.KEYWORD_ONLY
     assert parameters["data_root"].default is inspect.Parameter.empty
     assert all(
@@ -789,3 +801,276 @@ def test_a_version_2_start_lacking_members_reports_them(tmp_path, ids):
 
 def test_a_version_2_start_with_a_run_id_is_refused_as_a_given_id(tmp_path, ids):
     assert_refused(kinded(run_id=FIXED_ID), GivenRunIdError, tmp_path, ids)
+
+
+# Given code (ADR-0200 decisions 5 and 6, slice 2)
+
+CODE = b"int given(void) { return 0; }\n"
+DIGEST = hashlib.sha256(CODE).hexdigest()
+
+
+def code_file(tmp_path, content=CODE, name="given.c"):
+    path = tmp_path / "input" / name
+    path.parent.mkdir(exist_ok=True)
+    path.write_bytes(content)
+    return path
+
+
+@pytest.fixture
+def root(tmp_path):
+    path = tmp_path / "data"
+    path.mkdir()
+    return path
+
+
+def one(**changes):
+    return document(candidates_per_round=1, **changes)
+
+
+def assert_given_refused(given, error, root, ids, path):
+    before = copy.deepcopy(given)
+    with pytest.raises(error) as caught:
+        start(given, data_root=root, code_file=path)
+    assert given == before
+    assert tree(root) == []
+    assert ids.calls == 0
+    return caught.value
+
+
+@pytest.mark.parametrize("candidate_kind", [ABSENT, "c_kernel"])
+def test_given_code_is_stored_written_and_recorded(
+    tmp_path, root, fixed_sources, candidate_kind
+):
+    given = one()
+    if candidate_kind is not ABSENT:
+        given["candidate_kind"] = candidate_kind
+    before = copy.deepcopy(given)
+    built = start(given, data_root=root, code_file=code_file(tmp_path))
+    assert built == FIXED_ID
+    assert given == before
+    blob = f"blobs/sha256/{DIGEST[:2]}/{DIGEST}"
+    assert tree(root) == [
+        "blobs",
+        "blobs/sha256",
+        f"blobs/sha256/{DIGEST[:2]}",
+        blob,
+        "runs",
+        f"runs/{built}",
+        f"runs/{built}/artifacts.json",
+        f"runs/{built}/instance.json",
+    ]
+    assert (root / blob).read_bytes() == CODE
+    assert cas.verify_blob(root, DIGEST)
+    read = instance.read_given(root, built)
+    assert read.schema_version == instance.GIVEN_SCHEMA_VERSION == 3
+    assert read.candidate_kind == "c_kernel"
+    assert read.given_code == DIGEST
+    assert read.layout_version == 1
+    assert read.instance.others == {}
+    assert read.instance.coder_model == CODER_MODEL_DEFAULT
+    assert read.instance.n_max == TEST_N_MAX
+    assert instance.given_code_of(root, built) == DIGEST
+    stored = json.loads(stored_bytes(root, built))
+    instance.validate_given(stored)
+    assert next(iter(stored)) == "schema_version"
+    assert list(stored)[-1] == "given_code"
+    assert "candidate_kind" not in stored
+    assert artifacts.load(root, built) == [
+        {
+            "sha256": DIGEST,
+            "size": len(CODE),
+            "type": "given_code",
+            "round": 0,
+            "retention_class": "final",
+        }
+    ]
+    for strict in (instance.read, instance.read_kinded):
+        with pytest.raises(UnsupportedVersionError):
+            strict(root, built)
+
+
+def test_the_written_bytes_are_those_without_given_code_but_two_members(tmp_path, root):
+    plain = start(one(), data_root=root)
+    given = start(one(), data_root=root, code_file=code_file(tmp_path))
+    without_code = json.loads(stored_bytes(root, plain))
+    with_code = json.loads(stored_bytes(root, given))
+    assert with_code.pop("given_code") == DIGEST
+    assert with_code.pop("schema_version") == 3
+    assert without_code.pop("schema_version") == 1
+    assert with_code == without_code
+
+
+def test_the_three_writes_come_in_the_order_of_decision_5(tmp_path, root, monkeypatch):
+    order = []
+
+    def spied(module, name):
+        real = getattr(module, name)
+
+        def call(*args, **kwargs):
+            order.append(name)
+            if name == "write":
+                assert cas.has_blob(root, DIGEST)
+            if name == "add_record":
+                assert (root / "runs" / args[1] / "instance.json").is_file()
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(module, name, call)
+
+    spied(cas, "put_bytes")
+    spied(instance_file, "write")
+    spied(artifacts, "add_record")
+    spied(run_id, "new")
+    start(one(), data_root=root, code_file=code_file(tmp_path))
+    assert order == ["put_bytes", "new", "write", "add_record"]
+
+
+def test_a_file_of_exactly_the_limit_is_taken(tmp_path, root):
+    content = b"x" * bring_in.MAX_FILE_BYTES
+    path = str(code_file(tmp_path, content))
+    built = start(one(), data_root=root, code_file=path)
+    assert instance.given_code_of(root, built) == hashlib.sha256(content).hexdigest()
+
+
+def test_an_empty_file_is_taken_as_given(tmp_path, root):
+    built = start(one(), data_root=root, code_file=code_file(tmp_path, b""))
+    assert artifacts.load(root, built)[0]["size"] == 0
+
+
+def test_a_file_over_the_limit_is_refused(tmp_path, root, ids):
+    path = code_file(tmp_path, b"x" * (bring_in.MAX_FILE_BYTES + 1))
+    error = assert_given_refused(one(), GivenCodeFileError, root, ids, path)
+    assert str(bring_in.MAX_FILE_BYTES) in error.reason
+    assert not isinstance(error, OSError)
+
+
+@pytest.mark.parametrize("name", ["absent.c", "directory", "bad\0name"])
+def test_a_file_that_cannot_be_read_is_refused(tmp_path, root, ids, name):
+    (tmp_path / "directory").mkdir()
+    path = tmp_path / name if "\0" not in name else str(tmp_path) + "/" + name
+    error = assert_given_refused(one(), GivenCodeFileError, root, ids, path)
+    assert "cannot be read" in error.reason
+    assert not isinstance(error, OSError)
+
+
+def test_the_file_is_read_before_the_document_is_checked(tmp_path, root, ids):
+    path = tmp_path / "absent.c"
+    assert_given_refused(one(n_max=4), GivenCodeFileError, root, ids, path)
+
+
+@pytest.mark.parametrize(
+    ("given", "error"),
+    [
+        (kinded(candidates_per_round=1), GivenCodeNotAdmittedError),
+        (document(candidates_per_round=2), GivenCodeNotAdmittedError),
+        (one(given_code=DIGEST), InvalidInstanceError),
+        (one(schema_version=3, given_code=DIGEST), UnsupportedVersionError),
+        (one(schema_version=3), UnsupportedVersionError),
+        (one(n_max=4), InvalidInstanceError),
+        (one(accelerator="acc_other"), OutOfScopeError),
+        (without("draws", candidates_per_round=1), MissingMembersError),
+        (one(run_id=FIXED_ID), GivenRunIdError),
+        (document(candidates_per_round=2, run_id=FIXED_ID), GivenRunIdError),
+        (one(extra=float("nan")), ValueError),
+    ],
+    ids=[
+        "compile_settings",
+        "two candidates",
+        "given_code at version 1",
+        "given_code at version 3",
+        "version 3 without given_code",
+        "invalid",
+        "out of scope",
+        "missing members",
+        "run_id",
+        "run_id before the admission",
+        "unwritable value",
+    ],
+)
+def test_every_refusal_with_given_code_writes_nothing(
+    tmp_path, root, ids, given, error
+):
+    assert_given_refused(given, error, root, ids, code_file(tmp_path))
+
+
+def test_compile_settings_is_refused_by_name(tmp_path, root, ids):
+    path = code_file(tmp_path)
+    given = kinded(candidates_per_round=1)
+    error = assert_given_refused(given, GivenCodeNotAdmittedError, root, ids, path)
+    assert "compile_settings" in str(error)
+    assert not isinstance(error, (OSError, ValueError))
+
+
+def test_two_candidates_are_refused_by_name(tmp_path, root, ids):
+    path = code_file(tmp_path)
+    given = document(candidates_per_round=2)
+    error = assert_given_refused(given, GivenCodeNotAdmittedError, root, ids, path)
+    assert "candidates_per_round" in str(error)
+
+
+def test_a_missing_data_root_with_given_code_writes_nothing(tmp_path, ids):
+    absent = tmp_path / "absent"
+    with pytest.raises(FileNotFoundError):
+        start(one(), data_root=absent, code_file=code_file(tmp_path))
+    assert not absent.exists()
+    assert ids.calls == 0
+
+
+def test_a_failed_record_leaves_the_blob_and_the_instance(
+    tmp_path, root, fixed_sources, monkeypatch
+):
+    failure = OSError("injected")
+
+    def failed(*args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr(artifacts, "add_record", failed)
+    with pytest.raises(GivenCodeUnrecordedError) as caught:
+        start(one(), data_root=root, code_file=code_file(tmp_path))
+    error = caught.value
+    assert error.run_id == FIXED_ID
+    assert error.reason == "OSError: injected"
+    assert FIXED_ID in str(error)
+    assert error.__cause__ is failure
+    assert not isinstance(error, OSError)
+    assert cas.has_blob(root, DIGEST)
+    assert instance.given_code_of(root, FIXED_ID) == DIGEST
+    assert not (root / "runs" / FIXED_ID / "artifacts.json").exists()
+
+
+def test_a_taken_name_with_given_code_leaves_the_blob(tmp_path, root, fixed_sources):
+    directory = root / "runs" / FIXED_ID
+    directory.mkdir(parents=True)
+    (directory / "instance.json").write_bytes(b"taken")
+    with pytest.raises(RunIdInUseError):
+        start(one(), data_root=root, code_file=code_file(tmp_path))
+    assert (directory / "instance.json").read_bytes() == b"taken"
+    assert not (directory / "artifacts.json").exists()
+    assert cas.has_blob(root, DIGEST)
+
+
+def test_prepare_is_handed_given_code_only_with_a_file(tmp_path, root, monkeypatch):
+    seen = []
+    real = instance_start.prepare
+
+    def prepare(document, **options):
+        seen.append(options.get("given_code", ABSENT))
+        return real(document, **options)
+
+    monkeypatch.setattr(instance_start, "prepare", prepare)
+    start(one(), data_root=root)
+    start(one(), data_root=root, code_file=code_file(tmp_path))
+    assert seen == [ABSENT, DIGEST]
+
+
+def test_the_given_code_type_is_a_valid_artifacts_type():
+    assert GIVEN_CODE_TYPE == "given_code"
+    record = {
+        "sha256": DIGEST,
+        "size": len(CODE),
+        "type": GIVEN_CODE_TYPE,
+        "round": 0,
+        "retention_class": "final",
+    }
+    artifacts.validate(
+        {"schema_version": artifacts.SCHEMA_VERSION, "artifacts": [record]}
+    )

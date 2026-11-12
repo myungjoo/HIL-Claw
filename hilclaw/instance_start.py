@@ -19,7 +19,10 @@ never replaces a given one.
 decision 7 has the start take ``candidate_kind``: a content that names
 ``compile_settings`` is written as version 2 with that member, one that names
 no kind or ``c_kernel`` as version 1 without it; the required set and its
-scope are the same for both. The module renders that check:
+scope are the same for both.
+``ARCHITECTURE/decisions/ADR-0200-od33-given-code-evaluation.md`` decision 6
+has the start take ``given_code``: a start handed the hash of a given C file
+writes version 3 with that member. The module renders that check:
 
 * :data:`CODER_MODEL_DEFAULT`: the full Opus name the start fills in
   (ADR-0136 decision 4).
@@ -49,6 +52,14 @@ Choices that are this module's own and no rule of a record:
   :func:`hilclaw.instance.validate_kinded` refuses it, never rewritten:
   version 1 with another kind, version 2 with ``c_kernel``, another kind or
   none.
+* The hash of given code reaches :func:`prepare` from its caller, as
+  ``given_code``, never from the document: a document holding
+  ``given_code`` or stating ``schema_version`` 3 is refused as
+  :func:`hilclaw.instance.validate_kinded` refuses it, with a hash or
+  without one, so version 3 is set by the start only, from the hash of the
+  file its caller stores. What ADR-0200 decision 6 does not admit yet with
+  given code (``compile_settings``, more than one candidate per round) is
+  refused by that caller, :func:`hilclaw.start_instance.start`, not here.
 * The order is validity, then scope, then the filling-in of ``n_max`` and
   ``coder_model``, then the required set. ADR-0076 decision 3 lists the
   filling-in before validity; for a valid document the outcome is the same,
@@ -151,7 +162,7 @@ class MissingMembersError(Exception):
         )
 
 
-def prepare(document, *, accelerators, covers):
+def prepare(document, *, accelerators, covers, given_code=None):
     """Return the document the start of the instance may hand on to be written.
 
     - ``document``: a parsed ``instance.json``, exactly a ``dict``.
@@ -161,9 +172,11 @@ def prepare(document, *, accelerators, covers):
     - ``covers``: the predicate of ADR-0041 decision 5, a callable that is
       handed an op_signature record and returns ``True`` when it is covered
       and ``False`` when it is not.
+    - ``given_code``: ``None``, or the SHA-256 hex digest of the given C file
+      that the caller stores (ADR-0200 decision 6).
 
-    ``accelerators`` and ``covers`` are given by name and have no default. In
-    this order:
+    ``accelerators`` and ``covers`` are given by name and have no default;
+    ``given_code`` is given by name. In this order:
 
     1. :class:`TypeError` when the type of ``document`` is not exactly
        ``dict``, then when ``accelerators`` is not as above, then when
@@ -200,7 +213,14 @@ def prepare(document, *, accelerators, covers):
     6. :class:`MissingMembersError` when any member of :data:`REPORT_ORDER` is
        absent from it, with every absent one; the required set is the same
        for both versions.
-    7. Otherwise that ``dict`` is returned; it passes
+    7. With ``given_code``: ``schema_version`` of that ``dict`` becomes 3
+       in its place, ``given_code`` is added as its last member and the
+       ``dict`` is checked by :func:`hilclaw.instance.validate_given`, whose
+       :class:`hilclaw.instance.InvalidInstanceError` for a ``given_code``
+       that is no such digest passes through unchanged.
+    8. Otherwise that ``dict`` is returned; it passes
+       :func:`hilclaw.instance.validate_given`. Without ``given_code`` it
+       is the ``dict`` of before ADR-0200: it passes
        :func:`hilclaw.instance.validate_kinded`, and a returned version-1
        ``dict`` also passes :func:`hilclaw.instance.validate`.
 
@@ -234,6 +254,10 @@ def prepare(document, *, accelerators, covers):
     missing = tuple(name for name in REPORT_ORDER if name not in prepared)
     if missing:
         raise MissingMembersError(missing)
+    if given_code is not None:
+        prepared["schema_version"] = instance.GIVEN_SCHEMA_VERSION
+        prepared["given_code"] = given_code
+        instance.validate_given(prepared)
     return prepared
 
 

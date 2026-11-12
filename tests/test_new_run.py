@@ -1,5 +1,6 @@
 import copy
 import datetime
+import hashlib
 import io
 import json
 import subprocess
@@ -9,6 +10,9 @@ from pathlib import Path
 import pytest
 
 from hilclaw import (
+    artifacts,
+    bring_in,
+    cas,
     instance,
     keys,
     once_write,
@@ -18,11 +22,15 @@ from hilclaw import (
 )
 from hilclaw.instance_start import REPORT_ORDER
 from hilclaw.new_run import (
+    BAD_GIVEN_CODE,
     BAD_INPUT,
     BAD_USAGE,
     EXIT_STATUS,
     FAULT,
     FILE_SYSTEM,
+    GIVEN_CODE_OPTION,
+    GIVEN_CODE_REFUSED,
+    GIVEN_CODE_UNRECORDED,
     GIVEN_RUN_ID,
     INVALID,
     MISSING_MEMBERS,
@@ -482,7 +490,7 @@ def test_a_failed_line_before_any_start_is_said(root):
 
 def test_the_statuses_are_distinct_and_only_started_is_zero():
     statuses = list(EXIT_STATUS.values())
-    assert len(set(statuses)) == len(statuses) == 13
+    assert len(set(statuses)) == len(statuses) == 16
     assert [k for k, v in EXIT_STATUS.items() if v == 0] == [STARTED]
     assert not {1, 2} & set(statuses)
     assert all(0 <= status < 256 for status in statuses)
@@ -557,3 +565,139 @@ def test_a_refused_kind_is_invalid_and_starts_nothing(root, given, changes):
     assert set(ran.told) == {"outcome", "reason"}
     assert ran.status == EXIT_STATUS[INVALID]
     assert tree(root) == []
+
+
+# The option --given-code (ADR-0200 decision 6, slice 2)
+
+CODE = b"int given(void) { return 0; }\n"
+DIGEST = hashlib.sha256(CODE).hexdigest()
+
+
+@pytest.fixture
+def code(tmp_path):
+    def written(content=CODE):
+        path = tmp_path / "given.c"
+        path.write_bytes(content)
+        return str(path)
+
+    return written
+
+
+def given_run(root, path, content, **options):
+    return run([path, GIVEN_CODE_OPTION, content], root, **options)
+
+
+def test_the_option_starts_a_run_with_given_code(root, given, code, fixed_sources):
+    ran = given_run(root, given(document()), code())
+    assert ran.told == {"outcome": STARTED, "run_id": FIXED_ID}
+    assert ran.status == 0
+    assert ran.stderr == ""
+    assert instance.given_code_of(root, FIXED_ID) == DIGEST
+    assert instance.read_given(root, FIXED_ID).schema_version == 3
+    (record,) = artifacts.load(root, FIXED_ID)
+    assert record["type"] == "given_code"
+    assert record["retention_class"] == "final"
+    assert cas.has_blob(root, DIGEST)
+    assert ran.source.calls == 1
+
+
+def test_the_option_hands_the_path_to_start(root, given, code, recorder):
+    recording = recorder()
+    path = code()
+    ran = given_run(root, given(document()), path)
+    assert ran.told == {"outcome": STARTED, "run_id": FIXED_ID}
+    ((handed, options),) = recording.calls
+    assert handed == document()
+    assert options == {"data_root": Path(root), "code_file": path}
+
+
+@pytest.mark.parametrize(
+    ("content", "outcome"),
+    [
+        (
+            document(candidate_kind="compile_settings", schema_version=2),
+            GIVEN_CODE_REFUSED,
+        ),
+        (document(candidates_per_round=2), GIVEN_CODE_REFUSED),
+        (document(given_code=DIGEST), INVALID),
+        (document(schema_version=3, given_code=DIGEST), INVALID),
+    ],
+    ids=["compile_settings", "two candidates", "given_code v1", "given_code v3"],
+)
+def test_a_request_not_admitted_with_given_code_starts_nothing(
+    root, given, code, content, outcome
+):
+    ran = given_run(root, given(content), code())
+    assert ran.told["outcome"] == outcome
+    assert set(ran.told) == {"outcome", "reason"}
+    assert_refused(ran, root, outcome, reason=ran.told["reason"])
+
+
+def test_compile_settings_with_given_code_is_named(root, given, code):
+    content = document(candidate_kind="compile_settings", schema_version=2)
+    ran = given_run(root, given(content), code())
+    assert "compile_settings" in ran.told["reason"]
+    assert ran.status == EXIT_STATUS[GIVEN_CODE_REFUSED] == 17
+
+
+@pytest.mark.parametrize("name", ["absent.c", "."])
+def test_an_unreadable_c_file_is_bad_given_code(tmp_path, root, given, name):
+    ran = given_run(root, given(document()), str(tmp_path / name))
+    assert_refused(ran, root, BAD_GIVEN_CODE, reason=ran.told["reason"])
+    assert "cannot be read" in ran.told["reason"]
+    assert ran.status == 18
+
+
+def test_an_oversize_c_file_is_bad_given_code(root, given, code):
+    path = code(b"x" * (bring_in.MAX_FILE_BYTES + 1))
+    ran = given_run(root, given(document()), path)
+    assert_refused(ran, root, BAD_GIVEN_CODE, reason=ran.told["reason"])
+    assert str(bring_in.MAX_FILE_BYTES) in ran.told["reason"]
+
+
+def test_a_failed_record_is_given_code_unrecorded(
+    root, given, code, fixed_sources, monkeypatch
+):
+    def failed(*args, **kwargs):
+        raise OSError("injected")
+
+    monkeypatch.setattr(artifacts, "add_record", failed)
+    ran = given_run(root, given(document()), code())
+    assert ran.told == {
+        "outcome": GIVEN_CODE_UNRECORDED,
+        "run_id": FIXED_ID,
+        "reason": "OSError: injected",
+    }
+    assert ran.status == EXIT_STATUS[GIVEN_CODE_UNRECORDED] == 19
+    assert ran.stderr == ""
+    assert instance.given_code_of(root, FIXED_ID) == DIGEST
+    assert cas.has_blob(root, DIGEST)
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["a", GIVEN_CODE_OPTION],
+        ["a", "--given", "b"],
+        [GIVEN_CODE_OPTION, "b", "a"],
+        ["a", GIVEN_CODE_OPTION, "b", "c"],
+        ["a", "b", "c"],
+    ],
+)
+def test_other_forms_of_the_option_are_bad_usage(root, args, recorder):
+    recording = recorder()
+    ran = run(args, root)
+    assert ran.told["outcome"] == BAD_USAGE
+    assert str(len(args)) in ran.told["reason"]
+    assert GIVEN_CODE_OPTION in ran.told["reason"]
+    assert ran.source.calls == 0
+    assert recording.calls == []
+
+
+def test_a_bad_request_file_with_the_option_is_read_first(
+    tmp_path, root, code, recorder
+):
+    recording = recorder()
+    ran = given_run(root, str(tmp_path / "absent.json"), code())
+    assert ran.told["outcome"] == UNREADABLE_INPUT
+    assert recording.calls == []
