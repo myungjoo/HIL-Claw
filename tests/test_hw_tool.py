@@ -1215,7 +1215,7 @@ NO_STAMP = {
     ),
     "a-directory": (a_directory, *BROKEN),
     "version-0": (content(stamp(schema_version=0)), *OTHER_VERSION),
-    "version-3": (content(stamp(schema_version=3)), *OTHER_VERSION),
+    "version-4": (content(stamp(schema_version=4)), *OTHER_VERSION),
     "a-version-that-is-a-string": (content(stamp(schema_version="1")), *BROKEN),
     "a-version-that-is-a-float": (content(stamp(schema_version=1.0)), *BROKEN),
     "a-version-that-is-a-boolean": (content(stamp(schema_version=True)), *BROKEN),
@@ -1435,7 +1435,7 @@ def test_the_stamp_is_read_again_at_each_call_and_nothing_is_kept(root, monkeypa
     changes = [
         (no_stamp, "run_file_missing"),
         (content(b"{"), "run_file_invalid"),
-        (content(stamp(schema_version=3)), "run_file_unsupported"),
+        (content(stamp(schema_version=4)), "run_file_unsupported"),
     ]
     for change, kind in changes:
         change(root, monkeypatch)
@@ -1543,7 +1543,7 @@ def test_the_layout_the_source_builds_is_compared_with_nothing(
     for _ in range(2):
         assert tool.function(request()) == {"example_member": 1}
     assert tool.performed == 1
-    place(root, stamp(schema_version=3), FILE)
+    place(root, stamp(schema_version=4), FILE)
     with pytest.raises(ToolFailure) as caught:
         tool.function(request())
     assert caught.value.kind == "run_file_unsupported"
@@ -1917,7 +1917,7 @@ def test_a_failing_source_of_a_stepped_tool_is_no_data_root(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "state", ["missing", "empty", "version-3", "unreadable", "a-directory"]
+    "state", ["missing", "empty", "version-4", "unreadable", "a-directory"]
 )
 def test_a_stepped_run_whose_stamp_cannot_be_had_is_answered_before_the_lookup(
     root, monkeypatch, state

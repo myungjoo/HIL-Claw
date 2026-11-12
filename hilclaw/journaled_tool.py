@@ -28,13 +28,14 @@ A call, in this order:
    Then the layout version stamp of the run is read (ADR-0030 decision 3):
    ``runs/<run_id>/instance.json`` below that data root, as a whole, by
    :func:`hilclaw.instance.layout_version_of_kinded`, before ``STATE.json`` or
-   the log is opened. A file of version 1 or 2 gives the stamp, layout
-   version 1 for both (ADR-0198 decisions 7 and 8); a version-1 file is read
-   by :func:`hilclaw.instance.layout_version_of` as before, and a version-2
-   one read again as its version-1 twin. Whether a run of that kind is
-   carried out is the tool's (a reader of the hw_profile handed to
-   :mod:`hilclaw.hw_tool` that reads version 1 only refuses it; those of
-   ``correctness.check``, ``sim.run`` and ``board.run`` read it). When the
+   the log is opened. A file of version 1, 2 or 3 gives the stamp, layout
+   version 1 for each (ADR-0198 decisions 7 and 8, ADR-0200 decisions 6 and
+   7); a version-1 file is read by :func:`hilclaw.instance.layout_version_of`
+   as before, and one of version 2 or 3 read again as its version-1 twin.
+   Whether a run of that kind is carried out is the tool's (a reader of the
+   hw_profile handed to :mod:`hilclaw.hw_tool` that reads version 1 only
+   refuses it; those of ``correctness.check``, ``sim.run`` and
+   ``board.run`` read the kinds they evaluate). When the
    stamp cannot be had, the call is a tool failure of one of the four reserved kinds of ADR-0019
    decision 2, and what follows under 3 does not take place (ADR-0030
    decision 4; the cases are below).
@@ -54,7 +55,7 @@ rows ADR-0019 decision 3 has for that file and the borders of its decision 4:
 - ``run_file_invalid``: :class:`hilclaw.instance.InvalidInstanceError` (an
   invalid content, an empty file included, or a path that is no regular file).
 - ``run_file_unsupported``: :class:`hilclaw.instance.UnsupportedVersionError`
-  (a version other than 1 and 2).
+  (a version other than 1, 2 and 3).
 - ``run_file_unreadable``: every other :class:`OSError`.
 
 Such a call appended no line, opened neither ``STATE.json`` nor the log and

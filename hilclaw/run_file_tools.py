@@ -16,17 +16,19 @@ decision 3).
 - ``state.read`` and ``instance.read`` read their file once and return
   ``{"state": ...}`` or ``{"instance": ...}``: the JSON object parsed from the
   bytes that :func:`hilclaw.run_state.parse` or
-  :func:`hilclaw.instance.parse_kinded` accepted, members as stored, so an
-  ``instance.json`` of version 1 or 2 (ADR-0198 decision 8) and, at version
-  2, its ``candidate_kind``. A missing, invalid, other-version or unreadable
+  :func:`hilclaw.instance.parse_given` accepted, members as stored, so an
+  ``instance.json`` of version 1, 2 or 3 (ADR-0198 decision 8, ADR-0200
+  decision 7) with, at version 2, its ``candidate_kind`` and, at version 3,
+  its ``given_code``. A missing, invalid, other-version or unreadable
   file is the ``run_file_*`` kind of ADR-0019 decision 3, as widened by
   ADR-0124 decision 3. A number beyond the float range in a member neither
   validator defines is read as an infinity, which no result can hold: the call
   then fails with ``bad_result``. Their read is :func:`read`, which is also
   the read of these two files by ``case.write`` (:mod:`hilclaw.case_tool`)
   and of ``instance.json`` by the other tools of a round. It reads a
-  version-2 ``instance.json`` as its version-1 twin; a tool that reads only
-  C kernel runs refuses the others with :func:`c_kernel_only`.
+  version-2 or version-3 ``instance.json`` as its version-1 twin; a tool
+  that reads only C kernel runs without given code refuses the others with
+  :func:`c_kernel_only`.
 - ``run.fresh`` returns ``{"fresh": bool}`` of :func:`hilclaw.fresh_run.is_fresh`
   and reads no file.
 - ``state.write`` refuses a ``state`` that is not valid at version 1 before
@@ -190,7 +192,7 @@ _STATE_FILE = (
 
 
 def _instance(content):
-    return instance.parse_kinded(content).instance
+    return instance.parse_given(content).instance
 
 
 _INSTANCE_FILE = (
@@ -212,11 +214,12 @@ def read(data_root, run_id, name):
     path and ``run_id`` is checked by :func:`hilclaw.layout.run_file`. The
     result is the pair of what :func:`hilclaw.run_state.parse` returned for
     the bytes, or for ``instance.json`` the ``instance`` of what
-    :func:`hilclaw.instance.parse_kinded` returned, and the bytes themselves.
-    An ``instance.json`` of version 1 or 2 is read, and the
-    :class:`hilclaw.instance.Instance` of a version-2 file is that of its
-    version-1 twin, its ``candidate_kind`` left out (ADR-0198 decision 8).
-    Nothing is created or kept.
+    :func:`hilclaw.instance.parse_given` returned, and the bytes themselves.
+    An ``instance.json`` of version 1, 2 or 3 is read, and the
+    :class:`hilclaw.instance.Instance` of a version-2 or version-3 file is
+    that of its version-1 twin, its ``candidate_kind`` and ``given_code``
+    left out (ADR-0198 decision 8, ADR-0200 decision 7). Nothing is created
+    or kept.
 
     Raises :class:`ValueError` for another ``name`` and
     :class:`hilclaw.layout.InvalidPathValueError` for a ``run_id`` that is
@@ -225,9 +228,10 @@ def read(data_root, run_id, name):
     message starting with the file's path relative to ``data_root``: the
     place holding no regular file or bytes the parser refuses
     ``run_file_invalid`` (a version-1 ``instance.json`` holding
-    ``candidate_kind`` and a version-2 one stating no ``candidate_kind`` or
-    ``c_kernel`` among them), another ``schema_version`` (for
-    ``instance.json`` one other than 1 and 2) ``run_file_unsupported``, and
+    ``candidate_kind``, a version-2 one stating no ``candidate_kind`` or
+    ``c_kernel`` and a version-3 one stating no valid ``given_code`` among
+    them), another ``schema_version`` (for ``instance.json`` one other than
+    1, 2 and 3) ``run_file_unsupported``, and
     an :class:`OSError` as :func:`hilclaw.run_files.read_failure` answers it.
     """
     if name not in _PARSING:
@@ -248,21 +252,31 @@ def read(data_root, run_id, name):
 
 
 def c_kernel_only(run_id, content):
-    """Refuse the run ``run_id`` unless its ``instance.json`` states the candidate kind ``c_kernel``.
+    """Refuse the run ``run_id`` unless its ``instance.json`` states the candidate kind ``c_kernel`` and no given code.
 
     ``content`` is the bytes :func:`read` returned for the run's
-    ``instance.json``. A version-1 file states ``c_kernel``, and nothing is
-    raised for it. For a version-2 file, whose kind is another (ADR-0198
-    decision 4), it raises :class:`hilclaw.tools.ToolFailure` of kind
-    ``run_file_unsupported``, its message starting with the file's path
-    relative to the data root and naming the kind: the tool calling it does
-    not read such a run (ADR-0198 decision 8, the rows that refuse in slice
-    2b). Nothing is read, created or kept. Raises what
-    :func:`hilclaw.instance.parse_kinded` raises for other bytes.
+    ``instance.json``. A version-1 file states ``c_kernel`` and no given
+    code, and nothing is raised for it. For a version-2 file, whose kind is
+    another (ADR-0198 decision 4), and for a version-3 file, which states
+    given code (ADR-0200 decision 6), it raises
+    :class:`hilclaw.tools.ToolFailure` of kind ``run_file_unsupported``, its
+    message starting with the file's path relative to the data root and
+    naming the kind or the given code: the tool calling it does not read
+    such a run (ADR-0198 decision 8, the rows that refuse in slice 2b;
+    ADR-0200 decision 7, the last row of its reader table). Nothing is
+    read, created or kept. Raises what :func:`hilclaw.instance.parse_given`
+    raises for other bytes.
     """
-    kind = instance.parse_kinded(content).candidate_kind
+    given = instance.parse_given(content)
+    file = run_files.relative(run_id, "instance.json")
+    if given.given_code is not None:
+        raise tools.ToolFailure(
+            tools.KIND_RUN_FILE_UNSUPPORTED,
+            f"{file}: states given code (schema_version "
+            f"{given.schema_version}); this tool does not read a given-code run",
+        )
+    kind = given.candidate_kind
     if kind != instance.CANDIDATE_KINDS[0]:
-        file = run_files.relative(run_id, "instance.json")
         raise tools.ToolFailure(
             tools.KIND_RUN_FILE_UNSUPPORTED,
             f"{file}: states the candidate kind {kind}; this tool reads "

@@ -22,7 +22,8 @@ round 1 (ADR-0072 decisions 1 and 3), and each of the two key record files
 ``db/<hw_profile_key>/<op_signature>/op_signature.json`` of the keys the run's
 ``instance.json`` states that is a regular file in the working tree and that
 ``HEAD`` does not hold (ADR-0134 decision 7), and nothing else. The keys are
-read alike from an ``instance.json`` of version 1 or 2 (ADR-0198 decision 8);
+read alike from an ``instance.json`` of version 1, 2 or 3 (ADR-0198 decision
+8, ADR-0200 decision 7);
 one of another version, or invalid, gives no key. A record file
 ``HEAD`` holds is never taken in again, whatever the working tree holds, and
 an ``instance.json`` that gives no key gives no record file and refuses

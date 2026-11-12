@@ -447,7 +447,7 @@ def test_a_missing_instance_file_is_refused(root):
         (b'{"schema_version": 1}\n', "run_file_invalid"),
         (instance_bytes(round_budget=-1), "run_file_invalid"),
         (instance_bytes(round_budget="5"), "run_file_invalid"),
-        (b'{"schema_version": 3}\n', "run_file_unsupported"),
+        (b'{"schema_version": 4}\n', "run_file_unsupported"),
     ],
 )
 def test_an_invalid_or_other_version_instance_file_is_refused(root, content, kind):

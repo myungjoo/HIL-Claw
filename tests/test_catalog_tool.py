@@ -267,7 +267,7 @@ def test_a_missing_instance_is_run_file_missing(root, shelf):
     [
         (b"{", "run_file_invalid"),
         (encoded({"schema_version": 1}), "run_file_invalid"),
-        (encoded(instance_document(schema_version=3)), "run_file_unsupported"),
+        (encoded(instance_document(schema_version=4)), "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_is_its_kind(root, shelf, content, kind):
@@ -634,11 +634,11 @@ def test_a_compile_settings_run_with_a_catalog_is_refused_too(root, shelf):
 @pytest.mark.parametrize(
     ("changes", "kind"),
     [
-        ({"schema_version": 3}, "run_file_unsupported"),
+        ({"schema_version": 4}, "run_file_unsupported"),
         ({"schema_version": 1}, "run_file_invalid"),
         ({"candidate_kind": "c_kernel"}, "run_file_invalid"),
     ],
-    ids=["v3", "v1-with-kind", "v2-c_kernel"],
+    ids=["v4", "v1-with-kind", "v2-c_kernel"],
 )
 def test_other_versions_and_the_narrowed_forms_are_their_kind(
     root, shelf, changes, kind
@@ -648,3 +648,31 @@ def test_other_versions_and_the_narrowed_forms_are_their_kind(
     assert failure.kind == kind
     assert failure.message.startswith(f"{INSTANCE_PATH}: ")
     assert "candidate kind" not in failure.message
+
+
+# instance.json of version 3 (ADR-0200 decision 7, the last row of its reader table)
+
+GIVEN = {"schema_version": 3, "given_code": "0123456789abcdef" * 4}
+
+
+@pytest.mark.parametrize(
+    "changes", [GIVEN, GIVEN | {"candidate_kind": "compile_settings"}]
+)
+def test_a_given_code_run_is_run_file_unsupported_before_the_catalog(
+    root, tmp_path, monkeypatch, changes
+):
+    monkeypatch.setattr(catalog, "SOURCE", tmp_path / "missing")
+    run(root, instance_document() | changes)
+    before = tree(root)
+    failure = refused(root)
+    assert failure.kind == "run_file_unsupported"
+    assert failure.message == (
+        f"{INSTANCE_PATH}: states given code (schema_version 3); this tool does "
+        "not read a given-code run"
+    )
+    assert tree(root) == before
+
+
+def test_a_malformed_given_code_run_is_run_file_invalid(root):
+    run(root, instance_document() | {"schema_version": 3})
+    assert refused(root).kind == "run_file_invalid"

@@ -409,7 +409,7 @@ def test_a_missing_instance_is_run_file_missing(root):
     [
         (b"{", "run_file_invalid"),
         (encoded({"schema_version": 1}), "run_file_invalid"),
-        (encoded(instance_document() | {"schema_version": 3}), "run_file_unsupported"),
+        (encoded(instance_document() | {"schema_version": 4}), "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_is_its_kind(root, content, kind):
@@ -680,3 +680,24 @@ def test_a_compile_settings_run_stores_the_key_of_its_version_1_twin(root):
         "hw_profile_created": False,
         "op_signature_created": False,
     }
+
+
+# --- a run that states given code (ADR-0200 decision 7, slice 3a) ---
+
+
+def test_a_given_code_run_stores_the_key_of_its_version_1_twin(root):
+    given = {"schema_version": 3, "given_code": "0123456789abcdef" * 4}
+    place(instance_path(root), encoded(instance_document() | given))
+    assert store(Source(root)) == {
+        "hw_profile_created": True,
+        "op_signature_created": True,
+    }
+    assert key_records.lookup(root, hw(), op()) == (HW_KEY, OP_KEY)
+
+
+def test_a_malformed_given_code_run_stores_no_key(root):
+    place(instance_path(root), encoded(instance_document() | {"schema_version": 3}))
+    with pytest.raises(ToolFailure) as caught:
+        store(Source(root))
+    assert caught.value.kind == "run_file_invalid"
+    assert not (root / "db").exists()

@@ -12,9 +12,10 @@ the turn loop of ADR-0118 decision 3 answers by itself, and only these:
   value, a non-string included (ADR-0121 decision 2): no further turn, and the
   value is reported;
 - P4, ``STATE.json`` valid, version 1, without ``run_status``, and
-  ``instance.json`` valid, version 1 or 2, with ``round_budget``: a further
-  turn, whatever ``round`` is. A version-2 ``instance.json`` is read as its
-  version-1 twin (ADR-0198 decision 8): its ``candidate_kind`` changes no
+  ``instance.json`` valid, version 1, 2 or 3, with ``round_budget``: a
+  further turn, whatever ``round`` is. A version-2 or version-3
+  ``instance.json`` is read as its version-1 twin (ADR-0198 decision 8,
+  ADR-0200 decision 7): its ``candidate_kind`` and ``given_code`` change no
   finding.
 
 In every other state the code asks its caller's predicate (ADR-0121 decision
@@ -111,8 +112,8 @@ def classify(data_root, run_id):
     any other value (P3); without ``run_status``, :data:`OPEN` with
     :data:`INSTANCE_MISSING`, :data:`INSTANCE_INVALID` or
     :data:`INSTANCE_VERSION` when :func:`hilclaw.instance.read_as_version_1`
-    finds no ``instance.json``, an invalid one or a version other than 1 and
-    2, :data:`OPEN` with :data:`NO_ROUND_BUDGET` for one without
+    finds no ``instance.json``, an invalid one or a version other than 1, 2
+    and 3, :data:`OPEN` with :data:`NO_ROUND_BUDGET` for one without
     ``round_budget``, and :data:`DUE`
     with the ``round`` of that same ``STATE.json`` read when it states one
     (P4).

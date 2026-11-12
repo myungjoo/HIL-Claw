@@ -640,7 +640,7 @@ def test_read_of_a_version_1_file_is_unchanged(root):
 @pytest.mark.parametrize(
     ("document", "kind", "start"),
     [
-        (INSTANCE | {"schema_version": 3}, "run_file_unsupported", "schema_version: 3"),
+        (INSTANCE | {"schema_version": 4}, "run_file_unsupported", "schema_version: 4"),
         (INSTANCE | {"schema_version": 0}, "run_file_unsupported", "schema_version: 0"),
         (KINDED | {"schema_version": 1}, "run_file_invalid", "candidate_kind: "),
         (
@@ -650,7 +650,7 @@ def test_read_of_a_version_1_file_is_unchanged(root):
         ),
         (INSTANCE | {"schema_version": 2}, "run_file_invalid", "document: lacks"),
     ],
-    ids=["v3", "v0", "v1-with-kind", "v2-c_kernel", "v2-no-kind"],
+    ids=["v4", "v0", "v1-with-kind", "v2-c_kernel", "v2-no-kind"],
 )
 def test_other_versions_and_the_narrowed_forms_are_refused(root, document, kind, start):
     started(root, document)
@@ -686,10 +686,87 @@ def test_c_kernel_only_refuses_a_compile_settings_run(root):
     ("content", "error"),
     [
         (b"{", instance.InvalidInstanceError),
-        (b'{"schema_version": 3}', instance.UnsupportedVersionError),
+        (b'{"schema_version": 4}', instance.UnsupportedVersionError),
         ("{}", TypeError),
     ],
 )
 def test_c_kernel_only_raises_what_the_parser_raises_for_other_bytes(content, error):
     with pytest.raises(error):
         run_file_tools.c_kernel_only(RUN, content)
+
+
+# instance.json of version 3 (ADR-0200 decision 7, slice 3a)
+
+
+DIGEST = "0123456789abcdef" * 4
+GIVEN = INSTANCE | {"schema_version": 3, "given_code": DIGEST}
+
+
+@pytest.mark.parametrize(
+    "document",
+    [GIVEN, GIVEN | {"candidate_kind": "compile_settings"}],
+    ids=["c_kernel", "compile_settings"],
+)
+def test_instance_read_returns_a_version_3_document_with_its_given_code(root, document):
+    started(root, document)
+    before = tree(root)
+    answer = ask(Source(root), "instance.read", {"run_id": RUN})
+    assert answer == {"instance": document}
+    assert answer["instance"]["given_code"] == DIGEST
+    assert tree(root) == before
+
+
+def test_read_gives_a_version_3_file_as_its_version_1_twin(root):
+    started(root, GIVEN)
+    stated, content = run_file_tools.read(root, RUN, "instance.json")
+    assert content == (run_dir(root) / "instance.json").read_bytes()
+    assert stated == instance.parse(json.dumps(INSTANCE).encode())
+    assert "given_code" not in stated.others
+
+
+@pytest.mark.parametrize(
+    ("document", "start"),
+    [
+        (INSTANCE | {"schema_version": 3}, "document: lacks the member given_code"),
+        (GIVEN | {"given_code": DIGEST.upper()}, "given_code: must be"),
+        (GIVEN | {"given_code": None}, "given_code: must be"),
+        (GIVEN | {"candidate_kind": "c_kernel"}, "candidate_kind: "),
+        (INSTANCE | {"given_code": DIGEST}, "given_code: is not admitted"),
+        (KINDED | {"given_code": DIGEST}, "given_code: is not admitted"),
+    ],
+    ids=[
+        "v3-no-given-code",
+        "v3-upper-case",
+        "v3-null",
+        "v3-c_kernel-stated",
+        "v1-with-given-code",
+        "v2-with-given-code",
+    ],
+)
+def test_a_malformed_given_code_is_run_file_invalid(root, document, start):
+    started(root, document)
+    with pytest.raises(ToolFailure) as caught:
+        run_file_tools.read(root, RUN, "instance.json")
+    assert caught.value.kind == "run_file_invalid"
+    assert caught.value.message.startswith(f"{INSTANCE_PATH}: {start}")
+    refused = failure(Source(root), "instance.read", {"run_id": RUN})
+    assert (refused.kind, refused.message) == ("run_file_invalid", caught.value.message)
+
+
+@pytest.mark.parametrize(
+    "document",
+    [GIVEN, GIVEN | {"candidate_kind": "compile_settings"}],
+    ids=["c_kernel", "compile_settings"],
+)
+def test_c_kernel_only_refuses_a_given_code_run(root, document):
+    started(root, document)
+    before = tree(root)
+    _, content = run_file_tools.read(root, RUN, "instance.json")
+    with pytest.raises(ToolFailure) as caught:
+        run_file_tools.c_kernel_only(RUN, content)
+    assert caught.value.kind == tools.KIND_RUN_FILE_UNSUPPORTED
+    assert caught.value.message == (
+        f"{INSTANCE_PATH}: states given code (schema_version 3); this tool does "
+        "not read a given-code run"
+    )
+    assert tree(root) == before

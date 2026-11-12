@@ -492,7 +492,7 @@ def test_a_missing_instance_is_run_file_missing(root):
     [
         (b"{", "run_file_invalid"),
         (encoded({"schema_version": 1}), "run_file_invalid"),
-        (encoded(instance_document(schema_version=3)), "run_file_unsupported"),
+        (encoded(instance_document(schema_version=4)), "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_is_its_kind(root, content, kind):
@@ -1598,7 +1598,7 @@ def test_the_kind_check_comes_after_the_instance_read(root):
             instance_document() | {"candidate_kind": "compile_settings"},
             "run_file_invalid",
         ),
-        (instance_document() | KINDED | {"schema_version": 3}, "run_file_unsupported"),
+        (instance_document() | KINDED | {"schema_version": 4}, "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_refuses_a_flags_request(root, document, kind):
@@ -1630,3 +1630,84 @@ def test_a_c_kernel_round_1_is_unchanged_by_the_flags_form(root):
     run(root, document)
     write(Source(root), later())
     assert written(root) == expected_later(document, 1)
+
+
+# A run whose instance.json states given code (ADR-0200 decisions 4 (a) and 7, slice 3a)
+
+
+DIGEST = "0123456789abcdef" * 4
+GIVEN = {"schema_version": 3, "given_code": DIGEST}
+
+
+def given_run(root, **changes):
+    twin = instance_document(**changes)
+    run(root, twin | GIVEN)
+    return twin
+
+
+@pytest.mark.parametrize("round", [1, 2])
+def test_a_later_round_of_a_given_code_run_is_written_as_in_its_twin(
+    root, tmp_path, monkeypatch, round
+):
+    twin = given_run(root)
+    monkeypatch.setattr(catalog, "SOURCE", tmp_path / "missing")
+    assert write(Source(root), later(round)) == {}
+    assert written(root, round) == expected_later(twin, round)
+    assert not spec_path(root).exists()
+
+
+def test_a_later_round_of_a_given_code_run_takes_named_techniques(root, shelf):
+    twin = given_run(root)
+    assert write(Source(root), later(techniques=["tiling"])) == {}
+    assert written(root) == expected_later(twin, techniques=["tiling"])
+
+
+def test_round_0_of_a_given_code_run_writes_no_spec(root):
+    given_run(root)
+    failure = refused(root)
+    assert failure.kind == "invalid_request"
+    assert failure.message == (
+        f"{INSTANCE_PATH}: states given code; round 0 of such a run has the "
+        "given code as its attempt (0, 1, 1) and no spec; nothing was written"
+    )
+
+
+def test_the_given_code_check_comes_after_the_read_and_before_the_members(root):
+    assert refused(root).kind == "run_file_missing"
+    given_run(root, candidates_per_round=None, op_signature=None, objective=None)
+    assert refused(root).kind == "invalid_request"
+    assert refused_later(root, later()).kind == "candidates_per_round_not_stated"
+
+
+def test_round_0_of_a_run_without_given_code_is_unchanged(root):
+    document = instance_document()
+    run(root, document)
+    assert write(Source(root)) == {}
+    assert json.loads(spec_path(root).read_bytes()) == expected_spec(document)
+
+
+def test_a_compile_settings_run_with_given_code_is_read_by_its_kind(root):
+    twin = instance_document()
+    run(root, twin | GIVEN | {"candidate_kind": "compile_settings"})
+    assert refused(root).kind == "invalid_request"
+    assert refused_later(root, later()).kind == "invalid_request"
+    assert write(Source(root), flagged()) == {}
+    assert written_settings(root) == expected_settings(twin)
+
+
+@pytest.mark.parametrize(
+    ("document", "kind", "start"),
+    [
+        (GIVEN | {"given_code": DIGEST[:-1]}, "run_file_invalid", "given_code: must"),
+        ({"schema_version": 3}, "run_file_invalid", "document: lacks the member g"),
+        ({"given_code": DIGEST}, "run_file_invalid", "given_code: is not admitted"),
+        (GIVEN | {"schema_version": 4}, "run_file_unsupported", "schema_version: 4"),
+    ],
+    ids=["v3-short-given-code", "v3-no-given-code", "v1-with-given-code", "v4"],
+)
+@pytest.mark.parametrize("round", [0, 1])
+def test_a_malformed_given_code_run_is_its_kind(root, document, kind, start, round):
+    run(root, instance_document() | document)
+    failure = refused_later(root, later(round) if round else request())
+    assert failure.kind == kind
+    assert failure.message.startswith(f"{INSTANCE_PATH}: {start}")

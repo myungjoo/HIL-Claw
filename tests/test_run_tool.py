@@ -1397,16 +1397,93 @@ def test_a_run_of_a_kind_the_tool_does_not_evaluate_is_unsupported(
     root, monkeypatch, tool
 ):
     settings_run(root)
-    read_kinded = instance.read_kinded
+    read_given = instance.read_given
 
     def another_kind(data_root, run_id):
-        return read_kinded(data_root, run_id)._replace(candidate_kind="quantization")
+        return read_given(data_root, run_id)._replace(candidate_kind="quantization")
 
-    monkeypatch.setattr(instance, "read_kinded", another_kind)
+    monkeypatch.setattr(instance, "read_given", another_kind)
     bench = Bench(root, tool)
     failure = bench.failure()
     assert failure.kind == "run_file_unsupported"
     assert failure.message.startswith(
         f"runs/{RUN}/instance.json: states the candidate kind quantization"
     )
+    assert (bench.asked, bench.order, lines(root)) == ([], [], [])
+
+
+# A run whose instance.json states given code (ADR-0200 decisions 4 (a) and 7, slice 3a)
+
+
+DIGEST = "0123456789abcdef" * 4
+
+
+def given_run(root, **members):
+    document = json.loads(content()) | {"schema_version": 3, "given_code": DIGEST}
+    (root / "runs" / RUN / "instance.json").write_bytes(
+        json.dumps(document | members).encode()
+    )
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_an_attempt_of_a_given_code_run_is_run_as_a_c_kernel_attempt(
+    root, tmp_path, tool
+):
+    twin_root = a_run(tmp_path / "twin")
+    given_run(root)
+    bench, twin = Bench(root, tool), Bench(twin_root, tool)
+
+    result = bench.function(request())
+
+    assert result == twin.function(request()) == CONVERGED
+    (called,) = bench.asked
+    assert called[4] == layout.attempt_artefact(root, RUN, ROUND, 2, 1, "output")
+    assert called[1:4] == twin.asked[0][1:4]
+    assert not list(root.rglob("build.json"))
+    assert [line["kind"] for line in lines(root)] == ["step_started", "step_ended"]
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_the_given_attempt_0_1_1_is_run_from_its_output(root, tool):
+    given_run(root)
+    output = layout.attempt_artefact(root, RUN, 0, 1, 1, "output")
+    output.mkdir(parents=True)
+    (output / "given.c").write_bytes(b"/* the given code */")
+    bench = Bench(root, tool)
+
+    asked = request(round=0, candidate=1, attempt=1)
+    assert bench.function(asked) == CONVERGED
+    assert bench.asked[0][4] == output
+    assert sorted(path.name for path in output.parent.iterdir()) == ["output"]
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_a_compile_settings_run_with_given_code_is_unsupported(root, tool):
+    given_run(root, candidate_kind="compile_settings")
+    bench = Bench(root, tool)
+    failure = bench.failure()
+    assert failure.kind == "run_file_unsupported"
+    assert failure.message == (
+        f"runs/{RUN}/instance.json: states given code with the candidate kind "
+        "compile_settings; this tool evaluates given code of c_kernel runs only"
+    )
+    assert (bench.asked, bench.order, lines(root)) == ([], [], [])
+
+
+@pytest.mark.parametrize(
+    ("members", "kind", "start"),
+    [
+        ({"given_code": DIGEST[1:]}, "run_file_invalid", "given_code: must"),
+        ({"given_code": 1}, "run_file_invalid", "given_code: must"),
+        ({"candidate_kind": "c_kernel"}, "run_file_invalid", "candidate_kind: "),
+        ({"schema_version": 4}, "run_file_unsupported", "schema_version: 4"),
+    ],
+    ids=["short", "not-a-string", "c_kernel-stated", "v4"],
+)
+def test_a_bad_given_code_run_has_no_run(root, members, kind, start):
+    given_run(root, **members)
+    bench = Bench(root)
+    failure = bench.failure()
+    assert failure.kind == kind
+    assert failure.message.startswith(f"runs/{RUN}/instance.json: {start}")
     assert (bench.asked, bench.order, lines(root)) == ([], [], [])

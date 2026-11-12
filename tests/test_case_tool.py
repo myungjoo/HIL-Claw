@@ -563,7 +563,7 @@ def test_a_missing_instance_is_run_file_missing(root):
     ("content", "kind"),
     [
         (b"[]", "run_file_invalid"),
-        (encoded(instance_document() | {"schema_version": 3}), "run_file_unsupported"),
+        (encoded(instance_document() | {"schema_version": 4}), "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_is_its_kind(root, content, kind):
@@ -1053,3 +1053,29 @@ def test_a_version_1_run_is_stored_as_before(root):
     run(root)
     assert write(Source(root), request()) == {"with_verdicts": True}
     assert case_path(root).is_file()
+
+
+# instance.json of version 3 (ADR-0200 decision 7, the last row of its reader table)
+
+GIVEN = {"schema_version": 3, "given_code": "0123456789abcdef" * 4}
+
+
+@pytest.mark.parametrize(
+    "changes", [GIVEN, GIVEN | {"candidate_kind": "compile_settings"}]
+)
+def test_a_given_code_run_is_run_file_unsupported_and_nothing_is_written(root, changes):
+    run(root)
+    place(instance_path(root), encoded(instance_document() | changes))
+    failure = refused(root)
+    assert failure.kind == "run_file_unsupported"
+    assert failure.message == (
+        f"{INSTANCE_PATH}: states given code (schema_version 3); this tool does "
+        "not read a given-code run"
+    )
+    assert not case_path(root).exists()
+
+
+def test_a_malformed_given_code_run_is_run_file_invalid(root):
+    run(root)
+    place(instance_path(root), encoded(instance_document() | {"schema_version": 3}))
+    assert refused(root).kind == "run_file_invalid"

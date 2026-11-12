@@ -420,7 +420,7 @@ def test_a_missing_instance_is_run_file_missing(root, key_dir):
     [
         (b"{", "run_file_invalid"),
         (written({"schema_version": 1}), "run_file_invalid"),
-        (written({"schema_version": 3}), "run_file_unsupported"),
+        (written({"schema_version": 4}), "run_file_unsupported"),
     ],
 )
 def test_an_instance_that_cannot_be_used_is_its_kind(root, content, kind):
@@ -638,11 +638,11 @@ def test_the_kind_is_refused_before_the_lookup(root, monkeypatch):
 @pytest.mark.parametrize(
     ("changes", "kind"),
     [
-        ({"schema_version": 3}, "run_file_unsupported"),
+        ({"schema_version": 4}, "run_file_unsupported"),
         ({"schema_version": 1}, "run_file_invalid"),
         ({"candidate_kind": "c_kernel"}, "run_file_invalid"),
     ],
-    ids=["v3", "v1-with-kind", "v2-c_kernel"],
+    ids=["v4", "v1-with-kind", "v2-c_kernel"],
 )
 def test_other_versions_and_the_narrowed_forms_are_their_kind(root, changes, kind):
     kinded_instance(root, **changes)
@@ -650,3 +650,38 @@ def test_other_versions_and_the_narrowed_forms_are_their_kind(root, changes, kin
     assert failure.kind == kind
     assert failure.message.startswith(f"{INSTANCE_PATH}: ")
     assert "candidate kind" not in failure.message
+
+
+# instance.json of version 3 (ADR-0200 decision 7, the last row of its reader table)
+
+
+@pytest.mark.parametrize("kind", ["c_kernel", "compile_settings"])
+def test_a_given_code_run_is_run_file_unsupported(root, key_dir, monkeypatch, kind):
+    store_case(root, OTHER_A, 1)
+    document = {
+        "schema_version": 3,
+        "given_code": "0123456789abcdef" * 4,
+        "hw_profile": {"key": HW_KEY.name, "record": hw()},
+        "op_signature": {"key": OP_KEY.name, "record": op()},
+    }
+    if kind != "c_kernel":
+        document["candidate_kind"] = kind
+    place(instance_path(root), written(document))
+
+    def find(*arguments):
+        raise AssertionError("the lookup must not be reached")
+
+    monkeypatch.setattr(case_lookup, "find", find)
+    before = tree(root)
+    failure = refused(root)
+    assert failure.kind == "run_file_unsupported"
+    assert failure.message == (
+        f"{INSTANCE_PATH}: states given code (schema_version 3); this tool does "
+        "not read a given-code run"
+    )
+    assert tree(root) == before
+
+
+def test_a_malformed_given_code_run_is_run_file_invalid(root):
+    kinded_instance(root, schema_version=3, given_code="F" * 64)
+    assert refused(root).kind == "run_file_invalid"
