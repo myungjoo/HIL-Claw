@@ -711,3 +711,19 @@
 - 내용:
 
   PLAN P3-15 / ADR-0203. 위 항목 가운데 하나를 받은 실제 코더가 쓴 `gemm` bf16 커널이 bf16 `correctness.check`를 통과하는가. T-0565(PR #379, main 4dd59de3) 착지 뒤 확인 가능.
+
+### RA-0083
+
+- 상태: 미확인
+- 출처: P3-15, T-0566, ADR-0203 (등록 2026-11-12)
+- 내용:
+
+  PLAN P3-15 / ADR-0203. 실제 `claude`가 도는 `cpu_standin`의 `rmsnorm`·`elementwise_add`·`swiglu`·`rope`·`sdpa_kv_cache` bf16 run에서 실제 technique-selector가 `catalog.read`로 그 계약의 커밋된 항목을 받아 그중 하나를 고를 수 있고, `spec.write`가 그것을 담은 spec을 쓰는가. T-0566(PR #380, main 47b26b8d) 착지 뒤 확인 가능.
+
+### RA-0084
+
+- 상태: 미확인
+- 출처: P3-15, T-0566, ADR-0203 (등록 2026-11-12)
+- 내용:
+
+  PLAN P3-15 / ADR-0203. 위 항목 가운데 하나를 받은 실제 코더가 쓴 커널이 그 계약의 bf16 `correctness.check`를 통과하는가. T-0566(PR #380, main 47b26b8d) 착지 뒤 확인 가능.

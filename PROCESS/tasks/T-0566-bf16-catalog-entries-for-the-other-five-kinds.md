@@ -2,7 +2,7 @@
 id: T-0566
 title: PLAN P3-15 (2/2) — add the first technique entries of `catalog/cpu_standin/` for the bf16 `rmsnorm`, `elementwise_add`, `swiglu`, `rope` and `sdpa_kv_cache` contracts under ADR-0203, so that every one of the six bf16 kinds has at least one entry
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D31, "PLAN P3-15", FR-7, FR-8, OD-22, C-6]
 dependsOn: [T-0565]
@@ -55,3 +55,22 @@ The entry form this task relies on is fixed by T-0565's acceptance criterion 1.2
 ## Follow-ups
 
 ## Result
+
+- **DONE.** PR #380, squash-merged as `47b26b8d`; branch deleted. Review: 1 round, Approve (dev-reviewer, fresh context, opus; the review prompt named the check of each entry against its contract ADR and ADR-0203 decision 5). Three wording Nits fixed after Approve (D20 exception: rmsnorm entry's `static inline` widening helper and its `## When` in terms of the lane count; both sdpa entries now state the error bound over ADR-0162's input domain); two test Nits left as they are. CI green on head `62fd0aa5`; local full suite 39847 passed, 2217 skipped; `hilclaw/` coverage 99% (no `hilclaw/` change).
+- **Precondition** (Why): ADR-0203 landed by T-0565 (`4dd59de3`) with the four-line form of criterion 1.2; T-0565 closed `DONE` with landing. No open PR at start.
+- **P3-15 completion — committed entries per bf16 contract** (all in `catalog/cpu_standin/`):
+  - `gemm` bf16: `gemm_bf16_row_accumulators`, `gemm_bf16_widened_b_panel` (T-0565)
+  - `rmsnorm` bf16: `rmsnorm_bf16_lane_sums`
+  - `elementwise_add` bf16: `elementwise_add_bf16_flat_loop`
+  - `swiglu` bf16: `swiglu_bf16_flat_loop`, `swiglu_bf16_poly_exp`
+  - `rope` bf16: `rope_bf16_table_row_per_token`
+  - `sdpa_kv_cache` bf16: `sdpa_kv_cache_bf16_gqa_groups`, `sdpa_kv_cache_bf16_two_pass`
+  Every one of the six bf16 contracts has at least one entry, so PLAN P3-15 can be checked.
+- **No code or ADR change**: `hilclaw/`, `ARCHITECTURE/`, `orchestration/` and the existing entries untouched; no entry needed anything ADR-0203 forbids. No new entry uses OpenMP.
+- **Reading of the task's gist**: for `rope` the gist's "the two halves the contract defines" does not match ADR-0161 decision 5 (adjacent pairs `2p`, `2p + 1`); the entry follows the contract and says the pairs are not the halves of a head. For `sdpa_kv_cache` the entries use the maximum subtracted before every `expf` with scores kept in kernel-owned scratch and no rescaling (the straightforward evaluation of ADR-0162 decision 7's argument) instead of a running-maximum online softmax, whose error ADR-0162 leaves for the kernel to show.
+- **Supporting check (not committed)**: C kernels written from every guidance, built with MinGW gcc 16.2 `-std=gnu11 -O2 -ffp-contract=off -fopenmp ... -lm`, matched a float64 reference after bf16 rounding (0 ulp) on several shapes each, including 1 x 1, odd sizes, `rope` d = 2 and 6, `sdpa_kv_cache` with l = m, m = 1, h = h_kv and h / h_kv = 2, 3, 4; both sdpa entries and the malloc-failure path gave identical bits and exact cache copies; the inline exponential of `swiglu_bf16_poly_exp` had a worst relative error of 2^-17.75 over |g| <= 87.34 (contract needs 2^-12).
+- **D21 / criterion 3 (b) edits of existing tests** (listed in the PR body): `tests/test_catalog.py` `ALL_COMMITTED` and the id-to-contract map of `test_committed_entries_state_their_contracts`; `tests/test_catalog_tool.py` `test_a_bf16_run_gets_no_entry_of_the_committed_catalog` rewritten as `test_a_bf16_run_gets_the_committed_entries_of_its_contract_only`, and the expected ids of `test_every_id_returned_for_a_contract_passes_spec_write` read from a per-contract `COMMITTED` map.
+- **Runtime acceptance items** for `PROCESS/RuntimeAcceptance.md` (D22):
+  1. A real technique-selector of a `rmsnorm`, `elementwise_add`, `swiglu`, `rope` or `sdpa_kv_cache` bf16 run on `cpu_standin` receives that contract's committed entries from `catalog.read`, may choose one, and `spec.write` writes a spec that carries it.
+  2. A real coder given one of these entries writes a kernel that passes the bf16 check of its contract.
+- No install, no work image, no test run, no `claude` started. Task directory `${TMPDIR:-/tmp}/hilclaw-driver/T-0566/` removed.
