@@ -14,8 +14,10 @@ from hilclaw import (
     cuda_adapter,
     local_run,
     qnn_adapter,
+    remote_run,
     standin_container,
     toolchain_check,
+    vendor_adapter,
 )
 from hilclaw.toolchain_check import (
     CLIENT,
@@ -664,3 +666,194 @@ def test_image_entry_refuses_a_reference_before_anything_starts(
     monkeypatch.setattr(local_run, "run", lambda *a, **k: pytest.fail("started"))
     with pytest.raises(error):
         toolchain_check.image_entry(image)
+
+
+REMOTE_DEST = "tester@host.invalid"
+REMOTE_ENV = {remote_run.DESTINATION_VARIABLE: REMOTE_DEST}
+needs_sh = pytest.mark.skipif(shutil.which("sh") is None, reason="no POSIX sh")
+
+# A stub ssh that runs the remote command with the local sh.
+SSH_STUB = """\
+import json, os, subprocess, sys
+here = os.path.dirname(os.path.abspath(__file__))
+args = sys.argv[1:]
+with open(os.path.join(here, "calls.jsonl"), "a", encoding="utf-8") as log:
+    log.write(json.dumps(args) + "\\n")
+target = args[args.index("--") + 1]
+if os.path.exists(os.path.join(here, "answer.json")):
+    with open(os.path.join(here, "answer.json"), encoding="utf-8") as source:
+        status = json.load(source)["status"]
+    sys.stderr.write("ssh: connect to host " + target + ": refused")
+    sys.exit(status)
+sys.stdout.flush()
+sys.exit(subprocess.run(["sh", "-c", args[-1]]).returncode)
+"""
+
+
+@pytest.fixture
+def stub_ssh(tmp_path):
+    directory = tmp_path / "ssh"
+    directory.mkdir()
+    path = directory / "ssh_stub.py"
+    path.write_text(SSH_STUB, encoding="utf-8")
+
+    class Ssh:
+        program = (sys.executable, str(path))
+
+        def fail(self, status):
+            (directory / "answer.json").write_text(json.dumps({"status": status}))
+
+        def calls(self):
+            log = directory / "calls.jsonl"
+            if not log.exists():
+                return []
+            return [json.loads(line) for line in log.read_text().splitlines()]
+
+    return Ssh()
+
+
+def remote_component(command, **changes):
+    def assemble(*, timeout_s, program):
+        return vendor_adapter.RunCall(command=command, env=None, timeout_s=timeout_s)
+
+    return component(None, assemble=assemble, **changes)
+
+
+def test_remote_constants():
+    assert toolchain_check.REMOTE_TIME_LIMIT_S == 60
+    assert (toolchain_check.NOT_CONFIGURED, toolchain_check.UNREACHABLE) == (
+        "not_configured",
+        "unreachable",
+    )
+    assert toolchain_check.SYSTEM == {
+        "kernel": ("uname", "-s"),
+        "machine": ("uname", "-m"),
+    }
+
+
+@pytest.mark.parametrize("environ", [{}, {remote_run.DESTINATION_VARIABLE: "-x"}])
+def test_remote_check_without_a_destination_is_not_configured(stub_ssh, environ):
+    report = toolchain_check.remote_check(environ=environ, ssh=stub_ssh.program)
+    assert report == {
+        "state": "not_configured",
+        "message": "HILCLAW_AARCH64_SSH names no usable destination",
+        "system": {},
+        "components": {},
+    }
+    assert stub_ssh.calls() == []
+
+
+def test_remote_check_with_an_ssh_failure_is_unreachable(stub_ssh):
+    stub_ssh.fail(255)
+    report = toolchain_check.remote_check(environ=REMOTE_ENV, ssh=stub_ssh.program)
+    assert report == {
+        "state": "unreachable",
+        "message": "the destination could not be reached by ssh",
+        "system": {},
+        "components": {},
+    }
+    assert len(stub_ssh.calls()) == 1
+    assert "host.invalid" not in json.dumps(report)
+
+
+@needs_sh
+def test_remote_check_reads_the_system_and_each_component(stub_ssh):
+    components = {
+        "tool": remote_component(("echo", "tool 1.2")),
+        "missing": remote_component(("no-such-program-hilclaw",)),
+        "broken": remote_component(("sh", "-c", "exit 3")),
+        "silent": remote_component(("true",)),
+        "lost": remote_component(("true",), interpret=lambda answer, program: None),
+    }
+    report = toolchain_check.remote_check(
+        components=components, environ=REMOTE_ENV, ssh=stub_ssh.program
+    )
+    assert (report["state"], report["message"]) == ("read", None)
+    assert set(report["system"]) == {"kernel", "machine"}
+    for entry in report["system"].values():
+        assert entry["state"] == "present"
+        assert entry["version"]
+    assert report["components"] == {
+        "tool": {"state": "present", "version": "tool 1.2", "message": None},
+        "missing": {
+            "state": "absent",
+            "version": None,
+            "message": "the program was not found or could not be started",
+        },
+        "broken": {
+            "state": "unreadable",
+            "version": None,
+            "message": "the version query ended with a non-zero status or by a signal",
+        },
+        "silent": {
+            "state": "unreadable",
+            "version": None,
+            "message": "the version query printed no version line",
+        },
+        "lost": {
+            "state": "unreadable",
+            "version": None,
+            "message": "the query could not be run",
+        },
+    }
+    assert "host.invalid" not in json.dumps(report)
+    calls = stub_ssh.calls()
+    assert [call[-1] for call in calls[:2]] == ["'uname' '-s'", "'uname' '-m'"]
+    assert calls[2][-1] == "'echo' 'tool 1.2'"
+
+
+@needs_sh
+def test_remote_check_does_not_hand_an_environment_over(stub_ssh):
+    def assemble(*, timeout_s, program):
+        return vendor_adapter.RunCall(
+            command=("tool",), env={"A": "1"}, timeout_s=timeout_s
+        )
+
+    report = toolchain_check.remote_check(
+        components={"envy": component(None, assemble=assemble)},
+        environ=REMOTE_ENV,
+        ssh=stub_ssh.program,
+    )
+    assert report["components"]["envy"] == {
+        "state": "unreadable",
+        "version": None,
+        "message": "the query needs an environment the remote runner does not hand over",
+    }
+    assert all(call[-1] != "'tool'" for call in stub_ssh.calls())
+
+
+@needs_sh
+def test_remote_check_reads_the_table_by_default(stub_ssh):
+    report = toolchain_check.remote_check(environ=REMOTE_ENV, ssh=stub_ssh.program)
+    assert list(report["components"]) == list(COMPONENTS)
+    assert [call[-1] for call in stub_ssh.calls()][2:] == [
+        "'clang' '--version'",
+        "'nvcc' '--version'",
+        "'nvidia-smi' '--query-gpu=name,driver_version' '--format=csv,noheader'",
+        "'qnn-net-run' '--version'",
+    ]
+
+
+def test_a_remote_time_limit_is_unreadable(monkeypatch):
+    def timed_out(command, *, timeout_s, environ, ssh):
+        assert timeout_s == toolchain_check.REMOTE_TIME_LIMIT_S
+        return remote_run.RemoteResult(None, True, b"", b"", tuple(command), 1.0, False)
+
+    monkeypatch.setattr(remote_run, "run", timed_out)
+    report = toolchain_check.remote_check(
+        components={"slow": remote_component(("slow",))}, environ=REMOTE_ENV
+    )
+    expected = {
+        "state": "unreadable",
+        "version": None,
+        "message": "the version query did not end within its time limit",
+    }
+    assert report["system"]["kernel"] == expected
+    assert report["components"]["slow"] == expected
+
+
+def test_remote_check_passes_on_a_missing_ssh_program(tmp_path):
+    with pytest.raises(local_run.ProgramNotFoundError):
+        toolchain_check.remote_check(
+            environ=REMOTE_ENV, ssh=(str(tmp_path / "no-ssh"),)
+        )

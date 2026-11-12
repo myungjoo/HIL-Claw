@@ -21,6 +21,11 @@ component is added by an entry of :data:`COMPONENTS`; today the table holds
 device query ``nvidia-smi`` of :mod:`hilclaw.cuda_adapter`, and the QNN SDK's
 ``qnn-net-run`` of :mod:`hilclaw.qnn_adapter`.
 
+**The remote machine.** :func:`remote_check` reads the same table and
+``uname -s``/``uname -m`` on the ssh destination of
+:mod:`hilclaw.remote_run` (ADR-0204 decision 8); the command line does not
+call it.
+
 **The report.** Standard output gets one JSON document followed by one LF:
 
 * ``host``: an object keyed by component name;
@@ -80,11 +85,13 @@ from hilclaw import (
     cuda_adapter,
     local_run,
     qnn_adapter,
+    remote_run,
     standin_container,
     vendor_adapter,
 )
 
 HOST_TIME_LIMIT_S = 30
+REMOTE_TIME_LIMIT_S = 60
 IMAGE_TIME_LIMIT_S = 120
 REMOVAL_TIME_LIMIT_S = 30
 CLIENT = "docker"
@@ -95,9 +102,15 @@ EXIT_USAGE = 20
 EXIT_FAULT = 21
 
 READ = "read"
+NOT_CONFIGURED = "not_configured"
+UNREACHABLE = "unreachable"
+SYSTEM = {"kernel": ("uname", "-s"), "machine": ("uname", "-m")}
 
 _NOT_RUN = "the query could not be run"
 _NO_CONTAINER = "no container of the image could be used"
+_NO_SSH = "the destination could not be reached by ssh"
+_REMOTE_ENV = "the query needs an environment the remote runner does not hand over"
+_NOT_IN_PATH = (126, 127)
 
 
 class Component(NamedTuple):
@@ -241,6 +254,95 @@ def check(images=(), *, components=None, client=CLIENT):
     host = {name: _host_entry(component) for name, component in components.items()}
     read = {image: _image_entry(image, components, client) for image in images}
     return {"host": host, "images": read}
+
+
+class _Unreachable(Exception):
+    pass
+
+
+def _remote(command, environ, ssh):
+    done = remote_run.run(
+        command, timeout_s=REMOTE_TIME_LIMIT_S, environ=environ, ssh=ssh
+    )
+    if done.ssh_failed:
+        raise _Unreachable
+    return done
+
+
+def _system_entry(command, environ, ssh):
+    done = _remote(command, environ, ssh)
+    found = clang_adapter.interpret_probe(_as_local(done, command), command[0])
+    return _entry(found)
+
+
+def _as_local(done, command):
+    if not done.timed_out and done.returncode in _NOT_IN_PATH:
+        return local_run.ProgramNotFoundError(command[0])
+    return local_run.RunResult(
+        returncode=done.returncode,
+        timed_out=done.timed_out,
+        stdout=done.stdout,
+        stderr=done.stderr,
+        command=tuple(command),
+        duration_s=done.duration_s,
+    )
+
+
+def _remote_entry(component, environ, ssh):
+    call = component.assemble(timeout_s=REMOTE_TIME_LIMIT_S, program=component.program)
+    if call.env is not None:
+        return _unreadable(_REMOTE_ENV)
+    done = _remote(call.command, environ, ssh)
+    found = component.interpret(_as_local(done, call.command), call.command[0])
+    if found is None:
+        return _unreadable(_NOT_RUN)
+    return _entry(found)
+
+
+def remote_check(*, components=None, environ=None, ssh=remote_run.SSH):
+    """Read the configured remote machine and return its report as a ``dict``.
+
+    The destination is the one :func:`hilclaw.remote_run.destination` reads
+    from ``environ``. The report has ``state`` (:data:`READ`,
+    :data:`NOT_CONFIGURED` or :data:`UNREACHABLE`), ``message`` (``null``
+    when :data:`READ`, else a short fixed text), ``system``, an object with
+    the entries ``kernel`` and ``machine`` (``uname -s`` and ``uname -m``),
+    and ``components``, an object keyed by component name; both are empty
+    unless :data:`READ`. Entries have the form of the host report's; a
+    remote status 126 or 127 is ``absent``, any other status is read by the
+    component's ``interpret`` part as on the host. Every component of
+    ``components`` (default :data:`COMPONENTS`) is read, ``host_only`` ones
+    included. Each query has :data:`REMOTE_TIME_LIMIT_S`. An unset or refused
+    destination and an ssh failure are report states; nothing is installed,
+    pulled, started in a container or written on the remote machine, and the
+    report names no destination. An exception outside the queries (of an
+    ``assemble`` or ``interpret`` part, or ``ssh`` not found) is passed on.
+    """
+    if not remote_run.configured(environ):
+        return {
+            "state": NOT_CONFIGURED,
+            "message": f"{remote_run.DESTINATION_VARIABLE} names no usable destination",
+            "system": {},
+            "components": {},
+        }
+    components = COMPONENTS if components is None else components
+    try:
+        system = {
+            name: _system_entry(command, environ, ssh)
+            for name, command in SYSTEM.items()
+        }
+        found = {
+            name: _remote_entry(component, environ, ssh)
+            for name, component in components.items()
+        }
+    except _Unreachable:
+        return {
+            "state": UNREACHABLE,
+            "message": _NO_SSH,
+            "system": {},
+            "components": {},
+        }
+    return {"state": READ, "message": None, "system": system, "components": found}
 
 
 def exit_status(report):
