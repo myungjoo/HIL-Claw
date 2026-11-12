@@ -695,3 +695,19 @@
 - 내용:
 
   PLAN P3-11 / ADR-0202 결정 1. 실제 `claude`가 도는 given-code 루프 run(`instance.json` 버전 3에 `given_code`, `round_budget` ≥ 2)에서 라운드 1의 실제 코더가 `feedback.base`로 주어진 시도 `(0, 1, 1)`의 `base/given.c`에서 출발하는가. 실패로 드러나면 ADR-0202 결정 1(주어진 시도를 feedback에 보이는 방법)을 다시 정한다. T-0564(PR #378, main ecf8ef4f) 착지 뒤 확인 가능.
+
+### RA-0081
+
+- 상태: 미확인
+- 출처: P3-15, T-0565, ADR-0203 (등록 2026-11-12)
+- 내용:
+
+  PLAN P3-15 / ADR-0203. 실제 `claude`가 도는 `gemm` bf16 run에서 실제 technique-selector가 카탈로그의 `gemm` bf16 항목 두 개(`gemm_bf16_row_accumulators`, `gemm_bf16_widened_b_panel`)를 받아 그중 하나를 고를 수 있고, `spec.write`가 그 기법을 담은 spec을 쓰는가. T-0565(PR #379, main 4dd59de3) 착지 뒤 확인 가능.
+
+### RA-0082
+
+- 상태: 미확인
+- 출처: P3-15, T-0565, ADR-0203 (등록 2026-11-12)
+- 내용:
+
+  PLAN P3-15 / ADR-0203. 위 항목 가운데 하나를 받은 실제 코더가 쓴 `gemm` bf16 커널이 bf16 `correctness.check`를 통과하는가. T-0565(PR #379, main 4dd59de3) 착지 뒤 확인 가능.

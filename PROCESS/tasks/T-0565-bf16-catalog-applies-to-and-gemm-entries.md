@@ -2,7 +2,7 @@
 id: T-0565
 title: PLAN P3-15 (1/2) — write the §9 ADR that lets a `catalog/cpu_standin/` entry state the values of any contract of the contract table in `## Applies to`, change the catalog reader and its two users to compare against each entry's own values, and land the first bf16 entries (`gemm` bf16)
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D31, "PLAN P3-15", FR-7, FR-8, OD-22, C-6]
 dependsOn: []
@@ -86,3 +86,14 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+- **DONE.** PR #379, squash-merged as `4dd59de3`; branch deleted. Review: 1 round, Approve (dev-reviewer, fresh context; two Nits fixed after Approve — the owner-sentence citation now `#5 A-7 ②`, and one test edit added to the PR body's D21 list). CI green on the PR head (`80586de6`); local full suite 39825 passed, 2217 skipped; `hilclaw/` coverage 99% (catalog.py 99%, catalog_tool.py 100%, spec_tool.py 100%).
+- **Order check** (Why): unchanged at the start — no open PR, #373 the only open `nightly-failure` issue (T-0559, BLOCKED on HQ-0100), unresolved HQs only HQ-0096 and HQ-0100.
+- **ADR-0203** (`ARCHITECTURE/decisions/ADR-0203-od22-catalog-entries-for-the-bf16-contracts.md`): `Applies to` holds the key of one table contract; values naming no contract are refused by the reader; comparison against each entry's own values in `hilclaw.catalog` (`AppliesTo`, `Entry`, `entries`, `applies(applies_to, …)`, `mismatch(applies_to, …)`; `APPLIES_TO` removed); ids carry no required kind/dtype part; bf16 text rules; entries of a bf16 contract may suggest OpenMP under conditions (the two new entries do not). §9 notice posted on #5: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6818127866 (7-day objection window).
+- **Entries**: `catalog/cpu_standin/gemm_bf16_row_accumulators.md`, `catalog/cpu_standin/gemm_bf16_widened_b_panel.md`. Supporting check (not committed): C kernels written from both guidances, built with gcc `-std=gnu11 -O2 -ffp-contract=off`, agree with each other and with the malloc-failure path and stay within half a bf16 ulp of a float64 reference on five shapes (1x1x1 and non-multiples of the block sizes included).
+- **Readings for the owner** (in the ADR Status and the #5 notice, not HQs): PLAN P3-15's "틀을 바꾸지 않는다" read as the four lines, their order and the judgement (the values were left to OD-22 by ADR-0150/ADR-0190); "기법의 근거는 문서에 출처로 적고" read as the entry stating its reason in its own text, naming no external material (OD-12).
+- **Runtime acceptance items** for `PROCESS/RuntimeAcceptance.md` (D22):
+  1. A real technique-selector of a `gemm` bf16 run on `cpu_standin` receives the two `gemm` bf16 entries from `catalog.read`, may choose one, and `spec.write` writes a spec that carries it.
+  2. A real coder given one of the two entries writes a kernel that passes the bf16 `gemm` check.
+- **Follow-up**: T-0566 (the other five bf16 kinds) on the form of ADR-0203 decisions 2 and 5; P3-15 is checked when all six bf16 contracts have an entry.
+- No install, no work image, no test run, no `claude` started. Task directory `${TMPDIR:-/tmp}/hilclaw-driver/T-0565/` removed.
