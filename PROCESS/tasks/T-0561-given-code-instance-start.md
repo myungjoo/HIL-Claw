@@ -2,7 +2,7 @@
 id: T-0561
 title: Land ADR-0200 slice 2 for PLAN P3-11 — the instance start takes a given C file, stores it in the CAS, writes `instance.json` version 3 with `given_code` and records the blob in `artifacts.json` (`type` `given_code`, class `final`)
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, FR-19, OD-33, "PLAN P3-11", HQ-0092, HQ-0097, ADR-0200]
 dependsOn: []
@@ -59,3 +59,26 @@ hq: []
 - T-0562 (slice 3a) and T-0563 (slice 3b) follow in this batch; slice 4 is planned after them.
 
 ## Result
+
+**Outcome**: DONE — PR #375 (code mode), reviewer Approve in round 1 (Nit only; the instance_file docstring reflow was fixed after Approve, D20). Order check at run time: unchanged (no open PR, #373 still with T-0559, no `실패` item in RuntimeAcceptance.md, P3-11 first unchecked).
+
+**What landed** (ADR-0200 slice 2):
+- `hilclaw/start_instance.py`: `start(document, *, data_root, code_file=None)`; with a file: read once (≤ `bring_in.MAX_FILE_BYTES`, 256 KiB), SHA-256 handed to `prepare`, then blob → `instance.json` v3 (`given_code`) → `artifacts.json` record (`type` `given_code`, `round` 0, `final`). New: `GIVEN_CODE_TYPE`, `GivenCodeFileError`, `GivenCodeNotAdmittedError` (`compile_settings`, N ≠ 1), `GivenCodeUnrecordedError` (record failure after the instance; blob and instance stay, run id reported).
+- `hilclaw/instance_start.py`: `prepare(..., given_code=None)`; with a hash: `schema_version` 3 in place, `given_code` last, checked by `instance.validate_given`. Without: unchanged; `start` hands `given_code` only with a file, so `model_instances` is unaffected.
+- `hilclaw/instance_file.py`: `write` validates with `instance.parse_given` (v1–v3).
+- `hilclaw/new_run.py`: `python -m hilclaw.new_run <file> [--given-code <c-file>]`; new outcomes `given_code_refused` 17, `bad_given_code` 18, `given_code_unrecorded` 19 (with `run_id`). One-argument form unchanged.
+
+**Choices** (in docstrings and the PR body):
+- A request that itself holds `given_code` or states `schema_version` 3 stays refused (`invalid`), with or without a file; version 3 is set only by the start. The T-0560 test pinning this was not changed.
+- **`cas.put_bytes` of the bytes read instead of `cas.put_file`** (criterion 1 and ADR-0200 decision 5 name `put_file`): `put_file` would re-read the file after the checks, so the stored bytes could differ from the checked and hashed ones. Same store and blob path. Slice 4 (`hilclaw.given_eval`) should keep the read-once form (reviewer request).
+- The slice-2 admission (kind, N = 1) is checked in `start_instance`, not `prepare` (`instance_start` holds no number of its own); `prepare` with a hash builds any valid v3 form.
+
+**Existing test edits**: D21 list assertions — the `start` parameter list (`test_the_public_surface`), the `prepare` parameter list (`test_the_arguments_are_one_document_and_two_by_name_without_default`), the outcome count 13 → 16 (`test_the_statuses_are_distinct_and_only_started_is_zero`). Outside D21, forced by criterion 5 (`instance_file` reads v3): two cases in `tests/test_instance_file.py` (version 3 without `given_code`, in `REFUSED` and in `test_a_refused_kinded_content_creates_nothing`) are still refused and create nothing, but as `InvalidInstanceError` instead of `UnsupportedVersionError`; the reviewer accepted this on that ground.
+
+**Size**: ~280 added / 63 removed lines in 4 `hilclaw/` files (docstrings included); tests excluded.
+
+**Follow-ups (less exact, not edited)**: ADR-0155 ("no option exists" for `new_run`; its outcome table lacks 17–19); ADR-0200 decision 5 ("the file stored by `cas.put_file`" — the start uses `put_bytes` of the bytes read).
+
+**Runtime acceptance items**: none. No `claude` was started, no test run (D25).
+
+**Temporary files**: `%TMP%/hilclaw-driver/T-0561/` removed at the end.
