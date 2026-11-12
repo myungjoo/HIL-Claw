@@ -2,7 +2,7 @@
 id: T-0566
 title: PLAN P3-15 (2/2) — add the first technique entries of `catalog/cpu_standin/` for the bf16 `rmsnorm`, `elementwise_add`, `swiglu`, `rope` and `sdpa_kv_cache` contracts under ADR-0203, so that every one of the six bf16 kinds has at least one entry
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D31, "PLAN P3-15", FR-7, FR-8, OD-22, C-6]
 dependsOn: [T-0565]
