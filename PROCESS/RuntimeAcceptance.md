@@ -687,3 +687,11 @@
 - 내용:
 
   PLAN P3-11 / ADR-0200·ADR-0201. 실제 `claude`가 도는 given-code 루프 run(`instance.json` 버전 3에 `given_code`, `cpu_standin`, `candidates_per_round` 1)의 라운드 0 턴에서 살아 있는 Round-Manager가 ① 진입 2단계에서 첫 `STATE.json`을 쓰고(시작이 쓴 `artifacts.json`이 있어도 `run.fresh`가 `true` — ADR-0201 결정 1), ② 라운드 단계 2에서 `instance.read`로 `given_code`를 확인한 뒤 `coder-driver`에 위임하지 않고 `mcp__hilclaw__given_place`를 한 번 불러 `(0, 1, 1)`의 `output/given.c`를 두며(spec 없음, coder 호출 없음, repair 없음), ③ evaluator의 `sim`·`board` 검사와 experiment-runner의 `board.run`이 그 시도를 평가한 뒤 `round.end`와 `run.commit`에 이르는가. 또한 caller check가 `given_place`를 main 세션에만 통과시키는가. 실패로 드러나면 ADR-0201 결정 2(Round-Manager의 배치 경로)를 다시 정한다. T-0563(PR #377, main f2fd3869) 착지 뒤 확인 가능.
+
+### RA-0080
+
+- 상태: 미확인
+- 출처: P3-11, T-0564, ADR-0202 (등록 2026-11-12)
+- 내용:
+
+  PLAN P3-11 / ADR-0202 결정 1. 실제 `claude`가 도는 given-code 루프 run(`instance.json` 버전 3에 `given_code`, `round_budget` ≥ 2)에서 라운드 1의 실제 코더가 `feedback.base`로 주어진 시도 `(0, 1, 1)`의 `base/given.c`에서 출발하는가. 실패로 드러나면 ADR-0202 결정 1(주어진 시도를 feedback에 보이는 방법)을 다시 정한다. T-0564(PR #378, main ecf8ef4f) 착지 뒤 확인 가능.
