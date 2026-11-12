@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P3",
-  "currentTask": "T-0567",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:5237a102",
-    "acquiredAt": "2026-11-12T12:49:22Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -1004,18 +1000,26 @@
       "question": "[T-0559 / nightly #373] 이 보고는 HQ-0099가 이미 다룬 firing이다 — 처리 방식만 정해 달라. [관찰] 보고 `20261112T000458Z`(커밋 `5e8bfddf`, run id `20261112t000500z-5a807905eb731928`): signature `turn_start/stopped_at_check/not_logged_in`, cause `environment`. `new_run` 종료 상태 0, `turn_start` 종료 상태 14; 점검 결과 outcome `not_logged_in`, login `auth_method` `none`·`exit_status` 1·`timed_out` false. 직전 보고 `20261110T180351Z`와 commit·run id 말고는 결과 줄의 모든 필드가 같다. HQ-0099의 `decision`은 이 firing을 claude.ai 로그인 만료 때문인 `not_logged_in` firing으로 직접 적고 있고, 코드 결함이 아니라는 판정도 같다. [머신 조치] HQ-0099에 기록된 조치(`nightly.env`에서 `CLAUDE_CODE_OAUTH_TOKEN`을 setup-token으로 지정)는 이 firing(00:04:58Z) 뒤(00:15Z 무렵)에 이루어졌다. 더 필요한 머신 조치는 알려진 것이 없다. [선택지] (a) 이 task를 다시 하지 않는 답으로 `DONE` 처리하고(NIGHTLY §7), #373은 다음 nightly 통과가 닫게 둔다. (b) 다음 nightly가 여전히 `not_logged_in`을 보고하면 머신을 다시 확인하거나 코드 변경(재조사 task)을 지시한다. [막히는 것] 이 task의 종료뿐(실행할 작업은 없다). [막히지 않는 것] 시간당 드라이버의 다른 task, 다음 nightly.",
       "askedAt": "2026-11-12T01:21:58Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0101",
+      "taskId": "T-0567",
+      "reason": "The LAN aarch64 machine has gcc and Docker but no clang and no ADR-0144 image, and the account has no sudo. Building `cpu_standin` kernels there with the host's gcc instead of clang in the image goes against #5 A-7, ADR-0035 decision 3 and ADR-0144/ADR-0186 (D23), so the owner must choose (ADR-0204 decision 9).",
+      "question": "쟁점: PLAN P3-17의 다음 task는 LAN aarch64 머신(RPi5)에서 `cpu_standin` C 커널 경로(빌드·correctness·측정)를 실증하는 일이고, 여기에 컴파일러가 필요하다. 그 머신에는 gcc 12.2.0과 Docker 26.1.3이 있다. clang과 ADR-0144의 빌드·실행 이미지는 없고, 접속 계정은 sudo를 쓸 수 없다. 있는 gcc로 host에서 빌드·실행하는 대체는 드라이버가 정할 수 없다. #5 A-7(\"clang as the single toolchain\")·C-7 ⑥, ADR-0035 결정 3(`toolchain`의 유일 멤버 `clang`), ADR-0144 결정 4·5(이미지 안에서만 빌드·실행하고 host로 fallback하지 않음)·ADR-0186, D23에 걸리기 때문이다(ADR-0204 결정 9).\n선택지:\n(a) 오너가 그 머신에 clang을 설치한다. 계정에 sudo가 없으므로 오너의 작업이다. host의 clang으로 빌드·실행하는 것도 ADR-0144의 컨테이너 규칙과 다르므로, 실증을 host 실행으로 해도 되는지를 함께 답해야 한다.\n(b) 오너가 그 머신에서 `cpu_standin` 이미지(arm64, clang 포함)를 빌드하거나 pull하는 것을 승인한다(내려받기 — D29). 기존 기록(ADR-0144·ADR-0186)을 그대로 따른다. 권고.\n(c) host의 gcc로 빌드·실행하고, hw_profile의 `toolchain`을 `{\"gcc\": \"<gcc --version 첫 줄>\"}`(예: `gcc (Debian 12.2.0-14+deb12u1) 12.2.0`)로 적는다. 이 머신에 한해 A-7·ADR-0035 결정 3·ADR-0144 결정 4·5를 바꾸는 오너 결정이고, D23의 틀 변경이다.\n막히는 것: PLAN P3-17의 다음 task, 곧 그 머신에서의 빌드·correctness·측정과, 그 머신에서 빌드·실행한 커널의 hw_profile 및 키별 기록 분리(ADR-0001) 확인.\n막히지 않는 것: 접속 수단·원격 runner·원격 환경 점검(T-0567로 landed, ADR-0204)과 그 밖의 P3 항목.",
+      "askedAt": "2026-11-12T13:23:43Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 596,
-    "tasksDone": 560,
+    "iterations": 597,
+    "tasksDone": 561,
     "tasksBlocked": 37,
-    "reviewRoundsTotal": 1789
+    "reviewRoundsTotal": 1791
   },
   "lastIteration": {
-    "at": "2026-11-12T08:50:00Z",
-    "owner": "AKIHA:eb0ed4be",
-    "taskId": "T-0566",
+    "at": "2026-11-12T13:23:43Z",
+    "owner": "AKIHA:5237a102",
+    "taskId": "T-0567",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

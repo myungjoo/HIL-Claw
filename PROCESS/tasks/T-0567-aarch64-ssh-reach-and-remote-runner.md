@@ -2,7 +2,7 @@
 id: T-0567
 title: PLAN P3-17 (1) — record by a §9 ADR how the driver reaches the owner's LAN aarch64 machine over ssh, add a remote process runner and a read-only remote environment check, and judge whether building there with the installed gcc on the host may stand in for the clang image path
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D31, "PLAN P3-17", FR-10, C-7, OD-26, ADR-0001]
 dependsOn: []
@@ -71,3 +71,22 @@ This task is the first slice: the §9 ADR for reaching this one machine and its 
 ## Follow-ups
 
 ## Result
+- **DONE.** PR #381, squash-merged as `7f97399c`; branch deleted. Review: 2 rounds. Round 1 was Request changes: the real-machine test could print the destination value in pytest's assertion output, and the OD-26 status date was stale. Round 2 was Approve. One wording Nit was fixed after Approve under the D20 exception: ADR-0204 decision 3 now names the real-machine test's second variable. CI green on head `234897db`. Local full suite: 39924 passed, 2218 skipped. Coverage: `hilclaw/remote_run.py` 100%, `hilclaw/toolchain_check.py` 99%. §9 notice posted: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6824784024
+- **Resume** (§3-5): at start there was no landed commit, PR or branch for T-0567, and the dead run had left no local or remote task directory. Started from scratch.
+- **Criterion 1, read-only facts** (2026-11-12). Means: the ssh client already on the development PC with the authentication already set up for the owner's other project, `BatchMode=yes`, no option that weakens host-key checking.
+  - `uname -m` aarch64, `uname -s` Linux, `uname -r` 6.6.28+rpt-rpi-2712; Debian 12.15
+  - gcc (Debian 12.2.0-14+deb12u1) 12.2.0; GNU Make 4.3; Python 3.11.2; `clang` absent
+  - `docker version` client and server 26.1.3, usable by the account
+  - 4 cores; load average about 1.4 to 1.5; governor `ondemand`
+  - No image of this repository, of `cpu_standin` or of ADR-0144 is in the machine's image store. The 16 images there belong to other services or are base distribution and toolchain images. Their contents were not checked and no container was started.
+  - Nothing else on the machine was touched.
+- **Real-machine test** (`test_the_real_machine_round_trip`, run locally with `HILCLAW_AARCH64_SSH` and `HILCLAW_REMOTE_TEST_TASK=T-0567` set; skipped in CI): passed twice.
+  - `remote_check` returned state `read`: kernel `Linux`, machine `aarch64`; clang, nvcc, nvidia-smi and qnn-net-run `absent`.
+  - The remote task directory `hilclaw-driver/T-0567/` was created, a binary file was copied there and back byte-equal, and the directory was removed with `rm -r` and confirmed gone.
+  - The empty shared parent `hilclaw-driver/` stays on the machine, as ADR-0204 decision 5 says, in the same way as the local `${TMPDIR:-/tmp}/hilclaw-driver/`.
+- **ADR-0204 decision 9** (criterion 3): building `cpu_standin` kernels on that machine with the host's gcc and running them on its host, instead of clang in the ADR-0144 image, is not the driver's to close. The reasons are #5 A-7 "clang as the single toolchain" and C-7 ⑥, ADR-0035 decision 3 (`toolchain` has the one member `clang`), ADR-0144 decisions 4 and 5 with ADR-0186 (build and run in the image, no host fallback), and D23 (a frame change). Nothing was substituted. The question goes to the owner as an HQ (HQ-0101, recorded by the driver), and the next P3-17 task waits on it.
+- **Runtime acceptance items**: none. The machine is driver-usable under D31 ③, and nothing here needs a live `claude` session.
+- **D21**: no existing assertion was changed. The import list of `tests/test_toolchain_check.py` gained `remote_run` and `vendor_adapter` for the new tests.
+- **Language**: Python, the same as the rest of the 2nd-layer package and `local_run`, which the runner wraps.
+- **Size**: about 300 non-test lines (ADR, code, registers) in 6 non-test files plus 2 test files; within D30.
+- No install or download on this PC or the remote machine, no work image, no test run, no `claude` started. The local task directory `${TMPDIR:-/tmp}/hilclaw-driver/T-0567/` was removed.
