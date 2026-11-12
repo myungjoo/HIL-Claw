@@ -6,7 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from hilclaw import catalog, contract_table, spec
+from hilclaw import (
+    catalog,
+    contract_table,
+    elementwise_add_bf16_contract,
+    rmsnorm_bf16_contract,
+    rope_bf16_contract,
+    sdpa_kv_cache_bf16_contract,
+    spec,
+    swiglu_bf16_contract,
+)
 from hilclaw.catalog import (
     SOURCE,
     AppliesTo,
@@ -29,7 +38,16 @@ COMMITTED = (
     "simd_baseline_intrinsics",
 )
 GEMM_BF16 = ("gemm_bf16_row_accumulators", "gemm_bf16_widened_b_panel")
-ALL_COMMITTED = tuple(sorted(COMMITTED + GEMM_BF16))
+OTHER_BF16 = {
+    "rmsnorm_bf16_lane_sums": rmsnorm_bf16_contract,
+    "elementwise_add_bf16_flat_loop": elementwise_add_bf16_contract,
+    "swiglu_bf16_flat_loop": swiglu_bf16_contract,
+    "swiglu_bf16_poly_exp": swiglu_bf16_contract,
+    "rope_bf16_table_row_per_token": rope_bf16_contract,
+    "sdpa_kv_cache_bf16_gqa_groups": sdpa_kv_cache_bf16_contract,
+    "sdpa_kv_cache_bf16_two_pass": sdpa_kv_cache_bf16_contract,
+}
+ALL_COMMITTED = tuple(sorted(COMMITTED + GEMM_BF16 + tuple(OTHER_BF16)))
 FORBIDDEN = re.compile(
     r"\bomp\b|openmp|pthread|\bthreads?\b|(?<![\w-])-[fD]\w|__attribute__|avx|nntrainer",
     re.IGNORECASE,
@@ -38,6 +56,10 @@ FP32_LINES = ("- kind: gemm", "- dtype: fp32", "- layout: row_major", "- languag
 APPLIES = "\n".join(FP32_LINES)
 FP32 = AppliesTo("gemm", "fp32", "row_major", "c")
 BF16_GEMM = AppliesTo("gemm", "bf16", "row_major", "c")
+
+
+def key_of(contract):
+    return AppliesTo(contract.KIND, contract.DTYPE, contract.LAYOUT, contract.LANGUAGE)
 
 
 def lines_of(key):
@@ -117,9 +139,46 @@ def test_committed_catalog_holds_the_four_entries():
 def test_committed_entries_state_their_contracts():
     found = entries("cpu_standin")
     assert {i: e.applies_to for i, e in found.items()} == {
-        i: FP32 if i in COMMITTED else BF16_GEMM for i in ALL_COMMITTED
+        i: FP32
+        if i in COMMITTED
+        else BF16_GEMM
+        if i in GEMM_BF16
+        else key_of(OTHER_BF16[i])
+        for i in ALL_COMMITTED
     }
     assert all(e.applies_to in contract_table.TABLE for e in found.values())
+
+
+def test_every_contract_of_the_table_is_named_by_a_committed_entry():
+    named = {e.applies_to for e in entries("cpu_standin").values()}
+    assert named == set(contract_table.TABLE)
+    assert FP32 in named
+    assert len([key for key in named if key.dtype == "bf16"]) == 6
+
+
+@pytest.mark.parametrize("entry_id", sorted(OTHER_BF16))
+def test_committed_bf16_entry_of_another_kind_keeps_its_contract(entry_id):
+    contract = OTHER_BF16[entry_id]
+    given = technique("cpu_standin", entry_id)
+    assert set(given) == {"id", "text"} and given["id"] == entry_id
+    document = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    document["guidance"]["techniques"] = [given]
+    spec.validate(document)
+    content = (SOURCE / "cpu_standin" / f"{entry_id}.md").read_text(encoding="utf-8")
+    assert not FORBIDDEN.search(content)
+    text = given["text"]
+    assert text == content.split("## Guidance\n", 1)[1].strip("\n")
+    assert f"`{contract.PROTOTYPE}`" in text
+    assert text.count("hilclaw_") == text.count(f"hilclaw_{contract.KIND}_bf16") + 1
+    for words in (
+        "round to nearest, ties to even",
+        "`uint16_t`",
+        "of at least 1",
+        "never read",
+        "assume no alignment beyond",
+        "16-bit format",
+    ):
+        assert words in text
 
 
 @pytest.mark.parametrize("entry_id", GEMM_BF16)
