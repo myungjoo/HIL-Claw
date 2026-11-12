@@ -83,17 +83,18 @@ adds version 2 of the file, the owner's form of HQ-0089: the member
 kernel run keeps writing version 1 (decision 7). :func:`parse`,
 :func:`validate`, :func:`read` and every reader of a member keep reading
 version 1 only, and a version-2 file is another version to them; only
-:func:`parse_kinded`, :func:`validate_kinded`, :func:`read_kinded`,
-:func:`candidate_kind_of`, :func:`layout_version_of_kinded` and
-:func:`read_as_version_1` read both (decision 8).
+:func:`parse_kinded`, :func:`validate_kinded`, :func:`read_kinded` and
+:func:`candidate_kind_of` read both (decision 8).
 ``ARCHITECTURE/decisions/ADR-0200-od33-given-code-evaluation.md`` adds
 version 3, the owner's form of HQ-0097 (b): the member ``given_code``, the
 SHA-256 hex digest of a blob of the CAS, which version 3 requires and
 versions 1 and 2 do not admit, beside a ``candidate_kind`` that version 3 may
 hold by the rule of version 2 and whose absence states ``c_kernel``
 (decision 6). Every entry above keeps refusing a version-3 file as another
-version; only :func:`parse_given`, :func:`validate_given`, :func:`read_given`
-and :func:`given_code_of` read versions 1, 2 and 3 (decision 7). This
+version; :func:`parse_given`, :func:`validate_given`, :func:`read_given` and
+:func:`given_code_of` read versions 1, 2 and 3 (decision 7), and so do
+:func:`layout_version_of_kinded` and :func:`read_as_version_1`, which the
+run-level readers of its reader table use (slice 3a). This
 module is those rules: :func:`parse` and :func:`validate` are pure functions of
 the bytes of a content and of a parsed document, and :func:`read`,
 :func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
@@ -622,7 +623,8 @@ tool about a run, ADR-0030 decision 3 says when the call has the stamp: after
 the data root was obtained and before it uses any other path of that run.
 :func:`hilclaw.journaled_tool.checked_function`, the part the two builders of
 such a tool function share, calls :func:`layout_version_of_kinded` for that,
-so that a run of version 2 has its stamp too (ADR-0198 decision 8). Whether
+so that a run of version 2 or 3 has its stamp too (ADR-0198 decision 8,
+ADR-0200 decision 7). Whether
 and at which moment another user of a path of a run has the stamp, and
 whether a source holds the stamp against the layout it builds, is not said
 here (OD-8 sub-question 27), and neither is what states the layout of
@@ -711,10 +713,10 @@ class UnsupportedVersionError(Exception):
     """``schema_version`` is an integer the entry does not read: not damage, and nothing is interpreted.
 
     The entries of version 1 read 1 only; those of ADR-0198 decision 8,
-    named ``*_kinded`` and :func:`candidate_kind_of`, read 1 and 2
-    (:func:`layout_version_of_kinded` and :func:`read_as_version_1` among
-    them); those of ADR-0200 decision 7, named ``*_given`` and
-    :func:`given_code_of`, read 1, 2 and 3.
+    named ``*_kinded`` and :func:`candidate_kind_of`, read 1 and 2; those of
+    ADR-0200 decision 7, named ``*_given`` and :func:`given_code_of`, read 1,
+    2 and 3, and so do :func:`layout_version_of_kinded` and
+    :func:`read_as_version_1`.
     """
 
 
@@ -1498,39 +1500,41 @@ def layout_version_of(data_root, run_id):
 
 
 def layout_version_of_kinded(data_root, run_id):
-    """Return the layout version the run ``run_id`` states, from an ``instance.json`` of version 1 or 2.
+    """Return the layout version the run ``run_id`` states, from an ``instance.json`` of version 1, 2 or 3.
 
     The file is first read by :func:`layout_version_of`, so a version-1 run
     is read exactly as that function reads it. Only when that read raises
     :class:`UnsupportedVersionError` is the file read again, by
-    :func:`read_kinded`, and the ``layout_version`` it gives returned: the
-    ``int`` 1 for a valid version-2 file (ADR-0198 decision 7). Raises what
-    the first read raises otherwise, and what the second raises after it, so
-    :class:`UnsupportedVersionError` for a version other than 1 and 2 and
-    :class:`InvalidInstanceError` for a version-2 file stating no
-    ``candidate_kind`` or ``c_kernel``. A file changed between the two reads
-    is answered by the second.
+    :func:`read_given`, and the ``layout_version`` it gives returned: the
+    ``int`` 1 for a valid version-2 or version-3 file (ADR-0198 decision 7,
+    ADR-0200 decision 6). Raises what the first read raises otherwise, and
+    what the second raises after it, so :class:`UnsupportedVersionError` for
+    a version other than 1, 2 and 3 and :class:`InvalidInstanceError` for a
+    version-2 file stating no ``candidate_kind`` or ``c_kernel`` or a
+    version-3 file stating no valid ``given_code``. A file changed between
+    the two reads is answered by the second.
     """
     try:
         return layout_version_of(data_root, run_id)
     except UnsupportedVersionError:
-        return read_kinded(data_root, run_id).layout_version
+        return read_given(data_root, run_id).layout_version
 
 
 def read_as_version_1(data_root, run_id):
-    """Return the :class:`Instance` of the run ``run_id`` from an ``instance.json`` of version 1 or 2.
+    """Return the :class:`Instance` of the run ``run_id`` from an ``instance.json`` of version 1, 2 or 3.
 
     The file is first read by :func:`read`, so a version-1 run is read
     exactly as that function reads it. Only when that read raises
     :class:`UnsupportedVersionError` is the file read again, by
-    :func:`read_kinded`, and its ``instance`` returned: a version-2 file is
-    read as its version-1 twin, its ``candidate_kind`` left out (ADR-0198
-    decision 8). The errors are those of :func:`layout_version_of_kinded`.
+    :func:`read_given`, and its ``instance`` returned: a version-2 or
+    version-3 file is read as its version-1 twin, its ``candidate_kind`` and
+    ``given_code`` left out (ADR-0198 decision 8, ADR-0200 decision 7). The
+    errors are those of :func:`layout_version_of_kinded`.
     """
     try:
         return read(data_root, run_id)
     except UnsupportedVersionError:
-        return read_kinded(data_root, run_id).instance
+        return read_given(data_root, run_id).instance
 
 
 def _fail(place, rule, value):

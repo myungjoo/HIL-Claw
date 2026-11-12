@@ -350,9 +350,9 @@ def open_instance_directory(root):
     (run_dir(root) / "instance.json").mkdir()
 
 
-def open_instance_version_3(root):
+def open_instance_version_4(root):
     stated(root)
-    (run_dir(root) / "instance.json").write_bytes(b'{"schema_version": 3}\n')
+    (run_dir(root) / "instance.json").write_bytes(b'{"schema_version": 4}\n')
 
 
 def open_no_budget(root):
@@ -367,7 +367,7 @@ OPEN_STATES = [
     (open_missing_instance, INSTANCE_MISSING),
     (open_invalid_instance, INSTANCE_INVALID),
     (open_instance_directory, INSTANCE_INVALID),
-    (open_instance_version_3, INSTANCE_VERSION),
+    (open_instance_version_4, INSTANCE_VERSION),
     (open_no_budget, NO_ROUND_BUDGET),
 ]
 
@@ -881,14 +881,52 @@ def test_a_compile_settings_run_without_a_budget_is_open(root):
 @pytest.mark.parametrize(
     ("members", "reason"),
     [
-        ({"schema_version": 3}, INSTANCE_VERSION),
+        ({"schema_version": 4}, INSTANCE_VERSION),
         ({"schema_version": 0}, INSTANCE_VERSION),
         ({"candidate_kind": "compile_settings"}, INSTANCE_INVALID),
         ({**KINDED, "candidate_kind": "c_kernel"}, INSTANCE_INVALID),
         ({"schema_version": 2}, INSTANCE_INVALID),
     ],
-    ids=["v3", "v0", "v1-with-kind", "v2-c_kernel", "v2-no-kind"],
+    ids=["v4", "v0", "v1-with-kind", "v2-c_kernel", "v2-no-kind"],
 )
 def test_other_versions_and_the_narrowed_forms_are_open(root, members, reason):
     with_instance(root, instance_bytes(round_budget=5, **members))
     assert classify(root, RUN) == Finding(OPEN, reason)
+
+
+# --- instance.json of version 3 (ADR-0200 decision 7, slice 3a) ---
+
+DIGEST = "0123456789abcdef" * 4
+GIVEN = {"schema_version": 3, "given_code": DIGEST}
+
+
+@pytest.mark.parametrize("round", [0, 3])
+@pytest.mark.parametrize(
+    "members", [GIVEN, {**GIVEN, "candidate_kind": "compile_settings"}]
+)
+def test_p4_reads_a_given_code_run_as_its_version_1_twin(root, round, members):
+    with_instance(root, instance_bytes(round_budget=1, **members), round)
+    assert classify(root, RUN) == Finding(DUE, round)
+    further, fallback, report = make(root)
+    assert further(None) is True
+    assert fallback.seen == [] and report.seen == []
+
+
+def test_a_given_code_run_without_a_budget_is_open(root):
+    with_instance(root, instance_bytes(**GIVEN))
+    assert classify(root, RUN) == Finding(OPEN, NO_ROUND_BUDGET)
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        {"schema_version": 3},
+        {**GIVEN, "given_code": DIGEST.upper()},
+        {**GIVEN, "candidate_kind": "c_kernel"},
+        {"given_code": DIGEST},
+    ],
+    ids=["v3-no-given-code", "v3-upper-case", "v3-c_kernel-stated", "v1-with-it"],
+)
+def test_a_malformed_given_code_run_is_open_and_invalid(root, members):
+    with_instance(root, instance_bytes(round_budget=5, **members))
+    assert classify(root, RUN) == Finding(OPEN, INSTANCE_INVALID)

@@ -5,9 +5,13 @@ import inspect
 import io
 import json
 import os
+import shutil
 import struct
+import subprocess
 from pathlib import Path
 
+import first_run_stubs as stubs
+import openmp_clang
 import pytest
 import test_build_record as records
 
@@ -15,6 +19,7 @@ from hilclaw import (
     backends,
     build_log,
     build_record,
+    cas,
     check_admission,
     check_definition,
     check_seed,
@@ -30,6 +35,9 @@ from hilclaw import (
     mock_backend,
     mock_check,
     run_state,
+    standin_image,
+    standin_profile,
+    start_instance,
     targets,
     tools,
 )
@@ -2017,7 +2025,7 @@ def test_a_version_3_spec_in_a_c_kernel_run_has_no_kernel_source(root):
 
 def test_a_compile_settings_run_of_another_version_is_still_unsupported(root, recorded):
     document = json.loads(content())
-    document |= {"schema_version": 3, "candidate_kind": "compile_settings"}
+    document |= {"schema_version": 4, "candidate_kind": "compile_settings"}
     place(root, json.dumps(document).encode())
     before = files_of(root)
     bench = Bench(root)
@@ -2029,12 +2037,12 @@ def test_a_compile_settings_run_of_another_version_is_still_unsupported(root, re
 
 def test_a_run_of_a_kind_the_tool_does_not_evaluate_is_unsupported(root, monkeypatch):
     settings_run(root)
-    read_kinded = instance.read_kinded
+    read_given = instance.read_given
 
     def another_kind(data_root, run_id):
-        return read_kinded(data_root, run_id)._replace(candidate_kind="quantization")
+        return read_given(data_root, run_id)._replace(candidate_kind="quantization")
 
-    monkeypatch.setattr(instance, "read_kinded", another_kind)
+    monkeypatch.setattr(instance, "read_given", another_kind)
     before = files_of(root)
     bench = Bench(root)
     failure = bench.failure()
@@ -2045,3 +2053,209 @@ def test_a_run_of_a_kind_the_tool_does_not_evaluate_is_unsupported(root, monkeyp
     )
     assert (bench.asked, bench.order, lines(root)) == ([], [], [])
     assert files_of(root) == before
+
+
+# A run whose instance.json states given code (ADR-0200 decisions 4 (a) and 7, slice 3a)
+
+
+DIGEST = "0123456789abcdef" * 4
+
+
+def given_run(root, **members):
+    document = json.loads(content()) | {"schema_version": 3, "given_code": DIGEST}
+    place(root, json.dumps(document | members).encode())
+
+
+@pytest.mark.parametrize("point", ["sim", "board"])
+def test_an_attempt_of_a_given_code_run_is_checked_as_a_c_kernel_attempt(
+    root, tmp_path, point
+):
+    twin_root = a_run(tmp_path / "twin")
+    given_run(root)
+    asked = request(point=point)
+    bench, twin = Bench(root), Bench(twin_root)
+
+    result = bench.function(asked)
+
+    assert result == twin.function(asked)
+    assert result["outcome"] == "pass"
+    (called,) = bench.asked
+    assert called[4] == output_of(root, asked)
+    assert called[1:4] == twin.asked[0][1:4]
+    assert not build_json(root).exists()
+    assert not FORM(root, RUN, ROUND, 2, 1, "spec.json").exists()
+    assert [line["kind"] for line in lines(root)] == ["step_started", "step_ended"]
+
+
+def test_the_given_attempt_0_1_1_is_checked_from_its_output(root):
+    given_run(root)
+    place(root, run_state.dump(0, EMPTY), f"runs/{RUN}/STATE.json")
+    asked = request(round=0, candidate=1, attempt=1)
+    output = FORM(root, RUN, 0, 1, 1, "output")
+    output.mkdir(parents=True)
+    (output / "given.c").write_bytes(b"/* the given code */\n")
+    bench = Bench(root)
+
+    assert bench.function(asked)["outcome"] == "pass"
+    assert bench.asked[0][4] == output
+    assert sorted(path.name for path in output.parent.iterdir()) == ["output"]
+
+
+def test_a_compile_settings_run_with_given_code_is_unsupported(root, recorded):
+    given_run(root, candidate_kind="compile_settings")
+    before = files_of(root)
+    bench = Bench(root)
+    failure = bench.failure()
+    assert failure.kind == tools.KIND_RUN_FILE_UNSUPPORTED
+    assert failure.message == (
+        f"{FILE}: states given code with the candidate kind compile_settings; "
+        "this tool evaluates given code of c_kernel runs only"
+    )
+    assert type(failure.__cause__) is instance.UnsupportedVersionError
+    assert (bench.asked, bench.order, lines(root)) == ([], [], [])
+    assert files_of(root) == before
+
+
+@pytest.mark.parametrize(
+    ("members", "kind", "start"),
+    [
+        ({"given_code": DIGEST.upper()}, "run_file_invalid", "given_code: must"),
+        ({"given_code": None}, "run_file_invalid", "given_code: must"),
+        ({"candidate_kind": "c_kernel"}, "run_file_invalid", "candidate_kind: "),
+        ({"schema_version": 4}, "run_file_unsupported", "schema_version: 4"),
+    ],
+    ids=["upper-case", "null", "c_kernel-stated", "v4"],
+)
+def test_a_bad_given_code_run_has_no_check(root, members, kind, start):
+    given_run(root, **members)
+    before = files_of(root)
+    bench = Bench(root)
+    failure = bench.failure()
+    assert failure.kind == kind
+    assert failure.message.startswith(f"{FILE}: {start}")
+    assert (bench.asked, bench.order, lines(root)) == ([], [], [])
+    assert files_of(root) == before
+
+
+def test_a_version_1_file_is_still_read_by_the_strict_reader_alone(root, monkeypatch):
+    calls, read_given = [], instance.read_given
+
+    def spy(data_root, run_id):
+        calls.append(run_id)
+        return read_given(data_root, run_id)
+
+    monkeypatch.setattr(instance, "read_given", spy)
+    assert Bench(root).function(request())["outcome"] == "pass"
+    assert calls == []
+
+
+GIVEN_KERNEL = b"""#include <stddef.h>
+
+void hilclaw_gemm(size_t m, size_t k, size_t n, const float *restrict a,
+                  const float *restrict b, float *restrict c)
+{
+    for (size_t i = 0; i < m; i++)
+        for (size_t j = 0; j < n; j++) {
+            float sum = 0.0f;
+            for (size_t p = 0; p < k; p++)
+                sum += a[i * k + p] * b[p * n + j];
+            c[i * n + j] = sum;
+        }
+}
+"""
+
+
+def working_unshare():
+    path = shutil.which("unshare")
+    if path is None:
+        return None
+    probe = subprocess.run(
+        [path, *stubs.NAMESPACE, "/bin/sh", "-c", 'test "$$" -eq 1'],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=False,
+        timeout=60,
+    )
+    return path if probe.returncode == 0 else None
+
+
+def started_given_run(root, code, kernel=GIVEN_KERNEL):
+    profile = {
+        "schema_version": 1,
+        "accelerator": standin_profile.ACCELERATOR,
+        "revision": "test-revision",
+        "toolchain": {"clang": "test"},
+        "host": {"cpu": "test", "os": "test"},
+        "hw_source": "external",
+    }
+    op = {**OP, "shape": {"m": 4, "k": 8, "n": 4}}
+    document = {
+        "schema_version": 1,
+        "hw_profile": {"key": keys.hw_profile_key(profile).name, "record": profile},
+        "op_signature": {"key": keys.op_signature_key(op).name, "record": op},
+        "objective": {
+            "objectives": [{"type": "latency_minimisation"}],
+            "constraints": [],
+        },
+        "candidates_per_round": 1,
+        "n_max": 6,
+        "draws": 1,
+        "tolerance": {"rtol": 1e-4, "atol": 1e-5},
+        "round_budget": 1,
+    }
+    code.write_bytes(kernel)
+    run_id = start_instance.start(document, data_root=root, code_file=code)
+    digest = instance.given_code_of(root, run_id)
+    output = FORM(root, run_id, 0, 1, 1, "output")
+    output.mkdir(parents=True)
+    (output / "given.c").write_bytes(cas.blob_path(root, digest).read_bytes())
+    place(root, run_state.dump(0, EMPTY), f"runs/{run_id}/STATE.json")
+    return run_id
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "getuid") or shutil.which("clang") is None,
+    reason="the stand-in build needs a host clang and os.getuid",
+)
+@pytest.mark.parametrize(
+    ("kernel", "outcome"),
+    [
+        (GIVEN_KERNEL, "pass"),
+        (GIVEN_KERNEL.replace(b"= sum;", b"= sum + 1.0f;"), "fail"),
+    ],
+    ids=["right", "wrong"],
+)
+def test_the_given_attempt_of_a_started_run_is_checked_with_the_real_clang(
+    tmp_path, monkeypatch, kernel, outcome
+):
+    openmp_clang.need()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "docker.ndjson"
+    stubs.install(
+        bin_dir,
+        {
+            "docker_log": str(log),
+            "clang": shutil.which("clang"),
+            "unshare": working_unshare(),
+            "git": shutil.which("git") or "git",
+        },
+    )
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv(standin_image.ENV_IMAGE, "registry.example/hilclaw-clang:1")
+    root = tmp_path / "data"
+    root.mkdir()
+    run_id = started_given_run(root, tmp_path / "given.c", kernel)
+    assert instance.read_given(root, run_id).schema_version == 3
+    registry = tools.default_registry(lambda: root)
+    call = {"run_id": run_id, "round": 0, "candidate": 1, "attempt": 1}
+
+    for point in ("sim", "board"):
+        asked = {**call, "execution": 1, "point": point}
+        assert tools.call(registry, TOOL, asked)["outcome"] == outcome
+
+    attempt = FORM(root, run_id, 0, 1, 1, "output").parent
+    assert not (attempt / "spec.json").exists()
+    assert not (attempt / "build.json").exists()
+    builds = [e["status"] for e in stubs.read_log(log) if e["container"] == "build"]
+    assert builds == [0, 0]

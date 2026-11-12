@@ -1519,3 +1519,53 @@ def test_the_narrowed_forms_and_other_versions_give_no_key(root, changes):
     assert not changed(root) & {HW_RECORD, OP_RECORD}
     write_state(root, 2)
     refused_unchanged(root, run_commit.NoKeyDirectoryError, "no key directory")
+
+
+# --- instance.json of version 3 (ADR-0200 decision 7, slice 3a) ---
+
+DIGEST = "0123456789abcdef" * 4
+GIVEN = {"schema_version": 3, "given_code": DIGEST}
+
+
+def given_instance(root, **changes):
+    document = json.loads(instance_document()) | GIVEN | changes
+    return write(root, f"runs/{RUN}/instance.json", json.dumps(document).encode())
+
+
+@pytest.mark.parametrize(
+    "changes", [{}, {"candidate_kind": "compile_settings"}], ids=["c_kernel", "kinded"]
+)
+def test_a_given_code_run_takes_in_its_record_files_and_cases(root, changes):
+    given_instance(root, **changes)
+    write_state(root, 0)
+    write_events(root, b'{"line": 1}\n')
+    store_keys(root)
+    assert commit(root, RUN) is True
+    assert {HW_RECORD, OP_RECORD} <= changed(root)
+    write_state(root, 2)
+    write(root, case(1), b'{"case": 1}\n')
+    assert owed_rounds(root, RUN) == range(2)
+    assert commit(root, RUN) is True
+    assert changed(root) == {f"runs/{RUN}/STATE.json", case(1)}
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"given_code": None},
+        {"given_code": DIGEST.upper()},
+        {"schema_version": 2},
+        {"schema_version": 4},
+    ],
+    ids=["v3-null", "v3-upper-case", "v2-with-given-code", "v4"],
+)
+def test_a_bad_given_code_run_gives_no_key(root, changes):
+    write_state(root, 1)
+    write_events(root, b'{"line": 1}\n')
+    given_instance(root, **changes)
+    write(root, HW_RECORD, b'{"hw": 1}\n')
+    write(root, OP_RECORD, b'{"op": 1}\n')
+    assert commit(root, RUN) is True
+    assert not changed(root) & {HW_RECORD, OP_RECORD}
+    write_state(root, 2)
+    refused_unchanged(root, run_commit.NoKeyDirectoryError, "no key directory")

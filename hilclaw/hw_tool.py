@@ -107,9 +107,10 @@ Conventions of this module, which the records do not fix:
   it and binds no reader of it. The reader of the stamp is no parameter:
   the part of :mod:`hilclaw.journaled_tool` that the builders are built
   over binds :func:`hilclaw.instance.layout_version_of_kinded`, which reads
-  an ``instance.json`` of version 1 or 2 (ADR-0198 decision 8); a reader of
-  the hw_profile that reads version 1 only, as :func:`hilclaw.instance.read`
-  does, still refuses a version-2 run in 4 with ``run_file_unsupported``.
+  an ``instance.json`` of version 1, 2 or 3 (ADR-0198 decision 8, ADR-0200
+  decision 7); a reader of the hw_profile that reads version 1 only, as
+  :func:`hilclaw.instance.read` does, still refuses a version-2 or
+  version-3 run in 4 with ``run_file_unsupported``.
 - The step of the contract calls the operation, not this module: what an
   operation returns and how that becomes the amounts and the result of the
   step are each tool's contract. Nothing here checks that the step calls it,

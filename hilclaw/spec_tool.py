@@ -38,10 +38,14 @@ and nothing is created before 12 (ADR-0151 decision 3, table):
 3. the run's ``instance.json`` read once by :func:`hilclaw.run_file_tools.read`
    (the four ``run_file_*`` kinds of ADR-0019, as ``instance.read`` answers
    them);
-3a. the request's form against the run's candidate kind, read from the same
-   bytes by :func:`hilclaw.instance.parse_kinded` (``invalid_request``):
-   ``techniques`` in a run whose kind is not ``c_kernel``, ``flags`` in a
-   ``c_kernel`` run (ADR-0199 decision 4);
+3a. the request against the run's candidate kind and given code, read from
+   the same bytes by :func:`hilclaw.instance.parse_given`
+   (``invalid_request``): ``techniques`` in a run whose kind is not
+   ``c_kernel``, ``flags`` in a ``c_kernel`` run (ADR-0199 decision 4), and
+   round 0 of a run whose ``instance.json`` (version 3) states given code,
+   whose attempt ``(0, 1, 1)`` is the given code and has no spec (ADR-0200
+   decision 4 (a)); a round >= 1 of such a run is written as in any run of
+   its kind;
 4. ``candidates_per_round`` stated (:data:`KIND_CANDIDATES_PER_ROUND_NOT_STATED`)
    and equal to 1 (:data:`KIND_CANDIDATES_PER_ROUND_NOT_COVERED`);
 5. ``op_signature`` stated (:data:`KIND_OP_SIGNATURE_NOT_STATED`) and covered
@@ -263,8 +267,9 @@ def definition(source):
     :data:`hilclaw.keys.MAX_INTEGER` and ``candidate`` and ``attempt`` 1;
     whose ``techniques`` is no ``list`` of distinct *names* or whose
     ``flags`` is no ``list`` of strings of 1 to 255 printable ASCII
-    characters; or whose form is not that of the run's candidate kind (the
-    module docstring, 3a); ``no_data_root`` as
+    characters; or whose form is not that of the run's candidate kind, or
+    whose ``round`` is 0 in a run that states given code (the module
+    docstring, 3a); ``no_data_root`` as
     :func:`hilclaw.data_root_source.obtain` does; the four ``run_file_*``
     kinds as :func:`hilclaw.run_file_tools.read` raises them; what
     :func:`hilclaw.spec_feedback.feedback` raises; and the kinds of this
@@ -380,7 +385,9 @@ def _write(source, request):
     run_id, round, form, values = _checked(request)
     data_root = data_root_source.obtain(source)
     stated, raw = run_file_tools.read(data_root, run_id, "instance.json")
-    _matched(run_id, form, instance.parse_kinded(raw).candidate_kind)
+    given = instance.parse_given(raw)
+    _not_given(run_id, round, given.given_code)
+    _matched(run_id, form, given.candidate_kind)
     _admitted(run_id, stated)
     document = _compose(run_id, stated)
     settings = form == _FLAGS
@@ -408,6 +415,16 @@ def _write(source, request):
             f"{file}: was not written: {_reported(e, data_root)}",
         ) from e
     return {}
+
+
+def _not_given(run_id, round, given_code):
+    if round or given_code is None:
+        return
+    file = run_files.relative(run_id, "instance.json")
+    raise _invalid(
+        f"{file}: states given code; round 0 of such a run has the given code "
+        "as its attempt (0, 1, 1) and no spec; nothing was written"
+    )
 
 
 def _matched(run_id, form, kind):

@@ -4833,7 +4833,7 @@ UNUSABLE = {
         "run_file_invalid",
     ),
     "another version": (
-        raw(doc(schema_version=3)),
+        raw(doc(schema_version=4)),
         UnsupportedVersionError,
         "run_file_unsupported",
     ),
@@ -9964,14 +9964,14 @@ def test_the_kinded_layout_version_is_1_for_both_versions(root):
 @pytest.mark.parametrize(
     ("document", "error", "start"),
     [
-        (doc(schema_version=3), UnsupportedVersionError, "schema_version: 3"),
+        (doc(schema_version=4), UnsupportedVersionError, "schema_version: 4"),
         (doc(schema_version=0), UnsupportedVersionError, "schema_version: 0"),
         (doc(candidate_kind="compile_settings"), InvalidInstanceError, "candidate_"),
         (kinded("c_kernel"), InvalidInstanceError, "candidate_kind: "),
         (doc(schema_version=2), InvalidInstanceError, "document: lacks"),
         (kinded(n_max=4), InvalidInstanceError, "n_max: "),
     ],
-    ids=["v3", "v0", "v1-with-kind", "v2-c_kernel", "v2-no-kind", "v2-invalid"],
+    ids=["v4", "v0", "v1-with-kind", "v2-c_kernel", "v2-no-kind", "v2-invalid"],
 )
 def test_the_kinded_layout_version_is_not_had_from_a_bad_file(
     root, document, error, start
@@ -10006,12 +10006,12 @@ def test_read_as_version_1_gives_a_version_2_file_as_its_twin(root):
 @pytest.mark.parametrize(
     ("document", "error", "start"),
     [
-        (doc(schema_version=3), UnsupportedVersionError, "schema_version: 3"),
+        (doc(schema_version=4), UnsupportedVersionError, "schema_version: 4"),
         (doc(candidate_kind="compile_settings"), InvalidInstanceError, "candidate_"),
         (kinded("c_kernel"), InvalidInstanceError, "candidate_kind: "),
         (doc(schema_version=2), InvalidInstanceError, "document: lacks"),
     ],
-    ids=["v3", "v1-with-kind", "v2-c_kernel", "v2-no-kind"],
+    ids=["v4", "v1-with-kind", "v2-c_kernel", "v2-no-kind"],
 )
 def test_read_as_version_1_refuses_what_the_kinded_read_refuses(
     root, document, error, start
@@ -10038,28 +10038,28 @@ def test_read_as_version_1_of_a_missing_file_or_run_id(root):
 def test_a_version_1_file_is_read_once_by_the_strict_entry(
     root, monkeypatch, entry, strict
 ):
-    calls, real, real_kinded = [], getattr(instance, strict), instance.read_kinded
+    calls, real, real_given = [], getattr(instance, strict), instance.read_given
 
     def spy(*arguments):
         calls.append(strict)
         return real(*arguments)
 
-    def kinded_spy(*arguments):
-        calls.append("kinded")
-        return real_kinded(*arguments)
+    def given_spy(*arguments):
+        calls.append("given")
+        return real_given(*arguments)
 
     monkeypatch.setattr(instance, strict, spy)
-    monkeypatch.setattr(instance, "read_kinded", kinded_spy)
+    monkeypatch.setattr(instance, "read_given", given_spy)
     place(root, raw(doc()))
     entry(root, RUN)
     assert calls == [strict]
     place(root, raw(kinded()))
     entry(root, RUN)
-    assert calls == [strict, strict, "kinded"]
+    assert calls == [strict, strict, "given"]
     place(root, b"{")
     with pytest.raises(InvalidInstanceError):
         entry(root, RUN)
-    assert calls == [strict, strict, "kinded", strict]
+    assert calls == [strict, strict, "given", strict]
 
 
 # --- the given code and version 3 (ADR-0200 decisions 6 and 7) ---
@@ -10353,8 +10353,6 @@ def test_read_given_and_the_given_code_of_a_run(root):
         layout_version_of,
         instance.read_kinded,
         instance.candidate_kind_of,
-        instance.layout_version_of_kinded,
-        instance.read_as_version_1,
     ],
 )
 def test_a_version_3_file_is_refused_by_every_other_reader(root, entry):
@@ -10403,3 +10401,74 @@ def test_the_given_code_is_handed_out_as_the_file_states_it(root):
 
     assert (first, second) == (OTHER_DIGEST, DIGEST)
     assert type(first) is str
+
+
+# --- the run-level readers of version 3 (ADR-0200 decision 7, slice 3a) ---
+
+
+@pytest.mark.parametrize(
+    "document",
+    [given(n_max=7), given(candidate_kind="compile_settings", n_max=7)],
+    ids=["c_kernel", "compile_settings"],
+)
+def test_read_as_version_1_gives_a_version_3_file_as_its_twin(root, document):
+    place(root, raw(document))
+    place(root, raw(doc(n_max=7)), f"runs/{OTHER_RUN}/instance.json")
+    before = snapshot(root)
+
+    twin = instance.read_as_version_1(root, RUN)
+
+    assert twin == read(root, OTHER_RUN)
+    assert type(twin) is instance.Instance
+    assert "given_code" not in twin.others and "candidate_kind" not in twin.others
+    assert instance.layout_version_of_kinded(root, RUN) == 1
+    assert type(instance.layout_version_of_kinded(str(root), RUN)) is int
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize(
+    ("document", "error", "start"),
+    [
+        (doc(schema_version=3), InvalidInstanceError, "document: lacks the member g"),
+        (given("A" * 64), InvalidInstanceError, "given_code: must be"),
+        (given(DIGEST[:63]), InvalidInstanceError, "given_code: must be"),
+        (given(7), InvalidInstanceError, "given_code: must be"),
+        (given(candidate_kind="c_kernel"), InvalidInstanceError, "candidate_kind: "),
+        (given(n_max=4), InvalidInstanceError, "n_max: "),
+        (doc(given_code=DIGEST), InvalidInstanceError, "given_code: is not admitted"),
+        (given(schema_version=4), UnsupportedVersionError, "schema_version: 4"),
+    ],
+    ids=[
+        "v3-no-given-code",
+        "v3-upper-case",
+        "v3-short",
+        "v3-not-a-string",
+        "v3-c_kernel-stated",
+        "v3-invalid-member",
+        "v1-with-given-code",
+        "v4",
+    ],
+)
+@pytest.mark.parametrize(
+    "entry", [instance.read_as_version_1, instance.layout_version_of_kinded]
+)
+def test_the_run_level_readers_refuse_a_bad_version_3_file(
+    root, entry, document, error, start
+):
+    place(root, raw(document))
+    with pytest.raises(error, match=f"^{FILE}: {start}"):
+        entry(root, RUN)
+
+
+def test_a_version_3_file_is_read_by_the_strict_entry_first(root, monkeypatch):
+    calls, real = [], instance.read
+
+    def spy(*arguments):
+        calls.append("read")
+        return real(*arguments)
+
+    monkeypatch.setattr(instance, "read", spy)
+    place(root, raw(given()))
+    instance.read_as_version_1(root, RUN)
+    instance.layout_version_of_kinded(root, RUN)
+    assert calls == ["read", "read"]

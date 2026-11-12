@@ -18,9 +18,13 @@ and ADR-0078 decisions 6 and 7 are the rules of the compiler's log.
    open (ADR-0100 decision 5).
 3. For an identity with no line ``instance.json`` is read, by
    :func:`hilclaw.instance.read` and, for a file of another version, by
-   :func:`hilclaw.instance.read_kinded`, so a run of the candidate kind
+   :func:`hilclaw.instance.read_given`, so a run of the candidate kind
    ``c_kernel`` or ``compile_settings`` is read (ADR-0198 decision 8, row 6)
-   and a run of any other kind is ``run_file_unsupported``; the backend is
+   and a run of any other kind is ``run_file_unsupported``. A version-3 run,
+   which states given code, is read when its kind is ``c_kernel`` and is
+   ``run_file_unsupported`` otherwise (ADR-0200 decision 7, row 3); its
+   attempts are evaluated as those of any C kernel run, from their
+   ``output/``, the given attempt ``(0, 1, 1)`` among them; the backend is
    selected for the hw_profile of that read. Then :func:`hilclaw.check_admission.admit`
    gives one of its four answers or what the check takes from the same
    read (ADR-0046 decision 8): a record ``covers`` answers ``True`` for is
@@ -237,14 +241,20 @@ def _read(data_root, run_id):
     try:
         return instance.read(data_root, run_id), _C_KERNEL
     except instance.UnsupportedVersionError:
-        kinded = instance.read_kinded(data_root, run_id)
-    if kinded.candidate_kind not in _EVALUATED_KINDS:
+        given = instance.read_given(data_root, run_id)
+    if given.candidate_kind not in _EVALUATED_KINDS:
         raise instance.UnsupportedVersionError(
             f"runs/{run_id}/instance.json: states the candidate kind "
-            f"{kinded.candidate_kind}; this tool evaluates "
+            f"{given.candidate_kind}; this tool evaluates "
             f"{' and '.join(_EVALUATED_KINDS)} runs only"
         )
-    return kinded.instance, kinded.candidate_kind
+    if given.given_code is not None and given.candidate_kind != _C_KERNEL:
+        raise instance.UnsupportedVersionError(
+            f"runs/{run_id}/instance.json: states given code with the candidate "
+            f"kind {given.candidate_kind}; this tool evaluates given code of "
+            f"{_C_KERNEL} runs only"
+        )
+    return given.instance, given.candidate_kind
 
 
 def _hw_profile(read):
