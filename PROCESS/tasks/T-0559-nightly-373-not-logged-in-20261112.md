@@ -2,7 +2,7 @@
 id: T-0559
 title: Nightly failure issue #373 (turn_start/stopped_at_check/not_logged_in) — judge the cause of report 20261112T000458Z and fix a code defect behind it, or return BLOCKED nightly-environment
 phase: P3
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: code
 coversReq: ["nightly #373 20261112T000458Z", D17, D24, "PLAN P2-10"]
 dependsOn: []
@@ -14,7 +14,7 @@ touchesFiles:
   - tests/test_selfcheck_login.py
   - tests/test_turn_start.py
 estimatedSize: {loc: 80, files: 3}
-hq: []
+hq: [HQ-0100]
 ---
 ## Why
 
@@ -58,3 +58,14 @@ Context the executor must weigh: the owner's answer to HQ-0099 (`resolvedAt` 202
 ## Follow-ups
 
 ## Result
+
+Outcome: BLOCKED (nightly-environment), HQ-0100. Nothing landed: no branch, no commit, no PR. 0 review rounds.
+
+Judgement (NIGHTLY §5): environment cause.
+- Read the latest report 20261112T000458Z through NIGHTLY §3's filtered read only. Commit 5e8bfddf, run id 20261112t000500z-5a807905eb731928. new_run exit 0. turn_start exit 14 with check outcome not_logged_in, refused_a/refused_b false, login auth_method none, exit_status 1, timed_out false. System: Linux 6.18.58.1-microsoft-standard-WSL2, Python 3.12.13.
+- Compared with 20261110T180351Z: only the commit and run id differ; every other field of the result line is identical, including the instruction text. Nothing new appears that HQ-0099's decision or T-0558's code-path analysis leaves unexplained, so this is not a code defect.
+- HQ-0099's decision (resolvedAt 2026-11-12T00:15:06Z) names this firing as a not_logged_in firing caused by an expired WSL claude.ai login. The machine was fixed after this firing ran (00:04:58Z).
+- Landed-task recount (NIGHTLY §7): tasks naming nightly #373 are T-0558 and T-0559, with 0 landed. The repeat cap does not apply.
+- Did not start claude, post on or close #373, or edit STATE.json or RuntimeAcceptance.md. No temp dir or image was created.
+
+Runtime acceptance items: none.

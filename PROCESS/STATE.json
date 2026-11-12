@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P3",
-  "currentTask": "T-0559",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:01cd52a6",
-    "acquiredAt": "2026-11-12T01:20:50Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -994,18 +990,26 @@
       "issueComment": null,
       "resolvedAt": "2026-11-12T00:15:06Z",
       "decision": "(a) 머신을 고쳤고 이 task는 다시 하지 않는다(T-0558 `DONE`, NIGHTLY §7) — 오너(채팅, 2026-11-12): 복구 방식으로 \"장기 토큰 재사용\"을 선택. 통합자 관찰과 조치(오너의 말이 아님; 통합자 세션이 2026-11-12에 nightly 머신에서 확인): [원인] 로그인이 없던 것이 아니라 만료다 — 질문의 \"이 머신에서 로그인 점검이 통과한 기록은 없다\"는 사실과 다르다. firing `20261029T072712Z`~`20261108T180346Z` 11건은 `pass`였고, WSL 사용자의 claude.ai 로그인은 `~/.claude/.credentials.json`의 `refreshTokenExpiresAt`이 2026-11-09T15:30:10Z로 끝났다. firing `20261109T180358Z`가 `turn_start/stopped_at_check/session_failed`(cause `undetermined`)로 처음 실패했고(그 firing에서 자격 증명 파일의 토큰이 비워졌다; 루틴의 `gh issue create`가 실패해 이슈는 없다 — `routine.log`), `20261110T180351Z`·`20261112T000458Z`가 `not_logged_in`이다. 코드 결함은 아니다(T-0558의 판정과 같다). [조치] `~/.config/hilclaw/nightly.env` 끝에 `export CLAUDE_CODE_OAUTH_TOKEN=\"$HILCLAW_CODER_OAUTH_TOKEN\"` 한 줄을 더했다(원본은 `nightly.env.bak-20261112`). 호스트 `claude`가 코더와 같은 `claude setup-token` 토큰(2026-10-30 발급, 1년)을 쓰므로 refresh token 만료가 다시 오지 않는다; 다음 만료는 그 토큰의 2027-10-30 무렵이다. [확인] 그 파일을 읽은 셸에서 `claude auth status`가 종료 상태 0, `loggedIn` true, `authMethod` `oauth_token`(`selfcheck_login.AUTH_METHODS`에 있는 값). 저장소 변경은 없다. nightly는 다시 돌리지 않았으며 #373은 다음 nightly 통과가 닫는다(D17 ④). [남는 것] firing `20261109T180358Z`에서 루틴의 이슈 등록이 실패한 것(`routine.log`: 본문·제목 경로가 빈 값으로 펼쳐짐)과 2026-11-11 18시(UTC) firing이 없었던 것은 이 답의 범위 밖이다."
+    },
+    {
+      "id": "HQ-0100",
+      "taskId": "T-0559",
+      "reason": "nightly-environment",
+      "question": "[T-0559 / nightly #373] 이 보고는 HQ-0099가 이미 다룬 firing이다 — 처리 방식만 정해 달라. [관찰] 보고 `20261112T000458Z`(커밋 `5e8bfddf`, run id `20261112t000500z-5a807905eb731928`): signature `turn_start/stopped_at_check/not_logged_in`, cause `environment`. `new_run` 종료 상태 0, `turn_start` 종료 상태 14; 점검 결과 outcome `not_logged_in`, login `auth_method` `none`·`exit_status` 1·`timed_out` false. 직전 보고 `20261110T180351Z`와 commit·run id 말고는 결과 줄의 모든 필드가 같다. HQ-0099의 `decision`은 이 firing을 claude.ai 로그인 만료 때문인 `not_logged_in` firing으로 직접 적고 있고, 코드 결함이 아니라는 판정도 같다. [머신 조치] HQ-0099에 기록된 조치(`nightly.env`에서 `CLAUDE_CODE_OAUTH_TOKEN`을 setup-token으로 지정)는 이 firing(00:04:58Z) 뒤(00:15Z 무렵)에 이루어졌다. 더 필요한 머신 조치는 알려진 것이 없다. [선택지] (a) 이 task를 다시 하지 않는 답으로 `DONE` 처리하고(NIGHTLY §7), #373은 다음 nightly 통과가 닫게 둔다. (b) 다음 nightly가 여전히 `not_logged_in`을 보고하면 머신을 다시 확인하거나 코드 변경(재조사 task)을 지시한다. [막히는 것] 이 task의 종료뿐(실행할 작업은 없다). [막히지 않는 것] 시간당 드라이버의 다른 task, 다음 nightly.",
+      "askedAt": "2026-11-12T01:21:58Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 588,
+    "iterations": 589,
     "tasksDone": 553,
-    "tasksBlocked": 36,
+    "tasksBlocked": 37,
     "reviewRoundsTotal": 1778
   },
   "lastIteration": {
-    "at": "2026-11-10T18:23:59Z",
-    "owner": "AKIHA:4bc3908b",
-    "taskId": "T-0558",
+    "at": "2026-11-12T01:21:58Z",
+    "owner": "AKIHA:01cd52a6",
+    "taskId": "T-0559",
     "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
