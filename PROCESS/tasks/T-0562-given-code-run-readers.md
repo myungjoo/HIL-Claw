@@ -2,7 +2,7 @@
 id: T-0562
 title: Land ADR-0200 slice 3a for PLAN P3-11 — the run-level readers and the three evaluation tools read `instance.json` version 3 (rows 2 to 4 of ADR-0200's reader table), while the readers of row 6 keep refusing it
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D27, FR-19, OD-33, "PLAN P3-11", HQ-0097, ADR-0200]
 dependsOn: [T-0561]
