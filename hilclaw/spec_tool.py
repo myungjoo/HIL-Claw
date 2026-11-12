@@ -53,19 +53,18 @@ and nothing is created before 12 (ADR-0151 decision 3, table):
    and the six bf16 ones, through :func:`hilclaw.contract_table.covers`
    (:data:`KIND_OP_SIGNATURE_NOT_COVERED`; ADR-0177 decision 2);
 6. ``objective`` stated (:data:`KIND_OBJECTIVE_NOT_STATED`);
-7. for a non-empty ``techniques`` only, each id in the
-   request's order looked up by :func:`hilclaw.catalog.technique` in the
-   directory of the instance's ``hw_profile`` ``accelerator`` below
-   :data:`hilclaw.catalog.SOURCE`: a directory that is missing, is refused
-   by the catalog's rules or cannot be read (:data:`KIND_CATALOG_UNUSABLE`),
-   an id that names no entry (:data:`KIND_TECHNIQUE_UNKNOWN`), and an entry
-   that :func:`hilclaw.catalog.mismatch` finds differing from the composed
-   spec's ``task.op_signature.record`` ``kind``, ``dtype`` and ``layout`` or
-   its ``task.contract.language`` (:data:`KIND_TECHNIQUE_NOT_APPLICABLE`;
-   since every entry applies to the fp32 ``gemm`` contract
-   (:data:`hilclaw.catalog.APPLIES_TO`), it refuses every id for a run of a
-   bf16 contract and none for a run of the fp32 one, ADR-0177 decision 4);
-   the first id that fails decides;
+7. for a non-empty ``techniques`` only, the directory of the instance's
+   ``hw_profile`` ``accelerator`` below :data:`hilclaw.catalog.SOURCE` read
+   once by :func:`hilclaw.catalog.entries`: a directory that is missing, is
+   refused by the catalog's rules or cannot be read
+   (:data:`KIND_CATALOG_UNUSABLE`); then each id in the request's order: an
+   id that names no entry (:data:`KIND_TECHNIQUE_UNKNOWN`), and an entry
+   whose own ``Applies to`` values :func:`hilclaw.catalog.mismatch` finds
+   differing from the composed spec's ``task.op_signature.record`` ``kind``,
+   ``dtype`` and ``layout`` or its ``task.contract.language``
+   (:data:`KIND_TECHNIQUE_NOT_APPLICABLE`; each entry applies to the one
+   contract of the contract table its values name, ADR-0203 decisions 2
+   and 3); the first id that fails decides;
 8. to 10. for ``techniques`` only, :func:`hilclaw.spec_feedback.feedback`, whose
    kinds pass out unchanged: :data:`KIND_FEEDBACK_UNREADABLE`, the four
    ``run_file_*`` kinds for the run's ``events.ndjson`` and, in a run with
@@ -509,23 +508,23 @@ def _techniques(stated, document, ids):
     record = document["task"]["op_signature"]["record"]
     composed = {name: record[name] for name in ("kind", "dtype", "layout")}
     composed["language"] = document["task"]["contract"]["language"]
+    try:
+        found = catalog.entries(accelerator)
+    except FileNotFoundError as e:
+        raise _unusable(directory, "is not there") from e
+    except catalog.InvalidCatalogError as e:
+        raise _unusable(directory, f"is refused: {e}") from e
+    except OSError as e:
+        raise _unusable(directory, f"cannot be read: {_described(e)}") from e
     entries = []
     for entry_id in ids:
-        try:
-            entry = catalog.technique(accelerator, entry_id)
-        except KeyError as e:
+        if entry_id not in found:
             raise tools.ToolFailure(
                 KIND_TECHNIQUE_UNKNOWN,
                 f"{directory}: holds no entry {entry_id}: the accelerator "
                 f"{accelerator} has no such technique; nothing was written",
-            ) from e
-        except FileNotFoundError as e:
-            raise _unusable(directory, "is not there") from e
-        except catalog.InvalidCatalogError as e:
-            raise _unusable(directory, f"is refused: {e}") from e
-        except OSError as e:
-            raise _unusable(directory, f"cannot be read: {_described(e)}") from e
-        different = catalog.mismatch(**composed)
+            )
+        different = catalog.mismatch(found[entry_id].applies_to, **composed)
         if different is not None:
             name, value = different
             raise tools.ToolFailure(
@@ -533,7 +532,7 @@ def _techniques(stated, document, ids):
                 f"{directory}/{entry_id}.md: applies to the {name} {value}, "
                 f"not the spec's {composed[name]}; nothing was written",
             )
-        entries.append(entry)
+        entries.append({"id": entry_id, "text": found[entry_id].text})
     return entries
 
 

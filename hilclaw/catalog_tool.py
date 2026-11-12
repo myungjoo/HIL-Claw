@@ -13,11 +13,13 @@ data-root source, asked at each call after the request was checked, and never
 from the request (ADR-0015 decision 3). The result is ``{"entries": [{"id":
 ..., "when": ...}, ...]}``: one element per entry of the catalog directory of
 the run's accelerator that applies to the run, in ascending id order, ``when``
-being what :func:`hilclaw.catalog.criteria` returns for it. An entry applies
-when :func:`hilclaw.catalog.applies` answers ``True`` for the ``kind``,
-``dtype`` and ``layout`` of the run's stated op_signature record and the
-``language`` of the contract that covers it (ADR-0190 decision 2), so that
-``spec.write`` refuses no id it returns with ``technique_not_applicable``. An
+being its selection criteria as :func:`hilclaw.catalog.entries` gives them.
+An entry applies when :func:`hilclaw.catalog.applies` answers ``True`` for
+the entry's own ``Applies to`` values and the ``kind``, ``dtype`` and
+``layout`` of the run's stated op_signature record and the ``language`` of
+the contract that covers it (ADR-0190 decision 2; ADR-0203 decision 3), so
+that ``spec.write`` refuses no id it returns with
+``technique_not_applicable``. An
 instance that states no op_signature, or one no contract of
 :mod:`hilclaw.contract_table` covers, gets no entry and no failure: it is
 ``spec.write``'s check 5 that names those (ADR-0190 decision 3).
@@ -33,7 +35,7 @@ The checks, in this order, each with its kind (ADR-0171 decision 3, table):
    :func:`hilclaw.run_file_tools.c_kernel_only` with ``run_file_unsupported``
    (ADR-0198 decision 8 and Boundaries);
 4. the directory of the instance's ``hw_profile`` ``accelerator`` below
-   :data:`hilclaw.catalog.SOURCE` read by :func:`hilclaw.catalog.criteria`:
+   :data:`hilclaw.catalog.SOURCE` read by :func:`hilclaw.catalog.entries`:
    a directory that is missing, is refused by the catalog's rules or cannot
    be read (:data:`KIND_CATALOG_UNUSABLE`, the kind of ``spec.write``), for a
    run with no applicable entry as for any other.
@@ -142,7 +144,7 @@ def _read(source, request):
     accelerator = stated.hw_profile["accelerator"]
     directory = f"catalog/{accelerator}"
     try:
-        found = catalog.criteria(accelerator)
+        found = catalog.entries(accelerator)
     except FileNotFoundError as e:
         raise _unusable(directory, "is not there") from e
     except catalog.InvalidCatalogError as e:
@@ -150,23 +152,26 @@ def _read(source, request):
     except OSError as e:
         reported = ": ".join(filter(None, (type(e).__name__, e.strerror)))
         raise _unusable(directory, f"cannot be read: {reported}") from e
-    if not _applicable(stated):
+    compared = _compared(stated)
+    if compared is None:
         return {"entries": []}
     return {
-        "entries": [{"id": entry_id, "when": when} for entry_id, when in found.items()]
+        "entries": [
+            {"id": entry_id, "when": entry.when}
+            for entry_id, entry in found.items()
+            if catalog.applies(entry.applies_to, *compared)
+        ]
     }
 
 
-def _applicable(stated):
+def _compared(stated):
     if stated.op_signature is None:
-        return False
+        return None
     record = stated.op_signature.record
     covering = contract_table.entry(record)
     if covering is None:
-        return False
-    return catalog.applies(
-        record["kind"], record["dtype"], record["layout"], covering.contract.LANGUAGE
-    )
+        return None
+    return record["kind"], record["dtype"], record["layout"], covering.contract.LANGUAGE
 
 
 def _unusable(directory, problem):

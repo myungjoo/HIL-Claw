@@ -460,6 +460,7 @@
 - **채택분** [ADR-0150](decisions/ADR-0150-od22-first-case-technique-catalog.md) — 첫 사례(`cpu_standin`·`gemm` fp32 `row_major`·C)의 손으로 쓴 첫 카탈로그 — 코드 저장소 안의 자리, 항목의 형식과 id 규칙, 항목이 spec에 주는 것, 첫 항목(콜드스타트 방법은 답하지 않음)
 - **채택분** [ADR-0171](decisions/ADR-0171-od23-first-case-round-techniques-and-coder-delegation.md) — 첫 사례 항목의 선택 기준(`## When`)이 선택에 닿는 길: technique-selector가 부르는 등록표 도구 `catalog.read`(FR-8의 Skill 형태는 이 run들에 채택하지 않고 열어 둠; OD-23 절)
 - **채택분** [ADR-0190](decisions/ADR-0190-od22-catalog-read-by-contract-and-coder-every-shape.md) — `catalog.read`가 run에 적용되는 항목만 돌려줌(bf16 run은 항목 없음; 항목과 `Applies to`의 형태는 답하지 않음)
+- **채택분** [ADR-0203](decisions/ADR-0203-od22-catalog-entries-for-the-bf16-contracts.md) — `catalog/cpu_standin/` 항목의 `Applies to`가 계약 표의 한 계약 값을 적음(표에 없는 값은 읽는 쪽이 거부), 두 도구가 항목마다 제 값과 비교, bf16 계약 항목의 글 규칙(OpenMP 포함), 첫 `gemm` bf16 항목 둘(콜드스타트 방법은 답하지 않음)
 
 ## OD-23
 
