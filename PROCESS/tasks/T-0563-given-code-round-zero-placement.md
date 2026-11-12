@@ -2,7 +2,7 @@
 id: T-0563
 title: Land ADR-0200 slice 3b for PLAN P3-11 — place the given code as attempt `(0, 1, 1)` (`output/given.c`, written from the verified blob), and teach round 0 of a given-code run in `orchestration/round-manager.md` (no coder call, no spec, no repair), handing one runtime acceptance item to the driver
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, FR-19, FR-1, OD-33, OD-28, "PLAN P3-11", HQ-0092, HQ-0097, ADR-0200]
 dependsOn: [T-0561, T-0562]
@@ -61,3 +61,59 @@ hq: []
 - The planner creates ADR-0200 slice 4 (the command `hilclaw.given_eval`, verified with the real clang at `cpu_standin`; PLAN P3-11 is checked after it) once this batch lands.
 
 ## Result
+
+**Outcome**: DONE. PR #377 (code mode) was squash-merged as `f2fd3869` and its branch deleted. The context-isolated reviewer (opus) approved in round 3:
+- Round 1 had one should-fix and three nits. The should-fix was re-entry after a placed given attempt.
+- Round 2 had one should-fix: the PR body still described the old failure path.
+- Round 3 left one nit, which is recorded below.
+
+CI was green. Locally under WSL the full suite ran 41886 passed, 71 skipped, with `hilclaw/` line coverage at 99.66% and function coverage at 99.88%; the touched modules are at 100%.
+
+**Order check (D27 ①)**: unchanged at run time. There was no open PR, #373 was still with T-0559, and `RuntimeAcceptance.md` has no `실패` item.
+
+**What landed** (ADR-0200 slice 3b):
+- `hilclaw/given_attempt.py` (new):
+  - `place(data_root, run_id)` reads `instance.json` once. It then checks, in order, and each refusal writes nothing:
+    - the `run_file_*` kinds of that read;
+    - `given_code_not_stated` for a version-1 or version-2 file;
+    - `output_exists` for any entry `output` of `(0, 1, 1)`;
+    - `cas.verify_blob`, giving `given_code_missing`, `given_code_corrupt` or `given_code_unreadable`;
+    - a second read with a hash check and the 256 KiB bound (`given_code_too_large`).
+  - It then creates the attempt directory and writes `output/given.c`. A failed write is `output_not_written`. It never writes a spec.
+  - `definition(source)` is the tool `given.place`. It is not journaled, and its result is `{"given_code": <hash>}`. Slice 4 is to call `place()` as a function.
+- `hilclaw/tools.py`, `hilclaw/turn_permissions.py`: `given.place` is in the default registry and admitted for the Round-Manager only.
+- `orchestration/round-manager.md`, round 0 step 2:
+  - It first tells from `instance.json` whether the run holds `given_code`. It uses entry step 6's read, or one `instance.read` when the round was begun at entry step 2. A failed read comes to the stop.
+  - A given-code run calls `given.place` once instead of delegating to `coder-driver`. A result goes to step 3, `output_exists` comes to the stop (as `spec_exists` does, ADR-0142 decision 2), and any other kind goes to the closing steps (ADR-0185).
+- `hilclaw/fresh_run.py`, `hilclaw/run_file_tools.py` (`run.fresh` description): see the finding below.
+- **ADR-0201** (§9, new): `ARCHITECTURE/decisions/ADR-0201-od33-given-code-run-fresh-directory.md`. Decision 1 is the freshness amendment and decision 2 is the Round-Manager's way to the placement. The §9 notice is posted on #5 (https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6815527309).
+- Criterion 4 needed no change, because T-0562's `spec_tool` already refuses round 0 of a given-code run.
+
+**Finding, fixed here (ADR-0201 decision 1)**:
+- T-0561's start writes `artifacts.json` (the `given_code` record) before any turn. Under ADR-0120 decision 4 a given-code run was therefore never fresh, and `turn_start` answered it `open_state`/`state_missing` without starting a session.
+- `is_fresh` now lets that `artifacts.json` not count when `instance.json` parses by `parse_given` and states `given_code`.
+- Without this, round 0 of a given-code loop run could not begin, and the stubbed end-to-end test could not be written.
+
+**Deviation from criteria 5 and 6** (reviewer nit):
+- The round-0 turn of a fresh run without given code now makes one extra `instance.read` before it delegates to `coder-driver`. Nothing else changes for such runs.
+- Existing trace assertions changed accordingly: `ROUND_ZERO` and its slices and index in `tests/test_first_run_end_to_end.py`, and one slice in `tests/test_bf16_end_to_end.py`. Each edit is listed in the PR body, together with the D21 name-list edits.
+- **Outside `touchesFiles`**: `hilclaw/tools.py`, `hilclaw/fresh_run.py`, the ADR, and the tests `test_fresh_run`, `test_caller_check`, `test_tools`, `test_mcp_front`, `test_blob_tools`, `test_check_definition`, `test_default_registry_schemas`, `test_first_run_end_to_end` and `test_bf16_end_to_end`.
+- `hilclaw/spec_tool.py` and `tests/test_spec_tool.py` were not touched.
+- There are 7 non-test files, the ADR included.
+
+**Less exact, not edited**: ADR-0120 decision 4 and its table; ADR-0124's `run.fresh` row ("reads no file"); ADR-0200 decision 7's reader table, which has no `fresh_run` row and no row for the round-0 read. ADR-0201's Consequences list these.
+
+**Open for the planner** (from T-0562, still open): `spec_feedback` ignores an attempt without `spec.json`, so the given attempt never appears in round-1 feedback (ADR-0201 Boundaries).
+
+**Runtime acceptance item** (for `PROCESS/RuntimeAcceptance.md`; the driver adds it):
+- 출처: `T-0563`, ADR-0200 (Consequences), ADR-0201
+- 항목: 실제 `claude`가 도는 given-code 루프 run(`instance.json` 버전 3에 `given_code`, `cpu_standin`, `candidates_per_round` 1)의 라운드 0 턴에서 살아 있는 Round-Manager가 ① 진입 2단계에서 첫 `STATE.json`을 쓰고(시작이 쓴 `artifacts.json`이 있어도 `run.fresh`가 `true` — ADR-0201 결정 1), ② 라운드 단계 2에서 `instance.read`로 `given_code`를 확인한 뒤 `coder-driver`에 위임하지 않고 `mcp__hilclaw__given_place`를 한 번 불러 `(0, 1, 1)`의 `output/given.c`를 두며(spec 없음, coder 호출 없음, repair 없음), ③ evaluator의 `sim`·`board` 검사와 experiment-runner의 `board.run`이 그 시도를 평가한 뒤 `round.end`와 `run.commit`에 이르는가. 또한 caller check가 `given_place`를 main 세션에만 통과시키는가.
+- 선택지: (a) 오너가 수동 확인 (b) 런타임 자체 점검 코드로 확인 (c) 보류. D16에 따라 드라이버 task로는 닫지 않는다.
+- 막히는 것: 없음(T-0563 DONE; ADR-0200 slice 4는 명령으로 진행 가능). 실패로 드러나면 ADR-0201 결정 2(Round-Manager의 배치 경로)를 다시 정한다.
+
+**HQ**: none.
+
+**Storage**:
+- These were removed with `rm -r` at the end: `%TMP%/hilclaw-driver/T-0563/` (commit and PR drafts) and WSL `/tmp/hilclaw-driver/T-0563/`, which held the user-local libomp 14 extract, two working copies of the tree and the coverage data.
+- No image was made and nothing was installed. The existing WSL venv `~/.venvs/hilclaw-driver` was used as it was.
+- No `claude` process was started and no test run was made (D25).
