@@ -217,6 +217,8 @@ def test_the_public_names():
     )
     assert public == [
         "CANDIDATE_KINDS",
+        "GIVEN_SCHEMA_VERSION",
+        "Given",
         "Instance",
         "InvalidInstanceError",
         "KIND_SCHEMA_VERSION",
@@ -230,6 +232,7 @@ def test_the_public_names():
         "candidates_per_round_of",
         "coder_model_of",
         "draws_of",
+        "given_code_of",
         "hw_profile_of",
         "layout_version_of",
         "layout_version_of_kinded",
@@ -238,15 +241,18 @@ def test_the_public_names():
         "op_signature_of",
         "owner_of",
         "parse",
+        "parse_given",
         "parse_kinded",
         "project_of",
         "read",
         "read_as_version_1",
+        "read_given",
         "read_kinded",
         "round_budget_of",
         "source_commit_of",
         "tolerance_of",
         "validate",
+        "validate_given",
         "validate_kinded",
         "wall_clock_budget_s_of",
     ]
@@ -1190,7 +1196,12 @@ def test_nothing_of_the_module_holds_a_tolerance_value():
         if type(value) in (int, float, Tolerance)
     }
 
-    assert numbers == {"SCHEMA_VERSION": 1, "KIND_SCHEMA_VERSION": 2, "_MAX": MAX}
+    assert numbers == {
+        "SCHEMA_VERSION": 1,
+        "KIND_SCHEMA_VERSION": 2,
+        "GIVEN_SCHEMA_VERSION": 3,
+        "_MAX": MAX,
+    }
 
 
 # --- happy: the member source_commit (ADR-0022) ---
@@ -10049,3 +10060,346 @@ def test_a_version_1_file_is_read_once_by_the_strict_entry(
     with pytest.raises(InvalidInstanceError):
         entry(root, RUN)
     assert calls == [strict, strict, "kinded", strict]
+
+
+# --- the given code and version 3 (ADR-0200 decisions 6 and 7) ---
+
+
+DIGEST = "0123456789abcdef" * 4
+OTHER_DIGEST = "f" * 64
+
+
+def given(digest=DIGEST, **changes):
+    return doc(**{"schema_version": 3, "given_code": digest, **changes})
+
+
+def test_the_given_version_constant_and_fields():
+    assert instance.GIVEN_SCHEMA_VERSION == 3
+    assert instance.Given._fields == (
+        "schema_version",
+        "candidate_kind",
+        "given_code",
+        "layout_version",
+        "instance",
+    )
+
+
+@pytest.mark.parametrize("digest", [DIGEST, OTHER_DIGEST, "0" * 64])
+def test_a_version_3_document_states_its_given_code_as_a_c_kernel_run(digest):
+    document = given(digest, n_max=7, example=[1])
+
+    result = instance.parse_given(raw(document))
+
+    assert result == instance.Given(
+        3, "c_kernel", digest, 1, parse(raw(doc(n_max=7, example=[1])))
+    )
+    assert result.instance.others == {"example": [1]}
+    assert instance.validate_given(document) is None
+
+
+def test_a_version_3_document_may_state_a_kind_by_the_rule_of_version_2():
+    document = given(candidate_kind="compile_settings")
+
+    result = instance.parse_given(raw(document))
+
+    assert result == instance.Given(3, "compile_settings", DIGEST, 1, parse(raw(doc())))
+    assert "candidate_kind" not in result.instance.others
+    assert "given_code" not in result.instance.others
+
+
+@pytest.mark.parametrize(
+    ("document", "expected"),
+    [
+        (doc(), (1, "c_kernel")),
+        (
+            doc(schema_version=2, candidate_kind="compile_settings"),
+            (2, "compile_settings"),
+        ),
+    ],
+    ids=["v1", "v2"],
+)
+def test_versions_1_and_2_are_read_by_the_given_entries_without_a_given_code(
+    document, expected
+):
+    result = instance.parse_given(raw(document))
+
+    assert result == instance.Given(*expected, None, 1, parse(raw(doc())))
+    assert result.instance == instance.parse_kinded(raw(document)).instance
+    assert instance.validate_given(document) is None
+
+
+def test_a_version_3_document_without_the_given_code_is_invalid():
+    invalid(
+        "document: lacks the member given_code",
+        instance.validate_given,
+        doc(schema_version=3),
+    )
+    invalid(
+        "document: lacks the member given_code",
+        instance.validate_given,
+        doc(schema_version=3, candidate_kind="compile_settings"),
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        DIGEST[:-1],
+        DIGEST + "0",
+        DIGEST.upper(),
+        "g" * 64,
+        " " + DIGEST[1:],
+        "sha256:" + DIGEST[7:],
+        "０" * 64,
+        None,
+        64,
+        True,
+        [DIGEST],
+        {"sha256": DIGEST},
+    ],
+    ids=[
+        "empty",
+        "short",
+        "long",
+        "upper",
+        "not-hex",
+        "space",
+        "prefixed",
+        "fullwidth-digit",
+        "null",
+        "int",
+        "bool",
+        "array",
+        "object",
+    ],
+)
+def test_a_version_3_document_with_a_malformed_given_code_is_invalid(value):
+    message = invalid(
+        "given_code: must be a str of 64 lowercase hexadecimal characters, got ",
+        instance.validate_given,
+        given(value),
+    )
+
+    assert message.endswith(type(value).__name__) or "str " in message
+
+
+def test_a_given_code_of_a_subclass_of_str_is_none():
+    class Digest(str):
+        pass
+
+    invalid("given_code: must be", instance.validate_given, given(Digest(DIGEST)))
+
+
+@pytest.mark.parametrize(
+    "function",
+    [
+        validate,
+        instance.validate_kinded,
+        instance.validate_given,
+        lambda d: parse(raw(d)),
+        lambda d: instance.parse_kinded(raw(d)),
+        lambda d: instance.parse_given(raw(d)),
+    ],
+)
+@pytest.mark.parametrize("value", [DIGEST, "", None])
+def test_a_given_code_in_a_version_1_document_is_invalid_at_every_entry(
+    function, value
+):
+    message = invalid(
+        "given_code: is not admitted at schema_version 1",
+        function,
+        doc(given_code=value),
+    )
+
+    assert "requires 3" in message
+
+
+@pytest.mark.parametrize(
+    "function",
+    [
+        instance.validate_kinded,
+        instance.validate_given,
+        lambda d: instance.parse_given(raw(d)),
+    ],
+)
+def test_a_given_code_in_a_version_2_document_is_invalid(function):
+    document = doc(
+        schema_version=2, candidate_kind="compile_settings", given_code=DIGEST
+    )
+
+    invalid("given_code: is not admitted at schema_version 2", function, document)
+
+
+@pytest.mark.parametrize(
+    "kind", ["c_kernel", "quantization", "", None, 1, ["compile_settings"]]
+)
+def test_a_version_3_document_with_another_kind_is_invalid(kind):
+    invalid(
+        "candidate_kind: must be one of compile_settings",
+        instance.validate_given,
+        given(candidate_kind=kind),
+    )
+
+
+def test_the_order_is_version_kind_given_code_then_the_rules_of_version_1():
+    invalid(
+        "candidate_kind: ",
+        instance.validate_given,
+        given(None, candidate_kind="c_kernel", hw_profile=REMOVE),
+    )
+    invalid("given_code: ", instance.validate_given, given(None, hw_profile=REMOVE))
+    invalid(
+        "document: lacks the member hw_profile",
+        instance.validate_given,
+        given(hw_profile=REMOVE),
+    )
+    invalid("n_max: ", instance.validate_given, given(n_max=4))
+    invalid(
+        "tolerance",
+        lambda d: instance.parse_given(raw(d)),
+        given(tolerance={"rtol": -1, "atol": 0}),
+    )
+
+
+@pytest.mark.parametrize("version", [0, 4, 5, MAX])
+@pytest.mark.parametrize(
+    "function", [instance.validate_given, lambda d: instance.parse_given(raw(d))]
+)
+def test_the_given_entries_refuse_other_versions_first(version, function):
+    with pytest.raises(UnsupportedVersionError, match=f"^schema_version: {version} is"):
+        function({"schema_version": version, "given_code": 7})
+
+
+@pytest.mark.parametrize("version", [-1, MAX + 1, "3", 3.0, True, None])
+def test_the_given_entries_refuse_a_version_that_is_no_integer(version):
+    invalid(
+        "schema_version: must be",
+        instance.validate_given,
+        given(schema_version=version),
+    )
+
+
+@pytest.mark.parametrize(
+    "function",
+    [
+        validate,
+        instance.validate_kinded,
+        lambda d: parse(raw(d)),
+        lambda d: instance.parse_kinded(raw(d)),
+    ],
+)
+@pytest.mark.parametrize(
+    "document",
+    [given(), given(candidate_kind="compile_settings"), doc(schema_version=3)],
+    ids=["v3", "v3-kind", "v3-no-given-code"],
+)
+def test_the_strict_and_kinded_entries_refuse_version_3_as_another_version(
+    function, document
+):
+    with pytest.raises(UnsupportedVersionError, match="^schema_version: 3 is not"):
+        function(document)
+
+
+def test_parse_given_refuses_what_parse_refuses_for_the_text():
+    with pytest.raises(TypeError):
+        instance.parse_given("{}")
+    with pytest.raises(TypeError):
+        instance.parse_given(bytearray(raw(given())))
+    invalid(
+        "content: starts with a byte order mark",
+        instance.parse_given,
+        b"\xef\xbb\xbf" + raw(given()),
+    )
+    invalid("content: cannot be read", instance.parse_given, b"")
+    invalid("content: cannot be read", instance.parse_given, raw(given())[:-1])
+    invalid(
+        "content: cannot be read",
+        instance.parse_given,
+        text(
+            '"schema_version": 3',
+            SECTION,
+            f'"given_code": "{DIGEST}"',
+            f'"given_code": "{DIGEST}"',
+        ),
+    )
+
+
+def test_read_given_and_the_given_code_of_a_run(root):
+    place(root, raw(given(candidate_kind="compile_settings")))
+    place(root, raw(doc()), f"runs/{OTHER_RUN}/instance.json")
+    third = "run-c"
+    place(
+        root,
+        raw(doc(schema_version=2, candidate_kind="compile_settings")),
+        f"runs/{third}/instance.json",
+    )
+    before = snapshot(root)
+
+    assert instance.read_given(root, RUN) == instance.parse_given(
+        raw(given(candidate_kind="compile_settings"))
+    )
+    assert instance.read_given(str(root), RUN).layout_version == 1
+    assert instance.given_code_of(root, RUN) == DIGEST
+    assert instance.given_code_of(root, OTHER_RUN) is None
+    assert instance.given_code_of(root, third) is None
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        read,
+        layout_version_of,
+        instance.read_kinded,
+        instance.candidate_kind_of,
+        instance.layout_version_of_kinded,
+        instance.read_as_version_1,
+    ],
+)
+def test_a_version_3_file_is_refused_by_every_other_reader(root, entry):
+    place(root, raw(given()))
+    with pytest.raises(UnsupportedVersionError, match=f"^{FILE}: schema_version: 3"):
+        entry(root, RUN)
+
+
+def test_the_given_code_of_a_run_is_not_inferred_from_a_bad_file(root, tmp_path):
+    with pytest.raises(MissingInstanceError):
+        instance.given_code_of(root, RUN)
+    place(root, raw(doc(schema_version=3)))
+    with pytest.raises(
+        InvalidInstanceError, match=f"^{FILE}: document: lacks the member given_code"
+    ):
+        instance.given_code_of(root, RUN)
+    place(root, raw(doc(given_code=DIGEST)))
+    with pytest.raises(
+        InvalidInstanceError, match=f"^{FILE}: given_code: is not admitted"
+    ):
+        instance.given_code_of(root, RUN)
+    place(root, raw(given(schema_version=4)))
+    with pytest.raises(UnsupportedVersionError, match=f"^{FILE}: schema_version: 4"):
+        instance.read_given(root, RUN)
+    place(root, b"")
+    with pytest.raises(InvalidInstanceError, match=f"^{FILE}: content: "):
+        instance.read_given(root, RUN)
+    with pytest.raises(layout.InvalidPathValueError):
+        instance.given_code_of(root, "../x")
+    with pytest.raises(FileNotFoundError):
+        instance.read_given(tmp_path / "absent", RUN)
+
+
+def test_read_given_refuses_a_path_that_is_no_regular_file(root):
+    (root / FILE).mkdir(parents=True)
+    with pytest.raises(InvalidInstanceError, match=f"^{FILE}: is not a regular file"):
+        instance.read_given(root, RUN)
+
+
+def test_the_given_code_is_handed_out_as_the_file_states_it(root):
+    place(root, raw(given(OTHER_DIGEST)))
+
+    first = instance.given_code_of(root, RUN)
+    place(root, raw(given(DIGEST)))
+    second = instance.given_code_of(root, RUN)
+
+    assert (first, second) == (OTHER_DIGEST, DIGEST)
+    assert type(first) is str
