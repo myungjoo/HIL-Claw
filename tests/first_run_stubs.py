@@ -464,6 +464,8 @@ class _Turn:
         if "given_code" in self.instance:
             placed = self.call(self.main, "given_place", run_id=self.run_id)
             self.report(f"given.place: {placed.result or placed.kind or 'refused'}")
+            if placed.kind == "output_exists":
+                self.end()
             if placed.ok and self.checks_stand(tuple_):
                 measured = self.delegate(
                     "experiment-runner", tuple_, self.experiment_runner

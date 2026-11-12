@@ -1240,3 +1240,31 @@ def test_round_zero_of_a_given_code_run_whose_blob_is_gone_ends_its_round(world)
     assert placed["answer"]["error"]["kind"] == "given_code_missing"
     assert not (run / "rounds/0000/coder").exists()
     assert world.docker_runs() == []
+
+
+def test_a_round_zero_whose_given_attempt_was_placed_comes_to_the_stop(world):
+    world.install(kernel=None)
+    run_id = world.new_run(document(), given_code=KERNEL)
+    replace(world.root, run_id, 0, EMPTY)
+    run = world.run_dir(run_id)
+    placed = run / ATTEMPT / "output" / "given.c"
+    placed.parent.mkdir(parents=True)
+    placed.write_text("/* placed */\n", encoding="utf-8")
+
+    done = world.turn_start(run_id)
+
+    told(done, "unchanged_turn", 12)
+    assert state_of(world, run_id).round == 0
+    log = world.session_log()
+    assert turns(log) == [1]
+    assert steps(log, 1) == [
+        ("round-manager", "run_commit"),
+        ("round-manager", "state_read"),
+        ("round-manager", "instance_read"),
+        ("round-manager", "key_store"),
+        ("round-manager", "given_place"),
+        ("round-manager", "run_commit"),
+    ]
+    assert requests(log, 1)[4]["answer"]["error"]["kind"] == "output_exists"
+    assert placed.read_text(encoding="utf-8") == "/* placed */\n"
+    assert world.docker_runs() == []

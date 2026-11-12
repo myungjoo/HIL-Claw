@@ -27,7 +27,7 @@
 ### 2. The Round-Manager's way to the placement
 
 - **The tool `given.place`** (`hilclaw.given_attempt`), registered in the default registry beside `key.store` and admitted for the Round-Manager only (`hilclaw.turn_permissions.ROUND_MANAGER_TOOLS`; the caller check of ADR-0146 holds it for the main session and no agent). Its request is `{"run_id"}`; it places the given code as `output/given.c` of `(0, 1, 1)` after `cas.verify_blob` and returns `{"given_code": <hash>}`. It is not journaled, like the run-file tools (ADR-0124) and `key.store` (ADR-0134). The command of ADR-0200 decision 5 calls the same placement as a function.
-- **Round 0, step 2** (`orchestration/round-manager.md`): the Round-Manager first tells whether `instance.json` holds `given_code`, from entry step 6's read or, when the turn did not reach entry step 6 (a round begun at entry step 2), from one `instance.read`. A failed read comes to the stop. A run with `given_code` calls `given.place` once in place of the delegation to `coder-driver`: no spec, no coder call, no repair. Its result goes on to step 3; any failure kind goes to the closing steps, the round having no attempt that stands (ADR-0185 decision 2, as ADR-0200 decision 4 (a) says).
+- **Round 0, step 2** (`orchestration/round-manager.md`): the Round-Manager first tells whether `instance.json` holds `given_code`, from entry step 6's read or, when the turn did not reach entry step 6 (a round begun at entry step 2), from one `instance.read`. A failed read comes to the stop. A run with `given_code` calls `given.place` once in place of the delegation to `coder-driver`: no spec, no coder call, no repair. Its result goes on to step 3. `output_exists` comes to the stop: an earlier turn of round 0 placed the attempt and ended before `round.end`, which is no attempt that cannot stand, and the stop treats it as the coder path treats `spec_exists` (ADR-0142 decision 2), so a placed given attempt is never closed as if it had failed. Any other failure kind goes to the closing steps, the round having no attempt that stands (ADR-0185 decision 2, as ADR-0200 decision 4 (a) says).
 - **The one change for runs without given code**: the round-0 turn of a fresh run now makes that one `instance.read` before it delegates to `coder-driver`. It writes nothing, and every later step is unchanged.
 
 ## Alternatives considered
@@ -40,6 +40,7 @@
 | 2 | The Round-Manager calls `given.place` in every round 0 and reads "not stated" as "no given code" | A failure would then be part of the normal path |
 | 2 | The turn prompt states that the run has given code | Changes the prompt form of ADR-0123 decision 3 and `hilclaw.turn_start` |
 | 2 | The coder-driver places the given code | ADR-0200 decision 4 (a): no coder delegation in round 0 of a given-code run |
+| 2 | `output_exists` goes to the closing steps, or an existing `given.c` counts as placed and step 3 follows | The first closes round 0 without the given attempt that an earlier turn placed; the second evaluates a file whose write may not have ended, and differs from the coder path's `spec_exists` |
 
 ## Consequences
 

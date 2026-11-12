@@ -48,8 +48,8 @@ first-case run (ADR-0118 decisions 1 and 2).
   decision 6), to `evaluator`, only as steps 9, 10 and 12 say, and to
   `experiment-runner`, only as step 11 says (ADR-0172 decisions 3 to 5),
   and to `technique-selector`, only as step 6 says (ADR-0132 decision 7).
-  Use `mcp__hilclaw__given_place`, your run id as `run_id`, only as the last
-  paragraph of step 2 says, to place the given code of your run (ADR-0200
+  Use `mcp__hilclaw__given_place`, your run id as `run_id`, only as the
+  second paragraph of step 2 says, to place the given code of your run (ADR-0200
   decision 4 (a); ADR-0201 decision 2).
   Do not call
   `mcp__hilclaw__spec_write` or `mcp__hilclaw__coder_run` yourself, and write
@@ -142,8 +142,9 @@ before any other step of it:
    did not reach entry step 6, from a call of `mcp__hilclaw__instance_read`,
    your run id as `run_id`. If that call fails with any kind, report the
    kind in one line and come to the stop. If it holds `given_code`, do the
-   last paragraph of this step in place of the rest (ADR-0200 decision
-   4 (a); ADR-0201 decision 2). Otherwise delegate to `coder-driver` with the `Agent` tool and
+   second paragraph of this step in place of the rest of this one (ADR-0200
+   decision 4 (a); ADR-0201 decision 2). Otherwise delegate to
+   `coder-driver` with the `Agent` tool and
    wait for its report. The message names your run id and the tuple
    `round` 0, `candidate` 1, `attempt` 1, and no place (ADR-0141 decision 6;
    ADR-0126 decision 6; ADR-0123 decisions 2 and 4). Whatever it reports, a
@@ -156,8 +157,8 @@ before any other step of it:
    closing steps of a round" (ADR-0185 decision 2). On any other report (a
    failure kind of `spec.write`, `spec_exists` among them, or no report you
    can read) come to the stop, and read nothing more into the kind or the
-   names (ADR-0142 decision 2). In a round ≥ 1 there are no steps 2 to 5:
-   step 6 follows step 1.
+   names (ADR-0142 decision 2).
+
    In a run whose `instance.json` holds `given_code`, the given code is the
    attempt of round 0 and no coder call is made: call
    `mcp__hilclaw__given_place` once, your run id as `run_id`. Delegate
@@ -167,9 +168,14 @@ before any other step of it:
    returns its result, the attempt `round` 0, `candidate` 1, `attempt` 1
    holds the given code: go on to step 3, and steps 3 to 5 and the closing
    steps follow as for an attempt of `coder-driver` (ADR-0200 decision
-   4 (a); ADR-0142 decisions 3 to 6). When it fails with any kind, the round
-   has no attempt that stands: go to "The closing steps of a round"
-   (ADR-0200 decision 4 (a); ADR-0185 decision 2).
+   4 (a); ADR-0142 decisions 3 to 6). When it fails with `output_exists`,
+   an earlier turn placed the attempt: come to the stop, as after
+   `spec_exists` (ADR-0201 decision 2; ADR-0142 decision 2). When it fails
+   with any other kind, the round has no attempt that stands: go to "The
+   closing steps of a round" (ADR-0200 decision 4 (a); ADR-0185
+   decision 2).
+
+   In a round ≥ 1 there are no steps 2 to 5: step 6 follows step 1.
 3. **Round 0 only.** Delegate to `evaluator` with the `Agent` tool and wait
    for its report. The message names your run id, the tuple `round` 0,
    `candidate` 1, `attempt` 1, the point `sim`, and no place and no
@@ -265,10 +271,10 @@ before any other step of it:
     decision 5). On any other report (another failure kind, or no report you
     can read) come to the stop (ADR-0172 decision 5; FR-17).
 
-The stop: in round 0 it follows step 2 as it says, once the report that
-step waits for has come or the failed read of `instance.json` has been
-reported (ADR-0143 decision 7; ADR-0185 decision 2; ADR-0200 decision
-4 (a)). In
+The stop: in round 0 it follows step 2 as it says, once the report or the
+answer that step waits for has come, or the failed read of `instance.json`
+has been reported (ADR-0143 decision 7; ADR-0185 decision 2; ADR-0201
+decision 2). In
 other rounds it follows step 7 after a failed read, once its kind is
 reported (ADR-0132 decision 6), and step 8 or step 12 as they say, once the
 one-line report is made (ADR-0171 decision 6; ADR-0172 decisions 2, 5
