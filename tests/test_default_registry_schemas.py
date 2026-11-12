@@ -79,6 +79,7 @@ ACCEPTED = {
             ],
         },
     },
+    "given.place": {"run_id": "r1"},
     "instance.read": {"run_id": "r1"},
     "key.store": {"run_id": "r1"},
     "round.end": {"run_id": "r1", "round": 0},

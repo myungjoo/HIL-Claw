@@ -30,7 +30,8 @@ decision 3).
   that reads only C kernel runs without given code refuses the others with
   :func:`c_kernel_only`.
 - ``run.fresh`` returns ``{"fresh": bool}`` of :func:`hilclaw.fresh_run.is_fresh`
-  and reads no file.
+  and reads no file but, where ``artifacts.json`` is present, ``instance.json``
+  (ADR-0201 decision 1).
 - ``state.write`` refuses a ``state`` that is not valid at version 1 before
   the source is asked, then writes exactly that content with
   :func:`hilclaw.run_state_file.replace` and returns ``{}``. Nothing is read
@@ -86,8 +87,12 @@ _DESCRIPTIONS = {
     "run.fresh": (
         "Tell whether the directory of the run run_id is fresh: it holds "
         "instance.json as a regular file and none of STATE.json, events.ndjson, "
-        'artifacts.json and rounds. The result is {"fresh": true or false}; no '
-        "file is read. " + _NO_ROOT + "It fails with run_dir_unreadable when an "
+        "artifacts.json and rounds, except that the artifacts.json the start "
+        "wrote for a run whose instance.json states given_code does not count. "
+        'The result is {"fresh": true or false}; no file but that '
+        "instance.json is read. "
+        + _NO_ROOT
+        + "It fails with run_dir_unreadable when an "
         "entry cannot be looked at."
     ),
     "state.write": (

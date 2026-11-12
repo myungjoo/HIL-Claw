@@ -29,6 +29,7 @@ FIXED = (
     "mcp__hilclaw__case_write",
     "mcp__hilclaw__round_end",
     "mcp__hilclaw__hypotheses_read",
+    "mcp__hilclaw__given_place",
 )
 EVALUATOR = (
     "---\n"
@@ -564,3 +565,14 @@ def test_names_near_general_purpose_are_accepted(tmp_path, name):
 @pytest.mark.parametrize("name", ["Explore", "Plan"])
 def test_explore_and_plan_are_no_valid_name(tmp_path, name):
     holder_refused(tmp_path, agent(name, "Read").encode(), BAD_NAME)
+
+
+def test_given_place_is_the_round_managers_only(tmp_path):
+    turn_definition.put(tmp_path)
+    main, agents = turn_permissions.holder_lists(tmp_path)
+    assert "mcp__hilclaw__given_place" in main
+    assert agents
+    for held in agents.values():
+        assert "mcp__hilclaw__given_place" not in held
+    allowed = options(tmp_path)[-1].split(TOOLS_SEPARATOR)
+    assert "mcp__hilclaw__given_place" in allowed

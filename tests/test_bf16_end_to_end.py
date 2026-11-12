@@ -178,7 +178,7 @@ def test_a_wrong_kernel_leaves_its_attempt_not_standing(world):  # noqa: F811
     assert (state.round, state.others) == (1, {"run_status": "over"})
     log = world.session_log()
     assert first_run.turns(log) == [1]
-    assert first_run.steps(log, 1) == first_run.ROUND_ZERO[:11] + [
+    assert first_run.steps(log, 1) == first_run.ROUND_ZERO[:12] + [
         ("round-manager", "round_end"),
         ("round-manager", "run_commit"),
     ]

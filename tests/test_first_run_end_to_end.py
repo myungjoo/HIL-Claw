@@ -350,9 +350,9 @@ class World:
         }
         stubs.install(self.bin, scenario)
 
-    def entry(self, module, argument):
+    def entry(self, module, *arguments):
         done = subprocess.run(
-            [sys.executable, "-m", module, str(argument)],
+            [sys.executable, "-m", module, *map(str, arguments)],
             cwd=self.work,
             env=self.env,
             stdin=subprocess.DEVNULL,
@@ -362,10 +362,15 @@ class World:
         )
         return done
 
-    def new_run(self, document):
+    def new_run(self, document, given_code=None):
         given = self.tmp / "instance.json"
         given.write_text(json.dumps(document), encoding="utf-8")
-        done = self.entry("hilclaw.new_run", given)
+        options = ()
+        if given_code is not None:
+            code = self.tmp / "given-code.c"
+            code.write_text(given_code, encoding="utf-8")
+            options = ("--given-code", code)
+        done = self.entry("hilclaw.new_run", given, *options)
         told = json.loads(done.stdout)
         assert done.returncode == 0, done
         assert told["outcome"] == "started"
@@ -417,6 +422,7 @@ ROUND_ZERO = [
     ("round-manager", "run_fresh"),
     ("round-manager", "state_write"),
     ("round-manager", "key_store"),
+    ("round-manager", "instance_read"),
     ("round-manager", "Agent", "coder-driver"),
     ("coder-driver", "spec_write"),
     ("coder-driver", "coder_run"),
@@ -662,12 +668,12 @@ def test_round_zero_without_an_attempt_that_stands_ends_its_round(world, kernel)
     assert turns(log) == [1]
     closing = [("round-manager", "round_end"), ("round-manager", "run_commit")]
     if kernel is None:
-        assert steps(log, 1) == ROUND_ZERO[:8] + closing
-        assert requests(log, 1)[7]["answer"]["taken"] == []
+        assert steps(log, 1) == ROUND_ZERO[:9] + closing
+        assert requests(log, 1)[8]["answer"]["taken"] == []
         assert not (run / ATTEMPT / "output").exists()
         assert lines == []
     else:
-        assert steps(log, 1) == ROUND_ZERO[:11] + closing
+        assert steps(log, 1) == ROUND_ZERO[:12] + closing
         assert (run / ATTEMPT / "output/gemm.c").is_file()
         assert [line["data"]["step"] for line in lines] == [
             "correctness_check_sim_v2"
@@ -1171,3 +1177,94 @@ def test_a_round_whose_verdicts_are_not_written_comes_to_the_stop(world):
     assert_hooks_ran_and_passed(requests(log))
     assert_stopped_once(log, 2)
     assert_committed_clean(world, run_id)
+
+
+GIVEN_ROUND_ZERO = [
+    *ROUND_ZERO[:6],
+    ("round-manager", "given_place"),
+    *ROUND_ZERO[9:],
+]
+
+
+@pytest.mark.parametrize("kernel", [KERNEL, WRONG_KERNEL], ids=["right", "wrong"])
+def test_round_zero_of_a_given_code_run_evaluates_the_given_code(world, kernel):
+    world.install(kernel=None)
+    run_id = world.new_run(document(), given_code=kernel)
+    run = world.run_dir(run_id)
+
+    done = world.turn_start(run_id)
+
+    told(done, "run_over", 0)
+    state = state_of(world, run_id)
+    assert (state.round, state.others) == (1, {"run_status": "over"})
+    assert (run / ATTEMPT / "output/given.c").read_text(encoding="utf-8") == kernel
+    assert sorted(path.name for path in (run / ATTEMPT).iterdir()) == ["output"]
+    log = world.session_log()
+    assert turns(log) == [1]
+    placed = [e for e in requests(log, 1) if step(e)[1] == "given_place"]
+    assert placed[0]["answer"] == {
+        "given_code": json.loads((run / "instance.json").read_bytes())["given_code"]
+    }
+    lines = events.read(world.root, run_id).events
+    if kernel == KERNEL:
+        assert steps(log, 1) == GIVEN_ROUND_ZERO
+        assert [line["data"]["step"] for line in lines][-1] == "board_run_timing_v3"
+    else:
+        assert steps(log, 1) == GIVEN_ROUND_ZERO[:10] + [
+            ("round-manager", "round_end"),
+            ("round-manager", "run_commit"),
+        ]
+        assert lines[-1]["data"]["result"]["outcome"] == "fail"
+    assert_hooks_ran_and_passed(requests(log))
+    assert_stopped_once(log, 1)
+    assert not [e for e in world.docker_runs() if e.get("container") == "coder"]
+    assert_committed_clean(world, run_id)
+
+
+def test_round_zero_of_a_given_code_run_whose_blob_is_gone_ends_its_round(world):
+    world.install(kernel=None)
+    run_id = world.new_run(document(), given_code=KERNEL)
+    run = world.run_dir(run_id)
+    digest = json.loads((run / "instance.json").read_bytes())["given_code"]
+    (world.root / "blobs/sha256" / digest[:2] / digest).unlink()
+
+    done = world.turn_start(run_id)
+
+    told(done, "run_over", 0)
+    log = world.session_log()
+    assert steps(log, 1) == GIVEN_ROUND_ZERO[:7] + [
+        ("round-manager", "round_end"),
+        ("round-manager", "run_commit"),
+    ]
+    placed = requests(log, 1)[6]
+    assert placed["answer"]["error"]["kind"] == "given_code_missing"
+    assert not (run / "rounds/0000/coder").exists()
+    assert world.docker_runs() == []
+
+
+def test_a_round_zero_whose_given_attempt_was_placed_comes_to_the_stop(world):
+    world.install(kernel=None)
+    run_id = world.new_run(document(), given_code=KERNEL)
+    replace(world.root, run_id, 0, EMPTY)
+    run = world.run_dir(run_id)
+    placed = run / ATTEMPT / "output" / "given.c"
+    placed.parent.mkdir(parents=True)
+    placed.write_text("/* placed */\n", encoding="utf-8")
+
+    done = world.turn_start(run_id)
+
+    told(done, "unchanged_turn", 12)
+    assert state_of(world, run_id).round == 0
+    log = world.session_log()
+    assert turns(log) == [1]
+    assert steps(log, 1) == [
+        ("round-manager", "run_commit"),
+        ("round-manager", "state_read"),
+        ("round-manager", "instance_read"),
+        ("round-manager", "key_store"),
+        ("round-manager", "given_place"),
+        ("round-manager", "run_commit"),
+    ]
+    assert requests(log, 1)[4]["answer"]["error"]["kind"] == "output_exists"
+    assert placed.read_text(encoding="utf-8") == "/* placed */\n"
+    assert world.docker_runs() == []

@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from hilclaw import fresh_run, layout
+from hilclaw import fresh_run, keys, layout, start_instance
 from hilclaw.layout import InvalidPathValueError
 
 RUN = "run-a"
@@ -270,3 +270,116 @@ def test_instance_json_is_never_opened(tmp_path, monkeypatch):
 def test_the_module_does_not_import_the_turn_loop():
     assert "turn_loop" not in vars(fresh_run)
     assert "hilclaw.turn_loop" not in inspect.getsource(fresh_run)
+
+
+# --- a run that states given code (ADR-0201 decision 1) ---
+
+GIVEN_PROFILE = {
+    "schema_version": 1,
+    "accelerator": "cpu_standin",
+    "revision": "test-revision",
+    "toolchain": {"clang": "test"},
+    "host": {"cpu": "test", "os": "test"},
+    "hw_source": "external",
+}
+GIVEN_OP = {
+    "schema_version": 1,
+    "kind": "gemm",
+    "shape": {"m": 4, "k": 8, "n": 4},
+    "dtype": "fp32",
+    "layout": "row_major",
+}
+
+
+def started_given(root, code=b"int x;\n"):
+    document = {
+        "schema_version": 1,
+        "hw_profile": {
+            "key": keys.hw_profile_key(GIVEN_PROFILE).name,
+            "record": GIVEN_PROFILE,
+        },
+        "op_signature": {
+            "key": keys.op_signature_key(GIVEN_OP).name,
+            "record": GIVEN_OP,
+        },
+        "objective": {
+            "objectives": [{"type": "latency_minimisation"}],
+            "constraints": [],
+        },
+        "candidates_per_round": 1,
+        "n_max": 6,
+        "draws": 1,
+        "tolerance": {"rtol": 1e-4, "atol": 1e-5},
+        "round_budget": 1,
+    }
+    root.mkdir(exist_ok=True)
+    if code is None:
+        return start_instance.start(document, data_root=root)
+    path = root.parent / "given.c"
+    path.write_bytes(code)
+    return start_instance.start(document, data_root=root, code_file=path)
+
+
+def test_a_started_given_code_run_is_fresh_with_its_artifacts_json(tmp_path):
+    root = tmp_path / "data"
+    run_id = started_given(root)
+    assert (root / "runs" / run_id / "artifacts.json").is_file()
+    assert fresh_run.is_fresh(root, run_id) is True
+
+
+@pytest.mark.parametrize("name", ["STATE.json", "events.ndjson", "rounds"])
+def test_a_given_code_run_with_another_file_is_not_fresh(tmp_path, name):
+    root = tmp_path / "data"
+    run_id = started_given(root)
+    (root / "runs" / run_id / name).mkdir()
+    assert fresh_run.is_fresh(root, run_id) is False
+
+
+def test_artifacts_json_beside_a_version_1_instance_is_not_fresh(tmp_path):
+    root = tmp_path / "data"
+    run_id = started_given(root, code=None)
+    run = root / "runs" / run_id
+    assert fresh_run.is_fresh(root, run_id) is True
+    (run / "artifacts.json").write_text("{}")
+    assert fresh_run.is_fresh(root, run_id) is False
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"{}", b"{", b'{"schema_version": 4}'],
+    ids=["invalid", "not_json", "version_4"],
+)
+def test_artifacts_json_beside_an_unreadable_instance_is_not_fresh(tmp_path, content):
+    (started(tmp_path) / "instance.json").write_bytes(content)
+    (run_path(tmp_path) / "artifacts.json").write_text("{}")
+    assert fresh_run.is_fresh(tmp_path, RUN) is False
+
+
+def test_an_instance_gone_before_its_read_is_not_fresh(tmp_path, monkeypatch):
+    root = tmp_path / "data"
+    run_id = started_given(root)
+    read_bytes = type(root).read_bytes
+
+    def gone(path):
+        if path.name == "instance.json":
+            raise FileNotFoundError(2, "gone")
+        return read_bytes(path)
+
+    monkeypatch.setattr(type(root), "read_bytes", gone)
+    assert fresh_run.is_fresh(root, run_id) is False
+
+
+def test_a_permission_error_of_the_instance_read_is_raised_unchanged(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "data"
+    run_id = started_given(root)
+    error = PermissionError(13, "denied")
+
+    def denied(path):
+        raise error
+
+    monkeypatch.setattr(type(root), "read_bytes", denied)
+    with pytest.raises(PermissionError) as caught:
+        fresh_run.is_fresh(root, run_id)
+    assert caught.value is error

@@ -225,7 +225,10 @@ def default_registry(data_root_source):
     (:func:`hilclaw.key_store_tool.definition`, ADR-0134 decision 3), with
     which it stores its run's two key record files, and ``round.end``
     (:func:`hilclaw.round_end_tool.definition`, ADR-0135 decision 2), with
-    which it makes the write that ends its round. It holds ``spec.write``
+    which it makes the write that ends its round, and ``given.place``
+    (:func:`hilclaw.given_attempt.definition`, ADR-0200 decision 4 (a)),
+    with which it places the given code of a given-code run as its round-0
+    attempt. It holds ``spec.write``
     (:func:`hilclaw.spec_tool.definition`, ADR-0138 decision 3), with which
     the coder-driver has the spec of the first coder call of round 0 written,
     and that of the first coder call of a round >= 1 (ADR-0151 decision 3),
@@ -255,6 +258,7 @@ def default_registry(data_root_source):
         checks_tool,
         coder_runtime,
         coder_tool,
+        given_attempt,
         hypotheses_tool,
         hypotheses_write_tool,
         key_store_tool,
@@ -289,6 +293,7 @@ def default_registry(data_root_source):
     registry.register(*case_tool.definition(data_root_source))
     registry.register(*key_store_tool.definition(data_root_source))
     registry.register(*round_end_tool.definition(data_root_source))
+    registry.register(*given_attempt.definition(data_root_source))
     registry.register(*spec_tool.definition(data_root_source))
     registry.register(*timings_tool.definition(data_root_source))
     registry.register(

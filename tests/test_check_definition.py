@@ -149,6 +149,7 @@ def test_the_default_registry_holds_the_definition_of_the_tool():
         "checks.read",
         "coder.run",
         TOOL,
+        "given.place",
         "hypotheses.read",
         "hypotheses.write",
         "instance.read",
@@ -456,6 +457,7 @@ def test_building_the_default_registry_calls_no_party(parties):
         "checks.read",
         "coder.run",
         TOOL,
+        "given.place",
         "hypotheses.read",
         "hypotheses.write",
         "instance.read",
@@ -508,6 +510,7 @@ def test_tools_list_of_the_mcp_front_holds_the_fixed_tool_set():
         "checks_read",
         "coder_run",
         "correctness_check",
+        "given_place",
         "hypotheses_read",
         "hypotheses_write",
         "instance_read",
@@ -866,7 +869,7 @@ def test_building_the_default_registry_imports_no_numpy(tmp_path):
 def test_listing_the_tools_through_the_mcp_front_imports_no_numpy(tmp_path):
     answers, loaded = heavy_modules_after(LIST_CHILD, tmp_path)
     assert answers == [
-        "0 blob_fetch blob_push board_run case_write cases_lookup catalog_read checks_read coder_run correctness_check"
+        "0 blob_fetch blob_push board_run case_write cases_lookup catalog_read checks_read coder_run correctness_check given_place"
         + " hypotheses_read hypotheses_write instance_read key_store round_end run_commit run_fresh sim_run spec_write state_read"
         + " state_write timings_compare verdicts_read verdicts_write"
     ]
