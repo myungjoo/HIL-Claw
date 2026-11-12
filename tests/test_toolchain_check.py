@@ -672,9 +672,7 @@ REMOTE_DEST = "tester@host.invalid"
 REMOTE_ENV = {remote_run.DESTINATION_VARIABLE: REMOTE_DEST}
 needs_sh = pytest.mark.skipif(shutil.which("sh") is None, reason="no POSIX sh")
 
-# A stub ssh: it records its arguments, fails with the status of answer.json
-# beside it when there is one, and otherwise runs the remote command string
-# with the local sh, as the remote account's shell would.
+# A stub ssh that runs the remote command with the local sh.
 SSH_STUB = """\
 import json, os, subprocess, sys
 here = os.path.dirname(os.path.abspath(__file__))

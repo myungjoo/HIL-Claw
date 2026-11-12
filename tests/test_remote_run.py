@@ -30,11 +30,10 @@ from hilclaw.remote_run import (
 
 DEST = "tester@host.invalid"
 ENV = {DESTINATION_VARIABLE: DEST}
+REAL_TASK_VARIABLE = "HILCLAW_REMOTE_TEST_TASK"
 needs_sh = pytest.mark.skipif(shutil.which("sh") is None, reason="no POSIX sh")
 
-# A stub ssh: it records its arguments, answers as told by answer.json beside
-# it, and otherwise runs the remote command string with the local sh in a
-# fake home directory, as the remote account's shell would.
+# A stub ssh that runs the remote command with the local sh in a fake home.
 SSH_STUB = """\
 import json, os, subprocess, sys, time
 here = os.path.dirname(os.path.abspath(__file__))
@@ -299,6 +298,10 @@ def test_a_refused_task_id(stub, tmp_path, task, error):
         remove_task_directory(task, timeout_s=30, environ=ENV, ssh=stub.program)
     with pytest.raises(error):
         get(task, "f", tmp_path / "f", timeout_s=30, environ=ENV, ssh=stub.program)
+    local = tmp_path / "local.bin"
+    local.write_bytes(b"x")
+    with pytest.raises(error):
+        put(local, task, "f", timeout_s=30, environ=ENV, ssh=stub.program)
     assert stub.calls() == []
 
 
@@ -408,17 +411,19 @@ def test_removal_after_an_ssh_failure_is_a_result(stub):
 
 
 @pytest.mark.skipif(
-    not configured(os.environ), reason=f"{DESTINATION_VARIABLE} is not configured"
+    not configured(os.environ) or not os.environ.get(REAL_TASK_VARIABLE),
+    reason=f"{DESTINATION_VARIABLE} or {REAL_TASK_VARIABLE} is not set",
 )
 def test_the_real_machine_round_trip(tmp_path):
-    task = "T-0567"
+    task = os.environ[REAL_TASK_VARIABLE]
     common = {"timeout_s": 120}
     report = toolchain_check.remote_check()
     assert report["state"] == toolchain_check.READ
     assert report["system"]["kernel"]["state"] == "present"
-    assert destination() not in json.dumps(report)
+    leaked = destination() in json.dumps(report)
+    assert not leaked
     made = make_task_directory(task, **common)
-    assert made.returncode == 0, made.stderr
+    assert made.returncode == 0
     try:
         local = tmp_path / "probe.bin"
         local.write_bytes(b"hilclaw remote probe\n\0\xff")
@@ -431,5 +436,5 @@ def test_the_real_machine_round_trip(tmp_path):
     assert removed.returncode == 0
     gone = run(["test", "-e", task_directory(task)], **common)
     assert gone.returncode == 1
-    for done in (made, removed, gone):
-        assert destination() not in repr(done)
+    leaked = any(destination() in repr(done) for done in (made, removed, gone))
+    assert not leaked
