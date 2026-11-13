@@ -434,7 +434,8 @@ def test_the_real_machine_evaluates_given_code(tmp_path):
         assert summary(done)["sim"]["standing"] == "verified"
         fetch(task, tmp_path / "data.bundle", timeout_s=300)
         assert (tmp_path / "data.bundle").stat().st_size > 0
-        assert not leaks(done) and remote_run.destination() not in repr(done)
+        leaked = leaks(done) or remote_run.destination() in repr(done)
+        assert not leaked
     finally:
         removed = remote_run.remove_task_directory(task, timeout_s=120)
     assert removed.returncode == 0
