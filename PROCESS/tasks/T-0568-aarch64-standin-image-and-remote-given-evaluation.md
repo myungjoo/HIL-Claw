@@ -2,7 +2,7 @@
 id: T-0568
 title: PLAN P3-17 (2) — record by a §9 ADR how the C kernel path of cpu_standin is shown on the owner's LAN aarch64 machine under HQ-0101 (b), build the arm64 cpu_standin image there, run the given-code evaluation (build, correctness, measurement) on that machine, and check that its records are kept apart by key from the development PC's
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D31, "PLAN P3-17", "HQ-0101", FR-10, C-7, OD-26, OD-4, ADR-0001]
 dependsOn: []
@@ -85,3 +85,29 @@ This task is that next step, as one feature (D20 ①, ③): the §9 ADR that rec
 ## Follow-ups
 
 ## Result
+- **DONE.** PR #382, squash-merged as `2266828a`; branch deleted. Review: 3 rounds. Round 1 was Request changes: ADR-0205 misdescribed ADR-0035, the `lscpu` value `-`, `env`'s status 127, commit-body language line and suite results, `hw_profile` output check. Round 2 was Request changes, for PR-body items only (the D21 list edit and the suite results), plus Nits fixed. Round 3: Approve; one Nit (an assertion that could print the destination on failure) fixed after Approve under the D20 exception. CI green on head `e8c96c65`. Local full suite: 39982 passed, 2219 skipped (on `c56352f4`; the later commit only reshaped one assertion of the skipped real-machine test). Coverage of `hilclaw/`: lines 98.73%, functions 99.33% (`remote_eval.py` 99.1%, `standin_profile.py` 100%). §9 notice: https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6860605835
+- **Resume** (§3-5): no landed commit, PR or branch for T-0568 at start; fresh start.
+- **Criterion 1, read-only facts** (2026-11-14, ADR-0204 means, `BatchMode=yes`, host keys checked as configured):
+  - `uname -m` aarch64, `uname -r` 6.6.28+rpt-rpi-2712; `/etc/os-release` `ID=debian`, `VERSION_ID="12"`
+  - `/proc/cpuinfo` has **no** `model name` line (`CPU implementer` 0x41, `CPU part` 0xd0b); `lscpu` `Model name: Cortex-A76`
+  - Python 3.11.2; `numpy` 1.24.2 importable; git 2.39.5; Docker client/server 26.1.3 (arm64)
+  - 16 images of other services/distributions in the store (none `clang`, `debian` or of this repository; not touched); ~250 GB free under home; `docker system df`: images 27.27 GB, build cache 24.33 GB (others'); load average 1.5 to 2.6; governor `ondemand`
+- **Criterion 2**: ADR-0205 (records HQ-0101 (b); tool image; package on that machine with host `python3` — not #5 B-2; `host.cpu` from `lscpu` judged the driver's under §9, ADR-0035 decision 6 amended by pointer; per-key comparison by git bundle). ADR-0204 decision 9, Consequences and Boundaries point to it. No HQ was needed: numpy is present, and the `host.cpu` rule is no D23 frame change.
+- **Criterion 3, the image** (built on that machine, context only under `hilclaw-driver/T-0568/image/`):
+  - Recipe: `FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc` / `RUN apt-get update && apt-get install -y --no-install-recommends clang libomp-dev libc6-dev && rm -rf /var/lib/apt/lists/*`
+  - Build: `DOCKER_BUILDKIT=0 docker build --force-rm --pull=false -t hilclaw-t0568-standin:arm64 .`, then tagged `clang:14.0.6` and the work tag removed
+  - **Tool image kept: `clang:14.0.6`**, id `sha256:d44c9787a553ef9f7cc969786b110d1d56524ebe39b58547e0b2b1884edb86c3`, 484,659,869 bytes, arm64, no entrypoint, no `USER`
+  - Packages: clang 1:14.0-55.7~deb12u1, clang-14 1:14.0.6-12, libomp-14-dev 1:14.0.6-12, libomp5-14 1:14.0.6-12, libc6-dev 2.36-9+deb12u14
+  - `clang --version` in the image: `Debian clang version 14.0.6`; an `-fopenmp` program with `<omp.h>` and `-lm` built, linked and ran there (4 threads) under `--network none --pull never --user <uid>:<gid> --cap-drop ALL --entrypoint=`
+- **Criterion 5, demonstration** (fp32 `gemm`, plain triple loop of `tests/test_given_eval.py`, 32×32×32, rtol 1e-4, atol 1e-5):
+  - That machine: exit 0; `{"outcome":"measured", "sim":{"outcome":"pass","standing":"verified"}, "board":{"outcome":"pass","standing":"verified"}, "timing":{"outcome":"not_converged","median":87694.5,"unit":"ns"}}`; hw_profile `{"accelerator":"cpu_standin","revision":"host","toolchain":{"clang":"Debian clang version 14.0.6"},"host":{"cpu":"Cortex-A76","os":"linux debian 12"},"hw_source":"external"}`, key `cpu_standin-68c4095051183d94`
+  - Development PC (WSL 2, image `hilclaw-standin:local`, the nightly checkout's venv Python read-only): exit 0; `measured`, both `verified`, `timing` `converged`, median 5714 ns; host `Intel(R) Core(TM) i7-14700KF` / `wsl ubuntu 22.04`, clang `Ubuntu clang version 18.1.3 (1ubuntu1)`, key `cpu_standin-22128bf435888071`
+  - Same data root (clone of the fetched bundle): `db/` holds the two hw key directories, each with its own `hw_profile.json` and op_signature `gemm-f2e573edbe875c08`. Key directory history: remote key only in the remote run's commit, local key only in the local run's commit. `git diff` of the remote key and remote run between the two commits is empty.
+  - ADR-0204 decision 7 note: values from that machine are noisy (other services, `ondemand`, load average about 1.6). They are not compared with the PC's values as numbers.
+- **Real-machine tests** (run locally with the variables set, skipped in CI): `test_the_real_machine_evaluates_given_code` and `test_the_real_machine_round_trip` passed.
+- **D21 / existing tests**: `tests/test_standin_profile.py` — the fake machine gained the `LSCPU` command (default "not found"), `nothing_stands_in` allows it, and the list of modules allowed to name `standin_profile` gained `remote_eval.py`. No existing assertion changed otherwise.
+- **Language**: Python (as the rest of layer 2 and `remote_run`).
+- **Storage**: remote `hilclaw-driver/T-0568/` removed with `rm -r` (empty parent `hilclaw-driver/` stays, ADR-0204 decision 5). Work tag `hilclaw-t0568-standin:arm64` removed. `debian:bookworm-slim` (pulled only for this build, used by no other image) untagged by reference. The classic builder left no intermediate container and no BuildKit cache. WSL `/tmp/hilclaw-driver/T-0568/` and local `${TMPDIR}/hilclaw-driver/T-0568/` removed. Kept: the tool image `clang:14.0.6` on that machine. No host install on either machine.
+- **Runtime acceptance items**: none.
+- **HQ**: none.
+- No `claude` started; no test run (D25).
