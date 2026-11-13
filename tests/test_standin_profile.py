@@ -1088,6 +1088,7 @@ def test_module_is_bound_by_the_start_only_and_imports_no_store():
             start,
             package / "check_definition.py",
             package / "nightly.py",
+            package / "remote_eval.py",
             package / "targets.py",
         ):
             assert "standin_profile" not in path.read_text(encoding="utf-8"), path.name
@@ -1354,6 +1355,9 @@ def test_a_model_name_line_never_starts_lscpu(machine):
     ("outcome", "reason"),
     [
         (ProgramNotFoundError("env"), "was not found"),
+        (done(127), "was not found"),
+        (b"Model name: -\n", "does not name the processor"),
+        (b"Model name: \t-  \n", "does not name the processor"),
         (PermissionError("denied"), "could not be started (PermissionError)"),
         (done(None), "did not finish"),
         (done(1, LSCPU_OUTPUT), "ended with status 1"),

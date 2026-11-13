@@ -169,7 +169,8 @@ def hw_profile(
     Runs :func:`hilclaw.standin_profile.local_record` in the prepared package
     with the host's ``python``; ``timeout_s`` is both the remote call's limit
     and that of each command the record starts. Raises :class:`RemoteStepError`
-    when the call does not end with status 0.
+    when the call does not end with status 0, and :class:`ValueError` when
+    its standard output is no JSON object.
     """
     _check(task, timeout_s, environ)
     standin_container.check_image(image)
@@ -181,7 +182,10 @@ def hw_profile(
         ssh,
     )
     _step("hw_profile", outcome)
-    return json.loads(outcome.stdout)
+    record = json.loads(outcome.stdout)
+    if isinstance(record, dict):
+        return record
+    raise ValueError("the remote hw_profile output is no JSON object")
 
 
 def evaluate(

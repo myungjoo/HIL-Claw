@@ -83,13 +83,13 @@ def local_record(hw_source, *, timeout_s, image):
 """
 
 
-def archive():
+def archive(profile=FAKE_PROFILE):
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w") as tar:
         for name, text in (
             ("hilclaw/__init__.py", ""),
             ("hilclaw/given_eval.py", FAKE_GIVEN_EVAL),
-            ("hilclaw/standin_profile.py", FAKE_PROFILE),
+            ("hilclaw/standin_profile.py", profile),
         ):
             data = text.encode()
             info = tarfile.TarInfo(name)
@@ -438,3 +438,15 @@ def test_the_real_machine_evaluates_given_code(tmp_path):
     finally:
         removed = remote_run.remove_task_directory(task, timeout_s=120)
     assert removed.returncode == 0
+
+
+@needs_tools
+@pytest.mark.parametrize(
+    "returned", ['print("noise")', "return [1]"], ids=["no JSON", "no object"]
+)
+def test_a_profile_output_that_is_no_json_object(stub, returned):
+    profile = "def local_record(hw_source, *, timeout_s, image):\n    " + returned
+    profile += "\n    return {}\n" if returned.startswith("print") else "\n"
+    prepare(TASK, archive=archive(profile), **common(stub))
+    with pytest.raises(ValueError):
+        hw_profile(TASK, IMAGE, "external", python=python(), **common(stub))

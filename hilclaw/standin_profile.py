@@ -49,7 +49,9 @@ The rules, in short:
   ``LC_ALL=C``: the text after the first colon of its first line whose text
   before that colon, without spaces and tabs at both ends, is ``Model name``
   (``ARCHITECTURE/decisions/ADR-0205-od26-aarch64-standin-image-and-remote-evaluation.md``
-  decision 5). A machine with a ``model name`` line never starts ``lscpu``.
+  decision 5), started as ``env LC_ALL=C lscpu``; ``env``'s status 127 is a
+  ``lscpu`` that was not found, and the value ``-`` names no processor. A
+  machine with a ``model name`` line never starts ``lscpu``.
 
   A value of ``/etc/os-release`` is the text after ``ID=`` or ``VERSION_ID=``
   on the first line that starts so, without one pair of double or single quotes
@@ -74,7 +76,8 @@ transliterated text and no value from another source.
 What the module does not do: it registers and stores nothing, is bound to no
 tool and has no command-line entry; the one caller of :func:`local_record` is
 the nightly entry :mod:`hilclaw.nightly`, which puts the record into its own
-instance, and :mod:`hilclaw.check_definition` and :mod:`hilclaw.start_instance`
+instance (:mod:`hilclaw.remote_eval` calls it on another machine, in a
+process of its own there), and :mod:`hilclaw.check_definition` and :mod:`hilclaw.start_instance`
 read :data:`ACCELERATOR` alone, and :mod:`hilclaw.targets` reads
 :data:`ACCELERATOR` and :data:`VIRTUAL_NPU`. It knows no accelerator but
 these two and no other machine than the one the process runs on, adds no
@@ -117,6 +120,8 @@ _OS_RELEASE = "/etc/os-release"
 _CPU_COMMAND = ("sysctl", "-n", "machdep.cpu.brand_string")
 _OS_COMMAND = ("sw_vers", "-productVersion")
 _LSCPU = ("env", "LC_ALL=C", "lscpu")
+_NOT_FOUND = 127
+_UNNAMED = b"-"
 _RUN = re.compile(rb"[ \t]+")
 _STRING = re.compile(rb"[\x20-\x7e]+")
 _MICROSOFT = re.compile("microsoft", re.ASCII | re.IGNORECASE)
@@ -356,7 +361,7 @@ def _file_lines(fact, path):
 def _cpuinfo_model_name(timeout_s):
     value = _labelled(_file_lines("host.cpu", _CPUINFO), b"model name")
     if value is None:
-        value = _lscpu_model_name(timeout_s)
+        return _lscpu_model_name(timeout_s)
     return _spelling("host.cpu", value)
 
 
@@ -365,14 +370,16 @@ def _lscpu_model_name(timeout_s):
     try:
         result = _run(_LSCPU, timeout_s)
     except local_run.ProgramNotFoundError:
-        raise UnreadableFactError(
-            f"host.cpu: {_CPUINFO} has no model name line and `{shown}` was not found"
-        ) from None
+        result = None
     except OSError as error:
         reason = type(error).__name__
         raise UnreadableFactError(
             f"host.cpu: `{shown}` could not be started ({reason})"
         ) from None
+    if result is None or result.returncode == _NOT_FOUND:
+        raise UnreadableFactError(
+            f"host.cpu: {_CPUINFO} has no model name line and `{shown}` was not found"
+        )
     if result.timed_out:
         raise UnreadableFactError(
             f"host.cpu: `{shown}` did not finish within {timeout_s} s"
@@ -387,6 +394,9 @@ def _lscpu_model_name(timeout_s):
             f"host.cpu: {_CPUINFO} has no model name line "
             f"and `{shown}` no Model name line"
         )
+    value = _spelling("host.cpu", value)
+    if value == _UNNAMED:
+        raise UnreadableFactError(f"host.cpu: `{shown}` does not name the processor")
     return value
 
 
