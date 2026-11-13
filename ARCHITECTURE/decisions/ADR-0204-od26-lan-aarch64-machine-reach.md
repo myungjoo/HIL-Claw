@@ -71,7 +71,7 @@ The machine runs other services, and its frequency governor is `ondemand` (this 
 - **ADR-0144 decisions 4 and 5 and ADR-0186**: the builds and processes of a run are carried out in a container of a named image, never on the host, and `toolchain.clang` is read in that image. A host build is the fallback decision 4 refuses. A demonstration that does not follow them does not show that "the C kernel path of `cpu_standin`" runs there.
 - **What the machine offers without an install**: gcc and Docker, no clang and no image of ADR-0144 (Context). Following the records there needs an image built or pulled on the machine, or clang installed on it — each an install that D31 ③ and D29 leave to the owner's approval (cited: PLAN P3-17, "설치나 내려받기(컨테이너 이미지 포함)가 필요해지면 D29의 요청 경로대로 HQ로 올린다").
 
-The question is open and **the next task of PLAN P3-17 (build, correctness and measurement on the machine) waits on the owner's answer**. Nothing is substituted in this task.
+The owner answered (b), an image built or pulled on the machine (HQ-0101; recorded in [ADR-0205](ADR-0205-od26-aarch64-standin-image-and-remote-evaluation.md) decision 1). Nothing is substituted in this task.
 
 ### 10. A-13 reading
 
@@ -92,15 +92,15 @@ No data-plane file, member, value or version changes; no runtime tool, backend e
 - A driver task with `HILCLAW_AARCH64_SSH` set can run commands and keep files in its own directory on the machine, and read its environment with the same component table as the host check.
 - A remote program's own exit status 255 is reported as an ssh failure.
 - A timed-out remote program may outlive the call on the machine; a task removes its directory at its end either way.
-- PLAN P3-17's C kernel path waits on the owner's answer to decision 9.
+- PLAN P3-17's C kernel path follows the owner's answer to decision 9 ([ADR-0205](ADR-0205-od26-aarch64-standin-image-and-remote-evaluation.md)).
 
 ## Boundaries (not decided here)
 
 - **#5 B-2** (owner): the general LAN backend, endpoints, transport, quota and reservation, and a `board.run` or `sim.run` over the network.
 - **The rest of OD-26**: registration, its schema, who registers and how.
 - **OD-18 ⑫**: the emulated `sim.run` of a board of a non-native ISA.
-- **The hw_profile of a kernel built and run on this machine** and the separation of its records by key (ADR-0001; ADR-0035 decision 2's "not covered"): the next task of PLAN P3-17.
-- **Decision 9's question** (owner) and **what may be installed on the machine** (D31 E6's unanswered part).
+- **The hw_profile of a kernel built and run on this machine** and the separation of its records by key (ADR-0001; ADR-0035 decision 2's "not covered"): decided in [ADR-0205](ADR-0205-od26-aarch64-standin-image-and-remote-evaluation.md).
+- **What may be installed on the machine** beyond the images of HQ-0101 (b) (D31 E6's unanswered part); decision 9's question is answered ([ADR-0205](ADR-0205-od26-aarch64-standin-image-and-remote-evaluation.md) decision 1).
 - Any other machine or accelerator.
 
 ## References
