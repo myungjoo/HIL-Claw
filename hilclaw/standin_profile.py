@@ -74,10 +74,10 @@ and no record is returned. Nothing is substituted: no placeholder, no cut or
 transliterated text and no value from another source.
 
 What the module does not do: it registers and stores nothing, is bound to no
-tool and has no command-line entry; the one caller of :func:`local_record` is
+tool and has no command-line entry; the callers of :func:`local_record` are
 the nightly entry :mod:`hilclaw.nightly`, which puts the record into its own
-instance (:mod:`hilclaw.remote_eval` calls it on another machine, in a
-process of its own there), and :mod:`hilclaw.check_definition` and :mod:`hilclaw.start_instance`
+instance, and :mod:`hilclaw.remote_eval`, which runs it on another machine in
+a process of its own there; and :mod:`hilclaw.check_definition` and :mod:`hilclaw.start_instance`
 read :data:`ACCELERATOR` alone, and :mod:`hilclaw.targets` reads
 :data:`ACCELERATOR` and :data:`VIRTUAL_NPU`. It knows no accelerator but
 these two and no other machine than the one the process runs on, adds no

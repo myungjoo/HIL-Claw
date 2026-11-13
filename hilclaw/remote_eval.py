@@ -129,7 +129,9 @@ def prepare(task, *, timeout_s, archive=None, environ=None, ssh=remote_run.SSH):
     ``archive`` is the ``tar`` bytes of the package (default :func:`snapshot`).
     Refuses ``task``, ``timeout_s`` and the destination as :func:`evaluate`
     does, before anything is started, and raises :class:`RemoteStepError` for
-    a step that did not end with status 0.
+    a step that did not end with status 0. Without ``archive``, what
+    :func:`snapshot` raises is passed on (:class:`subprocess.CalledProcessError`,
+    :class:`subprocess.TimeoutExpired`).
     """
     _check(task, timeout_s, environ)
     if archive is None:
