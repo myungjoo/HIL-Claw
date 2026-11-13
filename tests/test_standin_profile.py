@@ -37,6 +37,7 @@ CPUINFO_PATH = "/proc/cpuinfo"
 OS_RELEASE_PATH = "/etc/os-release"
 SYSCTL = ("sysctl", "-n", "machdep.cpu.brand_string")
 SW_VERS = ("sw_vers", "-productVersion")
+LSCPU = ("env", "LC_ALL=C", "lscpu")
 LINUX = ("Linux", "0.0.0-0-generic")
 WSL = ("Linux", "0.0.0.0-microsoft-standard-WSL2")
 DARWIN = ("Darwin", "0.0.0")
@@ -94,6 +95,7 @@ class Machine:
         self.image_clang = CLANG_OUTPUT
         self.sysctl = CPU_BYTES + b"\n"
         self.sw_vers = b"0.0\n"
+        self.lscpu = ProgramNotFoundError("env")
         self.asked = []
         self.timeouts = []
 
@@ -112,7 +114,8 @@ class Machine:
         command = tuple(command)
         self.asked.append(command)
         self.timeouts.append(timeout_s)
-        outcome = {SYSCTL: self.sysctl, SW_VERS: self.sw_vers}.get(command, self.clang)
+        answers = {SYSCTL: self.sysctl, SW_VERS: self.sw_vers, LSCPU: self.lscpu}
+        outcome = answers.get(command, self.clang)
         if isinstance(outcome, Exception):
             raise outcome
         return done(0, outcome) if isinstance(outcome, bytes) else outcome
@@ -131,7 +134,7 @@ class Machine:
     def nothing_stands_in(self):
         allowed = {"kernel", (standin_default(), "--version")}
         if self.kernel[0] == "Linux":
-            allowed |= {CPUINFO_PATH, OS_RELEASE_PATH}
+            allowed |= {CPUINFO_PATH, OS_RELEASE_PATH, LSCPU}
         if self.kernel[0] == "Darwin":
             allowed |= {SYSCTL, SW_VERS}
         return set(self.asked) <= allowed and len(self.asked) == len(set(self.asked))
@@ -1085,6 +1088,7 @@ def test_module_is_bound_by_the_start_only_and_imports_no_store():
             start,
             package / "check_definition.py",
             package / "nightly.py",
+            package / "remote_eval.py",
             package / "targets.py",
         ):
             assert "standin_profile" not in path.read_text(encoding="utf-8"), path.name
@@ -1310,3 +1314,72 @@ def test_a_fact_that_cannot_be_read_gives_no_virtual_npu_record(machine):
         local_record(
             "external", timeout_s=TIMEOUT, accelerator=standin_profile.VIRTUAL_NPU
         )
+
+
+ARM_CPUINFO = b"processor\t: 0\nBogoMIPS\t: 108.00\nCPU part\t: 0xd0b\n"
+LSCPU_OUTPUT = (
+    b"Architecture:                         aarch64\n"
+    b"Vendor ID:                            ARM\n"
+    b"Model name:                           Cortex-A76\n"
+    b"Model name:                           Cortex-A55\n"
+)
+
+
+def test_a_machine_without_model_name_reads_lscpu(machine):
+    machine.files[CPUINFO_PATH] = ARM_CPUINFO
+    machine.lscpu = LSCPU_OUTPUT
+    record = local_record("external", timeout_s=TIMEOUT)
+    assert record["host"]["cpu"] == "Cortex-A76"
+    assert LSCPU in machine.asked
+    assert machine.nothing_stands_in()
+    hw_profile_key(record)
+
+
+def test_lscpu_under_wsl_is_read_as_under_linux(machine):
+    machine.kernel = ("Linux", "5.15.0-microsoft-standard-WSL2")
+    machine.files[CPUINFO_PATH] = ARM_CPUINFO
+    machine.lscpu = b"Model name: \t Example  Core \r\n"
+    record = local_record("external", timeout_s=TIMEOUT)
+    assert record["host"]["cpu"] == "Example Core"
+    assert record["host"]["os"].startswith("wsl ")
+
+
+def test_a_model_name_line_never_starts_lscpu(machine):
+    machine.lscpu = LSCPU_OUTPUT
+    record = local_record("external", timeout_s=TIMEOUT)
+    assert record["host"]["cpu"] == CPU
+    assert LSCPU not in machine.asked
+
+
+@pytest.mark.parametrize(
+    ("outcome", "reason"),
+    [
+        (ProgramNotFoundError("env"), "was not found"),
+        (done(127), "was not found"),
+        (b"Model name: -\n", "does not name the processor"),
+        (b"Model name: \t-  \n", "does not name the processor"),
+        (PermissionError("denied"), "could not be started (PermissionError)"),
+        (done(None), "did not finish"),
+        (done(1, LSCPU_OUTPUT), "ended with status 1"),
+        (b"", "no Model name line"),
+        (b"Architecture: aarch64\nmodel name: Cortex-A76\n", "no Model name line"),
+        (b"Model name x: Cortex-A76\nModel  name: Cortex-A76\n", "no Model name line"),
+        (b"Model name:\n", "the value is empty"),
+        (b"Model name: \t \n", "the value is empty"),
+        (b"Model name: caf\xc3\xa9\n", "outside 0x20 to 0x7E"),
+        (b"Model name: A\x7fB\n", "outside 0x20 to 0x7E"),
+        (b"Model name: " + b"a" * 256 + b"\n", "longer than 255"),
+    ],
+)
+def test_lscpu_that_cannot_be_read(machine, outcome, reason):
+    machine.files[CPUINFO_PATH] = ARM_CPUINFO
+    machine.lscpu = outcome
+    message = fails(machine, "host.cpu")
+    assert reason in message
+    assert OS_RELEASE_PATH not in machine.asked
+
+
+def test_lscpu_text_never_reaches_the_message(machine):
+    machine.files[CPUINFO_PATH] = ARM_CPUINFO
+    machine.lscpu = b"Model name: secret\xff\n"
+    assert "secret" not in fails(machine, "host.cpu")
