@@ -44,6 +44,13 @@ The rules, in short:
                                               ``/etc/os-release``
   ==========================================  =======================================
 
+  Under Linux and WSL, when ``/proc/cpuinfo`` has no ``model name`` line,
+  ``host.cpu`` is taken from the output of ``lscpu`` started with
+  ``LC_ALL=C``: the text after the first colon of its first line whose text
+  before that colon, without spaces and tabs at both ends, is ``Model name``
+  (``ARCHITECTURE/decisions/ADR-0205-od26-aarch64-standin-image-and-remote-evaluation.md``
+  decision 5). A machine with a ``model name`` line never starts ``lscpu``.
+
   A value of ``/etc/os-release`` is the text after ``ID=`` or ``VERSION_ID=``
   on the first line that starts so, without one pair of double or single quotes
   around the whole of it. The words of ``host.os`` are joined by single spaces.
@@ -84,7 +91,8 @@ started. Otherwise the module starts through :func:`hilclaw.local_run.run`
 :func:`hilclaw.standin_container.run_in_container` running ``clang
 --version`` (and that client's one forced removal after a timeout or an
 interrupted run), and, for the kernel name ``Darwin`` only, ``sysctl -n
-machdep.cpu.brand_string`` and ``sw_vers -productVersion``. It reads the two files named above and no other,
+machdep.cpu.brand_string`` and ``sw_vers -productVersion``, and, under Linux without a ``model name`` line,
+``lscpu``. It reads the two files named above and no other,
 and writes no file; with an image it makes one empty temporary directory for
 the container and removes it. Every fact is read at each call and nothing is
 kept between calls.
@@ -108,6 +116,7 @@ _CPUINFO = "/proc/cpuinfo"
 _OS_RELEASE = "/etc/os-release"
 _CPU_COMMAND = ("sysctl", "-n", "machdep.cpu.brand_string")
 _OS_COMMAND = ("sw_vers", "-productVersion")
+_LSCPU = ("env", "LC_ALL=C", "lscpu")
 _RUN = re.compile(rb"[ \t]+")
 _STRING = re.compile(rb"[\x20-\x7e]+")
 _MICROSOFT = re.compile("microsoft", re.ASCII | re.IGNORECASE)
@@ -160,7 +169,8 @@ def local_record(
     exactly a ``str`` and :class:`ValueError` for another ``str``. Raises
     :class:`UnreadableFactError` when a fact cannot be read. The cases of the
     record: a command that is not found or ends with a status other than 0; a
-    file that is missing; no ``model name`` line; no ``ID`` line; an ``ID`` or
+    file that is missing; no ``model name`` line and no ``Model name`` line of
+    ``lscpu``; no ``ID`` line; an ``ID`` or
     a ``VERSION_ID`` that, without its quotes, is empty or holds a space or a
     tab; a kernel name other than ``Darwin`` and ``Linux``, compared as it is;
     and a value that after the spelling rule is empty, longer than 255
@@ -221,7 +231,7 @@ def local_record(
             _command_line("host.os", _OS_COMMAND, " ".join(_OS_COMMAND), timeout_s),
         ]
     else:
-        cpu = _cpuinfo_model_name()
+        cpu = _cpuinfo_model_name(timeout_s)
         lines = _file_lines("host.os", _OS_RELEASE)
         distribution = _os_release_value(lines, b"ID")
         if distribution is None:
@@ -343,12 +353,49 @@ def _file_lines(fact, path):
         raise UnreadableFactError(f"{fact}: {path} cannot be read ({reason})") from None
 
 
-def _cpuinfo_model_name():
-    for line in _file_lines("host.cpu", _CPUINFO):
+def _cpuinfo_model_name(timeout_s):
+    value = _labelled(_file_lines("host.cpu", _CPUINFO), b"model name")
+    if value is None:
+        value = _lscpu_model_name(timeout_s)
+    return _spelling("host.cpu", value)
+
+
+def _lscpu_model_name(timeout_s):
+    shown = "LC_ALL=C lscpu"
+    try:
+        result = _run(_LSCPU, timeout_s)
+    except local_run.ProgramNotFoundError:
+        raise UnreadableFactError(
+            f"host.cpu: {_CPUINFO} has no model name line and `{shown}` was not found"
+        ) from None
+    except OSError as error:
+        reason = type(error).__name__
+        raise UnreadableFactError(
+            f"host.cpu: `{shown}` could not be started ({reason})"
+        ) from None
+    if result.timed_out:
+        raise UnreadableFactError(
+            f"host.cpu: `{shown}` did not finish within {timeout_s} s"
+        )
+    if result.returncode != 0:
+        raise UnreadableFactError(
+            f"host.cpu: `{shown}` ended with status {result.returncode}"
+        )
+    value = _labelled(_lines(result.stdout), b"Model name")
+    if value is None:
+        raise UnreadableFactError(
+            f"host.cpu: {_CPUINFO} has no model name line "
+            f"and `{shown}` no Model name line"
+        )
+    return value
+
+
+def _labelled(lines, label):
+    for line in lines:
         name, colon, value = line.partition(b":")
-        if colon and name.strip(b" \t") == b"model name":
-            return _spelling("host.cpu", value)
-    raise UnreadableFactError(f"host.cpu: {_CPUINFO} has no model name line")
+        if colon and name.strip(b" \t") == label:
+            return value
+    return None
 
 
 def _os_release_value(lines, name):
