@@ -301,6 +301,8 @@ def test_the_device_line_is_spelt(machine, stdout, revision, driver):
         (b"Example GPU, 8, 617.14\n", "revision", "not <major>.<minor>"),
         (b"Example GPU, 8.x, 617.14\n", "revision", "not <major>.<minor>"),
         (b"Example GPU, 8.9.1, 617.14\n", "revision", "not <major>.<minor>"),
+        (b"Example GPU, 08.9, 617.14\n", "revision", "not <major>.<minor>"),
+        (b"Example GPU, 8.09, 617.14\n", "revision", "not <major>.<minor>"),
         (b"Example GPU, [N/A], 617.14\n", "revision", "not <major>.<minor>"),
         (b"Example GPU, , 617.14\n", "revision", "the value is empty"),
         (b" , 8.9, 617.14\n", "revision", "the value is empty"),
