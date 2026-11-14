@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P3",
-  "currentTask": "T-0569",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:0328cc11",
-    "acquiredAt": "2026-11-14T08:22:27Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -1016,18 +1012,34 @@
       "issueComment": null,
       "resolvedAt": "2026-11-13T16:27:47Z",
       "decision": "(b) — 그 머신에서 `cpu_standin` 이미지(arm64, clang 포함)를 빌드하거나 pull하는 것을 승인한다. 오너(채팅, 2026-11-14): \"허용\" — 통합자 세션의 질문 \"aarch64 머신에서 Docker 이미지 내려받기·빌드를 허용할까요?\"에 대한 답이다(https://github.com/myungjoo/HIL-Claw/issues/5#issuecomment-6858780049). 통합자 독해(오너의 말이 아님): 오너는 이 HQ의 문안이 아니라 통합자 세션의 질문에 답했고, 그 질문이 구하는 허락이 선택지 (b)와 같으므로 (b)로 기록한다. (a)·(c)는 택하지 않았다 — host에는 아무것도 설치하지 않고 host의 gcc로 clang을 대신하지 않으며, #5 A-7·ADR-0035 결정 3·ADR-0144 결정 4·5는 그대로다. 허락의 범위는 그 한 머신에서 P3-17의 실증에 필요한 컨테이너 이미지다(빌드가 받는 base 이미지와 이미지 안에 넣는 패키지 포함); host 패키지와 그 밖의 내려받기, 다른 머신의 것은 D29의 요청 경로 그대로다."
+    },
+    {
+      "id": "HQ-0102",
+      "taskId": "T-0569",
+      "reason": "data-plane-schema-change",
+      "question": "(A-13 틀의 변경, OD-33 ①·⑤·⑥; PLAN P3-12; 형식은 [ADR-0206](ARCHITECTURE/decisions/ADR-0206-od33-llm-level-evaluation.md) 결정 6.1·6.3·6.4) [쟁점] HQ-0096 ① (b)로 LLM 수준 지표(prefill·decode 초당 토큰, 첫 토큰까지의 시간, decode 토큰당 시간, 최대 메모리; latency·throughput 양쪽; 배치 크기·동시 요청 수 1)가 정해졌다. 측정 방법(무엇을 어떤 시계로 재는지, 품질 floor와의 관계)은 ADR-0206 결정 3~5가 정했다: 판정은 지금의 `model_check` 그대로, 시간은 같은 커널로 도는 graph program의 별도 run R번(홀수)에서 pass 경계의 `CLOCK_MONOTONIC`으로, 최대 메모리는 그 프로세스의 `ru_maxrss`로 잰다. 남은 것은 데이터 plane에 드는 세 가지다. [선택지] ① 주어진 LLM 전체 코드: ADR-0200의 묶음(계약 하나를 구현하는 C 파일 하나)이 아니고 그 묶음 형식은 OD-33 ①의 남은 부분이다. (a) 지금은 두지 않음 — 지금의 평가 대상은 run 커널로 엮은 Llama이고, 처음 필요한 task(벤더 프로그램 등)가 그 형식으로 묻는다 (b) 지금 둔다: graph program의 명령줄·입력 파일·보고(시간 측정 형식 포함)를 구현하는 C 소스 파일 하나를 ADR-0200의 묶음처럼 blob으로 두고 대상의 flag로 빌드해 graph program 자리에서 실행 — 그 인터페이스는 커널 라이브러리를 부르는 call plan(`<input file> <library> …`)이어서 주어진 프로그램은 넘겨받은 run 커널을 부르거나(그러면 LLM 전체 코드라 보기 어렵다) 무시하며, 어느 쪽이든 품질 floor는 대리로만 미친다: `model_check`는 run 커널로 만든 `model_forward.c`의 생성을 판정하고(모든 call site에 run이 필요하고 바꿀 수 없다 — ADR-0193 결정 5) 주어진 프로그램은 그 생성과 토큰 일치로만 묶이므로, 주어진 코드의 평가에도 run binding이 필요하다; record에는 6.4에 없는 멤버(blob 해시, `\"graph\"` 밖의 `program` 값)가 필요하고 (b)는 그것도 함께 승인하는 것이다; 인터페이스가 사용자가 맞춰 쓰는 계약이 되어 굳고, 벤더 프로그램(QNN·CUDA)은 이 CPU 파일 인터페이스로 바로 들어오지 못한다 (c) 그 밖(형식 지정). ② LLM 전체 코드의 키: (a) 모든 bound run이 공유하는 `hw_profile` 키 + 모델 식별 `{config_sha256, tokenizer_sha256, weights_sha256}`(모델 디렉토리의 `config.json` 바이트의 SHA-256, `tokenizer.json` 바이트의 SHA-256, safetensors 파일들의 바이트를 이름 순으로 이은 것의 SHA-256 하나 — shard 색인 파일은 해시하지 않음; 디렉토리는 HQ-0084 ②대로 데이터 plane 밖) + 코드 식별은 binding(call site별 run id와 incumbent 시도); `db/` 색인은 읽는 쪽이 생길 때까지 두지 않음; bound run의 `hw_profile` 키가 둘 이상이면 평가를 거부; 평가 문서가 instance 시작 요청처럼 평가하는 머신의 `hw_profile` record를 적고, 그 키가 run들의 키와 다르면 거부(머신에서 `hw_profile`을 끌어내는 probe는 지금 없으므로 사용자의 진술까지) (b) (a)에 더해 `db/<hw_profile_key>/` 아래에 모델 식별로 찾는 색인 (c) 해시 대신 사용자가 주는 모델 이름 문자열. ③ 기록: (a) 새 record — `db/<hw_profile_key>/llm_eval.ndjson`, 평가 하나가 JSON 한 줄, 평가 명령이 append하고 데이터 저장소에 한 commit으로 남김, 키 디렉토리가 없으면 지금처럼 `hw_profile.json`과 함께 만듦(이름에 점이 있어 키 디렉토리와 겹치지 않음; ADR-0004 결정 5가 OD-20·OD-7에 남긴 키 디렉토리의 그 밖의 파일을, 승격 단계도 디렉토리를 만드는 쪽도 아닌 명령이 쓰는 틀 변경) (b) 기존 record에 멤버 묶음 — bound run마다 `events.ndjson`에 새 `step` 값 `llm_eval_v1`의 `step_ended` 줄(bound run마다 한 벌 — 최대 15, run 하나가 여러 call site를 맡을 수 있음 — 또는 규칙 없이 고른 run 하나) (c) 새 4번째 최상위 디렉토리 `evals/<eval_id>.json`(ADR-0004 결정 1) (d) 데이터 plane에 쓰지 않고 `model_check`처럼 표준 출력 JSON 한 줄만 — 조회(FR-13)·감사(NFR-2)·평가 사이의 진행 비교(FR-19 ①)·재사용(FR-18)을 잃는다. (a)~(c)에서 줄을 남기는 평가: (가) 수치에 이른 평가만(`verdict`가 `match`나 `no_match`; 검사의 다른 결과, 시간 측정 run의 실패, binding의 변화, 토큰 불일치로 끝난 평가는 줄을 남기지 않고 표준 출력으로만 알림) (나) 검사가 판정에 이른 모든 평가가 줄을 남기고 멤버 `outcome`(명령의 결과 이름)을 둔다(판정 전에 끝난 평가 — 문서·모델 파일·키·토크나이저·빌드·컨테이너·reference — 는 `prompt_length`나 컴파일러 버전 줄을 모를 수 있어 표준 출력으로만); 수치가 없는 줄에서 `resolution_ns`부터 뒤의 멤버는 없고 나머지 멤버는 필수 — 비결정적 커널의 신호인 토큰 불일치, 시간 측정 run의 실패, 움직인 binding도 남는다. (a)~(c)의 record와 (d)의 출력 줄에 같은 멤버(표시한 것 밖은 필수, ADR-0206 결정 6.4 표; 오너가 정한 지표·배치·동시 요청 밖의 멤버는 실행자의 제안): `schema_version` 1(다른 값은 거부), `eval_id`(`run_id` 형식), `started_at`(UTC `YYYY-MM-DDTHH:MM:SSZ`), `source_commit`(40 hex, 선택 — 소스가 정확히 한 commit이 아닐 때의 처리는 OD-8 ⑳이어서 `instance.json`처럼 없을 수 있음), `hw_profile_key`, `model`(②), `binding`(call site → `{run_id, round, candidate, attempt}`; 결정 5의 첫 binding), `toolchain`(`{compiler, image, flags, program_flags, program_trailing_flags}`), `program` `\"graph\"`, `graph_sha256`, `dtype` `\"bf16\"`, `batch_size` 1, `concurrent_requests` 1, `prompt_length`(S), `prompt_token_ids`(프롬프트의 토큰 id S개 — 같은 입력으로 다시 평가할 수 있게), `rtol`·`atol`(`model_check`가 판정에 쓴 사용자의 허용 오차 — 없으면 `match`가 어느 허용 오차에서인지 알 수 없다), `generation_length`(G), `repetitions`(R, 홀수), `verdict`(`\"match\"`/`\"no_match\"` — `model_check`의 판정; `no_match` 평가의 수치도 기록하되 이 멤버로 표시하고, floor를 넘는 것은 `match`의 수치뿐), `resolution_ns`(R개 run이 보고한 해상도의 최대), `pass_ns`(R개 run 각각의 pass별 ns 정수 G개, 각 ≥ 1 — 0인 구간은 그 run의 실패), `run_memory_bytes`(run별 바이트 정수 또는 `null`), 요약 `time_to_first_token_ns`·`decode_time_per_token_ns`(run별 값의 중앙값)·`prefill_tokens_per_s`·`decode_tokens_per_s`(그 두 요약에서 유도 — decode 속도는 decode 시간 요약의 역수, prefill 속도는 S × 10⁹ / 첫 토큰까지의 시간 요약; G = 1이면 decode의 두 멤버는 없음)·`peak_memory_bytes`(정수 항목의 최대, 모두 `null`일 때만 `null`). 시간은 ns(`_ns` 이름; 평균인 `decode_time_per_token_ns`만 수, 나머지는 정수), 속도는 초당 토큰, 메모리는 바이트 — 승인된 열린 목록 \"측정 단위\"는 `sim.run`·`board.run` 결과의 `intervals`·`resolution`에만 미치므로(HQ-0090 (가)) 이 record에는 `unit` 멤버를 두지 않는다. 요약은 원자료에서 다시 계산되며 validator가 대조한다. 실행자의 권고(결정 아님): ① (a), ② (a), ③ (a)와 (가) — 지금 있는 것으로 진행 정도 측정을 먼저 열고, 키 색인과 새 자리는 읽는 쪽이 생기기 전에 만들지 않으며, 기록은 run에 속하지 않는 평가를 `hw_profile` 아래 한 파일에 모은다. [막히는 것] ①: 주어진 LLM 전체 코드의 평가; ②·③: ADR-0206 결정 7의 slice 3(record writer·validator)과 slice 4(명령), PLAN P3-12의 체크. [막히지 않는 것] slice 1·2(graph program의 시간 측정 형식과 컨테이너 경로·최대 메모리 — ADR-0206만 필요), P3-16, 오너의 P2-15 확인(RA-0056), 그 밖의 P3 항목과 task.",
+      "askedAt": "2026-11-14T09:23:28Z",
+      "issueComment": null
+    },
+    {
+      "id": "HQ-0103",
+      "taskId": "T-0569",
+      "reason": "owner-decision",
+      "question": "(OD-33 ⑤; PLAN P3-12; 형식은 [ADR-0206](ARCHITECTURE/decisions/ADR-0206-od33-llm-level-evaluation.md) 결정 3·6.2. HQ-A와 함께 답해도 된다) [쟁점] LLM 수준 지표는 프롬프트 길이 S와 생성 길이 G에 달려, S·G가 다른 평가의 수치는 비교할 수 없다. 반복 횟수 R은 중앙값이 한 run이 되도록 홀수다(ADR-0206 결정 3). [선택지] (a) 평가마다 사용자의 값 — S는 프롬프트에서, G는 `model_check`의 `n`, R(홀수), 모두 기본값 없음, record에 적고 S·G가 다른 평가의 수치는 비교하지 않음 (b) 오너가 고정 — 평가용 프롬프트 문장 하나, 또는 S·G 값과 홀수 R을 지정하고 모든 평가가 그것을 씀 (c) 그 밖. 실행자의 권고(결정 아님): (a) — `model_check`의 \"모든 값은 사용자의 것\"과 같은 모양이고, 비교 가능성은 record의 S·G로 지킨다. [막히는 것] ADR-0206 결정 7 slice 4의 명령 문서 형식((b)이면 고정값을 넣음). [막히지 않는 것] slice 1·2, HQ-A에 달린 slice 3, P3-16, 오너의 P2-15 확인(RA-0056), 그 밖의 P3 항목과 task.",
+      "askedAt": "2026-11-14T09:23:28Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 598,
-    "tasksDone": 562,
+    "iterations": 599,
+    "tasksDone": 563,
     "tasksBlocked": 37,
-    "reviewRoundsTotal": 1794
+    "reviewRoundsTotal": 1804
   },
   "lastIteration": {
-    "at": "2026-11-13T17:49:28Z",
-    "owner": "AKIHA:c9743d66",
-    "taskId": "T-0568",
+    "at": "2026-11-14T09:23:28Z",
+    "owner": "AKIHA:0328cc11",
+    "taskId": "T-0569",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

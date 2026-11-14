@@ -2,7 +2,7 @@
 id: T-0569
 title: Apply HQ-0096 (1) (b) for PLAN P3-12 — write the §9 ADR for LLM-level evaluation (the subject evaluated, the metric definitions and how they are measured, the key of LLM-wide code, the concrete record form to put to the owner), update the registers, and return the record form as an HQ
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: doc
 coversReq: [D27, FR-19, OD-33, OD-32, C-6, "PLAN P3-12", HQ-0096]
 dependsOn: []
