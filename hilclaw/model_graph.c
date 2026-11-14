@@ -15,9 +15,9 @@
  * floating-point arithmetic: the scalars and float tables are passed through
  * to kernels, every other element is a uint16_t bf16 pattern that is only
  * copied, and the selection orders patterns by an integer key. Only the
- * timed mode reads a clock,
- * CLOCK_MONOTONIC; it reads no environment variable and no standard input; it
- * needs the C library and POSIX.1-2008 only, <dlfcn.h> and <time.h> included.
+ * timed mode reads a clock, CLOCK_MONOTONIC; it reads no environment
+ * variable and no standard input; it needs the C library and POSIX.1-2008
+ * only, <dlfcn.h> and <time.h> included.
  *
  * Command line, at least two arguments:
  *
@@ -61,14 +61,15 @@
  * generation mode; in the timed mode a pass of other than 1 output row (the
  * plan of lm_head_rows "last"); an array of 0 elements, an element size
  * other than 2 or 4, a role above 1 or a filled array of 4-byte elements; a
- * scalar that is not finite or not above 0; a pass of 0 steps or 0 output rows, or whose
- * output rows run past the output array; an unknown op; a library index not
- * below the number of libraries; a shape word of 0 but embed's first token;
- * a rope d that is odd, an sdpa h not a multiple of h_kv or l below m; an operand
- * array index not below A, a range past its array, an element size other
- * than the operand's (4 for freqs_cis, 2 otherwise), two operands of a step
- * whose ranges in one array overlap; a scalar index not below K; an embed
- * whose tokens are not below S + the pass index; a token id not below V.
+ * scalar that is not finite or not above 0; a pass of 0 steps or 0 output
+ * rows, or whose output rows run past the output array; an unknown op; a
+ * library index not below the number of libraries; a shape word of 0 but
+ * embed's first token; a rope d that is odd, an sdpa h not a multiple of
+ * h_kv or l below m; an operand array index not below A, a range past its
+ * array, an element size other than the operand's (4 for freqs_cis, 2
+ * otherwise), two operands of a step whose ranges in one array overlap; a
+ * scalar index not below K; an embed whose tokens are not below S + the pass
+ * index; a token id not below V.
  * The byte size of any table, array or the file that does not fit in size_t
  * or uint64_t is found before anything is allocated from it (status 3), as is
  * a failed allocation. A library lacking the entry point of a step's kind at
