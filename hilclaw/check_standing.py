@@ -9,6 +9,9 @@ module renders its decisions 2, 3 and 5 as one pure function of parsed lines:
   executable of the check was started". Every other ``failure`` kind is of
   class (ii), "a verdict may have existed", an unknown kind included: "any
   kind a later record adds unless that record places its situations in (i)".
+  ``ARCHITECTURE/decisions/ADR-0207-od33-cuda-target-demonstration.md``
+  decision 6 places ``device_unavailable`` in (i): its probe ends before the
+  verification executable is started.
 * :func:`standing`: the standing of the attempt ``(round, candidate,
   attempt)`` at the point ``step`` after the lines given. Every end line of
   that identity counts, an end line without a start line and a second end
@@ -84,6 +87,7 @@ UNSTARTED_KINDS = frozenset(
         check_failure.KIND_COMPILER_UNAVAILABLE,
         check_failure.KIND_BUILD_OUTPUT_MISSING,
         check_failure.KIND_EXECUTABLE_UNSTARTABLE,
+        check_failure.KIND_DEVICE_UNAVAILABLE,
     }
 )
 

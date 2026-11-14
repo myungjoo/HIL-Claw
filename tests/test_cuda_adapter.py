@@ -19,6 +19,8 @@ from hilclaw.cuda_adapter import (
     assemble_run,
     assemble_timing,
     build,
+    check_device,
+    device_outcome,
     device_probe,
     interpret_container_probe,
     interpret_device_probe,
@@ -876,3 +878,149 @@ def test_real_gpu_hang_is_time_limit_and_leaves_the_gpu_usable(gpu, tmp_path):
     after = built_timing(tmp_path, "timing")
     answer = measure(make_target(), after, GPU_PARAMETERS, timeout_s=LIMIT)
     judged(answer, GPU_PARAMETERS)
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        recorded(returncode=6),
+        recorded(returncode=9),
+        recorded(returncode=12),
+        local_run.ProgramNotFoundError("nvidia-smi"),
+        recorded(returncode=2),
+        recorded(returncode=None, timed_out=True),
+        recorded(stdout=b"No comma here\n"),
+    ],
+    ids=[
+        "no-gpu",
+        "no-driver",
+        "no-nvml",
+        "tool-absent",
+        "other-status",
+        "time-limit",
+        "no-line",
+    ],
+)
+def test_device_outcome_of_every_probe_without_a_usable_device_is_device_unavailable(
+    answer,
+):
+    found = interpret_device_probe(answer, "nvidia-smi")
+    outcome = device_outcome(found)
+    assert_form(outcome, TOOL_FAILURE, kind="device_unavailable")
+    assert outcome.message == found.message
+    assert outcome.carried is None
+
+
+def test_device_outcome_of_a_usable_device_goes_on_with_its_version():
+    found = interpret_device_probe(
+        recorded(stdout=b"NVIDIA GeForce RTX 4070, 617.14\n"), "nvidia-smi"
+    )
+    outcome = device_outcome(found)
+    assert_form(outcome, GO_ON)
+    assert outcome.carried == "NVIDIA GeForce RTX 4070 (driver 617.14)"
+
+
+def test_device_outcome_keeps_the_no_device_message_apart_from_the_absent_tool():
+    no_device = device_outcome(Probe(ABSENT, None, NO_DEVICE))
+    absent = device_outcome(
+        interpret_device_probe(local_run.ProgramNotFoundError("x"), "x")
+    )
+    assert no_device.message == NO_DEVICE
+    assert absent.message != NO_DEVICE
+    assert no_device.kind == absent.kind == "device_unavailable"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, ("present", "v", "m"), "absent", Probe._make, b"absent"],
+    ids=["none", "tuple", "str", "callable", "bytes"],
+)
+def test_device_outcome_refuses_what_is_no_probe(value):
+    with pytest.raises(TypeError) as caught:
+        device_outcome(value)
+    assert caught.value.parameter == "found"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        Probe("missing", None, "m"),
+        Probe(PRESENT, None, "m"),
+        Probe(PRESENT, b"GPU", "m"),
+        Probe(ABSENT, None, None),
+        Probe(UNREADABLE, None, b"m"),
+    ],
+    ids=[
+        "state",
+        "present-without-version",
+        "bytes-version",
+        "no-message",
+        "bytes-message",
+    ],
+)
+def test_device_outcome_refuses_a_probe_no_reading_gives(value):
+    with pytest.raises(ValueError) as caught:
+        device_outcome(value)
+    assert caught.value.parameter == "found"
+
+
+@pytest.mark.parametrize("status", [6, 9, 12])
+def test_fault_check_device_without_a_device_or_driver_is_device_unavailable(
+    script, status
+):
+    # Stands for nvidia-smi on a machine with no GPU (6), no loaded driver (9)
+    # or no NVML library (12); the status only is read. Source: nvidia-smi
+    # documentation, "RETURN VALUE",
+    # https://docs.nvidia.com/deploy/nvidia-smi/index.html (read 2026-11-03).
+    outcome = check_device(timeout_s=LIMIT, program=script(STATUS % status))
+    assert_form(outcome, TOOL_FAILURE, kind="device_unavailable")
+    assert outcome.message == NO_DEVICE
+
+
+def test_fault_check_device_that_hangs_is_device_unavailable(script):
+    # Stands for nvidia-smi that never ends (ADR-0194 decision 6: the tool's own hang).
+    outcome = check_device(timeout_s=0.5, program=script(HANG))
+    assert_form(outcome, TOOL_FAILURE, kind="device_unavailable")
+    assert outcome.message != NO_DEVICE
+
+
+def test_check_device_with_the_query_program_absent_is_device_unavailable():
+    outcome = check_device(timeout_s=LIMIT, program=MISSING)
+    assert_form(outcome, TOOL_FAILURE, kind="device_unavailable")
+    assert outcome.message != NO_DEVICE
+
+
+@pytest.mark.parametrize(
+    ("arguments", "parameter"),
+    [
+        ({"timeout_s": 0}, "timeout_s"),
+        ({"timeout_s": "1"}, "timeout_s"),
+        ({"timeout_s": LIMIT, "program": ""}, "program"),
+        ({"timeout_s": LIMIT, "program": 3}, "program"),
+    ],
+)
+def test_check_device_refuses_its_arguments_before_anything_starts(
+    arguments, parameter, monkeypatch
+):
+    def started(*args, **kwargs):
+        raise AssertionError("a process was started")
+
+    monkeypatch.setattr(local_run, "run", started)
+    with pytest.raises((TypeError, ValueError)) as caught:
+        check_device(**arguments)
+    assert caught.value.parameter == parameter
+
+
+def test_check_device_passes_on_an_error_it_does_not_place(monkeypatch):
+    def failed(*args, **kwargs):
+        raise OSError(5, "I/O")
+
+    monkeypatch.setattr(local_run, "run", failed)
+    with pytest.raises(OSError):
+        check_device(timeout_s=LIMIT)
+
+
+def test_real_check_device_goes_on_with_a_usable_device(nvidia_smi):
+    outcome = check_device(timeout_s=LIMIT)
+    assert_form(outcome, GO_ON)
+    assert "(driver " in outcome.carried

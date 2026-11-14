@@ -11,9 +11,10 @@ the tool function, the part of its decisions 4 and 5 that needs no log:
   backend kind it is the kind and the message that were raised (decision 4).
 * :data:`KIND_OPERATION_FAILURE_INVALID`: the kind of decision 4.
 * :data:`BACKEND_KINDS`: the backend kinds of the contract as this source has
-  it (decision 5). They are eight, each named by a record with the situation
-  of ``ARCHITECTURE/decisions/ADR-0056-od18-correctness-check-verification-executable.md``
-  decision 5 it means. The two of ADR-0056 decision 6:
+  it (decision 5). They are nine, each named by a record with the situation
+  it means. Eight are of the situations of
+  ``ARCHITECTURE/decisions/ADR-0056-od18-correctness-check-verification-executable.md``
+  decision 5. The two of ADR-0056 decision 6:
   :data:`KIND_NO_KERNEL_SOURCE` for S1, the attempt has no kernel source,
   and :data:`KIND_KERNEL_SOURCE_UNREADABLE` for S2, the reader failed. The
   six of
@@ -27,17 +28,22 @@ the tool function, the part of its decisions 4 and 5 that needs no log:
   :data:`KIND_BUILD_OUTPUT_MISSING` for S9, after a status 0 no executable
   is at the path or it cannot be moved there; and
   :data:`KIND_EXECUTABLE_UNSTARTABLE` for S10, the executable cannot be
-  started. A tool failure of any other kind that an operation raises is
-  answered with :data:`KIND_OPERATION_FAILURE_INVALID`.
+  started. The ninth, of
+  ``ARCHITECTURE/decisions/ADR-0207-od33-cuda-target-demonstration.md``
+  decision 6 (the owner's answer HQ-0097 (a)):
+  :data:`KIND_DEVICE_UNAVAILABLE`, a probe that holds no code of the
+  attempt, run before the attempt's process, found no usable device. A tool
+  failure of any other kind that an operation raises is answered with
+  :data:`KIND_OPERATION_FAILURE_INVALID`.
 * The message of that kind says that the operation raised a tool failure of a
   kind the contract does not let a backend raise. It carries nothing of the
   message that was raised and shows no raised kind that is not reserved
   (decision 4).
 
-Any backend may raise the eight kinds, a script of the mock included
-(ADR-0056 decision 6; ADR-0060 decision 4). What a message of one may show is
+Any backend may raise the nine kinds, a script of the mock included
+(ADR-0056 decision 6; ADR-0060 decision 4; ADR-0207 decision 6). What a message of one may show is
 said by the record that names its kind (ADR-0056 decision 6; ADR-0060
-decision 5), as a rule for the code of an operation that raises; "A message
+decision 5; ADR-0207 decision 6), as a rule for the code of an operation that raises; "A message
 that breaks this is not detected", and this module checks nothing of a
 message beyond its type.
 A backend kind raised for a situation it does not mean "is taken as it is"
@@ -65,8 +71,8 @@ Choices that are this module's own and no rule of a record:
   the backend kinds only, and no message of this module names one of those.
   Every message of this module is built when the module is imported.
 * The list of decision 5 is here, so that the tool function has one place
-  for it. Each of the eight names has a public constant, and
-  :data:`BACKEND_KINDS` is built from the eight: an operation and a script
+  for it. Each of the nine names has a public constant, and
+  :data:`BACKEND_KINDS` is built from the nine: an operation and a script
   of a test can name a kind without a literal.
 
 What the module does not do: it is no tool and no step and is bound to none.
@@ -108,6 +114,9 @@ KIND_BUILD_OUTPUT_MISSING = "build_output_missing"
 #: The backend kind of ADR-0060 decision 4 for S10: the executable cannot be started.
 KIND_EXECUTABLE_UNSTARTABLE = "executable_unstartable"
 
+#: The backend kind of ADR-0207 decision 6 (HQ-0097 (a)): a probe run before the attempt's process found no usable device.
+KIND_DEVICE_UNAVAILABLE = "device_unavailable"
+
 #: The backend kinds of ADR-0047 decision 5. A kind is added only when a record of this tool's contract names it.
 BACKEND_KINDS = frozenset(
     {
@@ -119,6 +128,7 @@ BACKEND_KINDS = frozenset(
         KIND_COMPILER_UNAVAILABLE,
         KIND_BUILD_OUTPUT_MISSING,
         KIND_EXECUTABLE_UNSTARTABLE,
+        KIND_DEVICE_UNAVAILABLE,
     }
 )
 
@@ -149,11 +159,11 @@ def ended_with(raised):
        and :data:`KIND_OPERATION_FAILURE_INVALID` itself included (ADR-0047
        decision 4). This is every tool failure whose kind is exactly a
        ``str`` and none of the eight of ADR-0056 decision 6 and ADR-0060
-       decision 4.
+       decision 4 and the one of ADR-0207 decision 6.
     2. The kind is a member of :data:`BACKEND_KINDS`: the pair is the raised
        kind and the raised message, as they are (decision 4). What such a
        message may show is said by the record that names the kind (ADR-0056
-       decision 6; ADR-0060 decision 5) and is not checked here, and neither
+       decision 6; ADR-0060 decision 5; ADR-0207 decision 6) and is not checked here, and neither
        is whether the kind fits the situation it was raised for.
     3. The kind, or for a backend kind the message, cannot be read as exactly
        a ``str``: the pair is :data:`KIND_OPERATION_FAILURE_INVALID` and a

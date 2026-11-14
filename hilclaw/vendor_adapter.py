@@ -18,8 +18,10 @@ holds what every adapter shares:
   :data:`hilclaw.check_result.CONDITIONS`, whose first four are the same
   strings (the tests of ``run_result`` keep a closed list of the modules
   that import it); a kind is one of
-  ``compiler_unavailable``, ``build_output_missing`` and
-  ``executable_unstartable`` of :mod:`hilclaw.check_failure`.
+  ``compiler_unavailable``, ``build_output_missing``,
+  ``executable_unstartable`` and ``device_unavailable`` of
+  :mod:`hilclaw.check_failure` (the last of ADR-0207 decision 6, given by a
+  device probe and never by an interpret part of this module).
 * :class:`BuildCall` and :class:`RunCall`: what an assemble part returns, the
   arguments of one executor call and the files to place before it.
 * :class:`Probe` and its states :data:`PRESENT`, :data:`ABSENT` and
@@ -90,6 +92,12 @@ KINDS = (
     check_failure.KIND_COMPILER_UNAVAILABLE,
     check_failure.KIND_BUILD_OUTPUT_MISSING,
     check_failure.KIND_EXECUTABLE_UNSTARTABLE,
+    check_failure.KIND_DEVICE_UNAVAILABLE,
+)
+_INTERPRETED_KINDS = (
+    check_failure.KIND_COMPILER_UNAVAILABLE,
+    check_failure.KIND_BUILD_OUTPUT_MISSING,
+    check_failure.KIND_EXECUTABLE_UNSTARTABLE,
 )
 
 PRESENT = "present"
@@ -106,6 +114,7 @@ _MESSAGES = {
     check_failure.KIND_COMPILER_UNAVAILABLE: "the compiler was not found or could not be started",
     check_failure.KIND_BUILD_OUTPUT_MISSING: "the compiler ended with status 0 and left no artefact",
     check_failure.KIND_EXECUTABLE_UNSTARTABLE: "the program was not found or could not be started",
+    check_failure.KIND_DEVICE_UNAVAILABLE: "the device probe found no usable device",
 }
 
 
@@ -326,7 +335,7 @@ def _from_container_answer(read, carried):
         return None
     if type(read) is str:
         return broken(read)
-    if read.kind in KINDS:
+    if read.kind in _INTERPRETED_KINDS:
         return tool_failure(read.kind, read.message)
     return None
 
@@ -349,7 +358,7 @@ def interpret_container_build(answer, artefact):
     condition, :data:`BROKEN`; 125 to 127, ``compiler_unavailable``; no row,
     :class:`ValueError`. For an exception, the answer of
     :func:`hilclaw.standin_answer.place_error` at its build step, ``None``
-    where that answer is none or a kind outside :data:`KINDS`. An
+    where that answer is none or ``device_unavailable`` or a kind outside :data:`KINDS`. An
     :class:`OSError` from the stat of ``artefact`` other than an absent path
     is passed on. Raises :class:`TypeError` with ``parameter`` ``"answer"``
     for any other value, and :class:`TypeError` or :class:`ValueError` with

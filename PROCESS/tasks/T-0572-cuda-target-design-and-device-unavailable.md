@@ -85,3 +85,33 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+PR #385, squash-merged with the PR body (last line `Task: T-0572`); branch deleted. Review: 3 rounds (round 1 and 2 Request changes, round 3 Approve). Not BLOCKED; one HQ for the driver to record (below).
+
+**Order check (D27 ①)** at start (main `c662fcba`): no open PR, no open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`.
+
+**Language.** Python for the touched layer-2 modules (`check_failure`, `run_failure`, `check_standing`, `vendor_adapter`, `cuda_adapter`), as they are.
+
+**Machine facts (criterion 1; read-only, nothing installed or pulled).**
+- Windows: `nvcc --version` → `Cuda compilation tools, release 12.3, V12.3.107`; `nvidia-smi --query-gpu=name,driver_version,compute_cap` → `NVIDIA GeForce RTX 4070, 617.14, 8.9`.
+- WSL2 (Ubuntu 22.04.5, kernel 6.18.58.1-microsoft-standard-WSL2): `/usr/local/cuda-13.1/bin/nvcc --version` → `release 13.1, V13.1.115` (not on `PATH`; dpkg `cuda-toolkit-13-1 13.1.2-1`); `nvidia-smi` (in `/usr/lib/wsl/lib`) → same GPU, driver 617.14, cc 8.9; `gcc` 11.4.0. `nvcc -O2 -arch=native tests/cuda_fixtures/scale.cu` built on the host.
+- Docker in WSL2: client and server 29.1.3, context `default` (`unix:///var/run/docker.sock`) — Docker Engine inside WSL, not Docker Desktop. `docker info`: runtimes `io.containerd.runc.v2` and `runc` only, default `runc`, CDI spec dirs `/etc/cdi` and `/var/run/cdi` (both absent). `nvidia-ctk`: not found. `docker run --rm --pull never --network none --gpus all ubuntu:22.04 nvidia-smi` → `could not select device driver "" with capabilities: [[gpu]]`. Local images: no CUDA image (`g6:*`, `nns-b7-5184:deps`, `i386/debian:bookworm-slim`, `hilclaw-coder:*`, `hilclaw-standin:*`, `ubuntu:22.04/24.04/26.04`, `bash:latest`).
+- Missing for the runtime container's GPU: the NVIDIA Container Toolkit (NVIDIA apt repository per https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html, version 1.20.1-1 there, read 2026-11-14) — pre-allowed (D29), named in ADR-0207 decision 7 for slice 5. Image named for slice 5: `nvidia/cuda:13.1.2-devel-ubuntu22.04` @ `sha256:d8332c008e2ef270e82d286e5245e771f839645683075bba21ad9e4fa59dbcbb` (Docker Hub listing 2026-11-14, not pulled).
+
+**What landed.** ADR-0207 (decisions 1 to 9; the CUDA target design and six slices). Registers in place: `Requirements.md` rows OD-33, OD-14, OD-4, OD-26; `OpenDecisionProposals.md` § OD-33 (adopted line; ④, ⑥, ⑨ end statuses), § OD-14 (adopted line; ① end status), § OD-4 and § OD-26 (adopted lines); ADR-0194 decision 8 (one pointer); `StandardScenarios.md` S12 notes, table row and the "최근 재검사" line (no verdict change, no gap). Code (slice 1): `device_unavailable` in `check_failure.BACKEND_KINDS`, `run_failure.BACKEND_KINDS`, `vendor_adapter.KINDS` (default message; the container interpretation keeps its three kinds) and `check_standing.UNSTARTED_KINDS` (class (i) of ADR-0110 decision 2, per ADR-0207 decision 6; `hilclaw/check_standing.py` is beyond `touchesFiles`); `cuda_adapter.device_outcome` and `cuda_adapter.check_device`. No backend, target or default-table entry.
+
+**Existing tests changed (D21 and HQ-0097's directed change)** — listed in the PR body: `test_tool_failure_refuses_other_kinds` (drop `device_unavailable`), the `KINDS` pin, the pinned backend-kind sets and public-name sets of `check_failure` and `run_failure` (two tests renamed for the count), their "eight kinds" parametrisations extended to nine, and `UNSTARTED_KINDS`/`CLASS_I` in `test_check_standing.py`.
+
+**HQ (for `PROCESS/STATE.json`; reason `data-plane-schema-change`, D23).**
+
+> (OD-33 ①·⑥, PLAN P3-16; ADR-0207 결정 5. HQ-0088 ① (c)는 다시 묻지 않는다) [쟁점] PLAN P3-16은 테스트가 둔 CUDA `gemm` 커널이 빌드·correctness·측정·기록까지 도는 것을 요구하고, HQ-0096 덧붙임은 CUDA 대상에서 주어진 코드의 평가를 연다. 오늘의 틀에서 시도의 `output/`은 `.c`·`.h` 이름만 받고 `.c` 파일만 컴파일하며(ADR-0055 N1·N2·R3), 주어진 코드는 C 파일 하나를 `given.c`로 두고(ADR-0200 결정 2), `candidate_kind`가 없는 `instance.json`은 C 커널 run이다(ADR-0198 결정 4, HQ-0089 ④). CUDA C++ 커널을 run에 기록하는 것과 CUDA C++ 주어진 코드 묶음은 이 틀을 바꾼다(D23). [선택지] (a) `cuda_gpu` 대상의 run에 한해 시도의 `output/` 허용 이름에 `.cu`로 끝나는 이름을 더하고 그 대상의 컴파일 집합은 `.cu` 파일로 한다(`.c`는 그 대상에서 컴파일하지 않음; 정렬·크기·개수 규칙은 그대로); 그 대상의 주어진 코드 묶음은 CUDA C++ 파일 하나이고 `given.cu`로 놓인다; 그 run의 `instance.json`은 지금처럼 `candidate_kind` 없이 쓰고, 그 없음을 "대상의 계약 언어(`cuda`)로 쓴 커널"로 읽는다(기존 값의 읽기 변경). (b) (a)와 같되 승인된 열린 목록 "후보 종류"에 새 값(예: `cuda_kernel`)을 더해 `instance.json` 버전 2로 적는다 — 값의 내용은 오너 몫이고 코더의 벤더 언어 커널 종류와 같은 값을 미리 정하게 된다. (c) 이름은 `.c` 그대로, 대상 플래그 `-x cu`로 CUDA C++로 컴파일한다 — 틀은 그대로이나 `.c` 파일과 C 커널 run이 CUDA C++를 담고 C 하네스도 CUDA C++로 컴파일된다. (d) run 기록 없이 실증한다 — P3-16의 "기록"을 테스트 디렉토리에서의 빌드·검사·측정까지로 줄이고, run 기록과 CUDA 묶음은 벤더 언어 커널 종류(HQ-0088 ① (c))가 정해질 때 함께. 실행자의 권고(결정 아님): (a) — 이름이 언어를 말하고 `nvcc`가 접미사로 언어를 고르며, 계약의 language(`cuda`)가 이미 spec·결과에 언어를 적고, 코더의 경로는 `coder_loop` false로 닫힌 채 남는다. [막히는 것] ADR-0207 slice 6(CUDA 대상의 `instance_start` true, 주어진 코드 묶음, 기본 백엔드 표 등재, run 기록까지의 실증)과 그로써 P3-16의 완료. [막히지 않는 것] ADR-0207 slice 2~5(hw_profile과 대상 표 항목, CUDA 계약과 C 하네스, 백엔드 연산, 런타임 GPU 컨테이너), 그 밖의 task, 오너의 P2-15 확인.
+
+**Runtime acceptance items (D22)** — for `PROCESS/RuntimeAcceptance.md`, to be confirmed after ADR-0207 slice 5 lands:
+
+> PLAN P3-16 / ADR-0207 결정 6·7. NVIDIA GPU와 Docker가 있는 C-7의 각 머신 종류(native Linux, WSL2의 Docker Engine, Windows의 Docker Desktop)에서: (1) `--gpus all`로 시작한 `cuda_gpu`의 빌드·프로세스 컨테이너가 GPU를 쓰는 동안 어느 checkout 경로도 보이지 않고, 드라이버 마운트가 읽기 전용이며, 빌드 디렉토리 밖에 쓸 수 있는 호스트 경로가 없고, ADR-0144의 다른 성질(네트워크 없음, 숫자 사용자, capability 없음)이 그대로인가; (2) NVIDIA Container Toolkit이 없거나 GPU를 줄 수 없는 머신에서 probe 컨테이너가 125로 끝나고 연산이 시도의 프로세스 전에 `device_unavailable`로 답하는가; (3) NVIDIA GPU가 없는 머신(macOS 포함)에서 `cuda_gpu`의 세 HW 도구가 `device_unavailable`로 답하는가. 실패로 드러나면 ADR-0207 결정 6·7(probe 컨테이너, `--gpus all`)을 다시 본다.
+
+**Follow-ups.** None beyond ADR-0207's slices (planner input).
+
+**Size.** About 230 ADR lines + ~120 code lines + register edits (tests not counted).
+
+**Storage.** `${TMPDIR}/hilclaw-driver/T-0572/` (Windows) and WSL `/tmp/hilclaw-driver/T-0572/` (repo copy, coverage data, fetched doc text) removed with `rm -r`; no images, no installs.
