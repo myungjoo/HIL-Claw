@@ -25,7 +25,15 @@ from hilclaw.model_binding import (
     BindingEntry,
     KernelReference,
 )
-from hilclaw.model_graph_execute import PREFIX, GraphExecution, execute
+from hilclaw.model_graph_execute import (
+    PREFIX,
+    GraphExecution,
+    TimedExecution,
+    TimedRun,
+    TimedRunFailed,
+    execute,
+    execute_timed,
+)
 from hilclaw.model_run import RunFailed
 
 S, G = 3, 3
@@ -344,3 +352,260 @@ def test_clang_run_equals_the_forward_execution(parent, sources, given):
     assert np.array_equal(ours.run.report.tokens, theirs.run.report.tokens)
     assert np.array_equal(ours.run.report.logits, theirs.run.report.logits)
     assert ours.removed
+
+
+def run_timed(parent, binding=None, graph=None, **options):
+    arguments = inputs()
+    del arguments["given"], arguments["lm_head_rows"]
+    for name in tuple(options):
+        if name in arguments:
+            arguments[name] = options.pop(name)
+    options.setdefault("build_timeout_s", 30)
+    options.setdefault("run_timeout_s", 7)
+    options.setdefault("repetitions", 3)
+    return execute_timed(
+        program_tests.LLAMA if graph is None else graph,
+        program_tests.LLAMA_DIMENSIONS,
+        binding_of() if binding is None else binding,
+        parent=parent,
+        **arguments,
+        **options,
+    )
+
+
+def timed_bytes(start=100, step=10):
+    tokens = inputs()["prompt"] + [1, 2, 3]
+    readings = [start + step * i for i in range(G + 1)]
+    words = np.array([*tokens, *readings, 1], dtype=np.uint64)
+    return words.tobytes() + b"end\n"
+
+
+class Sequence(Recorder):
+    def __init__(self, results):
+        super().__init__()
+        self.results = list(results)
+
+    def run(self, command, **options):
+        self.result = self.results.pop(0)
+        return super().run(command, **options)
+
+
+@pytest.fixture
+def sequence(monkeypatch):
+    def install(results):
+        recorder = Sequence(results)
+        monkeypatch.setattr(
+            model_build, "build_kernel_library", recorder.kernel_library
+        )
+        monkeypatch.setattr(model_build, "build_graph_program", recorder.graph_program)
+        monkeypatch.setattr(local_run, "run", recorder.run)
+        return recorder
+
+    return install
+
+
+@pytest.mark.parametrize("repetitions", [1, 3])
+def test_timed_runs_are_new_processes_of_one_input(parent, sequence, repetitions):
+    recorder = sequence(
+        [run_result(stdout=timed_bytes(100 * r)) for r in range(1, repetitions + 1)]
+    )
+    outcome = run_timed(parent, repetitions=repetitions)
+    assert isinstance(outcome, TimedExecution)
+    assert outcome.check.ok and outcome.build_failed is None and outcome.removed
+    assert outcome.failed is None
+    assert len(outcome.runs) == repetitions
+    for r, one in enumerate(outcome.runs, 1):
+        assert isinstance(one, TimedRun) and one.failed is None
+        assert one.report.intervals == (10,) * G
+        assert one.report.readings[0] == 100 * r
+        assert one.run.stdout == b""
+    assert recorder.kinds() == ["kernel"] * 6 + ["program"] + ["run"] * repetitions
+    commands = {tuple(e[1]) for e in recorder.events if e[0] == "run"}
+    assert len(commands) == 1
+    plan = outcome.plan
+    assert all(p.output_rows == 1 for p in plan.passes)
+    check = model_graph.check_binding(plan, binding_of())
+    arguments = inputs(given=None)
+    del arguments["generation_length"], arguments["lm_head_rows"]
+    expected = model_graph.encode(plan, check, **arguments, timed=True)
+    assert recorder.input_bytes == expected
+
+
+@pytest.mark.parametrize(
+    ("result", "failed"),
+    [
+        (run_result(timed_out=True, returncode=-9), TimedRunFailed.TIMEOUT),
+        (run_result(returncode=7), TimedRunFailed.EXIT_STATUS),
+        (run_result(stdout=b"end\n"), TimedRunFailed.REPORT_FORM),
+        (run_result(stdout=timed_bytes()[:-1]), TimedRunFailed.REPORT_FORM),
+        (run_result(stdout=timed_bytes(step=0)), TimedRunFailed.NOT_INCREASING),
+        (run_result(stdout=timed_bytes(step=-1)), TimedRunFailed.NOT_INCREASING),
+    ],
+)
+def test_the_first_failed_run_ends_the_timed_execution(
+    parent, sequence, result, failed
+):
+    good = run_result(stdout=timed_bytes())
+    recorder = sequence([good, result, good])
+    outcome = run_timed(parent, repetitions=3)
+    assert outcome.runs is None
+    assert outcome.failed.failed is failed
+    assert outcome.failed.report is None
+    assert outcome.failed.run.stdout == b""
+    assert outcome.removed
+    assert recorder.kinds().count("run") == 2
+
+
+def test_timed_build_failed(parent, sequence):
+    recorder = sequence([])
+    recorder.failing_program = True
+    outcome = run_timed(parent)
+    assert outcome.build_failed.kernel is None
+    assert (outcome.runs, outcome.failed) == (None, None)
+    assert outcome.removed and "run" not in recorder.kinds()
+
+
+def test_timed_no_kernel_builds_nothing(parent, sequence):
+    recorder = sequence([])
+    binding = binding_of()
+    del binding["sdpa"]
+    outcome = run_timed(parent, binding=binding)
+    assert {o.kind for o in outcome.check.outcomes} == {NO_KERNEL}
+    assert outcome[2:] == (None, None, None, None)
+    assert recorder.events == []
+
+
+def test_timed_invalid_input(parent, sequence):
+    recorder = sequence([])
+    outcome = run_timed(parent, prompt=[0, 1, forward.V])
+    assert outcome.check.outcomes[0].kind == INVALID_INPUT
+    assert outcome.check.outcomes[0].reason.startswith("prompt: token id")
+    assert outcome[2:] == (None, None, None, None)
+    assert recorder.events == []
+
+
+def test_timed_invalid_input_for_a_graph_of_more_rows(parent, sequence):
+    recorder = sequence([])
+    text = model_graph.LLAMA_GRAPH.read_text(encoding="utf-8")
+    text = text.replace(
+        '"logits", "shape": ["R", "V"]', '"logits", "shape": ["T", "V"]'
+    )
+    text = text.replace('"rows": "R"}', '"rows": "T"}')
+    outcome = run_timed(parent, graph=model_graph.read_text(text))
+    assert outcome.plan.passes[0].output_rows == S
+    assert [o.kind for o in outcome.check.outcomes] == [INVALID_INPUT]
+    assert outcome.check.outcomes[0].reason.startswith("timed: ")
+    assert outcome[2:] == (None, None, None, None)
+    assert recorder.events == []
+    assert not any(p.name.startswith(PREFIX) for p in parent.iterdir())
+
+
+@pytest.mark.parametrize(
+    ("repetitions", "error"),
+    [
+        (0, ValueError),
+        (2, ValueError),
+        (-1, ValueError),
+        (4, ValueError),
+        (True, TypeError),
+        (3.0, TypeError),
+        ("3", TypeError),
+        (None, TypeError),
+    ],
+)
+def test_repetitions_are_refused_before_anything_is_built(
+    parent, sequence, repetitions, error
+):
+    recorder = sequence([])
+    with pytest.raises(error) as caught:
+        run_timed(parent, repetitions=repetitions)
+    assert caught.value.parameter == "repetitions"
+    assert recorder.events == []
+    assert not any(p.name.startswith(PREFIX) for p in parent.iterdir())
+
+
+@pytest.mark.parametrize(
+    ("options", "error"),
+    [
+        ({"program_flags": "-O2"}, TypeError),
+        ({"prompt": [0, 1, 2.0]}, TypeError),
+        ({"generation_length": 0}, ValueError),
+    ],
+)
+def test_timed_argument_errors_are_raised_before_anything_is_made(
+    parent, sequence, options, error
+):
+    recorder = sequence([])
+    with pytest.raises(error):
+        run_timed(parent, **options)
+    assert recorder.events == []
+
+
+def test_what_a_timed_run_raises_is_passed_on_after_removal(parent, sequence):
+    sequence([run_result(stdout=timed_bytes()), KeyboardInterrupt()])
+    with pytest.raises(KeyboardInterrupt):
+        run_timed(parent)
+    assert not any(p.name.startswith(PREFIX) for p in parent.iterdir())
+
+
+@pytest.mark.parametrize("repetitions", [1, 3])
+def test_clang_timed_runs_select_the_untimed_tokens(parent, sources, repetitions):
+    binding = binding_of(sources, forward.KERNEL_FLAGS)
+    arguments = inputs(given=None, lm_head_rows="last")
+    options = {
+        "build_timeout_s": 120,
+        "run_timeout_s": 60,
+        "program_trailing_flags": ("-ldl",),
+    }
+    untimed = execute(
+        program_tests.LLAMA,
+        program_tests.LLAMA_DIMENSIONS,
+        binding,
+        parent=parent,
+        **arguments,
+        **options,
+    )
+    assert untimed.run.failed is None, untimed.run.run.stderr
+    del arguments["given"], arguments["lm_head_rows"]
+    timed = execute_timed(
+        program_tests.LLAMA,
+        program_tests.LLAMA_DIMENSIONS,
+        binding,
+        parent=parent,
+        repetitions=repetitions,
+        **arguments,
+        **options,
+    )
+    assert timed.failed is None, timed.failed
+    assert len(timed.runs) == repetitions and timed.removed
+    tokens = tuple(int(t) for t in untimed.run.report.tokens)
+    for one in timed.runs:
+        assert one.report.prompt + one.report.tokens == tokens
+        assert len(one.report.intervals) == G
+        assert one.report.increasing and one.report.resolution >= 0
+
+
+def test_clang_timed_run_of_a_kernel_that_aborts_is_run_failed(
+    parent, sources, tmp_path
+):
+    source = tmp_path / "swiglu_abort.c"
+    source.write_text(
+        forward.PRELUDE + "".join(forward.LIBRARIES["swiglu_abort"]), newline="\n"
+    )
+    binding = binding_of({**sources, "swiglu": str(source)}, forward.KERNEL_FLAGS)
+    arguments = inputs()
+    del arguments["given"], arguments["lm_head_rows"]
+    timed = execute_timed(
+        program_tests.LLAMA,
+        program_tests.LLAMA_DIMENSIONS,
+        binding,
+        parent=parent,
+        repetitions=3,
+        build_timeout_s=120,
+        run_timeout_s=60,
+        program_trailing_flags=("-ldl",),
+        **arguments,
+    )
+    assert timed.runs is None
+    assert timed.failed.failed is TimedRunFailed.EXIT_STATUS
+    assert timed.failed.run.returncode != 0

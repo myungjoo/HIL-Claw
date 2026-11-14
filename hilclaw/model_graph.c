@@ -7,15 +7,17 @@
  * contents of the weights and tables from an input file, runs the steps of
  * each pass in order and writes the token ids and the output rows to the
  * report, in the given-sequence mode of ADR-0166 decision 7 or the greedy
- * generation mode of ADR-0176 decision 5. Its loading, report, end mark,
- * token selection and statuses are those of model_forward.c, whose header
- * comment states them; what differs is that the calls come from the input
- * rather than from fixed source. It does no floating-point arithmetic: the
- * scalars and float tables are passed through to kernels, every other element
- * is a uint16_t bf16 pattern that is only copied, and the selection orders
- * patterns by an integer key. It reads no clock, no environment variable and
- * no standard input; it needs the C library and POSIX.1-2008 only, <dlfcn.h>
- * included.
+ * generation mode of ADR-0176 decision 5, or in the timed generation mode of
+ * ADR-0206 decision 3. Its loading, report, end mark, token selection and
+ * statuses are those of model_forward.c, whose header comment states them;
+ * what differs is that the calls come from the input rather than from fixed
+ * source, and the timed mode with its report and status 8. It does no
+ * floating-point arithmetic: the scalars and float tables are passed through
+ * to kernels, every other element is a uint16_t bf16 pattern that is only
+ * copied, and the selection orders patterns by an integer key. Only the
+ * timed mode reads a clock, CLOCK_MONOTONIC; it reads no environment
+ * variable and no standard input; it needs the C library and POSIX.1-2008
+ * only, <dlfcn.h> and <time.h> included.
  *
  * Command line, at least two arguments:
  *
@@ -28,8 +30,9 @@
  * every float binary32:
  *
  *     A K G S V mode O Q   8 integers: arrays, scalars, passes, the prompt
- *                          length, the vocabulary, mode 0 given-sequence or
- *                          1 generation, the output array and its row width
+ *                          length, the vocabulary, mode 0 given-sequence,
+ *                          1 generation or 2 timed generation, the output
+ *                          array and its row width
  *     scalars              K floats
  *     arrays               A records (elements, element size 2 or 4,
  *                          role 0 read from the file or 1 filled)
@@ -37,7 +40,7 @@
  *     steps                for every pass in order, its steps of 20 integers:
  *                          op, library, 5 shape words, 6 (array, offset)
  *                          operand pairs, scalar
- *     token ids            S + G for the given-sequence mode, S for the other
+ *     token ids            S + G for the given-sequence mode, S for the others
  *     contents             the elements of every role-0 array, in array order
  *
  * The ops: 0 embed (shape rows, columns, first token; operands the weight
@@ -53,18 +56,20 @@
  *
  * Checks, all before the first call. Errors of the input file (status 5): a
  * file shorter than the header, that is not a regular file or whose length
- * is not the one its tables give; A, G, S, V or Q of 0; a mode above 1;
- * an output array that is not a filled 2-byte array; Q above V in the
- * generation mode; an array of 0 elements, an element size other than 2 or
- * 4, a role above 1 or a filled array of 4-byte elements; a scalar that is
- * not finite or not above 0; a pass of 0 steps or 0 output rows, or whose
- * output rows run past the output array; an unknown op; a library index not
- * below the number of libraries; a shape word of 0 but embed's first token;
- * a rope d that is odd, an sdpa h not a multiple of h_kv or l below m; an operand
- * array index not below A, a range past its array, an element size other
- * than the operand's (4 for freqs_cis, 2 otherwise), two operands of a step
- * whose ranges in one array overlap; a scalar index not below K; an embed
- * whose tokens are not below S + the pass index; a token id not below V.
+ * is not the one its tables give; A, G, S, V or Q of 0; a mode above 2;
+ * an output array that is not a filled 2-byte array; Q above V in either
+ * generation mode; in the timed mode a pass of other than 1 output row (the
+ * plan of lm_head_rows "last"); an array of 0 elements, an element size
+ * other than 2 or 4, a role above 1 or a filled array of 4-byte elements; a
+ * scalar that is not finite or not above 0; a pass of 0 steps or 0 output
+ * rows, or whose output rows run past the output array; an unknown op; a
+ * library index not below the number of libraries; a shape word of 0 but
+ * embed's first token; a rope d that is odd, an sdpa h not a multiple of
+ * h_kv or l below m; an operand array index not below A, a range past its
+ * array, an element size other than the operand's (4 for freqs_cis, 2
+ * otherwise), two operands of a step whose ranges in one array overlap; a
+ * scalar index not below K; an embed whose tokens are not below S + the pass
+ * index; a token id not below V.
  * The byte size of any table, array or the file that does not fit in size_t
  * or uint64_t is found before anything is allocated from it (status 3), as is
  * a failed allocation. A library lacking the entry point of a step's kind at
@@ -80,10 +85,24 @@
  * S + pass; a NaN in it is status 7. Descriptor 1 is pointed at standard
  * error before the first library is loaded.
  *
+ * Timed generation (mode 2) runs the passes and selects the tokens as the
+ * generation mode does, but writes no output row. After the input file is
+ * read it takes clock_getres of CLOCK_MONOTONIC, then reads clock_gettime of
+ * that clock once as t_s, when the libraries are loaded and every array and
+ * buffer is allocated and filled, immediately before the first step of
+ * pass 0, and as t_p after the token selection of pass p, p = 0 ... G - 1.
+ * A time is tv_sec * 10^9 + tv_nsec ns. Its report, written as a whole after
+ * t_(G-1), is, every integer a uint64_t in host byte order: the S prompt
+ * token ids, the G selected token ids, the G + 1 readings t_s, t_0 ...
+ * t_(G-1), the resolution in ns, then the end mark: 8 * (S + 2G + 2) + 4
+ * bytes. A failed clock_getres or clock_gettime, or a time with a negative
+ * tv_sec or not held by a uint64_t in ns, is status 8, with no report.
+ *
  * Exit status: 0 the end mark was written; 2 the command line; 3 a size or an
  * allocation; 4 a descriptor or a write of the report; 5 the input file;
- * 6 a library or an entry point; 7 a NaN in a selection row. A status other
- * than 0 comes with one line on standard error and without the end mark.
+ * 6 a library or an entry point; 7 a NaN in a selection row; 8 the clock. A
+ * status other than 0 comes with one line on standard error and without the
+ * end mark.
  */
 #define _POSIX_C_SOURCE 200809L
 
@@ -94,6 +113,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 typedef void (*gemm_entry)(size_t, size_t, size_t, const uint16_t *, const uint16_t *, uint16_t *);
@@ -106,7 +126,8 @@ typedef void (*sdpa_entry)(size_t, size_t, size_t, size_t, size_t, const uint16_
 typedef char float_is_32_bits[sizeof(float) == sizeof(uint32_t) ? 1 : -1];
 typedef char entries_fit_a_pointer[sizeof(gemm_entry) == sizeof(void *) ? 1 : -1];
 
-enum { STATUS_COMMAND_LINE = 2, STATUS_MEMORY, STATUS_SYSTEM, STATUS_INPUT, STATUS_LIBRARY, STATUS_SELECTION };
+enum { STATUS_COMMAND_LINE = 2, STATUS_MEMORY, STATUS_SYSTEM, STATUS_INPUT, STATUS_LIBRARY, STATUS_SELECTION, STATUS_CLOCK };
+enum { GIVEN, GENERATION, TIMED };
 enum { HEADER_WORDS = 8, ARRAY_WORDS = 3, PASS_WORDS = 2, STEP_WORDS = 20, OPERANDS = 6, NAN_BITS = 0x7FC0 };
 enum { EMBED, COPY, GEMM, RMSNORM, ADD, SWIGLU, ROPE, SDPA, OPS };
 
@@ -135,7 +156,7 @@ struct step {
 };
 
 struct graph {
-    uint64_t A, K, G, S, V, generate, O, Q, steps;
+    uint64_t A, K, G, S, V, generate, timed, O, Q, steps;
     float *scalars;
     struct array *arrays;
     uint64_t *passes, *tokens;
@@ -305,10 +326,10 @@ static FILE *read_tables(const char *path, struct graph *g, size_t libraries)
     if (fread(header, 1, sizeof header, file) != sizeof header)
         input_error("too short for the header");
     g->A = header[0], g->K = header[1], g->G = header[2], g->S = header[3], g->V = header[4];
-    g->generate = header[5], g->O = header[6], g->Q = header[7];
+    g->generate = header[5] != GIVEN, g->timed = header[5] == TIMED, g->O = header[6], g->Q = header[7];
     if (g->A == 0 || g->G == 0 || g->S == 0 || g->V == 0 || g->Q == 0)
         input_error("a header count is 0");
-    if (g->generate > 1 || g->O >= g->A || (g->generate && g->Q > g->V))
+    if (header[5] > TIMED || g->O >= g->A || (g->generate && g->Q > g->V))
         input_error("the mode, the output array or its row width is out of range");
     known = bytes(plus(g->S, g->G), 8);
     need = plus(plus(sizeof header, bytes(g->K, 4)), plus(bytes(g->A, 8 * ARRAY_WORDS), bytes(g->G, 8 * PASS_WORDS)));
@@ -343,6 +364,8 @@ static FILE *read_tables(const char *path, struct graph *g, size_t libraries)
         if (g->passes[2 * p] == 0 || g->passes[2 * p + 1] == 0 ||
             span(g->passes[2 * p], g->Q) > g->arrays[g->O].elements)
             input_error("a pass has no steps or its output rows run past the output array");
+        if (g->timed && g->passes[2 * p] != 1)
+            input_error("the output rows of a timed pass are out of range");
         g->steps = plus(g->steps, g->passes[2 * p + 1]);
     }
     tokens = g->generate ? g->S : plus(g->S, g->G);
@@ -459,6 +482,22 @@ static void run_step(const struct graph *g, const struct step *s)
     }
 }
 
+static uint64_t clock_ns(const char *call, int failed, const struct timespec *t)
+{
+    if (failed != 0 || t->tv_sec < 0 || t->tv_nsec < 0 || t->tv_nsec >= 1000000000L ||
+        (uint64_t)t->tv_sec > (UINT64_MAX - (uint64_t)t->tv_nsec) / UINT64_C(1000000000))
+        exit(fail(STATUS_CLOCK, call, "CLOCK_MONOTONIC gives no time in uint64_t ns"));
+    return (uint64_t)t->tv_sec * UINT64_C(1000000000) + (uint64_t)t->tv_nsec;
+}
+
+static uint64_t reading(void)
+{
+    struct timespec t;
+    int failed = clock_gettime(CLOCK_MONOTONIC, &t);
+
+    return clock_ns("clock_gettime", failed, &t);
+}
+
 static long key(uint16_t bits)
 {
     long magnitude = bits & 0x7FFF;
@@ -486,7 +525,7 @@ int main(int argc, char **argv)
 {
     struct graph g;
     size_t libraries, i;
-    uint64_t p, at = 0, s;
+    uint64_t p, at = 0, s, *readings = NULL, resolution = 0;
     void **handles;
     FILE *file;
 
@@ -510,16 +549,33 @@ int main(int argc, char **argv)
     bind(handles, &g);
     read_contents(file, &g);
 
-    emit(g.tokens, (size_t)(g.generate ? g.S : g.S + g.G) * 8);
+    if (g.timed) {
+        struct timespec t;
+        int failed = clock_getres(CLOCK_MONOTONIC, &t);
+
+        resolution = clock_ns("clock_getres", failed, &t);
+        readings = allocate(bytes(plus(g.G, 1), 8));
+        readings[0] = reading();
+    } else {
+        emit(g.tokens, (size_t)(g.generate ? g.S : g.S + g.G) * 8);
+    }
     for (p = 0; p < g.G; p++) {
         for (s = 0; s < g.passes[2 * p + 1]; s++, at++)
             run_step(&g, &g.step[at]);
-        emit(g.arrays[g.O].data, (size_t)(g.passes[2 * p] * g.Q) * 2);
+        if (!g.timed)
+            emit(g.arrays[g.O].data, (size_t)(g.passes[2 * p] * g.Q) * 2);
         if (g.generate)
             select_token(&g, p, g.passes[2 * p]);
+        if (g.timed)
+            readings[p + 1] = reading();
     }
-    if (g.generate)
+    if (g.timed) {
+        emit(g.tokens, (size_t)(g.S + g.G) * 8);
+        emit(readings, (size_t)(g.G + 1) * 8);
+        emit(&resolution, 8);
+    } else if (g.generate) {
         emit(g.tokens + g.S, (size_t)g.G * 8);
+    }
     emit("end\n", 4);
     for (p = 0; p < g.A; p++)
         free(g.arrays[p].data);
@@ -528,6 +584,7 @@ int main(int argc, char **argv)
     free(g.passes);
     free(g.tokens);
     free(g.scalars);
+    free(readings);
     free(handles);
     return 0;
 }
