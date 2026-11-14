@@ -743,3 +743,11 @@
 - 내용:
 
   PLAN P3-16 / ADR-0207 결정 6·7. NVIDIA GPU와 Docker가 있는 C-7의 각 머신 종류(native Linux, WSL2의 Docker Engine, Windows의 Docker Desktop)에서: (1) `--gpus all`로 시작한 `cuda_gpu`의 빌드·프로세스 컨테이너가 GPU를 쓰는 동안 어느 checkout 경로도 보이지 않고, 드라이버 마운트가 읽기 전용이며, 빌드 디렉토리 밖에 쓸 수 있는 호스트 경로가 없고, ADR-0144의 다른 성질(네트워크 없음, 숫자 사용자, capability 없음)이 그대로인가; (2) NVIDIA Container Toolkit이 없거나 GPU를 줄 수 없는 머신에서 probe 컨테이너가 125로 끝나고 연산이 시도의 프로세스 전에 `device_unavailable`로 답하는가; (3) NVIDIA GPU가 없는 머신(macOS 포함)에서 `cuda_gpu`의 세 HW 도구가 `device_unavailable`로 답하는가. 실패로 드러나면 ADR-0207 결정 6·7(probe 컨테이너, `--gpus all`)을 다시 본다.
+
+### RA-0087
+
+- 상태: 미확인
+- 출처: P3-16, T-0573, ADR-0207 (등록 2026-11-14)
+- 내용:
+
+  PLAN P3-16 / ADR-0207 결정 2. NVIDIA GPU가 하나 있는 C-7의 WSL2 밖 머신 종류(native Linux; Docker 이미지를 지정하는 경우 포함)에서 `hilclaw.cuda_profile.local_record`가 `revision`(`<제품명> sm_<major><minor>`)과 `toolchain`의 `nvcc`·`gcc`·`nvidia_driver`를 읽어 `keys.hw_profile_key`가 받는 레코드를 내는가. 이미지를 지정했을 때 `nvcc`·`gcc`가 이미지의 것이고 `nvidia_driver`가 호스트의 것인가. GPU가 둘 이상인 머신에서 레코드를 내지 않는가. 실패로 드러나면 ADR-0207 결정 2의 읽기 규칙을 다시 본다.

@@ -2,7 +2,7 @@
 id: T-0573
 title: PLAN P3-16 (2) — ADR-0207 slice 2, the `cuda_gpu` hw_profile read on the host and with an image, the `Target` member `coder_loop` and the round-loop start's refusal, and the `cuda_gpu` target entry with `instance_start` false
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "ADR-0207", "HQ-0093", "HQ-0096", FR-10, FR-19, OD-33, OD-4, OD-26]
 dependsOn: []
