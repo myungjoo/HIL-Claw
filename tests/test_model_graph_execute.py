@@ -484,6 +484,22 @@ def test_timed_invalid_input(parent, sequence):
     assert recorder.events == []
 
 
+def test_timed_invalid_input_for_a_graph_of_more_rows(parent, sequence):
+    recorder = sequence([])
+    text = model_graph.LLAMA_GRAPH.read_text(encoding="utf-8")
+    text = text.replace(
+        '"logits", "shape": ["R", "V"]', '"logits", "shape": ["T", "V"]'
+    )
+    text = text.replace('"rows": "R"}', '"rows": "T"}')
+    outcome = run_timed(parent, graph=model_graph.read_text(text))
+    assert outcome.plan.passes[0].output_rows == S
+    assert [o.kind for o in outcome.check.outcomes] == [INVALID_INPUT]
+    assert outcome.check.outcomes[0].reason.startswith("timed: ")
+    assert outcome[2:] == (None, None, None, None)
+    assert recorder.events == []
+    assert not any(p.name.startswith(PREFIX) for p in parent.iterdir())
+
+
 @pytest.mark.parametrize(
     ("repetitions", "error"),
     [

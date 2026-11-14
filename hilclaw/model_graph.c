@@ -11,10 +11,11 @@
  * ADR-0206 decision 3. Its loading, report, end mark, token selection and
  * statuses are those of model_forward.c, whose header comment states them;
  * what differs is that the calls come from the input rather than from fixed
- * source, and the timed mode. It does no floating-point arithmetic: the
- * scalars and float tables are passed through to kernels, every other element
- * is a uint16_t bf16 pattern that is only copied, and the selection orders
- * patterns by an integer key. Only the timed mode reads a clock,
+ * source, and the timed mode with its report and status 8. It does no
+ * floating-point arithmetic: the scalars and float tables are passed through
+ * to kernels, every other element is a uint16_t bf16 pattern that is only
+ * copied, and the selection orders patterns by an integer key. Only the
+ * timed mode reads a clock,
  * CLOCK_MONOTONIC; it reads no environment variable and no standard input; it
  * needs the C library and POSIX.1-2008 only, <dlfcn.h> and <time.h> included.
  *
@@ -58,9 +59,9 @@
  * is not the one its tables give; A, G, S, V or Q of 0; a mode above 2;
  * an output array that is not a filled 2-byte array; Q above V in either
  * generation mode; in the timed mode a pass of other than 1 output row (the
- * plan of lm_head_rows "last"); an array of 0 elements, an element size other
- * than 2 or 4, a role above 1 or a filled array of 4-byte elements; a scalar that is
- * not finite or not above 0; a pass of 0 steps or 0 output rows, or whose
+ * plan of lm_head_rows "last"); an array of 0 elements, an element size
+ * other than 2 or 4, a role above 1 or a filled array of 4-byte elements; a
+ * scalar that is not finite or not above 0; a pass of 0 steps or 0 output rows, or whose
  * output rows run past the output array; an unknown op; a library index not
  * below the number of libraries; a shape word of 0 but embed's first token;
  * a rope d that is odd, an sdpa h not a multiple of h_kv or l below m; an operand
