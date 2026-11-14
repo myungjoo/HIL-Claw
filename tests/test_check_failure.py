@@ -22,6 +22,7 @@ from hilclaw.check_failure import (
     KIND_BUILD_INPUT_MISSING,
     KIND_BUILD_OUTPUT_MISSING,
     KIND_COMPILER_UNAVAILABLE,
+    KIND_DEVICE_UNAVAILABLE,
     KIND_EXECUTABLE_UNSTARTABLE,
     KIND_KERNEL_SOURCE_UNREADABLE,
     KIND_NO_KERNEL_SOURCE,
@@ -47,6 +48,9 @@ THE_SIX = [
     "executable_unstartable",
 ]
 THE_EIGHT = [*THE_TWO, *THE_SIX]
+# The name as ADR-0207 decision 6 spells it (HQ-0097 (a)).
+THE_NINTH = "device_unavailable"
+THE_NINE = [*THE_EIGHT, THE_NINTH]
 # Values of condition (ADR-0060 decision 4), never kinds.
 THE_BUILD_CONDITIONS = ["build_time_limit", "build_exit_status"]
 OTHER_KINDS_OF_THE_CONTRACT = [
@@ -257,10 +261,11 @@ def test_the_kind_is_read_once_and_the_message_not_at_all():
     assert reads == ["kind"]
 
 
-def test_the_backend_kinds_as_shipped_are_the_eight_of_adr_0056_and_adr_0060():
+def test_the_backend_kinds_as_shipped_are_the_eight_of_adr_0056_and_adr_0060_and_the_one_of_adr_0207():
     assert type(BACKEND_KINDS) is frozenset
-    assert BACKEND_KINDS == frozenset(THE_EIGHT)
-    assert len(BACKEND_KINDS) == 8
+    assert BACKEND_KINDS == frozenset(THE_NINE)
+    assert len(BACKEND_KINDS) == 9
+    assert KIND_DEVICE_UNAVAILABLE == THE_NINTH
     assert check_failure.BACKEND_KINDS is BACKEND_KINDS
     assert KIND_NO_KERNEL_SOURCE == "no_kernel_source"
     assert KIND_KERNEL_SOURCE_UNREADABLE == "kernel_source_unreadable"
@@ -279,7 +284,7 @@ def test_the_backend_kinds_as_shipped_are_the_eight_of_adr_0056_and_adr_0060():
         BACKEND_KINDS.discard(KIND_SETTINGS_REFUSED)
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 def test_each_backend_kind_is_a_name_a_tool_failure_takes(kind):
     assert kind in BACKEND_KINDS
     (member,) = BACKEND_KINDS & {kind}
@@ -308,7 +313,7 @@ def test_no_value_of_condition_is_a_backend_kind():
         assert outside(failure(condition)) == outside(failure(EXAMPLE_KIND))
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 def test_each_of_the_eight_kinds_is_answered_as_it_was_raised(kind):
     raised = CountedReads(kind, MARKER)
     raised.reads = reads = []
@@ -330,7 +335,7 @@ def test_each_of_the_eight_kinds_is_answered_as_it_was_raised(kind):
     assert (failed.kind, failed.message) == pair
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 @pytest.mark.parametrize(
     "message",
     UNCHECKED_MESSAGES,
@@ -343,7 +348,7 @@ def test_the_message_of_a_backend_kind_is_not_checked(kind, message):
     assert len(pair[1]) == len(message)
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 @pytest.mark.parametrize(
     "message",
     [None, 3, b"x", [MARKER], Text(MARKER), Unprintable()],
@@ -361,7 +366,7 @@ def test_one_of_the_eight_kinds_with_a_replaced_message_is_answered_as_outside(
     assert raised.message is message
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 def test_one_of_the_eight_kinds_whose_message_cannot_be_read_is_answered_as_outside(
     kind,
 ):
@@ -391,7 +396,7 @@ def test_a_replaced_kind_that_is_no_name_is_outside(kind):
     assert outside(raised) == outside(failure(EXAMPLE_KIND))
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 def test_a_str_subclass_equal_to_one_of_the_eight_is_outside(kind):
     assert Text(kind) in BACKEND_KINDS
     raised = failure(kind)
@@ -404,7 +409,7 @@ def test_a_str_subclass_equal_to_one_of_the_eight_is_outside(kind):
     assert outside(closed) == message
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 def test_an_instance_of_a_subclass_with_one_of_the_eight_kinds_is_answered_alike(kind):
     class Narrower(tools.ToolFailure):
         pass
@@ -671,6 +676,7 @@ def test_public_names_of_the_module_and_no_default():
         "KIND_COMPILER_UNAVAILABLE",
         "KIND_BUILD_OUTPUT_MISSING",
         "KIND_EXECUTABLE_UNSTARTABLE",
+        "KIND_DEVICE_UNAVAILABLE",
         "BACKEND_KINDS",
         "ended_with",
     }

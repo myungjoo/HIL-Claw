@@ -42,6 +42,7 @@ CLASS_I = (
     "compiler_unavailable",
     "build_output_missing",
     "executable_unstartable",
+    "device_unavailable",
 )
 
 
@@ -407,7 +408,7 @@ def test_outcome_too_long_to_show(monkeypatch):
         standing([], "sim_run", *ARGS)
 
 
-def test_unstarted_kinds_are_the_seven_constants():
+def test_unstarted_kinds_are_the_eight_constants():
     assert type(UNSTARTED_KINDS) is frozenset
     assert UNSTARTED_KINDS == {
         check_failure.KIND_NO_KERNEL_SOURCE,
@@ -417,6 +418,7 @@ def test_unstarted_kinds_are_the_seven_constants():
         check_failure.KIND_COMPILER_UNAVAILABLE,
         check_failure.KIND_BUILD_OUTPUT_MISSING,
         check_failure.KIND_EXECUTABLE_UNSTARTABLE,
+        check_failure.KIND_DEVICE_UNAVAILABLE,
     }
     assert UNSTARTED_KINDS == set(CLASS_I)
     assert UNSTARTED_KINDS < check_failure.BACKEND_KINDS

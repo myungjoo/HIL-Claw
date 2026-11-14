@@ -23,6 +23,7 @@ from hilclaw.run_failure import (
     KIND_BUILD_INPUT_MISSING,
     KIND_BUILD_OUTPUT_MISSING,
     KIND_COMPILER_UNAVAILABLE,
+    KIND_DEVICE_UNAVAILABLE,
     KIND_EXECUTABLE_UNSTARTABLE,
     KIND_KERNEL_SOURCE_UNREADABLE,
     KIND_NO_KERNEL_SOURCE,
@@ -47,6 +48,9 @@ THE_EIGHT = [
     "build_output_missing",
     "executable_unstartable",
 ]
+# The name as ADR-0207 decision 6 spells it (HQ-0097 (a)).
+THE_NINTH = "device_unavailable"
+THE_NINE = [*THE_EIGHT, THE_NINTH]
 # The kinds of the run tools' contract that are no backend kind (ADR-0068 decisions 3 and 4).
 OTHER_KINDS_OF_THE_CONTRACT = [
     "seed_not_drawn",
@@ -162,7 +166,7 @@ class CountedReads(tools.ToolFailure):
         return object.__getattribute__(self, name)
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 def test_each_of_the_eight_kinds_is_answered_as_it_was_raised(kind):
     raised = CountedReads(kind, MARKER)
     raised.reads = reads = []
@@ -184,7 +188,7 @@ def test_each_of_the_eight_kinds_is_answered_as_it_was_raised(kind):
     assert (failed.kind, failed.message) == pair
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 @pytest.mark.parametrize(
     "message",
     ["", "one line\nand another\r\n", "x" * 10_000, "the driver program"],
@@ -194,7 +198,7 @@ def test_the_message_of_a_backend_kind_is_not_checked(kind, message):
     assert ended_with(failure(kind, message)) == (kind, message)
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 def test_an_instance_of_a_subclass_with_one_of_the_eight_kinds_is_answered_alike(kind):
     class Narrower(tools.ToolFailure):
         pass
@@ -259,7 +263,7 @@ def test_an_instance_of_a_subclass_outside_the_contract_is_answered_the_same():
     )
 
 
-@pytest.mark.parametrize("kind", [EXAMPLE_KIND, tools.KIND_STEP_OPEN, *THE_EIGHT])
+@pytest.mark.parametrize("kind", [EXAMPLE_KIND, tools.KIND_STEP_OPEN, *THE_NINE])
 def test_two_calls_answer_alike_and_leave_the_raised_object_as_it_was(kind):
     raised = failure(kind)
     before = (raised.kind, raised.message, raised.args, dict(vars(raised)))
@@ -342,7 +346,7 @@ def test_a_replaced_kind_is_answered_as_outside_and_not_shown(kind):
     assert raised.message == MARKER
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 @pytest.mark.parametrize(
     "message",
     [None, 3, b"x", [MARKER], Text(MARKER), Unprintable()],
@@ -389,13 +393,14 @@ def test_a_backend_kind_is_read_from_the_modules_own_set(monkeypatch):
     monkeypatch.setattr(run_failure, "BACKEND_KINDS", frozenset({EXAMPLE_BACKEND_KIND}))
     assert ended_with(failure(EXAMPLE_BACKEND_KIND)) == (EXAMPLE_BACKEND_KIND, MARKER)
     assert outside(failure(KIND_NO_KERNEL_SOURCE)) == outside(failure(EXAMPLE_KIND))
-    assert check_failure.BACKEND_KINDS == frozenset(THE_EIGHT)
+    assert check_failure.BACKEND_KINDS == frozenset(THE_NINE)
 
 
-def test_the_backend_kinds_as_shipped_are_the_eight_of_adr_0068_decision_3():
+def test_the_backend_kinds_as_shipped_are_the_eight_of_adr_0068_decision_3_and_the_one_of_adr_0207():
     assert type(BACKEND_KINDS) is frozenset
-    assert BACKEND_KINDS == frozenset(THE_EIGHT)
-    assert len(BACKEND_KINDS) == 8
+    assert BACKEND_KINDS == frozenset(THE_NINE)
+    assert len(BACKEND_KINDS) == 9
+    assert KIND_DEVICE_UNAVAILABLE == THE_NINTH == check_failure.KIND_DEVICE_UNAVAILABLE
     assert [
         KIND_NO_KERNEL_SOURCE,
         KIND_KERNEL_SOURCE_UNREADABLE,
@@ -412,7 +417,7 @@ def test_the_backend_kinds_as_shipped_are_the_eight_of_adr_0068_decision_3():
         BACKEND_KINDS.add(EXAMPLE_KIND)
 
 
-@pytest.mark.parametrize("kind", THE_EIGHT)
+@pytest.mark.parametrize("kind", THE_NINE)
 def test_each_backend_kind_is_a_name_a_tool_failure_takes(kind):
     (member,) = BACKEND_KINDS & {kind}
     assert type(member) is str
@@ -486,6 +491,7 @@ def test_public_names_of_the_module_and_no_default():
         "KIND_COMPILER_UNAVAILABLE",
         "KIND_BUILD_OUTPUT_MISSING",
         "KIND_EXECUTABLE_UNSTARTABLE",
+        "KIND_DEVICE_UNAVAILABLE",
         "BACKEND_KINDS",
         "ended_with",
     }

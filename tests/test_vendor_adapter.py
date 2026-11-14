@@ -9,6 +9,7 @@ from hilclaw import (
     local_run,
     run_operation,
     run_result,
+    standin_answer,
     standin_container,
     vendor_adapter,
 )
@@ -94,6 +95,7 @@ def test_spellings_are_the_existing_constants():
         check_failure.KIND_COMPILER_UNAVAILABLE,
         check_failure.KIND_BUILD_OUTPUT_MISSING,
         check_failure.KIND_EXECUTABLE_UNSTARTABLE,
+        check_failure.KIND_DEVICE_UNAVAILABLE,
     )
     assert set(vendor_adapter.KINDS) <= check_failure.BACKEND_KINDS
     assert vendor_adapter.PROBE_STATES == ("present", "absent", "unreadable")
@@ -130,12 +132,42 @@ def test_broken_refuses_other_types(value):
         broken(value)
 
 
-@pytest.mark.parametrize(
-    "value", ["settings_refused", "build_directory_unusable", "device_unavailable"]
-)
+@pytest.mark.parametrize("value", ["settings_refused", "build_directory_unusable"])
 def test_tool_failure_refuses_other_kinds(value):
     with pytest.raises(ValueError, match="kind"):
         tool_failure(value)
+
+
+def test_tool_failure_takes_device_unavailable_with_a_fixed_default_message():
+    outcome = tool_failure("device_unavailable")
+    assert_outcome(outcome, TOOL_FAILURE, kind="device_unavailable")
+    assert outcome.message == "the device probe found no usable device"
+    assert tool_failure("device_unavailable", "said").message == "said"
+    assert outcome.carried is None and outcome.condition is None
+
+
+@pytest.mark.parametrize(
+    "value", ["Device_unavailable", "device_unavailable ", "device"]
+)
+def test_tool_failure_refuses_names_near_device_unavailable(value):
+    with pytest.raises(ValueError, match="kind"):
+        tool_failure(value)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["compiler_unavailable", "build_output_missing", "executable_unstartable"],
+)
+def test_container_answer_keeps_its_three_kinds(kind):
+    read = standin_answer.Failure(kind, "m")
+    assert_outcome(
+        vendor_adapter._from_container_answer(read, None), TOOL_FAILURE, kind=kind
+    )
+
+
+def test_container_answer_never_gives_device_unavailable():
+    read = standin_answer.Failure("device_unavailable", "m")
+    assert vendor_adapter._from_container_answer(read, None) is None
 
 
 def test_tool_failure_and_messages_refuse_other_types():

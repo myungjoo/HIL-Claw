@@ -19,17 +19,22 @@ for the tool function, the part of its decisions 3 to 6 that needs no log:
   :data:`KIND_BUILD_INPUT_MISSING`, :data:`KIND_COMPILER_UNAVAILABLE`,
   :data:`KIND_BUILD_OUTPUT_MISSING` and :data:`KIND_EXECUTABLE_UNSTARTABLE`,
   in that order of the rows; for these tools the executable is the timing
-  executable and the program of S5 the driver program (decision 3).
+  executable and the program of S5 the driver program (decision 3). The
+  ninth, :data:`KIND_DEVICE_UNAVAILABLE`, is common to the three HW tools
+  (``ARCHITECTURE/decisions/ADR-0207-od33-cuda-target-demonstration.md``
+  decision 6, the owner's answer HQ-0097 (a)): a probe run before the
+  timing process found no usable device.
 * The kinds outside the contract (decision 4) are every other: the reserved
   kinds, the six kinds of the run tools' admission, seed and objective
   answers, ``operation_answer_invalid``, ``build_log_unwritable`` (which only
   the tool function raises), :data:`KIND_OPERATION_FAILURE_INVALID` itself and
   any other name.
 
-The nine kind constants are those of :mod:`hilclaw.check_failure`, imported:
+The ten kind constants are those of :mod:`hilclaw.check_failure`, imported:
 decisions 3 and 4 give the run tools' kinds the spelling and the meaning of
-``correctness.check``'s on purpose. :data:`BACKEND_KINDS` is a set of this
-module, built from the eight, so that a kind a later record adds to one
+``correctness.check``'s on purpose, and ADR-0207 decision 6 gives the ninth
+backend kind to both contracts. :data:`BACKEND_KINDS` is a set of this
+module, built from the nine, so that a kind a later record adds to one
 contract alone is added to that contract's set alone.
 
 What a message of a backend kind may show is said by decision 6, as a rule
@@ -104,6 +109,9 @@ KIND_BUILD_OUTPUT_MISSING = check_failure.KIND_BUILD_OUTPUT_MISSING
 #: The backend kind of decision 3 for S10: the timing executable cannot be started.
 KIND_EXECUTABLE_UNSTARTABLE = check_failure.KIND_EXECUTABLE_UNSTARTABLE
 
+#: The backend kind of ADR-0207 decision 6: a probe run before the timing process found no usable device.
+KIND_DEVICE_UNAVAILABLE = check_failure.KIND_DEVICE_UNAVAILABLE
+
 #: The backend kinds of decision 5. A kind is added only when a record of the run tools' contract names it.
 BACKEND_KINDS = frozenset(
     {
@@ -115,6 +123,7 @@ BACKEND_KINDS = frozenset(
         KIND_COMPILER_UNAVAILABLE,
         KIND_BUILD_OUTPUT_MISSING,
         KIND_EXECUTABLE_UNSTARTABLE,
+        KIND_DEVICE_UNAVAILABLE,
     }
 )
 

@@ -47,9 +47,17 @@ Each job has the three parts of :mod:`hilclaw.vendor_adapter`:
   the tool absent, :data:`~hilclaw.vendor_adapter.ABSENT` with another
   message; or :data:`~hilclaw.vendor_adapter.UNREADABLE`.
   :func:`device_probe` joins the pair. The query holds no code of an attempt;
-  no status or output of an attempt's process is read as no device. "No
-  device" is a value of this module only: no condition or failure kind
-  carries it (ADR-0194 decision 3, V6 (a)).
+  no status or output of an attempt's process is read as no device.
+* **device check** (``ARCHITECTURE/decisions/ADR-0207-od33-cuda-target-demonstration.md``
+  decision 6, the owner's answer HQ-0097 (a)): :func:`device_outcome` turns
+  the :class:`~hilclaw.vendor_adapter.Probe` of the device query into one
+  :class:`hilclaw.vendor_adapter.Outcome`: a usable device,
+  :data:`~hilclaw.vendor_adapter.GO_ON` carrying the probe's version; no
+  device, the query program absent, or a query that could not be read, the
+  tool failure ``device_unavailable`` with the probe's message.
+  :func:`check_device` joins the query and that reading. An operation calls
+  it before the attempt's process is started; a device lost after it went
+  on is that process's run failure (ADR-0194 decision 3).
 
 The program of a build, a probe or a device query is the argument
 ``program``, whose default is the module's constant, as in
@@ -57,10 +65,17 @@ The program of a build, a probe or a device query is the argument
 there (ADR-0194 decision 6). Argument checks raise :class:`TypeError` or
 :class:`ValueError` with the attribute ``parameter`` naming the argument.
 No ``Target`` entry, backend or tool is attached here, and no version is
-written anywhere.
+written anywhere. The module imports :mod:`hilclaw.check_failure` for the
+kind of the device check only.
 """
 
-from hilclaw import clang_adapter, local_run, run_parameters, vendor_adapter
+from hilclaw import (
+    check_failure,
+    clang_adapter,
+    local_run,
+    run_parameters,
+    vendor_adapter,
+)
 from hilclaw.harness import timing
 
 PROGRAM = "nvcc"
@@ -317,3 +332,50 @@ def _query(call, interpret):
             raise
         return found
     return interpret(result, call.command[0])
+
+
+def device_outcome(found):
+    """Return the :class:`hilclaw.vendor_adapter.Outcome` of the device query's ``found``.
+
+    ``found`` is exactly a :class:`hilclaw.vendor_adapter.Probe` as
+    :func:`interpret_device_probe` gives it. :data:`~hilclaw.vendor_adapter.PRESENT`
+    is :data:`~hilclaw.vendor_adapter.GO_ON` carrying its ``version``;
+    :data:`~hilclaw.vendor_adapter.ABSENT` (no device, :data:`NO_DEVICE`, or
+    the query program not found or unable to start) and
+    :data:`~hilclaw.vendor_adapter.UNREADABLE` are the tool failure
+    ``device_unavailable`` (ADR-0207 decision 6) with ``found.message``.
+    Raises :class:`TypeError` with ``parameter`` ``"found"`` for any other
+    value and :class:`ValueError` with that ``parameter`` for a ``state``
+    outside :data:`hilclaw.vendor_adapter.PROBE_STATES`, for a
+    :data:`~hilclaw.vendor_adapter.PRESENT` without a ``str`` version, or
+    for a ``message`` that is not a ``str``.
+    """
+    if type(found) is not vendor_adapter.Probe:
+        error = TypeError(
+            f"found must be a vendor_adapter.Probe, not {type(found).__name__}"
+        )
+        error.parameter = "found"
+        raise error
+    if found.state not in vendor_adapter.PROBE_STATES or type(found.message) is not str:
+        error = ValueError("found must have a state of PROBE_STATES and a str message")
+        error.parameter = "found"
+        raise error
+    if found.state == vendor_adapter.PRESENT:
+        if type(found.version) is not str:
+            error = ValueError("found is present and must have a str version")
+            error.parameter = "found"
+            raise error
+        return vendor_adapter.go_on(found.version)
+    return vendor_adapter.tool_failure(
+        check_failure.KIND_DEVICE_UNAVAILABLE, found.message
+    )
+
+
+def check_device(*, timeout_s, program=DEVICE_PROGRAM):
+    """Query the GPUs and return the :class:`hilclaw.vendor_adapter.Outcome` of :func:`device_outcome`.
+
+    Arguments as :func:`assemble_device_probe`, checked before anything
+    starts. An exception of :func:`hilclaw.local_run.run` that
+    :func:`interpret_device_probe` does not place is raised unchanged.
+    """
+    return device_outcome(device_probe(timeout_s=timeout_s, program=program))
