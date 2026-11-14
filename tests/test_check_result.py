@@ -188,7 +188,22 @@ def sdpa_counts(cache_k=(0, 0), cache_v=(0, 0), out=((0, 0), (0, 0))):
 
 
 def test_the_table_has_the_seven_contracts_of_the_cases():
-    assert [key[:2] for key in contract_table.TABLE] == list(V2_CASES)
+    c = [key[:2] for key in contract_table.TABLE if key[3] == "c"]
+    assert c == list(V2_CASES)
+
+
+def test_the_cuda_gemm_entry_gives_the_v2_result_of_the_c_entry():
+    cuda = contract_table.TABLE["gemm", "fp32", "row_major", "cuda"]
+    case = ("gemm", "fp32")
+    dims, _, names, _ = V2_CASES[case]
+    counts = zero_counts(case, names)
+    assert output_operands(cuda, dims) == names
+    assert v2_completed(cuda, dims, **V2_COMMON, counts=counts) == v2_completed(
+        GEMM_ENTRY, dims, **V2_COMMON, counts=counts
+    )
+    assert v2_broken("exit_status", cuda, dims, **V2_COMMON) == v2_broken(
+        "exit_status", GEMM_ENTRY, dims, **V2_COMMON
+    )
 
 
 @pytest.mark.parametrize("case", list(V2_CASES), ids="-".join)

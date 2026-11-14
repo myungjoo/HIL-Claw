@@ -15,6 +15,7 @@ from hilclaw import (
     sdpa_kv_cache_bf16_contract,
     spec,
     swiglu_bf16_contract,
+    targets,
 )
 from hilclaw.catalog import (
     SOURCE,
@@ -151,7 +152,7 @@ def test_committed_entries_state_their_contracts():
 
 def test_every_contract_of_the_table_is_named_by_a_committed_entry():
     named = {e.applies_to for e in entries("cpu_standin").values()}
-    assert named == set(contract_table.TABLE)
+    assert named == set(targets.target(targets.CPU_STANDIN).contracts)
     assert FP32 in named
     assert len([key for key in named if key.dtype == "bf16"]) == 6
 
