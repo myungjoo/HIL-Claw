@@ -78,8 +78,10 @@ tool and has no command-line entry; the callers of :func:`local_record` are
 the nightly entry :mod:`hilclaw.nightly`, which puts the record into its own
 instance, and :mod:`hilclaw.remote_eval`, which runs it on another machine in
 a process of its own there; and :mod:`hilclaw.check_definition` and :mod:`hilclaw.start_instance`
-read :data:`ACCELERATOR` alone, and :mod:`hilclaw.targets` reads
-:data:`ACCELERATOR` and :data:`VIRTUAL_NPU`. It knows no accelerator but
+read :data:`ACCELERATOR` alone, :mod:`hilclaw.targets` reads
+:data:`ACCELERATOR` and :data:`VIRTUAL_NPU`, and :mod:`hilclaw.cuda_profile`
+reads :class:`UnreadableFactError` and this module's line, spelling, kernel,
+host and image readings for the record of ``cuda_gpu``. It knows no accelerator but
 these two and no other machine than the one the process runs on, adds no
 further member to ``toolchain`` or ``host``, does not tell WSL 1 from WSL 2
 and never compares a machine with a record again. The limits ADR-0035 names in
@@ -132,7 +134,9 @@ class UnreadableFactError(RuntimeError):
     """A fact of the machine cannot be read, so no record is made (ADR-0035 decision 6).
 
     The message starts with the fact (``toolchain.clang``, ``host.cpu``,
-    ``host.os`` or ``kernel name``) and gives the reason. It holds no text read
+    ``host.os`` or ``kernel name``, and for :mod:`hilclaw.cuda_profile` also
+    ``revision``, ``toolchain.nvcc``, ``toolchain.gcc`` or
+    ``toolchain.nvidia_driver``) and gives the reason. It holds no text read
     from a file, from the output of a command or from the kernel name.
     Decision 6 lists the cases of the record; :func:`local_record` says which
     further cases this module reads as such.
@@ -225,10 +229,26 @@ def local_record(
         standin_container.check_image(image)
         start = functools.partial(_run_in_image, image, timeout_s)
         shown = "docker run <image> clang --version"
+    name, release = _ruled_kernel()
+    clang = _output_line("toolchain.clang", shown, timeout_s, start)
+    return {
+        "schema_version": keys.SCHEMA_VERSION,
+        "accelerator": accelerator,
+        "revision": _REVISIONS[accelerator],
+        "toolchain": {"clang": clang.decode("ascii")},
+        "host": _host(name, release, timeout_s),
+        "hw_source": hw_source,
+    }
+
+
+def _ruled_kernel():
     name, release = _kernel()
     if name not in ("Darwin", "Linux"):
         raise UnreadableFactError("kernel name: this module has no rule for it")
-    clang = _output_line("toolchain.clang", shown, timeout_s, start)
+    return name, release
+
+
+def _host(name, release, timeout_s):
     if name == "Darwin":
         cpu = _command_line("host.cpu", _CPU_COMMAND, " ".join(_CPU_COMMAND), timeout_s)
         words = [
@@ -246,15 +266,8 @@ def local_record(
         if version is not None:
             words.append(version)
     return {
-        "schema_version": keys.SCHEMA_VERSION,
-        "accelerator": accelerator,
-        "revision": _REVISIONS[accelerator],
-        "toolchain": {"clang": clang.decode("ascii")},
-        "host": {
-            "cpu": cpu.decode("ascii"),
-            "os": _spelling("host.os", b" ".join(words)).decode("ascii"),
-        },
-        "hw_source": hw_source,
+        "cpu": cpu.decode("ascii"),
+        "os": _spelling("host.os", b" ".join(words)).decode("ascii"),
     }
 
 
@@ -274,12 +287,12 @@ def _run(command, timeout_s):
     return local_run.run(command, timeout_s=timeout_s)
 
 
-def _run_in_image(image, timeout_s):
+def _run_in_image(image, timeout_s, program=clang_build.DEFAULT_COMPILER):
     with tempfile.TemporaryDirectory() as build_dir:
         return standin_container.run_in_container(
             image,
             build_dir,
-            clang_build.DEFAULT_COMPILER,
+            program,
             ("--version",),
             timeout_s=timeout_s,
             removal_timeout_s=timeout_s,
@@ -324,6 +337,10 @@ def _command_line(fact, command, shown, timeout_s):
 
 
 def _output_line(fact, shown, timeout_s, start):
+    return _spelling(fact, _output(fact, shown, timeout_s, start)[0])
+
+
+def _output(fact, shown, timeout_s, start):
     try:
         result = start()
     except local_run.ProgramNotFoundError:
@@ -347,7 +364,7 @@ def _output_line(fact, shown, timeout_s, start):
         raise UnreadableFactError(
             f"{fact}: `{shown}` ended with status {result.returncode}"
         )
-    return _spelling(fact, _lines(result.stdout)[0])
+    return _lines(result.stdout)
 
 
 def _file_lines(fact, path):

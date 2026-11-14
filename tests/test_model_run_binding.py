@@ -496,6 +496,7 @@ def second_target(model_run=True):
         units_per_ns=1,
         model_run=model_run,
         instance_start=False,
+        coder_loop=False,
     )
 
 

@@ -89,6 +89,7 @@ def make_target(**changes):
         "units_per_ns": 1,
         "model_run": False,
         "instance_start": False,
+        "coder_loop": False,
     }
     values.update(changes)
     return targets.Target(**values)

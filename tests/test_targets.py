@@ -31,6 +31,7 @@ GOOD = {
     "units_per_ns": 1,
     "model_run": False,
     "instance_start": False,
+    "coder_loop": False,
 }
 
 
@@ -38,12 +39,12 @@ def made(**changes):
     return Target(**(GOOD | changes))
 
 
-def test_the_table_holds_cpu_standin_and_virtual_npu_and_not_the_mock():
+def test_the_table_holds_cpu_standin_virtual_npu_and_cuda_gpu_and_not_the_mock():
     assert isinstance(TABLE, Mapping)
-    assert tuple(TABLE) == (standin_profile.ACCELERATOR, "virtual_npu")
-    assert len(TABLE) == 2
+    assert tuple(TABLE) == (standin_profile.ACCELERATOR, "virtual_npu", "cuda_gpu")
+    assert len(TABLE) == 3
     assert mock_backend.NAME not in TABLE
-    assert repr(TABLE) == "<target table: cpu_standin, virtual_npu>"
+    assert repr(TABLE) == "<target table: cpu_standin, virtual_npu, cuda_gpu>"
 
 
 def test_cpu_standin_keeps_the_constants_of_standin_settings():
@@ -350,6 +351,112 @@ def test_virtual_npu_takes_an_instance_start_and_no_model_run():
         targets.VIRTUAL_NPU,
     )
     assert targets.target(targets.VIRTUAL_NPU).model_run is False
+
+
+@pytest.mark.parametrize("value", [1, 0, None, "true", "false"])
+def test_a_coder_loop_that_is_no_bool_is_refused(value):
+    with pytest.raises(TypeError, match="coder_loop must be a bool"):
+        made(coder_loop=value)
+
+
+def test_coder_loop_has_no_default():
+    values = {name: value for name, value in GOOD.items() if name != "coder_loop"}
+    with pytest.raises(TypeError):
+        Target(**values)
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_a_good_coder_loop_is_kept(value):
+    assert made(coder_loop=value).coder_loop is value
+
+
+def test_cpu_standin_and_virtual_npu_take_the_coder_loop():
+    assert targets.target(targets.CPU_STANDIN).coder_loop is True
+    assert targets.target(targets.VIRTUAL_NPU).coder_loop is True
+    assert targets.coder_loop_accelerators() == (
+        targets.CPU_STANDIN,
+        targets.VIRTUAL_NPU,
+    )
+
+
+def test_coder_loop_accelerators_reads_both_booleans():
+    table = {
+        "both": made(instance_start=True, coder_loop=True),
+        "start_only": made(instance_start=True, coder_loop=False),
+        "loop_only": made(instance_start=False, coder_loop=True),
+        "neither": made(),
+        "again": made(instance_start=True, coder_loop=True),
+    }
+    assert targets.coder_loop_accelerators(table) == ("both", "again")
+    assert targets.instance_start_accelerators(table) == (
+        "both",
+        "start_only",
+        "again",
+    )
+    assert targets.coder_loop_accelerators({}) == ()
+
+
+def test_coder_loop_accelerators_passes_an_error_of_building_the_entry(monkeypatch):
+    monkeypatch.setattr(standin_settings, "FLAGS", "-O2")
+    with pytest.raises(TypeError):
+        targets.coder_loop_accelerators()
+
+
+# The cuda_gpu entry (ADR-0207 decision 3)
+
+
+def test_cuda_gpu_has_the_values_of_adr_0207_decision_3():
+    cuda = targets.target(targets.CUDA_GPU)
+    assert targets.CUDA_GPU == "cuda_gpu"
+    assert type(cuda) is Target
+    assert cuda.flags == ("-O2", "-arch=native") == targets.CUDA_GPU_FLAGS
+    assert cuda.trailing_flags == ()
+    assert cuda.waiter_flags == ("-O2",) == targets.CUDA_GPU_WAITER_FLAGS
+    assert cuda.env is None
+    assert cuda.build_time_limit_s == 120 == targets.CUDA_GPU_BUILD_TIME_LIMIT_S
+    assert cuda.process_time_limit_cap_s == standin_settings.PROCESS_TIME_LIMIT_CAP_S
+    assert cuda.contracts == ()
+    assert cuda.memory_limit_bytes is None
+    assert (cuda.unit, cuda.units_per_ns) == ("ns", 1)
+    assert cuda.model_run is False
+    assert cuda.instance_start is False
+    assert cuda.coder_loop is False
+
+
+def test_cuda_gpu_reads_the_process_cap_each_time_it_is_read(monkeypatch):
+    monkeypatch.setattr(standin_settings, "PROCESS_TIME_LIMIT_CAP_S", 9)
+    monkeypatch.setattr(standin_settings, "FLAGS", ("-O0",))
+    cuda = TABLE[targets.CUDA_GPU]
+    assert cuda.process_time_limit_cap_s == 9
+    assert cuda.flags == targets.CUDA_GPU_FLAGS
+
+
+def test_no_instance_and_no_coder_loop_starts_at_cuda_gpu():
+    assert targets.CUDA_GPU not in targets.instance_start_accelerators()
+    assert targets.CUDA_GPU not in targets.coder_loop_accelerators()
+
+
+@pytest.mark.parametrize("tool", ["correctness.check", "sim.run", "board.run"])
+def test_a_call_about_cuda_gpu_stays_no_backend(tool):
+    from hilclaw import backends, check_definition, tools
+
+    record = {
+        "schema_version": keys.SCHEMA_VERSION,
+        "accelerator": targets.CUDA_GPU,
+        "revision": "Example GPU sm_00",
+        "toolchain": {"nvcc": "n", "gcc": "g", "nvidia_driver": "d"},
+        "host": {"cpu": "c", "os": "o"},
+        "hw_source": "external",
+    }
+    with pytest.raises(tools.ToolFailure) as caught:
+        backends.select(check_definition.default_table(), record, tool)
+    assert caught.value.kind == tools.KIND_NO_BACKEND
+
+
+def test_covers_at_cuda_gpu_admits_no_contract():
+    covers = targets.covers_at(lambda record: True, targets.CUDA_GPU)
+    assert covers(FP32_GEMM) is False
+    assert covers(BF16_GEMM) is False
 
 
 # covers_at (ADR-0197 decision 3)
