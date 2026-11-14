@@ -81,13 +81,13 @@ a process of its own there; and :mod:`hilclaw.check_definition` and :mod:`hilcla
 read :data:`ACCELERATOR` alone, :mod:`hilclaw.targets` reads
 :data:`ACCELERATOR` and :data:`VIRTUAL_NPU`, and :mod:`hilclaw.cuda_profile`
 reads :class:`UnreadableFactError` and this module's line, spelling, kernel,
-host and image readings for the record of ``cuda_gpu``. It knows no accelerator but
-these two and no other machine than the one the process runs on, adds no
-further member to ``toolchain`` or ``host``, does not tell WSL 1 from WSL 2
-and never compares a machine with a record again. The limits ADR-0035 names in
-decision 7 are not handled: the first ``model name`` line stands for the
-machine. Nothing checks that ``compiler``, or the image, is the compiler a
-later build uses (decision 3; ADR-0186 decision 3).
+host and image readings for the record of ``cuda_gpu``. It knows no
+accelerator but these two and no other machine than the one the process
+runs on, adds no further member to ``toolchain`` or ``host``, does not tell
+WSL 1 from WSL 2 and never compares a machine with a record again. The
+limits ADR-0035 names in decision 7 are not handled: the first ``model
+name`` line stands for the machine. Nothing checks that ``compiler``, or
+the image, is the compiler a later build uses (decision 3; ADR-0186 decision 3).
 
 The kernel name is read first, and for a name without a rule nothing is
 started. Otherwise the module starts through :func:`hilclaw.local_run.run`

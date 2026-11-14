@@ -12,17 +12,17 @@ machine is the Linux environment.
   --format=csv,noheader`` (:data:`DEVICE_QUERY`), always run on the host. The
   line is split at its last two commas into the product name, the compute
   capability and the driver version; the compute capability must be
-  ``<major>.<minor>`` in decimal digits without a leading zero. A device query with no line or with
-  more than one line has no record (a line here is one that is not empty
-  after the spelling's run and end rule).
+  ``<major>.<minor>`` in decimal digits without a leading zero. A device
+  query with no line or with more than one line has no record (a line here
+  is one that is not empty after the spelling's run and end rule).
 * ``toolchain`` has exactly three members. ``nvcc`` is the release line of
   ``nvcc --version``: the first line that, after the spelling's run and end
   rule, begins with ``Cuda compilation tools, release``, the prefix
   :func:`hilclaw.cuda_adapter.interpret_probe` looks for (on the output of
-  ``nvcc`` both pick the same line; lines here end at a line feed only). ``gcc`` is the first
-  line of ``gcc --version``. ``nvidia_driver`` is the driver version of the
-  device query's line. When the caller names an image, ``nvcc --version`` and
-  ``gcc --version`` are each run as the program of one new container of it
+  ``nvcc`` both pick the same line; lines here end at a line feed only).
+  ``gcc`` is the first line of ``gcc --version``. ``nvidia_driver`` is the
+  driver version of the device query's line. When the caller names an
+  image, ``nvcc --version`` and ``gcc --version`` are each run as the program of one new container of it
   through :func:`hilclaw.standin_container.run_in_container`, as ADR-0186
   reads ``clang``; otherwise on the host. The device query is never run in a
   container: the driver is the host's.
