@@ -86,7 +86,7 @@ hq: []
 
 ## Result
 
-PR #385 (squash-merged; branch deleted). Review rounds: see the last line of this section. Not BLOCKED; one HQ for the driver to record (below).
+PR #385, squash-merged with the PR body (last line `Task: T-0572`); branch deleted. Review: 3 rounds (round 1 and 2 Request changes, round 3 Approve). Not BLOCKED; one HQ for the driver to record (below).
 
 **Order check (D27 ①)** at start (main `c662fcba`): no open PR, no open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`.
 
