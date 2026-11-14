@@ -94,7 +94,11 @@ KINDS = (
     check_failure.KIND_EXECUTABLE_UNSTARTABLE,
     check_failure.KIND_DEVICE_UNAVAILABLE,
 )
-_INTERPRETED_KINDS = KINDS[:3]
+_INTERPRETED_KINDS = (
+    check_failure.KIND_COMPILER_UNAVAILABLE,
+    check_failure.KIND_BUILD_OUTPUT_MISSING,
+    check_failure.KIND_EXECUTABLE_UNSTARTABLE,
+)
 
 PRESENT = "present"
 ABSENT = "absent"
@@ -354,7 +358,7 @@ def interpret_container_build(answer, artefact):
     condition, :data:`BROKEN`; 125 to 127, ``compiler_unavailable``; no row,
     :class:`ValueError`. For an exception, the answer of
     :func:`hilclaw.standin_answer.place_error` at its build step, ``None``
-    where that answer is none or a kind outside the first three of :data:`KINDS`. An
+    where that answer is none or ``device_unavailable`` or a kind outside :data:`KINDS`. An
     :class:`OSError` from the stat of ``artefact`` other than an absent path
     is passed on. Raises :class:`TypeError` with ``parameter`` ``"answer"``
     for any other value, and :class:`TypeError` or :class:`ValueError` with
