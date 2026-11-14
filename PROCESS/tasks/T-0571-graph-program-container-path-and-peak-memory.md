@@ -57,3 +57,23 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+PR #384 (squash-merged; branch deleted); 1 review round (Approve with two test-only nits, fixed afterwards under D20: a test renamed, a one-line comment on the `user` fixture's `tmp_path` dependency). Not BLOCKED.
+
+Order check (D27 ①) at start (main a86d2bca): no open PR, no open `nightly-failure` issue, no `실패` item in `PROCESS/RuntimeAcceptance.md`.
+
+**Language.** Python for `hilclaw/model_graph_container.py`, like the executor's other host-side container modules; the program and the waiter stay the existing C sources. Clang used: Ubuntu clang 14.0.0-1ubuntu1.1 (WSL2).
+
+**What landed.** New module only; no existing module edited (it imports `model_forward_container`'s outcome types and private helpers and `model_graph_execute._prepare`). `execute(...)` runs the untimed graph program in containers (report by `model_graph.parse_report`). `execute_timed(..., repetitions, waiter_flags, ...)` refuses R that is not an odd `int` >= 1 before the graph is read, builds the waiter in its own container with the caller's `waiter_flags` (the target's), and runs R new process containers `/build/waiter /build/model_graph /build/input.bin <libs>`. Each run gives a `TimedReport` and `memory_bytes` (KiB x 1024, or `None` for a non-positive value or the none line). The first failed run ends the execution with no figures: `TimedRunFailed.TIMEOUT`, `EXIT_STATUS` (any non-zero status, 125-127 included as ADR-0168 decision 4 reads a timing process), `WAITER_LINE` (status 0, no line), `REPORT_FORM`, `NOT_INCREASING`. Build-container 125-127, no image, a refused image and no client are `model_forward_container.Unavailable`. A failed waiter build is `BuildFailed(None, ...)` with the waiter's `output`. Size: about 540 lines in the new module (docstrings included), 1 code file plus 1 test file.
+
+**Existing tests (D21).** None changed.
+
+**Verification.** `tests/test_model_graph_container.py` has 83 tests. A stub client covers every outcome. With real clang, the untimed Llama report equals `model_graph_execute.execute`'s (given and generation modes). The timed R = 1 and R = 3 runs ran under the real waiter as PID 1 in an unprivileged PID namespace (`unshare --user --pid --fork --mount-proc --kill-child`, as `tests/harness/test_timing_waiter.py`): tokens equal the untimed generation's, `memory_bytes` > 0 and a multiple of 1024. When no namespace can be made, the test falls back to a stub-produced waiter line. A real waiter outside PID 1 gives status 3 and `EXIT_STATUS`. Full suite under `coverage run --branch` (Python 3.12.13, from a non-git copy of the tree): 42260 passed, 119 skipped, 1 failed — `test_remote_eval.py::test_snapshot_holds_the_package_and_no_git_directory`, which needs `git archive` of a checkout and fails only because the copy had no `.git`; package 99 %, new module 100 % line and branch. ruff check/format clean. No `claude`, Docker or model file used (D16); no test run (D25).
+
+**Runtime acceptance item (D22)** — for `PROCESS/RuntimeAcceptance.md`:
+
+> PLAN P3-12 / ADR-0206 결정 7 (slice 2). 컨테이너 런타임이 있는 C-7의 머신에서, ADR-0144의 컨테이너 안에서 waiter(ADR-0145)가 시작한 timed graph program(`hilclaw.model_graph_container.execute_timed`)이 완전한 timed 보고를 내고 그 뒤에 waiter의 줄이 오는가, 그리고 그 보고의 token이 같은 입력에 대한 untimed program(`hilclaw.model_graph_container.execute`)의 token과 같은가(이 프로세스에 대한 ADR-0145 (liii)·(liv)의 컨테이너 사실). 실패로 드러나면 ADR-0206 결정 4(waiter를 통한 peak memory)를 다시 본다. T-0571(PR #384) 착지 뒤 확인 가능.
+
+**Follow-ups.** None.
+
+**Storage.** `%TMP%/hilclaw-driver/T-0571/` and the WSL `/tmp/hilclaw-driver/T-0571/` (repo copy, pytest base, coverage data) removed with `rm -r`; no images, no installs.
