@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P3",
-  "currentTask": "T-0576",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:hil-claw-dev-driver-1552",
-    "acquiredAt": "2026-11-14T15:52:26Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -1040,19 +1036,27 @@
       "question": "(OD-33 ①·⑥, PLAN P3-16; ADR-0207 결정 5. HQ-0088 ① (c)는 다시 묻지 않는다) [쟁점] PLAN P3-16은 테스트가 둔 CUDA `gemm` 커널이 빌드·correctness·측정·기록까지 도는 것을 요구하고, HQ-0096 덧붙임은 CUDA 대상에서 주어진 코드의 평가를 연다. 오늘의 틀에서 시도의 `output/`은 `.c`·`.h` 이름만 받고 `.c` 파일만 컴파일하며(ADR-0055 N1·N2·R3), 주어진 코드는 C 파일 하나를 `given.c`로 두고(ADR-0200 결정 2), `candidate_kind`가 없는 `instance.json`은 C 커널 run이다(ADR-0198 결정 4, HQ-0089 ④). CUDA C++ 커널을 run에 기록하는 것과 CUDA C++ 주어진 코드 묶음은 이 틀을 바꾼다(D23). [선택지] (a) `cuda_gpu` 대상의 run에 한해 시도의 `output/` 허용 이름에 `.cu`로 끝나는 이름을 더하고 그 대상의 컴파일 집합은 `.cu` 파일로 한다(`.c`는 그 대상에서 컴파일하지 않음; 정렬·크기·개수 규칙은 그대로); 그 대상의 주어진 코드 묶음은 CUDA C++ 파일 하나이고 `given.cu`로 놓인다; 그 run의 `instance.json`은 지금처럼 `candidate_kind` 없이 쓰고, 그 없음을 \"대상의 계약 언어(`cuda`)로 쓴 커널\"로 읽는다(기존 값의 읽기 변경). (b) (a)와 같되 승인된 열린 목록 \"후보 종류\"에 새 값(예: `cuda_kernel`)을 더해 `instance.json` 버전 2로 적는다 — 값의 내용은 오너 몫이고 코더의 벤더 언어 커널 종류와 같은 값을 미리 정하게 된다. (c) 이름은 `.c` 그대로, 대상 플래그 `-x cu`로 CUDA C++로 컴파일한다 — 틀은 그대로이나 `.c` 파일과 C 커널 run이 CUDA C++를 담고 C 하네스도 CUDA C++로 컴파일된다. (d) run 기록 없이 실증한다 — P3-16의 \"기록\"을 테스트 디렉토리에서의 빌드·검사·측정까지로 줄이고, run 기록과 CUDA 묶음은 벤더 언어 커널 종류(HQ-0088 ① (c))가 정해질 때 함께. 실행자의 권고(결정 아님): (a) — 이름이 언어를 말하고 `nvcc`가 접미사로 언어를 고르며, 계약의 language(`cuda`)가 이미 spec·결과에 언어를 적고, 코더의 경로는 `coder_loop` false로 닫힌 채 남는다. [막히는 것] ADR-0207 slice 6(CUDA 대상의 `instance_start` true, 주어진 코드 묶음, 기본 백엔드 표 등재, run 기록까지의 실증)과 그로써 P3-16의 완료. [막히지 않는 것] ADR-0207 slice 2~5(hw_profile과 대상 표 항목, CUDA 계약과 C 하네스, 백엔드 연산, 런타임 GPU 컨테이너), 그 밖의 task, 오너의 P2-15 확인.",
       "askedAt": "2026-11-14T12:43:57Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0105",
+      "taskId": "T-0576",
+      "reason": "new-external-dependency",
+      "question": "쟁점: T-0576(ADR-0207 slice 5 앞쪽 절반)은 WSL2 Ubuntu에 NVIDIA Container Toolkit을 설치하고 Docker 데몬을 재시작해야 한다. 그런데 `sudo`가 비밀번호를 요구해(`sudo -n true` 실패) executor가 진행할 수 없다. 지금 실행 중인 컨테이너는 없어 재시작으로 멈출 작업은 없다.\n선택지: (a) [권장] 오너가 WSL Ubuntu에서 NVIDIA 설치 가이드(https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)와 같은 다음 명령을 직접 실행한다 — `curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg`; `curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list`; `sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit`; `sudo nvidia-ctk runtime configure --runtime=docker`; `sudo systemctl restart docker`. 이미지 pull과 코드 작업은 executor가 재개해서 한다. (b) executor가 Windows 쪽 `wsl -u root`(비밀번호 없는 root 진입)로 이 설치만 하도록 허용한다 — sudo 비밀번호 보호를 우회하는 선례가 된다. (c) 오너가 위 명령들에만 NOPASSWD sudoers 항목을 추가한다.\n막히는 것: T-0576과 T-0577(ADR-0207 slice 5, PLAN P3-16의 실제 GPU 실증). 막히지 않는 것: 이미 merge된 slice 1–4, 다른 PLAN 항목, HQ-0104를 기다리는 slice 6(원래 따로 대기).",
+      "askedAt": "2026-11-14T15:54:06Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 605,
+    "iterations": 606,
     "tasksDone": 569,
-    "tasksBlocked": 37,
+    "tasksBlocked": 38,
     "reviewRoundsTotal": 1816
   },
   "lastIteration": {
-    "at": "2026-11-14T15:27:10Z",
-    "owner": "AKIHA:hil-claw-dev-driver-8421",
-    "taskId": "T-0575",
-    "outcome": "DONE"
+    "at": "2026-11-14T15:54:06Z",
+    "owner": "AKIHA:hil-claw-dev-driver-1552",
+    "taskId": "T-0576",
+    "outcome": "BLOCKED"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."
 }

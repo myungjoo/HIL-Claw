@@ -2,7 +2,7 @@
 id: T-0576
 title: PLAN P3-16 (5a) — ADR-0207 slice 5, first half: install the NVIDIA Container Toolkit and pull the CUDA image on this machine, add the `--gpus all` option to the container start, the `cuda_gpu` image variable and the device check in a probe container, checked on the real GPU
 phase: P3
-status: IN_PROGRESS
+status: BLOCKED
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "ADR-0207", "HQ-0095", "HQ-0096", "HQ-0097", FR-10, FR-19, OD-33, OD-14, NFR-4]
 dependsOn: []
@@ -14,7 +14,7 @@ touchesFiles:
   - tests/test_cuda_image.py
   - tests/test_cuda_adapter.py
 estimatedSize: {loc: 260, files: 3}
-hq: []
+hq: [HQ-0105]
 ---
 ## Why
 
@@ -142,3 +142,9 @@ If an owner-only part appears, write it in `## Result` as an HQ in the DRIVER §
 ## Follow-ups
 
 ## Result
+
+BLOCKED (`new-external-dependency`) — acceptance criterion 2 stop condition: in WSL2, `sudo -n true` reports "a password is required". Nothing landed (no branch, no PR, 0 review rounds). HQ-0105 asks the owner to install the NVIDIA Container Toolkit.
+
+- Machine check (criterion 1, WSL2 Ubuntu 22.04.5, 2026-11-14T15:53Z): Docker Engine/Client 29.1.3, containerd 2.2.1, runc 1.3.4, context `default` (unix:///var/run/docker.sock); runtimes `io.containerd.runc.v2 runc`, default `runc`; CDI dirs `/etc/cdi`, `/var/run/cdi`; no running container; no `/etc/docker/daemon.json`; no `nvidia-ctk`; no local CUDA image; `nvidia-smi` shows RTX 4070 (12282MiB), driver 615.78.02 / KMD 617.14, CUDA UMD 13.4; user in `sudo` and `docker` groups but `sudo -n true` needs a password; NVIDIA apt repo reachable; Docker Hub still lists the pinned digest; 131G free on `/`.
+- Nothing installed, pulled or changed; no task directory created. Passwordless root entry via `wsl -u root` was not used (it would work around the stop condition).
+- No RuntimeAcceptance item.
