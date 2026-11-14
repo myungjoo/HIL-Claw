@@ -2,7 +2,7 @@
 id: T-0575
 title: PLAN P3-16 (4) — ADR-0207 slice 4, the `cuda_gpu` operations of `correctness.check`, `sim.run` and `board.run` on the host executor (device check first, `nvcc` build, run, the existing judging), held by a test-built backend table and checked on the real GPU
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "ADR-0207", "HQ-0095", "HQ-0096", "HQ-0097", FR-9, FR-10, FR-19, OD-33]
 dependsOn: [T-0573, T-0574]

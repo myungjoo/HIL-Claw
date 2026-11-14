@@ -1,9 +1,13 @@
 {
   "schema_version": 1,
   "phase": "P3",
-  "currentTask": null,
-  "nextTask": "T-0575",
-  "lock": null,
+  "currentTask": "T-0575",
+  "nextTask": null,
+  "lock": {
+    "owner": "AKIHA:hil-claw-dev-driver-8421",
+    "acquiredAt": "2026-11-14T14:48:38Z",
+    "ttlMinutes": 180
+  },
   "humanQuestions": [
     {
       "id": "HQ-0001",
