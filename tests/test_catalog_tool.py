@@ -14,6 +14,7 @@ from hilclaw import (
     layout,
     mcp_front,
     spec_tool,
+    targets,
     tools,
 )
 from hilclaw.tools import ToolDefinition, ToolFailure, default_registry
@@ -447,6 +448,7 @@ BF16_SHAPES = {
 CONTRACTS = {
     key: (e.contract, BF16_SHAPES[key[0]] if key[1] == "bf16" else (2, 3, 5))
     for key, e in contract_table.TABLE.items()
+    if key in targets.target(targets.CPU_STANDIN).contracts
 }
 BF16 = [key for key in CONTRACTS if key[1] == "bf16"]
 FP32_GEMM = ("gemm", "fp32", "row_major", "c")

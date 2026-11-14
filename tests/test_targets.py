@@ -60,7 +60,7 @@ def test_cpu_standin_keeps_the_constants_of_standin_settings():
         == standin_settings.PROCESS_TIME_LIMIT_CAP_S
         == 1500
     )
-    assert standin.contracts == tuple(contract_table.TABLE)
+    assert standin.contracts == tuple(contract_table.TABLE)[:7]
     assert len(standin.contracts) == 7
     assert standin.memory_limit_bytes is None
     assert standin.unit == "ns"
@@ -216,6 +216,23 @@ def test_contracts_that_are_no_keys_of_the_contract_table_are_refused(value, err
         made(contracts=value)
 
 
+def test_two_keys_of_one_kind_dtype_and_layout_are_refused():
+    both = (("gemm", "fp32", "row_major", "c"), ("gemm", "fp32", "row_major", "cuda"))
+    with pytest.raises(ValueError, match="one key per kind, dtype and layout"):
+        made(contracts=both)
+    with pytest.raises(ValueError, match="one key per kind, dtype and layout"):
+        made(contracts=both[::-1])
+    assert made(contracts=both[1:]).contracts == both[1:]
+
+
+def test_only_cuda_gpu_serves_the_cuda_contract():
+    key = ("gemm", "fp32", "row_major", "cuda")
+    served = {name: key in targets.target(name).contracts for name in TABLE}
+    assert served == {"cpu_standin": False, "virtual_npu": False, "cuda_gpu": True}
+    standin = targets.target(targets.CPU_STANDIN).contracts
+    assert {language for *_, language in standin} == {"c"}
+
+
 def test_no_contract_is_admitted():
     assert made(contracts=()).contracts == ()
 
@@ -309,7 +326,7 @@ def test_virtual_npu_has_the_values_of_adr_0193_decision_4():
     assert virtual.build_time_limit_s == standin_settings.BUILD_TIME_LIMIT_S
     assert virtual.process_time_limit_cap_s == standin_settings.PROCESS_TIME_LIMIT_CAP_S
     assert virtual.contracts == tuple(
-        key for key in contract_table.TABLE if key != ("gemm", "fp32", "row_major", "c")
+        key for key in contract_table.TABLE if key[:3] != ("gemm", "fp32", "row_major")
     )
     assert len(virtual.contracts) == 6
     assert {key[1] for key in virtual.contracts} == {"bf16"}
@@ -415,7 +432,7 @@ def test_cuda_gpu_has_the_values_of_adr_0207_decision_3():
     assert cuda.env is None
     assert cuda.build_time_limit_s == 120 == targets.CUDA_GPU_BUILD_TIME_LIMIT_S
     assert cuda.process_time_limit_cap_s == standin_settings.PROCESS_TIME_LIMIT_CAP_S
-    assert cuda.contracts == ()
+    assert cuda.contracts == (("gemm", "fp32", "row_major", "cuda"),)
     assert cuda.memory_limit_bytes is None
     assert (cuda.unit, cuda.units_per_ns) == ("ns", 1)
     assert cuda.model_run is False
@@ -453,9 +470,9 @@ def test_a_call_about_cuda_gpu_stays_no_backend(tool):
     assert caught.value.kind == tools.KIND_NO_BACKEND
 
 
-def test_covers_at_cuda_gpu_admits_no_contract():
+def test_covers_at_cuda_gpu_admits_fp32_gemm_alone():
     covers = targets.covers_at(lambda record: True, targets.CUDA_GPU)
-    assert covers(FP32_GEMM) is False
+    assert covers(FP32_GEMM) is True
     assert covers(BF16_GEMM) is False
 
 

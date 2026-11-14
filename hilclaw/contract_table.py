@@ -3,8 +3,10 @@
 ``ARCHITECTURE/decisions/ADR-0177-od18-od6-contract-table.md`` makes this
 module the one place in the package that lists the operational contracts an
 instance, a spec and a run tool may be about: the fp32 ``gemm`` contract of
-ADR-0008 (:mod:`hilclaw.gemm_contract`) and the six bf16 contracts of
-ADR-0156 and ADR-0158 to ADR-0162 (the ``hilclaw.*_bf16_contract`` modules).
+ADR-0008 (:mod:`hilclaw.gemm_contract`), the six bf16 contracts of
+ADR-0156 and ADR-0158 to ADR-0162 (the ``hilclaw.*_bf16_contract`` modules)
+and, last, the fp32 ``gemm`` contract in the language ``cuda`` of ADR-0207
+decision 4 (:mod:`hilclaw.gemm_cuda_contract`).
 Each entry is keyed by the ``kind``, ``dtype``, ``layout`` and ``language``
 of its contract and holds the contract module itself, so no constant of a
 contract is copied here, and two flags that say which tools serve it after
@@ -34,11 +36,20 @@ covered there only when its covering entry is one the target serves. Without
 a target the predicates answer as before. :func:`served_at` answers the
 target's part alone, without asking any contract's ``covers``; the run
 tools join it to their bound predicate at the target of the run
-(:mod:`hilclaw.run_tool`). The record states no language
-(ADR-0031 decision 2), so the table holds at most one entry per ``kind``,
-``dtype`` and ``layout`` (ADR-0177 decision 1). :func:`entry` returns the
+(:mod:`hilclaw.run_tool`).
+
+The record states no language (ADR-0031 decision 2). The table holds two
+entries for fp32 ``gemm`` ``row_major``, in the languages ``c`` and
+``cuda`` (ADR-0207 decision 4), and the target picks between them: at a
+target only the entries it serves are asked (ADR-0193 decision 4), and a
+target serves at most one entry per ``kind``, ``dtype`` and ``layout``
+(:class:`hilclaw.targets.Target`; ``cuda_gpu`` serves the ``cuda`` entry
+alone, ADR-0207 decision 3). Without a target only the first entry of each
+``kind``, ``dtype`` and ``layout`` in the order of :data:`TABLE` is asked,
+so every answer without a target is that of ADR-0177 decision 1's table of
+one entry per ``kind``, ``dtype`` and ``layout``. :func:`entry` returns the
 covering entry, and :func:`task_contract` the ``task.contract`` of a covered
-record's shape under it.
+record's shape under it, each with or without a target.
 
 What the module does not do: it builds no spec, judges and times nothing,
 reads and writes no file, starts no process, keeps nothing between calls
@@ -53,6 +64,7 @@ from hilclaw import (
     elementwise_add_bf16_contract,
     gemm_bf16_contract,
     gemm_contract,
+    gemm_cuda_contract,
     keys,
     rmsnorm_bf16_contract,
     rope_bf16_contract,
@@ -71,9 +83,10 @@ _ENTRIES = (
     Entry(swiglu_bf16_contract, checked=True, timed=True),
     Entry(rope_bf16_contract, checked=True, timed=True),
     Entry(sdpa_kv_cache_bf16_contract, checked=True, timed=True),
+    Entry(gemm_cuda_contract, checked=True, timed=True),
 )
 
-#: The table: ``(kind, dtype, layout, language)`` to :class:`Entry`, in the order of ADR-0177 decision 1.
+#: The table: ``(kind, dtype, layout, language)`` to :class:`Entry`, in the order of ADR-0177 decision 1, then ADR-0207 decision 4.
 TABLE = types.MappingProxyType(
     {
         (e.contract.KIND, e.contract.DTYPE, e.contract.LAYOUT, e.contract.LANGUAGE): e
@@ -82,17 +95,21 @@ TABLE = types.MappingProxyType(
 )
 
 
-def entry(record):
+def entry(record, target=None):
     """Return the :class:`Entry` of :data:`TABLE` that covers the op_signature ``record``, or ``None``.
 
     The entries are asked in the order of :data:`TABLE`, each through its
     contract's ``covers``, and the first that answers ``True`` is returned;
-    ``None`` says that no entry covers the record. ``record`` is first
+    ``None`` says that no entry covers the record. Without a ``target`` only
+    the first entry of each ``kind``, ``dtype`` and ``layout`` is asked; with
+    one, only the entries in its ``contracts`` (see the module docstring),
+    and :class:`AttributeError` or :class:`TypeError` is raised for a
+    ``target`` as :func:`served_at` raises. ``record`` is first
     validated by :func:`hilclaw.keys.op_signature_key`, and
     :class:`hilclaw.keys.InvalidRecordError` is raised as that function raises
     it, a ``kind`` it does not know included. ``record`` is not modified.
     """
-    return _first(record, lambda e: True)
+    return _first(record, lambda e: True, target)
 
 
 def covers(record, target=None):
@@ -155,15 +172,16 @@ def served_at(record, target):
     return any(key[:3] == stated and key in served for key in TABLE)
 
 
-def task_contract(record):
+def task_contract(record, target=None):
     """Return the ``task.contract`` object of the covered op_signature ``record``.
 
     The result is what the covering entry's ``task_contract`` returns for the
     members of ``record["shape"]``, passed in the order of that function's
-    parameters (ADR-0177 decision 1). Raises :class:`ValueError` when no entry
-    covers a valid ``record``, and otherwise as :func:`entry` raises.
+    parameters (ADR-0177 decision 1); the covering entry is that of
+    :func:`entry` at ``target``. Raises :class:`ValueError` when no entry
+    covers a valid ``record`` there, and otherwise as :func:`entry` raises.
     """
-    found = entry(record)
+    found = entry(record, target)
     if found is None:
         raise ValueError("op_signature: the record is not covered by any contract")
     function = found.contract.task_contract
@@ -174,8 +192,13 @@ def task_contract(record):
 def _first(record, wanted, target=None):
     keys.op_signature_key(record)
     served = None if target is None else tuple(target.contracts)
+    seen = set()
     for key, candidate in TABLE.items():
-        if served is not None and key not in served:
+        if served is None:
+            if key[:3] in seen:
+                continue
+            seen.add(key[:3])
+        elif key not in served:
             continue
         if wanted(candidate) and candidate.contract.covers(record):
             return candidate

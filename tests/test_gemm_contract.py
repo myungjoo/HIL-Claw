@@ -388,6 +388,7 @@ def test_module_is_bound_by_the_contract_table_and_the_model_binding_only_and_im
     binders = (
         own.parent / "contract_table.py",
         own.parent / "model_binding.py",
+        own.parent / "gemm_cuda_contract.py",
     )
     assert imported_modules(own) == {"reprlib", "hilclaw", "hilclaw.keys"}
     for binder in binders:

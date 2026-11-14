@@ -716,3 +716,14 @@ def test_each_checked_kind_and_dtype_has_one_entry_or_the_table_is_refused():
         check_answer._checked_entries(twice)
     unchecked = {"a": gemm, "b": gemm._replace(checked=False)}
     assert check_answer._checked_entries(unchecked) == {("gemm", "fp32"): gemm}
+
+
+def test_only_the_c_entries_are_taken_so_fp32_gemm_stays_the_c_entry():
+    table = contract_table.TABLE
+    cuda = table["gemm", "fp32", "row_major", "cuda"]
+    gemm = table["gemm", "fp32", "row_major", "c"]
+    assert check_answer._checked_entries({"a": cuda}) == {}
+    assert check_answer._checked_entries({"a": gemm, "b": cuda}) == {
+        ("gemm", "fp32"): gemm
+    }
+    assert check_answer._ENTRIES["gemm", "fp32"] is gemm
