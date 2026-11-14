@@ -2,7 +2,7 @@
 id: T-0575
 title: PLAN P3-16 (4) — ADR-0207 slice 4, the `cuda_gpu` operations of `correctness.check`, `sim.run` and `board.run` on the host executor (device check first, `nvcc` build, run, the existing judging), held by a test-built backend table and checked on the real GPU
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "ADR-0207", "HQ-0095", "HQ-0096", "HQ-0097", FR-9, FR-10, FR-19, OD-33]
 dependsOn: [T-0573, T-0574]
@@ -111,3 +111,50 @@ If an owner-only part appears, write it in `## Result` as an HQ in the DRIVER §
 ## Follow-ups
 
 ## Result
+
+PR #388, squash-merged as `51eaec58` (PR body's last line `Task: T-0575`); branch deleted. Review: 2 rounds. Round 1 approved with two nits: test `confirm_device`'s `device_unavailable` without stub programs (added) and say why `cuda_run` does not use `cuda_adapter.measure` (added to the PR body). The test was a change, so round 2 followed. It approved with one nit: record the flaky existing test below here (done). CI green on head `7501933d`. Not BLOCKED; no HQ; no ADR (ADR-0207 decides this slice). No §9 notice.
+
+**Machine check (criterion 1; read before writing; nothing installed or pulled).** WSL2 Ubuntu 22.04:
+- `/usr/local/cuda-13.1/bin/nvcc --version` → `Cuda compilation tools, release 13.1, V13.1.115` (build `cuda_13.1.r13.1/compiler.37061995_0`).
+- `nvidia-smi` → NVIDIA GeForce RTX 4070, NVIDIA-SMI 615.78.02, KMD 617.14, CUDA UMD 13.4, 12282 MiB.
+- `gcc`/`g++` 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3). Python 3.12.13 (venv `~/.venvs/hilclaw-driver`, already present).
+
+**Language.** Python, as the sibling operations `standin_check` and `standin_run`.
+
+**What landed.**
+- `hilclaw/cuda_check.py`: `operation_for(target, *, sources)` returns the `correctness.check` operation. Steps, in order:
+  1. Argument checks, as `standin_check` makes for fp32 `gemm`.
+  2. `confirm_device` (`cuda_adapter.check_device`, 30 s). `device_unavailable` comes before the selection, the build directory and the build.
+  3. `select_sources`: an empty selection is `no_kernel_source`; a selection that raises is `kernel_source_unreadable`; a path that is not a regular file is `build_input_missing`; another type raises `TypeError`.
+  4. The build directory, from `standin_check.make_build_dir`. It is removed on every path.
+  5. `build_executable`: `cuda_adapter.assemble_build` + `clang_build.build`. The log goes to the keeper. The build is answered by `check_build.read_build`/`place_error` (ADR-0060 rows).
+  6. `cuda_adapter.run` with `m k n draws seed`, within the target-capped limit; the report is returned for the existing judging.
+  
+  The shared steps are public, for `cuda_run`.
+- `hilclaw/cuda_run.py`: one operation serves `sim.run` and `board.run`. It follows the same order with the timing driver and answers in form (A), `(report, memory_bytes)`. `memory_bytes` is `memory_ceiling.figure(max_rss)` of the host process; no GPU memory figure is given.
+- The kernel's files come from a required keyword-only selection (criterion 2; HQ-0104 is not decided). `default_table` is unchanged, and `cuda_gpu` via the default registry stays `no_backend` (criterion 5; test-only host executor, NFR-4).
+- New fixture: `tests/cuda_fixtures/gemm_exit.cu`, which calls `exit(3)`.
+- **Existing tests changed (D21): none.**
+
+**Size.** 2 new non-test modules, about 470 lines (most of them docstrings). Within the recommendation.
+
+**Verification.**
+- Full suite under `coverage run --branch` in a WSL2 clone of `344d7f10`, with the CUDA `bin` on `PATH`: 42645 passed, 108 skipped, 1 failed (the flake below).
+  - `hilclaw/` coverage: lines 99 % (19069/19132), functions 2000/2002.
+  - `cuda_check.py` and `cuda_run.py`: 100 % line and branch coverage.
+- After the round-1 nit, 754 passed in the CUDA, standin and check-definition test files.
+- ruff check and format are clean.
+- Real-GPU results on the RTX 4070 (nvcc 13.1 V13.1.115, g++ 11.4.0, driver 617.14), through a test-built `BackendTable([Backend("cuda_gpu", ...)])` + `backends.select` + `check_operation.ask` / `run_operation.ask`:
+  - `gemm.cu` → `pass` at 5x33x7 and 8x8x8;
+  - timed results for `sim.run` and `board.run` accepted by `timing.judge_report`;
+  - `gemm_wrong.cu` → `fail`;
+  - `broken.cu` → broken `build_exit_status`, with the log file written and naming the file;
+  - `gemm_exit.cu` → broken `exit_status` (check and `board.run`);
+  - `CUDA_VISIBLE_DEVICES=""` for the run only, after the device check → broken `exit_status`.
+- No `claude` was started (D16), and no test run was made (D25).
+
+**Observed (not touched): a flaky existing test.** `tests/test_cuda_adapter.py::test_real_gpu_interval_holds_the_completion_of_the_kernel` failed once in the full coverage run: an interval was below `HOLD_NS - STEP_NS - resolution` on WSL2. It passed in three reruns alone. This looks like timing noise in a real-GPU test under load, a candidate for a later task if it recurs (nightly or CI never runs it, since no GPU is there).
+
+**Runtime acceptance items (D22).** None new. ADR-0207's container items stay with slice 5.
+
+**Storage.** WSL `/tmp/hilclaw-driver/T-0575/` (clone, coverage data, logs) and `%TMP%/hilclaw-driver/T-0575/` (PR body, commit message, sync script, this draft) were removed with `rm -r`. No images, no installs.
