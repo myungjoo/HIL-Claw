@@ -80,6 +80,14 @@ count of the weights the embed steps read; the report's rows are the first
 ``rows`` rows of the output buffer after each pass, as wide as its last
 shape member; in the generation mode the selection row is the last of them.
 
+**Timed form** (ADR-0206 decision 3). ``encode(..., timed=True)`` builds
+the input of the program's timed generation mode (mode word 2) for a plan
+whose every pass reports one row, the plan :func:`resolve` gives at
+``lm_head_rows`` ``"last"`` for a graph whose ``output.rows`` is ``R``;
+:func:`parse_timed_report` reads its report, which holds no logits row:
+the token ids, the program's ``CLOCK_MONOTONIC`` readings and its
+``clock_getres`` resolution, all in ns.
+
 Every :class:`TypeError` or :class:`ValueError` raised for an argument
 carries the attribute ``parameter``; every refusal of a graph is a
 :class:`GraphFileError`.
@@ -88,6 +96,7 @@ carries the attribute ``parameter``; every refusal of a graph is a
 import collections
 import contextlib
 import inspect
+import itertools
 import json
 import math
 import os
@@ -108,6 +117,7 @@ from hilclaw import (
 )
 from hilclaw.model_binding import _bind, _binding
 from hilclaw.model_forward_run import _report
+from hilclaw.model_run import END_MARK as _END
 
 LLAMA_GRAPH = Path(__file__).parent / "graphs" / "llama.json"
 GRAPH_FORMAT = 1
@@ -221,6 +231,16 @@ Plan = _record(
     "Plan",
     "arrays scalars output passes",
     "A resolved generation: arrays, scalar names, output buffer, passes (0 the prefill).",
+)
+TimedReport = _record(
+    "TimedReport",
+    "prompt tokens readings intervals resolution increasing",
+    "A complete timed report: the S ``prompt`` and G selected ``tokens`` ids,"
+    " the G + 1 ``readings`` t_s, t_0 ... t_(G-1) and the G ``intervals``"
+    " d_0 = t_0 - t_s, d_p = t_p - t_(p-1) in ns, the ``resolution`` in ns,"
+    " all tuples of ``int`` or an ``int``; ``increasing`` is whether every"
+    " interval is above 0 (ADR-0206 decision 5: a report where it is not is"
+    " no usable timing).",
 )
 
 
@@ -452,7 +472,7 @@ def libraries(check):
     return tuple(kernels)
 
 
-def encode(plan, check, *, scalars, tables, weights, prompt, given):
+def encode(plan, check, *, scalars, tables, weights, prompt, given, timed=False):
     """Return the bytes of the input file of ``model_graph.c`` for ``plan``.
 
     ``check`` is an ``ok`` result of :func:`check_binding` for ``plan``; a
@@ -469,7 +489,10 @@ def encode(plan, check, *, scalars, tables, weights, prompt, given):
     is a sequence of S ``int`` token ids, S the rows of pass 0; ``given`` a
     sequence of G ``int`` token ids, G the passes (the given-sequence mode),
     or ``None`` (the generation mode). ``lm_head_rows`` was given to
-    :func:`resolve` and is the plan's output rows.
+    :func:`resolve` and is the plan's output rows. ``timed`` ``True``
+    selects the timed generation mode (mode word 2); the input is otherwise
+    that of the generation mode, and with ``timed`` ``False`` the bytes are
+    those of the untimed modes.
 
     Raised before any byte is built, ``parameter`` the argument's name:
     :class:`TypeError` for a wrong type; :class:`ValueError` for a check that
@@ -479,10 +502,13 @@ def encode(plan, check, *, scalars, tables, weights, prompt, given):
     type or shape, a prompt or ``given`` of another length, a token id not
     below the vocabulary, a plan whose embed steps read no weight or weights
     of different row counts, and in the generation mode an output row wider
-    than the vocabulary.
+    than the vocabulary. For ``timed`` that is not a ``bool``,
+    :class:`TypeError`; for ``timed`` ``True`` with ``given`` not ``None``
+    or a pass of other than one output row (``lm_head_rows`` ``"all"`` with
+    S above 1), :class:`ValueError`; both with ``parameter`` ``"timed"``.
     """
     words, values, tokens, contents = _parts(
-        plan, check, scalars, tables, weights, prompt, given
+        plan, check, scalars, tables, weights, prompt, given, timed
     )
     return b"".join(
         (
@@ -495,10 +521,17 @@ def encode(plan, check, *, scalars, tables, weights, prompt, given):
     )
 
 
-def _parts(plan, check, scalars, tables, weights, prompt, given):
+def _parts(plan, check, scalars, tables, weights, prompt, given, timed=False):
     with _parameter("plan"):
         if not isinstance(plan, Plan):
             raise TypeError(f"must be a Plan, got {type(plan).__name__}")
+    with _parameter("timed"):
+        if type(timed) is not bool:
+            raise TypeError(f"must be a bool, got {type(timed).__name__}")
+        if timed and given is not None:
+            raise ValueError("the timed form has no given-sequence mode")
+        if timed and any(p.output_rows != 1 for p in plan.passes):
+            raise ValueError('needs one output row per pass (lm_head_rows "last")')
     kernels = libraries(check)
     bound = {(site, shape): kernels.index(k) for site, shape, k in check.calls}
     index = {a.name: i for i, a in enumerate(plan.arrays)}
@@ -523,7 +556,7 @@ def _parts(plan, check, scalars, tables, weights, prompt, given):
     elif columns > vocabulary:
         with _parameter("given"):
             raise ValueError(f"an output row of {columns} is wider than the vocabulary")
-    words = [len(values), G, S, vocabulary, int(given is None)]
+    words = [len(values), G, S, vocabulary, 2 if timed else int(given is None)]
     words = [len(plan.arrays), *words, index[plan.output], columns]
     for a in plan.arrays:
         words += [a.elements, 2 if a.dtype == _DTYPE else 4, int(a.kind in _WRITABLE)]
@@ -561,6 +594,41 @@ def parse_report(report, plan, *, mode):
         sum(p.output_rows for p in plan.passes),
         types.SimpleNamespace(vocabulary=_width(plan)),
         mode,
+    )
+
+
+def parse_timed_report(report, plan):
+    """Return the :class:`TimedReport` of a complete timed report of ``plan``, or ``None``.
+
+    A complete timed report holds ``8 * (S + 2G + 2)`` bytes and the end mark
+    ``end\\n``, S the rows of pass 0 and G the passes: the prompt, the
+    selected tokens, the readings and the resolution as ``model_graph.c``'s
+    header comment states; any other length or end is ``None``. A complete
+    report whose readings do not increase strictly is returned with
+    ``increasing`` ``False``. Raises :class:`TypeError` (``parameter`` the
+    argument's name) for a ``plan`` that is no :class:`Plan` or a ``report``
+    that is not ``bytes``.
+    """
+    with _parameter("plan"):
+        if not isinstance(plan, Plan):
+            raise TypeError(f"must be a Plan, got {type(plan).__name__}")
+    with _parameter("report"):
+        if type(report) is not bytes:
+            raise TypeError(f"must be bytes, got {type(report).__name__}")
+    S, G = plan.passes[0].rows, len(plan.passes)
+    count = S + 2 * G + 2
+    if len(report) != 8 * count + len(_END) or not report.endswith(_END):
+        return None
+    words = [int(w) for w in numpy.frombuffer(report, numpy.uint64, count)]
+    readings = tuple(words[S + G : S + 2 * G + 1])
+    intervals = tuple(b - a for a, b in itertools.pairwise(readings))
+    return TimedReport(
+        tuple(words[:S]),
+        tuple(words[S : S + G]),
+        readings,
+        intervals,
+        words[-1],
+        all(d > 0 for d in intervals),
     )
 
 

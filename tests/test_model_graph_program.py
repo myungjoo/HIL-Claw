@@ -650,3 +650,198 @@ def test_the_same_change_in_the_given_mode_is_accepted_by_the_header(
     data = patched(data, 56, forward.V + 1)
     result = start(built, tmp_path, "model_graph", data, names)
     assert_failed(result, 5, b"a pass has no steps or its output rows run")
+
+
+TIMED_CHOICES = [one_library, by_kind, per_pass]
+
+
+def timed_input(plan, binding, weights, prompt, tables=None):
+    check = model_graph.check_binding(plan, binding)
+    data = model_graph.encode(
+        plan,
+        check,
+        scalars={"eps": float(forward.EPS)},
+        tables={"rope": forward_run.ROPE} if tables is None else tables,
+        weights=weights,
+        prompt=prompt,
+        given=None,
+        timed=True,
+    )
+    return data, [k.sources[0] for k in model_graph.libraries(check)]
+
+
+def timed_llama_case(seed, choose, S=3, G=3):
+    model, plan, binding, untimed, names = llama_case(seed, True, True, choose, S, G)
+    tokens = [int(t) for t in model["tokens"]]
+    data, timed_names = timed_input(plan, binding, llama_weights(model), tokens[:S])
+    assert timed_names == names
+    return plan, untimed, data, names
+
+
+@pytest.mark.parametrize("choose", TIMED_CHOICES)
+@pytest.mark.parametrize(("S", "G"), [(3, 3), (5, 4), (2, 1)])
+def test_timed_llama_selects_the_tokens_of_the_untimed_generation(
+    built, tmp_path, choose, S, G
+):
+    plan, untimed, data, names = timed_llama_case(41, choose, S, G)
+    reference = start(built, tmp_path, "model_graph", untimed, names)
+    assert reference.returncode == 0, reference.stderr
+    expected = model_graph.parse_report(reference.stdout, plan, mode="generation")
+    result = start(built, tmp_path, "model_graph", data, names)
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == b""
+    assert len(result.stdout) == 8 * (S + 2 * G + 2) + len(END)
+    timed = model_graph.parse_timed_report(result.stdout, plan)
+    assert timed.prompt + timed.tokens == tuple(int(t) for t in expected.tokens)
+    assert len(timed.readings) == G + 1 and len(timed.intervals) == G
+    assert timed.increasing and all(d > 0 for d in timed.intervals)
+    assert timed.resolution >= 0
+    assert expected.logits.tobytes() not in result.stdout
+
+
+def test_timed_feed_forward_selects_the_recomputed_tokens(built, tmp_path):
+    S, G = 4, 3
+    weights, tokens = ff_model(32, S, G)
+    plan = model_graph.resolve(
+        FEED_FORWARD,
+        FF_DIMENSIONS,
+        prompt_length=S,
+        generation_length=G,
+        lm_head_rows="last",
+    )
+    data, names = timed_input(
+        plan, binding_for(plan, by_kind), weights, tokens[:S], tables={}
+    )
+    result = start(built, tmp_path, "model_graph", data, names)
+    assert result.returncode == 0, result.stderr
+    _, expected = ff_recompute(weights, tokens, S, G, True, True)
+    timed = model_graph.parse_timed_report(result.stdout, plan)
+    assert list(timed.prompt + timed.tokens) == expected
+    assert timed.increasing
+
+
+@pytest.fixture(scope="module")
+def timed_case():
+    return timed_llama_case(42, by_kind)
+
+
+def test_a_timed_mode_with_a_pass_of_more_rows_is_refused(built, tmp_path):
+    _, _, _, data, names = llama_case(43, False, True, by_kind)
+    data = patched(data, 40, 2)
+    result = start(built, tmp_path, "model_graph", data, names)
+    assert_failed(result, 5, b"the output rows of a timed pass are out of range")
+
+
+def test_a_mode_above_the_timed_mode_is_refused(built, tmp_path, timed_case):
+    _, _, data, names = timed_case
+    data = patched(data, 40, 3)
+    result = start(built, tmp_path, "model_graph", data, names)
+    assert_failed(result, 5, b"the mode, the output array or its row width")
+
+
+def test_a_timed_kernel_that_aborts_leaves_no_report(built, tmp_path):
+    def choose(site, kind, p, shape):
+        return "swiglu_abort" if kind == "swiglu" else LIBRARY_OF_KIND[kind]
+
+    _, _, data, names = timed_llama_case(44, choose)
+    result = start(built, tmp_path, "model_graph", data, names)
+    assert result.returncode != 0
+    assert result.stdout == b""
+
+
+CLOCK_SHIM = """\
+#define _POSIX_C_SOURCE 200809L
+#include <errno.h>
+#include <time.h>
+
+int clock_gettime(clockid_t id, struct timespec *t)
+{
+    (void)id;
+#if defined(GETTIME_FAILS)
+    (void)t;
+    errno = EINVAL;
+    return -1;
+#elif defined(GETTIME_NEGATIVE)
+    t->tv_sec = -1;
+    t->tv_nsec = 0;
+    return 0;
+#else
+    t->tv_sec = 5;
+    t->tv_nsec = 0;
+    return 0;
+#endif
+}
+
+int clock_getres(clockid_t id, struct timespec *t)
+{
+    (void)id;
+#if defined(GETRES_FAILS)
+    (void)t;
+    errno = EINVAL;
+    return -1;
+#else
+    t->tv_sec = 0;
+    t->tv_nsec = 1;
+    return 0;
+#endif
+}
+"""
+
+
+def clock_shim(directory, variant):
+    source = directory / "clock_shim.c"
+    source.write_text(CLOCK_SHIM, encoding="ascii", newline="\n")
+    output = directory / f"libclock_{variant}.so"
+    flags = ("-O0", *((f"-D{variant}",) if variant != "FROZEN" else ()))
+    result = model_build.build_kernel_library(
+        source, output, timeout_s=BUILD_TIMEOUT, flags=flags
+    )
+    assert result.ok, result.log
+    return str(output)
+
+
+def start_with(built, tmp_path, data, names, preload):
+    programs, library = built
+    path = tmp_path / "timed.bin"
+    path.write_bytes(data)
+    return run(
+        [programs["model_graph"], str(path), *(library(name) for name in names)],
+        timeout_s=RUN_TIMEOUT,
+        env={**os.environ, "LD_PRELOAD": preload},
+    )
+
+
+@pytest.mark.parametrize(
+    ("variant", "call"),
+    [
+        ("GETTIME_FAILS", b"clock_gettime"),
+        ("GETTIME_NEGATIVE", b"clock_gettime"),
+        ("GETRES_FAILS", b"clock_getres"),
+    ],
+)
+def test_a_clock_that_fails_is_status_8(built, tmp_path, timed_case, variant, call):
+    _, _, data, names = timed_case
+    shim = clock_shim(tmp_path, variant)
+    result = start_with(built, tmp_path, data, names, shim)
+    assert_failed(result, 8, b"model_graph: " + call + b": CLOCK_MONOTONIC")
+
+
+def test_a_frozen_clock_gives_a_report_that_is_not_usable(built, tmp_path, timed_case):
+    plan, _, data, names = timed_case
+    shim = clock_shim(tmp_path, "FROZEN")
+    result = start_with(built, tmp_path, data, names, shim)
+    assert result.returncode == 0, result.stderr
+    timed = model_graph.parse_timed_report(result.stdout, plan)
+    assert timed.readings == (5 * 10**9,) * 4
+    assert timed.intervals == (0, 0, 0)
+    assert timed.resolution == 1
+    assert timed.increasing is False
+
+
+def test_the_untimed_report_ignores_the_clock(built, tmp_path, timed_case):
+    _, untimed, _, names = timed_case
+    reference = start(built, tmp_path, "model_graph", untimed, names)
+    shim = clock_shim(tmp_path, "GETTIME_FAILS")
+    result = start_with(built, tmp_path, untimed, names, shim)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == reference.stdout

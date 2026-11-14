@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 
 import numpy as np
@@ -1152,3 +1153,146 @@ def test_encode_refuses_a_table_that_is_not_two_dimensional():
     with pytest.raises(ValueError) as caught:
         model_graph.encode(plan, check, **llama_inputs())
     assert caught.value.parameter == "tables"
+
+
+UNTIMED_TABLES_SHA256 = {
+    ("all", False): "cfe283b59b78f9ce64d77622e4ab6688e3e8d681d9c329d4d86219024678fcdd",
+    ("all", True): "5d92bbacfb8dc2437c6c7684d661c0f95439e930d83cf03ff8d22119196af1c4",
+    ("last", False): "3bfbe843519f723acdd92499fbad09a2874e86d3570afae0626edcb2887dce0a",
+    ("last", True): "75925cbd8bdec0cb8be560dc6083fb0b007ba62d97516873f68d65aecc6efd92",
+}
+
+
+def contents_bytes(plan, values):
+    parts = []
+    for a in plan.arrays:
+        if a.kind == "table":
+            parts.append(
+                rope_table.build(
+                    head_dim=a.shape[1], positions=a.shape[0], **ROPE._asdict()
+                ).tobytes()
+            )
+        elif a.kind == "weight":
+            parts.append(values["weights"][a.name].tobytes())
+    return b"".join(parts)
+
+
+@pytest.mark.parametrize(("lm_head_rows", "generation"), list(UNTIMED_TABLES_SHA256))
+def test_untimed_input_bytes_are_those_before_the_timed_form(lm_head_rows, generation):
+    changes = {"given": None} if generation else {}
+    plan, data = encoded(lm_head_rows, **changes)
+    contents = contents_bytes(plan, llama_inputs(**changes))
+    assert data.endswith(contents)
+    tables = data[: len(data) - len(contents)]
+    digest = hashlib.sha256(tables).hexdigest()
+    assert digest == UNTIMED_TABLES_SHA256[(lm_head_rows, generation)]
+    check = model_graph.check_binding(plan, every_binding())
+    values = llama_inputs(**changes)
+    assert model_graph.encode(plan, check, **values, timed=False) == data
+
+
+def test_timed_input_differs_from_the_generation_input_only_in_the_mode_word():
+    plan, untimed = encoded("last", given=None)
+    check = model_graph.check_binding(plan, every_binding())
+    timed = model_graph.encode(plan, check, **llama_inputs(given=None), timed=True)
+    assert words(timed, 1, 40) == [2]
+    assert timed[:40] == untimed[:40] and timed[48:] == untimed[48:]
+    assert words(untimed, 1, 40) == [1]
+
+
+@pytest.mark.parametrize(
+    ("lm_head_rows", "changes", "error", "text"),
+    [
+        ("last", {}, ValueError, "given-sequence"),
+        ("all", {"given": None}, ValueError, "one output row per pass"),
+        ("last", {"given": None, "timed": 1}, TypeError, "bool"),
+        ("last", {"given": None, "timed": None}, TypeError, "bool"),
+    ],
+)
+def test_encode_refuses_a_timed_request(lm_head_rows, changes, error, text):
+    changes = {"timed": True, **changes}
+    with pytest.raises(error, match=text) as caught:
+        encoded(lm_head_rows, **changes)
+    assert caught.value.parameter == "timed"
+
+
+def test_a_timed_request_at_all_with_one_prompt_token_is_the_last_plan():
+    plan = resolve_llama(LLAMA_TEXT, S=1, lm_head_rows="all")
+    assert plan == resolve_llama(LLAMA_TEXT, S=1, lm_head_rows="last")
+    check = model_graph.check_binding(plan, every_binding())
+    values = llama_inputs(given=None, prompt=[4], timed=True)
+    assert words(model_graph.encode(plan, check, **values), 1, 40) == [2]
+
+
+def timed_report(S, G, readings, resolution=1, tokens=None):
+    tokens = list(range(S + G)) if tokens is None else tokens
+    words_ = [*tokens, *readings, resolution]
+    return np.array(words_, dtype=np.uint64).tobytes() + b"end\n"
+
+
+def test_parse_timed_report():
+    plan = resolve_llama(LLAMA_TEXT, lm_head_rows="last")
+    readings = [100, 250, 260, 2**64 - 1]
+    report = timed_report(3, 3, readings, resolution=7)
+    assert len(report) == 8 * (3 + 2 * 3 + 2) + 4
+    parsed = model_graph.parse_timed_report(report, plan)
+    assert isinstance(parsed, model_graph.TimedReport)
+    assert parsed.prompt == (0, 1, 2)
+    assert parsed.tokens == (3, 4, 5)
+    assert parsed.readings == tuple(readings)
+    assert parsed.intervals == (150, 10, 2**64 - 1 - 260)
+    assert parsed.resolution == 7
+    assert parsed.increasing is True
+    assert all(type(w) is int for w in parsed.prompt + parsed.readings)
+    assert type(parsed.resolution) is int
+
+
+@pytest.mark.parametrize("readings", [[5, 5, 6, 7], [5, 6, 4, 7], [9, 8, 7, 6]])
+def test_a_timed_report_whose_readings_do_not_increase_is_not_usable(readings):
+    plan = resolve_llama(LLAMA_TEXT, lm_head_rows="last")
+    parsed = model_graph.parse_timed_report(timed_report(3, 3, readings), plan)
+    assert parsed.increasing is False
+    assert min(parsed.intervals) <= 0
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda r: r[:-1],
+        lambda r: r[:-5] + b"end\n",
+        lambda r: r[:-4] + b"\0" * 8 + b"end\n",
+        lambda r: r + b"end\n",
+        lambda r: r[:-4] + b"END\n",
+        lambda r: b"",
+        lambda r: b"end\n",
+    ],
+)
+def test_an_incomplete_or_overlong_timed_report_is_none(change):
+    plan = resolve_llama(LLAMA_TEXT, lm_head_rows="last")
+    report = change(timed_report(3, 3, [1, 2, 3, 4]))
+    assert model_graph.parse_timed_report(report, plan) is None
+
+
+def test_an_untimed_report_is_no_timed_report():
+    plan = resolve_llama(LLAMA_TEXT, lm_head_rows="last")
+    V = DIMENSION_SETS[0]["V"]
+    tokens = np.arange(6, dtype=np.uint64)
+    report = tokens[:3].tobytes() + np.zeros(3 * V, np.uint16).tobytes()
+    report += tokens[3:].tobytes() + b"end\n"
+    assert model_graph.parse_report(report, plan, mode="generation") is not None
+    assert model_graph.parse_timed_report(report, plan) is None
+
+
+@pytest.mark.parametrize(
+    ("report", "plan", "error", "parameter"),
+    [
+        (b"", "plan", TypeError, "plan"),
+        ("text", None, TypeError, "report"),
+        (bytearray(b"end\n"), None, TypeError, "report"),
+    ],
+)
+def test_parse_timed_report_refusals(report, plan, error, parameter):
+    plan = resolve_llama(LLAMA_TEXT, lm_head_rows="last") if plan is None else plan
+    with pytest.raises(error) as caught:
+        model_graph.parse_timed_report(report, plan)
+    assert caught.value.parameter == parameter

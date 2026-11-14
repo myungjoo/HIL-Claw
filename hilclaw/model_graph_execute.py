@@ -30,11 +30,21 @@ forward program. :func:`execute` takes these steps, in order:
    :class:`hilclaw.model_forward_run.ForwardProgramResult` as in
    :mod:`hilclaw.model_forward_run`.
 
+:func:`execute_timed` is the timed generation of
+``ARCHITECTURE/decisions/ADR-0206-od33-llm-level-evaluation.md`` decision 3:
+steps 1 to 4 as above for the generation mode at ``lm_head_rows`` ``"last"``
+with the timed input (``encode(..., timed=True)``), then R runs of the
+program, each a new process with the same input file, with no warm-up run.
+The first run that timed out, ended with a status other than 0, left no
+complete timed report (:func:`hilclaw.model_graph.parse_timed_report`) or a
+report whose readings do not increase strictly ends it as **run failed**
+(ADR-0206 decision 5), with that run's result and no figures.
+
 What this module does not do: it selects no token, which the program does;
-it gives no default to any dimension, scalar, RoPE constant (HQ-0070) or time
-limit; it chooses no flag, container or environment; it has no fallback to
-another kernel; it stores, keeps or retries nothing; and it writes nothing
-outside its build directory.
+it gives no default to any dimension, scalar, RoPE constant (HQ-0070), time
+limit or number of runs; it chooses no flag, container or environment; it
+has no fallback to another kernel; it summarises, compares, stores, keeps or
+retries nothing; and it writes nothing outside its build directory.
 
 Where it may be used (``ARCHITECTURE/decisions/ADR-0182-od14-model-executor-container.md``
 decision 7): every build and the run of this module are host processes, so it
@@ -43,6 +53,7 @@ A kernel an instance or a coder wrote must not be built or run by this module;
 nothing here checks who wrote a kernel.
 """
 
+import enum
 import os
 import tempfile
 from typing import NamedTuple
@@ -56,7 +67,7 @@ from hilclaw.model_execute import (
     _remove,
 )
 from hilclaw.model_forward_run import ForwardProgramResult
-from hilclaw.model_graph import _parts
+from hilclaw.model_graph import _parameter, _parts
 from hilclaw.model_run import RunFailed
 
 PREFIX = "hilclaw-graph-"
@@ -75,6 +86,45 @@ class GraphExecution(NamedTuple):
     check: model_binding.BindingCheck
     build_failed: BuildFailed | None
     run: ForwardProgramResult | None
+    removed: bool | None
+
+
+class TimedRunFailed(enum.Enum):
+    """The condition of a timed run that failed: the three of :class:`hilclaw.model_run.RunFailed`, then readings that do not increase strictly."""
+
+    TIMEOUT = enum.auto()
+    EXIT_STATUS = enum.auto()
+    REPORT_FORM = enum.auto()
+    NOT_INCREASING = enum.auto()
+
+
+class TimedRun(NamedTuple):
+    """One run of :func:`execute_timed`: ``failed`` ``None`` and its :class:`hilclaw.model_graph.TimedReport`, or the failed condition and ``report`` ``None``.
+
+    ``run`` is what :func:`hilclaw.local_run.run` captured, with ``stdout``
+    replaced by ``b""``.
+    """
+
+    failed: TimedRunFailed | None
+    report: model_graph.TimedReport | None
+    run: local_run.RunResult
+
+
+class TimedExecution(NamedTuple):
+    """Outcome of one :func:`execute_timed` call.
+
+    ``plan``, ``check``, ``build_failed`` and ``removed`` are read as in
+    :class:`GraphExecution`. When every run succeeded, ``runs`` holds the R
+    :class:`TimedRun` in run order and ``failed`` is ``None``; when a run
+    failed, ``runs`` is ``None`` and ``failed`` is that run's
+    :class:`TimedRun`; when nothing was run, both are ``None``.
+    """
+
+    plan: model_graph.Plan
+    check: model_binding.BindingCheck
+    build_failed: BuildFailed | None
+    runs: tuple[TimedRun, ...] | None
+    failed: TimedRun | None
     removed: bool | None
 
 
@@ -123,15 +173,6 @@ def execute(
     ``parent`` and ``program_flags``. What a build or the run raises is
     passed on after the directory was removed.
     """
-    if not isinstance(graph, model_graph.Graph):
-        graph = model_graph.read(graph)
-    plan = model_graph.resolve(
-        graph,
-        dimensions,
-        prompt_length=len(prompt),
-        generation_length=generation_length,
-        lm_head_rows=lm_head_rows,
-    )
     inputs = {
         "scalars": scalars,
         "tables": tables,
@@ -139,6 +180,161 @@ def execute(
         "prompt": prompt,
         "given": given,
     }
+    plan, check, prefix, roots, place = _prepare(
+        graph,
+        dimensions,
+        binding,
+        inputs,
+        generation_length,
+        lm_head_rows,
+        prefix,
+        keep_out,
+        parent,
+        program_flags,
+    )
+    if not check.ok:
+        return GraphExecution(plan, check, None, None, None)
+    directory = tempfile.mkdtemp(prefix=PREFIX, dir=place)
+    try:
+        build_failed, command = _build(
+            directory,
+            plan,
+            check,
+            inputs,
+            prefix,
+            build_timeout_s=build_timeout_s,
+            compiler=compiler,
+            env=env,
+            program_flags=program_flags,
+            program_trailing_flags=program_trailing_flags,
+        )
+        run = None
+        if build_failed is None:
+            mode = "generation" if given is None else "given"
+            run = _run_once(command, plan, mode, run_timeout_s, env)
+    except BaseException:
+        _remove(directory, roots)
+        raise
+    return GraphExecution(plan, check, build_failed, run, _remove(directory, roots))
+
+
+def execute_timed(
+    graph,
+    dimensions,
+    binding,
+    *,
+    scalars,
+    tables,
+    weights,
+    prompt,
+    generation_length,
+    repetitions,
+    build_timeout_s,
+    run_timeout_s,
+    program_flags=(),
+    program_trailing_flags=(),
+    compiler=None,
+    env=None,
+    prefix=(),
+    parent=None,
+    keep_out=(),
+):
+    """Resolve, check, build and run the timed generation ``repetitions`` times; return a :class:`TimedExecution`.
+
+    The arguments are those of :func:`execute`, with no ``given`` (the
+    generation mode) and no ``lm_head_rows`` (``"last"``, ADR-0206 decision
+    3); ``run_timeout_s`` is the limit of each run. ``repetitions`` R, an
+    ``int`` that is odd and at least 1 (ADR-0206 decision 3), is the number
+    of runs, each a new process with the same input file; no warm-up run is
+    made. A plan whose passes report other than one row each is the outcome
+    invalid input with ``timed`` in its reason.
+
+    Raised before anything is read or made: :class:`TypeError` for
+    ``repetitions`` that is not an ``int`` (``bool`` included) and
+    :class:`ValueError` for one that is even or below 1, ``parameter``
+    ``"repetitions"``; then what :func:`execute` raises, in its order. What
+    a build or a run raises is passed on after the directory was removed.
+    """
+    with _parameter("repetitions"):
+        if type(repetitions) is not int:
+            raise TypeError(f"must be an int, got {type(repetitions).__name__}")
+        if repetitions < 1 or repetitions % 2 == 0:
+            raise ValueError(f"must be odd and at least 1, got {repetitions}")
+    inputs = {
+        "scalars": scalars,
+        "tables": tables,
+        "weights": weights,
+        "prompt": prompt,
+        "given": None,
+        "timed": True,
+    }
+    plan, check, prefix, roots, place = _prepare(
+        graph,
+        dimensions,
+        binding,
+        inputs,
+        generation_length,
+        "last",
+        prefix,
+        keep_out,
+        parent,
+        program_flags,
+    )
+    if not check.ok:
+        return TimedExecution(plan, check, None, None, None, None)
+    directory = tempfile.mkdtemp(prefix=PREFIX, dir=place)
+    try:
+        build_failed, command = _build(
+            directory,
+            plan,
+            check,
+            inputs,
+            prefix,
+            build_timeout_s=build_timeout_s,
+            compiler=compiler,
+            env=env,
+            program_flags=program_flags,
+            program_trailing_flags=program_trailing_flags,
+        )
+        runs = failed = None
+        if build_failed is None:
+            runs = []
+            for _ in range(repetitions):
+                one = _timed_run(command, plan, run_timeout_s, env)
+                if one.failed is not None:
+                    runs, failed = None, one
+                    break
+                runs.append(one)
+            runs = None if runs is None else tuple(runs)
+    except BaseException:
+        _remove(directory, roots)
+        raise
+    return TimedExecution(
+        plan, check, build_failed, runs, failed, _remove(directory, roots)
+    )
+
+
+def _prepare(
+    graph,
+    dimensions,
+    binding,
+    inputs,
+    generation_length,
+    lm_head_rows,
+    prefix,
+    keep_out,
+    parent,
+    program_flags,
+):
+    if not isinstance(graph, model_graph.Graph):
+        graph = model_graph.read(graph)
+    plan = model_graph.resolve(
+        graph,
+        dimensions,
+        prompt_length=len(inputs["prompt"]),
+        generation_length=generation_length,
+        lm_head_rows=lm_head_rows,
+    )
     check = model_graph.check_binding(plan, binding)
     reason = _invalid(plan, inputs)
     if reason is not None:
@@ -151,27 +347,7 @@ def execute(
         isinstance(flag, str) for flag in program_flags
     ):
         raise TypeError("program_flags: must be a tuple or list of str")
-    if not check.ok:
-        return GraphExecution(plan, check, None, None, None)
-    directory = tempfile.mkdtemp(prefix=PREFIX, dir=place)
-    try:
-        build_failed, run = _build_and_run(
-            directory,
-            plan,
-            check,
-            inputs,
-            prefix,
-            build_timeout_s=build_timeout_s,
-            compiler=compiler,
-            env=env,
-            program_flags=program_flags,
-            program_trailing_flags=program_trailing_flags,
-            run_timeout_s=run_timeout_s,
-        )
-    except BaseException:
-        _remove(directory, roots)
-        raise
-    return GraphExecution(plan, check, build_failed, run, _remove(directory, roots))
+    return plan, check, prefix, roots, place
 
 
 def _invalid(plan, inputs):
@@ -188,7 +364,7 @@ def _invalid(plan, inputs):
     return None
 
 
-def _build_and_run(
+def _build(
     directory,
     plan,
     check,
@@ -200,7 +376,6 @@ def _build_and_run(
     env,
     program_flags,
     program_trailing_flags,
-    run_timeout_s,
 ):
     libraries = []
     for index, kernel in enumerate(model_graph.libraries(check)):
@@ -230,16 +405,32 @@ def _build_and_run(
     input_file = os.path.join(directory, "input.bin")
     with open(input_file, "xb") as stream:
         stream.write(model_graph.encode(plan, check, **inputs))
-    run = local_run.run(
-        (*prefix, program, input_file, *libraries), timeout_s=run_timeout_s, env=env
-    )
+    return None, (*prefix, program, input_file, *libraries)
+
+
+def _run_once(command, plan, mode, run_timeout_s, env):
+    run = local_run.run(command, timeout_s=run_timeout_s, env=env)
     stdout, run = run.stdout, run._replace(stdout=b"")
     if run.timed_out:
-        return None, ForwardProgramResult(RunFailed.TIMEOUT, None, run)
+        return ForwardProgramResult(RunFailed.TIMEOUT, None, run)
     if run.returncode != 0:
-        return None, ForwardProgramResult(RunFailed.EXIT_STATUS, None, run)
-    mode = "generation" if inputs["given"] is None else "given"
+        return ForwardProgramResult(RunFailed.EXIT_STATUS, None, run)
     report = model_graph.parse_report(stdout, plan, mode=mode)
     if report is None:
-        return None, ForwardProgramResult(RunFailed.REPORT_FORM, None, run)
-    return None, ForwardProgramResult(None, report, run)
+        return ForwardProgramResult(RunFailed.REPORT_FORM, None, run)
+    return ForwardProgramResult(None, report, run)
+
+
+def _timed_run(command, plan, run_timeout_s, env):
+    run = local_run.run(command, timeout_s=run_timeout_s, env=env)
+    stdout, run = run.stdout, run._replace(stdout=b"")
+    if run.timed_out:
+        return TimedRun(TimedRunFailed.TIMEOUT, None, run)
+    if run.returncode != 0:
+        return TimedRun(TimedRunFailed.EXIT_STATUS, None, run)
+    report = model_graph.parse_timed_report(stdout, plan)
+    if report is None:
+        return TimedRun(TimedRunFailed.REPORT_FORM, None, run)
+    if not report.increasing:
+        return TimedRun(TimedRunFailed.NOT_INCREASING, None, run)
+    return TimedRun(None, report, run)
