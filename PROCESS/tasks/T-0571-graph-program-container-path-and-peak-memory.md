@@ -2,7 +2,7 @@
 id: T-0571
 title: ADR-0206 slice 2 (PLAN P3-12) — add the graph program's container path (`hilclaw/model_graph_container.py`) and run its timed form R times under the ADR-0145 waiter for the peak-memory figure, leaving every existing container function and `model_check` unchanged
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D27, FR-19, OD-33, "PLAN P3-12", ADR-0206, ADR-0182]
 dependsOn: [T-0570]
