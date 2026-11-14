@@ -162,7 +162,7 @@ def client(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def user(monkeypatch, tmp_path):
+def user(monkeypatch, tmp_path):  # tmp_path first: pytest checks its owner uid
     monkeypatch.setattr(os, "getuid", lambda: 1234, raising=False)
     monkeypatch.setattr(os, "getgid", lambda: 567, raising=False)
 
@@ -871,7 +871,7 @@ def test_clang_timed_runs_under_the_waiter(
         assert one.memory_bytes > 0 and one.memory_bytes % 1024 == 0
 
 
-def test_clang_waiter_outside_process_1_writes_no_line(
+def test_clang_waiter_outside_process_1_ends_with_exit_status(
     monkeypatch, parent, real_sources
 ):
     def outside(clang_program):
