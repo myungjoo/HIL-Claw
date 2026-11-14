@@ -2,7 +2,7 @@
 id: T-0574
 title: PLAN P3-16 (3) — ADR-0207 slice 3, the fp32 `gemm` contract entry in language `cuda` served at `cuda_gpu` only, and the hand-written C verification and timing programs against the CUDA runtime's C interface, checked on the real GPU with a test-placed kernel
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "ADR-0207", "HQ-0096", FR-9, FR-10, FR-19, OD-33, OD-6]
 dependsOn: [T-0573]
