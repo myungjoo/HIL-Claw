@@ -306,6 +306,27 @@ def test_an_absent_device_query_program_is_device_unavailable(
     assert list(build_root.iterdir()) == []
 
 
+@pytest.mark.parametrize(
+    "found",
+    [
+        vendor_adapter.Probe(vendor_adapter.ABSENT, None, cuda_adapter.NO_DEVICE),
+        vendor_adapter.Probe(vendor_adapter.UNREADABLE, None, "unreadable"),
+    ],
+)
+def test_confirm_device_raises_device_unavailable_without_a_usable_device(
+    monkeypatch, found
+):
+    monkeypatch.setattr(
+        cuda_adapter,
+        "check_device",
+        lambda *, timeout_s: cuda_adapter.device_outcome(found),
+    )
+    with pytest.raises(tools.ToolFailure) as raised:
+        cuda_check.confirm_device()
+    assert raised.value.kind == check_failure.KIND_DEVICE_UNAVAILABLE
+    assert raised.value.message == found.message
+
+
 def test_confirm_device_goes_on_for_a_usable_device(monkeypatch):
     seen = []
 
