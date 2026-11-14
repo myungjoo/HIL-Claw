@@ -87,3 +87,42 @@ This task is **slice 2**: the hw_profile of `cuda_gpu` (ADR-0207 decision 2), th
 ## Follow-ups
 
 ## Result
+
+PR #386, squash-merged with the PR body (last line `Task: T-0573`); branch deleted. Review: 2 rounds (round 1 Approve with 3 nits, all fixed; one of them, refusing a leading zero in the compute capability, changed behaviour, so round 2 followed: Approve with one formatting nit, fixed under D20). Not BLOCKED; no HQ.
+
+**Machine check (criterion 1; read only, nothing installed or pulled).** WSL2 (kernel 6.18.58.1-microsoft-standard-WSL2):
+- `/usr/local/cuda-13.1/bin/nvcc --version` → `Cuda compilation tools, release 13.1, V13.1.115` (banner `nvcc: NVIDIA (R) Cuda compiler driver`, build `cuda_13.1.r13.1/compiler.37061995_0`).
+- `gcc --version` → `gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0`.
+- `nvidia-smi --query-gpu=name,compute_cap,driver_version --format=csv,noheader` → `NVIDIA GeForce RTX 4070, 8.9, 617.14`.
+- The live record is `revision` `NVIDIA GeForce RTX 4070 sm_89`, `toolchain` `{nvcc: "Cuda compilation tools, release 13.1, V13.1.115", gcc: "gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0", nvidia_driver: "617.14"}` and `host` `{cpu: "Intel(R) Core(TM) i7-14700KF", os: "wsl ubuntu 22.04"}`, with key `cuda_gpu-7e2377db3ffd0c25`.
+- Decision 3's flags stand: `nvcc -O2 -arch=native x.cu` and `nvcc -O2 w.c` built and ran on the host.
+
+**Language.** Python, for the new `hilclaw/cuda_profile.py` and the touched modules, as their siblings are.
+
+**What landed.**
+- `cuda_profile.local_record(hw_source, *, timeout_s, image=None)`:
+  - It reads `nvcc` and `gcc` on the host, or with an image each in its own new container. `nvidia_driver` and `revision` come from one host query.
+  - Zero or several GPU lines give no record.
+  - It reuses `standin_profile`'s line, spelling, kernel, host and image readings. `standin_profile` is beyond `touchesFiles`: its split into `_ruled_kernel`, `_host`, `_output` and `_run_in_image(program)` preserves behaviour.
+- `Target.coder_loop` (no default) and `targets.coder_loop_accelerators()`.
+- The `cuda_gpu` entry: `contracts` `()` and three false booleans.
+- `CUDA_GPU` is defined in `targets`, and `cuda_profile.ACCELERATOR` reads it. The other direction would make an import cycle through `cuda_adapter` → `clang_adapter` → `targets`.
+- `start_instance.start(..., coder_loop=True)`. `new_run` keeps the round-loop set, also with `--given-code`; `given_eval` passes `coder_loop=False`. `model_instances` keeps importing `_ACCELERATORS`, now the round-loop set.
+- `check_definition.default_table` is unchanged.
+
+**Existing tests changed (D21)** are listed in the PR body: `GOOD` and five `Target(...)` helpers gain `coder_loop`; the table-count test is renamed for three entries; `start_instance`'s signature pin and `_ACCELERATORS` pin are updated; and `cuda_profile.py` joins `test_standin_profile`'s list of modules that may name `standin_profile`.
+
+**Verification.**
+- Full suite under `coverage run --branch` in a WSL2 clone (Python 3.12.13, CUDA bin on `PATH`) at the round-1 head: 42466 passed, 108 skipped, 0 failed; `hilclaw/` line+branch coverage 99 % (`cuda_profile`, `targets`, `start_instance`, `standin_profile` 100 %). The later commits changed docstrings and the compute-capability pattern; the affected files were re-run and passed.
+- The live `cuda_profile` test ran (not skipped) on this GPU.
+- ruff check and format are clean. CI is green on the merged head.
+- No `claude` was started (D16), and no test run was made (D25).
+
+**Runtime acceptance item (D22)**, for `PROCESS/RuntimeAcceptance.md`:
+
+> PLAN P3-16 / ADR-0207 결정 2. NVIDIA GPU가 하나 있는 C-7의 WSL2 밖 머신 종류(native Linux; Docker 이미지를 지정하는 경우 포함)에서 `hilclaw.cuda_profile.local_record`가 `revision`(`<제품명> sm_<major><minor>`)과 `toolchain`의 `nvcc`·`gcc`·`nvidia_driver`를 읽어 `keys.hw_profile_key`가 받는 레코드를 내는가. 이미지를 지정했을 때 `nvcc`·`gcc`가 이미지의 것이고 `nvidia_driver`가 호스트의 것인가. GPU가 둘 이상인 머신에서 레코드를 내지 않는가. 실패로 드러나면 ADR-0207 결정 2의 읽기 규칙을 다시 본다.
+
+**Follow-ups.** None beyond ADR-0207's later slices.
+
+**Storage.** WSL `/tmp/hilclaw-driver/T-0573/` (repo clone, coverage data, test log, build check files) and `%TMP%/hilclaw-driver/T-0573/` (PR body) were removed with `rm -r`. No images and no installs.
+
