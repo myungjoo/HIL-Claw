@@ -1,3 +1,4 @@
+import dataclasses
 import io
 import json
 import os
@@ -22,6 +23,8 @@ from hilclaw import (
     run_state,
     standin_image,
     standin_profile,
+    start_instance,
+    targets,
     tools,
 )
 from hilclaw.given_eval import EXIT_STATUS, main
@@ -744,3 +747,40 @@ def test_the_command_is_no_tool():
 def test_the_first_state_is_that_of_the_round_manager():
     assert given_eval.FIRST_STATE == stubs.FIRST_STATE
     run_state.validate(given_eval.FIRST_STATE)
+
+
+# coder_loop (ADR-0207 decision 3): given code reads instance_start only
+
+
+def test_cuda_gpu_is_refused_while_its_instance_start_is_false(bench):
+    bench.write(request({**PROFILE, "accelerator": targets.CUDA_GPU}))
+    told = assert_refused(bench, "target_refused")
+    assert targets.CUDA_GPU not in told["reason"]
+
+
+@pytest.mark.skipif(GIT is None, reason="run.commit needs git")
+def test_a_target_closed_to_the_coder_loop_is_evaluated(bench, monkeypatch):
+    standin = targets.TABLE[targets.CPU_STANDIN]
+    table = {
+        targets.CPU_STANDIN: standin,
+        "test_gpu": dataclasses.replace(standin, coder_loop=False),
+    }
+    real = targets.instance_start_accelerators
+    monkeypatch.setattr(targets, "instance_start_accelerators", lambda: real(table))
+    monkeypatch.setattr(
+        start_instance,
+        "_ACCELERATORS",
+        (mock_backend.NAME, *targets.coder_loop_accelerators(table)),
+    )
+    monkeypatch.setattr(
+        start_instance, "_GIVEN_ACCELERATORS", (mock_backend.NAME, *real(table))
+    )
+    faked(monkeypatch, default_answers())
+    bench.write(request({**PROFILE, "accelerator": "test_gpu"}))
+    assert bench.main() == 0
+    (run_id,) = bench.runs()
+    assert bench.summary()["outcome"] == "measured"
+    assert (
+        instance.read_given(bench.root, run_id).instance.hw_profile["accelerator"]
+        == "test_gpu"
+    )

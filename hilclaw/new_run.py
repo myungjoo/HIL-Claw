@@ -22,7 +22,10 @@ the source (by default :func:`hilclaw.data_root_source.configured`, so
 :func:`hilclaw.start_instance.start` is called once with the parsed object,
 unchanged: nothing is added, defaulted or removed, and nobody is asked. With
 the option it is handed the C file's path as ``code_file``, which ``start``
-reads; without it, it is called exactly as before the option existed. Every
+reads; without it, it is called exactly as before the option existed. Either
+way the run is one of the coder's round loop, so ``start`` refuses an
+accelerator whose target has ``coder_loop`` false as ``out_of_scope``
+(ADR-0207 decision 3). Every
 failure before ``start`` starts nothing, and nothing is written before it.
 
 **Decoding rules** (ADR-0155 decision 3, this module's): the bytes are decoded
@@ -186,8 +189,10 @@ def _parsed(path):
     return value, None
 
 
-def _started(document, root, code_file):
+def _started(document, root, code_file, *, coder_loop=True):
     options = {} if code_file is None else {"code_file": code_file}
+    if not coder_loop:
+        options["coder_loop"] = False
     try:
         built = start_instance.start(document, data_root=root, **options)
     except start_instance.GivenCodeFileError as e:

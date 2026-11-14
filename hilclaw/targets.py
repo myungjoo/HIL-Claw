@@ -5,6 +5,8 @@ places the description of a target in a table in the package source, one
 :class:`Target` per ``accelerator`` value. This module is that table,
 :data:`TABLE`, with :func:`target` to look one up,
 :func:`instance_start_accelerators` for the names an instance may start on,
+:func:`coder_loop_accelerators` for those a run of the coder's round loop may
+start on (ADR-0207 decision 3),
 :func:`covers_at` for a predicate "covered" read at the target of an
 ``accelerator`` (ADR-0197 decision 3) and :func:`with_candidate_flags` for a
 target's flags followed by a candidate's (ADR-0198 decision 6).
@@ -13,14 +15,17 @@ target's flags followed by a candidate's (ADR-0198 decision 6).
   the environment, the build time limit and the cap of the process time
   limits, the contract-table keys it serves, a memory limit or ``None``, the
   measurement unit and the integer factor its figures are its ``ns`` figures
-  times (ADR-0196 decisions 3 and 5), and whether the model executor may
-  take its runs (``model_run``) and an instance may start on it (``instance_start``).
+  times (ADR-0196 decisions 3 and 5), whether the model executor may
+  take its runs (``model_run``), whether an instance may start on it
+  (``instance_start``) and whether a run of the coder's round loop may start
+  on it (``coder_loop``, ADR-0207 decision 3; an instance of given code is
+  started on a target of ``instance_start`` whatever ``coder_loop`` holds).
 * The entry :data:`CPU_STANDIN` (:data:`hilclaw.standin_profile.ACCELERATOR`).
   Its values are read from :mod:`hilclaw.standin_settings` each time the entry
   is read, so those constants stay the source of its build settings and time
   limits (ADR-0116 decision 2 (a); ADR-0117; ADR-0188). It serves every key of
   :data:`hilclaw.contract_table.TABLE`, has no memory limit, the unit ``ns``
-  with the factor 1, and both booleans true.
+  with the factor 1, and the three booleans true.
 * The entry :data:`VIRTUAL_NPU`, the virtual NPU of ADR-0193 decision 4: a
   check backend on the development machine whose values exist to make
   first-case assumptions fail and are no fact about any real NPU. Its flags
@@ -31,10 +36,19 @@ target's flags followed by a candidate's (ADR-0198 decision 6).
   process container to :data:`VIRTUAL_NPU_MEMORY_LIMIT_BYTES`, has the unit
   ``cycles`` with the factor :data:`VIRTUAL_NPU_CYCLES_PER_NS` (HQ-0090 (a);
   ADR-0196 decision 5: a check value, no fact about the cycles of any real
-  NPU), ``model_run`` false and ``instance_start`` true: an instance of a
-  contract it serves may start on it, checked with the bf16 contracts'
-  reference and the user's tolerance (HQ-0091 ① (a); ADR-0197 decisions 1
-  and 2).
+  NPU), ``model_run`` false and ``instance_start`` and ``coder_loop`` true:
+  an instance of a contract it serves may start on it, checked with the bf16
+  contracts' reference and the user's tolerance (HQ-0091 ① (a); ADR-0197
+  decisions 1 and 2).
+* The entry :data:`CUDA_GPU`, the GPU of the development PC
+  (``ARCHITECTURE/decisions/ADR-0207-od33-cuda-target-demonstration.md``
+  decision 3): the flags :data:`CUDA_GPU_FLAGS`, no trailing flags, the
+  waiter flags :data:`CUDA_GPU_WAITER_FLAGS`, the inherited environment, the
+  build time limit :data:`CUDA_GPU_BUILD_TIME_LIMIT_S`, ``cpu_standin``'s
+  process time-limit cap read from the same constant, no memory limit, the
+  unit ``ns`` with the factor 1, and the three booleans false. It serves no
+  contract yet (the ``cuda`` contract is a later slice of ADR-0207 decision
+  9), and no check backend is described for it.
 * The mock (:data:`hilclaw.mock_backend.NAME`) builds nothing and has no
   :class:`Target`.
 
@@ -85,6 +99,9 @@ class Target:
         ``bool``), exactly 1 when ``unit`` is ``ns``.
     @param model_run exactly a ``bool``: the model executor may take this target's runs.
     @param instance_start exactly a ``bool``: an instance may start on this target.
+    @param coder_loop exactly a ``bool``: a run of the coder's round loop may
+        start on this target (ADR-0207 decision 3). It has no default, as
+        ``model_run`` and ``instance_start``.
     @throws TypeError for a member of the wrong type.
     @throws ValueError for a member of the right type and a refused value.
     """
@@ -101,6 +118,7 @@ class Target:
     units_per_ns: int
     model_run: bool
     instance_start: bool
+    coder_loop: bool
 
     def __post_init__(self):
         for name in ("flags", "trailing_flags", "waiter_flags"):
@@ -117,7 +135,7 @@ class Target:
         if self.unit not in run_result.UNITS:
             raise ValueError(f"unit must be one of {', '.join(run_result.UNITS)}")
         _check_units_per_ns(self.unit, self.units_per_ns)
-        for name in ("model_run", "instance_start"):
+        for name in ("model_run", "instance_start", "coder_loop"):
             value = getattr(self, name)
             if type(value) is not bool:
                 raise TypeError(f"{name} must be a bool, not {type(value).__name__}")
@@ -201,6 +219,7 @@ def _virtual_npu():
         units_per_ns=VIRTUAL_NPU_CYCLES_PER_NS,
         model_run=False,
         instance_start=True,
+        coder_loop=True,
     )
 
 
@@ -218,6 +237,25 @@ def _cpu_standin():
         units_per_ns=1,
         model_run=True,
         instance_start=True,
+        coder_loop=True,
+    )
+
+
+def _cuda_gpu():
+    return Target(
+        flags=CUDA_GPU_FLAGS,
+        trailing_flags=(),
+        waiter_flags=CUDA_GPU_WAITER_FLAGS,
+        env=None,
+        build_time_limit_s=CUDA_GPU_BUILD_TIME_LIMIT_S,
+        process_time_limit_cap_s=standin_settings.PROCESS_TIME_LIMIT_CAP_S,
+        contracts=(),
+        memory_limit_bytes=None,
+        unit="ns",
+        units_per_ns=1,
+        model_run=False,
+        instance_start=False,
+        coder_loop=False,
     )
 
 
@@ -242,6 +280,18 @@ VIRTUAL_NPU_MEMORY_LIMIT_BYTES = 268435456
 VIRTUAL_NPU_CYCLES_PER_NS = 3
 """The factor of ``virtual_npu``'s ``cycles``: its ``ns`` figures times 3, a check value (ADR-0196 decision 5)."""
 
+CUDA_GPU = "cuda_gpu"
+"""The name of the ``cuda_gpu`` entry, the ``accelerator`` of the CUDA GPU (ADR-0207 decision 2)."""
+
+CUDA_GPU_FLAGS = ("-O2", "-arch=native")
+"""The ``nvcc`` flags of every kernel build at ``cuda_gpu`` (ADR-0207 decision 3)."""
+
+CUDA_GPU_WAITER_FLAGS = ("-O2",)
+"""The ``nvcc`` flags of the build of the waiter at ``cuda_gpu`` (ADR-0207 decision 3)."""
+
+CUDA_GPU_BUILD_TIME_LIMIT_S = 120
+"""The time limit in seconds of every build at ``cuda_gpu`` (ADR-0207 decision 3)."""
+
 
 class _Table(Mapping):
     def __init__(self, builders):
@@ -263,7 +313,9 @@ class _Table(Mapping):
         return f"<target table: {', '.join(self._builders)}>"
 
 
-TABLE = _Table({CPU_STANDIN: _cpu_standin, VIRTUAL_NPU: _virtual_npu})
+TABLE = _Table(
+    {CPU_STANDIN: _cpu_standin, VIRTUAL_NPU: _virtual_npu, CUDA_GPU: _cuda_gpu}
+)
 """The target table: a read-only mapping from ``accelerator`` to :class:`Target`, each entry built when it is read."""
 
 
@@ -290,6 +342,20 @@ def target(name, table=TABLE):
 def instance_start_accelerators(table=TABLE):
     """Return the names of ``table`` whose :class:`Target` has ``instance_start`` true, in its order, as a ``tuple``."""
     return tuple(name for name, entry in table.items() if entry.instance_start)
+
+
+def coder_loop_accelerators(table=TABLE):
+    """Return the names of ``table`` a run of the coder's round loop may start on, in its order, as a ``tuple``.
+
+    A name is returned when its :class:`Target` has both ``instance_start``
+    and ``coder_loop`` true (ADR-0207 decision 3): no run starts where no
+    instance may start.
+    """
+    return tuple(
+        name
+        for name, entry in table.items()
+        if entry.instance_start and entry.coder_loop
+    )
 
 
 def covers_at(covers, accelerator, table=TABLE):

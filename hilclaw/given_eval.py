@@ -25,8 +25,10 @@ first failure:
    budget is 1, so round 0 alone).
 3. The data root, once, from the source (by default
    :func:`hilclaw.data_root_source.configured`).
-4. The start: :func:`hilclaw.start_instance.start` with the request and the C
-   file as ``code_file``. It reads the file once and writes the blob,
+4. The start: :func:`hilclaw.start_instance.start` with the request, the C
+   file as ``code_file`` and ``coder_loop`` false, so a target of
+   ``instance_start`` is accepted whatever its ``coder_loop`` holds (ADR-0207
+   decision 3). It reads the file once and writes the blob,
    ``instance.json`` of version 3 and the ``artifacts.json`` record of the
    given code (ADR-0200 decisions 5 and 6, T-0561); its refusals are told as
    :mod:`hilclaw.new_run` tells them.
@@ -127,7 +129,8 @@ import statistics
 import sys
 
 from hilclaw import data_root_source, given_attempt, targets, tools
-from hilclaw.new_run import _described, _parsed, _standard, _started, _told
+from hilclaw.new_run import _described, _parsed, _standard, _told
+from hilclaw.new_run import _started as _new_run_started
 
 MEASURED = "measured"
 NOT_MEASURED = "not_measured"
@@ -304,6 +307,10 @@ def _request_refusal(document):
             "alone, so it states 1 or nothing (ADR-0200 decision 4 (b))",
         )
     return None
+
+
+def _started(document, root, code_file):
+    return _new_run_started(document, root, code_file, coder_loop=False)
 
 
 def _start(args, source):

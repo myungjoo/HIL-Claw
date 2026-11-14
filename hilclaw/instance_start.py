@@ -71,6 +71,8 @@ Choices that are this module's own and no rule of a record:
   :func:`prepare` from its caller, as ``accelerators`` and ``covers``: the
   names are :data:`hilclaw.mock_backend.NAME` and those of the target table
   whose ``instance_start`` is true (ADR-0193 decision 3; ADR-0197 decision 1),
+  and for a run of the coder's round loop whose ``coder_loop`` is true as well
+  (ADR-0207 decision 3),
   and the reading of ADR-0041 decision 5 is the start's predicate of the
   contract table (ADR-0177 decision 2) read at the target of the document's
   ``accelerator`` (ADR-0197 decision 3). This

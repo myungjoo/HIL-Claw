@@ -1265,6 +1265,7 @@ def a_target(**changes):
         "units_per_ns": 1,
         "model_run": False,
         "instance_start": False,
+        "coder_loop": False,
     }
     return targets.Target(**(values | changes))
 

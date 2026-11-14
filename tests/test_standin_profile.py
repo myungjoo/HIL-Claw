@@ -1087,6 +1087,7 @@ def test_module_is_bound_by_the_start_only_and_imports_no_store():
             own,
             start,
             package / "check_definition.py",
+            package / "cuda_profile.py",
             package / "nightly.py",
             package / "remote_eval.py",
             package / "targets.py",

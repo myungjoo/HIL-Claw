@@ -1,4 +1,5 @@
 import copy
+import dataclasses
 import datetime
 import hashlib
 import inspect
@@ -617,7 +618,7 @@ def test_a_missing_data_root_is_a_type_error(ids):
 
 def test_the_public_surface():
     parameters = inspect.signature(start).parameters
-    assert list(parameters) == ["document", "data_root", "code_file"]
+    assert list(parameters) == ["document", "data_root", "code_file", "coder_loop"]
     assert parameters["data_root"].kind is inspect.Parameter.KEYWORD_ONLY
     assert parameters["data_root"].default is inspect.Parameter.empty
     assert all(
@@ -670,9 +671,14 @@ def test_the_admitted_accelerators_are_the_mock_and_the_targets_that_start():
 
     assert start_instance._ACCELERATORS == (
         mock_backend.NAME,
-        *targets.instance_start_accelerators(),
+        *targets.coder_loop_accelerators(),
     )
     assert start_instance._ACCELERATORS == ("mock", "cpu_standin", "virtual_npu")
+    assert start_instance._GIVEN_ACCELERATORS == (
+        mock_backend.NAME,
+        *targets.instance_start_accelerators(),
+    )
+    assert start_instance._GIVEN_ACCELERATORS == ("mock", "cpu_standin", "virtual_npu")
 
 
 @pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
@@ -1074,3 +1080,97 @@ def test_the_given_code_type_is_a_valid_artifacts_type():
     artifacts.validate(
         {"schema_version": artifacts.SCHEMA_VERSION, "artifacts": [record]}
     )
+
+
+# coder_loop (ADR-0207 decision 3)
+
+TEST_GPU = "test_gpu"
+
+
+@pytest.fixture
+def loop_closed(monkeypatch):
+    from hilclaw import start_instance
+
+    standin = targets.TABLE[targets.CPU_STANDIN]
+    table = {
+        targets.CPU_STANDIN: standin,
+        TEST_GPU: dataclasses.replace(standin, coder_loop=False),
+    }
+    monkeypatch.setattr(
+        start_instance,
+        "_ACCELERATORS",
+        (mock_backend.NAME, *targets.coder_loop_accelerators(table)),
+    )
+    monkeypatch.setattr(
+        start_instance,
+        "_GIVEN_ACCELERATORS",
+        (mock_backend.NAME, *targets.instance_start_accelerators(table)),
+    )
+    return table
+
+
+def test_the_round_loop_refuses_a_target_whose_coder_loop_is_false(
+    loop_closed, root, ids
+):
+    assert loop_closed[TEST_GPU].instance_start is True
+    error = assert_refused(document(accelerator=TEST_GPU), OutOfScopeError, root, ids)
+    assert "accelerator" in str(error)
+
+
+def test_the_round_loop_with_given_code_refuses_it_too(
+    loop_closed, tmp_path, root, ids
+):
+    assert_given_refused(
+        one(accelerator=TEST_GPU), OutOfScopeError, root, ids, code_file(tmp_path)
+    )
+
+
+def test_the_given_code_start_admits_it(loop_closed, tmp_path, root, fixed_sources):
+    given = one(accelerator=TEST_GPU)
+    built = start(
+        given, data_root=root, code_file=code_file(tmp_path), coder_loop=False
+    )
+    assert built == FIXED_ID
+    assert (
+        instance.read_given(root, built).instance.hw_profile["accelerator"] == TEST_GPU
+    )
+    assert instance.given_code_of(root, built) == DIGEST
+
+
+def test_coder_loop_false_without_code_chooses_the_accelerators_only(
+    loop_closed, root, fixed_sources
+):
+    built = start(document(accelerator=TEST_GPU), data_root=root, coder_loop=False)
+    assert instance.read(root, built).hw_profile["accelerator"] == TEST_GPU
+
+
+@pytest.mark.parametrize("coder_loop", [True, False])
+def test_cpu_standin_starts_for_both(root, fixed_sources, coder_loop):
+    built = start(document(), data_root=root, coder_loop=coder_loop)
+    assert built == FIXED_ID
+
+
+@pytest.mark.parametrize("coder_loop", [True, False])
+def test_no_instance_starts_at_cuda_gpu(root, ids, coder_loop):
+    given = document(accelerator=targets.CUDA_GPU)
+    with pytest.raises(OutOfScopeError):
+        start(given, data_root=root, coder_loop=coder_loop)
+    assert tree(root) == []
+    assert ids.calls == 0
+
+
+@pytest.mark.parametrize("coder_loop", [1, 0, None, "false"])
+def test_a_coder_loop_that_is_no_bool_is_refused_before_anything_is_read(
+    tmp_path, root, ids, coder_loop
+):
+    missing = tmp_path / "missing.c"
+    with pytest.raises(TypeError, match="coder_loop must be a bool"):
+        start(document(), data_root=root, code_file=missing, coder_loop=coder_loop)
+    assert tree(root) == []
+    assert ids.calls == 0
+
+
+def test_coder_loop_is_by_name_and_defaults_to_the_round_loop():
+    parameter = inspect.signature(start).parameters["coder_loop"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is True

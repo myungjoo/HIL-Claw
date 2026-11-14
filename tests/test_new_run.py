@@ -1,4 +1,5 @@
 import copy
+import dataclasses
 import datetime
 import hashlib
 import io
@@ -19,6 +20,7 @@ from hilclaw import (
     run_id,
     standin_profile,
     start_instance,
+    targets,
 )
 from hilclaw.instance_start import REPORT_ORDER
 from hilclaw.new_run import (
@@ -40,6 +42,7 @@ from hilclaw.new_run import (
     STARTED,
     UNREADABLE_INPUT,
     UNWRITABLE_VALUE,
+    _started,
     main,
 )
 
@@ -701,3 +704,61 @@ def test_a_bad_request_file_with_the_option_is_read_first(
     ran = given_run(root, str(tmp_path / "absent.json"), code())
     assert ran.told["outcome"] == UNREADABLE_INPUT
     assert recording.calls == []
+
+
+# The round loop and coder_loop (ADR-0207 decision 3)
+
+
+def test_cuda_gpu_is_out_of_scope_with_and_without_the_option(root, given, code):
+    path = given(document(accelerator=targets.CUDA_GPU))
+    for ran in (run([path], root), given_run(root, path, code())):
+        assert ran.told["outcome"] == OUT_OF_SCOPE
+        assert "accelerator" in ran.told["reason"]
+    assert tree(root) == []
+
+
+@pytest.fixture
+def loop_closed(monkeypatch):
+    standin = targets.TABLE[targets.CPU_STANDIN]
+    table = {"test_gpu": dataclasses.replace(standin, coder_loop=False)}
+    monkeypatch.setattr(
+        start_instance,
+        "_ACCELERATORS",
+        ("mock", *targets.coder_loop_accelerators(table)),
+    )
+    monkeypatch.setattr(
+        start_instance,
+        "_GIVEN_ACCELERATORS",
+        ("mock", *targets.instance_start_accelerators(table)),
+    )
+
+
+def test_a_target_closed_to_the_coder_loop_is_out_of_scope_with_the_option(
+    loop_closed, root, given, code
+):
+    path = given(document(accelerator="test_gpu"))
+    for ran in (run([path], root), given_run(root, path, code())):
+        assert ran.told["outcome"] == OUT_OF_SCOPE
+        assert ran.status == EXIT_STATUS[OUT_OF_SCOPE]
+    assert tree(root) == []
+
+
+def test_the_start_out_of_the_loop_admits_that_target(
+    loop_closed, root, code, fixed_sources
+):
+    told = _started(document(accelerator="test_gpu"), root, code(), coder_loop=False)
+    assert told == {"outcome": STARTED, "run_id": FIXED_ID}
+    assert (
+        instance.read_given(root, FIXED_ID).instance.hw_profile["accelerator"]
+        == "test_gpu"
+    )
+
+
+def test_only_a_start_out_of_the_loop_hands_coder_loop_to_start(root, recorder):
+    recording = recorder()
+    _started(document(), root, None)
+    _started(document(), root, "given.c", coder_loop=False)
+    assert [options for _, options in recording.calls] == [
+        {"data_root": root},
+        {"data_root": root, "code_file": "given.c", "coder_loop": False},
+    ]

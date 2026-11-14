@@ -7,11 +7,16 @@ joins :func:`hilclaw.instance_start.prepare` (ADR-0076), the refusal of a
 given id (ADR-0111 decision 2), :func:`hilclaw.run_id.new` (ADR-0027),
 :func:`hilclaw.instance_file.write` (ADR-0025) and the stop on a taken name
 (ADR-0109), and returns the id it built (ADR-0111 decision 3). It binds the
-``accelerators`` of ``prepare`` to :data:`hilclaw.mock_backend.NAME` and each
-target of :data:`hilclaw.targets.TABLE` whose ``instance_start`` is true,
-read from the table when this module is imported (ADR-0193 decision 3; today
-:data:`hilclaw.standin_profile.ACCELERATOR` and
-:data:`hilclaw.targets.VIRTUAL_NPU`, ADR-0197 decision 1), and its ``covers``
+``accelerators`` of ``prepare`` to :data:`hilclaw.mock_backend.NAME` and the
+targets of :data:`hilclaw.targets.TABLE` a run may start on, read from the
+table when this module is imported (ADR-0193 decision 3): for a run of the
+coder's round loop, the default, the names of
+:func:`hilclaw.targets.coder_loop_accelerators`, and for the evaluation of
+given code out of the loop (``coder_loop`` false, :mod:`hilclaw.given_eval`)
+those of :func:`hilclaw.targets.instance_start_accelerators` (ADR-0207
+decision 3; today both are :data:`hilclaw.standin_profile.ACCELERATOR` and
+:data:`hilclaw.targets.VIRTUAL_NPU`, ADR-0197 decision 1, and an accelerator
+outside the set is refused as out of scope), and its ``covers``
 to :func:`hilclaw.contract_table.start_covers`, which admits a contract only
 when every tool round 0 calls admits it - the fp32 ``gemm`` contract of
 ADR-0008 and the six bf16 contracts (ADR-0177 decision 2; ADR-0181 decision 8
@@ -103,7 +108,8 @@ from hilclaw import (
     targets,
 )
 
-_ACCELERATORS = (mock_backend.NAME, *targets.instance_start_accelerators())
+_ACCELERATORS = (mock_backend.NAME, *targets.coder_loop_accelerators())
+_GIVEN_ACCELERATORS = (mock_backend.NAME, *targets.instance_start_accelerators())
 
 
 def _covers_of(document):
@@ -188,11 +194,16 @@ class RunIdInUseError(Exception):
         )
 
 
-def start(document, *, data_root, code_file=None):
+def start(document, *, data_root, code_file=None, coder_loop=True):
     """Start the instance ``document`` under ``data_root``; return the ``run_id`` it built.
 
     ``code_file`` is ``None`` or the path of the given C file, a ``str`` or a
-    path, given by name. In this order:
+    path, given by name. ``coder_loop`` is exactly a ``bool``, given by name:
+    ``True`` (the default) for a run of the coder's round loop, ``False`` for
+    the evaluation of given code out of the loop; it chooses the accelerators
+    ``prepare`` is handed (module docstring) and nothing else. A
+    ``coder_loop`` that is not exactly a ``bool`` is a :class:`TypeError`
+    before anything is read. In this order:
 
     1. With ``code_file``: the file is read whole; :class:`GivenCodeFileError`
        when it cannot be read (an :class:`OSError`, or the
@@ -240,12 +251,14 @@ def start(document, *, data_root, code_file=None):
     Nothing is written before step 6 and no id is built before step 7.
     ``document`` is never modified.
     """
+    if type(coder_loop) is not bool:
+        raise TypeError(f"coder_loop must be a bool, not {type(coder_loop).__name__}")
     code = None if code_file is None else _read_code(code_file)
     given_code = None if code is None else hashlib.sha256(code).hexdigest()
     try:
         prepared = instance_start.prepare(
             document,
-            accelerators=_ACCELERATORS,
+            accelerators=_ACCELERATORS if coder_loop else _GIVEN_ACCELERATORS,
             covers=_covers_of(document),
             **({} if given_code is None else {"given_code": given_code}),
         )
