@@ -2,7 +2,7 @@
 id: T-0574
 title: PLAN P3-16 (3) — ADR-0207 slice 3, the fp32 `gemm` contract entry in language `cuda` served at `cuda_gpu` only, and the hand-written C verification and timing programs against the CUDA runtime's C interface, checked on the real GPU with a test-placed kernel
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "ADR-0207", "HQ-0096", FR-9, FR-10, FR-19, OD-33, OD-6]
 dependsOn: [T-0573]
@@ -98,4 +98,42 @@ It depends on **T-0573** (slice 2: the `cuda_gpu` target entry with `contracts` 
 
 ## Follow-ups
 
+- For the slice that opens a `cuda_gpu` run (slice 6, after HQ-0104): `spec_tool` (`covers`, `task_contract`), `catalog_tool._compared`, `run_admission._entry` and `check_answer._ENTRIES` read no target, so they answer with the `c` entry. `targets.covers_at` (used by `start_instance`) and `run_tool._at_target` join `served_at` to a predicate asked without a target, so at `cuda_gpu` they follow the `c` entry's `covers` and flags. Those equal the `cuda` entry's today. That slice must pass the target to these readers (round-1 and round-2 review nits of PR #387).
+
 ## Result
+
+PR #387, squash-merged as `c693af83` (PR body's last line `Task: T-0574`); branch deleted. Review: 2 rounds. Round 1 asked for changes: five existing tests failed in the full suite, the audit table did not cover the tests, and the Verification section held a placeholder; two nits. Round 2 approved with one nit, which went into the PR body and `Follow-ups` above. CI green on head `24080d47` (all six checks). Not BLOCKED; no HQ; no ADR (the reviewer agreed none was needed: ADR-0207 decisions 3 and 4 with ADR-0193 decisions 3 and 4 already decide selection by target, and the record of a CUDA kernel in a run stays HQ-0104). No §9 notice was posted.
+
+**Machine check (criterion 1; read only, nothing installed or pulled).** WSL2 Ubuntu 22.04:
+- `/usr/local/cuda-13.1/bin/nvcc --version` → `Cuda compilation tools, release 13.1, V13.1.115` (build `cuda_13.1.r13.1/compiler.37061995_0`).
+- `nvidia-smi` → NVIDIA GeForce RTX 4070, NVIDIA-SMI 615.78.02, KMD 617.14, CUDA UMD 13.4, 12282 MiB.
+- `gcc` 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3); `clang` 14.0.0.
+
+**Language.** C for the two programs (ADR-0194 decision 8: a GPU target's harness is C against the vendor runtime's C interface). Python for the contract module, the table, the targets and the path module, as their siblings are.
+
+**What landed.**
+- `hilclaw/gemm_cuda_contract.py`: `LANGUAGE` `cuda` and decision 4's `extern "C"` device-pointer prototype. Shapes, record and `covers` are `gemm_contract`'s objects.
+- The table entry, appended eighth, `checked` and `timed`. Without a target, only the first entry per kind/dtype/layout is asked, so every no-target answer is unchanged. `entry` and `task_contract` take an optional `target`.
+- Targets: `cpu_standin` serves the seven `c` keys, `virtual_npu` its six bf16 keys, and `cuda_gpu` exactly the `cuda` key. A `Target` refuses two keys of one kind/dtype/layout.
+- `check_answer` takes only `c` entries; otherwise its import raised `RuntimeError`.
+- `hilclaw/harness/cuda_verification_program.c` and `cuda_timing_driver.c`, with the command lines and reports of ADR-0017 and ADR-0009. CUDA errors exit 1 without a complete report.
+- `hilclaw/harness/cuda_programs.py` names the two source paths.
+- `.github/workflows/ci.yml`: the clang C gate skips `hilclaw/harness/cuda_*.c`, because the runner has no CUDA headers. Locally they compile warning-free under the gate's flags with `-isystem /usr/local/cuda-13.1/include`. With `-I`, the CUDA 13.1 `driver_types.h` itself fails `-Wpedantic` under C99.
+- Fixtures: `tests/cuda_fixtures/gemm.cu` and `gemm_wrong.cu`.
+- The PR body lists the reader audit and every existing-test edit.
+
+**Size.** 8 non-test files (within the cap). About 700 changed non-test lines (671 insertions, 30 deletions), over the 600 recommendation, mostly the two C programs (~260 lines each), which mirror their host-memory siblings.
+
+**Verification.**
+- Full suite under `coverage run --branch` in a WSL2 clone of head `24080d47` (Python 3.12, CUDA `bin` on `PATH`): 42548 passed, 108 skipped, 0 failed. `hilclaw/` line+branch coverage 99 %; touched and new modules at 100 %.
+- The real-GPU tests ran without skips on the RTX 4070 (nvcc 13.1 V13.1.115, gcc 11.4.0, driver 617.14):
+  - pass at 8x8x8 and 5x33x7 (rtol = atol = 1e-4);
+  - the wrong kernel judged `fail` with every element counted;
+  - the timing report accepted by `run_timing` in both sample forms;
+  - `CUDA_VISIBLE_DEVICES=""` ends either program with status 1, one stderr line naming `cudaErrorNoDevice`, and no complete report;
+  - refused command lines exit 2 with empty stdout.
+- ruff check and format are clean. No `claude` was started (D16), and no test run was made (D25).
+
+**Runtime acceptance items (D22).** None new. The programs are checked by FR-19 ⑤ tests wherever `nvcc` and a GPU exist. ADR-0207's container items stay with slice 5.
+
+**Storage.** WSL `/tmp/hilclaw-driver/T-0574/` (clone, coverage data, logs, sync script) and `%TMP%/hilclaw-driver/T-0574/` (PR body) were removed with `rm -r`. No images and no installs.
