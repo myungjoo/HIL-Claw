@@ -1,13 +1,9 @@
 {
   "schema_version": 1,
   "phase": "P3",
-  "currentTask": "T-0572",
+  "currentTask": null,
   "nextTask": null,
-  "lock": {
-    "owner": "AKIHA:hil-claw-dev-driver-1148",
-    "acquiredAt": "2026-11-14T11:53:17Z",
-    "ttlMinutes": 180
-  },
+  "lock": null,
   "humanQuestions": [
     {
       "id": "HQ-0001",
@@ -1032,18 +1028,26 @@
       "question": "(OD-33 ⑤; PLAN P3-12; 형식은 [ADR-0206](ARCHITECTURE/decisions/ADR-0206-od33-llm-level-evaluation.md) 결정 3·6.2. HQ-A와 함께 답해도 된다) [쟁점] LLM 수준 지표는 프롬프트 길이 S와 생성 길이 G에 달려, S·G가 다른 평가의 수치는 비교할 수 없다. 반복 횟수 R은 중앙값이 한 run이 되도록 홀수다(ADR-0206 결정 3). [선택지] (a) 평가마다 사용자의 값 — S는 프롬프트에서, G는 `model_check`의 `n`, R(홀수), 모두 기본값 없음, record에 적고 S·G가 다른 평가의 수치는 비교하지 않음 (b) 오너가 고정 — 평가용 프롬프트 문장 하나, 또는 S·G 값과 홀수 R을 지정하고 모든 평가가 그것을 씀 (c) 그 밖. 실행자의 권고(결정 아님): (a) — `model_check`의 \"모든 값은 사용자의 것\"과 같은 모양이고, 비교 가능성은 record의 S·G로 지킨다. [막히는 것] ADR-0206 결정 7 slice 4의 명령 문서 형식((b)이면 고정값을 넣음). [막히지 않는 것] slice 1·2, HQ-A에 달린 slice 3, P3-16, 오너의 P2-15 확인(RA-0056), 그 밖의 P3 항목과 task.",
       "askedAt": "2026-11-14T09:23:28Z",
       "issueComment": null
+    },
+    {
+      "id": "HQ-0104",
+      "taskId": "T-0572",
+      "reason": "data-plane-schema-change",
+      "question": "(OD-33 ①·⑥, PLAN P3-16; ADR-0207 결정 5. HQ-0088 ① (c)는 다시 묻지 않는다) [쟁점] PLAN P3-16은 테스트가 둔 CUDA `gemm` 커널이 빌드·correctness·측정·기록까지 도는 것을 요구하고, HQ-0096 덧붙임은 CUDA 대상에서 주어진 코드의 평가를 연다. 오늘의 틀에서 시도의 `output/`은 `.c`·`.h` 이름만 받고 `.c` 파일만 컴파일하며(ADR-0055 N1·N2·R3), 주어진 코드는 C 파일 하나를 `given.c`로 두고(ADR-0200 결정 2), `candidate_kind`가 없는 `instance.json`은 C 커널 run이다(ADR-0198 결정 4, HQ-0089 ④). CUDA C++ 커널을 run에 기록하는 것과 CUDA C++ 주어진 코드 묶음은 이 틀을 바꾼다(D23). [선택지] (a) `cuda_gpu` 대상의 run에 한해 시도의 `output/` 허용 이름에 `.cu`로 끝나는 이름을 더하고 그 대상의 컴파일 집합은 `.cu` 파일로 한다(`.c`는 그 대상에서 컴파일하지 않음; 정렬·크기·개수 규칙은 그대로); 그 대상의 주어진 코드 묶음은 CUDA C++ 파일 하나이고 `given.cu`로 놓인다; 그 run의 `instance.json`은 지금처럼 `candidate_kind` 없이 쓰고, 그 없음을 \"대상의 계약 언어(`cuda`)로 쓴 커널\"로 읽는다(기존 값의 읽기 변경). (b) (a)와 같되 승인된 열린 목록 \"후보 종류\"에 새 값(예: `cuda_kernel`)을 더해 `instance.json` 버전 2로 적는다 — 값의 내용은 오너 몫이고 코더의 벤더 언어 커널 종류와 같은 값을 미리 정하게 된다. (c) 이름은 `.c` 그대로, 대상 플래그 `-x cu`로 CUDA C++로 컴파일한다 — 틀은 그대로이나 `.c` 파일과 C 커널 run이 CUDA C++를 담고 C 하네스도 CUDA C++로 컴파일된다. (d) run 기록 없이 실증한다 — P3-16의 \"기록\"을 테스트 디렉토리에서의 빌드·검사·측정까지로 줄이고, run 기록과 CUDA 묶음은 벤더 언어 커널 종류(HQ-0088 ① (c))가 정해질 때 함께. 실행자의 권고(결정 아님): (a) — 이름이 언어를 말하고 `nvcc`가 접미사로 언어를 고르며, 계약의 language(`cuda`)가 이미 spec·결과에 언어를 적고, 코더의 경로는 `coder_loop` false로 닫힌 채 남는다. [막히는 것] ADR-0207 slice 6(CUDA 대상의 `instance_start` true, 주어진 코드 묶음, 기본 백엔드 표 등재, run 기록까지의 실증)과 그로써 P3-16의 완료. [막히지 않는 것] ADR-0207 slice 2~5(hw_profile과 대상 표 항목, CUDA 계약과 C 하네스, 백엔드 연산, 런타임 GPU 컨테이너), 그 밖의 task, 오너의 P2-15 확인.",
+      "askedAt": "2026-11-14T12:43:57Z",
+      "issueComment": null
     }
   ],
   "counters": {
-    "iterations": 601,
-    "tasksDone": 565,
+    "iterations": 602,
+    "tasksDone": 566,
     "tasksBlocked": 37,
-    "reviewRoundsTotal": 1807
+    "reviewRoundsTotal": 1810
   },
   "lastIteration": {
-    "at": "2026-11-14T11:23:42Z",
-    "owner": "AKIHA:hil-claw-dev-driver-1048",
-    "taskId": "T-0571",
+    "at": "2026-11-14T12:43:57Z",
+    "owner": "AKIHA:hil-claw-dev-driver-1148",
+    "taskId": "T-0572",
     "outcome": "DONE"
   },
   "notes": "Driver state (PROCESS/DRIVER.md §2 field table). Distinct from the runtime STATE.json in the data plane. D1-D12 answered (2026-10-05); .claude/settings.json committed (D11). Prerequisite commit (CLAUDE.md A-13 rule text + test rules, dev-item-address / dev-code-review skill edits) landed 2026-10-06; the driver may operate."

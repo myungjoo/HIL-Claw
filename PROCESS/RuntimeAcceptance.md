@@ -735,3 +735,11 @@
 - 내용:
 
   PLAN P3-12 / ADR-0206 결정 7 (slice 2). 컨테이너 런타임이 있는 C-7의 머신에서, ADR-0144의 컨테이너 안에서 waiter(ADR-0145)가 시작한 timed graph program(`hilclaw.model_graph_container.execute_timed`)이 완전한 timed 보고를 내고 그 뒤에 waiter의 줄이 오는가, 그리고 그 보고의 token이 같은 입력에 대한 untimed program(`hilclaw.model_graph_container.execute`)의 token과 같은가(이 프로세스에 대한 ADR-0145 (liii)·(liv)의 컨테이너 사실). 실패로 드러나면 ADR-0206 결정 4(waiter를 통한 peak memory)를 다시 본다. T-0571(PR #384, main 89acbbfe) 착지 뒤 확인 가능.
+
+### RA-0086
+
+- 상태: 미확인
+- 출처: P3-16, T-0572, ADR-0207 (등록 2026-11-14)
+- 내용:
+
+  PLAN P3-16 / ADR-0207 결정 6·7. NVIDIA GPU와 Docker가 있는 C-7의 각 머신 종류(native Linux, WSL2의 Docker Engine, Windows의 Docker Desktop)에서: (1) `--gpus all`로 시작한 `cuda_gpu`의 빌드·프로세스 컨테이너가 GPU를 쓰는 동안 어느 checkout 경로도 보이지 않고, 드라이버 마운트가 읽기 전용이며, 빌드 디렉토리 밖에 쓸 수 있는 호스트 경로가 없고, ADR-0144의 다른 성질(네트워크 없음, 숫자 사용자, capability 없음)이 그대로인가; (2) NVIDIA Container Toolkit이 없거나 GPU를 줄 수 없는 머신에서 probe 컨테이너가 125로 끝나고 연산이 시도의 프로세스 전에 `device_unavailable`로 답하는가; (3) NVIDIA GPU가 없는 머신(macOS 포함)에서 `cuda_gpu`의 세 HW 도구가 `device_unavailable`로 답하는가. 실패로 드러나면 ADR-0207 결정 6·7(probe 컨테이너, `--gpus all`)을 다시 본다.

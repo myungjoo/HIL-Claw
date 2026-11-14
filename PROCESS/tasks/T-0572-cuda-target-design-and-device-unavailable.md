@@ -2,7 +2,7 @@
 id: T-0572
 title: PLAN P3-16 (1) — record by a §9 ADR how the CUDA target is demonstrated on the development PC's GPU under HQ-0095 ② (a) and HQ-0096 ② (a) with its addition, and land its first slice, the backend kind `device_unavailable` of HQ-0097 (a)
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "HQ-0096", "HQ-0095", "HQ-0097", "HQ-0093", FR-10, FR-19, OD-33, OD-32, OD-14]
 dependsOn: []
