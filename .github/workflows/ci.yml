@@ -86,7 +86,7 @@ jobs:
         shell: bash
         run: |
           clang --version
-          git ls-files -z -- '*.c' | xargs -0 -r -t -n 1 clang -std=c99 -Wall -Wextra -Wpedantic -Werror -O2 -c -o /dev/null --
+          git ls-files -z -- '*.c' ':!hilclaw/harness/cuda_*.c' | xargs -0 -r -t -n 1 clang -std=c99 -Wall -Wextra -Wpedantic -Werror -O2 -c -o /dev/null --
       - name: Set up Python 3.14
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:

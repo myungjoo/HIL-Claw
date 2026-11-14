@@ -134,7 +134,9 @@ def imported_modules(path):
 
 def table_entry(kind, dtype):
     (found,) = (
-        entry for key, entry in contract_table.TABLE.items() if key[:2] == (kind, dtype)
+        entry
+        for key, entry in contract_table.TABLE.items()
+        if key[:2] == (kind, dtype) and key[3] == "c"
     )
     return found
 

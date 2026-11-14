@@ -49,11 +49,13 @@ Choices that are this module's own and no rule of a record:
   is judged, and no result holds a seed (ADR-0042 decision 6).
 * The entry is found from the ``kind`` and the ``dtype`` of the check, which
   is all the check parameters say of the contract
-  (:mod:`hilclaw.check_parameters`): among the entries of the table marked
-  ``checked``, the one with that kind and that dtype. The table holds one
-  such entry for each kind and dtype; a table with two is refused with
-  :class:`RuntimeError` when the module is imported, so that no result
-  names a layout the check was not of.
+  (:mod:`hilclaw.check_parameters`): among the entries of the table in the
+  language ``c`` marked ``checked``, the one with that kind and that dtype.
+  The table holds one such entry for each kind and dtype; a table with two
+  is refused with :class:`RuntimeError` when the module is imported, so that
+  no result names a layout the check was not of. The fp32 ``gemm`` entry in
+  the language ``cuda`` (ADR-0207 decision 4) is not among them: its result
+  would carry the same ``contract_key``, which names no language.
 
 The form is established, not the truth (ADR-0043 decision 5 and Limits): an
 answer of the right form is taken as it is.
@@ -81,7 +83,7 @@ _BF16 = "bf16"
 def _checked_entries(table):
     entries = {}
     for entry in table.values():
-        if entry.checked:
+        if entry.checked and entry.contract.LANGUAGE == "c":
             pair = (entry.contract.KIND, entry.contract.DTYPE)
             if pair in entries:
                 raise RuntimeError(f"contract_table: two checked entries of {pair}")

@@ -23,8 +23,9 @@ target's flags followed by a candidate's (ADR-0198 decision 6).
 * The entry :data:`CPU_STANDIN` (:data:`hilclaw.standin_profile.ACCELERATOR`).
   Its values are read from :mod:`hilclaw.standin_settings` each time the entry
   is read, so those constants stay the source of its build settings and time
-  limits (ADR-0116 decision 2 (a); ADR-0117; ADR-0188). It serves every key of
-  :data:`hilclaw.contract_table.TABLE`, has no memory limit, the unit ``ns``
+  limits (ADR-0116 decision 2 (a); ADR-0117; ADR-0188). It serves the seven
+  keys of :data:`hilclaw.contract_table.TABLE` in the language ``c`` (not
+  the ``cuda`` contract of ADR-0207 decision 4), has no memory limit, the unit ``ns``
   with the factor 1, and the three booleans true.
 * The entry :data:`VIRTUAL_NPU`, the virtual NPU of ADR-0193 decision 4: a
   check backend on the development machine whose values exist to make
@@ -46,9 +47,9 @@ target's flags followed by a candidate's (ADR-0198 decision 6).
   waiter flags :data:`CUDA_GPU_WAITER_FLAGS`, the inherited environment, the
   build time limit :data:`CUDA_GPU_BUILD_TIME_LIMIT_S`, ``cpu_standin``'s
   process time-limit cap read from the same constant, no memory limit, the
-  unit ``ns`` with the factor 1, and the three booleans false. It serves no
-  contract yet (the ``cuda`` contract is a later slice of ADR-0207 decision
-  9), and no check backend is described for it.
+  unit ``ns`` with the factor 1, and the three booleans false. It serves
+  the one key of the contract table in the language ``cuda`` (ADR-0207
+  decision 4), and no check backend is described for it yet.
 * The mock (:data:`hilclaw.mock_backend.NAME`) builds nothing and has no
   :class:`Target`.
 
@@ -91,7 +92,10 @@ class Target:
     @param process_time_limit_cap_s the cap in seconds of every process time
         limit (ADR-0117 decision 4), as ``build_time_limit_s`` and finite.
     @param contracts the keys of :data:`hilclaw.contract_table.TABLE` the target
-        serves, a ``tuple`` with no key twice.
+        serves, a ``tuple`` with no key twice and at most one key per
+        ``kind``, ``dtype`` and ``layout``, so that the target picks the
+        entry of a record, which states no language
+        (:mod:`hilclaw.contract_table`).
     @param memory_limit_bytes ``None`` for no bound, or an ``int`` above 0 (not a ``bool``).
     @param unit the measurement unit, one of :data:`hilclaw.run_result.UNITS`.
     @param units_per_ns the factor every figure in ``unit`` is the ``ns``
@@ -179,6 +183,8 @@ def _check_contracts(contracts):
             raise ValueError(f"contracts: {key!r} is no key of the contract table")
     if len(set(contracts)) != len(contracts):
         raise ValueError("contracts must hold each key once")
+    if len({key[:3] for key in contracts}) != len(contracts):
+        raise ValueError("contracts must hold one key per kind, dtype and layout")
 
 
 def _check_memory_limit(value):
@@ -203,6 +209,10 @@ def _check_units_per_ns(unit, value):
 
 def _bf16_contracts():
     return tuple(key for key in contract_table.TABLE if key[1] == "bf16")
+
+
+def _language_contracts(language):
+    return tuple(key for key in contract_table.TABLE if key[3] == language)
 
 
 def _virtual_npu():
@@ -231,7 +241,7 @@ def _cpu_standin():
         env=standin_settings.ENV,
         build_time_limit_s=standin_settings.BUILD_TIME_LIMIT_S,
         process_time_limit_cap_s=standin_settings.PROCESS_TIME_LIMIT_CAP_S,
-        contracts=tuple(contract_table.TABLE),
+        contracts=_language_contracts("c"),
         memory_limit_bytes=None,
         unit="ns",
         units_per_ns=1,
@@ -249,7 +259,7 @@ def _cuda_gpu():
         env=None,
         build_time_limit_s=CUDA_GPU_BUILD_TIME_LIMIT_S,
         process_time_limit_cap_s=standin_settings.PROCESS_TIME_LIMIT_CAP_S,
-        contracts=(),
+        contracts=_language_contracts("cuda"),
         memory_limit_bytes=None,
         unit="ns",
         units_per_ns=1,

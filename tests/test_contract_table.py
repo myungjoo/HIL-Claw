@@ -11,6 +11,7 @@ from hilclaw import (
     elementwise_add_bf16_contract,
     gemm_bf16_contract,
     gemm_contract,
+    gemm_cuda_contract,
     keys,
     rmsnorm_bf16_contract,
     rope_bf16_contract,
@@ -57,7 +58,7 @@ def first(contract):
 # The table
 
 
-def test_the_table_lists_the_seven_contracts_keyed_by_their_binding():
+def test_the_table_lists_the_eight_contracts_keyed_by_their_binding():
     assert list(TABLE) == [
         ("gemm", "fp32", "row_major", "c"),
         ("gemm", "bf16", "row_major", "c"),
@@ -66,17 +67,28 @@ def test_the_table_lists_the_seven_contracts_keyed_by_their_binding():
         ("swiglu", "bf16", "row_major", "c"),
         ("rope", "bf16", "row_major", "c"),
         ("sdpa_kv_cache", "bf16", "row_major", "c"),
+        ("gemm", "fp32", "row_major", "cuda"),
     ]
     for (kind, dtype, layout, language), found in TABLE.items():
         assert type(found) is Entry
         assert (found.contract.KIND, found.contract.DTYPE) == (kind, dtype)
         assert (found.contract.LAYOUT, found.contract.LANGUAGE) == (layout, language)
-    assert [found.contract for found in TABLE.values()] == list(CONTRACTS)
+    assert [found.contract for found in TABLE.values()] == [
+        *CONTRACTS,
+        gemm_cuda_contract,
+    ]
 
 
-def test_at_most_one_entry_per_kind_dtype_and_layout():
-    triples = [key[:3] for key in TABLE]
-    assert len(set(triples)) == len(triples)
+def test_at_most_one_entry_per_kind_dtype_layout_and_target_served_language():
+    assert len(set(TABLE)) == len(TABLE)
+    for name in targets.TABLE:
+        served = targets.target(name).contracts
+        triples = [key[:3] for key in served]
+        assert len(set(triples)) == len(triples)
+    first = {}
+    for key in TABLE:
+        first.setdefault(key[:3], key)
+    assert all(key[3] == "c" for key in first.values())
 
 
 def test_the_flags_of_this_slice():
@@ -93,9 +105,12 @@ def test_the_table_cannot_be_changed():
         TABLE[("gemm", "fp16", "row_major", "c")] = Entry(gemm_contract, True, True)
 
 
-def test_another_language_names_no_entry():
-    assert ("gemm", "fp32", "row_major", "cuda") not in TABLE
-    assert all(key[3] == "c" for key in TABLE)
+def test_another_language_names_the_cuda_gemm_entry_alone():
+    assert [key for key in TABLE if key[3] != "c"] == [
+        ("gemm", "fp32", "row_major", "cuda")
+    ]
+    assert ("gemm", "bf16", "row_major", "cuda") not in TABLE
+    assert ("gemm", "fp32", "row_major", "opencl") not in TABLE
 
 
 # Happy: each of the seven contracts
@@ -292,7 +307,7 @@ def test_the_module_imports_the_contract_modules_and_no_numpy():
         elif isinstance(node, ast.ImportFrom):
             imported |= {f"{node.module}.{alias.name}" for alias in node.names}
     assert imported == {"collections", "inspect", "types", "hilclaw.keys"} | {
-        f"hilclaw.{named(contract)}" for contract in CONTRACTS
+        f"hilclaw.{named(contract)}" for contract in (*CONTRACTS, gemm_cuda_contract)
     }
     code = (
         "import sys\n"
@@ -406,3 +421,132 @@ def test_an_invalid_record_is_refused_at_a_target(record):
     for function in (*PREDICATES, served_at):
         with pytest.raises(keys.InvalidRecordError):
             function(record, virtual)
+
+
+# Two languages for fp32 gemm (ADR-0207 decision 4)
+
+CUDA_KEY = ("gemm", "fp32", "row_major", "cuda")
+FP32_RECORDS = [
+    gemm_contract.op_signature_record(*shape) for shape in SHAPES[gemm_contract]
+]
+
+
+def at(name):
+    return targets.target(name)
+
+
+def test_without_a_target_every_fp32_gemm_record_is_answered_by_the_c_entry():
+    for record in FP32_RECORDS:
+        assert entry(record) is TABLE["gemm", "fp32", "row_major", "c"]
+        assert task_contract(record) == gemm_contract.task_contract(
+            *record["shape"].values()
+        )
+        assert task_contract(record)["language"] == "c"
+        assert [predicate(record) for predicate in PREDICATES] == [True] * 4
+
+
+def test_without_a_target_the_cuda_entry_is_never_asked(monkeypatch):
+    def refused(record):
+        raise AssertionError("the cuda entry was asked")
+
+    monkeypatch.setattr(gemm_cuda_contract, "covers", refused)
+    monkeypatch.setattr(gemm_contract, "covers", lambda record: False)
+    record = first(gemm_contract)
+    assert entry(record) is None
+    for predicate in PREDICATES:
+        assert predicate(record) is False
+    with pytest.raises(ValueError, match="not covered"):
+        task_contract(record)
+
+
+def test_without_a_target_a_c_entry_off_its_flags_is_not_replaced(monkeypatch):
+    changed = dict(TABLE)
+    key = ("gemm", "fp32", "row_major", "c")
+    changed[key] = TABLE[key]._replace(timed=False)
+    monkeypatch.setattr(contract_table, "TABLE", changed)
+    record = first(gemm_contract)
+    assert (check_covers(record), run_covers(record), start_covers(record)) == (
+        True,
+        False,
+        False,
+    )
+    assert run_covers(record, at(targets.CUDA_GPU)) is True
+
+
+@pytest.mark.parametrize("shape", [(1, 2048, 8192), (5, 33, 7)], ids=["first", "small"])
+def test_at_cuda_gpu_the_cuda_entry_answers_fp32_gemm(shape):
+    cuda = at(targets.CUDA_GPU)
+    record = gemm_contract.op_signature_record(*shape)
+    assert entry(record, cuda) is TABLE[CUDA_KEY]
+    assert task_contract(record, cuda) == gemm_cuda_contract.task_contract(*shape)
+    assert task_contract(record, cuda)["prototype"] == gemm_cuda_contract.PROTOTYPE
+    for predicate in PREDICATES:
+        assert predicate(record, cuda) is True
+    assert served_at(record, cuda) is True
+
+
+def test_at_cuda_gpu_the_cuda_entry_is_asked_and_the_c_entry_is_not(monkeypatch):
+    asked = []
+
+    def recorded(record):
+        asked.append(record)
+        return True
+
+    def refused(record):
+        raise AssertionError("the c entry was asked")
+
+    monkeypatch.setattr(gemm_cuda_contract, "covers", recorded)
+    monkeypatch.setattr(gemm_contract, "covers", refused)
+    record = first(gemm_contract)
+    assert check_covers(record, at(targets.CUDA_GPU)) is True
+    assert asked == [record]
+
+
+@pytest.mark.parametrize("record", RECORDS[1:], ids=RECORD_IDS[1:])
+def test_at_cuda_gpu_no_bf16_contract_is_covered(record):
+    cuda = at(targets.CUDA_GPU)
+    assert entry(record, cuda) is None
+    for predicate in PREDICATES:
+        assert predicate(record, cuda) is False
+    assert served_at(record, cuda) is False
+    with pytest.raises(ValueError, match="not covered"):
+        task_contract(record, cuda)
+
+
+@pytest.mark.parametrize("record", NOT_COVERED.values(), ids=list(NOT_COVERED))
+def test_at_cuda_gpu_a_record_no_entry_covers_has_no_entry(record):
+    assert entry(record, at(targets.CUDA_GPU)) is None
+
+
+def test_at_cpu_standin_the_c_entry_answers_fp32_gemm():
+    standin = at(targets.CPU_STANDIN)
+    record = first(gemm_contract)
+    assert entry(record, standin) is TABLE["gemm", "fp32", "row_major", "c"]
+    assert task_contract(record, standin) == task_contract(record)
+
+
+def test_at_virtual_npu_fp32_gemm_has_no_entry():
+    virtual = at(targets.VIRTUAL_NPU)
+    record = first(gemm_contract)
+    assert entry(record, virtual) is None
+    with pytest.raises(ValueError, match="not covered"):
+        task_contract(record, virtual)
+
+
+@pytest.mark.parametrize(
+    ("target", "error"),
+    [(object(), AttributeError), (Served(3), TypeError)],
+)
+def test_entry_and_task_contract_refuse_a_target_without_searchable_contracts(
+    target, error
+):
+    for function in (entry, task_contract):
+        with pytest.raises(error):
+            function(first(gemm_contract), target)
+
+
+@pytest.mark.parametrize("record", INVALID.values(), ids=list(INVALID))
+def test_entry_and_task_contract_refuse_an_invalid_record_at_a_target(record):
+    for function in (entry, task_contract):
+        with pytest.raises(keys.InvalidRecordError):
+            function(record, at(targets.CUDA_GPU))
