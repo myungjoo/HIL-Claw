@@ -727,3 +727,11 @@
 - 내용:
 
   PLAN P3-15 / ADR-0203. 위 항목 가운데 하나를 받은 실제 코더가 쓴 커널이 그 계약의 bf16 `correctness.check`를 통과하는가. T-0566(PR #380, main 47b26b8d) 착지 뒤 확인 가능.
+
+### RA-0085
+
+- 상태: 미확인
+- 출처: P3-12, T-0571, ADR-0206 (등록 2026-11-14)
+- 내용:
+
+  PLAN P3-12 / ADR-0206 결정 7 (slice 2). 컨테이너 런타임이 있는 C-7의 머신에서, ADR-0144의 컨테이너 안에서 waiter(ADR-0145)가 시작한 timed graph program(`hilclaw.model_graph_container.execute_timed`)이 완전한 timed 보고를 내고 그 뒤에 waiter의 줄이 오는가, 그리고 그 보고의 token이 같은 입력에 대한 untimed program(`hilclaw.model_graph_container.execute`)의 token과 같은가(이 프로세스에 대한 ADR-0145 (liii)·(liv)의 컨테이너 사실). 실패로 드러나면 ADR-0206 결정 4(waiter를 통한 peak memory)를 다시 본다. T-0571(PR #384, main 89acbbfe) 착지 뒤 확인 가능.
