@@ -2,7 +2,7 @@
 id: T-0570
 title: ADR-0206 slice 1 (PLAN P3-12) — add the timed form of the graph program (`model_graph.c`), its encoding and report reading in `hilclaw.model_graph`, and a host-path timed run of R repetitions in `hilclaw.model_graph_execute`, verified with the real clang
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D27, FR-19, OD-33, "PLAN P3-12", ADR-0206]
 dependsOn: []
@@ -69,3 +69,27 @@ hq: []
 ## Follow-ups
 
 ## Result
+
+PR #383 squash-merged as fb90552e (branch deleted); 2 review rounds (R1 Request changes: a missing test of execute_timed's timed invalid-input branch, plus three nits — fixed; R2 Approve with one comment-wrap nit, fixed afterwards as a comment-only change under D20). CI green on the final head 1645e780 (C gate, Python 3.11/3.14, coverage, test presence, shellcheck). Not BLOCKED.
+
+Order check (D27 ①) at start (main d15a659a): no open PR, no open `nightly-failure` issue, no `실패` item in PROCESS/RuntimeAcceptance.md, no P2-15 preparation pending.
+
+**Languages.** C for `hilclaw/model_graph.c`: the program is already C and `clock_gettime`/`clock_getres` of POSIX.1-2008 add no dependency. Python for the host side (`model_graph.py`, `model_graph_execute.py`), like the executor's other host modules.
+
+**What landed.**
+- `model_graph.c`: mode word 2 = timed generation (passes and greedy selection like mode 1, no logits rows). `clock_getres(CLOCK_MONOTONIC)`; `t_s` read immediately before the first step of pass 0 (after loading libraries, reading input, filling every buffer incl. the readings buffer); `t_p` after the token selection of pass p. A timed pass with other than one output row is status 5; a failed `clock_gettime`/`clock_getres`, or a time with negative `tv_sec` or too large for uint64 ns, is new status 8 with no report.
+- `model_graph.py`: `encode(..., timed=False)` (TypeError for non-bool; ValueError for timed with `given` not None or a plan whose passes do not each report one row; `parameter` "timed"); `TimedReport` record (prompt, tokens, readings, intervals, resolution, increasing) and `parse_timed_report(report, plan)` (None for wrong length/end mark; `increasing` False for an interval ≤ 0).
+- `model_graph_execute.py`: `execute_timed(...)` (host path; no `given`, no `lm_head_rows`, resolves at "last"); `repetitions` R odd int ≥ 1 checked before anything is read or built; R runs, each a new process with the same input file, no warm-up. The first run that times out, exits non-zero, leaves no complete timed report or gives non-increasing readings ends the execution: `runs` None, `failed` holds that `TimedRun` with `TimedRunFailed` (TIMEOUT, EXIT_STATUS, REPORT_FORM, NOT_INCREASING). No summary or token tie, no defaults. `execute` unchanged (build/run steps split into shared helpers).
+- Not touched: `model_forward.c`, `model_forward_run.py`, `model_check.py`, `model_forward_container.py`, `standin_container.py`, any data-plane file, schema or ADR.
+
+**Timed report layout (for T-0571).** uint64 host byte order: S prompt ids, G selected ids, G+1 readings `t_s, t_0 … t_(G-1)` (CLOCK_MONOTONIC ns), resolution (ns), then `end\n` — `8·(S+2G+2)+4` bytes, written as a whole after `t_(G-1)`; mode word (header word 5) = 2.
+
+**Existing tests (D21).** No existing assertion changed; only the import line of `tests/test_model_graph_execute.py` gained the new names. `test_model_graph_program.py::test_header_refusals[5-2-out of range]` now hits the timed-pass rule (still status 5, "out of range"); passes unchanged; stated in the PR body.
+
+**Untimed form unchanged.** SHA-256 of `encode`'s header/tables/steps/tokens part pinned from origin/main for all four lm_head_rows × mode combinations; the byte-equal Llama check against `model_forward.c` passes unchanged; the untimed report is unchanged under a failing clock (LD_PRELOAD shim).
+
+**Verification.** Ubuntu clang 14.0.0-1ubuntu1.1 under WSL2. Full suite (Python 3.12.13) under `coverage run --branch`: 42178 passed, 118 skipped. `model_graph.py`, `model_graph_execute.py` 100 % line and branch; package 99 %. After fixes: graph and build test files 471 passed; ruff check/format clean. Real-clang timed Llama (fixture kernels, synthetic weights) equals the untimed generation for three bindings and (S,G) ∈ {(3,3),(5,4),(2,1)} with strictly increasing readings; clock shims give status 8; frozen clock gives `increasing` False; `execute_timed` R=1/R=3 equals the untimed tokens. Size about 330 non-test lines in 3 files. No `claude`, Docker or model file used (D16); no test run (D25).
+
+**Follow-ups.** None. **Runtime acceptance items (D22).** None (slice 2/T-0571 and slice 4 carry theirs).
+
+**Storage.** `%TMP%/hilclaw-driver/T-0570/` and the WSL coverage data were removed with `rm -r`; no images, no installs.
