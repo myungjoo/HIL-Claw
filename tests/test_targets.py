@@ -120,6 +120,7 @@ def test_instance_start_accelerators_reads_the_boolean():
     assert targets.instance_start_accelerators() == (
         standin_profile.ACCELERATOR,
         targets.VIRTUAL_NPU,
+        targets.CUDA_GPU,
     )
     table = {
         "a": made(instance_start=True),
@@ -366,6 +367,7 @@ def test_virtual_npu_takes_an_instance_start_and_no_model_run():
     assert targets.instance_start_accelerators() == (
         targets.CPU_STANDIN,
         targets.VIRTUAL_NPU,
+        targets.CUDA_GPU,
     )
     assert targets.target(targets.VIRTUAL_NPU).model_run is False
 
@@ -436,7 +438,7 @@ def test_cuda_gpu_has_the_values_of_adr_0207_decision_3():
     assert cuda.memory_limit_bytes is None
     assert (cuda.unit, cuda.units_per_ns) == ("ns", 1)
     assert cuda.model_run is False
-    assert cuda.instance_start is False
+    assert cuda.instance_start is True
     assert cuda.coder_loop is False
 
 
@@ -448,14 +450,14 @@ def test_cuda_gpu_reads_the_process_cap_each_time_it_is_read(monkeypatch):
     assert cuda.flags == targets.CUDA_GPU_FLAGS
 
 
-def test_no_instance_and_no_coder_loop_starts_at_cuda_gpu():
-    assert targets.CUDA_GPU not in targets.instance_start_accelerators()
+def test_an_instance_but_no_coder_loop_starts_at_cuda_gpu():
+    assert targets.CUDA_GPU in targets.instance_start_accelerators()
     assert targets.CUDA_GPU not in targets.coder_loop_accelerators()
 
 
 @pytest.mark.parametrize("tool", ["correctness.check", "sim.run", "board.run"])
-def test_a_call_about_cuda_gpu_stays_no_backend(tool):
-    from hilclaw import backends, check_definition, tools
+def test_a_call_about_cuda_gpu_reaches_its_backend(tool):
+    from hilclaw import backends, check_definition
 
     record = {
         "schema_version": keys.SCHEMA_VERSION,
@@ -465,9 +467,7 @@ def test_a_call_about_cuda_gpu_stays_no_backend(tool):
         "host": {"cpu": "c", "os": "o"},
         "hw_source": "external",
     }
-    with pytest.raises(tools.ToolFailure) as caught:
-        backends.select(check_definition.default_table(), record, tool)
-    assert caught.value.kind == tools.KIND_NO_BACKEND
+    assert callable(backends.select(check_definition.default_table(), record, tool))
 
 
 def test_covers_at_cuda_gpu_admits_fp32_gemm_alone():

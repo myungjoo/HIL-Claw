@@ -53,10 +53,13 @@ process stream with status 0 and no waiter's line raises
 :class:`RuntimeError`, as in :mod:`hilclaw.standin_run`.
 
 **The kernel's files are the caller's** and **only in containers**, as in
-:mod:`hilclaw.cuda_check`: which files of an attempt's ``output/`` a CUDA
-kernel is stays HQ-0104's question, ``sources`` is given by name with no
-default, and :func:`hilclaw.check_definition.default_table` is not changed (a
-call about ``cuda_gpu`` through the default registry is ``no_backend``).
+:mod:`hilclaw.cuda_check`: the kernel's files are those the selection
+``sources`` names, given by name with no default. The ``cuda_gpu`` entry of
+:func:`hilclaw.check_definition.default_table` offers this operation for
+both run tools with :func:`hilclaw.cuda_check.compiled_sources`, the
+selection of an attempt's own ``output/`` after the owner's HQ-0104 (a)
+(``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+decisions 1 and 5).
 
 Choices that are this module's own and no rule of a record: the waiter's
 build is given the build limit less the time of :func:`time.monotonic` from

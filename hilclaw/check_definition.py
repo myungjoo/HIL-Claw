@@ -30,7 +30,11 @@ run tools' operations of the table.
   (ADR-0130 decision 2), and ``virtual_npu``
   (:data:`hilclaw.targets.VIRTUAL_NPU`), offering the three with the
   operations built with its target (ADR-0193 decision 4; ADR-0197
-  decision 2) and no ``profiler.collect``.
+  decision 2) and no ``profiler.collect``, and ``cuda_gpu``
+  (:data:`hilclaw.targets.CUDA_GPU`), offering the three with the container
+  operations built with its target and the selection of the attempt's own
+  ``output/`` (``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+  decision 5) and no ``profiler.collect``.
 * :func:`definition`: the tool definition :func:`hilclaw.tools.default_registry`
   registers, the tool function bound to that table, to
   :func:`hilclaw.harness.seed_source.system` and to
@@ -47,9 +51,11 @@ When the modules are imported is this module's own choice too: it imports
 :mod:`hilclaw.check_tool` and :mod:`hilclaw.mock_check`, and through them
 NumPy, only inside functions, so that importing it or building a definition
 imports neither, nor any ``hilclaw.standin_*`` module. :func:`default_table`
-imports :mod:`hilclaw.mock_check`, :mod:`hilclaw.mock_run`,
+imports :mod:`hilclaw.cuda_check`, :mod:`hilclaw.cuda_run`,
+:mod:`hilclaw.mock_check`, :mod:`hilclaw.mock_run`,
 :mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_profile`,
-:mod:`hilclaw.standin_run` and :mod:`hilclaw.targets` when it is called; the tool function of a definition
+:mod:`hilclaw.standin_run` and :mod:`hilclaw.targets` when it is called; the
+tool function of a definition
 imports :mod:`hilclaw.check_tool`, builds the table and binds the tool
 function at its first call, and keeps that one bound function for its later
 calls. A
@@ -123,7 +129,7 @@ def input_schema():
 def default_table():
     """Return a new backend table of the default registry (ADR-0070 decision 3, ADR-0167 decision 3).
 
-    It holds three :class:`hilclaw.backends.Backend` entries. The one named
+    It holds four :class:`hilclaw.backends.Backend` entries. The one named
     :data:`hilclaw.mock_backend.NAME` offers the three HW tools of the
     default registry: ``correctness.check``, with
     :func:`hilclaw.mock_check.operation` bound to
@@ -144,15 +150,26 @@ def default_table():
     the ``virtual_npu`` :class:`hilclaw.targets.Target`, read when the table
     is built, and ``correctness.check`` with
     :func:`hilclaw.standin_check.operation_for` of that same target
-    (ADR-0193 decision 4; ADR-0197 decision 2). A call about any other
-    ``accelerator`` is ``no_backend``. It imports
+    (ADR-0193 decision 4; ADR-0197 decision 2). The one named
+    :data:`hilclaw.targets.CUDA_GPU` offers ``correctness.check`` with
+    :func:`hilclaw.cuda_check.operation_for` and ``sim.run`` and
+    ``board.run``, one operation for both, with
+    :func:`hilclaw.cuda_run.operation_for`, each of the ``cuda_gpu``
+    :class:`hilclaw.targets.Target`, read when the table is built, and of
+    the selection :func:`hilclaw.cuda_check.compiled_sources`
+    (``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+    decision 5; HQ-0095 (2) (a)), and no ``profiler.collect``. A call about
+    any other ``accelerator`` is ``no_backend``. It imports
+    :mod:`hilclaw.cuda_check`, :mod:`hilclaw.cuda_run`,
     :mod:`hilclaw.mock_check`, and so NumPy, :mod:`hilclaw.mock_run`,
     :mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_profile`,
     :mod:`hilclaw.standin_run` and :mod:`hilclaw.targets`. Building it reads
-    no image; the ``cpu_standin`` and ``virtual_npu`` operations read it at
-    each call.
+    no image; the ``cpu_standin``, ``virtual_npu`` and ``cuda_gpu``
+    operations read it at each call.
     """
     from hilclaw import (
+        cuda_check,
+        cuda_run,
         mock_check,
         mock_run,
         standin_check,
@@ -166,15 +183,22 @@ def default_table():
     virtual_target = targets.target(targets.VIRTUAL_NPU)
     virtual_run = standin_run.operation_for(virtual_target)
     virtual = {_TOOL: standin_check.operation_for(virtual_target)}
+    gpu_target = targets.target(targets.CUDA_GPU)
+    gpu_run = cuda_run.operation_for(gpu_target, sources=cuda_check.compiled_sources)
+    gpu = {
+        _TOOL: cuda_check.operation_for(gpu_target, sources=cuda_check.compiled_sources)
+    }
     for tool in _RUN_TOOLS:
         mock[tool] = mock_run.operation(tool, mock_run.default_script)
         standin[tool] = standin_run.operation
         virtual[tool] = virtual_run
+        gpu[tool] = gpu_run
     return backends.BackendTable(
         [
             backends.Backend(mock_backend.NAME, mock),
             backends.Backend(standin_profile.ACCELERATOR, standin),
             backends.Backend(targets.VIRTUAL_NPU, virtual),
+            backends.Backend(targets.CUDA_GPU, gpu),
         ]
     )
 

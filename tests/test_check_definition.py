@@ -18,6 +18,9 @@ from hilclaw import (
     check_identity,
     check_tool,
     contract_table,
+    cuda_check,
+    cuda_image,
+    cuda_run,
     data_root_source,
     elementwise_add_bf16_contract,
     events,
@@ -220,6 +223,8 @@ def test_the_module_imports_what_it_names_and_has_its_public_names_only():
             "seed_source",
         },
         "default_table": {
+            "cuda_check",
+            "cuda_run",
             "mock_check",
             "mock_run",
             "standin_check",
@@ -368,10 +373,15 @@ def mcp_document(name, arguments):
 
 
 def test_default_table_holds_the_mock_cpu_standin_and_virtual_npu():
-    """ADR-0167 decision 3 and Boundaries, ADR-0193 decision 4: one table of three backends."""
+    """ADR-0167 decision 3 and Boundaries, ADR-0193 decision 4, ADR-0208 decision 5: one table of four backends."""
     table = default_table()
     assert type(table) is BackendTable
-    assert table.names() == ("cpu_standin", mock_backend.NAME, "virtual_npu")
+    assert table.names() == (
+        "cpu_standin",
+        "cuda_gpu",
+        mock_backend.NAME,
+        "virtual_npu",
+    )
     assert standin_profile.ACCELERATOR == "cpu_standin"
     for tool in (TOOL, "sim.run", "board.run"):
         assert callable(backends.select(table, profile(), tool))
@@ -396,7 +406,12 @@ def test_building_the_default_table_reads_no_image(monkeypatch):
 
     monkeypatch.setattr(standin_image, "read_image", refused)
     monkeypatch.setenv(standin_image.ENV_IMAGE, "registry.example/image:1")
-    assert default_table().names() == ("cpu_standin", mock_backend.NAME, "virtual_npu")
+    assert default_table().names() == (
+        "cpu_standin",
+        "cuda_gpu",
+        mock_backend.NAME,
+        "virtual_npu",
+    )
 
 
 @pytest.mark.parametrize("tool", ["sim.run", "board.run"])
@@ -631,6 +646,84 @@ def test_default_table_offers_the_three_tools_at_virtual_npu(monkeypatch):
     assert backends.select(table, standin, TOOL) is standin_check.operation
     for tool in RUN_TOOLS:
         assert backends.select(table, standin, tool) is standin_run.operation
+
+
+def test_default_table_offers_the_three_tools_at_cuda_gpu(monkeypatch):
+    """ADR-0208 decision 5: the container operations of the cuda_gpu target over compiled_sources."""
+    built = {"run": [], "check": []}
+    real_run, real_check = cuda_run.operation_for, cuda_check.operation_for
+
+    def run_for(target, *, sources):
+        built["run"].append((target, sources))
+        return real_run(target, sources=sources)
+
+    def check_for(target, *, sources):
+        built["check"].append((target, sources))
+        return real_check(target, sources=sources)
+
+    monkeypatch.setattr(cuda_run, "operation_for", run_for)
+    monkeypatch.setattr(cuda_check, "operation_for", check_for)
+    table = default_table()
+    gpu_target = targets.target(targets.CUDA_GPU)
+    assert built["run"] == [(gpu_target, cuda_check.compiled_sources)]
+    assert built["check"] == [(gpu_target, cuda_check.compiled_sources)]
+    gpu = profile(targets.CUDA_GPU)
+    sim, board = (backends.select(table, gpu, tool) for tool in RUN_TOOLS)
+    assert callable(sim)
+    assert sim is board
+    check = backends.select(table, gpu, TOOL)
+    assert callable(check)
+    assert check is not sim
+    with pytest.raises(tools.ToolFailure) as caught:
+        backends.select(table, gpu, "profiler.collect")
+    assert caught.value.kind == tools.KIND_NOT_OFFERED
+    standin = profile(standin_profile.ACCELERATOR)
+    assert backends.select(table, standin, TOOL) is standin_check.operation
+    for tool in RUN_TOOLS:
+        assert backends.select(table, standin, tool) is standin_run.operation
+
+
+def test_building_the_default_table_reads_no_cuda_image(monkeypatch):
+    def refused(*_):
+        raise AssertionError("the image was read when the table was built")
+
+    monkeypatch.setattr(cuda_image, "read_image", refused)
+    monkeypatch.setenv(cuda_image.ENV_IMAGE, "registry.example/cuda:1")
+    assert targets.CUDA_GPU in default_table().names()
+
+
+def test_an_error_of_building_cuda_gpu_passes_out_of_default_table(monkeypatch):
+    def broken(target, *, sources):
+        raise ValueError("cuda_gpu entry")
+
+    monkeypatch.setattr(cuda_check, "operation_for", broken)
+    with pytest.raises(ValueError, match="^cuda_gpu entry$"):
+        default_table()
+
+
+def test_a_call_about_an_fp32_gemm_run_at_cuda_gpu_reaches_its_operation(
+    tmp_path, parties, no_container, monkeypatch
+):
+    """ADR-0208 decision 5: through the default registry, no image is compiler_unavailable."""
+    monkeypatch.delenv(cuda_image.ENV_IMAGE, raising=False)
+    root = a_run(tmp_path / "data", accelerator=targets.CUDA_GPU, op=OP)
+    registry = tools.default_registry(lambda: root)
+    failure = refused(registry, REQUEST, "compiler_unavailable")
+    again = refused(registry, REQUEST, "compiler_unavailable")
+    assert again.message == failure.message
+    assert no_container == []
+    assert counts(parties) == (1, 1, 0)
+    ended = {"kind": "compiler_unavailable", "message": failure.message}
+    assert [line["data"].get("failure") for line in lines(root)] == [None, ended]
+
+
+def test_a_call_about_a_bf16_run_at_cuda_gpu_is_not_covered(tmp_path, parties):
+    """ADR-0207 decision 3: cuda_gpu serves fp32 gemm in cuda alone."""
+    root = a_run(tmp_path / "data", accelerator=targets.CUDA_GPU, op=BF16_OP)
+    registry = tools.default_registry(lambda: root)
+    refused(registry, REQUEST, "op_signature_not_covered")
+    assert no_log(root)
+    assert (parties["seeds"].calls, parties["script"].calls) == ([], [])
 
 
 def test_an_error_of_building_virtual_npu_passes_out_of_default_table(monkeypatch):

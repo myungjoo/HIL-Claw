@@ -752,10 +752,58 @@ def test_the_first_state_is_that_of_the_round_manager():
 # coder_loop (ADR-0207 decision 3): given code reads instance_start only
 
 
-def test_cuda_gpu_is_refused_while_its_instance_start_is_false(bench):
-    bench.write(request({**PROFILE, "accelerator": targets.CUDA_GPU}))
+def test_an_accelerator_whose_instance_start_is_false_is_refused(bench, monkeypatch):
+    closed = dataclasses.replace(targets.TABLE[targets.CUDA_GPU], instance_start=False)
+    table = {targets.CPU_STANDIN: targets.TABLE[targets.CPU_STANDIN], "closed": closed}
+    real = targets.instance_start_accelerators
+    monkeypatch.setattr(targets, "instance_start_accelerators", lambda: real(table))
+    bench.write(request({**PROFILE, "accelerator": "closed"}))
     told = assert_refused(bench, "target_refused")
-    assert targets.CUDA_GPU not in told["reason"]
+    assert "closed" not in told["reason"]
+    assert targets.CPU_STANDIN in told["reason"]
+
+
+def test_an_accelerator_of_no_target_is_refused(bench):
+    bench.write(request({**PROFILE, "accelerator": "another_npu"}))
+    told = assert_refused(bench, "target_refused")
+    assert targets.CUDA_GPU in told["reason"]
+
+
+CUDA_PROFILE = {
+    **PROFILE,
+    "accelerator": targets.CUDA_GPU,
+    "toolchain": {"nvcc": "test", "gcc": "test", "nvidia_driver": "test"},
+}
+
+
+@pytest.mark.skipif(GIT is None, reason="run.commit needs git")
+@pytest.mark.parametrize("name", ["given.cu", "kernel.c", "no-suffix"])
+def test_given_code_at_cuda_gpu_is_placed_as_given_cu_and_evaluated(
+    bench, monkeypatch, name
+):
+    """ADR-0208 decisions 2 and 5: the run's target, not the file's name, names given.cu."""
+    asked = faked(monkeypatch, default_answers())
+    bench.code = bench.tmp / name
+    bench.write(request(CUDA_PROFILE))
+    assert bench.main() == 0
+    assert "correctness.check" in asked and "board.run" in asked
+    summary = bench.summary()
+    run_id = summary["run_id"]
+    assert summary["outcome"] == "measured"
+    read = instance.read_given(bench.root, run_id)
+    assert read.schema_version == 3
+    assert read.candidate_kind == "c_kernel"
+    assert read.instance.hw_profile["accelerator"] == targets.CUDA_GPU
+    output = layout.attempt_artefact(bench.root, run_id, 0, 1, 1, "output")
+    assert sorted(p.name for p in output.iterdir()) == ["given.cu"]
+    assert (output / "given.cu").read_bytes() == KERNEL
+    assert state_of(bench.root, run_id)["run_status"] == "over"
+
+
+def test_a_cuda_gpu_request_without_op_signature_is_missing_members(bench):
+    bench.write(request(CUDA_PROFILE, op_signature=None))
+    told = assert_refused(bench, "missing_members")
+    assert told["missing"] == ["op_signature"]
 
 
 @pytest.mark.skipif(GIT is None, reason="run.commit needs git")

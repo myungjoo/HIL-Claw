@@ -17,6 +17,8 @@ from hilclaw import (
     __main__,
     check_definition,
     contract_table,
+    cuda_image,
+    cuda_run,
     data_root_source,
     elementwise_add_bf16_contract,
     events,
@@ -872,6 +874,31 @@ def test_a_run_at_cpu_standin_reaches_its_operation(
     failure = refused_call(registry, tool, dict(CALL), "compiler_unavailable")
     again = refused_call(registry, tool, dict(CALL), "compiler_unavailable")
     assert again.message == failure.message
+    assert (len(reached.calls), started) == (1, [])
+    assert counts(parties) == (1, 1, 0)
+    ended = {"kind": "compiler_unavailable", "message": failure.message}
+    assert [line["data"].get("failure") for line in step_lines(root)] == [None, ended]
+
+
+@each_tool
+def test_a_run_at_cuda_gpu_reaches_its_operation(tool, tmp_path, parties, monkeypatch):
+    started, built = [], []
+    real = cuda_run.operation_for
+
+    def operation_for(target, *, sources):
+        reached = Recorder(real(target, sources=sources))
+        built.append(reached)
+        return reached
+
+    monkeypatch.delenv(cuda_image.ENV_IMAGE, raising=False)
+    monkeypatch.setattr(local_run, "run", lambda command, **_: started.append(command))
+    monkeypatch.setattr(cuda_run, "operation_for", operation_for)
+    root = a_run(tmp_path / "data", accelerator=targets.CUDA_GPU)
+    registry = tools.default_registry(lambda: root)
+    failure = refused_call(registry, tool, dict(CALL), "compiler_unavailable")
+    again = refused_call(registry, tool, dict(CALL), "compiler_unavailable")
+    assert again.message == failure.message
+    (reached,) = built
     assert (len(reached.calls), started) == (1, [])
     assert counts(parties) == (1, 1, 0)
     ended = {"kind": "compiler_unavailable", "message": failure.message}

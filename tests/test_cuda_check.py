@@ -31,6 +31,7 @@ from hilclaw import (
 from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.harness import cuda_programs
 from hilclaw.keys import SCHEMA_VERSION
+from hilclaw.run_parameters import TimingParameters
 
 FIXTURES = Path(__file__).resolve().parent / "cuda_fixtures"
 TOOL = "correctness.check"
@@ -260,9 +261,9 @@ def test_the_module_reads_no_attempt_file_name_and_runs_nothing_on_the_host():
     assert "test-only" not in cuda_check.__doc__
 
 
-def test_the_default_table_has_no_cuda_gpu_entry():
+def test_the_default_table_has_the_cuda_gpu_entry():
     table = check_definition.default_table()
-    assert targets.CUDA_GPU not in table.names()
+    assert targets.CUDA_GPU in table.names()
     record = {
         "schema_version": SCHEMA_VERSION,
         "accelerator": targets.CUDA_GPU,
@@ -271,10 +272,11 @@ def test_the_default_table_has_no_cuda_gpu_entry():
         "host": {"cpu": "c", "os": "o"},
         "hw_source": "external",
     }
-    for tool in backends.HW_TOOLS:
-        with pytest.raises(tools.ToolFailure) as raised:
-            backends.select(table, record, tool)
-        assert raised.value.kind == tools.KIND_NO_BACKEND
+    for tool in (TOOL, "sim.run", "board.run"):
+        assert callable(backends.select(table, record, tool))
+    with pytest.raises(tools.ToolFailure) as raised:
+        backends.select(table, record, "profiler.collect")
+    assert raised.value.kind == tools.KIND_NOT_OFFERED
 
 
 # operation_for and its argument checks
@@ -1105,6 +1107,34 @@ def test_compiled_sources_of_an_output_without_a_cu_file(tmp_path, names):
     with pytest.raises(tools.ToolFailure) as raised:
         cuda_check.select_sources(cuda_check.compiled_sources, output)
     assert raised.value.kind == check_failure.KIND_NO_KERNEL_SOURCE
+
+
+TIMED = TimingParameters(m=5, k=33, n=7, n_max=20, sample_form="interval", seed=99)
+
+
+@pytest.mark.parametrize(
+    ("tool", "parameters"),
+    [
+        (TOOL, PARAMETERS),
+        ("sim.run", TIMED),
+        ("board.run", TIMED),
+    ],
+)
+def test_given_c_at_cuda_gpu_is_no_kernel_source_through_the_default_table(
+    client, build_root, tmp_path, tool, parameters
+):
+    """ADR-0208 decisions 1 and 5: a .c file there is admitted and never compiled."""
+    output = output_holding(tmp_path, "given.c")
+    op = backends.select(check_definition.default_table(), HW_PROFILE, tool)
+    client.script = [probed()]
+    failure_of(
+        op,
+        check_failure.KIND_NO_KERNEL_SOURCE,
+        parameters=parameters,
+        output_path=str(output),
+    )
+    assert len(client.runs()) == 1
+    assert list(build_root.iterdir()) == []
 
 
 @pytest.mark.parametrize("missing", ["attempt", "output"])

@@ -678,7 +678,12 @@ def test_the_admitted_accelerators_are_the_mock_and_the_targets_that_start():
         mock_backend.NAME,
         *targets.instance_start_accelerators(),
     )
-    assert start_instance._GIVEN_ACCELERATORS == ("mock", "cpu_standin", "virtual_npu")
+    assert start_instance._GIVEN_ACCELERATORS == (
+        "mock",
+        "cpu_standin",
+        "virtual_npu",
+        "cuda_gpu",
+    )
 
 
 @pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
@@ -1150,11 +1155,58 @@ def test_cpu_standin_starts_for_both(root, fixed_sources, coder_loop):
     assert built == FIXED_ID
 
 
-@pytest.mark.parametrize("coder_loop", [True, False])
-def test_no_instance_starts_at_cuda_gpu(root, ids, coder_loop):
+def test_no_instance_of_the_round_loop_starts_at_cuda_gpu(root, ids):
     given = document(accelerator=targets.CUDA_GPU)
     with pytest.raises(OutOfScopeError):
-        start(given, data_root=root, coder_loop=coder_loop)
+        start(given, data_root=root, coder_loop=True)
+    assert tree(root) == []
+    assert ids.calls == 0
+
+
+def test_given_code_starts_at_cuda_gpu_with_the_fp32_gemm_contract(
+    tmp_path, root, fixed_sources
+):
+    """ADR-0208 decision 5: ADR-0076 decision 1 widened to cuda_gpu, cpu_standin's set."""
+    given = one(accelerator=targets.CUDA_GPU)
+    built = start(
+        given, data_root=root, code_file=code_file(tmp_path), coder_loop=False
+    )
+    assert built == FIXED_ID
+    read = instance.read_given(root, built)
+    assert read.schema_version == 3
+    assert read.instance.hw_profile["accelerator"] == targets.CUDA_GPU
+    assert read.candidate_kind == "c_kernel"
+    assert instance.given_code_of(root, built) == DIGEST
+    stored = json.loads((root / "runs" / built / "instance.json").read_bytes())
+    assert "candidate_kind" not in stored
+
+
+def test_an_instance_without_given_code_starts_at_cuda_gpu_out_of_the_loop(
+    root, fixed_sources
+):
+    built = start(
+        document(accelerator=targets.CUDA_GPU), data_root=root, coder_loop=False
+    )
+    assert instance.read(root, built).hw_profile["accelerator"] == targets.CUDA_GPU
+
+
+def test_cuda_gpu_without_op_signature_is_missing_members(tmp_path, root, ids):
+    given = one(accelerator=targets.CUDA_GPU, op_signature=ABSENT)
+    with pytest.raises(MissingMembersError) as caught:
+        start(given, data_root=root, code_file=code_file(tmp_path), coder_loop=False)
+    assert caught.value.missing == ("op_signature",)
+    assert tree(root) == []
+    assert ids.calls == 0
+
+
+@pytest.mark.parametrize("record", BF16_RECORDS, ids=BF16_IDS)
+def test_a_contract_cuda_gpu_does_not_serve_is_out_of_scope_there(
+    tmp_path, root, ids, record
+):
+    given = one(accelerator=targets.CUDA_GPU, op_signature=record)
+    with pytest.raises(OutOfScopeError) as caught:
+        start(given, data_root=root, code_file=code_file(tmp_path), coder_loop=False)
+    assert "op_signature" in str(caught.value)
     assert tree(root) == []
     assert ids.calls == 0
 

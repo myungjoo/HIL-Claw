@@ -24,7 +24,11 @@ and ADR-0078 decisions 6 and 7 are the rules of the compiler's log.
    which states given code, is read when its kind is ``c_kernel`` and is
    ``run_file_unsupported`` otherwise (ADR-0200 decision 7, row 3); its
    attempts are evaluated as those of any C kernel run, from their
-   ``output/``, the given attempt ``(0, 1, 1)`` among them; the backend is
+   ``output/``, the given attempt ``(0, 1, 1)`` among them, in the language
+   of the run's target (C, or CUDA C++ at ``cuda_gpu``:
+   ``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+   decision 3, the kind a file without ``candidate_kind`` states read as a
+   kernel in that language); the backend is
    selected for the hw_profile of that read. Then :func:`hilclaw.check_admission.admit`
    gives one of its four answers or what the check takes from the same
    read (ADR-0046 decision 8): a record ``covers`` answers ``True`` for is

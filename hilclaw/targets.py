@@ -47,9 +47,12 @@ target's flags followed by a candidate's (ADR-0198 decision 6).
   waiter flags :data:`CUDA_GPU_WAITER_FLAGS`, the inherited environment, the
   build time limit :data:`CUDA_GPU_BUILD_TIME_LIMIT_S`, ``cpu_standin``'s
   process time-limit cap read from the same constant, no memory limit, the
-  unit ``ns`` with the factor 1, and the three booleans false. It serves
-  the one key of the contract table in the language ``cuda`` (ADR-0207
-  decision 4), and no check backend is described for it yet.
+  unit ``ns`` with the factor 1, ``model_run`` and ``coder_loop`` false and
+  ``instance_start`` true: an instance of given code may start on it, not a
+  run of the coder's round loop
+  (``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+  decision 5). It serves the one key of the contract table in the language
+  ``cuda`` (ADR-0207 decision 4).
 * The mock (:data:`hilclaw.mock_backend.NAME`) builds nothing and has no
   :class:`Target`.
 
@@ -264,7 +267,7 @@ def _cuda_gpu():
         unit="ns",
         units_per_ns=1,
         model_run=False,
-        instance_start=False,
+        instance_start=True,
         coder_loop=False,
     )
 
