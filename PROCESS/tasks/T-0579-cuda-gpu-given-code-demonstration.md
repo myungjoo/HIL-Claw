@@ -171,3 +171,53 @@ If an owner-only part appears, write it in `## Result` as an HQ in the DRIVER §
 ## Follow-ups
 
 ## Result
+
+- **Outcome**: DONE. PR #392 (squash-merged; merge commit: see the PR). Reviews by a context-isolated `dev-reviewer`: see the PR. Round 1 asked for changes: this Result, stub tests of the real `check_tool`/`run_tool` on a given `cuda_gpu` run, a test name, and the reflow of a docstring. No HQ.
+- **ADR-0208 followed as landed; no difference from the task.** The start's scope needed no code change. The given-code accelerators come from the table, `covers_at` with `served_at` already scopes `cuda_gpu` to fp32 `gemm`, and the readers keep `c_kernel` for the absent kind.
+- **Criterion 7, the `.c` case.** ADR-0208 decision 2 reads no name of the user's file. A user file named `kernel.c` given at `cuda_gpu` is therefore placed as `given.cu` and evaluated (`test_given_eval`). The `.c` case that reaches the table is an `output/` holding `given.c` at `cuda_gpu`. It is answered `no_kernel_source` after the probe and before any build, for all three tools (`test_cuda_check`).
+- **Language**: Python, the language of every touched module. No process or tool is added.
+
+**Machine check (criterion 1; WSL2 Ubuntu 22.04, kernel 6.18.58.1-microsoft-standard-WSL2, 2026-11-15 ~13:20Z)**
+- `docker info`: Server Version 29.1.3; Runtimes `nvidia runc io.containerd.runc.v2`; Default Runtime `runc`.
+- `docker image ls cuda`: `cuda:13.1.2`, id `1efffc671e20`, 6.95GB (T-0576's image, unchanged).
+- Inside `cuda:13.1.2`: `nvcc` "Cuda compilation tools, release 13.1, V13.1.115" (Build cuda_13.1.r13.1/compiler.37061995_0); `gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0`.
+- Host `nvidia-smi`: NVIDIA GeForce RTX 4070, 12282 MiB, driver 617.14, compute capability 8.9. WSL `nvcc` at `/usr/local/cuda/bin/nvcc`.
+- Nothing installed or pulled.
+
+**Change**
+- `targets`: `cuda_gpu` `instance_start=True`; `coder_loop` and `model_run` stay `False`.
+- `check_definition.default_table`: `Backend("cuda_gpu", ...)` with `correctness.check` = `cuda_check.operation_for(target, sources=cuda_check.compiled_sources)` and one `cuda_run.operation_for(target, sources=cuda_check.compiled_sources)` for `sim.run` and `board.run`; no `profiler.collect`. The imports stay inside `default_table`.
+- `given_eval`: the second argument is described as the code file, and the bad-usage text now says "code file". Exit statuses are unchanged.
+- Docstrings: `start_instance`, `instance_start`, `check_tool`, `run_tool`, `cuda_check`, `cuda_run`, `kernel_source`.
+- Size: 10 non-test modules, about 130 changed lines (mostly docstrings). New `tests/test_cuda_gpu_demonstration.py`.
+
+**Demonstration on the real GPU (FR-19 (5))**
+- `tests/test_cuda_gpu_demonstration.py` calls `given_eval.main` in process, with `HILCLAW_CUDA_IMAGE=cuda:13.1.2`, a data root under pytest's `tmp_path`, and an hw_profile from `cuda_profile.local_record("external", image="cuda:13.1.2")`. The op is fp32 `gemm` 5x33x7, with `draws` 2, `n_max` 20 and tolerance rtol 1e-4 / atol 1e-4. Results: `gemm.cu` gives exit 0; the composed `gemm_wrong.cu` gives exit 10, `sim` fail/not_verified, no `board.run`, the run over and committed. Both pass in WSL2 (about 30 s).
+- **A hand run with the same request**, data root `/tmp/hilclaw-driver/T-0579/data`, removed at the end:
+  - hw_profile `revision` "NVIDIA GeForce RTX 4070 sm_89"; `toolchain` nvcc "Cuda compilation tools, release 13.1, V13.1.115", gcc "gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0", nvidia_driver "617.14"; `host` "Intel(R) Core(TM) i7-14700KF" / "wsl ubuntu 22.04".
+  - Run `20261115t133010z-a8240788df5db824`, exit 0: `{"outcome":"measured","place":{"given_code":"caf3327a…"},"sim":{"outcome":"pass","standing":"verified"},"board":{"outcome":"pass","standing":"verified"},"timing":{"outcome":"not_converged","median":37786.0,"unit":"ns"}}`.
+  - `correctness_check_{sim,board}_v2`: `pass`, 2 draws, no failed or non-finite element.
+  - `board_run_timing_v3`: `not_converged`, `sample_form` interval, 20 intervals of about 27.7 to 74.5 us, `resolution` 1 ns, `memory_bytes` 110317568 (the host process's peak RSS through the waiter, as T-0577), `ceiling` `not_stated`.
+  - Data-root repository: one commit "Commit the owed files of a run (run.commit)".
+
+**Verification**
+- Full suite in a WSL2 clone of the branch (first commit), with `/usr/local/cuda/bin` on `PATH`, under `coverage run --source=hilclaw`: 42933 passed, 108 skipped, 1 failed (750 s). The failure was the list assertion in `test_backend_conformance`, fixed in the next commit (D21). `hilclaw/` lines 19217/19280 (99.7%), functions 1820/1822. `check_definition`, `targets` and `start_instance` are at 100%.
+- After the round-1 fixes, the touched and neighbouring test files (13 files, the real-GPU tests included) pass again in WSL2: 1867 passed, 4 skipped (the host clang builds no OpenMP program). `ruff check` and `ruff format --check` are clean.
+- No `claude` was started (D16), and there was no test run (D25). `given_eval` starts no `claude`.
+
+**Changed existing assertions (D21 and the slice's design; listed in the PR body)**
+- `test_targets`: the two `instance_start_accelerators()` tuples gain `cuda_gpu`; `cuda_gpu` `instance_start` is now `True`; `test_no_instance_and_no_coder_loop_starts_at_cuda_gpu` becomes `test_an_instance_but_no_coder_loop_starts_at_cuda_gpu`; `test_a_call_about_cuda_gpu_stays_no_backend` becomes `..._reaches_its_backend`.
+- `test_start_instance`: `_GIVEN_ACCELERATORS` gains `cuda_gpu`; `test_no_instance_starts_at_cuda_gpu[True|False]` becomes `test_no_instance_of_the_round_loop_starts_at_cuda_gpu` (`coder_loop=True` only).
+- `test_given_eval`: `test_cuda_gpu_is_refused_while_its_instance_start_is_false` is replaced by a refusal for a target with `instance_start` false and one for a name with no target.
+- `test_check_definition`: the import set and two name lists gain `cuda_gpu`, and one test is renamed.
+- `test_cuda_check`: `test_the_default_table_has_no_cuda_gpu_entry` becomes `..._has_the_cuda_gpu_entry`.
+- `test_backend_conformance`: the default-table name list gains `cuda_gpu`.
+
+**HQ**: none.
+
+**Runtime acceptance items (D22)**: none new. RA-0086 already holds ADR-0207's container items. The given-code evaluation at `cuda_gpu` is a person's command (no `claude`), and this task demonstrated it on the development PC's GPU (D31).
+
+**Storage.**
+- The task directories are removed with `rm -r` at the end: in WSL, `/tmp/hilclaw-driver/T-0579/` (the clone, the coverage data, the demonstration's data root and script); in Git Bash, `/tmp/hilclaw-driver/T-0579/` (the PR body).
+- No work image was made. The tool image `cuda:13.1.2` is kept.
+- Left alone: a WSL shell loop from another task (`while pgrep -f "coverage run --branch --source=hilclaw" ...; tail ... /tmp/hilclaw-driver/T-0573/full.log`, pid 285998). Its `pgrep -f` matches its own command line, so it never ends. Owner: T-0573.

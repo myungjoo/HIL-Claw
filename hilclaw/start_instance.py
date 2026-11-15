@@ -14,15 +14,19 @@ coder's round loop, the default, the names of
 :func:`hilclaw.targets.coder_loop_accelerators`, and for the evaluation of
 given code out of the loop (``coder_loop`` false, :mod:`hilclaw.given_eval`)
 those of :func:`hilclaw.targets.instance_start_accelerators` (ADR-0207
-decision 3; today both are :data:`hilclaw.standin_profile.ACCELERATOR` and
-:data:`hilclaw.targets.VIRTUAL_NPU`, ADR-0197 decision 1, and an accelerator
-outside the set is refused as out of scope), and its ``covers``
+decision 3; for the round loop today :data:`hilclaw.standin_profile.ACCELERATOR`
+and :data:`hilclaw.targets.VIRTUAL_NPU`, ADR-0197 decision 1, and for given
+code those two and :data:`hilclaw.targets.CUDA_GPU`,
+``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+decision 5; an accelerator outside the set is refused as out of scope), and
+its ``covers``
 to :func:`hilclaw.contract_table.start_covers`, which admits a contract only
 when every tool round 0 calls admits it - the fp32 ``gemm`` contract of
 ADR-0008 and the six bf16 contracts (ADR-0177 decision 2; ADR-0181 decision 8
-item 4) - read at the target of the document's ``accelerator``
-(:func:`hilclaw.targets.covers_at`; ADR-0197 decision 3), so that a record of
-a contract that target does not serve is out of scope there. It takes the
+item 4), and fp32 ``gemm`` in ``cuda`` at ``cuda_gpu`` - read at the target
+of the document's ``accelerator`` (:func:`hilclaw.targets.covers_at`;
+ADR-0197 decision 3), so that a record of a contract that target does not
+serve is out of scope there. It takes the
 candidate kind of ADR-0198 decision 7 as ``prepare`` reads it: a document of
 ``schema_version`` 2 naming ``compile_settings`` is written as an
 ``instance.json`` of version 2 with that member, one of version 1 naming no
@@ -31,7 +35,8 @@ refused, never rewritten; the accelerators and ``covers`` are bound alike
 for both kinds.
 
 It takes given code as ADR-0200 decisions 5 and 6 order (slice 2 of its
-decision 8): a start handed ``code_file``, the path of one C source file,
+decision 8): a start handed ``code_file``, the path of one source file (C,
+or CUDA C++ at ``cuda_gpu``; ADR-0208 decision 2),
 reads the file, checks it against the kernel-file limit of ADR-0055 decision
 6 (:data:`hilclaw.bring_in.MAX_FILE_BYTES`), has ``prepare`` check the
 document with the file's SHA-256 (so version 3 holds ``given_code``, for a
@@ -58,14 +63,15 @@ Conventions of this module, not rules of a record:
   spaces, its members in the order the document holds them, non-ASCII
   characters escaped and no NaN or infinity, encoded as UTF-8 without a byte
   order mark and followed by one line feed.
-* The C file is read once, whole, before any check of the document, and the
+* The code file is read once, whole, before any check of the document, and the
   bytes read are the bytes hashed and stored: the blob is stored with
   :func:`hilclaw.cas.put_bytes` of those bytes rather than
   :func:`hilclaw.cas.put_file` of the path (ADR-0200 decision 5 names the
   latter), which would read the file a second time after the checks. No
   name, suffix or content of the file is checked; it is placed as
-  ``given.c`` when it becomes an attempt's kernel (ADR-0200 decision 2).
-* Every refusal comes before the first write: a C file that cannot be read
+  ``given.c``, or ``given.cu`` at ``cuda_gpu``, when it becomes an attempt's
+  kernel (ADR-0200 decision 2; ADR-0208 decision 2).
+* Every refusal comes before the first write: a code file that cannot be read
   or exceeds the limit, and every refusal of ``prepare`` or of the given id,
   leave the data root as they found it. The blob is the first write; a
   failure of ``instance.json`` after it leaves a blob no ``artifacts.json``
@@ -126,7 +132,7 @@ GIVEN_CODE_TYPE = "given_code"
 
 
 class GivenCodeFileError(Exception):
-    """The given C file cannot be read or exceeds :data:`hilclaw.bring_in.MAX_FILE_BYTES`.
+    """The given code file cannot be read or exceeds :data:`hilclaw.bring_in.MAX_FILE_BYTES`.
 
     ``reason`` says which. Nothing was built or written. It is no
     :class:`OSError`, so it is not taken for a failure of the data root.
@@ -197,7 +203,7 @@ class RunIdInUseError(Exception):
 def start(document, *, data_root, code_file=None, coder_loop=True):
     """Start the instance ``document`` under ``data_root``; return the ``run_id`` it built.
 
-    ``code_file`` is ``None`` or the path of the given C file, a ``str`` or a
+    ``code_file`` is ``None`` or the path of the given code file, a ``str`` or a
     path, given by name. ``coder_loop`` is exactly a ``bool``, given by name:
     ``True`` (the default) for a run of the coder's round loop, ``False`` for
     the evaluation of given code out of the loop; it chooses the accelerators

@@ -69,10 +69,9 @@ bundle ``given.cu`` (ADR-0208 decision 2), which has none.
 
 **Only in containers.** The build and the process run only in containers of
 the named image (NFR-4; decision 7); nothing of the attempt runs on the host.
-:func:`hilclaw.check_definition.default_table` holds no ``cuda_gpu`` entry
-(ADR-0208 decision 5 leaves the entry, with :func:`compiled_sources` as its
-``sources``, to the next slice), so a call about ``cuda_gpu`` through the
-default registry is ``no_backend``.
+The ``cuda_gpu`` entry of :func:`hilclaw.check_definition.default_table` is
+this operation with :func:`compiled_sources` as its ``sources`` (ADR-0208
+decision 5).
 
 Choices that are this module's own and no rule of a record:
 

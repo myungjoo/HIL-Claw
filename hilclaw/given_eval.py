@@ -1,9 +1,14 @@
 """The command that evaluates given code out of the loop (ADR-0200 decisions 4 (b) and 5, slice 4).
 
-Command line: ``python -m hilclaw.given_eval <request> <c-file>``. ``<request>``
-is the path of a file whose content is an instance start request of the form
-of :mod:`hilclaw.new_run` (ADR-0155), decoded under its rules; ``<c-file>`` is
-the path of the one C source file of the given code (ADR-0200 decision 2).
+Command line: ``python -m hilclaw.given_eval <request> <code-file>``.
+``<request>`` is the path of a file whose content is an instance start request
+of the form of :mod:`hilclaw.new_run` (ADR-0155), decoded under its rules;
+``<code-file>`` is the path of the one source file of the given code
+(ADR-0200 decision 2): C at ``cpu_standin`` and ``virtual_npu``, CUDA C++ at
+``cuda_gpu``
+(``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+decisions 2 and 5). No suffix of its path is read: the run's target decides
+the name it is placed under.
 Exactly these two arguments are accepted, and nothing is read from standard
 input. A person runs it; it is no FR-10 tool, has no registry entry and no
 MCP name, and starts no ``claude`` (ADR-0200 decision 5; ADR-0192 decision 1).
@@ -25,7 +30,7 @@ first failure:
    budget is 1, so round 0 alone).
 3. The data root, once, from the source (by default
    :func:`hilclaw.data_root_source.configured`).
-4. The start: :func:`hilclaw.start_instance.start` with the request, the C
+4. The start: :func:`hilclaw.start_instance.start` with the request, the code
    file as ``code_file`` and ``coder_loop`` false, so a target of
    ``instance_start`` is accepted whatever its ``coder_loop`` holds (ADR-0207
    decision 3). It reads the file once and writes the blob,
@@ -41,7 +46,8 @@ first failure:
 6. ``key.store``; a failure is told and the steps go on, as round step 1
    says (ADR-0134 decisions 5 and 6).
 7. The placement of ``(0, 1, 1)`` by :func:`hilclaw.given_attempt.place`
-   (ADR-0201 decision 2).
+   (ADR-0201 decision 2), as ``given.cu`` at ``cuda_gpu`` and ``given.c``
+   elsewhere (ADR-0208 decision 2).
 8. ``correctness.check`` at ``sim``, then at ``board``, each followed by
    ``checks.read`` for the standing, then ``board.run``, each with
    ``execution`` 1, as the evaluator and the experiment-runner make them in
@@ -94,7 +100,7 @@ traceback reaches the person, and :class:`KeyboardInterrupt` and
 ``file_system``            16      the start failed in the file system
 ``unwritable_value``       17      a value that JSON text cannot hold
 ``given_code_refused``     18      ``compile_settings``, or N other than 1
-``bad_given_code``         19      the C file cannot be read or is too large
+``bad_given_code``         19      the code file cannot be read or is too large
 ``bad_usage``              20      not exactly two arguments
 ``unreadable_input``       21      the request cannot be read
 ``bad_input``              22      the request is no JSON object
@@ -320,7 +326,8 @@ def _start(args, source):
             None,
             _told(
                 "bad_usage",
-                f"usage: expected a request file and a C file, got {len(args)} arguments",
+                "usage: expected a request file and a code file, "
+                f"got {len(args)} arguments",
             ),
         )
     document, refused = _parsed(args[0])

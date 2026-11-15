@@ -5,7 +5,9 @@ fixes, for the instances of its decision 1 (an ``hw_profile.record`` that
 names ``cpu_standin`` or the mock as its ``accelerator``, and either no
 stated ``op_signature`` or one that ADR-0041 decision 5 covers; widened by
 ``ARCHITECTURE/decisions/ADR-0197-od32-virtual-npu-oracle-and-instance-start.md``
-decision 1 to ``virtual_npu`` and the contracts it serves), that the
+decision 1 to ``virtual_npu`` and the contracts it serves, and by
+``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+decision 5 to ``cuda_gpu`` and the contract it serves), that the
 start requires the content to state ``op_signature``, ``objective``,
 ``candidates_per_round``, ``n_max``, ``draws`` and ``tolerance``; that it puts
 the ``n_max`` default of ADR-0007 decision 8 into the content when none is
@@ -21,7 +23,7 @@ decision 7 has the start take ``candidate_kind``: a content that names
 no kind or ``c_kernel`` as version 1 without it; the required set and its
 scope are the same for both.
 ``ARCHITECTURE/decisions/ADR-0200-od33-given-code-evaluation.md`` decision 6
-has the start take ``given_code``: a start handed the hash of a given C file
+has the start take ``given_code``: a start handed the hash of a given code file
 writes version 3 with that member. The module renders that check:
 
 * :data:`CODER_MODEL_DEFAULT`: the full Opus name the start fills in
@@ -70,7 +72,8 @@ Choices that are this module's own and no rule of a record:
 * The names of the accelerators of decision 1 and "covered" reach
   :func:`prepare` from its caller, as ``accelerators`` and ``covers``: the
   names are :data:`hilclaw.mock_backend.NAME` and those of the target table
-  whose ``instance_start`` is true (ADR-0193 decision 3; ADR-0197 decision 1),
+  whose ``instance_start`` is true (ADR-0193 decision 3; ADR-0197 decision 1;
+  ADR-0208 decision 5),
   and for a run of the coder's round loop whose ``coder_loop`` is true as well
   (ADR-0207 decision 3),
   and the reading of ADR-0041 decision 5 is the start's predicate of the
@@ -174,8 +177,8 @@ def prepare(document, *, accelerators, covers, given_code=None):
     - ``covers``: the predicate of ADR-0041 decision 5, a callable that is
       handed an op_signature record and returns ``True`` when it is covered
       and ``False`` when it is not.
-    - ``given_code``: ``None``, or the SHA-256 hex digest of the given C file
-      that the caller stores (ADR-0200 decision 6).
+    - ``given_code``: ``None``, or the SHA-256 hex digest of the given code
+      file that the caller stores (ADR-0200 decision 6; ADR-0208 decision 2).
 
     ``accelerators`` and ``covers`` are given by name and have no default;
     ``given_code`` is given by name. In this order:

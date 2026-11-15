@@ -26,8 +26,8 @@ uses :func:`is_admitted_name`, :func:`hilclaw.standin_copies.place_copies`
 and :func:`hilclaw.attempt_kernel.kernel_reference` applies it to the
 ``output/`` of a named attempt for a kernel reference of the model executor
 (ADR-0153 decision 3); :func:`hilclaw.cuda_check.compiled_sources` applies
-it in the language ``cuda`` as the selection of the ``cuda_gpu`` operation,
-which no default table holds yet.
+it in the language ``cuda`` as the selection of the ``cuda_gpu`` operations
+of :func:`hilclaw.check_definition.default_table`.
 
 :func:`read_compiled_set` has three outcomes. It returns a
 :class:`KernelSource` whose ``compiled_set`` is not empty and whose ``missing``
