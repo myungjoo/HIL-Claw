@@ -2,7 +2,7 @@
 id: T-0576
 title: PLAN P3-16 (5a) — ADR-0207 slice 5, first half: install the NVIDIA Container Toolkit and pull the CUDA image on this machine, add the `--gpus all` option to the container start, the `cuda_gpu` image variable and the device check in a probe container, checked on the real GPU
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "ADR-0207", "HQ-0095", "HQ-0096", "HQ-0097", FR-10, FR-19, OD-33, OD-14, NFR-4]
 dependsOn: []
@@ -145,8 +145,52 @@ If an owner-only part appears, write it in `## Result` as an HQ in the DRIVER §
 
 ## Result
 
-BLOCKED (`new-external-dependency`) — acceptance criterion 2 stop condition: in WSL2, `sudo -n true` reports "a password is required". Nothing landed (no branch, no PR, 0 review rounds). HQ-0105 asks the owner to install the NVIDIA Container Toolkit.
+DONE — PR #389 squash-merged as `1f4e2faf`; review 1 round (Approve, 3 nits; the message-wording nit applied after Approve under D20, the other two left). No HQ. No new RuntimeAcceptance item.
 
-- Machine check (criterion 1, WSL2 Ubuntu 22.04.5, 2026-11-14T15:53Z): Docker Engine/Client 29.1.3, containerd 2.2.1, runc 1.3.4, context `default` (unix:///var/run/docker.sock); runtimes `io.containerd.runc.v2 runc`, default `runc`; CDI dirs `/etc/cdi`, `/var/run/cdi`; no running container; no `/etc/docker/daemon.json`; no `nvidia-ctk`; no local CUDA image; `nvidia-smi` shows RTX 4070 (12282MiB), driver 615.78.02 / KMD 617.14, CUDA UMD 13.4; user in `sudo` and `docker` groups but `sudo -n true` needs a password; NVIDIA apt repo reachable; Docker Hub still lists the pinned digest; 131G free on `/`.
-- Nothing installed, pulled or changed; no task directory created. Passwordless root entry via `wsl -u root` was not used (it would work around the stop condition).
-- No RuntimeAcceptance item.
+Earlier attempt (2026-11-14): BLOCKED (`new-external-dependency`) on criterion 2 because `sudo -n true` needed a password; HQ-0105 asked the owner to install the toolkit. Resumed 2026-11-15 after HQ-0105 (a).
+
+**Machine check (criterion 1, WSL2 Ubuntu 22.04.5, kernel 6.18.58.1-microsoft-standard-WSL2, 2026-11-15T10:19Z)**
+- Docker Client/Engine 29.1.3; context `default *` (unix:///var/run/docker.sock).
+- `docker info`: runtimes `io.containerd.runc.v2 nvidia runc`, default `runc`; CDI spec dirs `/etc/cdi`, `/var/run/cdi` (no CDI spec present, per HQ-0105).
+- `docker ps`: no running container (the owner's `g5c`, `j9-x86`, `j9-arm`, `x3-5182` stayed Exited after the owner's restart; not touched).
+- `nvidia-ctk --version`: 1.19.0 (commit ec7b4e2f). `nvidia-smi`: NVIDIA GeForce RTX 4070, 12282 MiB, driver 615.78.02 / KMD 617.14, CUDA UMD 13.4.
+- `sudo -n true`: "a password is required" (still). No step of this task needed sudo.
+- Local CUDA images before the pull: none. 128G free on `/`.
+
+**Install (criterion 2), done by the owner under HQ-0105 (a); not repeated**
+- Commands the owner ran: `sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit`; `sudo nvidia-ctk runtime configure --runtime=docker`; `sudo systemctl restart docker` (daemon back at 2026-11-15T10:02:05Z).
+- Source: NVIDIA's CUDA WSL apt repository `https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64` (keyring `/usr/share/keyrings/cuda-archive-keyring.gpg`), not the guide's `nvidia.github.io/libnvidia-container` repository; guide: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html (lists 1.20.1-1).
+- Re-read on the machine: `apt-cache policy` installed/candidate 1.19.0-1 from that repository; dpkg log 2026-11-15 18:58:41 KST (09:58:41Z) installs `libnvidia-container1`, `libnvidia-container-tools`, `nvidia-container-toolkit-base`, `nvidia-container-toolkit`, all 1.19.0-1; binaries `/usr/bin/nvidia-ctk`, `/usr/bin/nvidia-container-runtime`.
+- Size added: Installed-Size 67 + 3725 + 4613 + 25885 = 34290 KiB.
+- `/etc/docker/daemon.json` before: absent. After: `{"runtimes": {"nvidia": {"args": [], "path": "nvidia-container-runtime"}}}`.
+
+**Image (criterion 3; tool image, kept)**
+- `docker pull nvidia/cuda:13.1.2-devel-ubuntu22.04@sha256:d8332c008e2ef270e82d286e5245e771f839645683075bba21ad9e4fa59dbcbb` (Docker Hub, https://hub.docker.com/r/nvidia/cuda; the pinned digest was still listed and pulled), then `docker tag ... cuda:13.1.2`.
+- Tag `cuda:13.1.2`; RepoDigest `nvidia/cuda@sha256:d8332c00...dbcbb`; image id `sha256:1efffc671e20f111753d134230188163113cbf3e263f85df66d55f31b99afc1f`; linux/amd64; size 6954322204 bytes (6.95 GB). The digest reference shows as `nvidia/cuda:<none>` with the same image id (one copy).
+- Inside: `nvcc` "Cuda compilation tools, release 13.1, V13.1.115" (Build cuda_13.1.r13.1/compiler.37061995_0); `gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0`.
+- Licence files inside the image: `/NGC-DL-CONTAINER-LICENSE`, `/opt/nvidia/entrypoint.d/30-container-license.txt`, per-package `/usr/share/doc/cuda-*/copyright`, `/usr/share/common-licenses`.
+- Never pushed or committed.
+
+**Code (PR #389)**
+- `hilclaw/standin_container.py`: `run_in_container(..., gpus=False)`; `True` adds `--gpus all` before the entrypoint override; `False` adds nothing; non-`bool` -> `TypeError`, `parameter="gpus"`, before anything starts; docstring with the amended Q2 reading.
+- `hilclaw/cuda_image.py` (new): `ENV_IMAGE = "HILCLAW_CUDA_IMAGE"`, `read_image`, `ImageRefusedError`; names no image.
+- `hilclaw/cuda_adapter.py`: `interpret_device_container_probe`, `check_device_in_container(image, build_dir, *, timeout_s, removal_timeout_s, client="docker")`; the probe uses the caller's build directory and writes nothing there. Argument errors (`parameter`) and exceptions it does not place are raised; `ProgramNotFoundError`, `OSError`, `NoNumericUserError` and every container status but a GPU line are `device_unavailable`.
+- ADR-0168 decision 3 vs ADR-0207 decision 6: no conflict (the probe runs no attempt code, so 125 to 127 are the runtime's, as for a build container).
+- No caller changes (criterion 7). Existing tests changed (D21): none.
+- Language: Python (the modules extended and their callers). Size: ~220 non-test lines, 3 files.
+
+**Verification**
+- Full suite under `coverage run --source=hilclaw` in a WSL2 clone of the PR head with `/usr/local/cuda/bin` on `PATH`: 42735 passed, 108 skipped (660 s). `hilclaw/` lines 19134/19197 (99.7%), functions 1812/1814; the three touched modules 100%. `ruff check` and `ruff format --check` clean. GitHub CI green on the final head. That full-suite run was on the head before the round-1 wording nit; after it, the CUDA, standin-container, cuda_image, cuda_check and cuda_run test files passed again (431) and ruff was clean.
+- Real-GPU tests on this machine (RTX 4070, driver 617.14, toolkit 1.19.0, image `cuda:13.1.2` with nvcc 13.1 V13.1.115 and gcc 11.4.0), all passed: `check_device_in_container("cuda:13.1.2", ...)` -> GO_ON "NVIDIA GeForce RTX 4070 (driver 617.14)"; absent image -> `device_unavailable` (status 125); a `gpus=True` container builds `tests/cuda_fixtures/scale.cu` with `nvcc -O2 -arch=native`, runs it ("built") and `nvidia-smi` names the GPU; the same with `gpus=False`: no `/dev/dxg`, no `nvidia-smi` in the container, nvcc warns "Cannot find valid GPU for '-arch=native', default arch is used".
+- Hand observation inside a `--gpus all` container of `cuda:13.1.2` with the ADR-0144 options (evidence for RA-0086 (1), not its closure):
+  - no checkout path visible (`/mnt` and `/home` empty; no `/mnt/c` mount);
+  - driver mounts read-only: `/usr/bin/nvidia-smi`, `/usr/lib/x86_64-linux-gnu/{libcuda.so.1,libnvidia-ml.so.1,libcudadebugger.so.1,libnvidia-gpucomp.so,libdxcore.so}` and 9 files below `/usr/lib/wsl/drivers/nvmdi.inf_amd64_.../` all `ro,nosuid,nodev`; `/dev/dxg` `ro,nosuid,noexec`;
+  - writable for the container user (uid 1000) by a touch test of every mount: `/build` (the bind mount) and the container's own tmpfs `/dev/shm`, `/dev/mqueue`; Docker's per-container `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf` are rw mounts but not writable by the user and are not host paths the operation chooses;
+  - network none: only `lo` in `/sys/class/net`.
+- No `claude` was started (D16); no test run (D25).
+
+**Runtime acceptance items (D22).** None new; RA-0086 already holds ADR-0207's container items.
+
+**Storage.** WSL `/tmp/hilclaw-driver/T-0576/` (clone, coverage data, logs, observation dir) and the Git Bash `/tmp/hilclaw-driver/T-0576/` were removed with `rm -r`. No work image was made. Kept: tool image `cuda:13.1.2` (6.95 GB) and the toolkit.
+
+**nextTask hint.** T-0577 (second half of slice 5: the `cuda_gpu` operations of `cuda_check`/`cuda_run` in containers), which now has the toolkit, the image and `check_device_in_container`.
